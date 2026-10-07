@@ -169,6 +169,11 @@ tools/qfbench.cpp    在真实索引上测内存和搜索耗时
 ctest --preset release                         # 单元测试
 build\release\qfbench.exe                      # 读取已保存的索引，输出内存和搜索耗时
 build\release\qfbench.exe 报告 "*.pdf"          # 指定查询
+
+# 读磁盘数据的解析代码（MFT、USN 日志、文本编码）用 AddressSanitizer 和模糊测试检查
+cmake --preset asan; cmake --build --preset asan  # 在 VS 开发者命令行里运行
+ctest --preset asan                            # 单元测试，越界读写当场报错
+build\asan\qffuzz.exe -max_total_time=300      # 用随机数据测 5 分钟
 ```
 
 ## 已知限制和后续可做的

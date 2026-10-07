@@ -24,14 +24,22 @@
       "displayName": "MSVC Release",
       "inherits": "base",
       "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "QUICKFIND_BUILD_TESTS": "ON" }
+    },
+    {
+      "name": "asan",
+      "displayName": "MSVC AddressSanitizer (tests)",
+      "inherits": "base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo", "QUICKFIND_ASAN": "ON" }
     }
   ],
   "buildPresets": [
     { "name": "debug", "configurePreset": "debug" },
-    { "name": "release", "configurePreset": "release" }
+    { "name": "release", "configurePreset": "release" },
+    { "name": "asan", "configurePreset": "asan", "targets": ["tst_core", "qffuzz"] }
   ],
   "testPresets": [
     { "name": "debug", "configurePreset": "debug", "output": { "outputOnFailure": true } },
-    { "name": "release", "configurePreset": "release", "output": { "outputOnFailure": true } }
+    { "name": "release", "configurePreset": "release", "output": { "outputOnFailure": true } },
+    { "name": "asan", "configurePreset": "asan", "output": { "outputOnFailure": true } }
   ]
 }
