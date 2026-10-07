@@ -3,7 +3,7 @@ qt_add_executable(QuickFind WIN32
     App.cpp App.h
     FileIconProvider.cpp FileIconProvider.h
     Settings.cpp Settings.h
-    platform/KeyboardHook.cpp platform/KeyboardHook.h
+    platform/KeyListener.cpp platform/KeyListener.h
     platform/MessageWindow.cpp platform/MessageWindow.h
     platform/Shell.cpp platform/Shell.h
     platform/VolumeNotifier.cpp platform/VolumeNotifier.h

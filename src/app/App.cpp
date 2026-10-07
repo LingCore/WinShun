@@ -7,7 +7,7 @@
 #include "Launcher.h"
 #include "SearchEngine.h"
 #include "SettingsEditor.h"
-#include "platform/KeyboardHook.h"
+#include "platform/KeyListener.h"
 #include "platform/MessageWindow.h"
 #include "platform/Shell.h"
 #include "platform/VolumeNotifier.h"
@@ -215,12 +215,12 @@ void App::applyTheme()
 
 void App::applySettings(bool initial)
 {
-    if (m_settings.doubleCtrl && !m_keyboardHook) {
-        // Called on the hook thread: hop to the GUI thread.
-        m_keyboardHook = std::make_unique<KeyboardHook>(
+    if (m_settings.doubleCtrl && !m_keyListener) {
+        // Called on the listener thread: hop to the GUI thread.
+        m_keyListener = std::make_unique<KeyListener>(
             [this] { QMetaObject::invokeMethod(this, &App::toggleLauncher, Qt::QueuedConnection); });
     } else if (!m_settings.doubleCtrl) {
-        m_keyboardHook.reset();
+        m_keyListener.reset();
     }
 
     applyHotkey();

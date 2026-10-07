@@ -18,7 +18,7 @@ namespace qf {
 class AppCatalog;
 class History;
 class IndexService;
-class KeyboardHook;
+class KeyListener;
 class Launcher;
 class MessageWindow;
 class SearchEngine;
@@ -70,7 +70,7 @@ private:
     std::unique_ptr<Launcher> m_launcher;
     std::unique_ptr<MessageWindow> m_messages;
     std::unique_ptr<VolumeNotifier> m_volumeNotifier; // after m_messages, whose window it uses
-    std::unique_ptr<KeyboardHook> m_keyboardHook;
+    std::unique_ptr<KeyListener> m_keyListener; // double Ctrl
     // The launcher is shown cloaked and revealed once it has drawn a frame
     // with fresh results (see showLauncher). Set on the GUI thread, read on
     // the render thread.

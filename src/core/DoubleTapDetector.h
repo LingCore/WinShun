@@ -6,7 +6,7 @@
 namespace qf {
 
 // Recognises "tap Ctrl twice" from raw key events. Pure logic (no Win32), so
-// it is unit-tested; the keyboard hook feeds it events.
+// it is unit-tested; KeyListener feeds it events.
 //
 // A tap is a Ctrl press and release with no other key in between, shorter than
 // maxPressMs. Two taps within maxGapMs trigger, unless the mouse moved in
