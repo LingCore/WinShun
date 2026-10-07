@@ -356,7 +356,7 @@ std::optional<ContentMatch> ContentScanner::scan(
 }
 
 std::optional<ContentMatch> ContentScanner::scanFile(
-    const std::wstring& path, std::int64_t maxBytes, const CancelFn& cancelled) const
+    std::wstring_view path, std::int64_t maxBytes, const CancelFn& cancelled) const
 {
     win32::UniqueHandle file(::CreateFileW(win32::longPath(path).c_str(), GENERIC_READ,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN,
@@ -374,6 +374,9 @@ std::optional<ContentMatch> ContentScanner::scanFile(
     LARGE_INTEGER size {};
     if (!::GetFileSizeEx(file.get(), &size) || size.QuadPart <= 0 || (maxBytes > 0 && size.QuadPart > maxBytes))
         return std::nullopt;
+    FILE_IO_PRIORITY_HINT_INFO hint {};
+    hint.PriorityHint = IoPriorityHintLow;
+    ::SetFileInformationByHandle(file.get(), FileIoPriorityHintInfo, &hint, sizeof hint);
 
     const HANDLE h = file.get();
     const ReadFn read = [h](char* buffer, std::size_t capacity) -> std::size_t {

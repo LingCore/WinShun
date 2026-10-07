@@ -331,10 +331,14 @@ void SearchEngine::runContentSearch(const Job& job)
 
     // Candidates: matching extension, not a cloud placeholder. Your own files
     // are scanned first so useful results show up while the scan continues.
+    // Their paths share one buffer: there can be millions (every .js under
+    // node_modules), and a string each would cost an allocation apiece.
     struct Candidate {
+        std::uint32_t offset; // into `paths`
+        std::uint32_t length;
         int priority;
-        std::wstring path;
     };
+    std::u16string paths;
     std::vector<Candidate> candidates;
     {
         const std::wstring profile = win32::expandEnvironment(L"%USERPROFILE%");
@@ -348,22 +352,27 @@ void SearchEngine::runContentSearch(const Job& job)
                 const Entry& e = entries[i];
                 if ((e.flags & (EntryFlag::Deleted | EntryFlag::Directory | EntryFlag::Offline)) || e.extLength == 0)
                     continue;
+                if (request.skipLowPriorityContent && (e.flags & EntryFlag::LowPriority))
+                    continue;
                 const std::string_view name = index->name(e);
                 const std::string_view ext = name.substr(name.size() - e.extLength);
                 if (std::none_of(extensions.begin(), extensions.end(),
                         [&](const std::string& x) { return text::equalsFolded(ext, x); }))
                     continue;
                 const auto id = static_cast<EntryId>((c << FileIndex::kChunkBits) + i);
-                std::wstring path = index->wpath(id);
+                const std::size_t offset = paths.size();
+                index->appendPath16(id, paths);
+                const std::wstring_view path = wtf8::wview(std::u16string_view(paths).substr(offset));
                 int priority = 1;
                 if (e.flags & EntryFlag::LowPriority)
                     priority = 3;
                 else if (e.flags & EntryFlag::Hidden)
                     priority = 2;
                 else if (path.size() > profile.size() && path[profile.size()] == L'\\'
-                    && win32::equalsIgnoreCase(std::wstring_view(path).substr(0, profile.size()), profile))
+                    && win32::equalsIgnoreCase(path.substr(0, profile.size()), profile))
                     priority = 0;
-                candidates.push_back({priority, std::move(path)});
+                candidates.push_back(
+                    {static_cast<std::uint32_t>(offset), static_cast<std::uint32_t>(path.size()), priority});
             }
         }
     }
@@ -406,12 +415,13 @@ void SearchEngine::runContentSearch(const Job& job)
                     const std::size_t i = next.fetch_add(1);
                     if (i >= candidates.size())
                         break;
-                    const auto match = scanner.scanFile(candidates[i].path, request.maxContentFileBytes, stale);
+                    const std::u16string_view path(paths.data() + candidates[i].offset, candidates[i].length);
+                    const auto match = scanner.scanFile(wtf8::wview(path), request.maxContentFileBytes, stale);
                     scanned.fetch_add(1);
                     if (!match)
                         continue;
                     SearchResult r;
-                    r.path = QString::fromStdWString(candidates[i].path);
+                    r.path = QString(reinterpret_cast<const QChar*>(path.data()), static_cast<qsizetype>(path.size()));
                     r.name = r.path.mid(r.path.lastIndexOf(u'\\') + 1);
                     r.line = match->line;
                     r.snippet = match->snippet;
@@ -440,7 +450,8 @@ void SearchEngine::runContentSearch(const Job& job)
         }
     }
     flush(true);
-    candidates = decltype(candidates)(); // free it before compacting (`= {}` keeps the capacity)
+    candidates = decltype(candidates)(); // free them before compacting (`= {}` keeps the capacity)
+    paths = decltype(paths)();
     ::HeapCompact(::GetProcessHeap(), 0); // return the scan's scratch memory to the OS
 }
 

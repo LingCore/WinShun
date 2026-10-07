@@ -1172,6 +1172,22 @@ private slots:
         QVERIFY(!cancelled);
     }
 
+    void contentFile()
+    {
+        QTemporaryDir dir;
+        QFile file(dir.filePath(u"notes.txt"_s));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("first line\nsecond line has the Needle\n");
+        file.close();
+        const std::wstring path = QDir::toNativeSeparators(file.fileName()).toStdWString();
+        const ContentScanner scanner(u"needle"_s);
+        const auto match = scanner.scanFile(path, 0, {});
+        QVERIFY(match);
+        QCOMPARE(match->line, 2);
+        QVERIFY(!scanner.scanFile(path, 10, {})); // larger than the limit
+        QVERIFY(!scanner.scanFile(path + L".missing", 0, {}));
+    }
+
     void doubleTap()
     {
         constexpr std::uint32_t ctrl = 0xA2;

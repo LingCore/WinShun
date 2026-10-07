@@ -33,6 +33,9 @@ public:
         QStringList contentExtensions; // e.g. {"txt"}
         qint64 maxContentFileBytes = 64ll << 20;
         int maxContentResults = 300;
+        // Not inside system, program and tool folders (EntryFlag::LowPriority):
+        // for the content matches that 全部 adds on its own, unasked.
+        bool skipLowPriorityContent = false;
     };
 
     explicit SearchEngine(IndexService* index, AppCatalog* apps = nullptr, QObject* parent = nullptr);

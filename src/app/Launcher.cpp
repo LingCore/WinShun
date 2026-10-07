@@ -260,6 +260,8 @@ void Launcher::startContentSearch()
     request.scope = qf::Scope::Content;
     request.contentExtensions = m_contentExtensions;
     request.maxContentFileBytes = m_maxContentBytes;
+    // 内容 looks everywhere; 全部 looks in your own files on its own.
+    request.skipLowPriorityContent = m_scope != Content;
     m_requestId = m_engine->submit(std::move(request));
     m_pending = true;
     m_contentRunning = true;

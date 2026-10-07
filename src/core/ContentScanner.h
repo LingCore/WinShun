@@ -54,8 +54,8 @@ public:
     bool isValid() const noexcept { return !m_needle.isEmpty(); }
     unsigned ansiCodePage() const noexcept { return m_codePage; }
 
-    std::optional<ContentMatch> scanFile(
-        const std::wstring& path, std::int64_t maxBytes, const CancelFn& cancelled) const;
+    // Reads at low I/O priority: a scan reads many files, and other programs come first.
+    std::optional<ContentMatch> scanFile(std::wstring_view path, std::int64_t maxBytes, const CancelFn& cancelled) const;
     std::optional<ContentMatch> scan(const ReadFn& read, std::size_t chunkSize, const CancelFn& cancelled) const;
 
     static TextEncoding detect(std::string_view head, std::size_t* bomLength);
