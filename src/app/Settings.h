@@ -27,12 +27,12 @@ struct Settings {
     int maxContentFileSizeMB = 64;
 
     static Settings defaults();
+    static bool exists(); // false on the very first run
 
     void load();
     void save() const;
-    bool isFirstRun() const noexcept { return m_firstRun; }
 
-    bool operator==(const Settings& other) const; // the options only, not isFirstRun()
+    bool operator==(const Settings&) const = default;
 
     CrawlRules crawlRules() const;
 
@@ -40,9 +40,6 @@ struct Settings {
     static QString storedRenderer(); // just [Launcher] Renderer; works before QGuiApplication exists
     static QString resolveRenderer(const QString& renderer); // "auto" -> software with <= 16 GB of RAM, else d3d11
     static QString dataDir(); // %LOCALAPPDATA%\QuickFind
-
-private:
-    bool m_firstRun = false;
 };
 
 } // namespace qf

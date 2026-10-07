@@ -20,6 +20,7 @@ Rectangle {
         x: 10
         anchors.verticalCenter: parent.verticalCenter
         text: chip.text
+        textFormat: Text.PlainText
         color: Theme.text
         font.pixelSize: Theme.fontBody
     }

@@ -62,6 +62,7 @@ Item {
         Text {
             width: status.width - (footer.showBusy ? 14 : 0)
             text: footer.launcher.statusText
+            textFormat: Text.PlainText // may name a file
             color: Theme.subtext
             font.pixelSize: Theme.fontBody
             elide: Text.ElideRight

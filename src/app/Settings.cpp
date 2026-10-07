@@ -163,9 +163,13 @@ Settings Settings::defaults()
     return d;
 }
 
+bool Settings::exists()
+{
+    return QFileInfo::exists(filePath());
+}
+
 void Settings::load()
 {
-    m_firstRun = !QFileInfo::exists(filePath());
     QSettings s(QSettings::IniFormat, QSettings::UserScope, u"QuickFind"_s, u"QuickFind"_s);
     const Settings d = defaults();
 
@@ -202,14 +206,6 @@ void Settings::save() const
     s.setValue(u"Index/RescanOnStartup"_s, rescanOnStartup);
     s.setValue(u"Content/Extensions"_s, contentExtensions);
     s.setValue(u"Content/MaxFileSizeMB"_s, maxContentFileSizeMB);
-}
-
-bool Settings::operator==(const Settings& other) const
-{
-    return doubleCtrl == other.doubleCtrl && hotkey == other.hotkey && renderer == other.renderer
-        && excludedPaths == other.excludedPaths && excludedNames == other.excludedNames
-        && includeRemovableDrives == other.includeRemovableDrives && rescanOnStartup == other.rescanOnStartup
-        && contentExtensions == other.contentExtensions && maxContentFileSizeMB == other.maxContentFileSizeMB;
 }
 
 CrawlRules Settings::crawlRules() const

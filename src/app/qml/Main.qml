@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QuickFind
 
@@ -75,7 +77,8 @@ Window {
             window.launcher.trigger(list.currentIndex, action)
     }
 
-    readonly property bool menuOpen: menuLoader.item !== null && menuLoader.item.visible
+    readonly property ContextMenu contextMenu: menuLoader.item as ContextMenu
+    readonly property bool menuOpen: contextMenu !== null && contextMenu.visible
 
     // `globalPos` is where the mouse was; without it (Menu key, Shift+F10)
     // the menu opens under the current row.
@@ -89,19 +92,19 @@ Window {
             globalPos = list.currentItem.mapToGlobal(56, rowHeight - 6)
         }
         menuLoader.active = true
-        menuLoader.item.popup(index, globalPos, fromKeyboard)
+        (menuLoader.item as ContextMenu).popup(index, globalPos, fromKeyboard)
     }
 
     function closeContextMenu() {
-        if (menuLoader.item)
-            menuLoader.item.dismiss()
+        if (contextMenu)
+            contextMenu.dismiss()
     }
 
     // Hidden: also free the menu window until it is needed again.
     onVisibleChanged: if (!visible) { closeContextMenu(); menuLoader.active = false }
 
     function handleKey(event) {
-        if (menuOpen && menuLoader.item.handleKey(event)) {
+        if (menuOpen && contextMenu.handleKey(event)) {
             event.accepted = true
             return
         }
@@ -175,7 +178,7 @@ Window {
     }
 
     function checkContextMenu() {
-        if (menuOpen && launcher.results.pathAt(menuLoader.item.row) !== menuLoader.item.path)
+        if (menuOpen && launcher.results.pathAt(contextMenu.row) !== contextMenu.path)
             closeContextMenu()
     }
 
@@ -264,6 +267,7 @@ Window {
                           : window.launcher.scope === Launcher.Apps
                             ? qsTr("没有找到名为“%1”的应用").arg(window.trimmedQuery)
                             : qsTr("没有找到“%1”").arg(window.trimmedQuery)
+                    textFormat: Text.PlainText // holds what was typed
                     color: Theme.subtext
                     font.pixelSize: Theme.fontTitle
                 }

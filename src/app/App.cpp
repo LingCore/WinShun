@@ -82,6 +82,7 @@ App::~App()
 
 bool App::start(const StartOptions& options)
 {
+    const bool firstRun = !Settings::exists();
     m_settings.load();
     m_renderer = Settings::resolveRenderer(m_settings.renderer);
     if (m_renderer == u"software")
@@ -126,7 +127,7 @@ bool App::start(const StartOptions& options)
     m_index->start();
     m_apps->refresh(true); // in the background; about half a second
 
-    if (m_settings.isFirstRun()) {
+    if (firstRun) {
         // Autostart is on by default; the settings switch turns it off for good
         // (the settings file exists from now on, so this runs once).
         autostart::setEnabled(true);

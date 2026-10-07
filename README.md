@@ -83,7 +83,7 @@ Extensions=txt, md, ...  ; 内容搜索的扩展名，逗号分隔（只支持�
 MaxFileSizeMB=64         ; 超过此大小的文件不搜内容
 ```
 
-索引和最近使用记录保存在 `%LOCALAPPDATA%\QuickFind`。
+索引、最近使用记录和日志（`QuickFind.log`，只记警告和错误）保存在 `%LOCALAPPDATA%\QuickFind`。
 
 ## 性能（实测）
 

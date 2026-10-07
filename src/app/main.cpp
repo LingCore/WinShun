@@ -4,13 +4,48 @@
 #include "platform/Shell.h"
 
 #include <QCommandLineParser>
+#include <QDateTime>
+#include <QFile>
 #include <QFont>
 #include <QFontDatabase>
 #include <QGuiApplication>
 
 #include <windows.h>
 
+#include <mutex>
+
 using namespace Qt::StringLiterals;
+
+namespace {
+
+QtMessageHandler g_defaultHandler = nullptr;
+
+// Warnings and errors also go to %LOCALAPPDATA%\QuickFind\QuickFind.log: a
+// tray app has no console, and the user's machine is where things go wrong.
+// Over 1 MB, the log becomes QuickFind.old.log and a new one starts.
+void logToFile(QtMsgType type, const QMessageLogContext& context, const QString& message)
+{
+    if (type != QtDebugMsg && type != QtInfoMsg) {
+        static std::mutex mutex; // messages come from every thread
+        const std::lock_guard lock(mutex);
+        const QString path = qf::Settings::dataDir() + u"\\QuickFind.log"_s;
+        if (QFile::exists(path) && QFile(path).size() > (1 << 20)) {
+            const QString old = qf::Settings::dataDir() + u"\\QuickFind.old.log"_s;
+            QFile::remove(old);
+            QFile::rename(path, old);
+        }
+        QFile file(path);
+        if (file.open(QIODevice::Append | QIODevice::Text)) {
+            const char* level = type == QtWarningMsg ? "warning" : type == QtCriticalMsg ? "error" : "fatal";
+            file.write(QDateTime::currentDateTime().toString(Qt::ISODateWithMs).toUtf8() + ' ' + level + ": "
+                + message.toUtf8() + '\n');
+        }
+    }
+    if (g_defaultHandler)
+        g_defaultHandler(type, context, message); // the debugger's output, as before
+}
+
+} // namespace
 
 int main(int argc, char* argv[])
 {
@@ -70,6 +105,7 @@ int main(int argc, char* argv[])
     }
     if (parser.isSet(quit))
         return 0; // nothing running
+    g_defaultHandler = qInstallMessageHandler(logToFile); // the running copy only
 
     qf::autostart::migrate();
 

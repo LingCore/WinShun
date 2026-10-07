@@ -2,6 +2,7 @@
 
 #include "Query.h"
 #include "TextUtil.h"
+#include "Win32Util.h"
 #include "Wtf8.h"
 
 #include <QCollator>
@@ -149,9 +150,9 @@ private:
 void addFolderTree(Fnv1a& hash, const std::wstring& dir, int depth)
 {
     WIN32_FIND_DATAW data;
-    const HANDLE find = ::FindFirstFileExW((dir + L"\\*").c_str(), FindExInfoBasic, &data,
-        FindExSearchLimitToDirectories, nullptr, FIND_FIRST_EX_LARGE_FETCH);
-    if (find == INVALID_HANDLE_VALUE)
+    const win32::UniqueFind find(::FindFirstFileExW((dir + L"\\*").c_str(), FindExInfoBasic, &data,
+        FindExSearchLimitToDirectories, nullptr, FIND_FIRST_EX_LARGE_FETCH));
+    if (!find.valid())
         return;
     do {
         const std::wstring_view name(data.cFileName);
@@ -162,8 +163,7 @@ void addFolderTree(Fnv1a& hash, const std::wstring& dir, int depth)
         hash.add(&data.ftLastWriteTime, sizeof data.ftLastWriteTime);
         if (depth < 8)
             addFolderTree(hash, dir + L'\\' + std::wstring(name), depth + 1);
-    } while (::FindNextFileW(find, &data));
-    ::FindClose(find);
+    } while (::FindNextFileW(find.get(), &data));
 }
 
 } // namespace
@@ -393,21 +393,20 @@ quint64 installedAppsFingerprint()
     }
     // One subkey per package installed for this user: adding or removing one
     // updates the key's write time.
-    HKEY key = nullptr;
+    win32::UniqueKey key;
     if (::RegOpenKeyExW(HKEY_CURRENT_USER,
             L"Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppModel\\Repository"
             L"\\Packages",
-            0, KEY_READ, &key)
+            0, KEY_READ, key.out())
         == ERROR_SUCCESS) {
         DWORD subkeys = 0;
         FILETIME written {};
-        if (::RegQueryInfoKeyW(key, nullptr, nullptr, nullptr, &subkeys, nullptr, nullptr, nullptr, nullptr, nullptr,
-                nullptr, &written)
+        if (::RegQueryInfoKeyW(key.get(), nullptr, nullptr, nullptr, &subkeys, nullptr, nullptr, nullptr, nullptr,
+                nullptr, nullptr, &written)
             == ERROR_SUCCESS) {
             hash.add(&subkeys, sizeof subkeys);
             hash.add(&written, sizeof written);
         }
-        ::RegCloseKey(key);
     }
     return hash.value();
 }

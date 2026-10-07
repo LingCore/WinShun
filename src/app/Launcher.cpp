@@ -24,6 +24,11 @@ using namespace std::chrono_literals;
 
 namespace qf {
 
+// QML sees Launcher::Scope; the engine takes qf::Scope. One cast between them.
+static_assert(Launcher::All == static_cast<int>(qf::Scope::All) && Launcher::Apps == static_cast<int>(qf::Scope::Apps)
+    && Launcher::Files == static_cast<int>(qf::Scope::Files) && Launcher::Folders == static_cast<int>(qf::Scope::Folders)
+    && Launcher::Content == static_cast<int>(qf::Scope::Content));
+
 namespace {
 
 QString number(qint64 n)
@@ -481,9 +486,12 @@ void Launcher::perform(const SearchResult& result, Action action)
         break;
     case Recycle: {
         const auto owner = m_window ? reinterpret_cast<HWND>(m_window->winId()) : nullptr;
+        // Back on the GUI thread, where `self` can be checked safely.
         shell::recycle(r.path, owner, [self = QPointer(this), r](bool ok) {
-            if (self)
-                QMetaObject::invokeMethod(self, [self, r, ok] { self->onRecycled(r, ok); }, Qt::QueuedConnection);
+            QMetaObject::invokeMethod(qApp, [self, r, ok] {
+                if (self)
+                    self->onRecycled(r, ok);
+            }, Qt::QueuedConnection);
         });
         break;
     }

@@ -46,6 +46,47 @@ private:
     HANDLE m_handle = nullptr;
 };
 
+// Owner of a FindFirstFile search handle.
+class UniqueFind {
+public:
+    explicit UniqueFind(HANDLE h) noexcept
+        : m_handle(h)
+    {
+    }
+    ~UniqueFind()
+    {
+        if (valid())
+            ::FindClose(m_handle);
+    }
+    UniqueFind(const UniqueFind&) = delete;
+    UniqueFind& operator=(const UniqueFind&) = delete;
+
+    HANDLE get() const noexcept { return m_handle; }
+    bool valid() const noexcept { return m_handle != INVALID_HANDLE_VALUE; }
+
+private:
+    HANDLE m_handle;
+};
+
+// Owner of an open registry key.
+class UniqueKey {
+public:
+    UniqueKey() noexcept = default;
+    ~UniqueKey()
+    {
+        if (m_key)
+            ::RegCloseKey(m_key);
+    }
+    UniqueKey(const UniqueKey&) = delete;
+    UniqueKey& operator=(const UniqueKey&) = delete;
+
+    HKEY get() const noexcept { return m_key; }
+    HKEY* out() noexcept { return &m_key; }
+
+private:
+    HKEY m_key = nullptr;
+};
+
 // Ordinal, case-insensitive comparison: the same rule NTFS uses for names.
 inline bool equalsIgnoreCase(std::wstring_view a, std::wstring_view b) noexcept
 {

@@ -400,6 +400,7 @@ Window {
                                         anchors.rightMargin: 8
                                         anchors.verticalCenter: parent.verticalCenter
                                         text: pathRow.modelData
+                                        textFormat: Text.PlainText
                                         color: Theme.text
                                         font.pixelSize: Theme.fontBody
                                         elide: Text.ElideMiddle

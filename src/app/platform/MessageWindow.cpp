@@ -40,9 +40,9 @@ MessageWindow::MessageWindow(Callbacks callbacks)
     m_hwnd = ::CreateWindowExW(
         WS_EX_TOOLWINDOW, kClassName, L"QuickFind", WS_POPUP, 0, 0, 0, 0, nullptr, nullptr, instance, this);
     m_taskbarCreated = ::RegisterWindowMessageW(L"TaskbarCreated");
-    // Let Explorer (medium integrity) reach us even if we run elevated.
+    // Let Explorer (medium integrity) reach us even if we run elevated. A
+    // second instance runs elevated too, so WM_COPYDATA stays closed to others.
     ::ChangeWindowMessageFilterEx(m_hwnd, m_taskbarCreated, MSGFLT_ALLOW, nullptr);
-    ::ChangeWindowMessageFilterEx(m_hwnd, WM_COPYDATA, MSGFLT_ALLOW, nullptr);
 
     const UINT dpi = ::GetDpiForSystem();
     m_icon = static_cast<HICON>(::LoadImageW(instance, kAppIconResource, IMAGE_ICON,

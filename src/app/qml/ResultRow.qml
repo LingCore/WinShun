@@ -127,6 +127,7 @@ Item {
                 anchors.right: parent.right
                 anchors.baseline: title.baseline
                 text: row.folder
+                textFormat: Text.PlainText
                 elide: Text.ElideMiddle
                 color: Theme.faint
                 font.pixelSize: Theme.fontBody

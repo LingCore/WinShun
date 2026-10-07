@@ -376,12 +376,11 @@ void UsnApplier::add(EntryId parent, const Item& item, bool walk, std::vector<Cr
     DWORD reparseTag = 0;
     if (item.attributes & FILE_ATTRIBUTE_REPARSE_POINT) {
         WIN32_FIND_DATAW fd;
-        const HANDLE h = ::FindFirstFileExW(
-            win32::longPath(path).c_str(), FindExInfoBasic, &fd, FindExSearchNameMatch, nullptr, 0);
-        if (h == INVALID_HANDLE_VALUE)
+        const win32::UniqueFind find(::FindFirstFileExW(
+            win32::longPath(path).c_str(), FindExInfoBasic, &fd, FindExSearchNameMatch, nullptr, 0));
+        if (!find.valid())
             return;
         reparseTag = fd.dwReserved0;
-        ::FindClose(h);
     }
     if (Crawler::shouldDescend(item.attributes, reparseTag))
         walks.push_back({id, std::move(path), static_cast<std::uint8_t>(flags & EntryFlag::Inherited), m_root, item.record});
