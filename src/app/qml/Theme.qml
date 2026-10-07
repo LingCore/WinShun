@@ -1,0 +1,52 @@
+pragma Singleton
+import QtQuick
+import QuickFind
+
+// All colours and metrics of the UI. Follows the Windows light/dark setting
+// and accent colour (see SystemTheme in C++).
+QtObject {
+    readonly property bool dark: SystemTheme.dark
+    readonly property color accent: dark ? Qt.lighter(SystemTheme.accent, 1.55) : SystemTheme.accent
+
+    readonly property color background: dark ? "#202020" : "#F9F9F9"
+    readonly property color divider: dark ? "#2E2E2E" : "#EAEAEA"
+    readonly property color text: dark ? "#F3F3F3" : "#1B1B1B"
+    readonly property color subtext: dark ? "#A7A7A7" : "#666666"
+    readonly property color faint: dark ? "#727272" : "#9A9A9A"
+    readonly property color hover: dark ? "#292929" : "#F1F1F1"
+    readonly property color selection: dark ? "#2F2F2F" : "#EAEAEA"
+    readonly property color textSelection: Qt.rgba(accent.r, accent.g, accent.b, 0.35)
+    readonly property color badge: Qt.rgba(accent.r, accent.g, accent.b, dark ? 0.16 : 0.10) // "应用" tag on app rows
+
+    readonly property color track: dark ? "#2A2A2A" : "#EDEDED"
+    readonly property color chipActive: dark ? "#3A3A3A" : "#FFFFFF"
+    readonly property color chipHover: dark ? "#333333" : "#E4E4E4"
+    readonly property color chipBorder: dark ? "#454545" : "#DCDCDC"
+    readonly property color keycap: dark ? "#2A2A2A" : "#FFFFFF"
+    readonly property color keycapBorder: dark ? "#3C3C3C" : "#DADADA"
+
+    // Settings window (Windows 11 settings look)
+    readonly property color page: dark ? "#202020" : "#F3F3F3"
+    readonly property color card: dark ? "#2B2B2B" : "#FBFBFB"
+    readonly property color cardBorder: dark ? "#1D1D1D" : "#E5E5E5"
+    readonly property color navHover: dark ? "#292929" : "#EDEDED"
+    readonly property color navSelected: dark ? "#2D2D2D" : "#EAEAEA"
+    readonly property color control: dark ? "#373737" : "#FFFFFF"
+    readonly property color controlHover: dark ? "#3C3C3C" : "#F6F6F6"
+    readonly property color controlPressed: dark ? "#323232" : "#F0F0F0"
+    readonly property color controlBorder: dark ? "#444444" : "#D5D5D5"
+    readonly property color inputFocused: dark ? "#1F1F1F" : "#FFFFFF"
+    readonly property color onAccent: dark ? "#000000" : "#FFFFFF"
+    readonly property color menuBackground: dark ? "#2C2C2C" : "#F9F9F9"
+    readonly property color menuHover: dark ? "#3A3A3A" : "#ECECEC"
+    readonly property color danger: dark ? "#FF99A4" : "#C42B1C"
+
+    // Type scale in pixels. Even sizes land on whole device pixels at 150 %.
+    readonly property int fontDisplay: 28 // settings window title
+    readonly property int fontSearch: 24 // search box
+    readonly property int fontTitle: 18 // result names, section titles, empty state
+    readonly property int fontBody: 16 // most text
+    readonly property int fontCaption: 14 // descriptions, key caps, hints
+
+    readonly property string iconFont: SystemTheme.iconFont
+}

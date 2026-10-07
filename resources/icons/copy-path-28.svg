@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28">
+  <!-- Copy full path, 28 px master: a box holding "\\..". Drawn on the device-pixel
+       grid like Fluent System Icons: outer edges on whole pixels, 1.5 px stroke growing
+       inwards, round caps, dots on whole pixels. Glyph.qml draws the same shapes. -->
+  <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="2.75" y="3.75" width="22.5" height="20.5" rx="3"/>
+    <path d="M5.5 8.75L9.5 19.25M9.5 8.75L13.5 19.25"/>
+  </g>
+  <g fill="currentColor">
+    <rect x="17" y="18" width="2" height="2" rx="0.5"/>
+    <rect x="21" y="18" width="2" height="2" rx="0.5"/>
+  </g>
+</svg>

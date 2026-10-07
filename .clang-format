@@ -1,0 +1,18 @@
+BasedOnStyle: WebKit
+ColumnLimit: 120
+IndentWidth: 4
+Standard: c++20
+PointerAlignment: Left
+NamespaceIndentation: None
+FixNamespaceComments: true
+Cpp11BracedListStyle: true
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortLambdasOnASingleLine: All
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+  AfterClass: false
+  AfterStruct: false
+  AfterEnum: false
+# Windows headers are order-sensitive (windows.h before commctrl.h, ...).
+SortIncludes: Never

@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Win顺 app icon: the Windows key ⊞ as four window panes in the four Windows colours;
+       the top-right pane grows into a leaf -->
+  <defs>
+    <linearGradient id="plate" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#E9EDF4"/></linearGradient>
+    <linearGradient id="gL" gradientUnits="userSpaceOnUse" x1="262" y1="0" x2="762" y2="0"><stop offset="0" stop-color="#FFF"/><stop offset="1" stop-color="#000"/></linearGradient>
+    <mask id="mL" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024"><rect width="1024" height="1024" fill="url(#gL)"/></mask>
+    <linearGradient id="gR" gradientUnits="userSpaceOnUse" x1="762" y1="0" x2="262" y2="0"><stop offset="0" stop-color="#FFF"/><stop offset="1" stop-color="#000"/></linearGradient>
+    <mask id="mR" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024"><rect width="1024" height="1024" fill="url(#gR)"/></mask>
+    <linearGradient id="gT" gradientUnits="userSpaceOnUse" x1="0" y1="262" x2="0" y2="762"><stop offset="0" stop-color="#FFF"/><stop offset="1" stop-color="#000"/></linearGradient>
+    <mask id="mT" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024"><rect width="1024" height="1024" fill="url(#gT)"/></mask>
+    <linearGradient id="gB" gradientUnits="userSpaceOnUse" x1="0" y1="762" x2="0" y2="262"><stop offset="0" stop-color="#FFF"/><stop offset="1" stop-color="#000"/></linearGradient>
+    <mask id="mB" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024"><rect width="1024" height="1024" fill="url(#gB)"/></mask>
+  </defs>
+  <path d="M512 512 L512 72 L204 72 Q72 72 72 204 L72 512 Z" fill="#FF5A4A" fill-opacity="0.16"/>
+  <path d="M512 512 L72 512 L72 820 Q72 952 204 952 L512 952 Z" fill="#2D86FF" fill-opacity="0.16"/>
+  <path d="M512 512 L512 952 L820 952 Q952 952 952 820 L952 512 Z" fill="#FFBA26" fill-opacity="0.16"/>
+  <path d="M512 512 L677 512 Q952 512 952 237 L952 72 L787 72 Q512 72 512 347 Z" fill="#33C463" fill-opacity="0.16"/>
+  <g mask="url(#mL)"><g mask="url(#mT)">
+    <path d="M661.6 362.4 L784.8 239.2" stroke="#FF5A4A" stroke-width="40" stroke-linecap="round"/>
+    <path d="M512 512 L512 72 L204 72 Q72 72 72 204 L72 512 Z M512 512 L72 512 L72 820 Q72 952 204 952 L512 952 Z M512 512 L512 952 L820 952 Q952 952 952 820 L952 512 Z M512 512 L677 512 Q952 512 952 237 L952 72 L787 72 Q512 72 512 347 Z" fill="none" stroke="#FF5A4A" stroke-width="72" stroke-linejoin="round"/>
+  </g></g>
+  <g mask="url(#mR)"><g mask="url(#mT)">
+    <path d="M661.6 362.4 L784.8 239.2" stroke="#33C463" stroke-width="40" stroke-linecap="round"/>
+    <path d="M512 512 L512 72 L204 72 Q72 72 72 204 L72 512 Z M512 512 L72 512 L72 820 Q72 952 204 952 L512 952 Z M512 512 L512 952 L820 952 Q952 952 952 820 L952 512 Z M512 512 L677 512 Q952 512 952 237 L952 72 L787 72 Q512 72 512 347 Z" fill="none" stroke="#33C463" stroke-width="72" stroke-linejoin="round"/>
+  </g></g>
+  <g mask="url(#mL)"><g mask="url(#mB)">
+    <path d="M661.6 362.4 L784.8 239.2" stroke="#2D86FF" stroke-width="40" stroke-linecap="round"/>
+    <path d="M512 512 L512 72 L204 72 Q72 72 72 204 L72 512 Z M512 512 L72 512 L72 820 Q72 952 204 952 L512 952 Z M512 512 L512 952 L820 952 Q952 952 952 820 L952 512 Z M512 512 L677 512 Q952 512 952 237 L952 72 L787 72 Q512 72 512 347 Z" fill="none" stroke="#2D86FF" stroke-width="72" stroke-linejoin="round"/>
+  </g></g>
+  <g mask="url(#mR)"><g mask="url(#mB)">
+    <path d="M661.6 362.4 L784.8 239.2" stroke="#FFBA26" stroke-width="40" stroke-linecap="round"/>
+    <path d="M512 512 L512 72 L204 72 Q72 72 72 204 L72 512 Z M512 512 L72 512 L72 820 Q72 952 204 952 L512 952 Z M512 512 L512 952 L820 952 Q952 952 952 820 L952 512 Z M512 512 L677 512 Q952 512 952 237 L952 72 L787 72 Q512 72 512 347 Z" fill="none" stroke="#FFBA26" stroke-width="72" stroke-linejoin="round"/>
+  </g></g>
+</svg>
