@@ -1,5 +1,7 @@
 #include "Shell.h"
 
+#include "Win32Util.h"
+
 #include <QClipboard>
 #include <QCoreApplication>
 #include <QDir>
@@ -23,8 +25,33 @@
 #include <thread>
 
 using namespace Qt::StringLiterals;
+using Microsoft::WRL::ComPtr;
 
-namespace qf::shell {
+namespace qf {
+
+namespace {
+
+// Owner of a BSTR.
+class Bstr {
+public:
+    Bstr() = default;
+    explicit Bstr(const wchar_t* s)
+        : m_p(s ? ::SysAllocString(s) : nullptr)
+    {
+    }
+    Bstr(const Bstr&) = delete;
+    Bstr& operator=(const Bstr&) = delete;
+    ~Bstr() { ::SysFreeString(m_p); }
+    operator BSTR() const noexcept { return m_p; }
+    BSTR* out() noexcept { return &m_p; }
+
+private:
+    BSTR m_p = nullptr;
+};
+
+} // namespace
+
+namespace shell {
 
 namespace {
 
@@ -45,7 +72,6 @@ template <typename Fn> void runOnShellThread(Fn&& fn)
 // Application object -> ShellExecute. False when there is no Explorer desktop.
 bool executeAsUser(const std::wstring& file, const std::wstring& dir)
 {
-    using Microsoft::WRL::ComPtr;
     ComPtr<IShellWindows> windows;
     if (FAILED(::CoCreateInstance(CLSID_ShellWindows, nullptr, CLSCTX_LOCAL_SERVER, IID_PPV_ARGS(&windows))))
         return false;
@@ -70,68 +96,118 @@ bool executeAsUser(const std::wstring& file, const std::wstring& dir)
         || FAILED(folderView->get_Application(&application)) || FAILED(application.As(&shell)))
         return false;
 
-    BSTR target = ::SysAllocString(file.c_str());
+    const Bstr target(file.c_str());
+    const Bstr directory(dir.empty() ? nullptr : dir.c_str());
     VARIANT args {};
     VARIANT workDir {};
-    if (!dir.empty()) {
+    if (directory) {
         workDir.vt = VT_BSTR;
-        workDir.bstrVal = ::SysAllocString(dir.c_str());
+        workDir.bstrVal = directory; // still owned by `directory`
     }
     VARIANT verb {};
     VARIANT show {};
     show.vt = VT_I4;
     show.lVal = SW_SHOWNORMAL;
-    const HRESULT hr = shell->ShellExecute(target, args, workDir, verb, show);
-    ::SysFreeString(target);
-    ::VariantClear(&workDir);
-    return SUCCEEDED(hr);
+    return SUCCEEDED(shell->ShellExecute(target, args, workDir, verb, show));
+}
+
+// Without an Explorer desktop to ask (another shell is in use), start the
+// target with the desktop shell's own token: the user's normal rights. The
+// unelevated rundll32 hands it to ShellExecute, which opens documents,
+// folders, programs and links alike. False when there is no shell at all.
+bool executeWithShellToken(const std::wstring& file, const std::wstring& dir)
+{
+    if (file.find(L'"') != std::wstring::npos)
+        return false; // cannot be quoted on the command line (no path has one)
+    DWORD pid = 0;
+    const HWND shellWindow = ::GetShellWindow();
+    if (!shellWindow || !::GetWindowThreadProcessId(shellWindow, &pid) || pid == 0)
+        return false;
+    const win32::UniqueHandle process(::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid));
+    HANDLE shellToken = nullptr;
+    if (!process.valid() || !::OpenProcessToken(process.get(), TOKEN_DUPLICATE, &shellToken))
+        return false;
+    const win32::UniqueHandle source(shellToken);
+    HANDLE primaryToken = nullptr;
+    if (!::DuplicateTokenEx(source.get(),
+            TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY | TOKEN_ADJUST_DEFAULT | TOKEN_ADJUST_SESSIONID, nullptr,
+            SecurityImpersonation, TokenPrimary, &primaryToken))
+        return false;
+    const win32::UniqueHandle token(primaryToken);
+
+    wchar_t system[MAX_PATH] = {};
+    const UINT n = ::GetSystemDirectoryW(system, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH)
+        return false;
+    std::wstring command
+        = L"\"" + std::wstring(system, n) + L"\\rundll32.exe\" shell32.dll,ShellExec_RunDLL \"" + file + L'"';
+    STARTUPINFOW startup {sizeof(STARTUPINFOW)};
+    PROCESS_INFORMATION started {};
+    if (!::CreateProcessWithTokenW(token.get(), 0, nullptr, command.data(), 0, nullptr,
+            dir.empty() ? nullptr : dir.c_str(), &startup, &started))
+        return false;
+    ::CloseHandle(started.hThread);
+    ::CloseHandle(started.hProcess);
+    return true;
+}
+
+// Starts `file` with the user's normal rights, never elevated: through
+// Explorer (waiting a few seconds if it is restarting), else with the token
+// of another shell. False when neither works.
+bool executeUnelevated(const std::wstring& file, const std::wstring& dir)
+{
+    for (int attempt = 0; attempt < 10; ++attempt) {
+        if (executeAsUser(file, dir))
+            return true;
+        if (attempt == 0 && executeWithShellToken(file, dir))
+            return true;
+        ::Sleep(300);
+    }
+    return false;
+}
+
+bool executeAsAdministrator(const std::wstring& file, const std::wstring& dir)
+{
+    SHELLEXECUTEINFOW sei {sizeof(SHELLEXECUTEINFOW)};
+    sei.fMask = SEE_MASK_NOASYNC | SEE_MASK_FLAG_LOG_USAGE;
+    sei.lpVerb = L"runas";
+    sei.lpFile = file.c_str();
+    sei.lpDirectory = dir.empty() ? nullptr : dir.c_str();
+    sei.nShow = SW_SHOWNORMAL;
+    return ::ShellExecuteExW(&sei);
 }
 
 } // namespace
 
-void open(const QString& path, bool asAdministrator)
+void open(const QString& path, bool asAdministrator, std::function<void(bool)> done)
 {
     ::AllowSetForegroundWindow(ASFW_ANY); // the launched app may take focus from us
     const QString native = QDir::toNativeSeparators(path);
     const QFileInfo info(native);
     const QString workDir = info.isDir() ? QString() : QDir::toNativeSeparators(info.absolutePath());
-    runOnShellThread([file = native.toStdWString(), dir = workDir.toStdWString(), asAdministrator] {
-        if (!asAdministrator && executeAsUser(file, dir))
-            return;
-        // Run as administrator, or no Explorer to delegate to (another shell).
-        SHELLEXECUTEINFOW sei {sizeof(SHELLEXECUTEINFOW)};
-        sei.fMask = SEE_MASK_NOASYNC | SEE_MASK_FLAG_LOG_USAGE;
-        sei.lpVerb = asAdministrator ? L"runas" : nullptr;
-        sei.lpFile = file.c_str();
-        sei.lpDirectory = dir.empty() ? nullptr : dir.c_str();
-        sei.nShow = SW_SHOWNORMAL;
-        ::ShellExecuteExW(&sei);
-    });
+    runOnShellThread(
+        [file = native.toStdWString(), dir = workDir.toStdWString(), asAdministrator, done = std::move(done)] {
+            const bool ok = asAdministrator ? executeAsAdministrator(file, dir) : executeUnelevated(file, dir);
+            if (done)
+                done(ok);
+        });
 }
 
 void openUrl(const QString& url)
 {
     ::AllowSetForegroundWindow(ASFW_ANY);
-    runOnShellThread([target = url.toStdWString()] {
-        if (executeAsUser(target, {}))
-            return;
-        ::ShellExecuteW(nullptr, nullptr, target.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-    });
+    runOnShellThread([target = url.toStdWString()] { executeUnelevated(target, {}); });
 }
 
-void launchApp(const QString& launchPath, bool asAdministrator)
+void launchApp(const QString& launchPath, bool asAdministrator, std::function<void(bool)> done)
 {
     ::AllowSetForegroundWindow(ASFW_ANY);
-    runOnShellThread([target = launchPath.toStdWString(), asAdministrator] {
-        // Store apps refuse to start from an elevated process; Explorer can start them.
-        if (!asAdministrator && executeAsUser(target, {}))
-            return;
-        SHELLEXECUTEINFOW sei {sizeof(SHELLEXECUTEINFOW)};
-        sei.fMask = SEE_MASK_NOASYNC | SEE_MASK_FLAG_LOG_USAGE;
-        sei.lpVerb = asAdministrator ? L"runas" : nullptr; // the app's own verb, as in the Start menu
-        sei.lpFile = target.c_str();
-        sei.nShow = SW_SHOWNORMAL;
-        ::ShellExecuteExW(&sei);
+    runOnShellThread([target = launchPath.toStdWString(), asAdministrator, done = std::move(done)] {
+        // Store apps refuse to start from an elevated process; Explorer can
+        // start them. "runas" is the app's own verb, as in the Start menu.
+        const bool ok = asAdministrator ? executeAsAdministrator(target, {}) : executeUnelevated(target, {});
+        if (done)
+            done(ok);
     });
 }
 
@@ -150,23 +226,22 @@ void recycle(const QString& path, HWND owner, std::function<void(bool)> done)
 {
     runOnShellThread([file = QDir::toNativeSeparators(path).toStdWString(), owner, done = std::move(done)] {
         bool ok = false;
-        IFileOperation* op = nullptr;
-        if (SUCCEEDED(::CoCreateInstance(CLSID_FileOperation, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&op)))) {
-            // The user already confirmed in the launcher; still warn if the
-            // item is too big for the Recycle Bin and would be destroyed.
-            op->SetOperationFlags(
-                FOF_ALLOWUNDO | FOFX_RECYCLEONDELETE | FOF_NOCONFIRMATION | FOF_WANTNUKEWARNING | FOF_SILENT);
-            if (owner)
-                op->SetOwnerWindow(owner);
-            IShellItem* item = nullptr;
-            if (SUCCEEDED(::SHCreateItemFromParsingName(file.c_str(), nullptr, IID_PPV_ARGS(&item)))) {
+        {
+            ComPtr<IFileOperation> op;
+            ComPtr<IShellItem> item;
+            if (SUCCEEDED(::CoCreateInstance(CLSID_FileOperation, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&op)))
+                && SUCCEEDED(::SHCreateItemFromParsingName(file.c_str(), nullptr, IID_PPV_ARGS(&item)))) {
+                // The user already confirmed in the launcher; still warn if the
+                // item is too big for the Recycle Bin and would be destroyed.
+                op->SetOperationFlags(
+                    FOF_ALLOWUNDO | FOFX_RECYCLEONDELETE | FOF_NOCONFIRMATION | FOF_WANTNUKEWARNING | FOF_SILENT);
+                if (owner)
+                    op->SetOwnerWindow(owner);
                 BOOL aborted = FALSE;
-                ok = SUCCEEDED(op->DeleteItem(item, nullptr)) && SUCCEEDED(op->PerformOperations())
+                ok = SUCCEEDED(op->DeleteItem(item.Get(), nullptr)) && SUCCEEDED(op->PerformOperations())
                     && SUCCEEDED(op->GetAnyOperationsAborted(&aborted)) && !aborted;
-                item->Release();
             }
-            op->Release();
-        }
+        } // released before COM is uninitialised
         done(ok);
     });
 }
@@ -229,35 +304,30 @@ QString pickFolder(HWND owner, const QString& title)
 {
     const HRESULT init = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
     QString result;
-    IFileOpenDialog* dialog = nullptr;
-    if (SUCCEEDED(::CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog)))) {
+    {
+        ComPtr<IFileOpenDialog> dialog;
+        ComPtr<IShellItem> item;
+        PWSTR path = nullptr;
         DWORD options = 0;
-        dialog->GetOptions(&options);
-        dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
-        dialog->SetTitle(reinterpret_cast<LPCWSTR>(title.utf16()));
-        IShellItem* item = nullptr;
-        if (SUCCEEDED(dialog->Show(owner)) && SUCCEEDED(dialog->GetResult(&item))) {
-            PWSTR path = nullptr;
-            if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) {
-                result = QString::fromWCharArray(path);
-                ::CoTaskMemFree(path);
-            }
-            item->Release();
+        if (SUCCEEDED(::CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog)))
+            && SUCCEEDED(dialog->GetOptions(&options))
+            && SUCCEEDED(dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST))
+            && SUCCEEDED(dialog->SetTitle(reinterpret_cast<LPCWSTR>(title.utf16()))) && SUCCEEDED(dialog->Show(owner))
+            && SUCCEEDED(dialog->GetResult(&item)) && SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) {
+            result = QString::fromWCharArray(path);
+            ::CoTaskMemFree(path);
         }
-        dialog->Release();
-    }
+    } // released before COM is uninitialised
     if (SUCCEEDED(init))
         ::CoUninitialize();
     return result;
 }
 
-} // namespace qf::shell
+} // namespace shell
 
-namespace qf::autostart {
+namespace autostart {
 
 namespace {
-
-using Microsoft::WRL::ComPtr;
 
 // Windows skips Run-key entries of programs that need elevation, so autostart
 // is a logon task that runs with highest privileges (no UAC prompt). Older
@@ -272,23 +342,6 @@ struct ComScope {
         if (SUCCEEDED(hr))
             ::CoUninitialize();
     }
-};
-
-class Bstr {
-public:
-    Bstr() = default;
-    explicit Bstr(const wchar_t* s)
-        : m_p(::SysAllocString(s))
-    {
-    }
-    Bstr(const Bstr&) = delete;
-    Bstr& operator=(const Bstr&) = delete;
-    ~Bstr() { ::SysFreeString(m_p); }
-    operator BSTR() const noexcept { return m_p; }
-    BSTR* out() noexcept { return &m_p; }
-
-private:
-    BSTR m_p = nullptr;
 };
 
 std::wstring exePath()
@@ -397,4 +450,6 @@ void migrate()
         setEnabled(true);
 }
 
-} // namespace qf::autostart
+} // namespace autostart
+
+} // namespace qf

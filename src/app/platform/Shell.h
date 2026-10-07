@@ -11,13 +11,16 @@
 // Thin wrappers over Explorer/Shell behaviour.
 namespace qf::shell {
 
-// Both run on a short-lived worker thread: a slow shell extension or an
-// unreachable drive must never freeze the launcher.
-void open(const QString& path, bool asAdministrator = false);
+// These run on a short-lived worker thread: a slow shell extension or an
+// unreachable drive must never freeze the launcher. Without
+// `asAdministrator`, targets start with the user's normal rights, never
+// elevated: when that is impossible (no shell to start them), they are not
+// started at all. `done` runs on the worker thread with whether it worked.
+void open(const QString& path, bool asAdministrator = false, std::function<void(bool)> done = {});
 void reveal(const QString& path); // open the folder and select the item
-void openUrl(const QString& url); // https:, mailto: ... with the user's normal rights
+void openUrl(const QString& url); // https:, mailto: ...
 // An installed app by its launch path, "shell:AppsFolder\<id>" (see AppCatalog).
-void launchApp(const QString& launchPath, bool asAdministrator = false);
+void launchApp(const QString& launchPath, bool asAdministrator = false, std::function<void(bool)> done = {});
 // Moves the item to the Recycle Bin (asks before deleting permanently when it
 // cannot be recycled). `done` runs on the worker thread with whether the shell
 // reported success; `owner` parents any shell dialog.

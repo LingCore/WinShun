@@ -11,6 +11,8 @@
 #include <QWindow>
 #include <QtQml/qqmlregistration.h>
 
+#include <functional>
+
 namespace qf {
 
 class AppCatalog;
@@ -90,6 +92,9 @@ signals:
     void resultsReplaced(); // results for a new query: select the first row
     void namesShown(); // a name search finished and its rows are in the model
     void dismissRequested();
+    // Not started: it would have needed administrator rights to start at all
+    // (see shell::open). The launcher is closed by then.
+    void openFailed(const QString& name);
     void contextMenuKeyPressed(); // Menu key / Shift+F10 (arrive as a context-menu event, not a key)
 
 private:
@@ -99,6 +104,7 @@ private:
     void showRows(SearchResults rows, QStringList highlights);
     void perform(const SearchResult& result, Action action);
     void performApp(const SearchResult& app, Action action);
+    std::function<void(bool)> reportFailure(const QString& name);
     void onRecycled(const SearchResult& result, bool ok);
     void onResults(quint64 id, const SearchResults& results, qint64 total, qint64 elapsedUs);
     void onContentResults(quint64 id, const SearchResults& results);

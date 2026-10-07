@@ -101,6 +101,10 @@ bool App::start(const StartOptions& options)
     m_engine = std::make_unique<SearchEngine>(m_index.get(), m_apps.get());
     m_launcher = std::make_unique<Launcher>(m_index.get(), m_apps.get(), m_engine.get(), m_history.get());
     connect(m_launcher.get(), &Launcher::dismissRequested, this, &App::hideLauncher);
+    connect(m_launcher.get(), &Launcher::openFailed, this, [this](const QString& name) {
+        m_messages->showNotification(u"没有打开“%1”"_s.arg(name),
+            u"找不到资源管理器，没法用普通权限打开它。请稍后再试，或按 Ctrl+Shift+Enter 以管理员身份运行。"_s);
+    });
     connect(m_launcher.get(), &Launcher::namesShown, this, [this] {
         if (m_revealing)
             armReveal();

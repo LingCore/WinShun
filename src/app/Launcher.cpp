@@ -466,7 +466,7 @@ void Launcher::perform(const SearchResult& result, Action action)
     case Open:
     case RunAsAdmin:
         m_history->record(r.path);
-        shell::open(r.path, action == RunAsAdmin);
+        shell::open(r.path, action == RunAsAdmin, reportFailure(r.name));
         emit dismissRequested();
         break;
     case Reveal:
@@ -512,7 +512,7 @@ void Launcher::performApp(const SearchResult& app, Action action)
             return;
         }
         m_history->record(app.path);
-        shell::launchApp(app.path, action == RunAsAdmin);
+        shell::launchApp(app.path, action == RunAsAdmin, reportFailure(app.name));
         emit dismissRequested();
         break;
     case Reveal:
@@ -545,6 +545,19 @@ void Launcher::performApp(const SearchResult& app, Action action)
     case Recycle:
         break; // apps are uninstalled in Windows Settings
     }
+}
+
+// For shell::open() and launchApp(), which call it on a worker thread.
+std::function<void(bool)> Launcher::reportFailure(const QString& name)
+{
+    return [self = QPointer(this), name](bool ok) {
+        if (ok)
+            return;
+        QMetaObject::invokeMethod(qApp, [self, name] {
+            if (self)
+                emit self->openFailed(name);
+        }, Qt::QueuedConnection);
+    };
 }
 
 void Launcher::onRecycled(const SearchResult& result, bool ok)
