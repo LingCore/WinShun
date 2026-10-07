@@ -18,6 +18,7 @@ namespace qf {
 //   bg  baogao      Chinese names by pinyin too (报告): see Pinyin.h
 //   "annual report" quoted: spaces are part of the term
 //   !draft          name must NOT contain "draft"
+//   !node_modules\  nothing inside a folder whose name contains "node_modules"
 //   *.pdf  a?c      wildcard match against the whole name
 //   proj\readme     "readme" in the name, under a folder containing "proj"
 //   ext:pdf,docx    only files with these extensions

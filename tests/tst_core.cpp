@@ -292,6 +292,28 @@ private slots:
         QCOMPARE(path.matchPath(u"D:\\Other\\notes.txt"_s, false), -1);
     }
 
+    void excludedFolders()
+    {
+        // "!folder\" leaves out what is inside such a folder, not every name.
+        const NameMatcher folder(qf::parseQuery(u"index !node_modules\\"_s));
+        QCOMPARE(folder.matchPath(u"C:\\app\\node_modules\\lib\\index.js"_s, false), -1);
+        QVERIFY(folder.matchPath(u"C:\\app\\src\\index.js"_s, false) >= 0);
+        QVERIFY(folder.matchName("index") >= 0); // apps have no folders
+
+        // With a name too: only those names inside such a folder.
+        const NameMatcher logs(qf::parseQuery(u"!tmp\\*.log"_s));
+        QCOMPARE(logs.matchPath(u"C:\\tmp\\a.log"_s, false), -1);
+        QVERIFY(logs.matchPath(u"C:\\tmp\\a.txt"_s, false) >= 0);
+        QVERIFY(logs.matchPath(u"C:\\docs\\a.log"_s, false) >= 0);
+
+        // The same on the index.
+        SampleTree t;
+        const NameMatcher underUsers(qf::parseQuery(u"!users\\"_s));
+        QCOMPARE(underUsers.match(t.index, t.index.entry(t.report)), -1);
+        QVERIFY(underUsers.match(t.index, t.index.entry(t.windows)) >= 0);
+        QVERIFY(underUsers.match(t.index, t.index.entry(t.users)) >= 0); // the folder itself stays
+    }
+
     void pinyinBasics()
     {
         const auto readings = [](char32_t c) {

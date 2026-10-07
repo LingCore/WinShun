@@ -191,12 +191,16 @@ int NameMatcher::score(
                 covered += t.text.size();
             }
         }
-        if (!t.ancestors.empty() && !ancestorsMatch(p))
+        if (!t.ancestors.empty() && !ancestorsMatch(t.ancestors, p.folders.data()))
             return -1;
     }
 
+    // "!draft" leaves out names with "draft"; "!node_modules\" everything in
+    // such a folder; "!tmp\*.log" only the .log files in one.
     for (const auto& t : m_negative) {
-        if (t.wildcard ? text::globMatch(name, t.text) : find<Padded>(name, t.text) != text::npos)
+        const bool nameHit
+            = t.text.empty() || (t.wildcard ? text::globMatch(name, t.text) : find<Padded>(name, t.text) != text::npos);
+        if (nameHit && (t.ancestors.empty() || ancestorsMatch(t.ancestors, nullptr)))
             return -1;
     }
 
@@ -231,12 +235,13 @@ int NameMatcher::score(
 
 namespace {
 
+// `pinyin` is null for exclusions, which stay literal.
 bool folderMatches(
-    std::string_view folder, bool han, const std::string& segment, const pinyin::Matcher& pinyin, bool padded)
+    std::string_view folder, bool han, const std::string& segment, const pinyin::Matcher* pinyin, bool padded)
 {
     if ((padded ? text::findFoldedPadded(folder, segment) : text::findFolded(folder, segment)) != text::npos)
         return true;
-    return han && pinyin.valid() && pinyin.findUtf8(folder);
+    return han && pinyin && pinyin->valid() && pinyin->findUtf8(folder);
 }
 
 } // namespace
@@ -244,14 +249,15 @@ bool folderMatches(
 int NameMatcher::match(const FileIndex& index, const Entry& entry) const
 {
     return score<true>(
-        index.name(entry), entry.isDir(), entry.flags & EntryFlag::Han, entry.extLength, [&](const Positive& p) {
+        index.name(entry), entry.isDir(), entry.flags & EntryFlag::Han, entry.extLength,
+        [&](const std::vector<std::string>& segments, const pinyin::Matcher* folders) {
             // Walk up from the parent, consuming segments innermost-first.
-            auto j = static_cast<std::ptrdiff_t>(p.term.ancestors.size()) - 1;
+            auto j = static_cast<std::ptrdiff_t>(segments.size()) - 1;
             for (EntryId cur = entry.parent; cur != kNoEntry && j >= 0; cur = index.entry(cur).parent) {
                 const auto k = static_cast<std::size_t>(j);
                 const Entry& folder = index.entry(cur);
-                if (folderMatches(index.name(folder), folder.flags & EntryFlag::Han, p.term.ancestors[k], p.folders[k],
-                        true))
+                if (folderMatches(index.name(folder), folder.flags & EntryFlag::Han, segments[k],
+                        folders ? &folders[k] : nullptr, true))
                     --j;
             }
             return j < 0;
@@ -265,21 +271,23 @@ int NameMatcher::matchPath(const QString& fullPath, bool isDir) const
         return -1;
     const std::string name = wtf8::fromUtf16(wtf8::view(parts.takeLast()));
     const std::size_t extLength = extensionLength(name, isDir);
-    return score<false>(name, isDir, pinyin::hasHan(name), extLength, [&](const Positive& p) {
-        auto j = static_cast<std::ptrdiff_t>(p.term.ancestors.size()) - 1;
-        for (auto it = parts.crbegin(); it != parts.crend() && j >= 0; ++it) {
-            const auto k = static_cast<std::size_t>(j);
-            const std::string folder = wtf8::fromUtf16(wtf8::view(*it));
-            if (folderMatches(folder, pinyin::hasHan(folder), p.term.ancestors[k], p.folders[k], false))
-                --j;
-        }
-        return j < 0;
-    });
+    return score<false>(name, isDir, pinyin::hasHan(name), extLength,
+        [&](const std::vector<std::string>& segments, const pinyin::Matcher* folders) {
+            auto j = static_cast<std::ptrdiff_t>(segments.size()) - 1;
+            for (auto it = parts.crbegin(); it != parts.crend() && j >= 0; ++it) {
+                const auto k = static_cast<std::size_t>(j);
+                const std::string folder = wtf8::fromUtf16(wtf8::view(*it));
+                if (folderMatches(folder, pinyin::hasHan(folder), segments[k], folders ? &folders[k] : nullptr, false))
+                    --j;
+            }
+            return j < 0;
+        });
 }
 
 int NameMatcher::matchName(std::string_view name) const
 {
-    return score<false>(name, false, pinyin::hasHan(name), 0, [](const Positive&) { return false; });
+    return score<false>(
+        name, false, pinyin::hasHan(name), 0, [](const std::vector<std::string>&, const pinyin::Matcher*) { return false; });
 }
 
 } // namespace qf
