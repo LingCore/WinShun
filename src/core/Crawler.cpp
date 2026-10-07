@@ -8,13 +8,14 @@
 
 #include <algorithm>
 #include <condition_variable>
+#include <cwctype>
 #include <mutex>
 #include <thread>
 #include <utility>
 
 namespace qf {
 
-std::vector<VolumeInfo> listLocalVolumes(bool includeRemovable)
+std::vector<VolumeInfo> listLocalVolumes(bool includeRemovable, const std::vector<std::wstring>& untouched)
 {
     std::vector<VolumeInfo> volumes;
     const DWORD mask = ::GetLogicalDrives();
@@ -22,6 +23,9 @@ std::vector<VolumeInfo> listLocalVolumes(bool includeRemovable)
         if (!(mask & (1u << i)))
             continue;
         const wchar_t root[] = {static_cast<wchar_t>(L'A' + i), L':', L'\\', 0};
+        if (std::any_of(untouched.begin(), untouched.end(),
+                [&](const std::wstring& u) { return win32::equalsIgnoreCase(u, std::wstring_view(root, 2)); }))
+            continue;
         const UINT type = ::GetDriveTypeW(root);
         if (type != DRIVE_FIXED && !(includeRemovable && type == DRIVE_REMOVABLE))
             continue;
@@ -32,6 +36,14 @@ std::vector<VolumeInfo> listLocalVolumes(bool includeRemovable)
         volumes.push_back({std::wstring(root, 2), serial, std::wstring_view(fileSystem) == L"NTFS"});
     }
     return volumes;
+}
+
+bool driveLetterExists(std::wstring_view root)
+{
+    if (root.size() < 2 || root[1] != L':')
+        return false;
+    const auto letter = static_cast<wchar_t>(std::towupper(root[0]));
+    return letter >= L'A' && letter <= L'Z' && (::GetLogicalDrives() & (1u << (letter - L'A')));
 }
 
 Crawler::Crawler(CrawlRules rules)
@@ -372,6 +384,68 @@ bool Crawler::sync(FileIndex& index, std::vector<Root> roots, int threads, bool 
             pool.emplace_back(worker);
     } // joins
     return !stop.stop_requested();
+}
+
+namespace {
+
+// Whether an index name (UTF-8) is `wide`, ignoring case as NTFS does.
+bool sameName(std::string_view utf8, const std::string& wideAsUtf8, std::wstring_view wide)
+{
+    if (text::equalsIgnoreAsciiCase(utf8, wideAsUtf8))
+        return true;
+    if (std::all_of(utf8.begin(), utf8.end(), [](char c) { return static_cast<unsigned char>(c) < 0x80; }))
+        return false; // ASCII only: the comparison above was complete
+    std::u16string decoded;
+    wtf8::decodeAppend(decoded, utf8);
+    return win32::equalsIgnoreCase(wtf8::wview(decoded), wide);
+}
+
+} // namespace
+
+std::size_t removeExcluded(FileIndex& index, const CrawlRules& rules)
+{
+    std::size_t removed = 0;
+    for (const std::wstring& path : rules.excludedPaths) {
+        const EntryId id = index.pathForUpdate(path);
+        if (id != kNoEntry && index.entry(id).isDir() && !(index.entry(id).flags & EntryFlag::Root))
+            removed += index.remove(id);
+    }
+    if (rules.excludedNames.empty())
+        return removed;
+
+    // Folders named like a rule's last segment; then the whole rule (a tail
+    // such as ".svn\pristine") is checked on their path.
+    const Crawler names(CrawlRules {{}, rules.excludedNames, {}, {}});
+    struct Segment {
+        std::wstring wide;
+        std::string utf8;
+    };
+    std::vector<Segment> lastSegments;
+    for (const std::wstring& rule : rules.excludedNames) {
+        std::wstring last = rule.substr(rule.find_last_of(L'\\') + 1);
+        std::string utf8 = wtf8::fromUtf16(wtf8::view(last));
+        lastSegments.push_back({std::move(last), std::move(utf8)});
+    }
+    std::vector<EntryId> doomed;
+    for (std::size_t c = 0; c < index.chunkCount(); ++c) {
+        const auto entries = index.chunk(c);
+        for (std::size_t i = 0; i < entries.size(); ++i) {
+            const Entry& e = entries[i];
+            if (!e.isDir() || (e.flags & (EntryFlag::Deleted | EntryFlag::Root)))
+                continue;
+            const std::string_view name = index.name(e);
+            if (std::none_of(lastSegments.begin(), lastSegments.end(),
+                    [&](const Segment& s) { return sameName(name, s.utf8, s.wide); }))
+                continue;
+            const auto id = static_cast<EntryId>((c << FileIndex::kChunkBits) + i);
+            const std::wstring path = index.wpath(id);
+            if (names.isExcludedDir(path, std::wstring_view(path).substr(path.find_last_of(L'\\') + 1)))
+                doomed.push_back(id);
+        }
+    }
+    for (const EntryId id : doomed)
+        removed += index.remove(id); // one inside another: removed with it already, so 0
+    return removed;
 }
 
 } // namespace qf

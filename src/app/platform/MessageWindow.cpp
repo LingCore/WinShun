@@ -219,6 +219,8 @@ LRESULT MessageWindow::handle(UINT msg, WPARAM wParam, LPARAM lParam)
         if (wParam && m_callbacks.sessionEnding)
             m_callbacks.sessionEnding(); // the process may be terminated right after this returns
         return 0;
+    case WM_DEVICECHANGE:
+        return m_callbacks.deviceChange ? m_callbacks.deviceChange(wParam, lParam) : TRUE;
     case WM_HOTKEY:
         if (m_callbacks.hotkeyPressed)
             m_callbacks.hotkeyPressed(static_cast<int>(wParam));

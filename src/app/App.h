@@ -23,6 +23,7 @@ class Launcher;
 class MessageWindow;
 class SearchEngine;
 class SettingsEditor;
+class VolumeNotifier;
 
 // Wires the pieces together and owns their lifetimes: settings, index,
 // search engine, the QML window, tray icon and global hotkeys.
@@ -68,6 +69,7 @@ private:
     std::unique_ptr<SearchEngine> m_engine;
     std::unique_ptr<Launcher> m_launcher;
     std::unique_ptr<MessageWindow> m_messages;
+    std::unique_ptr<VolumeNotifier> m_volumeNotifier; // after m_messages, whose window it uses
     std::unique_ptr<KeyboardHook> m_keyboardHook;
     // The launcher is shown cloaked and revealed once it has drawn a frame
     // with fresh results (see showLauncher). Set on the GUI thread, read on

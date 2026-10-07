@@ -9,9 +9,9 @@
 namespace qf {
 
 // A hidden native window that receives what Qt does not handle for us:
-// tray icon events, RegisterHotKey hotkeys, and commands from a second
-// instance of the app (WM_COPYDATA). It also restores the tray icon when
-// Explorer restarts.
+// tray icon events, RegisterHotKey hotkeys, commands from a second instance
+// of the app (WM_COPYDATA) and drives coming and going (WM_DEVICECHANGE). It
+// also restores the tray icon when Explorer restarts.
 class MessageWindow {
 public:
     struct Callbacks {
@@ -20,6 +20,7 @@ public:
         std::function<void(int id)> hotkeyPressed;
         std::function<void(const QString&)> commandReceived;
         std::function<void()> sessionEnding; // Windows is logging off / shutting down
+        std::function<LRESULT(WPARAM, LPARAM)> deviceChange; // WM_DEVICECHANGE (see VolumeNotifier)
     };
 
     explicit MessageWindow(Callbacks callbacks);

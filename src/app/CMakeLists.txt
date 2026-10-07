@@ -6,6 +6,7 @@ qt_add_executable(QuickFind WIN32
     platform/KeyboardHook.cpp platform/KeyboardHook.h
     platform/MessageWindow.cpp platform/MessageWindow.h
     platform/Shell.cpp platform/Shell.h
+    platform/VolumeNotifier.cpp platform/VolumeNotifier.h
     platform/WindowEffects.cpp platform/WindowEffects.h
     ${PROJECT_SOURCE_DIR}/resources/app.rc
     ${PROJECT_SOURCE_DIR}/resources/app.manifest

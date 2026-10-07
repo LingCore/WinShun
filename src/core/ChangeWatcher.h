@@ -1,7 +1,9 @@
 #pragma once
 
+#include <condition_variable>
 #include <cstdint>
 #include <functional>
+#include <mutex>
 #include <stop_token>
 #include <string>
 #include <thread>
@@ -21,20 +23,31 @@ class ChangeWatcher {
 public:
     using Handler = std::function<void(std::vector<FsChange>&&)>;
 
-    // roots: "C:", "D:", ... The handler runs on the watcher thread.
-    ChangeWatcher(std::vector<std::wstring> roots, Handler handler);
+    // The handler runs on the watcher thread.
+    explicit ChangeWatcher(Handler handler);
     ~ChangeWatcher();
 
     ChangeWatcher(const ChangeWatcher&) = delete;
     ChangeWatcher& operator=(const ChangeWatcher&) = delete;
 
-    const std::vector<std::wstring>& roots() const noexcept { return m_roots; }
+    // Watches these volumes ("C:", "D:", ...) from now on. Returns once the
+    // others are no longer watched (their handles closed, so they can be
+    // ejected) and the new ones are, unless they cannot be opened. Never call
+    // it while holding a lock the handler takes: it waits for the handler.
+    void setRoots(std::vector<std::wstring> roots);
+    std::vector<std::wstring> roots() const; // those being watched
 
 private:
     void run(std::stop_token stop);
 
-    std::vector<std::wstring> m_roots;
     Handler m_handler;
+    mutable std::mutex m_mutex;
+    std::condition_variable m_applied;
+    std::vector<std::wstring> m_wanted; // guarded by m_mutex, like the three below
+    std::vector<std::wstring> m_watching;
+    std::uint64_t m_requested = 0;
+    std::uint64_t m_done = 0;
+    void* m_wake = nullptr; // event: m_wanted changed
     std::jthread m_thread;
 };
 

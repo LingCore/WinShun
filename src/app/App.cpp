@@ -10,6 +10,7 @@
 #include "platform/KeyboardHook.h"
 #include "platform/MessageWindow.h"
 #include "platform/Shell.h"
+#include "platform/VolumeNotifier.h"
 #include "platform/WindowEffects.h"
 
 #include <QContextMenuEvent>
@@ -114,7 +115,19 @@ bool App::start(const StartOptions& options)
     callbacks.hotkeyPressed = [this](int) { toggleLauncher(); };
     callbacks.commandReceived = [this](const QString& command) { handleCommand(command); };
     callbacks.sessionEnding = [this] { m_index->shutdown(); }; // save the index before Windows ends us
+    callbacks.deviceChange = [this](WPARAM event, LPARAM data) -> LRESULT {
+        return m_volumeNotifier ? m_volumeNotifier->handle(event, data) : TRUE;
+    };
     m_messages = std::make_unique<MessageWindow>(std::move(callbacks));
+
+    // Drives: let go of one being ejected or locked; index new ones, drop gone ones.
+    VolumeNotifier::Callbacks volumeCallbacks;
+    volumeCallbacks.releaseRequested = [this](const std::wstring& root) { m_index->suspendVolume(root); };
+    volumeCallbacks.released = [this](const std::wstring& root) { m_index->resumeVolume(root); };
+    volumeCallbacks.volumesChanged = [this] { m_index->refreshVolumes(); };
+    m_volumeNotifier = std::make_unique<VolumeNotifier>(m_messages->hwnd(), std::move(volumeCallbacks));
+    connect(m_index.get(), &IndexService::volumesChanged, this,
+        [this] { m_volumeNotifier->track(m_index->volumeRoots()); });
     m_messages->showTrayIcon(u"快搜 — 双击 Ctrl 打开"_s);
 
     applySettings(true);

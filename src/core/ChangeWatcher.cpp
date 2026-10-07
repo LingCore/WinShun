@@ -4,6 +4,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <memory>
 
 namespace qf {
@@ -78,11 +79,25 @@ void parse(const Watch& w, DWORD bytes, std::vector<FsChange>& out)
     }
 }
 
+std::unique_ptr<Watch> openWatch(const std::wstring& root)
+{
+    auto w = std::make_unique<Watch>();
+    w->root = root;
+    const std::wstring dirPath = root + L'\\';
+    w->dir.reset(::CreateFileW(dirPath.c_str(), FILE_LIST_DIRECTORY, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, nullptr));
+    if (!w->dir.valid())
+        return nullptr;
+    w->event.reset(::CreateEventW(nullptr, TRUE, FALSE, nullptr));
+    w->buffer = std::make_unique<DWORD[]>(kBufferBytes / sizeof(DWORD));
+    return w->arm() ? std::move(w) : nullptr;
+}
+
 } // namespace
 
-ChangeWatcher::ChangeWatcher(std::vector<std::wstring> roots, Handler handler)
-    : m_roots(std::move(roots))
-    , m_handler(std::move(handler))
+ChangeWatcher::ChangeWatcher(Handler handler)
+    : m_handler(std::move(handler))
+    , m_wake(::CreateEventW(nullptr, FALSE, FALSE, nullptr))
 {
     m_thread = std::jthread([this](std::stop_token stop) { run(stop); });
 }
@@ -92,6 +107,23 @@ ChangeWatcher::~ChangeWatcher()
     m_thread.request_stop();
     if (m_thread.joinable())
         m_thread.join();
+    if (m_wake)
+        ::CloseHandle(m_wake);
+}
+
+void ChangeWatcher::setRoots(std::vector<std::wstring> roots)
+{
+    std::unique_lock lock(m_mutex);
+    m_wanted = std::move(roots);
+    const std::uint64_t ticket = ++m_requested;
+    ::SetEvent(m_wake);
+    m_applied.wait(lock, [&] { return m_done >= ticket; });
+}
+
+std::vector<std::wstring> ChangeWatcher::roots() const
+{
+    std::lock_guard lock(m_mutex);
+    return m_watching;
 }
 
 void ChangeWatcher::run(std::stop_token stop)
@@ -100,32 +132,57 @@ void ChangeWatcher::run(std::stop_token stop)
     std::stop_callback onStop(stop, [h = stopEvent.get()] { ::SetEvent(h); });
 
     std::vector<std::unique_ptr<Watch>> watches; // stable addresses: OVERLAPPED must not move
-    for (const auto& root : m_roots) {
-        auto w = std::make_unique<Watch>();
-        w->root = root;
-        const std::wstring dirPath = root + L'\\';
-        w->dir.reset(
-            ::CreateFileW(dirPath.c_str(), FILE_LIST_DIRECTORY, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, nullptr));
-        if (!w->dir.valid())
-            continue;
-        w->event.reset(::CreateEventW(nullptr, TRUE, FALSE, nullptr));
-        w->buffer = std::make_unique<DWORD[]>(kBufferBytes / sizeof(DWORD));
-        if (w->arm())
-            watches.push_back(std::move(w));
-    }
+    const auto publish = [&](std::uint64_t done) {
+        {
+            std::lock_guard lock(m_mutex);
+            m_watching.clear();
+            for (const auto& w : watches)
+                m_watching.push_back(w->root);
+            m_done = std::max(m_done, done);
+        }
+        m_applied.notify_all();
+    };
+    // Brings the watches in line with m_wanted.
+    const auto apply = [&] {
+        std::vector<std::wstring> wanted;
+        std::uint64_t ticket = 0;
+        {
+            std::lock_guard lock(m_mutex);
+            wanted = m_wanted;
+            ticket = m_requested;
+        }
+        std::erase_if(watches, [&](const std::unique_ptr<Watch>& w) {
+            if (std::find(wanted.begin(), wanted.end(), w->root) != wanted.end())
+                return false;
+            w->cancel(); // then the handle closes: the volume can go
+            return true;
+        });
+        for (const auto& root : wanted) {
+            const bool watched = std::any_of(watches.begin(), watches.end(), [&](const auto& w) { return w->root == root; });
+            if (!watched) {
+                if (auto w = openWatch(root))
+                    watches.push_back(std::move(w));
+            }
+        }
+        publish(ticket);
+    };
 
-    while (!stop.stop_requested() && !watches.empty()) {
+    while (!stop.stop_requested()) {
         std::vector<HANDLE> handles;
-        handles.reserve(watches.size() + 1);
+        handles.reserve(watches.size() + 2);
         handles.push_back(stopEvent.get());
+        handles.push_back(m_wake);
         for (const auto& w : watches)
             handles.push_back(w->event.get());
 
         const DWORD r = ::WaitForMultipleObjects(static_cast<DWORD>(handles.size()), handles.data(), FALSE, INFINITE);
         if (r == WAIT_OBJECT_0 || r == WAIT_FAILED)
             break;
-        const std::size_t idx = r - WAIT_OBJECT_0 - 1;
+        if (r == WAIT_OBJECT_0 + 1) {
+            apply();
+            continue;
+        }
+        const std::size_t idx = r - WAIT_OBJECT_0 - 2;
         if (idx >= watches.size())
             break;
 
@@ -141,8 +198,10 @@ void ChangeWatcher::run(std::stop_token stop)
             parse(w, bytes, changes);
 
         // Re-arm before handing the batch over so no events slip through.
-        if (!w.arm())
+        if (!w.arm()) {
             watches.erase(watches.begin() + static_cast<std::ptrdiff_t>(idx)); // volume went away
+            publish(0);
+        }
 
         if (!changes.empty() && m_handler)
             m_handler(std::move(changes));
@@ -150,6 +209,12 @@ void ChangeWatcher::run(std::stop_token stop)
 
     for (auto& w : watches)
         w->cancel();
+    watches.clear();
+    {
+        std::lock_guard lock(m_mutex);
+        m_done = ~std::uint64_t {0}; // nobody waits for this thread any more
+    }
+    m_applied.notify_all();
 }
 
 } // namespace qf

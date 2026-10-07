@@ -1,12 +1,11 @@
 #include "Snapshot.h"
 
-#include "Win32Util.h"
-
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QSaveFile>
 
+#include <algorithm>
 #include <cstring>
 
 namespace qf::snapshot {
@@ -16,12 +15,14 @@ namespace {
 // Layout (little endian):
 //   magic[8] version:u32
 //   volumeCount:u32 { len:u16 root:wchar[len] serial:u32 journalId:u64 usn:i64 }*
+//   4 x { count:u32 { len:u16 text:wchar[len] }* }   crawl rules (version 3 on)
 //   entryCount:u32 { parent:u32 flags:u8 nameLength:u16 name:u8[nameLength] }*
 //   tableCount:u32 { root:u32 count:u32 { record:u32 folder:u32 }* }*   folder record numbers
 //   end:u32
 // Entries are in pre-order, so a parent always precedes its children.
 constexpr char kMagic[8] = {'Q', 'F', 'I', 'N', 'D', 'E', 'X', '\0'};
-constexpr std::uint32_t kVersion = 2;
+constexpr std::uint32_t kVersion = 3;
+constexpr std::uint32_t kOldestVersion = 2; // without the rules
 constexpr std::uint32_t kEndMarker = 0x21444E45; // "END!"
 
 class Writer {
@@ -75,6 +76,17 @@ public:
         m_p += sizeof(T);
         return v;
     }
+    std::wstring wide()
+    {
+        const auto len = get<std::uint16_t>();
+        const char* p = bytes(len * sizeof(wchar_t));
+        std::wstring s;
+        if (p) {
+            s.resize(len);
+            std::memcpy(s.data(), p, len * sizeof(wchar_t));
+        }
+        return s;
+    }
     const char* bytes(std::size_t n)
     {
         if (m_end - m_p < static_cast<std::ptrdiff_t>(n)) {
@@ -93,10 +105,19 @@ private:
     bool m_ok = true;
 };
 
+// The four lists of CrawlRules, in a fixed order.
+template <typename Rules, typename F> void forEachList(Rules& rules, F&& f)
+{
+    f(rules.excludedPaths);
+    f(rules.excludedNames);
+    f(rules.lowPriorityPaths);
+    f(rules.lowPriorityNames);
+}
+
 } // namespace
 
 bool save(const FileIndex& index, const std::vector<VolumeInfo>& volumes,
-    const std::vector<JournalPosition>& journals, const QString& filePath)
+    const std::vector<JournalPosition>& journals, const CrawlRules& rules, const QString& filePath)
 {
     QDir().mkpath(QFileInfo(filePath).absolutePath());
     QSaveFile file(filePath); // atomic replace: a crash never leaves half a snapshot
@@ -116,6 +137,14 @@ bool save(const FileIndex& index, const std::vector<VolumeInfo>& volumes,
         w.put(journal.journalId);
         w.put(journal.usn);
     }
+    forEachList(rules, [&](const std::vector<std::wstring>& list) {
+        w.put(static_cast<std::uint32_t>(list.size()));
+        for (const std::wstring& s : list) {
+            const auto len = static_cast<std::uint16_t>(std::min<std::size_t>(s.size(), 0xFFFF));
+            w.put(len);
+            w.bytes(s.data(), len * sizeof(wchar_t));
+        }
+    });
     const auto expected = static_cast<std::uint32_t>(index.liveCount());
     w.put(expected);
 
@@ -174,18 +203,17 @@ bool save(const FileIndex& index, const std::vector<VolumeInfo>& volumes,
     return file.commit();
 }
 
-std::unique_ptr<FileIndex> load(const QString& filePath, const std::vector<VolumeInfo>& expectedVolumes,
-    std::vector<JournalPosition>* journals)
+std::optional<Contents> load(const QString& filePath)
 {
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly))
-        return nullptr;
+        return std::nullopt;
     const qint64 size = file.size();
     if (size < 32)
-        return nullptr;
+        return std::nullopt;
     uchar* data = file.map(0, size);
     if (!data)
-        return nullptr;
+        return std::nullopt;
 
     struct Unmap {
         QFile& f;
@@ -195,30 +223,41 @@ std::unique_ptr<FileIndex> load(const QString& filePath, const std::vector<Volum
 
     Reader r(data, static_cast<std::size_t>(size));
     const char* magic = r.bytes(sizeof kMagic);
-    if (!magic || std::memcmp(magic, kMagic, sizeof kMagic) != 0 || r.get<std::uint32_t>() != kVersion)
-        return nullptr;
+    const auto version = r.get<std::uint32_t>();
+    if (!magic || std::memcmp(magic, kMagic, sizeof kMagic) != 0 || version < kOldestVersion || version > kVersion)
+        return std::nullopt;
 
+    Contents contents;
     const auto volumeCount = r.get<std::uint32_t>();
-    if (!r.ok() || volumeCount != expectedVolumes.size())
-        return nullptr;
-    std::vector<JournalPosition> positions(volumeCount);
+    if (!r.ok() || volumeCount > 26)
+        return std::nullopt;
     for (std::uint32_t i = 0; i < volumeCount; ++i) {
-        const auto len = r.get<std::uint16_t>();
-        const char* root = r.bytes(len * sizeof(wchar_t));
-        const auto serial = r.get<std::uint32_t>();
-        positions[i].journalId = r.get<std::uint64_t>();
-        positions[i].usn = r.get<std::int64_t>();
+        VolumeInfo volume;
+        volume.root = r.wide();
+        volume.serial = r.get<std::uint32_t>();
+        JournalPosition journal;
+        journal.journalId = r.get<std::uint64_t>();
+        journal.usn = r.get<std::int64_t>();
         if (!r.ok())
-            return nullptr;
-        std::wstring rootName(len, L'\0');
-        std::memcpy(rootName.data(), root, len * sizeof(wchar_t));
-        if (!win32::equalsIgnoreCase(rootName, expectedVolumes[i].root) || serial != expectedVolumes[i].serial)
-            return nullptr; // drives changed (reformatted, swapped, ...): rebuild instead
+            return std::nullopt;
+        contents.volumes.push_back(std::move(volume));
+        contents.journals.push_back(journal);
+    }
+    if (version >= 3) {
+        CrawlRules rules;
+        forEachList(rules, [&](std::vector<std::wstring>& list) {
+            const auto n = r.get<std::uint32_t>();
+            for (std::uint32_t k = 0; k < n && r.ok(); ++k)
+                list.push_back(r.wide());
+        });
+        if (!r.ok())
+            return std::nullopt;
+        contents.rules = std::move(rules);
     }
 
     const auto count = r.get<std::uint32_t>();
     if (!r.ok())
-        return nullptr;
+        return std::nullopt;
 
     auto index = std::make_unique<FileIndex>();
     index->setInterning(true);
@@ -228,16 +267,16 @@ std::unique_ptr<FileIndex> load(const QString& filePath, const std::vector<Volum
         const auto len = r.get<std::uint16_t>();
         const char* name = r.bytes(len);
         if (!r.ok() || len == 0)
-            return nullptr;
+            return std::nullopt;
         const std::string_view nameView(name, len);
         if (parent == kNoEntry) {
             if (!(flags & EntryFlag::Root))
-                return nullptr;
+                return std::nullopt;
             index->addRoot(nameView);
         } else {
             // Ids are assigned sequentially, so file order == entry id.
             if (parent >= i || index->entry(parent).isDeleted() || !index->entry(parent).isDir())
-                return nullptr;
+                return std::nullopt;
             index->add(parent, nameView, flags);
         }
     }
@@ -247,21 +286,20 @@ std::unique_ptr<FileIndex> load(const QString& filePath, const std::vector<Volum
         const auto root = r.get<EntryId>();
         const auto n = r.get<std::uint32_t>();
         if (!r.ok() || root >= count || !(index->entry(root).flags & EntryFlag::Root))
-            return nullptr;
+            return std::nullopt;
         for (std::uint32_t k = 0; k < n; ++k) {
             const auto record = r.get<std::uint32_t>();
             const auto folder = r.get<EntryId>();
             if (!r.ok() || folder >= count || !index->entry(folder).isDir())
-                return nullptr;
+                return std::nullopt;
             index->setFolderRecord(root, record, folder);
         }
     }
     if (r.get<std::uint32_t>() != kEndMarker || !r.ok())
-        return nullptr;
+        return std::nullopt;
     index->setInterning(false);
-    if (journals)
-        *journals = std::move(positions);
-    return index;
+    contents.index = std::move(index);
+    return contents;
 }
 
 } // namespace qf::snapshot

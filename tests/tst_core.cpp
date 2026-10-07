@@ -1,5 +1,6 @@
 #include "AppCatalog.h"
 #include "AppLogo.h"
+#include "ChangeWatcher.h"
 #include "ContentScanner.h"
 #include "Crawler.h"
 #include "DoubleTapDetector.h"
@@ -11,6 +12,7 @@
 #include "Query.h"
 #include "Snapshot.h"
 #include "TextUtil.h"
+#include "Win32Util.h"
 #include "Wtf8.h"
 
 #include <QDir>
@@ -21,8 +23,11 @@
 #include <windows.h>
 #include <winioctl.h>
 
+#include <chrono>
+#include <condition_variable>
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <random>
 #include <set>
 #include <unordered_map>
@@ -341,6 +346,73 @@ private slots:
         QCOMPARE(index.pathForUpdate(L"C:\\big\\renamed.txt"), linear(bigNow, "renamed.txt"));
     }
 
+    void changeWatcherRoots()
+    {
+        QTemporaryDir dir;
+        const std::wstring root = QDir::toNativeSeparators(dir.path()).toStdWString();
+        const auto openExclusively = [&] { // fails while anyone else holds the folder open
+            const win32::UniqueHandle h(::CreateFileW(root.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING,
+                FILE_FLAG_BACKUP_SEMANTICS, nullptr));
+            return h.valid();
+        };
+        std::mutex mutex;
+        std::condition_variable changed;
+        std::vector<FsChange> seen;
+        ChangeWatcher watcher([&](std::vector<FsChange>&& changes) {
+            std::lock_guard lock(mutex);
+            seen.insert(seen.end(), changes.begin(), changes.end());
+            changed.notify_all();
+        });
+        QVERIFY(watcher.roots().empty());
+
+        watcher.setRoots({root});
+        QCOMPARE(watcher.roots(), std::vector<std::wstring> {root});
+        QVERIFY(!openExclusively());
+        QFile file(dir.filePath(u"new.txt"_s));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.close();
+        {
+            std::unique_lock lock(mutex);
+            QVERIFY(changed.wait_for(lock, std::chrono::seconds(5), [&] {
+                return std::any_of(seen.begin(), seen.end(), [&](const FsChange& c) {
+                    return c.kind == FsChange::Kind::Added && c.path == root + L"\\new.txt";
+                });
+            }));
+        }
+
+        // Dropped from the set: its handle is closed by the time setRoots() returns.
+        watcher.setRoots({});
+        QVERIFY(watcher.roots().empty());
+        QVERIFY(openExclusively());
+    }
+
+    void removeExcludedRules()
+    {
+        // New exclusions are applied to an index in place.
+        FileIndex index;
+        const EntryId c = index.addRoot("C:");
+        const EntryId a = index.add(c, "a", EntryFlag::Directory);
+        const EntryId modules = index.add(a, "node_modules", EntryFlag::Directory);
+        index.add(modules, "x.js", 0);
+        const EntryId svn = index.add(a, ".svn", EntryFlag::Directory);
+        const EntryId pristine = index.add(svn, "pristine", EntryFlag::Directory);
+        index.add(pristine, "p", 0);
+        const EntryId otherPristine = index.add(a, "pristine", EntryFlag::Directory); // not inside .svn
+        const EntryId skip = index.add(c, "Skip", EntryFlag::Directory);
+        index.add(skip, "s.txt", 0);
+        const EntryId keep = index.add(c, "keep.txt", 0);
+        const EntryId upper = index.add(c, "NODE_MODULES", EntryFlag::Directory); // names ignore case
+        const EntryId file = index.add(a, "node_modules", 0); // a file of that name is not a folder
+
+        const CrawlRules rules {{L"C:\\skip"}, {L"node_modules", L".svn\\pristine"}, {}, {}};
+        QCOMPARE(removeExcluded(index, rules), std::size_t {7});
+        for (const EntryId gone : {modules, pristine, skip, upper})
+            QVERIFY(index.entry(gone).isDeleted());
+        for (const EntryId kept : {a, svn, otherPristine, keep, file})
+            QVERIFY(!index.entry(kept).isDeleted());
+        QCOMPARE(removeExcluded(index, rules), std::size_t {0}); // again: nothing left to do
+    }
+
     void excludedFolders()
     {
         // "!folder\" leaves out what is inside such a folder, not every name.
@@ -513,10 +585,12 @@ private slots:
         const std::vector<JournalPosition> journals {{0xABCDEF, 123456789}};
         QTemporaryDir dir;
         const QString file = dir.filePath(u"index.bin"_s);
-        QVERIFY(snapshot::save(t.index, volumes, journals, file));
+        const CrawlRules rules {{L"C:\\skip"}, {L"node_modules", L".svn\\pristine"}, {L"C:\\Windows"}, {L"AppData"}};
+        QVERIFY(snapshot::save(t.index, volumes, journals, rules, file));
 
-        std::vector<JournalPosition> loadedJournals;
-        const auto loaded = snapshot::load(file, volumes, &loadedJournals);
+        const auto contents = snapshot::load(file);
+        QVERIFY(contents);
+        const auto& loaded = contents->index;
         QVERIFY(loaded);
         QCOMPARE(loaded->liveCount(), std::size_t {6});
         const EntryId report = loaded->findPath(L"C:\\Users\\me\\Documents\\Report.docx");
@@ -525,15 +599,20 @@ private slots:
         QVERIFY(loaded->entry(loaded->findPath(L"C:\\Windows")).flags & EntryFlag::LowPriority);
         QCOMPARE(loaded->findPath(L"C:\\Users\\me\\Documents\\notes.txt"), kNoEntry);
 
-        QVERIFY(loadedJournals == journals);
+        QVERIFY(contents->journals == journals);
+        QCOMPARE(contents->volumes.size(), std::size_t {1});
+        QVERIFY(contents->volumes[0].root == L"C:" && contents->volumes[0].serial == 0x1234);
+        QVERIFY(contents->rules && *contents->rules == rules);
         const EntryId root = loaded->roots().front();
         QCOMPARE(loaded->folderByRecord(root, ntfs::kRootRecord), root);
         QCOMPARE(loaded->folderByRecord(root, 100), loaded->findPath(L"C:\\Users\\me\\Documents"));
         QCOMPARE(loaded->folderByRecord(root, 101), loaded->findPath(L"C:\\Windows"));
         QCOMPARE(loaded->folderRecords(root)->size(), std::size_t {3}); // the removed folder is not kept
 
-        QVERIFY(!snapshot::load(file, {{L"C:", 0x9999, true}})); // different volume serial
-        QVERIFY(!snapshot::load(dir.filePath(u"missing.bin"_s), volumes));
+        QVERIFY(!snapshot::load(dir.filePath(u"missing.bin"_s)));
+        QFile truncated(file);
+        QVERIFY(truncated.resize(truncated.size() - 3));
+        QVERIFY(!snapshot::load(file)); // the end marker is gone
     }
 
     void folderRecords()

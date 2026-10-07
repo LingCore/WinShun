@@ -454,7 +454,8 @@ int main(int argc, char* argv[])
     const double before = privateMB();
     QElapsedTimer timer;
     timer.start();
-    const auto index = qf::snapshot::load(path, qf::listLocalVolumes(false));
+    auto contents = qf::snapshot::load(path);
+    qf::FileIndex* index = contents ? contents->index.get() : nullptr;
     if (!index) {
         std::printf("could not load %s\n", qPrintable(path));
         return 1;

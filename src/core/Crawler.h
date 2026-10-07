@@ -41,7 +41,15 @@ struct JournalPosition {
 };
 
 // Local volumes worth indexing (fixed disks, optionally removable ones).
-std::vector<VolumeInfo> listLocalVolumes(bool includeRemovable);
+// Drives in `untouched` are left out without being looked at: they may be
+// in the middle of being ejected.
+std::vector<VolumeInfo> listLocalVolumes(bool includeRemovable, const std::vector<std::wstring>& untouched = {});
+bool driveLetterExists(std::wstring_view root); // "E:"
+
+// Drops the folders `rules` exclude (only its excluded paths and names are
+// used) from the index, wherever they are: for rules added since it was
+// built. Caller holds index.writeLock(). Returns the entries removed.
+std::size_t removeExcluded(FileIndex& index, const CrawlRules& rules);
 
 // The children of one folder, read from the disk or the MFT without holding
 // the index lock. Names live in two buffers reused for every folder.
