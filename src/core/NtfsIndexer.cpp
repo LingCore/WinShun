@@ -255,18 +255,14 @@ void UsnApplier::applyOne(const ntfs::UsnRecord& r, std::vector<Crawler::Root>& 
         m_oldNames.erase(old);
 }
 
-EntryId UsnApplier::find(EntryId parent, std::string_view name) const
+EntryId UsnApplier::find(EntryId parent, std::string_view name)
 {
     // The exact spelling only: the journal reports case-only renames too, and
     // case-sensitive folders may hold both "a" and "A".
-    for (EntryId c = m_index.entry(parent).firstChild; c != kNoEntry; c = m_index.entry(c).nextSibling) {
-        if (m_index.name(c) == name)
-            return c;
-    }
-    return kNoEntry;
+    return m_index.childForUpdate(parent, name, true);
 }
 
-EntryId UsnApplier::findItem(const Item& item) const
+EntryId UsnApplier::findItem(const Item& item)
 {
     if (item.folder) {
         const EntryId id = m_index.folderByRecord(m_root, item.record);

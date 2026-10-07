@@ -292,6 +292,55 @@ private slots:
         QCOMPARE(path.matchPath(u"D:\\Other\\notes.txt"_s, false), -1);
     }
 
+    void bigFolderLookups()
+    {
+        // Writers' lookups in a folder with thousands of children go through a
+        // hash table; it must stay in step with adds, removals, renames and moves.
+        FileIndex index;
+        const EntryId root = index.addRoot("C:");
+        const EntryId big = index.add(root, "big", EntryFlag::Directory);
+        const EntryId other = index.add(root, "other", EntryFlag::Directory);
+        std::vector<EntryId> ids;
+        for (int i = 0; i < 3000; ++i)
+            ids.push_back(index.add(big, "file" + std::to_string(i) + ".txt", 0));
+        const auto linear = [&](EntryId parent, std::string_view name) {
+            for (EntryId c = index.entry(parent).firstChild; c != kNoEntry; c = index.entry(c).nextSibling) {
+                if (index.name(c) == name)
+                    return c;
+            }
+            return kNoEntry;
+        };
+
+        QCOMPARE(index.childForUpdate(big, "file1234.txt", true), ids[1234]); // builds the table
+        QCOMPARE(index.childForUpdate(big, "FILE1234.TXT", false), ids[1234]);
+        QCOMPARE(index.childForUpdate(big, "FILE1234.TXT", true), kNoEntry);
+        QCOMPARE(index.findChild(big, "File7.TXT"), ids[7]); // readers use it too
+
+        index.remove(ids[10]);
+        QCOMPARE(index.childForUpdate(big, "file10.txt", false), kNoEntry);
+        const EntryId added = index.add(big, "new.txt", 0);
+        QCOMPARE(index.childForUpdate(big, "NEW.txt", false), added);
+        QVERIFY(index.move(ids[20], big, "renamed.txt"));
+        QCOMPARE(index.childForUpdate(big, "file20.txt", false), kNoEntry);
+        QCOMPARE(index.childForUpdate(big, "renamed.txt", true), ids[20]);
+        QVERIFY(index.move(ids[30], other, "moved.txt"));
+        QCOMPARE(index.childForUpdate(big, "file30.txt", false), kNoEntry);
+        QCOMPARE(index.childForUpdate(other, "moved.txt", true), ids[30]);
+        const EntryId upper = index.add(big, "FILE40.TXT", 0); // case-sensitive folder: both spellings
+        QCOMPARE(index.childForUpdate(big, "FILE40.TXT", true), upper);
+        QCOMPARE(index.childForUpdate(big, "file40.txt", true), ids[40]);
+
+        for (int i = 0; i < 3000; i += 7) { // every name agrees with a plain walk
+            const std::string name = "file" + std::to_string(i) + ".txt";
+            QCOMPARE(index.childForUpdate(big, name, true), linear(big, name));
+        }
+
+        index.compact(); // renumbers: the tables go and come back on demand
+        const EntryId bigNow = index.findPath(L"C:\\big");
+        QCOMPARE(index.name(index.childForUpdate(bigNow, "file2999.txt", true)), std::string_view("file2999.txt"));
+        QCOMPARE(index.pathForUpdate(L"C:\\big\\renamed.txt"), linear(bigNow, "renamed.txt"));
+    }
+
     void excludedFolders()
     {
         // "!folder\" leaves out what is inside such a folder, not every name.

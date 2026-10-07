@@ -72,8 +72,8 @@ private:
     void ensure(const Item& item, bool walk, std::vector<Crawler::Root>& walks);
     void add(EntryId parent, const Item& item, bool walk, std::vector<Crawler::Root>& walks);
     void updateFlags(const Item& item);
-    EntryId find(EntryId parent, std::string_view name) const;
-    EntryId findItem(const Item& item) const;
+    EntryId find(EntryId parent, std::string_view name);
+    EntryId findItem(const Item& item);
     std::wstring childPath(EntryId parent, std::wstring_view name) const;
     std::uint8_t flagsFor(EntryId parent, const Item& item, const std::wstring& path) const;
 

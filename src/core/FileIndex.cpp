@@ -19,6 +19,18 @@ std::uint8_t hanFlag(std::string_view name) noexcept
     return pinyin::hasHan(name) ? EntryFlag::Han : 0;
 }
 
+// Children a writer's lookup walks through before it builds a ChildTable.
+constexpr std::size_t kChildTableMin = 256;
+
+// FNV-1a of the ASCII-folded name: spellings that differ in case collide on purpose.
+std::size_t foldedHash(std::string_view name) noexcept
+{
+    std::uint64_t h = 14695981039346656037ull;
+    for (const char c : name)
+        h = (h ^ text::fold(c)) * 1099511628211ull;
+    return static_cast<std::size_t>(h ^ (h >> 29));
+}
+
 } // namespace
 
 std::uint8_t extensionLength(std::string_view name, bool isDir) noexcept
@@ -271,6 +283,7 @@ std::size_t FileIndex::compact(bool always)
     m_count = live;
     m_chunks.resize((live + kChunkSize - 1) >> kChunkBits); // frees the emptied chunks
     m_chunks.shrink_to_fit();
+    m_childTables = decltype(m_childTables)(); // by old ids; rebuilt on demand
     return oldCount - live;
 }
 
@@ -323,7 +336,7 @@ std::uint32_t FileIndex::appendName(std::string_view name)
     return offset;
 }
 
-void FileIndex::link(EntryId parent, EntryId child) noexcept
+void FileIndex::link(EntryId parent, EntryId child)
 {
     Entry& c = mut(child);
     Entry& p = mut(parent);
@@ -333,11 +346,20 @@ void FileIndex::link(EntryId parent, EntryId child) noexcept
     if (p.firstChild != kNoEntry)
         mut(p.firstChild).prevSibling = child;
     p.firstChild = child;
+    if (!m_childTables.empty()) {
+        if (const auto it = m_childTables.find(parent); it != m_childTables.end())
+            tableInsert(it->second, child);
+    }
 }
 
+// Before the child's name changes: its parent's ChildTable finds it by name.
 void FileIndex::unlink(EntryId child) noexcept
 {
     Entry& c = mut(child);
+    if (!m_childTables.empty() && c.parent != kNoEntry) {
+        if (const auto it = m_childTables.find(c.parent); it != m_childTables.end())
+            tableErase(it->second, child);
+    }
     if (c.prevSibling != kNoEntry)
         mut(c.prevSibling).nextSibling = c.nextSibling;
     else if (c.parent != kNoEntry && entry(c.parent).firstChild == child)
@@ -397,6 +419,8 @@ std::size_t FileIndex::remove(EntryId id)
             continue;
         e.flags |= EntryFlag::Deleted;
         ++removed;
+        if (e.isDir() && !m_childTables.empty())
+            m_childTables.erase(cur);
         for (EntryId c = e.firstChild; c != kNoEntry; c = entry(c).nextSibling)
             stack.push_back(c);
     }
@@ -414,8 +438,7 @@ bool FileIndex::move(EntryId id, EntryId newParent, std::string_view newName)
         if (p == id)
             return false; // would move a folder into itself
     }
-    unlink(id);
-    link(newParent, id);
+    unlink(id); // under the old name
     if (name(id) != newName) {
         const std::uint32_t offset = storeName(newName);
         Entry& e = mut(id);
@@ -424,6 +447,7 @@ bool FileIndex::move(EntryId id, EntryId newParent, std::string_view newName)
         e.extLength = extensionLength(newName, e.isDir());
         e.flags = static_cast<std::uint8_t>((e.flags & ~EntryFlag::Han) | hanFlag(newName));
     }
+    link(newParent, id); // under the new one
     return true;
 }
 
@@ -474,10 +498,64 @@ const RecordTable* FileIndex::folderRecords(EntryId root) const noexcept
     return nullptr;
 }
 
+EntryId FileIndex::tableFind(const ChildTable& table, std::string_view childName, bool exactCase) const noexcept
+{
+    const std::size_t mask = table.buckets.size() - 1;
+    for (std::size_t i = foldedHash(childName) & mask; table.buckets[i] != kNoEntry; i = (i + 1) & mask) {
+        const std::string_view candidate = name(table.buckets[i]);
+        if (exactCase ? candidate == childName : text::equalsIgnoreAsciiCase(candidate, childName))
+            return table.buckets[i];
+    }
+    return kNoEntry;
+}
+
+void FileIndex::tableInsert(ChildTable& table, EntryId child)
+{
+    if ((table.count + 1) * 2 > table.buckets.size()) { // at most half full
+        std::vector<EntryId> old(std::max<std::size_t>(table.buckets.size() * 2, kChildTableMin * 4), kNoEntry);
+        old.swap(table.buckets);
+        table.count = 0;
+        for (const EntryId id : old) {
+            if (id != kNoEntry)
+                tableInsert(table, id);
+        }
+    }
+    const std::size_t mask = table.buckets.size() - 1;
+    std::size_t i = foldedHash(name(child)) & mask;
+    while (table.buckets[i] != kNoEntry)
+        i = (i + 1) & mask;
+    table.buckets[i] = child;
+    ++table.count;
+}
+
+void FileIndex::tableErase(ChildTable& table, EntryId child) noexcept
+{
+    const std::size_t mask = table.buckets.size() - 1;
+    std::size_t i = foldedHash(name(child)) & mask;
+    while (table.buckets[i] != child) {
+        if (table.buckets[i] == kNoEntry)
+            return;
+        i = (i + 1) & mask;
+    }
+    // Backward-shift deletion, as in RecordTable::erase.
+    for (std::size_t j = (i + 1) & mask; table.buckets[j] != kNoEntry; j = (j + 1) & mask) {
+        const std::size_t h = foldedHash(name(table.buckets[j])) & mask;
+        const bool movable = i <= j ? (h <= i || h > j) : (h <= i && h > j);
+        if (movable) {
+            table.buckets[i] = table.buckets[j];
+            i = j;
+        }
+    }
+    table.buckets[i] = kNoEntry;
+    --table.count;
+}
+
 EntryId FileIndex::findChild(EntryId parent, std::string_view childName) const
 {
     if (parent >= m_count)
         return kNoEntry;
+    if (const auto it = m_childTables.find(parent); it != m_childTables.end())
+        return tableFind(it->second, childName, false);
     for (EntryId c = entry(parent).firstChild; c != kNoEntry; c = entry(c).nextSibling) {
         if (text::equalsIgnoreAsciiCase(name(c), childName))
             return c;
@@ -485,7 +563,39 @@ EntryId FileIndex::findChild(EntryId parent, std::string_view childName) const
     return kNoEntry;
 }
 
+EntryId FileIndex::childForUpdate(EntryId parent, std::string_view childName, bool exactCase)
+{
+    if (parent >= m_count)
+        return kNoEntry;
+    if (const auto it = m_childTables.find(parent); it != m_childTables.end())
+        return tableFind(it->second, childName, exactCase);
+    std::size_t walked = 0;
+    for (EntryId c = entry(parent).firstChild; c != kNoEntry; c = entry(c).nextSibling) {
+        if (exactCase ? name(c) == childName : text::equalsIgnoreAsciiCase(name(c), childName))
+            return c;
+        if (++walked == kChildTableMin) {
+            // A big folder: index its children once, so the next lookups are quick.
+            ChildTable& table = m_childTables[parent];
+            for (EntryId k = entry(parent).firstChild; k != kNoEntry; k = entry(k).nextSibling)
+                tableInsert(table, k);
+            return tableFind(table, childName, exactCase);
+        }
+    }
+    return kNoEntry;
+}
+
 EntryId FileIndex::findPath(std::wstring_view path) const
+{
+    return walkPath(path, [this](EntryId parent, std::string_view name) { return findChild(parent, name); });
+}
+
+EntryId FileIndex::pathForUpdate(std::wstring_view path)
+{
+    return walkPath(
+        path, [this](EntryId parent, std::string_view name) { return childForUpdate(parent, name, false); });
+}
+
+template <typename Lookup> EntryId FileIndex::walkPath(std::wstring_view path, Lookup&& lookup) const
 {
     if (path.size() < 2 || path[1] != L':')
         return kNoEntry;
@@ -513,7 +623,7 @@ EntryId FileIndex::findPath(std::wstring_view path) const
             break;
         component.clear();
         wtf8::append(component, wtf8::view(path.substr(i, j - i)));
-        cur = findChild(cur, component);
+        cur = lookup(cur, component);
         if (cur == kNoEntry)
             return kNoEntry;
         i = j;
@@ -522,6 +632,13 @@ EntryId FileIndex::findPath(std::wstring_view path) const
 }
 
 std::u16string FileIndex::path16(EntryId id) const
+{
+    std::u16string out;
+    appendPath16(id, out);
+    return out;
+}
+
+void FileIndex::appendPath16(EntryId id, std::u16string& out) const
 {
     EntryId chain[64];
     std::vector<EntryId> deep;
@@ -532,10 +649,9 @@ std::u16string FileIndex::path16(EntryId id) const
         else
             deep.push_back(cur);
     }
-    std::u16string out;
-    out.reserve(n * 12);
+    const std::size_t start = out.size();
     auto appendName = [&](EntryId e) {
-        if (!out.empty())
+        if (out.size() > start)
             out.push_back(u'\\');
         wtf8::decodeAppend(out, name(e));
     };
@@ -545,7 +661,6 @@ std::u16string FileIndex::path16(EntryId id) const
         appendName(chain[k]);
     if (n == 1 && deep.empty())
         out.push_back(u'\\'); // a volume root: "C:\"
-    return out;
 }
 
 QString FileIndex::path(EntryId id) const

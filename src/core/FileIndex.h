@@ -10,6 +10,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -123,14 +124,24 @@ public:
     std::span<const Entry> chunk(std::size_t index) const noexcept;
     const std::vector<EntryId>& roots() const noexcept { return m_roots; }
 
+    // Names compare ignoring ASCII case, as NTFS does for most names.
     EntryId findChild(EntryId parent, std::string_view name) const;
     EntryId findPath(std::wstring_view path) const; // "C:\dir\file.txt"
     std::u16string path16(EntryId id) const;
+    void appendPath16(EntryId id, std::u16string& out) const;
     QString path(EntryId id) const;
     std::wstring wpath(EntryId id) const;
     int depth(EntryId id) const noexcept;
 
     // ---- write API ------------------------------------------------------
+    // Lookups for writers (caller holds writeLock()). A folder with very
+    // many children gets a hash table of them on first use, so that changes
+    // in it (thousands of files unpacked into one folder) cost O(1) each
+    // instead of a walk through all its children. `exactCase` compares the
+    // bytes; otherwise ASCII case is ignored.
+    EntryId childForUpdate(EntryId parent, std::string_view name, bool exactCase);
+    EntryId pathForUpdate(std::wstring_view path);
+
     EntryId addRoot(std::string_view name); // "C:"
     EntryId add(EntryId parent, std::string_view name, std::uint8_t flags);
     std::size_t remove(EntryId id); // removes the whole subtree; returns entries removed
@@ -168,11 +179,22 @@ public:
     const RecordTable* folderRecords(EntryId root) const noexcept;
 
 private:
+    // A folder's children by name: open addressing over their ids, by the
+    // hash of the ASCII-folded name.
+    struct ChildTable {
+        std::vector<EntryId> buckets; // kNoEntry: empty
+        std::size_t count = 0;
+    };
+
     Entry& mut(EntryId id) noexcept { return m_chunks[id >> kChunkBits][id & (kChunkSize - 1)]; }
+    template <typename Lookup> EntryId walkPath(std::wstring_view path, Lookup&& lookup) const;
+    EntryId tableFind(const ChildTable& table, std::string_view name, bool exactCase) const noexcept;
+    void tableInsert(ChildTable& table, EntryId child);
+    void tableErase(ChildTable& table, EntryId child) noexcept;
     EntryId allocate();
     std::uint32_t appendName(std::string_view name);
     void internInsert(std::uint64_t slot, std::size_t hash) noexcept;
-    void link(EntryId parent, EntryId child) noexcept;
+    void link(EntryId parent, EntryId child);
     void unlink(EntryId child) noexcept;
 
     mutable std::shared_mutex m_mutex;
@@ -185,6 +207,7 @@ private:
     std::vector<std::uint64_t> m_intern; // open addressing: offset<<32 | length<<16 | hash tag; 0 = empty
     std::size_t m_internCount = 0;
     std::vector<std::pair<EntryId, RecordTable>> m_folderRecords; // by volume root
+    std::unordered_map<EntryId, ChildTable> m_childTables; // by folder; compact() drops them all
 };
 
 std::uint8_t extensionLength(std::string_view name, bool isDir) noexcept;
