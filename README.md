@@ -36,7 +36,7 @@
 
 **Win顺 是什么？** 一个 Windows 上的快速搜索启动器。连按两下 Ctrl，屏幕上弹出搜索框，边打字边出结果：按文件名或拼音找文件和文件夹，打开已安装的应用，也能找文本文件里的文字。不用装 Everything，也不用写任何配置。
 
-它直接读 NTFS 的主文件表建索引，三百多万个文件十秒左右就能建好，之后文件的增删改名都实时跟上。它常驻在任务栏右下角的托盘里，不联网，不需要账号，完全免费。界面有简体中文和英文两种，默认跟随 Windows 的显示语言，也可以在设置里随时切换。
+它直接读 NTFS 的主文件表建索引，三百多万个文件十秒左右就能建好，之后文件的增删改名都实时跟上。它常驻在任务栏右下角的托盘里，除了到 GitHub 检查新版本以外不联网，不需要账号，完全免费。界面有简体中文和英文两种，默认跟随 Windows 的显示语言，也可以在设置里随时切换。
 
 ### 功能
 
@@ -120,7 +120,13 @@
 - **外观**：主题（跟随系统 / 浅色 / 深色）、界面语言（跟随系统 / 简体中文 / English），切换即时生效。
 - **搜索范围**：不搜索的文件夹、任何位置都跳过的文件夹名称（如 `node_modules`）、是否包括 U 盘和移动硬盘。
 - **文件内容搜索**：要搜索内容的文件类型、文件大小上限、是否也搜系统和程序文件夹、是否建立内容索引。
-- **高级**：界面绘制方式（省内存 / 显卡加速 / 自动）、恢复默认设置。
+- **高级**：检查更新、是否自动检查更新、界面绘制方式（省内存 / 显卡加速 / 自动）、恢复默认设置。
+
+#### 🔔 新版本提醒
+
+- 每次启动和之后每隔 12 小时到 GitHub 看一眼有没有新版本，有的话在托盘弹出提示，打开就能看到这一版改了什么。
+- 点 **去下载** 会在浏览器里打开这个版本的下载页；在托盘菜单里选 **退出**，把新的压缩包解压覆盖原来的文件夹就行，设置和索引都会保留。Win顺 不会自己下载、替换程序文件。
+- 当前版本显示在设置窗口左下角和托盘菜单里；托盘菜单里可以随时 **检查更新…**，设置 → 高级里可以关掉自动检查。
 
 <p align="center">
   <picture>
@@ -166,7 +172,7 @@ Win顺 自己建索引，不需要另装 Everything。文件名、拼音、应�
 文件名索引每 100 万个文件约 30 MB。整个程序在任务管理器里一般是 120～140 MB。
 
 **收费吗？会上传我的数据吗？**
-完全免费，源代码公开。Win顺 不联网，索引和最近使用记录只保存在你自己的电脑上（`%LOCALAPPDATA%\WinShun`）。
+完全免费，源代码公开。Win顺 只在检查新版本时访问 GitHub 的公开接口，不发送任何个人信息（设置 → 高级里可以关掉）；索引和最近使用记录只保存在你自己的电脑上（`%LOCALAPPDATA%\WinShun`）。
 
 **怎么卸载？**
 在托盘图标的右键菜单里取消 **开机自动启动**，再选 **退出**，然后删除程序所在的文件夹。如果还想清除设置和索引，再删掉 `%APPDATA%\WinShun` 和 `%LOCALAPPDATA%\WinShun`。
@@ -183,6 +189,7 @@ Win顺 自己建索引，不需要另装 Everything。文件名、拼音、应�
 ./scripts/build.ps1                                # 编译 + 运行单元测试
 ./scripts/build.ps1 -QtDir C:\Qt\6.12.0\msvc2022_64 # 指定 Qt（默认用 QTDIR 或 C:\Qt 下最新的版本）
 ./scripts/build.ps1 -Deploy                        # 生成可分发的文件夹 dist\WinShun
+./scripts/release.ps1                              # 打包 dist\WinShun-版本号-x64.zip 和 .sha256；加 -Publish 发布到 GitHub
 ```
 
 也可以直接用 Qt Creator 或 VS Code（CMake Tools）打开项目目录，预设见 `CMakePresets.json`（需要环境变量 `QTDIR` 指向 Qt 套件目录）。
@@ -197,7 +204,7 @@ Win顺 自己建索引，不需要另装 Everything。文件名、拼音、应�
 
 **What is WinShun?** WinShun (Win顺, "Windows made smooth") is a fast search launcher for Windows. Press Ctrl twice and a search bar pops up with results as you type: find files and folders by name or by pinyin, launch installed apps, and search the text inside text files. No Everything install and no configuration needed.
 
-It builds its index by reading the NTFS master file table directly — over three million files in about ten seconds — and keeps up with every create, rename and delete in real time. It lives in the notification area, works offline, needs no account, and is completely free.
+It builds its index by reading the NTFS master file table directly — over three million files in about ten seconds — and keeps up with every create, rename and delete in real time. It lives in the notification area, goes online only to ask GitHub about new versions, needs no account, and is completely free.
 
 The interface comes in **English and Simplified Chinese**. It follows the Windows display language by default; switch any time under Settings → **Appearance**.
 
@@ -234,6 +241,10 @@ The interface comes in **English and Simplified Chinese**. It follows the Window
 
 Light or dark theme, following Windows or fixed to one, with the system accent color and rounded Windows 11 corners. Pick a theme from the previews under Settings → **Appearance**: the whole window cross-fades to it, no restart. Icons are drawn at their native size for your display scaling, so they stay sharp at 150%.
 
+#### 🔔 New version reminders
+
+At every start and every 12 hours WinShun asks GitHub whether a new version is out, and announces it from the tray with what changed. **Download** opens that version's page in your browser: exit WinShun from the tray, unzip the new version over the old folder, and your settings and index carry over. WinShun never downloads or replaces its own files. The current version is shown in the corner of the settings window and in the tray menu, which also has **Check for updates…**; automatic checks can be turned off in Settings → Advanced.
+
 ### Download and install
 
 1. Download `WinShun-<version>-x64.zip` from the [Releases page](https://github.com/LingCore/WinShun/releases/latest) and unzip it somewhere permanent (e.g. `D:\Tools\WinShun`). No installer; the runtimes are included.
@@ -268,7 +279,7 @@ Another app has probably registered them as global hotkeys (the screenshot tool 
 About 30 MB of index per million files; the whole app usually shows 120–140 MB in Task Manager.
 
 **Is it free? Does it collect data?**
-Free and open source. WinShun never connects to the internet; the index and history stay on your PC (`%LOCALAPPDATA%\WinShun`).
+Free and open source. WinShun goes online only to ask GitHub's public API about new versions, sending nothing personal (you can turn that off in Settings → Advanced); the index and history stay on your PC (`%LOCALAPPDATA%\WinShun`).
 
 **How do I uninstall it?**
 Uncheck **开机自动启动** in the tray menu, choose **退出 (Quit)**, and delete the app's folder. To remove settings and index too, delete `%APPDATA%\WinShun` and `%LOCALAPPDATA%\WinShun`.
@@ -285,6 +296,7 @@ Needs Visual Studio 2022 (Desktop development with C++), Qt 6.8 or later (6.12 r
 ./scripts/build.ps1                                # build and run the unit tests
 ./scripts/build.ps1 -QtDir C:\Qt\6.12.0\msvc2022_64 # pick a Qt kit (default: QTDIR or the newest under C:\Qt)
 ./scripts/build.ps1 -Deploy                        # make the distributable folder dist\WinShun
+./scripts/release.ps1                              # package dist\WinShun-<version>-x64.zip and .sha256; -Publish makes the GitHub release
 ```
 
 Architecture, design notes and benchmarks (in Chinese) are in [docs/architecture.md](docs/architecture.md).

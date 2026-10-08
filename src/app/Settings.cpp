@@ -194,6 +194,8 @@ void Settings::load()
     if (language != u"zh" && language != u"en")
         language = d.language;
 
+    autoUpdate = readOrDefault(s, u"Update/Automatic"_s, d.autoUpdate);
+
     excludedPaths = readOrDefault(s, u"Index/ExcludedPaths"_s, d.excludedPaths);
     excludedNames = readOrDefault(s, u"Index/ExcludedNames"_s, d.excludedNames);
     includeRemovableDrives = readOrDefault(s, u"Index/IncludeRemovableDrives"_s, d.includeRemovableDrives);
@@ -221,6 +223,7 @@ void Settings::save() const
     s.setValue(u"Launcher/Renderer"_s, renderer);
     s.setValue(u"Appearance/Theme"_s, theme);
     s.setValue(u"Appearance/Language"_s, language);
+    s.setValue(u"Update/Automatic"_s, autoUpdate);
     s.setValue(u"Index/ExcludedPaths"_s, excludedPaths);
     s.setValue(u"Index/ExcludedNames"_s, excludedNames);
     s.setValue(u"Index/IncludeRemovableDrives"_s, includeRemovableDrives);

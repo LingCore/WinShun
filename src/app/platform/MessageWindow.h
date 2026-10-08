@@ -17,6 +17,7 @@ public:
     struct Callbacks {
         std::function<void()> trayActivated; // left click
         std::function<void()> trayMenuRequested; // right click
+        std::function<void()> notificationClicked; // the last showNotification()
         std::function<void(int id)> hotkeyPressed;
         std::function<void(const QString&)> commandReceived;
         std::function<void()> sessionEnding; // Windows is logging off / shutting down

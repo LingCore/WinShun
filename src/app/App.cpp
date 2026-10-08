@@ -8,6 +8,7 @@
 #include "Placement.h"
 #include "SearchEngine.h"
 #include "SettingsEditor.h"
+#include "Updater.h"
 #include "WindowFrame.h"
 #include "platform/KeyListener.h"
 #include "platform/MessageWindow.h"
@@ -44,6 +45,8 @@ enum TrayCommand {
     RebuildCommand,
     AutostartCommand,
     SettingsCommand,
+    UpdateCommand,
+    CheckUpdateCommand,
     RestartCommand,
     QuitCommand
 };
@@ -126,12 +129,30 @@ bool App::start(const StartOptions& options)
             armReveal();
     });
 
+    m_updater = std::make_unique<Updater>();
+    m_updater->setChinese(m_language == u"zh");
+    connect(m_updater.get(), &Updater::found, this, [this](bool manual) {
+        // Asked for, or the settings window is open: show it there. Otherwise
+        // a tray notification, which does not take the keyboard from anyone.
+        if (manual || (m_settingsWindow && m_settingsWindow->isVisible())) {
+            showUpdate();
+            return;
+        }
+        m_messages->showNotification(tr("Win顺 %1 可以更新了").arg(m_updater->availableVersion()),
+            tr("点这里查看更新内容"));
+        m_updateNotified = true;
+    });
+
     if (!createWindow())
         return false;
 
     MessageWindow::Callbacks callbacks;
     callbacks.trayActivated = [this] { toggleLauncher(); };
     callbacks.trayMenuRequested = [this] { showTrayMenu(); };
+    callbacks.notificationClicked = [this] {
+        if (std::exchange(m_updateNotified, false))
+            showUpdate();
+    };
     callbacks.hotkeyPressed = [this](int) { toggleLauncher(); };
     callbacks.commandReceived = [this](const QString& command) { handleCommand(command); };
     callbacks.sessionEnding = [this] { m_index->shutdown(); }; // save the index before Windows ends us
@@ -264,6 +285,8 @@ void App::applyAppearance()
     QLocale::setDefault(language == u"en" ? QLocale(QLocale::English, QLocale::UnitedStates)
                                           : QLocale(QLocale::Chinese, QLocale::China));
     QGuiApplication::setApplicationDisplayName(tr("Win顺"));
+    if (m_updater)
+        m_updater->setChinese(language == u"zh");
 
     if (!m_qml)
         return; // starting up: nothing shown yet
@@ -291,6 +314,7 @@ void App::applySettings(bool initial)
 
     if (!initial)
         applyAppearance();
+    m_updater->setAutomatic(m_settings.autoUpdate);
     applyHotkey();
     m_launcher->setContentOptions(m_settings.contentExtensions,
         static_cast<qint64>(m_settings.maxContentFileSizeMB) << 20, m_settings.contentInLowPriority);
@@ -348,6 +372,7 @@ void App::showSettings()
         QObject* object = component.createWithInitialProperties({
             {u"editor"_s, QVariant::fromValue(editor)},
             {u"frame"_s, QVariant::fromValue(frame)},
+            {u"updater"_s, QVariant::fromValue(m_updater.get())},
         });
         auto* window = qobject_cast<QQuickWindow*>(object);
         if (!window) {
@@ -388,6 +413,13 @@ void App::showSettings()
     m_settingsWindow->raise();
     win::bringToFront(m_settingsWindow);
     m_settingsWindow->requestActivate();
+}
+
+void App::showUpdate()
+{
+    showSettings();
+    if (m_settingsWindow)
+        QMetaObject::invokeMethod(m_settingsWindow, "showUpdateDialog");
 }
 
 void App::refreshContentIndexStatus()
@@ -520,7 +552,7 @@ void App::showTrayMenu()
     const QString info = ready ? tr("已索引 %Ln 项", nullptr, static_cast<int>(m_index->itemCount()))
                                : tr("正在建立索引…");
     const QString show = tr("打开 Win顺");
-    const std::vector<shell::MenuItem> items {
+    std::vector<shell::MenuItem> items {
         {ShowCommand, m_settings.doubleCtrl ? show + u'\t' + tr("双击 Ctrl") : show, false, true, true},
         shell::MenuItem::separator(),
         {IndexInfo, info, false, false},
@@ -528,10 +560,14 @@ void App::showTrayMenu()
         shell::MenuItem::separator(),
         {AutostartCommand, tr("开机自动启动"), autostart::isEnabled()},
         {SettingsCommand, tr("设置…")},
+        {CheckUpdateCommand, tr("检查更新…") + u'\t' + QCoreApplication::applicationVersion()},
         shell::MenuItem::separator(),
         {RestartCommand, tr("重新启动")},
         {QuitCommand, tr("退出")},
     };
+    if (m_updater->available() && !m_updater->skipped()) // at the top, where it is seen
+        items.insert(items.begin(),
+            {{UpdateCommand, tr("Win顺 %1 可以更新了…").arg(m_updater->availableVersion())}, shell::MenuItem::separator()});
     POINT pos {};
     ::GetCursorPos(&pos);
     switch (shell::popupMenu(m_messages->hwnd(), items, pos)) {
@@ -547,6 +583,15 @@ void App::showTrayMenu()
         break;
     case SettingsCommand:
         showSettings();
+        break;
+    case UpdateCommand:
+        showUpdate();
+        break;
+    case CheckUpdateCommand:
+        // A version already known is shown at once; otherwise the dialog says "checking".
+        if (!m_updater->available())
+            m_updater->check(true);
+        showUpdate();
         break;
     case RestartCommand:
         restart({u"--background"_s});

@@ -282,6 +282,39 @@
         <translation>Settings</translation>
     </message>
     <message>
+        <source>刚刚</source>
+        <translation>just now</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n 分钟前</source>
+        <translation>
+            <numerusform>%n minute ago</numerusform>
+            <numerusform>%n minutes ago</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n 小时前</source>
+        <translation>
+            <numerusform>%n hour ago</numerusform>
+            <numerusform>%n hours ago</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n 天前</source>
+        <translation>
+            <numerusform>%n day ago</numerusform>
+            <numerusform>%n days ago</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Win顺 %1</source>
+        <translation>WinShun %1</translation>
+    </message>
+    <message>
+        <source>· 有新版本 %1</source>
+        <translation>· %1 available</translation>
+    </message>
+    <message>
         <source>修改会自动保存，立即生效</source>
         <translation>Changes are saved and take effect right away</translation>
     </message>
@@ -442,6 +475,46 @@
         <translation>Notes in the background which Chinese, Japanese and Korean characters and English word fragments each file contains, so a search opens only the files that may match: much faster. NTFS drives only. The first build takes a while; a few hundred thousand files take about 200 MB of disk space</translation>
     </message>
     <message>
+        <source>更新</source>
+        <translation>Updates</translation>
+    </message>
+    <message>
+        <source>新版本发布在 GitHub 上。检查更新时只访问 GitHub，不发送任何个人信息；有新版本时，点“去下载”会在浏览器里打开下载页。</source>
+        <translation>New versions are published on GitHub. Checking contacts only GitHub and sends nothing personal; when there is a new version, “Download” opens its page in your browser.</translation>
+    </message>
+    <message>
+        <source>版本 %1</source>
+        <translation>Version %1</translation>
+    </message>
+    <message>
+        <source>正在检查更新…</source>
+        <translation>Checking for updates…</translation>
+    </message>
+    <message>
+        <source>有新版本 %1</source>
+        <translation>Version %1 is available</translation>
+    </message>
+    <message>
+        <source>已是最新版本 · %1检查</source>
+        <translation>Up to date · checked %1</translation>
+    </message>
+    <message>
+        <source>检查更新</source>
+        <translation>Check for updates</translation>
+    </message>
+    <message>
+        <source>查看 %1</source>
+        <translation>See %1</translation>
+    </message>
+    <message>
+        <source>自动检查更新</source>
+        <translation>Check for updates automatically</translation>
+    </message>
+    <message>
+        <source>每次启动时看一次，之后每隔 12 小时看一次。有新版本时在托盘弹出提示</source>
+        <translation>At every start and every 12 hours after. A new version is announced from the tray</translation>
+    </message>
+    <message>
         <source>界面绘制方式</source>
         <translation>Rendering</translation>
     </message>
@@ -510,6 +583,65 @@
     </message>
 </context>
 <context>
+    <name>UpdateDialog</name>
+    <message>
+        <source>正在检查更新…</source>
+        <translation>Checking for updates…</translation>
+    </message>
+    <message>
+        <source>Win顺 %1 可以更新了</source>
+        <translation>WinShun %1 is available</translation>
+    </message>
+    <message>
+        <source>检查更新失败</source>
+        <translation>Couldn’t check for updates</translation>
+    </message>
+    <message>
+        <source>已经是最新版本</source>
+        <translation>You’re up to date</translation>
+    </message>
+    <message>
+        <source>你现在用的是 %1。在托盘菜单里退出 Win顺，把下载的压缩包解压后覆盖原来的文件夹就行，设置和索引都会保留。</source>
+        <translation>You have %1. Exit WinShun from the tray menu, then unzip the download over the old folder. Your settings and index are kept.</translation>
+    </message>
+    <message>
+        <source>Win顺 %1 是目前最新的版本。</source>
+        <translation>WinShun %1 is the latest version.</translation>
+    </message>
+    <message>
+        <source>在 GitHub 上查看完整说明</source>
+        <translation>Full release notes on GitHub</translation>
+    </message>
+    <message>
+        <source>跳过这个版本</source>
+        <translation>Skip this version</translation>
+    </message>
+    <message>
+        <source>以后再说</source>
+        <translation>Later</translation>
+    </message>
+    <message>
+        <source>去 GitHub 看看</source>
+        <translation>Open GitHub</translation>
+    </message>
+    <message>
+        <source>去下载</source>
+        <translation>Download</translation>
+    </message>
+    <message>
+        <source>关闭</source>
+        <translation>Close</translation>
+    </message>
+    <message>
+        <source>重试</source>
+        <translation>Try again</translation>
+    </message>
+    <message>
+        <source>好</source>
+        <translation>OK</translation>
+    </message>
+</context>
+<context>
     <name>ws::App</name>
     <message>
         <source>没有打开“%1”</source>
@@ -518,6 +650,14 @@
     <message>
         <source>找不到资源管理器，没法用普通权限打开它。请稍后再试，或按 Ctrl+Shift+Enter 以管理员身份运行。</source>
         <translation>File Explorer wasn’t found, so it couldn’t be opened without administrator rights. Try again in a moment, or press Ctrl+Shift+Enter to run it as administrator.</translation>
+    </message>
+    <message>
+        <source>Win顺 %1 可以更新了</source>
+        <translation>WinShun %1 is available</translation>
+    </message>
+    <message>
+        <source>点这里查看更新内容</source>
+        <translation>Click to see what’s new</translation>
     </message>
     <message>
         <source>Win顺已在后台运行</source>
@@ -604,12 +744,20 @@
         <translation>Settings…</translation>
     </message>
     <message>
+        <source>检查更新…</source>
+        <translation>Check for updates…</translation>
+    </message>
+    <message>
         <source>重新启动</source>
         <translation>Restart</translation>
     </message>
     <message>
         <source>退出</source>
         <translation>Exit</translation>
+    </message>
+    <message>
+        <source>Win顺 %1 可以更新了…</source>
+        <translation>WinShun %1 is available…</translation>
     </message>
     <message>
         <source>正在重建索引</source>
@@ -844,6 +992,29 @@
     <message>
         <source>选择不需要搜索的文件夹</source>
         <translation>Choose a folder to leave out of searches</translation>
+    </message>
+</context>
+<context>
+    <name>ws::Updater</name>
+    <message>
+        <source>GitHub 暂时不让查（访问太频繁），过一会儿再试。</source>
+        <translation>GitHub is limiting requests right now. Try again in a while.</translation>
+    </message>
+    <message>
+        <source>GitHub 返回了错误（%1）。</source>
+        <translation>GitHub returned an error (%1).</translation>
+    </message>
+    <message>
+        <source>没看懂 GitHub 的回答，过一会儿再试。</source>
+        <translation>GitHub’s answer didn’t make sense. Try again in a while.</translation>
+    </message>
+    <message>
+        <source>连接 GitHub 超时，请检查网络（或代理）后重试。</source>
+        <translation>GitHub took too long to answer. Check your network (or proxy) and try again.</translation>
+    </message>
+    <message>
+        <source>连不上 GitHub，请检查网络（或代理）后重试。</source>
+        <translation>Couldn’t reach GitHub. Check your network (or proxy) and try again.</translation>
     </message>
 </context>
 </TS>

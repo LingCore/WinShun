@@ -215,6 +215,10 @@ LRESULT MessageWindow::handle(UINT msg, WPARAM wParam, LPARAM lParam)
             if (m_callbacks.trayMenuRequested)
                 m_callbacks.trayMenuRequested();
             break;
+        case NIN_BALLOONUSERCLICK:
+            if (m_callbacks.notificationClicked)
+                m_callbacks.notificationClicked();
+            break;
         default:
             break;
         }

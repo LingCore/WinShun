@@ -12,6 +12,7 @@
 #include "NtfsIndexer.h"
 #include "Pinyin.h"
 #include "Query.h"
+#include "Release.h"
 #include "Snapshot.h"
 #include "TextUtil.h"
 #include "Win32Util.h"
@@ -239,6 +240,64 @@ class CoreTest : public QObject {
     Q_OBJECT
 
 private slots:
+    void releaseVersions()
+    {
+        QVERIFY(release::isNewer(u"0.2.0"_s, u"0.1.0"_s));
+        QVERIFY(release::isNewer(u"v0.10.0"_s, u"0.9.9"_s)); // numbers, not text
+        QVERIFY(release::isNewer(u"1.0"_s, u"0.9.9"_s));
+        QVERIFY(!release::isNewer(u"0.2"_s, u"0.2.0"_s));
+        QVERIFY(!release::isNewer(u"0.2.0-beta"_s, u"0.2.0"_s)); // the suffix is not looked at
+        QVERIFY(!release::isNewer(u"0.1.9"_s, u"0.2.0"_s));
+        QCOMPARE(release::normalized(u" V1.2.3 "_s), u"1.2.3"_s);
+    }
+
+    void releaseParse()
+    {
+        // Not raw string literals: moc cannot parse them.
+        const auto info = release::parse("{\"tag_name\": \"v0.2.1\", "
+                                         "\"html_url\": \"https://github.com/x/y/releases/tag/v0.2.1\", "
+                                         "\"body\": \"notes\", \"assets\": []}");
+        QVERIFY(info);
+        QCOMPARE(info->version, u"0.2.1"_s);
+        QCOMPARE(info->pageUrl, u"https://github.com/x/y/releases/tag/v0.2.1"_s);
+        QCOMPARE(info->notes, u"notes"_s);
+        QVERIFY(!release::parse("{\"message\": \"Not Found\"}"));
+        QVERIFY(!release::parse("not json"));
+    }
+
+    void releaseNotes()
+    {
+        const QString notes = u"界面有了英文，还能切换主题。**Now** in English, with themes.\n"
+                              u"\n"
+                              u"## 下载 · Download\n"
+                              u"\n"
+                              u"Something.\n"
+                              u"\n"
+                              u"## 新功能 · What's new\n"
+                              u"\n"
+                              u"- 🌐 **中英双语**：随时切换。\n"
+                              u"  **English and Chinese**: switch any time.\n"
+                              u"- 没有图标的一条\n"
+                              u"- 🎨 主题\n"
+                              u"  Themes\n"
+                              u"  in two lines\n"
+                              u"\n"
+                              u"## 其他 · Other\n"
+                              u"- 不算\n"_s;
+        QCOMPARE(release::summary(notes, true), u"界面有了英文，还能切换主题。"_s);
+        QCOMPARE(release::summary(notes, false), u"**Now** in English, with themes."_s);
+        const QList<release::Highlight> zh = release::highlights(notes, true);
+        QCOMPARE(zh.size(), 3);
+        QCOMPARE(zh[0], (release::Highlight {u"🌐"_s, u"**中英双语**：随时切换。"_s}));
+        QCOMPARE(zh[1], (release::Highlight {QString(), u"没有图标的一条"_s}));
+        const QList<release::Highlight> en = release::highlights(notes, false);
+        QCOMPARE(en[0].text, u"**English and Chinese**: switch any time."_s);
+        QCOMPARE(en[1].text, u"没有图标的一条"_s); // no English line: the Chinese one
+        QCOMPARE(en[2], (release::Highlight {u"🎨"_s, u"Themes in two lines"_s}));
+        QCOMPARE(release::summary(u"## Only headings"_s, true), QString());
+        QCOMPARE(release::summary(u"No Chinese at all."_s, true), u"No Chinese at all."_s);
+    }
+
     void wtf8RoundTrip()
     {
         const std::u16string samples[]

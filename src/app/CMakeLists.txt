@@ -4,6 +4,7 @@ qt_add_executable(WinShun WIN32
     FileIconProvider.cpp FileIconProvider.h
     Migration.cpp Migration.h
     Settings.cpp Settings.h
+    platform/Http.cpp platform/Http.h
     platform/KeyListener.cpp platform/KeyListener.h
     platform/MessageWindow.cpp platform/MessageWindow.h
     platform/Shell.cpp platform/Shell.h
@@ -31,6 +32,7 @@ set(qml_files
     qml/SettingsSection.qml
     qml/SettingRow.qml
     qml/ThemeCard.qml
+    qml/UpdateDialog.qml
     qml/ToggleSwitch.qml
     qml/FlatButton.qml
     qml/InputBox.qml
@@ -87,6 +89,7 @@ qt_add_qml_module(WinShun
         ResultModel.cpp ResultModel.h
         SettingsEditor.cpp SettingsEditor.h
         SystemTheme.cpp SystemTheme.h
+        Updater.cpp Updater.h
         WindowFrame.cpp WindowFrame.h
 )
 
@@ -116,7 +119,7 @@ target_include_directories(WinShun PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(WinShun PRIVATE
     wscore
     Qt6::Gui Qt6::Qml Qt6::Quick
-    comctl32 dwmapi shell32 ole32 user32 uxtheme)
+    comctl32 dwmapi shell32 ole32 user32 uxtheme winhttp)
 # The execution level (requireAdministrator) comes from app.manifest alone; the
 # linker's own default (asInvoker) would conflict with it.
 target_link_options(WinShun PRIVATE /MANIFESTUAC:NO)

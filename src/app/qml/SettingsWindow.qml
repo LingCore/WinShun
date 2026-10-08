@@ -9,6 +9,7 @@ Window {
 
     required property SettingsEditor editor
     required property WindowFrame frame
+    required property Updater updater
 
     readonly property var renderers: ["software", "d3d11", "auto"]
     readonly property var languages: ["system", "zh", "en"]
@@ -21,6 +22,7 @@ Window {
         { title: Gleaning.title, gleaning: true } // the author's works, set apart at the bottom of the list
     ]
     readonly property int gleaningPage: 5
+    readonly property int advancedPage: 4 // where the updates are
     property int currentPage: 0
     // On the 拾穗计划 page the whole window, sidebar included, is a warm scene.
     readonly property bool warm: currentPage === gleaningPage
@@ -39,6 +41,27 @@ Window {
         currentPage = index
         flick.cancelFlick()
         flick.contentY = 0
+    }
+
+    function showUpdateDialog() { updateDialog.show() } // App::showUpdate
+
+    // "刚刚", "5 分钟前": when the last update check was.
+    property date now: new Date()
+    Timer {
+        interval: 60000
+        repeat: true
+        running: window.visible
+        onTriggered: window.now = new Date()
+    }
+    function sinceText(date) {
+        const minutes = Math.floor((window.now - date) / 60000)
+        if (minutes < 1)
+            return qsTr("刚刚")
+        if (minutes < 60)
+            return qsTr("%n 分钟前", "", minutes)
+        if (minutes < 24 * 60)
+            return qsTr("%n 小时前", "", Math.floor(minutes / 60))
+        return qsTr("%n 天前", "", Math.floor(minutes / (24 * 60)))
     }
 
     function navItemAt(index) {
@@ -230,12 +253,51 @@ Window {
             Behavior on y { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
         }
 
+        Rectangle { // the version; with a newer one, says so. A click goes to the updates
+            id: versionLink
+            x: 16
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 14
+            width: versionRow.implicitWidth + 16
+            height: versionRow.implicitHeight + 8
+            radius: 4
+            color: versionArea.containsMouse ? (window.warm ? WarmPalette.chip : Theme.navHover) : "transparent"
+
+            Row {
+                id: versionRow
+                anchors.centerIn: parent
+                spacing: 5
+
+                Text {
+                    text: qsTr("Win顺 %1").arg(window.updater.currentVersion)
+                    color: window.warm ? WarmPalette.inkSoft : Theme.faint
+                    font.pixelSize: Theme.fontCaption
+                }
+                Text {
+                    visible: window.updater.available
+                    text: qsTr("· 有新版本 %1").arg(window.updater.availableVersion)
+                    color: window.warm ? WarmPalette.ink : Theme.accent
+                    font.pixelSize: Theme.fontCaption
+                }
+            }
+            MouseArea {
+                id: versionArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                    window.clearFocus()
+                    window.showPage(window.advancedPage)
+                }
+            }
+        }
+
         Text {
             visible: !window.warm
             x: 24
             width: parent.width - 48
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: 20
+            anchors.bottom: versionLink.top
+            anchors.bottomMargin: 8
             text: qsTr("修改会自动保存，立即生效")
             color: Theme.faint
             font.pixelSize: Theme.fontCaption
@@ -654,7 +716,48 @@ Window {
             }
 
             SettingsSection {
-                visible: window.currentPage === 4
+                visible: window.currentPage === window.advancedPage
+                width: parent.width
+                title: qsTr("更新")
+                note: qsTr("新版本发布在 GitHub 上。检查更新时只访问 GitHub，不发送任何个人信息；有新版本时，点“去下载”会在浏览器里打开下载页。")
+
+                SettingRow {
+                    title: qsTr("版本 %1").arg(window.updater.currentVersion)
+                    description: window.updater.checking ? qsTr("正在检查更新…")
+                               : window.updater.available ? qsTr("有新版本 %1").arg(window.updater.availableVersion)
+                               : window.updater.problem.length > 0 ? window.updater.problem
+                               : !isNaN(window.updater.lastChecked.getTime())
+                                 ? qsTr("已是最新版本 · %1检查").arg(window.sinceText(window.updater.lastChecked))
+                               : ""
+
+                    FlatButton {
+                        visible: !window.updater.available
+                        enabled: !window.updater.checking
+                        text: qsTr("检查更新")
+                        glyph: "\uE895" // Sync
+                        onClicked: window.updater.check(true)
+                    }
+                    FlatButton {
+                        visible: window.updater.available
+                        highlighted: true
+                        text: qsTr("查看 %1").arg(window.updater.availableVersion)
+                        onClicked: window.showUpdateDialog()
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("自动检查更新")
+                    description: qsTr("每次启动时看一次，之后每隔 12 小时看一次。有新版本时在托盘弹出提示")
+
+                    ToggleSwitch {
+                        checked: window.editor.autoUpdate
+                        onToggled: (on) => window.editor.autoUpdate = on
+                    }
+                }
+            }
+
+            SettingsSection {
+                visible: window.currentPage === window.advancedPage
                 width: parent.width
 
                 SettingRow {
@@ -731,6 +834,17 @@ Window {
         radius: 1.5
         color: Theme.faint
         opacity: 0.6
+    }
+
+    UpdateDialog {
+        id: updateDialog
+        z: 1
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: titleBar.bottom // the title bar keeps working
+        anchors.bottom: parent.bottom
+        updater: window.updater
+        icon: window.frame.icon
     }
 
     Image { // the window as it looked before a theme or language change, fading out (see changeAppearance)

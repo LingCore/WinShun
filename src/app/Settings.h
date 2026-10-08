@@ -20,6 +20,9 @@ struct Settings {
     QString theme = QStringLiteral("system"); // system | light | dark
     QString language = QStringLiteral("system"); // system | zh | en
 
+    // [Update]
+    bool autoUpdate = true; // look for new versions on GitHub (see Updater)
+
     // [Index]
     QStringList excludedPaths;
     QStringList excludedNames;

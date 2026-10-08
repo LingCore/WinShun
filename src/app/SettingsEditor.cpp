@@ -173,6 +173,14 @@ void SettingsEditor::setLanguage(const QString& language)
     commit();
 }
 
+void SettingsEditor::setAutoUpdate(bool on)
+{
+    if (m_settings.autoUpdate == on)
+        return;
+    m_settings.autoUpdate = on;
+    commit();
+}
+
 bool SettingsEditor::isDefault() const
 {
     return m_settings == Settings::defaults();

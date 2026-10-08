@@ -26,6 +26,7 @@ class MessageWindow;
 class Placement;
 class SearchEngine;
 class SettingsEditor;
+class Updater;
 class VolumeNotifier;
 class WindowFrame;
 
@@ -51,6 +52,7 @@ public:
     void showLauncher(const QString& query = {});
     void hideLauncher();
     void showSettings();
+    void showUpdate(); // the settings window with the update dialog
     // Set by "重新启动" in the tray menu or the settings window: the command
     // line for the new copy, which main() starts once this one has let go.
     std::optional<QStringList> restartArguments() const { return m_restartArguments; }
@@ -82,6 +84,8 @@ private:
     std::unique_ptr<SearchEngine> m_engine;
     std::unique_ptr<Launcher> m_launcher;
     std::unique_ptr<MessageWindow> m_messages;
+    std::unique_ptr<Updater> m_updater;
+    bool m_updateNotified = false; // the last tray notification announced a new version
     std::unique_ptr<VolumeNotifier> m_volumeNotifier; // after m_messages, whose window it uses
     std::unique_ptr<KeyListener> m_keyListener; // double Ctrl
     std::unique_ptr<Placement> m_placement; // where the launcher opens; moving it

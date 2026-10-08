@@ -16,6 +16,9 @@ Renderer=auto            ; auto（内存 ≤ 16 GB 用 software，否则 d3d11�
 Theme=system             ; system（跟随 Windows 的浅色 / 深色）| light | dark
 Language=system          ; system（Windows 显示语言是中文就用中文，否则英文）| zh | en
 
+[Update]
+Automatic=true           ; 启动时和之后每 12 小时到 GitHub 检查新版本
+
 [Index]
 ExcludedPaths=...        ; 不建索引的文件夹，支持 %WINDIR% 这类环境变量，逗号分隔
 ExcludedNames=...        ; 任意位置的同名文件夹，也可写尾部路径，如 .svn/pristine
@@ -64,6 +67,18 @@ cmake --build --preset release --target update_translations   # lupdate：把新
 ```
 
 然后在 `.ts` 里补上英文（Qt Linguist 或直接编辑），未翻译的条目会显示中文原文。数量相关的句子用 `%n` / `%Ln` 写，英文按单复数给两种形式。英文通常比中文长，搜索框、状态栏这些一行放不下就会被截断，翻译时要短。
+
+## 检查更新和发布
+
+没有自己的服务器：新版本就是 GitHub 上的 Release。`Updater` 用 WinHTTP（走系统代理设置，不用给 Qt Network 带 TLS 插件）请求 `api.github.com/repos/LingCore/WinShun/releases/latest`，比较 `tag_name` 和当前版本；有新版本时在托盘提示（设置窗口开着时直接弹对话框），“去下载”用浏览器打开那个 Release 的页面。上次检查的时间、跳过的版本、上次提醒的时间存在 `%LOCALAPPDATA%\WinShun\update.ini`；同一个版本自动提醒最多三天一次，跳过的版本只在手动检查时显示。测试时可以用环境变量 `WINSHUN_UPDATE_FEED` 指向一个假的接口地址。
+
+不做自动下载和替换：没有代码签名的程序在后台下载 exe、再改写自己的文件，正是杀毒软件启发式检测盯的行为，何况 Win顺 以管理员身份运行。FlClash 也是只提示、打开浏览器下载。
+
+发布新版本：
+
+1. 改 `CMakeLists.txt` 里 `project(... VERSION x.y.z)`。
+2. 写 `docs/release-notes/vx.y.z.md`。更新对话框只显示其中两部分：开头一段话（中文在前、英文在后，中间以中文句号分开），以及 `## 新功能 · What's new` 下的列表（每条是 `- 图标 中文`，下一行缩进写英文）。格式见 `src/core/Release.cpp` 和单元测试。
+3. 退出正在运行的 Win顺，运行 `./scripts/release.ps1 -Publish`：编译、部署、打包 `WinShun-x.y.z-x64.zip`（里面是一个 `WinShun\` 文件夹，解压就能覆盖旧版）和 `.sha256`，再用 `gh` 建 `vx.y.z` 的 Release。
 
 ## 代码结构
 

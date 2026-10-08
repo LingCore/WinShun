@@ -100,7 +100,9 @@ Window {
             globalPos = list.currentItem.mapToGlobal(56, rowHeight - 6)
         }
         menuLoader.active = true
-        (menuLoader.item as ContextMenu).popup(index, globalPos, fromKeyboard)
+        // Not a line starting with "(": it would continue the line above, "true(...)".
+        const menu = menuLoader.item as ContextMenu
+        menu.popup(index, globalPos, fromKeyboard)
     }
 
     function closeContextMenu() {
