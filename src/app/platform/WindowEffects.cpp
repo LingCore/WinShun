@@ -1,5 +1,6 @@
 #include "WindowEffects.h"
 
+#include <QOperatingSystemVersion>
 #include <QWindow>
 
 #include <dwmapi.h>
@@ -14,7 +15,9 @@ namespace {
 constexpr DWORD kUseImmersiveDarkMode = 20; // DWMWA_USE_IMMERSIVE_DARK_MODE
 constexpr DWORD kCornerPreference = 33; // DWMWA_WINDOW_CORNER_PREFERENCE
 constexpr DWORD kBorderColor = 34; // DWMWA_BORDER_COLOR
+constexpr DWORD kSystemBackdropType = 38; // DWMWA_SYSTEMBACKDROP_TYPE
 constexpr int kCornerRound = 2; // DWMWCP_ROUND
+constexpr int kBackdropMica = 2; // DWMSBT_MAINWINDOW
 
 HWND handleOf(QWindow* window)
 {
@@ -23,13 +26,11 @@ HWND handleOf(QWindow* window)
 
 } // namespace
 
-void styleFramelessWindow(QWindow* window, bool dark, QColor border)
+void styleFramelessWindow(QWindow* window, QColor border, bool backdrop)
 {
     const HWND hwnd = handleOf(window);
     if (!hwnd)
         return;
-    const BOOL darkMode = dark;
-    ::DwmSetWindowAttribute(hwnd, kUseImmersiveDarkMode, &darkMode, sizeof darkMode);
     ::DwmSetWindowAttribute(hwnd, kCornerPreference, &kCornerRound, sizeof kCornerRound);
     const COLORREF color = RGB(border.red(), border.green(), border.blue());
     ::DwmSetWindowAttribute(hwnd, kBorderColor, &color, sizeof color);
@@ -37,6 +38,45 @@ void styleFramelessWindow(QWindow* window, bool dark, QColor border)
     // borderless window (and keeps working on Windows 10).
     const MARGINS margins {0, 0, 1, 0};
     ::DwmExtendFrameIntoClientArea(hwnd, &margins);
+    // The backdrop fills the whole window, frame extended or not; extended,
+    // DWM would also draw its caption buttons on it, next to ours.
+    if (backdrop && backdropSupported())
+        ::DwmSetWindowAttribute(hwnd, kSystemBackdropType, &kBackdropMica, sizeof kBackdropMica);
+}
+
+void setDarkFrame(QWindow* window, bool dark)
+{
+    if (const HWND hwnd = handleOf(window)) {
+        const BOOL value = dark;
+        ::DwmSetWindowAttribute(hwnd, kUseImmersiveDarkMode, &value, sizeof value);
+    }
+}
+
+bool isDarkFrame(QWindow* window)
+{
+    BOOL value = FALSE;
+    if (const HWND hwnd = handleOf(window))
+        ::DwmGetWindowAttribute(hwnd, kUseImmersiveDarkMode, &value, sizeof value);
+    return value;
+}
+
+bool backdropSupported()
+{
+    static const bool supported = QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows11_22H2;
+    return supported;
+}
+
+bool materialsEnabled()
+{
+    HIGHCONTRASTW contrast {sizeof contrast};
+    if (::SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof contrast, &contrast, 0)
+        && (contrast.dwFlags & HCF_HIGHCONTRASTON))
+        return false;
+    DWORD transparency = 1;
+    DWORD size = sizeof transparency;
+    ::RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+        L"EnableTransparency", RRF_RT_REG_DWORD, nullptr, &transparency, &size);
+    return transparency != 0;
 }
 
 void setCloaked(QWindow* window, bool cloaked)

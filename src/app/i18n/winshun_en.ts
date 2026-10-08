@@ -367,6 +367,22 @@
         <translation>“System” follows the light or dark mode of Windows</translation>
     </message>
     <message>
+        <source>透明效果</source>
+        <translation>Transparency effects</translation>
+    </message>
+    <message>
+        <source>需要把“高级”里的界面绘制方式设为“显卡加速”</source>
+        <translation>Needs the “GPU” drawing method under Advanced</translation>
+    </message>
+    <message>
+        <source>窗口背景透出桌面壁纸的颜色（云母效果）。Windows 设置里的“透明效果”关着，打开后才能看到</source>
+        <translation>Window backgrounds take on the colours of your wallpaper (Mica). Transparency effects are off in Windows Settings; turn them on to see it</translation>
+    </message>
+    <message>
+        <source>窗口背景透出桌面壁纸的颜色（云母效果）</source>
+        <translation>Window backgrounds take on the colours of your wallpaper (Mica)</translation>
+    </message>
+    <message>
         <source>跟随系统</source>
         <translation>System</translation>
     </message>

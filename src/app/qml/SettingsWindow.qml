@@ -31,7 +31,11 @@ Window {
     height: 720
     minimumWidth: 760
     minimumHeight: 420
-    color: Theme.page
+    // See-through to Mica; while the window is inactive DWM draws a flat grey
+    // there instead, which the page covers. Transparent, not a translucent
+    // colour: Qt clears with it unpremultiplied, and a light one comes out
+    // white.
+    color: Theme.backdrop && SystemTheme.materials && window.active ? "transparent" : Theme.page
     title: qsTr("设置") // shown as "设置 - Win顺"
     flags: Qt.Window | Qt.FramelessWindowHint // the title bar is ours (see WindowFrame)
 
@@ -477,6 +481,23 @@ Window {
                 }
 
                 SettingRow {
+                    visible: SystemTheme.backdropSystem // not on Windows 10
+                    title: qsTr("透明效果")
+                    description: !SystemTheme.backdropAvailable
+                                 ? qsTr("需要把“高级”里的界面绘制方式设为“显卡加速”")
+                                 : !SystemTheme.materials
+                                 ? qsTr("窗口背景透出桌面壁纸的颜色（云母效果）。Windows 设置里的“透明效果”关着，打开后才能看到")
+                                 : qsTr("窗口背景透出桌面壁纸的颜色（云母效果）")
+
+                    ToggleSwitch {
+                        enabled: SystemTheme.backdropAvailable
+                        opacity: enabled ? 1 : 0.4
+                        checked: window.editor.transparency && SystemTheme.backdropAvailable
+                        onToggled: (on) => window.editor.transparency = on
+                    }
+                }
+
+                SettingRow {
                     title: qsTr("语言")
                     description: qsTr("“跟随系统”时，中文版 Windows 显示中文，其他语言的 Windows 显示英文")
 
@@ -542,7 +563,7 @@ Window {
                                         anchors.fill: parent
                                         anchors.margins: 1
                                         radius: 3
-                                        color: rowArea.containsMouse ? Theme.hover : "transparent"
+                                        color: rowArea.containsMouse ? Theme.navHover : "transparent"
                                     }
                                     Rectangle {
                                         visible: pathRow.index > 0

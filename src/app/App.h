@@ -2,6 +2,7 @@
 
 #include "Settings.h"
 
+#include <QElapsedTimer>
 #include <QFileSystemWatcher>
 #include <QObject>
 #include <QPointer>
@@ -111,6 +112,9 @@ private:
     QTimer m_settingsReload;
     QTimer m_indexOptionsApply; // rebuilding the crawler is costly: batch quick edits
     QTimer m_contentStatusTimer; // while the settings window is open
+    QTimer m_darkFrameGuard; // see applyTheme
+    QElapsedTimer m_darkFrameWatch;
+    bool m_darkFrame = false;
 };
 
 } // namespace ws

@@ -173,6 +173,14 @@ void SettingsEditor::setLanguage(const QString& language)
     commit();
 }
 
+void SettingsEditor::setTransparency(bool on)
+{
+    if (m_settings.transparency == on)
+        return;
+    m_settings.transparency = on;
+    commit();
+}
+
 void SettingsEditor::setRecordHistory(bool on)
 {
     if (m_settings.recordHistory == on)

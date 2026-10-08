@@ -20,6 +20,7 @@ struct Settings {
     // [Appearance]
     QString theme = QStringLiteral("system"); // system | light | dark
     QString language = QStringLiteral("system"); // system | zh | en
+    bool transparency = true; // Mica behind the windows, where Windows 11 has it
 
     // [Update]
     bool autoUpdate = true; // look for new versions on GitHub (see Updater)

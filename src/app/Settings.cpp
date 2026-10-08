@@ -194,6 +194,7 @@ void Settings::load()
     language = readOrDefault(s, u"Appearance/Language"_s, d.language).trimmed().toLower();
     if (language != u"zh" && language != u"en")
         language = d.language;
+    transparency = readOrDefault(s, u"Appearance/Transparency"_s, d.transparency);
 
     autoUpdate = readOrDefault(s, u"Update/Automatic"_s, d.autoUpdate);
 
@@ -225,6 +226,7 @@ void Settings::save() const
     s.setValue(u"Launcher/History"_s, recordHistory);
     s.setValue(u"Appearance/Theme"_s, theme);
     s.setValue(u"Appearance/Language"_s, language);
+    s.setValue(u"Appearance/Transparency"_s, transparency);
     s.setValue(u"Update/Automatic"_s, autoUpdate);
     s.setValue(u"Index/ExcludedPaths"_s, excludedPaths);
     s.setValue(u"Index/ExcludedNames"_s, excludedNames);

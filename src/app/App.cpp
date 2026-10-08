@@ -8,6 +8,7 @@
 #include "Placement.h"
 #include "SearchEngine.h"
 #include "SettingsEditor.h"
+#include "SystemTheme.h"
 #include "Updater.h"
 #include "WindowFrame.h"
 #include "platform/KeyListener.h"
@@ -27,6 +28,7 @@
 #include <QQuickWindow>
 #include <QScreen>
 #include <QStyleHints>
+#include <QSurfaceFormat>
 
 #include <windows.h>
 
@@ -71,11 +73,22 @@ bool isDarkMode()
     return QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
 }
 
+// Before create(): see-through where the window's background is (Theme.qml),
+// for the Mica behind it.
+void prepareBackdrop(QWindow* window)
+{
+    if (!SystemTheme::backdropAvailable()) // the setting can turn it on later
+        return;
+    QSurfaceFormat format = window->format();
+    format.setAlphaBufferSize(8);
+    window->setFormat(format);
+}
+
 // Rounded corners, a thin border and the shadow, for our windows without a
 // system title bar (the launcher, the settings window).
-void styleWindow(QWindow* window, bool dark)
+void styleWindow(QWindow* window, bool dark, bool backdrop = false)
 {
-    win::styleFramelessWindow(window, dark, dark ? QColor(0x40, 0x40, 0x40) : QColor(0xD4, 0xD4, 0xD4));
+    win::styleFramelessWindow(window, dark ? QColor(0x40, 0x40, 0x40) : QColor(0xD4, 0xD4, 0xD4), backdrop);
 }
 
 } // namespace
@@ -91,6 +104,17 @@ App::App()
     m_revealTimeout.setSingleShot(true);
     m_revealTimeout.setInterval(150ms); // never wait longer than that for the first frame
     connect(&m_revealTimeout, &QTimer::timeout, this, &App::revealLauncher);
+    m_darkFrameGuard.setInterval(10ms);
+    connect(&m_darkFrameGuard, &QTimer::timeout, this, [this] {
+        if (m_darkFrameWatch.elapsed() < 50) // Qt's own, after some 5 ms, first
+            return;
+        for (QWindow* window : {static_cast<QWindow*>(m_window), static_cast<QWindow*>(m_settingsWindow)}) {
+            if (window && win::isDarkFrame(window) != m_darkFrame)
+                win::setDarkFrame(window, m_darkFrame);
+        }
+        if (m_darkFrameWatch.elapsed() > 1000)
+            m_darkFrameGuard.stop();
+    });
     m_contentStatusTimer.setInterval(2s);
     connect(&m_contentStatusTimer, &QTimer::timeout, this, &App::refreshContentIndexStatus);
 }
@@ -111,6 +135,9 @@ bool App::start(const StartOptions& options)
     else if (m_renderer == u"d3d11")
         QQuickWindow::setGraphicsApi(QSGRendererInterface::Direct3D11);
     QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
+    // The software renderer draws a window with an alpha channel as a layered
+    // window, which DWM puts no backdrop behind.
+    SystemTheme::setBackdropAvailable(m_renderer == u"d3d11" && win::backdropSupported());
 
     const QString dataDir = Settings::dataDir();
     QDir().mkpath(dataDir);
@@ -217,6 +244,7 @@ bool App::createWindow()
     if (!m_window)
         return false;
 
+    prepareBackdrop(m_window);
     m_window->create(); // native handle now, so DWM styling applies before the first show
     m_window->installEventFilter(this);
     m_launcher->setWindow(m_window);
@@ -256,16 +284,22 @@ bool App::eventFilter(QObject* watched, QEvent* event)
 void App::applyTheme()
 {
     const bool dark = isDarkMode();
-    if (m_window)
-        styleWindow(m_window, dark);
-    if (m_settingsWindow)
-        styleWindow(m_settingsWindow, dark);
     win::setMenuTheme(dark);
+    if (m_window)
+        styleWindow(m_window, dark, SystemTheme::backdropAvailable());
+    if (m_settingsWindow)
+        styleWindow(m_settingsWindow, dark, SystemTheme::backdropAvailable());
+    // The frames' dark mode only once Qt has set its own (light) one, a few
+    // milliseconds later; then watch them for a while (see win::setDarkFrame).
+    m_darkFrame = dark;
+    m_darkFrameWatch.start();
+    m_darkFrameGuard.start();
 }
 
 // Theme and language take effect at once, in every window, without a restart.
 void App::applyAppearance()
 {
+    SystemTheme::setBackdropOn(m_settings.transparency); // Mica stays set up behind, covered when off
     // Unknown follows Windows. Everything else reads the scheme from the style
     // hints and listens to colorSchemeChanged (see applyTheme, SystemTheme).
     QGuiApplication::styleHints()->setColorScheme(m_settings.theme == u"dark" ? Qt::ColorScheme::Dark
@@ -397,9 +431,11 @@ void App::showSettings()
         m_settingsEditor = editor;
         applyHotkey(); // shows whether the current hotkey works
 
+        prepareBackdrop(window);
         window->create();
         frame->setWindow(window);
-        styleWindow(window, isDarkMode());
+        styleWindow(window, isDarkMode(), SystemTheme::backdropAvailable());
+        win::setDarkFrame(window, isDarkMode());
         QScreen* screen = QGuiApplication::screenAt(QCursor::pos());
         if (!screen)
             screen = QGuiApplication::primaryScreen();

@@ -149,6 +149,45 @@
 - **注意**：Windows 上 Qt 的滚轮事件 `pixelDelta` 永远是 0，精密触摸板也一样（`qwindowspointerhandler.cpp` 里传的是 `QPoint()`），不能靠它区分触摸板和鼠标滚轮。
 - **其他办法**：`Text.QtRendering` 或 `Text.CurveRendering` 不走 `textmask.vert` 的取整，但会失去 FreeType 的垂直 hinting，中文小字会变软。`QT_SCALE_FACTOR_ROUNDING_POLICY=Round` 会把 150% 变成 100% 或 200%。都没采用。
 
+## 窗口材质（Mica）
+
+设置窗口和搜索面板在 Windows 11 22H2 及以上、用“显卡加速”绘制时，背后是 Mica（`DWMWA_SYSTEMBACKDROP_TYPE` = `DWMSBT_MAINWINDOW`），窗口自己的背景色设成透明。可以在“外观”里关掉；Windows 10 没有这个效果，那一行也不显示。
+
+- **为什么是 Mica，不是亚克力**：按微软的规范，长时间开着的窗口用 Mica，亚克力留给菜单、弹出层这类临时界面。亚克力会透出后面的窗口，内容多时背景很花，省电模式下还会被系统关掉；Mica 只取桌面壁纸的颜色，不透出后面的窗口（`DWM_SYSTEMBACKDROP_TYPE` 文档，Windows Terminal 也用 `DWMSBT_MAINWINDOW`）。
+- **配色**：有 Mica 时，卡片、选中行、悬停、分隔线、标签底色改用半透明色（取 WinUI 在 Mica 上的值）；没有 Mica 时保持原来的不透明色，一个像素都不变（`Theme.qml` 里的 `backdrop ? … : …`）。
+
+### Mica 画成一块平的灰色
+
+- **现象**：背景是均匀的灰色（深色约 #545454，浅色约 #D3D3D3），不带壁纸色调；系统的“透明效果”是开着的。
+- **原因**：窗口激活时 DWM 靠默认处理的 `WM_NCACTIVATE` 才知道边框是激活的。Qt 对无边框窗口不把这条消息交给 `DefWindowProc`，DWM 一直以为窗口没激活，就画未激活时的回退色。
+- **做法**：子类过程里先交给 Qt，再调 `DefWindowProcW(hwnd, WM_NCACTIVATE, wParam, -1)`（`WindowFrame.cpp`）。`-1` 表示不重画非客户区。
+- 窗口失焦、系统“透明效果”关闭、高对比度时，DWM 也会画这种灰色，所以这时界面要铺回不透明底色（`SystemTheme.materials`、`window.active`）。
+- 不要自己连发一对 `WM_NCACTIVATE` 去“刷新”材质：偶尔会让 DWM 卡在未激活状态，露出这块灰色。
+
+### 切换深浅色后，Mica 还是旧主题的颜色
+
+- **现象**：浅色切到深色后，界面变深了，背后的 Mica 还是浅色，白字看不清；深色切浅色则正常。
+- **原因**：Qt 在主题切换后约 5 ms，会给所有窗口重设 `DWMWA_USE_IMMERSIVE_DARK_MODE`，而对无边框窗口一律设成浅色（`qwindowswindow.cpp` 的 `shouldApplyDarkFrame`），把我们刚设的深色覆盖掉。这个值可以用 `DwmGetWindowAttribute` 读回来，提权的测试程序跨进程也能读。
+  - DWM 在这个值变化时会立即给 Mica 换色，不需要重新激活窗口。之前以为“要等下次激活才换色”，其实是值被 Qt 改回去了。
+  - 如果“我们设深色 → Qt 设浅色 → 我们再设深色”挤在同一帧（约 16 ms）里，DWM 有时不换色。
+- **做法**：主题切换时先不动这个值，等 Qt 改完；50 ms 后由一个计时器设成正确的值，之后 1 秒内每 10 ms 检查一次，被改了就改回来（`App::applyTheme`）。窗口创建时直接设一次（`win::setDarkFrame`）。
+- **测试**：按“深→跟随系统→浅→深→跟随系统→深→浅→跟随系统→深”依次点主题卡片，每步记两次：切完立刻截图、读这个值，切走再切回来后再截图、再读一次。再测一遍间隔 0.3 秒的快速连点。
+
+### 边框扩展到整个窗口，DWM 会画出系统标题栏按钮
+
+- **现象**：`DwmExtendFrameIntoClientArea` 用 `{-1,-1,-1,-1}` 后，右上角多出一套系统的最小化、最大化、关闭按钮，和自绘的叠在一起。
+- **做法**：保持 `{0,0,1,0}`。不扩展边框，Mica 照样铺满整个窗口（Windows Terminal 也是这样）。
+
+### 半透明的窗口颜色变成纯白
+
+- **原因**：带 alpha 通道的窗口，Qt 用窗口颜色清屏时没有预乘，DWM 按预乘解释，浅色的半透明色溢出成白色。
+- **做法**：窗口颜色只用全透明或不透明；要叠一层半透明色时，用铺满窗口的 `Rectangle` 画。
+
+### 软件渲染时没有材质
+
+- 软件渲染器把带 alpha 通道的窗口做成分层窗口，DWM 不在它背后画材质。只在用 D3D11 绘制时启用（`SystemTheme.backdropAvailable`）。
+- D3D11 下 Qt 同样会给带 alpha 的窗口加 `WS_EX_LAYERED`，但 Mica 照常显示。
+
 ## 主题和语言
 
 ### 名为 `onXxx` 的属性不随主题变化

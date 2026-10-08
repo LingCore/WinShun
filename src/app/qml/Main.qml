@@ -69,7 +69,8 @@ Window {
 
     width: 760
     height: layout.implicitHeight
-    color: Theme.background
+    // See-through to Mica, as the settings window (see there).
+    color: Theme.backdrop && SystemTheme.materials && window.active ? "transparent" : Theme.background
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
     title: qsTr("Win顺")
 

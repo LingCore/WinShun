@@ -7,8 +7,32 @@ class QWindow;
 namespace ws::win {
 
 // Windows 11 look for a frameless window: rounded corners, a thin border in
-// the theme colour and the standard DWM shadow.
-void styleFramelessWindow(QWindow* window, bool dark, QColor border);
+// the theme colour and the standard DWM shadow. With `backdrop`, the Mica
+// material fills the window behind its content (see backdropSupported). The
+// dark mode is separate, see setDarkFrame.
+void styleFramelessWindow(QWindow* window, QColor border, bool backdrop = false);
+
+// Dark mode for the frame and its backdrop (DWMWA_USE_IMMERSIVE_DARK_MODE);
+// Mica follows it at once. Qt sets it too, a few milliseconds after a theme
+// change, and for a frameless window always to light (qwindowswindow.cpp:
+// shouldApplyDarkFrame). Set it once Qt is done (see App::applyTheme): set
+// both ways within one composed frame, DWM keeps Mica in the old tint.
+void setDarkFrame(QWindow* window, bool dark);
+bool isDarkFrame(QWindow* window);
+
+// Whether Windows can draw Mica behind a window, the material of long-lived
+// windows such as its own Settings: Windows 11 22H2 or later
+// (DWMWA_SYSTEMBACKDROP_TYPE). It shows where the window's own pixels are
+// transparent, so the window needs an alpha channel, and DWM must see the
+// frame activate (WM_NCACTIVATE, see WindowFrame); its tint follows
+// setDarkFrame. While the window is inactive, or without materials (see
+// materialsEnabled), DWM draws a flat grey instead, so the window should
+// cover it then.
+bool backdropSupported();
+
+// Whether Windows draws materials at all: transparency effects on (Settings >
+// Personalization > Colors) and no high contrast theme.
+bool materialsEnabled();
 
 // Cloaking keeps a shown window off the screen (DWM does not compose it)
 // while it still gets focus and draws as usual.

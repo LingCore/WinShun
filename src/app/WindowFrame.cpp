@@ -1,9 +1,12 @@
 #include "WindowFrame.h"
 
 #include "FileIconProvider.h"
+#include "platform/WindowEffects.h"
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QGuiApplication>
+#include <QStyleHints>
 #include <QWindow>
 
 #include <windows.h>
@@ -69,6 +72,15 @@ struct WindowFrame::Hook {
                     ::IntersectRect(&rect, &window, &info.rcWork);
             }
             return 0;
+        case WM_NCACTIVATE:
+            // DWM learns from the default handling whether the frame is
+            // active, which the Mica backdrop depends on; Qt keeps the
+            // message from it for a frameless window. -1: nothing to repaint.
+            // The frame's dark mode too, in case Qt has set it back (see
+            // win::setDarkFrame).
+            ::DefSubclassProc(hwnd, message, wParam, lParam);
+            win::setDarkFrame(self->m_window, QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark);
+            return ::DefWindowProcW(hwnd, message, wParam, -1);
         case WM_NCHITTEST:
             return self->hitTest(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
         // Over drag areas and the maximise button the mouse messages are
