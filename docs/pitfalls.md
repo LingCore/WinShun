@@ -125,6 +125,12 @@
 - **原因**：`menuLoader.active = true` 的下一行是 `(menuLoader.item as ContextMenu).popup(...)`。JavaScript 不会在 `(` 前面自动补分号，两行连成了 `true(...)`。
 - **做法**：不要让一行以 `(`、`[` 或模板字符串开头；先存进一个变量再调用（`Main.qml`）。
 
+### `font.pixelSize` 只能是整数
+
+- **现象**：想让结果行按钮的图标在 150% 下正好 32 物理像素，需要 64/3 ≈ 21.33 逻辑像素。但写进 `font.pixelSize` 会被截成 21，实际只画 31.5 物理像素。
+- **原因**：QML 的 `font.pixelSize` 是 `int`。
+- **做法**：非整数的字号用 `font.pointSize`（实数）：像素 × 72 / 96。开了高 DPI 缩放后 Qt 的逻辑 DPI 固定是 96（`Glyph.qml`）。
+
 ## 安装程序（Inno Setup）
 
 ### 中文语言文件要带 BOM

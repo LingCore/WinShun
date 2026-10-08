@@ -33,7 +33,7 @@ Rectangle {
         Glyph {
             anchors.verticalCenter: parent.verticalCenter
             glyph: button.glyph
-            size: 16
+            size: 64 / 3 // 32 device pixels at 150%
             color: button.foreground
         }
         Text {

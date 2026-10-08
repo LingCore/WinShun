@@ -59,7 +59,9 @@ Item {
         visible: !icon.drawn
         text: icon.drawn ? "" : icon.glyph
         font.family: Theme.iconFont
-        font.pixelSize: icon.size
+        // In points: font.pixelSize is a whole number of logical pixels, which
+        // would round a size like 64/3 (32 device pixels at 150%) down.
+        font.pointSize: icon.size * 72 / 96
         color: icon.color
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
