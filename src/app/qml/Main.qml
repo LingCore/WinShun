@@ -183,13 +183,6 @@ Window {
                 return
             act(shift ? Launcher.CopyPath : Launcher.CopyItem)
             break
-        case Qt.Key_1:
-        case Qt.Key_2:
-        case Qt.Key_3:
-            if (!ctrl)
-                return
-            window.launcher.scope = event.key - Qt.Key_1
-            break
         default:
             return
         }

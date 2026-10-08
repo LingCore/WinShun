@@ -3,7 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import WinShun
 
-// Segmented control: 全部 / 文件 / 内容. Tab and Ctrl+1..3 switch too.
+// Segmented control: 全部 / 文件 / 内容. Tab and Shift+Tab switch too.
 // Also used in the settings window with other labels.
 Rectangle {
     id: tabs

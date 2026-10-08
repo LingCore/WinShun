@@ -107,7 +107,7 @@
 | `Ctrl+Shift+Enter` | 以管理员身份运行 |
 | `Ctrl+C` | 复制文件（可以直接到资源管理器里粘贴）；搜索框里有选中文字时复制文字 |
 | `Ctrl+Shift+C` | 复制完整路径 |
-| `Tab` / `Shift+Tab` | 切换搜索范围（全部 / 文件 / 内容）；`Ctrl+1`…`Ctrl+3` 直接选择 |
+| `Tab` / `Shift+Tab` | 切换搜索范围（全部 / 文件 / 内容） |
 | 菜单键 / `Shift+F10` / 右键 | 更多操作 |
 | `Esc` | 关闭（选中了多项时先取消选择） |
 
@@ -169,9 +169,6 @@ Win顺 自己建索引，不需要另装 Everything。文件名、拼音、应�
 
 **能搜 Word、Excel、PDF 里的文字吗？**
 不能，内容搜索只读纯文本文件（txt、md、csv、json、代码等）。
-
-**按 `Ctrl+1`～`Ctrl+3` 切换范围没反应？**
-这几个组合键可能被别的程序注册成了全局快捷键（例如截图工具 PixPin 默认占用 `Ctrl+1` 等），按键到不了 Win顺。改掉那个程序的快捷键，或者用 `Tab` 切换。
 
 **双击 Ctrl 和别的软件冲突怎么办？**
 在设置的“打开 Win顺”页关掉双击 Ctrl，另设一个组合键（如 `Alt+Space`）。
@@ -250,7 +247,7 @@ The interface comes in **English and Simplified Chinese**. It follows the Window
 
 #### ⌨️ Keyboard first
 
-`Enter` opens, `Ctrl+Enter` shows the item in its folder, `Ctrl+Shift+Enter` runs as administrator, `Ctrl+C` copies the file, `Ctrl+Shift+C` copies its path, `Tab` / `Shift+Tab` switch scopes (or `Ctrl+1`…`Ctrl+3`), the menu key or right-click shows more actions, `Esc` closes. The selected row also has buttons to show in folder, copy, copy path and delete (to the Recycle Bin, after a second click). Select several results with `Shift+↑` / `Shift+↓`, `Ctrl`+click or `Shift`+click: opening, copying and deleting then act on all of them, and `Esc` first clears the selection.
+`Enter` opens, `Ctrl+Enter` shows the item in its folder, `Ctrl+Shift+Enter` runs as administrator, `Ctrl+C` copies the file, `Ctrl+Shift+C` copies its path, `Tab` / `Shift+Tab` switch scopes, the menu key or right-click shows more actions, `Esc` closes. The selected row also has buttons to show in folder, copy, copy path and delete (to the Recycle Bin, after a second click). Select several results with `Shift+↑` / `Shift+↓`, `Ctrl`+click or `Shift`+click: opening, copying and deleting then act on all of them, and `Esc` first clears the selection.
 
 #### 🎨 Feels like part of Windows 11
 
@@ -287,9 +284,6 @@ WinShun builds its own index, so Everything is not needed. File names, pinyin, a
 
 **Can it search inside Word, Excel or PDF files?**
 No. Content search reads plain-text files only.
-
-**`Ctrl+1`…`Ctrl+3` do nothing?**
-Another app has probably registered them as global hotkeys (the screenshot tool PixPin takes `Ctrl+1` and others by default), so the keys never reach WinShun. Change them in that app, or use `Tab`.
 
 **How much memory does it use?**
 About 30 MB of index per million files; the whole app usually shows 120–140 MB in Task Manager.
