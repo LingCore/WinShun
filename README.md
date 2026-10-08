@@ -125,7 +125,7 @@
 #### 🔔 新版本提醒
 
 - 每次启动和之后每隔 12 小时到 GitHub 看一眼有没有新版本，有的话在托盘弹出提示，打开就能看到这一版改了什么。
-- 点 **去下载** 会在浏览器里打开这个版本的下载页；在托盘菜单里选 **退出**，把新的压缩包解压覆盖原来的文件夹就行，设置和索引都会保留。Win顺 不会自己下载、替换程序文件。
+- 点 **去下载** 会在浏览器里打开这个版本的下载页，下载新的安装程序运行就行（免安装版：退出后解压覆盖原来的文件夹），设置和索引都会保留。Win顺 不会自己下载、替换程序文件。
 - 当前版本显示在设置窗口左下角和托盘菜单里；托盘菜单里可以随时 **检查更新…**，设置 → 高级里可以关掉自动检查。
 
 <p align="center">
@@ -137,10 +137,13 @@
 
 ### 下载安装
 
-1. 到 [Releases 页面](https://github.com/LingCore/WinShun/releases/latest) 下载 `WinShun-版本号-x64.zip`，解压到一个固定的位置（例如 `D:\Tools\WinShun`）。免安装，运行库已经带在里面。
-2. 双击 `WinShun.exe`。如果 Windows 提示“Windows 已保护你的电脑”，点 **更多信息 → 仍要运行**。这是因为作者还没有购买代码签名证书，不是程序有问题。
-3. 在 UAC 弹窗里点 **是**（为什么需要管理员权限见下一节）。托盘里出现 Win顺 的图标，就说明在运行了。第一次建立索引只要几秒到十几秒。
-4. 连按两下 Ctrl，开始搜索。想开机自动启动，在托盘图标的右键菜单里勾选 **开机自动启动**，以后开机不会再弹 UAC。
+1. 到 [Releases 页面](https://github.com/LingCore/WinShun/releases/latest) 下载 `WinShun-版本号-x64-setup.exe`，双击安装。如果 Windows 提示“Windows 已保护你的电脑”，点 **更多信息 → 仍要运行**。这是因为作者还没有购买代码签名证书，不是程序有问题。
+2. 安装程序会装到 `C:\Program Files\WinShun`，在开始菜单里放一个 Win顺（桌面快捷方式可选）。装完勾着 **运行 Win顺** 点完成，托盘里出现 Win顺 的图标，就说明在运行了。第一次建立索引只要几秒到十几秒。
+3. 连按两下 Ctrl，开始搜索。第一次运行会设成开机自动启动（以后开机不会弹 UAC），不想要的话在托盘图标的右键菜单里取消 **开机自动启动**。
+
+**升级**：有新版本时 Win顺 会提示，下载新的安装程序运行就行，它会先关掉正在运行的 Win顺，设置和索引都会保留。**卸载**：在 Windows 的“设置 → 应用”里找到 Win顺。
+
+**免安装版**：也可以下载 `WinShun-版本号-x64.zip`，解压到一个固定的位置（例如 `D:\Tools\WinShun`）后运行 `WinShun.exe`，运行库已经带在里面。每次启动会弹 UAC（为什么需要管理员权限见下一节），开了开机自动启动后开机不会弹。
 
 系统要求：Windows 10 或 Windows 11，64 位。
 
@@ -175,7 +178,7 @@ Win顺 自己建索引，不需要另装 Everything。文件名、拼音、应�
 完全免费，源代码公开。Win顺 只在检查新版本时访问 GitHub 的公开接口，不发送任何个人信息（设置 → 高级里可以关掉）；索引和最近使用记录只保存在你自己的电脑上（`%LOCALAPPDATA%\WinShun`）。
 
 **怎么卸载？**
-在托盘图标的右键菜单里取消 **开机自动启动**，再选 **退出**，然后删除程序所在的文件夹。如果还想清除设置和索引，再删掉 `%APPDATA%\WinShun` 和 `%LOCALAPPDATA%\WinShun`。
+用安装程序装的：在 Windows 的“设置 → 应用”里卸载 Win顺，它会去掉开机自动启动，并问你要不要删除设置和索引。免安装版：在托盘图标的右键菜单里取消 **开机自动启动**，再选 **退出**，然后删除程序所在的文件夹。如果还想清除设置和索引，再删掉 `%APPDATA%\WinShun` 和 `%LOCALAPPDATA%\WinShun`。
 
 ### 反馈
 
@@ -189,7 +192,7 @@ Win顺 自己建索引，不需要另装 Everything。文件名、拼音、应�
 ./scripts/build.ps1                                # 编译 + 运行单元测试
 ./scripts/build.ps1 -QtDir C:\Qt\6.12.0\msvc2022_64 # 指定 Qt（默认用 QTDIR 或 C:\Qt 下最新的版本）
 ./scripts/build.ps1 -Deploy                        # 生成可分发的文件夹 dist\WinShun
-./scripts/release.ps1                              # 打包 dist\WinShun-版本号-x64.zip 和 .sha256；加 -Publish 发布到 GitHub
+./scripts/release.ps1                              # 打包安装程序、免安装 zip 和 SHA256SUMS.txt（需要 Inno Setup 6.5+）；加 -Publish 发布到 GitHub
 ```
 
 也可以直接用 Qt Creator 或 VS Code（CMake Tools）打开项目目录，预设见 `CMakePresets.json`（需要环境变量 `QTDIR` 指向 Qt 套件目录）。
@@ -243,14 +246,17 @@ Light or dark theme, following Windows or fixed to one, with the system accent c
 
 #### 🔔 New version reminders
 
-At every start and every 12 hours WinShun asks GitHub whether a new version is out, and announces it from the tray with what changed. **Download** opens that version's page in your browser: exit WinShun from the tray, unzip the new version over the old folder, and your settings and index carry over. WinShun never downloads or replaces its own files. The current version is shown in the corner of the settings window and in the tray menu, which also has **Check for updates…**; automatic checks can be turned off in Settings → Advanced.
+At every start and every 12 hours WinShun asks GitHub whether a new version is out, and announces it from the tray with what changed. **Download** opens that version's page in your browser: run the new installer (portable: exit WinShun and unzip over the old folder), and your settings and index carry over. WinShun never downloads or replaces its own files. The current version is shown in the corner of the settings window and in the tray menu, which also has **Check for updates…**; automatic checks can be turned off in Settings → Advanced.
 
 ### Download and install
 
-1. Download `WinShun-<version>-x64.zip` from the [Releases page](https://github.com/LingCore/WinShun/releases/latest) and unzip it somewhere permanent (e.g. `D:\Tools\WinShun`). No installer; the runtimes are included.
-2. Run `WinShun.exe`. If Windows says “Windows protected your PC”, click **More info → Run anyway**: the app is not yet signed with a paid code-signing certificate.
-3. Click **Yes** in the UAC prompt (see below). When the WinShun icon appears in the notification area, it is running. The first index takes a few seconds.
-4. Press Ctrl twice and start typing. To start with Windows, check **Start with Windows** in the tray icon's menu; there will be no UAC prompt at login.
+1. Download `WinShun-<version>-x64-setup.exe` from the [Releases page](https://github.com/LingCore/WinShun/releases/latest) and run it. If Windows says “Windows protected your PC”, click **More info → Run anyway**: the app is not yet signed with a paid code-signing certificate.
+2. It installs to `C:\Program Files\WinShun` with a Start menu shortcut (a desktop one is optional). Leave **Run WinShun** checked and click Finish; when the WinShun icon appears in the notification area, it is running. The first index takes a few seconds.
+3. Press Ctrl twice and start typing. The first run turns on **Start with Windows** (no UAC prompt at login); uncheck it in the tray icon's menu if you don't want it.
+
+**Upgrading**: WinShun tells you about new versions; download the new installer and run it. It closes the running WinShun first and keeps your settings and index. **Uninstalling**: find WinShun in Windows Settings → Apps.
+
+**Portable**: or download `WinShun-<version>-x64.zip`, unzip it somewhere permanent (e.g. `D:\Tools\WinShun`) and run `WinShun.exe`; the runtimes are included. Each start asks for UAC (see below), except at login once Start with Windows is on.
 
 Requires Windows 10 or 11, 64-bit.
 
@@ -296,7 +302,7 @@ Needs Visual Studio 2022 (Desktop development with C++), Qt 6.8 or later (6.12 r
 ./scripts/build.ps1                                # build and run the unit tests
 ./scripts/build.ps1 -QtDir C:\Qt\6.12.0\msvc2022_64 # pick a Qt kit (default: QTDIR or the newest under C:\Qt)
 ./scripts/build.ps1 -Deploy                        # make the distributable folder dist\WinShun
-./scripts/release.ps1                              # package dist\WinShun-<version>-x64.zip and .sha256; -Publish makes the GitHub release
+./scripts/release.ps1                              # package the installer, the portable zip and SHA256SUMS.txt (needs Inno Setup 6.5+); -Publish makes the GitHub release
 ```
 
 Architecture, design notes and benchmarks (in Chinese) are in [docs/architecture.md](docs/architecture.md).

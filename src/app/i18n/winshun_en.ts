@@ -601,6 +601,10 @@
         <translation>You’re up to date</translation>
     </message>
     <message>
+        <source>你现在用的是 %1。下载安装程序（Setup）运行就行，它会先关掉正在运行的 Win顺，设置和索引都会保留。</source>
+        <translation>You have %1. Download the installer (Setup) and run it: it closes the running WinShun first, and your settings and index are kept.</translation>
+    </message>
+    <message>
         <source>你现在用的是 %1。在托盘菜单里退出 Win顺，把下载的压缩包解压后覆盖原来的文件夹就行，设置和索引都会保留。</source>
         <translation>You have %1. Exit WinShun from the tray menu, then unzip the download over the old folder. Your settings and index are kept.</translation>
     </message>

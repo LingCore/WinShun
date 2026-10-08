@@ -78,7 +78,14 @@ cmake --build --preset release --target update_translations   # lupdate：把新
 
 1. 改 `CMakeLists.txt` 里 `project(... VERSION x.y.z)`。
 2. 写 `docs/release-notes/vx.y.z.md`。更新对话框只显示其中两部分：开头一段话（中文在前、英文在后，中间以中文句号分开），以及 `## 新功能 · What's new` 下的列表（每条是 `- 图标 中文`，下一行缩进写英文）。格式见 `src/core/Release.cpp` 和单元测试。
-3. 退出正在运行的 Win顺，运行 `./scripts/release.ps1 -Publish`：编译、部署、打包 `WinShun-x.y.z-x64.zip`（里面是一个 `WinShun\` 文件夹，解压就能覆盖旧版）和 `.sha256`，再用 `gh` 建 `vx.y.z` 的 Release。
+3. 退出正在运行的 Win顺，运行 `./scripts/release.ps1 -Publish`：编译、部署，打包安装程序 `WinShun-x.y.z-x64-setup.exe`、免安装的 `WinShun-x.y.z-x64.zip`（里面是一个 `WinShun\` 文件夹，解压就能覆盖旧版）和 `SHA256SUMS.txt`，再用 `gh` 建 `vx.y.z` 的 Release。
+
+安装程序用 Inno Setup 6.5 或更新版本编译（`installer/WinShun.iss`；6.5 起才有 Windows 11 风格和深色模式的向导），脚本会先找 `%LOCALAPPDATA%\Programs\Inno Setup*` 下的，也可以用 `-Iscc` 指定。
+
+- 装到 `Program Files\WinShun`（Win顺 本来就要管理员权限），开始菜单一个快捷方式，“设置 → 应用”里可以卸载。`AppId` 永远不要改：新版靠它找到旧版、原地覆盖。
+- 安装和卸载前先让正在运行的 Win顺 退出：装过的用 `WinShun.exe --quit`，别处的免安装版给它的消息窗口发 `WM_CLOSE`（0.2.1 起会照 `--quit` 退出、先保存索引），过 15 秒还在就强制结束。
+- 装好后，已有的开机自启任务（免安装版设的）改成启动安装的这份；卸载时只删除指向本安装目录的任务，并问是否删除 `%APPDATA%\WinShun`、`%LOCALAPPDATA%\WinShun`。
+- 向导图片由 `tools/make_installer_images.py` 生成（浅色、深色两套），中文界面文字是 Inno Setup 仓库里的非官方翻译 `installer/ChineseSimplified.isl`。
 
 ## 代码结构
 

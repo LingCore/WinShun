@@ -21,6 +21,7 @@
 #include <taskschd.h>
 #include <wrl/client.h>
 
+#include <optional>
 #include <thread>
 
 using namespace Qt::StringLiterals;
@@ -374,9 +375,8 @@ void removeRunKey()
     run.remove(QStringView(kOldRunValue).toString());
 }
 
-} // namespace
-
-bool isEnabled()
+// The program the autostart task starts; nothing without an enabled task.
+std::optional<std::wstring> taskPath()
 {
     const ComScope com;
     ComPtr<ITaskService> service;
@@ -391,8 +391,24 @@ bool isEnabled()
     if (!folder || FAILED(folder->GetTask(Bstr(kTaskName), &task)) || FAILED(task->get_Enabled(&enabled)) || !enabled
         || FAILED(task->get_Definition(&definition)) || FAILED(definition->get_Actions(&actions))
         || FAILED(actions->get_Item(1, &action)) || FAILED(action.As(&exec)) || FAILED(exec->get_Path(path.out())) || !path)
-        return false;
-    return ::_wcsicmp(path, exePath().c_str()) == 0; // a copy elsewhere (another build) does not count
+        return std::nullopt;
+    return std::wstring(path);
+}
+
+} // namespace
+
+bool isEnabled()
+{
+    const std::optional<std::wstring> path = taskPath();
+    return path && ::_wcsicmp(path->c_str(), exePath().c_str()) == 0; // a copy elsewhere (another build) does not count
+}
+
+void adoptIfOrphaned()
+{
+    const std::optional<std::wstring> path = taskPath();
+    if (path && ::_wcsicmp(path->c_str(), exePath().c_str()) != 0
+        && ::GetFileAttributesW(path->c_str()) == INVALID_FILE_ATTRIBUTES)
+        setEnabled(true);
 }
 
 void setEnabled(bool enabled)

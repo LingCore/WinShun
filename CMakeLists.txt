@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(WinShun
-    VERSION 0.2.0
+    VERSION 0.2.1
     DESCRIPTION "Fast file, folder and text-content search launcher for Windows"
     LANGUAGES CXX)
 

@@ -236,6 +236,13 @@ LRESULT MessageWindow::handle(UINT msg, WPARAM wParam, LPARAM lParam)
         if (wParam && m_callbacks.sessionEnding)
             m_callbacks.sessionEnding(); // the process may be terminated right after this returns
         return 0;
+    case WM_CLOSE:
+        // The installer and uninstaller ask a running copy to go this way
+        // (installer/WinShun.iss). Quit as with --quit, saving the index;
+        // DefWindowProc would only destroy this window and leave the app running.
+        if (m_callbacks.commandReceived)
+            m_callbacks.commandReceived(u"quit"_s);
+        return 0;
     case WM_DEVICECHANGE:
         return m_callbacks.deviceChange ? m_callbacks.deviceChange(wParam, lParam) : TRUE;
     case WM_HOTKEY:

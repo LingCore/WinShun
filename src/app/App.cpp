@@ -181,6 +181,7 @@ bool App::start(const StartOptions& options)
     m_index->start();
     m_apps->refresh(true); // in the background; about half a second
 
+    autostart::adoptIfOrphaned();
     if (firstRun) {
         // Autostart is on by default; the settings switch turns it off for good
         // (the settings file exists from now on, so this runs once).

@@ -95,6 +95,29 @@
 - **原因**：`menuLoader.active = true` 的下一行是 `(menuLoader.item as ContextMenu).popup(...)`。JavaScript 不会在 `(` 前面自动补分号，两行连成了 `true(...)`。
 - **做法**：不要让一行以 `(`、`[` 或模板字符串开头；先存进一个变量再调用（`Main.qml`）。
 
+## 安装程序（Inno Setup）
+
+### 中文语言文件要带 BOM
+
+- **现象**：向导里的中文全是乱码。
+- **原因**：Inno Setup 把没有 BOM 的 `.iss`、`.isl` 当成 ANSI 读。从 Inno Setup 仓库下载的 `ChineseSimplified.isl` 没有 BOM。
+- **做法**：`installer/` 下的 `.iss`、`.isl` 都存成带 BOM 的 UTF-8。
+
+### 深色模式用另一套图片
+
+- **现象**：设了 `WizardSmallImageFile`，深色模式下右上角还是 Inno 自带的光盘盒图。
+- **原因**：`WizardStyle=... dynamic` 在深色模式下读的是 `WizardImageFileDynamicDark`、`WizardSmallImageFileDynamicDark`，没设就用内置图。
+- **做法**：浅色、深色两组都设（`installer/WinShun.iss`）。
+
+### 卸载程序在确认之前就会跑 `InitializeUninstall`
+
+- **现象**：卸载时一弹出“确认要完全移除吗？”，Win顺 就已经被关掉了，点“否”也回不来。
+- **做法**：关闭程序放在 `CurUninstallStepChanged(usUninstall)`，那时用户已经确认。
+
+### 旧版不认 `WM_CLOSE`
+
+- 0.2.0 及更早的版本收到 `WM_CLOSE` 只会销毁消息窗口，进程还在。所以安装程序按进程（`tasklist`）判断是否退出，等 15 秒不退就 `taskkill /F`。0.2.1 起消息窗口把 `WM_CLOSE` 当成 `--quit`。
+
 ## 构建、升级 Qt
 
 ### moc 解析不了原始字符串字面量

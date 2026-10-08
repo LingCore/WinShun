@@ -5,6 +5,7 @@
 #include "platform/Shell.h"
 
 #include <QCoreApplication>
+#include <QFileInfo>
 #include <QPointer>
 #include <QSettings>
 #include <QThreadPool>
@@ -54,6 +55,11 @@ Updater::Updater(QObject* parent)
 QString Updater::currentVersion() const
 {
     return QCoreApplication::applicationVersion();
+}
+
+bool Updater::installed() const
+{
+    return QFileInfo::exists(QCoreApplication::applicationDirPath() + u"/unins000.exe"_s);
 }
 
 bool Updater::skipped() const

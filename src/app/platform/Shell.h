@@ -54,6 +54,10 @@ namespace ws::autostart {
 
 bool isEnabled();
 void setEnabled(bool enabled);
+// The task still starts a program that is gone (the portable copy, after
+// installing with Setup): point it at this one. A copy that still exists
+// elsewhere keeps it.
+void adoptIfOrphaned();
 void migrateFromQuickFind(); // the autostart of versions still called QuickFind (see Migration.h)
 
 } // namespace ws::autostart
