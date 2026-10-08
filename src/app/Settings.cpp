@@ -186,6 +186,7 @@ void Settings::load()
     doubleCtrl = readOrDefault(s, u"Launcher/DoubleCtrl"_s, d.doubleCtrl);
     hotkey = readOrDefault(s, u"Launcher/Hotkey"_s, d.hotkey);
     renderer = readOrDefault(s, u"Launcher/Renderer"_s, d.renderer).trimmed().toLower();
+    recordHistory = readOrDefault(s, u"Launcher/History"_s, d.recordHistory);
 
     theme = readOrDefault(s, u"Appearance/Theme"_s, d.theme).trimmed().toLower();
     if (theme != u"light" && theme != u"dark")
@@ -221,6 +222,7 @@ void Settings::save() const
     s.setValue(u"Launcher/DoubleCtrl"_s, doubleCtrl);
     s.setValue(u"Launcher/Hotkey"_s, hotkey);
     s.setValue(u"Launcher/Renderer"_s, renderer);
+    s.setValue(u"Launcher/History"_s, recordHistory);
     s.setValue(u"Appearance/Theme"_s, theme);
     s.setValue(u"Appearance/Language"_s, language);
     s.setValue(u"Update/Automatic"_s, autoUpdate);

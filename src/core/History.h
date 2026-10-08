@@ -14,6 +14,7 @@ public:
     void load();
     void record(const QString& path);
     void remove(const QString& path);
+    void clear();
     const QStringList& items() const noexcept { return m_items; }
 
 private:

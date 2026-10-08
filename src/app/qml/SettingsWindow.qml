@@ -395,6 +395,48 @@ Window {
                         onToggled: (on) => window.editor.autostart = on
                     }
                 }
+
+                SettingRow {
+                    title: qsTr("记住打开过的项目")
+                    description: qsTr("什么都不输入时列出最近打开的文件和应用，搜索时它们排在前面。关闭后不再记录，也不再显示已有的记录")
+
+                    ToggleSwitch {
+                        checked: window.editor.recordHistory
+                        onToggled: (on) => window.editor.recordHistory = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("清除最近使用记录")
+                    description: window.editor.historyCount > 0
+                                 ? qsTr("共 %1 项。也可以在搜索框里右键某一项，单独移除").arg(window.editor.historyCount)
+                                 : qsTr("没有记录")
+
+                    FlatButton {
+                        id: clearHistoryButton
+
+                        property bool confirming: false
+
+                        text: confirming ? qsTr("确定清除？再点一次") : qsTr("清除")
+                        glyph: confirming ? "" : "\uE74D" // Delete
+                        enabled: window.editor.historyCount > 0
+                        onClicked: {
+                            if (confirming) {
+                                window.editor.clearHistory()
+                                confirming = false
+                            } else {
+                                confirming = true
+                                clearHistoryTimer.restart()
+                            }
+                        }
+
+                        Timer {
+                            id: clearHistoryTimer
+                            interval: 4000
+                            onTriggered: clearHistoryButton.confirming = false
+                        }
+                    }
+                }
             }
 
             SettingsSection {

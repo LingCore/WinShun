@@ -317,6 +317,7 @@ void App::applySettings(bool initial)
     if (!initial)
         applyAppearance();
     m_updater->setAutomatic(m_settings.autoUpdate);
+    m_launcher->setRecordHistory(m_settings.recordHistory);
     applyHotkey();
     m_launcher->setContentOptions(m_settings.contentExtensions,
         static_cast<qint64>(m_settings.maxContentFileSizeMB) << 20, m_settings.contentInLowPriority);
@@ -388,6 +389,10 @@ void App::showSettings()
         connect(editor, &SettingsEditor::edited, this, &App::settingsEdited);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyHotkey);
         connect(editor, &SettingsEditor::restartRequested, this, [this] { restart({u"--settings"_s}); });
+        connect(editor, &SettingsEditor::historyClearRequested, this, [this, editor] {
+            m_launcher->clearHistory();
+            editor->setHistoryCount(0);
+        });
         m_settingsWindow = window;
         m_settingsEditor = editor;
         applyHotkey(); // shows whether the current hotkey works
@@ -409,6 +414,7 @@ void App::showSettings()
         });
     }
     refreshContentIndexStatus();
+    m_settingsEditor->setHistoryCount(static_cast<int>(m_history->items().size()));
     m_contentStatusTimer.start();
     hideLauncher();
     m_settingsWindow->show();

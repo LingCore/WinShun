@@ -36,11 +36,13 @@ class Launcher : public QObject {
     Q_PROPERTY(QString placeholder READ placeholder NOTIFY scopeChanged FINAL)
     Q_PROPERTY(QString contentFilesLabel READ contentFilesLabel NOTIFY scopeChanged FINAL)
     Q_PROPERTY(bool searchesContent READ searchesContent NOTIFY statusChanged FINAL)
+    // History is kept and has something in it (the footer's clear button).
+    Q_PROPERTY(bool canClearHistory READ canClearHistory NOTIFY historyChanged FINAL)
 
 public:
     enum Scope { All, Files, Content }; // as ws::Scope
     Q_ENUM(Scope)
-    enum Action { Open, Reveal, RunAsAdmin, CopyPath, CopyName, CopyItem, Recycle };
+    enum Action { Open, Reveal, RunAsAdmin, CopyPath, CopyName, CopyItem, Recycle, ForgetRecent };
     Q_ENUM(Action)
 
     Launcher(IndexService* index, AppCatalog* apps, SearchEngine* engine, History* history, QObject* parent = nullptr);
@@ -72,6 +74,11 @@ public:
 
     void setWindow(QWindow* window) { m_window = window; }
     void setContentOptions(QStringList extensions, qint64 maxFileBytes, bool inLowPriority);
+    // Off: nothing opened is remembered, and what was is not shown (it stays
+    // until cleared in the settings).
+    void setRecordHistory(bool on);
+    bool canClearHistory() const;
+    Q_INVOKABLE void clearHistory();
     void handleShown();
     void handleHidden();
     void retranslate(); // the language changed: status, placeholder, rows
@@ -104,6 +111,7 @@ signals:
     // (see shell::open). The launcher is closed by then.
     void openFailed(const QString& name);
     void contextMenuKeyPressed(); // Menu key / Shift+F10 (arrive as a context-menu event, not a key)
+    void historyChanged();
 
 private:
     void search();
@@ -114,6 +122,8 @@ private:
     void perform(const SearchResult& result, Action action);
     void performApp(const SearchResult& app, Action action);
     void performMany(const SearchResults& items, Action action);
+    void remember(const QString& path); // opened: into the history, if it is kept
+    void forgetRecent(const QStringList& paths);
     bool forgetRecycled(const SearchResult& result); // its row and count; false if it is still there
     std::function<void(bool)> reportFailure(const QString& name);
     void onRecycled(const SearchResult& result, bool ok);
@@ -155,6 +165,7 @@ private:
     int m_contentTotal = 0;
     int m_contentHits = 0; // 全部: content rows added below the name matches
 
+    bool m_recordHistory = true;
     QStringList m_contentExtensions {QStringLiteral("txt")};
     qint64 m_maxContentBytes = 64ll << 20;
     bool m_contentInLowPriority = false; // 内容 also looks in system, program and tool folders

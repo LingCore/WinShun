@@ -174,7 +174,7 @@ Win顺 自己建索引，不需要另装 Everything。文件名、拼音、应�
 文件名索引每 100 万个文件约 30 MB。整个程序在任务管理器里一般是 120～140 MB。
 
 **收费吗？会上传我的数据吗？**
-完全免费，源代码公开。Win顺 只在检查新版本时访问 GitHub 的公开接口，不发送任何个人信息（设置 → 高级里可以关掉）；索引和最近使用记录只保存在你自己的电脑上（`%LOCALAPPDATA%\WinShun`）。
+完全免费，源代码公开。Win顺 只在检查新版本时访问 GitHub 的公开接口，不发送任何个人信息（设置 → 高级里可以关掉）；索引和最近使用记录只保存在你自己的电脑上（`%LOCALAPPDATA%\WinShun`）。最近使用记录可以在设置 → 打开 Win顺里清除或关掉，也可以在搜索框里右键单独移除某一项。
 
 **怎么卸载？**
 在 Windows 的“设置 → 应用”里卸载 Win顺，它会去掉开机自动启动，并问你要不要删除设置和索引。0.2.0 及更早的版本是压缩包，没有卸载程序：在托盘图标的右键菜单里取消 **开机自动启动**，再选 **退出**，然后删除程序所在的文件夹；如果还想清除设置和索引，再删掉 `%APPDATA%\WinShun` 和 `%LOCALAPPDATA%\WinShun`。
@@ -283,7 +283,7 @@ Another app has probably registered them as global hotkeys (the screenshot tool 
 About 30 MB of index per million files; the whole app usually shows 120–140 MB in Task Manager.
 
 **Is it free? Does it collect data?**
-Free and open source. WinShun goes online only to ask GitHub's public API about new versions, sending nothing personal (you can turn that off in Settings → Advanced); the index and history stay on your PC (`%LOCALAPPDATA%\WinShun`).
+Free and open source. WinShun goes online only to ask GitHub's public API about new versions, sending nothing personal (you can turn that off in Settings → Advanced); the index and history stay on your PC (`%LOCALAPPDATA%\WinShun`). Clear or turn off the history in Settings → Open WinShun, or right-click an item in the search window to remove just that one.
 
 **How do I uninstall it?**
 Uncheck **开机自动启动** in the tray menu, choose **退出 (Quit)**, and delete the app's folder. To remove settings and index too, delete `%APPDATA%\WinShun` and `%LOCALAPPDATA%\WinShun`.

@@ -1,7 +1,9 @@
 import QtQuick
 import WinShun
 
-// Status on the left, keyboard hints on the right. Dragging it moves the window.
+// Status on the left, keyboard hints on the right, and at the very right a
+// button that clears the recent items (while there are some to clear).
+// Dragging it moves the window.
 Item {
     id: footer
 
@@ -75,8 +77,8 @@ Item {
 
     Row {
         id: hints
-        anchors.right: parent.right
-        anchors.rightMargin: 16
+        anchors.right: clearHistory.visible ? clearHistory.left : parent.right
+        anchors.rightMargin: clearHistory.visible ? 10 : 16
         anchors.verticalCenter: parent.verticalCenter
         spacing: 14
 
@@ -85,5 +87,43 @@ Item {
         KeyHint { keys: "Enter"; label: qsTr("打开") }
         KeyHint { keys: "Ctrl+Enter"; label: qsTr("打开位置") }
         KeyHint { keys: "Tab"; label: qsTr("切换范围") }
+    }
+
+    // Two clicks, as a row's delete button: the first arms it.
+    RowAction {
+        id: clearHistory
+
+        property bool armed: false
+
+        visible: footer.launcher.canClearHistory
+        anchors.right: parent.right
+        anchors.rightMargin: 6
+        anchors.verticalCenter: parent.verticalCenter
+        glyph: "\uE74D" // Delete
+        tip: armed ? "" : qsTr("清除最近使用记录")
+        text: armed ? qsTr("确认清除") : ""
+        danger: armed
+        onClicked: {
+            if (armed) {
+                armed = false
+                footer.launcher.clearHistory()
+            } else {
+                armed = true
+                disarm.restart()
+            }
+        }
+        onVisibleChanged: armed = false
+        Component.onCompleted: footer.frame.addControl(clearHistory) // a button, not part of the drag area
+
+        Timer {
+            id: disarm
+            interval: 3000
+            onTriggered: clearHistory.armed = false
+        }
+    }
+
+    HoverTip {
+        target: clearHistory.tipWanted ? clearHistory : null
+        text: clearHistory.tip
     }
 }

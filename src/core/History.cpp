@@ -43,6 +43,14 @@ void History::remove(const QString& path)
         save();
 }
 
+void History::clear()
+{
+    if (m_items.isEmpty())
+        return;
+    m_items.clear();
+    save();
+}
+
 void History::save() const
 {
     QDir().mkpath(QFileInfo(m_filePath).absolutePath());

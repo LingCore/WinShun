@@ -194,6 +194,7 @@ void Launcher::handleShown()
     m_statusPoll.start();
     m_apps->refresh(); // reads the list again only if apps were installed or removed
     search(); // refresh: files may have changed, and "recent" certainly has
+    emit historyChanged(); // things were opened since
     emit shown();
 }
 
@@ -265,7 +266,8 @@ void Launcher::search()
     SearchEngine::Request request;
     request.text = m_query;
     request.scope = static_cast<ws::Scope>(m_scope);
-    request.history = m_history->items();
+    if (m_recordHistory)
+        request.history = m_history->items();
     m_requestId = m_engine->submit(std::move(request)); // also stops a running content scan
     m_pending = true;
     m_contentRunning = false;
@@ -548,18 +550,19 @@ void Launcher::perform(const SearchResult& result, Action action)
         if (action == Recycle)
             m_results.remove(r.path);
         m_history->remove(r.path);
+        emit historyChanged();
         flash(tr("“%1” 已不存在").arg(r.name));
         return;
     }
     switch (action) {
     case Open:
     case RunAsAdmin:
-        m_history->record(r.path);
+        remember(r.path);
         shell::open(r.path, action == RunAsAdmin, reportFailure(r.name));
         emit dismissRequested();
         break;
     case Reveal:
-        m_history->record(r.path);
+        remember(r.path);
         shell::reveal(r.path);
         emit dismissRequested();
         break;
@@ -574,6 +577,9 @@ void Launcher::perform(const SearchResult& result, Action action)
     case CopyItem:
         shell::copyFiles({r.path});
         flash(tr("已复制，可在资源管理器中粘贴"));
+        break;
+    case ForgetRecent:
+        forgetRecent({r.path});
         break;
     case Recycle: {
         const auto owner = m_window ? reinterpret_cast<HWND>(m_window->winId()) : nullptr;
@@ -600,7 +606,7 @@ void Launcher::performApp(const SearchResult& app, Action action)
             flash(tr("“%1”不能以管理员身份运行").arg(app.name));
             return;
         }
-        m_history->record(app.path);
+        remember(app.path);
         shell::launchApp(app.path, action == RunAsAdmin, reportFailure(app.name));
         emit dismissRequested();
         break;
@@ -609,7 +615,7 @@ void Launcher::performApp(const SearchResult& app, Action action)
             flash(tr("“%1”没有可以打开的位置").arg(app.name));
             return;
         }
-        m_history->record(app.path);
+        remember(app.path);
         if (app.isPackagedApp())
             shell::open(app.target); // its install folder; the folder above it is not readable
         else
@@ -630,6 +636,9 @@ void Launcher::performApp(const SearchResult& app, Action action)
     case CopyName:
         shell::copyText(app.name);
         flash(tr("已复制名称"));
+        break;
+    case ForgetRecent:
+        forgetRecent({app.path});
         break;
     case Recycle:
         break; // apps are uninstalled in Windows Settings
@@ -656,7 +665,7 @@ void Launcher::performMany(const SearchResults& items, Action action)
                     continue;
                 shell::open(r.path, admin, reportFailure(r.name));
             }
-            m_history->record(r.path);
+            remember(r.path);
             ++started;
         }
         if (started == 0) {
@@ -673,7 +682,7 @@ void Launcher::performMany(const SearchResults& items, Action action)
             const QString& place = r.isApp() ? r.target : r.path;
             if (place.isEmpty() || !exists(place))
                 continue;
-            m_history->record(r.path);
+            remember(r.path);
             if (r.isPackagedApp())
                 shell::open(place); // its install folder; the folder above it is not readable
             else
@@ -719,6 +728,15 @@ void Launcher::performMany(const SearchResults& items, Action action)
         flash(tr("已复制 %Ln 个名称", nullptr, static_cast<int>(names.size())));
         break;
     }
+    case ForgetRecent: {
+        QStringList paths;
+        for (const SearchResult& r : items) {
+            if (r.recent)
+                paths.append(r.path);
+        }
+        forgetRecent(paths);
+        break;
+    }
     case Recycle: {
         SearchResults files;
         QStringList paths;
@@ -747,6 +765,46 @@ void Launcher::performMany(const SearchResults& items, Action action)
         break;
     }
     }
+}
+
+void Launcher::setRecordHistory(bool on)
+{
+    if (m_recordHistory == on)
+        return;
+    m_recordHistory = on;
+    emit historyChanged();
+    if (m_window && m_window->isVisible())
+        search(); // "最近" rows come or go
+}
+
+bool Launcher::canClearHistory() const
+{
+    return m_recordHistory && !m_history->items().isEmpty();
+}
+
+void Launcher::clearHistory()
+{
+    m_history->clear();
+    emit historyChanged();
+    m_results.setSelection({});
+    search(); // the list of recent ones empties, "最近" goes from the rest
+    flash(tr("已清除最近使用记录"));
+}
+
+void Launcher::remember(const QString& path)
+{
+    if (m_recordHistory)
+        m_history->record(path);
+}
+
+void Launcher::forgetRecent(const QStringList& paths)
+{
+    for (const QString& path : paths)
+        m_history->remove(path);
+    emit historyChanged();
+    m_results.setSelection({});
+    search(); // refreshes the rows in place: no "最近", or gone from the list of recent ones
+    flash(paths.size() == 1 ? tr("已从最近使用中移除") : tr("已从最近使用中移除 %Ln 项", nullptr, static_cast<int>(paths.size())));
 }
 
 // For shell::open() and launchApp(), which call it on a worker thread.
@@ -796,6 +854,7 @@ bool Launcher::forgetRecycled(const SearchResult& result)
     if (QFileInfo::exists(result.path))
         return false;
     m_history->remove(result.path);
+    emit historyChanged();
     const SearchResult* row = m_results.at(m_results.indexOf(result.path));
     const bool contentRow = row && row->line > 0;
     if (m_results.remove(result.path) && m_scope != Content) {
@@ -826,14 +885,18 @@ QVariantList Launcher::menuItems(int row) const
         const SearchResults selection = m_results.selection();
         const auto any = [&](auto test) { return std::any_of(selection.cbegin(), selection.cend(), test); };
         QVariantList items;
-        items.append(entry(Open, tr("打开 %Ln 项", nullptr, static_cast<int>(selection.size())), u"Enter"_s, u""_s));
+        items.append(entry(Open, tr("打开 %Ln 项", nullptr, static_cast<int>(selection.size())), u"Enter"_s, u"\uE8E5"_s));
         if (any([](const SearchResult& r) { return !r.isApp() || !r.target.isEmpty(); }))
-            items.append(entry(Reveal, tr("打开所在位置"), u"Ctrl+Enter"_s, u""_s));
+            items.append(entry(Reveal, tr("打开所在位置"), u"Ctrl+Enter"_s, u"\uE8DA"_s));
         items.append(separator);
         if (any([](const SearchResult& r) { return !r.isApp() || r.hasCopyableTarget(); }))
-            items.append(entry(CopyItem, tr("复制"), u"Ctrl+C"_s, u""_s));
+            items.append(entry(CopyItem, tr("复制"), u"Ctrl+C"_s, u"\uE8C8"_s));
         items.append(entry(CopyPath, tr("复制完整路径"), u"Ctrl+Shift+C"_s, u"copyPath"_s));
-        items.append(entry(CopyName, tr("复制名称"), QString(), u""_s));
+        items.append(entry(CopyName, tr("复制名称"), QString(), u"\uE8AC"_s));
+        if (any([](const SearchResult& r) { return r.recent; })) {
+            items.append(separator);
+            items.append(entry(ForgetRecent, tr("从最近使用中移除"), QString(), u"\uE711"_s)); // Cancel
+        }
         return items;
     }
 
@@ -849,10 +912,14 @@ QVariantList Launcher::menuItems(int row) const
                 u"\uE8DA"_s));
         items.append(separator);
         if (r->hasCopyableTarget())
-            items.append(entry(CopyItem, tr("复制"), u"Ctrl+C"_s, u""_s));
+            items.append(entry(CopyItem, tr("复制"), u"Ctrl+C"_s, u"\uE8C8"_s));
         if (!r->target.isEmpty())
             items.append(entry(CopyPath, tr("复制完整路径"), u"Ctrl+Shift+C"_s, u"copyPath"_s));
         items.append(entry(CopyName, tr("复制名称"), QString(), u"\uE8AC"_s));
+        if (r->recent) {
+            items.append(separator);
+            items.append(entry(ForgetRecent, tr("从最近使用中移除"), QString(), u"\uE711"_s));
+        }
         return items;
     }
     items.append(entry(Open, r->isDir ? tr("打开文件夹") : tr("打开"), u"Enter"_s, r->isDir ? u"\uE838"_s : u"\uE8E5"_s));
@@ -863,6 +930,10 @@ QVariantList Launcher::menuItems(int row) const
     items.append(entry(CopyItem, tr("复制"), u"Ctrl+C"_s, u"\uE8C8"_s));
     items.append(entry(CopyPath, tr("复制完整路径"), u"Ctrl+Shift+C"_s, u"copyPath"_s));
     items.append(entry(CopyName, tr("复制名称"), QString(), u"\uE8AC"_s));
+    if (r->recent) {
+        items.append(separator);
+        items.append(entry(ForgetRecent, tr("从最近使用中移除"), QString(), u"\uE711"_s));
+    }
     return items;
 }
 

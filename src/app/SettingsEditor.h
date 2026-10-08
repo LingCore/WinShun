@@ -20,6 +20,8 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString hotkeyError READ hotkeyError NOTIFY hotkeyErrorChanged FINAL)
     Q_PROPERTY(bool recordingHotkey READ recordingHotkey WRITE setRecordingHotkey NOTIFY recordingHotkeyChanged FINAL)
     Q_PROPERTY(bool autostart READ autostart WRITE setAutostart NOTIFY autostartChanged FINAL)
+    Q_PROPERTY(bool recordHistory READ recordHistory WRITE setRecordHistory NOTIFY changed FINAL)
+    Q_PROPERTY(int historyCount READ historyCount NOTIFY historyCountChanged FINAL)
     Q_PROPERTY(bool includeRemovableDrives READ includeRemovableDrives WRITE setIncludeRemovableDrives NOTIFY changed FINAL)
     Q_PROPERTY(bool rescanOnStartup READ rescanOnStartup WRITE setRescanOnStartup NOTIFY changed FINAL)
     Q_PROPERTY(QStringList excludedPaths READ excludedPaths NOTIFY changed FINAL) // expanded, for display
@@ -50,6 +52,10 @@ public:
     void setRecordingHotkey(bool recording);
     bool autostart() const;
     void setAutostart(bool on);
+    bool recordHistory() const { return m_settings.recordHistory; }
+    void setRecordHistory(bool on);
+    int historyCount() const { return m_historyCount; }
+    void setHistoryCount(int count); // set by the app
     bool includeRemovableDrives() const { return m_settings.includeRemovableDrives; }
     void setIncludeRemovableDrives(bool on);
     bool rescanOnStartup() const { return m_settings.rescanOnStartup; }
@@ -87,6 +93,7 @@ public:
     Q_INVOKABLE bool addContentExtensions(const QString& text); // "md, .log *.csv"
     Q_INVOKABLE void removeContentExtension(int index);
     Q_INVOKABLE void restoreDefaults();
+    Q_INVOKABLE void clearHistory() { emit historyClearRequested(); }
     Q_INVOKABLE void openDataFolder();
     Q_INVOKABLE void restart() { emit restartRequested(); } // after changing the renderer
 
@@ -95,6 +102,8 @@ public:
     Q_INVOKABLE void copyText(const QString& text);
 
 signals:
+    void historyCountChanged();
+    void historyClearRequested();
     void changed();
     void hotkeyErrorChanged();
     void contentIndexStatusChanged();
@@ -109,6 +118,7 @@ private:
     Settings m_settings;
     QString m_runningRenderer; // resolved: never "auto"
     QString m_hotkeyError;
+    int m_historyCount = 0;
     QString m_contentIndexStatus;
     bool m_recordingHotkey = false;
     QPointer<QWindow> m_window;

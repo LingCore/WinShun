@@ -15,6 +15,14 @@
         <source>切换范围</source>
         <translation>Scope</translation>
     </message>
+    <message>
+        <source>清除最近使用记录</source>
+        <translation>Clear recent items</translation>
+    </message>
+    <message>
+        <source>确认清除</source>
+        <translation>Clear</translation>
+    </message>
 </context>
 <context>
     <name>Gleaning</name>
@@ -574,6 +582,30 @@
         <source>恢复默认</source>
         <translation>Restore</translation>
     </message>
+    <message>
+        <source>记住打开过的项目</source>
+        <translation>Remember what you open</translation>
+    </message>
+    <message>
+        <source>什么都不输入时列出最近打开的文件和应用，搜索时它们排在前面。关闭后不再记录，也不再显示已有的记录</source>
+        <translation>With nothing typed, lists the files and apps you opened recently, and puts them first among matches. Off: nothing is recorded, and what was is not shown</translation>
+    </message>
+    <message>
+        <source>清除最近使用记录</source>
+        <translation>Clear recent items</translation>
+    </message>
+    <message>
+        <source>共 %1 项。也可以在搜索框里右键某一项，单独移除</source>
+        <translation>%1 items. You can also right-click one in the search window to remove just that one</translation>
+    </message>
+    <message>
+        <source>没有记录</source>
+        <translation>None</translation>
+    </message>
+    <message>
+        <source>确定清除？再点一次</source>
+        <translation>Clear them? Click again</translation>
+    </message>
 </context>
 <context>
     <name>ToggleSwitch</name>
@@ -1054,6 +1086,25 @@
             <numerusform>Open %Ln item</numerusform>
             <numerusform>Open %Ln items</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>从最近使用中移除</source>
+        <translation>Remove from recent</translation>
+    </message>
+    <message>
+        <source>已从最近使用中移除</source>
+        <translation>Removed from recent</translation>
+    </message>
+    <message numerus="yes">
+        <source>已从最近使用中移除 %Ln 项</source>
+        <translation>
+            <numerusform>%Ln item removed from recent</numerusform>
+            <numerusform>%Ln items removed from recent</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>已清除最近使用记录</source>
+        <translation>Recent items cleared</translation>
     </message>
 </context>
 <context>

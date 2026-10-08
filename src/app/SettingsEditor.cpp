@@ -173,6 +173,22 @@ void SettingsEditor::setLanguage(const QString& language)
     commit();
 }
 
+void SettingsEditor::setRecordHistory(bool on)
+{
+    if (m_settings.recordHistory == on)
+        return;
+    m_settings.recordHistory = on;
+    commit();
+}
+
+void SettingsEditor::setHistoryCount(int count)
+{
+    if (m_historyCount == count)
+        return;
+    m_historyCount = count;
+    emit historyCountChanged();
+}
+
 void SettingsEditor::setAutoUpdate(bool on)
 {
     if (m_settings.autoUpdate == on)
