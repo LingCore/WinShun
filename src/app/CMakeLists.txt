@@ -53,11 +53,13 @@ foreach(file IN LISTS qml_files)
     set_source_files_properties("${file}" PROPERTIES QT_RESOURCE_ALIAS "${name}")
 endforeach()
 
-# Pictures of the 拾穗计划 page, at ":/qt/qml/WinShun/gleaning/".
+# Pictures of the 拾穗计划 page, and the sound its avatar plays when pressed,
+# at ":/qt/qml/WinShun/gleaning/".
 set(gleaning_images
     ${PROJECT_SOURCE_DIR}/resources/gleaning/avatar.png
     ${PROJECT_SOURCE_DIR}/resources/gleaning/winshun.png
     ${PROJECT_SOURCE_DIR}/resources/gleaning/macshun.png
+    ${PROJECT_SOURCE_DIR}/resources/gleaning/ikun.mp3
 )
 foreach(file IN LISTS gleaning_images)
     get_filename_component(name "${file}" NAME)
@@ -88,6 +90,7 @@ qt_add_qml_module(WinShun
         Placement.cpp Placement.h
         ResultModel.cpp ResultModel.h
         SettingsEditor.cpp SettingsEditor.h
+        SoundClip.cpp SoundClip.h
         SystemTheme.cpp SystemTheme.h
         Updater.cpp Updater.h
         WindowFrame.cpp WindowFrame.h
@@ -119,10 +122,12 @@ target_include_directories(WinShun PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(WinShun PRIVATE
     wscore
     Qt6::Gui Qt6::Qml Qt6::Quick
-    comctl32 dwmapi shell32 ole32 user32 uxtheme winhttp)
+    comctl32 dwmapi shell32 shlwapi ole32 user32 uxtheme winhttp winmm
+    mfplat mfreadwrite mfuuid delayimp)
 # The execution level (requireAdministrator) comes from app.manifest alone; the
-# linker's own default (asInvoker) would conflict with it.
-target_link_options(WinShun PRIVATE /MANIFESTUAC:NO)
+# linker's own default (asInvoker) would conflict with it. Media Foundation is
+# loaded only when used (SoundClip): Windows N editions do not have it.
+target_link_options(WinShun PRIVATE /MANIFESTUAC:NO /DELAYLOAD:mfplat.dll /DELAYLOAD:mfreadwrite.dll)
 
 # UI font files, loaded from fonts\ next to the exe (see main.cpp).
 set(font_files

@@ -244,6 +244,17 @@
 - **原因**：QML 的 `font.pixelSize` 是 `int`。
 - **做法**：非整数的字号用 `font.pointSize`（实数）：像素 × 72 / 96。开了高 DPI 缩放后 Qt 的逻辑 DPI 固定是 96（`Glyph.qml`）。
 
+### 快速连点，第二下没有 `clicked`
+
+- **现象**：`MouseArea` 的 `onClicked` 里做事，快速连点时每两下只响应一下。
+- **原因**：两下点得够快就是双击：第二下只发 `doubleClicked`，不发 `clicked`。
+- **做法**：每一下都要响应的（`AuthorAvatar.qml`），用 `onPressed`；连点时要防的是重复的效果本身（叠在一起、反复从头开始），在处理函数里判断，不靠漏掉的事件。
+
+### 连链接都不行的系统组件：延迟加载
+
+- **现象**：直接链接 `mfplat.lib`（Media Foundation），程序在没有它的 Windows 上（N 版没装媒体功能包）根本启动不了，报缺少 DLL。
+- **做法**：`/DELAYLOAD:mfplat.dll`（加 `delayimp`），用之前先 `LoadLibraryExW(..., LOAD_LIBRARY_SEARCH_SYSTEM32)` 确认在不在，不在就不用；延迟加载的函数第一次调用时才找 DLL，找不到会抛 SEH 异常。`dumpbin /dependents WinShun.exe` 里它应该出现在 “delay load dependencies” 下。
+
 ## 安装程序（Inno Setup）
 
 ### 中文语言文件要带 BOM
