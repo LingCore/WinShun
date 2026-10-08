@@ -53,6 +53,7 @@ QString pickFolder(HWND owner, const QString& title);
 namespace ws::autostart {
 
 bool isEnabled();
+bool isSetUp(); // enabled for any copy of WinShun, this one or another
 void setEnabled(bool enabled);
 // The task still starts a program that is gone (the portable copy, after
 // installing with Setup): point it at this one. A copy that still exists

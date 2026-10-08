@@ -86,8 +86,19 @@ int main(int argc, char* argv[])
     const QCommandLineOption query(u"query"_s, u"Open the window with this search text."_s, u"text"_s);
     const QCommandLineOption quit(u"quit"_s, u"Exit the running instance (saves its index)."_s);
     const QCommandLineOption settings(u"settings"_s, u"Open the settings window."_s);
-    parser.addOptions({background, toggle, query, quit, settings});
+    const QCommandLineOption takeAutostart(u"take-autostart"_s,
+        u"If WinShun starts at login, start this copy instead, then exit (run by the installer)."_s);
+    parser.addOptions({background, toggle, query, quit, settings, takeAutostart});
     parser.process(app);
+
+    // The installer, once it has installed this copy: an autostart set up by
+    // a portable copy now starts it. Through the Task Scheduler API like the
+    // switch in the app; schtasks /Change would ask for the user's password.
+    if (parser.isSet(takeAutostart)) {
+        if (ws::autostart::isSetUp())
+            ws::autostart::setEnabled(true);
+        return 0;
+    }
 
     // Single instance: hand the request to the copy that is already running.
     const HANDLE instanceMutex = ::CreateMutexW(nullptr, FALSE, L"Local\\WinShun.Instance");

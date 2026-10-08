@@ -403,6 +403,11 @@ bool isEnabled()
     return path && ::_wcsicmp(path->c_str(), exePath().c_str()) == 0; // a copy elsewhere (another build) does not count
 }
 
+bool isSetUp()
+{
+    return taskPath().has_value();
+}
+
 void adoptIfOrphaned()
 {
     const std::optional<std::wstring> path = taskPath();

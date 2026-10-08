@@ -88,7 +88,9 @@ Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Run]
-; As the installer runs (elevated), so there is no second UAC prompt.
+; As the installer runs (elevated), so there is no UAC prompt.
+; An autostart set up earlier (a portable copy) now starts this copy.
+Filename: "{app}\{#AppExe}"; Parameters: "--take-autostart"; Flags: runhidden waituntilterminated runascurrentuser
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent runascurrentuser
 
 [Code]
@@ -129,18 +131,6 @@ begin
     Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM {#AppExe}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     Sleep(1000);
   end;
-end;
-
-// An autostart WinShun set up earlier (a portable copy, or an older install
-// elsewhere) now starts this copy. Nothing happens without one.
-procedure CurStepChanged(CurStep: TSetupStep);
-var
-  ResultCode: Integer;
-begin
-  if CurStep = ssPostInstall then
-    Exec(ExpandConstant('{sys}\schtasks.exe'),
-      '/Change /TN WinShun /TR "\"' + ExpandConstant('{app}\{#AppExe}') + '\" --background"', '',
-      SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;

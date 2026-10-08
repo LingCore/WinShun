@@ -84,7 +84,7 @@ cmake --build --preset release --target update_translations   # lupdate：把新
 
 - 装到 `Program Files\WinShun`（Win顺 本来就要管理员权限），开始菜单一个快捷方式，“设置 → 应用”里可以卸载。`AppId` 永远不要改：新版靠它找到旧版、原地覆盖。
 - 安装和卸载前先让正在运行的 Win顺 退出：装过的用 `WinShun.exe --quit`，别处的免安装版给它的消息窗口发 `WM_CLOSE`（0.2.1 起会照 `--quit` 退出、先保存索引），过 15 秒还在就强制结束。
-- 装好后，已有的开机自启任务（免安装版设的）改成启动安装的这份；卸载时只删除指向本安装目录的任务，并问是否删除 `%APPDATA%\WinShun`、`%LOCALAPPDATA%\WinShun`。
+- 装好后，已有的开机自启任务（免安装版设的）改成启动安装的这份（安装程序运行 `WinShun.exe --take-autostart`）；卸载时只删除指向本安装目录的任务，并问是否删除 `%APPDATA%\WinShun`、`%LOCALAPPDATA%\WinShun`。
 - 向导图片由 `tools/make_installer_images.py` 生成（浅色、深色两套），中文界面文字是 Inno Setup 仓库里的非官方翻译 `installer/ChineseSimplified.isl`。
 
 ## 代码结构
