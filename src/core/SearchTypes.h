@@ -6,7 +6,9 @@
 
 namespace ws {
 
-enum class Scope : int { All = 0, Apps = 1, Files = 2, Folders = 3, Content = 4 };
+// 全部: apps, files, folders, then file contents. 文件: files, then folders.
+// 内容: file contents.
+enum class Scope : int { All = 0, Files = 1, Content = 2 };
 
 // What kind of installed app a result is (see AppCatalog), or None for a
 // file or folder.

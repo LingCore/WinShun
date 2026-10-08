@@ -66,7 +66,6 @@ Item {
         anchors.leftMargin: 20
         anchors.verticalCenter: parent.verticalCenter
         glyph: bar.launcher.scope === Launcher.Content ? "" // Document
-             : bar.launcher.scope === Launcher.Apps ? "" // AllApps
              : "" // Search
         size: 22
     }

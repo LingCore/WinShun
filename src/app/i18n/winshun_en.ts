@@ -787,8 +787,8 @@
         <translation>Search installed apps</translation>
     </message>
     <message>
-        <source>搜索文件</source>
-        <translation>Search files</translation>
+        <source>搜索文件和文件夹</source>
+        <translation>Search files and folders</translation>
     </message>
     <message>
         <source>搜索文件夹</source>

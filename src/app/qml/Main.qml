@@ -175,8 +175,6 @@ Window {
         case Qt.Key_1:
         case Qt.Key_2:
         case Qt.Key_3:
-        case Qt.Key_4:
-        case Qt.Key_5:
             if (!ctrl)
                 return
             window.launcher.scope = event.key - Qt.Key_1
@@ -348,9 +346,7 @@ Window {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: window.contentMode
                           ? qsTr("没有 %1包含“%2”").arg(window.launcher.contentFilesLabel).arg(window.trimmedQuery)
-                          : window.launcher.scope === Launcher.Apps
-                            ? qsTr("没有找到名为“%1”的应用").arg(window.trimmedQuery)
-                            : qsTr("没有找到“%1”").arg(window.trimmedQuery)
+                          : qsTr("没有找到“%1”").arg(window.trimmedQuery)
                     textFormat: Text.PlainText // holds what was typed
                     color: Theme.subtext
                     font.pixelSize: Theme.fontTitle
@@ -358,7 +354,6 @@ Window {
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: window.contentMode ? qsTr("按 Tab 回到文件名搜索")
-                        : window.launcher.scope === Launcher.Apps ? qsTr("按 Tab 搜索文件和文件夹")
                         : window.launcher.searchesContent
                           ? qsTr("文件名和 %1的内容里都没有").arg(window.launcher.contentFilesLabel)
                           : qsTr("按 Tab 切换范围，或搜索文件内容")

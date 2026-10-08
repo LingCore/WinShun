@@ -3,13 +3,13 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import WinShun
 
-// Segmented control: 全部 / 应用 / 文件 / 文件夹 / 内容. Tab and Ctrl+1..5 switch too.
+// Segmented control: 全部 / 文件 / 内容. Tab and Ctrl+1..3 switch too.
 // Also used in the settings window with other labels.
 Rectangle {
     id: tabs
 
     property int current: 0
-    property var labels: [qsTr("全部"), qsTr("应用"), qsTr("文件"), qsTr("文件夹"), qsTr("内容")]
+    property var labels: [qsTr("全部"), qsTr("文件"), qsTr("内容")]
 
     signal activated(int scope)
 

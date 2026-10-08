@@ -60,7 +60,7 @@ private:
 
 } // namespace
 
-NameSearchOutput searchNames(const FileIndex& index, const NameMatcher& matcher, Scope scope, std::size_t limit,
+NameSearchOutput searchNames(const FileIndex& index, const NameMatcher& matcher, std::size_t limit,
     WorkerPool& pool, const std::function<bool()>& isCancelled)
 {
     NameSearchOutput output;
@@ -90,8 +90,6 @@ NameSearchOutput searchNames(const FileIndex& index, const NameMatcher& matcher,
         for (std::size_t i = 0; i < count; ++i) {
             const Entry& e = entries[i];
             if (e.flags & (EntryFlag::Deleted | EntryFlag::Root))
-                continue;
-            if ((scope == Scope::Files && e.isDir()) || (scope == Scope::Folders && !e.isDir()))
                 continue;
             int score = matcher.match(index, e);
             if (score < 0)

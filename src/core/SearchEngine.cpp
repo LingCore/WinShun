@@ -26,23 +26,8 @@ namespace ws {
 
 namespace {
 
-constexpr int kRecentOnEmptyQuery = 12;
+constexpr int kRecentOnEmptyQuery = 5; // listed with nothing typed (the history keeps more, for ranking)
 constexpr int kRecentPromoted = 3;
-constexpr int kRecentApps = 5; // 应用 with nothing typed: these first, then every app
-
-bool scopeAccepts(Scope scope, bool isDir) noexcept
-{
-    switch (scope) {
-    case Scope::Apps:
-        return false;
-    case Scope::Files:
-        return !isDir;
-    case Scope::Folders:
-        return isDir;
-    default:
-        return true;
-    }
-}
 
 std::shared_ptr<const AppList> appsOf(const AppCatalog* catalog)
 {
@@ -160,7 +145,7 @@ void promoteHistory(SearchResults& results, const SearchEngine::Request& request
         if (matcher.matchPath(path, false) < 0 && matcher.matchPath(path, true) < 0)
             continue; // cheap name check before touching the disk
         const QFileInfo info(path);
-        if (!info.exists() || !scopeAccepts(request.scope, info.isDir()) || matcher.matchPath(path, info.isDir()) < 0)
+        if (!info.exists() || matcher.matchPath(path, info.isDir()) < 0)
             continue;
         promoted.push_back(fromDisk(path, info.isDir()));
     }
@@ -228,8 +213,6 @@ void SearchEngine::workerLoop(std::stop_token stop)
             continue;
         if (job.request.scope == Scope::Content)
             runContentSearch(job);
-        else if (job.request.scope == Scope::Apps)
-            runAppSearch(job);
         else
             runNameSearch(job);
     }
@@ -256,7 +239,7 @@ void SearchEngine::runNameSearch(const Job& job)
                 continue;
             }
             const QFileInfo info(path);
-            if (info.exists() && scopeAccepts(request.scope, info.isDir()))
+            if (info.exists())
                 results.push_back(fromDisk(path, info.isDir()));
         }
         total = results.size();
@@ -265,8 +248,8 @@ void SearchEngine::runNameSearch(const Job& job)
         const auto index = m_index->index();
         {
             const auto lock = index->readLock();
-            const NameSearchOutput out = searchNames(*index, matcher, request.scope,
-                static_cast<std::size_t>(request.limit), m_pool, [&] { return isStale(job.id); });
+            const NameSearchOutput out = searchNames(
+                *index, matcher, static_cast<std::size_t>(request.limit), m_pool, [&] { return isStale(job.id); });
             if (out.cancelled || isStale(job.id))
                 return;
             total = static_cast<qint64>(out.totalMatches);
@@ -275,8 +258,10 @@ void SearchEngine::runNameSearch(const Job& job)
                 results.push_back(fromIndex(*index, hit.id));
         }
         promoteHistory(results, request, matcher);
+        // Files before folders, each in the order they ranked (recent ones first).
+        std::stable_partition(results.begin(), results.end(), [](const SearchResult& r) { return !r.isDir; });
 
-        // 全部: every app that 应用 finds comes first, in the same order, then the files.
+        // 全部: every app found comes first, then the files and folders.
         if (request.scope == Scope::All) {
             SearchResults top;
             for (const AppHit& hit : searchApps(*apps, query, matcher, request.history)) {
@@ -293,48 +278,6 @@ void SearchEngine::runNameSearch(const Job& job)
                     top.resize(request.limit);
                 results = std::move(top);
             }
-        }
-    }
-
-    if (!isStale(job.id))
-        emit resultsReady(job.id, results, total, timer.nsecsElapsed() / 1000);
-}
-
-void SearchEngine::runAppSearch(const Job& job)
-{
-    QElapsedTimer timer;
-    timer.start();
-    const Request& request = job.request;
-    const ParsedQuery query = parseQuery(request.text);
-    const auto apps = appsOf(m_apps);
-    SearchResults results;
-    qint64 total = 0;
-
-    if (query.isEmpty()) {
-        // Like the Start menu's list: recently opened apps, then all of them by name.
-        for (const QString& path : request.history) {
-            if (results.size() >= kRecentApps)
-                break;
-            if (const AppInfo* app = findApp(*apps, path))
-                results.push_back(fromApp(*app, true));
-        }
-        const qsizetype recent = results.size();
-        for (const AppInfo& app : *apps) {
-            if (results.size() >= request.limit)
-                break;
-            const QString path = app.launchPath();
-            if (std::none_of(results.cbegin(), results.cbegin() + recent, [&](const SearchResult& r) { return r.path == path; }))
-                results.push_back(fromApp(app, false));
-        }
-        total = static_cast<qint64>(apps->size());
-    } else {
-        const NameMatcher matcher(query);
-        const std::vector<AppHit> hits = searchApps(*apps, query, matcher, request.history);
-        total = static_cast<qint64>(hits.size());
-        for (const AppHit& hit : hits) {
-            if (results.size() >= request.limit)
-                break;
-            results.push_back(fromApp((*apps)[hit.index], false));
         }
     }
 

@@ -27,8 +27,7 @@ using namespace std::chrono_literals;
 namespace ws {
 
 // QML sees Launcher::Scope; the engine takes ws::Scope. One cast between them.
-static_assert(Launcher::All == static_cast<int>(ws::Scope::All) && Launcher::Apps == static_cast<int>(ws::Scope::Apps)
-    && Launcher::Files == static_cast<int>(ws::Scope::Files) && Launcher::Folders == static_cast<int>(ws::Scope::Folders)
+static_assert(Launcher::All == static_cast<int>(ws::Scope::All) && Launcher::Files == static_cast<int>(ws::Scope::Files)
     && Launcher::Content == static_cast<int>(ws::Scope::Content));
 
 namespace {
@@ -108,8 +107,8 @@ Launcher::Launcher(IndexService* index, AppCatalog* apps, SearchEngine* engine, 
         refreshStatus();
     });
     connect(m_apps, &AppCatalog::changed, this, [this] {
-        // Apps installed or removed (or the first list arrived): 全部 and 应用 show them.
-        if (m_window && m_window->isVisible() && (m_scope == All || m_scope == Apps))
+        // Apps installed or removed (or the first list arrived): 全部 shows them.
+        if (m_window && m_window->isVisible() && m_scope == All)
             search();
         refreshStatus();
     });
@@ -164,12 +163,8 @@ QString Launcher::contentFilesLabel() const
 QString Launcher::placeholder() const
 {
     switch (m_scope) {
-    case Apps:
-        return tr("搜索已安装的应用");
     case Files:
-        return tr("搜索文件");
-    case Folders:
-        return tr("搜索文件夹");
+        return tr("搜索文件和文件夹");
     case Content:
         return m_contentExtensions.size() > kShownExtensions ? tr("搜索 %1 等文件中的文字").arg(shownExtensions())
                                                              : tr("搜索 %1 文件中的文字").arg(shownExtensions());
@@ -270,8 +265,6 @@ void Launcher::search()
     SearchEngine::Request request;
     request.text = m_query;
     request.scope = static_cast<ws::Scope>(m_scope);
-    if (m_scope == Apps)
-        request.limit = 5000; // with nothing typed, 应用 lists every app
     request.history = m_history->items();
     m_requestId = m_engine->submit(std::move(request)); // also stops a running content scan
     m_pending = true;
@@ -424,19 +417,10 @@ void Launcher::refreshStatus()
 {
     const auto state = m_index->state();
     const int items = static_cast<int>(m_index->itemCount());
-    const int apps = static_cast<int>(m_apps->apps()->size());
     // Waiting for a pause in typing counts too: "0 个结果 · 9 毫秒" would read as final.
     const bool contentPending = !m_quiet && (m_contentRunning || m_contentDebounce.isActive());
     QString s;
-    if (m_scope == Apps) {
-        const qint64 ms = m_elapsedUs / 1000;
-        if (!m_apps->isLoaded())
-            s = tr("正在读取已安装的应用…");
-        else if (m_query.trimmed().isEmpty() || !m_haveResults)
-            s = tr("已安装 %Ln 个应用", nullptr, apps);
-        else
-            s = tr("%Ln 个应用 · %1 毫秒", nullptr, static_cast<int>(m_totalMatches)).arg(ms < 1 ? u"<1"_s : number(ms));
-    } else if (m_query.trimmed().isEmpty() || (!m_haveResults && !m_contentRunning)) {
+    if (m_query.trimmed().isEmpty() || (!m_haveResults && !m_contentRunning)) {
         switch (state) {
         case IndexService::State::Idle:
         case IndexService::State::Loading:

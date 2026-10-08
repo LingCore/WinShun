@@ -1290,7 +1290,7 @@ int main(int argc, char* argv[])
         ws::NameSearchOutput out;
         for (int run = 0; run < 5; ++run) {
             timer.restart();
-            out = ws::searchNames(*index, matcher, ws::Scope::All, 100, pool, {});
+            out = ws::searchNames(*index, matcher, 100, pool, {});
             best = std::min(best, static_cast<double>(timer.nsecsElapsed()) / 1e6);
         }
         std::printf("%-16s %9zu matches  %6.1f ms   top: %s\n", qPrintable(q), out.totalMatches, best,

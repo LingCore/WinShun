@@ -38,7 +38,7 @@ class Launcher : public QObject {
     Q_PROPERTY(bool searchesContent READ searchesContent NOTIFY statusChanged FINAL)
 
 public:
-    enum Scope { All, Apps, Files, Folders, Content }; // as ws::Scope
+    enum Scope { All, Files, Content }; // as ws::Scope
     Q_ENUM(Scope)
     enum Action { Open, Reveal, RunAsAdmin, CopyPath, CopyName, CopyItem, Recycle };
     Q_ENUM(Action)

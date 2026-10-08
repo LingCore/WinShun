@@ -61,7 +61,6 @@ private:
 
     void workerLoop(std::stop_token stop);
     void runNameSearch(const Job& job);
-    void runAppSearch(const Job& job);
     void runContentSearch(const Job& job);
     bool isStale(quint64 id) const noexcept { return m_latest.load(std::memory_order_relaxed) != id; }
 

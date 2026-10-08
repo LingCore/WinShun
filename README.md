@@ -77,9 +77,9 @@
 
 #### 🚀 打开应用
 
-- **应用** 范围列出所有已安装的应用，和开始菜单的“所有应用”一致：桌面程序和 Microsoft Store 应用都有。
+- 已安装的应用和开始菜单的“所有应用”一致：桌面程序和 Microsoft Store 应用都有。
 - 按名称、拼音、英文首字母（`vsc` 找 Visual Studio Code）或程序文件名（`winword` 找 Word）搜索；不输入时先列最近打开的。
-- 在 **全部** 范围里，找到的应用都排在文件前面。
+- 在 **全部** 范围里依次是：应用、文件、文件夹、文件内容。**文件** 范围只有文件和文件夹（文件在前），**内容** 范围只搜文件里的文字。
 - 应用像在开始菜单里一样以普通权限打开；需要时按 `Ctrl+Shift+Enter` 以管理员身份运行。
 
 <p align="center">
@@ -101,7 +101,7 @@
 | `Ctrl+Shift+Enter` | 以管理员身份运行 |
 | `Ctrl+C` | 复制文件（可以直接到资源管理器里粘贴）；搜索框里有选中文字时复制文字 |
 | `Ctrl+Shift+C` | 复制完整路径 |
-| `Tab` / `Shift+Tab` | 切换搜索范围（全部 / 应用 / 文件 / 文件夹 / 内容）；`Ctrl+1`…`Ctrl+5` 直接选择 |
+| `Tab` / `Shift+Tab` | 切换搜索范围（全部 / 文件 / 内容）；`Ctrl+1`…`Ctrl+3` 直接选择 |
 | 菜单键 / `Shift+F10` / 右键 | 更多操作 |
 | `Esc` | 关闭（选中了多项时先取消选择） |
 
@@ -164,7 +164,7 @@ Win顺 自己建索引，不需要另装 Everything。文件名、拼音、应�
 **能搜 Word、Excel、PDF 里的文字吗？**
 不能，内容搜索只读纯文本文件（txt、md、csv、json、代码等）。
 
-**按 `Ctrl+1`～`Ctrl+5` 切换范围没反应？**
+**按 `Ctrl+1`～`Ctrl+3` 切换范围没反应？**
 这几个组合键可能被别的程序注册成了全局快捷键（例如截图工具 PixPin 默认占用 `Ctrl+1` 等），按键到不了 Win顺。改掉那个程序的快捷键，或者用 `Tab` 切换。
 
 **双击 Ctrl 和别的软件冲突怎么办？**
@@ -231,14 +231,14 @@ The interface comes in **English and Simplified Chinese**. It follows the Window
 
 #### 🚀 App launcher
 
-- The **应用 (Apps)** scope lists every installed app, the same as “All apps” in the Start menu: desktop programs and Microsoft Store apps.
+- Installed apps are the same as “All apps” in the Start menu: desktop programs and Microsoft Store apps.
 - Search by name, pinyin, initials (`vsc` finds Visual Studio Code) or program file name (`winword` finds Word). With an empty box, recently opened apps come first.
-- In the **全部 (All)** scope, the apps found come before any file.
+- The **全部 (All)** scope lists apps, then files, then folders, then file contents. **文件 (Files)** has files and then folders; **内容 (Content)** searches the text inside files.
 - Apps open with normal rights, as from the Start menu; `Ctrl+Shift+Enter` runs one as administrator.
 
 #### ⌨️ Keyboard first
 
-`Enter` opens, `Ctrl+Enter` shows the item in its folder, `Ctrl+Shift+Enter` runs as administrator, `Ctrl+C` copies the file, `Ctrl+Shift+C` copies its path, `Tab` / `Shift+Tab` switch scopes (or `Ctrl+1`…`Ctrl+5`), the menu key or right-click shows more actions, `Esc` closes. The selected row also has buttons to show in folder, copy, copy path and delete (to the Recycle Bin, after a second click). Select several results with `Shift+↑` / `Shift+↓`, `Ctrl`+click or `Shift`+click: opening, copying and deleting then act on all of them, and `Esc` first clears the selection.
+`Enter` opens, `Ctrl+Enter` shows the item in its folder, `Ctrl+Shift+Enter` runs as administrator, `Ctrl+C` copies the file, `Ctrl+Shift+C` copies its path, `Tab` / `Shift+Tab` switch scopes (or `Ctrl+1`…`Ctrl+3`), the menu key or right-click shows more actions, `Esc` closes. The selected row also has buttons to show in folder, copy, copy path and delete (to the Recycle Bin, after a second click). Select several results with `Shift+↑` / `Shift+↓`, `Ctrl`+click or `Shift`+click: opening, copying and deleting then act on all of them, and `Esc` first clears the selection.
 
 #### 🎨 Feels like part of Windows 11
 
@@ -276,7 +276,7 @@ WinShun builds its own index, so Everything is not needed. File names, pinyin, a
 **Can it search inside Word, Excel or PDF files?**
 No. Content search reads plain-text files only.
 
-**`Ctrl+1`…`Ctrl+5` do nothing?**
+**`Ctrl+1`…`Ctrl+3` do nothing?**
 Another app has probably registered them as global hotkeys (the screenshot tool PixPin takes `Ctrl+1` and others by default), so the keys never reach WinShun. Change them in that app, or use `Tab`.
 
 **How much memory does it use?**

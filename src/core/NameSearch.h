@@ -24,7 +24,7 @@ struct NameSearchOutput {
 
 // Scans the whole index in parallel and keeps the `limit` best matches.
 // Caller holds index.readLock().
-NameSearchOutput searchNames(const FileIndex& index, const NameMatcher& matcher, Scope scope, std::size_t limit,
+NameSearchOutput searchNames(const FileIndex& index, const NameMatcher& matcher, std::size_t limit,
     WorkerPool& pool, const std::function<bool()>& isCancelled);
 
 } // namespace ws

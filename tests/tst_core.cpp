@@ -1236,7 +1236,7 @@ private slots:
 
         const NameMatcher matcher(ws::parseQuery(u"file_1"_s));
         WorkerPool pool(4);
-        const auto out = searchNames(index, matcher, Scope::All, 10, pool, {});
+        const auto out = searchNames(index, matcher, 10, pool, {});
         QVERIFY(!out.cancelled);
         QCOMPARE(out.hits.size(), std::size_t {10});
         QCOMPARE(index.name(out.hits.front().id), std::string_view("file_1"));
@@ -1245,9 +1245,7 @@ private slots:
         for (std::size_t i = 1; i < out.hits.size(); ++i)
             QVERIFY(out.hits[i - 1].score >= out.hits[i].score);
 
-        const auto folders = searchNames(index, matcher, Scope::Folders, 10, pool, {});
-        QCOMPARE(folders.totalMatches, std::size_t {0});
-        const auto cancelled = searchNames(index, matcher, Scope::All, 10, pool, [] { return true; });
+        const auto cancelled = searchNames(index, matcher, 10, pool, [] { return true; });
         QVERIFY(cancelled.cancelled);
     }
 
