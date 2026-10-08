@@ -34,7 +34,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString renderer READ renderer WRITE setRenderer NOTIFY changed FINAL)
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY changed FINAL)
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY changed FINAL)
-    Q_PROPERTY(bool transparency READ transparency WRITE setTransparency NOTIFY changed FINAL)
+    Q_PROPERTY(QString transparency READ transparency WRITE setTransparency NOTIFY changed FINAL)
     Q_PROPERTY(bool autoUpdate READ autoUpdate WRITE setAutoUpdate NOTIFY changed FINAL)
     Q_PROPERTY(bool restartRequired READ restartRequired NOTIFY changed FINAL)
     Q_PROPERTY(bool isDefault READ isDefault NOTIFY changed FINAL)
@@ -78,8 +78,8 @@ public:
     void setTheme(const QString& theme);
     QString language() const { return m_settings.language; }
     void setLanguage(const QString& language);
-    bool transparency() const { return m_settings.transparency; }
-    void setTransparency(bool on);
+    QString transparency() const { return m_settings.transparency; }
+    void setTransparency(const QString& transparency);
     bool autoUpdate() const { return m_settings.autoUpdate; }
     void setAutoUpdate(bool on);
     bool restartRequired() const { return Settings::resolveRenderer(m_settings.renderer) != m_runningRenderer; }

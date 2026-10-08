@@ -363,8 +363,16 @@
         <translation>Window backgrounds take on the colours of your wallpaper (Mica). Transparency effects are off in Windows Settings; turn them on to see it</translation>
     </message>
     <message>
-        <source>窗口背景透出桌面壁纸的颜色（云母效果）</source>
-        <translation>Window backgrounds take on the colours of your wallpaper (Mica)</translation>
+        <source>窗口背景透出桌面壁纸的颜色（云母效果）；“自动”在内存不超过 16 GB 时关闭</source>
+        <translation>Window backgrounds take on the colours of your wallpaper (Mica); “Auto” turns it off on PCs with 16 GB of RAM or less</translation>
+    </message>
+    <message>
+        <source>关</source>
+        <translation>Off</translation>
+    </message>
+    <message>
+        <source>开</source>
+        <translation>On</translation>
     </message>
     <message>
         <source>跟随系统</source>

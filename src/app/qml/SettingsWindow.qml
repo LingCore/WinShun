@@ -13,6 +13,7 @@ Window {
 
     readonly property var renderers: ["software", "d3d11", "auto"]
     readonly property var languages: ["system", "zh", "en"]
+    readonly property var transparencies: ["off", "on", "auto"]
     readonly property var pages: [
         { title: qsTr("打开 Win顺"), glyph: "" }, // Keyboard
         { title: qsTr("外观"), glyph: "\uE771" }, // Personalize
@@ -487,13 +488,14 @@ Window {
                                  ? qsTr("需要把“高级”里的界面绘制方式设为“显卡加速”")
                                  : !SystemTheme.materials
                                  ? qsTr("窗口背景透出桌面壁纸的颜色（云母效果）。Windows 设置里的“透明效果”关着，打开后才能看到")
-                                 : qsTr("窗口背景透出桌面壁纸的颜色（云母效果）")
+                                 : qsTr("窗口背景透出桌面壁纸的颜色（云母效果）；“自动”在内存不超过 16 GB 时关闭")
 
-                    ToggleSwitch {
+                    ScopeTabs {
                         enabled: SystemTheme.backdropAvailable
                         opacity: enabled ? 1 : 0.4
-                        checked: window.editor.transparency && SystemTheme.backdropAvailable
-                        onToggled: (on) => window.editor.transparency = on
+                        labels: [qsTr("关"), qsTr("开"), qsTr("自动")]
+                        current: Math.max(0, window.transparencies.indexOf(window.editor.transparency))
+                        onActivated: (index) => window.editor.transparency = window.transparencies[index]
                     }
                 }
 

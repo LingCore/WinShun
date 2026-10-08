@@ -142,10 +142,20 @@ QString Settings::resolveRenderer(const QString& renderer)
     if (renderer != u"auto")
         return renderer;
     // Machines with little memory save the ~50 MB that D3D11 costs.
+    return lowMemory() ? u"software"_s : u"d3d11"_s;
+}
+
+bool Settings::resolveTransparency(const QString& transparency)
+{
+    if (transparency == u"auto")
+        return !lowMemory();
+    return transparency == u"on";
+}
+
+bool Settings::lowMemory()
+{
     MEMORYSTATUSEX status {sizeof(status)};
-    if (::GlobalMemoryStatusEx(&status) && status.ullTotalPhys <= 16ull << 30)
-        return u"software"_s;
-    return u"d3d11"_s;
+    return ::GlobalMemoryStatusEx(&status) && status.ullTotalPhys <= 16ull << 30;
 }
 
 QString Settings::dataDir()
@@ -194,7 +204,15 @@ void Settings::load()
     language = readOrDefault(s, u"Appearance/Language"_s, d.language).trimmed().toLower();
     if (language != u"zh" && language != u"en")
         language = d.language;
-    transparency = readOrDefault(s, u"Appearance/Transparency"_s, d.transparency);
+    transparency = readOrDefault(s, u"Appearance/Transparency"_s, d.transparency).trimmed().toLower();
+    // It used to be a switch: "false" was turned off by hand, "true" was mostly
+    // the default written back.
+    if (transparency == u"false" || transparency == u"true") {
+        transparency = transparency == u"false" ? u"off"_s : d.transparency;
+        s.setValue(u"Appearance/Transparency"_s, transparency);
+    } else if (transparency != u"on" && transparency != u"off") {
+        transparency = d.transparency;
+    }
 
     autoUpdate = readOrDefault(s, u"Update/Automatic"_s, d.autoUpdate);
 

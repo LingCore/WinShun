@@ -173,11 +173,11 @@ void SettingsEditor::setLanguage(const QString& language)
     commit();
 }
 
-void SettingsEditor::setTransparency(bool on)
+void SettingsEditor::setTransparency(const QString& transparency)
 {
-    if (m_settings.transparency == on)
+    if (m_settings.transparency == transparency)
         return;
-    m_settings.transparency = on;
+    m_settings.transparency = transparency;
     commit();
 }
 
