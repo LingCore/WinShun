@@ -2,8 +2,11 @@
 
 #include "Win32Util.h"
 #include "platform/Shell.h"
+#include "platform/ShortcutCapture.h"
 
+#include <QCoreApplication>
 #include <QDir>
+#include <QKeyEvent>
 #include <QRegularExpression>
 
 using namespace Qt::StringLiterals;
@@ -30,6 +33,8 @@ SettingsEditor::SettingsEditor(const Settings& settings, const QString& runningR
     , m_runningRenderer(runningRenderer)
 {
 }
+
+SettingsEditor::~SettingsEditor() = default; // here, where ShortcutCapture is complete
 
 void SettingsEditor::commit()
 {
@@ -76,6 +81,23 @@ void SettingsEditor::setRecordingHotkey(bool recording)
     if (m_recordingHotkey == recording)
         return;
     m_recordingHotkey = recording;
+    m_capture.reset();
+    if (recording && m_window) {
+        // The recorder gets its keys from the keyboard itself, ahead of Qt,
+        // Windows and other programs (see ShortcutCapture), as ordinary key events.
+        m_capture = std::make_unique<ShortcutCapture>(reinterpret_cast<HWND>(m_window->winId()),
+            [this](const ShortcutCapture::Key& key) {
+                QMetaObject::invokeMethod(this, [this, key] {
+                    if (!m_recordingHotkey || !m_window)
+                        return; // the recording ended meanwhile
+                    QKeyEvent event(key.press ? QEvent::KeyPress : QEvent::KeyRelease, key.key, key.modifiers,
+                        QString(), key.autoRepeat);
+                    QCoreApplication::sendEvent(m_window, &event);
+                }, Qt::QueuedConnection);
+            });
+        if (!m_capture->isActive())
+            m_capture.reset(); // Qt's own key events then, which lack Alt+Space
+    }
     emit recordingHotkeyChanged();
 }
 

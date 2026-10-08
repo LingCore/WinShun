@@ -97,7 +97,7 @@ Window {
         leadingInset: nav.width
     }
 
-    Binding { // the global hotkey would fire instead of reaching the recorder
+    Binding { // suspends the global hotkey and hands the recorder the keyboard (see ShortcutCapture)
         target: window.editor
         property: "recordingHotkey"
         value: hotkeyRecorder.recording

@@ -8,6 +8,7 @@ qt_add_executable(WinShun WIN32
     platform/KeyListener.cpp platform/KeyListener.h
     platform/MessageWindow.cpp platform/MessageWindow.h
     platform/Shell.cpp platform/Shell.h
+    platform/ShortcutCapture.cpp platform/ShortcutCapture.h
     platform/VolumeNotifier.cpp platform/VolumeNotifier.h
     platform/WindowEffects.cpp platform/WindowEffects.h
     ${PROJECT_SOURCE_DIR}/resources/app.rc

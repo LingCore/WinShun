@@ -7,7 +7,11 @@
 #include <QWindow>
 #include <QtQml/qqmlregistration.h>
 
+#include <memory>
+
 namespace ws {
+
+class ShortcutCapture;
 
 // The view-model behind the settings window. Every change is saved right
 // away and reported through edited(); there is no OK / Cancel step.
@@ -42,6 +46,7 @@ class SettingsEditor : public QObject {
 
 public:
     SettingsEditor(const Settings& settings, const QString& runningRenderer, QObject* parent = nullptr);
+    ~SettingsEditor() override;
 
     bool doubleCtrl() const { return m_settings.doubleCtrl; }
     void setDoubleCtrl(bool on);
@@ -125,6 +130,7 @@ private:
     QString m_contentIndexStatus;
     bool m_recordingHotkey = false;
     QPointer<QWindow> m_window;
+    std::unique_ptr<ShortcutCapture> m_capture; // while recording a hotkey
 };
 
 } // namespace ws

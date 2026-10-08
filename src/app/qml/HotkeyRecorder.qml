@@ -2,6 +2,9 @@ import QtQuick
 import WinShun
 
 // Click, then press the key combination. Esc cancels, Backspace clears.
+// While it records, the keys come straight from the keyboard (SettingsEditor
+// starts a ShortcutCapture), so that Alt+Space, Win+… and combinations other
+// programs registered arrive here too.
 Rectangle {
     id: recorder
 
@@ -28,7 +31,7 @@ Rectangle {
         if (key >= Qt.Key_F1 && key <= Qt.Key_F24) return "F" + (key - Qt.Key_F1 + 1)
         if (key === Qt.Key_Space) return "Space"
         if (key === Qt.Key_QuoteLeft || key === Qt.Key_AsciiTilde) return "`"
-        const shiftedDigit = ")!@#$%^&*(".indexOf(String.fromCharCode(key)) // Shift+1 arrives as "!"
+        const shiftedDigit = ")!@#$%^&*(".indexOf(String.fromCharCode(key)) // from Qt, without the capture, Shift+1 arrives as "!"
         if (key < 128 && shiftedDigit >= 0) return String(shiftedDigit)
         return ""
     }

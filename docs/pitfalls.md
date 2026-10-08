@@ -216,6 +216,17 @@
 - **原因**：`split(QRegularExpression(...))` 每次调用都重新编译正则，约 3000 次就是 1.5 秒。
 - **做法**：用 `static const` 的正则，或者手写切分（`splitKeywords`）。改完约 0.45 秒。
 
+## 全局快捷键
+
+### 设置里录不到 Alt+Space
+
+- **现象**：点开快捷键方框，按 Alt+Space，方框停在“Alt + …”，什么也没录上。说明文字里举的例子正是 Alt+Space。（2026-10-08 读 Qt 6.12.0 源码发现，没有实际按过。）
+- **原因**：
+  - Qt 的 Windows 插件把“只按着 Alt 时的空格”留给自己弹系统菜单，根本不生成按键事件，QML 的 `Keys.onPressed` 收不到（`qwindowskeymapper.cpp` 的 “Special handling of global Windows hotkeys”，6.12.0 仍是这样）。同一段里 Alt+Tab、Alt+Esc、Alt+F4 直接交给 Windows，Alt+F4 会把设置窗口关掉。Ctrl+Alt+Space、Alt+Shift+Space 不受影响。
+  - 别的程序用 `RegisterHotKey` 占着的组合键（PowerToys Run、Copilot 常占 Alt+Space），按下去直接打开那个程序，窗口也收不到。Win+E 这类系统快捷键同理。
+- **做法**：录制期间由 `ShortcutCapture` 装低级键盘钩子（PowerToys 的快捷键框也这样做），按键在 Windows、Qt 和其他程序之前被拿走，在主线程上作为普通的 `QKeyEvent` 发给设置窗口，`HotkeyRecorder.qml` 的录制逻辑不用改。Qt Quick 对这样发来的 Tab 照样切换焦点（`QQuickItemPrivate::deliverKeyEvent`）。只吞录制开始后按下的键，以及这些键的抬起；Win 键按下和抬起都吞掉，不会弹开始菜单。
+- **不够的办法**：给窗口的 `keyPressEvent` 或事件过滤器加处理没用，Qt 根本没生成这个事件。应用级的原生事件过滤器按源码看能拦住 Alt+Space（事件分发器在 `TranslateMessage` 之前调用它），但拦不住别的程序占着的组合键。
+
 ## 主题和语言
 
 ### 名为 `onXxx` 的属性不随主题变化
