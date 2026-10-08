@@ -832,17 +832,17 @@
         </translation>
     </message>
     <message numerus="yes">
-        <source>已索引 %Ln 个文件和文件夹</source>
+        <source>已索引 %1 项</source>
         <translation>
-            <numerusform>%Ln item indexed</numerusform>
-            <numerusform>%Ln items indexed</numerusform>
+            <numerusform>%1 item indexed</numerusform>
+            <numerusform>%1 items indexed</numerusform>
         </translation>
     </message>
     <message numerus="yes">
-        <source> · %Ln 个应用</source>
+        <source>已索引 %1项</source>
         <translation>
-            <numerusform> · %Ln app</numerusform>
-            <numerusform> · %Ln apps</numerusform>
+            <numerusform>%1 item indexed</numerusform>
+            <numerusform>%1 items indexed</numerusform>
         </translation>
     </message>
     <message>

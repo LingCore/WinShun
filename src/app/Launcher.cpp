@@ -11,6 +11,7 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QLocale>
+#include <QSpan>
 #include <QPointer>
 #include <QScreen>
 #include <QStyleHints>
@@ -42,6 +43,32 @@ constexpr qsizetype kShownExtensions = 3; // named in the search box and the sta
 QString number(qint64 n)
 {
     return QLocale().toString(n);
+}
+
+// A count rounded to what a glance takes in: 323 万, 3.2M. `unit`: whether
+// it ends in one (no space before the noun then, in Chinese).
+QString roughNumber(qint64 n, bool* unit)
+{
+    *unit = false;
+    const QLocale locale;
+    struct Unit {
+        qint64 size;
+        QStringView name;
+    };
+    static constexpr Unit chinese[] {{100'000'000, u" 亿"}, {10'000, u" 万"}};
+    static constexpr Unit english[] {{1'000'000'000, u"B"}, {1'000'000, u"M"}, {1'000, u"K"}};
+    for (const Unit& u : locale.language() == QLocale::Chinese ? QSpan<const Unit>(chinese) : QSpan<const Unit>(english)) {
+        if (n < u.size)
+            continue;
+        const double value = double(n) / u.size;
+        QString text = locale.toString(value, 'f', value < 100 ? 1 : 0);
+        const QString zero = locale.decimalPoint() + locale.zeroDigit();
+        if (text.endsWith(zero))
+            text.chop(zero.size());
+        *unit = true;
+        return text + u.name;
+    }
+    return number(n);
 }
 
 } // namespace
@@ -414,13 +441,14 @@ void Launcher::refreshStatus()
         case IndexService::State::Building:
             s = tr("正在建立索引… 已收录 %Ln 项", nullptr, items);
             break;
-        case IndexService::State::Ready:
-            s = tr("已索引 %Ln 个文件和文件夹", nullptr, items);
-            if (m_apps->isLoaded())
-                s += tr(" · %Ln 个应用", nullptr, apps);
+        case IndexService::State::Ready: {
+            bool unit = false;
+            const QString count = roughNumber(items, &unit);
+            s = unit ? tr("已索引 %1项", nullptr, items).arg(count) : tr("已索引 %1 项", nullptr, items).arg(count);
             if (m_index->isRefreshing())
                 s += tr(" · 后台同步中");
             break;
+        }
         }
     } else if (m_scope == Content) {
         if (contentPending)
