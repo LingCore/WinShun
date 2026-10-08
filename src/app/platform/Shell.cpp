@@ -21,7 +21,9 @@
 #include <taskschd.h>
 #include <wrl/client.h>
 
+#include <atomic>
 #include <optional>
+#include <utility>
 #include <thread>
 
 using namespace Qt::StringLiterals;
@@ -272,7 +274,19 @@ bool canRunAsAdministrator(const QString& path)
     return kRunnable.contains(QFileInfo(path).suffix(), Qt::CaseInsensitive);
 }
 
-int popupMenu(HWND owner, const std::vector<MenuItem>& items, POINT screenPos)
+namespace {
+
+thread_local std::function<void()> t_menuShown; // popupMenu()'s `shown`
+
+void CALLBACK onMenuShown(HWINEVENTHOOK, DWORD, HWND, LONG, LONG, DWORD, DWORD)
+{
+    if (auto shown = std::exchange(t_menuShown, {}))
+        shown();
+}
+
+} // namespace
+
+int popupMenu(HWND owner, const std::vector<MenuItem>& items, POINT screenPos, std::function<void()> shown)
 {
     HMENU menu = ::CreatePopupMenu();
     if (!menu)
@@ -291,10 +305,20 @@ int popupMenu(HWND owner, const std::vector<MenuItem>& items, POINT screenPos)
         if (item.isDefault)
             ::SetMenuDefaultItem(menu, static_cast<UINT>(item.id), FALSE);
     }
+    // Delivered from the menu's own message loop, as it opens.
+    HWINEVENTHOOK hook = nullptr;
+    if (shown) {
+        t_menuShown = std::move(shown);
+        hook = ::SetWinEventHook(EVENT_SYSTEM_MENUPOPUPSTART, EVENT_SYSTEM_MENUPOPUPSTART, nullptr, &onMenuShown,
+            ::GetCurrentProcessId(), ::GetCurrentThreadId(), WINEVENT_OUTOFCONTEXT);
+    }
     // Documented requirement for menus owned by a background window (tray).
     ::SetForegroundWindow(owner);
     const int chosen = static_cast<int>(::TrackPopupMenuEx(
         menu, TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON, screenPos.x, screenPos.y, owner, nullptr));
+    if (hook)
+        ::UnhookWinEvent(hook);
+    t_menuShown = {};
     ::PostMessageW(owner, WM_NULL, 0, 0);
     ::DestroyMenu(menu);
     return chosen;
@@ -395,12 +419,41 @@ std::optional<std::wstring> taskPath()
     return std::wstring(path);
 }
 
+bool startsThisCopy(const std::optional<std::wstring>& path)
+{
+    return path && ::_wcsicmp(path->c_str(), exePath().c_str()) == 0; // a copy elsewhere (another build) does not count
+}
+
+// isEnabled() answers from here: asking Task Scheduler takes 30 ms or more
+// the first time (its client loads and connects), too long for the tray
+// menu to wait. -1 until known. `g_changes` counts setEnabled() calls, so a
+// refresh that read the task before one does not overwrite it.
+std::atomic<int> g_enabled {-1};
+std::atomic<int> g_changes {0};
+
+bool queryEnabled()
+{
+    const int changes = g_changes;
+    const bool enabled = startsThisCopy(taskPath());
+    int unknown = -1;
+    if (g_changes == changes)
+        g_enabled = enabled;
+    else
+        g_enabled.compare_exchange_strong(unknown, enabled);
+    return enabled;
+}
+
 } // namespace
 
 bool isEnabled()
 {
-    const std::optional<std::wstring> path = taskPath();
-    return path && ::_wcsicmp(path->c_str(), exePath().c_str()) == 0; // a copy elsewhere (another build) does not count
+    const int known = g_enabled;
+    return known >= 0 ? known != 0 : queryEnabled();
+}
+
+void refresh()
+{
+    std::thread([] { queryEnabled(); }).detach(); // taskPath() initialises COM
 }
 
 bool isSetUp()
@@ -411,12 +464,15 @@ bool isSetUp()
 void adoptIfOrphaned()
 {
     const std::optional<std::wstring> path = taskPath();
-    if (path && ::_wcsicmp(path->c_str(), exePath().c_str()) != 0
-        && ::GetFileAttributesW(path->c_str()) == INVALID_FILE_ATTRIBUTES)
+    if (path && !startsThisCopy(path) && ::GetFileAttributesW(path->c_str()) == INVALID_FILE_ATTRIBUTES)
         setEnabled(true);
+    else
+        g_enabled = startsThisCopy(path); // known from the start
 }
 
-void setEnabled(bool enabled)
+namespace {
+
+void writeTask(bool enabled)
 {
     const ComScope com;
     removeRunKey();
@@ -466,6 +522,15 @@ void setEnabled(bool enabled)
     folder->RegisterTaskDefinition(Bstr(kTaskName), definition.Get(), TASK_CREATE_OR_UPDATE, userId, none,
         TASK_LOGON_INTERACTIVE_TOKEN, none, &registered);
     ::VariantClear(&userId);
+}
+
+} // namespace
+
+void setEnabled(bool enabled)
+{
+    ++g_changes;
+    writeTask(enabled);
+    queryEnabled(); // what the task says now, written or not
 }
 
 void migrateFromQuickFind()

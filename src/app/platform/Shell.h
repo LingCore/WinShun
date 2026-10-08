@@ -42,8 +42,8 @@ struct MenuItem {
 };
 
 // Native popup menu at a screen position (physical pixels). Returns the
-// chosen id, or 0 when dismissed.
-int popupMenu(HWND owner, const std::vector<MenuItem>& items, POINT screenPos);
+// chosen id, or 0 when dismissed. `shown` runs once the menu is on screen.
+int popupMenu(HWND owner, const std::vector<MenuItem>& items, POINT screenPos, std::function<void()> shown = {});
 
 // The standard "select folder" dialog (modal). Returns an empty string when cancelled.
 QString pickFolder(HWND owner, const QString& title);
@@ -52,7 +52,9 @@ QString pickFolder(HWND owner, const QString& title);
 
 namespace ws::autostart {
 
+// From what was last read: at once, without asking Task Scheduler again.
 bool isEnabled();
+void refresh(); // reads the task again, in the background (changed outside WinShun?)
 bool isSetUp(); // enabled for any copy of WinShun, this one or another
 void setEnabled(bool enabled);
 // The task still starts a program that is gone (the portable copy, after

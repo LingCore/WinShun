@@ -38,6 +38,7 @@ namespace ws {
 namespace {
 
 constexpr int kHotkeyId = 1;
+constexpr DWORD kSlowMenuMs = 100; // a tray menu slower than this to appear is logged
 
 enum TrayCommand {
     ShowCommand = 1,
@@ -549,6 +550,10 @@ void App::hideLauncher()
 
 void App::showTrayMenu()
 {
+    // The click that asked for the menu was the last input (tick count, ms).
+    LASTINPUTINFO input {sizeof input};
+    ::GetLastInputInfo(&input);
+    const DWORD asked = ::GetTickCount();
     const bool ready = m_index->state() == IndexService::State::Ready;
     const QString info = ready ? tr("已索引 %Ln 项", nullptr, static_cast<int>(m_index->itemCount()))
                                : tr("正在建立索引…");
@@ -571,7 +576,18 @@ void App::showTrayMenu()
             {{UpdateCommand, tr("Win顺 %1 可以更新了…").arg(m_updater->availableVersion())}, shell::MenuItem::separator()});
     POINT pos {};
     ::GetCursorPos(&pos);
-    switch (shell::popupMenu(m_messages->hwnd(), items, pos)) {
+    const DWORD built = ::GetTickCount();
+    // A slow menu leaves a line in the log: which part it waited on.
+    const int chosen = shell::popupMenu(m_messages->hwnd(), items, pos, [&] {
+        const DWORD shown = ::GetTickCount();
+        if (shown - input.dwTime >= kSlowMenuMs)
+            qWarning().nospace() << "Tray menu shown " << shown - input.dwTime << " ms after the click: "
+                                 << asked - input.dwTime << " ms until it was asked for, " << built - asked
+                                 << " ms to build, " << shown - built << " ms for Windows to show it";
+    });
+    if (chosen != QuitCommand && chosen != RestartCommand)
+        autostart::refresh(); // changed outside WinShun? Ready for the next time
+    switch (chosen) {
     case ShowCommand:
         showLauncher();
         break;
