@@ -30,7 +30,7 @@ QtObject {
             name: qsTr("Win顺"),
             summary: qsTr("让 Windows 用起来更顺手"),
             openSource: true,
-            url: "",
+            url: "https://github.com/LingCore/WinShun",
             icon: "qrc:/qt/qml/WinShun/gleaning/winshun.png"
         },
         {

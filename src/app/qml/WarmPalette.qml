@@ -12,6 +12,9 @@ QtObject {
     readonly property color skyTop: dark ? Qt.rgba(0.58, 0.23, 0.17, 1) : Qt.rgba(1.00, 0.96, 0.87, 1)
     readonly property color skyMiddle: dark ? Qt.rgba(0.80, 0.36, 0.19, 1) : Qt.rgba(1.00, 0.86, 0.63, 1)
     readonly property color skyBottom: dark ? Qt.rgba(0.96, 0.58, 0.27, 1) : Qt.rgba(0.98, 0.70, 0.43, 1)
+    // Laid over the sky and the field in dark mode, which glare otherwise.
+    // Black keeps the hues, only darker.
+    readonly property color dim: dark ? Qt.rgba(0, 0, 0, 0.24) : "transparent"
 
     readonly property color ink: dark ? Qt.rgba(1.00, 0.96, 0.90, 1) : Qt.rgba(0.36, 0.19, 0.06, 1)
     readonly property color inkSoft: dark ? Qt.rgba(1.00, 0.86, 0.72, 1) : Qt.rgba(0.55, 0.34, 0.17, 1)

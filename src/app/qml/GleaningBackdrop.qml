@@ -27,4 +27,10 @@ Item {
         mote: WarmPalette.mote
         bird: WarmPalette.bird
     }
+
+    Rectangle {
+        anchors.fill: parent
+        color: WarmPalette.dim
+        visible: color.a > 0
+    }
 }
