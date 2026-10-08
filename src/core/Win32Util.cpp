@@ -1,6 +1,6 @@
 #include "Win32Util.h"
 
-namespace qf::win32 {
+namespace ws::win32 {
 
 std::wstring longPath(std::wstring_view path)
 {
@@ -25,4 +25,4 @@ std::wstring expandEnvironment(std::wstring_view text)
     return out;
 }
 
-} // namespace qf::win32
+} // namespace ws::win32

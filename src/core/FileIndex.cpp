@@ -10,7 +10,7 @@
 #include <cstring>
 #include <cwctype>
 
-namespace qf {
+namespace ws {
 
 namespace {
 
@@ -192,7 +192,7 @@ void FileIndex::setInterning(bool enabled)
     }
 }
 
-std::size_t FileIndex::compact(bool always)
+std::size_t FileIndex::compact(bool always, const std::function<void(const Renumber&)>& renumbered)
 {
     assert(m_intern.empty());
     const std::size_t oldCount = m_count;
@@ -268,7 +268,6 @@ std::size_t FileIndex::compact(bool always)
         e.parent = renumber(e.parent);
         e.firstChild = renumber(e.firstChild);
         e.nextSibling = renumber(e.nextSibling);
-        e.prevSibling = renumber(e.prevSibling);
         e.nameOffset = moveName(e);
         mut(renumber(id)) = e;
     }
@@ -284,6 +283,9 @@ std::size_t FileIndex::compact(bool always)
     m_chunks.resize((live + kChunkSize - 1) >> kChunkBits); // frees the emptied chunks
     m_chunks.shrink_to_fit();
     m_childTables = decltype(m_childTables)(); // by old ids; rebuilt on demand
+    m_generation.fetch_add(1, std::memory_order_release);
+    if (renumbered)
+        renumbered([&](EntryId id) { return id < oldCount ? renumber(id) : kNoEntry; });
     return oldCount - live;
 }
 
@@ -340,34 +342,68 @@ void FileIndex::link(EntryId parent, EntryId child)
 {
     Entry& c = mut(child);
     Entry& p = mut(parent);
+    const EntryId first = p.firstChild;
     c.parent = parent;
-    c.prevSibling = kNoEntry;
-    c.nextSibling = p.firstChild;
-    if (p.firstChild != kNoEntry)
-        mut(p.firstChild).prevSibling = child;
+    c.nextSibling = first;
     p.firstChild = child;
     if (!m_childTables.empty()) {
-        if (const auto it = m_childTables.find(parent); it != m_childTables.end())
-            tableInsert(it->second, child);
+        if (const auto it = m_childTables.find(parent); it != m_childTables.end()) {
+            ChildTable& table = it->second;
+            if (const std::size_t slot = first != kNoEntry ? tableSlot(table, first) : kNoSlot; slot != kNoSlot)
+                table.previous[slot] = child;
+            tableInsert(table, child, kNoEntry);
+        }
     }
 }
 
 // Before the child's name changes: its parent's ChildTable finds it by name.
-void FileIndex::unlink(EntryId child) noexcept
+void FileIndex::unlink(EntryId child)
 {
-    Entry& c = mut(child);
-    if (!m_childTables.empty() && c.parent != kNoEntry) {
-        if (const auto it = m_childTables.find(c.parent); it != m_childTables.end())
-            tableErase(it->second, child);
+    const EntryId parent = entry(child).parent;
+    const EntryId next = entry(child).nextSibling;
+    if (parent == kNoEntry)
+        return; // a root: in no list
+
+    // The child before it: from the table of a big folder, else by walking
+    // (which makes the table once the folder turns out to be big).
+    ChildTable* table = nullptr;
+    if (!m_childTables.empty()) {
+        if (const auto it = m_childTables.find(parent); it != m_childTables.end())
+            table = &it->second;
     }
-    if (c.prevSibling != kNoEntry)
-        mut(c.prevSibling).nextSibling = c.nextSibling;
-    else if (c.parent != kNoEntry && entry(c.parent).firstChild == child)
-        mut(c.parent).firstChild = c.nextSibling;
-    if (c.nextSibling != kNoEntry)
-        mut(c.nextSibling).prevSibling = c.prevSibling;
-    c.prevSibling = kNoEntry;
-    c.nextSibling = kNoEntry;
+    EntryId previous = kNoEntry;
+    bool found = false;
+    if (!table) {
+        std::size_t walked = 0;
+        for (EntryId c = entry(parent).firstChild; c != kNoEntry; c = entry(c).nextSibling) {
+            found = c == child;
+            if (found)
+                break;
+            previous = c;
+            if (++walked == kChildTableMin) {
+                table = &buildTable(parent);
+                break;
+            }
+        }
+    }
+    if (table) {
+        const std::size_t slot = tableSlot(*table, child);
+        found = slot != kNoSlot;
+        previous = found ? table->previous[slot] : kNoEntry;
+    }
+    mut(child).nextSibling = kNoEntry;
+    if (!found)
+        return; // not in the list (cannot happen)
+
+    if (previous != kNoEntry)
+        mut(previous).nextSibling = next;
+    else
+        mut(parent).firstChild = next;
+    if (table) {
+        if (const std::size_t slot = next != kNoEntry ? tableSlot(*table, next) : kNoSlot; slot != kNoSlot)
+            table->previous[slot] = previous;
+        tableErase(*table, child);
+    }
 }
 
 EntryId FileIndex::addRoot(std::string_view name)
@@ -509,15 +545,29 @@ EntryId FileIndex::tableFind(const ChildTable& table, std::string_view childName
     return kNoEntry;
 }
 
-void FileIndex::tableInsert(ChildTable& table, EntryId child)
+std::size_t FileIndex::tableSlot(const ChildTable& table, EntryId child) const noexcept
+{
+    if (table.buckets.empty())
+        return kNoSlot;
+    const std::size_t mask = table.buckets.size() - 1;
+    for (std::size_t i = foldedHash(name(child)) & mask; table.buckets[i] != kNoEntry; i = (i + 1) & mask) {
+        if (table.buckets[i] == child)
+            return i;
+    }
+    return kNoSlot;
+}
+
+void FileIndex::tableInsert(ChildTable& table, EntryId child, EntryId previous)
 {
     if ((table.count + 1) * 2 > table.buckets.size()) { // at most half full
         std::vector<EntryId> old(std::max<std::size_t>(table.buckets.size() * 2, kChildTableMin * 4), kNoEntry);
+        std::vector<EntryId> oldPrevious(old.size(), kNoEntry);
         old.swap(table.buckets);
+        oldPrevious.swap(table.previous);
         table.count = 0;
-        for (const EntryId id : old) {
-            if (id != kNoEntry)
-                tableInsert(table, id);
+        for (std::size_t i = 0; i < old.size(); ++i) {
+            if (old[i] != kNoEntry)
+                tableInsert(table, old[i], oldPrevious[i]);
         }
     }
     const std::size_t mask = table.buckets.size() - 1;
@@ -525,29 +575,40 @@ void FileIndex::tableInsert(ChildTable& table, EntryId child)
     while (table.buckets[i] != kNoEntry)
         i = (i + 1) & mask;
     table.buckets[i] = child;
+    table.previous[i] = previous;
     ++table.count;
 }
 
 void FileIndex::tableErase(ChildTable& table, EntryId child) noexcept
 {
-    const std::size_t mask = table.buckets.size() - 1;
-    std::size_t i = foldedHash(name(child)) & mask;
-    while (table.buckets[i] != child) {
-        if (table.buckets[i] == kNoEntry)
-            return;
-        i = (i + 1) & mask;
-    }
+    std::size_t i = tableSlot(table, child);
+    if (i == kNoSlot)
+        return;
     // Backward-shift deletion, as in RecordTable::erase.
+    const std::size_t mask = table.buckets.size() - 1;
     for (std::size_t j = (i + 1) & mask; table.buckets[j] != kNoEntry; j = (j + 1) & mask) {
         const std::size_t h = foldedHash(name(table.buckets[j])) & mask;
         const bool movable = i <= j ? (h <= i || h > j) : (h <= i && h > j);
         if (movable) {
             table.buckets[i] = table.buckets[j];
+            table.previous[i] = table.previous[j];
             i = j;
         }
     }
     table.buckets[i] = kNoEntry;
+    table.previous[i] = kNoEntry;
     --table.count;
+}
+
+FileIndex::ChildTable& FileIndex::buildTable(EntryId parent)
+{
+    ChildTable& table = m_childTables[parent];
+    EntryId previous = kNoEntry;
+    for (EntryId c = entry(parent).firstChild; c != kNoEntry; c = entry(c).nextSibling) {
+        tableInsert(table, c, previous);
+        previous = c;
+    }
+    return table;
 }
 
 EntryId FileIndex::findChild(EntryId parent, std::string_view childName) const
@@ -573,13 +634,8 @@ EntryId FileIndex::childForUpdate(EntryId parent, std::string_view childName, bo
     for (EntryId c = entry(parent).firstChild; c != kNoEntry; c = entry(c).nextSibling) {
         if (exactCase ? name(c) == childName : text::equalsIgnoreAsciiCase(name(c), childName))
             return c;
-        if (++walked == kChildTableMin) {
-            // A big folder: index its children once, so the next lookups are quick.
-            ChildTable& table = m_childTables[parent];
-            for (EntryId k = entry(parent).firstChild; k != kNoEntry; k = entry(k).nextSibling)
-                tableInsert(table, k);
-            return tableFind(table, childName, exactCase);
-        }
+        if (++walked == kChildTableMin) // a big folder: index its children once, so the next lookups are quick
+            return tableFind(buildTable(parent), childName, exactCase);
     }
     return kNoEntry;
 }
@@ -683,4 +739,4 @@ int FileIndex::depth(EntryId id) const noexcept
     return d;
 }
 
-} // namespace qf
+} // namespace ws

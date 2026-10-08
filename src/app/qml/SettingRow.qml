@@ -1,5 +1,5 @@
 import QtQuick
-import QuickFind
+import WinShun
 
 // One option: title and explanation on the left, its control on the right,
 // optional extra content (lists, inputs) underneath.

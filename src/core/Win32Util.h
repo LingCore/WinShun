@@ -6,7 +6,7 @@
 #include <string_view>
 #include <utility>
 
-namespace qf::win32 {
+namespace ws::win32 {
 
 // Move-only owner of a kernel HANDLE.
 class UniqueHandle {
@@ -104,4 +104,4 @@ std::wstring longPath(std::wstring_view path);
 // Expands %VAR% references, e.g. "%WINDIR%\WinSxS".
 std::wstring expandEnvironment(std::wstring_view text);
 
-} // namespace qf::win32
+} // namespace ws::win32

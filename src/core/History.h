@@ -3,7 +3,7 @@
 #include <QString>
 #include <QStringList>
 
-namespace qf {
+namespace ws {
 
 // Most-recently-opened paths, newest first. Shown for an empty query and
 // boosted to the top when they match.
@@ -24,4 +24,4 @@ private:
     QStringList m_items;
 };
 
-} // namespace qf
+} // namespace ws

@@ -12,7 +12,7 @@
 #include <numbers>
 #include <vector>
 
-namespace qf {
+namespace ws {
 
 namespace {
 
@@ -489,4 +489,4 @@ void AuthorMark::paint(QPainter* painter)
     }
 }
 
-} // namespace qf
+} // namespace ws

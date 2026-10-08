@@ -1,6 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QuickFind
+import WinShun
 
 // A Segoe Fluent / MDL2 icon glyph, e.g. "" (search), or the name of an
 // icon the font lacks, drawn here instead (see `drawn`).

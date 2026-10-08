@@ -6,7 +6,7 @@
 
 #include <functional>
 
-namespace qf {
+namespace ws {
 
 // A hidden native window that receives what Qt does not handle for us:
 // tray icon events, RegisterHotKey hotkeys, commands from a second instance
@@ -55,4 +55,4 @@ private:
     UINT m_taskbarCreated = 0;
 };
 
-} // namespace qf
+} // namespace ws

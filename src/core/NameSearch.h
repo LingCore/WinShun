@@ -9,7 +9,7 @@
 #include <functional>
 #include <vector>
 
-namespace qf {
+namespace ws {
 
 struct NameHit {
     EntryId id = kNoEntry;
@@ -27,4 +27,4 @@ struct NameSearchOutput {
 NameSearchOutput searchNames(const FileIndex& index, const NameMatcher& matcher, Scope scope, std::size_t limit,
     WorkerPool& pool, const std::function<bool()>& isCancelled);
 
-} // namespace qf
+} // namespace ws

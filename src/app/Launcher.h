@@ -13,7 +13,7 @@
 
 #include <functional>
 
-namespace qf {
+namespace ws {
 
 class AppCatalog;
 class History;
@@ -28,7 +28,7 @@ class Launcher : public QObject {
     QML_UNCREATABLE("Provided by the application")
     Q_PROPERTY(QString query READ query WRITE setQuery NOTIFY queryChanged FINAL)
     Q_PROPERTY(Scope scope READ scope WRITE setScope NOTIFY scopeChanged FINAL)
-    Q_PROPERTY(qf::ResultModel* results READ results CONSTANT FINAL)
+    Q_PROPERTY(ws::ResultModel* results READ results CONSTANT FINAL)
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusChanged FINAL)
     Q_PROPERTY(bool busy READ busy NOTIFY statusChanged FINAL)
     Q_PROPERTY(bool searching READ searching NOTIFY statusChanged FINAL)
@@ -38,7 +38,7 @@ class Launcher : public QObject {
     Q_PROPERTY(bool searchesContent READ searchesContent NOTIFY statusChanged FINAL)
 
 public:
-    enum Scope { All, Apps, Files, Folders, Content }; // as qf::Scope
+    enum Scope { All, Apps, Files, Folders, Content }; // as ws::Scope
     Q_ENUM(Scope)
     enum Action { Open, Reveal, RunAsAdmin, CopyPath, CopyName, CopyItem, Recycle };
     Q_ENUM(Action)
@@ -71,7 +71,7 @@ public:
     bool searchesContent() const { return m_scope == Content || m_withContent; }
 
     void setWindow(QWindow* window) { m_window = window; }
-    void setContentOptions(QStringList extensions, qint64 maxFileBytes);
+    void setContentOptions(QStringList extensions, qint64 maxFileBytes, bool inLowPriority);
     void handleShown();
     void handleHidden();
 
@@ -145,6 +145,7 @@ private:
 
     QStringList m_contentExtensions {QStringLiteral("txt")};
     qint64 m_maxContentBytes = 64ll << 20;
+    bool m_contentInLowPriority = false; // 内容 also looks in system, program and tool folders
 
     QString m_status;
     QString m_flash;
@@ -153,4 +154,4 @@ private:
     QTimer m_statusPoll;
 };
 
-} // namespace qf
+} // namespace ws

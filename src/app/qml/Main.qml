@@ -1,7 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QuickFind
+import WinShun
 
 // The launcher window: search bar, up to eight results, status footer.
 // Keyboard first: everything works without touching the mouse.
@@ -9,6 +9,8 @@ Window {
     id: window
 
     required property Launcher launcher
+    required property Placement placement
+    required property WindowFrame frame
 
     readonly property int rowHeight: 60
     readonly property int maxRows: 8
@@ -59,12 +61,18 @@ Window {
     height: layout.implicitHeight
     color: Theme.background
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
-    title: qsTr("快搜")
+    title: qsTr("Win顺")
 
     Binding {
         target: window.launcher.results
         property: "highlightColor"
         value: Theme.accent
+    }
+
+    Binding { // with every row shown: kept room for below the window
+        target: window.placement
+        property: "fullHeight"
+        value: searchBar.implicitHeight + 1 + window.maxRows * window.rowHeight + 8 + footer.implicitHeight
     }
 
     function moveSelection(delta) {
@@ -177,6 +185,18 @@ Window {
         function onRowsRemoved() { window.checkContextMenu() }
     }
 
+    Connections {
+        target: window.frame
+        function onDoubleClicked() { window.placement.moveHome() } // on the header or footer
+    }
+    Connections {
+        target: window.placement
+        function onMovingChanged() { // the menu would stay behind
+            if (window.placement.moving)
+                window.closeContextMenu()
+        }
+    }
+
     function checkContextMenu() {
         if (menuOpen && launcher.results.pathAt(contextMenu.row) !== contextMenu.path)
             closeContextMenu()
@@ -190,6 +210,8 @@ Window {
             id: searchBar
             width: parent.width
             launcher: window.launcher
+            placement: window.placement
+            frame: window.frame
             onKeyPressed: (event) => window.handleKey(event)
         }
 
@@ -285,8 +307,10 @@ Window {
         }
 
         Footer {
+            id: footer
             width: parent.width
             launcher: window.launcher
+            frame: window.frame
         }
     }
 

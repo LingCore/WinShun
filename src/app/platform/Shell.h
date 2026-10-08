@@ -9,7 +9,7 @@
 #include <vector>
 
 // Thin wrappers over Explorer/Shell behaviour.
-namespace qf::shell {
+namespace ws::shell {
 
 // These run on a short-lived worker thread: a slow shell extension or an
 // unreachable drive must never freeze the launcher. Without
@@ -48,12 +48,12 @@ int popupMenu(HWND owner, const std::vector<MenuItem>& items, POINT screenPos);
 // The standard "select folder" dialog (modal). Returns an empty string when cancelled.
 QString pickFolder(HWND owner, const QString& title);
 
-} // namespace qf::shell
+} // namespace ws::shell
 
-namespace qf::autostart {
+namespace ws::autostart {
 
 bool isEnabled();
 void setEnabled(bool enabled);
-void migrate(); // from the Run key of older versions, which cannot start an elevated program
+void migrateFromQuickFind(); // the autostart of versions still called QuickFind (see Migration.h)
 
-} // namespace qf::autostart
+} // namespace ws::autostart

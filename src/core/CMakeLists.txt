@@ -1,9 +1,11 @@
-# qfcore: the search engine. Depends only on Qt Core and Win32, so it can be
+# wscore: the search engine. Depends only on Qt Core and Win32, so it can be
 # unit-tested without a GUI.
-qt_add_library(qfcore STATIC
+qt_add_library(wscore STATIC
     AppCatalog.cpp AppCatalog.h
     AppLogo.cpp AppLogo.h
     ChangeWatcher.cpp ChangeWatcher.h
+    ContentIndex.cpp ContentIndex.h
+    ContentIndexer.cpp ContentIndexer.h
     ContentScanner.cpp ContentScanner.h
     Crawler.cpp Crawler.h
     DoubleTapDetector.h
@@ -25,7 +27,7 @@ qt_add_library(qfcore STATIC
     Wtf8.cpp Wtf8.h
 )
 
-target_include_directories(qfcore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(qfcore
-    PUBLIC Qt6::Core quickfind_options
+target_include_directories(wscore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(wscore
+    PUBLIC Qt6::Core winshun_options
     PRIVATE kernel32 advapi32 ole32 shell32 shlwapi)

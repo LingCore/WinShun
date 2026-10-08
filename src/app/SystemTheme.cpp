@@ -10,7 +10,7 @@
 
 using namespace Qt::StringLiterals;
 
-namespace qf {
+namespace ws {
 
 SystemTheme::SystemTheme(QObject* parent)
     : QObject(parent)
@@ -52,4 +52,4 @@ bool SystemTheme::eventFilter(QObject* watched, QEvent* event)
     return QObject::eventFilter(watched, event);
 }
 
-} // namespace qf
+} // namespace ws

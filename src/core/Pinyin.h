@@ -12,7 +12,7 @@
 // 报告. Each Chinese character matches a non-empty prefix of one of its
 // readings (initials, whole syllables, or a mix); every other character must
 // match itself, ASCII case folded.
-namespace qf::pinyin {
+namespace ws::pinyin {
 
 namespace detail {
 extern const std::size_t kSyllableCount;
@@ -78,4 +78,4 @@ private:
     std::array<std::uint64_t, 128> m_at {}; // per ASCII character: positions in the term that hold it
 };
 
-} // namespace qf::pinyin
+} // namespace ws::pinyin

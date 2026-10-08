@@ -1,6 +1,6 @@
 pragma Singleton
 import QtQuick
-import QuickFind
+import WinShun
 
 // The 拾穗计划 page's warm colours: a golden afternoon in light mode, a sunset
 // in dark mode, neither on black (MacShun: WarmPalette).

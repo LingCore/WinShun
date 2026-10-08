@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <cstring>
 
-namespace qf::ntfs {
+namespace ws::ntfs {
 
 namespace {
 
@@ -40,7 +40,8 @@ constexpr std::uint8_t kDosNamespace = 2; // the 8.3 alias of a long name
 constexpr std::size_t kBlockBytes = 4u << 20;
 constexpr DWORD kJournalBufferBytes = 128 * 1024;
 constexpr DWORD kReasonMask = USN_REASON_FILE_CREATE | USN_REASON_FILE_DELETE | USN_REASON_RENAME_OLD_NAME
-    | USN_REASON_RENAME_NEW_NAME | USN_REASON_BASIC_INFO_CHANGE | USN_REASON_HARD_LINK_CHANGE;
+    | USN_REASON_RENAME_NEW_NAME | USN_REASON_BASIC_INFO_CHANGE | USN_REASON_HARD_LINK_CHANGE
+    | USN_REASON_DATA_OVERWRITE | USN_REASON_DATA_EXTEND | USN_REASON_DATA_TRUNCATION;
 
 HANDLE openVolume(std::wstring_view root, DWORD access, DWORD flags)
 {
@@ -472,4 +473,4 @@ void JournalReader::cancel()
     m_pending = false;
 }
 
-} // namespace qf::ntfs
+} // namespace ws::ntfs

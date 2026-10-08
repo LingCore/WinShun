@@ -2,14 +2,13 @@
 
 #include "Win32Util.h"
 #include "platform/Shell.h"
-#include "platform/WindowEffects.h"
 
 #include <QDir>
 #include <QRegularExpression>
 
 using namespace Qt::StringLiterals;
 
-namespace qf {
+namespace ws {
 
 namespace {
 
@@ -126,6 +125,30 @@ void SettingsEditor::setMaxContentFileSizeMB(int mb)
     commit();
 }
 
+void SettingsEditor::setContentIndex(bool on)
+{
+    if (m_settings.contentIndex == on)
+        return;
+    m_settings.contentIndex = on;
+    commit();
+}
+
+void SettingsEditor::setContentInLowPriority(bool on)
+{
+    if (m_settings.contentInLowPriority == on)
+        return;
+    m_settings.contentInLowPriority = on;
+    commit();
+}
+
+void SettingsEditor::setContentIndexStatus(const QString& status)
+{
+    if (m_contentIndexStatus == status)
+        return;
+    m_contentIndexStatus = status;
+    emit contentIndexStatusChanged();
+}
+
 void SettingsEditor::setRenderer(const QString& renderer)
 {
     if (m_settings.renderer == renderer)
@@ -211,6 +234,11 @@ void SettingsEditor::restoreDefaults()
     commit();
 }
 
+void SettingsEditor::openDataFolder()
+{
+    shell::open(Settings::dataDir());
+}
+
 void SettingsEditor::openUrl(const QString& url)
 {
     shell::openUrl(url);
@@ -221,14 +249,4 @@ void SettingsEditor::copyText(const QString& text)
     shell::copyText(text);
 }
 
-void SettingsEditor::setTitleBarColors(const QColor& caption, const QColor& text)
-{
-    win::setTitleBarColors(m_window, caption, text);
-}
-
-void SettingsEditor::resetTitleBarColors()
-{
-    win::setTitleBarColors(m_window, QColor(), QColor());
-}
-
-} // namespace qf
+} // namespace ws

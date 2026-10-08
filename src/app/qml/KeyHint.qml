@@ -1,5 +1,5 @@
 import QtQuick
-import QuickFind
+import WinShun
 
 // "[Ctrl ↵] 打开位置" in the footer.
 Row {

@@ -4,7 +4,7 @@
 #include <QMetaType>
 #include <QString>
 
-namespace qf {
+namespace ws {
 
 enum class Scope : int { All = 0, Apps = 1, Files = 2, Folders = 3, Content = 4 };
 
@@ -45,6 +45,6 @@ struct SearchResult {
 
 using SearchResults = QList<SearchResult>;
 
-} // namespace qf
+} // namespace ws
 
-Q_DECLARE_METATYPE(qf::SearchResult)
+Q_DECLARE_METATYPE(ws::SearchResult)

@@ -5,7 +5,7 @@
 #include <QMutex>
 #include <QQuickImageProvider>
 
-namespace qf {
+namespace ws {
 
 // Serves Windows shell icons to QML as "image://fileicon/<key>".
 //
@@ -31,4 +31,4 @@ private:
     QCache<QString, QImage> m_cache {256};
 };
 
-} // namespace qf
+} // namespace ws

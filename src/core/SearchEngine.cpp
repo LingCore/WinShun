@@ -1,6 +1,7 @@
 #include "SearchEngine.h"
 
 #include "AppCatalog.h"
+#include "ContentIndex.h"
 #include "ContentScanner.h"
 #include "IndexService.h"
 #include "NameSearch.h"
@@ -16,11 +17,12 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 
 using namespace std::chrono_literals;
 
-namespace qf {
+namespace ws {
 
 namespace {
 
@@ -104,6 +106,41 @@ SearchResult fromDisk(const QString& path, bool isDir)
     return r;
 }
 
+// Whether entries lie under one folder, cached by parent folder (files next
+// to each other share it).
+class UnderFolder {
+public:
+    UnderFolder(const FileIndex& index, EntryId folder)
+        : m_index(index)
+        , m_folder(folder)
+    {
+        m_cache.fill({kNoEntry, false});
+    }
+    bool operator()(EntryId id)
+    {
+        const EntryId parent = m_index.entry(id).parent;
+        if (m_folder == kNoEntry || parent == kNoEntry)
+            return false;
+        Slot& slot = m_cache[parent & (m_cache.size() - 1)];
+        if (slot.parent != parent) {
+            bool under = false;
+            for (EntryId cur = parent; cur != kNoEntry && !under; cur = m_index.entry(cur).parent)
+                under = cur == m_folder;
+            slot = {parent, under};
+        }
+        return slot.under;
+    }
+
+private:
+    struct Slot {
+        EntryId parent;
+        bool under;
+    };
+    const FileIndex& m_index;
+    EntryId m_folder;
+    std::array<Slot, 4096> m_cache {};
+};
+
 // Recently opened items that match jump to the top (at most a few).
 void promoteHistory(SearchResults& results, const SearchEngine::Request& request, const NameMatcher& matcher)
 {
@@ -144,7 +181,7 @@ SearchEngine::SearchEngine(IndexService* index, AppCatalog* apps, QObject* paren
     , m_index(index)
     , m_apps(apps)
 {
-    qRegisterMetaType<qf::SearchResults>();
+    qRegisterMetaType<ws::SearchResults>();
     m_worker = std::jthread([this](std::stop_token stop) { workerLoop(stop); });
 }
 
@@ -321,74 +358,77 @@ void SearchEngine::runContentSearch(const Job& job)
         return;
     }
 
-    std::vector<std::string> extensions;
-    for (QString ext : request.contentExtensions) {
-        while (ext.startsWith(u'.') || ext.startsWith(u'*'))
-            ext.remove(0, 1);
-        if (!ext.isEmpty())
-            extensions.push_back(text::foldAscii(wtf8::fromUtf16(wtf8::view(ext))));
-    }
-
-    // Candidates: matching extension, not a cloud placeholder. Your own files
-    // are scanned first so useful results show up while the scan continues.
-    // Their paths share one buffer: there can be millions (every .js under
-    // node_modules), and a string each would cost an allocation apiece.
+    // Candidates: the files of the chosen types, not cloud placeholders. Only
+    // their ids are kept (there can be millions: every .js under
+    // node_modules); a file's path is looked up when it is read, and the ids
+    // are pinned until then. The content index answers for the files it
+    // knows without opening them: those it says match are read first (for
+    // the line and snippet), then the ones it does not know, your own files
+    // before the rest.
     struct Candidate {
-        std::uint32_t offset; // into `paths`
-        std::uint32_t length;
-        int priority;
+        EntryId id;
+        std::uint8_t order; // lower first
     };
-    std::u16string paths;
+    const ContentFilter filter {ExtensionFilter(request.contentExtensions), request.contentInLowPriority};
+    const auto index = m_index->index();
+    const auto content = m_index->contentIndex();
+    const ContentIndex::SearchGuard searching(content.get()); // the content indexer waits meanwhile
     std::vector<Candidate> candidates;
+    int ruledOut = 0;
+    FileIndex::IdPin pin;
     {
-        const std::wstring profile = win32::expandEnvironment(L"%USERPROFILE%");
-        const auto index = m_index->index();
         const auto lock = index->readLock();
+        pin = index->pinIds();
+        const ContentIndex::Lookup lookup = content ? content->lookup(needle) : ContentIndex::Lookup();
+        constexpr std::uint32_t kMatch = ContentIndex::Lookup::kMatch;
+        UnderFolder inProfile(*index, index->findPath(win32::expandEnvironment(L"%USERPROFILE%")));
+        std::size_t k = 0;
         for (std::size_t c = 0; c < index->chunkCount(); ++c) {
             if (isStale(job.id))
                 return;
             const auto entries = index->chunk(c);
             for (std::size_t i = 0; i < entries.size(); ++i) {
                 const Entry& e = entries[i];
-                if ((e.flags & (EntryFlag::Deleted | EntryFlag::Directory | EntryFlag::Offline)) || e.extLength == 0)
-                    continue;
-                if (request.skipLowPriorityContent && (e.flags & EntryFlag::LowPriority))
-                    continue;
-                const std::string_view name = index->name(e);
-                const std::string_view ext = name.substr(name.size() - e.extLength);
-                if (std::none_of(extensions.begin(), extensions.end(),
-                        [&](const std::string& x) { return text::equalsFolded(ext, x); }))
+                if (!filter.accepts(*index, e))
                     continue;
                 const auto id = static_cast<EntryId>((c << FileIndex::kChunkBits) + i);
-                const std::size_t offset = paths.size();
-                index->appendPath16(id, paths);
-                const std::wstring_view path = wtf8::wview(std::u16string_view(paths).substr(offset));
-                int priority = 1;
+                bool likely = false;
+                if (lookup.usable) {
+                    while (k < lookup.known.size() && (lookup.known[k] & ~kMatch) < id)
+                        ++k;
+                    if (k < lookup.known.size() && (lookup.known[k] & ~kMatch) == id) {
+                        if (!(lookup.known[k] & kMatch)) {
+                            ++ruledOut;
+                            continue;
+                        }
+                        likely = true;
+                    }
+                }
+                std::uint8_t priority = 1;
                 if (e.flags & EntryFlag::LowPriority)
                     priority = 3;
                 else if (e.flags & EntryFlag::Hidden)
                     priority = 2;
-                else if (path.size() > profile.size() && path[profile.size()] == L'\\'
-                    && win32::equalsIgnoreCase(path.substr(0, profile.size()), profile))
+                else if (inProfile(id))
                     priority = 0;
-                candidates.push_back(
-                    {static_cast<std::uint32_t>(offset), static_cast<std::uint32_t>(path.size()), priority});
+                candidates.push_back({id, static_cast<std::uint8_t>(likely ? priority : 4 + priority)});
             }
         }
     }
     std::stable_sort(candidates.begin(), candidates.end(),
-        [](const Candidate& a, const Candidate& b) { return a.priority < b.priority; });
+        [](const Candidate& a, const Candidate& b) { return a.order < b.order; });
 
     const ContentScanner scanner(needle);
-    const int total = static_cast<int>(candidates.size());
+    const int total = static_cast<int>(candidates.size()) + ruledOut;
     std::atomic<std::size_t> next {0};
-    std::atomic<int> scanned {0};
+    std::atomic<int> scanned {ruledOut};
     std::atomic<int> found {0};
     std::mutex batchMutex;
     SearchResults batch;
     std::mutex doneMutex;
     std::condition_variable doneCv;
-    const int threadCount = std::clamp(static_cast<int>(std::thread::hardware_concurrency()) / 2, 2, 6);
+    const int threadCount = static_cast<int>(
+        std::clamp<std::size_t>(candidates.size(), 1, static_cast<std::size_t>(std::clamp(request.contentThreads, 1, 64))));
     int running = threadCount;
 
     const auto stale = [&] { return isStale(job.id); };
@@ -411,17 +451,28 @@ void SearchEngine::runContentSearch(const Job& job)
         for (int t = 0; t < threadCount; ++t) {
             workers.emplace_back([&] {
                 ::SetThreadPriority(::GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+                std::wstring path;
                 while (!stale() && found.load() < request.maxContentResults) {
                     const std::size_t i = next.fetch_add(1);
                     if (i >= candidates.size())
                         break;
-                    const std::u16string_view path(paths.data() + candidates[i].offset, candidates[i].length);
-                    const auto match = scanner.scanFile(wtf8::wview(path), request.maxContentFileBytes, stale);
+                    bool gone = false;
+                    {
+                        const auto lock = index->readLock();
+                        gone = index->entry(candidates[i].id).isDeleted();
+                        if (!gone)
+                            path = index->wpath(candidates[i].id); // as it is now: it may have moved
+                    }
+                    if (gone) {
+                        scanned.fetch_add(1);
+                        continue;
+                    }
+                    const auto match = scanner.scanFile(path, request.maxContentFileBytes, stale);
                     scanned.fetch_add(1);
                     if (!match)
                         continue;
                     SearchResult r;
-                    r.path = QString(reinterpret_cast<const QChar*>(path.data()), static_cast<qsizetype>(path.size()));
+                    r.path = QString::fromStdWString(path);
                     r.name = r.path.mid(r.path.lastIndexOf(u'\\') + 1);
                     r.line = match->line;
                     r.snippet = match->snippet;
@@ -451,8 +502,7 @@ void SearchEngine::runContentSearch(const Job& job)
     }
     flush(true);
     candidates = decltype(candidates)(); // free them before compacting (`= {}` keeps the capacity)
-    paths = decltype(paths)();
     ::HeapCompact(::GetProcessHeap(), 0); // return the scan's scratch memory to the OS
 }
 
-} // namespace qf
+} // namespace ws

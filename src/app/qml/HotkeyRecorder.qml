@@ -1,5 +1,5 @@
 import QtQuick
-import QuickFind
+import WinShun
 
 // Click, then press the key combination. Esc cancels, Backspace clears.
 Rectangle {

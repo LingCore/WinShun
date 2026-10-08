@@ -7,7 +7,7 @@
 
 #include <algorithm>
 
-namespace qf {
+namespace ws {
 
 VolumeNotifier::VolumeNotifier(HWND window, Callbacks callbacks)
     : m_window(window)
@@ -149,4 +149,4 @@ LRESULT VolumeNotifier::handle(WPARAM event, LPARAM data)
     }
 }
 
-} // namespace qf
+} // namespace ws

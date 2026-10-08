@@ -5,7 +5,7 @@
 #include <QFileInfo>
 #include <QSaveFile>
 
-namespace qf {
+namespace ws {
 
 History::History(QString filePath, int capacity)
     : m_filePath(std::move(filePath))
@@ -56,4 +56,4 @@ void History::save() const
     file.commit();
 }
 
-} // namespace qf
+} // namespace ws

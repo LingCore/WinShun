@@ -9,11 +9,12 @@
 
 #include <atomic>
 #include <memory>
+#include <optional>
 
 class QQmlApplicationEngine;
 class QQuickWindow;
 
-namespace qf {
+namespace ws {
 
 class AppCatalog;
 class History;
@@ -21,9 +22,11 @@ class IndexService;
 class KeyListener;
 class Launcher;
 class MessageWindow;
+class Placement;
 class SearchEngine;
 class SettingsEditor;
 class VolumeNotifier;
+class WindowFrame;
 
 // Wires the pieces together and owns their lifetimes: settings, index,
 // search engine, the QML window, tray icon and global hotkeys.
@@ -47,6 +50,9 @@ public:
     void showLauncher(const QString& query = {});
     void hideLauncher();
     void showSettings();
+    // Set by "重新启动" in the tray menu or the settings window: the command
+    // line for the new copy, which main() starts once this one has let go.
+    std::optional<QStringList> restartArguments() const { return m_restartArguments; }
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
@@ -58,9 +64,13 @@ private:
     void reloadSettings();
     void settingsEdited(const Settings& settings);
     void showTrayMenu();
+    void restart(const QStringList& arguments);
     void applyTheme();
     void armReveal();
     void revealLauncher();
+    void prewarmLauncher();
+    void finishPrewarm();
+    void refreshContentIndexStatus(); // shown in the settings window
 
     Settings m_settings;
     std::unique_ptr<History> m_history;
@@ -71,6 +81,8 @@ private:
     std::unique_ptr<MessageWindow> m_messages;
     std::unique_ptr<VolumeNotifier> m_volumeNotifier; // after m_messages, whose window it uses
     std::unique_ptr<KeyListener> m_keyListener; // double Ctrl
+    std::unique_ptr<Placement> m_placement; // where the launcher opens; moving it
+    std::unique_ptr<WindowFrame> m_frame; // the launcher's header and footer drag it
     // The launcher is shown cloaked and revealed once it has drawn a frame
     // with fresh results (see showLauncher). Set on the GUI thread, read on
     // the render thread.
@@ -78,15 +90,18 @@ private:
     std::atomic<bool> m_revealArmed {false}; // results are in: the next synchronised frame is the one
     std::atomic<bool> m_revealSynced {false}; // that frame has been synchronised
     QTimer m_revealTimeout;
+    std::atomic<bool> m_prewarming {false}; // shown cloaked for one frame (see prewarmLauncher)
     std::unique_ptr<QQmlApplicationEngine> m_qml; // destroyed first: QML references the objects above
     QPointer<QQuickWindow> m_window;
     QPointer<QQuickWindow> m_settingsWindow; // created on demand, deleted when closed
     QPointer<SettingsEditor> m_settingsEditor; // owned by m_settingsWindow
     QString m_renderer; // the one in use; changing it takes a restart
+    std::optional<QStringList> m_restartArguments;
 
     QFileSystemWatcher m_settingsWatcher;
     QTimer m_settingsReload;
     QTimer m_indexOptionsApply; // rebuilding the crawler is costly: batch quick edits
+    QTimer m_contentStatusTimer; // while the settings window is open
 };
 
-} // namespace qf
+} // namespace ws

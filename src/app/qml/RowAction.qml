@@ -1,5 +1,5 @@
 import QtQuick
-import QuickFind
+import WinShun
 
 // A small icon button at the end of a result row (reveal, copy, delete).
 // `danger` paints it red, with an optional label: the armed delete button.

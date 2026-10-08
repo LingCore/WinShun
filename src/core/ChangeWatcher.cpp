@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <memory>
 
-namespace qf {
+namespace ws {
 
 namespace {
 
@@ -217,4 +217,4 @@ void ChangeWatcher::run(std::stop_token stop)
     m_applied.notify_all();
 }
 
-} // namespace qf
+} // namespace ws

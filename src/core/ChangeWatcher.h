@@ -9,7 +9,7 @@
 #include <thread>
 #include <vector>
 
-namespace qf {
+namespace ws {
 
 struct FsChange {
     enum class Kind : std::uint8_t { Added, Removed, RenamedFrom, RenamedTo, Overflow };
@@ -51,4 +51,4 @@ private:
     std::jthread m_thread;
 };
 
-} // namespace qf
+} // namespace ws

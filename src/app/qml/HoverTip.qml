@@ -1,6 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QuickFind
+import WinShun
 
 // A Windows 11 style tooltip for whichever item `target` names (null: none).
 // It appears after the mouse rests on a target for a moment, above it (below
@@ -14,7 +14,7 @@ Item {
     property Item target
     property string text
     property string shortcut
-    property int delay: 500
+    property int delay: 250
     property int linger: 150 // after the mouse leaves: time to reach a neighbour
 
     property bool shown: false

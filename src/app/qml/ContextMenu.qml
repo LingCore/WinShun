@@ -1,7 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QuickFind
+import WinShun
 
 // The context menu of a result, drawn to match the launcher (Windows 11
 // style). A window of its own, so it can extend past the launcher's edges;

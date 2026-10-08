@@ -4,7 +4,7 @@
 #include <QObject>
 #include <QtQml/qqmlregistration.h>
 
-namespace qf {
+namespace ws {
 
 // System appearance for QML: light/dark mode, accent colour, icon font.
 // Colours derived from these live in Theme.qml.
@@ -36,4 +36,4 @@ private:
     QString m_iconFont;
 };
 
-} // namespace qf
+} // namespace ws

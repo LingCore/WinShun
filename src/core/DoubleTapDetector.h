@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <cstdlib>
 
-namespace qf {
+namespace ws {
 
 // Recognises "tap Ctrl twice" from raw key events. Pure logic (no Win32), so
 // it is unit-tested; KeyListener feeds it events.
@@ -91,4 +91,4 @@ private:
     int m_firstY = 0;
 };
 
-} // namespace qf
+} // namespace ws

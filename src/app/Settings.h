@@ -5,10 +5,10 @@
 #include <QString>
 #include <QStringList>
 
-namespace qf {
+namespace ws {
 
 // User settings, edited in the settings window and stored as an INI file
-// (%APPDATA%\QuickFind\QuickFind.ini). Missing keys are written back with
+// (%APPDATA%\WinShun\WinShun.ini). Missing keys are written back with
 // their defaults so every option is discoverable in the file.
 struct Settings {
     // [Launcher]
@@ -25,6 +25,8 @@ struct Settings {
     // [Content]
     QStringList contentExtensions;
     int maxContentFileSizeMB = 64;
+    bool contentIndex = true; // which files have which Chinese, Japanese and Korean characters
+    bool contentInLowPriority = false; // 内容 also looks in system, program and tool folders
 
     static Settings defaults();
     static bool exists(); // false on the very first run
@@ -39,7 +41,7 @@ struct Settings {
     static QString filePath();
     static QString storedRenderer(); // just [Launcher] Renderer; works before QGuiApplication exists
     static QString resolveRenderer(const QString& renderer); // "auto" -> software with <= 16 GB of RAM, else d3d11
-    static QString dataDir(); // %LOCALAPPDATA%\QuickFind
+    static QString dataDir(); // %LOCALAPPDATA%\WinShun
 };
 
-} // namespace qf
+} // namespace ws

@@ -4,7 +4,7 @@
 
 #include <algorithm>
 
-namespace qf::pinyin {
+namespace ws::pinyin {
 
 namespace {
 
@@ -205,4 +205,4 @@ std::optional<Span> Matcher::findUtf16(std::u16string_view text) const noexcept
     return Span {offsets[span->start], static_cast<std::size_t>(offsets[span->start + span->length] - offsets[span->start])};
 }
 
-} // namespace qf::pinyin
+} // namespace ws::pinyin

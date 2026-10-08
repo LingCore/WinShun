@@ -5,7 +5,7 @@
 #include <dwmapi.h>
 #include <windows.h>
 
-namespace qf::win {
+namespace ws::win {
 
 namespace {
 
@@ -13,9 +13,6 @@ namespace {
 constexpr DWORD kUseImmersiveDarkMode = 20; // DWMWA_USE_IMMERSIVE_DARK_MODE
 constexpr DWORD kCornerPreference = 33; // DWMWA_WINDOW_CORNER_PREFERENCE
 constexpr DWORD kBorderColor = 34; // DWMWA_BORDER_COLOR
-constexpr DWORD kCaptionColor = 35; // DWMWA_CAPTION_COLOR
-constexpr DWORD kTextColor = 36; // DWMWA_TEXT_COLOR
-constexpr COLORREF kDefaultColor = 0xFFFFFFFF; // DWMWA_COLOR_DEFAULT
 constexpr int kCornerRound = 2; // DWMWCP_ROUND
 
 HWND handleOf(QWindow* window)
@@ -39,26 +36,6 @@ void styleFramelessWindow(QWindow* window, bool dark, QColor border)
     // borderless window (and keeps working on Windows 10).
     const MARGINS margins {0, 0, 1, 0};
     ::DwmExtendFrameIntoClientArea(hwnd, &margins);
-}
-
-void setDarkTitleBar(QWindow* window, bool dark)
-{
-    if (const HWND hwnd = handleOf(window)) {
-        const BOOL darkMode = dark;
-        ::DwmSetWindowAttribute(hwnd, kUseImmersiveDarkMode, &darkMode, sizeof darkMode);
-    }
-}
-
-void setTitleBarColors(QWindow* window, QColor caption, QColor text)
-{
-    const HWND hwnd = handleOf(window);
-    if (!hwnd)
-        return;
-    const auto colorRef = [](QColor c) { return c.isValid() ? RGB(c.red(), c.green(), c.blue()) : kDefaultColor; };
-    const COLORREF captionColor = colorRef(caption);
-    const COLORREF textColor = colorRef(text);
-    ::DwmSetWindowAttribute(hwnd, kCaptionColor, &captionColor, sizeof captionColor);
-    ::DwmSetWindowAttribute(hwnd, kTextColor, &textColor, sizeof textColor);
 }
 
 void setCloaked(QWindow* window, bool cloaked)
@@ -105,4 +82,4 @@ void setMenuTheme(bool dark)
         flush();
 }
 
-} // namespace qf::win
+} // namespace ws::win

@@ -9,7 +9,7 @@
 
 #include <algorithm>
 
-namespace qf {
+namespace ws {
 
 namespace {
 
@@ -17,6 +17,7 @@ constexpr std::uint32_t kFirstUserRecord = 16; // below: NTFS metadata ($MFT, $E
 constexpr std::size_t kApplyBatch = 256; // journal records applied per write lock
 constexpr std::uint32_t kNameReasons = USN_REASON_FILE_CREATE | USN_REASON_FILE_DELETE | USN_REASON_RENAME_OLD_NAME
     | USN_REASON_RENAME_NEW_NAME | USN_REASON_BASIC_INFO_CHANGE | USN_REASON_HARD_LINK_CHANGE;
+constexpr std::uint32_t kDataReasons = USN_REASON_DATA_OVERWRITE | USN_REASON_DATA_EXTEND | USN_REASON_DATA_TRUNCATION;
 
 // Attributes as stored by NTFS (in the MFT and the journal) to EntryFlags.
 std::uint8_t flagsOf(std::uint32_t attributes, bool folder) noexcept
@@ -156,10 +157,11 @@ struct UsnApplier::Item {
     bool folder = false;
 };
 
-UsnApplier::UsnApplier(FileIndex& index, const Crawler& crawler, std::string rootName)
+UsnApplier::UsnApplier(FileIndex& index, const Crawler& crawler, std::string rootName, Written written)
     : m_index(index)
     , m_crawler(crawler)
     , m_rootName(std::move(rootName))
+    , m_onWritten(std::move(written))
 {
 }
 
@@ -176,8 +178,14 @@ void UsnApplier::apply(std::span<const ntfs::UsnRecord> records, std::stop_token
             if (it == roots.end())
                 return; // the volume is no longer indexed
             m_root = *it;
-            for (; i < end; ++i)
+            for (; i < end; ++i) {
                 applyOne(records[i], walks);
+                noteWritten(records[i]); // after: a file created or renamed by the record has its entry now
+            }
+            if (!m_written.empty()) {
+                m_onWritten(m_written);
+                m_written.clear();
+            }
         }
         if (!walks.empty()) {
             // Folders moved in from outside the index: their contents are new to it.
@@ -253,6 +261,19 @@ void UsnApplier::applyOne(const ntfs::UsnRecord& r, std::vector<Crawler::Root>& 
         updateFlags(item);
     if (old != m_oldNames.end() && (reason & (USN_REASON_RENAME_NEW_NAME | USN_REASON_FILE_DELETE)))
         m_oldNames.erase(old);
+}
+
+void UsnApplier::noteWritten(const ntfs::UsnRecord& r)
+{
+    if (!m_onWritten || !(r.reason & kDataReasons) || (r.reason & USN_REASON_FILE_DELETE)
+        || (r.attributes & FILE_ATTRIBUTE_DIRECTORY))
+        return;
+    const EntryId parent = m_index.folderByRecord(m_root, ntfs::recordOf(r.parent));
+    if (parent == kNoEntry)
+        return; // outside the index
+    const EntryId id = find(parent, wtf8::fromUtf16(r.name));
+    if (id != kNoEntry && !m_index.entry(id).isDir())
+        m_written.push_back(id);
 }
 
 EntryId UsnApplier::find(EntryId parent, std::string_view name)
@@ -393,4 +414,4 @@ void UsnApplier::updateFlags(const Item& item)
         flagsOf(item.attributes, item.folder) | inherited | (e.flags & EntryFlag::LowPriority)));
 }
 
-} // namespace qf
+} // namespace ws

@@ -1,5 +1,5 @@
 import QtQuick
-import QuickFind
+import WinShun
 
 // The author LingCore's avatar: a chibi holding a cursor. It pops up and
 // tilts side to side like waving hello whenever AuthorClock plays (each time
@@ -63,7 +63,7 @@ Item {
             anchors.verticalCenterOffset: 1 / 64
             width: pixels / dpr
             height: width
-            source: "qrc:/qt/qml/QuickFind/gleaning/avatar.png"
+            source: "qrc:/qt/qml/WinShun/gleaning/avatar.png"
             sourceSize.width: pixels
             sourceSize.height: pixels
             smooth: avatar.moving

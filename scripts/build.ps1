@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-    Configure, build, test and (optionally) package QuickFind.
+    Configure, build, test and (optionally) package WinShun.
 
 .EXAMPLE
     ./scripts/build.ps1                      # Release build + tests
     ./scripts/build.ps1 -Config Debug
-    ./scripts/build.ps1 -Deploy              # also produce dist/QuickFind with all Qt DLLs
+    ./scripts/build.ps1 -Deploy              # also produce dist/WinShun with all Qt DLLs
     ./scripts/build.ps1 -QtDir C:\Qt\6.12.0\msvc2022_64
 #>
 param(
@@ -51,17 +51,17 @@ try {
         if ($LASTEXITCODE) { throw 'tests failed' }
     }
     if ($Deploy) {
-        $dist = Join-Path $root 'dist\QuickFind'
+        $dist = Join-Path $root 'dist\WinShun'
         if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
         New-Item -ItemType Directory -Force $dist | Out-Null
-        Copy-Item "$root\build\$preset\QuickFind.exe" $dist
+        Copy-Item "$root\build\$preset\WinShun.exe" $dist
         Copy-Item "$root\build\$preset\fonts" $dist -Recurse # UI font (see main.cpp)
         # Only what the app uses: no shader compilers (software renderer), no
         # QML debugger, network, TLS or SVG plugins.
         & "$QtDir\bin\windeployqt.exe" --qmldir "$root\src\app\qml" --no-translations --no-system-d3d-compiler `
             --no-system-dxc-compiler --no-opengl-sw --no-compiler-runtime `
             --skip-plugin-types qmltooling,generic,networkinformation,tls,iconengines,imageformats `
-            "--$preset" "$dist\QuickFind.exe"
+            "--$preset" "$dist\WinShun.exe"
         if ($LASTEXITCODE) { throw 'windeployqt failed' }
         # App-local C++ runtime, so users need no VC++ redistributable installed.
         $crt = Join-Path $env:VCToolsRedistDir 'x64\Microsoft.VC143.CRT'

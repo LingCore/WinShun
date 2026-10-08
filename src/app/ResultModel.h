@@ -8,7 +8,7 @@
 #include <QStringList>
 #include <QtQml/qqmlregistration.h>
 
-namespace qf {
+namespace ws {
 
 // The visible result list. Holds at most a few hundred rows; HTML for match
 // highlighting is generated lazily for the rows QML actually draws.
@@ -72,4 +72,4 @@ private:
     QColor m_highlightColor {0x00, 0x5F, 0xB8};
 };
 
-} // namespace qf
+} // namespace ws

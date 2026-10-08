@@ -31,7 +31,7 @@ QtObject {
             summary: qsTr("让 Windows 用起来更顺手"),
             openSource: true,
             url: "",
-            icon: "qrc:/qt/qml/QuickFind/gleaning/winshun.png"
+            icon: "qrc:/qt/qml/WinShun/gleaning/winshun.png"
         },
         {
             id: "macshun",
@@ -39,7 +39,7 @@ QtObject {
             summary: qsTr("把 Windows 的顺手带到 Mac"),
             openSource: true,
             url: "https://github.com/LingCore/MacShun",
-            icon: "qrc:/qt/qml/QuickFind/gleaning/macshun.png"
+            icon: "qrc:/qt/qml/WinShun/gleaning/macshun.png"
         }
     ]
 }

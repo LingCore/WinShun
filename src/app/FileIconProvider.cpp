@@ -19,7 +19,7 @@
 using namespace Qt::StringLiterals;
 using Microsoft::WRL::ComPtr;
 
-namespace qf {
+namespace ws {
 
 namespace {
 
@@ -272,4 +272,4 @@ QImage FileIconProvider::requestImage(const QString& id, QSize* size, const QSiz
     return image;
 }
 
-} // namespace qf
+} // namespace ws

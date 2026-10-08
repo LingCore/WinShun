@@ -8,7 +8,7 @@
 #include <thread>
 #include <vector>
 
-namespace qf {
+namespace ws {
 
 // A small fixed set of threads for CPU-bound parallel loops (the name scan).
 // Unlike std::execution::par, which grows the system thread pool to one
@@ -46,4 +46,4 @@ private:
     std::mutex m_callMutex; // serialises parallelFor() callers
 };
 
-} // namespace qf
+} // namespace ws

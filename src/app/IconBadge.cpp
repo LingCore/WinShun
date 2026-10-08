@@ -6,7 +6,7 @@
 #include <QPainter>
 #include <QPainterPath>
 
-namespace qf {
+namespace ws {
 
 IconBadge::IconBadge(QQuickItem* parent)
     : QQuickPaintedItem(parent)
@@ -49,4 +49,4 @@ void IconBadge::paint(QPainter* painter)
     painter->drawPath(glyph);
 }
 
-} // namespace qf
+} // namespace ws

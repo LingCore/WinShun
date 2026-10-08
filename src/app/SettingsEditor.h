@@ -2,13 +2,12 @@
 
 #include "Settings.h"
 
-#include <QColor>
 #include <QObject>
 #include <QPointer>
 #include <QWindow>
 #include <QtQml/qqmlregistration.h>
 
-namespace qf {
+namespace ws {
 
 // The view-model behind the settings window. Every change is saved right
 // away and reported through edited(); there is no OK / Cancel step.
@@ -27,9 +26,13 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QStringList excludedNames READ excludedNames NOTIFY changed FINAL)
     Q_PROPERTY(QStringList contentExtensions READ contentExtensions NOTIFY changed FINAL)
     Q_PROPERTY(int maxContentFileSizeMB READ maxContentFileSizeMB WRITE setMaxContentFileSizeMB NOTIFY changed FINAL)
+    Q_PROPERTY(bool contentIndex READ contentIndex WRITE setContentIndex NOTIFY changed FINAL)
+    Q_PROPERTY(bool contentInLowPriority READ contentInLowPriority WRITE setContentInLowPriority NOTIFY changed FINAL)
+    Q_PROPERTY(QString contentIndexStatus READ contentIndexStatus NOTIFY contentIndexStatusChanged FINAL)
     Q_PROPERTY(QString renderer READ renderer WRITE setRenderer NOTIFY changed FINAL)
     Q_PROPERTY(bool restartRequired READ restartRequired NOTIFY changed FINAL)
     Q_PROPERTY(bool isDefault READ isDefault NOTIFY changed FINAL)
+    Q_PROPERTY(QString dataFolder READ dataFolder CONSTANT FINAL)
 
 public:
     SettingsEditor(const Settings& settings, const QString& runningRenderer, QObject* parent = nullptr);
@@ -53,10 +56,17 @@ public:
     QStringList contentExtensions() const { return m_settings.contentExtensions; }
     int maxContentFileSizeMB() const { return m_settings.maxContentFileSizeMB; }
     void setMaxContentFileSizeMB(int mb);
+    bool contentIndex() const { return m_settings.contentIndex; }
+    void setContentIndex(bool on);
+    bool contentInLowPriority() const { return m_settings.contentInLowPriority; }
+    void setContentInLowPriority(bool on);
+    QString contentIndexStatus() const { return m_contentIndexStatus; }
+    void setContentIndexStatus(const QString& status); // "已收录 … 个文件"; set by the app
     QString renderer() const { return m_settings.renderer; }
     void setRenderer(const QString& renderer);
     bool restartRequired() const { return Settings::resolveRenderer(m_settings.renderer) != m_runningRenderer; }
     bool isDefault() const;
+    QString dataFolder() const { return Settings::dataDir(); }
 
     void setSettings(const Settings& settings); // the file was changed outside this editor
     void setWindow(QWindow* window) { m_window = window; }
@@ -68,19 +78,21 @@ public:
     Q_INVOKABLE bool addContentExtensions(const QString& text); // "md, .log *.csv"
     Q_INVOKABLE void removeContentExtension(int index);
     Q_INVOKABLE void restoreDefaults();
+    Q_INVOKABLE void openDataFolder();
+    Q_INVOKABLE void restart() { emit restartRequested(); } // after changing the renderer
 
     // 拾穗计划 page
     Q_INVOKABLE void openUrl(const QString& url);
     Q_INVOKABLE void copyText(const QString& text);
-    Q_INVOKABLE void setTitleBarColors(const QColor& caption, const QColor& text);
-    Q_INVOKABLE void resetTitleBarColors();
 
 signals:
     void changed();
     void hotkeyErrorChanged();
+    void contentIndexStatusChanged();
     void recordingHotkeyChanged(); // the app suspends its hotkeys meanwhile
     void autostartChanged();
-    void edited(const qf::Settings& settings);
+    void edited(const ws::Settings& settings);
+    void restartRequested();
 
 private:
     void commit();
@@ -88,8 +100,9 @@ private:
     Settings m_settings;
     QString m_runningRenderer; // resolved: never "auto"
     QString m_hotkeyError;
+    QString m_contentIndexStatus;
     bool m_recordingHotkey = false;
     QPointer<QWindow> m_window;
 };
 
-} // namespace qf
+} // namespace ws

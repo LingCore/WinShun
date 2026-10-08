@@ -4,7 +4,7 @@
 #include <QQuickPaintedItem>
 #include <QtQml/qqmlregistration.h>
 
-namespace qf {
+namespace ws {
 
 // A rounded square in a vertical gradient with an icon-font glyph on it,
 // optionally tilted (MacShun: IconBadge + rotationEffect). The tilt is drawn
@@ -40,4 +40,4 @@ private:
     QColor m_glyphColor {Qt::white};
 };
 
-} // namespace qf
+} // namespace ws

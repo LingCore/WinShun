@@ -4,6 +4,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
@@ -14,7 +15,7 @@
 #include <utility>
 #include <vector>
 
-namespace qf {
+namespace ws {
 
 using EntryId = std::uint32_t;
 inline constexpr EntryId kNoEntry = 0xFFFF'FFFFu;
@@ -31,13 +32,13 @@ inline constexpr std::uint8_t Persistent = Directory | Root | LowPriority | Hidd
 inline constexpr std::uint8_t Inherited = LowPriority | Hidden;
 } // namespace EntryFlag
 
-// One file or folder. Children form a doubly-linked sibling list so that
-// adds, removals and moves from the change watcher are all O(1).
+// One file or folder. Children form a sibling list, newest first. Taking a
+// child out of it needs the one before: found by walking a small folder;
+// a big one has a table of its children that knows (see ChildTable).
 struct Entry {
     EntryId parent = kNoEntry;
     EntryId firstChild = kNoEntry;
     EntryId nextSibling = kNoEntry;
-    EntryId prevSibling = kNoEntry;
     std::uint32_t nameOffset = 0;
     std::uint16_t nameLength = 0;
     std::uint8_t flags = 0;
@@ -46,7 +47,7 @@ struct Entry {
     bool isDir() const noexcept { return flags & EntryFlag::Directory; }
     bool isDeleted() const noexcept { return flags & EntryFlag::Deleted; }
 };
-static_assert(sizeof(Entry) == 24, "keep Entry compact: it is stored once per file on disk");
+static_assert(sizeof(Entry) == 20, "keep Entry compact: there is one per file and folder");
 
 // Folder entries by NTFS file record number (open addressing). Record 0 is
 // the MFT itself, never a folder, so it marks empty slots.
@@ -158,8 +159,48 @@ public:
     // entries are renumbered (in their old order), so every EntryId held
     // across the call is invalid afterwards. Not while interning is on.
     // `always` also runs it with nothing removed, to drop names that were
-    // stored but never used. Returns the number of slots freed.
-    std::size_t compact(bool always = false);
+    // stored but never used. `renumbered` is handed the old -> new mapping
+    // (kNoEntry for removed items; it never reorders) for ids kept elsewhere.
+    // Returns the number of slots freed.
+    using Renumber = std::function<EntryId(EntryId)>;
+    std::size_t compact(bool always = false, const std::function<void(const Renumber&)>& renumbered = {});
+    std::uint64_t generation() const noexcept { return m_generation.load(std::memory_order_acquire); } // +1 per compact()
+
+    // Code that holds EntryIds outside the lock for a while (a content scan,
+    // the content indexer) pins them: IndexService does not compact meanwhile.
+    class IdPin {
+    public:
+        IdPin() noexcept = default;
+        explicit IdPin(const FileIndex& index) noexcept
+            : m_index(&index)
+        {
+            m_index->m_pins.fetch_add(1);
+        }
+        IdPin(IdPin&& other) noexcept
+            : m_index(std::exchange(other.m_index, nullptr))
+        {
+        }
+        IdPin& operator=(IdPin&& other) noexcept
+        {
+            if (this != &other) {
+                reset();
+                m_index = std::exchange(other.m_index, nullptr);
+            }
+            return *this;
+        }
+        ~IdPin() { reset(); }
+        void reset() noexcept
+        {
+            if (m_index)
+                std::exchange(m_index, nullptr)->m_pins.fetch_sub(1);
+        }
+
+    private:
+        const FileIndex* m_index = nullptr;
+    };
+    // Pin while holding a lock, so no compaction can come in between.
+    [[nodiscard]] IdPin pinIds() const noexcept { return IdPin(*this); }
+    bool idsPinned() const noexcept { return m_pins.load() > 0; }
 
     // Name storage, for bulk readers that collect names before adding the
     // entries (the MFT reader). Offsets stay valid until compact().
@@ -180,22 +221,27 @@ public:
 
 private:
     // A folder's children by name: open addressing over their ids, by the
-    // hash of the ASCII-folded name.
+    // hash of the ASCII-folded name. Each also has the child before it in
+    // the sibling list, so taking one out of a big folder walks nothing.
     struct ChildTable {
         std::vector<EntryId> buckets; // kNoEntry: empty
+        std::vector<EntryId> previous; // parallel to buckets
         std::size_t count = 0;
     };
+    static constexpr std::size_t kNoSlot = ~std::size_t {0};
 
     Entry& mut(EntryId id) noexcept { return m_chunks[id >> kChunkBits][id & (kChunkSize - 1)]; }
     template <typename Lookup> EntryId walkPath(std::wstring_view path, Lookup&& lookup) const;
     EntryId tableFind(const ChildTable& table, std::string_view name, bool exactCase) const noexcept;
-    void tableInsert(ChildTable& table, EntryId child);
+    std::size_t tableSlot(const ChildTable& table, EntryId child) const noexcept; // kNoSlot: not in it
+    void tableInsert(ChildTable& table, EntryId child, EntryId previous);
     void tableErase(ChildTable& table, EntryId child) noexcept;
+    ChildTable& buildTable(EntryId parent);
     EntryId allocate();
     std::uint32_t appendName(std::string_view name);
     void internInsert(std::uint64_t slot, std::size_t hash) noexcept;
     void link(EntryId parent, EntryId child);
-    void unlink(EntryId child) noexcept;
+    void unlink(EntryId child);
 
     mutable std::shared_mutex m_mutex;
     std::vector<std::unique_ptr<Entry[]>> m_chunks;
@@ -203,6 +249,8 @@ private:
     std::size_t m_count = 0;
     std::size_t m_nameUsed = kNameChunkSize; // forces allocation on first use
     std::atomic<std::size_t> m_live {0};
+    mutable std::atomic<int> m_pins {0};
+    std::atomic<std::uint64_t> m_generation {0};
     std::vector<EntryId> m_roots;
     std::vector<std::uint64_t> m_intern; // open addressing: offset<<32 | length<<16 | hash tag; 0 = empty
     std::size_t m_internCount = 0;
@@ -212,4 +260,4 @@ private:
 
 std::uint8_t extensionLength(std::string_view name, bool isDir) noexcept;
 
-} // namespace qf
+} // namespace ws

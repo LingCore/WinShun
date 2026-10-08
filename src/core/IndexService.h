@@ -1,6 +1,8 @@
 #pragma once
 
 #include "ChangeWatcher.h"
+#include "ContentIndex.h"
+#include "ContentIndexer.h"
 #include "Crawler.h"
 #include "FileIndex.h"
 
@@ -17,7 +19,7 @@
 #include <thread>
 #include <vector>
 
-namespace qf {
+namespace ws {
 
 // Owns the file index and keeps it current:
 //   1. startup: load the snapshot (searchable within a second), keeping the
@@ -31,6 +33,9 @@ namespace qf {
 //   4. drives come and go: new ones are read, gone ones dropped; one that is
 //      being ejected or locked is let go of first (suspendVolume)
 //   5. periodically and on exit: save a compact snapshot
+//   6. the content index (ContentIndex) of the files on NTFS volumes: the
+//      journal says which files were written to, the ContentIndexer reads
+//      them again in the background; it is saved with the snapshot
 //
 // The first run has no snapshot: the (empty) index is searchable at once and
 // fills up while the volumes are read. There is only ever one index in memory.
@@ -47,6 +52,7 @@ public:
         bool includeRemovable = false;
         bool rescanOnStartup = true; // walked volumes only: NTFS always catches up
         int rescanDelayMs = 15000;
+        ContentIndexer::Options content;
     };
 
     explicit IndexService(Options options, QObject* parent = nullptr);
@@ -71,6 +77,9 @@ public:
     std::vector<std::wstring> volumeRoots() const; // the indexed volumes, suspended ones included
 
     std::shared_ptr<FileIndex> index() const { return m_index.load(); }
+    // Its entry ids are the index's: look things up with the index's read lock held.
+    std::shared_ptr<const ContentIndex> contentIndex() const { return m_content; }
+    bool readingContent() const noexcept { return m_contentIndexer->reading(); }
     State state() const noexcept { return m_state.load(); }
     bool isRefreshing() const noexcept { return m_refreshing.load(); }
     std::size_t itemCount() const;
@@ -105,6 +114,10 @@ private:
     void ensureWatcher(); // watches the volumes that are walked; never with m_journalMutex held
     void onChanges(std::vector<FsChange>&& changes);
     void applyChanges(FileIndex& index, const std::vector<FsChange>& changes, const Crawler& crawler);
+    // Files on the volume may have changed without the journal saying so:
+    // the content index checks them again.
+    void contentUnsureOf(const std::wstring& root);
+    std::vector<ContentIndexer::Volume> contentVolumes() const;
     void compactIfWasteful(bool always = false); // drops removed items once they add up
     void saveSnapshot();
     void saveInBackground();
@@ -133,6 +146,10 @@ private:
     std::vector<std::wstring> m_rewalk; // walked volumes owed a walk: never finished, or unwatched for a while
     std::optional<CrawlRules> m_rulesBefore; // the rules the index still reflects, when they changed
 
+    std::shared_ptr<ContentIndex> m_content;
+    std::unique_ptr<ContentIndexer> m_contentIndexer;
+    std::atomic<bool> m_compactOwed {false}; // put off while ids were pinned
+
     std::mutex m_saveMutex;
     std::stop_source m_shutdown;
     std::unique_ptr<ChangeWatcher> m_watcher; // worker thread, or GUI thread while no worker runs
@@ -144,4 +161,4 @@ private:
     bool m_stopped = false;
 };
 
-} // namespace qf
+} // namespace ws

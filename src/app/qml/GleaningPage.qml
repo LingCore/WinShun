@@ -1,6 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QuickFind
+import WinShun
 
 // The 拾穗计划 page's content; GleaningBackdrop lies under the whole window.
 // One screen: the works at the top, the feedback note and the footer down in
@@ -225,13 +225,14 @@ Flickable {
         // The author: avatar, name and motto.
         Item {
             width: parent.width
-            height: 64 + 22
+            height: 22 + Math.max(64, authorInfo.implicitHeight)
             AuthorAvatar {
                 id: avatar
-                y: 22
+                y: 22 + Math.max(0, (authorInfo.implicitHeight - 64) / 2) // the motto is large: keep both centred
                 size: 64
             }
             Column {
+                id: authorInfo
                 anchors.left: avatar.right
                 anchors.leftMargin: 16
                 anchors.verticalCenter: avatar.verticalCenter
@@ -254,7 +255,8 @@ Flickable {
                 Text {
                     text: Gleaning.authorMotto
                     color: WarmPalette.inkSoft
-                    font.pixelSize: Theme.fontCaption
+                    font.pointSize: 24
+                    font.weight: Font.Bold
                 }
             }
             Rectangle { // homepage

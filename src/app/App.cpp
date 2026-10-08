@@ -5,8 +5,10 @@
 #include "History.h"
 #include "IndexService.h"
 #include "Launcher.h"
+#include "Placement.h"
 #include "SearchEngine.h"
 #include "SettingsEditor.h"
+#include "WindowFrame.h"
 #include "platform/KeyListener.h"
 #include "platform/MessageWindow.h"
 #include "platform/Shell.h"
@@ -30,7 +32,7 @@
 using namespace Qt::StringLiterals;
 using namespace std::chrono_literals;
 
-namespace qf {
+namespace ws {
 
 namespace {
 
@@ -42,7 +44,7 @@ enum TrayCommand {
     RebuildCommand,
     AutostartCommand,
     SettingsCommand,
-    DataFolderCommand,
+    RestartCommand,
     QuitCommand
 };
 
@@ -53,12 +55,23 @@ IndexService::Options indexOptions(const Settings& settings)
     options.snapshotPath = Settings::dataDir() + u"\\index.bin"_s;
     options.includeRemovable = settings.includeRemovableDrives;
     options.rescanOnStartup = settings.rescanOnStartup;
+    options.content.enabled = settings.contentIndex;
+    options.content.extensions = settings.contentExtensions;
+    options.content.maxFileBytes = static_cast<std::int64_t>(settings.maxContentFileSizeMB) << 20;
+    options.content.includeLowPriority = settings.contentInLowPriority;
     return options;
 }
 
 bool isDarkMode()
 {
     return QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
+}
+
+// Rounded corners, a thin border and the shadow, for our windows without a
+// system title bar (the launcher, the settings window).
+void styleWindow(QWindow* window, bool dark)
+{
+    win::styleFramelessWindow(window, dark, dark ? QColor(0x40, 0x40, 0x40) : QColor(0xD4, 0xD4, 0xD4));
 }
 
 } // namespace
@@ -74,6 +87,8 @@ App::App()
     m_revealTimeout.setSingleShot(true);
     m_revealTimeout.setInterval(150ms); // never wait longer than that for the first frame
     connect(&m_revealTimeout, &QTimer::timeout, this, &App::revealLauncher);
+    m_contentStatusTimer.setInterval(2s);
+    connect(&m_contentStatusTimer, &QTimer::timeout, this, &App::refreshContentIndexStatus);
 }
 
 App::~App()
@@ -132,7 +147,7 @@ bool App::start(const StartOptions& options)
     m_volumeNotifier = std::make_unique<VolumeNotifier>(m_messages->hwnd(), std::move(volumeCallbacks));
     connect(m_index.get(), &IndexService::volumesChanged, this,
         [this] { m_volumeNotifier->track(m_index->volumeRoots()); });
-    m_messages->showTrayIcon(u"快搜 — 双击 Ctrl 打开"_s);
+    m_messages->showTrayIcon(u"Win顺 — 双击 Ctrl 打开"_s);
 
     applySettings(true);
     applyTheme();
@@ -149,12 +164,13 @@ bool App::start(const StartOptions& options)
         // (the settings file exists from now on, so this runs once).
         autostart::setEnabled(true);
         m_messages->showNotification(
-            u"快搜已在后台运行"_s, u"双击 Ctrl 打开搜索。首次运行需要一点时间建立文件索引。"_s);
+            u"Win顺已在后台运行"_s, u"双击 Ctrl 打开搜索。首次运行需要一点时间建立文件索引。"_s);
     }
     if (options.settings)
         showSettings();
     else if (!options.background || !options.query.isEmpty())
         showLauncher(options.query);
+    QTimer::singleShot(1s, this, &App::prewarmLauncher);
     return true;
 }
 
@@ -162,8 +178,14 @@ bool App::createWindow()
 {
     m_qml = std::make_unique<QQmlApplicationEngine>();
     m_qml->addImageProvider(u"fileicon"_s, new FileIconProvider); // engine takes ownership
-    m_qml->setInitialProperties({{u"launcher"_s, QVariant::fromValue(m_launcher.get())}});
-    m_qml->loadFromModule(u"QuickFind"_s, u"Main"_s);
+    m_placement = std::make_unique<Placement>(Settings::dataDir() + u"\\state.ini"_s);
+    m_frame = std::make_unique<WindowFrame>(false);
+    m_qml->setInitialProperties({
+        {u"launcher"_s, QVariant::fromValue(m_launcher.get())},
+        {u"placement"_s, QVariant::fromValue(m_placement.get())},
+        {u"frame"_s, QVariant::fromValue(m_frame.get())},
+    });
+    m_qml->loadFromModule(u"WinShun"_s, u"Main"_s);
     const auto roots = m_qml->rootObjects();
     if (roots.isEmpty())
         return false;
@@ -174,6 +196,8 @@ bool App::createWindow()
     m_window->create(); // native handle now, so DWM styling applies before the first show
     m_window->installEventFilter(this);
     m_launcher->setWindow(m_window);
+    m_placement->setWindow(m_window);
+    m_frame->setWindow(m_window);
     connect(m_window, &QWindow::activeChanged, this, [this] {
         // Clicking elsewhere or switching apps dismisses the launcher, like a menu.
         if (m_window && !m_window->isActive() && m_window->isVisible())
@@ -189,6 +213,8 @@ bool App::createWindow()
     connect(m_window, &QQuickWindow::frameSwapped, this, [this] {
         if (m_revealSynced.exchange(false))
             QMetaObject::invokeMethod(this, &App::revealLauncher, Qt::QueuedConnection);
+        if (m_prewarming.load())
+            QMetaObject::invokeMethod(this, &App::finishPrewarm, Qt::QueuedConnection);
     }, Qt::DirectConnection);
     return true;
 }
@@ -207,9 +233,9 @@ void App::applyTheme()
 {
     const bool dark = isDarkMode();
     if (m_window)
-        win::styleFramelessWindow(m_window, dark, dark ? QColor(0x40, 0x40, 0x40) : QColor(0xD4, 0xD4, 0xD4));
+        styleWindow(m_window, dark);
     if (m_settingsWindow)
-        win::setDarkTitleBar(m_settingsWindow, dark);
+        styleWindow(m_settingsWindow, dark);
     win::setMenuTheme(dark);
 }
 
@@ -224,8 +250,8 @@ void App::applySettings(bool initial)
     }
 
     applyHotkey();
-    m_launcher->setContentOptions(
-        m_settings.contentExtensions, static_cast<qint64>(m_settings.maxContentFileSizeMB) << 20);
+    m_launcher->setContentOptions(m_settings.contentExtensions,
+        static_cast<qint64>(m_settings.maxContentFileSizeMB) << 20, m_settings.contentInLowPriority);
     if (!initial)
         m_indexOptionsApply.start();
 }
@@ -275,8 +301,12 @@ void App::showSettings()
 {
     if (!m_settingsWindow) {
         auto* editor = new SettingsEditor(m_settings, m_renderer);
-        QQmlComponent component(m_qml.get(), u"QuickFind"_s, u"SettingsWindow"_s);
-        QObject* object = component.createWithInitialProperties({{u"editor"_s, QVariant::fromValue(editor)}});
+        auto* frame = new WindowFrame(true, editor); // its own title bar; goes with the editor
+        QQmlComponent component(m_qml.get(), u"WinShun"_s, u"SettingsWindow"_s);
+        QObject* object = component.createWithInitialProperties({
+            {u"editor"_s, QVariant::fromValue(editor)},
+            {u"frame"_s, QVariant::fromValue(frame)},
+        });
         auto* window = qobject_cast<QQuickWindow*>(object);
         if (!window) {
             qWarning().noquote() << component.errorString();
@@ -288,28 +318,58 @@ void App::showSettings()
         editor->setWindow(window);
         connect(editor, &SettingsEditor::edited, this, &App::settingsEdited);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyHotkey);
+        connect(editor, &SettingsEditor::restartRequested, this, [this] { restart({u"--settings"_s}); });
         m_settingsWindow = window;
         m_settingsEditor = editor;
         applyHotkey(); // shows whether the current hotkey works
 
         window->create();
-        win::setDarkTitleBar(window, isDarkMode());
+        frame->setWindow(window);
+        styleWindow(window, isDarkMode());
         QScreen* screen = QGuiApplication::screenAt(QCursor::pos());
         if (!screen)
             screen = QGuiApplication::primaryScreen();
         const QRect area = screen->availableGeometry();
         window->resize(window->width(), std::min(window->height(), area.height() - 40));
         window->setPosition(area.center() - QPoint(window->width() / 2, window->height() / 2));
-        connect(window, &QWindow::visibleChanged, window, [window](bool visible) {
-            if (!visible)
+        connect(window, &QWindow::visibleChanged, window, [this, window](bool visible) {
+            if (!visible) {
+                m_contentStatusTimer.stop();
                 window->deleteLater(); // free the window's memory until it is needed again
+            }
         });
     }
+    refreshContentIndexStatus();
+    m_contentStatusTimer.start();
     hideLauncher();
     m_settingsWindow->show();
     m_settingsWindow->raise();
     win::bringToFront(m_settingsWindow);
     m_settingsWindow->requestActivate();
+}
+
+void App::refreshContentIndexStatus()
+{
+    if (!m_settingsEditor) {
+        m_contentStatusTimer.stop();
+        return;
+    }
+    QString status;
+    if (m_settings.contentIndex) {
+        const ContentIndex::Stats stats = m_index->contentIndex()->stats();
+        const QLocale locale;
+        const QString files = locale.toString(static_cast<qulonglong>(stats.documents));
+        if (m_index->readingContent())
+            status = u"正在建立索引… 已收录 %1 个文件"_s.arg(files);
+        else if (stats.documents == 0)
+            status = u"索引在 Win顺启动约半分钟后开始建立"_s;
+        else
+            status = u"已收录 %1 个文件，占用 %2 磁盘空间"_s.arg(
+                files, locale.formattedDataSize(static_cast<qint64>(stats.segmentBytes), 0, QLocale::DataSizeTraditionalFormat));
+        if (stats.pending > 0 && !m_index->readingContent())
+            status += u"；%1 个文件有改动，稍后更新"_s.arg(locale.toString(static_cast<qulonglong>(stats.pending)));
+    }
+    m_settingsEditor->setContentIndexStatus(status);
 }
 
 void App::handleCommand(const QString& command)
@@ -338,16 +398,14 @@ void App::showLauncher(const QString& query)
 {
     if (!m_window)
         return;
+    // On the monitor under the mouse, where the user last put it (see Placement).
     QScreen* screen = QGuiApplication::screenAt(QCursor::pos());
-    if (!screen)
-        screen = QGuiApplication::primaryScreen();
-    const QRect area = screen->availableGeometry();
-    // Upper third of the monitor under the mouse; the window grows downwards.
-    m_window->setPosition(area.x() + (area.width() - m_window->width()) / 2, area.y() + area.height() / 5);
+    m_placement->placeOn(screen ? screen : QGuiApplication::primaryScreen());
     if (!query.isEmpty())
         m_launcher->setQuery(query);
 
-    if (!m_window->isVisible()) {
+    const bool prewarming = m_prewarming.exchange(false); // up already, cloaked
+    if (!m_window->isVisible() || prewarming) {
         // Shown cloaked: Windows would first put up the window as it looked
         // when it was hidden (old selection, old rows), then our repaint.
         // Revealed once a frame with the refreshed results is drawn.
@@ -381,6 +439,30 @@ void App::revealLauncher()
         win::setCloaked(m_window, false);
 }
 
+// The first frame a window draws sets up the graphics device, shaders and
+// glyphs. Drawn once ahead, cloaked and without taking the focus, so the first
+// open is as quick as later ones (which reuse all that: it is kept while the
+// window is hidden).
+void App::prewarmLauncher()
+{
+    if (!m_window || m_window->isVisible())
+        return;
+    m_prewarming = true;
+    win::setCloaked(m_window, true);
+    m_window->setProperty("_q_showWithoutActivating", true);
+    m_window->show();
+    m_window->setProperty("_q_showWithoutActivating", QVariant());
+    QTimer::singleShot(2s, this, &App::finishPrewarm); // should no frame come
+}
+
+void App::finishPrewarm()
+{
+    if (!m_prewarming.exchange(false))
+        return;
+    m_window->hide();
+    win::setCloaked(m_window, false);
+}
+
 void App::hideLauncher()
 {
     if (!m_window || !m_window->isVisible())
@@ -397,15 +479,15 @@ void App::showTrayMenu()
         ? u"已索引 %1 项"_s.arg(QLocale().toString(static_cast<qulonglong>(m_index->itemCount())))
         : u"正在建立索引…"_s;
     const std::vector<shell::MenuItem> items {
-        {ShowCommand, m_settings.doubleCtrl ? u"打开快搜\t双击 Ctrl"_s : u"打开快搜"_s, false, true, true},
+        {ShowCommand, m_settings.doubleCtrl ? u"打开 Win顺\t双击 Ctrl"_s : u"打开 Win顺"_s, false, true, true},
         shell::MenuItem::separator(),
         {IndexInfo, info, false, false},
         {RebuildCommand, u"重建索引"_s},
         shell::MenuItem::separator(),
         {AutostartCommand, u"开机自动启动"_s, autostart::isEnabled()},
         {SettingsCommand, u"设置…"_s},
-        {DataFolderCommand, u"打开数据文件夹"_s},
         shell::MenuItem::separator(),
+        {RestartCommand, u"重新启动"_s},
         {QuitCommand, u"退出"_s},
     };
     POINT pos {};
@@ -424,8 +506,8 @@ void App::showTrayMenu()
     case SettingsCommand:
         showSettings();
         break;
-    case DataFolderCommand:
-        shell::open(Settings::dataDir());
+    case RestartCommand:
+        restart({u"--background"_s});
         break;
     case QuitCommand:
         QGuiApplication::quit();
@@ -435,4 +517,10 @@ void App::showTrayMenu()
     }
 }
 
-} // namespace qf
+void App::restart(const QStringList& arguments)
+{
+    m_restartArguments = arguments;
+    QGuiApplication::quit();
+}
+
+} // namespace ws

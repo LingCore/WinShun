@@ -14,7 +14,7 @@ struct _OVERLAPPED;
 // Direct access to NTFS volumes: the master file table (MFT), which lists
 // every file and folder, and the change journal, which logs every change to
 // them. Both need administrator rights (they open the volume itself).
-namespace qf::ntfs {
+namespace ws::ntfs {
 
 inline constexpr std::uint32_t kRootRecord = 5; // the root folder's record number
 
@@ -119,7 +119,8 @@ struct UsnRecord {
 std::int64_t parseUsnRecords(std::span<const std::byte> data, std::vector<UsnRecord>& out);
 
 // Reads one volume's change journal with overlapped I/O, so that one thread
-// can wait on several volumes. Only name, attribute and link changes are read.
+// can wait on several volumes. Only name, attribute, link and content
+// changes are read.
 class JournalReader {
 public:
     JournalReader(std::wstring_view root, std::uint64_t journalId);
@@ -149,4 +150,4 @@ private:
     unsigned long m_startError = 0;
 };
 
-} // namespace qf::ntfs
+} // namespace ws::ntfs

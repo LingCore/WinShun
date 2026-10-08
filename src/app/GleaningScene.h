@@ -6,7 +6,7 @@
 #include <QTimer>
 #include <QtQml/qqmlregistration.h>
 
-namespace qf {
+namespace ws {
 
 // The moving part of the 拾穗计划 page's backdrop: a wheat field along the
 // bottom, motes of light drifting up from it and a few birds crossing the
@@ -54,4 +54,4 @@ private:
     QColor m_bird;
 };
 
-} // namespace qf
+} // namespace ws

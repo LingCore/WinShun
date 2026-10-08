@@ -1,5 +1,5 @@
 import QtQuick
-import QuickFind
+import WinShun
 
 // Windows 11 style overlay scroll bar: a thin line that widens when the mouse
 // comes near. Drag the thumb to scroll; click the track to move a page.

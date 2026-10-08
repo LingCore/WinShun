@@ -106,7 +106,7 @@ def main():
         "// (https://github.com/mozillazg/pinyin-data, MIT licence). Do not edit.",
         '#include "Pinyin.h"',
         "",
-        "namespace qf::pinyin::detail {",
+        "namespace ws::pinyin::detail {",
         "",
         f"const std::size_t kSyllableCount = {len(syllables)};",
         f"const std::string_view kSyllables[{len(syllables)}] = {{",
@@ -122,7 +122,7 @@ def main():
     out.append("// The first letters of each character's readings, as bits (a = bit 0).")
     out += array("std::uint32_t", "kInitials", initials)
     out.append("")
-    out.append("} // namespace qf::pinyin::detail")
+    out.append("} // namespace ws::pinyin::detail")
     OUTPUT.write_text("\n".join(out) + "\n", encoding="utf-8", newline="\n")
     several = sum(1 for found in table.values() if len(found) > 1)
     print(f"{OUTPUT.name}: {len(syllables)} syllables, {len(table)} characters, {several} with several readings")

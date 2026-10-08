@@ -1,5 +1,5 @@
 import QtQuick
-import QuickFind
+import WinShun
 
 // Single-line text field with a placeholder and the accent underline when focused.
 Rectangle {

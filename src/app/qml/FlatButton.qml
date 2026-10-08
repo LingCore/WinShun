@@ -1,5 +1,5 @@
 import QtQuick
-import QuickFind
+import WinShun
 
 // A Windows 11 style push button, optionally with an icon glyph.
 Rectangle {

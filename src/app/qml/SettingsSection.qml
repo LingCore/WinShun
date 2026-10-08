@@ -1,5 +1,5 @@
 import QtQuick
-import QuickFind
+import WinShun
 
 // A card holding SettingRows, with an optional title and note above it.
 Column {

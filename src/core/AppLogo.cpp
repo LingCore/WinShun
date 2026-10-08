@@ -23,7 +23,7 @@
 
 using namespace Qt::StringLiterals;
 
-namespace qf {
+namespace ws {
 
 namespace {
 
@@ -352,4 +352,4 @@ std::optional<AppLogo> findAppLogo(const QString& appId, int pixels, bool dark)
     return std::nullopt;
 }
 
-} // namespace qf
+} // namespace ws

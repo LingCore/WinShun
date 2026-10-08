@@ -1,5 +1,5 @@
 import QtQuick
-import QuickFind
+import WinShun
 
 // One result: icon, highlighted name, folder (or the matching line for
 // content search) and a small trailing label. The current and the hovered row

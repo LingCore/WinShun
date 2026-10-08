@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <atomic>
 
-namespace qf {
+namespace ws {
 
 namespace {
 
@@ -126,4 +126,4 @@ NameSearchOutput searchNames(const FileIndex& index, const NameMatcher& matcher,
     return output;
 }
 
-} // namespace qf
+} // namespace ws

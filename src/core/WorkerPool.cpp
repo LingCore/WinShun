@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-namespace qf {
+namespace ws {
 
 int WorkerPool::defaultThreadCount()
 {
@@ -81,4 +81,4 @@ void WorkerPool::parallelFor(std::size_t count, const std::function<void(std::si
     m_fn = nullptr;
 }
 
-} // namespace qf
+} // namespace ws

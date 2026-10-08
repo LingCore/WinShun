@@ -1,5 +1,5 @@
 import QtQuick
-import QuickFind
+import WinShun
 
 // The scene behind the whole settings window (sidebar included) while the
 // 拾穗计划 page is open: sky, wheat field, motes of light and birds.

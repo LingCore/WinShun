@@ -6,6 +6,7 @@
 #include "Win32Util.h"
 #include "Wtf8.h"
 
+#include <QFileInfo>
 #include <QtGlobal>
 
 #include <windows.h>
@@ -16,7 +17,7 @@
 
 using namespace std::chrono_literals;
 
-namespace qf {
+namespace ws {
 
 namespace {
 
@@ -140,6 +141,12 @@ IndexService::IndexService(Options options, QObject* parent)
 {
     m_crawler.store(std::make_shared<const Crawler>(m_options.rules));
     m_index.store(std::make_shared<FileIndex>());
+    m_content = std::make_shared<ContentIndex>(QFileInfo(m_options.snapshotPath).absolutePath() + u"/content");
+    ContentIndexer::Source source;
+    source.index = [this] { return m_index.load(); };
+    source.volumes = [this] { return contentVolumes(); };
+    source.ready = [this] { return state() == State::Ready && !m_refreshing.load(); };
+    m_contentIndexer = std::make_unique<ContentIndexer>(m_content, std::move(source), m_options.content);
 
     m_saveTimer.setInterval(10min);
     connect(&m_saveTimer, &QTimer::timeout, this, &IndexService::saveInBackground);
@@ -186,9 +193,15 @@ void IndexService::rebuild()
 
 void IndexService::setOptions(Options options)
 {
+    if (m_stopped)
+        return;
+    if (!(options.content == m_options.content)) {
+        m_options.content = options.content;
+        m_contentIndexer->setOptions(std::move(options.content));
+    }
     const bool rulesChanged = !(options.rules == m_options.rules);
     const bool drivesChanged = options.includeRemovable != m_options.includeRemovable;
-    if ((!rulesChanged && !drivesChanged) || m_stopped)
+    if (!rulesChanged && !drivesChanged)
         return;
     // Stop the worker, which reads the options, before replacing them. The
     // watcher thread keeps the old rules until its current batch is done.
@@ -215,9 +228,11 @@ void IndexService::suspendVolume(const std::wstring& root)
         m_suspended.push_back(root);
     }
     // The worker may hold the volume's MFT or change journal open, the
-    // watcher its root folder: both let go before this returns.
+    // watcher its root folder, the content indexer a file: all let go
+    // before this returns.
     stopWorker();
     ensureWatcher();
+    m_contentIndexer->interrupt();
     m_volumesTimer.start(); // the other volumes carry on in a moment
 }
 
@@ -266,10 +281,13 @@ void IndexService::shutdown()
     m_resyncTimer.stop();
     m_volumesTimer.stop();
     m_shutdown.request_stop();
+    m_contentIndexer->stop();
     stopWorker();
     m_watcher.reset();
     if (m_pendingSave.valid())
         m_pendingSave.wait();
+    if (m_content->takeChanged())
+        m_dirty = true;
     if (m_dirty)
         saveSnapshot();
 }
@@ -337,12 +355,17 @@ void IndexService::run(std::stop_token stop, Pass pass)
             }
             // Drives that are gone (or hold another disk now) leave the snapshot.
             FileIndex& loaded = *contents->index;
+            m_content->restore(contents->attachment, loaded.slotCount());
+            contents->attachment = decltype(contents->attachment)();
+            if (!m_contentIndexer->enabled())
+                m_content->clear(); // turned off: its files go once the snapshot is saved without it
             if (dropStaleRoots(loaded, volumes, known) > 0)
-                loaded.compact();
+                loaded.compact(false, [&](const FileIndex::Renumber& renumber) { m_content->remap(renumber); });
             m_index.store(std::shared_ptr<FileIndex>(std::move(contents->index)));
             snapshotRules = std::move(contents->rules);
             setState(State::Ready);
         } else {
+            m_content->restore({}, 0); // clears out segment files nothing refers to
             setState(State::Building);
         }
     } else {
@@ -377,6 +400,8 @@ void IndexService::run(std::stop_token stop, Pass pass)
             if (pass == Pass::Full || !current) {
                 journals[i] = {journal->id, journal->nextUsn};
                 toSync.push_back(i);
+                if (known[i])
+                    contentUnsureOf(volumes[i].root); // what changed meanwhile is not in the journal any more
             }
         } else {
             journals[i] = {};
@@ -431,8 +456,10 @@ void IndexService::run(std::stop_token stop, Pass pass)
             for (std::size_t i = 0; i < volumes.size(); ++i) {
                 if (isSuspended(volumes[i]) || std::find(toSync.begin(), toSync.end(), i) != toSync.end())
                     continue;
-                if (journalInfo[i])
+                if (journalInfo[i]) {
                     journals[i] = {journalInfo[i]->id, journalInfo[i]->nextUsn};
+                    contentUnsureOf(volumes[i].root); // the journal is skipped ahead
+                }
                 toSync.push_back(i);
             }
             walkLater.clear(); // all in toSync now
@@ -663,7 +690,7 @@ bool IndexService::syncFromMft(
     if (lowPriority)
         ::SetThreadPriority(::GetCurrentThread(), THREAD_MODE_BACKGROUND_END);
     if (!read) {
-        qWarning("QuickFind: cannot read the MFT of %ls: %ls", volume.root.c_str(), error.c_str());
+        qWarning("WinShun: cannot read the MFT of %ls: %ls", volume.root.c_str(), error.c_str());
         return false;
     }
     // The listings are in memory: one thread does.
@@ -688,7 +715,8 @@ std::unique_ptr<IndexService::Followed> IndexService::follow(std::size_t volume)
     f->index = m_index.load();
     f->crawler = crawler();
     f->reader = std::make_unique<ntfs::JournalReader>(v.root, position.journalId);
-    f->applier = std::make_unique<UsnApplier>(*f->index, *f->crawler, toUtf8(v.root));
+    f->applier = std::make_unique<UsnApplier>(*f->index, *f->crawler, toUtf8(v.root),
+        [content = m_content](std::span<const EntryId> written) { content->markChanged(written); });
     return f->reader->valid() ? std::move(f) : nullptr;
 }
 
@@ -743,6 +771,7 @@ void IndexService::recover(std::unique_ptr<Followed>& f, std::stop_token stop)
         std::lock_guard lock(m_journalMutex);
         m_journals[volume] = journal ? JournalPosition {journal->id, journal->nextUsn} : JournalPosition {};
     }
+    contentUnsureOf(v.root); // changes the journal lost
     if (!journal)
         ensureWatcher(); // walked and watched from now on
     if (!syncWithDisk(stop, {volume}) || !journal)
@@ -970,23 +999,31 @@ void IndexService::saveSnapshot()
         rules = m_rulesBefore ? *m_rulesBefore : crawler()->rules(); // what the index reflects
     }
     m_dirty = false;
+    m_content->takeChanged();
     bool saved = false;
+    std::vector<std::uint64_t> segments; // the content index's files the snapshot refers to
     {
         // Streams through a 1 MB buffer into the OS file cache; searches keep
         // running meanwhile (they only need the read lock too). Changes
         // applied after the journal positions were taken are replayed on the
-        // next start, which is harmless.
+        // next start, which is harmless. The content index's documents go
+        // along, so they always refer to the entries saved with them.
         auto lock = index->readLock();
-        saved = snapshot::save(*index, volumes, journals, rules, m_options.snapshotPath);
+        saved = snapshot::save(*index, volumes, journals, rules, m_options.snapshotPath,
+            [&](const std::vector<EntryId>& newIds) { return m_content->serialize(newIds, segments); });
     }
-    if (!saved) {
+    if (saved) {
+        m_content->saved(segments);
+    } else {
         m_dirty = true;
-        qWarning("QuickFind: cannot save the index to %ls", qUtf16Printable(m_options.snapshotPath));
+        qWarning("WinShun: cannot save the index to %ls", qUtf16Printable(m_options.snapshotPath));
     }
 }
 
 void IndexService::saveInBackground()
 {
+    if (m_content->takeChanged())
+        m_dirty = true;
     if (!m_dirty || state() != State::Ready)
         return;
     if (m_pendingSave.valid() && m_pendingSave.wait_for(0s) != std::future_status::ready)
@@ -1000,28 +1037,71 @@ void IndexService::saveInBackground()
 void IndexService::compactIfWasteful(bool always)
 {
     // The journal lock keeps out everything that holds entry ids across write
-    // locks: a disk walk (journaling) and live changes, which may walk new folders.
+    // locks: a disk walk (journaling) and live changes, which may walk new
+    // folders. Content searches and the content indexer pin the ids instead.
     std::lock_guard journalLock(m_journalMutex);
     if (m_journaling)
         return;
+    always = always || m_compactOwed.exchange(false);
     const auto index = m_index.load();
     auto lock = index->writeLock();
     const std::size_t live = index->liveCount();
     // Worth a pause in searches (~30 ms per million items) only once it frees a few MB.
-    if (always || index->slotCount() - live >= std::max(kMinCompactSlots, live / 16))
-        index->compact(always);
+    if (!always && index->slotCount() - live < std::max(kMinCompactSlots, live / 16))
+        return;
+    if (index->idsPinned()) {
+        m_compactOwed = always; // the next periodic save tries again
+        return;
+    }
+    index->compact(always, [&](const FileIndex::Renumber& renumber) { m_content->remap(renumber); });
+}
+
+void IndexService::contentUnsureOf(const std::wstring& root)
+{
+    const auto index = m_index.load();
+    const std::string name = toUtf8(root);
+    const auto lock = index->readLock();
+    const auto& roots = index->roots();
+    const auto it = std::find_if(roots.begin(), roots.end(), [&](EntryId r) { return index->name(r) == name; });
+    if (it == roots.end())
+        return;
+    const EntryId volume = *it;
+    m_content->markUnsure([&](EntryId e) {
+        if (e >= index->slotCount())
+            return false;
+        while (index->entry(e).parent != kNoEntry)
+            e = index->entry(e).parent;
+        return e == volume;
+    });
+}
+
+std::vector<ContentIndexer::Volume> IndexService::contentVolumes() const
+{
+    std::lock_guard lock(m_journalMutex);
+    std::vector<ContentIndexer::Volume> out;
+    for (std::size_t i = 0; i < m_volumes.size() && i < m_journals.size(); ++i) {
+        if (m_journals[i].journalId != 0)
+            out.push_back({toUtf8(m_volumes[i].root), contains(m_suspended, m_volumes[i].root)});
+    }
+    return out;
 }
 
 void IndexService::setState(State state)
 {
-    if (m_state.exchange(state) != state)
+    if (m_state.exchange(state) != state) {
         notifyLater();
+        if (state == State::Ready)
+            m_contentIndexer->wake(); // it waits for a complete index
+    }
 }
 
 void IndexService::setRefreshing(bool refreshing)
 {
-    if (m_refreshing.exchange(refreshing) != refreshing)
+    if (m_refreshing.exchange(refreshing) != refreshing) {
         notifyLater();
+        if (!refreshing)
+            m_contentIndexer->wake();
+    }
 }
 
 void IndexService::notifyLater()
@@ -1029,4 +1109,4 @@ void IndexService::notifyLater()
     QMetaObject::invokeMethod(this, [this] { emit stateChanged(); }, Qt::QueuedConnection);
 }
 
-} // namespace qf
+} // namespace ws

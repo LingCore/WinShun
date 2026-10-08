@@ -13,7 +13,7 @@
 #include <thread>
 #include <utility>
 
-namespace qf {
+namespace ws {
 
 std::vector<VolumeInfo> listLocalVolumes(bool includeRemovable, const std::vector<std::wstring>& untouched)
 {
@@ -448,4 +448,4 @@ std::size_t removeExcluded(FileIndex& index, const CrawlRules& rules)
     return removed;
 }
 
-} // namespace qf
+} // namespace ws

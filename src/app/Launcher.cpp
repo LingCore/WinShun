@@ -18,18 +18,24 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <thread>
 
 using namespace Qt::StringLiterals;
 using namespace std::chrono_literals;
 
-namespace qf {
+namespace ws {
 
-// QML sees Launcher::Scope; the engine takes qf::Scope. One cast between them.
-static_assert(Launcher::All == static_cast<int>(qf::Scope::All) && Launcher::Apps == static_cast<int>(qf::Scope::Apps)
-    && Launcher::Files == static_cast<int>(qf::Scope::Files) && Launcher::Folders == static_cast<int>(qf::Scope::Folders)
-    && Launcher::Content == static_cast<int>(qf::Scope::Content));
+// QML sees Launcher::Scope; the engine takes ws::Scope. One cast between them.
+static_assert(Launcher::All == static_cast<int>(ws::Scope::All) && Launcher::Apps == static_cast<int>(ws::Scope::Apps)
+    && Launcher::Files == static_cast<int>(ws::Scope::Files) && Launcher::Folders == static_cast<int>(ws::Scope::Folders)
+    && Launcher::Content == static_cast<int>(ws::Scope::Content));
 
 namespace {
+
+// Files 内容 reads at once. Opening a file waits for the antivirus to scan
+// it, so throughput grows well past the processor count: about 2x at 16
+// threads over 6, and little more beyond 32 (measured with Defender).
+constexpr int kContentThreads = 16;
 
 QString number(qint64 n)
 {
@@ -132,8 +138,9 @@ QString Launcher::placeholder() const
     }
 }
 
-void Launcher::setContentOptions(QStringList extensions, qint64 maxFileBytes)
+void Launcher::setContentOptions(QStringList extensions, qint64 maxFileBytes, bool inLowPriority)
 {
+    m_contentInLowPriority = inLowPriority;
     for (QString& ext : extensions) {
         ext = ext.trimmed();
         while (ext.startsWith(u'.') || ext.startsWith(u'*'))
@@ -214,7 +221,7 @@ void Launcher::search()
 
     SearchEngine::Request request;
     request.text = m_query;
-    request.scope = static_cast<qf::Scope>(m_scope);
+    request.scope = static_cast<ws::Scope>(m_scope);
     if (m_scope == Apps)
         request.limit = 5000; // with nothing typed, 应用 lists every app
     request.history = m_history->items();
@@ -244,7 +251,7 @@ void Launcher::showRows(SearchResults rows, QStringList highlights)
 // sense for names.
 QString Launcher::contentNeedle() const
 {
-    const ParsedQuery query = qf::parseQuery(m_query);
+    const ParsedQuery query = ws::parseQuery(m_query);
     if (query.terms.empty() || !query.extensions.empty())
         return {};
     if (std::any_of(query.terms.cbegin(), query.terms.cend(),
@@ -257,11 +264,18 @@ void Launcher::startContentSearch()
 {
     SearchEngine::Request request;
     request.text = m_scope == Content ? m_query.trimmed() : contentNeedle();
-    request.scope = qf::Scope::Content;
+    request.scope = ws::Scope::Content;
     request.contentExtensions = m_contentExtensions;
     request.maxContentFileBytes = m_maxContentBytes;
-    // 内容 looks everywhere; 全部 looks in your own files on its own.
-    request.skipLowPriorityContent = m_scope != Content;
+    if (m_scope == Content) {
+        // Asked for: system and program folders too if so set, and many
+        // files at once (each open mostly waits for the antivirus).
+        request.contentInLowPriority = m_contentInLowPriority;
+        request.contentThreads = kContentThreads;
+    } else {
+        // 全部 looks in your own files on its own, gently.
+        request.contentThreads = std::clamp(static_cast<int>(std::thread::hardware_concurrency()) / 2, 2, 6);
+    }
     m_requestId = m_engine->submit(std::move(request));
     m_pending = true;
     m_contentRunning = true;
@@ -307,7 +321,7 @@ void Launcher::onResults(quint64 id, const SearchResults& results, qint64 total,
         else
             m_contentDebounce.start();
     }
-    showRows(std::move(rows), qf::parseQuery(m_query).highlights);
+    showRows(std::move(rows), ws::parseQuery(m_query).highlights);
     refreshStatus();
     emit namesShown();
 }
@@ -642,4 +656,4 @@ void Launcher::prepareMenuWindow(QWindow* menu) const
     win::styleFramelessWindow(menu, dark, dark ? QColor(0x40, 0x40, 0x40) : QColor(0xD4, 0xD4, 0xD4));
 }
 
-} // namespace qf
+} // namespace ws

@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <cstring>
 
-namespace qf::snapshot {
+namespace ws::snapshot {
 
 namespace {
 
@@ -18,10 +18,11 @@ namespace {
 //   4 x { count:u32 { len:u16 text:wchar[len] }* }   crawl rules (version 3 on)
 //   entryCount:u32 { parent:u32 flags:u8 nameLength:u16 name:u8[nameLength] }*
 //   tableCount:u32 { root:u32 count:u32 { record:u32 folder:u32 }* }*   folder record numbers
+//   attachmentSize:u64 attachment:u8[attachmentSize]   (version 4 on)
 //   end:u32
 // Entries are in pre-order, so a parent always precedes its children.
 constexpr char kMagic[8] = {'Q', 'F', 'I', 'N', 'D', 'E', 'X', '\0'};
-constexpr std::uint32_t kVersion = 3;
+constexpr std::uint32_t kVersion = 4;
 constexpr std::uint32_t kOldestVersion = 2; // without the rules
 constexpr std::uint32_t kEndMarker = 0x21444E45; // "END!"
 
@@ -117,7 +118,8 @@ template <typename Rules, typename F> void forEachList(Rules& rules, F&& f)
 } // namespace
 
 bool save(const FileIndex& index, const std::vector<VolumeInfo>& volumes,
-    const std::vector<JournalPosition>& journals, const CrawlRules& rules, const QString& filePath)
+    const std::vector<JournalPosition>& journals, const CrawlRules& rules, const QString& filePath,
+    const Attachment& attachment)
 {
     QDir().mkpath(QFileInfo(filePath).absolutePath());
     QSaveFile file(filePath); // atomic replace: a crash never leaves half a snapshot
@@ -193,6 +195,10 @@ bool save(const FileIndex& index, const std::vector<VolumeInfo>& volumes,
             }
         });
     }
+
+    const std::vector<char> attached = attachment ? attachment(newId) : std::vector<char>();
+    w.put(static_cast<std::uint64_t>(attached.size()));
+    w.bytes(attached.data(), attached.size());
 
     w.put(kEndMarker);
     w.flush();
@@ -295,6 +301,13 @@ std::optional<Contents> load(const QString& filePath)
             index->setFolderRecord(root, record, folder);
         }
     }
+    if (version >= 4) {
+        const auto attachedSize = static_cast<std::size_t>(r.get<std::uint64_t>());
+        const char* attached = r.ok() ? r.bytes(attachedSize) : nullptr;
+        if (!attached)
+            return std::nullopt;
+        contents.attachment.assign(attached, attached + attachedSize);
+    }
     if (r.get<std::uint32_t>() != kEndMarker || !r.ok())
         return std::nullopt;
     index->setInterning(false);
@@ -302,4 +315,4 @@ std::optional<Contents> load(const QString& filePath)
     return contents;
 }
 
-} // namespace qf::snapshot
+} // namespace ws::snapshot

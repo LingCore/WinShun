@@ -2,7 +2,7 @@
 // (https://github.com/mozillazg/pinyin-data, MIT licence). Do not edit.
 #include "Pinyin.h"
 
-namespace qf::pinyin::detail {
+namespace ws::pinyin::detail {
 
 const std::size_t kSyllableCount = 415;
 const std::string_view kSyllables[415] = {
@@ -3551,4 +3551,4 @@ const std::uint32_t kInitials[20992] = {
     0x200, 0x0, 0x800, 0x800000,
 };
 
-} // namespace qf::pinyin::detail
+} // namespace ws::pinyin::detail

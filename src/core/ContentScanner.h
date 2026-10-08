@@ -10,7 +10,7 @@
 #include <string>
 #include <string_view>
 
-namespace qf {
+namespace ws {
 
 enum class TextEncoding { Utf8, Utf16LE, Utf16BE, Ansi };
 
@@ -60,6 +60,10 @@ public:
 
     static TextEncoding detect(std::string_view head, std::size_t* bomLength);
     static bool isUtf8(std::string_view bytes, bool allowTruncatedTail);
+    // The code page of files that are neither UTF-8 nor UTF-16 (GBK on Chinese Windows).
+    static unsigned legacyCodePage();
+    // How much of a file detect() looks at, and scan() reads at a time.
+    static constexpr std::size_t kChunkBytes = 512 * 1024;
 
 private:
     QString decode(const char* data, std::size_t length, TextEncoding encoding) const;
@@ -73,4 +77,4 @@ private:
     bool m_ansiRepresentable = false;
 };
 
-} // namespace qf
+} // namespace ws

@@ -12,7 +12,7 @@
 #include <optional>
 #include <thread>
 
-namespace qf {
+namespace ws {
 
 class AppCatalog;
 class IndexService;
@@ -33,9 +33,11 @@ public:
         QStringList contentExtensions; // e.g. {"txt"}
         qint64 maxContentFileBytes = 64ll << 20;
         int maxContentResults = 300;
-        // Not inside system, program and tool folders (EntryFlag::LowPriority):
-        // for the content matches that 全部 adds on its own, unasked.
-        bool skipLowPriorityContent = false;
+        // Also inside system, program and tool folders (EntryFlag::LowPriority).
+        bool contentInLowPriority = false;
+        // Files read at once (each open waits for the antivirus, so more
+        // than processors). Asked for (内容): many; 全部's own: a few.
+        int contentThreads = 4;
     };
 
     explicit SearchEngine(IndexService* index, AppCatalog* apps = nullptr, QObject* parent = nullptr);
@@ -46,9 +48,9 @@ public:
 
 signals:
     // Name search, or the (empty) start of a content search.
-    void resultsReady(quint64 requestId, const qf::SearchResults& results, qint64 totalMatches, qint64 elapsedUs);
+    void resultsReady(quint64 requestId, const ws::SearchResults& results, qint64 totalMatches, qint64 elapsedUs);
     // Content search delivers matches incrementally.
-    void contentResults(quint64 requestId, const qf::SearchResults& results);
+    void contentResults(quint64 requestId, const ws::SearchResults& results);
     void contentProgress(quint64 requestId, int scanned, int total, bool finished);
 
 private:
@@ -74,4 +76,4 @@ private:
     std::jthread m_worker; // last: started after everything above exists
 };
 
-} // namespace qf
+} // namespace ws

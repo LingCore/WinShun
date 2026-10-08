@@ -6,14 +6,14 @@
 
 using namespace Qt::StringLiterals;
 
-namespace qf {
+namespace ws {
 
 namespace {
 
-constexpr wchar_t kClassName[] = L"QuickFind.MessageWindow";
+constexpr wchar_t kClassName[] = L"WinShun.MessageWindow";
 constexpr UINT kTrayMessage = WM_APP + 1;
 constexpr UINT kTrayId = 1;
-constexpr ULONG_PTR kCopyDataTag = 0x51464E44; // "QFND"
+constexpr ULONG_PTR kCopyDataTag = 0x5753484E; // "WSHN"
 constexpr wchar_t kAppIconResource[] = L"IDI_ICON1"; // see app.rc
 
 void copyTruncated(wchar_t* dest, std::size_t capacity, const QString& text)
@@ -38,7 +38,7 @@ MessageWindow::MessageWindow(Callbacks callbacks)
     // A real (hidden) top-level window rather than HWND_MESSAGE: message-only
     // windows miss the "TaskbarCreated" broadcast.
     m_hwnd = ::CreateWindowExW(
-        WS_EX_TOOLWINDOW, kClassName, L"QuickFind", WS_POPUP, 0, 0, 0, 0, nullptr, nullptr, instance, this);
+        WS_EX_TOOLWINDOW, kClassName, L"WinShun", WS_POPUP, 0, 0, 0, 0, nullptr, nullptr, instance, this);
     m_taskbarCreated = ::RegisterWindowMessageW(L"TaskbarCreated");
     // Let Explorer (medium integrity) reach us even if we run elevated. A
     // second instance runs elevated too, so WM_COPYDATA stays closed to others.
@@ -242,4 +242,4 @@ LRESULT MessageWindow::handle(UINT msg, WPARAM wParam, LPARAM lParam)
     }
 }
 
-} // namespace qf
+} // namespace ws

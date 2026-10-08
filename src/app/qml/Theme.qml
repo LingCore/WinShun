@@ -1,6 +1,6 @@
 pragma Singleton
 import QtQuick
-import QuickFind
+import WinShun
 
 // All colours and metrics of the UI. Follows the Windows light/dark setting
 // and accent colour (see SystemTheme in C++).
@@ -40,6 +40,8 @@ QtObject {
     readonly property color menuBackground: dark ? "#2C2C2C" : "#F9F9F9"
     readonly property color menuHover: dark ? "#3A3A3A" : "#ECECEC"
     readonly property color danger: dark ? "#FF99A4" : "#C42B1C"
+    readonly property color closeHover: "#C42B1C" // title bar close button, as in Windows 11
+    readonly property color closePressed: Qt.rgba(0.769, 0.169, 0.110, 0.9)
 
     // Type scale in pixels. Even sizes land on whole device pixels at 150 %.
     readonly property int fontDisplay: 28 // settings window title

@@ -1,5 +1,5 @@
 import QtQuick
-import QuickFind
+import WinShun
 
 // Windows 11 style on/off switch with an "开 / 关" label. It never changes
 // `checked` itself: bind it and handle toggled().

@@ -1,6 +1,6 @@
 pragma Singleton
 import QtQuick
-import QuickFind
+import WinShun
 
 // When the author's mark and avatar last started their animation, shared by
 // all of them (MacShun: AuthorMarkClock). Opening the 拾穗计划 page plays it.

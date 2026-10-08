@@ -7,7 +7,7 @@
 
 // Byte-level helpers for matching UTF-8 file names. Matching folds ASCII
 // letters only: CJK has no case, and it keeps the hot loop branch-light.
-namespace qf::text {
+namespace ws::text {
 
 inline constexpr std::size_t npos = std::string_view::npos;
 
@@ -43,4 +43,4 @@ bool isWordStart(std::string_view s, std::size_t pos) noexcept;
 // Glob with '*' and '?' ('?' matches one UTF-8 code point). Pattern is folded.
 bool globMatch(std::string_view name, std::string_view foldedPattern) noexcept;
 
-} // namespace qf::text
+} // namespace ws::text

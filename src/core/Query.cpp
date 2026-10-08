@@ -11,7 +11,7 @@
 
 using namespace Qt::StringLiterals;
 
-namespace qf {
+namespace ws {
 
 namespace {
 
@@ -290,4 +290,4 @@ int NameMatcher::matchName(std::string_view name) const
         name, false, pinyin::hasHan(name), 0, [](const std::vector<std::string>&, const pinyin::Matcher*) { return false; });
 }
 
-} // namespace qf
+} // namespace ws

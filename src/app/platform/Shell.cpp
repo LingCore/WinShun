@@ -3,7 +3,6 @@
 #include "Win32Util.h"
 
 #include <QClipboard>
-#include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
 #include <QGuiApplication>
@@ -27,7 +26,7 @@
 using namespace Qt::StringLiterals;
 using Microsoft::WRL::ComPtr;
 
-namespace qf {
+namespace ws {
 
 namespace {
 
@@ -66,7 +65,7 @@ template <typename Fn> void runOnShellThread(Fn&& fn)
     }).detach();
 }
 
-// QuickFind always runs elevated, and ShellExecute would start the target
+// WinShun always runs elevated, and ShellExecute would start the target
 // elevated too. Explorer runs with the user's normal rights, so ask it to
 // launch instead: the desktop window -> its shell view -> the view's
 // Application object -> ShellExecute. False when there is no Explorer desktop.
@@ -331,9 +330,12 @@ namespace {
 
 // Windows skips Run-key entries of programs that need elevation, so autostart
 // is a logon task that runs with highest privileges (no UAC prompt). Older
-// versions used the Run key; migrate() moves that setting over.
+// versions, still called QuickFind, used a Run-key value and later a logon
+// task of that name; migrateFromQuickFind() moves either over.
 constexpr auto kRunKey = "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-constexpr wchar_t kTaskName[] = L"QuickFind";
+constexpr wchar_t kTaskName[] = L"WinShun";
+constexpr wchar_t kOldTaskName[] = L"QuickFind";
+constexpr auto kOldRunValue = u"QuickFind";
 
 struct ComScope {
     HRESULT hr = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
@@ -344,9 +346,11 @@ struct ComScope {
     }
 };
 
-std::wstring exePath()
+std::wstring exePath() // also before QCoreApplication exists (migrateFromQuickFind)
 {
-    return QDir::toNativeSeparators(QCoreApplication::applicationFilePath()).toStdWString();
+    wchar_t path[MAX_PATH * 2] {};
+    ::GetModuleFileNameW(nullptr, path, static_cast<DWORD>(std::size(path)));
+    return path;
 }
 
 std::wstring currentUser() // DOMAIN\user
@@ -367,7 +371,7 @@ ComPtr<ITaskFolder> taskFolder(ComPtr<ITaskService>& service)
 void removeRunKey()
 {
     QSettings run(QString::fromLatin1(kRunKey), QSettings::NativeFormat);
-    run.remove(u"QuickFind"_s);
+    run.remove(QStringView(kOldRunValue).toString());
 }
 
 } // namespace
@@ -423,7 +427,7 @@ void setEnabled(bool enabled)
         return;
     ComPtr<IRegistrationInfo> info;
     if (SUCCEEDED(definition->get_RegistrationInfo(&info)))
-        info->put_Description(Bstr(L"快搜：登录后在后台启动"));
+        info->put_Description(Bstr(L"Win顺：登录后在后台启动"));
     ComPtr<ITaskSettings> settings;
     if (SUCCEEDED(definition->get_Settings(&settings))) {
         settings->put_DisallowStartIfOnBatteries(VARIANT_FALSE);
@@ -443,13 +447,25 @@ void setEnabled(bool enabled)
     ::VariantClear(&userId);
 }
 
-void migrate()
+void migrateFromQuickFind()
 {
     const QSettings run(QString::fromLatin1(kRunKey), QSettings::NativeFormat);
-    if (run.contains(u"QuickFind"_s))
-        setEnabled(true);
+    bool wasEnabled = run.contains(QStringView(kOldRunValue).toString());
+    {
+        const ComScope com;
+        ComPtr<ITaskService> service;
+        const ComPtr<ITaskFolder> folder = taskFolder(service);
+        ComPtr<IRegisteredTask> task;
+        if (folder && SUCCEEDED(folder->GetTask(Bstr(kOldTaskName), &task))) {
+            VARIANT_BOOL enabled = VARIANT_FALSE;
+            wasEnabled = wasEnabled || (SUCCEEDED(task->get_Enabled(&enabled)) && enabled);
+            folder->DeleteTask(Bstr(kOldTaskName), 0);
+        }
+    }
+    if (wasEnabled)
+        setEnabled(true); // also removes the Run-key value
 }
 
 } // namespace autostart
 
-} // namespace qf
+} // namespace ws

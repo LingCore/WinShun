@@ -4,7 +4,7 @@
 #include <QQuickPaintedItem>
 #include <QtQml/qqmlregistration.h>
 
-namespace qf {
+namespace ws {
 
 // The author's "cursor and rice ear" mark (red version), animated: the cursor
 // opens up into the badge; a stalk grows from behind it and sets grain; the
@@ -47,4 +47,4 @@ private:
     QColor m_startInk {242, 237, 227};
 };
 
-} // namespace qf
+} // namespace ws

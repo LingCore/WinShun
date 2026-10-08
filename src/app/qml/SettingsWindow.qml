@@ -1,6 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QuickFind
+import WinShun
 
 // The settings window: categories on the left, the chosen one's options on the
 // right. Changes are saved and applied as soon as they are made.
@@ -8,10 +8,11 @@ Window {
     id: window
 
     required property SettingsEditor editor
+    required property WindowFrame frame
 
     readonly property var renderers: ["software", "d3d11", "auto"]
     readonly property var pages: [
-        { title: qsTr("打开快搜"), glyph: "" }, // Keyboard
+        { title: qsTr("打开 Win顺"), glyph: "" }, // Keyboard
         { title: qsTr("搜索范围"), glyph: "" }, // Folder
         { title: qsTr("文件内容搜索"), glyph: "" }, // Document
         { title: qsTr("高级"), glyph: "" }, // Settings
@@ -27,7 +28,8 @@ Window {
     minimumWidth: 760
     minimumHeight: 420
     color: Theme.page
-    title: qsTr("设置") // shown as "设置 - 快搜"
+    title: qsTr("设置") // shown as "设置 - Win顺"
+    flags: Qt.Window | Qt.FramelessWindowHint // the title bar is ours (see WindowFrame)
 
     function clearFocus() { window.contentItem.forceActiveFocus() }
 
@@ -41,23 +43,9 @@ Window {
         return index === gleaningPage ? gleaningNav : navItems.itemAt(index)
     }
 
-    // The title bar takes the sky's colour on the 拾穗计划 page.
-    function applyTitleBar() {
-        if (warm)
-            editor.setTitleBarColors(WarmPalette.skyTop, WarmPalette.ink)
-        else
-            editor.resetTitleBarColors()
-    }
-
-    onWarmChanged: applyTitleBar()
     onVisibleChanged: if (visible && warm) AuthorClock.play()
 
-    Connections {
-        target: WarmPalette
-        function onDarkChanged() { window.applyTitleBar() }
-    }
-
-    GleaningBackdrop {
+    GleaningBackdrop { // under the title bar too: the sky reaches the top of the window
         anchors.fill: parent
         visible: window.warm
         // Painted on the CPU: only while someone is looking at it.
@@ -71,10 +59,21 @@ Window {
         value: hotkeyRecorder.recording
     }
 
+    TitleBar {
+        id: titleBar
+        z: 1
+        width: parent.width
+        frame: window.frame
+        title: window.title + " - " + Qt.application.displayName
+        iconX: navList.x + 16 // over the categories' icons, the title over their names
+        foreground: window.warm ? WarmPalette.ink : Theme.text
+    }
+
     Item { // category list
         id: nav
+        y: titleBar.height
         width: 248
-        height: parent.height
+        height: parent.height - y
 
         MouseArea { // clicking empty space finishes editing a field
             anchors.fill: parent
@@ -179,7 +178,7 @@ Window {
             readonly property int itemHeight: 40
 
             x: 12
-            y: 20
+            y: 8
             width: parent.width - 24
             spacing: 4
 
@@ -232,7 +231,7 @@ Window {
         visible: window.warm
         anchors.left: nav.right
         anchors.right: parent.right
-        anchors.top: parent.top
+        anchors.top: titleBar.bottom
         anchors.bottom: parent.bottom
         editor: window.editor
     }
@@ -242,7 +241,7 @@ Window {
         visible: !window.warm
         anchors.left: nav.right
         anchors.right: parent.right
-        anchors.top: parent.top
+        anchors.top: titleBar.bottom
         anchors.bottom: parent.bottom
         contentWidth: width
         contentHeight: page.implicitHeight + 48
@@ -258,7 +257,7 @@ Window {
         Column { // the current category's options; the other sections are hidden
             id: page
             x: 8
-            y: 20
+            y: 8
             width: flick.width - 36
             spacing: 20
 
@@ -471,7 +470,7 @@ Window {
 
                 SettingRow {
                     title: qsTr("启动时检查文件变化")
-                    description: qsTr("U 盘等非 NTFS 磁盘在快搜没有运行期间的改动，启动后于后台补上（NTFS 磁盘总会自动补上）")
+                    description: qsTr("U 盘等非 NTFS 磁盘在 Win顺没有运行期间的改动，启动后于后台补上（NTFS 磁盘总会自动补上）")
 
                     ToggleSwitch {
                         checked: window.editor.rescanOnStartup
@@ -563,6 +562,27 @@ Window {
                         font.pixelSize: Theme.fontBody
                     }
                 }
+
+                SettingRow {
+                    title: qsTr("也搜索系统和程序文件夹")
+                    description: qsTr("包括 Windows、Program Files、AppData、node_modules 等文件夹。这些地方文件很多，打开后内容搜索会慢不少")
+
+                    ToggleSwitch {
+                        checked: window.editor.contentInLowPriority
+                        onToggled: (on) => window.editor.contentInLowPriority = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("建立内容索引")
+                    description: qsTr("在后台记下每个文件里有哪些中日韩文字和英文单词片段，搜索时只打开可能含有它的文件，快得多。只用于 NTFS 磁盘，首次建立需要一段时间，几十万个文件约占 200 MB 磁盘空间")
+                                 + (window.editor.contentIndexStatus.length > 0 ? "\n" + window.editor.contentIndexStatus : "")
+
+                    ToggleSwitch {
+                        checked: window.editor.contentIndex
+                        onToggled: (on) => window.editor.contentIndex = on
+                    }
+                }
             }
 
             SettingsSection {
@@ -572,13 +592,33 @@ Window {
                 SettingRow {
                     title: qsTr("界面绘制方式")
                     description: window.editor.restartRequired
-                                 ? qsTr("重启快搜后生效：右键托盘图标选“退出”，再重新打开快搜")
+                                 ? qsTr("重启 Win顺后生效")
                                  : qsTr("“显卡加速”文字最清晰；“省内存”少占约 50 MB 内存，但文字偏模糊；“自动”在内存不超过 16 GB 时省内存")
 
+                    FlatButton { // sized like one of the tabs next to it
+                        anchors.verticalCenter: parent.verticalCenter
+                        implicitHeight: 32
+                        radius: 6
+                        visible: window.editor.restartRequired
+                        text: qsTr("立即重启")
+                        highlighted: true
+                        onClicked: window.editor.restart()
+                    }
                     ScopeTabs {
                         labels: [qsTr("省内存"), qsTr("显卡加速"), qsTr("自动")]
                         current: Math.max(0, window.renderers.indexOf(window.editor.renderer))
                         onActivated: (index) => window.editor.renderer = window.renderers[index]
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("数据文件夹")
+                    description: qsTr("文件索引、内容索引、搜索记录和日志都存放在这里") + "\n" + window.editor.dataFolder
+
+                    FlatButton {
+                        text: qsTr("打开")
+                        glyph: "" // FolderOpen
+                        onClicked: window.editor.openDataFolder()
                     }
                 }
 

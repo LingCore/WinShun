@@ -10,7 +10,7 @@
 #include <string_view>
 #include <vector>
 
-namespace qf {
+namespace ws {
 
 // One whitespace-separated piece of the query.
 //
@@ -70,4 +70,4 @@ private:
     std::vector<std::string> m_extensions;
 };
 
-} // namespace qf
+} // namespace ws

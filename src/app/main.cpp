@@ -1,14 +1,17 @@
 #include "App.h"
+#include "Migration.h"
 #include "Settings.h"
 #include "platform/MessageWindow.h"
 #include "platform/Shell.h"
 
 #include <QCommandLineParser>
 #include <QDateTime>
+#include <QDebug>
 #include <QFile>
 #include <QFont>
 #include <QFontDatabase>
 #include <QGuiApplication>
+#include <QProcess>
 
 #include <windows.h>
 
@@ -20,17 +23,17 @@ namespace {
 
 QtMessageHandler g_defaultHandler = nullptr;
 
-// Warnings and errors also go to %LOCALAPPDATA%\QuickFind\QuickFind.log: a
+// Warnings and errors also go to %LOCALAPPDATA%\WinShun\WinShun.log: a
 // tray app has no console, and the user's machine is where things go wrong.
-// Over 1 MB, the log becomes QuickFind.old.log and a new one starts.
+// Over 1 MB, the log becomes WinShun.old.log and a new one starts.
 void logToFile(QtMsgType type, const QMessageLogContext& context, const QString& message)
 {
     if (type != QtDebugMsg && type != QtInfoMsg) {
         static std::mutex mutex; // messages come from every thread
         const std::lock_guard lock(mutex);
-        const QString path = qf::Settings::dataDir() + u"\\QuickFind.log"_s;
+        const QString path = ws::Settings::dataDir() + u"\\WinShun.log"_s;
         if (QFile::exists(path) && QFile(path).size() > (1 << 20)) {
-            const QString old = qf::Settings::dataDir() + u"\\QuickFind.old.log"_s;
+            const QString old = ws::Settings::dataDir() + u"\\WinShun.old.log"_s;
             QFile::remove(old);
             QFile::rename(path, old);
         }
@@ -51,6 +54,7 @@ int main(int argc, char* argv[])
 {
     // Never show "insert a disk" dialogs while probing drives.
     ::SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
+    ws::migrateFromQuickFind(); // before anything reads the settings
 
     // Font engine. The UI font (Alibaba PuHuiTi, below) has no hinting, so GDI
     // and DirectWrite smear its horizontal strokes across two pixel rows;
@@ -61,20 +65,20 @@ int main(int argc, char* argv[])
     // 6.8) needs once font fallback kicks in, e.g. for an emoji.
     const bool setPlatform = !qEnvironmentVariableIsSet("QT_QPA_PLATFORM");
     if (setPlatform)
-        qputenv("QT_QPA_PLATFORM", qf::Settings::resolveRenderer(qf::Settings::storedRenderer()) == u"software"
+        qputenv("QT_QPA_PLATFORM", ws::Settings::resolveRenderer(ws::Settings::storedRenderer()) == u"software"
                                        ? "windows:fontengine=gdi" : "windows:fontengine=freetype");
 
-    QCoreApplication::setOrganizationName(u"QuickFind"_s);
-    QCoreApplication::setApplicationName(u"QuickFind"_s);
-    QCoreApplication::setApplicationVersion(QStringLiteral(QUICKFIND_VERSION));
+    QCoreApplication::setOrganizationName(u"WinShun"_s);
+    QCoreApplication::setApplicationName(u"WinShun"_s);
+    QCoreApplication::setApplicationVersion(QStringLiteral(WINSHUN_VERSION));
     QGuiApplication app(argc, argv);
     if (setPlatform)
         qunsetenv("QT_QPA_PLATFORM"); // programs we launch must not inherit it
-    QGuiApplication::setApplicationDisplayName(u"快搜"_s);
+    QGuiApplication::setApplicationDisplayName(u"Win顺"_s);
     QGuiApplication::setQuitOnLastWindowClosed(false);
 
     QCommandLineParser parser;
-    parser.setApplicationDescription(u"快搜 QuickFind — 文件、文件夹与文本内容搜索"_s);
+    parser.setApplicationDescription(u"Win顺 · WinShun — 文件、文件夹与文本内容搜索"_s);
     parser.addHelpOption();
     parser.addVersionOption();
     const QCommandLineOption background(u"background"_s, u"Start in the tray without showing the window."_s);
@@ -86,7 +90,7 @@ int main(int argc, char* argv[])
     parser.process(app);
 
     // Single instance: hand the request to the copy that is already running.
-    const HANDLE instanceMutex = ::CreateMutexW(nullptr, FALSE, L"Local\\QuickFind.Instance");
+    const HANDLE instanceMutex = ::CreateMutexW(nullptr, FALSE, L"Local\\WinShun.Instance");
     if (instanceMutex && ::GetLastError() == ERROR_ALREADY_EXISTS) {
         QString command = u"show"_s;
         if (parser.isSet(quit))
@@ -99,15 +103,13 @@ int main(int argc, char* argv[])
             command = u"toggle"_s;
         else if (parser.isSet(background))
             return 0;
-        qf::MessageWindow::sendToRunningInstance(command);
+        ws::MessageWindow::sendToRunningInstance(command);
         ::CloseHandle(instanceMutex);
         return 0;
     }
     if (parser.isSet(quit))
         return 0; // nothing running
     g_defaultHandler = qInstallMessageHandler(logToFile); // the running copy only
-
-    qf::autostart::migrate();
 
     // UI font: Alibaba PuHuiTi 3.0 (Regular + Bold) from fonts\ next to the
     // exe. It covers Latin and CJK, so no fallback is needed for normal text.
@@ -128,16 +130,22 @@ int main(int argc, char* argv[])
     }
 
     int code = 1;
+    std::optional<QStringList> restart;
     {
-        qf::App application;
-        qf::App::StartOptions options;
+        ws::App application;
+        ws::App::StartOptions options;
         options.background = parser.isSet(background);
         options.query = parser.value(query);
         options.settings = parser.isSet(settings);
         if (application.start(options))
             code = QGuiApplication::exec();
+        restart = application.restartArguments();
     } // the index is saved here, while we still own the instance mutex
     if (instanceMutex)
         ::CloseHandle(instanceMutex);
+    // Only now, or the new copy would find the mutex taken and just hand us a
+    // command. It inherits our elevation, so no UAC prompt.
+    if (restart && !QProcess::startDetached(QCoreApplication::applicationFilePath(), *restart))
+        qWarning() << "Restart: could not start" << QCoreApplication::applicationFilePath();
     return code;
 }

@@ -1,7 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QuickFind
+import WinShun
 
 // Segmented control: 全部 / 应用 / 文件 / 文件夹 / 内容. Tab and Ctrl+1..5 switch too.
 // Also used in the settings window with other labels.

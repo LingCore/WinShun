@@ -1,11 +1,12 @@
 import QtQuick
-import QuickFind
+import WinShun
 
-// Status on the left, keyboard hints on the right.
+// Status on the left, keyboard hints on the right. Dragging it moves the window.
 Item {
     id: footer
 
     required property Launcher launcher
+    required property WindowFrame frame
 
     implicitHeight: 42
 
@@ -21,7 +22,10 @@ Item {
             showBusy = false
         }
     }
-    Component.onCompleted: showBusy = busy
+    Component.onCompleted: {
+        showBusy = busy
+        frame.addDragArea(footer)
+    }
     Timer {
         id: busyDelay
         interval: 400

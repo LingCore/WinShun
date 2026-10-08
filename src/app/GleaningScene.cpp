@@ -9,7 +9,7 @@
 
 using namespace std::chrono_literals;
 
-namespace qf {
+namespace ws {
 
 namespace {
 
@@ -203,4 +203,4 @@ void GleaningScene::paint(QPainter* painter)
     drawStalks(*painter, size, m_time, 1, m_wheatFront, gap);
 }
 
-} // namespace qf
+} // namespace ws

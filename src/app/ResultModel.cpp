@@ -12,7 +12,7 @@
 
 using namespace Qt::StringLiterals;
 
-namespace qf {
+namespace ws {
 
 namespace {
 
@@ -281,4 +281,4 @@ void ResultModel::setHighlightColor(const QColor& color)
         emit dataChanged(index(0), index(count() - 1), {NameHtmlRole, SnippetHtmlRole});
 }
 
-} // namespace qf
+} // namespace ws

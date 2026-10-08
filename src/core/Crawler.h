@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-namespace qf {
+namespace ws {
 
 // What to skip and what to rank lower while indexing.
 //   *Paths: absolute folder paths without a trailing backslash.
@@ -126,4 +126,4 @@ private:
     CrawlRules m_rules;
 };
 
-} // namespace qf
+} // namespace ws

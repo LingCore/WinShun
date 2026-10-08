@@ -1,6 +1,6 @@
 #include "Wtf8.h"
 
-namespace qf::wtf8 {
+namespace ws::wtf8 {
 
 void append(std::string& out, std::u16string_view s)
 {
@@ -105,4 +105,4 @@ QString toQString(std::string_view bytes)
     return QString(reinterpret_cast<const QChar*>(tmp.data()), static_cast<qsizetype>(tmp.size()));
 }
 
-} // namespace qf::wtf8
+} // namespace ws::wtf8

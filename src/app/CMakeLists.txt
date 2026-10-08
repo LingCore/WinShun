@@ -1,7 +1,8 @@
-qt_add_executable(QuickFind WIN32
+qt_add_executable(WinShun WIN32
     main.cpp
     App.cpp App.h
     FileIconProvider.cpp FileIconProvider.h
+    Migration.cpp Migration.h
     Settings.cpp Settings.h
     platform/KeyListener.cpp platform/KeyListener.h
     platform/MessageWindow.cpp platform/MessageWindow.h
@@ -26,6 +27,7 @@ set(qml_files
     qml/KeyHint.qml
     qml/Glyph.qml
     qml/SettingsWindow.qml
+    qml/TitleBar.qml
     qml/SettingsSection.qml
     qml/SettingRow.qml
     qml/ToggleSwitch.qml
@@ -42,13 +44,13 @@ set(qml_files
 )
 set_source_files_properties(qml/Theme.qml qml/Gleaning.qml qml/WarmPalette.qml qml/AuthorClock.qml
     PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
-# Serve every QML file from the module root (":/qt/qml/QuickFind/Main.qml").
+# Serve every QML file from the module root (":/qt/qml/WinShun/Main.qml").
 foreach(file IN LISTS qml_files)
     get_filename_component(name "${file}" NAME)
     set_source_files_properties("${file}" PROPERTIES QT_RESOURCE_ALIAS "${name}")
 endforeach()
 
-# Pictures of the 拾穗计划 page, at ":/qt/qml/QuickFind/gleaning/".
+# Pictures of the 拾穗计划 page, at ":/qt/qml/WinShun/gleaning/".
 set(gleaning_images
     ${PROJECT_SOURCE_DIR}/resources/gleaning/avatar.png
     ${PROJECT_SOURCE_DIR}/resources/gleaning/winshun.png
@@ -59,9 +61,20 @@ foreach(file IN LISTS gleaning_images)
     set_source_files_properties("${file}" PROPERTIES QT_RESOURCE_ALIAS "gleaning/${name}")
 endforeach()
 
-qt_add_qml_module(QuickFind
-    URI QuickFind
+# With a shared Qt, QML plugins load at run time, so the import scan is only
+# needed for static Qt. Skipping it also avoids a qmlimportscanner bug with
+# non-ASCII source paths (such as this project's folder name). Qt 6.12 scans
+# at build time as well and decides early: it has to be said here, not set
+# on the target afterwards.
+set(qml_import_scan "")
+if(QT6_IS_SHARED_LIBS_BUILD)
+    set(qml_import_scan NO_IMPORT_SCAN)
+endif()
+
+qt_add_qml_module(WinShun
+    URI WinShun
     VERSION 1.0
+    ${qml_import_scan}
     QML_FILES ${qml_files}
     RESOURCES ${gleaning_images}
     SOURCES
@@ -69,36 +82,32 @@ qt_add_qml_module(QuickFind
         GleaningScene.cpp GleaningScene.h
         IconBadge.cpp IconBadge.h
         Launcher.cpp Launcher.h
+        Placement.cpp Placement.h
         ResultModel.cpp ResultModel.h
         SettingsEditor.cpp SettingsEditor.h
         SystemTheme.cpp SystemTheme.h
+        WindowFrame.cpp WindowFrame.h
 )
 
-# With a shared Qt, QML plugins load at run time, so the configure-time import
-# scan is only needed for static Qt. Skipping it also avoids a qmlimportscanner
-# bug with non-ASCII source paths (such as this project's folder name).
-if(QT6_IS_SHARED_LIBS_BUILD)
-    set_target_properties(QuickFind PROPERTIES QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
-endif()
 
-target_include_directories(QuickFind PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(QuickFind PRIVATE
-    qfcore
+target_include_directories(WinShun PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(WinShun PRIVATE
+    wscore
     Qt6::Gui Qt6::Qml Qt6::Quick
-    dwmapi shell32 ole32 user32 uxtheme)
+    comctl32 dwmapi shell32 ole32 user32 uxtheme)
 # The execution level (requireAdministrator) comes from app.manifest alone; the
 # linker's own default (asInvoker) would conflict with it.
-target_link_options(QuickFind PRIVATE /MANIFESTUAC:NO)
+target_link_options(WinShun PRIVATE /MANIFESTUAC:NO)
 
 # UI font files, loaded from fonts\ next to the exe (see main.cpp).
 set(font_files
     ${PROJECT_SOURCE_DIR}/resources/fonts/AlibabaPuHuiTi-3-55-Regular.ttf
     ${PROJECT_SOURCE_DIR}/resources/fonts/AlibabaPuHuiTi-3-85-Bold.ttf
 )
-add_custom_command(TARGET QuickFind POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:QuickFind>/fonts"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${font_files} "$<TARGET_FILE_DIR:QuickFind>/fonts"
+add_custom_command(TARGET WinShun POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:WinShun>/fonts"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${font_files} "$<TARGET_FILE_DIR:WinShun>/fonts"
     VERBATIM)
 
-install(TARGETS QuickFind RUNTIME DESTINATION .)
+install(TARGETS WinShun RUNTIME DESTINATION .)
 install(FILES ${font_files} DESTINATION fonts)

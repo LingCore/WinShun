@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace qf {
+namespace ws {
 
 // Lets go of volumes that are about to be removed or locked. Before a drive
 // is ejected ("Safely remove") or locked (format, chkdsk), Windows asks the
@@ -50,4 +50,4 @@ private:
     std::vector<Volume> m_volumes;
 };
 
-} // namespace qf
+} // namespace ws

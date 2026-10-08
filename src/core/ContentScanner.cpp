@@ -13,7 +13,7 @@
 
 using namespace Qt::StringLiterals;
 
-namespace qf {
+namespace ws {
 
 // ---- ByteFinder ---------------------------------------------------------
 
@@ -51,13 +51,11 @@ std::size_t ByteFinder::find(const char* data, std::size_t length, std::size_t f
 
 namespace {
 
-constexpr std::size_t kChunkBytes = 512 * 1024;
+constexpr std::size_t kChunkBytes = ContentScanner::kChunkBytes;
 constexpr std::size_t kContextBytes = 600; // decoded around a candidate match
 
-unsigned legacyCodePage(unsigned requested)
+unsigned systemLegacyCodePage()
 {
-    if (requested != 0)
-        return requested;
     const UINT acp = ::GetACP();
     if (acp != CP_UTF8)
         return acp;
@@ -131,9 +129,15 @@ QString cleanLine(QString s)
 
 // ---- ContentScanner -------------------------------------------------------
 
+unsigned ContentScanner::legacyCodePage()
+{
+    static const unsigned codePage = systemLegacyCodePage();
+    return codePage;
+}
+
 ContentScanner::ContentScanner(const QString& needle, unsigned ansiCodePage)
     : m_needle(needle)
-    , m_codePage(legacyCodePage(ansiCodePage))
+    , m_codePage(ansiCodePage != 0 ? ansiCodePage : legacyCodePage())
 {
     if (m_needle.isEmpty())
         return;
@@ -389,4 +393,4 @@ std::optional<ContentMatch> ContentScanner::scanFile(
     return scan(read, kChunkBytes, cancelled);
 }
 
-} // namespace qf
+} // namespace ws

@@ -14,7 +14,7 @@
 #include <thread>
 #include <vector>
 
-namespace qf {
+namespace ws {
 
 class NameMatcher;
 struct ParsedQuery;
@@ -104,4 +104,4 @@ AppList loadInstalledApps(const std::stop_token& stop);
 // repository's: changes whenever an app is installed or removed.
 quint64 installedAppsFingerprint();
 
-} // namespace qf
+} // namespace ws

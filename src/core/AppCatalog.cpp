@@ -27,7 +27,7 @@ using namespace Qt::StringLiterals;
 using namespace std::chrono_literals;
 using Microsoft::WRL::ComPtr;
 
-namespace qf {
+namespace ws {
 
 namespace {
 
@@ -411,4 +411,4 @@ quint64 installedAppsFingerprint()
     return hash.value();
 }
 
-} // namespace qf
+} // namespace ws

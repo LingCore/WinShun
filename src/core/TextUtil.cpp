@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <bit>
 
-namespace qf::text {
+namespace ws::text {
 
 std::string foldAscii(std::string_view s)
 {
@@ -214,4 +214,4 @@ bool globMatch(std::string_view s, std::string_view p) noexcept
     return pi == p.size();
 }
 
-} // namespace qf::text
+} // namespace ws::text

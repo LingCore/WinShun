@@ -8,7 +8,7 @@
 #include <functional>
 #include <thread>
 
-namespace qf {
+namespace ws {
 
 // Global "double-tap Ctrl" detection through Raw Input.
 //
@@ -38,4 +38,4 @@ private:
     std::jthread m_thread;
 };
 
-} // namespace qf
+} // namespace ws

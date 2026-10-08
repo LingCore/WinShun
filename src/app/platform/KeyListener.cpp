@@ -2,11 +2,11 @@
 
 #include <latch>
 
-namespace qf {
+namespace ws {
 
 namespace {
 
-constexpr wchar_t kClassName[] = L"QuickFind.KeyListener";
+constexpr wchar_t kClassName[] = L"WinShun.KeyListener";
 constexpr USHORT kGenericDesktop = 0x01; // HID usage page
 constexpr USHORT kKeyboard = 0x06; // HID usage
 
@@ -98,4 +98,4 @@ void KeyListener::onInput(HRAWINPUT input)
         m_callback();
 }
 
-} // namespace qf
+} // namespace ws

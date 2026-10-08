@@ -5,6 +5,7 @@
 #include "Ntfs.h"
 
 #include <cstdint>
+#include <functional>
 #include <span>
 #include <stop_token>
 #include <string>
@@ -12,7 +13,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace qf {
+namespace ws {
 
 // Every name on an NTFS volume, read from its MFT and grouped by folder: the
 // listing source for a Crawler sync of the volume. Several times faster than
@@ -48,7 +49,10 @@ private:
 // a restart, or a read of the MFT) does no harm.
 class UsnApplier {
 public:
-    UsnApplier(FileIndex& index, const Crawler& crawler, std::string rootName); // "C:"
+    // Files written to (their content changed) are reported to `written`,
+    // with the write lock held.
+    using Written = std::function<void(std::span<const EntryId>)>;
+    UsnApplier(FileIndex& index, const Crawler& crawler, std::string rootName, Written written = {}); // "C:"
 
     // Takes the index's write lock in small batches. Folders moved in from
     // outside the index are walked. The caller keeps compaction away meanwhile.
@@ -67,6 +71,7 @@ private:
     struct Item; // one record, decoded
 
     void applyOne(const ntfs::UsnRecord& record, std::vector<Crawler::Root>& walks);
+    void noteWritten(const ntfs::UsnRecord& record);
     void remove(const Item& item);
     void move(const Item& item, const OldName* old, std::vector<Crawler::Root>& walks);
     void ensure(const Item& item, bool walk, std::vector<Crawler::Root>& walks);
@@ -83,6 +88,8 @@ private:
     EntryId m_root = kNoEntry; // looked up per batch: compaction renumbers it
     std::unordered_map<std::uint64_t, OldName> m_oldNames; // renames waiting for their new name, by file
     std::unordered_map<std::uint64_t, std::uint32_t> m_seen; // reasons applied in each file's open session
+    Written m_onWritten;
+    std::vector<EntryId> m_written; // of the current batch
 };
 
-} // namespace qf
+} // namespace ws

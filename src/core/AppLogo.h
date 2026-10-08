@@ -5,7 +5,7 @@
 
 #include <optional>
 
-namespace qf {
+namespace ws {
 
 // The logo a packaged (Store / MSIX) app shows in Start and on the taskbar,
 // picked the way Windows (and PowerToys Command Palette) picks it: from the
@@ -35,4 +35,4 @@ struct LogoFile {
 std::optional<LogoFile> chooseLogoFile(
     const QString& logical, const QStringList& files, int pixels, bool dark, const QString& resolved = {});
 
-} // namespace qf
+} // namespace ws

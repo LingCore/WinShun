@@ -1,5 +1,5 @@
 import QtQuick
-import QuickFind
+import WinShun
 
 // A removable tag: "node_modules ×".
 Rectangle {

@@ -11,7 +11,7 @@
 
 using namespace Qt::StringLiterals;
 
-namespace qf {
+namespace ws {
 
 namespace {
 
@@ -128,12 +128,12 @@ template <typename T> T readOrDefault(QSettings& s, const QString& key, const T&
 
 QString Settings::filePath()
 {
-    return QSettings(QSettings::IniFormat, QSettings::UserScope, u"QuickFind"_s, u"QuickFind"_s).fileName();
+    return QSettings(QSettings::IniFormat, QSettings::UserScope, u"WinShun"_s, u"WinShun"_s).fileName();
 }
 
 QString Settings::storedRenderer()
 {
-    QSettings s(QSettings::IniFormat, QSettings::UserScope, u"QuickFind"_s, u"QuickFind"_s);
+    QSettings s(QSettings::IniFormat, QSettings::UserScope, u"WinShun"_s, u"WinShun"_s);
     return s.value(u"Launcher/Renderer"_s, Settings().renderer).toString().trimmed().toLower();
 }
 
@@ -151,7 +151,7 @@ QString Settings::resolveRenderer(const QString& renderer)
 QString Settings::dataDir()
 {
     return QDir::toNativeSeparators(
-        QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + u"/QuickFind"_s);
+        QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + u"/WinShun"_s);
 }
 
 Settings Settings::defaults()
@@ -170,7 +170,7 @@ bool Settings::exists()
 
 void Settings::load()
 {
-    QSettings s(QSettings::IniFormat, QSettings::UserScope, u"QuickFind"_s, u"QuickFind"_s);
+    QSettings s(QSettings::IniFormat, QSettings::UserScope, u"WinShun"_s, u"WinShun"_s);
     const Settings d = defaults();
 
     doubleCtrl = readOrDefault(s, u"Launcher/DoubleCtrl"_s, d.doubleCtrl);
@@ -192,11 +192,13 @@ void Settings::load()
         s.setValue(u"Content/DefaultsVersion"_s, kContentDefaultsVersion);
     }
     maxContentFileSizeMB = std::clamp(readOrDefault(s, u"Content/MaxFileSizeMB"_s, d.maxContentFileSizeMB), 1, 4096);
+    contentIndex = readOrDefault(s, u"Content/Index"_s, d.contentIndex);
+    contentInLowPriority = readOrDefault(s, u"Content/IncludeSystemFolders"_s, d.contentInLowPriority);
 }
 
 void Settings::save() const
 {
-    QSettings s(QSettings::IniFormat, QSettings::UserScope, u"QuickFind"_s, u"QuickFind"_s);
+    QSettings s(QSettings::IniFormat, QSettings::UserScope, u"WinShun"_s, u"WinShun"_s);
     s.setValue(u"Launcher/DoubleCtrl"_s, doubleCtrl);
     s.setValue(u"Launcher/Hotkey"_s, hotkey);
     s.setValue(u"Launcher/Renderer"_s, renderer);
@@ -206,6 +208,8 @@ void Settings::save() const
     s.setValue(u"Index/RescanOnStartup"_s, rescanOnStartup);
     s.setValue(u"Content/Extensions"_s, contentExtensions);
     s.setValue(u"Content/MaxFileSizeMB"_s, maxContentFileSizeMB);
+    s.setValue(u"Content/Index"_s, contentIndex);
+    s.setValue(u"Content/IncludeSystemFolders"_s, contentInLowPriority);
 }
 
 CrawlRules Settings::crawlRules() const
@@ -230,4 +234,4 @@ CrawlRules Settings::crawlRules() const
     return rules;
 }
 
-} // namespace qf
+} // namespace ws
