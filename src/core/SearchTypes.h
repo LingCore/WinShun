@@ -10,14 +10,19 @@ namespace ws {
 // 内容: file contents.
 enum class Scope : int { All = 0, Files = 1, Content = 2 };
 
-// What kind of installed app a result is (see AppCatalog), or None for a
-// file or folder.
+// What kind of installed app a result is (see AppCatalog), or of place in
+// Windows (SystemCatalog), or None for a file or folder.
 enum class AppKind : quint8 {
     None,
     Desktop, // a classic program, listed through its Start-menu shortcut
     Store, // packaged, from Microsoft Store
     System, // packaged, part of Windows
     Package, // packaged, installed another way (MSIX)
+    // Places: opened by a command, with no file of their own.
+    Setting, // a page of Settings
+    ControlPanel, // a Control Panel item or task
+    Security, // a page of Windows Security
+    Tool, // a system tool or folder (WinShun's own list)
 };
 
 struct SearchResult {
@@ -26,10 +31,13 @@ struct SearchResult {
     bool isDir = false;
     bool recent = false;
 
-    // Installed apps only.
+    // Installed apps and places only. `path` stands for them in History.
     AppKind app = AppKind::None;
     bool elevatable = false; // can run as administrator
-    QString target; // the program it starts, or a packaged app's install folder; may be empty
+    // The program it starts, or a packaged app's install folder; may be
+    // empty. A place's command ("ms-settings:display").
+    QString target;
+    QString icon; // places only: see PlaceInfo::icon
 
     // Content search only.
     int line = 0; // 1-based
@@ -37,8 +45,13 @@ struct SearchResult {
     int snippetMatchStart = -1;
     int snippetMatchLength = 0;
 
+    // An app or a place: something to start, not a file (no deleting it).
     bool isApp() const noexcept { return app != AppKind::None; }
-    bool isPackagedApp() const noexcept { return app != AppKind::None && app != AppKind::Desktop; }
+    bool isPlace() const noexcept { return app >= AppKind::Setting; }
+    bool isPackagedApp() const noexcept
+    {
+        return app == AppKind::Store || app == AppKind::System || app == AppKind::Package;
+    }
     // A desktop app's program (often a standalone exe) can be copied like a file.
     bool hasCopyableTarget() const noexcept { return app == AppKind::Desktop && !target.isEmpty(); }
 

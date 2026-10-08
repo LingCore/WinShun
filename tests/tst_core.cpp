@@ -14,6 +14,7 @@
 #include "Query.h"
 #include "Release.h"
 #include "Snapshot.h"
+#include "SystemCatalog.h"
 #include "TextUtil.h"
 #include "Win32Util.h"
 #include "Wtf8.h"
@@ -1305,6 +1306,211 @@ private slots:
         QCOMPARE(appIdOf(apps[2].launchPath()), apps[2].id);
         QVERIFY(isAppLaunchPath(u"SHELL:appsfolder\\x"_s));
         QVERIFY(appIdOf(uR"(C:\Telegram\Telegram.exe)"_s).isEmpty());
+    }
+
+    void settingsIndexParsing()
+    {
+        // As Windows ships them: a newer file (pages as <Node>), a Control
+        // Panel task, and an older file's entry (<PageID>, <PolicyIds>).
+        const QByteArray xml = "\xEF\xBB\xBF<?xml version=\"1.0\" encoding=\"utf-8\"?><PCSettings>"
+                               "<SearchableContent IncludeWithFeature=\"X\">"
+                               "<Filename>AAA_SettingsPageNetworkEthernet</Filename>"
+                               "<ApplicationInformation><FontFamily>Segoe Fluent Icons</FontFamily><Glyph>x</Glyph>"
+                               "</ApplicationInformation>"
+                               "<SettingIdentity><SettingPaths>"
+                               "<Path><Node Type=\"Page\">SettingsPageNetworkEthernet</Node><Node Type=\"Group\">G</Node></Path>"
+                               "<Path><Node Type=\"Page\">SettingsPageOther</Node></Path>"
+                               "</SettingPaths></SettingIdentity>"
+                               "<SettingInformation><Description>@{windows?ms-resource://a/b}</Description>"
+                               "<HighKeywords>@{windows?ms-resource://a/c}</HighKeywords></SettingInformation>"
+                               "</SearchableContent>"
+                               "<SearchableContent><Filename>Classic_{9EF86966}</Filename>"
+                               "<ApplicationInformation><DeepLink>Microsoft.WindowsFirewall\\PageConfigureApps</DeepLink>"
+                               "<Icon>%SystemRoot%\\System32\\netcenter.dll,-1</Icon></ApplicationInformation>"
+                               "<SettingIdentity><PageID>{8E908FC9}</PageID><HostID>{12B1697E}</HostID>"
+                               "<Condition>shcond://v1#IsServer;1</Condition></SettingIdentity>"
+                               "<SettingInformation><Description>@shell32.dll,-24389</Description>"
+                               "<Keywords>@@shell32.dll,-25174@shell32.dll,-25173</Keywords></SettingInformation>"
+                               "</SearchableContent>"
+                               "<SearchableContent><Filename>AAA_SettingsPageAudio</Filename>"
+                               "<SettingIdentity><SettingPaths><Path><PageID>SettingsPageAudio</PageID>"
+                               "<PolicyIds>apps-volume;sound;sound-devices</PolicyIds></Path></SettingPaths></SettingIdentity>"
+                               "<SettingInformation><Description>Sound</Description></SettingInformation>"
+                               "</SearchableContent></PCSettings>";
+        const std::vector<SettingsIndexEntry> entries = parseSettingsIndex(xml);
+        QCOMPARE(entries.size(), std::size_t {3});
+        QCOMPARE(entries[0].key, u"AAA_SettingsPageNetworkEthernet"_s);
+        QCOMPARE(entries[0].page, u"SettingsPageNetworkEthernet"_s); // the first path's page
+        QVERIFY(entries[0].deepLink.isEmpty());
+        QCOMPARE(entries[0].description, u"@{windows?ms-resource://a/b}"_s);
+        QCOMPARE(entries[0].keywords, QStringList {u"@{windows?ms-resource://a/c}"_s});
+        QCOMPARE(entries[1].deepLink, uR"(Microsoft.WindowsFirewall\PageConfigureApps)"_s);
+        QCOMPARE(entries[1].icon, uR"(%SystemRoot%\System32\netcenter.dll,-1)"_s);
+        QCOMPARE(entries[1].host, u"{12B1697E}"_s);
+        QCOMPARE(entries[1].condition, u"shcond://v1#IsServer;1"_s);
+        QCOMPARE(entries[1].keywords, (QStringList {u"@shell32.dll,-25174"_s, u"@shell32.dll,-25173"_s}));
+        QCOMPARE(entries[2].page, u"SettingsPageAudio"_s);
+        QCOMPARE(entries[2].policyIds, u"apps-volume;sound;sound-devices"_s);
+        QCOMPARE(entries[2].description, u"Sound"_s);
+
+        // Which of a page's ms-settings: names opens the page itself.
+        QCOMPARE(choosePageUri(u"SettingsPageAudio"_s, u"apps-volume;audio-outputdevices;sound;sound-devices"_s), u"sound"_s);
+        QCOMPARE(choosePageUri(u"SettingsPageInstalledApps"_s, u"appsfeatures;appsfeatures-app;installed-apps"_s),
+            u"installed-apps"_s); // named by the page
+        QCOMPARE(choosePageUri(u"SettingsPageNetworkAirplaneMode"_s, u"network-airplanemode;proximity"_s),
+            u"network-airplanemode"_s);
+        QCOMPARE(choosePageUri(u"SettingsPageNetworkManageAdapterOptions"_s,
+                     u"network-advancedsettings;network-advancedsharing"_s),
+            u"network-advancedsettings"_s); // nothing to go by: the first
+        QCOMPARE(choosePageUri(u"SettingsPageX"_s, u"display"_s), u"display"_s);
+        QVERIFY(choosePageUri(u"SettingsPageX"_s, QString()).isEmpty());
+    }
+
+    void placeCommands()
+    {
+        const QString windir = QDir::toNativeSeparators(qEnvironmentVariable("WINDIR"));
+        QCOMPARE(commandForDeepLink(u"Microsoft.DeviceManager"_s),
+            uR"(%windir%\system32\control.exe /name Microsoft.DeviceManager)"_s);
+        QCOMPARE(commandForDeepLink(uR"(Microsoft.WindowsFirewall\PageConfigureApps)"_s),
+            uR"(%windir%\system32\control.exe /name Microsoft.WindowsFirewall /page PageConfigureApps)"_s);
+        QCOMPARE(commandForDeepLink(uR"(%windir%\system32\dccw.exe)"_s), uR"(%windir%\system32\dccw.exe)"_s);
+        QCOMPARE(commandForDeepLink(u"shell:::{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}"_s),
+            u"shell:::{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}"_s);
+        QVERIFY(commandForDeepLink(u"AccountProtection"_s).isEmpty()); // Windows Security's own
+        QVERIFY(commandForDeepLink(QString()).isEmpty());
+
+        using Split = std::pair<QString, QString>;
+        QCOMPARE(splitCommand(uR"(%windir%\system32\control.exe /name Microsoft.DeviceManager)"_s),
+            (Split {windir + uR"(\system32\control.exe)"_s, u"/name Microsoft.DeviceManager"_s}));
+        QCOMPARE(splitCommand(u"ms-settings:display"_s), (Split {u"ms-settings:display"_s, QString()}));
+        QCOMPARE(splitCommand(uR"(shell:::{26EE0668}\3\::{7007ACC7})"_s), (Split {uR"(shell:::{26EE0668}\3\::{7007ACC7})"_s, QString()}));
+        QCOMPARE(splitCommand(u"windowsdefender://threat"_s), (Split {u"windowsdefender://threat"_s, QString()}));
+        QCOMPARE(splitCommand(u"\"C:\\Program Files\\x.exe\" -a b"_s), (Split {uR"(C:\Program Files\x.exe)"_s, u"-a b"_s}));
+        QCOMPARE(splitCommand(u"mmsys.cpl"_s), (Split {u"mmsys.cpl"_s, QString()}));
+        QCOMPARE(splitCommand(u"%windir%"_s), (Split {windir, QString()}));
+
+        QCOMPARE(describeCommand(uR"(%windir%\system32\mmc.exe %windir%\system32\diskmgmt.msc)"_s), u"diskmgmt.msc"_s);
+        QCOMPARE(describeCommand(uR"(%windir%\system32\control.exe mmsys.cpl)"_s), u"mmsys.cpl"_s);
+        QCOMPARE(describeCommand(u"mmsys.cpl"_s), u"mmsys.cpl"_s);
+        QCOMPARE(describeCommand(u"shell:startup"_s), u"shell:startup"_s);
+        QCOMPARE(describeCommand(u"%windir%"_s), windir); // a folder: where it is
+        QCOMPARE(describeCommand(uR"(%windir%\system32\rundll32.exe sysdm.cpl,EditEnvironmentVariables)"_s),
+            u"rundll32.exe sysdm.cpl,EditEnvironmentVariables"_s);
+
+        QCOMPARE(placePath(u"AAA_SettingsPageAudio"_s), u"winshun-place:AAA_SettingsPageAudio"_s);
+        QVERIFY(isPlacePath(placePath(u"x"_s)));
+        QCOMPARE(placeKeyOf(placePath(u"winshun/disk-management"_s)), u"winshun/disk-management"_s);
+        QVERIFY(placeKeyOf(uR"(C:\x.txt)"_s).isEmpty());
+        QVERIFY(!isPlacePath(u"shell:AppsFolder\\x"_s));
+    }
+
+    void placeExtras()
+    {
+        const auto place = [](const QString& name, const QString& command, bool page = false) {
+            PlaceInfo p;
+            p.name = name;
+            p.key = name;
+            p.command = command;
+            p.kind = AppKind::Setting;
+            p.page = page;
+            return p;
+        };
+        PlaceList places {
+            place(u"视差背景"_s, u"ms-settings:personalization-background"_s),
+            place(u"背景图像设置"_s, u"ms-settings:personalization-background"_s, true),
+            place(u"检查防火墙状态"_s, u"FW"_s),
+            place(u"Windows Defender 防火墙"_s, u"fw"_s),
+        };
+        const QString text = u"# comment\n"
+                             u"[ms-settings:personalization-background]\n"
+                             u"keywords = 壁纸; 桌面背景；换壁纸 ;\n"
+                             u"\n"
+                             u"[fw]\n"
+                             u"keywords = 防火墙\n"
+                             u"[ms-settings:nowhere]\n"
+                             u"keywords = x\n"
+                             u"[disk-management]\n"
+                             u"name = 磁盘管理 | Disk Management\n"
+                             u"open = diskmgmt.msc\n"
+                             u"keywords = 分区; diskmgmt\n"
+                             u"[virus]\n"
+                             u"name = 病毒和威胁防护 | Virus & threat protection\n"
+                             u"open = windowsdefender://threat\n"
+                             u"kind = security\n"
+                             u"icon = app:Microsoft.SecHealthUI_8wekyb3d8bbwe!SecHealthUI\n"_s;
+        const QStringList unmatched = applyPlaceExtras(places, text, true);
+        QCOMPARE(unmatched, QStringList {u"ms-settings:nowhere"_s});
+        QVERIFY(places[0].ownKeywords.isEmpty()); // a task on the page: the page itself gets them
+        QCOMPARE(places[1].ownKeywords, (QStringList {u"壁纸"_s, u"桌面背景"_s, u"换壁纸"_s}));
+        QCOMPARE(places[2].ownKeywords, QStringList {u"防火墙"_s}); // no page among them: each one, any case
+        QCOMPARE(places[3].ownKeywords, QStringList {u"防火墙"_s});
+        QCOMPARE(places.size(), std::size_t {6});
+        QCOMPARE(places[4].name, u"磁盘管理"_s);
+        QCOMPARE(places[4].key, u"winshun/disk-management"_s);
+        QCOMPARE(places[4].command, u"diskmgmt.msc"_s);
+        QVERIFY(places[4].kind == AppKind::Tool);
+        QCOMPARE(places[4].ownKeywords, (QStringList {u"分区"_s, u"diskmgmt"_s}));
+        QVERIFY(places[5].kind == AppKind::Security);
+        QCOMPARE(places[5].icon, u"app:Microsoft.SecHealthUI_8wekyb3d8bbwe!SecHealthUI"_s);
+
+        PlaceList english;
+        applyPlaceExtras(english, text, false);
+        QCOMPARE(english[0].name, u"Disk Management"_s);
+    }
+
+    void placeSearch()
+    {
+        const auto place = [](const QString& name, const QString& command, const QStringList& keywords,
+                               const QStringList& own = {}) {
+            PlaceInfo p;
+            p.name = name;
+            p.key = u"k/"_s + name;
+            p.command = command;
+            p.keywords = keywords;
+            p.ownKeywords = own;
+            p.prepare();
+            return p;
+        };
+        const PlaceList places {
+            place(u"查看网络连接"_s, u"shell:::{7007ACC7}"_s, {u"适配器"_s, u"卡"_s, u"网络"_s, u"connections"_s},
+                {u"网卡"_s, u"ncpa.cpl"_s, u"ip地址"_s}),
+            place(u"设备管理器"_s, u"control.exe /name Microsoft.DeviceManager"_s, {u"适配器"_s, u"驱动程序"_s}),
+            place(u"管理网络适配器设置"_s, u"ms-settings:network-advancedsettings"_s, {u"网络"_s}),
+            place(u"网络重置"_s, u"MS-SETTINGS:network-advancedsettings"_s, {u"重置"_s}),
+            place(u"节电模式设置"_s, u"ms-settings:batterysaver"_s, {u"battery saver settings"_s}),
+            place(u"更改显示器的分辨率"_s, u"ms-settings:display"_s, {u"显示器"_s}),
+        };
+        const auto names = [&](const QString& text, const QStringList& history = {}) {
+            const ParsedQuery query = ws::parseQuery(text);
+            const NameMatcher matcher(query);
+            QStringList out;
+            for (const PlaceHit& hit : searchPlaces(places, query, matcher, history))
+                out.append(places[hit.index].name);
+            return out;
+        };
+
+        QCOMPARE(names(u"网卡"_s).value(0), u"查看网络连接"_s); // an own keyword
+        QCOMPARE(names(u"NCPA.cpl"_s), QStringList {u"查看网络连接"_s});
+        QCOMPARE(names(u"wk"_s).value(0), u"查看网络连接"_s); // pinyin of a keyword
+        QCOMPARE(names(u"ip 地址"_s), QStringList {u"查看网络连接"_s}); // each word in a keyword
+        // A whole keyword ranks above a name that only contains the word.
+        QCOMPARE(names(u"适配器"_s), (QStringList {u"设备管理器"_s, u"查看网络连接"_s, u"管理网络适配器设置"_s}));
+        QCOMPARE(names(u"saver"_s), QStringList {u"节电模式设置"_s}); // a word inside a keyword
+        QVERIFY(names(u"aver"_s).isEmpty()); // ... not the middle of one
+        QVERIFY(names(u"卡"_s).isEmpty()); // one character: the name must have it
+        QCOMPARE(names(u"驱动"_s), QStringList {u"设备管理器"_s}); // two Chinese characters: anywhere in a keyword
+        QCOMPARE(names(u"网络 适配器"_s).value(0), u"查看网络连接"_s); // one word in the name, one in a keyword
+        // Both tasks open the same page: one row, the better one.
+        QCOMPARE(names(u"重置"_s), QStringList {u"网络重置"_s});
+        QCOMPARE(names(u"网络"_s).count(u"管理网络适配器设置"_s) + names(u"网络"_s).count(u"网络重置"_s), 1);
+        QVERIFY(!names(u"网卡 !查看"_s).contains(u"查看网络连接"_s));
+        QVERIFY(names(u"ext:txt"_s).isEmpty()); // file syntax
+        QVERIFY(names(uR"(网络\适配器)"_s).isEmpty());
+        QVERIFY(names(QString()).isEmpty());
+        QCOMPARE(names(u"分辨率"_s), QStringList {u"更改显示器的分辨率"_s});
+
+        // Recently opened places rank higher.
+        QCOMPARE(names(u"适配器"_s, {uR"(D:\a.txt)"_s, places[0].path()}).value(0), u"查看网络连接"_s);
     }
 
     void appLogoChoice()

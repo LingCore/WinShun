@@ -204,6 +204,10 @@
         <translation>App</translation>
     </message>
     <message>
+        <source>系统</source>
+        <translation>System</translation>
+    </message>
+    <message>
         <source>以管理员身份运行</source>
         <translation>Run as administrator</translation>
     </message>
@@ -222,6 +226,10 @@
     <message>
         <source>复制完整路径</source>
         <translation>Copy full path</translation>
+    </message>
+    <message>
+        <source>复制打开命令</source>
+        <translation>Copy command</translation>
     </message>
     <message>
         <source>删除（点两次，移到回收站）</source>
@@ -946,6 +954,10 @@
         <translation>“%1” has no location to open</translation>
     </message>
     <message>
+        <source>已复制打开它的命令</source>
+        <translation>Command copied</translation>
+    </message>
+    <message>
         <source>没有删除“%1”</source>
         <translation>“%1” was not deleted</translation>
     </message>
@@ -960,6 +972,10 @@
     <message>
         <source>打开</source>
         <translation>Open</translation>
+    </message>
+    <message>
+        <source>复制打开命令</source>
+        <translation>Copy command</translation>
     </message>
     <message>
         <source>以管理员身份运行</source>
@@ -1102,6 +1118,18 @@
     <message>
         <source>MSIX 应用</source>
         <translation>MSIX app</translation>
+    </message>
+    <message>
+        <source>Windows 设置</source>
+        <translation>Windows Settings</translation>
+    </message>
+    <message>
+        <source>控制面板</source>
+        <translation>Control Panel</translation>
+    </message>
+    <message>
+        <source>Windows 安全中心</source>
+        <translation>Windows Security</translation>
     </message>
 </context>
 <context>

@@ -5,6 +5,7 @@
 #include "IndexService.h"
 #include "Query.h"
 #include "SearchEngine.h"
+#include "SystemCatalog.h"
 #include "platform/Shell.h"
 #include "platform/WindowEffects.h"
 
@@ -72,10 +73,12 @@ QString roughNumber(qint64 n, bool* unit)
 
 } // namespace
 
-Launcher::Launcher(IndexService* index, AppCatalog* apps, SearchEngine* engine, History* history, QObject* parent)
+Launcher::Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places, SearchEngine* engine, History* history,
+    QObject* parent)
     : QObject(parent)
     , m_index(index)
     , m_apps(apps)
+    , m_places(places)
     , m_engine(engine)
     , m_history(history)
 {
@@ -111,6 +114,10 @@ Launcher::Launcher(IndexService* index, AppCatalog* apps, SearchEngine* engine, 
         if (m_window && m_window->isVisible() && m_scope == All)
             search();
         refreshStatus();
+    });
+    connect(m_places, &SystemCatalog::changed, this, [this] {
+        if (m_window && m_window->isVisible() && m_scope == All)
+            search();
     });
     refreshStatus();
 }
@@ -193,6 +200,7 @@ void Launcher::handleShown()
 {
     m_statusPoll.start();
     m_apps->refresh(); // reads the list again only if apps were installed or removed
+    m_places->refresh(); // ... if Windows was updated or its language changed
     search(); // refresh: files may have changed, and "recent" certainly has
     emit historyChanged(); // things were opened since
     emit shown();
@@ -541,6 +549,10 @@ void Launcher::clearSelection()
 void Launcher::perform(const SearchResult& result, Action action)
 {
     const SearchResult r = result; // the model may change underneath us
+    if (r.isPlace()) {
+        performPlace(r, action);
+        return;
+    }
     if (r.isApp()) {
         performApp(r, action);
         return;
@@ -645,6 +657,38 @@ void Launcher::performApp(const SearchResult& app, Action action)
     }
 }
 
+// A place in Windows opens by its command, with the user's normal rights
+// (Settings and Control Panel ask for more themselves when they need it).
+// It has no file of its own to reveal or copy: copying takes the command.
+void Launcher::performPlace(const SearchResult& place, Action action)
+{
+    switch (action) {
+    case Open:
+    case RunAsAdmin:
+        remember(place.path);
+        shell::run(place.target, reportFailure(place.name));
+        emit dismissRequested();
+        break;
+    case Reveal:
+        flash(tr("“%1”没有可以打开的位置").arg(place.name));
+        break;
+    case CopyItem:
+    case CopyPath:
+        shell::copyText(place.target);
+        flash(tr("已复制打开它的命令"));
+        break;
+    case CopyName:
+        shell::copyText(place.name);
+        flash(tr("已复制名称"));
+        break;
+    case ForgetRecent:
+        forgetRecent({place.path});
+        break;
+    case Recycle:
+        break;
+    }
+}
+
 // Several selected results at once. Those an action does not apply to
 // (running a folder as administrator, recycling an app) are left out.
 void Launcher::performMany(const SearchResults& items, Action action)
@@ -656,7 +700,11 @@ void Launcher::performMany(const SearchResults& items, Action action)
         const bool admin = action == RunAsAdmin;
         int started = 0;
         for (const SearchResult& r : items) {
-            if (r.isApp()) {
+            if (r.isPlace()) {
+                if (admin)
+                    continue;
+                shell::run(r.target, reportFailure(r.name));
+            } else if (r.isApp()) {
                 if (admin && !r.elevatable)
                     continue;
                 shell::launchApp(r.path, admin, reportFailure(r.name));
@@ -680,7 +728,7 @@ void Launcher::performMany(const SearchResults& items, Action action)
         int shown = 0;
         for (const SearchResult& r : items) {
             const QString& place = r.isApp() ? r.target : r.path;
-            if (place.isEmpty() || !exists(place))
+            if (r.isPlace() || place.isEmpty() || !exists(place))
                 continue;
             remember(r.path);
             if (r.isPackagedApp())
@@ -886,7 +934,7 @@ QVariantList Launcher::menuItems(int row) const
         const auto any = [&](auto test) { return std::any_of(selection.cbegin(), selection.cend(), test); };
         QVariantList items;
         items.append(entry(Open, tr("打开 %Ln 项", nullptr, static_cast<int>(selection.size())), u"Enter"_s, u"\uE8E5"_s));
-        if (any([](const SearchResult& r) { return !r.isApp() || !r.target.isEmpty(); }))
+        if (any([](const SearchResult& r) { return !r.isApp() || (!r.isPlace() && !r.target.isEmpty()); }))
             items.append(entry(Reveal, tr("打开所在位置"), u"Ctrl+Enter"_s, u"\uE8DA"_s));
         items.append(separator);
         if (any([](const SearchResult& r) { return !r.isApp() || r.hasCopyableTarget(); }))
@@ -903,6 +951,17 @@ QVariantList Launcher::menuItems(int row) const
     // Glyphs: Segoe Fluent Icons / MDL2 Assets, or the name of an icon
     // Glyph.qml draws.
     QVariantList items;
+    if (r->isPlace()) {
+        items.append(entry(Open, tr("打开"), u"Enter"_s, u"\uE8A7"_s)); // OpenInNewWindow
+        items.append(separator);
+        items.append(entry(CopyPath, tr("复制打开命令"), u"Ctrl+Shift+C"_s, u"copyPath"_s));
+        items.append(entry(CopyName, tr("复制名称"), QString(), u"\uE8AC"_s));
+        if (r->recent) {
+            items.append(separator);
+            items.append(entry(ForgetRecent, tr("从最近使用中移除"), QString(), u"\uE711"_s));
+        }
+        return items;
+    }
     if (r->isApp()) {
         items.append(entry(Open, tr("打开"), u"Enter"_s, u"\uE8A7"_s)); // OpenInNewWindow
         if (r->elevatable)

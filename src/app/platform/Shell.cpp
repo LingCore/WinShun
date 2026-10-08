@@ -1,5 +1,6 @@
 #include "Shell.h"
 
+#include "SystemCatalog.h"
 #include "Win32Util.h"
 
 #include <QClipboard>
@@ -74,7 +75,7 @@ template <typename Fn> void runOnShellThread(Fn&& fn)
 // elevated too. Explorer runs with the user's normal rights, so ask it to
 // launch instead: the desktop window -> its shell view -> the view's
 // Application object -> ShellExecute. False when there is no Explorer desktop.
-bool executeAsUser(const std::wstring& file, const std::wstring& dir)
+bool executeAsUser(const std::wstring& file, const std::wstring& args, const std::wstring& dir)
 {
     ComPtr<IShellWindows> windows;
     if (FAILED(::CoCreateInstance(CLSID_ShellWindows, nullptr, CLSCTX_LOCAL_SERVER, IID_PPV_ARGS(&windows))))
@@ -101,8 +102,13 @@ bool executeAsUser(const std::wstring& file, const std::wstring& dir)
         return false;
 
     const Bstr target(file.c_str());
+    const Bstr arguments(args.empty() ? nullptr : args.c_str());
     const Bstr directory(dir.empty() ? nullptr : dir.c_str());
-    VARIANT args {};
+    VARIANT parameters {};
+    if (arguments) {
+        parameters.vt = VT_BSTR;
+        parameters.bstrVal = arguments; // still owned by `arguments`
+    }
     VARIANT workDir {};
     if (directory) {
         workDir.vt = VT_BSTR;
@@ -112,14 +118,14 @@ bool executeAsUser(const std::wstring& file, const std::wstring& dir)
     VARIANT show {};
     show.vt = VT_I4;
     show.lVal = SW_SHOWNORMAL;
-    return SUCCEEDED(shell->ShellExecute(target, args, workDir, verb, show));
+    return SUCCEEDED(shell->ShellExecute(target, parameters, workDir, verb, show));
 }
 
 // Without an Explorer desktop to ask (another shell is in use), start the
 // target with the desktop shell's own token: the user's normal rights. The
 // unelevated rundll32 hands it to ShellExecute, which opens documents,
 // folders, programs and links alike. False when there is no shell at all.
-bool executeWithShellToken(const std::wstring& file, const std::wstring& dir)
+bool executeWithShellToken(const std::wstring& file, const std::wstring& args, const std::wstring& dir)
 {
     if (file.find(L'"') != std::wstring::npos)
         return false; // cannot be quoted on the command line (no path has one)
@@ -145,6 +151,8 @@ bool executeWithShellToken(const std::wstring& file, const std::wstring& dir)
         return false;
     std::wstring command
         = L"\"" + std::wstring(system, n) + L"\\rundll32.exe\" shell32.dll,ShellExec_RunDLL \"" + file + L'"';
+    if (!args.empty())
+        command += L' ' + args;
     STARTUPINFOW startup {sizeof(STARTUPINFOW)};
     PROCESS_INFORMATION started {};
     if (!::CreateProcessWithTokenW(token.get(), 0, nullptr, command.data(), 0, nullptr,
@@ -158,12 +166,12 @@ bool executeWithShellToken(const std::wstring& file, const std::wstring& dir)
 // Starts `file` with the user's normal rights, never elevated: through
 // Explorer (waiting a few seconds if it is restarting), else with the token
 // of another shell. False when neither works.
-bool executeUnelevated(const std::wstring& file, const std::wstring& dir)
+bool executeUnelevated(const std::wstring& file, const std::wstring& args, const std::wstring& dir)
 {
     for (int attempt = 0; attempt < 10; ++attempt) {
-        if (executeAsUser(file, dir))
+        if (executeAsUser(file, args, dir))
             return true;
-        if (attempt == 0 && executeWithShellToken(file, dir))
+        if (attempt == 0 && executeWithShellToken(file, args, dir))
             return true;
         ::Sleep(300);
     }
@@ -191,7 +199,7 @@ void open(const QString& path, bool asAdministrator, std::function<void(bool)> d
     const QString workDir = info.isDir() ? QString() : QDir::toNativeSeparators(info.absolutePath());
     runOnShellThread(
         [file = native.toStdWString(), dir = workDir.toStdWString(), asAdministrator, done = std::move(done)] {
-            const bool ok = asAdministrator ? executeAsAdministrator(file, dir) : executeUnelevated(file, dir);
+            const bool ok = asAdministrator ? executeAsAdministrator(file, dir) : executeUnelevated(file, {}, dir);
             if (done)
                 done(ok);
         });
@@ -200,7 +208,18 @@ void open(const QString& path, bool asAdministrator, std::function<void(bool)> d
 void openUrl(const QString& url)
 {
     ::AllowSetForegroundWindow(ASFW_ANY);
-    runOnShellThread([target = url.toStdWString()] { executeUnelevated(target, {}); });
+    runOnShellThread([target = url.toStdWString()] { executeUnelevated(target, {}, {}); });
+}
+
+void run(const QString& command, std::function<void(bool)> done)
+{
+    ::AllowSetForegroundWindow(ASFW_ANY);
+    const auto [file, args] = splitCommand(command);
+    runOnShellThread([file = file.toStdWString(), args = args.toStdWString(), done = std::move(done)] {
+        const bool ok = executeUnelevated(file, args, {});
+        if (done)
+            done(ok);
+    });
 }
 
 void launchApp(const QString& launchPath, bool asAdministrator, std::function<void(bool)> done)
@@ -209,7 +228,7 @@ void launchApp(const QString& launchPath, bool asAdministrator, std::function<vo
     runOnShellThread([target = launchPath.toStdWString(), asAdministrator, done = std::move(done)] {
         // Store apps refuse to start from an elevated process; Explorer can
         // start them. "runas" is the app's own verb, as in the Start menu.
-        const bool ok = asAdministrator ? executeAsAdministrator(target, {}) : executeUnelevated(target, {});
+        const bool ok = asAdministrator ? executeAsAdministrator(target, {}) : executeUnelevated(target, {}, {});
         if (done)
             done(ok);
     });

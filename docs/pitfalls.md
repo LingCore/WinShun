@@ -188,6 +188,34 @@
 - 软件渲染器把带 alpha 通道的窗口做成分层窗口，DWM 不在它背后画材质。只在用 D3D11 绘制时启用（`SystemTheme.backdropAvailable`）。
 - D3D11 下 Qt 同样会给带 alpha 的窗口加 `WS_EX_LAYERED`，但 Mica 照常显示。
 
+## 系统入口（Windows 设置检索清单）
+
+清单是什么、怎么用，见 [architecture.md](architecture.md) 的“系统入口用 Windows 自己的设置检索清单”。
+
+### 设置页面的 `ms-settings:` 地址不一定是 `PolicyIds` 的第一个
+
+- **现象**：“声音设置”对到了 `ms-settings:apps-volume`（音量合成器）。
+- **原因**：`PolicyIds` 列的是这个页面的所有 `ms-settings:` 名字，按字母排，不是“第一个就是页面本身”。
+- **做法**：`choosePageUri`：页面 ID 里写着的优先（SettingsPageInstalledApps → `installed-apps`），其次是被其余名字当前缀的（`sound` 之于 `sound-devices`），都没有才取第一个。
+
+### Windows 安全中心的条目只解析得出英文
+
+- **现象**：清单里“病毒和威胁防护”等条目的名称解析失败。
+- **原因**：它们写成 `@{Microsoft.SecHealthUI_8wekyb3d8bbwe?ms-resource://…}`，用的是包系列名，`SHLoadIndirectString` 只认完整包名；换成完整包名（`GetPackagesByPackageFamily`）能解析，但在中文系统上也只给英文。
+- **做法**：按 HostID 跳过这些条目，在 `places.txt` 里写中文名和 `windowsdefender://` 地址。
+
+### 补充的关键词要加在页面本身那一条上
+
+- **现象**：搜“壁纸”出来的是“视差背景”。
+- **原因**：一个设置页面有十几条任务，打开命令都一样。关键词加到了每一条上，同分时取了名字最短的那条。
+- **做法**：有页面本身那一条（Filename 是 `AAA_<页面 ID>`）就只加在它上面。
+
+### 循环里现建 `QRegularExpression` 很慢
+
+- **现象**：读系统入口要 1.9 秒，其中解析资源字符串只占 0.3 秒。
+- **原因**：`split(QRegularExpression(...))` 每次调用都重新编译正则，约 3000 次就是 1.5 秒。
+- **做法**：用 `static const` 的正则，或者手写切分（`splitKeywords`）。改完约 0.45 秒。
+
 ## 主题和语言
 
 ### 名为 `onXxx` 的属性不随主题变化

@@ -39,7 +39,8 @@ public:
         SnippetHtmlRole,
         LineRole,
         RecentRole,
-        IsAppRole,
+        IsAppRole, // an app or a place in Windows
+        PlaceRole, // a place: a page of Settings, a Control Panel task, a system tool
         PackagedAppRole,
         ElevatableRole, // run as administrator
         RevealableRole, // has a file or folder to open the location of

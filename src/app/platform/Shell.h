@@ -21,6 +21,9 @@ void reveal(const QString& path); // open the folder and select the item
 // The same for several items: one window per folder, with all of its items selected.
 void reveal(const QStringList& paths);
 void openUrl(const QString& url); // https:, mailto: ...
+// A command or shell location ("%windir%\system32\control.exe /name X",
+// "ms-settings:display"): a place in Windows (see SystemCatalog).
+void run(const QString& command, std::function<void(bool)> done = {});
 // An installed app by its launch path, "shell:AppsFolder\<id>" (see AppCatalog).
 void launchApp(const QString& launchPath, bool asAdministrator = false, std::function<void(bool)> done = {});
 // Moves the items to the Recycle Bin, in one operation (asks before deleting

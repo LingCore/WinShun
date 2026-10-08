@@ -25,6 +25,9 @@ public:
     static QString iconUrl(const QString& path, bool isDir);
     // An installed app (AppCatalog). Packaged apps' logos differ by theme.
     static QString appIconUrl(const QString& appId, bool packaged, bool dark);
+    // A place in Windows (SystemCatalog), by its icon: one in a module
+    // ("%SystemRoot%\System32\netcenter.dll,-1"), or that of a file or shell path.
+    static QString placeIconUrl(const QString& icon);
 
 private:
     QMutex m_mutex;

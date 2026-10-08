@@ -8,6 +8,7 @@
 #include "Placement.h"
 #include "SearchEngine.h"
 #include "SettingsEditor.h"
+#include "SystemCatalog.h"
 #include "SystemTheme.h"
 #include "Updater.h"
 #include "WindowFrame.h"
@@ -145,8 +146,10 @@ bool App::start(const StartOptions& options)
     m_history->load();
     m_index = std::make_unique<IndexService>(indexOptions(m_settings));
     m_apps = std::make_unique<AppCatalog>();
-    m_engine = std::make_unique<SearchEngine>(m_index.get(), m_apps.get());
-    m_launcher = std::make_unique<Launcher>(m_index.get(), m_apps.get(), m_engine.get(), m_history.get());
+    m_places = std::make_unique<SystemCatalog>();
+    m_engine = std::make_unique<SearchEngine>(m_index.get(), m_apps.get(), m_places.get());
+    m_launcher
+        = std::make_unique<Launcher>(m_index.get(), m_apps.get(), m_places.get(), m_engine.get(), m_history.get());
     connect(m_launcher.get(), &Launcher::dismissRequested, this, &App::hideLauncher);
     connect(m_launcher.get(), &Launcher::openFailed, this, [this](const QString& name) {
         m_messages->showNotification(tr("没有打开“%1”").arg(name),
@@ -208,6 +211,7 @@ bool App::start(const StartOptions& options)
 
     m_index->start();
     m_apps->refresh(true); // in the background; about half a second
+    m_places->refresh(true); // likewise
 
     autostart::adoptIfOrphaned();
     if (firstRun) {

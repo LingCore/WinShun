@@ -1,16 +1,19 @@
 #include "FileIconProvider.h"
 
 #include "AppLogo.h"
+#include "Win32Util.h"
 
 #include <QColor>
 #include <QFileInfo>
 #include <QPainter>
+#include <QRegularExpression>
 
 #include <windows.h>
 // commctrl.h must precede commoncontrols.h (IImageList types).
 #include <commctrl.h>
 #include <commoncontrols.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #include <shobjidl.h>
 #include <wrl/client.h>
 
@@ -174,6 +177,26 @@ QImage shellItemIcon(const std::wstring& parsingName, int size)
     return fitTo(image, size);
 }
 
+// A place's icon (see placeIconUrl): "<module>,<index>", where a negative
+// index is a resource id, else a file or shell path ("shell:startup").
+QImage placeIcon(const QString& icon, int size)
+{
+    static const QRegularExpression inModule(u"^(.+),\\s*(-?\\d+)$"_s);
+    const QRegularExpressionMatch m = inModule.match(icon);
+    if (m.hasMatch()) {
+        const std::wstring module = win32::expandEnvironment(m.captured(1).trimmed().toStdWString());
+        HICON handle = nullptr;
+        if (::SHDefExtractIconW(module.c_str(), m.captured(2).toInt(), 0, &handle, nullptr, static_cast<UINT>(size)) == S_OK
+            && handle) {
+            QImage image = QImage::fromHICON(handle);
+            ::DestroyIcon(handle);
+            return fitTo(image, size);
+        }
+        return {};
+    }
+    return shellItemIcon(win32::expandEnvironment(icon.toStdWString()), size);
+}
+
 // A packaged app's logo file for this size and theme (see AppLogo.h). Logos
 // made to sit on a plate get it: a rounded square in the app's colour.
 QImage packagedAppLogo(const QString& appId, int size, bool dark)
@@ -225,6 +248,11 @@ QString FileIconProvider::appIconUrl(const QString& appId, bool packaged, bool d
     return url + (dark ? u"/dark"_s : u"/light"_s); // its logo has a variant per theme
 }
 
+QString FileIconProvider::placeIconUrl(const QString& icon)
+{
+    return u"image://fileicon/place/"_s + encode(icon);
+}
+
 QImage FileIconProvider::requestImage(const QString& id, QSize* size, const QSize& requestedSize)
 {
     thread_local ComApartment com; // SHGetFileInfo requires COM on the calling thread
@@ -262,6 +290,10 @@ QImage FileIconProvider::requestImage(const QString& id, QSize* size, const QSiz
             image = shellItemIcon((u"shell:AppsFolder\\"_s + appId).toStdWString(), px);
         if (image.isNull()) // uninstalled meanwhile
             image = shellIcon(L"file.exe", FILE_ATTRIBUTE_NORMAL, true, px);
+    } else if (id.startsWith(u"place/")) {
+        image = placeIcon(decode(QStringView(id).mid(6)), px);
+        if (image.isNull()) // Control Panel's own
+            image = shellItemIcon(L"shell:::{26EE0668-A00A-44D7-9371-BEB064C98683}", px);
     }
     if (image.isNull())
         image = shellIcon(L"file", FILE_ATTRIBUTE_NORMAL, true, px);

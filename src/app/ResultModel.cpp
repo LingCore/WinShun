@@ -3,6 +3,7 @@
 #include "AppCatalog.h"
 #include "FileIconProvider.h"
 #include "Pinyin.h"
+#include "SystemCatalog.h"
 #include "Wtf8.h"
 
 #include <QGuiApplication>
@@ -46,7 +47,8 @@ QString parentFolder(const QString& path)
     return folder;
 }
 
-// The second line of an app's row: the program it starts, or where it comes from.
+// The second line of an app's row: the program it starts, or where it comes
+// from. A place's: where in Windows it is, or a tool's command.
 QString appOrigin(const SearchResult& r)
 {
     switch (r.app) {
@@ -56,6 +58,14 @@ QString appOrigin(const SearchResult& r)
         return ResultModel::tr("Windows 系统应用");
     case AppKind::Package:
         return ResultModel::tr("MSIX 应用");
+    case AppKind::Setting:
+        return ResultModel::tr("Windows 设置");
+    case AppKind::ControlPanel:
+        return ResultModel::tr("控制面板");
+    case AppKind::Security:
+        return ResultModel::tr("Windows 安全中心");
+    case AppKind::Tool:
+        return describeCommand(r.target); // "diskmgmt.msc", the folder
     default:
         return r.target.isEmpty() ? ResultModel::tr("Windows 系统应用") : r.target; // no file: Control Panel, Run, ...
     }
@@ -121,6 +131,10 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
     case IconRole:
         if (r->isApp()) {
             const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
+            if (r->isPlace() && r->icon.startsWith(u"app:")) // the logo of Settings, of Windows Security
+                return FileIconProvider::appIconUrl(r->icon.mid(4), true, dark);
+            if (r->isPlace())
+                return FileIconProvider::placeIconUrl(r->icon);
             return FileIconProvider::appIconUrl(appIdOf(r->path), r->isPackagedApp(), dark);
         }
         return FileIconProvider::iconUrl(r->path, r->isDir);
@@ -134,12 +148,14 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
         return r->recent;
     case IsAppRole:
         return r->isApp();
+    case PlaceRole:
+        return r->isPlace();
     case PackagedAppRole:
         return r->isPackagedApp();
     case ElevatableRole:
         return r->elevatable;
     case RevealableRole:
-        return !r->isApp() || !r->target.isEmpty();
+        return !r->isApp() || (!r->isPlace() && !r->target.isEmpty());
     case CopyableRole:
         return !r->isApp() || r->hasCopyableTarget();
     case SelectedRole:
@@ -162,6 +178,7 @@ QHash<int, QByteArray> ResultModel::roleNames() const
         {LineRole, "line"},
         {RecentRole, "recent"},
         {IsAppRole, "isApp"},
+        {PlaceRole, "place"},
         {PackagedAppRole, "packagedApp"},
         {ElevatableRole, "elevatable"},
         {RevealableRole, "revealable"},

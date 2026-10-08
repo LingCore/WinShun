@@ -1,0 +1,402 @@
+# Win顺自带的系统入口和关键词，补充 Windows 设置检索清单（SystemCatalog）。
+#
+# 大部分入口来自 Windows 自带的清单（ImmersiveControlPanel\Settings\AllSystemSettings_*.xml），
+# 名称和关键词都是系统语言的。这里做两件事：
+#
+# 1. 给清单里已有的入口补关键词（清单里没有的说法，如“网卡”）。方括号里写它的打开命令，
+#    必须和清单里的一字不差（不分大小写），同一个命令的每一条都会加上：
+#
+#      [%windir%\system32\control.exe /name Microsoft.DeviceManager]
+#      keywords = 驱动; 显卡; devmgmt
+#
+#    新版“设置”的页面写 ms-settings: 地址；控制面板项写
+#    %windir%\system32\control.exe /name <规范名称>[ /page <页面>]。
+#    wsbench --places 会列出这台电脑上所有入口的打开命令。
+#
+# 2. 新入口。方括号里是一个固定的英文 id（记进“最近使用”，不要改），另写 open：
+#
+#      [disk-management]
+#      name = 磁盘管理 | Disk Management     （中文 | 英文，按 Windows 显示语言选）
+#      open = %windir%\system32\mmc.exe %windir%\system32\diskmgmt.msc
+#      keywords = 分区; 格式化
+#      kind = tool                           （tool 默认 | settings | control | security）
+#      icon = %SystemRoot%\System32\shell32.dll,-16  （可省略：用打开命令所指文件的图标）
+#
+#    打开命令和清单里某一条相同时，搜索结果里只出现得分高的那一条。
+#    程序或管理单元（.msc）不存在的入口不显示（家庭版没有 gpedit.msc）。
+#
+# 关键词用分号隔开，拼音自动可用（“wk”能找到“网卡”），不用另写。
+# 单个字不按关键词匹配，所以不必写“卡”“网”这样的单字。
+
+# ---------------------------------------------------------------- 网络
+
+[shell:::{26EE0668-A00A-44D7-9371-BEB064C98683}\3\::{7007ACC7-3202-11D1-AAD2-00805FC1270E}]
+keywords = 网络连接; 网卡; 适配器; 网络适配器; 更改适配器选项; 更改适配器设置; 适配器设置; 以太网; 本地连接; 虚拟网卡; 禁用网卡; 启用网卡; ip地址; 静态ip; 固定ip; ipv4; ipv6; dns; 网关; 子网掩码; ncpa; ncpa.cpl; network connections; adapter; adapters; adapter settings
+
+[%windir%\system32\control.exe /name Microsoft.NetworkAndSharingCenter]
+keywords = 网络和共享中心; 共享中心; 网络中心; 网络共享
+
+[ms-settings:network-advancedsettings]
+keywords = 高级网络设置; 网络重置; 重置网络; 网络适配器
+
+[ms-settings:network-proxy]
+keywords = 代理; 代理服务器; 系统代理; 梯子; 翻墙; proxy; pac
+
+[ms-settings:network-wifi]
+keywords = wifi; wi-fi; 无线; 无线网; 无线网络; wlan; 已知网络; 忘记网络
+
+[ms-settings:network-ethernet]
+keywords = 以太网; 有线网络; 网线; ip地址; dns
+
+[ms-settings:network-vpn]
+keywords = vpn; 虚拟专用网
+
+[ms-settings:network-mobilehotspot]
+keywords = 热点; 移动热点; 共享网络; 开热点; hotspot
+
+[ms-settings:network-airplanemode]
+keywords = 飞行模式; 无线开关
+
+[%windir%\system32\control.exe /name Microsoft.InternetOptions]
+keywords = internet选项; ie选项; inetcpl; inetcpl.cpl; 代理服务器; 局域网设置
+
+# ---------------------------------------------------------------- 系统
+
+[%windir%\system32\control.exe /name Microsoft.DeviceManager]
+keywords = 驱动; 驱动程序; 更新驱动; 硬件; 显卡驱动; 声卡驱动; 网卡驱动; 蓝牙驱动; 未知设备; devmgmt; devmgmt.msc; drivers; hardware
+
+[%windir%\system32\SystemPropertiesAdvanced.exe]
+keywords = 环境变量; 系统变量; path; 系统属性; 高级系统设置; 虚拟内存; 页面文件; 启动和故障恢复; sysdm; sysdm.cpl; environment variables
+
+[%windir%\system32\rundll32.exe sysdm.cpl,EditEnvironmentVariables]
+keywords = 环境变量; 用户变量; path; env
+
+[%windir%\system32\SystemPropertiesPerformance.exe]
+keywords = 性能选项; 视觉效果; 动画效果; 虚拟内存; 页面文件
+
+[%windir%\system32\SystemPropertiesProtection.exe]
+keywords = 系统还原; 还原点; 系统保护; 创建还原点
+
+[%windir%\system32\SystemPropertiesRemote.exe]
+keywords = 远程桌面; 远程协助; 允许远程连接
+
+[%windir%\system32\SystemPropertiesComputerName.exe]
+keywords = 计算机名; 电脑名; 工作组; 改名
+
+[%windir%\system32\mmc.exe %windir%\system32\diskmgmt.msc]
+keywords = 磁盘管理; 分区; 硬盘分区; 格式化; 盘符; 驱动器号; 扩展卷; 压缩卷; 新建卷; diskmgmt; diskmgmt.msc
+
+[%windir%\system32\mmc.exe %windir%\system32\gpedit.msc]
+keywords = 组策略; 组策略编辑器; 本地组策略; gpedit; gpedit.msc
+
+[%windir%\system32\mmc.exe %windir%\system32\certmgr.msc]
+keywords = 证书; 证书管理; 根证书; certmgr; certmgr.msc
+
+[%windir%\system32\OptionalFeatures.exe]
+keywords = windows功能; 启用或关闭windows功能; hyper-v; wsl; linux子系统; 虚拟机平台; .net; telnet; optionalfeatures
+
+[%windir%\system32\UserAccountControlSettings.exe]
+keywords = uac; 用户账户控制; 用户帐户控制; 弹窗提示
+
+[%windir%\system32\control.exe /name Microsoft.PowerOptions]
+keywords = 电源选项; 电源计划; 高性能; 卓越性能; 节能; powercfg; powercfg.cpl
+
+[ms-settings:about]
+keywords = 关于; 电脑配置; 配置; 系统信息; 系统版本; 版本号; 计算机名; 重命名电脑; 设备名称; 内存大小; 产品id
+
+[ms-settings:display]
+keywords = 显示; 屏幕; 显示器; 分辨率; 缩放; 缩放比例; dpi; 刷新率; 多显示器; 扩展屏幕; 副屏; 亮度; 夜间模式; 护眼模式; hdr
+
+[ms-settings:sound]
+keywords = 声音; 音量; 扬声器; 耳机; 音箱; 麦克风; 输出设备; 输入设备; 声音设置
+
+[ms-settings:batterysaver]
+keywords = 电源; 电池; 省电; 节电模式; 睡眠; 休眠; 关闭屏幕; 盖上盖子; 电源模式
+
+[ms-settings:storagesense]
+keywords = 存储; 磁盘空间; c盘满了; 清理垃圾; 清理c盘; 存储感知; 临时文件
+
+[ms-settings:notifications]
+keywords = 通知; 勿扰; 免打扰; 专注; 弹窗
+
+[ms-settings:clipboard]
+keywords = 剪贴板; 剪切板; 剪贴板历史; 粘贴历史
+
+[ms-settings:multitasking]
+keywords = 分屏; 贴靠; 窗口贴靠; 多任务; alt+tab; 虚拟桌面
+
+[ms-settings:recovery]
+keywords = 重置; 重置此电脑; 恢复出厂; 重装系统; 高级启动; 安全模式; 回退
+
+[ms-settings:activation]
+keywords = 激活; 激活windows; 产品密钥; 序列号; 许可证
+
+[ms-settings:troubleshoot]
+keywords = 疑难解答; 故障排除; 修复问题
+
+[ms-settings:remotedesktop]
+keywords = 远程桌面; 远程控制; mstsc; rdp
+
+[ms-settings:project]
+keywords = 投影; 投屏; 无线投屏; miracast
+
+[ms-settings:optionalfeatures]
+keywords = 可选功能; 添加功能
+
+[ms-settings:windowsupdate]
+keywords = 更新; 系统更新; windows更新; 升级; 补丁; 暂停更新; 关闭更新; 检查更新; 更新历史记录
+
+# ---------------------------------------------------------------- 应用
+
+[ms-settings:installed-apps]
+keywords = 卸载; 卸载软件; 卸载程序; 删除软件; 已安装的应用; 应用列表; 程序和功能; appwiz; appwiz.cpl
+
+[ms-settings:defaultapps]
+keywords = 默认应用; 默认程序; 默认浏览器; 打开方式; 文件关联
+
+[ms-settings:startupapps]
+keywords = 启动项; 开机启动; 开机自启; 自启动; 开机启动项; 启动应用
+
+# ---------------------------------------------------------------- 外观、输入、设备
+
+[ms-settings:personalization-background]
+keywords = 壁纸; 桌面壁纸; 桌面背景; 背景图片; 换壁纸
+
+[ms-settings:colors]
+keywords = 深色模式; 浅色模式; 暗色模式; 黑暗模式; 夜间主题; 主题色; 强调色; 透明效果
+
+[ms-settings:themes]
+keywords = 主题; 桌面图标; 此电脑图标; 回收站图标; 鼠标指针
+
+[ms-settings:lockscreen]
+keywords = 锁屏; 锁屏壁纸; 锁屏界面; 屏幕保护
+
+[ms-settings:taskbar]
+keywords = 任务栏; 托盘; 系统托盘; 通知区域; 任务栏图标; 隐藏任务栏
+
+[ms-settings:personalization-start]
+keywords = 开始菜单; 开始屏幕; 推荐的项目
+
+[ms-settings:fonts]
+keywords = 字体; 安装字体; 字体设置
+
+[ms-settings:dateandtime]
+keywords = 时间; 日期; 时区; 同步时间; 校准时间; 时钟
+
+[ms-settings:regionlanguage]
+keywords = 语言; 显示语言; 中文; 英文; 区域; 地区; 日期格式
+
+[ms-settings:keyboard]
+keywords = 输入法; 键盘; 中文输入法; 微软拼音; 切换输入法; 键盘布局
+
+[ms-settings:mousetouchpad]
+keywords = 鼠标; 鼠标速度; 指针速度; 滚轮; 滚动行数; 左右键
+
+[ms-settings:devices-touchpad]
+keywords = 触摸板; 触控板; 手势
+
+[ms-settings:bluetooth]
+keywords = 蓝牙; bluetooth; 配对; 蓝牙耳机; 添加设备
+
+[ms-settings:printers]
+keywords = 打印机; 扫描仪; 添加打印机; 打印
+
+[ms-settings:gaming-gamebar]
+keywords = 游戏栏; 录屏; xbox game bar; win+g
+
+# ---------------------------------------------------------------- 账户和隐私
+
+[ms-settings:signinoptions]
+keywords = 登录选项; 开机密码; 改密码; 修改密码; pin; pin码; 指纹; 人脸识别; windows hello; 动态锁
+
+[ms-settings:yourinfo]
+keywords = 账户; 帐户; 微软账户; 用户头像
+
+[ms-settings:otherusers]
+keywords = 其他用户; 添加用户; 新建用户; 删除用户
+
+[ms-settings:privacy-microphone]
+keywords = 麦克风权限; 话筒权限
+
+[ms-settings:privacy-webcam]
+keywords = 摄像头权限; 相机权限
+
+[%windir%\system32\control.exe /name Microsoft.CredentialManager]
+keywords = 凭据; 凭证; 保存的密码; 密码管理; windows凭据; 网络密码
+
+[%windir%\system32\control.exe /name Microsoft.WindowsFirewall]
+keywords = 防火墙; 关闭防火墙; firewall; firewall.cpl
+
+[%windir%\system32\control.exe /name Microsoft.FolderOptions]
+keywords = 文件夹选项; 显示隐藏文件; 隐藏文件; 扩展名; 显示扩展名; 文件扩展名; 后缀名
+
+[%windir%\system32\control.exe /name Microsoft.RegionAndLanguage]
+keywords = 区域; 系统区域设置; 非unicode; 乱码; intl.cpl
+
+[%windir%\system32\control.exe /name Microsoft.Fonts]
+keywords = 字体; 字体文件夹; 安装字体; fonts
+
+# ---------------------------------------------------------------- 经典控制面板（开始菜单和清单里没有的）
+
+[sound-control-panel]
+name = 声音（播放和录制设备） | Sound (playback and recording devices)
+open = mmsys.cpl
+kind = control
+keywords = 声音; 播放设备; 录制设备; 音频设备; 声音设备; 默认设备; 麦克风; 扬声器; 立体声混音; 采样率; 声道; mmsys; mmsys.cpl
+
+[programs-and-features]
+name = 程序和功能 | Programs and Features
+open = appwiz.cpl
+kind = control
+keywords = 卸载; 卸载程序; 卸载软件; 已安装程序; 添加删除程序; appwiz; appwiz.cpl
+
+[system-properties]
+name = 系统属性 | System Properties
+open = sysdm.cpl
+kind = control
+keywords = 系统属性; 计算机名; 工作组; sysdm; sysdm.cpl
+
+[mouse-properties]
+name = 鼠标属性 | Mouse Properties
+open = main.cpl
+kind = control
+keywords = 鼠标; 鼠标指针; 光标; 双击速度; 指针方案; main.cpl
+
+[date-and-time-panel]
+name = 日期和时间（控制面板） | Date and Time (Control Panel)
+open = timedate.cpl
+kind = control
+keywords = 时间; 日期; 时区; internet时间; 时间服务器; timedate; timedate.cpl
+
+[user-accounts-advanced]
+name = 用户账户（自动登录） | User Accounts (automatic sign-in)
+open = netplwiz.exe
+keywords = 自动登录; 免密码登录; 开机不输密码; 用户账户; 用户帐户; netplwiz; userpasswords2
+
+# ---------------------------------------------------------------- 管理工具（开始菜单里没有的）
+
+[disk-management]
+name = 磁盘管理 | Disk Management
+open = %windir%\system32\mmc.exe %windir%\system32\diskmgmt.msc
+keywords = 分区; 硬盘分区; 格式化; 盘符; 驱动器号; 扩展卷; 压缩卷; 新建卷; diskmgmt; diskmgmt.msc
+
+[group-policy]
+name = 本地组策略编辑器 | Local Group Policy Editor
+open = %windir%\system32\mmc.exe %windir%\system32\gpedit.msc
+keywords = 组策略; 本地组策略; 策略; gpedit; gpedit.msc
+
+[local-users]
+name = 本地用户和组 | Local Users and Groups
+open = %windir%\system32\mmc.exe %windir%\system32\lusrmgr.msc
+keywords = 本地用户; 用户组; 管理员组; administrators; lusrmgr; lusrmgr.msc
+
+[shared-folders]
+name = 共享文件夹 | Shared Folders
+open = %windir%\system32\mmc.exe %windir%\system32\fsmgmt.msc
+keywords = 共享; 网络共享; 我的共享; 会话; fsmgmt; fsmgmt.msc
+
+[certificates]
+name = 证书管理器 | Certificate Manager
+open = %windir%\system32\mmc.exe %windir%\system32\certmgr.msc
+keywords = 证书; 根证书; 个人证书; certmgr; certmgr.msc
+
+[run-dialog]
+name = 运行 | Run
+open = shell:::{2559a1f3-21d7-11d4-bdaf-00c04f60b9f0}
+icon = %SystemRoot%\System32\imageres.dll,-100
+keywords = 运行对话框; win+r; run
+
+[all-tasks]
+name = 所有任务（上帝模式） | All Tasks (God Mode)
+open = shell:::{ED7BA470-8E54-465E-825C-99712043E01C}
+keywords = 上帝模式; 所有设置; 全部设置; godmode; god mode; all tasks
+
+# ---------------------------------------------------------------- 文件夹
+
+[recycle-bin]
+name = 回收站 | Recycle Bin
+open = shell:RecycleBinFolder
+keywords = 垃圾桶; 废纸篓; 已删除; recycle
+
+[this-pc]
+name = 此电脑 | This PC
+open = shell:MyComputerFolder
+keywords = 我的电脑; 计算机; 这台电脑; my computer
+
+[startup-folder]
+name = 启动文件夹 | Startup folder
+open = shell:startup
+keywords = 开机启动; 开机自启; 自启动; 启动项; startup
+
+[common-startup-folder]
+name = 启动文件夹（所有用户） | Startup folder (all users)
+open = shell:common startup
+keywords = 开机启动; 开机自启; 自启动; 启动项; startup
+
+[sendto-folder]
+name = “发送到”文件夹 | SendTo folder
+open = shell:sendto
+keywords = 发送到; 右键发送到; sendto
+
+[start-menu-folder]
+name = 开始菜单文件夹 | Start Menu folder
+open = shell:programs
+keywords = 开始菜单; 程序文件夹; 快捷方式; start menu
+
+[temp-folder]
+name = 临时文件夹 | Temp folder
+open = %TEMP%
+keywords = 临时文件; 缓存; temp; tmp
+
+[appdata-roaming]
+name = AppData（Roaming） | AppData (Roaming)
+open = %APPDATA%
+keywords = appdata; roaming; 应用数据; 程序数据; 配置文件
+
+[appdata-local]
+name = AppData（Local） | AppData (Local)
+open = %LOCALAPPDATA%
+keywords = appdata; local; localappdata; 应用数据; 程序数据
+
+[hosts-folder]
+name = hosts 文件所在文件夹 | Folder of the hosts file
+open = %windir%\System32\drivers\etc
+keywords = hosts; etc; 域名解析; 改hosts
+
+# ---------------------------------------------------------------- Windows 安全中心
+# 清单里这些页面的名称只解析得出英文，所以在这里写。
+
+[security-virus]
+name = 病毒和威胁防护 | Virus & threat protection
+open = windowsdefender://threat
+kind = security
+icon = app:Microsoft.SecHealthUI_8wekyb3d8bbwe!SecHealthUI
+keywords = 杀毒; 病毒; 扫描病毒; 查杀; 实时保护; 关闭实时保护; 排除项; 白名单; defender; 篡改防护
+
+[security-history]
+name = 保护历史记录 | Protection history
+open = windowsdefender://history
+kind = security
+icon = app:Microsoft.SecHealthUI_8wekyb3d8bbwe!SecHealthUI
+keywords = 隔离区; 被删除的文件; 误删; 误报; 威胁记录; 恢复文件
+
+[security-firewall]
+name = 防火墙和网络保护 | Firewall & network protection
+open = windowsdefender://network
+kind = security
+icon = app:Microsoft.SecHealthUI_8wekyb3d8bbwe!SecHealthUI
+keywords = 防火墙; 关闭防火墙; 网络保护
+
+[security-appbrowser]
+name = 应用和浏览器控制 | App & browser control
+open = windowsdefender://appbrowser
+kind = security
+icon = app:Microsoft.SecHealthUI_8wekyb3d8bbwe!SecHealthUI
+keywords = smartscreen; 智能应用控制; 下载拦截; 应用拦截
+
+[security-device]
+name = 设备安全性 | Device security
+open = windowsdefender://devicesecurity
+kind = security
+icon = app:Microsoft.SecHealthUI_8wekyb3d8bbwe!SecHealthUI
+keywords = 内核隔离; 内存完整性; tpm; 安全启动; 安全处理器

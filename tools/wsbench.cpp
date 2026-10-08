@@ -16,6 +16,11 @@
 //                      and program folders unless --all) and reports its size,
 //                      how fast it was read, and lookup times; --verify reads
 //                      every file a lookup rules out, to show none is missed
+//   wsbench --places [query ...]
+//                      reads the places (Settings, Control Panel, places.txt)
+//                      as the app does and lists them, or the best places for
+//                      each query; reports keyword blocks of places.txt that
+//                      match no place here
 //
 // Default snapshot: %LOCALAPPDATA%\WinShun\index.bin
 #include "ContentIndex.h"
@@ -28,6 +33,7 @@
 #include "Query.h"
 #include "Settings.h"
 #include "Snapshot.h"
+#include "SystemCatalog.h"
 #include "TextUtil.h"
 #include "Win32Util.h"
 #include "Wtf8.h"
@@ -35,6 +41,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QStandardPaths>
 
 #include <windows.h>
@@ -1188,6 +1195,44 @@ void printHeap(const char* label)
             static_cast<double>(hs.cbAllocated) / (1024.0 * 1024.0), static_cast<double>(hs.cbCommitted) / (1024.0 * 1024.0));
 }
 
+// ---- places (--places) -----------------------------------------------------
+
+int runPlaces(const QStringList& queries)
+{
+    QElapsedTimer timer;
+    timer.start();
+    const ws::PlaceList places = ws::loadPlaces({});
+    std::printf("places       %zu, read in %.0f ms\n", places.size(), static_cast<double>(timer.nsecsElapsed()) / 1e6);
+
+    QFile extras(u":/winshun/places.txt"_s);
+    if (extras.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        ws::PlaceList copy = places;
+        for (const QString& header : ws::applyPlaceExtras(copy, QString::fromUtf8(extras.readAll()), true))
+            std::printf("places.txt: no place here opens [%s]\n", qUtf8Printable(header));
+    }
+
+    if (queries.isEmpty()) {
+        for (const ws::PlaceInfo& p : places) {
+            std::printf("%s | %s | %zu + %zu keywords\n", qUtf8Printable(p.name), qUtf8Printable(p.command),
+                p.folded.size(), p.ownFolded.size());
+        }
+        return 0;
+    }
+    for (const QString& text : queries) {
+        const ws::ParsedQuery query = ws::parseQuery(text);
+        const ws::NameMatcher matcher(query);
+        timer.restart();
+        const std::vector<ws::PlaceHit> hits = ws::searchPlaces(places, query, matcher, {});
+        const double us = static_cast<double>(timer.nsecsElapsed()) / 1e3;
+        std::printf("\n%s  (%zu, %.0f us)\n", qUtf8Printable(text), hits.size(), us);
+        for (std::size_t i = 0; i < std::min<std::size_t>(hits.size(), 8); ++i) {
+            const ws::PlaceInfo& p = places[hits[i].index];
+            std::printf("  %4d  %s | %s\n", hits[i].score, qUtf8Printable(p.name), qUtf8Printable(p.command));
+        }
+    }
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char* argv[])
@@ -1203,6 +1248,10 @@ int main(int argc, char* argv[])
     }
     if (args.contains(u"--mft"_s))
         return runMftCheck(!args.contains(u"--no-compare"_s));
+    if (args.contains(u"--places"_s)) {
+        args.removeAll(u"--places"_s);
+        return runPlaces(args);
+    }
     QString path = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + u"/WinShun/index.bin"_s;
     if (!args.isEmpty() && args.first().endsWith(u".bin"))
         path = args.takeFirst();

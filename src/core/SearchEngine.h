@@ -16,10 +16,12 @@ namespace ws {
 
 class AppCatalog;
 class IndexService;
+class SystemCatalog;
 
 // Runs searches on a worker thread. Only the newest request matters: a new
 // submit() cancels whatever is running, so typing never queues up work.
-// Name searches also go through the installed apps (`apps` may be null).
+// Name searches also go through the installed apps and the places in
+// Windows (`apps` and `places` may be null).
 // Signals are emitted from the worker thread (queued to the receivers).
 class SearchEngine : public QObject {
     Q_OBJECT
@@ -40,7 +42,8 @@ public:
         int contentThreads = 4;
     };
 
-    explicit SearchEngine(IndexService* index, AppCatalog* apps = nullptr, QObject* parent = nullptr);
+    explicit SearchEngine(
+        IndexService* index, AppCatalog* apps = nullptr, SystemCatalog* places = nullptr, QObject* parent = nullptr);
     ~SearchEngine() override;
 
     quint64 submit(Request request);
@@ -66,6 +69,7 @@ private:
 
     IndexService* m_index;
     AppCatalog* m_apps;
+    SystemCatalog* m_places;
     WorkerPool m_pool {WorkerPool::defaultThreadCount()};
     std::mutex m_mutex;
     std::condition_variable_any m_cv;

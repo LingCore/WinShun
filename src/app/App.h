@@ -19,6 +19,7 @@ class QQuickWindow;
 namespace ws {
 
 class AppCatalog;
+class SystemCatalog;
 class History;
 class IndexService;
 class KeyListener;
@@ -82,6 +83,7 @@ private:
     std::unique_ptr<History> m_history;
     std::unique_ptr<IndexService> m_index;
     std::unique_ptr<AppCatalog> m_apps; // before the engine, which reads it
+    std::unique_ptr<SystemCatalog> m_places; // likewise
     std::unique_ptr<SearchEngine> m_engine;
     std::unique_ptr<Launcher> m_launcher;
     std::unique_ptr<MessageWindow> m_messages;

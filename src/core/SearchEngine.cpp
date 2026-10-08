@@ -6,6 +6,7 @@
 #include "IndexService.h"
 #include "NameSearch.h"
 #include "Query.h"
+#include "SystemCatalog.h"
 #include "TextUtil.h"
 #include "Win32Util.h"
 #include "Wtf8.h"
@@ -28,11 +29,20 @@ namespace {
 
 constexpr int kRecentOnEmptyQuery = 5; // listed with nothing typed (the history keeps more, for ranking)
 constexpr int kRecentPromoted = 3;
+// Places in 全部: the best few. Windows lists over a thousand, and words like
+// 设置 or 显示 are in hundreds of their names.
+constexpr std::size_t kPlacesShown = 5;
 
 std::shared_ptr<const AppList> appsOf(const AppCatalog* catalog)
 {
     static const auto kNone = std::make_shared<const AppList>();
     return catalog ? catalog->apps() : kNone;
+}
+
+std::shared_ptr<const PlaceList> placesOf(const SystemCatalog* catalog)
+{
+    static const auto kNone = std::make_shared<const PlaceList>();
+    return catalog ? catalog->places() : kNone;
 }
 
 const AppInfo* findApp(const AppList& apps, const QString& launchPath)
@@ -44,6 +54,15 @@ const AppInfo* findApp(const AppList& apps, const QString& launchPath)
     return it == apps.end() ? nullptr : &*it;
 }
 
+const PlaceInfo* findPlace(const PlaceList& places, const QString& path)
+{
+    const QString key = placeKeyOf(path);
+    if (key.isEmpty())
+        return nullptr;
+    const auto it = std::find_if(places.begin(), places.end(), [&](const PlaceInfo& p) { return p.key == key; });
+    return it == places.end() ? nullptr : &*it;
+}
+
 SearchResult fromApp(const AppInfo& app, bool recent)
 {
     SearchResult r;
@@ -52,6 +71,18 @@ SearchResult fromApp(const AppInfo& app, bool recent)
     r.app = app.kind;
     r.elevatable = app.elevatable;
     r.target = app.target;
+    r.recent = recent;
+    return r;
+}
+
+SearchResult fromPlace(const PlaceInfo& place, bool recent)
+{
+    SearchResult r;
+    r.name = place.name;
+    r.path = place.path();
+    r.app = place.kind;
+    r.target = place.command;
+    r.icon = place.icon;
     r.recent = recent;
     return r;
 }
@@ -131,8 +162,8 @@ void promoteHistory(SearchResults& results, const SearchEngine::Request& request
     for (const QString& path : request.history) {
         if (promoted.size() >= kRecentPromoted)
             break;
-        if (isAppLaunchPath(path))
-            continue; // apps rank by their own rules (searchApps)
+        if (isAppLaunchPath(path) || isPlacePath(path))
+            continue; // apps and places rank by their own rules (searchApps, searchPlaces)
         const auto it = std::find_if(results.begin(), results.end(),
             [&](const SearchResult& r) { return r.path.compare(path, Qt::CaseInsensitive) == 0; });
         if (it != results.end()) {
@@ -159,10 +190,11 @@ void promoteHistory(SearchResults& results, const SearchEngine::Request& request
 
 } // namespace
 
-SearchEngine::SearchEngine(IndexService* index, AppCatalog* apps, QObject* parent)
+SearchEngine::SearchEngine(IndexService* index, AppCatalog* apps, SystemCatalog* places, QObject* parent)
     : QObject(parent)
     , m_index(index)
     , m_apps(apps)
+    , m_places(places)
 {
     qRegisterMetaType<ws::SearchResults>();
     m_worker = std::jthread([this](std::stop_token stop) { workerLoop(stop); });
@@ -227,6 +259,7 @@ void SearchEngine::runNameSearch(const Job& job)
     SearchResults results;
     qint64 total = 0;
     const auto apps = appsOf(m_apps);
+    const auto places = placesOf(m_places);
 
     if (query.isEmpty()) {
         for (const QString& path : request.history) {
@@ -236,6 +269,12 @@ void SearchEngine::runNameSearch(const Job& job)
                 const AppInfo* app = request.scope == Scope::All ? findApp(*apps, path) : nullptr;
                 if (app)
                     results.push_back(fromApp(*app, true));
+                continue;
+            }
+            if (isPlacePath(path)) {
+                const PlaceInfo* place = request.scope == Scope::All ? findPlace(*places, path) : nullptr;
+                if (place)
+                    results.push_back(fromPlace(*place, true));
                 continue;
             }
             const QFileInfo info(path);
@@ -261,13 +300,35 @@ void SearchEngine::runNameSearch(const Job& job)
         // Files before folders, each in the order they ranked (recent ones first).
         std::stable_partition(results.begin(), results.end(), [](const SearchResult& r) { return !r.isDir; });
 
-        // 全部: every app found comes first, then the files and folders.
+        // 全部: every app found and the best few places come first, best
+        // first, then the files and folders.
         if (request.scope == Scope::All) {
+            struct Ranked {
+                int score;
+                SearchResult result;
+            };
+            std::vector<Ranked> ranked;
+            for (const AppHit& hit : searchApps(*apps, query, matcher, request.history))
+                ranked.push_back({hit.score, fromApp((*apps)[hit.index], false)});
+            const std::size_t appCount = ranked.size();
+            for (const PlaceHit& hit : searchPlaces(*places, query, matcher, request.history)) {
+                if (ranked.size() - appCount >= kPlacesShown)
+                    break;
+                const PlaceInfo& place = (*places)[hit.index];
+                // An app of that name (控制面板) is the same thing.
+                const bool isApp = std::any_of(ranked.cbegin(), ranked.cbegin() + appCount,
+                    [&](const Ranked& r) { return r.result.name.compare(place.name, Qt::CaseInsensitive) == 0; });
+                if (!isApp)
+                    ranked.push_back({hit.score, fromPlace(place, false)});
+            }
+            // Equal scores: apps first.
+            std::stable_sort(ranked.begin(), ranked.end(), [](const Ranked& a, const Ranked& b) { return a.score > b.score; });
+            total += static_cast<qint64>(ranked.size());
             SearchResults top;
-            for (const AppHit& hit : searchApps(*apps, query, matcher, request.history)) {
-                ++total;
-                if (top.size() < request.limit)
-                    top.push_back(fromApp((*apps)[hit.index], false));
+            for (Ranked& r : ranked) {
+                if (top.size() >= request.limit)
+                    break;
+                top.push_back(std::move(r.result));
             }
             if (!top.isEmpty()) {
                 total -= results.removeIf([&](const SearchResult& file) {

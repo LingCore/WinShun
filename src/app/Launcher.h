@@ -19,6 +19,7 @@ class AppCatalog;
 class History;
 class IndexService;
 class SearchEngine;
+class SystemCatalog;
 
 // The view-model behind the search window: query and scope in, results and
 // status out, plus the actions on a result (open, reveal, copy, ...).
@@ -45,7 +46,8 @@ public:
     enum Action { Open, Reveal, RunAsAdmin, CopyPath, CopyName, CopyItem, Recycle, ForgetRecent };
     Q_ENUM(Action)
 
-    Launcher(IndexService* index, AppCatalog* apps, SearchEngine* engine, History* history, QObject* parent = nullptr);
+    Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places, SearchEngine* engine, History* history,
+        QObject* parent = nullptr);
 
     QString query() const { return m_query; }
     void setQuery(const QString& query);
@@ -121,6 +123,7 @@ private:
     void showRows(SearchResults rows, QStringList highlights);
     void perform(const SearchResult& result, Action action);
     void performApp(const SearchResult& app, Action action);
+    void performPlace(const SearchResult& place, Action action);
     void performMany(const SearchResults& items, Action action);
     void remember(const QString& path); // opened: into the history, if it is kept
     void forgetRecent(const QStringList& paths);
@@ -136,6 +139,7 @@ private:
 
     IndexService* m_index;
     AppCatalog* m_apps;
+    SystemCatalog* m_places;
     SearchEngine* m_engine;
     History* m_history;
     ResultModel m_results;
