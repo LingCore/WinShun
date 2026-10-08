@@ -202,3 +202,12 @@ build\asan\wsfuzz.exe -max_total_time=300      # 用随机数据测 5 分钟
 ## 致谢
 
 拼音读音数据来自 [pinyin-data](https://github.com/mozillazg/pinyin-data)（MIT 许可证，见 `tools/data/pinyin-data-LICENSE.txt`）；常用字的读音以其中的《通用规范汉字字典》（2013）数据为准。
+
+## 许可证
+
+本项目的代码以 [MIT 许可证](LICENSE) 发布。
+
+以下随附的第三方内容不在 MIT 许可范围内，按各自的许可使用：
+
+- `resources/fonts/` 下的阿里巴巴普惠体 3.0：版权归阿里巴巴集团所有，按其免费商用授权随程序附带。
+- `tools/data/pinyin.txt` 等拼音数据：来自 pinyin-data，MIT 许可证，见 `tools/data/pinyin-data-LICENSE.txt`。
