@@ -15,8 +15,7 @@ namespace ws {
 // Checking for updates. There is no server of our own: new versions are
 // GitHub releases (scripts/release.ps1 -Publish), and this asks GitHub's
 // public API which one is the latest. A newer one is announced; "download"
-// opens its release page in the browser, and the user unzips it over the old
-// folder. Nothing is downloaded or replaced here: an unsigned program that
+// opens its release page in the browser, and the user runs its installer. Nothing is downloaded or replaced here: an unsigned program that
 // fetches executables and rewrites its own files is what antivirus
 // heuristics flag, and this one runs as administrator.
 // The request carries nothing personal. GUI thread only.
@@ -34,8 +33,6 @@ class Updater : public QObject {
     Q_PROPERTY(QVariantList highlights READ highlights NOTIFY changed FINAL) // [{symbol, text}]
     Q_PROPERTY(QString problem READ problem NOTIFY changed FINAL) // why the last manual check failed
     Q_PROPERTY(QDateTime lastChecked READ lastChecked NOTIFY changed FINAL)
-    // Installed with Setup (it leaves its uninstaller next to the exe), not the portable zip.
-    Q_PROPERTY(bool installed READ installed CONSTANT FINAL)
 
 public:
     static constexpr auto kRepository = "LingCore/WinShun";
@@ -51,7 +48,6 @@ public:
     QVariantList highlights() const;
     QString problem() const { return m_problem; }
     QDateTime lastChecked() const { return m_lastChecked; }
-    bool installed() const;
 
     void setAutomatic(bool on); // at startup and when the setting changes
     void setChinese(bool chinese); // which half of the release notes to show

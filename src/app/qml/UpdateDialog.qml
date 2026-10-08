@@ -103,9 +103,7 @@ Item {
                         width: parent.width
                         visible: text.length > 0
                         text: dialog.updater.checking ? ""
-                            : card.newer && dialog.updater.installed
-                              ? qsTr("你现在用的是 %1。下载安装程序（Setup）运行就行，它会先关掉正在运行的 Win顺，设置和索引都会保留。").arg(dialog.updater.currentVersion)
-                            : card.newer ? qsTr("你现在用的是 %1。在托盘菜单里退出 Win顺，把下载的压缩包解压后覆盖原来的文件夹就行，设置和索引都会保留。").arg(dialog.updater.currentVersion)
+                            : card.newer ? qsTr("你现在用的是 %1。下载安装程序（Setup）运行就行，它会先关掉正在运行的 Win顺，设置和索引都会保留。").arg(dialog.updater.currentVersion)
                             : dialog.updater.problem.length > 0 ? dialog.updater.problem
                             : qsTr("Win顺 %1 是目前最新的版本。").arg(dialog.updater.currentVersion)
                         color: !card.newer && dialog.updater.problem.length > 0 ? Theme.danger : Theme.subtext
