@@ -74,7 +74,7 @@ int main(int argc, char* argv[])
     QGuiApplication app(argc, argv);
     if (setPlatform)
         qunsetenv("QT_QPA_PLATFORM"); // programs we launch must not inherit it
-    QGuiApplication::setApplicationDisplayName(u"Win顺"_s);
+    QGuiApplication::setApplicationDisplayName(u"Win顺"_s); // in English "WinShun" (App::applyAppearance)
     QGuiApplication::setQuitOnLastWindowClosed(false);
 
     QCommandLineParser parser;

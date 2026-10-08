@@ -36,7 +36,9 @@ QtObject {
     readonly property color controlPressed: dark ? "#323232" : "#F0F0F0"
     readonly property color controlBorder: dark ? "#444444" : "#D5D5D5"
     readonly property color inputFocused: dark ? "#1F1F1F" : "#FFFFFF"
-    readonly property color onAccent: dark ? "#000000" : "#FFFFFF"
+    // Not "onAccent": a name of on + capital letter reads as a signal handler,
+    // and such a property was never re-evaluated when the theme changed.
+    readonly property color accentText: dark ? "#000000" : "#FFFFFF"
     readonly property color menuBackground: dark ? "#2C2C2C" : "#F9F9F9"
     readonly property color menuHover: dark ? "#3A3A3A" : "#ECECEC"
     readonly property color danger: dark ? "#FF99A4" : "#C42B1C"

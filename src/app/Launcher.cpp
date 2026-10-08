@@ -37,6 +37,8 @@ namespace {
 // threads over 6, and little more beyond 32 (measured with Defender).
 constexpr int kContentThreads = 16;
 
+constexpr qsizetype kShownExtensions = 3; // named in the search box and the status line
+
 QString number(qint64 n)
 {
     return QLocale().toString(n);
@@ -113,28 +115,36 @@ bool Launcher::busy() const
         || (m_contentRunning && !m_quiet);
 }
 
+// The first few content extensions, ".txt / .md / .log": the full default
+// list would overflow the search box.
+QString Launcher::shownExtensions() const
+{
+    QStringList parts;
+    for (const QString& ext : m_contentExtensions.first(std::min(kShownExtensions, m_contentExtensions.size())))
+        parts.append(u'.' + ext);
+    return parts.join(u" / "_s);
+}
+
 QString Launcher::contentFilesLabel() const
 {
-    constexpr qsizetype kShown = 3; // the full default list would overflow the search box
-    QStringList parts;
-    for (const QString& ext : m_contentExtensions.first(std::min(kShown, m_contentExtensions.size())))
-        parts.append(u'.' + ext);
-    return parts.join(u" / "_s) + (m_contentExtensions.size() > kShown ? u" 等文件"_s : u" 文件"_s);
+    return m_contentExtensions.size() > kShownExtensions ? tr("%1 等文件").arg(shownExtensions())
+                                                         : tr("%1 文件").arg(shownExtensions());
 }
 
 QString Launcher::placeholder() const
 {
     switch (m_scope) {
     case Apps:
-        return u"搜索已安装的应用"_s;
+        return tr("搜索已安装的应用");
     case Files:
-        return u"搜索文件"_s;
+        return tr("搜索文件");
     case Folders:
-        return u"搜索文件夹"_s;
+        return tr("搜索文件夹");
     case Content:
-        return u"搜索 %1中的文字"_s.arg(contentFilesLabel());
+        return m_contentExtensions.size() > kShownExtensions ? tr("搜索 %1 等文件中的文字").arg(shownExtensions())
+                                                             : tr("搜索 %1 文件中的文字").arg(shownExtensions());
     default:
-        return u"搜索应用、文件和文件内容"_s;
+        return tr("搜索应用、文件和文件内容");
     }
 }
 
@@ -160,6 +170,13 @@ void Launcher::handleShown()
     m_apps->refresh(); // reads the list again only if apps were installed or removed
     search(); // refresh: files may have changed, and "recent" certainly has
     emit shown();
+}
+
+void Launcher::retranslate()
+{
+    m_results.retranslate();
+    emit scopeChanged(); // placeholder, contentFilesLabel
+    refreshStatus();
 }
 
 void Launcher::handleHidden()
@@ -375,59 +392,60 @@ void Launcher::onContentProgress(quint64 id, int scanned, int total, bool finish
 void Launcher::refreshStatus()
 {
     const auto state = m_index->state();
-    const QString items = number(static_cast<qint64>(m_index->itemCount()));
+    const int items = static_cast<int>(m_index->itemCount());
+    const int apps = static_cast<int>(m_apps->apps()->size());
     // Waiting for a pause in typing counts too: "0 个结果 · 9 毫秒" would read as final.
     const bool contentPending = !m_quiet && (m_contentRunning || m_contentDebounce.isActive());
     QString s;
     if (m_scope == Apps) {
         const qint64 ms = m_elapsedUs / 1000;
         if (!m_apps->isLoaded())
-            s = u"正在读取已安装的应用…"_s;
+            s = tr("正在读取已安装的应用…");
         else if (m_query.trimmed().isEmpty() || !m_haveResults)
-            s = u"已安装 %1 个应用"_s.arg(number(static_cast<qint64>(m_apps->apps()->size())));
+            s = tr("已安装 %Ln 个应用", nullptr, apps);
         else
-            s = u"%1 个应用 · %2 毫秒"_s.arg(number(m_totalMatches), ms < 1 ? u"<1"_s : number(ms));
+            s = tr("%Ln 个应用 · %1 毫秒", nullptr, static_cast<int>(m_totalMatches)).arg(ms < 1 ? u"<1"_s : number(ms));
     } else if (m_query.trimmed().isEmpty() || (!m_haveResults && !m_contentRunning)) {
         switch (state) {
         case IndexService::State::Idle:
         case IndexService::State::Loading:
-            s = u"正在加载索引…"_s;
+            s = tr("正在加载索引…");
             break;
         case IndexService::State::Building:
-            s = u"正在建立索引… 已收录 %1 项"_s.arg(items);
+            s = tr("正在建立索引… 已收录 %Ln 项", nullptr, items);
             break;
         case IndexService::State::Ready:
-            s = u"已索引 %1 个文件和文件夹"_s.arg(items);
+            s = tr("已索引 %Ln 个文件和文件夹", nullptr, items);
             if (m_apps->isLoaded())
-                s += u" · %1 个应用"_s.arg(number(static_cast<qint64>(m_apps->apps()->size())));
+                s += tr(" · %Ln 个应用", nullptr, apps);
             if (m_index->isRefreshing())
-                s += u" · 后台同步中"_s;
+                s += tr(" · 后台同步中");
             break;
         }
     } else if (m_scope == Content) {
         if (contentPending)
-            s = m_contentTotal > 0 ? u"正在搜索 %1内容… %2 / %3"_s.arg(
-                    contentFilesLabel(), number(m_contentScanned), number(m_contentTotal))
-                                   : u"正在搜索 %1内容…"_s.arg(contentFilesLabel());
+            s = m_contentTotal > 0 ? tr("正在搜索 %1内容… %2 / %3")
+                                         .arg(contentFilesLabel(), number(m_contentScanned), number(m_contentTotal))
+                                   : tr("正在搜索 %1内容…").arg(contentFilesLabel());
         else if (m_contentScanned < m_contentTotal && m_results.count() > 0)
-            s = u"已显示前 %1 个包含该文字的文件（共 %2 个 %3）"_s.arg(
-                number(m_results.count()), number(m_contentTotal), contentFilesLabel());
+            s = tr("已显示前 %Ln 个包含该文字的文件（共 %1 个 %2）", nullptr, m_results.count())
+                    .arg(number(m_contentTotal), contentFilesLabel());
         else
-            s = u"%1 个文件包含该文字 · 共查找 %2 个 %3"_s.arg(
-                number(m_results.count()), number(m_contentTotal), contentFilesLabel());
+            s = tr("%Ln 个文件包含该文字 · 共查找 %1 个 %2", nullptr, m_results.count())
+                    .arg(number(m_contentTotal), contentFilesLabel());
     } else {
         const qint64 ms = m_elapsedUs / 1000;
-        const QString results = number(m_totalMatches + m_contentHits);
+        const int results = static_cast<int>(m_totalMatches + m_contentHits);
         if (contentPending)
-            s = m_contentTotal > 0
-                ? u"%1 个结果 · 正在搜索内容… %2 / %3"_s.arg(results, number(m_contentScanned), number(m_contentTotal))
-                : u"%1 个结果 · 正在搜索内容…"_s.arg(results);
+            s = m_contentTotal > 0 ? tr("%Ln 个结果 · 正在搜索内容… %1 / %2", nullptr, results)
+                                         .arg(number(m_contentScanned), number(m_contentTotal))
+                                   : tr("%Ln 个结果 · 正在搜索内容…", nullptr, results);
         else if (m_contentHits > 0)
-            s = u"%1 个结果 · 其中 %2 个是文件内容匹配"_s.arg(results, number(m_contentHits));
+            s = tr("%Ln 个结果 · 其中 %1 个是文件内容匹配", nullptr, results).arg(number(m_contentHits));
         else
-            s = u"%1 个结果 · %2 毫秒"_s.arg(results, ms < 1 ? u"<1"_s : number(ms));
+            s = tr("%Ln 个结果 · %1 毫秒", nullptr, results).arg(ms < 1 ? u"<1"_s : number(ms));
         if (state == IndexService::State::Building)
-            s += u" · 索引尚未建完"_s;
+            s += tr(" · 索引尚未建完");
     }
     if (s != m_status) {
         m_status = s;
@@ -473,7 +491,7 @@ void Launcher::perform(const SearchResult& result, Action action)
         if (action == Recycle)
             m_results.remove(r.path);
         m_history->remove(r.path);
-        flash(u"“%1” 已不存在"_s.arg(r.name));
+        flash(tr("“%1” 已不存在").arg(r.name));
         return;
     }
     switch (action) {
@@ -490,15 +508,15 @@ void Launcher::perform(const SearchResult& result, Action action)
         break;
     case CopyPath:
         shell::copyText(r.path);
-        flash(u"已复制路径"_s);
+        flash(tr("已复制路径"));
         break;
     case CopyName:
         shell::copyText(r.name);
-        flash(u"已复制名称"_s);
+        flash(tr("已复制名称"));
         break;
     case CopyItem:
         shell::copyFiles({r.path});
-        flash(u"已复制，可在资源管理器中粘贴"_s);
+        flash(tr("已复制，可在资源管理器中粘贴"));
         break;
     case Recycle: {
         const auto owner = m_window ? reinterpret_cast<HWND>(m_window->winId()) : nullptr;
@@ -522,7 +540,7 @@ void Launcher::performApp(const SearchResult& app, Action action)
     case Open:
     case RunAsAdmin:
         if (action == RunAsAdmin && !app.elevatable) {
-            flash(u"“%1”不能以管理员身份运行"_s.arg(app.name));
+            flash(tr("“%1”不能以管理员身份运行").arg(app.name));
             return;
         }
         m_history->record(app.path);
@@ -531,7 +549,7 @@ void Launcher::performApp(const SearchResult& app, Action action)
         break;
     case Reveal:
         if (app.target.isEmpty() || !QFileInfo::exists(app.target)) {
-            flash(u"“%1”没有可以打开的位置"_s.arg(app.name));
+            flash(tr("“%1”没有可以打开的位置").arg(app.name));
             return;
         }
         m_history->record(app.path);
@@ -544,17 +562,17 @@ void Launcher::performApp(const SearchResult& app, Action action)
     case CopyItem:
         if (app.hasCopyableTarget() && QFileInfo::exists(app.target)) {
             shell::copyFiles({app.target});
-            flash(u"已复制，可在资源管理器中粘贴"_s);
+            flash(tr("已复制，可在资源管理器中粘贴"));
             break;
         }
         [[fallthrough]]; // nothing to paste: copy where it is instead
     case CopyPath:
         shell::copyText(app.target.isEmpty() ? app.path : app.target);
-        flash(u"已复制路径"_s);
+        flash(tr("已复制路径"));
         break;
     case CopyName:
         shell::copyText(app.name);
-        flash(u"已复制名称"_s);
+        flash(tr("已复制名称"));
         break;
     case Recycle:
         break; // apps are uninstalled in Windows Settings
@@ -577,7 +595,7 @@ std::function<void(bool)> Launcher::reportFailure(const QString& name)
 void Launcher::onRecycled(const SearchResult& result, bool ok)
 {
     if (QFileInfo::exists(result.path)) { // cancelled, in use, access denied...
-        flash(u"没有删除“%1”"_s.arg(result.name));
+        flash(tr("没有删除“%1”").arg(result.name));
         return;
     }
     m_history->remove(result.path);
@@ -590,7 +608,7 @@ void Launcher::onRecycled(const SearchResult& result, bool ok)
             --m_totalMatches;
     }
     refreshStatus();
-    flash(ok ? u"已将“%1”移到回收站"_s.arg(result.name) : u"已删除“%1”"_s.arg(result.name));
+    flash((ok ? tr("已将“%1”移到回收站") : tr("已删除“%1”")).arg(result.name));
 }
 
 QVariantList Launcher::menuItems(int row) const
@@ -612,28 +630,28 @@ QVariantList Launcher::menuItems(int row) const
     // Glyph.qml draws.
     QVariantList items;
     if (r->isApp()) {
-        items.append(entry(Open, u"打开"_s, u"Enter"_s, u"\uE8A7"_s)); // OpenInNewWindow
+        items.append(entry(Open, tr("打开"), u"Enter"_s, u"\uE8A7"_s)); // OpenInNewWindow
         if (r->elevatable)
-            items.append(entry(RunAsAdmin, u"以管理员身份运行"_s, u"Ctrl+Shift+Enter"_s, u"\uE7EF"_s));
+            items.append(entry(RunAsAdmin, tr("以管理员身份运行"), u"Ctrl+Shift+Enter"_s, u"\uE7EF"_s));
         if (!r->target.isEmpty())
-            items.append(entry(Reveal, r->isPackagedApp() ? u"打开安装文件夹"_s : u"打开所在位置"_s, u"Ctrl+Enter"_s,
+            items.append(entry(Reveal, r->isPackagedApp() ? tr("打开安装文件夹") : tr("打开所在位置"), u"Ctrl+Enter"_s,
                 u"\uE8DA"_s));
         items.append(separator);
         if (r->hasCopyableTarget())
-            items.append(entry(CopyItem, u"复制"_s, u"Ctrl+C"_s, u""_s));
+            items.append(entry(CopyItem, tr("复制"), u"Ctrl+C"_s, u""_s));
         if (!r->target.isEmpty())
-            items.append(entry(CopyPath, u"复制完整路径"_s, u"Ctrl+Shift+C"_s, u"copyPath"_s));
-        items.append(entry(CopyName, u"复制名称"_s, QString(), u"\uE8AC"_s));
+            items.append(entry(CopyPath, tr("复制完整路径"), u"Ctrl+Shift+C"_s, u"copyPath"_s));
+        items.append(entry(CopyName, tr("复制名称"), QString(), u"\uE8AC"_s));
         return items;
     }
-    items.append(entry(Open, r->isDir ? u"打开文件夹"_s : u"打开"_s, u"Enter"_s, r->isDir ? u"\uE838"_s : u"\uE8E5"_s));
-    items.append(entry(Reveal, u"打开所在位置"_s, u"Ctrl+Enter"_s, u"\uE8DA"_s));
+    items.append(entry(Open, r->isDir ? tr("打开文件夹") : tr("打开"), u"Enter"_s, r->isDir ? u"\uE838"_s : u"\uE8E5"_s));
+    items.append(entry(Reveal, tr("打开所在位置"), u"Ctrl+Enter"_s, u"\uE8DA"_s));
     if (!r->isDir && shell::canRunAsAdministrator(r->path))
-        items.append(entry(RunAsAdmin, u"以管理员身份运行"_s, u"Ctrl+Shift+Enter"_s, u"\uE7EF"_s));
+        items.append(entry(RunAsAdmin, tr("以管理员身份运行"), u"Ctrl+Shift+Enter"_s, u"\uE7EF"_s));
     items.append(separator);
-    items.append(entry(CopyItem, u"复制"_s, u"Ctrl+C"_s, u"\uE8C8"_s));
-    items.append(entry(CopyPath, u"复制完整路径"_s, u"Ctrl+Shift+C"_s, u"copyPath"_s));
-    items.append(entry(CopyName, u"复制名称"_s, QString(), u"\uE8AC"_s));
+    items.append(entry(CopyItem, tr("复制"), u"Ctrl+C"_s, u"\uE8C8"_s));
+    items.append(entry(CopyPath, tr("复制完整路径"), u"Ctrl+Shift+C"_s, u"copyPath"_s));
+    items.append(entry(CopyName, tr("复制名称"), QString(), u"\uE8AC"_s));
     return items;
 }
 

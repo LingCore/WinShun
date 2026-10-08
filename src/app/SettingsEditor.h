@@ -30,6 +30,8 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool contentInLowPriority READ contentInLowPriority WRITE setContentInLowPriority NOTIFY changed FINAL)
     Q_PROPERTY(QString contentIndexStatus READ contentIndexStatus NOTIFY contentIndexStatusChanged FINAL)
     Q_PROPERTY(QString renderer READ renderer WRITE setRenderer NOTIFY changed FINAL)
+    Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY changed FINAL)
+    Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY changed FINAL)
     Q_PROPERTY(bool restartRequired READ restartRequired NOTIFY changed FINAL)
     Q_PROPERTY(bool isDefault READ isDefault NOTIFY changed FINAL)
     Q_PROPERTY(QString dataFolder READ dataFolder CONSTANT FINAL)
@@ -64,6 +66,10 @@ public:
     void setContentIndexStatus(const QString& status); // "已收录 … 个文件"; set by the app
     QString renderer() const { return m_settings.renderer; }
     void setRenderer(const QString& renderer);
+    QString theme() const { return m_settings.theme; }
+    void setTheme(const QString& theme);
+    QString language() const { return m_settings.language; }
+    void setLanguage(const QString& language);
     bool restartRequired() const { return Settings::resolveRenderer(m_settings.renderer) != m_runningRenderer; }
     bool isDefault() const;
     QString dataFolder() const { return Settings::dataDir(); }

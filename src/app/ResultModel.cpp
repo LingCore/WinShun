@@ -51,13 +51,13 @@ QString appOrigin(const SearchResult& r)
 {
     switch (r.app) {
     case AppKind::Store:
-        return u"Microsoft Store 应用"_s;
+        return ResultModel::tr("Microsoft Store 应用");
     case AppKind::System:
-        return u"Windows 系统应用"_s;
+        return ResultModel::tr("Windows 系统应用");
     case AppKind::Package:
-        return u"MSIX 应用"_s;
+        return ResultModel::tr("MSIX 应用");
     default:
-        return r.target.isEmpty() ? u"Windows 系统应用"_s : r.target; // no file: Control Panel, Run, ...
+        return r.target.isEmpty() ? ResultModel::tr("Windows 系统应用") : r.target; // no file: Control Panel, Run, ...
     }
 }
 
@@ -269,6 +269,12 @@ int ResultModel::removeAll(const QSet<QString>& paths)
 void ResultModel::clear()
 {
     assign({}, {});
+}
+
+void ResultModel::retranslate()
+{
+    if (!m_items.isEmpty())
+        emit dataChanged(index(0), index(count() - 1), {FolderRole});
 }
 
 void ResultModel::setHighlightColor(const QColor& color)

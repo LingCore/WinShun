@@ -30,6 +30,7 @@ set(qml_files
     qml/TitleBar.qml
     qml/SettingsSection.qml
     qml/SettingRow.qml
+    qml/ThemeCard.qml
     qml/ToggleSwitch.qml
     qml/FlatButton.qml
     qml/InputBox.qml
@@ -89,6 +90,27 @@ qt_add_qml_module(WinShun
         WindowFrame.cpp WindowFrame.h
 )
 
+# The UI is written in Chinese; English comes from i18n/winshun_en.ts, built
+# into ":/i18n/winshun_en.qm" and switched at run time (App::applyAppearance).
+# After changing UI text: cmake --build --preset release --target update_translations,
+# then translate the new entries in the .ts file (Qt Linguist or by hand).
+qt_add_lupdate(WinShun
+    TS_FILES i18n/winshun_en.ts
+    OPTIONS -source-language zh_CN -no-obsolete -locations none)
+# lrelease reads its arguments in the ANSI code page, which mangles a Chinese
+# path (this project's folder) unless Windows uses a Chinese one; so not
+# qt_add_lrelease, but relative paths from the source folder.
+set(qm_file "${CMAKE_CURRENT_BINARY_DIR}/winshun_en.qm")
+file(RELATIVE_PATH qm_relative "${CMAKE_CURRENT_SOURCE_DIR}" "${qm_file}")
+add_custom_command(OUTPUT "${qm_file}"
+    COMMAND Qt6::lrelease -silent i18n/winshun_en.ts -qm "${qm_relative}"
+    DEPENDS i18n/winshun_en.ts
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    VERBATIM)
+qt_add_resources(WinShun "translations"
+    PREFIX /i18n
+    BASE "${CMAKE_CURRENT_BINARY_DIR}"
+    FILES "${qm_file}")
 
 target_include_directories(WinShun PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(WinShun PRIVATE

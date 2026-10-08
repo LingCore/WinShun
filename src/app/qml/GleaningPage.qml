@@ -183,6 +183,7 @@ Flickable {
 
         // Hero: the title and how many works there are.
         Text {
+            visible: Gleaning.title.toUpperCase() !== text // in English the title says it already
             text: "GLEANING"
             color: WarmPalette.inkSoft
             font.pixelSize: 12
@@ -206,12 +207,12 @@ Flickable {
                 baselineOffset: worksTag.baselineOffset
                 spacing: 6
 
-                Tag { id: worksTag; fontSize: 13; text: qsTr("%1 个作品").arg(Gleaning.works.length) }
-                Tag { fontSize: 13; visible: page.openSourceCount > 0; text: qsTr("%1 个开源").arg(page.openSourceCount) }
+                Tag { id: worksTag; fontSize: 13; text: qsTr("%n 个作品", "", Gleaning.works.length) }
+                Tag { fontSize: 13; visible: page.openSourceCount > 0; text: qsTr("%n 个开源", "", page.openSourceCount) }
                 Tag {
                     fontSize: 13
                     visible: Gleaning.works.length > page.openSourceCount
-                    text: qsTr("%1 个付费").arg(Gleaning.works.length - page.openSourceCount)
+                    text: qsTr("%n 个付费", "", Gleaning.works.length - page.openSourceCount)
                 }
             }
         }

@@ -12,6 +12,10 @@ DoubleCtrl=true          ; 双击 Ctrl 呼出
 Hotkey=                  ; 额外的全局快捷键，例如 Alt+Space、Ctrl+Shift+F
 Renderer=auto            ; auto（内存 ≤ 16 GB 用 software，否则 d3d11）| d3d11（文字清晰）| software（省内存，文字偏模糊）
 
+[Appearance]
+Theme=system             ; system（跟随 Windows 的浅色 / 深色）| light | dark
+Language=system          ; system（Windows 显示语言是中文就用中文，否则英文）| zh | en
+
 [Index]
 ExcludedPaths=...        ; 不建索引的文件夹，支持 %WINDIR% 这类环境变量，逗号分隔
 ExcludedNames=...        ; 任意位置的同名文件夹，也可写尾部路径，如 .svn/pristine
@@ -48,6 +52,18 @@ Index=true               ; 建立内容索引（中日韩文字和英文、数�
 | 内存 | 文件名索引：323 万项约 97 MB（约 31 字节/项）。整个程序在任务管理器里约 120 MB（刚启动），打开过窗口、内容索引建好后约 140 MB；另占显存约 10–25 MB |
 
 一般电脑有 50 万到 100 万个文件，文件名索引大约占 15–30 MB。可用 `wsbench` 在自己的机器上测（见下文）。
+
+## 界面语言
+
+界面文字的源文是中文（QML 的 `qsTr()`、C++ 的 `tr()`），英文翻译在 `src/app/i18n/winshun_en.ts`，编译成 `winshun_en.qm` 嵌进程序资源。切换语言时装上或卸下这个翻译器，再调 `QQmlEngine::retranslate()`，C++ 里拼出来的文字（状态栏、托盘提示等）由各自的 `retranslate()` 重算，不用重启。
+
+改了界面文字以后：
+
+```powershell
+cmake --build --preset release --target update_translations   # lupdate：把新字符串收进 .ts
+```
+
+然后在 `.ts` 里补上英文（Qt Linguist 或直接编辑），未翻译的条目会显示中文原文。数量相关的句子用 `%n` / `%Ln` 写，英文按单复数给两种形式。英文通常比中文长，搜索框、状态栏这些一行放不下就会被截断，翻译时要短。
 
 ## 代码结构
 

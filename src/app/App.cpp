@@ -100,6 +100,7 @@ bool App::start(const StartOptions& options)
 {
     const bool firstRun = !Settings::exists();
     m_settings.load();
+    applyAppearance(); // before any window: the first frame is already in the chosen theme and language
     m_renderer = Settings::resolveRenderer(m_settings.renderer);
     if (m_renderer == u"software")
         QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
@@ -117,8 +118,8 @@ bool App::start(const StartOptions& options)
     m_launcher = std::make_unique<Launcher>(m_index.get(), m_apps.get(), m_engine.get(), m_history.get());
     connect(m_launcher.get(), &Launcher::dismissRequested, this, &App::hideLauncher);
     connect(m_launcher.get(), &Launcher::openFailed, this, [this](const QString& name) {
-        m_messages->showNotification(u"没有打开“%1”"_s.arg(name),
-            u"找不到资源管理器，没法用普通权限打开它。请稍后再试，或按 Ctrl+Shift+Enter 以管理员身份运行。"_s);
+        m_messages->showNotification(tr("没有打开“%1”").arg(name),
+            tr("找不到资源管理器，没法用普通权限打开它。请稍后再试，或按 Ctrl+Shift+Enter 以管理员身份运行。"));
     });
     connect(m_launcher.get(), &Launcher::namesShown, this, [this] {
         if (m_revealing)
@@ -147,7 +148,7 @@ bool App::start(const StartOptions& options)
     m_volumeNotifier = std::make_unique<VolumeNotifier>(m_messages->hwnd(), std::move(volumeCallbacks));
     connect(m_index.get(), &IndexService::volumesChanged, this,
         [this] { m_volumeNotifier->track(m_index->volumeRoots()); });
-    m_messages->showTrayIcon(u"Win顺 — 双击 Ctrl 打开"_s);
+    m_messages->showTrayIcon(trayTooltip());
 
     applySettings(true);
     applyTheme();
@@ -164,7 +165,7 @@ bool App::start(const StartOptions& options)
         // (the settings file exists from now on, so this runs once).
         autostart::setEnabled(true);
         m_messages->showNotification(
-            u"Win顺已在后台运行"_s, u"双击 Ctrl 打开搜索。首次运行需要一点时间建立文件索引。"_s);
+            tr("Win顺已在后台运行"), tr("双击 Ctrl 打开搜索。首次运行需要一点时间建立文件索引。"));
     }
     if (options.settings)
         showSettings();
@@ -239,6 +240,45 @@ void App::applyTheme()
     win::setMenuTheme(dark);
 }
 
+// Theme and language take effect at once, in every window, without a restart.
+void App::applyAppearance()
+{
+    // Unknown follows Windows. Everything else reads the scheme from the style
+    // hints and listens to colorSchemeChanged (see applyTheme, SystemTheme).
+    QGuiApplication::styleHints()->setColorScheme(m_settings.theme == u"dark" ? Qt::ColorScheme::Dark
+            : m_settings.theme == u"light"                                     ? Qt::ColorScheme::Light
+                                                                               : Qt::ColorScheme::Unknown);
+
+    const QString language = Settings::resolveLanguage(m_settings.language);
+    if (language == m_language)
+        return;
+    m_language = language;
+    QCoreApplication::removeTranslator(&m_translator);
+    if (language == u"en") {
+        if (m_translator.load(u":/i18n/winshun_en.qm"_s))
+            QCoreApplication::installTranslator(&m_translator);
+        else
+            qWarning() << "No English translation in the resources";
+    }
+    // Numbers and sizes ("1,234", "172 MB") the language's way.
+    QLocale::setDefault(language == u"en" ? QLocale(QLocale::English, QLocale::UnitedStates)
+                                          : QLocale(QLocale::Chinese, QLocale::China));
+    QGuiApplication::setApplicationDisplayName(tr("Win顺"));
+
+    if (!m_qml)
+        return; // starting up: nothing shown yet
+    m_qml->retranslate();
+    m_launcher->retranslate();
+    m_messages->setTrayTooltip(trayTooltip());
+    applyHotkey(); // its error message
+    refreshContentIndexStatus();
+}
+
+QString App::trayTooltip() const
+{
+    return tr("Win顺 — 双击 Ctrl 打开");
+}
+
 void App::applySettings(bool initial)
 {
     if (m_settings.doubleCtrl && !m_keyListener) {
@@ -249,6 +289,8 @@ void App::applySettings(bool initial)
         m_keyListener.reset();
     }
 
+    if (!initial)
+        applyAppearance();
     applyHotkey();
     m_launcher->setContentOptions(m_settings.contentExtensions,
         static_cast<qint64>(m_settings.maxContentFileSizeMB) << 20, m_settings.contentInLowPriority);
@@ -267,13 +309,13 @@ void App::applyHotkey()
         UINT modifiers = 0;
         UINT vk = 0;
         hotkeyError = MessageWindow::parseHotkey(hotkey, &modifiers, &vk)
-            ? u"“%1” 已被其他程序或系统占用，请换一个。"_s.arg(hotkey)
-            : u"无法识别“%1”，请重新设置。"_s.arg(hotkey);
+            ? tr("“%1” 已被其他程序或系统占用，请换一个。").arg(hotkey)
+            : tr("无法识别“%1”，请重新设置。").arg(hotkey);
     }
     if (m_settingsEditor)
         m_settingsEditor->setHotkeyError(hotkeyError); // shown next to the shortcut
     else if (!hotkeyError.isEmpty())
-        m_messages->showNotification(u"快捷键不可用"_s, hotkeyError);
+        m_messages->showNotification(tr("快捷键不可用"), hotkeyError);
 }
 
 void App::reloadSettings()
@@ -357,17 +399,17 @@ void App::refreshContentIndexStatus()
     QString status;
     if (m_settings.contentIndex) {
         const ContentIndex::Stats stats = m_index->contentIndex()->stats();
-        const QLocale locale;
-        const QString files = locale.toString(static_cast<qulonglong>(stats.documents));
+        const int files = static_cast<int>(stats.documents);
         if (m_index->readingContent())
-            status = u"正在建立索引… 已收录 %1 个文件"_s.arg(files);
+            status = tr("正在建立索引… 已收录 %Ln 个文件", nullptr, files);
         else if (stats.documents == 0)
-            status = u"索引在 Win顺启动约半分钟后开始建立"_s;
+            status = tr("索引在 Win顺启动约半分钟后开始建立");
         else
-            status = u"已收录 %1 个文件，占用 %2 磁盘空间"_s.arg(
-                files, locale.formattedDataSize(static_cast<qint64>(stats.segmentBytes), 0, QLocale::DataSizeTraditionalFormat));
+            status = tr("已收录 %Ln 个文件，占用 %1 磁盘空间", nullptr, files)
+                         .arg(QLocale().formattedDataSize(
+                             static_cast<qint64>(stats.segmentBytes), 0, QLocale::DataSizeTraditionalFormat));
         if (stats.pending > 0 && !m_index->readingContent())
-            status += u"；%1 个文件有改动，稍后更新"_s.arg(locale.toString(static_cast<qulonglong>(stats.pending)));
+            status += tr("；%Ln 个文件有改动，稍后更新", nullptr, static_cast<int>(stats.pending));
     }
     m_settingsEditor->setContentIndexStatus(status);
 }
@@ -475,20 +517,20 @@ void App::hideLauncher()
 void App::showTrayMenu()
 {
     const bool ready = m_index->state() == IndexService::State::Ready;
-    const QString info = ready
-        ? u"已索引 %1 项"_s.arg(QLocale().toString(static_cast<qulonglong>(m_index->itemCount())))
-        : u"正在建立索引…"_s;
+    const QString info = ready ? tr("已索引 %Ln 项", nullptr, static_cast<int>(m_index->itemCount()))
+                               : tr("正在建立索引…");
+    const QString show = tr("打开 Win顺");
     const std::vector<shell::MenuItem> items {
-        {ShowCommand, m_settings.doubleCtrl ? u"打开 Win顺\t双击 Ctrl"_s : u"打开 Win顺"_s, false, true, true},
+        {ShowCommand, m_settings.doubleCtrl ? show + u'\t' + tr("双击 Ctrl") : show, false, true, true},
         shell::MenuItem::separator(),
         {IndexInfo, info, false, false},
-        {RebuildCommand, u"重建索引"_s},
+        {RebuildCommand, tr("重建索引")},
         shell::MenuItem::separator(),
-        {AutostartCommand, u"开机自动启动"_s, autostart::isEnabled()},
-        {SettingsCommand, u"设置…"_s},
+        {AutostartCommand, tr("开机自动启动"), autostart::isEnabled()},
+        {SettingsCommand, tr("设置…")},
         shell::MenuItem::separator(),
-        {RestartCommand, u"重新启动"_s},
-        {QuitCommand, u"退出"_s},
+        {RestartCommand, tr("重新启动")},
+        {QuitCommand, tr("退出")},
     };
     POINT pos {};
     ::GetCursorPos(&pos);
@@ -498,7 +540,7 @@ void App::showTrayMenu()
         break;
     case RebuildCommand:
         m_index->rebuild();
-        m_messages->showNotification(u"正在重建索引"_s, u"可以照常搜索，完成后结果会自动更新。"_s);
+        m_messages->showNotification(tr("正在重建索引"), tr("可以照常搜索，完成后结果会自动更新。"));
         break;
     case AutostartCommand:
         autostart::setEnabled(!autostart::isEnabled());

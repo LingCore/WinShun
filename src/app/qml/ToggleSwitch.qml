@@ -20,12 +20,15 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         spacing: 10
 
-        Text {
+        Text { // as wide as the longer word, so the switch stays put ("On" / "Off")
             anchors.verticalCenter: parent.verticalCenter
-            width: 14
-            text: toggle.checked ? qsTr("开") : qsTr("关")
+            width: Math.ceil(Math.max(onWord.advanceWidth, offWord.advanceWidth))
+            text: toggle.checked ? onWord.text : offWord.text
             color: Theme.text
             font.pixelSize: Theme.fontBody
+
+            TextMetrics { id: onWord; text: qsTr("开"); font.pixelSize: Theme.fontBody }
+            TextMetrics { id: offWord; text: qsTr("关"); font.pixelSize: Theme.fontBody }
         }
 
         Rectangle {
@@ -45,7 +48,7 @@ Item {
                 width: area.pressed ? 17 : size
                 height: size
                 radius: size / 2
-                color: toggle.checked ? Theme.onAccent : Theme.subtext
+                color: toggle.checked ? Theme.accentText : Theme.subtext
 
                 Behavior on x { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
             }

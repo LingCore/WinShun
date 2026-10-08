@@ -9,7 +9,7 @@ Rectangle {
     property string glyph
     property bool highlighted: false
     property bool flat: false // no background until hovered
-    readonly property color foreground: highlighted ? Theme.onAccent : Theme.text
+    readonly property color foreground: highlighted ? Theme.accentText : Theme.text
 
     signal clicked()
 

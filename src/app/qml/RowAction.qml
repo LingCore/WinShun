@@ -14,7 +14,7 @@ Rectangle {
     property string tip
     property string tipShortcut
     readonly property bool tipWanted: area.containsMouse && !area.used && tip.length > 0
-    readonly property color foreground: danger ? Theme.onAccent : area.containsMouse ? Theme.text : Theme.subtext
+    readonly property color foreground: danger ? Theme.accentText : area.containsMouse ? Theme.text : Theme.subtext
 
     signal clicked()
 

@@ -36,7 +36,7 @@
 
 **Win顺 是什么？** 一个 Windows 上的快速搜索启动器。连按两下 Ctrl，屏幕上弹出搜索框，边打字边出结果：按文件名或拼音找文件和文件夹，打开已安装的应用，也能找文本文件里的文字。不用装 Everything，也不用写任何配置。
 
-它直接读 NTFS 的主文件表建索引，三百多万个文件十秒左右就能建好，之后文件的增删改名都实时跟上。它常驻在任务栏右下角的托盘里，不联网，不需要账号，完全免费。界面是简体中文。
+它直接读 NTFS 的主文件表建索引，三百多万个文件十秒左右就能建好，之后文件的增删改名都实时跟上。它常驻在任务栏右下角的托盘里，不联网，不需要账号，完全免费。界面有简体中文和英文两种，默认跟随 Windows 的显示语言，也可以在设置里随时切换。
 
 ### 功能
 
@@ -108,7 +108,7 @@
 
 #### 🎨 像 Windows 11 自带的一样
 
-- 跟随系统的浅色 / 深色主题和强调色，Windows 11 圆角窗口。
+- 浅色 / 深色主题可以跟随系统，也可以固定一种；跟随系统强调色，Windows 11 圆角窗口。在设置的 **外观** 里点主题预览图就能切换，整个界面淡入淡出地换过去，不用重启。
 - 图标按显示缩放取原生尺寸，对齐物理像素，150% 缩放下也不糊；Store 应用用它为当前尺寸和主题准备的图标。
 - 界面字体随程序附带（阿里巴巴普惠体），中文清晰。
 
@@ -117,6 +117,7 @@
 托盘图标右键 → **设置…**，修改后自动保存、立即生效：
 
 - **打开 Win顺**：双击 Ctrl 开关、另设一个组合键、开机自动启动。
+- **外观**：主题（跟随系统 / 浅色 / 深色）、界面语言（跟随系统 / 简体中文 / English），切换即时生效。
 - **搜索范围**：不搜索的文件夹、任何位置都跳过的文件夹名称（如 `node_modules`）、是否包括 U 盘和移动硬盘。
 - **文件内容搜索**：要搜索内容的文件类型、文件大小上限、是否也搜系统和程序文件夹、是否建立内容索引。
 - **高级**：界面绘制方式（省内存 / 显卡加速 / 自动）、恢复默认设置。
@@ -198,7 +199,7 @@ Win顺 自己建索引，不需要另装 Everything。文件名、拼音、应�
 
 It builds its index by reading the NTFS master file table directly — over three million files in about ten seconds — and keeps up with every create, rename and delete in real time. It lives in the notification area, works offline, needs no account, and is completely free.
 
-The interface is in **Simplified Chinese** only for now.
+The interface comes in **English and Simplified Chinese**. It follows the Windows display language by default; switch any time under Settings → **Appearance**.
 
 ### Features
 
@@ -231,14 +232,14 @@ The interface is in **Simplified Chinese** only for now.
 
 #### 🎨 Feels like part of Windows 11
 
-Follows the system light / dark theme and accent color, with rounded Windows 11 corners. Icons are drawn at their native size for your display scaling, so they stay sharp at 150%.
+Light or dark theme, following Windows or fixed to one, with the system accent color and rounded Windows 11 corners. Pick a theme from the previews under Settings → **Appearance**: the whole window cross-fades to it, no restart. Icons are drawn at their native size for your display scaling, so they stay sharp at 150%.
 
 ### Download and install
 
 1. Download `WinShun-<version>-x64.zip` from the [Releases page](https://github.com/LingCore/WinShun/releases/latest) and unzip it somewhere permanent (e.g. `D:\Tools\WinShun`). No installer; the runtimes are included.
 2. Run `WinShun.exe`. If Windows says “Windows protected your PC”, click **More info → Run anyway**: the app is not yet signed with a paid code-signing certificate.
 3. Click **Yes** in the UAC prompt (see below). When the WinShun icon appears in the notification area, it is running. The first index takes a few seconds.
-4. Press Ctrl twice and start typing. To start with Windows, check **开机自动启动 (Start at login)** in the tray icon's menu; there will be no UAC prompt at login.
+4. Press Ctrl twice and start typing. To start with Windows, check **Start with Windows** in the tray icon's menu; there will be no UAC prompt at login.
 
 Requires Windows 10 or 11, 64-bit.
 

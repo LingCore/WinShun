@@ -154,6 +154,16 @@ QString Settings::dataDir()
         QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + u"/WinShun"_s);
 }
 
+QString Settings::resolveLanguage(const QString& language)
+{
+    if (language == u"zh" || language == u"en")
+        return language;
+    // The language Windows itself is shown in. Not QLocale::uiLanguages(): that
+    // follows the preferred-languages list, which can put English first on a
+    // Chinese Windows.
+    return PRIMARYLANGID(::GetUserDefaultUILanguage()) == LANG_CHINESE ? u"zh"_s : u"en"_s;
+}
+
 Settings Settings::defaults()
 {
     Settings d;
@@ -176,6 +186,13 @@ void Settings::load()
     doubleCtrl = readOrDefault(s, u"Launcher/DoubleCtrl"_s, d.doubleCtrl);
     hotkey = readOrDefault(s, u"Launcher/Hotkey"_s, d.hotkey);
     renderer = readOrDefault(s, u"Launcher/Renderer"_s, d.renderer).trimmed().toLower();
+
+    theme = readOrDefault(s, u"Appearance/Theme"_s, d.theme).trimmed().toLower();
+    if (theme != u"light" && theme != u"dark")
+        theme = d.theme;
+    language = readOrDefault(s, u"Appearance/Language"_s, d.language).trimmed().toLower();
+    if (language != u"zh" && language != u"en")
+        language = d.language;
 
     excludedPaths = readOrDefault(s, u"Index/ExcludedPaths"_s, d.excludedPaths);
     excludedNames = readOrDefault(s, u"Index/ExcludedNames"_s, d.excludedNames);
@@ -202,6 +219,8 @@ void Settings::save() const
     s.setValue(u"Launcher/DoubleCtrl"_s, doubleCtrl);
     s.setValue(u"Launcher/Hotkey"_s, hotkey);
     s.setValue(u"Launcher/Renderer"_s, renderer);
+    s.setValue(u"Appearance/Theme"_s, theme);
+    s.setValue(u"Appearance/Language"_s, language);
     s.setValue(u"Index/ExcludedPaths"_s, excludedPaths);
     s.setValue(u"Index/ExcludedNames"_s, excludedNames);
     s.setValue(u"Index/IncludeRemovableDrives"_s, includeRemovableDrives);

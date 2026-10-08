@@ -16,6 +16,10 @@ struct Settings {
     QString hotkey; // e.g. "Alt+Space"; empty = none
     QString renderer = QStringLiteral("auto"); // software | d3d11 | auto
 
+    // [Appearance]
+    QString theme = QStringLiteral("system"); // system | light | dark
+    QString language = QStringLiteral("system"); // system | zh | en
+
     // [Index]
     QStringList excludedPaths;
     QStringList excludedNames;
@@ -42,6 +46,7 @@ struct Settings {
     static QString storedRenderer(); // just [Launcher] Renderer; works before QGuiApplication exists
     static QString resolveRenderer(const QString& renderer); // "auto" -> software with <= 16 GB of RAM, else d3d11
     static QString dataDir(); // %LOCALAPPDATA%\WinShun
+    static QString resolveLanguage(const QString& language); // "system" -> zh with a Chinese Windows, else en
 };
 
 } // namespace ws

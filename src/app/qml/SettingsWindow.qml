@@ -11,14 +11,16 @@ Window {
     required property WindowFrame frame
 
     readonly property var renderers: ["software", "d3d11", "auto"]
+    readonly property var languages: ["system", "zh", "en"]
     readonly property var pages: [
         { title: qsTr("打开 Win顺"), glyph: "" }, // Keyboard
+        { title: qsTr("外观"), glyph: "\uE771" }, // Personalize
         { title: qsTr("搜索范围"), glyph: "" }, // Folder
         { title: qsTr("文件内容搜索"), glyph: "" }, // Document
         { title: qsTr("高级"), glyph: "" }, // Settings
         { title: Gleaning.title, gleaning: true } // the author's works, set apart at the bottom of the list
     ]
-    readonly property int gleaningPage: 4
+    readonly property int gleaningPage: 5
     property int currentPage: 0
     // On the 拾穗计划 page the whole window, sidebar included, is a warm scene.
     readonly property bool warm: currentPage === gleaningPage
@@ -41,6 +43,20 @@ Window {
 
     function navItemAt(index) {
         return index === gleaningPage ? gleaningNav : navItems.itemAt(index)
+    }
+
+    // Theme and language change everything at once; the old look fades out
+    // over the new one instead of snapping.
+    function changeAppearance(change) {
+        if (!SystemTheme.animations || !window.visible || fadeOut.running) {
+            change()
+            return
+        }
+        window.contentItem.grabToImage(result => {
+            snapshot.source = result.url
+            change()
+            fadeOut.restart()
+        })
     }
 
     onVisibleChanged: if (visible && warm) AuthorClock.play()
@@ -322,6 +338,58 @@ Window {
             SettingsSection {
                 visible: window.currentPage === 1
                 width: parent.width
+
+                SettingRow {
+                    title: qsTr("主题")
+                    description: qsTr("“跟随系统”时随 Windows 的浅色、深色模式切换")
+
+                    body: Row {
+                        id: themeCards
+
+                        readonly property var modes: ["system", "light", "dark"]
+                        readonly property var labels: [qsTr("跟随系统"), qsTr("浅色"), qsTr("深色")]
+
+                        width: parent.width
+                        spacing: 14
+
+                        Repeater {
+                            id: themeRepeater
+                            model: themeCards.modes
+
+                            delegate: ThemeCard {
+                                required property int index
+                                required property string modelData
+
+                                width: Math.min(196, (themeCards.width - themeCards.spacing * 2) / 3)
+                                mode: modelData
+                                label: themeCards.labels[index]
+                                selected: window.editor.theme === modelData
+                                onActivated: if (!selected) window.changeAppearance(() => window.editor.theme = modelData)
+                                Keys.onLeftPressed: themeRepeater.itemAt(Math.max(0, index - 1)).forceActiveFocus()
+                                Keys.onRightPressed: themeRepeater.itemAt(Math.min(2, index + 1)).forceActiveFocus()
+                            }
+                        }
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("语言")
+                    description: qsTr("“跟随系统”时，中文版 Windows 显示中文，其他语言的 Windows 显示英文")
+
+                    ScopeTabs { // each language in its own words
+                        labels: [qsTr("跟随系统"), "简体中文", "English"]
+                        current: Math.max(0, window.languages.indexOf(window.editor.language))
+                        onActivated: (index) => {
+                            if (index !== current)
+                                window.changeAppearance(() => window.editor.language = window.languages[index])
+                        }
+                    }
+                }
+            }
+
+            SettingsSection {
+                visible: window.currentPage === 2
+                width: parent.width
                 note: qsTr("修改后会在后台重新整理文件列表，期间可以照常搜索。")
 
                 SettingRow {
@@ -480,7 +548,7 @@ Window {
             }
 
             SettingsSection {
-                visible: window.currentPage === 2
+                visible: window.currentPage === 3
                 width: parent.width
                 note: qsTr("在搜索框按 Tab 切换到“内容”，可以查找文件里的文字。")
 
@@ -586,7 +654,7 @@ Window {
             }
 
             SettingsSection {
-                visible: window.currentPage === 3
+                visible: window.currentPage === 4
                 width: parent.width
 
                 SettingRow {
@@ -663,5 +731,25 @@ Window {
         radius: 1.5
         color: Theme.faint
         opacity: 0.6
+    }
+
+    Image { // the window as it looked before a theme or language change, fading out (see changeAppearance)
+        id: snapshot
+        z: 2
+        anchors.fill: parent
+        visible: fadeOut.running
+        cache: false
+        smooth: true
+
+        NumberAnimation {
+            id: fadeOut
+            target: snapshot
+            property: "opacity"
+            from: 1
+            to: 0
+            duration: 260
+            easing.type: Easing.InOutQuad
+            onFinished: snapshot.source = "" // the picture's memory
+        }
     }
 }

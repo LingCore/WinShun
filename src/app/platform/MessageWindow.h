@@ -32,6 +32,7 @@ public:
     HWND hwnd() const noexcept { return m_hwnd; }
 
     void showTrayIcon(const QString& tooltip);
+    void setTrayTooltip(const QString& tooltip); // the language changed
     void showNotification(const QString& title, const QString& text);
 
     bool registerHotkey(int id, const QString& shortcut); // "Alt+Space", "Ctrl+Shift+F"

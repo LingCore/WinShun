@@ -64,6 +64,19 @@ void MessageWindow::showTrayIcon(const QString& tooltip)
     addTrayIcon();
 }
 
+void MessageWindow::setTrayTooltip(const QString& tooltip)
+{
+    m_tooltip = tooltip;
+    if (!m_trayVisible)
+        return; // used when the icon is added
+    NOTIFYICONDATAW nid {sizeof(NOTIFYICONDATAW)};
+    nid.hWnd = m_hwnd;
+    nid.uID = kTrayId;
+    nid.uFlags = NIF_TIP | NIF_SHOWTIP;
+    copyTruncated(nid.szTip, std::size(nid.szTip), m_tooltip);
+    ::Shell_NotifyIconW(NIM_MODIFY, &nid);
+}
+
 bool MessageWindow::addTrayIcon()
 {
     NOTIFYICONDATAW nid {sizeof(NOTIFYICONDATAW)};

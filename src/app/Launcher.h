@@ -74,6 +74,7 @@ public:
     void setContentOptions(QStringList extensions, qint64 maxFileBytes, bool inLowPriority);
     void handleShown();
     void handleHidden();
+    void retranslate(); // the language changed: status, placeholder, rows
 
     Q_INVOKABLE void trigger(int row, int action);
     // Context menu (ContextMenu.qml): its entries for a row, the usable
@@ -100,6 +101,7 @@ signals:
 private:
     void search();
     QString contentNeedle() const;
+    QString shownExtensions() const;
     void startContentSearch();
     void showRows(SearchResults rows, QStringList highlights);
     void perform(const SearchResult& result, Action action);

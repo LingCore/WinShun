@@ -58,6 +58,7 @@ public:
     bool remove(const QString& path); // false if no row has that path
     int removeAll(const QSet<QString>& paths); // number of rows removed
     void clear();
+    void retranslate(); // the language changed: apps' second line
 
     QColor highlightColor() const { return m_highlightColor; }
     void setHighlightColor(const QColor& color);

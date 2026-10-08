@@ -157,6 +157,22 @@ void SettingsEditor::setRenderer(const QString& renderer)
     commit();
 }
 
+void SettingsEditor::setTheme(const QString& theme)
+{
+    if (m_settings.theme == theme)
+        return;
+    m_settings.theme = theme;
+    commit();
+}
+
+void SettingsEditor::setLanguage(const QString& language)
+{
+    if (m_settings.language == language)
+        return;
+    m_settings.language = language;
+    commit();
+}
+
 bool SettingsEditor::isDefault() const
 {
     return m_settings == Settings::defaults();
@@ -165,7 +181,7 @@ bool SettingsEditor::isDefault() const
 void SettingsEditor::addExcludedFolder()
 {
     const HWND owner = m_window ? reinterpret_cast<HWND>(m_window->winId()) : nullptr;
-    const QString folder = shell::pickFolder(owner, u"选择不需要搜索的文件夹"_s);
+    const QString folder = shell::pickFolder(owner, tr("选择不需要搜索的文件夹"));
     if (folder.isEmpty() || containsIgnoreCase(excludedPaths(), displayPath(folder)))
         return;
     m_settings.excludedPaths.append(folder);

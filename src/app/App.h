@@ -6,6 +6,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QTimer>
+#include <QTranslator>
 
 #include <atomic>
 #include <memory>
@@ -66,6 +67,8 @@ private:
     void showTrayMenu();
     void restart(const QStringList& arguments);
     void applyTheme();
+    void applyAppearance(); // the chosen theme and language
+    QString trayTooltip() const;
     void armReveal();
     void revealLauncher();
     void prewarmLauncher();
@@ -96,6 +99,8 @@ private:
     QPointer<QQuickWindow> m_settingsWindow; // created on demand, deleted when closed
     QPointer<SettingsEditor> m_settingsEditor; // owned by m_settingsWindow
     QString m_renderer; // the one in use; changing it takes a restart
+    QString m_language; // resolved: zh or en
+    QTranslator m_translator; // English; the source strings are Chinese
     std::optional<QStringList> m_restartArguments;
 
     QFileSystemWatcher m_settingsWatcher;
