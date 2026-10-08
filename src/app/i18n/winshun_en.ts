@@ -173,20 +173,12 @@
         <translation>“%2” was not found in %1</translation>
     </message>
     <message>
-        <source>没有找到名为“%1”的应用</source>
-        <translation>No app named “%1”</translation>
-    </message>
-    <message>
         <source>没有找到“%1”</source>
         <translation>Nothing found for “%1”</translation>
     </message>
     <message>
         <source>按 Tab 回到文件名搜索</source>
         <translation>Press Tab to go back to searching names</translation>
-    </message>
-    <message>
-        <source>按 Tab 搜索文件和文件夹</source>
-        <translation>Press Tab to search files and folders</translation>
     </message>
     <message>
         <source>文件名和 %1的内容里都没有</source>
@@ -251,16 +243,8 @@
         <translation>All</translation>
     </message>
     <message>
-        <source>应用</source>
-        <translation>Apps</translation>
-    </message>
-    <message>
         <source>文件</source>
         <translation>Files</translation>
-    </message>
-    <message>
-        <source>文件夹</source>
-        <translation>Folders</translation>
     </message>
     <message>
         <source>内容</source>
@@ -831,16 +815,8 @@
         <translation>%1 files</translation>
     </message>
     <message>
-        <source>搜索已安装的应用</source>
-        <translation>Search installed apps</translation>
-    </message>
-    <message>
         <source>搜索文件和文件夹</source>
         <translation>Search files and folders</translation>
-    </message>
-    <message>
-        <source>搜索文件夹</source>
-        <translation>Search folders</translation>
     </message>
     <message>
         <source>搜索 %1 等文件中的文字</source>
@@ -853,24 +829,6 @@
     <message>
         <source>搜索应用、文件和文件内容</source>
         <translation>Search apps, files and text</translation>
-    </message>
-    <message>
-        <source>正在读取已安装的应用…</source>
-        <translation>Reading installed apps…</translation>
-    </message>
-    <message numerus="yes">
-        <source>已安装 %Ln 个应用</source>
-        <translation>
-            <numerusform>%Ln app installed</numerusform>
-            <numerusform>%Ln apps installed</numerusform>
-        </translation>
-    </message>
-    <message numerus="yes">
-        <source>%Ln 个应用 · %1 毫秒</source>
-        <translation>
-            <numerusform>%Ln app · %1 ms</numerusform>
-            <numerusform>%Ln apps · %1 ms</numerusform>
-        </translation>
     </message>
     <message>
         <source>正在加载索引…</source>
