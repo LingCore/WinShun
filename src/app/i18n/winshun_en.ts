@@ -387,6 +387,14 @@
         <translation>System</translation>
     </message>
     <message>
+        <source>Ctrl+G 转到资源管理器的文件夹</source>
+        <translation>Ctrl+G goes to the Explorer folder</translation>
+    </message>
+    <message>
+        <source>在“打开”“另存为”等对话框里按 Ctrl+G，对话框直接转到最近用过的资源管理器窗口正在显示的文件夹</source>
+        <translation>In an Open or Save As dialog, press Ctrl+G to go to the folder shown in the File Explorer window you used last</translation>
+    </message>
+    <message>
         <source>浅色</source>
         <translation>Light</translation>
     </message>

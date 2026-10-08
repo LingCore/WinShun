@@ -227,6 +227,43 @@
 - **做法**：录制期间由 `ShortcutCapture` 装低级键盘钩子（PowerToys 的快捷键框也这样做），按键在 Windows、Qt 和其他程序之前被拿走，在主线程上作为普通的 `QKeyEvent` 发给设置窗口，`HotkeyRecorder.qml` 的录制逻辑不用改。Qt Quick 对这样发来的 Tab 照样切换焦点（`QQuickItemPrivate::deliverKeyEvent`）。只吞录制开始后按下的键，以及这些键的抬起；Win 键按下和抬起都吞掉，不会弹开始菜单。
 - **不够的办法**：给窗口的 `keyPressEvent` 或事件过滤器加处理没用，Qt 根本没生成这个事件。应用级的原生事件过滤器按源码看能拦住 Alt+Space（事件分发器在 `TranslateMessage` 之前调用它），但拦不住别的程序占着的组合键。
 
+## “打开 / 保存”对话框（Ctrl+G）
+
+做法和取舍见 [architecture.md](architecture.md) 的“对话框里的 Ctrl+G 只靠窗口消息”（`src/app/platform/DialogJump.cpp`）。
+
+### 地址栏平时没有输入框
+
+- **现象**：在对话框里按类名找地址栏的 `ComboBoxEx32` → `Edit`，找不到。
+- **原因**：地址栏平时只有面包屑（`Breadcrumb Parent` 里的 `ToolbarWindow32`，窗口文字是“地址: 路径”）。输入框在第一次进入编辑状态时才创建，之后不用时隐藏。
+- **做法**：往面包屑最右边的空白处投递一次单击（`WM_LBUTTONDOWN`、`WM_LBUTTONUP`），等输入框出现并可见，再 `WM_SETTEXT`，然后 `SendMessage(WM_KEYDOWN, VK_RETURN)` 直接交给输入框。
+
+### 不要往文件名框里填文件夹再按“确定”
+
+- 不少工具这么做，但选择文件夹的对话框（`FOS_PICKFOLDERS`，文件名框是 `edt1` “文件夹:”）会直接选中这个文件夹并关闭；另存为对话框里已经输入的文件名也没了。地址栏怎么填都不会让对话框确定。
+- 只有 XP 风格的对话框（`GetOpenFileName` 带钩子或模板时出现，没有地址栏）才用文件名框：路径末尾加 `\`。实测 XP 风格的另存为对话框：填一个不存在的“文件夹\”再确定，只弹出路径错误的提示，对话框不关，不会当成文件名保存。
+
+### 单击的坐标要用对话框自己的坐标系
+
+- **原因**：Win顺 按“每个显示器分别感知 DPI”运行，`GetClientRect` 拿到物理像素；不感知 DPI 的程序收到的鼠标坐标是缩放前的逻辑像素，150% 下按物理像素点“最右边”会点到窗口外面。
+- **做法**：取尺寸前先 `SetThreadDpiAwarenessContext(GetWindowDpiAwarenessContext(面包屑))`，取完换回来。测试要覆盖两种程序：PowerShell 里的 WinForms 对话框默认不感知 DPI，开头调 `SetProcessDpiAwarenessContext(-4)` 就是感知的。
+
+### 跳完以后焦点停在面包屑上
+
+- **现象**：对话框换好了文件夹，但键盘焦点在地址栏的面包屑上，接着打字不会进文件名框。
+- **做法**：动手前用 `GetGUIThreadInfo` 记下对话框线程的焦点控件；回车后等输入框隐藏（约 70 毫秒），再 `SendMessage(对话框, WM_NEXTDLGCTL, 原控件, TRUE)`。原来就在地址栏里的不还。
+
+### Windows 11 资源管理器的标签页都是“可见”的
+
+- **现象**：以为没显示的标签页窗口是隐藏的，按“第一个可见的 `ShellTabWindowClass`”找当前标签，两个标签都可见。
+- **原因**：每个标签页一个 `ShellTabWindowClass` 子窗口，全都带 `WS_VISIBLE`；切换标签只改变它们的前后顺序。
+- **做法**：当前标签是 `FindWindowEx` 找到的第一个（Z 序最前）。`IShellBrowser::GetWindow` 返回的正是这个标签窗口，用它把 `IShellWindows` 里的条目对上号。实测：B 在前跳 B，`Ctrl+Shift+Tab` 换到 A 后跳 A。
+
+### Listary 也响应 Ctrl+G，`RegisterHotKey` 挡不住它
+
+- **现象**：测试里关掉了这个功能（Win顺 没注册 `Ctrl+G`），对话框照样跳了；当前标签是“主页”时，对话框跳到了已经没有任何窗口显示的文件夹。
+- **原因**：这台电脑开着 Listary（`ListaryHookHost64`），它用钩子收 `Ctrl+G`，Win顺 注册了热键它也收得到，两边各跳一次，后到的算数。
+- **做法**：测试 Win顺 自己的跳转时，不发真实按键，由提权的小程序给消息窗口（`WinShun.MessageWindow`）投递 `WM_HOTKEY`（id 2）；热键有没有注册，另外用测试进程自己 `RegisterHotKey(Ctrl+G)` 试一下（成功说明没人占着，马上注销）。用户同时开着两个时两边都会动，README 里写了关掉其中一个。
+
 ## 主题和语言
 
 ### 名为 `onXxx` 的属性不随主题变化
@@ -327,6 +364,12 @@
 - **原因**：6.12 的 Qt Qml（资源下载器）依赖新拆出来的 TaskTree 模块，aqtinstall 默认不装。
 - **做法**：`aqt install-qt windows desktop 6.12.0 win64_msvc2022_64 -m qttasktree -O C:/Qt`。
 
+### `windows.h` 把 `near`、`far` 定义成了空宏
+
+- **现象**：新文件先包含了 `windows.h`，`DoubleTapDetector.h` 里的成员函数 `near(...)` 报 C2062“意外的类型 int”。
+- **原因**：`minwindef.h` 有 `#define near` 和 `#define far`（16 位时代的遗留），函数名被替换掉了。`NOMINMAX` 只管 `min`、`max`。
+- **做法**：函数和变量不要叫 `near`、`far`（现在叫 `closeTo`）。
+
 ### 编译目录里不要放 Qt 的 DLL
 
 - **现象**：换到 6.12 后，单元测试报 0xc0000139（找不到入口点）。
@@ -381,5 +424,7 @@
   - pwsh 7 的 `Start-Process -Wait` 会等所有子孙进程，测试脚本里启动了 Win顺就会一直卡住；改用 `-PassThru` 再 `.WaitForExit()`。
   - 要用 `System.Drawing` 截图量像素时，用 Windows PowerShell 5.1。
   - 给 Windows PowerShell 5.1 运行的脚本里有中文时，要存成带 BOM 的 UTF-8，否则中文（如找窗口用的标题“设置”）会读成乱码。
-  - 变量名不区分大小写：`$seq` 和参数 `$Seq` 是同一个变量。参数声明了 `[string]` 时，给它赋一个数组会被转回一个字符串，`foreach` 只循环一次。局部变量换个名字。
+  - 变量名不区分大小写：`$seq` 和参数 `$Seq` 是同一个变量。参数声明了 `[string]` 时，给它赋一个数组会被转回一个字符串，`foreach` 只循环一次。局部变量换个名字。开关参数也一样：函数有 `[switch]$Aware` 时，`$aware = 0` 会报“无法转换为 SwitchParameter”。
+  - `$null` 传给 C# 方法的 `string` 参数会变成空字符串：`FindWindowEx(h, 0, '类名', $null)` 实际在找标题为空的窗口，有标题的（如资源管理器的标签页）就找不到。要传 null 的调用写在 C# 里。
+  - 刚关掉的资源管理器窗口在 `Shell.Application` 的 `Windows()` 里还会列一会儿。测试新开一个窗口后按路径找它，要排除开之前就有的窗口，否则会拿到正在关闭的旧窗口。
 - **磁盘弹出和锁定不需要真硬件**：用 diskpart 建一个 VHD，挂上并格式化成 NTFS（挂上的 VHD 算固定磁盘，会被索引）。`FSCTL_LOCK_VOLUME` 模拟格式化、chkdsk 的锁定，`CM_Query_And_Remove_SubTreeW` 模拟弹出。弹出后 `diskpart detach vdisk` 会失败（0x80070057），改用 `Dismount-DiskImage`。

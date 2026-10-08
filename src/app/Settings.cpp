@@ -197,6 +197,7 @@ void Settings::load()
     hotkey = readOrDefault(s, u"Launcher/Hotkey"_s, d.hotkey);
     renderer = readOrDefault(s, u"Launcher/Renderer"_s, d.renderer).trimmed().toLower();
     recordHistory = readOrDefault(s, u"Launcher/History"_s, d.recordHistory);
+    dialogJump = readOrDefault(s, u"Launcher/DialogJump"_s, d.dialogJump);
 
     theme = readOrDefault(s, u"Appearance/Theme"_s, d.theme).trimmed().toLower();
     if (theme != u"light" && theme != u"dark")
@@ -242,6 +243,7 @@ void Settings::save() const
     s.setValue(u"Launcher/Hotkey"_s, hotkey);
     s.setValue(u"Launcher/Renderer"_s, renderer);
     s.setValue(u"Launcher/History"_s, recordHistory);
+    s.setValue(u"Launcher/DialogJump"_s, dialogJump);
     s.setValue(u"Appearance/Theme"_s, theme);
     s.setValue(u"Appearance/Language"_s, language);
     s.setValue(u"Appearance/Transparency"_s, transparency);

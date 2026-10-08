@@ -19,6 +19,7 @@ class QQuickWindow;
 namespace ws {
 
 class AppCatalog;
+class DialogJump;
 class SystemCatalog;
 class History;
 class IndexService;
@@ -91,6 +92,7 @@ private:
     bool m_updateNotified = false; // the last tray notification announced a new version
     std::unique_ptr<VolumeNotifier> m_volumeNotifier; // after m_messages, whose window it uses
     std::unique_ptr<KeyListener> m_keyListener; // double Ctrl
+    std::unique_ptr<DialogJump> m_dialogJump; // Ctrl+G in file dialogs; after m_messages, which has the hotkey
     std::unique_ptr<Placement> m_placement; // where the launcher opens; moving it
     std::unique_ptr<WindowFrame> m_frame; // the launcher's header and footer drag it
     // The launcher is shown cloaked and revealed once it has drawn a frame

@@ -102,6 +102,12 @@
   </picture>
 </p>
 
+#### 📂 对话框里直达资源管理器的文件夹
+
+- 在“打开”“另存为”对话框（包括选择文件夹的）里按 `Ctrl+G`，对话框直接转到最近用过的资源管理器窗口正在显示的文件夹，和 Listary 的同名快捷键一样。先在资源管理器里找到要存的地方，再回到程序里“另存为”，按一下就到。
+- Windows 11 的资源管理器开着几个标签页时，取正在显示的那个；最近的窗口显示的不是磁盘上的文件夹（“主页”“此电脑”、搜索结果）时，取再往前的一个窗口。
+- 已经输入的文件名保留，键盘焦点也回到原处。只有这类对话框在最前面时才占用 `Ctrl+G`，别的程序里它还是原来的作用。不需要时可以在设置里关掉；同时开着 Listary 的话两边都会响应，关掉其中一个就好。
+
 #### ⌨️ 全键盘操作
 
 | 按键 | 作用 |
@@ -117,6 +123,7 @@
 | `Tab` / `Shift+Tab` | 切换搜索范围（全部 / 文件 / 内容） |
 | 菜单键 / `Shift+F10` / 右键 | 更多操作 |
 | `Esc` | 关闭（选中了多项时先取消选择） |
+| `Ctrl+G`（在“打开”“另存为”对话框里） | 转到资源管理器正在显示的文件夹 |
 
 鼠标也能用：选中或悬停的结果右边有四个按钮，分别是打开所在位置、复制、复制路径和删除（点两次才删，移到回收站）。选中了多项时，打开、复制、删除等操作都对全部选中项生效。
 
@@ -131,7 +138,7 @@
 
 托盘图标右键 → **设置…**，修改后自动保存、立即生效：
 
-- **打开 Win顺**：双击 Ctrl 开关、另设一个组合键、开机自动启动、是否记住打开过的项目、清除最近使用记录。
+- **打开 Win顺**：双击 Ctrl 开关、另设一个组合键、对话框里的 `Ctrl+G`、开机自动启动、是否记住打开过的项目、清除最近使用记录。
 - **外观**：主题（跟随系统 / 浅色 / 深色）、透明效果（关 / 开 / 自动，自动在内存不超过 16 GB 时关闭）、界面语言（跟随系统 / 简体中文 / English），切换即时生效。
 - **搜索范围**：不搜索的文件夹、任何位置都跳过的文件夹名称（如 `node_modules`）、是否包括 U 盘和移动硬盘。
 - **文件内容搜索**：要搜索内容的文件类型、文件大小上限、是否也搜系统和程序文件夹、是否建立内容索引。
@@ -173,7 +180,7 @@ Win顺 自己以管理员身份运行，但 **你从它打开的文件和应用�
 ### 常见问题
 
 **和 Everything、Listary 有什么区别？**
-Win顺 自己建索引，不需要另装 Everything。文件名、拼音、应用和文字内容在同一个搜索框里搜，默认就针对中文做了优化。它没有 Listary 那种嵌在资源管理器和“打开 / 保存”对话框里的功能。
+Win顺 自己建索引，不需要另装 Everything。文件名、拼音、应用和文字内容在同一个搜索框里搜，默认就针对中文做了优化。“打开 / 保存”对话框里有和 Listary 一样的 `Ctrl+G`（转到资源管理器正在显示的文件夹），但没有 Listary 那种嵌在资源管理器和对话框里的搜索框。
 
 **能搜 Word、Excel、PDF 里的文字吗？**
 不能，内容搜索只读纯文本文件（txt、md、csv、json、代码等）。
@@ -253,6 +260,12 @@ The interface comes in **English and Simplified Chinese**. It follows the Window
 - The keywords come from the settings index that ships with Windows (what the Start menu searches). WinShun adds everyday words for them and tools and folders the Start menu lacks: Disk Management, Group Policy, Local Users and Groups, the Startup folder, the folder of the hosts file, AppData and more.
 - In **全部 (All)** they sit with the apps, tagged “系统 (System)”, five at most, and open with normal rights; Windows asks for administrator rights itself where needed.
 
+#### 📂 Open and Save dialogs: straight to the Explorer folder
+
+- In an Open or Save As dialog (folder pickers included), press `Ctrl+G` and the dialog goes to the folder shown in the File Explorer window you used last, like Listary's shortcut of the same name. Find the place in Explorer, then Save As in any program: one key and you are there.
+- With several Explorer tabs open (Windows 11), the tab on top counts; a window that shows no folder on disk (Home, This PC, a search) is passed over for the one before it.
+- The file name you typed stays, and so does the keyboard focus. `Ctrl+G` is taken only while such a dialog is in front, so it keeps its meaning in every other program. It can be turned off in the settings; if Listary runs too, both answer the key, so turn off one of them.
+
 #### ⌨️ Keyboard first
 
 `Enter` opens, `Ctrl+Enter` shows the item in its folder, `Ctrl+Shift+Enter` runs as administrator, `Ctrl+C` copies the file, `Ctrl+Shift+C` copies its path, `Tab` / `Shift+Tab` switch scopes, the menu key or right-click shows more actions, `Esc` closes. The selected row also has buttons to show in folder, copy, copy path and delete (to the Recycle Bin, after a second click). Select several results with `Shift+↑` / `Shift+↓`, `Ctrl`+click or `Shift`+click: opening, copying and deleting then act on all of them, and `Esc` first clears the selection.
@@ -288,7 +301,7 @@ WinShun runs as administrator, but **files and apps you open from it run with yo
 ### FAQ
 
 **How is it different from Everything or Listary?**
-WinShun builds its own index, so Everything is not needed. File names, pinyin, apps and file contents are searched from one box, tuned for Chinese by default. It does not embed itself in Explorer or in Open / Save dialogs the way Listary does.
+WinShun builds its own index, so Everything is not needed. File names, pinyin, apps and file contents are searched from one box, tuned for Chinese by default. Open / Save dialogs get the same `Ctrl+G` as in Listary (go to the folder shown in Explorer), but there is no search box embedded in Explorer or in the dialogs the way Listary has one.
 
 **Can it search inside Word, Excel or PDF files?**
 No. Content search reads plain-text files only.

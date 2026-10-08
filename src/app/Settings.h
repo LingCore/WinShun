@@ -16,6 +16,7 @@ struct Settings {
     QString hotkey; // e.g. "Alt+Space"; empty = none
     QString renderer = QStringLiteral("auto"); // software | d3d11 | auto
     bool recordHistory = true; // remember what was opened: listed with nothing typed, first among matches
+    bool dialogJump = true; // Ctrl+G in an Open or Save dialog goes to the folder open in File Explorer
 
     // [Appearance]
     QString theme = QStringLiteral("system"); // system | light | dark

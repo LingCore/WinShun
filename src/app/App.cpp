@@ -12,6 +12,7 @@
 #include "SystemTheme.h"
 #include "Updater.h"
 #include "WindowFrame.h"
+#include "platform/DialogJump.h"
 #include "platform/KeyListener.h"
 #include "platform/MessageWindow.h"
 #include "platform/Shell.h"
@@ -41,6 +42,7 @@ namespace ws {
 namespace {
 
 constexpr int kHotkeyId = 1;
+constexpr int kDialogJumpHotkeyId = 2; // Ctrl+G, while a file dialog is in front
 constexpr DWORD kSlowMenuMs = 100; // a tray menu slower than this to appear is logged
 
 enum TrayCommand {
@@ -184,7 +186,12 @@ bool App::start(const StartOptions& options)
         if (std::exchange(m_updateNotified, false))
             showUpdate();
     };
-    callbacks.hotkeyPressed = [this](int) { toggleLauncher(); };
+    callbacks.hotkeyPressed = [this](int id) {
+        if (id != kDialogJumpHotkeyId)
+            toggleLauncher();
+        else if (m_dialogJump)
+            m_dialogJump->jump();
+    };
     callbacks.commandReceived = [this](const QString& command) { handleCommand(command); };
     callbacks.sessionEnding = [this] { m_index->shutdown(); }; // save the index before Windows ends us
     callbacks.deviceChange = [this](WPARAM event, LPARAM data) -> LRESULT {
@@ -350,6 +357,16 @@ void App::applySettings(bool initial)
             [this] { QMetaObject::invokeMethod(this, &App::toggleLauncher, Qt::QueuedConnection); });
     } else if (!m_settings.doubleCtrl) {
         m_keyListener.reset();
+    }
+    if (m_settings.dialogJump && !m_dialogJump) {
+        m_dialogJump = std::make_unique<DialogJump>([this](bool on) {
+            if (on)
+                return m_messages->registerHotkey(kDialogJumpHotkeyId, u"Ctrl+G"_s);
+            m_messages->unregisterHotkey(kDialogJumpHotkeyId);
+            return true;
+        });
+    } else if (!m_settings.dialogJump) {
+        m_dialogJump.reset();
     }
 
     if (!initial)

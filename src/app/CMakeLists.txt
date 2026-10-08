@@ -4,6 +4,7 @@ qt_add_executable(WinShun WIN32
     FileIconProvider.cpp FileIconProvider.h
     Migration.cpp Migration.h
     Settings.cpp Settings.h
+    platform/DialogJump.cpp platform/DialogJump.h
     platform/Http.cpp platform/Http.h
     platform/KeyListener.cpp platform/KeyListener.h
     platform/MessageWindow.cpp platform/MessageWindow.h

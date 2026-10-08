@@ -211,6 +211,14 @@ void SettingsEditor::setRecordHistory(bool on)
     commit();
 }
 
+void SettingsEditor::setDialogJump(bool on)
+{
+    if (m_settings.dialogJump == on)
+        return;
+    m_settings.dialogJump = on;
+    commit();
+}
+
 void SettingsEditor::setHistoryCount(int count)
 {
     if (m_historyCount == count)

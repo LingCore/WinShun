@@ -56,12 +56,12 @@ public:
         if (!isCtrl(vk) || !m_down)
             return false;
         m_down = false;
-        const bool tap = m_clean && timeMs - m_downTime <= m_config.maxPressMs && near(x, y, m_downX, m_downY);
+        const bool tap = m_clean && timeMs - m_downTime <= m_config.maxPressMs && closeTo(x, y, m_downX, m_downY);
         if (!tap) {
             m_armed = false;
             return false;
         }
-        if (m_armed && near(m_downX, m_downY, m_firstX, m_firstY)) {
+        if (m_armed && closeTo(m_downX, m_downY, m_firstX, m_firstY)) {
             m_armed = false;
             return true;
         }
@@ -82,7 +82,7 @@ public:
     void reset() noexcept { *this = DoubleTapDetector(m_config); }
 
 private:
-    bool near(int x1, int y1, int x2, int y2) const noexcept
+    bool closeTo(int x1, int y1, int x2, int y2) const noexcept
     {
         return std::abs(x1 - x2) <= m_config.maxMovePx && std::abs(y1 - y2) <= m_config.maxMovePx;
     }

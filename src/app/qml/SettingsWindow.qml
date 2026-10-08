@@ -392,6 +392,16 @@ Window {
                 }
 
                 SettingRow {
+                    title: qsTr("Ctrl+G 转到资源管理器的文件夹")
+                    description: qsTr("在“打开”“另存为”等对话框里按 Ctrl+G，对话框直接转到最近用过的资源管理器窗口正在显示的文件夹")
+
+                    ToggleSwitch {
+                        checked: window.editor.dialogJump
+                        onToggled: (on) => window.editor.dialogJump = on
+                    }
+                }
+
+                SettingRow {
                     title: qsTr("开机时自动启动")
                     description: qsTr("登录 Windows 后在后台运行，随时可以打开")
 

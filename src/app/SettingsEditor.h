@@ -26,6 +26,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool autostart READ autostart WRITE setAutostart NOTIFY autostartChanged FINAL)
     Q_PROPERTY(bool recordHistory READ recordHistory WRITE setRecordHistory NOTIFY changed FINAL)
     Q_PROPERTY(int historyCount READ historyCount NOTIFY historyCountChanged FINAL)
+    Q_PROPERTY(bool dialogJump READ dialogJump WRITE setDialogJump NOTIFY changed FINAL)
     Q_PROPERTY(bool includeRemovableDrives READ includeRemovableDrives WRITE setIncludeRemovableDrives NOTIFY changed FINAL)
     Q_PROPERTY(bool rescanOnStartup READ rescanOnStartup WRITE setRescanOnStartup NOTIFY changed FINAL)
     Q_PROPERTY(QStringList excludedPaths READ excludedPaths NOTIFY changed FINAL) // expanded, for display
@@ -62,6 +63,8 @@ public:
     void setRecordHistory(bool on);
     int historyCount() const { return m_historyCount; }
     void setHistoryCount(int count); // set by the app
+    bool dialogJump() const { return m_settings.dialogJump; }
+    void setDialogJump(bool on);
     bool includeRemovableDrives() const { return m_settings.includeRemovableDrives; }
     void setIncludeRemovableDrives(bool on);
     bool rescanOnStartup() const { return m_settings.rescanOnStartup; }
