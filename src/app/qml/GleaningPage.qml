@@ -226,11 +226,11 @@ Flickable {
         // The author: avatar, name and motto.
         Item {
             width: parent.width
-            height: 22 + Math.max(64, authorInfo.implicitHeight)
+            height: 22 + Math.max(avatar.size, authorInfo.implicitHeight)
             AuthorAvatar {
                 id: avatar
-                y: 22 + Math.max(0, (authorInfo.implicitHeight - 64) / 2) // the motto is large: keep both centred
-                size: 64
+                y: 22 + Math.max(0, (authorInfo.implicitHeight - size) / 2) // the motto is large: keep both centred
+                size: 70
             }
             Column {
                 id: authorInfo

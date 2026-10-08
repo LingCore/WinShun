@@ -4,9 +4,9 @@ import WinShun
 // The author LingCore's avatar: a chibi holding a cursor. It pops up and
 // tilts side to side like waving hello whenever AuthorClock plays (each time
 // the page opens), then keeps swaying gently while the page is open. Under
-// the pointer it grows a little and holds still. Pressed, it plays a short
-// sound (resources/gleaning/ikun.mp3) and beats along: it swells at each
-// loud moment and settles between them. Every press bumps it at once; one
+// the pointer it grows and holds still. Pressed, it plays a short sound
+// (resources/gleaning/ikun.mp3) and beats along: it swells at each loud
+// moment and settles between them. Every press bumps it at once; one
 // while the sound plays lets it play on, so a quick series of presses
 // neither piles up sounds nor stutters on the first moment of it. Without
 // the sound (no Media Foundation), a press replays the hello. With Windows'
@@ -15,12 +15,12 @@ import WinShun
 Item {
     id: avatar
 
-    property real size: 64
+    property real size: 70
     readonly property real t: AuthorClock.elapsed
     readonly property bool lively: SystemTheme.animations && visible
     property real beat: 1 // the scale the sound gives it; exactly 1 at rest
-    // A tenth larger under the pointer.
-    property real lift: area.containsMouse && SystemTheme.animations ? 1.1 : 1
+    // 15% larger under the pointer.
+    property real lift: area.containsMouse && SystemTheme.animations ? 1.15 : 1
     Behavior on lift {
         NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
     }
@@ -70,7 +70,7 @@ Item {
         }
     }
 
-    // The sound: up to a quarter larger at its loudest, quiet moments
+    // The sound: up to a fifth larger at its loudest, quiet moments
     // counting for little. It swells within a few frames and shrinks at a
     // steady pace (from the largest in a sixth of a second), so it never
     // jumps and lands on exactly 1 when the sound ends.
@@ -83,7 +83,7 @@ Item {
                                                          : Math.max(sway, avatar.swayAmount - dt / 0.25)
             avatar.swayPhase = (avatar.swayPhase + dt * 2 * Math.PI / 2.4) % (2 * Math.PI)
 
-            const target = clip.playing && SystemTheme.animations ? 1 + 0.25 * Math.pow(clip.level(), 1.5) : 1
+            const target = clip.playing && SystemTheme.animations ? 1 + 0.2 * Math.pow(clip.level(), 1.5) : 1
             const b = avatar.beat
             avatar.beat = target > b ? b + (target - b) * Math.min(1, dt * 30)
                                      : Math.max(target, b - dt * 1.5)
@@ -114,7 +114,7 @@ Item {
         // on a half pixel. Nudged off the exact half pixel, where the nearest
         // sample is a tie (see ResultRow). Lively, it is nearly always turned
         // or scaled: loaded at 1.4 times that, enough for the largest it gets
-        // (1.1 × 1.25), and drawn smoothly from mipmaps.
+        // (1.15 × 1.2), and drawn smoothly from mipmaps.
         Image {
             readonly property real dpr: Screen.devicePixelRatio
             readonly property int pixels: Math.round(avatar.size * 96 / 56 * dpr)
