@@ -19,7 +19,7 @@ namespace ws {
 namespace {
 
 const QPointF kHome {0.5, 0.2}; // centred, a fifth of the way down
-constexpr int kSnapDistance = 12; // logical pixels
+constexpr int kSnapDistance = 12; // logical pixels, where a dropped window settles home
 constexpr int kGlideMs = 220;
 
 // The scale Qt draws at on a monitor.
@@ -34,8 +34,7 @@ qreal scaleOf(HMONITOR monitor, qreal fallback)
 }
 
 // Where a window being moved goes instead of `rect` (physical pixels): on the
-// work area of the monitor under the pointer with `room` below its top, and
-// stuck to the home spot's centre line and height when near them.
+// work area of the monitor under the pointer with `room` below its top.
 void shapeMove(RECT& rect, int width, int room, qreal fallbackScale)
 {
     POINT cursor {};
@@ -49,14 +48,8 @@ void shapeMove(RECT& rect, int width, int room, qreal fallbackScale)
     const qreal scale = scaleOf(monitor, fallbackScale);
     width = qRound(width * scale);
     room = qRound(room * scale);
-    const int snap = qRound(kSnapDistance * scale);
-
-    const LONG homeX = area.left + qRound((area.right - area.left) * kHome.x() - width / 2.0);
-    const LONG homeY = area.top + qRound((area.bottom - area.top) * kHome.y());
-    LONG x = std::abs(rect.left - homeX) <= snap ? homeX : rect.left;
-    LONG y = std::abs(rect.top - homeY) <= snap ? homeY : rect.top;
-    x = std::clamp(x, area.left, std::max(area.left, area.right - width));
-    y = std::clamp(y, area.top, std::max(area.top, area.bottom - room));
+    const LONG x = std::clamp(rect.left, area.left, std::max(area.left, area.right - width));
+    const LONG y = std::clamp(rect.top, area.top, std::max(area.top, area.bottom - room));
     ::OffsetRect(&rect, x - rect.left, y - rect.top);
 }
 
@@ -96,8 +89,9 @@ struct Placement::Hook {
             break;
         case WM_MOVING: {
             // Windows proposes where the window was plus the pointer's step,
-            // so a window held by a magnet would stay held. It goes where the
-            // pointer puts it instead, at the offset of the first proposal.
+            // so a window held at the work area's edge would lag the pointer
+            // when coming back. It goes where the pointer puts it instead, at
+            // the offset of the first proposal.
             RECT& rect = *reinterpret_cast<RECT*>(lParam);
             POINT cursor {};
             ::GetCursorPos(&cursor);
@@ -175,13 +169,7 @@ void Placement::moveHome()
     QScreen* screen = m_window->screen();
     if (!screen)
         return;
-    const QPoint target = positionIn(screen->availableGeometry());
-    m_glide.stop();
-    if (target == m_window->position())
-        return;
-    m_glide.setStartValue(m_window->position());
-    m_glide.setEndValue(target);
-    m_glide.start();
+    glideTo(positionIn(screen->availableGeometry()));
 }
 
 void Placement::setMoving(bool moving)
@@ -205,13 +193,25 @@ void Placement::rememberSpot()
         return;
     QPointF anchor((frame.x() + frame.width() / 2.0 - area.x()) / area.width(),
         qreal(frame.y() - area.y()) / area.height());
-    // Stuck to home (within rounding): exactly home, the same on every monitor.
-    if (std::abs(anchor.x() - kHome.x()) * area.width() <= 1.5)
+    // Let go near the centre line or the home height: settles onto it, the
+    // same on every monitor. Only now, so the drag itself never stalls.
+    if (std::abs(anchor.x() - kHome.x()) * area.width() <= kSnapDistance)
         anchor.rx() = kHome.x();
-    if (std::abs(anchor.y() - kHome.y()) * area.height() <= 1.5)
+    if (std::abs(anchor.y() - kHome.y()) * area.height() <= kSnapDistance)
         anchor.ry() = kHome.y();
     m_anchor = {std::clamp(anchor.x(), 0.0, 1.0), std::clamp(anchor.y(), 0.0, 1.0)};
     save();
+    glideTo(positionIn(area));
+}
+
+void Placement::glideTo(const QPoint& target)
+{
+    m_glide.stop();
+    if (!m_window || target == m_window->position())
+        return;
+    m_glide.setStartValue(m_window->position());
+    m_glide.setEndValue(target);
+    m_glide.start();
 }
 
 void Placement::save() const

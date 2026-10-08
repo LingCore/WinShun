@@ -24,7 +24,8 @@ namespace ws {
 // monitors, and Esc puts it back. The loop is shaped on the way (WM_MOVING):
 // the window stays on the work area of the monitor under the pointer with
 // room below for its tallest layout, so a full list never runs off the
-// screen, and it sticks to the centre line and to the home height. The loop's
+// screen. Let go near the centre line or the home height, it glides onto
+// them; while moving it follows the pointer and nothing else. The loop's
 // messages reach us through a subclass of the window procedure: Qt passes
 // them to no native event filter (QTBUG-67095).
 class Placement : public QObject {
@@ -60,6 +61,7 @@ private:
     QPoint positionIn(const QRect& area) const;
     void setMoving(bool moving);
     void rememberSpot(); // after a move
+    void glideTo(const QPoint& target);
     void save() const;
 
     QString m_stateFile;
