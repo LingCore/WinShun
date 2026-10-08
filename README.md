@@ -1,29 +1,95 @@
-# Win顺 · WinShun
+<p align="center">
+  <img src="docs/images/icon.png" width="128" height="128" alt="Win顺 app icon">
+</p>
 
-Windows 上的快速搜索启动器：双击 Ctrl 呼出，按文件名搜文件和文件夹，也能搜文本文件里的文字。
-Qt 6 + C++20 编写，不依赖 Everything。需要以管理员身份运行（启动时会弹出 UAC 确认）。
+<h1 align="center">Win顺 · WinShun</h1>
 
-## 功能
+<p align="center">
+  <b>双击 Ctrl，搜遍整台电脑</b> —— 免费开源的 Windows 快速搜索启动器<br>
+  <b>Press Ctrl twice, search your whole PC</b> — a free, open-source search launcher for Windows
+</p>
 
-| 范围 | 说明 |
+<p align="center">
+  <a href="https://github.com/LingCore/WinShun/releases/latest"><img src="https://img.shields.io/github/v/release/LingCore/WinShun?label=%E4%B8%8B%E8%BD%BD%20Download" alt="Download"></a>
+  <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4" alt="Windows 10 | 11">
+  <img src="https://img.shields.io/badge/x64-64--bit-blue" alt="x64">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT"></a>
+  <a href="https://linux.do"><img src="https://img.shields.io/badge/LINUX%20DO-%E7%A4%BE%E5%8C%BA%20Community-1f1f1f" alt="LINUX DO 社区"></a>
+</p>
+
+<p align="center">
+  <a href="#中文">中文</a> · <a href="#english">English</a>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/search-dark.png">
+    <img src="docs/images/search-light.png" width="720" alt="Win顺 搜索框：输入拼音 ndbg 找到“年度报告” / WinShun search bar: pinyin initials find 年度报告">
+  </picture>
+</p>
+
+---
+
+<a id="中文"></a>
+
+## 中文
+
+**Win顺 是什么？** 一个 Windows 上的快速搜索启动器。连按两下 Ctrl，屏幕上弹出搜索框，边打字边出结果：按文件名或拼音找文件和文件夹，打开已安装的应用，也能找文本文件里的文字。不用装 Everything，也不用写任何配置。
+
+它直接读 NTFS 的主文件表建索引，三百多万个文件十秒左右就能建好，之后文件的增删改名都实时跟上。它常驻在任务栏右下角的托盘里，不联网，不需要账号，完全免费。界面是简体中文。
+
+### 功能
+
+#### 🔍 文件搜索
+
+- **连按两下 Ctrl** 打开搜索框，再按一次或按 Esc 关闭。三百多万个文件里搜一次，一般只要几毫秒。
+- **支持拼音和首字母**：`bg`、`baogao`、`baog` 都能找到“报告”，`ndbg` 找到“年度报告”；多音字按常用读音（“银行”用 `yh` 或 `yinhang`）。
+- **搜整台电脑**：所有本地磁盘；U 盘和移动硬盘可以在设置里打开。
+- **排序懂你**：自己的文件排在前面，系统目录、程序目录、`node_modules`、`.git` 排在后面；最近打开过的排得更前，不输入时直接列出最近打开的。
+- **索引实时更新**：文件改名、新建、删除马上就能搜到。插上新磁盘自动收录，拔掉的自动移除；“安全删除硬件”时 Win顺 会先放开这块磁盘，不会提示“设备正在使用”。
+- **搜索语法**：
+
+| 写法 | 含义 |
 |---|---|
-| 全部 | 按文件名搜索整个电脑（所有本地固定磁盘），边输入边出结果；匹配得好的已安装应用（最多 3 个）排在最前；停止输入后再搜文本文件的内容，排在文件名结果后面（只搜自己的文件，跳过系统、程序目录和 `node_modules` 等） |
-| 应用 | 已安装的应用，和开始菜单“所有应用”一致：桌面程序和 Microsoft Store 应用都有。按名称、拼音、英文首字母（`vsc` 找 Visual Studio Code）或程序文件名（`winword` 找 Word）搜索；不输入时先列最近打开的，再按名称列出全部 |
-| 文件 / 文件夹 | 只按文件名搜文件或文件夹 |
-| 内容 | 在文本文件里找文字，显示命中的那一行和行号。默认搜 txt、md、log、csv、ini、常见源代码、json、xml、html 等纯文本格式，可在设置中增删扩展名。Word、Excel、PDF 等不是纯文本，搜不到。默认跳过系统、程序目录和 `node_modules` 等（设置里可以打开）。有内容索引：搜中日韩文字，或三个以上连在一起的英文字母、数字时，先由索引筛掉不可能含有它的文件，只打开剩下的 |
+| `报告 2024` | 文件名同时包含“报告”和“2024”（空格分隔，顺序不限，不区分大小写） |
+| `ndbg`、`niandubaogao` | 拼音：每个汉字用读音或读音开头的几个字母，可以混用（如 `ndbaog`）；字母和数字照常匹配（`v2bg` 找“v2报告”） |
+| `"年度 报告"` | 引号内作为一个整体，包括空格 |
+| `!草稿` | 排除文件名含“草稿”的 |
+| `!node_modules\` | 排除名字含 `node_modules` 的文件夹里的所有内容；`!临时\*.log` 只排除这种文件夹里的 `.log` |
+| `*.pdf`、`报告?.docx` | 通配符：`*` 任意多个字符，`?` 一个字符 |
+| `ext:pdf,docx` | 只要这些扩展名的文件 |
+| `项目\readme` | 文件名含 `readme`，并且在某个名字含“项目”的文件夹下（文件夹名也可以用拼音：`xm\readme`） |
 
-- 用拼音搜中文文件名：`bg`、`baogao`、`baog` 都能找到“报告”，多音字按常用读音（“银行”用 `yh` 或 `yinhang`）
-- 自动识别文本编码：UTF-8（含 BOM）、UTF-16 LE/BE、GBK 等本地编码
-- 自己的文件排在前面，系统目录、程序目录、`node_modules`、`.git` 等排在后面
-- 最近打开的项目会排到前面；不输入时显示最近打开过的项目
-- 选中或鼠标悬停的结果右侧有四个按钮：定位（打开所在文件夹并选中）、复制、复制路径、删除（点两次才删，移到回收站）
-- 跟随系统浅色 / 深色主题和强调色，Windows 11 圆角窗口
-- 图标按显示缩放取原生尺寸（150% 下 48 像素），对齐物理像素，不糊；Store 应用用其清单里为该尺寸、该主题（浅 / 深）绘制的图标文件
-- 应用像在开始菜单里一样打开（普通权限）；桌面程序和完全信任的打包应用（如 Terminal）可以“以管理员身份运行”
-- 文件改名、新建、删除后，索引实时更新
-- 插上新磁盘会自动收录，拔掉的磁盘自动移除；“安全删除硬件”/弹出时 Win顺会先放开该磁盘，不会提示“设备正在使用”
+#### 📄 文字内容搜索
 
-## 快捷键
+- 切到 **内容** 范围，找文本文件里的文字，结果里直接显示命中的那一行和行号。
+- 默认搜 txt、md、log、csv、ini、json、xml、html 和常见源代码等纯文本格式，可以在设置里增删扩展名。Word、Excel、PDF 不是纯文本，搜不到。
+- **自动识别编码**：UTF-8（含 BOM）、UTF-16、GBK 等本地编码都能正确读出。
+- **有内容索引**：搜中文，或三个以上连在一起的英文字母、数字时，先用索引筛掉不可能含有它的文件，只打开剩下的，几十万个文件也很快。
+- 在 **全部** 范围里，停止输入后也会搜文件内容，排在文件名结果后面。默认跳过系统、程序目录和 `node_modules` 等。
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/content-dark.png">
+    <img src="docs/images/content-light.png" width="720" alt="Win顺 内容搜索：显示命中的那一行和行号">
+  </picture>
+</p>
+
+#### 🚀 打开应用
+
+- **应用** 范围列出所有已安装的应用，和开始菜单的“所有应用”一致：桌面程序和 Microsoft Store 应用都有。
+- 按名称、拼音、英文首字母（`vsc` 找 Visual Studio Code）或程序文件名（`winword` 找 Word）搜索；不输入时先列最近打开的。
+- 在 **全部** 范围里，匹配得好的应用（最多 3 个）排在最前。
+- 应用像在开始菜单里一样以普通权限打开；需要时按 `Ctrl+Shift+Enter` 以管理员身份运行。
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/apps-dark.png">
+    <img src="docs/images/apps-light.png" width="720" alt="Win顺 应用搜索：输入拼音首字母找到已安装的应用">
+  </picture>
+</p>
+
+#### ⌨️ 全键盘操作
 
 | 按键 | 作用 |
 |---|---|
@@ -34,180 +100,212 @@ Qt 6 + C++20 编写，不依赖 Everything。需要以管理员身份运行（�
 | `Ctrl+Shift+Enter` | 以管理员身份运行 |
 | `Ctrl+C` | 复制文件（可以直接到资源管理器里粘贴）；搜索框里有选中文字时复制文字 |
 | `Ctrl+Shift+C` | 复制完整路径 |
-| `Tab` / `Shift+Tab` | 切换搜索范围；`Ctrl+1`…`Ctrl+5` 直接选择 |
+| `Tab` / `Shift+Tab` | 切换搜索范围（全部 / 应用 / 文件 / 文件夹 / 内容）；`Ctrl+1`…`Ctrl+5` 直接选择 |
 | 菜单键 / `Shift+F10` / 右键 | 更多操作 |
 | `Esc` | 关闭 |
 
-点托盘图标也能打开。托盘右键菜单里有：重建索引、开机自动启动、设置、退出。
+鼠标也能用：选中或悬停的结果右边有四个按钮，分别是打开所在位置、复制、复制路径和删除（点两次才删，移到回收站）。
 
-## 搜索语法
+#### 🎨 像 Windows 11 自带的一样
 
-| 写法 | 含义 |
+- 跟随系统的浅色 / 深色主题和强调色，Windows 11 圆角窗口。
+- 图标按显示缩放取原生尺寸，对齐物理像素，150% 缩放下也不糊；Store 应用用它为当前尺寸和主题准备的图标。
+- 界面字体随程序附带（阿里巴巴普惠体），中文清晰。
+
+#### ⚙️ 设置
+
+托盘图标右键 → **设置…**，修改后自动保存、立即生效：
+
+- **打开 Win顺**：双击 Ctrl 开关、另设一个组合键、开机自动启动。
+- **搜索范围**：不搜索的文件夹、任何位置都跳过的文件夹名称（如 `node_modules`）、是否包括 U 盘和移动硬盘。
+- **文件内容搜索**：要搜索内容的文件类型、文件大小上限、是否也搜系统和程序文件夹、是否建立内容索引。
+- **高级**：界面绘制方式（省内存 / 显卡加速 / 自动）、恢复默认设置。
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/settings-dark.png">
+    <img src="docs/images/settings-light.png" width="720" alt="Win顺 设置窗口">
+  </picture>
+</p>
+
+### 下载安装
+
+1. 到 [Releases 页面](https://github.com/LingCore/WinShun/releases/latest) 下载 `WinShun-版本号-x64.zip`，解压到一个固定的位置（例如 `D:\Tools\WinShun`）。免安装，运行库已经带在里面。
+2. 双击 `WinShun.exe`。如果 Windows 提示“Windows 已保护你的电脑”，点 **更多信息 → 仍要运行**。这是因为作者还没有购买代码签名证书，不是程序有问题。
+3. 在 UAC 弹窗里点 **是**（为什么需要管理员权限见下一节）。托盘里出现 Win顺 的图标，就说明在运行了。第一次建立索引只要几秒到十几秒。
+4. 连按两下 Ctrl，开始搜索。想开机自动启动，在托盘图标的右键菜单里勾选 **开机自动启动**，以后开机不会再弹 UAC。
+
+系统要求：Windows 10 或 Windows 11，64 位。
+
+### 为什么需要管理员权限
+
+| 用来做什么 | 好处 |
 |---|---|
-| `报告 2024` | 文件名同时包含“报告”和“2024”（空格分隔，顺序不限，不区分大小写） |
-| `ndbg`、`niandubaogao` | 拼音：每个汉字用读音或读音开头的几个字母，可以混用（如 `ndbaog`），找到“年度报告”；字母和数字照常匹配（`v2bg` 找“v2报告”） |
-| `"年度 报告"` | 引号内作为一个整体，包括空格 |
-| `!草稿` | 排除文件名含“草稿”的 |
-| `!node_modules\` | 排除名字含 `node_modules` 的文件夹里的所有内容；`!临时\*.log` 只排除这种文件夹里的 `.log` |
-| `*.pdf`、`报告?.docx` | 通配符：`*` 任意多个字符，`?` 一个字符 |
-| `ext:pdf,docx` | 只要这些扩展名的文件 |
-| `项目\readme` | 文件名含 `readme`，并且在某个名字含“项目”的文件夹下（文件夹名也可以用拼音：`xm\readme`） |
+| 直接读 NTFS 主文件表（MFT） | 一次顺序读完整块磁盘的文件名单，三百多万个文件十秒左右建好索引 |
+| 读 NTFS 变更日志（USN 日志） | 启动时只补读关机期间的改动，不用重新扫描磁盘；运行中改动实时跟上 |
+| 以最高权限的计划任务开机自启 | 开机不弹 UAC |
 
-内容搜索把整个输入当作一句话来找（不拆分空格），停止输入约 0.3 秒后开始。“全部”范围里用了通配符、`ext:` 或 `!` 时只搜文件名。
+Win顺 自己以管理员身份运行，但 **你从它打开的文件和应用仍是普通权限**（交给资源管理器代为打开），只有按 `Ctrl+Shift+Enter` 才会以管理员身份运行。
 
-## 设置
+### 常见问题
 
-托盘菜单 →“设置…”打开设置窗口，在左边选择分类，修改后自动保存并立即生效：
+**和 Everything、Listary 有什么区别？**
+Win顺 自己建索引，不需要另装 Everything。文件名、拼音、应用和文字内容在同一个搜索框里搜，默认就针对中文做了优化。它没有 Listary 那种嵌在资源管理器和“打开 / 保存”对话框里的功能。
 
-- **打开 Win顺**：双击 Ctrl 开关；另设一个组合键（点方框后直接按下，如 `Alt+Space`）；开机自动启动
-- **搜索范围**：不搜索的文件夹（用文件夹选择框添加）；任何位置都跳过的文件夹名称（如 `node_modules`）；是否包括 U 盘和移动硬盘；启动时检查文件变化
-- **文件内容搜索**：要搜索内容的文件类型（如 `txt`、`md`、`log`）；文件大小上限；是否也搜系统和程序文件夹；是否建立内容索引（显示已收录多少文件）
-- **高级**：界面绘制方式（省内存 / 显卡加速 / 自动，重启后生效）；恢复默认设置
-- **拾穗计划**：作者的其他作品（Win顺、Mac顺）和反馈方式。页面内容写在 `src/app/qml/Gleaning.qml` 里，不联网获取
+**能搜 Word、Excel、PDF 里的文字吗？**
+不能，内容搜索只读纯文本文件（txt、md、csv、json、代码等）。
 
-设置保存在 `%APPDATA%\WinShun\WinShun.ini`，直接改这个文件也会立即生效：
+**按 `Ctrl+1`～`Ctrl+5` 切换范围没反应？**
+这几个组合键可能被别的程序注册成了全局快捷键（例如截图工具 PixPin 默认占用 `Ctrl+1` 等），按键到不了 Win顺。改掉那个程序的快捷键，或者用 `Tab` 切换。
 
-```ini
-[Launcher]
-DoubleCtrl=true          ; 双击 Ctrl 呼出
-Hotkey=                  ; 额外的全局快捷键，例如 Alt+Space、Ctrl+Shift+F
-Renderer=auto            ; auto（内存 ≤ 16 GB 用 software，否则 d3d11）| d3d11（文字清晰）| software（省内存，文字偏模糊）
+**双击 Ctrl 和别的软件冲突怎么办？**
+在设置的“打开 Win顺”页关掉双击 Ctrl，另设一个组合键（如 `Alt+Space`）。
 
-[Index]
-ExcludedPaths=...        ; 不建索引的文件夹，支持 %WINDIR% 这类环境变量，逗号分隔
-ExcludedNames=...        ; 任意位置的同名文件夹，也可写尾部路径，如 .svn/pristine
-IncludeRemovableDrives=false
-RescanOnStartup=true     ; 启动 15 秒后在后台核对一次磁盘，补上程序未运行期间的变化
+**占多少内存？**
+文件名索引每 100 万个文件约 30 MB。整个程序在任务管理器里一般是 120～140 MB。
 
-[Content]
-Extensions=txt, md, ...  ; 内容搜索的扩展名，逗号分隔（只支持纯文本格式）
-MaxFileSizeMB=64         ; 超过此大小的文件不搜内容
-IncludeSystemFolders=false ; “内容”范围也搜系统、程序目录和 node_modules 等（文件多，会慢不少）
-Index=true               ; 建立内容索引（中日韩文字和英文、数字；NTFS 磁盘，后台建立，几十万个文件约占 200 MB 磁盘）
-```
+**收费吗？会上传我的数据吗？**
+完全免费，源代码公开。Win顺 不联网，索引和最近使用记录只保存在你自己的电脑上（`%LOCALAPPDATA%\WinShun`）。
 
-修改“不搜索的文件夹”后不需要重建索引：新排除的文件夹直接从索引里去掉，取消排除的文件夹单独补读一遍。只有取消排除“文件夹名称”（它可能出现在任何位置）时才会重新读取所有磁盘。
+**怎么卸载？**
+在托盘图标的右键菜单里取消 **开机自动启动**，再选 **退出**，然后删除程序所在的文件夹。如果还想清除设置和索引，再删掉 `%APPDATA%\WinShun` 和 `%LOCALAPPDATA%\WinShun`。
 
-索引、最近使用记录和日志（`WinShun.log`，只记警告和错误）保存在 `%LOCALAPPDATA%\WinShun`。
+### 反馈
 
-本程序原名“快搜”（QuickFind）。第一次以 Win顺 启动时，会先让还在运行的快搜退出，再把 `%APPDATA%\QuickFind`、`%LOCALAPPDATA%\QuickFind` 搬到新位置，开机自启（计划任务“QuickFind”）也换成“WinShun”，设置、索引和最近使用记录都保留。
+遇到问题或有建议，欢迎在 [Issues](https://github.com/LingCore/WinShun/issues) 里提出。
 
-## 性能（实测）
+### 从源码编译
 
-测试机：i9-14900HX，4 块本地磁盘，共 **316 万**个文件和文件夹。
-
-| 项目 | 结果 |
-|---|---|
-| 首次建立索引（读 MFT，C 盘的 MFT 有 4.4 GB） | 约 9 秒（含保存） |
-| 之后启动时加载索引 | 0.5 秒，随后补读变更日志（通常几十毫秒），不再全盘重扫 |
-| 同样 316 万项改用遍历目录 | 约 7 秒（文件系统缓存已热时；冷启动要慢得多） |
-| 文件名搜索 | 一般 4–9 毫秒（单字母约 16 毫秒） |
-| 内容搜索（查内容索引） | 33 万个候选文件：查索引 1–4 毫秒，筛出可能含有的文件约 12 毫秒，再只打开这些文件取行号。例如 `季度报告` 剩 18 个 |
-| 内容搜索（索引用不上：一两个英文字母，或还没收录的文件） | 开着 Windows Defender 时每个文件第一次打开约 7–10 毫秒（它要扫描），16 个文件同时读，每秒约 800 个；结果边找边显示 |
-| 内容索引 | 33 万个文件占 172 MB 磁盘（2.5 亿个“片段-文件”对，每对约 0.7 字节）；文档表约 4 MB 内存，索引文件按需映射，不占私有内存 |
-| 打开窗口 | 约 35 毫秒；第一次也只要约 60 毫秒（启动时已预先画好一次，否则第一次要 200 多毫秒） |
-| 内存 | 文件名索引：323 万项约 97 MB（约 31 字节/项）。整个程序在任务管理器里约 120 MB（刚启动），打开过窗口、内容索引建好后约 140 MB；另占显存约 10–25 MB |
-
-一般电脑有 50 万到 100 万个文件，文件名索引大约占 15–30 MB。可用 `wsbench` 在自己的机器上测（见下文）。
-
-## 构建
-
-需要：
-
-- Qt 6.8 或更新版本（推荐 **6.12 LTS**），MSVC 2022 64 位套件
-- Visual Studio 2022（“使用 C++ 的桌面开发”）
-- CMake 3.25+、Ninja
+需要 Visual Studio 2022（“使用 C++ 的桌面开发”）、Qt 6.8 或更新版本（推荐 6.12，MSVC 2022 64 位套件）、CMake 3.25+ 和 Ninja。
 
 ```powershell
-# 编译 + 运行测试；Qt 用 -QtDir 或环境变量 QTDIR 指定的，都没有时取 C:\Qt 下最新的 msvc2022_64
-./scripts/build.ps1
-./scripts/build.ps1 -QtDir C:\Qt\6.12.0\msvc2022_64
-
-# 生成可分发的文件夹 dist\WinShun（约 38 MB，含 Qt 与 VC 运行库）
-./scripts/build.ps1 -Deploy
+./scripts/build.ps1                                # 编译 + 运行单元测试
+./scripts/build.ps1 -QtDir C:\Qt\6.12.0\msvc2022_64 # 指定 Qt（默认用 QTDIR 或 C:\Qt 下最新的版本）
+./scripts/build.ps1 -Deploy                        # 生成可分发的文件夹 dist\WinShun
 ```
 
-也可以直接用 Qt Creator 或 VS Code（CMake Tools）打开项目目录，预设见 `CMakePresets.json`
-（需要设置环境变量 `QTDIR` 指向 Qt 套件目录）。
+也可以直接用 Qt Creator 或 VS Code（CMake Tools）打开项目目录，预设见 `CMakePresets.json`（需要环境变量 `QTDIR` 指向 Qt 套件目录）。
 
-开发中踩过的坑（Qt 与 Windows 窗口消息、图片清晰度、升级 Qt、界面实测）记在 [docs/pitfalls.md](docs/pitfalls.md)。
+源码结构、设计取舍和性能数据见 [docs/architecture.md](docs/architecture.md)，开发中踩过的坑见 [docs/pitfalls.md](docs/pitfalls.md)。
 
-命令行参数：`--background`（启动时不显示窗口，开机启动用的就是它）、`--toggle`、`--query <文字>`、`--settings`（打开设置窗口）、`--quit`。
+---
 
-## 代码结构
+<a id="english"></a>
 
-```
-src/core/            搜索引擎，只依赖 Qt Core + Win32，可单独测试
-  FileIndex          紧凑的内存索引：每项 20 字节 + 文件名（WTF-8，重复名字只存一份）
-  Ntfs               直接读 NTFS：主文件表（MFT）解析、USN 变更日志读取
-  NtfsIndexer        MftTree（MFT → 按文件夹分组的名单）、UsnApplier（把日志记录应用到索引）
-  Crawler            把一个文件夹的名单与索引“对账”；名单来自 MFT 或多线程遍历目录
-  ChangeWatcher      ReadDirectoryChangesW 监听非 NTFS 磁盘（U 盘等）的增删改名
-  IndexService       加载快照 → 追上变更日志 → 实时跟踪 → 定期保存
-  Snapshot           索引的磁盘格式（流式写入，原子替换）
-  Query / NameSearch 查询解析、打分、多线程扫描（SSE2 加速）
-  Pinyin             拼音匹配（读音表由 tools/make_pinyin.py 从 pinyin-data 生成）
-  AppCatalog         已安装应用：读 shell:AppsFolder（开始菜单“所有应用”），开始菜单文件夹或应用包有变化时才重读；按名称 / 拼音 / 首字母 / 程序名匹配
-  AppLogo            Store 应用的图标文件：按 AppxManifest.xml 和资源限定符（targetsize、altform-unplated / lightunplated）选最合适的一个
-  ContentScanner     文本内容搜索：流式读取、编码识别、按行定位
-  ContentIndex       内容索引：每个文件有哪些中日韩单字、相邻两字和英文三字片段，倒排表存在内存映射的段文件里
-  ContentIndexer     后台读文件建内容索引；变更日志说哪个文件被写过，就重读哪个
-  SearchEngine       后台搜索线程；新输入会取消正在进行的搜索
-src/app/             界面与 Windows 集成
-  Launcher           QML 用的视图模型（查询、结果、状态、操作）
-  SettingsEditor     设置窗口的视图模型（改动即保存）
-  App                组装各部分，管理窗口、托盘、热键
-  platform/          双击 Ctrl（Raw Input）、托盘、Shell 操作、驱动器插拔、窗口效果
-  qml/               界面：Main / SearchBar / ResultRow / Footer / SettingsWindow …
-tests/               单元测试（Qt Test）
-tools/wsbench.cpp    在真实索引上测内存和搜索耗时
-```
+## English
 
-几个设计取舍：
+**What is WinShun?** WinShun (Win顺, "Windows made smooth") is a fast search launcher for Windows. Press Ctrl twice and a search bar pops up with results as you type: find files and folders by name or by pinyin, launch installed apps, and search the text inside text files. No Everything install and no configuration needed.
 
-- **磁盘可以随时插拔。** 每个已索引的磁盘都登记了设备通知：要弹出或锁定（格式化、chkdsk）时，Win顺先关掉在这个磁盘上的所有句柄再答应；其他磁盘照常跟踪。快照按磁盘保存，磁盘增减时只读新增的那个。
-- **始终以管理员身份运行，NTFS 磁盘直接读 MFT 和 USN 变更日志。** 建索引时一次顺序读完主文件表，不用逐个文件夹遍历；文件的每个硬链接都按各自的路径收录（`FSCTL_ENUM_USN_DATA` 只给一个名字，System32 里很多文件会因此丢失，所以没用它）。快照里记着每个盘的日志读到了哪里，启动时只补读这之后的记录，不再全盘重扫；运行中跟踪日志，没有 ReadDirectoryChangesW 缓冲区溢出的问题。日志被覆盖（程序关闭太久）或重建时，才重新读一遍该盘的 MFT。U 盘等非 NTFS 磁盘仍用遍历目录 + ReadDirectoryChangesW。
-- **日志记录按顺序、可重复地应用。** 每一步都是“确保成某个状态”，所以从较早的位置重放也不会出错；改名的旧名和新名分成两条记录，保存的位置不会落在两者之间。日志只用文件夹的编号指明父文件夹，所以每个文件夹的 MFT 编号记在一张表里（约 40 万个文件夹占 5 MB 左右），随快照保存。
-- **内容索引：少打开文件。** 内容搜索慢在打开文件：Windows Defender 在每个文件第一次被打开时扫描它，每个要好几毫秒，而且过一会儿就忘了扫过，下次搜索又要扫；读和匹配本身几乎不花时间。所以与其让读文件更快，不如少打开文件：索引记下每个文件里出现过哪些中日韩字和相邻两字，以及哪些“三个连在一起的英文字母、数字或下划线”（不分大小写）。搜一两个中日韩字时它就是答案；搜更长的词时，文件必须含有词里的每个片段才可能含有这个词，候选因此筛到很少，只打开这些文件取行号和摘要。索引的文档表随快照保存，和文件名索引永远对得上；NTFS 变更日志里的“内容被改写”记录告诉它该重读哪个文件。日志断了（程序关太久）时，只比较文件大小和修改时间，变了的才重读。新读的文件先在内存里攒着，攒够约 8 MB 写成一个段文件；同一级的段文件攒满 8 个就合成一个上一级的，所以每个片段只被重写几次，合并时边读边写，不会一下占很多内存。段文件尽量紧凑：每个片段的文件号列表按长短选最省的写法（逐个记间隔、按 128 个一组定宽打包、或者干脆一位一个文件的位图）；片段目录只记与前一个的差，每 64 个留一个可二分查找的入口；还有极少数大文件（33 万个里约 1700 个）各含上万种英文片段，与其把它们记进几万个列表，不如每个片段带一行“这几个大文件里有没有它”的位。33 万个文件因此从 279 MB 降到 172 MB，筛出的结果一个不差。
-- **窗口预先画好一次。** 窗口第一次显示时要建立显卡绘图环境、着色器和字形缓存，之后隐藏也一直保留，所以只有第一次打开慢。启动 1 秒后先在隐身、不抢焦点的状态下画一帧再藏起来，第一次打开就和之后一样快。代价是一启动就多占这部分内存（约 20 MB 内存和 10 MB 显存），反正打开过一次后也会占着。
-- **打开的文件仍是普通权限。** 管理员进程直接打开文件，被打开的程序也会带管理员权限，不安全；所以“打开”交给资源管理器代为启动，只有 `Ctrl+Shift+Enter`（以管理员身份运行）才提权。资源管理器正在重启时会等几秒再试；用的是别的桌面外壳时，用它的权限启动；都不行就不打开（托盘会提示），绝不悄悄提权。
-- **开机自启用计划任务。** Windows 会跳过启动项（注册表 Run 键）里需要提权的程序，所以改为登录时以最高权限运行的计划任务“WinShun”，开机不弹 UAC。旧版本写在 Run 键里的设置会在启动时自动迁移。
-- **双击 Ctrl 用 Raw Input，不用键盘钩子。** 低级键盘钩子会被系统里每一次按键同步调用，钩子一慢就拖慢所有程序的打字；回应超时后 Windows 还会悄悄把它摘掉，双击 Ctrl 从此失灵。Raw Input 是按键之后才异步送来的消息（在单独的线程上接收），两个问题都没有。
-- **D3D11 渲染 + FreeType 字体引擎。** 界面字体阿里巴巴普惠体没有字体微调，GDI 下中文横笔画会糊成两行像素；FreeType 能把它们对齐到像素上。但软件渲染器会按估算的字形边界裁剪文字，FreeType 的字形会超出一点、被裁掉（比如“毫”顶上的点），所以只能配 D3D11，比软件渲染多占约 50 MB 内存。设置里选“省内存”（software）时自动改用 GDI，文字完整但偏模糊。默认“自动”：物理内存不超过 16 GB 的电脑用“省内存”，更大的用 D3D11。
-- **界面字体随程序附带**（`fonts\` 下的阿里巴巴普惠体 3.0 常规 / 粗体），缺失时退回系统默认字体（中文系统为微软雅黑）。界面里不用 `↵` 这类字体缺字的符号，字体回退一旦触发，内存要多出 30 MB 左右。
+It builds its index by reading the NTFS master file table directly — over three million files in about ten seconds — and keeps up with every create, rename and delete in real time. It lives in the notification area, works offline, needs no account, and is completely free.
 
-## 测试
+The interface is in **Simplified Chinese** only for now.
+
+### Features
+
+#### 🔍 File search
+
+- **Press Ctrl twice** to open the search bar; press again or Esc to close. A search over three million files usually takes a few milliseconds.
+- **Pinyin search** for Chinese names: `bg`, `baogao` and `baog` all find 报告 (“report”); `ndbg` finds 年度报告.
+- **Your whole PC**: all local drives; USB and external drives can be turned on in Settings.
+- **Sensible ranking**: your own files first; system and program folders, `node_modules` and `.git` last. Recently opened items rank higher and are listed when the box is empty.
+- **Always up to date**: renamed, new and deleted files show up immediately. New drives are added when plugged in and removed when unplugged; “Safely Remove Hardware” works, because WinShun lets go of the drive first.
+- **Query syntax**: words separated by spaces must all match; `"exact phrase"`; `!word` excludes; `!node_modules\` excludes everything in such folders; wildcards `*` and `?`; `ext:pdf,docx`; `folder\name` limits matches to folders whose name contains `folder`.
+
+#### 📄 Text content search
+
+- Switch to the **内容 (Contents)** scope to find text inside files, with the matching line and line number in the results.
+- Searches plain-text formats by default — txt, md, log, csv, ini, json, xml, html and common source code — and you can add or remove extensions. Word, Excel and PDF are not plain text and are not searched.
+- **Detects the encoding**: UTF-8 (with or without BOM), UTF-16 and local code pages such as GBK.
+- **Content index**: for Chinese text, or three or more letters and digits in a row, an index rules out files that cannot contain it, so only a few files are opened.
+- In the **全部 (All)** scope, content matches follow the file name matches once you stop typing.
+
+#### 🚀 App launcher
+
+- The **应用 (Apps)** scope lists every installed app, the same as “All apps” in the Start menu: desktop programs and Microsoft Store apps.
+- Search by name, pinyin, initials (`vsc` finds Visual Studio Code) or program file name (`winword` finds Word). With an empty box, recently opened apps come first.
+- Apps open with normal rights, as from the Start menu; `Ctrl+Shift+Enter` runs one as administrator.
+
+#### ⌨️ Keyboard first
+
+`Enter` opens, `Ctrl+Enter` shows the item in its folder, `Ctrl+Shift+Enter` runs as administrator, `Ctrl+C` copies the file, `Ctrl+Shift+C` copies its path, `Tab` / `Shift+Tab` switch scopes (or `Ctrl+1`…`Ctrl+5`), the menu key or right-click shows more actions, `Esc` closes. The selected row also has buttons to show in folder, copy, copy path and delete (to the Recycle Bin, after a second click).
+
+#### 🎨 Feels like part of Windows 11
+
+Follows the system light / dark theme and accent color, with rounded Windows 11 corners. Icons are drawn at their native size for your display scaling, so they stay sharp at 150%.
+
+### Download and install
+
+1. Download `WinShun-<version>-x64.zip` from the [Releases page](https://github.com/LingCore/WinShun/releases/latest) and unzip it somewhere permanent (e.g. `D:\Tools\WinShun`). No installer; the runtimes are included.
+2. Run `WinShun.exe`. If Windows says “Windows protected your PC”, click **More info → Run anyway**: the app is not yet signed with a paid code-signing certificate.
+3. Click **Yes** in the UAC prompt (see below). When the WinShun icon appears in the notification area, it is running. The first index takes a few seconds.
+4. Press Ctrl twice and start typing. To start with Windows, check **开机自动启动 (Start at login)** in the tray icon's menu; there will be no UAC prompt at login.
+
+Requires Windows 10 or 11, 64-bit.
+
+### Why administrator rights
+
+| What | Why |
+|---|---|
+| Read the NTFS master file table (MFT) directly | One sequential read lists every file on the drive: three million files indexed in about ten seconds |
+| Read the NTFS change journal (USN journal) | At startup only the changes made while it was off are read, no rescan; changes are followed live |
+| Start at login as a scheduled task with highest privileges | No UAC prompt at login |
+
+WinShun runs as administrator, but **files and apps you open from it run with your normal rights** (Explorer opens them); only `Ctrl+Shift+Enter` runs something elevated.
+
+### FAQ
+
+**How is it different from Everything or Listary?**
+WinShun builds its own index, so Everything is not needed. File names, pinyin, apps and file contents are searched from one box, tuned for Chinese by default. It does not embed itself in Explorer or in Open / Save dialogs the way Listary does.
+
+**Can it search inside Word, Excel or PDF files?**
+No. Content search reads plain-text files only.
+
+**`Ctrl+1`…`Ctrl+5` do nothing?**
+Another app has probably registered them as global hotkeys (the screenshot tool PixPin takes `Ctrl+1` and others by default), so the keys never reach WinShun. Change them in that app, or use `Tab`.
+
+**How much memory does it use?**
+About 30 MB of index per million files; the whole app usually shows 120–140 MB in Task Manager.
+
+**Is it free? Does it collect data?**
+Free and open source. WinShun never connects to the internet; the index and history stay on your PC (`%LOCALAPPDATA%\WinShun`).
+
+**How do I uninstall it?**
+Uncheck **开机自动启动** in the tray menu, choose **退出 (Quit)**, and delete the app's folder. To remove settings and index too, delete `%APPDATA%\WinShun` and `%LOCALAPPDATA%\WinShun`.
+
+### Feedback
+
+Bug reports and suggestions are welcome in [Issues](https://github.com/LingCore/WinShun/issues).
+
+### Build from source
+
+Needs Visual Studio 2022 (Desktop development with C++), Qt 6.8 or later (6.12 recommended, MSVC 2022 64-bit kit), CMake 3.25+ and Ninja.
 
 ```powershell
-ctest --preset release                         # 单元测试
-build\release\wsbench.exe                      # 读取已保存的索引，输出内存和搜索耗时
-build\release\wsbench.exe 报告 "*.pdf"          # 指定查询
-
-# 读磁盘数据的解析代码（MFT、USN 日志、文本编码）用 AddressSanitizer 和模糊测试检查
-cmake --preset asan; cmake --build --preset asan  # 在 VS 开发者命令行里运行
-ctest --preset asan                            # 单元测试，越界读写当场报错
-build\asan\wsfuzz.exe -max_total_time=300      # 用随机数据测 5 分钟
+./scripts/build.ps1                                # build and run the unit tests
+./scripts/build.ps1 -QtDir C:\Qt\6.12.0\msvc2022_64 # pick a Qt kit (default: QTDIR or the newest under C:\Qt)
+./scripts/build.ps1 -Deploy                        # make the distributable folder dist\WinShun
 ```
 
-## 已知限制和后续可做的
+Architecture, design notes and benchmarks (in Chinese) are in [docs/architecture.md](docs/architecture.md).
 
-- 拼音只认读音的开头，不做模糊纠错；排除词（`!xx`）只按字面匹配，不按拼音。
-- 内容索引不记带重音的字母、西里尔字母等，也不记一两个字母长的英文：搜这些时仍要逐个读文件（结果边找边出）。U 盘等非 NTFS 磁盘上的文件不建内容索引，也是逐个读。
-- 内容索引第一次在后台建立时，开着 Windows Defender 每秒只能读几百个文件，几十万个文件要二十分钟左右；建好之前仍会逐个读还没收录的文件。
-- 名字里的非英文字母（如 `Ä`/`ä`）不区分大小写的匹配只对英文字母生效。
-- 没有嵌入资源管理器和“打开/保存”对话框（Listary 的特色功能）。
-- 非 NTFS 磁盘（U 盘、exFAT/FAT）在程序没运行期间的改动，要靠启动后的后台同步补上（约十几秒内完成）；弹出后又取消的非 NTFS 磁盘会重新遍历一次。
-- 文件夹被隐藏或取消隐藏时，里面已有文件继承来的“隐藏”标记不会马上跟着变，要到下次重新读取该盘时才更新。
+---
 
-## 致谢
+## LINUX DO
 
-拼音读音数据来自 [pinyin-data](https://github.com/mozillazg/pinyin-data)（MIT 许可证，见 `tools/data/pinyin-data-LICENSE.txt`）；常用字的读音以其中的《通用规范汉字字典》（2013）数据为准。
+本项目积极参与并认可 [LINUX DO 社区](https://linux.do)。
 
-## 许可证
+WinShun is proud to be part of the [LINUX DO community](https://linux.do).
 
-本项目的代码以 [MIT 许可证](LICENSE) 发布。
+## 许可证 · License
 
-以下随附的第三方内容不在 MIT 许可范围内，按各自的许可使用：
+Win顺 以 [MIT 许可证](LICENSE) 发布。Copyright © 2026 LingCore.
 
-- `resources/fonts/` 下的阿里巴巴普惠体 3.0：版权归阿里巴巴集团所有，按其免费商用授权随程序附带。
-- `tools/data/pinyin.txt` 等拼音数据：来自 pinyin-data，MIT 许可证，见 `tools/data/pinyin-data-LICENSE.txt`。
+WinShun is released under the [MIT License](LICENSE). Copyright © 2026 LingCore.
+
+随附的第三方内容按各自的许可使用，不在 MIT 许可范围内 · Bundled third-party content keeps its own license:
+
+- `resources/fonts/` 阿里巴巴普惠体 3.0 · Alibaba PuHuiTi 3.0 — © Alibaba Group，按其免费商用授权随程序附带 · redistributed under its free commercial-use terms.
+- 拼音读音数据 · Pinyin data — [pinyin-data](https://github.com/mozillazg/pinyin-data)，MIT，见 · see `tools/data/pinyin-data-LICENSE.txt`。常用字的读音以其中的《通用规范汉字字典》（2013）数据为准。
+
+Windows 是微软公司的商标。本项目与微软没有任何关联。
+Windows is a trademark of Microsoft Corporation. This project is not affiliated with Microsoft.
