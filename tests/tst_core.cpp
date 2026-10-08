@@ -1479,6 +1479,9 @@ private slots:
             place(u"网络重置"_s, u"MS-SETTINGS:network-advancedsettings"_s, {u"重置"_s}),
             place(u"节电模式设置"_s, u"ms-settings:batterysaver"_s, {u"battery saver settings"_s}),
             place(u"更改显示器的分辨率"_s, u"ms-settings:display"_s, {u"显示器"_s}),
+            place(u"保护历史记录"_s, u"windowsdefender://history"_s, {}, {u"隔离区"_s}),
+            place(u"凭据管理器"_s, u"control.exe /name Microsoft.CredentialManager"_s, {}),
+            place(u"当我看向别处时，自动调暗屏幕"_s, u"ms-settings:batterysaver-dim"_s, {}),
         };
         const auto names = [&](const QString& text, const QStringList& history = {}) {
             const ParsedQuery query = ws::parseQuery(text);
@@ -1491,7 +1494,12 @@ private slots:
 
         QCOMPARE(names(u"网卡"_s).value(0), u"查看网络连接"_s); // an own keyword
         QCOMPARE(names(u"NCPA.cpl"_s), QStringList {u"查看网络连接"_s});
-        QCOMPARE(names(u"wk"_s).value(0), u"查看网络连接"_s); // pinyin of a keyword
+        // Pinyin of a keyword, above a name the initials merely touch (我看)...
+        QCOMPARE(names(u"wk"_s), (QStringList {u"查看网络连接"_s, u"当我看向别处时，自动调暗屏幕"_s}));
+        // ... but below one they fill half of: 管理器, not 隔离区.
+        QCOMPARE(names(u"glq"_s), (QStringList {u"设备管理器"_s, u"凭据管理器"_s, u"保护历史记录"_s}));
+        QCOMPARE(names(u"geliqu"_s).value(0), u"保护历史记录"_s); // spelled out, it is meant
+        QCOMPARE(names(u"glq"_s, {places[6].path()}).value(0), u"保护历史记录"_s); // opened recently
         QCOMPARE(names(u"ip 地址"_s), QStringList {u"查看网络连接"_s}); // each word in a keyword
         // A whole keyword ranks above a name that only contains the word.
         QCOMPARE(names(u"适配器"_s), (QStringList {u"设备管理器"_s, u"查看网络连接"_s, u"管理网络适配器设置"_s}));

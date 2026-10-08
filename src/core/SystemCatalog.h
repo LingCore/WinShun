@@ -65,8 +65,10 @@ struct PlaceHit {
 // begin one of the keywords: a word of two or more Chinese characters may
 // be anywhere in one, and pinyin works for both. A keyword spelled out in
 // full ranks above a name that merely starts with the word, an own keyword
-// (places.txt) above most names. Recently opened places (their paths in
-// `history`, newest first) rank higher.
+// (places.txt) above most names. A keyword that only the pinyin initials fit
+// ranks below every name the query fills half of ("glq": 凭据管理器 above
+// 隔离区's place). Recently opened places (their paths in `history`, newest
+// first) rank higher.
 std::vector<PlaceHit> searchPlaces(const PlaceList& places, const ParsedQuery& query, const NameMatcher& matcher,
     const QStringList& history);
 

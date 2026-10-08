@@ -22,6 +22,7 @@
 #include <versionhelpers.h>
 
 #include <algorithm>
+#include <limits>
 #include <utility>
 
 using namespace Qt::StringLiterals;
@@ -318,6 +319,12 @@ QString placeKeyOf(QStringView path)
 
 namespace {
 
+std::size_t charCount(std::string_view utf8) noexcept
+{
+    return static_cast<std::size_t>(
+        std::count_if(utf8.begin(), utf8.end(), [](char c) { return (static_cast<unsigned char>(c) & 0xC0) != 0x80; }));
+}
+
 // One word of the query, to look for in a place's keywords.
 struct Word {
     std::string text; // folded
@@ -326,12 +333,27 @@ struct Word {
     std::size_t chars = 0; // code points
 };
 
+// How many characters of `name` the word fills, spelled out or as pinyin; 0
+// if it is not in the name.
+std::size_t charsInName(std::string_view name, const Word& word)
+{
+    if (text::findFolded(name, word.text) != text::npos)
+        return word.chars;
+    if (word.pinyin.valid()) {
+        if (const auto span = word.pinyin.findUtf8(name))
+            return charCount(name.substr(span->start, span->length));
+    }
+    return 0;
+}
+
 // How well a word matches one keyword (folded): -1 if it does not. A whole
 // keyword beats a name the word merely begins (30 + coverage), and pinyin
 // initials that happen to fit a name ("dns": 电脑设置); an own keyword
-// (places.txt) beats nearly every name.
-int keywordScore(std::string_view keyword, const Word& word, bool own)
+// (places.txt) beats nearly every name. `initials` is set when only the first
+// letters of the keyword's characters fit ("glq" for 隔离区).
+int keywordScore(std::string_view keyword, const Word& word, bool own, bool& initials)
 {
+    initials = false;
     if (keyword == word.text)
         return own ? 50 : 30;
     int score = -1;
@@ -344,8 +366,10 @@ int keywordScore(std::string_view keyword, const Word& word, bool own)
             score = 8; // "网络连接" in "以太网网络连接"
     }
     if (score < 0 && word.pinyin.valid() && pinyin::hasHan(keyword)) {
-        if (const auto span = word.pinyin.findUtf8(keyword); span && text::isWordStart(keyword, span->start))
+        if (const auto span = word.pinyin.findUtf8(keyword); span && text::isWordStart(keyword, span->start)) {
             score = span->start == 0 && span->length == keyword.size() ? 14 : 10; // "spq" for 适配器
+            initials = charCount(keyword.substr(span->start, span->length)) == word.text.size();
+        }
     }
     return score < 0 || !own ? score : score + 6;
 }
@@ -380,45 +404,73 @@ std::vector<PlaceHit> searchPlaces(
             excluded.push_back(t.text);
             continue;
         }
-        Word w {t.text, pinyin::Matcher(t.text, true), pinyin::hasHan(t.text), 0};
-        w.chars = static_cast<std::size_t>(std::count_if(
-            t.text.begin(), t.text.end(), [](char c) { return (static_cast<unsigned char>(c) & 0xC0) != 0x80; }));
+        Word w {t.text, pinyin::Matcher(t.text, true), pinyin::hasHan(t.text), charCount(t.text)};
         words.push_back(std::move(w));
     }
     byKeyword = byKeyword && !words.empty();
 
+    // Pinyin initials fit many words by chance ("glq": 隔离区 as well as
+    // 管理器), and a keyword is not shown. So where the query fills at least
+    // half of some place's name (凭据管理器), places it finds only through
+    // the initials of a keyword rank below every such name.
+    struct Found {
+        std::size_t index;
+        int score;
+        bool byInitials; // through a keyword's initials, not the name
+    };
+    std::vector<Found> found;
+    int belowNames = std::numeric_limits<int>::max(); // the cap for those places
     for (std::size_t i = 0; i < places.size(); ++i) {
         const PlaceInfo& place = places[i];
         int score = matcher.matchName(place.nameUtf8);
+        bool byInitials = false;
         const bool excludedByName = std::any_of(excluded.begin(), excluded.end(),
             [&](const std::string& x) { return text::findFolded(place.nameUtf8, x) != text::npos; });
         if (byKeyword && !excludedByName) {
             // Each word in the name or in a keyword.
             int byWords = 0;
+            std::size_t filled = 0; // characters of the name
             for (const Word& w : words) {
-                int best = text::findFolded(place.nameUtf8, w.text) != text::npos
-                        || (w.pinyin.valid() && w.pinyin.findUtf8(place.nameUtf8))
-                    ? 8
-                    : -1;
+                const std::size_t inName = charsInName(place.nameUtf8, w);
+                int best = inName > 0 ? 8 : -1;
+                bool initials = false;
+                const auto tryKeywords = [&](const std::vector<std::string>& keywords, bool own) {
+                    for (const std::string& keyword : keywords) {
+                        bool ini = false;
+                        if (const int s = keywordScore(keyword, w, own, ini); s > best) {
+                            best = s;
+                            initials = ini;
+                        }
+                    }
+                };
                 if (w.chars >= 2) {
-                    for (const std::string& keyword : place.folded)
-                        best = std::max(best, keywordScore(keyword, w, false));
-                    for (const std::string& keyword : place.ownFolded)
-                        best = std::max(best, keywordScore(keyword, w, true));
+                    tryKeywords(place.folded, false);
+                    tryKeywords(place.ownFolded, true);
                 }
                 if (best < 0) {
                     byWords = -1;
                     break;
                 }
                 byWords += best;
+                filled += inName;
+                byInitials = byInitials || (initials && inName == 0);
             }
-            score = std::max(score, byWords);
+            if (byWords > score) {
+                score = byWords;
+            } else {
+                byInitials = false; // the name ranks it
+            }
+            if (byWords >= 0 && 2 * filled >= charCount(place.nameUtf8))
+                belowNames = std::min(belowNames, score - 1);
         }
-        if (score < 0)
-            continue;
-        if (const auto it = recent.constFind(place.key); it != recent.cend())
+        if (score >= 0)
+            found.push_back({i, score, byInitials});
+    }
+    for (const Found& f : found) {
+        int score = f.byInitials ? std::min(f.score, belowNames) : f.score;
+        if (const auto it = recent.constFind(places[f.index].key); it != recent.cend())
             score += 20 - std::min(*it, 10);
-        hits.push_back({i, score});
+        hits.push_back({f.index, score});
     }
     // Equal scores: the shorter name, which is more often the page itself
     // than one of the tasks on it.
