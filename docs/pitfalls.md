@@ -162,6 +162,12 @@
 
 ## 构建、升级 Qt
 
+### 从 Git Bash 调 `powershell.exe` 编译，构建目录被弄坏
+
+- **现象**：在 Git Bash 里用 `powershell.exe -Command "./scripts/build.ps1"` 编译，报 `ninja: error: FindFirstFileExA(../../../??????/src/app)`。之后在 PowerShell 里正常编译也报同样的错。
+- **原因**：项目路径里有中文，经过 Bash 再传给 Windows PowerShell 时编码错了，路径变成问号。ninja 把这个乱码路径写进了依赖缓存 `build\release\.ninja_deps`，以后每次编译都会读到它。
+- **做法**：编译只在 PowerShell 里运行（`./scripts/build.ps1`），不要经过 Bash。已经坏了的话，删掉 `.ninja_deps` 再编译（它只是依赖缓存）。脚本里 `Select-String` 只能看到标准输出，要看到编译错误得用 `*>&1 | Out-String -Stream`。
+
 ### moc 解析不了原始字符串字面量
 
 - **现象**：在测试类（`Q_OBJECT`）的函数里写 `R"({"tag_name": ...})"`，编译报 `AutoMoc ... Parse error at "}"`。
@@ -207,6 +213,7 @@
 - **检查拖动区不用动鼠标**：`SendMessage(hwnd, WM_NCHITTEST, 0, 屏幕坐标)` 直接问窗口某一点是拖动区、按钮还是边框。
 - **从 `dist\WinShun` 测**，不要从 `build\release` 启动：那里没有 Qt 插件，会报 “no Qt platform plugin”。替换前保留旧版（只换 exe 时把旧的改名为 `.bak`，整个文件夹要换时把旧文件夹改名），新版起不来就自动换回去。
 - 部署和测试放在同一次提权运行里，只弹一次 UAC；测试期间不要碰鼠标。
+- **C# 里声明 `INPUT` 结构体别加多余的填充字段**：64 位下 `INPUT` 是 40 字节（`type` 之后因对齐空 4 字节，接着是 32 字节的 `MOUSEINPUT`）。多写两个 `int` 会变成 48 字节，`SendInput` 返回 0（参数错误），光标根本不动，测试看起来像“窗口拖不动”。要检查 `SendInput` 的返回值。
 - 贴靠布局的浮层没有出现在自动测试的截图里（最大化按钮的悬停高亮有），它是否正常弹出要手动确认。
 - **PowerShell 的坑**：
   - 函数名别和内置别名重名：别名优先于函数，如 `r`（Invoke-History）、`sp`（Set-ItemProperty）。
