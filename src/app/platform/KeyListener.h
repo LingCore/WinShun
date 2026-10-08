@@ -10,7 +10,8 @@
 
 namespace ws {
 
-// Global "double-tap Ctrl" detection through Raw Input.
+// Global "double-tap Ctrl" detection through Raw Input. Mouse buttons are
+// listened to as well: a Ctrl held for a click is not a tap.
 //
 // Key presses reach a hidden window on its own thread as WM_INPUT messages,
 // after the fact. Unlike a low-level keyboard hook, which every key press in

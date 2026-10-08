@@ -16,12 +16,17 @@ namespace ws {
 // Never reset: new results are written over the rows already there, so the
 // view keeps its delegates (no rebuilt rows, lost hover or reloaded icons)
 // and an unchanged list signals nothing at all.
+//
+// Several rows can be selected (Ctrl / Shift with the mouse or arrows). The
+// selection is kept by path, so it stays with its files when a refresh moves
+// rows; files that leave the list leave it too.
 class ResultModel : public QAbstractListModel {
     Q_OBJECT
     QML_ELEMENT
     QML_UNCREATABLE("Provided by Launcher")
     Q_PROPERTY(int count READ count NOTIFY countChanged FINAL)
     Q_PROPERTY(QColor highlightColor READ highlightColor WRITE setHighlightColor NOTIFY highlightColorChanged FINAL)
+    Q_PROPERTY(int selectedCount READ selectedCount NOTIFY selectionChanged FINAL)
 
 public:
     enum Role {
@@ -39,6 +44,7 @@ public:
         ElevatableRole, // run as administrator
         RevealableRole, // has a file or folder to open the location of
         CopyableRole, // has a file to copy for pasting in Explorer
+        SelectedRole,
     };
 
     explicit ResultModel(QObject* parent = nullptr);
@@ -63,14 +69,23 @@ public:
     QColor highlightColor() const { return m_highlightColor; }
     void setHighlightColor(const QColor& color);
 
+    int selectedCount() const { return static_cast<int>(m_selected.size()); }
+    const QSet<QString>& selectedPaths() const { return m_selected; }
+    Q_INVOKABLE bool isSelected(int row) const;
+    void setSelection(QSet<QString> paths); // of rows in the list; others are left out
+    SearchResults selection() const; // in list order, each file once
+
 signals:
     void countChanged();
     void highlightColorChanged();
+    void selectionChanged();
 
 private:
+    void keepSelectionInList(); // after rows went away
     SearchResults m_items;
     QStringList m_highlights;
     QColor m_highlightColor {0x00, 0x5F, 0xB8};
+    QSet<QString> m_selected; // paths
 };
 
 } // namespace ws

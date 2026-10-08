@@ -95,6 +95,7 @@
 |---|---|
 | 双击 `Ctrl` | 打开 / 关闭搜索框（另可在设置里加一个组合键，如 `Alt+Space`） |
 | `↑` `↓` `PgUp` `PgDn` | 选择结果 |
+| `Shift+↑` `Shift+↓` | 选中多项（也可以按住 `Ctrl` 点击逐个选，按住 `Shift` 点击选一段） |
 | `Enter` | 打开 |
 | `Ctrl+Enter` | 打开所在文件夹并选中 |
 | `Ctrl+Shift+Enter` | 以管理员身份运行 |
@@ -102,9 +103,9 @@
 | `Ctrl+Shift+C` | 复制完整路径 |
 | `Tab` / `Shift+Tab` | 切换搜索范围（全部 / 应用 / 文件 / 文件夹 / 内容）；`Ctrl+1`…`Ctrl+5` 直接选择 |
 | 菜单键 / `Shift+F10` / 右键 | 更多操作 |
-| `Esc` | 关闭 |
+| `Esc` | 关闭（选中了多项时先取消选择） |
 
-鼠标也能用：选中或悬停的结果右边有四个按钮，分别是打开所在位置、复制、复制路径和删除（点两次才删，移到回收站）。
+鼠标也能用：选中或悬停的结果右边有四个按钮，分别是打开所在位置、复制、复制路径和删除（点两次才删，移到回收站）。选中了多项时，打开、复制、删除等操作都对全部选中项生效。
 
 #### 🎨 像 Windows 11 自带的一样
 
@@ -237,7 +238,7 @@ The interface comes in **English and Simplified Chinese**. It follows the Window
 
 #### ⌨️ Keyboard first
 
-`Enter` opens, `Ctrl+Enter` shows the item in its folder, `Ctrl+Shift+Enter` runs as administrator, `Ctrl+C` copies the file, `Ctrl+Shift+C` copies its path, `Tab` / `Shift+Tab` switch scopes (or `Ctrl+1`…`Ctrl+5`), the menu key or right-click shows more actions, `Esc` closes. The selected row also has buttons to show in folder, copy, copy path and delete (to the Recycle Bin, after a second click).
+`Enter` opens, `Ctrl+Enter` shows the item in its folder, `Ctrl+Shift+Enter` runs as administrator, `Ctrl+C` copies the file, `Ctrl+Shift+C` copies its path, `Tab` / `Shift+Tab` switch scopes (or `Ctrl+1`…`Ctrl+5`), the menu key or right-click shows more actions, `Esc` closes. The selected row also has buttons to show in folder, copy, copy path and delete (to the Recycle Bin, after a second click). Select several results with `Shift+↑` / `Shift+↓`, `Ctrl`+click or `Shift`+click: opening, copying and deleting then act on all of them, and `Esc` first clears the selection.
 
 #### 🎨 Feels like part of Windows 11
 

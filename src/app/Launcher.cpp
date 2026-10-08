@@ -97,6 +97,7 @@ Launcher::Launcher(IndexService* index, AppCatalog* apps, SearchEngine* engine, 
             refreshStatus();
     });
 
+    connect(&m_results, &ResultModel::selectionChanged, this, &Launcher::refreshStatus);
     connect(m_engine, &SearchEngine::resultsReady, this, &Launcher::onResults);
     connect(m_engine, &SearchEngine::contentResults, this, &Launcher::onContentResults);
     connect(m_engine, &SearchEngine::contentProgress, this, &Launcher::onContentProgress);
@@ -121,6 +122,7 @@ void Launcher::setQuery(const QString& query)
         return;
     m_query = query;
     emit queryChanged();
+    m_results.setSelection({});
     search();
 }
 
@@ -130,6 +132,7 @@ void Launcher::setScope(Scope scope)
         return;
     m_scope = scope;
     emit scopeChanged();
+    m_results.setSelection({});
     // Keep the old rows until the new results replace them: clearing first
     // collapses the window and then grows it back (flicker).
     search();
@@ -208,6 +211,7 @@ void Launcher::retranslate()
 
 void Launcher::handleHidden()
 {
+    m_results.setSelection({});
     m_statusPoll.stop();
     m_contentDebounce.stop();
     if (m_contentRunning || m_pending) {
@@ -475,6 +479,8 @@ void Launcher::refreshStatus()
         if (state == IndexService::State::Building)
             s += tr(" · 索引尚未建完");
     }
+    if (const int selected = m_results.selectedCount(); selected > 0)
+        s = tr("已选择 %Ln 项", nullptr, selected);
     if (s != m_status) {
         m_status = s;
         emit statusChanged();
@@ -503,8 +509,47 @@ void Launcher::dismiss()
 
 void Launcher::trigger(int row, int action)
 {
+    if (m_results.isSelected(row) && m_results.selectedCount() > 1) {
+        performMany(m_results.selection(), static_cast<Action>(action));
+        return;
+    }
     if (const SearchResult* r = m_results.at(row))
         perform(*r, static_cast<Action>(action));
+}
+
+void Launcher::triggerSelection(int action)
+{
+    const SearchResults items = m_results.selection();
+    if (items.size() == 1)
+        perform(items.first(), static_cast<Action>(action));
+    else if (!items.isEmpty())
+        performMany(items, static_cast<Action>(action));
+}
+
+void Launcher::toggleSelected(int row)
+{
+    const SearchResult* r = m_results.at(row);
+    if (!r)
+        return;
+    QSet<QString> paths = m_results.selectedPaths();
+    if (!paths.remove(r->path))
+        paths.insert(r->path);
+    m_results.setSelection(std::move(paths));
+}
+
+void Launcher::selectRange(int from, int to, bool add)
+{
+    QSet<QString> paths = add ? m_results.selectedPaths() : QSet<QString>();
+    for (int row = std::max(0, std::min(from, to)); row <= std::max(from, to); ++row) {
+        if (const SearchResult* r = m_results.at(row))
+            paths.insert(r->path);
+    }
+    m_results.setSelection(std::move(paths));
+}
+
+void Launcher::clearSelection()
+{
+    m_results.setSelection({});
 }
 
 void Launcher::perform(const SearchResult& result, Action action)
@@ -549,7 +594,7 @@ void Launcher::perform(const SearchResult& result, Action action)
     case Recycle: {
         const auto owner = m_window ? reinterpret_cast<HWND>(m_window->winId()) : nullptr;
         // Back on the GUI thread, where `self` can be checked safely.
-        shell::recycle(r.path, owner, [self = QPointer(this), r](bool ok) {
+        shell::recycle({r.path}, owner, [self = QPointer(this), r](bool ok) {
             QMetaObject::invokeMethod(qApp, [self, r, ok] {
                 if (self)
                     self->onRecycled(r, ok);
@@ -607,6 +652,119 @@ void Launcher::performApp(const SearchResult& app, Action action)
     }
 }
 
+// Several selected results at once. Those an action does not apply to
+// (running a folder as administrator, recycling an app) are left out.
+void Launcher::performMany(const SearchResults& items, Action action)
+{
+    const auto exists = [](const QString& path) { return QFileInfo::exists(path); };
+    switch (action) {
+    case Open:
+    case RunAsAdmin: {
+        const bool admin = action == RunAsAdmin;
+        int started = 0;
+        for (const SearchResult& r : items) {
+            if (r.isApp()) {
+                if (admin && !r.elevatable)
+                    continue;
+                shell::launchApp(r.path, admin, reportFailure(r.name));
+            } else {
+                if (!exists(r.path) || (admin && (r.isDir || !shell::canRunAsAdministrator(r.path))))
+                    continue;
+                shell::open(r.path, admin, reportFailure(r.name));
+            }
+            m_history->record(r.path);
+            ++started;
+        }
+        if (started == 0) {
+            flash(admin ? tr("选中的项目都不能以管理员身份运行") : tr("选中的项目都已不存在"));
+            return;
+        }
+        emit dismissRequested();
+        break;
+    }
+    case Reveal: {
+        QStringList paths;
+        int shown = 0;
+        for (const SearchResult& r : items) {
+            const QString& place = r.isApp() ? r.target : r.path;
+            if (place.isEmpty() || !exists(place))
+                continue;
+            m_history->record(r.path);
+            if (r.isPackagedApp())
+                shell::open(place); // its install folder; the folder above it is not readable
+            else
+                paths.append(place);
+            ++shown;
+        }
+        if (shown == 0) {
+            flash(tr("选中的项目没有可以打开的位置"));
+            return;
+        }
+        shell::reveal(paths);
+        emit dismissRequested();
+        break;
+    }
+    case CopyItem: {
+        QStringList files;
+        for (const SearchResult& r : items) {
+            const QString file = r.isApp() ? (r.hasCopyableTarget() ? r.target : QString()) : r.path;
+            if (!file.isEmpty() && exists(file))
+                files.append(file);
+        }
+        if (files.isEmpty()) {
+            flash(tr("选中的项目没有可以复制的文件"));
+            return;
+        }
+        shell::copyFiles(files);
+        flash(tr("已复制 %Ln 项，可在资源管理器中粘贴", nullptr, static_cast<int>(files.size())));
+        break;
+    }
+    case CopyPath: {
+        QStringList paths;
+        for (const SearchResult& r : items)
+            paths.append(r.isApp() && !r.target.isEmpty() ? r.target : r.path);
+        shell::copyText(paths.join(u'\n'));
+        flash(tr("已复制 %Ln 个路径", nullptr, static_cast<int>(paths.size())));
+        break;
+    }
+    case CopyName: {
+        QStringList names;
+        for (const SearchResult& r : items)
+            names.append(r.name);
+        shell::copyText(names.join(u'\n'));
+        flash(tr("已复制 %Ln 个名称", nullptr, static_cast<int>(names.size())));
+        break;
+    }
+    case Recycle: {
+        SearchResults files;
+        QStringList paths;
+        for (const SearchResult& r : items) {
+            if (r.isApp()) // apps are uninstalled in Windows Settings
+                continue;
+            if (!exists(r.path)) {
+                forgetRecycled(r);
+                continue;
+            }
+            files.append(r);
+            paths.append(r.path);
+        }
+        if (files.isEmpty()) {
+            refreshStatus();
+            flash(tr("选中的项目不能删除"));
+            return;
+        }
+        const auto owner = m_window ? reinterpret_cast<HWND>(m_window->winId()) : nullptr;
+        shell::recycle(paths, owner, [self = QPointer(this), files](bool ok) {
+            QMetaObject::invokeMethod(qApp, [self, files, ok] {
+                if (self)
+                    self->onRecycledMany(files, ok);
+            }, Qt::QueuedConnection);
+        });
+        break;
+    }
+    }
+}
+
 // For shell::open() and launchApp(), which call it on a worker thread.
 std::function<void(bool)> Launcher::reportFailure(const QString& name)
 {
@@ -622,10 +780,37 @@ std::function<void(bool)> Launcher::reportFailure(const QString& name)
 
 void Launcher::onRecycled(const SearchResult& result, bool ok)
 {
-    if (QFileInfo::exists(result.path)) { // cancelled, in use, access denied...
+    if (!forgetRecycled(result)) { // cancelled, in use, access denied...
         flash(tr("没有删除“%1”").arg(result.name));
         return;
     }
+    refreshStatus();
+    flash((ok ? tr("已将“%1”移到回收站") : tr("已删除“%1”")).arg(result.name));
+}
+
+void Launcher::onRecycledMany(const SearchResults& items, bool ok)
+{
+    int gone = 0;
+    for (const SearchResult& r : items) {
+        if (forgetRecycled(r))
+            ++gone;
+    }
+    refreshStatus();
+    const int kept = static_cast<int>(items.size()) - gone;
+    if (gone == 0)
+        flash(tr("没有删除选中的项目"));
+    else if (kept > 0)
+        flash(tr("已将 %Ln 项移到回收站，%1 项没有删除", nullptr, gone).arg(kept));
+    else if (ok)
+        flash(tr("已将 %Ln 项移到回收站", nullptr, gone));
+    else
+        flash(tr("已删除 %Ln 项", nullptr, gone));
+}
+
+bool Launcher::forgetRecycled(const SearchResult& result)
+{
+    if (QFileInfo::exists(result.path))
+        return false;
     m_history->remove(result.path);
     const SearchResult* row = m_results.at(m_results.indexOf(result.path));
     const bool contentRow = row && row->line > 0;
@@ -635,8 +820,7 @@ void Launcher::onRecycled(const SearchResult& result, bool ok)
         else if (m_totalMatches > 0)
             --m_totalMatches;
     }
-    refreshStatus();
-    flash((ok ? tr("已将“%1”移到回收站") : tr("已删除“%1”")).arg(result.name));
+    return true;
 }
 
 QVariantList Launcher::menuItems(int row) const
@@ -653,6 +837,21 @@ QVariantList Launcher::menuItems(int row) const
         };
     };
     const QVariantMap separator {{u"separator"_s, true}};
+
+    if (m_results.isSelected(row) && m_results.selectedCount() > 1) { // for the whole selection
+        const SearchResults selection = m_results.selection();
+        const auto any = [&](auto test) { return std::any_of(selection.cbegin(), selection.cend(), test); };
+        QVariantList items;
+        items.append(entry(Open, tr("打开 %Ln 项", nullptr, static_cast<int>(selection.size())), u"Enter"_s, u""_s));
+        if (any([](const SearchResult& r) { return !r.isApp() || !r.target.isEmpty(); }))
+            items.append(entry(Reveal, tr("打开所在位置"), u"Ctrl+Enter"_s, u""_s));
+        items.append(separator);
+        if (any([](const SearchResult& r) { return !r.isApp() || r.hasCopyableTarget(); }))
+            items.append(entry(CopyItem, tr("复制"), u"Ctrl+C"_s, u""_s));
+        items.append(entry(CopyPath, tr("复制完整路径"), u"Ctrl+Shift+C"_s, u"copyPath"_s));
+        items.append(entry(CopyName, tr("复制名称"), QString(), u""_s));
+        return items;
+    }
 
     // Glyphs: Segoe Fluent Icons / MDL2 Assets, or the name of an icon
     // Glyph.qml draws.

@@ -25,9 +25,12 @@ Item {
     required property bool elevatable
     required property bool revealable
     required property bool copyable
+    required property bool selected // one of several picked with Ctrl / Shift
 
     readonly property bool contentMode: line > 0 // a content match (also mixed into 全部)
     readonly property bool current: ListView.isCurrentItem
+    // With rows selected, the background marks them; the current row keeps only its accent pill.
+    readonly property int selectedCount: ListView.view ? ListView.view.model.selectedCount : 0
     readonly property bool showActions: current || area.containsMouse
     property bool deleteArmed: false // first click on delete; the second one deletes
 
@@ -58,7 +61,8 @@ Item {
         anchors.topMargin: 1
         anchors.bottomMargin: 1
         radius: 6
-        color: row.current ? Theme.selection : area.containsMouse ? Theme.hover : "transparent"
+        color: row.selected || (row.current && row.selectedCount === 0) ? Theme.selection
+               : area.containsMouse ? Theme.hover : "transparent"
     }
 
     Rectangle { // accent pill on the current row, as in Windows 11 lists
@@ -241,7 +245,9 @@ Item {
                 visible: !row.isApp // uninstalling is for Windows Settings
                 glyph: "" // Delete
                 tip: row.deleteArmed ? "" : qsTr("删除（点两次，移到回收站）")
-                text: row.deleteArmed ? qsTr("确认删除") : ""
+                text: !row.deleteArmed ? ""
+                      : row.selected && row.selectedCount > 1 ? qsTr("确认删除 %1 项").arg(row.selectedCount)
+                      : qsTr("确认删除")
                 danger: row.deleteArmed
                 onClicked: {
                     if (row.deleteArmed) {

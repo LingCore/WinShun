@@ -231,6 +231,10 @@
         <source>确认删除</source>
         <translation>Confirm</translation>
     </message>
+    <message>
+        <source>确认删除 %1 项</source>
+        <translation>Delete %1</translation>
+    </message>
 </context>
 <context>
     <name>ScopeTabs</name>
@@ -970,6 +974,86 @@
     <message>
         <source>打开文件夹</source>
         <translation>Open folder</translation>
+    </message>
+    <message numerus="yes">
+        <source>已选择 %Ln 项</source>
+        <translation>
+            <numerusform>%Ln selected</numerusform>
+            <numerusform>%Ln selected</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>选中的项目都不能以管理员身份运行</source>
+        <translation>None of the selected items can run as administrator</translation>
+    </message>
+    <message>
+        <source>选中的项目都已不存在</source>
+        <translation>None of the selected items exists any more</translation>
+    </message>
+    <message>
+        <source>选中的项目没有可以打开的位置</source>
+        <translation>None of the selected items has a location to open</translation>
+    </message>
+    <message>
+        <source>选中的项目没有可以复制的文件</source>
+        <translation>None of the selected items has a file to copy</translation>
+    </message>
+    <message numerus="yes">
+        <source>已复制 %Ln 项，可在资源管理器中粘贴</source>
+        <translation>
+            <numerusform>%Ln item copied, ready to paste in Explorer</numerusform>
+            <numerusform>%Ln items copied, ready to paste in Explorer</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>已复制 %Ln 个路径</source>
+        <translation>
+            <numerusform>%Ln path copied</numerusform>
+            <numerusform>%Ln paths copied</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>已复制 %Ln 个名称</source>
+        <translation>
+            <numerusform>%Ln name copied</numerusform>
+            <numerusform>%Ln names copied</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>选中的项目不能删除</source>
+        <translation>The selected items cannot be deleted</translation>
+    </message>
+    <message>
+        <source>没有删除选中的项目</source>
+        <translation>The selected items were not deleted</translation>
+    </message>
+    <message numerus="yes">
+        <source>已将 %Ln 项移到回收站，%1 项没有删除</source>
+        <translation>
+            <numerusform>%Ln item moved to the Recycle Bin, %1 not deleted</numerusform>
+            <numerusform>%Ln items moved to the Recycle Bin, %1 not deleted</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>已将 %Ln 项移到回收站</source>
+        <translation>
+            <numerusform>%Ln item moved to the Recycle Bin</numerusform>
+            <numerusform>%Ln items moved to the Recycle Bin</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>已删除 %Ln 项</source>
+        <translation>
+            <numerusform>%Ln item deleted</numerusform>
+            <numerusform>%Ln items deleted</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>打开 %Ln 项</source>
+        <translation>
+            <numerusform>Open %Ln item</numerusform>
+            <numerusform>Open %Ln items</numerusform>
+        </translation>
     </message>
 </context>
 <context>

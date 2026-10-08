@@ -8,9 +8,10 @@ namespace ws {
 // Recognises "tap Ctrl twice" from raw key events. Pure logic (no Win32), so
 // it is unit-tested; KeyListener feeds it events.
 //
-// A tap is a Ctrl press and release with no other key in between, shorter than
-// maxPressMs. Two taps within maxGapMs trigger, unless the mouse moved in
-// between (that is Ctrl+click multi-selection, not a double tap).
+// A tap is a Ctrl press and release with no other key or mouse button in
+// between, shorter than maxPressMs. Two taps within maxGapMs trigger, unless
+// the mouse moved in between. Both exceptions are Ctrl+click multi-selection,
+// not a double tap: clicking the same spot twice, or one row and the next.
 class DoubleTapDetector {
 public:
     struct Config {
@@ -69,6 +70,13 @@ public:
         m_firstX = m_downX;
         m_firstY = m_downY;
         return false;
+    }
+
+    // A mouse button went down: the Ctrl held now, or just tapped, was for a click.
+    void mouseButtonDown() noexcept
+    {
+        m_clean = false;
+        m_armed = false;
     }
 
     void reset() noexcept { *this = DoubleTapDetector(m_config); }

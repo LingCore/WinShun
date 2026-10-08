@@ -1863,6 +1863,23 @@ private slots:
             d.keyDown(ctrl, 150, 300, 100);
             QVERIFY(!d.keyUp(ctrl, 200, 300, 100));
         }
+        { // a click while Ctrl is down, twice on the same spot: Ctrl+click, not a double tap
+            DoubleTapDetector d;
+            d.keyDown(ctrl, 0, 100, 100);
+            d.mouseButtonDown();
+            d.keyUp(ctrl, 50, 100, 100);
+            d.keyDown(ctrl, 150, 100, 100);
+            d.mouseButtonDown();
+            QVERIFY(!d.keyUp(ctrl, 200, 100, 100));
+        }
+        { // a click right after a tap: no double tap with the next one
+            DoubleTapDetector d;
+            d.keyDown(ctrl, 0, 0, 0);
+            d.keyUp(ctrl, 50, 0, 0);
+            d.mouseButtonDown();
+            d.keyDown(ctrl, 150, 0, 0);
+            QVERIFY(!d.keyUp(ctrl, 200, 0, 0));
+        }
         { // timestamps wrap around
             DoubleTapDetector d;
             d.keyDown(ctrl, 0xFFFFFF00u, 0, 0);

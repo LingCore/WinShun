@@ -18,13 +18,15 @@ namespace ws::shell {
 // started at all. `done` runs on the worker thread with whether it worked.
 void open(const QString& path, bool asAdministrator = false, std::function<void(bool)> done = {});
 void reveal(const QString& path); // open the folder and select the item
+// The same for several items: one window per folder, with all of its items selected.
+void reveal(const QStringList& paths);
 void openUrl(const QString& url); // https:, mailto: ...
 // An installed app by its launch path, "shell:AppsFolder\<id>" (see AppCatalog).
 void launchApp(const QString& launchPath, bool asAdministrator = false, std::function<void(bool)> done = {});
-// Moves the item to the Recycle Bin (asks before deleting permanently when it
-// cannot be recycled). `done` runs on the worker thread with whether the shell
-// reported success; `owner` parents any shell dialog.
-void recycle(const QString& path, HWND owner, std::function<void(bool)> done);
+// Moves the items to the Recycle Bin, in one operation (asks before deleting
+// permanently what cannot be recycled). `done` runs on the worker thread with
+// whether the shell reported success; `owner` parents any shell dialog.
+void recycle(const QStringList& paths, HWND owner, std::function<void(bool)> done);
 
 void copyText(const QString& text);
 void copyFiles(const QStringList& paths); // paste-able in Explorer

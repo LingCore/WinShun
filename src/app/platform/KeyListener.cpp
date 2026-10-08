@@ -8,7 +8,10 @@ namespace {
 
 constexpr wchar_t kClassName[] = L"WinShun.KeyListener";
 constexpr USHORT kGenericDesktop = 0x01; // HID usage page
-constexpr USHORT kKeyboard = 0x06; // HID usage
+constexpr USHORT kMouse = 0x02; // HID usage
+constexpr USHORT kKeyboard = 0x06;
+constexpr USHORT kAnyButtonDown = RI_MOUSE_LEFT_BUTTON_DOWN | RI_MOUSE_RIGHT_BUTTON_DOWN | RI_MOUSE_MIDDLE_BUTTON_DOWN
+    | RI_MOUSE_BUTTON_4_DOWN | RI_MOUSE_BUTTON_5_DOWN;
 
 } // namespace
 
@@ -25,9 +28,12 @@ KeyListener::KeyListener(std::function<void()> onDoubleCtrl)
         ::RegisterClassExW(&wc);
         // Message-only: never shown, and still the target of raw input.
         const HWND hwnd = ::CreateWindowExW(0, kClassName, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, instance, this);
-        // Every keyboard, also while other programs have the focus.
-        RAWINPUTDEVICE device {kGenericDesktop, kKeyboard, RIDEV_INPUTSINK, hwnd};
-        m_active = hwnd && ::RegisterRawInputDevices(&device, 1, sizeof device);
+        // Every keyboard and mouse, also while other programs have the focus.
+        const RAWINPUTDEVICE devices[] {
+            {kGenericDesktop, kKeyboard, RIDEV_INPUTSINK, hwnd},
+            {kGenericDesktop, kMouse, RIDEV_INPUTSINK, hwnd},
+        };
+        m_active = hwnd && ::RegisterRawInputDevices(devices, 2, sizeof devices[0]);
         m_window = hwnd;
         ready.count_down();
         if (!hwnd)
@@ -63,8 +69,11 @@ LRESULT CALLBACK KeyListener::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
             self->onInput(reinterpret_cast<HRAWINPUT>(lParam));
         return ::DefWindowProcW(hwnd, msg, wParam, lParam); // lets Windows free the input
     case WM_CLOSE: {
-        RAWINPUTDEVICE device {kGenericDesktop, kKeyboard, RIDEV_REMOVE, nullptr};
-        ::RegisterRawInputDevices(&device, 1, sizeof device);
+        const RAWINPUTDEVICE devices[] {
+            {kGenericDesktop, kKeyboard, RIDEV_REMOVE, nullptr},
+            {kGenericDesktop, kMouse, RIDEV_REMOVE, nullptr},
+        };
+        ::RegisterRawInputDevices(devices, 2, sizeof devices[0]);
         if (self)
             self->m_active = false;
         ::DestroyWindow(hwnd);
@@ -82,8 +91,14 @@ void KeyListener::onInput(HRAWINPUT input)
 {
     RAWINPUT raw {};
     UINT size = sizeof raw;
-    if (::GetRawInputData(input, RID_INPUT, &raw, &size, sizeof(RAWINPUTHEADER)) == static_cast<UINT>(-1)
-        || raw.header.dwType != RIM_TYPEKEYBOARD)
+    if (::GetRawInputData(input, RID_INPUT, &raw, &size, sizeof(RAWINPUTHEADER)) == static_cast<UINT>(-1))
+        return;
+    if (raw.header.dwType == RIM_TYPEMOUSE) { // mostly moves, which tell nothing
+        if (raw.data.mouse.usButtonFlags & kAnyButtonDown)
+            m_detector.mouseButtonDown();
+        return;
+    }
+    if (raw.header.dwType != RIM_TYPEKEYBOARD)
         return;
     const RAWKEYBOARD& key = raw.data.keyboard;
     if (key.VKey == 0xFF)

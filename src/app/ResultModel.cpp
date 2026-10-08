@@ -142,6 +142,8 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
         return !r->isApp() || !r->target.isEmpty();
     case CopyableRole:
         return !r->isApp() || r->hasCopyableTarget();
+    case SelectedRole:
+        return m_selected.contains(r->path);
     default:
         return {};
     }
@@ -164,6 +166,7 @@ QHash<int, QByteArray> ResultModel::roleNames() const
         {ElevatableRole, "elevatable"},
         {RevealableRole, "revealable"},
         {CopyableRole, "copyable"},
+        {SelectedRole, "selected"},
     };
 }
 
@@ -211,6 +214,7 @@ void ResultModel::assign(SearchResults items, QStringList highlights)
     }
     if (newCount != oldCount)
         emit countChanged();
+    keepSelectionInList();
 }
 
 void ResultModel::update(int row, const SearchResult& item)
@@ -240,6 +244,7 @@ bool ResultModel::remove(const QString& path)
     m_items.removeAt(row);
     endRemoveRows();
     emit countChanged();
+    keepSelectionInList();
     return true;
 }
 
@@ -261,8 +266,10 @@ int ResultModel::removeAll(const QSet<QString>& paths)
         removed += row - start + 1;
         row = start - 1;
     }
-    if (removed > 0)
+    if (removed > 0) {
         emit countChanged();
+        keepSelectionInList();
+    }
     return removed;
 }
 
@@ -275,6 +282,58 @@ void ResultModel::retranslate()
 {
     if (!m_items.isEmpty())
         emit dataChanged(index(0), index(count() - 1), {FolderRole});
+}
+
+bool ResultModel::isSelected(int row) const
+{
+    const SearchResult* r = at(row);
+    return r && m_selected.contains(r->path);
+}
+
+void ResultModel::setSelection(QSet<QString> paths)
+{
+    QSet<QString> inList;
+    for (const SearchResult& r : std::as_const(m_items)) {
+        if (paths.contains(r.path))
+            inList.insert(r.path);
+    }
+    if (inList == m_selected)
+        return;
+    std::swap(m_selected, inList); // inList: the old selection now
+    for (int row = 0; row < count(); ++row) {
+        const QString& path = m_items[row].path;
+        if (m_selected.contains(path) != inList.contains(path))
+            emit dataChanged(index(row), index(row), {SelectedRole});
+    }
+    emit selectionChanged();
+}
+
+SearchResults ResultModel::selection() const
+{
+    SearchResults items;
+    QSet<QString> seen;
+    for (const SearchResult& r : m_items) {
+        if (m_selected.contains(r.path) && !seen.contains(r.path)) {
+            seen.insert(r.path);
+            items.append(r);
+        }
+    }
+    return items;
+}
+
+void ResultModel::keepSelectionInList()
+{
+    if (m_selected.isEmpty())
+        return;
+    QSet<QString> inList;
+    for (const SearchResult& r : std::as_const(m_items)) {
+        if (m_selected.contains(r.path))
+            inList.insert(r.path);
+    }
+    if (inList.size() == m_selected.size())
+        return;
+    m_selected = std::move(inList); // rows that went away need no dataChanged
+    emit selectionChanged();
 }
 
 void ResultModel::setHighlightColor(const QColor& color)

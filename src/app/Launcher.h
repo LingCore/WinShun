@@ -76,7 +76,14 @@ public:
     void handleHidden();
     void retranslate(); // the language changed: status, placeholder, rows
 
+    // An action on a row; on a row of a selection of several, on all of it.
     Q_INVOKABLE void trigger(int row, int action);
+    Q_INVOKABLE void triggerSelection(int action); // the keyboard's, with rows selected
+    // Selecting several rows: Ctrl toggles one, Shift takes the rows from an
+    // anchor to here (instead of the selection, or with Ctrl added to it).
+    Q_INVOKABLE void toggleSelected(int row);
+    Q_INVOKABLE void selectRange(int from, int to, bool add);
+    Q_INVOKABLE void clearSelection();
     // Context menu (ContextMenu.qml): its entries for a row, the usable
     // screen area around a point, and the native styling of its window.
     Q_INVOKABLE QVariantList menuItems(int row) const;
@@ -106,8 +113,11 @@ private:
     void showRows(SearchResults rows, QStringList highlights);
     void perform(const SearchResult& result, Action action);
     void performApp(const SearchResult& app, Action action);
+    void performMany(const SearchResults& items, Action action);
+    bool forgetRecycled(const SearchResult& result); // its row and count; false if it is still there
     std::function<void(bool)> reportFailure(const QString& name);
     void onRecycled(const SearchResult& result, bool ok);
+    void onRecycledMany(const SearchResults& items, bool ok);
     void onResults(quint64 id, const SearchResults& results, qint64 total, qint64 elapsedUs);
     void onContentResults(quint64 id, const SearchResults& results);
     void onContentProgress(quint64 id, int scanned, int total, bool finished);

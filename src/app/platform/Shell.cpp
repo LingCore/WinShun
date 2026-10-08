@@ -21,10 +21,12 @@
 #include <taskschd.h>
 #include <wrl/client.h>
 
+#include <algorithm>
 #include <atomic>
 #include <optional>
-#include <utility>
 #include <thread>
+#include <utility>
+#include <vector>
 
 using namespace Qt::StringLiterals;
 using Microsoft::WRL::ComPtr;
@@ -224,24 +226,73 @@ void reveal(const QString& path)
     });
 }
 
-void recycle(const QString& path, HWND owner, std::function<void(bool)> done)
+void reveal(const QStringList& paths)
 {
-    runOnShellThread([file = QDir::toNativeSeparators(path).toStdWString(), owner, done = std::move(done)] {
+    // By folder, in the order the folders first come up.
+    std::vector<std::pair<std::wstring, std::vector<std::wstring>>> folders;
+    for (const QString& path : paths) {
+        const QFileInfo info(path);
+        if (info.isRoot()) { // a drive: nothing above it to select it in
+            reveal(path);
+            continue;
+        }
+        const std::wstring key = QDir::toNativeSeparators(info.path()).toStdWString();
+        auto it = std::find_if(folders.begin(), folders.end(), [&](const auto& f) { return _wcsicmp(f.first.c_str(), key.c_str()) == 0; });
+        if (it == folders.end())
+            it = folders.insert(folders.end(), {key, {}});
+        it->second.push_back(QDir::toNativeSeparators(info.filePath()).toStdWString());
+    }
+    if (folders.empty())
+        return;
+    ::AllowSetForegroundWindow(ASFW_ANY);
+    runOnShellThread([folders = std::move(folders)] {
+        for (const auto& [folder, files] : folders) {
+            PIDLIST_ABSOLUTE parent = ::ILCreateFromPathW(folder.c_str());
+            if (!parent)
+                continue;
+            std::vector<PIDLIST_ABSOLUTE> items;
+            std::vector<PCUITEMID_CHILD> children;
+            for (const std::wstring& file : files) {
+                if (PIDLIST_ABSOLUTE pidl = ::ILCreateFromPathW(file.c_str())) {
+                    items.push_back(pidl);
+                    children.push_back(::ILFindLastID(pidl));
+                }
+            }
+            if (!children.empty())
+                ::SHOpenFolderAndSelectItems(parent, static_cast<UINT>(children.size()), children.data(), 0);
+            for (PIDLIST_ABSOLUTE pidl : items)
+                ::ILFree(pidl);
+            ::ILFree(parent);
+        }
+    });
+}
+
+void recycle(const QStringList& paths, HWND owner, std::function<void(bool)> done)
+{
+    std::vector<std::wstring> files;
+    for (const QString& path : paths)
+        files.push_back(QDir::toNativeSeparators(path).toStdWString());
+    runOnShellThread([files = std::move(files), owner, done = std::move(done)] {
         bool ok = false;
         {
             ComPtr<IFileOperation> op;
-            ComPtr<IShellItem> item;
-            if (SUCCEEDED(::CoCreateInstance(CLSID_FileOperation, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&op)))
-                && SUCCEEDED(::SHCreateItemFromParsingName(file.c_str(), nullptr, IID_PPV_ARGS(&item)))) {
-                // The user already confirmed in the launcher; still warn if the
+            if (SUCCEEDED(::CoCreateInstance(CLSID_FileOperation, nullptr, CLSCTX_ALL, IID_PPV_ARGS(&op)))) {
+                // The user already confirmed in the launcher; still warn if an
                 // item is too big for the Recycle Bin and would be destroyed.
                 op->SetOperationFlags(
                     FOF_ALLOWUNDO | FOFX_RECYCLEONDELETE | FOF_NOCONFIRMATION | FOF_WANTNUKEWARNING | FOF_SILENT);
                 if (owner)
                     op->SetOwnerWindow(owner);
+                bool queued = false;
+                for (const std::wstring& file : files) {
+                    ComPtr<IShellItem> item;
+                    if (SUCCEEDED(::SHCreateItemFromParsingName(file.c_str(), nullptr, IID_PPV_ARGS(&item)))
+                        && SUCCEEDED(op->DeleteItem(item.Get(), nullptr)))
+                        queued = true;
+                }
                 BOOL aborted = FALSE;
-                ok = SUCCEEDED(op->DeleteItem(item.Get(), nullptr)) && SUCCEEDED(op->PerformOperations())
-                    && SUCCEEDED(op->GetAnyOperationsAborted(&aborted)) && !aborted;
+                ok = queued && SUCCEEDED(op->PerformOperations()) && SUCCEEDED(op->GetAnyOperationsAborted(&aborted))
+                    && !aborted;
             }
         } // released before COM is uninitialised
         done(ok);

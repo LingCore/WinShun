@@ -78,10 +78,36 @@ Window {
     function moveSelection(delta) {
         if (list.count > 0)
             list.currentIndex = Math.max(0, Math.min(list.count - 1, list.currentIndex + delta))
+        selectionAnchor = -1
     }
 
+    // Several rows: Ctrl+click toggles one, Shift+click or Shift+arrows take
+    // the rows from the anchor (where the range started) to here.
+    property int selectionAnchor: -1
+    readonly property int selectedCount: launcher.results.selectedCount
+    function toggleRow(index) {
+        window.launcher.toggleSelected(index)
+        list.currentIndex = index
+        selectionAnchor = index
+    }
+    function selectTo(index, add) {
+        if (list.count === 0 || index < 0)
+            return
+        if (selectionAnchor < 0 || selectionAnchor >= list.count)
+            selectionAnchor = Math.max(0, list.currentIndex)
+        window.launcher.selectRange(selectionAnchor, index, add)
+        list.currentIndex = index
+    }
+    function extendSelection(delta) {
+        if (list.count > 0)
+            selectTo(Math.max(0, Math.min(list.count - 1, list.currentIndex + delta)), false)
+    }
+
+    // On the selection when there is one, else on the current row.
     function act(action) {
-        if (list.count > 0 && list.currentIndex >= 0)
+        if (selectedCount > 0)
+            window.launcher.triggerSelection(action)
+        else if (list.count > 0 && list.currentIndex >= 0)
             window.launcher.trigger(list.currentIndex, action)
     }
 
@@ -93,6 +119,8 @@ Window {
     function openContextMenu(index, globalPos) {
         if (index < 0 || index >= list.count)
             return
+        if (!window.launcher.results.isSelected(index))
+            window.launcher.clearSelection() // as in Explorer: the menu is for this row alone
         list.currentIndex = index
         const fromKeyboard = globalPos === undefined
         if (fromKeyboard) {
@@ -121,20 +149,26 @@ Window {
         const ctrl = (event.modifiers & Qt.ControlModifier) !== 0
         const shift = (event.modifiers & Qt.ShiftModifier) !== 0
         switch (event.key) {
-        case Qt.Key_Down: moveSelection(1); break
-        case Qt.Key_Up: moveSelection(-1); break
-        case Qt.Key_PageDown: moveSelection(maxRows); break
-        case Qt.Key_PageUp: moveSelection(-maxRows); break
+        case Qt.Key_Down: shift ? extendSelection(1) : moveSelection(1); break
+        case Qt.Key_Up: shift ? extendSelection(-1) : moveSelection(-1); break
+        case Qt.Key_PageDown: shift ? extendSelection(maxRows) : moveSelection(maxRows); break
+        case Qt.Key_PageUp: shift ? extendSelection(-maxRows) : moveSelection(-maxRows); break
         case Qt.Key_Return:
         case Qt.Key_Enter:
             act(ctrl && shift ? Launcher.RunAsAdmin : ctrl ? Launcher.Reveal : Launcher.Open)
             break
-        case Qt.Key_Escape: window.launcher.dismiss(); break
+        case Qt.Key_Escape:
+            if (selectedCount > 0)
+                window.launcher.clearSelection()
+            else
+                window.launcher.dismiss()
+            break
         case Qt.Key_Tab: window.launcher.cycleScope(1); break
         case Qt.Key_Backtab: window.launcher.cycleScope(-1); break
         case Qt.Key_C:
-            // Ctrl+C copies selected text in the box; otherwise the file itself.
-            if (!ctrl || (!shift && searchBar.hasSelection))
+            // Ctrl+C copies selected text in the box; otherwise the file itself
+            // (always the files, once rows have been picked).
+            if (!ctrl || (!shift && searchBar.hasSelection && selectedCount === 0))
                 return
             act(shift ? Launcher.CopyPath : Launcher.CopyItem)
             break
@@ -167,6 +201,7 @@ Window {
             searchBar.focusAndSelect()
         }
         function onResultsReplaced() {
+            window.selectionAnchor = -1
             window.closeContextMenu() // its row now holds another result
             window.selectFirst()
         }
@@ -266,8 +301,15 @@ Window {
                         }
                     }
                     onClicked: (index, modifiers) => {
-                        list.currentIndex = index
-                        window.launcher.trigger(index, (modifiers & Qt.ControlModifier) ? Launcher.Reveal : Launcher.Open)
+                        const ctrl = (modifiers & Qt.ControlModifier) !== 0
+                        if (modifiers & Qt.ShiftModifier) {
+                            window.selectTo(index, ctrl)
+                        } else if (ctrl) {
+                            window.toggleRow(index)
+                        } else {
+                            list.currentIndex = index
+                            window.launcher.trigger(index, Launcher.Open) // a selected row opens the selection
+                        }
                     }
                     onActionRequested: (index, action) => {
                         list.currentIndex = index
