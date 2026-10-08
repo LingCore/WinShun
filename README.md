@@ -34,7 +34,7 @@
 
 ## 中文
 
-**Win顺 是什么？** 一个 Windows 上的快速搜索启动器。连按两下 Ctrl，屏幕上弹出搜索框，边打字边出结果：按文件名或拼音找文件和文件夹，打开已安装的应用，也能找文本文件里的文字。不用装 Everything，也不用写任何配置。
+**Win顺 是什么？** 一个 Windows 上的快速搜索启动器。连按两下 Ctrl，屏幕上弹出搜索框，边打字边出结果：按文件名或拼音找文件和文件夹，打开已安装的应用和 Windows 设置，也能找文本文件里的文字。不用装 Everything，也不用写任何配置。
 
 它直接读 NTFS 的主文件表建索引，三百多万个文件十秒左右就能建好，之后文件的增删改名都实时跟上。它常驻在任务栏右下角的托盘里，除了到 GitHub 检查新版本以外不联网，不需要账号，完全免费。界面有简体中文和英文两种，默认跟随 Windows 的显示语言，也可以在设置里随时切换。
 
@@ -85,7 +85,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/apps-dark.png">
-    <img src="docs/images/apps-light.png" width="720" alt="Win顺 应用搜索：输入拼音首字母找到已安装的应用">
+    <img src="docs/images/apps-light.png" width="720" alt="Win顺 应用搜索：输入拼音 guanliqi，任务管理器等应用和设备管理器等系统设置排在一起">
   </picture>
 </p>
 
@@ -94,6 +94,13 @@
 - 输入“适配器”“网卡”或 `ncpa.cpl` 都能打开“网络连接”：Windows 设置里的页面、控制面板里的项目和任务（约 1200 个）按名称和关键词都能搜到，拼音也行，名称和关键词随 Windows 的显示语言。
 - 关键词来自 Windows 自带的设置检索清单（开始菜单搜设置用的就是它）；Win顺 又补了一批平时的叫法（网卡、梯子、开机启动、显示隐藏文件……），以及开始菜单里没有的工具和文件夹（磁盘管理、组策略、本地用户和组、启动文件夹、hosts 所在文件夹、AppData……）。
 - 在 **全部** 范围里和应用排在一起，标着“系统”，最多列 5 个；同样以普通权限打开，需要管理员权限的由 Windows 自己弹出确认。
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/places-dark.png">
+    <img src="docs/images/places-light.png" width="720" alt="Win顺 直达系统设置：输入拼音 shipeiqi（适配器）找到“查看网络连接”等设置">
+  </picture>
+</p>
 
 #### ⌨️ 全键盘操作
 
@@ -116,6 +123,7 @@
 #### 🎨 像 Windows 11 自带的一样
 
 - 浅色 / 深色主题可以跟随系统，也可以固定一种；跟随系统强调色，Windows 11 圆角窗口。在设置的 **外观** 里点主题预览图就能切换，整个界面淡入淡出地换过去，不用重启。
+- Windows 11 上，搜索框和设置窗口的背景透出桌面壁纸的颜色（云母效果），和系统自带的窗口一样。
 - 图标按显示缩放取原生尺寸，对齐物理像素，150% 缩放下也不糊；Store 应用用它为当前尺寸和主题准备的图标。
 - 界面字体随程序附带（阿里巴巴普惠体），中文清晰。
 
@@ -123,8 +131,8 @@
 
 托盘图标右键 → **设置…**，修改后自动保存、立即生效：
 
-- **打开 Win顺**：双击 Ctrl 开关、另设一个组合键、开机自动启动。
-- **外观**：主题（跟随系统 / 浅色 / 深色）、界面语言（跟随系统 / 简体中文 / English），切换即时生效。
+- **打开 Win顺**：双击 Ctrl 开关、另设一个组合键、开机自动启动、是否记住打开过的项目、清除最近使用记录。
+- **外观**：主题（跟随系统 / 浅色 / 深色）、透明效果（关 / 开 / 自动，自动在内存不超过 16 GB 时关闭）、界面语言（跟随系统 / 简体中文 / English），切换即时生效。
 - **搜索范围**：不搜索的文件夹、任何位置都跳过的文件夹名称（如 `node_modules`）、是否包括 U 盘和移动硬盘。
 - **文件内容搜索**：要搜索内容的文件类型、文件大小上限、是否也搜系统和程序文件夹、是否建立内容索引。
 - **高级**：检查更新、是否自动检查更新、界面绘制方式（省内存 / 显卡加速 / 自动）、恢复默认设置。
@@ -207,7 +215,7 @@ Win顺 自己建索引，不需要另装 Everything。文件名、拼音、应�
 
 ## English
 
-**What is WinShun?** WinShun (Win顺, "Windows made smooth") is a fast search launcher for Windows. Press Ctrl twice and a search bar pops up with results as you type: find files and folders by name or by pinyin, launch installed apps, and search the text inside text files. No Everything install and no configuration needed.
+**What is WinShun?** WinShun (Win顺, "Windows made smooth") is a fast search launcher for Windows. Press Ctrl twice and a search bar pops up with results as you type: find files and folders by name or by pinyin, launch installed apps, jump to Windows settings, and search the text inside text files. No Everything install and no configuration needed.
 
 It builds its index by reading the NTFS master file table directly — over three million files in about ten seconds — and keeps up with every create, rename and delete in real time. It lives in the notification area, goes online only to ask GitHub about new versions, needs no account, and is completely free.
 
@@ -251,7 +259,7 @@ The interface comes in **English and Simplified Chinese**. It follows the Window
 
 #### 🎨 Feels like part of Windows 11
 
-Light or dark theme, following Windows or fixed to one, with the system accent color and rounded Windows 11 corners. Pick a theme from the previews under Settings → **Appearance**: the whole window cross-fades to it, no restart. Icons are drawn at their native size for your display scaling, so they stay sharp at 150%.
+Light or dark theme, following Windows or fixed to one, with the system accent color and rounded Windows 11 corners. Pick a theme from the previews under Settings → **Appearance**: the whole window cross-fades to it, no restart. On Windows 11 the windows take on the colours of your wallpaper (Mica), like Windows' own; Appearance → Transparency effects can turn it off. Icons are drawn at their native size for your display scaling, so they stay sharp at 150%.
 
 #### 🔔 New version reminders
 
@@ -292,7 +300,7 @@ About 30 MB of index per million files; the whole app usually shows 120–140 MB
 Free and open source. WinShun goes online only to ask GitHub's public API about new versions, sending nothing personal (you can turn that off in Settings → Advanced); the index and history stay on your PC (`%LOCALAPPDATA%\WinShun`). Clear or turn off the history in Settings → Open WinShun, or right-click an item in the search window to remove just that one.
 
 **How do I uninstall it?**
-Uncheck **开机自动启动** in the tray menu, choose **退出 (Quit)**, and delete the app's folder. To remove settings and index too, delete `%APPDATA%\WinShun` and `%LOCALAPPDATA%\WinShun`.
+Uninstall WinShun from Windows Settings → Apps. It removes the autostart and asks whether to delete your settings and index too. Versions 0.2.0 and earlier came as a zip with no uninstaller: uncheck **Start with Windows** in the tray menu, choose **Exit**, and delete the app's folder; to remove settings and index too, delete `%APPDATA%\WinShun` and `%LOCALAPPDATA%\WinShun`.
 
 ### Feedback
 
