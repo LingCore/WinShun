@@ -1,9 +1,9 @@
 import QtQuick
 import WinShun
 
-// The author LingCore's avatar: a chibi holding a cursor. It pops up and
-// tilts side to side like waving hello whenever AuthorClock plays (each time
-// the page opens), then keeps swaying gently while the page is open. Under
+// The author LingCore's avatar: a chibi holding a cursor. It pops up to say
+// hello whenever AuthorClock plays (each time the page opens) and sways
+// gently, at one slow pace, while the page is open. Under
 // the pointer it grows and holds still. Pressed, it plays a short sound
 // (resources/gleaning/ikun.mp3) and beats along: it swells at each loud
 // moment and settles between them. Every press bumps it at once; one
@@ -37,17 +37,10 @@ Item {
         return 0.6 + 0.4 * (1 + (s + 1) * Math.pow(p - 1, 3) + s * Math.pow(p - 1, 2))
     }
 
-    // Then two tilts, each lighter than the last.
-    function tilt(t) {
-        const u = t - 0.35
-        return u > 0 ? 9 * Math.sin(2 * Math.PI * 1.5 * u) * Math.exp(-2.6 * u) : 0
-    }
-
-    // Until the pop is over and the tilts have died down below 0.15° (under
-    // a fifth of a pixel at the top): after that the picture snaps to exactly
-    // upright and full size, drawn pixel for pixel, rather than staying soft
-    // through the clock's last, motionless second.
-    readonly property bool posing: t < 0.45 || 9 * Math.exp(-2.6 * (t - 0.35)) > 0.15
+    // Once still (the pop over, no sway, sound or pointer), the picture snaps
+    // to exactly upright and full size, drawn pixel for pixel, rather than
+    // staying soft through the clock's last, motionless seconds.
+    readonly property bool posing: t < 0.45
     readonly property bool moving: posing || beat !== 1 || lift !== 1 || swayAmount !== 0
 
     implicitWidth: size
@@ -102,8 +95,7 @@ Item {
             Rotation { // around the bottom, like a head tilting
                 origin.x: avatar.width / 2
                 origin.y: avatar.height
-                angle: (avatar.posing ? avatar.tilt(avatar.t) : 0)
-                       + (avatar.swayAmount !== 0 ? 6 * avatar.swayAmount * Math.sin(avatar.swayPhase) : 0)
+                angle: avatar.swayAmount !== 0 ? 6 * avatar.swayAmount * Math.sin(avatar.swayPhase) : 0
             }
         ]
 
