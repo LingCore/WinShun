@@ -4,6 +4,7 @@
 
 #include <dwmapi.h>
 #include <windows.h>
+#include <msctf.h>
 
 namespace ws::win {
 
@@ -80,6 +81,24 @@ void setMenuTheme(bool dark)
         setMode(dark ? 2 /* ForceDark */ : 3 /* ForceLight */);
     if (flush)
         flush();
+}
+
+void prepareTextInput()
+{
+    // Kept active for the life of the thread, and never released: COM is
+    // gone by the time statics are destroyed.
+    static ITfThreadMgr* manager = nullptr;
+    if (manager)
+        return;
+    ITfThreadMgr* created = nullptr;
+    TfClientId client = TF_CLIENTID_NULL;
+    if (FAILED(::CoCreateInstance(CLSID_TF_ThreadMgr, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&created))))
+        return;
+    if (FAILED(created->Activate(&client))) {
+        created->Release();
+        return;
+    }
+    manager = created;
 }
 
 } // namespace ws::win

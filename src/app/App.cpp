@@ -521,6 +521,7 @@ void App::revealLauncher()
 // window is hidden).
 void App::prewarmLauncher()
 {
+    win::prepareTextInput(); // also for the tray menu, which takes the focus
     if (!m_window || m_window->isVisible())
         return;
     m_prewarming = true;

@@ -22,4 +22,10 @@ void bringToFront(QWindow* window);
 // Makes native popup menus (tray, context menu) follow the dark theme.
 void setMenuTheme(bool dark);
 
+// Loads the input method (TSF text services) into the calling thread ahead of
+// time. Windows does that when the thread first gets the focus, which made
+// the first tray menu about 14 ms slower (a Chinese IME brings a dozen DLLs).
+// Nothing shows; call it on the GUI thread.
+void prepareTextInput();
+
 } // namespace ws::win
