@@ -79,7 +79,7 @@
 
 - **应用** 范围列出所有已安装的应用，和开始菜单的“所有应用”一致：桌面程序和 Microsoft Store 应用都有。
 - 按名称、拼音、英文首字母（`vsc` 找 Visual Studio Code）或程序文件名（`winword` 找 Word）搜索；不输入时先列最近打开的。
-- 在 **全部** 范围里，匹配得好的应用（最多 3 个）排在最前。
+- 在 **全部** 范围里，找到的应用都排在文件前面。
 - 应用像在开始菜单里一样以普通权限打开；需要时按 `Ctrl+Shift+Enter` 以管理员身份运行。
 
 <p align="center">
@@ -232,6 +232,7 @@ The interface comes in **English and Simplified Chinese**. It follows the Window
 
 - The **应用 (Apps)** scope lists every installed app, the same as “All apps” in the Start menu: desktop programs and Microsoft Store apps.
 - Search by name, pinyin, initials (`vsc` finds Visual Studio Code) or program file name (`winword` finds Word). With an empty box, recently opened apps come first.
+- In the **全部 (All)** scope, the apps found come before any file.
 - Apps open with normal rights, as from the Start menu; `Ctrl+Shift+Enter` runs one as administrator.
 
 #### ⌨️ Keyboard first

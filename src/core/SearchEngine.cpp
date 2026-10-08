@@ -29,8 +29,6 @@ namespace {
 constexpr int kRecentOnEmptyQuery = 12;
 constexpr int kRecentPromoted = 3;
 constexpr int kRecentApps = 5; // 应用 with nothing typed: these first, then every app
-constexpr qsizetype kAppsInAll = 3; // 全部: the best matching apps, above the files
-constexpr int kMinAppScoreInAll = 20; // ... if they match at least this well
 
 bool scopeAccepts(Scope scope, bool isDir) noexcept
 {
@@ -278,14 +276,12 @@ void SearchEngine::runNameSearch(const Job& job)
         }
         promoteHistory(results, request, matcher);
 
-        // 全部: the apps that match well come first, like the Start menu's best match.
+        // 全部: every app that 应用 finds comes first, in the same order, then the files.
         if (request.scope == Scope::All) {
             SearchResults top;
             for (const AppHit& hit : searchApps(*apps, query, matcher, request.history)) {
-                if (hit.score < kMinAppScoreInAll)
-                    break; // best first: the rest match worse
                 ++total;
-                if (top.size() < kAppsInAll)
+                if (top.size() < request.limit)
                     top.push_back(fromApp((*apps)[hit.index], false));
             }
             if (!top.isEmpty()) {
