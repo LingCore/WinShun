@@ -35,6 +35,13 @@ Item {
     signal menuRequested(int index, point globalPos)
     signal actionRequested(int index, int action)
 
+    // Text on whole device pixels. Qt rounds each corner of a glyph's quad to
+    // the pixel grid on the GPU, in single precision: on a half pixel (where
+    // centring often puts it at 150 %) the rounding goes either way from one
+    // scroll position to the next, and the text jumps or stretches by a pixel.
+    function onPixel(y) { return Math.round(y * Screen.devicePixelRatio) / Screen.devicePixelRatio }
+    function upToPixel(y) { return Math.ceil(y * Screen.devicePixelRatio - 1e-6) / Screen.devicePixelRatio }
+
     onShowActionsChanged: if (!showActions) deleteArmed = false
     onPathChanged: deleteArmed = false // delegate reused for another result
 
@@ -97,18 +104,18 @@ Item {
     }
 
     Column {
+        y: row.onPixel((row.height - height) / 2)
         anchors.left: iconSlot.right
         anchors.leftMargin: 12
         anchors.right: parent.right
         anchors.rightMargin: (row.showActions ? actions.width + actions.anchors.rightMargin
                               : row.isApp ? badge.width + badge.anchors.rightMargin
                               : trailing.width + trailing.anchors.rightMargin) + 10
-        anchors.verticalCenter: parent.verticalCenter
         spacing: 4
 
         Item {
             width: parent.width
-            height: title.implicitHeight
+            height: row.upToPixel(title.implicitHeight) // the line below on a whole pixel too
 
             Text {
                 id: title
@@ -122,10 +129,10 @@ Item {
 
             Text { // content search: where the file lives, next to its name
                 visible: row.contentMode
+                y: row.onPixel(title.baselineOffset - baselineOffset) // on the name's baseline
                 anchors.left: title.right
                 anchors.leftMargin: 8
                 anchors.right: parent.right
-                anchors.baseline: title.baseline
                 text: row.folder
                 textFormat: Text.PlainText
                 elide: Text.ElideMiddle
@@ -150,7 +157,7 @@ Item {
         visible: !row.showActions && !row.isApp
         anchors.right: parent.right
         anchors.rightMargin: 18
-        anchors.verticalCenter: parent.verticalCenter
+        y: row.onPixel((row.height - height) / 2)
         text: row.contentMode ? qsTr("第 %1 行").arg(row.line) : row.recent ? qsTr("最近") : ""
         color: Theme.faint
         font.pixelSize: Theme.fontBody
@@ -169,7 +176,8 @@ Item {
 
         Text {
             id: badgeText
-            anchors.centerIn: parent
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: row.onPixel((badge.height - height) / 2)
             text: row.recent ? qsTr("最近") : qsTr("应用")
             color: Theme.accent
             font.pixelSize: Theme.fontCaption

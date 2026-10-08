@@ -244,6 +244,60 @@ Window {
                 reuseItems: true
                 onCurrentIndexChanged: positionViewAtIndex(currentIndex, ListView.Contain)
 
+                // Rows only ever stand on whole device pixels (and ResultRow
+                // puts its text on whole device pixels within). Between them
+                // (at 150 % most positions are), text and icons round to the
+                // pixel grid each its own way, so while the list glides they
+                // take turns moving by a pixel and the rows shake. So the
+                // wheel is ours, with every step of its glide aligned, and a
+                // position set any other way (scroll bar, keyboard, new
+                // results) is aligned at once. A touch flick, Flickable's
+                // own, is aligned when it ends.
+                function aligned(y) {
+                    const dpr = Screen.devicePixelRatio
+                    const offset = mapToItem(null, 0, 0).y * dpr // where the list itself stands
+                    const minY = originY - topMargin
+                    const maxY = Math.max(minY, originY + contentHeight + bottomMargin - height)
+                    let snapped = (Math.round(Math.max(minY, Math.min(maxY, y)) * dpr - offset) + offset) / dpr
+                    if (snapped > maxY + 1e-6)
+                        snapped -= 1 / dpr
+                    if (snapped < minY - 1e-6)
+                        snapped += 1 / dpr
+                    return snapped
+                }
+                function align() {
+                    const y = aligned(contentY)
+                    if (Math.abs(y - contentY) > 1e-6)
+                        contentY = y
+                }
+                onContentYChanged: if (!moving) align()
+                onMovementEnded: align()
+                onCountChanged: align() // new results at the same contentY
+                onHeightChanged: align()
+
+                WheelHandler {
+                    target: null
+                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                    // As far per notch as Flickable's own wheel (24 px a line), gliding there.
+                    onWheel: (event) => {
+                        const from = glide.running ? glide.to : list.contentY
+                        const to = list.aligned(from - event.angleDelta.y / 120 * Qt.styleHints.wheelScrollLines * 24)
+                        glide.stop()
+                        if (Math.abs(to - list.contentY) < 1e-6)
+                            return
+                        glide.from = list.contentY
+                        glide.to = to
+                        glide.start()
+                    }
+                }
+                NumberAnimation {
+                    id: glide
+                    target: list
+                    property: "contentY"
+                    duration: 220
+                    easing.type: Easing.OutCubic
+                }
+
                 delegate: ResultRow {
                     width: list.width
                     height: window.rowHeight
