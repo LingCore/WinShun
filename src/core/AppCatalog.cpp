@@ -357,6 +357,11 @@ AppList loadInstalledApps(const std::stop_token& stop)
                 continue; // a link to a web site, not an app
             if (target.startsWith(u"::"_s) || target.startsWith(u"shell:"_s, Qt::CaseInsensitive))
                 target.clear(); // a shell object such as Control Panel: no file behind it
+            if (!target.isEmpty()) {
+                const DWORD attributes = ::GetFileAttributesW(reinterpret_cast<LPCWSTR>(target.utf16()));
+                if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY))
+                    continue; // a shortcut to a folder, not an app
+            }
             app.target = target;
             app.kind = AppKind::Desktop;
             const qsizetype dot = target.lastIndexOf(u'.');
