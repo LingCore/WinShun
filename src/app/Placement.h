@@ -22,19 +22,25 @@ namespace ws {
 // The launcher is dragged by its header and footer (WindowFrame), in the
 // system's own move loop: the window follows the pointer exactly, crosses
 // monitors, and Esc puts it back. The loop is shaped on the way (WM_MOVING):
-// the window stays on the work area of the monitor under the pointer with
-// room below for its tallest layout, so a full list never runs off the
-// screen. Let go near the centre line or the home height, it glides onto
-// them; while moving it follows the pointer and nothing else. The loop's
-// messages reach us through a subclass of the window procedure: Qt passes
-// them to no native event filter (QTBUG-67095).
+// the window, as tall as it is now, stays on the work area of the monitor
+// under the pointer. Let go near the centre line or the home height, it
+// glides onto them; let go so low that a few rows would not fit below, it
+// glides up until they do. While moving it follows the pointer and nothing
+// else. The list shows as many rows as fit below where the window settles
+// (room), so it never runs off the screen and the window can sit low. The
+// loop's messages reach us through a subclass of the window procedure: Qt
+// passes them to no native event filter (QTBUG-67095).
 class Placement : public QObject {
     Q_OBJECT
     QML_ELEMENT
     QML_UNCREATABLE("Provided by the application")
     Q_PROPERTY(bool moving READ moving NOTIFY movingChanged FINAL)
-    // Height of the launcher with every row shown (logical pixels).
-    Q_PROPERTY(int fullHeight READ fullHeight WRITE setFullHeight NOTIFY fullHeightChanged FINAL)
+    // Height of the launcher with the fewest rows it keeps room for (logical
+    // pixels): it settles no lower than that fits.
+    Q_PROPERTY(int roomNeeded READ roomNeeded WRITE setRoomNeeded NOTIFY roomNeededChanged FINAL)
+    // From the top of the launcher, where it is put or settles, to the bottom
+    // of that work area (logical pixels). Kept while it is being moved.
+    Q_PROPERTY(int room READ room NOTIFY roomChanged FINAL)
 
 public:
     explicit Placement(QString stateFile, QObject* parent = nullptr);
@@ -44,21 +50,23 @@ public:
     void placeOn(QScreen* screen); // before showing the window there
 
     bool moving() const { return m_moving; }
-    int fullHeight() const { return m_fullHeight; }
-    void setFullHeight(int height);
+    int roomNeeded() const { return m_roomNeeded; }
+    void setRoomNeeded(int height);
+    int room() const { return m_room; }
 
     // Glides back to the home spot and stays there from now on.
     Q_INVOKABLE void moveHome();
 
 signals:
     void movingChanged();
-    void fullHeightChanged();
+    void roomNeededChanged();
+    void roomChanged();
 
 private:
     struct Hook; // the window procedure subclass
     friend struct Hook;
 
-    QPoint positionIn(const QRect& area) const;
+    QPoint settleOn(QScreen* screen); // where the window goes there; sets room
     void setMoving(bool moving);
     void rememberSpot(); // after a move
     void glideTo(const QPoint& target);
@@ -68,7 +76,8 @@ private:
     QPointer<QWindow> m_window;
     WId m_hwnd = 0;
     QPointF m_anchor; // centre across, top down; fractions of the work area
-    int m_fullHeight = 0;
+    int m_roomNeeded = 0;
+    int m_room = 0;
     bool m_moving = false; // inside the move loop
     QPoint m_moveStart;
     QPoint m_grab; // the pointer's offset in the window being moved (physical pixels)

@@ -34,7 +34,8 @@ qreal scaleOf(HMONITOR monitor, qreal fallback)
 }
 
 // Where a window being moved goes instead of `rect` (physical pixels): on the
-// work area of the monitor under the pointer with `room` below its top.
+// work area of the monitor under the pointer with `room` (logical pixels)
+// below its top.
 void shapeMove(RECT& rect, int width, int room, qreal fallbackScale)
 {
     POINT cursor {};
@@ -51,6 +52,43 @@ void shapeMove(RECT& rect, int width, int room, qreal fallbackScale)
     const LONG x = std::clamp(rect.left, area.left, std::max(area.left, area.right - width));
     const LONG y = std::clamp(rect.top, area.top, std::max(area.top, area.bottom - room));
     ::OffsetRect(&rect, x - rect.left, y - rect.top);
+}
+
+// A screen's work area in physical pixels, and where Qt puts a window's
+// logical geometry on it: from the screen's origin (the same in both), each
+// coordinate and length scaled and rounded (QHighDpi::toNativeWindowGeometry).
+struct NativeArea {
+    QRect work;
+    QPoint origin;
+    qreal scale = 1;
+
+    int toNative(int pos, int from) const { return from + qRound((pos - from) * scale); }
+
+    // `pos` (logical), moved by whole logical pixels until the span from it,
+    // `length` long, lies within [lo, hi) physically. The start wins when
+    // both cannot.
+    int keepInside(int pos, int length, int lo, int hi, int from) const
+    {
+        const int extent = qRound(length * scale);
+        for (int i = 0; i < 4 && toNative(pos, from) + extent > hi; ++i)
+            --pos;
+        for (int i = 0; i < 4 && toNative(pos, from) < lo; ++i)
+            ++pos;
+        return pos;
+    }
+};
+
+NativeArea nativeArea(QScreen* screen)
+{
+    NativeArea native {screen->availableGeometry(), screen->geometry().topLeft()};
+    const auto* windows = screen->nativeInterface<QNativeInterface::QWindowsScreen>();
+    MONITORINFO info {sizeof info};
+    if (windows && ::GetMonitorInfoW(windows->handle(), &info)) {
+        const RECT& work = info.rcWork;
+        native.work = QRect(work.left, work.top, work.right - work.left, work.bottom - work.top);
+        native.scale = screen->devicePixelRatio();
+    }
+    return native;
 }
 
 } // namespace
@@ -100,8 +138,8 @@ struct Placement::Hook {
                 self->m_grabbed = true;
             }
             ::OffsetRect(&rect, cursor.x - self->m_grab.x() - rect.left, cursor.y - self->m_grab.y() - rect.top);
-            shapeMove(rect, self->m_window->width(), std::max(self->m_fullHeight, self->m_window->height()),
-                self->m_window->devicePixelRatio());
+            // Only what is there: room for rows not shown is made on letting go.
+            shapeMove(rect, self->m_window->width(), self->m_window->height(), self->m_window->devicePixelRatio());
             return TRUE;
         }
         case WM_EXITSIZEMOVE:
@@ -137,27 +175,42 @@ void Placement::placeOn(QScreen* screen)
 {
     m_glide.stop();
     if (m_window && screen)
-        m_window->setPosition(positionIn(screen->availableGeometry()));
+        m_window->setPosition(settleOn(screen));
 }
 
-void Placement::setFullHeight(int height)
+void Placement::setRoomNeeded(int height)
 {
-    if (m_fullHeight == height)
+    if (m_roomNeeded == height)
         return;
-    m_fullHeight = height;
-    emit fullHeightChanged();
+    m_roomNeeded = height;
+    emit roomNeededChanged();
 }
 
-// The anchor's spot on `area`, moved as far as needed to keep the whole
-// window on it with room below for every row.
-QPoint Placement::positionIn(const QRect& area) const
+// The anchor's spot on the screen's work area, moved as far as needed to keep
+// the window on it with room below for the fewest rows. More rows than fit
+// there are not shown (room), so a long list does not push the window up.
+QPoint Placement::settleOn(QScreen* screen)
 {
+    const QRect area = screen->availableGeometry();
     const int width = m_window->width();
-    const int room = std::max(m_fullHeight, m_window->height());
-    const int x = qRound(area.x() + m_anchor.x() * area.width() - width / 2.0);
-    const int y = qRound(area.y() + m_anchor.y() * area.height());
-    return {std::clamp(x, area.left(), std::max(area.left(), area.x() + area.width() - width)),
-        std::clamp(y, area.top(), std::max(area.top(), area.y() + area.height() - room))};
+    int x = qRound(area.x() + m_anchor.x() * area.width() - width / 2.0);
+    int y = qRound(area.y() + m_anchor.y() * area.height());
+    x = std::clamp(x, area.left(), std::max(area.left(), area.x() + area.width() - width));
+    y = std::clamp(y, area.top(), std::max(area.top(), area.y() + area.height() - m_roomNeeded));
+
+    // The same in physical pixels. Qt rounds a window's position and its size
+    // each on its own (and the logical work area too), so an edge clamped in
+    // logical pixels can end up a pixel past the work area, over the taskbar.
+    const NativeArea native = nativeArea(screen);
+    x = native.keepInside(x, width, native.work.left(), native.work.x() + native.work.width(), native.origin.x());
+    y = native.keepInside(y, m_roomNeeded, native.work.top(), native.work.y() + native.work.height(), native.origin.y());
+    const int bottom = native.work.y() + native.work.height();
+    const int room = int(std::floor((bottom - native.toNative(y, native.origin.y())) / native.scale));
+    if (m_room != room) {
+        m_room = room;
+        emit roomChanged();
+    }
+    return {x, y};
 }
 
 void Placement::moveHome()
@@ -169,7 +222,7 @@ void Placement::moveHome()
     QScreen* screen = m_window->screen();
     if (!screen)
         return;
-    glideTo(positionIn(screen->availableGeometry()));
+    glideTo(settleOn(screen));
 }
 
 void Placement::setMoving(bool moving)
@@ -201,7 +254,7 @@ void Placement::rememberSpot()
         anchor.ry() = kHome.y();
     m_anchor = {std::clamp(anchor.x(), 0.0, 1.0), std::clamp(anchor.y(), 0.0, 1.0)};
     save();
-    glideTo(positionIn(area));
+    glideTo(settleOn(screen));
 }
 
 void Placement::glideTo(const QPoint& target)

@@ -14,6 +14,12 @@ Window {
 
     readonly property int rowHeight: 60
     readonly property int maxRows: 8
+    readonly property int minRows: 3 // the window settles no lower than these fit below
+    // Everything but the rows: header, divider, the list's margins, footer.
+    readonly property int chromeHeight: searchBar.implicitHeight + 1 + 8 + footer.implicitHeight
+    // As many rows as fit between the window's top and the bottom of the screen.
+    readonly property int fitRows: Math.max(minRows, Math.min(maxRows,
+                                            Math.floor((placement.room - chromeHeight) / rowHeight)))
     readonly property bool contentMode: launcher.scope === Launcher.Content
     readonly property string trimmedQuery: launcher.query.trim()
     // After the list area has closed (see settleRows), not while it is held open.
@@ -25,7 +31,7 @@ Window {
     // is about to fill up again does not collapse and spring back.
     property int shownRows: 0
     function settleRows() {
-        const wanted = Math.min(launcher.results.count, maxRows)
+        const wanted = Math.min(launcher.results.count, fitRows)
         if (wanted >= shownRows || !launcher.searching) {
             shownRows = wanted
             shrinkGrace.stop()
@@ -36,7 +42,11 @@ Window {
     Timer {
         id: shrinkGrace
         interval: 2000 // a content scan's first matches often take over a second
-        onTriggered: window.shownRows = Math.min(window.launcher.results.count, window.maxRows)
+        onTriggered: window.shownRows = Math.min(window.launcher.results.count, window.fitRows)
+    }
+    onFitRowsChanged: { // the window was put somewhere else
+        shownRows = Math.min(shownRows, fitRows) // no room for them: at once
+        settleRows()
     }
 
     // The previous query's rows while a slow search (内容) has found nothing
@@ -69,10 +79,10 @@ Window {
         value: Theme.accent
     }
 
-    Binding { // with every row shown: kept room for below the window
+    Binding { // with the fewest rows: kept room for below the window
         target: window.placement
-        property: "fullHeight"
-        value: searchBar.implicitHeight + 1 + window.maxRows * window.rowHeight + 8 + footer.implicitHeight
+        property: "roomNeeded"
+        value: window.chromeHeight + window.minRows * window.rowHeight
     }
 
     function moveSelection(delta) {
@@ -151,8 +161,8 @@ Window {
         switch (event.key) {
         case Qt.Key_Down: shift ? extendSelection(1) : moveSelection(1); break
         case Qt.Key_Up: shift ? extendSelection(-1) : moveSelection(-1); break
-        case Qt.Key_PageDown: shift ? extendSelection(maxRows) : moveSelection(maxRows); break
-        case Qt.Key_PageUp: shift ? extendSelection(-maxRows) : moveSelection(-maxRows); break
+        case Qt.Key_PageDown: shift ? extendSelection(fitRows) : moveSelection(fitRows); break
+        case Qt.Key_PageUp: shift ? extendSelection(-fitRows) : moveSelection(-fitRows); break
         case Qt.Key_Return:
         case Qt.Key_Enter:
             act(ctrl && shift ? Launcher.RunAsAdmin : ctrl ? Launcher.Reveal : Launcher.Open)
