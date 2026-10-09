@@ -31,11 +31,20 @@ Extensions=txt, md, ...  ; 内容搜索的扩展名，逗号分隔（只支持�
 MaxFileSizeMB=64         ; 超过此大小的文件不搜内容
 IncludeSystemFolders=false ; “内容”范围也搜系统、程序目录和 node_modules 等（文件多，会慢不少）
 Index=true               ; 建立内容索引（中日韩文字和英文、数字；NTFS 磁盘，后台建立，几十万个文件约占 200 MB 磁盘）
+
+[Clipboard]
+Enabled=true             ; 记录剪贴板历史；第一次运行时和 Windows 自带的剪贴板历史开关一致
+WinV=false               ; 用 Win+V 打开，代替 Windows 自带的剪贴板（资源管理器重启或下次登录后生效）
+Hotkey=                  ; 另一个打开剪贴板的组合键，例如 Win+Alt+V
+MaxItems=1000            ; 分组以外最多保留几条
+MaxDays=30               ; 多少天没再复制或粘贴过就删除；0 = 一直保留（分组里的都一直保留）
+Images=true              ; 也记录图片
+ExcludedApps=KeePass.exe, KeePassXC.exe, 1Password.exe, Bitwarden.exe ; 不记录这些程序复制的内容
 ```
 
 修改“不搜索的文件夹”后不需要重建索引：新排除的文件夹直接从索引里去掉，取消排除的文件夹单独补读一遍。只有取消排除“文件夹名称”（它可能出现在任何位置）时才会重新读取所有磁盘。
 
-索引、最近使用记录和日志（`WinShun.log`，只记警告和错误）保存在 `%LOCALAPPDATA%\WinShun`。
+索引、最近使用记录和日志（`WinShun.log`，只记警告和错误）保存在 `%LOCALAPPDATA%\WinShun`；剪贴板历史在其中的 `clipboard\`（`clipboard.db` 和存图片的 `images\`）。
 
 本程序原名“快搜”（QuickFind）。第一次以 Win顺 启动时，会先让还在运行的快搜退出，再把 `%APPDATA%\QuickFind`、`%LOCALAPPDATA%\QuickFind` 搬到新位置，开机自启（计划任务“QuickFind”）也换成“WinShun”，设置、索引和最近使用记录都保留。
 
@@ -91,7 +100,7 @@ cmake --build --preset release --target update_translations   # lupdate：把新
 ## 代码结构
 
 ```
-src/core/            搜索引擎，只依赖 Qt Core + Win32，可单独测试
+src/core/            搜索引擎和剪贴板历史，只依赖 Qt Core、Qt Sql（SQLite）和 Win32，可单独测试
   FileIndex          紧凑的内存索引：每项 20 字节 + 文件名（WTF-8，重复名字只存一份）
   Ntfs               直接读 NTFS：主文件表（MFT）解析、USN 变更日志读取
   NtfsIndexer        MftTree（MFT → 按文件夹分组的名单）、UsnApplier（把日志记录应用到索引）
@@ -108,12 +117,15 @@ src/core/            搜索引擎，只依赖 Qt Core + Win32，可单独测试
   ContentIndex       内容索引：每个文件有哪些中日韩单字、相邻两字和英文三字片段，倒排表存在内存映射的段文件里
   ContentIndexer     后台读文件建内容索引；变更日志说哪个文件被写过，就重读哪个
   SearchEngine       后台搜索线程；新输入会取消正在进行的搜索
+  ClipStore          剪贴板历史：SQLite 里的条目和分组、图片 PNG 文件；去重、过期清理、按分类和拼音筛选、多选合并
 src/app/             界面与 Windows 集成
   Launcher           QML 用的视图模型（查询、结果、状态、操作）
+  Clipboard          剪贴板页的视图模型（分类、分组、多选、预览、粘贴回原窗口）；ClipModel 是它的列表
+  ColorText          文字里的颜色值（#rrggbbaa、rgba()、hsl() …）和它的几种写法；ColorSwatch 画色块，半透明的垫棋盘格
   SettingsEditor     设置窗口的视图模型（改动即保存）
   App                组装各部分，管理窗口、托盘、热键
-  platform/          双击 Ctrl（Raw Input）、托盘、Shell 操作、驱动器插拔、窗口效果、对话框里的 Ctrl+G（DialogJump）、录快捷键时的键盘钩子（ShortcutCapture）
-  qml/               界面：Main / SearchBar / ResultRow / Footer / SettingsWindow …
+  platform/          双击 Ctrl（Raw Input）、托盘、Shell 操作、驱动器插拔、窗口效果、对话框里的 Ctrl+G（DialogJump）、录快捷键时的键盘钩子（ShortcutCapture）、读写剪贴板（ClipboardWatcher）、把按键送回原窗口（Paster）、接管 Win+V（WinV）
+  qml/               界面：Main / SearchBar / ResultRow / Footer / ClipboardPage / SettingsWindow …
 tests/               单元测试（Qt Test）
 tools/wsbench.cpp    在真实索引上测内存和搜索耗时
 ```
@@ -138,6 +150,13 @@ tools/wsbench.cpp    在真实索引上测内存和搜索耗时
   - 实测（2026-10-08）：打开、另存为、选择文件夹、高 DPI 程序、XP 风格五种对话框，按下到对话框换好 35–161 毫秒。
 - **双击 Ctrl 用 Raw Input，不用键盘钩子。** 低级键盘钩子会被系统里每一次按键同步调用，钩子一慢就拖慢所有程序的打字；回应超时后 Windows 还会悄悄把它摘掉，双击 Ctrl 从此失灵。Raw Input 是按键之后才异步送来的消息（在单独的线程上接收），两个问题都没有。
 - **只在录快捷键时临时装低级键盘钩子。** 设置里点了快捷键方框，到录完、按 Esc 或焦点离开为止，`ShortcutCapture` 在自己的线程上装 `WH_KEYBOARD_LL` 钩子（PowerToys 的快捷键框也这样做）。设置窗口在前台时，按键在 Windows、Qt 和其他程序处理之前就被拿走，换成普通的按键事件交给录制框。不这样的话，Alt+Space 被 Qt 拿去弹系统菜单，Alt+F4 关掉设置窗口，Win+E 打开资源管理器，别的程序注册了的组合键（PowerToys Run、Copilot 常用 Alt+Space）直接打开那个程序，都录不上。现在都能录下来，注册不上的照常提示“已被其他程序或系统占用”。只吞录制开始后按下的键，以及这些键的抬起：之前就按着的键 Windows 要看到它完整抬起，否则会以为它一直按着。Win 键按下和抬起都不让 Windows 看到，所以不会弹开始菜单。音量、媒体键照常放行。钩子装不上时，录制框退回 Qt 自己的按键事件（录不到 Alt+Space）。
+- **剪贴板历史和搜索共用一个窗口。** `Win+V` 打开的是同一个启动器窗口的另一页（`ClipboardPage.qml`），预先画好的窗口、云母效果、主题、多选和右键菜单都是同一套；和 Raycast、Alfred 一样，左边列表、右边是当前这一条的全文或大图。历史在内存里（每条文字的前 64K 个字符），打开不用等任何东西。
+  - **接管 Win+V 不用键盘钩子。** `Win+V` 是资源管理器用 `RegisterHotKey` 占着的，别的程序注册不上（错误 1409）。资源管理器启动时读 `HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\DisabledHotkeys`，里面写着的字母它就不注册；所以打开设置里的开关时往里加一个 `V`（保留原有的字母），资源管理器重启后 Win顺 就能 `RegisterHotKey(Win+V)`。重启资源管理器是结束任务栏所在的那个 `explorer.exe` 进程（退出码非零）。Winlogon 只重新启动它在登录时启动的那个外壳，被别的程序重启过的它不管，所以结束前先复制这个进程的令牌：3 秒内没有新外壳，就用这个令牌 `CreateProcessWithTokenW` 启动 `explorer.exe`，权限和原来一样（Win顺 直接启动的话会带着管理员权限，任务栏上打开的一切也就都是管理员的）；这也不行（要用到“Secondary Logon”服务），就以用户自己的 `sihost.exe` 为父进程启动，子进程拿父进程的令牌。这几秒的等待放在后台线程，任务栏没回来时托盘通知告诉用户怎么手动启动。`TaskbarCreated` 广播说明新的资源管理器起来了，这时重新登记一次。关掉开关、恢复默认设置或卸载时把 `V` 去掉；开关从没打开过时，注册表里原有的 `V`（用户为别的程序加的）不动。代价：Win顺 退出期间 `Win+V` 没有反应。
+  - **读剪贴板在单独的线程上。** `ClipboardWatcher` 有自己的线程和隐藏窗口，用 `AddClipboardFormatListener` 收通知，等 40 ms 让程序把各种格式放齐再读。读别人复制的内容可能要那个程序现场生成（Excel 画单元格的图、Word 转 RTF），所以只在没有文字时才读图片，图片转 PNG 也在这个线程上，界面不受影响。
+  - **不记录的内容按 Windows 的规定来。** 带 `ExcludeClipboardContentFromMonitorProcessing`、`Clipboard Viewer Ignore` 格式，或 `CanIncludeInClipboardHistory` 为 0 的不记（密码管理器和 Windows 凭据管理器复制密码时会带上，Windows 自带的剪贴板历史也认这几个）；前两个不打开剪贴板就能判断，不会妨碍那个程序。另有一份按程序文件名排除的名单。
+  - **粘贴回原来的窗口。** 窗口从隐藏状态打开时记下当时的前台窗口。粘贴时先等 Shift、Ctrl、Alt、Win 都松开（按着 Shift+Enter 时直接发 Ctrl+V，对方收到的是 Ctrl+Shift+V），再由剪贴板线程写入这一条原来的各种格式（文字、HTML、RTF、文件列表、PNG + DIB），然后把前台交还给那个窗口（Win顺 这时在前台，所以 `SetForegroundWindow` 可以成功），等它真的到了前台、再等 60 ms（它要先把焦点放回输入框，否则按键落在窗口上就丢了）再用 `SendInput` 发 `Ctrl+V`；Git Bash（mintty）和 PuTTY 发 `Shift+Insert`。Win顺 以管理员身份运行，所以管理员权限的程序里也能粘贴。剪切来的文件以后再粘贴一律按复制处理，不会再移动一次。
+  - **自己写的不重复记录，也不读回来。** 写剪贴板的就是监听线程，写完记下剪贴板的序号，收到这次变化的通知时直接跳过，把那一条挪到最前；多条合并的不记录。不能写完再打开剪贴板读一遍：那正是目标程序处理 `Ctrl+V`、打开剪贴板的时候，抢不到的一方粘贴失败。写入时仍带一个私有格式 `WinShun.ClipboardEntry`（这一条的编号），别的程序把它原样放回剪贴板时也认得出来。启动时剪贴板上已有的内容（序号和启动时一样）记下来，但已在历史里的不算新复制，不挪位置、不改时间。
+  - **SQLite 存储。** 每粘贴一次都要更新那一条的时间，SQLite（WAL，不每次同步到磁盘）只改这一行，程序崩溃也不会坏掉；Ditto 等工具也这样存。图片单独存成 PNG 文件，删除的条目在能撤销期间保留图片。只依赖 Qt 自带的 SQLite 驱动，部署时排除其他数据库驱动。
 - **D3D11 渲染 + FreeType 字体引擎。** 界面字体阿里巴巴普惠体没有字体微调，GDI 下中文横笔画会糊成两行像素；FreeType 能把它们对齐到像素上。但软件渲染器会按估算的字形边界裁剪文字，FreeType 的字形会超出一点、被裁掉（比如“毫”顶上的点），所以只能配 D3D11，比软件渲染多占约 50 MB 内存。设置里选“省内存”（software）时自动改用 GDI，文字完整但偏模糊。默认“自动”：物理内存不超过 16 GB 的电脑用“省内存”，更大的用 D3D11。
 - **界面字体随程序附带**（`fonts\` 下的阿里巴巴普惠体 3.0 常规 / 粗体），缺失时退回系统默认字体（中文系统为微软雅黑）。界面里不用 `↵` 这类字体缺字的符号，字体回退一旦触发，内存要多出 30 MB 左右。
 
@@ -165,4 +184,5 @@ build\asan\wsfuzz.exe -max_total_time=300      # 用随机数据测 5 分钟
 - 名字里的非英文字母（如 `Ä`/`ä`）不区分大小写的匹配只对英文字母生效。
 - “打开 / 保存”对话框里只有 `Ctrl+G`，没有 Listary 那种嵌在资源管理器和对话框里的搜索框；也只认 Windows 自带的资源管理器，Total Commander、Directory Opus 等文件管理器里的文件夹还不认。程序自己画的对话框（Qt、Java、GTK 等的非系统对话框）和老式的“浏览文件夹”树形对话框不支持。
 - 非 NTFS 磁盘（U 盘、exFAT/FAT）在程序没运行期间的改动，要靠启动后的后台同步补上（约十几秒内完成）；弹出后又取消的非 NTFS 磁盘会重新遍历一次。
+- 剪贴板历史：多选时不能把图片和别的内容合在一起粘贴，图片要一张一张地粘贴；还没有“依次粘贴”（每按一次 Ctrl+V 贴出下一条）。剪贴板窗口开在搜索框的位置，不跟着文字光标。终端里只有 mintty 和 PuTTY 用 `Shift+Insert`，其他不接受 `Ctrl+V` 的程序要自己按它们的粘贴键。
 - 文件夹被隐藏或取消隐藏时，里面已有文件继承来的“隐藏”标记不会马上跟着变，要到下次重新读取该盘时才更新。

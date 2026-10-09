@@ -227,6 +227,8 @@ LRESULT MessageWindow::handle(UINT msg, WPARAM wParam, LPARAM lParam)
     if (msg == m_taskbarCreated && m_taskbarCreated != 0) {
         m_trayVisible = false;
         addTrayIcon();
+        if (m_callbacks.shellRestarted)
+            m_callbacks.shellRestarted();
         return 0;
     }
     switch (msg) {

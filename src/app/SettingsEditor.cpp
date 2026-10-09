@@ -6,6 +6,7 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QFileInfo>
 #include <QKeyEvent>
 #include <QRegularExpression>
 
@@ -232,6 +233,101 @@ void SettingsEditor::setAutoUpdate(bool on)
     if (m_settings.autoUpdate == on)
         return;
     m_settings.autoUpdate = on;
+    commit();
+}
+
+void SettingsEditor::setClipboard(bool on)
+{
+    if (m_settings.clipboard == on)
+        return;
+    m_settings.clipboard = on;
+    commit();
+}
+
+void SettingsEditor::setClipboardWinV(bool on)
+{
+    if (m_settings.clipboardWinV == on)
+        return;
+    m_settings.clipboardWinV = on;
+    commit();
+}
+
+void SettingsEditor::setWinVState(const QString& state, bool canRestartExplorer)
+{
+    if (m_winVState == state && m_canRestartExplorer == canRestartExplorer)
+        return;
+    m_winVState = state;
+    m_canRestartExplorer = canRestartExplorer;
+    emit winVStateChanged();
+}
+
+void SettingsEditor::setClipboardHotkey(const QString& hotkey)
+{
+    if (m_settings.clipboardHotkey == hotkey)
+        return;
+    m_settings.clipboardHotkey = hotkey;
+    commit();
+}
+
+void SettingsEditor::setClipboardHotkeyError(const QString& error)
+{
+    if (m_clipboardHotkeyError == error)
+        return;
+    m_clipboardHotkeyError = error;
+    emit hotkeyErrorChanged();
+}
+
+void SettingsEditor::setClipboardMaxItems(int items)
+{
+    if (m_settings.clipboardMaxItems == items || items < 10)
+        return;
+    m_settings.clipboardMaxItems = items;
+    commit();
+}
+
+void SettingsEditor::setClipboardMaxDays(int days)
+{
+    if (m_settings.clipboardMaxDays == days || days < 0)
+        return;
+    m_settings.clipboardMaxDays = days;
+    commit();
+}
+
+void SettingsEditor::setClipboardImages(bool on)
+{
+    if (m_settings.clipboardImages == on)
+        return;
+    m_settings.clipboardImages = on;
+    commit();
+}
+
+void SettingsEditor::setClipboardCount(int count)
+{
+    if (m_clipboardCount == count)
+        return;
+    m_clipboardCount = count;
+    emit clipboardCountChanged();
+}
+
+bool SettingsEditor::addClipboardExcludedApp(const QString& name)
+{
+    QString app = QFileInfo(name.trimmed()).fileName(); // a whole path pasted in
+    if (app.isEmpty())
+        return false;
+    if (!app.endsWith(u".exe", Qt::CaseInsensitive))
+        app += u".exe"_s;
+    if (containsIgnoreCase(m_settings.clipboardExcludedApps, app))
+        return false;
+    m_settings.clipboardExcludedApps.append(app);
+    commit();
+    return true;
+}
+
+void SettingsEditor::removeClipboardExcludedApp(int index)
+{
+    if (index < 0 || index >= m_settings.clipboardExcludedApps.size())
+        return;
+    m_settings.clipboardExcludedApps.removeAt(index);
     commit();
 }
 

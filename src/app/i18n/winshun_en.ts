@@ -2,6 +2,147 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="en" sourcelanguage="zh_CN">
 <context>
+    <name>ClipPreview</name>
+    <message numerus="yes">
+        <source>…还有 %Ln 字</source>
+        <translation>
+            <numerusform>…%Ln more character</numerusform>
+            <numerusform>…%Ln more characters</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>还有 %Ln 个</source>
+        <translation>
+            <numerusform>%Ln more</numerusform>
+            <numerusform>%Ln more</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>带格式，Shift+Enter 粘贴为纯文本</source>
+        <translation>Formatted; Shift+Enter pastes plain text</translation>
+    </message>
+    <message>
+        <source>在“%1”里，不会过期</source>
+        <translation>In “%1”, kept for good</translation>
+    </message>
+</context>
+<context>
+    <name>ClipRow</name>
+    <message>
+        <source>粘贴</source>
+        <translation>Paste</translation>
+    </message>
+    <message>
+        <source>取消固定</source>
+        <translation>Unpin</translation>
+    </message>
+    <message>
+        <source>固定（不会过期）</source>
+        <translation>Pin (kept for good)</translation>
+    </message>
+    <message>
+        <source>删除</source>
+        <translation>Delete</translation>
+    </message>
+</context>
+<context>
+    <name>ClipTabs</name>
+    <message>
+        <source>分组名称</source>
+        <translation>Group name</translation>
+    </message>
+    <message>
+        <source>新建分组：放进分组的内容不会过期</source>
+        <translation>New group: what goes in a group is kept for good</translation>
+    </message>
+</context>
+<context>
+    <name>ClipboardPage</name>
+    <message>
+        <source>搜索剪贴板，支持拼音</source>
+        <translation>Search the clipboard</translation>
+    </message>
+    <message>
+        <source>已暂停记录</source>
+        <translation>Paused</translation>
+    </message>
+    <message>
+        <source>剪贴板历史没有打开</source>
+        <translation>Clipboard history is off</translation>
+    </message>
+    <message>
+        <source>没有找到“%1”</source>
+        <translation>Nothing matches “%1”</translation>
+    </message>
+    <message>
+        <source>还没有记录</source>
+        <translation>Nothing copied yet</translation>
+    </message>
+    <message>
+        <source>“%1”里还没有内容</source>
+        <translation>“%1” is empty</translation>
+    </message>
+    <message>
+        <source>这一类还没有内容</source>
+        <translation>Nothing of this kind yet</translation>
+    </message>
+    <message>
+        <source>打开后，复制过的文字、图片和文件都会记在这里，按 %1 随时找回来。</source>
+        <translation>Turned on, the text, pictures and files you copy are kept here: %1 brings them back any time.</translation>
+    </message>
+    <message>
+        <source>按 Tab 换个分类试试</source>
+        <translation>Press Tab to try another category</translation>
+    </message>
+    <message>
+        <source>复制一点什么，就会出现在这里</source>
+        <translation>Copy something and it shows up here</translation>
+    </message>
+    <message>
+        <source>在条目上点右键，选“移到…”放进来；放进分组的内容不会过期</source>
+        <translation>Right-click an entry and choose “Move to…”; what is in a group is kept for good</translation>
+    </message>
+    <message>
+        <source>按 Tab 看看别的分类</source>
+        <translation>Press Tab for the other categories</translation>
+    </message>
+    <message>
+        <source>打开剪贴板历史</source>
+        <translation>Turn on clipboard history</translation>
+    </message>
+    <message>
+        <source>已选 1 条，Esc 取消选择</source>
+        <translation>1 picked; Esc clears</translation>
+    </message>
+    <message numerus="yes">
+        <source>已选 %Ln 条，按选的顺序合在一起，用</source>
+        <translation>
+            <numerusform>%Ln picked, joined in that order with</numerusform>
+            <numerusform>%Ln picked, joined in that order with</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>隔开</source>
+        <translation>between</translation>
+    </message>
+    <message>
+        <source>粘贴</source>
+        <translation>Paste</translation>
+    </message>
+    <message>
+        <source>纯文本</source>
+        <translation>Plain text</translation>
+    </message>
+    <message>
+        <source>分类</source>
+        <translation>Category</translation>
+    </message>
+    <message>
+        <source>点一下换一种：换行、空格、逗号、Tab、不分隔</source>
+        <translation>Click for another: new line, space, comma, tab, nothing</translation>
+    </message>
+</context>
+<context>
     <name>Footer</name>
     <message>
         <source>打开</source>
@@ -387,6 +528,10 @@
         <translation>System</translation>
     </message>
     <message>
+        <source>剪贴板</source>
+        <translation>Clipboard</translation>
+    </message>
+    <message>
         <source>Ctrl+G 转到资源管理器的文件夹</source>
         <translation>Ctrl+G goes to the Explorer folder</translation>
     </message>
@@ -509,6 +654,117 @@
     <message>
         <source>在后台记下每个文件里有哪些中日韩文字和英文单词片段，搜索时只打开可能含有它的文件，快得多。只用于 NTFS 磁盘，首次建立需要一段时间，几十万个文件约占 200 MB 磁盘空间</source>
         <translation>Notes in the background which Chinese, Japanese and Korean characters and English word fragments each file contains, so a search opens only the files that may match: much faster. NTFS drives only. The first build takes a while; a few hundred thousand files take about 200 MB of disk space</translation>
+    </message>
+    <message>
+        <source>复制过的文字、图片和文件记在这台电脑上，不会上传。在剪贴板里按 Enter 粘贴到打开之前所在的窗口，Shift+Enter 粘贴为纯文本；按住 Ctrl 或 Shift 点击可以选多条，按选的顺序合在一起粘贴。</source>
+        <translation>What you copy is kept on this PC and never uploaded. In the clipboard, Enter pastes into the window you were in, Shift+Enter as plain text; Ctrl+click or Shift+click picks several, pasted together in the order picked.</translation>
+    </message>
+    <message>
+        <source>记录剪贴板历史</source>
+        <translation>Keep a clipboard history</translation>
+    </message>
+    <message>
+        <source>密码管理器复制的密码不会被记录</source>
+        <translation>Passwords copied from password managers are not kept</translation>
+    </message>
+    <message>
+        <source>用 Win+V 打开，代替 Windows 自带的剪贴板</source>
+        <translation>Open with Win+V, instead of Windows’ clipboard</translation>
+    </message>
+    <message>
+        <source>打开后按 Win+V 出现的是 Win顺的剪贴板；Windows 面板里的表情可以改用 Win+. 打开。关掉这项，Win+V 就回到 Windows 自带的</source>
+        <translation>Win+V then opens WinShun’s clipboard; for emoji, use Win+. instead. Turned off, Win+V goes back to Windows’ own</translation>
+    </message>
+    <message>
+        <source>已生效：Win+V 打开 Win顺的剪贴板</source>
+        <translation>Done: Win+V opens WinShun’s clipboard</translation>
+    </message>
+    <message>
+        <source>资源管理器重启后生效，下次登录 Windows 时也会自动生效</source>
+        <translation>Takes effect once File Explorer restarts, or at your next sign-in</translation>
+    </message>
+    <message>
+        <source>资源管理器重启后，Win+V 回到 Windows 自带的剪贴板</source>
+        <translation>Once File Explorer restarts, Win+V opens Windows’ clipboard again</translation>
+    </message>
+    <message>
+        <source>没能修改 Windows 的设置，Win+V 仍是 Windows 自带的剪贴板</source>
+        <translation>Could not change the Windows setting: Win+V still opens Windows’ clipboard</translation>
+    </message>
+    <message>
+        <source>现在重启资源管理器</source>
+        <translation>Restart File Explorer now</translation>
+    </message>
+    <message>
+        <source>任务栏会闪一下，打开的文件夹窗口会关闭</source>
+        <translation>The taskbar flickers and open folder windows close</translation>
+    </message>
+    <message>
+        <source>另设快捷键</source>
+        <translation>Another shortcut</translation>
+    </message>
+    <message>
+        <source>不想换掉 Win+V 时，可以另设一个组合键打开剪贴板，例如 Win + Alt + V</source>
+        <translation>To keep Win+V as it is, open the clipboard with another key combination, such as Win + Alt + V</translation>
+    </message>
+    <message>
+        <source>记录图片</source>
+        <translation>Keep pictures</translation>
+    </message>
+    <message>
+        <source>截图和复制的图片也记下来，每张图片占一些磁盘空间</source>
+        <translation>Screenshots and copied pictures too; each takes some disk space</translation>
+    </message>
+    <message>
+        <source>最多保留</source>
+        <translation>Keep at most</translation>
+    </message>
+    <message>
+        <source>放进“固定”和其他分组的不算在内，一直保留</source>
+        <translation>Pinned and grouped entries do not count and are kept for good</translation>
+    </message>
+    <message>
+        <source>%1 条</source>
+        <translation>%1</translation>
+    </message>
+    <message>
+        <source>保留时间</source>
+        <translation>Keep for</translation>
+    </message>
+    <message>
+        <source>这么久没再复制或粘贴过的记录会自动删除；分组里的不会</source>
+        <translation>Entries not copied or pasted for this long are removed; grouped ones stay</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n 天</source>
+        <translation>
+            <numerusform>%n day</numerusform>
+            <numerusform>%n days</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>一直保留</source>
+        <translation>Forever</translation>
+    </message>
+    <message>
+        <source>不记录这些程序复制的内容</source>
+        <translation>Don’t keep copies from these programs</translation>
+    </message>
+    <message>
+        <source>填程序的文件名，例如 KeePass.exe。密码管理器一般会自己声明“不要记录”，这里再多一层保险</source>
+        <translation>Program file names, such as KeePass.exe. Password managers usually mark their copies as not to be kept; this is a second safeguard</translation>
+    </message>
+    <message>
+        <source>输入程序文件名，例如 KeePass.exe</source>
+        <translation>Program file name, e.g. KeePass.exe</translation>
+    </message>
+    <message>
+        <source>清除剪贴板历史</source>
+        <translation>Clear clipboard history</translation>
+    </message>
+    <message>
+        <source>共 %1 条。“固定”和其他分组里的会保留</source>
+        <translation>%1 entries. Pinned and grouped ones stay</translation>
     </message>
     <message>
         <source>更新</source>
@@ -728,6 +984,18 @@
         <translation>Press Ctrl twice to search. The first run takes a moment to build the file index.</translation>
     </message>
     <message>
+        <source>Win顺 现在有剪贴板历史了</source>
+        <translation>WinShun now keeps a clipboard history</translation>
+    </message>
+    <message>
+        <source>复制过的文字、图片和文件都能找回来。点这里设置用 Win+V 打开它。</source>
+        <translation>The text, pictures and files you copy can be found again. Click here to make Win+V open it.</translation>
+    </message>
+    <message>
+        <source>复制过的文字、图片和文件都能找回来。点这里打开它。</source>
+        <translation>The text, pictures and files you copy can be found again. Click here to turn it on.</translation>
+    </message>
+    <message>
         <source>Win顺</source>
         <translation>WinShun</translation>
     </message>
@@ -746,6 +1014,22 @@
     <message>
         <source>快捷键不可用</source>
         <translation>Shortcut unavailable</translation>
+    </message>
+    <message>
+        <source>没能重启资源管理器</source>
+        <translation>Could not restart File Explorer</translation>
+    </message>
+    <message>
+        <source>注销后重新登录 Windows 也能生效。</source>
+        <translation>Signing out and in again works too.</translation>
+    </message>
+    <message>
+        <source>资源管理器没有重新启动</source>
+        <translation>File Explorer did not start again</translation>
+    </message>
+    <message>
+        <source>按 Ctrl+Shift+Esc 打开任务管理器，选“运行新任务”，输入 explorer 启动它；注销后重新登录也行。</source>
+        <translation>Press Ctrl+Shift+Esc for Task Manager, choose “Run new task” and enter explorer to start it; signing out and in again works too.</translation>
     </message>
     <message numerus="yes">
         <source>正在建立索引… 已收录 %Ln 个文件</source>
@@ -792,6 +1076,14 @@
         <translation>Ctrl twice</translation>
     </message>
     <message>
+        <source>剪贴板历史</source>
+        <translation>Clipboard history</translation>
+    </message>
+    <message>
+        <source>暂停记录剪贴板</source>
+        <translation>Pause clipboard history</translation>
+    </message>
+    <message>
         <source>重建索引</source>
         <translation>Rebuild index</translation>
     </message>
@@ -826,6 +1118,327 @@
     <message>
         <source>可以照常搜索，完成后结果会自动更新。</source>
         <translation>You can keep searching. Results update by themselves when it’s done.</translation>
+    </message>
+</context>
+<context>
+    <name>ws::ClipModel</name>
+    <message>
+        <source>图片 %1 × %2</source>
+        <translation>Picture %1 × %2</translation>
+    </message>
+    <message numerus="yes">
+        <source>%1 等 %Ln 个文件</source>
+        <translation>
+            <numerusform>%1</numerusform>
+            <numerusform>%1 (%Ln files)</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%Ln 字</source>
+        <translation>
+            <numerusform>%Ln character</numerusform>
+            <numerusform>%Ln characters</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%Ln 个文件</source>
+        <translation>
+            <numerusform>%Ln file</numerusform>
+            <numerusform>%Ln files</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>已不存在</source>
+        <translation>gone</translation>
+    </message>
+    <message>
+        <source>固定</source>
+        <translation>Pinned</translation>
+    </message>
+    <message>
+        <source>刚刚</source>
+        <translation>Just now</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n 分钟前</source>
+        <translation>
+            <numerusform>%n min ago</numerusform>
+            <numerusform>%n min ago</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>昨天 %1</source>
+        <translation>Yesterday %1</translation>
+    </message>
+    <message>
+        <source>M月d日</source>
+        <translation>MMM d</translation>
+    </message>
+    <message>
+        <source>yyyy年M月d日</source>
+        <translation>MMM d, yyyy</translation>
+    </message>
+</context>
+<context>
+    <name>ws::Clipboard</name>
+    <message>
+        <source>已复制。那个窗口没有回到前面，请自己按 Ctrl+V 粘贴</source>
+        <translation>Copied. That window did not come back to the front: press Ctrl+V there</translation>
+    </message>
+    <message>
+        <source>全部</source>
+        <translation>All</translation>
+    </message>
+    <message>
+        <source>文本</source>
+        <translation>Text</translation>
+    </message>
+    <message>
+        <source>链接</source>
+        <translation>Links</translation>
+    </message>
+    <message>
+        <source>图片</source>
+        <translation>Pictures</translation>
+    </message>
+    <message>
+        <source>文件</source>
+        <translation>Files</translation>
+    </message>
+    <message>
+        <source>固定</source>
+        <translation>Pinned</translation>
+    </message>
+    <message>
+        <source>已暂停记录，在托盘菜单里可以继续</source>
+        <translation>Paused; resume from the tray menu</translation>
+    </message>
+    <message>
+        <source>没有在记录剪贴板</source>
+        <translation>Clipboard history is off</translation>
+    </message>
+    <message numerus="yes">
+        <source>%Ln 条</source>
+        <translation>
+            <numerusform>%Ln entry</numerusform>
+            <numerusform>%Ln entries</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>共 %Ln 条</source>
+        <translation>
+            <numerusform>%Ln entry</numerusform>
+            <numerusform>%Ln entries</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>空格</source>
+        <translation>space</translation>
+    </message>
+    <message>
+        <source>逗号</source>
+        <translation>comma</translation>
+    </message>
+    <message>
+        <source>Tab</source>
+        <translation>tab</translation>
+    </message>
+    <message>
+        <source>不分隔</source>
+        <translation>nothing</translation>
+    </message>
+    <message>
+        <source>换行</source>
+        <translation>new line</translation>
+    </message>
+    <message>
+        <source>图片没有可以粘贴的文字</source>
+        <translation>A picture has no text to paste</translation>
+    </message>
+    <message>
+        <source>这些文件已经不存在了</source>
+        <translation>These files are gone</translation>
+    </message>
+    <message>
+        <source>图片只能一张一张地粘贴</source>
+        <translation>Pictures can only be pasted one at a time</translation>
+    </message>
+    <message>
+        <source>剪贴板正被别的程序占用，请再试一次</source>
+        <translation>Another program is using the clipboard; try again</translation>
+    </message>
+    <message>
+        <source>已复制。没有找到要粘贴进去的窗口，可以自己按 Ctrl+V</source>
+        <translation>Copied. No window to paste into: press Ctrl+V where you want it</translation>
+    </message>
+    <message numerus="yes">
+        <source>已把 %Ln 条合在一起复制</source>
+        <translation>
+            <numerusform>Copied %Ln entry</numerusform>
+            <numerusform>Copied %Ln entries as one</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>已复制</source>
+        <translation>Copied</translation>
+    </message>
+    <message>
+        <source>Win顺</source>
+        <translation>WinShun</translation>
+    </message>
+    <message>
+        <source>已复制 %1</source>
+        <translation>Copied %1</translation>
+    </message>
+    <message>
+        <source>已取消固定</source>
+        <translation>Unpinned</translation>
+    </message>
+    <message>
+        <source>已固定，不会过期</source>
+        <translation>Pinned: kept for good</translation>
+    </message>
+    <message>
+        <source>已移出分组</source>
+        <translation>Taken out of the group</translation>
+    </message>
+    <message>
+        <source>已移到“%1”，不会过期</source>
+        <translation>Moved to “%1”: kept for good</translation>
+    </message>
+    <message numerus="yes">
+        <source>已删除 %Ln 条，按 Ctrl+Z 撤销</source>
+        <translation>
+            <numerusform>Deleted %Ln entry; Ctrl+Z undoes</numerusform>
+            <numerusform>Deleted %Ln entries; Ctrl+Z undoes</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>已恢复分组“%1”</source>
+        <translation>Group “%1” restored</translation>
+    </message>
+    <message numerus="yes">
+        <source>已恢复 %Ln 条</source>
+        <translation>
+            <numerusform>Restored %Ln entry</numerusform>
+            <numerusform>Restored %Ln entries</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>yyyy年M月d日 HH:mm</source>
+        <translation>MMM d, yyyy HH:mm</translation>
+    </message>
+    <message numerus="yes">
+        <source>%Ln 个文件</source>
+        <translation>
+            <numerusform>%Ln file</numerusform>
+            <numerusform>%Ln files</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%Ln 字</source>
+        <translation>
+            <numerusform>%Ln character</numerusform>
+            <numerusform>%Ln characters</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%Ln 行</source>
+        <translation>
+            <numerusform>%Ln line</numerusform>
+            <numerusform>%Ln lines</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>粘贴 %Ln 条</source>
+        <translation>
+            <numerusform>Paste %Ln entry</numerusform>
+            <numerusform>Paste %Ln entries</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>粘贴</source>
+        <translation>Paste</translation>
+    </message>
+    <message>
+        <source>粘贴为纯文本</source>
+        <translation>Paste as plain text</translation>
+    </message>
+    <message numerus="yes">
+        <source>复制 %Ln 条</source>
+        <translation>
+            <numerusform>Copy %Ln entry</numerusform>
+            <numerusform>Copy %Ln entries</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>复制</source>
+        <translation>Copy</translation>
+    </message>
+    <message>
+        <source>在浏览器中打开</source>
+        <translation>Open in browser</translation>
+    </message>
+    <message>
+        <source>打开所在位置</source>
+        <translation>Open file location</translation>
+    </message>
+    <message>
+        <source>打开图片</source>
+        <translation>Open picture</translation>
+    </message>
+    <message>
+        <source>取消固定</source>
+        <translation>Unpin</translation>
+    </message>
+    <message>
+        <source>移到“%1”</source>
+        <translation>Move to “%1”</translation>
+    </message>
+    <message>
+        <source>移到新分组…</source>
+        <translation>Move to a new group…</translation>
+    </message>
+    <message>
+        <source>移出分组</source>
+        <translation>Take out of the group</translation>
+    </message>
+    <message numerus="yes">
+        <source>删除 %Ln 条</source>
+        <translation>
+            <numerusform>Delete %Ln entry</numerusform>
+            <numerusform>Delete %Ln entries</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>删除</source>
+        <translation>Delete</translation>
+    </message>
+    <message>
+        <source>重命名…</source>
+        <translation>Rename…</translation>
+    </message>
+    <message numerus="yes">
+        <source>删除分组和里面的 %Ln 条</source>
+        <translation>
+            <numerusform>Delete the group and its %Ln entry</numerusform>
+            <numerusform>Delete the group and its %Ln entries</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>删除分组</source>
+        <translation>Delete the group</translation>
+    </message>
+    <message numerus="yes">
+        <source>已删除分组“%1”和里面的 %Ln 条，按 Ctrl+Z 撤销</source>
+        <translation>
+            <numerusform>Deleted group “%1” and its %Ln entry; Ctrl+Z undoes</numerusform>
+            <numerusform>Deleted group “%1” and its %Ln entries; Ctrl+Z undoes</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>已删除分组“%1”，按 Ctrl+Z 撤销</source>
+        <translation>Deleted group “%1”; Ctrl+Z undoes</translation>
     </message>
 </context>
 <context>

@@ -156,6 +156,27 @@ begin
   DeleteFile(ListFile);
 end;
 
+// Win+V back to Windows' clipboard history, if WinShun had taken it over: the
+// V it put into Explorer's DisabledHotkeys goes (Explorer reads that when it
+// starts). A V there without WinShun having taken Win+V belongs to someone else.
+procedure GiveBackWinV();
+var
+  Keys: String;
+  I: Integer;
+begin
+  if CompareText(GetIniString('Clipboard', 'WinV', 'false', ExpandConstant('{userappdata}\WinShun\WinShun.ini')), 'true') <> 0 then
+    exit;
+  if not RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', 'DisabledHotkeys', Keys) then
+    exit;
+  for I := Length(Keys) downto 1 do
+    if (Keys[I] = 'V') or (Keys[I] = 'v') then
+      Delete(Keys, I, 1);
+  if Keys = '' then
+    RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', 'DisabledHotkeys')
+  else
+    RegWriteStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', 'DisabledHotkeys', Keys);
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   // Once the user has confirmed, before the files go.
@@ -163,6 +184,7 @@ begin
   begin
     CloseWinShun(ExpandConstant('{app}\{#AppExe}'));
     RemoveAutostart();
+    GiveBackWinV();
   end;
   if (CurUninstallStep = usPostUninstall) and not UninstallSilent then
     if MsgBox(CustomMessage('RemoveData'), mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then

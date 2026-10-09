@@ -23,6 +23,9 @@ public:
     QImage requestImage(const QString& id, QSize* size, const QSize& requestedSize) override;
 
     static QString iconUrl(const QString& path, bool isDir);
+    // What Explorer shows as the file's thumbnail (pictures, videos, PDFs
+    // and other documents with a thumbnail handler); no image if it has none.
+    static QString thumbnailUrl(const QString& path);
     // An installed app (AppCatalog). Packaged apps' logos differ by theme.
     static QString appIconUrl(const QString& appId, bool packaged, bool dark);
     // A place in Windows (SystemCatalog), by its icon: one in a module

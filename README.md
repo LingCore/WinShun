@@ -108,6 +108,18 @@
 - Windows 11 的资源管理器开着几个标签页时，取正在显示的那个；最近的窗口显示的不是磁盘上的文件夹（“主页”“此电脑”、搜索结果）时，取再往前的一个窗口。
 - 已经输入的文件名保留，键盘焦点也回到原处。只有这类对话框在最前面时才占用 `Ctrl+G`，别的程序里它还是原来的作用。不需要时可以在设置里关掉；同时开着 Listary 的话两边都会响应，关掉其中一个就好。
 
+#### 📋 剪贴板历史（可以代替 Win+V）
+
+- 复制过的文字、图片和文件都记下来，随时找回。在设置 → **剪贴板** 里打开“用 Win+V 打开”，`Win+V` 出来的就是 Win顺的剪贴板，代替 Windows 自带的；也可以另设一个组合键，或者从托盘菜单打开。
+- 选中一条按 `Enter`，直接粘贴到打开之前所在的窗口；`Shift+Enter` 粘贴为纯文本。从 Word、网页复制的内容带着原来的格式；复制的文件粘贴到资源管理器里还是文件。
+- **能搜**：边打字边筛选，支持拼音（`hy` 找到“会议”）；`@程序名` 只看从某个程序复制的（`@wx` 只看微信里复制的）。右边是这一条的全文、大图或文件清单，还有它从哪个程序复制、什么时候复制的。
+- **分类**：按 `Tab` 在 全部 / 文本 / 链接 / 图片 / 文件 之间切换。颜色值（`#3B82F6`、`rgba(…)`、`hsl(…)`，带透明度的也认）显示成色块，半透明的一半不透明、一半垫着棋盘格，一眼看出有多透；右边列出它的 HEX / RGB / HSL 写法（半透明的再加一行 Qt、Android、XAML 用的 `#AARRGGBB`，透明度在前），点一下就复制；复制的图片、视频、PDF 等文件，右边显示缩略图。
+- **分组**：`Ctrl+P` 固定一条；右键 → 移到新分组，可以建“常用回复”“代码片段”这样的分组。放进分组的内容一直保留，其余的默认保留最近 1000 条、30 天，可以在设置里改。
+- **多选粘贴**：按住 `Ctrl` 点击，或者 `Shift+↑` `Shift+↓`，选中的每一条都标着序号；按 `Enter` 按这个顺序合在一起，一次粘贴出来。选了一条还能接着搜下一条再选（搜“地址”选一条，再搜“电话”选一条）。中间用什么隔开（换行、空格、逗号、Tab、不分隔），在底栏点一下就能换。选的全是文件时，合成一份文件列表粘贴。
+- 按住 `Alt`，前 9 条标出数字，`Alt+1`～`Alt+9` 直接粘贴；`Delete` 删除一条，删错了（删掉整个分组也一样）按 `Ctrl+Z` 撤销。
+- **隐私**：密码管理器复制的密码不会被记录（它们会声明“不要记录”，和 Windows 自带的剪贴板历史遵守的是同一套规则），也可以在设置里列出不记录的程序，或者在托盘菜单里暂停记录。历史只保存在本机（`%LOCALAPPDATA%\WinShun\clipboard`），不上传。
+- Windows 自带的剪贴板历史是开着的，Win顺的剪贴板历史也默认打开；否则在设置 → 剪贴板里打开。接管 `Win+V` 要重启一次资源管理器（设置里有按钮，也可以等下次登录 Windows 时自动生效）；关掉这项或卸载 Win顺 后，`Win+V` 回到 Windows 自带的剪贴板。Windows 剪贴板面板里的表情符号可以改用 `Win+.` 打开。
+
 #### ⌨️ 全键盘操作
 
 | 按键 | 作用 |
@@ -124,6 +136,7 @@
 | 菜单键 / `Shift+F10` / 右键 | 更多操作 |
 | `Esc` | 关闭（选中了多项时先取消选择） |
 | `Ctrl+G`（在“打开”“另存为”对话框里） | 转到资源管理器正在显示的文件夹 |
+| `Win+V`（在设置里打开后） | 剪贴板历史：`Enter` 粘贴，`Shift+Enter` 粘贴为纯文本，`Tab` 切换分类，`Ctrl+P` 固定，`Alt+1`～`Alt+9` 粘贴第几条 |
 
 鼠标也能用：选中或悬停的结果右边有四个按钮，分别是打开所在位置、复制、复制路径和删除（点两次才删，移到回收站）。选中了多项时，打开、复制、删除等操作都对全部选中项生效。
 
@@ -142,6 +155,7 @@
 - **外观**：主题（跟随系统 / 浅色 / 深色）、透明效果（关 / 开 / 自动，自动在内存不超过 16 GB 时关闭）、界面语言（跟随系统 / 简体中文 / English），切换即时生效。
 - **搜索范围**：不搜索的文件夹、任何位置都跳过的文件夹名称（如 `node_modules`）、是否包括 U 盘和移动硬盘。
 - **文件内容搜索**：要搜索内容的文件类型、文件大小上限、是否也搜系统和程序文件夹、是否建立内容索引。
+- **剪贴板**：是否记录剪贴板历史、用 `Win+V` 打开（代替 Windows 自带的）、另设一个组合键、是否记录图片、保留多少条和多久、不记录的程序、清除剪贴板历史。
 - **高级**：检查更新、是否自动检查更新、界面绘制方式（省内存 / 显卡加速 / 自动）、恢复默认设置。
 
 #### 🔔 新版本提醒
@@ -265,6 +279,18 @@ The interface comes in **English and Simplified Chinese**. It follows the Window
 - In an Open or Save As dialog (folder pickers included), press `Ctrl+G` and the dialog goes to the folder shown in the File Explorer window you used last, like Listary's shortcut of the same name. Find the place in Explorer, then Save As in any program: one key and you are there.
 - With several Explorer tabs open (Windows 11), the tab on top counts; a window that shows no folder on disk (Home, This PC, a search) is passed over for the one before it.
 - The file name you typed stays, and so does the keyboard focus. `Ctrl+G` is taken only while such a dialog is in front, so it keeps its meaning in every other program. It can be turned off in the settings; if Listary runs too, both answer the key, so turn off one of them.
+
+#### 📋 Clipboard history (can replace Win+V)
+
+- What you copy — text, pictures, files — is kept to come back to. Turn on “Open with Win+V” in Settings → **Clipboard** and `Win+V` opens WinShun's clipboard instead of Windows' own; or set another shortcut, or open it from the tray menu.
+- `Enter` pastes the entry into the window you were in, `Shift+Enter` as plain text. Text from Word or a web page keeps its formatting; copied files paste into Explorer as files.
+- Type to filter, pinyin included; `@name` keeps to what came from one program. The current entry is shown in full beside the list — the whole text, the picture or the file list — with where and when it was copied.
+- `Tab` switches between All / Text / Links / Pictures / Files. Colour values (`#3B82F6`, `rgba(…)`, `hsl(…)`, with or without alpha) show as swatches, a translucent one half opaque and half over a checkerboard, with their HEX / RGB / HSL notations beside the list (a translucent one also as `#AARRGGBB`, alpha first, as Qt, Android and XAML write it), a click copying one; copied pictures, videos, PDFs and the like show their thumbnails.
+- `Ctrl+P` pins an entry; right-click → Move to a new group makes groups such as “Replies” or “Snippets”. Pinned and grouped entries are kept for good; the rest by default for the latest 1000 and 30 days (see the settings).
+- Pick several with `Ctrl`+click or `Shift+↑` / `Shift+↓`: each shows its number, and `Enter` pastes them as one, in that order, joined by a new line, space, comma, tab or nothing (click the footer to change it). Picks stay while you search for the next one. Files only make one list of files.
+- Hold `Alt` to see the numbers: `Alt+1`…`Alt+9` paste the first nine entries. `Delete` removes one and `Ctrl+Z` brings it back (a removed group too).
+- Passwords from password managers are not kept (they mark them the same way for Windows' own clipboard history); programs can be excluded in the settings, and the tray menu pauses the history. It stays on your PC (`%LOCALAPPDATA%\WinShun\clipboard`).
+- On by default if Windows' own clipboard history is on. Taking `Win+V` over takes one restart of File Explorer (a button in the settings, or the next sign-in); turned off again, or with WinShun uninstalled, `Win+V` goes back to Windows. For emoji, use `Win+.`.
 
 #### ⌨️ Keyboard first
 

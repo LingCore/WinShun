@@ -22,6 +22,7 @@ public:
         std::function<void(const QString&)> commandReceived;
         std::function<void()> sessionEnding; // Windows is logging off / shutting down
         std::function<LRESULT(WPARAM, LPARAM)> deviceChange; // WM_DEVICECHANGE (see VolumeNotifier)
+        std::function<void()> shellRestarted; // Explorer started again (its taskbar is back)
     };
 
     explicit MessageWindow(Callbacks callbacks);

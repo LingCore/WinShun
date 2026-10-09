@@ -1,16 +1,20 @@
 qt_add_executable(WinShun WIN32
     main.cpp
     App.cpp App.h
+    ColorText.cpp ColorText.h
     FileIconProvider.cpp FileIconProvider.h
     Migration.cpp Migration.h
     Settings.cpp Settings.h
+    platform/ClipboardWatcher.cpp platform/ClipboardWatcher.h
     platform/DialogJump.cpp platform/DialogJump.h
     platform/Http.cpp platform/Http.h
     platform/KeyListener.cpp platform/KeyListener.h
     platform/MessageWindow.cpp platform/MessageWindow.h
+    platform/Paster.cpp platform/Paster.h
     platform/Shell.cpp platform/Shell.h
     platform/ShortcutCapture.cpp platform/ShortcutCapture.h
     platform/VolumeNotifier.cpp platform/VolumeNotifier.h
+    platform/WinV.cpp platform/WinV.h
     platform/WindowEffects.cpp platform/WindowEffects.h
     ${PROJECT_SOURCE_DIR}/resources/app.rc
     ${PROJECT_SOURCE_DIR}/resources/app.manifest
@@ -22,6 +26,10 @@ set(qml_files
     qml/SearchBar.qml
     qml/ScopeTabs.qml
     qml/ResultRow.qml
+    qml/ClipboardPage.qml
+    qml/ClipTabs.qml
+    qml/ClipRow.qml
+    qml/ClipPreview.qml
     qml/RowAction.qml
     qml/ListScrollBar.qml
     qml/ContextMenu.qml
@@ -38,6 +46,7 @@ set(qml_files
     qml/ToggleSwitch.qml
     qml/FlatButton.qml
     qml/InputBox.qml
+    qml/CenteredNumber.qml
     qml/Chip.qml
     qml/HotkeyRecorder.qml
     qml/Gleaning.qml
@@ -86,6 +95,9 @@ qt_add_qml_module(WinShun
     RESOURCES ${gleaning_images}
     SOURCES
         AuthorMark.cpp AuthorMark.h
+        ClipModel.cpp ClipModel.h
+        Clipboard.cpp Clipboard.h
+        ColorSwatch.cpp ColorSwatch.h
         GleaningScene.cpp GleaningScene.h
         IconBadge.cpp IconBadge.h
         Launcher.cpp Launcher.h
@@ -124,7 +136,7 @@ target_include_directories(WinShun PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(WinShun PRIVATE
     wscore
     Qt6::Gui Qt6::Qml Qt6::Quick
-    comctl32 dwmapi shell32 shlwapi ole32 user32 uxtheme winhttp winmm
+    comctl32 dwmapi shell32 shlwapi ole32 user32 uxtheme version winhttp winmm
     mfplat mfreadwrite mfuuid delayimp)
 # The execution level (requireAdministrator) comes from app.manifest alone; the
 # linker's own default (asInvoker) would conflict with it. Media Foundation is

@@ -36,6 +36,21 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool contentIndex READ contentIndex WRITE setContentIndex NOTIFY changed FINAL)
     Q_PROPERTY(bool contentInLowPriority READ contentInLowPriority WRITE setContentInLowPriority NOTIFY changed FINAL)
     Q_PROPERTY(QString contentIndexStatus READ contentIndexStatus NOTIFY contentIndexStatusChanged FINAL)
+    // 剪贴板
+    Q_PROPERTY(bool clipboard READ clipboard WRITE setClipboard NOTIFY changed FINAL)
+    Q_PROPERTY(bool clipboardWinV READ clipboardWinV WRITE setClipboardWinV NOTIFY changed FINAL)
+    // Where taking Win+V over stands (set by the app): off | on | waiting
+    // (Explorer still holds it: restart Explorer) | releasing (Explorer gets
+    // it back once it restarts) | failed (the registry could not be written).
+    Q_PROPERTY(QString winVState READ winVState NOTIFY winVStateChanged FINAL)
+    Q_PROPERTY(bool canRestartExplorer READ canRestartExplorer NOTIFY winVStateChanged FINAL)
+    Q_PROPERTY(QString clipboardHotkey READ clipboardHotkey WRITE setClipboardHotkey NOTIFY changed FINAL)
+    Q_PROPERTY(QString clipboardHotkeyError READ clipboardHotkeyError NOTIFY hotkeyErrorChanged FINAL)
+    Q_PROPERTY(int clipboardMaxItems READ clipboardMaxItems WRITE setClipboardMaxItems NOTIFY changed FINAL)
+    Q_PROPERTY(int clipboardMaxDays READ clipboardMaxDays WRITE setClipboardMaxDays NOTIFY changed FINAL)
+    Q_PROPERTY(bool clipboardImages READ clipboardImages WRITE setClipboardImages NOTIFY changed FINAL)
+    Q_PROPERTY(QStringList clipboardExcludedApps READ clipboardExcludedApps NOTIFY changed FINAL)
+    Q_PROPERTY(int clipboardCount READ clipboardCount NOTIFY clipboardCountChanged FINAL)
     Q_PROPERTY(QString renderer READ renderer WRITE setRenderer NOTIFY changed FINAL)
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY changed FINAL)
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY changed FINAL)
@@ -94,6 +109,27 @@ public:
     bool isDefault() const;
     QString dataFolder() const { return Settings::dataDir(); }
 
+    bool clipboard() const { return m_settings.clipboard; }
+    void setClipboard(bool on);
+    bool clipboardWinV() const { return m_settings.clipboardWinV; }
+    void setClipboardWinV(bool on);
+    QString winVState() const { return m_winVState; }
+    void setWinVState(const QString& state, bool canRestartExplorer); // set by the app
+    bool canRestartExplorer() const { return m_canRestartExplorer; }
+    QString clipboardHotkey() const { return m_settings.clipboardHotkey; }
+    void setClipboardHotkey(const QString& hotkey);
+    QString clipboardHotkeyError() const { return m_clipboardHotkeyError; }
+    void setClipboardHotkeyError(const QString& error);
+    int clipboardMaxItems() const { return m_settings.clipboardMaxItems; }
+    void setClipboardMaxItems(int items);
+    int clipboardMaxDays() const { return m_settings.clipboardMaxDays; }
+    void setClipboardMaxDays(int days);
+    bool clipboardImages() const { return m_settings.clipboardImages; }
+    void setClipboardImages(bool on);
+    QStringList clipboardExcludedApps() const { return m_settings.clipboardExcludedApps; }
+    int clipboardCount() const { return m_clipboardCount; }
+    void setClipboardCount(int count); // set by the app
+
     void setSettings(const Settings& settings); // the file was changed outside this editor
     void setWindow(QWindow* window) { m_window = window; }
 
@@ -103,6 +139,10 @@ public:
     Q_INVOKABLE void removeExcludedName(int index);
     Q_INVOKABLE bool addContentExtensions(const QString& text); // "md, .log *.csv"
     Q_INVOKABLE void removeContentExtension(int index);
+    Q_INVOKABLE bool addClipboardExcludedApp(const QString& name); // "KeePass", "keepass.exe"
+    Q_INVOKABLE void removeClipboardExcludedApp(int index);
+    Q_INVOKABLE void clearClipboard() { emit clipboardClearRequested(); } // what is in no group
+    Q_INVOKABLE void restartExplorer() { emit explorerRestartRequested(); }
     Q_INVOKABLE void restoreDefaults();
     Q_INVOKABLE void clearHistory() { emit historyClearRequested(); }
     Q_INVOKABLE void openDataFolder();
@@ -120,6 +160,10 @@ signals:
     void contentIndexStatusChanged();
     void recordingHotkeyChanged(); // the app suspends its hotkeys meanwhile
     void autostartChanged();
+    void winVStateChanged();
+    void clipboardCountChanged();
+    void clipboardClearRequested();
+    void explorerRestartRequested(); // Win+V changes hands when Explorer starts again
     void edited(const ws::Settings& settings);
     void restartRequested();
 
@@ -132,6 +176,10 @@ private:
     int m_historyCount = 0;
     QString m_contentIndexStatus;
     bool m_recordingHotkey = false;
+    QString m_winVState = QStringLiteral("off");
+    bool m_canRestartExplorer = false;
+    QString m_clipboardHotkeyError;
+    int m_clipboardCount = 0;
     QPointer<QWindow> m_window;
     std::unique_ptr<ShortcutCapture> m_capture; // while recording a hotkey
 };

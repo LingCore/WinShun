@@ -264,6 +264,52 @@
 - **原因**：这台电脑开着 Listary（`ListaryHookHost64`），它用钩子收 `Ctrl+G`，Win顺 注册了热键它也收得到，两边各跳一次，后到的算数。
 - **做法**：测试 Win顺 自己的跳转时，不发真实按键，由提权的小程序给消息窗口（`WinShun.MessageWindow`）投递 `WM_HOTKEY`（id 2）；热键有没有注册，另外用测试进程自己 `RegisterHotKey(Ctrl+G)` 试一下（成功说明没人占着，马上注销）。用户同时开着两个时两边都会动，README 里写了关掉其中一个。
 
+## 剪贴板历史
+
+做法和取舍见 [architecture.md](architecture.md) 的“剪贴板历史和搜索共用一个窗口”（`src/core/ClipStore.cpp`、`src/app/platform/ClipboardWatcher.cpp`）。
+
+### Win+V 注册不上
+
+- **现象**：`RegisterHotKey(Win+V)` 返回失败，错误 1409（热键已被注册）；`Win+Shift+V` 也一样。
+- **原因**：资源管理器自己注册了 `Win+V`（打开 Windows 的剪贴板历史）。
+- **做法**：资源管理器启动时读 `HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\DisabledHotkeys`，写在里面的字母它不注册。加上 `V` 后要等资源管理器重启（或重新登录）才生效，所以设置里有“现在重启资源管理器”。不用低级键盘钩子去抢（为什么不用钩子见“双击 Ctrl 用 Raw Input”）。
+
+### 空字符串写进 SQLite 变成 NULL
+
+- **现象**：保存条目失败，日志里是 `NOT NULL constraint failed: clips.sourcePath Unable to fetch row`。
+- **原因**：`QString()`（null 字符串，比如没取到来源程序时）绑定到 Qt Sql 的参数上就是 SQL 的 NULL，和空字符串 `""` 不一样。
+- **做法**：文字列绑定前把 null 换成空字符串（`ClipStore.cpp` 的 `text()`）；该是 NULL 的二进制列（没有 HTML、RTF 格式）明确绑定空的 `QVariant(QMetaType::fromType<QByteArray>())`。单元测试 `tst_clipboard` 覆盖了这种情况。
+
+### 从历史里粘贴，目标程序有时什么都没收到
+
+- **现象**：剪贴板里已经是要粘贴的内容，Ctrl+V 也发到了目标窗口，文本框里却是空的。同样的步骤时好时坏：实测里把文件条目粘贴为纯文本那次失败，粘贴文字那次成功。
+- **原因**：Win顺 写完剪贴板，自己的监听也收到这次变化，40 ms 后打开剪贴板读条目编号。这正是目标程序处理 Ctrl+V、打开剪贴板的时候。剪贴板同一时刻只能被一个程序打开，普通编辑框打开失败就什么也不粘贴，也不重试。
+- **做法**：自己写的内容不读回来。写完记下 `GetClipboardSequenceNumber()`，监听看到同一个序号就跳过；条目往前挪，直接在写的地方通知（`ClipboardWatcher::writeNow`）。粘贴流程里任何“写完再读一遍”的操作都会和目标程序撞上。
+
+### 日志里的 `Retrying to obtain clipboard.`
+
+- **现象**：连续复制时，`WinShun.log` 里出现一串 `Retrying to obtain clipboard.`。
+- **原因**：这条是 Qt 自己打的。QML 的文本框（搜索框等）在剪贴板一变就在主线程读一次，判断能不能粘贴；剪贴板被占着就睡 100 ms 重试，最多 3 次。实测里只在测试脚本用 .NET 的 `Clipboard.SetDataObject(..., true)` 复制时出现：它先 `OleSetClipboard` 再 `OleFlushClipboard`，中间占着剪贴板。用 `OpenClipboard` / `SetClipboardData` 直接写（大多数程序的做法）就没有，和 Win顺 的监听无关。
+- **做法**：查剪贴板问题时别把它算到监听头上。想知道是谁占着剪贴板，就用这两种方式各复制几次对比。
+
+### 剪贴板页里 Alt+1、Alt+2 没反应
+
+- **现象**：这台电脑上，剪贴板页里按 Alt+1、Alt+2 不粘贴，Alt+3 到 Alt+9 正常。
+- **原因**：别的程序把 Alt+1、Alt+2 注册成了全局热键（`RegisterHotKey` 报 1409）。全局热键先于前台窗口拿到按键，Win顺 收不到。
+- **做法**：用方向键加 Enter，或双击条目。测试前先用 `RegisterHotKey` 试一下要发的组合（成功就马上注销），被占用就换一个。
+
+### 重启资源管理器后，任务栏没回来
+
+- **现象**：在设置里点“现在重启资源管理器”，任务栏消失了，十几秒后也没回来；进程里只剩一个开着文件夹窗口的 `explorer.exe`。注册表里 `AutoRestartShell` 是 1。
+- **原因**：原来的做法是结束任务栏所在的 `explorer.exe`（退出码非零），等 Winlogon 重新启动它。但 Winlogon 只管它在登录时启动的那个外壳；外壳之前被别的程序或用户重启过的话，结束后就没人再启动它。
+- **做法**：结束前先复制这个进程的令牌，3 秒内没有新外壳就自己启动：`CreateProcessWithTokenW`，不行再以用户的 `sihost.exe` 为父进程（`winv::restartExplorer`）。不能用 Win顺 自己的令牌，那样外壳带着管理员权限，任务栏上打开的一切也都是。测完查新外壳令牌的 `TokenElevation`，应该是未提权。用户手动恢复：`Ctrl+Shift+Esc` → 运行新任务 → `explorer`。
+
+### 粘贴偶尔没贴进去（目标窗口刚回到前台）
+
+- **现象**：选好条目按 Enter，剪贴板里的内容是对的，原来的窗口也回到了前面，文本框里却是空的；同样的步骤再做一次又正常。
+- **原因**：目标窗口一到前台就发了 `Ctrl+V`。它这时可能还没把焦点放回输入框，按键落在窗口本身，丢了。
+- **做法**：到了前台再等 60 ms 才发（`Clipboard.cpp` 的 `kSettleMs`）；改后原来出错的场景连做 5 次都成功。不用 `GetGUIThreadInfo` 查焦点：UWP 程序的输入在另一个进程里，查不准，反而要等满超时。
+
 ## 主题和语言
 
 ### 名为 `onXxx` 的属性不随主题变化
@@ -285,6 +331,24 @@
 - **现象**：在搜索结果上点右键，菜单不出来，日志里有 `Main.qml:103: TypeError: true is not a function`。
 - **原因**：`menuLoader.active = true` 的下一行是 `(menuLoader.item as ContextMenu).popup(...)`。JavaScript 不会在 `(` 前面自动补分号，两行连成了 `true(...)`。
 - **做法**：不要让一行以 `(`、`[` 或模板字符串开头；先存进一个变量再调用（`Main.qml`）。
+
+### 为了建立依赖单独读一下属性，会被编译器删掉
+
+- **现象**：剪贴板页右边的预览不跟着变。搜索结果从一条链接换成一条文字时（行数没变，当前行还是第一行），预览还是那条链接；固定一条后，预览里也不出现“在“固定”里，不会过期”。
+- **原因**：绑定写成 `{ page.previewRevision; return ... }`，想靠单独读一下 `previewRevision`，让绑定在它变化时重新求值。qmlcachegen 把绑定编译成 C++ 时，把这种结果没用上的读取当成死代码删掉了，绑定就不依赖它。拿一个小例子用 qmlcachegen 编一下就能看到：单独读的那个属性在生成的代码里没有对应的 lookup。
+- **做法**：让它参与计算，比如写进条件：`page.previewRevision >= 0 && ...`（`ClipboardPage.qml`）。生成的代码在 `build\<目录>\src\app\.rcc\qmlcache\*_qml.cpp`，每个绑定前有 `// expression for 属性名 at line N`，可以对照着查。
+
+### 圆里的数字偏下
+
+- **现象**：剪贴板多选时的序号气泡，数字明显偏下（150% 下低 2 个物理像素）、偏左。改成按 `TextMetrics.tightBoundingRect` 居中后，还低 1 个像素；同样的代码在 `qml` 工具里看却是正的。
+- **原因**：有两层。一是 `anchors.centerIn` 按整行居中，行高里给下伸部分留了空间，数字用不到；`tightBoundingRect` 的底边也比基线低约 0.45 逻辑像素，可数字明明站在基线上。二是 Win顺 用 FreeType 字体引擎（见 architecture.md），原生渲染的字形位置和 `qml` 工具默认的 DirectWrite 不一样，会偏下一点，所以在 `qml` 工具里试准的位置不能直接搬过来。
+- **做法**：`CenteredNumber.qml`：按基线和字形顶端居中（不用 `tightBoundingRect` 的底边），用 `Text.CurveRendering` 绘制，字形轮廓按给定位置精确画出，不经过字体引擎栅格化。验证时量像素：取圆盘蓝色像素的范围和里面深色笔画的范围，比较两者中心，要在应用自己的截图上量。
+
+### 自绘的棋盘格，格子之间有缝
+
+- **现象**：剪贴板预览里半透明颜色的色块（`ColorSwatch`，一个 `QQuickPaintedItem`），棋盘格每两格之间多出一列颜色居中的像素，看着像细缝；同样的组件放在列表里却是清楚的。
+- **原因**：预览栏落在半个物理像素的位置上。`QQuickPaintedItem` 的纹理按设备像素画好，贴上去时默认线性插值（`smooth` 为 true），每条边都被平均成一列过渡色，圆角边框也跟着发虚。列表的行正好在整像素上，所以看不出来。
+- **做法**：不会被缩放的自绘组件，构造时 `setSmooth(false)`，用最近邻贴纹理：纹理一个像素对一个设备像素，半像素偏移只是整体挪一格，不再混色。圆角不要用 `setClipPath` 裁（栅格引擎裁剪不抗锯齿），先画满，再用 `CompositionMode_DestinationOut` 填掉圆角外面那一圈（`ColorSwatch.cpp`）。验证时在截图上沿一行数连续同色像素的长度：150% 下 8 逻辑像素的格子应该正好是 12、12、12，中间没有第三种颜色。
 
 ### `font.pixelSize` 只能是整数
 
@@ -370,6 +434,12 @@
 - **原因**：`minwindef.h` 有 `#define near` 和 `#define far`（16 位时代的遗留），函数名被替换掉了。`NOMINMAX` 只管 `min`、`max`。
 - **做法**：函数和变量不要叫 `near`、`far`（现在叫 `closeTo`）。
 
+### `qmllint --version` 会弹出消息框
+
+- **现象**：在终端里运行 `qmllint.exe --version`，命令一直不返回；屏幕上弹出一个“qmllint 6.12.0”的消息框，跳到前台，打断了正在进行的界面测试。
+- **原因**：Qt 的命令行工具在 Windows 上用消息框显示 `--version` 和 `--help` 的输出（没有控制台时）。
+- **做法**：查 Qt 版本看 `C:\Qt` 下的文件夹名或用 `qtpaths`；不要在自动化脚本里运行带 `--version` 的 Qt 工具。检查 QML 直接 `qmllint -I build\<目录>\src\app 文件…`，它没有问题时什么都不输出。
+
 ### 编译目录里不要放 Qt 的 DLL
 
 - **现象**：换到 6.12 后，单元测试报 0xc0000139（找不到入口点）。
@@ -427,4 +497,6 @@
   - 变量名不区分大小写：`$seq` 和参数 `$Seq` 是同一个变量。参数声明了 `[string]` 时，给它赋一个数组会被转回一个字符串，`foreach` 只循环一次。局部变量换个名字。开关参数也一样：函数有 `[switch]$Aware` 时，`$aware = 0` 会报“无法转换为 SwitchParameter”。
   - `$null` 传给 C# 方法的 `string` 参数会变成空字符串：`FindWindowEx(h, 0, '类名', $null)` 实际在找标题为空的窗口，有标题的（如资源管理器的标签页）就找不到。要传 null 的调用写在 C# 里。
   - 刚关掉的资源管理器窗口在 `Shell.Application` 的 `Windows()` 里还会列一会儿。测试新开一个窗口后按路径找它，要排除开之前就有的窗口，否则会拿到正在关闭的旧窗口。
+- **测剪贴板时，测试内容也进了 Windows 自带的剪贴板历史**：用户开着 Windows 的剪贴板历史时，测试脚本复制的每一条都会进去。那里最多 25 条，会把用户原来的挤掉，而且没法恢复。测试前告诉用户，测试条目尽量少。
+- **Windows 自带的剪贴板面板不抢前台**：按 `Win+V` 后 `GetForegroundWindow()` 还是原来的窗口，判断面板是否打开要截图；前台换了它也不关，要点它的关闭按钮。
 - **磁盘弹出和锁定不需要真硬件**：用 diskpart 建一个 VHD，挂上并格式化成 NTFS（挂上的 VHD 算固定磁盘，会被索引）。`FSCTL_LOCK_VOLUME` 模拟格式化、chkdsk 的锁定，`CM_Query_And_Remove_SubTreeW` 模拟弹出。弹出后 `diskpart detach vdisk` 会失败（0x80070057），改用 `Dismount-DiskImage`。

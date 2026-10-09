@@ -38,6 +38,15 @@ struct Settings {
     bool contentIndex = true; // which files have which Chinese, Japanese and Korean characters
     bool contentInLowPriority = false; // 内容 also looks in system, program and tool folders
 
+    // [Clipboard]
+    bool clipboard = true; // keep a history of what is copied (Win+V page); at first as Windows' own clipboard history is
+    bool clipboardWinV = false; // Win+V opens it, instead of Windows' clipboard history (see winv::)
+    QString clipboardHotkey; // another shortcut for it; empty = none
+    int clipboardMaxItems = 1000; // entries kept outside groups
+    int clipboardMaxDays = 30; // since last copied or pasted; 0 = no limit
+    bool clipboardImages = true;
+    QStringList clipboardExcludedApps; // program files whose copies are not kept, "KeePass.exe"
+
     static Settings defaults();
     static bool exists(); // false on the very first run
 
@@ -54,6 +63,8 @@ struct Settings {
     static bool resolveTransparency(const QString& transparency); // "auto" -> off with <= 16 GB of RAM, else on
     static bool lowMemory(); // 16 GB of RAM or less: the "auto" choices save memory
     static QString dataDir(); // %LOCALAPPDATA%\WinShun
+    static bool windowsClipboardHistory(); // Windows' own clipboard history is on (Settings > System > Clipboard)
+    static bool hasClipboardSettings(); // the file has a [Clipboard] section: written by a version with the clipboard history
     static QString resolveLanguage(const QString& language); // "system" -> zh with a Chinese Windows, else en
 };
 

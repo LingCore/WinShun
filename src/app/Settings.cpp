@@ -88,6 +88,15 @@ const QStringList kDefaultContentExtensions {
     u"json"_s, u"xml"_s, u"yaml"_s, u"yml"_s, u"toml"_s, u"html"_s, u"htm"_s, u"css"_s, u"svg"_s, u"srt"_s,
 };
 
+// Password managers: most mark what they copy as not for clipboard history
+// (see ClipboardWatcher), these are skipped in any case.
+const QStringList kDefaultClipboardExcludedApps {
+    u"KeePass.exe"_s,
+    u"KeePassXC.exe"_s,
+    u"1Password.exe"_s,
+    u"Bitwarden.exe"_s,
+};
+
 // Bumped when kDefaultContentExtensions grows, so lists that still hold an
 // older default pick up the new one.
 constexpr int kContentDefaultsVersion = 2;
@@ -180,7 +189,25 @@ Settings Settings::defaults()
     d.excludedPaths = kDefaultExcludedPaths;
     d.excludedNames = kDefaultExcludedNames;
     d.contentExtensions = kDefaultContentExtensions;
+    d.clipboard = windowsClipboardHistory(); // whoever kept Windows' clipboard history keeps ours
+    d.clipboardExcludedApps = kDefaultClipboardExcludedApps;
     return d;
+}
+
+bool Settings::hasClipboardSettings()
+{
+    QSettings s(QSettings::IniFormat, QSettings::UserScope, u"WinShun"_s, u"WinShun"_s);
+    return s.contains(u"Clipboard/Enabled"_s);
+}
+
+bool Settings::windowsClipboardHistory()
+{
+    DWORD on = 0;
+    DWORD size = sizeof on;
+    return ::RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Clipboard", L"EnableClipboardHistory",
+               RRF_RT_REG_DWORD, nullptr, &on, &size)
+            == ERROR_SUCCESS
+        && on != 0;
 }
 
 bool Settings::exists()
@@ -234,6 +261,14 @@ void Settings::load()
     maxContentFileSizeMB = std::clamp(readOrDefault(s, u"Content/MaxFileSizeMB"_s, d.maxContentFileSizeMB), 1, 4096);
     contentIndex = readOrDefault(s, u"Content/Index"_s, d.contentIndex);
     contentInLowPriority = readOrDefault(s, u"Content/IncludeSystemFolders"_s, d.contentInLowPriority);
+
+    clipboard = readOrDefault(s, u"Clipboard/Enabled"_s, d.clipboard);
+    clipboardWinV = readOrDefault(s, u"Clipboard/WinV"_s, d.clipboardWinV);
+    clipboardHotkey = readOrDefault(s, u"Clipboard/Hotkey"_s, d.clipboardHotkey);
+    clipboardMaxItems = std::clamp(readOrDefault(s, u"Clipboard/MaxItems"_s, d.clipboardMaxItems), 10, 100000);
+    clipboardMaxDays = std::clamp(readOrDefault(s, u"Clipboard/MaxDays"_s, d.clipboardMaxDays), 0, 3650);
+    clipboardImages = readOrDefault(s, u"Clipboard/Images"_s, d.clipboardImages);
+    clipboardExcludedApps = readOrDefault(s, u"Clipboard/ExcludedApps"_s, d.clipboardExcludedApps);
 }
 
 void Settings::save() const
@@ -256,6 +291,13 @@ void Settings::save() const
     s.setValue(u"Content/MaxFileSizeMB"_s, maxContentFileSizeMB);
     s.setValue(u"Content/Index"_s, contentIndex);
     s.setValue(u"Content/IncludeSystemFolders"_s, contentInLowPriority);
+    s.setValue(u"Clipboard/Enabled"_s, clipboard);
+    s.setValue(u"Clipboard/WinV"_s, clipboardWinV);
+    s.setValue(u"Clipboard/Hotkey"_s, clipboardHotkey);
+    s.setValue(u"Clipboard/MaxItems"_s, clipboardMaxItems);
+    s.setValue(u"Clipboard/MaxDays"_s, clipboardMaxDays);
+    s.setValue(u"Clipboard/Images"_s, clipboardImages);
+    s.setValue(u"Clipboard/ExcludedApps"_s, clipboardExcludedApps);
 }
 
 CrawlRules Settings::crawlRules() const

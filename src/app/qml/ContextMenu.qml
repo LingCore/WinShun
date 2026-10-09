@@ -3,15 +3,17 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import WinShun
 
-// The context menu of a result, drawn to match the launcher (Windows 11
-// style). A window of its own, so it can extend past the launcher's edges;
-// it never takes the focus, so Main.qml forwards the keys to handleKey().
+// The context menu of a row (a search result, a clipboard entry), drawn to
+// match the launcher (Windows 11 style). A window of its own, so it can
+// extend past the launcher's edges; it never takes the focus, so the page
+// forwards the keys to handleKey(). `host` is the page's view-model: it
+// knows the screen area (screenArea) and styles the window (prepareMenuWindow).
 Window {
     id: menu
 
-    required property Launcher launcher
+    required property QtObject host
     property int row: -1
-    property string path // of the row: Main.qml closes the menu if a refresh puts another file there
+    property var key // what the row was (a path): the page closes the menu if a refresh puts another there
     property var entries: []
     property int highlighted: -1
 
@@ -26,10 +28,10 @@ Window {
 
     // `pos`: global point (logical pixels) for the top-left corner; the menu
     // flips left / up when it would leave the screen there.
-    function popup(row, pos, fromKeyboard) {
+    function popup(row, key, items, pos, fromKeyboard) {
         menu.row = row
-        menu.path = launcher.results.pathAt(row)
-        entries = launcher.menuItems(row)
+        menu.key = key
+        entries = items
         if (entries.length === 0) {
             dismiss()
             return
@@ -40,7 +42,7 @@ Window {
         width = Math.max(240, w + 2 * padding)
         highlighted = fromKeyboard ? step(-1, 1) : -1
 
-        const area = launcher.screenArea(pos)
+        const area = host.screenArea(pos)
         let x = pos.x
         let y = pos.y
         if (area.width > 0) {
@@ -53,7 +55,7 @@ Window {
         }
         menu.x = x
         menu.y = y
-        launcher.prepareMenuWindow(menu)
+        host.prepareMenuWindow(menu)
         show()
         raise()
     }

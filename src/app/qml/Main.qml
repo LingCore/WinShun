@@ -4,13 +4,20 @@ import QtQuick
 import WinShun
 
 // The launcher window: search bar, up to eight results, status footer.
-// Keyboard first: everything works without touching the mouse.
+// Keyboard first: everything works without touching the mouse. The same
+// window shows the clipboard history instead (Win+V, ClipboardPage.qml).
 Window {
     id: window
 
     required property Launcher launcher
+    required property Clipboard clipboard
     required property Placement placement
     required property WindowFrame frame
+
+    readonly property bool clipboardMode: clipboard.active
+    // The clipboard page's list: as many rows as fit below, like the results.
+    readonly property int clipRows: Math.max(minRows, Math.min(maxRows,
+                                             Math.floor((placement.room - clipPage.chromeHeight) / rowHeight)))
 
     readonly property int rowHeight: 60
     readonly property int maxRows: 8
@@ -68,7 +75,7 @@ Window {
     }
 
     width: 760
-    height: layout.implicitHeight
+    height: clipboardMode ? clipPage.implicitHeight : layout.implicitHeight
     // See-through to Mica, as the settings window (see there).
     color: Theme.backdrop && SystemTheme.materials && window.active ? "transparent" : Theme.background
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
@@ -79,11 +86,24 @@ Window {
         property: "highlightColor"
         value: Theme.accent
     }
+    Binding {
+        target: window.clipboard.items
+        property: "highlightColor"
+        value: Theme.accent
+    }
 
     Binding { // with the fewest rows: kept room for below the window
         target: window.placement
         property: "roomNeeded"
-        value: window.chromeHeight + window.minRows * window.rowHeight
+        value: (window.clipboardMode ? clipPage.chromeHeight : window.chromeHeight) + window.minRows * window.rowHeight
+    }
+
+    onClipboardModeChanged: {
+        closeContextMenu()
+        if (clipboardMode)
+            clipPage.focusSearch()
+        else
+            searchBar.focusAndSelect()
     }
 
     function moveSelection(delta) {
@@ -141,7 +161,7 @@ Window {
         menuLoader.active = true
         // Not a line starting with "(": it would continue the line above, "true(...)".
         const menu = menuLoader.item as ContextMenu
-        menu.popup(index, globalPos, fromKeyboard)
+        menu.popup(index, launcher.results.pathAt(index), launcher.menuItems(index), globalPos, fromKeyboard)
     }
 
     function closeContextMenu() {
@@ -150,7 +170,13 @@ Window {
     }
 
     // Hidden: also free the menu window until it is needed again.
-    onVisibleChanged: if (!visible) { closeContextMenu(); menuLoader.active = false }
+    onVisibleChanged: {
+        if (!visible) {
+            closeContextMenu()
+            menuLoader.active = false
+            clipPage.windowHidden()
+        }
+    }
 
     function handleKey(event) {
         if (menuOpen && contextMenu.handleKey(event)) {
@@ -237,13 +263,14 @@ Window {
     }
 
     function checkContextMenu() {
-        if (menuOpen && launcher.results.pathAt(contextMenu.row) !== contextMenu.path)
+        if (menuOpen && launcher.results.pathAt(contextMenu.row) !== contextMenu.key)
             closeContextMenu()
     }
 
     Column {
         id: layout
         width: window.width
+        visible: !window.clipboardMode
 
         SearchBar {
             id: searchBar
@@ -375,6 +402,15 @@ Window {
         }
     }
 
+    ClipboardPage {
+        id: clipPage
+        width: window.width
+        visible: window.clipboardMode
+        clipboard: window.clipboard
+        frame: window.frame
+        rows: window.clipRows
+    }
+
     // While the menu is open, a click anywhere in the launcher closes it
     // (a right click on a row then opens it again there).
     MouseArea {
@@ -392,7 +428,7 @@ Window {
         id: menuLoader
         active: false
         sourceComponent: ContextMenu {
-            launcher: window.launcher
+            host: window.launcher
             onTriggered: (row, action) => window.launcher.trigger(row, action)
         }
     }

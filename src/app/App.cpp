@@ -1,6 +1,8 @@
 #include "App.h"
 
 #include "AppCatalog.h"
+#include "ClipStore.h"
+#include "Clipboard.h"
 #include "FileIconProvider.h"
 #include "History.h"
 #include "IndexService.h"
@@ -12,15 +14,18 @@
 #include "SystemTheme.h"
 #include "Updater.h"
 #include "WindowFrame.h"
+#include "platform/ClipboardWatcher.h"
 #include "platform/DialogJump.h"
 #include "platform/KeyListener.h"
 #include "platform/MessageWindow.h"
 #include "platform/Shell.h"
 #include "platform/VolumeNotifier.h"
+#include "platform/WinV.h"
 #include "platform/WindowEffects.h"
 
 #include <QContextMenuEvent>
 #include <QCursor>
+#include <QDateTime>
 #include <QDebug>
 #include <QDir>
 #include <QGuiApplication>
@@ -34,6 +39,8 @@
 
 #include <windows.h>
 
+#include <thread>
+
 using namespace Qt::StringLiterals;
 using namespace std::chrono_literals;
 
@@ -43,6 +50,8 @@ namespace {
 
 constexpr int kHotkeyId = 1;
 constexpr int kDialogJumpHotkeyId = 2; // Ctrl+G, while a file dialog is in front
+constexpr int kWinVHotkeyId = 3; // Win+V: the clipboard history, once Explorer gave it up (winv::)
+constexpr int kClipboardHotkeyId = 4; // another shortcut for the clipboard history
 constexpr DWORD kSlowMenuMs = 100; // a tray menu slower than this to appear is logged
 
 enum TrayCommand {
@@ -54,7 +63,9 @@ enum TrayCommand {
     UpdateCommand,
     CheckUpdateCommand,
     RestartCommand,
-    QuitCommand
+    QuitCommand,
+    ClipboardCommand,
+    PauseClipboardCommand
 };
 
 IndexService::Options indexOptions(const Settings& settings)
@@ -130,6 +141,8 @@ App::~App()
 bool App::start(const StartOptions& options)
 {
     const bool firstRun = !Settings::exists();
+    // Updated from a version without the clipboard history: tell about it once.
+    const bool clipboardIsNew = !firstRun && !Settings::hasClipboardSettings();
     m_settings.load();
     applyAppearance(); // before any window: the first frame is already in the chosen theme and language
     m_renderer = Settings::resolveRenderer(m_settings.renderer);
@@ -162,6 +175,34 @@ bool App::start(const StartOptions& options)
             armReveal();
     });
 
+    // Clipboard history (Win+V), in clipboard\ next to the index.
+    m_clipStore = std::make_unique<ClipStore>(dataDir + u"\\clipboard"_s);
+    if (!m_clipStore->open(QDateTime::currentMSecsSinceEpoch()))
+        qWarning() << "Clipboard history: cannot be kept";
+    ClipboardWatcher::Callbacks clipCallbacks;
+    // On the watcher's thread: hop to the GUI thread.
+    clipCallbacks.captured = [this](ClipCapture capture) {
+        auto copied = std::make_shared<ClipCapture>(std::move(capture));
+        QMetaObject::invokeMethod(this, [this, copied] { clipCaptured(*copied); }, Qt::QueuedConnection);
+    };
+    clipCallbacks.reused = [this](qint64 id) { // pasted from the history: it moves up
+        QMetaObject::invokeMethod(this, [this, id] {
+            m_clipStore->touch(id, QDateTime::currentMSecsSinceEpoch());
+            m_clipboard->historyChanged();
+        }, Qt::QueuedConnection);
+    };
+    m_clipWatcher = std::make_unique<ClipboardWatcher>(clipboardOptions(), std::move(clipCallbacks));
+    m_clipboard = std::make_unique<Clipboard>(m_clipStore.get(), m_clipWatcher.get());
+    connect(m_clipboard.get(), &Clipboard::dismissRequested, this, &App::hideLauncher);
+    connect(m_clipboard.get(), &Clipboard::turnOnRequested, this, [this] {
+        Settings settings = m_settings;
+        settings.clipboard = true;
+        settings.save();
+        settingsEdited(settings);
+        if (m_settingsEditor)
+            m_settingsEditor->setSettings(m_settings);
+    });
+
     m_updater = std::make_unique<Updater>();
     m_updater->setChinese(m_language == u"zh");
     connect(m_updater.get(), &Updater::found, this, [this](bool manual) {
@@ -185,12 +226,20 @@ bool App::start(const StartOptions& options)
     callbacks.notificationClicked = [this] {
         if (std::exchange(m_updateNotified, false))
             showUpdate();
+        else if (std::exchange(m_clipboardNotified, false))
+            showClipboardSettings();
     };
     callbacks.hotkeyPressed = [this](int id) {
-        if (id != kDialogJumpHotkeyId)
+        if (id == kWinVHotkeyId || id == kClipboardHotkeyId)
+            toggleClipboard();
+        else if (id != kDialogJumpHotkeyId)
             toggleLauncher();
         else if (m_dialogJump)
             m_dialogJump->jump();
+    };
+    callbacks.shellRestarted = [this] { // Explorer let go of Win+V, or took it back
+        applyClipboardHotkeys();
+        QTimer::singleShot(3s, this, &App::applyClipboardHotkeys); // once it has registered its own keys
     };
     callbacks.commandReceived = [this](const QString& command) { handleCommand(command); };
     callbacks.sessionEnding = [this] { m_index->shutdown(); }; // save the index before Windows ends us
@@ -227,6 +276,12 @@ bool App::start(const StartOptions& options)
         autostart::setEnabled(true);
         m_messages->showNotification(
             tr("Win顺已在后台运行"), tr("双击 Ctrl 打开搜索。首次运行需要一点时间建立文件索引。"));
+    } else if (clipboardIsNew) {
+        m_messages->showNotification(tr("Win顺 现在有剪贴板历史了"),
+            m_settings.clipboard ? tr("复制过的文字、图片和文件都能找回来。点这里设置用 Win+V 打开它。")
+                                 : tr("复制过的文字、图片和文件都能找回来。点这里打开它。"));
+        m_updateNotified = false;
+        m_clipboardNotified = true;
     }
     if (options.settings)
         showSettings();
@@ -244,6 +299,7 @@ bool App::createWindow()
     m_frame = std::make_unique<WindowFrame>(false);
     m_qml->setInitialProperties({
         {u"launcher"_s, QVariant::fromValue(m_launcher.get())},
+        {u"clipboard"_s, QVariant::fromValue(m_clipboard.get())},
         {u"placement"_s, QVariant::fromValue(m_placement.get())},
         {u"frame"_s, QVariant::fromValue(m_frame.get())},
     });
@@ -259,6 +315,7 @@ bool App::createWindow()
     m_window->create(); // native handle now, so DWM styling applies before the first show
     m_window->installEventFilter(this);
     m_launcher->setWindow(m_window);
+    m_clipboard->setWindow(m_window);
     m_placement->setWindow(m_window);
     m_frame->setWindow(m_window);
     connect(m_window, &QWindow::activeChanged, this, [this] {
@@ -286,7 +343,10 @@ bool App::eventFilter(QObject* watched, QEvent* event)
 {
     if (watched == m_window && event->type() == QEvent::ContextMenu
         && static_cast<QContextMenuEvent*>(event)->reason() == QContextMenuEvent::Keyboard) {
-        emit m_launcher->contextMenuKeyPressed();
+        if (m_clipboard->active())
+            emit m_clipboard->contextMenuKeyPressed();
+        else
+            emit m_launcher->contextMenuKeyPressed();
         return true;
     }
     return QObject::eventFilter(watched, event);
@@ -339,6 +399,7 @@ void App::applyAppearance()
         return; // starting up: nothing shown yet
     m_qml->retranslate();
     m_launcher->retranslate();
+    m_clipboard->retranslate();
     m_messages->setTrayTooltip(trayTooltip());
     applyHotkey(); // its error message
     refreshContentIndexStatus();
@@ -368,6 +429,7 @@ void App::applySettings(bool initial)
     } else if (!m_settings.dialogJump) {
         m_dialogJump.reset();
     }
+    applyClipboard();
 
     if (!initial)
         applyAppearance();
@@ -398,6 +460,106 @@ void App::applyHotkey()
         m_settingsEditor->setHotkeyError(hotkeyError); // shown next to the shortcut
     else if (!hotkeyError.isEmpty())
         m_messages->showNotification(tr("快捷键不可用"), hotkeyError);
+}
+
+ClipboardWatcher::Options App::clipboardOptions() const
+{
+    return {m_settings.clipboard && !m_clipboardPaused, m_settings.clipboardImages, m_settings.clipboardExcludedApps};
+}
+
+void App::applyClipboard()
+{
+    // Explorer gives Win+V up (or gets it back) when it next starts. Only
+    // when the switch moved, or it is on at start: someone else may have put
+    // a V there for another program.
+    if (m_winVApplied ? *m_winVApplied != m_settings.clipboardWinV : m_settings.clipboardWinV)
+        m_winVRegistryFailed = !winv::setReleasedByExplorer(m_settings.clipboardWinV);
+    m_winVApplied = m_settings.clipboardWinV;
+    m_clipWatcher->setOptions(clipboardOptions());
+    m_clipStore->setLimits({m_settings.clipboardMaxItems, m_settings.clipboardMaxDays}, QDateTime::currentMSecsSinceEpoch());
+    m_clipboard->historyChanged();
+    applyClipboardHotkeys();
+}
+
+void App::applyClipboardHotkeys()
+{
+    m_messages->unregisterHotkey(kWinVHotkeyId);
+    m_messages->unregisterHotkey(kClipboardHotkeyId);
+    if (m_settingsEditor && m_settingsEditor->recordingHotkey())
+        return; // the keys being pressed must reach the settings window
+    const bool winV = m_settings.clipboardWinV && m_messages->registerHotkey(kWinVHotkeyId, u"Win+V"_s);
+    QString state = u"off"_s;
+    if (m_settings.clipboardWinV) {
+        state = winV ? u"on"_s : m_winVRegistryFailed ? u"failed"_s : u"waiting"_s; // waiting: Explorer still has it
+    } else if (!winv::releasedByExplorer() && m_messages->registerHotkey(kWinVHotkeyId, u"Win+V"_s)) {
+        m_messages->unregisterHotkey(kWinVHotkeyId); // nobody has it: Explorer takes it back when it restarts
+        state = u"releasing"_s;
+    }
+    const QString hotkey = m_settings.clipboardHotkey.trimmed();
+    QString hotkeyError;
+    const bool custom = !hotkey.isEmpty() && m_messages->registerHotkey(kClipboardHotkeyId, hotkey);
+    if (!hotkey.isEmpty() && !custom) {
+        UINT modifiers = 0;
+        UINT vk = 0;
+        hotkeyError = MessageWindow::parseHotkey(hotkey, &modifiers, &vk)
+            ? tr("“%1” 已被其他程序或系统占用，请换一个。").arg(hotkey)
+            : tr("无法识别“%1”，请重新设置。").arg(hotkey);
+    }
+    m_clipboardShortcut = winV ? u"Win+V"_s : custom ? hotkey : QString();
+    m_clipboard->setState(m_settings.clipboard, m_clipboardPaused, m_clipboardShortcut);
+    if (m_settingsEditor) {
+        m_settingsEditor->setWinVState(state, winv::canRestartExplorer());
+        m_settingsEditor->setClipboardHotkeyError(hotkeyError);
+    } else if (!hotkeyError.isEmpty()) {
+        m_messages->showNotification(tr("快捷键不可用"), hotkeyError);
+    }
+}
+
+void App::clipCaptured(const ClipCapture& capture)
+{
+    if (!m_settings.clipboard || m_clipboardPaused)
+        return; // turned off since the watcher read it
+    m_clipStore->add(capture, QDateTime::currentMSecsSinceEpoch());
+    m_clipboard->historyChanged();
+    if (m_settingsEditor)
+        m_settingsEditor->setClipboardCount(static_cast<int>(m_clipStore->clips().size()));
+}
+
+void App::restartExplorer()
+{
+    if (m_restartingExplorer)
+        return;
+    m_restartingExplorer = true;
+    // Seconds of waiting for Explorer to end and to start again: not on the
+    // GUI thread.
+    std::thread([self = QPointer<App>(this)] {
+        const bool back = winv::restartExplorer();
+        QMetaObject::invokeMethod(qApp, [self, back] {
+            if (self)
+                self->explorerRestarted(back);
+        }, Qt::QueuedConnection);
+    }).detach();
+}
+
+void App::explorerRestarted(bool back)
+{
+    m_restartingExplorer = false;
+    if (!back && winv::canRestartExplorer()) {
+        m_messages->showNotification(tr("没能重启资源管理器"), tr("注销后重新登录 Windows 也能生效。"));
+    } else if (!back) {
+        m_messages->showNotification(tr("资源管理器没有重新启动"),
+            tr("按 Ctrl+Shift+Esc 打开任务管理器，选“运行新任务”，输入 explorer 启动它；注销后重新登录也行。"));
+    }
+    // Win+V is free once the old Explorer is gone; the new one also says
+    // when it is up (shellRestarted).
+    applyClipboardHotkeys();
+}
+
+void App::setClipboardPaused(bool paused)
+{
+    m_clipboardPaused = paused;
+    m_clipWatcher->setOptions(clipboardOptions());
+    m_clipboard->setState(m_settings.clipboard, m_clipboardPaused, m_clipboardShortcut);
 }
 
 void App::reloadSettings()
@@ -443,6 +605,13 @@ void App::showSettings()
         editor->setWindow(window);
         connect(editor, &SettingsEditor::edited, this, &App::settingsEdited);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyHotkey);
+        connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyClipboardHotkeys);
+        connect(editor, &SettingsEditor::explorerRestartRequested, this, &App::restartExplorer);
+        connect(editor, &SettingsEditor::clipboardClearRequested, this, [this, editor] {
+            m_clipStore->clearHistory();
+            m_clipboard->historyChanged();
+            editor->setClipboardCount(static_cast<int>(m_clipStore->clips().size()));
+        });
         connect(editor, &SettingsEditor::restartRequested, this, [this] { restart({u"--settings"_s}); });
         connect(editor, &SettingsEditor::historyClearRequested, this, [this, editor] {
             m_launcher->clearHistory();
@@ -451,6 +620,7 @@ void App::showSettings()
         m_settingsWindow = window;
         m_settingsEditor = editor;
         applyHotkey(); // shows whether the current hotkey works
+        applyClipboardHotkeys(); // ... and where Win+V stands
 
         prepareBackdrop(window);
         window->create();
@@ -472,12 +642,20 @@ void App::showSettings()
     }
     refreshContentIndexStatus();
     m_settingsEditor->setHistoryCount(static_cast<int>(m_history->items().size()));
+    m_settingsEditor->setClipboardCount(static_cast<int>(m_clipStore->clips().size()));
     m_contentStatusTimer.start();
     hideLauncher();
     m_settingsWindow->show();
     m_settingsWindow->raise();
     win::bringToFront(m_settingsWindow);
     m_settingsWindow->requestActivate();
+}
+
+void App::showClipboardSettings()
+{
+    showSettings();
+    if (m_settingsWindow)
+        QMetaObject::invokeMethod(m_settingsWindow, "showClipboardPage");
 }
 
 void App::showUpdate()
@@ -527,16 +705,33 @@ void App::handleCommand(const QString& command)
 
 void App::toggleLauncher()
 {
-    if (m_window && m_window->isVisible() && m_window->isActive())
+    if (m_window && m_window->isVisible() && m_window->isActive() && !m_clipboard->active())
         hideLauncher();
     else
-        showLauncher();
+        showLauncher(); // or from the clipboard page over to searching
+}
+
+void App::toggleClipboard()
+{
+    if (m_window && m_window->isVisible() && m_window->isActive() && m_clipboard->active())
+        hideLauncher();
+    else
+        showWindow(true);
 }
 
 void App::showLauncher(const QString& query)
 {
+    showWindow(false, query);
+}
+
+void App::showWindow(bool clipboard, const QString& query)
+{
     if (!m_window)
         return;
+    // The clipboard page pastes into what was in front before it.
+    if (!m_window->isVisible() || m_prewarming.load())
+        m_clipboard->setTarget(::GetForegroundWindow());
+    m_clipboard->setActive(clipboard);
     // On the monitor under the mouse, where the user last put it (see Placement).
     QScreen* screen = QGuiApplication::screenAt(QCursor::pos());
     m_placement->placeOn(screen ? screen : QGuiApplication::primaryScreen());
@@ -555,6 +750,12 @@ void App::showLauncher(const QString& query)
     m_window->show();
     win::bringToFront(m_window);
     m_window->requestActivate();
+    if (clipboard) {
+        m_clipboard->handleShown();
+        if (m_revealing)
+            armReveal(); // the history is in memory: nothing to wait for
+        return;
+    }
     m_launcher->handleShown();
     if (m_revealing && !m_launcher->waitingForNames())
         armReveal(); // nothing to wait for (内容 refreshes in the background)
@@ -610,6 +811,7 @@ void App::hideLauncher()
     m_window->hide();
     revealLauncher(); // hidden before its first frame: drop the cloak
     m_launcher->handleHidden();
+    m_clipboard->handleHidden();
 }
 
 void App::showTrayMenu()
@@ -624,6 +826,8 @@ void App::showTrayMenu()
     const QString show = tr("打开 Win顺");
     std::vector<shell::MenuItem> items {
         {ShowCommand, m_settings.doubleCtrl ? show + u'\t' + tr("双击 Ctrl") : show, false, true, true},
+        {ClipboardCommand, m_clipboardShortcut.isEmpty() ? tr("剪贴板历史") : tr("剪贴板历史") + u'\t' + m_clipboardShortcut},
+        {PauseClipboardCommand, tr("暂停记录剪贴板"), m_clipboardPaused, m_settings.clipboard},
         shell::MenuItem::separator(),
         {IndexInfo, info, false, false},
         {RebuildCommand, tr("重建索引")},
@@ -654,6 +858,12 @@ void App::showTrayMenu()
     switch (chosen) {
     case ShowCommand:
         showLauncher();
+        break;
+    case ClipboardCommand:
+        showWindow(true);
+        break;
+    case PauseClipboardCommand:
+        setClipboardPaused(!m_clipboardPaused);
         break;
     case RebuildCommand:
         m_index->rebuild();

@@ -16,11 +16,11 @@ Rectangle {
     signal recorded(string hotkey)
 
     function modifierNames(modifiers) {
-        const names = []
+        const names = [] // in Windows' own order: Win + Ctrl + Alt + Shift
+        if (modifiers & Qt.MetaModifier) names.push("Win")
         if (modifiers & Qt.ControlModifier) names.push("Ctrl")
         if (modifiers & Qt.AltModifier) names.push("Alt")
         if (modifiers & Qt.ShiftModifier) names.push("Shift")
-        if (modifiers & Qt.MetaModifier) names.push("Win")
         return names
     }
 

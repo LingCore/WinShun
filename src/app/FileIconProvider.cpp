@@ -177,6 +177,23 @@ QImage shellItemIcon(const std::wstring& parsingName, int size)
     return fitTo(image, size);
 }
 
+// A file's thumbnail as Explorer shows it, at most `size` pixels on its
+// longer side (never enlarged); null if the file has none.
+QImage shellThumbnail(const std::wstring& path, int size)
+{
+    ComPtr<IShellItemImageFactory> factory;
+    if (FAILED(::SHCreateItemFromParsingName(path.c_str(), nullptr, IID_PPV_ARGS(&factory))))
+        return {};
+    HBITMAP bitmap = nullptr;
+    if (FAILED(factory->GetImage({size, size}, SIIGBF_THUMBNAILONLY, &bitmap)) || !bitmap)
+        return {};
+    QImage image = fromShellBitmap(bitmap);
+    ::DeleteObject(bitmap);
+    if (image.width() > size || image.height() > size)
+        image = image.scaled(size, size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    return image;
+}
+
 // A place's icon (see placeIconUrl): "<module>,<index>", where a negative
 // index is a resource id, else a file or shell path ("shell:startup").
 QImage placeIcon(const QString& icon, int size)
@@ -240,6 +257,11 @@ QString FileIconProvider::iconUrl(const QString& path, bool isDir)
     return u"image://fileicon/ext/"_s + encode(suffix);
 }
 
+QString FileIconProvider::thumbnailUrl(const QString& path)
+{
+    return u"image://fileicon/thumb/"_s + encode(path);
+}
+
 QString FileIconProvider::appIconUrl(const QString& appId, bool packaged, bool dark)
 {
     const QString url = u"image://fileicon/app/"_s + encode(appId);
@@ -257,6 +279,12 @@ QImage FileIconProvider::requestImage(const QString& id, QSize* size, const QSiz
 {
     thread_local ComApartment com; // SHGetFileInfo requires COM on the calling thread
 
+    if (id.startsWith(u"thumb/")) { // large and seen one at a time: not cached (Windows keeps them)
+        const int px = requestedSize.width() > 0 ? std::clamp(requestedSize.width(), 16, 1024) : 256;
+        const QImage image = shellThumbnail(decode(QStringView(id).mid(6)).toStdWString(), px);
+        *size = image.size();
+        return image;
+    }
     const int px = requestedSize.width() > 0 ? std::clamp(requestedSize.width(), 16, 256) : 32;
     const QString key = id + u'@' + QString::number(px);
     {

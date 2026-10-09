@@ -32,6 +32,10 @@ QtObject {
     readonly property color chipBorder: dark ? "#454545" : "#DCDCDC"
     readonly property color keycap: dark ? "#2A2A2A" : "#FFFFFF"
     readonly property color keycapBorder: dark ? "#3C3C3C" : "#DADADA"
+    // The checkerboard under a translucent colour: light in both themes, as in
+    // design tools, so that dark and light translucent colours both show.
+    readonly property color checker: dark ? "#D0D0D0" : "#FFFFFF"
+    readonly property color checkerAlt: dark ? "#A0A0A0" : "#D6D6D6"
 
     // Settings window (Windows 11 settings look)
     readonly property color page: dark ? "#202020" : "#F3F3F3"

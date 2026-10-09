@@ -19,11 +19,13 @@ Window {
         { title: qsTr("外观"), glyph: "\uE771" }, // Personalize
         { title: qsTr("搜索范围"), glyph: "" }, // Folder
         { title: qsTr("文件内容搜索"), glyph: "" }, // Document
+        { title: qsTr("剪贴板"), glyph: "\uE77F" }, // Paste
         { title: qsTr("高级"), glyph: "" }, // Settings
         { title: Gleaning.title, gleaning: true } // the author's works, set apart at the bottom of the list
     ]
-    readonly property int gleaningPage: 5
-    readonly property int advancedPage: 4 // where the updates are
+    readonly property int gleaningPage: 6
+    readonly property int clipboardPage: 4
+    readonly property int advancedPage: 5 // where the updates are
     property int currentPage: 0
     // On the 拾穗计划 page the whole window, sidebar included, is a warm scene.
     readonly property bool warm: currentPage === gleaningPage
@@ -49,6 +51,7 @@ Window {
     }
 
     function showUpdateDialog() { updateDialog.show() } // App::showUpdate
+    function showClipboardPage() { showPage(clipboardPage) } // App::showClipboardSettings
 
     // "刚刚", "5 分钟前": when the last update check was.
     property date now: new Date()
@@ -100,7 +103,7 @@ Window {
     Binding { // suspends the global hotkey and hands the recorder the keyboard (see ShortcutCapture)
         target: window.editor
         property: "recordingHotkey"
-        value: hotkeyRecorder.recording
+        value: hotkeyRecorder.recording || clipHotkeyRecorder.recording
     }
 
     TitleBar {
@@ -786,6 +789,205 @@ Window {
                     ToggleSwitch {
                         checked: window.editor.contentIndex
                         onToggled: (on) => window.editor.contentIndex = on
+                    }
+                }
+            }
+
+            SettingsSection {
+                visible: window.currentPage === window.clipboardPage
+                width: parent.width
+                note: qsTr("复制过的文字、图片和文件记在这台电脑上，不会上传。在剪贴板里按 Enter 粘贴到打开之前所在的窗口，Shift+Enter 粘贴为纯文本；按住 Ctrl 或 Shift 点击可以选多条，按选的顺序合在一起粘贴。")
+
+                SettingRow {
+                    title: qsTr("记录剪贴板历史")
+                    description: qsTr("密码管理器复制的密码不会被记录")
+
+                    ToggleSwitch {
+                        checked: window.editor.clipboard
+                        onToggled: (on) => window.editor.clipboard = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("用 Win+V 打开，代替 Windows 自带的剪贴板")
+                    description: qsTr("打开后按 Win+V 出现的是 Win顺的剪贴板；Windows 面板里的表情可以改用 Win+. 打开。关掉这项，Win+V 就回到 Windows 自带的")
+
+                    ToggleSwitch {
+                        checked: window.editor.clipboardWinV
+                        onToggled: (on) => window.editor.clipboardWinV = on
+                    }
+
+                    body: Column {
+                        readonly property string winV: window.editor.winVState
+                        readonly property bool restartable: (winV === "waiting" || winV === "releasing")
+                                                            && window.editor.canRestartExplorer
+
+                        visible: statusText.text.length > 0
+                        width: parent.width
+                        spacing: 10
+
+                        Text {
+                            id: statusText
+                            width: parent.width
+                            text: {
+                                switch (window.editor.winVState) {
+                                case "on": return qsTr("已生效：Win+V 打开 Win顺的剪贴板")
+                                case "waiting": return qsTr("资源管理器重启后生效，下次登录 Windows 时也会自动生效")
+                                case "releasing": return qsTr("资源管理器重启后，Win+V 回到 Windows 自带的剪贴板")
+                                case "failed": return qsTr("没能修改 Windows 的设置，Win+V 仍是 Windows 自带的剪贴板")
+                                default: return ""
+                                }
+                            }
+                            color: window.editor.winVState === "failed" ? Theme.danger
+                                 : window.editor.winVState === "on" ? Theme.subtext : Theme.text
+                            font.pixelSize: Theme.fontCaption
+                            wrapMode: Text.Wrap
+                        }
+                        Row {
+                            visible: parent.restartable
+                            spacing: 12
+
+                            FlatButton {
+                                text: qsTr("现在重启资源管理器")
+                                glyph: "" // Sync
+                                onClicked: window.editor.restartExplorer()
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: qsTr("任务栏会闪一下，打开的文件夹窗口会关闭")
+                                color: Theme.faint
+                                font.pixelSize: Theme.fontCaption
+                            }
+                        }
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("另设快捷键")
+                    description: qsTr("不想换掉 Win+V 时，可以另设一个组合键打开剪贴板，例如 Win + Alt + V")
+
+                    FlatButton {
+                        visible: window.editor.clipboardHotkey.length > 0 && !clipHotkeyRecorder.recording
+                        flat: true
+                        text: qsTr("清除")
+                        onClicked: window.editor.clipboardHotkey = ""
+                    }
+                    HotkeyRecorder {
+                        id: clipHotkeyRecorder
+                        hotkey: window.editor.clipboardHotkey
+                        onRecorded: (hotkey) => window.editor.clipboardHotkey = hotkey
+                    }
+
+                    body: Text {
+                        visible: window.editor.clipboardHotkeyError.length > 0
+                        width: parent.width
+                        text: window.editor.clipboardHotkeyError
+                        color: Theme.danger
+                        font.pixelSize: Theme.fontCaption
+                        wrapMode: Text.Wrap
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("记录图片")
+                    description: qsTr("截图和复制的图片也记下来，每张图片占一些磁盘空间")
+
+                    ToggleSwitch {
+                        checked: window.editor.clipboardImages
+                        onToggled: (on) => window.editor.clipboardImages = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("最多保留")
+                    description: qsTr("放进“固定”和其他分组的不算在内，一直保留")
+
+                    ScopeTabs {
+                        labels: [qsTr("%1 条").arg(100), qsTr("%1 条").arg(500), qsTr("%1 条").arg(1000),
+                                 qsTr("%1 条").arg(5000)]
+                        current: [100, 500, 1000, 5000].indexOf(window.editor.clipboardMaxItems)
+                        onActivated: (index) => window.editor.clipboardMaxItems = [100, 500, 1000, 5000][index]
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("保留时间")
+                    description: qsTr("这么久没再复制或粘贴过的记录会自动删除；分组里的不会")
+
+                    ScopeTabs {
+                        labels: [qsTr("%n 天", "", 7), qsTr("%n 天", "", 30), qsTr("%n 天", "", 90), qsTr("一直保留")]
+                        current: [7, 30, 90, 0].indexOf(window.editor.clipboardMaxDays)
+                        onActivated: (index) => window.editor.clipboardMaxDays = [7, 30, 90, 0][index]
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("不记录这些程序复制的内容")
+                    description: qsTr("填程序的文件名，例如 KeePass.exe。密码管理器一般会自己声明“不要记录”，这里再多一层保险")
+
+                    body: [
+                        Flow {
+                            width: parent.width
+                            spacing: 6
+
+                            Repeater {
+                                model: window.editor.clipboardExcludedApps
+
+                                delegate: Chip {
+                                    required property int index
+                                    required property string modelData
+                                    text: modelData
+                                    onRemoveClicked: window.editor.removeClipboardExcludedApp(index)
+                                }
+                            }
+                        },
+                        Row {
+                            spacing: 8
+
+                            InputBox {
+                                id: appInput
+                                width: 240
+                                placeholder: qsTr("输入程序文件名，例如 KeePass.exe")
+                                onAccepted: if (window.editor.addClipboardExcludedApp(text)) clear()
+                            }
+                            FlatButton {
+                                text: qsTr("添加")
+                                enabled: appInput.text.trim().length > 0
+                                onClicked: if (window.editor.addClipboardExcludedApp(appInput.text)) appInput.clear()
+                            }
+                        }
+                    ]
+                }
+
+                SettingRow {
+                    title: qsTr("清除剪贴板历史")
+                    description: window.editor.clipboardCount > 0
+                                 ? qsTr("共 %1 条。“固定”和其他分组里的会保留").arg(window.editor.clipboardCount)
+                                 : qsTr("没有记录")
+
+                    FlatButton {
+                        id: clearClipboardButton
+
+                        property bool confirming: false
+
+                        text: confirming ? qsTr("确定清除？再点一次") : qsTr("清除")
+                        glyph: confirming ? "" : "" // Delete
+                        enabled: window.editor.clipboardCount > 0
+                        onClicked: {
+                            if (confirming) {
+                                window.editor.clearClipboard()
+                                confirming = false
+                            } else {
+                                confirming = true
+                                clearClipboardTimer.restart()
+                            }
+                        }
+
+                        Timer {
+                            id: clearClipboardTimer
+                            interval: 4000
+                            onTriggered: clearClipboardButton.confirming = false
+                        }
                     }
                 }
             }

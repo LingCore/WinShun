@@ -57,10 +57,12 @@ try {
         Copy-Item "$root\build\$preset\WinShun.exe" $dist
         Copy-Item "$root\build\$preset\fonts" $dist -Recurse # UI font (see main.cpp)
         # Only what the app uses: no shader compilers (software renderer), no
-        # QML debugger, network, TLS or SVG plugins.
+        # QML debugger, network, TLS or SVG plugins, and of the database
+        # drivers only SQLite (the clipboard history).
         & "$QtDir\bin\windeployqt.exe" --qmldir "$root\src\app\qml" --no-translations --no-system-d3d-compiler `
             --no-system-dxc-compiler --no-opengl-sw --no-compiler-runtime `
             --skip-plugin-types qmltooling,generic,networkinformation,tls,iconengines,imageformats `
+            --exclude-plugins qsqlibase,qsqlmimer,qsqloci,qsqlodbc,qsqlpsql `
             "--$preset" "$dist\WinShun.exe"
         if ($LASTEXITCODE) { throw 'windeployqt failed' }
         # App-local C++ runtime, so users need no VC++ redistributable installed.
