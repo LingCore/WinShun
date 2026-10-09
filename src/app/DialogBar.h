@@ -6,6 +6,7 @@
 #include "SearchTypes.h"
 #include "platform/ComWorker.h"
 #include "platform/FileDialog.h"
+#include "platform/FileManagers.h"
 #include "platform/PeekingLogo.h"
 
 #include <QObject>
@@ -28,13 +29,14 @@ namespace ws {
 class SearchEngine;
 
 // The search bar under an Open or Save dialog of another program, as in
-// Listary: the folder shown in File Explorer, to go to with a click (or
-// Ctrl+G), and a box to search folders and files by name; picking one takes
+// Listary: the folder shown in the file manager (File Explorer, Total
+// Commander, Directory Opus), to go to with a click (or Ctrl+G), and a box
+// to search folders and files by name; picking one takes
 // the dialog there (a file: to its folder, its name in the file name box,
 // so Enter opens it; Ctrl+Enter in an Open dialog opens it at once). A path
 // typed (or pasted) lists what that folder holds, as a shell completes it:
 // Tab goes into the folder of a row, Shift+Tab up one. With nothing typed,
-// the list offers the folders open in Explorer, a path on the clipboard (a
+// the list offers the folders open in file managers, a path on the clipboard (a
 // file copied in Explorer too), the folders pinned here, and the ones used
 // lately (what Windows lists as recent, then what was opened through Win顺).
 //
@@ -53,12 +55,15 @@ class DialogBar : public QObject {
     QML_UNCREATABLE("Provided by the application")
     Q_PROPERTY(QString query READ query WRITE setQuery NOTIFY queryChanged FINAL)
     Q_PROPERTY(ws::ResultModel* results READ results CONSTANT FINAL)
-    // Where each row comes from ("资源管理器", "固定"…); empty for plain matches.
+    // Where each row comes from ("资源管理器", "Total Commander", "固定"…);
+    // empty for plain matches.
     Q_PROPERTY(QStringList tags READ tags NOTIFY resultsReplaced FINAL)
-    // The folder Ctrl+G goes to (its name); empty when Explorer shows none.
+    // The folder Ctrl+G goes to (its name); empty when no file manager shows
+    // one. "explorer": as before there were others than File Explorer.
     Q_PROPERTY(QString explorerName READ explorerName NOTIFY explorerChanged FINAL)
     Q_PROPERTY(QString explorerPath READ explorerPath NOTIFY explorerChanged FINAL)
-    // The folder the dialog showed before it went to Explorer's by itself
+    Q_PROPERTY(QString explorerSource READ explorerSource NOTIFY explorerChanged FINAL) // which file manager
+    // The folder the dialog showed before it went to the file manager's by itself
     // (its name), to go back to; empty when it did not.
     Q_PROPERTY(QString originName READ originName NOTIFY originChanged FINAL)
     Q_PROPERTY(bool foldersOnly READ foldersOnly NOTIFY dialogKindChanged FINAL) // a folder picker
@@ -115,7 +120,7 @@ public:
 
     void setDialog(HWND dialog); // in front, or nullptr (DialogJump::dialogChanged)
     void dialogMoved();
-    // The dialog went to Explorer's folder by itself, from `from` (DialogJump::autoJumped).
+    // The dialog went to the file manager's folder by itself, from `from` (DialogJump::autoJumped).
     void setOrigin(HWND dialog, const QString& from);
     bool isShown() const; // under a dialog now
     // Double Ctrl with the dialog in front: into the box; from the box, back
@@ -128,6 +133,7 @@ public:
     QStringList tags() const { return m_tags; }
     QString explorerName() const;
     QString explorerPath() const { return m_explorer.isEmpty() ? QString() : m_explorer.constFirst(); }
+    QString explorerSource() const;
     QString originName() const;
     bool foldersOnly() const { return m_kind == filedialog::Kind::Folder; }
     bool canOpen() const { return m_kind == filedialog::Kind::Open; } // not the XP style: it may be for saving
@@ -139,7 +145,7 @@ public:
     int rowHeight() const { return kRowHeight; }
 
     Q_INVOKABLE void choose(int row, bool open = false);
-    Q_INVOKABLE void chooseExplorer(); // the folder shown in Explorer (as Ctrl+G)
+    Q_INVOKABLE void chooseExplorer(); // the folder shown in the file manager (as Ctrl+G)
     Q_INVOKABLE void goBack(); // to the folder the dialog showed before it went by itself
     Q_INVOKABLE void back(); // Esc with nothing typed: the dialog has the focus again
     Q_INVOKABLE void enter(int row); // Tab: the row's path in the box ("D:\Projects\"), listing what it holds
@@ -180,7 +186,7 @@ private:
     void showSuggestions(bool refresh = false); // nothing typed; `refresh`: the list was already up
     // The rows to show and the tag of each; `refresh`: keep the selection if nothing changed.
     void setRows(SearchResults rows, QStringList tags, const QStringList& highlights, bool refresh = false);
-    void lookAround(); // Explorer's folders, the recent ones and the rest, in the background
+    void lookAround(); // the file managers' folders, the recent ones and the rest, in the background
     void onResults(quint64 id, const SearchResults& results);
     bool ofFileType(const SearchResult& r) const; // one the Open dialog shows
     void goTo(QString path, bool isFile, bool open = false); // a copy: the rows change on the way
@@ -215,7 +221,8 @@ private:
     QString m_browsed; // see browsedFolder
     std::atomic<int> m_listings {0}; // the newest browse() wins
     bool m_nothingFound = false;
-    QStringList m_explorer; // open in Explorer, front first
+    QStringList m_explorer; // open in file managers, front first
+    QList<filemanager::Kind> m_explorerKinds; // where each is open
     QStringList m_recent; // folders used lately, newest first
     QStringList m_pinned; // the pins still there
     QString m_clipboard; // a file or folder whose path was copied

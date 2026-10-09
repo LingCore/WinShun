@@ -15,8 +15,9 @@ namespace ws {
 
 // Follows the Open and Save dialogs of other programs (see filedialog): which
 // one is in front, and where it is. For Listary's Ctrl+G, which takes the
-// dialog to the folder shown in the File Explorer window used last, for the
-// search bar under the dialog (DialogBar), and for going there by itself.
+// dialog to the folder shown in the file manager window used last (File
+// Explorer, Total Commander, Directory Opus: filemanager), for the search
+// bar under the dialog (DialogBar), and for going there by itself.
 //
 // Ctrl+G is a hotkey only while such a dialog (or that bar) is in front: a
 // WinEvent hook follows the foreground window, so everywhere else the key
@@ -30,7 +31,7 @@ public:
         // (nullptr). A companion coming to the front changes nothing.
         std::function<void(HWND dialog)> dialogChanged;
         std::function<void()> dialogMoved; // the one in front: shown, hidden, moved, resized, minimised
-        // The dialog went to Explorer's folder by itself (setAutoJump), from
+        // The dialog went to the file manager's folder by itself (setAutoJump), from
         // `from` (empty: no folder on disk). Called on another thread.
         std::function<void(HWND dialog, std::wstring from)> autoJumped;
     };
@@ -42,9 +43,9 @@ public:
     DialogJump& operator=(const DialogJump&) = delete;
 
     void setHotkeyEnabled(bool on); // Ctrl+G; the dialogs are followed either way
-    // On: a dialog goes by itself to the folder shown in Explorer when it
-    // comes up, and when the user comes back to it from Explorer after going
-    // to another folder there (not after just looking).
+    // On: a dialog goes by itself to the folder shown in the file manager
+    // when it comes up, and when the user comes back to it from the file
+    // manager after going to another folder there (not after just looking).
     void setAutoJump(bool on) { m_autoJump = on; }
     // Windows of ours that go with the dialog (the bar; the clipboard, opened
     // from the bar or over the dialog): while one is in front, the dialog
@@ -52,7 +53,7 @@ public:
     void setCompanions(std::vector<HWND> windows) { m_companions = std::move(windows); }
     HWND dialog() const { return m_dialog; }
 
-    void jump(); // Ctrl+G was pressed: to the folder shown in Explorer
+    void jump(); // Ctrl+G was pressed: to the folder shown in the file manager
 
     // Takes `dialog` to a folder, or to a file's folder with the file's name
     // in the file name box; `open`: and presses Open. In the background,
@@ -63,9 +64,9 @@ private:
     static void CALLBACK onForeground(HWINEVENTHOOK, DWORD, HWND hwnd, LONG, LONG, DWORD, DWORD);
     static void CALLBACK onLocation(HWINEVENTHOOK, DWORD event, HWND hwnd, LONG object, LONG, DWORD, DWORD);
     void follow(HWND foreground);
-    void setDialog(HWND dialog, bool fromExplorer);
+    void setDialog(HWND dialog, bool fromManager);
     void setRegistered(bool on);
-    void noteExplorer(HWND dialog); // on the worker
+    void noteManager(HWND dialog); // on the worker
     void autoJump(HWND dialog, bool first); // on the worker
 
     Callbacks m_callbacks;
@@ -77,13 +78,13 @@ private:
     bool m_registered = false;
     bool m_warned = false; // about Ctrl+G being taken, once
     bool m_autoJump = false;
-    bool m_explorerInFront = false; // a File Explorer window, the last we heard
+    bool m_managerInFront = false; // a file manager's window, the last we heard
     HWND m_pending = nullptr; // a dialog that may still be building its controls
-    bool m_pendingFromExplorer = false;
+    bool m_pendingFromManager = false;
     int m_retries = 0;
     QTimer m_recheck;
     std::vector<HWND> m_seen; // the dialogs that came up, for setAutoJump
-    // On the worker: what Explorer showed when the user left each dialog for it.
+    // On the worker: what the file managers showed when the user left each dialog for one.
     std::vector<std::pair<HWND, std::wstring>> m_leftFor;
     ComWorker m_worker; // last: done with its task before the members above go
 };

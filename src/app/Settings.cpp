@@ -300,6 +300,9 @@ void Settings::load()
         dialogBarPlace = d.dialogBarPlace;
     dialogAutoJump = readOrDefault(s, u"Launcher/DialogAutoJump"_s, d.dialogAutoJump);
     dialogBarExcludedApps = readOrDefault(s, u"Launcher/DialogBarExcludedApps"_s, d.dialogBarExcludedApps);
+    fileManager = readOrDefault(s, u"Launcher/FileManager"_s, d.fileManager).trimmed().toLower();
+    if (fileManager != u"totalcmd" && fileManager != u"dopus")
+        fileManager = d.fileManager;
 
     theme = readOrDefault(s, u"Appearance/Theme"_s, d.theme).trimmed().toLower();
     if (theme != u"light" && theme != u"dark")
@@ -373,6 +376,7 @@ void Settings::save() const
     s.setValue(u"Launcher/DialogBarPlace"_s, dialogBarPlace);
     s.setValue(u"Launcher/DialogAutoJump"_s, dialogAutoJump);
     s.setValue(u"Launcher/DialogBarExcludedApps"_s, dialogBarExcludedApps);
+    s.setValue(u"Launcher/FileManager"_s, fileManager);
     s.setValue(u"Appearance/Theme"_s, theme);
     s.setValue(u"Appearance/Language"_s, language);
     s.setValue(u"Appearance/Transparency"_s, transparency);

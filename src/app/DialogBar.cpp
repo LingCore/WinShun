@@ -46,6 +46,20 @@ constexpr int kMaxRecent = 10;
 constexpr int kMaxPins = 20;
 constexpr int kMaxListed = 200; // of a folder whose path is typed
 
+// The tag of a folder open in a file manager. The others by their own names.
+QString managerName(filemanager::Kind kind)
+{
+    switch (kind) {
+    case filemanager::Kind::TotalCommander:
+        return u"Total Commander"_s;
+    case filemanager::Kind::DirectoryOpus:
+        return u"Directory Opus"_s;
+    case filemanager::Kind::Explorer:
+        break;
+    }
+    return DialogBar::tr("资源管理器");
+}
+
 QScreen* screenOf(HMONITOR monitor)
 {
     for (QScreen* screen : QGuiApplication::screens()) {
@@ -548,6 +562,11 @@ QString DialogBar::explorerName() const
     return m_explorer.isEmpty() ? QString() : nameOf(m_explorer.constFirst());
 }
 
+QString DialogBar::explorerSource() const
+{
+    return m_explorerKinds.isEmpty() ? QString() : managerName(m_explorerKinds.constFirst());
+}
+
 QString DialogBar::originName() const
 {
     return m_originDialog == m_dialog && !m_origin.isEmpty() ? nameOf(m_origin) : QString();
@@ -688,8 +707,8 @@ void DialogBar::showSuggestions(bool refresh)
         rows.append(row);
         tags.append(tag);
     };
-    for (const QString& folder : m_explorer.first(std::min<qsizetype>(m_explorer.size(), kMaxExplorer)))
-        add(folder, true, tr("资源管理器"));
+    for (qsizetype i = 0; i < std::min<qsizetype>(m_explorer.size(), kMaxExplorer); ++i)
+        add(m_explorer[i], true, managerName(m_explorerKinds.value(i)));
     if (!m_clipboard.isEmpty())
         add(m_clipboard, m_clipboardIsDir, tr("剪贴板"));
     for (const QString& folder : std::as_const(m_pinned))
@@ -704,6 +723,7 @@ void DialogBar::lookAround()
     const int lookup = ++m_lookups;
     struct Found {
         QStringList explorer;
+        QList<filemanager::Kind> explorerKinds;
         QStringList recent;
         QStringList pinned;
         QString clipboard;
@@ -720,8 +740,10 @@ void DialogBar::lookAround()
         if (lookup != m_lookups)
             return; // another is on its way
         Found found;
-        for (const std::wstring& folder : filedialog::explorerFolders())
-            found.explorer.append(QString::fromStdWString(folder));
+        for (const filemanager::Folder& folder : filemanager::openFolders()) {
+            found.explorer.append(QString::fromStdWString(folder.path));
+            found.explorerKinds.append(folder.shownIn);
+        }
         const LocalDrives drives;
         if (recordHistory) {
             // The folders of what was opened through Win顺 (or the folders themselves).
@@ -751,8 +773,9 @@ void DialogBar::lookAround()
         QMetaObject::invokeMethod(this, [this, lookup, dialog, found = std::move(found)] {
             if (lookup != m_lookups)
                 return;
-            const bool changed = found.explorer != m_explorer;
+            const bool changed = found.explorer != m_explorer || found.explorerKinds != m_explorerKinds;
             m_explorer = found.explorer;
+            m_explorerKinds = found.explorerKinds;
             m_recent = found.recent;
             m_pinned = found.pinned;
             m_clipboard = found.clipboard;

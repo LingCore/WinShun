@@ -567,6 +567,10 @@ void App::applySettings(bool initial)
     }
     applyDialogs();
     applyClipboard();
+    for (const auto& [kind, name] : filemanager::kSettingNames) {
+        if (m_settings.fileManager == QLatin1StringView(name))
+            shell::setFileManager(kind);
+    }
 
     if (!initial)
         applyAppearance();
@@ -761,6 +765,7 @@ void App::showSettings()
         m_settingsEditor = editor;
         applyHotkey(); // shows whether the current hotkey works
         applyClipboardHotkeys(); // ... and where Win+V stands
+        editor->refreshFileManagers();
 
         prepareBackdrop(window);
         window->create();

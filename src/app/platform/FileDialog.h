@@ -20,11 +20,6 @@ enum class Kind {
 
 Kind kind(HWND hwnd);
 
-// The folders open in File Explorer: each window's tab on top, front to back,
-// then the tabs behind them. Folders on disk only (no Home, This PC or
-// searches). Needs COM; asks Explorer, so not on the GUI thread.
-std::vector<std::wstring> explorerFolders();
-
 // The folder the dialog shows, as its address bar names it; empty for a
 // place that is no folder on disk (This PC, a library) and in the Windows XP
 // style, which has no address bar.

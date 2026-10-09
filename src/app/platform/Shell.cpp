@@ -1,5 +1,6 @@
 #include "Shell.h"
 
+#include "FileManagers.h"
 #include "SystemCatalog.h"
 #include "Win32Util.h"
 
@@ -59,6 +60,9 @@ private:
 namespace shell {
 
 namespace {
+
+// Where open() takes folders and reveal() shows items (setFileManager).
+std::atomic<filemanager::Kind> g_fileManager {filemanager::Kind::Explorer};
 
 // Runs `fn` on a detached thread with COM initialised (the shell needs an STA).
 template <typename Fn> void runOnShellThread(Fn&& fn)
@@ -121,6 +125,34 @@ bool executeAsUser(const std::wstring& file, const std::wstring& args, const std
     return SUCCEEDED(shell->ShellExecute(target, parameters, workDir, verb, show));
 }
 
+// Starts `command` with the desktop shell's own token: the user's normal
+// rights. Invalid when there is no shell to take them from.
+win32::UniqueHandle startWithShellToken(std::wstring command, const std::wstring& dir)
+{
+    DWORD pid = 0;
+    const HWND shellWindow = ::GetShellWindow();
+    if (!shellWindow || !::GetWindowThreadProcessId(shellWindow, &pid) || pid == 0)
+        return {};
+    const win32::UniqueHandle process(::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid));
+    HANDLE shellToken = nullptr;
+    if (!process.valid() || !::OpenProcessToken(process.get(), TOKEN_DUPLICATE, &shellToken))
+        return {};
+    const win32::UniqueHandle source(shellToken);
+    HANDLE primaryToken = nullptr;
+    if (!::DuplicateTokenEx(source.get(),
+            TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY | TOKEN_ADJUST_DEFAULT | TOKEN_ADJUST_SESSIONID, nullptr,
+            SecurityImpersonation, TokenPrimary, &primaryToken))
+        return {};
+    const win32::UniqueHandle token(primaryToken);
+    STARTUPINFOW startup {sizeof(STARTUPINFOW)};
+    PROCESS_INFORMATION started {};
+    if (!::CreateProcessWithTokenW(token.get(), 0, nullptr, command.data(), 0, nullptr,
+            dir.empty() ? nullptr : dir.c_str(), &startup, &started))
+        return {};
+    ::CloseHandle(started.hThread);
+    return win32::UniqueHandle(started.hProcess);
+}
+
 // Without an Explorer desktop to ask (another shell is in use), start the
 // target with the desktop shell's own token: the user's normal rights. The
 // unelevated rundll32 hands it to ShellExecute, which opens documents,
@@ -129,22 +161,6 @@ bool executeWithShellToken(const std::wstring& file, const std::wstring& args, c
 {
     if (file.find(L'"') != std::wstring::npos)
         return false; // cannot be quoted on the command line (no path has one)
-    DWORD pid = 0;
-    const HWND shellWindow = ::GetShellWindow();
-    if (!shellWindow || !::GetWindowThreadProcessId(shellWindow, &pid) || pid == 0)
-        return false;
-    const win32::UniqueHandle process(::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid));
-    HANDLE shellToken = nullptr;
-    if (!process.valid() || !::OpenProcessToken(process.get(), TOKEN_DUPLICATE, &shellToken))
-        return false;
-    const win32::UniqueHandle source(shellToken);
-    HANDLE primaryToken = nullptr;
-    if (!::DuplicateTokenEx(source.get(),
-            TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY | TOKEN_ADJUST_DEFAULT | TOKEN_ADJUST_SESSIONID, nullptr,
-            SecurityImpersonation, TokenPrimary, &primaryToken))
-        return false;
-    const win32::UniqueHandle token(primaryToken);
-
     wchar_t system[MAX_PATH] = {};
     const UINT n = ::GetSystemDirectoryW(system, MAX_PATH);
     if (n == 0 || n >= MAX_PATH)
@@ -153,14 +169,7 @@ bool executeWithShellToken(const std::wstring& file, const std::wstring& args, c
         = L"\"" + std::wstring(system, n) + L"\\rundll32.exe\" shell32.dll,ShellExec_RunDLL \"" + file + L'"';
     if (!args.empty())
         command += L' ' + args;
-    STARTUPINFOW startup {sizeof(STARTUPINFOW)};
-    PROCESS_INFORMATION started {};
-    if (!::CreateProcessWithTokenW(token.get(), 0, nullptr, command.data(), 0, nullptr,
-            dir.empty() ? nullptr : dir.c_str(), &startup, &started))
-        return false;
-    ::CloseHandle(started.hThread);
-    ::CloseHandle(started.hProcess);
-    return true;
+    return startWithShellToken(std::move(command), dir).valid();
 }
 
 // Starts `file` with the user's normal rights, never elevated: through
@@ -197,12 +206,18 @@ void open(const QString& path, bool asAdministrator, std::function<void(bool)> d
     const QString native = QDir::toNativeSeparators(path);
     const QFileInfo info(native);
     const QString workDir = info.isDir() ? QString() : QDir::toNativeSeparators(info.absolutePath());
-    runOnShellThread(
-        [file = native.toStdWString(), dir = workDir.toStdWString(), asAdministrator, done = std::move(done)] {
-            const bool ok = asAdministrator ? executeAsAdministrator(file, dir) : executeUnelevated(file, {}, dir);
-            if (done)
-                done(ok);
-        });
+    // A folder goes to the file manager chosen (setFileManager); Explorer
+    // takes it if that does not start.
+    const filemanager::Kind manager
+        = info.isDir() && !asAdministrator ? g_fileManager.load() : filemanager::Kind::Explorer;
+    runOnShellThread([file = native.toStdWString(), dir = workDir.toStdWString(), asAdministrator, manager,
+                         done = std::move(done)] {
+        const bool ok = asAdministrator ? executeAsAdministrator(file, dir)
+            : (manager != filemanager::Kind::Explorer && filemanager::openFolder(manager, file))
+                || executeUnelevated(file, {}, dir);
+        if (done)
+            done(ok);
+    });
 }
 
 void openUrl(const QString& url)
@@ -234,56 +249,89 @@ void launchApp(const QString& launchPath, bool asAdministrator, std::function<vo
     });
 }
 
-void reveal(const QString& path)
-{
-    ::AllowSetForegroundWindow(ASFW_ANY);
-    runOnShellThread([file = QDir::toNativeSeparators(path).toStdWString()] {
-        if (PIDLIST_ABSOLUTE pidl = ::ILCreateFromPathW(file.c_str())) {
-            ::SHOpenFolderAndSelectItems(pidl, 0, nullptr, 0);
-            ::ILFree(pidl);
-        }
-    });
-}
+namespace {
 
-void reveal(const QStringList& paths)
+// Explorer windows, one per folder, with all of its items selected. On the
+// shell thread.
+void selectInExplorer(const std::vector<std::wstring>& paths)
 {
     // By folder, in the order the folders first come up.
     std::vector<std::pair<std::wstring, std::vector<std::wstring>>> folders;
-    for (const QString& path : paths) {
-        const QFileInfo info(path);
+    for (const std::wstring& path : paths) {
+        const QFileInfo info(QString::fromStdWString(path));
         if (info.isRoot()) { // a drive: nothing above it to select it in
-            reveal(path);
+            if (PIDLIST_ABSOLUTE pidl = ::ILCreateFromPathW(path.c_str())) {
+                ::SHOpenFolderAndSelectItems(pidl, 0, nullptr, 0);
+                ::ILFree(pidl);
+            }
             continue;
         }
         const std::wstring key = QDir::toNativeSeparators(info.path()).toStdWString();
         auto it = std::find_if(folders.begin(), folders.end(), [&](const auto& f) { return _wcsicmp(f.first.c_str(), key.c_str()) == 0; });
         if (it == folders.end())
             it = folders.insert(folders.end(), {key, {}});
-        it->second.push_back(QDir::toNativeSeparators(info.filePath()).toStdWString());
+        it->second.push_back(path);
     }
-    if (folders.empty())
+    for (const auto& [folder, files] : folders) {
+        PIDLIST_ABSOLUTE parent = ::ILCreateFromPathW(folder.c_str());
+        if (!parent)
+            continue;
+        std::vector<PIDLIST_ABSOLUTE> items;
+        std::vector<PCUITEMID_CHILD> children;
+        for (const std::wstring& file : files) {
+            if (PIDLIST_ABSOLUTE pidl = ::ILCreateFromPathW(file.c_str())) {
+                items.push_back(pidl);
+                children.push_back(::ILFindLastID(pidl));
+            }
+        }
+        if (!children.empty())
+            ::SHOpenFolderAndSelectItems(parent, static_cast<UINT>(children.size()), children.data(), 0);
+        for (PIDLIST_ABSOLUTE pidl : items)
+            ::ILFree(pidl);
+        ::ILFree(parent);
+    }
+}
+
+// In `manager`, or in Explorer when that is Explorer or does not start.
+void revealIn(const QStringList& paths, filemanager::Kind manager)
+{
+    std::vector<std::wstring> natives;
+    for (const QString& path : paths)
+        natives.push_back(QDir::toNativeSeparators(path).toStdWString());
+    if (natives.empty())
         return;
     ::AllowSetForegroundWindow(ASFW_ANY);
-    runOnShellThread([folders = std::move(folders)] {
-        for (const auto& [folder, files] : folders) {
-            PIDLIST_ABSOLUTE parent = ::ILCreateFromPathW(folder.c_str());
-            if (!parent)
-                continue;
-            std::vector<PIDLIST_ABSOLUTE> items;
-            std::vector<PCUITEMID_CHILD> children;
-            for (const std::wstring& file : files) {
-                if (PIDLIST_ABSOLUTE pidl = ::ILCreateFromPathW(file.c_str())) {
-                    items.push_back(pidl);
-                    children.push_back(::ILFindLastID(pidl));
-                }
-            }
-            if (!children.empty())
-                ::SHOpenFolderAndSelectItems(parent, static_cast<UINT>(children.size()), children.data(), 0);
-            for (PIDLIST_ABSOLUTE pidl : items)
-                ::ILFree(pidl);
-            ::ILFree(parent);
-        }
+    runOnShellThread([natives = std::move(natives), manager] {
+        if (manager == filemanager::Kind::Explorer || !filemanager::reveal(manager, natives))
+            selectInExplorer(natives);
     });
+}
+
+} // namespace
+
+void reveal(const QString& path)
+{
+    revealIn({path}, g_fileManager.load());
+}
+
+void reveal(const QStringList& paths)
+{
+    revealIn(paths, g_fileManager.load());
+}
+
+void setFileManager(filemanager::Kind kind)
+{
+    g_fileManager = kind;
+}
+
+win32::UniqueHandle startUnelevated(const std::wstring& program, const std::wstring& args)
+{
+    if (program.find(L'"') != std::wstring::npos)
+        return {}; // cannot be quoted on the command line (no path has one)
+    std::wstring command = L'"' + program + L'"';
+    if (!args.empty())
+        command += L' ' + args;
+    return startWithShellToken(std::move(command), {});
 }
 
 void recycle(const QStringList& paths, HWND owner, std::function<void(bool)> done)

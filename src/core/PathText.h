@@ -2,6 +2,8 @@
 
 #include "SearchTypes.h"
 
+#include <QByteArray>
+#include <QList>
 #include <QString>
 #include <QStringList>
 
@@ -47,5 +49,22 @@ QString folderFromAddress(const QString& caption);
 
 // Whether two paths name the same folder: case and a trailing backslash aside.
 bool sameFolder(const QString& a, const QString& b);
+
+// The folder a panel of Total Commander shows, from the text over its file
+// list: "c:\Windows\*.*" -> "C:\Windows" (the filter after the last
+// backslash goes). Empty for what is no folder on a drive or share: an FTP
+// site, a plugin's "\\\Uninstaller64\*.*".
+QString folderFromTotalCommander(const QString& text);
+
+// A folder tab of Directory Opus, as `dopusrt /info <file>,paths` lists the
+// tabs of its windows ("listers").
+struct OpusTab {
+    QString path; // on a drive or share; tabs on other places are left out
+    quintptr lister = 0; // its window
+    // 1: the tab in front on the side with the focus; 2: the one in front
+    // on the other side (two file displays); 0: a tab behind.
+    int state = 0;
+};
+QList<OpusTab> opusTabs(const QByteArray& xml);
 
 } // namespace ws::pathtext

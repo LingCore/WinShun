@@ -5,13 +5,7 @@
 #include <QDebug>
 #include <QString>
 
-#include <ole2.h> // before exdisp.h: WIN32_LEAN_AND_MEAN keeps it out of windows.h
-
 #include <commctrl.h>
-#include <exdisp.h>
-#include <shlobj.h>
-#include <shobjidl.h>
-#include <wrl/client.h>
 
 #include <algorithm>
 #include <chrono>
@@ -19,7 +13,6 @@
 #include <initializer_list>
 #include <thread>
 
-using Microsoft::WRL::ComPtr;
 using namespace std::chrono_literals;
 
 namespace ws::filedialog {
@@ -86,27 +79,6 @@ HWND fileNameBox(HWND dialog)
         }
     }
     return ::GetDlgItem(dialog, kFileNameEdit);
-}
-
-// The folder on disk that an Explorer tab shows; empty for Home, This PC, a
-// search and the like.
-std::wstring folderPath(IShellBrowser* browser)
-{
-    ComPtr<IShellView> view;
-    ComPtr<IFolderView> folderView;
-    ComPtr<IPersistFolder2> folder;
-    PIDLIST_ABSOLUTE pidl = nullptr;
-    if (FAILED(browser->QueryActiveShellView(&view)) || FAILED(view.As(&folderView))
-        || FAILED(folderView->GetFolder(IID_PPV_ARGS(&folder))) || FAILED(folder->GetCurFolder(&pidl)) || !pidl)
-        return {};
-    std::wstring path;
-    PWSTR name = nullptr;
-    if (SUCCEEDED(::SHGetNameFromIDList(pidl, SIGDN_FILESYSPATH, &name))) {
-        path = name;
-        ::CoTaskMemFree(name);
-    }
-    ::ILFree(pidl);
-    return path;
 }
 
 bool send(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -253,72 +225,6 @@ Kind kind(HWND hwnd)
     if (::FindWindowExW(hwnd, nullptr, L"SHELLDLL_DefView", nullptr) && fileNameBox(hwnd) && ::GetDlgItem(hwnd, IDOK))
         return Kind::Legacy;
     return Kind::None;
-}
-
-std::vector<std::wstring> explorerFolders()
-{
-    ComPtr<IShellWindows> windows;
-    long count = 0;
-    if (FAILED(::CoCreateInstance(CLSID_ShellWindows, nullptr, CLSCTX_LOCAL_SERVER, IID_PPV_ARGS(&windows)))
-        || FAILED(windows->get_Count(&count)))
-        return {};
-    struct Tab {
-        HWND window;
-        HWND tab;
-        std::wstring path;
-    };
-    std::vector<Tab> tabs; // one per tab of each window
-    for (long i = 0; i < count; ++i) {
-        VARIANT index {};
-        index.vt = VT_I4;
-        index.lVal = i;
-        ComPtr<IDispatch> item;
-        ComPtr<IServiceProvider> services;
-        ComPtr<IShellBrowser> browser;
-        HWND tab = nullptr;
-        if (windows->Item(index, &item) != S_OK || !item || FAILED(item.As(&services))
-            || FAILED(services->QueryService(SID_STopLevelBrowser, IID_PPV_ARGS(&browser)))
-            || FAILED(browser->GetWindow(&tab)) || !tab)
-            continue;
-        std::wstring path = folderPath(browser.Get());
-        if (!path.empty())
-            tabs.push_back({::GetAncestor(tab, GA_ROOT), tab, std::move(path)});
-    }
-
-    // Top-level windows come front to back, and so do a window's children:
-    // Windows 11 has one per tab (all of them visible), the tab on top first.
-    struct Search {
-        const std::vector<Tab>& tabs;
-        std::vector<std::wstring> onTop; // each window's tab on top
-        std::vector<std::wstring> behind; // the others
-    } search {tabs, {}, {}};
-    ::EnumWindows(
-        [](HWND hwnd, LPARAM param) -> BOOL {
-            auto& search = *reinterpret_cast<Search*>(param);
-            bool first = true;
-            for (HWND child = ::FindWindowExW(hwnd, nullptr, L"ShellTabWindowClass", nullptr); child;
-                child = ::FindWindowExW(hwnd, child, L"ShellTabWindowClass", nullptr)) {
-                for (const Tab& tab : search.tabs) {
-                    if (tab.tab == child)
-                        (first ? search.onTop : search.behind).push_back(tab.path);
-                }
-                first = false;
-            }
-            for (const Tab& tab : search.tabs) { // a window without such children
-                if (tab.window == hwnd && tab.tab == hwnd)
-                    search.onTop.push_back(tab.path);
-            }
-            return TRUE;
-        },
-        reinterpret_cast<LPARAM>(&search));
-    std::vector<std::wstring> folders;
-    for (const auto* list : {&search.onTop, &search.behind}) {
-        for (const std::wstring& path : *list) {
-            if (std::ranges::none_of(folders, [&](const std::wstring& f) { return ::_wcsicmp(f.c_str(), path.c_str()) == 0; }))
-                folders.push_back(path);
-        }
-    }
-    return folders;
 }
 
 std::wstring currentFolder(HWND dialog)

@@ -47,6 +47,22 @@ Window {
 
     function clearFocus() { window.contentItem.forceActiveFocus() }
 
+    // A file manager installed outside Win顺: looked for again when the user
+    // comes back.
+    onActiveChanged: {
+        if (active)
+            editor.refreshFileManagers()
+    }
+
+    // Settings::fileManager's names, as the user knows them.
+    function fileManagerName(name) {
+        switch (name) {
+        case "totalcmd": return "Total Commander"
+        case "dopus": return "Directory Opus"
+        default: return qsTr("资源管理器")
+        }
+    }
+
     function showPage(index) {
         currentPage = index
         flick.cancelFlick()
@@ -474,8 +490,20 @@ Window {
                 }
 
                 SettingRow {
-                    title: qsTr("Ctrl+G 转到资源管理器的文件夹")
-                    description: qsTr("在“打开”“另存为”等对话框里按 Ctrl+G，对话框直接转到最近用过的资源管理器窗口正在显示的文件夹")
+                    visible: window.editor.fileManagers.length > 1
+                    title: qsTr("用哪个文件管理器打开文件夹")
+                    description: qsTr("在 Win顺 里打开文件夹、打开文件所在的位置时用它；没能打开就用资源管理器")
+
+                    body: ScopeTabs { // under the text: the names are long
+                        labels: window.editor.fileManagers.map(name => window.fileManagerName(name))
+                        current: Math.max(0, window.editor.fileManagers.indexOf(window.editor.fileManager))
+                        onActivated: (index) => window.editor.fileManager = window.editor.fileManagers[index]
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("Ctrl+G 转到文件管理器的文件夹")
+                    description: qsTr("在“打开”“另存为”等对话框里按 Ctrl+G，对话框直接转到最近用过的文件管理器窗口正在显示的文件夹：资源管理器、Total Commander 和 Directory Opus 都行")
 
                     ToggleSwitch {
                         checked: window.editor.dialogJump
@@ -506,8 +534,8 @@ Window {
                 }
 
                 SettingRow {
-                    title: qsTr("对话框自动转到资源管理器的文件夹")
-                    description: qsTr("“打开”“另存为”等对话框出现时，自动转到资源管理器正在显示的文件夹；对话框开着时去资源管理器换了文件夹，切回来也跟着转过去，只是看一眼就不动。转过去以后，搜索框上有按钮回到原来的位置")
+                    title: qsTr("对话框自动转到文件管理器的文件夹")
+                    description: qsTr("“打开”“另存为”等对话框出现时，自动转到文件管理器正在显示的文件夹；对话框开着时去文件管理器换了文件夹，切回来也跟着转过去，只是看一眼就不动。转过去以后，搜索框上有按钮回到原来的位置")
 
                     ToggleSwitch {
                         checked: window.editor.dialogAutoJump

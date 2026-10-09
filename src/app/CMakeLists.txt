@@ -11,6 +11,7 @@ qt_add_executable(WinShun WIN32
     platform/ComWorker.cpp platform/ComWorker.h
     platform/DialogJump.cpp platform/DialogJump.h
     platform/FileDialog.cpp platform/FileDialog.h
+    platform/FileManagers.cpp platform/FileManagers.h
     platform/Foreground.cpp platform/Foreground.h
     platform/Http.cpp platform/Http.h
     platform/KeyListener.cpp platform/KeyListener.h

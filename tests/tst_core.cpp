@@ -579,6 +579,43 @@ private slots:
         QVERIFY(!pathtext::sameFolder({}, {}));
     }
 
+    // What Total Commander and Directory Opus say they show (filemanager::).
+    void fileManagerText()
+    {
+        using pathtext::folderFromTotalCommander;
+        QCOMPARE(folderFromTotalCommander(u"c:\\Windows\\*.*"_s), u"C:\\Windows"_s);
+        QCOMPARE(folderFromTotalCommander(u"d:\\*.*"_s), u"D:\\"_s);
+        QCOMPARE(folderFromTotalCommander(u"c:\\文档\\报告 2024\\*.txt"_s), u"C:\\文档\\报告 2024"_s);
+        QCOMPARE(folderFromTotalCommander(u"\\\\nas\\photos\\*.*"_s), u"\\\\nas\\photos"_s);
+        QCOMPARE(folderFromTotalCommander(u"c:\\Windows"_s), u"C:\\Windows"_s); // no filter shown
+        QVERIFY(folderFromTotalCommander(u"\\\\\\Uninstaller64\\*.*"_s).isEmpty()); // a plugin's
+        QVERIFY(folderFromTotalCommander(u"ftp://example.com/pub/*.*"_s).isEmpty());
+        QVERIFY(folderFromTotalCommander({}).isEmpty());
+
+        // As dopusrt /info writes it (UTF-8 with a BOM once a name is not ASCII).
+        const QByteArray xml = QByteArray("\xEF\xBB\xBF")
+            + QString::fromUtf16(uR"(<?xml version="1.0" encoding="UTF-8"?>
+<results command="paths" result="1">
+	<path active_lister="1" display_path="C:\" lister="0x6185e" side="1" tab="0x3185a">C:\</path>
+	<path active_lister="1" active_tab="1" display_path="C:\用户\me\A &amp; B" lister="0x6185e" side="1" tab="0x518c0" tab_state="1">C:\Users\me\A &amp; B</path>
+	<path active_lister="1" active_tab="2" display_path="D:\" lister="0x6185e" side="2" tab="0x1187a" tab_state="2">D:\</path>
+	<path display_path="FTP" lister="0x7f00a" side="1" tab="0x2" tab_state="1">ftp://example.com/</path>
+	<path display_path="Windows" lister="0x7f00a" side="1" tab="0x3">C:\Windows</path>
+</results>
+)").toUtf8();
+        const QList<pathtext::OpusTab> tabs = pathtext::opusTabs(xml);
+        QCOMPARE(tabs.size(), 4); // not the FTP site
+        QCOMPARE(tabs[0].path, u"C:\\"_s);
+        QCOMPARE(tabs[0].lister, quintptr(0x6185e));
+        QCOMPARE(tabs[0].state, 0);
+        QCOMPARE(tabs[1].path, u"C:\\Users\\me\\A & B"_s); // the real path, not the display one
+        QCOMPARE(tabs[1].state, 1);
+        QCOMPARE(tabs[2].state, 2);
+        QCOMPARE(tabs[3].lister, quintptr(0x7f00a));
+        QVERIFY(pathtext::opusTabs("<results command=\"paths\" result=\"0\"/>").isEmpty());
+        QVERIFY(pathtext::opusTabs("not xml").isEmpty());
+    }
+
     void splitTyped()
     {
         const auto split = [](const QString& text) {

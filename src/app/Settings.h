@@ -21,11 +21,14 @@ struct Settings {
     QString hotkey; // e.g. "Alt+Space"; empty = none
     QString renderer; // software | d3d11; defaults() picks by memory (defaultRenderer)
     bool recordHistory = true; // remember what was opened: listed with nothing typed, first among matches
-    bool dialogJump = true; // Ctrl+G in an Open or Save dialog goes to the folder open in File Explorer
+    bool dialogJump = true; // Ctrl+G in an Open or Save dialog goes to the folder open in a file manager (filemanager::)
     bool dialogBar = true; // a search bar under Open and Save dialogs (DialogBar)
     QString dialogBarPlace = QStringLiteral("auto"); // auto | below | left | right: where it goes by the dialog
-    bool dialogAutoJump = false; // file dialogs go to the folder open in File Explorer by themselves
+    bool dialogAutoJump = false; // file dialogs go to the folder open in a file manager by themselves
     QStringList dialogBarExcludedApps; // program files ("notepad.exe") whose file dialogs go without the bar
+    // explorer | totalcmd | dopus: where folders open and items are shown
+    // (shell::setFileManager); Explorer while the one chosen is not installed.
+    QString fileManager = QStringLiteral("explorer");
 
     // [Appearance]
     QString theme = QStringLiteral("system"); // system | light | dark

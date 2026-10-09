@@ -1,6 +1,7 @@
 #include "DialogJump.h"
 
 #include "FileDialog.h"
+#include "FileManagers.h"
 #include "PathText.h"
 
 #include <QDebug>
@@ -37,7 +38,7 @@ DialogJump::DialogJump(Callbacks callbacks)
         const HWND foreground = ::GetForegroundWindow();
         if (foreground == m_pending && filedialog::kind(foreground) != filedialog::Kind::None) {
             m_recheck.stop();
-            setDialog(foreground, m_pendingFromExplorer);
+            setDialog(foreground, m_pendingFromManager);
         } else if (foreground != m_pending || --m_retries <= 0) {
             m_recheck.stop();
         }
@@ -85,28 +86,28 @@ void DialogJump::follow(HWND foreground)
     m_recheck.stop();
     if (foreground && std::ranges::find(m_companions, foreground) != m_companions.end()) {
         // The bar, the clipboard: the dialog is still the one. Not back from
-        // Explorer then, whatever is picked there: no going by itself after that.
-        m_explorerInFront = false;
+        // a file manager then, whatever is picked there: no going by itself after that.
+        m_managerInFront = false;
         return;
     }
-    const bool explorer = hasClass(foreground, L"CabinetWClass");
-    const bool fromExplorer = std::exchange(m_explorerInFront, explorer);
-    // Left for Explorer: what it shows now tells, on the way back, whether
-    // the user went somewhere there.
-    if (explorer && m_dialog && m_autoJump)
-        m_worker.post([this, dialog = m_dialog] { noteExplorer(dialog); });
+    const bool manager = filemanager::kindOf(foreground).has_value();
+    const bool fromManager = std::exchange(m_managerInFront, manager);
+    // Left for a file manager: what it shows now tells, on the way back,
+    // whether the user went somewhere there.
+    if (manager && m_dialog && m_autoJump)
+        m_worker.post([this, dialog = m_dialog] { noteManager(dialog); });
     const bool fileDialog = filedialog::kind(foreground) != filedialog::Kind::None;
-    setDialog(fileDialog ? foreground : nullptr, fromExplorer);
+    setDialog(fileDialog ? foreground : nullptr, fromManager);
     // A dialog may come to the front before all of its controls are there.
     if (!fileDialog && hasClass(foreground, L"#32770")) {
         m_pending = foreground;
-        m_pendingFromExplorer = fromExplorer;
+        m_pendingFromManager = fromManager;
         m_retries = 5;
         m_recheck.start();
     }
 }
 
-void DialogJump::setDialog(HWND dialog, bool fromExplorer)
+void DialogJump::setDialog(HWND dialog, bool fromManager)
 {
     if (!dialog && !m_dialog)
         return;
@@ -133,7 +134,7 @@ void DialogJump::setDialog(HWND dialog, bool fromExplorer)
         const bool first = std::ranges::find(m_seen, dialog) == m_seen.end();
         if (first)
             m_seen.push_back(dialog);
-        if (first || fromExplorer)
+        if (first || fromManager)
             m_worker.post([this, dialog, first] { autoJump(dialog, first); });
     }
 }
@@ -155,23 +156,23 @@ void DialogJump::setRegistered(bool on)
     }
     m_registered = m_callbacks.setHotkey(true);
     if (!m_registered && !std::exchange(m_warned, true))
-        qWarning() << "Ctrl+G is taken by another program: no jumping to Explorer's folder in file dialogs";
+        qWarning() << "Ctrl+G is taken by another program: no jumping to the file manager's folder in file dialogs";
 }
 
-void DialogJump::noteExplorer(HWND dialog)
+void DialogJump::noteManager(HWND dialog)
 {
     std::erase_if(m_leftFor, [dialog](const auto& left) { return left.first == dialog || !::IsWindow(left.first); });
-    const std::vector<std::wstring> folders = filedialog::explorerFolders();
-    m_leftFor.emplace_back(dialog, folders.empty() ? std::wstring() : folders.front());
+    const std::vector<filemanager::Folder> folders = filemanager::openFolders();
+    m_leftFor.emplace_back(dialog, folders.empty() ? std::wstring() : folders.front().path);
 }
 
 void DialogJump::autoJump(HWND dialog, bool first)
 {
-    const std::vector<std::wstring> folders = filedialog::explorerFolders();
+    const std::vector<filemanager::Folder> folders = filemanager::openFolders();
     if (folders.empty())
         return;
-    const std::wstring& folder = folders.front();
-    if (!first) { // back from Explorer: only if it shows another folder than when the user went there
+    const std::wstring& folder = folders.front().path;
+    if (!first) { // back from a file manager: only if it shows another folder than when the user went there
         const auto left = std::ranges::find(m_leftFor, dialog, &decltype(m_leftFor)::value_type::first);
         if (left == m_leftFor.end() || sameFolder(left->second, folder))
             return;
@@ -186,7 +187,7 @@ void DialogJump::autoJump(HWND dialog, bool first)
     if (sameFolder(from, folder))
         return;
     if (!filedialog::goTo(dialog, folder)) {
-        qWarning() << "The file dialog did not go to Explorer's folder by itself";
+        qWarning() << "The file dialog did not go to the file manager's folder by itself";
         return;
     }
     if (m_callbacks.autoJumped)
@@ -201,9 +202,9 @@ void DialogJump::jump()
     if (std::ranges::find(m_companions, ::GetForegroundWindow()) != m_companions.end())
         ::SetForegroundWindow(dialog); // ours is in front, so it may hand that on
     m_worker.post([dialog] {
-        const std::vector<std::wstring> folders = filedialog::explorerFolders();
+        const std::vector<filemanager::Folder> folders = filemanager::openFolders();
         filedialog::waitForFront(dialog);
-        if (!folders.empty() && !filedialog::goTo(dialog, folders.front()))
+        if (!folders.empty() && !filedialog::goTo(dialog, folders.front().path))
             qWarning() << "Ctrl+G: the file dialog did not go to the folder";
     });
 }

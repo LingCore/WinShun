@@ -36,6 +36,11 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString dialogBarPlace READ dialogBarPlace WRITE setDialogBarPlace NOTIFY changed FINAL)
     Q_PROPERTY(bool dialogAutoJump READ dialogAutoJump WRITE setDialogAutoJump NOTIFY changed FINAL)
     Q_PROPERTY(QStringList dialogBarExcludedApps READ dialogBarExcludedApps NOTIFY changed FINAL)
+    // Where folders open (Settings::fileManager), and what there is to choose
+    // from: "explorer" and the others installed, looked for again as the
+    // window comes to the front (refreshFileManagers).
+    Q_PROPERTY(QString fileManager READ fileManager WRITE setFileManager NOTIFY changed FINAL)
+    Q_PROPERTY(QStringList fileManagers READ fileManagers NOTIFY fileManagersChanged FINAL)
     Q_PROPERTY(bool includeRemovableDrives READ includeRemovableDrives WRITE setIncludeRemovableDrives NOTIFY changed FINAL)
     Q_PROPERTY(bool rescanOnStartup READ rescanOnStartup WRITE setRescanOnStartup NOTIFY changed FINAL)
     Q_PROPERTY(QStringList excludedPaths READ excludedPaths NOTIFY changed FINAL) // expanded, for display
@@ -114,6 +119,10 @@ public:
     bool dialogAutoJump() const { return m_settings.dialogAutoJump; }
     void setDialogAutoJump(bool on);
     QStringList dialogBarExcludedApps() const { return m_settings.dialogBarExcludedApps; }
+    QString fileManager() const { return m_settings.fileManager; }
+    void setFileManager(const QString& manager);
+    QStringList fileManagers() const { return m_fileManagers; }
+    Q_INVOKABLE void refreshFileManagers();
     bool includeRemovableDrives() const { return m_settings.includeRemovableDrives; }
     void setIncludeRemovableDrives(bool on);
     bool rescanOnStartup() const { return m_settings.rescanOnStartup; }
@@ -232,6 +241,7 @@ signals:
     void recordingHotkeyChanged(); // the app suspends its hotkeys meanwhile
     void autostartChanged();
     void winVStateChanged();
+    void fileManagersChanged();
     void clipboardCountChanged();
     void clipboardClearRequested();
     void explorerRestartRequested(); // Win+V changes hands when Explorer starts again
@@ -248,6 +258,7 @@ private:
     int m_historyCount = 0;
     QString m_contentIndexStatus;
     IndexFolderState m_indexFolderState;
+    QStringList m_fileManagers {QStringLiteral("explorer")};
     bool m_recordingHotkey = false;
     QString m_winVState = QStringLiteral("off");
     bool m_canRestartExplorer = false;

@@ -3,6 +3,7 @@
 #include "IndexFolder.h"
 #include "WebShortcut.h"
 #include "Win32Util.h"
+#include "platform/FileManagers.h"
 #include "platform/Shell.h"
 #include "platform/ShortcutCapture.h"
 
@@ -307,6 +308,27 @@ void SettingsEditor::setDialogJump(bool on)
         return;
     m_settings.dialogJump = on;
     commit();
+}
+
+void SettingsEditor::setFileManager(const QString& manager)
+{
+    if (m_settings.fileManager == manager)
+        return;
+    m_settings.fileManager = manager;
+    commit();
+}
+
+void SettingsEditor::refreshFileManagers()
+{
+    QStringList managers;
+    for (const auto& [kind, name] : filemanager::kSettingNames) {
+        if (filemanager::installed(kind))
+            managers.append(QString::fromLatin1(name));
+    }
+    if (managers == m_fileManagers)
+        return;
+    m_fileManagers = managers;
+    emit fileManagersChanged();
 }
 
 void SettingsEditor::setDialogAutoJump(bool on)

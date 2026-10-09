@@ -8,6 +8,7 @@
 #include <QFileInfo>
 #include <QRegularExpression>
 #include <QUrl>
+#include <QXmlStreamReader>
 
 #include <algorithm>
 
@@ -196,6 +197,40 @@ bool sameFolder(const QString& a, const QString& b)
 {
     const QString x = normalized(a);
     return !x.isEmpty() && x.compare(normalized(b), Qt::CaseInsensitive) == 0;
+}
+
+QString folderFromTotalCommander(const QString& text)
+{
+    QString path = text.trimmed();
+    const qsizetype slash = path.lastIndexOf(u'\\');
+    if (slash >= 0 && (path.indexOf(u'*', slash) >= 0 || path.indexOf(u'?', slash) >= 0))
+        path.truncate(slash + 1);
+    path = normalized(path);
+    if (path.size() >= 2 && path[1] == u':')
+        path[0] = path[0].toUpper(); // "c:\Windows", as Total Commander writes it
+    return path;
+}
+
+QList<OpusTab> opusTabs(const QByteArray& xml)
+{
+    QList<OpusTab> tabs;
+    QXmlStreamReader reader(xml);
+    while (reader.readNextStartElement()) {
+        if (reader.name() == u"results")
+            continue; // into it
+        if (reader.name() != u"path") {
+            reader.skipCurrentElement();
+            continue;
+        }
+        OpusTab tab;
+        const QXmlStreamAttributes attributes = reader.attributes();
+        tab.lister = attributes.value(u"lister").toULongLong(nullptr, 16); // "0x6185e"
+        tab.state = attributes.value(u"tab_state").toInt();
+        tab.path = normalized(reader.readElementText().trimmed()); // not display_path: "C:\用户" for C:\Users
+        if (!tab.path.isEmpty())
+            tabs.append(std::move(tab));
+    }
+    return tabs;
 }
 
 } // namespace ws::pathtext

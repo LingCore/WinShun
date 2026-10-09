@@ -1,11 +1,15 @@
 #pragma once
 
+#include "FileManagers.h"
+#include "Win32Util.h"
+
 #include <QString>
 #include <QStringList>
 
 #include <windows.h>
 
 #include <functional>
+#include <string>
 #include <vector>
 
 // Thin wrappers over Explorer/Shell behaviour.
@@ -20,6 +24,14 @@ void open(const QString& path, bool asAdministrator = false, std::function<void(
 void reveal(const QString& path); // open the folder and select the item
 // The same for several items: one window per folder, with all of its items selected.
 void reveal(const QStringList& paths);
+// The file manager open() takes folders to and reveal() shows items in
+// (Settings::fileManager): Explorer at first. Explorer takes over when the
+// one chosen does not start.
+void setFileManager(filemanager::Kind kind);
+// Starts `program` with the user's normal rights (the desktop shell's), never
+// elevated, for a program to wait for (see filemanager); the others start
+// through open() and run(). Invalid when no shell runs to take them from.
+win32::UniqueHandle startUnelevated(const std::wstring& program, const std::wstring& args);
 void openUrl(const QString& url); // https:, mailto: ...
 // A command or shell location ("%windir%\system32\control.exe /name X",
 // "ms-settings:display"): a place in Windows (see SystemCatalog).

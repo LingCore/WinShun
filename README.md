@@ -107,13 +107,14 @@
 #### 📂 “打开”“另存为”对话框：搜一下就到
 
 - 别的程序弹出“打开”“另存为”对话框时（网页上传文件、另存为、选择文件夹都算），旁边会贴着一个 Win顺 搜索框：输入文件夹或文件的名字（拼音也行），回车，对话框直接转过去。选的是文件，就转到它所在的文件夹并填好文件名，再按一次回车就能打开或上传；“打开”对话框里按 `Ctrl+Enter` 一步打开。对话框选了文件类型（比如只收图片的上传框）时，这类文件排在前面。
-- 搜索框右边是资源管理器正在显示的文件夹，点一下或按 `Ctrl+G` 就转过去，和 Listary 的同名快捷键一样：先在资源管理器里找到要存的地方，再回到程序里“另存为”，按一下就到。Windows 11 开着几个标签页时取正在显示的那个；显示的不是磁盘上的文件夹（“主页”“此电脑”、搜索结果）时，取再往前的一个窗口。
-- 点进搜索框，或在对话框里双击 Ctrl，就能开始输入；什么都不输入时依次列出：资源管理器里开着的文件夹、刚复制的路径（在资源管理器里复制的文件或文件夹、“复制文件地址”、聊天里发来的路径都行）、固定的文件夹、最近用过的文件夹（包括在别的程序里打开、保存过文件的地方）；对话框已经在的那个文件夹标着“当前位置”。右键一个文件夹选“固定到列表”，常去的地方就一直排在前面。“另存为”里文件夹排在前面，“选择文件夹”里只列文件夹。`Ctrl+Shift+C` 复制选中那一行的路径，`Esc` 回到对话框。
+- 搜索框右边是文件管理器正在显示的文件夹，点一下或按 `Ctrl+G` 就转过去，和 Listary 的同名快捷键一样：先在文件管理器里找到要存的地方，再回到程序里“另存为”，按一下就到。资源管理器、Total Commander 和 Directory Opus 都认，取最近用过的那个窗口。Windows 11 开着几个标签页时取正在显示的那个，Total Commander 取有焦点的那一栏；显示的不是磁盘上的文件夹（“主页”“此电脑”、搜索结果、压缩包里）时，取再往前的一个窗口。
+- 点进搜索框，或在对话框里双击 Ctrl，就能开始输入；什么都不输入时依次列出：文件管理器里开着的文件夹（右边标着是哪个文件管理器的）、刚复制的路径（在资源管理器里复制的文件或文件夹、“复制文件地址”、聊天里发来的路径都行）、固定的文件夹、最近用过的文件夹（包括在别的程序里打开、保存过文件的地方）；对话框已经在的那个文件夹标着“当前位置”。右键一个文件夹选“固定到列表”，常去的地方就一直排在前面。“另存为”里文件夹排在前面，“选择文件夹”里只列文件夹。`Ctrl+Shift+C` 复制选中那一行的路径，`Esc` 回到对话框。
 - 也可以直接输入路径（`D:\`、`D:\项目\`，带引号的、`%USERPROFILE%` 这样的也行）：列出那个文件夹里有什么，再输入名字的一部分（拼音也行）筛选；`Tab` 进入选中的文件夹，`Shift+Tab` 回到上一级，回车转过去。
-- 想让对话框自己转过去，就在设置里打开“对话框自动转到资源管理器的文件夹”（默认关）：对话框一出现就转到资源管理器正在显示的文件夹；对话框开着时去资源管理器换了文件夹，切回来也跟着转，只是过去看一眼就不动。转过去以后，搜索框右边会出现“回到…”，点一下回到程序原来记着的位置。
+- 想让对话框自己转过去，就在设置里打开“对话框自动转到文件管理器的文件夹”（默认关）：对话框一出现就转到文件管理器正在显示的文件夹；对话框开着时去文件管理器换了文件夹，切回来也跟着转，只是过去看一眼就不动。转过去以后，搜索框右边会出现“回到…”，点一下回到程序原来记着的位置。
 - 搜索框最右边的“更多”按钮可以固定对话框当前的文件夹、这次不显示搜索框，或者在某个程序里不再显示（在设置里可以恢复）。
 - 搜索框放在对话框下面；下面放不下搜索框和列表，就放到右边或左边；哪边都放不下，对话框一出现就调矮一点（矮到一定程度还放不下就往上挪），列表不会盖住对话框。设置里也可以固定放在下面、左边或右边，那边放不下时对话框调小一点或挪开。Windows 按程序记住对话框的大小，下次弹出来就是合适的大小。对话框开着时自己拖动、拖大，不会被改回去。
 - 已经输入的文件名保留，键盘焦点也回到原处。搜索框不抢对话框的焦点，跟着对话框移动，切到别的窗口就隐藏；只有这类对话框在最前面时才占用 `Ctrl+G`。两样都能在设置里分别关掉；同时开着 Listary 的话两边都会响应，关掉其中一个就好。
+- 平时用 Total Commander 或 Directory Opus 的话，在设置 → 打开 Win顺 →“用哪个文件管理器打开文件夹”里选它：从 Win顺 打开文件夹、打开文件所在的位置，就在它里面开（Total Commander 开新标签、光标停在那个文件上；Directory Opus 已经有标签显示那个文件夹就用那个，并选中文件）。没装的不列出来。
 
 <p align="center">
   <img src="docs/images/dialog.png" width="600" alt="Win顺 对话框旁的搜索框：在“打开文件夹”对话框下面输入 winshun，列出同名的文件夹">
@@ -153,7 +154,7 @@
 | `Tab` / `Shift+Tab` | 切换搜索范围（全部 / 文件 / 内容） |
 | 菜单键 / `Shift+F10` / 右键 | 更多操作 |
 | `Esc` | 关闭（选中了多项时先取消选择） |
-| `Ctrl+G`（在“打开”“另存为”对话框里） | 转到资源管理器正在显示的文件夹 |
+| `Ctrl+G`（在“打开”“另存为”对话框里） | 转到文件管理器（资源管理器、Total Commander、Directory Opus）正在显示的文件夹 |
 | 双击 `Ctrl`（在“打开”“另存为”对话框里） | 到对话框旁的搜索框里输入 |
 | `Ctrl+Enter`（在“打开”对话框旁的搜索框里） | 转到选中的文件并直接打开 |
 | `Tab` / `Shift+Tab`（在对话框旁的搜索框里） | 进入选中的文件夹 / 回到上一级 |
@@ -172,7 +173,7 @@
 
 托盘图标右键 → **设置…**，修改后自动保存、立即生效：
 
-- **打开 Win顺**：双击 Ctrl 开关、玩游戏时或全屏时不响应、不响应双击 Ctrl 的程序、另设一个组合键、对话框里的 `Ctrl+G` 和搜索框、搜索框的位置、对话框自动转过去、不显示搜索框的程序、开机自动启动、是否记住打开过的项目、清除最近使用记录。
+- **打开 Win顺**：双击 Ctrl 开关、玩游戏时或全屏时不响应、不响应双击 Ctrl 的程序、另设一个组合键、用哪个文件管理器打开文件夹、对话框里的 `Ctrl+G` 和搜索框、搜索框的位置、对话框自动转过去、不显示搜索框的程序、开机自动启动、是否记住打开过的项目、清除最近使用记录。
 - **外观**：主题（跟随系统 / 浅色 / 深色）、透明效果（关 / 开；默认内存超过 16 GB 时开）、界面语言（跟随系统 / 简体中文 / English），切换即时生效。
 - **搜索范围**：不搜索的文件夹、任何位置都跳过的文件夹名称（如 `node_modules`）、是否包括 U 盘和移动硬盘。
 - **文件内容搜索**：是否搜索文档（Word、Excel、PowerPoint、PDF、WPS）、要搜索的纯文本类型、各类文件的大小上限、是否也搜系统和程序文件夹、是否建立内容索引。
@@ -310,12 +311,13 @@ The interface comes in **English and Simplified Chinese**. It follows the Window
 #### 📂 Open and Save dialogs: search, and you are there
 
 - When a program shows an Open or Save As dialog (uploading a file in a browser, saving, picking a folder), a WinShun search bar sits right under it: type the name of a folder or file (pinyin works too), press Enter, and the dialog goes there. For a file it goes to the file's folder and fills in the name, so one more Enter opens or uploads it; in an Open dialog `Ctrl+Enter` opens it at once. When the dialog asks for a file type (an upload box that takes pictures, say), files of that type come first.
-- On the right of the bar is the folder shown in File Explorer: click it or press `Ctrl+G` to go there, like Listary's shortcut of the same name. With several Explorer tabs open (Windows 11), the tab on top counts; a window that shows no folder on disk (Home, This PC, a search) is passed over for the one before it.
-- Click the bar, or press Ctrl twice in the dialog, to type. With nothing typed it offers, in this order: the folders open in Explorer, a path you just copied (a file or folder copied in Explorer, Explorer's “Copy as path”, a path sent in a chat), the folders pinned here, and the ones used lately (including where other programs opened or saved files); the folder the dialog already shows is marked “Current location”. Right-click a folder → Pin to the list, and the places you go to often stay on top. In Save As dialogs folders come first; folder pickers list folders only. `Ctrl+Shift+C` copies the selected row's path, `Esc` goes back to the dialog.
+- On the right of the bar is the folder shown in your file manager: click it or press `Ctrl+G` to go there, like Listary's shortcut of the same name. File Explorer, Total Commander and Directory Opus all count; the window you used last wins. With several Explorer tabs open (Windows 11), the tab on top counts, and in Total Commander the panel with the focus; a window that shows no folder on disk (Home, This PC, a search, inside an archive) is passed over for the one before it.
+- Click the bar, or press Ctrl twice in the dialog, to type. With nothing typed it offers, in this order: the folders open in file managers (each marked with which one), a path you just copied (a file or folder copied in Explorer, Explorer's “Copy as path”, a path sent in a chat), the folders pinned here, and the ones used lately (including where other programs opened or saved files); the folder the dialog already shows is marked “Current location”. Right-click a folder → Pin to the list, and the places you go to often stay on top. In Save As dialogs folders come first; folder pickers list folders only. `Ctrl+Shift+C` copies the selected row's path, `Esc` goes back to the dialog.
 - You can also type a path (`D:\`, `D:\Projects\`; in quotes or with `%USERPROFILE%` too): the list shows what that folder holds, and part of a name (pinyin too) narrows it; `Tab` goes into the selected folder, `Shift+Tab` up one, Enter goes there.
-- To have dialogs go there by themselves, turn on “File dialogs go to Explorer's folder by themselves” in the settings (off by default): a dialog that comes up goes to the folder File Explorer shows, and if you go to another folder in Explorer while the dialog is open, it follows when you switch back (just looking changes nothing). The bar then offers “Back to …”, the place the program had remembered.
+- To have dialogs go there by themselves, turn on “File dialogs go to the file manager's folder by themselves” in the settings (off by default): a dialog that comes up goes to the folder your file manager shows, and if you go to another folder there while the dialog is open, it follows when you switch back (just looking changes nothing). The bar then offers “Back to …”, the place the program had remembered.
 - The “More” button at the right end of the bar pins the dialog's current folder, hides the bar this time, or keeps it away from a program for good (undone in the settings).
 - The file name you typed stays, and so does the keyboard focus. The bar never takes the focus from the dialog, follows it around and hides when you switch away; `Ctrl+G` is taken only while such a dialog is in front. Both can be turned off in the settings; if Listary runs too, both answer, so turn off one of them.
+- If you use Total Commander or Directory Opus, pick it under Settings → Open WinShun → “File manager for opening folders”: folders and file locations you open from WinShun then open there (Total Commander in a new tab with the cursor on the file; Directory Opus in the tab that already shows the folder, if any, with the file selected). Only the ones installed are listed.
 
 #### 📋 Clipboard history (can replace Win+V)
 

@@ -214,8 +214,8 @@ Window {
             Rectangle {
                 id: chip
 
-                // After the dialog went to Explorer's folder by itself: back
-                // to where it was; else to Explorer's folder.
+                // After the dialog went to the file manager's folder by
+                // itself: back to where it was; else to that folder.
                 readonly property bool toOrigin: window.bar.originName.length > 0
 
                 visible: !notFound.visible && (toOrigin || window.bar.explorerName.length > 0)
@@ -274,7 +274,8 @@ Window {
                 }
 
                 Accessible.role: Accessible.Button
-                Accessible.name: toOrigin ? chipText.text : qsTr("转到资源管理器中的“%1”").arg(window.bar.explorerName)
+                Accessible.name: toOrigin ? chipText.text
+                                          : qsTr("转到%1中的“%2”").arg(window.bar.explorerSource).arg(window.bar.explorerName)
                 Accessible.onPressAction: press()
 
                 MouseArea {

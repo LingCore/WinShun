@@ -184,8 +184,8 @@
         <translation>Back to “%1”</translation>
     </message>
     <message>
-        <source>转到资源管理器中的“%1”</source>
-        <translation>Go to “%1” shown in File Explorer</translation>
+        <source>转到%1中的“%2”</source>
+        <translation>Go to “%2” shown in %1</translation>
     </message>
     <message>
         <source>更多</source>
@@ -650,22 +650,6 @@
         <translation>Clipboard</translation>
     </message>
     <message>
-        <source>Ctrl+G 转到资源管理器的文件夹</source>
-        <translation>Ctrl+G goes to the Explorer folder</translation>
-    </message>
-    <message>
-        <source>在“打开”“另存为”等对话框里按 Ctrl+G，对话框直接转到最近用过的资源管理器窗口正在显示的文件夹</source>
-        <translation>In an Open or Save As dialog, press Ctrl+G to go to the folder shown in the File Explorer window you used last</translation>
-    </message>
-    <message>
-        <source>对话框自动转到资源管理器的文件夹</source>
-        <translation>File dialogs go to Explorer’s folder by themselves</translation>
-    </message>
-    <message>
-        <source>“打开”“另存为”等对话框出现时，自动转到资源管理器正在显示的文件夹；对话框开着时去资源管理器换了文件夹，切回来也跟着转过去，只是看一眼就不动。转过去以后，搜索框上有按钮回到原来的位置</source>
-        <translation>When an Open or Save dialog comes up, it goes to the folder File Explorer shows; go to another folder in Explorer while the dialog is open and it follows when you switch back (just looking changes nothing). The search bar then has a button to go back to where the dialog was</translation>
-    </message>
-    <message>
         <source>不在这些程序的对话框下显示搜索框</source>
         <translation>No search bar under these programs’ dialogs</translation>
     </message>
@@ -804,6 +788,34 @@
     <message>
         <source>现在重启资源管理器</source>
         <translation>Restart File Explorer now</translation>
+    </message>
+    <message>
+        <source>资源管理器</source>
+        <translation>File Explorer</translation>
+    </message>
+    <message>
+        <source>用哪个文件管理器打开文件夹</source>
+        <translation>File manager for opening folders</translation>
+    </message>
+    <message>
+        <source>在 Win顺 里打开文件夹、打开文件所在的位置时用它；没能打开就用资源管理器</source>
+        <translation>Used when you open a folder or a file’s location from Win顺; File Explorer steps in if it doesn’t start</translation>
+    </message>
+    <message>
+        <source>Ctrl+G 转到文件管理器的文件夹</source>
+        <translation>Ctrl+G goes to the file manager’s folder</translation>
+    </message>
+    <message>
+        <source>在“打开”“另存为”等对话框里按 Ctrl+G，对话框直接转到最近用过的文件管理器窗口正在显示的文件夹：资源管理器、Total Commander 和 Directory Opus 都行</source>
+        <translation>In an Open or Save As dialog, press Ctrl+G to go to the folder shown in the file manager window you used last: File Explorer, Total Commander or Directory Opus</translation>
+    </message>
+    <message>
+        <source>对话框自动转到文件管理器的文件夹</source>
+        <translation>File dialogs go to the file manager’s folder by themselves</translation>
+    </message>
+    <message>
+        <source>“打开”“另存为”等对话框出现时，自动转到文件管理器正在显示的文件夹；对话框开着时去文件管理器换了文件夹，切回来也跟着转过去，只是看一眼就不动。转过去以后，搜索框上有按钮回到原来的位置</source>
+        <translation>When an Open or Save dialog comes up, it goes to the folder your file manager shows; go to another folder there while the dialog is open and it follows when you switch back (just looking changes nothing). The search bar then has a button to go back to where the dialog was</translation>
     </message>
     <message>
         <source>任务栏会闪一下，打开的文件夹窗口会关闭</source>
