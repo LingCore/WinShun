@@ -3,20 +3,29 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import WinShun
 
-// The launcher's clipboard page (Win+V): a search field, the categories and
-// groups, the history on the left and the current entry in full on the
-// right, hints below. Keyboard first, like the search page: Enter pastes into
-// the program that was in front, Shift+Enter as plain text, Alt+1…9 the
-// first nine rows, Ctrl/Shift pick several, Tab switches categories.
+// The clipboard window's page (Win+V, ClipboardWindow.qml): a search field,
+// the categories and groups, the history, hints below; the current entry in
+// full on the right when asked for (a row's preview button, Alt+P). A click
+// on a row pastes it into the program that was in front, as Enter does;
+// Shift+Enter as plain text, Alt+1…9 the first nine rows, Ctrl/Shift pick
+// several, Tab switches categories. Opened from a field of Win顺's own (a
+// search box, which it drops down under), it pastes into that field, and Esc
+// goes back to it (Clipboard).
 Item {
     id: page
 
     required property Clipboard clipboard
     required property WindowFrame frame
-    property int rows: 8 // the list shows this many (Main.qml: what fits below)
+    property int rows: 8 // the list shows this many (ClipboardWindow.qml: what fits below)
+    property int listWidth: width // the list's part; the preview takes the rest
+    property bool previewOpen: false
+
+    signal previewOpening() // just before: the window sizes it (ClipboardWindow.qml)
 
     readonly property int rowHeight: 60
-    readonly property int listWidth: 430
+    // Opened from a field of Win顺's own: Enter pastes there, Esc goes back.
+    readonly property bool intoField: clipboard.fieldName.length > 0
+    readonly property string pasteLabel: intoField ? qsTr("粘贴到%1").arg(clipboard.fieldName) : qsTr("粘贴")
     // Everything but the rows.
     readonly property int chromeHeight: header.height + tabs.implicitHeight + 1 + 8 + footer.implicitHeight
 
@@ -69,6 +78,19 @@ Item {
     // What the keys act on: the picked rows (-1) if any, else the current one.
     function targetRow() {
         return selectedCount > 0 ? -1 : list.currentIndex
+    }
+
+    // The preview, of the row asked about; asked about the row it shows (or
+    // with nothing to show), it closes.
+    function togglePreview(index) {
+        if (previewOpen && (index === list.currentIndex || index < 0 || index >= list.count)) {
+            previewOpen = false
+        } else if (index >= 0 && index < list.count) {
+            list.currentIndex = index
+            if (!previewOpen)
+                previewOpening()
+            previewOpen = true
+        }
     }
 
     readonly property ContextMenu contextMenu: menuLoader.item as ContextMenu
@@ -150,6 +172,11 @@ Item {
             event.accepted = true
             return
         }
+        if (alt && !ctrl && event.key === Qt.Key_P) {
+            togglePreview(list.currentIndex)
+            event.accepted = true
+            return
+        }
         switch (event.key) {
         case Qt.Key_Down: shift ? extendSelection(1) : moveSelection(1); break
         case Qt.Key_Up: shift ? extendSelection(-1) : moveSelection(-1); break
@@ -165,6 +192,8 @@ Item {
         case Qt.Key_Escape:
             if (selectedCount > 0)
                 clipboard.clearSelection()
+            else if (previewOpen)
+                previewOpen = false
             else
                 clipboard.dismiss()
             break
@@ -216,6 +245,7 @@ Item {
         function onShown() {
             input.text = ""
             page.selectionAnchor = -1
+            page.previewOpen = false
             page.selectFirst()
             page.focusSearch()
         }
@@ -345,7 +375,7 @@ Item {
 
             Item {
                 id: listArea
-                width: list.count > 0 ? page.listWidth : parent.width
+                width: page.previewOpen ? page.listWidth : parent.width
                 height: parent.height
 
                 ListView {
@@ -369,6 +399,7 @@ Item {
                         width: list.width
                         height: page.rowHeight
                         hint: page.altHeld && index < 9 ? index + 1 : 0
+                        previewing: page.previewOpen && clipRow.current
                         // On whole device pixels wherever the list has scrolled
                         // to (see Main.qml).
                         transform: Translate {
@@ -381,17 +412,16 @@ Item {
                         }
                         onClicked: (index, modifiers) => {
                             const ctrl = (modifiers & Qt.ControlModifier) !== 0
-                            if (modifiers & Qt.ShiftModifier)
+                            if (modifiers & Qt.ShiftModifier) {
                                 page.selectTo(index, ctrl)
-                            else if (ctrl)
+                            } else if (ctrl) {
                                 page.toggleRow(index)
-                            else
+                            } else {
                                 list.currentIndex = index
+                                page.clipboard.paste(index, false) // a picked row pastes all the picked ones
+                            }
                         }
-                        onDoubleClicked: (index) => {
-                            list.currentIndex = index
-                            page.clipboard.paste(index, false)
-                        }
+                        onPreviewRequested: (index) => page.togglePreview(index)
                         onActionRequested: (index, action) => {
                             list.currentIndex = index
                             page.clipboard.trigger(index, action)
@@ -422,12 +452,13 @@ Item {
                         width: parent.width
                         horizontalAlignment: Text.AlignHCenter
                         text: parent.off ? qsTr("剪贴板历史没有打开")
-                            : parent.searched ? qsTr("没有找到“%1”").arg(page.clipboard.query.trim())
+                            // On one line: with a line break, it would spread over the page.
+                            : parent.searched ? qsTr("没有找到“%1”").arg(page.clipboard.query.trim().replace(/\s+/g, " "))
                             : parent.none ? qsTr("还没有记录")
                             : (parent.category.group ?? 0) > 0 ? qsTr("“%1”里还没有内容").arg(parent.category.title)
                             : qsTr("这一类还没有内容")
                         textFormat: Text.PlainText
-                        elide: Text.ElideRight
+                        elide: Text.ElideMiddle // a long query keeps its end and the quotes
                         color: Theme.subtext
                         font.pixelSize: Theme.fontTitle
                     }
@@ -460,7 +491,7 @@ Item {
             }
 
             Rectangle {
-                visible: list.count > 0
+                visible: page.previewOpen
                 x: listArea.width
                 width: 1
                 height: parent.height
@@ -468,7 +499,7 @@ Item {
             }
 
             ClipPreview {
-                visible: list.count > 0
+                visible: page.previewOpen
                 onCopyRequested: (text, remember) => page.clipboard.copyText(text, remember)
                 x: listArea.width + 1
                 width: parent.width - x
@@ -499,10 +530,11 @@ Item {
             }
 
             Text {
+                id: statusLabel
                 anchors.left: parent.left
                 anchors.leftMargin: 18
-                anchors.right: hints.left
-                anchors.rightMargin: 12
+                anchors.right: hints.shown ? hints.left : parent.right
+                anchors.rightMargin: hints.shown ? 12 : 16
                 anchors.verticalCenter: parent.verticalCenter
                 visible: page.selectedCount === 0
                 text: page.clipboard.statusText
@@ -519,10 +551,10 @@ Item {
                 visible: page.selectedCount > 0
                 spacing: 8
 
-                Text {
+                Text { // the order they go in: on the rows
                     anchors.verticalCenter: parent.verticalCenter
                     text: page.selectedCount === 1 ? qsTr("已选 1 条，Esc 取消选择")
-                                                   : qsTr("已选 %Ln 条，按选的顺序合在一起，用", "", page.selectedCount)
+                                                   : qsTr("已选 %Ln 条，合在一起，用", "", page.selectedCount)
                     color: Theme.subtext
                     font.pixelSize: Theme.fontBody
                 }
@@ -568,8 +600,18 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 14
 
-                KeyHint { keys: "Enter"; label: qsTr("粘贴") }
-                KeyHint { keys: "Shift+Enter"; label: qsTr("纯文本") }
+                // Room for them all, unless several picked (and what they are
+                // joined with) take it.
+                readonly property bool roomy: page.selectedCount < 2 || page.previewOpen
+                // Out of the way of a message too long to share the line with
+                // them ("已删除 1 条，按 Ctrl+Z 撤销"), while it shows.
+                readonly property bool shown: page.selectedCount > 0
+                                              || statusLabel.implicitWidth <= footer.width - 18 - 12 - 16 - implicitWidth
+                opacity: shown ? 1 : 0 // still laid out: its width tells when it fits again
+
+                KeyHint { keys: "Enter"; label: page.pasteLabel }
+                KeyHint { keys: "Shift+Enter"; label: qsTr("纯文本"); visible: !page.intoField && hints.roomy } // text there either way
+                KeyHint { keys: "Esc"; label: qsTr("返回"); visible: page.intoField && hints.roomy }
                 KeyHint { keys: "Tab"; label: qsTr("分类"); visible: page.selectedCount < 2 }
             }
         }

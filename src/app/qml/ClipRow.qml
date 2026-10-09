@@ -3,9 +3,10 @@ import WinShun
 
 // One clipboard history entry: what it is (a picture's thumbnail, a file's
 // icon, a colour's swatch, or a sign for text and links), its first line
-// (or where the query matched), where it came from and when. Picked rows
-// show the order they will be pasted in; the current and the hovered row
-// show buttons: paste, pin, delete.
+// (or where the query matched), where it came from and when. A click
+// pastes it (ClipboardPage.qml). Picked rows show the order they will be
+// pasted in; the current and the hovered row show buttons: preview, pin,
+// delete.
 Item {
     id: row
 
@@ -22,13 +23,14 @@ Item {
     required property bool pinned
     required property bool missing
     property int hint: 0 // Alt held: the number that pastes this row (Alt+1...), 0 for none
+    property bool previewing: false // its preview is open beside the list
 
     readonly property bool current: ListView.isCurrentItem
     readonly property int selectedCount: ListView.view ? ListView.view.model.selectedCount : 0
     readonly property bool showActions: (current || area.containsMouse) && hint === 0
 
     signal clicked(int index, int modifiers)
-    signal doubleClicked(int index)
+    signal previewRequested(int index)
     signal menuRequested(int index, point globalPos)
     signal actionRequested(int index, int action)
 
@@ -248,10 +250,6 @@ Item {
             else
                 row.clicked(row.index, mouse.modifiers)
         }
-        onDoubleClicked: (mouse) => {
-            if (mouse.button === Qt.LeftButton && !(mouse.modifiers & (Qt.ControlModifier | Qt.ShiftModifier)))
-                row.doubleClicked(row.index)
-        }
 
         Row {
             id: actions
@@ -262,11 +260,12 @@ Item {
             spacing: 2
 
             RowAction {
-                id: pasteAction
-                glyph: "" // Paste
-                tip: qsTr("粘贴")
-                tipShortcut: "Enter"
-                onClicked: row.actionRequested(row.index, Clipboard.Paste)
+                id: previewAction
+                glyph: "" // View
+                checked: row.previewing
+                tip: row.previewing ? qsTr("关闭预览") : qsTr("预览")
+                tipShortcut: "Alt+P"
+                onClicked: row.previewRequested(row.index)
             }
             RowAction {
                 id: pinAction
@@ -286,7 +285,7 @@ Item {
     }
 
     HoverTip {
-        readonly property RowAction hovered: pasteAction.tipWanted ? pasteAction
+        readonly property RowAction hovered: previewAction.tipWanted ? previewAction
                                            : pinAction.tipWanted ? pinAction
                                            : removeAction.tipWanted ? removeAction : null
         target: hovered

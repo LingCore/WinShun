@@ -5,6 +5,8 @@ qt_add_executable(WinShun WIN32
     FileIconProvider.cpp FileIconProvider.h
     Migration.cpp Migration.h
     Settings.cpp Settings.h
+    TextField.cpp TextField.h
+    WindowLogo.cpp WindowLogo.h
     platform/ClipboardWatcher.cpp platform/ClipboardWatcher.h
     platform/ComWorker.cpp platform/ComWorker.h
     platform/DialogJump.cpp platform/DialogJump.h
@@ -17,6 +19,7 @@ qt_add_executable(WinShun WIN32
     platform/PeekingLogo.cpp platform/PeekingLogo.h
     platform/Shell.cpp platform/Shell.h
     platform/ShortcutCapture.cpp platform/ShortcutCapture.h
+    platform/TextCaret.cpp platform/TextCaret.h
     platform/VolumeNotifier.cpp platform/VolumeNotifier.h
     platform/WinV.cpp platform/WinV.h
     platform/WindowEffects.cpp platform/WindowEffects.h
@@ -31,6 +34,7 @@ set(qml_files
     qml/SearchBar.qml
     qml/ScopeTabs.qml
     qml/ResultRow.qml
+    qml/ClipboardWindow.qml
     qml/ClipboardPage.qml
     qml/ClipTabs.qml
     qml/ClipRow.qml
@@ -145,7 +149,7 @@ target_include_directories(WinShun PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(WinShun PRIVATE
     wscore
     Qt6::Gui Qt6::Qml Qt6::Quick
-    comctl32 dwmapi shell32 shlwapi ole32 user32 uxtheme version winhttp winmm
+    comctl32 dwmapi oleacc oleaut32 shcore shell32 shlwapi ole32 user32 uxtheme version winhttp winmm
     mfplat mfreadwrite mfuuid delayimp)
 # The execution level (requireAdministrator) comes from app.manifest alone; the
 # linker's own default (asInvoker) would conflict with it. Media Foundation is

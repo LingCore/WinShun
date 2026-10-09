@@ -83,9 +83,9 @@ void CALLBACK DialogJump::onLocation(HWINEVENTHOOK, DWORD event, HWND hwnd, LONG
 void DialogJump::follow(HWND foreground)
 {
     m_recheck.stop();
-    if (foreground && foreground == m_companion) {
-        // The bar: the dialog is still the one. Not back from Explorer then,
-        // whatever is picked there: no going by itself after that.
+    if (foreground && std::ranges::find(m_companions, foreground) != m_companions.end()) {
+        // The bar, the clipboard: the dialog is still the one. Not back from
+        // Explorer then, whatever is picked there: no going by itself after that.
         m_explorerInFront = false;
         return;
     }
@@ -198,7 +198,7 @@ void DialogJump::jump()
     const HWND dialog = m_dialog;
     if (!dialog || !::IsWindow(dialog))
         return;
-    if (m_companion && ::GetForegroundWindow() == m_companion)
+    if (std::ranges::find(m_companions, ::GetForegroundWindow()) != m_companions.end())
         ::SetForegroundWindow(dialog); // ours is in front, so it may hand that on
     m_worker.post([dialog] {
         const std::vector<std::wstring> folders = filedialog::explorerFolders();

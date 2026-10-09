@@ -2,6 +2,7 @@
 
 #include "ColorText.h"
 #include "FileIconProvider.h"
+#include "TextField.h"
 #include "platform/Paster.h"
 #include "platform/Shell.h"
 #include "platform/WindowEffects.h"
@@ -12,6 +13,7 @@
 #include <QCoreApplication>
 #include <QGuiApplication>
 #include <QLocale>
+#include <QQuickWindow>
 #include <QScreen>
 #include <QStyleHints>
 #include <QUrl>
@@ -30,6 +32,9 @@ constexpr qint64 kFocusWaitMs = 800;
 // In front is not ready yet: the program still has to put its focus back
 // (on its text field), or the paste keys go to its window and are lost.
 constexpr qint64 kSettleMs = 60;
+// The search box by a file dialog shows again only once the dialog is back
+// in front.
+constexpr qint64 kFieldWaitMs = 1000;
 constexpr qsizetype kPreviewChars = 20000; // a preview shows no more; pasting takes all of it
 constexpr int kPreviewFiles = 50;
 
@@ -64,7 +69,7 @@ Clipboard::Clipboard(ClipStore* store, ClipboardWatcher* watcher, QObject* paren
     });
     m_keysTimer.setInterval(10ms);
     connect(&m_keysTimer, &QTimer::timeout, this, [this] {
-        if (m_intoTarget && paste::modifiersDown() && m_pasteClock.elapsed() < kModifierWaitMs)
+        if (m_into == Into::Program && paste::modifiersDown() && m_pasteClock.elapsed() < kModifierWaitMs)
             return;
         m_keysTimer.stop();
         // On the clipboard first (the watcher's thread), then into the window.
@@ -86,6 +91,12 @@ Clipboard::Clipboard(ClipStore* store, ClipboardWatcher* watcher, QObject* paren
         else if (m_window && m_window->isVisible())
             flash(tr("已复制。那个窗口没有回到前面，请自己按 Ctrl+V 粘贴"));
     });
+    m_returnTimer.setInterval(10ms);
+    connect(&m_returnTimer, &QTimer::timeout, this, [this] {
+        if (m_returning.item && !m_returning.item->hasActiveFocus() && m_returnClock.elapsed() < kFieldWaitMs)
+            return;
+        fillField();
+    });
     refresh();
 }
 
@@ -95,6 +106,24 @@ void Clipboard::setActive(bool active)
         return;
     m_active = active;
     emit activeChanged();
+}
+
+void Clipboard::setField(QQuickItem* field, const QString& name)
+{
+    const bool had = m_field.item;
+    m_field = {};
+    if (field) {
+        // Read through the input method queries, as a text field answers
+        // them: block-relative positions, which is what textfield::select
+        // takes back (the whole text, in a TextInput).
+        m_field.item = field;
+        m_field.name = name;
+        m_field.cursor = field->inputMethodQuery(Qt::ImCursorPosition).toInt();
+        m_field.anchor = field->inputMethodQuery(Qt::ImAnchorPosition).toInt();
+        m_field.oneLine = textfield::isOneLine(field);
+    }
+    if (had || field)
+        emit fieldChanged();
 }
 
 void Clipboard::setState(bool recording, bool paused, const QString& shortcut)
@@ -258,6 +287,7 @@ void Clipboard::handleHidden()
 {
     m_model.clearSelection();
     dropUndo();
+    setField(nullptr, {}); // a paste on its way back to it has its own
 }
 
 void Clipboard::retranslate()
@@ -362,11 +392,11 @@ ClipWrite Clipboard::writeFor(const std::vector<const Clip*>& clips, bool plainT
     return write;
 }
 
-void Clipboard::startPaste(ClipWrite write, bool intoTarget, std::vector<qint64> touched, QString done)
+void Clipboard::startPaste(ClipWrite write, Into into, std::vector<qint64> touched, QString done)
 {
     m_pasting = true;
     m_write = std::move(write);
-    m_intoTarget = intoTarget;
+    m_into = into;
     m_touched = std::move(touched);
     m_doneMessage = std::move(done);
     m_pasteClock.start();
@@ -375,7 +405,10 @@ void Clipboard::startPaste(ClipWrite write, bool intoTarget, std::vector<qint64>
 
 void Clipboard::onWritten(bool ok)
 {
-    if (!ok) {
+    // A field of Win顺's own gets its text from here, not through the
+    // clipboard (which is written only to hold it after, as any paste
+    // leaves it): no reason to stop.
+    if (!ok && m_into != Into::Field) {
         m_pasting = false;
         flash(tr("剪贴板正被别的程序占用，请再试一次"));
         return;
@@ -389,9 +422,13 @@ void Clipboard::onWritten(bool ok)
             m_store->touch(*it, time + (it - m_touched.rbegin()) + 1);
         historyChanged();
     }
-    if (!m_intoTarget) {
+    if (m_into == Into::Clipboard) {
         m_pasting = false;
         flash(m_doneMessage);
+        return;
+    }
+    if (m_into == Into::Field) {
+        returnToField(std::exchange(m_fieldText, {})); // m_pasting until it is in
         return;
     }
     m_pasteWindow = paste::usableTarget(m_target);
@@ -400,10 +437,56 @@ void Clipboard::onWritten(bool ok)
         flash(tr("已复制。没有找到要粘贴进去的窗口，可以自己按 Ctrl+V"));
         return;
     }
-    paste::activate(m_pasteWindow); // the launcher loses the focus and closes (App)
+    paste::activate(m_pasteWindow); // the clipboard window loses the focus and goes (App)
     m_pasteClock.restart();
     m_frontClock.invalidate();
     m_focusTimer.start();
+}
+
+void Clipboard::returnToField(QString text)
+{
+    // m_field stays as it is until the window goes or opens again: the
+    // footer goes on saying where Enter pastes until it is gone.
+    m_returning = m_field;
+    m_returnText = std::move(text);
+    if (!m_returning.item) { // gone with its window (the settings, closed)
+        m_pasting = false;
+        emit dismissRequested();
+        return;
+    }
+    m_returnClock.start();
+    emit fieldRequested(m_returning.item);
+    // Its window takes the keyboard back (App): the text goes in once the
+    // field has it.
+    if (m_returning.item && m_returning.item->hasActiveFocus())
+        fillField();
+    else
+        m_returnTimer.start();
+}
+
+void Clipboard::fillField()
+{
+    m_returnTimer.stop();
+    m_pasting = false;
+    const Field field = std::exchange(m_returning, {});
+    const QString text = std::exchange(m_returnText, {});
+    QQuickItem* item = field.item;
+    // Not back in front (its file dialog is gone): nothing goes into a field
+    // nobody sees. The clipboard has it.
+    const bool shown = item && item->isVisible() && item->window() && item->window()->isVisible();
+    if (!item || (!item->hasActiveFocus() && !shown)) {
+        if (!m_window || !m_window->isVisible())
+            return;
+        if (text.isEmpty())
+            emit dismissRequested();
+        else
+            flash(tr("已复制。没有找到要粘贴进去的窗口，可以自己按 Ctrl+V"));
+        return;
+    }
+    // Its caret and selection back first (the window took the focus, and with
+    // it the selection), then the text over the selection.
+    textfield::select(item, field.anchor, field.cursor);
+    textfield::type(item, text);
 }
 
 void Clipboard::paste(int row, bool plainText)
@@ -413,18 +496,34 @@ void Clipboard::paste(int row, bool plainText)
     const std::vector<const Clip*> clips = targets(row);
     if (clips.empty())
         return;
-    QString problem;
-    ClipWrite write = writeFor(clips, plainText, &problem);
-    if (write.empty()) {
-        flash(problem);
-        return;
-    }
     std::vector<qint64> touched;
     if (clips.size() > 1) {
         for (const Clip* c : clips)
             touched.push_back(c->id);
     }
-    startPaste(std::move(write), true, std::move(touched), {});
+    QString problem;
+    if (m_field.item) {
+        // A field of Win顺's own takes text, a file list as its paths (gone
+        // or not); the clipboard holds the entry after, as any paste leaves it.
+        ClipWrite write = writeFor(clips, true, &problem);
+        m_fieldText = m_field.oneLine ? textfield::oneLine(write.text) : write.text;
+        if (m_fieldText.isEmpty()) {
+            flash(tr("%1里只能粘贴文字").arg(m_field.name));
+            return;
+        }
+        if (!plainText) {
+            if (ClipWrite formatted = writeFor(clips, false, &problem); !formatted.empty())
+                write = std::move(formatted);
+        }
+        startPaste(std::move(write), Into::Field, std::move(touched), {});
+        return;
+    }
+    ClipWrite write = writeFor(clips, plainText, &problem);
+    if (write.empty()) {
+        flash(problem);
+        return;
+    }
+    startPaste(std::move(write), Into::Program, std::move(touched), {});
 }
 
 void Clipboard::quickPaste(int number, bool plainText)
@@ -455,7 +554,7 @@ void Clipboard::copy(int row)
     }
     const QString done = clips.size() > 1 ? tr("已把 %Ln 条合在一起复制", nullptr, static_cast<int>(clips.size()))
                                           : tr("已复制");
-    startPaste(std::move(write), false, std::move(touched), done);
+    startPaste(std::move(write), Into::Clipboard, std::move(touched), done);
 }
 
 void Clipboard::copyText(const QString& text, bool remember)
@@ -473,7 +572,7 @@ void Clipboard::copyText(const QString& text, bool remember)
         write.id = m_store->add(capture, now());
         historyChanged();
     }
-    startPaste(std::move(write), false, {}, tr("已复制 %1").arg(text));
+    startPaste(std::move(write), Into::Clipboard, {}, tr("已复制 %1").arg(text));
 }
 
 void Clipboard::togglePin(int row)
@@ -601,7 +700,10 @@ void Clipboard::clearSelection()
 
 void Clipboard::dismiss()
 {
-    emit dismissRequested();
+    if (m_field.item && !m_pasting && !m_returnTimer.isActive())
+        returnToField({});
+    else
+        emit dismissRequested();
 }
 
 void Clipboard::turnOn()
@@ -706,8 +808,11 @@ QVariantList Clipboard::menuItems(int row) const
     const bool onlyImages = std::all_of(clips.begin(), clips.end(), [](const Clip* c) { return c->kind == ClipKind::Image; });
     // Glyphs: Segoe Fluent Icons / MDL2 Assets.
     QVariantList items;
-    items.append(entry(Paste, many ? tr("粘贴 %Ln 条", nullptr, n) : tr("粘贴"), u"Enter"_s, u""_s));
-    if (!onlyImages)
+    // Into a field of Win顺's own it is text either way: no plain-text entry.
+    const QString field = fieldName();
+    items.append(entry(Paste, many ? tr("粘贴 %Ln 条", nullptr, n) : field.isEmpty() ? tr("粘贴") : tr("粘贴到%1").arg(field),
+        u"Enter"_s, u""_s));
+    if (!onlyImages && field.isEmpty())
         items.append(entry(PastePlain, tr("粘贴为纯文本"), u"Shift+Enter"_s, u""_s));
     items.append(entry(Copy, many ? tr("复制 %Ln 条", nullptr, n) : tr("复制"), u"Ctrl+C"_s, u""_s));
     if (!many) {
@@ -803,7 +908,7 @@ void Clipboard::trigger(int row, int action)
         } else {
             shell::open(m_store->imagePath(c->id));
         }
-        dismiss();
+        emit dismissRequested(); // what opened it is in front now, not the field the window came from
         break;
     }
     default:
@@ -846,7 +951,7 @@ void Clipboard::prepareMenuWindow(QWindow* menu) const
 {
     if (!menu)
         return;
-    // Showing it must not take the focus from the launcher (see Launcher::prepareMenuWindow).
+    // Showing it must not take the focus from the clipboard window (see Launcher::prepareMenuWindow).
     menu->setProperty("_q_showWithoutActivating", true);
     const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
     win::styleFramelessWindow(menu);

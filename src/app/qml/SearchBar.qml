@@ -11,6 +11,7 @@ Item {
     required property WindowFrame frame
     property alias text: input.text
     readonly property bool hasSelection: input.selectedText.length > 0
+    readonly property Item field: input // what the clipboard pastes into
     // The pointer over the header: Windows takes its drag area as a title bar,
     // so QML hears of the pointer there only from the frame.
     readonly property bool hovered: hover.hovered || contains(mapFromItem(null, frame.pointer))
@@ -84,6 +85,9 @@ Item {
         selectByMouse: true
         selectionColor: Theme.textSelection
         selectedTextColor: Theme.text
+        // Still shown while the clipboard under it has the keyboard: what a
+        // paste there goes over.
+        persistentSelection: true
         onTextChanged: bar.launcher.query = text
         Keys.onPressed: (event) => bar.keyPressed(event)
 

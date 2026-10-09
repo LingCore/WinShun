@@ -27,7 +27,7 @@ public:
         // Registers Ctrl+G (true) and says whether that worked, or drops it (false).
         std::function<bool(bool on)> setHotkey;
         // A file dialog came to the front (again), or none is in front now
-        // (nullptr). The companion coming to the front changes nothing.
+        // (nullptr). A companion coming to the front changes nothing.
         std::function<void(HWND dialog)> dialogChanged;
         std::function<void()> dialogMoved; // the one in front: shown, hidden, moved, resized, minimised
         // The dialog went to Explorer's folder by itself (setAutoJump), from
@@ -46,9 +46,10 @@ public:
     // comes up, and when the user comes back to it from Explorer after going
     // to another folder there (not after just looking).
     void setAutoJump(bool on) { m_autoJump = on; }
-    // A window of ours that goes with the dialog (the bar): while it is in
-    // front, the dialog still counts as in front.
-    void setCompanion(HWND hwnd) { m_companion = hwnd; }
+    // Windows of ours that go with the dialog (the bar; the clipboard, opened
+    // from the bar or over the dialog): while one is in front, the dialog
+    // still counts as in front.
+    void setCompanions(std::vector<HWND> windows) { m_companions = std::move(windows); }
     HWND dialog() const { return m_dialog; }
 
     void jump(); // Ctrl+G was pressed: to the folder shown in Explorer
@@ -71,7 +72,7 @@ private:
     HWINEVENTHOOK m_foregroundHook = nullptr;
     HWINEVENTHOOK m_locationHook = nullptr; // the dialog's thread
     HWND m_dialog = nullptr; // the file dialog in front
-    HWND m_companion = nullptr;
+    std::vector<HWND> m_companions;
     bool m_hotkeyEnabled = false;
     bool m_registered = false;
     bool m_warned = false; // about Ctrl+G being taken, once

@@ -4,8 +4,10 @@ import QtQuick
 import WinShun
 
 // The launcher window: search bar, up to eight results, status footer.
-// Keyboard first: everything works without touching the mouse. The same
-// window shows the clipboard history instead (Win+V, ClipboardPage.qml).
+// Keyboard first: everything works without touching the mouse. The clipboard
+// history (Win+V) has a window of its own (ClipboardWindow.qml); opened from
+// the search box, it drops down under it, and the rows and the footer fold
+// away until it is gone: the box shows what a paste goes into.
 Window {
     id: window
 
@@ -14,10 +16,8 @@ Window {
     required property Placement placement
     required property WindowFrame frame
 
-    readonly property bool clipboardMode: clipboard.active
-    // The clipboard page's list: as many rows as fit below, like the results.
-    readonly property int clipRows: Math.max(minRows, Math.min(maxRows,
-                                             Math.floor((placement.room - clipPage.chromeHeight) / rowHeight)))
+    // The clipboard dropped down under the search box (see above).
+    readonly property bool clipboardBelow: clipboard.active && clipboard.field === searchBar.field
 
     readonly property int rowHeight: 60
     readonly property int maxRows: 8
@@ -29,6 +29,9 @@ Window {
                                             Math.floor((placement.room - chromeHeight) / rowHeight)))
     readonly property bool contentMode: launcher.scope === Launcher.Content
     readonly property string trimmedQuery: launcher.query.trim()
+    // What was typed, on one line to show it (with a line break in it, it
+    // would spread over the window).
+    readonly property string shownQuery: trimmedQuery.replace(/\s+/g, " ")
     // After the list area has closed (see settleRows), not while it is held open.
     readonly property bool showEmptyState: trimmedQuery.length > 0 && list.count === 0 && !launcher.searching
                                            && shownRows === 0
@@ -75,7 +78,7 @@ Window {
     }
 
     width: 760
-    height: clipboardMode ? clipPage.implicitHeight : layout.implicitHeight
+    height: layout.implicitHeight
     // See-through to Mica, as the settings window (see there).
     color: Theme.backdrop && SystemTheme.materials && window.active ? "transparent" : Theme.background
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
@@ -86,25 +89,13 @@ Window {
         property: "highlightColor"
         value: Theme.accent
     }
-    Binding {
-        target: window.clipboard.items
-        property: "highlightColor"
-        value: Theme.accent
-    }
-
     Binding { // with the fewest rows: kept room for below the window
         target: window.placement
         property: "roomNeeded"
-        value: (window.clipboardMode ? clipPage.chromeHeight : window.chromeHeight) + window.minRows * window.rowHeight
+        value: window.chromeHeight + window.minRows * window.rowHeight
     }
 
-    onClipboardModeChanged: {
-        closeContextMenu()
-        if (clipboardMode)
-            clipPage.focusSearch()
-        else
-            searchBar.focusAndSelect()
-    }
+    onClipboardBelowChanged: closeContextMenu()
 
     function moveSelection(delta) {
         if (list.count > 0)
@@ -174,7 +165,6 @@ Window {
         if (!visible) {
             closeContextMenu()
             menuLoader.active = false
-            clipPage.windowHidden()
         }
     }
 
@@ -270,7 +260,6 @@ Window {
     Column {
         id: layout
         width: window.width
-        visible: !window.clipboardMode
 
         SearchBar {
             id: searchBar
@@ -285,14 +274,14 @@ Window {
             width: parent.width
             height: 1
             color: Theme.divider
-            visible: window.shownRows > 0 || window.showEmptyState
+            visible: !window.clipboardBelow && (window.shownRows > 0 || window.showEmptyState)
         }
 
         Item {
             id: listArea
             width: parent.width
             height: window.shownRows > 0 ? window.shownRows * window.rowHeight + 8 : 0
-            visible: window.shownRows > 0
+            visible: window.shownRows > 0 && !window.clipboardBelow
 
             ListView {
                 id: list
@@ -367,23 +356,29 @@ Window {
         Item {
             width: parent.width
             height: 80
-            visible: window.showEmptyState
+            visible: window.showEmptyState && !window.clipboardBelow
 
             Column {
                 anchors.centerIn: parent
+                width: parent.width - 80
                 spacing: 4
 
                 Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    // A long query keeps its start and its end, and the quotes.
+                    elide: Text.ElideMiddle
                     text: window.contentMode
-                          ? qsTr("没有 %1包含“%2”").arg(window.launcher.contentFilesLabel).arg(window.trimmedQuery)
-                          : qsTr("没有找到“%1”").arg(window.trimmedQuery)
+                          ? qsTr("没有 %1包含“%2”").arg(window.launcher.contentFilesLabel).arg(window.shownQuery)
+                          : qsTr("没有找到“%1”").arg(window.shownQuery)
                     textFormat: Text.PlainText // holds what was typed
                     color: Theme.subtext
                     font.pixelSize: Theme.fontTitle
                 }
                 Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    elide: Text.ElideRight
                     text: window.contentMode ? qsTr("按 Tab 回到文件名搜索")
                         : window.launcher.searchesContent
                           ? qsTr("文件名和 %1的内容里都没有").arg(window.launcher.contentFilesLabel)
@@ -397,18 +392,10 @@ Window {
         Footer {
             id: footer
             width: parent.width
+            visible: !window.clipboardBelow
             launcher: window.launcher
             frame: window.frame
         }
-    }
-
-    ClipboardPage {
-        id: clipPage
-        width: window.width
-        visible: window.clipboardMode
-        clipboard: window.clipboard
-        frame: window.frame
-        rows: window.clipRows
     }
 
     // While the menu is open, a click anywhere in the launcher closes it

@@ -1150,7 +1150,7 @@ Window {
             SettingsSection {
                 visible: window.currentPage === window.clipboardPage
                 width: parent.width
-                note: qsTr("复制过的文字、图片和文件记在这台电脑上，不会上传。在剪贴板里按 Enter 粘贴到打开之前所在的窗口，Shift+Enter 粘贴为纯文本；按住 Ctrl 或 Shift 点击可以选多条，按选的顺序合在一起粘贴。")
+                note: qsTr("复制过的文字、图片和文件记在这台电脑上，不会上传。在剪贴板里点一条或按 Enter，就粘贴到打开之前所在的窗口，Shift+Enter 粘贴为纯文本；按住 Ctrl 或 Shift 点击可以选多条，按选的顺序合在一起粘贴。")
 
                 SettingRow {
                     title: qsTr("记录剪贴板历史")

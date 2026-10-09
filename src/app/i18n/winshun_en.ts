@@ -29,8 +29,12 @@
 <context>
     <name>ClipRow</name>
     <message>
-        <source>粘贴</source>
-        <translation>Paste</translation>
+        <source>关闭预览</source>
+        <translation>Close the preview</translation>
+    </message>
+    <message>
+        <source>预览</source>
+        <translation>Preview</translation>
     </message>
     <message>
         <source>取消固定</source>
@@ -114,13 +118,6 @@
         <source>已选 1 条，Esc 取消选择</source>
         <translation>1 picked; Esc clears</translation>
     </message>
-    <message numerus="yes">
-        <source>已选 %Ln 条，按选的顺序合在一起，用</source>
-        <translation>
-            <numerusform>%Ln picked, joined in that order with</numerusform>
-            <numerusform>%Ln picked, joined in that order with</numerusform>
-        </translation>
-    </message>
     <message>
         <source>隔开</source>
         <translation>between</translation>
@@ -130,8 +127,23 @@
         <translation>Paste</translation>
     </message>
     <message>
+        <source>粘贴到%1</source>
+        <translation>Paste into %1</translation>
+    </message>
+    <message numerus="yes">
+        <source>已选 %Ln 条，合在一起，用</source>
+        <translation>
+            <numerusform>%Ln picked, joined with</numerusform>
+            <numerusform>%Ln picked, joined with</numerusform>
+        </translation>
+    </message>
+    <message>
         <source>纯文本</source>
         <translation>Plain text</translation>
+    </message>
+    <message>
+        <source>返回</source>
+        <translation>Back</translation>
     </message>
     <message>
         <source>分类</source>
@@ -140,6 +152,13 @@
     <message>
         <source>点一下换一种：换行、空格、逗号、Tab、不分隔</source>
         <translation>Click for another: new line, space, comma, tab, nothing</translation>
+    </message>
+</context>
+<context>
+    <name>ClipboardWindow</name>
+    <message>
+        <source>剪贴板</source>
+        <translation>Clipboard</translation>
     </message>
 </context>
 <context>
@@ -751,14 +770,6 @@
         <translation>Build a content index</translation>
     </message>
     <message>
-        <source>在后台记下每个文件里有哪些中日韩文字和英文单词片段，搜索时只打开可能含有它的文件，快得多。只用于 NTFS 磁盘，首次建立需要一段时间，几十万个文件约占 200 MB 磁盘空间</source>
-        <translation>Notes in the background which Chinese, Japanese and Korean characters and English word fragments each file contains, so a search opens only the files that may match: much faster. NTFS drives only. The first build takes a while; a few hundred thousand files take about 200 MB of disk space</translation>
-    </message>
-    <message>
-        <source>复制过的文字、图片和文件记在这台电脑上，不会上传。在剪贴板里按 Enter 粘贴到打开之前所在的窗口，Shift+Enter 粘贴为纯文本；按住 Ctrl 或 Shift 点击可以选多条，按选的顺序合在一起粘贴。</source>
-        <translation>What you copy is kept on this PC and never uploaded. In the clipboard, Enter pastes into the window you were in, Shift+Enter as plain text; Ctrl+click or Shift+click picks several, pasted together in the order picked.</translation>
-    </message>
-    <message>
         <source>记录剪贴板历史</source>
         <translation>Keep a clipboard history</translation>
     </message>
@@ -1001,6 +1012,102 @@
         <source>确定清除？再点一次</source>
         <translation>Clear them? Click again</translation>
     </message>
+    <message>
+        <source>文本和日志的大小上限</source>
+        <translation>Size limit for text and logs</translation>
+    </message>
+    <message>
+        <source>更大的文件不查找内容</source>
+        <translation>Larger files are not searched</translation>
+    </message>
+    <message>
+        <source>源代码的大小上限</source>
+        <translation>Size limit for source code</translation>
+    </message>
+    <message>
+        <source>手写的代码很少有几 MB，更大的多是打包压缩后的脚本，搜什么都可能要整个读一遍</source>
+        <translation>Hand-written code is rarely several MB; larger files are mostly bundled, minified scripts that almost any search would read through</translation>
+    </message>
+    <message>
+        <source>数据和网页的大小上限</source>
+        <translation>Size limit for data and web pages</translation>
+    </message>
+    <message>
+        <source>几十 MB 的多是导出的数据，搜什么都可能要整个读一遍，所以默认小一些</source>
+        <translation>Files of tens of MB are mostly exported data that almost any search would read through, hence the smaller default</translation>
+    </message>
+    <message>
+        <source>文档的大小上限</source>
+        <translation>Size limit for documents</translation>
+    </message>
+    <message>
+        <source>Word、Excel、PowerPoint、PDF 和 WPS 文件</source>
+        <translation>Word, Excel, PowerPoint, PDF and WPS files</translation>
+    </message>
+    <message>
+        <source>文档常有几十上百 MB，大多是图片，读出的文字不多，所以默认大得多；每个最多读出 16 MB 文字</source>
+        <translation>Documents are often tens or hundreds of MB, mostly pictures with little text, hence the much larger default; at most 16 MB of text is read out of each</translation>
+    </message>
+    <message>
+        <source>列表里没有这类文件</source>
+        <translation>None of this kind in the list</translation>
+    </message>
+    <message>
+        <source>在后台记下每个文件里有哪些中日韩文字，和三个字符一段的英文、数字、空格和标点，搜索时只打开可能含有它的文件，快得多；搜索中读过的文件也会记下。文档读出的文字也存在这里，搜索时不用再读一遍文档。只用于 NTFS 磁盘，首次建立需要一段时间，几十万个文件约占一两百 MB 磁盘空间</source>
+        <translation>Notes in the background which Chinese, Japanese and Korean characters, and which three-character runs of letters, digits, spaces and punctuation each file contains, so a search opens only the files that may match: much faster. Files a search reads are noted too, and the text read out of documents is kept here, so a search doesn’t read them again. NTFS drives only. The first build takes a while; a few hundred thousand files take one to two hundred MB of disk space</translation>
+    </message>
+    <message>
+        <source>复制过的文字、图片和文件记在这台电脑上，不会上传。在剪贴板里点一条或按 Enter，就粘贴到打开之前所在的窗口，Shift+Enter 粘贴为纯文本；按住 Ctrl 或 Shift 点击可以选多条，按选的顺序合在一起粘贴。</source>
+        <translation>What you copy is kept on this PC and never uploaded. In the clipboard, a click on an entry or Enter pastes it into the window you were in, Shift+Enter as plain text; Ctrl+click or Shift+click picks several, pasted together in the order picked.</translation>
+    </message>
+    <message>
+        <source>索引位置</source>
+        <translation>Index location</translation>
+    </message>
+    <message>
+        <source>更改…</source>
+        <translation>Change…</translation>
+    </message>
+    <message>
+        <source>正在移动… %1%，期间可以照常搜索</source>
+        <translation>Moving… %1%. Searching works as usual meanwhile</translation>
+    </message>
+    <message>
+        <source>文件索引和内容索引放在这里，共 %1。C 盘空间紧张时，可以移到其他内置硬盘上（U 盘、移动硬盘不行）</source>
+        <translation>The file index and the content index are kept here, %1 in all. Short of space on drive C? Move them to another built-in drive (not a USB stick or an external drive)</translation>
+    </message>
+    <message>
+        <source>文件索引和内容索引放在这里。C 盘空间紧张时，可以移到其他内置硬盘上（U 盘、移动硬盘不行）</source>
+        <translation>The file index and the content index are kept here. Short of space on drive C? Move them to another built-in drive (not a USB stick or an external drive)</translation>
+    </message>
+    <message>
+        <source>网页搜索</source>
+        <translation>Web search</translation>
+    </message>
+    <message>
+        <source>给常去的网页起个关键词：在搜索框的“全部”里输入它，按 Enter 就打开。网址里带 %s 的还能搜索：关键词后面加空格和要搜的文字，按 Enter 就在那个网站上搜。例如关键词 gh、网址 https://github.com/search?q=%s，输入 gh WinShun 就在 GitHub 上搜索 WinShun。</source>
+        <translation>Give the pages you visit often a keyword: type it in the search box’s All and press Enter to open the page. An address with %s can search too: add a space and some words after the keyword, and Enter searches that site for them. For example, with the keyword gh and the address https://github.com/search?q=%s, typing gh WinShun searches GitHub for WinShun.</translation>
+    </message>
+    <message>
+        <source>关键词</source>
+        <translation>Keywords</translation>
+    </message>
+    <message>
+        <source>不输关键词，输入名称也能找到它；中文名称也可以打拼音</source>
+        <translation>Typing its name finds it too, without the keyword; Chinese names also by pinyin</translation>
+    </message>
+    <message>
+        <source>还没有网页搜索，点“添加”加一个</source>
+        <translation>No web searches yet. Click Add to make one</translation>
+    </message>
+    <message>
+        <source>%1 · 只能打开，不能搜索</source>
+        <translation>%1 · opens only, no search</translation>
+    </message>
+    <message>
+        <source>编辑</source>
+        <translation>Edit</translation>
+    </message>
 </context>
 <context>
     <name>ToggleSwitch</name>
@@ -1240,6 +1347,14 @@
     <message>
         <source>剪贴板历史</source>
         <translation>Clipboard history</translation>
+    </message>
+    <message>
+        <source>输入框</source>
+        <translation>the text box</translation>
+    </message>
+    <message>
+        <source>搜索框</source>
+        <translation>the search box</translation>
     </message>
     <message>
         <source>暂停记录剪贴板</source>
@@ -1497,6 +1612,10 @@
         <source>已复制。没有找到要粘贴进去的窗口，可以自己按 Ctrl+V</source>
         <translation>Copied. No window to paste into: press Ctrl+V where you want it</translation>
     </message>
+    <message>
+        <source>%1里只能粘贴文字</source>
+        <translation>Only text can be pasted into %1</translation>
+    </message>
     <message numerus="yes">
         <source>已把 %Ln 条合在一起复制</source>
         <translation>
@@ -1585,6 +1704,10 @@
     <message>
         <source>粘贴</source>
         <translation>Paste</translation>
+    </message>
+    <message>
+        <source>粘贴到%1</source>
+        <translation>Paste into %1</translation>
     </message>
     <message>
         <source>粘贴为纯文本</source>

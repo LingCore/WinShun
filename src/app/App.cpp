@@ -14,6 +14,7 @@
 #include "SettingsEditor.h"
 #include "SystemCatalog.h"
 #include "SystemTheme.h"
+#include "TextField.h"
 #include "Updater.h"
 #include "WindowFrame.h"
 #include "WindowLogo.h"
@@ -22,7 +23,9 @@
 #include "platform/Foreground.h"
 #include "platform/KeyListener.h"
 #include "platform/MessageWindow.h"
+#include "platform/Paster.h"
 #include "platform/Shell.h"
+#include "platform/TextCaret.h"
 #include "platform/VolumeNotifier.h"
 #include "platform/WinV.h"
 #include "platform/WindowEffects.h"
@@ -32,10 +35,13 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
+#include <QFileInfo>
 #include <QGuiApplication>
+#include <QKeyEvent>
 #include <QLocale>
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
+#include <QQuickItem>
 #include <QQuickWindow>
 #include <QScreen>
 #include <QStorageInfo>
@@ -57,6 +63,9 @@ constexpr int kHotkeyId = 1;
 constexpr int kDialogJumpHotkeyId = 2; // Ctrl+G, while a file dialog is in front
 constexpr int kWinVHotkeyId = 3; // Win+V: the clipboard history, once Explorer gave it up (winv::)
 constexpr int kClipboardHotkeyId = 4; // another shortcut for the clipboard history
+// For another program to tell where its text caret is: longer, and the
+// clipboard would open late; it opens by the mouse pointer then.
+constexpr auto kCaretWait = 100ms;
 constexpr DWORD kSlowMenuMs = 100; // a tray menu slower than this to appear is logged
 
 enum TrayCommand {
@@ -158,12 +167,18 @@ App::App()
     m_revealTimeout.setSingleShot(true);
     m_revealTimeout.setInterval(150ms); // never wait longer than that for the first frame
     connect(&m_revealTimeout, &QTimer::timeout, this, &App::revealLauncher);
+    m_clipUncloakTimeout.setSingleShot(true);
+    m_clipUncloakTimeout.setInterval(150ms); // should no frame come
+    connect(&m_clipUncloakTimeout, &QTimer::timeout, this, [this] {
+        m_clipUncloak = false;
+        uncloakClipboard();
+    });
     m_darkFrameGuard.setInterval(10ms);
     connect(&m_darkFrameGuard, &QTimer::timeout, this, [this] {
         if (m_darkFrameWatch.elapsed() < 50) // Qt's own, after some 5 ms, first
             return;
         for (QWindow* window : {static_cast<QWindow*>(m_window), static_cast<QWindow*>(m_settingsWindow),
-                 static_cast<QWindow*>(m_barWindow)}) {
+                 static_cast<QWindow*>(m_barWindow), static_cast<QWindow*>(m_clipWindow)}) {
             if (window && win::isDarkFrame(window) != m_darkFrame)
                 win::setDarkFrame(window, m_darkFrame);
         }
@@ -178,6 +193,7 @@ App::~App()
 {
     delete m_settingsWindow; // before the QML engine it was created with
     delete m_barWindow;
+    delete m_clipWindow;
 }
 
 bool App::start(const StartOptions& options)
@@ -243,7 +259,8 @@ bool App::start(const StartOptions& options)
     };
     m_clipWatcher = std::make_unique<ClipboardWatcher>(clipboardOptions(), std::move(clipCallbacks));
     m_clipboard = std::make_unique<Clipboard>(m_clipStore.get(), m_clipWatcher.get());
-    connect(m_clipboard.get(), &Clipboard::dismissRequested, this, &App::hideLauncher);
+    connect(m_clipboard.get(), &Clipboard::dismissRequested, this, [this] { hideClipboard(); });
+    connect(m_clipboard.get(), &Clipboard::fieldRequested, this, &App::returnToField);
     connect(m_clipboard.get(), &Clipboard::turnOnRequested, this, [this] {
         Settings settings = m_settings;
         settings.clipboard = true;
@@ -342,6 +359,7 @@ bool App::start(const StartOptions& options)
     else if (!options.background || !options.query.isEmpty())
         showLauncher(options.query);
     QTimer::singleShot(1s, this, &App::prewarmLauncher);
+    QTimer::singleShot(1500ms, this, &App::prewarmClipboard);
     return true;
 }
 
@@ -349,7 +367,7 @@ bool App::createWindow()
 {
     m_qml = std::make_unique<QQmlApplicationEngine>();
     m_qml->addImageProvider(u"fileicon"_s, new FileIconProvider); // engine takes ownership
-    m_placement = std::make_unique<Placement>(Settings::dataDir() + u"\\state.ini"_s);
+    m_placement = std::make_unique<Placement>(Settings::dataDir() + u"\\state.ini"_s, u"Launcher"_s);
     m_frame = std::make_unique<WindowFrame>(false);
     m_qml->setInitialProperties({
         {u"launcher"_s, QVariant::fromValue(m_launcher.get())},
@@ -369,13 +387,13 @@ bool App::createWindow()
     m_window->create(); // native handle now, so DWM styling applies before the first show
     m_window->installEventFilter(this);
     m_launcher->setWindow(m_window);
-    m_clipboard->setWindow(m_window);
     m_placement->setWindow(m_window);
     m_frame->setWindow(m_window);
     m_launcherLogo = new WindowLogo(m_window, 64); // the search box's height (SearchBar.qml)
     connect(m_window, &QWindow::activeChanged, this, [this] {
-        // Clicking elsewhere or switching apps dismisses the launcher, like a menu.
-        if (m_window && !m_window->isActive() && m_window->isVisible())
+        // Clicking elsewhere or switching apps dismisses the launcher, like a
+        // menu; the clipboard under its search box goes with it (see there).
+        if (m_window && !m_window->isActive() && m_window->isVisible() && !clipboardUnderLauncher())
             hideLauncher();
     });
     // Reveal (see showLauncher). Both run on the render thread: a frame
@@ -394,14 +412,72 @@ bool App::createWindow()
     return true;
 }
 
+// The clipboard's own window (ClipboardWindow.qml): not the launcher's, so
+// that it can drop down under any search box of ours, and be as wide as it
+// needs.
+bool App::createClipWindow()
+{
+    m_clipPlacement = std::make_unique<Placement>(Settings::dataDir() + u"\\state.ini"_s, u"Clipboard"_s);
+    m_textCaret = std::make_unique<win::TextCaret>();
+    m_clipFrame = std::make_unique<WindowFrame>(false);
+    QQmlComponent component(m_qml.get(), u"WinShun"_s, u"ClipboardWindow"_s);
+    QObject* object = component.createWithInitialProperties({
+        {u"clipboard"_s, QVariant::fromValue(m_clipboard.get())},
+        {u"placement"_s, QVariant::fromValue(m_clipPlacement.get())},
+        {u"frame"_s, QVariant::fromValue(m_clipFrame.get())},
+    });
+    auto* window = qobject_cast<QQuickWindow*>(object);
+    if (!window) {
+        qWarning().noquote() << component.errorString();
+        delete object;
+        return false;
+    }
+    m_clipWindow = window;
+    prepareBackdrop(window);
+    window->create();
+    window->installEventFilter(this); // the Menu key, pasting into its search box
+    styleWindow(window, SystemTheme::backdropAvailable());
+    win::setDarkFrame(window, isDarkMode());
+    m_clipboard->setWindow(window);
+    m_clipPlacement->setWindow(window);
+    m_clipFrame->setWindow(window);
+    m_clipLogo = new WindowLogo(window, 64); // its search box's height (ClipboardPage.qml)
+    connect(window, &QWindow::activeChanged, this, [this] {
+        // Clicking elsewhere or switching apps hides it, like a menu. Not at
+        // once: on the way to another window of ours (the field it goes back
+        // to), the focus may first go to none.
+        if (m_clipWindow && !m_clipWindow->isActive())
+            QMetaObject::invokeMethod(this, [this] {
+                if (m_clipWindow && !m_clipWindow->isActive())
+                    hideClipboard();
+            }, Qt::QueuedConnection);
+    });
+    connect(window, &QQuickWindow::frameSwapped, this, [this] {
+        if (m_clipUncloak.exchange(false))
+            QMetaObject::invokeMethod(this, &App::uncloakClipboard, Qt::QueuedConnection);
+        if (m_clipPrewarming.load())
+            QMetaObject::invokeMethod(this, &App::finishClipPrewarm, Qt::QueuedConnection);
+    }, Qt::DirectConnection); // on the render thread
+    updateCompanions();
+    return true;
+}
+
 bool App::eventFilter(QObject* watched, QEvent* event)
 {
+    // Pasted into a one-line field (the search boxes, the settings' fields):
+    // several lines go in as one. Before the field sees the keys.
+    if (event->type() == QEvent::KeyPress && static_cast<QKeyEvent*>(event)->matches(QKeySequence::Paste)) {
+        if (auto* window = qobject_cast<QQuickWindow*>(watched); window && textfield::pasteOneLine(window->activeFocusItem()))
+            return true;
+    }
     if (watched == m_window && event->type() == QEvent::ContextMenu
         && static_cast<QContextMenuEvent*>(event)->reason() == QContextMenuEvent::Keyboard) {
-        if (m_clipboard->active())
-            emit m_clipboard->contextMenuKeyPressed();
-        else
-            emit m_launcher->contextMenuKeyPressed();
+        emit m_launcher->contextMenuKeyPressed();
+        return true;
+    }
+    if (watched == m_clipWindow && event->type() == QEvent::ContextMenu
+        && static_cast<QContextMenuEvent*>(event)->reason() == QContextMenuEvent::Keyboard) {
+        emit m_clipboard->contextMenuKeyPressed();
         return true;
     }
     if (watched == m_barWindow && m_dialogBar && event->type() == QEvent::ContextMenu
@@ -417,7 +493,9 @@ void App::applyTheme()
     const bool dark = isDarkMode();
     win::setMenuTheme(dark);
     if (m_window)
-        styleWindow(m_window, dark, SystemTheme::backdropAvailable());
+        styleWindow(m_window, SystemTheme::backdropAvailable());
+    if (m_clipWindow)
+        styleWindow(m_clipWindow, SystemTheme::backdropAvailable());
     if (m_settingsWindow)
         styleWindow(m_settingsWindow, SystemTheme::backdropAvailable());
     if (m_barWindow)
@@ -680,6 +758,7 @@ void App::showSettings()
 
         prepareBackdrop(window);
         window->create();
+        window->installEventFilter(this); // pasting into its fields
         frame->setWindow(window);
         styleWindow(window, SystemTheme::backdropAvailable());
         win::setDarkFrame(window, isDarkMode());
@@ -950,10 +1029,9 @@ void App::applyDialogs()
         connect(m_dialogBar.get(), &DialogBar::excludeAppRequested, this, &App::excludeFromDialogBar);
         connect(m_dialogBar.get(), &DialogBar::settingsRequested, this, [this] { showSettings(); });
     } else if (!m_settings.dialogBar && m_dialogBar) {
-        if (m_dialogJump)
-            m_dialogJump->setCompanion(nullptr);
         delete m_barWindow;
         m_dialogBar.reset();
+        updateCompanions();
     }
     if (m_dialogBar) {
         m_dialogBar->setRecordHistory(m_settings.recordHistory);
@@ -985,8 +1063,7 @@ void App::applyDialogs()
             }, Qt::QueuedConnection);
         };
         m_dialogJump = std::make_unique<DialogJump>(std::move(callbacks));
-        if (m_barWindow)
-            m_dialogJump->setCompanion(reinterpret_cast<HWND>(m_barWindow->winId()));
+        updateCompanions();
     } else if (!followDialogs) {
         m_dialogJump.reset();
     }
@@ -1023,48 +1100,94 @@ bool App::createBarWindow()
     window->create();
     styleWindow(window);
     win::setDarkFrame(window, isDarkMode());
-    window->installEventFilter(this); // the Menu key
+    window->installEventFilter(this); // the Menu key, pasting into the box
+    // Gone back to from the clipboard (returnToField): into the box as
+    // soon as the bar is up again with its dialog, once it is done showing.
+    connect(window, &QWindow::visibleChanged, this, [this](bool visible) {
+        if (!visible || std::exchange(m_barFocusDeadline, {}).hasExpired())
+            return;
+        QMetaObject::invokeMethod(this, [this] {
+            if (m_barWindow && m_barWindow->isVisible() && !m_barWindow->isActive()) {
+                win::bringToFront(m_barWindow);
+                m_barWindow->requestActivate();
+            }
+        }, Qt::QueuedConnection);
+    });
     m_barWindow = window;
     m_dialogBar->setWindow(window);
-    if (m_dialogJump) // not yet while it is being made (it looks at the window in front at once)
-        m_dialogJump->setCompanion(reinterpret_cast<HWND>(window->winId()));
+    // Made for DialogJump's first look at the window in front, before it is
+    // there: then applyDialogs() does this.
+    updateCompanions();
     return true;
+}
+
+void App::updateCompanions()
+{
+    if (!m_dialogJump)
+        return;
+    std::vector<HWND> windows;
+    for (QWindow* window : {static_cast<QWindow*>(m_barWindow), static_cast<QWindow*>(m_clipWindow)}) {
+        if (window)
+            windows.push_back(reinterpret_cast<HWND>(window->winId()));
+    }
+    m_dialogJump->setCompanions(std::move(windows));
+}
+
+void App::onDoubleCtrl()
+{
+    const ForegroundFacts facts = foreground::facts();
+    const IgnoreReason reason = doubleCtrlIgnoreReason(facts,
+        {m_settings.doubleCtrlPauseInGames, m_settings.doubleCtrlPauseInFullScreen, m_settings.doubleCtrlExcludedApps});
+    if (reason == IgnoreReason::None) {
+        toggleLauncher();
+        return;
+    }
+    // Nothing shown over a game. The log says why, for "double Ctrl does nothing".
+    static const char* const why[] {"", "it is in the list", "it is full screen", "it is in exclusive full screen",
+        "it has taken the mouse (cursor hidden and confined, or full screen)"};
+    const QString key = facts.program + u' ' + QString::number(static_cast<int>(reason));
+    if (!m_doubleCtrlIgnoredLogged.contains(key)) {
+        m_doubleCtrlIgnoredLogged.append(key);
+        qWarning().noquote() << "Double Ctrl ignored over" << facts.program << "as"
+                             << why[static_cast<int>(reason)];
+    }
 }
 
 void App::toggleLauncher()
 {
+    // The clipboard in front: back into the box it came from, or over to searching.
+    if (m_clipWindow && m_clipWindow->isVisible() && m_clipWindow->isActive() && !m_clipPrewarming.load()) {
+        if (m_clipboard->field()) {
+            m_clipboard->dismiss();
+            return;
+        }
+        hideClipboard();
+    }
     // In front of a file dialog: into its search bar, and back.
     if (m_dialogBar && m_dialogBar->isShown()) {
         m_dialogBar->toggleFocus();
         return;
     }
-    if (m_window && m_window->isVisible() && m_window->isActive() && !m_clipboard->active())
+    if (m_window && m_window->isVisible() && m_window->isActive())
         hideLauncher();
     else
-        showLauncher(); // or from the clipboard page over to searching
+        showLauncher();
 }
 
 void App::toggleClipboard()
 {
-    if (m_window && m_window->isVisible() && m_window->isActive() && m_clipboard->active())
-        hideLauncher();
+    // Again in front: back to the field it was opened from, or hidden.
+    if (m_clipWindow && m_clipWindow->isVisible() && m_clipWindow->isActive() && !m_clipPrewarming.load())
+        m_clipboard->dismiss();
     else
-        showWindow(true);
+        showClipboard();
 }
 
 void App::showLauncher(const QString& query)
 {
-    showWindow(false, query);
-}
-
-void App::showWindow(bool clipboard, const QString& query)
-{
     if (!m_window)
         return;
-    // The clipboard page pastes into what was in front before it.
-    if (!m_window->isVisible() || m_prewarming.load())
-        m_clipboard->setTarget(::GetForegroundWindow());
-    m_clipboard->setActive(clipboard);
+    hideClipboard(false); // from under its search box: searching again
     // On the monitor under the mouse, where the user last put it (see Placement).
     QScreen* screen = QGuiApplication::screenAt(QCursor::pos());
     m_placement->placeOn(screen ? screen : QGuiApplication::primaryScreen());
@@ -1083,15 +1206,142 @@ void App::showWindow(bool clipboard, const QString& query)
     m_window->show();
     win::bringToFront(m_window);
     m_window->requestActivate();
-    if (clipboard) {
-        m_clipboard->handleShown();
-        if (m_revealing)
-            armReveal(); // the history is in memory: nothing to wait for
-        return;
-    }
     m_launcher->handleShown();
     if (m_revealing && !m_launcher->waitingForNames())
         armReveal(); // nothing to wait for (内容 refreshes in the background)
+}
+
+void App::showClipboard()
+{
+    if (!m_clipWindow && !createClipWindow())
+        return;
+    const bool prewarming = m_clipPrewarming.exchange(false); // up already, cloaked
+    if (!m_clipWindow->isVisible() || prewarming) {
+        // It pastes into what had the keyboard before it: a text field of
+        // Win顺's own (read before the window takes the focus from it), or
+        // else the window in front.
+        QQuickItem* field = focusedField();
+        m_clipboard->setField(field, field && field->window() == m_settingsWindow ? tr("输入框") : tr("搜索框"));
+        m_clipboard->setTarget(::GetForegroundWindow());
+        m_clipboard->setActive(true); // under the launcher's search box, it folds its rows away (Main.qml)
+        m_clipboard->handleShown(); // the list alone again: its width as it opens
+        if (field) {
+            // Dropping down under the field's box (the launcher's search bar,
+            // the bar by a file dialog, a box in the settings window).
+            const QQuickItem* box = field->parentItem() ? field->parentItem() : field;
+            m_clipPlacement->attach(QRectF(box->mapToGlobal(QPointF(0, 0)), box->size()).toAlignedRect());
+        } else {
+            // By the text caret in the program it pastes into, as Windows'
+            // own clipboard opens; else by the mouse pointer, its top left
+            // corner at the pointer's tip, as a menu.
+            const HWND target = paste::usableTarget(::GetForegroundWindow());
+            const std::optional<QRect> caret = target ? m_textCaret->find(target, kCaretWait) : std::nullopt;
+            if (caret)
+                m_clipPlacement->attachNative(*caret);
+            else
+                m_clipPlacement->attach(QRect(QCursor::pos(), QSize(1, 0)));
+            constexpr LONG reach = 1 << 20; // the logo stays off the line typed in, all along it
+            m_clipLogo->setAvoid(caret ? std::optional(RECT {caret->x() - reach, caret->y(), caret->x() + reach,
+                                             caret->y() + caret->height()})
+                                       : std::nullopt);
+        }
+        // Cloaked until its first frame: Windows would first put up the
+        // window as it looked when it was hidden, then our repaint.
+        win::setCloaked(m_clipWindow, true);
+        m_clipUncloak = true;
+        m_clipUncloakTimeout.start();
+    }
+    m_clipWindow->show();
+    win::bringToFront(m_clipWindow);
+    m_clipWindow->requestActivate();
+}
+
+void App::uncloakClipboard()
+{
+    m_clipUncloakTimeout.stop();
+    if (!m_clipWindow)
+        return;
+    win::setCloaked(m_clipWindow, false);
+    // The logo when it is on its own: under a box, that box's window has one.
+    if (m_clipWindow->isVisible() && !m_clipboard->field() && m_clipLogo)
+        m_clipLogo->reveal();
+}
+
+void App::hideClipboard(bool launcherToo)
+{
+    if (!m_clipWindow || !m_clipWindow->isVisible() || m_clipPrewarming.load())
+        return;
+    const bool underLauncher = clipboardUnderLauncher();
+    m_clipWindow->hide();
+    m_clipUncloak = false;
+    m_clipUncloakTimeout.stop();
+    win::setCloaked(m_clipWindow, false);
+    m_clipboard->setActive(false); // the launcher's rows come back
+    m_clipboard->handleHidden();
+    // Gone without going back to the search box (pasted elsewhere, clicked
+    // away): the launcher goes too.
+    if (launcherToo && underLauncher && m_window && !m_window->isActive())
+        hideLauncher();
+}
+
+bool App::clipboardUnderLauncher() const
+{
+    const QQuickItem* field = m_clipboard->field();
+    return m_clipboard->active() && field && field->window() == m_window;
+}
+
+// The first frame a window draws sets up the graphics device, shaders and
+// glyphs: drawn ahead, as for the launcher (see prewarmLauncher).
+void App::prewarmClipboard()
+{
+    if (!m_settings.clipboard || (m_clipWindow && m_clipWindow->isVisible()))
+        return;
+    if (!m_clipWindow && !createClipWindow())
+        return;
+    m_clipPlacement->placeOn(QGuiApplication::primaryScreen()); // drawn at that scale
+    m_clipPrewarming = true;
+    win::setCloaked(m_clipWindow, true);
+    m_clipWindow->setProperty("_q_showWithoutActivating", true);
+    m_clipWindow->show();
+    m_clipWindow->setProperty("_q_showWithoutActivating", QVariant());
+    QTimer::singleShot(2s, this, &App::finishClipPrewarm); // should no frame come
+}
+
+void App::finishClipPrewarm()
+{
+    if (!m_clipPrewarming.exchange(false))
+        return;
+    m_clipWindow->hide();
+    win::setCloaked(m_clipWindow, false);
+}
+
+QQuickItem* App::focusedField() const
+{
+    auto* window = qobject_cast<QQuickWindow*>(QGuiApplication::focusWindow());
+    if (!window || window == m_clipWindow || reinterpret_cast<HWND>(window->winId()) != ::GetForegroundWindow())
+        return nullptr; // the clipboard's own search box included
+    QQuickItem* item = window->activeFocusItem();
+    return textfield::takesTyping(item) ? item : nullptr;
+}
+
+// The field's window comes to the front again, which hides the clipboard as
+// any window would (see createClipWindow); the field gets the keyboard back
+// with it (Clipboard waits for that). The launcher under it stays.
+void App::returnToField(QQuickItem* field)
+{
+    QQuickWindow* window = field->window();
+    if (!window)
+        return;
+    // The dialog bar shows only while its dialog (or a window of ours) is in
+    // front: should it be gone, the dialog first, then the bar as soon as it
+    // is up again (see createBarWindow).
+    if (window == m_barWindow && m_dialogBar && !m_barWindow->isVisible()) {
+        m_barFocusDeadline.setRemainingTime(1s);
+        m_dialogBar->back();
+        return;
+    }
+    win::bringToFront(window);
+    window->requestActivate();
 }
 
 void App::armReveal()
@@ -1143,10 +1393,12 @@ void App::hideLauncher()
 {
     if (!m_window || !m_window->isVisible())
         return;
+    const bool clipboardToo = clipboardUnderLauncher();
     m_window->hide();
     revealLauncher(); // hidden before its first frame: drop the cloak
     m_launcher->handleHidden();
-    m_clipboard->handleHidden();
+    if (clipboardToo)
+        hideClipboard(false);
 }
 
 void App::showTrayMenu()
@@ -1195,7 +1447,7 @@ void App::showTrayMenu()
         showLauncher();
         break;
     case ClipboardCommand:
-        showWindow(true);
+        showClipboard();
         break;
     case PauseClipboardCommand:
         setClipboardPaused(!m_clipboardPaused);

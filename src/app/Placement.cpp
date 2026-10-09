@@ -21,6 +21,7 @@ namespace {
 const QPointF kHome {0.5, 0.2}; // centred, a fifth of the way down
 constexpr int kSnapDistance = 12; // logical pixels, where a dropped window settles home
 constexpr int kGlideMs = 220;
+constexpr int kBoxGap = 4; // logical pixels, between a box and the window attached to it
 
 // The scale Qt draws at on a monitor.
 qreal scaleOf(HMONITOR monitor, qreal fallback)
@@ -93,18 +94,23 @@ NativeArea nativeArea(QScreen* screen)
 
 } // namespace
 
-Placement::Placement(QString stateFile, QObject* parent)
+Placement::Placement(QString stateFile, QString group, QObject* parent)
     : QObject(parent)
     , m_stateFile(std::move(stateFile))
+    , m_group(std::move(group))
     , m_anchor(kHome)
 {
     const QSettings state(m_stateFile, QSettings::IniFormat);
-    bool okX = false;
-    bool okY = false;
-    const double x = state.value(u"Launcher/CenterX"_s).toDouble(&okX);
-    const double y = state.value(u"Launcher/Top"_s).toDouble(&okY);
-    if (okX && okY && x >= 0 && x <= 1 && y >= 0 && y <= 1)
-        m_anchor = {x, y};
+    for (const QString& section : {m_group, u"Launcher"_s}) {
+        bool okX = false;
+        bool okY = false;
+        const double x = state.value(section + u"/CenterX"_s).toDouble(&okX);
+        const double y = state.value(section + u"/Top"_s).toDouble(&okY);
+        if (okX && okY && x >= 0 && x <= 1 && y >= 0 && y <= 1) {
+            m_anchor = {x, y};
+            break;
+        }
+    }
 
     m_glide.setDuration(kGlideMs);
     m_glide.setEasingCurve(QEasingCurve::OutCubic);
@@ -169,13 +175,58 @@ void Placement::setWindow(QWindow* window)
     m_window = window;
     m_hwnd = window->winId();
     ::SetWindowSubclass(reinterpret_cast<HWND>(m_hwnd), &Hook::proc, 0, reinterpret_cast<DWORD_PTR>(this));
+    // Wider (the clipboard's preview), or taller over a box: kept on the
+    // screen, and over a box its bottom stays there.
+    connect(window, &QWindow::widthChanged, this, &Placement::refit);
+    connect(window, &QWindow::heightChanged, this, [this] {
+        if (m_box && m_above)
+            refit();
+    });
 }
 
 void Placement::placeOn(QScreen* screen)
 {
     m_glide.stop();
+    m_box.reset();
+    m_dropped = false;
     if (m_window && screen)
         m_window->setPosition(settleOn(screen));
+}
+
+void Placement::attach(const QRect& box)
+{
+    m_glide.stop();
+    m_box = box;
+    m_dropped = false;
+    m_left = box.x();
+    QScreen* screen = QGuiApplication::screenAt(box.center());
+    if (!screen && m_window)
+        screen = m_window->screen();
+    if (m_window && screen)
+        m_window->setPosition(settleBy(screen));
+}
+
+void Placement::attachNative(const QRect& box)
+{
+    // In Qt's pixels on the screen it is on: from that screen's origin (the
+    // same in both) scaled, outwards, so the box covers all of it.
+    const HMONITOR monitor = ::MonitorFromPoint({box.x(), box.y() + box.height() / 2}, MONITOR_DEFAULTTONEAREST);
+    QScreen* screen = QGuiApplication::primaryScreen();
+    for (QScreen* candidate : QGuiApplication::screens()) {
+        const auto* native = candidate->nativeInterface<QNativeInterface::QWindowsScreen>();
+        if (native && native->handle() == monitor)
+            screen = candidate;
+    }
+    if (!screen)
+        return;
+    const QPoint origin = screen->geometry().topLeft();
+    const qreal scale = screen->devicePixelRatio();
+    const auto down = [&](int pos, int from) { return from + int(std::floor((pos - from) / scale)); };
+    const auto up = [&](int pos, int from) { return from + int(std::ceil((pos - from) / scale)); };
+    const int left = down(box.x(), origin.x());
+    const int top = down(box.y(), origin.y());
+    attach(QRect(QPoint(left, top), QPoint(std::max(left, up(box.x() + box.width(), origin.x()) - 1),
+        std::max(top, up(box.y() + box.height(), origin.y()) - 1))));
 }
 
 void Placement::setRoomNeeded(int height)
@@ -186,6 +237,22 @@ void Placement::setRoomNeeded(int height)
     emit roomNeededChanged();
 }
 
+void Placement::setAnchorWidth(int width)
+{
+    if (m_anchorWidth == width)
+        return;
+    m_anchorWidth = width;
+    emit anchorWidthChanged();
+}
+
+void Placement::setRoom(int room)
+{
+    if (m_room == room)
+        return;
+    m_room = room;
+    emit roomChanged();
+}
+
 // The anchor's spot on the screen's work area, moved as far as needed to keep
 // the window on it with room below for the fewest rows. More rows than fit
 // there are not shown (room), so a long list does not push the window up.
@@ -193,7 +260,8 @@ QPoint Placement::settleOn(QScreen* screen)
 {
     const QRect area = screen->availableGeometry();
     const int width = m_window->width();
-    int x = qRound(area.x() + m_anchor.x() * area.width() - width / 2.0);
+    const int anchorWidth = m_anchorWidth > 0 ? std::min(m_anchorWidth, width) : width;
+    int x = qRound(area.x() + m_anchor.x() * area.width() - anchorWidth / 2.0);
     int y = qRound(area.y() + m_anchor.y() * area.height());
     x = std::clamp(x, area.left(), std::max(area.left(), area.x() + area.width() - width));
     y = std::clamp(y, area.top(), std::max(area.top(), area.y() + area.height() - m_roomNeeded));
@@ -205,17 +273,71 @@ QPoint Placement::settleOn(QScreen* screen)
     x = native.keepInside(x, width, native.work.left(), native.work.x() + native.work.width(), native.origin.x());
     y = native.keepInside(y, m_roomNeeded, native.work.top(), native.work.y() + native.work.height(), native.origin.y());
     const int bottom = native.work.y() + native.work.height();
-    const int room = int(std::floor((bottom - native.toNative(y, native.origin.y())) / native.scale));
-    if (m_room != room) {
-        m_room = room;
-        emit roomChanged();
-    }
+    setRoom(int(std::floor((bottom - native.toNative(y, native.origin.y())) / native.scale)));
     return {x, y};
+}
+
+// Under the box, level with its left edge (moved in to stay on the work
+// area); over it where the fewest rows would not fit under it and more of
+// them fit over it.
+QPoint Placement::settleBy(QScreen* screen)
+{
+    const QRect area = screen->availableGeometry();
+    const NativeArea native = nativeArea(screen);
+    const int right = native.work.x() + native.work.width();
+    const int bottom = native.work.y() + native.work.height();
+    const int width = m_window->width();
+    int x = std::clamp(m_left, area.left(), std::max(area.left(), area.x() + area.width() - width));
+    x = native.keepInside(x, width, native.work.left(), right, native.origin.x());
+
+    const int under = m_box->y() + m_box->height() + kBoxGap;
+    const int over = m_box->y() - kBoxGap;
+    const int roomUnder = int(std::floor((bottom - native.toNative(under, native.origin.y())) / native.scale));
+    const int roomOver = int(std::floor((native.toNative(over, native.origin.y()) - native.work.y()) / native.scale));
+    m_above = roomUnder < m_roomNeeded && roomOver > roomUnder;
+    setRoom(std::max(0, m_above ? roomOver : roomUnder)); // the window takes its height from it
+    const int height = m_window->height();
+    int y = m_above ? over - height : under;
+    y = std::clamp(y, area.top(), std::max(area.top(), area.y() + area.height() - height));
+    y = native.keepInside(y, height, native.work.top(), bottom, native.origin.y());
+    return {x, y};
+}
+
+int Placement::roomRight() const
+{
+    QScreen* screen = m_window ? m_window->screen() : nullptr;
+    if (!screen)
+        return 0;
+    const NativeArea native = nativeArea(screen);
+    const int width = m_anchorWidth > 0 ? std::min(m_anchorWidth, m_window->width()) : m_window->width();
+    const int right = native.toNative(m_window->x() + width, native.origin.x());
+    return int(std::floor((native.work.x() + native.work.width() - right) / native.scale));
+}
+
+void Placement::refit()
+{
+    if (!m_window || m_moving || m_glide.state() == QAbstractAnimation::Running)
+        return;
+    QScreen* screen = m_window->screen();
+    if (!screen)
+        return;
+    if (m_box) {
+        m_window->setPosition(settleBy(screen));
+    } else if (m_dropped) {
+        const QRect area = screen->availableGeometry();
+        const int width = m_window->width();
+        const NativeArea native = nativeArea(screen);
+        int x = std::clamp(m_left, area.left(), std::max(area.left(), area.x() + area.width() - width));
+        x = native.keepInside(x, width, native.work.left(), native.work.x() + native.work.width(), native.origin.x());
+        m_window->setX(x);
+    } else {
+        m_window->setPosition(settleOn(screen));
+    }
 }
 
 void Placement::moveHome()
 {
-    if (!m_window || m_moving)
+    if (!m_window || m_moving || m_box || m_dropped) // by a box: no spot to go back to
         return;
     m_anchor = kHome;
     save();
@@ -237,6 +359,12 @@ void Placement::rememberSpot()
 {
     if (!m_window || m_window->position() == m_moveStart) // Esc, or not moved at all
         return;
+    if (m_box || m_dropped) { // by a box: stays where it was let go, its spot as it was
+        m_box.reset();
+        m_dropped = true;
+        m_left = m_window->x();
+        return;
+    }
     const QRect frame = m_window->geometry();
     QScreen* screen = QGuiApplication::screenAt(frame.center());
     if (!screen)
@@ -244,7 +372,8 @@ void Placement::rememberSpot()
     const QRect area = screen ? screen->availableGeometry() : QRect();
     if (area.isEmpty())
         return;
-    QPointF anchor((frame.x() + frame.width() / 2.0 - area.x()) / area.width(),
+    const int anchorWidth = m_anchorWidth > 0 ? std::min(m_anchorWidth, frame.width()) : frame.width();
+    QPointF anchor((frame.x() + anchorWidth / 2.0 - area.x()) / area.width(),
         qreal(frame.y() - area.y()) / area.height());
     // Let go near the centre line or the home height: settles onto it, the
     // same on every monitor. Only now, so the drag itself never stalls.
@@ -270,8 +399,8 @@ void Placement::glideTo(const QPoint& target)
 void Placement::save() const
 {
     QSettings state(m_stateFile, QSettings::IniFormat);
-    state.setValue(u"Launcher/CenterX"_s, m_anchor.x());
-    state.setValue(u"Launcher/Top"_s, m_anchor.y());
+    state.setValue(m_group + u"/CenterX"_s, m_anchor.x());
+    state.setValue(m_group + u"/Top"_s, m_anchor.y());
 }
 
 } // namespace ws
