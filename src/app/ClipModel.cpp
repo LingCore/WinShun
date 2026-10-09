@@ -141,8 +141,10 @@ QVariant ClipModel::data(const QModelIndex& index, int role) const
         const bool dir = isLocal(first) && !fileMissing(*c) && QFileInfo(first).isDir();
         return FileIconProvider::iconUrl(first, dir);
     }
-    case ImageRole:
-        return c->kind == ClipKind::Image ? QUrl::fromLocalFile(m_store->imagePath(c->id)).toString() : QString();
+    case ImageRole: // none until its file is written (pictureSaved)
+        return c->kind == ClipKind::Image && !m_store->imagePending(c->id)
+            ? QUrl::fromLocalFile(m_store->imagePath(c->id)).toString()
+            : QString();
     case ColorRole:
         return colorOf(*c);
     case OrderRole:
@@ -355,6 +357,13 @@ void ClipModel::refreshTimes()
     m_missing.clear();
     if (count() > 0)
         emit dataChanged(index(0), index(count() - 1), {TitleRole, DetailRole, MissingRole, IconRole, GroupRole, PinnedRole});
+}
+
+void ClipModel::pictureSaved(qint64 id)
+{
+    const int row = rowOf(id);
+    if (row >= 0)
+        emit dataChanged(index(row), index(row), {ImageRole});
 }
 
 bool ClipModel::isSelected(int row) const

@@ -7,11 +7,16 @@
 #include <QString>
 #include <QStringList>
 
+#include <QSet>
+
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <span>
 #include <vector>
+
+class QObject;
 
 namespace ws {
 
@@ -22,6 +27,10 @@ enum class ClipKind : std::uint8_t { Text = 0, Link = 1, Path = 2, Files = 3, Im
 
 // The kind of copied text, from what it looks like.
 ClipKind kindOfText(const QString& text);
+
+// What tells copied text (or files) from any other: the same again is the
+// same entry. Any thread.
+QByteArray clipHash(ClipKind kind, const QString& text);
 
 // One entry of the clipboard history, as kept in memory: what the list, the
 // preview and searching need. The formats that paste it as it was (HTML,
@@ -62,7 +71,7 @@ struct ClipCapture {
     QByteArray html; // "HTML Format" as it was on the clipboard (UTF-8, with its header)
     QByteArray rtf;
     QByteArray png; // Image
-    QByteArray hash; // Image: of its pixels; worked out from the text otherwise
+    QByteArray hash; // Image: of its pixels; else clipHash(), worked out by add() if empty
     int width = 0;
     int height = 0;
     QString source;
@@ -140,7 +149,13 @@ ClipBundle bundle(std::span<const Clip* const> clips, const std::function<QStrin
 
 // The clipboard history: entries and groups in an SQLite database, pictures
 // as PNG files next to it. Everything but the formats for pasting is kept in
-// memory, newest first. Used on one thread (the GUI's).
+// memory, newest first. Used on one thread (the GUI's, or whichever made it).
+//
+// The disk is written on a thread of its own, in the order things happen:
+// what is copied, pasted, moved or dropped is in memory (and listed) at once,
+// on disk a moment later, so a large copy does not hold the GUI up. What has
+// to read the disk (pasting the formats, removing for undo, the groups) waits
+// for what was queued before it.
 class ClipStore {
 public:
     static constexpr qint64 kPinned = 1; // the built-in group "固定"
@@ -151,9 +166,16 @@ public:
         int maxDays = 30; // since last copied or pasted; 0 = no limit
     };
 
+    // What became of what was written in the background, told on the store's
+    // thread.
+    struct Listener {
+        std::function<void()> lost; // entries that could not be saved went from clips() again
+        std::function<void(qint64 id)> pictureSaved; // its file is there now (imagePending())
+    };
+
     // `folder` holds clipboard.db and images\.
     explicit ClipStore(QString folder);
-    ~ClipStore();
+    ~ClipStore(); // writes what is still queued first
 
     ClipStore(const ClipStore&) = delete;
     ClipStore& operator=(const ClipStore&) = delete;
@@ -161,6 +183,9 @@ public:
     bool open(qint64 now); // loads the history; false if the database cannot be used
     bool isOpen() const { return m_open; }
     void setLimits(Limits limits, qint64 now); // drops what is over them
+    void setListener(Listener listener) { m_listener = std::move(listener); }
+    // Waits until everything queued is on disk and the listener was told.
+    void flush();
 
     const std::vector<Clip>& clips() const { return m_clips; } // newest first
     const Clip* clip(qint64 id) const;
@@ -187,8 +212,10 @@ public:
     void restoreGroup(ClipGroupRecord record);
     int clearHistory(); // the entries in no group; returns how many
 
-    ClipPayload payload(qint64 id) const;
+    ClipPayload payload(qint64 id) const; // with the picture's file there
     QString imagePath(qint64 id) const;
+    // Just copied, its picture still being written: no file at imagePath() yet.
+    bool imagePending(qint64 id) const { return m_picturesPending.contains(id); }
 
     // Small values kept with the history (the separator for joined pastes).
     QString value(const QString& key) const;
@@ -198,9 +225,12 @@ public:
     std::vector<int> find(const ClipFilter& filter) const;
 
 private:
+    class Writer;
+
     void prune(qint64 now);
-    void removeRows(const std::vector<qint64>& ids, bool deleteImages);
+    void dropRows(const std::vector<qint64>& ids); // and their pictures
     void moveToFront(std::size_t index);
+    void saved(qint64 id, bool ok); // from the writer
 
     QString m_folder;
     QString m_connection; // name of this store's database connection
@@ -208,6 +238,11 @@ private:
     Limits m_limits;
     std::vector<Clip> m_clips;
     std::vector<ClipGroup> m_groups;
+    qint64 m_nextId = 1; // ids are never used twice (a removed entry's picture stays for undo)
+    QSet<qint64> m_picturesPending;
+    Listener m_listener;
+    std::unique_ptr<QObject> m_context; // what the writer's news is queued to, on the store's thread
+    std::unique_ptr<Writer> m_writer; // last: stopped first
 };
 
 } // namespace ws

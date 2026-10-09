@@ -1,5 +1,6 @@
 #include "ClipStore.h"
 
+#include <QDir>
 #include <QFile>
 #include <QTemporaryDir>
 #include <QTest>
@@ -135,7 +136,9 @@ private slots:
         image.source = u"PixPin"_s;
         const qint64 imageId = store.add(image, kStart + 3);
         QVERIFY(imageId > 0);
+        store.flush(); // written in the background
         QVERIFY(QFile::exists(store.imagePath(imageId)));
+        QVERIFY(!store.imagePending(imageId));
 
         using Category = ClipFilter::Category;
         QCOMPARE(store.find({}).size(), std::size_t(4));
@@ -233,6 +236,7 @@ private slots:
         }
         ClipStore store(dir.path());
         QVERIFY(store.open(kStart));
+        store.flush(); // cleared away in the background
         QVERIFY(!QFile::exists(store.imagePath(id))); // nothing refers to it any more
     }
 
@@ -272,6 +276,77 @@ private slots:
         QCOMPARE(store.groups().size(), std::size_t(3));
         QCOMPARE(store.groups()[1].name, u"工作"_s);
         QCOMPARE(store.groupSize(store.groups()[1].id), 2);
+    }
+
+    void writtenInTheBackground()
+    {
+        QTemporaryDir dir;
+        const QString big(300'000, u'长');
+        qint64 picture = 0;
+        qint64 formatted = 0;
+        qint64 last = 0;
+        {
+            ClipStore store(dir.path());
+            QVERIFY(store.open(kStart));
+            store.setLimits({2, 0}, kStart);
+            ClipCapture image;
+            image.kind = ClipKind::Image;
+            image.png = "png";
+            image.hash = "c";
+            picture = store.add(image, kStart);
+            ClipCapture capture = text(big);
+            capture.html = "Version:0.9\r\n<b>长</b>";
+            formatted = store.add(capture, kStart + 1);
+            // Read back at once, all of it, written yet or not.
+            const ClipPayload payload = store.payload(formatted);
+            QCOMPARE(payload.text, big);
+            QCOMPARE(payload.html, capture.html);
+            // Over the limit: the picture goes, maybe before it was even written.
+            const qint64 removed = store.add(text(u"甲"_s), kStart + 2);
+            QVERIFY(!store.clip(picture) && !store.imagePending(picture));
+            QCOMPARE(store.remove(std::span(&removed, 1)).size(), std::size_t(1));
+            last = store.add(text(u"乙"_s), kStart + 3);
+            QVERIFY(last > removed); // an id is never given twice
+        } // what is still queued is written before the store goes
+        {
+            ClipStore store(dir.path());
+            QVERIFY(store.open(kStart + 4));
+            QCOMPARE(texts(store), (QStringList {u"乙"_s, big.left(ClipStore::kTextInMemory)}));
+            QCOMPARE(store.payload(formatted).text, big);
+            QVERIFY(!QFile::exists(store.imagePath(picture)));
+            store.remove(std::span(&last, 1)); // the highest id there was
+        }
+        ClipStore store(dir.path());
+        QVERIFY(store.open(kStart + 5));
+        QVERIFY(store.add(text(u"丙"_s), kStart + 5) > last);
+    }
+
+    void entriesThatCannotBeSaved()
+    {
+        QTemporaryDir dir;
+        ClipStore store(dir.path());
+        QVERIFY(store.open(kStart));
+        int lost = 0;
+        QList<qint64> saved;
+        store.setListener({.lost = [&] { ++lost; }, .pictureSaved = [&](qint64 id) { saved.append(id); }});
+        store.add(text(u"甲"_s), kStart);
+        ClipCapture image;
+        image.kind = ClipKind::Image;
+        image.png = "png";
+        image.hash = "d";
+        const qint64 good = store.add(image, kStart + 1);
+        // A folder where the next picture's file would go: it cannot be written.
+        QVERIFY(QDir().mkpath(store.imagePath(good + 1)));
+        image.hash = "e";
+        const qint64 bad = store.add(image, kStart + 2);
+        QCOMPARE(bad, good + 1);
+        QVERIFY(store.clip(bad)); // listed at once
+        store.flush();
+        QCOMPARE(saved, QList<qint64> {good});
+        QCOMPARE(lost, 1);
+        QVERIFY(!store.clip(bad));
+        QVERIFY(!store.imagePending(bad));
+        QCOMPARE(store.clips().size(), std::size_t(2));
     }
 
     void bundles()

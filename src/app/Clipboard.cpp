@@ -61,6 +61,10 @@ Clipboard::Clipboard(ClipStore* store, ClipboardWatcher* watcher, QObject* paren
     m_separator = m_store->value(u"separator"_s);
     if (!kSeparators.contains(m_separator))
         m_separator = kSeparators.constFirst();
+    m_store->setListener({
+        .lost = [this] { historyChanged(); },
+        .pictureSaved = [this](qint64 id) { m_model.pictureSaved(id); }, // the preview follows (dataChanged)
+    });
     m_flashTimer.setSingleShot(true);
     m_flashTimer.setInterval(3s);
     connect(&m_flashTimer, &QTimer::timeout, this, [this] {
@@ -351,7 +355,7 @@ ClipWrite Clipboard::writeFor(const std::vector<const Clip*>& clips, bool plainT
             if (plainText)
                 *problem = tr("图片没有可以粘贴的文字");
             else
-                write.imagePath = m_store->imagePath(c.id);
+                write.imagePath = m_store->payload(c.id).imagePath; // written, if it was just copied
             break;
         case ClipKind::Files: {
             QStringList files = c.files();
@@ -735,7 +739,9 @@ QVariantMap Clipboard::preview(int row) const
     QString size;
     switch (c->kind) {
     case ClipKind::Image:
-        map.insert(u"image"_s, QUrl::fromLocalFile(m_store->imagePath(c->id)).toString());
+        // None while its file is being written: asked again once it is there (ClipModel::pictureSaved).
+        map.insert(u"image"_s, m_store->imagePending(c->id) ? QString()
+                                                            : QUrl::fromLocalFile(m_store->imagePath(c->id)).toString());
         map.insert(u"width"_s, c->width);
         map.insert(u"height"_s, c->height);
         size = u"%1 × %2 · %3"_s.arg(c->width).arg(c->height).arg(
@@ -906,7 +912,7 @@ void Clipboard::trigger(int row, int action)
             }
             shell::reveal(files);
         } else {
-            shell::open(m_store->imagePath(c->id));
+            shell::open(m_store->payload(c->id).imagePath);
         }
         emit dismissRequested(); // what opened it is in front now, not the field the window came from
         break;

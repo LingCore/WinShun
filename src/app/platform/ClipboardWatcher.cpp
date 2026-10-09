@@ -495,6 +495,8 @@ void ClipboardWatcher::read()
     }
     if (capture.text.isEmpty() && capture.png.isEmpty())
         return;
+    if (capture.hash.isEmpty()) // here, not on the GUI thread: megabytes of text take a while
+        capture.hash = clipHash(capture.kind, capture.text);
     capture.sourcePath = QString::fromStdWString(path);
     capture.source = programName(path);
     capture.initial = initial;

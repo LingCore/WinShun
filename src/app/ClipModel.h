@@ -57,6 +57,7 @@ public:
     void setRows(const std::vector<int>& rows, const QString& query);
     void refreshTimes(); // "3 分钟前" moved on
     void retranslate() { refreshTimes(); }
+    void pictureSaved(qint64 id); // its file is there now (ClipStore::imagePending)
 
     int selectedCount() const { return static_cast<int>(m_selected.size()); }
     Q_INVOKABLE bool isSelected(int row) const;
