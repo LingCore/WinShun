@@ -111,7 +111,48 @@
 
 - **现象**：在同一行上快速 Ctrl+点击两次（选上又取消），会被当成“双击 Ctrl”，搜索框被关掉。
 - **原因**：`DoubleTapDetector` 原来只靠“两次敲击之间鼠标移动超过 12 像素”来排除 Ctrl+点击。Raw Input 只收键盘，鼠标按键根本看不到，在同一个位置点两次就过了这一关。
-- **做法**：`KeyListener` 同时用 Raw Input 收鼠标（`RIDEV_INPUTSINK`）。Ctrl 按住期间，或者一次敲击之后，只要有鼠标按键按下，就不算敲击（`DoubleTapDetector::mouseButtonDown`）。鼠标移动的消息只看一下按键标志就返回。Raw Input 不是钩子，不会拖慢鼠标。
+- **做法**：`KeyListener` 同时用 Raw Input 收鼠标（`RIDEV_INPUTSINK`）。Ctrl 按住期间，或者一次敲击之后，只要有鼠标按键按下，就不算敲击（`DoubleTapDetector::mouseUsed`）。鼠标移动的消息只看一下按键标志就返回。Raw Input 不是钩子，不会拖慢鼠标。
+
+### 双击 Ctrl 的其他漏触发和误触发
+
+2026-10-09 审查代码时发现（读代码推演，加查资料核实），不是用户报告的：
+
+- **Ctrl 的抬起收不到，之后第一次双击失灵**：按 Ctrl+Alt+Del 时，抬起发生在安全桌面上，Raw Input 收不到；别的程序的低级键盘钩子吞掉的键也一样。检测器以为 Ctrl 一直按着，把下一次按下当成自动重复，要敲第三下才弹出。做法：同一个键按着时又来一个按下，如果距上一个按下（包括重复）超过 1.5 秒，就算新的一次按下。键盘自动重复前最多等约 1 秒，两次重复之间也短于这个时间（`SPI_GETKEYBOARDDELAY` / `SPEED`）。
+- **Ctrl+滚轮和触摸板捏合**：精密触摸板的双指捏合，Windows 会转成 Ctrl+滚轮（微软称这是设计如此）。原来只有鼠标按键才让这次敲击作废，快速缩放两下就会弹出搜索框。现在滚轮（`RI_MOUSE_WHEEL`、`RI_MOUSE_HWHEEL`）也作废。
+- **拖动时点两下 Ctrl**：在资源管理器里拖文件时按 Ctrl 会在移动和复制之间切换，按住的鼠标键不会再有新的“按下”。Ctrl 按下时用 `GetAsyncKeyState` 看五个鼠标键有没有按着。
+- **AltGr 不用特殊处理**：AltGr 发出的假 LCtrl 后面紧跟着右 Alt 的按下，已经算“中间按了别的键”。
+- **两次敲击的间隔跟随系统的双击速度**（`GetDoubleClickTime()`，限制在 400–900 ms）：PowerToys 的“查找鼠标”也是这样做的，它同样用 Raw Input 检测双击 Ctrl。
+- **不要丢弃 `hDevice` 为 NULL 的按键**：这样能排除模拟出来的 Ctrl，但也会排除 PowerToys 键盘管理器、AutoHotkey 映射出来的 Ctrl（比如把 CapsLock 改成 Ctrl）、屏幕键盘，以及测试脚本 `SendInput` 发的键。
+- **会冲突的程序**：PowerToys 的“查找鼠标”默认就是双击左 Ctrl，Listary 默认也是双击 Ctrl。两边都会响应。
+
+### 后台进程抢不到前台
+
+- **原因**：`SetForegroundWindow` 只在几种情况下允许，其中之一是“调用的进程收到了最后一次输入”。按下 `RegisterHotKey` 注册的热键算收到，Raw Input 的 `WM_INPUT` 不算（Raymond Chen 2009-02-26；没有资料说 `WM_INPUT` 或低级钩子也算）。所以双击 Ctrl 之后靠 `AttachThreadInput` 和前台线程共享输入状态，绕过这个限制。
+- **做法**（`win::bringToFront`）：
+  - 前台窗口没有响应（`IsHungAppWindow`）时不共享，否则对方卡住的输入会把我们也卡住。
+  - 激活后用 `GetForegroundWindow()` 检查。没成功就用 `SendInput` 发一个什么都不做的鼠标输入（不移动、不按键），让 Win顺 成为“最后一次输入”的来源，再试一次。PowerToys 在 2020 年也这样做过（PR #1282）。
+  - 还不行就在日志里写一行 `Could not bring the window to the front over <类名> (<程序>)`。看到这行，就照它查是哪种前台窗口。
+
+### 开始菜单开着时双击 Ctrl：窗口出来了，焦点还在开始菜单
+
+- **现象**：2026-10-09 实测，按 Win 打开开始菜单后双击 Ctrl，搜索框显示出来了，前台却还是开始菜单（`SearchHost.exe` 的 `Windows.UI.Core.CoreWindow`），3 次都这样。打的字会进 Windows 搜索。日志里有上面那行 `Could not bring … (SearchHost.exe)`。之后搜索框一直开着、没有焦点（`activeChanged` 只在激活状态变化时触发，它从没被激活过，也就不会自己收起）。
+- **原因**：开始菜单、搜索、快速设置、通知中心开着时会锁住前台。测试程序在开始菜单开着时分别试了直接 `SetForegroundWindow`、先发一个空输入、先按一下 Alt，全都返回 FALSE；只有按 Esc 关掉开始菜单后，前台才回到原来的窗口。
+- **做法**：前台窗口属于 `SearchHost.exe`、`StartMenuExperienceHost.exe`、`ShellExperienceHost.exe`、`ShellHost.exe` 时，先 `SendInput` 一个 Esc，等前台换掉（最多 500 ms），再照常激活（`closeShellFlyout`）。实测：开始菜单 3 次、快速设置（`ShellHost.exe` 的 `ControlCenterWindow`）2 次、通知中心（`ShellExperienceHost.exe`）2 次全部拿到前台，用时 191–204 ms，主要是等面板关掉。
+- **同一轮实测的其他结果**：从普通窗口双击 Ctrl 11 次、从资源管理器 3 次，全部在 2–7 ms 内拿到前台，双击收起 2–6 ms。间隔 450 ms 能触发，700 ms 不触发。Ctrl+滚轮两次、按住左键双击 Ctrl、同一处 Ctrl+点击两次，都没有误触发。
+
+### 游戏里连按两下 Ctrl（蹲下）弹出搜索框
+
+- **现象**：很多游戏用 Ctrl 蹲下，玩家常连按两下。搜索框弹出来会抢走键盘；独占全屏的游戏还可能被最小化。
+- **只看 `QUNS_RUNNING_D3D_FULL_SCREEN` 不够**：PowerToys“查找鼠标”的“游戏模式下不激活”只认这一个值（`src/common/utils/game_mode.h`），而 Windows 10 起的全屏优化让大多数“全屏”游戏实际跑在无边框窗口里，返回的是 `QUNS_BUSY`。`QUNS_BUSY` 在全屏视频、F11 网页、打开 Windows“演示设置”时也会出现，不能单独当游戏信号。
+- **GameConfigStore 不可靠**：`HKCU\System\GameConfigStore\Children` 在这台机器上有 68 条，只有 3 条带程序路径（The Finals、Farlight 84，还有 WeGame 的后台进程 `tgp_daemon.exe`，它不是游戏），其余是微软预置的目录名。`Windows.Gaming.Preview.GamesEnumeration` 普通桌面程序用不了。
+- **做法**（`GameGuard.h` 判断，`platform/Foreground.cpp` 取事实，只在双击成立的那一刻查一次）：
+  - 前台程序在名单里（设置里填程序文件名），不响应。
+  - “任何全屏都不响应”打开时（默认关），窗口铺满所在显示器就不响应。最大化的窗口不算（任务栏自动隐藏时它也铺满）；桌面和 Win顺 自己的窗口也不算。
+  - “玩游戏时不响应”打开时（默认开）：独占全屏，或者光标被藏起来，并且被锁住（`GetClipCursor` 比整个桌面小）或窗口铺满显示器，就不响应。这是用鼠标转视角的状态，不需要知道它是不是游戏。藏光标的两种写法（`ShowCursor(FALSE)`、`SetCursor(NULL)`）都认；`CURSOR_SUPPRESSED`（触屏、笔时 Windows 藏的）不算。代价：全屏视频几秒不动鼠标、播放器藏了光标时也不响应，动一下鼠标就好。
+  - 不响应时什么都不显示；日志里每个程序、每种原因记一行 `Double Ctrl ignored over <程序> as <原因>`。另设的组合键不受影响，游戏里想打开就用它。
+- **实测**（2026-10-09，用测试窗口模拟）：窗口化加藏光标加锁光标、全屏加 `ShowCursor` 藏光标、全屏加 `SetCursor(NULL)`、“任何全屏”打开时的全屏窗口、名单里的程序，都不响应；窗口化只藏光标（打字时）、窗口化只锁光标（即时战略游戏）、全屏但光标可见（F11 网页）、名单还原后，都照常弹出。
+- **再测一次，用 D3D11 假游戏**（同日；一个真用 D3D11 每帧渲染的程序，鼠标转视角时每帧把光标拉回中心）：DXGI `SetFullscreenState(TRUE)` 的独占全屏，翻转模型（`FLIP_DISCARD`）和老的 `DISCARD` 都返回 `QUNS_RUNNING_D3D_FULL_SCREEN`，光标可见时也不响应；无边框全屏是 `QUNS_BUSY`，光标藏起来就不响应，SDL 那种 `SetCursor(NULL)` 加中心 1×1 锁定、窗口化或无边框，也都不响应。无边框时窗口就是整个桌面（单显示器），`GetClipCursor` 看不出锁定，靠“铺满显示器”判断。
+- **已知漏网**：光标换成一张全透明的图片（`CURSOR_SHOWING` 仍在，句柄不为空），会被当成光标可见，照常弹出。SDL2 只在远程桌面里这样藏光标（`WIN_ShowCursor` 的 `SDL_blank_cursor`），本机的游戏引擎一般用 `ShowCursor`/`SetCursor(NULL)`。还没在真实游戏里测。
 
 ## 图片清晰度（QML）
 

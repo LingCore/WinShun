@@ -1,11 +1,16 @@
 #include "WindowEffects.h"
 
+#include "Foreground.h"
+
+#include <QDebug>
 #include <QOperatingSystemVersion>
 #include <QWindow>
 
 #include <dwmapi.h>
 #include <windows.h>
 #include <msctf.h>
+
+using namespace Qt::StringLiterals;
 
 namespace ws::win {
 
@@ -22,6 +27,47 @@ constexpr int kBackdropMica = 2; // DWMSBT_MAINWINDOW
 HWND handleOf(QWindow* window)
 {
     return window ? reinterpret_cast<HWND>(window->winId()) : nullptr;
+}
+
+using foreground::programOf;
+
+// "Notepad (notepad.exe)", for the log.
+QString describe(HWND hwnd)
+{
+    if (!hwnd)
+        return u"no window"_s;
+    wchar_t className[256] {};
+    ::GetClassNameW(hwnd, className, static_cast<int>(std::size(className)));
+    return QString::fromWCharArray(className) + u" ("_s + programOf(hwnd) + u')';
+}
+
+bool activate(HWND hwnd)
+{
+    ::SetForegroundWindow(hwnd);
+    ::BringWindowToTop(hwnd);
+    ::SetFocus(hwnd);
+    return ::GetForegroundWindow() == hwnd;
+}
+
+// Windows' Start menu, search, notification center and quick settings keep
+// the foreground while they are open: no SetForegroundWindow gets past them,
+// not with the input shared, after an input sent, or after Alt (measured
+// 2026-10-09). Esc closes them as it would for the user, and the window that
+// was in front before gets the foreground back. Returns the window in front then.
+HWND closeShellFlyout(HWND foreground)
+{
+    static const QStringList flyouts {u"SearchHost.exe"_s, u"StartMenuExperienceHost.exe"_s,
+        u"ShellExperienceHost.exe"_s, u"ShellHost.exe"_s};
+    if (!foreground || !flyouts.contains(programOf(foreground), Qt::CaseInsensitive))
+        return foreground;
+    INPUT esc[2] {};
+    esc[0].type = esc[1].type = INPUT_KEYBOARD;
+    esc[0].ki.wVk = esc[1].ki.wVk = VK_ESCAPE;
+    esc[1].ki.dwFlags = KEYEVENTF_KEYUP;
+    ::SendInput(2, esc, sizeof esc[0]);
+    for (int waited = 0; waited < 500 && ::GetForegroundWindow() == foreground; waited += 10)
+        ::Sleep(10); // closing takes some 150 ms
+    return ::GetForegroundWindow();
 }
 
 } // namespace
@@ -92,19 +138,29 @@ void bringToFront(QWindow* window)
     const HWND hwnd = handleOf(window);
     if (!hwnd)
         return;
-    const HWND foreground = ::GetForegroundWindow();
+    HWND foreground = ::GetForegroundWindow();
     if (foreground == hwnd)
         return;
+    foreground = closeShellFlyout(foreground);
     const DWORD self = ::GetCurrentThreadId();
     const DWORD other = foreground ? ::GetWindowThreadProcessId(foreground, nullptr) : 0;
     // Sharing the input state with the foreground thread lifts the
-    // focus-stealing restriction for this one call.
-    const bool attached = other != 0 && other != self && ::AttachThreadInput(other, self, TRUE);
-    ::SetForegroundWindow(hwnd);
-    ::BringWindowToTop(hwnd);
-    ::SetFocus(hwnd);
+    // focus-stealing restriction for this one call. Not with a hung one:
+    // its input stalls, and ours would with it while they are shared.
+    const bool attached
+        = other != 0 && other != self && !::IsHungAppWindow(foreground) && ::AttachThreadInput(other, self, TRUE);
+    const bool done = activate(hwnd);
     if (attached)
         ::AttachThreadInput(other, self, FALSE);
+    if (done)
+        return;
+    // Refused. The process that sent the latest input may change the
+    // foreground: send one that does nothing (no move, no button) and try again.
+    INPUT nothing {};
+    nothing.type = INPUT_MOUSE;
+    ::SendInput(1, &nothing, sizeof nothing);
+    if (!activate(hwnd))
+        qWarning().noquote() << "Could not bring the window to the front over" << describe(::GetForegroundWindow());
 }
 
 void setMenuTheme(bool dark)
