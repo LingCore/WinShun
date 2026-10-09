@@ -128,14 +128,16 @@ std::vector<EntryId> knownOf(const ContentIndex& content, const QString& phrase)
 // A 1 KB MFT file record as NTFS writes it, update sequence included.
 class RecordBuilder {
 public:
-    explicit RecordBuilder(std::uint16_t flags, std::uint64_t baseRecord = 0)
-        : m_data(1024)
+    explicit RecordBuilder(std::uint16_t flags, std::uint64_t baseRecord = 0, std::size_t size = 1024)
+        : m_data(size)
+        , m_strides(size / 512)
+        , m_pos((0x30 + 2 * (m_strides + 1) + 7) & ~std::size_t {7})
     {
         put<std::uint32_t>(m_data, 0, 0x454C4946); // "FILE"
         put<std::uint16_t>(m_data, 0x04, 0x30); // update sequence array
-        put<std::uint16_t>(m_data, 0x06, 3); // check value + one per 512 bytes
+        put<std::uint16_t>(m_data, 0x06, static_cast<std::uint16_t>(m_strides + 1)); // check value + one per 512 bytes
         put<std::uint16_t>(m_data, 0x10, 1); // sequence number
-        put<std::uint16_t>(m_data, 0x14, 0x38); // first attribute
+        put<std::uint16_t>(m_data, 0x14, static_cast<std::uint16_t>(m_pos)); // first attribute
         put<std::uint16_t>(m_data, 0x16, flags);
         put<std::uint64_t>(m_data, 0x20, baseRecord);
     }
@@ -157,14 +159,34 @@ public:
         attribute(0x30, value);
     }
 
+    // An unnamed non-resident attribute of `size` bytes: where they are, as a run list.
+    void nonResident(std::uint32_t type, const std::vector<std::byte>& runs, std::uint64_t lastVcn, std::uint64_t size = 0,
+        std::uint64_t firstVcn = 0)
+    {
+        const std::size_t length = (0x40 + runs.size() + 7) & ~std::size_t {7};
+        put(m_data, m_pos, type);
+        put(m_data, m_pos + 4, static_cast<std::uint32_t>(length));
+        m_data[m_pos + 8] = std::byte {1};
+        put<std::uint64_t>(m_data, m_pos + 0x10, firstVcn);
+        put<std::uint64_t>(m_data, m_pos + 0x18, lastVcn);
+        put<std::uint16_t>(m_data, m_pos + 0x20, 0x40);
+        put<std::uint64_t>(m_data, m_pos + 0x28, size); // allocated
+        put<std::uint64_t>(m_data, m_pos + 0x30, size); // data
+        put<std::uint64_t>(m_data, m_pos + 0x38, size); // initialized
+        std::memcpy(m_data.data() + m_pos + 0x40, runs.data(), runs.size());
+        m_pos += length;
+    }
+
+    void resident(std::uint32_t type, const std::vector<std::byte>& value) { attribute(type, value); }
+
     std::vector<std::byte> finish()
     {
         put<std::uint32_t>(m_data, m_pos, 0xFFFF'FFFF);
         put<std::uint32_t>(m_data, 0x18, static_cast<std::uint32_t>(m_pos + 8)); // bytes in use
-        put<std::uint32_t>(m_data, 0x1C, 1024);
+        put<std::uint32_t>(m_data, 0x1C, static_cast<std::uint32_t>(m_data.size()));
         // Each 512-byte stride ends in the check value; the real bytes move to the array.
         put<std::uint16_t>(m_data, 0x30, 0x0042);
-        for (std::size_t i = 1; i <= 2; ++i) {
+        for (std::size_t i = 1; i <= m_strides; ++i) {
             std::memcpy(m_data.data() + 0x30 + i * 2, m_data.data() + i * 512 - 2, 2);
             put<std::uint16_t>(m_data, i * 512 - 2, 0x0042);
         }
@@ -184,8 +206,37 @@ private:
     }
 
     std::vector<std::byte> m_data;
-    std::size_t m_pos = 0x38;
+    std::size_t m_strides;
+    std::size_t m_pos;
 };
+
+// The run list (mapping pairs) of extents, as NTFS writes it.
+std::vector<std::byte> runList(const std::vector<ntfs::Extent>& extents, std::uint64_t clusterSize)
+{
+    const auto append = [](std::vector<std::byte>& out, std::uint64_t value, unsigned bytes) {
+        for (unsigned b = 0; b < bytes; ++b)
+            out.push_back(static_cast<std::byte>(value >> (8 * b)));
+    };
+    std::vector<std::byte> out;
+    std::int64_t lcn = 0;
+    for (const ntfs::Extent& e : extents) {
+        const std::uint64_t length = e.length / clusterSize;
+        const std::int64_t delta = static_cast<std::int64_t>(e.offset / clusterSize) - lcn;
+        lcn += delta;
+        unsigned lengthBytes = 1;
+        while (length >> (8 * lengthBytes))
+            ++lengthBytes;
+        unsigned deltaBytes = 1; // signed: the top bit of the last byte is the sign
+        while (deltaBytes < 8 && (delta < -(std::int64_t {1} << (8 * deltaBytes - 1))
+                   || delta >= (std::int64_t {1} << (8 * deltaBytes - 1))))
+            ++deltaBytes;
+        out.push_back(static_cast<std::byte>(deltaBytes << 4 | lengthBytes));
+        append(out, length, lengthBytes);
+        append(out, static_cast<std::uint64_t>(delta), deltaBytes);
+    }
+    out.push_back(std::byte {0});
+    return out;
+}
 
 // Appends a USN_RECORD (version 2, or another version to be skipped).
 void appendUsn(std::vector<std::byte>& buffer, std::uint64_t file, std::uint64_t parent, std::int64_t usn,
@@ -998,6 +1049,239 @@ private slots:
         QVERIFY(!ntfs::decodeRunList(bytes({0x31, 0x10, 0x00, 0x40, 0x00}), 4096)); // no end marker
         QVERIFY(!ntfs::decodeRunList(bytes({0x01, 0x10, 0x00}), 4096)); // sparse
         QVERIFY(!ntfs::decodeRunList(bytes({0x31, 0x10, 0x00}), 4096)); // cut short
+    }
+
+    void mftLayouts()
+    {
+        QVERIFY(ntfs::supported({512, 512, 1024})); // converted from FAT32
+        QVERIFY(ntfs::supported({512, 2048, 4096})); // "format /L" with small clusters
+        QVERIFY(ntfs::supported({4096, 4096, 4096})); // a 4K-sector disk
+        QVERIFY(ntfs::supported({512, 2u << 20, 1024})); // the largest NTFS clusters
+        QVERIFY(!ntfs::supported({4096, 2048, 4096})); // a cluster smaller than a sector
+        QVERIFY(!ntfs::supported({512, 4096, 1000}));
+        QVERIFY(!ntfs::supported({512, 4096, 256}));
+        QVERIFY(!ntfs::supported({512, 0, 1024}));
+
+        // Reads stay within extents, take whole clusters, and stop past the bytes asked for.
+        const std::vector<ntfs::Extent> extents {{8192, 3 * 512}, {40960, 20 * 512}, {1024, 2 * 512}};
+        const auto plan = ntfs::planReads(extents, 3 * 512 + 9 * 512 + 100, 512, 4 * 512);
+        const std::vector<std::pair<std::uint64_t, std::uint64_t>> want {
+            {8192, 1536}, {40960, 2048}, {43008, 2048}, {45056, 1024}};
+        QCOMPARE(plan.size(), want.size());
+        for (std::size_t i = 0; i < want.size(); ++i) {
+            QCOMPARE(plan[i].offset, want[i].first);
+            QCOMPARE(plan[i].length, want[i].second);
+        }
+        QCOMPARE(ntfs::planReads(extents, 100 * 512, 512, 4 * 512).size(), std::size_t {7}); // all, and short
+        for (std::size_t i = 0, at = 0; i < plan.size(); at += plan[i].length, ++i)
+            QCOMPARE(plan[i].at, std::uint64_t {at});
+
+        // A stretch left out across two extents: the reads go on after it, where it ends.
+        const std::vector<ntfs::Extent> two {{0x10000, 16384}, {0x40000, 16384}};
+        const std::vector<ntfs::Stretch> skip {{8192, 16384}};
+        const auto around = ntfs::planReads(two, 32768, 4096, 65536, skip);
+        QCOMPARE(around.size(), std::size_t {2});
+        QCOMPARE(around[0].offset, std::uint64_t {0x10000});
+        QCOMPARE(around[0].length, std::uint64_t {8192});
+        QCOMPARE(around[0].at, std::uint64_t {0});
+        QCOMPARE(around[1].offset, std::uint64_t {0x40000 + 8192});
+        QCOMPARE(around[1].length, std::uint64_t {8192});
+        QCOMPARE(around[1].at, std::uint64_t {24576});
+
+        // Free stretches: whole granules (here 8 records, one byte of the bitmap) of free records.
+        const auto bits = [](std::initializer_list<int> v) {
+            std::vector<std::byte> out;
+            for (const int b : v)
+                out.push_back(static_cast<std::byte>(b));
+            return out;
+        };
+        const auto bitmap = bits({0xFF, 0, 0, 0x01, 0, 0, 0, 0x80});
+        const auto stretches = [&](std::uint64_t minBytes, std::uint64_t bytes) {
+            std::vector<std::pair<std::uint64_t, std::uint64_t>> out;
+            for (const ntfs::Stretch& s : ntfs::freeStretches(bitmap, 1024, 8192, minBytes, bytes))
+                out.emplace_back(s.at, s.length);
+            return out;
+        };
+        using Stretches = std::vector<std::pair<std::uint64_t, std::uint64_t>>;
+        QCOMPARE(stretches(8192, 65536), (Stretches {{8192, 16384}, {32768, 24576}}));
+        QCOMPARE(stretches(24576, 65536), (Stretches {{32768, 24576}})); // the shorter one is read
+        QCOMPARE(stretches(8192, 131072), (Stretches {{8192, 16384}, {32768, 24576}})); // past the bitmap: in use
+        QCOMPARE(stretches(8192, 40960), (Stretches {{8192, 16384}, {32768, 8192}})); // only the bytes asked for
+        QVERIFY(ntfs::freeStretches(bitmap, 1024, 4096, 4096, 65536).empty()); // a granule must be whole bytes
+    }
+
+    // An MFT split into extents of odd lengths, out of order on the volume:
+    // with clusters smaller than records, records run across extents and
+    // across the reader's blocks. Each comes back whole, in order. With its
+    // bitmap, the free records from 1.5 to 3.5 MB into it (garbage here) are
+    // left out where they fill a whole megabyte, from 2 to 3 MB.
+    void mftReader_data()
+    {
+        QTest::addColumn<int>("clusterSize");
+        QTest::addColumn<int>("recordSize");
+        QTest::addColumn<bool>("fromRecordZero"); // the extents read from the MFT's own record
+        QTest::addColumn<bool>("withBitmap");
+        QTest::addColumn<int>("bitmapHolder"); // the record with the bitmap, named in record 0's attribute list; 0: record 0
+        QTest::addColumn<int>("readsInFlight");
+        QTest::newRow("512-byte clusters") << 512 << 1024 << false << false << 0 << 2;
+        QTest::newRow("512-byte clusters, record 0") << 512 << 1024 << true << false << 0 << 2;
+        QTest::newRow("512-byte clusters, 4 KB records") << 512 << 4096 << true << false << 0 << 3;
+        QTest::newRow("2 KB clusters, 4 KB records") << 2048 << 4096 << false << false << 0 << 2;
+        QTest::newRow("4 KB clusters") << 4096 << 1024 << false << false << 0 << 4;
+        QTest::newRow("64 KB clusters") << 65536 << 4096 << true << false << 0 << 2;
+        QTest::newRow("512-byte clusters, bitmap") << 512 << 1024 << false << true << 0 << 2;
+        QTest::newRow("512-byte clusters, 4 KB records, bitmap") << 512 << 4096 << true << true << 0 << 4;
+        QTest::newRow("2 KB clusters, 4 KB records, bitmap") << 2048 << 4096 << true << true << 0 << 3;
+        QTest::newRow("64 KB clusters, bitmap") << 65536 << 4096 << false << true << 0 << 2;
+        // Record 2 runs across the first two extents with 512-byte clusters.
+        QTest::newRow("bitmap in another record") << 512 << 1024 << false << true << 2 << 2;
+        QTest::newRow("bitmap in another record, 4 KB") << 4096 << 4096 << true << true << 9 << 2;
+        // Its run list in two parts: the first cluster in record 0, the rest in record 2.
+        QTest::newRow("bitmap in two parts") << 512 << 1024 << false << true << -2 << 2;
+    }
+    void mftReader()
+    {
+        QFETCH(int, clusterSize);
+        QFETCH(int, recordSize);
+        QFETCH(bool, fromRecordZero);
+        QFETCH(bool, withBitmap);
+        QFETCH(int, bitmapHolder);
+        QFETCH(int, readsInFlight);
+        const bool twoParts = bitmapHolder < 0; // the first in record 0, the second in record -bitmapHolder
+        const auto holder = static_cast<std::uint32_t>(std::abs(bitmapHolder));
+        const auto cluster = static_cast<std::uint64_t>(clusterSize);
+        const auto size = static_cast<std::size_t>(recordSize);
+        const auto isFree = [&](std::uint64_t record) {
+            return withBitmap && record * size >= (3u << 19) && record * size < (7u << 19);
+        };
+        const auto leftOut = [&](std::uint64_t record) {
+            return withBitmap && record * size >= (2u << 20) && record * size < (3u << 20);
+        };
+
+        // Extents in clusters. The first holds record 0 whole, as on a real
+        // volume; the fourth is longer than a read (4 MB).
+        std::vector<std::uint64_t> clusters {std::max<std::uint64_t>(3, 2 * size / cluster + 1), 1, 5,
+            (9u << 19) / cluster + 1, 7, 2, 9, 4};
+        std::uint64_t total = 0;
+        for (const std::uint64_t c : clusters)
+            total += c * cluster;
+        const std::uint32_t count = static_cast<std::uint32_t>((total - 2 * cluster) / size); // the rest is allocated, unused
+        // On the volume: in another order, with a cluster of garbage before each.
+        const std::size_t order[] {0, 4, 2, 6, 1, 5, 3, 7};
+        std::vector<ntfs::Extent> extents(clusters.size());
+        std::uint64_t at = 16 * cluster;
+        for (const std::size_t k : order) {
+            at += cluster;
+            extents[k] = {at, clusters[k] * cluster};
+            at += extents[k].length;
+        }
+        // The bitmap after them: a bit per record, set when it is in use.
+        std::vector<std::byte> bitmap((count + 63) / 64 * 8);
+        for (std::uint32_t i = 0; i < count; ++i) {
+            if (i % 7 != 3 && !isFree(i))
+                bitmap[i / 8] |= std::byte {1} << (i % 8);
+        }
+        const ntfs::Extent bitmapExtent {at + cluster, (bitmap.size() + cluster - 1) / cluster * cluster};
+        std::vector<std::byte> image(static_cast<std::size_t>(bitmapExtent.offset + bitmapExtent.length), std::byte {0xCC});
+        std::memcpy(image.data() + bitmapExtent.offset, bitmap.data(), bitmap.size());
+
+        // The records, laid along the extents.
+        const auto file = [](std::uint32_t i) { return u"f" + QString::number(i).toStdU16String(); };
+        std::size_t extent = 0;
+        std::uint64_t inExtent = 0;
+        for (std::uint32_t i = 0; i < count; ++i) {
+            const bool holds = withBitmap && i == holder; // the $BITMAP attribute
+            RecordBuilder b(i % 7 == 3 && !holds ? 0x0000 : 0x0001, holds && i != 0 ? 0x0001'0000'0000'0000ull : 0, size);
+            const std::uint64_t lastVcn = bitmapExtent.length / cluster - 1;
+            if (i == 0) {
+                b.fileName(0x0001'0000'0000'0005ull, u"$MFT", 3);
+                if (withBitmap && holder != 0) {
+                    // The attribute list: an entry for each part of the $BITMAP attribute.
+                    std::vector<std::byte> list;
+                    const auto entry = [&](std::uint64_t vcn, std::uint32_t number) {
+                        std::vector<std::byte> e(0x20);
+                        put<std::uint32_t>(e, 0, 0xB0);
+                        put<std::uint16_t>(e, 4, 0x20);
+                        e[7] = std::byte {0x1A};
+                        put<std::uint64_t>(e, 8, vcn);
+                        put<std::uint64_t>(e, 0x10, 0x0001'0000'0000'0000ull | number);
+                        list.insert(list.end(), e.begin(), e.end());
+                    };
+                    if (twoParts)
+                        entry(0, 0);
+                    entry(twoParts ? 1 : 0, holder);
+                    b.resident(0x20, list);
+                }
+                b.nonResident(0x80, runList(extents, cluster), total / cluster - 1);
+                if (withBitmap && twoParts) // its first cluster
+                    b.nonResident(0xB0, runList({{bitmapExtent.offset, cluster}}, cluster), 0, bitmap.size());
+            }
+            if (holds && twoParts) {
+                b.nonResident(0xB0, runList({{bitmapExtent.offset + cluster, bitmapExtent.length - cluster}}, cluster),
+                    lastVcn, 0, 1);
+            } else if (holds) {
+                b.nonResident(0xB0, runList({bitmapExtent}, cluster), lastVcn, bitmap.size());
+            } else if (i != 0) {
+                b.fileName(0x0001'0000'0000'0005ull, file(i), 1);
+            }
+            const std::vector<std::byte> record = isFree(i) ? std::vector<std::byte>(size, std::byte {0xCC}) : b.finish();
+            for (std::size_t done = 0; done < size;) {
+                const std::size_t n = std::min<std::size_t>(size - done, extents[extent].length - inExtent);
+                std::memcpy(image.data() + extents[extent].offset + inExtent, record.data() + done, n);
+                done += n;
+                inExtent += n;
+                if (inExtent == extents[extent].length) {
+                    ++extent;
+                    inExtent = 0;
+                }
+            }
+        }
+
+        const ntfs::Geometry geometry {512, static_cast<std::uint32_t>(clusterSize), static_cast<std::uint32_t>(recordSize)};
+        const std::uint64_t validBytes = std::uint64_t {count} * size;
+        ntfs::MftReader reader(image, geometry, fromRecordZero ? std::vector<ntfs::Extent>() : extents,
+            extents[0].offset, validBytes, {readsInFlight, true});
+        QVERIFY2(reader.valid(), qPrintable(QString::fromStdWString(reader.error())));
+        QCOMPARE(reader.extentsFromRecordZero(), fromRecordZero);
+        QCOMPARE(reader.recordCount(), std::uint64_t {count});
+        std::uint32_t next = 0;
+        ntfs::FileRecord record;
+        while (reader.next()) {
+            if (reader.firstRecord() != next) { // only over the megabyte left out
+                QCOMPARE(std::uint64_t {next} * size, std::uint64_t {2u << 20});
+                QCOMPARE(std::uint64_t {reader.firstRecord()} * size, std::uint64_t {3u << 20});
+                next = reader.firstRecord();
+            }
+            for (std::size_t i = 0; i < reader.blockRecords(); ++i, ++next) {
+                QVERIFY(!leftOut(next));
+                if (isFree(next)) {
+                    QVERIFY(!reader.parse(i, record)); // garbage, read all the same
+                    continue;
+                }
+                QVERIFY2(reader.parse(i, record), qPrintable(u"record %1"_s.arg(next)));
+                if (withBitmap && holder != 0 && next == holder) {
+                    QVERIFY(record.inUse && record.names.empty()); // holds the bitmap, nothing else
+                    continue;
+                }
+                QCOMPARE(record.inUse, next % 7 != 3);
+                if (record.inUse) {
+                    QCOMPARE(record.names.size(), std::size_t {1});
+                    QCOMPARE(std::u16string(record.names[0].name), next == 0 ? std::u16string(u"$MFT") : file(next));
+                }
+            }
+        }
+        QVERIFY2(reader.valid(), qPrintable(QString::fromStdWString(reader.error())));
+        QCOMPARE(next, count);
+        QCOMPARE(reader.bytesDone(), validBytes);
+        QCOMPARE(reader.bytesSkipped(), withBitmap ? std::uint64_t {1u << 20} : std::uint64_t {0});
+        QCOMPARE(reader.bitmapRecord(), withBitmap && !twoParts ? holder : 0u);
+
+        // A read that comes back short (past the end of the volume) is an error, not the end.
+        image.resize(static_cast<std::size_t>(extents[3].offset + cluster));
+        ntfs::MftReader cut(image, geometry, extents, extents[0].offset, validBytes);
+        while (cut.next()) {
+        }
+        QVERIFY(!cut.valid());
     }
 
     void usnRecords()

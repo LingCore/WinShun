@@ -83,6 +83,13 @@ public:
     State state() const noexcept { return m_state.load(); }
     bool isRefreshing() const noexcept { return m_refreshing.load(); }
     std::size_t itemCount() const;
+    // A volume being read from disk now: its MFT, or walked.
+    struct Reading {
+        std::wstring root; // "D:"
+        int percent = -1; // of its MFT read so far; -1 while walked, or while the index is built from what was read
+        bool operator==(const Reading&) const = default;
+    };
+    std::vector<Reading> readingVolumes() const;
 
 signals:
     void stateChanged();
@@ -103,6 +110,8 @@ private:
     void run(std::stop_token stop, Pass pass);
     RuleChange applyRuleChanges(const CrawlRules& before, const Crawler& crawler, std::stop_token stop);
     bool syncWithDisk(std::stop_token stop, const std::vector<std::size_t>& which);
+    void setReading(const std::wstring& root, bool reading);
+    void setReadingPercent(const std::wstring& root, int percent);
     bool syncFromMft(const VolumeInfo& volume, EntryId root, const Crawler& crawler, bool lowPriority,
         std::stop_token stop);
     std::unique_ptr<Followed> follow(std::size_t volume);
@@ -145,6 +154,9 @@ private:
     std::vector<std::wstring> m_suspended; // being ejected or locked: not touched at all
     std::vector<std::wstring> m_rewalk; // walked volumes owed a walk: never finished, or unwatched for a while
     std::optional<CrawlRules> m_rulesBefore; // the rules the index still reflects, when they changed
+
+    mutable std::mutex m_readingMutex;
+    std::vector<Reading> m_reading; // readingVolumes()
 
     std::shared_ptr<ContentIndex> m_content;
     std::unique_ptr<ContentIndexer> m_contentIndexer;

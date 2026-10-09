@@ -41,7 +41,8 @@ template <typename T> auto parentRange(const std::vector<T>& v, std::uint32_t pa
 
 // ---- MftTree ------------------------------------------------------------------
 
-bool MftTree::read(std::wstring_view root, FileIndex& index, std::stop_token stop, std::wstring* error)
+bool MftTree::read(
+    std::wstring_view root, FileIndex& index, std::stop_token stop, std::wstring* error, const Progress& progress)
 {
     m_folders.clear();
     m_files.clear();
@@ -95,17 +96,21 @@ bool MftTree::read(std::wstring_view root, FileIndex& index, std::stop_token sto
                     static_cast<std::uint16_t>(names.size() - begin), flags, extension});
             }
         }
-        // One lock per block of records to store their names.
-        auto lock = index.writeLock();
-        for (const Collected& c : block) {
-            const Name name {c.parent, index.storeName({names.data() + c.begin, c.length}), c.length, c.flags};
-            if (c.extension)
-                extensionNames.emplace_back(c.record, name);
-            else if (c.flags & EntryFlag::Directory)
-                m_folders.push_back({name, c.record});
-            else
-                m_files.push_back(name);
+        {
+            // One lock per block of records to store their names.
+            auto lock = index.writeLock();
+            for (const Collected& c : block) {
+                const Name name {c.parent, index.storeName({names.data() + c.begin, c.length}), c.length, c.flags};
+                if (c.extension)
+                    extensionNames.emplace_back(c.record, name);
+                else if (c.flags & EntryFlag::Directory)
+                    m_folders.push_back({name, c.record});
+                else
+                    m_files.push_back(name);
+            }
         }
+        if (progress)
+            progress(reader.bytesDone(), reader.bytes());
     }
     if (!reader.valid())
         return failed();

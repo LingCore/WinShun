@@ -71,6 +71,17 @@ QString roughNumber(qint64 n, bool* unit)
     return number(n);
 }
 
+// The drives being read from disk now, with how far: "D: 45%、E:".
+QString readingDrives(const IndexService& index)
+{
+    QStringList drives;
+    for (const IndexService::Reading& r : index.readingVolumes()) {
+        const QString root = QString::fromStdWString(r.root);
+        drives.append(r.percent >= 0 ? u"%1 %2%"_s.arg(root).arg(r.percent) : root);
+    }
+    return drives.join(Launcher::tr("、"));
+}
+
 } // namespace
 
 Launcher::Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places, SearchEngine* engine, History* history,
@@ -438,12 +449,16 @@ void Launcher::refreshStatus()
             break;
         case IndexService::State::Building:
             s = tr("正在建立索引… 已收录 %Ln 项", nullptr, items);
+            if (const QString drives = readingDrives(*m_index); !drives.isEmpty())
+                s += tr(" · 正在读 %1").arg(drives); // a hard disk takes a while: which one it is
             break;
         case IndexService::State::Ready: {
             bool unit = false;
             const QString count = roughNumber(items, &unit);
             s = unit ? tr("已索引 %1项", nullptr, items).arg(count) : tr("已索引 %1 项", nullptr, items).arg(count);
-            if (m_index->isRefreshing())
+            if (const QString drives = readingDrives(*m_index); !drives.isEmpty())
+                s += tr(" · 后台同步 %1").arg(drives);
+            else if (m_index->isRefreshing())
                 s += tr(" · 后台同步中");
             break;
         }

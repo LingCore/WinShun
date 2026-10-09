@@ -1631,6 +1631,18 @@
         </translation>
     </message>
     <message>
+        <source>、</source>
+        <translation>, </translation>
+    </message>
+    <message>
+        <source> · 正在读 %1</source>
+        <translation> · Reading %1</translation>
+    </message>
+    <message>
+        <source> · 后台同步 %1</source>
+        <translation> · Syncing %1 in the background</translation>
+    </message>
+    <message>
         <source> · 后台同步中</source>
         <translation> · Syncing in the background</translation>
     </message>

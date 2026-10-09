@@ -46,6 +46,13 @@ struct JournalPosition {
 std::vector<VolumeInfo> listLocalVolumes(bool includeRemovable, const std::vector<std::wstring>& untouched = {});
 bool driveLetterExists(std::wstring_view root); // "E:"
 
+// `which` of `volumes` (indexes into it) in groups that are read at the same
+// time: the volumes of one hard disk together, one after another (reading
+// two at once would make its heads seek back and forth between them), and
+// each volume of a disk that does not seek (an SSD) on its own.
+std::vector<std::vector<std::size_t>> readingGroups(
+    const std::vector<VolumeInfo>& volumes, const std::vector<std::size_t>& which);
+
 // Drops the folders `rules` exclude (only its excluded paths and names are
 // used) from the index, wherever they are: for rules added since it was
 // built. Caller holds index.writeLock(). Returns the entries removed.

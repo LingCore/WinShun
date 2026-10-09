@@ -1,9 +1,14 @@
 // Loads the saved index and reports memory use and search timings.
 //
 //   wsbench [snapshot] [query ...]
-//   wsbench --mft      (as administrator) reads every NTFS volume's MFT,
-//                      compares the result with a directory walk, and tests
-//                      following the change journal on the build folder's volume
+//   wsbench --mft [--no-compare] [--depth N] [--no-skip] [D: ...]
+//                      (as administrator) reads every NTFS volume's MFT (or
+//                      those named), compares the result with a directory
+//                      walk, and tests following the change journal on the
+//                      build folder's volume
+//   wsbench --mft-time D: ...
+//                      (as administrator) times reading those MFTs with 2 or 4
+//                      reads in flight, leaving out free stretches or not
 //   wsbench [snapshot] --content [--sample N] [--needle text] [--no-throughput]
 //                      what a content search costs: its candidates, and for a
 //                      random sample of them the time to open, read, close and
@@ -16,6 +21,11 @@
 //                      and program folders unless --all) and reports its size,
 //                      how fast it was read, and lookup times; --verify reads
 //                      every file a lookup rules out, to show none is missed
+//   wsbench --service [path ...]
+//                      (as administrator) builds the index as the app's first
+//                      run does, into a temporary folder; prints which volumes
+//                      are being read as that changes, then whether each path
+//                      given is in the index
 //   wsbench --places [query ...]
 //                      reads the places (Settings, Control Panel, places.txt)
 //                      as the app does and lists them, or the best places for
@@ -27,6 +37,7 @@
 #include "ContentIndexer.h"
 #include "ContentScanner.h"
 #include "Crawler.h"
+#include "IndexService.h"
 #include "NameSearch.h"
 #include "Ntfs.h"
 #include "NtfsIndexer.h"
@@ -43,6 +54,8 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QStandardPaths>
+#include <QTemporaryDir>
+#include <QTimer>
 
 #include <windows.h>
 #include <psapi.h>
@@ -59,6 +72,7 @@
 #include <mutex>
 #include <numeric>
 #include <random>
+#include <set>
 #include <thread>
 #include <unordered_map>
 
@@ -374,13 +388,26 @@ void journalSelfTest(const std::wstring& root, const std::filesystem::path& base
     fs::remove_all(base, ec);
 }
 
-int runMftCheck(bool compare)
+int runMftCheck(bool compare, const QStringList& only, ws::ntfs::ReadOptions options)
 {
     ws::Settings settings;
     settings.load();
     const ws::CrawlRules rules = settings.crawlRules();
     const ws::Crawler crawler(rules);
-    for (const auto& v : ws::listLocalVolumes(false)) {
+    const std::vector<ws::VolumeInfo> volumes = ws::listLocalVolumes(false);
+    std::vector<std::size_t> all(volumes.size());
+    std::iota(all.begin(), all.end(), std::size_t {0});
+    std::printf("read together:");
+    for (const auto& group : ws::readingGroups(volumes, all)) {
+        std::printf("  [");
+        for (const std::size_t i : group)
+            std::printf(" %s", narrow(ws::wtf8::view(volumes[i].root)).c_str());
+        std::printf(" ]");
+    }
+    std::printf("\n");
+    for (const auto& v : volumes) {
+        if (!only.isEmpty() && !only.contains(QString::fromStdWString(v.root), Qt::CaseInsensitive))
+            continue;
         std::printf("\n%s  %s\n", narrow(ws::wtf8::view(v.root)).c_str(), v.ntfs ? "NTFS" : "not NTFS");
         if (!v.ntfs)
             continue;
@@ -393,7 +420,10 @@ int runMftCheck(bool compare)
         else
             std::printf("  no change journal (error %lu)\n", ::GetLastError());
         {
-            ws::ntfs::MftReader reader(v.root);
+            ws::ntfs::MftReader reader(v.root, options);
+            const ws::ntfs::Geometry& g = reader.geometry();
+            std::printf("  %u-byte sectors, %u-byte clusters, %u-byte records\n", g.sectorSize, g.clusterSize,
+                g.recordSize);
             if (!reader.valid()) {
                 std::printf("  MFT: %s\n", narrow(ws::wtf8::view(reader.error())).c_str());
                 continue;
@@ -405,20 +435,40 @@ int runMftCheck(bool compare)
             std::size_t freeBlocks = 0; // 4 MB blocks without a record in use
             ws::ntfs::FileRecord record;
             QElapsedTimer p;
+            std::vector<std::pair<std::uint32_t, std::size_t>> unusedBlocks; // first record, records
             while (reader.next()) {
                 p.restart();
                 std::size_t used = 0;
                 for (std::size_t i = 0; i < reader.blockRecords(); ++i)
                     used += reader.parse(i, record) && record.inUse ? 1 : 0;
                 inUse += used;
-                freeBlocks += used == 0 ? 1 : 0;
+                if (used == 0) {
+                    ++freeBlocks;
+                    unusedBlocks.emplace_back(reader.firstRecord(), reader.blockRecords());
+                }
                 parseMs += msSince(p);
             }
-            std::printf("  MFT %llu records (%zu in use, %zu of the 4 MB blocks unused), extents from %s,\n"
-                        "      read %.0f ms (of which parsing %.0f ms)%s\n",
-                static_cast<unsigned long long>(reader.recordCount()), inUse, freeBlocks,
+            // What the bitmap says about the blocks without a record in use.
+            const auto bitmap = reader.bitmap();
+            std::size_t setBits = 0, beyond = 0;
+            for (const auto& [first, count] : unusedBlocks) {
+                for (std::size_t r = first; r < first + count; ++r) {
+                    if (r / 8 >= bitmap.size())
+                        ++beyond;
+                    else if (std::to_integer<unsigned>(bitmap[r / 8]) & (1u << (r % 8)))
+                        ++setBits;
+                }
+            }
+            std::printf("  bitmap %zu bytes (%s); in the unused blocks: %zu records marked in use, %zu past it\n",
+                bitmap.size(), narrow(ws::wtf8::view(reader.bitmapNote())).c_str(), setBits, beyond);
+            std::printf("  MFT %llu records (%zu in use, %zu of the 4 MB blocks unused), %zu extents from %s,\n"
+                        "      read %.0f ms (of which parsing %.0f ms), %.0f of %.0f MB left out as free%s\n",
+                static_cast<unsigned long long>(reader.recordCount()), inUse, freeBlocks, reader.extentCount(),
                 reader.extentsFromRecordZero() ? "record 0" : "FSCTL_GET_RETRIEVAL_POINTERS", msSince(t), parseMs,
+                static_cast<double>(reader.bytesSkipped()) / (1 << 20), static_cast<double>(reader.bytes()) / (1 << 20),
                 reader.valid() ? "" : " (failed)");
+            if (!reader.valid())
+                std::printf("  MFT: %s\n", narrow(ws::wtf8::view(reader.error())).c_str());
         }
         const double before = privateMB();
         ws::FileIndex mft;
@@ -448,6 +498,109 @@ int runMftCheck(bool compare)
         = std::filesystem::path(QDir::toNativeSeparators(QCoreApplication::applicationDirPath()).toStdWString())
         / L"usn-selftest";
     journalSelfTest(base.root_name().wstring(), base, rules);
+    return 0;
+}
+
+// Reads (and parses) the MFT of each volume named with each setting, taking
+// turns, `rounds` times: what the reads in flight and leaving out free
+// stretches are worth on this machine's disks.
+int runMftTiming(const QStringList& roots, int rounds)
+{
+    struct Setting {
+        const char* name;
+        ws::ntfs::ReadOptions options;
+    };
+    const Setting settings[] {{"2 reads, all", {2, false}}, {"2 reads, skip free", {2, true}},
+        {"4 reads, all", {4, false}}, {"4 reads, skip free", {4, true}}};
+    for (const QString& root : roots) {
+        std::printf("\n%s\n", qPrintable(root));
+        std::map<std::string, std::vector<double>> times;
+        for (int round = 0; round < rounds; ++round) {
+            for (const Setting& s : settings) {
+                QElapsedTimer t;
+                t.start();
+                ws::ntfs::MftReader reader(root.toStdWString(), s.options);
+                ws::ntfs::FileRecord record;
+                std::size_t inUse = 0;
+                while (reader.next()) {
+                    for (std::size_t i = 0; i < reader.blockRecords(); ++i)
+                        inUse += reader.parse(i, record) && record.inUse ? 1 : 0;
+                }
+                if (!reader.valid()) {
+                    std::printf("  %s: %s\n", s.name, narrow(ws::wtf8::view(reader.error())).c_str());
+                    return 1;
+                }
+                times[s.name].push_back(msSince(t));
+                if (round == 0)
+                    std::printf("  %-20s %zu records in use, %.0f of %.0f MB left out\n", s.name, inUse,
+                        static_cast<double>(reader.bytesSkipped()) / (1 << 20),
+                        static_cast<double>(reader.bytes()) / (1 << 20));
+            }
+        }
+        for (const Setting& s : settings) {
+            std::vector<double>& v = times[s.name];
+            std::sort(v.begin(), v.end());
+            std::printf("  %-20s median %.0f ms (", s.name, v[v.size() / 2]);
+            for (const double ms : v)
+                std::printf(" %.0f", ms);
+            std::printf(" )\n");
+        }
+    }
+    return 0;
+}
+
+// ---- the index service, end to end (--service) ------------------------------
+
+// Builds the index as the app's first run does (into a temporary folder: the
+// app's own index is not touched), prints which volumes are being read as
+// that changes, and then whether each path given is in the index.
+int runService(const QStringList& paths)
+{
+    QTemporaryDir dir;
+    ws::Settings settings;
+    settings.load();
+    ws::IndexService::Options options;
+    options.rules = settings.crawlRules();
+    options.snapshotPath = dir.filePath(u"index.bin"_s);
+    options.content.enabled = false;
+    ws::IndexService service(options);
+    QElapsedTimer t;
+    t.start();
+    std::vector<std::wstring> shown;
+    std::map<std::wstring, std::set<int>> percents; // seen for each volume
+    QTimer poll;
+    poll.setInterval(20);
+    QObject::connect(&poll, &QTimer::timeout, [&] {
+        const std::vector<ws::IndexService::Reading> reading = service.readingVolumes();
+        std::vector<std::wstring> roots;
+        for (const auto& r : reading) {
+            roots.push_back(r.root);
+            percents[r.root].insert(r.percent);
+        }
+        if (roots != shown) {
+            std::printf("  %7.0f ms  reading:", msSince(t));
+            for (const auto& r : reading)
+                std::printf(r.percent >= 0 ? " %s %d%%" : " %s", narrow(ws::wtf8::view(r.root)).c_str(), r.percent);
+            std::printf("\n");
+            shown = roots;
+        }
+        if (service.state() == ws::IndexService::State::Ready && !service.isRefreshing())
+            QCoreApplication::quit();
+    });
+    service.start();
+    poll.start();
+    QCoreApplication::exec();
+    std::printf("index built in %.0f ms: %zu items\n", msSince(t), service.itemCount());
+    for (const auto& [root, seen] : percents)
+        std::printf("  %s: %zu different percentages seen, %d to %d\n", narrow(ws::wtf8::view(root)).c_str(),
+            seen.size(), *seen.begin(), *seen.rbegin());
+    const auto index = service.index();
+    for (const QString& path : paths) {
+        const auto lock = index->readLock();
+        const bool found = index->findPath(path.toStdWString()) != ws::kNoEntry;
+        std::printf("  %s  %s\n", found ? "found  " : "MISSING", qPrintable(path));
+    }
+    service.shutdown();
     return 0;
 }
 
@@ -1246,11 +1399,29 @@ int main(int argc, char* argv[])
         std::setvbuf(stdout, nullptr, _IONBF, 0); // keep what was written if it crashes
         args.remove(at, 2);
     }
-    if (args.contains(u"--mft"_s))
-        return runMftCheck(!args.contains(u"--no-compare"_s));
+    if (args.contains(u"--mft-time"_s)) {
+        args.removeAll(u"--mft-time"_s);
+        return runMftTiming(args, 3);
+    }
+    if (args.contains(u"--mft"_s)) {
+        const bool compare = !args.contains(u"--no-compare"_s);
+        ws::ntfs::ReadOptions options;
+        options.skipFree = !args.contains(u"--no-skip"_s);
+        if (const qsizetype at = args.indexOf(u"--depth"_s); at >= 0 && at + 1 < args.size()) {
+            options.readsInFlight = args[at + 1].toInt();
+            args.remove(at, 2);
+        }
+        for (const QString& flag : {u"--mft"_s, u"--no-compare"_s, u"--no-skip"_s})
+            args.removeAll(flag);
+        return runMftCheck(compare, args, options); // the volumes named ("D:"), or all
+    }
     if (args.contains(u"--places"_s)) {
         args.removeAll(u"--places"_s);
         return runPlaces(args);
+    }
+    if (args.contains(u"--service"_s)) {
+        args.removeAll(u"--service"_s);
+        return runService(args);
     }
     QString path = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + u"/WinShun/index.bin"_s;
     if (!args.isEmpty() && args.first().endsWith(u".bin"))

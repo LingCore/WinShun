@@ -263,6 +263,31 @@ void IndexService::refreshVolumes()
         m_volumesTimer.start();
 }
 
+std::vector<IndexService::Reading> IndexService::readingVolumes() const
+{
+    std::lock_guard lock(m_readingMutex);
+    return m_reading;
+}
+
+void IndexService::setReading(const std::wstring& root, bool reading)
+{
+    std::lock_guard lock(m_readingMutex);
+    std::erase_if(m_reading, [&](const Reading& r) { return r.root == root; });
+    if (reading) {
+        m_reading.push_back({root});
+        std::sort(m_reading.begin(), m_reading.end(), [](const Reading& a, const Reading& b) { return a.root < b.root; });
+    }
+}
+
+void IndexService::setReadingPercent(const std::wstring& root, int percent)
+{
+    std::lock_guard lock(m_readingMutex);
+    for (Reading& r : m_reading) {
+        if (r.root == root)
+            r.percent = percent;
+    }
+}
+
 std::vector<std::wstring> IndexService::volumeRoots() const
 {
     std::lock_guard lock(m_journalMutex);
@@ -613,32 +638,56 @@ bool IndexService::syncWithDisk(std::stop_token stop, const std::vector<std::siz
         index->setInterning(true);
     }
 
-    bool completed = true;
-    bool readMft = false;
+    // NTFS volumes are read from their MFT, the volumes of different disks at
+    // the same time; the others are walked.
     std::vector<Crawler::Root> walks;
+    std::vector<std::size_t> fromMft;
     for (const std::size_t i : which) {
-        const VolumeInfo& v = volumes[i];
-        if (journals[i].journalId == 0) {
-            walks.push_back({roots[i], v.root, 0});
-            continue;
-        }
-        {
-            auto lock = index->writeLock();
-            index->setFolderRecord(roots[i], ntfs::kRootRecord, roots[i]);
-        }
-        if (syncFromMft(v, roots[i], *crawler, !firstBuild, stop)) {
-            readMft = true;
-            continue;
-        }
-        if (stop.stop_requested()) {
-            completed = false;
-            break;
-        }
-        // Walking works too, a few times slower; it records the folder numbers as well.
-        walks.push_back({roots[i], v.root, 0, roots[i], ntfs::kRootRecord});
+        if (journals[i].journalId == 0)
+            walks.push_back({roots[i], volumes[i].root, 0});
+        else
+            fromMft.push_back(i);
     }
-    if (completed && !walks.empty())
+    std::atomic<bool> readMft = false;
+    std::mutex walksMutex;
+    {
+        std::vector<std::jthread> readers;
+        for (std::vector<std::size_t>& group : readingGroups(volumes, fromMft)) {
+            readers.emplace_back([&, group = std::move(group)] {
+                for (const std::size_t i : group) {
+                    if (stop.stop_requested())
+                        return;
+                    const VolumeInfo& v = volumes[i];
+                    {
+                        auto lock = index->writeLock();
+                        index->setFolderRecord(roots[i], ntfs::kRootRecord, roots[i]);
+                    }
+                    setReading(v.root, true);
+                    const bool read = syncFromMft(v, roots[i], *crawler, !firstBuild, stop);
+                    setReading(v.root, false);
+                    if (read) {
+                        readMft = true;
+                    } else if (!stop.stop_requested()) {
+                        // Walking works too, a few times slower (on a hard disk, far
+                        // slower); it records the folder numbers as well.
+                        std::lock_guard lock(walksMutex);
+                        walks.push_back({roots[i], v.root, 0, roots[i], ntfs::kRootRecord});
+                    }
+                }
+            });
+        }
+    } // joins
+    bool completed = !stop.stop_requested();
+    if (completed && !walks.empty()) {
+        std::vector<std::wstring> walked;
+        for (const Crawler::Root& w : walks)
+            walked.push_back(w.path);
+        for (const std::wstring& root : walked)
+            setReading(root, true);
         completed = crawler->sync(*index, std::move(walks), crawlThreads(), !firstBuild, stop);
+        for (const std::wstring& root : walked)
+            setReading(root, false);
+    }
 
     {
         auto lock = index->writeLock();
@@ -670,7 +719,7 @@ bool IndexService::syncWithDisk(std::stop_token stop, const std::vector<std::siz
         return false; // stopped: a half-built index is never marked ready or saved
 
     // Removed items, and names the MFT read stored for excluded folders.
-    compactIfWasteful(readMft);
+    compactIfWasteful(readMft.load());
     ::HeapCompact(::GetProcessHeap(), 0); // hand scratch memory back to the OS
     m_dirty = true;
     setState(State::Ready);
@@ -686,7 +735,10 @@ bool IndexService::syncFromMft(
         ::SetThreadPriority(::GetCurrentThread(), THREAD_MODE_BACKGROUND_BEGIN);
     MftTree tree;
     std::wstring error;
-    const bool read = tree.read(volume.root, *index, stop, &error);
+    const bool read = tree.read(volume.root, *index, stop, &error, [&](std::uint64_t done, std::uint64_t total) {
+        setReadingPercent(volume.root, total > 0 ? static_cast<int>(std::min(done, total) * 100 / total) : -1);
+    });
+    setReadingPercent(volume.root, -1); // the index is built from it now
     if (lowPriority)
         ::SetThreadPriority(::GetCurrentThread(), THREAD_MODE_BACKGROUND_END);
     if (!read) {

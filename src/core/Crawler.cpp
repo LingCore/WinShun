@@ -5,6 +5,7 @@
 #include "Wtf8.h"
 
 #include <windows.h>
+#include <winioctl.h>
 
 #include <algorithm>
 #include <condition_variable>
@@ -44,6 +45,60 @@ bool driveLetterExists(std::wstring_view root)
         return false;
     const auto letter = static_cast<wchar_t>(std::towupper(root[0]));
     return letter >= L'A' && letter <= L'Z' && (::GetLogicalDrives() & (1u << (letter - L'A')));
+}
+
+namespace {
+
+struct Placement {
+    std::uint32_t disk = ~0u; // unknown, or a volume across several disks
+    bool seeks = true; // a hard disk, or not known not to be
+};
+
+Placement placementOf(std::wstring_view root)
+{
+    Placement p;
+    const std::wstring path = L"\\\\.\\" + std::wstring(root);
+    const win32::UniqueHandle h(::CreateFileW(
+        path.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, 0, nullptr));
+    if (!h.valid())
+        return p;
+    VOLUME_DISK_EXTENTS extents {}; // room for one: a volume across disks fails with ERROR_MORE_DATA
+    DWORD bytes = 0;
+    if (::DeviceIoControl(h.get(), IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS, nullptr, 0, &extents, sizeof extents, &bytes,
+            nullptr)
+        && extents.NumberOfDiskExtents == 1)
+        p.disk = extents.Extents[0].DiskNumber;
+    STORAGE_PROPERTY_QUERY query {StorageDeviceSeekPenaltyProperty, PropertyStandardQuery, {}};
+    DEVICE_SEEK_PENALTY_DESCRIPTOR penalty {};
+    if (::DeviceIoControl(h.get(), IOCTL_STORAGE_QUERY_PROPERTY, &query, sizeof query, &penalty, sizeof penalty, &bytes,
+            nullptr)
+        && bytes >= sizeof penalty)
+        p.seeks = penalty.IncursSeekPenalty;
+    return p;
+}
+
+} // namespace
+
+std::vector<std::vector<std::size_t>> readingGroups(
+    const std::vector<VolumeInfo>& volumes, const std::vector<std::size_t>& which)
+{
+    std::vector<std::vector<std::size_t>> groups;
+    std::vector<std::pair<std::uint32_t, std::size_t>> hardDisks; // disk, its group
+    for (const std::size_t i : which) {
+        const Placement p = placementOf(volumes[i].root);
+        if (!p.seeks) {
+            groups.push_back({i});
+            continue;
+        }
+        const auto it = std::find_if(hardDisks.begin(), hardDisks.end(), [&](const auto& d) { return d.first == p.disk; });
+        if (it != hardDisks.end()) {
+            groups[it->second].push_back(i);
+        } else {
+            hardDisks.emplace_back(p.disk, groups.size());
+            groups.push_back({i});
+        }
+    }
+    return groups;
 }
 
 Crawler::Crawler(CrawlRules rules)

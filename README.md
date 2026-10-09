@@ -36,7 +36,7 @@
 
 **Win顺 是什么？** 一个 Windows 上的快速搜索启动器。连按两下 Ctrl，屏幕上弹出搜索框，边打字边出结果：按文件名或拼音找文件和文件夹，打开已安装的应用和 Windows 设置，也能找文本文件里的文字。不用装 Everything，也不用写任何配置。
 
-它直接读 NTFS 的主文件表建索引，三百多万个文件十秒左右就能建好，之后文件的增删改名都实时跟上。它常驻在任务栏右下角的托盘里，除了到 GitHub 检查新版本以外不联网，不需要账号，完全免费。界面有简体中文和英文两种，默认跟随 Windows 的显示语言，也可以在设置里随时切换。
+它直接读 NTFS 的主文件表建索引，三百多万个文件几秒就能建好，之后文件的增删改名都实时跟上。它常驻在任务栏右下角的托盘里，除了到 GitHub 检查新版本以外不联网，不需要账号，完全免费。界面有简体中文和英文两种，默认跟随 Windows 的显示语言，也可以在设置里随时切换。
 
 ### 功能
 
@@ -192,7 +192,7 @@
 
 | 用来做什么 | 好处 |
 |---|---|
-| 直接读 NTFS 主文件表（MFT） | 一次顺序读完整块磁盘的文件名单，三百多万个文件十秒左右建好索引 |
+| 直接读 NTFS 主文件表（MFT） | 一次顺序读完整块磁盘的文件名单，三百多万个文件几秒建好索引 |
 | 读 NTFS 变更日志（USN 日志） | 启动时只补读关机期间的改动，不用重新扫描磁盘；运行中改动实时跟上 |
 | 以最高权限的计划任务开机自启 | 开机不弹 UAC |
 
@@ -245,7 +245,7 @@ Win顺 自己建索引，不需要另装 Everything。文件名、拼音、应�
 
 **What is WinShun?** WinShun (Win顺, "Windows made smooth") is a fast search launcher for Windows. Press Ctrl twice and a search bar pops up with results as you type: find files and folders by name or by pinyin, launch installed apps, jump to Windows settings, and search the text inside text files. No Everything install and no configuration needed.
 
-It builds its index by reading the NTFS master file table directly — over three million files in about ten seconds — and keeps up with every create, rename and delete in real time. It lives in the notification area, goes online only to ask GitHub about new versions, needs no account, and is completely free.
+It builds its index by reading the NTFS master file table directly — over three million files in a few seconds — and keeps up with every create, rename and delete in real time. It lives in the notification area, goes online only to ask GitHub about new versions, needs no account, and is completely free.
 
 The interface comes in **English and Simplified Chinese**. It follows the Windows display language by default; switch any time under Settings → **Appearance**.
 
@@ -329,7 +329,7 @@ Requires Windows 10 or 11, 64-bit.
 
 | What | Why |
 |---|---|
-| Read the NTFS master file table (MFT) directly | One sequential read lists every file on the drive: three million files indexed in about ten seconds |
+| Read the NTFS master file table (MFT) directly | One sequential read lists every file on the drive: three million files indexed in a few seconds |
 | Read the NTFS change journal (USN journal) | At startup only the changes made while it was off are read, no rescan; changes are followed live |
 | Start at login as a scheduled task with highest privileges | No UAC prompt at login |
 
