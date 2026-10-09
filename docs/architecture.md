@@ -116,7 +116,7 @@ src/core/            搜索引擎和剪贴板历史，只依赖 Qt Core、Qt Sql
   Snapshot           索引的磁盘格式（流式写入，原子替换）
   Query / NameSearch 查询解析、打分、多线程扫描（SSE2 加速）
   Pinyin             拼音匹配（读音表由 tools/make_pinyin.py 从 pinyin-data 生成）
-  AppCatalog         已安装应用：读 shell:AppsFolder（开始菜单“所有应用”），开始菜单文件夹或应用包有变化时才重读；按名称 / 拼音 / 首字母 / 程序名匹配
+  AppCatalog         已安装应用：读 shell:AppsFolder（开始菜单“所有应用”），开始菜单文件夹或应用包有变化时才重读；按名称 / 拼音 / 首字母 / 程序名匹配，Windows 自带应用的另一种语言的名字也算（“计算器”与 Calculator）
   AppLogo            Store 应用的图标文件：按 AppxManifest.xml 和资源限定符（targetsize、altform-unplated / lightunplated）选最合适的一个
   SystemCatalog      系统入口：Windows 设置检索清单里的设置页、控制面板项和任务，加上自带的 places.txt；按名称 / 关键词 / 拼音匹配
   ContentScanner     文本内容搜索：流式读取、编码识别、按行定位

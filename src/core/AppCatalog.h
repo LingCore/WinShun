@@ -30,6 +30,10 @@ struct AppInfo {
     bool elevatable = false; // can run as administrator (desktop programs, full-trust packages)
 
     // Filled by prepare() from the fields above.
+    // A Windows app's names in the other language, matched as well: "计算器"
+    // where Windows shows "Calculator", and the other way round.
+    QStringList otherNames;
+    std::vector<std::string> otherNamesUtf8;
     bool auxiliary = false; // an uninstaller or a document (manual, readme): ranked lower
     std::string nameUtf8;
     std::string program; // UTF-8 file name of the desktop program without extension ("WINWORD"), matched too
@@ -49,6 +53,7 @@ QString appIdOf(QStringView launchPath); // empty for any other path
 struct AppHit {
     std::size_t index = 0; // into the AppList
     int score = 0; // higher is better; may be negative for weak matches
+    int otherName = -1; // found by otherNames[otherName], not by its name: shown by that one
 };
 
 // The apps matching `query`, best first. Recently opened apps (their launch

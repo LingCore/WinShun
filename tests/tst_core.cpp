@@ -1658,6 +1658,9 @@ private slots:
             app(u"Telegram"_s, u"Telegram.TelegramDesktop"_s, uR"(C:\Telegram\Telegram.exe)"_s),
             app(u"Uninstall Telegram"_s, uR"(C:\Telegram\unins000.exe)"_s, uR"(C:\Telegram\unins000.exe)"_s),
             app(u"Telegram FAQ"_s, uR"(C:\Telegram\faq.html)"_s, uR"(C:\Telegram\faq.html)"_s),
+            // English first in the user's languages: Windows names it in English.
+            app(u"Notepad"_s, u"Microsoft.WindowsNotepad_8wekyb3d8bbwe!App"_s, uR"(C:\Program Files\WindowsApps\Notepad)"_s,
+                AppKind::Store),
         };
         const auto names = [&](const QString& text, const QStringList& history = {}) {
             const ParsedQuery query = ws::parseQuery(text);
@@ -1665,6 +1668,15 @@ private slots:
             QStringList out;
             for (const AppHit& hit : searchApps(apps, query, matcher, history))
                 out.append(apps[hit.index].name);
+            return out;
+        };
+        // The name a row shows: the one it was found by.
+        const auto shown = [&](const QString& text) {
+            const ParsedQuery query = ws::parseQuery(text);
+            const NameMatcher matcher(query);
+            QStringList out;
+            for (const AppHit& hit : searchApps(apps, query, matcher, {}))
+                out.append(hit.otherName >= 0 ? apps[hit.index].otherNames[hit.otherName] : apps[hit.index].name);
             return out;
         };
 
@@ -1681,6 +1693,15 @@ private slots:
         QCOMPARE(names(u"winword"_s), QStringList {u"Word"_s}); // the program's file name
         QCOMPARE(names(u"telegram"_s), (QStringList {u"Telegram"_s, u"Telegram FAQ"_s, u"Uninstall Telegram"_s}));
         QCOMPARE(names(u"telegram !faq"_s), (QStringList {u"Telegram"_s, u"Uninstall Telegram"_s}));
+        // Windows' own apps by their names in the other language too.
+        QCOMPARE(apps[2].otherNames, QStringList {u"Calculator"_s});
+        QCOMPARE(apps[6].otherNames, QStringList {u"记事本"_s});
+        QVERIFY(apps[0].otherNames.isEmpty());
+        QCOMPARE(shown(u"记事本"_s), QStringList {u"记事本"_s});
+        QCOMPARE(shown(u"jsb"_s), QStringList {u"记事本"_s}); // and its pinyin
+        QCOMPARE(shown(u"note"_s), QStringList {u"Notepad"_s});
+        QCOMPARE(shown(u"calc"_s), QStringList {u"Calculator"_s});
+        QCOMPARE(shown(u"计算器"_s), QStringList {u"计算器"_s});
         QVERIFY(names(u"ext:exe"_s).isEmpty()); // file syntax: never an app
         QVERIFY(names(uR"(vs\code)"_s).isEmpty());
         QVERIFY(names(QString()).isEmpty());

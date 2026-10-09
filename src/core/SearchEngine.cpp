@@ -63,10 +63,11 @@ const PlaceInfo* findPlace(const PlaceList& places, const QString& path)
     return it == places.end() ? nullptr : &*it;
 }
 
-SearchResult fromApp(const AppInfo& app, bool recent)
+// Found by one of its other names ("计算器" for Calculator): shown by that.
+SearchResult fromApp(const AppInfo& app, bool recent, int otherName = -1)
 {
     SearchResult r;
-    r.name = app.name;
+    r.name = otherName >= 0 && otherName < app.otherNames.size() ? app.otherNames[otherName] : app.name;
     r.path = app.launchPath();
     r.app = app.kind;
     r.elevatable = app.elevatable;
@@ -309,7 +310,7 @@ void SearchEngine::runNameSearch(const Job& job)
             };
             std::vector<Ranked> ranked;
             for (const AppHit& hit : searchApps(*apps, query, matcher, request.history))
-                ranked.push_back({hit.score, fromApp((*apps)[hit.index], false)});
+                ranked.push_back({hit.score, fromApp((*apps)[hit.index], false, hit.otherName)});
             const std::size_t appCount = ranked.size();
             for (const PlaceHit& hit : searchPlaces(*places, query, matcher, request.history)) {
                 if (ranked.size() - appCount >= kPlacesShown)

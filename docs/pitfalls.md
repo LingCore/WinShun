@@ -245,6 +245,13 @@
 - **原因**：它们写成 `@{Microsoft.SecHealthUI_8wekyb3d8bbwe?ms-resource://…}`，用的是包系列名，`SHLoadIndirectString` 只认完整包名；换成完整包名（`GetPackagesByPackageFamily`）能解析，但在中文系统上也只给英文。
 - **做法**：按 HostID 跳过这些条目，在 `places.txt` 里写中文名和 `windowsdefender://` 地址。
 
+### 中文 Windows 上搜“计算器”找不到计算器
+
+- **现象**（用户截图）：搜“计算器”只有一堆“计算器.png”，没有计算器这个应用；记事本、画图、截图工具也一样。
+- **原因**：商店 / MSIX 应用的名称按“设置 → 时间和语言 → 语言和区域”里**首选语言列表的第一个**来取，和 Windows 的显示语言无关。这台电脑显示语言是中文，列表却是 `en-US, zh-Hans-CN`，于是开始菜单和 `shell:AppsFolder` 里都叫“Calculator”；中文资源包（`split.language-zh-hans`）其实装着。`C:\Windows\SystemApps` 里的系统应用（设置）照样按显示语言叫“设置”。上一条“Windows 安全中心只解析得出英文”多半也是这个原因。
+- **试过、不行的**：`SHLoadIndirectString` 不认 `SetThreadPreferredUILanguages` / `SetProcessPreferredUILanguages`，用 `@{PRI 文件路径?…}` 读中文资源包的 resources.pri 报 0x80070490；WinRT 的 `ResourceManager.Current` 在没有包标识的进程里报 0x80070002。剩下只有自己解析 PRI 格式。
+- **做法**：Windows 自带应用按 AppUserModelID 记下中英文两个名字（`AppCatalog.cpp` 的 `kKnownApps`，中文名逐个核对过它们 zh-Hans 资源里的字符串），两个都参与匹配（含拼音），用哪个名字找到的就显示哪个：搜“计算器”显示“计算器”，搜“calc”显示“Calculator”。
+
 ### 补充的关键词要加在页面本身那一条上
 
 - **现象**：搜“壁纸”出来的是“视差背景”。

@@ -8,6 +8,7 @@
 #include <QCollator>
 #include <QHash>
 #include <QMetaObject>
+#include <QStringTokenizer>
 
 #include <windows.h>
 // After windows.h; ole2.h first, as WIN32_LEAN_AND_MEAN keeps it out of windows.h.
@@ -21,6 +22,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <iterator>
 #include <utility>
 
 using namespace Qt::StringLiterals;
@@ -66,6 +68,66 @@ bool isAsciiAlnum(char c) noexcept
 bool isUrl(const QString& s)
 {
     return s.contains(u"://"_s) || s.startsWith(u"mailto:"_s, Qt::CaseInsensitive);
+}
+
+// Windows' own apps by their AppUserModelID, named in English and in Chinese.
+// A packaged app takes its name in the first language of the user's list
+// (Settings > Time & language > Language & region), whatever language
+// Windows itself shows: with English first on a Chinese Windows, Calculator
+// is "Calculator" and 计算器 found nothing; the apps in Windows' folder
+// (Settings) go by Windows' language all the same. A package's other
+// languages are out of reach short of parsing its resources.pri:
+// SHLoadIndirectString resolves in the user's list alone, thread and process
+// languages notwithstanding, and ResourceManager wants an app identity.
+// The Chinese names are those in the apps' zh-Hans resources (checked
+// 2026-10-09); Mail, Calendar, Maps, Movies & TV and Paint 3D, gone from
+// Windows 11, as Windows 10 named them.
+struct KnownApp {
+    QStringView id;
+    QStringView names; // separated by '|'
+};
+constexpr KnownApp kKnownApps[] = {
+    {u"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App", u"Calculator|计算器"},
+    {u"Microsoft.WindowsNotepad_8wekyb3d8bbwe!App", u"Notepad|记事本"},
+    {u"Microsoft.Paint_8wekyb3d8bbwe!App", u"Paint|画图"},
+    {u"Microsoft.ScreenSketch_8wekyb3d8bbwe!App", u"Snipping Tool|截图工具"},
+    {u"Microsoft.WindowsAlarms_8wekyb3d8bbwe!App", u"Clock|时钟"},
+    {u"Microsoft.WindowsCamera_8wekyb3d8bbwe!App", u"Camera|相机"},
+    {u"Microsoft.Windows.Photos_8wekyb3d8bbwe!App", u"Photos|照片"},
+    {u"Microsoft.WindowsTerminal_8wekyb3d8bbwe!App", u"Terminal|终端"},
+    {u"Microsoft.MicrosoftStickyNotes_8wekyb3d8bbwe!App", u"Sticky Notes|便笺"},
+    {u"Microsoft.WindowsSoundRecorder_8wekyb3d8bbwe!App", u"Sound Recorder|录音机"},
+    {u"Microsoft.ZuneMusic_8wekyb3d8bbwe!Microsoft.ZuneMusic", u"Media Player|媒体播放器"},
+    {u"Microsoft.BingWeather_8wekyb3d8bbwe!App", u"Weather|天气"},
+    {u"Microsoft.BingNews_8wekyb3d8bbwe!AppexNews", u"News|资讯"},
+    {u"Microsoft.YourPhone_8wekyb3d8bbwe!App", u"Phone Link|手机连接"},
+    {u"Microsoft.GetHelp_8wekyb3d8bbwe!App", u"Get Help|获取帮助"},
+    {u"Microsoft.WindowsFeedbackHub_8wekyb3d8bbwe!App", u"Feedback Hub|反馈中心"},
+    {u"Microsoft.SecHealthUI_8wekyb3d8bbwe!SecHealthUI", u"Windows Security|Windows 安全中心"},
+    {u"Microsoft.XboxGamingOverlay_8wekyb3d8bbwe!App", u"Game Bar|游戏栏"},
+    {u"Microsoft.CommandPalette_8wekyb3d8bbwe!App", u"Command Palette|命令面板"},
+    {u"MicrosoftCorporationII.QuickAssist_8wekyb3d8bbwe!App", u"Quick Assist|快速助手"},
+    {u"windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel", u"Settings|设置"},
+    {u"microsoft.windowscommunicationsapps_8wekyb3d8bbwe!microsoft.windowslive.mail", u"Mail|邮件"},
+    {u"microsoft.windowscommunicationsapps_8wekyb3d8bbwe!microsoft.windowslive.calendar", u"Calendar|日历"},
+    {u"Microsoft.WindowsMaps_8wekyb3d8bbwe!App", u"Maps|地图"},
+    {u"Microsoft.ZuneVideo_8wekyb3d8bbwe!Microsoft.ZuneVideo", u"Movies & TV|电影和电视"},
+    {u"Microsoft.MSPaint_8wekyb3d8bbwe!Microsoft.MSPaint", u"Paint 3D|画图 3D"},
+};
+
+// The names of a Windows app other than the one it shows.
+QStringList otherNamesOf(const QString& id, const QString& name)
+{
+    const auto known = std::find_if(std::begin(kKnownApps), std::end(kKnownApps),
+        [&](const KnownApp& k) { return id.compare(k.id, Qt::CaseInsensitive) == 0; });
+    QStringList names;
+    if (known == std::end(kKnownApps))
+        return names;
+    for (QStringView other : known->names.tokenize(u'|')) {
+        if (other.compare(name, Qt::CaseInsensitive) != 0)
+            names.append(other.toString());
+    }
+    return names;
 }
 
 struct ComApartment {
@@ -171,6 +233,10 @@ void addFolderTree(Fnv1a& hash, const std::wstring& dir, int depth)
 void AppInfo::prepare()
 {
     nameUtf8 = wtf8::fromUtf16(wtf8::view(name));
+    otherNames = otherNamesOf(id, name);
+    otherNamesUtf8.clear();
+    for (const QString& other : otherNames)
+        otherNamesUtf8.push_back(wtf8::fromUtf16(wtf8::view(other)));
     const QString file = target.mid(target.lastIndexOf(u'\\') + 1);
     const qsizetype dot = file.lastIndexOf(u'.');
     const QString suffix = dot > 0 ? file.mid(dot + 1).toLower() : QString();
@@ -236,19 +302,29 @@ std::vector<AppHit> searchApps(
     for (std::size_t i = 0; i < apps.size(); ++i) {
         const AppInfo& app = apps[i];
         int score = matcher.matchName(app.nameUtf8);
+        int otherName = -1;
+        const auto better = [&](int s, int other) {
+            if (s > score) {
+                score = s;
+                otherName = other;
+            }
+        };
+        // "计算器" for Calculator, as much as its own name.
+        for (std::size_t k = 0; k < app.otherNamesUtf8.size(); ++k)
+            better(matcher.matchName(app.otherNamesUtf8[k]), static_cast<int>(k));
         if (!app.program.empty()) {
             if (const int s = matcher.matchName(app.program); s >= 0)
-                score = std::max(score, s - 6); // "winword" finds Word, a little below a name match
+                better(s - 6, -1); // "winword" finds Word, a little below a name match
         }
         if (!initials.empty() && app.initials.starts_with(initials))
-            score = std::max(score, initials.size() == app.initials.size() ? 45 : 30);
+            better(initials.size() == app.initials.size() ? 45 : 30, -1);
         if (score < 0)
             continue;
         if (app.auxiliary)
             score -= 30;
         if (const auto it = recent.constFind(app.id); it != recent.cend())
             score += 20 - std::min(*it, 10);
-        hits.push_back({i, score});
+        hits.push_back({i, score, otherName});
     }
     // Stable: equal scores keep the list's alphabetical order.
     std::stable_sort(hits.begin(), hits.end(), [](const AppHit& a, const AppHit& b) { return a.score > b.score; });
