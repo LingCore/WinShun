@@ -145,6 +145,9 @@ public:
 
     EntryId addRoot(std::string_view name); // "C:"
     EntryId add(EntryId parent, std::string_view name, std::uint8_t flags);
+    // The same with a name already stored (storeName), for loading names
+    // that are distinct already; a root when parent is kNoEntry.
+    EntryId addStored(EntryId parent, std::uint32_t nameOffset, std::uint16_t nameLength, std::uint8_t flags);
     std::size_t remove(EntryId id); // removes the whole subtree; returns entries removed
     bool move(EntryId id, EntryId newParent, std::string_view newName);
     void setFlags(EntryId id, std::uint8_t flags);

@@ -408,29 +408,31 @@ void FileIndex::unlink(EntryId child)
 
 EntryId FileIndex::addRoot(std::string_view name)
 {
-    const EntryId id = allocate();
-    const std::uint32_t offset = storeName(name);
-    Entry& e = mut(id);
-    e = Entry {};
-    e.nameOffset = offset;
-    e.nameLength = static_cast<std::uint16_t>(name.size());
-    e.flags = static_cast<std::uint8_t>(EntryFlag::Directory | EntryFlag::Root | hanFlag(name));
-    m_roots.push_back(id);
-    m_live.fetch_add(1, std::memory_order_relaxed);
-    return id;
+    return addStored(kNoEntry, storeName(name), static_cast<std::uint16_t>(name.size()), 0);
 }
 
 EntryId FileIndex::add(EntryId parent, std::string_view name, std::uint8_t flags)
 {
+    return addStored(
+        parent, storeName(name), static_cast<std::uint16_t>(std::min<std::size_t>(name.size(), 0xFFFF)), flags);
+}
+
+EntryId FileIndex::addStored(EntryId parent, std::uint32_t nameOffset, std::uint16_t nameLength, std::uint8_t flags)
+{
     const EntryId id = allocate();
-    const std::uint32_t offset = storeName(name);
+    const std::string_view name = nameAt(nameOffset, nameLength);
     Entry& e = mut(id);
     e = Entry {};
-    e.nameOffset = offset;
-    e.nameLength = static_cast<std::uint16_t>(std::min<std::size_t>(name.size(), 0xFFFF));
-    e.flags = static_cast<std::uint8_t>((flags & ~(EntryFlag::Deleted | EntryFlag::Root | EntryFlag::Han)) | hanFlag(name));
-    e.extLength = extensionLength(name, e.isDir());
-    link(parent, id);
+    e.nameOffset = nameOffset;
+    e.nameLength = nameLength;
+    if (parent == kNoEntry) {
+        e.flags = static_cast<std::uint8_t>(EntryFlag::Directory | EntryFlag::Root | hanFlag(name));
+        m_roots.push_back(id);
+    } else {
+        e.flags = static_cast<std::uint8_t>((flags & ~(EntryFlag::Deleted | EntryFlag::Root | EntryFlag::Han)) | hanFlag(name));
+        e.extLength = extensionLength(name, e.isDir());
+        link(parent, id);
+    }
     m_live.fetch_add(1, std::memory_order_relaxed);
     return id;
 }

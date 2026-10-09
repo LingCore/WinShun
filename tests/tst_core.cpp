@@ -933,7 +933,56 @@ private slots:
         QVERIFY(!snapshot::load(dir.filePath(u"missing.bin"_s)));
         QFile truncated(file);
         QVERIFY(truncated.resize(truncated.size() - 3));
-        QVERIFY(!snapshot::load(file)); // the end marker is gone
+        QVERIFY(!snapshot::load(file)); // the end is gone
+
+        // Packed in many blocks: entries and an attachment that straddle them.
+        FileIndex big;
+        const EntryId folder = big.add(big.addRoot("E:"), "folder", EntryFlag::Directory);
+        for (int i = 0; i < 100000; ++i)
+            big.add(folder, "file number " + std::to_string(i) + " with a fairly long name.txt", 0);
+        std::vector<char> blob(3'000'000);
+        for (std::size_t i = 0; i < blob.size(); ++i)
+            blob[i] = static_cast<char>(i * 7 + i / 1000);
+        const QString bigFile = dir.filePath(u"big.bin"_s);
+        QVERIFY(snapshot::save(big, {}, {}, {}, bigFile, [&](const std::vector<EntryId>&) { return blob; }));
+        QFile packed(bigFile);
+        QVERIFY(packed.open(QIODevice::ReadOnly) && packed.read(8) == QByteArray("QFINDEXZ", 8));
+        QVERIFY(packed.size() < 5'000'000); // about 8 MB unpacked
+        packed.close();
+        const auto bigLoaded = snapshot::load(bigFile);
+        QVERIFY(bigLoaded && bigLoaded->attachment == blob);
+        QCOMPARE(bigLoaded->index->liveCount(), std::size_t {100002});
+        QVERIFY(bigLoaded->index->findPath(L"E:\\folder\\file number 99999 with a fairly long name.txt") != kNoEntry);
+        QVERIFY(packed.open(QIODevice::ReadWrite));
+        packed.seek(packed.size() / 2);
+        packed.write("garbage!", 8); // in the middle of a block
+        packed.close();
+        QVERIFY(!snapshot::load(bigFile));
+
+        // A file from before snapshots were packed.
+        QByteArray plain("QFINDEX", 8);
+        const auto put = [&](auto v) { plain.append(reinterpret_cast<const char*>(&v), sizeof v); };
+        put(std::uint32_t {4}); // version
+        put(std::uint32_t {0}); // volumes
+        for (int i = 0; i < 4; ++i)
+            put(std::uint32_t {0}); // rules
+        put(std::uint32_t {2}); // entries
+        put(kNoEntry);
+        put(static_cast<std::uint8_t>(EntryFlag::Root | EntryFlag::Directory));
+        put(std::uint16_t {2});
+        plain.append("D:");
+        put(EntryId {0});
+        put(std::uint8_t {0});
+        put(std::uint16_t {5});
+        plain.append("a.txt");
+        put(std::uint32_t {0}); // folder record tables
+        put(std::uint64_t {0}); // attachment
+        put(std::uint32_t {0x21444E45}); // "END!"
+        QFile old(dir.filePath(u"old.bin"_s));
+        QVERIFY(old.open(QIODevice::WriteOnly) && old.write(plain) == plain.size());
+        old.close();
+        const auto oldLoaded = snapshot::load(old.fileName());
+        QVERIFY(oldLoaded && oldLoaded->index->findPath(L"D:\\a.txt") != kNoEntry);
     }
 
     void folderRecords()

@@ -19,8 +19,8 @@ namespace ws::snapshot {
 // index id to its id in the file (kNoEntry: not saved).
 using Attachment = std::function<std::vector<char>(const std::vector<EntryId>& newIds)>;
 
-// Streams the index to disk through a small buffer and replaces the file
-// atomically. Caller holds index.readLock(). `journals` is parallel to
+// Streams the index to disk, packed in blocks on other threads, and replaces
+// the file atomically. Caller holds index.readLock(). `journals` is parallel to
 // `volumes` (or empty): where each volume's change journal had been read to.
 // `rules` are the ones the index was built with.
 bool save(const FileIndex& index, const std::vector<VolumeInfo>& volumes,
