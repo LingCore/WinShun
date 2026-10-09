@@ -225,6 +225,21 @@
 - **原因**：带 alpha 通道的窗口，Qt 用窗口颜色清屏时没有预乘，DWM 按预乘解释，浅色的半透明色溢出成白色。
 - **做法**：窗口颜色只用全透明或不透明；要叠一层半透明色时，用铺满窗口的 `Rectangle` 画。
 
+### 圆角上的边框是锯齿，看着一颗一颗的
+
+- **现象**：窗口四个角的细边框不顺滑，放大看是一级一级的台阶，台阶之间还漏出后面的颜色；直边上没问题。深色窗口在浅色背景上最明显。
+- **原因**：DWM 给圆角窗口画的边框（`DWMWA_BORDER_COLOR`）在圆弧上是一条没有抗锯齿的单像素折线，而且比 DWM 自己裁出来的圆角（这个是抗锯齿的）往里偏了一点，两条曲线之间的像素既不是窗口也不是边框，透出了背景。把边框设成 `DWMWA_COLOR_NONE` 后，剩下的圆角边缘是干净的。另外，深色主题下边框色 #404040 落在 VS Code 这类深色程序上几乎看不出来（底色亮度和背景只差 1 级，系统阴影在深色背景上也显不出来），窗口像和后面的程序融在一起。
+- **做法**：DWM 只负责圆角和阴影，边框设成 `DWMWA_COLOR_NONE`（`win::styleFramelessWindow`）；每个窗口在 QML 里自己画一圈抗锯齿的细线（`WindowEdge.qml`，圆角半径和 DWM 的一样是 8 逻辑像素，Windows 10 上是直角；最大化时不画）。颜色是中性灰：深色 #6A6A6A，浅色 #B4B4B4（`Theme.windowEdge`）。深色下试过 #404040、#505050、#5C5C5C、#6A6A6A：#404040 在深色背景上几乎看不见，#5C5C5C 用户觉得还不够明显，定为 #6A6A6A；浅色背景上靠阴影本来就分得开。这样画出来的角和系统给普通窗口画的（文件对话框）逐像素比过：半径一样（150% 下 12 像素），线宽 2 像素，两侧都有过渡。
+- **为什么不改用系统边框那条路**：微软的说法（“Apply rounded corners in desktop apps”）是，带 `WS_THICKFRAME` 和 `WS_CAPTION`、或留出 1 像素非客户区边框的窗口，系统自动圆角并画好边框和阴影（VS Code、Windows Terminal 就是保留系统边框、只把标题栏区域划给自己）；没有边框的窗口用 `DWMWCP_ROUND` 申请圆角，这是我们的情况（Qt 的 `FramelessWindowHint` 是 `WS_POPUP`）。走系统边框那条路，启动器和剪贴板会多出可拖的缩放边、贴靠布局和打开关闭动画，Qt 算窗口位置的方式也要跟着改；现在自己画的边已经和系统的一样平滑，没有必要。Qt 6.9 起的 `Qt::ExpandedClientAreaHint` 在 Windows 上是给普通窗口自绘标题栏用的（Qt 自己画一条带图标和按钮的标题栏），也不合适。原先对话框旁的搜索框用强调色边框，太扎眼，也改成同一套。
+- **怎么查**：边框颜色可以从别的进程设（`DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, …)`，提权的脚本对 Win顺 的窗口也行），不用重新编译就能把几种颜色和“不要边框”挨个截图对比；角上 24×24 像素放大 12 倍看。
+
+### 日志里一直有 `Swapchain says surface has alpha but the window has no alphaBufferSize set`
+
+- **现象**：开启 Mica 后，启动器每打开一次，`WinShun.log` 里就多一行这个警告（两天里 195 行）。
+- **原因**：窗口颜色激活时透明、失焦时不透明（见上面“Mica 画成一块平的灰色”）。`QQuickWindow::setColor()` 在颜色的 alpha 变化时会改窗口的格式：变成不透明就把 `alphaBufferSize` 设成 -1。可交换链是按创建时的格式建的，一直带 alpha；Qt 的 D3D11 后端每次改大小（`QD3D11SwapChain::createOrResize`）都检查两者是否一致，不一致就打这个警告。窗口在失焦时改大小，就写一次日志，而且是在显示窗口的路上同步写磁盘。
+- **做法**：`prepareBackdrop` 设好 `alphaBufferSize(8)` 后，再连上 `colorChanged`，格式里的 alpha 被去掉就加回来（`App.cpp`）。这样格式和交换链一直一致；交换链将来要是重建，也还是带 alpha 的。
+- **实测**（2026-10-09）：启动器开关 5 次，旧版每次 1 行，新版 0 行。
+
 ### 软件渲染时没有材质
 
 - 软件渲染器把带 alpha 通道的窗口做成分层窗口，DWM 不在它背后画材质。只在用 D3D11 绘制时启用（`SystemTheme.backdropAvailable`）。
@@ -396,9 +411,10 @@
 
 ### 日志里的 `Retrying to obtain clipboard.`
 
-- **现象**：连续复制时，`WinShun.log` 里出现一串 `Retrying to obtain clipboard.`。
-- **原因**：这条是 Qt 自己打的。QML 的文本框（搜索框等）在剪贴板一变就在主线程读一次，判断能不能粘贴；剪贴板被占着就睡 100 ms 重试，最多 3 次。实测里只在测试脚本用 .NET 的 `Clipboard.SetDataObject(..., true)` 复制时出现：它先 `OleSetClipboard` 再 `OleFlushClipboard`，中间占着剪贴板。用 `OpenClipboard` / `SetClipboardData` 直接写（大多数程序的做法）就没有，和 Win顺 的监听无关。
-- **做法**：查剪贴板问题时别把它算到监听头上。想知道是谁占着剪贴板，就用这两种方式各复制几次对比。
+- **现象**：连续复制时，`WinShun.log` 里出现一串 `Retrying to obtain clipboard.`（两天里 161 行）。
+- **原因**：这条是 Qt 自己打的。Qt 启动时就注册了剪贴板监听，剪贴板一变，每个可编辑的 QML 文本框（`TextInput`、`TextEdit`）都在主线程把剪贴板的整段文字读一遍，只为更新 `canPaste`（`qquicktextinput.cpp` 的 `q_canPasteChanged`）。剪贴板这时被别的程序占着，就睡 50 ms 重试，最多 3 次（Qt 6.12 `qwindowsclipboard.cpp`）。复制之后马上打开剪贴板的程序都会撞上：别的剪贴板工具、Windows 自己的剪贴板历史，还有 .NET 的 `Clipboard.SetDataObject(..., true)`（先 `OleSetClipboard` 再 `OleFlushClipboard`，中间一直占着）。和 Win顺 自己的监听无关，那是另一个线程直接用 Win32 读的。
+- **做法**：`main.cpp` 里 `QGuiApplication::clipboard()->blockSignals(true)`。我们没用 `canPaste`，也没有别的地方连 `QClipboard` 的信号；粘贴（`QQuickTextInputPrivate::paste`、`textfield::pasteOneLine`）都是按下时才读剪贴板，不受影响。以后要监听剪贴板变化，用 `ClipboardWatcher`，不要连 `QClipboard::dataChanged`，它收不到。
+- **实测**（2026-10-09）：测试脚本往剪贴板写一段文字，再占住剪贴板 80 ms，模拟别的剪贴板工具。旧版每复制一次重试 2 次（主线程卡约 100 ms），新版 0 次；Ctrl+V 往搜索框里粘贴照常。测试文字带 `ExcludeClipboardContentFromMonitorProcessing` 格式，Windows 和 Win顺 的剪贴板历史都不会记下它。
 
 ### 剪贴板页里 Alt+1、Alt+2 没反应
 
@@ -583,6 +599,21 @@
 
 - 可能是另一个会话正在改代码、改到一半。先看 `git status`，不要去动别人的文件，等它改完再编译。提交时也要把两边的改动分开。
 - 编译通过也不代表能跑：2026-10-08 另一个会话的 `Main.qml` 已经用上了还没登记进 CMake 的 `ClipboardPage`，主目录编出来的 exe 一启动就报 `ClipboardPage is not a type`，起不来。要单独测自己的改动，用 `git worktree add --detach F:\wsdlg HEAD` 建一个只放自己改动的工作区（顺带避开中文路径的坑），在那里编译部署。往里同步文件时，两边都改过的共享文件（`App.cpp`、`Settings.*` 等）不能整个复制，只能把自己的几处改动重新加上。反过来，要编一个“主目录现在的样子、只是不带对方改到一半的文件”的版本（2026-10-09 用过）：把主目录整个同步到工作区（`robocopy /MIR`），再在工作区里 `git checkout HEAD -- 对方正在改的文件`，那几个就回到改之前；对方改的文件越来越多时，按“比上一次能编过的 exe 新”的文件找。
+
+## 后台开销和主线程卡顿
+
+### 什么都不做时也有线程在醒
+
+- **Qt 的垂直同步线程**：只要有 D3D11 窗口（藏着也算），Qt 就开一个 `QDxgiVSyncThread` 一直 `WaitForVBlank`，240 Hz 屏幕上每秒醒 240 次，只为了给 `QWindow::requestUpdate()` 对时（`qdxgivsyncservice.cpp`）。Qt Quick 的渲染线程靠呈现（Present）掌握节奏，不靠它；没有它时 `requestUpdate` 用一个 1–5 ms 的定时器，只在真要刷新时才跑。做法：`main.cpp` 里在建 `QGuiApplication` 之前设 `QT_D3D_NO_VBLANK_THREAD=1`。实测（2026-10-09）：空闲 5 秒醒 1209 次 → 这个线程没了。
+- **双击 Ctrl 的鼠标监听**：原来键盘和鼠标的原始输入一直都收，鼠标每动一下都唤醒监听线程（游戏鼠标每秒上千次）。鼠标只用来判断连按期间有没有点击、拖动、滚轮，所以改成按下 Ctrl 时才登记鼠标，松开后超过连按间隔、第二下不可能再来时撤掉（`KeyListener::listenToMouse`）。按着 Ctrl 时已经按下的鼠标键，照旧用 `GetAsyncKeyState` 补查。实测：每毫秒挪一次鼠标、共 5 秒（约 2770 次），监听线程从醒 1050 次降到 7 次；双击 Ctrl 的测试（含 Ctrl+滚轮、按住鼠标键、两次 Ctrl+点击）16 项照样全过。
+- **每个窗口一套显卡驱动线程**：启动器和剪贴板窗口各有自己的 D3D11 设备（Qt Quick 每个窗口一个渲染线程、一个设备），NVIDIA 驱动给每个设备开约 54 个线程（这台 32 线程的 CPU 上；VS Code 的 GPU 进程也是 54 个），其中一个按系统时钟每秒醒约 65 次。窗口销毁时这些线程随设备一起收回（设置窗口关掉后，它那一份就没了），不会越积越多。`D3D11_CREATE_DEVICE_PREVENT_INTERNAL_THREADING_OPTIMIZATIONS` 对 NVIDIA 驱动没用（单个设备 21 个线程，加了还有 19 个）。常驻的两个窗口要一按就出来，这份开销保留；要省只能让多个窗口共用一个设备，那得改用 basic 渲染循环、在主线程上画，不划算。
+- **怎么查**：提权运行的程序隔几秒用 `NtQuerySystemInformation(SystemProcessInformation)` 取两次 Win顺 每个线程的上下文切换次数和 CPU 时间，相减就是这段时间谁醒了多少次；再用 `NtQueryInformationThread(ThreadQuerySetWin32StartAddress)` 和 `GetThreadDescription` 认出线程是谁的（Qt 的线程有名字，驱动线程的起始地址在 `nvwgf2umx.dll` 里，我们的 `std::thread` 起始地址在 `ucrtbase.dll` 里）。普通权限读不到提权进程的线程。
+
+### 主线程在常用操作里卡不卡
+
+- **实测**（2026-10-09）：测试程序每 2 ms 给 Win顺 主线程上的窗口发一次 `WM_NULL`（`SendMessageTimeout`），看多久得到回应，同时走一遍打开启动器、搜文件名、输一个字母出大量结果、切到“内容”搜文字、关闭、打开和关闭设置窗口。约 8500 次里超过 8 ms 的只有：打开设置窗口两次（53、61 ms，每次重新创建窗口），关掉它一次（18–39 ms）。搜索时一次也没有，搜索都在工作线程上。
+- **这种探针有盲区**：主线程在等 COM 调用或别的线程时，Windows 会顺带处理别的线程发来的消息，探针会被“插队”回答，看不出这段卡顿。要量某个命令的总耗时，就比第二个进程的寿命：`WinShun.exe --background` 什么都不转交（只是启动，47 ms），`--settings` 要等 Win顺 处理完才退出（95 ms），差值就是处理的时间。
+- **剪贴板历史在主线程上存**（`ClipStore` 只在主线程用；读剪贴板、算图片哈希、转 PNG 都在监听线程上）。单独量 `ClipStore::add`：一段普通文字 0.08 ms，100k 字 0.7 ms，截图 3 MB 约 3 ms、照片 12 MB 约 8 ms，2M 字纯文本约 15 ms，100 万字带 4 MB 网页格式约 27 ms；最坏是网页格式和 RTF 各 16 MB（复制一大片 Excel）约 140–160 ms。只有这种极端的复制会卡到感觉得出来，要改就把写库挪到单独的线程。
 
 ## 界面实测（模拟真实输入）
 

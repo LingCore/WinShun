@@ -4,6 +4,7 @@
 #include "platform/MessageWindow.h"
 #include "platform/Shell.h"
 
+#include <QClipboard>
 #include <QCommandLineParser>
 #include <QDateTime>
 #include <QDebug>
@@ -68,6 +69,13 @@ int main(int argc, char* argv[])
         qputenv("QT_QPA_PLATFORM", ws::Settings::resolveRenderer(ws::Settings::storedRenderer()) == u"software"
                                        ? "windows:fontengine=gdi" : "windows:fontengine=freetype");
 
+    // Qt keeps a thread waiting for every vertical blank of the screen (240
+    // times a second at 240 Hz) as long as a D3D11 window exists, hidden or
+    // not, only to time QWindow::requestUpdate(). Without it a short timer
+    // does that, and only when an update is asked for; Qt Quick's render
+    // threads keep their pace by presenting.
+    qputenv("QT_D3D_NO_VBLANK_THREAD", "1");
+
     QCoreApplication::setOrganizationName(u"WinShun"_s);
     QCoreApplication::setApplicationName(u"WinShun"_s);
     QCoreApplication::setApplicationVersion(QStringLiteral(WINSHUN_VERSION));
@@ -76,6 +84,12 @@ int main(int argc, char* argv[])
         qunsetenv("QT_QPA_PLATFORM"); // programs we launch must not inherit it
     QGuiApplication::setApplicationDisplayName(u"Win顺"_s); // in English "WinShun" (App::applyAppearance)
     QGuiApplication::setQuitOnLastWindowClosed(false);
+    // On every clipboard change each Qt Quick text field reads the clipboard's
+    // whole text, only to update its canPaste (unused here): on the GUI
+    // thread, with 50 ms sleeps while another program holds the clipboard
+    // ("Retrying to obtain clipboard."). Pasting reads it when it happens, and
+    // the clipboard history has its own listener (ClipboardWatcher).
+    QGuiApplication::clipboard()->blockSignals(true);
 
     QCommandLineParser parser;
     parser.setApplicationDescription(u"Win顺 · WinShun — 文件、文件夹与文本内容搜索"_s);

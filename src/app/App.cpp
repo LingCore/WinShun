@@ -90,14 +90,23 @@ bool isDarkMode()
 }
 
 // Before create(): see-through where the window's background is (Theme.qml),
-// for the Mica behind it.
-void prepareBackdrop(QWindow* window)
+// for the Mica behind it. And it stays so: the window's color turns opaque
+// while it is inactive, QQuickWindow::setColor() then takes the alpha out of
+// the format, though the swap chain made with it keeps its alpha, and Qt's
+// D3D11 backend logged a warning about that on every resize after.
+void prepareBackdrop(QQuickWindow* window)
 {
     if (!SystemTheme::backdropAvailable()) // the setting can turn it on later
         return;
-    QSurfaceFormat format = window->format();
-    format.setAlphaBufferSize(8);
-    window->setFormat(format);
+    const auto keepAlpha = [window] {
+        QSurfaceFormat format = window->requestedFormat();
+        if (format.alphaBufferSize() < 8) {
+            format.setAlphaBufferSize(8);
+            window->setFormat(format);
+        }
+    };
+    keepAlpha();
+    QObject::connect(window, &QQuickWindow::colorChanged, window, keepAlpha);
 }
 
 // Rounded corners and the shadow, for our windows without a system title bar
