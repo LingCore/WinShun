@@ -391,4 +391,6 @@ Window {
             onTriggered: (row, action) => window.bar.trigger(row, action)
         }
     }
+
+    WindowEdge {}
 }

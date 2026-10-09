@@ -194,4 +194,6 @@ Window {
             }
         }
     }
+
+    WindowEdge {}
 }

@@ -13,6 +13,11 @@ QtObject {
     readonly property color accent: dark ? Qt.lighter(SystemTheme.accent, 1.55) : SystemTheme.accent
 
     readonly property color background: dark ? "#202020" : "#F9F9F9"
+    // The edge of our windows (WindowEdge.qml), rounded as DWM rounds them.
+    // A light grey on the dark ones: over a dark program their shadow does
+    // not show. The light ones stand apart by their shadow.
+    readonly property int windowRadius: SystemTheme.roundedCorners ? 8 : 0
+    readonly property color windowEdge: dark ? "#6A6A6A" : "#B4B4B4"
     readonly property color divider: backdrop ? (dark ? Qt.rgba(1, 1, 1, 0.084) : Qt.rgba(0, 0, 0, 0.058))
                                               : dark ? "#2E2E2E" : "#EAEAEA"
     readonly property color text: dark ? "#F3F3F3" : "#1B1B1B"

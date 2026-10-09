@@ -100,11 +100,12 @@ void prepareBackdrop(QWindow* window)
     window->setFormat(format);
 }
 
-// Rounded corners, a thin border and the shadow, for our windows without a
-// system title bar (the launcher, the settings window).
-void styleWindow(QWindow* window, bool dark, bool backdrop = false)
+// Rounded corners and the shadow, for our windows without a system title bar
+// (the launcher, the clipboard, the bar by file dialogs, the settings
+// window); each draws its edge itself (WindowEdge.qml).
+void styleWindow(QWindow* window, bool backdrop = false)
 {
-    win::styleFramelessWindow(window, dark ? QColor(0x40, 0x40, 0x40) : QColor(0xD4, 0xD4, 0xD4), backdrop);
+    win::styleFramelessWindow(window, backdrop);
 }
 
 } // namespace
@@ -368,9 +369,9 @@ void App::applyTheme()
     if (m_window)
         styleWindow(m_window, dark, SystemTheme::backdropAvailable());
     if (m_settingsWindow)
-        styleWindow(m_settingsWindow, dark, SystemTheme::backdropAvailable());
+        styleWindow(m_settingsWindow, SystemTheme::backdropAvailable());
     if (m_barWindow)
-        styleWindow(m_barWindow, dark);
+        styleWindow(m_barWindow);
     // The frames' dark mode only once Qt has set its own (light) one, a few
     // milliseconds later; then watch them for a while (see win::setDarkFrame).
     m_darkFrame = dark;
@@ -627,7 +628,7 @@ void App::showSettings()
         prepareBackdrop(window);
         window->create();
         frame->setWindow(window);
-        styleWindow(window, isDarkMode(), SystemTheme::backdropAvailable());
+        styleWindow(window, SystemTheme::backdropAvailable());
         win::setDarkFrame(window, isDarkMode());
         QScreen* screen = QGuiApplication::screenAt(QCursor::pos());
         if (!screen)
@@ -786,7 +787,7 @@ bool App::createBarWindow()
         return false;
     }
     window->create();
-    styleWindow(window, isDarkMode());
+    styleWindow(window);
     win::setDarkFrame(window, isDarkMode());
     window->installEventFilter(this); // the Menu key
     m_barWindow = window;

@@ -28,6 +28,8 @@ class SystemTheme : public QObject, public QAbstractNativeEventFilter {
     // Transparency effects on and no high contrast: otherwise Windows draws
     // no Mica.
     Q_PROPERTY(bool materials READ materials NOTIFY changed FINAL)
+    // Windows rounds the corners of our windows (11 or later).
+    Q_PROPERTY(bool roundedCorners READ roundedCorners CONSTANT FINAL)
 
 public:
     explicit SystemTheme(QObject* parent = nullptr);
@@ -38,6 +40,7 @@ public:
     bool animations() const;
     bool materials() const;
     bool backdropSystem() const;
+    bool roundedCorners() const;
     static bool backdropAvailable() { return s_backdropAvailable; }
     static void setBackdropAvailable(bool on) { s_backdropAvailable = on; } // before the first window
     static bool backdrop() { return s_backdropAvailable && s_backdropOn; }

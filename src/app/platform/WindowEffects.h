@@ -6,11 +6,17 @@ class QWindow;
 
 namespace ws::win {
 
-// Windows 11 look for a frameless window: rounded corners, a thin border in
-// the theme colour and the standard DWM shadow. With `backdrop`, the Mica
-// material fills the window behind its content (see backdropSupported). The
-// dark mode is separate, see setDarkFrame.
-void styleFramelessWindow(QWindow* window, QColor border, bool backdrop = false);
+// Windows 11 look for a frameless window: rounded corners and the standard
+// DWM shadow. No DWM border: along the corners DWM draws it as a stepped
+// line, a pixel inside its own smooth edge, with the background showing
+// between them; the window draws its edge itself (WindowEdge.qml). With
+// `backdrop`, the Mica material fills the window behind its content (see
+// backdropSupported). The dark mode is separate, see setDarkFrame.
+void styleFramelessWindow(QWindow* window, bool backdrop = false);
+
+// Whether DWM rounds the corners of our windows (Windows 11): their edge is
+// drawn rounded to match, else square.
+bool roundedCorners();
 
 // Dark mode for the frame and its backdrop (DWMWA_USE_IMMERSIVE_DARK_MODE);
 // Mica follows it at once. Qt sets it too, a few milliseconds after a theme

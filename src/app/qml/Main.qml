@@ -432,4 +432,6 @@ Window {
             onTriggered: (row, action) => window.launcher.trigger(row, action)
         }
     }
+
+    WindowEdge {}
 }

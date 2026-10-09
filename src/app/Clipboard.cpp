@@ -849,7 +849,7 @@ void Clipboard::prepareMenuWindow(QWindow* menu) const
     // Showing it must not take the focus from the launcher (see Launcher::prepareMenuWindow).
     menu->setProperty("_q_showWithoutActivating", true);
     const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
-    win::styleFramelessWindow(menu, dark ? QColor(0x40, 0x40, 0x40) : QColor(0xD4, 0xD4, 0xD4));
+    win::styleFramelessWindow(menu);
     win::setDarkFrame(menu, dark);
 }
 

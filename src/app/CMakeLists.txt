@@ -26,6 +26,7 @@ qt_add_executable(WinShun WIN32
 set(qml_files
     qml/Main.qml
     qml/Theme.qml
+    qml/WindowEdge.qml
     qml/SearchBar.qml
     qml/ScopeTabs.qml
     qml/ResultRow.qml

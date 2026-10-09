@@ -346,6 +346,19 @@ Window {
             y: 8
             width: flick.width - 36
             spacing: 20
+            // Drawn on whole device pixels wherever it has scrolled to (see
+            // Main.qml), plus a fiftieth of one: much of the text inside sits
+            // on half pixels (odd logical pixels at 150 %), where the text
+            // shader's rounding would go either way with float error from one
+            // scroll position to the next. A hair past the half, it always
+            // goes the same way.
+            transform: Translate {
+                y: {
+                    const dpr = Screen.devicePixelRatio
+                    const deviceY = (flick.y + flick.contentItem.y + page.y) * dpr
+                    return (Math.round(deviceY) - deviceY + 0.02) / dpr
+                }
+            }
 
             Text {
                 text: window.pages[window.currentPage].title
@@ -1247,4 +1260,6 @@ Window {
             onFinished: snapshot.source = "" // the picture's memory
         }
     }
+
+    WindowEdge {}
 }

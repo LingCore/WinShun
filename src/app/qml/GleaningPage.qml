@@ -175,11 +175,23 @@ Flickable {
         }
     }
 
+    // Drawn on whole device pixels, a fiftieth of one lower, wherever the page
+    // has scrolled to (see SettingsWindow).
+    component Snapped: Translate {
+        required property Item item
+        y: {
+            const dpr = Screen.devicePixelRatio
+            const deviceY = (page.y + page.contentItem.y + item.y) * dpr
+            return (Math.round(deviceY) - deviceY + 0.02) / dpr
+        }
+    }
+
     Column {
         id: top
         x: 32
         y: 22
         width: page.width - 64
+        transform: Snapped { item: top }
 
         // Hero: the title and how many works there are.
         Text {
@@ -324,6 +336,7 @@ Flickable {
         y: page.contentHeight - implicitHeight - 18
         width: page.width - 64
         spacing: 18
+        transform: Snapped { item: bottom }
 
         // Write to me: a small tilted envelope, a heading and a capsule button.
         Column {

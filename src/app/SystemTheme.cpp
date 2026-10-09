@@ -33,6 +33,11 @@ bool SystemTheme::backdropSystem() const
     return win::backdropSupported();
 }
 
+bool SystemTheme::roundedCorners() const
+{
+    return win::roundedCorners();
+}
+
 void SystemTheme::setBackdropOn(bool on)
 {
     if (s_backdropOn == on)

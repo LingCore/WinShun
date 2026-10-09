@@ -22,6 +22,7 @@ constexpr DWORD kCornerPreference = 33; // DWMWA_WINDOW_CORNER_PREFERENCE
 constexpr DWORD kBorderColor = 34; // DWMWA_BORDER_COLOR
 constexpr DWORD kSystemBackdropType = 38; // DWMWA_SYSTEMBACKDROP_TYPE
 constexpr int kCornerRound = 2; // DWMWCP_ROUND
+constexpr COLORREF kColorNone = 0xFFFFFFFE; // DWMWA_COLOR_NONE
 constexpr int kBackdropMica = 2; // DWMSBT_MAINWINDOW
 
 HWND handleOf(QWindow* window)
@@ -72,14 +73,13 @@ HWND closeShellFlyout(HWND foreground)
 
 } // namespace
 
-void styleFramelessWindow(QWindow* window, QColor border, bool backdrop)
+void styleFramelessWindow(QWindow* window, bool backdrop)
 {
     const HWND hwnd = handleOf(window);
     if (!hwnd)
         return;
     ::DwmSetWindowAttribute(hwnd, kCornerPreference, &kCornerRound, sizeof kCornerRound);
-    const COLORREF color = RGB(border.red(), border.green(), border.blue());
-    ::DwmSetWindowAttribute(hwnd, kBorderColor, &color, sizeof color);
+    ::DwmSetWindowAttribute(hwnd, kBorderColor, &kColorNone, sizeof kColorNone);
     // A one-pixel frame extension makes DWM draw its shadow around a
     // borderless window (and keeps working on Windows 10).
     const MARGINS margins {0, 0, 1, 0};
@@ -104,6 +104,12 @@ bool isDarkFrame(QWindow* window)
     if (const HWND hwnd = handleOf(window))
         ::DwmGetWindowAttribute(hwnd, kUseImmersiveDarkMode, &value, sizeof value);
     return value;
+}
+
+bool roundedCorners()
+{
+    static const bool rounded = QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows11;
+    return rounded;
 }
 
 bool backdropSupported()

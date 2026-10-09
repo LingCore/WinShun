@@ -1027,7 +1027,7 @@ void Launcher::prepareMenuWindow(QWindow* menu) const
     // dismisses the launcher, and the search box keeps handling the keys.
     menu->setProperty("_q_showWithoutActivating", true);
     const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
-    win::styleFramelessWindow(menu, dark ? QColor(0x40, 0x40, 0x40) : QColor(0xD4, 0xD4, 0xD4));
+    win::styleFramelessWindow(menu);
     win::setDarkFrame(menu, dark);
 }
 

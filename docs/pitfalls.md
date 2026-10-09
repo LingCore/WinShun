@@ -186,6 +186,7 @@
   - **只修正画面，不改滚动位置**。每一行加一个 `Translate`，把它在窗口里的设备像素位置补成整数，补的量不到 1 像素（`Main.qml` 的委托）。`contentY` 保持 Flickable 自己算的值，所以滚轮、拖动、惯性滚动都用 Qt 原生的，每一帧都对齐。浏览器也是这么做的：滚动位置可以是小数，只在画出来时对齐（Firefox 的 `snapped-scrolled-content` 测试，Chromium 合成器）。
     - 列表在窗口里的位置要用 `layout.y + listArea.y + list.y` 这样能通知变化的属性来算，不能用 `mapToItem()`：Column 在稍后的布局阶段才给子项定位，`mapToItem` 的结果不会因此重算，结果刚出来时第二行就落在了半个像素上。
   - **行内会随滚动移动的文字，竖直位置都放到整数设备像素上**：标题与路径所在的 Column、标题行的高度、内容搜索时跟在名字后的文件夹名、右侧的“最近”、徽标里的文字（`ResultRow.qml` 的 `onPixel` / `upToPixel`）。用 `anchors.verticalCenter` 居中的文字很容易落在 .5 上。
+  - **设置页（和拾穗计划页）整页滚动，控件太多，不逐个对齐**：只给整页的 Column 加 `Translate`，补到整数设备像素后再往下多偏 0.02 个设备像素（`SettingsWindow.qml` 的 `page`，`GleaningPage.qml` 的 `Snapped`）。页里落在 .5 上的文字、边框、图片都变成 .52，取整方向固定，不再随浮点误差变；0.02 远大于单精度误差（几千像素处约 0.001），又小到看不出来。2026-10-09 实测（150%，剪贴板页，滚轮和小步滚动各上下一次，约 10 ms 一帧，相邻两帧按整数平移对齐后数对不上的像素）：改之前 168 对有变化的帧里 138 对有错开，改之后 96 对全部一致。
 - **弃用的做法**（0.2.3）：自己用 `WheelHandler` 加 `NumberAnimation` 接管滚轮，并在每次 `contentY` 变化时把它对齐到设备像素。问题有两个：触屏和拖动甩出走的是 Flickable 自己的惯性滚动，惯性过程中不能改 `contentY`（会重置它的 timeline），所以仍然会抖；而且滚动手感也不再是原生的。
 - **注意**：Windows 上 Qt 的滚轮事件 `pixelDelta` 永远是 0，精密触摸板也一样（`qwindowspointerhandler.cpp` 里传的是 `QPoint()`），不能靠它区分触摸板和鼠标滚轮。
 - **其他办法**：`Text.QtRendering` 或 `Text.CurveRendering` 不走 `textmask.vert` 的取整，但会失去 FreeType 的垂直 hinting，中文小字会变软。`QT_SCALE_FACTOR_ROUNDING_POLICY=Round` 会把 150% 变成 100% 或 200%。都没采用。
