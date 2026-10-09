@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ContentIndex.h"
 #include "ResultModel.h"
 #include "SearchTypes.h"
 
@@ -118,6 +119,7 @@ signals:
 private:
     void search();
     QString contentNeedle() const;
+    static bool looksLikeCode(QStringView text);
     QString shownExtensions() const;
     void startContentSearch();
     void showRows(SearchResults rows, QStringList highlights);
@@ -171,7 +173,7 @@ private:
 
     bool m_recordHistory = true;
     QStringList m_contentExtensions {QStringLiteral("txt")};
-    qint64 m_maxContentBytes = 64ll << 20;
+    ContentSizeLimits m_contentSizeLimits;
     bool m_contentInLowPriority = false; // 内容 also looks in system, program and tool folders
 
     QString m_status;

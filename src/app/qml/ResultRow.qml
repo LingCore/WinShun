@@ -21,6 +21,7 @@ Item {
     required property string icon
     required property string snippetHtml
     required property int line
+    required property string location // of a content match: "第 3 行", "第 2 页"
     required property bool recent
     required property bool isApp // or a place
     required property bool place
@@ -165,7 +166,9 @@ Item {
         anchors.right: parent.right
         anchors.rightMargin: 18
         y: row.onPixel((row.height - height) / 2)
-        text: row.contentMode ? qsTr("第 %1 行").arg(row.line) : row.recent ? qsTr("最近") : ""
+        width: Math.min(implicitWidth, 200)
+        elide: Text.ElideMiddle
+        text: row.contentMode ? row.location : row.recent ? qsTr("最近") : ""
         color: Theme.faint
         font.pixelSize: Theme.fontBody
     }

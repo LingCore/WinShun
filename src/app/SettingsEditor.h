@@ -39,9 +39,13 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QStringList excludedPaths READ excludedPaths NOTIFY changed FINAL) // expanded, for display
     Q_PROPERTY(QStringList excludedNames READ excludedNames NOTIFY changed FINAL)
     Q_PROPERTY(QStringList contentExtensions READ contentExtensions NOTIFY changed FINAL)
-    Q_PROPERTY(int maxContentFileSizeMB READ maxContentFileSizeMB WRITE setMaxContentFileSizeMB NOTIFY changed FINAL)
+    // Size limits in MB by kind of file (ContentSizeLimits::Kind: text, code, data),
+    // and the listed extensions of each kind (".c .cpp .h").
+    Q_PROPERTY(QList<int> contentMaxSizeMB READ contentMaxSizeMB NOTIFY changed FINAL)
+    Q_PROPERTY(QStringList contentKindExtensions READ contentKindExtensions NOTIFY changed FINAL)
     Q_PROPERTY(bool contentIndex READ contentIndex WRITE setContentIndex NOTIFY changed FINAL)
     Q_PROPERTY(bool contentInLowPriority READ contentInLowPriority WRITE setContentInLowPriority NOTIFY changed FINAL)
+    Q_PROPERTY(bool contentDocuments READ contentDocuments WRITE setContentDocuments NOTIFY changed FINAL)
     Q_PROPERTY(QString contentIndexStatus READ contentIndexStatus NOTIFY contentIndexStatusChanged FINAL)
     // 剪贴板
     Q_PROPERTY(bool clipboard READ clipboard WRITE setClipboard NOTIFY changed FINAL)
@@ -104,12 +108,15 @@ public:
     QStringList excludedPaths() const;
     QStringList excludedNames() const { return m_settings.excludedNames; }
     QStringList contentExtensions() const { return m_settings.contentExtensions; }
-    int maxContentFileSizeMB() const { return m_settings.maxContentFileSizeMB; }
-    void setMaxContentFileSizeMB(int mb);
+    QList<int> contentMaxSizeMB() const { return {m_settings.contentMaxSizeMB.begin(), m_settings.contentMaxSizeMB.end()}; }
+    Q_INVOKABLE void setContentMaxSizeMB(int kind, int mb);
+    QStringList contentKindExtensions() const;
     bool contentIndex() const { return m_settings.contentIndex; }
     void setContentIndex(bool on);
     bool contentInLowPriority() const { return m_settings.contentInLowPriority; }
     void setContentInLowPriority(bool on);
+    bool contentDocuments() const { return m_settings.contentDocuments; }
+    void setContentDocuments(bool on);
     QString contentIndexStatus() const { return m_contentIndexStatus; }
     void setContentIndexStatus(const QString& status); // "已收录 … 个文件"; set by the app
     QString renderer() const { return m_settings.renderer; }

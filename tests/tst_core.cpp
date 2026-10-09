@@ -5,7 +5,11 @@
 #include "ContentIndexer.h"
 #include "ContentScanner.h"
 #include "Crawler.h"
+#include "DocExtractor.h"
+#include "Documents.h"
 #include "DoubleTapDetector.h"
+#include "Extract.h"
+#include "GameGuard.h"
 #include "FileIndex.h"
 #include "NameSearch.h"
 #include "Ntfs.h"
@@ -18,7 +22,10 @@
 #include "SystemCatalog.h"
 #include "TextUtil.h"
 #include "Win32Util.h"
+#include "Writer.h"
 #include "Wtf8.h"
+#include "Xml.h"
+#include "miniz.h"
 
 #include <QDir>
 #include <QFile>
@@ -122,6 +129,237 @@ std::vector<EntryId> knownOf(const ContentIndex& content, const QString& phrase)
     std::vector<EntryId> out;
     for (const std::uint32_t k : content.lookup(phrase).known)
         out.push_back(k & ~ContentIndex::Lookup::kMatch);
+    return out;
+}
+
+// ---- documents ------------------------------------------------------------------
+
+// A zip archive (stored, or deflated) of these entries.
+QByteArray makeZip(const std::vector<std::pair<std::string, std::string>>& entries)
+{
+    mz_zip_archive zip {};
+    if (!mz_zip_writer_init_heap(&zip, 0, 0))
+        return {};
+    for (const auto& [name, data] : entries)
+        mz_zip_writer_add_mem(&zip, name.c_str(), data.data(), data.size(), MZ_DEFAULT_LEVEL);
+    void* buffer = nullptr;
+    size_t size = 0;
+    mz_zip_writer_finalize_heap_archive(&zip, &buffer, &size);
+    QByteArray out(static_cast<const char*>(buffer), static_cast<qsizetype>(size));
+    mz_zip_writer_end(&zip);
+    return out;
+}
+
+// A compound file (version 3) with these streams in its root: those under
+// 4096 bytes in the mini stream, as Office writes them.
+QByteArray makeCfb(const std::vector<std::pair<std::u16string, QByteArray>>& streams)
+{
+    constexpr quint32 kEnd = 0xFFFFFFFE;
+    constexpr quint32 kFree = 0xFFFFFFFF;
+    constexpr quint32 kFatSector = 0xFFFFFFFD;
+    std::vector<QByteArray> sectors;
+    std::vector<quint32> fat;
+    const auto chain = [&](const QByteArray& data) -> quint32 {
+        if (data.isEmpty())
+            return kEnd;
+        const auto start = static_cast<quint32>(sectors.size());
+        for (qsizetype at = 0; at < data.size(); at += 512) {
+            QByteArray s = data.mid(at, 512);
+            s.resize(512, '\0');
+            sectors.push_back(s);
+            fat.push_back(static_cast<quint32>(sectors.size()));
+        }
+        fat.back() = kEnd;
+        return start;
+    };
+    const auto u32 = [](QByteArray& b, qsizetype at, quint32 v) { std::memcpy(b.data() + at, &v, 4); };
+
+    QByteArray mini;
+    std::vector<quint32> miniFat;
+    std::vector<quint32> starts(streams.size(), kEnd);
+    for (std::size_t i = 0; i < streams.size(); ++i) {
+        const QByteArray& data = streams[i].second;
+        if (data.size() >= 4096 || data.isEmpty())
+            continue;
+        const auto first = static_cast<quint32>(mini.size() / 64);
+        QByteArray padded = data;
+        padded.resize((data.size() + 63) / 64 * 64, '\0');
+        mini += padded;
+        for (qsizetype k = 0; k < padded.size() / 64; ++k)
+            miniFat.push_back(first + static_cast<quint32>(k) + 1);
+        miniFat.back() = kEnd;
+        starts[i] = first;
+    }
+    for (std::size_t i = 0; i < streams.size(); ++i) {
+        if (streams[i].second.size() >= 4096)
+            starts[i] = chain(streams[i].second);
+    }
+    const quint32 miniStart = chain(mini);
+    QByteArray miniFatBytes(static_cast<qsizetype>(miniFat.size() * 4), '\0');
+    if (!miniFat.empty())
+        std::memcpy(miniFatBytes.data(), miniFat.data(), miniFatBytes.size());
+    const quint32 miniFatStart = chain(miniFatBytes);
+
+    QByteArray directory;
+    const auto entry = [&](std::u16string_view name, quint8 type, quint32 child, quint32 right, quint32 start,
+                           quint32 size) {
+        QByteArray e(128, '\0');
+        std::memcpy(e.data(), name.data(), name.size() * 2);
+        const auto length = static_cast<quint16>((name.size() + 1) * 2);
+        std::memcpy(e.data() + 0x40, &length, 2);
+        e[0x42] = static_cast<char>(type);
+        e[0x43] = 1;
+        u32(e, 0x44, kFree);
+        u32(e, 0x48, right);
+        u32(e, 0x4C, child);
+        u32(e, 0x74, start);
+        u32(e, 0x78, size);
+        directory += e;
+    };
+    entry(u"Root Entry", 5, streams.empty() ? kFree : 1, kFree, miniStart, static_cast<quint32>(mini.size()));
+    for (std::size_t i = 0; i < streams.size(); ++i)
+        entry(streams[i].first, 2, kFree, i + 1 < streams.size() ? static_cast<quint32>(i + 2) : kFree, starts[i],
+            static_cast<quint32>(streams[i].second.size()));
+    const quint32 directoryStart = chain(directory);
+
+    const auto dataSectors = static_cast<quint32>(sectors.size());
+    quint32 fatSectors = 1;
+    while (dataSectors + fatSectors > fatSectors * 128)
+        ++fatSectors;
+    for (quint32 k = 0; k < fatSectors; ++k)
+        fat.push_back(kFatSector);
+    fat.resize(fatSectors * 128, kFree);
+
+    QByteArray header(512, '\0');
+    std::memcpy(header.data(), "\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1", 8);
+    const quint16 fields[] = {0x3E, 3, 0xFFFE, 9, 6};
+    std::memcpy(header.data() + 0x18, fields, sizeof fields);
+    u32(header, 0x2C, fatSectors);
+    u32(header, 0x30, directoryStart);
+    u32(header, 0x38, 4096);
+    u32(header, 0x3C, miniFatStart);
+    u32(header, 0x40, static_cast<quint32>((miniFatBytes.size() + 511) / 512));
+    u32(header, 0x44, kEnd);
+    for (quint32 k = 0; k < 109; ++k)
+        u32(header, 0x4C + 4 * k, k < fatSectors ? dataSectors + k : kFree);
+    QByteArray out = header;
+    for (const QByteArray& s : sectors)
+        out += s;
+    out.append(reinterpret_cast<const char*>(fat.data()), static_cast<qsizetype>(fat.size() * 4));
+    return out;
+}
+
+// A PDF of pages, each a list of lines (Helvetica, so ASCII only), with a
+// cross-reference table that points right.
+QByteArray makePdf(const std::vector<std::vector<std::string>>& pages)
+{
+    std::vector<std::string> objects;
+    const auto pageCount = pages.size();
+    std::string kids;
+    for (std::size_t p = 0; p < pageCount; ++p)
+        kids += std::to_string(3 + 2 * p) + " 0 R ";
+    const std::size_t font = 3 + 2 * pageCount;
+    objects.push_back("<< /Type /Catalog /Pages 2 0 R >>");
+    objects.push_back("<< /Type /Pages /Kids [" + kids + "] /Count " + std::to_string(pageCount) + " >>");
+    for (std::size_t p = 0; p < pageCount; ++p) {
+        std::string content = "BT /F1 12 Tf 20 180 Td";
+        for (const std::string& line : pages[p])
+            content += " (" + line + ") Tj 0 -20 Td";
+        content += " ET";
+        objects.push_back("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 200] /Contents " + std::to_string(4 + 2 * p)
+            + " 0 R /Resources << /Font << /F1 " + std::to_string(font) + " 0 R >> >> >>");
+        objects.push_back("<< /Length " + std::to_string(content.size()) + " >>\nstream\n" + content + "\nendstream");
+    }
+    objects.push_back("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+    std::string pdf = "%PDF-1.4\n";
+    std::vector<std::size_t> offsets;
+    for (std::size_t i = 0; i < objects.size(); ++i) {
+        offsets.push_back(pdf.size());
+        pdf += std::to_string(i + 1) + " 0 obj\n" + objects[i] + "\nendobj\n";
+    }
+    const std::size_t xref = pdf.size();
+    pdf += "xref\n0 " + std::to_string(objects.size() + 1) + "\n0000000000 65535 f \n";
+    for (const std::size_t o : offsets) {
+        char line[24];
+        std::snprintf(line, sizeof line, "%010zu 00000 n \n", o);
+        pdf += line;
+    }
+    pdf += "trailer\n<< /Size " + std::to_string(objects.size() + 1) + " /Root 1 0 R >>\nstartxref\n"
+        + std::to_string(xref) + "\n%%EOF\n";
+    return QByteArray::fromStdString(pdf);
+}
+
+QByteArray le16(std::initializer_list<quint16> values)
+{
+    QByteArray out;
+    for (const quint16 v : values)
+        out.append(reinterpret_cast<const char*>(&v), 2);
+    return out;
+}
+
+QByteArray le32(quint32 v)
+{
+    return QByteArray(reinterpret_cast<const char*>(&v), 4);
+}
+
+QByteArray utf16(std::u16string_view s)
+{
+    return QByteArray(reinterpret_cast<const char*>(s.data()), static_cast<qsizetype>(s.size() * 2));
+}
+
+// One BIFF record: type, length, data.
+QByteArray biff(quint16 type, const QByteArray& data)
+{
+    return le16({type, static_cast<quint16>(data.size())}) + data;
+}
+
+// A PowerPoint record (ver/instance, type, length) around `body`.
+QByteArray pptRecord(quint16 verInstance, quint16 type, const QByteArray& body)
+{
+    return le16({verInstance, type}) + le32(static_cast<quint32>(body.size())) + body;
+}
+
+struct Extracted {
+    extract::Status status;
+    doctext::DocText text;
+};
+
+Extracted extractBytes(const QByteArray& bytes, std::size_t maxText = 16u << 20)
+{
+    Extracted out;
+    extract::MemorySource source({bytes.constData(), static_cast<std::size_t>(bytes.size())});
+    extract::Options options;
+    options.maxText = maxText;
+    options.codePage = 936;
+    out.status = extract::extract(source, options, out.text);
+    return out;
+}
+
+// The lines of a text, with each one's place: "page 2|text".
+QStringList placedLines(const doctext::DocText& doc)
+{
+    QStringList out;
+    const QString text = QString::fromUtf8(doc.text);
+    const QStringList lines = text.split(u'\n', Qt::SkipEmptyParts);
+    for (qsizetype i = 0; i < lines.size(); ++i) {
+        const doctext::Location where = doctext::locate(doc, static_cast<std::uint32_t>(i + 1));
+        QString place;
+        switch (where.kind) {
+        case doctext::PlaceKind::None:
+            place = u"-"_s;
+            break;
+        case doctext::PlaceKind::Page:
+            place = u"page %1"_s.arg(where.number);
+            break;
+        case doctext::PlaceKind::Slide:
+            place = u"slide %1"_s.arg(where.number);
+            break;
+        case doctext::PlaceKind::Row:
+            place = QString::fromUtf8(where.sheet) + u"!%1"_s.arg(where.number);
+            break;
+        }
+        out.append(place + u'|' + lines[i]);
+    }
     return out;
 }
 
@@ -2158,15 +2396,18 @@ private slots:
         QVERIFY(hasAll(brokenKeys, u"中"_s) && hasAll(brokenKeys, u"文"_s) && hasAll(brokenKeys, u"字"_s));
         QVERIFY(!hasAll(brokenKeys, u"中文"_s) && !hasAll(brokenKeys, u"文字"_s));
 
-        // Runs of three ASCII letters, digits or '_', whatever their case.
-        for (const QString& phrase : {u"English"_s, u"ENGLISH"_s, u"glis"_s, u"end"_s, u"English 中文"_s})
+        // Runs of three ASCII characters, whatever their case, spaces and
+        // punctuation too; any run of whitespace is one space.
+        for (const QString& phrase : {u"English"_s, u"ENGLISH"_s, u"glis"_s, u"end"_s, u"English 中文"_s, u" end"_s})
             QVERIFY2(hasAll(keys, phrase), qPrintable(phrase));
-        for (const QString& phrase : {u"Englishes"_s, u"end2"_s, u"lishend"_s})
+        for (const QString& phrase : {u"Englishes"_s, u"end2"_s, u"lishend"_s, u"English-"_s})
             QVERIFY2(!hasAll(keys, phrase), qPrintable(phrase));
-        const std::vector<grams::Key> code = gramsOf(u"auto my_var = getElementById(x2y);"_s);
-        for (const QString& phrase : {u"my_var"_s, u"y_v"_s, u"getElementById(x2y)"_s, u"x2y"_s})
+        const std::vector<grams::Key> code = gramsOf(u"auto my_var = getElementById(x2y);\nif (p->ok)  {\r\n\treturn;"_s);
+        for (const QString& phrase : {u"my_var"_s, u"y_v"_s, u"getElementById(x2y)"_s, u"x2y"_s, u"auto my_var = get"_s,
+                 u"(x2y);"_s, u"if (p->ok) { return;"_s, u"P->OK"_s, u"ok)     {"_s})
             QVERIFY2(hasAll(code, phrase), qPrintable(phrase));
-        QVERIFY(!hasAll(code, u"automy"_s) && !hasAll(code, u"x2yz"_s));
+        for (const QString& phrase : {u"automy"_s, u"x2yz"_s, u"auto  my_var=get"_s, u"if(p"_s, u"p.ok"_s, u"var=="_s})
+            QVERIFY2(!hasAll(code, phrase), qPrintable(phrase));
         { // a single-byte code page: bytes above 0x7F are not ASCII
             grams::Collector collector(TextEncoding::Ansi, 1252);
             const QByteArray latin = encode(u"café_bar Zürich"_s, 1252);
@@ -2176,12 +2417,33 @@ private slots:
             QVERIFY(!hasAll(latinKeys, u"cafe"_s) && !hasAll(latinKeys, u"zur"_s));
         }
 
-        QCOMPARE(grams::ofPhrase(u"report 2024"_s).size(), std::size_t {6}); // rep epo por ort, 202 024
-        QVERIFY(grams::ofPhrase(u"ab 12 éèê"_s).empty()); // no three word characters in a row
+        QCOMPARE(grams::ofPhrase(u"report 2024"_s).size(), std::size_t {9}); // rep epo por ort "rt " "t 2" " 20" 202 024
+        QCOMPARE(grams::ofPhrase(u"a  \t b"_s).size(), std::size_t {1}); // "a b"
+        QVERIFY(grams::ofPhrase(u"aé bè1"_s).empty()); // no three ASCII characters in a row
         QCOMPARE(grams::ofPhrase(u"季度报告"_s).size(), std::size_t {3}); // pairs only
-        QCOMPARE(grams::ofPhrase(u"Qt 窗口 a 类"_s).size(), std::size_t {2}); // 窗口, 类
+        QCOMPARE(grams::ofPhrase(u"Qt 窗口 a 类"_s).size(), std::size_t {4}); // "qt ", 窗口, " a ", 类
         QVERIFY(grams::decides(u"中"_s) && grams::decides(u"中文"_s));
         QVERIFY(!grams::decides(u"中文字"_s) && !grams::decides(u"a中"_s) && !grams::decides(u""_s));
+
+        ContentSizeLimits limits;
+        limits.bytes = {100, 20, 30, 400};
+        QCOMPARE(ContentSizeLimits::kindOf("CPP"), ContentSizeLimits::Code);
+        QCOMPARE(ContentSizeLimits::kindOf("json"), ContentSizeLimits::Data);
+        QCOMPARE(ContentSizeLimits::kindOf("log"), ContentSizeLimits::Text);
+        QCOMPARE(ContentSizeLimits::kindOf("c++"), ContentSizeLimits::Code);
+        QCOMPARE(ContentSizeLimits::kindOf("verylongext"), ContentSizeLimits::Text);
+        QCOMPARE(ContentSizeLimits::kindOf("PDF"), ContentSizeLimits::Document);
+        QCOMPARE(limits.of(L"D:\\Reports\\Q3.xlsx"), std::int64_t {400});
+        QVERIFY(isDocumentPath(L"C:\\a\\Report.DOCX") && isDocumentPath(L"x.et") && !isDocumentPath(L"x.docxx"));
+        QVERIFY(!isDocumentPath(L"C:\\a.pdf\\notes") && !isDocumentPath(L"C:\\a\\pdf") && !isDocumentPath(L"a.pdf\u00e9"));
+        QCOMPARE(documentExtensions().size(), qsizetype {28});
+        QCOMPARE(limits.of(L"C:\\src\\main.CPP"), std::int64_t {20});
+        QCOMPARE(limits.of(L"C:\\a.b\\data.json"), std::int64_t {30});
+        QCOMPARE(limits.of(L"C:\\a.json\\README"), std::int64_t {100}); // no extension: text
+        QCOMPARE(limits.of(L"C:\\notes.txt"), std::int64_t {100});
+        QCOMPARE(limits.of(L"C:\\x.verylongext"), std::int64_t {100});
+        QCOMPARE(limits.of(L"C:\\x.héllo"), std::int64_t {100});
+        QCOMPARE(limits.of(L"C:\\bundle.min.js"), std::int64_t {20});
 
         const ExtensionFilter filter({u".TXT"_s, u"*.md"_s, u"verylongextension"_s});
         QVERIFY(filter.matches("Notes.txt", 3) && filter.matches("README.MD", 2));
@@ -2263,10 +2525,11 @@ private slots:
 
         // Enough grams for segments of their own, and a merge of them all.
         ContentIndex big(dir.filePath(u"big"_s));
-        std::vector<grams::Key> keys(1000);
+        std::vector<grams::Key> keys(1001);
         for (EntryId doc = 0; doc < 2500; ++doc) {
-            for (std::size_t i = 0; i < keys.size(); ++i)
+            for (std::size_t i = 0; i < 1000; ++i)
                 keys[i] = ((grams::Key {0x4E00} + (doc % 7)) << grams::kCharBits) | (0x4E00 + i);
+            keys[1000] = (grams::Key {0x6000} + doc) << grams::kCharBits; // a character of its own: no copies
             QVERIFY(big.add(doc * 2, keys, false, 0, 0));
         }
         QCOMPARE(big.stats().segments, std::size_t {2});
@@ -2293,12 +2556,14 @@ private slots:
             many.clear();
             for (std::size_t i = 0; i < 5000; ++i)
                 many.push_back(((grams::Key {0x4E00} + (doc % 5)) << grams::kCharBits) | (0x4E00 + i));
-            if (doc % 10 == 4) { // dense
+            if (doc % 10 == 4) { // most trigrams
                 for (std::uint32_t i = 0; i < 10500; ++i)
                     many.push_back(abc(i));
             } else if (doc % 10 == 5) {
                 many.push_back(abc(2)); // "008"
             }
+            many.push_back((grams::Key {0x6000} + doc) << grams::kCharBits); // no copies
+            std::sort(many.begin(), many.end());
             QVERIFY(tiers.add(doc, many, false, 0, 0));
             if (doc == 3)
                 tiers.retire(std::vector<EntryId> {2});
@@ -2401,6 +2666,47 @@ private slots:
         QVERIFY(reopened.restore(codedState, docKeys.size()));
         QVERIFY(check(reopened, gone));
 
+        // Copies of a file share one content: in memory, written out, saved
+        // and restored; it goes once the last copy is gone.
+        ContentIndex copies(dir.filePath(u"copies"_s));
+        const std::vector<grams::Key> report = gramsOf(u"季度报告 quarterly report"_s);
+        QVERIFY(copies.add(1, report, false, 0, 0));
+        QVERIFY(copies.add(2, report, false, 0, 0));
+        QVERIFY(copies.add(3, gramsOf(u"年度计划"_s), false, 0, 0));
+        QCOMPARE(copies.stats().contents, std::size_t {2});
+        QCOMPARE(matchesOf(copies, u"报告"_s), (std::vector<EntryId> {1, 2}));
+        QVERIFY(copies.merge());
+        QVERIFY(copies.add(4, report, false, 0, 0)); // found in the segment
+        QCOMPARE(copies.stats().contents, std::size_t {2});
+        QCOMPARE(copies.stats().memoryPairs, std::size_t {0});
+        copies.retire(std::vector<EntryId> {1, 2});
+        QVERIFY(copies.merge());
+        QCOMPARE(matchesOf(copies, u"quarterly"_s), (std::vector<EntryId> {4}));
+        std::vector<EntryId> fiveIds(5);
+        std::iota(fiveIds.begin(), fiveIds.end(), EntryId {0});
+        std::vector<std::uint64_t> copySegments;
+        ContentIndex reloaded(dir.filePath(u"copies"_s));
+        QVERIFY(reloaded.restore(copies.serialize(fiveIds, copySegments), 5));
+        QVERIFY(reloaded.add(1, report, false, 0, 0));
+        QCOMPARE(reloaded.stats().contents, std::size_t {2});
+        QCOMPARE(matchesOf(reloaded, u"季度"_s), (std::vector<EntryId> {1, 4}));
+        reloaded.retire(std::vector<EntryId> {1, 4});
+        QCOMPARE(reloaded.stats().contents, std::size_t {1});
+        QVERIFY(reloaded.merge());
+        QVERIFY(matchesOf(reloaded, u"季度"_s).empty());
+        QVERIFY(reloaded.add(2, report, false, 0, 0)); // a content of its own again, in memory
+        QCOMPARE(matchesOf(reloaded, u"季度"_s), (std::vector<EntryId> {2}));
+        ContentIndex again(dir.filePath(u"copies"_s));
+        QVERIFY(again.restore(reloaded.serialize(fiveIds, copySegments), 5));
+        QVERIFY(again.stats().memoryPairs > 0);
+        QVERIFY(again.add(4, report, false, 0, 0)); // the one in memory, known from its grams
+        QCOMPARE(again.stats().contents, std::size_t {2});
+        QCOMPARE(again.stats().memoryPairs, report.size());
+        QCOMPARE(matchesOf(again, u"季度报告"_s), (std::vector<EntryId> {2, 4}));
+        QVERIFY(again.merge());
+        QCOMPARE(matchesOf(again, u"report"_s), (std::vector<EntryId> {2, 4}));
+        QCOMPARE(matchesOf(again, u"计划"_s), (std::vector<EntryId> {3}));
+
         // State that does not fit the snapshot's entries is not restored.
         ContentIndex wrong(dir.filePath(u"other"_s));
         QVERIFY(!wrong.restore(state, 3)); // its segment is in another folder
@@ -2431,6 +2737,94 @@ private slots:
         QCOMPARE(ContentIndexer::readFile(write(u"c.txt"_s, {}), 0, {}).outcome, ContentIndexer::Outcome::Empty);
         QCOMPARE(ContentIndexer::readFile(utf8 + L".missing", 0, {}).outcome, ContentIndexer::Outcome::Skipped);
         QVERIFY(!ContentIndexer::stampOf(utf8 + L".missing"));
+
+        // A search's read: the match, and the same grams as the indexer's,
+        // the rest of the file read after the match (here: chunks later).
+        QByteArray big = u"合同 第一条\n"_s.toUtf8();
+        big += QByteArray(static_cast<qsizetype>(ContentScanner::kChunkBytes) * 2, 'x');
+        big += u"\n季度报告"_s.toUtf8();
+        const std::wstring large = write(u"d.txt"_s, big);
+        const ContentScanner contract(u"合同"_s);
+        const auto scanned = ContentIndexer::scanFile(large, 0, contract, {});
+        QVERIFY(scanned.match && scanned.match->line == 1);
+        QCOMPARE(scanned.text.outcome, ContentIndexer::Outcome::Indexed);
+        const auto whole = ContentIndexer::readFile(large, 0, {});
+        QCOMPARE(scanned.text.keys, whole.keys);
+        QCOMPARE(scanned.text.stamp, whole.stamp);
+        QVERIFY(hasAll(scanned.text.keys, u"季度报告"_s));
+        const auto none = ContentIndexer::scanFile(utf8, 0, ContentScanner(u"nowhere"_s), {});
+        QVERIFY(!none.match);
+        QCOMPARE(none.text.keys, text.keys);
+        const auto ansi = write(u"e.txt"_s, QByteArray("plain \xB0\xA1 GBK"));
+        QCOMPARE(ContentIndexer::scanFile(ansi, 0, ContentScanner(u"\U0001F600"_s), {}).text.keys,
+            ContentIndexer::readFile(ansi, 0, {}).keys); // the phrase cannot be in it: read anyway
+        QCOMPARE(ContentIndexer::scanFile(utf8, 4, contract, {}).text.outcome, ContentIndexer::Outcome::Empty);
+        const auto cut = ContentIndexer::scanFile(large, 0, ContentScanner(u"nowhere"_s), [] { return true; });
+        QCOMPARE(cut.text.outcome, ContentIndexer::Outcome::Skipped);
+    }
+
+    // What a search reads goes into the index, unless the indexer is off,
+    // paused, or the file is on a volume it does not follow.
+    void contentIntake()
+    {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        const QString root = QDir::toNativeSeparators(tmp.path());
+        const std::string rootName = wtf8::fromUtf16(wtf8::view(root));
+        auto index = std::make_shared<FileIndex>();
+        auto content = std::make_shared<ContentIndex>(tmp.filePath(u"content"_s));
+        ContentIndexer::Source source;
+        source.index = [&] { return index; };
+        source.volumes = [&] { return std::vector<ContentIndexer::Volume> {{rootName, false}}; };
+        bool ready = false;
+        source.ready = [&] { return ready; };
+        using namespace std::chrono_literals;
+        ContentIndexer indexer(content, source, {}, {1h, 1h, 1h, 0ms}); // no pass of its own
+        const std::vector<grams::Key> keys = grams::ofPhrase(u"合同条款"_s);
+        const ContentIndexer::FileText text {ContentIndexer::Outcome::Indexed, keys, 7};
+
+        {
+            ContentIndexer::Intake intake(&indexer);
+            QVERIFY(!intake.wants((root + u"\\a.txt"_s).toStdWString())); // the file index is not complete
+        }
+        ready = true;
+        {
+            ContentIndexer::Intake intake(&indexer);
+            QVERIFY(intake.wants((root + u"\\a.txt"_s).toStdWString()));
+            QVERIFY(!intake.wants(L"Q:\\a.txt"));
+            QVERIFY(!intake.wants(root.toStdWString())); // the root itself is no file
+            intake.take(1, text, intake.since());
+            intake.take(2, {ContentIndexer::Outcome::Empty, {}, 8}, intake.since());
+            intake.take(3, {}, intake.since()); // Skipped: not taken
+        }
+        QCOMPARE(content->stats().documents, std::size_t {2});
+        QVERIFY(content->knows(1) && content->knows(2) && !content->knows(3));
+        QCOMPARE(matchesOf(*content, u"合同"_s), std::vector<EntryId> {1});
+        QCOMPARE(knownOf(*content, u"x"_s), (std::vector<EntryId> {1, 2})); // no grams, yet both known
+
+        // Written to while the search read it: taken, but dirty.
+        {
+            ContentIndexer::Intake intake(&indexer);
+            const std::uint64_t since = intake.since();
+            content->markChanged(std::vector<EntryId> {4});
+            intake.take(4, text, since);
+        }
+        QVERIFY(!content->knows(4));
+
+        indexer.pause();
+        {
+            ContentIndexer::Intake intake(&indexer);
+            QVERIFY(!intake.wants((root + u"\\a.txt"_s).toStdWString()));
+        }
+        indexer.resume();
+        {
+            ContentIndexer::Intake intake(&indexer);
+            const std::uint64_t since = intake.since();
+            indexer.pause(); // while the search runs
+            intake.take(5, text, since);
+            indexer.resume();
+        }
+        QVERIFY(!content->knows(5));
     }
 
     void contentIndexerFollowsFiles()
@@ -2490,6 +2884,413 @@ private slots:
         options.enabled = false;
         indexer.setOptions(options);
         QCOMPARE(content->stats().documents, std::size_t {0});
+    }
+
+    // ---- documents -------------------------------------------------------------
+
+    void extractWriter()
+    {
+        using doctext::PlaceKind;
+        doctext::DocText doc;
+        extract::Writer w(doc, 1000);
+        w.put(u"  a  \t b ");
+        w.newline();
+        w.newline();
+        const std::uint16_t sheet = w.addSheet("S");
+        w.place(PlaceKind::Row, 3, sheet);
+        w.putUtf8("x");
+        w.newline();
+        w.place(PlaceKind::Row, 4, sheet); // follows on: no new place
+        w.putUtf8("y");
+        w.newline();
+        w.place(PlaceKind::Row, 7, sheet);
+        w.putUtf8("z");
+        w.put(char32_t {0xFEFF});
+        w.put(char32_t {0x200B});
+        w.put(char32_t {0xA0});
+        w.putUtf8("w\xFF");
+        w.finish();
+        QCOMPARE(doc.text, std::string("a\tb\nx\ny\nz w\xEF\xBF\xBD\n"));
+        QCOMPARE(doc.places.size(), std::size_t {2});
+        QVERIFY((doc.places[0] == doctext::Place {2, 3, sheet, PlaceKind::Row}));
+        QVERIFY((doc.places[1] == doctext::Place {4, 7, sheet, PlaceKind::Row}));
+        QCOMPARE(doctext::locate(doc, 3).number, std::uint32_t {4});
+        QCOMPARE(doctext::locate(doc, 1).kind, PlaceKind::None);
+
+        // Cut at the limit, on a whole character.
+        doctext::DocText small;
+        extract::Writer s(small, 8);
+        s.putUtf8("合同合同合同");
+        s.finish();
+        QVERIFY(small.truncated);
+        QCOMPARE(small.text, std::string("合同\n"));
+    }
+
+    void extractXml()
+    {
+        const std::string xml = "<?xml version=\"1.0\"?><!DOCTYPE x [<!ENTITY e \"boom\">]><!-- c > -->"
+                                "<w:doc a='1>2' w:b=\"&lt;&#x4E2D;&#25991;\" r:id=\"rId9\" id=\"7\">"
+                                "<t>A&amp;B &e; &#xZZ;</t><![CDATA[<raw>&amp;]]><e/></w:doc>";
+        for (const std::size_t chunk : {std::size_t {1}, std::size_t {3}, std::size_t {1} << 16}) {
+            std::size_t at = 0;
+            extract::XmlReader r([&](char* buffer, std::size_t capacity) {
+                const std::size_t n = std::min({capacity, chunk, xml.size() - at});
+                std::memcpy(buffer, xml.data() + at, n);
+                at += n;
+                return n;
+            });
+            QStringList events;
+            std::string text;
+            for (auto t = r.next(); t != extract::XmlReader::Token::Done; t = r.next()) {
+                const QString name = QString::fromUtf8(r.name());
+                if (t == extract::XmlReader::Token::Start) {
+                    events.append(u'<' + name);
+                    if (name == u"doc") {
+                        QCOMPARE(r.attribute("a"), std::string("1>2"));
+                        QCOMPARE(r.attribute("b"), std::string("<中文"));
+                        QCOMPARE(r.attribute("id"), std::string("7"));
+                        QCOMPARE(r.prefixedAttribute("id"), std::string("rId9"));
+                    }
+                } else if (t == extract::XmlReader::Token::End) {
+                    events.append(u'/' + name);
+                } else {
+                    text += r.text();
+                }
+            }
+            QCOMPARE(events, (QStringList {u"<doc"_s, u"<t"_s, u"/t"_s, u"<e"_s, u"/e"_s, u"/doc"_s}));
+            QCOMPARE(text, std::string("A&B &e; &#xZZ;<raw>&amp;"));
+            QVERIFY(!r.failed());
+        }
+    }
+
+    void extractDocx()
+    {
+        const std::string rels
+            = R"(<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">)"
+              R"(<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>)";
+        const std::string documentRels
+            = R"(<Relationships><Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>)"
+              R"(<Relationship Id="rId6" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="http://x" TargetMode="External"/></Relationships>)";
+        const std::string body
+            = R"(<w:document xmlns:w="w" xmlns:mc="mc"><w:body>)"
+              R"(<w:p><w:r><w:t>合同</w:t></w:r><w:r><w:t xml:space="preserve">编号 </w:t></w:r><w:r><w:tab/><w:t>A-1</w:t></w:r></w:p>)"
+              R"(<w:p><w:pPr><w:tabs><w:tab w:val="left" w:pos="720"/></w:tabs></w:pPr><w:r><w:fldChar w:fldCharType="begin"/></w:r>)"
+              R"(<w:r><w:instrText> PAGE </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>7</w:t></w:r>)"
+              R"(<w:r><w:fldChar w:fldCharType="end"/></w:r><w:del><w:r><w:delText>删掉的</w:delText></w:r></w:del></w:p>)"
+              R"(<w:tbl><w:tr><w:tc><w:p><w:r><w:t>甲</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>乙</w:t></w:r></w:p>)"
+              R"(<w:p><w:r><w:t>丙</w:t></w:r></w:p></w:tc></w:tr></w:tbl>)"
+              R"(<w:p><w:r><w:lastRenderedPageBreak/><w:t>第二页</w:t></w:r></w:p>)"
+              R"(<w:p><w:r><w:t>长段落前半</w:t></w:r><w:r><w:lastRenderedPageBreak/><w:t>后半</w:t></w:r></w:p>)"
+              R"(<w:p><mc:AlternateContent><mc:Choice><w:r><w:t>新</w:t></w:r></mc:Choice>)"
+              R"(<mc:Fallback><w:r><w:t>旧</w:t></w:r></mc:Fallback></mc:AlternateContent></w:p>)"
+              R"(</w:body></w:document>)";
+        const QByteArray docx = makeZip({{"[Content_Types].xml", "<Types/>"}, {"_rels/.rels", rels},
+            {"word/_rels/document.xml.rels", documentRels}, {"word/document.xml", body},
+            {"word/header1.xml", "<w:hdr><w:p><w:r><w:t>页眉文字</w:t></w:r></w:p></w:hdr>"}});
+        const Extracted out = extractBytes(docx);
+        QCOMPARE(out.status, extract::Status::Ok);
+        QCOMPARE(placedLines(out.text),
+            (QStringList {u"page 1|合同编号\tA-1"_s, u"page 1|7"_s, u"page 1|甲\t乙 丙"_s, u"page 2|第二页"_s,
+                u"page 2|长段落前半后半"_s, u"page 3|新"_s, u"-|页眉文字"_s}));
+    }
+
+    void extractXlsx()
+    {
+        const std::string rels
+            = R"(<Relationships><Relationship Id="rId1" Type="http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument" Target="/xl/workbook.xml"/></Relationships>)";
+        const std::string workbookRels
+            = R"(<Relationships><Relationship Id="rId1" Type="x/worksheet" Target="worksheets/sheet1.xml"/>)"
+              R"(<Relationship Id="rId2" Type="x/worksheet" Target="worksheets/sheet2.xml"/>)"
+              R"(<Relationship Id="rId4" Type="x/chartsheet" Target="chartsheets/sheet1.xml"/>)"
+              R"(<Relationship Id="rId3" Type="x/sharedStrings" Target="sharedStrings.xml"/></Relationships>)";
+        const std::string workbook = R"(<workbook xmlns:r="r"><sheets><sheet name="销售" sheetId="1" r:id="rId1"/>)"
+                                     R"(<sheet name="Chart" sheetId="3" r:id="rId4"/>)"
+                                     R"(<sheet name="Hidden" sheetId="2" state="hidden" r:id="rId2"/></sheets></workbook>)";
+        const std::string strings = "<sst><si><t>合同</t></si><si><r><t>富</t></r><r><t>文本</t></r><rPh><t>ふ</t></rPh></si>"
+                                    "<si><t>多\n行</t></si></sst>";
+        const std::string sheet1
+            = R"(<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1"><v>1234.5</v></c><c r="C1" t="b"><v>1</v></c></row>)"
+              R"(<row r="2"><c r="A2" t="s"><v>1</v></c></row>)"
+              R"(<row r="5"><c r="A5" t="inlineStr"><is><t>内联</t></is></c><c r="B5" t="str"><f>A1&amp;"x"</f><v>合同x</v></c>)"
+              R"(<c r="C5" t="s"><v>2</v></c><c r="D5" t="s"><v>99</v></c></row></sheetData></worksheet>)";
+        const std::string sheet2
+            = R"(<x:worksheet xmlns:x="x"><x:sheetData><x:row r="3"><x:c r="A3" t="s"><x:v>0</x:v></x:c></x:row></x:sheetData></x:worksheet>)";
+        const QByteArray xlsx = makeZip({{"_rels/.rels", rels}, {"xl/workbook.xml", workbook},
+            {"xl/_rels/workbook.xml.rels", workbookRels}, {"xl/sharedStrings.xml", strings},
+            {"xl/worksheets/sheet1.xml", sheet1}, {"xl/worksheets/sheet2.xml", sheet2}});
+        const Extracted out = extractBytes(xlsx);
+        QCOMPARE(out.status, extract::Status::Ok);
+        QCOMPARE(placedLines(out.text), (QStringList {u"销售!1|合同\t1234.5"_s, u"销售!2|富文本"_s,
+                                           u"销售!5|内联\t合同x\t多 行"_s, u"Hidden!3|合同"_s}));
+        QCOMPARE(out.text.places.size(), std::size_t {3}); // rows 1 and 2 follow on
+    }
+
+    void extractPptx()
+    {
+        const std::string rels
+            = R"(<Relationships><Relationship Id="rId1" Type="t/officeDocument" Target="ppt/presentation.xml"/></Relationships>)";
+        const std::string presentationRels = R"(<Relationships><Relationship Id="rId2" Type="t/slide" Target="slides/slide1.xml"/>)"
+                                             R"(<Relationship Id="rId3" Type="t/slide" Target="slides/slide2.xml"/></Relationships>)";
+        const std::string presentation
+            = R"(<p:presentation xmlns:p="p" xmlns:r="r"><p:sldIdLst><p:sldId id="256" r:id="rId3"/><p:sldId id="257" r:id="rId2"/></p:sldIdLst></p:presentation>)";
+        const auto slide = [](const std::string& paragraphs) {
+            return R"(<p:sld xmlns:p="p" xmlns:a="a"><p:cSld><p:spTree><p:sp><p:txBody>)" + paragraphs
+                + "</p:txBody></p:sp></p:spTree></p:cSld></p:sld>";
+        };
+        const QByteArray pptx = makeZip({{"_rels/.rels", rels}, {"ppt/presentation.xml", presentation},
+            {"ppt/_rels/presentation.xml.rels", presentationRels},
+            {"ppt/slides/slide1.xml", slide("<a:p><a:r><a:t>幻灯片一</a:t></a:r></a:p>")},
+            {"ppt/slides/slide2.xml",
+                slide("<a:p><a:r><a:t>幻灯片二</a:t></a:r><a:br><a:rPr/></a:br><a:r><a:t>B</a:t></a:r></a:p>")},
+            {"ppt/slides/_rels/slide2.xml.rels",
+                R"(<Relationships><Relationship Id="rId1" Type="t/notesSlide" Target="../notesSlides/notesSlide1.xml"/></Relationships>)"},
+            {"ppt/notesSlides/notesSlide1.xml", slide("<a:p><a:r><a:t>备注二</a:t></a:r></a:p>")}});
+        const Extracted out = extractBytes(pptx);
+        QCOMPARE(out.status, extract::Status::Ok);
+        QCOMPARE(placedLines(out.text), (QStringList {u"slide 1|幻灯片二 B"_s, u"slide 1|备注二"_s, u"slide 2|幻灯片一"_s}));
+    }
+
+    void extractDoc()
+    {
+        // WordDocument: the FIB (Word 97 layout), then the text of two pieces.
+        QByteArray word(0x1000, '\0');
+        const auto put16 = [&](int at, quint16 v) { std::memcpy(word.data() + at, &v, 2); };
+        const auto put32 = [&](int at, quint32 v) { std::memcpy(word.data() + at, &v, 4); };
+        put16(0, 0xA5EC);
+        put16(2, 0xC1);
+        put16(0x0A, 0x0200); // the table stream is 1Table
+        put16(0x20, 14);
+        put16(0x3E, 22);
+        put16(0x98, 0x5D);
+        const std::u16string unicode = u"合同编号\r\x13 PAGE \x14" u"5\x15\r";
+        const QByteArray compressed("Caf\xE9 \x93q\x94\r");
+        std::memcpy(word.data() + 0x800, unicode.data(), unicode.size() * 2);
+        std::memcpy(word.data() + 0x900, compressed.constData(), static_cast<std::size_t>(compressed.size()));
+        const auto n0 = static_cast<quint32>(unicode.size());
+        const auto n1 = static_cast<quint32>(compressed.size());
+        // 1Table: the Clx, a property run first, then the piece table.
+        QByteArray plc = le32(0) + le32(n0) + le32(n0 + n1);
+        plc += le16({0}) + le32(0x800) + le16({0});
+        plc += le16({0}) + le32((0x900 * 2) | 0x40000000u) + le16({0});
+        const QByteArray clx = QByteArray("\x01\x02\x00\xAA\xBB", 5) + QByteArray(1, '\x02')
+            + le32(static_cast<quint32>(plc.size())) + plc;
+        put32(0x1A2, 0);
+        put32(0x1A6, static_cast<quint32>(clx.size()));
+        const QByteArray doc = makeCfb({{u"WordDocument", word}, {u"1Table", clx}});
+        const Extracted out = extractBytes(doc);
+        QCOMPARE(out.status, extract::Status::Ok);
+        QCOMPARE(QString::fromUtf8(out.text.text), u"合同编号\n5\nCafé “q”\n"_s);
+
+        put16(0x0A, 0x0300); // encrypted
+        QCOMPARE(extractBytes(makeCfb({{u"WordDocument", word}, {u"1Table", clx}})).status, extract::Status::Encrypted);
+    }
+
+    void extractXls()
+    {
+        const QByteArray bof = le16({0x0600, 0x0005}) + QByteArray(12, '\0');
+        const QByteArray sheetBof = le16({0x0600, 0x0010}) + QByteArray(12, '\0');
+        // Shared strings: "合同", then "Total" cut by a CONTINUE that goes on in UTF-16.
+        const QByteArray sst = le32(2) + le32(2) + le16({2}) + QByteArray(1, '\x01') + utf16(u"合同") + le16({5})
+            + QByteArray(1, '\0') + QByteArray("Tot");
+        const QByteArray continued = QByteArray(1, '\x01') + utf16(u"al");
+        const auto boundSheet = [&](quint32 at) {
+            return biff(0x0085, le32(at) + QByteArray(2, '\0') + QByteArray(1, '\x02') + QByteArray(1, '\x01') + utf16(u"表一"));
+        };
+        const QByteArray globalsWithout = biff(0x0809, bof) + boundSheet(0) + biff(0x00FC, sst) + biff(0x003C, continued)
+            + biff(0x000A, {});
+        const QByteArray globals = biff(0x0809, bof) + boundSheet(static_cast<quint32>(globalsWithout.size()))
+            + biff(0x00FC, sst) + biff(0x003C, continued) + biff(0x000A, {});
+        const auto cell = [](quint16 row, quint16 col) { return le16({row, col, 0}); };
+        double number = 1234.5;
+        const QByteArray formulaValue = QByteArray(1, '\0') + QByteArray(5, '\0') + QByteArray("\xFF\xFF", 2);
+        const QByteArray sheet = biff(0x0809, sheetBof) + biff(0x00FD, cell(0, 0) + le32(0))
+            + biff(0x0203, cell(0, 1) + QByteArray(reinterpret_cast<const char*>(&number), 8))
+            + biff(0x0006, cell(0, 2) + formulaValue + QByteArray(8, '\0'))
+            + biff(0x0207, le16({2}) + QByteArray(1, '\x01') + utf16(u"公式")) + biff(0x00FD, cell(2, 0) + le32(1))
+            + biff(0x027E, cell(4, 0) + le32((42u << 2) | 2u)) + biff(0x000A, {});
+        const Extracted out = extractBytes(makeCfb({{u"Workbook", globals + sheet}}));
+        QCOMPARE(out.status, extract::Status::Ok);
+        QCOMPARE(placedLines(out.text), (QStringList {u"表一!1|合同\t1234.5\t公式"_s, u"表一!3|Total"_s, u"表一!5|42"_s}));
+
+        const QByteArray locked = biff(0x0809, bof) + biff(0x002F, QByteArray(6, '\0')) + biff(0x000A, {});
+        QCOMPARE(extractBytes(makeCfb({{u"Workbook", locked}})).status, extract::Status::Encrypted);
+    }
+
+    void extractPpt()
+    {
+        const auto atom = [](quint16 type, const QByteArray& body) { return pptRecord(0, type, body); };
+        const QByteArray slideList = atom(0x03F3, QByteArray(20, '\0')) + atom(0x0FA0, utf16(u"标题一\r正文"))
+            + atom(0x03F3, QByteArray(20, '\0')) + atom(0x0FA8, "Second slide");
+        const QByteArray stream = pptRecord(0x000F, 0x03E8,
+                                      pptRecord(0x000F, 0x0FF0, slideList) + pptRecord(0x001F, 0x0FF0, atom(0x0FA0, utf16(u"母版"))))
+            + pptRecord(0x000F, 0x03F8, atom(0x0FA0, utf16(u"母版文字")))
+            + pptRecord(0x000F, 0x03EE, pptRecord(0x000F, 0xF00D, atom(0x0FA0, utf16(u"文本框"))));
+        const Extracted out = extractBytes(makeCfb({{u"PowerPoint Document", stream}}));
+        QCOMPARE(out.status, extract::Status::Ok);
+        QCOMPARE(placedLines(out.text),
+            (QStringList {u"slide 1|标题一"_s, u"slide 1|正文"_s, u"slide 2|Second slide"_s, u"-|文本框"_s}));
+    }
+
+    void extractPdf()
+    {
+        const Extracted out = extractBytes(makePdf({{"Hello", "World"}, {"Second page"}}));
+        QCOMPARE(out.status, extract::Status::Ok);
+        QCOMPARE(placedLines(out.text), (QStringList {u"page 1|Hello World"_s, u"page 2|Second page"_s}));
+        QVERIFY(extractBytes(QByteArray("%PDF-1.4\n1 0 obj << >> garbage")).status != extract::Status::Ok);
+    }
+
+    void extractTextUnderDocumentNames()
+    {
+        // An HTML table a web system saved as ".xls", in GBK.
+        const QByteArray html = encode(u"<html><head><meta charset=\"gb2312\"><style>td{}</style>"
+                                       u"<script>var a='<td>';</script></head><body><table>"
+                                       u"<tr><td>合同</td><td>金额&nbsp;100</td></tr><tr><td>第二行</td></tr></table></body></html>"_s,
+            936);
+        Extracted out = extractBytes(html);
+        QCOMPARE(out.status, extract::Status::Ok);
+        QCOMPARE(placedLines(out.text), (QStringList {u"-|合同\t金额 100"_s, u"-|第二行"_s}));
+        out = extractBytes(encode(u"a,b\r\n合同,1\r\n"_s, 936));
+        QCOMPARE(placedLines(out.text), (QStringList {u"-|a,b"_s, u"-|合同,1"_s}));
+    }
+
+    void extractRejects()
+    {
+        QCOMPARE(extractBytes(QByteArray("\x01\x02\x00\x04 binary", 10)).status, extract::Status::Unsupported);
+        QCOMPARE(extractBytes(makeZip({{"a.txt", "x"}})).status, extract::Status::Unsupported);
+        const QByteArray docx = makeZip({{"_rels/.rels", "<Relationships/>"}, {"word/document.xml", "<w:document/>"}});
+        QCOMPARE(extractBytes(docx.left(docx.size() / 2)).status, extract::Status::Broken);
+        QCOMPARE(extractBytes(makeCfb({{u"EncryptedPackage", QByteArray(100, 'x')}})).status, extract::Status::Encrypted);
+        QCOMPARE(extractBytes(makeCfb({{u"Other", QByteArray(100, 'x')}})).status, extract::Status::Unsupported);
+        QCOMPARE(extractBytes(makeCfb({})).status, extract::Status::Unsupported);
+        // A compound file whose FAT points past its end, or into a loop.
+        QByteArray cfb = makeCfb({{u"WordDocument", QByteArray(5000, 'x')}});
+        QByteArray looped = cfb;
+        std::memset(looped.data() + looped.size() - 512, 0, 512); // every sector's next is sector 0
+        QVERIFY(extractBytes(looped).status != extract::Status::Ok);
+        QVERIFY(extractBytes(cfb.left(1024)).status != extract::Status::Ok);
+    }
+
+    void docTextSerialization()
+    {
+        doctext::DocText doc;
+        doc.text = "第一行\n第二行\n";
+        doc.sheets = {"表"};
+        doc.places = {{1, 3, 0, doctext::PlaceKind::Row}, {2, 9, doctext::Place::kNoSheet, doctext::PlaceKind::Page}};
+        doc.truncated = true;
+        const std::string bytes = doctext::serialize(doc);
+        QVERIFY(doctext::deserialize(bytes, 1000) == doc);
+        QVERIFY(!doctext::deserialize(bytes, 4)); // more text than allowed
+        QVERIFY(!doctext::deserialize(bytes.substr(0, bytes.size() - 1), 1000));
+        QVERIFY(!doctext::deserialize(bytes + "x", 1000));
+        std::string badSheet = bytes;
+        badSheet[20 + 8] = 5; // the first place's sheet: none such
+        QVERIFY(!doctext::deserialize(badSheet, 1000));
+        std::string badLine = bytes;
+        badLine[20] = 0; // line 0
+        QVERIFY(!doctext::deserialize(badLine, 1000));
+    }
+
+    void contentIndexKeepsTexts()
+    {
+        QTemporaryDir dir;
+        doctext::DocText a;
+        a.text = "合同编号\n";
+        a.places = {{1, 3, doctext::Place::kNoSheet, doctext::PlaceKind::Page}};
+        doctext::DocText b = a;
+        b.text = "新合同\n";
+        std::vector<char> state;
+        std::vector<std::uint64_t> files;
+        {
+            ContentIndex content(dir.path());
+            QVERIFY(content.add(10, gramsOf(u"合同编号"_s), false, 1, 0, ContentIndex::packText(a)));
+            QVERIFY(content.add(20, gramsOf(u"其他"_s), false, 2, 0));
+            QVERIFY(content.textOf(10) == a);
+            QVERIFY(!content.textOf(20));
+            QVERIFY(!content.textOf(30));
+            QVERIFY(content.add(10, gramsOf(u"新合同"_s), false, 3, 0, ContentIndex::packText(b))); // replaces it
+            QVERIFY(content.textOf(10) == b);
+            content.markChanged(std::vector<EntryId> {10});
+            QVERIFY(!content.textOf(10)); // written to: the text is not current
+            QVERIFY(content.add(10, gramsOf(u"合同编号"_s), false, 4, content.changeSequence(), ContentIndex::packText(a)));
+            QCOMPARE(content.stats().texts, std::size_t {1});
+            const std::uint64_t before = content.stats().textBytes;
+            QVERIFY(content.merge()); // renumbers documents
+            QVERIFY(content.textOf(10) == a);
+            QVERIFY(content.compactTexts());
+            QVERIFY(content.textOf(10) == a);
+            QVERIFY(content.stats().textBytes < before);
+            std::vector<EntryId> newIds(40, kNoEntry);
+            newIds[10] = 1;
+            newIds[20] = 2;
+            state = content.serialize(newIds, files);
+            content.saved(files);
+        }
+        QCOMPARE(QDir(dir.path()).entryList({u"*.texts"_s}).size(), qsizetype {1}); // the old one is gone
+        ContentIndex restored(dir.path());
+        QVERIFY(restored.restore(state, 3));
+        QVERIFY(restored.textOf(1) == a);
+        QVERIFY(!restored.textOf(2));
+        restored.retire(std::vector<EntryId> {1});
+        QVERIFY(!restored.textOf(1));
+        QCOMPARE(restored.stats().texts, std::size_t {0});
+
+        // Nothing to find in it: an empty text, so a search need not read the file.
+        QVERIFY(restored.add(2, {}, true, 7, 0));
+        QVERIFY(restored.textOf(2) && restored.textOf(2)->text.empty());
+
+        // Moved to another folder (IndexService::moveTo): copied as
+        // indexfolder::copy() does (the text file open for writing meanwhile),
+        // then used from there.
+        QVERIFY(restored.add(1, gramsOf(u"新合同"_s), false, 8, 0, ContentIndex::packText(b)));
+        QTemporaryDir moved;
+        for (const QFileInfo& f : QDir(dir.path()).entryInfoList({u"*.grams"_s, u"*.texts"_s}, QDir::Files)) {
+            const std::wstring from = QDir::toNativeSeparators(f.absoluteFilePath()).toStdWString();
+            const std::wstring to = QDir::toNativeSeparators(moved.filePath(f.fileName())).toStdWString();
+            QVERIFY(::CopyFileExW(from.c_str(), to.c_str(), nullptr, nullptr, nullptr, 0));
+        }
+        QVERIFY(restored.relocate(moved.path()));
+        QVERIFY(restored.textOf(1) == b);
+        QVERIFY(restored.add(3, gramsOf(u"合同编号"_s), false, 9, 0, ContentIndex::packText(a))); // written there
+        QVERIFY(restored.textOf(3) == a);
+        const QStringList texts = QDir(moved.path()).entryList({u"*.texts"_s}, QDir::Files);
+        QCOMPARE(texts.size(), qsizetype {1});
+        // By its path: a directory listing has the size from before the last
+        // writes until they are flushed (docs/pitfalls.md).
+        QCOMPARE(QFileInfo(moved.filePath(texts.first())).size(), static_cast<qint64>(restored.stats().textBytes));
+    }
+
+    void docExtractorSandbox()
+    {
+        if (!QFile::exists(QString::fromStdWString(DocExtractor::programPath())))
+            QSKIP("WinShunExtract.exe is not built with this preset");
+        QTemporaryDir dir;
+        const auto write = [&](const QString& name, const QByteArray& data) {
+            QFile f(dir.filePath(name));
+            if (!f.open(QIODevice::WriteOnly))
+                return std::wstring();
+            f.write(data);
+            return QDir::toNativeSeparators(f.fileName()).toStdWString();
+        };
+        const std::wstring pdf = write(u"a.pdf"_s, makePdf({{"Contract", "number"}}));
+        const std::wstring bad = write(u"b.docx"_s, QByteArray("\x01\x02\x00\x04 binary", 10));
+        DocExtractor extractor(1, DocExtractor::Priority::Normal);
+        DocExtractor::Result read = extractor.extractFile(pdf, 1 << 20, {});
+        QCOMPARE(read.status, extractproto::Status::Ok);
+        QCOMPARE(read.text.text, std::string("Contract number\n"));
+        QCOMPARE(extractor.extractFile(bad, 1 << 20, {}).status, extractproto::Status::Unsupported);
+        QCOMPARE(extractor.extractFile(pdf + L".missing", 1 << 20, {}).status, extractproto::Status::Failed);
+        QCOMPARE(extractor.extractFile(pdf, 10, {}).status, extractproto::Status::Failed); // too large
+
+        // What the content indexer keeps of a document: its grams and its text.
+        const ContentIndexer::FileText text = ContentIndexer::readFile(pdf, 0, {}, &extractor);
+        QCOMPARE(text.outcome, ContentIndexer::Outcome::Indexed);
+        QVERIFY(hasAll(text.keys, u"contract number"_s));
+        QVERIFY(!text.text.isEmpty());
+        QVERIFY(text.document && text.document->text == "Contract number\n"); // for a search to look through
+        QCOMPARE(ContentIndexer::readFile(pdf, 10, {}, &extractor).outcome, ContentIndexer::Outcome::Empty);
+        QCOMPARE(ContentIndexer::readFile(pdf, 0, {}, nullptr).outcome, ContentIndexer::Outcome::Skipped);
+        QCOMPARE(ContentIndexer::readFile(bad, 0, {}, &extractor).outcome, ContentIndexer::Outcome::Empty);
+        extractor.closeIdle();
     }
 
     void doubleTap()

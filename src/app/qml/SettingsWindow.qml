@@ -810,8 +810,18 @@ Window {
                 note: qsTr("在搜索框按 Tab 切换到“内容”，可以查找文件里的文字。")
 
                 SettingRow {
-                    title: qsTr("搜索这些类型的文件")
-                    description: qsTr("只会在这些类型的文件里查找文字。只支持纯文本文件，Word、Excel、PDF 加进来也搜不到")
+                    title: qsTr("搜索文档")
+                    description: qsTr("Word、Excel、PowerPoint、PDF 和 WPS 文件，新旧格式都可以。由一个权限受限的单独进程读取；扫描件和图片里的文字读不到")
+
+                    ToggleSwitch {
+                        checked: window.editor.contentDocuments
+                        onToggled: (on) => window.editor.contentDocuments = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("搜索这些类型的文本文件")
+                    description: qsTr("纯文本类型的文件，按扩展名列出。Word、Excel、PDF 等文档由上面的“搜索文档”负责")
 
                     body: [
                         Flow {
@@ -853,38 +863,62 @@ Window {
                     ]
                 }
 
-                SettingRow {
-                    title: qsTr("文件大小上限")
-                    description: qsTr("大于这个大小的文件不查找内容，避免在超大文件上花太多时间")
+                // A size limit for each kind of file (ContentSizeLimits::Kind:
+                // text, code, data, documents).
+                Repeater {
+                    model: [
+                        { title: qsTr("文本和日志的大小上限"),
+                          note: qsTr("更大的文件不查找内容") },
+                        { title: qsTr("源代码的大小上限"),
+                          note: qsTr("手写的代码很少有几 MB，更大的多是打包压缩后的脚本，搜什么都可能要整个读一遍") },
+                        { title: qsTr("数据和网页的大小上限"),
+                          note: qsTr("几十 MB 的多是导出的数据，搜什么都可能要整个读一遍，所以默认小一些") },
+                        { title: qsTr("文档的大小上限"),
+                          files: qsTr("Word、Excel、PowerPoint、PDF 和 WPS 文件"),
+                          note: qsTr("文档常有几十上百 MB，大多是图片，读出的文字不多，所以默认大得多；每个最多读出 16 MB 文字") }
+                    ]
 
-                    FlatButton {
-                        glyph: "" // Remove (minus)
-                        enabled: window.editor.maxContentFileSizeMB > 1
-                        onClicked: window.editor.maxContentFileSizeMB = window.editor.maxContentFileSizeMB > 16
-                                   ? window.editor.maxContentFileSizeMB - 16 : window.editor.maxContentFileSizeMB - 1
-                    }
-                    InputBox {
-                        width: 80
-                        horizontalAlignment: TextInput.AlignHCenter
-                        text: window.editor.maxContentFileSizeMB
-                        validator: IntValidator { bottom: 1; top: 4096 }
-                        onEditingFinished: {
-                            const mb = parseInt(text)
-                            window.editor.maxContentFileSizeMB = isNaN(mb) ? window.editor.maxContentFileSizeMB : mb
-                            text = Qt.binding(() => window.editor.maxContentFileSizeMB)
+                    delegate: SettingRow {
+                        id: sizeRow
+
+                        required property int index
+                        required property var modelData
+                        readonly property int mb: window.editor.contentMaxSizeMB[index]
+                        readonly property string extensions: window.editor.contentKindExtensions[index]
+
+                        visible: modelData.files === undefined || window.editor.contentDocuments
+                        title: modelData.title
+                        description: (modelData.files ?? (extensions.length > 0 ? extensions : qsTr("列表里没有这类文件")))
+                                     + "\n" + modelData.note
+
+                        FlatButton {
+                            glyph: "" // Remove (minus)
+                            enabled: sizeRow.mb > 1
+                            onClicked: window.editor.setContentMaxSizeMB(sizeRow.index, sizeRow.mb > 16 ? sizeRow.mb - 16 : sizeRow.mb - 1)
                         }
-                    }
-                    FlatButton {
-                        glyph: "" // Add
-                        enabled: window.editor.maxContentFileSizeMB < 4096
-                        onClicked: window.editor.maxContentFileSizeMB = window.editor.maxContentFileSizeMB >= 16
-                                   ? window.editor.maxContentFileSizeMB + 16 : window.editor.maxContentFileSizeMB + 1
-                    }
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "MB"
-                        color: Theme.subtext
-                        font.pixelSize: Theme.fontBody
+                        InputBox {
+                            width: 80
+                            horizontalAlignment: TextInput.AlignHCenter
+                            text: sizeRow.mb
+                            validator: IntValidator { bottom: 1; top: 4096 }
+                            onEditingFinished: {
+                                const mb = parseInt(text)
+                                if (!isNaN(mb))
+                                    window.editor.setContentMaxSizeMB(sizeRow.index, mb)
+                                text = Qt.binding(() => sizeRow.mb)
+                            }
+                        }
+                        FlatButton {
+                            glyph: "" // Add
+                            enabled: sizeRow.mb < 4096
+                            onClicked: window.editor.setContentMaxSizeMB(sizeRow.index, sizeRow.mb >= 16 ? sizeRow.mb + 16 : sizeRow.mb + 1)
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "MB"
+                            color: Theme.subtext
+                            font.pixelSize: Theme.fontBody
+                        }
                     }
                 }
 
@@ -900,7 +934,7 @@ Window {
 
                 SettingRow {
                     title: qsTr("建立内容索引")
-                    description: qsTr("在后台记下每个文件里有哪些中日韩文字和英文单词片段，搜索时只打开可能含有它的文件，快得多。只用于 NTFS 磁盘，首次建立需要一段时间，几十万个文件约占 200 MB 磁盘空间")
+                    description: qsTr("在后台记下每个文件里有哪些中日韩文字，和三个字符一段的英文、数字、空格和标点，搜索时只打开可能含有它的文件，快得多；搜索中读过的文件也会记下。文档读出的文字也存在这里，搜索时不用再读一遍文档。只用于 NTFS 磁盘，首次建立需要一段时间，几十万个文件约占一两百 MB 磁盘空间")
                                  + (window.editor.contentIndexStatus.length > 0 ? "\n" + window.editor.contentIndexStatus : "")
 
                     ToggleSwitch {

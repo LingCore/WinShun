@@ -10,6 +10,8 @@ qt_add_library(wscore STATIC
     ContentIndexer.cpp ContentIndexer.h
     ContentScanner.cpp ContentScanner.h
     Crawler.cpp Crawler.h
+    DocExtractor.cpp DocExtractor.h
+    Documents.h
     DoubleTapDetector.h
     FileIndex.cpp FileIndex.h
     GameGuard.h

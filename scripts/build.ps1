@@ -62,6 +62,14 @@ try {
         New-Item -ItemType Directory -Force $dist | Out-Null
         Copy-Item "$root\build\$preset\WinShun.exe" $dist
         Copy-Item "$root\build\$preset\fonts" $dist -Recurse # UI font (see main.cpp)
+        # Documents are read by WinShunExtract.exe (src/extract), PDFs with
+        # PDFium; their licenses go along.
+        Copy-Item "$root\build\$preset\WinShunExtract.exe", "$root\build\$preset\pdfium.dll" $dist
+        $pdfium = Get-ChildItem "$root\build\$preset\_deps" -Directory -Filter 'pdfium-*' | Sort-Object Name | Select-Object -Last 1
+        New-Item -ItemType Directory -Force "$dist\licenses\pdfium" | Out-Null
+        Copy-Item "$($pdfium.FullName)\LICENSE" "$dist\licenses\pdfium\LICENSE.txt"
+        Copy-Item "$($pdfium.FullName)\licenses\*" "$dist\licenses\pdfium"
+        Copy-Item "$root\third_party\miniz\LICENSE" "$dist\licenses\miniz.txt"
         # Only what the app uses: no shader compilers (software renderer), no
         # QML debugger, network, TLS or SVG plugins, and of the database
         # drivers only SQLite (the clipboard history).

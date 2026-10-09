@@ -38,6 +38,7 @@ public:
         IconRole,
         SnippetHtmlRole,
         LineRole,
+        LocationRole, // of a content match: "第 3 行", "第 2 页", "Sheet1 第 12 行"
         RecentRole,
         IsAppRole, // an app or a place in Windows
         PlaceRole, // a place: a page of Settings, a Control Panel task, a system tool

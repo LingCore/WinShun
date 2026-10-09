@@ -526,6 +526,14 @@
 
 - 0.2.0 及更早的版本收到 `WM_CLOSE` 只会销毁消息窗口，进程还在。所以安装程序按进程（`tasklist`）判断是否退出，等 15 秒不退就 `taskkill /F`。0.2.1 起消息窗口把 `WM_CLOSE` 当成 `--quit`。
 
+## 读文档（WinShunExtract.exe）
+
+### 大 PDF 在沙箱里读到一半退出，退出码 0xE0000008
+
+- **现象**：一份 94 MB 的 PDF 在主程序里直接读没问题，在 WinShunExtract.exe 里读却失败；管道断开，进程退出码 `0xE0000008`。
+- **原因**：这是 PDFium（Chromium）内存不够时主动终止用的退出码。某一页有巨大的矢量图，读的时候瞬间要 1.2 GB，超过了作业对象当时设的每个进程 1 GB 上限。
+- **做法**：上限改为 2 GB（只是上限，不预先占用）。还是超了的文件记为读不出，文件改动后才重读，不会反复重试。排查办法：`wsbench --extract --sandbox` 看哪些文件 failed，设 `QT_FORCE_STDERR_LOGGING=1` 能看到退出码；再用不带 `--sandbox` 的 `wsbench --extract` 看同一文件在本进程里的峰值内存。
+
 ## 构建、升级 Qt
 
 ### 从 Git Bash 调 `powershell.exe` 编译，构建目录被弄坏

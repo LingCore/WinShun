@@ -3,6 +3,8 @@
 #include "AppCatalog.h"
 #include "ContentIndex.h"
 #include "ContentScanner.h"
+#include "DocExtractor.h"
+#include "Documents.h"
 #include "IndexService.h"
 #include "NameSearch.h"
 #include "Query.h"
@@ -20,6 +22,8 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstring>
+#include <optional>
 
 using namespace std::chrono_literals;
 
@@ -32,6 +36,7 @@ constexpr int kRecentPromoted = 3;
 // Places in 全部: the best few. Windows lists over a thousand, and words like
 // 设置 or 显示 are in hundreds of their names.
 constexpr std::size_t kPlacesShown = 5;
+constexpr std::size_t kFirstContentBatch = 8; // the most rows the launcher shows (maxRows in Main.qml)
 
 std::shared_ptr<const AppList> appsOf(const AppCatalog* catalog)
 {
@@ -194,6 +199,7 @@ void promoteHistory(SearchResults& results, const SearchEngine::Request& request
 SearchEngine::SearchEngine(IndexService* index, AppCatalog* apps, SystemCatalog* places, QObject* parent)
     : QObject(parent)
     , m_index(index)
+    , m_documents(std::make_unique<DocExtractor>(4, DocExtractor::Priority::Normal))
     , m_apps(apps)
     , m_places(places)
 {
@@ -365,12 +371,17 @@ void SearchEngine::runContentSearch(const Job& job)
     // are pinned until then. The content index answers for the files it
     // knows without opening them: those it says match are read first (for
     // the line and snippet), then the ones it does not know, your own files
-    // before the rest.
+    // before the rest. Those are read whole and handed to the content index
+    // (ContentIndexer::Intake): the next search knows them.
     struct Candidate {
         EntryId id;
         std::uint8_t order; // lower first
+        bool indexed; // the content index knows it
     };
-    const ContentFilter filter {ExtensionFilter(request.contentExtensions), request.contentInLowPriority};
+    const ContentFilter filter {ExtensionFilter(request.contentDocuments
+                                                    ? request.contentExtensions + documentExtensions()
+                                                    : request.contentExtensions),
+        request.contentInLowPriority};
     const auto index = m_index->index();
     const auto content = m_index->contentIndex();
     const ContentIndex::SearchGuard searching(content.get()); // the content indexer waits meanwhile
@@ -382,24 +393,31 @@ void SearchEngine::runContentSearch(const Job& job)
         pin = index->pinIds();
         const ContentIndex::Lookup lookup = content ? content->lookup(needle) : ContentIndex::Lookup();
         constexpr std::uint32_t kMatch = ContentIndex::Lookup::kMatch;
-        UnderFolder inProfile(*index, index->findPath(win32::expandEnvironment(L"%USERPROFILE%")));
-        std::size_t k = 0;
-        for (std::size_t c = 0; c < index->chunkCount(); ++c) {
+        const EntryId profile = index->findPath(win32::expandEnvironment(L"%USERPROFILE%"));
+        std::vector<std::vector<Candidate>> found(index->chunkCount());
+        std::vector<int> ruledOutOf(index->chunkCount(), 0);
+        m_pool.parallelFor(index->chunkCount(), [&](std::size_t c) {
             if (isStale(job.id))
                 return;
+            UnderFolder inProfile(*index, profile);
+            const auto first = static_cast<EntryId>(c << FileIndex::kChunkBits);
+            auto k = static_cast<std::size_t>(std::lower_bound(lookup.known.begin(), lookup.known.end(), first,
+                [](std::uint32_t known, EntryId id) { return (known & ~kMatch) < id; }) - lookup.known.begin());
             const auto entries = index->chunk(c);
             for (std::size_t i = 0; i < entries.size(); ++i) {
                 const Entry& e = entries[i];
                 if (!filter.accepts(*index, e))
                     continue;
-                const auto id = static_cast<EntryId>((c << FileIndex::kChunkBits) + i);
+                const auto id = static_cast<EntryId>(first + i);
+                bool indexed = false;
                 bool likely = false;
-                if (lookup.usable) {
-                    while (k < lookup.known.size() && (lookup.known[k] & ~kMatch) < id)
-                        ++k;
-                    if (k < lookup.known.size() && (lookup.known[k] & ~kMatch) == id) {
+                while (k < lookup.known.size() && (lookup.known[k] & ~kMatch) < id)
+                    ++k;
+                if (k < lookup.known.size() && (lookup.known[k] & ~kMatch) == id) {
+                    indexed = true;
+                    if (lookup.usable) {
                         if (!(lookup.known[k] & kMatch)) {
-                            ++ruledOut;
+                            ++ruledOutOf[c];
                             continue;
                         }
                         likely = true;
@@ -412,14 +430,25 @@ void SearchEngine::runContentSearch(const Job& job)
                     priority = 2;
                 else if (inProfile(id))
                     priority = 0;
-                candidates.push_back({id, static_cast<std::uint8_t>(likely ? priority : 4 + priority)});
+                found[c].push_back({id, static_cast<std::uint8_t>(likely ? priority : 4 + priority), indexed});
             }
+        });
+        if (isStale(job.id))
+            return;
+        std::size_t count = 0;
+        for (const auto& f : found)
+            count += f.size();
+        candidates.reserve(count);
+        for (std::size_t c = 0; c < found.size(); ++c) {
+            candidates.insert(candidates.end(), found[c].begin(), found[c].end());
+            ruledOut += ruledOutOf[c];
         }
     }
     std::stable_sort(candidates.begin(), candidates.end(),
         [](const Candidate& a, const Candidate& b) { return a.order < b.order; });
 
     const ContentScanner scanner(needle);
+    ContentIndexer::Intake intake(m_index->contentIndexer()); // before the reads, gone once they are done
     const int total = static_cast<int>(candidates.size()) + ruledOut;
     std::atomic<std::size_t> next {0};
     std::atomic<int> scanned {ruledOut};
@@ -457,18 +486,61 @@ void SearchEngine::runContentSearch(const Job& job)
                     const std::size_t i = next.fetch_add(1);
                     if (i >= candidates.size())
                         break;
+                    const Candidate& candidate = candidates[i];
                     bool gone = false;
                     {
                         const auto lock = index->readLock();
-                        gone = index->entry(candidates[i].id).isDeleted();
+                        gone = index->entry(candidate.id).isDeleted();
                         if (!gone)
-                            path = index->wpath(candidates[i].id); // as it is now: it may have moved
+                            path = index->wpath(candidate.id); // as it is now: it may have moved
                     }
                     if (gone) {
                         scanned.fetch_add(1);
                         continue;
                     }
-                    const auto match = scanner.scanFile(path, request.maxContentFileBytes, stale);
+                    const std::int64_t maxBytes = request.contentSizeLimits.of(path);
+                    std::optional<ContentMatch> match;
+                    doctext::Location location;
+                    const bool document = isDocumentPath(path);
+                    if (document) {
+                        // Its text as the index keeps it; else read now (not
+                        // indexed yet, changed since, or on a volume not
+                        // followed), and kept for next time if it can be.
+                        std::optional<doctext::DocText> text
+                            = candidate.indexed ? content->textOf(candidate.id) : std::nullopt;
+                        if (!text && intake.wants(path)) {
+                            const std::uint64_t since = intake.since();
+                            ContentIndexer::FileText read
+                                = ContentIndexer::readFile(path, maxBytes, stale, m_documents.get());
+                            intake.take(candidate.id, read, since);
+                            text = std::move(read.document);
+                        } else if (!text) {
+                            DocExtractor::Result read = m_documents->extractFile(path, maxBytes, stale);
+                            if (read.status == extractproto::Status::Ok)
+                                text = std::move(read.text);
+                        }
+                        if (text) {
+                            std::size_t at = 0;
+                            const std::string& s = text->text;
+                            match = scanner.scan(
+                                [&](char* buffer, std::size_t capacity) {
+                                    const std::size_t n = std::min(capacity, s.size() - at);
+                                    std::memcpy(buffer, s.data() + at, n);
+                                    at += n;
+                                    return n;
+                                },
+                                ContentScanner::kChunkBytes, stale);
+                            if (match)
+                                location = doctext::locate(*text, static_cast<std::uint32_t>(match->line));
+                        }
+                    } else if (!candidate.indexed && intake.wants(path)) {
+                        const std::uint64_t since = intake.since();
+                        ContentIndexer::Scanned read = ContentIndexer::scanFile(path, maxBytes, scanner, stale);
+                        intake.take(candidate.id, read.text, since);
+                        match = std::move(read.match);
+                    } else {
+                        match = scanner.scanFile(path, maxBytes, stale);
+                    }
                     scanned.fetch_add(1);
                     if (!match)
                         continue;
@@ -476,6 +548,24 @@ void SearchEngine::runContentSearch(const Job& job)
                     r.path = QString::fromStdWString(path);
                     r.name = r.path.mid(r.path.lastIndexOf(u'\\') + 1);
                     r.line = match->line;
+                    if (document) {
+                        switch (location.kind) {
+                        case doctext::PlaceKind::Page:
+                            r.where = SearchResult::Where::Page;
+                            break;
+                        case doctext::PlaceKind::Slide:
+                            r.where = SearchResult::Where::Slide;
+                            break;
+                        case doctext::PlaceKind::Row:
+                            r.where = SearchResult::Where::Row;
+                            r.sheet = QString::fromUtf8(location.sheet);
+                            break;
+                        case doctext::PlaceKind::None:
+                            r.where = SearchResult::Where::Document;
+                            break;
+                        }
+                        r.placeNumber = static_cast<int>(location.number);
+                    }
                     r.snippet = match->snippet;
                     r.snippetMatchStart = match->matchStart;
                     r.snippetMatchLength = match->matchLength;
@@ -493,11 +583,26 @@ void SearchEngine::runContentSearch(const Job& job)
             });
         }
 
+        // The first matches go out once they fill the window or 50 ms have
+        // passed (a new query's rows replace the last one's with them: one
+        // row alone would flash), the rest every 100 ms.
+        const auto start = std::chrono::steady_clock::now();
+        bool first = true;
         for (;;) {
             std::unique_lock lock(doneMutex);
-            if (doneCv.wait_for(lock, 100ms, [&] { return running == 0; }))
+            if (doneCv.wait_for(lock, first ? 5ms : 100ms, [&] { return running == 0; }))
                 break;
             lock.unlock();
+            if (first) {
+                std::size_t ready = 0;
+                {
+                    std::lock_guard batchLock(batchMutex);
+                    ready = static_cast<std::size_t>(batch.size());
+                }
+                if (ready < kFirstContentBatch && std::chrono::steady_clock::now() - start < 50ms)
+                    continue;
+                first = false;
+            }
             flush(false);
         }
     }

@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.21)
 project(WinShun
     VERSION 0.4.0
     DESCRIPTION "Fast file, folder and text-content search launcher for Windows"
-    LANGUAGES CXX)
+    LANGUAGES C CXX) # C: miniz
 
 if(NOT WIN32)
     message(FATAL_ERROR "WinShun targets Windows only (it relies on Win32 APIs).")
@@ -40,24 +40,28 @@ if(MSVC)
     endif()
 endif()
 
+add_subdirectory(src/extract)
 add_subdirectory(src/core)
 add_subdirectory(src/app)
 
 # Developer tool: index memory and search timings on the real snapshot.
 qt_add_executable(wsbench tools/wsbench.cpp src/app/Settings.cpp)
 target_include_directories(wsbench PRIVATE src/app) # Settings: the user's crawl rules for --sync
-target_link_libraries(wsbench PRIVATE wscore psapi)
+target_link_libraries(wsbench PRIVATE wscore wsextract psapi)
 set_target_properties(wsbench PROPERTIES WIN32_EXECUTABLE OFF)
 
 if(WINSHUN_ASAN AND MSVC)
     # Fuzzing the parsers (tools/wsfuzz.cpp) with libFuzzer. They are built
     # into it again, instrumented for coverage, which steers the fuzzing.
+    # Document readers too, all but PDF (PDFium is fuzzed upstream).
     add_executable(wsfuzz tools/wsfuzz.cpp
         src/core/ContentIndex.cpp src/core/ContentScanner.cpp src/core/FileIndex.cpp src/core/Ntfs.cpp
-        src/core/Pinyin.cpp src/core/PinyinTable.cpp src/core/TextUtil.cpp src/core/Win32Util.cpp src/core/Wtf8.cpp)
-    target_include_directories(wsfuzz PRIVATE src/core)
+        src/core/Pinyin.cpp src/core/PinyinTable.cpp src/core/TextUtil.cpp src/core/Win32Util.cpp src/core/Wtf8.cpp
+        src/extract/Cfb.cpp src/extract/Doc.cpp src/extract/Extract.cpp src/extract/Markup.cpp src/extract/Ooxml.cpp
+        src/extract/Ppt.cpp src/extract/Writer.cpp src/extract/Xls.cpp src/extract/Xml.cpp src/extract/Zip.cpp)
+    target_include_directories(wsfuzz PRIVATE src/core src/extract)
     target_compile_options(wsfuzz PRIVATE /fsanitize=fuzzer)
-    target_link_libraries(wsfuzz PRIVATE Qt6::Core winshun_options)
+    target_link_libraries(wsfuzz PRIVATE Qt6::Core winshun_options miniz bcrypt) # bcrypt: grams::fingerprint
 endif()
 
 if(WINSHUN_BUILD_TESTS)

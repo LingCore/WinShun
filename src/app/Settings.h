@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ContentIndex.h"
 #include "Crawler.h"
 
 #include <QString>
@@ -40,9 +41,12 @@ struct Settings {
 
     // [Content]
     QStringList contentExtensions;
-    int maxContentFileSizeMB = 64;
+    // Larger files are not searched, by kind (ContentSizeLimits::Kind): plain
+    // text and logs, source code, data and web pages.
+    std::array<int, ContentSizeLimits::kKinds> contentMaxSizeMB {64, 8, 16, 512};
     bool contentIndex = true; // which files have which Chinese, Japanese and Korean characters
     bool contentInLowPriority = false; // 内容 also looks in system, program and tool folders
+    bool contentDocuments = true; // and in Word, Excel, PowerPoint and PDF files (documentExtensions())
 
     // [Clipboard]
     bool clipboard = true; // keep a history of what is copied (Win+V page); at first as Windows' own clipboard history is

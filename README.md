@@ -62,11 +62,13 @@
 
 #### 📄 文字内容搜索
 
-- 切到 **内容** 范围，找文本文件里的文字，结果里直接显示命中的那一行和行号。
-- 默认搜 txt、md、log、csv、ini、json、xml、html 和常见源代码等纯文本格式，可以在设置里增删扩展名。Word、Excel、PDF 不是纯文本，搜不到。
+- 切到 **内容** 范围，找文件里的文字，结果里直接显示命中的那一行和行号；文档显示在第几页、第几张幻灯片，或哪个表的第几行。
+- **也搜文档**：Word、Excel、PowerPoint（新旧格式都行：docx/doc、xlsx/xls、pptx/ppt）、PDF 和 WPS 文件。文档由一个单独的、权限受限的进程读取（没有管理员权限、低完整性级别），坏文件最多让它自己退出；读出的文字存进内容索引，搜索时不用再读一遍。扫描件和图片里的文字读不到。
+- 纯文本默认搜 txt、md、log、csv、ini、json、xml、html 和常见源代码，可以在设置里增删扩展名。
+- 大小上限按种类分：文本和日志 64 MB、源代码 8 MB、数据和网页 16 MB（更大的多是打包压缩的脚本和导出的数据）、文档 512 MB（大多是图片，每个最多读出 16 MB 文字），设置里可改。
 - **自动识别编码**：UTF-8（含 BOM）、UTF-16、GBK 等本地编码都能正确读出。
-- **有内容索引**：搜中文，或三个以上连在一起的英文字母、数字时，先用索引筛掉不可能含有它的文件，只打开剩下的，几十万个文件也很快。
-- 在 **全部** 范围里，停止输入后也会搜文件内容，排在文件名结果后面。默认跳过系统、程序目录和 `node_modules` 等。
+- **有内容索引**：搜中文，或三个以上连着的英文、数字、空格和标点（比如一整行代码）时，先用索引筛掉不可能含有它的文件，只打开剩下的，几十万个文件也很快。搜索时读过的文件也会记进索引，再搜就不用重读。
+- 在 **全部** 范围里，停止输入后也会搜文件内容，排在文件名结果后面，一行代码照原样找（引号、`*`、`!` 都算）。默认跳过系统、程序目录和 `node_modules` 等。
 
 <p align="center">
   <picture>
@@ -204,7 +206,7 @@ Win顺 自己以管理员身份运行，但 **你从它打开的文件和应用�
 Win顺 自己建索引，不需要另装 Everything。文件名、拼音、应用和文字内容在同一个搜索框里搜，默认就针对中文做了优化。“打开 / 保存”对话框里有和 Listary 一样的 `Ctrl+G` 和贴在对话框下面的搜索框，但没有嵌进资源管理器窗口里的那部分。
 
 **能搜 Word、Excel、PDF 里的文字吗？**
-不能，内容搜索只读纯文本文件（txt、md、csv、json、代码等）。
+能。Word、Excel、PowerPoint、PDF 和 WPS 文件都能搜，结果里显示在第几页、第几张幻灯片或哪个表的第几行。扫描版 PDF 和图片里的文字读不到。
 
 **双击 Ctrl 和别的软件冲突怎么办？**
 Listary 和 PowerToys 的“查找鼠标”默认也用双击 Ctrl，同时开着两边都会响应。可以在其中一边关掉；或者在设置的“打开 Win顺”页关掉双击 Ctrl，另设一个组合键（如 `Alt+Space`）。
@@ -265,11 +267,13 @@ The interface comes in **English and Simplified Chinese**. It follows the Window
 
 #### 📄 Text content search
 
-- Switch to the **内容 (Contents)** scope to find text inside files, with the matching line and line number in the results.
-- Searches plain-text formats by default — txt, md, log, csv, ini, json, xml, html and common source code — and you can add or remove extensions. Word, Excel and PDF are not plain text and are not searched.
+- Switch to the **内容 (Contents)** scope to find text inside files, with the matching line and line number in the results; for documents, the page, the slide, or the sheet and row.
+- **Documents too**: Word, Excel and PowerPoint (old and new formats: docx/doc, xlsx/xls, pptx/ppt), PDF and WPS files. They are read by a separate process with restricted rights (no administrator rights, low integrity), so a damaged file can at most make that process quit; the text read out is kept in the content index, so searches don't read the documents again. Text in scans and pictures can't be read.
+- Plain-text formats searched by default: txt, md, log, csv, ini, json, xml, html and common source code; you can add or remove extensions.
 - **Detects the encoding**: UTF-8 (with or without BOM), UTF-16 and local code pages such as GBK.
-- **Content index**: for Chinese text, or three or more letters and digits in a row, an index rules out files that cannot contain it, so only a few files are opened.
-- In the **全部 (All)** scope, content matches follow the file name matches once you stop typing.
+- Size limits by kind: text and logs 64 MB, source code 8 MB, data and web pages 16 MB (larger ones are mostly bundled scripts and exported data), documents 512 MB (mostly pictures; at most 16 MB of text is read out of each); all can be changed.
+- **Content index**: for Chinese text, or three or more letters, digits, spaces and punctuation in a row (a whole line of code, say), an index rules out files that cannot contain it, so only a few files are opened. Files a search reads go into the index too, so searching again does not read them again.
+- In the **全部 (All)** scope, content matches follow the file name matches once you stop typing; a line of code is found as typed (quotes, `*` and `!` included).
 
 #### 🚀 App launcher
 
@@ -344,7 +348,10 @@ WinShun runs as administrator, but **files and apps you open from it run with yo
 WinShun builds its own index, so Everything is not needed. File names, pinyin, apps and file contents are searched from one box, tuned for Chinese by default. Open / Save dialogs get the same `Ctrl+G` as in Listary and a search bar under them, but WinShun does not embed itself in Explorer windows the way Listary does.
 
 **Can it search inside Word, Excel or PDF files?**
-No. Content search reads plain-text files only.
+Yes: Word, Excel, PowerPoint, PDF and WPS files, with the page, slide, or sheet and row in the results. Text in scanned PDFs and pictures can't be read.
+
+**Will pressing Ctrl twice in a game (to crouch) open the search bar?**
+Not by default. While the program in front has exclusive full screen, or has hidden the mouse pointer to turn the view, pressing Ctrl twice does nothing; add games that are not recognized to "Ignore Ctrl twice in these programs" in Settings. To open WinShun in a game, use a shortcut set in Settings. Listary and PowerToys' Find My Mouse also use Ctrl twice by default; if one of them runs too, turn it off on one side.
 
 **How much memory does it use?**
 About 30 MB of index per million files; the whole app usually shows 120–140 MB in Task Manager.
@@ -390,6 +397,8 @@ WinShun is released under the [MIT License](LICENSE). Copyright © 2026 LingCore
 
 - `resources/fonts/` 阿里巴巴普惠体 3.0 · Alibaba PuHuiTi 3.0 — © Alibaba Group，按其免费商用授权随程序附带 · redistributed under its free commercial-use terms.
 - 拼音读音数据 · Pinyin data — [pinyin-data](https://github.com/mozillazg/pinyin-data)，MIT，见 · see `tools/data/pinyin-data-LICENSE.txt`。常用字的读音以其中的《通用规范汉字字典》（2013）数据为准。
+- 读 PDF 用的 · PDF reading — [PDFium](https://pdfium.googlesource.com/pdfium/)（[pdfium-binaries](https://github.com/bblanchon/pdfium-binaries) 编译），BSD-3-Clause / Apache-2.0，它所含组件的许可随程序附在 · its components' licenses ship in `licenses\pdfium\`。
+- 读 zip 用的 · Zip reading — [miniz](https://github.com/richgel999/miniz)，MIT，见 · see `third_party/miniz/LICENSE`。
 
 Windows 是微软公司的商标。本项目与微软没有任何关联。
 Windows is a trademark of Microsoft Corporation. This project is not affiliated with Microsoft.

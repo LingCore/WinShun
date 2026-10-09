@@ -186,13 +186,28 @@ QStringList SettingsEditor::excludedPaths() const
     return paths;
 }
 
-void SettingsEditor::setMaxContentFileSizeMB(int mb)
+void SettingsEditor::setContentMaxSizeMB(int kind, int mb)
 {
-    mb = std::clamp(mb, 1, 4096);
-    if (m_settings.maxContentFileSizeMB == mb)
+    if (kind < 0 || kind >= static_cast<int>(ContentSizeLimits::kKinds))
         return;
-    m_settings.maxContentFileSizeMB = mb;
+    mb = std::clamp(mb, 1, 4096);
+    int& limit = m_settings.contentMaxSizeMB[static_cast<std::size_t>(kind)];
+    if (limit == mb)
+        return;
+    limit = mb;
     commit();
+}
+
+QStringList SettingsEditor::contentKindExtensions() const
+{
+    constexpr qsizetype kShown = 10;
+    std::array<QStringList, ContentSizeLimits::kKinds> kinds;
+    for (const QString& ext : m_settings.contentExtensions)
+        kinds[ContentSizeLimits::kindOf(ext.toStdString())].append(u'.' + ext);
+    QStringList out;
+    for (const QStringList& list : kinds)
+        out.append(list.size() > kShown ? tr("%1 等").arg(list.first(kShown).join(u' ')) : list.join(u' '));
+    return out;
 }
 
 void SettingsEditor::setContentIndex(bool on)
@@ -208,6 +223,14 @@ void SettingsEditor::setContentInLowPriority(bool on)
     if (m_settings.contentInLowPriority == on)
         return;
     m_settings.contentInLowPriority = on;
+    commit();
+}
+
+void SettingsEditor::setContentDocuments(bool on)
+{
+    if (m_settings.contentDocuments == on)
+        return;
+    m_settings.contentDocuments = on;
     commit();
 }
 

@@ -80,6 +80,8 @@ public:
     // Its entry ids are the index's: look things up with the index's read lock held.
     std::shared_ptr<const ContentIndex> contentIndex() const { return m_content; }
     bool readingContent() const noexcept { return m_contentIndexer->reading(); }
+    // Content searches hand it what they read (ContentIndexer::Intake).
+    ContentIndexer* contentIndexer() const noexcept { return m_contentIndexer.get(); }
     State state() const noexcept { return m_state.load(); }
     bool isRefreshing() const noexcept { return m_refreshing.load(); }
     std::size_t itemCount() const;

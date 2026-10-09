@@ -79,8 +79,9 @@ IndexService::Options indexOptions(const Settings& settings)
     options.rescanOnStartup = settings.rescanOnStartup;
     options.content.enabled = settings.contentIndex;
     options.content.extensions = settings.contentExtensions;
-    options.content.maxFileBytes = static_cast<std::int64_t>(settings.maxContentFileSizeMB) << 20;
+    options.content.sizeLimits = settings.contentSizeLimits();
     options.content.includeLowPriority = settings.contentInLowPriority;
+    options.content.documents = settings.contentDocuments;
     return options;
 }
 
@@ -693,8 +694,8 @@ void App::refreshContentIndexStatus()
             status = tr("索引在 Win顺启动约半分钟后开始建立");
         else
             status = tr("已收录 %Ln 个文件，占用 %1 磁盘空间", nullptr, files)
-                         .arg(QLocale().formattedDataSize(
-                             static_cast<qint64>(stats.segmentBytes), 0, QLocale::DataSizeTraditionalFormat));
+                         .arg(QLocale().formattedDataSize(static_cast<qint64>(stats.segmentBytes + stats.textBytes), 0,
+                             QLocale::DataSizeTraditionalFormat));
         if (stats.pending > 0 && !m_index->readingContent())
             status += tr("；%Ln 个文件有改动，稍后更新", nullptr, static_cast<int>(stats.pending));
     }

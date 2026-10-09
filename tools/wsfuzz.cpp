@@ -1,14 +1,18 @@
 // Fuzzes the parsers that read data from disks: MFT file records, run lists,
-// change journal records, file names, text file contents and the content
-// index's files. Built with the "asan" preset; run it for a while to look for
-// crashes and bad reads:
+// change journal records, file names, text file contents, the content
+// index's files, and documents (all but PDF). Built with the "asan" preset;
+// run it for a while to look for crashes and bad reads:
 //
 //   build\asan\wsfuzz.exe -max_total_time=300
 //
-// The first input byte picks the parser, the rest is its input.
+// The first input byte picks the parser, the rest is its input. Documents
+// (8) make good seeds: a real .doc, .xls, .docx... with a byte 8 in front.
 
 #include "ContentIndex.h"
 #include "ContentScanner.h"
+#include "Extract.h"
+#include "Formats.h"
+#include "miniz.h"
 #include "Ntfs.h"
 #include "Pinyin.h"
 #include "TextUtil.h"
@@ -28,9 +32,9 @@
 namespace {
 
 // A content index of 64 documents in one segment file, and its saved state:
-// the segment file's contents are what gets fuzzed. One document is dense
-// (has most trigrams). The segment is also left as seed.bin: with a byte 7
-// in front, a seed for the fuzzer's corpus.
+// the segment file's contents are what gets fuzzed. Some documents are
+// copies of others; one has most trigrams. The segment is also left as
+// seed.bin: with a byte 7 in front, a seed for the fuzzer's corpus.
 struct ContentFixture {
     QString directory = QDir::tempPath() + QStringLiteral("/wsfuzz-content");
     QString segment;
@@ -65,7 +69,107 @@ struct ContentFixture {
     }
 };
 
+// Reads a document out of memory, as the extractor reads a file.
+void extractDocument(std::string_view bytes)
+{
+    ws::extract::MemorySource source(bytes);
+    ws::extract::Options options;
+    options.maxText = 1u << 20;
+    options.codePage = 936;
+    options.unpackBudget = 16u << 20;
+    ws::doctext::DocText text;
+    (void)ws::extract::extract(source, options, text);
+}
+
+std::string zipOf(const std::vector<std::pair<const char*, std::string_view>>& entries)
+{
+    mz_zip_archive zip {};
+    if (!mz_zip_writer_init_heap(&zip, 0, 0))
+        return {};
+    for (const auto& [name, data] : entries)
+        mz_zip_writer_add_mem(&zip, name, data.data(), data.size(), MZ_NO_COMPRESSION);
+    void* buffer = nullptr;
+    size_t size = 0;
+    mz_zip_writer_finalize_heap_archive(&zip, &buffer, &size);
+    std::string out(static_cast<const char*>(buffer), size);
+    mz_zip_writer_end(&zip);
+    return out;
+}
+
+// A compound file with these streams in its root, each in regular sectors.
+std::string cfbOf(const std::vector<std::pair<std::u16string_view, std::string_view>>& streams)
+{
+    constexpr std::uint32_t kEnd = 0xFFFFFFFE;
+    constexpr std::uint32_t kFree = 0xFFFFFFFF;
+    std::string sectors;
+    std::vector<std::uint32_t> fat;
+    const auto chain = [&](std::string data) -> std::uint32_t {
+        data.resize(std::max<std::size_t>((data.size() + 511) / 512 * 512, 512), '\0');
+        const auto start = static_cast<std::uint32_t>(fat.size());
+        for (std::size_t at = 0; at < data.size(); at += 512)
+            fat.push_back(static_cast<std::uint32_t>(fat.size() + 1));
+        fat.back() = kEnd;
+        sectors += data;
+        return start;
+    };
+    std::string directory(128 * (streams.size() + 1), '\0');
+    const auto entry = [&](std::size_t i, std::u16string_view name, char type, std::uint32_t child,
+                           std::uint32_t right, std::uint32_t start, std::uint32_t size) {
+        char* e = directory.data() + 128 * i;
+        std::memcpy(e, name.data(), name.size() * 2);
+        const auto length = static_cast<std::uint16_t>((name.size() + 1) * 2);
+        std::memcpy(e + 0x40, &length, 2);
+        e[0x42] = type;
+        std::memcpy(e + 0x44, &kFree, 4);
+        std::memcpy(e + 0x48, &right, 4);
+        std::memcpy(e + 0x4C, &child, 4);
+        std::memcpy(e + 0x74, &start, 4);
+        std::memcpy(e + 0x78, &size, 4);
+    };
+    for (std::size_t i = 0; i < streams.size(); ++i) {
+        // At least 4096 bytes: in regular sectors, not the mini stream.
+        std::string data(streams[i].second);
+        const auto size = static_cast<std::uint32_t>(std::max<std::size_t>(data.size(), 4096));
+        data.resize(size, '\0');
+        entry(i + 1, streams[i].first, 2, kFree, i + 1 < streams.size() ? static_cast<std::uint32_t>(i + 2) : kFree,
+            chain(data), size);
+    }
+    entry(0, u"Root Entry", 5, 1, kFree, kEnd, 0);
+    const std::uint32_t directoryStart = chain(directory);
+    const auto dataSectors = static_cast<std::uint32_t>(fat.size());
+    std::uint32_t fatSectors = 1;
+    while (dataSectors + fatSectors > fatSectors * 128)
+        ++fatSectors;
+    for (std::uint32_t k = 0; k < fatSectors; ++k)
+        fat.push_back(0xFFFFFFFD);
+    fat.resize(fatSectors * 128, kFree);
+    std::string header(512, '\0');
+    std::memcpy(header.data(), "\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1", 8);
+    const std::uint16_t fields[] = {0x3E, 3, 0xFFFE, 9, 6};
+    std::memcpy(header.data() + 0x18, fields, sizeof fields);
+    const std::uint32_t values[] = {fatSectors, directoryStart, 0, 4096, kEnd, 0, kEnd, 0};
+    std::memcpy(header.data() + 0x2C, values, sizeof values);
+    for (std::uint32_t k = 0; k < 109; ++k) {
+        const std::uint32_t at = k < fatSectors ? dataSectors + k : kFree;
+        std::memcpy(header.data() + 0x4C + 4 * k, &at, 4);
+    }
+    return header + sectors
+        + std::string(reinterpret_cast<const char*>(fat.data()), fat.size() * sizeof(std::uint32_t));
+}
+
 } // namespace
+
+// PDF is left out (Pdf.cpp is not built in).
+namespace ws::extract {
+bool loadPdfium()
+{
+    return false;
+}
+Status extractPdf(Source&, Writer&)
+{
+    return Status::Unsupported;
+}
+} // namespace ws::extract
 
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size)
 {
@@ -75,7 +179,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     const std::span<const std::byte> input(reinterpret_cast<const std::byte*>(data + 1), size - 1);
     const std::string_view text(reinterpret_cast<const char*>(data + 1), size - 1);
 
-    switch (which % 8) {
+    switch (which % 14) {
     case 0: { // an MFT record, as MftReader hands it over (fixed up in place)
         std::vector<std::byte> record(input.begin(), input.end());
         ws::ntfs::FileRecord out;
@@ -159,6 +263,38 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         }
         break;
     }
+    case 8: // a document file
+        if (text.substr(0, 1024).find("%PDF-") == std::string_view::npos)
+            extractDocument(text);
+        break;
+    case 9: // a Word document's body
+    case 10: { // a sheet of a workbook, and its shared strings
+        constexpr std::string_view kWordRels
+            = R"(<Relationships><Relationship Id="1" Type="x/officeDocument" Target="word/document.xml"/></Relationships>)";
+        constexpr std::string_view kBookRels
+            = R"(<Relationships><Relationship Id="1" Type="x/officeDocument" Target="xl/workbook.xml"/></Relationships>)";
+        constexpr std::string_view kWorkbook = R"(<workbook><sheets><sheet name="s" r:id="1"/></sheets></workbook>)";
+        constexpr std::string_view kWorkbookRels
+            = R"(<Relationships><Relationship Id="1" Type="x/worksheet" Target="sheet.xml"/>)"
+              R"(<Relationship Id="2" Type="x/sharedStrings" Target="strings.xml"/></Relationships>)";
+        extractDocument(which % 14 == 9 ? zipOf({{"_rels/.rels", kWordRels}, {"word/document.xml", text}})
+                                        : zipOf({{"_rels/.rels", kBookRels}, {"xl/workbook.xml", kWorkbook},
+                                              {"xl/_rels/workbook.xml.rels", kWorkbookRels}, {"xl/sheet.xml", text},
+                                              {"xl/strings.xml", text}}));
+        break;
+    }
+    case 11: // an Excel 97 workbook stream
+        extractDocument(cfbOf({{u"Workbook", text}}));
+        break;
+    case 12: { // a Word 97 document: its first bytes say where the table stream starts
+        const std::size_t split = text.size() < 2 ? 0 : (static_cast<unsigned char>(text[0]) << 8 | static_cast<unsigned char>(text[1])) % text.size();
+        extractDocument(cfbOf({{u"WordDocument", text.substr(0, split)}, {u"1Table", text.substr(split)},
+            {u"0Table", text.substr(split)}}));
+        break;
+    }
+    case 13: // a PowerPoint 97 document stream
+        extractDocument(cfbOf({{u"PowerPoint Document", text}}));
+        break;
     }
     return 0;
 }

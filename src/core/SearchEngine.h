@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ContentIndex.h"
 #include "SearchTypes.h"
 #include "WorkerPool.h"
 
@@ -8,6 +9,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <thread>
@@ -15,6 +17,7 @@
 namespace ws {
 
 class AppCatalog;
+class DocExtractor;
 class IndexService;
 class SystemCatalog;
 
@@ -33,7 +36,8 @@ public:
         int limit = 100;
         QStringList history; // newest first
         QStringList contentExtensions; // e.g. {"txt"}
-        qint64 maxContentFileBytes = 64ll << 20;
+        ContentSizeLimits contentSizeLimits; // by kind of file
+        bool contentDocuments = true; // and Word, Excel, PowerPoint, PDF (documentExtensions())
         int maxContentResults = 300;
         // Also inside system, program and tool folders (EntryFlag::LowPriority).
         bool contentInLowPriority = false;
@@ -68,6 +72,7 @@ private:
     bool isStale(quint64 id) const noexcept { return m_latest.load(std::memory_order_relaxed) != id; }
 
     IndexService* m_index;
+    std::unique_ptr<DocExtractor> m_documents; // reads documents the content index has no text of
     AppCatalog* m_apps;
     SystemCatalog* m_places;
     WorkerPool m_pool {WorkerPool::defaultThreadCount()};

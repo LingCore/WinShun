@@ -144,6 +144,8 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
         return highlighted(r->snippet, {{r->snippetMatchStart, r->snippetMatchLength}}, m_highlightColor);
     case LineRole:
         return r->line;
+    case LocationRole:
+        return location(*r);
     case RecentRole:
         return r->recent;
     case IsAppRole:
@@ -176,6 +178,7 @@ QHash<int, QByteArray> ResultModel::roleNames() const
         {IconRole, "icon"},
         {SnippetHtmlRole, "snippetHtml"},
         {LineRole, "line"},
+        {LocationRole, "location"},
         {RecentRole, "recent"},
         {IsAppRole, "isApp"},
         {PlaceRole, "place"},

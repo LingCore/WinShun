@@ -75,9 +75,10 @@ const QStringList kLowPriorityNames {
     u"bower_components"_s,
 };
 
-// Plain-text formats only: the scanner reads raw bytes, so zipped or binary
-// documents (docx, xlsx, pdf) never match. The first three name the scope in
-// the launcher ("搜索 .txt / .md / .log 等文件中的文字").
+// Plain-text formats: the scanner reads their raw bytes. Documents (docx,
+// xlsx, pdf...) are read by WinShunExtract.exe instead, under their own
+// setting (Content/Documents). The first three name the scope in the
+// launcher ("搜索 .txt / .md / .log 等文件中的文字").
 const QStringList kDefaultContentExtensions {
     // Documents and logs
     u"txt"_s, u"md"_s, u"log"_s, u"csv"_s, u"tsv"_s, u"ini"_s, u"cfg"_s, u"conf"_s,
@@ -100,6 +101,10 @@ const QStringList kDefaultClipboardExcludedApps {
 // Bumped when kDefaultContentExtensions grows, so lists that still hold an
 // older default pick up the new one.
 constexpr int kContentDefaultsVersion = 2;
+
+// The size limits of the kinds of files, by ContentSizeLimits::Kind.
+const QString kContentSizeKeys[ContentSizeLimits::kKinds] {u"Content/MaxFileSizeMB"_s, u"Content/MaxCodeFileSizeMB"_s,
+    u"Content/MaxDataFileSizeMB"_s, u"Content/MaxDocumentFileSizeMB"_s};
 
 std::wstring normalizeName(const QString& name)
 {
@@ -270,9 +275,18 @@ void Settings::load()
         }
         s.setValue(u"Content/DefaultsVersion"_s, kContentDefaultsVersion);
     }
-    maxContentFileSizeMB = std::clamp(readOrDefault(s, u"Content/MaxFileSizeMB"_s, d.maxContentFileSizeMB), 1, 4096);
+    // MaxFileSizeMB once held for every kind of text file: a size set there
+    // holds for code and data too, until they have their own.
+    for (std::size_t k = 0; k < ContentSizeLimits::kKinds; ++k) {
+        int fallback = d.contentMaxSizeMB[k];
+        if ((k == ContentSizeLimits::Code || k == ContentSizeLimits::Data) && !s.contains(kContentSizeKeys[k])
+            && contentMaxSizeMB[0] != d.contentMaxSizeMB[0])
+            fallback = contentMaxSizeMB[0];
+        contentMaxSizeMB[k] = std::clamp(readOrDefault(s, kContentSizeKeys[k], fallback), 1, 4096);
+    }
     contentIndex = readOrDefault(s, u"Content/Index"_s, d.contentIndex);
     contentInLowPriority = readOrDefault(s, u"Content/IncludeSystemFolders"_s, d.contentInLowPriority);
+    contentDocuments = readOrDefault(s, u"Content/Documents"_s, d.contentDocuments);
 
     clipboard = readOrDefault(s, u"Clipboard/Enabled"_s, d.clipboard);
     clipboardWinV = readOrDefault(s, u"Clipboard/WinV"_s, d.clipboardWinV);
@@ -306,9 +320,11 @@ void Settings::save() const
     s.setValue(u"Index/IncludeRemovableDrives"_s, includeRemovableDrives);
     s.setValue(u"Index/RescanOnStartup"_s, rescanOnStartup);
     s.setValue(u"Content/Extensions"_s, contentExtensions);
-    s.setValue(u"Content/MaxFileSizeMB"_s, maxContentFileSizeMB);
+    for (std::size_t k = 0; k < ContentSizeLimits::kKinds; ++k)
+        s.setValue(kContentSizeKeys[k], contentMaxSizeMB[k]);
     s.setValue(u"Content/Index"_s, contentIndex);
     s.setValue(u"Content/IncludeSystemFolders"_s, contentInLowPriority);
+    s.setValue(u"Content/Documents"_s, contentDocuments);
     s.setValue(u"Clipboard/Enabled"_s, clipboard);
     s.setValue(u"Clipboard/WinV"_s, clipboardWinV);
     s.setValue(u"Clipboard/Hotkey"_s, clipboardHotkey);

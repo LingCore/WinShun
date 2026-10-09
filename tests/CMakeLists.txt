@@ -1,7 +1,7 @@
 find_package(Qt6 REQUIRED COMPONENTS Test)
 
 qt_add_executable(tst_core tst_core.cpp)
-target_link_libraries(tst_core PRIVATE wscore Qt6::Test)
+target_link_libraries(tst_core PRIVATE wscore wsextract miniz Qt6::Test)
 
 qt_add_executable(tst_clipboard tst_clipboard.cpp)
 target_link_libraries(tst_clipboard PRIVATE wscore Qt6::Test)

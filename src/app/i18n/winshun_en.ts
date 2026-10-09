@@ -372,10 +372,6 @@
 <context>
     <name>ResultRow</name>
     <message>
-        <source>第 %1 行</source>
-        <translation>Line %1</translation>
-    </message>
-    <message>
         <source>最近</source>
         <translation>Recent</translation>
     </message>
@@ -707,28 +703,12 @@
         <translation>Press Tab in the search box to switch to “Content” and find text inside files.</translation>
     </message>
     <message>
-        <source>搜索这些类型的文件</source>
-        <translation>Search these file types</translation>
-    </message>
-    <message>
-        <source>只会在这些类型的文件里查找文字。只支持纯文本文件，Word、Excel、PDF 加进来也搜不到</source>
-        <translation>Text is looked for only in these types. Plain text only: Word, Excel and PDF files never match, even if added</translation>
-    </message>
-    <message>
         <source>还没有选择任何类型，内容搜索将找不到结果</source>
         <translation>No file types chosen, so content search finds nothing</translation>
     </message>
     <message>
         <source>例如 md, log</source>
         <translation>e.g. md, log</translation>
-    </message>
-    <message>
-        <source>文件大小上限</source>
-        <translation>Maximum file size</translation>
-    </message>
-    <message>
-        <source>大于这个大小的文件不查找内容，避免在超大文件上花太多时间</source>
-        <translation>Larger files are not searched, so huge files don’t eat up the time</translation>
     </message>
     <message>
         <source>也搜索系统和程序文件夹</source>
@@ -924,6 +904,22 @@
     <message>
         <source>自动</source>
         <translation>Auto</translation>
+    </message>
+    <message>
+        <source>搜索文档</source>
+        <translation>Search documents</translation>
+    </message>
+    <message>
+        <source>Word、Excel、PowerPoint、PDF 和 WPS 文件，新旧格式都可以。由一个权限受限的单独进程读取；扫描件和图片里的文字读不到</source>
+        <translation>Word, Excel, PowerPoint, PDF and WPS files, old formats and new. Read by a separate process with restricted rights; text in scans and pictures can’t be read</translation>
+    </message>
+    <message>
+        <source>搜索这些类型的文本文件</source>
+        <translation>Search these text file types</translation>
+    </message>
+    <message>
+        <source>纯文本类型的文件，按扩展名列出。Word、Excel、PDF 等文档由上面的“搜索文档”负责</source>
+        <translation>Plain-text files, by extension. Word, Excel, PDF and other documents come under “Search documents” above</translation>
     </message>
     <message>
         <source>数据文件夹</source>
@@ -1663,6 +1659,14 @@
         <translation>, </translation>
     </message>
     <message>
+        <source>文档和 %1 等文件</source>
+        <translation>documents, %1 files and more</translation>
+    </message>
+    <message>
+        <source>搜索 Word、Excel、PDF 和 %1 等文件中的文字</source>
+        <translation>Search Word, Excel, PDF, %1 files…</translation>
+    </message>
+    <message>
         <source> · 正在读 %1</source>
         <translation> · Reading %1</translation>
     </message>
@@ -1675,7 +1679,7 @@
         <translation> · Syncing in the background</translation>
     </message>
     <message>
-        <source>正在搜索 %1内容… %2 / %3</source>
+        <source>正在搜索内容… %2 / %3 · %1</source>
         <translation>Searching… %2 / %3 (%1)</translation>
     </message>
     <message>

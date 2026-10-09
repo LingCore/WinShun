@@ -40,7 +40,17 @@ struct SearchResult {
     QString icon; // places only: see PlaceInfo::icon
 
     // Content search only.
-    int line = 0; // 1-based
+    int line = 0; // 1-based: of a text file, or of the text read out of a document
+    enum class Where : quint8 {
+        Line, // of a text file
+        Document, // a document's: no page known
+        Page,
+        Slide,
+        Row, // of `sheet`
+    };
+    Where where = Where::Line;
+    int placeNumber = 0; // page, slide or row
+    QString sheet;
     QString snippet;
     int snippetMatchStart = -1;
     int snippetMatchLength = 0;

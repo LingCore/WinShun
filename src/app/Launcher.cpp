@@ -174,6 +174,8 @@ QString Launcher::shownExtensions() const
 
 QString Launcher::contentFilesLabel() const
 {
+    if (m_contentDocuments)
+        return tr("文档和 %1 等文件").arg(u'.' + m_contentExtensions.first());
     return m_contentExtensions.size() > kShownExtensions ? tr("%1 等文件").arg(shownExtensions())
                                                          : tr("%1 文件").arg(shownExtensions());
 }
@@ -184,6 +186,8 @@ QString Launcher::placeholder() const
     case Files:
         return tr("搜索文件和文件夹");
     case Content:
+        if (m_contentDocuments)
+            return tr("搜索 Word、Excel、PDF 和 %1 等文件中的文字").arg(u'.' + m_contentExtensions.first());
         return m_contentExtensions.size() > kShownExtensions ? tr("搜索 %1 等文件中的文字").arg(shownExtensions())
                                                              : tr("搜索 %1 文件中的文字").arg(shownExtensions());
     default:
@@ -191,9 +195,11 @@ QString Launcher::placeholder() const
     }
 }
 
-void Launcher::setContentOptions(QStringList extensions, qint64 maxFileBytes, bool inLowPriority)
+void Launcher::setContentOptions(
+    QStringList extensions, const ContentSizeLimits& sizeLimits, bool inLowPriority, bool documents)
 {
     m_contentInLowPriority = inLowPriority;
+    m_contentDocuments = documents;
     for (QString& ext : extensions) {
         ext = ext.trimmed();
         while (ext.startsWith(u'.') || ext.startsWith(u'*'))
@@ -203,7 +209,7 @@ void Launcher::setContentOptions(QStringList extensions, qint64 maxFileBytes, bo
     if (extensions.isEmpty())
         extensions = {u"txt"_s};
     m_contentExtensions = extensions;
-    m_maxContentBytes = maxFileBytes;
+    m_contentSizeLimits = sizeLimits;
     emit scopeChanged(); // placeholder text mentions the extensions
 }
 
@@ -316,10 +322,22 @@ QString Launcher::contentNeedle() const
     const ParsedQuery query = ws::parseQuery(m_query);
     if (query.terms.empty() || !query.extensions.empty())
         return {};
-    if (std::any_of(query.terms.cbegin(), query.terms.cend(),
-            [](const QueryTerm& t) { return t.negated || t.wildcard; }))
+    const bool nameSyntax = !query.extensions.empty()
+        || std::any_of(query.terms.cbegin(), query.terms.cend(), [](const QueryTerm& t) { return t.negated || t.wildcard; });
+    if (nameSyntax && !looksLikeCode(text))
         return {};
-    return QString(m_query).remove(u'"').trimmed();
+    if (text.count(u'"') == 2 && text.size() > 2 && text.startsWith(u'"') && text.endsWith(u'"'))
+        return text.mid(1, text.size() - 2).trimmed();
+    if (text.count(u'"') == 1 && text.startsWith(u'"')) // the closing one not typed yet
+        return text.mid(1).trimmed();
+    return text;
+}
+
+// Characters that name searches have no use for, but lines of code are full of.
+bool Launcher::looksLikeCode(QStringView text)
+{
+    static constexpr QStringView kSigns[] {u"=", u";", u"(", u")", u"{", u"}", u"<", u">", u"[", u"]", u"->", u"::", u"&&", u"||"};
+    return std::any_of(std::begin(kSigns), std::end(kSigns), [&](QStringView s) { return text.contains(s); });
 }
 
 void Launcher::startContentSearch()
@@ -328,7 +346,8 @@ void Launcher::startContentSearch()
     request.text = m_scope == Content ? m_query.trimmed() : contentNeedle();
     request.scope = ws::Scope::Content;
     request.contentExtensions = m_contentExtensions;
-    request.maxContentFileBytes = m_maxContentBytes;
+    request.contentSizeLimits = m_contentSizeLimits;
+    request.contentDocuments = m_contentDocuments;
     if (m_scope == Content) {
         // Asked for: system and program folders too if so set, and many
         // files at once (each open mostly waits for the antivirus).
@@ -465,7 +484,7 @@ void Launcher::refreshStatus()
         }
     } else if (m_scope == Content) {
         if (contentPending)
-            s = m_contentTotal > 0 ? tr("正在搜索 %1内容… %2 / %3")
+            s = m_contentTotal > 0 ? tr("正在搜索内容… %2 / %3 · %1")
                                          .arg(contentFilesLabel(), number(m_contentScanned), number(m_contentTotal))
                                    : tr("正在搜索 %1内容…").arg(contentFilesLabel());
         else if (m_contentScanned < m_contentTotal && m_results.count() > 0)
