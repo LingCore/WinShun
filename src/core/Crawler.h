@@ -46,6 +46,13 @@ struct JournalPosition {
 std::vector<VolumeInfo> listLocalVolumes(bool includeRemovable, const std::vector<std::wstring>& untouched = {});
 bool driveLetterExists(std::wstring_view root); // "E:"
 
+// Which disk a volume is on, and whether it is a hard disk.
+struct VolumePlacement {
+    std::uint32_t disk = ~0u; // unknown, or a volume across several disks
+    bool seeks = true; // a hard disk, or not known not to be
+};
+VolumePlacement placementOf(std::wstring_view root); // "E:"
+
 // `which` of `volumes` (indexes into it) in groups that are read at the same
 // time: the volumes of one hard disk together, one after another (reading
 // two at once would make its heads seek back and forth between them), and

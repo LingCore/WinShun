@@ -1326,6 +1326,43 @@ private slots:
         old.close();
         const auto oldLoaded = snapshot::load(old.fileName());
         QVERIFY(oldLoaded && oldLoaded->index->findPath(L"D:\\a.txt") != kNoEntry);
+
+        // Version 5: names once each, entries record by record (Win顺 0.5).
+        QByteArray five("QFINDEX", 8);
+        const auto put5 = [&](auto v) { five.append(reinterpret_cast<const char*>(&v), sizeof v); };
+        put5(std::uint32_t {5}); // version
+        put5(std::uint32_t {0}); // volumes
+        for (int i = 0; i < 4; ++i)
+            put5(std::uint32_t {0}); // rules
+        put5(std::uint32_t {2}); // names
+        put5(std::uint16_t {2});
+        five.append("D:");
+        put5(std::uint16_t {5});
+        five.append("a.txt");
+        put5(std::uint32_t {3}); // entries: back, flags, name
+        put5(std::uint8_t {0});
+        put5(static_cast<std::uint8_t>(EntryFlag::Root | EntryFlag::Directory));
+        put5(std::uint8_t {0});
+        put5(std::uint8_t {1});
+        put5(std::uint8_t {0});
+        put5(std::uint8_t {1});
+        put5(std::uint8_t {2}); // another a.txt, in the root too
+        put5(std::uint8_t {0});
+        put5(std::uint8_t {1});
+        put5(std::uint32_t {1}); // folder record tables
+        put5(EntryId {0});
+        put5(std::uint32_t {1});
+        put5(std::uint32_t {ntfs::kRootRecord});
+        put5(EntryId {0});
+        put5(std::uint64_t {0}); // attachment
+        put5(std::uint32_t {0x21444E45}); // "END!"
+        QFile v5(dir.filePath(u"v5.bin"_s));
+        QVERIFY(v5.open(QIODevice::WriteOnly) && v5.write(five) == five.size());
+        v5.close();
+        const auto v5Loaded = snapshot::load(v5.fileName());
+        QVERIFY(v5Loaded && v5Loaded->index->liveCount() == 3);
+        QVERIFY(v5Loaded->index->findPath(L"D:\\a.txt") != kNoEntry);
+        QCOMPARE(v5Loaded->index->folderByRecord(0, ntfs::kRootRecord), EntryId {0});
     }
 
     void folderRecords()
@@ -2650,15 +2687,14 @@ private slots:
 
         // Segments of a level merge into one of the next level as they come.
         ContentIndex tiers(dir.filePath(u"tiers"_s));
-        std::vector<grams::Key> many;
         const auto abc = [](std::uint32_t i) { // "000", "004", ... "zz_"
             constexpr char kWord[] = "0123456789_abcdefghijklmnopqrstuvwxyz";
             const std::uint32_t t = i * 4;
             return (grams::Key {static_cast<unsigned char>(kWord[t / (37 * 37)])} << grams::kCharBits)
                 | (static_cast<unsigned char>(kWord[t / 37 % 37]) << 8) | static_cast<unsigned char>(kWord[t % 37]);
         };
-        for (EntryId doc = 0; doc < 1700; ++doc) {
-            many.clear();
+        const auto tierKeys = [&](EntryId doc) {
+            std::vector<grams::Key> many;
             for (std::size_t i = 0; i < 5000; ++i)
                 many.push_back(((grams::Key {0x4E00} + (doc % 5)) << grams::kCharBits) | (0x4E00 + i));
             if (doc % 10 == 4) { // most trigrams
@@ -2669,7 +2705,10 @@ private slots:
             }
             many.push_back((grams::Key {0x6000} + doc) << grams::kCharBits); // no copies
             std::sort(many.begin(), many.end());
-            QVERIFY(tiers.add(doc, many, false, 0, 0));
+            return many;
+        };
+        for (EntryId doc = 0; doc < 1700; ++doc) {
+            QVERIFY(tiers.add(doc, tierKeys(doc), false, 0, 0));
             if (doc == 3)
                 tiers.retire(std::vector<EntryId> {2});
             if (tiers.needsMerge())
@@ -2692,6 +2731,71 @@ private slots:
         QVERIFY(tiers.merge());
         QCOMPARE(matchesOf(tiers, twos), expected);
         QCOMPARE(matchesOf(tiers, u"008"_s), fours);
+
+        // Small segments merge while documents come (the indexer's readers
+        // go on meanwhile); then everything, on several threads.
+        ContentIndex busy(dir.filePath(u"busy"_s));
+        {
+            std::atomic<bool> adding {true};
+            std::jthread merger([&] {
+                while (adding.load()) {
+                    busy.mergeTails();
+                    std::this_thread::yield();
+                }
+            });
+            for (EntryId doc = 0; doc < 1700; ++doc) {
+                QVERIFY(busy.add(doc, tierKeys(doc), false, 0, 0));
+                if (doc == 3)
+                    busy.retire(std::vector<EntryId> {2});
+            }
+            adding = false;
+        }
+        QVERIFY(busy.mergeTails());
+        QCOMPARE(busy.stats().segments, std::size_t {2});
+        QCOMPARE(matchesOf(busy, twos), expected);
+        QCOMPARE(matchesOf(busy, u"008"_s), fours);
+        QVERIFY(busy.merge(4));
+        QCOMPARE(busy.stats().segments, std::size_t {1});
+        QCOMPARE(matchesOf(busy, twos), expected);
+        QCOMPARE(matchesOf(busy, u"008"_s), fours);
+        QVERIFY(matchesOf(busy, u"009"_s).empty());
+
+        // Documents added on several threads at once, each found as soon as
+        // it is in, while segments are written (outside the lock) and merged.
+        ContentIndex crowd(dir.filePath(u"crowd"_s));
+        {
+            std::atomic<bool> adding {true};
+            std::atomic<int> missed {0};
+            std::jthread merger([&] {
+                while (adding.load()) {
+                    crowd.mergeTails();
+                    std::this_thread::yield();
+                }
+            });
+            {
+                std::vector<std::jthread> adders;
+                for (EntryId first = 0; first < 4; ++first) {
+                    adders.emplace_back([&, first] {
+                        for (EntryId doc = first; doc < 1700; doc += 4) {
+                            const QString own(QChar(char16_t(0x6000 + doc))); // its character of its own
+                            if (!crowd.add(doc, tierKeys(doc), false, 0, 0)
+                                || matchesOf(crowd, own) != std::vector<EntryId> {doc})
+                                ++missed;
+                        }
+                    });
+                }
+            } // joins
+            adding = false;
+            QCOMPARE(missed.load(), 0);
+        }
+        crowd.retire(std::vector<EntryId> {2}); // as above
+        QVERIFY(crowd.mergeTails());
+        QCOMPARE(crowd.stats().documents, std::size_t {1699});
+        QCOMPARE(matchesOf(crowd, twos), expected);
+        QCOMPARE(matchesOf(crowd, u"008"_s), fours);
+        QVERIFY(crowd.merge(4));
+        QCOMPARE(matchesOf(crowd, twos), expected);
+        QCOMPARE(matchesOf(crowd, u"008"_s), fours);
 
         // Postings of every density, and documents with most trigrams, give
         // what the grams say: in memory, written out, merged, restored.
@@ -2754,6 +2858,18 @@ private slots:
         QVERIFY(check(coded, gone));
         QVERIFY(coded.merge());
         QVERIFY(check(coded, gone));
+        // On several threads, stretches of keys each: the same file.
+        ContentIndex twin(dir.filePath(u"twin"_s));
+        for (EntryId doc = 0; doc < docKeys.size(); ++doc)
+            QVERIFY(twin.add(doc, docKeys[doc], false, 0, 0));
+        QVERIFY(twin.merge(4));
+        QVERIFY(check(twin, gone));
+        const auto segmentBytes = [](const ContentIndex& content) {
+            QFile file(content.segmentPaths().front());
+            return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+        };
+        QVERIFY(!segmentBytes(coded).isEmpty());
+        QCOMPARE(segmentBytes(twin), segmentBytes(coded));
         std::vector<EntryId> retired;
         for (EntryId doc = 0; doc < docKeys.size(); doc += 3) {
             retired.push_back(doc);
@@ -3364,6 +3480,68 @@ private slots:
         QCOMPARE(QFileInfo(moved.filePath(texts.first())).size(), static_cast<qint64>(restored.stats().textBytes));
     }
 
+    // Documents with the same text (copies of a file) share it; a copy found
+    // before it is read gets the original's document.
+    void contentIndexSharesTexts()
+    {
+        QTemporaryDir dir;
+        doctext::DocText a;
+        a.text = "合同编号\n";
+        doctext::DocText b;
+        b.text = "季度报告\n";
+        const QByteArray packed = ContentIndex::packText(a);
+        const auto once = static_cast<std::uint64_t>(packed.size());
+        std::vector<char> state;
+        std::vector<std::uint64_t> files;
+        {
+            ContentIndex content(dir.path());
+            QVERIFY(content.add(10, gramsOf(u"合同编号"_s), false, 1, 0, packed));
+            QVERIFY(content.add(20, gramsOf(u"合同编号"_s), false, 2, 0, packed));
+            QCOMPARE(content.stats().texts, std::size_t {2});
+            QCOMPARE(content.stats().distinctTexts, std::size_t {1});
+            QCOMPARE(content.stats().textBytes, once);
+            QVERIFY(content.add(10, gramsOf(u"合同编号"_s), false, 3, 0, packed)); // read again: the same text
+            QCOMPARE(content.stats().distinctTexts, std::size_t {1});
+            QCOMPARE(content.stats().textBytes, once);
+
+            QVERIFY(content.addCopy(30, 10, 3, 4, 0));
+            QVERIFY(content.textOf(30) == a);
+            QCOMPARE(matchesOf(content, u"合同"_s), (std::vector<EntryId> {10, 20, 30}));
+            QVERIFY(!content.addCopy(31, 10, 99, 5, 0)); // the original was read from another file
+            QVERIFY(!content.addCopy(31, 11, 0, 5, 0)); // no such document
+            QVERIFY(content.add(40, {}, true, 6, 0)); // nothing to find in it
+            QVERIFY(content.addCopy(41, 40, 6, 7, 0));
+            QVERIFY(content.textOf(41) && content.textOf(41)->text.empty());
+            content.markChanged(std::vector<EntryId> {20});
+            QVERIFY(!content.addCopy(32, 20, 2, 8, 0)); // not current
+            QCOMPARE(content.stats().textBytes, once);
+
+            content.retire(std::vector<EntryId> {10, 20});
+            QVERIFY(content.textOf(30) == a); // the copy still has it
+            QVERIFY(content.add(50, gramsOf(u"季度报告"_s), false, 9, 0, ContentIndex::packText(b)));
+            QCOMPARE(content.stats().distinctTexts, std::size_t {2});
+            content.retire(std::vector<EntryId> {50});
+            QCOMPARE(content.stats().distinctTexts, std::size_t {1});
+            QVERIFY(content.merge());
+            QVERIFY(content.compactTexts());
+            QCOMPARE(content.stats().textBytes, once); // a, once
+            QVERIFY(content.textOf(30) == a);
+            std::vector<EntryId> newIds(60, kNoEntry);
+            newIds[30] = 3;
+            newIds[41] = 4;
+            state = content.serialize(newIds, files);
+            content.saved(files);
+        }
+        ContentIndex restored(dir.path());
+        QVERIFY(restored.restore(state, 10));
+        QVERIFY(restored.textOf(3) == a);
+        QVERIFY(restored.textOf(4) && restored.textOf(4)->text.empty());
+        QVERIFY(restored.add(5, gramsOf(u"合同编号"_s), false, 10, 0, packed)); // shares it still
+        QCOMPARE(restored.stats().distinctTexts, std::size_t {1});
+        QCOMPARE(restored.stats().textBytes, once);
+        QVERIFY(restored.textOf(5) == a);
+    }
+
     void docExtractorSandbox()
     {
         if (!QFile::exists(QString::fromStdWString(DocExtractor::programPath())))
@@ -3396,6 +3574,54 @@ private slots:
         QCOMPARE(ContentIndexer::readFile(pdf, 0, {}, nullptr).outcome, ContentIndexer::Outcome::Skipped);
         QCOMPARE(ContentIndexer::readFile(bad, 0, {}, &extractor).outcome, ContentIndexer::Outcome::Empty);
         extractor.closeIdle();
+    }
+
+    // Copies of a document (the same bytes) are not read again: they get
+    // the original's document.
+    void contentIndexerReadsCopiesOnce()
+    {
+        if (!QFile::exists(QString::fromStdWString(DocExtractor::programPath())))
+            QSKIP("WinShunExtract.exe is not built with this preset");
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        const auto write = [&](const QString& name, const QByteArray& data) {
+            QFile f(tmp.filePath(name));
+            return f.open(QIODevice::WriteOnly) && f.write(data) == data.size();
+        };
+        const QByteArray contract = makePdf({{"Contract", "number"}});
+        const QByteArray contrast = makePdf({{"Contrast", "number"}});
+        QCOMPARE(contract.size(), contrast.size()); // told apart by their bytes
+        QVERIFY(write(u"a.pdf"_s, contract) && write(u"b.pdf"_s, contrast) && write(u"c.pdf"_s, contract)
+            && write(u"d.pdf"_s, contract));
+        const std::string rootName = wtf8::fromUtf16(wtf8::view(QDir::toNativeSeparators(tmp.path())));
+        auto index = std::make_shared<FileIndex>();
+        EntryId a = kNoEntry;
+        EntryId b = kNoEntry;
+        EntryId c = kNoEntry;
+        EntryId d = kNoEntry;
+        {
+            auto lock = index->writeLock();
+            const EntryId root = index->addRoot(rootName);
+            a = index->add(root, "a.pdf", 0);
+            b = index->add(root, "b.pdf", 0);
+            c = index->add(root, "c.pdf", 0);
+            d = index->add(root, "d.pdf", 0);
+        }
+        auto content = std::make_shared<ContentIndex>(tmp.filePath(u"content"_s));
+        ContentIndexer::Source source;
+        source.index = [&] { return index; };
+        source.volumes = [&] { return std::vector<ContentIndexer::Volume> {{rootName, false}}; };
+        source.ready = [] { return true; };
+        using namespace std::chrono_literals;
+        ContentIndexer indexer(content, source, {}, {0ms, 0ms, 1h, 0ms});
+        for (int i = 0; i < 1000 && content->stats().documents < 4; ++i)
+            std::this_thread::sleep_for(10ms);
+        QCOMPARE(content->stats().documents, std::size_t {4});
+        QCOMPARE(matchesOf(*content, u"contract"_s), (std::vector<EntryId> {a, c, d}));
+        QCOMPARE(matchesOf(*content, u"contrast"_s), std::vector<EntryId> {b});
+        QCOMPARE(indexer.copies(), std::size_t {2}); // one of a, c and d was read
+        QCOMPARE(content->stats().distinctTexts, std::size_t {2});
+        QVERIFY(content->textOf(c) && content->textOf(c) == content->textOf(a));
     }
 
     void doubleTap()

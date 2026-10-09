@@ -248,8 +248,6 @@ std::unique_ptr<DocExtractor::Process> DocExtractor::start()
     std::swprintf(handle, std::size(handle), L"%llx",
         static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(client.get())));
     std::wstring commandLine = L"\"" + program + L"\" --pipe " + handle;
-    if (m_priority == Priority::Background)
-        commandLine += L" --background";
     PROCESS_INFORMATION info {};
     const BOOL created = listed
         && ::CreateProcessAsUserW(token.get(), program.c_str(), commandLine.data(), nullptr, nullptr, TRUE,
@@ -264,6 +262,11 @@ std::unique_ptr<DocExtractor::Process> DocExtractor::start()
         ::TerminateProcess(info.hProcess, 1);
         return nullptr;
     }
+    // A lower processor priority only. Background mode (disk and memory
+    // priority very low too) made no difference to documents read alone, but
+    // while the content indexer read other files they took nearly four times
+    // as long (93 ms each rather than 25), and one ran past its 20 s
+    // (wsbench --extract --sandbox --background, --service --content).
     ::SetPriorityClass(info.hProcess, m_priority == Priority::Background ? IDLE_PRIORITY_CLASS : BELOW_NORMAL_PRIORITY_CLASS);
     ::ResumeThread(info.hThread);
 

@@ -18,8 +18,12 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <cmath>
+#include <condition_variable>
 #include <cstring>
 #include <limits>
+#include <numeric>
+#include <thread>
 #include <tuple>
 
 namespace ws {
@@ -34,10 +38,11 @@ constexpr std::size_t kMaxMemoryPairs = kFlushPairs * 4; // ... unless segments 
 constexpr std::size_t kMaxSegments = 64; // more (whatever their levels) are merged into one
 constexpr std::size_t kOrderTail = 1024;
 // 2: ASCII trigrams; 3: dense documents; 4: contents shared by documents, segment files v4;
-// 5: trigrams of any ASCII characters, spaces and punctuation too; 6: documents' texts
-constexpr std::uint32_t kStateVersion = 6;
-// The text file is rewritten once texts of dead documents take more than
-// this, and more than the live ones.
+// 5: trigrams of any ASCII characters, spaces and punctuation too; 6: documents' texts;
+// 7: texts shared by documents, segment files v5 (contents ordered by bisection)
+constexpr std::uint32_t kStateVersion = 7;
+// The text file is rewritten once texts no document has take more than
+// this, and more than the others.
 constexpr std::uint64_t kTextGarbage = 32u << 20;
 
 // m_docState: a base state and flags.
@@ -59,19 +64,37 @@ bool isCurrent(std::uint8_t state) noexcept
     return !isDead(state) && (state & (kDirty | kUnsure)) == 0;
 }
 
+// 96 bits of the SHA-256 of some bytes.
+std::optional<grams::Fingerprint> printOf(std::span<const std::byte> bytes)
+{
+    std::array<UCHAR, 32> digest {};
+    // The bytes are not written to: the parameter is not const only for C's sake.
+    auto* const input = reinterpret_cast<PUCHAR>(const_cast<std::byte*>(bytes.data()));
+    if (bytes.size() > std::numeric_limits<ULONG>::max()
+        || !BCRYPT_SUCCESS(::BCryptHash(BCRYPT_SHA256_ALG_HANDLE, nullptr, 0, input, static_cast<ULONG>(bytes.size()),
+            digest.data(), static_cast<ULONG>(digest.size()))))
+        return std::nullopt;
+    grams::Fingerprint out;
+    std::memcpy(&out.high, digest.data(), sizeof out.high);
+    std::memcpy(&out.low, digest.data() + sizeof out.high, sizeof out.low);
+    return out;
+}
+
 // ---- segment files ----------------------------------------------------------------
 //
 //   Header
 //   Print[printCount]     the fingerprints of the segment's contents, ascending
+//   ContentId[listedCount] the contents the table lists (see below), most
+//                         listed first; none: the table lists contents themselves
 //   postings              by key; zero-padded to a multiple of 8 bytes
 //   Block[blockCount + 1] every kBlockKeys-th key, where its posting and its
 //                         table entry begin; the last is a sentinel
 //   table                 per key, as LEB128: its distance from the key before
 //                         (not for the first of a block), how many contents
-//                         have it, then either those contents (up to kInline:
-//                         the first's distance from contentBegin, then for
-//                         each the contents skipped since the one before) or
-//                         the size of its posting
+//                         have it, then either those contents (up to kInline,
+//                         by their places in the list above, ascending: the
+//                         first's place, then for each the places skipped
+//                         since the one before) or the size of its posting
 //
 // A posting holds the contents that have the key, in binary interpolative
 // coding (Moffat and Stuiver): the middle one, in as few bits as the values
@@ -79,8 +102,13 @@ bool isCurrent(std::uint8_t state) noexcept
 // get numbers close together (see merge), so the numbers come in clusters and
 // runs, which this coding writes in next to nothing. The table comes last so
 // that a merge can write the postings as it goes.
+//
+// The keys few contents have are mostly pairs of Chinese characters, most of
+// them in a few long documents: by how often the table lists them, those
+// take a byte or two each; by their numbers, which follow what the contents
+// have in common, near three (4.7 MB more of 94, wsbench --content-index).
 constexpr char kSegmentMagic[8] = {'Q', 'F', 'G', 'R', 'A', 'M', 'S', '\0'};
-constexpr std::uint32_t kSegmentVersion = 4;
+constexpr std::uint32_t kSegmentVersion = 5;
 
 struct SegmentHeader {
     char magic[8];
@@ -90,10 +118,12 @@ struct SegmentHeader {
     std::uint32_t contentEnd;
     std::uint32_t level; // 0: written from memory; n + 1: merged from segments of level n
     std::uint32_t printCount;
+    std::uint32_t listedCount;
+    std::uint32_t reserved;
     std::uint64_t postingBytes; // without the padding
     std::uint64_t tableBytes;
 };
-static_assert(sizeof(SegmentHeader) == 48);
+static_assert(sizeof(SegmentHeader) == 56);
 
 // A content of the segment, by the fingerprint of its grams: a file read
 // later with the same grams gets the same content.
@@ -285,64 +315,127 @@ void getInterpolative(BitReader& r, std::uint32_t* v, std::size_t n, std::uint64
     getInterpolative(r, v + m + 1, n - 1 - m, x + 1, high);
 }
 
+// Keys with their contents, encoded as a segment holds them: what follows a
+// key in the table (how many contents, then the contents when they are few,
+// else the size of their posting), and the posting. Where in the file they
+// go does not change them, so a merge encodes stretches of keys on several
+// threads, and the writer puts them one after the other.
+struct EncodedKeys {
+    static constexpr std::uint32_t kNoPlace = 0xFFFF'FFFFu;
+
+    std::vector<grams::Key> keys;
+    std::vector<std::uint8_t> entries;
+    std::vector<std::uint8_t> postings;
+    std::vector<std::uint32_t> entryEnds; // by key, in `entries`
+    std::vector<std::uint32_t> postingEnds; // by key, in `postings`
+    bool ok = true; // false: a content the table lists had no place
+
+    // Contents ascending and distinct, in [begin, end); none: the key is left
+    // out. `places`: the segment's list of the contents the table lists, as
+    // each content's place in it (by content - begin; kNoPlace: not in it);
+    // empty when the segment has none.
+    void add(grams::Key key, std::span<const std::uint32_t> contents, std::uint32_t begin, std::uint32_t end,
+        std::span<const std::uint32_t> places = {})
+    {
+        if (contents.empty())
+            return;
+        encode(entries, contents.size());
+        if (contents.size() <= kInline) {
+            std::array<std::uint32_t, kInline> listed {};
+            for (std::size_t i = 0; i < contents.size(); ++i) {
+                listed[i] = places.empty() ? contents[i] - begin : places[contents[i] - begin];
+                ok = ok && listed[i] != kNoPlace;
+            }
+            std::sort(listed.begin(), listed.begin() + static_cast<std::ptrdiff_t>(contents.size()));
+            std::uint64_t next = 0;
+            for (std::size_t i = 0; i < contents.size(); ++i) {
+                encode(entries, listed[i] - next);
+                next = std::uint64_t {listed[i]} + 1;
+            }
+        } else {
+            const std::size_t start = postings.size();
+            BitWriter bits(postings);
+            putInterpolative(bits, contents.data(), contents.size(), begin, std::uint64_t {end} - 1);
+            bits.flush();
+            encode(entries, postings.size() - start);
+        }
+        keys.push_back(key);
+        entryEnds.push_back(static_cast<std::uint32_t>(entries.size()));
+        postingEnds.push_back(static_cast<std::uint32_t>(postings.size()));
+    }
+    void clear() noexcept
+    {
+        keys.clear();
+        entries.clear();
+        postings.clear();
+        entryEnds.clear();
+        postingEnds.clear();
+        ok = true;
+    }
+};
+
 // Writes a segment file as its postings come: only the table stays in memory.
 // Nothing is left behind unless finish() succeeds.
 class SegmentWriter {
 public:
-    // The contents are in [contentBegin, contentEnd); `prints` are theirs, ascending.
+    // The contents are in [contentBegin, contentEnd); `prints` are theirs,
+    // ascending. `listed`: the contents the table lists, by place (see
+    // EncodedKeys::add); none: the table lists contents themselves.
     SegmentWriter(const QString& path, std::uint32_t contentBegin, std::uint32_t contentEnd, std::uint32_t level,
-        const std::vector<Print>& prints)
+        const std::vector<Print>& prints, std::span<const std::uint32_t> listed = {})
         : m_file(path)
         , m_contentBegin(contentBegin)
         , m_contentEnd(contentEnd)
         , m_level(level)
         , m_printCount(prints.size())
+        , m_listedCount(listed.size())
     {
         QDir().mkpath(QFileInfo(path).absolutePath());
         const SegmentHeader placeholder {};
         m_ok = m_file.open(QIODevice::WriteOnly) && put(&placeholder, sizeof placeholder)
-            && put(prints.data(), prints.size() * sizeof(Print));
+            && put(prints.data(), prints.size() * sizeof(Print)) && put(listed.data(), listed.size_bytes());
     }
 
-    // Keys ascending; contents ascending (others are dropped).
+    // Keys ascending; contents ascending (others are dropped). For a segment
+    // whose table lists contents themselves.
     void add(grams::Key key, std::span<const std::uint32_t> contents)
     {
-        const std::uint64_t at = offset();
-        if (!m_ok || at > std::numeric_limits<std::uint32_t>::max()
-            || m_table.size() > std::numeric_limits<std::uint32_t>::max() || (m_keys > 0 && key <= m_lastKey)) {
-            m_ok = false;
-            return;
-        }
         m_contents.clear();
         for (const std::uint32_t c : contents) {
             if (c >= m_contentBegin && c < m_contentEnd && (m_contents.empty() || c > m_contents.back()))
                 m_contents.push_back(c);
         }
-        if (m_contents.empty())
-            return;
+        m_one.clear();
+        m_one.add(key, m_contents, m_contentBegin, m_contentEnd);
+        add(m_one);
+    }
 
-        if (m_keys % kBlockKeys == 0)
-            m_blocks.push_back({key, static_cast<std::uint32_t>(at), static_cast<std::uint32_t>(m_table.size())});
-        else
-            encode(m_table, key - m_lastKey);
-        encode(m_table, m_contents.size());
-        if (m_contents.size() <= kInline) {
-            std::uint64_t next = m_contentBegin;
-            for (const std::uint32_t c : m_contents) {
-                encode(m_table, c - next);
-                next = std::uint64_t {c} + 1;
+    // Keys encoded for this segment's contents, after those added before.
+    void add(const EncodedKeys& encoded)
+    {
+        for (std::size_t i = 0; i < encoded.keys.size(); ++i) {
+            const grams::Key key = encoded.keys[i];
+            const std::uint64_t at = offset();
+            if (!m_ok || !encoded.ok || at > std::numeric_limits<std::uint32_t>::max()
+                || m_table.size() > std::numeric_limits<std::uint32_t>::max() || (m_keys > 0 && key <= m_lastKey)) {
+                m_ok = false;
+                return;
             }
-        } else {
-            const std::size_t start = m_buffer.size();
-            BitWriter bits(m_buffer);
-            putInterpolative(bits, m_contents.data(), m_contents.size(), m_contentBegin, m_contentEnd - 1);
-            bits.flush();
-            encode(m_table, m_buffer.size() - start);
+            if (m_keys % kBlockKeys == 0)
+                m_blocks.push_back({key, static_cast<std::uint32_t>(at), static_cast<std::uint32_t>(m_table.size())});
+            else
+                encode(m_table, key - m_lastKey);
+            const std::size_t entry = i > 0 ? encoded.entryEnds[i - 1] : 0;
+            m_table.insert(m_table.end(), encoded.entries.begin() + static_cast<std::ptrdiff_t>(entry),
+                encoded.entries.begin() + encoded.entryEnds[i]);
+            const std::size_t posting = i > 0 ? encoded.postingEnds[i - 1] : 0;
+            m_buffer.insert(m_buffer.end(), encoded.postings.begin() + static_cast<std::ptrdiff_t>(posting),
+                encoded.postings.begin() + encoded.postingEnds[i]);
+            m_lastKey = key;
+            ++m_keys;
+            if (m_buffer.size() >= kBufferBytes)
+                drain();
         }
-        m_lastKey = key;
-        ++m_keys;
-        if (m_buffer.size() >= kBufferBytes)
-            drain();
     }
 
     bool finish()
@@ -360,11 +453,13 @@ public:
         header.contentEnd = m_contentEnd;
         header.level = m_level;
         header.printCount = static_cast<std::uint32_t>(m_printCount);
+        header.listedCount = static_cast<std::uint32_t>(m_listedCount);
         header.postingBytes = postingBytes;
         header.tableBytes = m_table.size();
         const SegmentBlock sentinel {std::numeric_limits<grams::Key>::max(), static_cast<std::uint32_t>(postingBytes),
             static_cast<std::uint32_t>(m_table.size())};
-        const std::uint64_t end = sizeof header + m_printCount * sizeof(Print) + postingBytes;
+        const std::uint64_t end
+            = sizeof header + m_printCount * sizeof(Print) + m_listedCount * sizeof(std::uint32_t) + postingBytes;
         constexpr char zeros[8] = {};
         return put(zeros, static_cast<std::size_t>(aligned8(end) - end))
             && put(m_blocks.data(), m_blocks.size() * sizeof(SegmentBlock)) && put(&sentinel, sizeof sentinel)
@@ -391,15 +486,139 @@ private:
     std::uint32_t m_contentEnd;
     std::uint32_t m_level;
     std::size_t m_printCount;
+    std::size_t m_listedCount;
     bool m_ok = false;
     std::uint64_t m_written = 0; // posting bytes in the file
     std::vector<std::uint8_t> m_buffer; // posting bytes still to write
     std::vector<std::uint32_t> m_contents; // scratch: a key's contents, checked
+    EncodedKeys m_one; // scratch: that key
     std::vector<SegmentBlock> m_blocks;
     std::vector<std::uint8_t> m_table;
     std::uint64_t m_keys = 0;
     grams::Key m_lastKey = 0;
 };
+
+// Calls f(part, worker) for each part in [0, parts), on `threads` threads
+// (this one among them), worker being which of them (0 to threads - 1).
+template <typename F> void inParallel(int threads, std::size_t parts, F&& f)
+{
+    std::atomic<std::size_t> next {0};
+    const auto work = [&](int worker) {
+        for (std::size_t part = next++; part < parts; part = next++)
+            f(part, worker);
+    };
+    std::vector<std::jthread> helpers;
+    for (int w = 1; w < threads && static_cast<std::size_t>(w) < parts; ++w)
+        helpers.emplace_back(work, w);
+    work(0);
+}
+
+// Sorts pairs (key << kIdBits | content) by key alone, stably, through
+// `scratch` (as large): a radix sort, a quarter of std::sort's time. Returns
+// where they ended up, the one or the other.
+std::span<std::uint64_t> sortByKey(std::span<std::uint64_t> pairs, std::span<std::uint64_t> scratch)
+{
+    constexpr unsigned kDigitBits = 12;
+    constexpr unsigned kDigits = (64 - kIdBits) / kDigitBits;
+    constexpr std::uint64_t kDigitMask = (std::uint64_t {1} << kDigitBits) - 1;
+    static_assert((64 - kIdBits) % kDigitBits == 0);
+    // Every digit counted in one go, then the pairs moved once per digit.
+    std::vector<std::array<std::uint32_t, kDigitMask + 1>> count(kDigits);
+    for (const std::uint64_t p : pairs) {
+        for (unsigned d = 0; d < kDigits; ++d)
+            ++count[d][(p >> (kIdBits + d * kDigitBits)) & kDigitMask];
+    }
+    for (unsigned d = 0; d < kDigits; ++d) {
+        if (std::ranges::find(count[d], pairs.size()) != count[d].end())
+            continue; // the same digit for all: nothing moves
+        std::uint32_t at = 0;
+        for (std::uint32_t& c : count[d])
+            at += std::exchange(c, at);
+        const unsigned shift = kIdBits + d * kDigitBits;
+        for (const std::uint64_t p : pairs)
+            scratch[count[d][(p >> shift) & kDigitMask]++] = p;
+        std::swap(pairs, scratch);
+    }
+    return pairs;
+}
+
+// Pairs sorted by key, their contents ascending, into `out`. Memory's come
+// content by content, each content's keys ascending: sorted by key alone,
+// and stably, they are sorted. On several threads they are first cut by key
+// into stretches (at keys from a sample), which are then sorted each on its
+// own, in the cache. `ends` gets where the stretches end. The pairs are only
+// read: searches read them meanwhile (flush). `out` and `scratch` keep their
+// memory for the next time: fresh memory costs a page fault every 4 KB, more
+// than sorting into it.
+void sortPairs(std::span<const std::uint64_t> pairs, int threads, std::vector<std::uint64_t>& out,
+    std::vector<std::uint64_t>& scratch, std::vector<std::size_t>* ends = nullptr)
+{
+    const std::size_t n = pairs.size();
+    out.resize(n);
+    scratch.resize(n);
+    const auto byContent = [](std::uint64_t a, std::uint64_t b) { return (a & kIdMask) < (b & kIdMask); };
+    if (n < 4096 || !std::is_sorted(pairs.begin(), pairs.end(), byContent)) {
+        std::copy(pairs.begin(), pairs.end(), out.begin());
+        std::sort(out.begin(), out.end());
+        if (ends)
+            *ends = {n};
+        return;
+    }
+    threads = std::max(threads, 1);
+    std::vector<grams::Key> splitters; // the first key of each stretch but the first
+    if (threads > 1 && n >= (std::size_t {1} << 16)) {
+        const std::size_t parts = std::min<std::size_t>(static_cast<std::size_t>(threads) * 4, 255);
+        std::vector<grams::Key> sample;
+        for (std::size_t i = 0; i < n; i += std::max<std::size_t>(n / (parts * 64), 1))
+            sample.push_back(pairs[i] >> kIdBits);
+        std::sort(sample.begin(), sample.end());
+        for (std::size_t k = 1; k < parts; ++k) {
+            const grams::Key key = sample[k * sample.size() / parts];
+            if (key > 0 && (splitters.empty() || key > splitters.back()))
+                splitters.push_back(key);
+        }
+    }
+    const std::size_t stretches = splitters.size() + 1;
+    std::vector<std::size_t> start(stretches + 1, 0); // of each stretch in `out`
+    if (stretches == 1)
+        std::copy(pairs.begin(), pairs.end(), out.begin());
+    if (stretches > 1) {
+        // Into the stretches, each share of the pairs after those before it:
+        // stably.
+        const auto shares = static_cast<std::size_t>(threads);
+        const std::size_t each = (n + shares - 1) / shares;
+        std::vector<std::uint8_t> stretchOf(n);
+        std::vector<std::vector<std::size_t>> at(shares, std::vector<std::size_t>(stretches, 0));
+        inParallel(threads, shares, [&](std::size_t share, int) {
+            for (std::size_t i = share * each; i < std::min(n, (share + 1) * each); ++i) {
+                const auto b = static_cast<std::size_t>(
+                    std::upper_bound(splitters.begin(), splitters.end(), pairs[i] >> kIdBits) - splitters.begin());
+                stretchOf[i] = static_cast<std::uint8_t>(b);
+                ++at[share][b];
+            }
+        });
+        std::size_t next = 0;
+        for (std::size_t b = 0; b < stretches; ++b) {
+            start[b] = next;
+            for (std::size_t share = 0; share < shares; ++share)
+                next += std::exchange(at[share][b], next);
+        }
+        inParallel(threads, shares, [&](std::size_t share, int) {
+            for (std::size_t i = share * each; i < std::min(n, (share + 1) * each); ++i)
+                out[at[share][stretchOf[i]]++] = pairs[i];
+        });
+    }
+    start[stretches] = n;
+    inParallel(threads, stretches, [&](std::size_t b, int) {
+        const std::span<std::uint64_t> stretch(out.data() + start[b], start[b + 1] - start[b]);
+        const std::span<std::uint64_t> sorted
+            = sortByKey(stretch, std::span(scratch.data() + start[b], stretch.size()));
+        if (sorted.data() != stretch.data())
+            std::copy(sorted.begin(), sorted.end(), stretch.begin());
+    });
+    if (ends)
+        ends->assign(start.begin() + 1, start.end());
+}
 
 // What orders contents for a merge (see merge): splitmix64's finalizer.
 std::uint64_t scramble(std::uint64_t x) noexcept
@@ -411,6 +630,160 @@ std::uint64_t scramble(std::uint64_t x) noexcept
     x ^= x >> 31;
     return x;
 }
+
+// Orders documents so that those with terms in common come together, which
+// is what makes postings small (see merge). Recursive graph bisection
+// (Dhulipala et al., "Compressing graphs and indexes with recursive graph
+// bisection", KDD 2016): the documents are cut in two halves, and swapped
+// between them while that brings each term's documents together, going by
+// how many bits the gaps between them would take; then each half is cut the
+// same way. Document d's terms are terms[termStart[d], termStart[d + 1]),
+// below termCount. The order is the same on any number of threads.
+class Bisection {
+public:
+    Bisection(std::span<const std::uint64_t> termStart, std::span<const std::uint32_t> terms, std::uint32_t termCount)
+        : m_termStart(termStart)
+        , m_terms(terms)
+        , m_termCount(termCount)
+        , m_log2(termStart.size() + 1)
+    {
+        for (std::size_t i = 1; i < m_log2.size(); ++i)
+            m_log2[i] = static_cast<float>(std::log2(static_cast<double>(i)));
+    }
+
+    // `docs` (below termStart.size() - 1) in a first order; leaves in the new one.
+    void order(std::span<std::uint32_t> docs, int threads) const
+    {
+        // Down to a few dozen documents: below that, swaps hardly change
+        // the sizes (as in the paper).
+        const int depth = std::max(1, static_cast<int>(std::bit_width(docs.size())) - 6);
+        Scratch scratch;
+        cut(docs, depth, std::max(threads, 1), scratch);
+    }
+
+private:
+    static constexpr int kRounds = 20; // of swaps per cut, at most
+    static constexpr std::size_t kParallel = 8192; // documents in a cut worth more than one thread
+
+    struct Scratch {
+        std::vector<std::int32_t> left, right; // by term: its documents in each half
+        std::vector<float> toRight, toLeft; // by term: what moving one of them over saves
+        std::vector<std::uint32_t> touched; // the terms of the documents being cut
+        std::vector<std::pair<float, std::uint32_t>> gainsLeft, gainsRight; // by document
+    };
+
+    std::span<const std::uint32_t> termsOf(std::uint32_t doc) const noexcept
+    {
+        return m_terms.subspan(m_termStart[doc], m_termStart[doc + 1] - m_termStart[doc]);
+    }
+
+    void cut(std::span<std::uint32_t> docs, int depth, int threads, Scratch& s) const
+    {
+        if (depth == 0 || docs.size() < 2)
+            return;
+        if (s.left.empty()) {
+            s.left.assign(m_termCount, 0);
+            s.right.assign(m_termCount, 0);
+            s.toRight.assign(m_termCount, 0);
+            s.toLeft.assign(m_termCount, 0);
+        }
+        const std::size_t half = docs.size() / 2;
+        s.touched.clear();
+        for (std::size_t i = 0; i < docs.size(); ++i) {
+            std::vector<std::int32_t>& side = i < half ? s.left : s.right;
+            for (const std::uint32_t t : termsOf(docs[i])) {
+                if (s.left[t] == 0 && s.right[t] == 0)
+                    s.touched.push_back(t);
+                ++side[t];
+            }
+        }
+        // The bits a term's gaps take, about, with a documents on the left
+        // and b on the right: its documents spread evenly over each half.
+        const float logLeft = m_log2[half];
+        const float logRight = m_log2[docs.size() - half];
+        const auto bits = [&](std::int32_t a, std::int32_t b) {
+            return static_cast<float>(a) * (logLeft - m_log2[static_cast<std::size_t>(a) + 1])
+                + static_cast<float>(b) * (logRight - m_log2[static_cast<std::size_t>(b) + 1]);
+        };
+        s.gainsLeft.resize(half);
+        s.gainsRight.resize(docs.size() - half);
+        const auto gains = [&](std::size_t from, std::size_t to) {
+            for (std::size_t i = from; i < to; ++i) {
+                const std::vector<float>& saves = i < half ? s.toRight : s.toLeft;
+                float gain = 0;
+                for (const std::uint32_t t : termsOf(docs[i]))
+                    gain += saves[t];
+                (i < half ? s.gainsLeft[i] : s.gainsRight[i - half]) = {gain, docs[i]};
+            }
+        };
+        const auto byGain = [](const std::pair<float, std::uint32_t>& a, const std::pair<float, std::uint32_t>& b) {
+            return a.first > b.first || (a.first == b.first && a.second < b.second);
+        };
+        for (int round = 0; round < kRounds; ++round) {
+            for (const std::uint32_t t : s.touched) {
+                const std::int32_t a = s.left[t];
+                const std::int32_t b = s.right[t];
+                const float now = bits(a, b);
+                s.toRight[t] = a > 0 ? now - bits(a - 1, b + 1) : 0;
+                s.toLeft[t] = b > 0 ? now - bits(a + 1, b - 1) : 0;
+            }
+            if (threads > 1 && docs.size() >= kParallel) {
+                const std::size_t parts = static_cast<std::size_t>(threads) * 4;
+                const std::size_t each = (docs.size() + parts - 1) / parts;
+                inParallel(threads, parts,
+                    [&](std::size_t part, int) { gains(part * each, std::min(docs.size(), (part + 1) * each)); });
+            } else {
+                gains(0, docs.size());
+            }
+            std::sort(s.gainsLeft.begin(), s.gainsLeft.end(), byGain);
+            std::sort(s.gainsRight.begin(), s.gainsRight.end(), byGain);
+            std::size_t swaps = 0;
+            while (swaps < s.gainsLeft.size() && swaps < s.gainsRight.size()
+                && s.gainsLeft[swaps].first + s.gainsRight[swaps].first > 0)
+                ++swaps;
+            if (swaps == 0)
+                break;
+            for (std::size_t i = 0; i < swaps; ++i) {
+                for (const std::uint32_t t : termsOf(s.gainsLeft[i].second)) {
+                    --s.left[t];
+                    ++s.right[t];
+                }
+                for (const std::uint32_t t : termsOf(s.gainsRight[i].second)) {
+                    ++s.left[t];
+                    --s.right[t];
+                }
+            }
+            std::size_t at = 0;
+            for (std::size_t i = swaps; i < s.gainsLeft.size(); ++i)
+                docs[at++] = s.gainsLeft[i].second;
+            for (std::size_t i = 0; i < swaps; ++i)
+                docs[at++] = s.gainsRight[i].second;
+            for (std::size_t i = swaps; i < s.gainsRight.size(); ++i)
+                docs[at++] = s.gainsRight[i].second;
+            for (std::size_t i = 0; i < swaps; ++i)
+                docs[at++] = s.gainsLeft[i].second;
+        }
+        for (const std::uint32_t t : s.touched)
+            s.left[t] = s.right[t] = 0;
+        const std::span<std::uint32_t> first = docs.first(half);
+        const std::span<std::uint32_t> second = docs.subspan(half);
+        if (threads > 1) {
+            std::jthread other([&, first] {
+                Scratch own;
+                cut(first, depth - 1, threads / 2, own);
+            });
+            cut(second, depth - 1, threads - threads / 2, s);
+        } else {
+            cut(first, depth - 1, 1, s);
+            cut(second, depth - 1, 1, s);
+        }
+    }
+
+    std::span<const std::uint64_t> m_termStart;
+    std::span<const std::uint32_t> m_terms;
+    std::uint32_t m_termCount;
+    std::vector<float> m_log2; // of 0 to the number of documents
+};
 
 // The code points of a string; unpaired surrogates as U+FFFD.
 template <typename F> void forEachCodePoint(QStringView s, F&& f)
@@ -556,17 +929,7 @@ bool decides(QStringView phrase)
 
 std::optional<Fingerprint> fingerprint(std::span<const Key> keys)
 {
-    std::array<UCHAR, 32> digest {};
-    // The keys are not written to: the parameter is not const only for C's sake.
-    auto* const input = reinterpret_cast<PUCHAR>(const_cast<Key*>(keys.data()));
-    if (keys.size_bytes() > std::numeric_limits<ULONG>::max()
-        || !BCRYPT_SUCCESS(::BCryptHash(BCRYPT_SHA256_ALG_HANDLE, nullptr, 0, input,
-            static_cast<ULONG>(keys.size_bytes()), digest.data(), static_cast<ULONG>(digest.size()))))
-        return std::nullopt;
-    Fingerprint out;
-    std::memcpy(&out.high, digest.data(), sizeof out.high);
-    std::memcpy(&out.low, digest.data() + sizeof out.high, sizeof out.low);
-    return out;
+    return printOf(std::as_bytes(keys));
 }
 
 Collector::Collector(TextEncoding encoding, unsigned ansiCodePage)
@@ -595,16 +958,53 @@ void Collector::feed(const char* data, std::size_t size)
             feedAnsi(data, size);
         } else {
             // A single-byte code page: ASCII below 0x80, no CJK characters.
-            for (std::size_t i = 0; i < size; ++i) {
-                const auto c = static_cast<unsigned char>(data[i]);
-                if (c < 0x80)
-                    ascii(c);
-                else
+            const auto* b = reinterpret_cast<const unsigned char*>(data);
+            for (std::size_t i = 0; i < size;) {
+                if (b[i] < 0x80) {
+                    i += asciiRun(b + i, size - i);
+                } else {
                     endRun();
+                    ++i;
+                }
             }
         }
         break;
     }
+}
+
+// Most of what is read is ASCII, and most of the time taking grams out of a
+// file goes here. The state stays in locals: in members, it went to and from
+// memory around every store to m_trigrams (the compiler cannot tell them
+// apart), an eighth of the time (wsbench --content-index --grams-only).
+std::size_t Collector::asciiRun(const unsigned char* b, std::size_t n) noexcept
+{
+    std::uint64_t* const trigrams = m_trigrams.data();
+    unsigned char1 = m_char1;
+    unsigned char2 = m_char2;
+    std::size_t i = 0;
+    for (; i < n; ++i) {
+        const unsigned char c = b[i];
+        if (c >= 0x80)
+            break;
+        const unsigned w = kAsciiClasses[c];
+        if (w == 0) {
+            char1 = char2 = 0; // a control character
+            continue;
+        }
+        if (w == kSpace && char1 == kSpace)
+            continue; // a run of whitespace is one space
+        if (char2 != 0) {
+            const unsigned t = ((char2 - 1) * kAsciiChars + (char1 - 1)) * kAsciiChars + (w - 1);
+            trigrams[t >> 6] |= std::uint64_t {1} << (t & 63);
+        }
+        char2 = char1;
+        char1 = w;
+    }
+    m_char1 = char1;
+    m_char2 = char2;
+    if (i > 0)
+        m_previous = 0;
+    return i;
 }
 
 // A decoder that keeps its state across chunks: m_carry holds the lead byte
@@ -614,18 +1014,49 @@ void Collector::feed(const char* data, std::size_t size)
 void Collector::feedUtf8(const char* p, std::size_t n)
 {
     const auto* b = reinterpret_cast<const unsigned char*>(p);
+    const auto lengthOf = [](unsigned char lead) -> std::size_t { return lead < 0xE0 ? 2 : lead < 0xF0 ? 3 : 4; };
+    // A whole character, or not one (an overlong form, a surrogate).
+    const auto character = [&](char32_t cp, std::size_t length) {
+        const char32_t minimum = length == 2 ? 0x80 : length == 3 ? 0x800 : 0x10000;
+        if (cp < minimum || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) {
+            m_previous = 0;
+            endRun();
+        } else {
+            add(cp);
+        }
+    };
     std::size_t i = 0;
     while (i < n) {
         if (m_carry.empty()) {
-            const unsigned char c = b[i++];
-            if (c < 0x80) {
-                ascii(c);
-            } else if (c < 0xC2 || c > 0xF4) {
+            if (b[i] < 0x80) {
+                i += asciiRun(b + i, n - i);
+                continue;
+            }
+            const unsigned char c = b[i];
+            if (c < 0xC2 || c > 0xF4) {
+                ++i;
                 m_previous = 0; // a byte that cannot start a character
                 endRun();
-            } else {
-                m_carry.push_back(static_cast<char>(c));
+                continue;
             }
+            const std::size_t length = lengthOf(c);
+            if (i + length > n) {
+                ++i;
+                m_carry.push_back(static_cast<char>(c)); // the rest in the next chunk
+                continue;
+            }
+            // The whole character is here, nearly always: decoded in place.
+            char32_t cp = c & (length == 2 ? 0x1F : length == 3 ? 0x0F : 0x07);
+            std::size_t k = 1;
+            for (; k < length && (b[i + k] & 0xC0) == 0x80; ++k)
+                cp = (cp << 6) | (b[i + k] & 0x3F);
+            i += k;
+            if (k < length) { // cut short: the byte at i starts something new
+                m_previous = 0;
+                endRun();
+                continue;
+            }
+            character(cp, length);
             continue;
         }
         const unsigned char c = b[i];
@@ -638,20 +1069,14 @@ void Collector::feedUtf8(const char* p, std::size_t n)
         ++i;
         m_carry.push_back(static_cast<char>(c));
         const auto lead = static_cast<unsigned char>(m_carry[0]);
-        const std::size_t length = lead < 0xE0 ? 2 : lead < 0xF0 ? 3 : 4;
+        const std::size_t length = lengthOf(lead);
         if (m_carry.size() < length)
             continue;
         char32_t cp = lead & (length == 2 ? 0x1F : length == 3 ? 0x0F : 0x07);
         for (std::size_t k = 1; k < length; ++k)
             cp = (cp << 6) | (static_cast<unsigned char>(m_carry[k]) & 0x3F);
         m_carry.clear();
-        const char32_t minimum = length == 2 ? 0x80 : length == 3 ? 0x800 : 0x10000;
-        if (cp < minimum || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) {
-            m_previous = 0;
-            endRun();
-        } else {
-            add(cp);
-        }
+        character(cp, length);
     }
 }
 
@@ -885,14 +1310,45 @@ public:
     bool find(grams::Key key, Entry& out) const noexcept;
     void contents(const Entry& e, std::vector<ContentId>& out) const; // appends them, ascending
 
-    // Every key in order (for merging).
+    // What merging its keys takes, where: for every few blocks, their first
+    // key and how many contents their keys have, all told (each is decoded,
+    // renumbered and encoded), and a few more for each key. Not their
+    // bytes: a key most contents have takes next to none.
+    void work(std::vector<std::pair<grams::Key, std::uint64_t>>& out) const
+    {
+        constexpr std::uint64_t kBlocksEach = 8;
+        const std::uint64_t blocks = blocksFor(m_header.keyCount);
+        for (std::uint64_t b = 0; b < blocks; ++b) {
+            if (b % kBlocksEach == 0)
+                out.emplace_back(m_blocks[b].key, 0);
+            NumberReader r(m_table + m_blocks[b].entry, m_table + m_blocks[b + 1].entry);
+            Entry e;
+            std::uint64_t posting = 0;
+            for (bool first = true; !r.atEnd(); first = false) {
+                if (!first)
+                    r.next(); // the key
+                readEntry(r, e, posting);
+                out.back().second += e.count + 8;
+            }
+        }
+    }
+
+    // Every key in order, from the first at or after `from` (for merging).
     class Cursor {
     public:
-        explicit Cursor(const Segment& s) noexcept
+        explicit Cursor(const Segment& s, grams::Key from = 0) noexcept
             : m_s(&s)
             , m_reader(s.m_table, s.m_table)
         {
+            const SegmentBlock* const end = s.m_blocks + blocksFor(s.m_header.keyCount);
+            const SegmentBlock* block = std::upper_bound(
+                s.m_blocks, end, from, [](grams::Key k, const SegmentBlock& b) { return k < b.key; });
+            if (block != s.m_blocks)
+                --block;
+            m_index = static_cast<std::uint32_t>(block - s.m_blocks) * kBlockKeys;
             next();
+            while (!m_done && m_entry.key < from)
+                next();
         }
         bool done() const noexcept { return m_done; }
         grams::Key key() const noexcept { return m_entry.key; }
@@ -941,6 +1397,7 @@ private:
     std::uint64_t m_size = 0;
     SegmentHeader m_header {};
     const Print* m_prints = nullptr;
+    const ContentId* m_listed = nullptr; // null when the table lists contents themselves
     const std::uint8_t* m_postings = nullptr;
     const SegmentBlock* m_blocks = nullptr;
     const std::uint8_t* m_table = nullptr;
@@ -969,15 +1426,17 @@ std::shared_ptr<const ContentIndex::Segment> ContentIndex::Segment::open(const Q
     if (std::memcmp(h.magic, kSegmentMagic, sizeof h.magic) != 0 || h.version != kSegmentVersion)
         return nullptr;
     if (h.contentBegin > h.contentEnd || h.contentEnd > kMaxIds || h.printCount > h.contentEnd - h.contentBegin
-        || h.postingBytes > std::numeric_limits<std::uint32_t>::max()
+        || h.listedCount > h.contentEnd - h.contentBegin || h.postingBytes > std::numeric_limits<std::uint32_t>::max()
         || h.tableBytes > std::numeric_limits<std::uint32_t>::max())
         return nullptr;
-    const std::uint64_t postingsAt = sizeof(SegmentHeader) + std::uint64_t {h.printCount} * sizeof(Print);
+    const std::uint64_t listedAt = sizeof(SegmentHeader) + std::uint64_t {h.printCount} * sizeof(Print);
+    const std::uint64_t postingsAt = listedAt + std::uint64_t {h.listedCount} * sizeof(ContentId);
     const std::uint64_t blocksAt = aligned8(postingsAt + h.postingBytes);
     const std::uint64_t tableAt = blocksAt + (blocksFor(h.keyCount) + 1) * sizeof(SegmentBlock);
     if (tableAt + h.tableBytes != s->m_size)
         return nullptr;
     s->m_prints = reinterpret_cast<const Print*>(bytes + sizeof(SegmentHeader));
+    s->m_listed = h.listedCount > 0 ? reinterpret_cast<const ContentId*>(bytes + listedAt) : nullptr;
     s->m_postings = bytes + postingsAt;
     s->m_blocks = reinterpret_cast<const SegmentBlock*>(bytes + blocksAt);
     s->m_table = bytes + tableAt;
@@ -997,11 +1456,21 @@ bool ContentIndex::Segment::validate() const noexcept
             || (j > 0 && !(m_prints[j - 1].fingerprint() < p.fingerprint())))
             return false;
     }
+    const std::uint64_t universe = h.contentEnd - h.contentBegin;
+    if (m_listed) { // contents of the segment, each once
+        std::vector<bool> seen(universe, false);
+        for (std::uint32_t j = 0; j < h.listedCount; ++j) {
+            const ContentId c = m_listed[j];
+            if (c < h.contentBegin || c >= h.contentEnd || seen[c - h.contentBegin])
+                return false;
+            seen[c - h.contentBegin] = true;
+        }
+    }
+    const std::uint64_t places = m_listed ? h.listedCount : universe; // what the table's lists may name
     const auto blockCount = static_cast<std::uint32_t>(blocksFor(h.keyCount));
     if (m_blocks[0].entry != 0 || m_blocks[blockCount].entry != h.tableBytes
         || m_blocks[blockCount].posting != h.postingBytes)
         return false;
-    const std::uint64_t universe = h.contentEnd - h.contentBegin;
     std::uint64_t offset = 0;
     for (std::uint32_t b = 0; b < blockCount; ++b) {
         const SegmentBlock* const block = m_blocks + b;
@@ -1021,10 +1490,10 @@ bool ContentIndex::Segment::validate() const noexcept
             if (!r.ok() || count == 0 || count > universe)
                 return false;
             if (count <= kInline) {
-                std::uint64_t next = h.contentBegin; // the first content the next number can stand for
+                std::uint64_t next = 0; // the first place the next number can stand for
                 for (std::uint64_t k = 0; k < count; ++k) {
                     const std::uint64_t skipped = r.next();
-                    if (!r.ok() || skipped >= h.contentEnd - next)
+                    if (!r.ok() || skipped >= places - next)
                         return false;
                     next += skipped + 1;
                 }
@@ -1094,11 +1563,15 @@ void ContentIndex::Segment::contents(const Entry& e, std::vector<ContentId>& out
 {
     if (e.listed) {
         NumberReader r(e.listed, m_table + m_header.tableBytes);
-        std::uint64_t next = m_header.contentBegin;
+        const std::size_t from = out.size();
+        std::uint64_t place = 0;
         for (std::uint64_t i = 0; i < e.count; ++i) {
-            next += r.next();
-            out.push_back(static_cast<ContentId>(next++));
+            place += r.next();
+            out.push_back(m_listed ? m_listed[place] : static_cast<ContentId>(m_header.contentBegin + place));
+            ++place;
         }
+        if (m_listed)
+            std::sort(out.begin() + static_cast<std::ptrdiff_t>(from), out.end());
         return;
     }
     const std::size_t from = out.size();
@@ -1214,12 +1687,58 @@ QString ContentIndex::textPath(std::uint64_t number) const
 std::shared_ptr<ContentIndex::TextFile> ContentIndex::textFileForAppend()
 {
     std::unique_lock lock(m_mutex);
+    return textFileLocked();
+}
+
+std::shared_ptr<ContentIndex::TextFile> ContentIndex::textFileLocked()
+{
     if (!m_textFile) {
         QDir().mkpath(m_directory);
         const std::uint64_t number = m_nextSegment++;
         m_textFile = TextFile::open(textPath(number), number, true);
     }
     return m_textFile;
+}
+
+std::optional<ContentIndex::TextRef> ContentIndex::textWithPrint(const grams::Fingerprint& print) const
+{
+    const auto it = m_textByPrint.find(print);
+    if (it == m_textByPrint.end())
+        return std::nullopt;
+    const auto use = m_textUses.find(it->second);
+    if (use == m_textUses.end())
+        return std::nullopt;
+    return TextRef {it->second, use->second.bytes};
+}
+
+void ContentIndex::useText(DocId doc, TextRef text, const std::optional<grams::Fingerprint>& print)
+{
+    m_texts[doc] = text;
+    const auto [use, fresh] = m_textUses.try_emplace(text.offset, TextUse {0, text.bytes, print});
+    ++use->second.docs;
+    if (fresh && print)
+        m_textByPrint.emplace(*print, text.offset); // the first stays when two came at once
+}
+
+void ContentIndex::dropText(DocId doc) noexcept
+{
+    const auto it = m_texts.find(doc);
+    if (it == m_texts.end())
+        return;
+    const TextRef text = it->second;
+    m_texts.erase(it);
+    const auto use = m_textUses.find(text.offset);
+    if (use != m_textUses.end() && --use->second.docs > 0)
+        return;
+    m_textGarbage += text.bytes;
+    if (use == m_textUses.end())
+        return;
+    if (use->second.print) {
+        const auto by = m_textByPrint.find(*use->second.print);
+        if (by != m_textByPrint.end() && by->second == text.offset)
+            m_textByPrint.erase(by);
+    }
+    m_textUses.erase(use);
 }
 
 QByteArray ContentIndex::packText(const doctext::DocText& text)
@@ -1288,10 +1807,7 @@ void ContentIndex::kill(DocId doc) noexcept
     m_docState[doc] = kDead;
     ++m_dead;
     ++m_deadInOrder;
-    if (const auto it = m_texts.find(doc); it != m_texts.end()) {
-        m_textGarbage += it->second.bytes;
-        m_texts.erase(it);
-    }
+    dropText(doc);
 }
 
 void ContentIndex::insertOrder(DocId doc)
@@ -1348,10 +1864,15 @@ void ContentIndex::contentsOf(grams::Key key, std::vector<ContentId>& out) const
             s->contents(e, out);
     }
     const std::size_t from = out.size();
-    for (const std::uint64_t p : m_memory) {
-        if ((p >> kIdBits) == key)
-            out.push_back(static_cast<ContentId>(p & kIdMask));
-    }
+    const auto scan = [&](const std::vector<std::uint64_t>& pairs) {
+        for (const std::uint64_t p : pairs) {
+            if ((p >> kIdBits) == key)
+                out.push_back(static_cast<ContentId>(p & kIdMask));
+        }
+    };
+    if (m_writing)
+        scan(*m_writing);
+    scan(m_memory);
     std::sort(out.begin() + static_cast<std::ptrdiff_t>(from), out.end());
 }
 
@@ -1520,10 +2041,13 @@ void ContentIndex::remap(const FileIndex::Renumber& renumber)
 
 void ContentIndex::resetLocked()
 {
+    ++m_generation; // a flush running now leaves its segment out
     for (const auto& s : m_segments)
         m_obsolete.push_back(s->number());
     m_segments.clear();
     m_memory = decltype(m_memory)();
+    m_writing.reset();
+    m_flushBuffers.reset();
     m_memoryContents.clear();
     m_contentEnd = 0;
     m_docEntry = decltype(m_docEntry)();
@@ -1538,6 +2062,8 @@ void ContentIndex::resetLocked()
         m_obsoleteTexts.push_back(m_textFile->number());
     m_textFile.reset();
     m_texts = decltype(m_texts)();
+    m_textUses = decltype(m_textUses)();
+    m_textByPrint.clear();
     m_textGarbage = 0;
 }
 
@@ -1607,33 +2133,82 @@ bool ContentIndex::add(EntryId entry, std::span<const grams::Key> keys, bool emp
     std::uint64_t since, QByteArrayView text)
 {
     const bool hasGrams = !empty && !keys.empty();
+    const bool hasText = !text.isEmpty() && text.size() <= 0x7FFF'FFFF;
+    const auto textBytes = static_cast<std::uint32_t>(hasText ? text.size() : 0);
     // Before taking the lock: the grams of a large file take a while to hash.
     const std::optional<grams::Fingerprint> print = hasGrams ? grams::fingerprint(keys) : std::nullopt;
-    // The text goes to the file first (outside the lock: searches read meanwhile).
+    const std::optional<grams::Fingerprint> textPrint
+        = hasText ? printOf(std::as_bytes(std::span(text.data(), textBytes))) : std::nullopt;
+    // Looked up while others may look up too: the content with these grams
+    // (a copy's, say), and whether a document has this text. The content
+    // took four fifths of the time the lock was held alone, and 16 threads
+    // adding files waited for it longer than they hashed and added
+    // (wsbench --content-index, without an antivirus).
+    ContentId known = kNoContent;
+    std::uint64_t generation = 0;
+    bool textKnown = false;
+    if (print || textPrint) {
+        std::shared_lock lock(m_mutex);
+        known = print ? findContent(*print) : kNoContent;
+        generation = m_generation;
+        textKnown = textPrint && textWithPrint(*textPrint).has_value();
+    }
+    // The text goes to the file first (outside the lock: searches read
+    // meanwhile), unless a document has it already.
     std::shared_ptr<TextFile> textFile;
     std::optional<std::uint64_t> textAt;
-    if (!text.isEmpty() && text.size() <= 0x7FFF'FFFF) {
+    if (hasText && !textKnown) {
         textFile = textFileForAppend();
         if (textFile)
             textAt = textFile->append(text);
     }
     std::unique_lock lock(m_mutex);
-    if (textAt && textFile != m_textFile) { // replaced meanwhile (compactTexts, clear)
-        textFile = m_textFile;
+    if (hasGrams) {
+        // Room in memory first, as these may let go of the lock: what is
+        // looked up below is looked up after.
+        if (!m_memory.empty() && m_memory.size() + keys.size() > kFlushPairs)
+            flush(lock);
+        // Grams come faster than a segment is written (on 16 threads,
+        // without an antivirus): past another segment's worth, wait for it.
+        m_flushed.wait(lock, [&] { return !m_flushing || m_memory.size() + keys.size() <= kFlushPairs; });
+    }
+    // The document's text: one a document has (found before, or come
+    // meanwhile), else the one appended; appended again, under the lock,
+    // if the other went meanwhile or the file was replaced (compactTexts,
+    // clear).
+    std::optional<TextRef> textRef = textPrint ? textWithPrint(*textPrint) : std::nullopt;
+    if (textAt && textFile == m_textFile) {
+        if (textRef)
+            m_textGarbage += textBytes;
+        else
+            textRef = TextRef {*textAt, textBytes};
+    }
+    if (hasText && !textRef) {
+        textFile = textFileLocked();
         textAt = textFile ? textFile->append(text) : std::nullopt;
+        if (textAt)
+            textRef = TextRef {*textAt, textBytes};
     }
     const auto refuse = [&] {
-        if (textAt)
-            m_textGarbage += static_cast<std::uint64_t>(text.size());
+        if (textRef && !m_textUses.contains(textRef->offset))
+            m_textGarbage += textRef->bytes; // appended for this document alone
         return false;
     };
     if (m_docEntry.size() >= kMaxIds)
         return refuse();
-    ContentId content = print ? findContent(*print) : kNoContent; // a copy's, say
+    // As looked up before, unless the contents were numbered anew meanwhile
+    // (merge); one added meanwhile is in memory. (One added and written to a
+    // segment meanwhile is missed: the grams get a content of their own.)
+    ContentId content = known;
+    if (print && generation != m_generation) {
+        content = findContent(*print);
+    } else if (print && content == kNoContent) {
+        if (const auto it = m_memoryContents.find(*print); it != m_memoryContents.end())
+            content = it->second;
+    }
     if (hasGrams && content == kNoContent) {
-        if (!m_memory.empty() && m_memory.size() + keys.size() > kFlushPairs)
-            flushLocked();
-        if ((!m_memory.empty() && m_memory.size() + keys.size() > kMaxMemoryPairs) || m_contentEnd >= kMaxIds)
+        const std::size_t inMemory = m_memory.size() + (m_writing ? m_writing->size() : 0);
+        if ((inMemory > 0 && inMemory + keys.size() > kMaxMemoryPairs) || m_contentEnd >= kMaxIds)
             return refuse(); // segments cannot be written
         content = m_contentEnd++;
         if (print)
@@ -1641,54 +2216,143 @@ bool ContentIndex::add(EntryId entry, std::span<const grams::Key> keys, bool emp
         for (const grams::Key key : keys)
             m_memory.push_back((key << kIdBits) | content);
     }
-    if (const DocId old = findDoc(entry); old != kNoDoc)
-        kill(old);
-    const auto doc = static_cast<DocId>(m_docEntry.size());
-    std::uint8_t state = empty ? kEmpty : kLive;
+    const DocId doc = addDocLocked(entry, empty ? kEmpty : kLive, stamp, since, content);
+    if (textRef)
+        useText(doc, *textRef, textPrint);
+    replaceLocked(entry, doc);
+    if (m_memory.size() >= kFlushPairs)
+        flush(lock); // last: nothing is looked up after
+    return true;
+}
+
+bool ContentIndex::addCopy(
+    EntryId entry, EntryId original, std::uint32_t originalStamp, std::uint32_t stamp, std::uint64_t since)
+{
+    std::unique_lock lock(m_mutex);
+    const DocId from = findDoc(original);
+    if (from == kNoDoc || !isCurrent(m_docState[from]) || m_docStamp[from] != originalStamp
+        || m_docEntry.size() >= kMaxIds)
+        return false;
+    const DocId doc = addDocLocked(entry, m_docState[from] & kBase, stamp, since, m_docContent[from]);
+    if (const auto it = m_texts.find(from); it != m_texts.end()) {
+        const auto use = m_textUses.find(it->second.offset);
+        useText(doc, it->second, use != m_textUses.end() ? use->second.print : std::nullopt);
+    }
+    replaceLocked(entry, doc);
+    return true;
+}
+
+ContentIndex::DocId ContentIndex::addDocLocked(
+    EntryId entry, std::uint8_t state, std::uint32_t stamp, std::uint64_t since, ContentId content)
+{
     if (const auto it = m_changedWhileReading.find(entry); it != m_changedWhileReading.end() && it->second > since)
         state |= kDirty; // written to while it was being read
+    const auto doc = static_cast<DocId>(m_docEntry.size());
     m_docEntry.push_back(entry);
     m_docState.push_back(state);
     m_docStamp.push_back(stamp);
     m_docContent.push_back(content);
-    insertOrder(doc);
-    if (textAt)
-        m_texts[doc] = {*textAt, static_cast<std::uint32_t>(text.size())};
     m_changed = true;
-    if (m_memory.size() >= kFlushPairs)
-        flushLocked();
-    return true;
+    return doc;
 }
 
-bool ContentIndex::flushLocked()
+// After the new document has its text: the old one's is often the same, and
+// would be counted as left behind.
+void ContentIndex::replaceLocked(EntryId entry, DocId doc)
 {
-    if (m_memory.empty())
+    if (const DocId old = findDoc(entry); old != kNoDoc) // not `doc`: that one is not in the order yet
+        kill(old);
+    insertOrder(doc);
+}
+
+// What writing a segment uses, kept for the next one: fresh memory costs a
+// page fault every 4 KB, and memory handed back in many pieces (the encoded
+// stretches) stays with the process.
+struct ContentIndex::FlushBuffers {
+    std::vector<std::uint64_t> memory; // m_memory's next
+    std::vector<std::uint64_t> sorted;
+    std::vector<std::uint64_t> scratch;
+    std::vector<EncodedKeys> encoded;
+};
+
+// The grams in memory into a segment of their own: sorted, encoded and
+// written without the lock. Memory hands its pairs over as they are, and
+// fills anew; until the segment takes their place, searches find them there
+// (m_writing), and copies of their files too. With the lock held throughout,
+// every thread with a file to add waited: 12 s of a first run's 75, the 16
+// threads idle (wsbench --service --content); copying them under the lock,
+// 2 ms a segment, for all of them. One at a time; memory takes another
+// segment's worth meanwhile (add() waits past that).
+bool ContentIndex::flush(std::unique_lock<std::shared_mutex>& lock)
+{
+    if (m_memory.empty() || m_flushing)
         return true;
-    std::sort(m_memory.begin(), m_memory.end());
+    m_flushing = true;
+    auto writing = std::make_shared<std::vector<std::uint64_t>>();
+    writing->swap(m_memory);
+    std::unique_ptr<FlushBuffers> buffers
+        = m_flushBuffers ? std::move(m_flushBuffers) : std::make_unique<FlushBuffers>();
+    m_memory.swap(buffers->memory); // what the segment before had
+    m_memory.reserve(writing->size());
+    m_writing = writing;
     std::vector<Print> prints; // ascending, as the map has them
     prints.reserve(m_memoryContents.size());
     for (const auto& [print, content] : m_memoryContents)
         prints.push_back({print.high, print.low, content});
+    const ContentId begin = memoryBegin();
+    const ContentId end = m_contentEnd;
     const std::uint64_t number = m_nextSegment++;
-    SegmentWriter writer(segmentPath(number), memoryBegin(), m_contentEnd, 0, prints);
-    std::vector<ContentId> contents;
-    for (std::size_t i = 0; i < m_memory.size();) {
-        const grams::Key key = m_memory[i] >> kIdBits;
-        contents.clear();
-        for (; i < m_memory.size() && (m_memory[i] >> kIdBits) == key; ++i)
-            contents.push_back(static_cast<ContentId>(m_memory[i] & kIdMask));
-        writer.add(key, contents);
-    }
-    if (!writer.finish())
-        return false;
-    auto segment = Segment::open(segmentPath(number), number);
-    if (!segment) {
+    const QString path = segmentPath(number);
+    const std::uint64_t generation = m_generation;
+    lock.unlock();
+
+    // On a few threads: sorted by stretches of keys (sortPairs), each
+    // stretch encoded, written in order (as merge does). On one, a segment
+    // took 42 ms, and the 16 threads reading files spent a third of their
+    // time waiting for room (wsbench --content-index, without an antivirus).
+    const int threads = std::clamp(static_cast<int>(std::thread::hardware_concurrency()) / 4, 1, 8);
+    std::vector<std::size_t> ends;
+    sortPairs(*writing, threads, buffers->sorted, buffers->scratch, &ends);
+    const std::vector<std::uint64_t>& pairs = buffers->sorted;
+    std::vector<EncodedKeys>& encoded = buffers->encoded;
+    encoded.resize(ends.size());
+    for (EncodedKeys& e : encoded)
+        e.clear();
+    inParallel(threads, encoded.size(), [&](std::size_t part, int) {
+        std::vector<ContentId> contents;
+        for (std::size_t i = part > 0 ? ends[part - 1] : 0; i < ends[part];) {
+            const grams::Key key = pairs[i] >> kIdBits;
+            contents.clear();
+            for (; i < ends[part] && (pairs[i] >> kIdBits) == key; ++i)
+                contents.push_back(static_cast<ContentId>(pairs[i] & kIdMask));
+            encoded[part].add(key, contents, begin, end);
+        }
+    });
+    SegmentWriter writer(path, begin, end, 0, prints);
+    for (const EncodedKeys& e : encoded)
+        writer.add(e);
+    auto segment = writer.finish() ? Segment::open(path, number) : nullptr;
+
+    lock.lock();
+    m_flushing = false;
+    m_flushed.notify_all();
+    if (generation != m_generation) { // cleared, or merged (with these pairs), meanwhile
         m_obsolete.push_back(number);
         return false;
     }
+    m_writing.reset();
+    if (!segment) { // the pairs go back to memory, before those that came since
+        m_memory.insert(m_memory.begin(), writing->begin(), writing->end());
+        m_obsolete.push_back(number);
+        return false;
+    }
+    if (writing.use_count() == 1) { // the next memory, empty
+        buffers->memory.swap(*writing);
+        buffers->memory.clear();
+    }
+    m_flushBuffers = std::move(buffers);
     m_segments.push_back(std::move(segment));
-    m_memory = decltype(m_memory)();
-    m_memoryContents.clear();
+    std::erase_if(m_memoryContents, [&](const auto& c) { return c.second < end; });
     return true;
 }
 
@@ -1720,33 +2384,118 @@ bool ContentIndex::needsMerge() const
     return mergeAllDueLocked() || dueTailLocked() > 0;
 }
 
-bool ContentIndex::mergeDue()
+template <typename F>
+void ContentIndex::forEachKey(
+    const Segments& segments, std::span<const std::uint64_t> memory, grams::Key from, grams::Key to, F&& f)
+{
+    std::vector<Segment::Cursor> cursors;
+    cursors.reserve(segments.size());
+    for (const auto& s : segments)
+        cursors.emplace_back(*s, from);
+    // The cursors with keys left, the one with the smallest key on top; of
+    // those with the same key, the first segment's: popped in that order,
+    // they give their contents in ascending order.
+    const auto later = [&](std::uint32_t a, std::uint32_t b) {
+        const grams::Key ka = cursors[a].key();
+        const grams::Key kb = cursors[b].key();
+        return ka != kb ? ka > kb : a > b;
+    };
+    std::vector<std::uint32_t> heap;
+    for (std::uint32_t i = 0; i < cursors.size(); ++i) {
+        if (!cursors[i].done() && cursors[i].key() < to)
+            heap.push_back(i);
+    }
+    std::make_heap(heap.begin(), heap.end(), later);
+    std::size_t m = static_cast<std::size_t>(
+        std::lower_bound(memory.begin(), memory.end(), from << kIdBits) - memory.begin());
+    std::vector<ContentId> contents;
+    for (;;) {
+        grams::Key key = heap.empty() ? to : cursors[heap.front()].key();
+        if (m < memory.size())
+            key = std::min(key, memory[m] >> kIdBits);
+        if (key >= to)
+            break;
+        contents.clear();
+        while (!heap.empty() && cursors[heap.front()].key() == key) {
+            std::pop_heap(heap.begin(), heap.end(), later);
+            Segment::Cursor& c = cursors[heap.back()];
+            c.contents(contents);
+            c.next();
+            if (c.done() || c.key() >= to)
+                heap.pop_back();
+            else
+                std::push_heap(heap.begin(), heap.end(), later);
+        }
+        for (; m < memory.size() && (memory[m] >> kIdBits) == key; ++m)
+            contents.push_back(static_cast<ContentId>(memory[m] & kIdMask));
+        f(key, contents);
+    }
+}
+
+std::vector<grams::Key> ContentIndex::splitKeys(const Segments& segments, std::span<const std::uint64_t> memory,
+    std::size_t parts, int threads, std::uint64_t& total)
+{
+    std::vector<grams::Key> out;
+    // Where the work is, from every segment (on the threads: their tables
+    // are read through) and from memory, by key.
+    std::vector<std::vector<std::pair<grams::Key, std::uint64_t>>> of(segments.size() + 1);
+    inParallel(threads, segments.size(), [&](std::size_t s, int) { segments[s]->work(of[s]); });
+    constexpr std::size_t kPairsEach = 512;
+    for (std::size_t i = 0; i < memory.size(); i += kPairsEach)
+        of.back().emplace_back(memory[i] >> kIdBits, std::min(kPairsEach, memory.size() - i));
+    std::vector<std::pair<grams::Key, std::uint64_t>> work;
+    for (const auto& w : of)
+        work.insert(work.end(), w.begin(), w.end());
+    std::sort(work.begin(), work.end());
+    total = 0;
+    for (const auto& w : work)
+        total += w.second;
+    std::uint64_t sum = 0;
+    for (const auto& [key, amount] : work) {
+        if (out.size() + 1 >= parts)
+            break;
+        if (sum >= total / parts * (out.size() + 1) && key > 0 && (out.empty() || key > out.back()))
+            out.push_back(key);
+        sum += amount;
+    }
+    return out;
+}
+
+bool ContentIndex::needsFullMerge() const
+{
+    std::shared_lock lock(m_mutex);
+    return mergeAllDueLocked();
+}
+
+bool ContentIndex::mergeTails()
 {
     for (;;) {
         std::size_t count = 0;
         {
             std::shared_lock lock(m_mutex);
-            if (mergeAllDueLocked())
-                count = std::numeric_limits<std::size_t>::max();
-            else
-                count = dueTailLocked();
+            count = dueTailLocked();
         }
         if (count == 0)
             return true;
-        if (count == std::numeric_limits<std::size_t>::max())
-            return merge();
         if (!mergeTail(count))
             return false;
     }
 }
 
-// The last `count` segments into one of the next level. Contents keep their
-// numbers (merge() renumbers them); those no document has any more are dropped.
+bool ContentIndex::mergeDue(int threads)
+{
+    if (needsFullMerge())
+        return merge(threads);
+    return mergeTails();
+}
+
+// The last `count` segments into one of the next level, all their contents
+// kept: documents may be added meanwhile, and one may take a content that no
+// document had when this began (a copy of a file that was deleted). merge()
+// drops those, and numbers the contents anew.
 bool ContentIndex::mergeTail(std::size_t count)
 {
-    std::vector<std::shared_ptr<const Segment>> segments;
-    std::vector<bool> live;
-    std::size_t docCount = 0;
+    Segments segments;
     std::uint64_t number = 0;
     QString path;
     {
@@ -1754,8 +2503,6 @@ bool ContentIndex::mergeTail(std::size_t count)
         if (count < 2 || count > m_segments.size())
             return false;
         segments.assign(m_segments.end() - static_cast<std::ptrdiff_t>(count), m_segments.end());
-        live = liveContents();
-        docCount = m_docEntry.size();
         number = m_nextSegment++;
         path = segmentPath(number);
     }
@@ -1763,51 +2510,22 @@ bool ContentIndex::mergeTail(std::size_t count)
     for (const auto& s : segments)
         level = std::max(level, s->level() + 1);
     level = std::min(level, kTopLevel - 1);
-    const auto kept = [&](ContentId c) { return c < live.size() && live[c]; };
 
     std::vector<Print> prints;
-    for (const auto& s : segments) {
-        for (const Print& p : s->prints()) {
-            if (kept(p.content))
-                prints.push_back(p);
-        }
-    }
+    for (const auto& s : segments)
+        prints.insert(prints.end(), s->prints().begin(), s->prints().end());
     std::sort(prints.begin(), prints.end(),
         [](const Print& a, const Print& b) { return a.fingerprint() < b.fingerprint(); });
     SegmentWriter writer(path, segments.front()->contentBegin(), segments.back()->contentEnd(), level, prints);
-    std::vector<Segment::Cursor> cursors;
-    for (const auto& s : segments)
-        cursors.emplace_back(*s);
-    std::vector<ContentId> contents;
-    for (;;) {
-        grams::Key key = std::numeric_limits<grams::Key>::max();
-        bool any = false;
-        for (const Segment::Cursor& c : cursors) {
-            if (!c.done()) {
-                key = std::min(key, c.key());
-                any = true;
-            }
-        }
-        if (!any)
-            break;
-        contents.clear();
-        for (Segment::Cursor& c : cursors) {
-            if (!c.done() && c.key() == key) {
-                c.contents(contents); // ascending: the segments hold ascending ranges
-                c.next();
-            }
-        }
-        std::erase_if(contents, [&](ContentId c) { return !kept(c); });
-        writer.add(key, contents);
-    }
+    forEachKey(segments, {}, 0, std::numeric_limits<grams::Key>::max(),
+        [&](grams::Key key, const std::vector<ContentId>& contents) { writer.add(key, contents); });
     auto merged = writer.finish() ? Segment::open(path, number) : nullptr;
 
     std::unique_lock lock(m_mutex);
-    // The same segments must still be there, side by side (clear() may have
-    // dropped them meanwhile), and no document added: it could have a content
-    // dropped here.
+    // The same segments must still be there, side by side: clear() may have
+    // dropped them meanwhile. New ones may have come after them.
     const auto at = std::find(m_segments.begin(), m_segments.end(), segments.front());
-    if (!merged || m_docEntry.size() != docCount || static_cast<std::size_t>(m_segments.end() - at) < count
+    if (!merged || static_cast<std::size_t>(m_segments.end() - at) < count
         || !std::equal(segments.begin(), segments.end(), at)) {
         m_obsolete.push_back(number);
         return false;
@@ -1821,17 +2539,25 @@ bool ContentIndex::mergeTail(std::size_t count)
 }
 
 // Everything into one segment, without the dead documents and the contents no
-// document has, and the contents numbered anew: by the smallest scrambled key
-// among their grams (a MinHash), then by how many grams they have. Contents
-// that have most grams in common most likely share their smallest one, so
-// those of similar files (versions of a file, files of a kind) end up side by
-// side, and a gram's contents come in runs, which postings write in next to
-// nothing.
-bool ContentIndex::merge()
+// document has, and the contents numbered anew so that those of similar files
+// (versions of a file, files of a kind) end up side by side: a gram's
+// contents then come in runs and clusters, which postings write in next to
+// nothing. First by the smallest scrambled key among their grams (a MinHash),
+// then by how many grams they have: contents that have most grams in common
+// most likely share their smallest one. Then by a recursive graph bisection
+// (Bisection) over a sample of the grams many contents have: postings of 59
+// MB rather than 79 (of 330 000 files), for half a second on 16 threads and
+// some 50 MB meanwhile; over all of them, 57 MB for 18 s and 800 MB.
+//
+// On one thread it took 13 s for 330 000 files, most of it decoding and
+// encoding postings, so stretches of keys are merged on `threads` threads
+// (1 to 1.5 s on 8 to 16: wsbench --service --content) and written one after
+// the other as they come: the file is the same as one thread writes.
+bool ContentIndex::merge(int threads)
 {
     // Read from what is there now, without the lock: segments never change,
     // and documents are only added between merges (by the same caller).
-    std::vector<std::shared_ptr<const Segment>> segments;
+    Segments segments;
     std::vector<std::uint64_t> memory;
     std::vector<Print> prints;
     std::vector<bool> live;
@@ -1841,6 +2567,9 @@ bool ContentIndex::merge()
     QString path;
     {
         std::unique_lock lock(m_mutex);
+        // A flush running now would take memory's grams into a segment
+        // this does not know: the merge would come to nothing.
+        m_flushed.wait(lock, [&] { return !m_flushing; });
         segments = m_segments;
         memory = m_memory;
         for (const auto& [print, content] : m_memoryContents)
@@ -1853,70 +2582,154 @@ bool ContentIndex::merge()
     }
     for (const auto& s : segments)
         prints.insert(prints.end(), s->prints().begin(), s->prints().end());
-    std::sort(memory.begin(), memory.end());
+    {
+        std::vector<std::uint64_t> sorted;
+        std::vector<std::uint64_t> scratch;
+        sortPairs(memory, std::max(threads, 1), sorted, scratch);
+        memory.swap(sorted);
+    }
 
-    // Calls f(key, contents) for every key of every segment and of memory, in
-    // order. Segments hold ascending ranges of contents, memory the newest:
-    // concatenated, each key's contents stay sorted.
-    const auto forEachKey = [&](auto&& f) {
-        std::vector<Segment::Cursor> cursors;
-        for (const auto& s : segments)
-            cursors.emplace_back(*s);
-        std::size_t m = 0;
-        std::vector<ContentId> contents;
-        for (;;) {
-            grams::Key key = std::numeric_limits<grams::Key>::max();
-            bool any = false;
-            for (const Segment::Cursor& c : cursors) {
-                if (!c.done()) {
-                    key = std::min(key, c.key());
-                    any = true;
-                }
-            }
-            if (m < memory.size()) {
-                key = std::min(key, memory[m] >> kIdBits);
-                any = true;
-            }
-            if (!any)
-                break;
-            contents.clear();
-            for (Segment::Cursor& c : cursors) {
-                if (!c.done() && c.key() == key) {
-                    c.contents(contents);
-                    c.next();
-                }
-            }
-            for (; m < memory.size() && (memory[m] >> kIdBits) == key; ++m)
-                contents.push_back(static_cast<ContentId>(memory[m] & kIdMask));
-            f(key, contents);
-        }
+    threads = std::max(threads, 1);
+    // Several stretches per thread: some take longer than others.
+    std::uint64_t work = 0;
+    const std::vector<grams::Key> cuts
+        = splitKeys(segments, memory, threads > 1 ? std::size_t(threads) * 8 : 1, threads, work);
+    const std::size_t parts = cuts.size() + 1;
+    const auto from = [&](std::size_t part) { return part == 0 ? grams::Key {0} : cuts[part - 1]; };
+    const auto to = [&](std::size_t part) {
+        return part < cuts.size() ? cuts[part] : std::numeric_limits<grams::Key>::max();
     };
+    // The grams the bisection goes by: one in `sampling` (by a hash of the
+    // key) of those that `common` contents have or more, some 6 million
+    // pairs all told. Twice as many took twice as long, for postings 2%
+    // smaller; a quarter as many, 5% larger.
+    constexpr std::uint64_t kBisectionWork = std::uint64_t {8} << 20;
+    constexpr std::uint64_t kSampleSeed = 0x9E37'79B9'7F4A'7C15ull;
+    const std::uint64_t sampling = std::bit_ceil(std::max<std::uint64_t>(work / kBisectionWork, 1));
+    const std::uint64_t common = std::clamp<std::uint64_t>(contentEnd / 2048, kInline + 1, 64);
 
     std::vector<ContentId> newId(contentEnd, kNoContent);
+    std::vector<ContentId> listed; // the contents the table lists, by their new numbers, most listed first
     ContentId kept = 0;
     {
-        std::vector<std::uint64_t> smallest(contentEnd, std::numeric_limits<std::uint64_t>::max());
-        std::vector<std::uint32_t> size(contentEnd, 0);
-        forEachKey([&](grams::Key key, const std::vector<ContentId>& contents) {
-            const std::uint64_t scrambled = scramble(key);
-            for (const ContentId c : contents) {
-                if (c < contentEnd && live[c]) {
-                    smallest[c] = std::min(smallest[c], scrambled);
-                    ++size[c];
-                }
+        // Each thread its own minimums and counts, added up after: no two
+        // threads write the same memory. As many threads as that leaves
+        // within 64 MB.
+        struct Counts {
+            std::vector<std::uint64_t> smallest;
+            std::vector<std::uint32_t> size; // grams
+            std::vector<std::uint32_t> listings; // keys few enough contents have to be listed in the table
+        };
+        const int counting = static_cast<int>(
+            std::clamp<std::uint64_t>((std::uint64_t {64} << 20) / ((std::uint64_t {contentEnd} + 1) * 16), 1,
+                static_cast<std::uint64_t>(threads)));
+        std::vector<Counts> countsOf(static_cast<std::size_t>(counting));
+        // By stretch, the contents of each sampled gram in turn.
+        std::vector<std::vector<ContentId>> sampled(parts);
+        std::vector<std::vector<std::size_t>> sampledEnds(parts);
+        inParallel(counting, parts, [&](std::size_t part, int worker) {
+            Counts& counts = countsOf[static_cast<std::size_t>(worker)];
+            if (counts.smallest.empty()) {
+                counts.smallest.assign(contentEnd, std::numeric_limits<std::uint64_t>::max());
+                counts.size.assign(contentEnd, 0);
+                counts.listings.assign(contentEnd, 0);
             }
+            forEachKey(
+                segments, memory, from(part), to(part), [&](grams::Key key, const std::vector<ContentId>& contents) {
+                    const std::uint64_t scrambled = scramble(key);
+                    std::uint64_t alive = 0;
+                    for (const ContentId c : contents) {
+                        if (c < contentEnd && live[c]) {
+                            counts.smallest[c] = std::min(counts.smallest[c], scrambled);
+                            ++counts.size[c];
+                            ++alive;
+                        }
+                    }
+                    const bool few = alive <= kInline;
+                    if (!few && (alive < common || (scramble(key ^ kSampleSeed) & (sampling - 1)) != 0))
+                        return;
+                    for (const ContentId c : contents) {
+                        if (c >= contentEnd || !live[c])
+                            continue;
+                        if (few)
+                            ++counts.listings[c];
+                        else
+                            sampled[part].push_back(c);
+                    }
+                    if (!few)
+                        sampledEnds[part].push_back(sampled[part].size());
+                });
         });
+        Counts all {std::vector<std::uint64_t>(contentEnd, std::numeric_limits<std::uint64_t>::max()),
+            std::vector<std::uint32_t>(contentEnd, 0), std::vector<std::uint32_t>(contentEnd, 0)};
+        for (Counts& counts : countsOf) {
+            if (counts.smallest.empty())
+                continue; // took no stretch
+            for (ContentId c = 0; c < contentEnd; ++c) {
+                all.smallest[c] = std::min(all.smallest[c], counts.smallest[c]);
+                all.size[c] += counts.size[c];
+                all.listings[c] += counts.listings[c];
+            }
+            counts = {};
+        }
         std::vector<ContentId> order;
         for (ContentId c = 0; c < contentEnd; ++c) {
-            if (size[c] > 0)
+            if (all.size[c] > 0)
                 order.push_back(c);
         }
         std::sort(order.begin(), order.end(), [&](ContentId a, ContentId b) {
-            return std::tie(smallest[a], size[a], a) < std::tie(smallest[b], size[b], b);
+            return std::tie(all.smallest[a], all.size[a], a) < std::tie(all.smallest[b], all.size[b], b);
         });
-        for (const ContentId c : order)
-            newId[c] = kept++;
+        kept = static_cast<ContentId>(order.size());
+        for (ContentId place = 0; place < kept; ++place)
+            newId[order[place]] = place;
+
+        // The bisection, of the places in that order, by the sampled grams.
+        std::uint32_t termCount = 0;
+        for (const auto& ends : sampledEnds)
+            termCount += static_cast<std::uint32_t>(ends.size());
+        if (termCount > 0) {
+            std::vector<std::uint64_t> termStart(std::size_t {kept} + 1, 0);
+            for (const auto& contents : sampled) {
+                for (const ContentId c : contents)
+                    ++termStart[std::size_t {newId[c]} + 1];
+            }
+            for (ContentId place = 0; place < kept; ++place)
+                termStart[place + 1] += termStart[place];
+            std::vector<std::uint32_t> terms(termStart[kept]);
+            std::vector<std::uint64_t> fill(termStart.begin(), termStart.end() - 1);
+            std::uint32_t term = 0;
+            for (std::size_t part = 0; part < parts; ++part) {
+                std::size_t i = 0;
+                for (const std::size_t end : sampledEnds[part]) {
+                    for (; i < end; ++i)
+                        terms[fill[newId[sampled[part][i]]]++] = term;
+                    ++term;
+                }
+                sampled[part] = {};
+                sampledEnds[part] = {};
+            }
+            fill = {};
+            std::vector<std::uint32_t> places(kept);
+            std::iota(places.begin(), places.end(), 0u);
+            Bisection(termStart, terms, termCount).order(places, threads);
+            for (ContentId id = 0; id < kept; ++id)
+                newId[order[places[id]]] = id;
+        }
+
+        for (ContentId c = 0; c < contentEnd; ++c) {
+            if (newId[c] != kNoContent && all.listings[c] > 0)
+                listed.push_back(c);
+        }
+        std::sort(listed.begin(), listed.end(), [&](ContentId a, ContentId b) {
+            return all.listings[a] > all.listings[b] || (all.listings[a] == all.listings[b] && newId[a] < newId[b]);
+        });
+        for (ContentId& c : listed)
+            c = newId[c];
     }
+    std::vector<std::uint32_t> placeOf(kept, EncodedKeys::kNoPlace); // in `listed`, by new number
+    for (std::size_t place = 0; place < listed.size(); ++place)
+        placeOf[listed[place]] = static_cast<std::uint32_t>(place);
     std::vector<Print> keptPrints;
     for (const Print& p : prints) {
         if (p.content < contentEnd && newId[p.content] != kNoContent)
@@ -1926,21 +2739,84 @@ bool ContentIndex::merge()
         [](const Print& a, const Print& b) { return a.fingerprint() < b.fingerprint(); });
     prints = {};
 
-    SegmentWriter writer(path, 0, kept, kTopLevel, keptPrints);
-    std::vector<ContentId> mapped;
-    forEachKey([&](grams::Key key, const std::vector<ContentId>& contents) {
+    // A key's contents numbered anew, ascending again: sorted when they are
+    // few, through a bitmap of all contents when they are many.
+    const auto renumber = [&](const std::vector<ContentId>& contents, std::vector<ContentId>& mapped,
+                              std::vector<std::uint64_t>& bits) {
         mapped.clear();
+        if (contents.size() * 64 < kept) {
+            for (const ContentId c : contents) {
+                if (c < contentEnd && newId[c] != kNoContent)
+                    mapped.push_back(newId[c]);
+            }
+            std::sort(mapped.begin(), mapped.end());
+            return;
+        }
+        bits.assign((std::size_t {kept} + 63) / 64, 0);
         for (const ContentId c : contents) {
             if (c < contentEnd && newId[c] != kNoContent)
-                mapped.push_back(newId[c]);
+                bits[newId[c] >> 6] |= std::uint64_t {1} << (newId[c] & 63);
         }
-        std::sort(mapped.begin(), mapped.end());
-        writer.add(key, mapped);
-    });
+        for (std::size_t w = 0; w < bits.size(); ++w) {
+            for (std::uint64_t b = bits[w]; b != 0; b &= b - 1)
+                mapped.push_back(static_cast<ContentId>(w * 64 + static_cast<std::size_t>(std::countr_zero(b))));
+        }
+    };
+
+    // The stretches are encoded on `threads` threads, a few ahead of this
+    // one, which writes them in order.
+    SegmentWriter writer(path, 0, kept, kTopLevel, keptPrints, listed);
+    {
+        std::vector<EncodedKeys> encoded(parts);
+        std::mutex readyMutex;
+        std::condition_variable readyChanged;
+        std::vector<char> ready(parts, 0); // under readyMutex
+        std::size_t written = 0; // stretches written, under readyMutex
+        const std::size_t ahead = static_cast<std::size_t>(threads) * 2;
+        std::atomic<std::size_t> next {0};
+        const auto encode = [&] {
+            std::vector<ContentId> mapped;
+            std::vector<std::uint64_t> bits;
+            for (std::size_t part = next++; part < parts; part = next++) {
+                {
+                    std::unique_lock lock(readyMutex);
+                    readyChanged.wait(lock, [&] { return part < written + ahead; });
+                }
+                EncodedKeys& out = encoded[part];
+                forEachKey(segments, memory, from(part), to(part),
+                    [&](grams::Key key, const std::vector<ContentId>& contents) {
+                        renumber(contents, mapped, bits);
+                        out.add(key, mapped, 0, kept, placeOf);
+                    });
+                {
+                    std::lock_guard lock(readyMutex);
+                    ready[part] = 1;
+                }
+                readyChanged.notify_all();
+            }
+        };
+        std::vector<std::jthread> encoders;
+        for (std::size_t t = 0; t < std::min(static_cast<std::size_t>(threads), parts); ++t)
+            encoders.emplace_back(encode);
+        for (std::size_t part = 0; part < parts; ++part) {
+            {
+                std::unique_lock lock(readyMutex);
+                readyChanged.wait(lock, [&] { return ready[part] != 0; });
+            }
+            writer.add(encoded[part]);
+            encoded[part] = {};
+            {
+                std::lock_guard lock(readyMutex);
+                ++written;
+            }
+            readyChanged.notify_all();
+        }
+    } // joins
     auto merged = writer.finish() ? Segment::open(path, number) : nullptr;
 
     std::unique_lock lock(m_mutex);
-    if (!merged || m_docEntry.size() != docCount || m_memory.size() != memory.size() || m_contentEnd != contentEnd) {
+    const std::size_t inMemory = m_memory.size() + (m_writing ? m_writing->size() : 0); // what it took, unless more came
+    if (!merged || m_docEntry.size() != docCount || inMemory != memory.size() || m_contentEnd != contentEnd) {
         m_obsolete.push_back(number);
         return false;
     }
@@ -1970,8 +2846,13 @@ bool ContentIndex::merge()
     }
     for (const auto& s : m_segments)
         m_obsolete.push_back(s->number());
+    // A flush started meanwhile (by a search's file) wrote contents this one
+    // has, by their old numbers: it leaves its segment out.
+    ++m_generation;
     m_segments = {std::move(merged)};
     m_memory = decltype(m_memory)();
+    m_writing.reset();
+    m_flushBuffers.reset(); // till files are read again
     m_memoryContents.clear();
     m_contentEnd = kept;
     m_texts.swap(texts);
@@ -1995,32 +2876,35 @@ bool ContentIndex::needsTextCompaction() const
 }
 
 // By the indexer, between its reads; a search may add documents meanwhile.
+// Each text once, however many documents have it.
 bool ContentIndex::compactTexts()
 {
-    std::unordered_map<DocId, TextRef> texts;
+    std::vector<TextRef> texts;
     std::shared_ptr<TextFile> old;
     std::uint64_t number = 0;
     {
         std::unique_lock lock(m_mutex);
         if (!m_textFile)
             return true;
-        texts = m_texts;
+        for (const auto& [offset, use] : m_textUses)
+            texts.push_back({offset, use.bytes});
         old = m_textFile;
         number = m_nextSegment++;
     }
+    std::sort(texts.begin(), texts.end(), [](const TextRef& a, const TextRef& b) { return a.offset < b.offset; });
     auto fresh = TextFile::open(textPath(number), number, true);
-    std::unordered_map<DocId, TextRef> moved;
+    std::unordered_map<std::uint64_t, std::uint64_t> moved; // offsets, old to new
     QByteArray buffer;
     bool ok = fresh != nullptr;
-    for (const auto& [doc, ref] : texts) {
+    for (const TextRef& ref : texts) {
         if (!ok)
             break;
         if (!old->read(ref.offset, ref.bytes, buffer))
-            continue; // lost: the document's file is read again when a search needs it
+            continue; // lost: the documents' files are read again when a search needs them
         const auto at = fresh->append(buffer);
         ok = at.has_value();
         if (ok)
-            moved.emplace(doc, TextRef {*at, ref.bytes});
+            moved.emplace(ref.offset, *at);
     }
     std::unique_lock lock(m_mutex);
     if (!ok || m_textFile != old) {
@@ -2028,22 +2912,32 @@ bool ContentIndex::compactTexts()
         m_obsoleteTexts.push_back(number);
         return false;
     }
+    for (const auto& [offset, use] : m_textUses) {
+        if (moved.contains(offset) || !old->read(offset, use.bytes, buffer))
+            continue;
+        if (const auto at = fresh->append(buffer)) // came meanwhile (from a search)
+            moved.emplace(offset, *at);
+    }
     std::unordered_map<DocId, TextRef> next;
+    std::unordered_map<std::uint64_t, TextUse> uses;
+    std::map<grams::Fingerprint, std::uint64_t> byPrint;
     for (const auto& [doc, ref] : m_texts) {
-        std::optional<TextRef> now;
-        if (const auto was = texts.find(doc); was != texts.end() && was->second == ref) {
-            if (const auto it = moved.find(doc); it != moved.end())
-                now = it->second;
-        } else if (old->read(ref.offset, ref.bytes, buffer)) { // came meanwhile (from a search)
-            if (const auto at = fresh->append(buffer))
-                now = TextRef {*at, ref.bytes};
-        }
-        if (now)
-            next.emplace(doc, *now);
-        else
+        const auto to = moved.find(ref.offset);
+        if (to == moved.end()) {
             m_docState[doc] |= kDirty; // its text could not be read: the file is read again
+            continue;
+        }
+        next.emplace(doc, TextRef {to->second, ref.bytes});
+        const auto was = m_textUses.find(ref.offset);
+        const auto [use, first] = uses.try_emplace(
+            to->second, TextUse {0, ref.bytes, was != m_textUses.end() ? was->second.print : std::nullopt});
+        ++use->second.docs;
+        if (first && use->second.print)
+            byPrint.emplace(*use->second.print, to->second);
     }
     m_texts.swap(next);
+    m_textUses.swap(uses);
+    m_textByPrint.swap(byPrint);
     m_obsoleteTexts.push_back(old->number());
     m_textFile = std::move(fresh);
     m_textGarbage = 0;
@@ -2111,6 +3005,7 @@ private:
 // Layout: version:u32 nextSegment:u64 contentEnd:u32 segmentCount:u32 number:u64[]
 //   docCount:u32 entry:u32[] state:u8[] stamp:u32[] content:u32[] memoryCount:u32 pair:u64[]
 //   textFile:u64 (0: none) textGarbage:u64 textCount:u32 (doc:u32 offset:u64 bytes:u32)[]
+//   printCount:u32 (offset:u64 high:u64 low:u32)[]   the texts' fingerprints (textWithPrint)
 std::vector<char> ContentIndex::serialize(const std::vector<EntryId>& newIds, std::vector<std::uint64_t>& segments) const
 {
     std::shared_lock lock(m_mutex);
@@ -2142,7 +3037,10 @@ std::vector<char> ContentIndex::serialize(const std::vector<EntryId>& newIds, st
     b.bytes(states.data(), states.size());
     b.bytes(m_docStamp.data(), m_docStamp.size() * sizeof(std::uint32_t));
     b.bytes(contents.data(), contents.size() * sizeof(ContentId));
-    b.put(static_cast<std::uint32_t>(m_memory.size()));
+    const std::size_t writing = m_writing ? m_writing->size() : 0; // the older ones
+    b.put(static_cast<std::uint32_t>(writing + m_memory.size()));
+    if (m_writing)
+        b.bytes(m_writing->data(), writing * sizeof(std::uint64_t));
     b.bytes(m_memory.data(), m_memory.size() * sizeof(std::uint64_t));
     b.put(m_textFile ? m_textFile->number() : std::uint64_t {0});
     b.put(m_textGarbage);
@@ -2152,6 +3050,12 @@ std::vector<char> ContentIndex::serialize(const std::vector<EntryId>& newIds, st
         b.put(ref.offset);
         b.put(ref.bytes);
     }
+    b.put(static_cast<std::uint32_t>(m_textByPrint.size()));
+    for (const auto& [print, offset] : m_textByPrint) {
+        b.put(offset);
+        b.put(print.high);
+        b.put(print.low);
+    }
     if (m_textFile)
         segments.push_back(m_textFile->number()); // kept by saved() as the segments are
     return b.take();
@@ -2160,6 +3064,7 @@ std::vector<char> ContentIndex::serialize(const std::vector<EntryId>& newIds, st
 bool ContentIndex::restore(std::span<const char> data, std::size_t entryCount)
 {
     std::unique_lock lock(m_mutex);
+    m_flushed.wait(lock, [&] { return !m_flushing; }); // segment numbers start again from the state's
     resetLocked();
     m_obsolete.clear(); // whatever is on disk and unused goes below
     const auto parse = [&] {
@@ -2241,11 +3146,28 @@ bool ContentIndex::restore(std::span<const char> data, std::size_t entryCount)
                 return false;
             if (isDead(m_docState[doc]))
                 continue;
-            if (!m_textFile || offset + bytes > m_textFile->size()) {
+            const auto [use, first] = m_textUses.try_emplace(offset, TextUse {0, bytes, std::nullopt});
+            if (!m_textFile || offset + bytes > m_textFile->size() || use->second.bytes != bytes) {
+                if (first)
+                    m_textUses.erase(use);
                 m_docState[doc] |= kDirty; // its text is lost (the file was cut short): read it again
                 continue;
             }
+            ++use->second.docs;
             m_texts.emplace(doc, TextRef {offset, bytes});
+        }
+        const auto prints = r.get<std::uint32_t>();
+        if (!r.ok() || prints > texts)
+            return false;
+        for (std::uint32_t i = 0; i < prints; ++i) {
+            const auto offset = r.get<std::uint64_t>();
+            const grams::Fingerprint print {r.get<std::uint64_t>(), r.get<std::uint32_t>()};
+            if (!r.ok())
+                return false;
+            if (const auto use = m_textUses.find(offset); use != m_textUses.end() && !use->second.print) {
+                use->second.print = print;
+                m_textByPrint.emplace(print, offset);
+            }
         }
         return r.atEnd();
     };
@@ -2281,6 +3203,7 @@ bool ContentIndex::restore(std::span<const char> data, std::size_t entryCount)
 bool ContentIndex::relocate(QString directory)
 {
     std::unique_lock lock(m_mutex);
+    m_flushed.wait(lock, [&] { return !m_flushing; }); // its segment goes where the others are
     std::vector<std::shared_ptr<const Segment>> reopened;
     reopened.reserve(m_segments.size());
     for (const auto& s : m_segments) {
@@ -2359,8 +3282,9 @@ ContentIndex::Stats ContentIndex::stats() const
         s.grams += segment->grams();
         s.postingBytes += segment->postingBytes();
     }
-    s.memoryPairs = m_memory.size();
+    s.memoryPairs = m_memory.size() + (m_writing ? m_writing->size() : 0);
     s.texts = m_texts.size();
+    s.distinctTexts = m_textUses.size();
     s.textBytes = m_textFile ? m_textFile->size() : 0;
     return s;
 }

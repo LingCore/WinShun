@@ -821,7 +821,7 @@ void App::refreshContentIndexStatus()
         if (m_index->readingContent())
             status = tr("正在建立索引… 已收录 %Ln 个文件", nullptr, files);
         else if (stats.documents == 0)
-            status = tr("索引在 Win顺启动约半分钟后开始建立");
+            status = tr("文件索引一建好，就开始建立");
         else
             status = tr("已收录 %Ln 个文件，占用 %1 磁盘空间", nullptr, files)
                          .arg(QLocale().formattedDataSize(static_cast<qint64>(stats.segmentBytes + stats.textBytes), 0,

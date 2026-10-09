@@ -5,11 +5,10 @@
 // low integrity, in a job that caps its memory and lets it start nothing.
 // It opens no files itself: each request comes with a handle to the file.
 //
-//   WinShunExtract.exe --pipe <handle> [--background]
+//   WinShunExtract.exe --pipe <handle>
 //
 // Requests and answers go over the pipe (Protocol.h), one at a time, until
-// WinShun closes it. --background: for the content indexer, at background
-// priority (processor, disk and memory).
+// WinShun closes it.
 
 #include "DocText.h"
 #include "Extract.h"
@@ -59,8 +58,6 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR commandLine, int)
     if (!arg)
         return 2;
     const auto pipe = reinterpret_cast<HANDLE>(static_cast<std::uintptr_t>(std::wcstoull(arg + 7, nullptr, 16)));
-    if (std::wcsstr(commandLine, L"--background"))
-        ::SetPriorityClass(::GetCurrentProcess(), PROCESS_MODE_BACKGROUND_BEGIN);
 
     ws::extractproto::Ready ready;
     if (ws::extract::loadPdfium())

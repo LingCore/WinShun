@@ -172,6 +172,9 @@ private:
     std::atomic<std::shared_ptr<FileIndex>> m_index;
     std::atomic<State> m_state {State::Idle};
     std::atomic<bool> m_refreshing {false};
+    // Which volumes are followed is known (contentVolumes): from a little
+    // after a snapshot is loaded, when the index is Ready already.
+    std::atomic<bool> m_volumesKnown {false};
     std::atomic<bool> m_dirty {false};
 
     // While a sync reads the disk, watcher changes are journaled and replayed

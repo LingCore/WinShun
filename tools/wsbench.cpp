@@ -19,11 +19,19 @@
 //                      reading past the cache, and throughput by thread count.
 //                      The sample is the same on every run (fixed seed), so a
 //                      later run shows what the caches kept in the meantime
-//   wsbench [snapshot] --content-index [--all] [--threads N] [--sample N] [--dir D] [--keep] [--verify]
+//   wsbench [snapshot] --content-index [--all] [--threads N] [--sample N] [--seed N] [--background]
+//                      [--read-only] [--no-add] [--merge-threads N] [--merge-times] [--dir D] [--keep] [--verify]
 //                      builds the content index of those files (without system
 //                      and program folders unless --all) and reports its size,
-//                      how fast it was read, and lookup times; --verify reads
-//                      every file a lookup rules out, to show none is missed
+//                      how fast it was read (and the processor time that cost
+//                      the whole computer), and lookup times; --verify reads
+//                      every file a lookup rules out, to show none is missed;
+//                      --background reads in background mode; --read-only
+//                      stops after reading (--no-add: hands nothing to the
+//                      index either); --seed picks another sample;
+//                      --merge-threads: for the merge at the end (as --threads);
+//                      --merge-times: then merges again on 16, 8, 4 and 1
+//                      threads, each timed
 //   wsbench [snapshot] --content-search [--all] [--unknown] phrase ...
 //                      with the content index the app keeps (from copies of its
 //                      files), what a content search for each phrase reads: how
@@ -37,15 +45,24 @@
 //                      given is in the index
 //   wsbench --service --documents [query ...]
 //                      (as administrator) the same, then the content indexer
-//                      reads every document (through WinShunExtract.exe), then
-//                      a content search for each query, with places and snippets
-//   wsbench [snapshot] --extract [--threads N] [--sandbox] [--dump] [path ...]
+//                      reads every document (through WinShunExtract.exe; copies
+//                      of one are not read again), then a content search for
+//                      each query, with places and snippets
+//   wsbench --service --content [--from D]
+//                      (as administrator) as a first run: the index built, then
+//                      the content indexer reading every file a content search
+//                      looks in (the settings in WinShun.ini); how long it took;
+//                      --from: starting from a copy of an index folder D (the
+//                      first run after an upgrade)
+//   wsbench [snapshot] --extract [--threads N] [--memory] [--sandbox [--background]] [--dump] [path ...]
 //                      reads documents (Word, Excel, PowerPoint, PDF) as the
 //                      extractor does, in this process: the files or folders
 //                      given, else every document a content search looks in;
 //                      reports what came out by type, the slowest and the
 //                      failed files; --dump prints their text with places;
+//                      --memory reads each whole file into memory first;
 //                      --sandbox reads them through WinShunExtract.exe instead
+//                      (--background: at the content indexer's priority)
 //   wsbench --places [query ...]
 //                      reads the places (Settings, Control Panel, places.txt)
 //                      as the app does and lists them, or the best places for
@@ -124,6 +141,27 @@ double peakCommitMB()
 double msSince(const QElapsedTimer& t)
 {
     return static_cast<double>(t.nsecsElapsed()) / 1e6;
+}
+
+// Processor seconds used so far: by the whole computer (all processes, the
+// antivirus scanning the files we open too), and by this process.
+struct CpuTimes {
+    double system = 0;
+    double process = 0;
+};
+
+CpuTimes cpuTimes()
+{
+    const auto seconds = [](const FILETIME& t) {
+        return static_cast<double>((std::uint64_t {t.dwHighDateTime} << 32) | t.dwLowDateTime) / 1e7;
+    };
+    CpuTimes out;
+    FILETIME idle {}, kernel {}, user {}, created {}, exited {};
+    if (::GetSystemTimes(&idle, &kernel, &user))
+        out.system = seconds(kernel) + seconds(user) - seconds(idle); // kernel time includes idle time
+    if (::GetProcessTimes(::GetCurrentProcess(), &created, &exited, &kernel, &user))
+        out.process = seconds(kernel) + seconds(user);
+    return out;
 }
 
 std::string narrow(std::u16string_view s)
@@ -648,13 +686,14 @@ int runServiceDocuments(const QStringList& queries)
     QElapsedTimer t;
     t.start();
     double readyMs = 0;
+    double lastMs = 0; // when the last document came in
     std::size_t lastDocuments = 0;
     QTimer poll;
     poll.setInterval(500);
     QObject::connect(&poll, &QTimer::timeout, [&] {
         if (readyMs == 0 && service.state() == ws::IndexService::State::Ready && !service.isRefreshing()) {
             readyMs = msSince(t);
-            std::printf("  %7.0f ms  index ready: %zu items; content indexing starts about 30 s after start\n", readyMs,
+            std::printf("  %7.0f ms  index ready: %zu items; content indexing starts now\n", readyMs,
                 service.itemCount());
         }
         const ws::ContentIndex::Stats stats = service.contentIndex()->stats();
@@ -662,7 +701,9 @@ int runServiceDocuments(const QStringList& queries)
             std::printf("  %7.0f ms  %zu documents, %zu with text, %.1f MB of text\n", msSince(t), stats.documents,
                 stats.texts, static_cast<double>(stats.textBytes) / 1048576.0);
             lastDocuments = stats.documents;
+            lastMs = msSince(t);
         }
+        std::fflush(stdout);
         if (readyMs > 0 && stats.documents > 0 && !service.readingContent() && msSince(t) > 40000)
             QCoreApplication::quit();
     });
@@ -671,8 +712,10 @@ int runServiceDocuments(const QStringList& queries)
     QCoreApplication::exec();
     poll.stop();
     const ws::ContentIndex::Stats stats = service.contentIndex()->stats();
-    std::printf("documents read in %.0f s: %zu documents, %zu with text; text file %.1f MB, grams %.1f MB\n",
-        (msSince(t) - readyMs) / 1000, stats.documents, stats.texts, static_cast<double>(stats.textBytes) / 1048576.0,
+    std::printf("documents read in %.1f s (to the last, at 0.5 s steps): %zu documents (%zu copies not read again), "
+                "%zu with text (%zu distinct); text file %.1f MB, grams %.1f MB\n",
+        (lastMs - readyMs) / 1000, stats.documents, service.contentIndexer()->copies(), stats.texts,
+        stats.distinctTexts, static_cast<double>(stats.textBytes) / 1048576.0,
         static_cast<double>(stats.segmentBytes) / 1048576.0);
 
     ws::SearchEngine engine(&service);
@@ -714,6 +757,92 @@ int runServiceDocuments(const QStringList& queries)
         }
     }
     service.shutdown();
+    return 0;
+}
+
+// As the app's first run, with the content settings of WinShun.ini: the file
+// index built into a temporary folder, then the content indexer reading
+// every file a content search looks in (text files and documents). Prints
+// how far it got every 10 s, then how long the whole took.
+int runServiceContent(const QStringList& args)
+{
+    QTemporaryDir dir;
+    // --from D: an app's index folder (index.bin, content/) to start from, copied.
+    if (const qsizetype at = args.indexOf(u"--from"_s); at >= 0 && at + 1 < args.size()) {
+        const QDir from(args[at + 1]);
+        QDir(dir.path()).mkpath(u"content"_s);
+        QFile::copy(from.filePath(u"index.bin"_s), QDir(dir.path()).filePath(u"index.bin"_s));
+        for (const QFileInfo& f : QDir(from.filePath(u"content"_s)).entryInfoList(QDir::Files))
+            QFile::copy(f.absoluteFilePath(), QDir(dir.path()).filePath(u"content/"_s + f.fileName()));
+    }
+    ws::Settings settings;
+    settings.load();
+    ws::IndexService::Options options;
+    options.rules = settings.crawlRules();
+    options.content.enabled = true;
+    options.content.extensions = settings.contentExtensions;
+    options.content.documents = settings.contentDocuments;
+    options.content.includeLowPriority = settings.contentInLowPriority;
+    options.content.sizeLimits = settings.contentSizeLimits();
+    ws::IndexService service(dir.path(), options);
+    QElapsedTimer t;
+    t.start();
+    double readyMs = 0;
+    double startedMs = 0; // the content indexer began reading
+    int idlePolls = 0;
+    CpuTimes cpuAtStart;
+    std::size_t lastDocuments = 0;
+    double lastReport = 0;
+    QTimer poll;
+    poll.setInterval(500);
+    QObject::connect(&poll, &QTimer::timeout, [&] {
+        if (readyMs == 0 && service.state() == ws::IndexService::State::Ready && !service.isRefreshing()) {
+            readyMs = msSince(t);
+            std::printf("  %6.1f s  file index ready: %zu items\n", readyMs / 1000, service.itemCount());
+        }
+        const bool reading = service.readingContent();
+        if (reading && startedMs == 0) {
+            startedMs = msSince(t);
+            cpuAtStart = cpuTimes();
+            std::printf("  %6.1f s  content indexing started\n", startedMs / 1000);
+        }
+        const ws::ContentIndex::Stats stats = service.contentIndex()->stats();
+        if (msSince(t) - lastReport >= 10000 && startedMs > 0) {
+            LASTINPUTINFO input {sizeof input, 0};
+            ::GetLastInputInfo(&input);
+            std::printf("  %6.1f s  %zu files (%.0f a second), %zu documents' text; last input %lu s ago\n",
+                msSince(t) / 1000, stats.documents,
+                static_cast<double>(stats.documents - lastDocuments) * 1000.0 / (msSince(t) - lastReport), stats.texts,
+                (::GetTickCount() - input.dwTime) / 1000);
+            lastDocuments = stats.documents;
+            lastReport = msSince(t);
+        }
+        std::fflush(stdout); // read while it runs (through a pipe, say)
+        idlePolls = startedMs > 0 && !reading ? idlePolls + 1 : 0;
+        if (idlePolls >= 2)
+            QCoreApplication::quit();
+    });
+    service.start();
+    poll.start();
+    QCoreApplication::exec();
+    poll.stop();
+    const double doneMs = msSince(t) - 1000; // two polls ago
+    const CpuTimes cpuAtEnd = cpuTimes();
+    const ws::ContentIndex::Stats stats = service.contentIndex()->stats();
+    const double contentS = (doneMs - startedMs) / 1000;
+    std::printf("content indexed %.1f s after start (file index %.1f s, content %.1f s): %zu files (%.0f a second), "
+                "%zu documents' text (%zu distinct), %zu copies not read again\n",
+        doneMs / 1000, readyMs / 1000, contentS, stats.documents, static_cast<double>(stats.documents) / contentS,
+        stats.texts, stats.distinctTexts, service.contentIndexer()->copies());
+    std::printf("index %.1f MB in %zu segment(s), text %.1f MB; whole computer %.1f of %u processors busy meanwhile\n",
+        static_cast<double>(stats.segmentBytes) / 1048576.0, stats.segments,
+        static_cast<double>(stats.textBytes) / 1048576.0, (cpuAtEnd.system - cpuAtStart.system) / contentS,
+        std::thread::hardware_concurrency());
+    service.shutdown(); // saves the snapshot
+    qint64 snapshot = 0;
+    for (const QFileInfo& f : QDir(dir.path()).entryInfoList({u"*.bin"_s}, QDir::Files))
+        snapshot += f.size();
+    std::printf("snapshot %.1f MB\n", static_cast<double>(snapshot) / 1048576.0);
     return 0;
 }
 
@@ -1282,6 +1411,17 @@ int runContentIndexBench(const ws::FileIndex& index, QStringList args)
     std::size_t limit = std::numeric_limits<std::size_t>::max();
     if (const qsizetype at = args.indexOf(u"--sample"_s); at >= 0 && at + 1 < args.size())
         limit = args[at + 1].toULongLong();
+    // Another seed picks other files: the antivirus remembers the ones it scanned.
+    std::uint64_t seed = 20261007;
+    if (const qsizetype at = args.indexOf(u"--seed"_s); at >= 0 && at + 1 < args.size())
+        seed = args[at + 1].toULongLong();
+    const bool background = args.contains(u"--background"_s); // as the app's indexer threads were
+    const bool lowest = args.contains(u"--lowest"_s); // processor and memory priority low, disk priority not
+    const bool readOnly = args.contains(u"--read-only"_s); // the reading speed only: no merge, no lookups
+    const bool noAdd = args.contains(u"--no-add"_s); // ... and nothing handed to the index
+    int mergeThreads = threads; // the merge at the end, as the indexer has it merge
+    if (const qsizetype at = args.indexOf(u"--merge-threads"_s); at >= 0 && at + 1 < args.size())
+        mergeThreads = std::max(1, args[at + 1].toInt());
     QString directory = QDir::tempPath() + u"/wsbench-content"_s;
     if (const qsizetype at = args.indexOf(u"--dir"_s); at >= 0 && at + 1 < args.size())
         directory = args[at + 1];
@@ -1296,35 +1436,120 @@ int runContentIndexBench(const ws::FileIndex& index, QStringList args)
         }
     }
     if (files.size() > limit) {
-        std::mt19937_64 rng(20261007);
+        std::mt19937_64 rng(seed);
         std::shuffle(files.begin(), files.end(), rng);
         files.resize(limit);
         std::sort(files.begin(), files.end());
     }
-    std::printf("content index: %zu files (%s), %d threads, into %s\n", files.size(),
-        all ? "all folders" : "without system and program folders", threads, qPrintable(directory));
+    std::printf("content index: %zu files (%s), %d threads%s, into %s\n", files.size(),
+        all ? "all folders" : "without system and program folders", threads,
+        background ? " in background mode" : lowest ? " at lowest priority" : "", qPrintable(directory));
+    const ws::ContentSizeLimits limits = settings.contentSizeLimits();
+
+    // --grams-only: what taking the grams out of the files costs this process
+    // (one thread), from memory: no opening, no reading, no index.
+    if (args.contains(u"--grams-only"_s)) {
+        std::vector<std::string> texts;
+        std::uint64_t bytes = 0;
+        for (const ws::EntryId id : files) {
+            const std::wstring path = index.wpath(id);
+            if (ws::isDocumentPath(path))
+                continue;
+            QFile file(QString::fromStdWString(path));
+            if (!file.open(QIODevice::ReadOnly) || file.size() > limits.of(path))
+                continue;
+            texts.push_back(file.readAll().toStdString());
+            bytes += texts.back().size();
+        }
+        QElapsedTimer grams;
+        grams.start();
+        std::uint64_t keys = 0;
+        // By kind of file: ASCII only, other UTF-8, UTF-16, ANSI.
+        struct Kind {
+            const char* name;
+            std::size_t files = 0;
+            std::uint64_t bytes = 0;
+            double ms = 0;
+            double detectMs = 0; // of ms: the encoding
+            double finishMs = 0; // ... the grams sorted out at the end
+        };
+        std::array<Kind, 4> kinds {{{"ascii"}, {"utf-8"}, {"utf-16"}, {"ansi"}}};
+        for (const std::string& t : texts) {
+            QElapsedTimer one;
+            one.start();
+            std::size_t bom = 0;
+            const ws::TextEncoding encoding = ws::ContentScanner::detect(
+                std::string_view(t).substr(0, ws::ContentScanner::kChunkBytes), &bom);
+            const double detectMs = static_cast<double>(one.nsecsElapsed()) / 1e6;
+            ws::grams::Collector collector(encoding, ws::ContentScanner::legacyCodePage());
+            for (std::size_t at = bom; at < t.size(); at += ws::ContentScanner::kChunkBytes)
+                collector.feed(t.data() + at, std::min(ws::ContentScanner::kChunkBytes, t.size() - at));
+            const double fedMs = static_cast<double>(one.nsecsElapsed()) / 1e6;
+            keys += collector.finish().size();
+            const double ms = static_cast<double>(one.nsecsElapsed()) / 1e6;
+            const bool ascii
+                = std::all_of(t.begin(), t.end(), [](char c) { return static_cast<unsigned char>(c) < 0x80; });
+            Kind& k = kinds[encoding == ws::TextEncoding::Utf8 ? (ascii ? 0 : 1)
+                    : encoding == ws::TextEncoding::Ansi           ? 3
+                                                                   : 2];
+            ++k.files;
+            k.bytes += t.size();
+            k.ms += ms;
+            k.detectMs += detectMs;
+            k.finishMs += ms - fedMs;
+        }
+        const double gramsMs = msSince(grams);
+        std::printf("grams        %zu files, %.1f MB: %.0f ms, %.1f us a file, %.0f MB/s, %llu keys\n", texts.size(),
+            static_cast<double>(bytes) / 1048576.0, gramsMs,
+            gramsMs * 1000.0 / static_cast<double>(std::max<std::size_t>(texts.size(), 1)),
+            static_cast<double>(bytes) / 1048576.0 / (gramsMs / 1000.0), static_cast<unsigned long long>(keys));
+        for (const Kind& k : kinds) {
+            std::printf("  %-7s %6zu files, %7.1f MB, %6.0f ms, %4.0f MB/s (encoding %.0f ms, sorting out %.0f ms)\n",
+                k.name, k.files, static_cast<double>(k.bytes) / 1048576.0, k.ms,
+                static_cast<double>(k.bytes) / 1048576.0 / std::max(k.ms / 1000.0, 1e-9), k.detectMs, k.finishMs);
+        }
+        return 0;
+    }
 
     const double privateBefore = privateMB();
     ws::ContentIndex content(directory);
-    const ws::ContentSizeLimits limits = settings.contentSizeLimits();
     std::atomic<std::size_t> next {0};
     std::atomic<std::size_t> indexed {0};
     std::atomic<std::size_t> empty {0};
     std::atomic<std::size_t> skipped {0};
     std::atomic<std::uint64_t> pairs {0};
     std::atomic<std::size_t> withGrams {0};
+    std::atomic<std::size_t> refused {0}; // the index had no room: must not happen
+    // Where the threads' time goes: finding the path, reading the file (open,
+    // read, grams), handing it to the index (waiting for its lock included).
+    std::atomic<std::int64_t> pathUs {0}, readUs {0}, addUs {0};
+    const auto microseconds = [](std::chrono::steady_clock::time_point from) {
+        return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - from).count();
+    };
     QElapsedTimer timer;
     timer.start();
+    const CpuTimes cpuBefore = cpuTimes();
     {
         std::vector<std::jthread> workers;
         for (int t = 0; t < threads; ++t) {
             workers.emplace_back([&] {
+                if (background) {
+                    ::SetThreadPriority(::GetCurrentThread(), THREAD_MODE_BACKGROUND_BEGIN);
+                } else if (lowest) {
+                    ::SetThreadPriority(::GetCurrentThread(), THREAD_PRIORITY_LOWEST);
+                    MEMORY_PRIORITY_INFORMATION memory {MEMORY_PRIORITY_LOW};
+                    ::SetThreadInformation(::GetCurrentThread(), ThreadMemoryPriority, &memory, sizeof memory);
+                }
                 for (;;) {
                     const std::size_t i = next.fetch_add(1);
                     if (i >= files.size())
                         break;
+                    auto at = std::chrono::steady_clock::now();
                     const std::wstring path = index.wpath(files[i]);
+                    pathUs += microseconds(at);
+                    at = std::chrono::steady_clock::now();
                     const auto text = ws::ContentIndexer::readFile(path, limits.of(path), {});
+                    readUs += microseconds(at);
                     switch (text.outcome) {
                     case ws::ContentIndexer::Outcome::Indexed:
                         ++indexed;
@@ -1338,7 +1563,13 @@ int runContentIndexBench(const ws::FileIndex& index, QStringList args)
                         ++skipped;
                         continue;
                     }
-                    content.add(files[i], text.keys, text.outcome == ws::ContentIndexer::Outcome::Empty, text.stamp, 0);
+                    if (!noAdd) {
+                        at = std::chrono::steady_clock::now();
+                        if (!content.add(
+                                files[i], text.keys, text.outcome == ws::ContentIndexer::Outcome::Empty, text.stamp, 0))
+                            ++refused;
+                        addUs += microseconds(at);
+                    }
                     if ((i + 1) % 20000 == 0)
                         std::printf("  %zu files, %.0f s\n", i + 1, msSince(timer) / 1000.0);
                 }
@@ -1346,14 +1577,33 @@ int runContentIndexBench(const ws::FileIndex& index, QStringList args)
         }
     }
     const double buildMs = msSince(timer);
+    const CpuTimes cpuAfter = cpuTimes();
+    std::printf("read         %.1f s (%.0f files/s): %zu read, %zu with grams, %zu empty/too large, %zu skipped%s\n",
+        buildMs / 1000.0, static_cast<double>(files.size()) * 1000.0 / buildMs, indexed.load(), withGrams.load(),
+        empty.load(), skipped.load(),
+        refused.load() > 0 ? qPrintable(u", %1 REFUSED by the index"_s.arg(refused.load())) : "");
+    // Most of what a read costs is the antivirus scanning the file in its own
+    // process: the whole computer's processor time tells what it costs.
+    const double wallS = buildMs / 1000.0;
+    std::printf("processors   whole computer %.1f of %u busy on average, this process %.1f\n",
+        (cpuAfter.system - cpuBefore.system) / wallS, std::thread::hardware_concurrency(),
+        (cpuAfter.process - cpuBefore.process) / wallS);
+    const double perFile = static_cast<double>(std::max<std::size_t>(files.size(), 1));
+    std::printf(
+        "per file     path %.1f us, read %.1f us, add %.1f us (thread time: %.0f%% of %d threads' wall time)%s\n",
+        static_cast<double>(pathUs) / perFile, static_cast<double>(readUs) / perFile,
+        static_cast<double>(addUs) / perFile,
+        100.0 * static_cast<double>(pathUs + readUs + addUs) / (buildMs * 1000.0 * threads), threads,
+        noAdd ? ", nothing added" : "");
+    if (readOnly || noAdd) {
+        QDir(directory).removeRecursively();
+        return 0;
+    }
     timer.restart();
-    content.merge();
+    content.merge(mergeThreads);
     const double mergeMs = msSince(timer);
     ::HeapCompact(::GetProcessHeap(), 0);
     const auto stats = content.stats();
-    std::printf("read         %.0f s (%.0f files/s): %zu read, %zu with grams, %zu empty/too large, %zu skipped\n",
-        buildMs / 1000.0, static_cast<double>(files.size()) * 1000.0 / buildMs, indexed.load(), withGrams.load(),
-        empty.load(), skipped.load());
     std::printf("index        %.1f MB on disk (%zu documents, %zu distinct, %.1f M gram-document pairs, %.2f bytes each), merge %.0f ms\n",
         static_cast<double>(stats.segmentBytes) / (1024.0 * 1024.0), stats.documents, stats.contents,
         static_cast<double>(pairs.load()) / 1e6, static_cast<double>(stats.segmentBytes) / static_cast<double>(std::max<std::uint64_t>(pairs, 1)),
@@ -1364,6 +1614,18 @@ int runContentIndexBench(const ws::FileIndex& index, QStringList args)
         static_cast<double>(stats.postingBytes) / (1024.0 * 1024.0));
     std::printf("memory       %.1f MB private since the start (documents table, read buffers, heap slack), peak +%.1f MB\n",
         privateMB() - privateBefore, peakCommitMB() - privateBefore);
+    if (args.contains(u"--merge-times"_s)) {
+        // Everything merged again (one segment into one) on fewer and fewer
+        // threads: how long each takes. Each starts from the order the one
+        // before left, so the files differ a little.
+        for (const int t : {16, 8, 4, 1}) {
+            timer.restart();
+            const bool merged = content.merge(t);
+            const double ms = msSince(timer);
+            std::printf("merge again  %2d threads: %6.0f ms, %.1f MB%s\n", t, ms,
+                static_cast<double>(content.stats().segmentBytes) / (1024.0 * 1024.0), merged ? "" : " FAILED");
+        }
+    }
     std::vector<std::uint64_t> segments;
     std::vector<ws::EntryId> identity(index.slotCount());
     std::iota(identity.begin(), identity.end(), ws::EntryId {0});
@@ -1618,6 +1880,11 @@ int runExtractBench(const ws::FileIndex* index, QStringList args)
     const bool dump = args.removeAll(u"--dump"_s) > 0;
     // Through WinShunExtract.exe, as the app reads them (restricted, low integrity).
     const bool sandbox = args.removeAll(u"--sandbox"_s) > 0;
+    // ... at background priority, as the content indexer's are.
+    const bool background = args.removeAll(u"--background"_s) > 0;
+    // In this process: the whole file read into memory first, rather than
+    // read where the parser asks.
+    const bool memory = args.removeAll(u"--memory"_s) > 0;
     int threads = 4;
     if (const qsizetype at = args.indexOf(u"--threads"_s); at >= 0 && at + 1 < args.size()) {
         threads = std::clamp(args[at + 1].toInt(), 1, 64);
@@ -1651,10 +1918,14 @@ int runExtractBench(const ws::FileIndex* index, QStringList args)
             }
         }
     }
-    std::printf("%zu documents, %d threads%s\n", files.size(), threads, sandbox ? ", in WinShunExtract.exe" : "");
+    std::printf("%zu documents, %d threads%s%s\n", files.size(), threads,
+        sandbox ? (background ? ", in WinShunExtract.exe at background priority" : ", in WinShunExtract.exe") : "",
+        !sandbox && memory ? ", each read into memory first" : "");
     std::unique_ptr<ws::DocExtractor> extractor;
-    if (sandbox)
-        extractor = std::make_unique<ws::DocExtractor>(threads, ws::DocExtractor::Priority::Normal);
+    if (sandbox) {
+        extractor = std::make_unique<ws::DocExtractor>(
+            threads, background ? ws::DocExtractor::Priority::Background : ws::DocExtractor::Priority::Normal);
+    }
     const auto pathOf = [&](std::size_t i) {
         return narrow(std::u16string_view(reinterpret_cast<const char16_t*>(files[i].data()), files[i].size()));
     };
@@ -1694,6 +1965,11 @@ int runExtractBench(const ws::FileIndex* index, QStringList args)
                         ws::DocExtractor::Result read = extractor->extract(file.get(), r.size, {});
                         r.status = read.retry ? ws::extractproto::Status::Failed : read.status;
                         text = std::move(read.text);
+                    } else if (memory) {
+                        std::string bytes(static_cast<std::size_t>(r.size), '\0');
+                        ws::extract::HandleSource(file.get(), r.size).readExact(0, bytes.data(), bytes.size());
+                        ws::extract::MemorySource source(bytes);
+                        r.status = ws::extract::extract(source, {}, text);
                     } else {
                         ws::extract::HandleSource source(file.get(), r.size);
                         r.status = ws::extract::extract(source, {}, text);
@@ -1906,6 +2182,8 @@ int main(int argc, char* argv[])
         args.removeAll(u"--service"_s);
         if (args.removeAll(u"--documents"_s) > 0)
             return runServiceDocuments(args);
+        if (args.removeAll(u"--content"_s) > 0)
+            return runServiceContent(args);
         return runService(args);
     }
     QString path = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + u"/WinShun/index.bin"_s;

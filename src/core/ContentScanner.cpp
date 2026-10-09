@@ -176,6 +176,14 @@ bool ContentScanner::isUtf8(std::string_view b, bool allowTruncatedTail)
     const std::size_t n = b.size();
     std::size_t i = 0;
     while (i < n) {
+        // Eight ASCII bytes at a time: most text is.
+        for (std::uint64_t eight = 0; i + 8 <= n; i += 8) {
+            std::memcpy(&eight, b.data() + i, 8);
+            if (eight & 0x8080'8080'8080'8080ull)
+                break;
+        }
+        if (i >= n)
+            break;
         const auto c = static_cast<unsigned char>(b[i]);
         if (c < 0x80) {
             ++i;

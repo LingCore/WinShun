@@ -47,16 +47,9 @@ bool driveLetterExists(std::wstring_view root)
     return letter >= L'A' && letter <= L'Z' && (::GetLogicalDrives() & (1u << (letter - L'A')));
 }
 
-namespace {
-
-struct Placement {
-    std::uint32_t disk = ~0u; // unknown, or a volume across several disks
-    bool seeks = true; // a hard disk, or not known not to be
-};
-
-Placement placementOf(std::wstring_view root)
+VolumePlacement placementOf(std::wstring_view root)
 {
-    Placement p;
+    VolumePlacement p;
     const std::wstring path = L"\\\\.\\" + std::wstring(root);
     const win32::UniqueHandle h(::CreateFileW(
         path.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, 0, nullptr));
@@ -77,15 +70,13 @@ Placement placementOf(std::wstring_view root)
     return p;
 }
 
-} // namespace
-
 std::vector<std::vector<std::size_t>> readingGroups(
     const std::vector<VolumeInfo>& volumes, const std::vector<std::size_t>& which)
 {
     std::vector<std::vector<std::size_t>> groups;
     std::vector<std::pair<std::uint32_t, std::size_t>> hardDisks; // disk, its group
     for (const std::size_t i : which) {
-        const Placement p = placementOf(volumes[i].root);
+        const VolumePlacement p = placementOf(volumes[i].root);
         if (!p.seeks) {
             groups.push_back({i});
             continue;

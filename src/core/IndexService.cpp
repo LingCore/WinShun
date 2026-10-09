@@ -158,7 +158,10 @@ IndexService::IndexService(QString folder, Options options, QObject* parent)
     ContentIndexer::Source source;
     source.index = [this] { return m_index.load(); };
     source.volumes = [this] { return contentVolumes(); };
-    source.ready = [this] { return state() == State::Ready && !m_refreshing.load(); };
+    // Ready once the volumes are known too: a snapshot makes the index Ready
+    // before that, and a content pass then found no volume to read and slept
+    // for 15 minutes (after an upgrade that rebuilds the content index).
+    source.ready = [this] { return state() == State::Ready && !m_refreshing.load() && m_volumesKnown.load(); };
     m_contentIndexer = std::make_unique<ContentIndexer>(m_content, std::move(source), m_options.content);
 
     m_saveTimer.setInterval(kSaveCheck);
@@ -485,6 +488,8 @@ void IndexService::run(std::stop_token stop, Pass pass)
         if (pass == Pass::Full)
             m_rulesBefore.reset(); // every volume is read with the current rules
     }
+    if (!m_volumesKnown.exchange(true))
+        m_contentIndexer->wake();
     if (listChanged)
         QMetaObject::invokeMethod(this, [this] { emit volumesChanged(); }, Qt::QueuedConnection);
     ensureWatcher(); // watch before walking so nothing slips through

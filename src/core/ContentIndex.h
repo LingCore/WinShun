@@ -10,6 +10,7 @@
 #include <array>
 #include <atomic>
 #include <compare>
+#include <condition_variable>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -102,6 +103,8 @@ private:
         m_char1 = w;
     }
     void endRun() noexcept { m_char1 = m_char2 = 0; } // a character that is not ASCII, or a control character
+    // As ascii() for each byte, up to the first that is not ASCII; how many it took.
+    std::size_t asciiRun(const unsigned char* b, std::size_t n) noexcept;
     void add(char32_t c);
 
     TextEncoding m_encoding;
@@ -194,8 +197,9 @@ struct ContentFilter {
 // A document read out of a Word, Excel, PowerPoint or PDF file (by the
 // DocExtractor) also keeps its text, compressed, in a text file next to the
 // segments: a search reads it there for the place and the snippet, rather
-// than reading the file again. Texts of dead documents stay until there are
-// more of them than of live ones; then the file is rewritten.
+// than reading the file again. Documents with the same text share it. Texts
+// no document has any more stay until there are more of them than of the
+// others; then the file is rewritten.
 //
 // Thread safety: every member locks internally. Callers that also hold a
 // FileIndex lock take that one first.
@@ -267,12 +271,21 @@ public:
     // by packText(). False when there is no room left.
     bool add(EntryId entry, std::span<const grams::Key> keys, bool empty, std::uint32_t stamp, std::uint64_t since,
         QByteArrayView text = {});
+    // The entry's file has the same bytes as the original's, whose document
+    // was read when its file had `originalStamp`: the entry gets a document
+    // of its own with what that one has (grams, text), without reading the
+    // file. False when the original has no such current document.
+    bool addCopy(EntryId entry, EntryId original, std::uint32_t originalStamp, std::uint32_t stamp, std::uint64_t since);
     static std::uint32_t stampOf(std::int64_t size, std::int64_t writeTime) noexcept;
 
-    // Merges are called between reads, by the indexer only.
+    // Merges are called by the indexer only. Small segments into larger ones
+    // (mergeTails) while documents are added too; the others between reads.
+    // `threads`: how many a merge of everything may take.
     bool needsMerge() const;
-    bool mergeDue(); // what needsMerge() asks for: small segments into larger ones, or everything
-    bool merge(); // all segments into one, dropping dead documents
+    bool needsFullMerge() const; // mergeDue() would merge everything
+    bool mergeTails(); // the small segments due, into larger ones
+    bool mergeDue(int threads = 1); // what needsMerge() asks for: mergeTails(), or everything
+    bool merge(int threads = 1); // all segments into one, dropping dead documents
     bool needsTextCompaction() const;
     bool compactTexts(); // the text file again, without the texts of dead documents
 
@@ -313,6 +326,7 @@ public:
         std::uint64_t postingBytes = 0;
         std::size_t memoryPairs = 0; // grams of the newest contents, not yet in a segment
         std::size_t texts = 0; // documents with their text kept
+        std::size_t distinctTexts = 0; // ... the texts themselves (documents share them)
         std::uint64_t textBytes = 0; // the text file, with what dead documents left
     };
     Stats stats() const;
@@ -335,7 +349,13 @@ private:
     static QString textPath(const QString& directory, std::uint64_t number);
     QString textPath(std::uint64_t number) const; // in m_directory
     std::shared_ptr<TextFile> textFileForAppend();
+    std::shared_ptr<TextFile> textFileLocked(); // as textFileForAppend, with the lock held
+    std::optional<TextRef> textWithPrint(const grams::Fingerprint& print) const; // a document's, if any has it
+    void useText(DocId doc, TextRef text, const std::optional<grams::Fingerprint>& print);
+    void dropText(DocId doc) noexcept;
     DocId findDoc(EntryId entry) const noexcept; // the entry's document that is not dead
+    DocId addDocLocked(EntryId entry, std::uint8_t state, std::uint32_t stamp, std::uint64_t since, ContentId content);
+    void replaceLocked(EntryId entry, DocId doc); // the entry's document so far dies; `doc` is in the order
     void kill(DocId doc) noexcept;
     void insertOrder(DocId doc);
     void rebuildOrder();
@@ -344,7 +364,19 @@ private:
     ContentId findContent(const grams::Fingerprint& print) const noexcept; // kNoContent if there is none
     ContentId memoryBegin() const noexcept; // the first content not in a segment
     std::vector<bool> liveContents() const; // those that a document not dead has
-    bool flushLocked();
+    bool flush(std::unique_lock<std::shared_mutex>& lock); // memory into a segment; unlocks meanwhile
+    using Segments = std::vector<std::shared_ptr<const Segment>>;
+    // Calls f(key, contents) for each key in [from, to) of `segments` and of
+    // `memory` (sorted pairs), in order. Segments hold ascending ranges of
+    // contents, memory the newest: concatenated, a key's contents ascend.
+    template <typename F>
+    static void forEachKey(const Segments& segments, std::span<const std::uint64_t> memory, grams::Key from,
+        grams::Key to, F&& f);
+    // Keys that cut those of `segments` and `memory` into about `parts`
+    // stretches that take about as long to merge, ascending; `total` gets
+    // what merging all of them takes (Segment::work: about their pairs).
+    static std::vector<grams::Key> splitKeys(const Segments& segments, std::span<const std::uint64_t> memory,
+        std::size_t parts, int threads, std::uint64_t& total);
     std::size_t dueTailLocked() const noexcept;
     bool mergeAllDueLocked() const noexcept;
     bool mergeTail(std::size_t count);
@@ -368,13 +400,28 @@ private:
     // segments (ranges of content ids, ascending) and m_memory.
     std::vector<std::shared_ptr<const Segment>> m_segments;
     std::vector<std::uint64_t> m_memory; // key << kIdBits | content, of contents newer than every segment
+    std::shared_ptr<const std::vector<std::uint64_t>> m_writing; // older memory, being written to a segment (flush)
+    struct FlushBuffers;
+    std::unique_ptr<FlushBuffers> m_flushBuffers; // kept from one segment to the next while files are read (flush)
     std::map<grams::Fingerprint, ContentId> m_memoryContents; // those contents
+    bool m_flushing = false; // memory is being written to a segment (flush)
+    std::condition_variable_any m_flushed; // ... no longer
+    std::uint64_t m_generation = 0; // goes up when contents are dropped (resetLocked) or numbered anew (merge)
     ContentId m_contentEnd = 0;
     std::uint64_t m_nextSegment = 1;
     std::vector<std::uint64_t> m_obsolete; // segment files no longer used, to delete once no snapshot refers to them
 
     std::shared_ptr<TextFile> m_textFile; // appended to; null until a document brings text
     std::unordered_map<DocId, TextRef> m_texts; // in m_textFile
+    // Documents with the same text share it (copies of a file: half of the
+    // documents here).
+    struct TextUse {
+        std::uint32_t docs = 0;
+        std::uint32_t bytes = 0;
+        std::optional<grams::Fingerprint> print; // of its packed bytes
+    };
+    std::unordered_map<std::uint64_t, TextUse> m_textUses; // by offset, the texts documents have
+    std::map<grams::Fingerprint, std::uint64_t> m_textByPrint; // their offsets
     std::uint64_t m_textGarbage = 0; // bytes of texts no document has any more
     std::vector<std::uint64_t> m_obsoleteTexts; // as m_obsolete
 

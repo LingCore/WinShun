@@ -1308,8 +1308,8 @@
         </translation>
     </message>
     <message>
-        <source>索引在 Win顺启动约半分钟后开始建立</source>
-        <translation>The index starts building about half a minute after WinShun starts</translation>
+        <source>文件索引一建好，就开始建立</source>
+        <translation>Starts building as soon as the file index is ready</translation>
     </message>
     <message numerus="yes">
         <source>已收录 %Ln 个文件，占用 %1 磁盘空间</source>

@@ -14,8 +14,10 @@
 #include <cstring>
 #include <deque>
 #include <future>
+#include <limits>
 #include <optional>
 #include <span>
+#include <string>
 #include <tuple>
 
 namespace ws::snapshot {
@@ -26,17 +28,26 @@ namespace {
 //   magic[8] version:u32
 //   volumeCount:u32 { len:u16 root:wchar[len] serial:u32 journalId:u64 usn:i64 }*
 //   4 x { count:u32 { len:u16 text:wchar[len] }* }   crawl rules (version 3 on)
-//   nameCount:u32 { length:u16 name:u8[length] }*   (version 5 on)
-//   entryCount:u32 { back:leb flags:u8 name:leb }*
-//   tableCount:u32 { root:u32 count:u32 { record:u32 folder:u32 }* }*   folder record numbers
+//   nameCount:u32 { bytes:u32 { name:u8[] 0 }[kGroup] }*   (version 6 on; at the end, fewer)
+//   entryCount:u32 { backBytes:u32 back:leb[kGroup] flags:u8[kGroup] nameBytes:u32 name:leb[kGroup] }*
+//   tableCount:u32 { root:u32 count:u32 folderBytes:u32 folder:leb[count] recordBytes:u32 record:leb[count] }*
 //   attachmentSize:u64 attachment:u8[attachmentSize]   (version 4 on)
 //   end:u32
 // Entries are in pre-order, so a parent always precedes its children: `back`
-// is how many entries before this one it is (0 for a root). `name` is the
-// number of the entry's name in the list before them, where each name is
-// once (only a third are distinct: index.js, __init__.py...), in the order
-// the entries first have them. leb: LEB128. Before version 5 an entry was
-// parent:u32 flags:u8 nameLength:u16 name:u8[nameLength].
+// is how many entries before this one it is (0 for a root). Each name is
+// once in the list before them (only a third are distinct: index.js,
+// __init__.py...), in the order the entries first have them; an entry's
+// `name` is 0 for the first one no entry before it has, else the number of
+// its name + 1. A table holds the folders' record numbers, by folder: each
+// folder's distance from the one before (from 0 for the first), each
+// record's from the one before, zigzag encoded. leb: LEB128.
+//
+// Like things are kept together, in groups of kGroup names or entries, so
+// that the compression (below) finds more alike: 21 MB rather than 29 for
+// 3.2 million entries. Version 5 had nameCount:u32 { length:u16 name:u8[length] }*,
+// entryCount:u32 { back:leb flags:u8 name:leb }* (`name` the number) and
+// tables of { record:u32 folder:u32 }; before that an entry was parent:u32
+// flags:u8 nameLength:u16 name:u8[nameLength].
 //
 // The file holds that packed: packedMagic[8], then blocks of it, each
 // rawSize:u32 packedSize:u32 checksum:u64 data[packedSize] compressed on its
@@ -47,7 +58,8 @@ namespace {
 // the index is walked or rebuilt. Files written before are read as they are.
 constexpr char kMagic[8] = {'Q', 'F', 'I', 'N', 'D', 'E', 'X', '\0'};
 constexpr char kPackedMagic[8] = {'Q', 'F', 'I', 'N', 'D', 'E', 'X', 'Z'};
-constexpr std::uint32_t kVersion = 5;
+constexpr std::uint32_t kVersion = 6;
+constexpr std::size_t kGroup = 1 << 16;
 constexpr std::uint32_t kOldestVersion = 2; // without the rules
 constexpr std::uint32_t kEndMarker = 0x21444E45; // "END!"
 constexpr std::size_t kBlockSize = 1 << 20;
@@ -59,6 +71,36 @@ struct BlockHeader {
     std::uint32_t packedSize;
     std::uint64_t checksum;
 };
+
+void putLeb(std::string& out, std::uint64_t v)
+{
+    for (; v >= 0x80; v >>= 7)
+        out.push_back(static_cast<char>(v | 0x80));
+    out.push_back(static_cast<char>(v));
+}
+
+// The LEB128 numbers in a column, all of its bytes; none if they are not that.
+std::optional<std::vector<std::uint64_t>> lebColumn(const char* p, std::size_t bytes, std::size_t count)
+{
+    if (count > bytes)
+        return std::nullopt; // a byte each at least
+    std::vector<std::uint64_t> out(count);
+    const char* const end = p + bytes;
+    for (std::uint64_t& v : out) {
+        v = 0;
+        for (unsigned shift = 0;; shift += 7) {
+            if (p == end || shift >= 64)
+                return std::nullopt;
+            const auto b = static_cast<unsigned char>(*p++);
+            v |= std::uint64_t {b & 0x7Fu} << shift;
+            if (!(b & 0x80))
+                break;
+        }
+    }
+    if (p != end)
+        return std::nullopt;
+    return out;
+}
 
 // Tells a damaged block (the coding has no check of its own).
 std::uint64_t checksum(std::span<const char> data) noexcept
@@ -122,15 +164,6 @@ public:
     }
 
     template <typename T> void put(T v) { bytes(&v, sizeof v); }
-    void leb(std::uint64_t v)
-    {
-        char out[10];
-        std::size_t n = 0;
-        for (; v >= 0x80; v >>= 7)
-            out[n++] = static_cast<char>(v | 0x80);
-        out[n++] = static_cast<char>(v);
-        bytes(out, n);
-    }
     void bytes(const void* p, std::size_t n)
     {
         const auto* c = static_cast<const char*>(p);
@@ -434,18 +467,46 @@ bool save(const FileIndex& index, const std::vector<VolumeInfo>& volumes,
             named.push_back(&e);
     });
     w.put(static_cast<std::uint32_t>(named.size()));
-    for (const Entry* e : named) {
-        const std::string_view name = index.name(*e);
-        w.put(static_cast<std::uint16_t>(name.size()));
-        w.bytes(name.data(), name.size());
+    for (std::size_t from = 0; from < named.size(); from += kGroup) {
+        const std::size_t to = std::min(named.size(), from + kGroup);
+        std::uint32_t bytes = 0;
+        for (std::size_t i = from; i < to; ++i)
+            bytes += static_cast<std::uint32_t>(index.name(*named[i]).size()) + 1;
+        w.put(bytes);
+        for (std::size_t i = from; i < to; ++i) {
+            const std::string_view name = index.name(*named[i]);
+            w.bytes(name.data(), name.size());
+            w.put('\0');
+        }
     }
     named = {};
     w.put(next);
+    std::string backs;
+    std::string flags;
+    std::string names;
+    const auto group = [&] {
+        w.put(static_cast<std::uint32_t>(backs.size()));
+        w.bytes(backs.data(), backs.size());
+        w.bytes(flags.data(), flags.size());
+        w.put(static_cast<std::uint32_t>(names.size()));
+        w.bytes(names.data(), names.size());
+        backs.clear();
+        flags.clear();
+        names.clear();
+    };
+    std::uint32_t written = 0;
+    std::uint32_t firstUnused = 0; // the number of the first name no entry so far has
     forEachEntry([&](EntryId id, const Entry& e) {
-        w.leb(e.parent == kNoEntry ? 0 : newId[id] - newId[e.parent]);
-        w.put(static_cast<std::uint8_t>(e.flags & EntryFlag::Persistent));
-        w.leb(numbers.number(e.nameOffset).first);
+        putLeb(backs, e.parent == kNoEntry ? 0 : newId[id] - newId[e.parent]);
+        flags.push_back(static_cast<char>(e.flags & EntryFlag::Persistent));
+        const std::uint32_t number = numbers.number(e.nameOffset).first;
+        putLeb(names, number == firstUnused ? 0 : std::uint64_t {number} + 1);
+        firstUnused += number == firstUnused ? 1 : 0;
+        if (++written % kGroup == 0)
+            group();
     });
+    if (written % kGroup != 0)
+        group();
 
     // Folder record numbers, for the folders that made it into the file.
     const auto saved = [&](EntryId id) { return id < newId.size() && newId[id] != kNoEntry && index.entry(id).isDir(); };
@@ -453,20 +514,32 @@ bool save(const FileIndex& index, const std::vector<VolumeInfo>& volumes,
     for (const EntryId root : index.roots())
         tables += index.folderRecords(root) && saved(root) ? 1 : 0;
     w.put(tables);
+    std::vector<std::pair<EntryId, std::uint32_t>> folders; // with their records
     for (const EntryId root : index.roots()) {
         const RecordTable* table = index.folderRecords(root);
         if (!table || !saved(root))
             continue;
-        std::uint32_t count = 0;
-        table->forEach([&](std::uint32_t, EntryId id) { count += saved(id) ? 1 : 0; });
-        w.put(newId[root]);
-        w.put(count);
+        folders.clear();
         table->forEach([&](std::uint32_t record, EntryId id) {
-            if (saved(id)) {
-                w.put(record);
-                w.put(newId[id]);
-            }
+            if (saved(id))
+                folders.emplace_back(newId[id], record);
         });
+        std::sort(folders.begin(), folders.end());
+        std::string folderColumn;
+        std::string recordColumn;
+        std::pair<EntryId, std::uint32_t> before {0, 0};
+        for (const auto& f : folders) {
+            putLeb(folderColumn, f.first - before.first);
+            const auto step = static_cast<std::int64_t>(f.second) - static_cast<std::int64_t>(before.second);
+            putLeb(recordColumn, step < 0 ? (static_cast<std::uint64_t>(-step) << 1) - 1 : static_cast<std::uint64_t>(step) << 1);
+            before = f;
+        }
+        w.put(newId[root]);
+        w.put(static_cast<std::uint32_t>(folders.size()));
+        w.put(static_cast<std::uint32_t>(folderColumn.size()));
+        w.bytes(folderColumn.data(), folderColumn.size());
+        w.put(static_cast<std::uint32_t>(recordColumn.size()));
+        w.bytes(recordColumn.data(), recordColumn.size());
     }
 
     const std::vector<char> attached = attachment ? attachment(newId) : std::vector<char>();
@@ -545,13 +618,31 @@ std::optional<Contents> load(const QString& filePath)
         const auto nameCount = r.get<std::uint32_t>();
         if (!r.ok() || nameCount > (1u << 28))
             return std::nullopt;
-        names.resize(nameCount);
-        for (auto& [offset, length] : names) {
-            length = r.get<std::uint16_t>();
+        names.reserve(nameCount);
+        while (version >= 6 && names.size() < nameCount) {
+            const std::size_t n = std::min<std::size_t>(kGroup, nameCount - names.size());
+            const auto groupBytes = r.get<std::uint32_t>();
+            const char* p = r.ok() ? r.bytes(groupBytes) : nullptr;
+            if (!p)
+                return std::nullopt;
+            const char* const end = p + groupBytes;
+            for (std::size_t k = 0; k < n; ++k) {
+                const auto* zero = static_cast<const char*>(std::memchr(p, 0, static_cast<std::size_t>(end - p)));
+                if (!zero || zero == p || zero - p > 0xFFFF)
+                    return std::nullopt;
+                const auto length = static_cast<std::uint16_t>(zero - p);
+                names.emplace_back(index->storeName({p, length}), length);
+                p = zero + 1;
+            }
+            if (p != end)
+                return std::nullopt;
+        }
+        while (version == 5 && names.size() < nameCount) {
+            const auto length = r.get<std::uint16_t>();
             const char* name = r.bytes(length);
             if (!r.ok() || length == 0)
                 return std::nullopt;
-            offset = index->storeName({name, length});
+            names.emplace_back(index->storeName({name, length}), length);
         }
     } else {
         index->setInterning(true); // the same name comes many times
@@ -559,21 +650,64 @@ std::optional<Contents> load(const QString& filePath)
     const auto count = r.get<std::uint32_t>();
     if (!r.ok())
         return std::nullopt;
-    for (std::uint32_t i = 0; i < count; ++i) {
-        EntryId parent = kNoEntry;
+    // Entry i, its parent `back` entries before it (0: a root).
+    const auto add = [&](std::uint32_t i, std::uint64_t back, std::uint8_t flags, std::uint32_t offset,
+                         std::uint16_t length) {
+        if (back == 0) {
+            if (!(flags & EntryFlag::Root))
+                return false;
+            index->addStored(kNoEntry, offset, length, flags);
+            return true;
+        }
+        // Ids are assigned sequentially, so file order == entry id.
+        const auto parent = static_cast<EntryId>(i - back);
+        if (back > i || index->entry(parent).isDeleted() || !index->entry(parent).isDir())
+            return false;
+        index->addStored(parent, offset, length, flags);
+        return true;
+    };
+    if (version >= 6) {
+        std::uint32_t firstUnused = 0; // the first name no entry so far has
+        for (std::uint32_t start = 0; start < count; start += kGroup) {
+            const std::size_t n = std::min<std::size_t>(kGroup, count - start);
+            // Each column taken out before the next is read: that may move the window.
+            const auto backBytes = r.get<std::uint32_t>();
+            const char* p = r.ok() ? r.bytes(backBytes) : nullptr;
+            const auto backs = p ? lebColumn(p, backBytes, n) : std::nullopt;
+            const char* f = backs ? r.bytes(n) : nullptr;
+            if (!f)
+                return std::nullopt;
+            const std::vector<std::uint8_t> flags(f, f + n);
+            const auto nameBytes = r.get<std::uint32_t>();
+            p = r.ok() ? r.bytes(nameBytes) : nullptr;
+            const auto codes = p ? lebColumn(p, nameBytes, n) : std::nullopt;
+            if (!codes)
+                return std::nullopt;
+            for (std::size_t k = 0; k < n; ++k) {
+                const std::uint64_t code = (*codes)[k];
+                const std::uint64_t number = code == 0 ? firstUnused++ : code - 1;
+                if (number >= names.size() || (code != 0 && number >= firstUnused)
+                    || !add(start + static_cast<std::uint32_t>(k), (*backs)[k], flags[k], names[number].first,
+                        names[number].second))
+                    return std::nullopt;
+            }
+        }
+    }
+    for (std::uint32_t i = 0; version < 6 && i < count; ++i) {
+        std::uint64_t back = 0;
         std::uint8_t flags = 0;
         std::uint32_t offset = 0;
         std::uint16_t length = 0;
-        if (version >= 5) {
-            const std::uint64_t back = r.leb();
+        if (version == 5) {
+            back = r.leb();
             flags = r.get<std::uint8_t>();
             const std::uint64_t number = r.leb();
-            if (!r.ok() || back > i || number >= names.size())
+            if (!r.ok() || number >= names.size())
                 return std::nullopt;
-            parent = back == 0 ? kNoEntry : static_cast<EntryId>(i - back);
             std::tie(offset, length) = names[number];
         } else {
-            parent = r.get<EntryId>();
+            const auto parent = r.get<EntryId>();
+            back = parent == kNoEntry ? 0 : (parent < i ? i - parent : std::uint64_t {i} + 1);
             flags = r.get<std::uint8_t>();
             length = r.get<std::uint16_t>();
             const char* name = r.bytes(length);
@@ -581,16 +715,8 @@ std::optional<Contents> load(const QString& filePath)
                 return std::nullopt;
             offset = index->storeName({name, length});
         }
-        if (parent == kNoEntry) {
-            if (!(flags & EntryFlag::Root))
-                return std::nullopt;
-            index->addStored(kNoEntry, offset, length, flags);
-        } else {
-            // Ids are assigned sequentially, so file order == entry id.
-            if (parent >= i || index->entry(parent).isDeleted() || !index->entry(parent).isDir())
-                return std::nullopt;
-            index->addStored(parent, offset, length, flags);
-        }
+        if (!r.ok() || !add(i, back, flags, offset, length))
+            return std::nullopt;
     }
 
     const auto tables = r.get<std::uint32_t>();
@@ -599,6 +725,28 @@ std::optional<Contents> load(const QString& filePath)
         const auto n = r.get<std::uint32_t>();
         if (!r.ok() || root >= count || !(index->entry(root).flags & EntryFlag::Root))
             return std::nullopt;
+        if (version >= 6) {
+            const auto folderBytes = r.get<std::uint32_t>();
+            const char* p = r.ok() ? r.bytes(folderBytes) : nullptr;
+            const auto folders = p ? lebColumn(p, folderBytes, n) : std::nullopt;
+            const auto recordBytes = folders ? r.get<std::uint32_t>() : 0;
+            p = folders && r.ok() ? r.bytes(recordBytes) : nullptr;
+            const auto records = p ? lebColumn(p, recordBytes, n) : std::nullopt;
+            if (!records)
+                return std::nullopt;
+            std::uint64_t folder = 0;
+            std::int64_t record = 0;
+            for (std::uint32_t k = 0; k < n; ++k) {
+                folder += (*folders)[k];
+                const std::uint64_t z = (*records)[k];
+                record += z & 1 ? -static_cast<std::int64_t>((z + 1) >> 1) : static_cast<std::int64_t>(z >> 1);
+                if (folder >= count || record < 0 || record > std::numeric_limits<std::uint32_t>::max()
+                    || !index->entry(static_cast<EntryId>(folder)).isDir())
+                    return std::nullopt;
+                index->setFolderRecord(root, static_cast<std::uint32_t>(record), static_cast<EntryId>(folder));
+            }
+            continue;
+        }
         for (std::uint32_t k = 0; k < n; ++k) {
             const auto record = r.get<std::uint32_t>();
             const auto folder = r.get<EntryId>();
