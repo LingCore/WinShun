@@ -17,7 +17,13 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 
-# Qt: use -QtDir / %QTDIR%, otherwise the newest MSVC kit under C:\Qt.
+# Qt: use -QtDir / %QTDIR%, otherwise the newest MSVC kit under C:\Qt. A
+# %QTDIR% without Qt in it (left over from a Qt since removed, in a program
+# started before it was changed) is passed over; a -QtDir given is not.
+if ($QtDir -and -not $PSBoundParameters.ContainsKey('QtDir') -and -not (Test-Path "$QtDir\bin\qmake.exe")) {
+    Write-Host "No Qt in QTDIR ($QtDir): looking under C:\Qt"
+    $QtDir = $null
+}
 if (-not $QtDir) {
     $QtDir = Get-ChildItem 'C:\Qt' -Directory -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -match '^\d+\.\d+\.\d+$' } |

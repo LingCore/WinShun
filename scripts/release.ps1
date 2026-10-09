@@ -46,7 +46,7 @@ if (-not $Iscc) {
 if (-not $Iscc -or -not (Test-Path $Iscc)) { throw 'Inno Setup 6.5 or later is needed (winget install JRSoftware.InnoSetup), or pass -Iscc' }
 
 $buildArgs = @{ Deploy = $true }
-if ($QtDir) { $buildArgs.QtDir = $QtDir }
+if ($PSBoundParameters.ContainsKey('QtDir')) { $buildArgs.QtDir = $QtDir } # else build.ps1 looks at QTDIR itself
 & (Join-Path $PSScriptRoot 'build.ps1') @buildArgs
 
 $dist = Join-Path $root 'dist'

@@ -494,6 +494,12 @@
 - **原因**：6.12 的 Qt Qml（资源下载器）依赖新拆出来的 TaskTree 模块，aqtinstall 默认不装。
 - **做法**：`aqt install-qt windows desktop 6.12.0 win64_msvc2022_64 -m qttasktree -O C:/Qt`。
 
+### 换了 Qt 版本，发布脚本还找旧的
+
+- **现象**：发布 0.4.0 时 `release.ps1` 一开始就报 `Qt not found`。用户环境变量 `QTDIR` 早已改成 6.12.0，可脚本拿到的是 `C:\Qt\6.11.1\msvc2022_64`，那个文件夹已经删了。
+- **原因**：环境变量是程序启动时拿到的一份副本。VS Code 在改 `QTDIR` 之前就开着，从它里面起的终端和脚本拿到的还是旧值，要重启 VS Code 才会更新。`release.ps1` 又把这个旧值当成用户指定的路径传给 `build.ps1`。
+- **做法**：`build.ps1` 发现 `QTDIR` 里没有 Qt 时，就改用 `C:\Qt` 下最新的版本，并提示一行；用 `-QtDir` 明确指定的路径照旧检查，错了就报错。`release.ps1` 只在明确指定了 `-QtDir` 时才往下传。
+
 ### `windows.h` 把 `near`、`far` 定义成了空宏
 
 - **现象**：新文件先包含了 `windows.h`，`DoubleTapDetector.h` 里的成员函数 `near(...)` 报 C2062“意外的类型 int”。
