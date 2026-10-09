@@ -8,16 +8,22 @@ namespace ws {
 // Recognises "tap Ctrl twice" from raw key events. Pure logic (no Win32), so
 // it is unit-tested; KeyListener feeds it events.
 //
-// A tap is a Ctrl press and release with no other key or mouse button in
-// between, shorter than maxPressMs. Two taps within maxGapMs trigger, unless
-// the mouse moved in between. Both exceptions are Ctrl+click multi-selection,
-// not a double tap: clicking the same spot twice, or one row and the next.
+// A tap is a Ctrl press and release with no other key, mouse button or wheel
+// in between, shorter than maxPressMs. Two taps within maxGapMs trigger,
+// unless the mouse moved in between. The exceptions are Ctrl used with the
+// mouse, not a double tap: Ctrl+click multi-selection (the same spot twice,
+// or one row and the next), Ctrl+wheel zooming, and a touchpad pinch, which
+// Windows sends as Ctrl+wheel.
 class DoubleTapDetector {
 public:
     struct Config {
         std::uint32_t maxPressMs = 300;
         std::uint32_t maxGapMs = 400;
         int maxMovePx = 12;
+        // Longer than a keyboard waits before it repeats a held key (1 s at
+        // most) or between repeats: a press after this much quiet is a new
+        // one, and the release of the last was lost.
+        std::uint32_t lostReleaseMs = 1500;
     };
 
     DoubleTapDetector() = default;
@@ -39,8 +45,12 @@ public:
             m_armed = false;
             return false;
         }
-        if (m_down)
-            return false; // auto-repeat while held
+        // Auto-repeat while held. Unless the release was never seen: it went
+        // to the secure desktop (Ctrl+Alt+Del), or a program's hook ate it.
+        const bool repeat = m_down && timeMs - m_lastDownTime <= m_config.lostReleaseMs;
+        m_lastDownTime = timeMs;
+        if (repeat)
+            return false;
         m_down = true;
         m_clean = true;
         m_downTime = timeMs;
@@ -72,12 +82,16 @@ public:
         return false;
     }
 
-    // A mouse button went down: the Ctrl held now, or just tapped, was for a click.
-    void mouseButtonDown() noexcept
+    // A mouse button went down or is held, or the wheel turned: the Ctrl held
+    // now, or just tapped, was for a click, a drag or zooming.
+    void mouseUsed() noexcept
     {
         m_clean = false;
         m_armed = false;
     }
+
+    // The second tap may come as late as this after the first.
+    void setMaxGap(std::uint32_t ms) noexcept { m_config.maxGapMs = ms; }
 
     void reset() noexcept { *this = DoubleTapDetector(m_config); }
 
@@ -92,6 +106,7 @@ private:
     bool m_clean = false;
     bool m_armed = false;
     std::uint32_t m_downTime = 0;
+    std::uint32_t m_lastDownTime = 0; // repeats included
     std::uint32_t m_firstUpTime = 0;
     int m_downX = 0;
     int m_downY = 0;

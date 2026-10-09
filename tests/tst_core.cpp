@@ -2463,22 +2463,49 @@ private slots:
             d.keyDown(ctrl, 150, 300, 100);
             QVERIFY(!d.keyUp(ctrl, 200, 300, 100));
         }
-        { // a click while Ctrl is down, twice on the same spot: Ctrl+click, not a double tap
+        { // a click (or the wheel) while Ctrl is down, twice on the same spot: not a double tap
             DoubleTapDetector d;
             d.keyDown(ctrl, 0, 100, 100);
-            d.mouseButtonDown();
+            d.mouseUsed();
             d.keyUp(ctrl, 50, 100, 100);
             d.keyDown(ctrl, 150, 100, 100);
-            d.mouseButtonDown();
+            d.mouseUsed();
             QVERIFY(!d.keyUp(ctrl, 200, 100, 100));
         }
         { // a click right after a tap: no double tap with the next one
             DoubleTapDetector d;
             d.keyDown(ctrl, 0, 0, 0);
             d.keyUp(ctrl, 50, 0, 0);
-            d.mouseButtonDown();
+            d.mouseUsed();
             d.keyDown(ctrl, 150, 0, 0);
             QVERIFY(!d.keyUp(ctrl, 200, 0, 0));
+        }
+        { // the release was lost (Ctrl+Alt+Del): the next double tap still counts
+            DoubleTapDetector d;
+            d.keyDown(ctrl, 0, 0, 0);
+            d.keyDown(ctrl, 500, 0, 0); // auto-repeat
+            d.keyDown(ctrl, 530, 0, 0);
+            QVERIFY(!d.keyDown(ctrl, 10'000, 0, 0));
+            QVERIFY(!d.keyUp(ctrl, 10'080, 0, 0));
+            QVERIFY(!d.keyDown(ctrl, 10'200, 0, 0));
+            QVERIFY(d.keyUp(ctrl, 10'260, 0, 0));
+        }
+        { // held a long while, repeating: not a tap when let go
+            DoubleTapDetector d;
+            d.keyDown(ctrl, 0, 0, 0);
+            d.keyUp(ctrl, 50, 0, 0);
+            d.keyDown(ctrl, 100, 0, 0);
+            for (std::uint32_t t = 600; t <= 5'000; t += 33)
+                d.keyDown(ctrl, t, 0, 0);
+            QVERIFY(!d.keyUp(ctrl, 5'010, 0, 0));
+        }
+        { // the gap follows the double-click time
+            DoubleTapDetector d;
+            d.setMaxGap(700);
+            d.keyDown(ctrl, 0, 0, 0);
+            d.keyUp(ctrl, 50, 0, 0);
+            d.keyDown(ctrl, 650, 0, 0);
+            QVERIFY(d.keyUp(ctrl, 700, 0, 0));
         }
         { // timestamps wrap around
             DoubleTapDetector d;

@@ -10,8 +10,9 @@
 
 namespace ws {
 
-// Global "double-tap Ctrl" detection through Raw Input. Mouse buttons are
-// listened to as well: a Ctrl held for a click is not a tap.
+// Global "double-tap Ctrl" detection through Raw Input. The mouse is listened
+// to as well, from a Ctrl press until a second tap can no longer follow: a
+// Ctrl held for a click, a drag or the wheel is not a tap.
 //
 // Key presses reach a hidden window on its own thread as WM_INPUT messages,
 // after the fact. Unlike a low-level keyboard hook, which every key press in
@@ -31,9 +32,11 @@ public:
 private:
     static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     void onInput(HRAWINPUT input);
+    void listenToMouse(bool on);
 
     std::function<void()> m_callback;
     DoubleTapDetector m_detector; // only touched on the listener thread
+    bool m_mouseOn = false; // listener thread only
     std::atomic<HWND> m_window {nullptr};
     std::atomic<bool> m_active {false};
     std::jthread m_thread;
