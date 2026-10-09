@@ -10,6 +10,7 @@
 #include "NameSearch.h"
 #include "Ntfs.h"
 #include "NtfsIndexer.h"
+#include "PathText.h"
 #include "Pinyin.h"
 #include "Query.h"
 #include "Release.h"
@@ -241,6 +242,109 @@ class CoreTest : public QObject {
     Q_OBJECT
 
 private slots:
+    void pathFromText()
+    {
+        using pathtext::pathFromText;
+        QCOMPARE(pathFromText(u"C:\\Users\\me\\file.txt"_s), u"C:\\Users\\me\\file.txt"_s);
+        QCOMPARE(pathFromText(u"  \"C:\\Program Files\\App\"  \r\n"_s), u"C:\\Program Files\\App"_s); // Copy as path
+        QCOMPARE(pathFromText(u"\n\nD:/work/docs/\nsecond line"_s), u"D:\\work\\docs"_s);
+        QCOMPARE(pathFromText(u"C:\\\\Users\\\\me\\\\"_s), u"C:\\Users\\me"_s); // doubled, as in source code
+        QCOMPARE(pathFromText(u"e:"_s), u"e:\\"_s);
+        QCOMPARE(pathFromText(u"C:\\"_s), u"C:\\"_s);
+        QCOMPARE(pathFromText(u"file:///C:/Users/me/a%20b.txt"_s), u"C:\\Users\\me\\a b.txt"_s);
+        QCOMPARE(pathFromText(u"\\\\server\\share\\folder\\"_s), u"\\\\server\\share\\folder"_s);
+        QCOMPARE(pathFromText(u"%SystemRoot%\\System32"_s), qEnvironmentVariable("SystemRoot") + u"\\System32"_s);
+        QCOMPARE(pathFromText(u"C:\\100%NOSUCHVARIABLE%\\x"_s), u"C:\\100%NOSUCHVARIABLE%\\x"_s);
+        QVERIFY(pathFromText(u"Users\\me"_s).isEmpty()); // relative
+        QVERIFY(pathFromText(u"\\\\server"_s).isEmpty()); // no share
+        QVERIFY(pathFromText(u"C:\\a?b"_s).isEmpty());
+        QVERIFY(pathFromText(u"C:\\a:b"_s).isEmpty());
+        QVERIFY(pathFromText(u"https://example.com/a"_s).isEmpty());
+        QVERIFY(pathFromText(u"hello world"_s).isEmpty());
+        QVERIFY(pathFromText({}).isEmpty());
+    }
+
+    void filterExtensions()
+    {
+        using pathtext::filterExtensions;
+        QCOMPARE(filterExtensions(u"Text files (*.txt;*.LOG)"_s), (QStringList {u"txt"_s, u"log"_s}));
+        QCOMPARE(filterExtensions(u"图片 (*.png, *.jpg; *.png)"_s), (QStringList {u"png"_s, u"jpg"_s}));
+        QCOMPARE(filterExtensions(u"*.tar.gz"_s), (QStringList {u"tar.gz"_s}));
+        QVERIFY(filterExtensions(u"所有文件 (*.*)"_s).isEmpty());
+        QVERIFY(filterExtensions(u"All files (*)"_s).isEmpty());
+        QVERIFY(filterExtensions(u"Web pages (*.htm*)"_s).isEmpty());
+        QVERIFY(filterExtensions(u"Word 文档"_s).isEmpty());
+    }
+
+    void folderFromAddress()
+    {
+        using pathtext::folderFromAddress;
+        QCOMPARE(folderFromAddress(u"地址: C:\\Windows\\System32"_s), u"C:\\Windows\\System32"_s);
+        QCOMPARE(folderFromAddress(u"Address: D:\\"_s), u"D:\\"_s);
+        QCOMPARE(folderFromAddress(u"Adresse : \\\\nas\\photos\\2024"_s), u"\\\\nas\\photos\\2024"_s);
+        QVERIFY(folderFromAddress(u"地址: 此电脑"_s).isEmpty());
+        QVERIFY(folderFromAddress(u"Address: Libraries\\Documents"_s).isEmpty());
+        QVERIFY(pathtext::sameFolder(u"c:\\users\\ME\\"_s, u"C:\\Users\\me"_s));
+        QVERIFY(!pathtext::sameFolder(u"C:\\Users"_s, u"C:\\Users\\me"_s));
+        QVERIFY(!pathtext::sameFolder({}, {}));
+    }
+
+    void splitTyped()
+    {
+        const auto split = [](const QString& text) {
+            const pathtext::TypedPath typed = pathtext::splitTyped(text);
+            return QStringList {typed.folder, typed.name};
+        };
+        QCOMPARE(split(u"D:\\Pro"_s), (QStringList {u"D:\\"_s, u"Pro"_s}));
+        QCOMPARE(split(u"D:\\Projects\\"_s), (QStringList {u"D:\\Projects"_s, QString()}));
+        QCOMPARE(split(u"D:/work/docs"_s), (QStringList {u"D:\\work"_s, u"docs"_s}));
+        QCOMPARE(split(u"d:"_s), (QStringList {u"d:\\"_s, QString()}));
+        QCOMPARE(split(u"\"C:\\Program Files\\Wi\""_s), (QStringList {u"C:\\Program Files"_s, u"Wi"_s}));
+        QCOMPARE(split(u"\\\\server\\share\\"_s), (QStringList {u"\\\\server\\share"_s, QString()}));
+        QCOMPARE(split(u"%SystemRoot%\\Sys"_s), (QStringList {qEnvironmentVariable("SystemRoot"), u"Sys"_s}));
+        QVERIFY(pathtext::splitTyped(u"\\\\server\\sha"_s).folder.isEmpty()); // no share yet
+        QVERIFY(pathtext::splitTyped(u"D:\\*.pdf"_s).folder.isEmpty()); // for the search
+        QVERIFY(pathtext::splitTyped(u"report"_s).folder.isEmpty());
+        QVERIFY(pathtext::splitTyped(u"docs\\report"_s).folder.isEmpty()); // a folder name in a search
+    }
+
+    void listTyped()
+    {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        const QString root = QDir::toNativeSeparators(tmp.path());
+        for (const QString& name : {u"Alpha"_s, u"alpha10"_s, u"alpha2"_s, u"Beta"_s, u"项目资料"_s, u"secret"_s})
+            QVERIFY(QDir(root).mkdir(name));
+        for (const QString& name : {u"alpha.txt"_s, u"notes.md"_s}) {
+            QFile file(root + u'\\' + name);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+        }
+        QVERIFY(::SetFileAttributesW(reinterpret_cast<const wchar_t*>((root + u"\\secret"_s).utf16()), FILE_ATTRIBUTE_HIDDEN));
+        const auto names = [](const SearchResults& rows) {
+            QStringList out;
+            for (const SearchResult& r : rows)
+                out.append(r.name + (r.isDir ? u"\\"_s : QString()));
+            return out;
+        };
+        const QString self = QDir(root).dirName() + u'\\';
+
+        // Nothing typed: the folder itself, its folders, its files; no hidden ones.
+        const SearchResults all = pathtext::listTyped({root, {}}, false, 50);
+        QCOMPARE(names(all).first(5), (QStringList {self, u"Alpha\\"_s, u"alpha2\\"_s, u"alpha10\\"_s, u"Beta\\"_s}));
+        QCOMPARE(names(all).last(2), (QStringList {u"alpha.txt"_s, u"notes.md"_s}));
+        QCOMPARE(all.size(), 8);
+        QCOMPARE(all[0].path, root);
+        QCOMPARE(all[1].path, root + u"\\Alpha"_s);
+
+        QCOMPARE(names(pathtext::listTyped({root, u"alp"_s}, false, 50)),
+            (QStringList {u"Alpha\\"_s, u"alpha2\\"_s, u"alpha10\\"_s, u"alpha.txt"_s}));
+        QCOMPARE(names(pathtext::listTyped({root, u"alp"_s}, true, 50)),
+            (QStringList {u"Alpha\\"_s, u"alpha2\\"_s, u"alpha10\\"_s}));
+        QCOMPARE(names(pathtext::listTyped({root, u"xm"_s}, false, 50)), (QStringList {u"项目资料\\"_s})); // pinyin
+        QCOMPARE(names(pathtext::listTyped({root, {}}, false, 2)), (QStringList {self, u"Alpha\\"_s}));
+        QVERIFY(pathtext::listTyped({root + u"\\nothing here"_s, {}}, false, 50).isEmpty());
+    }
+
     void releaseVersions()
     {
         QVERIFY(release::isNewer(u"0.2.0"_s, u"0.1.0"_s));

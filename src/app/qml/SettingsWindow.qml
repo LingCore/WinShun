@@ -405,6 +405,48 @@ Window {
                 }
 
                 SettingRow {
+                    title: qsTr("对话框下方的搜索框")
+                    description: qsTr("“打开”“另存为”等对话框出现时，在它下面放一个搜索框：搜文件夹或文件，选中后对话框直接转过去。在对话框里双击 Ctrl 就能开始输入")
+
+                    ToggleSwitch {
+                        checked: window.editor.dialogBar
+                        onToggled: (on) => window.editor.dialogBar = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("对话框自动转到资源管理器的文件夹")
+                    description: qsTr("“打开”“另存为”等对话框出现时，自动转到资源管理器正在显示的文件夹；对话框开着时去资源管理器换了文件夹，切回来也跟着转过去，只是看一眼就不动。转过去以后，搜索框上有按钮回到原来的位置")
+
+                    ToggleSwitch {
+                        checked: window.editor.dialogAutoJump
+                        onToggled: (on) => window.editor.dialogAutoJump = on
+                    }
+                }
+
+                SettingRow {
+                    visible: window.editor.dialogBarExcludedApps.length > 0
+                    title: qsTr("不在这些程序的对话框下显示搜索框")
+                    description: qsTr("点搜索框最右边的“更多”按钮添加。这些程序里 Ctrl+G 照常可用")
+
+                    body: Flow {
+                        width: parent.width
+                        spacing: 6
+
+                        Repeater {
+                            model: window.editor.dialogBarExcludedApps
+
+                            delegate: Chip {
+                                required property int index
+                                required property string modelData
+                                text: modelData
+                                onRemoveClicked: window.editor.removeDialogBarExcludedApp(index)
+                            }
+                        }
+                    }
+                }
+
+                SettingRow {
                     title: qsTr("开机时自动启动")
                     description: qsTr("登录 Windows 后在后台运行，随时可以打开")
 

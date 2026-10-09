@@ -17,6 +17,9 @@ struct Settings {
     QString renderer = QStringLiteral("auto"); // software | d3d11 | auto
     bool recordHistory = true; // remember what was opened: listed with nothing typed, first among matches
     bool dialogJump = true; // Ctrl+G in an Open or Save dialog goes to the folder open in File Explorer
+    bool dialogBar = true; // a search bar under Open and Save dialogs (DialogBar)
+    bool dialogAutoJump = false; // file dialogs go to the folder open in File Explorer by themselves
+    QStringList dialogBarExcludedApps; // program files ("notepad.exe") whose file dialogs go without the bar
 
     // [Appearance]
     QString theme = QStringLiteral("system"); // system | light | dark

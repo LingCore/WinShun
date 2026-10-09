@@ -22,6 +22,7 @@ namespace ws {
 class AppCatalog;
 class ClipStore;
 class Clipboard;
+class DialogBar;
 class DialogJump;
 class SystemCatalog;
 class History;
@@ -80,6 +81,9 @@ private:
     void setClipboardPaused(bool paused);
     void showClipboardSettings(); // the settings window on its 剪贴板 page
     void applyHotkey();
+    void applyDialogs(); // Ctrl+G, the bar and going by themselves in file dialogs
+    void excludeFromDialogBar(const QString& app); // "not in this program" from the bar's menu
+    bool createBarWindow();
     void reloadSettings();
     void settingsEdited(const Settings& settings);
     void showTrayMenu();
@@ -116,7 +120,8 @@ private:
     bool m_updateNotified = false; // the last tray notification announced a new version
     std::unique_ptr<VolumeNotifier> m_volumeNotifier; // after m_messages, whose window it uses
     std::unique_ptr<KeyListener> m_keyListener; // double Ctrl
-    std::unique_ptr<DialogJump> m_dialogJump; // Ctrl+G in file dialogs; after m_messages, which has the hotkey
+    std::unique_ptr<DialogJump> m_dialogJump; // file dialogs: Ctrl+G, the bar; after m_messages, which has the hotkey
+    std::unique_ptr<DialogBar> m_dialogBar; // the search bar under file dialogs
     std::unique_ptr<Placement> m_placement; // where the launcher opens; moving it
     std::unique_ptr<WindowFrame> m_frame; // the launcher's header and footer drag it
     // The launcher is shown cloaked and revealed once it has drawn a frame
@@ -130,6 +135,7 @@ private:
     std::unique_ptr<QQmlApplicationEngine> m_qml; // destroyed first: QML references the objects above
     QPointer<QQuickWindow> m_window;
     QPointer<QQuickWindow> m_settingsWindow; // created on demand, deleted when closed
+    QPointer<QQuickWindow> m_barWindow; // the dialog bar's; created with the first file dialog
     QPointer<SettingsEditor> m_settingsEditor; // owned by m_settingsWindow
     QString m_renderer; // the one in use; changing it takes a restart
     QString m_language; // resolved: zh or en

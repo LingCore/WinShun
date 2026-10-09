@@ -212,11 +212,35 @@ void SettingsEditor::setRecordHistory(bool on)
     commit();
 }
 
+void SettingsEditor::setDialogBar(bool on)
+{
+    if (m_settings.dialogBar == on)
+        return;
+    m_settings.dialogBar = on;
+    commit();
+}
+
 void SettingsEditor::setDialogJump(bool on)
 {
     if (m_settings.dialogJump == on)
         return;
     m_settings.dialogJump = on;
+    commit();
+}
+
+void SettingsEditor::setDialogAutoJump(bool on)
+{
+    if (m_settings.dialogAutoJump == on)
+        return;
+    m_settings.dialogAutoJump = on;
+    commit();
+}
+
+void SettingsEditor::removeDialogBarExcludedApp(int index)
+{
+    if (index < 0 || index >= m_settings.dialogBarExcludedApps.size())
+        return;
+    m_settings.dialogBarExcludedApps.removeAt(index);
     commit();
 }
 

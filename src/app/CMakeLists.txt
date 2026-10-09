@@ -6,7 +6,9 @@ qt_add_executable(WinShun WIN32
     Migration.cpp Migration.h
     Settings.cpp Settings.h
     platform/ClipboardWatcher.cpp platform/ClipboardWatcher.h
+    platform/ComWorker.cpp platform/ComWorker.h
     platform/DialogJump.cpp platform/DialogJump.h
+    platform/FileDialog.cpp platform/FileDialog.h
     platform/Http.cpp platform/Http.h
     platform/KeyListener.cpp platform/KeyListener.h
     platform/MessageWindow.cpp platform/MessageWindow.h
@@ -33,6 +35,8 @@ set(qml_files
     qml/RowAction.qml
     qml/ListScrollBar.qml
     qml/ContextMenu.qml
+    qml/DialogBarWindow.qml
+    qml/DialogBarRow.qml
     qml/HoverTip.qml
     qml/Footer.qml
     qml/KeyHint.qml
@@ -98,6 +102,7 @@ qt_add_qml_module(WinShun
         ClipModel.cpp ClipModel.h
         Clipboard.cpp Clipboard.h
         ColorSwatch.cpp ColorSwatch.h
+        DialogBar.cpp DialogBar.h
         GleaningScene.cpp GleaningScene.h
         IconBadge.cpp IconBadge.h
         Launcher.cpp Launcher.h

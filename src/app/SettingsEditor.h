@@ -27,6 +27,9 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool recordHistory READ recordHistory WRITE setRecordHistory NOTIFY changed FINAL)
     Q_PROPERTY(int historyCount READ historyCount NOTIFY historyCountChanged FINAL)
     Q_PROPERTY(bool dialogJump READ dialogJump WRITE setDialogJump NOTIFY changed FINAL)
+    Q_PROPERTY(bool dialogBar READ dialogBar WRITE setDialogBar NOTIFY changed FINAL)
+    Q_PROPERTY(bool dialogAutoJump READ dialogAutoJump WRITE setDialogAutoJump NOTIFY changed FINAL)
+    Q_PROPERTY(QStringList dialogBarExcludedApps READ dialogBarExcludedApps NOTIFY changed FINAL)
     Q_PROPERTY(bool includeRemovableDrives READ includeRemovableDrives WRITE setIncludeRemovableDrives NOTIFY changed FINAL)
     Q_PROPERTY(bool rescanOnStartup READ rescanOnStartup WRITE setRescanOnStartup NOTIFY changed FINAL)
     Q_PROPERTY(QStringList excludedPaths READ excludedPaths NOTIFY changed FINAL) // expanded, for display
@@ -80,6 +83,11 @@ public:
     void setHistoryCount(int count); // set by the app
     bool dialogJump() const { return m_settings.dialogJump; }
     void setDialogJump(bool on);
+    bool dialogBar() const { return m_settings.dialogBar; }
+    void setDialogBar(bool on);
+    bool dialogAutoJump() const { return m_settings.dialogAutoJump; }
+    void setDialogAutoJump(bool on);
+    QStringList dialogBarExcludedApps() const { return m_settings.dialogBarExcludedApps; }
     bool includeRemovableDrives() const { return m_settings.includeRemovableDrives; }
     void setIncludeRemovableDrives(bool on);
     bool rescanOnStartup() const { return m_settings.rescanOnStartup; }
@@ -137,6 +145,7 @@ public:
     Q_INVOKABLE void removeExcludedPath(int index);
     Q_INVOKABLE bool addExcludedName(const QString& name);
     Q_INVOKABLE void removeExcludedName(int index);
+    Q_INVOKABLE void removeDialogBarExcludedApp(int index);
     Q_INVOKABLE bool addContentExtensions(const QString& text); // "md, .log *.csv"
     Q_INVOKABLE void removeContentExtension(int index);
     Q_INVOKABLE bool addClipboardExcludedApp(const QString& name); // "KeePass", "keepass.exe"

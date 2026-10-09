@@ -143,6 +143,45 @@
     </message>
 </context>
 <context>
+    <name>DialogBarWindow</name>
+    <message>
+        <source>Win顺</source>
+        <translation>WinShun</translation>
+    </message>
+    <message>
+        <source>搜索文件夹，或输入路径</source>
+        <translation>Search for a folder, or type a path</translation>
+    </message>
+    <message>
+        <source>搜索文件或文件夹，或输入路径</source>
+        <translation>Search for a file or folder, or type a path</translation>
+    </message>
+    <message>
+        <source>没有找到</source>
+        <translation>Nothing found</translation>
+    </message>
+    <message>
+        <source>回到“%1”</source>
+        <translation>Back to “%1”</translation>
+    </message>
+    <message>
+        <source>转到资源管理器中的“%1”</source>
+        <translation>Go to “%1” shown in File Explorer</translation>
+    </message>
+    <message>
+        <source>更多</source>
+        <translation>More</translation>
+    </message>
+    <message>
+        <source>Ctrl+Enter 直接打开</source>
+        <translation>Ctrl+Enter opens it</translation>
+    </message>
+    <message>
+        <source>Tab 展开</source>
+        <translation>Tab to expand</translation>
+    </message>
+</context>
+<context>
     <name>Footer</name>
     <message>
         <source>打开</source>
@@ -538,6 +577,30 @@
     <message>
         <source>在“打开”“另存为”等对话框里按 Ctrl+G，对话框直接转到最近用过的资源管理器窗口正在显示的文件夹</source>
         <translation>In an Open or Save As dialog, press Ctrl+G to go to the folder shown in the File Explorer window you used last</translation>
+    </message>
+    <message>
+        <source>对话框下方的搜索框</source>
+        <translation>Search bar under file dialogs</translation>
+    </message>
+    <message>
+        <source>“打开”“另存为”等对话框出现时，在它下面放一个搜索框：搜文件夹或文件，选中后对话框直接转过去。在对话框里双击 Ctrl 就能开始输入</source>
+        <translation>Under Open and Save As dialogs, a search bar: find a folder or file and the dialog goes there. Press Ctrl twice in the dialog to start typing</translation>
+    </message>
+    <message>
+        <source>对话框自动转到资源管理器的文件夹</source>
+        <translation>File dialogs go to Explorer’s folder by themselves</translation>
+    </message>
+    <message>
+        <source>“打开”“另存为”等对话框出现时，自动转到资源管理器正在显示的文件夹；对话框开着时去资源管理器换了文件夹，切回来也跟着转过去，只是看一眼就不动。转过去以后，搜索框上有按钮回到原来的位置</source>
+        <translation>When an Open or Save dialog comes up, it goes to the folder File Explorer shows; go to another folder in Explorer while the dialog is open and it follows when you switch back (just looking changes nothing). The search bar then has a button to go back to where the dialog was</translation>
+    </message>
+    <message>
+        <source>不在这些程序的对话框下显示搜索框</source>
+        <translation>No search bar under these programs’ dialogs</translation>
+    </message>
+    <message>
+        <source>点搜索框最右边的“更多”按钮添加。这些程序里 Ctrl+G 照常可用</source>
+        <translation>Add one with the “More” button at the right end of the search bar. Ctrl+G still works in these programs</translation>
     </message>
     <message>
         <source>浅色</source>
@@ -1439,6 +1502,81 @@
     <message>
         <source>已删除分组“%1”，按 Ctrl+Z 撤销</source>
         <translation>Deleted group “%1”; Ctrl+Z undoes</translation>
+    </message>
+</context>
+<context>
+    <name>ws::DialogBar</name>
+    <message>
+        <source>固定</source>
+        <translation>Pinned</translation>
+    </message>
+    <message>
+        <source>输入的路径</source>
+        <translation>Typed path</translation>
+    </message>
+    <message>
+        <source>当前位置</source>
+        <translation>Current location</translation>
+    </message>
+    <message>
+        <source>资源管理器</source>
+        <translation>Explorer</translation>
+    </message>
+    <message>
+        <source>剪贴板</source>
+        <translation>Clipboard</translation>
+    </message>
+    <message>
+        <source>最近</source>
+        <translation>Recent</translation>
+    </message>
+    <message>
+        <source>取消固定“%1”</source>
+        <translation>Unpin “%1”</translation>
+    </message>
+    <message>
+        <source>固定“%1”</source>
+        <translation>Pin “%1”</translation>
+    </message>
+    <message>
+        <source>这次不显示</source>
+        <translation>Hide this time</translation>
+    </message>
+    <message>
+        <source>在 %1 中不再显示</source>
+        <translation>Don’t show in %1</translation>
+    </message>
+    <message>
+        <source>设置</source>
+        <translation>Settings</translation>
+    </message>
+    <message>
+        <source>转到</source>
+        <translation>Go there</translation>
+    </message>
+    <message>
+        <source>直接打开</source>
+        <translation>Open it</translation>
+    </message>
+    <message>
+        <source>在列表中展开</source>
+        <translation>Expand in the list</translation>
+    </message>
+    <message>
+        <source>复制路径</source>
+        <translation>Copy path</translation>
+    </message>
+    <message>
+        <source>取消固定</source>
+        <translation>Unpin</translation>
+    </message>
+    <message>
+        <source>固定到列表</source>
+        <translation>Pin to the list</translation>
+    </message>
+    <message>
+        <source>固定所在的文件夹</source>
+        <translation>Pin its folder</translation>
     </message>
 </context>
 <context>

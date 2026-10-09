@@ -3,6 +3,7 @@
 #include "AppCatalog.h"
 #include "ClipStore.h"
 #include "Clipboard.h"
+#include "DialogBar.h"
 #include "FileIconProvider.h"
 #include "History.h"
 #include "IndexService.h"
@@ -122,7 +123,8 @@ App::App()
     connect(&m_darkFrameGuard, &QTimer::timeout, this, [this] {
         if (m_darkFrameWatch.elapsed() < 50) // Qt's own, after some 5 ms, first
             return;
-        for (QWindow* window : {static_cast<QWindow*>(m_window), static_cast<QWindow*>(m_settingsWindow)}) {
+        for (QWindow* window : {static_cast<QWindow*>(m_window), static_cast<QWindow*>(m_settingsWindow),
+                 static_cast<QWindow*>(m_barWindow)}) {
             if (window && win::isDarkFrame(window) != m_darkFrame)
                 win::setDarkFrame(window, m_darkFrame);
         }
@@ -136,6 +138,7 @@ App::App()
 App::~App()
 {
     delete m_settingsWindow; // before the QML engine it was created with
+    delete m_barWindow;
 }
 
 bool App::start(const StartOptions& options)
@@ -234,7 +237,7 @@ bool App::start(const StartOptions& options)
             toggleClipboard();
         else if (id != kDialogJumpHotkeyId)
             toggleLauncher();
-        else if (m_dialogJump)
+        else if (m_dialogJump && m_settings.dialogJump)
             m_dialogJump->jump();
     };
     callbacks.shellRestarted = [this] { // Explorer let go of Win+V, or took it back
@@ -349,6 +352,11 @@ bool App::eventFilter(QObject* watched, QEvent* event)
             emit m_launcher->contextMenuKeyPressed();
         return true;
     }
+    if (watched == m_barWindow && m_dialogBar && event->type() == QEvent::ContextMenu
+        && static_cast<QContextMenuEvent*>(event)->reason() == QContextMenuEvent::Keyboard) {
+        emit m_dialogBar->contextMenuKeyPressed();
+        return true;
+    }
     return QObject::eventFilter(watched, event);
 }
 
@@ -360,6 +368,8 @@ void App::applyTheme()
         styleWindow(m_window, dark, SystemTheme::backdropAvailable());
     if (m_settingsWindow)
         styleWindow(m_settingsWindow, dark, SystemTheme::backdropAvailable());
+    if (m_barWindow)
+        styleWindow(m_barWindow, dark);
     // The frames' dark mode only once Qt has set its own (light) one, a few
     // milliseconds later; then watch them for a while (see win::setDarkFrame).
     m_darkFrame = dark;
@@ -419,16 +429,7 @@ void App::applySettings(bool initial)
     } else if (!m_settings.doubleCtrl) {
         m_keyListener.reset();
     }
-    if (m_settings.dialogJump && !m_dialogJump) {
-        m_dialogJump = std::make_unique<DialogJump>([this](bool on) {
-            if (on)
-                return m_messages->registerHotkey(kDialogJumpHotkeyId, u"Ctrl+G"_s);
-            m_messages->unregisterHotkey(kDialogJumpHotkeyId);
-            return true;
-        });
-    } else if (!m_settings.dialogJump) {
-        m_dialogJump.reset();
-    }
+    applyDialogs();
     applyClipboard();
 
     if (!initial)
@@ -703,8 +704,104 @@ void App::handleCommand(const QString& command)
         showLauncher();
 }
 
+void App::applyDialogs()
+{
+    if (m_settings.dialogBar && !m_dialogBar) {
+        m_dialogBar = std::make_unique<DialogBar>(m_engine.get(), m_history.get(),
+            Settings::dataDir() + u"\\dialog-pins.txt"_s, [this](HWND dialog, std::wstring path, bool isFile, bool open) {
+                if (m_dialogJump)
+                    m_dialogJump->go(dialog, std::move(path), isFile, open);
+            });
+        connect(m_dialogBar.get(), &DialogBar::excludeAppRequested, this, &App::excludeFromDialogBar);
+        connect(m_dialogBar.get(), &DialogBar::settingsRequested, this, [this] { showSettings(); });
+    } else if (!m_settings.dialogBar && m_dialogBar) {
+        if (m_dialogJump)
+            m_dialogJump->setCompanion(nullptr);
+        delete m_barWindow;
+        m_dialogBar.reset();
+    }
+    if (m_dialogBar) {
+        m_dialogBar->setRecordHistory(m_settings.recordHistory);
+        m_dialogBar->setExcludedApps(m_settings.dialogBarExcludedApps);
+    }
+
+    const bool followDialogs = m_settings.dialogJump || m_settings.dialogBar || m_settings.dialogAutoJump;
+    if (followDialogs && !m_dialogJump) {
+        DialogJump::Callbacks callbacks;
+        callbacks.setHotkey = [this](bool on) {
+            if (on)
+                return m_messages->registerHotkey(kDialogJumpHotkeyId, u"Ctrl+G"_s);
+            m_messages->unregisterHotkey(kDialogJumpHotkeyId);
+            return true;
+        };
+        callbacks.dialogChanged = [this](HWND dialog) {
+            if (m_dialogBar && (!dialog || m_barWindow || createBarWindow()))
+                m_dialogBar->setDialog(dialog);
+        };
+        callbacks.dialogMoved = [this] {
+            if (m_dialogBar)
+                m_dialogBar->dialogMoved();
+        };
+        callbacks.autoJumped = [this](HWND dialog, std::wstring from) { // on DialogJump's thread
+            QMetaObject::invokeMethod(this, [this, dialog, from = QString::fromStdWString(from)] {
+                if (m_dialogBar)
+                    m_dialogBar->setOrigin(dialog, from);
+            }, Qt::QueuedConnection);
+        };
+        m_dialogJump = std::make_unique<DialogJump>(std::move(callbacks));
+        if (m_barWindow)
+            m_dialogJump->setCompanion(reinterpret_cast<HWND>(m_barWindow->winId()));
+    } else if (!followDialogs) {
+        m_dialogJump.reset();
+    }
+    if (m_dialogJump) {
+        m_dialogJump->setHotkeyEnabled(m_settings.dialogJump);
+        m_dialogJump->setAutoJump(m_settings.dialogAutoJump);
+    }
+    // Turned on with a file dialog in front: under it at once.
+    if (m_dialogBar && !m_barWindow && m_dialogJump && m_dialogJump->dialog() && createBarWindow())
+        m_dialogBar->setDialog(m_dialogJump->dialog());
+}
+
+void App::excludeFromDialogBar(const QString& app)
+{
+    if (app.isEmpty() || m_settings.dialogBarExcludedApps.contains(app, Qt::CaseInsensitive))
+        return;
+    m_settings.dialogBarExcludedApps.append(app);
+    m_settings.save();
+    applySettings(false);
+    if (m_settingsEditor)
+        m_settingsEditor->setSettings(m_settings);
+}
+
+bool App::createBarWindow()
+{
+    QQmlComponent component(m_qml.get(), u"WinShun"_s, u"DialogBarWindow"_s);
+    QObject* object = component.createWithInitialProperties({{u"bar"_s, QVariant::fromValue(m_dialogBar.get())}});
+    auto* window = qobject_cast<QQuickWindow*>(object);
+    if (!window) {
+        qWarning().noquote() << component.errorString();
+        delete object;
+        return false;
+    }
+    window->create();
+    styleWindow(window, isDarkMode());
+    win::setDarkFrame(window, isDarkMode());
+    window->installEventFilter(this); // the Menu key
+    m_barWindow = window;
+    m_dialogBar->setWindow(window);
+    if (m_dialogJump) // not yet while it is being made (it looks at the window in front at once)
+        m_dialogJump->setCompanion(reinterpret_cast<HWND>(window->winId()));
+    return true;
+}
+
 void App::toggleLauncher()
 {
+    // In front of a file dialog: into its search bar, and back.
+    if (m_dialogBar && m_dialogBar->isShown()) {
+        m_dialogBar->toggleFocus();
+        return;
+    }
     if (m_window && m_window->isVisible() && m_window->isActive() && !m_clipboard->active())
         hideLauncher();
     else
