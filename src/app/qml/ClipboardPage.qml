@@ -353,6 +353,7 @@ Item {
         ClipTabs {
             id: tabs
             width: parent.width
+            parentLeft: page.x
             clipboard: page.clipboard
             onNameCommitted: (name) => page.commitName(name)
             onNameCancelled: {
@@ -504,6 +505,7 @@ Item {
                 x: listArea.width + 1
                 width: parent.width - x
                 height: parent.height
+                parentTop: page.y + body.y
                 // Re-read when the rows change. The revision is part of the
                 // condition: a bare read of it would be dropped by the QML
                 // compiler, and the binding would not depend on it.

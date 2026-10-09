@@ -13,6 +13,7 @@ Item {
     required property Clipboard clipboard
     property bool naming: false
     property string nameText // what the field starts with
+    property real parentLeft // where the parent's left is in the window: to draw on whole device pixels
 
     signal nameCommitted(string name)
     signal nameCancelled()
@@ -45,6 +46,16 @@ Item {
             id: row
             anchors.verticalCenter: parent.verticalCenter
             spacing: 6
+            // On whole device pixels wherever it has scrolled to, a fiftieth
+            // of one to the right (see SettingsWindow): the tabs' names are
+            // centred, often on half pixels.
+            transform: Translate {
+                x: {
+                    const dpr = Screen.devicePixelRatio
+                    const deviceX = (tabs.parentLeft + tabs.x + flick.x + flick.contentItem.x + row.x) * dpr
+                    return (Math.round(deviceX) - deviceX + 0.02) / dpr
+                }
+            }
 
             Repeater {
                 model: tabs.clipboard.categories

@@ -10,6 +10,7 @@ Item {
     id: preview
 
     property var info: ({}) // Clipboard.preview(row)
+    property real parentTop // where the parent's top is in the window: to draw on whole device pixels
     signal copyRequested(string text, bool remember) // one of a colour's notations was clicked
 
     readonly property int kind: info.kind ?? -1
@@ -37,6 +38,17 @@ Item {
             id: content
             width: flick.width - 8
             spacing: 10
+            // On whole device pixels wherever it has scrolled to, a fiftieth
+            // of one lower: the lines of a long text sit at all sorts of
+            // fractions, and those on a half pixel then always round the same
+            // way (see SettingsWindow).
+            transform: Translate {
+                y: {
+                    const dpr = Screen.devicePixelRatio
+                    const deviceY = (preview.parentTop + preview.y + flick.y + flick.contentItem.y + content.y) * dpr
+                    return (Math.round(deviceY) - deviceY + 0.02) / dpr
+                }
+            }
 
             ColorSwatch { // a colour value; a translucent one opaque on the left, over a checkerboard on the right
                 visible: (preview.info.swatch ?? "").length > 0

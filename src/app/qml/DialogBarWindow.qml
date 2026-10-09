@@ -347,6 +347,16 @@ Window {
             id: rowItem
             width: list.width
             height: window.bar.rowHeight
+            // On whole device pixels wherever the list has scrolled to (see
+            // Main.qml). Below the bar the rows start at 49 logical pixels:
+            // at 150 % on a half pixel even before any scrolling.
+            transform: Translate {
+                y: {
+                    const dpr = Screen.devicePixelRatio
+                    const deviceY = (list.y + list.contentItem.y + rowItem.y) * dpr
+                    return (Math.round(deviceY) - deviceY) / dpr
+                }
+            }
             // On the current row while typing: a key that does more with it.
             tag: {
                 if (window.typed && rowItem.current) {

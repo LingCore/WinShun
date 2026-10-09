@@ -28,6 +28,7 @@ Item {
 
     // Text on whole device pixels (see ResultRow).
     function onPixel(y) { return Math.round(y * Screen.devicePixelRatio) / Screen.devicePixelRatio }
+    function upToPixel(y) { return Math.ceil(y * Screen.devicePixelRatio - 1e-6) / Screen.devicePixelRatio }
 
     Rectangle {
         anchors.fill: parent
@@ -83,6 +84,7 @@ Item {
 
         Text {
             width: Math.min(implicitWidth, parent.width)
+            height: row.upToPixel(implicitHeight) // the folder below on a whole pixel too
             text: row.nameHtml
             textFormat: Text.StyledText
             elide: Text.ElideRight

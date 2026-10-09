@@ -145,6 +145,7 @@ Item {
             }
 
             Rectangle { // what is new
+                id: notesBox
                 visible: card.newer && (dialog.updater.summary.length > 0 || dialog.updater.highlights.length > 0)
                 width: parent.width
                 height: Math.min(notes.implicitHeight + 24, 240)
@@ -166,6 +167,16 @@ Item {
                         id: notes
                         width: notesFlick.width
                         spacing: 10
+                        // On whole device pixels wherever it has scrolled to,
+                        // a fiftieth of one lower (see SettingsWindow).
+                        transform: Translate {
+                            y: {
+                                const dpr = Screen.devicePixelRatio
+                                const deviceY = (dialog.y + card.y + content.y + notesBox.y + notesFlick.y
+                                                 + notesFlick.contentItem.y + notes.y) * dpr
+                                return (Math.round(deviceY) - deviceY + 0.02) / dpr
+                            }
+                        }
 
                         Text {
                             width: parent.width
