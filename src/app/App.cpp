@@ -391,7 +391,7 @@ void App::applyTheme()
 // Theme and language take effect at once, in every window, without a restart.
 void App::applyAppearance()
 {
-    SystemTheme::setBackdropOn(Settings::resolveTransparency(m_settings.transparency)); // Mica stays set up behind, covered when off
+    SystemTheme::setBackdropOn(m_settings.transparency == u"on"); // Mica stays set up behind, covered when off
     // Unknown follows Windows. Everything else reads the scheme from the style
     // hints and listens to colorSchemeChanged (see applyTheme, SystemTheme).
     QGuiApplication::styleHints()->setColorScheme(m_settings.theme == u"dark" ? Qt::ColorScheme::Dark

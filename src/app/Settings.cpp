@@ -143,22 +143,27 @@ QString Settings::filePath()
 QString Settings::storedRenderer()
 {
     QSettings s(QSettings::IniFormat, QSettings::UserScope, u"WinShun"_s, u"WinShun"_s);
-    return s.value(u"Launcher/Renderer"_s, Settings().renderer).toString().trimmed().toLower();
+    return resolveRenderer(s.value(u"Launcher/Renderer"_s).toString().trimmed().toLower());
 }
 
 QString Settings::resolveRenderer(const QString& renderer)
 {
-    if (renderer != u"auto")
+    if (renderer == u"software" || renderer == u"d3d11")
         return renderer;
-    // Machines with little memory save the ~50 MB that D3D11 costs.
-    return lowMemory() ? u"software"_s : u"d3d11"_s;
+    return defaultRenderer();
 }
 
-bool Settings::resolveTransparency(const QString& transparency)
+QString Settings::defaultRenderer()
 {
-    if (transparency == u"auto")
-        return !lowMemory();
-    return transparency == u"on";
+    // Only machines with little memory save the ~50 MB that D3D11 costs. The
+    // RAM fitted, not what Windows has left of it: an 8 GB PC reports ~7.8 GB.
+    ULONGLONG installedKB = 0;
+    if (!::GetPhysicallyInstalledSystemMemory(&installedKB)) {
+        MEMORYSTATUSEX status {sizeof(status)};
+        if (::GlobalMemoryStatusEx(&status))
+            installedKB = (status.ullTotalPhys >> 10) + (512ull << 10); // round up what the firmware keeps
+    }
+    return installedKB >= 8ull << 20 ? u"d3d11"_s : u"software"_s;
 }
 
 bool Settings::lowMemory()
@@ -221,8 +226,12 @@ void Settings::load()
     const Settings d = defaults();
 
     doubleCtrl = readOrDefault(s, u"Launcher/DoubleCtrl"_s, d.doubleCtrl);
-    hotkey = readOrDefault(s, u"Launcher/Hotkey"_s, d.hotkey);
-    renderer = readOrDefault(s, u"Launcher/Renderer"_s, d.renderer).trimmed().toLower();
+    doubleCtrlPauseInGames = readOrDefault(s, u"Launcher/DoubleCtrlPauseInGames"_s, d.doubleCtrlPauseInGames);
+    doubleCtrlPauseInFullScreen
+        = readOrDefault(s, u"Launcher/DoubleCtrlPauseInFullScreen"_s, d.doubleCtrlPauseInFullScreen);
+    doubleCtrlExcludedApps = readOrDefault(s, u"Launcher/DoubleCtrlExcludedApps"_s, d.doubleCtrlExcludedApps);
+    hotkey =readOrDefault(s, u"Launcher/Hotkey"_s, d.hotkey);
+    renderer = resolveRenderer(readOrDefault(s, u"Launcher/Renderer"_s, d.renderer).trimmed().toLower());
     recordHistory = readOrDefault(s, u"Launcher/History"_s, d.recordHistory);
     dialogJump = readOrDefault(s, u"Launcher/DialogJump"_s, d.dialogJump);
     dialogBar = readOrDefault(s, u"Launcher/DialogBar"_s, d.dialogBar);
@@ -241,7 +250,7 @@ void Settings::load()
     if (transparency == u"false" || transparency == u"true") {
         transparency = transparency == u"false" ? u"off"_s : d.transparency;
         s.setValue(u"Appearance/Transparency"_s, transparency);
-    } else if (transparency != u"on" && transparency != u"off") {
+    } else if (transparency != u"on" && transparency != u"off") { // also an old "auto"
         transparency = d.transparency;
     }
 
@@ -268,7 +277,7 @@ void Settings::load()
     clipboard = readOrDefault(s, u"Clipboard/Enabled"_s, d.clipboard);
     clipboardWinV = readOrDefault(s, u"Clipboard/WinV"_s, d.clipboardWinV);
     clipboardHotkey = readOrDefault(s, u"Clipboard/Hotkey"_s, d.clipboardHotkey);
-    clipboardMaxItems = std::clamp(readOrDefault(s, u"Clipboard/MaxItems"_s, d.clipboardMaxItems), 10, 100000);
+    clipboardMaxItems = std::clamp(readOrDefault(s, u"Clipboard/MaxItems"_s, d.clipboardMaxItems), 10, 300);
     clipboardMaxDays = std::clamp(readOrDefault(s, u"Clipboard/MaxDays"_s, d.clipboardMaxDays), 0, 3650);
     clipboardImages = readOrDefault(s, u"Clipboard/Images"_s, d.clipboardImages);
     clipboardExcludedApps = readOrDefault(s, u"Clipboard/ExcludedApps"_s, d.clipboardExcludedApps);

@@ -11,7 +11,7 @@ Window {
     required property WindowFrame frame
     required property Updater updater
 
-    readonly property var renderers: ["software", "d3d11", "auto"]
+    readonly property var renderers: ["software", "d3d11"]
     readonly property var languages: ["system", "zh", "en"]
     readonly property var transparencies: ["off", "on", "auto"]
     readonly property var pages: [
@@ -618,12 +618,12 @@ Window {
                                  ? qsTr("需要把“高级”里的界面绘制方式设为“显卡加速”")
                                  : !SystemTheme.materials
                                  ? qsTr("窗口背景透出桌面壁纸的颜色（云母效果）。Windows 设置里的“透明效果”关着，打开后才能看到")
-                                 : qsTr("窗口背景透出桌面壁纸的颜色（云母效果）；“自动”在内存不超过 16 GB 时关闭")
+                                 : qsTr("窗口背景透出桌面壁纸的颜色（云母效果）")
 
                     ScopeTabs {
                         enabled: SystemTheme.backdropAvailable
                         opacity: enabled ? 1 : 0.4
-                        labels: [qsTr("关"), qsTr("开"), qsTr("自动")]
+                        labels: [qsTr("关"), qsTr("开")]
                         current: Math.max(0, window.transparencies.indexOf(window.editor.transparency))
                         onActivated: (index) => window.editor.transparency = window.transparencies[index]
                     }
@@ -1020,10 +1020,10 @@ Window {
                     description: qsTr("放进“固定”和其他分组的不算在内，一直保留")
 
                     ScopeTabs {
-                        labels: [qsTr("%1 条").arg(100), qsTr("%1 条").arg(500), qsTr("%1 条").arg(1000),
-                                 qsTr("%1 条").arg(5000)]
-                        current: [100, 500, 1000, 5000].indexOf(window.editor.clipboardMaxItems)
-                        onActivated: (index) => window.editor.clipboardMaxItems = [100, 500, 1000, 5000][index]
+                        labels: [qsTr("%1 条").arg(50), qsTr("%1 条").arg(100), qsTr("%1 条").arg(200),
+                                 qsTr("%1 条").arg(300)]
+                        current: [50, 100, 200, 300].indexOf(window.editor.clipboardMaxItems)
+                        onActivated: (index) => window.editor.clipboardMaxItems = [50, 100, 200, 300][index]
                     }
                 }
 
@@ -1158,7 +1158,7 @@ Window {
                     title: qsTr("界面绘制方式")
                     description: window.editor.restartRequired
                                  ? qsTr("重启 Win顺后生效")
-                                 : qsTr("“显卡加速”文字最清晰；“省内存”少占约 50 MB 内存，但文字偏模糊；“自动”在内存不超过 16 GB 时省内存")
+                                 : qsTr("“显卡加速”文字最清晰；“省内存”少占约 50 MB 内存，但文字偏模糊")
 
                     FlatButton { // sized like one of the tabs next to it
                         anchors.verticalCenter: parent.verticalCenter
@@ -1170,7 +1170,7 @@ Window {
                         onClicked: window.editor.restart()
                     }
                     ScopeTabs {
-                        labels: [qsTr("省内存"), qsTr("显卡加速"), qsTr("自动")]
+                        labels: [qsTr("省内存"), qsTr("显卡加速")]
                         current: Math.max(0, window.renderers.indexOf(window.editor.renderer))
                         onActivated: (index) => window.editor.renderer = window.renderers[index]
                     }

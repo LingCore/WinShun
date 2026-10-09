@@ -147,7 +147,7 @@ public:
     static constexpr qsizetype kTextInMemory = 64 * 1024; // characters of each text, for the list and searching
 
     struct Limits {
-        int maxItems = 1000; // entries in no group
+        int maxItems = 200; // entries in no group
         int maxDays = 30; // since last copied or pasted; 0 = no limit
     };
 

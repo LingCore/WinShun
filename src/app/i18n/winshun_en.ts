@@ -579,8 +579,8 @@
         <translation>Window backgrounds take on the colours of your wallpaper (Mica). Transparency effects are off in Windows Settings; turn them on to see it</translation>
     </message>
     <message>
-        <source>窗口背景透出桌面壁纸的颜色（云母效果）；“自动”在内存不超过 16 GB 时关闭</source>
-        <translation>Window backgrounds take on the colours of your wallpaper (Mica); “Auto” turns it off on PCs with 16 GB of RAM or less</translation>
+        <source>窗口背景透出桌面壁纸的颜色（云母效果）</source>
+        <translation>Window backgrounds take on the colours of your wallpaper (Mica)</translation>
     </message>
     <message>
         <source>关</source>
@@ -906,8 +906,8 @@
         <translation>Takes effect after WinShun restarts</translation>
     </message>
     <message>
-        <source>“显卡加速”文字最清晰；“省内存”少占约 50 MB 内存，但文字偏模糊；“自动”在内存不超过 16 GB 时省内存</source>
-        <translation>“GPU” gives the sharpest text; “Save memory” uses about 50 MB less memory, but text is a little blurry; “Auto” saves memory on PCs with 16 GB of RAM or less</translation>
+        <source>“显卡加速”文字最清晰；“省内存”少占约 50 MB 内存，但文字偏模糊</source>
+        <translation>“GPU” gives the sharpest text; “Save memory” uses about 50 MB less memory, but text is a little blurry</translation>
     </message>
     <message>
         <source>立即重启</source>

@@ -17,7 +17,7 @@ struct Settings {
     bool doubleCtrlPauseInFullScreen = false; // not over any full-screen window
     QStringList doubleCtrlExcludedApps; // program files ("TheFinals.exe") in front of which double Ctrl does nothing
     QString hotkey; // e.g. "Alt+Space"; empty = none
-    QString renderer = QStringLiteral("auto"); // software | d3d11 | auto
+    QString renderer; // software | d3d11; defaults() picks by memory (defaultRenderer)
     bool recordHistory = true; // remember what was opened: listed with nothing typed, first among matches
     bool dialogJump = true; // Ctrl+G in an Open or Save dialog goes to the folder open in File Explorer
     bool dialogBar = true; // a search bar under Open and Save dialogs (DialogBar)
@@ -27,7 +27,7 @@ struct Settings {
     // [Appearance]
     QString theme = QStringLiteral("system"); // system | light | dark
     QString language = QStringLiteral("system"); // system | zh | en
-    QString transparency = QStringLiteral("auto"); // off | on | auto: Mica behind the windows, where Windows 11 has it
+    QString transparency; // off | on: Mica behind the windows, where Windows 11 has it; defaults() picks by memory
 
     // [Update]
     bool autoUpdate = true; // look for new versions on GitHub (see Updater)
@@ -48,7 +48,7 @@ struct Settings {
     bool clipboard = true; // keep a history of what is copied (Win+V page); at first as Windows' own clipboard history is
     bool clipboardWinV = false; // Win+V opens it, instead of Windows' clipboard history (see winv::)
     QString clipboardHotkey; // another shortcut for it; empty = none
-    int clipboardMaxItems = 1000; // entries kept outside groups
+    int clipboardMaxItems = 200; // entries kept outside groups; defaults() keeps 100 with 16 GB of RAM or less
     int clipboardMaxDays = 30; // since last copied or pasted; 0 = no limit
     bool clipboardImages = true;
     QStringList clipboardExcludedApps; // program files whose copies are not kept, "KeePass.exe"
@@ -65,9 +65,9 @@ struct Settings {
 
     static QString filePath();
     static QString storedRenderer(); // just [Launcher] Renderer; works before QGuiApplication exists
-    static QString resolveRenderer(const QString& renderer); // "auto" -> software with <= 16 GB of RAM, else d3d11
-    static bool resolveTransparency(const QString& transparency); // "auto" -> off with <= 16 GB of RAM, else on
-    static bool lowMemory(); // 16 GB of RAM or less: the "auto" choices save memory
+    static QString resolveRenderer(const QString& renderer); // anything but software or d3d11 (an old "auto") -> defaultRenderer()
+    static QString defaultRenderer(); // d3d11 with 8 GB of RAM or more, else software
+    static bool lowMemory(); // 16 GB of RAM or less: transparency starts off, the clipboard keeps 100
     static QString dataDir(); // %LOCALAPPDATA%\WinShun
     static bool windowsClipboardHistory(); // Windows' own clipboard history is on (Settings > System > Clipboard)
     static bool hasClipboardSettings(); // the file has a [Clipboard] section: written by a version with the clipboard history

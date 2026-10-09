@@ -17,7 +17,7 @@ DialogJump=true          ; “打开”“另存为”对话框里按 Ctrl+G，�
 DialogBar=true           ; “打开”“另存为”对话框下方的搜索框
 DialogAutoJump=false     ; 对话框出现时（以及从资源管理器换了文件夹再切回来时）自动转到资源管理器的文件夹
 DialogBarExcludedApps=   ; 不显示搜索框的程序，如 notepad.exe，逗号分隔；搜索框“更多”菜单里加，设置里删
-Renderer=auto            ; auto（内存 ≤ 16 GB 用 software，否则 d3d11）| d3d11（文字清晰）| software（省内存，文字偏模糊）
+Renderer=d3d11           ; d3d11（文字清晰）| software（省内存，文字偏模糊）；没写或旧版的 auto：装机内存 ≥ 8 GB 用 d3d11，否则 software
 
 [Appearance]
 Theme=system             ; system（跟随 Windows 的浅色 / 深色）| light | dark
@@ -42,7 +42,7 @@ Index=true               ; 建立内容索引（中日韩文字和英文、数�
 Enabled=true             ; 记录剪贴板历史；第一次运行时和 Windows 自带的剪贴板历史开关一致
 WinV=false               ; 用 Win+V 打开，代替 Windows 自带的剪贴板（资源管理器重启或下次登录后生效）
 Hotkey=                  ; 另一个打开剪贴板的组合键，例如 Win+Alt+V
-MaxItems=1000            ; 分组以外最多保留几条
+MaxItems=200             ; 分组以外最多保留几条（10–300）；默认内存超过 16 GB 200 条，否则 100 条
 MaxDays=30               ; 多少天没再复制或粘贴过就删除；0 = 一直保留（分组里的都一直保留）
 Images=true              ; 也记录图片
 ExcludedApps=KeePass.exe, KeePassXC.exe, 1Password.exe, Bitwarden.exe ; 不记录这些程序复制的内容
