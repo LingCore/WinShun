@@ -2,6 +2,7 @@
 
 #include "Settings.h"
 #include "platform/ClipboardWatcher.h"
+#include "platform/KeyRouter.h"
 
 #include <QDeadlineTimer>
 #include <QElapsedTimer>
@@ -84,6 +85,17 @@ private:
     // search box and the keyboard went elsewhere.
     void hideClipboard(bool launcherToo = true);
     bool clipboardUnderLauncher() const; // opened from the launcher's search box
+    bool clipboardInCharge() const; // shown, the keys its own or through KeyRouter
+    // Over another program the clipboard leaves it the focus, its keys come
+    // through KeyRouter: from its showing until it goes or takes the focus
+    // after all (activateClipboard).
+    bool startKeyRouting(HWND target);
+    void stopKeyRouting();
+    void routedKey(const KeyRouter::Key& key);
+    void routedForeground(HWND window);
+    // Taking the focus after all: to type a group's name (with the input
+    // method), to hand over to another program.
+    void activateClipboard();
     void uncloakClipboard(); // its first frame is up
     void prewarmClipboard();
     void finishClipPrewarm();
@@ -166,6 +178,11 @@ private:
     std::unique_ptr<Placement> m_clipPlacement; // likewise for the clipboard window
     std::unique_ptr<WindowFrame> m_clipFrame;
     std::unique_ptr<win::TextCaret> m_textCaret; // where another program's caret is: the clipboard opens there
+    std::unique_ptr<KeyRouter> m_keyRouter; // while the clipboard is over a program that keeps the focus
+    HWND m_keyRouterTarget = nullptr; // that program's window
+    std::uint64_t m_keyRouterRun = 0; // which routing its posted keys belong to
+    std::unique_ptr<KeyRouter> m_drainingRouter; // done, until the keys it took are let go (KeyRouter::drain)
+    std::uint64_t m_drainingRun = 0;
     std::atomic<bool> m_clipUncloak {false}; // shown cloaked until its first frame
     QTimer m_clipUncloakTimeout;
     std::atomic<bool> m_clipPrewarming {false}; // shown cloaked for one frame (see prewarmClipboard)

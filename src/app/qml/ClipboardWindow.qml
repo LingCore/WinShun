@@ -8,6 +8,9 @@ import WinShun
 // pastes into it; from anywhere else, it drops down under the text caret of
 // the program that was in front, or else at the mouse pointer, and pastes
 // into that program (App, Placement). Moved, it stays there until hidden.
+// Over another program it does not take the focus, as Windows' own does not:
+// that program stays in front with its text field (VS Code's command palette
+// stays open), the keys come through KeyRouter (clipboard.keysRouted).
 // The list alone; an entry's preview beside it when asked for, the window
 // growing by it to the right: as wide as there is room for there, so that
 // the list stays where it is under the mouse; only with less room than that
@@ -29,8 +32,10 @@ Window {
 
     width: listWidth + (page.previewOpen ? 1 + previewWidth : 0)
     height: page.implicitHeight
-    // See-through to Mica, as the launcher.
-    color: Theme.backdrop && SystemTheme.materials && window.active ? "transparent" : Theme.background
+    // See-through to Mica, as the launcher; drawn as active also while the
+    // program it pastes into keeps the focus (WindowFrame::setNoActivate).
+    color: Theme.backdrop && SystemTheme.materials && (window.active || clipboard.keysRouted)
+           ? "transparent" : Theme.background
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
     title: qsTr("剪贴板") // Qt adds " - Win顺"
 

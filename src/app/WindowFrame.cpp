@@ -77,10 +77,15 @@ struct WindowFrame::Hook {
             // active, which the Mica backdrop depends on; Qt keeps the
             // message from it for a frameless window. -1: nothing to repaint.
             // The frame's dark mode too, in case Qt has set it back (see
-            // win::setDarkFrame).
+            // win::setDarkFrame). Not activated, it looks active all the same.
             ::DefSubclassProc(hwnd, message, wParam, lParam);
             win::setDarkFrame(self->m_window, QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark);
-            return ::DefWindowProcW(hwnd, message, wParam, -1);
+            return ::DefWindowProcW(hwnd, message, self->m_noActivate ? TRUE : wParam, -1);
+        case WM_MOUSEACTIVATE:
+        case WM_POINTERACTIVATE: // touch and pen
+            if (self->m_noActivate)
+                return MA_NOACTIVATE; // PA_NOACTIVATE is the same
+            break;
         case WM_NCHITTEST:
             return self->hitTest(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
         // Over drag areas and the maximise button the mouse messages are
@@ -105,6 +110,11 @@ struct WindowFrame::Hook {
                 self->setMaximizeState(true, true);
                 return 0; // not to the system, which would track a button of its own
             }
+            // The system's way there puts the window in front first (measured:
+            // Windows reported it in front during the drag); straight to
+            // moving it, the program behind keeps the front.
+            if (wParam == HTCAPTION && self->m_noActivate)
+                return ::DefWindowProcW(hwnd, WM_SYSCOMMAND, SC_MOVE | HTCAPTION, lParam);
             break;
         case WM_NCLBUTTONDBLCLK:
             if (wParam == HTMAXBUTTON) {
@@ -179,6 +189,18 @@ void WindowFrame::setWindow(QWindow* window)
     ::SetWindowLongPtrW(hwnd, GWL_STYLE, (style & ~WS_POPUP) | WS_OVERLAPPEDWINDOW);
     ::SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
         SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
+}
+
+void WindowFrame::setNoActivate(bool on)
+{
+    if (on == m_noActivate || !m_hwnd)
+        return;
+    m_noActivate = on;
+    const HWND hwnd = reinterpret_cast<HWND>(m_hwnd);
+    const LONG_PTR exStyle = ::GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+    ::SetWindowLongPtrW(hwnd, GWL_EXSTYLE, on ? exStyle | WS_EX_NOACTIVATE : exStyle & ~WS_EX_NOACTIVATE);
+    // The frame drawn as active (see WM_NCACTIVATE above), or as it is again.
+    ::DefWindowProcW(hwnd, WM_NCACTIVATE, on || ::GetForegroundWindow() == hwnd, -1);
 }
 
 void WindowFrame::addDragArea(QQuickItem* item)

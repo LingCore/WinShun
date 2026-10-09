@@ -124,6 +124,7 @@
 - 复制过的文字、图片和文件都记下来，随时找回。在设置 → **剪贴板** 里打开“用 Win+V 打开”，`Win+V` 出来的就是 Win顺的剪贴板，代替 Windows 自带的；也可以另设一个组合键，或者从托盘菜单打开。
 - 点一条（或选中后按 `Enter`），直接粘贴到打开之前所在的窗口；`Shift+Enter` 粘贴为纯文本。从 Word、网页复制的内容带着原来的格式；复制的文件粘贴到资源管理器里还是文件。
 - 剪贴板开在正在打字的地方：输入光标那一行的正下方，左边和光标对齐，不挡住这一行；下面放不下就开在这一行上面。找不到输入光标时（比如焦点不在输入框里），开在鼠标指针处。拖到别处只管这一次，下次照旧开在光标旁边。
+- 剪贴板不抢焦点，和 Windows 自带的一样：原来的程序留在前台，VS Code 的命令面板（`Ctrl+P`）、浏览器地址栏的下拉建议这类一失去焦点就关掉的东西都还开着，粘贴就落在里面。键盘照样操作剪贴板（打字搜索、方向键、`Enter`、`Esc`），点别处或换到别的窗口它就收起。搜索时直接打拼音，不经过输入法；给分组起名字时剪贴板才拿到焦点，可以用输入法打中文。
 - 在 Win顺 自己的输入框里（搜索框、对话框旁的搜索框、设置里的输入框）按 `Win+V`，选中的文字就填回这个框里光标的位置，多行的变成一行，文件填它的路径；`Esc` 不粘贴，回到这个框，原来打的字和选中的部分都还在。剪贴板就在这个框的正下方打开（下面放不下就开在上面），框留在原处、选中的字一直看得见；启动器下面的列表先收起来，点一下搜索框就回去接着搜。
 - **能搜**：边打字边筛选，支持拼音（`hy` 找到“会议”）；`@程序名` 只看从某个程序复制的（`@wx` 只看微信里复制的）。每条右边的眼睛按钮（或 `Alt+P`）在旁边打开预览：这一条的全文、大图或文件清单，还有它从哪个程序复制、什么时候复制的；再点一次或按 `Esc` 收起。
 - **分类**：按 `Tab` 在 全部 / 文本 / 链接 / 图片 / 文件 之间切换。颜色值（`#3B82F6`、`rgba(…)`、`hsl(…)`，带透明度的也认）显示成色块，半透明的一半不透明、一半垫着棋盘格，一眼看出有多透；预览里列出它的 HEX / RGB / HSL 写法（半透明的再加一行 Qt、Android、XAML 用的 `#AARRGGBB`，透明度在前），点一下就复制；复制的图片、视频、PDF 等文件，预览里显示缩略图。
@@ -320,6 +321,7 @@ The interface comes in **English and Simplified Chinese**. It follows the Window
 
 - What you copy — text, pictures, files — is kept to come back to. Turn on “Open with Win+V” in Settings → **Clipboard** and `Win+V` opens WinShun's clipboard instead of Windows' own; or set another shortcut, or open it from the tray menu.
 - `Enter` pastes the entry into the window you were in, `Shift+Enter` as plain text. Text from Word or a web page keeps its formatting; copied files paste into Explorer as files.
+- Like Windows' own, it does not take the focus: the program you were in stays in front, and what closes without the focus stays open — VS Code's Quick Open (`Ctrl+P`), a browser's address bar suggestions — and takes the paste. The keyboard still works the clipboard (type to search, arrows, `Enter`, `Esc`); a click elsewhere or another window closes it. Search takes the letters as typed (pinyin), not through the input method; naming a group gives it the focus, for the input method.
 - Type to filter, pinyin included; `@name` keeps to what came from one program. The current entry is shown in full beside the list — the whole text, the picture or the file list — with where and when it was copied.
 - `Tab` switches between All / Text / Links / Pictures / Files. Colour values (`#3B82F6`, `rgba(…)`, `hsl(…)`, with or without alpha) show as swatches, a translucent one half opaque and half over a checkerboard, with their HEX / RGB / HSL notations beside the list (a translucent one also as `#AARRGGBB`, alpha first, as Qt, Android and XAML write it), a click copying one; copied pictures, videos, PDFs and the like show their thumbnails.
 - `Ctrl+P` pins an entry; right-click → Move to a new group makes groups such as “Replies” or “Snippets”. Pinned and grouped entries are kept for good; the rest by default for the latest 200 (100 with 16 GB of memory or less) and 30 days; the settings allow 50 to 300.

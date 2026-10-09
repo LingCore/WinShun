@@ -14,6 +14,7 @@ qt_add_executable(WinShun WIN32
     platform/Foreground.cpp platform/Foreground.h
     platform/Http.cpp platform/Http.h
     platform/KeyListener.cpp platform/KeyListener.h
+    platform/KeyRouter.cpp platform/KeyRouter.h
     platform/MessageWindow.cpp platform/MessageWindow.h
     platform/Paster.cpp platform/Paster.h
     platform/PeekingLogo.cpp platform/PeekingLogo.h

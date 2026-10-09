@@ -31,6 +31,11 @@ namespace ws {
 // the formats it was copied with (or only its text), brings that program
 // back and presses its paste keys there.
 //
+// Over another program the window does not take the focus (keysRouted, see
+// KeyRouter): that program stays in front with its text field, and a paste
+// only waits for the modifier keys, puts the window away and presses the
+// paste keys.
+//
 // Opened from a text field of Win顺's own (the launcher's search box, the one
 // by file dialogs, one in the settings window), the window drops down under
 // that field (App) and goes back to it instead, Esc included: the field gets
@@ -42,6 +47,9 @@ class Clipboard : public QObject {
     QML_UNCREATABLE("Provided by the application")
     // The clipboard window is shown (App).
     Q_PROPERTY(bool active READ active NOTIFY activeChanged FINAL)
+    // Shown over another program that keeps the focus: the keys come from
+    // KeyRouter (App), the search field shows its caret without the focus.
+    Q_PROPERTY(bool keysRouted READ keysRouted NOTIFY keysRoutedChanged FINAL)
     Q_PROPERTY(bool recording READ recording NOTIFY stateChanged FINAL) // the history is on (settings)
     Q_PROPERTY(bool paused READ paused NOTIFY stateChanged FINAL) // ... but paused from the tray menu
     Q_PROPERTY(QString shortcut READ shortcut NOTIFY stateChanged FINAL) // what opens it: "Win+V"
@@ -83,6 +91,8 @@ public:
 
     bool active() const { return m_active; }
     void setActive(bool active);
+    bool keysRouted() const { return m_keysRouted; }
+    void setKeysRouted(bool routed);
     bool recording() const { return m_recording; }
     bool paused() const { return m_paused; }
     void setState(bool recording, bool paused, const QString& shortcut);
@@ -149,6 +159,11 @@ public:
 
 signals:
     void activeChanged();
+    void keysRoutedChanged();
+    // The window takes the focus after all (App), from the program that kept
+    // it: before handing over to another program (a link opened), which may
+    // come to the front only from the one in front.
+    void focusNeeded();
     void stateChanged();
     void queryChanged();
     void categoryChanged();
@@ -200,6 +215,7 @@ private:
     ClipModel m_model;
     QPointer<QWindow> m_window;
     bool m_active = false;
+    bool m_keysRouted = false;
     bool m_recording = true;
     bool m_paused = false;
     QString m_shortcut;

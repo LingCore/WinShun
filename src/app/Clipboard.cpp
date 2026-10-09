@@ -112,6 +112,14 @@ void Clipboard::setActive(bool active)
     emit activeChanged();
 }
 
+void Clipboard::setKeysRouted(bool routed)
+{
+    if (m_keysRouted == routed)
+        return;
+    m_keysRouted = routed;
+    emit keysRoutedChanged();
+}
+
 void Clipboard::setField(QQuickItem* field, const QString& name)
 {
     const bool had = m_field.item;
@@ -439,6 +447,15 @@ void Clipboard::onWritten(bool ok)
     if (!m_pasteWindow) {
         m_pasting = false;
         flash(tr("已复制。没有找到要粘贴进去的窗口，可以自己按 Ctrl+V"));
+        return;
+    }
+    // Never left the front, its text field never lost the keyboard: the
+    // window goes (and with it KeyRouter, which would take the keys), then
+    // the paste keys, without waiting.
+    if (m_keysRouted && paste::isForeground(m_pasteWindow)) {
+        m_pasting = false;
+        emit dismissRequested();
+        paste::sendPasteKeys(m_pasteWindow);
         return;
     }
     paste::activate(m_pasteWindow); // the clipboard window loses the focus and goes (App)
@@ -900,8 +917,10 @@ void Clipboard::trigger(int row, int action)
         const Clip* c = m_model.at(row);
         if (!c)
             break;
+        // What opens may come to the front only from the program in front.
         if (action == OpenLink) {
             const QString url = c->text.trimmed();
+            emit focusNeeded();
             shell::openUrl(url.startsWith(u"www.", Qt::CaseInsensitive) ? u"https://"_s + url : url);
         } else if (action == Reveal) {
             QStringList files = c->files();
@@ -910,8 +929,10 @@ void Clipboard::trigger(int row, int action)
                 flash(tr("这些文件已经不存在了"));
                 break;
             }
+            emit focusNeeded();
             shell::reveal(files);
         } else {
+            emit focusNeeded();
             shell::open(m_store->payload(c->id).imagePath);
         }
         emit dismissRequested(); // what opened it is in front now, not the field the window came from

@@ -2,6 +2,8 @@
 
 #include <QColor>
 
+#include <windows.h>
+
 class QWindow;
 
 namespace ws::win {
@@ -43,6 +45,10 @@ bool materialsEnabled();
 // Cloaking keeps a shown window off the screen (DWM does not compose it)
 // while it still gets focus and draws as usual.
 void setCloaked(QWindow* window, bool cloaked);
+
+// Windows' Start menu, search, notification center or quick settings: they
+// stay above every other window while open.
+bool isShellFlyout(HWND window);
 
 // Brings a window to the foreground even when another app owns the focus.
 // Windows normally refuses this for background processes (focus stealing

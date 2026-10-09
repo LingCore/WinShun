@@ -57,9 +57,7 @@ bool activate(HWND hwnd)
 // was in front before gets the foreground back. Returns the window in front then.
 HWND closeShellFlyout(HWND foreground)
 {
-    static const QStringList flyouts {u"SearchHost.exe"_s, u"StartMenuExperienceHost.exe"_s,
-        u"ShellExperienceHost.exe"_s, u"ShellHost.exe"_s};
-    if (!foreground || !flyouts.contains(programOf(foreground), Qt::CaseInsensitive))
+    if (!isShellFlyout(foreground))
         return foreground;
     INPUT esc[2] {};
     esc[0].type = esc[1].type = INPUT_KEYBOARD;
@@ -72,6 +70,13 @@ HWND closeShellFlyout(HWND foreground)
 }
 
 } // namespace
+
+bool isShellFlyout(HWND window)
+{
+    static const QStringList flyouts {u"SearchHost.exe"_s, u"StartMenuExperienceHost.exe"_s,
+        u"ShellExperienceHost.exe"_s, u"ShellHost.exe"_s};
+    return window && flyouts.contains(programOf(window), Qt::CaseInsensitive);
+}
 
 void styleFramelessWindow(QWindow* window, bool backdrop)
 {

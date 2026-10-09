@@ -10,7 +10,9 @@ import WinShun
 // Shift+Enter as plain text, Alt+1…9 the first nine rows, Ctrl/Shift pick
 // several, Tab switches categories. Opened from a field of Win顺's own (a
 // search box, which it drops down under), it pastes into that field, and Esc
-// goes back to it (Clipboard).
+// goes back to it (Clipboard). Over another program that keeps the focus,
+// the keys come from App (KeyRouter) to the item with the focus here, as the
+// window's own would.
 Item {
     id: page
 
@@ -303,6 +305,9 @@ Item {
                 anchors.rightMargin: 16
                 anchors.verticalCenter: parent.verticalCenter
                 focus: true
+                // Typed into without the focus (keysRouted): the caret shows
+                // where, steady (it blinks only with the focus).
+                cursorVisible: activeFocus || page.clipboard.keysRouted
                 clip: true
                 color: Theme.text
                 font.pixelSize: Theme.fontSearch
@@ -602,9 +607,9 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 14
 
-                // Room for them all, unless several picked (and what they are
-                // joined with) take it.
-                readonly property bool roomy: page.selectedCount < 2 || page.previewOpen
+                // Room for them all, unless rows are picked: what says so (and
+                // what several are joined with) takes it.
+                readonly property bool roomy: page.selectedCount === 0 || page.previewOpen
                 // Out of the way of a message too long to share the line with
                 // them ("已删除 1 条，按 Ctrl+Z 撤销"), while it shows.
                 readonly property bool shown: page.selectedCount > 0

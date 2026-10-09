@@ -54,6 +54,11 @@ public:
     // With ownFrame: hit-tested as the maximise button (Snap Layouts).
     Q_INVOKABLE void setMaximizeButton(QQuickItem* item) { m_maximizeButton = item; }
 
+    // Shown over another program that keeps the focus (the clipboard, see
+    // KeyRouter): a click does not activate the window either, and its frame
+    // counts as active all the same, for the Mica backdrop.
+    void setNoActivate(bool on);
+
     QPointF pointer() const { return m_pointer; }
     bool maximizeHovered() const { return m_maximizeHovered; }
     bool maximizePressed() const { return m_maximizePressed; }
@@ -84,6 +89,7 @@ private:
     bool m_trackingLeave = false;
     bool m_maximizeHovered = false;
     bool m_maximizePressed = false;
+    bool m_noActivate = false;
 };
 
 } // namespace ws

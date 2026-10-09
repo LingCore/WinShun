@@ -1,5 +1,7 @@
 #include "Paster.h"
 
+#include "KeyRouter.h"
+
 #include <array>
 #include <cwchar>
 
@@ -19,6 +21,7 @@ INPUT key(WORD vk, bool up, bool extended = false)
     input.ki.wVk = vk;
     input.ki.wScan = static_cast<WORD>(::MapVirtualKeyW(vk, MAPVK_VK_TO_VSC)); // for programs that read scan codes
     input.ki.dwFlags = (up ? KEYEVENTF_KEYUP : 0) | (extended ? KEYEVENTF_EXTENDEDKEY : 0);
+    input.ki.dwExtraInfo = kOwnInput; // past KeyRouter, should it still be taking keys
     return input;
 }
 
