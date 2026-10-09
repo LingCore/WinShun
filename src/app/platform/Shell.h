@@ -24,6 +24,9 @@ void open(const QString& path, bool asAdministrator = false, std::function<void(
 void reveal(const QString& path); // open the folder and select the item
 // The same for several items: one window per folder, with all of its items selected.
 void reveal(const QStringList& paths);
+// Always in Explorer, whatever setFileManager() chose: for its context menu
+// (Pin to taskbar).
+void revealInExplorer(const QString& path);
 // The file manager open() takes folders to and reveal() shows items in
 // (Settings::fileManager): Explorer at first. Explorer takes over when the
 // one chosen does not start.

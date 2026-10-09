@@ -65,6 +65,10 @@ struct Settings {
     bool clipboardImages = true;
     QStringList clipboardExcludedApps; // program files whose copies are not kept, "KeePass.exe"
 
+    // [Taskbar]: Win顺 in the place of Windows' search (see taskbar::)
+    bool taskbarWinS = false; // Win+S opens it over the taskbar, instead of Windows' search (see winv::)
+    bool taskbarStartTyping = false; // typing in the Start menu searches with Win顺 (StartMenuTyping)
+
     // [WebSearch]: keywords the user gives web pages ("gh" opens GitHub, "gh
     // WinShun" searches it; see WebShortcut). At first just one, "winshun".
     // Written as an array: size=, 1\Keyword=, 1\Name=, 1\Url=, 1\Home=.

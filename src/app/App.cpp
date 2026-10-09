@@ -25,6 +25,8 @@
 #include "platform/MessageWindow.h"
 #include "platform/Paster.h"
 #include "platform/Shell.h"
+#include "platform/StartMenuTyping.h"
+#include "platform/TaskbarSearch.h"
 #include "platform/TextCaret.h"
 #include "platform/VolumeNotifier.h"
 #include "platform/WinV.h"
@@ -47,6 +49,7 @@
 #include <QStorageInfo>
 #include <QStyleHints>
 #include <QSurfaceFormat>
+#include <QWinEventNotifier>
 
 #include <windows.h>
 
@@ -63,6 +66,8 @@ constexpr int kHotkeyId = 1;
 constexpr int kDialogJumpHotkeyId = 2; // Ctrl+G, while a file dialog is in front
 constexpr int kWinVHotkeyId = 3; // Win+V: the clipboard history, once Explorer gave it up (winv::)
 constexpr int kClipboardHotkeyId = 4; // another shortcut for the clipboard history
+constexpr int kWinSHotkeyId = 5; // Win+S: the launcher over the taskbar, once Explorer gave it up (winv::)
+constexpr int kScreenClipHotkeyId = 6; // Win+Shift+S, which Explorer gives up with Win+S: the screen capture
 // For another program to tell where its text caret is: longer, and the
 // clipboard would open late; it opens by the mouse pointer then.
 constexpr auto kCaretWait = 100ms;
@@ -305,14 +310,22 @@ bool App::start(const StartOptions& options)
     callbacks.hotkeyPressed = [this](int id) {
         if (id == kWinVHotkeyId || id == kClipboardHotkeyId)
             toggleClipboard();
+        else if (id == kWinSHotkeyId)
+            toggleAtTaskbar(false);
+        else if (id == kScreenClipHotkeyId)
+            startScreenClip();
         else if (id != kDialogJumpHotkeyId)
             toggleLauncher();
         else if (m_dialogJump && m_settings.dialogJump)
             m_dialogJump->jump();
     };
-    callbacks.shellRestarted = [this] { // Explorer let go of Win+V, or took it back
+    callbacks.shellRestarted = [this] { // Explorer let go of Win+V or Win+S, or took them back
         applyClipboardHotkeys();
-        QTimer::singleShot(3s, this, &App::applyClipboardHotkeys); // once it has registered its own keys
+        applyTaskbarHotkeys();
+        QTimer::singleShot(3s, this, [this] { // once it has registered its own keys
+            applyClipboardHotkeys();
+            applyTaskbarHotkeys();
+        });
     };
     callbacks.commandReceived = [this](const QString& command) { handleCommand(command); };
     callbacks.sessionEnding = [this] { m_index->shutdown(); }; // save the index before Windows ends us
@@ -332,6 +345,16 @@ bool App::start(const StartOptions& options)
     connect(m_index.get(), &IndexService::volumesChanged, this,
         [this] { m_volumeNotifier->track(m_index->volumeRoots()); });
     m_messages->showTrayIcon(trayTooltip());
+
+    // The button on the taskbar (WinShunSearch.exe) sets it: over the taskbar,
+    // or away again. Set before Win顺 was up (it started Win顺), it opens now.
+    m_taskbarEvent = win32::UniqueHandle(taskbar::createEvent());
+    if (m_taskbarEvent.valid()) {
+        m_taskbarNotifier = std::make_unique<QWinEventNotifier>(m_taskbarEvent.get());
+        connect(m_taskbarNotifier.get(), &QWinEventNotifier::activated, this, [this] { toggleAtTaskbar(true); });
+    } else {
+        qWarning() << "No event for the taskbar button:" << ::GetLastError();
+    }
 
     applySettings(true);
     applyTheme();
@@ -401,6 +424,8 @@ bool App::createWindow()
         // menu; the clipboard under its search box goes with it (see there).
         if (m_window && !m_window->isActive() && m_window->isVisible() && !clipboardUnderLauncher())
             hideLauncher();
+        else if (m_window && m_window->isActive())
+            deliverTyping(); // asked for from the Start menu
     });
     // Reveal (see showLauncher). Both run on the render thread: a frame
     // synchronised after arming shows the fresh results, and once it has been
@@ -567,6 +592,7 @@ void App::applySettings(bool initial)
     }
     applyDialogs();
     applyClipboard();
+    applyTaskbar();
     for (const auto& [kind, name] : filemanager::kSettingNames) {
         if (m_settings.fileManager == QLatin1StringView(name))
             shell::setFileManager(kind);
@@ -617,7 +643,7 @@ void App::applyClipboard()
     // when the switch moved, or it is on at start: someone else may have put
     // a V there for another program.
     if (m_winVApplied ? *m_winVApplied != m_settings.clipboardWinV : m_settings.clipboardWinV)
-        m_winVRegistryFailed = !winv::setReleasedByExplorer(m_settings.clipboardWinV);
+        m_winVRegistryFailed = !winv::setReleasedByExplorer(L'V', m_settings.clipboardWinV);
     m_winVApplied = m_settings.clipboardWinV;
     m_clipWatcher->setOptions(clipboardOptions());
     m_clipStore->setLimits({m_settings.clipboardMaxItems, m_settings.clipboardMaxDays}, QDateTime::currentMSecsSinceEpoch());
@@ -635,7 +661,7 @@ void App::applyClipboardHotkeys()
     QString state = u"off"_s;
     if (m_settings.clipboardWinV) {
         state = winV ? u"on"_s : m_winVRegistryFailed ? u"failed"_s : u"waiting"_s; // waiting: Explorer still has it
-    } else if (!winv::releasedByExplorer() && m_messages->registerHotkey(kWinVHotkeyId, u"Win+V"_s)) {
+    } else if (!winv::releasedByExplorer(L'V') && m_messages->registerHotkey(kWinVHotkeyId, u"Win+V"_s)) {
         m_messages->unregisterHotkey(kWinVHotkeyId); // nobody has it: Explorer takes it back when it restarts
         state = u"releasing"_s;
     }
@@ -657,6 +683,90 @@ void App::applyClipboardHotkeys()
     } else if (!hotkeyError.isEmpty()) {
         m_messages->showNotification(tr("快捷键不可用"), hotkeyError);
     }
+}
+
+void App::applyTaskbar()
+{
+    // As Win+V (applyClipboard): Explorer gives Win+S up, or takes it back,
+    // when it next starts.
+    if (m_winSApplied ? *m_winSApplied != m_settings.taskbarWinS : m_settings.taskbarWinS)
+        m_winSRegistryFailed = !winv::setReleasedByExplorer(L'S', m_settings.taskbarWinS);
+    m_winSApplied = m_settings.taskbarWinS;
+    applyTaskbarHotkeys();
+
+    if (m_settings.taskbarStartTyping && !m_startTyping) {
+        // Called on its thread: hop to the GUI thread.
+        m_startTyping = std::make_unique<StartMenuTyping>(StartMenuTyping::Callbacks {
+            [this] { QMetaObject::invokeMethod(this, &App::startMenuTyped, Qt::QueuedConnection); }});
+    } else if (!m_settings.taskbarStartTyping) {
+        m_startTyping.reset();
+    }
+}
+
+void App::startMenuTyped()
+{
+    // Over the taskbar, where the Start menu was (showing it closes the
+    // Start menu, see win::bringToFront); the keys follow once it has the
+    // keyboard.
+    m_deliverTyping = true;
+    showLauncher({}, taskbar::locate(false));
+    if (m_window && m_window->isActive())
+        deliverTyping();
+}
+
+void App::deliverTyping()
+{
+    if (std::exchange(m_deliverTyping, false) && m_startTyping)
+        m_startTyping->deliver();
+}
+
+void App::applyTaskbarHotkeys()
+{
+    m_messages->unregisterHotkey(kWinSHotkeyId);
+    m_messages->unregisterHotkey(kScreenClipHotkeyId);
+    if (m_settingsEditor && m_settingsEditor->recordingHotkey())
+        return; // the keys being pressed must reach the settings window
+    const bool winS = m_settings.taskbarWinS && m_messages->registerHotkey(kWinSHotkeyId, u"Win+S"_s);
+    QString state = u"off"_s;
+    if (m_settings.taskbarWinS) {
+        state = winS ? u"on"_s : m_winSRegistryFailed ? u"failed"_s : u"waiting"_s; // waiting: Explorer still has it
+    } else if (!winv::releasedByExplorer(L'S') && m_messages->registerHotkey(kWinSHotkeyId, u"Win+S"_s)) {
+        m_messages->unregisterHotkey(kWinSHotkeyId); // nobody has it: Explorer takes it back when it restarts
+        state = u"releasing"_s;
+    }
+    // Explorer let go of every Win+S key, the screen capture's too: started
+    // from here while Win+S is ours. Not while it goes back (releasing):
+    // held as the new Explorer starts, it would be gone for good, Explorer
+    // registers its keys once.
+    if (winS)
+        m_messages->registerHotkey(kScreenClipHotkeyId, u"Win+Shift+S"_s);
+    if (m_settingsEditor)
+        m_settingsEditor->setWinSState(state, winv::canRestartExplorer());
+}
+
+void App::toggleAtTaskbar(bool clicked)
+{
+    if (m_window && m_window->isVisible() && m_window->isActive()) {
+        hideLauncher();
+        return;
+    }
+    // Clicking the button took the keyboard from the launcher, which went
+    // away for it: that click closes the launcher, it does not open it
+    // again. The button's program starts on the release, 0.1–0.3 s later.
+    if (clicked && m_launcherHidden.isValid() && m_launcherHidden.elapsed() < 500)
+        return;
+    showLauncher({}, taskbar::locate(clicked));
+}
+
+void App::startScreenClip()
+{
+    // Not started from here, where it would run elevated: the taskbar
+    // button's program starts it with the user's rights, as Explorer does.
+    const QString button = QCoreApplication::applicationDirPath() + u"/WinShunSearch.exe"_s;
+    if (QFileInfo::exists(button))
+        shell::run(u'"' + QDir::toNativeSeparators(button) + u"\" --screenclip"_s);
+    else
+        shell::openUrl(u"ms-screenclip:///?source=HotKey"_s);
 }
 
 void App::clipCaptured(const ClipCapture& capture)
@@ -694,9 +804,10 @@ void App::explorerRestarted(bool back)
         m_messages->showNotification(tr("资源管理器没有重新启动"),
             tr("按 Ctrl+Shift+Esc 打开任务管理器，选“运行新任务”，输入 explorer 启动它；注销后重新登录也行。"));
     }
-    // Win+V is free once the old Explorer is gone; the new one also says
-    // when it is up (shellRestarted).
+    // Win+V and Win+S are free once the old Explorer is gone; the new one
+    // also says when it is up (shellRestarted).
     applyClipboardHotkeys();
+    applyTaskbarHotkeys();
 }
 
 void App::setClipboardPaused(bool paused)
@@ -750,6 +861,7 @@ void App::showSettings()
         connect(editor, &SettingsEditor::edited, this, &App::settingsEdited);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyHotkey);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyClipboardHotkeys);
+        connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyTaskbarHotkeys);
         connect(editor, &SettingsEditor::explorerRestartRequested, this, &App::restartExplorer);
         connect(editor, &SettingsEditor::clipboardClearRequested, this, [this, editor] {
             m_clipStore->clearHistory();
@@ -765,6 +877,8 @@ void App::showSettings()
         m_settingsEditor = editor;
         applyHotkey(); // shows whether the current hotkey works
         applyClipboardHotkeys(); // ... and where Win+V stands
+        applyTaskbarHotkeys(); // ... and Win+S
+        editor->refreshTaskbarState();
         editor->refreshFileManagers();
 
         prepareBackdrop(window);
@@ -1194,14 +1308,18 @@ void App::toggleClipboard()
         showClipboard();
 }
 
-void App::showLauncher(const QString& query)
+void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>& spot)
 {
     if (!m_window)
         return;
     hideClipboard(false); // from under its search box: searching again
-    // On the monitor under the mouse, where the user last put it (see Placement).
-    QScreen* screen = QGuiApplication::screenAt(QCursor::pos());
-    m_placement->placeOn(screen ? screen : QGuiApplication::primaryScreen());
+    if (spot) {
+        m_placement->attachTaskbar(*spot);
+    } else {
+        // On the monitor under the mouse, where the user last put it (see Placement).
+        QScreen* screen = QGuiApplication::screenAt(QCursor::pos());
+        m_placement->placeOn(screen ? screen : QGuiApplication::primaryScreen());
+    }
     if (!query.isEmpty())
         m_launcher->setQuery(query);
 
@@ -1545,6 +1663,8 @@ void App::hideLauncher()
         return;
     const bool clipboardToo = clipboardUnderLauncher();
     m_window->hide();
+    m_launcherHidden.start();
+    m_deliverTyping = false;
     revealLauncher(); // hidden before its first frame: drop the cloak
     m_launcher->handleHidden();
     if (clipboardToo)

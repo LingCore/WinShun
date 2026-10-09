@@ -43,6 +43,7 @@ endif()
 add_subdirectory(src/extract)
 add_subdirectory(src/core)
 add_subdirectory(src/app)
+add_subdirectory(src/stub)
 
 # Developer tool: index memory and search timings on the real snapshot.
 qt_add_executable(wsbench tools/wsbench.cpp src/app/Settings.cpp)

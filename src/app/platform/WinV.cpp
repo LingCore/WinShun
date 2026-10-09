@@ -31,25 +31,25 @@ std::wstring disabledHotkeys()
 
 } // namespace
 
-bool releasedByExplorer()
+bool releasedByExplorer(wchar_t key)
 {
     const std::wstring keys = disabledHotkeys();
-    return keys.find(L'V') != std::wstring::npos || keys.find(L'v') != std::wstring::npos;
+    return std::ranges::any_of(keys, [key](wchar_t c) { return std::towupper(c) == key; });
 }
 
-bool setReleasedByExplorer(bool released)
+bool setReleasedByExplorer(wchar_t key, bool released)
 {
     std::wstring keys = disabledHotkeys();
-    std::erase_if(keys, [](wchar_t c) { return std::towupper(c) == L'V'; });
+    std::erase_if(keys, [key](wchar_t c) { return std::towupper(c) == key; });
     if (released)
-        keys += L'V';
-    win32::UniqueKey key;
-    if (::RegCreateKeyExW(HKEY_CURRENT_USER, kAdvancedKey, 0, nullptr, 0, KEY_SET_VALUE, nullptr, key.out(), nullptr)
+        keys += key;
+    win32::UniqueKey advanced;
+    if (::RegCreateKeyExW(HKEY_CURRENT_USER, kAdvancedKey, 0, nullptr, 0, KEY_SET_VALUE, nullptr, advanced.out(), nullptr)
         != ERROR_SUCCESS)
         return false;
     if (keys.empty())
-        return ::RegDeleteValueW(key.get(), kDisabledHotkeys) == ERROR_SUCCESS || !releasedByExplorer();
-    return ::RegSetValueExW(key.get(), kDisabledHotkeys, 0, REG_SZ, reinterpret_cast<const BYTE*>(keys.c_str()),
+        return ::RegDeleteValueW(advanced.get(), kDisabledHotkeys) == ERROR_SUCCESS || !releasedByExplorer(key);
+    return ::RegSetValueExW(advanced.get(), kDisabledHotkeys, 0, REG_SZ, reinterpret_cast<const BYTE*>(keys.c_str()),
                static_cast<DWORD>((keys.size() + 1) * sizeof(wchar_t)))
         == ERROR_SUCCESS;
 }

@@ -1,10 +1,12 @@
 #pragma once
 
+#include "AppCatalog.h"
 #include "ContentIndex.h"
 #include "ResultModel.h"
 #include "SearchTypes.h"
 #include "WebShortcut.h"
 
+#include <QElapsedTimer>
 #include <QObject>
 #include <QPointer>
 #include <QRectF>
@@ -14,10 +16,10 @@
 #include <QtQml/qqmlregistration.h>
 
 #include <functional>
+#include <vector>
 
 namespace ws {
 
-class AppCatalog;
 class History;
 class IndexService;
 class SearchEngine;
@@ -41,6 +43,10 @@ class Launcher : public QObject {
     Q_PROPERTY(bool searchesContent READ searchesContent NOTIFY statusChanged FINAL)
     // History is kept and has something in it (the footer's clear button).
     Q_PROPERTY(bool canClearHistory READ canClearHistory NOTIFY historyChanged FINAL)
+    // The apps opened most, for the launcher over the taskbar with nothing
+    // typed: for each {name, icon}. Read again each time it is shown; none
+    // while history is not kept.
+    Q_PROPERTY(QVariantList frequentApps READ frequentApps NOTIFY frequentAppsChanged FINAL)
 
 public:
     enum Scope { All, Files, Content }; // as ws::Scope
@@ -86,6 +92,8 @@ public:
     void setRecordHistory(bool on);
     bool canClearHistory() const;
     Q_INVOKABLE void clearHistory();
+    QVariantList frequentApps() const;
+    Q_INVOKABLE void openFrequentApp(int index);
     void handleShown();
     void handleHidden();
     void retranslate(); // the language changed: status, placeholder, rows
@@ -119,6 +127,7 @@ signals:
     void openFailed(const QString& name);
     void contextMenuKeyPressed(); // Menu key / Shift+F10 (arrive as a context-menu event, not a key)
     void historyChanged();
+    void frequentAppsChanged();
     void webSettingsRequested(); // the settings window, on its 网页搜索 page
 
 private:
@@ -144,6 +153,14 @@ private:
     void onContentProgress(quint64 id, int scanned, int total, bool finished);
     void refreshStatus();
     void flash(const QString& message);
+    void refreshFrequentApps();
+
+    struct FrequentApp {
+        QString name;
+        QString path; // launch path
+        QString icon;
+        bool operator==(const FrequentApp&) const = default;
+    };
 
     IndexService* m_index;
     AppCatalog* m_apps;
@@ -178,6 +195,9 @@ private:
     int m_contentHits = 0; // 全部: content rows added below the name matches
 
     bool m_recordHistory = true;
+    std::vector<FrequentApp> m_frequent;
+    std::vector<AppUse> m_windowsUses; // Windows' record of what was started, read at most every minute
+    QElapsedTimer m_windowsUsesAge;
     QStringList m_contentExtensions {QStringLiteral("txt")};
     ContentSizeLimits m_contentSizeLimits;
     bool m_contentInLowPriority = false; // 内容 also looks in system, program and tool folders

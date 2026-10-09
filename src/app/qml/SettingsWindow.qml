@@ -47,11 +47,13 @@ Window {
 
     function clearFocus() { window.contentItem.forceActiveFocus() }
 
-    // A file manager installed outside Win顺: looked for again when the user
-    // comes back.
+    // The taskbar button is pinned, Windows' search hidden, a file manager
+    // installed, outside Win顺: looked at again when the user comes back.
     onActiveChanged: {
-        if (active)
+        if (active) {
+            editor.refreshTaskbarState()
             editor.refreshFileManagers()
+        }
     }
 
     // Settings::fileManager's names, as the user knows them.
@@ -614,6 +616,117 @@ Window {
                             interval: 4000
                             onTriggered: clearHistoryButton.confirming = false
                         }
+                    }
+                }
+            }
+
+            SettingsSection {
+                visible: window.currentPage === 0
+                width: parent.width
+                title: qsTr("代替任务栏上的 Windows 搜索")
+                note: qsTr("点任务栏上的 Win顺 按钮或按 Win+S，搜索框在任务栏上方打开；再点一次、按 Esc 或点别处就收起。")
+
+                SettingRow {
+                    id: taskbarButtonRow
+
+                    property bool missing: false // no WinShunSearch.exe next to Win顺
+
+                    title: qsTr("任务栏上的 Win顺 按钮")
+                    description: window.editor.taskbarButtonPinned
+                                 ? qsTr("已固定到任务栏")
+                                 : qsTr("Windows 只让你自己固定程序：点“找到按钮”，在选中的“Win顺 搜索”上点右键，选“固定到任务栏”（Windows 11 可能要先点“显示更多选项”）")
+
+                    FlatButton {
+                        visible: !window.editor.taskbarButtonPinned
+                        text: qsTr("找到按钮")
+                        glyph: "" // Pin
+                        onClicked: taskbarButtonRow.missing = !window.editor.showTaskbarButton()
+                    }
+
+                    body: Text {
+                        visible: taskbarButtonRow.missing && !window.editor.taskbarButtonPinned
+                        width: parent.width
+                        text: qsTr("没找到 WinShunSearch.exe，重新安装 Win顺 就有了")
+                        color: Theme.danger
+                        font.pixelSize: Theme.fontCaption
+                        wrapMode: Text.Wrap
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("Windows 自带的搜索按钮")
+                    description: window.editor.windowsSearchShown
+                                 ? qsTr("还在任务栏上。Windows 不让其他程序隐藏它：在任务栏设置里把“搜索”选成“隐藏”")
+                                 : qsTr("已从任务栏上隐藏")
+
+                    FlatButton {
+                        visible: window.editor.windowsSearchShown
+                        text: qsTr("打开任务栏设置")
+                        onClicked: window.editor.openUrl("ms-settings:taskbar")
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("用 Win+S 打开，代替 Windows 搜索")
+                    description: qsTr("Win+S 也在任务栏上方打开 Win顺。Win+Shift+S 截图照常可用，由 Win顺 代为打开截图工具；Win顺 没在运行时这两个键都没有反应。关掉这项，它们就回到 Windows 自带的")
+
+                    ToggleSwitch {
+                        checked: window.editor.taskbarWinS
+                        onToggled: (on) => window.editor.taskbarWinS = on
+                    }
+
+                    body: Column {
+                        readonly property string winS: window.editor.winSState
+                        readonly property bool restartable: (winS === "waiting" || winS === "releasing")
+                                                            && window.editor.canRestartExplorer
+
+                        visible: winSStatus.text.length > 0
+                        width: parent.width
+                        spacing: 10
+
+                        Text {
+                            id: winSStatus
+                            width: parent.width
+                            text: {
+                                switch (window.editor.winSState) {
+                                case "on": return qsTr("已生效：Win+S 打开 Win顺")
+                                case "waiting": return qsTr("资源管理器重启后生效，下次登录 Windows 时也会自动生效")
+                                case "releasing": return qsTr("资源管理器重启后，Win+S 和 Win+Shift+S 回到 Windows 自带的")
+                                case "failed": return qsTr("没能修改 Windows 的设置，Win+S 仍是 Windows 搜索")
+                                default: return ""
+                                }
+                            }
+                            color: window.editor.winSState === "failed" ? Theme.danger
+                                 : window.editor.winSState === "on" ? Theme.subtext : Theme.text
+                            font.pixelSize: Theme.fontCaption
+                            wrapMode: Text.Wrap
+                        }
+                        Row {
+                            visible: parent.restartable
+                            spacing: 12
+
+                            FlatButton {
+                                text: qsTr("现在重启资源管理器")
+                                glyph: "" // Sync
+                                onClicked: window.editor.restartExplorer()
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: qsTr("任务栏会闪一下，打开的文件夹窗口会关闭")
+                                color: Theme.faint
+                                font.pixelSize: Theme.fontCaption
+                            }
+                        }
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("在开始菜单里打字，也用 Win顺 搜索")
+                    description: qsTr("按 Win 打开开始菜单后直接打字，Win顺 在任务栏上方打开，打的字接着进到搜索框里。想用 Windows 自带的搜索时，先按一下左 Alt 再打字")
+
+                    ToggleSwitch {
+                        checked: window.editor.taskbarStartTyping
+                        onToggled: (on) => window.editor.taskbarStartTyping = on
                     }
                 }
             }

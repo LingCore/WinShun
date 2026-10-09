@@ -1,6 +1,7 @@
 #include "Launcher.h"
 
 #include "AppCatalog.h"
+#include "FileIconProvider.h"
 #include "History.h"
 #include "IndexService.h"
 #include "Query.h"
@@ -9,6 +10,7 @@
 #include "platform/Shell.h"
 #include "platform/WindowEffects.h"
 
+#include <QDateTime>
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QLocale>
@@ -229,7 +231,51 @@ void Launcher::handleShown()
     m_places->refresh(); // ... if Windows was updated or its language changed
     search(); // refresh: files may have changed, and "recent" certainly has
     emit historyChanged(); // things were opened since
+    refreshFrequentApps();
     emit shown();
+}
+
+void Launcher::refreshFrequentApps()
+{
+    constexpr std::size_t kFrequentApps = 6; // a row over the taskbar
+    std::vector<FrequentApp> picked;
+    const std::shared_ptr<const AppList> apps = m_apps->apps();
+    if (m_recordHistory && apps) {
+        if (!m_windowsUsesAge.isValid() || m_windowsUsesAge.hasExpired(60'000)) {
+            m_windowsUses = windowsAppUses(); // some 500 registry values: a few ms
+            m_windowsUsesAge.start();
+        }
+        const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
+        const auto indexes
+            = ws::frequentApps(*apps, *m_history, m_windowsUses, QDateTime::currentMSecsSinceEpoch(), kFrequentApps);
+        for (const std::size_t i : indexes) {
+            const AppInfo& app = (*apps)[i];
+            const bool packaged = app.kind == AppKind::Store || app.kind == AppKind::System || app.kind == AppKind::Package;
+            picked.push_back({app.name, app.launchPath(), FileIconProvider::appIconUrl(app.id, packaged, dark)});
+        }
+    }
+    if (picked == m_frequent)
+        return;
+    m_frequent = std::move(picked);
+    emit frequentAppsChanged();
+}
+
+QVariantList Launcher::frequentApps() const
+{
+    QVariantList list;
+    for (const FrequentApp& app : m_frequent)
+        list.append(QVariantMap {{u"name"_s, app.name}, {u"icon"_s, app.icon}});
+    return list;
+}
+
+void Launcher::openFrequentApp(int index)
+{
+    if (index < 0 || index >= static_cast<int>(m_frequent.size()))
+        return;
+    const FrequentApp app = m_frequent[static_cast<std::size_t>(index)];
+    remember(app.path);
+    shell::launchApp(app.path, false, reportFailure(app.name));
+    emit dismissRequested();
 }
 
 void Launcher::retranslate()
@@ -922,6 +968,7 @@ void Launcher::setRecordHistory(bool on)
         return;
     m_recordHistory = on;
     emit historyChanged();
+    refreshFrequentApps();
     if (m_window && m_window->isVisible())
         search(); // "最近" rows come or go
 }
@@ -935,6 +982,7 @@ void Launcher::clearHistory()
 {
     m_history->clear();
     emit historyChanged();
+    refreshFrequentApps();
     m_results.setSelection({});
     search(); // the list of recent ones empties, "最近" goes from the rest
     flash(tr("已清除最近使用记录"));
@@ -943,7 +991,7 @@ void Launcher::clearHistory()
 void Launcher::remember(const QString& path)
 {
     if (m_recordHistory)
-        m_history->record(path);
+        m_history->record(path, QDateTime::currentMSecsSinceEpoch());
 }
 
 void Launcher::forgetRecent(const QStringList& paths)

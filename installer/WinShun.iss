@@ -76,6 +76,9 @@ Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
 [CustomMessages]
 english.RemoveData=Also delete WinShun's settings, file index and search history?%n%nKeep them if you are going to install WinShun again.
 chinesesimplified.RemoveData=要同时删除 Win顺 的设置、文件索引和搜索记录吗？%n%n如果还会再装 Win顺，可以保留它们。
+; The Start menu shortcut users pin to the taskbar (WinShunSearch.exe).
+english.SearchShortcut=WinShun Search
+chinesesimplified.SearchShortcut=Win顺 搜索
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -85,6 +88,8 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
+; Programs cannot pin themselves: the user pins this one (settings → 打开 Win顺 → 找到按钮).
+Name: "{autoprograms}\{cm:SearchShortcut}"; Filename: "{app}\WinShunSearch.exe"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Run]
@@ -156,20 +161,21 @@ begin
   DeleteFile(ListFile);
 end;
 
-// Win+V back to Windows' clipboard history, if WinShun had taken it over: the
-// V it put into Explorer's DisabledHotkeys goes (Explorer reads that when it
-// starts). A V there without WinShun having taken Win+V belongs to someone else.
-procedure GiveBackWinV();
+// Win+V back to Windows' clipboard history, and Win+S (with Win+Shift+S) to
+// its search, if WinShun had taken them over: the letter it put into
+// Explorer's DisabledHotkeys goes (Explorer reads that when it starts). A
+// letter there without WinShun having taken the key belongs to someone else.
+procedure GiveBackKey(Section, Name, Key: String);
 var
   Keys: String;
   I: Integer;
 begin
-  if CompareText(GetIniString('Clipboard', 'WinV', 'false', ExpandConstant('{userappdata}\WinShun\WinShun.ini')), 'true') <> 0 then
+  if CompareText(GetIniString(Section, Name, 'false', ExpandConstant('{userappdata}\WinShun\WinShun.ini')), 'true') <> 0 then
     exit;
   if not RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', 'DisabledHotkeys', Keys) then
     exit;
   for I := Length(Keys) downto 1 do
-    if (Keys[I] = 'V') or (Keys[I] = 'v') then
+    if Uppercase(Keys[I]) = Key then
       Delete(Keys, I, 1);
   if Keys = '' then
     RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', 'DisabledHotkeys')
@@ -231,7 +237,8 @@ begin
   begin
     CloseWinShun(ExpandConstant('{app}\{#AppExe}'));
     RemoveAutostart();
-    GiveBackWinV();
+    GiveBackKey('Clipboard', 'WinV', 'V');
+    GiveBackKey('Taskbar', 'WinS', 'S');
   end;
   if (CurUninstallStep = usPostUninstall) and not UninstallSilent then
     if MsgBox(CustomMessage('RemoveData'), mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then

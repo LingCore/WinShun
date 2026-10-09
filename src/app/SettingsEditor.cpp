@@ -6,6 +6,7 @@
 #include "platform/FileManagers.h"
 #include "platform/Shell.h"
 #include "platform/ShortcutCapture.h"
+#include "platform/TaskbarSearch.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -386,6 +387,66 @@ void SettingsEditor::setWinVState(const QString& state, bool canRestartExplorer)
     m_winVState = state;
     m_canRestartExplorer = canRestartExplorer;
     emit winVStateChanged();
+}
+
+void SettingsEditor::setTaskbarWinS(bool on)
+{
+    if (m_settings.taskbarWinS == on)
+        return;
+    m_settings.taskbarWinS = on;
+    commit();
+}
+
+void SettingsEditor::setTaskbarStartTyping(bool on)
+{
+    if (m_settings.taskbarStartTyping == on)
+        return;
+    m_settings.taskbarStartTyping = on;
+    commit();
+}
+
+void SettingsEditor::setWinSState(const QString& state, bool canRestartExplorer)
+{
+    if (m_canRestartExplorer != canRestartExplorer) {
+        m_canRestartExplorer = canRestartExplorer;
+        emit winVStateChanged(); // canRestartExplorer's
+    }
+    if (m_winSState == state)
+        return;
+    m_winSState = state;
+    emit winSStateChanged();
+}
+
+namespace {
+
+std::wstring taskbarButton()
+{
+    return QDir::toNativeSeparators(QCoreApplication::applicationDirPath() + u"/WinShunSearch.exe").toStdWString();
+}
+
+} // namespace
+
+void SettingsEditor::refreshTaskbarState()
+{
+    const bool pinned = taskbar::buttonPinned(taskbarButton());
+    const bool shown = taskbar::windowsSearchShown();
+    if (pinned == m_taskbarButtonPinned && shown == m_windowsSearchShown)
+        return;
+    m_taskbarButtonPinned = pinned;
+    m_windowsSearchShown = shown;
+    emit taskbarStateChanged();
+}
+
+bool SettingsEditor::showTaskbarButton()
+{
+    const std::wstring button = taskbarButton();
+    if (!QFileInfo::exists(QString::fromStdWString(button)))
+        return false;
+    const std::wstring shortcut = taskbar::buttonShortcut(button, tr("Win顺 搜索").toStdWString());
+    if (shortcut.empty())
+        return false;
+    shell::revealInExplorer(QString::fromStdWString(shortcut)); // its menu pins it
+    return true;
 }
 
 void SettingsEditor::setClipboardHotkey(const QString& hotkey)

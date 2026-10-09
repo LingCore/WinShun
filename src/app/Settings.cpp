@@ -358,6 +358,9 @@ void Settings::load()
     clipboardImages = readOrDefault(s, u"Clipboard/Images"_s, d.clipboardImages);
     clipboardExcludedApps = readOrDefault(s, u"Clipboard/ExcludedApps"_s, d.clipboardExcludedApps);
 
+    taskbarWinS = readOrDefault(s, u"Taskbar/WinS"_s, d.taskbarWinS);
+    taskbarStartTyping = readOrDefault(s, u"Taskbar/StartMenuTyping"_s, d.taskbarStartTyping);
+
     webShortcuts = readWebShortcuts(s, d.webShortcuts);
 }
 
@@ -399,6 +402,8 @@ void Settings::save() const
     s.setValue(u"Clipboard/MaxDays"_s, clipboardMaxDays);
     s.setValue(u"Clipboard/Images"_s, clipboardImages);
     s.setValue(u"Clipboard/ExcludedApps"_s, clipboardExcludedApps);
+    s.setValue(u"Taskbar/WinS"_s, taskbarWinS);
+    s.setValue(u"Taskbar/StartMenuTyping"_s, taskbarStartTyping);
     writeWebShortcuts(s, webShortcuts);
 }
 

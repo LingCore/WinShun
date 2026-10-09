@@ -53,6 +53,10 @@ MaxDays=30               ; 多少天没再复制或粘贴过就删除；0 = 一�
 Images=true              ; 也记录图片
 ExcludedApps=KeePass.exe, KeePassXC.exe, 1Password.exe, Bitwarden.exe ; 不记录这些程序复制的内容
 
+[Taskbar]
+WinS=false               ; Win+S 在任务栏上方打开 Win顺，代替 Windows 搜索（资源管理器重启或下次登录后生效）；Win+Shift+S 截图由 Win顺 代为打开
+StartMenuTyping=false    ; 在开始菜单里打字也用 Win顺 搜索（开始菜单开着时按一下左 Alt，这一次仍用 Windows 搜索）
+
 [WebSearch]              ; 网页搜索：“全部”里输入关键词打开网页，带 %s 的网址还能搜（gh WinShun）；设置里增删改
 size=2                   ; 几个；第一次运行时只写入一个示例：winshun 打开 https://github.com/LingCore/WinShun
 1\Keyword=winshun        ; 关键词：一个词，不分大小写
@@ -171,8 +175,9 @@ src/app/             界面与 Windows 集成
   ColorText          文字里的颜色值（#rrggbbaa、rgba()、hsl() …）和它的几种写法；ColorSwatch 画色块，半透明的垫棋盘格
   SettingsEditor     设置窗口的视图模型（改动即保存）
   App                组装各部分，管理窗口、托盘、热键
-  platform/          双击 Ctrl（Raw Input）、托盘、Shell 操作、驱动器插拔、窗口效果、跟踪文件对话框、Ctrl+G 和自动转过去（DialogJump）、从外面操作文件对话框（FileDialog）、问文件管理器开着哪些文件夹并叫它们打开文件夹（FileManagers）、带 COM 的后台线程（ComWorker）、录快捷键时的键盘钩子（ShortcutCapture）、读写剪贴板（ClipboardWatcher）、把按键送回原窗口（Paster）、剪贴板不抢焦点时把按键转给它（KeyRouter）、找别的程序的输入光标（TextCaret）、接管 Win+V（WinV）
+  platform/          双击 Ctrl（Raw Input）、托盘、Shell 操作、驱动器插拔、窗口效果、跟踪文件对话框、Ctrl+G 和自动转过去（DialogJump）、从外面操作文件对话框（FileDialog）、问文件管理器开着哪些文件夹并叫它们打开文件夹（FileManagers）、带 COM 的后台线程（ComWorker）、录快捷键时的键盘钩子（ShortcutCapture）、读写剪贴板（ClipboardWatcher）、把按键送回原窗口（Paster）、剪贴板不抢焦点时把按键转给它（KeyRouter）、找别的程序的输入光标（TextCaret）、接管 Win+V 和 Win+S（WinV）、代替任务栏上的 Windows 搜索（TaskbarSearch）
   qml/               界面：Main / SearchBar / ResultRow / Footer / ClipboardPage / SettingsWindow …
+src/stub/            WinShunSearch.exe：用户固定到任务栏的按钮，不带 Qt、不提权，点一下通知 Win顺；也替它以普通权限打开截图
 tests/               单元测试（Qt Test）
 tools/wsbench.cpp    在真实索引上测内存和搜索耗时；--mft 读各盘的 MFT 并与遍历比对，--mft-time 比较读 MFT 的几种做法，--service 照首次运行建一遍索引（--service --content 连内容索引一起，量要多久），--content-index 建一遍内容索引并核对（报出每个文件读和交给索引各花多久；--no-add 不交给索引，--grams-only 只量切片段，--merge-threads 定合并用几个线程，--merge-times 再用 16 / 8 / 4 / 1 个线程各合并一次），--service --documents 只建文档的那部分（报出几个副本没再读），--service --content --from 文件夹 从已有的索引文件开始（升级后的那次重建），--content-search 用程序自己的内容索引看一次内容搜索要读哪些文件，--extract 读一遍所有文档
 ```
@@ -220,7 +225,7 @@ tools/wsbench.cpp    在真实索引上测内存和搜索耗时；--mft 读各�
   - **Total Commander 和 Directory Opus 也认**（`filemanager::`）。`Ctrl+G`、自动转过去和搜索框的建议，都按窗口前后顺序（`EnumWindows`）在三种文件管理器的窗口里找：每个窗口正在显示的文件夹在前，后面才是藏在后面的标签、另一栏。只认盘上的文件夹，压缩包里、FTP、插件的虚拟文件夹不算（对不上 `GetFileAttributes` 的目录就扔掉）。
     - **Total Commander** 给主窗口（`TTOTAL_CMD`）发 `WM_USER+50`：参数 1000 回答左栏（1）还是右栏（2）有焦点，9 和 10 回答左右两栏上方路径那一行的窗口，读它的文字，形如 `c:\Windows\*.*`，去掉最后的过滤条件、盘符改大写（`pathtext::folderFromTotalCommander`）。窗口再窄、路径再长，这段文字也是完整的（显示时才截短）。只看两栏正在显示的，不看标签。
     - **Directory Opus** 用它自带的 `dopusrt.exe /info <文件>,paths`：把每个窗口（lister）的每个标签写成 XML，`tab_state="1"` 是有焦点那一侧正在显示的标签，`2` 是另一侧的，`lister` 是窗口句柄，元素里的文字是真实路径（`display_path` 是本地化的，“C:\用户”）。每次约 50 毫秒，`dopusrt` 退出时文件已经写好。它没有窗口开着时不问：问一次就会把它启动起来。`dopusrt` 必须用普通权限启动（`shell::startUnelevated`，拿桌面外壳的令牌），见 pitfalls.md。
-    - **打开文件夹、打开所在位置**按设置“用哪个文件管理器打开文件夹”（`FileManager`）：`shell::open` 打开文件夹、`shell::reveal` 显示文件时交给选中的那个，启动失败或没装就照旧用资源管理器（`SHOpenFolderAndSelectItems`）。Total Commander：`/O /T /S /L="路径"`，在已经开着的那个里（`/O`）、有焦点那一栏（`/S`）开新标签（`/T`）；路径是文件时光标停在它上面，是文件夹时加 `/P`，开它的上一级、光标停在它上面。Directory Opus：`dopusrt /acmd Go "路径" OPENCONTAINER NEWTAB=findexisting,tofront`，文件和文件夹都是开上一级并选中它，已经有标签显示那个文件夹就用那个标签；它没在运行时 `dopusrt` 会把它启动起来。都用普通权限启动，不会多出一个管理员身份的文件管理器。设置里只列装了的（Total Commander 看注册表 `Software\Ghisler\Total Commander\InstallDir` 或正在运行的那个，可以是绿色版；Directory Opus 看 `App Paths\dopus.exe`），窗口回到前台时再看一遍。
+    - **打开文件夹、打开所在位置**按设置“用哪个文件管理器打开文件夹”（`FileManager`）：`shell::open` 打开文件夹、`shell::reveal` 显示文件时交给选中的那个，启动失败或没装就照旧用资源管理器（`SHOpenFolderAndSelectItems`）。Total Commander：`/O /T /S /L="路径"`，在已经开着的那个里（`/O`）、有焦点那一栏（`/S`）开新标签（`/T`）；路径是文件时光标停在它上面，是文件夹时加 `/P`，开它的上一级、光标停在它上面。Directory Opus：`dopusrt /acmd Go "路径" OPENCONTAINER NEWTAB=findexisting,tofront`，文件和文件夹都是开上一级并选中它，已经有标签显示那个文件夹就用那个标签；它没在运行时 `dopusrt` 会把它启动起来。都用普通权限启动，不会多出一个管理员身份的文件管理器。设置里只列装了的（Total Commander 看注册表 `Software\Ghisler\Total Commander\InstallDir` 或正在运行的那个，可以是绿色版；Directory Opus 看 `App Paths\dopus.exe`），窗口回到前台时再看一遍。固定任务栏按钮那一步仍用资源管理器（`shell::revealInExplorer`）：要它的右键菜单。
     - 实测（2026-10-09，Total Commander 11.58、Directory Opus 13.25）：同一个打开对话框，依次在 Total Commander、Directory Opus、资源管理器之后按 `Ctrl+G`，每次都转到刚才那个窗口显示的文件夹；搜索框的建议里各自标出来源。设成 Total Commander 或 Directory Opus 时，在启动器里回车打开文件夹、`Ctrl+Enter` 打开所在位置都在它里面开，并且它到了前台，光标（选中）停在那个文件上。
 - **双击 Ctrl 用 Raw Input，不用键盘钩子。** 低级键盘钩子会被系统里每一次按键同步调用，钩子一慢就拖慢所有程序的打字；回应超时后 Windows 还会悄悄把它摘掉，双击 Ctrl 从此失灵。Raw Input 是按键之后才异步送来的消息（在单独的线程上接收），两个问题都没有。
 - **只在录快捷键时临时装低级键盘钩子。** 设置里点了快捷键方框，到录完、按 Esc 或焦点离开为止，`ShortcutCapture` 在自己的线程上装 `WH_KEYBOARD_LL` 钩子（PowerToys 的快捷键框也这样做）。设置窗口在前台时，按键在 Windows、Qt 和其他程序处理之前就被拿走，换成普通的按键事件交给录制框。不这样的话，Alt+Space 被 Qt 拿去弹系统菜单，Alt+F4 关掉设置窗口，Win+E 打开资源管理器，别的程序注册了的组合键（PowerToys Run、Copilot 常用 Alt+Space）直接打开那个程序，都录不上。现在都能录下来，注册不上的照常提示“已被其他程序或系统占用”。只吞录制开始后按下的键，以及这些键的抬起：之前就按着的键 Windows 要看到它完整抬起，否则会以为它一直按着。Win 键按下和抬起都不让 Windows 看到，所以不会弹开始菜单。音量、媒体键照常放行。钩子装不上时，录制框退回 Qt 自己的按键事件（录不到 Alt+Space）。
@@ -239,6 +244,23 @@ tools/wsbench.cpp    在真实索引上测内存和搜索耗时；--mft 读各�
   - **多行文字粘贴进单行的框合成一行。** 和浏览器往单行输入框里粘贴一样（Firefox 的 `editor.singleLine.pasteNewlines` 默认也是换成空格）：每行去掉首尾空白，空行去掉，其余用空格连起来；只有一行的原样粘贴。Qt 的 `TextInput` 自己不做这件事，换行留在文字里。三个窗口（启动器、对话框旁的搜索框、设置窗口）都装了 `App::eventFilter`，在框收到按键之前截下 `Ctrl+V`、`Shift+Insert`（`QKeySequence::Paste`）：焦点在单行的框里（`textfield::isOneLine`）且剪贴板里有换行时，自己用 `QInputMethodEvent` 打进去，其余照常交给框。显示查询的地方（“没有找到“…””）另外把空白合成一个空格、过长时中间省略，不论查询从哪里来都不会铺开。
   - **自己写的不重复记录，也不读回来。** 写剪贴板的就是监听线程，写完记下剪贴板的序号，收到这次变化的通知时直接跳过，把那一条挪到最前；多条合并的不记录。不能写完再打开剪贴板读一遍：那正是目标程序处理 `Ctrl+V`、打开剪贴板的时候，抢不到的一方粘贴失败。写入时仍带一个私有格式 `WinShun.ClipboardEntry`（这一条的编号），别的程序把它原样放回剪贴板时也认得出来。启动时剪贴板上已有的内容（序号和启动时一样）记下来，但已在历史里的不算新复制，不挪位置、不改时间。
   - **SQLite 存储。** 每粘贴一次都要更新那一条的时间，SQLite（WAL，不每次同步到磁盘）只改这一行，程序崩溃也不会坏掉；Ditto 等工具也这样存。图片单独存成 PNG 文件，删除的条目在能撤销期间保留图片。只依赖 Qt 自带的 SQLite 驱动，部署时排除其他数据库驱动。
+- **代替任务栏上的 Windows 搜索。** 点任务栏上的 Win顺 按钮或按 `Win+S`，启动器在任务栏上方打开，和 Windows 自带的搜索一样（EverythingToolbar 的“固定图标”模式也是这样）。
+  - **按钮是另一个小程序。** Win顺 以管理员身份运行，固定到任务栏的程序要是需要提权，每点一下都弹 UAC。所以按钮是 `WinShunSearch.exe`（`src/stub`）：不提权，纯 Win32，不带 Qt，C 运行库静态链接。点一下它就启动，把前台权限交给 Win顺（`AllowSetForegroundWindow`，这次点击给了它这个权限），置位一个事件后退出；Win顺 用 `QWinEventNotifier` 等这个事件。事件由 Win顺 建，按默认会带“高”完整性标签，普通权限的进程写不了，所以建的时候给当前用户置位的权限、标签降到“中”（`taskbar::createEvent`）。事件只能让启动器显示或隐藏，不带任何参数，别的程序拿它也做不了别的。不用常驻进程：实测从启动它到 Win顺 收到事件，第一次 81 毫秒（Defender 扫描新文件），之后 8–14 毫秒（中位 9.6）。Win顺 没在运行时，它运行开机自启的计划任务（用户可以按需运行，不弹 UAC），没有计划任务就直接启动旁边的 WinShun.exe（会弹 UAC），等 Win顺 起来再置位事件。
+  - **程序不能把自己固定到任务栏**：Windows 只让用户固定（`TaskbarManager.RequestPinAppAsync` 只给有包标识的应用）。安装程序在开始菜单放一个“Win顺 搜索”快捷方式；设置 → 打开 Win顺 →“找到按钮”在资源管理器里选中它（没有就在用户自己的开始菜单里建一个），用户右键固定。固定了没有，看 `%APPDATA%\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar` 里有没有指向它的快捷方式。
+  - **开在哪里**：点按钮时，鼠标下面是哪个任务栏（主任务栏 `Shell_TrayWnd`，或别的显示器上的 `Shell_SecondaryTrayWnd`）就开在哪个上方，沿任务栏以鼠标为中心，离任务栏和工作区边缘各 12 逻辑像素（Windows 11 的开始菜单和搜索也是 12）；任务栏在顶部、左右两边时开在它旁边。按 `Win+S` 时没有按钮的位置，开在鼠标所在显示器的任务栏上：图标居中（`TaskbarAl`；Windows 10 没有这个值，图标靠左）时在正中，否则在左端。那个显示器上没有任务栏，就开在平时的位置。挨着任务栏的那条边不动，窗口长高时往另一边长（`Placement::attachTaskbar`）。
+  - **搜索框不跳**：从任务栏打开时，列表区一直是放得下的最多行数那么高（`Main.qml` 的 `fullHeight`），结果多了少了，搜索框都不会上下移动；什么都没输入、也没有最近记录时，列表区里写一句提示。
+  - **再点一下收起**：点任务栏时启动器先失去焦点、隐藏，按钮的程序要到松开鼠标才启动（0.1–0.3 秒后）。所以隐藏后 500 毫秒内来的点击不再打开它，否则点一下关掉、马上又弹出来（EverythingToolbar 也是 500 毫秒）。
+  - **Windows 自带的搜索按钮藏不掉**：`HKCU\Software\Microsoft\Windows\CurrentVersion\Search` 的 `SearchboxTaskbarMode` 写 0 就隐藏，但 Windows 11（25H2 实测）的用户选择保护驱动（UCPD）不让任何别的程序写这个值，自己编译的程序、管理员权限都不行（错误 5）。设置里只读它（组策略 `SearchOnTaskbarMode` 优先），还在任务栏上就给一个按钮打开任务栏设置（`ms-settings:taskbar`），让用户自己选“隐藏”。
+  - **`Win+S` 和截图键**：接管方法和 `Win+V` 一样（DisabledHotkeys 里加 `S`，重启资源管理器）。资源管理器按字母放手，`S` 让它连 `Win+Shift+S`（截图）一起不注册，所以 Win顺 拿到 `Win+S` 后也注册 `Win+Shift+S`，替用户打开截图。`Win+Ctrl+S` 不是资源管理器注册的，不受影响。`Win+Q` 也打开搜索，但不接管：`Q` 会带走 `Win+Ctrl+Q`（快速助手），`Win+Q` 本身又很少有人用。
+    - 截图不能由 Win顺 直接启动：管理员进程启动的截图工具也带管理员权限（实测完整性级别为“高”）。所以交给 `WinShunSearch.exe --screenclip`，经资源管理器以普通权限启动。它照资源管理器的做法打开 `ms-screenclip:///?source=HotKey`（资源管理器启动截图工具的命令行就是这个），并且指定截图工具自己注册的类（`SEE_MASK_CLASSNAME`，`AppX…`，从它的包注册信息里读）：按用户的协议关联打开，在作者电脑上弹出了“你要如何打开”。实测出遮罩 376–424 毫秒，原生的 `Win+Shift+S` 是 292–375 毫秒。没有新版截图工具时退回 Windows 10 的 `SnippingTool.exe /clip`。
+    - 只在 Win顺 确实拿着 `Win+S` 时代管截图键。关掉开关后、资源管理器重启之前（releasing）也去注册，会抢在新的资源管理器前面拿走 `Win+Shift+S`；它只在启动时注册一次，之后谁也没有。
+    - 代价和 `Win+V` 一样：Win顺 退出期间这两个键没有反应。卸载时把 `S` 去掉（`GiveBackKey`），资源管理器下次启动时拿回去。
+  - 实测（2026-10-09，25H2 26200，150%）：运行按钮程序到启动器在前台 55 毫秒（含 PowerShell 启动它的时间），再运行一次 32 毫秒收起；`Win+S` 7 毫秒到前台，再按一次 16 毫秒收起；开关打开、关掉各重启一次资源管理器后，`Win+S`、`Win+Shift+S` 分别在 Win顺 和资源管理器手里。
+  - **首页：常用应用**。从任务栏打开、还没打字时，列表区上方一排最多 6 个最常用的应用（`Main.qml` 的 `showHome`），下面是“最近”。`↑` 从第一行进到这一排，`←` `→` 选，`Enter` 打开，`↓` 回到列表。排序（`frequentApps`）：先是从 Win顺 打开过的应用，按次数乘以新近程度（一周内算满，一个月内七成，三个月内四成，再早两成）；不够 6 个时，用 Windows 记下的、60 天内启动过的应用补上（`windowsAppUses`，读 `HKCU\…\Explorer\UserAssist\{CEBFF5CD-…}\Count`，名字 ROT13，72 字节的记录里第 4 字节起是启动次数、第 8 字节起是获得焦点次数、第 60 字节起是最后启动时间）。Windows 11 上这里的启动次数大多是 0，时间是准的，所以分数取“启动次数 + 焦点次数的十分之一”，至少按 1 算。它记的名字和开始菜单“所有应用”里的应用 ID 是同一种写法（`{已知文件夹 ID}\相对路径`，商店应用是 AUMID），直接对；ID 是 AUMID 的桌面程序（Word 的是 `Microsoft.Office.WINWORD.EXE.15`）再按展开后的程序路径对。卸载程序、说明文档和 Win顺 自己不算。关掉“记住打开过的项目”时这一排也不显示。次数记在最近使用记录里（`History`：每行 `路径\t次数\t最后时间`，以前只有路径的一行按打开过一次、时间不详读）。
+    - 每格 120 × 96 逻辑像素，图标在格里的 (44, 16)，这一排从 20 起：都是 4 的倍数，125%、150%、175%、200% 下都落在整像素上；竖直方向再按它在窗口里的位置补一个亚像素的平移（同结果行）。图标 32 逻辑像素，按原尺寸取、不平滑，150% 下正是 48 像素的那张。
+  - **在开始菜单里打字也用 Win顺**（设置里打开，默认关；`StartMenuTyping`）。开始菜单在前台时打的第一个能打出字的键（字母、数字、标点、小键盘）被截下，启动器在任务栏上方打开；这个键和之后打的键都先存着，等启动器拿到键盘，再按原顺序用 `SendInput` 发进去（标成 Win顺 自己的输入），和直接在搜索框里打一样经过输入法。截下第一个键之后，回车、方向键、`Esc` 也存着按顺序发过去，“打完字马上回车”照样打开第一个结果。Win、Ctrl、Alt 组合照常给 Windows；开始菜单开着时按一下左 Alt，这一次就还用 Windows 自带的搜索（EverythingToolbar 也是左 Alt）。
+    - 低级键盘钩子只在开始菜单（或 Windows 搜索）在前台时、以及存着键等启动器的这一会儿装着：一个进程外的 `EVENT_SYSTEM_FOREGROUND` 事件看前台是不是 `SearchHost.exe`（25H2 上开始菜单开着时前台就是它）、`StartMenuExperienceHost.exe`，或 Windows 10 的 `SearchApp.exe`、`SearchUI.exe`。钩子在自己的线程上，线程优先级调高、关掉省电降速（`ThreadPowerThrottling`），钩子回调只看按键本身就决定。存着的键 3 秒内没送出去（启动器没出来）就丢掉。
+    - 关开始菜单不用另想办法：启动器显示时 `win::bringToFront` 本来就会先发一个 `Esc` 关掉它（见 pitfalls.md“开始菜单开着时双击 Ctrl”）。这个 `Esc` 带着 Win顺 自己的标记（`kOwnInput`，重新发的键也带），钩子放它过去，它照常到开始菜单。别的程序注入的键（AutoHotkey、PowerToys 映射出来的，屏幕键盘打的）照样算打字。
 - **D3D11 渲染 + FreeType 字体引擎。** 界面字体阿里巴巴普惠体没有字体微调，GDI 下中文横笔画会糊成两行像素；FreeType 能把它们对齐到像素上。但软件渲染器会按估算的字形边界裁剪文字，FreeType 的字形会超出一点、被裁掉（比如“毫”顶上的点），所以只能配 D3D11，比软件渲染多占约 50 MB 内存。设置里选“省内存”（software）时自动改用 GDI，文字完整但偏模糊。默认“自动”：物理内存不超过 16 GB 的电脑用“省内存”，更大的用 D3D11。
 - **界面字体随程序附带**（`fonts\` 下的阿里巴巴普惠体 3.0 常规 / 粗体），缺失时退回系统默认字体（中文系统为微软雅黑）。界面里不用 `↵` 这类字体缺字的符号，字体回退一旦触发，内存要多出 30 MB 左右。
 
@@ -269,5 +291,6 @@ build\asan\wsfuzz.exe -max_total_time=300      # 用随机数据测 5 分钟
 - 名字里的非英文字母（如 `Ä`/`ä`）不区分大小写的匹配只对英文字母生效。
 - 没有 Listary 那种嵌进资源管理器窗口里的搜索；“打开 / 保存”对话框认资源管理器、Total Commander 和 Directory Opus，XYplorer、OneCommander、Files 等别的文件管理器还不认（XYplorer 和 OneCommander 有对外接口，Files 没找到）。在文件管理器前面搜到文件夹时，也不会让那个窗口直接跳过去，而是另开。程序自己画的对话框（Qt、Java、GTK 等的非系统对话框）和老式的“浏览文件夹”树形对话框不支持。
 - 非 NTFS 磁盘（U 盘、exFAT/FAT）在程序没运行期间的改动，要靠启动后的后台同步补上（约十几秒内完成）；弹出后又取消的非 NTFS 磁盘会重新遍历一次。
+- 代替任务栏搜索：Windows 自带的搜索按钮要用户自己在任务栏设置里隐藏；首页只有常用应用和最近打开的，还没有常用设置；在开始菜单里打字时，按住 AltGr 打出的字符（欧洲键盘）不截，仍进 Windows 搜索。真的点任务栏上固定的按钮还没自动测过（要用户先固定），测的是直接运行按钮程序。
 - 剪贴板历史：多选时不能把图片和别的内容合在一起粘贴，图片要一张一张地粘贴；还没有“依次粘贴”（每按一次 Ctrl+V 贴出下一条）。自己画光标又不告诉系统的程序（一些游戏、少数自绘的编辑器）里，剪贴板开在鼠标指针处；新版记事本和 Office 还没实测过找光标。终端里只有 mintty 和 PuTTY 用 `Shift+Insert`，其他不接受 `Ctrl+V` 的程序要自己按它们的粘贴键。
 - 文件夹被隐藏或取消隐藏时，里面已有文件继承来的“隐藏”标记不会马上跟着变，要到下次重新读取该盘时才更新。

@@ -1,20 +1,24 @@
 #pragma once
 
-// Taking Win+V over from Windows' clipboard history.
+// Taking Win+V over from Windows' clipboard history, and Win+S from its
+// search.
 //
-// Explorer registers Win+V for itself (RegisterHotKey), so nobody else can,
-// unless its "DisabledHotkeys" value (HKCU\Software\Microsoft\Windows\
-// CurrentVersion\Explorer\Advanced, one character per key) holds a V:
-// Explorer reads it when it starts and leaves those keys alone. So taking
-// it over takes an Explorer restart, or the next sign-in. No keyboard hook
-// is needed (see KeyListener for why that matters).
+// Explorer registers these keys for itself (RegisterHotKey), so nobody else
+// can, unless its "DisabledHotkeys" value (HKCU\Software\Microsoft\Windows\
+// CurrentVersion\Explorer\Advanced, one character per key) holds the letter:
+// Explorer reads it when it starts and leaves every Win combination with that
+// letter alone (S frees Win+S and Win+Shift+S, the screen capture; Win+Ctrl+S
+// is not Explorer's). So taking one over takes an Explorer restart, or the
+// next sign-in. No keyboard hook is needed (see KeyListener for why that
+// matters).
 namespace ws::winv {
 
-// V is in DisabledHotkeys: Explorer leaves Win+V alone once it (re)starts.
-bool releasedByExplorer();
-// Adds V to DisabledHotkeys or takes it out again, keeping the other keys
+// `key` (an upper-case letter) is in DisabledHotkeys: Explorer leaves its
+// Win combinations alone once it (re)starts.
+bool releasedByExplorer(wchar_t key);
+// Adds `key` to DisabledHotkeys or takes it out again, keeping the other keys
 // there. Returns false if the value could not be written.
-bool setReleasedByExplorer(bool released);
+bool setReleasedByExplorer(wchar_t key, bool released);
 
 // Whether an Explorer runs the taskbar (one to restart).
 bool canRestartExplorer();

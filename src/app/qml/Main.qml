@@ -35,6 +35,58 @@ Window {
     // After the list area has closed (see settleRows), not while it is held open.
     readonly property bool showEmptyState: trimmedQuery.length > 0 && list.count === 0 && !launcher.searching
                                            && shownRows === 0
+    // Opened from the taskbar (its button, Win+S), the window stands on the
+    // taskbar: the list area keeps the height of all the rows that fit, so
+    // the search box stays where it is as results come and go.
+    readonly property bool fullHeight: placement.atTaskbar && !clipboardBelow
+    readonly property int listRows: fullHeight ? fitRows : shownRows
+    // There, with nothing typed: the apps opened most in a row over the
+    // recent ones, as Windows' own search starts out.
+    readonly property bool showHome: fullHeight && trimmedQuery.length === 0 && launcher.frequentApps.length > 0
+    // The app the keyboard is on (↑ from the first row); -1: in the list.
+    property int homeIndex: -1
+    onShowHomeChanged: if (!showHome) homeIndex = -1
+    function enterHome() {
+        homeIndex = 0
+        list.currentIndex = -1
+    }
+    function leaveHome() {
+        homeIndex = -1
+        if (list.count > 0)
+            list.currentIndex = 0
+    }
+
+    // Nothing found: under the search box, or in the list area at full height.
+    readonly property string emptyTitle: contentMode
+        ? qsTr("没有 %1包含“%2”").arg(launcher.contentFilesLabel).arg(shownQuery)
+        : qsTr("没有找到“%1”").arg(shownQuery)
+    readonly property string emptyHint: contentMode ? qsTr("按 Tab 回到文件名搜索")
+        : launcher.searchesContent ? qsTr("文件名和 %1的内容里都没有").arg(launcher.contentFilesLabel)
+        : qsTr("按 Tab 切换范围，或搜索文件内容")
+    component EmptyState: Column {
+        property string title
+        property string hint
+        spacing: 4
+
+        Text {
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            // A long query keeps its start and its end, and the quotes.
+            elide: Text.ElideMiddle
+            text: parent.title
+            textFormat: Text.PlainText // holds what was typed
+            color: Theme.subtext
+            font.pixelSize: Theme.fontTitle
+        }
+        Text {
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            elide: Text.ElideRight
+            text: parent.hint
+            color: Theme.faint
+            font.pixelSize: Theme.fontBody
+        }
+    }
 
     // Rows the list area is sized for. It grows at once but shrinks only
     // once the search has settled (or after a grace period), so a list that
@@ -175,9 +227,28 @@ Window {
         }
         const ctrl = (event.modifiers & Qt.ControlModifier) !== 0
         const shift = (event.modifiers & Qt.ShiftModifier) !== 0
+        if (homeIndex >= 0) { // on the row of apps (nothing typed, so ← → move nothing else)
+            switch (event.key) {
+            case Qt.Key_Left: homeIndex = Math.max(0, homeIndex - 1); break
+            case Qt.Key_Right: homeIndex = Math.min(launcher.frequentApps.length - 1, homeIndex + 1); break
+            case Qt.Key_Down: leaveHome(); break
+            case Qt.Key_Up: break
+            case Qt.Key_Return:
+            case Qt.Key_Enter: launcher.openFrequentApp(homeIndex); break
+            case Qt.Key_Escape: launcher.dismiss(); break
+            default: return
+            }
+            event.accepted = true
+            return
+        }
         switch (event.key) {
         case Qt.Key_Down: shift ? extendSelection(1) : moveSelection(1); break
-        case Qt.Key_Up: shift ? extendSelection(-1) : moveSelection(-1); break
+        case Qt.Key_Up:
+            if (!shift && showHome && list.currentIndex <= 0)
+                enterHome()
+            else
+                shift ? extendSelection(-1) : moveSelection(-1)
+            break
         case Qt.Key_PageDown: shift ? extendSelection(fitRows) : moveSelection(fitRows); break
         case Qt.Key_PageUp: shift ? extendSelection(-fitRows) : moveSelection(-fitRows); break
         case Qt.Key_Return:
@@ -206,7 +277,7 @@ Window {
     }
 
     function selectFirst() {
-        if (list.count > 0)
+        if (list.count > 0 && homeIndex < 0)
             list.currentIndex = 0
         list.positionViewAtBeginning()
     }
@@ -215,6 +286,7 @@ Window {
         target: window.launcher
         function onShown() {
             // Still cloaked here (App::showLauncher): nobody sees the jump.
+            window.homeIndex = -1
             window.selectFirst()
             searchBar.focusAndSelect()
         }
@@ -274,18 +346,126 @@ Window {
             width: parent.width
             height: 1
             color: Theme.divider
-            visible: !window.clipboardBelow && (window.shownRows > 0 || window.showEmptyState)
+            visible: !window.clipboardBelow && (window.listRows > 0 || window.showEmptyState)
         }
 
         Item {
             id: listArea
             width: parent.width
-            height: window.shownRows > 0 ? window.shownRows * window.rowHeight + 8 : 0
-            visible: window.shownRows > 0 && !window.clipboardBelow
+            height: window.listRows > 0 ? window.listRows * window.rowHeight + 8 : 0
+            visible: window.listRows > 0 && !window.clipboardBelow
+
+            Column { // the apps opened most (showHome), over the recent ones
+                id: home
+                width: parent.width
+                visible: window.showHome
+                topPadding: 4
+
+                Text {
+                    x: 20
+                    height: 28
+                    verticalAlignment: Text.AlignVCenter
+                    text: qsTr("常用应用")
+                    color: Theme.subtext
+                    font.pixelSize: Theme.fontCaption
+                }
+
+                Row {
+                    id: tiles
+                    x: 20 // tiles, icons and text on multiples of 4 logical pixels: whole device pixels at 125–200 %
+
+                    Repeater {
+                        model: window.launcher.frequentApps
+
+                        delegate: Item {
+                            id: tile
+
+                            required property int index
+                            required property var modelData
+                            readonly property bool current: window.homeIndex === index
+
+                            width: 120
+                            height: 96
+                            // Vertically on whole device pixels too (see the rows').
+                            transform: Translate {
+                                y: {
+                                    const dpr = Screen.devicePixelRatio
+                                    const deviceY = (layout.y + listArea.y + home.y + tiles.y) * dpr
+                                    return (Math.round(deviceY) - deviceY) / dpr
+                                }
+                            }
+                            Accessible.role: Accessible.Button
+                            Accessible.name: modelData.name
+
+                            Rectangle {
+                                anchors.fill: parent
+                                anchors.margins: 2
+                                radius: 6
+                                color: tile.current ? Theme.selection : tileArea.containsMouse ? Theme.hover : "transparent"
+                            }
+                            Rectangle { // accent pill on the current one, as on the current row
+                                visible: tile.current
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                y: parent.height - 6
+                                width: 18
+                                height: 3
+                                radius: 1.5
+                                color: Theme.accent
+                            }
+                            Image { // as a row's icon (ResultRow.qml): its own pixels, unsmoothed
+                                readonly property real dpr: Screen.devicePixelRatio
+                                readonly property int pixels: Math.round(32 * dpr)
+
+                                x: 44 + 1 / 64
+                                y: 16 + 1 / 64
+                                width: pixels / dpr
+                                height: pixels / dpr
+                                source: tile.modelData.icon
+                                sourceSize.width: pixels / dpr
+                                sourceSize.height: pixels / dpr
+                                smooth: false
+                                asynchronous: true
+                                fillMode: Image.PreserveAspectFit
+                            }
+                            Text {
+                                x: 6
+                                y: 56
+                                width: parent.width - 12
+                                horizontalAlignment: Text.AlignHCenter
+                                text: tile.modelData.name
+                                textFormat: Text.PlainText
+                                color: Theme.text
+                                font.pixelSize: Theme.fontCaption
+                                elide: Text.ElideRight
+                                wrapMode: Text.Wrap
+                                maximumLineCount: 2
+                                lineHeight: 0.95
+                            }
+                            MouseArea {
+                                id: tileArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                onClicked: window.launcher.openFrequentApp(tile.index)
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    x: 20
+                    height: 28
+                    verticalAlignment: Text.AlignVCenter
+                    visible: list.count > 0
+                    text: qsTr("最近")
+                    color: Theme.subtext
+                    font.pixelSize: Theme.fontCaption
+                }
+            }
 
             ListView {
                 id: list
                 anchors.fill: parent
+                anchors.topMargin: window.showHome ? home.height : 0
                 topMargin: 4
                 bottomMargin: 4
                 clip: true
@@ -340,7 +520,7 @@ Window {
             ListScrollBar {
                 flickable: list
                 anchors.right: parent.right
-                anchors.top: parent.top
+                anchors.top: list.top
                 anchors.bottom: parent.bottom
             }
 
@@ -351,41 +531,38 @@ Window {
                 color: Theme.faint
                 font.pixelSize: Theme.fontBody
             }
+
+            EmptyState { // at full height, in the list area
+                anchors.centerIn: parent
+                width: parent.width - 80
+                visible: window.fullHeight && window.showEmptyState
+                title: window.emptyTitle
+                hint: window.emptyHint
+            }
+
+            Text { // at full height, nothing typed and nothing opened yet (under the apps, if any)
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: list.y + Math.round((list.height - height) / 2)
+                width: parent.width - 80
+                horizontalAlignment: Text.AlignHCenter
+                visible: window.fullHeight && window.trimmedQuery.length === 0 && list.count === 0
+                text: qsTr("输入名称或拼音，搜索文件、应用和设置")
+                color: Theme.faint
+                font.pixelSize: Theme.fontBody
+                wrapMode: Text.Wrap
+            }
         }
 
         Item {
             width: parent.width
             height: 80
-            visible: window.showEmptyState && !window.clipboardBelow
+            visible: window.showEmptyState && !window.clipboardBelow && !window.fullHeight
 
-            Column {
+            EmptyState {
                 anchors.centerIn: parent
                 width: parent.width - 80
-                spacing: 4
-
-                Text {
-                    width: parent.width
-                    horizontalAlignment: Text.AlignHCenter
-                    // A long query keeps its start and its end, and the quotes.
-                    elide: Text.ElideMiddle
-                    text: window.contentMode
-                          ? qsTr("没有 %1包含“%2”").arg(window.launcher.contentFilesLabel).arg(window.shownQuery)
-                          : qsTr("没有找到“%1”").arg(window.shownQuery)
-                    textFormat: Text.PlainText // holds what was typed
-                    color: Theme.subtext
-                    font.pixelSize: Theme.fontTitle
-                }
-                Text {
-                    width: parent.width
-                    horizontalAlignment: Text.AlignHCenter
-                    elide: Text.ElideRight
-                    text: window.contentMode ? qsTr("按 Tab 回到文件名搜索")
-                        : window.launcher.searchesContent
-                          ? qsTr("文件名和 %1的内容里都没有").arg(window.launcher.contentFilesLabel)
-                          : qsTr("按 Tab 切换范围，或搜索文件内容")
-                    color: Theme.faint
-                    font.pixelSize: Theme.fontBody
-                }
+                title: window.emptyTitle
+                hint: window.emptyHint
             }
         }
 

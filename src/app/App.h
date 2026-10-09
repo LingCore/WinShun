@@ -1,8 +1,10 @@
 #pragma once
 
 #include "Settings.h"
+#include "Win32Util.h"
 #include "platform/ClipboardWatcher.h"
 #include "platform/KeyRouter.h"
+#include "platform/TaskbarSearch.h"
 
 #include <QDeadlineTimer>
 #include <QElapsedTimer>
@@ -20,6 +22,7 @@
 class QQmlApplicationEngine;
 class QQuickItem;
 class QQuickWindow;
+class QWinEventNotifier;
 
 namespace ws {
 
@@ -37,6 +40,7 @@ class MessageWindow;
 class Placement;
 class SearchEngine;
 class SettingsEditor;
+class StartMenuTyping;
 class Updater;
 class VolumeNotifier;
 class WindowFrame;
@@ -65,7 +69,8 @@ public:
 
     void toggleLauncher();
     void toggleClipboard(); // the clipboard window (Win+V)
-    void showLauncher(const QString& query = {});
+    // With `spot`, over the taskbar, as Windows' own search (taskbar::).
+    void showLauncher(const QString& query = {}, const std::optional<taskbar::Spot>& spot = {});
     void hideLauncher();
     void showClipboard();
     void showSettings();
@@ -107,7 +112,15 @@ private:
     void applyClipboard(); // the [Clipboard] settings
     void applyClipboardHotkeys(); // Win+V and the other shortcut; where Win+V stands, for the settings
     void clipCaptured(const ClipCapture& capture);
-    void restartExplorer(); // so that Win+V changes hands now
+    void applyTaskbar(); // the [Taskbar] settings: Win+S
+    void applyTaskbarHotkeys(); // Win+S and Win+Shift+S; where Win+S stands, for the settings
+    // The taskbar button was clicked (`clicked`), or Win+S pressed: the
+    // launcher over the taskbar, or away again.
+    void toggleAtTaskbar(bool clicked);
+    void startScreenClip(); // Win+Shift+S, which Explorer gives up with Win+S
+    void startMenuTyped(); // typed in the Start menu (StartMenuTyping): the launcher over the taskbar
+    void deliverTyping(); // ... has the keyboard: the keys typed there go to it
+    void restartExplorer(); // so that Win+V and Win+S change hands now
     void explorerRestarted(bool back); // `back`: the taskbar is
     void setClipboardPaused(bool paused);
     void showClipboardSettings(); // the settings window on its 剪贴板 page
@@ -162,7 +175,14 @@ private:
     bool m_clipboardNotified = false; // the last tray notification told of the clipboard history
     std::optional<bool> m_winVApplied; // the Win+V switch, as last put into the registry
     bool m_winVRegistryFailed = false;
+    std::optional<bool> m_winSApplied; // the Win+S switch, likewise
+    bool m_winSRegistryFailed = false;
     bool m_restartingExplorer = false;
+    win32::UniqueHandle m_taskbarEvent; // set by the taskbar button (WinShunSearch.exe)
+    std::unique_ptr<QWinEventNotifier> m_taskbarNotifier; // waits on it; goes first
+    QElapsedTimer m_launcherHidden; // since the launcher last went away
+    std::unique_ptr<StartMenuTyping> m_startTyping; // while [Taskbar] StartMenuTyping is on
+    bool m_deliverTyping = false; // the launcher was asked for by typing in the Start menu
     QString m_clipboardShortcut; // what opens the clipboard: "Win+V", another shortcut, or nothing
     std::unique_ptr<MessageWindow> m_messages;
     std::unique_ptr<Updater> m_updater;

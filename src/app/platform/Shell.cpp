@@ -319,6 +319,11 @@ void reveal(const QStringList& paths)
     revealIn(paths, g_fileManager.load());
 }
 
+void revealInExplorer(const QString& path)
+{
+    revealIn({path}, filemanager::Kind::Explorer);
+}
+
 void setFileManager(filemanager::Kind kind)
 {
     g_fileManager = kind;

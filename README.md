@@ -139,6 +139,14 @@
   <img src="docs/images/clipboard.png" width="720" alt="Win顺 剪贴板：左边是历史，右边是选中那一条的预览">
 </p>
 
+#### 🔎 代替任务栏上的 Windows 搜索
+
+- 把 **Win顺 搜索** 固定到任务栏（设置 → 打开 Win顺 →“找到按钮”，右键它选“固定到任务栏”），点一下，搜索框就在这个按钮上方打开，再点一下收起；和 Windows 自带的搜索一样的位置，搜的是 Win顺 的索引、拼音和设置页。
+- 从任务栏打开、还没打字时，上面一排是你最常用的 6 个应用（按 `↑` 进去，`←` `→` 选，`Enter` 打开），下面是最近打开的。
+- 在设置里打开“在开始菜单里打字，也用 Win顺 搜索”：按 `Win` 后直接打字，Win顺 在任务栏上方打开，打的字接着进去；想用 Windows 自带的搜索时，先按一下左 `Alt` 再打字。
+- 在设置里打开“用 Win+S 打开”，`Win+S` 也在任务栏上方打开 Win顺。`Win+Shift+S` 截图照常可用（由 Win顺 替你打开截图工具）。接管 `Win+S` 和 `Win+V` 一样要重启一次资源管理器；关掉这项或卸载 Win顺，它就回到 Windows 搜索。
+- Windows 不允许别的程序隐藏它自带的搜索按钮，设置里有按钮直接打开任务栏设置，把“搜索”选成“隐藏”即可。
+
 #### ⌨️ 全键盘操作
 
 | 按键 | 作用 |
@@ -158,6 +166,7 @@
 | 双击 `Ctrl`（在“打开”“另存为”对话框里） | 到对话框旁的搜索框里输入 |
 | `Ctrl+Enter`（在“打开”对话框旁的搜索框里） | 转到选中的文件并直接打开 |
 | `Tab` / `Shift+Tab`（在对话框旁的搜索框里） | 进入选中的文件夹 / 回到上一级 |
+| `Win+S`（在设置里打开后） | 在任务栏上方打开 / 关闭搜索框，代替 Windows 搜索 |
 | `Win+V`（在设置里打开后） | 剪贴板历史：点一条或 `Enter` 粘贴，`Alt+P` 预览，`Shift+Enter` 粘贴为纯文本，`Tab` 切换分类，`Ctrl+P` 固定，`Alt+1`～`Alt+9` 粘贴第几条；在 Win顺 自己的输入框里按，粘贴到这个框 |
 
 鼠标也能用：选中或悬停的结果右边有四个按钮，分别是打开所在位置、复制、复制路径和删除（点两次才删，移到回收站）。选中了多项时，打开、复制、删除等操作都对全部选中项生效。
@@ -173,7 +182,7 @@
 
 托盘图标右键 → **设置…**，修改后自动保存、立即生效：
 
-- **打开 Win顺**：双击 Ctrl 开关、玩游戏时或全屏时不响应、不响应双击 Ctrl 的程序、另设一个组合键、用哪个文件管理器打开文件夹、对话框里的 `Ctrl+G` 和搜索框、搜索框的位置、对话框自动转过去、不显示搜索框的程序、开机自动启动、是否记住打开过的项目、清除最近使用记录。
+- **打开 Win顺**：双击 Ctrl 开关、玩游戏时或全屏时不响应、不响应双击 Ctrl 的程序、另设一个组合键、用哪个文件管理器打开文件夹、对话框里的 `Ctrl+G` 和搜索框、搜索框的位置、对话框自动转过去、不显示搜索框的程序、开机自动启动、是否记住打开过的项目、清除最近使用记录；代替任务栏上的 Windows 搜索：找到任务栏按钮、打开任务栏设置隐藏 Windows 的搜索按钮、用 `Win+S` 打开、在开始菜单里打字也用 Win顺。
 - **外观**：主题（跟随系统 / 浅色 / 深色）、透明效果（关 / 开；默认内存超过 16 GB 时开）、界面语言（跟随系统 / 简体中文 / English），切换即时生效。
 - **搜索范围**：不搜索的文件夹、任何位置都跳过的文件夹名称（如 `node_modules`）、是否包括 U 盘和移动硬盘。
 - **文件内容搜索**：是否搜索文档（Word、Excel、PowerPoint、PDF、WPS）、要搜索的纯文本类型、各类文件的大小上限、是否也搜系统和程序文件夹、是否建立内容索引。
@@ -331,6 +340,14 @@ The interface comes in **English and Simplified Chinese**. It follows the Window
 - Hold `Alt` to see the numbers: `Alt+1`…`Alt+9` paste the first nine entries. `Delete` removes one and `Ctrl+Z` brings it back (a removed group too).
 - Passwords from password managers are not kept (they mark them the same way for Windows' own clipboard history); programs can be excluded in the settings, and the tray menu pauses the history. It stays on your PC (`%LOCALAPPDATA%\WinShun\clipboard`).
 - On by default if Windows' own clipboard history is on. Taking `Win+V` over takes one restart of File Explorer (a button in the settings, or the next sign-in); turned off again, or with WinShun uninstalled, `Win+V` goes back to Windows. For emoji, use `Win+.`.
+
+#### 🔎 Instead of Windows search on the taskbar
+
+- Pin **WinShun Search** to the taskbar (Settings → Open WinShun → “Find the button”, then right-click it and choose “Pin to taskbar”): a click opens the search box right above it, another click closes it — where Windows' own search opens, with WinShun's index, pinyin and settings pages behind it.
+- Opened from the taskbar with nothing typed, it shows your six most used apps in a row (`↑` to get there, `←` `→`, `Enter`) over the recent items.
+- Turn on “Typing in the Start menu searches with WinShun”: press `Win` and just type, and WinShun opens above the taskbar with what you typed; press Left `Alt` once first for Windows' own search.
+- Turn on “Open with Win+S” and `Win+S` opens WinShun above the taskbar too, while `Win+Shift+S` still takes screenshots (WinShun starts the Snipping Tool for it). Like `Win+V`, taking `Win+S` over takes one restart of File Explorer; turned off again, or with WinShun uninstalled, it goes back to Windows search.
+- Windows lets no other program hide its own search button: a button in the settings opens the taskbar settings, where “Search” can be set to “Hide”.
 
 #### ⌨️ Keyboard first
 

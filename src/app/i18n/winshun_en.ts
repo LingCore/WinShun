@@ -387,6 +387,18 @@
         <source>按 Tab 切换范围，或搜索文件内容</source>
         <translation>Press Tab to switch scope, or search file contents</translation>
     </message>
+    <message>
+        <source>常用应用</source>
+        <translation>Frequent apps</translation>
+    </message>
+    <message>
+        <source>最近</source>
+        <translation>Recent</translation>
+    </message>
+    <message>
+        <source>输入名称或拼音，搜索文件、应用和设置</source>
+        <translation>Type a name to search files, apps and settings</translation>
+    </message>
 </context>
 <context>
     <name>ResultRow</name>
@@ -608,6 +620,78 @@
     <message>
         <source>登录 Windows 后在后台运行，随时可以打开</source>
         <translation>Runs in the background once you sign in, ready whenever you need it</translation>
+    </message>
+    <message>
+        <source>代替任务栏上的 Windows 搜索</source>
+        <translation>Instead of Windows search on the taskbar</translation>
+    </message>
+    <message>
+        <source>点任务栏上的 Win顺 按钮或按 Win+S，搜索框在任务栏上方打开；再点一次、按 Esc 或点别处就收起。</source>
+        <translation>Click WinShun’s button on the taskbar or press Win+S, and the search box opens above the taskbar. Click it again, press Esc or click elsewhere to close it.</translation>
+    </message>
+    <message>
+        <source>任务栏上的 Win顺 按钮</source>
+        <translation>WinShun’s button on the taskbar</translation>
+    </message>
+    <message>
+        <source>已固定到任务栏</source>
+        <translation>Pinned to the taskbar</translation>
+    </message>
+    <message>
+        <source>Windows 只让你自己固定程序：点“找到按钮”，在选中的“Win顺 搜索”上点右键，选“固定到任务栏”（Windows 11 可能要先点“显示更多选项”）</source>
+        <translation>Windows lets only you pin programs: click “Find the button”, right-click the selected “WinShun Search” and choose “Pin to taskbar” (on Windows 11 perhaps under “Show more options”)</translation>
+    </message>
+    <message>
+        <source>找到按钮</source>
+        <translation>Find the button</translation>
+    </message>
+    <message>
+        <source>没找到 WinShunSearch.exe，重新安装 Win顺 就有了</source>
+        <translation>WinShunSearch.exe is missing; installing WinShun again brings it back</translation>
+    </message>
+    <message>
+        <source>Windows 自带的搜索按钮</source>
+        <translation>Windows’ own search button</translation>
+    </message>
+    <message>
+        <source>还在任务栏上。Windows 不让其他程序隐藏它：在任务栏设置里把“搜索”选成“隐藏”</source>
+        <translation>Still on the taskbar. Windows lets no other program hide it: in the taskbar settings, set “Search” to “Hide”</translation>
+    </message>
+    <message>
+        <source>已从任务栏上隐藏</source>
+        <translation>Hidden from the taskbar</translation>
+    </message>
+    <message>
+        <source>打开任务栏设置</source>
+        <translation>Taskbar settings</translation>
+    </message>
+    <message>
+        <source>用 Win+S 打开，代替 Windows 搜索</source>
+        <translation>Open with Win+S, instead of Windows search</translation>
+    </message>
+    <message>
+        <source>Win+S 也在任务栏上方打开 Win顺。Win+Shift+S 截图照常可用，由 Win顺 代为打开截图工具；Win顺 没在运行时这两个键都没有反应。关掉这项，它们就回到 Windows 自带的</source>
+        <translation>Win+S opens WinShun above the taskbar too. Win+Shift+S still takes screenshots: WinShun starts the Snipping Tool for it. While WinShun is not running, neither key does anything. Turned off, both are Windows’ own again</translation>
+    </message>
+    <message>
+        <source>已生效：Win+S 打开 Win顺</source>
+        <translation>Done: Win+S opens WinShun</translation>
+    </message>
+    <message>
+        <source>资源管理器重启后，Win+S 和 Win+Shift+S 回到 Windows 自带的</source>
+        <translation>Once File Explorer restarts, Win+S and Win+Shift+S are Windows’ own again</translation>
+    </message>
+    <message>
+        <source>没能修改 Windows 的设置，Win+S 仍是 Windows 搜索</source>
+        <translation>Could not change the Windows setting: Win+S still opens Windows search</translation>
+    </message>
+    <message>
+        <source>在开始菜单里打字，也用 Win顺 搜索</source>
+        <translation>Typing in the Start menu searches with WinShun</translation>
+    </message>
+    <message>
+        <source>按 Win 打开开始菜单后直接打字，Win顺 在任务栏上方打开，打的字接着进到搜索框里。想用 Windows 自带的搜索时，先按一下左 Alt 再打字</source>
+        <translation>Press Win and just type: WinShun opens above the taskbar and what you type goes on into its search box. For Windows’ own search, press Left Alt once before typing</translation>
     </message>
     <message>
         <source>主题</source>
@@ -2270,6 +2354,10 @@
     <message>
         <source>%1 等</source>
         <translation>%1 and more</translation>
+    </message>
+    <message>
+        <source>Win顺 搜索</source>
+        <translation>WinShun Search</translation>
     </message>
     <message>
         <source>请填写关键词</source>

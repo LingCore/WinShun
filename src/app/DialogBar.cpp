@@ -7,6 +7,7 @@
 
 #include <QClipboard>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QEvent>
 #include <QFileInfo>
@@ -836,7 +837,7 @@ void DialogBar::setPinned(const QString& folder, bool pinned)
         return;
     m_pinned.removeIf([&](const QString& p) { return p.compare(folder, Qt::CaseInsensitive) == 0; });
     if (pinned) {
-        m_pins.record(folder);
+        m_pins.record(folder, QDateTime::currentMSecsSinceEpoch());
         m_pinned.prepend(folder);
     } else {
         m_pins.remove(folder);

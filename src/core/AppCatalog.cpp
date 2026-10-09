@@ -1,5 +1,6 @@
 #include "AppCatalog.h"
 
+#include "History.h"
 #include "Query.h"
 #include "TextUtil.h"
 #include "Win32Util.h"
@@ -22,7 +23,9 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <cstring>
 #include <iterator>
+#include <optional>
 #include <utility>
 
 using namespace Qt::StringLiterals;
@@ -329,6 +332,160 @@ std::vector<AppHit> searchApps(
     // Stable: equal scores keep the list's alphabetical order.
     std::stable_sort(hits.begin(), hits.end(), [](const AppHit& a, const AppHit& b) { return a.score > b.score; });
     return hits;
+}
+
+namespace {
+
+QString rot13(QString text)
+{
+    for (QChar& c : text) {
+        const char16_t u = c.unicode();
+        if (u >= u'a' && u <= u'z')
+            c = QChar(u'a' + (u - u'a' + 13) % 26);
+        else if (u >= u'A' && u <= u'Z')
+            c = QChar(u'A' + (u - u'A' + 13) % 26);
+    }
+    return text;
+}
+
+// "{6D809377-…}\Listary\Listary.exe" -> "C:\Program Files\Listary\Listary.exe";
+// anything else as it is.
+QString expandKnownFolder(const QString& name)
+{
+    if (!name.startsWith(u'{'))
+        return name;
+    const qsizetype close = name.indexOf(u'}');
+    if (close < 0)
+        return name;
+    GUID id {};
+    PWSTR folder = nullptr;
+    QString path = name;
+    if (SUCCEEDED(::CLSIDFromString(reinterpret_cast<LPCOLESTR>(name.left(close + 1).utf16()), &id))
+        && SUCCEEDED(::SHGetKnownFolderPath(id, KF_FLAG_DONT_VERIFY, nullptr, &folder)))
+        path = QString::fromWCharArray(folder) + name.mid(close + 1);
+    ::CoTaskMemFree(folder);
+    return path;
+}
+
+// Opened this week counts in full, then less as it gets older.
+double recency(qint64 last, qint64 now)
+{
+    if (last <= 0)
+        return 0.5; // recorded before times were
+    const double days = double(now - last) / 86'400'000.0;
+    return days <= 7 ? 1.0 : days <= 30 ? 0.7 : days <= 90 ? 0.4 : 0.2;
+}
+
+bool isWinShun(const AppInfo& app)
+{
+    const QString file = app.target.mid(app.target.lastIndexOf(u'\\') + 1);
+    return file.compare(u"WinShun.exe", Qt::CaseInsensitive) == 0
+        || file.compare(u"WinShunSearch.exe", Qt::CaseInsensitive) == 0;
+}
+
+} // namespace
+
+std::vector<AppUse> windowsAppUses()
+{
+    // The programs and apps started; the other key of note ({F4E57C4B-…})
+    // has the shortcuts started, whose targets would have to be read.
+    win32::UniqueKey owned;
+    if (::RegOpenKeyExW(HKEY_CURRENT_USER,
+            L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\UserAssist\\"
+            L"{CEBFF5CD-ACE2-4F4F-9178-9926F41749EA}\\Count",
+            0, KEY_READ, owned.out())
+        != ERROR_SUCCESS)
+        return {};
+    const HKEY key = owned.get();
+    std::vector<AppUse> uses;
+    std::vector<wchar_t> name(1024);
+    BYTE data[128];
+    for (DWORD i = 0;; ++i) {
+        DWORD nameLength = static_cast<DWORD>(name.size());
+        DWORD size = sizeof data;
+        DWORD type = 0;
+        const LSTATUS status = ::RegEnumValueW(key, i, name.data(), &nameLength, nullptr, &type, data, &size);
+        if (status == ERROR_NO_MORE_ITEMS)
+            break;
+        // Version 5 records (Windows 7 on): runs at 4, focus count at 8,
+        // last started (FILETIME) at 60.
+        if (status != ERROR_SUCCESS || type != REG_BINARY || size < 68)
+            continue;
+        const QString decoded = rot13(QString::fromWCharArray(name.data(), nameLength));
+        if (decoded.startsWith(u"UEME_"))
+            continue; // the record's own bookkeeping
+        DWORD runs = 0;
+        DWORD focus = 0;
+        qint64 fileTime = 0;
+        std::memcpy(&runs, data + 4, sizeof runs);
+        std::memcpy(&focus, data + 8, sizeof focus);
+        std::memcpy(&fileTime, data + 60, sizeof fileTime);
+        constexpr qint64 kEpoch = 116'444'736'000'000'000; // 1970 in FILETIME units
+        uses.push_back({decoded, runs + focus / 10.0, fileTime > kEpoch ? (fileTime - kEpoch) / 10'000 : 0});
+    }
+    return uses;
+}
+
+std::vector<std::size_t> frequentApps(
+    const AppList& apps, const History& history, const std::vector<AppUse>& windows, qint64 now, std::size_t limit)
+{
+    // By id, and by program for desktop apps whose id is an AppUserModelID
+    // where Windows recorded the program's path.
+    QHash<QString, std::size_t> byId;
+    QHash<QString, std::size_t> byProgram;
+    for (std::size_t i = 0; i < apps.size(); ++i) {
+        const AppInfo& app = apps[i];
+        if (app.auxiliary || isWinShun(app))
+            continue;
+        byId.insert(app.id.toCaseFolded(), i);
+        if (app.kind == AppKind::Desktop && !app.target.isEmpty())
+            byProgram.insert(app.target.toCaseFolded(), i);
+    }
+
+    struct Ranked {
+        double score;
+        qint64 last;
+        std::size_t index;
+    };
+    const auto byScore = [](const Ranked& a, const Ranked& b) {
+        return a.score != b.score ? a.score > b.score : a.last > b.last;
+    };
+    std::vector<Ranked> own;
+    for (const QString& path : history.items()) {
+        const auto it = byId.constFind(appIdOf(path).toCaseFolded());
+        if (it == byId.cend())
+            continue;
+        const History::Use use = history.use(path);
+        own.push_back({use.count * recency(use.last, now), use.last, *it});
+    }
+    std::stable_sort(own.begin(), own.end(), byScore); // ties: the history's order, newest first
+
+    constexpr qint64 kWindowsSpan = 60LL * 86'400'000; // what Windows saw lately
+    std::vector<Ranked> seen;
+    for (const AppUse& use : windows) {
+        if (use.last <= 0 || now - use.last > kWindowsSpan)
+            continue;
+        std::optional<std::size_t> index;
+        if (const auto id = byId.constFind(use.name.toCaseFolded()); id != byId.cend())
+            index = *id;
+        else if (const auto program = byProgram.constFind(expandKnownFolder(use.name).toCaseFolded());
+                 program != byProgram.cend())
+            index = *program;
+        if (index)
+            seen.push_back({std::max(1.0, use.uses) * recency(use.last, now), use.last, *index});
+    }
+    std::sort(seen.begin(), seen.end(), byScore);
+
+    std::vector<std::size_t> picked;
+    for (const std::vector<Ranked>* list : {&own, &seen}) {
+        for (const Ranked& r : *list) {
+            if (picked.size() >= limit)
+                return picked;
+            if (std::ranges::find(picked, r.index) == picked.end())
+                picked.push_back(r.index);
+        }
+    }
+    return picked;
 }
 
 AppCatalog::AppCatalog(QObject* parent)

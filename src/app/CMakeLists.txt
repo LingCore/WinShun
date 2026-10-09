@@ -21,6 +21,8 @@ qt_add_executable(WinShun WIN32
     platform/PeekingLogo.cpp platform/PeekingLogo.h
     platform/Shell.cpp platform/Shell.h
     platform/ShortcutCapture.cpp platform/ShortcutCapture.h
+    platform/StartMenuTyping.cpp platform/StartMenuTyping.h
+    platform/TaskbarSearch.cpp platform/TaskbarSearch.h
     platform/TextCaret.cpp platform/TextCaret.h
     platform/VolumeNotifier.cpp platform/VolumeNotifier.h
     platform/WinV.cpp platform/WinV.h

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "platform/TaskbarSearch.h"
+
 #include <QObject>
 #include <QPointF>
 #include <QPointer>
@@ -39,11 +41,17 @@ namespace ws {
 // drops down under the search box of ours or the text caret it pastes at,
 // level with its left edge, or goes over it where more rows fit there. Moved
 // by the user then, it stays where it is let go, and its spot stays as it was.
+//
+// Or by the taskbar (attachTaskbar), as Windows' own search opens there: the
+// launcher from its button on the taskbar or from Win+S. Off the taskbar by a
+// gap, centred on the button along it; its edge by the taskbar stays put
+// when it gets taller (atTaskbar: it does not, the list keeps its height).
 class Placement : public QObject {
     Q_OBJECT
     QML_ELEMENT
     QML_UNCREATABLE("Provided by the application")
     Q_PROPERTY(bool moving READ moving NOTIFY movingChanged FINAL)
+    Q_PROPERTY(bool atTaskbar READ atTaskbar NOTIFY atTaskbarChanged FINAL)
     // Height of the window with the fewest rows it keeps room for (logical
     // pixels): it settles no lower than that fits.
     Q_PROPERTY(int roomNeeded READ roomNeeded WRITE setRoomNeeded NOTIFY roomNeededChanged FINAL)
@@ -65,8 +73,10 @@ public:
     void placeOn(QScreen* screen); // before showing the window there, at its spot
     void attach(const QRect& box); // before showing it, by `box` (logical pixels, on the screen)
     void attachNative(const QRect& box); // ... physical pixels (another program's text caret)
+    void attachTaskbar(const taskbar::Spot& spot); // before showing it, over the taskbar
 
     bool moving() const { return m_moving; }
+    bool atTaskbar() const { return m_taskbar.has_value(); }
     int roomNeeded() const { return m_roomNeeded; }
     void setRoomNeeded(int height);
     int room() const { return m_room; }
@@ -82,6 +92,7 @@ public:
 
 signals:
     void movingChanged();
+    void atTaskbarChanged();
     void roomNeededChanged();
     void roomChanged();
     void anchorWidthChanged();
@@ -90,9 +101,18 @@ private:
     struct Hook; // the window procedure subclass
     friend struct Hook;
 
+    // The taskbar it opens over, in logical pixels on its screen.
+    struct TaskbarBox {
+        QRect bar;
+        taskbar::Edge edge = taskbar::Edge::Bottom;
+        QPoint anchor;
+    };
+
     QPoint settleOn(QScreen* screen); // where the window goes there; sets room
     QPoint settleBy(QScreen* screen); // ... by the box; sets room, and with it the height (QML)
+    QPoint settleByTaskbar(QScreen* screen); // ... over the taskbar; likewise
     void refit(); // its size changed: where it goes now
+    void setTaskbar(std::optional<TaskbarBox> box);
     void setRoom(int room);
     void setMoving(bool moving);
     void rememberSpot(); // after a move
@@ -106,6 +126,8 @@ private:
     QPointF m_anchor; // centre across, top down; fractions of the work area
     int m_anchorWidth = 0;
     std::optional<QRect> m_box; // attached to it
+    std::optional<TaskbarBox> m_taskbar; // over it
+    QPointer<QScreen> m_taskbarScreen; // the taskbar's
     bool m_dropped = false; // was attached, then moved by the user: stays there
     int m_left = 0; // attached or dropped: where its left edge goes
     bool m_above = false; // attached over the box: its bottom stays at the box

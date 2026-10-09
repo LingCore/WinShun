@@ -598,6 +598,42 @@
 - **原因**：Qt 的单行 `TextInput` 粘贴时不去掉换行，换行留在 `text` 里，只是显示成空格（`QQuickTextInputPrivate::updateDisplayText`）。查询里带着换行，搜索什么也找不到；空状态的“没有找到“%1””用的是 `Text`，纯文本里的换行照样分行，又没限宽度和行数，就从 80 像素高的区域里上下溢出、左右超出窗口。
 - **做法**：源头上，多行文字粘贴进单行的框合成一行（`App::eventFilter` + `textfield::pasteOneLine`，见 architecture.md 的“多行文字粘贴进单行的框合成一行”）。显示上，凡是把用户输入放进 `Text` 的地方，先把空白合成一个空格，再定宽度、`elide`；`ElideMiddle` 只对单行文字有效，所以合并空白这一步不能省。
 
+## 任务栏搜索（任务栏按钮、Win+S）
+
+### Windows 自带的搜索按钮隐藏不了
+
+- **现象**：往 `HKCU\Software\Microsoft\Windows\CurrentVersion\Search` 写 `SearchboxTaskbarMode=0`（资料上的隐藏方法）返回错误 5（拒绝访问）。键的权限明明给了用户完全控制。
+- **原因**：Windows 11 的用户选择保护驱动（UCPD，`sc query ucpd` 在运行）挡住了这个值：PowerShell、自己编译的程序、管理员权限的进程，2026-10-09 在 25H2（26200）上全都写不进去。只有 Windows 自己（设置应用、资源管理器）能改。
+- **做法**：不改，只读（组策略 `HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Search` 的 `SearchOnTaskbarMode` 优先）。设置里显示它还在不在任务栏上，在的话给一个按钮打开 `ms-settings:taskbar`，让用户自己选“隐藏”。EverythingToolbar 的设置向导也是让用户自己去关。
+
+### 打开 `ms-screenclip:` 弹出“你要如何打开”
+
+- **现象**：`ShellExecute("ms-screenclip:?source=HotKey")`（网上的写法），以及带三个斜杠的 `ms-screenclip:///?source=HotKey`，都弹出“打开方式”对话框，截图界面不出来。协议明明注册给了截图工具（`HKCR\AppXfeq5…`，UserChoice 也指向它）。
+- **原因**：没查清，看样子是这台电脑上 UserChoice 的校验没通过，Windows 就当没选过。资源管理器按 `Win+Shift+S` 时不走用户的关联：截图工具进程的命令行是 `SnippingTool.exe ms-screenclip:///?source=HotKey`，父进程是 explorer.exe。
+- **试过、不行的**：截图工具的命令行别名 `SnippingTool.exe ms-screenclip:///?source=HotKey`：它已在后台运行时打开的是它的主窗口（“新建”按钮那个），不是截图遮罩（别名启动算“普通启动”，不是协议激活）。`IApplicationActivationManager::ActivateForProtocol`：返回 0x80270254，不支持这种完全信任的桌面打包应用。
+- **做法**：`ShellExecuteEx` 加 `SEE_MASK_CLASSNAME`，`lpClass` 填截图工具自己为 `ms-screenclip` 注册的类。类名从 `HKCU\Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Packages\Microsoft.ScreenSketch_*\App\Capabilities\URLAssociations` 的 `ms-screenclip` 值读，不写死（`src/stub/main.cpp`）。截图工具在不在运行，都直接出遮罩。
+
+### 管理员进程启动的截图工具也是管理员
+
+- **现象**：Win顺 拿到 `Win+Shift+S` 后自己用上面的办法打开截图，截图工具的完整性级别是“高”（0x3000）；普通权限的测试脚本按 Esc 关不掉它的遮罩（UIPI 丢掉了按键），遮罩一直盖在屏幕上，只能用管理员权限结束进程。
+- **做法**：交给 `WinShunSearch.exe --screenclip`，经资源管理器以普通权限启动它（`shell::run`），由它去打开截图。实测截图工具的完整性级别是“中”（0x2000）。
+
+### 关掉 Win+S 后，截图键没了
+
+- **现象**：设置里关掉“用 Win+S 打开”，重启资源管理器后，`Win+S` 回到了 Windows，`Win+Shift+S` 却谁都不响应（`RegisterHotKey` 一试，它空着）。
+- **原因**：关掉以后、资源管理器重启之前（releasing），Win顺 仍注册 `Win+Shift+S` 来替用户截图。资源管理器重启时，`TaskbarCreated` 让 Win顺 重新登记热键，这时新的资源管理器还没注册它的键，Win顺 抢先拿到 `Win+Shift+S`；资源管理器注册失败，不会再试。3 秒后 Win顺 再登记一次时发现 `Win+S` 已是资源管理器的，就放掉了 `Win+Shift+S`，于是它空着。
+- **做法**：只在 Win顺 确实拿着 `Win+S` 时注册 `Win+Shift+S`。资源管理器的热键只在启动时注册一次：它启动前后的这段时间里，Win顺 不要占着它要的键。
+
+### 开始菜单打字：别按“是不是注入的”放行按键
+
+- **现象**：第一版钩子放过所有注入的键（`LLKHF_INJECTED`），本意是放过 Win顺 自己重新发的键和关开始菜单的 `Esc`。结果测试脚本模拟的打字一个都截不到；用户用 AutoHotkey、PowerToys 改过键位，或用屏幕键盘打字时也一样。
+- **做法**：Win顺 自己发的键都带 `kOwnInput` 标记（`dwExtraInfo`），钩子只放过带标记的。关开始菜单的那个 `Esc`（`win::bringToFront` 里的 `closeShellFlyout`）以前没带标记，补上了。
+
+### 截到的键经过输入法
+
+- **现象**：开着微软拼音（中文模式）在开始菜单里打 `not`，转到 Win顺 的搜索框后是输入法的组字（候选“农田、弄他”），不是直接搜索；接着按 `Esc` 取消的是组字，Win顺 不关。
+- **原因**：截到的键重新发给 Win顺 时，和用户直接在搜索框里打字一样经过输入法。在 Windows 自带的搜索里打字也是这样，是有意的：用户打的是拼音还是英文，由他自己的输入法状态决定。测试脚本按 `Esc` 想关窗口时，要按两次，或先确认没有组字。
+
 ## 主题和语言
 
 ### 名为 `onXxx` 的属性不随主题变化
@@ -713,6 +749,12 @@
 - **原因**：moc 自己的词法分析器不认识 C++11 的原始字符串，里面的引号和大括号打乱了它对类体的解析。
 - **做法**：`Q_OBJECT` 类里用普通字符串和转义（`tests/tst_core.cpp`）。
 
+### lupdate 填了译文，却标成“未完成”
+
+- **现象**：新加的 `qsTr("最近")` 在 .ts 里已经有了 `Recent`，但带着 `type="unfinished"`；按“没有译文的条目”去补，会漏掉它。未完成的译文 lrelease 默认不收，界面上显示的仍是中文。
+- **原因**：别的界面文件里已经有一模一样的源文，lupdate 拿那条译文先填上，但要人确认，所以标成未完成。
+- **做法**：跑完 lupdate 后找所有 `type="unfinished"`，不只是空的；核对一遍再去掉这个标记。
+
 ### lrelease 在中文路径下打不开 .ts
 
 - **现象**：`qt_add_translations` 生成的编译步骤报 `lrelease error: Cannot open F:/??????/src/app/i18n/winshun_en.ts`。lupdate 没问题。
@@ -798,7 +840,7 @@
 
 改了窗口和鼠标交互，编译通过不等于能用，要在部署好的程序上用模拟的真实输入试一遍。
 
-- **测试程序要以管理员身份运行**：Win顺以管理员身份运行，普通权限进程用 `SendInput` 发的输入会被 UIPI 悄悄丢掉，不报错。
+- **测试程序要以管理员身份运行**：Win顺以管理员身份运行，普通权限进程用 `SendInput` 发的输入会被 UIPI 悄悄丢掉，不报错。全局热键也一样：前台是普通程序时，普通权限发的 `Win+S` 能触发 Win顺 的热键；Win顺 自己在前台时，同样的组合键整个被丢掉，热键不触发，看起来像“再按一次收不起来”。但重启资源管理器要在普通权限里做（管理员启动的资源管理器也是管理员），所以这类测试拆成两段：普通权限的脚本改设置、重启资源管理器，中间那段发键的脚本提权运行。
 - **坐标按物理像素**：测试程序先调 `SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)`，否则拿到的窗口位置是按缩放换算过的。`SendInput` 的绝对坐标加 `MOUSEEVENTF_VIRTUALDESK`，按整个虚拟桌面归一化到 0–65535。
 - **检查拖动区不用动鼠标**：`SendMessage(hwnd, WM_NCHITTEST, 0, 屏幕坐标)` 直接问窗口某一点是拖动区、按钮还是边框。
 - **从 `dist\WinShun` 测**，不要从 `build\release` 启动：那里没有 Qt 插件，会报 “no Qt platform plugin”。替换前保留旧版（只换 exe 时把旧的改名为 `.bak`，整个文件夹要换时把旧文件夹改名），新版起不来就自动换回去。
@@ -832,6 +874,7 @@
   - 要用 `System.Drawing` 截图量像素时，用 Windows PowerShell 5.1。
   - 给 Windows PowerShell 5.1 运行的脚本里有中文时，要存成带 BOM 的 UTF-8，否则中文（如找窗口用的标题“设置”）会读成乱码。
   - 变量名不区分大小写：`$seq` 和参数 `$Seq` 是同一个变量；2026-10-09 一个脚本用 `$t` 暂存设置文件的内容，把放测试文件夹路径的 `$T` 冲掉了，打进搜索框的成了整个设置文件。参数声明了 `[string]` 时，给它赋一个数组会被转回一个字符串，`foreach` 只循环一次。局部变量换个名字。开关参数也一样：函数有 `[switch]$Aware` 时，`$aware = 0` 会报“无法转换为 SwitchParameter”。
+  - PowerShell 把中文的弯引号也当引号：`’` 会结束单引号字符串，`“”` 会结束双引号字符串。英文翻译里的 `Windows’` 写进单引号字符串就是语法错误。用占位符代替，运行时再换成 `[char]0x2019`。
   - `$null` 传给 C# 方法的 `string` 参数会变成空字符串：`FindWindowEx(h, 0, '类名', $null)` 实际在找标题为空的窗口，有标题的（如资源管理器的标签页）就找不到。要传 null 的调用写在 C# 里。
   - 刚关掉的资源管理器窗口在 `Shell.Application` 的 `Windows()` 里还会列一会儿。测试新开一个窗口后按路径找它，要排除开之前就有的窗口，否则会拿到正在关闭的旧窗口。
 - **测剪贴板时，测试内容也进了 Windows 自带的剪贴板历史**：用户开着 Windows 的剪贴板历史时，测试脚本复制的每一条都会进去。那里最多 25 条，会把用户原来的挤掉，而且没法恢复。测试前告诉用户，测试条目尽量少。

@@ -62,6 +62,8 @@ try {
         New-Item -ItemType Directory -Force $dist | Out-Null
         Copy-Item "$root\build\$preset\WinShun.exe" $dist
         Copy-Item "$root\build\$preset\fonts" $dist -Recurse # UI font (see main.cpp)
+        # The button users pin to the taskbar (src/stub).
+        Copy-Item "$root\build\$preset\WinShunSearch.exe" $dist
         # Documents are read by WinShunExtract.exe (src/extract), PDFs with
         # PDFium; their licenses go along.
         Copy-Item "$root\build\$preset\WinShunExtract.exe", "$root\build\$preset\pdfium.dll" $dist

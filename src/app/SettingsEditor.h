@@ -69,6 +69,14 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool clipboardImages READ clipboardImages WRITE setClipboardImages NOTIFY changed FINAL)
     Q_PROPERTY(QStringList clipboardExcludedApps READ clipboardExcludedApps NOTIFY changed FINAL)
     Q_PROPERTY(int clipboardCount READ clipboardCount NOTIFY clipboardCountChanged FINAL)
+    // 代替 Windows 搜索 (taskbar::)
+    Q_PROPERTY(bool taskbarWinS READ taskbarWinS WRITE setTaskbarWinS NOTIFY changed FINAL)
+    Q_PROPERTY(QString winSState READ winSState NOTIFY winSStateChanged FINAL) // as winVState, for Win+S
+    Q_PROPERTY(bool taskbarStartTyping READ taskbarStartTyping WRITE setTaskbarStartTyping NOTIFY changed FINAL)
+    // Read again as the window comes to the front (refreshTaskbarState): the
+    // user pins the button and hides Windows' search outside Win顺.
+    Q_PROPERTY(bool taskbarButtonPinned READ taskbarButtonPinned NOTIFY taskbarStateChanged FINAL)
+    Q_PROPERTY(bool windowsSearchShown READ windowsSearchShown NOTIFY taskbarStateChanged FINAL)
     // 网页搜索: for each, {keyword, name, url, home, searches, shownUrl, shownHome}
     Q_PROPERTY(QVariantList webShortcuts READ webShortcuts NOTIFY changed FINAL)
     Q_PROPERTY(QString renderer READ renderer WRITE setRenderer NOTIFY changed FINAL)
@@ -194,6 +202,19 @@ public:
     int clipboardCount() const { return m_clipboardCount; }
     void setClipboardCount(int count); // set by the app
 
+    bool taskbarWinS() const { return m_settings.taskbarWinS; }
+    void setTaskbarWinS(bool on);
+    QString winSState() const { return m_winSState; }
+    void setWinSState(const QString& state, bool canRestartExplorer); // set by the app
+    bool taskbarStartTyping() const { return m_settings.taskbarStartTyping; }
+    void setTaskbarStartTyping(bool on);
+    bool taskbarButtonPinned() const { return m_taskbarButtonPinned; }
+    bool windowsSearchShown() const { return m_windowsSearchShown; }
+    Q_INVOKABLE void refreshTaskbarState();
+    // The Start menu shortcut to the taskbar button, selected in Explorer for
+    // the user to pin (programs cannot). False when there is none.
+    Q_INVOKABLE bool showTaskbarButton();
+
     QVariantList webShortcuts() const;
 
     void setSettings(const Settings& settings); // the file was changed outside this editor
@@ -241,6 +262,8 @@ signals:
     void recordingHotkeyChanged(); // the app suspends its hotkeys meanwhile
     void autostartChanged();
     void winVStateChanged();
+    void winSStateChanged();
+    void taskbarStateChanged();
     void fileManagersChanged();
     void clipboardCountChanged();
     void clipboardClearRequested();
@@ -261,7 +284,10 @@ private:
     QStringList m_fileManagers {QStringLiteral("explorer")};
     bool m_recordingHotkey = false;
     QString m_winVState = QStringLiteral("off");
+    QString m_winSState = QStringLiteral("off");
     bool m_canRestartExplorer = false;
+    bool m_taskbarButtonPinned = false;
+    bool m_windowsSearchShown = true;
     QString m_clipboardHotkeyError;
     int m_clipboardCount = 0;
     QPointer<QWindow> m_window;

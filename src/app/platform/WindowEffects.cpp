@@ -1,6 +1,7 @@
 #include "WindowEffects.h"
 
 #include "Foreground.h"
+#include "KeyRouter.h" // kOwnInput
 
 #include <QDebug>
 #include <QOperatingSystemVersion>
@@ -63,6 +64,7 @@ HWND closeShellFlyout(HWND foreground)
     esc[0].type = esc[1].type = INPUT_KEYBOARD;
     esc[0].ki.wVk = esc[1].ki.wVk = VK_ESCAPE;
     esc[1].ki.dwFlags = KEYEVENTF_KEYUP;
+    esc[0].ki.dwExtraInfo = esc[1].ki.dwExtraInfo = kOwnInput; // StartMenuTyping lets it through to the Start menu
     ::SendInput(2, esc, sizeof esc[0]);
     for (int waited = 0; waited < 500 && ::GetForegroundWindow() == foreground; waited += 10)
         ::Sleep(10); // closing takes some 150 ms

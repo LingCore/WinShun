@@ -16,6 +16,7 @@
 
 namespace ws {
 
+class History;
 class NameMatcher;
 struct ParsedQuery;
 
@@ -60,6 +61,24 @@ struct AppHit {
 // paths in `history`, newest first) rank higher.
 std::vector<AppHit> searchApps(const AppList& apps, const ParsedQuery& query, const NameMatcher& matcher,
     const QStringList& history);
+
+// Something Windows saw started from the shell (Start menu, taskbar,
+// Explorer): its UserAssist record.
+struct AppUse {
+    QString name; // a program, "{known folder id}\relative path" (as AppsFolder ids are) or a full path; or an AppUserModelID
+    double uses = 0; // times started, plus a tenth of the times it had the focus
+    qint64 last = 0; // ms since the epoch, last started
+};
+// Windows' record of the programs and apps started (UserAssist, under
+// HKCU). On Windows 11 the run counts are mostly 0 and the times kept.
+std::vector<AppUse> windowsAppUses();
+
+// Up to `limit` apps the user opens most, best first (indexes into `apps`):
+// those opened from Win顺 (`history`, by how often and how lately), then
+// those Windows saw started in the last 60 days (`windows`). Uninstallers
+// and documents, and Win顺 itself, are left out.
+std::vector<std::size_t> frequentApps(const AppList& apps, const History& history, const std::vector<AppUse>& windows,
+    qint64 now, std::size_t limit);
 
 // The list of installed apps, read from the shell in the background and
 // re-read when the Start menu or the installed packages change.

@@ -22,6 +22,12 @@ const QPointF kHome {0.5, 0.2}; // centred, a fifth of the way down
 constexpr int kSnapDistance = 12; // logical pixels, where a dropped window settles home
 constexpr int kGlideMs = 220;
 constexpr int kBoxGap = 4; // logical pixels, between a box and the window attached to it
+// Logical pixels between the taskbar and a window over it, and that window
+// and the work area's edges: Windows 11's Start menu and search keep 12.
+constexpr int kTaskbarGap = 12;
+// The launcher's search box (SearchBar.qml): by a taskbar on the left or
+// right, it is level with the button.
+constexpr int kHeaderHeight = 64;
 
 // The scale Qt draws at on a monitor.
 qreal scaleOf(HMONITOR monitor, qreal fallback)
@@ -179,7 +185,7 @@ void Placement::setWindow(QWindow* window)
     // screen, and over a box its bottom stays there.
     connect(window, &QWindow::widthChanged, this, &Placement::refit);
     connect(window, &QWindow::heightChanged, this, [this] {
-        if (m_box && m_above)
+        if ((m_box && m_above) || m_taskbar)
             refit();
     });
 }
@@ -188,6 +194,7 @@ void Placement::placeOn(QScreen* screen)
 {
     m_glide.stop();
     m_box.reset();
+    setTaskbar({});
     m_dropped = false;
     if (m_window && screen)
         m_window->setPosition(settleOn(screen));
@@ -197,6 +204,7 @@ void Placement::attach(const QRect& box)
 {
     m_glide.stop();
     m_box = box;
+    setTaskbar({});
     m_dropped = false;
     m_left = box.x();
     QScreen* screen = QGuiApplication::screenAt(box.center());
@@ -229,6 +237,35 @@ void Placement::attachNative(const QRect& box)
         std::max(top, up(box.y() + box.height(), origin.y()) - 1))));
 }
 
+void Placement::attachTaskbar(const taskbar::Spot& spot)
+{
+    m_glide.stop();
+    const HMONITOR monitor = ::MonitorFromPoint(spot.anchor, MONITOR_DEFAULTTONEAREST);
+    QScreen* screen = nullptr;
+    for (QScreen* candidate : QGuiApplication::screens()) {
+        const auto* native = candidate->nativeInterface<QNativeInterface::QWindowsScreen>();
+        if (native && native->handle() == monitor)
+            screen = candidate;
+    }
+    if (!screen || !m_window)
+        return;
+    // In Qt's pixels on that screen: from its origin (the same in both)
+    // scaled; the taskbar outwards, so the window keeps clear of all of it.
+    const QPoint origin = screen->geometry().topLeft();
+    const qreal scale = screen->devicePixelRatio();
+    const auto down = [&](LONG pos, int from) { return from + int(std::floor((pos - from) / scale)); };
+    const auto up = [&](LONG pos, int from) { return from + int(std::ceil((pos - from) / scale)); };
+    const RECT& bar = spot.taskbar;
+    const QRect logicalBar(QPoint(down(bar.left, origin.x()), down(bar.top, origin.y())),
+        QPoint(up(bar.right, origin.x()) - 1, up(bar.bottom, origin.y()) - 1));
+    m_box.reset();
+    m_dropped = false;
+    m_taskbarScreen = screen;
+    setTaskbar(TaskbarBox {logicalBar, spot.edge,
+        {down(spot.anchor.x, origin.x()), down(spot.anchor.y, origin.y())}});
+    m_window->setPosition(settleByTaskbar(screen));
+}
+
 void Placement::setRoomNeeded(int height)
 {
     if (m_roomNeeded == height)
@@ -243,6 +280,14 @@ void Placement::setAnchorWidth(int width)
         return;
     m_anchorWidth = width;
     emit anchorWidthChanged();
+}
+
+void Placement::setTaskbar(std::optional<TaskbarBox> box)
+{
+    const bool was = m_taskbar.has_value();
+    m_taskbar = std::move(box);
+    if (was != m_taskbar.has_value())
+        emit atTaskbarChanged();
 }
 
 void Placement::setRoom(int room)
@@ -303,6 +348,50 @@ QPoint Placement::settleBy(QScreen* screen)
     return {x, y};
 }
 
+// Off the taskbar by a gap, on the work area's side of it, and as far from
+// the work area's edges; along the taskbar centred on the button (by a
+// taskbar on the left or right: the search box level with it). The rows get
+// the room from there to the far side of the work area.
+QPoint Placement::settleByTaskbar(QScreen* screen)
+{
+    const QRect area = screen->availableGeometry();
+    const NativeArea native = nativeArea(screen);
+    const int right = native.work.x() + native.work.width();
+    const int bottom = native.work.y() + native.work.height();
+    const int width = m_window->width();
+    const int height = m_window->height();
+    const auto alongX = [&](int x) {
+        x = std::clamp(x, area.left() + kTaskbarGap, std::max(area.left() + kTaskbarGap, area.right() + 1 - kTaskbarGap - width));
+        return native.keepInside(x, width, native.work.left(), right, native.origin.x());
+    };
+    const auto alongY = [&](int y) {
+        y = std::clamp(y, area.top() + kTaskbarGap, std::max(area.top() + kTaskbarGap, area.bottom() + 1 - kTaskbarGap - height));
+        return native.keepInside(y, height, native.work.top(), bottom, native.origin.y());
+    };
+    // Logical pixels from a physical span.
+    const auto logical = [&](int span) { return int(std::floor(span / native.scale)); };
+    const QRect& bar = m_taskbar->bar;
+    const QPoint& at = m_taskbar->anchor;
+    switch (m_taskbar->edge) {
+    case taskbar::Edge::Bottom: {
+        const int edge = bar.top() - kTaskbarGap; // the window's bottom
+        setRoom(logical(native.toNative(edge, native.origin.y()) - native.work.y()) - kTaskbarGap);
+        return {alongX(at.x() - width / 2), alongY(edge - height)};
+    }
+    case taskbar::Edge::Top: {
+        const int edge = bar.bottom() + 1 + kTaskbarGap; // the window's top
+        setRoom(logical(bottom - native.toNative(edge, native.origin.y())) - kTaskbarGap);
+        return {alongX(at.x() - width / 2), alongY(edge)};
+    }
+    case taskbar::Edge::Left:
+    case taskbar::Edge::Right:
+        setRoom(area.height() - 2 * kTaskbarGap);
+        return {alongX(m_taskbar->edge == taskbar::Edge::Left ? bar.right() + 1 + kTaskbarGap : bar.left() - kTaskbarGap - width),
+            alongY(at.y() - kHeaderHeight / 2)};
+    }
+    return m_window->position();
+}
+
 int Placement::roomRight() const
 {
     QScreen* screen = m_window ? m_window->screen() : nullptr;
@@ -321,7 +410,9 @@ void Placement::refit()
     QScreen* screen = m_window->screen();
     if (!screen)
         return;
-    if (m_box) {
+    if (m_taskbar && m_taskbarScreen) {
+        m_window->setPosition(settleByTaskbar(m_taskbarScreen));
+    } else if (m_box) {
         m_window->setPosition(settleBy(screen));
     } else if (m_dropped) {
         const QRect area = screen->availableGeometry();
@@ -337,7 +428,7 @@ void Placement::refit()
 
 void Placement::moveHome()
 {
-    if (!m_window || m_moving || m_box || m_dropped) // by a box: no spot to go back to
+    if (!m_window || m_moving || m_box || m_taskbar || m_dropped) // by a box: no spot to go back to
         return;
     m_anchor = kHome;
     save();
@@ -359,8 +450,9 @@ void Placement::rememberSpot()
 {
     if (!m_window || m_window->position() == m_moveStart) // Esc, or not moved at all
         return;
-    if (m_box || m_dropped) { // by a box: stays where it was let go, its spot as it was
+    if (m_box || m_taskbar || m_dropped) { // by a box: stays where it was let go, its spot as it was
         m_box.reset();
+        setTaskbar({});
         m_dropped = true;
         m_left = m_window->x();
         return;

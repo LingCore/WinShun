@@ -11,6 +11,7 @@
 #include "Extract.h"
 #include "GameGuard.h"
 #include "FileIndex.h"
+#include "History.h"
 #include "NameSearch.h"
 #include "Ntfs.h"
 #include "NtfsIndexer.h"
@@ -2181,6 +2182,93 @@ private slots:
         QCOMPARE(appIdOf(apps[2].launchPath()), apps[2].id);
         QVERIFY(isAppLaunchPath(u"SHELL:appsfolder\\x"_s));
         QVERIFY(appIdOf(uR"(C:\Telegram\Telegram.exe)"_s).isEmpty());
+    }
+
+    void historyCounts()
+    {
+        QTemporaryDir dir;
+        const QString file = dir.filePath(u"history.txt"_s);
+        {
+            // Kept before counts were: each opened once, at an unknown time.
+            QFile old(file);
+            QVERIFY(old.open(QIODevice::WriteOnly));
+            old.write("C:\\a.txt\nD:\\b.txt\n");
+        }
+        History history(file, 3);
+        history.load();
+        QCOMPARE(history.items(), (QStringList {uR"(C:\a.txt)"_s, uR"(D:\b.txt)"_s}));
+        QCOMPARE(history.use(uR"(c:\A.TXT)"_s).count, 1); // any case
+        QCOMPARE(history.use(uR"(c:\A.TXT)"_s).last, 0);
+
+        history.record(uR"(D:\b.txt)"_s, 1000);
+        history.record(uR"(D:\b.txt)"_s, 2000);
+        history.record(uR"(E:\c.txt)"_s, 3000);
+        history.record(uR"(F:\d.txt)"_s, 4000); // over capacity: the oldest goes
+        QCOMPARE(history.items(), (QStringList {uR"(F:\d.txt)"_s, uR"(E:\c.txt)"_s, uR"(D:\b.txt)"_s}));
+        QCOMPARE(history.use(uR"(D:\b.txt)"_s).count, 3);
+        QCOMPARE(history.use(uR"(C:\a.txt)"_s).count, 0);
+
+        History again(file, 3);
+        again.load();
+        QCOMPARE(again.items(), history.items());
+        QCOMPARE(again.use(uR"(D:\b.txt)"_s).count, 3);
+        QCOMPARE(again.use(uR"(D:\b.txt)"_s).last, 2000);
+        again.remove(uR"(d:\B.txt)"_s);
+        QCOMPARE(again.use(uR"(D:\b.txt)"_s).count, 0);
+    }
+
+    void frequentAppRanking()
+    {
+        const auto app = [](const QString& name, const QString& id, const QString& target,
+                             AppKind kind = AppKind::Desktop) {
+            AppInfo a;
+            a.name = name;
+            a.id = id;
+            a.target = target;
+            a.kind = kind;
+            a.prepare();
+            return a;
+        };
+        const AppList apps {
+            app(u"Code"_s, u"Microsoft.VisualStudioCode"_s, uR"(C:\VS Code\Code.exe)"_s),
+            app(u"Word"_s, u"Microsoft.Office.WINWORD.EXE.15"_s, uR"(C:\Office\WINWORD.EXE)"_s),
+            app(u"计算器"_s, u"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"_s, uR"(C:\WindowsApps\Calc)"_s,
+                AppKind::Store),
+            app(u"Uninstall Code"_s, uR"(C:\VS Code\unins000.exe)"_s, uR"(C:\VS Code\unins000.exe)"_s),
+            app(u"Win顺"_s, uR"(C:\WinShun\WinShun.exe)"_s, uR"(C:\WinShun\WinShun.exe)"_s),
+            app(u"Notes"_s, uR"(C:\Notes\Notes.exe)"_s, uR"(C:\Notes\Notes.exe)"_s),
+        };
+        constexpr qint64 day = 86'400'000;
+        const qint64 now = 1000 * day;
+        QTemporaryDir dir;
+        History history(dir.filePath(u"history.txt"_s));
+        const auto names = [&](const std::vector<AppUse>& windows, std::size_t limit = 6) {
+            QStringList out;
+            for (const std::size_t i : frequentApps(apps, history, windows, now, limit))
+                out.append(apps[i].name);
+            return out;
+        };
+        QVERIFY(names({}).isEmpty());
+
+        // Opened from Win顺: often beats lately, within the same week.
+        history.record(apps[0].launchPath(), now - 2 * day);
+        history.record(apps[0].launchPath(), now - day);
+        history.record(apps[2].launchPath(), now - 1000);
+        history.record(uR"(D:\report.docx)"_s, now); // not an app
+        history.record(apps[3].launchPath(), now); // an uninstaller
+        history.record(apps[4].launchPath(), now); // Win顺 itself
+        QCOMPARE(names({}), (QStringList {u"Code"_s, u"计算器"_s}));
+
+        // Then what Windows saw started lately: by id, or by the program an
+        // AppUserModelID app starts; not what it saw long ago, nor twice.
+        const std::vector<AppUse> windows {
+            {uR"(C:\Office\WINWORD.EXE)"_s, 1, now - 3 * day}, // Word's id is an AppUserModelID
+            {uR"(C:\Notes\Notes.exe)"_s, 5, now - 200 * day}, // long ago
+            {u"Microsoft.VisualStudioCode"_s, 9, now - day}, // already in
+            {uR"(C:\Unknown\x.exe)"_s, 9, now - day}, // not an app
+        };
+        QCOMPARE(names(windows), (QStringList {u"Code"_s, u"计算器"_s, u"Word"_s}));
+        QCOMPARE(names(windows, 1), QStringList {u"Code"_s});
     }
 
     void settingsIndexParsing()
