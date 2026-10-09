@@ -9,6 +9,9 @@
 ```ini
 [Launcher]
 DoubleCtrl=true          ; 双击 Ctrl 呼出
+DoubleCtrlPauseInGames=true       ; 前台程序独占全屏、或藏起并锁住鼠标（转视角）时不响应双击 Ctrl
+DoubleCtrlPauseInFullScreen=false ; 任何程序铺满显示器时都不响应（视频、幻灯片、F11 网页）
+DoubleCtrlExcludedApps=  ; 不响应双击 Ctrl 的程序，如 TheFinals.exe，逗号分隔
 Hotkey=                  ; 额外的全局快捷键，例如 Alt+Space、Ctrl+Shift+F
 DialogJump=true          ; “打开”“另存为”对话框里按 Ctrl+G，转到资源管理器正在显示的文件夹
 DialogBar=true           ; “打开”“另存为”对话框下方的搜索框

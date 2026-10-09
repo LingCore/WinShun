@@ -20,6 +20,10 @@ class SettingsEditor : public QObject {
     QML_ELEMENT
     QML_UNCREATABLE("Provided by the application")
     Q_PROPERTY(bool doubleCtrl READ doubleCtrl WRITE setDoubleCtrl NOTIFY changed FINAL)
+    Q_PROPERTY(bool doubleCtrlPauseInGames READ doubleCtrlPauseInGames WRITE setDoubleCtrlPauseInGames NOTIFY changed FINAL)
+    Q_PROPERTY(bool doubleCtrlPauseInFullScreen READ doubleCtrlPauseInFullScreen WRITE setDoubleCtrlPauseInFullScreen
+            NOTIFY changed FINAL)
+    Q_PROPERTY(QStringList doubleCtrlExcludedApps READ doubleCtrlExcludedApps NOTIFY changed FINAL)
     Q_PROPERTY(QString hotkey READ hotkey WRITE setHotkey NOTIFY changed FINAL)
     Q_PROPERTY(QString hotkeyError READ hotkeyError NOTIFY hotkeyErrorChanged FINAL)
     Q_PROPERTY(bool recordingHotkey READ recordingHotkey WRITE setRecordingHotkey NOTIFY recordingHotkeyChanged FINAL)
@@ -69,6 +73,11 @@ public:
 
     bool doubleCtrl() const { return m_settings.doubleCtrl; }
     void setDoubleCtrl(bool on);
+    bool doubleCtrlPauseInGames() const { return m_settings.doubleCtrlPauseInGames; }
+    void setDoubleCtrlPauseInGames(bool on);
+    bool doubleCtrlPauseInFullScreen() const { return m_settings.doubleCtrlPauseInFullScreen; }
+    void setDoubleCtrlPauseInFullScreen(bool on);
+    QStringList doubleCtrlExcludedApps() const { return m_settings.doubleCtrlExcludedApps; }
     QString hotkey() const { return m_settings.hotkey; }
     void setHotkey(const QString& hotkey);
     QString hotkeyError() const { return m_hotkeyError; }

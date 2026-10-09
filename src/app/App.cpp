@@ -17,6 +17,7 @@
 #include "WindowFrame.h"
 #include "platform/ClipboardWatcher.h"
 #include "platform/DialogJump.h"
+#include "platform/Foreground.h"
 #include "platform/KeyListener.h"
 #include "platform/MessageWindow.h"
 #include "platform/Shell.h"
@@ -425,7 +426,7 @@ void App::applySettings(bool initial)
     if (m_settings.doubleCtrl && !m_keyListener) {
         // Called on the listener thread: hop to the GUI thread.
         m_keyListener = std::make_unique<KeyListener>(
-            [this] { QMetaObject::invokeMethod(this, &App::toggleLauncher, Qt::QueuedConnection); });
+            [this] { QMetaObject::invokeMethod(this, &App::onDoubleCtrl, Qt::QueuedConnection); });
     } else if (!m_settings.doubleCtrl) {
         m_keyListener.reset();
     }

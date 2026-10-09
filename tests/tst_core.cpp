@@ -2515,6 +2515,45 @@ private slots:
             QVERIFY(d.keyUp(ctrl, 0x00000050u, 0, 0));
         }
     }
+
+    void gameGuard()
+    {
+        const GameGuardOptions defaults; // games on, full screen off, no list
+        auto in = [](bool covers, bool hidden, bool confined, bool exclusive = false) {
+            ForegroundFacts facts;
+            facts.program = u"Game.exe"_s;
+            facts.coversMonitor = covers;
+            facts.cursorHidden = hidden;
+            facts.cursorConfined = confined;
+            facts.exclusiveFullScreen = exclusive;
+            return facts;
+        };
+        // An ordinary window, a game in its menu, a full-screen page
+        QCOMPARE(doubleCtrlIgnoreReason(in(false, false, false), defaults), IgnoreReason::None);
+        QCOMPARE(doubleCtrlIgnoreReason(in(true, false, false), defaults), IgnoreReason::None);
+        // Turning the view: windowed (confined) or full screen
+        QCOMPARE(doubleCtrlIgnoreReason(in(false, true, true), defaults), IgnoreReason::MouseTaken);
+        QCOMPARE(doubleCtrlIgnoreReason(in(true, true, false), defaults), IgnoreReason::MouseTaken);
+        // Hidden while typing in a window, or confined but shown (a strategy game)
+        QCOMPARE(doubleCtrlIgnoreReason(in(false, true, false), defaults), IgnoreReason::None);
+        QCOMPARE(doubleCtrlIgnoreReason(in(false, false, true), defaults), IgnoreReason::None);
+        QCOMPARE(doubleCtrlIgnoreReason(in(false, false, false, true), defaults), IgnoreReason::ExclusiveFullScreen);
+
+        GameGuardOptions off = defaults;
+        off.games = false;
+        QCOMPARE(doubleCtrlIgnoreReason(in(true, true, true, true), off), IgnoreReason::None);
+        GameGuardOptions fullScreen = defaults;
+        fullScreen.fullScreen = true;
+        QCOMPARE(doubleCtrlIgnoreReason(in(true, false, false), fullScreen), IgnoreReason::FullScreen);
+        GameGuardOptions listed = off;
+        listed.programs = {u"game.EXE"_s};
+        QCOMPARE(doubleCtrlIgnoreReason(in(false, false, false), listed), IgnoreReason::Listed);
+
+        // Win顺's own windows and the desktop come without a program
+        ForegroundFacts ours;
+        ours.coversMonitor = ours.cursorHidden = ours.exclusiveFullScreen = true;
+        QCOMPARE(doubleCtrlIgnoreReason(ours, fullScreen), IgnoreReason::None);
+    }
 };
 
 QTEST_GUILESS_MAIN(CoreTest)

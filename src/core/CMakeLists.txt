@@ -12,6 +12,7 @@ qt_add_library(wscore STATIC
     Crawler.cpp Crawler.h
     DoubleTapDetector.h
     FileIndex.cpp FileIndex.h
+    GameGuard.h
     History.cpp History.h
     IndexService.cpp IndexService.h
     NameSearch.cpp NameSearch.h

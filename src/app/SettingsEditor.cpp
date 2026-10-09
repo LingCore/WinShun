@@ -26,6 +26,21 @@ bool containsIgnoreCase(const QStringList& list, const QString& value)
     return list.contains(value, Qt::CaseInsensitive);
 }
 
+// Adds a program file to `list` ("KeePass", "keepass.exe", or a whole path
+// pasted in); false when there is none or it is there already.
+bool addProgram(QStringList& list, const QString& name)
+{
+    QString app = QFileInfo(name.trimmed()).fileName();
+    if (app.isEmpty())
+        return false;
+    if (!app.endsWith(u".exe", Qt::CaseInsensitive))
+        app += u".exe"_s;
+    if (containsIgnoreCase(list, app))
+        return false;
+    list.append(app);
+    return true;
+}
+
 } // namespace
 
 SettingsEditor::SettingsEditor(const Settings& settings, const QString& runningRenderer, QObject* parent)
@@ -57,6 +72,38 @@ void SettingsEditor::setDoubleCtrl(bool on)
     if (m_settings.doubleCtrl == on)
         return;
     m_settings.doubleCtrl = on;
+    commit();
+}
+
+void SettingsEditor::setDoubleCtrlPauseInGames(bool on)
+{
+    if (m_settings.doubleCtrlPauseInGames == on)
+        return;
+    m_settings.doubleCtrlPauseInGames = on;
+    commit();
+}
+
+void SettingsEditor::setDoubleCtrlPauseInFullScreen(bool on)
+{
+    if (m_settings.doubleCtrlPauseInFullScreen == on)
+        return;
+    m_settings.doubleCtrlPauseInFullScreen = on;
+    commit();
+}
+
+bool SettingsEditor::addDoubleCtrlExcludedApp(const QString& name)
+{
+    if (!addProgram(m_settings.doubleCtrlExcludedApps, name))
+        return false;
+    commit();
+    return true;
+}
+
+void SettingsEditor::removeDoubleCtrlExcludedApp(int index)
+{
+    if (index < 0 || index >= m_settings.doubleCtrlExcludedApps.size())
+        return;
+    m_settings.doubleCtrlExcludedApps.removeAt(index);
     commit();
 }
 
@@ -335,14 +382,8 @@ void SettingsEditor::setClipboardCount(int count)
 
 bool SettingsEditor::addClipboardExcludedApp(const QString& name)
 {
-    QString app = QFileInfo(name.trimmed()).fileName(); // a whole path pasted in
-    if (app.isEmpty())
+    if (!addProgram(m_settings.clipboardExcludedApps, name))
         return false;
-    if (!app.endsWith(u".exe", Qt::CaseInsensitive))
-        app += u".exe"_s;
-    if (containsIgnoreCase(m_settings.clipboardExcludedApps, app))
-        return false;
-    m_settings.clipboardExcludedApps.append(app);
     commit();
     return true;
 }

@@ -120,6 +120,7 @@ private:
     bool m_updateNotified = false; // the last tray notification announced a new version
     std::unique_ptr<VolumeNotifier> m_volumeNotifier; // after m_messages, whose window it uses
     std::unique_ptr<KeyListener> m_keyListener; // double Ctrl
+    QStringList m_doubleCtrlIgnoredLogged; // "program reason", logged once each: a game gets many
     std::unique_ptr<DialogJump> m_dialogJump; // file dialogs: Ctrl+G, the bar; after m_messages, which has the hotkey
     std::unique_ptr<DialogBar> m_dialogBar; // the search bar under file dialogs
     std::unique_ptr<Placement> m_placement; // where the launcher opens; moving it

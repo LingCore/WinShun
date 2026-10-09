@@ -278,6 +278,9 @@ void Settings::save() const
 {
     QSettings s(QSettings::IniFormat, QSettings::UserScope, u"WinShun"_s, u"WinShun"_s);
     s.setValue(u"Launcher/DoubleCtrl"_s, doubleCtrl);
+    s.setValue(u"Launcher/DoubleCtrlPauseInGames"_s, doubleCtrlPauseInGames);
+    s.setValue(u"Launcher/DoubleCtrlPauseInFullScreen"_s, doubleCtrlPauseInFullScreen);
+    s.setValue(u"Launcher/DoubleCtrlExcludedApps"_s, doubleCtrlExcludedApps);
     s.setValue(u"Launcher/Hotkey"_s, hotkey);
     s.setValue(u"Launcher/Renderer"_s, renderer);
     s.setValue(u"Launcher/History"_s, recordHistory);

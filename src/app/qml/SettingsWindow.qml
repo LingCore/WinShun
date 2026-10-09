@@ -369,6 +369,68 @@ Window {
                 }
 
                 SettingRow {
+                    visible: window.editor.doubleCtrl
+                    title: qsTr("玩游戏时不响应双击 Ctrl")
+                    description: qsTr("游戏里常连按两下 Ctrl 蹲下。前台程序独占全屏，或者藏起鼠标用来转视角时，双击 Ctrl 不打开搜索框。设置的快捷键照常可用")
+
+                    ToggleSwitch {
+                        checked: window.editor.doubleCtrlPauseInGames
+                        onToggled: (on) => window.editor.doubleCtrlPauseInGames = on
+                    }
+                }
+
+                SettingRow {
+                    visible: window.editor.doubleCtrl
+                    title: qsTr("任何程序全屏时都不响应双击 Ctrl")
+                    description: qsTr("看视频、放幻灯片、全屏浏览网页时也不打开搜索框")
+
+                    ToggleSwitch {
+                        checked: window.editor.doubleCtrlPauseInFullScreen
+                        onToggled: (on) => window.editor.doubleCtrlPauseInFullScreen = on
+                    }
+                }
+
+                SettingRow {
+                    visible: window.editor.doubleCtrl
+                    title: qsTr("在这些程序里不响应双击 Ctrl")
+                    description: qsTr("填程序的文件名，例如 TheFinals.exe。没被自动认出来的游戏可以加在这里")
+
+                    body: [
+                        Flow {
+                            width: parent.width
+                            spacing: 6
+
+                            Repeater {
+                                model: window.editor.doubleCtrlExcludedApps
+
+                                delegate: Chip {
+                                    required property int index
+                                    required property string modelData
+                                    text: modelData
+                                    onRemoveClicked: window.editor.removeDoubleCtrlExcludedApp(index)
+                                }
+                            }
+                        },
+                        Row {
+                            spacing: 8
+
+                            InputBox {
+                                id: doubleCtrlAppInput
+                                width: 300
+                                placeholder: qsTr("输入程序文件名，例如 TheFinals.exe")
+                                onAccepted: if (window.editor.addDoubleCtrlExcludedApp(text)) clear()
+                            }
+                            FlatButton {
+                                text: qsTr("添加")
+                                enabled: doubleCtrlAppInput.text.trim().length > 0
+                                onClicked: if (window.editor.addDoubleCtrlExcludedApp(doubleCtrlAppInput.text))
+                                               doubleCtrlAppInput.clear()
+                            }
+                        }
+                    ]
+                }
+
+                SettingRow {
                     title: qsTr("快捷键")
                     description: qsTr("再设一个组合键来打开搜索框，例如 Alt + Space。点击右边的方框，然后按下想用的按键")
 

@@ -13,6 +13,9 @@ namespace ws {
 struct Settings {
     // [Launcher]
     bool doubleCtrl = true;
+    bool doubleCtrlPauseInGames = true; // not while a game has the mouse or exclusive full screen (GameGuard)
+    bool doubleCtrlPauseInFullScreen = false; // not over any full-screen window
+    QStringList doubleCtrlExcludedApps; // program files ("TheFinals.exe") in front of which double Ctrl does nothing
     QString hotkey; // e.g. "Alt+Space"; empty = none
     QString renderer = QStringLiteral("auto"); // software | d3d11 | auto
     bool recordHistory = true; // remember what was opened: listed with nothing typed, first among matches

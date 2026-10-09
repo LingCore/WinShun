@@ -511,6 +511,34 @@
         <translation>Quickly press Ctrl twice to open or close the search box</translation>
     </message>
     <message>
+        <source>玩游戏时不响应双击 Ctrl</source>
+        <translation>Ignore Ctrl twice while gaming</translation>
+    </message>
+    <message>
+        <source>游戏里常连按两下 Ctrl 蹲下。前台程序独占全屏，或者藏起鼠标用来转视角时，双击 Ctrl 不打开搜索框。设置的快捷键照常可用</source>
+        <translation>Games often crouch on Ctrl pressed twice. While the program in front has exclusive full screen, or has hidden the mouse pointer to turn the view, pressing Ctrl twice does not open the search box. The shortcut still works</translation>
+    </message>
+    <message>
+        <source>任何程序全屏时都不响应双击 Ctrl</source>
+        <translation>Ignore Ctrl twice over any full-screen program</translation>
+    </message>
+    <message>
+        <source>看视频、放幻灯片、全屏浏览网页时也不打开搜索框</source>
+        <translation>Also while watching a video, showing slides or browsing full screen</translation>
+    </message>
+    <message>
+        <source>在这些程序里不响应双击 Ctrl</source>
+        <translation>Ignore Ctrl twice in these programs</translation>
+    </message>
+    <message>
+        <source>填程序的文件名，例如 TheFinals.exe。没被自动认出来的游戏可以加在这里</source>
+        <translation>Program file names, such as TheFinals.exe. Add games that are not recognized by themselves here</translation>
+    </message>
+    <message>
+        <source>输入程序文件名，例如 TheFinals.exe</source>
+        <translation>Program file name, e.g. TheFinals.exe</translation>
+    </message>
+    <message>
         <source>快捷键</source>
         <translation>Shortcut</translation>
     </message>
