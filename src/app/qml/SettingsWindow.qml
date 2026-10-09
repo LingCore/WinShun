@@ -13,7 +13,8 @@ Window {
 
     readonly property var renderers: ["software", "d3d11"]
     readonly property var languages: ["system", "zh", "en"]
-    readonly property var transparencies: ["off", "on", "auto"]
+    readonly property var transparencies: ["off", "on"]
+    readonly property var dialogBarPlaces: ["auto", "below", "left", "right"]
     readonly property var pages: [
         { title: qsTr("打开 Win顺"), glyph: "" }, // Keyboard
         { title: qsTr("外观"), glyph: "\uE771" }, // Personalize
@@ -483,12 +484,24 @@ Window {
                 }
 
                 SettingRow {
-                    title: qsTr("对话框下方的搜索框")
-                    description: qsTr("“打开”“另存为”等对话框出现时，在它下面放一个搜索框：搜文件夹或文件，选中后对话框直接转过去。在对话框里双击 Ctrl 就能开始输入")
+                    title: qsTr("对话框旁的搜索框")
+                    description: qsTr("“打开”“另存为”等对话框出现时，在它旁边放一个搜索框：搜文件夹或文件，选中后对话框直接转过去。在对话框里双击 Ctrl 就能开始输入")
 
                     ToggleSwitch {
                         checked: window.editor.dialogBar
                         onToggled: (on) => window.editor.dialogBar = on
+                    }
+                }
+
+                SettingRow {
+                    visible: window.editor.dialogBar
+                    title: qsTr("搜索框的位置")
+                    description: qsTr("“自动”时放在对话框下方，下方放不下就放在右边或左边，都放不下就把对话框调矮一点。选定一边时，那边放不下就把对话框调小一点或挪开")
+
+                    ScopeTabs {
+                        labels: [qsTr("自动"), qsTr("下方"), qsTr("左边"), qsTr("右边")]
+                        current: Math.max(0, window.dialogBarPlaces.indexOf(window.editor.dialogBarPlace))
+                        onActivated: (index) => window.editor.dialogBarPlace = window.dialogBarPlaces[index]
                     }
                 }
 

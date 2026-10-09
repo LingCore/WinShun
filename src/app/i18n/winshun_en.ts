@@ -555,6 +555,34 @@
         <translation>Clear</translation>
     </message>
     <message>
+        <source>对话框旁的搜索框</source>
+        <translation>Search bar by file dialogs</translation>
+    </message>
+    <message>
+        <source>“打开”“另存为”等对话框出现时，在它旁边放一个搜索框：搜文件夹或文件，选中后对话框直接转过去。在对话框里双击 Ctrl 就能开始输入</source>
+        <translation>By Open and Save As dialogs, a search bar: find a folder or file and the dialog goes there. Press Ctrl twice in the dialog to start typing</translation>
+    </message>
+    <message>
+        <source>搜索框的位置</source>
+        <translation>Where the search bar goes</translation>
+    </message>
+    <message>
+        <source>“自动”时放在对话框下方，下方放不下就放在右边或左边，都放不下就把对话框调矮一点。选定一边时，那边放不下就把对话框调小一点或挪开</source>
+        <translation>Auto: under the dialog; on its right or left where there is no room under it, and where there is none anywhere, the dialog is made a little shorter. With a side chosen, the dialog is made a little smaller or moved for room there</translation>
+    </message>
+    <message>
+        <source>下方</source>
+        <translation>Below</translation>
+    </message>
+    <message>
+        <source>左边</source>
+        <translation>Left</translation>
+    </message>
+    <message>
+        <source>右边</source>
+        <translation>Right</translation>
+    </message>
+    <message>
         <source>开机时自动启动</source>
         <translation>Start with Windows</translation>
     </message>
@@ -609,14 +637,6 @@
     <message>
         <source>在“打开”“另存为”等对话框里按 Ctrl+G，对话框直接转到最近用过的资源管理器窗口正在显示的文件夹</source>
         <translation>In an Open or Save As dialog, press Ctrl+G to go to the folder shown in the File Explorer window you used last</translation>
-    </message>
-    <message>
-        <source>对话框下方的搜索框</source>
-        <translation>Search bar under file dialogs</translation>
-    </message>
-    <message>
-        <source>“打开”“另存为”等对话框出现时，在它下面放一个搜索框：搜文件夹或文件，选中后对话框直接转过去。在对话框里双击 Ctrl 就能开始输入</source>
-        <translation>Under Open and Save As dialogs, a search bar: find a folder or file and the dialog goes there. Press Ctrl twice in the dialog to start typing</translation>
     </message>
     <message>
         <source>对话框自动转到资源管理器的文件夹</source>

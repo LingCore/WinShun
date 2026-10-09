@@ -6,6 +6,7 @@
 #include "SearchTypes.h"
 #include "platform/ComWorker.h"
 #include "platform/FileDialog.h"
+#include "platform/PeekingLogo.h"
 
 #include <QObject>
 #include <QPointer>
@@ -18,7 +19,9 @@
 
 #include <atomic>
 #include <functional>
+#include <optional>
 #include <string>
+#include <vector>
 
 namespace ws {
 
@@ -35,11 +38,15 @@ class SearchEngine;
 // file copied in Explorer too), the folders pinned here, and the ones used
 // lately (what Windows lists as recent, then what was opened through Win顺).
 //
-// The view-model of DialogBarWindow.qml, and its window's placement: shown under
+// The view-model of DialogBarWindow.qml, and its window's placement: shown by
 // the dialog while that is in front (DialogJump tells), without taking the
-// focus from it; it follows the dialog around and hides with it. The list
-// shows while the bar has the focus, below it, or above where there is more
-// room.
+// focus from it; it follows the dialog around and hides with it. It goes
+// under the dialog, or on its left or right (Place); the list shows while the
+// bar has the focus, below it, or above where there is more room. As a dialog
+// first shows with no room on its side for both, it is made smaller (moved
+// where that is not enough): the list need not cover it. Its border is in
+// the accent colour and the logo peeks out from behind it (PeekingLogo): it
+// is Win顺's, not one of the dialog's own boxes.
 class DialogBar : public QObject {
     Q_OBJECT
     QML_ELEMENT
@@ -68,7 +75,7 @@ public:
     static constexpr int kBarHeight = 44; // logical pixels
     static constexpr int kRowHeight = 52;
     static constexpr int kListChrome = 9; // the divider and the list's margins
-    static constexpr int kMaxRows = 8;
+    static constexpr int kMaxRows = 5;
 
     // The context menus' entries.
     enum Action {
@@ -86,6 +93,12 @@ public:
     };
     Q_ENUM(Action)
 
+    // Where the bar goes by the dialog. Auto: below, else on the right, else
+    // on the left, wherever it fits as the dialog is; the dialog is made
+    // shorter where none does. A side set: the dialog is made smaller (or
+    // moved) for room there.
+    enum class Place { Auto, Below, Left, Right };
+
     // Takes a dialog to a folder or a file (DialogJump::go).
     using Mover = std::function<void(HWND dialog, std::wstring path, bool isFile, bool open)>;
 
@@ -98,6 +111,7 @@ public:
     // Off: what was opened lately is neither offered nor ranks first.
     void setRecordHistory(bool on) { m_recordHistory = on; }
     void setExcludedApps(const QStringList& apps); // program files ("notepad.exe") whose dialogs go without
+    void setPlace(const QString& name); // Settings::dialogBarPlace: "auto", "below", "left", "right"
 
     void setDialog(HWND dialog); // in front, or nullptr (DialogJump::dialogChanged)
     void dialogMoved();
@@ -155,7 +169,10 @@ signals:
 private:
     void showWindow();
     void hideWindow();
+    void uncloak(); // its first frame is up: shown, and the logo with it
+    void showLogo(); // where place() put it
     void follow(); // shown under the dialog, or hidden while it is not to be seen
+    void makeRoom(); // by the dialog, as it first shows: for the bar and the list
     void place();
     void relist(); // for the query: suggestions, a folder's contents or the search's results
     void search();
@@ -185,6 +202,11 @@ private:
     bool m_recordHistory = true;
     QStringList m_excludedApps;
     HWND m_hiddenUnder = nullptr; // HideHere
+    std::vector<HWND> m_roomMade; // the dialogs makeRoom() is done with
+    std::optional<RECT> m_movingTo; // the frame makeRoom() asked the dialog for: no bar till it is there
+    QTimer m_moveTimeout; // should it not get there
+    Place m_place = Place::Auto;
+    Place m_side = Place::Below; // where the bar is: not Auto
     HWND m_originDialog = nullptr;
     QString m_origin; // see originName
 
@@ -208,6 +230,14 @@ private:
     QTimer m_listHold; // no click came
     std::atomic<bool> m_uncloakPending {false}; // shown cloaked until its first frame
     QTimer m_uncloakTimeout;
+    // Peeking out from behind the bar, off the dialog. Where place() put the
+    // bar (physical pixels): its window, its box, the work area, the dialog.
+    win::PeekingLogo m_logo;
+    RECT m_logoHost {};
+    RECT m_logoRow {};
+    RECT m_logoWork {};
+    RECT m_logoAvoid {};
+    qreal m_logoScale = 1;
     // Last: done with their tasks before the members above go. Two: a folder
     // that is slow to list (on a network) holds up no look around.
     ComWorker m_worker;

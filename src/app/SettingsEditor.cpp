@@ -293,6 +293,14 @@ void SettingsEditor::setDialogBar(bool on)
     commit();
 }
 
+void SettingsEditor::setDialogBarPlace(const QString& place)
+{
+    if (m_settings.dialogBarPlace == place)
+        return;
+    m_settings.dialogBarPlace = place;
+    commit();
+}
+
 void SettingsEditor::setDialogJump(bool on)
 {
     if (m_settings.dialogJump == on)

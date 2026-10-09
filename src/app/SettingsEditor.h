@@ -33,6 +33,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(int historyCount READ historyCount NOTIFY historyCountChanged FINAL)
     Q_PROPERTY(bool dialogJump READ dialogJump WRITE setDialogJump NOTIFY changed FINAL)
     Q_PROPERTY(bool dialogBar READ dialogBar WRITE setDialogBar NOTIFY changed FINAL)
+    Q_PROPERTY(QString dialogBarPlace READ dialogBarPlace WRITE setDialogBarPlace NOTIFY changed FINAL)
     Q_PROPERTY(bool dialogAutoJump READ dialogAutoJump WRITE setDialogAutoJump NOTIFY changed FINAL)
     Q_PROPERTY(QStringList dialogBarExcludedApps READ dialogBarExcludedApps NOTIFY changed FINAL)
     Q_PROPERTY(bool includeRemovableDrives READ includeRemovableDrives WRITE setIncludeRemovableDrives NOTIFY changed FINAL)
@@ -108,6 +109,8 @@ public:
     void setDialogJump(bool on);
     bool dialogBar() const { return m_settings.dialogBar; }
     void setDialogBar(bool on);
+    QString dialogBarPlace() const { return m_settings.dialogBarPlace; }
+    void setDialogBarPlace(const QString& place);
     bool dialogAutoJump() const { return m_settings.dialogAutoJump; }
     void setDialogAutoJump(bool on);
     QStringList dialogBarExcludedApps() const { return m_settings.dialogBarExcludedApps; }

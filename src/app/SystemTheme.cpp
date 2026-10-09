@@ -54,6 +54,11 @@ bool SystemTheme::dark() const
 
 QColor SystemTheme::accent() const
 {
+    return accentColor();
+}
+
+QColor SystemTheme::accentColor()
+{
     const QColor accent = QGuiApplication::palette().color(QPalette::Accent);
     // A grey accent (a popular Windows choice) would make highlighted matches
     // indistinguishable from plain text; use the standard Windows blue then.

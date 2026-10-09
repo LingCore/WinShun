@@ -22,6 +22,8 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <optional>
+#include <tuple>
 #include <utility>
 
 using Microsoft::WRL::ComPtr;
@@ -34,6 +36,11 @@ namespace {
 
 constexpr int kGap = 4; // logical pixels between the dialog and the bar
 constexpr int kMinWidth = 480;
+constexpr int kSideWidth = 480; // beside the dialog
+constexpr int kMinDialogHeight = 400; // made shorter down to this (logical pixels), then moved up
+constexpr int kMinDialogWidth = 640; // made narrower down to this, then moved aside
+// The bar and a full list.
+constexpr int kPanelHeight = DialogBar::kBarHeight + DialogBar::kListChrome + DialogBar::kMaxRows * DialogBar::kRowHeight;
 constexpr int kMaxExplorer = 5; // suggestions of each kind
 constexpr int kMaxRecent = 10;
 constexpr int kMaxPins = 20;
@@ -47,6 +54,70 @@ QScreen* screenOf(HMONITOR monitor)
             return screen;
     }
     return QGuiApplication::primaryScreen();
+}
+
+// A window's visible frame and the work area of its screen, in physical pixels.
+struct Placing {
+    RECT frame;
+    RECT work;
+    QScreen* screen;
+};
+
+std::optional<Placing> placingOf(HWND hwnd)
+{
+    RECT frame {};
+    if (FAILED(::DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &frame, sizeof frame)))
+        ::GetWindowRect(hwnd, &frame);
+    const HMONITOR monitor = ::MonitorFromRect(&frame, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO info {sizeof info};
+    if (!::GetMonitorInfoW(monitor, &info))
+        return std::nullopt;
+    return Placing {frame, info.rcWork, screenOf(monitor)};
+}
+
+// The bar and a full list fit on that side of the dialog, as the dialog is.
+// Beside it, the bar goes up as far as the list needs.
+bool fitsBy(const Placing& at, DialogBar::Place side)
+{
+    const qreal scale = at.screen->devicePixelRatio();
+    switch (side) {
+    case DialogBar::Place::Left:
+        return at.frame.left - qRound((kGap + kSideWidth) * scale) >= at.work.left;
+    case DialogBar::Place::Right:
+        return at.frame.right + qRound((kGap + kSideWidth) * scale) <= at.work.right;
+    default:
+        return at.frame.bottom + qRound((kGap + kPanelHeight) * scale) <= at.work.bottom;
+    }
+}
+
+// Where the bar goes now: the side set if it fits there, else where it is
+// if that still fits (no going back and forth as the dialog moves), else the
+// first that fits of below, right and left; below if none does.
+DialogBar::Place sideFor(const Placing& at, DialogBar::Place set, DialogBar::Place current)
+{
+    using enum DialogBar::Place;
+    if (set != Auto && fitsBy(at, set))
+        return set;
+    if (fitsBy(at, current))
+        return current;
+    for (const DialogBar::Place side : {Below, Right, Left}) {
+        if (fitsBy(at, side))
+            return side;
+    }
+    return Below;
+}
+
+// Along one axis: the frame from `first` to `last`, the work area from
+// `start` to `end`, and `room` wanted between `last` and `end`. Shorter
+// first, `first` staying, down to `minimum`; then moved toward `start`. The
+// new `first` and `last`. (Negated, for room before `first`.)
+std::pair<int, int> roomAlong(int first, int last, int start, int end, int room, int minimum, bool resizable)
+{
+    int length = last - first;
+    if (resizable)
+        length = std::min({length, std::max(end - room - first, minimum), end - start - room});
+    const int moved = std::max(start, std::min(first, end - room - length));
+    return {moved, moved + length};
 }
 
 // "C:\Users\me\file.txt" -> "C:\Users\me"; "C:\file.txt" -> "C:\".
@@ -225,12 +296,18 @@ DialogBar::DialogBar(SearchEngine* engine, History* history, const QString& pins
         if (m_window && m_window->isVisible())
             place();
     });
+    m_moveTimeout.setSingleShot(true);
+    m_moveTimeout.setInterval(300ms); // it is busy, or keeps to a size of its own
+    connect(&m_moveTimeout, &QTimer::timeout, this, [this] {
+        m_movingTo.reset();
+        if (m_inFront)
+            follow();
+    });
     m_uncloakTimeout.setSingleShot(true);
     m_uncloakTimeout.setInterval(300ms); // should no frame come
     connect(&m_uncloakTimeout, &QTimer::timeout, this, [this] {
         m_uncloakPending = false;
-        if (m_window)
-            win::setCloaked(m_window, false);
+        uncloak();
     });
 }
 
@@ -265,8 +342,7 @@ void DialogBar::setWindow(QQuickWindow* window)
         if (m_uncloakPending.exchange(false))
             QMetaObject::invokeMethod(&m_uncloakTimeout, [this] {
                 m_uncloakTimeout.stop();
-                if (m_window)
-                    win::setCloaked(m_window, false);
+                uncloak();
             });
     }, Qt::DirectConnection); // on the render thread
 }
@@ -276,6 +352,19 @@ void DialogBar::setExcludedApps(const QStringList& apps)
     m_excludedApps = apps;
     if (m_inFront)
         follow();
+}
+
+void DialogBar::setPlace(const QString& name)
+{
+    const Place place = name == u"below" ? Place::Below
+        : name == u"left"                ? Place::Left
+        : name == u"right"               ? Place::Right
+                                         : Place::Auto;
+    if (place == m_place)
+        return;
+    m_place = place;
+    if (m_window && m_window->isVisible())
+        this->place();
 }
 
 bool DialogBar::hidden() const
@@ -317,6 +406,9 @@ void DialogBar::setDialog(HWND dialog)
     if (dialog != m_dialog) {
         m_dialog = dialog;
         m_dialogApp = programOf(dialog);
+        m_side = m_place == Place::Auto ? Place::Below : m_place;
+        m_movingTo.reset();
+        m_moveTimeout.stop();
         const filedialog::Kind kind = filedialog::kind(dialog);
         if (kind != m_kind) {
             m_kind = kind;
@@ -361,8 +453,76 @@ void DialogBar::follow()
         hideWindow();
         return;
     }
+    makeRoom();
+    if (m_movingTo) { // the bar shows where it goes once the dialog is there
+        const std::optional<Placing> at = placingOf(m_dialog);
+        if (at && !::EqualRect(&at->frame, &*m_movingTo)) {
+            hideWindow();
+            return;
+        }
+        m_movingTo.reset();
+        m_moveTimeout.stop();
+    }
     place();
     showWindow();
+}
+
+// Once for each dialog: should the bar and a full list not fit by it on its
+// screen (Place), it gets smaller there, its far edge staying: shorter for
+// below, down to kMinDialogHeight; narrower for a side, down to
+// kMinDialogWidth. Then it moves for the rest. Windows keeps a dialog's size
+// for each program, so the next one comes up fitting. Maximised, it stays;
+// and so does what the user does with it after.
+void DialogBar::makeRoom()
+{
+    std::erase_if(m_roomMade, [](HWND dialog) { return !::IsWindow(dialog); });
+    if (std::ranges::find(m_roomMade, m_dialog) != m_roomMade.end())
+        return;
+    m_roomMade.push_back(m_dialog);
+    const std::optional<Placing> at = placingOf(m_dialog);
+    RECT window {};
+    if (!at || ::IsZoomed(m_dialog) || !::GetWindowRect(m_dialog, &window))
+        return;
+    if (m_place == Place::Auto
+        && (fitsBy(*at, Place::Below) || fitsBy(*at, Place::Right) || fitsBy(*at, Place::Left)))
+        return;
+    const Place side = m_place == Place::Auto ? Place::Below : m_place;
+    if (fitsBy(*at, side))
+        return;
+    const RECT& frame = at->frame;
+    const RECT& work = at->work;
+    const qreal scale = at->screen->devicePixelRatio();
+    const auto physical = [scale](int logical) { return qRound(logical * scale); };
+    // An XP-style one may not lay itself out again.
+    const bool resizable = ::GetWindowLongPtrW(m_dialog, GWL_STYLE) & WS_THICKFRAME;
+    // A logical pixel more than fitsBy() wants: a dialog unaware of DPI
+    // comes out a physical pixel off what it is given.
+    const int below = physical(kGap + kPanelHeight + 1);
+    const int beside = physical(kGap + kSideWidth + 1);
+    RECT to = frame;
+    if (side == Place::Below) {
+        std::tie(to.top, to.bottom) = roomAlong(frame.top, frame.bottom, work.top, work.bottom, below,
+            physical(kMinDialogHeight), resizable);
+    } else if (side == Place::Right) {
+        std::tie(to.left, to.right) = roomAlong(frame.left, frame.right, work.left, work.right, beside,
+            physical(kMinDialogWidth), resizable);
+    } else {
+        const auto [right, left] = roomAlong(-frame.right, -frame.left, -work.right, -work.left, beside,
+            physical(kMinDialogWidth), resizable);
+        to.left = -left;
+        to.right = -right;
+    }
+    if (::EqualRect(&to, &frame))
+        return;
+    m_movingTo = to;
+    m_moveTimeout.start();
+    // The window's rect has borders the frame has not: each edge goes as far.
+    // Not waiting for the dialog's thread: it moves, the bar follows.
+    const int left = window.left + to.left - frame.left;
+    const int top = window.top + to.top - frame.top;
+    ::SetWindowPos(m_dialog, nullptr, left, top, window.right + to.right - frame.right - left,
+        window.bottom + to.bottom - frame.bottom - top,
+        SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
 }
 
 void DialogBar::toggleFocus()
@@ -815,40 +975,64 @@ void DialogBar::hideWindow()
     if (!m_window || !m_window->isVisible())
         return;
     m_window->hide();
+    m_logo.hide();
     m_uncloakPending = false;
     m_uncloakTimeout.stop();
     win::setCloaked(m_window, false);
 }
 
-// Under the dialog's visible frame (physical pixels), as wide as the dialog;
-// above it when there is no room below, else over its top edge. The list,
-// while the bar has the focus, opens below, or above where there is more
-// room.
+void DialogBar::uncloak()
+{
+    if (!m_window)
+        return;
+    win::setCloaked(m_window, false);
+    if (m_window->isVisible())
+        showLogo();
+}
+
+void DialogBar::showLogo()
+{
+    m_logo.show(m_logoHost, m_logoRow, m_logoWork, &m_logoAvoid, m_logoScale);
+}
+
+// By the dialog's visible frame (physical pixels), on the side sideFor()
+// picks. Under it: as wide as the dialog; above it when there is no room
+// below, else over its top edge. Beside it: level with its top, or higher
+// where the list would not fit below. The list, while the bar has the focus,
+// opens below, or above where there is more room.
 void DialogBar::place()
 {
     if (!m_window || !m_dialog)
         return;
-    RECT frame {};
-    if (FAILED(::DwmGetWindowAttribute(m_dialog, DWMWA_EXTENDED_FRAME_BOUNDS, &frame, sizeof frame)))
-        ::GetWindowRect(m_dialog, &frame);
-    const HMONITOR monitor = ::MonitorFromRect(&frame, MONITOR_DEFAULTTONEAREST);
-    MONITORINFO info {sizeof info};
-    if (!::GetMonitorInfoW(monitor, &info))
+    const std::optional<Placing> at = placingOf(m_dialog);
+    if (!at)
         return;
-    const RECT& work = info.rcWork;
-    QScreen* screen = screenOf(monitor);
+    const RECT& frame = at->frame;
+    const RECT& work = at->work;
+    QScreen* screen = at->screen;
     const qreal scale = screen->devicePixelRatio();
     const QPoint origin = screen->geometry().topLeft(); // the same in logical and physical pixels
     const auto physical = [scale](int logical) { return qRound(logical * scale); };
     const auto logical = [scale](int physical) { return static_cast<int>(physical / scale); };
 
-    const int width = std::min<int>(std::max<int>(frame.right - frame.left, physical(kMinWidth)), work.right - work.left);
-    const int x = std::clamp<int>(frame.left, work.left, work.right - width);
+    m_side = sideFor(*at, m_place, m_side);
     const int gap = physical(kGap);
     const int bar = physical(kBarHeight);
-    int barTop = frame.bottom + gap;
-    if (barTop + bar > work.bottom)
-        barTop = frame.top - gap - bar >= work.top ? frame.top - gap - bar : std::max<int>(work.top, frame.top);
+    int width = 0;
+    int x = 0;
+    int barTop = 0;
+    if (m_side == Place::Below) {
+        width = std::min<int>(std::max<int>(frame.right - frame.left, physical(kMinWidth)), work.right - work.left);
+        x = std::clamp<int>(frame.left, work.left, work.right - width);
+        barTop = frame.bottom + gap;
+        if (barTop + bar > work.bottom)
+            barTop = frame.top - gap - bar >= work.top ? frame.top - gap - bar : std::max<int>(work.top, frame.top);
+    } else {
+        width = std::min<int>(physical(kSideWidth), work.right - work.left);
+        x = std::clamp<int>(m_side == Place::Right ? frame.right + gap : frame.left - gap - width, work.left,
+            work.right - width);
+        barTop = std::max<int>(work.top, std::min<int>(frame.top, work.bottom - physical(kPanelHeight)));
+    }
 
     const int wanted = m_window->isActive() && !m_listHeld ? std::min(m_results.count(), kMaxRows) : 0;
     const auto fit = [](int room) { return std::max(0, (room - kListChrome) / kRowHeight); };
@@ -867,11 +1051,34 @@ void DialogBar::place()
         m_listAbove = above;
         emit layoutChanged();
     }
-    // In logical pixels, as Qt takes them back: from the screen's origin, scaled.
-    const QRect geometry(origin.x() + qRound((x - origin.x()) / scale), origin.y() + qRound((top - origin.y()) / scale),
+    // In logical pixels, as Qt takes them back: from the screen's origin,
+    // scaled. Qt rounds the position and the size to physical pixels each,
+    // which may put an edge a pixel past the work area's: moved in by one.
+    QRect geometry(origin.x() + qRound((x - origin.x()) / scale), origin.y() + qRound((top - origin.y()) / scale),
         qRound(width / scale), kBarHeight + list);
+    const auto start = [scale](int from, int at) { return from + qRound((at - from) * scale); };
+    const auto end = [&](int from, int at, int size) { return start(from, at) + qRound(size * scale); };
+    for (int i = 0; i < 2 && end(origin.x(), geometry.x(), geometry.width()) > work.right; ++i)
+        geometry.translate(-1, 0);
+    for (int i = 0; i < 2 && start(origin.x(), geometry.x()) < work.left; ++i)
+        geometry.translate(1, 0);
+    for (int i = 0; i < 2 && end(origin.y(), geometry.y(), geometry.height()) > work.bottom; ++i)
+        geometry.translate(0, -1);
+    for (int i = 0; i < 2 && start(origin.y(), geometry.y()) < work.top; ++i)
+        geometry.translate(0, 1);
+    // For the logo: the window as Qt will put it, and the box in it.
+    const int left = start(origin.x(), geometry.x());
+    const int boxTop = start(origin.y(), geometry.y() + (above ? list : 0));
+    m_logoHost = {left, start(origin.y(), geometry.y()), end(origin.x(), geometry.x(), geometry.width()),
+        end(origin.y(), geometry.y(), geometry.height())};
+    m_logoRow = {left, boxTop, m_logoHost.right, boxTop + physical(kBarHeight)};
+    m_logoWork = work;
+    m_logoAvoid = frame;
+    m_logoScale = scale;
     if (m_window->geometry() != geometry)
         m_window->setGeometry(geometry);
+    if (m_window->isVisible() && !m_uncloakPending)
+        showLogo(); // else once its first frame is up
 }
 
 } // namespace ws

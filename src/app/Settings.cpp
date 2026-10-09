@@ -295,6 +295,9 @@ void Settings::load()
     recordHistory = readOrDefault(s, u"Launcher/History"_s, d.recordHistory);
     dialogJump = readOrDefault(s, u"Launcher/DialogJump"_s, d.dialogJump);
     dialogBar = readOrDefault(s, u"Launcher/DialogBar"_s, d.dialogBar);
+    dialogBarPlace = readOrDefault(s, u"Launcher/DialogBarPlace"_s, d.dialogBarPlace).trimmed().toLower();
+    if (dialogBarPlace != u"below" && dialogBarPlace != u"left" && dialogBarPlace != u"right")
+        dialogBarPlace = d.dialogBarPlace;
     dialogAutoJump = readOrDefault(s, u"Launcher/DialogAutoJump"_s, d.dialogAutoJump);
     dialogBarExcludedApps = readOrDefault(s, u"Launcher/DialogBarExcludedApps"_s, d.dialogBarExcludedApps);
 
@@ -367,6 +370,7 @@ void Settings::save() const
     s.setValue(u"Launcher/History"_s, recordHistory);
     s.setValue(u"Launcher/DialogJump"_s, dialogJump);
     s.setValue(u"Launcher/DialogBar"_s, dialogBar);
+    s.setValue(u"Launcher/DialogBarPlace"_s, dialogBarPlace);
     s.setValue(u"Launcher/DialogAutoJump"_s, dialogAutoJump);
     s.setValue(u"Launcher/DialogBarExcludedApps"_s, dialogBarExcludedApps);
     s.setValue(u"Appearance/Theme"_s, theme);

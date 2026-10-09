@@ -16,6 +16,7 @@
 #include "SystemTheme.h"
 #include "Updater.h"
 #include "WindowFrame.h"
+#include "WindowLogo.h"
 #include "platform/ClipboardWatcher.h"
 #include "platform/DialogJump.h"
 #include "platform/Foreground.h"
@@ -371,6 +372,7 @@ bool App::createWindow()
     m_clipboard->setWindow(m_window);
     m_placement->setWindow(m_window);
     m_frame->setWindow(m_window);
+    m_launcherLogo = new WindowLogo(m_window, 64); // the search box's height (SearchBar.qml)
     connect(m_window, &QWindow::activeChanged, this, [this] {
         // Clicking elsewhere or switching apps dismisses the launcher, like a menu.
         if (m_window && !m_window->isActive() && m_window->isVisible())
@@ -956,6 +958,7 @@ void App::applyDialogs()
     if (m_dialogBar) {
         m_dialogBar->setRecordHistory(m_settings.recordHistory);
         m_dialogBar->setExcludedApps(m_settings.dialogBarExcludedApps);
+        m_dialogBar->setPlace(m_settings.dialogBarPlace);
     }
 
     const bool followDialogs = m_settings.dialogJump || m_settings.dialogBar || m_settings.dialogAutoJump;
@@ -1107,6 +1110,8 @@ void App::revealLauncher()
     m_revealTimeout.stop();
     if (m_window)
         win::setCloaked(m_window, false);
+    if (m_launcherLogo)
+        m_launcherLogo->reveal(); // not if this was the launcher hiding before its first frame
 }
 
 // The first frame a window draws sets up the graphics device, shaders and

@@ -3,7 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import WinShun
 
-// Under an Open or Save dialog of another program (see DialogBar): a box to
+// By an Open or Save dialog of another program (see DialogBar): a box to
 // search folders and files, and the folder shown in File Explorer to go to
 // (or, after the dialog went there by itself, the one it came from). Picking
 // one takes the dialog there. A path typed lists what is in that folder: Tab
@@ -246,8 +246,8 @@ Window {
                         color: Theme.text
                         font.pixelSize: Theme.fontCaption
                     }
-                    Rectangle { // the key that does the same
-                        visible: !chip.toOrigin
+                    Rectangle { // the key that does the same; not where the box would be too short (beside the dialog)
+                        visible: !chip.toOrigin && window.width >= 560
                         anchors.verticalCenter: parent.verticalCenter
                         width: keyText.implicitWidth + 10
                         height: 20

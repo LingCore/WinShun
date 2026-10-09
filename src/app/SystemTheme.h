@@ -36,6 +36,7 @@ public:
 
     bool dark() const;
     QColor accent() const;
+    static QColor accentColor(); // accent(), for C++
     QString iconFont() const { return m_iconFont; }
     bool animations() const;
     bool materials() const;

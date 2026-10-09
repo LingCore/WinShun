@@ -14,6 +14,7 @@ qt_add_executable(WinShun WIN32
     platform/KeyListener.cpp platform/KeyListener.h
     platform/MessageWindow.cpp platform/MessageWindow.h
     platform/Paster.cpp platform/Paster.h
+    platform/PeekingLogo.cpp platform/PeekingLogo.h
     platform/Shell.cpp platform/Shell.h
     platform/ShortcutCapture.cpp platform/ShortcutCapture.h
     platform/VolumeNotifier.cpp platform/VolumeNotifier.h
