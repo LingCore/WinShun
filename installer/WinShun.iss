@@ -177,6 +177,53 @@ begin
     RegWriteStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced', 'DisabledHotkeys', Keys);
 end;
 
+// The folder the index was moved to in the settings ([Index] Folder), or ''
+// for the default one. Read by hand: GetIniString would read the file in the
+// ANSI code page, and the path may well be Chinese.
+function IndexFolder(): String;
+var
+  Lines: TArrayOfString;
+  I, Eq: Integer;
+  InIndex: Boolean;
+  Line: String;
+begin
+  Result := '';
+  if not LoadStringsFromFile(ExpandConstant('{userappdata}\WinShun\WinShun.ini'), Lines) then
+    exit;
+  InIndex := False;
+  for I := 0 to GetArrayLength(Lines) - 1 do
+  begin
+    Line := Trim(Lines[I]);
+    if (Length(Line) > 0) and (Line[1] = '[') then
+      InIndex := CompareText(Line, '[Index]') = 0
+    else if InIndex then
+    begin
+      Eq := Pos('=', Line);
+      if (Eq > 0) and (CompareText(Trim(Copy(Line, 1, Eq - 1)), 'Folder') = 0) then
+      begin
+        Result := Trim(Copy(Line, Eq + 1, Length(Line)));
+        if (Length(Result) >= 2) and (Result[1] = '"') and (Result[Length(Result)] = '"') then
+          Result := Copy(Result, 2, Length(Result) - 2);
+        StringChangeEx(Result, '/', '\', True);
+        exit;
+      end;
+    end;
+  end;
+end;
+
+// Only Win顺's own files there go (the folder itself once it is empty):
+// it may be a folder the user picked.
+procedure RemoveIndexFolder(Folder: String);
+begin
+  if (Folder = '') or not DirExists(Folder) then
+    exit;
+  DeleteFile(Folder + '\index.bin');
+  DelTree(Folder + '\content\*.grams', False, True, False);
+  DelTree(Folder + '\content\*.texts', False, True, False);
+  RemoveDir(Folder + '\content');
+  RemoveDir(Folder);
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   // Once the user has confirmed, before the files go.
@@ -189,6 +236,7 @@ begin
   if (CurUninstallStep = usPostUninstall) and not UninstallSilent then
     if MsgBox(CustomMessage('RemoveData'), mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
     begin
+      RemoveIndexFolder(IndexFolder()); // before the settings that name it
       DelTree(ExpandConstant('{userappdata}\WinShun'), True, True, True);
       DelTree(ExpandConstant('{localappdata}\WinShun'), True, True, True);
     end;

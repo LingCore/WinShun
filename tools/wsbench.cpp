@@ -588,9 +588,8 @@ int runService(const QStringList& paths)
     settings.load();
     ws::IndexService::Options options;
     options.rules = settings.crawlRules();
-    options.snapshotPath = dir.filePath(u"index.bin"_s);
     options.content.enabled = false;
-    ws::IndexService service(options);
+    ws::IndexService service(dir.path(), options); // the index files in the temporary folder
     QElapsedTimer t;
     t.start();
     std::vector<std::wstring> shown;

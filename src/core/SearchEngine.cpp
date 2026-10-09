@@ -390,8 +390,22 @@ void SearchEngine::runContentSearch(const Job& job)
     FileIndex::IdPin pin;
     {
         const auto lock = index->readLock();
-        pin = index->pinIds();
-        const ContentIndex::Lookup lookup = content ? content->lookup(needle) : ContentIndex::Lookup();
+        pin = index->pinIds(); // from here on the index is not compacted: the content index's ids stay its own
+    }
+    // Not under the lock: the content index may have to be read from disk
+    // first (on a hard disk, one that may first have to spin up), and the
+    // index would wait for that, and name searches behind it.
+    QElapsedTimer lookupTimer;
+    lookupTimer.start();
+    const ContentIndex::Lookup lookup = content ? content->lookup(needle) : ContentIndex::Lookup();
+    if (lookupTimer.elapsed() > 50) // a few milliseconds from the cache: it was read off the disk
+        m_index->prewarmSoon(std::chrono::seconds(5));
+    if (isStale(job.id))
+        return;
+    {
+        // Every entry is looked at: a chunk of them per worker (on one
+        // thread, 3 million take some 12 ms).
+        const auto lock = index->readLock();
         constexpr std::uint32_t kMatch = ContentIndex::Lookup::kMatch;
         const EntryId profile = index->findPath(win32::expandEnvironment(L"%USERPROFILE%"));
         std::vector<std::vector<Candidate>> found(index->chunkCount());

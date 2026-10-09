@@ -501,6 +501,49 @@ void SettingsEditor::openDataFolder()
     shell::open(Settings::dataDir());
 }
 
+void SettingsEditor::setIndexFolderState(const IndexFolderState& state)
+{
+    if (m_indexFolderState == state)
+        return;
+    m_indexFolderState = state;
+    emit indexFolderChanged();
+}
+
+void SettingsEditor::chooseIndexFolder()
+{
+    const HWND owner = m_window ? reinterpret_cast<HWND>(m_window->winId()) : nullptr;
+    const QString picked = shell::pickFolder(owner, tr("选择存放索引的文件夹"));
+    if (picked.isEmpty())
+        return;
+    // An empty folder, or one with the index in it, is used as it is. In any
+    // other the files get a WinShun folder of their own: they never mix with
+    // other files, and leaving it out of searches hides nothing else.
+    const QString folder = QDir::cleanPath(QDir::fromNativeSeparators(picked));
+    const auto same = [&](const QString& other) {
+        return folder.compare(QDir::fromNativeSeparators(other), Qt::CaseInsensitive) == 0;
+    };
+    const bool asItIs
+        = same(Settings::dataDir()) || same(m_indexFolderState.folder) || indexfolder::onlyIndexFiles(folder);
+    setIndexFolder(asItIs ? folder : QDir(folder).filePath(u"WinShun"_s));
+}
+
+void SettingsEditor::setIndexFolder(const QString& folder)
+{
+    // The default place is kept as nothing: it follows %LOCALAPPDATA%.
+    QString value = QDir::cleanPath(QDir::fromNativeSeparators(folder.trimmed()));
+    if (value.compare(QDir::fromNativeSeparators(Settings::dataDir()), Qt::CaseInsensitive) == 0)
+        value.clear();
+    if (m_settings.indexFolder == value)
+        return;
+    m_settings.indexFolder = value;
+    commit();
+}
+
+void SettingsEditor::openIndexFolder()
+{
+    shell::open(m_indexFolderState.folder);
+}
+
 void SettingsEditor::openUrl(const QString& url)
 {
     shell::openUrl(url);

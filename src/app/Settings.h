@@ -38,6 +38,9 @@ struct Settings {
     QStringList excludedNames;
     bool includeRemovableDrives = false;
     bool rescanOnStartup = true;
+    // Where the index files (index.bin, content\) are kept, '/' separated;
+    // %VARS% are expanded. Empty: dataDir(), the default.
+    QString indexFolder;
 
     // [Content]
     QStringList contentExtensions;
@@ -66,6 +69,8 @@ struct Settings {
     bool operator==(const Settings&) const = default;
 
     CrawlRules crawlRules() const;
+    ContentSizeLimits contentSizeLimits() const;
+    QString indexDir() const; // indexFolder expanded, with native separators; dataDir() when it is empty
 
     static QString filePath();
     static QString storedRenderer(); // just [Launcher] Renderer; works before QGuiApplication exists

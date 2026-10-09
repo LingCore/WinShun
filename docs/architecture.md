@@ -31,6 +31,7 @@ ExcludedPaths=...        ; 不建索引的文件夹，支持 %WINDIR% 这类环�
 ExcludedNames=...        ; 任意位置的同名文件夹，也可写尾部路径，如 .svn/pristine
 IncludeRemovableDrives=false
 RescanOnStartup=true     ; 启动 15 秒后在后台核对一次磁盘，补上程序未运行期间的变化
+Folder=                  ; 索引文件放在哪个文件夹，如 D:/WinShun；空 = %LOCALAPPDATA%\WinShun
 
 [Content]
 Documents=true           ; 也搜 Word、Excel、PowerPoint、PDF 和 WPS 文件（由 WinShunExtract.exe 读）
@@ -55,6 +56,17 @@ ExcludedApps=KeePass.exe, KeePassXC.exe, 1Password.exe, Bitwarden.exe ; 不记�
 修改“不搜索的文件夹”后不需要重建索引：新排除的文件夹直接从索引里去掉，取消排除的文件夹单独补读一遍。只有取消排除“文件夹名称”（它可能出现在任何位置）时才会重新读取所有磁盘。
 
 索引、最近使用记录、对话框搜索框里固定的文件夹（`dialog-pins.txt`）和日志（`WinShun.log`，只记警告和错误）保存在 `%LOCALAPPDATA%\WinShun`；剪贴板历史在其中的 `clipboard\`（`clipboard.db` 和存图片的 `images\`）。
+
+索引文件（快照 `index.bin` 和内容索引的 `content\*.grams`；作者电脑上 323 万项、33 万个文本文件共约 77 MB）可以在设置 → 高级 → 索引位置换到别的文件夹（`[Index] Folder`）：
+
+- 选的是空文件夹（或里面本来就是索引）就直接用；否则在里面建一个 `WinShun` 文件夹，索引文件从不和别的文件混放，那个文件夹也不会出现在搜索结果里。先查剩余空间。
+- 只接受电脑内置的硬盘（`indexfolder::onExternalDisk`）。外接盘不行：索引文件一直开着（内容索引是内存映射），盘弹不出来；不弹出直接拔掉，内容搜索读映射文件会出错，Win顺 可能崩。“外接”看 Windows 怎么认这块盘，不看插头：`GetDriveType` 是可移动磁盘（U 盘、SD 卡），或总线类型（`IOCTL_STORAGE_QUERY_PROPERTY` 的 `BusType`）是 USB、SD、MMC、1394（USB-A、Type-C、扩展坞上的移动硬盘都是 USB），或磁盘的控制器及以上的设备节点能热拔（`CM_DEVCAP_REMOVABLE`：雷电、USB4 硬盘盒，总线类型只说 NVMe）。磁盘自己能热拔不算：主板开了 SATA 热插拔时，内置硬盘也出现在“安全删除硬件”里；eSATA 和它分不出来，按内置算。
+- 移动在后台进行（`IndexService::moveTo`），期间照常搜索，内容索引暂停写入：先把文件复制过去并刷到磁盘，再在新位置写一份当前的快照，然后内容索引改用新位置的段文件，最后删掉旧文件。切换之前旧文件一直在用，所以出错或中途退出都不会丢索引；失败时设置退回原处，原因显示在设置里（窗口没开时用通知）。
+- 直接改 INI 也一样会移动；程序没运行时改的，启动后再搬。启动时那块盘不在（还没解锁的 BitLocker 盘也算），这次先用默认位置并提示，设置保留，下次启动再试；用回自定义位置时，默认位置里的旧索引会删掉。INI 里写的位置根本不能用（外接盘、网络位置、里面有别的文件），设置直接改回默认并提示。
+- 卸载时如果选择删除数据，自定义位置里的索引文件也一起删（只删 `index.bin` 和 `content\`，文件夹空了才删）。
+- 机械硬盘可以用，设置里只用灰字说明一句。判断看卷下每块物理盘的寻道开销（`StorageDeviceSeekPenaltyProperty`，查不到时 NVMe 算固态），任何一块有寻道开销就算机械硬盘；对卷句柄直接查，跨盘卷会失败。文件名搜索全在内存里，不受影响；受影响的是内容搜索在段文件里的零散读取，每次寻道约 10 ms，硬盘休眠时要等几秒转起来。所以：
+  - 内容索引在机械硬盘上（或判断不出来）时，`IndexService::prewarmSoon` 把段文件预读进系统文件缓存：启动 90 秒后、搬完索引后、从睡眠/休眠恢复 30 秒后（`RegisterSuspendResumeNotification`），以及某次查询超过 50 ms（说明页已被挤出缓存）时。用 `ReadFile` 读，读进的页和映射视图共用；句柄设 `IoPriorityHintLow`，每读 1 MB 歇同样长的时间。不用后台模式（`THREAD_MODE_BACKGROUND_BEGIN`），它会连内存优先级一起降低，这些页会最先被系统回收。
+  - 内容查询不在文件索引的读锁里做（先 `pinIds` 保证编号不变）：读盘慢的那几秒，索引更新和文件名搜索都不用等。
 
 本程序原名“快搜”（QuickFind）。第一次以 Win顺 启动时，会先让还在运行的快搜退出，再把 `%APPDATA%\QuickFind`、`%LOCALAPPDATA%\QuickFind` 搬到新位置，开机自启（计划任务“QuickFind”）也换成“WinShun”，设置、索引和最近使用记录都保留。
 

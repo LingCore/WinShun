@@ -43,6 +43,7 @@ MessageWindow::MessageWindow(Callbacks callbacks)
     // Let Explorer (medium integrity) reach us even if we run elevated. A
     // second instance runs elevated too, so WM_COPYDATA stays closed to others.
     ::ChangeWindowMessageFilterEx(m_hwnd, m_taskbarCreated, MSGFLT_ALLOW, nullptr);
+    m_powerNotify = ::RegisterSuspendResumeNotification(m_hwnd, DEVICE_NOTIFY_WINDOW_HANDLE);
 
     const UINT dpi = ::GetDpiForSystem();
     m_icon = static_cast<HICON>(::LoadImageW(instance, kAppIconResource, IMAGE_ICON,
@@ -52,6 +53,8 @@ MessageWindow::MessageWindow(Callbacks callbacks)
 MessageWindow::~MessageWindow()
 {
     removeTrayIcon();
+    if (m_powerNotify)
+        ::UnregisterSuspendResumeNotification(m_powerNotify);
     if (m_hwnd)
         ::DestroyWindow(m_hwnd);
     if (m_icon)
@@ -247,6 +250,10 @@ LRESULT MessageWindow::handle(UINT msg, WPARAM wParam, LPARAM lParam)
         return 0;
     case WM_DEVICECHANGE:
         return m_callbacks.deviceChange ? m_callbacks.deviceChange(wParam, lParam) : TRUE;
+    case WM_POWERBROADCAST:
+        if (wParam == PBT_APMRESUMEAUTOMATIC && m_callbacks.resumed)
+            m_callbacks.resumed(); // whether or not someone is at the keyboard
+        return TRUE;
     case WM_HOTKEY:
         if (m_callbacks.hotkeyPressed)
             m_callbacks.hotkeyPressed(static_cast<int>(wParam));

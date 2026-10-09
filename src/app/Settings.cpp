@@ -183,6 +183,14 @@ QString Settings::dataDir()
         QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + u"/WinShun"_s);
 }
 
+QString Settings::indexDir() const
+{
+    if (indexFolder.isEmpty())
+        return dataDir();
+    const std::wstring expanded = win32::expandEnvironment(indexFolder.toStdWString());
+    return QDir::toNativeSeparators(QDir::cleanPath(QString::fromStdWString(expanded)));
+}
+
 QString Settings::resolveLanguage(const QString& language)
 {
     if (language == u"zh" || language == u"en")
@@ -265,6 +273,7 @@ void Settings::load()
     excludedNames = readOrDefault(s, u"Index/ExcludedNames"_s, d.excludedNames);
     includeRemovableDrives = readOrDefault(s, u"Index/IncludeRemovableDrives"_s, d.includeRemovableDrives);
     rescanOnStartup = readOrDefault(s, u"Index/RescanOnStartup"_s, d.rescanOnStartup);
+    indexFolder = readOrDefault(s, u"Index/Folder"_s, d.indexFolder).trimmed();
 
     contentExtensions = readOrDefault(s, u"Content/Extensions"_s, d.contentExtensions);
     if (s.value(u"Content/DefaultsVersion"_s, 1).toInt() < kContentDefaultsVersion) {
@@ -319,6 +328,7 @@ void Settings::save() const
     s.setValue(u"Index/ExcludedNames"_s, excludedNames);
     s.setValue(u"Index/IncludeRemovableDrives"_s, includeRemovableDrives);
     s.setValue(u"Index/RescanOnStartup"_s, rescanOnStartup);
+    s.setValue(u"Index/Folder"_s, indexFolder);
     s.setValue(u"Content/Extensions"_s, contentExtensions);
     for (std::size_t k = 0; k < ContentSizeLimits::kKinds; ++k)
         s.setValue(kContentSizeKeys[k], contentMaxSizeMB[k]);
@@ -341,7 +351,10 @@ CrawlRules Settings::crawlRules() const
         if (!p.trimmed().isEmpty())
             rules.excludedPaths.push_back(normalizePath(p));
     }
-    rules.excludedPaths.push_back(normalizePath(dataDir())); // our own snapshot churns constantly
+    // Our own files churn constantly.
+    rules.excludedPaths.push_back(normalizePath(dataDir()));
+    if (!indexFolder.isEmpty())
+        rules.excludedPaths.push_back(normalizePath(indexDir()));
     for (const QString& n : excludedNames) {
         if (!n.trimmed().isEmpty())
             rules.excludedNames.push_back(normalizeName(n));

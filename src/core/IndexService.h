@@ -11,11 +11,14 @@
 #include <QTimer>
 
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <future>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <stop_token>
+#include <system_error>
 #include <thread>
 #include <vector>
 
@@ -36,6 +39,8 @@ namespace ws {
 //   6. the content index (ContentIndex) of the files on NTFS volumes: the
 //      journal says which files were written to, the ContentIndexer reads
 //      them again in the background; it is saved with the snapshot
+//   7. its files (see indexfolder) can be moved to another folder while it
+//      runs (moveTo)
 //
 // The first run has no snapshot: the (empty) index is searchable at once and
 // fills up while the volumes are read. There is only ever one index in memory.
@@ -48,14 +53,14 @@ public:
 
     struct Options {
         CrawlRules rules;
-        QString snapshotPath;
         bool includeRemovable = false;
         bool rescanOnStartup = true; // walked volumes only: NTFS always catches up
         int rescanDelayMs = 15000;
         ContentIndexer::Options content;
     };
 
-    explicit IndexService(Options options, QObject* parent = nullptr);
+    // `folder` holds the index files (indexfolder), or will.
+    IndexService(QString folder, Options options, QObject* parent = nullptr);
     ~IndexService() override;
 
     void start();
@@ -65,6 +70,20 @@ public:
     // is no longer excluded (it could be anywhere) takes reading every volume.
     void setOptions(Options options);
     void shutdown(); // stops threads, saves the snapshot; idempotent
+
+    // Moves the index files to `folder`, in the background: searches go on,
+    // the content indexer waits meanwhile. Reports through moveProgress()
+    // and moveFinished(); when it fails, the files stay (and are used) where
+    // they were. Ignored while a move is under way.
+    void moveTo(const QString& folder);
+    bool moving() const noexcept { return m_moving.load(); }
+
+    // On a hard disk the content index's files are read ahead into the file
+    // cache, so that content searches do not wait for the disk (or for it to
+    // spin up): a while after start, after a move, after Windows resumes, and
+    // when a search found them gone from the cache. Any thread; of two
+    // requests, the earlier one counts.
+    void prewarmSoon(std::chrono::milliseconds delay);
 
     // Drives coming and going; GUI thread only. suspendVolume() stops
     // reading, following and watching a volume and returns once every handle
@@ -96,6 +115,10 @@ public:
 signals:
     void stateChanged();
     void volumesChanged(); // volumeRoots() differs
+    void moveProgress(int percent); // of the bytes copied
+    // 0 once the files are in the new folder (and the old ones deleted), else
+    // a Win32 error code; ERROR_CANCELLED when it was shut down meanwhile.
+    void moveFinished(int error);
 
 private:
     // What a worker run reads again: everything (Full), the walked volumes
@@ -130,7 +153,15 @@ private:
     void contentUnsureOf(const std::wstring& root);
     std::vector<ContentIndexer::Volume> contentVolumes() const;
     void compactIfWasteful(bool always = false); // drops removed items once they add up
-    void saveSnapshot();
+    // Without `wait`, a save that would have to wait for the files (being
+    // moved, or saved by another thread) is left to the next one.
+    void saveSnapshot(bool wait = true);
+    enum class Save { Written, Skipped, Failed };
+    // m_filesMutex held. `segments`: the content index's files it refers to.
+    Save writeSnapshot(const QString& path, std::vector<std::uint64_t>& segments);
+    std::error_code moveFiles(const QString& to, std::stop_token stop);
+    void prewarmLoop(std::stop_token stop);
+    void prewarm(std::stop_token stop);
     void saveInBackground();
     void setState(State state);
     void setRefreshing(bool refreshing);
@@ -164,12 +195,22 @@ private:
     std::unique_ptr<ContentIndexer> m_contentIndexer;
     std::atomic<bool> m_compactOwed {false}; // put off while ids were pinned
 
-    std::mutex m_saveMutex;
+    // The files on disk: saving, loading and moving them, and where they are.
+    std::mutex m_filesMutex;
+    QString m_folder; // guarded by m_filesMutex
+    std::atomic<bool> m_moving {false};
     std::stop_source m_shutdown;
     std::unique_ptr<ChangeWatcher> m_watcher; // worker thread, or GUI thread while no worker runs
     std::jthread m_worker;
+    std::jthread m_mover; // moveTo
+    std::mutex m_prewarmMutex;
+    std::condition_variable_any m_prewarmCv;
+    std::optional<std::chrono::steady_clock::time_point> m_prewarmAt; // asked for, not started yet
+    std::jthread m_prewarmer; // from start() on
     std::future<void> m_pendingSave;
-    QTimer m_saveTimer;
+    QTimer m_saveTimer; // checks whether a save is due
+    std::atomic<std::chrono::steady_clock::time_point> m_lastSave {std::chrono::steady_clock::now()};
+    std::atomic<std::uint64_t> m_garbageAfterSave {0}; // ContentIndex::obsoleteBytes() after the last save
     QTimer m_resyncTimer;
     QTimer m_volumesTimer;
     bool m_stopped = false;

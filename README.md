@@ -217,6 +217,9 @@ Listary 和 PowerToys 的“查找鼠标”默认也用双击 Ctrl，同时开�
 **占多少内存？**
 文件名索引每 100 万个文件约 30 MB。整个程序在任务管理器里一般是 120～140 MB。
 
+**索引文件能不放在 C 盘吗？**
+能。在设置 → 高级 → 索引位置点“更改…”，选其他内置硬盘上的文件夹（U 盘、移动硬盘不行），Win顺 会在后台把索引搬过去，期间照常搜索，不用重启。选空文件夹就直接放在里面，否则会在里面建一个 `WinShun` 文件夹。
+
 **收费吗？会上传我的数据吗？**
 完全免费，源代码公开。Win顺 只在检查新版本时访问 GitHub 的公开接口，不发送任何个人信息（设置 → 高级里可以关掉）；索引和最近使用记录只保存在你自己的电脑上（`%LOCALAPPDATA%\WinShun`）。最近使用记录可以在设置 → 打开 Win顺里清除或关掉，也可以在搜索框里右键单独移除某一项。
 
@@ -355,6 +358,9 @@ Not by default. While the program in front has exclusive full screen, or has hid
 
 **How much memory does it use?**
 About 30 MB of index per million files; the whole app usually shows 120–140 MB in Task Manager.
+
+**Can the index files live somewhere other than drive C?**
+Yes. In Settings → Advanced → Index location, click **Change…** and pick a folder on another built-in drive (not a USB stick or an external drive). WinShun moves the index in the background while you keep searching, no restart needed. An empty folder is used as it is; otherwise a `WinShun` folder is made inside it.
 
 **Is it free? Does it collect data?**
 Free and open source. WinShun goes online only to ask GitHub's public API about new versions, sending nothing personal (you can turn that off in Settings → Advanced); the index and history stay on your PC (`%LOCALAPPDATA%\WinShun`). Clear or turn off the history in Settings → Open WinShun, or right-click an item in the search window to remove just that one.

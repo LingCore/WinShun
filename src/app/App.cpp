@@ -6,6 +6,7 @@
 #include "DialogBar.h"
 #include "FileIconProvider.h"
 #include "History.h"
+#include "IndexFolder.h"
 #include "IndexService.h"
 #include "Launcher.h"
 #include "Placement.h"
@@ -36,6 +37,7 @@
 #include <QQmlComponent>
 #include <QQuickWindow>
 #include <QScreen>
+#include <QStorageInfo>
 #include <QStyleHints>
 #include <QSurfaceFormat>
 
@@ -74,7 +76,6 @@ IndexService::Options indexOptions(const Settings& settings)
 {
     IndexService::Options options;
     options.rules = settings.crawlRules();
-    options.snapshotPath = Settings::dataDir() + u"\\index.bin"_s;
     options.includeRemovable = settings.includeRemovableDrives;
     options.rescanOnStartup = settings.rescanOnStartup;
     options.content.enabled = settings.contentIndex;
@@ -83,6 +84,31 @@ IndexService::Options indexOptions(const Settings& settings)
     options.content.includeLowPriority = settings.contentInLowPriority;
     options.content.documents = settings.contentDocuments;
     return options;
+}
+
+// '/' separated and cleaned, as IndexService keeps it.
+QString folderPath(const QString& path)
+{
+    return QDir::cleanPath(QDir::fromNativeSeparators(path));
+}
+
+bool sameFolder(const QString& a, const QString& b)
+{
+    return folderPath(a).compare(folderPath(b), Qt::CaseInsensitive) == 0;
+}
+
+// "D:\" for "D:/...", else nothing.
+QString driveRoot(const QString& folder)
+{
+    if (folder.size() < 3 || !folder[0].isLetter() || folder[1] != u':' || folder[2] != u'/')
+        return {};
+    return QDir::toNativeSeparators(folder.left(3));
+}
+
+UINT driveType(const QString& folder)
+{
+    const QString root = driveRoot(folder);
+    return root.isEmpty() ? DRIVE_UNKNOWN : ::GetDriveTypeW(reinterpret_cast<LPCWSTR>(root.utf16()));
 }
 
 bool isDarkMode()
@@ -174,7 +200,14 @@ bool App::start(const StartOptions& options)
     QDir().mkpath(dataDir);
     m_history = std::make_unique<History>(dataDir + u"\\history.txt"_s);
     m_history->load();
-    m_index = std::make_unique<IndexService>(indexOptions(m_settings));
+    m_index = std::make_unique<IndexService>(startIndexFolder(), indexOptions(m_settings));
+    connect(m_index.get(), &IndexService::moveProgress, this, [this](int percent) {
+        m_indexMoveProgress = percent;
+        refreshIndexFolder();
+    });
+    connect(m_index.get(), &IndexService::moveFinished, this, &App::indexMoved);
+    // Files still in the default place go where the settings say, once read.
+    connect(m_index.get(), &IndexService::stateChanged, this, &App::applyIndexFolder);
     m_apps = std::make_unique<AppCatalog>();
     m_places = std::make_unique<SystemCatalog>();
     m_engine = std::make_unique<SearchEngine>(m_index.get(), m_apps.get(), m_places.get());
@@ -261,6 +294,8 @@ bool App::start(const StartOptions& options)
     callbacks.deviceChange = [this](WPARAM event, LPARAM data) -> LRESULT {
         return m_volumeNotifier ? m_volumeNotifier->handle(event, data) : TRUE;
     };
+    // Once the disks have settled: after hibernating, the file cache is gone.
+    callbacks.resumed = [this] { m_index->prewarmSoon(30s); };
     m_messages = std::make_unique<MessageWindow>(std::move(callbacks));
 
     // Drives: let go of one being ejected or locked; index new ones, drop gone ones.
@@ -297,6 +332,8 @@ bool App::start(const StartOptions& options)
                                  : tr("复制过的文字、图片和文件都能找回来。点这里打开它。"));
         m_updateNotified = false;
         m_clipboardNotified = true;
+    } else if (!m_indexFolderProblem.isEmpty()) {
+        m_messages->showNotification(tr("索引位置"), m_indexFolderProblem);
     }
     if (options.settings)
         showSettings();
@@ -654,6 +691,7 @@ void App::showSettings()
         });
     }
     refreshContentIndexStatus();
+    refreshIndexFolder(true);
     m_settingsEditor->setHistoryCount(static_cast<int>(m_history->items().size()));
     m_settingsEditor->setClipboardCount(static_cast<int>(m_clipStore->clips().size()));
     m_contentStatusTimer.start();
@@ -700,6 +738,178 @@ void App::refreshContentIndexStatus()
             status += tr("；%Ln 个文件有改动，稍后更新", nullptr, static_cast<int>(stats.pending));
     }
     m_settingsEditor->setContentIndexStatus(status);
+}
+
+QString App::startIndexFolder()
+{
+    const QString dataDir = folderPath(Settings::dataDir());
+    const QString wanted = folderPath(m_settings.indexDir());
+    m_indexFolder = m_settings.indexFolder;
+    m_indexDir = dataDir;
+    if (sameFolder(wanted, dataDir))
+        return m_indexDir;
+    const QString native = QDir::toNativeSeparators(wanted);
+    // A disk that is not there today (not plugged in, not unlocked yet): the
+    // default place for now, and the setting is kept for the next start.
+    const auto later = [&] {
+        m_indexFolderProblem
+            = tr("%1 现在用不了，这次先把索引放在默认位置，下次启动 Win顺 时再试。").arg(native);
+        return m_indexDir;
+    };
+    if (driveType(wanted) == DRIVE_NO_ROOT_DIR)
+        return later();
+    // A place that will not do (an external disk, say; set in the INI file):
+    // back to the default one, setting and all.
+    QString problem = indexFolderProblem(wanted);
+    if (problem.isEmpty() && !indexfolder::onlyIndexFiles(wanted))
+        problem = tr("那里已有别的文件");
+    if (!problem.isEmpty()) {
+        m_indexFolderProblem = tr("索引不能放在 %1：%2。已改回默认位置。").arg(native, problem);
+        m_settings.indexFolder.clear();
+        m_settings.save();
+        m_indexFolder.clear();
+        return m_indexDir;
+    }
+    if (!QDir().mkpath(wanted))
+        return later();
+    if (indexfolder::hasIndex(wanted) || !indexfolder::hasIndex(dataDir)) {
+        indexfolder::remove(dataDir); // left from a start without that disk, or a move cut short
+        m_indexDir = wanted;
+    } else {
+        // Still in the default place (the setting was changed while Win顺 was
+        // not running): moved there once it runs.
+        m_indexFolder.clear();
+    }
+    return m_indexDir;
+}
+
+void App::applyIndexFolder()
+{
+    // Not before the snapshot has been read (the worker would wait for the
+    // move, and stopWorker() for the worker): stateChanged() comes then.
+    // After a move, indexMoved() looks again.
+    const IndexService::State state = m_index->state();
+    if (state == IndexService::State::Idle || state == IndexService::State::Loading || m_index->moving()
+        || m_settings.indexFolder == m_indexFolder)
+        return;
+    const QString to = folderPath(m_settings.indexDir());
+    if (sameFolder(to, m_indexDir)) { // written another way, or back where the files stayed
+        m_indexFolder = m_settings.indexFolder;
+        m_indexFolderProblem.clear();
+        refreshIndexFolder();
+        return;
+    }
+    const QString native = QDir::toNativeSeparators(to);
+    const bool toDefault = sameFolder(to, Settings::dataDir());
+    QString problem = toDefault ? QString() : indexFolderProblem(to);
+    if (problem.isEmpty() && !toDefault && !indexfolder::onlyIndexFiles(to))
+        problem = tr("%1 里已有别的文件，请选择一个空文件夹").arg(native);
+    if (problem.isEmpty()) {
+        const auto needed = static_cast<qint64>(indexfolder::size(m_indexDir)) + (64ll << 20); // and room to grow
+        const QStorageInfo disk(to.left(3));
+        if (disk.isValid() && disk.bytesAvailable() < needed) {
+            const auto size = [](qint64 bytes) {
+                return QLocale().formattedDataSize(bytes, 0, QLocale::DataSizeTraditionalFormat);
+            };
+            problem = tr("%1 盘的剩余空间不够：索引需要 %2，只剩 %3")
+                          .arg(to.left(1).toUpper(), size(needed), size(disk.bytesAvailable()));
+        }
+    }
+    if (!problem.isEmpty()) {
+        indexMoveFailed(m_settings.indexFolder, problem);
+        return;
+    }
+    m_indexMoveFolder = m_settings.indexFolder;
+    m_indexMoveDir = to;
+    m_indexMoveMadeDir = !QFileInfo::exists(to);
+    m_indexMoveProgress = 0;
+    m_indexFolderProblem.clear();
+    m_index->moveTo(to);
+    refreshIndexFolder();
+}
+
+QString App::indexFolderProblem(const QString& folder) const
+{
+    // On a disk built into this computer: "D:/...".
+    if (driveRoot(folder).isEmpty())
+        return tr("%1 不在这台电脑的硬盘上").arg(QDir::toNativeSeparators(folder));
+    const QString external = tr("U 盘、移动硬盘这类外接的磁盘拔下或弹出后就用不了索引了，请选择电脑内置的硬盘");
+    switch (driveType(folder)) {
+    case DRIVE_FIXED: // 移动硬盘 as well
+        return indexfolder::onExternalDisk(folder) ? external : QString();
+    case DRIVE_NO_ROOT_DIR:
+        return tr("找不到 %1 盘").arg(folder.left(1).toUpper());
+    case DRIVE_REMOVABLE:
+        return external;
+    case DRIVE_REMOTE:
+        return tr("网络位置不能存放索引，请选择这台电脑硬盘上的文件夹");
+    default:
+        return tr("%1 盘不能存放索引，请选择这台电脑硬盘上的文件夹").arg(folder.left(1).toUpper());
+    }
+}
+
+void App::indexMoved(int error)
+{
+    if (error == ERROR_CANCELLED)
+        return; // Win顺 is closing
+    if (error == 0) {
+        const QString from = std::exchange(m_indexDir, m_indexMoveDir);
+        m_indexFolder = m_indexMoveFolder;
+        if (!sameFolder(from, Settings::dataDir()))
+            QDir().rmdir(from); // a folder of its own, empty now
+        refreshIndexFolder(true);
+        if (!m_settingsWindow || !m_settingsWindow->isVisible()) {
+            m_messages->showNotification(
+                tr("索引已经移好"), tr("现在存放在 %1").arg(QDir::toNativeSeparators(m_indexDir)));
+        }
+    } else {
+        if (m_indexMoveMadeDir)
+            QDir().rmdir(m_indexMoveDir); // made for the move (and empty again)
+        indexMoveFailed(m_indexMoveFolder,
+            tr("没能把索引移到 %1：%2")
+                .arg(QDir::toNativeSeparators(m_indexMoveDir), qt_error_string(error).trimmed()));
+    }
+    applyIndexFolder(); // the setting may have changed again meanwhile
+}
+
+// The files stay where they are, and so the setting goes back to that
+// (unless it was changed again since `attempted`). Why is shown next to it
+// in the settings window, or in a notification.
+void App::indexMoveFailed(const QString& attempted, const QString& problem)
+{
+    m_indexFolderProblem = problem;
+    if (m_settings.indexFolder == attempted) {
+        m_settings.indexFolder = m_indexFolder;
+        m_settings.save();
+        m_indexOptionsApply.start(); // the folder left out of searches goes back too
+        if (m_settingsEditor)
+            m_settingsEditor->setSettings(m_settings);
+    }
+    if (m_settingsWindow && m_settingsWindow->isVisible())
+        refreshIndexFolder();
+    else
+        m_messages->showNotification(tr("索引没有移动"), problem);
+}
+
+void App::refreshIndexFolder(bool measure)
+{
+    if (!m_settingsEditor)
+        return;
+    if (measure) {
+        m_indexBytes = indexfolder::size(m_indexDir);
+        m_indexOnHardDisk = indexfolder::onSpinningDisk(m_indexDir) == true;
+    }
+    SettingsEditor::IndexFolderState state;
+    state.folder = QDir::toNativeSeparators(m_indexDir);
+    state.isDefault = m_settings.indexFolder.isEmpty();
+    if (m_indexBytes > 0)
+        state.size = QLocale().formattedDataSize(
+            static_cast<qint64>(m_indexBytes), 0, QLocale::DataSizeTraditionalFormat);
+    state.moveProgress = m_index->moving() ? m_indexMoveProgress : -1;
+    state.problem = m_indexFolderProblem;
+    if (m_indexOnHardDisk) // nothing to choose: a hint, not a warning (IndexService::prewarmSoon)
+        state.note = tr("这是机械硬盘：文件名搜索不受影响；内容索引会在后台预读进内存，硬盘休眠后第一次内容搜索可能要等它转起来");
+    m_settingsEditor->setIndexFolderState(state);
 }
 
 void App::handleCommand(const QString& command)

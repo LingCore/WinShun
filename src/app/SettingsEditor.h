@@ -70,6 +70,13 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool restartRequired READ restartRequired NOTIFY changed FINAL)
     Q_PROPERTY(bool isDefault READ isDefault NOTIFY changed FINAL)
     Q_PROPERTY(QString dataFolder READ dataFolder CONSTANT FINAL)
+    // 索引位置 (set by the app): where the index files are, and how moving them goes
+    Q_PROPERTY(QString indexFolder READ indexFolder NOTIFY indexFolderChanged FINAL)
+    Q_PROPERTY(bool indexFolderIsDefault READ indexFolderIsDefault NOTIFY indexFolderChanged FINAL)
+    Q_PROPERTY(QString indexSize READ indexSize NOTIFY indexFolderChanged FINAL)
+    Q_PROPERTY(int indexMoveProgress READ indexMoveProgress NOTIFY indexFolderChanged FINAL) // -1: not moving
+    Q_PROPERTY(QString indexFolderProblem READ indexFolderProblem NOTIFY indexFolderChanged FINAL)
+    Q_PROPERTY(QString indexFolderNote READ indexFolderNote NOTIFY indexFolderChanged FINAL)
 
 public:
     SettingsEditor(const Settings& settings, const QString& runningRenderer, QObject* parent = nullptr);
@@ -133,6 +140,24 @@ public:
     bool isDefault() const;
     QString dataFolder() const { return Settings::dataDir(); }
 
+    // 索引位置, as the app has it.
+    struct IndexFolderState {
+        QString folder; // where the index files are, with native separators
+        bool isDefault = true; // that is Settings::dataDir()
+        QString size; // of the files there, "420 MB"
+        int moveProgress = -1; // percent, while they are being moved
+        QString problem; // why they could not be moved, or are not where the settings say
+        QString note; // worth knowing, nothing wrong: they are on a hard disk
+        bool operator==(const IndexFolderState&) const = default;
+    };
+    void setIndexFolderState(const IndexFolderState& state);
+    QString indexFolder() const { return m_indexFolderState.folder; }
+    bool indexFolderIsDefault() const { return m_indexFolderState.isDefault; }
+    QString indexSize() const { return m_indexFolderState.size; }
+    int indexMoveProgress() const { return m_indexFolderState.moveProgress; }
+    QString indexFolderProblem() const { return m_indexFolderState.problem; }
+    QString indexFolderNote() const { return m_indexFolderState.note; }
+
     bool clipboard() const { return m_settings.clipboard; }
     void setClipboard(bool on);
     bool clipboardWinV() const { return m_settings.clipboardWinV; }
@@ -171,6 +196,10 @@ public:
     Q_INVOKABLE void restoreDefaults();
     Q_INVOKABLE void clearHistory() { emit historyClearRequested(); }
     Q_INVOKABLE void openDataFolder();
+    // The app moves the index files once the setting changes (App::applyIndexFolder).
+    Q_INVOKABLE void chooseIndexFolder(); // asks for the folder
+    Q_INVOKABLE void resetIndexFolder() { setIndexFolder({}); } // back to the default place
+    Q_INVOKABLE void openIndexFolder();
     Q_INVOKABLE void restart() { emit restartRequested(); } // after changing the renderer
 
     // 拾穗计划 page
@@ -183,6 +212,7 @@ signals:
     void changed();
     void hotkeyErrorChanged();
     void contentIndexStatusChanged();
+    void indexFolderChanged();
     void recordingHotkeyChanged(); // the app suspends its hotkeys meanwhile
     void autostartChanged();
     void winVStateChanged();
@@ -194,12 +224,14 @@ signals:
 
 private:
     void commit();
+    void setIndexFolder(const QString& folder);
 
     Settings m_settings;
     QString m_runningRenderer; // resolved: never "auto"
     QString m_hotkeyError;
     int m_historyCount = 0;
     QString m_contentIndexStatus;
+    IndexFolderState m_indexFolderState;
     bool m_recordingHotkey = false;
     QString m_winVState = QStringLiteral("off");
     bool m_canRestartExplorer = false;

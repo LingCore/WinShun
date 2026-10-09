@@ -11,6 +11,7 @@
 #include <QTranslator>
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <optional>
 
@@ -96,10 +97,27 @@ private:
     void prewarmLauncher();
     void finishPrewarm();
     void refreshContentIndexStatus(); // shown in the settings window
+    // 索引位置: the index files go where [Index] Folder says, moved in the
+    // background; when that fails, the setting goes back to where they are.
+    QString startIndexFolder(); // where the index starts out
+    void applyIndexFolder();
+    QString indexFolderProblem(const QString& folder) const; // why the index cannot go there; empty if it can
+    void indexMoved(int error);
+    void indexMoveFailed(const QString& attempted, const QString& problem); // `attempted`: the setting
+    void refreshIndexFolder(bool measure = false); // shown in the settings window; `measure`: its size too
 
     Settings m_settings;
     std::unique_ptr<History> m_history;
     std::unique_ptr<IndexService> m_index;
+    QString m_indexDir; // where the index files are, '/' separated
+    QString m_indexFolder; // the [Index] Folder setting m_indexDir stands for
+    QString m_indexMoveFolder; // ... and the one being moved to
+    QString m_indexMoveDir;
+    bool m_indexMoveMadeDir = false; // the move made that folder: it goes again if the move fails
+    int m_indexMoveProgress = 0;
+    QString m_indexFolderProblem; // shown in the settings window until the next move
+    std::uint64_t m_indexBytes = 0; // of the files in m_indexDir, as last measured
+    bool m_indexOnHardDisk = false; // likewise
     std::unique_ptr<AppCatalog> m_apps; // before the engine, which reads it
     std::unique_ptr<SystemCatalog> m_places; // likewise
     std::unique_ptr<SearchEngine> m_engine;

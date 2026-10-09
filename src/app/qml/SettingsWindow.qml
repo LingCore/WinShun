@@ -1211,8 +1211,87 @@ Window {
                 }
 
                 SettingRow {
+                    id: indexFolderRow
+
+                    readonly property bool moving: window.editor.indexMoveProgress >= 0
+
+                    title: qsTr("索引位置")
+                    description: (window.editor.indexSize.length > 0
+                                  ? qsTr("文件索引和内容索引放在这里，共 %1。C 盘空间紧张时，可以移到其他内置硬盘上（U 盘、移动硬盘不行）").arg(window.editor.indexSize)
+                                  : qsTr("文件索引和内容索引放在这里。C 盘空间紧张时，可以移到其他内置硬盘上（U 盘、移动硬盘不行）"))
+                                 + "\n" + window.editor.indexFolder
+                    bodyShown: moving || window.editor.indexFolderProblem.length > 0 || window.editor.indexFolderNote.length > 0
+
+                    FlatButton {
+                        text: qsTr("打开")
+                        glyph: "" // FolderOpen
+                        enabled: !indexFolderRow.moving
+                        onClicked: window.editor.openIndexFolder()
+                    }
+                    FlatButton {
+                        text: qsTr("更改…")
+                        glyph: "" // MoveToFolder
+                        enabled: !indexFolderRow.moving
+                        onClicked: window.editor.chooseIndexFolder()
+                    }
+                    FlatButton {
+                        visible: !window.editor.indexFolderIsDefault
+                        text: qsTr("恢复默认")
+                        enabled: !indexFolderRow.moving
+                        onClicked: window.editor.resetIndexFolder()
+                    }
+
+                    body: [
+                        Column {
+                            visible: indexFolderRow.moving
+                            width: parent.width
+                            spacing: 6
+
+                            Text {
+                                text: qsTr("正在移动… %1%，期间可以照常搜索").arg(Math.max(0, window.editor.indexMoveProgress))
+                                color: Theme.subtext
+                                font.pixelSize: Theme.fontCaption
+                            }
+                            Rectangle { // how far
+                                width: parent.width
+                                height: 4
+                                radius: 2
+                                color: Theme.track
+
+                                Rectangle {
+                                    width: parent.width * Math.max(0, window.editor.indexMoveProgress) / 100
+                                    height: parent.height
+                                    radius: 2
+                                    color: Theme.accent
+
+                                    Behavior on width { NumberAnimation { duration: 150 } }
+                                }
+                            }
+                        },
+                        Text {
+                            visible: !indexFolderRow.moving && window.editor.indexFolderProblem.length > 0
+                            width: parent.width
+                            text: window.editor.indexFolderProblem
+                            textFormat: Text.PlainText
+                            color: Theme.danger
+                            font.pixelSize: Theme.fontCaption
+                            wrapMode: Text.Wrap
+                        },
+                        Text { // a hint, not a warning
+                            visible: !indexFolderRow.moving && window.editor.indexFolderNote.length > 0
+                            width: parent.width
+                            text: window.editor.indexFolderNote
+                            textFormat: Text.PlainText
+                            color: Theme.subtext
+                            font.pixelSize: Theme.fontCaption
+                            wrapMode: Text.Wrap
+                        }
+                    ]
+                }
+
+                SettingRow {
                     title: qsTr("数据文件夹")
-                    description: qsTr("文件索引、内容索引、搜索记录和日志都存放在这里") + "\n" + window.editor.dataFolder
+                    description: qsTr("搜索记录、剪贴板历史和日志都存放在这里，索引默认也放在这里") + "\n" + window.editor.dataFolder
 
                     FlatButton {
                         text: qsTr("打开")

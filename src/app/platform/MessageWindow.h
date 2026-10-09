@@ -10,8 +10,8 @@ namespace ws {
 
 // A hidden native window that receives what Qt does not handle for us:
 // tray icon events, RegisterHotKey hotkeys, commands from a second instance
-// of the app (WM_COPYDATA) and drives coming and going (WM_DEVICECHANGE). It
-// also restores the tray icon when Explorer restarts.
+// of the app (WM_COPYDATA), drives coming and going (WM_DEVICECHANGE) and
+// Windows resuming. It also restores the tray icon when Explorer restarts.
 class MessageWindow {
 public:
     struct Callbacks {
@@ -23,6 +23,7 @@ public:
         std::function<void()> sessionEnding; // Windows is logging off / shutting down
         std::function<LRESULT(WPARAM, LPARAM)> deviceChange; // WM_DEVICECHANGE (see VolumeNotifier)
         std::function<void()> shellRestarted; // Explorer started again (its taskbar is back)
+        std::function<void()> resumed; // from sleep or hibernation
     };
 
     explicit MessageWindow(Callbacks callbacks);
@@ -53,6 +54,7 @@ private:
     Callbacks m_callbacks;
     HWND m_hwnd = nullptr;
     HICON m_icon = nullptr;
+    HPOWERNOTIFY m_powerNotify = nullptr; // so that resuming is told on every kind of standby
     QString m_tooltip;
     bool m_trayVisible = false;
     UINT m_taskbarCreated = 0;

@@ -16,6 +16,7 @@ qt_add_library(wscore STATIC
     FileIndex.cpp FileIndex.h
     GameGuard.h
     History.cpp History.h
+    IndexFolder.cpp IndexFolder.h
     IndexService.cpp IndexService.h
     NameSearch.cpp NameSearch.h
     Ntfs.cpp Ntfs.h
@@ -40,5 +41,5 @@ qt_add_resources(wscore "places" PREFIX "/winshun" FILES places.txt)
 
 target_include_directories(wscore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(wscore
-    PUBLIC Qt6::Core Qt6::Sql winshun_options
-    PRIVATE kernel32 advapi32 ole32 shell32 shlwapi user32)
+    PUBLIC Qt6::Core Qt6::Sql winshun_options wsextract_api
+    PRIVATE kernel32 advapi32 bcrypt cabinet cfgmgr32 ole32 shell32 shlwapi user32)

@@ -1,12 +1,14 @@
 #include "IndexService.h"
 
+#include "IndexFolder.h"
 #include "Ntfs.h"
 #include "NtfsIndexer.h"
 #include "Snapshot.h"
 #include "Win32Util.h"
 #include "Wtf8.h"
 
-#include <QFileInfo>
+#include <QDir>
+#include <QScopeGuard>
 #include <QtGlobal>
 
 #include <windows.h>
@@ -27,6 +29,16 @@ constexpr std::size_t kApplyBatch = 256; // changes applied per write lock
 constexpr auto kJournalPause = 500ms;
 constexpr std::size_t kMaxJournal = 200'000; // beyond this, just sync again
 constexpr std::size_t kMinCompactSlots = 65'536; // removed items (~40 bytes each) before compacting
+// A save writes the whole index (some 30 MB packed for 3 million names), and
+// what changed after it is replayed from the change journals at the next
+// start anyway. Longer than the 20 idle minutes after which Windows turns a
+// hard disk off (by default), which saves more often would never let it be.
+constexpr auto kSaveInterval = 30min;
+// Sooner when merges left this much of the content index's old segment files,
+// which only go once a snapshot no longer refers to them.
+constexpr std::uint64_t kGarbageBytes = 32 << 20;
+constexpr auto kSaveCheck = 1min;
+constexpr auto kPrewarmAfterStart = 90s; // once logging on has settled
 
 struct Probe {
     DWORD attributes = INVALID_FILE_ATTRIBUTES;
@@ -135,20 +147,21 @@ struct IndexService::Followed {
     std::chrono::steady_clock::time_point resumeAt {}; // the next read starts then
 };
 
-IndexService::IndexService(Options options, QObject* parent)
+IndexService::IndexService(QString folder, Options options, QObject* parent)
     : QObject(parent)
     , m_options(std::move(options))
+    , m_folder(QDir::cleanPath(QDir::fromNativeSeparators(folder)))
 {
     m_crawler.store(std::make_shared<const Crawler>(m_options.rules));
     m_index.store(std::make_shared<FileIndex>());
-    m_content = std::make_shared<ContentIndex>(QFileInfo(m_options.snapshotPath).absolutePath() + u"/content");
+    m_content = std::make_shared<ContentIndex>(indexfolder::contentPath(m_folder));
     ContentIndexer::Source source;
     source.index = [this] { return m_index.load(); };
     source.volumes = [this] { return contentVolumes(); };
     source.ready = [this] { return state() == State::Ready && !m_refreshing.load(); };
     m_contentIndexer = std::make_unique<ContentIndexer>(m_content, std::move(source), m_options.content);
 
-    m_saveTimer.setInterval(10min);
+    m_saveTimer.setInterval(kSaveCheck);
     connect(&m_saveTimer, &QTimer::timeout, this, &IndexService::saveInBackground);
 
     m_resyncTimer.setSingleShot(true);
@@ -183,6 +196,8 @@ void IndexService::start()
 {
     launch(Pass::Startup);
     m_saveTimer.start();
+    m_prewarmer = std::jthread([this](std::stop_token stop) { prewarmLoop(stop); });
+    prewarmSoon(kPrewarmAfterStart);
 }
 
 void IndexService::rebuild()
@@ -306,6 +321,14 @@ void IndexService::shutdown()
     m_resyncTimer.stop();
     m_volumesTimer.stop();
     m_shutdown.request_stop();
+    if (m_mover.joinable()) {
+        m_mover.request_stop(); // a move cut short leaves the files where they were
+        m_mover.join();
+    }
+    if (m_prewarmer.joinable()) {
+        m_prewarmer.request_stop();
+        m_prewarmer.join();
+    }
     m_contentIndexer->stop();
     stopWorker();
     m_watcher.reset();
@@ -369,7 +392,8 @@ void IndexService::run(std::stop_token stop, Pass pass)
     std::optional<CrawlRules> snapshotRules;
     if (pass == Pass::Startup) {
         setState(State::Loading);
-        if (auto contents = snapshot::load(m_options.snapshotPath)) {
+        const std::lock_guard files(m_filesMutex); // a move waits until they are read
+        if (auto contents = snapshot::load(indexfolder::snapshotPath(m_folder))) {
             for (std::size_t i = 0; i < volumes.size(); ++i) {
                 for (std::size_t j = 0; j < contents->volumes.size(); ++j) {
                     if (sameVolume(volumes[i], contents->volumes[j])) {
@@ -723,7 +747,9 @@ bool IndexService::syncWithDisk(std::stop_token stop, const std::vector<std::siz
     ::HeapCompact(::GetProcessHeap(), 0); // hand scratch memory back to the OS
     m_dirty = true;
     setState(State::Ready);
-    saveSnapshot();
+    // Never waits for the files, which a move holds for a while: the GUI
+    // thread may be waiting for this one (stopWorker).
+    saveSnapshot(false);
     return true;
 }
 
@@ -1033,11 +1059,27 @@ void IndexService::applyChanges(FileIndex& index, const std::vector<FsChange>& c
     }
 }
 
-void IndexService::saveSnapshot()
+void IndexService::saveSnapshot(bool wait)
 {
-    std::lock_guard saveLock(m_saveMutex);
+    std::unique_lock files(m_filesMutex, std::defer_lock);
+    if (wait) {
+        files.lock();
+    } else if (!files.try_lock()) {
+        m_dirty = true; // the next periodic save, or the one on exit
+        return;
+    }
+    std::vector<std::uint64_t> segments;
+    if (writeSnapshot(indexfolder::snapshotPath(m_folder), segments) == Save::Written) {
+        m_lastSave = std::chrono::steady_clock::now();
+        m_content->saved(segments);
+    }
+    m_garbageAfterSave = m_content->obsoleteBytes(); // what could not be deleted (or came meanwhile)
+}
+
+IndexService::Save IndexService::writeSnapshot(const QString& path, std::vector<std::uint64_t>& segments)
+{
     if (state() != State::Ready)
-        return; // never persist a half-built index
+        return Save::Skipped; // never persist a half-built index
     const auto index = m_index.load();
     std::vector<VolumeInfo> volumes;
     std::vector<JournalPosition> journals;
@@ -1045,7 +1087,7 @@ void IndexService::saveSnapshot()
     {
         std::lock_guard lock(m_journalMutex);
         if (m_journaling)
-            return; // a sync is under way; it saves when it is done
+            return Save::Skipped; // a sync is under way; it saves when it is done
         volumes = m_volumes;
         journals = m_journals;
         rules = m_rulesBefore ? *m_rulesBefore : crawler()->rules(); // what the index reflects
@@ -1053,7 +1095,6 @@ void IndexService::saveSnapshot()
     m_dirty = false;
     m_content->takeChanged();
     bool saved = false;
-    std::vector<std::uint64_t> segments; // the content index's files the snapshot refers to
     {
         // Streams through a 1 MB buffer into the OS file cache; searches keep
         // running meanwhile (they only need the read lock too). Changes
@@ -1061,19 +1102,139 @@ void IndexService::saveSnapshot()
         // next start, which is harmless. The content index's documents go
         // along, so they always refer to the entries saved with them.
         auto lock = index->readLock();
-        saved = snapshot::save(*index, volumes, journals, rules, m_options.snapshotPath,
+        saved = snapshot::save(*index, volumes, journals, rules, path,
             [&](const std::vector<EntryId>& newIds) { return m_content->serialize(newIds, segments); });
     }
-    if (saved) {
-        m_content->saved(segments);
-    } else {
-        m_dirty = true;
-        qWarning("WinShun: cannot save the index to %ls", qUtf16Printable(m_options.snapshotPath));
+    if (saved)
+        return Save::Written;
+    m_dirty = true;
+    qWarning("WinShun: cannot save the index to %ls", qUtf16Printable(QDir::toNativeSeparators(path)));
+    return Save::Failed;
+}
+
+void IndexService::moveTo(const QString& folder)
+{
+    if (m_stopped || m_moving.exchange(true))
+        return;
+    if (m_mover.joinable())
+        m_mover.join(); // the last move, over already
+    m_mover = std::jthread([this, to = QDir::cleanPath(QDir::fromNativeSeparators(folder))](std::stop_token stop) {
+        const std::error_code error = moveFiles(to, stop);
+        if (error && error.value() != ERROR_CANCELLED)
+            qWarning("WinShun: cannot move the index to %ls (error %d)", qUtf16Printable(QDir::toNativeSeparators(to)),
+                error.value());
+        m_moving = false;
+        if (!error)
+            prewarmSoon(5s); // another disk, maybe a hard one; and the copies may have gone around the cache
+        QMetaObject::invokeMethod(
+            this, [this, code = error.value()] { emit moveFinished(code); }, Qt::QueuedConnection);
+    });
+}
+
+// Copies the files over, writes a fresh snapshot there, then switches to the
+// copies and deletes the originals. Up to the switch the originals are left
+// as they are and stay in use, so a failure (or a shutdown) before it changes
+// nothing.
+std::error_code IndexService::moveFiles(const QString& to, std::stop_token stop)
+{
+    const auto systemError = [](DWORD code) { return std::error_code(static_cast<int>(code), std::system_category()); };
+    // No segment file is written or merged away meanwhile, and no text added.
+    // The journal may still mark documents dirty, which touches no file.
+    m_contentIndexer->pause();
+    const auto resume = qScopeGuard([this] { m_contentIndexer->resume(); });
+    std::unique_lock files(m_filesMutex); // nothing saved or loaded meanwhile
+    const QString from = m_folder;
+    if (stop.stop_requested())
+        return systemError(ERROR_CANCELLED);
+    if (QString::compare(from, to, Qt::CaseInsensitive) == 0)
+        return {};
+
+    int reported = -1;
+    const std::error_code copied = indexfolder::copy(from, to, [&](std::uint64_t done, std::uint64_t total) {
+        const int percent = total > 0 ? static_cast<int>(done * 100 / total) : 100;
+        if (percent != reported) {
+            reported = percent;
+            QMetaObject::invokeMethod(this, [this, percent] { emit moveProgress(percent); }, Qt::QueuedConnection);
+        }
+        return !stop.stop_requested();
+    });
+    if (copied)
+        return stop.stop_requested() ? systemError(ERROR_CANCELLED) : copied;
+
+    // The copies are a whole index already: their snapshot refers to segment
+    // files that are all there. One of the index as it is now replaces it,
+    // unless a sync is under way (which saves once it is done).
+    std::vector<std::uint64_t> segments;
+    const Save saved = writeSnapshot(indexfolder::snapshotPath(to), segments);
+    std::error_code error;
+    if (saved == Save::Failed)
+        error = systemError(ERROR_WRITE_FAULT);
+    else if (stop.stop_requested())
+        error = systemError(ERROR_CANCELLED);
+    else if (!m_content->relocate(indexfolder::contentPath(to)))
+        error = systemError(ERROR_FILE_CORRUPT);
+    if (error) {
+        m_dirty = true; // saved over there only: saved here again
+        indexfolder::remove(to);
+        return error;
     }
+    m_folder = to;
+    if (saved == Save::Written)
+        m_content->saved(segments); // the segment files no snapshot refers to any more go
+    files.unlock();
+    indexfolder::remove(from); // nothing has them open now
+    return {};
+}
+
+void IndexService::prewarmSoon(std::chrono::milliseconds delay)
+{
+    {
+        const std::lock_guard lock(m_prewarmMutex);
+        const auto at = std::chrono::steady_clock::now() + delay;
+        m_prewarmAt = m_prewarmAt ? std::min(*m_prewarmAt, at) : at;
+    }
+    m_prewarmCv.notify_all();
+}
+
+void IndexService::prewarmLoop(std::stop_token stop)
+{
+    for (;;) {
+        std::unique_lock lock(m_prewarmMutex);
+        if (!m_prewarmCv.wait(lock, stop, [this] { return m_prewarmAt.has_value(); }))
+            return;
+        // Until it is due; an earlier request wakes this up.
+        while (std::chrono::steady_clock::now() < *m_prewarmAt) {
+            const auto at = *m_prewarmAt;
+            m_prewarmCv.wait_until(lock, stop, at, [&] { return *m_prewarmAt != at; });
+            if (stop.stop_requested())
+                return;
+        }
+        m_prewarmAt.reset();
+        lock.unlock();
+        prewarm(stop);
+    }
+}
+
+void IndexService::prewarm(std::stop_token stop)
+{
+    const auto cancelled = [&] { return stop.stop_requested() || m_moving.load(); };
+    if (cancelled())
+        return; // a move asks again once it is done
+    QString folder;
+    {
+        const std::lock_guard files(m_filesMutex);
+        folder = m_folder;
+    }
+    if (indexfolder::onSpinningDisk(folder) == false)
+        return; // a solid-state disk reads them in no time when they are needed
+    indexfolder::readIntoCache(m_content->segmentPaths(), cancelled);
 }
 
 void IndexService::saveInBackground()
 {
+    if (std::chrono::steady_clock::now() - m_lastSave.load() < kSaveInterval
+        && m_content->obsoleteBytes() < m_garbageAfterSave + kGarbageBytes)
+        return;
     if (m_content->takeChanged())
         m_dirty = true;
     if (!m_dirty || state() != State::Ready)

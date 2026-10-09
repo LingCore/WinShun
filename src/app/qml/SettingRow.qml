@@ -10,6 +10,7 @@ Item {
     property string description
     default property alias trailing: trailingRow.data
     property alias body: bodyColumn.data
+    property bool bodyShown: true // false: no room is kept for a body with nothing to show now
 
     width: parent ? parent.width : 0
     implicitHeight: content.implicitHeight + 28
@@ -71,7 +72,7 @@ Item {
             id: bodyColumn
             width: parent.width
             spacing: 10
-            visible: children.length > 0
+            visible: row.bodyShown && children.length > 0
         }
     }
 }

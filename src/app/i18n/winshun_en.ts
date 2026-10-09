@@ -926,8 +926,8 @@
         <translation>Data folder</translation>
     </message>
     <message>
-        <source>文件索引、内容索引、搜索记录和日志都存放在这里</source>
-        <translation>The file index, content index, search history and logs are kept here</translation>
+        <source>搜索记录、剪贴板历史和日志都存放在这里，索引默认也放在这里</source>
+        <translation>Search history, clipboard history and logs are kept here, and by default the index too</translation>
     </message>
     <message>
         <source>打开</source>
@@ -1205,6 +1205,70 @@
     <message>
         <source>可以照常搜索，完成后结果会自动更新。</source>
         <translation>You can keep searching. Results update by themselves when it’s done.</translation>
+    </message>
+    <message>
+        <source>那里已有别的文件</source>
+        <translation>other files are in it</translation>
+    </message>
+    <message>
+        <source>%1 里已有别的文件，请选择一个空文件夹</source>
+        <translation>%1 already has other files in it. Choose an empty folder.</translation>
+    </message>
+    <message>
+        <source>%1 盘的剩余空间不够：索引需要 %2，只剩 %3</source>
+        <translation>Not enough free space on drive %1: the index needs %2, only %3 is left.</translation>
+    </message>
+    <message>
+        <source>%1 不在这台电脑的硬盘上</source>
+        <translation>%1 is not on a drive of this PC</translation>
+    </message>
+    <message>
+        <source>找不到 %1 盘</source>
+        <translation>Drive %1 cannot be found</translation>
+    </message>
+    <message>
+        <source>网络位置不能存放索引，请选择这台电脑硬盘上的文件夹</source>
+        <translation>The index cannot be kept on a network location. Choose a folder on a drive of this PC.</translation>
+    </message>
+    <message>
+        <source>%1 盘不能存放索引，请选择这台电脑硬盘上的文件夹</source>
+        <translation>The index cannot be kept on drive %1. Choose a folder on a drive of this PC.</translation>
+    </message>
+    <message>
+        <source>索引已经移好</source>
+        <translation>The index has been moved</translation>
+    </message>
+    <message>
+        <source>现在存放在 %1</source>
+        <translation>It is now kept in %1</translation>
+    </message>
+    <message>
+        <source>没能把索引移到 %1：%2</source>
+        <translation>Could not move the index to %1: %2</translation>
+    </message>
+    <message>
+        <source>索引没有移动</source>
+        <translation>The index was not moved</translation>
+    </message>
+    <message>
+        <source>U 盘、移动硬盘这类外接的磁盘拔下或弹出后就用不了索引了，请选择电脑内置的硬盘</source>
+        <translation>The index would be gone whenever a USB stick or an external drive is unplugged or ejected. Choose a drive built into this PC.</translation>
+    </message>
+    <message>
+        <source>%1 现在用不了，这次先把索引放在默认位置，下次启动 Win顺 时再试。</source>
+        <translation>%1 cannot be used now. The index is kept in the default place this time; WinShun tries again when it next starts.</translation>
+    </message>
+    <message>
+        <source>索引不能放在 %1：%2。已改回默认位置。</source>
+        <translation>The index cannot be kept in %1: %2. It is back in the default place.</translation>
+    </message>
+    <message>
+        <source>索引位置</source>
+        <translation>Index location</translation>
+    </message>
+    <message>
+        <source>这是机械硬盘：文件名搜索不受影响；内容索引会在后台预读进内存，硬盘休眠后第一次内容搜索可能要等它转起来</source>
+        <translation>This is a hard disk. Searching by name is not affected; the content index is read into memory in the background, but after the disk has gone to sleep, the first content search may wait for it to spin up</translation>
     </message>
 </context>
 <context>
