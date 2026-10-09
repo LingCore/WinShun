@@ -71,10 +71,7 @@
 - 在 **全部** 范围里，停止输入后也会搜文件内容，排在文件名结果后面，一行代码照原样找（引号、`*`、`!` 都算）。默认跳过系统、程序目录和 `node_modules` 等。
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/images/content-dark.png">
-    <img src="docs/images/content-light.png" width="720" alt="Win顺 内容搜索：显示命中的那一行和行号">
-  </picture>
+  <img src="docs/images/content.png" width="720" alt="Win顺 内容搜索：一行带标点的代码直接搜，显示命中的那一行">
 </p>
 
 #### 🚀 打开应用
@@ -85,10 +82,7 @@
 - 应用像在开始菜单里一样以普通权限打开；需要时按 `Ctrl+Shift+Enter` 以管理员身份运行。
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/images/apps-dark.png">
-    <img src="docs/images/apps-light.png" width="720" alt="Win顺 应用搜索：输入拼音 guanliqi，任务管理器等应用和设备管理器等系统设置排在一起">
-  </picture>
+  <img src="docs/images/apps.png" width="720" alt="Win顺 应用搜索：输入 fusion，Autodesk Fusion 排在最前，后面是文件">
 </p>
 
 #### 🧭 直达系统设置
@@ -121,6 +115,10 @@
 - 搜索框放在对话框下面；下面放不下搜索框和列表，就放到右边或左边；哪边都放不下，对话框一出现就调矮一点（矮到一定程度还放不下就往上挪），列表不会盖住对话框。设置里也可以固定放在下面、左边或右边，那边放不下时对话框调小一点或挪开。Windows 按程序记住对话框的大小，下次弹出来就是合适的大小。对话框开着时自己拖动、拖大，不会被改回去。
 - 已经输入的文件名保留，键盘焦点也回到原处。搜索框不抢对话框的焦点，跟着对话框移动，切到别的窗口就隐藏；只有这类对话框在最前面时才占用 `Ctrl+G`。两样都能在设置里分别关掉；同时开着 Listary 的话两边都会响应，关掉其中一个就好。
 
+<p align="center">
+  <img src="docs/images/dialog.png" width="600" alt="Win顺 对话框旁的搜索框：在“打开文件夹”对话框下面输入 winshun，列出同名的文件夹">
+</p>
+
 #### 📋 剪贴板历史（可以代替 Win+V）
 
 - 复制过的文字、图片和文件都记下来，随时找回。在设置 → **剪贴板** 里打开“用 Win+V 打开”，`Win+V` 出来的就是 Win顺的剪贴板，代替 Windows 自带的；也可以另设一个组合键，或者从托盘菜单打开。
@@ -129,11 +127,15 @@
 - 在 Win顺 自己的输入框里（搜索框、对话框旁的搜索框、设置里的输入框）按 `Win+V`，选中的文字就填回这个框里光标的位置，多行的变成一行，文件填它的路径；`Esc` 不粘贴，回到这个框，原来打的字和选中的部分都还在。剪贴板就在这个框的正下方打开（下面放不下就开在上面），框留在原处、选中的字一直看得见；启动器下面的列表先收起来，点一下搜索框就回去接着搜。
 - **能搜**：边打字边筛选，支持拼音（`hy` 找到“会议”）；`@程序名` 只看从某个程序复制的（`@wx` 只看微信里复制的）。每条右边的眼睛按钮（或 `Alt+P`）在旁边打开预览：这一条的全文、大图或文件清单，还有它从哪个程序复制、什么时候复制的；再点一次或按 `Esc` 收起。
 - **分类**：按 `Tab` 在 全部 / 文本 / 链接 / 图片 / 文件 之间切换。颜色值（`#3B82F6`、`rgba(…)`、`hsl(…)`，带透明度的也认）显示成色块，半透明的一半不透明、一半垫着棋盘格，一眼看出有多透；预览里列出它的 HEX / RGB / HSL 写法（半透明的再加一行 Qt、Android、XAML 用的 `#AARRGGBB`，透明度在前），点一下就复制；复制的图片、视频、PDF 等文件，预览里显示缩略图。
-- **分组**：`Ctrl+P` 固定一条；右键 → 移到新分组，可以建“常用回复”“代码片段”这样的分组。放进分组的内容一直保留，其余的默认保留最近 1000 条、30 天，可以在设置里改。
+- **分组**：`Ctrl+P` 固定一条；右键 → 移到新分组，可以建“常用回复”“代码片段”这样的分组。放进分组的内容一直保留，其余的默认保留最近 200 条（内存 16 GB 及以下 100 条）、30 天，可以在设置里改（50 到 300 条）。
 - **多选粘贴**：按住 `Ctrl` 点击，或者 `Shift+↑` `Shift+↓`，选中的每一条都标着序号；按 `Enter` 按这个顺序合在一起，一次粘贴出来。选了一条还能接着搜下一条再选（搜“地址”选一条，再搜“电话”选一条）。中间用什么隔开（换行、空格、逗号、Tab、不分隔），在底栏点一下就能换。选的全是文件时，合成一份文件列表粘贴。
 - 按住 `Alt`，前 9 条标出数字，`Alt+1`～`Alt+9` 直接粘贴；`Delete` 删除一条，删错了（删掉整个分组也一样）按 `Ctrl+Z` 撤销。
 - **隐私**：密码管理器复制的密码不会被记录（它们会声明“不要记录”，和 Windows 自带的剪贴板历史遵守的是同一套规则），也可以在设置里列出不记录的程序，或者在托盘菜单里暂停记录。历史只保存在本机（`%LOCALAPPDATA%\WinShun\clipboard`），不上传。
 - Windows 自带的剪贴板历史是开着的，Win顺的剪贴板历史也默认打开；否则在设置 → 剪贴板里打开。接管 `Win+V` 要重启一次资源管理器（设置里有按钮，也可以等下次登录 Windows 时自动生效）；关掉这项或卸载 Win顺 后，`Win+V` 回到 Windows 自带的剪贴板。Windows 剪贴板面板里的表情符号可以改用 `Win+.` 打开。
+
+<p align="center">
+  <img src="docs/images/clipboard.png" width="720" alt="Win顺 剪贴板：左边是历史，右边是选中那一条的预览">
+</p>
 
 #### ⌨️ 全键盘操作
 
@@ -184,10 +186,7 @@
 - 当前版本显示在设置窗口左下角和托盘菜单里；托盘菜单里可以随时 **检查更新…**，设置 → 高级里可以关掉自动检查。
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/images/settings-dark.png">
-    <img src="docs/images/settings-light.png" width="720" alt="Win顺 设置窗口">
-  </picture>
+  <img src="docs/images/settings.png" width="720" alt="Win顺 设置窗口">
 </p>
 
 ### 下载安装
@@ -323,7 +322,7 @@ The interface comes in **English and Simplified Chinese**. It follows the Window
 - `Enter` pastes the entry into the window you were in, `Shift+Enter` as plain text. Text from Word or a web page keeps its formatting; copied files paste into Explorer as files.
 - Type to filter, pinyin included; `@name` keeps to what came from one program. The current entry is shown in full beside the list — the whole text, the picture or the file list — with where and when it was copied.
 - `Tab` switches between All / Text / Links / Pictures / Files. Colour values (`#3B82F6`, `rgba(…)`, `hsl(…)`, with or without alpha) show as swatches, a translucent one half opaque and half over a checkerboard, with their HEX / RGB / HSL notations beside the list (a translucent one also as `#AARRGGBB`, alpha first, as Qt, Android and XAML write it), a click copying one; copied pictures, videos, PDFs and the like show their thumbnails.
-- `Ctrl+P` pins an entry; right-click → Move to a new group makes groups such as “Replies” or “Snippets”. Pinned and grouped entries are kept for good; the rest by default for the latest 1000 and 30 days (see the settings).
+- `Ctrl+P` pins an entry; right-click → Move to a new group makes groups such as “Replies” or “Snippets”. Pinned and grouped entries are kept for good; the rest by default for the latest 200 (100 with 16 GB of memory or less) and 30 days; the settings allow 50 to 300.
 - Pick several with `Ctrl`+click or `Shift+↑` / `Shift+↓`: each shows its number, and `Enter` pastes them as one, in that order, joined by a new line, space, comma, tab or nothing (click the footer to change it). Picks stay while you search for the next one. Files only make one list of files.
 - Hold `Alt` to see the numbers: `Alt+1`…`Alt+9` paste the first nine entries. `Delete` removes one and `Ctrl+Z` brings it back (a removed group too).
 - Passwords from password managers are not kept (they mark them the same way for Windows' own clipboard history); programs can be excluded in the settings, and the tray menu pauses the history. It stays on your PC (`%LOCALAPPDATA%\WinShun\clipboard`).
