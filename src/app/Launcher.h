@@ -3,6 +3,7 @@
 #include "ContentIndex.h"
 #include "ResultModel.h"
 #include "SearchTypes.h"
+#include "WebShortcut.h"
 
 #include <QObject>
 #include <QPointer>
@@ -44,7 +45,7 @@ class Launcher : public QObject {
 public:
     enum Scope { All, Files, Content }; // as ws::Scope
     Q_ENUM(Scope)
-    enum Action { Open, Reveal, RunAsAdmin, CopyPath, CopyName, CopyItem, Recycle, ForgetRecent };
+    enum Action { Open, Reveal, RunAsAdmin, CopyPath, CopyName, CopyItem, Recycle, ForgetRecent, EditWebShortcuts };
     Q_ENUM(Action)
 
     Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places, SearchEngine* engine, History* history,
@@ -72,11 +73,14 @@ public:
     QString placeholder() const;
     QString contentFilesLabel() const; // ".txt / .md / .log 等文件"
     // Whether the current query also looks inside files: always in 内容,
-    // and in 全部 unless the query is name syntax (see contentNeedle()).
+    // and in 全部 unless the query is name syntax or starts with a web
+    // shortcut's keyword (see contentNeedle()).
     bool searchesContent() const { return m_scope == Content || m_withContent; }
 
     void setWindow(QWindow* window) { m_window = window; }
-    void setContentOptions(QStringList extensions, qint64 maxFileBytes, bool inLowPriority);
+    void setContentOptions(
+        QStringList extensions, const ContentSizeLimits& sizeLimits, bool inLowPriority, bool documents);
+    void setWebShortcuts(const WebShortcuts& shortcuts);
     // Off: nothing opened is remembered, and what was is not shown (it stays
     // until cleared in the settings).
     void setRecordHistory(bool on);
@@ -115,6 +119,7 @@ signals:
     void openFailed(const QString& name);
     void contextMenuKeyPressed(); // Menu key / Shift+F10 (arrive as a context-menu event, not a key)
     void historyChanged();
+    void webSettingsRequested(); // the settings window, on its 网页搜索 page
 
 private:
     void search();
@@ -126,6 +131,7 @@ private:
     void perform(const SearchResult& result, Action action);
     void performApp(const SearchResult& app, Action action);
     void performPlace(const SearchResult& place, Action action);
+    void performWeb(const SearchResult& web, Action action);
     void performMany(const SearchResults& items, Action action);
     void remember(const QString& path); // opened: into the history, if it is kept
     void forgetRecent(const QStringList& paths);
@@ -175,6 +181,8 @@ private:
     QStringList m_contentExtensions {QStringLiteral("txt")};
     ContentSizeLimits m_contentSizeLimits;
     bool m_contentInLowPriority = false; // 内容 also looks in system, program and tool folders
+    WebShortcuts m_web;
+    bool m_contentDocuments = true; // and in Word, Excel, PowerPoint and PDF files
 
     QString m_status;
     QString m_flash;

@@ -419,6 +419,14 @@
         <source>确认删除 %1 项</source>
         <translation>Delete %1</translation>
     </message>
+    <message>
+        <source>网页</source>
+        <translation>Web</translation>
+    </message>
+    <message>
+        <source>复制网址</source>
+        <translation>Copy address</translation>
+    </message>
 </context>
 <context>
     <name>ScopeTabs</name>
@@ -1042,6 +1050,53 @@
     <message>
         <source>好</source>
         <translation>OK</translation>
+    </message>
+</context>
+<context>
+    <name>WebShortcutForm</name>
+    <message>
+        <source>关键词</source>
+        <translation>Keyword</translation>
+    </message>
+    <message>
+        <source>例如 gh</source>
+        <translation>Such as gh</translation>
+    </message>
+    <message>
+        <source>名称</source>
+        <translation>Name</translation>
+    </message>
+    <message>
+        <source>例如 GitHub；不填就用网站的域名</source>
+        <translation>Such as GitHub; left empty, the site’s domain</translation>
+    </message>
+    <message>
+        <source>搜索网址</source>
+        <translation>Search address</translation>
+    </message>
+    <message>
+        <source>要搜的文字用 %s 代替。最简单的办法：在这个网站上搜索 %s，再把浏览器地址栏里的网址整个粘贴过来。没有 %s 的网址只能打开，不能搜索</source>
+        <translation>Write %s where the words go. Easiest: search the site for %s, then paste the whole address from the browser’s address bar. An address without %s only opens, it cannot search</translation>
+    </message>
+    <message>
+        <source>主页（可不填）</source>
+        <translation>Home page (optional)</translation>
+    </message>
+    <message>
+        <source>只输入关键词时打开的网址；不填就打开搜索网址所在网站的首页</source>
+        <translation>Opened by the keyword alone; left empty, the search address’s site</translation>
+    </message>
+    <message>
+        <source>添加</source>
+        <translation>Add</translation>
+    </message>
+    <message>
+        <source>保存</source>
+        <translation>Save</translation>
+    </message>
+    <message>
+        <source>取消</source>
+        <translation>Cancel</translation>
     </message>
 </context>
 <context>
@@ -1971,6 +2026,26 @@
         <source>已清除最近使用记录</source>
         <translation>Recent items cleared</translation>
     </message>
+    <message>
+        <source>已复制网址</source>
+        <translation>Address copied</translation>
+    </message>
+    <message>
+        <source>打开网站</source>
+        <translation>Open site</translation>
+    </message>
+    <message>
+        <source>搜索</source>
+        <translation>Search</translation>
+    </message>
+    <message>
+        <source>复制网址</source>
+        <translation>Copy address</translation>
+    </message>
+    <message>
+        <source>编辑网页搜索…</source>
+        <translation>Edit web searches…</translation>
+    </message>
 </context>
 <context>
     <name>ws::ResultModel</name>
@@ -1998,12 +2073,72 @@
         <source>Windows 安全中心</source>
         <translation>Windows Security</translation>
     </message>
+    <message>
+        <source>第 %1 行</source>
+        <translation>Line %1</translation>
+    </message>
+    <message>
+        <source>第 %1 页</source>
+        <translation>Page %1</translation>
+    </message>
+    <message>
+        <source>第 %1 张幻灯片</source>
+        <translation>Slide %1</translation>
+    </message>
+    <message>
+        <source>%1 第 %2 行</source>
+        <translation>%1, row %2</translation>
+    </message>
+    <message>
+        <source>在 %1 中搜索“%2”</source>
+        <translation>Search %1 for “%2”</translation>
+    </message>
+    <message>
+        <source>%1 · 关键词 %2</source>
+        <translation>%1 · keyword %2</translation>
+    </message>
 </context>
 <context>
     <name>ws::SettingsEditor</name>
     <message>
         <source>选择不需要搜索的文件夹</source>
         <translation>Choose a folder to leave out of searches</translation>
+    </message>
+    <message>
+        <source>选择存放索引的文件夹</source>
+        <translation>Choose a folder for the index</translation>
+    </message>
+    <message>
+        <source>这一项已经不在了</source>
+        <translation>This one is no longer there</translation>
+    </message>
+    <message>
+        <source>%1 等</source>
+        <translation>%1 and more</translation>
+    </message>
+    <message>
+        <source>请填写关键词</source>
+        <translation>Enter a keyword</translation>
+    </message>
+    <message>
+        <source>关键词里不能有空格或引号</source>
+        <translation>A keyword cannot have spaces or quotes</translation>
+    </message>
+    <message>
+        <source>关键词“%1”已经给了“%2”</source>
+        <translation>The keyword “%1” already belongs to “%2”</translation>
+    </message>
+    <message>
+        <source>请填写网址</source>
+        <translation>Enter an address</translation>
+    </message>
+    <message>
+        <source>打不开这个网址：它应当以 https:// 开头</source>
+        <translation>Cannot open this address: it should start with https://</translation>
+    </message>
+    <message>
+        <source>打不开主页的网址：它应当以 https:// 开头</source>
+        <translation>Cannot open the home page’s address: it should start with https://</translation>
     </message>
 </context>
 <context>

@@ -31,6 +31,7 @@ qt_add_library(wscore STATIC
     Snapshot.cpp Snapshot.h
     SystemCatalog.cpp SystemCatalog.h
     TextUtil.cpp TextUtil.h
+    WebShortcut.cpp WebShortcut.h
     Win32Util.cpp Win32Util.h
     WorkerPool.cpp WorkerPool.h
     Wtf8.cpp Wtf8.h

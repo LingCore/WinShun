@@ -23,6 +23,7 @@ enum class AppKind : quint8 {
     ControlPanel, // a Control Panel item or task
     Security, // a page of Windows Security
     Tool, // a system tool or folder (WinShun's own list)
+    Web, // a web page or a search on it, by keyword or name (WebShortcut)
 };
 
 struct SearchResult {
@@ -55,9 +56,14 @@ struct SearchResult {
     int snippetMatchStart = -1;
     int snippetMatchLength = 0;
 
+    // Web shortcuts only; `target` is the address to open.
+    QString keyword; // "gh"
+    QString words; // searched for; empty: the site itself
+
     // An app or a place: something to start, not a file (no deleting it).
     bool isApp() const noexcept { return app != AppKind::None; }
     bool isPlace() const noexcept { return app >= AppKind::Setting; }
+    bool isWeb() const noexcept { return app == AppKind::Web; }
     bool isPackagedApp() const noexcept
     {
         return app == AppKind::Store || app == AppKind::System || app == AppKind::Package;

@@ -4,6 +4,7 @@
 
 #include <QObject>
 #include <QPointer>
+#include <QVariantList>
 #include <QWindow>
 #include <QtQml/qqmlregistration.h>
 
@@ -62,6 +63,8 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool clipboardImages READ clipboardImages WRITE setClipboardImages NOTIFY changed FINAL)
     Q_PROPERTY(QStringList clipboardExcludedApps READ clipboardExcludedApps NOTIFY changed FINAL)
     Q_PROPERTY(int clipboardCount READ clipboardCount NOTIFY clipboardCountChanged FINAL)
+    // 网页搜索: for each, {keyword, name, url, home, searches, shownUrl, shownHome}
+    Q_PROPERTY(QVariantList webShortcuts READ webShortcuts NOTIFY changed FINAL)
     Q_PROPERTY(QString renderer READ renderer WRITE setRenderer NOTIFY changed FINAL)
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY changed FINAL)
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY changed FINAL)
@@ -179,6 +182,8 @@ public:
     int clipboardCount() const { return m_clipboardCount; }
     void setClipboardCount(int count); // set by the app
 
+    QVariantList webShortcuts() const;
+
     void setSettings(const Settings& settings); // the file was changed outside this editor
     void setWindow(QWindow* window) { m_window = window; }
 
@@ -191,6 +196,14 @@ public:
     Q_INVOKABLE void removeContentExtension(int index);
     Q_INVOKABLE bool addClipboardExcludedApp(const QString& name); // "KeePass", "keepass.exe"
     Q_INVOKABLE void removeClipboardExcludedApp(int index);
+    Q_INVOKABLE bool addDoubleCtrlExcludedApp(const QString& name); // "TheFinals", "thefinals.exe"
+    Q_INVOKABLE void removeDoubleCtrlExcludedApp(int index);
+    // Adds a web shortcut (`index` -1) or changes the one at `index`. Returns
+    // why it cannot be saved, or an empty string once it is.
+    Q_INVOKABLE QString saveWebShortcut(
+        int index, const QString& keyword, const QString& name, const QString& url, const QString& home);
+    Q_INVOKABLE void removeWebShortcut(int index);
+    Q_INVOKABLE void openWebShortcut(int index); // its site, to try it
     Q_INVOKABLE void clearClipboard() { emit clipboardClearRequested(); } // what is in no group
     Q_INVOKABLE void restartExplorer() { emit explorerRestartRequested(); }
     Q_INVOKABLE void restoreDefaults();

@@ -14,6 +14,7 @@ Rectangle {
     signal editingFinished()
 
     function clear() { input.text = "" }
+    function takeFocus() { input.forceActiveFocus() }
 
     implicitWidth: 220
     implicitHeight: 36

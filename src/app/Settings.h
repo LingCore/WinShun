@@ -2,6 +2,7 @@
 
 #include "ContentIndex.h"
 #include "Crawler.h"
+#include "WebShortcut.h"
 
 #include <QString>
 #include <QStringList>
@@ -59,6 +60,11 @@ struct Settings {
     int clipboardMaxDays = 30; // since last copied or pasted; 0 = no limit
     bool clipboardImages = true;
     QStringList clipboardExcludedApps; // program files whose copies are not kept, "KeePass.exe"
+
+    // [WebSearch]: keywords the user gives web pages ("gh" opens GitHub, "gh
+    // WinShun" searches it; see WebShortcut). At first just one, "winshun".
+    // Written as an array: size=, 1\Keyword=, 1\Name=, 1\Url=, 1\Home=.
+    WebShortcuts webShortcuts;
 
     static Settings defaults();
     static bool exists(); // false on the very first run

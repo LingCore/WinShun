@@ -213,6 +213,15 @@ void Launcher::setContentOptions(
     emit scopeChanged(); // placeholder text mentions the extensions
 }
 
+void Launcher::setWebShortcuts(const WebShortcuts& shortcuts)
+{
+    if (shortcuts == m_web)
+        return;
+    m_web = shortcuts;
+    if (m_window && m_window->isVisible() && m_scope == All && !m_query.trimmed().isEmpty())
+        search();
+}
+
 void Launcher::handleShown()
 {
     m_statusPoll.start();
@@ -293,6 +302,7 @@ void Launcher::search()
     request.scope = static_cast<ws::Scope>(m_scope);
     if (m_recordHistory)
         request.history = m_history->items();
+    request.web = m_web;
     m_requestId = m_engine->submit(std::move(request)); // also stops a running content scan
     m_pending = true;
     m_contentRunning = false;
@@ -314,13 +324,18 @@ void Launcher::showRows(SearchResults rows, QStringList highlights)
 }
 
 
-// 全部 looks for the typed text inside files too, as one phrase (quotes
-// dropped). Not for name syntax: wildcards, ext: and !exclusions only make
-// sense for names.
+// 全部 looks for the typed text inside files too, as typed: a line of code
+// keeps its quotes, stars and exclamation marks (printf("%d", *p)). Quotes
+// around the whole of it only make it one phrase, as for names. Not for name
+// syntax (ext:, wildcards, !exclusions: "*.log", "report !draft"), unless the
+// text reads as code anyway ("if (!ok)", "char* p = s;"). Nor after a web
+// shortcut's keyword: that is a search on the web ("gh WinShun"), and
+// reading files for it only costs time.
 QString Launcher::contentNeedle() const
 {
-    const ParsedQuery query = ws::parseQuery(m_query);
-    if (query.terms.empty() || !query.extensions.empty())
+    const QString text = m_query.trimmed();
+    const ParsedQuery query = ws::parseQuery(text);
+    if (query.terms.empty() || typedKeyword(m_web, m_query))
         return {};
     const bool nameSyntax = !query.extensions.empty()
         || std::any_of(query.terms.cbegin(), query.terms.cend(), [](const QueryTerm& t) { return t.negated || t.wildcard; });
@@ -583,6 +598,14 @@ void Launcher::clearSelection()
 void Launcher::perform(const SearchResult& result, Action action)
 {
     const SearchResult r = result; // the model may change underneath us
+    if (action == EditWebShortcuts) {
+        emit webSettingsRequested();
+        return;
+    }
+    if (r.isWeb()) {
+        performWeb(r, action);
+        return;
+    }
     if (r.isPlace()) {
         performPlace(r, action);
         return;
@@ -638,6 +661,8 @@ void Launcher::perform(const SearchResult& result, Action action)
         });
         break;
     }
+    case EditWebShortcuts:
+        break; // not for a file
     }
 }
 
@@ -686,8 +711,9 @@ void Launcher::performApp(const SearchResult& app, Action action)
     case ForgetRecent:
         forgetRecent({app.path});
         break;
-    case Recycle:
-        break; // apps are uninstalled in Windows Settings
+    case Recycle: // apps are uninstalled in Windows Settings
+    case EditWebShortcuts:
+        break;
     }
 }
 
@@ -719,6 +745,37 @@ void Launcher::performPlace(const SearchResult& place, Action action)
         forgetRecent({place.path});
         break;
     case Recycle:
+    case EditWebShortcuts:
+        break;
+    }
+}
+
+// A web shortcut's site or search opens in the default browser, with the
+// user's normal rights like everything else. Nothing of it is remembered:
+// what one searches the web for stays out of the list of recent items.
+void Launcher::performWeb(const SearchResult& web, Action action)
+{
+    switch (action) {
+    case Open:
+    case RunAsAdmin:
+        shell::openUrl(web.target);
+        emit dismissRequested();
+        break;
+    case Reveal:
+        flash(tr("“%1”没有可以打开的位置").arg(web.name));
+        break;
+    case CopyItem:
+    case CopyPath:
+        shell::copyText(web.target);
+        flash(tr("已复制网址"));
+        break;
+    case CopyName:
+        shell::copyText(web.name);
+        flash(tr("已复制名称"));
+        break;
+    case ForgetRecent:
+    case Recycle:
+    case EditWebShortcuts: // see perform()
         break;
     }
 }
@@ -734,6 +791,13 @@ void Launcher::performMany(const SearchResults& items, Action action)
         const bool admin = action == RunAsAdmin;
         int started = 0;
         for (const SearchResult& r : items) {
+            if (r.isWeb()) {
+                if (admin)
+                    continue;
+                shell::openUrl(r.target);
+                ++started;
+                continue; // not remembered (see performWeb)
+            }
             if (r.isPlace()) {
                 if (admin)
                     continue;
@@ -846,6 +910,9 @@ void Launcher::performMany(const SearchResults& items, Action action)
         });
         break;
     }
+    case EditWebShortcuts:
+        emit webSettingsRequested();
+        break;
     }
 }
 
@@ -985,6 +1052,16 @@ QVariantList Launcher::menuItems(int row) const
     // Glyphs: Segoe Fluent Icons / MDL2 Assets, or the name of an icon
     // Glyph.qml draws.
     QVariantList items;
+    if (r->isWeb()) {
+        items.append(r->words.isEmpty() ? entry(Open, tr("打开网站"), u"Enter"_s, u"\uE774"_s) // Globe
+                                        : entry(Open, tr("搜索"), u"Enter"_s, u"\uE721"_s)); // Search
+        items.append(separator);
+        items.append(entry(CopyPath, tr("复制网址"), u"Ctrl+Shift+C"_s, u"copyPath"_s));
+        items.append(entry(CopyName, tr("复制名称"), QString(), u"\uE8AC"_s));
+        items.append(separator);
+        items.append(entry(EditWebShortcuts, tr("编辑网页搜索…"), QString(), u"\uE70F"_s)); // Edit
+        return items;
+    }
     if (r->isPlace()) {
         items.append(entry(Open, tr("打开"), u"Enter"_s, u"\uE8A7"_s)); // OpenInNewWindow
         items.append(separator);

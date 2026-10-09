@@ -9,6 +9,7 @@ import WinShun
 // program file, if it has one), copy path. A place in Windows (a page of
 // Settings, a Control Panel task, a system tool) is tagged "系统", says where
 // in Windows it is, and has only the copy button, which copies its command.
+// A web shortcut's site or search is tagged "网页" and copies its address.
 Item {
     id: row
 
@@ -24,7 +25,8 @@ Item {
     required property string location // of a content match: "第 3 行", "第 2 页"
     required property bool recent
     required property bool isApp // or a place
-    required property bool place
+    required property bool place // or a web page
+    required property bool web
     required property bool packagedApp
     required property bool elevatable
     required property bool revealable
@@ -188,7 +190,7 @@ Item {
             id: badgeText
             anchors.horizontalCenter: parent.horizontalCenter
             y: row.onPixel((badge.height - height) / 2)
-            text: row.recent ? qsTr("最近") : row.place ? qsTr("系统") : qsTr("应用")
+            text: row.recent ? qsTr("最近") : row.web ? qsTr("网页") : row.place ? qsTr("系统") : qsTr("应用")
             color: Theme.accent
             font.pixelSize: Theme.fontCaption
         }
@@ -242,7 +244,7 @@ Item {
             RowAction {
                 id: copyPathAction
                 glyph: "copyPath" // drawn by Glyph: a box holding "\\.."
-                tip: row.place ? qsTr("复制打开命令") : qsTr("复制完整路径")
+                tip: row.web ? qsTr("复制网址") : row.place ? qsTr("复制打开命令") : qsTr("复制完整路径")
                 tipShortcut: "Ctrl+Shift+C"
                 onClicked: row.actionRequested(row.index, Launcher.CopyPath)
             }

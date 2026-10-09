@@ -4,6 +4,7 @@
 #include "FileIconProvider.h"
 #include "Pinyin.h"
 #include "SystemCatalog.h"
+#include "WebShortcut.h"
 #include "Wtf8.h"
 
 #include <QGuiApplication>
@@ -47,11 +48,24 @@ QString parentFolder(const QString& path)
     return folder;
 }
 
+// A web search's row reads 在 GitHub 中搜索“WinShun”; `words`: where they are in it.
+QString webSearchTitle(const SearchResult& r, std::pair<qsizetype, qsizetype>* words = nullptr)
+{
+    const QString title = ResultModel::tr("在 %1 中搜索“%2”").arg(r.name, r.words);
+    if (words)
+        *words = {title.lastIndexOf(r.words), r.words.size()};
+    return title;
+}
+
 // The second line of an app's row: the program it starts, or where it comes
-// from. A place's: where in Windows it is, or a tool's command.
+// from. A place's: where in Windows it is, or a tool's command. A web
+// shortcut's: the address it opens, and for its site the keyword.
 QString appOrigin(const SearchResult& r)
 {
     switch (r.app) {
+    case AppKind::Web:
+        return r.words.isEmpty() ? ResultModel::tr("%1 · 关键词 %2").arg(displayWebUrl(r.target), r.keyword)
+                                 : displayWebUrl(r.target);
     case AppKind::Store:
         return ResultModel::tr("Microsoft Store 应用");
     case AppKind::System:
@@ -106,8 +120,13 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
         return {};
     switch (role) {
     case NameRole:
-        return r->name;
+        return r->isWeb() && !r->words.isEmpty() ? webSearchTitle(*r) : r->name;
     case NameHtmlRole: {
+        if (r->isWeb() && !r->words.isEmpty()) { // the words stand out, whatever the query's terms
+            std::pair<qsizetype, qsizetype> words;
+            const QString title = webSearchTitle(*r, &words);
+            return highlighted(title, {words}, m_highlightColor);
+        }
         QList<std::pair<qsizetype, qsizetype>> ranges;
         for (const QString& term : m_highlights) {
             const qsizetype i = r->name.indexOf(term, 0, Qt::CaseInsensitive);
@@ -129,6 +148,8 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
     case IsDirRole:
         return r->isDir;
     case IconRole:
+        if (r->isWeb())
+            return FileIconProvider::webIconUrl(r->target);
         if (r->isApp()) {
             const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
             if (r->isPlace() && r->icon.startsWith(u"app:")) // the logo of Settings, of Windows Security
@@ -152,6 +173,8 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
         return r->isApp();
     case PlaceRole:
         return r->isPlace();
+    case WebRole:
+        return r->isWeb();
     case PackagedAppRole:
         return r->isPackagedApp();
     case ElevatableRole:
@@ -182,6 +205,7 @@ QHash<int, QByteArray> ResultModel::roleNames() const
         {RecentRole, "recent"},
         {IsAppRole, "isApp"},
         {PlaceRole, "place"},
+        {WebRole, "web"},
         {PackagedAppRole, "packagedApp"},
         {ElevatableRole, "elevatable"},
         {RevealableRole, "revealable"},
@@ -300,8 +324,29 @@ void ResultModel::clear()
 
 void ResultModel::retranslate()
 {
-    if (!m_items.isEmpty())
-        emit dataChanged(index(0), index(count() - 1), {FolderRole});
+    if (!m_items.isEmpty()) // a web search's title and a content match's place ("第 2 页") too
+        emit dataChanged(index(0), index(count() - 1), {FolderRole, NameRole, NameHtmlRole, LocationRole});
+}
+
+QString ResultModel::location(const SearchResult& r)
+{
+    using Where = SearchResult::Where;
+    switch (r.where) {
+    case Where::Line:
+        return r.line > 0 ? tr("第 %1 行").arg(r.line) : QString();
+    case Where::Document:
+        return {};
+    case Where::Page:
+        return tr("第 %1 页").arg(r.placeNumber);
+    case Where::Slide:
+        return tr("第 %1 张幻灯片").arg(r.placeNumber);
+    case Where::Row: {
+        constexpr qsizetype kSheetChars = 12; // a long sheet name would squeeze the snippet
+        const QString sheet = r.sheet.size() > kSheetChars ? r.sheet.left(kSheetChars - 1) + u'…' : r.sheet;
+        return sheet.isEmpty() ? tr("第 %1 行").arg(r.placeNumber) : tr("%1 第 %2 行").arg(sheet).arg(r.placeNumber);
+    }
+    }
+    return {};
 }
 
 bool ResultModel::isSelected(int row) const
@@ -362,7 +407,7 @@ void ResultModel::setHighlightColor(const QColor& color)
         return;
     m_highlightColor = color;
     emit highlightColorChanged();
-    if (!m_items.isEmpty())
+    if (!m_items.isEmpty()) // a web search's title too, and where content matches are
         emit dataChanged(index(0), index(count() - 1), {NameHtmlRole, SnippetHtmlRole});
 }
 

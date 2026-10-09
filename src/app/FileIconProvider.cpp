@@ -7,6 +7,7 @@
 #include <QFileInfo>
 #include <QPainter>
 #include <QRegularExpression>
+#include <QUrl>
 
 #include <windows.h>
 // commctrl.h must precede commoncontrols.h (IImageList types).
@@ -14,6 +15,7 @@
 #include <commoncontrols.h>
 #include <shellapi.h>
 #include <shlobj.h>
+#include <shlwapi.h>
 #include <shobjidl.h>
 #include <wrl/client.h>
 
@@ -214,6 +216,22 @@ QImage placeIcon(const QString& icon, int size)
     return shellItemIcon(win32::expandEnvironment(icon.toStdWString()), size);
 }
 
+// The program that opens links of a scheme ("https": the default browser,
+// as the user chose it), else an Internet shortcut's icon.
+QImage schemeIcon(const QString& scheme, int size)
+{
+    wchar_t program[MAX_PATH] {};
+    DWORD length = MAX_PATH;
+    if (::AssocQueryStringW(ASSOCF_IS_PROTOCOL, ASSOCSTR_EXECUTABLE, reinterpret_cast<const wchar_t*>(scheme.utf16()),
+            L"open", program, &length)
+        == S_OK) {
+        // A packaged browser's program may be unreadable: then the shortcut's.
+        if (QImage image = shellItemIcon(program, size); !image.isNull())
+            return image;
+    }
+    return shellIcon(L"file.url", FILE_ATTRIBUTE_NORMAL, true, size);
+}
+
 // A packaged app's logo file for this size and theme (see AppLogo.h). Logos
 // made to sit on a plate get it: a rounded square in the app's colour.
 QImage packagedAppLogo(const QString& appId, int size, bool dark)
@@ -275,6 +293,15 @@ QString FileIconProvider::placeIconUrl(const QString& icon)
     return u"image://fileicon/place/"_s + encode(icon);
 }
 
+QString FileIconProvider::webIconUrl(const QString& url)
+{
+    // One icon per scheme: every https page shows the browser's.
+    QString scheme = QUrl(url, QUrl::TolerantMode).scheme();
+    if (scheme.isEmpty())
+        scheme = u"https"_s;
+    return u"image://fileicon/web/"_s + encode(scheme);
+}
+
 QImage FileIconProvider::requestImage(const QString& id, QSize* size, const QSize& requestedSize)
 {
     thread_local ComApartment com; // SHGetFileInfo requires COM on the calling thread
@@ -322,6 +349,8 @@ QImage FileIconProvider::requestImage(const QString& id, QSize* size, const QSiz
         image = placeIcon(decode(QStringView(id).mid(6)), px);
         if (image.isNull()) // Control Panel's own
             image = shellItemIcon(L"shell:::{26EE0668-A00A-44D7-9371-BEB064C98683}", px);
+    } else if (id.startsWith(u"web/")) {
+        image = schemeIcon(decode(QStringView(id).mid(4)), px);
     }
     if (image.isNull())
         image = shellIcon(L"file", FILE_ATTRIBUTE_NORMAL, true, px);

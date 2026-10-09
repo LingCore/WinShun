@@ -2,6 +2,7 @@
 
 #include "ContentIndex.h"
 #include "SearchTypes.h"
+#include "WebShortcut.h"
 #include "WorkerPool.h"
 
 #include <QObject>
@@ -23,8 +24,8 @@ class SystemCatalog;
 
 // Runs searches on a worker thread. Only the newest request matters: a new
 // submit() cancels whatever is running, so typing never queues up work.
-// Name searches also go through the installed apps and the places in
-// Windows (`apps` and `places` may be null).
+// Name searches also go through the installed apps, the places in Windows
+// (`apps` and `places` may be null) and the web shortcuts.
 // Signals are emitted from the worker thread (queued to the receivers).
 class SearchEngine : public QObject {
     Q_OBJECT
@@ -44,6 +45,8 @@ public:
         // Files read at once (each open waits for the antivirus, so more
         // than processors). Asked for (内容): many; 全部's own: a few.
         int contentThreads = 4;
+        // 全部: a keyword typed first puts its page or search on top; names find them too.
+        WebShortcuts web;
     };
 
     explicit SearchEngine(

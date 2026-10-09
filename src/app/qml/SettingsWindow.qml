@@ -19,13 +19,15 @@ Window {
         { title: qsTr("外观"), glyph: "\uE771" }, // Personalize
         { title: qsTr("搜索范围"), glyph: "" }, // Folder
         { title: qsTr("文件内容搜索"), glyph: "" }, // Document
+        { title: qsTr("网页搜索"), glyph: "\uE774" }, // Globe
         { title: qsTr("剪贴板"), glyph: "\uE77F" }, // Paste
         { title: qsTr("高级"), glyph: "" }, // Settings
         { title: Gleaning.title, gleaning: true } // the author's works, set apart at the bottom of the list
     ]
-    readonly property int gleaningPage: 6
-    readonly property int clipboardPage: 4
-    readonly property int advancedPage: 5 // where the updates are
+    readonly property int gleaningPage: 7
+    readonly property int webPage: 4
+    readonly property int clipboardPage: 5
+    readonly property int advancedPage: 6 // where the updates are
     property int currentPage: 0
     // On the 拾穗计划 page the whole window, sidebar included, is a warm scene.
     readonly property bool warm: currentPage === gleaningPage
@@ -52,6 +54,7 @@ Window {
 
     function showUpdateDialog() { updateDialog.show() } // App::showUpdate
     function showClipboardPage() { showPage(clipboardPage) } // App::showClipboardSettings
+    function showWebPage() { showPage(webPage) } // App::showWebSettings
 
     // "刚刚", "5 分钟前": when the last update check was.
     property date now: new Date()
@@ -940,6 +943,193 @@ Window {
                     ToggleSwitch {
                         checked: window.editor.contentIndex
                         onToggled: (on) => window.editor.contentIndex = on
+                    }
+                }
+            }
+
+            SettingsSection {
+                id: webSection
+
+                // The shortcut being changed in its row; -1: a new one, at the end of the list; -2: none.
+                property int editing: -2
+
+                visible: window.currentPage === window.webPage
+                width: parent.width
+                note: qsTr("给常去的网页起个关键词：在搜索框的“全部”里输入它，按 Enter 就打开。网址里带 %s 的还能搜索：关键词后面加空格和要搜的文字，按 Enter 就在那个网站上搜。例如关键词 gh、网址 https://github.com/search?q=%s，输入 gh WinShun 就在 GitHub 上搜索 WinShun。")
+
+                onVisibleChanged: if (!visible) editing = -2
+
+                SettingRow {
+                    title: qsTr("关键词")
+                    description: qsTr("不输关键词，输入名称也能找到它；中文名称也可以打拼音")
+
+                    FlatButton {
+                        text: qsTr("添加")
+                        glyph: "\uE710" // Add
+                        enabled: webSection.editing !== -1
+                        onClicked: webSection.editing = -1
+                    }
+
+                    body: Rectangle {
+                        width: parent.width
+                        height: Math.max(webList.implicitHeight, 40)
+                        radius: 4
+                        color: "transparent"
+                        border.width: 1
+                        border.color: Theme.cardBorder
+
+                        Text {
+                            visible: window.editor.webShortcuts.length === 0 && webSection.editing !== -1
+                            anchors.centerIn: parent
+                            text: qsTr("还没有网页搜索，点“添加”加一个")
+                            color: Theme.faint
+                            font.pixelSize: Theme.fontCaption
+                        }
+
+                        Column {
+                            id: webList
+                            width: parent.width
+
+                            Repeater {
+                                model: window.editor.webShortcuts
+
+                                delegate: Item {
+                                    id: webRow
+
+                                    required property int index
+                                    required property var modelData
+                                    readonly property bool editing: webSection.editing === index
+
+                                    width: webList.width
+                                    height: editing ? webForm.implicitHeight : 58
+
+                                    Rectangle {
+                                        visible: !webRow.editing
+                                        anchors.fill: parent
+                                        anchors.margins: 1
+                                        radius: 3
+                                        color: webArea.containsMouse ? Theme.navHover : "transparent"
+                                    }
+                                    Rectangle {
+                                        visible: webRow.index > 0
+                                        x: 12
+                                        width: parent.width - 24
+                                        height: 1
+                                        color: Theme.divider
+                                    }
+                                    MouseArea {
+                                        id: webArea
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        acceptedButtons: Qt.NoButton
+                                    }
+
+                                    Rectangle { // the keyword, as keys to press
+                                        id: keycap
+                                        visible: !webRow.editing
+                                        x: 12
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: Math.max(44, keywordText.implicitWidth + 16)
+                                        height: 26
+                                        radius: 4
+                                        color: Theme.keycap
+                                        border.width: 1
+                                        border.color: Theme.keycapBorder
+
+                                        Text {
+                                            id: keywordText
+                                            anchors.centerIn: parent
+                                            text: webRow.modelData.keyword
+                                            textFormat: Text.PlainText
+                                            color: Theme.text
+                                            font.pixelSize: Theme.fontCaption
+                                        }
+                                    }
+                                    Column {
+                                        visible: !webRow.editing
+                                        anchors.left: keycap.right
+                                        anchors.leftMargin: 12
+                                        anchors.right: webButtons.left
+                                        anchors.rightMargin: 8
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        spacing: 2
+
+                                        Text {
+                                            width: parent.width
+                                            text: webRow.modelData.name
+                                            textFormat: Text.PlainText
+                                            color: Theme.text
+                                            font.pixelSize: Theme.fontBody
+                                            elide: Text.ElideRight
+                                        }
+                                        Text {
+                                            width: parent.width
+                                            text: webRow.modelData.searches ? webRow.modelData.shownUrl
+                                                  : qsTr("%1 · 只能打开，不能搜索").arg(webRow.modelData.shownUrl)
+                                            textFormat: Text.PlainText
+                                            color: Theme.subtext
+                                            font.pixelSize: Theme.fontCaption
+                                            elide: Text.ElideMiddle
+                                        }
+                                    }
+                                    Row {
+                                        id: webButtons
+                                        visible: !webRow.editing
+                                        anchors.right: parent.right
+                                        anchors.rightMargin: 6
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        spacing: 2
+
+                                        FlatButton {
+                                            implicitHeight: 32
+                                            flat: true
+                                            text: qsTr("打开")
+                                            onClicked: window.editor.openWebShortcut(webRow.index)
+                                        }
+                                        FlatButton {
+                                            implicitHeight: 32
+                                            flat: true
+                                            text: qsTr("编辑")
+                                            onClicked: webSection.editing = webRow.index
+                                        }
+                                        FlatButton {
+                                            implicitHeight: 32
+                                            flat: true
+                                            text: qsTr("移除")
+                                            onClicked: {
+                                                const removed = webRow.index
+                                                if (webSection.editing === removed)
+                                                    webSection.editing = -2
+                                                else if (webSection.editing > removed)
+                                                    webSection.editing -= 1 // the one being changed moves up
+                                                window.editor.removeWebShortcut(removed)
+                                            }
+                                        }
+                                    }
+
+                                    Loader {
+                                        id: webForm
+                                        active: webRow.editing
+                                        width: parent.width
+                                        sourceComponent: WebShortcutForm {
+                                            editor: window.editor
+                                            index: webRow.index
+                                            shortcut: webRow.modelData
+                                            onFinished: webSection.editing = -2
+                                        }
+                                    }
+                                }
+                            }
+
+                            Loader { // adding one
+                                active: webSection.editing === -1
+                                width: parent.width
+                                sourceComponent: WebShortcutForm {
+                                    editor: window.editor
+                                    onFinished: webSection.editing = -2
+                                }
+                            }
+                        }
                     }
                 }
             }

@@ -104,6 +104,12 @@
   </picture>
 </p>
 
+#### 🌐 网页搜索
+
+- 给常去的网页起个关键词，输入它按 Enter 就打开。自带一个示例：输入 `winshun` 打开 Win顺 的 GitHub 仓库。其余的在 设置 → 网页搜索 里自己加、改、删。
+- 网址里用 `%s` 代表要搜的文字，就能直接搜索：关键词 `gh`、网址 `https://github.com/search?q=%s`，输入 `gh WinShun` 按 Enter 就在 GitHub 上搜索 WinShun。搜索网址最简单的拿法：在那个网站上搜一下 `%s`，把浏览器地址栏里的网址整个粘贴进来。
+- 不输关键词，输入名称也能找到（中文名称可以打拼音），标着“网页”，和应用排在一起。用默认浏览器打开；搜过什么不会记进最近使用。
+
 #### 📂 “打开”“另存为”对话框：搜一下就到
 
 - 别的程序弹出“打开”“另存为”对话框时（网页上传文件、另存为、选择文件夹都算），下面会贴着一个 Win顺 搜索框：输入文件夹或文件的名字（拼音也行），回车，对话框直接转过去。选的是文件，就转到它所在的文件夹并填好文件名，再按一次回车就能打开或上传；“打开”对话框里按 `Ctrl+Enter` 一步打开。对话框选了文件类型（比如只收图片的上传框）时，这类文件排在前面。
@@ -163,7 +169,8 @@
 - **打开 Win顺**：双击 Ctrl 开关、玩游戏时或全屏时不响应、不响应双击 Ctrl 的程序、另设一个组合键、对话框里的 `Ctrl+G` 和搜索框、搜索框的位置、对话框自动转过去、不显示搜索框的程序、开机自动启动、是否记住打开过的项目、清除最近使用记录。
 - **外观**：主题（跟随系统 / 浅色 / 深色）、透明效果（关 / 开；默认内存超过 16 GB 时开）、界面语言（跟随系统 / 简体中文 / English），切换即时生效。
 - **搜索范围**：不搜索的文件夹、任何位置都跳过的文件夹名称（如 `node_modules`）、是否包括 U 盘和移动硬盘。
-- **文件内容搜索**：要搜索内容的文件类型、文件大小上限、是否也搜系统和程序文件夹、是否建立内容索引。
+- **文件内容搜索**：是否搜索文档（Word、Excel、PowerPoint、PDF、WPS）、要搜索的纯文本类型、各类文件的大小上限、是否也搜系统和程序文件夹、是否建立内容索引。
+- **网页搜索**：每个网页的关键词、名称、网址和主页（添加、编辑、移除、打开试一下）。
 - **剪贴板**：是否记录剪贴板历史、用 `Win+V` 打开（代替 Windows 自带的）、另设一个组合键、是否记录图片、保留多少条和多久、不记录的程序、清除剪贴板历史。
 - **高级**：检查更新、是否自动检查更新、界面绘制方式（省内存 / 显卡加速；默认内存 8 GB 及以上用显卡加速）、恢复默认设置。
 
@@ -290,6 +297,12 @@ The interface comes in **English and Simplified Chinese**. It follows the Window
 - 适配器 (adapter), 网卡 (network card) or `ncpa.cpl` all open Network Connections: pages of Settings and Control Panel items and tasks (about 1,200) are found by name and by keyword, pinyin included, in the language Windows displays.
 - The keywords come from the settings index that ships with Windows (what the Start menu searches). WinShun adds everyday words for them and tools and folders the Start menu lacks: Disk Management, Group Policy, Local Users and Groups, the Startup folder, the folder of the hosts file, AppData and more.
 - In **全部 (All)** they sit with the apps, tagged “系统 (System)”, five at most, and open with normal rights; Windows asks for administrator rights itself where needed.
+
+#### 🌐 Web search
+
+- Give the pages you visit often a keyword; type it and press Enter to open the page. One comes as an example: `winshun` opens WinShun’s GitHub repository. Add, change or remove your own in Settings → Web search.
+- Put `%s` in the address where the words go, and the keyword searches: with the keyword `gh` and `https://github.com/search?q=%s`, typing `gh WinShun` searches GitHub for WinShun. The easiest way to get such an address: search the site for `%s`, then paste the whole address from the browser’s address bar.
+- Typing its name finds it too, tagged “网页 (Web)” among the apps. It opens in your default browser; what you search for is not kept in the recent items.
 
 #### 📂 Open and Save dialogs: search, and you are there
 

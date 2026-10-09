@@ -21,6 +21,7 @@
 #include "Snapshot.h"
 #include "SystemCatalog.h"
 #include "TextUtil.h"
+#include "WebShortcut.h"
 #include "Win32Util.h"
 #include "Writer.h"
 #include "Wtf8.h"
@@ -632,6 +633,110 @@ private slots:
         QCOMPARE(names(pathtext::listTyped({root, u"xm"_s}, false, 50)), (QStringList {u"项目资料\\"_s})); // pinyin
         QCOMPARE(names(pathtext::listTyped({root, {}}, false, 2)), (QStringList {self, u"Alpha\\"_s}));
         QVERIFY(pathtext::listTyped({root + u"\\nothing here"_s, {}}, false, 50).isEmpty());
+    }
+
+    void webKeyword()
+    {
+        const WebShortcuts shortcuts {
+            {u"gh"_s, u"GitHub"_s, u"https://github.com/search?q=%s"_s, {}},
+            {u"blog"_s, u"Blog"_s, u"https://example.com/blog"_s, {}}, // a page: takes no words
+        };
+        const auto typed = [&](const QString& text) {
+            const auto t = typedKeyword(shortcuts, text);
+            return t ? QStringList {QString::number(t->index), t->words} : QStringList();
+        };
+        QCOMPARE(typed(u"gh"_s), (QStringList {u"0"_s, QString()}));
+        QCOMPARE(typed(u"  GH  "_s), (QStringList {u"0"_s, QString()})); // any case, spaces around
+        QCOMPARE(typed(u"gh  Win Shun "_s), (QStringList {u"0"_s, u"Win Shun"_s}));
+        QCOMPARE(typed(u"gh \"exact words\""_s), (QStringList {u"0"_s, u"\"exact words\""_s})); // as typed
+        QCOMPARE(typed(u"blog"_s), (QStringList {u"1"_s, QString()}));
+        QVERIFY(typed(u"blog notes"_s).isEmpty()); // an ordinary query then
+        QVERIFY(typed(u"ghost"_s).isEmpty());
+        QVERIFY(typed(u"g"_s).isEmpty());
+        QVERIFY(typed(u"report gh"_s).isEmpty());
+        QVERIFY(typed({}).isEmpty());
+        QVERIFY(!typedKeyword({}, u"gh"_s));
+    }
+
+    void webAddresses()
+    {
+        const WebShortcut github {u"gh"_s, u"GitHub"_s, u"https://github.com/search?q=%s&type=code"_s, {}};
+        QVERIFY(github.searches());
+        QCOMPARE(github.searchUrl(u"Win Shun/中文&x"_s),
+            u"https://github.com/search?q=Win%20Shun%2F%E4%B8%AD%E6%96%87%26x&type=code"_s);
+        QCOMPARE(github.homeUrl(), u"https://github.com/"_s); // its site
+        const WebShortcut bilibili {u"bili"_s, u"哔哩哔哩"_s, u"https://search.bilibili.com/all?keyword=%s"_s,
+            u"https://www.bilibili.com/"_s};
+        QCOMPARE(bilibili.homeUrl(), u"https://www.bilibili.com/"_s);
+        const WebShortcut page {u"blog"_s, u"Blog"_s, u"https://example.com/blog"_s, {}};
+        QVERIFY(!page.searches());
+        QCOMPARE(page.homeUrl(), u"https://example.com/blog"_s);
+        const WebShortcut app {u"ob"_s, u"Obsidian"_s, u"obsidian://search?query=%s"_s, {}};
+        QCOMPARE(app.homeUrl(), u"obsidian://search?query="_s); // an app's link, with no words
+
+        QCOMPARE(normalizeWebUrl(u"  github.com/search?q=%s "_s), u"https://github.com/search?q=%s"_s);
+        // Searched for "%s" itself, then copied from the address bar.
+        QCOMPARE(normalizeWebUrl(u"https://www.baidu.com/s?wd=%25s&rsv_spt=1"_s), u"https://www.baidu.com/s?wd=%s&rsv_spt=1"_s);
+        QCOMPARE(normalizeWebUrl(u"obsidian://search?query=%s"_s), u"obsidian://search?query=%s"_s);
+        QCOMPARE(normalizeWebUrl(u"HTTP://Example.com"_s), u"HTTP://Example.com"_s);
+        QCOMPARE(normalizeWebUrl(u"wiki.example.com:8080/find?q=%s"_s), u"https://wiki.example.com:8080/find?q=%s"_s);
+        QVERIFY(normalizeWebUrl(u"file:///C:/notes/%s"_s).isEmpty()); // could start a program
+        QVERIFY(normalizeWebUrl(u"C:\\Windows\\%s"_s).isEmpty());
+        QVERIFY(normalizeWebUrl(u"https://"_s).isEmpty());
+        QVERIFY(normalizeWebUrl(u"   "_s).isEmpty());
+
+        QCOMPARE(displayWebUrl(u"https://www.baidu.com/s?wd=%E5%A4%A9%E6%B0%94%20%E9%A2%84%E6%8A%A5"_s),
+            u"baidu.com/s?wd=天气 预报"_s);
+        QCOMPARE(displayWebUrl(u"https://github.com/"_s), u"github.com"_s);
+        QCOMPARE(displayWebUrl(u"https://github.com/search?q=%s&type=code"_s), u"github.com/search?q=%s&type=code"_s);
+        QCOMPARE(displayWebUrl(u"obsidian://search?query=a%20b"_s), u"obsidian://search?query=a b"_s);
+
+        QVERIFY(isValidWebKeyword(u"gh"_s));
+        QVERIFY(isValidWebKeyword(u"知乎"_s));
+        QVERIFY(!isValidWebKeyword(u"g h"_s));
+        QVERIFY(!isValidWebKeyword(u"g\"h"_s));
+        QVERIFY(!isValidWebKeyword(QString()));
+
+        QVERIFY(isWebPath(webPath(u"gh"_s, u"WinShun"_s)));
+        QVERIFY(webPath(u"gh"_s) != webPath(u"gh"_s, u"WinShun"_s)); // rows of their own
+        QVERIFY(!isWebPath(u"C:\\gh"_s));
+    }
+
+    void webByName()
+    {
+        const WebShortcuts shortcuts {
+            {u"bd"_s, u"百度"_s, u"https://www.baidu.com/s?wd=%s"_s, {}},
+            {u"gh"_s, u"GitHub"_s, u"https://github.com/search?q=%s"_s, {}},
+            {u"zh"_s, u"知乎"_s, u"https://www.zhihu.com/search?q=%s"_s, {}},
+        };
+        const auto found = [&](const QString& text) {
+            QStringList names;
+            for (const WebHit& hit : searchWebShortcuts(shortcuts, NameMatcher(ws::parseQuery(text))))
+                names.append(shortcuts[hit.index].name);
+            return names;
+        };
+        QCOMPARE(found(u"github"_s), (QStringList {u"GitHub"_s}));
+        QCOMPARE(found(u"baidu"_s), (QStringList {u"百度"_s})); // pinyin
+        QCOMPARE(found(u"bd"_s), (QStringList {u"百度"_s})); // initials
+        QVERIFY(found(u"!github"_s).isEmpty()); // exclusions alone list nothing
+        QVERIFY(found(u"report"_s).isEmpty());
+
+    }
+
+    void webDefault()
+    {
+        // Just one, to show how it goes: "winshun", in any case, opens the repository.
+        const WebShortcuts shortcuts = defaultWebShortcuts();
+        QCOMPARE(shortcuts.size(), 1);
+        const WebShortcut& winshun = shortcuts.first();
+        QCOMPARE(normalizeWebUrl(winshun.url), winshun.url); // as the settings window would keep it
+        QVERIFY(!winshun.searches());
+        QCOMPARE(winshun.homeUrl(), u"https://github.com/LingCore/WinShun"_s);
+        const auto typed = typedKeyword(shortcuts, u"WinSHUN"_s);
+        QVERIFY(typed);
+        QCOMPARE(typed->index, 0);
+        QVERIFY(typed->words.isEmpty());
+        QVERIFY(!typedKeyword(shortcuts, u"winshun 设置"_s)); // a page: an ordinary query then
     }
 
     void releaseVersions()

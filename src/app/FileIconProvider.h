@@ -31,6 +31,9 @@ public:
     // A place in Windows (SystemCatalog), by its icon: one in a module
     // ("%SystemRoot%\System32\netcenter.dll,-1"), or that of a file or shell path.
     static QString placeIconUrl(const QString& icon);
+    // A web address (WebShortcut): the icon of the program that opens it,
+    // the default browser for https. Nothing is fetched from the web.
+    static QString webIconUrl(const QString& url);
 
 private:
     QMutex m_mutex;

@@ -138,6 +138,49 @@ template <typename T> T readOrDefault(QSettings& s, const QString& key, const T&
     return s.value(key).value<T>();
 }
 
+void writeWebShortcuts(QSettings& s, const WebShortcuts& shortcuts)
+{
+    s.remove(u"WebSearch"_s); // no entries left over from a longer list
+    s.beginWriteArray(u"WebSearch"_s, static_cast<int>(shortcuts.size()));
+    for (int i = 0; i < shortcuts.size(); ++i) {
+        s.setArrayIndex(i);
+        s.setValue(u"Keyword"_s, shortcuts[i].keyword);
+        s.setValue(u"Name"_s, shortcuts[i].name);
+        s.setValue(u"Url"_s, shortcuts[i].url);
+        s.setValue(u"Home"_s, shortcuts[i].home);
+    }
+    s.endArray();
+}
+
+// The file may have been edited by hand: addresses are tidied as the settings
+// window would ("github.com/..." gets https://), an entry without a name takes
+// its keyword, and one that cannot be used (no keyword to type, an address
+// Win顺 does not open) is left out.
+WebShortcuts readWebShortcuts(QSettings& s, const WebShortcuts& fallback)
+{
+    if (!s.contains(u"WebSearch/size"_s)) { // never written: the defaults, and into the file with them
+        writeWebShortcuts(s, fallback);
+        return fallback;
+    }
+    WebShortcuts shortcuts;
+    const int size = s.beginReadArray(u"WebSearch"_s);
+    for (int i = 0; i < size; ++i) {
+        s.setArrayIndex(i);
+        WebShortcut shortcut;
+        shortcut.keyword = s.value(u"Keyword"_s).toString().trimmed();
+        shortcut.name = s.value(u"Name"_s).toString().trimmed();
+        shortcut.url = normalizeWebUrl(s.value(u"Url"_s).toString());
+        shortcut.home = normalizeWebUrl(s.value(u"Home"_s).toString());
+        if (!isValidWebKeyword(shortcut.keyword) || shortcut.url.isEmpty())
+            continue; // nothing to type, or nothing to open
+        if (shortcut.name.isEmpty())
+            shortcut.name = shortcut.keyword;
+        shortcuts.append(shortcut);
+    }
+    s.endArray();
+    return shortcuts;
+}
+
 } // namespace
 
 QString Settings::filePath()
@@ -209,6 +252,10 @@ Settings Settings::defaults()
     d.contentExtensions = kDefaultContentExtensions;
     d.clipboard = windowsClipboardHistory(); // whoever kept Windows' clipboard history keeps ours
     d.clipboardExcludedApps = kDefaultClipboardExcludedApps;
+    d.webShortcuts = defaultWebShortcuts();
+    d.renderer = defaultRenderer();
+    d.transparency = lowMemory() ? u"off"_s : u"on"_s;
+    d.clipboardMaxItems = lowMemory() ? 100 : 200;
     return d;
 }
 
@@ -304,6 +351,8 @@ void Settings::load()
     clipboardMaxDays = std::clamp(readOrDefault(s, u"Clipboard/MaxDays"_s, d.clipboardMaxDays), 0, 3650);
     clipboardImages = readOrDefault(s, u"Clipboard/Images"_s, d.clipboardImages);
     clipboardExcludedApps = readOrDefault(s, u"Clipboard/ExcludedApps"_s, d.clipboardExcludedApps);
+
+    webShortcuts = readWebShortcuts(s, d.webShortcuts);
 }
 
 void Settings::save() const
@@ -342,6 +391,15 @@ void Settings::save() const
     s.setValue(u"Clipboard/MaxDays"_s, clipboardMaxDays);
     s.setValue(u"Clipboard/Images"_s, clipboardImages);
     s.setValue(u"Clipboard/ExcludedApps"_s, clipboardExcludedApps);
+    writeWebShortcuts(s, webShortcuts);
+}
+
+ContentSizeLimits Settings::contentSizeLimits() const
+{
+    ContentSizeLimits limits;
+    for (std::size_t k = 0; k < ContentSizeLimits::kKinds; ++k)
+        limits.bytes[k] = static_cast<std::int64_t>(contentMaxSizeMB[k]) << 20;
+    return limits;
 }
 
 CrawlRules Settings::crawlRules() const

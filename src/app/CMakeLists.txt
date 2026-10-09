@@ -52,6 +52,7 @@ set(qml_files
     qml/ToggleSwitch.qml
     qml/FlatButton.qml
     qml/InputBox.qml
+    qml/WebShortcutForm.qml
     qml/CenteredNumber.qml
     qml/Chip.qml
     qml/HotkeyRecorder.qml

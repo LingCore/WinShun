@@ -41,7 +41,8 @@ public:
         LocationRole, // of a content match: "第 3 行", "第 2 页", "Sheet1 第 12 行"
         RecentRole,
         IsAppRole, // an app or a place in Windows
-        PlaceRole, // a place: a page of Settings, a Control Panel task, a system tool
+        PlaceRole, // a place: a page of Settings, a Control Panel task, a system tool, a web page
+        WebRole, // a web shortcut's site, or a search on it
         PackagedAppRole,
         ElevatableRole, // run as administrator
         RevealableRole, // has a file or folder to open the location of
@@ -66,7 +67,8 @@ public:
     bool remove(const QString& path); // false if no row has that path
     int removeAll(const QSet<QString>& paths); // number of rows removed
     void clear();
-    void retranslate(); // the language changed: apps' second line
+    void retranslate(); // the language changed: apps' second line, web searches' title, places of content matches
+    static QString location(const SearchResult& r); // LocationRole
 
     QColor highlightColor() const { return m_highlightColor; }
     void setHighlightColor(const QColor& color);

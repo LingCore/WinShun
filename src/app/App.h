@@ -81,6 +81,7 @@ private:
     void explorerRestarted(bool back); // `back`: the taskbar is
     void setClipboardPaused(bool paused);
     void showClipboardSettings(); // the settings window on its 剪贴板 page
+    void showWebSettings(); // ... on its 网页搜索 page (a web row's menu)
     void applyHotkey();
     void applyDialogs(); // Ctrl+G, the bar and going by themselves in file dialogs
     void excludeFromDialogBar(const QString& app); // "not in this program" from the bar's menu

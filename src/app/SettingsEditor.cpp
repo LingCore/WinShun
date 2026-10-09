@@ -1,5 +1,7 @@
 #include "SettingsEditor.h"
 
+#include "IndexFolder.h"
+#include "WebShortcut.h"
 #include "Win32Util.h"
 #include "platform/Shell.h"
 #include "platform/ShortcutCapture.h"
@@ -9,6 +11,7 @@
 #include <QFileInfo>
 #include <QKeyEvent>
 #include <QRegularExpression>
+#include <QVariantMap>
 
 using namespace Qt::StringLiterals;
 
@@ -417,6 +420,77 @@ void SettingsEditor::removeClipboardExcludedApp(int index)
         return;
     m_settings.clipboardExcludedApps.removeAt(index);
     commit();
+}
+
+QVariantList SettingsEditor::webShortcuts() const
+{
+    QVariantList list;
+    for (const WebShortcut& shortcut : m_settings.webShortcuts) {
+        list.append(QVariantMap {
+            {u"keyword"_s, shortcut.keyword},
+            {u"name"_s, shortcut.name},
+            {u"url"_s, shortcut.url},
+            {u"home"_s, shortcut.home},
+            {u"searches"_s, shortcut.searches()},
+            {u"shownUrl"_s, displayWebUrl(shortcut.url)},
+            {u"shownHome"_s, displayWebUrl(shortcut.homeUrl())},
+        });
+    }
+    return list;
+}
+
+QString SettingsEditor::saveWebShortcut(
+    int index, const QString& keyword, const QString& name, const QString& url, const QString& home)
+{
+    WebShortcuts& shortcuts = m_settings.webShortcuts;
+    if (index >= shortcuts.size())
+        return tr("这一项已经不在了"); // the file was changed meanwhile
+
+    WebShortcut shortcut;
+    shortcut.keyword = keyword.trimmed();
+    if (shortcut.keyword.isEmpty())
+        return tr("请填写关键词");
+    if (!isValidWebKeyword(shortcut.keyword))
+        return tr("关键词里不能有空格或引号");
+    for (qsizetype i = 0; i < shortcuts.size(); ++i) {
+        if (i != index && shortcuts[i].keyword.compare(shortcut.keyword, Qt::CaseInsensitive) == 0)
+            return tr("关键词“%1”已经给了“%2”").arg(shortcuts[i].keyword, shortcuts[i].name);
+    }
+    shortcut.url = normalizeWebUrl(url);
+    if (shortcut.url.isEmpty())
+        return url.trimmed().isEmpty() ? tr("请填写网址") : tr("打不开这个网址：它应当以 https:// 开头");
+    shortcut.home = normalizeWebUrl(home);
+    if (shortcut.home.isEmpty() && !home.trimmed().isEmpty())
+        return tr("打不开主页的网址：它应当以 https:// 开头");
+    shortcut.name = name.trimmed();
+    if (shortcut.name.isEmpty()) { // the site's name ("github.com"); for an app's link, the keyword
+        const QString shown = displayWebUrl(shortcut.homeUrl());
+        const QString site = shown.left(shown.indexOf(u'/'));
+        shortcut.name = site.isEmpty() || site.contains(u':') ? shortcut.keyword : site;
+    }
+
+    if (index < 0)
+        shortcuts.append(shortcut);
+    else if (shortcuts[index] != shortcut)
+        shortcuts[index] = shortcut;
+    else
+        return {};
+    commit();
+    return {};
+}
+
+void SettingsEditor::removeWebShortcut(int index)
+{
+    if (index < 0 || index >= m_settings.webShortcuts.size())
+        return;
+    m_settings.webShortcuts.removeAt(index);
+    commit();
+}
+
+void SettingsEditor::openWebShortcut(int index)
+{
+    if (index >= 0 && index < m_settings.webShortcuts.size())
+        shell::openUrl(m_settings.webShortcuts[index].homeUrl());
 }
 
 bool SettingsEditor::isDefault() const

@@ -93,10 +93,25 @@ SearchResult fromPlace(const PlaceInfo& place, bool recent)
     return r;
 }
 
+// Its site, or with `words` a search on it.
+SearchResult fromWeb(const WebShortcut& web, const QString& words)
+{
+    SearchResult r;
+    r.name = web.name;
+    r.path = webPath(web.keyword, words);
+    r.app = AppKind::Web;
+    r.target = words.isEmpty() ? web.homeUrl() : web.searchUrl(words);
+    r.keyword = web.keyword;
+    r.words = words;
+    return r;
+}
+
 // A file row that only repeats an app row: the app's program, or its
 // shortcut in the Start menu.
 bool duplicatesApp(const SearchResult& file, const SearchResult& app)
 {
+    if (app.isWeb())
+        return false; // a page on the web, not anything on this computer
     if (app.app == AppKind::Desktop && !app.target.isEmpty() && file.path.compare(app.target, Qt::CaseInsensitive) == 0)
         return true;
     return file.name.size() == app.name.size() + 4 && file.name.endsWith(u".lnk", Qt::CaseInsensitive)
@@ -307,8 +322,10 @@ void SearchEngine::runNameSearch(const Job& job)
         // Files before folders, each in the order they ranked (recent ones first).
         std::stable_partition(results.begin(), results.end(), [](const SearchResult& r) { return !r.isDir; });
 
-        // 全部: every app found and the best few places come first, best
-        // first, then the files and folders.
+        // 全部: a web shortcut's keyword typed first ("gh", "gh WinShun")
+        // puts its site or search on top. Then every app found, the best few
+        // places and the web shortcuts by name, best first; then the files
+        // and folders.
         if (request.scope == Scope::All) {
             struct Ranked {
                 int score;
@@ -328,10 +345,17 @@ void SearchEngine::runNameSearch(const Job& job)
                 if (!isApp)
                     ranked.push_back({hit.score, fromPlace(place, false)});
             }
+            const std::optional<TypedKeyword> typed = typedKeyword(request.web, request.text);
+            for (const WebHit& hit : searchWebShortcuts(request.web, matcher)) {
+                if (!typed || hit.index != typed->index) // else on top already
+                    ranked.push_back({hit.score, fromWeb(request.web[hit.index], {})});
+            }
             // Equal scores: apps first.
             std::stable_sort(ranked.begin(), ranked.end(), [](const Ranked& a, const Ranked& b) { return a.score > b.score; });
-            total += static_cast<qint64>(ranked.size());
             SearchResults top;
+            if (typed)
+                top.push_back(fromWeb(request.web[typed->index], typed->words));
+            total += static_cast<qint64>(ranked.size()) + top.size();
             for (Ranked& r : ranked) {
                 if (top.size() >= request.limit)
                     break;

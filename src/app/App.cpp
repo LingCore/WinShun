@@ -222,6 +222,7 @@ bool App::start(const StartOptions& options)
         if (m_revealing)
             armReveal();
     });
+    connect(m_launcher.get(), &Launcher::webSettingsRequested, this, &App::showWebSettings);
 
     // Clipboard history (Win+V), in clipboard\ next to the index.
     m_clipStore = std::make_unique<ClipStore>(dataDir + u"\\clipboard"_s);
@@ -486,10 +487,13 @@ void App::applySettings(bool initial)
     m_updater->setAutomatic(m_settings.autoUpdate);
     m_launcher->setRecordHistory(m_settings.recordHistory);
     applyHotkey();
-    m_launcher->setContentOptions(m_settings.contentExtensions,
-        static_cast<qint64>(m_settings.maxContentFileSizeMB) << 20, m_settings.contentInLowPriority);
-    if (!initial)
+    m_launcher->setContentOptions(m_settings.contentExtensions, m_settings.contentSizeLimits(),
+        m_settings.contentInLowPriority, m_settings.contentDocuments);
+    m_launcher->setWebShortcuts(m_settings.webShortcuts);
+    if (!initial) {
         m_indexOptionsApply.start();
+        applyIndexFolder();
+    }
 }
 
 void App::applyHotkey()
@@ -707,6 +711,13 @@ void App::showClipboardSettings()
     showSettings();
     if (m_settingsWindow)
         QMetaObject::invokeMethod(m_settingsWindow, "showClipboardPage");
+}
+
+void App::showWebSettings()
+{
+    showSettings();
+    if (m_settingsWindow)
+        QMetaObject::invokeMethod(m_settingsWindow, "showWebPage");
 }
 
 void App::showUpdate()
