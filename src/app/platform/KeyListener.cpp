@@ -139,10 +139,11 @@ void KeyListener::onInput(HRAWINPUT input)
         if (!up) {
             m_detector.setMaxGap(maxGapMs());
             listenToMouse(true);
-            ::KillTimer(m_window.load(), kMouseOffTimer);
-        } else { // until a second tap can no longer follow
-            ::SetTimer(m_window.load(), kMouseOffTimer, maxGapMs() + 100, nullptr);
         }
+        // Until a second tap can no longer follow. Armed on the press too: a
+        // release can be lost (Ctrl+Alt+Del to lock the screen), and the timer
+        // then finds Ctrl up.
+        ::SetTimer(m_window.load(), kMouseOffTimer, maxGapMs() + 100, nullptr);
     }
     const auto time = static_cast<std::uint32_t>(::GetMessageTime()); // when it was pressed, not when we got to it
     const bool fire = up ? m_detector.keyUp(key.VKey, time, pt.x, pt.y) : m_detector.keyDown(key.VKey, time, pt.x, pt.y);

@@ -858,7 +858,7 @@
 ### 什么都不做时也有线程在醒
 
 - **Qt 的垂直同步线程**：只要有 D3D11 窗口（藏着也算），Qt 就开一个 `QDxgiVSyncThread` 一直 `WaitForVBlank`，240 Hz 屏幕上每秒醒 240 次，只为了给 `QWindow::requestUpdate()` 对时（`qdxgivsyncservice.cpp`）。Qt Quick 的渲染线程靠呈现（Present）掌握节奏，不靠它；没有它时 `requestUpdate` 用一个 1–5 ms 的定时器，只在真要刷新时才跑。做法：`main.cpp` 里在建 `QGuiApplication` 之前设 `QT_D3D_NO_VBLANK_THREAD=1`。实测（2026-10-09）：空闲 5 秒醒 1209 次 → 这个线程没了。
-- **双击 Ctrl 的鼠标监听**：原来键盘和鼠标的原始输入一直都收，鼠标每动一下都唤醒监听线程（游戏鼠标每秒上千次）。鼠标只用来判断连按期间有没有点击、拖动、滚轮，所以改成按下 Ctrl 时才登记鼠标，松开后超过连按间隔、第二下不可能再来时撤掉（`KeyListener::listenToMouse`）。按着 Ctrl 时已经按下的鼠标键，照旧用 `GetAsyncKeyState` 补查。实测：每毫秒挪一次鼠标、共 5 秒（约 2770 次），监听线程从醒 1050 次降到 7 次；双击 Ctrl 的测试（含 Ctrl+滚轮、按住鼠标键、两次 Ctrl+点击）16 项照样全过。
+- **双击 Ctrl 的鼠标监听**：原来键盘和鼠标的原始输入一直都收，鼠标每动一下都唤醒监听线程（游戏鼠标每秒上千次）。鼠标只用来判断连按期间有没有点击、拖动、滚轮，所以改成按下 Ctrl 时才登记鼠标，松开后超过连按间隔、第二下不可能再来时撤掉（`KeyListener::listenToMouse`）。撤掉靠定时器，按下时就开始计时，到点时 Ctrl 还按着就接着等：Ctrl 的抬起可能收不到（见上面的 Ctrl+Alt+Del），只在松开时计时的话，锁屏回来后鼠标一直开着，直到下次按 Ctrl。按着 Ctrl 时已经按下的鼠标键，照旧用 `GetAsyncKeyState` 补查。实测：每毫秒挪一次鼠标、共 5 秒（约 2770 次），监听线程从醒 1050 次降到 7 次；双击 Ctrl 的测试（含 Ctrl+滚轮、按住鼠标键、两次 Ctrl+点击）16 项照样全过。
 - **每个窗口一套显卡驱动线程**：启动器和剪贴板窗口各有自己的 D3D11 设备（Qt Quick 每个窗口一个渲染线程、一个设备），NVIDIA 驱动给每个设备开约 54 个线程（这台 32 线程的 CPU 上；VS Code 的 GPU 进程也是 54 个），其中一个按系统时钟每秒醒约 65 次。窗口销毁时这些线程随设备一起收回（设置窗口关掉后，它那一份就没了），不会越积越多。`D3D11_CREATE_DEVICE_PREVENT_INTERNAL_THREADING_OPTIMIZATIONS` 对 NVIDIA 驱动没用（单个设备 21 个线程，加了还有 19 个）。常驻的两个窗口要一按就出来，这份开销保留；要省只能让多个窗口共用一个设备，那得改用 basic 渲染循环、在主线程上画，不划算。
 - **怎么查**：提权运行的程序隔几秒用 `NtQuerySystemInformation(SystemProcessInformation)` 取两次 Win顺 每个线程的上下文切换次数和 CPU 时间，相减就是这段时间谁醒了多少次；再用 `NtQueryInformationThread(ThreadQuerySetWin32StartAddress)` 和 `GetThreadDescription` 认出线程是谁的（Qt 的线程有名字，驱动线程的起始地址在 `nvwgf2umx.dll` 里，我们的 `std::thread` 起始地址在 `ucrtbase.dll` 里）。普通权限读不到提权进程的线程。
 
