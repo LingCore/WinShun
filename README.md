@@ -24,7 +24,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/search-dark.png">
-    <img src="docs/images/search-light.png" width="720" alt="Win顺 搜索框：输入拼音 ndbg 找到“年度报告” / WinShun search bar: pinyin initials find 年度报告">
+    <img src="docs/images/search-light.png" width="820" alt="Win顺 搜索框：输入拼音 ndbg 找到“年度报告” / WinShun search bar: pinyin initials find 年度报告">
   </picture>
 </p>
 
@@ -45,7 +45,10 @@
 - **连按两下 Ctrl** 打开搜索框，再按一次或按 Esc 关闭。三百多万个文件里搜一次，一般只要几毫秒。
 - **支持拼音和首字母**：`bg`、`baogao`、`baog` 都能找到“报告”，`ndbg` 找到“年度报告”；多音字按常用读音（“银行”用 `yh` 或 `yinhang`）。
 - **搜整台电脑**：所有本地磁盘；U 盘和移动硬盘可以在设置里打开。
-- **排序懂你**：自己的文件排在前面，系统目录、程序目录、`node_modules`、`.git` 排在后面；最近打开过的排得更前，不输入时直接列出最近打开的。
+- **排序懂你**：自己的文件排在前面，系统目录、程序目录、`node_modules`、`.git` 排在后面；最近打开过的排得更前，不输入时直接列出最近打开的。名字和输入的完全一样的（输入 `readme` 时的 `README.md` 和 readme 文件夹）排在最前；文件和文件夹分开排，默认文件在前，设置里可以改成文件夹在前；匹配得一样好的，最近修改的在前。
+- **只找文件夹**：选中 **文件** 范围时旁边出现 **文件夹**，点它（或接着按 `Tab`）就只列文件夹。
+- **修改日期**：每个文件和文件夹的名字右边写着上次修改的时间（今天 14:32、昨天、周三、10月3日……），鼠标停在上面看完整日期。在 **文件** 和 **文件夹** 里点底栏的排序按钮，可以改成最近修改的排在前面，找最新的那一版很方便。
+- **数字键直接打开**：按住 `Ctrl` 片刻，每行右边标出序号，按 `Ctrl+1`～`Ctrl+9` 打开看得见的第几行，不用先选。设置里可以改成 `Alt+1`～`Alt+9` 或关掉。别的程序把这些键设成了全局快捷键（截图工具常用 `Ctrl+1`）也没关系：搜索框在前面时归 Win顺，其他时候照旧归那个程序，设置里会写出被占用的是哪几个。
 - **索引实时更新**：文件改名、新建、删除马上就能搜到。插上新磁盘自动收录，拔掉的自动移除；“安全删除硬件”时 Win顺 会先放开这块磁盘，不会提示“设备正在使用”。
 - **搜索语法**：
 
@@ -71,18 +74,24 @@
 - 在 **全部** 范围里，停止输入后也会搜文件内容，排在文件名结果后面，一行代码照原样找（引号、`*`、`!` 都算）。默认跳过系统、程序目录和 `node_modules` 等。
 
 <p align="center">
-  <img src="docs/images/content.png" width="720" alt="Win顺 内容搜索：一行带标点的代码直接搜，显示命中的那一行">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/content-dark.png">
+    <img src="docs/images/content-light.png" width="820" alt="Win顺 内容搜索：搜“第三季度销售额”，列出写着它的文件，每个显示命中的那一行">
+  </picture>
 </p>
 
 #### 🚀 打开应用
 
 - 已安装的应用和开始菜单的“所有应用”一致：桌面程序和 Microsoft Store 应用都有。
 - 按名称、拼音、英文首字母（`vsc` 找 Visual Studio Code）或程序文件名（`winword` 找 Word）搜索；不输入时先列最近打开的。
-- 在 **全部** 范围里依次是：应用和系统设置、文件、文件夹、文件内容。**文件** 范围只有文件和文件夹（文件在前），**内容** 范围只搜文件里的文字。
+- 在 **全部** 范围里依次是：应用和系统设置、文件、文件夹、文件内容。**文件** 范围只有文件和文件夹（默认文件在前），**文件夹** 范围只有文件夹，**内容** 范围只搜文件里的文字。
 - 应用像在开始菜单里一样以普通权限打开；需要时按 `Ctrl+Shift+Enter` 以管理员身份运行。
 
 <p align="center">
-  <img src="docs/images/apps.png" width="720" alt="Win顺 应用搜索：输入 fusion，Autodesk Fusion 排在最前，后面是文件">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/apps-dark.png">
+    <img src="docs/images/apps-light.png" width="820" alt="Win顺 应用搜索：输入拼音 guanliqi（管理器），任务管理器、文件资源管理器等应用和设备管理器等系统设置排在一起">
+  </picture>
 </p>
 
 #### 🧭 直达系统设置
@@ -94,7 +103,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/places-dark.png">
-    <img src="docs/images/places-light.png" width="720" alt="Win顺 直达系统设置：输入拼音 shipeiqi（适配器）找到“查看网络连接”等设置">
+    <img src="docs/images/places-light.png" width="820" alt="Win顺 直达系统设置：输入拼音 shipeiqi（适配器）找到“查看网络连接”等设置">
   </picture>
 </p>
 
@@ -114,15 +123,18 @@
 - 搜索框最右边的“更多”按钮可以固定对话框当前的文件夹、这次不显示搜索框，或者在某个程序里不再显示（在设置里可以恢复）。
 - 搜索框放在对话框下面；下面放不下搜索框和列表，就放到右边或左边；哪边都放不下，对话框一出现就调矮一点（矮到一定程度还放不下就往上挪），列表不会盖住对话框。设置里也可以固定放在下面、左边或右边，那边放不下时对话框调小一点或挪开。Windows 按程序记住对话框的大小，下次弹出来就是合适的大小。对话框开着时自己拖动、拖大，不会被改回去。
 - 已经输入的文件名保留，键盘焦点也回到原处。搜索框不抢对话框的焦点，跟着对话框移动，切到别的窗口就隐藏；只有这类对话框在最前面时才占用 `Ctrl+G`。两样都能在设置里分别关掉；同时开着 Listary 的话两边都会响应，关掉其中一个就好。
-- 平时用 Total Commander 或 Directory Opus 的话，在设置 → 打开 Win顺 →“用哪个文件管理器打开文件夹”里选它：从 Win顺 打开文件夹、打开文件所在的位置，就在它里面开（Total Commander 开新标签、光标停在那个文件上；Directory Opus 已经有标签显示那个文件夹就用那个，并选中文件）。没装的不列出来。
+- 平时用 Total Commander 或 Directory Opus 的话，在设置 → 打开 Win顺 → 对话框 →“用哪个文件管理器打开文件夹”里选它：从 Win顺 打开文件夹、打开文件所在的位置，就在它里面开（Total Commander 开新标签、光标停在那个文件上；Directory Opus 已经有标签显示那个文件夹就用那个，并选中文件）。没装的不列出来。
 
 <p align="center">
-  <img src="docs/images/dialog.png" width="600" alt="Win顺 对话框旁的搜索框：在“打开文件夹”对话框下面输入 winshun，列出同名的文件夹">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/dialog-dark.png">
+    <img src="docs/images/dialog-light.png" width="720" alt="Win顺 对话框旁的搜索框：在记事本的“打开”对话框下面输入拼音 ndbg，列出“年度报告”的文件夹和文件">
+  </picture>
 </p>
 
 #### 📋 剪贴板历史（可以代替 Win+V）
 
-- 复制过的文字、图片和文件都记下来，随时找回。在设置 → **剪贴板** 里打开“用 Win+V 打开”，`Win+V` 出来的就是 Win顺的剪贴板，代替 Windows 自带的；也可以另设一个组合键，或者从托盘菜单打开。
+- 复制过的文字、图片和文件都记下来，随时找回。在设置 → **剪贴板** → 快捷键 里打开“用 Win+V 打开”，`Win+V` 出来的就是 Win顺的剪贴板，代替 Windows 自带的；也可以另设一个组合键，或者从托盘菜单打开。
 - 点一条（或选中后按 `Enter`），直接粘贴到打开之前所在的窗口；`Shift+Enter` 粘贴为纯文本。从 Word、网页复制的内容带着原来的格式；复制的文件粘贴到资源管理器里还是文件。
 - 剪贴板开在正在打字的地方：输入光标那一行的正下方，左边和光标对齐，不挡住这一行；下面放不下就开在这一行上面。找不到输入光标时（比如焦点不在输入框里），开在鼠标指针处。拖到别处只管这一次，下次照旧开在光标旁边。
 - 剪贴板不抢焦点，和 Windows 自带的一样：原来的程序留在前台，VS Code 的命令面板（`Ctrl+P`）、浏览器地址栏的下拉建议这类一失去焦点就关掉的东西都还开着，粘贴就落在里面。键盘照样操作剪贴板（打字搜索、方向键、`Enter`、`Esc`），点别处或换到别的窗口它就收起。搜索时直接打拼音，不经过输入法；给分组起名字时剪贴板才拿到焦点，可以用输入法打中文。
@@ -136,16 +148,20 @@
 - Windows 自带的剪贴板历史是开着的，Win顺的剪贴板历史也默认打开；否则在设置 → 剪贴板里打开。接管 `Win+V` 要重启一次资源管理器（设置里有按钮，也可以等下次登录 Windows 时自动生效）；关掉这项或卸载 Win顺 后，`Win+V` 回到 Windows 自带的剪贴板。Windows 剪贴板面板里的表情符号可以改用 `Win+.` 打开。
 
 <p align="center">
-  <img src="docs/images/clipboard.png" width="720" alt="Win顺 剪贴板：左边是历史，右边是选中那一条的预览">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/clipboard-dark.png">
+    <img src="docs/images/clipboard-light.png" width="820" alt="Win顺 剪贴板：左边是历史，右边是选中那一条的预览">
+  </picture>
 </p>
 
 #### 🔎 代替任务栏上的 Windows 搜索
 
-- 把 **Win顺 搜索** 固定到任务栏（设置 → 打开 Win顺 →“找到按钮”，右键它选“固定到任务栏”），点一下，搜索框就在这个按钮上方打开，再点一下收起；和 Windows 自带的搜索一样的位置，搜的是 Win顺 的索引、拼音和设置页。
+- 设置 → 打开 Win顺 → 任务栏 里是一张四步的卡片，照着点完就行，做好的一步自动打勾。第一步打开“在任务栏上放 Win顺 的搜索框”（Windows 11），任务栏的图标旁边就多了一个 Win顺 的搜索框：点它直接打字，结果从任务栏后面滑出来、列在它上方，中文输入法的候选条也在框上；搜的是 Win顺 的索引、拼音和设置页。按住框左边的图标可以把它拖到任务栏别的空地上（比如屏幕最左边），开关程序时它跟着图标一起挪。
+- 不想占地方，也可以只固定一个按钮：点“固定按钮”，Windows 会问是否把 **Win顺 搜索** 固定到任务栏，选“是”。之后点这个按钮，Win顺 就在它上方打开，再点一下收起。
+- 推荐在任务栏设置里把 Windows 自带的搜索隐藏，两个都留着也可以。Windows 不允许别的程序替你隐藏，设置里有按钮直接打开那一页。
 - 从任务栏打开、还没打字时，上面一排是你最常用的 6 个应用（按 `↑` 进去，`←` `→` 选，`Enter` 打开），下面是最近打开的。
 - 在设置里打开“在开始菜单里打字，也用 Win顺 搜索”：按 `Win` 后直接打字，Win顺 在任务栏上方打开，打的字接着进去；想用 Windows 自带的搜索时，先按一下左 `Alt` 再打字。
 - 在设置里打开“用 Win+S 打开”，`Win+S` 也在任务栏上方打开 Win顺。`Win+Shift+S` 截图照常可用（由 Win顺 替你打开截图工具）。接管 `Win+S` 和 `Win+V` 一样要重启一次资源管理器；关掉这项或卸载 Win顺，它就回到 Windows 搜索。
-- Windows 不允许别的程序隐藏它自带的搜索按钮，设置里有按钮直接打开任务栏设置，把“搜索”选成“隐藏”即可。
 
 #### ⌨️ 全键盘操作
 
@@ -159,7 +175,8 @@
 | `Ctrl+Shift+Enter` | 以管理员身份运行 |
 | `Ctrl+C` | 复制文件（可以直接到资源管理器里粘贴）；搜索框里有选中文字时复制文字 |
 | `Ctrl+Shift+C` | 复制完整路径 |
-| `Tab` / `Shift+Tab` | 切换搜索范围（全部 / 文件 / 内容） |
+| `Ctrl+1`～`Ctrl+9` | 打开看得见的第几行；按住 `Ctrl` 片刻显示序号（在对话框旁的搜索框里是转到那一行；设置里可以改成 `Alt`） |
+| `Tab` / `Shift+Tab` | 切换搜索范围（全部 / 文件 / 文件夹 / 内容） |
 | 菜单键 / `Shift+F10` / 右键 | 更多操作 |
 | `Esc` | 关闭（选中了多项时先取消选择） |
 | `Ctrl+G`（在“打开”“另存为”对话框里） | 转到文件管理器（资源管理器、Total Commander、Directory Opus）正在显示的文件夹 |
@@ -167,7 +184,7 @@
 | `Ctrl+Enter`（在“打开”对话框旁的搜索框里） | 转到选中的文件并直接打开 |
 | `Tab` / `Shift+Tab`（在对话框旁的搜索框里） | 进入选中的文件夹 / 回到上一级 |
 | `Win+S`（在设置里打开后） | 在任务栏上方打开 / 关闭搜索框，代替 Windows 搜索 |
-| `Win+V`（在设置里打开后） | 剪贴板历史：点一条或 `Enter` 粘贴，`Alt+P` 预览，`Shift+Enter` 粘贴为纯文本，`Tab` 切换分类，`Ctrl+P` 固定，`Alt+1`～`Alt+9` 粘贴第几条；在 Win顺 自己的输入框里按，粘贴到这个框 |
+| `Win+V`（在设置里打开后） | 剪贴板历史：点一条或 `Enter` 粘贴，`Alt+P` 预览，`Shift+Enter` 粘贴为纯文本，`Tab` 切换分类，`Ctrl+P` 固定，`Alt+1`～`Alt+9` 粘贴第几条（设置里可以改成 `Ctrl`）；在 Win顺 自己的输入框里按，粘贴到这个框 |
 
 鼠标也能用：选中或悬停的结果右边有四个按钮，分别是打开所在位置、复制、复制路径和删除（点两次才删，移到回收站）。选中了多项时，打开、复制、删除等操作都对全部选中项生效。
 
@@ -182,7 +199,7 @@
 
 托盘图标右键 → **设置…**，修改后自动保存、立即生效：
 
-- **打开 Win顺**：双击 Ctrl 开关、玩游戏时或全屏时不响应、不响应双击 Ctrl 的程序、另设一个组合键、用哪个文件管理器打开文件夹、对话框里的 `Ctrl+G` 和搜索框、搜索框的位置、对话框自动转过去、不显示搜索框的程序、开机自动启动、是否记住打开过的项目、清除最近使用记录；代替任务栏上的 Windows 搜索：找到任务栏按钮、打开任务栏设置隐藏 Windows 的搜索按钮、用 `Win+S` 打开、在开始菜单里打字也用 Win顺。
+- **打开 Win顺**：双击 Ctrl 开关、玩游戏时或全屏时不响应、不响应双击 Ctrl 的程序、另设一个组合键、用哪个文件管理器打开文件夹、对话框里的 `Ctrl+G` 和搜索框、搜索框的位置、对话框自动转过去、不显示搜索框的程序、开机自动启动、是否记住打开过的项目、清除最近使用记录；代替任务栏上的 Windows 搜索：在任务栏上放 Win顺 的搜索框（或固定 Win顺 按钮）、打开任务栏设置隐藏 Windows 的搜索（推荐）、用 `Win+S` 打开、在开始菜单里打字也用 Win顺。
 - **外观**：主题（跟随系统 / 浅色 / 深色）、透明效果（关 / 开；默认内存超过 16 GB 时开）、界面语言（跟随系统 / 简体中文 / English），切换即时生效。
 - **搜索范围**：不搜索的文件夹、任何位置都跳过的文件夹名称（如 `node_modules`）、是否包括 U 盘和移动硬盘。
 - **文件内容搜索**：是否搜索文档（Word、Excel、PowerPoint、PDF、WPS）、要搜索的纯文本类型、各类文件的大小上限、是否也搜系统和程序文件夹、是否建立内容索引。
@@ -199,7 +216,10 @@
 - 当前版本显示在设置窗口左下角和托盘菜单里；托盘菜单里可以随时 **检查更新…**，设置 → 高级里可以关掉自动检查。
 
 <p align="center">
-  <img src="docs/images/settings.png" width="720" alt="Win顺 设置窗口">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/settings-dark.png">
+    <img src="docs/images/settings-light.png" width="820" alt="Win顺 设置窗口">
+  </picture>
 </p>
 
 ### 下载安装
@@ -243,7 +263,7 @@ Listary 和 PowerToys 的“查找鼠标”默认也用双击 Ctrl，同时开�
 能。在设置 → 高级 → 索引位置点“更改…”，选其他内置硬盘上的文件夹（U 盘、移动硬盘不行），Win顺 会在后台把索引搬过去，期间照常搜索，不用重启。选空文件夹就直接放在里面，否则会在里面建一个 `WinShun` 文件夹。
 
 **收费吗？会上传我的数据吗？**
-完全免费，源代码公开。Win顺 只在检查新版本时访问 GitHub 的公开接口，不发送任何个人信息（设置 → 高级里可以关掉）；索引和最近使用记录只保存在你自己的电脑上（`%LOCALAPPDATA%\WinShun`）。最近使用记录可以在设置 → 打开 Win顺里清除或关掉，也可以在搜索框里右键单独移除某一项。
+完全免费，源代码公开。Win顺 只在检查新版本时访问 GitHub 的公开接口，不发送任何个人信息（设置 → 高级里可以关掉）；索引和最近使用记录只保存在你自己的电脑上（`%LOCALAPPDATA%\WinShun`）。最近使用记录可以在设置 → 打开 Win顺 → 启动与历史里清除或关掉，也可以在搜索框里右键单独移除某一项。
 
 **怎么卸载？**
 在 Windows 的“设置 → 应用”里卸载 Win顺，它会去掉开机自动启动，并问你要不要删除设置和索引。0.2.0 及更早的版本是压缩包，没有卸载程序：在托盘图标的右键菜单里取消 **开机自动启动**，再选 **退出**，然后删除程序所在的文件夹；如果还想清除设置和索引，再删掉 `%APPDATA%\WinShun` 和 `%LOCALAPPDATA%\WinShun`。
@@ -286,7 +306,10 @@ The interface comes in **English and Simplified Chinese**. It follows the Window
 - **Press Ctrl twice** to open the search bar; press again or Esc to close. A search over three million files usually takes a few milliseconds.
 - **Pinyin search** for Chinese names: `bg`, `baogao` and `baog` all find 报告 (“report”); `ndbg` finds 年度报告.
 - **Your whole PC**: all local drives; USB and external drives can be turned on in Settings.
-- **Sensible ranking**: your own files first; system and program folders, `node_modules` and `.git` last. Recently opened items rank higher and are listed when the box is empty.
+- **Sensible ranking**: your own files first; system and program folders, `node_modules` and `.git` last. Recently opened items rank higher and are listed when the box is empty. Names that are just what you typed (`README.md` and a readme folder for `readme`) come first; files and folders are listed apart, files first unless Settings say folders first; of equal matches, the one changed last comes first.
+- **Folders only**: with **文件 (Files)** chosen, **文件夹 (Folders)** shows beside it; click it (or press `Tab` again) to list folders alone.
+- **Date modified**: each file and folder says when it was last changed (Today 2:32 PM, Yesterday, Wed, Oct 3…), right of its name; point at it for the full date. In Files and Folders the sort button at the bottom lists the newest first, handy for the latest version of something.
+- **Number keys**: hold `Ctrl` for a moment and the rows show their numbers; `Ctrl+1`…`Ctrl+9` opens the nth row in view. Settings can make it `Alt+1`…`Alt+9`, or turn it off. Other programs holding these as global hotkeys (screenshot tools like `Ctrl+1`) are no trouble: while the search box is in front they are WinShun's, at other times that program's, and Settings name the ones taken.
 - **Always up to date**: renamed, new and deleted files show up immediately. New drives are added when plugged in and removed when unplugged; “Safely Remove Hardware” works, because WinShun lets go of the drive first.
 - **Query syntax**: words separated by spaces must all match; `"exact phrase"`; `!word` excludes; `!node_modules\` excludes everything in such folders; wildcards `*` and `?`; `ext:pdf,docx`; `folder\name` limits matches to folders whose name contains `folder`.
 
@@ -304,7 +327,7 @@ The interface comes in **English and Simplified Chinese**. It follows the Window
 
 - Installed apps are the same as “All apps” in the Start menu: desktop programs and Microsoft Store apps.
 - Search by name, pinyin, initials (`vsc` finds Visual Studio Code) or program file name (`winword` finds Word). With an empty box, recently opened apps come first.
-- The **全部 (All)** scope lists apps and Windows settings, then files, then folders, then file contents. **文件 (Files)** has files and then folders; **内容 (Content)** searches the text inside files.
+- The **全部 (All)** scope lists apps and Windows settings, then files, then folders, then file contents. **文件 (Files)** has files and folders (files first by default), **文件夹 (Folders)** folders alone; **内容 (Content)** searches the text inside files.
 - Apps open with normal rights, as from the Start menu; `Ctrl+Shift+Enter` runs one as administrator.
 
 #### 🧭 Straight to Windows settings
@@ -345,7 +368,7 @@ The interface comes in **English and Simplified Chinese**. It follows the Window
 
 #### 🔎 Instead of Windows search on the taskbar
 
-- Pin **WinShun Search** to the taskbar (Settings → Open WinShun → “Find the button”, then right-click it and choose “Pin to taskbar”): a click opens the search box right above it, another click closes it — where Windows' own search opens, with WinShun's index, pinyin and settings pages behind it.
+- Settings → Open WinShun → “Instead of Windows search on the taskbar” walks you through four steps, each ticked off once done. The first, “Pin”, has Windows ask whether to pin **WinShun Search** to the taskbar: say yes. A click on it then opens the search box right above it, another click closes it — where Windows' own search opens, with WinShun's index, pinyin and settings pages behind it.
 - Opened from the taskbar with nothing typed, it shows your six most used apps in a row (`↑` to get there, `←` `→`, `Enter`) over the recent items.
 - Turn on “Typing in the Start menu searches with WinShun”: press `Win` and just type, and WinShun opens above the taskbar with what you typed; press Left `Alt` once first for Windows' own search.
 - Turn on “Open with Win+S” and `Win+S` opens WinShun above the taskbar too, while `Win+Shift+S` still takes screenshots (WinShun starts the Snipping Tool for it). Like `Win+V`, taking `Win+S` over takes one restart of File Explorer; turned off again, or with WinShun uninstalled, it goes back to Windows search.
@@ -353,7 +376,7 @@ The interface comes in **English and Simplified Chinese**. It follows the Window
 
 #### ⌨️ Keyboard first
 
-`Enter` opens, `Ctrl+Enter` shows the item in its folder, `Ctrl+Shift+Enter` runs as administrator, `Ctrl+C` copies the file, `Ctrl+Shift+C` copies its path, `Tab` / `Shift+Tab` switch scopes, the menu key or right-click shows more actions, `Esc` closes. The selected row also has buttons to show in folder, copy, copy path and delete (to the Recycle Bin, after a second click). Select several results with `Shift+↑` / `Shift+↓`, `Ctrl`+click or `Shift`+click: opening, copying and deleting then act on all of them, and `Esc` first clears the selection.
+`Enter` opens, `Ctrl+Enter` shows the item in its folder, `Ctrl+Shift+Enter` runs as administrator, `Ctrl+C` copies the file, `Ctrl+Shift+C` copies its path, `Ctrl+1`…`Ctrl+9` opens the nth row in view (hold `Ctrl` to see the numbers; in the bar by file dialogs it goes to that row), `Tab` / `Shift+Tab` switch scopes, the menu key or right-click shows more actions, `Esc` closes. The selected row also has buttons to show in folder, copy, copy path and delete (to the Recycle Bin, after a second click). Select several results with `Shift+↑` / `Shift+↓`, `Ctrl`+click or `Shift`+click: opening, copying and deleting then act on all of them, and `Esc` first clears the selection.
 
 In the settings window, type into the box above the categories (or press `Ctrl+F`) and only the settings that fit stay on the right, their switches and buttons working as usual; `↑` / `↓` pick one, `Enter` goes to its page. When WinShun has no such setting, the Windows settings it may be are listed (try "Bluetooth").
 
