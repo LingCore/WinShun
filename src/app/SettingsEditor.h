@@ -55,6 +55,14 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool contentInLowPriority READ contentInLowPriority WRITE setContentInLowPriority NOTIFY changed FINAL)
     Q_PROPERTY(bool contentDocuments READ contentDocuments WRITE setContentDocuments NOTIFY changed FINAL)
     Q_PROPERTY(QString contentIndexStatus READ contentIndexStatus NOTIFY contentIndexStatusChanged FINAL)
+    // 结果列表
+    Q_PROPERTY(bool foldersFirst READ foldersFirst WRITE setFoldersFirst NOTIFY changed FINAL)
+    Q_PROPERTY(bool showModified READ showModified WRITE setShowModified NOTIFY changed FINAL)
+    Q_PROPERTY(bool sortByModified READ sortByModified WRITE setSortByModified NOTIFY changed FINAL)
+    Q_PROPERTY(QString numberKeys READ numberKeys WRITE setNumberKeys NOTIFY changed FINAL) // ctrl | alt | off
+    // Which of the chosen number keys are other programs' hotkeys, or Win顺's
+    // own shortcuts, said for the user; empty when none (refreshNumberKeys).
+    Q_PROPERTY(QString numberKeysNote READ numberKeysNote NOTIFY numberKeysNoteChanged FINAL)
     // 剪贴板
     Q_PROPERTY(bool clipboard READ clipboard WRITE setClipboard NOTIFY changed FINAL)
     Q_PROPERTY(bool clipboardWinV READ clipboardWinV WRITE setClipboardWinV NOTIFY changed FINAL)
@@ -70,10 +78,18 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool clipboardImages READ clipboardImages WRITE setClipboardImages NOTIFY changed FINAL)
     Q_PROPERTY(QStringList clipboardExcludedApps READ clipboardExcludedApps NOTIFY changed FINAL)
     Q_PROPERTY(int clipboardCount READ clipboardCount NOTIFY clipboardCountChanged FINAL)
+    Q_PROPERTY(QString clipboardNumberKeys READ clipboardNumberKeys WRITE setClipboardNumberKeys NOTIFY changed FINAL)
+    Q_PROPERTY(QString clipboardNumberKeysNote READ clipboardNumberKeysNote NOTIFY numberKeysNoteChanged FINAL)
     // 代替 Windows 搜索 (taskbar::)
     Q_PROPERTY(bool taskbarWinS READ taskbarWinS WRITE setTaskbarWinS NOTIFY changed FINAL)
     Q_PROPERTY(QString winSState READ winSState NOTIFY winSStateChanged FINAL) // as winVState, for Win+S
     Q_PROPERTY(bool taskbarStartTyping READ taskbarStartTyping WRITE setTaskbarStartTyping NOTIFY changed FINAL)
+    // Win顺's own search box on the taskbar: the setting, whether Windows has
+    // the taskbar for it (11), whether it is on the taskbar now (not where
+    // the icons leave no room for it).
+    Q_PROPERTY(bool taskbarSearchBox READ taskbarSearchBox WRITE setTaskbarSearchBox NOTIFY changed FINAL)
+    Q_PROPERTY(bool searchBoxSupported READ searchBoxSupported CONSTANT FINAL)
+    Q_PROPERTY(bool searchBoxShown READ searchBoxShown NOTIFY searchBoxShownChanged FINAL)
     // Read again as the window comes to the front (refreshTaskbarState): the
     // user pins the button and hides Windows' search outside Win顺.
     Q_PROPERTY(bool taskbarButtonPinned READ taskbarButtonPinned NOTIFY taskbarStateChanged FINAL)
@@ -202,6 +218,22 @@ public:
     QStringList clipboardExcludedApps() const { return m_settings.clipboardExcludedApps; }
     int clipboardCount() const { return m_clipboardCount; }
     void setClipboardCount(int count); // set by the app
+    QString clipboardNumberKeys() const { return m_settings.clipboardNumberKeys; }
+    void setClipboardNumberKeys(const QString& keys);
+    QString clipboardNumberKeysNote() const { return m_clipboardNumberKeysNote; }
+
+    bool foldersFirst() const { return m_settings.foldersFirst; }
+    void setFoldersFirst(bool on);
+    bool showModified() const { return m_settings.showModified; }
+    void setShowModified(bool on);
+    bool sortByModified() const { return m_settings.sortByModified; }
+    void setSortByModified(bool on);
+    QString numberKeys() const { return m_settings.numberKeys; }
+    void setNumberKeys(const QString& keys);
+    QString numberKeysNote() const { return m_numberKeysNote; }
+    // Looks again at which number keys are taken (as the window comes to the
+    // front: a program may have been started or closed meanwhile).
+    Q_INVOKABLE void refreshNumberKeys();
 
     bool taskbarWinS() const { return m_settings.taskbarWinS; }
     void setTaskbarWinS(bool on);
@@ -209,11 +241,21 @@ public:
     void setWinSState(const QString& state, bool canRestartExplorer); // set by the app
     bool taskbarStartTyping() const { return m_settings.taskbarStartTyping; }
     void setTaskbarStartTyping(bool on);
+    bool taskbarSearchBox() const { return m_settings.taskbarSearchBox; }
+    void setTaskbarSearchBox(bool on);
+    bool searchBoxSupported() const;
+    bool searchBoxShown() const { return m_searchBoxShown; }
+    void setSearchBoxShown(bool shown); // set by the app
     bool taskbarButtonPinned() const { return m_taskbarButtonPinned; }
     bool windowsSearchShown() const { return m_windowsSearchShown; }
     Q_INVOKABLE void refreshTaskbarState();
+    // Has the taskbar button ask Windows to pin it (WinShunSearch.exe --pin):
+    // the user says yes in Windows' own dialog. Where Windows does not ask,
+    // the button's Start menu shortcut is selected in File Explorer for the
+    // user to pin. False when there is no button program.
+    Q_INVOKABLE bool pinTaskbarButton();
     // The Start menu shortcut to the taskbar button, selected in Explorer for
-    // the user to pin (programs cannot). False when there is none.
+    // the user to pin. False when there is none.
     Q_INVOKABLE bool showTaskbarButton();
 
     QVariantList webShortcuts() const;
@@ -271,9 +313,11 @@ signals:
     void autostartChanged();
     void winVStateChanged();
     void winSStateChanged();
+    void searchBoxShownChanged();
     void taskbarStateChanged();
     void fileManagersChanged();
     void clipboardCountChanged();
+    void numberKeysNoteChanged();
     void clipboardClearRequested();
     void explorerRestartRequested(); // Win+V changes hands when Explorer starts again
     void edited(const ws::Settings& settings);
@@ -286,6 +330,8 @@ private:
     Settings m_settings;
     QString m_runningRenderer; // resolved: never "auto"
     QString m_hotkeyError;
+    QString m_numberKeysNote;
+    QString m_clipboardNumberKeysNote;
     int m_historyCount = 0;
     QString m_contentIndexStatus;
     IndexFolderState m_indexFolderState;
@@ -296,11 +342,14 @@ private:
     bool m_canRestartExplorer = false;
     bool m_taskbarButtonPinned = false;
     bool m_windowsSearchShown = true;
+    bool m_searchBoxShown = false;
     QString m_clipboardHotkeyError;
     int m_clipboardCount = 0;
     QPointer<QWindow> m_window;
     SystemCatalog* m_places = nullptr; // the app's; outlives the window
     std::unique_ptr<ShortcutCapture> m_capture; // while recording a hotkey
+    struct TaskbarWatch; // the taskbar's pinned programs and Windows' search box setting
+    std::unique_ptr<TaskbarWatch> m_taskbarWatch;
 };
 
 } // namespace ws

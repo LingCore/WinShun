@@ -203,6 +203,22 @@
 <context>
     <name>Footer</name>
     <message>
+        <source>最近修改的在前</source>
+        <translation>Newest first</translation>
+    </message>
+    <message>
+        <source>最匹配的在前</source>
+        <translation>Best match first</translation>
+    </message>
+    <message>
+        <source>点一下改为最匹配的在前</source>
+        <translation>Click for best match first</translation>
+    </message>
+    <message>
+        <source>点一下改为最近修改的在前</source>
+        <translation>Click for newest first</translation>
+    </message>
+    <message>
         <source>打开</source>
         <translation>Open</translation>
     </message>
@@ -475,6 +491,13 @@
     </message>
 </context>
 <context>
+    <name>SearchBar</name>
+    <message>
+        <source>文件夹</source>
+        <translation>Folders</translation>
+    </message>
+</context>
+<context>
     <name>SettingRow</name>
     <message>
         <source>打开后可以设置：%1</source>
@@ -514,6 +537,10 @@
         <translation>Search scope</translation>
     </message>
     <message>
+        <source>结果列表</source>
+        <translation>Result list</translation>
+    </message>
+    <message>
         <source>文件内容搜索</source>
         <translation>File contents</translation>
     </message>
@@ -532,6 +559,10 @@
     <message>
         <source>搜索位置;磁盘;scope</source>
         <translation>locations;disks;where</translation>
+    </message>
+    <message>
+        <source>搜索结果;结果;列表;results</source>
+        <translation>search results;results;list</translation>
     </message>
     <message>
         <source>全文搜索;全文;文字;content</source>
@@ -622,20 +653,12 @@
         <translation>double tap;double press;summon;ctrl</translation>
     </message>
     <message>
-        <source>快速连按两下 Ctrl 键，打开或关闭搜索框</source>
-        <translation>Quickly press Ctrl twice to open or close the search box</translation>
-    </message>
-    <message>
         <source>玩游戏时不响应双击 Ctrl</source>
         <translation>Ignore Ctrl twice while gaming</translation>
     </message>
     <message>
         <source>游戏;蹲下;误触;game</source>
         <translation>games;gaming;crouch;by accident</translation>
-    </message>
-    <message>
-        <source>游戏里常连按两下 Ctrl 蹲下。前台程序独占全屏，或者藏起鼠标用来转视角时，双击 Ctrl 不打开搜索框。设置的快捷键照常可用</source>
-        <translation>Games often crouch on Ctrl pressed twice. While the program in front has exclusive full screen, or has hidden the mouse pointer to turn the view, pressing Ctrl twice does not open the search box. The shortcut still works</translation>
     </message>
     <message>
         <source>任何程序全屏时都不响应双击 Ctrl</source>
@@ -646,20 +669,12 @@
         <translation>fullscreen;video;slideshow;by accident</translation>
     </message>
     <message>
-        <source>看视频、放幻灯片、全屏浏览网页时也不打开搜索框</source>
-        <translation>Also while watching a video, showing slides or browsing full screen</translation>
-    </message>
-    <message>
         <source>在这些程序里不响应双击 Ctrl</source>
         <translation>Ignore Ctrl twice in these programs</translation>
     </message>
     <message>
         <source>排除;程序;游戏;exe</source>
         <translation>exclude;programs;games;exe</translation>
-    </message>
-    <message>
-        <source>填程序的文件名，例如 TheFinals.exe。没被自动认出来的游戏可以加在这里</source>
-        <translation>Program file names, such as TheFinals.exe. Add games that are not recognized by themselves here</translation>
     </message>
     <message>
         <source>输入程序文件名，例如 TheFinals.exe</source>
@@ -674,10 +689,6 @@
         <translation>hotkey;shortcut;key combination</translation>
     </message>
     <message>
-        <source>再设一个组合键来打开搜索框，例如 Alt + Space。点击右边的方框，然后按下想用的按键</source>
-        <translation>Another key combination that opens the search box, such as Alt + Space. Click the box on the right, then press the keys you want</translation>
-    </message>
-    <message>
         <source>清除</source>
         <translation>Clear</translation>
     </message>
@@ -690,20 +701,12 @@
         <translation>dialog;save as;open file;save</translation>
     </message>
     <message>
-        <source>“打开”“另存为”等对话框出现时，在它旁边放一个搜索框：搜文件夹或文件，选中后对话框直接转过去。在对话框里双击 Ctrl 就能开始输入</source>
-        <translation>By Open and Save As dialogs, a search bar: find a folder or file and the dialog goes there. Press Ctrl twice in the dialog to start typing</translation>
-    </message>
-    <message>
         <source>搜索框的位置</source>
         <translation>Where the search bar goes</translation>
     </message>
     <message>
         <source>位置;下方;左边;右边;对话框</source>
         <translation>position;below;left;right;dialog</translation>
-    </message>
-    <message>
-        <source>“自动”时放在对话框下方，下方放不下就放在右边或左边，都放不下就把对话框调矮一点。选定一边时，那边放不下就把对话框调小一点或挪开</source>
-        <translation>Auto: under the dialog; on its right or left where there is no room under it, and where there is none anywhere, the dialog is made a little shorter. With a side chosen, the dialog is made a little smaller or moved for room there</translation>
     </message>
     <message>
         <source>下方</source>
@@ -730,10 +733,6 @@
         <translation>autostart;startup;boot;sign in</translation>
     </message>
     <message>
-        <source>登录 Windows 后在后台运行，随时可以打开</source>
-        <translation>Runs in the background once you sign in, ready whenever you need it</translation>
-    </message>
-    <message>
         <source>历史;最近;记录;history;recent</source>
         <translation>history;recent;remember</translation>
     </message>
@@ -746,68 +745,36 @@
         <translation>Instead of Windows search on the taskbar</translation>
     </message>
     <message>
-        <source>点任务栏上的 Win顺 按钮或按 Win+S，搜索框在任务栏上方打开；再点一次、按 Esc 或点别处就收起。</source>
-        <translation>Click WinShun’s button on the taskbar or press Win+S, and the search box opens above the taskbar. Click it again, press Esc or click elsewhere to close it.</translation>
-    </message>
-    <message>
-        <source>任务栏上的 Win顺 按钮</source>
-        <translation>WinShun’s button on the taskbar</translation>
-    </message>
-    <message>
-        <source>固定;任务栏;按钮;pin;taskbar</source>
-        <translation>pin;taskbar;button</translation>
-    </message>
-    <message>
-        <source>已固定到任务栏</source>
-        <translation>Pinned to the taskbar</translation>
-    </message>
-    <message>
-        <source>Windows 只让你自己固定程序：点“找到按钮”，在选中的“Win顺 搜索”上点右键，选“固定到任务栏”（Windows 11 可能要先点“显示更多选项”）</source>
-        <translation>Windows lets only you pin programs: click “Find the button”, right-click the selected “WinShun Search” and choose “Pin to taskbar” (on Windows 11 perhaps under “Show more options”)</translation>
-    </message>
-    <message>
-        <source>找到按钮</source>
-        <translation>Find the button</translation>
+        <source>1. 把 Win顺 按钮固定到任务栏</source>
+        <translation>1. Pin WinShun’s button to the taskbar</translation>
     </message>
     <message>
         <source>没找到 WinShunSearch.exe，重新安装 Win顺 就有了</source>
         <translation>WinShunSearch.exe is missing; installing WinShun again brings it back</translation>
     </message>
     <message>
-        <source>Windows 自带的搜索按钮</source>
-        <translation>Windows’ own search button</translation>
+        <source>2. 隐藏 Windows 自带的搜索（推荐）</source>
+        <translation>2. Hide Windows’ own search (recommended)</translation>
     </message>
     <message>
         <source>隐藏;任务栏;搜索框;taskbar</source>
         <translation>hide;taskbar;search box</translation>
     </message>
     <message>
-        <source>还在任务栏上。Windows 不让其他程序隐藏它：在任务栏设置里把“搜索”选成“隐藏”</source>
-        <translation>Still on the taskbar. Windows lets no other program hide it: in the taskbar settings, set “Search” to “Hide”</translation>
-    </message>
-    <message>
-        <source>已从任务栏上隐藏</source>
-        <translation>Hidden from the taskbar</translation>
+        <source>已隐藏</source>
+        <translation>Hidden</translation>
     </message>
     <message>
         <source>打开任务栏设置</source>
         <translation>Taskbar settings</translation>
     </message>
     <message>
-        <source>用 Win+S 打开，代替 Windows 搜索</source>
-        <translation>Open with Win+S, instead of Windows search</translation>
+        <source>3. 用 Win+S 打开 Win顺</source>
+        <translation>3. Open WinShun with Win+S</translation>
     </message>
     <message>
         <source>Win+S;Windows 搜索;截图;Win+Shift+S</source>
         <translation>Win+S;Windows Search;screenshot;Win+Shift+S</translation>
-    </message>
-    <message>
-        <source>Win+S 也在任务栏上方打开 Win顺。Win+Shift+S 截图照常可用，由 Win顺 代为打开截图工具；Win顺 没在运行时这两个键都没有反应。关掉这项，它们就回到 Windows 自带的</source>
-        <translation>Win+S opens WinShun above the taskbar too. Win+Shift+S still takes screenshots: WinShun starts the Snipping Tool for it. While WinShun is not running, neither key does anything. Turned off, both are Windows’ own again</translation>
-    </message>
-    <message>
-        <source>已生效：Win+S 打开 Win顺</source>
-        <translation>Done: Win+S opens WinShun</translation>
     </message>
     <message>
         <source>资源管理器重启后，Win+S 和 Win+Shift+S 回到 Windows 自带的</source>
@@ -818,16 +785,12 @@
         <translation>Could not change the Windows setting: Win+S still opens Windows search</translation>
     </message>
     <message>
-        <source>在开始菜单里打字，也用 Win顺 搜索</source>
-        <translation>Typing in the Start menu searches with WinShun</translation>
+        <source>4. 在开始菜单里打字，也用 Win顺 搜索</source>
+        <translation>4. Typing in the Start menu searches with WinShun</translation>
     </message>
     <message>
         <source>开始菜单;打字;Win;start menu</source>
         <translation>Start menu;typing;Win key</translation>
-    </message>
-    <message>
-        <source>按 Win 打开开始菜单后直接打字，Win顺 在任务栏上方打开，打的字接着进到搜索框里。想用 Windows 自带的搜索时，先按一下左 Alt 再打字</source>
-        <translation>Press Win and just type: WinShun opens above the taskbar and what you type goes on into its search box. For Windows’ own search, press Left Alt once before typing</translation>
     </message>
     <message>
         <source>主题</source>
@@ -854,10 +817,6 @@
         <translation>Needs the “GPU” drawing method under Advanced</translation>
     </message>
     <message>
-        <source>窗口背景透出桌面壁纸的颜色（云母效果）。Windows 设置里的“透明效果”关着，打开后才能看到</source>
-        <translation>Window backgrounds take on the colours of your wallpaper (Mica). Transparency effects are off in Windows Settings; turn them on to see it</translation>
-    </message>
-    <message>
         <source>窗口背景透出桌面壁纸的颜色（云母效果）</source>
         <translation>Window backgrounds take on the colours of your wallpaper (Mica)</translation>
     </message>
@@ -882,10 +841,6 @@
         <translation>No search bar under these programs’ dialogs</translation>
     </message>
     <message>
-        <source>点搜索框最右边的“更多”按钮添加。这些程序里 Ctrl+G 照常可用</source>
-        <translation>Add one with the “More” button at the right end of the search bar. Ctrl+G still works in these programs</translation>
-    </message>
-    <message>
         <source>浅色</source>
         <translation>Light</translation>
     </message>
@@ -898,20 +853,8 @@
         <translation>Language</translation>
     </message>
     <message>
-        <source>“跟随系统”时，中文版 Windows 显示中文，其他语言的 Windows 显示英文</source>
-        <translation>“System” shows Chinese on a Chinese Windows and English on any other</translation>
-    </message>
-    <message>
-        <source>修改后会在后台重新整理文件列表，期间可以照常搜索。</source>
-        <translation>After a change, the file list is updated in the background. You can keep searching meanwhile.</translation>
-    </message>
-    <message>
         <source>不搜索的文件夹</source>
         <translation>Excluded folders</translation>
-    </message>
-    <message>
-        <source>这些文件夹以及里面的所有内容都不会出现在搜索结果里</source>
-        <translation>These folders and everything in them never appear in search results</translation>
     </message>
     <message>
         <source>添加文件夹…</source>
@@ -928,10 +871,6 @@
     <message>
         <source>跳过的文件夹名称</source>
         <translation>Skipped folder names</translation>
-    </message>
-    <message>
-        <source>在任何位置遇到这些名字的文件夹都会跳过，适合 node_modules 这类到处都有的文件夹</source>
-        <translation>Folders with these names are skipped wherever they are. Handy for ones like node_modules that turn up everywhere</translation>
     </message>
     <message>
         <source>输入文件夹名称，例如 build</source>
@@ -954,10 +893,6 @@
         <translation>Check for changes at startup</translation>
     </message>
     <message>
-        <source>U 盘等非 NTFS 磁盘在 Win顺没有运行期间的改动，启动后于后台补上（NTFS 磁盘总会自动补上）</source>
-        <translation>Changes made on non-NTFS drives, such as USB drives, while WinShun wasn’t running are picked up in the background after it starts (NTFS drives always catch up by themselves)</translation>
-    </message>
-    <message>
         <source>在搜索框按 Tab 切换到“内容”，可以查找文件里的文字。</source>
         <translation>Press Tab in the search box to switch to “Content” and find text inside files.</translation>
     </message>
@@ -974,10 +909,6 @@
         <translation>Also search system and program folders</translation>
     </message>
     <message>
-        <source>包括 Windows、Program Files、AppData、node_modules 等文件夹。这些地方文件很多，打开后内容搜索会慢不少</source>
-        <translation>Such as Windows, Program Files, AppData and node_modules. They hold a great many files, so content search gets noticeably slower</translation>
-    </message>
-    <message>
         <source>建立内容索引</source>
         <translation>Build a content index</translation>
     </message>
@@ -992,10 +923,6 @@
     <message>
         <source>用 Win+V 打开，代替 Windows 自带的剪贴板</source>
         <translation>Open with Win+V, instead of Windows’ clipboard</translation>
-    </message>
-    <message>
-        <source>打开后按 Win+V 出现的是 Win顺的剪贴板；Windows 面板里的表情可以改用 Win+. 打开。关掉这项，Win+V 就回到 Windows 自带的</source>
-        <translation>Win+V then opens WinShun’s clipboard; for emoji, use Win+. instead. Turned off, Win+V goes back to Windows’ own</translation>
     </message>
     <message>
         <source>已生效：Win+V 打开 Win顺的剪贴板</source>
@@ -1030,20 +957,12 @@
         <translation>file manager;explorer;open folder;open file location;Total Commander;Directory Opus;TC;Opus</translation>
     </message>
     <message>
-        <source>在 Win顺 里打开文件夹、打开文件所在的位置时用它；没能打开就用资源管理器</source>
-        <translation>Used when you open a folder or a file’s location from Win顺; File Explorer steps in if it doesn’t start</translation>
-    </message>
-    <message>
         <source>Ctrl+G 转到文件管理器的文件夹</source>
         <translation>Ctrl+G goes to the file manager’s folder</translation>
     </message>
     <message>
         <source>跳转;转到;对话框;另存为;打开文件;资源管理器;Total Commander;Directory Opus;jump</source>
         <translation>jump;go to;dialog;save as;open file;explorer;Total Commander;Directory Opus</translation>
-    </message>
-    <message>
-        <source>在“打开”“另存为”等对话框里按 Ctrl+G，对话框直接转到最近用过的文件管理器窗口正在显示的文件夹：资源管理器、Total Commander 和 Directory Opus 都行</source>
-        <translation>In an Open or Save As dialog, press Ctrl+G to go to the folder shown in the file manager window you used last: File Explorer, Total Commander or Directory Opus</translation>
     </message>
     <message>
         <source>对话框自动转到文件管理器的文件夹</source>
@@ -1054,16 +973,32 @@
         <translation>auto jump;follow;dialog;save as;explorer</translation>
     </message>
     <message>
-        <source>“打开”“另存为”等对话框出现时，自动转到文件管理器正在显示的文件夹；对话框开着时去文件管理器换了文件夹，切回来也跟着转过去，只是看一眼就不动。转过去以后，搜索框上有按钮回到原来的位置</source>
-        <translation>When an Open or Save dialog comes up, it goes to the folder your file manager shows; go to another folder there while the dialog is open and it follows when you switch back (just looking changes nothing). The search bar then has a button to go back to where the dialog was</translation>
-    </message>
-    <message>
         <source>任务栏会闪一下，打开的文件夹窗口会关闭</source>
         <translation>The taskbar flickers and open folder windows close</translation>
     </message>
     <message>
         <source>中文;英文;简体;language</source>
         <translation>Chinese;English;language</translation>
+    </message>
+    <message>
+        <source>1. 在任务栏上放 Win顺 的搜索框</source>
+        <translation>1. Put WinShun’s search box on the taskbar</translation>
+    </message>
+    <message>
+        <source>固定;任务栏;按钮;搜索框;pin;taskbar</source>
+        <translation>pin;taskbar;button;search box</translation>
+    </message>
+    <message>
+        <source>固定</source>
+        <translation>Pin</translation>
+    </message>
+    <message>
+        <source>Win顺 按钮也已固定到任务栏</source>
+        <translation>WinShun’s button is pinned to the taskbar too</translation>
+    </message>
+    <message>
+        <source>固定按钮</source>
+        <translation>Pin button</translation>
     </message>
     <message>
         <source>排除;忽略;隐藏;黑名单;exclude</source>
@@ -1082,6 +1017,50 @@
         <translation>rescan;scan</translation>
     </message>
     <message>
+        <source>文件和文件夹的顺序</source>
+        <translation>Files and folders</translation>
+    </message>
+    <message>
+        <source>排序;顺序;文件夹在前;目录;sort;folder</source>
+        <translation>sort;order;folders first;directories</translation>
+    </message>
+    <message>
+        <source>文件在前</source>
+        <translation>Files first</translation>
+    </message>
+    <message>
+        <source>文件夹在前</source>
+        <translation>Folders first</translation>
+    </message>
+    <message>
+        <source>最近修改的排在前面</source>
+        <translation>Newest first</translation>
+    </message>
+    <message>
+        <source>排序;修改时间;修改日期;最新;sort;date</source>
+        <translation>sort;date modified;modified;newest;date</translation>
+    </message>
+    <message>
+        <source>显示修改日期</source>
+        <translation>Show the date modified</translation>
+    </message>
+    <message>
+        <source>修改时间;修改日期;日期;时间;date</source>
+        <translation>date modified;modified;date;time</translation>
+    </message>
+    <message>
+        <source>用数字键直接打开</source>
+        <translation>Open with number keys</translation>
+    </message>
+    <message>
+        <source>快捷键;数字键;序号;Ctrl+1;Alt+1;冲突;hotkey</source>
+        <translation>shortcut;number keys;numbers;Ctrl+1;Alt+1;conflict;hotkey</translation>
+    </message>
+    <message>
+        <source>关闭</source>
+        <translation>Off</translation>
+    </message>
+    <message>
         <source>Word;Excel;PowerPoint;PPT;PDF;WPS;docx;xlsx</source>
         <translation>Word;Excel;PowerPoint;PPT;PDF;WPS;docx;xlsx</translation>
     </message>
@@ -1092,10 +1071,6 @@
     <message>
         <source>大小;上限;文件大小;size</source>
         <translation>size;limit;file size;MB</translation>
-    </message>
-    <message>
-        <source>系统文件夹;Program Files;AppData;Windows</source>
-        <translation>system folders;Program Files;AppData;Windows</translation>
     </message>
     <message>
         <source>索引;加速;index</source>
@@ -1122,8 +1097,12 @@
         <translation>shortcut;hotkey;key combination</translation>
     </message>
     <message>
-        <source>不想换掉 Win+V 时，可以另设一个组合键打开剪贴板，例如 Win + Alt + V</source>
-        <translation>To keep Win+V as it is, open the clipboard with another key combination, such as Win + Alt + V</translation>
+        <source>用数字键直接粘贴</source>
+        <translation>Paste with number keys</translation>
+    </message>
+    <message>
+        <source>快捷键;数字键;序号;Alt+1;Ctrl+1;冲突;hotkey</source>
+        <translation>shortcut;number keys;numbers;Alt+1;Ctrl+1;conflict;hotkey</translation>
     </message>
     <message>
         <source>记录图片</source>
@@ -1134,20 +1113,12 @@
         <translation>screenshot;picture;photo;image</translation>
     </message>
     <message>
-        <source>截图和复制的图片也记下来，每张图片占一些磁盘空间</source>
-        <translation>Screenshots and copied pictures too; each takes some disk space</translation>
-    </message>
-    <message>
         <source>最多保留</source>
         <translation>Keep at most</translation>
     </message>
     <message>
         <source>数量;条数;上限</source>
         <translation>count;number;limit</translation>
-    </message>
-    <message>
-        <source>放进“固定”和其他分组的不算在内，一直保留</source>
-        <translation>Pinned and grouped entries do not count and are kept for good</translation>
     </message>
     <message>
         <source>%1 条</source>
@@ -1160,10 +1131,6 @@
     <message>
         <source>过期;天数;自动删除</source>
         <translation>expire;days;delete by itself</translation>
-    </message>
-    <message>
-        <source>这么久没再复制或粘贴过的记录会自动删除；分组里的不会</source>
-        <translation>Entries not copied or pasted for this long are removed; grouped ones stay</translation>
     </message>
     <message numerus="yes">
         <source>%n 天</source>
@@ -1181,14 +1148,6 @@
         <translation>Don’t keep copies from these programs</translation>
     </message>
     <message>
-        <source>密码;隐私;排除;程序;exe</source>
-        <translation>password;privacy;exclude;programs;exe</translation>
-    </message>
-    <message>
-        <source>填程序的文件名，例如 KeePass.exe。密码管理器一般会自己声明“不要记录”，这里再多一层保险</source>
-        <translation>Program file names, such as KeePass.exe. Password managers usually mark their copies as not to be kept; this is a second safeguard</translation>
-    </message>
-    <message>
         <source>输入程序文件名，例如 KeePass.exe</source>
         <translation>Program file name, e.g. KeePass.exe</translation>
     </message>
@@ -1201,16 +1160,8 @@
         <translation>delete;empty</translation>
     </message>
     <message>
-        <source>共 %1 条。“固定”和其他分组里的会保留</source>
-        <translation>%1 entries. Pinned and grouped ones stay</translation>
-    </message>
-    <message>
         <source>更新</source>
         <translation>Updates</translation>
-    </message>
-    <message>
-        <source>新版本发布在 GitHub 上。检查更新时只访问 GitHub，不发送任何个人信息；有新版本时，点“去下载”会在浏览器里打开下载页。</source>
-        <translation>New versions are published on GitHub. Checking contacts only GitHub and sends nothing personal; when there is a new version, “Download” opens its page in your browser.</translation>
     </message>
     <message>
         <source>版本 %1</source>
@@ -1249,10 +1200,6 @@
         <translation>upgrade;new version;update</translation>
     </message>
     <message>
-        <source>每次启动时看一次，之后每隔 12 小时看一次。有新版本时在托盘弹出提示</source>
-        <translation>At every start and every 12 hours after. A new version is announced from the tray</translation>
-    </message>
-    <message>
         <source>界面绘制方式</source>
         <translation>Rendering</translation>
     </message>
@@ -1263,10 +1210,6 @@
     <message>
         <source>重启 Win顺后生效</source>
         <translation>Takes effect after WinShun restarts</translation>
-    </message>
-    <message>
-        <source>“显卡加速”文字最清晰；“省内存”少占约 50 MB 内存，但文字偏模糊</source>
-        <translation>“GPU” gives the sharpest text; “Save memory” uses about 50 MB less memory, but text is a little blurry</translation>
     </message>
     <message>
         <source>立即重启</source>
@@ -1289,16 +1232,8 @@
         <translation>Search documents</translation>
     </message>
     <message>
-        <source>Word、Excel、PowerPoint、PDF 和 WPS 文件，新旧格式都可以。由一个权限受限的单独进程读取；扫描件和图片里的文字读不到</source>
-        <translation>Word, Excel, PowerPoint, PDF and WPS files, old formats and new. Read by a separate process with restricted rights; text in scans and pictures can’t be read</translation>
-    </message>
-    <message>
         <source>搜索这些类型的文本文件</source>
         <translation>Search these text file types</translation>
-    </message>
-    <message>
-        <source>纯文本类型的文件，按扩展名列出。Word、Excel、PDF 等文档由上面的“搜索文档”负责</source>
-        <translation>Plain-text files, by extension. Word, Excel, PDF and other documents come under “Search documents” above</translation>
     </message>
     <message>
         <source>数据文件夹</source>
@@ -1307,10 +1242,6 @@
     <message>
         <source>日志;记录;log;AppData</source>
         <translation>log;logs;AppData</translation>
-    </message>
-    <message>
-        <source>搜索记录、剪贴板历史和日志都存放在这里，索引默认也放在这里</source>
-        <translation>Search history, clipboard history and logs are kept here, and by default the index too</translation>
     </message>
     <message>
         <source>打开</source>
@@ -1325,10 +1256,6 @@
         <translation>reset;default</translation>
     </message>
     <message>
-        <source>所有分类里的设置都会回到刚安装时的样子</source>
-        <translation>Every setting in every category goes back to how it was when installed</translation>
-    </message>
-    <message>
         <source>确定要恢复吗？再点一次</source>
         <translation>Sure? Click again</translation>
     </message>
@@ -1341,16 +1268,8 @@
         <translation>Remember what you open</translation>
     </message>
     <message>
-        <source>什么都不输入时列出最近打开的文件和应用，搜索时它们排在前面。关闭后不再记录，也不再显示已有的记录</source>
-        <translation>With nothing typed, lists the files and apps you opened recently, and puts them first among matches. Off: nothing is recorded, and what was is not shown</translation>
-    </message>
-    <message>
         <source>清除最近使用记录</source>
         <translation>Clear recent items</translation>
-    </message>
-    <message>
-        <source>共 %1 项。也可以在搜索框里右键某一项，单独移除</source>
-        <translation>%1 items. You can also right-click one in the search window to remove just that one</translation>
     </message>
     <message>
         <source>没有记录</source>
@@ -1365,24 +1284,12 @@
         <translation>Size limit for text and logs</translation>
     </message>
     <message>
-        <source>更大的文件不查找内容</source>
-        <translation>Larger files are not searched</translation>
-    </message>
-    <message>
         <source>源代码的大小上限</source>
         <translation>Size limit for source code</translation>
     </message>
     <message>
-        <source>手写的代码很少有几 MB，更大的多是打包压缩后的脚本，搜什么都可能要整个读一遍</source>
-        <translation>Hand-written code is rarely several MB; larger files are mostly bundled, minified scripts that almost any search would read through</translation>
-    </message>
-    <message>
         <source>数据和网页的大小上限</source>
         <translation>Size limit for data and web pages</translation>
-    </message>
-    <message>
-        <source>几十 MB 的多是导出的数据，搜什么都可能要整个读一遍，所以默认小一些</source>
-        <translation>Files of tens of MB are mostly exported data that almost any search would read through, hence the smaller default</translation>
     </message>
     <message>
         <source>文档的大小上限</source>
@@ -1393,20 +1300,8 @@
         <translation>Word, Excel, PowerPoint, PDF and WPS files</translation>
     </message>
     <message>
-        <source>文档常有几十上百 MB，大多是图片，读出的文字不多，所以默认大得多；每个最多读出 16 MB 文字</source>
-        <translation>Documents are often tens or hundreds of MB, mostly pictures with little text, hence the much larger default; at most 16 MB of text is read out of each</translation>
-    </message>
-    <message>
         <source>列表里没有这类文件</source>
         <translation>None of this kind in the list</translation>
-    </message>
-    <message>
-        <source>在后台记下每个文件里有哪些中日韩文字，和三个字符一段的英文、数字、空格和标点，搜索时只打开可能含有它的文件，快得多；搜索中读过的文件也会记下。文档读出的文字也存在这里，搜索时不用再读一遍文档。只用于 NTFS 磁盘，首次建立需要一段时间，几十万个文件约占一两百 MB 磁盘空间</source>
-        <translation>Notes in the background which Chinese, Japanese and Korean characters, and which three-character runs of letters, digits, spaces and punctuation each file contains, so a search opens only the files that may match: much faster. Files a search reads are noted too, and the text read out of documents is kept here, so a search doesn’t read them again. NTFS drives only. The first build takes a while; a few hundred thousand files take one to two hundred MB of disk space</translation>
-    </message>
-    <message>
-        <source>复制过的文字、图片和文件记在这台电脑上，不会上传。在剪贴板里点一条或按 Enter，就粘贴到打开之前所在的窗口，Shift+Enter 粘贴为纯文本；按住 Ctrl 或 Shift 点击可以选多条，按选的顺序合在一起粘贴。</source>
-        <translation>What you copy is kept on this PC and never uploaded. In the clipboard, a click on an entry or Enter pastes it into the window you were in, Shift+Enter as plain text; Ctrl+click or Shift+click picks several, pasted together in the order picked.</translation>
     </message>
     <message>
         <source>索引位置</source>
@@ -1425,28 +1320,12 @@
         <translation>Moving… %1%. Searching works as usual meanwhile</translation>
     </message>
     <message>
-        <source>文件索引和内容索引放在这里，共 %1。C 盘空间紧张时，可以移到其他内置硬盘上（U 盘、移动硬盘不行）</source>
-        <translation>The file index and the content index are kept here, %1 in all. Short of space on drive C? Move them to another built-in drive (not a USB stick or an external drive)</translation>
-    </message>
-    <message>
-        <source>文件索引和内容索引放在这里。C 盘空间紧张时，可以移到其他内置硬盘上（U 盘、移动硬盘不行）</source>
-        <translation>The file index and the content index are kept here. Short of space on drive C? Move them to another built-in drive (not a USB stick or an external drive)</translation>
-    </message>
-    <message>
         <source>网页搜索</source>
         <translation>Web search</translation>
     </message>
     <message>
-        <source>给常去的网页起个关键词：在搜索框的“全部”里输入它，按 Enter 就打开。网址里带 %s 的还能搜索：关键词后面加空格和要搜的文字，按 Enter 就在那个网站上搜。例如关键词 gh、网址 https://github.com/search?q=%s，输入 gh WinShun 就在 GitHub 上搜索 WinShun。</source>
-        <translation>Give the pages you visit often a keyword: type it in the search box’s All and press Enter to open the page. An address with %s can search too: add a space and some words after the keyword, and Enter searches that site for them. For example, with the keyword gh and the address https://github.com/search?q=%s, typing gh WinShun searches GitHub for WinShun.</translation>
-    </message>
-    <message>
         <source>关键词</source>
         <translation>Keywords</translation>
-    </message>
-    <message>
-        <source>不输关键词，输入名称也能找到它；中文名称也可以打拼音</source>
-        <translation>Typing its name finds it too, without the keyword; Chinese names also by pinyin</translation>
     </message>
     <message>
         <source>还没有网页搜索，点“添加”加一个</source>
@@ -1459,6 +1338,299 @@
     <message>
         <source>编辑</source>
         <translation>Edit</translation>
+    </message>
+    <message>
+        <source>Windows 的表情面板改用 Win+. 打开</source>
+        <translation>Windows’ emoji panel then opens with Win+.</translation>
+    </message>
+    <message>
+        <source>Windows、Program Files、AppData 等；文件很多，搜索会变慢</source>
+        <translation>Windows, Program Files, AppData and the like; so many files make searches slower</translation>
+    </message>
+    <message>
+        <source>Word、Excel、PowerPoint、PDF 和 WPS 文件，图片里的文字除外</source>
+        <translation>Word, Excel, PowerPoint, PDF and WPS files; text in pictures is not read</translation>
+    </message>
+    <message>
+        <source>“固定”和分组里的不算，一直保留</source>
+        <translation>Pinned and grouped entries do not count and are kept for good</translation>
+    </message>
+    <message>
+        <source>“省内存”少占约 50 MB，但文字偏模糊</source>
+        <translation>“Save memory” uses about 50 MB less, but text is a little blurry</translation>
+    </message>
+    <message>
+        <source>“自动”时放在下方，放不下就换到旁边</source>
+        <translation>“Auto” puts it below the dialog, or beside it when there is no room</translation>
+    </message>
+    <message>
+        <source>“跟随系统”时按 Windows 的语言显示中文或英文</source>
+        <translation>“System” shows Chinese or English according to the language of Windows</translation>
+    </message>
+    <message>
+        <source>不想换掉 Win+V 时用，例如 Win+Alt+V</source>
+        <translation>For when you keep Win+V as it is, such as Win+Alt+V</translation>
+    </message>
+    <message>
+        <source>也可以只固定一个按钮</source>
+        <translation>Or pin just a button</translation>
+    </message>
+    <message>
+        <source>任何位置的同名文件夹都跳过，例如 node_modules</source>
+        <translation>Folders by these names are skipped wherever they are, such as node_modules</translation>
+    </message>
+    <message>
+        <source>任务栏</source>
+        <translation>Taskbar</translation>
+    </message>
+    <message>
+        <source>任务栏太挤，放不下：取消固定几个图标，或改为固定按钮</source>
+        <translation>No room on the taskbar: unpin a few icons, or pin a button instead</translation>
+    </message>
+    <message>
+        <source>保留</source>
+        <translation>Keeping</translation>
+    </message>
+    <message>
+        <source>修改后在后台重新整理，不影响搜索。</source>
+        <translation>Changes are applied in the background; searching goes on as usual.</translation>
+    </message>
+    <message>
+        <source>共 %1 条，“固定”和分组里的会保留</source>
+        <translation>%1 entries; pinned and grouped ones are kept</translation>
+    </message>
+    <message>
+        <source>共 %1 项；在搜索框里右键一项可以单独移除</source>
+        <translation>%1 items; right-click one in the search box to remove just that one</translation>
+    </message>
+    <message>
+        <source>切换时资源管理器会重启，打开的文件夹窗口会关闭</source>
+        <translation>Switching restarts File Explorer and closes its open folder windows</translation>
+    </message>
+    <message>
+        <source>另设一个组合键打开搜索框，例如 Alt+Space</source>
+        <translation>Another key combination that opens the search box, such as Alt+Space</translation>
+    </message>
+    <message>
+        <source>只存在这台电脑上，不会上传。按住 Ctrl 点击可以多选，合在一起粘贴。</source>
+        <translation>Kept on this PC only, never uploaded. Ctrl+click to pick several and paste them together.</translation>
+    </message>
+    <message>
+        <source>启动与历史</source>
+        <translation>Startup and history</translation>
+    </message>
+    <message>
+        <source>启动时和每隔 12 小时检查一次，有新版本时在托盘提示</source>
+        <translation>At startup and every 12 hours; a new version is announced in the tray</translation>
+    </message>
+    <message>
+        <source>在“打开”“另存为”旁搜文件夹和文件，选中后直接转过去</source>
+        <translation>Search folders and files beside Open and Save As dialogs; the dialog goes to the one you pick</translation>
+    </message>
+    <message>
+        <source>在“打开”“另存为”里按 Ctrl+G，转到文件管理器当前的文件夹</source>
+        <translation>Press Ctrl+G in an Open or Save As dialog to go to your file manager’s current folder</translation>
+    </message>
+    <message>
+        <source>在“文件”里按修改时间排，最新的在前；底栏按钮也能切换</source>
+        <translation>In Files, newest changed first; the button at the bottom switches it too</translation>
+    </message>
+    <message>
+        <source>在任务栏设置里把“搜索”选成“隐藏”</source>
+        <translation>In taskbar settings, set “Search” to “Hide”</translation>
+    </message>
+    <message>
+        <source>在后台记下文件里的文字，搜索快得多。只用于 NTFS 磁盘，约占一两百 MB</source>
+        <translation>Notes the text in files in the background, which makes searches much faster. NTFS disks only; takes about 100–200 MB</translation>
+    </message>
+    <message>
+        <source>在搜索框按 Tab 切换“全部”“文件”“内容”；“文件”里还能只找文件夹。</source>
+        <translation>Press Tab in the search box to switch between All, Files and Content; Files can also show folders only.</translation>
+    </message>
+    <message>
+        <source>在搜索框的“更多”菜单里添加</source>
+        <translation>Added from the search bar’s “More” menu</translation>
+    </message>
+    <message>
+        <source>大小上限</source>
+        <translation>Size limits</translation>
+    </message>
+    <message>
+        <source>密码;隐私;排除;程序;exe;KeePass</source>
+        <translation>password;privacy;exclude;programs;exe;KeePass</translation>
+    </message>
+    <message>
+        <source>对话框</source>
+        <translation>Dialogs</translation>
+    </message>
+    <message>
+        <source>对话框出现时，自动转到文件管理器当前的文件夹</source>
+        <translation>When a dialog appears, it goes to your file manager’s current folder</translation>
+    </message>
+    <message>
+        <source>已固定按钮，也可以再放一个搜索框</source>
+        <translation>The button is pinned; you can add a search box too</translation>
+    </message>
+    <message>
+        <source>已固定，点它就能打开 Win顺</source>
+        <translation>Pinned: click it to open WinShun</translation>
+    </message>
+    <message>
+        <source>已放好，点它就能打字</source>
+        <translation>In place: click it and type</translation>
+    </message>
+    <message>
+        <source>常规</source>
+        <translation>General</translation>
+    </message>
+    <message>
+        <source>快捷键</source>
+        <comment>settings tab</comment>
+        <translation>Shortcuts</translation>
+    </message>
+    <message>
+        <source>想用 Windows 自带的搜索时，先按一下左 Alt 再打字</source>
+        <translation>For Windows’ own search, press Left Alt once before typing</translation>
+    </message>
+    <message>
+        <source>截图和复制的图片也记下来</source>
+        <translation>Screenshots and copied pictures too</translation>
+    </message>
+    <message>
+        <source>所有设置回到刚安装时的样子</source>
+        <translation>All settings go back to how they were when installed</translation>
+    </message>
+    <message>
+        <source>打开文件夹、打开文件所在位置时用它</source>
+        <translation>Used to open folders and the folder a file is in</translation>
+    </message>
+    <message>
+        <source>按 %1+1 粘贴第一条，加按 Shift 粘贴为纯文本</source>
+        <translation>%1+1 pastes the first entry; add Shift to paste it as plain text</translation>
+    </message>
+    <message>
+        <source>按扩展名列出；Word、PDF 等文档由“搜索文档”负责</source>
+        <translation>By extension; Word, PDF and other documents come under “Search documents”</translation>
+    </message>
+    <message>
+        <source>按顺序做完这四步，做好的会自动打勾。已完成 %1/4。</source>
+        <translation>Do these four steps in order; each is ticked off once done. %1/4 done.</translation>
+    </message>
+    <message>
+        <source>搜索记录、剪贴板历史和日志</source>
+        <translation>Search history, clipboard history and logs</translation>
+    </message>
+    <message>
+        <source>放在任务栏图标旁边，点它直接打字</source>
+        <translation>Next to the taskbar icons: click it and type</translation>
+    </message>
+    <message>
+        <source>文件和文件夹分两组排，选哪组在前</source>
+        <translation>Files and folders are listed apart; choose which comes first</translation>
+    </message>
+    <message>
+        <source>文件索引和内容索引，共 %1；可以移到其他内置硬盘</source>
+        <translation>File and content indexes, %1 in all; they can move to another internal drive</translation>
+    </message>
+    <message>
+        <source>文件索引和内容索引；可以移到其他内置硬盘</source>
+        <translation>File and content indexes; they can move to another internal drive</translation>
+    </message>
+    <message>
+        <source>显示在名字右边，例如“昨天 14:32”</source>
+        <translation>To the right of the name, such as “Yesterday 14:32”</translation>
+    </message>
+    <message>
+        <source>检查更新只访问 GitHub，不发送任何个人信息。</source>
+        <translation>Checking for updates contacts only GitHub and sends no personal information.</translation>
+    </message>
+    <message>
+        <source>比上限大的文件不查找内容。</source>
+        <translation>Files larger than the limit are not searched for text.</translation>
+    </message>
+    <message>
+        <source>没被认出来的游戏，可以加在这里</source>
+        <translation>Add games that are not recognized by themselves</translation>
+    </message>
+    <message>
+        <source>没输入时列出最近打开的项目，搜索时排在前面</source>
+        <translation>Lists what you opened lately while nothing is typed, and puts it first in results</translation>
+    </message>
+    <message>
+        <source>游戏全屏或藏起鼠标时不打开，免得蹲下时误触</source>
+        <translation>Not while a game is full screen or hides the pointer, so crouching doesn’t open it</translation>
+    </message>
+    <message>
+        <source>点“固定”后选“是”；打开的若是文件夹，右键其中的图标选“固定到任务栏”</source>
+        <translation>Click “Pin”, then “Yes”. If a folder opens instead, right-click the icon in it and choose “Pin to taskbar”</translation>
+    </message>
+    <message>
+        <source>登录 Windows 后在后台运行</source>
+        <translation>Runs in the background once you sign in to Windows</translation>
+    </message>
+    <message>
+        <source>看视频、放幻灯片时也不打开</source>
+        <translation>Not while watching videos or showing slides either</translation>
+    </message>
+    <message>
+        <source>系统文件夹;Program Files;AppData;Windows;node_modules</source>
+        <translation>system folders;Program Files;AppData;Windows;node_modules</translation>
+    </message>
+    <message>
+        <source>给密码管理器等再加一层保险</source>
+        <translation>An extra safeguard for password managers and the like</translation>
+    </message>
+    <message>
+        <source>补上 U 盘等非 NTFS 磁盘在 Win顺 关闭期间的改动</source>
+        <translation>Catches up on changes made to USB drives and other non-NTFS disks while WinShun was not running</translation>
+    </message>
+    <message>
+        <source>要先打开 Windows 设置里的“透明效果”</source>
+        <translation>Turn on “Transparency effects” in Windows Settings first</translation>
+    </message>
+    <message>
+        <source>记录</source>
+        <translation>Recording</translation>
+    </message>
+    <message>
+        <source>输入名称或拼音也能找到</source>
+        <translation>Its name, or the name’s pinyin, finds it too</translation>
+    </message>
+    <message>
+        <source>这么久没用过的自动删除，分组里的除外</source>
+        <translation>Entries not used for this long are deleted, except those in groups</translation>
+    </message>
+    <message>
+        <source>这些文件夹里的内容都不出现在结果里</source>
+        <translation>Nothing inside these folders shows up in results</translation>
+    </message>
+    <message>
+        <source>连按两下 Ctrl，打开或关闭搜索框</source>
+        <translation>Press Ctrl twice quickly to open or close the search box</translation>
+    </message>
+    <message>
+        <source>都设好了：任务栏、Win+S 和开始菜单都用 Win顺 搜索。</source>
+        <translation>All set: the taskbar, Win+S and the Start menu all search with WinShun.</translation>
+    </message>
+    <message>
+        <source>按住 %1 标出序号，按 %1+1 打开第一行</source>
+        <translation>Hold %1 to see numbers; %1+1 opens the first row</translation>
+    </message>
+    <message>
+        <source>文件夹</source>
+        <translation>Folders</translation>
+    </message>
+    <message>
+        <source>文件夹名称</source>
+        <translation>Folder names</translation>
+    </message>
+    <message>
+        <source>磁盘</source>
+        <translation>Drives</translation>
+    </message>
+    <message>
+        <source>输入关键词按 Enter 打开网页；网址里有 %s 的，在关键词后加空格和文字就能搜索。</source>
+        <translation>Type a keyword and press Enter to open the page; when the address has %s, add a space and words after the keyword to search the site.</translation>
     </message>
 </context>
 <context>
@@ -1635,6 +1807,14 @@
     <message>
         <source>快捷键不可用</source>
         <translation>Shortcut unavailable</translation>
+    </message>
+    <message>
+        <source>Win顺 搜索</source>
+        <translation>WinShun Search</translation>
+    </message>
+    <message>
+        <source>搜索应用和文件</source>
+        <translation>Search apps and files</translation>
     </message>
     <message>
         <source>没能重启资源管理器</source>
@@ -2277,6 +2457,10 @@
         <translation>documents, %1 files and more</translation>
     </message>
     <message>
+        <source>搜索文件夹</source>
+        <translation>Search folders</translation>
+    </message>
+    <message>
         <source>搜索 Word、Excel、PDF 和 %1 等文件中的文字</source>
         <translation>Search Word, Excel, PDF, %1 files…</translation>
     </message>
@@ -2341,6 +2525,10 @@
             <numerusform>%Ln result · %1 ms</numerusform>
             <numerusform>%Ln results · %1 ms</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>正在搜索…</source>
+        <translation>Searching…</translation>
     </message>
     <message>
         <source> · 索引尚未建完</source>
@@ -2569,6 +2757,33 @@
         <translation>Windows Security</translation>
     </message>
     <message>
+        <source>今天 %1</source>
+        <translation>Today %1</translation>
+    </message>
+    <message>
+        <source>昨天 %1</source>
+        <translation>Yesterday %1</translation>
+    </message>
+    <message>
+        <source>M月d日</source>
+        <extracomment>A date this year, as QLocale::toString formats it: &quot;Oct 3&quot;</extracomment>
+        <translation>MMM d</translation>
+    </message>
+    <message>
+        <source>yyyy年M月d日</source>
+        <extracomment>An earlier date, as QLocale::toString formats it: &quot;Mar 5, 2024&quot;</extracomment>
+        <translation>MMM d, yyyy</translation>
+    </message>
+    <message>
+        <source>修改于 %1</source>
+        <extracomment>When a file was last written, in full, as QLocale::toString formats it: &quot;Oct 3, 2026, 14:32&quot;</extracomment>
+        <translation>Modified %1</translation>
+    </message>
+    <message>
+        <source>yyyy年M月d日 HH:mm</source>
+        <translation>MMM d, yyyy, h:mm AP</translation>
+    </message>
+    <message>
         <source>第 %1 行</source>
         <translation>Line %1</translation>
     </message>
@@ -2606,6 +2821,26 @@
     <message>
         <source>这一项已经不在了</source>
         <translation>This one is no longer there</translation>
+    </message>
+    <message>
+        <source>、</source>
+        <translation>, </translation>
+    </message>
+    <message>
+        <source>%1 也是别的程序的快捷键：%2。</source>
+        <translation>%1 are also shortcuts of another program: %2.</translation>
+    </message>
+    <message>
+        <source>%1 是你给 Win顺 设的快捷键，在这里按它不再打开或关闭窗口，建议换一个。</source>
+        <translation>%1 is a shortcut you set for WinShun: pressed here, it no longer opens or closes a window. Better choose another.</translation>
+    </message>
+    <message>
+        <source>搜索框在前面时归 Win顺</source>
+        <translation>WinShun’s while its search box is in front</translation>
+    </message>
+    <message>
+        <source>剪贴板在别的程序上打开时归 Win顺，从 Win顺 自己的搜索框打开时归那个程序</source>
+        <translation>WinShun’s while the clipboard is open over another program, that program’s when it is opened from a WinShun search box</translation>
     </message>
     <message>
         <source>%1 等</source>

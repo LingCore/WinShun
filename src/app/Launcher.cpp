@@ -31,7 +31,8 @@ namespace ws {
 
 // QML sees Launcher::Scope; the engine takes ws::Scope. One cast between them.
 static_assert(Launcher::All == static_cast<int>(ws::Scope::All) && Launcher::Files == static_cast<int>(ws::Scope::Files)
-    && Launcher::Content == static_cast<int>(ws::Scope::Content));
+    && Launcher::Content == static_cast<int>(ws::Scope::Content)
+    && Launcher::Folders == static_cast<int>(ws::Scope::Folders));
 
 namespace {
 
@@ -112,6 +113,13 @@ Launcher::Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places,
             refreshStatus();
     });
 
+    m_slowSearch.setSingleShot(true);
+    m_slowSearch.setInterval(1s);
+    connect(&m_slowSearch, &QTimer::timeout, this, [this] {
+        m_searchSlow = true;
+        refreshStatus();
+    });
+
     connect(&m_results, &ResultModel::selectionChanged, this, &Launcher::refreshStatus);
     connect(m_engine, &SearchEngine::resultsReady, this, &Launcher::onResults);
     connect(m_engine, &SearchEngine::contentResults, this, &Launcher::onContentResults);
@@ -142,6 +150,7 @@ void Launcher::setQuery(const QString& query)
     m_query = query;
     emit queryChanged();
     m_results.setSelection({});
+    m_held.reset(); // typed on: a key held for the rows before is not for these
     search();
 }
 
@@ -152,6 +161,7 @@ void Launcher::setScope(Scope scope)
     m_scope = scope;
     emit scopeChanged();
     m_results.setSelection({});
+    m_held.reset();
     // Keep the old rows until the new results replace them: clearing first
     // collapses the window and then grows it back (flicker).
     search();
@@ -187,6 +197,8 @@ QString Launcher::placeholder() const
     switch (m_scope) {
     case Files:
         return tr("搜索文件和文件夹");
+    case Folders:
+        return tr("搜索文件夹");
     case Content:
         if (m_contentDocuments)
             return tr("搜索 Word、Excel、PDF 和 %1 等文件中的文字").arg(u'.' + m_contentExtensions.first());
@@ -222,6 +234,67 @@ void Launcher::setWebShortcuts(const WebShortcuts& shortcuts)
     m_web = shortcuts;
     if (m_window && m_window->isVisible() && m_scope == All && !m_query.trimmed().isEmpty())
         search();
+}
+
+void Launcher::setResultOptions(KindOrder kindOrder, bool showModified, const QString& numberKeys)
+{
+    const QString keys = numberKeys == u"off" ? QString() : numberKeys;
+    if (kindOrder == m_kindOrder && showModified == m_showModified && keys == m_numberKeys)
+        return;
+    const bool reorder = kindOrder != m_kindOrder;
+    m_kindOrder = kindOrder;
+    m_showModified = showModified;
+    m_numberKeys = keys;
+    emit resultOptionsChanged();
+    if (reorder && m_window && m_window->isVisible() && m_scope != Content)
+        search();
+}
+
+void Launcher::setRankByTime(bool byTime)
+{
+    if (byTime == m_rankByTime)
+        return;
+    m_rankByTime = byTime;
+    emit rankByTimeChanged();
+    if (m_scope == Files || m_scope == Folders)
+        search();
+}
+
+void Launcher::setComposing(bool composing)
+{
+    if (composing == m_composing)
+        return;
+    m_composing = composing;
+    emit composingChanged();
+}
+
+void Launcher::setInTaskbarBox(bool on)
+{
+    if (on == m_inTaskbarBox)
+        return;
+    m_inTaskbarBox = on;
+    emit inTaskbarBoxChanged();
+}
+
+void Launcher::reportField(
+    const QString& text, int cursor, int selectionStart, int selectionEnd, const QString& composition)
+{
+    emit fieldReported(text, cursor, selectionStart, selectionEnd, composition);
+}
+
+void Launcher::pressNumber(int number)
+{
+    if (number < 1 || number > 9 || m_numberKeys.isEmpty() || holdUntilShown(Open, number))
+        return;
+    emit numberPressed(number);
+}
+
+bool Launcher::holdUntilShown(int action, int number)
+{
+    if (!m_replacePending || !searching())
+        return false; // the rows on screen are the query's
+    m_held = {action, number};
+    return true;
 }
 
 void Launcher::handleShown()
@@ -288,8 +361,11 @@ void Launcher::retranslate()
 void Launcher::handleHidden()
 {
     m_results.setSelection({});
+    m_held.reset();
     m_statusPoll.stop();
     m_contentDebounce.stop();
+    m_slowSearch.stop();
+    m_searchSlow = false;
     if (m_contentRunning || m_pending) {
         m_engine->cancel();
         m_requestId = 0;
@@ -306,8 +382,13 @@ void Launcher::search()
 {
     m_flash.clear();
     m_contentDebounce.stop();
+    m_slowSearch.stop();
+    m_searchSlow = false;
     const QString text = m_query.trimmed();
-    m_refresh = m_haveResults && !m_replacePending && text == m_shownText && m_scope == m_shownScope;
+    const bool byTime = m_rankByTime && (m_scope == Files || m_scope == Folders);
+    // Sorted another way, the rows are new ones (the first is selected).
+    m_refresh = m_haveResults && !m_replacePending && text == m_shownText && m_scope == m_shownScope
+        && byTime == m_shownByTime && m_kindOrder == m_shownKindOrder;
     m_replacePending = !m_refresh;
     m_withContent = m_scope == All && !contentNeedle().isEmpty();
     m_unconfirmed.clear();
@@ -346,12 +427,16 @@ void Launcher::search()
     SearchEngine::Request request;
     request.text = m_query;
     request.scope = static_cast<ws::Scope>(m_scope);
+    request.kindOrder = m_kindOrder;
+    request.rankBy = byTime ? RankBy::Modified : RankBy::Match;
     if (m_recordHistory)
         request.history = m_history->items();
     request.web = m_web;
     m_requestId = m_engine->submit(std::move(request)); // also stops a running content scan
     m_pending = true;
     m_contentRunning = false;
+    if (m_replacePending)
+        m_slowSearch.start();
     refreshStatus();
 }
 
@@ -362,10 +447,16 @@ void Launcher::showRows(SearchResults rows, QStringList highlights)
     m_results.assign(std::move(rows), std::move(highlights));
     m_shownText = m_query.trimmed();
     m_shownScope = m_scope;
+    m_shownByTime = m_rankByTime && (m_scope == Files || m_scope == Folders);
+    m_shownKindOrder = m_kindOrder;
     m_haveResults = true;
     if (m_replacePending) {
         m_replacePending = false;
+        m_slowSearch.stop();
+        m_searchSlow = false;
         emit resultsReplaced();
+        if (const auto held = std::exchange(m_held, std::nullopt))
+            emit heldKey(held->first, held->second); // on the rows it was pressed for
     }
 }
 
@@ -557,7 +648,9 @@ void Launcher::refreshStatus()
     } else {
         const qint64 ms = m_elapsedUs / 1000;
         const int results = static_cast<int>(m_totalMatches + m_contentHits);
-        if (contentPending)
+        if (m_searchSlow && m_replacePending)
+            s = tr("正在搜索…"); // the figures would be the last query's
+        else if (contentPending)
             s = m_contentTotal > 0 ? tr("%Ln 个结果 · 正在搜索内容… %1 / %2", nullptr, results)
                                          .arg(number(m_contentScanned), number(m_contentTotal))
                                    : tr("%Ln 个结果 · 正在搜索内容…", nullptr, results);
@@ -587,8 +680,10 @@ void Launcher::flash(const QString& message)
 
 void Launcher::cycleScope(int delta)
 {
-    constexpr int kScopes = Content + 1;
-    setScope(static_cast<Scope>(((m_scope + delta) % kScopes + kScopes) % kScopes));
+    static constexpr Scope kOrder[] {All, Files, Folders, Content}; // as the tabs show them
+    constexpr int kScopes = static_cast<int>(std::size(kOrder));
+    const int at = static_cast<int>(std::find(std::begin(kOrder), std::end(kOrder), m_scope) - std::begin(kOrder));
+    setScope(kOrder[((at + delta) % kScopes + kScopes) % kScopes]);
 }
 
 void Launcher::dismiss()

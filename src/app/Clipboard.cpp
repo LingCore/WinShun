@@ -138,6 +138,15 @@ void Clipboard::setField(QQuickItem* field, const QString& name)
         emit fieldChanged();
 }
 
+void Clipboard::setNumberKeys(const QString& keys)
+{
+    const QString held = keys == u"off" ? QString() : keys;
+    if (held == m_numberKeys)
+        return;
+    m_numberKeys = held;
+    emit numberKeysChanged();
+}
+
 void Clipboard::setState(bool recording, bool paused, const QString& shortcut)
 {
     if (m_recording == recording && m_paused == paused && m_shortcut == shortcut)

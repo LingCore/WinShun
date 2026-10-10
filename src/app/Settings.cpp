@@ -15,6 +15,8 @@ namespace ws {
 
 namespace {
 
+QString g_profile; // see Settings::useProfile()
+
 // Never indexed: system stores and machine-generated caches nobody searches.
 // Forward slashes keep the INI file readable; %VARS% are expanded.
 const QStringList kDefaultExcludedPaths {
@@ -220,8 +222,21 @@ bool Settings::lowMemory()
     return ::GlobalMemoryStatusEx(&status) && status.ullTotalPhys <= 16ull << 30;
 }
 
+void Settings::useProfile(const QString& folder)
+{
+    g_profile = QDir::toNativeSeparators(QDir(folder).absolutePath());
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, g_profile); // <folder>\WinShun\WinShun.ini
+}
+
+QString Settings::profile()
+{
+    return g_profile;
+}
+
 QString Settings::dataDir()
 {
+    if (!g_profile.isEmpty())
+        return g_profile;
     return QDir::toNativeSeparators(
         QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + u"/WinShun"_s);
 }
@@ -304,6 +319,13 @@ void Settings::load()
     if (fileManager != u"totalcmd" && fileManager != u"dopus")
         fileManager = d.fileManager;
 
+    foldersFirst = readOrDefault(s, u"Results/FoldersFirst"_s, d.foldersFirst);
+    showModified = readOrDefault(s, u"Results/ShowModified"_s, d.showModified);
+    sortByModified = readOrDefault(s, u"Results/SortByModified"_s, d.sortByModified);
+    numberKeys = readOrDefault(s, u"Results/NumberKeys"_s, d.numberKeys).trimmed().toLower();
+    if (numberKeys != u"alt" && numberKeys != u"off")
+        numberKeys = d.numberKeys;
+
     theme = readOrDefault(s, u"Appearance/Theme"_s, d.theme).trimmed().toLower();
     if (theme != u"light" && theme != u"dark")
         theme = d.theme;
@@ -357,9 +379,13 @@ void Settings::load()
     clipboardMaxDays = std::clamp(readOrDefault(s, u"Clipboard/MaxDays"_s, d.clipboardMaxDays), 0, 3650);
     clipboardImages = readOrDefault(s, u"Clipboard/Images"_s, d.clipboardImages);
     clipboardExcludedApps = readOrDefault(s, u"Clipboard/ExcludedApps"_s, d.clipboardExcludedApps);
+    clipboardNumberKeys = readOrDefault(s, u"Clipboard/NumberKeys"_s, d.clipboardNumberKeys).trimmed().toLower();
+    if (clipboardNumberKeys != u"ctrl" && clipboardNumberKeys != u"off")
+        clipboardNumberKeys = d.clipboardNumberKeys;
 
     taskbarWinS = readOrDefault(s, u"Taskbar/WinS"_s, d.taskbarWinS);
     taskbarStartTyping = readOrDefault(s, u"Taskbar/StartMenuTyping"_s, d.taskbarStartTyping);
+    taskbarSearchBox = readOrDefault(s, u"Taskbar/SearchBox"_s, d.taskbarSearchBox);
 
     webShortcuts = readWebShortcuts(s, d.webShortcuts);
 }
@@ -380,6 +406,10 @@ void Settings::save() const
     s.setValue(u"Launcher/DialogAutoJump"_s, dialogAutoJump);
     s.setValue(u"Launcher/DialogBarExcludedApps"_s, dialogBarExcludedApps);
     s.setValue(u"Launcher/FileManager"_s, fileManager);
+    s.setValue(u"Results/FoldersFirst"_s, foldersFirst);
+    s.setValue(u"Results/ShowModified"_s, showModified);
+    s.setValue(u"Results/SortByModified"_s, sortByModified);
+    s.setValue(u"Results/NumberKeys"_s, numberKeys);
     s.setValue(u"Appearance/Theme"_s, theme);
     s.setValue(u"Appearance/Language"_s, language);
     s.setValue(u"Appearance/Transparency"_s, transparency);
@@ -402,8 +432,10 @@ void Settings::save() const
     s.setValue(u"Clipboard/MaxDays"_s, clipboardMaxDays);
     s.setValue(u"Clipboard/Images"_s, clipboardImages);
     s.setValue(u"Clipboard/ExcludedApps"_s, clipboardExcludedApps);
+    s.setValue(u"Clipboard/NumberKeys"_s, clipboardNumberKeys);
     s.setValue(u"Taskbar/WinS"_s, taskbarWinS);
     s.setValue(u"Taskbar/StartMenuTyping"_s, taskbarStartTyping);
+    s.setValue(u"Taskbar/SearchBox"_s, taskbarSearchBox);
     writeWebShortcuts(s, webShortcuts);
 }
 

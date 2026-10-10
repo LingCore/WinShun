@@ -7,18 +7,24 @@
 #include "WebShortcut.h"
 #include "Win32Util.h"
 #include "platform/FileManagers.h"
+#include "platform/NumberKeys.h"
 #include "platform/Shell.h"
 #include "platform/ShortcutCapture.h"
 #include "platform/TaskbarSearch.h"
+#include "platform/TaskbarSearchBox.h"
 
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QFileSystemWatcher>
 #include <QGuiApplication>
 #include <QKeyEvent>
 #include <QRegularExpression>
 #include <QStyleHints>
 #include <QVariantMap>
+#include <QWinEventNotifier>
+
+#include <algorithm>
 
 using namespace Qt::StringLiterals;
 
@@ -53,14 +59,47 @@ bool addProgram(QStringList& list, const QString& name)
 
 } // namespace
 
+// Changed outside Win顺 (the user pins the button, hides Windows' search in
+// the Settings app): read again at once, so that the steps of 代替任务栏上的
+// Windows 搜索 tick themselves off.
+struct SettingsEditor::TaskbarWatch {
+    QFileSystemWatcher pinned; // a shortcut there per program pinned to the taskbar
+    win32::UniqueKey searchKey; // SearchboxTaskbarMode's
+    win32::UniqueHandle searchChanged;
+    std::unique_ptr<QWinEventNotifier> notifier;
+
+    bool arm() // once per change
+    {
+        return searchKey.get() && searchChanged.valid()
+            && ::RegNotifyChangeKeyValue(searchKey.get(), FALSE, REG_NOTIFY_CHANGE_LAST_SET, searchChanged.get(), TRUE)
+            == ERROR_SUCCESS;
+    }
+};
+
 SettingsEditor::SettingsEditor(const Settings& settings, const QString& runningRenderer, QObject* parent)
     : QObject(parent)
     , m_settings(settings)
     , m_runningRenderer(runningRenderer)
+    , m_taskbarWatch(std::make_unique<TaskbarWatch>())
 {
+    TaskbarWatch& watch = *m_taskbarWatch;
+    const QString pinned = qEnvironmentVariable("APPDATA") + u"/Microsoft/Internet Explorer/Quick Launch/User Pinned/TaskBar"_s;
+    if (QFileInfo(pinned).isDir())
+        watch.pinned.addPath(pinned);
+    connect(&watch.pinned, &QFileSystemWatcher::directoryChanged, this, &SettingsEditor::refreshTaskbarState);
+    ::RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Search", 0, KEY_NOTIFY,
+        watch.searchKey.out());
+    watch.searchChanged = win32::UniqueHandle(::CreateEventW(nullptr, FALSE, FALSE, nullptr));
+    if (watch.arm()) {
+        watch.notifier = std::make_unique<QWinEventNotifier>(watch.searchChanged.get());
+        connect(watch.notifier.get(), &QWinEventNotifier::activated, this, [this] {
+            m_taskbarWatch->arm();
+            refreshTaskbarState();
+        });
+    }
 }
 
-SettingsEditor::~SettingsEditor() = default; // here, where ShortcutCapture is complete
+SettingsEditor::~SettingsEditor() = default; // here, where ShortcutCapture and TaskbarWatch are complete
 
 void SettingsEditor::commit()
 {
@@ -73,8 +112,103 @@ void SettingsEditor::setSettings(const Settings& settings)
 {
     if (settings == m_settings)
         return;
+    const bool keys = settings.numberKeys != m_settings.numberKeys || settings.hotkey != m_settings.hotkey
+        || settings.clipboardNumberKeys != m_settings.clipboardNumberKeys
+        || settings.clipboardHotkey != m_settings.clipboardHotkey;
     m_settings = settings;
     emit changed();
+    if (keys)
+        refreshNumberKeys();
+}
+
+void SettingsEditor::setFoldersFirst(bool on)
+{
+    if (m_settings.foldersFirst == on)
+        return;
+    m_settings.foldersFirst = on;
+    commit();
+}
+
+void SettingsEditor::setShowModified(bool on)
+{
+    if (m_settings.showModified == on)
+        return;
+    m_settings.showModified = on;
+    commit();
+}
+
+void SettingsEditor::setSortByModified(bool on)
+{
+    if (m_settings.sortByModified == on)
+        return;
+    m_settings.sortByModified = on;
+    commit();
+}
+
+void SettingsEditor::setNumberKeys(const QString& keys)
+{
+    if (m_settings.numberKeys == keys || (keys != u"ctrl" && keys != u"alt" && keys != u"off"))
+        return;
+    m_settings.numberKeys = keys;
+    commit();
+    refreshNumberKeys();
+}
+
+void SettingsEditor::setClipboardNumberKeys(const QString& keys)
+{
+    if (m_settings.clipboardNumberKeys == keys || (keys != u"ctrl" && keys != u"alt" && keys != u"off"))
+        return;
+    m_settings.clipboardNumberKeys = keys;
+    commit();
+    refreshNumberKeys();
+}
+
+namespace {
+
+// What the user should know of the number keys `keys` ("ctrl", "alt"):
+// those another program holds as global hotkeys, and those that are one of
+// Win顺's own shortcuts. `whose`: whose they are when.
+QString describeNumberKeys(const QString& keys, const Settings& settings, const QString& whose)
+{
+    if (keys != u"ctrl" && keys != u"alt")
+        return {};
+    const QString modifier = keys == u"alt" ? u"Alt"_s : u"Ctrl"_s;
+    const auto chord = [&](int n) { return modifier + u'+' + QString::number(n); };
+    QStringList own;
+    QStringList others;
+    const std::vector<int> held
+        = NumberKeys::heldAsHotkeys(keys == u"alt" ? NumberKeys::Modifier::Alt : NumberKeys::Modifier::Ctrl);
+    for (int n = 1; n <= 9; ++n) {
+        const QString c = chord(n);
+        const bool mine = settings.hotkey.compare(c, Qt::CaseInsensitive) == 0
+            || settings.clipboardHotkey.compare(c, Qt::CaseInsensitive) == 0;
+        if (mine)
+            own.append(c);
+        else if (std::find(held.begin(), held.end(), n) != held.end())
+            others.append(c);
+    }
+    QStringList parts;
+    if (!others.isEmpty())
+        parts.append(SettingsEditor::tr("%1 也是别的程序的快捷键：%2。").arg(others.join(SettingsEditor::tr("、")), whose));
+    if (!own.isEmpty())
+        parts.append(SettingsEditor::tr("%1 是你给 Win顺 设的快捷键，在这里按它不再打开或关闭窗口，建议换一个。")
+                         .arg(own.join(SettingsEditor::tr("、"))));
+    return parts.join(u' ');
+}
+
+} // namespace
+
+void SettingsEditor::refreshNumberKeys()
+{
+    const QString launcher = describeNumberKeys(
+        m_settings.numberKeys, m_settings, tr("搜索框在前面时归 Win顺"));
+    const QString clipboard = describeNumberKeys(m_settings.clipboardNumberKeys, m_settings,
+        tr("剪贴板在别的程序上打开时归 Win顺，从 Win顺 自己的搜索框打开时归那个程序"));
+    if (launcher == m_numberKeysNote && clipboard == m_clipboardNumberKeysNote)
+        return;
+    m_numberKeysNote = launcher;
+    m_clipboardNumberKeysNote = clipboard;
+    emit numberKeysNoteChanged();
 }
 
 void SettingsEditor::setDoubleCtrl(bool on)
@@ -410,6 +544,27 @@ void SettingsEditor::setTaskbarStartTyping(bool on)
     commit();
 }
 
+void SettingsEditor::setTaskbarSearchBox(bool on)
+{
+    if (m_settings.taskbarSearchBox == on)
+        return;
+    m_settings.taskbarSearchBox = on;
+    commit();
+}
+
+bool SettingsEditor::searchBoxSupported() const
+{
+    return taskbar::SearchBox::supported();
+}
+
+void SettingsEditor::setSearchBoxShown(bool shown)
+{
+    if (m_searchBoxShown == shown)
+        return;
+    m_searchBoxShown = shown;
+    emit searchBoxShownChanged();
+}
+
 void SettingsEditor::setWinSState(const QString& state, bool canRestartExplorer)
 {
     if (m_canRestartExplorer != canRestartExplorer) {
@@ -440,6 +595,22 @@ void SettingsEditor::refreshTaskbarState()
     m_taskbarButtonPinned = pinned;
     m_windowsSearchShown = shown;
     emit taskbarStateChanged();
+}
+
+bool SettingsEditor::pinTaskbarButton()
+{
+    const std::wstring button = taskbarButton();
+    if (!QFileInfo::exists(QString::fromStdWString(button)))
+        return false;
+    // Windows asks only for a program in the Start menu: the installer's
+    // shortcut, else one made now.
+    const std::wstring shortcut = taskbar::buttonShortcut(button, tr("Win顺 搜索").toStdWString());
+    if (shortcut.empty())
+        return false;
+    // Through Explorer, with the user's rights: that program goes on the
+    // taskbar, so it asks for itself (and Win顺, elevated, could not).
+    shell::run(u'"' + QString::fromStdWString(button) + u"\" --pin \""_s + QString::fromStdWString(shortcut) + u'"');
+    return true;
 }
 
 bool SettingsEditor::showTaskbarButton()

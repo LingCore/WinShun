@@ -11,16 +11,39 @@ Item {
     required property WindowFrame frame
     property alias text: input.text
     readonly property bool hasSelection: input.selectedText.length > 0
+    readonly property string composition: input.preeditText // an input method's, not typed yet
     readonly property Item field: input // what the clipboard pastes into
+    // Opened over Win顺's box on the taskbar: the field is drawn there (its
+    // state reported, see Launcher.inTaskbarBox), here only the tabs show.
+    // The field stays, out of sight, with the keyboard.
+    readonly property bool inBox: launcher.inTaskbarBox
     // The pointer over the header: Windows takes its drag area as a title bar,
     // so QML hears of the pointer there only from the frame.
     readonly property bool hovered: hover.hovered || contains(mapFromItem(null, frame.pointer))
 
     signal keyPressed(var event)
+    signal keyReleased(var event)
 
     function focusAndSelect() {
         input.forceActiveFocus()
         input.selectAll()
+    }
+
+    function reportField() {
+        if (inBox)
+            launcher.reportField(input.text, input.cursorPosition, input.selectionStart, input.selectionEnd,
+                                 input.preeditText)
+    }
+    onInBoxChanged: reportField()
+
+    Connections {
+        target: bar.launcher
+        function onCaretRequested(position, word) {
+            input.cursorPosition = position
+            if (word)
+                input.selectWord()
+        }
+        function onSelectionRequested(anchor, position) { input.select(anchor, position) }
     }
 
     implicitHeight: 64
@@ -33,6 +56,23 @@ Item {
 
     HoverHandler { id: hover } // over the field and the tabs
 
+    states: State {
+        when: bar.inBox
+        AnchorChanges {
+            target: input
+            anchors.right: undefined
+        }
+        PropertyChanges {
+            input.width: 1 // still takes the keys; too thin to be clicked
+            input.opacity: 0
+        }
+        AnchorChanges {
+            target: tabs
+            anchors.right: undefined
+            anchors.left: bar.left
+        }
+    }
+
     // Grip: shows that the header moves the window. Faint while the pointer is
     // over the header; pointed at, it grows and brightens; while the window
     // moves, it takes the accent colour.
@@ -42,6 +82,7 @@ Item {
         readonly property bool pointed: contains(mapFromItem(null, bar.frame.pointer))
         readonly property bool held: bar.placement.moving
 
+        visible: !bar.inBox
         anchors.top: parent.top
         anchors.horizontalCenter: parent.horizontalCenter
         width: 72 // easier to find than the pill itself
@@ -63,6 +104,7 @@ Item {
 
     Glyph {
         id: icon
+        visible: !bar.inBox
         anchors.left: parent.left
         anchors.leftMargin: 20
         anchors.verticalCenter: parent.verticalCenter
@@ -73,6 +115,7 @@ Item {
 
     TextInput {
         id: input
+        objectName: "searchField" // App answers the input method for it while it is in the box
         anchors.left: icon.right
         anchors.leftMargin: 14
         anchors.right: tabs.left
@@ -88,8 +131,19 @@ Item {
         // Still shown while the clipboard under it has the keyboard: what a
         // paste there goes over.
         persistentSelection: true
-        onTextChanged: bar.launcher.query = text
+        onTextChanged: {
+            bar.launcher.query = text
+            bar.reportField()
+        }
+        onPreeditTextChanged: {
+            bar.launcher.composing = preeditText.length > 0
+            bar.reportField()
+        }
+        onCursorPositionChanged: bar.reportField()
+        onSelectionStartChanged: bar.reportField()
+        onSelectionEndChanged: bar.reportField()
         Keys.onPressed: (event) => bar.keyPressed(event)
+        Keys.onReleased: (event) => bar.keyReleased(event)
 
         Text {
             anchors.fill: parent
@@ -106,8 +160,12 @@ Item {
         id: tabs
         anchors.right: parent.right
         anchors.rightMargin: 12
+        anchors.leftMargin: 16
         anchors.verticalCenter: parent.verticalCenter
         current: bar.launcher.scope
+        subOf: Launcher.Files
+        subValue: Launcher.Folders
+        subLabel: qsTr("文件夹")
         onActivated: (scope) => bar.launcher.scope = scope
     }
 }

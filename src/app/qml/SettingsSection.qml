@@ -3,16 +3,18 @@ import WinShun
 
 // A card holding SettingRows, with an optional title and note above it.
 //
-// It shows while its page is the current one; while the settings are
-// searched, while some of its rows fit the words, the first such section
-// of a page under the page's name. Both come from the column of pages in
-// the settings window: search, currentPage, pages, pageKeywords, openPage().
+// It shows while its page and its tab on that page are the current ones;
+// while the settings are searched, while some of its rows fit the words,
+// whatever its tab, the first such section of a page under the page's
+// name. Both come from the column of pages in the settings window: search,
+// currentPage, currentTab, pages, pageKeywords, openPage().
 Column {
     id: section
 
     property string title
     property string note
     property int page: -1 // the index into the window's pages
+    property int tab: 0 // the index into its page's tabs, on a page that has them
     default property alias rows: card.data
 
     // The column of pages in the settings window (see above).
@@ -48,7 +50,7 @@ Column {
         section.forceLayout()
     }
 
-    visible: searching ? found > 0 : !!column && column.currentPage === page
+    visible: searching ? found > 0 : !!column && column.currentPage === page && column.currentTab === tab
     spacing: 8
 
     Item { // the page's name over its results
@@ -91,7 +93,7 @@ Column {
                 anchors.margins: -4
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: section.column.openPage(section.page)
+                onClicked: section.column.openPage(section.page, section.tab)
             }
         }
     }

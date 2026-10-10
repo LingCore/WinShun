@@ -15,8 +15,10 @@
 #include <QProcess>
 
 #include <windows.h>
+#include <shellapi.h>
 
 #include <mutex>
+#include <string_view>
 
 using namespace Qt::StringLiterals;
 
@@ -55,7 +57,18 @@ int main(int argc, char* argv[])
 {
     // Never show "insert a disk" dialogs while probing drives.
     ::SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
-    ws::migrateFromQuickFind(); // before anything reads the settings
+    // --profile <folder> (see Settings::useProfile), before anything reads
+    // the settings, so before Qt has the arguments: wide, as argv is ANSI.
+    int wideCount = 0;
+    if (LPWSTR* wide = ::CommandLineToArgvW(::GetCommandLineW(), &wideCount)) {
+        for (int i = 1; i + 1 < wideCount; ++i) {
+            if (std::wstring_view(wide[i]) == L"--profile")
+                ws::Settings::useProfile(QString::fromWCharArray(wide[i + 1]));
+        }
+        ::LocalFree(wide);
+    }
+    if (ws::Settings::profile().isEmpty())
+        ws::migrateFromQuickFind(); // before anything reads the settings
 
     // Font engine. The UI font (Alibaba PuHuiTi, below) has no hinting, so GDI
     // and DirectWrite smear its horizontal strokes across two pixel rows;
@@ -102,7 +115,9 @@ int main(int argc, char* argv[])
     const QCommandLineOption settings(u"settings"_s, u"Open the settings window."_s);
     const QCommandLineOption takeAutostart(u"take-autostart"_s,
         u"If WinShun starts at login, start this copy instead, then exit (run by the installer)."_s);
-    parser.addOptions({background, toggle, query, quit, settings, takeAutostart});
+    QCommandLineOption profile(u"profile"_s, u"Keep the settings and data in this folder."_s, u"folder"_s);
+    profile.setFlags(QCommandLineOption::HiddenFromHelp); // read above
+    parser.addOptions({background, toggle, query, quit, settings, takeAutostart, profile});
     parser.process(app);
 
     // The installer, once it has installed this copy: an autostart set up by
@@ -165,6 +180,8 @@ int main(int argc, char* argv[])
         if (application.start(options))
             code = QGuiApplication::exec();
         restart = application.restartArguments();
+        if (restart && !ws::Settings::profile().isEmpty())
+            *restart << u"--profile"_s << ws::Settings::profile();
     } // the index is saved here, while we still own the instance mutex
     if (instanceMutex)
         ::CloseHandle(instanceMutex);

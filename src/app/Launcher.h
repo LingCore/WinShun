@@ -16,6 +16,8 @@
 #include <QtQml/qqmlregistration.h>
 
 #include <functional>
+#include <optional>
+#include <utility>
 #include <vector>
 
 namespace ws {
@@ -47,9 +49,25 @@ class Launcher : public QObject {
     // typed: for each {name, icon}. Read again each time it is shown; none
     // while history is not kept.
     Q_PROPERTY(QVariantList frequentApps READ frequentApps NOTIFY frequentAppsChanged FINAL)
+    // 文件 and 文件夹: newest first instead of best match first (the footer's switch).
+    Q_PROPERTY(bool rankByTime READ rankByTime WRITE setRankByTime NOTIFY rankByTimeChanged FINAL)
+    // Rows say when each file or folder was last written.
+    Q_PROPERTY(bool showModified READ showModified NOTIFY resultOptionsChanged FINAL)
+    // The modifier that opens the nth row shown with a digit: "ctrl", "alt",
+    // or "" for none (Settings::numberKeys).
+    Q_PROPERTY(QString numberKeys READ numberKeys NOTIFY resultOptionsChanged FINAL)
+    // The search box has an input method's composition: its keys are the
+    // input method's (NumberKeys takes no digits meanwhile).
+    Q_PROPERTY(bool composing READ composing WRITE setComposing NOTIFY composingChanged FINAL)
+    // Opened over Win顺's search box on the taskbar (taskbar::SearchBox):
+    // what is typed shows there, its own field is out of sight (SearchBar.qml
+    // reports the field, the app draws it in the box).
+    Q_PROPERTY(bool inTaskbarBox READ inTaskbarBox NOTIFY inTaskbarBoxChanged FINAL)
 
 public:
-    enum Scope { All, Files, Content }; // as ws::Scope
+    // As ws::Scope. The tabs show 文件夹 within 文件: Tab goes 全部, 文件,
+    // 文件夹, 内容 (cycleScope).
+    enum Scope { All, Files, Content, Folders };
     Q_ENUM(Scope)
     enum Action { Open, Reveal, RunAsAdmin, CopyPath, CopyName, CopyItem, Recycle, ForgetRecent, EditWebShortcuts };
     Q_ENUM(Action)
@@ -87,6 +105,25 @@ public:
     void setContentOptions(
         QStringList extensions, const ContentSizeLimits& sizeLimits, bool inLowPriority, bool documents);
     void setWebShortcuts(const WebShortcuts& shortcuts);
+    void setResultOptions(KindOrder kindOrder, bool showModified, const QString& numberKeys);
+    bool rankByTime() const { return m_rankByTime; }
+    void setRankByTime(bool byTime);
+    bool showModified() const { return m_showModified; }
+    QString numberKeys() const { return m_numberKeys; }
+    bool composing() const { return m_composing; }
+    void setComposing(bool composing);
+    bool inTaskbarBox() const { return m_inTaskbarBox; }
+    void setInTaskbarBox(bool on);
+    // The search field changed (text, caret, selection, composition): fieldReported.
+    Q_INVOKABLE void reportField(
+        const QString& text, int cursor, int selectionStart, int selectionEnd, const QString& composition);
+    // Ctrl+n (or Alt+n): the nth row shown opens (numberPressed), once the
+    // rows on screen are the query's (holdUntilShown).
+    Q_INVOKABLE void pressNumber(int number);
+    // Enter or a number pressed while the rows on screen are still the
+    // previous query's (it was typed a moment ago): true, and heldKey()
+    // brings it back once the new rows are shown. Typing on drops it.
+    Q_INVOKABLE bool holdUntilShown(int action, int number);
     // Off: nothing opened is remembered, and what was is not shown (it stays
     // until cleared in the settings).
     void setRecordHistory(bool on);
@@ -129,6 +166,17 @@ signals:
     void historyChanged();
     void frequentAppsChanged();
     void webSettingsRequested(); // the settings window, on its 网页搜索 page
+    void rankByTimeChanged();
+    void resultOptionsChanged();
+    void composingChanged();
+    void inTaskbarBoxChanged();
+    void fieldReported(const QString& text, int cursor, int selectionStart, int selectionEnd, const QString& composition);
+    // Pressed in the box on the taskbar: the field's caret goes there, or
+    // its word is selected; dragged there, the text from `anchor` is selected.
+    void caretRequested(int position, bool word);
+    void selectionRequested(int anchor, int position);
+    void numberPressed(int number); // 1…9: open that row, counted from the first one shown
+    void heldKey(int action, int number); // see holdUntilShown(); `number` 0: the action on the current row
 
 private:
     void search();
@@ -179,6 +227,8 @@ private:
     // index updated) refreshes them in place instead of starting over.
     QString m_shownText;
     Scope m_shownScope = All;
+    bool m_shownByTime = false;
+    KindOrder m_shownKindOrder = KindOrder::FilesFirst;
     bool m_refresh = false; // the current search is such a refresh
     bool m_quiet = false; // ...of complete results: it shows no progress
     bool m_scanComplete = false; // the content scan behind the rows on screen ran to the end
@@ -195,6 +245,13 @@ private:
     int m_contentHits = 0; // 全部: content rows added below the name matches
 
     bool m_recordHistory = true;
+    KindOrder m_kindOrder = KindOrder::FilesFirst;
+    bool m_rankByTime = false;
+    bool m_showModified = true;
+    QString m_numberKeys = QStringLiteral("ctrl");
+    bool m_composing = false;
+    bool m_inTaskbarBox = false;
+    std::optional<std::pair<int, int>> m_held; // holdUntilShown(): action, number
     std::vector<FrequentApp> m_frequent;
     std::vector<AppUse> m_windowsUses; // Windows' record of what was started, read at most every minute
     QElapsedTimer m_windowsUsesAge;
@@ -209,6 +266,10 @@ private:
     QTimer m_contentDebounce;
     QTimer m_flashTimer;
     QTimer m_statusPoll;
+    // A new query's rows a while in coming: the status says so, not the last
+    // query's figures under its dimmed rows.
+    QTimer m_slowSearch;
+    bool m_searchSlow = false;
 };
 
 } // namespace ws

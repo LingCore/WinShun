@@ -27,10 +27,12 @@ Window {
     title: qsTr("Win顺")
 
     onActiveChanged: {
-        if (active)
+        if (active) {
             input.forceActiveFocus() // clicked, or double Ctrl
-        else
+        } else {
             closeMenu()
+            hideNumbers()
+        }
     }
     // Hidden: also free the menu window until it is needed again.
     onVisibleChanged: {
@@ -78,8 +80,67 @@ Window {
             contextMenu.dismiss()
     }
 
+    // Ctrl+1… (or Alt+1…) as in the launcher (see Main.qml): the nth row
+    // shown, its number up while the modifier is held.
+    readonly property int numberKey: bar.numberKeys === "ctrl" ? Qt.Key_Control
+                                   : bar.numberKeys === "alt" ? Qt.Key_Alt : -1
+    readonly property int firstShownRow: Math.max(0, Math.floor((list.contentY + bar.rowHeight / 2) / bar.rowHeight))
+    readonly property int lastShownRow: Math.min(list.count - 1, firstShownRow + 8,
+                                                 Math.floor((list.contentY + list.height - bar.rowHeight / 2) / bar.rowHeight))
+    property bool showNumbers: false
+    Timer {
+        id: numbersDelay
+        interval: 500
+        onTriggered: window.showNumbers = true
+    }
+    function hideNumbers() {
+        numbersDelay.stop()
+        showNumbers = false
+    }
+    function numberOf(index) {
+        return showNumbers && list.visible && index >= firstShownRow && index <= lastShownRow
+            ? index - firstShownRow + 1 : 0
+    }
+    function openNumber(number) {
+        const row = firstShownRow + number - 1
+        if (number < 1 || row > lastShownRow || !list.visible)
+            return
+        hideNumbers()
+        list.currentIndex = row
+        window.bar.choose(row)
+    }
+    function isNumberChord(event) {
+        if (event.key < Qt.Key_1 || event.key > Qt.Key_9)
+            return false
+        const keypad = (event.modifiers & Qt.KeypadModifier) !== 0
+        const modifiers = event.modifiers & ~Qt.KeypadModifier
+        return numberKey === Qt.Key_Control ? modifiers === Qt.ControlModifier
+             : numberKey === Qt.Key_Alt ? modifiers === Qt.AltModifier && !keypad : false
+    }
+    function handleKeyRelease(event) {
+        if (event.key === numberKey)
+            hideNumbers()
+    }
+
     function handleKey(event) {
         if (menuOpen && contextMenu.handleKey(event)) {
+            event.accepted = true
+            return
+        }
+        if (event.key === numberKey && numberKey >= 0) {
+            if (event.isAutoRepeat)
+                return
+            if (numberKey === Qt.Key_Alt) {
+                showNumbers = true
+                event.accepted = true // alone, it would open the window menu
+            } else if (event.modifiers === Qt.ControlModifier) {
+                numbersDelay.restart()
+            }
+            return
+        }
+        hideNumbers()
+        if (isNumberChord(event) && input.preeditText.length === 0) {
+            window.bar.pressNumber(event.key - Qt.Key_0)
             event.accepted = true
             return
         }
@@ -93,6 +154,8 @@ Window {
         case Qt.Key_PageUp: move(-Math.max(1, window.bar.rows)); break
         case Qt.Key_Return:
         case Qt.Key_Enter:
+            if (window.bar.holdUntilShown(0, ctrl))
+                break // typed a moment ago: on the rows for it
             if (row >= 0)
                 window.bar.choose(row, ctrl) // Ctrl: and open the file
             break
@@ -123,6 +186,13 @@ Window {
 
     Connections {
         target: window.bar
+        function onNumberPressed(number) { window.openNumber(number) }
+        function onHeldKey(number, open) {
+            if (number > 0)
+                window.openNumber(number)
+            else if (list.count > 0 && list.currentIndex >= 0)
+                window.bar.choose(list.currentIndex, open)
+        }
         function onResultsReplaced() {
             // A row's menu goes when its row now holds another; the bar's own stays.
             if (window.menuOpen && window.contextMenu.row >= 0
@@ -172,7 +242,9 @@ Window {
             selectionColor: Theme.textSelection
             selectedTextColor: Theme.text
             onTextChanged: window.bar.query = text
+            onPreeditTextChanged: window.bar.composing = preeditText.length > 0
             Keys.onPressed: (event) => window.handleKey(event)
+            Keys.onReleased: (event) => window.handleKeyRelease(event)
             Accessible.role: Accessible.EditableText
             Accessible.name: placeholder.text
 
@@ -348,6 +420,8 @@ Window {
             id: rowItem
             width: list.width
             height: window.bar.rowHeight
+            showModified: window.bar.showModified
+            hint: window.numberOf(index)
             // On whole device pixels wherever the list has scrolled to (see
             // Main.qml). Below the bar the rows start at 49 logical pixels:
             // at 150 % on a half pixel even before any scrolling.

@@ -2,6 +2,7 @@
 
 #include "platform/TaskbarSearch.h"
 
+#include <QEasingCurve>
 #include <QObject>
 #include <QPointF>
 #include <QPointer>
@@ -10,6 +11,7 @@
 #include <QtGui/qwindowdefs.h>
 #include <QtQml/qqmlregistration.h>
 
+#include <functional>
 #include <optional>
 
 class QScreen;
@@ -46,11 +48,23 @@ namespace ws {
 // launcher from its button on the taskbar or from Win+S. Off the taskbar by a
 // gap, centred on the button along it; its edge by the taskbar stays put
 // when it gets taller (atTaskbar: it does not, the list keeps its height).
+//
+// Opening and closing are animated (slideIn, slideOut) unless the system's
+// animation effects are off. By the taskbar the window slides out from
+// behind it and back, as Windows' own flyouts do: it is put just under the
+// taskbar in the z-order for that, so the taskbar hides what has not come
+// out yet, and kept there until it stops (activated meanwhile, as by another
+// press on the box, it would come in front of the taskbar). Elsewhere it fades in rising a little, and fades out. The window
+// moves with SetWindowPos, in physical pixels off where it rests (Qt keeps
+// that place: moved meanwhile, it slides on to the new one); the content
+// follows a little behind (contentShift, for QML).
 class Placement : public QObject {
     Q_OBJECT
     QML_ELEMENT
     QML_UNCREATABLE("Provided by the application")
     Q_PROPERTY(bool moving READ moving NOTIFY movingChanged FINAL)
+    // Logical pixels the content lags behind the window as it slides in.
+    Q_PROPERTY(QPointF contentShift READ contentShift NOTIFY contentShiftChanged FINAL)
     Q_PROPERTY(bool atTaskbar READ atTaskbar NOTIFY atTaskbarChanged FINAL)
     // Height of the window with the fewest rows it keeps room for (logical
     // pixels): it settles no lower than that fits.
@@ -83,6 +97,15 @@ public:
     int anchorWidth() const { return m_anchorWidth; }
     void setAnchorWidth(int width);
 
+    // Shown at its place (and about to be uncloaked): in from off it; from
+    // where it is, if it was on its way out. `done` once it is there.
+    void slideIn(std::function<void()> done = {});
+    // Out, then `done` (which hides it); back at its place after that.
+    void slideOut(std::function<void()> done);
+    bool sliding() const { return m_slide.state() == QAbstractAnimation::Running; }
+    QPointF contentShift() const { return m_contentShift; }
+    static bool animationsOn(); // the system's "animation effects"
+
     // Glides back to the home spot and stays there from now on.
     Q_INVOKABLE void moveHome();
     // From the right edge of the part the spot is for (anchorWidth) to that
@@ -96,6 +119,7 @@ signals:
     void roomNeededChanged();
     void roomChanged();
     void anchorWidthChanged();
+    void contentShiftChanged();
 
 private:
     struct Hook; // the window procedure subclass
@@ -106,6 +130,15 @@ private:
         QRect bar;
         taskbar::Edge edge = taskbar::Edge::Bottom;
         QPoint anchor;
+        RECT native {}; // the taskbar, physical pixels
+    };
+    // An opening or a closing: from where to where, over how long.
+    struct Slide {
+        QPoint from, to; // the window, physical pixels off its place
+        qreal opacityFrom = 1, opacityTo = 1;
+        QPointF shiftFrom, shiftTo; // the content
+        int moveMs = 0, fadeMs = 0, shiftMs = 0;
+        QEasingCurve moveCurve, shiftCurve;
     };
 
     QPoint settleOn(QScreen* screen); // where the window goes there; sets room
@@ -118,6 +151,15 @@ private:
     void rememberSpot(); // after a move
     void glideTo(const QPoint& target);
     void save() const;
+    void moveWindow(const QPoint& position); // to its place (logical pixels), keeping a slide's offset
+    void beginSlide(); // where it rests now, unless it is on its way already
+    void startSlide(Slide slide, std::function<void()> done);
+    void settleSlide(); // at its end, at once
+    void goBehindTaskbar(); // just under it in the z-order, kept there until the slide stops
+    void stepSlide(int elapsed);
+    void applyOffset(); // the window where its place and the offset put it
+    QPoint hiddenOffset(bool* cut) const; // behind the taskbar (or not all the way: cut)
+    bool layered() const; // the window can fade (it has an alpha channel)
 
     QString m_stateFile;
     QString m_group;
@@ -138,6 +180,15 @@ private:
     QPoint m_grab; // the pointer's offset in the window being moved (physical pixels)
     bool m_grabbed = false; // m_grab is set for this move
     QVariantAnimation m_glide; // moveHome()
+    QVariantAnimation m_slide; // milliseconds into it
+    WId m_under = 0; // the taskbar it slides behind, while it does
+    Slide m_slideSpec;
+    std::function<void()> m_slideDone;
+    QPoint m_place; // its place, logical pixels
+    QPoint m_rest; // ... physical pixels
+    QPoint m_offset; // off it, physical pixels
+    qreal m_opacity = 1;
+    QPointF m_contentShift;
 };
 
 } // namespace ws

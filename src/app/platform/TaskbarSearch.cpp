@@ -5,6 +5,10 @@
 #include <knownfolders.h>
 #include <sddl.h>
 #include <shlobj.h>
+#include <shobjidl.h>
+
+#include <propkey.h> // after shobjidl.h, which defines PROPERTYKEY
+#include <propvarutil.h>
 #include <wrl/client.h>
 
 #include <cstddef>
@@ -75,13 +79,6 @@ std::wstring userSid()
     return sid;
 }
 
-bool isTaskbar(HWND window)
-{
-    wchar_t name[32] {};
-    return window && ::GetClassNameW(window, name, static_cast<int>(std::size(name)))
-        && (std::wcscmp(name, L"Shell_TrayWnd") == 0 || std::wcscmp(name, L"Shell_SecondaryTrayWnd") == 0);
-}
-
 // The taskbar on `monitor`: the main one, or the one another monitor has.
 HWND taskbarOn(HMONITOR monitor)
 {
@@ -139,6 +136,13 @@ std::optional<Spot> spotOf(HWND bar, const std::optional<POINT>& pointer)
 
 } // namespace
 
+bool isTaskbar(HWND window)
+{
+    wchar_t name[32] {};
+    return window && ::GetClassNameW(window, name, static_cast<int>(std::size(name)))
+        && (std::wcscmp(name, L"Shell_TrayWnd") == 0 || std::wcscmp(name, L"Shell_SecondaryTrayWnd") == 0);
+}
+
 HANDLE createEvent()
 {
     // Everything for the system and administrators (Win顺); setting it and
@@ -171,6 +175,12 @@ std::optional<Spot> locate(bool atPointer)
     return bar ? spotOf(bar, std::nullopt) : std::nullopt;
 }
 
+std::optional<Spot> locateAt(POINT button)
+{
+    const HWND bar = taskbarOn(::MonitorFromPoint(button, MONITOR_DEFAULTTONEAREST));
+    return bar ? spotOf(bar, button) : locate(false);
+}
+
 bool windowsSearchShown()
 {
     // The policy ("Configure search on the taskbar") wins over the user's
@@ -191,22 +201,43 @@ bool windowsSearchShown()
 
 std::wstring buttonShortcut(const std::wstring& button, const std::wstring& name)
 {
+    std::wstring link;
     for (const KNOWNFOLDERID& id : {FOLDERID_CommonPrograms, FOLDERID_Programs}) {
         const std::wstring folder = knownFolder(id);
-        if (std::wstring found = folder.empty() ? std::wstring() : findShortcut(folder, button); !found.empty())
-            return found;
+        if (link.empty() && !folder.empty())
+            link = findShortcut(folder, button);
     }
-    const std::wstring programs = knownFolder(FOLDERID_Programs);
-    if (programs.empty())
-        return {};
-    const std::wstring link = programs + L'\\' + name + L".lnk";
-    const std::wstring folder = std::filesystem::path(button).parent_path().wstring();
     ComPtr<IShellLinkW> shortcut;
     ComPtr<IPersistFile> file;
+    ComPtr<IPropertyStore> properties;
     if (FAILED(::CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&shortcut)))
-        || FAILED(shortcut->SetPath(button.c_str())) || FAILED(shortcut->SetWorkingDirectory(folder.c_str()))
-        || FAILED(shortcut.As(&file)) || FAILED(file->Save(link.c_str(), TRUE)))
-        return {};
+        || FAILED(shortcut.As(&file)) || FAILED(shortcut.As(&properties)))
+        return link;
+    if (!link.empty()) {
+        // The installer's (or ours, from before the id): given the id if it
+        // lacks it. Not read: left as it is (saved, it would be an empty one).
+        if (FAILED(file->Load(link.c_str(), STGM_READWRITE)))
+            return link;
+        PROPVARIANT id {};
+        const bool has = SUCCEEDED(properties->GetValue(PKEY_AppUserModel_ID, &id)) && id.vt == VT_LPWSTR
+            && std::wcscmp(id.pwszVal, kButtonAppId) == 0;
+        ::PropVariantClear(&id);
+        if (has)
+            return link;
+    } else {
+        const std::wstring programs = knownFolder(FOLDERID_Programs);
+        if (programs.empty())
+            return {};
+        link = programs + L'\\' + name + L".lnk";
+        const std::wstring folder = std::filesystem::path(button).parent_path().wstring();
+        if (FAILED(shortcut->SetPath(button.c_str())) || FAILED(shortcut->SetWorkingDirectory(folder.c_str())))
+            return {};
+    }
+    PROPVARIANT id {};
+    if (SUCCEEDED(::InitPropVariantFromString(kButtonAppId, &id)) && SUCCEEDED(properties->SetValue(PKEY_AppUserModel_ID, id))
+        && SUCCEEDED(properties->Commit()) && SUCCEEDED(file->Save(link.c_str(), TRUE)))
+        ::SHChangeNotify(SHCNE_UPDATEITEM, SHCNF_PATHW, link.c_str(), nullptr); // for the Start menu to see it
+    ::PropVariantClear(&id);
     return link;
 }
 

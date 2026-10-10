@@ -8,6 +8,7 @@
 #include "Wtf8.h"
 
 #include <QGuiApplication>
+#include <QLocale>
 #include <QStyleHints>
 
 #include <algorithm>
@@ -185,6 +186,10 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
         return !r->isApp() || r->hasCopyableTarget();
     case SelectedRole:
         return m_selected.contains(r->path);
+    case ModifiedRole:
+        return r->isApp() ? QString() : modifiedText(r->modified, QDateTime::currentDateTime());
+    case ModifiedFullRole:
+        return r->isApp() ? QString() : modifiedFullText(r->modified);
     default:
         return {};
     }
@@ -211,6 +216,8 @@ QHash<int, QByteArray> ResultModel::roleNames() const
         {RevealableRole, "revealable"},
         {CopyableRole, "copyable"},
         {SelectedRole, "selected"},
+        {ModifiedRole, "modified"},
+        {ModifiedFullRole, "modifiedFull"},
     };
 }
 
@@ -325,7 +332,43 @@ void ResultModel::clear()
 void ResultModel::retranslate()
 {
     if (!m_items.isEmpty()) // a web search's title and a content match's place ("第 2 页") too
-        emit dataChanged(index(0), index(count() - 1), {FolderRole, NameRole, NameHtmlRole, LocationRole});
+        emit dataChanged(index(0), index(count() - 1),
+            {FolderRole, NameRole, NameHtmlRole, LocationRole, ModifiedRole, ModifiedFullRole});
+}
+
+// Briefly, as a mail list dates its mail: the time today and yesterday, the
+// day of the week within the last week, the day this year, else the date.
+QString ResultModel::modifiedText(std::uint32_t modified, const QDateTime& now)
+{
+    if (modified == 0)
+        return {};
+    const QLocale locale;
+    const QDateTime when = QDateTime::fromSecsSinceEpoch(modified).toLocalTime();
+    const QDate day = when.date();
+    const qint64 daysAgo = day.daysTo(now.date());
+    const QString time = locale.toString(when.time(), QLocale::ShortFormat);
+    if (daysAgo < 0)
+        return locale.toString(when, QLocale::ShortFormat); // ahead of the clock: no guessing
+    if (daysAgo == 0)
+        return tr("今天 %1").arg(time);
+    if (daysAgo == 1)
+        return tr("昨天 %1").arg(time);
+    if (daysAgo < 7)
+        return locale.dayName(day.dayOfWeek(), QLocale::ShortFormat) + u' ' + time;
+    //: A date this year, as QLocale::toString formats it: "Oct 3"
+    if (day.year() == now.date().year())
+        return locale.toString(day, tr("M月d日"));
+    //: An earlier date, as QLocale::toString formats it: "Mar 5, 2024"
+    return locale.toString(day, tr("yyyy年M月d日"));
+}
+
+QString ResultModel::modifiedFullText(std::uint32_t modified)
+{
+    if (modified == 0)
+        return {};
+    const QDateTime when = QDateTime::fromSecsSinceEpoch(modified).toLocalTime();
+    //: When a file was last written, in full, as QLocale::toString formats it: "Oct 3, 2026, 14:32"
+    return tr("修改于 %1").arg(QLocale().toString(when, tr("yyyy年M月d日 HH:mm")));
 }
 
 QString ResultModel::location(const SearchResult& r)

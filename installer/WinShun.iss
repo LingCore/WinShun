@@ -88,8 +88,9 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
-; Programs cannot pin themselves: the user pins this one (settings → 打开 Win顺 → 找到按钮).
-Name: "{autoprograms}\{cm:SearchShortcut}"; Filename: "{app}\WinShunSearch.exe"
+; The taskbar button. Its AppUserModelID, the one WinShunSearch.exe sets for
+; itself, lets it ask Windows to be pinned (settings -> 打开 Win顺 -> 固定).
+Name: "{autoprograms}\{cm:SearchShortcut}"; Filename: "{app}\WinShunSearch.exe"; AppUserModelID: "LingCore.WinShun.Search"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Run]

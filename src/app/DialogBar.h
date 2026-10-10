@@ -75,6 +75,10 @@ class DialogBar : public QObject {
     Q_PROPERTY(bool listAbove READ listAbove NOTIFY layoutChanged FINAL)
     Q_PROPERTY(int barHeight READ barHeight CONSTANT FINAL)
     Q_PROPERTY(int rowHeight READ rowHeight CONSTANT FINAL)
+    // As the launcher's (Launcher::showModified, numberKeys, composing).
+    Q_PROPERTY(bool showModified READ showModified NOTIFY resultOptionsChanged FINAL)
+    Q_PROPERTY(QString numberKeys READ numberKeys NOTIFY resultOptionsChanged FINAL)
+    Q_PROPERTY(bool composing READ composing WRITE setComposing NOTIFY composingChanged FINAL)
 
 public:
     static constexpr int kBarHeight = 44; // logical pixels
@@ -117,6 +121,18 @@ public:
     void setRecordHistory(bool on) { m_recordHistory = on; }
     void setExcludedApps(const QStringList& apps); // program files ("notepad.exe") whose dialogs go without
     void setPlace(const QString& name); // Settings::dialogBarPlace: "auto", "below", "left", "right"
+    void setResultOptions(bool showModified, const QString& numberKeys); // Settings: "ctrl", "alt", "off"
+    bool showModified() const { return m_showModified; }
+    QString numberKeys() const { return m_numberKeys; }
+    bool composing() const { return m_composing; }
+    void setComposing(bool composing);
+    // Ctrl+n (or Alt+n): the nth row shown takes the dialog there
+    // (numberPressed), once the rows are those of what was typed.
+    Q_INVOKABLE void pressNumber(int number);
+    // Enter (`number` 0, `open` for Ctrl+Enter) or a number pressed while the
+    // rows are still those of what was typed before: true, and heldKey()
+    // brings it back once they are the new ones.
+    Q_INVOKABLE bool holdUntilShown(int number, bool open);
 
     void setDialog(HWND dialog); // in front, or nullptr (DialogJump::dialogChanged)
     void dialogMoved();
@@ -171,6 +187,10 @@ signals:
     void excludeAppRequested(const QString& app); // HideInApp
     void settingsRequested();
     void contextMenuKeyPressed(); // Menu key / Shift+F10 (arrive as a context-menu event, not a key)
+    void resultOptionsChanged();
+    void composingChanged();
+    void numberPressed(int number); // 1…9, counted from the first row shown
+    void heldKey(int number, bool open); // see holdUntilShown()
 
 private:
     void showWindow();
@@ -218,6 +238,11 @@ private:
 
     QString m_query;
     quint64 m_requestId = 0;
+    bool m_listPending = false; // the rows are not yet those of the query (relist() until setRows())
+    std::optional<std::pair<int, bool>> m_held; // holdUntilShown(): number, open
+    bool m_showModified = true;
+    QString m_numberKeys = QStringLiteral("ctrl");
+    bool m_composing = false;
     QString m_browsed; // see browsedFolder
     std::atomic<int> m_listings {0}; // the newest browse() wins
     bool m_nothingFound = false;

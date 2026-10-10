@@ -10,6 +10,10 @@ import WinShun
 // Settings, a Control Panel task, a system tool) is tagged "系统", says where
 // in Windows it is, and has only the copy button, which copies its command.
 // A web shortcut's site or search is tagged "网页" and copies its address.
+// A file or folder says when it was last written, at the end of its name's
+// line (also on the current row, where the buttons take the right end).
+// While the modifier of the number keys is held, the rows show their number
+// there instead (Ctrl+1 opens the first one shown).
 Item {
     id: row
 
@@ -32,12 +36,21 @@ Item {
     required property bool revealable
     required property bool copyable
     required property bool selected // one of several picked with Ctrl / Shift
+    required property string modified // "昨天 14:32"; empty for an app, or not known
+    required property string modifiedFull
+    property bool showModified: true
+    property int hint: 0 // the number keys' modifier held: this row's number, 0 for none
 
     readonly property bool contentMode: line > 0 // a content match (also mixed into 全部)
     readonly property bool current: ListView.isCurrentItem
     // With rows selected, the background marks them; the current row keeps only its accent pill.
     readonly property int selectedCount: ListView.view ? ListView.view.model.selectedCount : 0
-    readonly property bool showActions: current || area.containsMouse
+    readonly property bool showActions: (current || area.containsMouse) && hint === 0
+    // Room kept on the right for the buttons, the keycap, the badge or the label.
+    readonly property real trailingSpace: (showActions ? actions.width + actions.anchors.rightMargin
+                                           : keycap.visible ? keycap.width + keycap.anchors.rightMargin
+                                           : isApp ? badge.width + badge.anchors.rightMargin
+                                           : trailing.width + trailing.anchors.rightMargin) + 10
     property bool deleteArmed: false // first click on delete; the second one deletes
 
     signal clicked(int index, int modifiers)
@@ -118,9 +131,7 @@ Item {
         anchors.left: iconSlot.right
         anchors.leftMargin: 12
         anchors.right: parent.right
-        anchors.rightMargin: (row.showActions ? actions.width + actions.anchors.rightMargin
-                              : row.isApp ? badge.width + badge.anchors.rightMargin
-                              : trailing.width + trailing.anchors.rightMargin) + 10
+        anchors.rightMargin: row.trailingSpace + (date.visible ? date.width + 16 : 0)
         spacing: 4
 
         Item {
@@ -162,9 +173,26 @@ Item {
         }
     }
 
+    // When it was last written: centred on the row, and both lines on the left
+    // stop short of it, so the path below the name never runs under it.
+    Text {
+        id: date
+        visible: row.showModified && row.modified.length > 0
+        anchors.right: parent.right
+        anchors.rightMargin: row.trailingSpace
+        y: row.onPixel((row.height - height) / 2)
+        width: Math.ceil(implicitWidth)
+        text: row.modified
+        textFormat: Text.PlainText
+        color: Theme.faint
+        font.pixelSize: Theme.fontBody
+
+        HoverHandler { id: dateHover }
+    }
+
     Text {
         id: trailing
-        visible: !row.showActions && !row.isApp
+        visible: !row.showActions && !row.isApp && row.hint === 0
         anchors.right: parent.right
         anchors.rightMargin: 18
         y: row.onPixel((row.height - height) / 2)
@@ -177,7 +205,7 @@ Item {
 
     Rectangle {
         id: badge
-        visible: row.isApp && !row.showActions
+        visible: row.isApp && !row.showActions && row.hint === 0
         anchors.right: parent.right
         anchors.rightMargin: 16
         anchors.verticalCenter: parent.verticalCenter
@@ -194,6 +222,15 @@ Item {
             color: Theme.accent
             font.pixelSize: Theme.fontCaption
         }
+    }
+
+    KeyCap { // the number keys' modifier held: it and this number open the row
+        id: keycap
+        visible: row.hint > 0
+        anchors.right: parent.right
+        anchors.rightMargin: 16
+        anchors.verticalCenter: parent.verticalCenter
+        number: row.hint
     }
 
     MouseArea {
@@ -270,15 +307,17 @@ Item {
         }
     }
 
-    // One tip for all the buttons: it glides from one to the next.
+    // One tip for all the buttons: it glides from one to the next. The date
+    // has one too: the time in full.
     HoverTip {
         readonly property RowAction hovered: adminAction.tipWanted ? adminAction
                                            : revealAction.tipWanted ? revealAction
                                            : copyAction.tipWanted ? copyAction
                                            : copyPathAction.tipWanted ? copyPathAction
                                            : deleteAction.tipWanted ? deleteAction : null
-        target: hovered
-        text: hovered ? hovered.tip : ""
+        readonly property bool onDate: !hovered && date.visible && dateHover.hovered
+        target: hovered ? hovered : onDate ? date : null
+        text: hovered ? hovered.tip : onDate ? row.modifiedFull : ""
         shortcut: hovered ? hovered.tipShortcut : ""
     }
 }

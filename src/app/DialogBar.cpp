@@ -13,6 +13,7 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QQuickWindow>
+#include <QScopeGuard>
 #include <QScreen>
 #include <QStyleHints>
 
@@ -432,6 +433,8 @@ void DialogBar::setDialog(HWND dialog)
         emit originChanged(); // that of another dialog, if any
         m_extensions.clear();
         m_requestId = 0;
+        m_listPending = false;
+        m_held.reset();
         if (!m_query.isEmpty()) {
             m_query.clear();
             emit queryChanged();
@@ -579,12 +582,47 @@ void DialogBar::setQuery(const QString& query)
         return;
     m_query = query;
     emit queryChanged();
+    m_held.reset(); // typed on: a key held for the rows before is not for these
     relist();
+}
+
+void DialogBar::setResultOptions(bool showModified, const QString& numberKeys)
+{
+    const QString keys = numberKeys == u"off" ? QString() : numberKeys;
+    if (showModified == m_showModified && keys == m_numberKeys)
+        return;
+    m_showModified = showModified;
+    m_numberKeys = keys;
+    emit resultOptionsChanged();
+}
+
+void DialogBar::setComposing(bool composing)
+{
+    if (composing == m_composing)
+        return;
+    m_composing = composing;
+    emit composingChanged();
+}
+
+void DialogBar::pressNumber(int number)
+{
+    if (number < 1 || number > 9 || m_numberKeys.isEmpty() || holdUntilShown(number, false))
+        return;
+    emit numberPressed(number);
+}
+
+bool DialogBar::holdUntilShown(int number, bool open)
+{
+    if (!m_listPending)
+        return false;
+    m_held = {number, open};
+    return true;
 }
 
 void DialogBar::relist()
 {
     ++m_listings; // one on its way is for what was typed before
+    m_listPending = true;
     const pathtext::TypedPath typed = pathtext::splitTyped(m_query);
     if (typed.folder != m_browsed) {
         m_browsed = typed.folder;
@@ -602,7 +640,10 @@ void DialogBar::search()
 {
     SearchEngine::Request request;
     request.text = m_query;
-    request.scope = Scope::Files;
+    // A folder picker: folders alone (each its own best, not those of the
+    // best matches of all); where to save: folders first.
+    request.scope = foldersOnly() ? Scope::Folders : Scope::Files;
+    request.kindOrder = m_kind == filedialog::Kind::Save ? KindOrder::FoldersFirst : KindOrder::FilesFirst;
     if (m_recordHistory)
         request.history = m_history->items();
     m_requestId = m_engine->submit(std::move(request));
@@ -666,6 +707,12 @@ void DialogBar::browse(const pathtext::TypedPath& typed)
 
 void DialogBar::setRows(SearchResults rows, QStringList tags, const QStringList& highlights, bool refresh)
 {
+    m_listPending = false;
+    // Then a key pressed for these rows: once the view has them (resultsReplaced).
+    const auto deliverHeld = qScopeGuard([this] {
+        if (const auto held = std::exchange(m_held, std::nullopt))
+            emit heldKey(held->first, held->second);
+    });
     // Where the dialog is: going there changes nothing.
     const QString here = m_dialog ? QString::fromStdWString(filedialog::currentFolder(m_dialog)) : QString();
     if (!here.isEmpty()) {

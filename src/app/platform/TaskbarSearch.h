@@ -43,14 +43,26 @@ struct Spot {
 // pointer, where its icons are (centred, as Windows 11 has them by default:
 // its middle). Nothing when that monitor has no taskbar.
 std::optional<Spot> locate(bool atPointer);
+// Something of Win顺's on the taskbar, centred at `button`, was clicked:
+// centred on it, over the taskbar it is on.
+std::optional<Spot> locateAt(POINT button);
 
 // Windows' own search box or button is on the taskbar. Read only, see above.
 bool windowsSearchShown();
 
-// Programs cannot pin themselves (Windows gives that to the user alone), so
-// the user pins a Start menu shortcut to `button` (WinShunSearch.exe): the
-// installer's, else one made in the user's own Start menu, named `name`.
-// Empty when there is none and none could be made. COM must be initialised.
+// `window` is a taskbar (Shell_TrayWnd, or another monitor's).
+bool isTaskbar(HWND window);
+
+// The button's AppUserModelID: the program sets it for itself, and its Start
+// menu shortcut has it too. That is how Windows knows the program asking to
+// be pinned (TaskbarManager) is that entry: without it, pinning is not allowed.
+inline constexpr wchar_t kButtonAppId[] = L"LingCore.WinShun.Search";
+
+// The Start menu shortcut to `button` (WinShunSearch.exe), which Windows
+// wants before it lets the program ask to be pinned, and which the user can
+// pin by hand: the installer's, else one made in the user's own Start menu,
+// named `name`; given kButtonAppId where it lacks it. Empty when there is none
+// and none could be made. COM must be initialised.
 std::wstring buttonShortcut(const std::wstring& button, const std::wstring& name);
 // A shortcut to `button` is pinned to the taskbar. COM must be initialised.
 bool buttonPinned(const std::wstring& button);

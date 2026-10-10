@@ -23,6 +23,7 @@
 #include "platform/Foreground.h"
 #include "platform/KeyListener.h"
 #include "platform/MessageWindow.h"
+#include "platform/NumberKeys.h"
 #include "platform/Paster.h"
 #include "platform/Shell.h"
 #include "platform/StartMenuTyping.h"
@@ -39,6 +40,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QInputMethod>
 #include <QKeyEvent>
 #include <QLocale>
 #include <QQmlApplicationEngine>
@@ -46,6 +48,7 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QScreen>
+#include <QSettings>
 #include <QStorageInfo>
 #include <QStyleHints>
 #include <QSurfaceFormat>
@@ -151,6 +154,36 @@ void prepareBackdrop(QQuickWindow* window)
     QObject::connect(window, &QQuickWindow::colorChanged, window, keepAlpha);
 }
 
+// Where the user dragged Win顺's box on the taskbar: in state.ini, with the
+// windows' spots.
+QString statePath()
+{
+    return Settings::dataDir() + u"\\state.ini"_s;
+}
+
+taskbar::SearchBox::Spot loadBoxSpot()
+{
+    using Spot = taskbar::SearchBox::Spot;
+    const QSettings state(statePath(), QSettings::IniFormat);
+    const QString side = state.value(u"SearchBox/Side"_s).toString();
+    Spot spot;
+    spot.side = side == u"before" ? Spot::Side::Before : side == u"after" ? Spot::Side::After : Spot::Side::Auto;
+    spot.fromIcons = state.value(u"SearchBox/From"_s).toString() != u"end";
+    spot.offset = std::clamp(state.value(u"SearchBox/Offset"_s).toInt(), 0, 10000);
+    return spot;
+}
+
+void saveBoxSpot(const taskbar::SearchBox::Spot& spot)
+{
+    using Spot = taskbar::SearchBox::Spot;
+    QSettings state(statePath(), QSettings::IniFormat);
+    state.setValue(u"SearchBox/Side"_s, spot.side == Spot::Side::Before ? u"before"_s
+                                         : spot.side == Spot::Side::After ? u"after"_s
+                                                                          : u"auto"_s);
+    state.setValue(u"SearchBox/From"_s, spot.fromIcons ? u"icons"_s : u"end"_s);
+    state.setValue(u"SearchBox/Offset"_s, spot.offset);
+}
+
 // Rounded corners and the shadow, for our windows without a system title bar
 // (the launcher, the clipboard, the bar by file dialogs, the settings
 // window); each draws its edge itself (WindowEdge.qml).
@@ -170,7 +203,9 @@ App::App()
     m_indexOptionsApply.setInterval(1s);
     connect(&m_indexOptionsApply, &QTimer::timeout, this, [this] { m_index->setOptions(indexOptions(m_settings)); });
     m_revealTimeout.setSingleShot(true);
-    m_revealTimeout.setInterval(150ms); // never wait longer than that for the first frame
+    // Never waited for longer: the first frame is up by then, and fresh rows
+    // coming in a moment later (while it slides in) beat a launcher that comes late.
+    m_revealTimeout.setInterval(60ms);
     connect(&m_revealTimeout, &QTimer::timeout, this, &App::revealLauncher);
     m_clipUncloakTimeout.setSingleShot(true);
     m_clipUncloakTimeout.setInterval(150ms); // should no frame come
@@ -247,6 +282,24 @@ bool App::start(const StartOptions& options)
             armReveal();
     });
     connect(m_launcher.get(), &Launcher::webSettingsRequested, this, &App::showWebSettings);
+    connect(m_launcher.get(), &Launcher::fieldReported, this, &App::mirrorField);
+    connect(m_launcher.get(), &Launcher::scopeChanged, this, &App::updateSearchBoxLook); // the placeholder
+    m_boxPressGrace.setSingleShot(true);
+    m_boxPressGrace.setInterval(400ms);
+    connect(&m_boxPressGrace, &QTimer::timeout, this, [this] {
+        if (m_window && m_window->isVisible() && !m_window->isActive())
+            hideLauncher();
+    });
+    // The footer's sort switch: remembered.
+    connect(m_launcher.get(), &Launcher::rankByTimeChanged, this, [this] {
+        if (m_settings.sortByModified == m_launcher->rankByTime())
+            return;
+        m_settings.sortByModified = m_launcher->rankByTime();
+        m_settings.save();
+        if (m_settingsEditor)
+            m_settingsEditor->setSettings(m_settings);
+    });
+    connect(m_launcher.get(), &Launcher::composingChanged, this, &App::updateNumberKeys);
 
     // Clipboard history (Win+V), in clipboard\ next to the index.
     m_clipStore = std::make_unique<ClipStore>(dataDir + u"\\clipboard"_s);
@@ -322,6 +375,8 @@ bool App::start(const StartOptions& options)
     callbacks.shellRestarted = [this] { // Explorer let go of Win+V or Win+S, or took them back
         applyClipboardHotkeys();
         applyTaskbarHotkeys();
+        if (m_searchBox)
+            m_searchBox->reattach(); // onto the new taskbar
         QTimer::singleShot(3s, this, [this] { // once it has registered its own keys
             applyClipboardHotkeys();
             applyTaskbarHotkeys();
@@ -419,13 +474,35 @@ bool App::createWindow()
     m_placement->setWindow(m_window);
     m_frame->setWindow(m_window);
     m_launcherLogo = new WindowLogo(m_window, 64); // the search box's height (SearchBar.qml)
+    m_searchField = m_window->findChild<QQuickItem*>(u"searchField"_s);
+    if (m_searchField)
+        m_searchField->installEventFilter(this); // the input method's questions, while it is in the box
     connect(m_window, &QWindow::activeChanged, this, [this] {
         // Clicking elsewhere or switching apps dismisses the launcher, like a
         // menu; the clipboard under its search box goes with it (see there).
-        if (m_window && !m_window->isActive() && m_window->isVisible() && !clipboardUnderLauncher())
-            hideLauncher();
-        else if (m_window && m_window->isActive())
+        // Not a press on Win顺's box on the taskbar: that brings it back. Nor
+        // the press that just brought it back: Qt may hear of the taskbar
+        // taking the focus for it only after that (it slid back up while on
+        // its way out). Those leave no window in front (or the taskbar, the
+        // pointer on the box), nor does the Start menu closing as it opens
+        // over it; another window in front (a click on it, on the desktop,
+        // on the rest of the taskbar) dismisses it at once, however soon
+        // after it opened.
+        if (m_window && !m_window->isActive() && m_window->isVisible() && !clipboardUnderLauncher()) {
+            const bool justShown = m_launcherShown.isValid() && m_launcherShown.elapsed() < 500;
+            const bool onBox = m_searchBox && m_searchBox->underPointer();
+            const HWND front = ::GetForegroundWindow();
+            const bool elsewhere = front && front != reinterpret_cast<HWND>(m_window->winId())
+                && !(onBox && taskbar::isTaskbar(front)) && !win::isShellFlyout(front);
+            if (m_searchBox && m_launcher->inTaskbarBox() && !elsewhere && (justShown || onBox))
+                m_boxPressGrace.start();
+            else
+                hideLauncher();
+        } else if (m_window && m_window->isActive()) {
+            m_boxPressGrace.stop();
             deliverTyping(); // asked for from the Start menu
+        }
+        updateNumberKeys();
     });
     // Reveal (see showLauncher). Both run on the render thread: a frame
     // synchronised after arming shows the fresh results, and once it has been
@@ -495,6 +572,20 @@ bool App::createClipWindow()
 
 bool App::eventFilter(QObject* watched, QEvent* event)
 {
+    // The launcher's field, drawn in the box on the taskbar: the input
+    // method's window goes by the caret there.
+    if (watched == m_searchField && event->type() == QEvent::InputMethodQuery && m_launcher->inTaskbarBox()) {
+        auto* query = static_cast<QInputMethodQueryEvent*>(event);
+        const Qt::InputMethodQueries rects = query->queries() & (Qt::ImCursorRectangle | Qt::ImAnchorRectangle);
+        if (const std::optional<QRectF> caret = rects ? boxCaretInField() : std::nullopt) {
+            static_cast<QObject*>(m_searchField)->event(event); // the field's own answers to the rest
+            if (rects & Qt::ImCursorRectangle)
+                query->setValue(Qt::ImCursorRectangle, *caret);
+            if (rects & Qt::ImAnchorRectangle)
+                query->setValue(Qt::ImAnchorRectangle, *caret);
+            return true;
+        }
+    }
     // Pasted into a one-line field (the search boxes, the settings' fields):
     // several lines go in as one. Before the field sees the keys.
     if (event->type() == QEvent::KeyPress && static_cast<QKeyEvent*>(event)->matches(QKeySequence::Paste)) {
@@ -531,6 +622,7 @@ void App::applyTheme()
         styleWindow(m_settingsWindow, SystemTheme::backdropAvailable());
     if (m_barWindow)
         styleWindow(m_barWindow);
+    updateSearchBoxLook(); // the accent
     // The frames' dark mode only once Qt has set its own (light) one, a few
     // milliseconds later; then watch them for a while (see win::setDarkFrame).
     m_darkFrame = dark;
@@ -570,6 +662,7 @@ void App::applyAppearance()
         return; // starting up: nothing shown yet
     m_qml->retranslate();
     m_launcher->retranslate();
+    updateSearchBoxLook();
     m_clipboard->retranslate();
     m_messages->setTrayTooltip(trayTooltip());
     applyHotkey(); // its error message
@@ -602,6 +695,11 @@ void App::applySettings(bool initial)
         applyAppearance();
     m_updater->setAutomatic(m_settings.autoUpdate);
     m_launcher->setRecordHistory(m_settings.recordHistory);
+    m_launcher->setResultOptions(m_settings.foldersFirst ? KindOrder::FoldersFirst : KindOrder::FilesFirst,
+        m_settings.showModified, m_settings.numberKeys);
+    m_launcher->setRankByTime(m_settings.sortByModified);
+    m_clipboard->setNumberKeys(m_settings.clipboardNumberKeys);
+    updateNumberKeys();
     applyHotkey();
     m_launcher->setContentOptions(m_settings.contentExtensions, m_settings.contentSizeLimits(),
         m_settings.contentInLowPriority, m_settings.contentDocuments);
@@ -701,15 +799,135 @@ void App::applyTaskbar()
     } else if (!m_settings.taskbarStartTyping) {
         m_startTyping.reset();
     }
+    applySearchBox();
+}
+
+void App::applySearchBox()
+{
+    const bool wanted = m_settings.taskbarSearchBox && taskbar::SearchBox::supported();
+    if (wanted && !m_searchBox) {
+        // Called on the box's thread: over to the GUI thread.
+        taskbar::SearchBox::Callbacks callbacks;
+        callbacks.pressed = [this](const taskbar::SearchBox::Press& press) {
+            QMetaObject::invokeMethod(this, [this, press] { searchBoxPressed(press); }, Qt::QueuedConnection);
+        };
+        callbacks.dragged = [this](int anchor, int at) {
+            QMetaObject::invokeMethod(this, [this, anchor, at] {
+                if (m_launcher->inTaskbarBox())
+                    emit m_launcher->selectionRequested(anchor, at);
+            }, Qt::QueuedConnection);
+        };
+        callbacks.shownChanged = [this](bool shown) {
+            QMetaObject::invokeMethod(this, [this, shown] { setSearchBoxShown(shown); }, Qt::QueuedConnection);
+        };
+        callbacks.caretMoved = [this] {
+            QMetaObject::invokeMethod(this, [this] {
+                if (m_launcher->inTaskbarBox())
+                    QGuiApplication::inputMethod()->update(Qt::ImCursorRectangle);
+            }, Qt::QueuedConnection);
+        };
+        callbacks.moved = [this](const taskbar::SearchBox::Spot& spot) {
+            QMetaObject::invokeMethod(this, [spot] { saveBoxSpot(spot); }, Qt::QueuedConnection);
+        };
+        m_searchBox = std::make_unique<taskbar::SearchBox>(
+            std::move(callbacks), taskbar::SearchBox::Look {}, loadBoxSpot());
+        updateSearchBoxLook();
+    } else if (!wanted && m_searchBox) {
+        if (m_launcher->inTaskbarBox())
+            hideLauncher();
+        m_searchBox.reset();
+        setSearchBoxShown(false);
+    }
+}
+
+void App::setSearchBoxShown(bool shown)
+{
+    if (!m_searchBox)
+        shown = false; // a late word from a box gone since
+    m_searchBoxShown = shown;
+    if (m_settingsEditor)
+        m_settingsEditor->setSearchBoxShown(shown);
+    if (!shown && m_launcher->inTaskbarBox())
+        hideLauncher(); // what is typed there would be out of sight
+}
+
+void App::updateSearchBoxLook()
+{
+    if (!m_searchBox)
+        return;
+    const QColor accent = SystemTheme::accentColor();
+    taskbar::SearchBox::Look look;
+    look.name = tr("Win顺 搜索").toStdWString();
+    // Typing there: what the launcher searches (its tabs say which).
+    const bool typing = m_launcher->inTaskbarBox() && !m_launcherClosing;
+    look.placeholder = (typing ? m_launcher->placeholder() : tr("搜索应用和文件")).toStdWString();
+    look.accent = RGB(accent.red(), accent.green(), accent.blue());
+    m_searchBox->setLook(std::move(look));
+}
+
+void App::searchBoxPressed(const taskbar::SearchBox::Press& press)
+{
+    if (!m_window || !m_searchBox)
+        return;
+    if (!launcherShown() || !m_launcher->inTaskbarBox()) {
+        showLauncherInBox();
+        return;
+    }
+    // Open over it already: the press took the keyboard (see m_boxPressGrace).
+    // Back to the launcher, the caret where the box was pressed.
+    m_boxPressGrace.stop();
+    win::bringToFront(m_window);
+    m_window->requestActivate();
+    if (press.at)
+        emit m_launcher->caretRequested(*press.at, press.word);
+}
+
+void App::showLauncherInBox()
+{
+    const std::optional<RECT> box = m_searchBox ? m_searchBox->rect() : std::nullopt;
+    if (!box) {
+        showLauncher({}, taskbar::locate(false));
+        return;
+    }
+    showLauncher({}, taskbar::locateAt({(box->left + box->right) / 2, box->top}), true);
+}
+
+void App::mirrorField(
+    const QString& text, int cursor, int selectionStart, int selectionEnd, const QString& composition)
+{
+    m_fieldShown.active = true;
+    m_fieldShown.text = text.toStdWString();
+    m_fieldShown.cursor = cursor;
+    m_fieldShown.selectionStart = selectionStart;
+    m_fieldShown.selectionEnd = selectionEnd;
+    m_fieldShown.composition = composition.toStdWString();
+    if (m_searchBox && m_launcher->inTaskbarBox() && !m_launcherClosing) // closing: the box is idle already
+        m_searchBox->setText(m_fieldShown);
+}
+
+std::optional<QRectF> App::boxCaretInField() const
+{
+    const std::optional<RECT> caret = m_searchBox ? m_searchBox->caret() : std::nullopt;
+    if (!caret || !m_window || !m_searchField)
+        return std::nullopt;
+    // Physical pixels on the screen to the window's logical ones, then the field's.
+    POINT origin {};
+    ::ClientToScreen(reinterpret_cast<HWND>(m_window->winId()), &origin);
+    const qreal scale = m_window->devicePixelRatio();
+    const QPointF inWindow((caret->left - origin.x) / scale, (caret->top - origin.y) / scale);
+    return QRectF(m_searchField->mapFromScene(inWindow), QSizeF(1, (caret->bottom - caret->top) / scale));
 }
 
 void App::startMenuTyped()
 {
     // Over the taskbar, where the Start menu was (showing it closes the
-    // Start menu, see win::bringToFront); the keys follow once it has the
-    // keyboard.
+    // Start menu, see win::bringToFront), over Win顺's box if it is there;
+    // the keys follow once it has the keyboard.
     m_deliverTyping = true;
-    showLauncher({}, taskbar::locate(false));
+    if (m_searchBoxShown)
+        showLauncherInBox();
+    else
+        showLauncher({}, taskbar::locate(false));
     if (m_window && m_window->isActive())
         deliverTyping();
 }
@@ -746,7 +964,7 @@ void App::applyTaskbarHotkeys()
 
 void App::toggleAtTaskbar(bool clicked)
 {
-    if (m_window && m_window->isVisible() && m_window->isActive()) {
+    if (launcherShown() && m_window->isActive()) {
         hideLauncher();
         return;
     }
@@ -755,7 +973,10 @@ void App::toggleAtTaskbar(bool clicked)
     // again. The button's program starts on the release, 0.1–0.3 s later.
     if (clicked && m_launcherHidden.isValid() && m_launcherHidden.elapsed() < 500)
         return;
-    showLauncher({}, taskbar::locate(clicked));
+    if (!clicked && m_searchBoxShown) // Win+S: into Win顺's box, as Windows' own goes into its box
+        showLauncherInBox();
+    else
+        showLauncher({}, taskbar::locate(clicked));
 }
 
 void App::startScreenClip()
@@ -880,6 +1101,7 @@ void App::showSettings()
         applyClipboardHotkeys(); // ... and where Win+V stands
         applyTaskbarHotkeys(); // ... and Win+S
         editor->refreshTaskbarState();
+        editor->setSearchBoxShown(m_searchBoxShown);
         editor->refreshFileManagers();
 
         prepareBackdrop(window);
@@ -1147,12 +1369,15 @@ void App::handleCommand(const QString& command)
 void App::applyDialogs()
 {
     if (m_settings.dialogBar && !m_dialogBar) {
-        m_dialogBar = std::make_unique<DialogBar>(m_engine.get(), m_history.get(),
+        if (!m_dialogEngine)
+            m_dialogEngine = std::make_unique<SearchEngine>(m_index.get(), m_apps.get(), m_places.get());
+        m_dialogBar = std::make_unique<DialogBar>(m_dialogEngine.get(), m_history.get(),
             Settings::dataDir() + u"\\dialog-pins.txt"_s, [this](HWND dialog, std::wstring path, bool isFile, bool open) {
                 if (m_dialogJump)
                     m_dialogJump->go(dialog, std::move(path), isFile, open);
             });
         connect(m_dialogBar.get(), &DialogBar::excludeAppRequested, this, &App::excludeFromDialogBar);
+        connect(m_dialogBar.get(), &DialogBar::composingChanged, this, &App::updateNumberKeys);
         connect(m_dialogBar.get(), &DialogBar::settingsRequested, this, [this] { showSettings(); });
     } else if (!m_settings.dialogBar && m_dialogBar) {
         delete m_barWindow;
@@ -1163,6 +1388,7 @@ void App::applyDialogs()
         m_dialogBar->setRecordHistory(m_settings.recordHistory);
         m_dialogBar->setExcludedApps(m_settings.dialogBarExcludedApps);
         m_dialogBar->setPlace(m_settings.dialogBarPlace);
+        m_dialogBar->setResultOptions(m_settings.showModified, m_settings.numberKeys);
     }
 
     const bool followDialogs = m_settings.dialogJump || m_settings.dialogBar || m_settings.dialogAutoJump;
@@ -1239,12 +1465,54 @@ bool App::createBarWindow()
             }
         }, Qt::QueuedConnection);
     });
+    connect(window, &QWindow::activeChanged, this, &App::updateNumberKeys);
     m_barWindow = window;
     m_dialogBar->setWindow(window);
     // Made for DialogJump's first look at the window in front, before it is
     // there: then applyDialogs() does this.
     updateCompanions();
     return true;
+}
+
+void App::updateNumberKeys()
+{
+    const bool launcherInFront = m_window && m_window->isActive();
+    const bool barInFront = m_barWindow && m_barWindow->isActive() && m_dialogBar;
+    if (m_settings.numberKeys == u"off" || (!launcherInFront && !barInFront)) {
+        m_numberKeys.reset();
+        return;
+    }
+    std::vector<HWND> windows;
+    for (QWindow* window : {static_cast<QWindow*>(m_window), static_cast<QWindow*>(m_barWindow)}) {
+        if (window)
+            windows.push_back(reinterpret_cast<HWND>(window->winId()));
+    }
+    const bool alt = m_settings.numberKeys == u"alt";
+    if (!m_numberKeys || windows != m_numberWindows || alt != m_numberKeysAlt) {
+        m_numberKeys.reset(); // the one hook at a time
+        auto keys = std::make_unique<NumberKeys>(windows, alt ? NumberKeys::Modifier::Alt : NumberKeys::Modifier::Ctrl,
+            [this](HWND window, int number) { // on its thread
+                QMetaObject::invokeMethod(this, [this, window, number] { numberKeyPressed(window, number); },
+                    Qt::QueuedConnection);
+            });
+        if (!keys->isActive()) {
+            // The window's own keys still work, short of other programs' hotkeys.
+            qWarning() << "Number keys: no keyboard hook";
+            return;
+        }
+        m_numberKeys = std::move(keys);
+        m_numberWindows = std::move(windows);
+        m_numberKeysAlt = alt;
+    }
+    m_numberKeys->setComposing(launcherInFront ? m_launcher->composing() : m_dialogBar->composing());
+}
+
+void App::numberKeyPressed(HWND window, int number)
+{
+    if (m_window && window == reinterpret_cast<HWND>(m_window->winId()) && m_window->isActive())
+        m_launcher->pressNumber(number);
+    else if (m_barWindow && m_dialogBar && window == reinterpret_cast<HWND>(m_barWindow->winId()))
+        m_dialogBar->pressNumber(number);
 }
 
 void App::updateCompanions()
@@ -1294,7 +1562,7 @@ void App::toggleLauncher()
         m_dialogBar->toggleFocus();
         return;
     }
-    if (m_window && m_window->isVisible() && m_window->isActive())
+    if (launcherShown() && m_window->isActive())
         hideLauncher();
     else
         showLauncher();
@@ -1309,11 +1577,21 @@ void App::toggleClipboard()
         showClipboard();
 }
 
-void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>& spot)
+void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>& spot, bool inBox)
 {
     if (!m_window)
         return;
     hideClipboard(false); // from under its search box: searching again
+    m_boxPressGrace.stop();
+    m_launcherShown.start();
+    const bool wasClosing = std::exchange(m_launcherClosing, false); // back from on its way out
+    const bool wasInBox = m_launcher->inTaskbarBox();
+    m_launcher->setInTaskbarBox(inBox && m_searchBox);
+    updateSearchBoxLook();
+    if (m_searchBox && !m_launcher->inTaskbarBox())
+        m_searchBox->setText({}); // opened elsewhere: the box is idle
+    else if (m_searchBox && wasClosing && wasInBox) // the field has not changed, nor said so again
+        m_searchBox->setText(m_fieldShown);
     if (spot) {
         m_placement->attachTaskbar(*spot);
     } else {
@@ -1325,7 +1603,13 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
         m_launcher->setQuery(query);
 
     const bool prewarming = m_prewarming.exchange(false); // up already, cloaked
-    if (!m_window->isVisible() || prewarming) {
+    if (wasClosing) {
+        // Back from where it got to on its way out.
+        m_placement->slideIn([this] {
+            if (m_launcherLogo && launcherShown())
+                m_launcherLogo->reveal();
+        });
+    } else if (!m_window->isVisible() || prewarming) {
         // Shown cloaked: Windows would first put up the window as it looked
         // when it was hidden (old selection, old rows), then our repaint.
         // Revealed once a frame with the refreshed results is drawn.
@@ -1433,7 +1717,11 @@ bool App::startKeyRouting(HWND target)
                 m_drainingRouter.reset();
         }, Qt::QueuedConnection);
     };
-    auto router = std::make_unique<KeyRouter>(target, reinterpret_cast<HWND>(m_clipWindow->winId()), std::move(callbacks));
+    const Qt::KeyboardModifier numberKeys = m_settings.clipboardNumberKeys == u"ctrl" ? Qt::ControlModifier
+        : m_settings.clipboardNumberKeys == u"off"                                    ? Qt::NoModifier
+                                                                                      : Qt::AltModifier;
+    auto router = std::make_unique<KeyRouter>(
+        target, reinterpret_cast<HWND>(m_clipWindow->winId()), std::move(callbacks), numberKeys);
     if (!router->isActive()) {
         qWarning() << "Clipboard: no keyboard hook; it takes the focus instead";
         return false;
@@ -1627,10 +1915,21 @@ void App::revealLauncher()
     m_revealArmed.store(false);
     m_revealSynced.store(false);
     m_revealTimeout.stop();
-    if (m_window)
-        win::setCloaked(m_window, false);
-    if (m_launcherLogo)
-        m_launcherLogo->reveal(); // not if this was the launcher hiding before its first frame
+    if (!m_window)
+        return;
+    // In from off its place first, then seen: not if this was the launcher
+    // hiding before its first frame. The logo once it is there.
+    if (m_window->isVisible())
+        m_placement->slideIn([this] {
+            if (m_launcherLogo && launcherShown())
+                m_launcherLogo->reveal();
+        });
+    win::setCloaked(m_window, false);
+}
+
+bool App::launcherShown() const
+{
+    return m_window && m_window->isVisible() && !m_launcherClosing && !m_prewarming.load();
 }
 
 // The first frame a window draws sets up the graphics device, shaders and
@@ -1660,16 +1959,48 @@ void App::finishPrewarm()
 
 void App::hideLauncher()
 {
+    if (!m_window || !m_window->isVisible() || m_launcherClosing)
+        return;
+    m_launcherHidden.start();
+    m_boxPressGrace.stop();
+    m_deliverTyping = false;
+    if (clipboardUnderLauncher())
+        hideClipboard(false);
+    // Slid out, unless it was never seen (still waiting for its first frame).
+    if (m_revealing || m_prewarming.load()) {
+        finishHidingLauncher();
+        return;
+    }
+    m_launcherClosing = true;
+    // The box idle at once; the launcher keeps its look (in the box: no
+    // field) until it is gone.
+    if (m_searchBox && m_launcher->inTaskbarBox()) {
+        m_searchBox->setText({}); // the placeholder again
+        updateSearchBoxLook();
+    }
+    if (m_launcherLogo)
+        m_launcherLogo->conceal();
+    m_placement->slideOut([this] {
+        if (m_launcherClosing)
+            finishHidingLauncher();
+    });
+}
+
+void App::finishHidingLauncher()
+{
+    m_launcherClosing = false;
+    if (m_launcher->inTaskbarBox()) {
+        m_launcher->setInTaskbarBox(false);
+        if (m_searchBox) {
+            m_searchBox->setText({});
+            updateSearchBoxLook();
+        }
+    }
     if (!m_window || !m_window->isVisible())
         return;
-    const bool clipboardToo = clipboardUnderLauncher();
     m_window->hide();
-    m_launcherHidden.start();
-    m_deliverTyping = false;
     revealLauncher(); // hidden before its first frame: drop the cloak
     m_launcher->handleHidden();
-    if (clipboardToo)
-        hideClipboard(false);
 }
 
 void App::showTrayMenu()

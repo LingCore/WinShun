@@ -29,7 +29,8 @@ inline constexpr ULONG_PTR kOwnInput = 0x5753'4B52; // "WSKR"
 // it lives only while the window is up, on a thread of its own, and decides
 // at once from the key alone. It takes only what the window acts on (typing
 // for its search, arrows, Enter, Esc, Tab, Delete, Alt+1…9, Alt+P, the Ctrl
-// keys of a text field and of the list) and passes on the rest: Win
+// keys of a text field and of the list; Ctrl+1…9 in their place when the
+// settings say so) and passes on the rest: Win
 // combinations, Alt+Tab, media keys, F keys, other programs' hotkeys. Keys
 // pressed before it started are left alone up to their release.
 //
@@ -71,7 +72,9 @@ public:
 
     // Keys are taken while `target` (top level) is in front and `window` is
     // shown. The callbacks run on the router's thread: post to the GUI thread.
-    KeyRouter(HWND target, HWND window, Callbacks callbacks);
+    // `numberKeys`: the modifier that pastes a row with a digit (Alt, Ctrl,
+    // or none: Settings::clipboardNumberKeys).
+    KeyRouter(HWND target, HWND window, Callbacks callbacks, Qt::KeyboardModifier numberKeys = Qt::AltModifier);
     ~KeyRouter();
 
     KeyRouter(const KeyRouter&) = delete;
@@ -94,6 +97,7 @@ private:
 
     const HWND m_target;
     const HWND m_window;
+    const Qt::KeyboardModifier m_numberKeys;
     const DWORD m_process;
     Callbacks m_callbacks;
     std::bitset<256> m_taken; // keys held whose press was taken; only touched on the router thread

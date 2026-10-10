@@ -30,6 +30,14 @@ struct Settings {
     // (shell::setFileManager); Explorer while the one chosen is not installed.
     QString fileManager = QStringLiteral("explorer");
 
+    // [Results]
+    bool foldersFirst = false; // 全部 and 文件 list the folders found before the files (else after)
+    bool showModified = true; // each file and folder found says when it was last written
+    bool sortByModified = false; // 文件 and 文件夹: newest first, not best match first (the footer's switch)
+    // ctrl | alt | off: Ctrl+1…9 opens the nth row shown, in the launcher and
+    // the bar by file dialogs (taken before other programs' hotkeys, see NumberKeys).
+    QString numberKeys = QStringLiteral("ctrl");
+
     // [Appearance]
     QString theme = QStringLiteral("system"); // system | light | dark
     QString language = QStringLiteral("system"); // system | zh | en
@@ -64,10 +72,12 @@ struct Settings {
     int clipboardMaxDays = 30; // since last copied or pasted; 0 = no limit
     bool clipboardImages = true;
     QStringList clipboardExcludedApps; // program files whose copies are not kept, "KeePass.exe"
+    QString clipboardNumberKeys = QStringLiteral("alt"); // alt | ctrl | off: Alt+1…9 pastes the nth row
 
     // [Taskbar]: Win顺 in the place of Windows' search (see taskbar::)
     bool taskbarWinS = false; // Win+S opens it over the taskbar, instead of Windows' search (see winv::)
     bool taskbarStartTyping = false; // typing in the Start menu searches with Win顺 (StartMenuTyping)
+    bool taskbarSearchBox = false; // Win顺's own search box on the taskbar (taskbar::SearchBox)
 
     // [WebSearch]: keywords the user gives web pages ("gh" opens GitHub, "gh
     // WinShun" searches it; see WebShortcut). At first just one, "winshun".
@@ -91,7 +101,12 @@ struct Settings {
     static QString resolveRenderer(const QString& renderer); // anything but software or d3d11 (an old "auto") -> defaultRenderer()
     static QString defaultRenderer(); // d3d11 with 8 GB of RAM or more, else software
     static bool lowMemory(); // 16 GB of RAM or less: transparency starts off, the clipboard keeps 100
-    static QString dataDir(); // %LOCALAPPDATA%\WinShun
+    static QString dataDir(); // %LOCALAPPDATA%\WinShun, or the profile's folder
+    // The hidden --profile <folder>: the settings and all data in that folder
+    // instead, for screenshots of made-up files with a history and clipboard
+    // of their own (tools/make_screenshots.py). Before anything reads them.
+    static void useProfile(const QString& folder);
+    static QString profile(); // empty without --profile
     static bool windowsClipboardHistory(); // Windows' own clipboard history is on (Settings > System > Clipboard)
     static bool hasClipboardSettings(); // the file has a [Clipboard] section: written by a version with the clipboard history
     static QString resolveLanguage(const QString& language); // "system" -> zh with a Chinese Windows, else en

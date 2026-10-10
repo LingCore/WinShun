@@ -17,7 +17,8 @@ namespace ws {
 // is moved on the window's own WM_WINDOWPOSCHANGED, in the same instant, not
 // when Qt hears of the move later (a drag would leave it behind). Hidden with
 // the window. Shown by reveal(), once the window is on the screen: not while
-// it is still cloaked, waiting for a frame.
+// it is still cloaked, waiting for a frame, nor while it slides in or out
+// (Placement::slideIn), when it would be over the taskbar.
 class WindowLogo : public QObject {
 public:
     // `rowHeight`: logical pixels, the box at the top of the window; at a
@@ -26,6 +27,7 @@ public:
     ~WindowLogo() override;
 
     void reveal();
+    void conceal(); // until revealed again
     // Kept off this (physical pixels): the line typed in, by the clipboard.
     void setAvoid(std::optional<RECT> avoid) { m_avoid = avoid; }
 

@@ -2,8 +2,9 @@ import QtQuick
 import WinShun
 
 // Status on the left, keyboard hints on the right, and at the very right a
-// button that clears the recent items (while there are some to clear).
-// Dragging it moves the window.
+// button that clears the recent items (while there are some to clear). In
+// 文件 and 文件夹, before the hints, how the rows are sorted: click to switch
+// between best match and last written. Dragging it moves the window.
 Item {
     id: footer
 
@@ -44,7 +45,7 @@ Item {
         id: status
         anchors.left: parent.left
         anchors.leftMargin: 18
-        anchors.right: hints.left
+        anchors.right: sort.visible ? sort.left : hints.left
         anchors.rightMargin: 12
         anchors.verticalCenter: parent.verticalCenter
         spacing: 8
@@ -73,6 +74,19 @@ Item {
             font.pixelSize: Theme.fontBody
             elide: Text.ElideRight
         }
+    }
+
+    RowAction {
+        id: sort
+        visible: footer.launcher.scope === Launcher.Files || footer.launcher.scope === Launcher.Folders
+        anchors.right: hints.left
+        anchors.rightMargin: 10
+        anchors.verticalCenter: parent.verticalCenter
+        glyph: "\uE8CB" // Sort
+        text: footer.launcher.rankByTime ? qsTr("最近修改的在前") : qsTr("最匹配的在前")
+        tip: footer.launcher.rankByTime ? qsTr("点一下改为最匹配的在前") : qsTr("点一下改为最近修改的在前")
+        onClicked: footer.launcher.rankByTime = !footer.launcher.rankByTime
+        Component.onCompleted: footer.frame.addControl(sort) // a button, not part of the drag area
     }
 
     Row {
@@ -123,7 +137,7 @@ Item {
     }
 
     HoverTip {
-        target: clearHistory.tipWanted ? clearHistory : null
-        text: clearHistory.tip
+        target: clearHistory.tipWanted ? clearHistory : sort.tipWanted ? sort : null
+        text: clearHistory.tipWanted ? clearHistory.tip : sort.tip
     }
 }

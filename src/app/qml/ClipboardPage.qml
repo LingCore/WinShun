@@ -42,7 +42,7 @@ Item {
         list.positionViewAtBeginning()
     }
     function windowHidden() {
-        altHeld = false
+        hideNumbers()
         closeContextMenu()
         menuLoader.active = false
         tabs.stopNaming()
@@ -74,8 +74,24 @@ Item {
         if (list.count > 0)
             selectTo(Math.max(0, Math.min(list.count - 1, list.currentIndex + delta)), false)
     }
-    // Alt held: the first nine rows show the number that pastes them (Alt+1...).
-    property bool altHeld: false
+    // The modifier of the number keys held (Clipboard.numberKeys): the first
+    // nine rows show the number that pastes them (Alt+1...). Alt at once;
+    // Ctrl after a moment held alone, as it also picks rows with a click and
+    // starts Ctrl+P, Ctrl+Z.
+    readonly property int numberKey: clipboard.numberKeys === "alt" ? Qt.Key_Alt
+                                   : clipboard.numberKeys === "ctrl" ? Qt.Key_Control : -1
+    readonly property int numberModifier: numberKey === Qt.Key_Alt ? Qt.AltModifier
+                                        : numberKey === Qt.Key_Control ? Qt.ControlModifier : -1
+    property bool numbersHeld: false
+    Timer {
+        id: numbersDelay
+        interval: 500
+        onTriggered: page.numbersHeld = true
+    }
+    function hideNumbers() {
+        numbersDelay.stop()
+        numbersHeld = false
+    }
 
     // What the keys act on: the picked rows (-1) if any, else the current one.
     function targetRow() {
@@ -164,12 +180,20 @@ Item {
         const ctrl = (event.modifiers & Qt.ControlModifier) !== 0
         const shift = (event.modifiers & Qt.ShiftModifier) !== 0
         const alt = (event.modifiers & Qt.AltModifier) !== 0
-        altHeld = alt && !ctrl
+        if (numberKey === Qt.Key_Alt) {
+            numbersHeld = alt && !ctrl
+        } else if (event.key === Qt.Key_Control && numberKey === Qt.Key_Control) {
+            if (!event.isAutoRepeat && !alt && !shift)
+                numbersDelay.restart()
+        } else if (event.key !== Qt.Key_Shift) {
+            hideNumbers() // a key with Ctrl (Shift keeps them: Ctrl+Shift+1 pastes plain text)
+        }
         if (event.key === Qt.Key_Alt) {
             event.accepted = true // alone, it would open the window menu
             return
         }
-        if (alt && !ctrl && event.key >= Qt.Key_1 && event.key <= Qt.Key_9) {
+        const others = (event.modifiers & ~(Qt.ShiftModifier | Qt.KeypadModifier)) !== numberModifier
+        if (numberModifier >= 0 && !others && event.key >= Qt.Key_1 && event.key <= Qt.Key_9) {
             clipboard.quickPaste(event.key - Qt.Key_0, shift)
             event.accepted = true
             return
@@ -317,10 +341,10 @@ Item {
                 onTextChanged: page.clipboard.query = text
                 Keys.onPressed: (event) => page.handleKey(event)
                 Keys.onReleased: (event) => {
-                    if (event.key === Qt.Key_Alt) {
-                        page.altHeld = false
+                    if (event.key === page.numberKey)
+                        page.hideNumbers()
+                    if (event.key === Qt.Key_Alt)
                         event.accepted = true
-                    }
                 }
 
                 Text {
@@ -404,7 +428,7 @@ Item {
                         id: clipRow
                         width: list.width
                         height: page.rowHeight
-                        hint: page.altHeld && index < 9 ? index + 1 : 0
+                        hint: page.numbersHeld && index < 9 ? index + 1 : 0
                         previewing: page.previewOpen && clipRow.current
                         // On whole device pixels wherever the list has scrolled
                         // to (see Main.qml).

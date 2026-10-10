@@ -17,12 +17,14 @@ qt_add_executable(WinShun WIN32
     platform/KeyListener.cpp platform/KeyListener.h
     platform/KeyRouter.cpp platform/KeyRouter.h
     platform/MessageWindow.cpp platform/MessageWindow.h
+    platform/NumberKeys.cpp platform/NumberKeys.h
     platform/Paster.cpp platform/Paster.h
     platform/PeekingLogo.cpp platform/PeekingLogo.h
     platform/Shell.cpp platform/Shell.h
     platform/ShortcutCapture.cpp platform/ShortcutCapture.h
     platform/StartMenuTyping.cpp platform/StartMenuTyping.h
     platform/TaskbarSearch.cpp platform/TaskbarSearch.h
+    platform/TaskbarSearchBox.cpp platform/TaskbarSearchBox.h
     platform/TextCaret.cpp platform/TextCaret.h
     platform/VolumeNotifier.cpp platform/VolumeNotifier.h
     platform/WinV.cpp platform/WinV.h
@@ -57,6 +59,7 @@ set(qml_files
     qml/TitleBar.qml
     qml/SettingsSection.qml
     qml/SettingRow.qml
+    qml/PageTabs.qml
     qml/ThemeCard.qml
     qml/UpdateDialog.qml
     qml/ToggleSwitch.qml
@@ -64,6 +67,7 @@ set(qml_files
     qml/InputBox.qml
     qml/WebShortcutForm.qml
     qml/CenteredNumber.qml
+    qml/KeyCap.qml
     qml/Chip.qml
     qml/HotkeyRecorder.qml
     qml/Gleaning.qml
@@ -155,7 +159,7 @@ target_include_directories(WinShun PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(WinShun PRIVATE
     wscore
     Qt6::Gui Qt6::Qml Qt6::Quick
-    comctl32 dwmapi oleacc oleaut32 shcore shell32 shlwapi ole32 user32 uxtheme version winhttp winmm
+    comctl32 d2d1 dwmapi dwrite oleacc oleaut32 shcore shell32 shlwapi ole32 user32 uxtheme version winhttp winmm
     mfplat mfreadwrite mfuuid delayimp)
 # The execution level (requireAdministrator) comes from app.manifest alone; the
 # linker's own default (asInvoker) would conflict with it. Media Foundation is

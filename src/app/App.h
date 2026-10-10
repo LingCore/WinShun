@@ -5,6 +5,7 @@
 #include "platform/ClipboardWatcher.h"
 #include "platform/KeyRouter.h"
 #include "platform/TaskbarSearch.h"
+#include "platform/TaskbarSearchBox.h"
 
 #include <QDeadlineTimer>
 #include <QElapsedTimer>
@@ -37,6 +38,7 @@ class IndexService;
 class KeyListener;
 class Launcher;
 class MessageWindow;
+class NumberKeys;
 class Placement;
 class SearchEngine;
 class SettingsEditor;
@@ -69,8 +71,9 @@ public:
 
     void toggleLauncher();
     void toggleClipboard(); // the clipboard window (Win+V)
-    // With `spot`, over the taskbar, as Windows' own search (taskbar::).
-    void showLauncher(const QString& query = {}, const std::optional<taskbar::Spot>& spot = {});
+    // With `spot`, over the taskbar, as Windows' own search (taskbar::);
+    // `inBox`: over Win顺's box there, its field drawn in the box.
+    void showLauncher(const QString& query = {}, const std::optional<taskbar::Spot>& spot = {}, bool inBox = false);
     void hideLauncher();
     void showClipboard();
     void showSettings();
@@ -107,18 +110,31 @@ private:
     QQuickItem* focusedField() const; // a text field of Win顺's own with the keyboard
     void returnToField(QQuickItem* field); // from the clipboard (Clipboard::fieldRequested)
     void updateCompanions(); // our windows that go with a file dialog (DialogJump)
+    // Ctrl+1… on the launcher and the dialog bar: NumberKeys while one of
+    // them is in front, with the modifier the settings name.
+    void updateNumberKeys();
+    void numberKeyPressed(HWND window, int number);
     void applySettings(bool initial);
     ClipboardWatcher::Options clipboardOptions() const;
     void applyClipboard(); // the [Clipboard] settings
     void applyClipboardHotkeys(); // Win+V and the other shortcut; where Win+V stands, for the settings
     void clipCaptured(const ClipCapture& capture);
-    void applyTaskbar(); // the [Taskbar] settings: Win+S
+    void applyTaskbar(); // the [Taskbar] settings: Win+S, typing in the Start menu
     void applyTaskbarHotkeys(); // Win+S and Win+Shift+S; where Win+S stands, for the settings
     // The taskbar button was clicked (`clicked`), or Win+S pressed: the
     // launcher over the taskbar, or away again.
     void toggleAtTaskbar(bool clicked);
     void startScreenClip(); // Win+Shift+S, which Explorer gives up with Win+S
     void startMenuTyped(); // typed in the Start menu (StartMenuTyping): the launcher over the taskbar
+    // Win顺's own search box on the taskbar ([Taskbar] SearchBox, taskbar::SearchBox).
+    void applySearchBox();
+    void setSearchBoxShown(bool shown); // it is on the taskbar, or not (no room)
+    void updateSearchBoxLook(); // placeholder, accent
+    void searchBoxPressed(const taskbar::SearchBox::Press& press);
+    void showLauncherInBox(); // the launcher over the box (or, without one shown, over the taskbar)
+    // What the launcher's field has, drawn in the box while it is open over it.
+    void mirrorField(const QString& text, int cursor, int selectionStart, int selectionEnd, const QString& composition);
+    std::optional<QRectF> boxCaretInField() const; // the box's caret, in the field's coordinates
     void deliverTyping(); // ... has the keyboard: the keys typed there go to it
     void restartExplorer(); // so that Win+V and Win+S change hands now
     void explorerRestarted(bool back); // `back`: the taskbar is
@@ -137,7 +153,9 @@ private:
     void applyAppearance(); // the chosen theme and language
     QString trayTooltip() const;
     void armReveal();
-    void revealLauncher();
+    void revealLauncher(); // slides in (Placement::slideIn) unless it went away meanwhile
+    void finishHidingLauncher(); // slid out (Placement::slideOut), or at once
+    bool launcherShown() const; // up, and not on its way out
     void prewarmLauncher();
     void finishPrewarm();
     void refreshContentIndexStatus(); // shown in the settings window
@@ -165,6 +183,10 @@ private:
     std::unique_ptr<AppCatalog> m_apps; // before the engine, which reads it
     std::unique_ptr<SystemCatalog> m_places; // likewise
     std::unique_ptr<SearchEngine> m_engine;
+    // The dialog bar's own: an engine runs only its newest request, so one
+    // shared with the launcher would drop the launcher's (and its rows would
+    // wait for results that never come).
+    std::unique_ptr<SearchEngine> m_dialogEngine;
     std::unique_ptr<Launcher> m_launcher;
     std::unique_ptr<ClipStore> m_clipStore; // the clipboard history
     std::unique_ptr<Clipboard> m_clipboard; // its window's view-model
@@ -181,7 +203,17 @@ private:
     win32::UniqueHandle m_taskbarEvent; // set by the taskbar button (WinShunSearch.exe)
     std::unique_ptr<QWinEventNotifier> m_taskbarNotifier; // waits on it; goes first
     QElapsedTimer m_launcherHidden; // since the launcher last went away
+    QElapsedTimer m_launcherShown; // since it was last asked for
+    bool m_launcherClosing = false; // sliding out (hideLauncher)
     std::unique_ptr<StartMenuTyping> m_startTyping; // while [Taskbar] StartMenuTyping is on
+    std::unique_ptr<taskbar::SearchBox> m_searchBox; // while [Taskbar] SearchBox is on (Windows 11)
+    bool m_searchBoxShown = false; // ... and it is on the taskbar
+    // A press on the box takes the keyboard from the launcher over it (Windows
+    // does that for whatever is clicked on the taskbar): it comes back with
+    // the press (searchBoxPressed), else it goes once this runs out.
+    QTimer m_boxPressGrace;
+    QPointer<QQuickItem> m_searchField; // the launcher's (SearchBar.qml): the input method asks it where the caret is
+    taskbar::SearchBox::Text m_fieldShown; // what it last reported (mirrorField), for the box
     bool m_deliverTyping = false; // the launcher was asked for by typing in the Start menu
     QString m_clipboardShortcut; // what opens the clipboard: "Win+V", another shortcut, or nothing
     std::unique_ptr<MessageWindow> m_messages;
@@ -202,6 +234,9 @@ private:
     HWND m_keyRouterTarget = nullptr; // that program's window
     std::uint64_t m_keyRouterRun = 0; // which routing its posted keys belong to
     std::unique_ptr<KeyRouter> m_drainingRouter; // done, until the keys it took are let go (KeyRouter::drain)
+    std::unique_ptr<NumberKeys> m_numberKeys; // see updateNumberKeys()
+    std::vector<HWND> m_numberWindows; // the windows it takes the keys for
+    bool m_numberKeysAlt = false; // ... with Alt, else with Ctrl
     std::uint64_t m_drainingRun = 0;
     std::atomic<bool> m_clipUncloak {false}; // shown cloaked until its first frame
     QTimer m_clipUncloakTimeout;

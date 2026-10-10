@@ -22,7 +22,7 @@ Item {
     required property string groupName
     required property bool pinned
     required property bool missing
-    property int hint: 0 // Alt held: the number that pastes this row (Alt+1...), 0 for none
+    property int hint: 0 // its modifier held: the number that pastes this row (Alt+1...), 0 for none
     property bool previewing: false // its preview is open beside the list
 
     readonly property bool current: ListView.isCurrentItem
@@ -218,25 +218,13 @@ Item {
         }
     }
 
-    Rectangle { // Alt held: Alt + this number pastes the row
+    KeyCap { // the modifier held (Alt): it and this number paste the row
         id: keycap
         visible: row.hint > 0
         anchors.right: parent.right
         anchors.rightMargin: 16
         anchors.verticalCenter: parent.verticalCenter
-        width: 26
-        height: 26
-        radius: 6
-        color: Theme.track
-        border.width: 1
-        border.color: Theme.chipBorder
-
-        CenteredNumber {
-            text: row.hint
-            color: Theme.text
-            font.pixelSize: Theme.fontBody
-            font.weight: Font.DemiBold
-        }
+        number: row.hint
     }
 
     MouseArea {

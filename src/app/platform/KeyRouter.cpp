@@ -122,7 +122,8 @@ int qtKey(UINT vk, bool extended, bool shift)
 
 // Whether the clipboard window acts on the key (ClipboardPage.qml, its
 // search field's TextInput); the rest goes on to the program in front.
-bool wanted(const KeyRouter::Key& key)
+// `numberKeys`: the modifier that pastes a row with a digit.
+bool wanted(const KeyRouter::Key& key, Qt::KeyboardModifier numberKeys)
 {
     const UINT vk = key.vk;
     const bool shift = key.modifiers.testFlag(Qt::ShiftModifier);
@@ -130,9 +131,12 @@ bool wanted(const KeyRouter::Key& key)
     const bool alt = key.modifiers.testFlag(Qt::AltModifier);
     if (ctrl && alt) // AltGr: a character of the layout (€ on a German keyboard); else another program's hotkey
         return !key.text.isEmpty() && key.text.at(0).isPrint();
+    const bool digit = vk >= '1' && vk <= '9';
     if (alt) // pastes the nth row (Shift: as plain text), the preview, closes
-        return (vk >= '1' && vk <= '9') || vk == 'P' || vk == VK_F4;
+        return (digit && numberKeys == Qt::AltModifier) || vk == 'P' || vk == VK_F4;
     if (ctrl) {
+        if (digit)
+            return numberKeys == Qt::ControlModifier; // likewise
         switch (vk) {
         case 'A': // select all, copy, paste, cut, redo; Ctrl+C and Ctrl+P act on the row
         case 'C':
@@ -214,9 +218,10 @@ void sendMaskedRelease(const KBDLLHOOKSTRUCT& event)
 
 } // namespace
 
-KeyRouter::KeyRouter(HWND target, HWND window, Callbacks callbacks)
+KeyRouter::KeyRouter(HWND target, HWND window, Callbacks callbacks, Qt::KeyboardModifier numberKeys)
     : m_target(target)
     , m_window(window)
+    , m_numberKeys(numberKeys)
     , m_process(::GetCurrentProcessId())
     , m_callbacks(std::move(callbacks))
 {
@@ -340,7 +345,7 @@ bool KeyRouter::handleKey(WPARAM message, const KBDLLHOOKSTRUCT& event)
     }
     const Key key = translate(event, true, autoRepeat);
     if (!autoRepeat) {
-        if (!wanted(key))
+        if (!wanted(key, m_numberKeys))
             return false;
         m_taken.set(vk);
     }

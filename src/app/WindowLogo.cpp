@@ -51,6 +51,12 @@ void WindowLogo::reveal()
     place();
 }
 
+void WindowLogo::conceal()
+{
+    m_shown = false;
+    m_logo.hide();
+}
+
 void WindowLogo::place()
 {
     if (!m_hwnd)

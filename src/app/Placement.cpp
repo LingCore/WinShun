@@ -4,6 +4,7 @@
 #include <QGuiApplication>
 #include <QScreen>
 #include <QSettings>
+#include <QSignalBlocker>
 #include <QWindow>
 
 #include <windows.h>
@@ -11,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 using namespace Qt::StringLiterals;
 
@@ -122,7 +124,14 @@ Placement::Placement(QString stateFile, QString group, QObject* parent)
     m_glide.setEasingCurve(QEasingCurve::OutCubic);
     connect(&m_glide, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) {
         if (m_window)
-            m_window->setPosition(value.toPoint());
+            moveWindow(value.toPoint());
+    });
+
+    connect(&m_slide, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) { stepSlide(value.toInt()); });
+    connect(&m_slide, &QVariantAnimation::finished, this, [this] {
+        m_under = 0;
+        if (const std::function<void()> done = std::exchange(m_slideDone, {}))
+            done();
     });
 }
 
@@ -133,6 +142,7 @@ struct Placement::Hook {
         switch (message) {
         case WM_ENTERSIZEMOVE:
             self->m_glide.stop();
+            self->settleSlide(); // grabbed on its way in: where it was going
             self->m_moveStart = self->m_window->position();
             self->m_grabbed = false;
             self->setMoving(true);
@@ -153,6 +163,15 @@ struct Placement::Hook {
             // Only what is there: room for rows not shown is made on letting go.
             shapeMove(rect, self->m_window->width(), self->m_window->height(), self->m_window->devicePixelRatio());
             return TRUE;
+        }
+        case WM_WINDOWPOSCHANGING: {
+            // Sliding behind the taskbar: whatever would put it in front
+            // (activating it does), just under the taskbar instead.
+            auto* pos = reinterpret_cast<WINDOWPOS*>(lParam);
+            const HWND under = reinterpret_cast<HWND>(self->m_under);
+            if (under && !(pos->flags & SWP_NOZORDER) && pos->hwndInsertAfter != under && ::IsWindow(under))
+                pos->hwndInsertAfter = under;
+            break;
         }
         case WM_EXITSIZEMOVE:
             self->setMoving(false);
@@ -197,7 +216,7 @@ void Placement::placeOn(QScreen* screen)
     setTaskbar({});
     m_dropped = false;
     if (m_window && screen)
-        m_window->setPosition(settleOn(screen));
+        moveWindow(settleOn(screen));
 }
 
 void Placement::attach(const QRect& box)
@@ -211,7 +230,7 @@ void Placement::attach(const QRect& box)
     if (!screen && m_window)
         screen = m_window->screen();
     if (m_window && screen)
-        m_window->setPosition(settleBy(screen));
+        moveWindow(settleBy(screen));
 }
 
 void Placement::attachNative(const QRect& box)
@@ -262,8 +281,8 @@ void Placement::attachTaskbar(const taskbar::Spot& spot)
     m_dropped = false;
     m_taskbarScreen = screen;
     setTaskbar(TaskbarBox {logicalBar, spot.edge,
-        {down(spot.anchor.x, origin.x()), down(spot.anchor.y, origin.y())}});
-    m_window->setPosition(settleByTaskbar(screen));
+        {down(spot.anchor.x, origin.x()), down(spot.anchor.y, origin.y())}, bar});
+    moveWindow(settleByTaskbar(screen));
 }
 
 void Placement::setRoomNeeded(int height)
@@ -411,18 +430,18 @@ void Placement::refit()
     if (!screen)
         return;
     if (m_taskbar && m_taskbarScreen) {
-        m_window->setPosition(settleByTaskbar(m_taskbarScreen));
+        moveWindow(settleByTaskbar(m_taskbarScreen));
     } else if (m_box) {
-        m_window->setPosition(settleBy(screen));
+        moveWindow(settleBy(screen));
     } else if (m_dropped) {
         const QRect area = screen->availableGeometry();
         const int width = m_window->width();
         const NativeArea native = nativeArea(screen);
         int x = std::clamp(m_left, area.left(), std::max(area.left(), area.x() + area.width() - width));
         x = native.keepInside(x, width, native.work.left(), native.work.x() + native.work.width(), native.origin.x());
-        m_window->setX(x);
+        moveWindow({x, sliding() ? m_place.y() : m_window->y()});
     } else {
-        m_window->setPosition(settleOn(screen));
+        moveWindow(settleOn(screen));
     }
 }
 
@@ -483,9 +502,310 @@ void Placement::glideTo(const QPoint& target)
     m_glide.stop();
     if (!m_window || target == m_window->position())
         return;
-    m_glide.setStartValue(m_window->position());
-    m_glide.setEndValue(target);
+    {
+        const QSignalBlocker quiet(m_glide); // as a slide's (see startSlide)
+        m_glide.setStartValue(m_window->position());
+        m_glide.setEndValue(target);
+    }
     m_glide.start();
+}
+
+bool Placement::animationsOn()
+{
+    BOOL on = TRUE;
+    return !::SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &on, 0) || on;
+}
+
+bool Placement::layered() const
+{
+    return m_hwnd && (::GetWindowLongW(reinterpret_cast<HWND>(m_hwnd), GWL_EXSTYLE) & WS_EX_LAYERED);
+}
+
+void Placement::moveWindow(const QPoint& position)
+{
+    if (!m_window)
+        return;
+    m_place = position;
+    m_window->setPosition(position);
+    if (!sliding())
+        return;
+    RECT r {};
+    ::GetWindowRect(reinterpret_cast<HWND>(m_hwnd), &r);
+    m_rest = {r.left, r.top};
+    applyOffset();
+}
+
+void Placement::applyOffset()
+{
+    if (m_hwnd)
+        ::SetWindowPos(reinterpret_cast<HWND>(m_hwnd), nullptr, m_rest.x() + m_offset.x(), m_rest.y() + m_offset.y(), 0,
+            0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+// Off its place until it is behind the taskbar it opens over, all of it, as
+// far as that goes without reaching onto another monitor (cut: not all the way).
+QPoint Placement::hiddenOffset(bool* cut) const
+{
+    *cut = false;
+    if (!m_taskbar || !m_hwnd)
+        return {};
+    RECT window {};
+    ::GetWindowRect(reinterpret_cast<HWND>(m_hwnd), &window);
+    ::OffsetRect(&window, m_rest.x() - window.left, m_rest.y() - window.top);
+    const RECT& bar = m_taskbar->native;
+    QPoint full;
+    switch (m_taskbar->edge) {
+    case taskbar::Edge::Bottom:
+        full = {0, int(bar.top - window.top)};
+        break;
+    case taskbar::Edge::Top:
+        full = {0, int(bar.bottom - window.bottom)};
+        break;
+    case taskbar::Edge::Left:
+        full = {int(bar.right - window.right), 0};
+        break;
+    case taskbar::Edge::Right:
+        full = {int(bar.left - window.left), 0};
+        break;
+    }
+    std::vector<RECT> others;
+    const HMONITOR own = ::MonitorFromRect(&bar, MONITOR_DEFAULTTONEAREST);
+    for (QScreen* screen : QGuiApplication::screens()) {
+        const auto* native = screen->nativeInterface<QNativeInterface::QWindowsScreen>();
+        MONITORINFO info {sizeof info};
+        if (native && native->handle() != own && ::GetMonitorInfoW(native->handle(), &info))
+            others.push_back(info.rcMonitor);
+    }
+    for (int step = 20; step > 0; --step) {
+        const QPoint offset = full * step / 20;
+        RECT moved = window;
+        ::OffsetRect(&moved, offset.x(), offset.y());
+        RECT overlap {};
+        if (std::none_of(others.begin(), others.end(), [&](const RECT& m) { return ::IntersectRect(&overlap, &moved, &m); })) {
+            *cut = step < 20;
+            return offset;
+        }
+    }
+    *cut = true;
+    return {};
+}
+
+namespace {
+
+// The taskbar window on the monitor of `bar`.
+HWND taskbarWindow(const RECT& bar)
+{
+    const HMONITOR monitor = ::MonitorFromRect(&bar, MONITOR_DEFAULTTONEAREST);
+    for (const wchar_t* name : {L"Shell_TrayWnd", L"Shell_SecondaryTrayWnd"}) {
+        for (HWND window = ::FindWindowExW(nullptr, nullptr, name, nullptr); window;
+             window = ::FindWindowExW(nullptr, window, name, nullptr)) {
+            if (::MonitorFromWindow(window, MONITOR_DEFAULTTONULL) == monitor)
+                return window;
+        }
+    }
+    return nullptr;
+}
+
+// As CSS's cubic-bezier().
+QEasingCurve bezier(qreal x1, qreal y1, qreal x2, qreal y2)
+{
+    QEasingCurve curve(QEasingCurve::BezierSpline);
+    curve.addCubicBezierSegment(QPointF(x1, y1), QPointF(x2, y2), QPointF(1, 1));
+    return curve;
+}
+
+// Entrances: Windows 11's own
+// (learn.microsoft.com/windows/apps/design/signature-experiences/motion).
+const QEasingCurve& fastIn()
+{
+    static const QEasingCurve curve = bezier(0, 0, 0, 1);
+    return curve;
+}
+
+// Exits: under way at once, then faster and faster. Not Windows' gentle exit
+// (1, 0, 1, 1), which moves a mere 4 % in its first 70 ms: the launcher
+// seemed to close late (most of all when closed again as it opened).
+const QEasingCurve& accelerate()
+{
+    static const QEasingCurve curve = bezier(0.3, 0, 1, 1);
+    return curve;
+}
+
+} // namespace
+
+void Placement::beginSlide()
+{
+    if (sliding())
+        return; // on from where it is
+    RECT r {};
+    ::GetWindowRect(reinterpret_cast<HWND>(m_hwnd), &r);
+    m_rest = {r.left, r.top};
+    m_place = m_window->position();
+    m_offset = {};
+    m_opacity = 1;
+    m_contentShift = {};
+}
+
+void Placement::slideIn(std::function<void()> done)
+{
+    if (!m_window || !m_hwnd)
+        return;
+    const bool wasSliding = sliding();
+    beginSlide();
+    m_slide.stop(); // a closing undone: its end never comes
+    m_slideDone = {};
+    m_under = 0;
+    const bool fades = layered();
+    bool cut = false;
+    const QPoint hidden = hiddenOffset(&cut);
+    Slide slide;
+    slide.from = m_offset;
+    slide.opacityFrom = m_opacity;
+    slide.shiftFrom = m_contentShift;
+    if (!animationsOn() || (m_taskbar ? hidden.isNull() && !fades : !fades)) { // straight there
+        m_slideSpec = slide;
+        stepSlide(0);
+        if (done)
+            done();
+        return;
+    }
+    if (m_taskbar && !hidden.isNull()) {
+        // Out from behind the taskbar, the content a little behind it.
+        const QPointF away = QPointF(hidden) / std::max(1.0, std::hypot(qreal(hidden.x()), qreal(hidden.y())));
+        if (!wasSliding) {
+            slide.from = hidden;
+            slide.opacityFrom = cut && fades ? 0 : 1;
+            slide.shiftFrom = away * 24;
+        }
+        // As Windows' own Start menu (measured: the same curve over some 200 ms).
+        slide.moveMs = 200;
+        slide.fadeMs = 120;
+        slide.shiftMs = 260;
+        goBehindTaskbar();
+    } else {
+        // Faded in, rising a little.
+        if (!wasSliding) {
+            slide.from = QPoint(0, qRound(16 * m_window->devicePixelRatio()));
+            slide.opacityFrom = 0;
+            slide.shiftFrom = QPointF(0, 8);
+        }
+        slide.moveMs = 200;
+        slide.fadeMs = 120;
+        slide.shiftMs = 240;
+    }
+    slide.moveCurve = fastIn();
+    slide.shiftCurve = fastIn();
+    startSlide(std::move(slide), std::move(done));
+}
+
+void Placement::slideOut(std::function<void()> done)
+{
+    // Hidden by then: back to its place, as it was.
+    auto finish = [this, done = std::move(done)] {
+        if (done)
+            done();
+        m_slideSpec = Slide {};
+        stepSlide(0);
+    };
+    if (!m_window || !m_hwnd || !m_window->isVisible()) {
+        finish();
+        return;
+    }
+    beginSlide();
+    m_slide.stop();
+    m_slideDone = {};
+    m_under = 0;
+    const bool fades = layered();
+    bool cut = false;
+    const QPoint hidden = hiddenOffset(&cut);
+    if (!animationsOn() || (m_taskbar ? hidden.isNull() && !fades : !fades)) {
+        finish();
+        return;
+    }
+    Slide slide;
+    slide.from = m_offset;
+    slide.opacityFrom = m_opacity;
+    slide.shiftFrom = m_contentShift;
+    if (m_taskbar && !hidden.isNull()) { // down behind the taskbar
+        slide.to = hidden;
+        slide.opacityTo = cut && fades ? 0 : 1;
+        slide.moveMs = 200;
+        slide.fadeMs = 200;
+        goBehindTaskbar();
+    } else { // faded out, sinking a little
+        slide.to = QPoint(0, qRound(8 * m_window->devicePixelRatio()));
+        slide.opacityTo = 0;
+        slide.moveMs = 167;
+        slide.fadeMs = 150;
+    }
+    slide.moveCurve = accelerate();
+    slide.shiftCurve = accelerate();
+    slide.shiftMs = slide.moveMs;
+    startSlide(std::move(slide), std::move(finish));
+}
+
+void Placement::settleSlide()
+{
+    if (!sliding())
+        return;
+    m_slide.stop();
+    m_under = 0;
+    stepSlide(std::max({m_slideSpec.moveMs, m_slideSpec.fadeMs, m_slideSpec.shiftMs}));
+    if (const std::function<void()> done = std::exchange(m_slideDone, {}))
+        done();
+}
+
+void Placement::goBehindTaskbar()
+{
+    const HWND bar = taskbarWindow(m_taskbar->native);
+    m_under = reinterpret_cast<WId>(bar);
+    if (bar)
+        ::SetWindowPos(reinterpret_cast<HWND>(m_hwnd), bar, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+}
+
+void Placement::startSlide(Slide slide, std::function<void()> done)
+{
+    m_slideSpec = std::move(slide);
+    m_slideDone = std::move(done);
+    const int total = std::max({m_slideSpec.moveMs, m_slideSpec.fadeMs, m_slideSpec.shiftMs, 1});
+    {
+        // Stopped where the last one got to (its end, mostly): set up, it
+        // reports the value there, and the window would be put that far into
+        // this one for a moment (behind the taskbar as it starts closing).
+        const QSignalBlocker quiet(m_slide);
+        m_slide.setStartValue(0);
+        m_slide.setEndValue(total);
+        m_slide.setDuration(total);
+    }
+    stepSlide(0);
+    m_slide.start();
+}
+
+void Placement::stepSlide(int elapsed)
+{
+    const Slide& s = m_slideSpec;
+    const auto progress = [elapsed](int ms, const QEasingCurve& curve) {
+        return ms <= 0 ? 1.0 : curve.valueForProgress(std::min(1.0, qreal(elapsed) / ms));
+    };
+    const qreal move = progress(s.moveMs, s.moveCurve);
+    const QPoint offset(qRound(s.from.x() + (s.to.x() - s.from.x()) * move),
+        qRound(s.from.y() + (s.to.y() - s.from.y()) * move));
+    if (offset != m_offset) {
+        m_offset = offset;
+        applyOffset();
+    }
+    const qreal fade = s.fadeMs <= 0 ? 1.0 : std::min(1.0, qreal(elapsed) / s.fadeMs);
+    const qreal opacity = s.opacityFrom + (s.opacityTo - s.opacityFrom) * fade;
+    if (opacity != m_opacity) {
+        m_opacity = opacity;
+        if (m_window && layered())
+            m_window->setOpacity(opacity);
+    }
+    const QPointF shift = s.shiftFrom + (s.shiftTo - s.shiftFrom) * progress(s.shiftMs, s.shiftCurve);
+    if (shift != m_contentShift) {
+        m_contentShift = shift;
+        emit contentShiftChanged();
+    }
 }
 
 void Placement::save() const

@@ -4,6 +4,7 @@
 
 #include <QAbstractListModel>
 #include <QColor>
+#include <QDateTime>
 #include <QSet>
 #include <QStringList>
 #include <QtQml/qqmlregistration.h>
@@ -48,6 +49,8 @@ public:
         RevealableRole, // has a file or folder to open the location of
         CopyableRole, // has a file to copy for pasting in Explorer
         SelectedRole,
+        ModifiedRole, // when a file or folder was last written, briefly: "昨天 14:32"; empty when not known
+        ModifiedFullRole, // the same in full, for its tip
     };
 
     explicit ResultModel(QObject* parent = nullptr);
@@ -69,6 +72,9 @@ public:
     void clear();
     void retranslate(); // the language changed: apps' second line, web searches' title, places of content matches
     static QString location(const SearchResult& r); // LocationRole
+    // ModifiedRole, ModifiedFullRole: in the default locale, against `now` (local time).
+    static QString modifiedText(std::uint32_t modified, const QDateTime& now);
+    static QString modifiedFullText(std::uint32_t modified);
 
     QColor highlightColor() const { return m_highlightColor; }
     void setHighlightColor(const QColor& color);

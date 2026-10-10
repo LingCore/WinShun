@@ -1,8 +1,9 @@
 #pragma code_page(65001)
 #include <winver.h>
 
-// WinShunSearch.exe (src/stub): Win顺's icon, for the button on the taskbar.
-IDI_ICON1 ICON "app.ico"
+// WinShunSearch.exe (src/stub): the button on the taskbar, a magnifier in the
+// logo's colours (tools/make_icon.py).
+IDI_ICON1 ICON "search.ico"
 
 VS_VERSION_INFO VERSIONINFO
  FILEVERSION WINSHUN_VERSION_MAJOR,WINSHUN_VERSION_MINOR,WINSHUN_VERSION_PATCH,0

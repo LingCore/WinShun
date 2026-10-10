@@ -53,6 +53,9 @@ class Clipboard : public QObject {
     Q_PROPERTY(bool recording READ recording NOTIFY stateChanged FINAL) // the history is on (settings)
     Q_PROPERTY(bool paused READ paused NOTIFY stateChanged FINAL) // ... but paused from the tray menu
     Q_PROPERTY(QString shortcut READ shortcut NOTIFY stateChanged FINAL) // what opens it: "Win+V"
+    // The modifier that pastes the nth row with a digit: "alt", "ctrl", or ""
+    // for none (Settings::clipboardNumberKeys).
+    Q_PROPERTY(QString numberKeys READ numberKeys NOTIFY numberKeysChanged FINAL)
     Q_PROPERTY(QString query READ query WRITE setQuery NOTIFY queryChanged FINAL)
     Q_PROPERTY(int category READ category WRITE setCategory NOTIFY categoryChanged FINAL)
     // [{title, group (id, 0 for the kinds), size (entries in a group)}]
@@ -97,6 +100,8 @@ public:
     bool paused() const { return m_paused; }
     void setState(bool recording, bool paused, const QString& shortcut);
     QString shortcut() const { return m_shortcut; }
+    QString numberKeys() const { return m_numberKeys; }
+    void setNumberKeys(const QString& keys); // "alt", "ctrl" or "off"
     QString query() const { return m_query; }
     void setQuery(const QString& query);
     int category() const { return m_category; }
@@ -158,6 +163,7 @@ public:
     Q_INVOKABLE void prepareMenuWindow(QWindow* menu) const;
 
 signals:
+    void numberKeysChanged();
     void activeChanged();
     void keysRoutedChanged();
     // The window takes the focus after all (App), from the program that kept
@@ -219,6 +225,7 @@ private:
     bool m_recording = true;
     bool m_paused = false;
     QString m_shortcut;
+    QString m_numberKeys = QStringLiteral("alt");
     QString m_query;
     int m_category = 0;
     qint64 m_categoryGroup = 0; // the group the category tab is, kept when groups come and go

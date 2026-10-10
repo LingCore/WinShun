@@ -177,6 +177,54 @@ Window {
             selectTo(Math.max(0, Math.min(list.count - 1, list.currentIndex + delta)), false)
     }
 
+    // Ctrl+1… (or Alt+1…, Launcher.numberKeys) opens the nth row shown,
+    // counted from the first one at least half in view. The modifier held
+    // shows the numbers: Alt at once, Ctrl after a moment held alone (it also
+    // starts Ctrl+C, Ctrl+Enter, a Ctrl+click and the double Ctrl). The keys
+    // themselves come from NumberKeys (before other programs' hotkeys), or
+    // here when it is not running.
+    readonly property int numberKey: launcher.numberKeys === "ctrl" ? Qt.Key_Control
+                                   : launcher.numberKeys === "alt" ? Qt.Key_Alt : -1
+    readonly property int firstShownRow: Math.max(0, Math.floor((list.contentY + rowHeight / 2) / rowHeight))
+    readonly property int lastShownRow: Math.min(list.count - 1, firstShownRow + 8,
+                                                 Math.floor((list.contentY + list.height - rowHeight / 2) / rowHeight))
+    property bool showNumbers: false
+    Timer {
+        id: numbersDelay
+        interval: 500
+        onTriggered: window.showNumbers = true
+    }
+    function hideNumbers() {
+        numbersDelay.stop()
+        showNumbers = false
+    }
+    function numberOf(index) {
+        return showNumbers && index >= firstShownRow && index <= lastShownRow ? index - firstShownRow + 1 : 0
+    }
+    function openNumber(number) {
+        const row = firstShownRow + number - 1
+        if (number < 1 || row > lastShownRow)
+            return
+        hideNumbers()
+        window.launcher.clearSelection() // that row alone
+        list.currentIndex = row
+        window.launcher.trigger(row, Launcher.Open)
+    }
+    // Exactly the modifier of the number keys (the number pad counts with Ctrl only: Alt+0169 types ©).
+    function isNumberChord(event) {
+        if (event.key < Qt.Key_1 || event.key > Qt.Key_9)
+            return false
+        const keypad = (event.modifiers & Qt.KeypadModifier) !== 0
+        const modifiers = event.modifiers & ~Qt.KeypadModifier
+        return numberKey === Qt.Key_Control ? modifiers === Qt.ControlModifier
+             : numberKey === Qt.Key_Alt ? modifiers === Qt.AltModifier && !keypad : false
+    }
+    function handleKeyRelease(event) {
+        if (event.key === numberKey)
+            hideNumbers()
+    }
+    onActiveChanged: if (!active) hideNumbers()
+
     // On the selection when there is one, else on the current row.
     function act(action) {
         if (selectedCount > 0)
@@ -225,6 +273,23 @@ Window {
             event.accepted = true
             return
         }
+        if (event.key === numberKey && numberKey >= 0) {
+            if (event.isAutoRepeat)
+                return
+            if (numberKey === Qt.Key_Alt) {
+                showNumbers = true
+                event.accepted = true // alone, it would open the window menu
+            } else if (event.modifiers === Qt.ControlModifier) {
+                numbersDelay.restart()
+            }
+            return
+        }
+        hideNumbers() // a key with it: Ctrl+C, Ctrl+Enter...
+        if (isNumberChord(event) && searchBar.composition.length === 0) {
+            window.launcher.pressNumber(event.key - Qt.Key_0)
+            event.accepted = true
+            return
+        }
         const ctrl = (event.modifiers & Qt.ControlModifier) !== 0
         const shift = (event.modifiers & Qt.ShiftModifier) !== 0
         if (homeIndex >= 0) { // on the row of apps (nothing typed, so ← → move nothing else)
@@ -252,9 +317,12 @@ Window {
         case Qt.Key_PageDown: shift ? extendSelection(fitRows) : moveSelection(fitRows); break
         case Qt.Key_PageUp: shift ? extendSelection(-fitRows) : moveSelection(-fitRows); break
         case Qt.Key_Return:
-        case Qt.Key_Enter:
-            act(ctrl && shift ? Launcher.RunAsAdmin : ctrl ? Launcher.Reveal : Launcher.Open)
+        case Qt.Key_Enter: {
+            const action = ctrl && shift ? Launcher.RunAsAdmin : ctrl ? Launcher.Reveal : Launcher.Open
+            if (!window.launcher.holdUntilShown(action, 0)) // typed a moment ago: on the rows for it
+                act(action)
             break
+        }
         case Qt.Key_Escape:
             if (selectedCount > 0)
                 window.launcher.clearSelection()
@@ -284,9 +352,17 @@ Window {
 
     Connections {
         target: window.launcher
+        function onNumberPressed(number) { window.openNumber(number) }
+        function onHeldKey(action, number) {
+            if (number > 0)
+                window.openNumber(number)
+            else
+                window.act(action)
+        }
         function onShown() {
             // Still cloaked here (App::showLauncher): nobody sees the jump.
             window.homeIndex = -1
+            window.hideNumbers()
             window.selectFirst()
             searchBar.focusAndSelect()
         }
@@ -332,6 +408,11 @@ Window {
     Column {
         id: layout
         width: window.width
+        // Opening, the content comes in a little behind the window (Placement.slideIn).
+        transform: Translate {
+            x: window.placement.contentShift.x
+            y: window.placement.contentShift.y
+        }
 
         SearchBar {
             id: searchBar
@@ -340,6 +421,7 @@ Window {
             placement: window.placement
             frame: window.frame
             onKeyPressed: (event) => window.handleKey(event)
+            onKeyReleased: (event) => window.handleKeyRelease(event)
         }
 
         Rectangle {
@@ -481,6 +563,8 @@ Window {
                     id: resultRow
                     width: list.width
                     height: window.rowHeight
+                    showModified: window.launcher.showModified
+                    hint: window.numberOf(index)
                     // Drawn on whole device pixels, wherever the list has
                     // scrolled to (ResultRow puts its text on whole device
                     // pixels within). Between them (at 150 % most scroll
@@ -499,6 +583,7 @@ Window {
                         }
                     }
                     onClicked: (index, modifiers) => {
+                        window.hideNumbers() // Ctrl held for a Ctrl+click
                         const ctrl = (modifiers & Qt.ControlModifier) !== 0
                         if (modifiers & Qt.ShiftModifier) {
                             window.selectTo(index, ctrl)
