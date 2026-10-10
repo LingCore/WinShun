@@ -43,6 +43,7 @@ constexpr auto kPrewarmAfterStart = 90s; // once logging on has settled
 struct Probe {
     DWORD attributes = INVALID_FILE_ATTRIBUTES;
     DWORD reparseTag = 0;
+    FileTime modified = 0;
 };
 
 Probe probe(const std::wstring& path)
@@ -54,6 +55,7 @@ Probe probe(const std::wstring& path)
     if (find.valid()) {
         p.attributes = fd.dwFileAttributes;
         p.reparseTag = fd.dwReserved0;
+        p.modified = fileTimeOf(win32::ticks(fd.ftLastWriteTime));
     }
     return p;
 }
@@ -393,6 +395,7 @@ void IndexService::run(std::stop_token stop, Pass pass)
     std::vector<JournalPosition> journals(volumes.size());
     std::vector<bool> known(volumes.size(), false);
     std::optional<CrawlRules> snapshotRules;
+    bool timesMissing = false; // a snapshot from before the index kept write times: every volume is read again
     if (pass == Pass::Startup) {
         setState(State::Loading);
         const std::lock_guard files(m_filesMutex); // a move waits until they are read
@@ -415,6 +418,7 @@ void IndexService::run(std::stop_token stop, Pass pass)
                 loaded.compact(false, [&](const FileIndex::Renumber& renumber) { m_content->remap(renumber); });
             m_index.store(std::shared_ptr<FileIndex>(std::move(contents->index)));
             snapshotRules = std::move(contents->rules);
+            timesMissing = !contents->times;
             setState(State::Ready);
         } else {
             m_content->restore({}, 0); // clears out segment files nothing refers to
@@ -454,11 +458,13 @@ void IndexService::run(std::stop_token stop, Pass pass)
                 toSync.push_back(i);
                 if (known[i])
                     contentUnsureOf(volumes[i].root); // what changed meanwhile is not in the journal any more
+            } else if (timesMissing) {
+                toSync.push_back(i); // the journal then goes on from where the snapshot left off
             }
         } else {
             journals[i] = {};
-            const bool walkNow
-                = !known[i] || pass == Pass::Full || pass == Pass::Walked || contains(rewalk, volumes[i].root);
+            const bool walkNow = !known[i] || pass == Pass::Full || pass == Pass::Walked || timesMissing
+                || contains(rewalk, volumes[i].root);
             if (walkNow)
                 toSync.push_back(i);
             else if (pass == Pass::Startup && m_options.rescanOnStartup)
@@ -1015,6 +1021,7 @@ void IndexService::applyChanges(FileIndex& index, const std::vector<FsChange>& c
                 if (flags & EntryFlag::Directory)
                     flags |= crawler.dirPriorityFlags(path, name);
                 const EntryId id = index.add(parent, utf8, flags);
+                index.setModified(id, p.modified);
                 if (Crawler::shouldDescend(p.attributes, p.reparseTag))
                     newDirs.push_back({id, path, static_cast<std::uint8_t>(flags & EntryFlag::Inherited)});
             };
@@ -1102,11 +1109,12 @@ IndexService::Save IndexService::writeSnapshot(const QString& path, std::vector<
     bool saved = false;
     {
         // Streams through a 1 MB buffer into the OS file cache; searches keep
-        // running meanwhile (they only need the read lock too). Changes
-        // applied after the journal positions were taken are replayed on the
-        // next start, which is harmless. The content index's documents go
-        // along, so they always refer to the entries saved with them.
-        auto lock = index->readLock();
+        // running meanwhile (they only need the read lock too, and changes
+        // wait at the writers' gate: longReadLock). Changes applied after the
+        // journal positions were taken are replayed on the next start, which
+        // is harmless. The content index's documents go along, so they always
+        // refer to the entries saved with them.
+        const auto lock = index->longReadLock();
         saved = snapshot::save(*index, volumes, journals, rules, path,
             [&](const std::vector<EntryId>& newIds) { return m_content->serialize(newIds, segments); });
     }
@@ -1278,7 +1286,7 @@ void IndexService::contentUnsureOf(const std::wstring& root)
 {
     const auto index = m_index.load();
     const std::string name = toUtf8(root);
-    const auto lock = index->readLock();
+    const auto lock = index->longReadLock(); // through all the content index knows
     const auto& roots = index->roots();
     const auto it = std::find_if(roots.begin(), roots.end(), [&](EntryId r) { return index->name(r) == name; });
     if (it == roots.end())

@@ -195,7 +195,7 @@ std::uint32_t recordNumber(LARGE_INTEGER fileId) noexcept
 } // namespace
 
 void Crawler::addToListing(DirListing& out, const Root& dir, std::string_view name, std::wstring_view wideName,
-    std::uint8_t flags, bool descend, std::uint32_t record) const
+    std::uint8_t flags, bool descend, std::uint32_t record, FileTime modified) const
 {
     flags |= dir.inheritedFlags;
     if (flags & EntryFlag::Directory) {
@@ -216,7 +216,7 @@ void Crawler::addToListing(DirListing& out, const Root& dir, std::string_view na
     if (descend)
         out.wideNames.append(wideName);
     out.items.push_back({offset, length, flags, descend, wideOffset,
-        static_cast<std::uint32_t>(out.wideNames.size() - wideOffset), record});
+        static_cast<std::uint32_t>(out.wideNames.size() - wideOffset), record, modified});
 }
 
 // Returns false when the directory could not be read (access denied, gone):
@@ -247,7 +247,8 @@ bool Crawler::listDirectory(const Root& dir, DirListing& out) const
             if (name != L"." && name != L"..") {
                 // For reparse points, EaSize holds the reparse tag.
                 addToListing(out, dir, {}, name, attributeFlags(info->FileAttributes),
-                    shouldDescend(info->FileAttributes, info->EaSize), recordNumber(info->FileId));
+                    shouldDescend(info->FileAttributes, info->EaSize), recordNumber(info->FileId),
+                    fileTimeOf(info->LastWriteTime.QuadPart));
             }
             if (info->NextEntryOffset == 0)
                 break;
@@ -357,6 +358,7 @@ void reconcile(FileIndex& index, const Crawler::Root& dir, const DirListing& lis
         }
         if (id == kNoEntry)
             id = index.add(dir.id, name, item.flags);
+        index.setModified(id, item.modified);
         if (isDir && dir.volume != kNoEntry && item.record != 0)
             index.setFolderRecord(dir.volume, item.record, id);
         if (item.descend) {

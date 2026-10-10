@@ -39,6 +39,7 @@ struct FileRecord {
     bool directory = false;
     std::uint32_t baseRecord = 0; // non-zero: an extension of that record
     std::uint32_t attributes = 0; // FILE_ATTRIBUTE_*, from $STANDARD_INFORMATION (base records only)
+    std::int64_t modified = 0; // FILETIME of the last write, from there too
     bool hasAttributeList = false; // some attributes live in extension records
     std::vector<Name> names; // one per hard link; DOS 8.3 aliases are left out
 };
@@ -196,6 +197,7 @@ struct UsnRecord {
     std::uint32_t reason; // USN_REASON_*
     std::uint32_t attributes; // FILE_ATTRIBUTE_*
     std::u16string_view name; // points into the read buffer
+    std::int64_t time = 0; // FILETIME of the change
 };
 
 // Parses what FSCTL_READ_USN_JOURNAL returns. Returns the USN to continue

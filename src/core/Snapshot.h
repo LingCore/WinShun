@@ -33,6 +33,7 @@ struct Contents {
     std::vector<JournalPosition> journals; // parallel to `volumes`
     std::optional<CrawlRules> rules; // what it was built with; older files do not say
     std::vector<char> attachment; // empty in older files
+    bool times = false; // the entries have their write times (older files do not)
 };
 
 // Nullopt when the file is missing, corrupt or from an unknown version. The

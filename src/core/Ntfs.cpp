@@ -166,6 +166,7 @@ bool parseFileRecord(std::byte* data, std::size_t size, FileRecord& out)
     out.directory = false;
     out.baseRecord = 0;
     out.attributes = 0;
+    out.modified = 0;
     out.hasAttributeList = false;
     out.names.clear();
     if (!applyFixups(data, size))
@@ -184,6 +185,7 @@ bool parseFileRecord(std::byte* data, std::size_t size, FileRecord& out)
         const auto value = residentValue(attribute, length);
         if (type == kStandardInformation && value.size() >= 0x24) {
             out.attributes = load<std::uint32_t>(value.data() + 0x20);
+            out.modified = load<std::int64_t>(value.data() + 0x08);
         } else if (type == kFileName && value.size() >= 0x42) {
             const auto nameLength = static_cast<std::uint8_t>(value[0x40]);
             const auto nameSpace = static_cast<std::uint8_t>(value[0x41]);
@@ -861,7 +863,7 @@ std::int64_t parseUsnRecords(std::span<const std::byte> data, std::vector<UsnRec
             if (std::uint32_t {nameOffset} + nameLength <= length && nameLength % 2 == 0) {
                 out.push_back({load<std::uint64_t>(r + 8), load<std::uint64_t>(r + 16), load<std::int64_t>(r + 24),
                     load<std::uint32_t>(r + 40), load<std::uint32_t>(r + 52),
-                    {reinterpret_cast<const char16_t*>(r + nameOffset), nameLength / 2u}});
+                    {reinterpret_cast<const char16_t*>(r + nameOffset), nameLength / 2u}, load<std::int64_t>(r + 32)});
             }
         }
         pos += length;

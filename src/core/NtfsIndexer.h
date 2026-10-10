@@ -39,6 +39,7 @@ private:
         std::uint32_t nameOffset; // in the index's name storage
         std::uint16_t nameLength;
         std::uint8_t flags; // EntryFlag: Directory, Hidden, Offline
+        FileTime modified;
     };
     struct Folder {
         Name name;
@@ -76,6 +77,8 @@ private:
 
     void applyOne(const ntfs::UsnRecord& record, std::vector<Crawler::Root>& walks);
     void noteWritten(const ntfs::UsnRecord& record);
+    void noteTime(const ntfs::UsnRecord& record);
+    void readTimes(); // of m_toRead, without the lock
     void remove(const Item& item);
     void move(const Item& item, const OldName* old, std::vector<Crawler::Root>& walks);
     void ensure(const Item& item, bool walk, std::vector<Crawler::Root>& walks);
@@ -94,6 +97,9 @@ private:
     std::unordered_map<std::uint64_t, std::uint32_t> m_seen; // reasons applied in each file's open session
     Written m_onWritten;
     std::vector<EntryId> m_written; // of the current batch
+    // Of the current batch: items whose times were set (copied or unpacked
+    // files keep the original's), to be read from the disk.
+    std::vector<std::pair<EntryId, std::wstring>> m_toRead;
 };
 
 } // namespace ws

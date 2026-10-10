@@ -53,6 +53,9 @@ public:
     // Matches a bare UTF-8 name with no folders or extension, such as an
     // app's display name: folder terms and ext: never match it.
     int matchName(std::string_view name) const;
+    // Whether the query is one plain term that is the whole name (UTF-8),
+    // with or without its extension: "readme" for "README.md".
+    bool isExactName(std::string_view name, bool isDir) const;
 
 private:
     struct Positive {

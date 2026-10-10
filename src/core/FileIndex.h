@@ -49,6 +49,19 @@ struct Entry {
 };
 static_assert(sizeof(Entry) == 20, "keep Entry compact: there is one per file and folder");
 
+// When a file or folder was last written: seconds since 1970 (UTC), 0 when
+// not known. Good until 2106.
+using FileTime = std::uint32_t;
+
+// A FILETIME's count (100-nanosecond intervals since 1601) as a FileTime.
+constexpr FileTime fileTimeOf(std::int64_t ticks) noexcept
+{
+    constexpr std::int64_t kTicksPerSecond = 10'000'000;
+    constexpr std::int64_t kSeconds1601To1970 = 11'644'473'600;
+    const std::int64_t seconds = ticks / kTicksPerSecond - kSeconds1601To1970;
+    return seconds <= 0 ? 0 : seconds >= 0xFFFF'FFFF ? 0xFFFF'FFFF : static_cast<FileTime>(seconds);
+}
+
 // Folder entries by NTFS file record number (open addressing). Record 0 is
 // the MFT itself, never a folder, so it marks empty slots.
 class RecordTable {
@@ -94,7 +107,8 @@ private:
 //
 // Thread safety: callers hold readLock() while reading and writeLock() while
 // mutating. Searches take the read lock for a few milliseconds; writers
-// (crawler, change watcher) take the write lock in small batches.
+// (crawler, change watcher) take the write lock in small batches. Whoever
+// reads for long takes longReadLock() instead.
 class FileIndex {
 public:
     static constexpr std::size_t kChunkBits = 16;
@@ -108,7 +122,26 @@ public:
     FileIndex& operator=(const FileIndex&) = delete;
 
     [[nodiscard]] std::shared_lock<std::shared_mutex> readLock() const { return std::shared_lock(m_mutex); }
-    [[nodiscard]] std::unique_lock<std::shared_mutex> writeLock() { return std::unique_lock(m_mutex); }
+    [[nodiscard]] std::unique_lock<std::shared_mutex> writeLock()
+    {
+        const std::lock_guard gate(m_writerGate);
+        return std::unique_lock(m_mutex);
+    }
+
+    // The read lock, for reading long (saving the index, a pass over all of
+    // it). Writers wait at their gate meanwhile, not on the lock: Windows'
+    // shared mutex lets no reader past a waiting writer, so one waiting there
+    // would hold up the searches until the long read ends. Long reads go
+    // through the gate side by side.
+    struct LongReadLock {
+        std::shared_lock<std::shared_mutex> gate;
+        std::shared_lock<std::shared_mutex> lock; // let go first
+    };
+    [[nodiscard]] LongReadLock longReadLock() const
+    {
+        std::shared_lock gate(m_writerGate);
+        return {std::move(gate), std::shared_lock(m_mutex)};
+    }
 
     // ---- read API -------------------------------------------------------
     std::size_t slotCount() const noexcept { return m_count; } // includes deleted slots
@@ -120,6 +153,9 @@ public:
         return {m_names[e.nameOffset >> kNameChunkBits].get() + (e.nameOffset & (kNameChunkSize - 1)), e.nameLength};
     }
     std::string_view name(EntryId id) const noexcept { return name(entry(id)); }
+    // Kept apart from the entries, which name searches go through: only the
+    // matches have theirs looked at.
+    FileTime modified(EntryId id) const noexcept { return m_times[id >> kChunkBits][id & (kChunkSize - 1)]; }
 
     std::size_t chunkCount() const noexcept { return m_chunks.size(); }
     std::span<const Entry> chunk(std::size_t index) const noexcept;
@@ -151,6 +187,7 @@ public:
     std::size_t remove(EntryId id); // removes the whole subtree; returns entries removed
     bool move(EntryId id, EntryId newParent, std::string_view newName);
     void setFlags(EntryId id, std::uint8_t flags);
+    void setModified(EntryId id, FileTime time) noexcept { m_times[id >> kChunkBits][id & (kChunkSize - 1)] = time; }
 
     // While interning is on, identical names share one copy (only a third of
     // the names on a typical disk are unique: index.js, __init__.py, ...).
@@ -247,7 +284,9 @@ private:
     void unlink(EntryId child);
 
     mutable std::shared_mutex m_mutex;
+    mutable std::shared_mutex m_writerGate; // see longReadLock()
     std::vector<std::unique_ptr<Entry[]>> m_chunks;
+    std::vector<std::unique_ptr<FileTime[]>> m_times; // parallel to m_chunks
     std::vector<std::unique_ptr<char[]>> m_names;
     std::size_t m_count = 0;
     std::size_t m_nameUsed = kNameChunkSize; // forces allocation on first use

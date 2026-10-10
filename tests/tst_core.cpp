@@ -19,6 +19,7 @@
 #include "Pinyin.h"
 #include "Query.h"
 #include "Release.h"
+#include "SearchEngine.h"
 #include "SettingsMatch.h"
 #include "Snapshot.h"
 #include "SystemCatalog.h"
@@ -32,6 +33,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -39,12 +41,14 @@
 #include <winioctl.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
 #include <memory>
 #include <mutex>
 #include <numeric>
+#include <optional>
 #include <random>
 #include <set>
 #include <thread>
@@ -1259,6 +1263,77 @@ private slots:
         QCOMPARE(t.index.path(cur).count(u'\\'), 80);
     }
 
+    // While the index is saved (a long read), a writer waits at its gate, not
+    // on the lock, where it would hold up the searches' read locks too.
+    void longReadLetsReadersPastWriters()
+    {
+        using namespace std::chrono_literals;
+        FileIndex index;
+        std::atomic<bool> wrote = false;
+        std::atomic<bool> read = false;
+        std::jthread writer;
+        std::jthread search;
+        std::optional<FileIndex::LongReadLock> save = index.longReadLock(); // let go before the threads are joined
+        writer = std::jthread([&] {
+            const auto lock = index.writeLock();
+            wrote = true;
+        });
+        std::this_thread::sleep_for(100ms); // waiting by now
+        QVERIFY(!wrote);
+        search = std::jthread([&] {
+            const auto lock = index.readLock();
+            read = true;
+        });
+        QTRY_VERIFY_WITH_TIMEOUT(read, 2000);
+        QVERIFY(!wrote);
+        save.reset();
+        writer.join();
+        QVERIFY(wrote);
+    }
+
+    // With nothing typed the recent items are listed, each looked up on disk:
+    // the local ones answer at once, and a share whose server is gone (seconds
+    // to say so) neither holds up the search nor shows up.
+    void recentItemsDoNotWaitForSlowDrives()
+    {
+        QTemporaryDir dir;
+        const QString here = QDir::toNativeSeparators(dir.filePath(u"here.txt"_s));
+        QFile file(here);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.close();
+        const QString gone = QDir::toNativeSeparators(dir.filePath(u"gone.txt"_s));
+        const QString remote = u"\\\\10.255.255.1\\share\\far.txt"_s; // nobody there
+
+        SearchEngine engine(nullptr);
+        QSignalSpy spy(&engine, &SearchEngine::resultsReady);
+        const auto listed = [&](const QStringList& history, qint64& elapsedUs) {
+            spy.clear();
+            SearchEngine::Request request;
+            request.history = history;
+            engine.submit(std::move(request));
+            if (!spy.wait(5000))
+                return QStringList {u"(no results)"_s};
+            elapsedUs = spy.at(0).at(3).toLongLong();
+            QStringList paths;
+            for (const SearchResult& r : spy.at(0).at(1).value<SearchResults>())
+                paths.append(r.path);
+            return paths;
+        };
+
+        qint64 us = 0;
+        QCOMPARE(listed({here, gone}, us), QStringList {here});
+        qInfo("local only: %lld us", us);
+        QVERIFY2(us < 50'000, qPrintable(QString::number(us)));
+
+        QCOMPARE(listed({remote, here, gone}, us), QStringList {here});
+        qInfo("with the share, first time: %lld us", us);
+        QVERIFY2(us < 400'000, qPrintable(QString::number(us))); // at most the one wait (100 ms)
+
+        QCOMPARE(listed({remote, here, gone}, us), QStringList {here});
+        qInfo("with the share, again: %lld us", us);
+        QVERIFY2(us < 50'000, qPrintable(QString::number(us))); // slow today: not waited for
+    }
+
     void snapshotRoundTrip()
     {
         SampleTree t;
@@ -1269,6 +1344,10 @@ private slots:
         const EntryId gone = t.index.add(t.users, "gone", EntryFlag::Directory);
         t.index.setFolderRecord(t.root, 102, gone);
         t.index.remove(gone);
+        // Up and down from one entry to the next (zigzag), and the largest.
+        t.index.setModified(t.report, 1'700'000'123);
+        t.index.setModified(t.windows, 0xFFFF'FFFF);
+        t.index.setModified(t.docs, 5);
         const std::vector<VolumeInfo> volumes {{L"C:", 0x1234, true}};
         const std::vector<JournalPosition> journals {{0xABCDEF, 123456789}};
         QTemporaryDir dir;
@@ -1284,6 +1363,11 @@ private slots:
         const EntryId report = loaded->findPath(L"C:\\Users\\me\\Documents\\Report.docx");
         QVERIFY(report != kNoEntry);
         QCOMPARE(loaded->path(report), u"C:\\Users\\me\\Documents\\Report.docx"_s);
+        QVERIFY(contents->times);
+        QCOMPARE(loaded->modified(report), FileTime {1'700'000'123});
+        QCOMPARE(loaded->modified(loaded->findPath(L"C:\\Windows")), FileTime {0xFFFF'FFFF});
+        QCOMPARE(loaded->modified(loaded->findPath(L"C:\\Users\\me\\Documents")), FileTime {5});
+        QCOMPARE(loaded->modified(loaded->findPath(L"C:\\Users")), FileTime {0});
         QVERIFY(loaded->entry(loaded->findPath(L"C:\\Windows")).flags & EntryFlag::LowPriority);
         QCOMPARE(loaded->findPath(L"C:\\Users\\me\\Documents\\notes.txt"), kNoEntry);
 
@@ -1941,6 +2025,8 @@ private slots:
         index.remove(t.notes);
         index.remove(lib); // with its child
         QVERIFY(index.move(t.report, t.users, "Report-final.docx")); // leaves the old name behind
+        index.setModified(t.report, 1'700'000'000);
+        index.setModified(js2, 1'600'000'000);
         QCOMPARE(index.slotCount(), std::size_t {10});
         QCOMPARE(index.liveCount(), std::size_t {7});
 
@@ -1971,8 +2057,11 @@ private slots:
         const EntryId report = index.findPath(L"C:\\Users\\Report-final.docx");
         QVERIFY(report != kNoEntry);
         QCOMPARE(index.entry(report).extLength, std::uint8_t {4});
+        QCOMPARE(index.modified(report), FileTime {1'700'000'000}); // the times move with their entries
         const EntryId js = index.findPath(L"C:\\Users\\me\\Documents\\index.js");
         QVERIFY(js != kNoEntry);
+        QCOMPARE(index.modified(js), FileTime {1'600'000'000});
+        QCOMPARE(index.modified(index.add(t.users, "new.txt", 0)), FileTime {0}); // a slot used again starts with none
         QCOMPARE(index.path(js), u"C:\\Users\\me\\Documents\\index.js"_s);
         QVERIFY(index.entry(index.findPath(L"C:\\Windows")).flags & EntryFlag::LowPriority);
         QCOMPARE(index.findPath(L"C:\\Users\\me\\lib"), kNoEntry);
@@ -2093,7 +2182,7 @@ private slots:
 
         const NameMatcher matcher(ws::parseQuery(u"file_1"_s));
         WorkerPool pool(4);
-        const auto out = searchNames(index, matcher, 10, pool, {});
+        const auto out = searchNames(index, matcher, {.limit = 10}, pool, {});
         QVERIFY(!out.cancelled);
         QCOMPARE(out.hits.size(), std::size_t {10});
         QCOMPARE(index.name(out.hits.front().id), std::string_view("file_1"));
@@ -2102,8 +2191,69 @@ private slots:
         for (std::size_t i = 1; i < out.hits.size(); ++i)
             QVERIFY(out.hits[i - 1].score >= out.hits[i].score);
 
-        const auto cancelled = searchNames(index, matcher, 10, pool, [] { return true; });
+        const auto cancelled = searchNames(index, matcher, {.limit = 10}, pool, [] { return true; });
         QVERIFY(cancelled.cancelled);
+    }
+
+    void nameSearchKindsAndTimes()
+    {
+        FileIndex index;
+        const EntryId root = index.addRoot("C:");
+        const EntryId dir = index.add(root, "work", EntryFlag::Directory);
+        // Many files that match better than the folders: a list of the best
+        // 20 of all would hold no folder.
+        for (int i = 0; i < 50; ++i)
+            index.setModified(index.add(dir, "plan" + std::to_string(i) + ".txt", 0), 1000 + i);
+        const EntryId folderA = index.add(dir, "old plans", EntryFlag::Directory);
+        const EntryId folderB = index.add(dir, "my plans", EntryFlag::Directory);
+        index.setModified(folderA, 10);
+        index.setModified(folderB, 2000);
+        const NameMatcher matcher(ws::parseQuery(u"plan"_s));
+        WorkerPool pool(4);
+        const auto isDir = [&](const NameHit& h) { return index.entry(h.id).isDir(); };
+
+        const auto all = searchNames(index, matcher, {.limit = 20}, pool, {});
+        QCOMPARE(all.hits.size(), std::size_t {20});
+        QVERIFY(std::none_of(all.hits.begin(), all.hits.end(), isDir));
+
+        const auto apart = searchNames(index, matcher, {.limit = 20, .kindsApart = true}, pool, {});
+        QCOMPARE(apart.hits.size(), std::size_t {22}); // 20 files, and the 2 folders
+        QCOMPARE(std::count_if(apart.hits.begin(), apart.hits.end(), isDir), std::ptrdiff_t {2});
+        QCOMPARE(apart.totalMatches, std::size_t {52});
+
+        const auto folders = searchNames(index, matcher, {.limit = 20, .foldersOnly = true}, pool, {});
+        QCOMPARE(folders.hits.size(), std::size_t {2});
+        QVERIFY(std::all_of(folders.hits.begin(), folders.hits.end(), isDir));
+        QCOMPARE(folders.totalMatches, std::size_t {2});
+
+        // Newest first, whatever the match.
+        const auto byTime = searchNames(index, matcher, {.limit = 5, .rankBy = RankBy::Modified}, pool, {});
+        QCOMPARE(byTime.hits.size(), std::size_t {5});
+        QCOMPARE(byTime.hits[0].id, folderB);
+        QCOMPARE(index.name(byTime.hits[1].id), std::string_view("plan49.txt"));
+        for (std::size_t i = 1; i < byTime.hits.size(); ++i)
+            QVERIFY(byTime.hits[i - 1].modified > byTime.hits[i].modified);
+
+        // Equal matches: the one written last first.
+        const EntryId a = index.add(root, "same1.txt", 0);
+        const EntryId b = index.add(root, "same2.txt", 0);
+        index.setModified(a, 100);
+        index.setModified(b, 300);
+        const auto ties = searchNames(index, NameMatcher(ws::parseQuery(u"same"_s)), {.limit = 5}, pool, {});
+        QCOMPARE(ties.hits.size(), std::size_t {2});
+        QCOMPARE(ties.hits[0].score, ties.hits[1].score);
+        QCOMPARE(ties.hits[0].id, b);
+    }
+
+    void exactName()
+    {
+        const NameMatcher readme(ws::parseQuery(u"README"_s));
+        QVERIFY(readme.isExactName("readme", true));
+        QVERIFY(readme.isExactName("README.md", false));
+        QVERIFY(!readme.isExactName("README.md", true)); // a folder's name has no extension
+        QVERIFY(!readme.isExactName("readme-old.md", false));
+        QVERIFY(!NameMatcher(ws::parseQuery(u"read me"_s)).isExactName("read me", true)); // two terms
+        QVERIFY(!NameMatcher(ws::parseQuery(u"read*"_s)).isExactName("readme", true));
     }
 
     void appSearch()

@@ -67,11 +67,16 @@ bool MftTree::read(
         std::uint16_t length;
         std::uint8_t flags;
         bool extension;
+        FileTime modified;
     };
     std::vector<Collected> block;
     std::string names;
     std::vector<std::pair<std::uint32_t, Name>> extensionNames; // by base record
-    std::unordered_map<std::uint32_t, std::uint8_t> baseFlags; // records whose names may be in extensions
+    struct Base {
+        std::uint8_t flags;
+        FileTime modified;
+    };
+    std::unordered_map<std::uint32_t, Base> bases; // records whose names may be in extensions
     ntfs::FileRecord record;
     while (reader.next()) {
         if (stop.stop_requested())
@@ -87,20 +92,22 @@ bool MftTree::read(
             if (owner < kFirstUserRecord)
                 continue;
             const std::uint8_t flags = extension ? 0 : flagsOf(record.attributes, record.directory);
+            const FileTime modified = extension ? 0 : fileTimeOf(record.modified);
             if (!extension && record.hasAttributeList)
-                baseFlags[number] = flags;
+                bases[number] = {flags, modified};
             for (const auto& n : record.names) {
                 const auto begin = static_cast<std::uint32_t>(names.size());
                 wtf8::append(names, n.name);
                 block.push_back({owner, ntfs::recordOf(n.parent), begin,
-                    static_cast<std::uint16_t>(names.size() - begin), flags, extension});
+                    static_cast<std::uint16_t>(names.size() - begin), flags, extension, modified});
             }
         }
         {
             // One lock per block of records to store their names.
             auto lock = index.writeLock();
             for (const Collected& c : block) {
-                const Name name {c.parent, index.storeName({names.data() + c.begin, c.length}), c.length, c.flags};
+                const Name name {
+                    c.parent, index.storeName({names.data() + c.begin, c.length}), c.length, c.flags, c.modified};
                 if (c.extension)
                     extensionNames.emplace_back(c.record, name);
                 else if (c.flags & EntryFlag::Directory)
@@ -116,12 +123,13 @@ bool MftTree::read(
         return failed();
 
     // Names kept in extension records (files with very many links) take the
-    // flags of their base record.
+    // flags and time of their base record.
     for (auto [base, name] : extensionNames) {
-        const auto it = baseFlags.find(base);
-        if (it == baseFlags.end())
+        const auto it = bases.find(base);
+        if (it == bases.end())
             continue;
-        name.flags = it->second;
+        name.flags = it->second.flags;
+        name.modified = it->second.modified;
         if (name.flags & EntryFlag::Directory)
             m_folders.push_back({name, base});
         else
@@ -144,10 +152,11 @@ bool MftTree::list(const FileIndex& index, const Crawler& crawler, const Crawler
         wide.clear();
         wtf8::decodeAppend(wide, name);
         // Junctions and other links have no children in the MFT: descending is harmless.
-        crawler.addToListing(out, dir, name, wtf8::wview(wide), it->name.flags, true, it->record);
+        crawler.addToListing(out, dir, name, wtf8::wview(wide), it->name.flags, true, it->record, it->name.modified);
     }
     for (auto it = firstFile; it != lastFile; ++it)
-        crawler.addToListing(out, dir, index.nameAt(it->nameOffset, it->nameLength), {}, it->flags, false, 0);
+        crawler.addToListing(
+            out, dir, index.nameAt(it->nameOffset, it->nameLength), {}, it->flags, false, 0, it->modified);
     return true;
 }
 
@@ -185,13 +194,17 @@ void UsnApplier::apply(std::span<const ntfs::UsnRecord> records, std::stop_token
             m_root = *it;
             for (; i < end; ++i) {
                 applyOne(records[i], walks);
-                noteWritten(records[i]); // after: a file created or renamed by the record has its entry now
+                // After: a file created or renamed by the record has its entry now.
+                noteWritten(records[i]);
+                noteTime(records[i]);
             }
             if (!m_written.empty()) {
                 m_onWritten(m_written);
                 m_written.clear();
             }
         }
+        if (!m_toRead.empty())
+            readTimes();
         if (!walks.empty()) {
             // Folders moved in from outside the index: their contents are new to it.
             m_crawler.sync(m_index, std::move(walks), 1, true, stop);
@@ -279,6 +292,61 @@ void UsnApplier::noteWritten(const ntfs::UsnRecord& r)
     const EntryId id = find(parent, wtf8::fromUtf16(r.name));
     if (id != kNoEntry && !m_index.entry(id).isDir())
         m_written.push_back(id);
+}
+
+// The journal says when each change was made: when the file was written,
+// or a name added to or taken from its folder (NTFS writes the folder then).
+// Times only move forward here, so that replaying records the index already
+// reflects leaves the newer time read from the MFT. Times set on purpose
+// (a copy or an unpacked file keeps the original's) can be anything: those
+// are read from the disk once the file is closed.
+void UsnApplier::noteTime(const ntfs::UsnRecord& r)
+{
+    const FileTime time = fileTimeOf(r.time);
+    if (time == 0)
+        return;
+    const auto later = [&](EntryId id) {
+        if (id != kNoEntry && m_index.modified(id) < time)
+            m_index.setModified(id, time);
+    };
+    constexpr std::uint32_t kListingReasons = USN_REASON_FILE_CREATE | USN_REASON_FILE_DELETE
+        | USN_REASON_RENAME_OLD_NAME | USN_REASON_RENAME_NEW_NAME;
+    if (r.reason & kListingReasons)
+        later(m_index.folderByRecord(m_root, ntfs::recordOf(r.parent)));
+    if (r.reason & USN_REASON_FILE_DELETE)
+        return;
+    const bool timesSet = r.reason & USN_REASON_BASIC_INFO_CHANGE;
+    if (timesSet ? !(r.reason & USN_REASON_CLOSE) : !(r.reason & (USN_REASON_FILE_CREATE | kDataReasons)))
+        return;
+    Item item;
+    item.record = ntfs::recordOf(r.file);
+    item.parent = ntfs::recordOf(r.parent);
+    item.name = wtf8::fromUtf16(r.name);
+    item.folder = r.attributes & FILE_ATTRIBUTE_DIRECTORY;
+    const EntryId id = findItem(item);
+    if (id == kNoEntry || (m_index.entry(id).flags & EntryFlag::Root))
+        return;
+    if (timesSet)
+        m_toRead.emplace_back(id, m_index.wpath(id));
+    else
+        later(id);
+}
+
+void UsnApplier::readTimes()
+{
+    std::vector<std::pair<EntryId, FileTime>> read;
+    read.reserve(m_toRead.size());
+    for (const auto& [id, path] : m_toRead) {
+        WIN32_FILE_ATTRIBUTE_DATA data;
+        if (::GetFileAttributesExW(win32::longPath(path).c_str(), GetFileExInfoStandard, &data))
+            read.emplace_back(id, fileTimeOf(win32::ticks(data.ftLastWriteTime)));
+    }
+    m_toRead.clear();
+    auto lock = m_index.writeLock();
+    for (const auto& [id, time] : read) {
+        if (id < m_index.slotCount() && !m_index.entry(id).isDeleted())
+            m_index.setModified(id, time); // ids stay: the caller keeps compaction away
+    }
 }
 
 EntryId UsnApplier::find(EntryId parent, std::string_view name)

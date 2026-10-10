@@ -9,6 +9,7 @@
 #include <QStringList>
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <memory>
 #include <mutex>
@@ -20,6 +21,7 @@ namespace ws {
 class AppCatalog;
 class DocExtractor;
 class IndexService;
+class RecentOnDisk;
 class SystemCatalog;
 
 // Runs searches on a worker thread. Only the newest request matters: a new
@@ -34,6 +36,8 @@ public:
     struct Request {
         QString text;
         Scope scope = Scope::All;
+        KindOrder kindOrder = KindOrder::FilesFirst; // 全部, 文件
+        RankBy rankBy = RankBy::Match; // 文件, 文件夹 (全部 always by match)
         int limit = 100;
         QStringList history; // newest first
         QStringList contentExtensions; // e.g. {"txt"}
@@ -67,6 +71,7 @@ private:
     struct Job {
         quint64 id = 0;
         Request request;
+        std::chrono::steady_clock::time_point submitted;
     };
 
     void workerLoop(std::stop_token stop);
@@ -78,6 +83,7 @@ private:
     std::unique_ptr<DocExtractor> m_documents; // reads documents the content index has no text of
     AppCatalog* m_apps;
     SystemCatalog* m_places;
+    std::unique_ptr<RecentOnDisk> m_onDisk; // whether recent items are still there
     WorkerPool m_pool {WorkerPool::defaultThreadCount()};
     std::mutex m_mutex;
     std::condition_variable_any m_cv;

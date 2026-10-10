@@ -13,9 +13,11 @@
 #include "Win32Util.h"
 #include "Wtf8.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFileInfo>
+#include <QTimeZone>
 
 #include <windows.h>
 
@@ -23,11 +25,170 @@
 #include <array>
 #include <chrono>
 #include <cstring>
+#include <deque>
+#include <limits>
 #include <optional>
+#include <unordered_map>
+#include <variant>
 
 using namespace std::chrono_literals;
 
 namespace ws {
+
+// Whether recent items are still on disk, asked on a thread per drive. A drive
+// can take long to answer: a disk spinning up, a USB stick in trouble, a
+// network share whose server is gone (seconds, or minutes). A search waiting
+// for it would leave the last query's rows on screen all that time, so a
+// search waits a moment only. A drive still busy then answers in its own
+// time; until it does, its items keep the answer from before, or are left
+// out. The threads hold only the state they share: a drive that never answers
+// holds up nothing else, quitting included.
+class RecentOnDisk {
+public:
+    struct Item {
+        bool isDir = false;
+        std::uint32_t modified = 0; // seconds since 1970, UTC
+    };
+
+    RecentOnDisk() = default;
+    RecentOnDisk(const RecentOnDisk&) = delete;
+    RecentOnDisk& operator=(const RecentOnDisk&) = delete;
+    ~RecentOnDisk()
+    {
+        std::lock_guard lock(m_state->mutex);
+        m_state->quitting = true;
+        m_state->work.notify_all();
+    }
+
+    // For each of `paths`, in its place: what is there, or nothing (not there,
+    // or no answer in time and none from before).
+    std::vector<std::optional<Item>> look(const QStringList& paths)
+    {
+        std::vector<std::optional<Item>> found(static_cast<std::size_t>(paths.size()));
+        if (paths.isEmpty())
+            return found;
+        State& s = *m_state;
+        std::unique_lock lock(s.mutex);
+        const auto now = Clock::now();
+        std::vector<qsizetype> awaited;
+        std::vector<quint64> since(found.size()); // the answer wanted: from a look begun at this one or later
+        for (qsizetype i = 0; i < paths.size(); ++i) {
+            Drive& drive = driveOf(paths[i]);
+            if (drive.busySince && drive.busyPath == paths[i]) {
+                since[static_cast<std::size_t>(i)] = drive.busyLook; // being looked at: that answer will do
+            } else {
+                since[static_cast<std::size_t>(i)] = s.looks + 1;
+                if (std::find(drive.queue.cbegin(), drive.queue.cend(), paths[i]) == drive.queue.cend())
+                    drive.queue.push_back(paths[i]);
+            }
+            // Slow today (still on an earlier one after the wait, or the last
+            // one took longer): not waited for, until it answers in time again.
+            if ((!drive.busySince || now - *drive.busySince < kWait) && drive.lastTook < kWait)
+                awaited.push_back(i);
+        }
+        s.work.notify_all();
+        const auto answered = [&](qsizetype i) {
+            const auto it = s.answers.find(paths[i]);
+            return it != s.answers.end() && it->second.look >= since[static_cast<std::size_t>(i)];
+        };
+        s.answered.wait_until(lock, now + kWait, [&] { return std::all_of(awaited.cbegin(), awaited.cend(), answered); });
+        for (qsizetype i = 0; i < paths.size(); ++i) {
+            if (const auto it = s.answers.find(paths[i]); it != s.answers.end())
+                found[static_cast<std::size_t>(i)] = it->second.item;
+        }
+        return found;
+    }
+
+private:
+    using Clock = std::chrono::steady_clock;
+    static constexpr auto kWait = 100ms; // a drive that is awake answers in well under a millisecond
+
+    struct Answer {
+        quint64 look = 0; // State::looks when it was begun
+        std::optional<Item> item; // nothing: not there
+    };
+    struct Drive {
+        std::deque<QString> queue;
+        std::optional<Clock::time_point> busySince; // looking at busyPath
+        QString busyPath;
+        quint64 busyLook = 0;
+        Clock::duration lastTook {}; // logged when it grows long
+    };
+    struct State {
+        std::mutex mutex;
+        std::condition_variable work; // for the drives' threads
+        std::condition_variable answered; // for the searches
+        std::unordered_map<QString, Drive> drives; // "C:", "\\server\share"; nodes stay put
+        std::unordered_map<QString, Answer> answers; // by path
+        quint64 looks = 0; // begun so far
+        bool quitting = false;
+    };
+
+    // Caller holds the lock.
+    Drive& driveOf(const QString& path)
+    {
+        const QString key = driveKey(path);
+        const auto [it, added] = m_state->drives.try_emplace(key);
+        if (added)
+            std::thread(&RecentOnDisk::run, m_state, key).detach();
+        return it->second;
+    }
+
+    static QString driveKey(const QString& path)
+    {
+        if (path.size() >= 2 && path[1] == u':')
+            return path.left(2).toUpper();
+        if (path.startsWith(u"\\\\")) {
+            const qsizetype server = path.indexOf(u'\\', 2);
+            const qsizetype share = server < 0 ? -1 : path.indexOf(u'\\', server + 1);
+            return (share < 0 ? path : path.left(share)).toLower();
+        }
+        return {};
+    }
+
+    static void run(std::shared_ptr<State> state, QString key)
+    {
+        State& s = *state;
+        std::unique_lock lock(s.mutex);
+        Drive& drive = s.drives[key];
+        for (;;) {
+            s.work.wait(lock, [&] { return s.quitting || !drive.queue.empty(); });
+            if (s.quitting)
+                return;
+            const QString path = drive.queue.front();
+            drive.queue.pop_front();
+            const quint64 look = ++s.looks;
+            const auto began = Clock::now();
+            drive.busySince = began;
+            drive.busyPath = path;
+            drive.busyLook = look;
+            lock.unlock();
+
+            std::optional<Item> item;
+            const QFileInfo info(path);
+            if (info.exists()) {
+                const qint64 modified = info.lastModified(QTimeZone::UTC).toSecsSinceEpoch();
+                item = Item {info.isDir(),
+                    static_cast<std::uint32_t>(std::clamp<qint64>(modified, 0, std::numeric_limits<std::uint32_t>::max()))};
+            }
+            const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - began);
+
+            lock.lock();
+            drive.busySince.reset();
+            drive.busyPath.clear();
+            s.answers[path] = {look, item};
+            s.answered.notify_all();
+            // Once while it stays slow: a share whose server is gone takes as long every time.
+            if (took > 2s && drive.lastTook <= 2s) {
+                qWarning("WinShun: drive %ls took %lld ms to say whether a recent item is still there",
+                    qUtf16Printable(key), static_cast<long long>(took.count()));
+            }
+            drive.lastTook = took;
+        }
+    }
+
+    std::shared_ptr<State> m_state = std::make_shared<State>();
+};
 
 namespace {
 
@@ -129,17 +290,24 @@ SearchResult fromIndex(const FileIndex& index, EntryId id)
     return r;
 }
 
-SearchResult fromDisk(const QString& path, bool isDir)
+// A recent item that is not among the matches found in the index (or one
+// listed with nothing typed).
+SearchResult fromDisk(const QString& path, const RecentOnDisk::Item& item)
 {
     SearchResult r;
     r.path = QDir::toNativeSeparators(path);
     r.name = r.path.mid(r.path.lastIndexOf(u'\\') + 1);
     if (r.name.isEmpty())
         r.name = r.path;
-    r.isDir = isDir;
+    r.isDir = item.isDir;
     r.recent = true;
+    r.modified = item.modified;
     return r;
 }
+
+// A row as it is, or a path to look up on disk first (RecentOnDisk): the
+// recent items are taken in rounds, the paths of a round looked up together.
+using RecentItem = std::variant<SearchResult, QString>;
 
 // Whether entries lie under one folder, cached by parent folder (files next
 // to each other share it).
@@ -177,36 +345,84 @@ private:
 };
 
 // Recently opened items that match jump to the top (at most a few).
-void promoteHistory(SearchResults& results, const SearchEngine::Request& request, const NameMatcher& matcher)
+// Returns how many did.
+qsizetype promoteHistory(
+    SearchResults& results, const SearchEngine::Request& request, const NameMatcher& matcher, RecentOnDisk& onDisk)
 {
+    const bool foldersOnly = request.scope == Scope::Folders;
     SearchResults promoted;
-    for (const QString& path : request.history) {
-        if (promoted.size() >= kRecentPromoted)
-            break;
-        if (isAppLaunchPath(path) || isPlacePath(path))
-            continue; // apps and places rank by their own rules (searchApps, searchPlaces)
-        const auto it = std::find_if(results.begin(), results.end(),
-            [&](const SearchResult& r) { return r.path.compare(path, Qt::CaseInsensitive) == 0; });
-        if (it != results.end()) {
-            SearchResult r = *it;
-            r.recent = true;
-            results.erase(it);
-            promoted.push_back(std::move(r));
-            continue;
+    qsizetype next = 0;
+    while (promoted.size() < kRecentPromoted && next < request.history.size()) {
+        std::vector<RecentItem> round;
+        QStringList paths;
+        while (next < request.history.size() && promoted.size() + std::ssize(round) < kRecentPromoted) {
+            const QString& path = request.history[next++];
+            if (isAppLaunchPath(path) || isPlacePath(path))
+                continue; // apps and places rank by their own rules (searchApps, searchPlaces)
+            const auto it = std::find_if(results.begin(), results.end(),
+                [&](const SearchResult& r) { return r.path.compare(path, Qt::CaseInsensitive) == 0; });
+            if (it != results.end()) {
+                SearchResult r = *it;
+                r.recent = true;
+                results.erase(it);
+                round.emplace_back(std::move(r));
+                continue;
+            }
+            if (matcher.matchPath(path, false) < 0 && matcher.matchPath(path, true) < 0)
+                continue; // cheap name check before asking the disk
+            round.emplace_back(path);
+            paths.push_back(path);
         }
-        if (matcher.matchPath(path, false) < 0 && matcher.matchPath(path, true) < 0)
-            continue; // cheap name check before touching the disk
-        const QFileInfo info(path);
-        if (!info.exists() || matcher.matchPath(path, info.isDir()) < 0)
-            continue;
-        promoted.push_back(fromDisk(path, info.isDir()));
+        const auto found = onDisk.look(paths);
+        std::size_t k = 0;
+        for (RecentItem& item : round) {
+            if (auto* r = std::get_if<SearchResult>(&item)) {
+                promoted.push_back(std::move(*r));
+                continue;
+            }
+            const QString& path = std::get<QString>(item);
+            const std::optional<RecentOnDisk::Item>& there = found[k++];
+            if (there && (!foldersOnly || there->isDir) && matcher.matchPath(path, there->isDir) >= 0)
+                promoted.push_back(fromDisk(path, *there));
+        }
     }
-    if (promoted.isEmpty())
-        return;
-    promoted.append(results);
-    if (promoted.size() > request.limit)
-        promoted.resize(request.limit);
-    results = std::move(promoted);
+    const qsizetype count = promoted.size();
+    if (count > 0) {
+        promoted.append(std::move(results));
+        results = std::move(promoted);
+    }
+    return count;
+}
+
+// Ranked by time, the recent ones stay where they are, marked.
+void markRecent(SearchResults& results, const QStringList& history)
+{
+    for (SearchResult& r : results) {
+        r.recent = std::any_of(history.cbegin(), history.cend(),
+            [&](const QString& path) { return r.path.compare(path, Qt::CaseInsensitive) == 0; });
+    }
+}
+
+// The files and folders found, in their order: by match, a few opened
+// lately first (promoteHistory), then those named just what was typed
+// ("readme" finds README.md and the folder readme), then the files and the
+// folders apart, as asked, each best first. By time, the two kinds apart,
+// newest first.
+void arrange(SearchResults& results, const SearchEngine::Request& request, const NameMatcher& matcher, RankBy rankBy,
+    RecentOnDisk& onDisk)
+{
+    const qsizetype promoted = rankBy == RankBy::Match ? promoteHistory(results, request, matcher, onDisk) : 0;
+    auto rest = results.begin() + promoted; // after promoteHistory: it puts `results` together anew
+    if (rankBy == RankBy::Match) {
+        rest = std::stable_partition(rest, results.end(),
+            [&](const SearchResult& r) { return matcher.isExactName(wtf8::fromUtf16(wtf8::view(r.name)), r.isDir); });
+    } else {
+        markRecent(results, request.history);
+    }
+    const bool foldersFirst = request.kindOrder == KindOrder::FoldersFirst;
+    std::stable_partition(rest, results.end(), [&](const SearchResult& r) { return r.isDir == foldersFirst; });
+    if (results.size() > request.limit)
+        results.resize(request.limit);
 }
 
 } // namespace
@@ -217,6 +433,7 @@ SearchEngine::SearchEngine(IndexService* index, AppCatalog* apps, SystemCatalog*
     , m_documents(std::make_unique<DocExtractor>(4, DocExtractor::Priority::Normal))
     , m_apps(apps)
     , m_places(places)
+    , m_onDisk(std::make_unique<RecentOnDisk>())
 {
     qRegisterMetaType<ws::SearchResults>();
     m_worker = std::jthread([this](std::stop_token stop) { workerLoop(stop); });
@@ -240,7 +457,7 @@ quint64 SearchEngine::submit(Request request)
     std::lock_guard lock(m_mutex);
     const quint64 id = ++m_counter;
     m_latest.store(id);
-    m_pending = Job {id, std::move(request)};
+    m_pending = Job {id, std::move(request), std::chrono::steady_clock::now()};
     m_cv.notify_one();
     return id;
 }
@@ -283,44 +500,73 @@ void SearchEngine::runNameSearch(const Job& job)
     const auto apps = appsOf(m_apps);
     const auto places = placesOf(m_places);
 
+    // For the log, when it takes long.
+    using Clock = std::chrono::steady_clock;
+    const auto began = Clock::now();
+    Clock::duration lockWait {};
+    Clock::duration names {};
+
+    const bool foldersOnly = request.scope == Scope::Folders;
     if (query.isEmpty()) {
-        for (const QString& path : request.history) {
-            if (results.size() >= kRecentOnEmptyQuery || isStale(job.id))
-                break;
-            if (isAppLaunchPath(path)) {
-                const AppInfo* app = request.scope == Scope::All ? findApp(*apps, path) : nullptr;
-                if (app)
-                    results.push_back(fromApp(*app, true));
-                continue;
+        qsizetype next = 0;
+        while (results.size() < kRecentOnEmptyQuery && next < request.history.size() && !isStale(job.id)) {
+            std::vector<RecentItem> round;
+            QStringList paths;
+            while (next < request.history.size() && results.size() + std::ssize(round) < kRecentOnEmptyQuery) {
+                const QString& path = request.history[next++];
+                if (isAppLaunchPath(path)) {
+                    const AppInfo* app = request.scope == Scope::All ? findApp(*apps, path) : nullptr;
+                    if (app)
+                        round.emplace_back(fromApp(*app, true));
+                    continue;
+                }
+                if (isPlacePath(path)) {
+                    const PlaceInfo* place = request.scope == Scope::All ? findPlace(*places, path) : nullptr;
+                    if (place)
+                        round.emplace_back(fromPlace(*place, true));
+                    continue;
+                }
+                round.emplace_back(path);
+                paths.push_back(path);
             }
-            if (isPlacePath(path)) {
-                const PlaceInfo* place = request.scope == Scope::All ? findPlace(*places, path) : nullptr;
-                if (place)
-                    results.push_back(fromPlace(*place, true));
-                continue;
+            const auto found = m_onDisk->look(paths);
+            std::size_t k = 0;
+            for (RecentItem& item : round) {
+                if (auto* r = std::get_if<SearchResult>(&item)) {
+                    results.push_back(std::move(*r));
+                    continue;
+                }
+                const std::optional<RecentOnDisk::Item>& there = found[k++];
+                if (there && (!foldersOnly || there->isDir))
+                    results.push_back(fromDisk(std::get<QString>(item), *there));
             }
-            const QFileInfo info(path);
-            if (info.exists())
-                results.push_back(fromDisk(path, info.isDir()));
         }
         total = results.size();
     } else {
         const NameMatcher matcher(query);
         const auto index = m_index->index();
+        const RankBy rankBy = request.scope == Scope::All ? RankBy::Match : request.rankBy;
         {
             const auto lock = index->readLock();
-            const NameSearchOutput out = searchNames(
-                *index, matcher, static_cast<std::size_t>(request.limit), m_pool, [&] { return isStale(job.id); });
+            lockWait = Clock::now() - began;
+            const NameSearchOptions options {.limit = static_cast<std::size_t>(request.limit),
+                .foldersOnly = foldersOnly,
+                .rankBy = rankBy,
+                .kindsApart = true};
+            const NameSearchOutput out
+                = searchNames(*index, matcher, options, m_pool, [&] { return isStale(job.id); });
+            names = Clock::now() - began - lockWait;
             if (out.cancelled || isStale(job.id))
                 return;
             total = static_cast<qint64>(out.totalMatches);
             results.reserve(static_cast<qsizetype>(out.hits.size()));
-            for (const NameHit& hit : out.hits)
-                results.push_back(fromIndex(*index, hit.id));
+            for (const NameHit& hit : out.hits) {
+                SearchResult r = fromIndex(*index, hit.id);
+                r.modified = hit.modified;
+                results.push_back(std::move(r));
+            }
         }
-        promoteHistory(results, request, matcher);
-        // Files before folders, each in the order they ranked (recent ones first).
-        std::stable_partition(results.begin(), results.end(), [](const SearchResult& r) { return !r.isDir; });
+        arrange(results, request, matcher, rankBy, *m_onDisk);
 
         // 全部: a web shortcut's keyword typed first ("gh", "gh WinShun")
         // puts its site or search on top. Then every app found, the best few
@@ -371,6 +617,17 @@ void SearchEngine::runNameSearch(const Job& job)
                 results = std::move(top);
             }
         }
+    }
+
+    // The rows of the query before stay on screen (dimmed) until these come.
+    const auto ms = [](Clock::duration d) {
+        return static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(d).count());
+    };
+    const auto end = Clock::now();
+    if (end - job.submitted > 2s) {
+        qWarning("WinShun: a search took %lld ms (%lld waiting for the search before, %lld for the index, "
+                 "%lld finding names, %lld the rest)",
+            ms(end - job.submitted), ms(began - job.submitted), ms(lockWait), ms(names), ms(end - began - lockWait - names));
     }
 
     if (!isStale(job.id))
@@ -526,11 +783,14 @@ void SearchEngine::runContentSearch(const Job& job)
                         break;
                     const Candidate& candidate = candidates[i];
                     bool gone = false;
+                    FileTime modified = 0;
                     {
                         const auto lock = index->readLock();
                         gone = index->entry(candidate.id).isDeleted();
-                        if (!gone)
+                        if (!gone) {
                             path = index->wpath(candidate.id); // as it is now: it may have moved
+                            modified = index->modified(candidate.id);
+                        }
                     }
                     if (gone) {
                         scanned.fetch_add(1);
@@ -585,6 +845,7 @@ void SearchEngine::runContentSearch(const Job& job)
                     SearchResult r;
                     r.path = QString::fromStdWString(path);
                     r.name = r.path.mid(r.path.lastIndexOf(u'\\') + 1);
+                    r.modified = modified;
                     r.line = match->line;
                     if (document) {
                         switch (location.kind) {

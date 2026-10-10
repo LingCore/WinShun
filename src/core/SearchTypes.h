@@ -4,11 +4,22 @@
 #include <QMetaType>
 #include <QString>
 
+#include <cstdint>
+
 namespace ws {
 
-// 全部: apps, files, folders, then file contents. 文件: files, then folders.
-// 内容: file contents.
-enum class Scope : int { All = 0, Files = 1, Content = 2 };
+// 全部: apps, files, folders, then file contents. 文件: files, then folders
+// (the other way round if asked, see KindOrder); 文件夹 (Folders), shown
+// within 文件: folders alone. 内容: file contents.
+enum class Scope : int { All = 0, Files = 1, Content = 2, Folders = 3 };
+
+// Which of files and folders a name search lists first. Each kind keeps its
+// own best matches, so the second is not crowded out by the first.
+enum class KindOrder : std::uint8_t { FilesFirst, FoldersFirst };
+
+// How name matches rank: by how well they match (a tie goes to the one
+// written last), or by when they were last written, newest first.
+enum class RankBy : std::uint8_t { Match, Modified };
 
 // What kind of installed app a result is (see AppCatalog), or of place in
 // Windows (SystemCatalog), or None for a file or folder.
@@ -31,6 +42,9 @@ struct SearchResult {
     QString path; // full path; for an app "shell:AppsFolder\<id>", which opens it
     bool isDir = false;
     bool recent = false;
+    // Files and folders: when last written, in seconds since 1970 (UTC);
+    // 0 when not known.
+    std::uint32_t modified = 0;
 
     // Installed apps and places only. `path` stands for them in History.
     AppKind app = AppKind::None;

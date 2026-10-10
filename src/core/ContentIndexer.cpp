@@ -519,7 +519,7 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
     std::vector<Work> work;
     FileIndex::IdPin pin; // the ids in `work` stay valid: no compaction until the pass is over
     {
-        const auto lock = index->readLock();
+        const auto lock = index->longReadLock(); // findWork goes through all of it
         pin = index->pinIds();
         if (index->generation() != m_generation) {
             m_recentReads.clear(); // ids from before a compaction

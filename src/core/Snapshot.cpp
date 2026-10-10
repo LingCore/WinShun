@@ -29,7 +29,8 @@ namespace {
 //   volumeCount:u32 { len:u16 root:wchar[len] serial:u32 journalId:u64 usn:i64 }*
 //   4 x { count:u32 { len:u16 text:wchar[len] }* }   crawl rules (version 3 on)
 //   nameCount:u32 { bytes:u32 { name:u8[] 0 }[kGroup] }*   (version 6 on; at the end, fewer)
-//   entryCount:u32 { backBytes:u32 back:leb[kGroup] flags:u8[kGroup] nameBytes:u32 name:leb[kGroup] }*
+//   entryCount:u32 { backBytes:u32 back:leb[kGroup] flags:u8[kGroup] nameBytes:u32 name:leb[kGroup]
+//                    timeBytes:u32 time:leb[kGroup] (version 7 on) }*
 //   tableCount:u32 { root:u32 count:u32 folderBytes:u32 folder:leb[count] recordBytes:u32 record:leb[count] }*
 //   attachmentSize:u64 attachment:u8[attachmentSize]   (version 4 on)
 //   end:u32
@@ -40,7 +41,9 @@ namespace {
 // `name` is 0 for the first one no entry before it has, else the number of
 // its name + 1. A table holds the folders' record numbers, by folder: each
 // folder's distance from the one before (from 0 for the first), each
-// record's from the one before, zigzag encoded. leb: LEB128.
+// record's from the one before, zigzag encoded. An entry's `time` (FileTime,
+// when it was last written) is its distance from the entry's before, zigzag
+// encoded too: files side by side were often written together. leb: LEB128.
 //
 // Like things are kept together, in groups of kGroup names or entries, so
 // that the compression (below) finds more alike: 21 MB rather than 29 for
@@ -58,7 +61,7 @@ namespace {
 // the index is walked or rebuilt. Files written before are read as they are.
 constexpr char kMagic[8] = {'Q', 'F', 'I', 'N', 'D', 'E', 'X', '\0'};
 constexpr char kPackedMagic[8] = {'Q', 'F', 'I', 'N', 'D', 'E', 'X', 'Z'};
-constexpr std::uint32_t kVersion = 6;
+constexpr std::uint32_t kVersion = 7;
 constexpr std::size_t kGroup = 1 << 16;
 constexpr std::uint32_t kOldestVersion = 2; // without the rules
 constexpr std::uint32_t kEndMarker = 0x21444E45; // "END!"
@@ -484,24 +487,33 @@ bool save(const FileIndex& index, const std::vector<VolumeInfo>& volumes,
     std::string backs;
     std::string flags;
     std::string names;
+    std::string times;
     const auto group = [&] {
         w.put(static_cast<std::uint32_t>(backs.size()));
         w.bytes(backs.data(), backs.size());
         w.bytes(flags.data(), flags.size());
         w.put(static_cast<std::uint32_t>(names.size()));
         w.bytes(names.data(), names.size());
+        w.put(static_cast<std::uint32_t>(times.size()));
+        w.bytes(times.data(), times.size());
         backs.clear();
         flags.clear();
         names.clear();
+        times.clear();
     };
     std::uint32_t written = 0;
     std::uint32_t firstUnused = 0; // the number of the first name no entry so far has
+    FileTime timeBefore = 0;
     forEachEntry([&](EntryId id, const Entry& e) {
         putLeb(backs, e.parent == kNoEntry ? 0 : newId[id] - newId[e.parent]);
         flags.push_back(static_cast<char>(e.flags & EntryFlag::Persistent));
         const std::uint32_t number = numbers.number(e.nameOffset).first;
         putLeb(names, number == firstUnused ? 0 : std::uint64_t {number} + 1);
         firstUnused += number == firstUnused ? 1 : 0;
+        const FileTime time = index.modified(id);
+        const std::int64_t step = std::int64_t {time} - timeBefore;
+        putLeb(times, step < 0 ? (static_cast<std::uint64_t>(-step) << 1) - 1 : static_cast<std::uint64_t>(step) << 1);
+        timeBefore = time;
         if (++written % kGroup == 0)
             group();
     });
@@ -668,6 +680,7 @@ std::optional<Contents> load(const QString& filePath)
     };
     if (version >= 6) {
         std::uint32_t firstUnused = 0; // the first name no entry so far has
+        std::int64_t time = 0; // the entry's before
         for (std::uint32_t start = 0; start < count; start += kGroup) {
             const std::size_t n = std::min<std::size_t>(kGroup, count - start);
             // Each column taken out before the next is read: that may move the window.
@@ -683,13 +696,28 @@ std::optional<Contents> load(const QString& filePath)
             const auto codes = p ? lebColumn(p, nameBytes, n) : std::nullopt;
             if (!codes)
                 return std::nullopt;
+            std::optional<std::vector<std::uint64_t>> times;
+            if (version >= 7) {
+                const auto timeBytes = r.get<std::uint32_t>();
+                p = r.ok() ? r.bytes(timeBytes) : nullptr;
+                times = p ? lebColumn(p, timeBytes, n) : std::nullopt;
+                if (!times)
+                    return std::nullopt;
+            }
             for (std::size_t k = 0; k < n; ++k) {
                 const std::uint64_t code = (*codes)[k];
                 const std::uint64_t number = code == 0 ? firstUnused++ : code - 1;
+                const auto id = start + static_cast<std::uint32_t>(k);
                 if (number >= names.size() || (code != 0 && number >= firstUnused)
-                    || !add(start + static_cast<std::uint32_t>(k), (*backs)[k], flags[k], names[number].first,
-                        names[number].second))
+                    || !add(id, (*backs)[k], flags[k], names[number].first, names[number].second))
                     return std::nullopt;
+                if (times) {
+                    const std::uint64_t z = (*times)[k];
+                    time += z & 1 ? -static_cast<std::int64_t>((z + 1) >> 1) : static_cast<std::int64_t>(z >> 1);
+                    if (time < 0 || time > std::numeric_limits<FileTime>::max())
+                        return std::nullopt;
+                    index->setModified(id, static_cast<FileTime>(time));
+                }
             }
         }
     }
@@ -766,6 +794,7 @@ std::optional<Contents> load(const QString& filePath)
         return std::nullopt;
     index->setInterning(false);
     contents.index = std::move(index);
+    contents.times = version >= 7;
     return contents;
 }
 

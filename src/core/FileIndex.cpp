@@ -120,8 +120,10 @@ std::span<const Entry> FileIndex::chunk(std::size_t index) const noexcept
 
 EntryId FileIndex::allocate()
 {
-    if ((m_count >> kChunkBits) == m_chunks.size())
+    if ((m_count >> kChunkBits) == m_chunks.size()) {
         m_chunks.push_back(std::make_unique<Entry[]>(kChunkSize));
+        m_times.push_back(std::make_unique<FileTime[]>(kChunkSize));
+    }
     assert(m_count < kNoEntry);
     return static_cast<EntryId>(m_count++);
 }
@@ -269,7 +271,9 @@ std::size_t FileIndex::compact(bool always, const std::function<void(const Renum
         e.firstChild = renumber(e.firstChild);
         e.nextSibling = renumber(e.nextSibling);
         e.nameOffset = moveName(e);
-        mut(renumber(id)) = e;
+        const EntryId to = renumber(id);
+        mut(to) = e;
+        setModified(to, modified(id));
     }
     for (EntryId& r : m_roots)
         r = renumber(r);
@@ -282,6 +286,8 @@ std::size_t FileIndex::compact(bool always, const std::function<void(const Renum
     m_count = live;
     m_chunks.resize((live + kChunkSize - 1) >> kChunkBits); // frees the emptied chunks
     m_chunks.shrink_to_fit();
+    m_times.resize(m_chunks.size());
+    m_times.shrink_to_fit();
     m_childTables = decltype(m_childTables)(); // by old ids; rebuilt on demand
     m_generation.fetch_add(1, std::memory_order_release);
     if (renumbered)
@@ -423,6 +429,7 @@ EntryId FileIndex::addStored(EntryId parent, std::uint32_t nameOffset, std::uint
     const std::string_view name = nameAt(nameOffset, nameLength);
     Entry& e = mut(id);
     e = Entry {};
+    setModified(id, 0); // a slot freed by compact() may be used again
     e.nameOffset = nameOffset;
     e.nameLength = nameLength;
     if (parent == kNoEntry) {

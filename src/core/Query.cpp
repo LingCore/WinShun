@@ -284,6 +284,18 @@ int NameMatcher::matchPath(const QString& fullPath, bool isDir) const
         });
 }
 
+bool NameMatcher::isExactName(std::string_view name, bool isDir) const
+{
+    if (m_positive.size() != 1 || m_positive[0].term.wildcard || m_positive[0].term.text.empty())
+        return false;
+    const std::string& t = m_positive[0].term.text;
+    if (text::equalsFolded(name, t))
+        return true;
+    const std::size_t extLength = extensionLength(name, isDir);
+    return extLength > 0 && name.size() > extLength + 1
+        && text::equalsFolded(name.substr(0, name.size() - extLength - 1), t);
+}
+
 int NameMatcher::matchName(std::string_view name) const
 {
     return score<false>(

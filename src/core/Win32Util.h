@@ -2,6 +2,7 @@
 
 #include <windows.h>
 
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -103,5 +104,11 @@ std::wstring longPath(std::wstring_view path);
 
 // Expands %VAR% references, e.g. "%WINDIR%\WinSxS".
 std::wstring expandEnvironment(std::wstring_view text);
+
+// A FILETIME as one count of 100-nanosecond intervals since 1601.
+inline std::int64_t ticks(const FILETIME& time) noexcept
+{
+    return static_cast<std::int64_t>((std::uint64_t {time.dwHighDateTime} << 32) | time.dwLowDateTime);
+}
 
 } // namespace ws::win32
