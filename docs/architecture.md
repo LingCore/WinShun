@@ -134,6 +134,7 @@ cmake --build --preset release --target update_translations   # lupdate：把新
 
 - 装到 `Program Files\WinShun`（Win顺 本来就要管理员权限），开始菜单一个快捷方式，“设置 → 应用”里可以卸载。`AppId` 永远不要改：新版靠它找到旧版、原地覆盖。
 - 安装和卸载前先让正在运行的 Win顺 退出：装过的用 `WinShun.exe --quit`，别处的旧版免安装副本给它的消息窗口发 `WM_CLOSE`（0.2.1 起会照 `--quit` 退出、先保存索引），过 15 秒还在就强制结束。
+- 文件一装好就在托盘里启动（`--background`），趁最后一页还开着把第一次启动做完：新文件第一次启动时杀毒软件要逐个读一遍，慢的时候要几十秒，等点了“完成”再启动，这段时间屏幕上什么都没有，用户不知道它启动了没有。“完成”时勾着“运行 Win顺”，再启动一次就只是让已经在运行的那份打开搜索框（第二个实例把 `show` 交给它，马上就出来）；没勾，就让它退出（`CurStepChanged` 的 `ssDone`）。静默安装不显示，也不退出，和升级前一样在托盘里。第二个实例找不到正在启动的那份的消息窗口时，最多等 30 秒，再把命令发过去，只发一次（`MessageWindow::sendToRunningInstance`）。实测（2026-10-09，真的安装程序覆盖安装）：最后一页一出来就点“完成”，那份还没启动完，0.55 秒后搜索框出现在前台；不勾“运行”，0.4 秒内退出。
 - 装好后，已有的开机自启任务（旧版免安装副本设的）改成启动安装的这份（安装程序运行 `WinShun.exe --take-autostart`）；卸载时只删除指向本安装目录的任务，并问是否删除 `%APPDATA%\WinShun`、`%LOCALAPPDATA%\WinShun`。
 - 向导图片由 `tools/make_installer_images.py` 生成（浅色、深色两套），中文界面文字是 Inno Setup 仓库里的非官方翻译 `installer/ChineseSimplified.isl`。
 

@@ -1,8 +1,11 @@
 #include "MessageWindow.h"
 
+#include <QDeadlineTimer>
 #include <QStringList>
 
 #include <shellapi.h>
+
+#include <algorithm>
 
 using namespace Qt::StringLiterals;
 
@@ -15,6 +18,8 @@ constexpr UINT kTrayMessage = WM_APP + 1;
 constexpr UINT kTrayId = 1;
 constexpr ULONG_PTR kCopyDataTag = 0x5753484E; // "WSHN"
 constexpr wchar_t kAppIconResource[] = L"IDI_ICON1"; // see app.rc
+// How long a second start waits for the running copy to take its command.
+constexpr std::chrono::milliseconds kRunningInstanceWait {30000};
 
 void copyTruncated(wchar_t* dest, std::size_t capacity, const QString& text)
 {
@@ -177,7 +182,16 @@ void MessageWindow::unregisterHotkey(int id)
 
 bool MessageWindow::sendToRunningInstance(const QString& command)
 {
-    const HWND target = ::FindWindowW(kClassName, nullptr);
+    // The running copy may still be starting: this window comes once the
+    // launcher's is made, and its first start after an update is slow (the
+    // antivirus reads every new file). Started from the installer's last page,
+    // the command would be lost otherwise.
+    const QDeadlineTimer deadline(kRunningInstanceWait);
+    HWND target = ::FindWindowW(kClassName, nullptr);
+    while (!target && !deadline.hasExpired()) {
+        ::Sleep(100);
+        target = ::FindWindowW(kClassName, nullptr);
+    }
     if (!target)
         return false;
     DWORD pid = 0;
@@ -187,9 +201,11 @@ bool MessageWindow::sendToRunningInstance(const QString& command)
     data.dwData = kCopyDataTag;
     data.cbData = static_cast<DWORD>((command.size() + 1) * sizeof(wchar_t));
     data.lpData = const_cast<void*>(static_cast<const void*>(command.utf16()));
+    // Answered once it is done starting. Sent once: a send that timed out may
+    // still arrive, and a toggle sent twice would undo itself.
+    const auto timeout = static_cast<UINT>(std::max<qint64>(deadline.remainingTime(), 5000));
     DWORD_PTR result = 0;
-    return ::SendMessageTimeoutW(
-               target, WM_COPYDATA, 0, reinterpret_cast<LPARAM>(&data), SMTO_ABORTIFHUNG, 3000, &result)
+    return ::SendMessageTimeoutW(target, WM_COPYDATA, 0, reinterpret_cast<LPARAM>(&data), SMTO_NORMAL, timeout, &result)
         != 0;
 }
 

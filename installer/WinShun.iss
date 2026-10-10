@@ -96,6 +96,13 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopico
 ; As the installer runs (elevated), so there is no UAC prompt.
 ; An autostart set up earlier (a portable copy) now starts this copy.
 Filename: "{app}\{#AppExe}"; Parameters: "--take-autostart"; Flags: runhidden waituntilterminated runascurrentuser
+; Started at once, in the tray, while the last page is up: the first start of
+; new files is slow (the antivirus reads each one: seconds, tens of them at
+; times), and nothing would show for that long after Finish. Finish then has the running
+; copy put up its search box, at once (the second start hands it "show"), or,
+; unticked, has it quit (CurStepChanged). Not runhidden: a hidden start would
+; hide the first window it shows later on.
+Filename: "{app}\{#AppExe}"; Parameters: "--background"; Flags: nowait runascurrentuser
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent runascurrentuser
 
 [Code]
@@ -136,6 +143,18 @@ begin
     Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM {#AppExe}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     Sleep(1000);
   end;
+end;
+
+// Started in the tray as the files were in place ([Run]); "run Win顺" left
+// unticked on the last page, it goes again. A silent install leaves it
+// running, as it was before an update.
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+begin
+  if (CurStep = ssDone) and not WizardSilent() and
+     ((WizardForm.RunList.Items.Count = 0) or not WizardForm.RunList.Checked[0]) then
+    Exec(ExpandConstant('{app}\{#AppExe}'), '--quit', '', SW_HIDE, ewNoWait, ResultCode);
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
