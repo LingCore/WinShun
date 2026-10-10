@@ -190,6 +190,8 @@
 - **剪贴板**：是否记录剪贴板历史、用 `Win+V` 打开（代替 Windows 自带的）、另设一个组合键、是否记录图片、保留多少条和多久、不记录的程序、清除剪贴板历史。
 - **高级**：检查更新、是否自动检查更新、界面绘制方式（省内存 / 显卡加速；默认内存 8 GB 及以上用显卡加速）、恢复默认设置。
 
+找某一项不用一页页翻：在左上角的搜索框里打字（或按 `Ctrl+F`），右边只留下相关的设置，开关和按钮直接就能用。拼音、首字母也行（`kjj` 找到“快捷键”），常见的别的说法也认（“剪切板”“自启”“云母”）；`↑` `↓` 选，`Enter` 跳到它所在的页面。Win顺 里没有这一项时，列出可能要找的 Windows 设置（比如搜“蓝牙”）。
+
 #### 🔔 新版本提醒
 
 - 每次启动和之后每隔 12 小时到 GitHub 看一眼有没有新版本，有的话在托盘弹出提示，打开就能看到这一版改了什么。
@@ -352,6 +354,8 @@ The interface comes in **English and Simplified Chinese**. It follows the Window
 #### ⌨️ Keyboard first
 
 `Enter` opens, `Ctrl+Enter` shows the item in its folder, `Ctrl+Shift+Enter` runs as administrator, `Ctrl+C` copies the file, `Ctrl+Shift+C` copies its path, `Tab` / `Shift+Tab` switch scopes, the menu key or right-click shows more actions, `Esc` closes. The selected row also has buttons to show in folder, copy, copy path and delete (to the Recycle Bin, after a second click). Select several results with `Shift+↑` / `Shift+↓`, `Ctrl`+click or `Shift`+click: opening, copying and deleting then act on all of them, and `Esc` first clears the selection.
+
+In the settings window, type into the box above the categories (or press `Ctrl+F`) and only the settings that fit stay on the right, their switches and buttons working as usual; `↑` / `↓` pick one, `Enter` goes to its page. When WinShun has no such setting, the Windows settings it may be are listed (try "Bluetooth").
 
 #### 🎨 Feels like part of Windows 11
 

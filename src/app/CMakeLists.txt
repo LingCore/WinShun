@@ -53,6 +53,7 @@ set(qml_files
     qml/KeyHint.qml
     qml/Glyph.qml
     qml/SettingsWindow.qml
+    qml/SettingsSearchBox.qml
     qml/TitleBar.qml
     qml/SettingsSection.qml
     qml/SettingRow.qml
@@ -121,6 +122,7 @@ qt_add_qml_module(WinShun
         Placement.cpp Placement.h
         ResultModel.cpp ResultModel.h
         SettingsEditor.cpp SettingsEditor.h
+        SettingsSearch.cpp SettingsSearch.h
         SoundClip.cpp SoundClip.h
         SystemTheme.cpp SystemTheme.h
         Updater.cpp Updater.h

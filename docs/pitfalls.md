@@ -697,6 +697,26 @@
 - **现象**：直接链接 `mfplat.lib`（Media Foundation），程序在没有它的 Windows 上（N 版没装媒体功能包）根本启动不了，报缺少 DLL。
 - **做法**：`/DELAYLOAD:mfplat.dll`（加 `delayimp`），用之前先 `LoadLibraryExW(..., LOAD_LIBRARY_SEARCH_SYSTEM32)` 确认在不在，不在就不用；延迟加载的函数第一次调用时才找 DLL，找不到会抛 SEH 异常。`dumpbin /dependents WinShun.exe` 里它应该出现在 “delay load dependencies” 下。
 
+### QML 的列表属性不是数组，`Array.prototype.indexOf` 什么也找不到
+
+- **现象**：设置窗口的搜索里按 ↓，当前项有时不动，有时跳到别的行；结果的先后时对时错。
+- **原因**：`children` 这类列表属性（`QQmlListProperty`）到了 JavaScript 里不是真正的数组。`Array.prototype.indexOf.call(item.parent.children, item)` 不报错，但总是返回 -1，每一行的排序键都一样，顺序就成了 C++ 里哈希表的顺序。
+- **做法**：用下标循环逐个比较（`SettingRow.qml` 的 `orderKey()`）。查这类问题时加一行临时的 `console.warn` 打出中间值，输出在 `%LOCALAPPDATA%\WinShun\WinShun.log`，比反复看截图快。
+
+### 只锚了右边又写了 `x`，输入框的宽度是 0
+
+- **现象**：设置窗口的搜索框里看不到占位文字“查找设置”，打的字贴着右边往左长。
+- **原因**：`TextInput` 写了 `x: 36` 和 `anchors.right`，没写 `anchors.left`。只有右锚时，宽度取隐式宽度，`x` 由右锚算出来，写的 `x` 不起作用。空的 `TextInput` 隐式宽度接近 0，铺满它的占位文字也就没有宽度了。
+- **做法**：左右都锚住（`anchors.left` + `anchors.leftMargin`）。
+
+## 设置窗口的搜索
+
+### 好几行共用的文字一被命中，整页都出来
+
+- **现象**：最初的版本里，搜 `kjj` 出来 16 项（要的只是“快捷键”），搜 `zt` 除了“主题”还带出整个剪贴板页，搜“剪贴板 图片”出来 8 项。
+- **原因**：分类关键词、分类名和节的提示语是整页或整节共用的，命中一次就算这一页、这一节的每一行都命中：`快捷键` 被写进了“打开 Win顺”的分类关键词；剪贴板页的关键词“粘贴”首字母也是 `zt`；剪贴板这一节的提示语里有“图片”，又和分类名“剪贴板”凑成了两个词都命中。
+- **做法**：分类关键词只放分类本身的别名（`pageKeywords`），不放任何一行的标题和关键词；分类名和分类关键词至少 3 个字母才按拼音匹配（`SettingsMatch.cpp`）；节的提示语不参与匹配。加关键词后搜一下那个词，看出来的是不是只有想要的几行。
+
 ## 安装程序（Inno Setup）
 
 ### 中文语言文件要带 BOM
@@ -796,6 +816,12 @@
 - **现象**：在终端里运行 `qmllint.exe --version`，命令一直不返回；屏幕上弹出一个“qmllint 6.12.0”的消息框，跳到前台，打断了正在进行的界面测试。
 - **原因**：Qt 的命令行工具在 Windows 上用消息框显示 `--version` 和 `--help` 的输出（没有控制台时）。
 - **做法**：查 Qt 版本看 `C:\Qt` 下的文件夹名或用 `qtpaths`；不要在自动化脚本里运行带 `--version` 的 Qt 工具。检查 QML 直接 `qmllint -I build\<目录>\src\app 文件…`，它没有问题时什么都不输出。
+
+### qmllint 在中文路径下打不开文件
+
+- **现象**：`WinShun_qmllint` 目标对每个 QML 文件都报 `Failed to open file F:/电脑便捷工具/src/app/qml/….qml: ???????????`，然后失败。
+- **原因**：和 lrelease 一样，命令行参数（这里是 .rsp 文件里的路径）按 ANSI 代码页读，中文路径坏了。
+- **做法**：把 `src\app\qml\*.qml`、编译目录里 `src\app\WinShun\` 下的 `WinShun.qmltypes` 和去掉 `prefer` 那一行的 `qmldir`，一起复制到一个纯英文路径下名为 `WinShun` 的文件夹，再 `qmllint -I <它的上一级> <那里的文件>…`。C++ 类型从 qmltypes 里来，要先编译过一次。
 
 ### 编译目录里不要放 Qt 的 DLL
 

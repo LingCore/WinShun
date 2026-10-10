@@ -858,6 +858,7 @@ void App::showSettings()
         }
         editor->setParent(window);
         editor->setWindow(window);
+        editor->setPlaces(m_places.get()); // Windows' settings, when its search finds none of its own
         connect(editor, &SettingsEditor::edited, this, &App::settingsEdited);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyHotkey);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyClipboardHotkeys);

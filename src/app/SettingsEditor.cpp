@@ -1,6 +1,9 @@
 #include "SettingsEditor.h"
 
+#include "FileIconProvider.h"
 #include "IndexFolder.h"
+#include "Query.h"
+#include "SystemCatalog.h"
 #include "WebShortcut.h"
 #include "Win32Util.h"
 #include "platform/FileManagers.h"
@@ -11,8 +14,10 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QKeyEvent>
 #include <QRegularExpression>
+#include <QStyleHints>
 #include <QVariantMap>
 
 using namespace Qt::StringLiterals;
@@ -717,6 +722,32 @@ void SettingsEditor::openUrl(const QString& url)
 void SettingsEditor::copyText(const QString& text)
 {
     shell::copyText(text);
+}
+
+QVariantList SettingsEditor::findWindowsSettings(const QString& query, int max) const
+{
+    QVariantList found;
+    const auto places = m_places ? m_places->places() : nullptr;
+    const ParsedQuery parsed = parseQuery(query);
+    if (!places || parsed.isEmpty())
+        return found;
+    const NameMatcher matcher(parsed);
+    const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
+    for (const PlaceHit& hit : searchPlaces(*places, parsed, matcher, {})) {
+        if (found.size() >= max)
+            break;
+        const PlaceInfo& place = (*places)[hit.index];
+        // As the launcher shows them (ResultModel): the logo of Settings, or the place's own icon.
+        const QString icon = place.icon.startsWith(u"app:") ? FileIconProvider::appIconUrl(place.icon.mid(4), true, dark)
+                                                            : FileIconProvider::placeIconUrl(place.icon);
+        found.append(QVariantMap {{u"name"_s, place.name}, {u"icon"_s, icon}, {u"command"_s, place.command}});
+    }
+    return found;
+}
+
+void SettingsEditor::openWindowsSetting(const QString& command)
+{
+    shell::run(command);
 }
 
 } // namespace ws

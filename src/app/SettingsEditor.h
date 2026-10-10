@@ -13,6 +13,7 @@
 namespace ws {
 
 class ShortcutCapture;
+class SystemCatalog;
 
 // The view-model behind the settings window. Every change is saved right
 // away and reported through edited(); there is no OK / Cancel step.
@@ -219,6 +220,13 @@ public:
 
     void setSettings(const Settings& settings); // the file was changed outside this editor
     void setWindow(QWindow* window) { m_window = window; }
+    void setPlaces(SystemCatalog* places) { m_places = places; }
+
+    // For a search of the settings that found nothing: the settings and
+    // tools of Windows that fit `query` (as the launcher finds them), best
+    // first, at most `max`: [{name, icon (an image URL), command}].
+    Q_INVOKABLE QVariantList findWindowsSettings(const QString& query, int max) const;
+    Q_INVOKABLE void openWindowsSetting(const QString& command);
 
     Q_INVOKABLE void addExcludedFolder(); // asks for the folder
     Q_INVOKABLE void removeExcludedPath(int index);
@@ -291,6 +299,7 @@ private:
     QString m_clipboardHotkeyError;
     int m_clipboardCount = 0;
     QPointer<QWindow> m_window;
+    SystemCatalog* m_places = nullptr; // the app's; outlives the window
     std::unique_ptr<ShortcutCapture> m_capture; // while recording a hotkey
 };
 

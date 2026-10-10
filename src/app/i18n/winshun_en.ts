@@ -475,6 +475,31 @@
     </message>
 </context>
 <context>
+    <name>SettingRow</name>
+    <message>
+        <source>打开后可以设置：%1</source>
+        <translation>Turn on to set: %1</translation>
+    </message>
+    <message>
+        <source>、</source>
+        <translation>, </translation>
+    </message>
+</context>
+<context>
+    <name>SettingsSearchBox</name>
+    <message>
+        <source>查找设置</source>
+        <translation>Find a setting</translation>
+    </message>
+</context>
+<context>
+    <name>SettingsSection</name>
+    <message>
+        <source>在“%1”中查看</source>
+        <translation>See all in %1</translation>
+    </message>
+</context>
+<context>
     <name>SettingsWindow</name>
     <message>
         <source>打开 Win顺</source>
@@ -495,6 +520,34 @@
     <message>
         <source>高级</source>
         <translation>Advanced</translation>
+    </message>
+    <message>
+        <source>唤出;呼出;打开方式</source>
+        <translation>summon;bring up;launch</translation>
+    </message>
+    <message>
+        <source>皮肤;颜色;界面;appearance</source>
+        <translation>look;colors;skin;style</translation>
+    </message>
+    <message>
+        <source>搜索位置;磁盘;scope</source>
+        <translation>locations;disks;where</translation>
+    </message>
+    <message>
+        <source>全文搜索;全文;文字;content</source>
+        <translation>full text;text inside;contents</translation>
+    </message>
+    <message>
+        <source>搜索引擎;网址;书签;百度;谷歌;必应;web</source>
+        <translation>search engine;URL;bookmark;Google;Bing;Baidu</translation>
+    </message>
+    <message>
+        <source>剪切板;粘贴板;复制;粘贴;clipboard</source>
+        <translation>copy;paste;copied;pasteboard</translation>
+    </message>
+    <message>
+        <source>其他;更多;advanced</source>
+        <translation>other;more</translation>
     </message>
     <message>
         <source>设置</source>
@@ -538,8 +591,35 @@
         <translation>Changes are saved and take effect right away</translation>
     </message>
     <message>
+        <source>搜索结果</source>
+        <translation>Search results</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n 项</source>
+        <translation>
+            <numerusform>%n result</numerusform>
+            <numerusform>%n results</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>没有找到“%1”相关的设置</source>
+        <translation>No settings found for “%1”</translation>
+    </message>
+    <message>
+        <source>要找的可能是 Windows 的设置：</source>
+        <translation>Perhaps you mean a setting of Windows:</translation>
+    </message>
+    <message>
+        <source>换个说法、少输几个字，或者用拼音首字母试试，例如 jtb 找“剪贴板”</source>
+        <translation>Try other words, or fewer of them</translation>
+    </message>
+    <message>
         <source>双击 Ctrl 打开</source>
         <translation>Press Ctrl twice to open</translation>
+    </message>
+    <message>
+        <source>双击;呼出;唤出;double ctrl</source>
+        <translation>double tap;double press;summon;ctrl</translation>
     </message>
     <message>
         <source>快速连按两下 Ctrl 键，打开或关闭搜索框</source>
@@ -550,6 +630,10 @@
         <translation>Ignore Ctrl twice while gaming</translation>
     </message>
     <message>
+        <source>游戏;蹲下;误触;game</source>
+        <translation>games;gaming;crouch;by accident</translation>
+    </message>
+    <message>
         <source>游戏里常连按两下 Ctrl 蹲下。前台程序独占全屏，或者藏起鼠标用来转视角时，双击 Ctrl 不打开搜索框。设置的快捷键照常可用</source>
         <translation>Games often crouch on Ctrl pressed twice. While the program in front has exclusive full screen, or has hidden the mouse pointer to turn the view, pressing Ctrl twice does not open the search box. The shortcut still works</translation>
     </message>
@@ -558,12 +642,20 @@
         <translation>Ignore Ctrl twice over any full-screen program</translation>
     </message>
     <message>
+        <source>全屏;视频;幻灯片;误触;fullscreen</source>
+        <translation>fullscreen;video;slideshow;by accident</translation>
+    </message>
+    <message>
         <source>看视频、放幻灯片、全屏浏览网页时也不打开搜索框</source>
         <translation>Also while watching a video, showing slides or browsing full screen</translation>
     </message>
     <message>
         <source>在这些程序里不响应双击 Ctrl</source>
         <translation>Ignore Ctrl twice in these programs</translation>
+    </message>
+    <message>
+        <source>排除;程序;游戏;exe</source>
+        <translation>exclude;programs;games;exe</translation>
     </message>
     <message>
         <source>填程序的文件名，例如 TheFinals.exe。没被自动认出来的游戏可以加在这里</source>
@@ -578,6 +670,10 @@
         <translation>Shortcut</translation>
     </message>
     <message>
+        <source>热键;组合键;hotkey;shortcut</source>
+        <translation>hotkey;shortcut;key combination</translation>
+    </message>
+    <message>
         <source>再设一个组合键来打开搜索框，例如 Alt + Space。点击右边的方框，然后按下想用的按键</source>
         <translation>Another key combination that opens the search box, such as Alt + Space. Click the box on the right, then press the keys you want</translation>
     </message>
@@ -590,12 +686,20 @@
         <translation>Search bar by file dialogs</translation>
     </message>
     <message>
+        <source>对话框;另存为;打开文件;保存</source>
+        <translation>dialog;save as;open file;save</translation>
+    </message>
+    <message>
         <source>“打开”“另存为”等对话框出现时，在它旁边放一个搜索框：搜文件夹或文件，选中后对话框直接转过去。在对话框里双击 Ctrl 就能开始输入</source>
         <translation>By Open and Save As dialogs, a search bar: find a folder or file and the dialog goes there. Press Ctrl twice in the dialog to start typing</translation>
     </message>
     <message>
         <source>搜索框的位置</source>
         <translation>Where the search bar goes</translation>
+    </message>
+    <message>
+        <source>位置;下方;左边;右边;对话框</source>
+        <translation>position;below;left;right;dialog</translation>
     </message>
     <message>
         <source>“自动”时放在对话框下方，下方放不下就放在右边或左边，都放不下就把对话框调矮一点。选定一边时，那边放不下就把对话框调小一点或挪开</source>
@@ -614,12 +718,28 @@
         <translation>Right</translation>
     </message>
     <message>
+        <source>排除;程序;对话框;exe</source>
+        <translation>exclude;programs;dialog;exe</translation>
+    </message>
+    <message>
         <source>开机时自动启动</source>
         <translation>Start with Windows</translation>
     </message>
     <message>
+        <source>自启;开机启动;启动;autostart;startup</source>
+        <translation>autostart;startup;boot;sign in</translation>
+    </message>
+    <message>
         <source>登录 Windows 后在后台运行，随时可以打开</source>
         <translation>Runs in the background once you sign in, ready whenever you need it</translation>
+    </message>
+    <message>
+        <source>历史;最近;记录;history;recent</source>
+        <translation>history;recent;remember</translation>
+    </message>
+    <message>
+        <source>历史;最近;删除;清空;history</source>
+        <translation>history;recent;delete;clear</translation>
     </message>
     <message>
         <source>代替任务栏上的 Windows 搜索</source>
@@ -632,6 +752,10 @@
     <message>
         <source>任务栏上的 Win顺 按钮</source>
         <translation>WinShun’s button on the taskbar</translation>
+    </message>
+    <message>
+        <source>固定;任务栏;按钮;pin;taskbar</source>
+        <translation>pin;taskbar;button</translation>
     </message>
     <message>
         <source>已固定到任务栏</source>
@@ -654,6 +778,10 @@
         <translation>Windows’ own search button</translation>
     </message>
     <message>
+        <source>隐藏;任务栏;搜索框;taskbar</source>
+        <translation>hide;taskbar;search box</translation>
+    </message>
+    <message>
         <source>还在任务栏上。Windows 不让其他程序隐藏它：在任务栏设置里把“搜索”选成“隐藏”</source>
         <translation>Still on the taskbar. Windows lets no other program hide it: in the taskbar settings, set “Search” to “Hide”</translation>
     </message>
@@ -668,6 +796,10 @@
     <message>
         <source>用 Win+S 打开，代替 Windows 搜索</source>
         <translation>Open with Win+S, instead of Windows search</translation>
+    </message>
+    <message>
+        <source>Win+S;Windows 搜索;截图;Win+Shift+S</source>
+        <translation>Win+S;Windows Search;screenshot;Win+Shift+S</translation>
     </message>
     <message>
         <source>Win+S 也在任务栏上方打开 Win顺。Win+Shift+S 截图照常可用，由 Win顺 代为打开截图工具；Win顺 没在运行时这两个键都没有反应。关掉这项，它们就回到 Windows 自带的</source>
@@ -690,6 +822,10 @@
         <translation>Typing in the Start menu searches with WinShun</translation>
     </message>
     <message>
+        <source>开始菜单;打字;Win;start menu</source>
+        <translation>Start menu;typing;Win key</translation>
+    </message>
+    <message>
         <source>按 Win 打开开始菜单后直接打字，Win顺 在任务栏上方打开，打的字接着进到搜索框里。想用 Windows 自带的搜索时，先按一下左 Alt 再打字</source>
         <translation>Press Win and just type: WinShun opens above the taskbar and what you type goes on into its search box. For Windows’ own search, press Left Alt once before typing</translation>
     </message>
@@ -698,12 +834,20 @@
         <translation>Theme</translation>
     </message>
     <message>
+        <source>跟随系统;浅色;深色;暗色;暗黑;夜间;黑色;白色;dark;light</source>
+        <translation>system;light;dark;night;black;white;theme</translation>
+    </message>
+    <message>
         <source>“跟随系统”时随 Windows 的浅色、深色模式切换</source>
         <translation>“System” follows the light or dark mode of Windows</translation>
     </message>
     <message>
         <source>透明效果</source>
         <translation>Transparency effects</translation>
+    </message>
+    <message>
+        <source>云母;Mica;毛玻璃;亚克力;半透明;壁纸;transparency</source>
+        <translation>Mica;acrylic;frosted glass;translucent;wallpaper;transparency</translation>
     </message>
     <message>
         <source>需要把“高级”里的界面绘制方式设为“显卡加速”</source>
@@ -882,12 +1026,20 @@
         <translation>File manager for opening folders</translation>
     </message>
     <message>
+        <source>文件管理器;资源管理器;打开文件夹;打开所在位置;Total Commander;Directory Opus;TC;Opus</source>
+        <translation>file manager;explorer;open folder;open file location;Total Commander;Directory Opus;TC;Opus</translation>
+    </message>
+    <message>
         <source>在 Win顺 里打开文件夹、打开文件所在的位置时用它；没能打开就用资源管理器</source>
         <translation>Used when you open a folder or a file’s location from Win顺; File Explorer steps in if it doesn’t start</translation>
     </message>
     <message>
         <source>Ctrl+G 转到文件管理器的文件夹</source>
         <translation>Ctrl+G goes to the file manager’s folder</translation>
+    </message>
+    <message>
+        <source>跳转;转到;对话框;另存为;打开文件;资源管理器;Total Commander;Directory Opus;jump</source>
+        <translation>jump;go to;dialog;save as;open file;explorer;Total Commander;Directory Opus</translation>
     </message>
     <message>
         <source>在“打开”“另存为”等对话框里按 Ctrl+G，对话框直接转到最近用过的文件管理器窗口正在显示的文件夹：资源管理器、Total Commander 和 Directory Opus 都行</source>
@@ -898,6 +1050,10 @@
         <translation>File dialogs go to the file manager’s folder by themselves</translation>
     </message>
     <message>
+        <source>自动跳转;跟随;对话框;另存为;资源管理器</source>
+        <translation>auto jump;follow;dialog;save as;explorer</translation>
+    </message>
+    <message>
         <source>“打开”“另存为”等对话框出现时，自动转到文件管理器正在显示的文件夹；对话框开着时去文件管理器换了文件夹，切回来也跟着转过去，只是看一眼就不动。转过去以后，搜索框上有按钮回到原来的位置</source>
         <translation>When an Open or Save dialog comes up, it goes to the folder your file manager shows; go to another folder there while the dialog is open and it follows when you switch back (just looking changes nothing). The search bar then has a button to go back to where the dialog was</translation>
     </message>
@@ -906,8 +1062,64 @@
         <translation>The taskbar flickers and open folder windows close</translation>
     </message>
     <message>
+        <source>中文;英文;简体;language</source>
+        <translation>Chinese;English;language</translation>
+    </message>
+    <message>
+        <source>排除;忽略;隐藏;黑名单;exclude</source>
+        <translation>exclude;ignore;hide;blocklist</translation>
+    </message>
+    <message>
+        <source>排除;忽略;文件夹名;exclude</source>
+        <translation>exclude;ignore;folder name</translation>
+    </message>
+    <message>
+        <source>U盘;移动硬盘;外接;USB;removable</source>
+        <translation>USB;flash drive;external;removable</translation>
+    </message>
+    <message>
+        <source>重新扫描;扫描;rescan</source>
+        <translation>rescan;scan</translation>
+    </message>
+    <message>
+        <source>Word;Excel;PowerPoint;PPT;PDF;WPS;docx;xlsx</source>
+        <translation>Word;Excel;PowerPoint;PPT;PDF;WPS;docx;xlsx</translation>
+    </message>
+    <message>
+        <source>扩展名;后缀;文件类型;txt;md;extension</source>
+        <translation>extension;file type;txt;md</translation>
+    </message>
+    <message>
+        <source>大小;上限;文件大小;size</source>
+        <translation>size;limit;file size;MB</translation>
+    </message>
+    <message>
+        <source>系统文件夹;Program Files;AppData;Windows</source>
+        <translation>system folders;Program Files;AppData;Windows</translation>
+    </message>
+    <message>
+        <source>索引;加速;index</source>
+        <translation>index;faster;speed</translation>
+    </message>
+    <message>
+        <source>网址;网页;搜索引擎;书签;添加;url</source>
+        <translation>URL;web page;search engine;bookmark;add</translation>
+    </message>
+    <message>
+        <source>剪切板;复制;历史;clipboard</source>
+        <translation>clipboard;copy;history</translation>
+    </message>
+    <message>
+        <source>Win+V;剪切板;代替;替换</source>
+        <translation>Win+V;clipboard;replace</translation>
+    </message>
+    <message>
         <source>另设快捷键</source>
         <translation>Another shortcut</translation>
+    </message>
+    <message>
+        <source>快捷键;热键;组合键;hotkey</source>
+        <translation>shortcut;hotkey;key combination</translation>
     </message>
     <message>
         <source>不想换掉 Win+V 时，可以另设一个组合键打开剪贴板，例如 Win + Alt + V</source>
@@ -918,12 +1130,20 @@
         <translation>Keep pictures</translation>
     </message>
     <message>
+        <source>截图;图片;照片;image</source>
+        <translation>screenshot;picture;photo;image</translation>
+    </message>
+    <message>
         <source>截图和复制的图片也记下来，每张图片占一些磁盘空间</source>
         <translation>Screenshots and copied pictures too; each takes some disk space</translation>
     </message>
     <message>
         <source>最多保留</source>
         <translation>Keep at most</translation>
+    </message>
+    <message>
+        <source>数量;条数;上限</source>
+        <translation>count;number;limit</translation>
     </message>
     <message>
         <source>放进“固定”和其他分组的不算在内，一直保留</source>
@@ -936,6 +1156,10 @@
     <message>
         <source>保留时间</source>
         <translation>Keep for</translation>
+    </message>
+    <message>
+        <source>过期;天数;自动删除</source>
+        <translation>expire;days;delete by itself</translation>
     </message>
     <message>
         <source>这么久没再复制或粘贴过的记录会自动删除；分组里的不会</source>
@@ -957,6 +1181,10 @@
         <translation>Don’t keep copies from these programs</translation>
     </message>
     <message>
+        <source>密码;隐私;排除;程序;exe</source>
+        <translation>password;privacy;exclude;programs;exe</translation>
+    </message>
+    <message>
         <source>填程序的文件名，例如 KeePass.exe。密码管理器一般会自己声明“不要记录”，这里再多一层保险</source>
         <translation>Program file names, such as KeePass.exe. Password managers usually mark their copies as not to be kept; this is a second safeguard</translation>
     </message>
@@ -967,6 +1195,10 @@
     <message>
         <source>清除剪贴板历史</source>
         <translation>Clear clipboard history</translation>
+    </message>
+    <message>
+        <source>删除;清空</source>
+        <translation>delete;empty</translation>
     </message>
     <message>
         <source>共 %1 条。“固定”和其他分组里的会保留</source>
@@ -983,6 +1215,10 @@
     <message>
         <source>版本 %1</source>
         <translation>Version %1</translation>
+    </message>
+    <message>
+        <source>升级;新版本;version;update</source>
+        <translation>upgrade;new version;version;update</translation>
     </message>
     <message>
         <source>正在检查更新…</source>
@@ -1009,12 +1245,20 @@
         <translation>Check for updates automatically</translation>
     </message>
     <message>
+        <source>升级;新版本;update</source>
+        <translation>upgrade;new version;update</translation>
+    </message>
+    <message>
         <source>每次启动时看一次，之后每隔 12 小时看一次。有新版本时在托盘弹出提示</source>
         <translation>At every start and every 12 hours after. A new version is announced from the tray</translation>
     </message>
     <message>
         <source>界面绘制方式</source>
         <translation>Rendering</translation>
+    </message>
+    <message>
+        <source>渲染;GPU;显卡;内存;模糊;清晰;renderer</source>
+        <translation>rendering;GPU;graphics;memory;blurry;sharp;renderer</translation>
     </message>
     <message>
         <source>重启 Win顺后生效</source>
@@ -1061,6 +1305,10 @@
         <translation>Data folder</translation>
     </message>
     <message>
+        <source>日志;记录;log;AppData</source>
+        <translation>log;logs;AppData</translation>
+    </message>
+    <message>
         <source>搜索记录、剪贴板历史和日志都存放在这里，索引默认也放在这里</source>
         <translation>Search history, clipboard history and logs are kept here, and by default the index too</translation>
     </message>
@@ -1071,6 +1319,10 @@
     <message>
         <source>恢复默认设置</source>
         <translation>Restore defaults</translation>
+    </message>
+    <message>
+        <source>重置;默认;reset</source>
+        <translation>reset;default</translation>
     </message>
     <message>
         <source>所有分类里的设置都会回到刚安装时的样子</source>
@@ -1159,6 +1411,10 @@
     <message>
         <source>索引位置</source>
         <translation>Index location</translation>
+    </message>
+    <message>
+        <source>移动索引;磁盘空间;C盘;D盘;index</source>
+        <translation>move index;disk space;drive C;drive D;index</translation>
     </message>
     <message>
         <source>更改…</source>

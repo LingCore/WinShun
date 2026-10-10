@@ -161,6 +161,7 @@ src/core/            搜索引擎和剪贴板历史，只依赖 Qt Core、Qt Sql
   ClipStore          剪贴板历史：SQLite 里的条目和分组、图片 PNG 文件；去重、过期清理、按分类和拼音筛选、多选合并
   PathText           文字里的路径：复制下来的路径、对话框地址栏和文件类型里写的、搜索框里正在输入的路径（和那个文件夹里有什么）
   WebShortcut        网页搜索：认出打头的关键词（gh、gh WinShun），按名称和拼音找网站，拼出搜索网址，检查和整理设置里填的网址
+  SettingsMatch      设置窗口的搜索：查询的写法统一（全角、标点、Win + V）、一项设置的各段文字按拼音和字面打分、标出命中的字
 src/extract/         读文档里的文字（只在 WinShunExtract.exe 里运行，不进主程序）
   Zip / Xml / Ooxml  docx、xlsx、pptx（及 WPS 存成的这些格式）：miniz 解压、流式读 XML、按页 / 幻灯片 / 表的行记位置
   Cfb / Doc / Xls / Ppt  Office 97–2003：复合文档，Word 的片段表、Excel 的 BIFF8/BIFF5 记录、PowerPoint 的记录树
@@ -174,6 +175,7 @@ src/app/             界面与 Windows 集成
   Clipboard          剪贴板窗口的视图模型（分类、分组、多选、预览、粘贴回原窗口）；ClipModel 是它的列表
   ColorText          文字里的颜色值（#rrggbbaa、rgba()、hsl() …）和它的几种写法；ColorSwatch 画色块，半透明的垫棋盘格
   SettingsEditor     设置窗口的视图模型（改动即保存）
+  SettingsSearch     设置窗口的搜索：当前的查询，每一行问它“我命不命中”，再把显示着的行报给它，汇总出各分类的条数和最该去的一行
   App                组装各部分，管理窗口、托盘、热键
   platform/          双击 Ctrl（Raw Input）、托盘、Shell 操作、驱动器插拔、窗口效果、跟踪文件对话框、Ctrl+G 和自动转过去（DialogJump）、从外面操作文件对话框（FileDialog）、问文件管理器开着哪些文件夹并叫它们打开文件夹（FileManagers）、带 COM 的后台线程（ComWorker）、录快捷键时的键盘钩子（ShortcutCapture）、读写剪贴板（ClipboardWatcher）、把按键送回原窗口（Paster）、剪贴板不抢焦点时把按键转给它（KeyRouter）、找别的程序的输入光标（TextCaret）、接管 Win+V 和 Win+S（WinV）、代替任务栏上的 Windows 搜索（TaskbarSearch）
   qml/               界面：Main / SearchBar / ResultRow / Footer / ClipboardPage / SettingsWindow …
@@ -263,6 +265,7 @@ tools/wsbench.cpp    在真实索引上测内存和搜索耗时；--mft 读各�
     - 关开始菜单不用另想办法：启动器显示时 `win::bringToFront` 本来就会先发一个 `Esc` 关掉它（见 pitfalls.md“开始菜单开着时双击 Ctrl”）。这个 `Esc` 带着 Win顺 自己的标记（`kOwnInput`，重新发的键也带），钩子放它过去，它照常到开始菜单。别的程序注入的键（AutoHotkey、PowerToys 映射出来的，屏幕键盘打的）照样算打字。
 - **D3D11 渲染 + FreeType 字体引擎。** 界面字体阿里巴巴普惠体没有字体微调，GDI 下中文横笔画会糊成两行像素；FreeType 能把它们对齐到像素上。但软件渲染器会按估算的字形边界裁剪文字，FreeType 的字形会超出一点、被裁掉（比如“毫”顶上的点），所以只能配 D3D11，比软件渲染多占约 50 MB 内存。设置里选“省内存”（software）时自动改用 GDI，文字完整但偏模糊。默认“自动”：物理内存不超过 16 GB 的电脑用“省内存”，更大的用 D3D11。
 - **界面字体随程序附带**（`fonts\` 下的阿里巴巴普惠体 3.0 常规 / 粗体），缺失时退回系统默认字体（中文系统为微软雅黑）。界面里不用 `↵` 这类字体缺字的符号，字体回退一旦触发，内存要多出 30 MB 左右。
+- **设置窗口的搜索在侧栏顶部，结果就是原来那些设置行。** 打字时右栏原地筛选：每个 `SettingsSection` 声明自己属于哪一页（`page`），搜索时有命中的行才显示，同一页的第一节上方标出页名；行里的开关、按钮照常能用，不用先跳过去。不另写一份“可搜索设置清单”，每个 `SettingRow` 用绑定把自己的标题、说明、控件上的文字（ScopeTabs 的选项、按钮上的字）、补充关键词（`keywords`）、所在页的名字和别名（`pageKeywords`）、节标题、用户填的值（`values`，比如排除的程序）交给 `SettingsSearch.match()`，所以以后加的设置自动能搜到，切换语言也跟着变。行的显示条件写在 `shown` 里而不是 `visible`：`visible` 读出来的是实际可见性，分不清“开关关着”和“这一页没显示”。被开关挡住的行（`unlocks`）命中时，显示那个开关所在的行，注明“打开后可以设置”。↑ ↓ 在结果里移动，Enter 跳到原位、滚到那一行、闪一下，有开关就把焦点给开关（不给按钮，免得误按 Enter 清掉东西）。一条都没命中时，用启动器的系统入口检索列出 Windows 自己的设置（`SettingsEditor::findWindowsSettings`）。匹配规则见 `SettingsMatch.h`：标题最重，说明只按字面，分类名和分类关键词三个字母起才按拼音，节的提示语不参与（见 pitfalls.md 的“好几行共用的文字一被命中，整页都出来”）。
 
 ## 测试
 

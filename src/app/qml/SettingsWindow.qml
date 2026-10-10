@@ -25,13 +25,29 @@ Window {
         { title: qsTr("高级"), glyph: "" }, // Settings
         { title: Gleaning.title, gleaning: true } // the author's works, set apart at the bottom of the list
     ]
+    // Other names of each page, for the search; ";" between them. A word
+    // here brings up the whole page, so never one of its options' words.
+    readonly property var pageKeywords: [
+        qsTr("唤出;呼出;打开方式"),
+        qsTr("皮肤;颜色;界面;appearance"),
+        qsTr("搜索位置;磁盘;scope"),
+        qsTr("全文搜索;全文;文字;content"),
+        qsTr("搜索引擎;网址;书签;百度;谷歌;必应;web"),
+        qsTr("剪切板;粘贴板;复制;粘贴;clipboard"),
+        qsTr("其他;更多;advanced"),
+        ""
+    ]
     readonly property int gleaningPage: 7
     readonly property int webPage: 4
     readonly property int clipboardPage: 5
     readonly property int advancedPage: 6 // where the updates are
     property int currentPage: 0
     // On the 拾穗计划 page the whole window, sidebar included, is a warm scene.
-    readonly property bool warm: currentPage === gleaningPage
+    // Not while searching: the results are on the usual page.
+    readonly property bool warm: currentPage === gleaningPage && !searching
+    readonly property bool searching: settingsSearch.active
+    property var beforeSearch: null // {page, y}: where the search started, to go back to when the box is cleared
+    property bool leavingSearch: false // for another page: no going back
 
     width: 920
     height: 720
@@ -66,9 +82,138 @@ Window {
     }
 
     function showPage(index) {
+        if (searching) {
+            leavingSearch = true
+            searchBox.clear()
+            leavingSearch = false
+        }
         currentPage = index
         flick.cancelFlick()
         flick.contentY = 0
+    }
+
+    // The settings, searched: the box above the categories, the options on
+    // the right narrowed down to those that fit (SettingRow, SettingsSection).
+    SettingsSearch {
+        id: settingsSearch
+        query: searchBox.query
+        highlightColor: Theme.accent
+        onQueryChanged: {
+            if (active && !window.beforeSearch)
+                window.beforeSearch = { page: window.currentPage, y: flick.contentY }
+        }
+        onQueryApplied: (wasActive) => window.searchChanged(wasActive)
+    }
+
+    function searchChanged(wasActive) {
+        if (searching) {
+            flick.cancelFlick()
+            flick.contentY = 0
+            pickBest()
+            return
+        }
+        settingsSearch.current = null
+        const before = beforeSearch
+        beforeSearch = null
+        if (!wasActive || leavingSearch || !before)
+            return
+        // Cleared: back where it started.
+        currentPage = before.page
+        layoutNow()
+        flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, before.y))
+    }
+
+    // The rows on show, in the order they stand, with their scores.
+    function results() {
+        const list = []
+        for (const result of settingsSearch.results())
+            list.push({ row: result.row, score: result.score, key: result.row.orderKey() })
+        list.sort((a, b) => a.key - b.key)
+        return list
+    }
+
+    // The row that fits best is the one Enter goes to.
+    function pickBest() {
+        let best = null
+        for (const result of results()) {
+            if (!best || result.score > best.score)
+                best = result
+        }
+        settingsSearch.current = best ? best.row : null
+    }
+
+    // ↑ and ↓ in the search box: through the results; with nothing typed,
+    // ↓ goes to the categories.
+    function moveCurrent(delta) {
+        if (!searching) {
+            if (delta > 0)
+                navItemAt(currentPage).forceActiveFocus()
+            return
+        }
+        const list = results()
+        if (list.length === 0)
+            return
+        const at = list.findIndex(result => result.row === settingsSearch.current)
+        const to = at < 0 ? 0 : Math.max(0, Math.min(list.length - 1, at + delta))
+        settingsSearch.current = list[to].row
+        revealRow(list[to].row)
+    }
+
+    function goToCurrent() {
+        if (searching && settingsSearch.current)
+            goTo(settingsSearch.current)
+    }
+
+    // Leaves the search for the row's page, the row in view and its switch,
+    // if it has one, given the keyboard.
+    function goTo(row) {
+        showPage(row.section.page)
+        layoutNow()
+        // From the top of the page while the row shows there whole; else
+        // with the row near the top.
+        const top = row.mapToItem(flick.contentItem, 0, 0).y
+        flick.contentY = top + row.height + 24 <= flick.height
+                         ? 0 : Math.max(0, Math.min(flick.contentHeight - flick.height, top - 24))
+        row.focusControl() // a switch; else the box keeps the keyboard, for the next search
+        row.flash()
+    }
+
+    // Scrolls the page just enough for the row to be in view.
+    function revealRow(row) {
+        const top = row.mapToItem(flick.contentItem, 0, 0).y
+        const bottom = top + row.height
+        if (top - 48 < flick.contentY)
+            flick.contentY = Math.max(0, top - 48) // with its page's name above it
+        else if (bottom + 24 > flick.contentY + flick.height)
+            flick.contentY = Math.min(flick.contentHeight - flick.height, bottom + 24 - flick.height)
+    }
+
+    // Positions the sections and rows now, rather than before the next frame.
+    function layoutNow() {
+        for (let i = 0; i < page.children.length; ++i) {
+            const child = page.children[i]
+            if (child.layoutNow)
+                child.layoutNow()
+        }
+        page.forceLayout()
+    }
+
+    // Scrolls the categories, when they do not all fit, to show `item`.
+    function revealNavItem(item) {
+        if (!navFlick.interactive)
+            return
+        const top = item.mapToItem(navContent, 0, 0).y
+        const bottom = top + item.height
+        if (top - 8 < navFlick.contentY)
+            navFlick.contentY = Math.max(0, top - 8)
+        else if (bottom + 8 > navFlick.contentY + navFlick.height)
+            navFlick.contentY = Math.min(navFlick.contentHeight - navFlick.height, bottom + 8 - navFlick.height)
+    }
+
+    Shortcut { // Ctrl+F: to the search box
+        sequences: [StandardKey.Find]
+        enabled: !window.editor.recordingHotkey && !updateDialog.open
+        onActivated: searchBox.focusAll()
     }
 
     function showUpdateDialog() { updateDialog.show() } // App::showUpdate
@@ -154,7 +299,9 @@ Window {
 
             required property int index
             required property var modelData
-            readonly property bool selected: index === window.currentPage
+            readonly property bool selected: index === window.currentPage && !window.searching
+            // While searching: its options on show.
+            readonly property int found: window.searching ? settingsSearch.counts[index] ?? 0 : -1
             readonly property bool gleaning: modelData.gleaning === true
             readonly property color foreground: window.warm ? (selected ? "white" : WarmPalette.ink)
                                               : navArea.pressed ? Theme.subtext : Theme.text
@@ -167,6 +314,7 @@ Window {
             width: navList.width
             height: navList.itemHeight
             radius: 4
+            opacity: found === 0 ? 0.45 : 1
             color: window.warm ? (navArea.containsMouse && !selected ? WarmPalette.chip : "transparent")
                  : selected ? Theme.navSelected : navArea.containsMouse ? Theme.navHover : "transparent"
             activeFocusOnTab: true
@@ -174,8 +322,14 @@ Window {
             Keys.onSpacePressed: window.showPage(navItem.index)
             Keys.onReturnPressed: window.showPage(navItem.index)
             Keys.onEnterPressed: window.showPage(navItem.index)
-            Keys.onUpPressed: select(Math.max(0, navItem.index - 1))
+            Keys.onUpPressed: {
+                if (navItem.index === 0)
+                    searchBox.focusAll()
+                else
+                    select(navItem.index - 1)
+            }
             Keys.onDownPressed: select(Math.min(window.pages.length - 1, navItem.index + 1))
+            onActiveFocusChanged: if (activeFocus) window.revealNavItem(navItem)
 
             Rectangle { // the selected item on the warm scene
                 visible: window.warm && navItem.selected
@@ -213,12 +367,22 @@ Window {
             }
             Text {
                 x: 48
-                width: parent.width - x - 12
+                width: parent.width - x - 12 - (count.visible ? count.width + 8 : 0)
                 anchors.verticalCenter: parent.verticalCenter
                 text: navItem.modelData.title
                 color: navItem.foreground
                 font.pixelSize: Theme.fontBody
                 elide: Text.ElideRight
+            }
+            Text { // how many of its options fit the words typed
+                id: count
+                visible: navItem.found > 0
+                anchors.right: parent.right
+                anchors.rightMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                text: navItem.found
+                color: Theme.subtext
+                font.pixelSize: Theme.fontCaption
             }
 
             Rectangle { // keyboard focus
@@ -241,46 +405,76 @@ Window {
             }
         }
 
-        Column {
-            id: navList
-
-            readonly property int itemHeight: 40
-
+        SettingsSearchBox {
+            id: searchBox
             x: 12
             y: 8
             width: parent.width - 24
-            spacing: 4
-
-            Repeater {
-                id: navItems
-                model: window.pages.slice(0, window.gleaningPage)
-                delegate: NavItem {}
-            }
-
-            Item { // sets 拾穗计划 apart from the settings
-                width: 1
-                height: 12
-            }
-
-            NavItem {
-                id: gleaningNav
-                index: window.gleaningPage
-                modelData: window.pages[window.gleaningPage]
-            }
+            warm: window.warm
+            onMoved: (delta) => window.moveCurrent(delta)
+            onActivated: window.goToCurrent()
+            onEscaped: window.clearFocus()
         }
 
-        Rectangle { // marks the current category, sliding between items as in Windows 11
-            visible: !window.warm // there the item itself is filled
-            x: navList.x
-            y: navList.y + (window.currentPage === window.gleaningPage ? gleaningNav.y
-                            : window.currentPage * (navList.itemHeight + navList.spacing))
-               + (navList.itemHeight - height) / 2
-            width: 3
-            height: 16
-            radius: 1.5
-            color: Theme.accent
+        Flickable { // scrolls when the window is too low for all the categories
+            id: navFlick
+            y: searchBox.y + searchBox.height + 4
+            width: parent.width
+            height: (navNote.visible ? navNote.y : versionLink.y) - 8 - y
+            contentWidth: width
+            contentHeight: navContent.height
+            interactive: contentHeight > height
+            boundsBehavior: Flickable.StopAtBounds
+            pixelAligned: true
+            clip: interactive
 
-            Behavior on y { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+            Item {
+                id: navContent
+                width: navFlick.width
+                height: navList.y + navList.height + 8
+
+                Column {
+                    id: navList
+
+                    readonly property int itemHeight: 40
+
+                    x: 12
+                    y: 8
+                    width: parent.width - 24
+                    spacing: 4
+
+                    Repeater {
+                        id: navItems
+                        model: window.pages.slice(0, window.gleaningPage)
+                        delegate: NavItem {}
+                    }
+
+                    Item { // sets 拾穗计划 apart from the settings
+                        width: 1
+                        height: 12
+                    }
+
+                    NavItem {
+                        id: gleaningNav
+                        index: window.gleaningPage
+                        modelData: window.pages[window.gleaningPage]
+                    }
+                }
+
+                Rectangle { // marks the current category, sliding between items as in Windows 11
+                    visible: !window.warm && !window.searching // on the warm scene the item itself is filled
+                    x: navList.x
+                    y: navList.y + (window.currentPage === window.gleaningPage ? gleaningNav.y
+                                    : window.currentPage * (navList.itemHeight + navList.spacing))
+                       + (navList.itemHeight - height) / 2
+                    width: 3
+                    height: 16
+                    radius: 1.5
+                    color: Theme.accent
+
+                    Behavior on y { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                }
+            }
         }
 
         Rectangle { // the version; with a newer one, says so. A click goes to the updates
@@ -323,7 +517,9 @@ Window {
         }
 
         Text {
-            visible: !window.warm
+            id: navNote
+            // Only where there is room for it below the categories.
+            visible: !window.warm && navFlick.y + navContent.height + 8 <= y
             x: 24
             width: parent.width - 48
             anchors.bottom: versionLink.top
@@ -364,6 +560,13 @@ Window {
 
         Column { // the current category's options; the other sections are hidden
             id: page
+
+            // What the sections and their rows read (SettingsSection.qml).
+            readonly property SettingsSearch search: settingsSearch
+            readonly property int currentPage: window.currentPage
+            readonly property var pages: window.pages
+            readonly property var pageKeywords: window.pageKeywords
+            function openPage(index) { window.showPage(index) }
             x: 8
             y: 8
             width: flick.width - 36
@@ -382,19 +585,155 @@ Window {
                 }
             }
 
-            Text {
-                text: window.pages[window.currentPage].title
-                color: Theme.text
-                font.pixelSize: Theme.fontDisplay
-                font.weight: Font.DemiBold
+            Row {
+                spacing: 12
+
+                Text {
+                    id: pageTitle
+                    text: window.searching ? qsTr("搜索结果") : window.pages[window.currentPage].title
+                    color: Theme.text
+                    font.pixelSize: Theme.fontDisplay
+                    font.weight: Font.DemiBold
+                }
+                Text {
+                    visible: window.searching && settingsSearch.total > 0
+                    anchors.baseline: pageTitle.baseline
+                    text: qsTr("%n 项", "", settingsSearch.total)
+                    color: Theme.subtext
+                    font.pixelSize: Theme.fontBody
+                }
+            }
+
+            Column { // nothing fits the words typed
+                id: noResults
+
+                // What it may be instead: a setting of Windows (as the
+                // launcher finds them), such as 蓝牙 or 显示器.
+                readonly property var windowsSettings: visible ? window.editor.findWindowsSettings(searchBox.query, 3) : []
+
+                visible: window.searching && settingsSearch.total === 0
+                width: parent.width
+                spacing: 8
+
+                Text {
+                    width: parent.width
+                    text: qsTr("没有找到“%1”相关的设置").arg(searchBox.query.replace(/\s+/g, " ").trim())
+                    textFormat: Text.PlainText
+                    color: Theme.text
+                    font.pixelSize: Theme.fontTitle
+                    elide: Text.ElideRight
+                }
+                Text {
+                    width: parent.width
+                    text: noResults.windowsSettings.length > 0
+                          ? qsTr("要找的可能是 Windows 的设置：")
+                          : qsTr("换个说法、少输几个字，或者用拼音首字母试试，例如 jtb 找“剪贴板”")
+                    color: Theme.subtext
+                    font.pixelSize: Theme.fontCaption
+                    wrapMode: Text.Wrap
+                }
+                Rectangle {
+                    visible: noResults.windowsSettings.length > 0
+                    width: parent.width
+                    height: windowsList.implicitHeight
+                    radius: 6
+                    color: Theme.card
+                    border.width: 1
+                    border.color: Theme.cardBorder
+
+                    Column {
+                        id: windowsList
+                        width: parent.width
+
+                        Repeater {
+                            model: noResults.windowsSettings
+
+                            delegate: Item { // opens it, as the launcher does
+                                id: windowsRow
+
+                                required property int index
+                                required property var modelData
+
+                                width: windowsList.width
+                                height: 52
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    anchors.margins: 1
+                                    radius: 5
+                                    color: windowsArea.pressed ? Theme.selection : windowsArea.containsMouse ? Theme.navHover : "transparent"
+                                }
+                                Rectangle {
+                                    visible: windowsRow.index > 0
+                                    x: 1
+                                    width: parent.width - 2
+                                    height: 1
+                                    color: Theme.cardBorder
+                                }
+                                Item {
+                                    id: windowsIcon
+                                    x: 18
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 24
+                                    height: 24
+
+                                    Image { // whole device pixels, unsmoothed (see ResultRow)
+                                        readonly property real dpr: Screen.devicePixelRatio
+                                        readonly property int pixels: Math.round(windowsIcon.width * dpr)
+
+                                        x: 1 / 64
+                                        y: 1 / 64
+                                        width: pixels / dpr
+                                        height: pixels / dpr
+                                        source: windowsRow.modelData.icon
+                                        sourceSize.width: pixels / dpr
+                                        sourceSize.height: pixels / dpr
+                                        smooth: false
+                                        asynchronous: true
+                                        fillMode: Image.PreserveAspectFit
+                                    }
+                                }
+                                Text {
+                                    anchors.left: windowsIcon.right
+                                    anchors.leftMargin: 12
+                                    anchors.right: windowsChevron.left
+                                    anchors.rightMargin: 12
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: windowsRow.modelData.name
+                                    textFormat: Text.PlainText
+                                    color: Theme.text
+                                    font.pixelSize: Theme.fontBody
+                                    elide: Text.ElideRight
+                                }
+                                Glyph {
+                                    id: windowsChevron
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: 18
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    glyph: "\uE76C" // ChevronRight
+                                    size: 12
+                                }
+                                MouseArea {
+                                    id: windowsArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: window.editor.openWindowsSetting(windowsRow.modelData.command)
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             SettingsSection {
-                visible: window.currentPage === 0
+                page: 0
                 width: parent.width
 
                 SettingRow {
                     title: qsTr("双击 Ctrl 打开")
+                    keywords: qsTr("双击;呼出;唤出;double ctrl").split(";")
+                    unlocks: [gamesRow, fullScreenRow, doubleCtrlAppsRow]
                     description: qsTr("快速连按两下 Ctrl 键，打开或关闭搜索框")
 
                     ToggleSwitch {
@@ -404,8 +743,10 @@ Window {
                 }
 
                 SettingRow {
-                    visible: window.editor.doubleCtrl
+                    id: gamesRow
+                    shown: window.editor.doubleCtrl
                     title: qsTr("玩游戏时不响应双击 Ctrl")
+                    keywords: qsTr("游戏;蹲下;误触;game").split(";")
                     description: qsTr("游戏里常连按两下 Ctrl 蹲下。前台程序独占全屏，或者藏起鼠标用来转视角时，双击 Ctrl 不打开搜索框。设置的快捷键照常可用")
 
                     ToggleSwitch {
@@ -415,8 +756,10 @@ Window {
                 }
 
                 SettingRow {
-                    visible: window.editor.doubleCtrl
+                    id: fullScreenRow
+                    shown: window.editor.doubleCtrl
                     title: qsTr("任何程序全屏时都不响应双击 Ctrl")
+                    keywords: qsTr("全屏;视频;幻灯片;误触;fullscreen").split(";")
                     description: qsTr("看视频、放幻灯片、全屏浏览网页时也不打开搜索框")
 
                     ToggleSwitch {
@@ -426,8 +769,11 @@ Window {
                 }
 
                 SettingRow {
-                    visible: window.editor.doubleCtrl
+                    id: doubleCtrlAppsRow
+                    shown: window.editor.doubleCtrl
                     title: qsTr("在这些程序里不响应双击 Ctrl")
+                    keywords: qsTr("排除;程序;游戏;exe").split(";")
+                    values: window.editor.doubleCtrlExcludedApps
                     description: qsTr("填程序的文件名，例如 TheFinals.exe。没被自动认出来的游戏可以加在这里")
 
                     body: [
@@ -442,6 +788,7 @@ Window {
                                     required property int index
                                     required property string modelData
                                     text: modelData
+                                    marked: doubleCtrlAppsRow.valueFound(modelData)
                                     onRemoveClicked: window.editor.removeDoubleCtrlExcludedApp(index)
                                 }
                             }
@@ -467,6 +814,8 @@ Window {
 
                 SettingRow {
                     title: qsTr("快捷键")
+                    keywords: qsTr("热键;组合键;hotkey;shortcut").split(";")
+                    values: [window.editor.hotkey]
                     description: qsTr("再设一个组合键来打开搜索框，例如 Alt + Space。点击右边的方框，然后按下想用的按键")
 
                     FlatButton {
@@ -492,8 +841,9 @@ Window {
                 }
 
                 SettingRow {
-                    visible: window.editor.fileManagers.length > 1
+                    shown: window.editor.fileManagers.length > 1
                     title: qsTr("用哪个文件管理器打开文件夹")
+                    keywords: qsTr("文件管理器;资源管理器;打开文件夹;打开所在位置;Total Commander;Directory Opus;TC;Opus").split(";")
                     description: qsTr("在 Win顺 里打开文件夹、打开文件所在的位置时用它；没能打开就用资源管理器")
 
                     body: ScopeTabs { // under the text: the names are long
@@ -505,6 +855,7 @@ Window {
 
                 SettingRow {
                     title: qsTr("Ctrl+G 转到文件管理器的文件夹")
+                    keywords: qsTr("跳转;转到;对话框;另存为;打开文件;资源管理器;Total Commander;Directory Opus;jump").split(";")
                     description: qsTr("在“打开”“另存为”等对话框里按 Ctrl+G，对话框直接转到最近用过的文件管理器窗口正在显示的文件夹：资源管理器、Total Commander 和 Directory Opus 都行")
 
                     ToggleSwitch {
@@ -515,6 +866,8 @@ Window {
 
                 SettingRow {
                     title: qsTr("对话框旁的搜索框")
+                    keywords: qsTr("对话框;另存为;打开文件;保存").split(";")
+                    unlocks: [dialogBarPlaceRow]
                     description: qsTr("“打开”“另存为”等对话框出现时，在它旁边放一个搜索框：搜文件夹或文件，选中后对话框直接转过去。在对话框里双击 Ctrl 就能开始输入")
 
                     ToggleSwitch {
@@ -524,8 +877,10 @@ Window {
                 }
 
                 SettingRow {
-                    visible: window.editor.dialogBar
+                    id: dialogBarPlaceRow
+                    shown: window.editor.dialogBar
                     title: qsTr("搜索框的位置")
+                    keywords: qsTr("位置;下方;左边;右边;对话框").split(";")
                     description: qsTr("“自动”时放在对话框下方，下方放不下就放在右边或左边，都放不下就把对话框调矮一点。选定一边时，那边放不下就把对话框调小一点或挪开")
 
                     ScopeTabs {
@@ -537,6 +892,7 @@ Window {
 
                 SettingRow {
                     title: qsTr("对话框自动转到文件管理器的文件夹")
+                    keywords: qsTr("自动跳转;跟随;对话框;另存为;资源管理器").split(";")
                     description: qsTr("“打开”“另存为”等对话框出现时，自动转到文件管理器正在显示的文件夹；对话框开着时去文件管理器换了文件夹，切回来也跟着转过去，只是看一眼就不动。转过去以后，搜索框上有按钮回到原来的位置")
 
                     ToggleSwitch {
@@ -546,8 +902,11 @@ Window {
                 }
 
                 SettingRow {
-                    visible: window.editor.dialogBarExcludedApps.length > 0
+                    id: dialogBarAppsRow
+                    shown: window.editor.dialogBarExcludedApps.length > 0
                     title: qsTr("不在这些程序的对话框下显示搜索框")
+                    keywords: qsTr("排除;程序;对话框;exe").split(";")
+                    values: window.editor.dialogBarExcludedApps
                     description: qsTr("点搜索框最右边的“更多”按钮添加。这些程序里 Ctrl+G 照常可用")
 
                     body: Flow {
@@ -561,6 +920,7 @@ Window {
                                 required property int index
                                 required property string modelData
                                 text: modelData
+                                marked: dialogBarAppsRow.valueFound(modelData)
                                 onRemoveClicked: window.editor.removeDialogBarExcludedApp(index)
                             }
                         }
@@ -569,6 +929,7 @@ Window {
 
                 SettingRow {
                     title: qsTr("开机时自动启动")
+                    keywords: qsTr("自启;开机启动;启动;autostart;startup").split(";")
                     description: qsTr("登录 Windows 后在后台运行，随时可以打开")
 
                     ToggleSwitch {
@@ -579,6 +940,7 @@ Window {
 
                 SettingRow {
                     title: qsTr("记住打开过的项目")
+                    keywords: qsTr("历史;最近;记录;history;recent").split(";")
                     description: qsTr("什么都不输入时列出最近打开的文件和应用，搜索时它们排在前面。关闭后不再记录，也不再显示已有的记录")
 
                     ToggleSwitch {
@@ -589,6 +951,7 @@ Window {
 
                 SettingRow {
                     title: qsTr("清除最近使用记录")
+                    keywords: qsTr("历史;最近;删除;清空;history").split(";")
                     description: window.editor.historyCount > 0
                                  ? qsTr("共 %1 项。也可以在搜索框里右键某一项，单独移除").arg(window.editor.historyCount)
                                  : qsTr("没有记录")
@@ -621,7 +984,7 @@ Window {
             }
 
             SettingsSection {
-                visible: window.currentPage === 0
+                page: 0
                 width: parent.width
                 title: qsTr("代替任务栏上的 Windows 搜索")
                 note: qsTr("点任务栏上的 Win顺 按钮或按 Win+S，搜索框在任务栏上方打开；再点一次、按 Esc 或点别处就收起。")
@@ -632,6 +995,7 @@ Window {
                     property bool missing: false // no WinShunSearch.exe next to Win顺
 
                     title: qsTr("任务栏上的 Win顺 按钮")
+                    keywords: qsTr("固定;任务栏;按钮;pin;taskbar").split(";")
                     description: window.editor.taskbarButtonPinned
                                  ? qsTr("已固定到任务栏")
                                  : qsTr("Windows 只让你自己固定程序：点“找到按钮”，在选中的“Win顺 搜索”上点右键，选“固定到任务栏”（Windows 11 可能要先点“显示更多选项”）")
@@ -655,6 +1019,7 @@ Window {
 
                 SettingRow {
                     title: qsTr("Windows 自带的搜索按钮")
+                    keywords: qsTr("隐藏;任务栏;搜索框;taskbar").split(";")
                     description: window.editor.windowsSearchShown
                                  ? qsTr("还在任务栏上。Windows 不让其他程序隐藏它：在任务栏设置里把“搜索”选成“隐藏”")
                                  : qsTr("已从任务栏上隐藏")
@@ -668,6 +1033,7 @@ Window {
 
                 SettingRow {
                     title: qsTr("用 Win+S 打开，代替 Windows 搜索")
+                    keywords: qsTr("Win+S;Windows 搜索;截图;Win+Shift+S").split(";")
                     description: qsTr("Win+S 也在任务栏上方打开 Win顺。Win+Shift+S 截图照常可用，由 Win顺 代为打开截图工具；Win顺 没在运行时这两个键都没有反应。关掉这项，它们就回到 Windows 自带的")
 
                     ToggleSwitch {
@@ -722,6 +1088,7 @@ Window {
 
                 SettingRow {
                     title: qsTr("在开始菜单里打字，也用 Win顺 搜索")
+                    keywords: qsTr("开始菜单;打字;Win;start menu").split(";")
                     description: qsTr("按 Win 打开开始菜单后直接打字，Win顺 在任务栏上方打开，打的字接着进到搜索框里。想用 Windows 自带的搜索时，先按一下左 Alt 再打字")
 
                     ToggleSwitch {
@@ -732,11 +1099,12 @@ Window {
             }
 
             SettingsSection {
-                visible: window.currentPage === 1
+                page: 1
                 width: parent.width
 
                 SettingRow {
                     title: qsTr("主题")
+                    keywords: qsTr("跟随系统;浅色;深色;暗色;暗黑;夜间;黑色;白色;dark;light").split(";")
                     description: qsTr("“跟随系统”时随 Windows 的浅色、深色模式切换")
 
                     body: Row {
@@ -769,8 +1137,9 @@ Window {
                 }
 
                 SettingRow {
-                    visible: SystemTheme.backdropSystem // not on Windows 10
+                    shown: SystemTheme.backdropSystem // not on Windows 10
                     title: qsTr("透明效果")
+                    keywords: qsTr("云母;Mica;毛玻璃;亚克力;半透明;壁纸;transparency").split(";")
                     description: !SystemTheme.backdropAvailable
                                  ? qsTr("需要把“高级”里的界面绘制方式设为“显卡加速”")
                                  : !SystemTheme.materials
@@ -788,6 +1157,7 @@ Window {
 
                 SettingRow {
                     title: qsTr("语言")
+                    keywords: qsTr("中文;英文;简体;language").split(";")
                     description: qsTr("“跟随系统”时，中文版 Windows 显示中文，其他语言的 Windows 显示英文")
 
                     ScopeTabs { // each language in its own words
@@ -802,12 +1172,14 @@ Window {
             }
 
             SettingsSection {
-                visible: window.currentPage === 2
+                page: 2
                 width: parent.width
                 note: qsTr("修改后会在后台重新整理文件列表，期间可以照常搜索。")
 
                 SettingRow {
                     title: qsTr("不搜索的文件夹")
+                    keywords: qsTr("排除;忽略;隐藏;黑名单;exclude").split(";")
+                    values: window.editor.excludedPaths
                     description: qsTr("这些文件夹以及里面的所有内容都不会出现在搜索结果里")
 
                     FlatButton {
@@ -903,7 +1275,10 @@ Window {
                 }
 
                 SettingRow {
+                    id: excludedNamesRow
                     title: qsTr("跳过的文件夹名称")
+                    keywords: qsTr("排除;忽略;文件夹名;exclude").split(";")
+                    values: window.editor.excludedNames
                     description: qsTr("在任何位置遇到这些名字的文件夹都会跳过，适合 node_modules 这类到处都有的文件夹")
 
                     body: [
@@ -918,6 +1293,7 @@ Window {
                                     required property int index
                                     required property string modelData
                                     text: modelData
+                                    marked: excludedNamesRow.valueFound(modelData)
                                     onRemoveClicked: window.editor.removeExcludedName(index)
                                 }
                             }
@@ -942,6 +1318,7 @@ Window {
 
                 SettingRow {
                     title: qsTr("包括 U 盘和移动硬盘")
+                    keywords: qsTr("U盘;移动硬盘;外接;USB;removable").split(";")
                     description: qsTr("默认只搜索电脑自带的硬盘")
 
                     ToggleSwitch {
@@ -952,6 +1329,7 @@ Window {
 
                 SettingRow {
                     title: qsTr("启动时检查文件变化")
+                    keywords: qsTr("重新扫描;扫描;rescan").split(";")
                     description: qsTr("U 盘等非 NTFS 磁盘在 Win顺没有运行期间的改动，启动后于后台补上（NTFS 磁盘总会自动补上）")
 
                     ToggleSwitch {
@@ -962,12 +1340,14 @@ Window {
             }
 
             SettingsSection {
-                visible: window.currentPage === 3
+                page: 3
                 width: parent.width
                 note: qsTr("在搜索框按 Tab 切换到“内容”，可以查找文件里的文字。")
 
                 SettingRow {
                     title: qsTr("搜索文档")
+                    keywords: qsTr("Word;Excel;PowerPoint;PPT;PDF;WPS;docx;xlsx").split(";")
+                    unlocks: sizeRows.count > 3 ? [sizeRows.itemAt(3)] : []
                     description: qsTr("Word、Excel、PowerPoint、PDF 和 WPS 文件，新旧格式都可以。由一个权限受限的单独进程读取；扫描件和图片里的文字读不到")
 
                     ToggleSwitch {
@@ -977,7 +1357,10 @@ Window {
                 }
 
                 SettingRow {
+                    id: extensionsRow
                     title: qsTr("搜索这些类型的文本文件")
+                    keywords: qsTr("扩展名;后缀;文件类型;txt;md;extension").split(";")
+                    values: window.editor.contentExtensions
                     description: qsTr("纯文本类型的文件，按扩展名列出。Word、Excel、PDF 等文档由上面的“搜索文档”负责")
 
                     body: [
@@ -992,6 +1375,7 @@ Window {
                                     required property int index
                                     required property string modelData
                                     text: "." + modelData
+                                    marked: extensionsRow.valueFound(modelData)
                                     onRemoveClicked: window.editor.removeContentExtension(index)
                                 }
                             }
@@ -1023,6 +1407,7 @@ Window {
                 // A size limit for each kind of file (ContentSizeLimits::Kind:
                 // text, code, data, documents).
                 Repeater {
+                    id: sizeRows
                     model: [
                         { title: qsTr("文本和日志的大小上限"),
                           note: qsTr("更大的文件不查找内容") },
@@ -1043,8 +1428,9 @@ Window {
                         readonly property int mb: window.editor.contentMaxSizeMB[index]
                         readonly property string extensions: window.editor.contentKindExtensions[index]
 
-                        visible: modelData.files === undefined || window.editor.contentDocuments
+                        shown: modelData.files === undefined || window.editor.contentDocuments
                         title: modelData.title
+                        keywords: qsTr("大小;上限;文件大小;size").split(";")
                         description: (modelData.files ?? (extensions.length > 0 ? extensions : qsTr("列表里没有这类文件")))
                                      + "\n" + modelData.note
 
@@ -1081,6 +1467,7 @@ Window {
 
                 SettingRow {
                     title: qsTr("也搜索系统和程序文件夹")
+                    keywords: qsTr("系统文件夹;Program Files;AppData;Windows").split(";")
                     description: qsTr("包括 Windows、Program Files、AppData、node_modules 等文件夹。这些地方文件很多，打开后内容搜索会慢不少")
 
                     ToggleSwitch {
@@ -1091,6 +1478,7 @@ Window {
 
                 SettingRow {
                     title: qsTr("建立内容索引")
+                    keywords: qsTr("索引;加速;index").split(";")
                     description: qsTr("在后台记下每个文件里有哪些中日韩文字，和三个字符一段的英文、数字、空格和标点，搜索时只打开可能含有它的文件，快得多；搜索中读过的文件也会记下。文档读出的文字也存在这里，搜索时不用再读一遍文档。只用于 NTFS 磁盘，首次建立需要一段时间，几十万个文件约占一两百 MB 磁盘空间")
                                  + (window.editor.contentIndexStatus.length > 0 ? "\n" + window.editor.contentIndexStatus : "")
 
@@ -1107,7 +1495,7 @@ Window {
                 // The shortcut being changed in its row; -1: a new one, at the end of the list; -2: none.
                 property int editing: -2
 
-                visible: window.currentPage === window.webPage
+                page: window.webPage
                 width: parent.width
                 note: qsTr("给常去的网页起个关键词：在搜索框的“全部”里输入它，按 Enter 就打开。网址里带 %s 的还能搜索：关键词后面加空格和要搜的文字，按 Enter 就在那个网站上搜。例如关键词 gh、网址 https://github.com/search?q=%s，输入 gh WinShun 就在 GitHub 上搜索 WinShun。")
 
@@ -1115,6 +1503,13 @@ Window {
 
                 SettingRow {
                     title: qsTr("关键词")
+                    keywords: qsTr("网址;网页;搜索引擎;书签;添加;url").split(";")
+                    values: {
+                        const words = []
+                        for (const shortcut of window.editor.webShortcuts)
+                            words.push(shortcut.keyword, shortcut.name, shortcut.shownUrl)
+                        return words
+                    }
                     description: qsTr("不输关键词，输入名称也能找到它；中文名称也可以打拼音")
 
                     FlatButton {
@@ -1289,12 +1684,13 @@ Window {
             }
 
             SettingsSection {
-                visible: window.currentPage === window.clipboardPage
+                page: window.clipboardPage
                 width: parent.width
                 note: qsTr("复制过的文字、图片和文件记在这台电脑上，不会上传。在剪贴板里点一条或按 Enter，就粘贴到打开之前所在的窗口，Shift+Enter 粘贴为纯文本；按住 Ctrl 或 Shift 点击可以选多条，按选的顺序合在一起粘贴。")
 
                 SettingRow {
                     title: qsTr("记录剪贴板历史")
+                    keywords: qsTr("剪切板;复制;历史;clipboard").split(";")
                     description: qsTr("密码管理器复制的密码不会被记录")
 
                     ToggleSwitch {
@@ -1305,6 +1701,7 @@ Window {
 
                 SettingRow {
                     title: qsTr("用 Win+V 打开，代替 Windows 自带的剪贴板")
+                    keywords: qsTr("Win+V;剪切板;代替;替换").split(";")
                     description: qsTr("打开后按 Win+V 出现的是 Win顺的剪贴板；Windows 面板里的表情可以改用 Win+. 打开。关掉这项，Win+V 就回到 Windows 自带的")
 
                     ToggleSwitch {
@@ -1359,6 +1756,8 @@ Window {
 
                 SettingRow {
                     title: qsTr("另设快捷键")
+                    keywords: qsTr("快捷键;热键;组合键;hotkey").split(";")
+                    values: [window.editor.clipboardHotkey]
                     description: qsTr("不想换掉 Win+V 时，可以另设一个组合键打开剪贴板，例如 Win + Alt + V")
 
                     FlatButton {
@@ -1385,6 +1784,7 @@ Window {
 
                 SettingRow {
                     title: qsTr("记录图片")
+                    keywords: qsTr("截图;图片;照片;image").split(";")
                     description: qsTr("截图和复制的图片也记下来，每张图片占一些磁盘空间")
 
                     ToggleSwitch {
@@ -1395,6 +1795,7 @@ Window {
 
                 SettingRow {
                     title: qsTr("最多保留")
+                    keywords: qsTr("数量;条数;上限").split(";")
                     description: qsTr("放进“固定”和其他分组的不算在内，一直保留")
 
                     ScopeTabs {
@@ -1407,6 +1808,7 @@ Window {
 
                 SettingRow {
                     title: qsTr("保留时间")
+                    keywords: qsTr("过期;天数;自动删除").split(";")
                     description: qsTr("这么久没再复制或粘贴过的记录会自动删除；分组里的不会")
 
                     ScopeTabs {
@@ -1417,7 +1819,10 @@ Window {
                 }
 
                 SettingRow {
+                    id: clipboardAppsRow
                     title: qsTr("不记录这些程序复制的内容")
+                    keywords: qsTr("密码;隐私;排除;程序;exe").split(";")
+                    values: window.editor.clipboardExcludedApps
                     description: qsTr("填程序的文件名，例如 KeePass.exe。密码管理器一般会自己声明“不要记录”，这里再多一层保险")
 
                     body: [
@@ -1432,6 +1837,7 @@ Window {
                                     required property int index
                                     required property string modelData
                                     text: modelData
+                                    marked: clipboardAppsRow.valueFound(modelData)
                                     onRemoveClicked: window.editor.removeClipboardExcludedApp(index)
                                 }
                             }
@@ -1456,6 +1862,7 @@ Window {
 
                 SettingRow {
                     title: qsTr("清除剪贴板历史")
+                    keywords: qsTr("删除;清空").split(";")
                     description: window.editor.clipboardCount > 0
                                  ? qsTr("共 %1 条。“固定”和其他分组里的会保留").arg(window.editor.clipboardCount)
                                  : qsTr("没有记录")
@@ -1488,13 +1895,14 @@ Window {
             }
 
             SettingsSection {
-                visible: window.currentPage === window.advancedPage
+                page: window.advancedPage
                 width: parent.width
                 title: qsTr("更新")
                 note: qsTr("新版本发布在 GitHub 上。检查更新时只访问 GitHub，不发送任何个人信息；有新版本时，点“去下载”会在浏览器里打开下载页。")
 
                 SettingRow {
                     title: qsTr("版本 %1").arg(window.updater.currentVersion)
+                    keywords: qsTr("升级;新版本;version;update").split(";")
                     description: window.updater.checking ? qsTr("正在检查更新…")
                                : window.updater.available ? qsTr("有新版本 %1").arg(window.updater.availableVersion)
                                : window.updater.problem.length > 0 ? window.updater.problem
@@ -1519,6 +1927,7 @@ Window {
 
                 SettingRow {
                     title: qsTr("自动检查更新")
+                    keywords: qsTr("升级;新版本;update").split(";")
                     description: qsTr("每次启动时看一次，之后每隔 12 小时看一次。有新版本时在托盘弹出提示")
 
                     ToggleSwitch {
@@ -1529,11 +1938,12 @@ Window {
             }
 
             SettingsSection {
-                visible: window.currentPage === window.advancedPage
+                page: window.advancedPage
                 width: parent.width
 
                 SettingRow {
                     title: qsTr("界面绘制方式")
+                    keywords: qsTr("渲染;GPU;显卡;内存;模糊;清晰;renderer").split(";")
                     description: window.editor.restartRequired
                                  ? qsTr("重启 Win顺后生效")
                                  : qsTr("“显卡加速”文字最清晰；“省内存”少占约 50 MB 内存，但文字偏模糊")
@@ -1560,6 +1970,7 @@ Window {
                     readonly property bool moving: window.editor.indexMoveProgress >= 0
 
                     title: qsTr("索引位置")
+                    keywords: qsTr("移动索引;磁盘空间;C盘;D盘;index").split(";")
                     description: (window.editor.indexSize.length > 0
                                   ? qsTr("文件索引和内容索引放在这里，共 %1。C 盘空间紧张时，可以移到其他内置硬盘上（U 盘、移动硬盘不行）").arg(window.editor.indexSize)
                                   : qsTr("文件索引和内容索引放在这里。C 盘空间紧张时，可以移到其他内置硬盘上（U 盘、移动硬盘不行）"))
@@ -1635,6 +2046,7 @@ Window {
 
                 SettingRow {
                     title: qsTr("数据文件夹")
+                    keywords: qsTr("日志;记录;log;AppData").split(";")
                     description: qsTr("搜索记录、剪贴板历史和日志都存放在这里，索引默认也放在这里") + "\n" + window.editor.dataFolder
 
                     FlatButton {
@@ -1646,6 +2058,7 @@ Window {
 
                 SettingRow {
                     title: qsTr("恢复默认设置")
+                    keywords: qsTr("重置;默认;reset").split(";")
                     description: qsTr("所有分类里的设置都会回到刚安装时的样子")
 
                     FlatButton {

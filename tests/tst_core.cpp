@@ -19,6 +19,7 @@
 #include "Pinyin.h"
 #include "Query.h"
 #include "Release.h"
+#include "SettingsMatch.h"
 #include "Snapshot.h"
 #include "SystemCatalog.h"
 #include "TextUtil.h"
@@ -3880,6 +3881,107 @@ private slots:
         ForegroundFacts ours;
         ours.coversMonitor = ours.cursorHidden = ours.exclusiveFullScreen = true;
         QCOMPARE(doubleCtrlIgnoreReason(ours, fullScreen), IgnoreReason::None);
+    }
+
+    void settingsMatch()
+    {
+        using namespace settingsmatch;
+        const auto score = [](const QString& query, const Fields& fields) { return match(parse(query), fields).score; };
+
+        // The query made comparable: full-width forms, punctuation, "Win + V".
+        const Query query = parse(u"  剪贴板，图片  Ｗｉｎ + Ｖ  “KeePass.exe”"_s);
+        QCOMPARE(query.terms.size(), std::size_t {4});
+        QCOMPARE(query.terms[0].text, u"剪贴板"_s);
+        QCOMPARE(query.terms[1].text, u"图片"_s);
+        QCOMPARE(query.terms[2].text, u"win+v"_s);
+        QCOMPARE(query.terms[3].text, u"keepass.exe"_s);
+        QVERIFY(parse(u"，、。 "_s).isEmpty());
+        QVERIFY(parse(u"a"_s).terms[0].single);
+        QVERIFY(!parse(u"图"_s).terms[0].single);
+        QVERIFY(parse(u"kjj"_s).terms[0].pinyin.valid());
+        QVERIFY(!parse(u"快捷键"_s).terms[0].pinyin.valid());
+
+        Fields hotkey;
+        hotkey.title = u"快捷键"_s;
+        hotkey.keywords = {u"热键"_s, u"hotkey"_s};
+        hotkey.context = {u"打开 Win顺"_s};
+        hotkey.description = u"再设一个组合键来打开搜索框，例如 Alt + Space"_s;
+
+        // The title by pinyin and initials, keywords in any case.
+        QVERIFY(score(u"kjj"_s, hotkey) > 0);
+        QVERIFY(score(u"kuaijiejian"_s, hotkey) > 0);
+        QVERIFY(score(u"热键"_s, hotkey) > 0);
+        QVERIFY(score(u"HOTKEY"_s, hotkey) > 0);
+        QCOMPARE(match(parse(u"kjj"_s), hotkey).title, (QList<Span> {{0, 3}}));
+        // The description word for word only.
+        QVERIFY(score(u"组合键"_s, hotkey) > 0);
+        QVERIFY(score(u"space"_s, hotkey) > 0);
+        QCOMPARE(score(u"zhj"_s, hotkey), -1);
+        // Every word somewhere.
+        QVERIFY(score(u"打开 快捷键"_s, hotkey) > 0);
+        QCOMPARE(score(u"快捷键 剪贴板"_s, hotkey), -1);
+        // A lone letter only where a word starts, and never in a sentence.
+        QVERIFY(score(u"h"_s, hotkey) > 0);
+        QVERIFY(score(u"w"_s, hotkey) > 0);
+        QCOMPARE(score(u"o"_s, hotkey), -1);
+        QCOMPARE(score(u"s"_s, hotkey), -1);
+        // Spelled out beats pinyin, which beats initials; a keyword spelled
+        // out beats the title's initials.
+        QVERIFY(score(u"快捷键"_s, hotkey) > score(u"kuaijiejian"_s, hotkey));
+        QVERIFY(score(u"kuaijiejian"_s, hotkey) > score(u"kjj"_s, hotkey));
+        QVERIFY(score(u"热键"_s, hotkey) > score(u"kjj"_s, hotkey));
+
+        // The option's own words, then its page, then a description.
+        Fields images;
+        images.title = u"记录图片"_s;
+        images.context = {u"剪贴板"_s};
+        images.description = u"截图和复制的图片也记下来"_s;
+        Fields dataFolder;
+        dataFolder.title = u"数据文件夹"_s;
+        dataFolder.context = {u"高级"_s};
+        dataFolder.description = u"搜索记录、剪贴板历史和日志都存放在这里"_s;
+        Fields clearClips;
+        clearClips.title = u"清除剪贴板历史"_s;
+        clearClips.context = {u"剪贴板"_s};
+        QVERIFY(score(u"剪贴板 图片"_s, images) > 0);
+        QCOMPARE(score(u"剪贴板 图片"_s, dataFolder), -1);
+        QVERIFY(score(u"剪贴板"_s, clearClips) > score(u"剪贴板"_s, images));
+        QVERIFY(score(u"剪贴板"_s, images) > score(u"剪贴板"_s, dataFolder));
+        // The page by pinyin from three letters: two fit too many pages.
+        Fields pasted;
+        pasted.title = u"最多保留"_s;
+        pasted.context = {u"剪贴板"_s, u"粘贴"_s};
+        QVERIFY(score(u"jtb"_s, pasted) > 0);
+        QVERIFY(score(u"zhantie"_s, pasted) > 0);
+        QCOMPARE(score(u"zt"_s, pasted), -1);
+        Fields theme;
+        theme.title = u"主题"_s;
+        QVERIFY(score(u"zt"_s, theme) > 0);
+
+        // Where the words are, merged.
+        const Match spans = match(parse(u"图片 截图"_s), images);
+        QCOMPARE(spans.title, (QList<Span> {{2, 2}}));
+        QCOMPARE(spans.description, (QList<Span> {{0, 2}, {6, 2}}));
+        QCOMPARE(match(parse(u"图片 图"_s), images).title, (QList<Span> {{2, 2}}));
+
+        // "Win + V" as typed, or its words apart.
+        Fields winV;
+        winV.title = u"用 Win+V 打开，代替 Windows 自带的剪贴板"_s;
+        QVERIFY(score(u"win + v"_s, winV) > 0);
+        QVERIFY(score(u"win v"_s, winV) > 0);
+
+        // What the user filled in.
+        Fields names;
+        names.title = u"跳过的文件夹名称"_s;
+        names.values = {u"build"_s, u"node_modules"_s};
+        const Match value = match(parse(u"node_mod"_s), names);
+        QVERIFY(value.score > 0);
+        QCOMPARE(value.values, QList<int> {1});
+        QCOMPARE(score(u"node_mod"_s, Fields {}), -1);
+
+        QCOMPARE(highlight(u"a<b>\n图片"_s, {{5, 2}}, u"#0067c0"_s),
+            u"a&lt;b&gt;<br><font color=\"#0067c0\">图片</font>"_s);
+        QCOMPARE(highlight(u"x"_s, {{3, 1}}, u"red"_s), u"x"_s); // past the end: ignored
     }
 };
 

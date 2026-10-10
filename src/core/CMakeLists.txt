@@ -28,6 +28,7 @@ qt_add_library(wscore STATIC
     Release.cpp Release.h
     SearchEngine.cpp SearchEngine.h
     SearchTypes.h
+    SettingsMatch.cpp SettingsMatch.h
     Snapshot.cpp Snapshot.h
     SystemCatalog.cpp SystemCatalog.h
     TextUtil.cpp TextUtil.h

@@ -6,14 +6,15 @@ Rectangle {
     id: chip
 
     property string text
+    property bool marked: false // has the words the settings are searched for
     signal removeClicked()
 
     implicitWidth: label.implicitWidth + 40
     implicitHeight: 32
     radius: 4
     color: Theme.control
-    border.width: 1
-    border.color: Theme.controlBorder
+    border.width: marked ? 2 : 1
+    border.color: marked ? Theme.accent : Theme.controlBorder
 
     Text {
         id: label
