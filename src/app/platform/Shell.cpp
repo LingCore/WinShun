@@ -134,10 +134,10 @@ ComPtr<IShellDispatch2> explorerApplication()
     return nullptr;
 }
 
-// WinShun always runs elevated, and ShellExecute would start the target
-// elevated too. Explorer runs with the user's normal rights, so ask it to
-// launch instead, through the ShellExecute of its Application object. False
-// when there is no Explorer window to ask.
+// Launch through the desktop shell, as opening an item in Explorer does.
+// Besides keeping normal rights when we are elevated, this gives apps the
+// shell as their caller (Foxit warns about an unsigned direct caller, #64).
+// This preserves the shell's file associations and security checks.
 bool executeAsUser(const std::wstring& file, const std::wstring& args, const std::wstring& dir)
 {
     const ComPtr<IShellDispatch2> shell = explorerApplication();
@@ -242,12 +242,13 @@ bool executeWithShellToken(const std::wstring& file, const std::wstring& args, c
     return startWithShellToken(std::move(command), dir).valid();
 }
 
-// Starts `file` with the user's normal rights, never elevated. Win顺 not
-// elevated: ShellExecute, as any program. Elevated: through Explorer, else
-// with the desktop shell's token, waiting a few seconds for a shell while
-// Explorer restarts. False when neither works.
+// Starts through Explorer with the user's normal rights. Without Explorer:
+// ShellExecute from a normal process, or the shell token from an elevated
+// one. Only the latter waits briefly for the desktop shell to restart.
 bool executeUnelevated(const std::wstring& file, const std::wstring& args, const std::wstring& dir)
 {
+    if (executeAsUser(file, args, dir))
+        return true;
     if (!integrity::processElevated()) {
         SHELLEXECUTEINFOW sei {sizeof(SHELLEXECUTEINFOW)};
         sei.fMask = SEE_MASK_NOASYNC | SEE_MASK_FLAG_LOG_USAGE;
@@ -260,7 +261,7 @@ bool executeUnelevated(const std::wstring& file, const std::wstring& args, const
     for (int attempt = 0; attempt < 10; ++attempt) {
         if (attempt > 0)
             ::Sleep(300);
-        if (executeAsUser(file, args, dir) || executeWithShellToken(file, args, dir))
+        if ((attempt > 0 && executeAsUser(file, args, dir)) || executeWithShellToken(file, args, dir))
             return true;
     }
     return false;

@@ -8,6 +8,19 @@ add_test(NAME tst_filedialog COMMAND tst_filedialog)
 set_tests_properties(tst_filedialog PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# Launch only a short-lived copy of this test, writing into QTemporaryDir.
+qt_add_executable(tst_shelllaunch WIN32 tst_shelllaunch.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/Shell.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/FileManagers.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/FolderViewHit.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/Integrity.cpp)
+target_include_directories(tst_shelllaunch PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_shelllaunch PRIVATE wscore Qt6::Gui Qt6::Test
+    ole32 oleaut32 oleacc shell32 shlwapi user32 advapi32 taskschd)
+add_test(NAME tst_shelllaunch COMMAND tst_shelllaunch -o -,txt)
+set_tests_properties(tst_shelllaunch PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 qt_add_executable(tst_windowvisibility tst_windowvisibility.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/WindowEffects.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/Foreground.cpp)
