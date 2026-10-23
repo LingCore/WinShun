@@ -72,6 +72,8 @@ class DialogBar : public QObject {
     Q_PROPERTY(QString originName READ originName NOTIFY originChanged FINAL)
     Q_PROPERTY(bool foldersOnly READ foldersOnly NOTIFY dialogKindChanged FINAL) // a folder picker
     Q_PROPERTY(bool canOpen READ canOpen NOTIFY dialogKindChanged FINAL) // an Open dialog: Ctrl+Enter
+    Q_PROPERTY(bool copyOnly READ copyOnly NOTIFY dialogKindChanged FINAL)
+    Q_PROPERTY(bool pathCopied READ pathCopied NOTIFY copyStateChanged FINAL)
     Q_PROPERTY(bool nothingFound READ nothingFound NOTIFY resultsReplaced FINAL)
     // The folder whose contents are listed for a path typed; empty while searching.
     Q_PROPERTY(QString browsedFolder READ browsedFolder NOTIFY browsedFolderChanged FINAL)
@@ -171,7 +173,9 @@ public:
     QString explorerSource() const;
     QString originName() const;
     bool foldersOnly() const { return m_kind == filedialog::Kind::Folder || m_kind == filedialog::Kind::Browse; }
-    bool canOpen() const { return m_kind == filedialog::Kind::Open; } // not the XP style: it may be for saving
+    bool canOpen() const { return !m_copyOnly && m_kind == filedialog::Kind::Open; }
+    bool copyOnly() const { return m_copyOnly; }
+    bool pathCopied() const { return m_pathCopied; }
     bool nothingFound() const { return m_nothingFound; }
     QString browsedFolder() const { return m_browsed; }
     int rows() const { return m_rows; }
@@ -205,6 +209,7 @@ signals:
     void explorerChanged();
     void originChanged();
     void dialogKindChanged();
+    void copyStateChanged();
     void browsedFolderChanged();
     void resultsReplaced(); // select the first row
     void layoutChanged();
@@ -251,6 +256,8 @@ private:
     HWND m_dialog = nullptr;
     QString m_dialogApp; // its program file, "notepad.exe"
     filedialog::Kind m_kind = filedialog::Kind::None;
+    bool m_copyOnly = false; // UIPI: search is available, applying the path is manual
+    bool m_pathCopied = false;
     bool m_inFront = false; // m_dialog (or the bar) is in front
     bool m_dragged = false; // m_dialog is being moved or sized by its frame
     bool m_recordHistory = true;

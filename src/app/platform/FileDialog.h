@@ -20,7 +20,7 @@ enum class Kind {
     None, // not a file dialog
     Open, // Windows Vista and later: IFileOpenDialog, GetOpenFileName without a hook
     Save,
-    Folder, // a folder picker (FOS_PICKFOLDERS)
+    Folder, // a folder picker (FOS_PICKFOLDERS), or Inno Setup's destination folder picker
     Legacy, // the Windows XP style, still shown for GetOpenFileName with a hook or template
     Browse, // "浏览文件夹": SHBrowseForFolder's tree (VBA macros, Shell.Application.BrowseForFolder)
 };

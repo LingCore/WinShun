@@ -1,4 +1,12 @@
-find_package(Qt6 REQUIRED COMPONENTS Test QuickTest)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Test QuickTest)
+
+qt_add_executable(tst_filedialog tst_filedialog.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/FileDialog.cpp)
+target_include_directories(tst_filedialog PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_filedialog PRIVATE wscore Qt6::Test ole32 oleaut32 uiautomationcore user32)
+add_test(NAME tst_filedialog COMMAND tst_filedialog)
+set_tests_properties(tst_filedialog PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 qt_add_executable(tst_windowvisibility tst_windowvisibility.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/WindowEffects.cpp

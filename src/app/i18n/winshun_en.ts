@@ -2101,6 +2101,18 @@
         <source>Tab 展开</source>
         <translation>Tab to expand</translation>
     </message>
+    <message>
+        <source>路径已复制，请粘贴到对话框的路径输入框</source>
+        <translation>Path copied. Paste it into the dialog’s path field.</translation>
+    </message>
+    <message>
+        <source>管理员窗口：搜索后复制路径，再手动粘贴</source>
+        <translation>Administrator window: search, copy the path, then paste it.</translation>
+    </message>
+    <message>
+        <source>Enter 复制路径</source>
+        <translation>Enter to copy path</translation>
+    </message>
 </context>
 <context>
     <name>EditWindow</name>

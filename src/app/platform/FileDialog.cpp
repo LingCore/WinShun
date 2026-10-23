@@ -92,6 +92,23 @@ HWND fileNameBox(HWND dialog)
     return ::GetDlgItem(dialog, kFileNameEdit);
 }
 
+// Inno Setup uses its own folder picker, not SHBrowseForFolder. Its Start
+// Menu picker has the same form class but a different tree: leave that alone.
+// See upstream Setup.SelectFolderForm.pas (formerly TSelectDirDlg).
+HWND installerFolderBox(HWND dialog)
+{
+    if ((!hasClass(dialog, L"TSelectFolderForm") && !hasClass(dialog, L"TSelectDirDlg"))
+        || !::FindWindowExW(dialog, nullptr, L"TFolderTreeView", nullptr))
+        return nullptr;
+    for (const wchar_t* name : {L"TNewPathEdit", L"TNewEdit", L"TEdit"}) {
+        if (const HWND edit = ::FindWindowExW(dialog, nullptr, name, nullptr);
+            edit && ::IsWindowVisible(edit) && ::IsWindowEnabled(edit)
+            && !(::GetWindowLongPtrW(edit, GWL_STYLE) & ES_READONLY))
+            return edit;
+    }
+    return nullptr;
+}
+
 bool send(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     DWORD_PTR result = 0;
@@ -515,6 +532,8 @@ Kind kind(HWND hwnd)
 {
     if (!hwnd)
         return Kind::None;
+    if (installerFolderBox(hwnd))
+        return Kind::Folder;
     if (!hasClass(hwnd, L"#32770"))
         return kingsoft::known(hwnd).value_or(Kind::None);
     // Windows Vista and later: IFileDialog, and GetOpenFileName without a hook.
@@ -565,6 +584,8 @@ Kind probe(HWND hwnd)
 
 std::wstring currentFolder(HWND dialog)
 {
+    if (const HWND edit = installerFolderBox(dialog))
+        return controlText(edit);
     const HWND crumbs = kingsoft::isOne(dialog) ? nullptr : crumbBar(dialog);
     return crumbs ? pathtext::folderFromAddress(QString::fromStdWString(caption(crumbs))).toStdWString()
                   : std::wstring();
@@ -585,6 +606,8 @@ bool waitForFront(HWND dialog)
 
 bool waitForLocation(HWND dialog)
 {
+    if (installerFolderBox(dialog))
+        return true;
     if (kingsoft::isOne(dialog))
         return kingsoft::waitForLocation(dialog);
     const HWND crumbs = crumbBar(dialog);
@@ -597,6 +620,11 @@ bool waitForLocation(HWND dialog)
 
 bool goTo(HWND dialog, const std::wstring& folder)
 {
+    if (const HWND edit = installerFolderBox(dialog)) {
+        // Changing the edit fires Inno's PathEditChange. Do not send Enter:
+        // that would accept the picker, rather than let the user review it.
+        return setText(edit, folder) && controlText(edit) == folder;
+    }
     const Kind k = kind(dialog);
     if (k == Kind::Legacy)
         return goByName(dialog, folder);
@@ -618,6 +646,8 @@ bool goTo(HWND dialog, const std::wstring& folder)
 
 bool setFileName(HWND dialog, const std::wstring& name)
 {
+    if (installerFolderBox(dialog))
+        return false;
     if (kingsoft::isOne(dialog))
         return kingsoft::setFileName(dialog, name);
     const HWND box = fileNameBox(dialog);
@@ -629,6 +659,8 @@ bool setFileName(HWND dialog, const std::wstring& name)
 
 bool accept(HWND dialog)
 {
+    if (installerFolderBox(dialog))
+        return false;
     if (kingsoft::isOne(dialog))
         return kingsoft::accept(dialog);
     const HWND ok = ::GetDlgItem(dialog, IDOK);

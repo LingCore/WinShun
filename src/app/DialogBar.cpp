@@ -4,6 +4,7 @@
 #include "Query.h"
 #include "RecentFolders.h"
 #include "SearchEngine.h"
+#include "platform/Integrity.h"
 #include "platform/WindowEffects.h"
 
 #include <QClipboard>
@@ -359,10 +360,14 @@ void DialogBar::setDialog(HWND dialog)
         m_movingTo.reset();
         m_moveTimeout.stop();
         const filedialog::Kind kind = filedialog::kind(dialog);
-        if (kind != m_kind) {
+        const bool copyOnly = integrity::higherThanOurs(dialog);
+        if (kind != m_kind || copyOnly != m_copyOnly) {
             m_kind = kind;
+            m_copyOnly = copyOnly;
             emit dialogKindChanged();
         }
+        m_pathCopied = false;
+        emit copyStateChanged();
         emit originChanged(); // that of another dialog, if any
         m_extensions.clear();
         m_requestId = 0;
@@ -444,6 +449,8 @@ void DialogBar::follow()
 // stays.
 void DialogBar::makeRoom()
 {
+    if (m_copyOnly)
+        return;
     std::erase_if(m_roomMade, [](HWND dialog) { return !::IsWindow(dialog); });
     if (std::ranges::find(m_roomMade, m_dialog) != m_roomMade.end())
         return;
@@ -542,6 +549,10 @@ QString DialogBar::originName() const
 
 void DialogBar::setQuery(const QString& query)
 {
+    if (m_pathCopied && !query.isEmpty()) {
+        m_pathCopied = false;
+        emit copyStateChanged();
+    }
     if (query == m_query)
         return;
     m_query = query;
@@ -833,7 +844,7 @@ void DialogBar::setAskAutoJump(bool on)
 
 void DialogBar::updateAsking()
 {
-    const bool asking = m_askAutoJump && m_dialog && !hidden() && !m_explorer.isEmpty();
+    const bool asking = !m_copyOnly && m_askAutoJump && m_dialog && !hidden() && !m_explorer.isEmpty();
     if (asking == m_asking)
         return;
     m_asking = asking;
@@ -868,6 +879,14 @@ void DialogBar::goTo(QString path, bool isFile, bool open)
     const HWND dialog = m_dialog;
     if (!dialog || !::IsWindow(dialog) || !m_mover)
         return;
+    if (m_copyOnly) {
+        QGuiApplication::clipboard()->setText(QDir::toNativeSeparators(path));
+        m_pathCopied = true;
+        emit copyStateChanged();
+        setQuery({});
+        ::SetForegroundWindow(dialog);
+        return;
+    }
     setQuery({}); // as it was before typing; the list closes as the dialog takes the focus
     ::SetForegroundWindow(dialog); // ours is in front, so it may hand that on
     m_mover(dialog, QDir::toNativeSeparators(path).toStdWString(), isFile, open);

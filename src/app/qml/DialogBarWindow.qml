@@ -282,7 +282,9 @@ Window {
                 id: placeholder
                 anchors.fill: parent
                 verticalAlignment: Text.AlignVCenter
-                text: window.bar.foldersOnly ? qsTr("搜索文件夹，或输入路径") : qsTr("搜索文件或文件夹，或输入路径")
+                text: window.bar.pathCopied ? qsTr("路径已复制，请粘贴到对话框的路径输入框")
+                      : window.bar.copyOnly ? qsTr("管理员窗口：搜索后复制路径，再手动粘贴")
+                      : window.bar.foldersOnly ? qsTr("搜索文件夹，或输入路径") : qsTr("搜索文件或文件夹，或输入路径")
                 color: Theme.faint
                 font: input.font
                 elide: Text.ElideRight
@@ -320,7 +322,7 @@ Window {
                 // itself: back to where it was; else to that folder.
                 readonly property bool toOrigin: window.bar.originName.length > 0
 
-                visible: !notFound.visible && (toOrigin || window.bar.explorerName.length > 0)
+                visible: !window.bar.copyOnly && !notFound.visible && (toOrigin || window.bar.explorerName.length > 0)
                 anchors.verticalCenter: parent.verticalCenter
                 width: chipRow.implicitWidth + 16
                 height: 32
@@ -543,6 +545,8 @@ Window {
             }
             // On the current row while typing: a key that does more with it.
             tag: {
+                if (window.bar.copyOnly && rowItem.current)
+                    return qsTr("Enter 复制路径")
                 if (window.typed && rowItem.current) {
                     if (!rowItem.isDir && window.bar.canOpen)
                         return qsTr("Ctrl+Enter 直接打开")

@@ -121,18 +121,15 @@ void DialogJump::follow(HWND foreground)
         setDialog(nullptr, false);
         return;
     }
-    // An elevated program's dialog while Win顺 is not: Windows refuses the
-    // messages and keys that would take it to a folder (UIPI).
-    if (integrity::higherThanOurs(foreground)) {
-        setDialog(nullptr, false);
-        return;
-    }
+    // Elevated dialogs can still be searched: DialogBar copies the selected
+    // path for manual paste. Never send navigation messages across UIPI.
     const bool fileDialog = filedialog::kind(foreground) != filedialog::Kind::None;
     setDialog(fileDialog ? foreground : nullptr, fromManager);
     if (fileDialog)
         return;
     // A dialog may come to the front before all of its controls are there.
-    if (hasClass(foreground, L"#32770")) {
+    if (hasClass(foreground, L"#32770") || hasClass(foreground, L"TSelectFolderForm")
+        || hasClass(foreground, L"TSelectDirDlg")) {
         m_pending = foreground;
         m_pendingFromManager = fromManager;
         m_retries = 5;
@@ -178,11 +175,11 @@ void DialogJump::setDialog(HWND dialog, bool fromManager)
                 &DialogJump::onLocation, process, thread, WINEVENT_OUTOFCONTEXT);
         }
     }
-    setRegistered(m_hotkeyEnabled && dialog);
+    setRegistered(m_hotkeyEnabled && dialog && !integrity::higherThanOurs(dialog));
     if (m_callbacks.dialogChanged)
         m_callbacks.dialogChanged(dialog);
 
-    if (dialog && m_autoJump) {
+    if (dialog && m_autoJump && !integrity::higherThanOurs(dialog)) {
         std::erase_if(m_seen, [](HWND seen) { return !::IsWindow(seen); });
         const bool first = std::ranges::find(m_seen, dialog) == m_seen.end();
         if (first)
@@ -197,7 +194,7 @@ void DialogJump::setDialog(HWND dialog, bool fromManager)
 void DialogJump::setHotkeyEnabled(bool on)
 {
     m_hotkeyEnabled = on;
-    setRegistered(on && m_dialog);
+    setRegistered(on && m_dialog && !integrity::higherThanOurs(m_dialog));
 }
 
 void DialogJump::setRegistered(bool on)
@@ -223,6 +220,8 @@ void DialogJump::noteManager(HWND dialog)
 
 void DialogJump::autoJump(HWND dialog, bool first, bool atOpen)
 {
+    if (integrity::higherThanOurs(dialog))
+        return;
     const std::vector<filemanager::Folder> folders = filemanager::openFolders();
     if (folders.empty())
         return;
@@ -258,7 +257,7 @@ void DialogJump::autoJump(HWND dialog, bool first, bool atOpen)
 void DialogJump::jump()
 {
     const HWND dialog = m_dialog;
-    if (!dialog || !::IsWindow(dialog))
+    if (!dialog || !::IsWindow(dialog) || integrity::higherThanOurs(dialog))
         return;
     if (std::ranges::find(m_companions, ::GetForegroundWindow()) != m_companions.end())
         ::SetForegroundWindow(dialog); // ours is in front, so it may hand that on
@@ -272,6 +271,8 @@ void DialogJump::jump()
 
 void DialogJump::go(HWND dialog, std::wstring path, bool isFile, bool open)
 {
+    if (!dialog || integrity::higherThanOurs(dialog))
+        return;
     m_worker.post([dialog, path = std::move(path), isFile, open] {
         filedialog::waitForFront(dialog); // from the bar, it was just handed the front
         if (!isFile) {
