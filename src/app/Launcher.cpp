@@ -1441,7 +1441,8 @@ QString Launcher::contentNeedle() const
     const ParsedQuery query = ws::parseQuery(text);
     if (query.terms.empty() || m_keyword || typedKeyword(m_web, m_query) || !pathtext::splitTyped(text).folder.isEmpty())
         return {};
-    if (m_favorites && typedFavoriteKeyword(m_favorites->items(), text) >= 0)
+    if (m_favorites && (typedFavoriteKeyword(m_favorites->items(), text) >= 0
+        || typedCommandKeyword(m_favorites->items(), text) >= 0))
         return {};
     const bool nameSyntax = !query.extensions.empty()
         || std::any_of(query.terms.cbegin(), query.terms.cend(), [](const QueryTerm& t) { return t.negated || t.wildcard; });
@@ -3038,7 +3039,10 @@ void Launcher::performPlace(const SearchResult& place, Action action)
     case Open:
     case RunAsAdmin:
         remember(place.path, m_shownText);
-        shell::run(place.target, reportFailure(place.name));
+        if (place.isCommand())
+            shell::runCustom(place.target, place.workingDirectory, place.words, reportFailure(place.name));
+        else
+            shell::run(place.target, reportFailure(place.name));
         emit dismissRequested();
         break;
     case Reveal:

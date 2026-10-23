@@ -7,6 +7,7 @@ import WinShun
 // saves, Esc puts it away.
 Item {
     id: form
+    objectName: "favoriteForm"
 
     required property FavoritesSettings favorites
     required property int index
@@ -17,22 +18,33 @@ Item {
     property var draft: null
     property string error
     property bool ready: false // the fields filled in
+    readonly property bool command: favorite.kind === "command"
 
     signal finished()
-    signal edited(string name, string keyword) // typed: kept as the draft
+    signal edited(string name, string keyword, string commandLine, string directory)
     signal moveRequested(int to) // 上移 or 下移: the form goes with it
 
     function save() {
-        form.error = form.favorites.save(form.index, nameField.text, keywordField.text)
+        form.error = form.command
+            ? form.favorites.saveCommand(form.index, nameField.text, keywordField.text, commandField.text, directoryField.text)
+            : form.favorites.save(form.index, nameField.text, keywordField.text)
         if (form.error.length === 0)
             form.finished()
+    }
+
+    function changed() {
+        error = ""
+        if (ready)
+            edited(nameField.text, keywordField.text, commandField.text, directoryField.text)
     }
 
     implicitHeight: fields.implicitHeight + 28
     Keys.onEscapePressed: form.finished()
     Component.onCompleted: {
-        nameField.text = form.draft ? form.draft.name : form.favorite.name === form.favorite.ownName ? "" : form.favorite.name
+        nameField.text = form.draft ? form.draft.name : !form.command && form.favorite.name === form.favorite.ownName ? "" : form.favorite.name
         keywordField.text = form.draft ? form.draft.keyword : form.favorite.keyword
+        commandField.text = form.draft ? form.draft.commandLine ?? "" : form.favorite.command ?? ""
+        directoryField.text = form.draft ? form.draft.directory ?? "" : form.favorite.workingDirectory ?? ""
         form.ready = true
         nameField.takeFocus()
     }
@@ -88,6 +100,7 @@ Item {
         spacing: 14
 
         Text {
+            visible: !form.command
             width: parent.width
             text: form.favorite.shownPath
             textFormat: Text.PlainText
@@ -102,28 +115,60 @@ Item {
 
             Field {
                 id: nameField
+                objectName: "favoriteName"
                 width: parent.width - keywordField.width - parent.spacing
                 label: qsTr("名称")
                 placeholder: form.favorite.ownName
-                hint: qsTr("不填就用它自己的名字")
-                onTextChanged: {
-                    form.error = "" // an old complaint is stale once the field changes
-                    if (form.ready) form.edited(nameField.text, keywordField.text)
-                }
+                hint: form.command ? qsTr("例如：用 VS Code 打开") : qsTr("不填就用它自己的名字")
+                onTextChanged: form.changed()
                 onAccepted: form.save()
             }
             Field {
                 id: keywordField
+                objectName: "favoriteKeyword"
                 width: 200
                 label: qsTr("关键词")
-                placeholder: qsTr("可选，例如 gz")
-                hint: qsTr("只输入它，按 Enter 就打开")
-                onTextChanged: {
-                    form.error = ""
-                    if (form.ready) form.edited(nameField.text, keywordField.text)
-                }
+                placeholder: form.command ? qsTr("例如 code") : qsTr("可选，例如 gz")
+                hint: form.command ? qsTr("输入它，再按 Enter 运行") : qsTr("只输入它，按 Enter 就打开")
+                onTextChanged: form.changed()
                 onAccepted: form.save()
             }
+        }
+
+        Row {
+            visible: form.command
+            width: parent.width
+            spacing: 8
+            Field {
+                id: commandField
+                objectName: "favoriteCommand"
+                width: parent.width - pickButton.width - parent.spacing
+                label: qsTr("命令")
+                placeholder: '"C:\\Tools\\Code.exe" {query}'
+                hint: qsTr("{query} 接收关键词后面的文字，自动作为一个参数；支持 %环境变量%。不会自动通过命令提示符执行。")
+                onTextChanged: form.changed()
+                onAccepted: form.save()
+            }
+            FlatButton {
+                id: pickButton
+                y: 24
+                text: qsTr("选择程序…")
+                onClicked: {
+                    const picked = form.favorites.pickCommand()
+                    if (picked.length > 0)
+                        commandField.text = picked
+                }
+            }
+        }
+        Field {
+            id: directoryField
+            visible: form.command
+            width: parent.width
+            label: qsTr("工作文件夹")
+            placeholder: qsTr("可选，例如 D:\\Projects")
+            hint: qsTr("不填则由 Windows 决定；路径不用加引号")
+            onTextChanged: form.changed()
+            onAccepted: form.save()
         }
 
         Text {
@@ -155,6 +200,7 @@ Item {
                 }
             }
             Row {
+                visible: form.index >= 0
                 anchors.right: parent.right
                 spacing: 2
 

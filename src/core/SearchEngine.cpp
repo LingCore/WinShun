@@ -864,7 +864,7 @@ void markFavorite(SearchResult& r, const Favorite& f)
 // (the apps or places not read yet) is left out. On a share that cannot be
 // reached now: `offline`, the disk not asked.
 SearchResults favoriteRows(const QList<const Favorite*>& favorites, const AppList& apps, const PlaceList& places,
-    RecentOnDisk& onDisk, const IndexService* index)
+    RecentOnDisk& onDisk, const IndexService* index, QStringView typed = {})
 {
     std::vector<std::optional<SearchResult>> rows(static_cast<std::size_t>(favorites.size()));
     QStringList paths;
@@ -872,7 +872,13 @@ SearchResults favoriteRows(const QList<const Favorite*>& favorites, const AppLis
     for (std::size_t i = 0; i < rows.size(); ++i) {
         const Favorite& f = *favorites[static_cast<qsizetype>(i)];
         SearchResult r;
-        if (f.kind == Favorite::Kind::App) {
+        if (f.kind == Favorite::Kind::Command) {
+            r.path = f.path;
+            r.app = AppKind::Tool;
+            r.target = f.command;
+            r.workingDirectory = f.workingDirectory;
+            r.words = commandWords(f, typed);
+        } else if (f.kind == Favorite::Kind::App) {
             if (const AppInfo* app = findApp(apps, f.path))
                 r = fromApp(*app, false);
             else if (apps.empty())
@@ -942,7 +948,8 @@ void promoteFavorites(SearchResults& results, qint64& total, const SearchEngine:
     }
 
     QList<const Favorite*> wanted;
-    const qsizetype keyword = typedFavoriteKeyword(favorites, request.text);
+    const qsizetype command = typedCommandKeyword(favorites, request.text);
+    const qsizetype keyword = command >= 0 ? command : typedFavoriteKeyword(favorites, request.text);
     if (keyword >= 0 && favoriteShown(request.scope, favorites[keyword], types))
         wanted.push_back(&favorites[keyword]);
     const bool keyed = !wanted.isEmpty();
@@ -977,7 +984,7 @@ void promoteFavorites(SearchResults& results, qint64& total, const SearchEngine:
             rows.push_back({});
         }
     }
-    const SearchResults looked = favoriteRows(unfound, apps, places, onDisk, index);
+    const SearchResults looked = favoriteRows(unfound, apps, places, onDisk, index, request.text);
     SearchResults put;
     for (qsizetype i = 0, k = 0; i < rows.size(); ++i) {
         if (k < std::ssize(unfoundAt) && unfoundAt[static_cast<std::size_t>(k)] == i) {

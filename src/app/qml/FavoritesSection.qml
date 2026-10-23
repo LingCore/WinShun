@@ -10,12 +10,14 @@ import WinShun
 // or from the launcher's rows.
 SettingsSection {
     id: section
+    objectName: "favoritesSection"
 
     required property FavoritesSettings favorites
     property int editing: -1 // the row whose form is open; -1: none
     // What was typed in the open form and not saved, {path, name, keyword}:
     // kept while the form is made again (moved, the list redone).
     property var draft: null
+    property bool addingCommand: false
     // While a row is dragged by its grip: from where, to where it would go.
     property int dragFrom: -1
     property int dragTo: -1
@@ -29,13 +31,13 @@ SettingsSection {
 
     note: qsTr("什么都不输入时，收藏排在最前；只输入关键词再按 Enter 就打开，收藏的文件夹按 Tab 可以进去接着搜。在搜索结果上右键可以加入收藏，也可以把文件或文件夹拖到这里。")
 
-    onVisibleChanged: if (!visible) { editing = -1; draft = null; favorites.clearMessage() }
+    onVisibleChanged: if (!visible) { editing = -1; addingCommand = false; draft = null; favorites.clearMessage() }
 
     SettingRow {
         id: listRow
 
         title: qsTr("收藏")
-        keywords: qsTr("收藏;常用;书签;固定;关键词;favorites;bookmark;pin").split(";")
+        keywords: qsTr("收藏;常用;书签;固定;关键词;自定义命令;命令;参数;command;favorites;bookmark;pin").split(";")
         values: {
             const words = []
             for (const f of section.favorites.items)
@@ -58,18 +60,41 @@ SettingsSection {
             glyph: "\uEDE1" // Export
             onClicked: section.favorites.exportFile()
         }
-        FlatButton {
-            text: qsTr("添加文件夹")
-            glyph: "\uE8B7" // Folder
-            onClicked: section.favorites.addFolder()
-        }
-        FlatButton {
-            text: qsTr("添加文件")
-            glyph: "\uE8A5" // Document
-            onClicked: section.favorites.addFile()
-        }
-
-        body: [Text {
+        body: [Flow {
+            width: parent.width
+            spacing: 8
+            bottomPadding: 8
+            FlatButton {
+                text: qsTr("添加文件夹")
+                glyph: "\uE8B7"
+                onClicked: section.favorites.addFolder()
+            }
+            FlatButton {
+                text: qsTr("添加文件")
+                glyph: "\uE8A5"
+                onClicked: section.favorites.addFile()
+            }
+            FlatButton {
+                text: qsTr("添加命令")
+                glyph: "\uE756"
+                onClicked: {
+                    section.editing = -1
+                    section.draft = null
+                    section.addingCommand = !section.addingCommand
+                }
+            }
+        }, Loader {
+            active: section.addingCommand
+            visible: active
+            width: parent.width
+            sourceComponent: FavoriteForm {
+                favorites: section.favorites
+                index: -1
+                count: section.favorites.items.length
+                favorite: ({kind: "command", name: "", keyword: "", ownName: "", shownPath: ""})
+                onFinished: section.addingCommand = false
+            }
+        }, Text {
             visible: section.favorites.message.length > 0
             width: parent.width
             bottomPadding: 8
@@ -308,6 +333,7 @@ SettingsSection {
                                 flat: true
                                 text: qsTr("编辑")
                                 onClicked: {
+                                    section.addingCommand = false
                                     section.draft = null
                                     section.editing = favRow.index
                                 }
@@ -341,7 +367,10 @@ SettingsSection {
                                     section.draft = null
                                     section.editing = -1
                                 }
-                                onEdited: (name, keyword) => section.draft = { path: favRow.modelData.path, name: name, keyword: keyword }
+                                onEdited: (name, keyword, commandLine, directory) => section.draft = {
+                                    path: favRow.modelData.path, name: name, keyword: keyword,
+                                    commandLine: commandLine, directory: directory
+                                }
                                 onMoveRequested: (to) => {
                                     const from = favRow.index
                                     if (section.favorites.move(from, to))

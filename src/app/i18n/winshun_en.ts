@@ -2151,6 +2151,42 @@
         <source>下移</source>
         <translation>Move down</translation>
     </message>
+    <message>
+        <source>例如：用 VS Code 打开</source>
+        <translation>For example: Open in VS Code</translation>
+    </message>
+    <message>
+        <source>例如 code</source>
+        <translation>For example: code</translation>
+    </message>
+    <message>
+        <source>输入它，再按 Enter 运行</source>
+        <translation>Type it and press Enter to run</translation>
+    </message>
+    <message>
+        <source>命令</source>
+        <translation>Command</translation>
+    </message>
+    <message>
+        <source>{query} 接收关键词后面的文字，自动作为一个参数；支持 %环境变量%。不会自动通过命令提示符执行。</source>
+        <translation>{query} passes the text after the keyword as one argument. Supports %environment variables%. No command shell is added automatically.</translation>
+    </message>
+    <message>
+        <source>选择程序…</source>
+        <translation>Choose program…</translation>
+    </message>
+    <message>
+        <source>工作文件夹</source>
+        <translation>Working folder</translation>
+    </message>
+    <message>
+        <source>可选，例如 D:\Projects</source>
+        <translation>Optional, e.g. D:\Projects</translation>
+    </message>
+    <message>
+        <source>不填则由 Windows 决定；路径不用加引号</source>
+        <translation>Leave blank to let Windows choose. Do not quote the path.</translation>
+    </message>
 </context>
 <context>
     <name>FavoritesSection</name>
@@ -2216,6 +2252,14 @@
     <message>
         <source>移除</source>
         <translation>Remove</translation>
+    </message>
+    <message>
+        <source>添加命令</source>
+        <translation>Add command</translation>
+    </message>
+    <message>
+        <source>收藏;常用;书签;固定;关键词;自定义命令;命令;参数;command;favorites;bookmark;pin</source>
+        <translation>favorites;bookmark;pin;keyword;custom command;command;arguments</translation>
     </message>
 </context>
 <context>
@@ -7686,6 +7730,30 @@
             <numerusform>Exported %n items to %1</numerusform>
         </translation>
     </message>
+    <message>
+        <source>请填写名称和关键词</source>
+        <translation>Enter a name and keyword.</translation>
+    </message>
+    <message>
+        <source>请填写有效的单行命令；含空格的程序路径请加双引号</source>
+        <translation>Enter a single-line command. Put quotes around a program path containing spaces.</translation>
+    </message>
+    <message>
+        <source>{query} 只能放在程序后面的参数中</source>
+        <translation>Use {query} only in the arguments after the program.</translation>
+    </message>
+    <message>
+        <source>工作文件夹请填写路径，不要加引号</source>
+        <translation>Enter the working folder path without quotes.</translation>
+    </message>
+    <message>
+        <source>选择程序</source>
+        <translation>Choose program</translation>
+    </message>
+    <message>
+        <source>程序和脚本</source>
+        <translation>Programs and scripts</translation>
+    </message>
 </context>
 <context>
     <name>ws::FilePreview</name>
@@ -9322,6 +9390,10 @@
     <message>
         <source>%1 · 关键词 %2</source>
         <translation>%1 · keyword %2</translation>
+    </message>
+    <message>
+        <source>自定义命令 · %1</source>
+        <translation>Custom command · %1</translation>
     </message>
 </context>
 <context>

@@ -55,6 +55,10 @@ void openTerminal(const QString& folder, std::function<void(bool)> done = {});
 // A command or shell location ("%windir%\system32\control.exe /name X",
 // "ms-settings:display"): a place in Windows (see SystemCatalog).
 void run(const QString& command, std::function<void(bool)> done = {});
+// User-defined command. Expands environment variables before inserting the
+// query as one argument; never implicitly starts cmd.exe or PowerShell.
+void runCustom(const QString& command, const QString& directory, const QString& query,
+    std::function<void(bool)> done = {});
 // An installed app by its launch path, "shell:AppsFolder\<id>" (see AppCatalog).
 void launchApp(const QString& launchPath, bool asAdministrator = false, std::function<void(bool)> done = {});
 // Moves the items to the Recycle Bin, in one operation (asks before deleting

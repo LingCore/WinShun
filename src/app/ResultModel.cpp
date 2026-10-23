@@ -112,6 +112,8 @@ QString webSearchTitle(const SearchResult& r, std::pair<qsizetype, qsizetype>* w
 // shortcut's: the address it opens, and for its site the keyword.
 QString appOrigin(const SearchResult& r)
 {
+    if (r.isCommand())
+        return ResultModel::tr("自定义命令 · %1").arg(r.words.isEmpty() ? r.target : r.words);
     switch (r.app) {
     case AppKind::Web:
         if (r.suggestion)

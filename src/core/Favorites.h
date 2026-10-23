@@ -20,7 +20,7 @@ namespace ws {
 // the path copied), first among the matches when typed; its keyword alone
 // ("gz") puts it on top, Enter opens it, Tab goes into a folder.
 struct Favorite {
-    enum class Kind : quint8 { Folder, File, App, Place };
+    enum class Kind : quint8 { Folder, File, App, Place, Command };
     Kind kind = Kind::Folder;
     // As SearchResult::path and History write it: a file's or folder's full
     // path ("D:\工作文档", "C:\"), an app's "shell:AppsFolder\<id>", a
@@ -30,6 +30,8 @@ struct Favorite {
     // it to. Also what it is shown as once it is gone (an app uninstalled).
     QString name;
     QString keyword; // one word, matched ignoring case; empty: none
+    QString command; // Command only: executable and arguments; {query} is one quoted argument
+    QString workingDirectory; // Command only, optional
 
     bool isFileOrFolder() const noexcept { return kind == Kind::Folder || kind == Kind::File; }
     friend bool operator==(const Favorite&, const Favorite&) = default;
@@ -50,6 +52,12 @@ bool scopeShows(Scope scope, Favorite::Kind kind) noexcept;
 // its index, or -1. "gz" and " GZ " find it; "gzx" and "gz 报告" do not.
 qsizetype typedFavoriteKeyword(const FavoriteList& favorites, QStringView text);
 
+// A command's keyword may be followed by words. Other favorites still match
+// only the complete keyword. The words are passed as one Windows argument.
+qsizetype typedCommandKeyword(const FavoriteList& favorites, QStringView text);
+QString commandWords(const Favorite& favorite, QStringView text);
+QString commandArguments(QStringView arguments, QStringView words);
+
 // A keyword one can type and that is no path: not empty, no spaces or
 // quotes (as a web shortcut's), no \ / or :.
 bool isValidFavoriteKeyword(QStringView keyword) noexcept;
@@ -57,10 +65,9 @@ bool isValidFavoriteKeyword(QStringView keyword) noexcept;
 qsizetype indexOfFavorite(const FavoriteList& favorites, QStringView path); // ignoring case; -1: not there
 
 // ---- the file ------------------------------------------------------------
-// favorites.json in the data folder, and the file to take them to another
-// computer (导出): {"format": "winshun-favorites", "version": 1,
-// "favorites": [{"kind": "folder" | "file" | "app" | "place", "path",
-// "name", "keyword"?}]}.
+// favorites.json in the data folder, also used for export. Version 1 for
+// ordinary favorites; version 2 when commands are present, so older builds
+// keep the file read-only instead of dropping commands when saving it.
 
 QByteArray writeFavoritesFile(const FavoriteList& favorites);
 

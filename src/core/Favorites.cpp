@@ -2,6 +2,7 @@
 
 #include "AppCatalog.h"
 #include "History.h"
+#include "PathText.h"
 #include "SystemCatalog.h"
 #include "WebShortcut.h"
 
@@ -13,6 +14,8 @@
 #include <QJsonObject>
 #include <QSaveFile>
 
+#include <algorithm>
+
 using namespace Qt::StringLiterals;
 
 namespace ws {
@@ -20,7 +23,7 @@ namespace ws {
 namespace {
 
 constexpr auto kFileFormat = "winshun-favorites";
-constexpr int kFileVersion = 1;
+constexpr int kFileVersion = 2;
 constexpr qint64 kMaxFile = 16 << 20;
 
 QString kindName(Favorite::Kind kind)
@@ -34,6 +37,8 @@ QString kindName(Favorite::Kind kind)
         return u"app"_s;
     case Favorite::Kind::Place:
         return u"place"_s;
+    case Favorite::Kind::Command:
+        return u"command"_s;
     }
     return {};
 }
@@ -48,6 +53,8 @@ std::optional<Favorite::Kind> kindNamed(const QString& name)
         return Favorite::Kind::App;
     if (name == u"place")
         return Favorite::Kind::Place;
+    if (name == u"command")
+        return Favorite::Kind::Command;
     return std::nullopt;
 }
 
@@ -59,6 +66,8 @@ bool fits(Favorite::Kind kind, const QString& path)
         return isAppLaunchPath(path);
     case Favorite::Kind::Place:
         return isPlacePath(path);
+    case Favorite::Kind::Command:
+        return path.startsWith(u"winshun-command:") && path.size() > 16;
     default:
         return !isAppLaunchPath(path) && !isPlacePath(path) && !isWebPath(path) && !path.startsWith(u"winshun-");
     }
@@ -79,7 +88,11 @@ std::optional<Favorite> favoriteOf(const SearchResult& row)
     Favorite f;
     f.path = row.path;
     f.name = row.name;
-    if (row.isPlace())
+    if (row.isCommand()) {
+        f.kind = Favorite::Kind::Command;
+        f.command = row.target;
+        f.workingDirectory = row.workingDirectory;
+    } else if (row.isPlace())
         f.kind = Favorite::Kind::Place;
     else if (row.isApp())
         f.kind = Favorite::Kind::App;
@@ -128,6 +141,48 @@ bool isValidFavoriteKeyword(QStringView keyword) noexcept
     return isValidWebKeyword(keyword) && !keyword.contains(u'\\') && !keyword.contains(u'/') && !keyword.contains(u':');
 }
 
+qsizetype typedCommandKeyword(const FavoriteList& favorites, QStringView text)
+{
+    const QStringView typed = text.trimmed();
+    for (qsizetype i = 0; i < favorites.size(); ++i) {
+        const Favorite& f = favorites[i];
+        const qsizetype n = f.keyword.size();
+        if (f.kind == Favorite::Kind::Command && n > 0 && typed.size() >= n
+            && typed.first(n).compare(f.keyword, Qt::CaseInsensitive) == 0
+            && (typed.size() == n || typed[n].isSpace()))
+            return i;
+    }
+    return -1;
+}
+
+QString commandWords(const Favorite& favorite, QStringView text)
+{
+    const QStringView typed = text.trimmed();
+    const qsizetype n = favorite.keyword.size();
+    return n > 0 && typed.size() > n && typed[n].isSpace()
+            && typed.first(n).compare(favorite.keyword, Qt::CaseInsensitive) == 0
+        ? typed.sliced(n).trimmed().toString() : QString();
+}
+
+QString commandArguments(QStringView arguments, QStringView words)
+{
+    // CommandLineToArgvW / CRT quoting: preserve spaces, quotes and trailing
+    // backslashes. Substitute once so {query} in the user's input stays text.
+    const QString quoted = pathtext::commandArgument(words.toString());
+    QString result;
+    for (qsizetype i = 0; i < arguments.size();) {
+        const QStringView rest = arguments.sliced(i);
+        const qsizetype token = rest.startsWith(u"\"{query}\"") ? 9 : rest.startsWith(u"{query}") ? 7 : 0;
+        if (token) {
+            result += quoted;
+            i += token;
+        } else {
+            result += arguments[i++];
+        }
+    }
+    return result;
+}
+
 qsizetype indexOfFavorite(const FavoriteList& favorites, QStringView path)
 {
     for (qsizetype i = 0; i < favorites.size(); ++i) {
@@ -148,11 +203,16 @@ QByteArray writeFavoritesFile(const FavoriteList& favorites)
         };
         if (!f.keyword.isEmpty())
             entry.insert(u"keyword"_s, f.keyword);
+        if (f.kind == Favorite::Kind::Command) {
+            entry.insert(u"command"_s, f.command);
+            entry.insert(u"workingDirectory"_s, f.workingDirectory);
+        }
         list.append(entry);
     }
     const QJsonObject file {
         {u"format"_s, QLatin1StringView(kFileFormat)},
-        {u"version"_s, kFileVersion},
+        {u"version"_s, std::ranges::any_of(favorites,
+            [](const Favorite& f) { return f.kind == Favorite::Kind::Command; }) ? kFileVersion : 1},
         {u"favorites"_s, list},
     };
     return QJsonDocument(file).toJson(QJsonDocument::Indented);
@@ -183,6 +243,15 @@ std::optional<FavoritesFile> readFavoritesFile(QByteArrayView json, bool* newer)
             continue;
         }
         f.kind = *kind;
+        if (f.kind == Favorite::Kind::Command) {
+            f.command = entry.value(u"command"_s).toString().trimmed();
+            f.workingDirectory = entry.value(u"workingDirectory"_s).toString().trimmed();
+            if (f.command.isEmpty() || f.command.contains(QChar::Null) || f.command.contains(u'\n')
+                || f.command.contains(u'\r') || f.workingDirectory.contains(QChar::Null)) {
+                ++result.skipped;
+                continue;
+            }
+        }
         if (f.isFileOrFolder()) {
             f.path = QDir::toNativeSeparators(f.path);
             if (f.path.size() > 3 && f.path.endsWith(u'\\'))

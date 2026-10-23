@@ -3,6 +3,7 @@
 #include "AutostartRun.h"
 
 #include "FileManagers.h"
+#include "Favorites.h"
 #include "Integrity.h"
 #include "SystemCatalog.h"
 #include "Win32Util.h"
@@ -357,6 +358,18 @@ void launchApp(const QString& launchPath, bool asAdministrator, std::function<vo
         // Store apps refuse to start from an elevated process; Explorer can
         // start them. "runas" is the app's own verb, as in the Start menu.
         const bool ok = asAdministrator ? executeAsAdministrator(target, {}, {}) : executeUnelevated(target, {}, {});
+        if (done)
+            done(ok);
+    });
+}
+
+void runCustom(const QString& command, const QString& directory, const QString& query, std::function<void(bool)> done)
+{
+    ::AllowSetForegroundWindow(ASFW_ANY);
+    runOnShellThread([command, directory, query, done = std::move(done)] {
+        const auto [file, arguments] = splitCommand(command);
+        const bool ok = !file.isEmpty() && executeUnelevated(file.toStdWString(),
+            commandArguments(arguments, query).toStdWString(), win32::expandEnvironment(directory.toStdWString()));
         if (done)
             done(ok);
     });

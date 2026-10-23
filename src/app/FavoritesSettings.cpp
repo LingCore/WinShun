@@ -16,6 +16,7 @@
 #include <QSaveFile>
 #include <QStyleHints>
 #include <QUrl>
+#include <QUuid>
 
 #include <windows.h>
 
@@ -40,6 +41,8 @@ QString kindName(Favorite::Kind kind)
         return u"app"_s;
     case Favorite::Kind::Place:
         return u"place"_s;
+    case Favorite::Kind::Command:
+        return u"command"_s;
     }
     return {};
 }
@@ -170,6 +173,10 @@ void FavoritesSettings::refresh()
             }
             shownPath = tr("系统");
             missing = places && !places->empty() && !place;
+        } else if (f.kind == Favorite::Kind::Command) {
+            icon = FileIconProvider::iconUrl(splitCommand(f.command).first, false);
+            shownPath = f.command;
+            missing = false;
         } else {
             icon = FileIconProvider::iconUrl(f.path, f.kind == Favorite::Kind::Folder);
         }
@@ -182,6 +189,8 @@ void FavoritesSettings::refresh()
             {u"icon"_s, icon},
             {u"shownPath"_s, shownPath},
             {u"missing"_s, missing},
+            {u"command"_s, f.command},
+            {u"workingDirectory"_s, f.workingDirectory},
         });
     }
     if (items == m_items)
@@ -256,12 +265,8 @@ QString FavoritesSettings::keywordOwner(const QString& keyword) const
     return i < 0 ? QString() : m_store->items()[i].name;
 }
 
-QString FavoritesSettings::save(int index, const QString& name, const QString& keyword)
+QString FavoritesSettings::validateKeyword(int index, const QString& word) const
 {
-    if (!m_store || index < 0 || index >= m_store->items().size())
-        return tr("这一项已经不在了");
-    Favorite f = m_store->items()[index];
-    const QString word = keyword.trimmed();
     if (!word.isEmpty()) {
         if (!isValidFavoriteKeyword(word))
             return tr("关键词里不能有空格、引号、斜杠或冒号");
@@ -277,10 +282,65 @@ QString FavoritesSettings::save(int index, const QString& name, const QString& k
         if (const QString taken = m_editor->captureKeywordTaken(word); !taken.isEmpty())
             return taken;
     }
+    return {};
+}
+
+QString FavoritesSettings::save(int index, const QString& name, const QString& keyword)
+{
+    if (!m_store || index < 0 || index >= m_store->items().size())
+        return tr("这一项已经不在了");
+    Favorite f = m_store->items()[index];
+    const QString word = keyword.trimmed();
+    if (const QString error = validateKeyword(index, word); !error.isEmpty())
+        return error;
     f.keyword = word;
     f.name = name.trimmed().isEmpty() ? ownName(f) : name.trimmed();
     m_store->update(index, f);
     return {};
+}
+
+QString FavoritesSettings::saveCommand(int index, const QString& name, const QString& keyword,
+    const QString& command, const QString& directory)
+{
+    if (!m_store || index < -1 || index >= m_store->items().size()
+        || (index >= 0 && m_store->items()[index].kind != Favorite::Kind::Command))
+        return tr("这一项已经不在了");
+    const QString word = keyword.trimmed();
+    if (name.trimmed().isEmpty() || word.isEmpty())
+        return tr("请填写名称和关键词");
+    if (const QString error = validateKeyword(index, word); !error.isEmpty())
+        return error;
+    const QString line = command.trimmed();
+    if (line.isEmpty() || line.contains(QChar::Null) || line.contains(u'\n') || line.contains(u'\r')
+        || (line.startsWith(u'"') && line.indexOf(u'"', 1) < 0))
+        return tr("请填写有效的单行命令；含空格的程序路径请加双引号");
+    const auto [program, arguments] = splitCommand(line);
+    if (program.isEmpty() || program.contains(u"{query}"))
+        return tr("{query} 只能放在程序后面的参数中");
+    if (directory.contains(QChar::Null) || directory.contains(u'\n') || directory.contains(u'\r')
+        || directory.contains(u'"'))
+        return tr("工作文件夹请填写路径，不要加引号");
+    Favorite f = index >= 0 ? m_store->items()[index] : Favorite();
+    f.kind = Favorite::Kind::Command;
+    if (index < 0)
+        f.path = u"winshun-command:"_s + QUuid::createUuid().toString(QUuid::WithoutBraces);
+    f.name = name.trimmed();
+    f.keyword = word;
+    f.command = line;
+    f.workingDirectory = QDir::toNativeSeparators(directory.trimmed());
+    if (index < 0)
+        m_store->add(f);
+    else
+        m_store->update(index, f);
+    return {};
+}
+
+QString FavoritesSettings::pickCommand()
+{
+    const HWND owner = m_editor->m_window ? reinterpret_cast<HWND>(m_editor->m_window->winId()) : nullptr;
+    const QString path = shell::pickFile(owner, tr("选择程序"),
+        {{tr("程序和脚本"), u"*.exe;*.com;*.bat;*.cmd;*.lnk"_s}, {tr("所有文件"), u"*.*"_s}});
+    return path.isEmpty() ? QString() : u'"' + QDir::toNativeSeparators(path) + u'"';
 }
 
 void FavoritesSettings::remove(int index)
@@ -375,6 +435,9 @@ void FavoritesSettings::open(int index)
         return;
     const Favorite& f = m_store->items()[index];
     switch (f.kind) {
+    case Favorite::Kind::Command:
+        shell::runCustom(f.command, f.workingDirectory, {});
+        break;
     case Favorite::Kind::App:
         shell::launchApp(f.path);
         break;

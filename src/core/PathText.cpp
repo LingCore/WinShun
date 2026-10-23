@@ -410,12 +410,20 @@ QString commandArgument(const QString& path)
 {
     if (!path.isEmpty() && !path.contains(u' ') && !path.contains(u'\t') && !path.contains(u'"'))
         return path;
-    QString quoted = path;
-    quoted.replace(u'"', u"\\\""_s); // no path has one; a word of the user's own may
+    QString quoted = u"\""_s;
     qsizetype backslashes = 0;
-    while (backslashes < quoted.size() && quoted[quoted.size() - 1 - backslashes] == u'\\')
-        ++backslashes;
-    return u'"' + quoted + QString(backslashes, u'\\') + u'"';
+    for (QChar c : path) {
+        if (c == u'\\') {
+            ++backslashes;
+            continue;
+        }
+        quoted += QString(backslashes * (c == u'"' ? 2 : 1), u'\\');
+        if (c == u'"')
+            quoted += u'\\';
+        quoted += c;
+        backslashes = 0;
+    }
+    return quoted + QString(backslashes * 2, u'\\') + u'"';
 }
 
 CustomCommand customCommand(const QString& commandLine, const QString& path)

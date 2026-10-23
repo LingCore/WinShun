@@ -40,6 +40,9 @@ public:
     // The favorite's name and keyword: why they cannot be saved, or empty
     // once they are. An empty name: its own (the file's, the app's).
     Q_INVOKABLE QString save(int index, const QString& name, const QString& keyword);
+    Q_INVOKABLE QString saveCommand(int index, const QString& name, const QString& keyword,
+        const QString& command, const QString& directory);
+    Q_INVOKABLE QString pickCommand();
     Q_INVOKABLE void remove(int index);
     Q_INVOKABLE bool move(int from, int to);
     Q_INVOKABLE void addFolder(); // asks for it
@@ -61,6 +64,7 @@ signals:
     void messageChanged();
 
 private:
+    QString validateKeyword(int index, const QString& word) const;
     void refresh(); // m_items from the store as it is
     void lookForMissing(); // in the background, then refresh()
     void setMessage(const QString& message);

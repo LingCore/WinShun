@@ -560,6 +560,15 @@ int runSettings(const QStringList& args)
     favorites.add({Favorite::Kind::File, QDir::toNativeSeparators(QCoreApplication::applicationFilePath()), {}, {}});
     favorites.add({Favorite::Kind::Folder, u"Z:\\项目\\已删除的文件夹"_s, {}, u"xm"_s});
     editor->favorites()->setStore(&favorites);
+    const QString command = u"\"C:\\Tools\\Code.exe\" {query}"_s;
+    if (editor->favorites()->saveCommand(-1, u"编辑器"_s, u"tmp"_s, command, {}).isEmpty()
+        || editor->favorites()->saveCommand(-1, {}, u"code"_s, command, {}).isEmpty()
+        || editor->favorites()->saveCommand(-1, u"编辑器"_s, u"code"_s, u"{query}"_s, {}).isEmpty()
+        || favorites.items().size() != 3)
+        qWarning("preview: invalid custom command changed favorites");
+    if (!editor->favorites()->saveCommand(-1, u"用编辑器打开"_s, u"code"_s, command, u"D:\\Projects"_s).isEmpty()
+        || favorites.items().size() != 4)
+        qWarning("preview: custom command was not saved");
     say(u"loading SettingsWindow.qml"_s);
 
     Backup backup; // no folder: never backs anything up
@@ -579,6 +588,8 @@ int runSettings(const QStringList& args)
     editor->setWindow(window);
     QTimer watchdog;
     armWatchdog(watchdog, 600);
+    if (args.contains(u"--command-form"_s) && args.contains(u"--compact"_s))
+        window->resize(760, 420);
     showOffScreen(window);
     const int baseHeight = window->height(); // 720: what the page column gets on a screen
     settle(window);
@@ -632,6 +643,8 @@ int runSettings(const QStringList& args)
     bool onePage = false;
     const int wantedPage = valueAfter(args, u"--page").toInt(&onePage);
     for (int page = 0; page < pages.size(); ++page) {
+        if (args.contains(u"--command-form"_s))
+            break;
         if (onePage && page != wantedPage)
             continue;
         const QVariantList pageTabs = tabs.value(page).toList();
@@ -678,6 +691,45 @@ int runSettings(const QStringList& args)
         if (window->property("currentPage").toInt() != favoritesPage)
             qWarning("preview: showFavoritesPage() did not land on the 收藏夹 page");
         saved = saveGrab(window, out.filePath(u"favorite-form.png"_s)) && saved;
+        QMetaObject::invokeMethod(window, "showFavoritesPage", Q_ARG(QVariant, QVariant(favorites.items().constLast().path)));
+        settle(window, 3);
+        pump(300);
+        saved = saveGrab(window, out.filePath(u"command-form.png"_s)) && saved;
+        flick->setProperty("contentY", std::max(0.0, flick->property("contentHeight").toDouble()
+            - flick->property("height").toDouble()));
+        settle(window, 3);
+        saved = saveGrab(window, out.filePath(u"command-form-bottom.png"_s)) && saved;
+        if (args.contains(u"--command-form"_s)) {
+            if (QObject* section = named(window, "favoritesSection")) {
+                section->setProperty("editing", -1);
+                section->setProperty("addingCommand", true);
+                flick->setProperty("contentY", 0);
+                settle(window, 3);
+                saved = saveGrab(window, out.filePath(u"command-new.png"_s)) && saved;
+                QObject* form = section->findChild<QObject*>(u"favoriteForm"_s);
+                QObject* name = form ? form->findChild<QObject*>(u"favoriteName"_s) : nullptr;
+                QObject* keyword = form ? form->findChild<QObject*>(u"favoriteKeyword"_s) : nullptr;
+                QObject* commandBox = form ? form->findChild<QObject*>(u"favoriteCommand"_s) : nullptr;
+                if (name && keyword && commandBox) {
+                    name->setProperty("text", u"Preview command"_s);
+                    keyword->setProperty("text", u"preview-command"_s);
+                    commandBox->setProperty("text", u"notepad.exe {query}"_s);
+                    QMetaObject::invokeMethod(form, "save");
+                    if (favorites.items().size() != 5 || section->property("addingCommand").toBool())
+                        qWarning("preview: form did not save and close");
+                    else
+                        favorites.remove(favorites.items().constLast().path);
+                } else {
+                    qWarning("preview: command form fields missing");
+                }
+                section->setProperty("addingCommand", false);
+                if (favorites.items().size() != 4)
+                    qWarning("preview: cancelling the form added a command");
+            } else {
+                qWarning("preview: favorites section missing");
+            }
+            return finish(window, saved);
+        }
     }
 
     // The settings search: a word typed, the page it narrows to pictured,

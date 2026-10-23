@@ -1,5 +1,7 @@
 #include "Favorites.h"
+
 #include "History.h"
+#include "IndexService.h"
 #include "SearchEngine.h"
 
 #include <QDir>
@@ -7,6 +9,9 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+
+#include <windows.h>
+#include <shellapi.h>
 
 using namespace ws;
 using namespace Qt::StringLiterals;
@@ -38,6 +43,58 @@ class TestFavorites : public QObject {
     Q_OBJECT
 
 private slots:
+    void commandRoundTripAndSearch()
+    {
+        const Favorite command {Favorite::Kind::Command, u"winshun-command:test"_s, u"打开编辑器"_s, u"code"_s,
+            u"\"C:\\Tools With Space\\Code.exe\" --new-window {query}"_s, u"D:\\工作"_s};
+        const FavoriteList favorites {command, folder(u"D:\\Reports"_s, u"报告"_s, u"bg"_s)};
+        const QByteArray written = writeFavoritesFile(favorites);
+        QVERIFY(written.contains("\"version\": 2"));
+        const auto loaded = readFavoritesFile(written);
+        QVERIFY(loaded);
+        QCOMPARE(loaded->favorites, favorites);
+        QCOMPARE(typedCommandKeyword(favorites, u" CODE D:\\新 项目 "), 0);
+        QCOMPARE(typedCommandKeyword(favorites, u"codex a"), -1);
+        QCOMPARE(typedCommandKeyword(favorites, u"bg a"), -1);
+        QCOMPARE(commandWords(command, u" CODE D:\\新 项目 "), u"D:\\新 项目"_s);
+        QTemporaryDir temporary;
+        IndexService service(temporary.path(), {});
+        SearchEngine engine(&service);
+        QSignalSpy spy(&engine, &SearchEngine::resultsReady);
+        SearchEngine::Request request;
+        request.favorites = favorites;
+        request.text = u"code D:\\新 项目"_s;
+        engine.submit(request);
+        QVERIFY(spy.wait(5000));
+        const SearchResults results = spy.at(0).at(1).value<SearchResults>();
+        QVERIFY(!results.isEmpty());
+        QVERIFY(results.first().isCommand());
+        QVERIFY(results.first().favorite && results.first().exact && !results.first().missing);
+        QCOMPARE(results.first().target, command.command);
+        QCOMPARE(results.first().words, u"D:\\新 项目"_s);
+        QCOMPARE(results.first().workingDirectory, command.workingDirectory);
+        QVERIFY(!scopeShows(Scope::Files, command.kind));
+        QVERIFY(!scopeShows(Scope::Folders, command.kind));
+        QCOMPARE(favoriteOf(results.first())->command, command.command);
+    }
+
+    void commandArgumentRoundTrip()
+    {
+        for (const QString& words : {u""_s, u"中文 with spaces"_s, u"C:\\folder\\"_s,
+                 u"say \"hello\" \\"_s, u"a\\\"b\\\\\"c"_s, u"{query} %TEMP% & more"_s}) {
+            for (const QString& pattern : {u"{query}"_s, u"\"{query}\""_s}) {
+                const QString line = u"probe.exe --before "_s + commandArguments(pattern, words) + u" --after"_s;
+                int count = 0;
+                wchar_t** args = ::CommandLineToArgvW(line.toStdWString().c_str(), &count);
+                QVERIFY(args);
+                QStringList actual;
+                for (int i = 0; i < count; ++i)
+                    actual.append(QString::fromWCharArray(args[i]));
+                ::LocalFree(args);
+                QCOMPARE(actual, (QStringList {u"probe.exe"_s, u"--before"_s, words, u"--after"_s}));
+            }
+        }
+    }
     void fileRoundTrip()
     {
         const FavoriteList favorites {
@@ -90,7 +147,7 @@ private slots:
         QVERIFY(!newer);
         QVERIFY(!readFavoritesFile("{\"format\": \"something\", \"version\": 1, \"favorites\": []}", &newer));
         QVERIFY(!newer);
-        QVERIFY(!readFavoritesFile("{\"format\": \"winshun-favorites\", \"version\": 2, \"favorites\": []}", &newer));
+        QVERIFY(!readFavoritesFile("{\"format\": \"winshun-favorites\", \"version\": 3, \"favorites\": []}", &newer));
         QVERIFY(newer);
     }
 
