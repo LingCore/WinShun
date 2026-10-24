@@ -9568,6 +9568,35 @@ private slots:
         QVERIFY(score(u"win + v"_s, winV) > 0);
         QVERIFY(score(u"win v"_s, winV) > 0);
 
+        // A word of one or two ASCII letters ("ws") is a word or the start of one, never the end
+        // of another: "Windows" ends in ws, and every option that says Windows came up.
+        Fields wsRow;
+        wsRow.title = u"ws 命令"_s;
+        wsRow.keywords = {u"命令行"_s, u"ws"_s, u"command line"_s};
+        wsRow.context = {u"AI 助手"_s, u"命令行"_s};
+        Fields connect;
+        connect.title = u"允许 AI 助手和命令行连接"_s;
+        connect.keywords = {u"MCP"_s, u"ws"_s, u"cli"_s};
+        Fields windows;
+        windows.title = u"跟随 Windows 的深色模式"_s;
+        windows.keywords = {u"主题"_s, u"windows"_s};
+        windows.description = u"Windows 设置里选了深色时，Win顺 也用深色；Windows 11 的 Mica 材质"_s;
+        QVERIFY(!parse(u"ws"_s).terms[0].single);
+        QVERIFY(parse(u"ws"_s).terms[0].atWordStart);
+        QVERIFY(!parse(u"win"_s).terms[0].atWordStart);
+        QVERIFY(!parse(u"命令"_s).terms[0].atWordStart);
+        QCOMPARE(score(u"ws"_s, windows), -1);
+        QVERIFY(score(u"ws"_s, wsRow) > 0);
+        QVERIFY(score(u"ws"_s, wsRow) > score(u"ws"_s, connect)); // its title starts with the word, the other has it as a keyword
+        QVERIFY(score(u"ws"_s, connect) > 0);
+        QVERIFY(score(u"ai"_s, connect) > 0); // a word
+        QVERIFY(score(u"mc"_s, connect) > 0); // the start of one
+        QCOMPARE(score(u"cp"_s, connect), -1); // not the end of MCP
+        // Three letters and more are found in the middle of a word still.
+        QVERIFY(score(u"dows"_s, windows) > 0);
+        QVERIFY(score(u"ndo"_s, windows) > 0);
+        QVERIFY(score(u"win"_s, windows) > 0);
+
         // What the user filled in.
         Fields names;
         names.title = u"跳过的文件夹名称"_s;

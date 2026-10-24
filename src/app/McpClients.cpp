@@ -161,8 +161,15 @@ QString quoted(const QString& path)
 
 } // namespace
 
+namespace {
+// Where the last install put the Skill, as ws printed it (the GUI thread's).
+QString g_installedSkill;
+} // namespace
+
 QString skillPath()
 {
+    if (!g_installedSkill.isEmpty())
+        return g_installedSkill;
     const QString config = env("CLAUDE_CONFIG_DIR");
     return QDir::toNativeSeparators((config.isEmpty() ? home() + u"/.claude"_s : config) + u"/skills/winshun/SKILL.md"_s);
 }
@@ -297,7 +304,8 @@ void installSkill(const QString& wsExe, QObject* context, std::function<void(Res
     }
     constexpr unsigned long kTimeoutMs = 20'000;
     std::thread([context = QPointer<QObject>(context), program = wsExe.toStdWString(), done = std::move(done)] {
-        const shell::Captured run = shell::runUnelevatedCaptured(program, L"skill --install claude", kTimeoutMs);
+        // --encoding utf8 whatever WS_ENCODING says in this program's environment: its words are read as UTF-8 here.
+        const shell::Captured run = shell::runUnelevatedCaptured(program, L"skill --install claude --encoding utf8", kTimeoutMs);
         // ws prints the path it wrote and exits 0; anything else, it says why.
         const QString output = QString::fromUtf8(run.output.data(), static_cast<qsizetype>(run.output.size())).trimmed();
         Result result;
@@ -308,6 +316,7 @@ void installSkill(const QString& wsExe, QObject* context, std::function<void(Res
         } else if (run.exitCode == 0) {
             result.ok = true;
             const QString path = output.section(u'\n', 0, 0).trimmed();
+            result.file = path;
             result.message = Tr::tr("已装 Skill：%1。Claude Code 新开的会话里就能用。").arg(path.isEmpty() ? skillPath() : path);
         } else {
             // Its own words, briefly: the first lines, not a screenful.
@@ -318,6 +327,10 @@ void installSkill(const QString& wsExe, QObject* context, std::function<void(Res
         }
         // On the GUI thread, which asks whether `context` is still there (it may go meanwhile).
         QMetaObject::invokeMethod(QCoreApplication::instance(), [context, done, result] {
+            // Whether it is there is judged from where ws put it, not from where this program
+            // thinks it goes: ws ran with the user's environment as the registry has it now.
+            if (result.ok && !result.file.isEmpty())
+                g_installedSkill = QDir::toNativeSeparators(result.file);
             if (context)
                 done(result);
         }, Qt::QueuedConnection);

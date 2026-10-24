@@ -25,7 +25,7 @@ class CliSetup : public QObject {
     // cli::toVariant(), and `checked`: false until the first look is done.
     Q_PROPERTY(QVariantMap state READ state NOTIFY stateChanged FINAL)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged FINAL) // what came of the last button
-    Q_PROPERTY(bool busy READ busy NOTIFY busyChanged FINAL) // the PATH is being written
+    Q_PROPERTY(bool busy READ busy NOTIFY busyChanged FINAL) // the PATH is being written, and looked at again afterwards
     Q_PROPERTY(QString example READ example CONSTANT FINAL) // a command to try, in the UI language
 
 public:
@@ -47,6 +47,8 @@ public:
     // The look is made by `probe` instead, at once on the calling thread, and
     // the registry is not written (the preview runs on this PC's real one).
     void setProbe(std::function<cli::Status()> probe) { m_probe = std::move(probe); }
+    // No look is ever made: the state stays "not looked at yet" (the preview shows that moment).
+    void setNeverLooks(bool on) { m_neverLooks = on; }
 
 signals:
     void stateChanged();
@@ -57,15 +59,18 @@ private:
     void apply(int look, const cli::Status& status);
     void setMessage(const QString& message);
     void setBusy(bool busy);
+    bool refusesOtherAccount();
     void changePath(bool add);
     void finishChange(bool add, unsigned long error);
 
     SettingsEditor* m_editor;
     std::function<cli::Status()> m_probe;
+    bool m_neverLooks = false;
     QVariantMap m_state;
     QString m_message;
     bool m_busy = false;
     int m_looks = 0; // the newest look wins
+    int m_settleLook = 0; // the look that ends busy after a change (0: none yet)
 };
 
 } // namespace ws

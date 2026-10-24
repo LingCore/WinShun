@@ -2778,12 +2778,16 @@ void SettingsEditor::copyMcpSnippet(const QString& id)
 
 void SettingsEditor::installMcpSkill(const QString& id)
 {
-    if (id != u"claude-code")
-        return;
+    if (id != u"claude-code" || m_mcpSkillBusy)
+        return; // a second click while ws runs would start a second ws (the two meet over one file)
+    m_mcpSkillBusy = true;
     setMcpMessage(tr("正在装 Skill…"));
+    emit mcpMessageChanged(); // the busy flag too, whether or not the text changed
     mcpclients::installSkill(cli::wsExe(cli::binFolder()), this, [this](const mcpclients::Result& result) {
+        m_mcpSkillBusy = false;
         setMcpMessage(result.message);
         refreshMcpClients();
+        emit mcpMessageChanged();
     });
 }
 

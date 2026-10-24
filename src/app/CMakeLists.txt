@@ -271,6 +271,7 @@ qt_add_qml_module(WinShun
         PluginGallery.cpp PluginGallery.h
         PluginSettings.cpp PluginSettings.h
         ResultModel.cpp ResultModel.h
+        SettingsCommand.h
         SettingsEditor.cpp SettingsEditor.h
         Diagnostics.cpp Diagnostics.h
         SettingsSearch.cpp SettingsSearch.h
@@ -339,7 +340,7 @@ target_link_libraries(WinShun PRIVATE
     mfplat mfreadwrite mfuuid delayimp
     windowsapp # TextRecognizer: Windows.Media.Ocr, through C++/WinRT from the Windows SDK
     onnxruntime_headers) # PaddleOcr
-target_link_libraries(WinShun PRIVATE advapi32 miniz) # miniz: settings backups (BackupFiles)
+target_link_libraries(WinShun PRIVATE advapi32 userenv miniz) # userenv: the user's environment for ws (Shell); miniz: settings backups (BackupFiles)
 # The execution level (asInvoker, since 0.8.0) comes from app.manifest alone,
 # with the rest of the manifest; the linker's own UAC fragment would be a
 # second one. Media Foundation is loaded only when used (SoundClip): Windows

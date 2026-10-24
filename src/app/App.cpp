@@ -35,6 +35,7 @@
 #include "SearchEngine.h"
 #include "Secrets.h"
 #include "ServiceVolumeAccess.h"
+#include "SettingsCommand.h"
 #include "SettingsEditor.h"
 #include "Switches.h"
 #include "SystemCatalog.h"
@@ -3192,9 +3193,11 @@ void App::handleCommand(const QString& command)
         toggleLauncher();
     else if (command == u"quit")
         QGuiApplication::quit();
-    else if (command == u"settings")
+    else if (QString place; settingscommand::parse(command, &place)) {
         showSettings();
-    else if (command.startsWith(u"query:"))
+        if (m_settingsWindow && !place.isEmpty())
+            QMetaObject::invokeMethod(m_settingsWindow, "showPlace", Q_ARG(QVariant, QVariant(place)));
+    } else if (command.startsWith(u"query:"))
         showLauncher(command.mid(6));
     else if (command.startsWith(u"dump:"))
         dumpLauncher(command.mid(5));

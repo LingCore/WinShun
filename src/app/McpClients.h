@@ -33,6 +33,7 @@ QVariantList toVariant(const std::vector<Client>& clients); // for QML: {id, nam
 struct Result {
     bool ok = false;
     QString message; // for the user, either way
+    QString file; // installSkill: the file ws printed, where it put the Skill
 };
 // Writes the relay into the client's configuration (a JSON file merged, or
 // Claude Code's own command run). `done` runs on the calling thread, later
@@ -45,7 +46,10 @@ QString snippet(const QString& id);
 // Claude Code's Skill: a SKILL.md that teaches it the command line ws (and
 // saves the context an MCP server's tools cost). It lives in
 // %CLAUDE_CONFIG_DIR%\skills\winshun, else in %USERPROFILE%\.claude\skills\winshun.
-QString skillPath(); // the file, native
+// The file, native: where the last install put it, as ws printed it (ws runs with
+// the user's own environment, which this program's may be older than), else
+// where this program expects it.
+QString skillPath();
 // Has `wsExe skill --install claude` write it, with the user's normal rights
 // (never elevated: the file must be theirs), off the GUI thread. `done`
 // runs on the GUI thread, and not at all once `context` is gone (at once,

@@ -3686,3 +3686,54 @@
 - **现象**：`tst_cli` 在 `QTemporaryDir`（`%TEMP%`，在 AppData 下）里建文件，`ws recent --in <那个文件夹>` 退出码 1，什么也没有。
 - **原因**：`recent_files` 默认不列隐藏的项和“系统、程序、工具文件夹”里的项（`EntryFlag::Hidden`、`LowPriority`，都往下继承），要 `include_hidden`、`include_system` 才列。AppData 本身是隐藏文件夹，在 Win顺 的设置里又算工具文件夹，所以它下面的全被滤掉。
 - **做法**：ws 对 `--in` 的文件夹第一次问不到时，带上这两个再问一次，并在 stderr 说明（`docs/design-cli.md` 第 3 节）。不一开始就带：`ws recent --in D:\项目` 会被 node_modules 里的改动淹没。
+
+### 注册表读不出来不等于“没有这个值”：PATH 被整个换成一项（H1，2026-10-24 复查）
+
+- **现象**：用户的 `Path` 如果是 `REG_BINARY` 之类（或两次读之间变长了），“启用命令行”把它当成空，写回 `<bin>` 一项：用户原来的整个 PATH 丢了。“从 PATH 移除”读不出时照样删掉记录、报成功，PATH 里的那一项还在。安装程序里同样的写法（`RegQueryStringValue` 失败就当没有，`Path := Folder`）会改系统 PATH。
+- **原因**：`readValue` / `RegQueryStringValue` 失败只返回“没读到”，不分“没有这个值”和“有但读不了”。
+- **做法**：只有 `ERROR_FILE_NOT_FOUND`（安装程序里是 `RegValueExists` 为假）才是没有；类型不对、没权限、一直变长都是错误，原样返回，不写、不动记录，界面写明原因；`ERROR_MORE_DATA` 整个重读。写之前再读一遍对比，变了就从头来，别拿旧快照覆盖别的程序刚改的 PATH。测试用 `REG_BINARY` / `REG_DWORD` / `REG_MULTI_SZ` 的值，在两次读之间的钩子里把值写长。
+
+### PATH 里一项带 `;`：按 `;` 切就认不出它，每点一次追加一次
+
+- **现象**：`bin` 的路径里有 `;` 时，原来不加引号追加，之后“已经在 PATH 里吗”按 `;` 切成两半，永远认不出，每点一次“启用命令行”多一项；Windows 自己读 PATH 时把 `"C:\a;b\bin"` 当一项。
+- **做法**：写成带引号的（`entryOf`），所有切 PATH 的地方（`hasEntry`、`analyse`、移除）按引号切（`splitPath`，拼回去一个字节不差）；记录里存写进去的原样文字，移除时只拿掉和它**一模一样**的那一项（原来拿掉所有写法，包括用户自己写的）。
+
+### `GetLongPathNameW` 对 PATH 里的每一项都问，共享上的项要等很多秒
+
+- **现象**：比较 PATH 项时对每一项调 `GetLongPathNameW`（为了展开 `PROGRA~1`）；PATH 里有一个断开的共享，设置页就卡住，窗口激活一次读一次。
+- **做法**：只有带 `~` 的才问文件系统（`normalized`）；测试里用保留给文档的 `192.0.2.1` 的共享做回归（不该碰它，所以不等）。`ws` 里同理：`absolutePath` 只对带 `~` 的存在的路径展开。
+
+### 拼音匹配把英文字母当首字母：“ws”匹配每个 “Windows”
+
+- **现象**：设置里搜 “ws” 出 21 项，大半是写着 Windows 的项，“ws 命令” 那几行混在里面。
+- **原因**：两层。`findWord` 允许词中间的匹配（`Windows` 的 `ws` 在词尾，分数 80）；拼音匹配器把文字里的英文字母当成它自己的首字母，`ws` 又在 `Windows` 的末两个字母上匹配成“首字母”（68 分）。
+- **做法**：1 到 2 个 ASCII 字符的词只在词首或整词匹配（`Term::atWordStart`，3 个字母以上照旧可以在词中）；拼音匹配里一个全是 ASCII 的片段不算拼音匹配（只是找错了位置的词）。回车去的是得分最高的那一行（`ws 命令`，标题以这个词开头，100 分）；各行仍按页面里的先后排列，不按分数重排。
+
+### 一个变量设在注册表里，Win顺 起的子进程却看不见（`CLAUDE_CONFIG_DIR`）
+
+- **现象**：用户 `setx CLAUDE_CONFIG_DIR` 之后，设置页的“装 Skill”还是装到老地方；Win顺 以管理员运行时，子进程拿到的是管理员的环境。
+- **原因**：`CreateProcessW(…, lpEnvironment = nullptr)` 继承 Win顺 启动时的环境；提权时用的 `CreateProcessWithTokenW` 不传环境块，也不是明确“用这个令牌的用户的环境”。
+- **做法**：`CreateEnvironmentBlock`：不提权时 `bInherit = TRUE`（用户的变量按注册表现在的样子盖在自己的环境上，父进程设的仍在）；提权时用桌面 shell 的令牌、`bInherit = FALSE`，加 `CREATE_UNICODE_ENVIRONMENT`。要链 `userenv`。“已装”以 ws 打印的路径为准，不用 Win顺 自己猜的。
+
+### 第二次 `--settings --settings-at` 转交给运行中的 Win顺 时位置丢了
+
+- **现象**：`WinShun.exe --settings --settings-at 9,0` 对已经开着的 Win顺 只打开设置窗口的第一页。
+- **原因**：`main.cpp` 把第二次启动的参数转成命令字符串，`--settings` 只转成 `settings`，`--settings-at` 没人转；只有 Win顺 自己第一次启动时（`StartOptions::settingsAt`）才认。
+- **做法**：命令改成 `settings:<位置>`（`SettingsCommand.h`），`App::handleCommand` 解开后调 `showPlace`。位置的格式 `<页>,<标签>`（从 0 数）或 `indexAccess`，写在 architecture.md 的命令行参数一段。没在真机上对着运行中的 Win顺 试过（那会动用户的窗口）：解析有单元测试，`showPlace` 本身由 `--preview-settings` 的搜索探针走过。
+
+### 开关打开后上面多出几行，把刚点的那一节顶出窗口
+
+- **现象**：设置 → AI 助手，点“启用命令行”，开关打开，上面多出权限那几行、页面多出标签，“命令行”一节被顶到窗口下面看不见。
+- **原因**：行是带动画出来的：只在改变那一刻补偿滚动位置不够，补偿完它们还在长。
+- **做法**：`SettingsWindow.holdInView(item, change)`：记下那一节在窗口里的位置，做改变，之后页面每次变高（`implicitHeight`）就把滚动位置补回去，守 0.8 秒或用户一滚动就放开。`--preview-settings … --hold-demo` 前后各抓一张并比较位置（150% 下相差 1 个设备像素以内）。
+
+### 管道名里只有用户的 SID：谁都能先建一根
+
+- **现象**（推演，没有真实的攻击样本）：同一用户下的任何程序可以先建 `\\.\pipe\WinShun.Mcp.<SID>`，ws 连上去的是它；`ws open` 会照它回答的路径打开文件。
+- **做法**：`ws open` 在发任何东西之前，用 `GetNamedPipeServerProcessId` 看管道另一头是不是安装位置里的 `WinShun.exe`；连接用 `SECURITY_IMPERSONATION`，服务端读到数据后才能模拟，所以先查再写就连模拟的机会也没有。别的命令只读，不查。
+
+### 测试文件里 `#include <shlobj.h>` 之后变量名 `small` 变成了 `char`
+
+- **现象**：`tst_cli.cpp` 里 `const bool small = …` 报“语法错误：意外的 char”，指着完全无关的一行。
+- **原因**：`rpcndr.h` 有 `#define small char`，`shlobj.h` 带进来了。
+- **做法**：换名字（`single`）；这类名字：`small`、`near`、`far`、`min`、`max`、`interface`。

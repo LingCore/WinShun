@@ -15,6 +15,11 @@ SettingsSection {
     // ws, for the Skill: its exe is there, and its folder on the PATH.
     readonly property bool cliFound: editor.cli.state.exeFound === true
     readonly property bool cliOnPath: editor.cli.state.onPath === true
+    // Whether the PATH has been looked at yet: not "off it" before that.
+    readonly property bool cliChecked: editor.cli.state.checked === true
+
+    // The Skill file may have been deleted (or made) meanwhile: looked at when this shows.
+    onVisibleChanged: if (visible) clientsSection.editor.refreshMcpClients()
 
     note: relayFound ? qsTr("点“连接”就写进那个客户端的配置（原文件先备份成 .bak）。装了的客户端才列出来。Claude Code 还可以“装 Skill”：让它在终端里用命令行 ws，比 MCP 更省上下文。")
                      : qsTr("没找到 WinShunMcp.exe，重新安装 Win顺 就有了。")
@@ -38,7 +43,7 @@ SettingsSection {
                     lines.push(qsTr("已装 Skill · %1").arg(modelData.skillPath))
                 if (!clientsSection.cliFound)
                     lines.push(qsTr("没找到 ws.exe，装不了 Skill；重新安装 Win顺 就有了"))
-                else if (!clientsSection.cliOnPath)
+                else if (clientsSection.cliChecked && !clientsSection.cliOnPath)
                     lines.push(qsTr("ws 还没加进 PATH：Skill 里写着 ws.exe 的完整路径，照样能用；建议先在“权限”页的“命令行”里启用"))
                 return lines.join("\n")
             }
@@ -74,7 +79,7 @@ SettingsSection {
             FlatButton { // no icon, like 复制 JSON: three buttons with icons leave the text beside them a column at the window's narrowest
                 visible: clientRow.isClaudeCode
                 text: clientRow.modelData.skillInstalled ? qsTr("重装 Skill") : qsTr("装 Skill")
-                enabled: clientsSection.cliFound
+                enabled: clientsSection.cliFound && !clientsSection.editor.mcpSkillBusy // one ws at a time
                 onClicked: clientsSection.editor.installMcpSkill(clientRow.modelData.id)
             }
             FlatButton {

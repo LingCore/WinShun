@@ -9,12 +9,15 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLibraryInfo>
+#include <QScopeGuard>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QUuid>
 
 #include <tlhelp32.h>
 
 #include <atomic>
+#include <cstdlib>
 #include <memory>
 
 using namespace Qt::StringLiterals;
@@ -100,6 +103,35 @@ private slots:
         QVERIFY(QString::fromLatin1(reads.output.data(), static_cast<qsizetype>(reads.output.size())).contains(u"done"_s));
         // A program that does not exist does not start.
         QVERIFY(!ws::shell::runUnelevatedCaptured(L"C:\\wstest\\nothing\\not-there.exe", {}, 1000).started);
+    }
+
+    // The program gets the user's environment as the registry has it now, not the one this
+    // process started with: a variable set (setx) after Win顺 started is seen by ws.
+    void getsTheUsersEnvironmentAsTheRegistryHasIt()
+    {
+        const std::wstring cmd = qEnvironmentVariable("ComSpec").toStdWString();
+        const QString name = u"WS_TEST_ENV_"_s + QUuid::createUuid().toString(QUuid::Id128).left(12);
+        HKEY key = nullptr;
+        QCOMPARE(::RegCreateKeyExW(HKEY_CURRENT_USER, L"Environment", 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr), LSTATUS(ERROR_SUCCESS));
+        const std::wstring value = L"from the registry";
+        QCOMPARE(::RegSetValueExW(key, name.toStdWString().c_str(), 0, REG_SZ, reinterpret_cast<const BYTE*>(value.c_str()),
+                     static_cast<DWORD>((value.size() + 1) * sizeof(wchar_t))),
+            LSTATUS(ERROR_SUCCESS));
+        const auto remove = qScopeGuard([&] {
+            ::RegDeleteValueW(key, name.toStdWString().c_str());
+            ::RegCloseKey(key);
+            _wputenv_s(L"WS_TEST_ONLY_HERE", L"");
+        });
+        _wputenv_s(L"WS_TEST_ONLY_HERE", L"set by a parent");
+        const auto run = ws::shell::runUnelevatedCaptured(cmd, (L"/d /c \"echo [%" + name.toStdWString() + L"%] [%WS_TEST_ONLY_HERE%]\"").c_str(), 15000);
+        QVERIFY(run.started && !run.timedOut);
+        const QString text = QString::fromLatin1(run.output.data(), static_cast<qsizetype>(run.output.size()));
+        QVERIFY2(text.contains(u"[from the registry]"_s), qPrintable(text));
+        // Over this process's own variables (the user's account): what a parent set stays.
+        if (!ws::integrity::processElevated())
+            QVERIFY2(text.contains(u"[set by a parent]"_s), qPrintable(text));
+        // The shell's account, which this one is (the tests run as the user).
+        QVERIFY(ws::shell::runsAsShellUser());
     }
 
     void endsAProgramThatTakesTooLong()

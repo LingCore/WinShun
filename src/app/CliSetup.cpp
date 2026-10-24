@@ -1,7 +1,9 @@
 #include "CliSetup.h"
 
 #include "SettingsEditor.h"
+#include "platform/Integrity.h"
 #include "platform/SettingBroadcast.h"
+#include "platform/Shell.h"
 
 #include <QCoreApplication>
 #include <QPointer>
@@ -16,7 +18,12 @@ CliSetup::CliSetup(SettingsEditor* editor, QObject* parent)
     : QObject(parent)
     , m_editor(editor)
 {
-    m_state = cli::toVariant({});
+    // Before the first look at the PATH is back (it is made off the GUI thread), what
+    // is known at once: where ws.exe should be, and whether it is. The PATH is not.
+    cli::Status first;
+    first.bin = cli::binFolder();
+    first.exe = cli::wsExe(first.bin);
+    m_state = cli::toVariant(first);
     m_state.insert(u"checked"_s, false);
 }
 
@@ -27,6 +34,8 @@ QString CliSetup::example() const
 
 void CliSetup::refresh()
 {
+    if (m_neverLooks)
+        return;
     const int look = ++m_looks;
     if (m_probe) {
         apply(look, m_probe());
@@ -49,11 +58,27 @@ void CliSetup::apply(int look, const cli::Status& status)
     m_state = cli::toVariant(status);
     m_state.insert(u"checked"_s, true);
     emit stateChanged();
+    // After a change the buttons stay off until what the PATH now holds is in the state
+    // (the look made for it; one made earlier, by the window coming to the front, says
+    // nothing yet): "从 PATH 移除" clicked again in between said the entry was not WinShun's.
+    if (m_busy && m_settleLook != 0 && look >= m_settleLook)
+        setBusy(false);
+}
+
+// The PATH is the account's whose registry this program writes (HKCU). Started as another
+// account's administrator, that is not the user at the desktop, whose terminals and Claude
+// Code would never see the folder (and the Skill goes to the user's, ws running as them).
+bool CliSetup::refusesOtherAccount()
+{
+    if (m_probe || !integrity::processElevated() || shell::runsAsShellUser())
+        return false;
+    setMessage(tr("Win顺 现在是用另一个账户（管理员）运行的，PATH 是那个账户的，不是你登录的这个。请先退出 Win顺，再正常打开它，然后在这里启用。"));
+    return true;
 }
 
 void CliSetup::enable()
 {
-    if (m_busy)
+    if (m_busy || refusesOtherAccount())
         return;
     // Wanting the command line is wanting the connection: the switch goes on with it.
     const bool switchWasOff = m_editor && !m_editor->mcp();
@@ -76,12 +101,13 @@ void CliSetup::enable()
 
 void CliSetup::removeFromPath()
 {
-    if (!m_busy)
+    if (!m_busy && !refusesOtherAccount())
         changePath(false);
 }
 
 void CliSetup::changePath(bool add)
 {
+    m_settleLook = 0;
     setBusy(true);
     if (m_probe) { // the preview: nothing is written
         finishChange(add, 0);
@@ -104,12 +130,19 @@ void CliSetup::changePath(bool add)
 
 void CliSetup::finishChange(bool add, unsigned long error)
 {
-    setBusy(false);
+    // Still busy: apply() ends it when the look made now is in.
+    m_settleLook = m_looks + 1;
     if (error == 0)
-        setMessage(add ? tr("已加进你的 PATH：新打开的终端里就能用 ws 了。")
+        setMessage(add ? tr("命令行已启用：新打开的终端里就能用 ws 了。")
                        : tr("已从你的 PATH 里去掉。已经开着的终端要重开才生效。"));
     else if (error == ERROR_NOT_FOUND)
         setMessage(tr("这一项不是 Win顺 加的，没有动它。"));
+    else if (error == ERROR_UNSUPPORTED_TYPE)
+        setMessage(tr("你的 PATH 不是文本类型的值（注册表里的类型不对），为了不弄坏它，Win顺 没有动。可以用 ws 的完整路径，或自己修好它。"));
+    else if (error == ERROR_BUSY || error == ERROR_MORE_DATA)
+        setMessage(tr("你的 PATH 刚被别的程序改着，没有写成；再点一次。"));
+    else if (error == ERROR_ACCESS_DENIED)
+        setMessage(tr("没有权限改你的 PATH（错误 5）。"));
     else
         setMessage((add ? tr("没能写进你的 PATH（错误 %1）。") : tr("没能改你的 PATH（错误 %1）。")).arg(error));
     refresh();

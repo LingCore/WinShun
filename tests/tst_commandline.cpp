@@ -615,6 +615,17 @@ private slots:
         QVERIFY(QFile::exists(skill));
         QVERIFY(claudeCode().skillInstalled);
 
+        // Whether it is there is judged from where ws put it, as it printed: a CLAUDE_CONFIG_DIR
+        // that this program sees differently (set or changed after it started, say) does not
+        // move the row's file.
+        setEnvironment(L"CLAUDE_CONFIG_DIR", QDir::toNativeSeparators(temporary.filePath(u"elsewhere"_s)));
+        QCOMPARE(ws::mcpclients::skillPath(), skill);
+        QVERIFY(claudeCode().skillInstalled);
+        // And the file deleted afterwards is seen at the next look.
+        QVERIFY(QFile::remove(skill));
+        QVERIFY(!claudeCode().skillInstalled);
+        QCOMPARE(claudeCode().skillPath, skill);
+
         // No ws.exe: said at once, nothing run.
         auto missing = install({});
         QVERIFY(missing->done);

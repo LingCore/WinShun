@@ -89,7 +89,7 @@ std::optional<Found> findWord(const Term& term, QStringView text)
         if (inside < 0)
             inside = at;
     }
-    if (inside >= 0 && !term.single)
+    if (inside >= 0 && !term.atWordStart)
         return Found {{inside, term.text.size()}, Inside};
     return std::nullopt;
 }
@@ -103,6 +103,12 @@ std::optional<Found> findPinyin(const Term& term, QStringView text)
     if (!span)
         return std::nullopt;
     const Span found {static_cast<qsizetype>(span->start), static_cast<qsizetype>(span->length)};
+    // Letters of the text count as their own initials, so "ws" is also the ws at the end of
+    // "Windows": a span with no Chinese in it is not a pinyin match, only a word found where
+    // it should not be (findWord has said where words may be found).
+    const QStringView covered = text.mid(found.start, found.length);
+    if (std::all_of(covered.begin(), covered.end(), [](QChar c) { return c.unicode() < 0x80; }))
+        return std::nullopt;
     // One letter for each character: by the initials alone.
     return Found {found, found.length == term.text.size() ? Initials : Pinyin};
 }
@@ -148,7 +154,7 @@ Query parse(const QString& text)
         word = word.toCaseFolded();
         const bool ascii = std::all_of(word.cbegin(), word.cend(), [](QChar c) { return c.unicode() < 0x80; });
         const std::string folded = ascii ? word.toStdString() : std::string();
-        query.terms.push_back({word, pinyin::Matcher(folded), word.size() == 1 && ascii});
+        query.terms.push_back({word, pinyin::Matcher(folded), word.size() == 1 && ascii, word.size() <= 2 && ascii});
         word.clear();
     };
     for (qsizetype i = 0; i < normalized.size(); ++i) {
