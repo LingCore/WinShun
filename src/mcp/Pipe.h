@@ -1,67 +1,46 @@
 #pragma once
 
-// The named pipe between WinShunMcp.exe (the relay the AI clients start, with
-// the user's normal rights) and Win顺 (elevated). Messages are lines of
-// JSON-RPC (JsonRpc.h). Win32 and Qt Core only, for the relay's sake.
+// The named pipe between Win顺's clients and Win顺: WinShunMcp.exe (the relay
+// the AI clients start, with the user's normal rights) and ws.exe (the
+// command line). Messages are lines of JSON-RPC (JsonRpc.h). The name and the
+// client's core are Qt-free (PipeClient.h); this adds the server's security
+// and QByteArray lines, for the relay, Win顺 and the tests.
 //
-// The pipe is the user's own: its name carries the user's SID (pipe names are
-// machine-wide, so two users each get their own), its DACL lets only that
-// user, administrators and the system open it, and its label is medium
-// integrity, so that a process of medium integrity can connect to an object
-// made by an elevated one, while low-integrity processes (browser sandboxes)
-// cannot.
+// The pipe's DACL lets only its user, administrators and the system open it,
+// and its label is medium integrity, so that a process of medium integrity
+// can connect to an object made by an elevated one, while low-integrity
+// processes (browser sandboxes) cannot.
+
+#include "PipeClient.h"
 
 #include <QByteArray>
 
-#include <windows.h>
-
-#include <mutex>
-#include <string>
-#include <string_view>
-
 namespace ws::pipe {
-
-// "S-1-5-21-…" of the user this process runs as; empty if it cannot be read.
-std::wstring userSid();
-// "WinShun.Mcp.S-1-5-21-…": the name Win顺 serves on and the relay opens.
-std::wstring defaultName();
-std::wstring fullPath(std::wstring_view name); // "\\.\pipe\" + name
 
 // The security descriptor described above; null if it cannot be made. Free
 // with ::LocalFree.
 PSECURITY_DESCRIPTOR createSecurityDescriptor();
 
-// One end of the pipe, from the client side: connects to the server, writes
-// lines, reads lines. Reads block (one thread reads); writes may come from
-// any thread, while a read waits; close() ends a blocked read.
-class Client {
+// LineClient with QByteArray lines.
+class Client : public LineClient {
 public:
-    Client();
-    ~Client();
-    Client(const Client&) = delete;
-    Client& operator=(const Client&) = delete;
-
-    // Opens `name` (without the \\.\pipe\ prefix), waiting at most `timeoutMs`
-    // for a free instance when the server is busy. False when there is no
-    // server (ERROR_FILE_NOT_FOUND) or it cannot be opened; `error` has the
-    // Win32 code.
-    bool connect(std::wstring_view name, DWORD timeoutMs, DWORD* error = nullptr);
-    bool connected() const noexcept;
-    void close();
+    using LineClient::readLine;
+    using LineClient::write;
 
     // A line with its newline; false once the pipe is closed or broken.
-    bool write(const QByteArray& line);
+    bool write(const QByteArray& line)
+    {
+        return LineClient::write(std::string_view(line.constData(), static_cast<std::size_t>(line.size())));
+    }
     // The next line (without its newline); false at the end.
-    bool readLine(QByteArray& line);
-
-private:
-    HANDLE m_handle = INVALID_HANDLE_VALUE; // overlapped
-    HANDLE m_readEvent; // one read at a time, one write at a time
-    HANDLE m_writeEvent;
-    std::mutex m_writeMutex;
-    QByteArray m_buffer; // read, not yet returned
+    bool readLine(QByteArray& line)
+    {
+        std::string read;
+        if (!LineClient::readLine(read))
+            return false;
+        line = QByteArray(read.data(), static_cast<qsizetype>(read.size()));
+        return true;
+    }
 };
-
-inline constexpr std::size_t kMaxLineBytes = 16u << 20; // longer lines end the connection
 
 } // namespace ws::pipe
