@@ -94,23 +94,43 @@ std::optional<Found> findWord(const Term& term, QStringView text)
     return std::nullopt;
 }
 
+// Whether a separator comes right before `at`. The fields are not normalized as the query is,
+// so a full-width "，" or "；" counts as the "," and ";" it becomes.
+bool followsSeparator(QStringView text, qsizetype at)
+{
+    const QChar prev = text[at - 1];
+    if (separates(prev))
+        return true;
+    const QString folded = QString(prev).normalized(QString::NormalizationForm_KC);
+    return folded.size() == 1 && folded[0] != prev && separates(folded[0]);
+}
+
 std::optional<Found> findPinyin(const Term& term, QStringView text)
 {
     if (!term.pinyin.valid())
         return std::nullopt;
     const std::u16string_view view(reinterpret_cast<const char16_t*>(text.utf16()), static_cast<std::size_t>(text.size()));
-    const auto span = term.pinyin.findUtf16(view);
-    if (!span)
-        return std::nullopt;
-    const Span found {static_cast<qsizetype>(span->start), static_cast<qsizetype>(span->length)};
-    // Letters of the text count as their own initials, so "ws" is also the ws at the end of
-    // "Windows": a span with no Chinese in it is not a pinyin match, only a word found where
-    // it should not be (findWord has said where words may be found).
-    const QStringView covered = text.mid(found.start, found.length);
-    if (std::all_of(covered.begin(), covered.end(), [](QChar c) { return c.unicode() < 0x80; }))
-        return std::nullopt;
-    // One letter for each character: by the initials alone.
-    return Found {found, found.length == term.text.size() ? Initials : Pinyin};
+    // The first match that may count: the next ones are looked for after one that may not.
+    for (std::size_t from = 0; from < view.size();) {
+        const auto span = term.pinyin.findUtf16(view.substr(from));
+        if (!span)
+            return std::nullopt;
+        const Span found {static_cast<qsizetype>(from + span->start), static_cast<qsizetype>(span->length)};
+        from = static_cast<std::size_t>(found.start) + 1;
+        // A short term ("ws"): at the start of the text or of a word, as findWord has it. Chinese has
+        // no spaces, so "ws" would also be the initials of 我设 in 帮我设置, in the middle of a keyword.
+        if (term.atWordStart && found.start > 0 && !followsSeparator(text, found.start))
+            continue;
+        // Letters of the text count as their own initials, so "ws" is also the ws at the end of
+        // "Windows": a span with no Chinese in it is not a pinyin match, only a word found where
+        // it should not be (findWord has said where words may be found).
+        const QStringView covered = text.mid(found.start, found.length);
+        if (std::all_of(covered.begin(), covered.end(), [](QChar c) { return c.unicode() < 0x80; }))
+            continue;
+        // One letter for each character: by the initials alone.
+        return Found {found, found.length == term.text.size() ? Initials : Pinyin};
+    }
+    return std::nullopt;
 }
 
 // The word in a field that may be matched by pinyin: as written first.

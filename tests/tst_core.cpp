@@ -9597,6 +9597,34 @@ private slots:
         QVERIFY(score(u"ndo"_s, windows) > 0);
         QVERIFY(score(u"win"_s, windows) > 0);
 
+        // Pinyin initials of one or two letters start a word too. Chinese has no spaces, so "ws" is
+        // also the initials of 我设 in 帮我设置, in the middle of one keyword of 允许 AI 修改设置.
+        Fields aiSettings;
+        aiSettings.title = u"允许 AI 修改设置"_s;
+        aiSettings.keywords = {u"设置"_s, u"配置"_s, u"修改"_s, u"改设置"_s, u"帮我设置"_s, u"setting"_s, u"config"_s, u"change"_s, u"AI"_s};
+        aiSettings.context = {u"AI 助手"_s, u"权限"_s};
+        QCOMPARE(score(u"ws"_s, aiSettings), -1);
+        QVERIFY(score(u"bws"_s, aiSettings) > 0); // from three letters anywhere, and at the start
+        QVERIFY(score(u"wsz"_s, aiSettings) > 0); // ... in the middle of 帮我设置
+        QVERIFY(score(u"xgsz"_s, aiSettings) > 0); // 修改设置 in the title
+        // At the start of the text, as before.
+        QVERIFY(score(u"kj"_s, hotkey) > 0);
+        QCOMPARE(match(parse(u"kj"_s), hotkey).title, (QList<Span> {{0, 2}}));
+        QVERIFY(score(u"sz"_s, aiSettings) > 0); // 设置, the first keyword
+        // ... and after a separator, a later word of a keyword found though an earlier place would not do.
+        Fields later;
+        later.keywords = {u"帮我设置 我设"_s};
+        QVERIFY(score(u"ws"_s, later) > 0);
+        later.keywords = {u"帮我设置，我设"_s}; // a full-width comma
+        QVERIFY(score(u"ws"_s, later) > 0);
+        later.keywords = {u"帮我设置；打开(我设)"_s};
+        QVERIFY(score(u"ws"_s, later) > 0);
+        later.keywords = {u"帮我设置"_s};
+        QCOMPARE(score(u"ws"_s, later), -1);
+        QCOMPARE(score(u"wo"_s, later), -1); // not by the spelling of one character either
+        later.keywords = {u"我设置"_s};
+        QVERIFY(score(u"ws"_s, later) > 0);
+
         // What the user filled in.
         Fields names;
         names.title = u"跳过的文件夹名称"_s;
