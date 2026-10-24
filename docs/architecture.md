@@ -277,12 +277,15 @@ src/app/             界面与 Windows 集成
 src/stub/            WinShunSearch.exe：用户固定到任务栏的按钮，不带 Qt、不提权，点一下通知 Win顺；也替它以普通权限打开截图
 src/service/         WinShunService.exe：索引服务（Windows 服务 "WinShun"，LocalSystem，不带 Qt、静态 C 运行库），替普通权限的 Win顺 读 NTFS 的 MFT 和变更日志，见下文“权限分离”；Server（接受连接、每连接一线程、握手、限额、让出磁盘）、Volumes（OpenMft / QueryJournal / FollowJournal / CloseVolume 的服务端）、Log、InputListener（按客户端会话启动 UIAccess 双击 Ctrl 监听子进程，连接拥有其生命周期）、main（SERVICE_MAIN、--install / --uninstall / --console / --listen-keys）
 src/mcp/             AI 助手：Win顺 作为 MCP 服务器（见下文“AI 助手”）
-  JsonRpc / Pipe     每行一条 JSON-RPC 消息的解析和拼装；命名管道的名字、安全描述符和客户端一端（只依赖 Qt Core，中继也用）
+  JsonRpc / Pipe     每行一条 JSON-RPC 消息的解析和拼装；命名管道的安全描述符，客户端一端的 QByteArray 外壳（只依赖 Qt Core，中继也用）
+  PipeClient         管道客户端的核心（不依赖 Qt）：管道名字（带用户 SID）、连接、按行读写、interrupt() 从别的线程打断读；中继和 ws.exe 各编一份（两种 C 运行库，不做成一个库）
+  Launch             Win顺 在不在运行（单实例互斥量）、怎么不弹 UAC 地拉起它（开机自启的计划任务，找不到再直接起 WinShun.exe）；中继和 ws.exe 共用的源文件
   McpTools           给 AI 的工具：每个工具的名字、JSON Schema、注解、要哪个开关放行，以及在搜索引擎和索引上怎么做（ToolHost；以后插件也走这一层）
   McpServer          MCP 协议本身：每个连接一个会话，initialize、tools/list、tools/call、取消
   PipeServer         Win顺 这一端的管道：接受任意多个连接，每个一个线程
   relay/main.cpp     WinShunMcp.exe：AI 客户端以 stdio 启动的那个程序，把消息原样转给管道；Win顺 没运行时自己回答
   LineChannel        一个双工句柄上按行读写（读线程、停止事件、写队列、16 MB 行上限）：PipeServer 的每个连接和插件 runner 的管道共用
+src/cli/             ws.exe：命令行（见下文“命令行 ws”和 docs/design-cli.md）；无 Qt、静态 C 运行库，单独放在 <安装目录>\bin，只有这个文件夹进 PATH。一次性的 MCP 客户端，走中继同一根管道；Run（选命令、输出流、编码、收尾）、Args / Commands / Help（参数表、子命令表、帮助）、Connect / Session / Context（连接、拉起、调用、取消、等索引、拒绝变成退出码）、Output / Encoding / Format / Print（控制台或重定向、代码页、颜色、-l / --json / -0）、Search / Grep / TextCommand / Clip / Status / Skill（各命令）、SKILL.md（经 resources/ws.rc 编进去）
 src/plugin/          插件系统（见下文“插件系统”）
   Manifest           plugin.json 的读取和校验（错误是给设置页看的一句话；.svg 图标直接拒绝：安装包不带 SVG 支持）；{zh, en} 文字、权限、runtime、命令、触发器、零代码的 run、设置项
   Catalog            发现已装的插件（用户目录优先于随包目录）、监视用户目录（manifest 变了重扫，别的文件变了报 scriptsChanged）、关键字和正则/推送触发器的索引、关键字和 [WebSearch] 及插件之间的冲突；list 命令的关键字要带空格才算（hint() 给单独打出的关键字一行提示）
@@ -618,6 +621,25 @@ Win顺 是一个 MCP（Model Context Protocol）服务器：Claude Desktop、Cla
 - **测试（设置页这一半）**：`tst_commandline`：PATH 的文字（展开、引号、大小写、只追加不重复、取出时别的字符一个不动）、分析（系统和用户的先后、PATHEXT、别的 ws 只算排在前面的、没有 ws.exe）、注册表的读写（在测试自己的键 `HKCU\Software\WinShunTest\<guid>` 里：`%VAR%` 不展开、`REG_EXPAND_SZ` 和 `REG_SZ` 的类型照旧、值不存在、不是我们记的就拿不掉）、装 Skill（`fake_ws.exe` 当 ws.exe，`CLAUDE_CONFIG_DIR` 指到临时文件夹：成功的路径、失败时两根流的字和退出码、没有 ws.exe；提权运行时跳过，因为提权的子进程拿不到测试设的环境变量，会写进真的 `.claude`）；`tst_shelllaunch` 加了 `runUnelevatedCaptured`（两根流、退出码、超时结束），提权运行时走资源管理器令牌的那条也试过。
 - **测试**：`tst_mcp` 在临时文件夹上手工填一个索引（`IndexService` 不 `start()`，直接往 `index()` 里加条目），真的 `SearchEngine`、`ToolHost`、`McpServer` 跑在上面：协议、每个工具、取消和排队、真管道、以及用 Win32 管道当 AI 客户端驱动真的 `WinShunMcp.exe`（在线、离线、Win顺 中途退出再回来）。两个引擎互不等待（`namesBesideContent`：内容引擎的索引被写锁卡住时，名字搜索照样回答，取消、排队、会话断开各落在对的引擎上）、只有一个引擎时照旧排队（`oneEngine`）、命令行会话（`cliSession`：上限、格式、错误码、不进会话列表、计数）、`size`、`folders`、过大的回答（`tooLarge`）各有测试。要用真实 AI 客户端或 ws 试时，`wsbench --mcp-host` 把索引文件复制一份后在 `WinShun.Mcp.<SID>.bench` 管道上提供同样的服务（两个引擎；排序用 app 的 history.txt，只读，`--history FILE` 换一个；没有打开和剪贴板），客户端配置里写 `WinShunMcp.exe --pipe <那个名字>`；`--frozen` 让索引停在快照那一刻，不读也不遍历磁盘（没提权时打不开卷，否则会去遍历每个盘，要好几分钟），量搜索用它。
 - **实测（命令行，2026-10-24，`wsbench --mcp-host --frozen`，真实索引的副本 367 万项，未提权；时间是 ws 那边从发出调用到读完回答）：** `报告` 100 条 10–15 ms（带大小 21 ms），14 KB。`a` 50 000 条：不带大小 2.0–2.5 s、8.9 MB（每条约 178 字节），其中引擎 0.33 s（含按历史排序）、访问检查 14 817 次 0.6–0.9 s（第一次安全描述符还没进缓存时 4.7 s）、组条目约 1 s（几乎都是 `isoTime` 的本地时间换算，见 pitfalls“列 50 000 条时，时间的文字比搜索本身还慢”），界面线程上序列化 53–100 ms；带大小 9.5 MB，热 3.5 s，冷 10.9 s（5 万次读盘）。`recent_files` 50 000 条 1.5–1.8 s。`search_content` 的 `include` 2 000 条热 0.68 s、0.5 MB，冷时 5 秒超时回了 1 859 条 `complete=false`；内容搜索跑着的 1.6 s 里名字搜索照样 9–36 ms 回来。bench 进程峰值工作集 287 MB（含整个索引）。
+
+## 命令行 ws
+
+`ws.exe`（`src/cli/`，设计和实现时的改动见 `docs/design-cli.md`）：在终端里搜，像 Everything 的 `es`；能跑命令的 AI 代理（Claude Code、Codex）通过 Skill 用它，比 MCP 省上下文。
+
+- **一次性的 MCP 客户端，走中继同一根管道。** 每次运行：连 `\\.\pipe\WinShun.Mcp.<SID>` → `initialize`（`clientInfo.name` 是 `ws`）→ `index_status` 和真正的 `tools/call` 一起写出去 → 打印 → 退出。同一个 `ToolHost`、同一套 Policy、“不让 AI 看到的文件夹”、访问检查和 mcp.log；开关关着时管道不在，ws 也用不了（退出码 4），不能拿它绕过隐私开关。`ws open` 由 ws 自己 `ShellExecuteExW`（能跑 ws 的程序本来就能打开文件）；剪贴板历史照样要开关放行。
+- **连接**：先连管道，在就用，不看设置文件。连不上时：设置文件里开关关着 → 4；Win顺 在运行（单实例互斥量）却没有管道 → 等 2 秒，还没有就 4（绝不跑计划任务：那只会弹出搜索框）；没运行 → 跑开机自启的计划任务拉起（`--no-start` 不拉，退出码 3），几个 ws 同时发现时只有一个去拉（`<互斥量>.Starting`），最多等 12 秒。索引没好时取消那次调用，默认等 10 秒（`--wait`），控制台上显示百分比，好了再问。
+- **新旧 Win顺 都能用**：`limit` 每次明说（默认 100，`-n 0` 发 50 000，grep 2 000，超过是用法错误）；`--in` 发 `folders`，旧版不认时 ws 自己筛并提示；`size` 只在 `-l` 或按大小排序时要；`--json` 的字段固定（`path`、`type`、`modified`，`-l` 加 `size`；旧版多给的 `name` 去掉）。拒绝的退出码先看 `structuredContent.error`（`not_found` 6、`off` 4、`too_large` 7），没有就按旧版的英文原话归类；`ws text <文件夹>`、`ws ls <文件>` 在本地就报 2。`ws recent --in` 第一次问不到时带上 `include_system`、`include_hidden` 再问一次（文件夹本身在 AppData 这类地方时，平时的过滤会把它全滤掉；pitfalls）。
+- **编码**：控制台一律 `WriteConsoleW`；重定向默认 UTF-8、无 BOM、换行 LF；父进程是 PowerShell 时按控制台代码页写，放不下的字写成 `?` 并提示一次，`--json` 里写成 `\uXXXX`；`--encoding` / `WS_ENCODING` 可指定。代码页放不下中文时（英文系统区域的 437、1252），提示和错误改用英文，免得整句都是问号。往 stderr 写之前先把 stdout 攒着的写出去，提示总在结果后面。
+- **启动快**：不依赖 Qt，shell32 / ole32 延迟加载（只有 `open` 和拉起 Win顺 用），参数用 `wmain` 的宽字符 argv：和 `CommandLineToArgvW` 一样不丢中文，又不加载 shell32（实测交替各 30 次，每次少 2.2 ms：`help` 4.2 对 6.4 ms，`--version` 5.0 对 7.3 ms）。
+- **Skill**：SKILL.md 编进 ws.exe；`ws skill` 打印；`ws skill --install claude` 写进 `%CLAUDE_CONFIG_DIR%`（没设就是 `~\.claude`）`\skills\winshun\SKILL.md`，比打印的多一行 ws.exe 的完整路径（PATH 还没生效的终端里用），先写临时文件再换上，只读的也覆盖；成功时 stdout 只有那个文件的路径。
+- **实测（2026-10-24，未提权，对着用户在跑的 0.13.2，索引 3 680 677 项，10 次的中位数，含起进程）**：`ws --version` 6.8 ms、`ws help` 4.7 ms、`ws status` 8.7 ms、`ws find 报告 -n 20` 15.1 ms、`ws find bg -n 20` 15.6 ms。5 万条（8.2 MB）的回答（假服务端）：在进程里 `json::parse` 45 ms（释放 11 ms），`ws find -n 0` 从启动到退出 108 ms（`--json` 123 ms，`-0` 108 ms），一条 15 ms，所以 runner 的 Json 不用为它改。
+- **编码实测**（窗口外的独立控制台里 `chcp` 936 / 65001 / 437 各一轮；文件名里有 GBK 以外的“𠀀”；读出实际字节比对）：
+  - cmd、Git Bash、Claude Code 的 Bash：管道给外部程序和写文件都是 UTF-8，全对；中文参数在每种 shell 里都原样到达。
+  - PowerShell 7 / 5.1 交给 cmdlet：65001 全对；936 只有“𠀀”成 `?`，加一行提示；437 中文全成 `?`（提示是英文的）。
+  - PowerShell 5.1 交给外部程序：中文全丢（它按 `$OutputEncoding`，也就是 ASCII，重新编码，和 ws 写什么无关）；`>` 写文件是 UTF-16，936 下只有“𠀀”成 `?`。
+  - PowerShell 7 的 `>` 和交给外部程序：原样传字节，936 下是 GBK（设计里接受的代价）。
+  - 控制台本身：显示对；conhost 把“𠀀”显示成 U+FFFD，是控制台自己的限制。
+- **测试**：`tst_cli`（`docs/design-cli.md` 第 13 节）。
 
 ## 按意思找（winshun.semantic）
 

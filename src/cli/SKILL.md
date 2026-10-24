@@ -1,0 +1,40 @@
+---
+name: winshun
+description: Find files on this Windows PC by name (pinyin too) or by the text inside them (Word, Excel, PowerPoint and PDF included), read a document's text, or list recently changed files, with WinShun's ws command. Use it whenever the user asks to find, locate or read a file on this computer.
+---
+
+# WinShun on the command line: ws
+
+`ws` asks WinShun (Win顺), which keeps an index of every file and folder name on the local drives. A name search takes milliseconds across millions of files: use it instead of a recursive `dir`, `Get-ChildItem` or `find` to locate files anywhere on the PC.
+
+## Commands
+
+- `ws find "quarterly report" -n 20`: files and folders by name (`ws "report"` is the same)
+- `ws grep "invoice 2024" -n 20`: files containing the words, as `path:line:text`; documents give `p3` (page), `s2` (slide), `[Sheet1]r12` (row)
+- `ws text "D:\Docs\plan.docx"`: the text of a file or document (docx, xlsx, pptx, pdf); a long one in parts with `--from <offset>`
+- `ws recent --days 7 --ext docx,xlsx`: files changed lately, newest first
+- `ws ls "D:\Projects"`: a folder's entries, from the index
+- `ws open "plan" --ext docx`: opens the best match as a double-click would; only when the user asks to open something
+- `ws clip -n 5`: the clipboard history, when the user allowed it
+- `ws status`: whether WinShun runs and its index is ready
+
+## Query syntax (find)
+
+- All words must match, in the name or in a parent folder's name; Chinese names also match pinyin (`bg`, `baogao` for 报告).
+- `"exact phrase"`; `!word` excludes; `*.pdf` and `?` are wildcards; `ext:pdf,docx`; `folder\name`.
+- `--in <folder>` keeps to a folder (repeatable; `--in .` is the current one); `--files` or `--folders`; `--ext pdf,docx`.
+- `--sort newest` (or `oldest`, `name`, `largest`…); by default the best matches come first.
+- People describe a file by what it is about: when nothing fits, try synonyms, shorter stems, Chinese and English (报销, 费用, reimbursement), then `ws grep`.
+
+## Output
+
+- One full path per line on stdout; hints go to stderr and start with `ws:`.
+- `-n 20` limits the results (default 100; `-n 0` gives as many as allowed). Keep it small.
+- `-l` adds size and modified time; `--json` prints one JSON array (`path`, `type`, `modified`, and `size` with `-l`); `-0` separates paths with NUL.
+- `--timeout 15s` lets grep search longer (default 5s, at most 30s); `--wait 30s` waits for an index that is still loading.
+
+## Rules
+
+- Always quote the query: bash expands `*`.
+- Exit codes: 0 found, 1 nothing found, 2 wrong usage, 3 WinShun is not running, 4 off in WinShun's settings: ask the user to turn on the switch stderr names (设置 → AI 助手 → “允许 AI 助手和命令行连接”, or for `ws clip` “允许 AI 读取剪贴板历史”), 5 the index is not ready, 6 the path cannot be seen, 7 other errors.
+- Show paths to the user as they are.

@@ -317,6 +317,20 @@ target_compile_definitions(tst_mcp PRIVATE
     WINSHUN_PLUGIN_FAKE="$<TARGET_FILE:plugin_fake>")
 add_dependencies(tst_mcp WinShunMcp WinShunPluginHost plugin_fake)
 
+# The command line ws.exe (src/cli): its pieces built in again (the option
+# table, the parser, the encoder, the start decision), and the real ws.exe,
+# whose path it is told, against the MCP server in the test on a test pipe.
+# The runner's JSON and Launch.cpp are built in as ws has them (wsplugin
+# would bring the JSON in twice).
+qt_add_executable(tst_cli tst_cli.cpp ${WS_CLI_SOURCES}
+    ${PROJECT_SOURCE_DIR}/src/plugin/runner/Json.cpp ${PROJECT_SOURCE_DIR}/src/mcp/Launch.cpp)
+target_include_directories(tst_cli PRIVATE ${PROJECT_SOURCE_DIR}/src/cli ${PROJECT_SOURCE_DIR}/src/plugin/runner ${PROJECT_SOURCE_DIR}/src/mcp)
+target_link_libraries(tst_cli PRIVATE wsmcp Qt6::Test ntdll shell32 ole32 advapi32)
+target_compile_definitions(tst_cli PRIVATE
+    WINSHUN_CLI="$<TARGET_FILE:ws>"
+    WINSHUN_CLI_SKILL="${PROJECT_SOURCE_DIR}/src/cli/SKILL.md")
+add_dependencies(tst_cli ws)
+
 # The pieces of the tools plugin that compute (src/tools-plugin), built in
 # again: the calculator and the conversions have edges (division by zero,
 # overflow, bad input) worth pinning down.
@@ -364,6 +378,7 @@ add_test(NAME tst_ocr COMMAND tst_ocr)
 add_test(NAME tst_tools COMMAND tst_tools)
 add_test(NAME tst_semantic COMMAND tst_semantic)
 add_test(NAME tst_mcp COMMAND tst_mcp)
+add_test(NAME tst_cli COMMAND tst_cli)
 add_test(NAME tst_plugin COMMAND tst_plugin)
 # Importing clipboard history (Ditto, text, CSV): the reader with a real store.
 qt_add_executable(tst_clipimport tst_clipimport.cpp ${PROJECT_SOURCE_DIR}/src/app/ClipImport.cpp
@@ -405,5 +420,5 @@ add_test(NAME tst_clipselect COMMAND tst_clipselect)
 set_tests_properties(tst_clipselect PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 # Let ctest find the Qt DLLs without a deploy step.
-set_tests_properties(tst_core tst_service tst_keylistener tst_clipboard tst_favorites tst_backup tst_color tst_elide tst_placement tst_dragout tst_siteicon tst_ocr tst_tools tst_semantic tst_mcp tst_plugin PROPERTIES
+set_tests_properties(tst_core tst_service tst_keylistener tst_clipboard tst_favorites tst_backup tst_color tst_elide tst_placement tst_dragout tst_siteicon tst_ocr tst_tools tst_semantic tst_mcp tst_cli tst_plugin PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
