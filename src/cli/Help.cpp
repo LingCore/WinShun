@@ -24,14 +24,14 @@ constexpr Text kExamples {L"例子：", L"Examples:"};
 constexpr Text kNotes {
     L"查询要加引号（bash 会先把 * 换成文件名）。第一个词正好是命令名时，写 ws find <词> 或 ws -- <词>。\n"
     L"结果写到 stdout，提示写到 stderr（以 ws: 开头）。\n"
-    L"退出码：0 有结果，1 没有结果，2 用法不对，3 Win顺 没在运行，4 连接关着，5 索引还没好，6 路径看不到，7 其他错误，130 Ctrl+C。\n"
+    L"退出码：0 有结果，1 没有结果，2 用法不对，3 Win顺 没在运行，4 设置里没开放（连接或剪贴板），5 索引还没好，6 路径看不到，7 其他错误，130 Ctrl+C。\n"
     L"PowerShell：在 profile 里加 [Console]::OutputEncoding = [Text.UTF8Encoding]::new()，ws 的输出就一直是 UTF-8。\n"
     L"每个命令的用法：ws help <命令>",
     L"Quote the query (bash turns * into file names first). When the first word is a command's name, write ws find <word> "
     L"or ws -- <word>.\n"
     L"Results go to stdout, hints to stderr (starting with ws:).\n"
-    L"Exit codes: 0 found, 1 nothing found, 2 wrong usage, 3 WinShun not running, 4 the connection is off, 5 the index is not "
-    L"ready, 6 the path cannot be seen, 7 other errors, 130 Ctrl+C.\n"
+    L"Exit codes: 0 found, 1 nothing found, 2 wrong usage, 3 WinShun not running, 4 not allowed in WinShun's settings (the "
+    L"connection or the clipboard), 5 the index is not ready, 6 the path cannot be seen, 7 other errors, 130 Ctrl+C.\n"
     L"PowerShell: put [Console]::OutputEncoding = [Text.UTF8Encoding]::new() in your profile and ws writes UTF-8 there too.\n"
     L"One command's usage: ws help <command>"};
 constexpr Text kShort {
