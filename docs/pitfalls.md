@@ -1721,6 +1721,30 @@
 - **原因**：`open(p, 'w')` 在 Windows 上把 LF 写成 CRLF，而仓库里的 `.ts` 是 LF。
 - **做法**：用 `open(p, 'wb')` 写字节，或 `open(p, 'w', newline='')`。检查有没有丢条目：用 `xml.etree` 把 HEAD 和现在的 `(context, source, comment)` 各读成一张表比较（`git diff` 里 lupdate 插入新条目会让旧条目看起来像删了又加）。
 
+### 两个搜索引擎的请求编号会撞，内容搜索还先发一个空结果
+
+- **现象**（2026-10-24，给内容搜索单独一个引擎时）：要是两个引擎的 `resultsReady` 接到同一个处理函数、只比请求编号，名字搜索会拿到一个空的结果就收尾了。
+- **原因**：每个 `SearchEngine` 的请求编号各自从 1 数起（`++m_counter`），两个引擎上同时在跑的请求可以都是 1；`runContentSearch` 一开始就发一个 `resultsReady(id, {}, 0, 0)`（给界面清空列表用），这个空结果的编号正好对得上另一个引擎上的名字搜索。
+- **做法**：`ToolHost` 每个引擎一条车道（`Lane`），信号按车道接，只认自己引擎发的；在跑的那个记着是不是内容搜索，名字的车道不收内容的信号。以后再加引擎也一样：编号只在一个引擎里唯一。
+
+### `kind: "files"` 回来的文件比 limit 少，甚至一个没有
+
+- **现象**：用户设了“文件夹在前”，查询又匹配很多文件夹时，`search_files` 的 `kind: "files"` 只回几个文件或一个没有，`truncated` 却是 true。命令行的上限放到 50 000 以后更容易碰到。
+- **原因**：引擎把文件和文件夹分开各取到 `limit` 个（`kindsApart`），再按 `kindOrder` 排在一起、截成 `limit` 个；文件夹在前时，被截掉的是排在后面的文件，之后才按 `kind` 把文件夹去掉。
+- **做法**：要文件时请求里用 `KindOrder::FilesFirst`（不管用户的设置），截掉的是文件夹；要文件夹时本来就是 `Scope::Folders`。
+
+### 超过 16 MB 的一行，客户端直接断开，不报错
+
+- **现象**：回答太大时（命令行一次要 50 000 条、路径又长，或 `read_file_text` 要几百万字），客户端那边像是 Win顺 掉线了，收不到任何错误。
+- **原因**：`pipe::Client::readLine`（ws.exe 和 WinShunMcp.exe 都用）读到 `kMaxLineBytes`（16 MB）还没见到换行就当连接坏了，断开。服务端照写不误，所以服务端的日志也看不出问题。
+- **做法**：`McpServer::response` 序列化完先量长度，超了就改回一个 `isError` 的工具结果（命令行的会话带 `structuredContent.error: "too_large"`），文字说多大、上限多少、怎么要少一点（小一点的 limit 或 max_chars、少几个文件夹、写细查询、`size: false`），mcp.log 记一行，会话照常。实测 50 000 条约 8.9–9.5 MB（每条 178–190 字节），每条平均超过约 335 字节才会撞线。
+
+### 列 50 000 条时，时间的文字比搜索本身还慢
+
+- **现象**（2026-10-24，`wsbench --mcp-host --frozen`，真实索引 367 万项）：ws 要 50 000 条（不带大小）服务端用 2.0–2.4 s，引擎只占约 0.33 s，访问检查 0.6–0.9 s，剩下约 1 s 是组条目。
+- **原因**：几乎都在 `isoTime`：`QDateTime::fromSecsSinceEpoch` 按本地时间换算、`offsetFromUtc`、`toOffsetFromUtc`、`toString(Qt::ISODate)`，每条约 15–20 µs；组 `QJsonObject` 和放进数组只占零头。
+- **做法**：默认 100 条只占约 2 ms，先没改。要改就按 UTC 的一天缓存本地偏移（一天的两头偏移相同就整天用它，不同就逐条换算）、自己拼 ISO 文字，并用 `QDateTime` 的结果逐个对照测试（包括偏移为 0 和有夏令时的时区）。量这类开销时别把计时器套在会调用同一函数的两处：`fileItem` 里面也调 `isoTime`，分开计会算两遍。
+
 ## 插件系统（阶段 0：探针）
 
 `tools/plugin-probe.cpp`（`build\release\plugin-probe.exe --parent --out 文件`，提权和不提权各跑一次）实测的，2026-10-11，Windows 11 26200。结论：插件进程不由提权的 Win顺 直接起；由它用资源管理器的令牌起一次不提权的 runner，插件由 runner 用普通 `CreateProcessW` 起。
