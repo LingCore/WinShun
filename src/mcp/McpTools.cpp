@@ -310,6 +310,44 @@ QJsonObject fileItem(AsideContext& aside, LocalTimes& times, const QString& path
     return item;
 }
 
+// The rows of a list that the caller can see (AsideContext::sees), in their
+// order, each to `take` until it returns false; `wanted`: a row to look at
+// at all (one of the kind asked for, not excluded, not on a share out of
+// reach). Their folders are checked ahead a batch of rows at a time
+// (AsideContext::seeAhead): ws asks for tens of thousands, in thousands of
+// folders, and one check after another was most of such an answer's time,
+// while an answer its budget cuts short has checked at most a batch more
+// than it gives. False when stopped.
+template <typename Rows, typename Wanted, typename Take>
+bool forEachVisible(AsideContext& aside, const Rows& rows, Wanted&& wanted, Take&& take)
+{
+    constexpr std::ptrdiff_t kBatch = 4096;
+    const std::ptrdiff_t count = std::ranges::ssize(rows);
+    std::vector<char> looked;
+    QStringList paths;
+    for (std::ptrdiff_t from = 0; from < count; from += kBatch) {
+        const std::ptrdiff_t to = std::min(count, from + kBatch);
+        looked.assign(static_cast<std::size_t>(to - from), 0);
+        paths.clear();
+        for (std::ptrdiff_t i = from; i < to; ++i) {
+            const auto& row = std::ranges::begin(rows)[i];
+            if (wanted(row)) {
+                looked[static_cast<std::size_t>(i - from)] = 1;
+                paths.push_back(row.path);
+            }
+        }
+        aside.seeAhead(paths);
+        for (std::ptrdiff_t i = from; i < to; ++i) {
+            if (aside.stopped())
+                return false;
+            const auto& row = std::ranges::begin(rows)[i];
+            if (looked[static_cast<std::size_t>(i - from)] && aside.sees(row.path) && !take(row))
+                return true;
+        }
+    }
+    return !aside.stopped();
+}
+
 ToolResult failure(const QString& why)
 {
     return {{}, true, why};
@@ -1272,7 +1310,7 @@ void ToolHost::aside(const std::shared_ptr<Call>& call, AsideWork work, std::fun
             starting(tool, stop);
         QuietIo quiet;
         Visibility view(static_cast<HANDLE>(token.get())); // null: the default token
-        AsideContext context {stop, view, quiet};
+        AsideContext context {stop, view, quiet, &m_checks};
         ToolResult result = work(context);
         work = nullptr; // what it held goes here, not on the GUI thread
         if (stop.stop_requested())
@@ -1439,22 +1477,26 @@ void ToolHost::onResults(Lane& lane, quint64 requestId, const SearchResults& res
         LocalTimes times;
         QJsonArray items;
         bool beyond = false; // one more to show than the limit takes
-        for (const SearchResult& r : results) {
-            if (aside.stopped())
-                return {};
-            // On a share that cannot be reached now: nothing of it can be
-            // checked (nor its size read) without waiting for the network.
-            if (!ofKind(r) || r.offline || offline(r.path) || excludedIndexPath(excluded, r.path) || !aside.sees(r.path))
-                continue;
-            if (items.size() >= limit) {
-                beyond = true;
-                break;
-            }
-            const QJsonObject item = fileItem(aside, times, r.path, r.name, r.isDir, r.modified, shape);
-            if (!budget.take(item))
-                break;
-            items.push_back(item);
-        }
+        // On a share that cannot be reached now: nothing of it can be
+        // checked (nor its size read) without waiting for the network.
+        const bool done = forEachVisible(
+            aside, results,
+            [&](const SearchResult& r) {
+                return ofKind(r) && !r.offline && !offline(r.path) && !excludedIndexPath(excluded, r.path);
+            },
+            [&](const SearchResult& r) {
+                if (items.size() >= limit) {
+                    beyond = true;
+                    return false;
+                }
+                const QJsonObject item = fileItem(aside, times, r.path, r.name, r.isDir, r.modified, shape);
+                if (!budget.take(item))
+                    return false;
+                items.push_back(item);
+                return true;
+            });
+        if (!done)
+            return {};
         // The engine found more than it gave. Asked for files, it gives the
         // folders that match too (kept apart, each kind to its limit): only
         // with all the files it could give are there more of them.
@@ -1509,20 +1551,26 @@ void ToolHost::finishContent(Lane& lane, bool complete)
         LocalTimes times;
         QJsonArray items;
         bool beyond = false; // one more the caller may read, past the limit
-        for (const SearchResult& r : found) {
-            if (aside.stopped())
-                return {};
-            if (r.offline || offline(r.path) || excludedIndexPath(excluded, r.path) || !aside.sees(r.path) || !aside.canRead(r.path))
-                continue;
-            if (items.size() >= limit) {
-                beyond = true;
-                break;
-            }
-            const QJsonObject item = contentItem(r, times, shape);
-            if (!budget.take(item))
-                break;
-            items.push_back(item);
-        }
+        const bool done = forEachVisible(
+            aside, found,
+            [&](const SearchResult& r) {
+                return !r.offline && !offline(r.path) && !excludedIndexPath(excluded, r.path);
+            },
+            [&](const SearchResult& r) {
+                if (!aside.canRead(r.path))
+                    return true;
+                if (items.size() >= limit) {
+                    beyond = true;
+                    return false;
+                }
+                const QJsonObject item = contentItem(r, times, shape);
+                if (!budget.take(item))
+                    return false;
+                items.push_back(item);
+                return true;
+            });
+        if (!done)
+            return {};
         QJsonObject out {{u"items"_s, items}, {u"returned"_s, items.size()}, {u"truncated"_s, beyond || budget.cut()}, {u"complete"_s, complete},
             {u"files_checked"_s, scanned}, {u"files_candidates"_s, total}, {u"elapsed_ms"_s, static_cast<double>(timer.elapsed())}};
         if (budget.cut())
@@ -2225,20 +2273,21 @@ void ToolHost::recentFiles(const std::shared_ptr<Call>& call)
         LocalTimes times;
         QJsonArray items;
         bool beyond = false; // one more to show than the limit takes
-        for (const Row& row : rows) {
-            if (aside.stopped())
-                return {};
-            if (offline(row.path) || excludedIndexPath(excluded, row.path) || !aside.sees(row.path))
-                continue;
-            if (items.size() >= limit) {
-                beyond = true;
-                break;
-            }
-            const QJsonObject item = fileItem(aside, times, row.path, row.name, row.isDir, row.modified, shape);
-            if (!budget.take(item))
-                break;
-            items.push_back(item);
-        }
+        const bool done = forEachVisible(
+            aside, rows, [&](const Row& row) { return !offline(row.path) && !excludedIndexPath(excluded, row.path); },
+            [&](const Row& row) {
+                if (items.size() >= limit) {
+                    beyond = true;
+                    return false;
+                }
+                const QJsonObject item = fileItem(aside, times, row.path, row.name, row.isDir, row.modified, shape);
+                if (!budget.take(item))
+                    return false;
+                items.push_back(item);
+                return true;
+            });
+        if (!done)
+            return {};
         QJsonObject out {{u"items"_s, items}, {u"returned"_s, items.size()}, {u"truncated"_s, beyond || budget.cut() || cut},
             {u"elapsed_ms"_s, static_cast<double>(timer.elapsed())}};
         if (service->state() != IndexService::State::Ready)

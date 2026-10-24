@@ -92,8 +92,7 @@ QuietIo::~QuietIo()
 void QuietIo::at(const QString& path)
 {
     // A network path goes at the network's pace, not a disk's of this computer.
-    const bool local = path.size() >= 2 && path[1] == u':' && path[0].unicode() < 128 && path[0].isLetter();
-    const bool quiet = !m_away && local && hardDisk(path[0].toUpper().unicode());
+    const bool quiet = !m_away && diskOf(path) == Disk::Seeks;
     if (quiet == m_background)
         return;
     // Begun on a thread in background mode already, it fails: only on a change.
@@ -127,16 +126,44 @@ bool AsideContext::canReadAttributes(const QString& path)
     return view.canReadAttributes(path);
 }
 
-bool QuietIo::hardDisk(char16_t drive)
+void AsideContext::seeAhead(const QStringList& paths)
 {
+    // Fewer new folders than this go one at a time: a millisecond at most.
+    // An AI client's hundred items are checked at once too, the spare rows
+    // the engine gives past them with them (for "a": 110 checks, not 101,
+    // in 0.5 ms, not 2.5).
+    constexpr qsizetype kAtOnce = 32;
+    if (!pool || paths.size() < kAtOnce)
+        return;
+    QStringList folders;
+    folders.reserve(paths.size());
+    for (const QString& path : paths) {
+        if (quiet.solid(path))
+            folders.push_back(Visibility::parentOf(path));
+    }
+    view.checkAhead(folders, *pool, stop, kAtOnce);
+}
+
+bool QuietIo::solid(const QString& path)
+{
+    return diskOf(path) == Disk::Solid;
+}
+
+QuietIo::Disk QuietIo::diskOf(const QString& path)
+{
+    if (path.size() < 2 || path[1] != u':' || path[0].unicode() >= 128 || !path[0].isLetter())
+        return Disk::Other;
+    const char16_t drive = path[0].toUpper().unicode();
     if (const auto it = m_disks.find(drive); it != m_disks.end())
         return it->second;
     const std::wstring root {static_cast<wchar_t>(drive), L':'};
     // placementOf counts a volume it cannot ask as one that seeks: only the
     // computer's own fixed drives are asked (a mapped network drive is not one).
-    const bool seeks = ::GetDriveTypeW((root + L'\\').c_str()) == DRIVE_FIXED && placementOf(root).seeks;
-    m_disks.emplace(drive, seeks);
-    return seeks;
+    Disk disk = Disk::Other;
+    if (::GetDriveTypeW((root + L'\\').c_str()) == DRIVE_FIXED)
+        disk = placementOf(root).seeks ? Disk::Seeks : Disk::Solid;
+    m_disks.emplace(drive, disk);
+    return disk;
 }
 
 } // namespace ws::mcp

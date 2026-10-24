@@ -4,9 +4,11 @@
 // their own, and the manners of the reads made there.
 
 #include <QString>
+#include <QStringList>
 
 #include <condition_variable>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <functional>
 #include <map>
@@ -14,6 +16,10 @@
 #include <stop_token>
 #include <thread>
 #include <vector>
+
+namespace ws {
+class WorkerPool;
+}
 
 namespace ws::mcp {
 
@@ -66,13 +72,18 @@ public:
 
     void at(const QString& path);
     bool background() const noexcept { return m_background; }
+    // A path on one of this computer's fixed drives that does not seek (a
+    // solid state drive): reads there may go many at once without taking
+    // the disk from anyone. Not a hard disk, nor a share (the network's pace).
+    bool solid(const QString& path);
 
 private:
-    bool hardDisk(char16_t drive);
+    enum class Disk : std::uint8_t { Other, Seeks, Solid };
+    Disk diskOf(const QString& path); // Other: not a local drive letter's path, or not a fixed drive
 
     bool m_away;
     bool m_background = false;
-    std::map<char16_t, bool> m_disks; // drive letter (upper case) -> a fixed drive on a hard disk
+    std::map<char16_t, Disk> m_disks; // drive letter (upper case) -> what it is
 };
 
 // What a tool's job aside goes by: whether to stop, what its caller may see
@@ -82,12 +93,19 @@ struct AsideContext {
     std::stop_token stop;
     Visibility& view;
     QuietIo& quiet;
+    // Where checks of many folders go at once (seeAhead); null: one at a time.
+    WorkerPool* pool = nullptr;
 
     bool stopped() const noexcept { return stop.stop_requested(); }
     bool sees(const QString& path);
     bool canList(const QString& folder);
     bool canRead(const QString& file);
     bool canReadAttributes(const QString& path);
+    // The folders of `paths` checked ahead of sees(), many at once (on
+    // `pool`): those on a solid state drive (QuietIo::solid), when enough
+    // of them are new to be worth it. The rest are checked by sees() one at
+    // a time as before, a hard disk's quietly. The same decisions either way.
+    void seeAhead(const QStringList& paths);
 };
 
 } // namespace ws::mcp

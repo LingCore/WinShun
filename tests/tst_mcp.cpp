@@ -1817,6 +1817,54 @@ private slots:
         QCOMPARE(names(outcomeOf(*reply).structured).size(), 3);
     }
 
+    // ws's answers of thousands of items in hundreds of folders: the folders
+    // are checked many at once, a batch of rows at a time (AsideContext::
+    // seeAhead), and each item is decided as one checked alone: what a
+    // folder that cannot be listed holds is left out, the rest come in the
+    // engine's order.
+    void manyFolders()
+    {
+        Fixture f;
+        // 160 folders of 40 names (in the index alone: the folder's check
+        // decides), a quarter of them in one that will be restricted: 6 400
+        // items, two batches.
+        for (int d = 0; d < 160; ++d) {
+            const QString relative = (d % 4 == 0 ? u"locked\\d%1"_s : u"open\\d%1"_s).arg(d, 3, 10, u'0');
+            const EntryId folder = f.subfolder(relative, 1'700'000'000);
+            const auto index = f.service->index();
+            const auto lock = index->writeLock();
+            for (int i = 0; i < 40; ++i) {
+                const QString name = u"kiwi-%1-%2.txt"_s.arg(d, 3, 10, u'0').arg(i, 2, 10, u'0');
+                index->setModified(index->add(folder, name.toStdString(), 0), 1'700'000'000 + d * 40 + i);
+            }
+        }
+        Session cli(f.server.get());
+        QVERIFY(cli.initialize(u"2025-11-25"_s, u"ws"_s));
+        int id = 2;
+        const auto paths = [&] {
+            const QJsonObject arguments {
+                {u"query"_s, u"kiwi"_s}, {u"limit"_s, 50'000}, {u"size"_s, false}, {u"kind"_s, u"files"_s}};
+            const auto reply = cli.exchange(callLine(id++, u"search_files"_s, arguments), 60000);
+            QStringList out;
+            if (reply) {
+                for (const QJsonValue& item : outcomeOf(*reply).structured.value(u"items"_s).toArray())
+                    out.push_back(item.toObject().value(u"path"_s).toString());
+            }
+            return out;
+        };
+        const QStringList all = paths();
+        QCOMPARE(all.size(), 6'400);
+        QVERIFY(f.restrict(u"locked"_s));
+        QStringList open;
+        for (const QString& path : all) {
+            if (!path.contains(u"\\locked\\"_s))
+                open.push_back(path);
+        }
+        QCOMPARE(open.size(), 4'800);
+        QCOMPARE(paths(), open);
+        QVERIFY2(f.log.last().contains(u"access checks"), qPrintable(f.log.last()));
+    }
+
     // The times of the items (IsoTime.h): made by hand for the many of one
     // answer, the offset asked once a day, the same text as QDateTime's.
     void localTimes()

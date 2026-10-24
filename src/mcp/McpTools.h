@@ -410,6 +410,9 @@ private:
     std::vector<Tool> m_tools;
     std::vector<std::shared_ptr<Tool>> m_external; // shared: a call keeps its tool while the list is replaced
     WorkerPool m_pool {WorkerPool::defaultThreadCount()}; // recent_files scans the index
+    // The access checks of many folders at once (AsideContext::seeAhead).
+    // Not m_pool: a scan waits for that one holding the index's lock.
+    WorkerPool m_checks {WorkerPool::defaultThreadCount()};
     // One scan of the index at a time (recent_files), taken before the
     // index's lock: none waits for the pool (one loop at a time) holding it.
     std::mutex m_scanMutex;
