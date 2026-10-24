@@ -54,6 +54,11 @@ struct Sources {
 // read (a document's extraction; a text file is read up to its first 16 MB
 // regardless).
 Result read(const std::wstring& path, const Sources& sources, std::int64_t maxBytes, const std::function<bool()>& cancelled);
+// The same for a file opened already, with any access (FILE_FLAG_BACKUP_
+// SEMANTICS lets a folder be one), whose final path is `path` (for the
+// content index and the kind): read through that handle, so what a caller
+// checked is what is read, whatever the path is made to lead to meanwhile.
+Result read(void* file, const std::wstring& path, const Sources& sources, std::int64_t maxBytes, const std::function<bool()>& cancelled);
 
 // The start of a text file, for looking at it (the launcher's preview): its
 // first `maxBytes` decoded as the content search decodes it (BOM, else valid
