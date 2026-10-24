@@ -220,7 +220,11 @@ bool clipboardTool(std::string_view tool)
 
 Failure toolFailure(std::string_view tool, std::string_view errorCode, const std::wstring& text, std::wstring_view subject)
 {
-    const std::wstring about = subject.empty() ? pathAtEnd(text) : std::wstring(subject);
+    // The path Win顺 names (of several --in folders, the one it refused), else
+    // the one ws asked about.
+    std::wstring about = pathAtEnd(text);
+    if (about.empty())
+        about = subject;
     // A Win顺 made for ws says what kind of refusal it is.
     if (errorCode == "not_found")
         return {Exit::NotVisible, fmt(contains(text, L"not in the index") ? msg::kNotIndexed : msg::kNotVisible, about)};

@@ -1107,6 +1107,10 @@ private slots:
         QCOMPARE(r.lines(), QStringList {at(u"sub\\deep\\c.txt"_s)});
         r = ws({u"find"_s, u"c"_s, u"--in"_s, at(u"nowhere"_s)});
         QCOMPARE(r.code, 6);
+        // A file for --in: the wrong thing named (as ws ls <file>), not "no such folder".
+        r = ws({u"find"_s, u"c"_s, u"--in"_s, at(u"notes.md"_s)});
+        QCOMPARE(r.code, 2);
+        QVERIFY2(r.errors().contains(u"这是文件，不是文件夹："_s + at(u"notes.md"_s)), qPrintable(r.errors()));
         // -n: at most that many, and a note.
         r = ws({u"find"_s, u"t"_s, u"-n"_s, u"1"_s});
         QCOMPARE(r.code, 0);
@@ -1395,6 +1399,13 @@ private slots:
             QFile::setPermissions(installed, QFileDevice::ReadOwner);
         }
         QFile::setPermissions(installed, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+        // Where nothing can be written (under a file): 7, nothing on stdout
+        // (the settings page reads it), the file it meant on stderr.
+        const QString blocked = m_iniOn + u"\\x"_s;
+        r = ws({u"skill"_s, u"--install"_s, u"claude"_s}, {{L"CLAUDE_CONFIG_DIR", blocked.toStdWString()}}, testPipeName("nobody"));
+        QCOMPARE(r.code, 7);
+        QVERIFY(r.out.isEmpty());
+        QVERIFY2(r.errors().contains(u"写不进 "_s + blocked + u"\\skills\\winshun\\SKILL.md"_s), qPrintable(r.errors()));
         QCOMPARE(ws({u"skill"_s, u"--install"_s, u"nobody"_s}).code, 2);
     }
 
@@ -1567,8 +1578,26 @@ private slots:
                 return initializeAnswer(request.id);
             if (request.tool == "index_status")
                 return readyAnswer(request.id);
+            // Win顺's own words (branch cli's McpServer.cpp and McpTools.cpp).
             if (request.tool == "clipboard_history")
-                return refusalAnswer(request.id, "The tool 'clipboard_history' is turned off in Win顺's settings", "off");
+                return refusalAnswer(request.id,
+                    "The tool 'clipboard_history' is turned off in Win顺's settings (设置 → AI 助手). Ask the user to turn it on "
+                    "there, then call it again.",
+                    "off");
+            if (request.tool == "search_content") {
+                // Of two folders the second kept from AI; else content search
+                // off, which Win顺 says only in words.
+                const json::Value::Array& folders = request.arguments["folders"].toArray();
+                if (folders.size() == 2)
+                    return refusalAnswer(request.id, "This folder is not visible to AI (excluded in Win顺's settings): " + folders[1].toString(),
+                        "not_found");
+                return refusalAnswer(request.id, "File content search is turned off in WinShun's settings", "");
+            }
+            // Some say no path: ws names the one it asked about.
+            if (request.tool == "recent_files")
+                return refusalAnswer(request.id, "This folder is not visible to AI (excluded in Win顺's settings).", "not_found");
+            if (request.tool == "read_file_text" && request.arguments["path"].toString().ends_with("c.txt"))
+                return refusalAnswer(request.id, "This path is not visible to AI (excluded in Win顺's settings).", "not_found");
             if (request.tool == "search_files") {
                 const std::string query = request.arguments["query"].toString();
                 if (query == "notfound")
@@ -1602,6 +1631,19 @@ private slots:
         r = ws({u"clip"_s}, {}, name);
         QCOMPARE(r.code, 4);
         QVERIFY2(r.errors().contains(u"允许 AI 读取剪贴板历史"_s), qPrintable(r.errors()));
+        // The refused one of two --in folders, as Win顺 names it.
+        r = ws({u"grep"_s, u"x"_s, u"--in"_s, at(u"sub"_s), u"--in"_s, at(u"sub\\deep"_s)}, {}, name);
+        QCOMPARE(r.code, 6);
+        QVERIFY2(r.errors().contains(u"文件夹里）："_s + at(u"sub\\deep"_s) + u'\n'), qPrintable(r.errors()));
+        r = ws({u"grep"_s, u"x"_s}, {}, name);
+        QCOMPARE(r.code, 7);
+        QVERIFY2(r.errors().contains(u"设置 → 文件内容搜索"_s), qPrintable(r.errors()));
+        r = ws({u"recent"_s, u"--in"_s, at(u"sub"_s)}, {}, name);
+        QCOMPARE(r.code, 6);
+        QVERIFY2(r.errors().contains(u"文件夹里）："_s + at(u"sub"_s) + u'\n'), qPrintable(r.errors()));
+        r = ws({u"text"_s, at(u"sub\\deep\\c.txt"_s)}, {}, name);
+        QCOMPARE(r.code, 6);
+        QVERIFY2(r.errors().contains(u"文件夹里）："_s + at(u"sub\\deep\\c.txt"_s) + u'\n'), qPrintable(r.errors()));
         fake.forget();
         r = ws({u"text"_s, at(u"notes.md"_s)}, {}, name);
         QCOMPARE(r.code, 0);

@@ -182,9 +182,14 @@ Result<std::vector<std::wstring>> inFolders(const Parsed& args)
         std::wstring path = absolutePath(given);
         while (path.size() > 3 && (path.back() == L'\\' || path.back() == L'/'))
             path.pop_back();
-        const DWORD attributes = ::GetFileAttributesW(path.c_str());
-        if (attributes == INVALID_FILE_ATTRIBUTES || !(attributes & FILE_ATTRIBUTE_DIRECTORY))
+        switch (pathKind(path)) {
+        case PathKind::None:
             return Failure {Exit::NotVisible, fmt(msg::kNoFolder, path)};
+        case PathKind::File: // the wrong thing named, as ws ls <file>
+            return Failure {Exit::Usage, fmt(msg::kIsFile, path)};
+        case PathKind::Folder:
+            break;
+        }
         folders.push_back(std::move(path));
     }
     return folders;
