@@ -666,6 +666,7 @@ private:
     QTimer m_settingsReload;
     QTimer m_indexOptionsApply; // rebuilding the crawler is costly: batch quick edits
     QTimer m_contentStatusTimer; // while the settings window is open
+    QTimer m_cliTallyTimer; // ws runs many a minute: the status line about it is made once in a while
     QTimer m_darkFrameGuard; // see applyTheme
     QElapsedTimer m_darkFrameWatch;
     bool m_darkFrame = false;

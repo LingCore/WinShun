@@ -8,6 +8,7 @@
 #include "CaptureOcr.h"
 #include "Geometry.h" // capture::placeBeside
 #include "Grabber.h"
+#include "CliSetup.h"
 #include "ClipImportJob.h"
 #include "ClipStore.h"
 #include "Clipboard.h"
@@ -381,6 +382,9 @@ App::App()
         if (m_darkFrameWatch.elapsed() > 1000)
             m_darkFrameGuard.stop();
     });
+    m_cliTallyTimer.setSingleShot(true);
+    m_cliTallyTimer.setInterval(500ms);
+    connect(&m_cliTallyTimer, &QTimer::timeout, this, &App::refreshMcpStatus);
     m_contentStatusTimer.setInterval(2s);
     connect(&m_contentStatusTimer, &QTimer::timeout, this, &App::refreshContentIndexStatus);
     connect(&m_contentStatusTimer, &QTimer::timeout, this, &App::refreshShareStatuses); // counts while reading
@@ -2829,6 +2833,7 @@ void App::showSettings()
         editor->setClassicTaskbar(m_classicTaskbar);
         editor->refreshFileManagers();
         editor->refreshMcpClients();
+        editor->cli()->refresh();
         refreshMcpStatus();
         refreshIndexAccess();
         if (m_serviceWanted && m_index->volumeAccessKind() == ntfs::VolumeAccess::Kind::None)
@@ -5070,6 +5075,12 @@ void App::applyMcp()
         m_mcpHost->setPolicy(mcpPolicy());
         m_mcpServer = std::make_unique<mcp::McpServer>(m_mcpHost.get(), QStringLiteral(WINSHUN_VERSION));
         connect(m_mcpServer.get(), &mcp::McpServer::sessionsChanged, this, &App::refreshMcpStatus);
+        // ws calls: not one status line per call (an agent runs several a second),
+        // and none at all while no settings window is there to show it.
+        connect(m_mcpServer.get(), &mcp::McpServer::cliCalled, this, [this] {
+            if (m_settingsEditor && !m_cliTallyTimer.isActive())
+                m_cliTallyTimer.start();
+        });
         connect(m_mcpHost.get(), &mcp::ToolHost::toolsChanged, this, &App::writeMcpToolsCache);
         DWORD error = 0;
         if (!m_mcpServer->listen(pipe::defaultName(), &error))
@@ -5228,6 +5239,16 @@ void App::refreshMcpStatus()
                 names.push_back(name);
         }
         status = names.isEmpty() ? tr("还没有 AI 客户端连接；连上以后显示在这里") : tr("已连接：%1").arg(names.join(u"、"_s));
+        // The command line ws: its runs last a few milliseconds each and are not
+        // listed as sessions; counted, with the last one's time (a clock time: it
+        // does not go stale on the screen as "3 分钟前" would) and tool.
+        const mcp::McpServer::CliTally& tally = m_mcpServer->cliTally();
+        if (tally.calls > 0) {
+            const QLocale locale;
+            const QString when = tally.lastCall.date() == QDate::currentDate() ? locale.toString(tally.lastCall.time(), QLocale::ShortFormat)
+                                                                              : locale.toString(tally.lastCall, QLocale::ShortFormat);
+            status += u'\n' + tr("命令行：%1 次调用，最近 %2（%3）").arg(tally.calls).arg(when, tally.lastTool);
+        }
     } else if (m_settings.mcp) {
         status = tr("没能建立连接通道，详见 WinShun.log");
     }

@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstddef>
 #include <mutex>
 #include <optional>
 #include <thread>
@@ -164,9 +165,18 @@ bool executeAsUser(const std::wstring& file, const std::wstring& args, const std
     return SUCCEEDED(shell->ShellExecute(target, parameters, workDir, verb, show));
 }
 
+// The standard handles of a console program started for its output
+// (runUnelevatedCaptured): what it reads, and where it writes (both streams).
+struct StdHandles {
+    HANDLE input;
+    HANDLE output;
+};
+
 // Starts `command` with the desktop shell's own token: the user's normal
-// rights. Invalid when there is no shell to take them from.
-win32::UniqueHandle startWithShellToken(std::wstring command, const std::wstring& dir)
+// rights. Invalid when there is no shell to take them from. `io`: the
+// program's standard handles, and no console window (a console program
+// started from a program of ours would open one).
+win32::UniqueHandle startWithShellToken(std::wstring command, const std::wstring& dir, const StdHandles* io = nullptr)
 {
     DWORD pid = 0;
     const HWND shellWindow = ::GetShellWindow();
@@ -184,8 +194,19 @@ win32::UniqueHandle startWithShellToken(std::wstring command, const std::wstring
         return {};
     const win32::UniqueHandle token(primaryToken);
     STARTUPINFOW startup {sizeof(STARTUPINFOW)};
+    DWORD flags = 0;
+    if (io) {
+        // The secondary logon service copies these three into the new process
+        // (no other handle of ours gets in, see pitfalls: CreateProcessWithTokenW).
+        startup.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+        startup.wShowWindow = SW_HIDE;
+        startup.hStdInput = io->input;
+        startup.hStdOutput = io->output;
+        startup.hStdError = io->output;
+        flags = CREATE_NO_WINDOW;
+    }
     PROCESS_INFORMATION started {};
-    if (!::CreateProcessWithTokenW(token.get(), 0, nullptr, command.data(), 0, nullptr,
+    if (!::CreateProcessWithTokenW(token.get(), 0, nullptr, command.data(), flags, nullptr,
             dir.empty() ? nullptr : dir.c_str(), &startup, &started))
         return {};
     ::CloseHandle(started.hThread);
@@ -503,6 +524,100 @@ win32::UniqueHandle startUnelevated(const std::wstring& program, const std::wstr
         return {};
     ::CloseHandle(started.hThread);
     return win32::UniqueHandle(started.hProcess);
+}
+
+Captured runUnelevatedCaptured(const std::wstring& program, const std::wstring& args, unsigned long timeoutMs,
+    const std::wstring& cwd)
+{
+    Captured result;
+    if (program.find(L'"') != std::wstring::npos)
+        return result; // cannot be quoted on the command line (no path has one)
+    // One pipe for both streams: a program that writes a result to stdout
+    // and an error to stderr never does both, and nothing then waits on a
+    // full pipe that is not the one being read.
+    SECURITY_ATTRIBUTES inheritable {sizeof inheritable, nullptr, TRUE};
+    HANDLE readEnd = nullptr;
+    HANDLE writeEnd = nullptr;
+    if (!::CreatePipe(&readEnd, &writeEnd, &inheritable, 0))
+        return result;
+    const win32::UniqueHandle reader(readEnd);
+    win32::UniqueHandle writer(writeEnd);
+    ::SetHandleInformation(reader.get(), HANDLE_FLAG_INHERIT, 0); // ours alone
+    const win32::UniqueHandle nothing(::CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &inheritable,
+        OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
+    if (!nothing.valid())
+        return result;
+    const StdHandles io {nothing.get(), writer.get()};
+
+    std::wstring command = L'"' + program + L'"';
+    if (!args.empty())
+        command += L' ' + args;
+    win32::UniqueHandle process;
+    if (integrity::processElevated()) {
+        process = startWithShellToken(std::move(command), cwd, &io);
+    } else {
+        // Not elevated: our own rights are the user's. Only the two handles
+        // are inherited (a handle list), not whatever else is inheritable.
+        SIZE_T size = 0;
+        ::InitializeProcThreadAttributeList(nullptr, 1, 0, &size);
+        std::vector<std::byte> storage(size);
+        auto* attributes = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(storage.data());
+        if (!::InitializeProcThreadAttributeList(attributes, 1, 0, &size))
+            return result;
+        HANDLE inherited[] = {io.input, io.output};
+        STARTUPINFOEXW startup {};
+        startup.StartupInfo.cb = sizeof startup;
+        startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+        startup.StartupInfo.wShowWindow = SW_HIDE;
+        startup.StartupInfo.hStdInput = io.input;
+        startup.StartupInfo.hStdOutput = io.output;
+        startup.StartupInfo.hStdError = io.output;
+        startup.lpAttributeList = attributes;
+        PROCESS_INFORMATION started {};
+        if (::UpdateProcThreadAttribute(attributes, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inherited, sizeof inherited, nullptr,
+                nullptr)
+            && ::CreateProcessW(program.c_str(), command.data(), nullptr, nullptr, TRUE,
+                CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT, nullptr, cwd.empty() ? nullptr : cwd.c_str(),
+                &startup.StartupInfo, &started)) {
+            ::CloseHandle(started.hThread);
+            process.reset(started.hProcess);
+        }
+        ::DeleteProcThreadAttributeList(attributes);
+    }
+    if (!process.valid())
+        return result;
+    result.started = true;
+
+    // Our copy of the write end goes now: the pipe then ends with the program.
+    writer.reset();
+    const auto drain = [&] {
+        for (;;) {
+            DWORD available = 0;
+            if (!::PeekNamedPipe(reader.get(), nullptr, 0, nullptr, &available, nullptr) || available == 0)
+                return;
+            char chunk[4096];
+            DWORD got = 0;
+            if (!::ReadFile(reader.get(), chunk, std::min<DWORD>(available, sizeof chunk), &got, nullptr) || got == 0)
+                return;
+            result.output.append(chunk, got);
+        }
+    };
+    const ULONGLONG deadline = ::GetTickCount64() + timeoutMs;
+    for (;;) {
+        drain();
+        if (::WaitForSingleObject(process.get(), 10) == WAIT_OBJECT_0)
+            break;
+        if (::GetTickCount64() >= deadline) {
+            ::TerminateProcess(process.get(), 1);
+            result.timedOut = true;
+            break;
+        }
+    }
+    drain(); // what it wrote last
+    DWORD code = 0;
+    if (::GetExitCodeProcess(process.get(), &code))
+        result.exitCode = code;
+    return result;
 }
 
 void recycle(const QStringList& paths, HWND owner, std::function<void(bool)> done)

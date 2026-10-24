@@ -1,5 +1,7 @@
 #include "McpClients.h"
 
+#include "platform/Shell.h"
+
 #include <QCoreApplication>
 #include <QDir>
 #include <QDirIterator>
@@ -8,11 +10,13 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QPointer>
 #include <QProcess>
 #include <QSaveFile>
 #include <QVariantMap>
 
 #include <algorithm>
+#include <thread>
 
 using namespace Qt::StringLiterals;
 
@@ -157,6 +161,12 @@ QString quoted(const QString& path)
 
 } // namespace
 
+QString skillPath()
+{
+    const QString config = env("CLAUDE_CONFIG_DIR");
+    return QDir::toNativeSeparators((config.isEmpty() ? home() + u"/.claude"_s : config) + u"/skills/winshun/SKILL.md"_s);
+}
+
 QString relayPath()
 {
     const QString path = QCoreApplication::applicationDirPath() + u"/WinShunMcp.exe"_s;
@@ -176,10 +186,13 @@ std::vector<Client> detect()
     }
     {
         Client c {u"claude-code"_s, u"Claude Code"_s};
-        c.installed = !claudeCommand().isEmpty() || QFileInfo(home() + u"/.claude"_s).isDir();
+        c.installed = !claudeCommand().isEmpty() || QFileInfo(home() + u"/.claude"_s).isDir()
+            || (!env("CLAUDE_CONFIG_DIR").isEmpty() && QFileInfo(env("CLAUDE_CONFIG_DIR")).isDir());
         c.configPath = QDir::toNativeSeparators(claudeCodeConfig());
         c.connected = namesRelay(claudeCodeConfig(), u"mcpServers"_s);
         c.note = Tr::tr("加在用户范围（所有项目）；新开的会话里生效");
+        c.skillPath = skillPath();
+        c.skillInstalled = QFileInfo::exists(c.skillPath);
         clients.push_back(c);
     }
     {
@@ -207,7 +220,8 @@ QVariantList toVariant(const std::vector<Client>& clients)
     QVariantList out;
     for (const Client& c : clients) {
         out.push_back(QVariantMap {{u"id"_s, c.id}, {u"name"_s, c.name}, {u"installed"_s, c.installed},
-            {u"connected"_s, c.connected}, {u"configPath"_s, c.configPath}, {u"note"_s, c.note}});
+            {u"connected"_s, c.connected}, {u"configPath"_s, c.configPath}, {u"note"_s, c.note},
+            {u"skillInstalled"_s, c.skillInstalled}, {u"skillPath"_s, c.skillPath}});
     }
     return out;
 }
@@ -273,6 +287,41 @@ QString snippet(const QString& id)
         return u"claude mcp add --scope user winshun -- "_s + quoted(relay) + u" --start-winshun"_s;
     const QJsonObject root {{topKey(id), QJsonObject {{kServerKey, serverEntry(id)}}}};
     return QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Indented));
+}
+
+void installSkill(const QString& wsExe, QObject* context, std::function<void(Result)> done)
+{
+    if (wsExe.isEmpty()) {
+        done({false, Tr::tr("没找到 ws.exe，重新安装 Win顺 就有了")});
+        return;
+    }
+    constexpr unsigned long kTimeoutMs = 20'000;
+    std::thread([context = QPointer<QObject>(context), program = wsExe.toStdWString(), done = std::move(done)] {
+        const shell::Captured run = shell::runUnelevatedCaptured(program, L"skill --install claude", kTimeoutMs);
+        // ws prints the path it wrote and exits 0; anything else, it says why.
+        const QString output = QString::fromUtf8(run.output.data(), static_cast<qsizetype>(run.output.size())).trimmed();
+        Result result;
+        if (!run.started) {
+            result.message = Tr::tr("没能运行 ws.exe");
+        } else if (run.timedOut) {
+            result.message = Tr::tr("ws.exe 在 %1 秒内没有回答，已结束它").arg(kTimeoutMs / 1000);
+        } else if (run.exitCode == 0) {
+            result.ok = true;
+            const QString path = output.section(u'\n', 0, 0).trimmed();
+            result.message = Tr::tr("已装 Skill：%1。Claude Code 新开的会话里就能用。").arg(path.isEmpty() ? skillPath() : path);
+        } else {
+            // Its own words, briefly: the first lines, not a screenful.
+            QString why = output.left(300);
+            if (output.size() > 300)
+                why += u"…"_s;
+            result.message = Tr::tr("装 Skill 没有成功（退出码 %1）：%2").arg(run.exitCode).arg(why.isEmpty() ? Tr::tr("ws.exe 没有说明原因") : why);
+        }
+        // On the GUI thread, which asks whether `context` is still there (it may go meanwhile).
+        QMetaObject::invokeMethod(QCoreApplication::instance(), [context, done, result] {
+            if (context)
+                done(result);
+        }, Qt::QueuedConnection);
+    }).detach();
 }
 
 } // namespace ws::mcpclients

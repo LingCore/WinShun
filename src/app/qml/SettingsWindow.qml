@@ -67,7 +67,7 @@ Window {
     readonly property int favoritesPage: 6 // 收藏夹 (FavoritesSection)
     readonly property int clipboardPage: 7
     readonly property int advancedPage: 8 // where the updates are
-    readonly property int aiPage: 9 // AI 助手: the MCP server (AiAccessSection, AiClientsSection, AiPrivacySection)
+    readonly property int aiPage: 9 // AI 助手: the MCP server and the command line (AiAccessSection, AiCommandLineSection, AiClientsSection, AiPrivacySection)
     readonly property int pluginsPage: 10 // 插件: 已安装 (PluginsSection), 插件库 (PluginGallerySection), 开发者 (PluginDevSection)
     readonly property string tapKey: editor.doubleTapKey === "alt" ? "Alt" : editor.doubleTapKey === "shift" ? "Shift" : "Ctrl" // the key tapped twice to open Win顺
     property int currentPage: 0
@@ -110,6 +110,7 @@ Window {
             editor.refreshNumberKeys()
             editor.refreshDoubleCtrlClash()
             editor.refreshOpusFolderMenu()
+            editor.cli.refresh() // the PATH changed in a terminal or another program
         }
     }
 
@@ -4117,6 +4118,12 @@ Window {
                 width: parent.width
                 editor: window.editor
                 lockedElsewhere: aiPrivacySection.lockedRows
+            }
+
+            AiCommandLineSection {
+                page: window.aiPage
+                width: parent.width
+                editor: window.editor
             }
 
             AiClientsSection {

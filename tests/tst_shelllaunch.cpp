@@ -3,6 +3,7 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -79,6 +80,37 @@ private slots:
         QCOMPARE(QDir::cleanPath(result.value(u"cwd"_s).toString()), QDir::cleanPath(working));
         QCOMPARE(result.value(u"arguments"_s).toArray().last().toString(), query);
         qInfo() << "Launched by" << result.value(u"parent"_s).toString() << "with the requested arguments and folder";
+    }
+
+    // A console program run for what it writes (the Skill is installed so): both
+    // streams, the exit code, no window of its own.
+    void capturesWhatAProgramWrites()
+    {
+        const std::wstring cmd = qEnvironmentVariable("ComSpec").toStdWString();
+        QVERIFY(!cmd.empty());
+        const auto run = ws::shell::runUnelevatedCaptured(cmd, L"/d /c \"echo out& echo err 1>&2& exit /b 3\"", 15000);
+        QVERIFY(run.started);
+        QVERIFY(!run.timedOut);
+        QCOMPARE(run.exitCode, 3ul);
+        const QString text = QString::fromLatin1(run.output.data(), static_cast<qsizetype>(run.output.size()));
+        QVERIFY2(text.contains(u"out"_s) && text.contains(u"err"_s), qPrintable(text));
+        // Nothing on standard input to wait for: it ends at once.
+        const auto reads = ws::shell::runUnelevatedCaptured(cmd, L"/d /c \"set /p x=& echo done\"", 15000);
+        QVERIFY(reads.started && !reads.timedOut);
+        QVERIFY(QString::fromLatin1(reads.output.data(), static_cast<qsizetype>(reads.output.size())).contains(u"done"_s));
+        // A program that does not exist does not start.
+        QVERIFY(!ws::shell::runUnelevatedCaptured(L"C:\\wstest\\nothing\\not-there.exe", {}, 1000).started);
+    }
+
+    void endsAProgramThatTakesTooLong()
+    {
+        const std::wstring cmd = qEnvironmentVariable("ComSpec").toStdWString();
+        QElapsedTimer timer;
+        timer.start();
+        const auto run = ws::shell::runUnelevatedCaptured(cmd, L"/d /c \"ping -n 30 127.0.0.1 >nul\"", 400);
+        QVERIFY(run.started);
+        QVERIFY(run.timedOut);
+        QVERIFY2(timer.elapsed() < 5000, qPrintable(QString::number(timer.elapsed())));
     }
 };
 

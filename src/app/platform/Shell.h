@@ -39,6 +39,16 @@ filemanager::Kind fileManager(); // the one set
 // `cwd`: its working folder; empty for ours. Invalid when Win顺 is elevated
 // and no shell runs to take them from.
 win32::UniqueHandle startUnelevated(const std::wstring& program, const std::wstring& args, const std::wstring& cwd = {});
+// A console program run to its end, with the user's normal rights as above,
+// in no window, and what it wrote. For a worker thread: it waits.
+struct Captured {
+    bool started = false; // false: it did not start at all (no shell to take the user's rights from)
+    bool timedOut = false; // still running after the time given: ended
+    unsigned long exitCode = 0;
+    std::string output; // standard output and standard error together, the bytes as written
+};
+Captured runUnelevatedCaptured(const std::wstring& program, const std::wstring& args, unsigned long timeoutMs,
+    const std::wstring& cwd = {});
 // Starts `program` as administrator (UAC asks, unless Win顺 is elevated
 // already), without waiting: false when it did not start (the prompt
 // declined, say). `cwd` as above.

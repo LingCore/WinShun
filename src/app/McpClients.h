@@ -20,12 +20,15 @@ struct Client {
     bool connected = false; // its configuration names the relay next to this program
     QString configPath; // the file the connection is written to (or read from)
     QString note; // what happens after connecting ("重启 Claude Desktop 后生效")
+    // Claude Code only: its Skill for the command line ws (see installSkill).
+    bool skillInstalled = false;
+    QString skillPath;
 };
 
 // WinShunMcp.exe next to this program, native; empty when it is not there.
 QString relayPath();
 std::vector<Client> detect();
-QVariantList toVariant(const std::vector<Client>& clients); // for QML: {id, name, installed, connected, configPath, note}
+QVariantList toVariant(const std::vector<Client>& clients); // for QML: {id, name, installed, connected, configPath, note, skillInstalled, skillPath}
 
 struct Result {
     bool ok = false;
@@ -38,5 +41,16 @@ void connect(const QString& id, QObject* context, std::function<void(Result)> do
 // What to paste by hand: the JSON for the client's configuration file, or
 // Claude Code's command; the generic JSON for an unknown id.
 QString snippet(const QString& id);
+
+// Claude Code's Skill: a SKILL.md that teaches it the command line ws (and
+// saves the context an MCP server's tools cost). It lives in
+// %CLAUDE_CONFIG_DIR%\skills\winshun, else in %USERPROFILE%\.claude\skills\winshun.
+QString skillPath(); // the file, native
+// Has `wsExe skill --install claude` write it, with the user's normal rights
+// (never elevated: the file must be theirs), off the GUI thread. `done`
+// runs on the GUI thread, and not at all once `context` is gone (at once,
+// before this returns, when there is no ws.exe). The Skill carries ws.exe's full path, so
+// it works with the folder not on the PATH too.
+void installSkill(const QString& wsExe, QObject* context, std::function<void(Result)> done);
 
 } // namespace ws::mcpclients

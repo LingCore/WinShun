@@ -48,6 +48,7 @@ qt_add_executable(WinShun WIN32
     main.cpp
     AiSettings.cpp AiSettings.h
     App.cpp App.h
+    CommandLine.cpp CommandLine.h
     ColorText.cpp ColorText.h
     Elide.cpp Elide.h
     FileIconProvider.cpp FileIconProvider.h
@@ -180,6 +181,7 @@ set(qml_files
     qml/GleaningPage.qml
     qml/AiAccessSection.qml
     qml/AiClientsSection.qml
+    qml/AiCommandLineSection.qml
     qml/AiPrivacySection.qml
     qml/PluginsSection.qml
     qml/PluginCard.qml
@@ -244,6 +246,7 @@ qt_add_qml_module(WinShun
     SOURCES
         AuthorMark.cpp AuthorMark.h
         BoxSide.h
+        CliSetup.cpp CliSetup.h
         ClipImage.cpp ClipImage.h
         ClipFiles.cpp ClipFiles.h
         ClipImport.cpp ClipImport.h

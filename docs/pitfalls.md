@@ -1745,6 +1745,39 @@
 - **原因**：几乎都在 `isoTime`：`QDateTime::fromSecsSinceEpoch` 按本地时间换算、`offsetFromUtc`、`toOffsetFromUtc`、`toString(Qt::ISODate)`，每条约 15–20 µs；组 `QJsonObject` 和放进数组只占零头。
 - **做法**：默认 100 条只占约 2 ms，先没改。要改就按 UTC 的一天缓存本地偏移（一天的两头偏移相同就整天用它，不同就逐条换算）、自己拼 ISO 文字，并用 `QDateTime` 的结果逐个对照测试（包括偏移为 0 和有夏令时的时区）。量这类开销时别把计时器套在会调用同一函数的两处：`fileItem` 里面也调 `isoTime`，分开计会算两遍。
 
+### 设置页的“命令行”放不进“连接客户端”标签（2026-10-24）
+
+- **现象**：想把“启用命令行”放在客户端列表旁边（那里还有 Claude Code 的“装 Skill”）。可“允许 AI 助手和命令行连接”关着时，这一页没有标签：`SettingsWindow.qml` 的 `pageTabs` 在 `editor.mcp` 为假时给 `[]`，只剩第一个标签（权限）里的开关；放在第二个标签里的“启用命令行”，开关关着时点不到，而它正是用来打开开关的。
+- **做法**：“命令行”这一节（`AiCommandLineSection`）放在**权限**标签里、开关那张卡的下面（`tab` 不写，和开关同一个标签）；“装 Skill”留在客户端那一行，它要开关开着才有那一行。代价：开关开着时，这一节在六行权限的下面，一屏（720 px 高的窗口）看不到，要往下滚，设置搜索“命令行”“ws”“终端”会直接带到它。不想滚的话，要把权限那些行拆成另一张卡，`unlocks` 跨节引用（现在靠 `lockedElsewhere` 传）要跟着改，没有为这一项动。
+
+### 设置搜索“ws”：带出一堆含 “Windows” 的行（2026-10-24）
+
+- **现象**：设置里搜 `ws`，二十项：隐藏任务栏上的 Windows 搜索、用 Win+S 打开 Win顺 ……都在里面。
+- **原因**：说明文字按字面（子串）匹配，“Windo**ws**” 里有 “ws”；不是新加的关键字造成的（搜 `ws` 的关键字命中分数更高，“ws 命令”排第一，回车去的是它）。
+- **做法**：不动匹配器（它是整个设置共用的，规则在 `SettingsMatch.cpp`）；两个字母以内的词本来就容易撞上说明里的词。别因此把“ws”去掉：这是用户最先会敲的词。
+
+### 改用户的 PATH：读原始值，只追加，只拿自己记下的那一项（2026-10-24）
+
+- **现象**：（设计阶段想到的，测试里钉死的）用 `QSettings` 读 `HKCU\Environment` 的 `Path` 再写回，值被展开：`%USERPROFILE%\bin` 变成 `C:\Users\某人\bin`，类型从 `REG_EXPAND_SZ` 变成 `REG_SZ`，别的程序的条目就被改了；用户改了用户名或移动了文件夹之后那些条目是死的。
+- **原因**：`QSettings` 的注册表后端读 `REG_EXPAND_SZ` 时展开环境变量，写回只写 `REG_SZ`。
+- **做法**：`cli::readValue` 用 `RegGetValueW` + `RRF_NOEXPAND` 读原始文字和类型；`withEntry` 只在末尾追加（已有就原样返回），`withoutEntry` 只去掉对得上的项和它的一个 `;`，引号、`%VAR%`、空项一个字符不动；写回时类型照旧，没有这个值才建 `REG_EXPAND_SZ`。“在用户 PATH 里”不等于“Win顺 加的”：“只为我”安装的安装程序也写 `HKCU\Environment`，所以设置页只拿 `HKCU\Software\WinShun\CliPathEntry` 记着的那一项（`cli::addToUserPath` 真写了才记；已经有就不记）。测试在 `HKCU\Software\WinShunTest\<guid>` 的键里做，不碰真的。Inno 里同理：`RegQueryStringValue` 不展开，`RegWriteExpandStringValue` 写回，不用 `[Registry]` 的 `{olddata}` 拼接，也不用 `uninsdeletevalue`（那会删掉整个 PATH）。
+
+### Windows 上设环境变量：`qputenv` 走 ANSI，`SetEnvironmentVariableW` Qt 读不到（2026-10-24）
+
+- **现象**：`tst_commandline` 里把 `CLAUDE_CONFIG_DIR` 设成带中文的临时路径，`McpClients::skillPath()` 读到的是乱码（`é…•ç½®`）；改用 `SetEnvironmentVariableW` 后，`qEnvironmentVariable` 读到的还是原来的值。
+- **原因**：`qputenv` 按本地 8 位代码页把字节交给 C 运行库（UTF-8 字节被当成 GBK / 1252）；Qt 读环境变量读的是 C 运行库自己的那份拷贝，`SetEnvironmentVariableW` 只改操作系统的那份，拷贝不更新。子进程拿的是操作系统的那份。
+- **做法**：测试和预览用 `_wputenv_s`（宽字符，两份一起更新）。提权运行时 `CreateProcessWithTokenW` 起的子进程拿的是令牌的环境，拿不到 Win顺 进程里临时设的变量：`tst_commandline` 的装 Skill 一项提权时跳过，否则 ws 会写进真的 `~\.claude`。
+
+### 从界面程序起一个控制台程序并拿它的输出：`startUnelevated` 不够（2026-10-24）
+
+- **现象**：“装 Skill”要运行 `ws.exe skill --install claude`，成功读标准输出里的路径，失败读标准错误里的原因。`shell::startUnelevated` 只回一个进程句柄，没有输出；而且不带 `CREATE_NO_WINDOW`，界面程序（`WinShun.exe` 是 GUI 子系统）起的控制台程序会开一个黑窗口。
+- **做法**：`shell::runUnelevatedCaptured`：一根匿名管道，标准输出和标准错误都接到写端（ws 成功和失败不会同时写），标准输入接 `NUL`；没提权时 `CreateProcessW` 带 `PROC_THREAD_ATTRIBUTE_HANDLE_LIST`，只有这两个句柄进子进程；提权时 `CreateProcessWithTokenW` + `STARTF_USESTDHANDLES`（见上面“`CreateProcessWithTokenW` 不接受 `EXTENDED_STARTUPINFO_PRESENT`”，句柄由 seclogon 复制进去；提权时在测试里实测过，输出、退出码、超时结束都对）。读不用阻塞的 `ReadFile`：每 10 毫秒 `PeekNamedPipe` 一次再等进程，这样超时能真的结束它，不会卡在读上。
+
+### 一行三个按钮，窗口最窄时按钮旁边的文字只剩一百来个像素（2026-10-24）
+
+- **现象**：Claude Code 那一行加了“装 Skill”，在 760 逻辑像素宽的窗口里，三个按钮占掉一多半，说明只剩约 110 px，“已装 Skill · C:\Users\…”这种路径在字当中折断（`Text.Wrap` 遇到太长的词就在任意位置断）；命令行那一行的“另一个 ws 在 C:\Users\…”也一样断在 “C:” 后面。
+- **做法**：路径单独成行（`"…：" + "\n" + 路径`，和“其他支持 MCP 的客户端”那一行一样），Skill 的状态放进行的 `body`（占满整行，`bodyShown` 在没有字时关掉，否则别的行底下多出 12 px 空白）。用 `--preview-settings … --page 9 --width 760` 看最窄的样子。
+
 ## 插件系统（阶段 0：探针）
 
 `tools/plugin-probe.cpp`（`build\release\plugin-probe.exe --parent --out 文件`，提权和不提权各跑一次）实测的，2026-10-11，Windows 11 26200。结论：插件进程不由提权的 Win顺 直接起；由它用资源管理器的令牌起一次不提权的 runner，插件由 runner 用普通 `CreateProcessW` 起。

@@ -14,7 +14,7 @@ namespace ws::settingbroadcast {
 
 namespace {
 
-constexpr const wchar_t* kAreaNames[] = {L"ImmersiveColorSet", L"ShellState"};
+constexpr const wchar_t* kAreaNames[] = {L"ImmersiveColorSet", L"ShellState", L"Environment"};
 constexpr UINT kOwnTimeoutMs = 200; // one of Win顺's windows
 constexpr UINT kBroadcastTimeoutMs = 1000; // each window, HWND_BROADCAST
 

@@ -1,6 +1,8 @@
 #include "SettingsEditor.h"
 
 #include "ClipImport.h"
+#include "CliSetup.h"
+#include "CommandLine.h"
 #include "FavoritesSettings.h"
 #include "FileIconProvider.h"
 #include "IndexFolder.h"
@@ -99,6 +101,7 @@ SettingsEditor::SettingsEditor(const Settings& settings, const QString& runningR
     , m_taskbarWatch(std::make_unique<TaskbarWatch>())
     , m_plugins(new PluginSettings(this, this))
     , m_favorites(new FavoritesSettings(this, this))
+    , m_cli(new CliSetup(this, this))
 {
     connect(siteicons::notifier(), &siteicons::Notifier::fetched, this, [this] {
         ++m_siteIconsArrived;
@@ -2771,6 +2774,17 @@ void SettingsEditor::copyMcpSnippet(const QString& id)
 {
     shell::copyText(mcpclients::snippet(id));
     setMcpMessage(id == u"claude-code" ? tr("已复制命令，在终端里运行它就行") : tr("已复制，粘贴到那个客户端的 MCP 配置文件里"));
+}
+
+void SettingsEditor::installMcpSkill(const QString& id)
+{
+    if (id != u"claude-code")
+        return;
+    setMcpMessage(tr("正在装 Skill…"));
+    mcpclients::installSkill(cli::wsExe(cli::binFolder()), this, [this](const mcpclients::Result& result) {
+        setMcpMessage(result.message);
+        refreshMcpClients();
+    });
 }
 
 void SettingsEditor::setMcpMessage(const QString& message)

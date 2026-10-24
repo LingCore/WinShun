@@ -1,6 +1,8 @@
 #include "Preview.h"
 
 #include "Backup.h"
+#include "CliSetup.h"
+#include "CommandLine.h"
 #include "FavoritesSettings.h"
 #include "FileIconProvider.h"
 #include "PluginSettings.h"
@@ -550,7 +552,38 @@ int runSettings(const QStringList& args)
     auto* updater = new Updater(editor); // never setAutomatic() or check(): no network
     editor->plugins()->setLocale(u"zh"_s);
     editor->plugins()->loadPreview(); // a plugin::Host would start WinShunPluginHost.exe: made-up cards instead
-    editor->setMcpStatus(u"已连接：Claude Desktop（12 次调用）"_s);
+    editor->setMcpStatus(u"已连接：Claude Desktop（12 次调用）\n命令行：38 次调用，最近 14:32（search_files）"_s);
+    // The command line as the page would read it off this PC, made up so that
+    // the longest texts and every button can be seen whatever this PC has:
+    // rich (the default: on the user's PATH by WinShun, another ws in front),
+    // notonpath, missing or system (--cli-state).
+    {
+        cli::Status status;
+        status.bin = u"C:\\Program Files\\WinShun\\bin"_s;
+        const QString which = valueAfter(args, u"--cli-state", u"rich"_s);
+        if (which != u"missing")
+            status.exe = status.bin + u"\\ws.exe"_s;
+        if (which == u"rich") {
+            status.where = cli::Status::Where::User;
+            status.removable = true;
+            status.shadow = u"C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps\\ws.exe"_s;
+        } else if (which == u"system") {
+            status.where = cli::Status::Where::System;
+        }
+        editor->cli()->setProbe([status] { return status; });
+        editor->cli()->refresh();
+        if (args.contains(u"--cli-message"_s))
+            editor->cli()->enable(); // there is no ws.exe by this program: it says so (the result row)
+    }
+    // A Skill installed, for Claude Code's row (--skill): in a configuration folder of its own.
+    QTemporaryDir claudeConfig;
+    if (args.contains(u"--skill"_s) && claudeConfig.isValid()) {
+        _wputenv_s(L"CLAUDE_CONFIG_DIR", QDir::toNativeSeparators(claudeConfig.path()).toStdWString().c_str()); // not qputenv: that is the ANSI code page
+        QDir().mkpath(claudeConfig.filePath(u"skills/winshun"_s));
+        QFile skill(claudeConfig.filePath(u"skills/winshun/SKILL.md"_s));
+        if (skill.open(QIODevice::WriteOnly))
+            skill.write("---\nname: winshun\n---\n");
+    }
     editor->setShareStatuses({
         shareStatus(shareOnline, ShareIndexer::State::Online, share::Problem::None, 48213),
         shareStatus(shareSignIn, ShareIndexer::State::Problem, share::Problem::NeedsSignIn, 0),
@@ -607,6 +640,8 @@ int runSettings(const QStringList& args)
     armWatchdog(watchdog, 600);
     if (args.contains(u"--command-form"_s) && args.contains(u"--compact"_s))
         window->resize(760, 420);
+    if (const int width = valueAfter(args, u"--width").toInt(); width >= window->minimumWidth()) // narrower than usual, down to the window's least
+        window->resize(width, window->height());
     showOffScreen(window);
     const int baseHeight = window->height(); // 720: what the page column gets on a screen
     settle(window);
@@ -869,6 +904,10 @@ int runSettings(const QStringList& args)
         {u"消息记录"_s, pluginsPage, 2}, // the 开发者 tab (developer mode is on in the preview)
         {u"API 密钥"_s, pluginsPage, 0}, // a plugin's own setting: its card unfolds (search-API 密钥.png)
         {u"AI"_s, aiPage, 0},
+        {u"命令行"_s, aiPage, 0},
+        {u"ws"_s, aiPage, 0},
+        {u"command line"_s, aiPage, 0},
+        {u"终端"_s, aiPage, 0},
         {u"收藏"_s, favoritesPage, 0},
         {u"网络共享"_s, 2, 3},
         {u"排序"_s, 3, 0},

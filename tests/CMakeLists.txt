@@ -21,6 +21,29 @@ add_test(NAME tst_shelllaunch COMMAND tst_shelllaunch -o -,txt)
 set_tests_properties(tst_shelllaunch PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# The command line ws as the settings page sees it (src/app/CommandLine,
+# McpClients): the PATH as text, where ws is, the user's PATH written in keys
+# of the test's own, and Claude Code's Skill installed through a stand-in for
+# ws.exe (fake_ws.cpp).
+add_executable(fake_ws fake_ws.cpp)
+set_target_properties(fake_ws PROPERTIES AUTOMOC OFF)
+qt_add_executable(tst_commandline tst_commandline.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/CommandLine.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/McpClients.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/Shell.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/FileManagers.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/FolderViewHit.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/Integrity.cpp)
+target_include_directories(tst_commandline PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_commandline PRIVATE wscore Qt6::Gui Qt6::Test
+    ole32 oleaut32 oleacc shell32 shlwapi user32 advapi32 taskschd)
+target_compile_definitions(tst_commandline PRIVATE WINSHUN_FAKE_WS="$<TARGET_FILE:fake_ws>")
+add_dependencies(tst_commandline fake_ws)
+set_target_properties(tst_commandline PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_commandline COMMAND tst_commandline)
+set_tests_properties(tst_commandline PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 qt_add_executable(tst_windowvisibility tst_windowvisibility.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/WindowEffects.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/Foreground.cpp)

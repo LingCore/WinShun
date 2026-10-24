@@ -17,6 +17,7 @@
 
 namespace ws {
 
+class CliSetup;
 class FavoritesSettings;
 class PluginSettings;
 class ShortcutCapture;
@@ -284,6 +285,8 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QVariantList mcpClients READ mcpClients NOTIFY mcpClientsChanged FINAL)
     Q_PROPERTY(QString mcpRelayPath READ mcpRelayPath NOTIFY mcpClientsChanged FINAL) // empty: WinShunMcp.exe is missing
     Q_PROPERTY(QString mcpMessage READ mcpMessage NOTIFY mcpMessageChanged FINAL)
+    // AI 助手 → 命令行 (ws): whether it can be used from a terminal, and the button that sets it up.
+    Q_PROPERTY(ws::CliSetup* cli READ cli CONSTANT FINAL)
     // 插件: the page's own view-model (PluginSettings), which edits the
     // [Plugin.<id>] sections here.
     Q_PROPERTY(ws::PluginSettings* plugins READ plugins CONSTANT FINAL)
@@ -805,6 +808,8 @@ public:
     Q_INVOKABLE void refreshMcpClients(); // looks again (as the window comes to the front)
     Q_INVOKABLE void connectMcpClient(const QString& id); // writes Win顺 into its configuration; mcpMessage says how it went
     Q_INVOKABLE void copyMcpSnippet(const QString& id); // its configuration (or command) to the clipboard; "": the generic JSON
+    Q_INVOKABLE void installMcpSkill(const QString& id); // Claude Code's Skill for ws; mcpMessage says how it went
+    CliSetup* cli() const { return m_cli; }
     QString mcpMessage() const { return m_mcpMessage; }
     Q_INVOKABLE void clearMcpMessage() { setMcpMessage({}); }
     Q_INVOKABLE void openMcpLog(); // mcp.log, or the data folder while there is none
@@ -933,6 +938,7 @@ private:
     QString m_mcpMessage;
     PluginSettings* m_plugins = nullptr; // a child
     FavoritesSettings* m_favorites = nullptr; // a child
+    CliSetup* m_cli = nullptr; // a child
 };
 
 } // namespace ws
