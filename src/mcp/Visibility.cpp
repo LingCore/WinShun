@@ -1,11 +1,14 @@
 #include "Visibility.h"
 
 #include "Win32Util.h"
+#include "WorkerPool.h"
 
 #include <QDir>
 #include <QElapsedTimer>
+#include <QSet>
 
-#include <aclapi.h>
+#include <string>
+#include <vector>
 
 namespace ws::mcp {
 
@@ -58,20 +61,37 @@ QString Visibility::parentOf(const QString& path)
     return parent;
 }
 
+QString Visibility::keyOf(const QString& folder)
+{
+    return QDir::toNativeSeparators(folder).toCaseFolded();
+}
+
 bool Visibility::check(const QString& path, DWORD desired)
 {
     if (!m_token)
         return false;
-    QElapsedTimer timer;
-    timer.start();
-    ++m_checks;
-    PSECURITY_DESCRIPTOR descriptor = nullptr;
+    m_checks.fetch_add(1, std::memory_order_relaxed);
     // The label too: AccessCheck weighs the integrity policy when it is there.
-    const DWORD error = ::GetNamedSecurityInfoW(win32::longPath(path.toStdWString()).c_str(), SE_FILE_OBJECT,
-        OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION | LABEL_SECURITY_INFORMATION,
-        nullptr, nullptr, nullptr, nullptr, &descriptor);
+    constexpr SECURITY_INFORMATION kParts = OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION
+        | DACL_SECURITY_INFORMATION | LABEL_SECURITY_INFORMATION;
+    // GetFileSecurityW reads what GetNamedSecurityInfoW read (a junction's
+    // own descriptor, not its target's: "Application Data" stays one that
+    // cannot be listed; the same decisions for 41 000 folders), in half the
+    // time, and a quarter of it with 16 threads at once (that one hardly
+    // gains from more threads: 12 µs a check, 3 this way).
+    const std::wstring name = win32::longPath(path.toStdWString());
+    alignas(8) unsigned char onStack[1024];
+    std::vector<unsigned char> onHeap;
+    PSECURITY_DESCRIPTOR descriptor = onStack;
+    DWORD needed = 0;
+    BOOL read = ::GetFileSecurityW(name.c_str(), kParts, descriptor, sizeof onStack, &needed);
+    if (!read && ::GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
+        onHeap.resize(needed);
+        descriptor = onHeap.data();
+        read = ::GetFileSecurityW(name.c_str(), kParts, descriptor, needed, &needed);
+    }
     bool allowed = false;
-    if (error == ERROR_SUCCESS) {
+    if (read) {
         GENERIC_MAPPING mapping {FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_GENERIC_EXECUTE, FILE_ALL_ACCESS};
         DWORD access = desired;
         ::MapGenericMask(&access, &mapping);
@@ -79,33 +99,72 @@ bool Visibility::check(const QString& path, DWORD desired)
         DWORD privilegesSize = sizeof privileges;
         DWORD granted = 0;
         BOOL status = FALSE;
-        allowed = ::AccessCheck(descriptor, m_token, access, &mapping, &privileges, &privilegesSize, &granted, &status) && status;
-        ::LocalFree(descriptor);
+        allowed = ::AccessCheck(descriptor, m_token, access, &mapping, &privileges, &privilegesSize, &granted, &status)
+            && status;
     }
     // Else: not even its security descriptor can be read (a protected system
     // folder): not shown.
+    return allowed;
+}
+
+bool Visibility::timedCheck(const QString& path, DWORD desired)
+{
+    QElapsedTimer timer;
+    timer.start();
+    const bool allowed = check(path, desired);
     m_us += timer.nsecsElapsed() / 1000;
     return allowed;
 }
 
 bool Visibility::canList(const QString& folder)
 {
-    const QString key = QDir::toNativeSeparators(folder).toCaseFolded();
+    const QString key = keyOf(folder);
     if (const auto it = m_folders.constFind(key); it != m_folders.cend())
         return it.value();
-    const bool allowed = check(folder, FILE_LIST_DIRECTORY);
+    const bool allowed = timedCheck(folder, FILE_LIST_DIRECTORY);
     m_folders.insert(key, allowed);
     return allowed;
 }
 
+void Visibility::checkAhead(
+    const QStringList& folders, WorkerPool& pool, const std::stop_token& stop, qsizetype minimum)
+{
+    QStringList todo;
+    std::vector<QString> keys;
+    QSet<QString> asked; // of these, each once
+    for (const QString& folder : folders) {
+        QString key = keyOf(folder);
+        if (m_folders.contains(key) || asked.contains(key))
+            continue;
+        asked.insert(key);
+        todo.push_back(folder);
+        keys.push_back(std::move(key));
+    }
+    if (todo.isEmpty() || todo.size() < minimum)
+        return;
+    QElapsedTimer timer;
+    timer.start();
+    enum : char { Unknown, Allowed, Denied };
+    std::vector<char> found(keys.size(), Unknown);
+    pool.parallelFor(found.size(), [&](std::size_t i) {
+        if (!stop.stop_requested())
+            found[i] = check(todo[static_cast<qsizetype>(i)], FILE_LIST_DIRECTORY) ? Allowed : Denied;
+    });
+    m_us += timer.nsecsElapsed() / 1000;
+    for (std::size_t i = 0; i < found.size(); ++i) {
+        if (found[i] != Unknown)
+            m_folders.insert(keys[i], found[i] == Allowed);
+    }
+}
+
 bool Visibility::canRead(const QString& file)
 {
-    return check(file, FILE_READ_DATA);
+    return timedCheck(file, FILE_READ_DATA);
 }
 
 bool Visibility::canReadAttributes(const QString& path)
 {
-    return check(path, FILE_READ_ATTRIBUTES);
+    return timedCheck(path, FILE_READ_ATTRIBUTES);
 }
 
 bool Visibility::sees(const QString& path)

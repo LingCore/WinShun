@@ -406,6 +406,30 @@ SearchResult fromIndex(const FileIndex& index, EntryId id)
     return r;
 }
 
+// The rows of `ids`, in their order, each with its own time (though a hit
+// was ordered as one not known when it was ahead). Many are made by the
+// pool's threads, a share each: ws's 50 000, and as many folders kept
+// apart, took 80 ms one after another. Caller holds index.readLock().
+SearchResults fromIndex(const FileIndex& index, const std::vector<EntryId>& ids, WorkerPool& pool)
+{
+    constexpr std::size_t kShare = 4096;
+    SearchResults rows(static_cast<qsizetype>(ids.size()));
+    SearchResult* const out = rows.data();
+    const auto make = [&](std::size_t share) {
+        const std::size_t end = std::min(ids.size(), (share + 1) * kShare);
+        for (std::size_t i = share * kShare; i < end; ++i) {
+            out[i] = fromIndex(index, ids[i]);
+            out[i].modified = knownTime(index.modified(ids[i]));
+        }
+    };
+    const std::size_t shares = (ids.size() + kShare - 1) / kShare;
+    if (shares > 1)
+        pool.parallelFor(shares, make);
+    else if (shares == 1)
+        make(0);
+    return rows;
+}
+
 // A recent item that is not among the matches found in the index (or one
 // listed with nothing typed).
 SearchResult fromDisk(const QString& path, const RecentOnDisk::Item& item)
@@ -641,6 +665,29 @@ ContentScope resolveScope(const FileIndex& index, const SearchEngine::Request& r
     return out;
 }
 
+// Whether two paths are one, case aside: each recent item is looked for
+// among all the rows (ws's 110 000). Told apart by their lengths first (a
+// case-insensitive comparison goes unit by unit: it never finds two
+// lengths equal), then from the end, where paths mostly differ: from the
+// start, it goes through all they have in common (C:\Users\...). A
+// surrogate is left to the comparison, which reads them in pairs.
+bool samePath(const QString& a, const QString& b)
+{
+    if (a.size() != b.size())
+        return false;
+    for (qsizetype i = a.size() - 1; i >= 0; --i) {
+        const QChar x = a[i];
+        const QChar y = b[i];
+        if (x == y)
+            continue;
+        if (x.isSurrogate() || y.isSurrogate())
+            break;
+        if (x.toCaseFolded() != y.toCaseFolded())
+            return false;
+    }
+    return a.compare(b, Qt::CaseInsensitive) == 0;
+}
+
 // Recently opened items that match jump to the top (at most a few).
 // Returns how many did.
 qsizetype promoteHistory(
@@ -665,8 +712,8 @@ qsizetype promoteHistory(
                 continue; // apps and places rank by their own rules (searchApps, searchPlaces)
             if (!within.isEmpty() && !path.startsWith(within, Qt::CaseInsensitive))
                 continue;
-            const auto it = std::find_if(results.begin(), results.end(),
-                [&](const SearchResult& r) { return r.path.compare(path, Qt::CaseInsensitive) == 0; });
+            const auto it = std::find_if(
+                results.begin(), results.end(), [&](const SearchResult& r) { return samePath(r.path, path); });
             if (it != results.end()) {
                 SearchResult r = *it;
                 r.recent = true;
@@ -704,8 +751,8 @@ qsizetype promoteHistory(
 void markRecent(SearchResults& results, const QStringList& history)
 {
     for (SearchResult& r : results) {
-        r.recent = std::any_of(history.cbegin(), history.cend(),
-            [&](const QString& path) { return r.path.compare(path, Qt::CaseInsensitive) == 0; });
+        r.recent = std::any_of(
+            history.cbegin(), history.cend(), [&](const QString& path) { return samePath(r.path, path); });
     }
 }
 
@@ -717,8 +764,8 @@ void markRecent(SearchResults& results, const QStringList& history)
 SearchResults::iterator exactFirst(SearchResults::iterator begin, SearchResults::iterator end, const NameMatcher& matcher,
     const PreferredTypes& preferred)
 {
-    const auto exactEnd = std::stable_partition(begin, end,
-        [&](const SearchResult& r) { return matcher.isExactName(wtf8::fromUtf16(wtf8::view(r.name)), r.isDir); });
+    const auto exactEnd = std::stable_partition(
+        begin, end, [&](const SearchResult& r) { return matcher.isExactName(r.name, r.isDir); });
     if (!preferred.empty()) {
         std::stable_partition(begin, exactEnd, [&](const SearchResult& r) {
             return !r.isDir && !r.isApp() && preferred.hasName(wtf8::fromUtf16(wtf8::view(r.name)));
@@ -1219,7 +1266,6 @@ void SearchEngine::runNameSearch(const Job& job)
             if (out.cancelled || isStale(job.id))
                 return;
             total = static_cast<qint64>(out.totalMatches);
-            results.reserve(static_cast<qsizetype>(out.hits.size()));
             // The folders of a typed path match names anywhere along the way:
             // only what really lies under the folder typed. One the index does
             // not have holds nothing (#49: "F1\" found the files of "F11"
@@ -1227,15 +1273,16 @@ void SearchEngine::runNameSearch(const Job& job)
             // below has what it holds.
             const EntryId folder = typedPath.folder.isEmpty() ? kNoEntry : index->findPath(typedPath.folder.toStdWString());
             UnderFolder under(*index, folder);
+            std::vector<EntryId> ids;
+            ids.reserve(out.hits.size());
             for (const NameHit& hit : out.hits) {
                 if (!typedPath.folder.isEmpty() && !under(hit.id)) {
                     --total;
                     continue;
                 }
-                SearchResult r = fromIndex(*index, hit.id);
-                r.modified = knownTime(index->modified(hit.id)); // its own, though ordered as unknown when ahead
-                results.push_back(std::move(r));
+                ids.push_back(hit.id);
             }
+            results = fromIndex(*index, ids, m_pool);
         }
         arrange(results, request, matcher, rankBy, *m_onDisk);
 

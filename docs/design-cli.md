@@ -327,7 +327,8 @@ src/mcp/PipeClient.cpp/h、Launch.cpp/h   和中继共用的源文件（第 9 �
   - 自己写的管道服务端演 Win顺 演不了的：Ctrl+Break 取消（Win顺 收到 `notifications/cancelled`，退出码 130）、管道断了、旧版 Win顺、新版的拒绝类别（含剪贴板两个开关各自的提示 `clipboardOffKinds`、`ws status` 的剪贴板一行 `statusClipboardLine`）、`ws text` 遇到 `too_large` 换小段、5 万条的回答、`ws recent` 的第二次问、`ws grep` 遇到 `queued`（`queuedContentSearch`）；
   - 一律用测试管道、测试互斥量、`WS_TEST_START`、`WS_TEST_OPEN`、临时的 `CLAUDE_CONFIG_DIR`，不碰用户的 Win顺 和 `~\.claude`。
   - 要 cli 分支服务端改动的几项（`--in` 由 Win顺 筛、一次超过 200 条、不读大小）合并前 QSKIP，合并后自动跑。
-- 性能（10 次中位数，对着用户在跑的 Win顺，索引 368 万项）：`ws find 报告 -n 20` 15.1 ms，`ws --version` 6.8 ms。5 万条、8.2 MB 的回答：解析 45 ms，`ws find -n 0` 从启动到退出 108 ms。
+- 性能（10 次中位数，对着用户在跑的 Win顺，索引 368 万项）：`ws find 报告 -n 20` 15.1 ms，`ws --version` 6.8 ms。5 万条、8.2 MB 的回答：解析 45 ms，`ws find -n 0` 从启动到退出 108 ms——这是假服务端给现成的回答，只量了 ws 这一头。
+- 对着真的 Win顺（装好的新版，索引 370 万项）`-n 0` 慢得多：`ws find report -n 0` 约 1.1 s（`-n 100` 15 ms），`ws find a -n 0` 热 1.9–2.0 s、冷 5.1 s，`--sort name` 3.5 s。时间几乎都在服务端：引擎给每块的堆照上限预留、5 万条的访问检查一个一个来、每条的时间经 `QDateTime` 换算（pitfalls“上限一大，每块的堆都照上限预留”“`GetNamedSecurityInfoW` 多线程一起调几乎不快”“列 50 000 条时，时间的文字比搜索本身还慢”）。cli-perf 分支改了这三处，`wsbench --mcp-host --frozen`（真实索引的副本 371 万项，热，输出进管道，两轮各 5 次的中位数，改前 → 改后）：`ws find report -n 0` 135 → 58 ms，`ws find a -n 0` 1.40–1.49 → 0.50–0.51 s，`--sort name` 1.47–1.64 → 0.59 s；`-n 100` 的 `report` 13 → 10 ms，`a` 24 → 22 ms。bench 上改前的 `report -n 0` 只有 135 ms，没复现装好的版本上的 1.1 s。排除了：机械盘的安静模式（这台机器的四个盘都在一块 NVMe 固态盘上）、读大小（列 200 条以上时 ws 发 `size: false`，bench 的日志里看得到；带大小时改前第一次 0.89 s、之后 0.21 s）。没排除：冷的文件夹记录（第一次查这些文件夹要读盘，改前一个一个来，改后在固态盘上一起查）、真进程当时的状态。没在真机上量，不能说 1.1 s 已经好了。冷的也没量。分项见 architecture.md 的 MCP 实测。
 - 编码：第 4 节的表。
 - 真实 AI 走一遍：没做（要往用户自己的 `~\.claude` 里装 Skill）。
 

@@ -10,10 +10,17 @@
 
 #include <QHash>
 #include <QString>
+#include <QStringList>
 
 #include <windows.h>
 
+#include <atomic>
 #include <cstdint>
+#include <stop_token>
+
+namespace ws {
+class WorkerPool;
+}
 
 namespace ws::mcp {
 
@@ -33,7 +40,17 @@ public:
     // root: itself).
     bool sees(const QString& path);
 
-    int checks() const noexcept { return m_checks; }
+    // canList for many folders at once, ahead of asking: those not checked
+    // yet (each once) are checked spread over `pool`, each check a wait for
+    // the disk, and canList then answers from the cache, as if it had
+    // checked them itself. Fewer than `minimum` of them: none is (one at a
+    // time costs no more then). Stopped: those not reached are left to
+    // canList. The calling thread only (the cache is not shared).
+    void checkAhead(const QStringList& folders, WorkerPool& pool, const std::stop_token& stop, qsizetype minimum);
+
+    int checks() const noexcept { return m_checks.load(std::memory_order_relaxed); }
+    // The time the checks took the caller (those made at once: the time
+    // they all took together).
     std::int64_t microseconds() const noexcept { return m_us; }
 
     // The token for sessions that bring none: the linked token of this
@@ -45,11 +62,14 @@ public:
     static QString parentOf(const QString& path);
 
 private:
+    // Any thread.
     bool check(const QString& path, DWORD desired);
+    bool timedCheck(const QString& path, DWORD desired);
+    static QString keyOf(const QString& folder);
 
     HANDLE m_token;
-    QHash<QString, bool> m_folders; // case-folded, native
-    int m_checks = 0;
+    QHash<QString, bool> m_folders; // keyOf: case-folded, native
+    std::atomic<int> m_checks {0};
     std::int64_t m_us = 0;
 };
 
