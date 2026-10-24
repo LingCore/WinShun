@@ -4834,6 +4834,7 @@ mcp::Policy App::mcpPolicy() const
     mcp::Policy policy;
     policy.allowOpen = m_settings.mcpAllowOpen;
     policy.allowClipboard = m_settings.mcpClipboard;
+    policy.clipboardHistory = m_settings.clipboard; // without a history there is nothing to read
     policy.allowScreenshot = m_settings.mcpScreenshot;
     policy.settingsMode = m_settings.mcpSettings == u"auto" ? mcp::SettingsMode::Auto
         : m_settings.mcpSettings == u"off"                  ? mcp::SettingsMode::Off
