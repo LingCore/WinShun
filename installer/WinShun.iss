@@ -491,17 +491,18 @@ end;
 // The last page says where to try it: terminals that are open now do not see a new PATH.
 procedure CurPageChanged(CurPageID: Integer);
 var
-  Before: Integer;
+  Delta: Integer;
 begin
   if (CurPageID <> wpFinished) or not WsOnPath then
     exit;
-  Before := WizardForm.FinishedLabel.Height;
   WizardForm.FinishedLabel.Caption := WizardForm.FinishedLabel.Caption + #13#10#13#10 + CustomMessage('WsNewTerminal');
-  // The label grows with its text (AutoSize); what is under it moves down by as much.
-  if WizardForm.FinishedLabel.Height > Before then
+  // A label is as high as it was made, not as its text: Setup's own call sizes it
+  // to the new text and says by how much; what is under it moves down by as much.
+  Delta := WizardForm.AdjustLabelHeight(WizardForm.FinishedLabel);
+  if Delta > 0 then
   begin
-    WizardForm.RunList.Top := WizardForm.RunList.Top + (WizardForm.FinishedLabel.Height - Before);
-    WizardForm.RunList.Height := WizardForm.RunList.Height - (WizardForm.FinishedLabel.Height - Before);
+    WizardForm.RunList.Top := WizardForm.RunList.Top + Delta;
+    WizardForm.RunList.Height := WizardForm.RunList.Height - Delta;
   end;
 end;
 
