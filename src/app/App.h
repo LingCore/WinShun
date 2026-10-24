@@ -501,9 +501,11 @@ private:
     // shared with the launcher would drop the launcher's (and its rows would
     // wait for results that never come).
     std::unique_ptr<SearchEngine> m_dialogEngine;
-    // The MCP server's own engine, host and server (applyMcp); in this
-    // order, so the server goes first and the engine before the index.
+    // The MCP server's own engines (names, and content apart so that a name
+    // search never waits behind one), host and server (applyMcp); in this
+    // order, so the server goes first and the engines before the index.
     std::unique_ptr<SearchEngine> m_mcpEngine;
+    std::unique_ptr<SearchEngine> m_mcpContentEngine;
     std::unique_ptr<mcp::ToolHost> m_mcpHost;
     std::unique_ptr<mcp::McpServer> m_mcpServer;
     std::unique_ptr<plugin::AiBridge> m_aiBridge; // with the server: the plugins' commands among its tools

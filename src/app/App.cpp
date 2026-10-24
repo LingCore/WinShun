@@ -419,6 +419,7 @@ App::~App()
     m_mcpServer.reset();
     m_mcpHost.reset();
     m_mcpEngine.reset();
+    m_mcpContentEngine.reset();
     delete m_noticeWindow.data();
     m_noticeFrame.reset();
     closeCaptureOcr(true); // its window, before the QML engine too
@@ -5034,15 +5035,22 @@ void App::applyMcp()
         m_mcpServer.reset();
         m_mcpHost.reset();
         m_mcpEngine.reset();
+        m_mcpContentEngine.reset();
         refreshMcpStatus();
         return;
     }
     if (!m_mcpServer) {
         // Its own engine: an engine runs only its newest request, so one
-        // shared with the launcher would drop the launcher's searches.
+        // shared with the launcher would drop the launcher's searches. And
+        // one more for content searches (seconds), which a name search
+        // (milliseconds) would otherwise wait behind: an AI agent runs
+        // several ws commands at once. Made now: an idle engine is a dozen or
+        // so sleeping threads (its worker and pool), no work for the CPU.
         m_mcpEngine = std::make_unique<SearchEngine>(m_index.get(), m_apps.get(), m_places.get());
+        m_mcpContentEngine = std::make_unique<SearchEngine>(m_index.get());
         mcp::Services services = toolServices();
         services.engine = m_mcpEngine.get();
+        services.contentEngine = m_mcpContentEngine.get();
         // The AI's alone: plugins never take pictures of the screen.
         services.takeScreenshot = [this](const mcp::ScreenshotRequest& request, std::function<void(mcp::ScreenshotTaken)> done) {
             confirmScreenshot(request, std::move(done));

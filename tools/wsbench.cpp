@@ -134,13 +134,18 @@
 //                      that name no app here, and the shortcuts that run
 //                      something else through a host program (cmd /k ...);
 //                      --all lists every app with its arguments and program
-//   wsbench --mcp-host [--pipe NAME] [--index FOLDER] [--plugins DIR]
+//   wsbench --mcp-host [--pipe NAME] [--index FOLDER] [--plugins DIR] [--history FILE] [--frozen]
 //                      serves Win顺's MCP tools (src/mcp) on a named pipe as
 //                      the app does, over a copy of the index files (made in
 //                      the temporary folder unless --index names a folder
 //                      with index.bin), for testing with real AI clients
-//                      (WinShunMcp.exe --pipe NAME) while the app runs; the
-//                      pipe's name defaults to the app's with ".bench" added.
+//                      (WinShunMcp.exe --pipe NAME) or ws while the app runs;
+//                      the pipe's name defaults to the app's with ".bench"
+//                      added. The ranking uses the app's history.txt (read
+//                      only), or FILE. --frozen: the index as the snapshot
+//                      has it, no disk read or walked (without administrator
+//                      rights the volumes cannot be opened, and walking every
+//                      disk instead takes minutes): for measuring searches.
 //                      With --plugins, the plugins of DIR (every one enabled,
 //                      actions allowed) are tools too, as the AI 助手 page's
 //                      switches would make them (plugin::AiBridge)
@@ -211,6 +216,7 @@
 #include "Catalog.h"
 #include "Extract.h"
 #include "Gallery.h"
+#include "History.h"
 #include "Host.h"
 #include "IndexService.h"
 #include "Install.h"
@@ -4889,6 +4895,12 @@ int runMcpHost(QStringList args)
         pluginsDir = QDir(args[at + 1]).absolutePath();
         args.remove(at, 2);
     }
+    QString historyFile;
+    if (const qsizetype at = args.indexOf(u"--history"_s); at >= 0 && at + 1 < args.size()) {
+        historyFile = args[at + 1];
+        args.remove(at, 2);
+    }
+    const bool frozen = args.removeAll(u"--frozen"_s) > 0;
     ws::Settings settings;
     settings.load();
     QTemporaryDir temp;
@@ -4916,11 +4928,25 @@ int runMcpHost(QStringList args)
     options.content.extensions = settings.contentExtensions;
     options.content.documents = settings.contentDocuments;
     options.content.sizeLimits = settings.contentSizeLimits();
+    if (frozen) {
+        // No way to the volumes, and waited for all the while: the passes
+        // neither catch up nor walk (IndexService::awaitAccess).
+        options.volumeAccess = std::make_shared<ws::ntfs::NoVolumeAccess>();
+        options.accessWaitMs = std::numeric_limits<int>::max();
+    }
     ws::IndexService service(indexFolder, options);
+    // Two engines, as the app's host has: content searches on their own.
     ws::SearchEngine engine(&service);
+    ws::SearchEngine contentEngine(&service);
+    // The ranking with the app's history, as the app's host ranks (read
+    // only: never recorded or saved here).
+    ws::History history(historyFile.isEmpty() ? ws::Settings::dataDir() + u"\\history.txt"_s : historyFile);
+    history.load();
     ws::mcp::Services services;
     services.index = &service;
     services.engine = &engine;
+    services.contentEngine = &contentEngine;
+    services.history = [&history] { return history.items(); };
     services.version = QStringLiteral(WINSHUN_VERSION "-bench");
     services.log = [](const QString& line) {
         std::printf("%s\n", qUtf8Printable(line));
