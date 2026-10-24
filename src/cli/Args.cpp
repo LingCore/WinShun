@@ -78,9 +78,9 @@ constexpr Text kOutOfRange {L"{} 要在 {} 到 {} 之间", L"{} must be between 
 constexpr Text kNotDuration {L"{} 要一个时间，比如 10s、500ms、2m，不是“{}”", L"{} needs a time such as 10s, 500ms or 2m, not \"{}\""};
 constexpr Text kNotChoice {L"{} 只能是 {}，不是“{}”", L"{} must be one of {}, not \"{}\""};
 
-bool isAllowed(Opt id, std::span<const Opt> allowed) noexcept
+bool isAllowed(Opt id, std::span<const Opt> allowed, std::span<const Opt> shared) noexcept
 {
-    return std::ranges::find(allowed, id) != allowed.end() || std::ranges::find(kGlobalOptions, id) != kGlobalOptions.end();
+    return std::ranges::find(allowed, id) != allowed.end() || std::ranges::find(shared, id) != shared.end();
 }
 
 const OptionSpec* byName(std::wstring_view name) noexcept
@@ -181,7 +181,7 @@ std::optional<std::size_t> firstWord(std::span<const std::wstring> args)
 }
 
 Result<Parsed> parseArgs(std::span<const std::wstring> args, std::optional<std::size_t> skip, std::span<const Opt> allowed,
-    std::wstring_view command)
+    std::wstring_view command, std::span<const Opt> shared)
 {
     Parsed parsed;
     const auto take = [&](const OptionSpec& spec, std::wstring spelling, std::wstring value) {
@@ -197,7 +197,7 @@ Result<Parsed> parseArgs(std::span<const std::wstring> args, std::optional<std::
         if (name.size() > 1) {
             std::vector<Opt> mine;
             for (const OptionSpec& spec : kOptions) {
-                if (!spec.hidden && isAllowed(spec.id, allowed))
+                if (!spec.hidden && isAllowed(spec.id, allowed, shared))
                     mine.push_back(spec.id);
             }
             if (const std::optional<Opt> best = likeliest(name, mine))
@@ -227,7 +227,7 @@ Result<Parsed> parseArgs(std::span<const std::wstring> args, std::optional<std::
             const std::wstring_view name = std::wstring_view(arg).substr(2, equals == std::wstring::npos ? std::wstring::npos : equals - 2);
             const std::wstring written = L"--" + std::wstring(name);
             const OptionSpec* spec = byName(name);
-            if (!spec || !isAllowed(spec->id, allowed))
+            if (!spec || !isAllowed(spec->id, allowed, shared))
                 return unknown(written, name);
             if (!spec->takesValue) {
                 if (equals != std::wstring::npos)
@@ -248,7 +248,7 @@ Result<Parsed> parseArgs(std::span<const std::wstring> args, std::optional<std::
         for (std::size_t c = 1; c < arg.size(); ++c) {
             const std::wstring written {L'-', arg[c]};
             const OptionSpec* spec = byLetter(arg[c]);
-            if (!spec || !isAllowed(spec->id, allowed))
+            if (!spec || !isAllowed(spec->id, allowed, shared))
                 return unknown(written, std::wstring_view(&arg[c], 1));
             if (!spec->takesValue) {
                 take(*spec, written, {});

@@ -52,6 +52,19 @@ public:
 
     // initialize's answer: Win顺's version. Waits for it.
     Result<std::wstring> serverVersion();
+    // Whether this Win顺 says in initialize that it was made for ws
+    // (capabilities.experimental.winshun.cli): the arguments and answers
+    // docs/design-cli.md §9 describes. A Win顺 before that silently ignores
+    // an argument it does not know (--in's `folders`). Waits for initialize's answer.
+    Result<bool> hasCliContract();
+
+    // How long the pipe may stay silent while an answer is awaited before ws
+    // gives up with exit 7 (the time since the last bytes, not a total). A hung
+    // Win顺, or a program squatting on the pipe's name that never answers, must
+    // not hang ws for good. WS_TEST_IDLE_MS (the tests) replaces any limit.
+    static constexpr unsigned kLongIdleMs = 120'000; // the longest legitimate silence is a content search (30 s) behind another
+    static constexpr unsigned kShortIdleMs = 10'000; // status, --version: answered at once
+    void setIdleLimit(unsigned ms) noexcept { m_idleMs = m_idleOverride ? m_idleOverride : ms; }
 
 private:
     Result<json::Value> answer(long long id); // the raw response
@@ -62,6 +75,9 @@ private:
     long long m_nextId = 1;
     long long m_initializeId = 0; // until its answer is read
     std::wstring m_version;
+    bool m_cliContract = false;
+    unsigned m_idleMs = kLongIdleMs;
+    unsigned m_idleOverride = 0;
     std::map<long long, json::Value> m_early; // answers read while waiting for another
     std::set<long long> m_dropped; // cancelled: their answers are passed over
 

@@ -26,6 +26,7 @@
 #include <shlobj.h>
 #include <shobjidl.h>
 #include <taskschd.h>
+#include <userenv.h>
 #include <wrl/client.h>
 
 #include <algorithm>
@@ -165,6 +166,27 @@ bool executeAsUser(const std::wstring& file, const std::wstring& args, const std
     return SUCCEEDED(shell->ShellExecute(target, parameters, workDir, verb, show));
 }
 
+// An environment block for a program started with `token`'s user: CreateEnvironmentBlock reads the
+// system's and the user's variables from the registry as they are now. `inherit`: over this process's
+// own variables (the user's own account: what this process had and the registry does not, such as a
+// variable a parent set, stays; what the registry has now wins), else those alone.
+class EnvironmentBlock {
+public:
+    EnvironmentBlock() = default;
+    EnvironmentBlock(const EnvironmentBlock&) = delete;
+    EnvironmentBlock& operator=(const EnvironmentBlock&) = delete;
+    ~EnvironmentBlock()
+    {
+        if (m_block)
+            ::DestroyEnvironmentBlock(m_block);
+    }
+    bool create(HANDLE token, bool inherit) { return ::CreateEnvironmentBlock(&m_block, token, inherit) && m_block; }
+    LPVOID get() const noexcept { return m_block; }
+
+private:
+    LPVOID m_block = nullptr;
+};
+
 // The standard handles of a console program started for its output
 // (runUnelevatedCaptured): what it reads, and where it writes (both streams).
 struct StdHandles {
@@ -205,8 +227,14 @@ win32::UniqueHandle startWithShellToken(std::wstring command, const std::wstring
         startup.hStdError = io->output;
         flags = CREATE_NO_WINDOW;
     }
+    // A program run for its output gets the user's own environment, from their token
+    // (their variables as the registry has them now), not this process's, which is as old
+    // as this process and may be an administrator's (another account's, even).
+    EnvironmentBlock environment;
+    if (io && environment.create(token.get(), false))
+        flags |= CREATE_UNICODE_ENVIRONMENT;
     PROCESS_INFORMATION started {};
-    if (!::CreateProcessWithTokenW(token.get(), 0, nullptr, command.data(), flags, nullptr,
+    if (!::CreateProcessWithTokenW(token.get(), 0, nullptr, command.data(), flags, environment.get(),
             dir.empty() ? nullptr : dir.c_str(), &startup, &started))
         return {};
     ::CloseHandle(started.hThread);
@@ -526,6 +554,40 @@ win32::UniqueHandle startUnelevated(const std::wstring& program, const std::wstr
     return win32::UniqueHandle(started.hProcess);
 }
 
+bool runsAsShellUser()
+{
+    // The user of this process's token and of the desktop shell's: the same account, else Win顺 was
+    // started as another one (an administrator's credentials at a UAC prompt, say).
+    const auto userOf = [](HANDLE token) {
+        DWORD size = 0;
+        ::GetTokenInformation(token, TokenUser, nullptr, 0, &size);
+        std::vector<std::byte> buffer(size);
+        if (size == 0 || !::GetTokenInformation(token, TokenUser, buffer.data(), size, &size))
+            return std::vector<std::byte>();
+        PSID sid = static_cast<const TOKEN_USER*>(static_cast<const void*>(buffer.data()))->User.Sid;
+        const auto* bytes = static_cast<const std::byte*>(sid);
+        return std::vector<std::byte>(bytes, bytes + ::GetLengthSid(sid));
+    };
+    HANDLE own = nullptr;
+    DWORD pid = 0;
+    const HWND shellWindow = ::GetShellWindow();
+    if (!::OpenProcessToken(::GetCurrentProcess(), TOKEN_QUERY, &own))
+        return true;
+    const win32::UniqueHandle ownToken(own);
+    if (!shellWindow || !::GetWindowThreadProcessId(shellWindow, &pid) || pid == 0)
+        return true; // no shell to compare with
+    const win32::UniqueHandle process(::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid));
+    HANDLE shell = nullptr;
+    if (!process.valid() || !::OpenProcessToken(process.get(), TOKEN_QUERY, &shell))
+        return true;
+    const win32::UniqueHandle shellToken(shell);
+    const std::vector<std::byte> mine = userOf(ownToken.get());
+    const std::vector<std::byte> theirs = userOf(shellToken.get());
+    if (mine.empty() || theirs.empty())
+        return true; // cannot tell: not a reason to refuse
+    return mine == theirs;
+}
+
 Captured runUnelevatedCaptured(const std::wstring& program, const std::wstring& args, unsigned long timeoutMs,
     const std::wstring& cwd)
 {
@@ -573,12 +635,21 @@ Captured runUnelevatedCaptured(const std::wstring& program, const std::wstring& 
         startup.StartupInfo.hStdOutput = io.output;
         startup.StartupInfo.hStdError = io.output;
         startup.lpAttributeList = attributes;
+        // Our own account's variables as the registry has them now, over ours (a variable set
+        // after this program started, setx for CLAUDE_CONFIG_DIR, is seen).
+        EnvironmentBlock environment;
+        HANDLE ownToken = nullptr;
+        DWORD flags = CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT;
+        if (::OpenProcessToken(::GetCurrentProcess(), TOKEN_QUERY | TOKEN_DUPLICATE, &ownToken)) {
+            const win32::UniqueHandle owned(ownToken);
+            if (environment.create(ownToken, true))
+                flags |= CREATE_UNICODE_ENVIRONMENT;
+        }
         PROCESS_INFORMATION started {};
         if (::UpdateProcThreadAttribute(attributes, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inherited, sizeof inherited, nullptr,
                 nullptr)
-            && ::CreateProcessW(program.c_str(), command.data(), nullptr, nullptr, TRUE,
-                CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT, nullptr, cwd.empty() ? nullptr : cwd.c_str(),
-                &startup.StartupInfo, &started)) {
+            && ::CreateProcessW(program.c_str(), command.data(), nullptr, nullptr, TRUE, flags, environment.get(),
+                cwd.empty() ? nullptr : cwd.c_str(), &startup.StartupInfo, &started)) {
             ::CloseHandle(started.hThread);
             process.reset(started.hProcess);
         }

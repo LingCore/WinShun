@@ -59,8 +59,20 @@ struct Connection {
     ~Connection() { session.reset(); }
 };
 
+// The percentage the "loading the index" line shows: never lower than `shown`,
+// the highest said so far (-1: none, or unknown), whatever Win顺 now reports.
+int stablePercent(int shown, int reported);
+
+// How to reach Win顺 for this run: its pipe, the settings file's switch, --no-start.
+ConnectOptions connectOptions(Context& context);
 // Connects, starting Win顺 when it should be (docs/design-cli.md §7).
 Result<std::unique_ptr<Connection>> connect(Context& context);
+
+// For an argument only a Win顺 made for ws understands (--in's `folders`): a
+// Win顺 before that ignores it and answers for everything, so ws asks first
+// (initialize says so) and refuses with exit 7, naming `option`, when it is an
+// older one. Costs the wait for initialize's answer: ask only for those.
+Result<void> requireCliContract(Connection& connection, std::wstring_view option);
 
 // Calls a tool. `needsIndex`: the index must be ready; its state is asked in
 // the same breath, and when it is still loading the call is cancelled, ws

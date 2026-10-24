@@ -56,8 +56,14 @@ bool environmentSet(const wchar_t* name); // set, even to nothing
 // This program's full path.
 std::wstring modulePath();
 
-// `path` made absolute against the current folder, as the shell would.
+// `path` made absolute against the current folder, as the shell would, with
+// short names (C:\Users\ADMINI~1) in their long form when the path is there:
+// Win顺 indexes the long ones. Not the \\?\ form.
 std::wstring absolutePath(std::wstring_view path);
+// `path` as the file system's calls take one longer than MAX_PATH (the
+// \\?\ form of an absolute path); shorter ones, and others, as they are.
+// The local checks below use it, so that a path of 300 characters is seen.
+std::wstring extendedPath(const std::wstring& path);
 
 bool pathExists(const std::wstring& path);
 // What is at `path`, as far as ws itself can tell.

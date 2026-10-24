@@ -111,6 +111,7 @@ Window {
             editor.refreshDoubleCtrlClash()
             editor.refreshOpusFolderMenu()
             editor.cli.refresh() // the PATH changed in a terminal or another program
+            editor.refreshSkillState() // the Skill file deleted (not the whole look: it walks the PATH)
         }
     }
 
@@ -254,6 +255,45 @@ Window {
             flick.contentY = Math.max(0, top - 48) // with its page's name above it
         else if (bottom + 24 > flick.contentY + flick.height)
             flick.contentY = Math.min(flick.contentHeight - flick.height, bottom + 24 - flick.height)
+    }
+
+    // Keeps `item` where it stands on screen while `change` rearranges what is above it
+    // (a switch turned on shows rows, and the page tabs), rather than letting the page
+    // push it out of the window from under the pointer. The rows come in with an
+    // animation, so it holds for a moment after (heldItem), not just at the change;
+    // scrolling by hand lets go.
+    property Item heldItem: null
+    property real heldTop: 0
+    function holdInView(item, change) {
+        flick.stopScrolling()
+        heldItem = item
+        heldTop = item.mapToItem(flick, 0, 0).y
+        change()
+        layoutNow()
+        keepHeld()
+        heldTimer.restart()
+    }
+    function keepHeld() {
+        if (!heldItem)
+            return
+        const shift = heldItem.mapToItem(flick, 0, 0).y - heldTop
+        if (Math.abs(shift) >= 0.5)
+            flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, flick.contentY + shift))
+    }
+    Timer {
+        id: heldTimer
+        interval: 800
+        onTriggered: window.heldItem = null
+    }
+    Connections {
+        target: page
+        enabled: window.heldItem !== null
+        function onImplicitHeightChanged() { window.keepHeld() }
+    }
+    Connections {
+        target: flick
+        enabled: window.heldItem !== null
+        function onMovementStarted() { window.heldItem = null }
     }
 
     // Positions the sections and rows now, rather than before the next frame.
@@ -755,6 +795,7 @@ Window {
             readonly property var pages: window.pages
             readonly property var pageKeywords: window.pageKeywords
             function openPage(index, tab) { window.showPage(index, tab) }
+            function holdInView(item, change) { window.holdInView(item, change) }
             x: 8
             y: 8
             width: flick.width - 36

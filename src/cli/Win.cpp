@@ -42,6 +42,50 @@ std::wstring modulePath()
     }
 }
 
+std::wstring extendedPath(const std::wstring& path)
+{
+    // Only a path that long needs it (and the others keep every rule of the
+    // ordinary form, such as the trailing dots and spaces Windows drops).
+    if (path.size() < 240 || path.starts_with(L"\\\\?\\"))
+        return path;
+    if (path.starts_with(L"\\\\")) // \\server\share\x
+        return L"\\\\?\\UNC\\" + path.substr(2);
+    if (path.size() >= 3 && path[1] == L':' && path[2] == L'\\')
+        return L"\\\\?\\" + path;
+    return path;
+}
+
+namespace {
+
+// `path` with 8.3 short names (PROGRA~1, ADMINI~1) in their long form, as the
+// index knows them. Only a path with a '~' can have one, and only a path
+// that exists can be asked: the call reaches out to the disk, a share included.
+std::wstring withLongNames(std::wstring path)
+{
+    if (path.find(L'~') == std::wstring::npos)
+        return path;
+    const std::wstring asked = extendedPath(path);
+    std::wstring longForm(asked.size() + 512, L'\0');
+    DWORD n = ::GetLongPathNameW(asked.c_str(), longForm.data(), static_cast<DWORD>(longForm.size()));
+    if (n >= longForm.size()) { // longer than guessed: n is the size needed
+        longForm.resize(n);
+        n = ::GetLongPathNameW(asked.c_str(), longForm.data(), static_cast<DWORD>(longForm.size()));
+    }
+    if (n == 0 || n >= longForm.size())
+        return path;
+    longForm.resize(n);
+    // The prefix is ours when the path did not have it.
+    if (asked.size() != path.size()) {
+        if (longForm.starts_with(L"\\\\?\\UNC\\"))
+            longForm = L"\\" + longForm.substr(7);
+        else if (longForm.starts_with(L"\\\\?\\"))
+            longForm.erase(0, 4);
+    }
+    return longForm;
+}
+
+} // namespace
+
 std::wstring absolutePath(std::wstring_view path)
 {
     const std::wstring given(path);
@@ -53,17 +97,17 @@ std::wstring absolutePath(std::wstring_view path)
     if (n == 0 || n >= needed)
         return given;
     full.resize(n);
-    return full;
+    return withLongNames(std::move(full));
 }
 
 bool pathExists(const std::wstring& path)
 {
-    return ::GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES;
+    return ::GetFileAttributesW(extendedPath(path).c_str()) != INVALID_FILE_ATTRIBUTES;
 }
 
 PathKind pathKind(const std::wstring& path)
 {
-    const DWORD attributes = ::GetFileAttributesW(path.c_str());
+    const DWORD attributes = ::GetFileAttributesW(extendedPath(path).c_str());
     if (attributes == INVALID_FILE_ATTRIBUTES)
         return PathKind::None;
     return (attributes & FILE_ATTRIBUTE_DIRECTORY) ? PathKind::Folder : PathKind::File;
@@ -71,7 +115,7 @@ PathKind pathKind(const std::wstring& path)
 
 bool readFile(const std::wstring& path, std::string& bytes, std::size_t limit)
 {
-    const Handle file(::CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+    const Handle file(::CreateFileW(extendedPath(path).c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
         OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
     if (!file)
         return false;

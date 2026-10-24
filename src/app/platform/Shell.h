@@ -39,8 +39,14 @@ filemanager::Kind fileManager(); // the one set
 // `cwd`: its working folder; empty for ours. Invalid when Win顺 is elevated
 // and no shell runs to take them from.
 win32::UniqueHandle startUnelevated(const std::wstring& program, const std::wstring& args, const std::wstring& cwd = {});
+// Whether Win顺 runs as the account that is logged on at the desktop (the shell's). Not
+// when it was started as another one, an administrator's: its HKCU, environment and
+// profile are that account's, not the user's. True when that cannot be told.
+bool runsAsShellUser();
 // A console program run to its end, with the user's normal rights as above,
-// in no window, and what it wrote. For a worker thread: it waits.
+// in no window, and what it wrote. For a worker thread: it waits. It gets the
+// user's environment as the registry has it now (setx made a minute ago counts),
+// over this process's own when that is the user's account.
 struct Captured {
     bool started = false; // false: it did not start at all (no shell to take the user's rights from)
     bool timedOut = false; // still running after the time given: ended

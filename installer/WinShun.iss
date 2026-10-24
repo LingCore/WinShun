@@ -382,45 +382,57 @@ begin
   Result := CompareText(Entry, Folder) = 0;
 end;
 
-function PathHasFolder(Path, Folder: String): Boolean;
+// Takes the first entry off Path: up to the first ";" outside double quotes, as
+// Windows reads a PATH, where a folder with a ";" in its name is one entry
+// ("C:\a;b\bin"). Entry is that text without the ";", Path what follows it.
+// False when it was the last entry (Path is then empty).
+function NextPathEntry(var Path, Entry: String): Boolean;
 var
-  Semicolon: Integer;
+  I: Integer;
+  InQuotes: Boolean;
 begin
-  Result := False;
-  while True do
+  InQuotes := False;
+  for I := 1 to Length(Path) do
   begin
-    Semicolon := Pos(';', Path);
-    if Semicolon = 0 then
+    if Path[I] = '"' then
+      InQuotes := not InQuotes
+    else if (Path[I] = ';') and not InQuotes then
     begin
-      Result := Result or EntryIsFolder(Path, Folder);
+      Entry := Copy(Path, 1, I - 1);
+      Delete(Path, 1, I);
+      Result := True;
       exit;
     end;
-    Result := Result or EntryIsFolder(Copy(Path, 1, Semicolon - 1), Folder);
-    Delete(Path, 1, Semicolon);
   end;
+  Entry := Path;
+  Path := '';
+  Result := False;
+end;
+
+function PathHasFolder(Path, Folder: String): Boolean;
+var
+  Entry: String;
+  More: Boolean;
+begin
+  Result := False;
+  repeat
+    More := NextPathEntry(Path, Entry);
+    Result := Result or EntryIsFolder(Entry, Folder);
+  until not More;
 end;
 
 // Path without the entries that name Folder, each with one ";"; every other
 // character as it was (quotes, %VAR%, empty entries).
 function PathWithoutFolder(Path, Folder: String; var Found: Boolean): String;
 var
-  Semicolon: Integer;
   Part: String;
-  First, Last: Boolean;
+  First, More: Boolean;
 begin
   Result := '';
   Found := False;
   First := True;
   repeat
-    Semicolon := Pos(';', Path);
-    Last := Semicolon = 0;
-    if Last then
-      Part := Path
-    else
-    begin
-      Part := Copy(Path, 1, Semicolon - 1);
-      Delete(Path, 1, Semicolon);
-    end;
+    More := NextPathEntry(Path, Part);
     if EntryIsFolder(Part, Folder) then
       Found := True
     else
@@ -430,45 +442,89 @@ begin
       Result := Result + Part;
       First := False;
     end;
-  until Last;
+  until not More;
 end;
 
-// Appended to the PATH of the install mode, as REG_EXPAND_SZ like Windows' own
-// (RegQueryStringValue does not expand it, so %VAR% entries go back as they
-// were); not twice, which an update would otherwise do. Not when ws.exe is not
-// in the folder: no entry for a folder that holds nothing.
+// How Folder is written on a PATH: in quotes when its name holds a ";", which
+// would otherwise cut it in two.
+function PathEntryOf(Folder: String): String;
+begin
+  if Pos(';', Folder) > 0 then
+    Result := '"' + Folder + '"'
+  else
+    Result := Folder;
+end;
+
+// The PATH value of Key, to change it. False: leave it alone. A value that is
+// there but that RegQueryStringValue cannot read (REG_BINARY, say, or no access
+// to it) is not an absent one, and writing it anew would replace everything on
+// the PATH by one folder. Exists says whether the value is there at all; it
+// is not, Path is empty.
+function ReadPathToChange(Root: Integer; Key: String; var Path: String; var Exists: Boolean): Boolean;
+begin
+  Path := '';
+  Result := True;
+  Exists := RegValueExists(Root, Key, 'Path');
+  if Exists and not RegQueryStringValue(Root, Key, 'Path', Path) then
+  begin
+    Log('The PATH value in ' + Key + ' exists but cannot be read as text (a type other than REG_SZ or REG_EXPAND_SZ, or no access): left as it is.');
+    Path := '';
+    Result := False;
+  end;
+end;
+
+// Appended to the PATH of the install mode (RegQueryStringValue does not expand
+// it, so %VAR% entries go back as they were); not twice, which an update would
+// otherwise do. Not when ws.exe is not in the folder: no entry for a folder
+// that holds nothing. A PATH value that cannot be read as text is left alone
+// (ReadPathToChange), and WsOnPath says "yes" only when the folder is on the
+// PATH for sure, so that the last page does not promise ws where it is not.
 procedure AddWsToPath();
 var
   Path, Folder: String;
-  Present: Boolean;
+  Exists, Written: Boolean;
 begin
   Folder := WsFolder();
   if not FileExists(Folder + '\ws.exe') then
     exit;
-  Present := RegQueryStringValue(HKA, PathKey(), 'Path', Path);
-  if not (Present and PathHasFolder(Path, Folder)) then
+  if not ReadPathToChange(HKA, PathKey(), Path, Exists) then
+    exit;
+  if Exists and PathHasFolder(Path, Folder) then
   begin
-    if (not Present) or (Path = '') then
-      Path := Folder
-    else if Path[Length(Path)] = ';' then
-      Path := Path + Folder
-    else
-      Path := Path + ';' + Folder;
-    RegWriteExpandStringValue(HKA, PathKey(), 'Path', Path);
+    WsOnPath := True;
+    exit;
   end;
-  WsOnPath := True;
+  if Path = '' then
+    Path := PathEntryOf(Folder)
+  else if Path[Length(Path)] = ';' then
+    Path := Path + PathEntryOf(Folder)
+  else
+    Path := Path + ';' + PathEntryOf(Folder);
+  // The type stays as it is: RegWriteStringValue keeps a REG_EXPAND_SZ (Windows'
+  // own PATH is one) and a REG_SZ stays what it is; a PATH that is not there yet is made REG_EXPAND_SZ.
+  if Exists then
+    Written := RegWriteStringValue(HKA, PathKey(), 'Path', Path)
+  else
+    Written := RegWriteExpandStringValue(HKA, PathKey(), 'Path', Path);
+  if Written then
+    WsOnPath := True
+  else
+    Log('The PATH value in ' + PathKey() + ' could not be written: ' + Folder + ' is not on the PATH.');
 end;
 
+// Folder out of the PATH of Root\Key, if it is there; nothing is written when
+// the value is absent or cannot be read as text, or has no such entry.
 procedure RemoveFolderFromPath(Root: Integer; Key, Folder: String);
 var
   Path: String;
-  Found: Boolean;
+  Exists, Found: Boolean;
 begin
-  if not RegQueryStringValue(Root, Key, 'Path', Path) then
+  if not ReadPathToChange(Root, Key, Path, Exists) or not Exists then
     exit;
   Path := PathWithoutFolder(Path, Folder, Found);
-  if Found then
-    RegWriteExpandStringValue(Root, Key, 'Path', Path);
+  // The value is there, so RegWriteStringValue keeps its type (REG_EXPAND_SZ or REG_SZ).
+  if Found and not RegWriteStringValue(Root, Key, 'Path', Path) then
+    Log('The PATH value in ' + Key + ' could not be written: ' + Folder + ' is still on it.');
 end;
 
 // Uninstalling takes that entry out and nothing else: from the PATH of the
@@ -518,7 +574,12 @@ begin
   begin
     RemoveTapCopies();
     if WizardIsTaskSelected('wscommand') then
-      AddWsToPath();
+      AddWsToPath()
+    else
+      // Unticked on an update: the entry an earlier install added goes, from the
+      // PATH of the install mode as at the uninstall (the user's own list of an
+      // all-users install, where the settings page may have put it, is not touched).
+      RemoveFolderFromPath(HKA, PathKey(), WsFolder());
   end;
   // After [Run] re-registered the service from {app}: a portable copy's old
   // service folder is now stale.

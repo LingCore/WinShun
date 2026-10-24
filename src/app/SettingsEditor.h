@@ -285,6 +285,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QVariantList mcpClients READ mcpClients NOTIFY mcpClientsChanged FINAL)
     Q_PROPERTY(QString mcpRelayPath READ mcpRelayPath NOTIFY mcpClientsChanged FINAL) // empty: WinShunMcp.exe is missing
     Q_PROPERTY(QString mcpMessage READ mcpMessage NOTIFY mcpMessageChanged FINAL)
+    Q_PROPERTY(bool mcpSkillBusy READ mcpSkillBusy NOTIFY mcpMessageChanged FINAL) // 装 Skill is running: its button waits
     // AI 助手 → 命令行 (ws): whether it can be used from a terminal, and the button that sets it up.
     Q_PROPERTY(ws::CliSetup* cli READ cli CONSTANT FINAL)
     // 插件: the page's own view-model (PluginSettings), which edits the
@@ -805,12 +806,16 @@ public:
     void setMcpStatus(const QString& status); // set by the app: who is connected
     QVariantList mcpClients() const { return m_mcpClients; }
     QString mcpRelayPath() const { return m_mcpRelayPath; }
-    Q_INVOKABLE void refreshMcpClients(); // looks again (as the window comes to the front)
+    Q_INVOKABLE void refreshMcpClients(); // looks again (the window opens); it walks the PATH for `claude`, which a dead share stalls
+    // Only whether Claude Code's Skill file is there (one path): for the window coming to the front
+    // and the page showing, where refreshMcpClients() would stall the GUI thread on that PATH.
+    Q_INVOKABLE void refreshSkillState();
     Q_INVOKABLE void connectMcpClient(const QString& id); // writes Win顺 into its configuration; mcpMessage says how it went
     Q_INVOKABLE void copyMcpSnippet(const QString& id); // its configuration (or command) to the clipboard; "": the generic JSON
     Q_INVOKABLE void installMcpSkill(const QString& id); // Claude Code's Skill for ws; mcpMessage says how it went
     CliSetup* cli() const { return m_cli; }
     QString mcpMessage() const { return m_mcpMessage; }
+    bool mcpSkillBusy() const { return m_mcpSkillBusy; }
     Q_INVOKABLE void clearMcpMessage() { setMcpMessage({}); }
     Q_INVOKABLE void openMcpLog(); // mcp.log, or the data folder while there is none
 
@@ -936,6 +941,7 @@ private:
     QVariantList m_mcpClients;
     QString m_mcpRelayPath;
     QString m_mcpMessage;
+    bool m_mcpSkillBusy = false; // installMcpSkill is waiting for ws
     PluginSettings* m_plugins = nullptr; // a child
     FavoritesSettings* m_favorites = nullptr; // a child
     CliSetup* m_cli = nullptr; // a child

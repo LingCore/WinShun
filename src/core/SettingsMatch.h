@@ -20,6 +20,9 @@ struct Term {
     QString text; // case folded
     pinyin::Matcher pinyin; // valid() when the word can be read as pinyin ("kjj" for 快捷键)
     bool single = false; // one ASCII letter or digit: found only where a word starts
+    // One or two ASCII letters or digits ("ws", "ai", "ui"): found as a word or at the start of
+    // one, never in the middle of another ("ws" is in every "Windows").
+    bool atWordStart = false;
 };
 
 struct Query {

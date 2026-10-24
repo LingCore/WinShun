@@ -4,6 +4,7 @@
 #include "Migration.h"
 #include "Preview.h"
 #include "Settings.h"
+#include "SettingsCommand.h"
 #include "SystemCatalog.h"
 #include "platform/MessageWindow.h"
 #include "platform/Shell.h"
@@ -289,7 +290,7 @@ int main(int argc, char* argv[])
         if (parser.isSet(quit))
             command = u"quit"_s;
         else if (parser.isSet(settings))
-            command = u"settings"_s;
+            command = ws::settingscommand::make(parser.value(settingsAt)); // --settings-at too: a running copy opens them there
         else if (parser.isSet(query))
             command = u"query:"_s + parser.value(query);
         else if (parser.isSet(toggle))

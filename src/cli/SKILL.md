@@ -35,6 +35,6 @@ description: Find files on this Windows PC by name (pinyin too) or by the text i
 
 ## Rules
 
-- Always quote the query: bash expands `*`.
+- Always quote the query: bash expands `*`. Options go before `--`; after it everything is the query.
 - Exit codes: 0 found, 1 nothing found, 2 wrong usage, 3 WinShun is not running, 4 off in WinShun's settings: ask the user to turn on the switch stderr names (设置 → AI 助手 → “允许 AI 助手和命令行连接”, or for `ws clip` “允许 AI 读取剪贴板历史”), 5 the index is not ready, 6 the path cannot be seen, 7 other errors.
 - Show paths to the user as they are.

@@ -72,6 +72,10 @@ Result<Exit> runGrep(Context& context)
     Result<std::unique_ptr<Connection>> connection = connect(context);
     if (!connection)
         return std::move(connection).failure();
+    if (!folders->empty()) {
+        if (Result<void> made = requireCliContract(**connection, L"--in"); !made)
+            return std::move(made).failure();
+    }
     Result<json::Value> result = callTool(context, **connection, "search_content", json::Value(std::move(arguments)), true,
         folders->empty() ? std::wstring_view() : std::wstring_view(folders->front()));
     if (!result)

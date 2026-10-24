@@ -3,6 +3,7 @@
 #include "Encoding.h"
 #include "Interrupt.h"
 #include "Messages.h"
+#include "Win.h"
 
 #include <algorithm>
 #include <cmath>
@@ -43,7 +44,10 @@ Result<void> waitForIndex(Context& context, Session& session, IndexState state)
         return Failure {Exit::NotReady, std::wstring(tr(msg::kNotReadyNoWait))};
     const ULONGLONG start = ::GetTickCount64();
     const ULONGLONG deadline = start + static_cast<ULONGLONG>(context.waitMs);
+    int shown = -1; // the highest percentage said so far
     for (;;) {
+        state.percent = stablePercent(shown, state.percent);
+        shown = state.percent;
         context.progress(state.percent >= 0 ? fmt(msg::kLoadingPercent, state.percent) : std::wstring(tr(msg::kLoading)));
         const ULONGLONG now = ::GetTickCount64();
         if (now >= deadline) {
@@ -69,6 +73,13 @@ Result<void> waitForIndex(Context& context, Session& session, IndexState state)
 }
 
 } // namespace
+
+int stablePercent(int shown, int reported)
+{
+    // The average is over the volumes still being read: when one finishes it drops
+    // out and the average falls (43%, 5%, 21%…). The line only ever goes up.
+    return std::max(shown, reported);
+}
 
 void Context::note(std::wstring_view text)
 {
@@ -118,20 +129,38 @@ void Context::endProgress()
     m_progressLength = 0;
 }
 
-Result<std::unique_ptr<Connection>> connect(Context& context)
+ConnectOptions connectOptions(Context& context)
 {
-    auto connection = std::make_unique<Connection>();
     ConnectOptions options;
     options.pipe = context.pipe;
     options.switchOn = context.config.connectionOn;
     options.mayStart = context.mayStart;
     options.startingMutex = context.instanceMutex + L".Starting";
     options.note = [&context](std::wstring_view text) { context.note(text); };
-    Result<void> connected = connectToWinShun(connection->client, options, context.launcher);
+    return options;
+}
+
+Result<std::unique_ptr<Connection>> connect(Context& context)
+{
+    auto connection = std::make_unique<Connection>();
+    Result<void> connected = connectToWinShun(connection->client, connectOptions(context), context.launcher);
     if (!connected)
         return std::move(connected).failure();
     connection->session = std::make_unique<Session>(connection->client);
     return connection;
+}
+
+Result<void> requireCliContract(Connection& connection, std::wstring_view option)
+{
+    // The tests, with a Win顺 that cannot announce it yet.
+    if (environmentSet(L"WS_TEST_ASSUME_CLI"))
+        return {};
+    Result<bool> made = connection.session->hasCliContract();
+    if (!made)
+        return std::move(made).failure();
+    if (!*made)
+        return Failure {Exit::Failed, fmt(msg::kWinShunTooOld, option)};
+    return {};
 }
 
 Result<json::Value> callTool(Context& context, Connection& connection, std::string_view tool, const json::Value& arguments, bool needsIndex,

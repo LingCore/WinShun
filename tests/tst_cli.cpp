@@ -16,10 +16,16 @@
 #include "Commands.h"
 #include "Config.h"
 #include "Connect.h"
+#include "Context.h"
 #include "Encoding.h"
 #include "Format.h"
+#include "Open.h"
+#include "Output.h"
+#include "Run.h"
 #include "Session.h"
+#include "Skill.h"
 #include "Text.h"
+#include "Win.h"
 
 #include "IndexService.h"
 #include "Launch.h"
@@ -36,10 +42,13 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
+#include <QScopeGuard>
 #include <QTemporaryDir>
 #include <QTest>
 
 #include <windows.h>
+
+#include <shlobj.h>
 
 #include <algorithm>
 #include <atomic>
@@ -202,6 +211,7 @@ struct RunOptions {
     std::map<std::wstring, std::wstring> env; // added to this process's; an empty value removes
     QString folder; // the current folder
     bool newGroup = false; // its own process group, on this console (Ctrl+Break)
+    QString readOnlyStdout; // an existing file opened for reading only is its stdout: every write to it fails
     int timeoutMs = 60'000;
     std::function<void(DWORD pid)> started;
     std::function<void()> tick; // each turn of the wait, on this thread
@@ -223,12 +233,16 @@ Outcome runProcess(const RunOptions& options)
     ::SetHandleInformation(outRead, HANDLE_FLAG_INHERIT, 0);
     ::SetHandleInformation(errRead, HANDLE_FLAG_INHERIT, 0);
     const HANDLE nul = ::CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &inherit, OPEN_EXISTING, 0, nullptr);
+    HANDLE readOnly = INVALID_HANDLE_VALUE;
+    if (!options.readOnlyStdout.isEmpty())
+        readOnly = ::CreateFileW(native(options.readOnlyStdout).toStdWString().c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &inherit,
+            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
 
     STARTUPINFOW startup {};
     startup.cb = sizeof startup;
     startup.dwFlags = STARTF_USESTDHANDLES;
     startup.hStdInput = nul;
-    startup.hStdOutput = outWrite;
+    startup.hStdOutput = readOnly != INVALID_HANDLE_VALUE ? readOnly : outWrite;
     startup.hStdError = errWrite;
     PROCESS_INFORMATION process {};
     std::vector<wchar_t> environment = environmentBlock(options.env);
@@ -241,6 +255,8 @@ Outcome runProcess(const RunOptions& options)
     ::CloseHandle(outWrite);
     ::CloseHandle(errWrite);
     ::CloseHandle(nul);
+    if (readOnly != INVALID_HANDLE_VALUE)
+        ::CloseHandle(readOnly);
     if (!created) {
         ::CloseHandle(outRead);
         ::CloseHandle(errRead);
@@ -544,9 +560,14 @@ std::string answerLine(long long id, json::Value result)
     return json::write(json::Value::Object {{"jsonrpc", "2.0"}, {"id", id}, {"result", std::move(result)}}) + "\n";
 }
 
-std::string initializeAnswer(long long id)
+// `cli`: announces that it was made for ws (capabilities.experimental.winshun.cli),
+// as a Win顺 of the branch with the server changes does.
+std::string initializeAnswer(long long id, bool cli = true)
 {
-    return answerLine(id, json::Value::Object {{"protocolVersion", "2025-11-25"}, {"capabilities", json::Value::Object {}},
+    json::Value::Object capabilities;
+    if (cli)
+        capabilities.emplace("experimental", json::Value::Object {{"winshun", json::Value::Object {{"cli", 1}}}});
+    return answerLine(id, json::Value::Object {{"protocolVersion", "2025-11-25"}, {"capabilities", std::move(capabilities)},
                               {"serverInfo", json::Value::Object {{"name", "fake"}, {"version", "9.9"}}}});
 }
 
@@ -612,6 +633,20 @@ bool isKnownOption(const QString& written)
     return false;
 }
 
+// Whether the Win顺 on `pipe` (served by this process: asked from another thread) says
+// in initialize that it was made for ws.
+bool announcesCli(const std::wstring& pipe)
+{
+    return offThread([&] {
+        pipe::LineClient client;
+        if (!client.connect(pipe, 2000))
+            return false;
+        cli::Session session(client);
+        const cli::Result<bool> made = session.hasCliContract();
+        return made && *made;
+    });
+}
+
 qint64 median(std::vector<qint64> values)
 {
     std::ranges::sort(values);
@@ -631,6 +666,12 @@ class TestCli : public QObject {
     QString m_claude; // CLAUDE_CONFIG_DIR
     std::wstring m_mutex; // the test's single-instance mutex name (absent unless a test makes it)
     std::unique_ptr<Served> m_served; // the standard files, served
+    // This tree's Win顺 announces that it was made for ws in initialize. Not yet,
+    // until the branch with the server changes (cli-fix-server) is merged: then
+    // ws would refuse --in of it, and the tests that use --in on it say so to ws
+    // (WS_TEST_ASSUME_CLI) meanwhile. serverAnnouncesCliContract() stops skipping
+    // once the merge makes it announce.
+    bool m_serverHasCli = false;
 
     // ws with the test's pipe and mutex (first: a "--" in `args` must not
     // take them for words) and environment.
@@ -641,7 +682,10 @@ class TestCli : public QObject {
             + args;
         std::map<std::wstring, std::wstring> all {{L"WS_SETTINGS", m_iniOn.toStdWString()}, {L"WS_LANG", L"zh"},
             {L"WS_TEST_START", m_marker.toStdWString()}, {L"WS_TEST_OPEN", m_opened.toStdWString()},
-            {L"CLAUDE_CONFIG_DIR", m_claude.toStdWString()}, {L"NO_COLOR", L""}, {L"WS_ENCODING", L""}};
+            {L"CLAUDE_CONFIG_DIR", m_claude.toStdWString()}, {L"NO_COLOR", L""}, {L"WS_ENCODING", L""},
+            {L"WS_TEST_ELEVATED", L"0"}, {L"WS_TEST_VERIFY", L""}, {L"WS_TEST_IDLE_MS", L""}, {L"WS_TEST_ASSUME_CLI", L""}};
+        if (!m_serverHasCli && pipe.empty())
+            all[L"WS_TEST_ASSUME_CLI"] = L"1"; // this tree's Win顺 (the default pipe) cannot say it yet
         for (const auto& [name, value] : env)
             all[name] = value;
         extra.env = std::move(all);
@@ -667,6 +711,7 @@ private slots:
         m_served = std::make_unique<Served>("main", standardFiles);
         QVERIFY(m_served->ready);
         QVERIFY(m_served->listen());
+        m_serverHasCli = announcesCli(m_served->pipe);
     }
 
     void cleanupTestCase() { m_served.reset(); }
@@ -760,7 +805,13 @@ private slots:
         QCOMPARE(cli::firstWord(std::vector<std::wstring> {L"--in", L".", L"报告"}), std::optional<std::size_t>(2));
         QCOMPARE(cli::firstWord(std::vector<std::wstring> {L"-n20", L"报告"}), std::optional<std::size_t>(1));
         QVERIFY(cli::commandNamed(L"RECENT") == cli::commandNamed(L"recent"));
-        QVERIFY(cli::commandNamed(L"search") == &cli::defaultCommand());
+        // Only the documented names: an alias would take a word from a query (ws dir listed instead of searching "dir").
+        for (const wchar_t* alias : {L"search", L"read", L"dir", L"clipboard"})
+            QVERIFY2(!cli::commandNamed(alias), qPrintable(QString::fromWCharArray(alias)));
+        QStringList names;
+        for (const cli::Command& command : cli::commandTable())
+            names << QString::fromStdWString(std::wstring(command.name));
+        QCOMPARE(names, (QStringList {u"find"_s, u"grep"_s, u"recent"_s, u"text"_s, u"ls"_s, u"open"_s, u"clip"_s, u"status"_s, u"skill"_s, u"help"_s}));
         QVERIFY(!cli::commandNamed(L"报告"));
 
         QCOMPARE(cli::editDistance(L"exts", L"ext"), std::size_t {1});
@@ -948,6 +999,119 @@ private slots:
             QVERIFY(timer.elapsed() >= 150);
             QCOMPARE(starts, 0);
             running = false;
+        }
+        // Running without the pipe while another ws is starting it (its mutex): waits for the
+        // start, not just the grace; the pipe comes meanwhile: connected, and not started again.
+        {
+            options.graceMs = 100;
+            options.startWaitMs = 1500;
+            const HANDLE other = ::CreateMutexW(nullptr, FALSE, options.startingMutex.c_str());
+            running = true;
+            HANDLE pipe = INVALID_HANDLE_VALUE;
+            std::thread comes([&] {
+                ::Sleep(400);
+                pipe = ::CreateNamedPipeW(pipePath.c_str(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE, 1, 4096, 4096, 0, nullptr);
+            });
+            std::vector<std::wstring> notes;
+            options.note = [&](std::wstring_view text) { notes.emplace_back(text); };
+            pipe::LineClient client;
+            QElapsedTimer timer;
+            timer.start();
+            const auto r = cli::connectToWinShun(client, options, launcher);
+            comes.join();
+            QVERIFY(r);
+            QVERIFY(timer.elapsed() >= 350);
+            QCOMPARE(starts, 0);
+            QCOMPARE(notes.size(), std::size_t {1}); // "starting, waiting for it"
+            client.close();
+            ::CloseHandle(pipe);
+            // No pipe coming: the whole start-up waited for, then 4.
+            options.startWaitMs = 600;
+            options.note = nullptr;
+            timer.restart();
+            const auto none = cli::connectToWinShun(client, options, launcher);
+            QVERIFY(!none);
+            QCOMPARE(none.failure().code, cli::Exit::Off);
+            QVERIFY(timer.elapsed() >= 550);
+            ::CloseHandle(other);
+            running = false;
+            options.graceMs = 200;
+            options.startWaitMs = 300;
+        }
+        // Running without the pipe, its process moments old: waits what is left of freshMs
+        // (the pipe comes after the window, at logon after a good deal else); an old one, not.
+        {
+            options.graceMs = 100;
+            options.freshMs = 1200;
+            running = true;
+            launcher.runningFor = [] { return std::optional<unsigned long long>(200); }; // 1000 ms left
+            HANDLE pipe = INVALID_HANDLE_VALUE;
+            std::thread comes([&] {
+                ::Sleep(400);
+                pipe = ::CreateNamedPipeW(pipePath.c_str(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE, 1, 4096, 4096, 0, nullptr);
+            });
+            pipe::LineClient client;
+            QElapsedTimer timer;
+            timer.start();
+            const auto r = cli::connectToWinShun(client, options, launcher);
+            comes.join();
+            QVERIFY(r);
+            QVERIFY(timer.elapsed() >= 350);
+            client.close();
+            ::CloseHandle(pipe);
+            launcher.runningFor = [] { return std::optional<unsigned long long>(60'000); };
+            timer.restart();
+            const auto old = cli::connectToWinShun(client, options, launcher);
+            QVERIFY(!old);
+            QCOMPARE(old.failure().code, cli::Exit::Off);
+            QVERIFY(timer.elapsed() < 600);
+            launcher.runningFor = [] { return std::optional<unsigned long long>(); }; // cannot be told: the grace only
+            timer.restart();
+            QVERIFY(!cli::connectToWinShun(client, options, launcher));
+            QVERIFY(timer.elapsed() < 600);
+            launcher.runningFor = nullptr;
+            running = false;
+            options.graceMs = 200;
+            options.freshMs = 8000;
+        }
+        // The same waiting for status (connectIfThere), which never starts Win顺.
+        {
+            options.graceMs = 100;
+            options.startWaitMs = 1500;
+            const HANDLE other = ::CreateMutexW(nullptr, FALSE, options.startingMutex.c_str());
+            running = true;
+            HANDLE pipe = INVALID_HANDLE_VALUE;
+            std::thread comes([&] {
+                ::Sleep(400);
+                pipe = ::CreateNamedPipeW(pipePath.c_str(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE, 1, 4096, 4096, 0, nullptr);
+            });
+            pipe::LineClient client;
+            const auto there = cli::connectIfThere(client, options, launcher);
+            comes.join();
+            QVERIFY(there);
+            QVERIFY(*there);
+            QCOMPARE(starts, 0);
+            client.close();
+            ::CloseHandle(pipe);
+            ::CloseHandle(other);
+            // Not running (or the switch off): at once, false, never started.
+            running = false;
+            QElapsedTimer timer;
+            timer.start();
+            const auto absent = cli::connectIfThere(client, options, launcher);
+            QVERIFY(absent);
+            QVERIFY(!*absent);
+            QVERIFY(timer.elapsed() < 300);
+            running = true;
+            options.switchOn = false;
+            const auto off = cli::connectIfThere(client, options, launcher);
+            QVERIFY(off && !*off);
+            QVERIFY(timer.elapsed() < 300);
+            options.switchOn = true;
+            running = false;
+            QCOMPARE(starts, 0);
+            options.graceMs = 200;
+            options.startWaitMs = 300;
         }
         // Not running, --no-start: 3.
         {
@@ -1214,6 +1378,14 @@ private slots:
         QVERIFY(r.errors().contains(u"ws ls"_s));
         r = ws({u"text"_s});
         QCOMPARE(r.code, 2);
+        // --from beyond the end: no text, exit 1, and a note saying why.
+        r = ws({u"text"_s, file, u"--from"_s, u"1000"_s});
+        QCOMPARE(r.code, 1);
+        QVERIFY(r.out.isEmpty());
+        QVERIFY2(r.errors().contains(u"已经读完"_s) && r.errors().contains(u"18"_s) && r.errors().contains(u"1000"_s), qPrintable(r.errors()));
+        r = ws({u"text"_s, file, u"--from"_s, u"18"_s});
+        QCOMPARE(r.code, 1);
+        QVERIFY2(r.errors().contains(u"已经读完"_s), qPrintable(r.errors()));
     }
 
     void ls()
@@ -1257,6 +1429,113 @@ private slots:
         QCOMPARE(r.code, 2);
     }
 
+    // Paths ws looks at itself: short and long.
+    void pathsAsWsSeesThem()
+    {
+        // 8.3 short names are the long ones the index knows (C:\Users\ADMINI~1 for a user with a long name).
+        const QString longName = native(m_scratch.path() + u"/A Rather Long Folder Name"_s);
+        QVERIFY(QDir().mkpath(longName));
+        QVERIFY(writeFile(longName + u"\\file with a long name.txt"_s, "x"));
+        wchar_t shortForm[MAX_PATH] {};
+        const DWORD n = ::GetShortPathNameW(longName.toStdWString().c_str(), shortForm, MAX_PATH);
+        if (n > 0 && n < MAX_PATH && QString::fromWCharArray(shortForm).contains(u'~')) {
+            const QString shortPath = QString::fromWCharArray(shortForm);
+            QCOMPARE(QString::fromStdWString(cli::absolutePath(shortPath.toStdWString())).toLower(), longName.toLower());
+            // Relative to a current folder that is a short name too.
+            QCOMPARE(QString::fromStdWString(cli::absolutePath((shortPath + u"\\.").toStdWString())).toLower(), longName.toLower());
+            // One that is not there stays as written (nothing to ask the disk).
+            QCOMPARE(QString::fromStdWString(cli::absolutePath(L"X:\\nowhere~1\\x")), u"X:\\nowhere~1\\x"_s);
+        } else {
+            qInfo("this volume keeps no 8.3 names: the expansion is not tried");
+        }
+        // A path over MAX_PATH is seen: exists, a folder, a file (the \\?\ form for the local checks).
+        QString deep = native(m_scratch.path());
+        QString extended = u"\\\\?\\"_s + deep; // the prefix: the only form that can make them
+        while (deep.size() < 300) {
+            const QString part = u"\\a-folder-with-a-longish-name"_s;
+            deep += part;
+            extended += part;
+            QVERIFY2(::CreateDirectoryW(extended.toStdWString().c_str(), nullptr) || ::GetLastError() == ERROR_ALREADY_EXISTS, "cannot make the deep folder");
+        }
+        const HANDLE file = ::CreateFileW((extended + u"\\deep.txt"_s).toStdWString().c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        QVERIFY(file != INVALID_HANDLE_VALUE);
+        ::CloseHandle(file);
+        QVERIFY(deep.size() > 260);
+        QVERIFY(cli::pathExists(deep.toStdWString()));
+        QVERIFY(cli::pathKind(deep.toStdWString()) == cli::PathKind::Folder);
+        QVERIFY(cli::pathKind((deep + u"\\deep.txt"_s).toStdWString()) == cli::PathKind::File);
+        QVERIFY(cli::pathKind((deep + u"\\missing.txt"_s).toStdWString()) == cli::PathKind::None);
+        QCOMPARE(QString::fromStdWString(cli::extendedPath(L"C:\\x")), u"C:\\x"_s); // short ones as they are
+        QVERIFY(QString::fromStdWString(cli::extendedPath(deep.toStdWString())).startsWith(u"\\\\?\\"_s));
+        QVERIFY(QString::fromStdWString(cli::extendedPath((u"\\\\server\\share\\"_s + QString(300, u'x')).toStdWString())).startsWith(u"\\\\?\\UNC\\server"_s));
+        // `ws open` takes a long path that is there as the path it is (it fell back to a name search).
+        const Outcome r = ws({u"open"_s, deep + u"\\deep.txt"_s}, {}, testPipeName("nobody"));
+        QCOMPARE(r.code, 0);
+        QCOMPARE(QString::fromUtf8(readAll(m_opened)), u"open "_s + deep + u"\\deep.txt\n"_s);
+    }
+
+    // cmd and PowerShell 5.1 hand "C:\My Folder\" -n 5 over as one argument, the quote gone and the
+    // rest in the path: said, not looked for as a folder of that name.
+    void aQuoteInAPath()
+    {
+        const QString swallowed = at(u"with space"_s) + u"\\\" -n 5"_s;
+        for (const QStringList& command : {QStringList {u"find"_s, u"a"_s, u"--in"_s, swallowed}, QStringList {u"grep"_s, u"a"_s, u"--in"_s, swallowed},
+                 QStringList {u"recent"_s, u"--in"_s, swallowed}, QStringList {u"ls"_s, swallowed}, QStringList {u"text"_s, swallowed}}) {
+            const Outcome r = ws(command);
+            QVERIFY2(r.code == 2, qPrintable(command.join(u' ') + u": "_s + r.errors()));
+            QVERIFY2(r.errors().contains(u"路径里有引号"_s) && r.errors().contains(u"反斜杠"_s), qPrintable(r.errors()));
+            QVERIFY(r.out.isEmpty());
+        }
+        const Outcome en = ws({u"ls"_s, swallowed}, {{L"WS_LANG", L"en"}});
+        QCOMPARE(en.code, 2);
+        QVERIFY2(en.errors().contains(u"trailing backslash"_s), qPrintable(en.errors()));
+        // A quote in a query is the query's own business (a phrase).
+        QCOMPARE(ws({u"find"_s, u"\"报告\""_s}).code, 0);
+        // ... and in open's words, which may be a query.
+        QCOMPARE(ws({u"open"_s, u"\"报告\""_s}).code, 0);
+    }
+
+    // The options every command takes are the ones it can honour: status neither waits for the
+    // index nor starts Win顺.
+    void statusTakesNoWaitOrNoStart()
+    {
+        for (const QString& language : {u"zh"_s, u"en"_s}) {
+            const std::map<std::wstring, std::wstring> lang {{L"WS_LANG", language.toStdWString()}};
+            Outcome r = ws({u"help"_s, u"status"_s}, lang);
+            QCOMPARE(r.code, 0);
+            // Their rows (the details of status name them, saying it has none).
+            QVERIFY2(!r.text().contains(u"--wait <"_s) && !r.text().contains(u"不启动它"_s) && !r.text().contains(u"Do not start WinShun"_s), qPrintable(r.text()));
+            QVERIFY2(r.text().contains(u"--color"_s) && r.text().contains(u"--encoding"_s) && r.text().contains(u"--json"_s), qPrintable(r.text()));
+            r = ws({u"help"_s, u"find"_s}, lang);
+            QVERIFY2(r.text().contains(u"--no-start"_s) && r.text().contains(u"--wait <"_s), qPrintable(r.text()));
+        }
+        Outcome r = ws({u"status"_s, u"--wait"_s, u"5s"_s});
+        QCOMPARE(r.code, 2);
+        QVERIFY2(r.errors().contains(u"ws status 不认 --wait"_s), qPrintable(r.errors()));
+        r = ws({u"status"_s, u"--no-start"_s});
+        QCOMPARE(r.code, 2);
+        QCOMPARE(ws({u"status"_s}).code, 0);
+        QCOMPARE(ws({u"status"_s, u"--json"_s, u"--color"_s, u"never"_s}).code, 0);
+        // The first word `dir`, `read`, `search`, `clipboard` is a query, as any other.
+        const std::wstring name = testPipeName("aliases");
+        FakeServer fake(name, [&](const std::string& line) -> std::optional<std::string> {
+            const Request request = requestOf(line);
+            if (request.method == "initialize")
+                return initializeAnswer(request.id);
+            if (request.tool == "index_status")
+                return readyAnswer(request.id);
+            if (request.tool == "search_files")
+                return toolAnswer(request.id, json::Value::Object {{"items", json::Value::Array {}}, {"returned", 0}, {"truncated", false}});
+            return std::string();
+        });
+        for (const char* word : {"dir", "read", "search", "clipboard"}) {
+            fake.forget();
+            r = ws({QString::fromLatin1(word)}, {}, name);
+            QCOMPARE(r.code, 1);
+            QVERIFY2(fake.saw(std::string("\"query\":\"") + word + "\""), word);
+        }
+    }
+
     // A first word that names a command is the command; -- or find makes it a query.
     void reservedWords()
     {
@@ -1283,6 +1562,53 @@ private slots:
         QCOMPARE(QString::fromUtf8(readAll(m_opened)), u"reveal "_s + at(u"notes.md"_s) + u'\n');
         r = ws({u"open"_s, u"zzqqxx"_s});
         QCOMPARE(r.code, 1);
+        QFile::remove(m_opened);
+
+        // ws as administrator: a file a search found is handed to Explorer (the user's rights),
+        // not started with ws's own token; a path the user named still is opened directly; reveal
+        // only selects.
+        const std::map<std::wstring, std::wstring> elevated {{L"WS_TEST_ELEVATED", L"1"}};
+        r = ws({u"open"_s, u"报告"_s, u"--ext"_s, u"txt"_s}, elevated);
+        QCOMPARE(r.code, 0);
+        QCOMPARE(QString::fromUtf8(readAll(m_opened)), u"user-open "_s + at(u"报告𠀀.txt"_s) + u'\n');
+        QFile::remove(m_opened);
+        r = ws({u"open"_s, at(u"notes.md"_s)}, elevated, testPipeName("nobody"));
+        QCOMPARE(QString::fromUtf8(readAll(m_opened)), u"open "_s + at(u"notes.md"_s) + u'\n');
+        QFile::remove(m_opened);
+        r = ws({u"open"_s, u"报告"_s, u"--ext"_s, u"txt"_s, u"--reveal"_s}, elevated);
+        QCOMPARE(QString::fromUtf8(readAll(m_opened)), u"reveal "_s + at(u"报告𠀀.txt"_s) + u'\n');
+        QFile::remove(m_opened);
+
+        // The pipe's other end must be Win顺 (any program can create the pipe of that name first):
+        // here the server is this test, so a check asked for refuses, and nothing is opened.
+        r = ws({u"open"_s, u"报告"_s, u"--ext"_s, u"txt"_s}, {{L"WS_TEST_VERIFY", L"1"}});
+        QCOMPARE(r.code, 7);
+        QVERIFY2(r.errors().contains(u"不是 Win顺"_s), qPrintable(r.errors()));
+        QVERIFY(r.out.isEmpty());
+        QVERIFY(!QFileInfo::exists(m_opened));
+        // find does not need it (nothing is acted on).
+        QCOMPARE(ws({u"find"_s, u"报告"_s}, {{L"WS_TEST_VERIFY", L"1"}}).code, 0);
+    }
+
+    // Win顺's own program, as the check tells it from another.
+    void winShunImage()
+    {
+        const std::wstring wsExe = L"C:\\Program Files\\WinShun\\bin\\ws.exe";
+        QVERIFY(cli::isWinShunImage(L"C:\\Program Files\\WinShun\\WinShun.exe", wsExe, L""));
+        QVERIFY(cli::isWinShunImage(L"c:\\program files\\winshun\\WINSHUN.EXE", wsExe, L""));
+        QVERIFY(!cli::isWinShunImage(L"C:\\Users\\x\\Evil\\WinShun.exe", wsExe, L""));
+        QVERIFY(!cli::isWinShunImage(L"C:\\Program Files\\WinShun\\Other.exe", wsExe, L""));
+        QVERIFY(!cli::isWinShunImage(L"C:\\Program Files\\WinShun\\bin\\WinShun.exe", wsExe, L"")); // bin\ holds ws alone
+        QVERIFY(!cli::isWinShunImage(L"WinShun.exe", wsExe, L""));
+        QVERIFY(!cli::isWinShunImage({}, wsExe, L""));
+        // A copy of ws.exe elsewhere: the installed one counts (the uninstall entry's folder, any slash).
+        const std::wstring copied = L"C:\\Tools\\ws.exe";
+        QVERIFY(!cli::isWinShunImage(L"D:\\Apps\\WinShun\\WinShun.exe", copied, L""));
+        QVERIFY(cli::isWinShunImage(L"D:\\Apps\\WinShun\\WinShun.exe", copied, L"D:\\Apps\\WinShun\\"));
+        QVERIFY(!cli::isWinShunImage(L"D:\\Other\\WinShun.exe", copied, L"D:\\Apps\\WinShun\\"));
+        // The real one is a folder of this machine, or nothing.
+        const std::wstring installed = cli::installedFolder();
+        QVERIFY(installed.empty() || installed.find(L'\\') != std::wstring::npos);
     }
 
     void clip()
@@ -1332,6 +1658,108 @@ private slots:
         r = ws({u"status"_s, u"--json"_s}, {{L"WS_SETTINGS", m_iniOff.toStdWString()}}, testPipeName("nobody"));
         QCOMPARE(r.code, 4);
         QCOMPARE(QJsonDocument::fromJson(r.out).object().value(u"connected"_s).toBool(true), false);
+    }
+
+    // Win顺 is on its way up: another ws (or the logon autostart) has started it, and the pipe
+    // comes later than the 2 seconds ws used to wait. status waits too, and still never starts it.
+    void waitsForAStartingWinShun()
+    {
+        const HANDLE running = ::CreateMutexW(nullptr, FALSE, m_mutex.c_str());
+        const HANDLE starting = ::CreateMutexW(nullptr, FALSE, (m_mutex + L".Starting").c_str());
+        const auto cleanup = qScopeGuard([&] {
+            ::CloseHandle(running);
+            ::CloseHandle(starting);
+        });
+        int round = 0;
+        for (const QStringList& command : {QStringList {u"status"_s}, QStringList {u"find"_s, u"启动中"_s}}) {
+            Served late(round++ == 0 ? "starting0" : "starting1", [](const QString& root) { writeFile(root + u"\\启动中.txt"_s, "x"); });
+            QVERIFY(late.ready);
+            bool listening = false;
+            QElapsedTimer since;
+            since.start();
+            RunOptions watch;
+            watch.tick = [&] {
+                if (!listening && since.elapsed() > 2600) // after the old grace of 2 s
+                    listening = late.listen();
+            };
+            const Outcome r = ws(command, {}, late.pipe, watch);
+            QVERIFY(listening);
+            QVERIFY2(r.code == 0, qPrintable(u"%1: %2"_s.arg(command.join(u' '), r.errors())));
+            QVERIFY2(r.errors().contains(u"正在启动"_s), qPrintable(r.errors()));
+            QVERIFY(!QFileInfo::exists(m_marker)); // not started: it was on its way already
+            QVERIFY(r.ms >= 2500);
+        }
+    }
+
+    // Win顺 hangs, or a program squats on the pipe's name and never answers: ws gives up (7)
+    // after the silence, status and --version after a short one; Ctrl+C aside.
+    void aSilentWinShun()
+    {
+        const std::wstring name = testPipeName("silent");
+        std::atomic<bool> answerInitialize {true};
+        FakeServer fake(name, [&](const std::string& line) -> std::optional<std::string> {
+            const Request request = requestOf(line);
+            if (request.method == "initialize" && answerInitialize)
+                return initializeAnswer(request.id);
+            return std::string(); // nothing, ever
+        });
+        const std::map<std::wstring, std::wstring> quick {{L"WS_TEST_IDLE_MS", L"500"}};
+        Outcome r = ws({u"find"_s, u"x"_s}, quick, name);
+        QCOMPARE(r.code, 7);
+        QVERIFY2(r.errors().contains(u"没有回答"_s), qPrintable(r.errors()));
+        QVERIFY(r.ms >= 450 && r.ms < 5000);
+        QVERIFY(r.out.isEmpty());
+        // status and --version: the same, with the shorter limit (here the test's).
+        r = ws({u"status"_s}, quick, name);
+        QCOMPARE(r.code, 7);
+        QVERIFY2(r.errors().contains(u"没有回答"_s), qPrintable(r.errors()));
+        r = ws({u"--version"_s}, quick, name);
+        QCOMPARE(r.code, 0);
+        QCOMPARE(r.text(), u"ws " WINSHUN_VERSION u"\nWin顺 9.9\n"_s); // initialize was answered
+        // Not even initialize answered (a squatter): ws gives up, --version still exits 0 with its own line.
+        answerInitialize = false;
+        r = ws({u"find"_s, u"x"_s}, quick, name);
+        QCOMPARE(r.code, 7);
+        r = ws({u"--version"_s}, quick, name);
+        QCOMPARE(r.code, 0);
+        QCOMPARE(r.text(), u"ws " WINSHUN_VERSION u"\n"_s);
+        // The silence is the time since the last bytes, not a total: a slow answer within the limit is waited for.
+        const std::wstring slowName = testPipeName("slow");
+        FakeServer slow(slowName, [&](const std::string& line) -> std::optional<std::string> {
+            const Request request = requestOf(line);
+            if (request.method == "initialize")
+                return initializeAnswer(request.id);
+            if (request.tool == "index_status")
+                return readyAnswer(request.id);
+            if (request.tool == "search_files") {
+                ::Sleep(300); // under the limit
+                return toolAnswer(request.id, json::Value::Object {{"items", json::Value::Array {}}, {"returned", 0}, {"truncated", false}});
+            }
+            return std::string();
+        });
+        r = ws({u"find"_s, u"x"_s}, quick, slowName);
+        QCOMPARE(r.code, 1);
+    }
+
+    // An error answer with no id (a parse error is answered with id null) is the answer to
+    // what was sent: ws fails with it, not waits for the one that never comes.
+    void anErrorWithoutAnId()
+    {
+        const std::wstring name = testPipeName("noid");
+        FakeServer fake(name, [](const std::string& line) -> std::optional<std::string> {
+            const Request request = requestOf(line);
+            if (request.method == "initialize")
+                return initializeAnswer(request.id);
+            if (request.tool == "index_status")
+                return readyAnswer(request.id);
+            if (request.tool == "search_files")
+                return std::string("{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32700,\"message\":\"Parse error\"}}\n");
+            return std::string();
+        });
+        const Outcome r = ws({u"find"_s, u"x"_s}, {{L"WS_TEST_IDLE_MS", L"20000"}}, name);
+        QCOMPARE(r.code, 7);
+        QVERIFY2(r.errors().contains(u"Parse error"_s), qPrintable(r.errors()));
+        QVERIFY(r.ms < 10'000); // not the silence
     }
 
     void usageErrors()
@@ -1434,16 +1862,47 @@ private slots:
             QCOMPARE(r.code, 0);
             QCOMPARE(r.text(), installed + u'\n');
             const QString written = QString::fromUtf8(readAll(installed));
-            QVERIFY2(written.contains(u"run it by its full path: `\""_s + exe + u"\"`"_s, Qt::CaseInsensitive), qPrintable(written));
+            // The full path to run again as a separate command, not chained after `ws` with ||
+            // (a permission rule such as Bash(ws:*) blocks the chained command whole).
+            QVERIFY2(written.contains(u"run the same command again by its full path, as a separate command"_s)
+                    && written.contains(u"not chained after the failed one with `||`"_s)
+                    && written.contains(u"`\""_s + exe + u"\"`"_s, Qt::CaseInsensitive),
+                qPrintable(written));
             QStringList withoutPath = written.split(u'\n');
-            withoutPath.removeIf([](const QString& line) { return line.startsWith(u"If `ws` is not found"_s); });
+            withoutPath.removeIf([](const QString& line) { return line.startsWith(u"If `ws` is not recognized"_s); });
             QString rest = withoutPath.join(u'\n');
             rest.replace(u"\n\n\n"_s, u"\n\n"_s);
             QCOMPARE(rest, QString::fromUtf8(text));
             QVERIFY(!QFileInfo::exists(installed + u".new"_s));
+            // Nothing else left in the folder: the temporary file went with the rename.
+            QCOMPARE(QDir(QFileInfo(installed).absolutePath()).entryList(QDir::Files), QStringList {u"SKILL.md"_s});
             QFile::setPermissions(installed, QFileDevice::ReadOwner);
         }
         QFile::setPermissions(installed, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+        // The temporary name is the install's own: another file in the way, even one held open
+        // exclusively (a second install under way), is no obstacle.
+        {
+            const std::wstring held = (installed + u".new"_s).toStdWString();
+            const HANDLE other = ::CreateFileW(held.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+            QVERIFY(other != INVALID_HANDLE_VALUE);
+            r = ws({u"skill"_s, u"--install"_s, u"claude"_s}, {}, testPipeName("nobody"));
+            ::CloseHandle(other);
+            QCOMPARE(r.code, 0);
+            QFile::remove(installed + u".new"_s);
+        }
+        // CLAUDE_CONFIG_DIR is a full path or nothing: relative to the folder ws happens to run in, it
+        // would be a guess. Nothing is written, in the folder it names or anywhere.
+        const QString relative = u"relative\\claude"_s;
+        r = ws({u"skill"_s, u"--install"_s, u"claude"_s}, {{L"CLAUDE_CONFIG_DIR", relative.toStdWString()}}, testPipeName("nobody"));
+        QCOMPARE(r.code, 7);
+        QVERIFY(r.out.isEmpty());
+        QVERIFY2(r.errors().contains(u"CLAUDE_CONFIG_DIR 要写完整路径"_s) && r.errors().contains(relative), qPrintable(r.errors()));
+        RunOptions inScratch;
+        inScratch.folder = m_scratch.path();
+        QVERIFY(!QFileInfo::exists(m_scratch.path() + u"/relative"_s));
+        r = ws({u"skill"_s, u"--install"_s, u"claude"_s}, {{L"CLAUDE_CONFIG_DIR", relative.toStdWString()}}, testPipeName("nobody"), inScratch);
+        QCOMPARE(r.code, 7);
+        QVERIFY(!QFileInfo::exists(m_scratch.path() + u"/relative"_s));
         // Where nothing can be written (under a file): 7, nothing on stdout
         // (the settings page reads it), the file it meant on stderr.
         const QString blocked = m_iniOn + u"\\x"_s;
@@ -1452,6 +1911,43 @@ private slots:
         QVERIFY(r.out.isEmpty());
         QVERIFY2(r.errors().contains(u"写不进 "_s + blocked + u"\\skills\\winshun\\SKILL.md"_s), qPrintable(r.errors()));
         QCOMPARE(ws({u"skill"_s, u"--install"_s, u"nobody"_s}).code, 2);
+    }
+
+    // Without CLAUDE_CONFIG_DIR the folder is the profile's, as the shell has it: a USERPROFILE
+    // emptied by whoever started ws gave C:\.claude.
+    void skillFolderOfTheProfile()
+    {
+        const auto set = [](const wchar_t* name, const wchar_t* value) { _wputenv_s(name, value); };
+        const QByteArray profileBefore = qgetenv("USERPROFILE");
+        const QByteArray configBefore = qgetenv("CLAUDE_CONFIG_DIR");
+        const auto restore = qScopeGuard([&] {
+            set(L"USERPROFILE", QString::fromLocal8Bit(profileBefore).toStdWString().c_str());
+            set(L"CLAUDE_CONFIG_DIR", QString::fromLocal8Bit(configBefore).toStdWString().c_str());
+        });
+        PWSTR known = nullptr;
+        QVERIFY(SUCCEEDED(::SHGetKnownFolderPath(FOLDERID_Profile, KF_FLAG_DEFAULT, nullptr, &known)));
+        const QString profile = QString::fromWCharArray(known);
+        ::CoTaskMemFree(known);
+        const QString expected = profile + u"\\.claude\\skills\\winshun\\SKILL.md"_s;
+        set(L"CLAUDE_CONFIG_DIR", L"");
+        set(L"USERPROFILE", L"");
+        cli::Result<std::wstring> file = cli::claudeSkillFile();
+        QVERIFY(file);
+        QCOMPARE(QString::fromStdWString(*file), expected);
+        set(L"USERPROFILE", L"X:\\somewhere\\else");
+        file = cli::claudeSkillFile();
+        QVERIFY(file);
+        QCOMPARE(QString::fromStdWString(*file), expected);
+        set(L"CLAUDE_CONFIG_DIR", L"D:\\claude\\");
+        file = cli::claudeSkillFile();
+        QVERIFY(file);
+        QCOMPARE(QString::fromStdWString(*file), u"D:\\claude\\skills\\winshun\\SKILL.md"_s);
+        set(L"CLAUDE_CONFIG_DIR", L"claude");
+        QVERIFY(!cli::claudeSkillFile());
+        set(L"CLAUDE_CONFIG_DIR", L"\\claude");
+        QVERIFY(!cli::claudeSkillFile());
+        set(L"CLAUDE_CONFIG_DIR", L"\\\\server\\share\\claude");
+        QVERIFY(cli::claudeSkillFile());
     }
 
     void encodings()
@@ -1488,6 +1984,176 @@ private slots:
         QVERIFY(r.notes().isEmpty());
         const QJsonArray items = QJsonDocument::fromJson(fromCodePage(r.out, acp).toUtf8()).array();
         QCOMPARE(items.first().toObject().value(u"path"_s).toString(), at(u"报告𠀀.txt"_s));
+    }
+
+    // ---- the output: what could not be written, what failed to be ----------------------
+
+    // Lines with a character the code page lacks are counted wherever the text is cut into
+    // writes: a whole document in one write (ws text), a line in pieces, NUL-separated.
+    void streamCountsLossyLines()
+    {
+        HANDLE read = nullptr, write = nullptr;
+        QVERIFY(::CreatePipe(&read, &write, nullptr, 1 << 20));
+        const auto close = qScopeGuard([&] {
+            ::CloseHandle(read);
+            ::CloseHandle(write);
+        });
+        cli::Stream out(write, 1252); // Latin-1: no Chinese
+        out.write(L"ab\n日本\ncd"); // one write: a lossy line inside, an unfinished one at the end
+        QCOMPARE(out.lossyLines(), std::size_t {1});
+        out.write(L"x日y"); // the unfinished one goes on, and has one now
+        QCOMPARE(out.lossyLines(), std::size_t {2});
+        out.newline();
+        QCOMPARE(out.lossyLines(), std::size_t {2});
+        out.write(L"日");
+        out.write(L"日"); // two in a line: the line once
+        out.newline();
+        QCOMPARE(out.lossyLines(), std::size_t {3});
+        out.write(L"clean");
+        out.newline();
+        out.write(L"日");
+        out.nul();
+        QCOMPARE(out.lossyLines(), std::size_t {4});
+        out.write(L"日"); // still being written at the end: settled by the count
+        QCOMPARE(out.lossyLines(), std::size_t {5});
+        out.setJsonEscapes(true); // \\uXXXX loses nothing
+        out.write(L"日本\n");
+        QCOMPARE(out.lossyLines(), std::size_t {5});
+        QVERIFY(!out.broken());
+        QCOMPARE(out.writeError(), DWORD {0});
+    }
+
+    // A reader that went away (`ws … | head`) is quiet; a write that failed for another reason is reported.
+    void streamWriteErrors()
+    {
+        HANDLE read = nullptr, write = nullptr;
+        QVERIFY(::CreatePipe(&read, &write, nullptr, 0));
+        ::CloseHandle(read); // the reader is gone
+        {
+            cli::Stream out(write, CP_UTF8);
+            out.write(L"hello");
+            out.flush();
+            QVERIFY(out.broken());
+            QCOMPARE(out.writeError(), DWORD {0});
+        }
+        ::CloseHandle(write);
+        // A file that cannot be written to (a full disk fails the same way, with another code).
+        const QString file = native(m_scratch.path() + u"/readonly.txt"_s);
+        QVERIFY(writeFile(file, "x"));
+        const HANDLE handle = ::CreateFileW(file.toStdWString().c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        QVERIFY(handle != INVALID_HANDLE_VALUE);
+        {
+            cli::Stream out(handle, CP_UTF8);
+            out.write(L"hello");
+            out.flush();
+            QVERIFY(out.broken());
+            QVERIFY(out.writeError() != 0);
+        }
+        ::CloseHandle(handle);
+        // The whole run: exit 7 with the reason, though the search itself worked; the bytes stay unwritten.
+        RunOptions toFile;
+        toFile.readOnlyStdout = file;
+        const Outcome r = ws({u"find"_s, u"报告"_s}, {}, {}, toFile);
+        QCOMPARE(r.code, 7);
+        QVERIFY2(r.errors().contains(u"写出结果时出错"_s), qPrintable(r.errors()));
+        QCOMPARE(readAll(file), QByteArray("x"));
+    }
+
+    void chineseAndTheNoteAboutIt()
+    {
+        // Simplified Chinese only in the code pages that have it; not in Big5 or Shift-JIS, nor Western ones.
+        QVERIFY(cli::holdsChinese(936));
+        QVERIFY(cli::holdsChinese(CP_UTF8));
+        QVERIFY(cli::holdsChinese(cli::kGb18030CodePage));
+        QVERIFY(cli::holdsChinese(cli::kUtf16CodePage));
+        QVERIFY(!cli::holdsChinese(950));
+        QVERIFY(!cli::holdsChinese(932));
+        QVERIFY(!cli::holdsChinese(437));
+        QVERIFY(!cli::holdsChinese(1252));
+        // Under PowerShell (the only case that is lossy by default) the profile; not --encoding utf8.
+        cli::setLanguage(cli::Lang::En);
+        QString note = QString::fromStdWString(cli::lossyNote(3, 437, true, false));
+        QVERIFY2(note.contains(u"3 line(s)"_s) && note.contains(u"code page 437"_s), qPrintable(note));
+        QVERIFY2(note.contains(u"[Console]::OutputEncoding"_s) && !note.contains(u"--encoding"_s) && !note.contains(u"--json"_s), qPrintable(note));
+        note = QString::fromStdWString(cli::lossyNote(3, 437, true, true));
+        QVERIFY2(note.contains(u"[Console]::OutputEncoding"_s) && note.contains(u"--json"_s) && !note.contains(u"--encoding"_s), qPrintable(note));
+        // Anywhere else (--encoding ansi, say) --encoding utf8; --json only for the commands that have it.
+        note = QString::fromStdWString(cli::lossyNote(1, 1252, false, false));
+        QVERIFY2(note.contains(u"--encoding utf8"_s) && !note.contains(u"--json"_s) && !note.contains(u"Console"_s), qPrintable(note));
+        note = QString::fromStdWString(cli::lossyNote(1, 1252, false, true));
+        QVERIFY2(note.contains(u"--encoding utf8"_s) && note.contains(u"--json"_s), qPrintable(note));
+        cli::setLanguage(cli::Lang::Zh);
+        note = QString::fromStdWString(cli::lossyNote(2, 936, true, false));
+        QVERIFY2(note.contains(u"2 行"_s) && note.contains(u"[Console]::OutputEncoding"_s), qPrintable(note));
+    }
+
+    // The text of ws text is one write: the lines with a character the code page lacks are still counted.
+    void lossyLinesInWsText()
+    {
+        const UINT acp = ::GetACP();
+        if (acp == CP_UTF8 || acp == cli::kGb18030CodePage)
+            QSKIP("the ANSI code page holds every character");
+        const std::wstring name = testPipeName("lossytext");
+        FakeServer fake(name, [&](const std::string& line) -> std::optional<std::string> {
+            const Request request = requestOf(line);
+            if (request.method == "initialize")
+                return initializeAnswer(request.id);
+            if (request.tool == "read_file_text") {
+                return toolAnswer(request.id, json::Value::Object {{"path", request.arguments["path"].toString()}, {"kind", "text"},
+                                                  {"text", "a \xF0\xA0\x80\x80\nb\n\xF0\xA0\x80\x81 c \xF0\xA0\x80\x82\n"}, {"chars", 15}, {"offset", 0},
+                                                  {"cut", false}});
+            }
+            return std::string();
+        });
+        const Outcome r = ws({u"text"_s, at(u"notes.md"_s), u"--encoding"_s, u"ansi"_s}, {}, name);
+        QCOMPARE(r.code, 0);
+        QVERIFY(r.out.contains('?'));
+        const QString note = fromCodePage(r.err, acp);
+        QVERIFY2(note.contains(u"2 行"_s) || note.contains(u"2 line(s)"_s), qPrintable(note));
+    }
+
+    void conflictingFormats()
+    {
+        QCOMPARE(ws({u"find"_s, u"报告"_s, u"-l"_s, u"-0"_s}).code, 2);
+        QCOMPARE(ws({u"find"_s, u"报告"_s, u"--json"_s, u"-0"_s}).code, 2);
+        QCOMPARE(ws({u"ls"_s, root(), u"--long"_s, u"--null"_s}).code, 2);
+        Outcome r = ws({u"grep"_s, u"销售额"_s, u"--json"_s, u"-0"_s});
+        QCOMPARE(r.code, 2);
+        QVERIFY2(r.errors().contains(u"--json 和 -0"_s), qPrintable(r.errors()));
+        QVERIFY(r.out.isEmpty());
+        // Fine together: the JSON with sizes.
+        r = ws({u"find"_s, u"报告"_s, u"--json"_s, u"-l"_s});
+        QCOMPARE(r.code, 0);
+    }
+
+    void encodingChoices()
+    {
+        // The last --encoding counts, in the pre-scan that picks the language and code page too.
+        Outcome r = ws({u"--exts"_s, u"pdf"_s, u"x"_s, u"--encoding"_s, u"utf16"_s, u"--encoding"_s, u"utf8"_s});
+        QCOMPARE(r.code, 2);
+        QVERIFY2(r.errors().contains(u"是不是 --ext"_s), qPrintable(r.errors()));
+        r = ws({u"find"_s, u"报告"_s, u"--files"_s, u"--encoding=utf8"_s, u"--encoding=utf16"_s});
+        const QString line = at(u"报告𠀀.txt"_s) + u'\n';
+        QCOMPARE(r.out, QByteArray(reinterpret_cast<const char*>(line.utf16()), line.size() * 2));
+        // A WS_ENCODING that means nothing is said; --encoding beats it.
+        r = ws({u"find"_s, u"报告"_s}, {{L"WS_ENCODING", L"gbk"}});
+        QCOMPARE(r.code, 2);
+        QVERIFY2(r.errors().contains(u"WS_ENCODING 只能是"_s) && r.errors().contains(u"“gbk”"_s), qPrintable(r.errors()));
+        r = ws({u"find"_s, u"报告"_s, u"--encoding"_s, u"utf8"_s}, {{L"WS_ENCODING", L"gbk"}});
+        QCOMPARE(r.code, 0);
+    }
+
+    // The loading line only goes up, though the volumes still being read average lower as one finishes.
+    void indexPercentNeverGoesBack()
+    {
+        int shown = -1;
+        QVector<int> said;
+        for (const int reported : {43, 5, 21, -1, 60, 59, 99}) {
+            shown = cli::stablePercent(shown, reported);
+            said.push_back(shown);
+        }
+        QCOMPARE(said, (QVector<int> {43, 43, 43, 43, 60, 60, 99}));
+        QCOMPARE(cli::stablePercent(-1, -1), -1);
     }
 
     // ---- raw servers -------------------------------------------------------------
@@ -1543,8 +2209,10 @@ private slots:
         QVERIFY2(r.errors().contains(u"连接断了"_s), qPrintable(r.errors()));
     }
 
-    // A Win顺 before ws ignores --in (and gives names and sizes always): ws
-    // keeps to the folder, says so, and prints the same fields as from a newer one.
+    // A Win顺 before ws gives names and sizes always: ws prints the same fields as
+    // from a newer one. It also ignores --in (`folders`) and answers for everything:
+    // ws says so (initialize does not announce the contract) and exits 7, never
+    // filtering the answer itself, and sends no search; `open` opens nothing.
     void olderServer()
     {
         const std::wstring name = testPipeName("older");
@@ -1553,10 +2221,10 @@ private slots:
         FakeServer fake(name, [&](const std::string& line) -> std::optional<std::string> {
             const Request request = requestOf(line);
             if (request.method == "initialize")
-                return initializeAnswer(request.id);
+                return initializeAnswer(request.id, false);
             if (request.tool == "index_status")
                 return readyAnswer(request.id);
-            if (request.tool == "search_files") {
+            if (request.tool == "search_files" || request.tool == "search_content") {
                 json::Value::Array items;
                 for (const std::string& path : {outside, inside})
                     items.emplace_back(json::Value::Object {{"path", path}, {"name", "c.txt"}, {"type", "file"}, {"modified", nullptr}, {"size", 1}});
@@ -1564,20 +2232,78 @@ private slots:
             }
             return std::string();
         });
-        Outcome r = ws({u"find"_s, u"c"_s, u"--in"_s, at(u"sub"_s), u"--json"_s}, {}, name);
+        Outcome r = ws({u"find"_s, u"c"_s, u"--json"_s}, {}, name);
         QCOMPARE(r.code, 0);
         const QJsonArray items = QJsonDocument::fromJson(r.out).array();
-        QCOMPARE(items.size(), 1);
+        QCOMPARE(items.size(), 2);
         const QJsonObject item = items.first().toObject();
-        QCOMPARE(item.value(u"path"_s).toString(), at(u"sub\\c.txt"_s));
         QVERIFY(!item.contains(u"size"_s));
         QVERIFY(!item.contains(u"name"_s));
-        QVERIFY2(r.errors().contains(u"不认 --in"_s), qPrintable(r.errors()));
-        // What ws asked: its name, the limit always, the folders, no sizes.
+        // What ws asked: its name, the limit always, no sizes.
         QVERIFY(fake.saw("\"clientInfo\":{\"name\":\"ws\""));
         QVERIFY(fake.saw("\"limit\":100"));
-        QVERIFY(fake.saw("\"folders\":["));
         QVERIFY(fake.saw("\"size\":false"));
+
+        // --in: refused before any search is sent, in find, open and grep.
+        fake.forget();
+        QFile::remove(m_opened);
+        for (const QStringList& command : {QStringList {u"find"_s, u"c"_s}, QStringList {u"open"_s, u"c"_s}, QStringList {u"grep"_s, u"c"_s}}) {
+            r = ws(command + QStringList {u"--in"_s, at(u"sub"_s)}, {}, name);
+            QCOMPARE(r.code, 7);
+            QVERIFY2(r.errors().contains(u"不认 --in"_s) && r.errors().contains(u"更新"_s), qPrintable(r.errors()));
+            QVERIFY(r.out.isEmpty());
+        }
+        QVERIFY(!fake.saw("search_files"));
+        QVERIFY(!fake.saw("search_content"));
+        QVERIFY(!QFileInfo::exists(m_opened));
+        r = ws({u"find"_s, u"c"_s, u"--in"_s, at(u"sub"_s)}, {{L"WS_LANG", L"en"}}, name);
+        QVERIFY2(r.errors().contains(u"does not understand --in"_s) && r.errors().contains(u"update WinShun"_s), qPrintable(r.errors()));
+    }
+
+    // A Win顺 that announces the contract: --in goes to it as `folders`, and what it
+    // answers is printed as it is (ws does not filter: the answer may well hold a path
+    // outside the folder; keeping that out is Win顺's).
+    void inWithTheContract()
+    {
+        const std::wstring name = testPipeName("contract");
+        const std::string outside = cli::utf8(at(u"c.txt"_s).toStdWString());
+        FakeServer fake(name, [&](const std::string& line) -> std::optional<std::string> {
+            const Request request = requestOf(line);
+            if (request.method == "initialize")
+                return initializeAnswer(request.id, true);
+            if (request.tool == "index_status")
+                return readyAnswer(request.id);
+            if (request.tool == "search_files" || request.tool == "search_content") {
+                json::Value::Array items;
+                items.emplace_back(json::Value::Object {{"path", outside}, {"type", "file"}, {"modified", nullptr}, {"snippet", "x"},
+                    {"location", json::Value::Object {{"line", 1}}}});
+                return toolAnswer(request.id, json::Value::Object {{"items", items}, {"returned", 1}, {"truncated", false}});
+            }
+            return std::string();
+        });
+        for (const QStringList& command : {QStringList {u"find"_s, u"c"_s}, QStringList {u"grep"_s, u"c"_s}}) {
+            const Outcome r = ws(command + QStringList {u"--in"_s, at(u"sub"_s)}, {}, name);
+            QCOMPARE(r.code, 0);
+            QVERIFY2(r.text().contains(at(u"c.txt"_s)), qPrintable(r.text()));
+            QVERIFY2(r.notes().isEmpty(), qPrintable(r.errors()));
+        }
+        QVERIFY(fake.saw("\"folders\":["));
+        fake.forget();
+        const Outcome opened = ws({u"open"_s, u"c"_s, u"--in"_s, at(u"sub"_s)}, {}, name);
+        QCOMPARE(opened.code, 0);
+        QVERIFY(fake.saw("\"folders\":["));
+    }
+
+    // Branch cli-fix-server makes this tree's Win顺 announce the contract. Until it is
+    // merged this skips; after the merge it must pass (and the WS_TEST_ASSUME_CLI the
+    // other tests add for the default pipe stops being set).
+    void serverAnnouncesCliContract()
+    {
+        if (!m_serverHasCli)
+            QSKIP("this tree's Win顺 does not announce capabilities.experimental.winshun.cli yet (branch cli-fix-server)");
+        const Outcome r = ws({u"find"_s, u"c"_s, u"--in"_s, at(u"sub"_s)});
+        QCOMPARE(r.code, 0);
+        QCOMPARE(r.lines(), QStringList {at(u"sub\\deep\\c.txt"_s)});
     }
 
     // recent in a folder where all is in system, program or tool folders, or
@@ -1743,8 +2469,8 @@ private slots:
             if (r.tool == "index_status")
                 return readyAnswer(r.id);
             if (r.tool == "search_files") {
-                const bool small = r.arguments["query"].toString() == "one";
-                return answer(r.id, small ? one : items, small ? 1 : 50'000);
+                const bool single = r.arguments["query"].toString() == "one"; // (not "small": a macro of rpcndr.h)
+                return answer(r.id, single ? one : items, single ? 1 : 50'000);
             }
             return std::string();
         });

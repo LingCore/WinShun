@@ -62,7 +62,12 @@ Result<Exit> runStatus(Context& context)
 {
     const bool json = context.args.has(Opt::Json);
     pipe::LineClient client;
-    if (!connectIfThere(client, context.pipe)) {
+    // Waits for a Win顺 that is on its way up (another ws or the logon autostart
+    // has just started it), never starts one: ws status only says what is there.
+    const Result<bool> there = connectIfThere(client, connectOptions(context), context.launcher);
+    if (!there)
+        return there.failure();
+    if (!*there) {
         const Failure why = whyNoPipe(context);
         if (json) {
             const bool running = context.launcher.running();
@@ -72,6 +77,7 @@ Result<Exit> runStatus(Context& context)
         return why;
     }
     Session session(client);
+    session.setIdleLimit(Session::kShortIdleMs);
     Result<CallResult> status = session.call("index_status", json::Value::Object {});
     if (!status)
         return std::move(status).failure();
@@ -120,6 +126,7 @@ Result<Exit> runVersion(Context& context)
     pipe::LineClient client;
     if (connectIfThere(client, context.pipe)) {
         Session session(client);
+        session.setIdleLimit(Session::kShortIdleMs); // a Win顺 that does not answer is not worth waiting for here
         if (Result<std::wstring> version = session.serverVersion(); version && !version->empty()) {
             out.write(fmt(kWinShunVersion, *version));
             out.newline();
@@ -141,6 +148,7 @@ Result<Exit> runBare(Context& context)
         return Exit::Found;
     }
     Session session(client);
+    session.setIdleLimit(Session::kShortIdleMs);
     Result<CallResult> status = session.call("index_status", json::Value::Object {});
     if (status && !status->isError) {
         const json::Value& s = status->structured;

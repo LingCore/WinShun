@@ -16,7 +16,7 @@ qt_add_executable(tst_shelllaunch WIN32 tst_shelllaunch.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/Integrity.cpp)
 target_include_directories(tst_shelllaunch PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_shelllaunch PRIVATE wscore Qt6::Gui Qt6::Test
-    ole32 oleaut32 oleacc shell32 shlwapi user32 advapi32 taskschd)
+    ole32 oleaut32 oleacc shell32 shlwapi user32 advapi32 taskschd userenv)
 add_test(NAME tst_shelllaunch COMMAND tst_shelllaunch -o -,txt)
 set_tests_properties(tst_shelllaunch PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
@@ -36,7 +36,7 @@ qt_add_executable(tst_commandline tst_commandline.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/Integrity.cpp)
 target_include_directories(tst_commandline PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_commandline PRIVATE wscore Qt6::Gui Qt6::Test
-    ole32 oleaut32 oleacc shell32 shlwapi user32 advapi32 taskschd)
+    ole32 oleaut32 oleacc shell32 shlwapi user32 advapi32 taskschd userenv)
 target_compile_definitions(tst_commandline PRIVATE WINSHUN_FAKE_WS="$<TARGET_FILE:fake_ws>")
 add_dependencies(tst_commandline fake_ws)
 set_target_properties(tst_commandline PROPERTIES WIN32_EXECUTABLE FALSE)
@@ -325,7 +325,7 @@ add_dependencies(tst_mcp WinShunMcp WinShunPluginHost plugin_fake)
 qt_add_executable(tst_cli tst_cli.cpp ${WS_CLI_SOURCES}
     ${PROJECT_SOURCE_DIR}/src/plugin/runner/Json.cpp ${PROJECT_SOURCE_DIR}/src/mcp/Launch.cpp)
 target_include_directories(tst_cli PRIVATE ${PROJECT_SOURCE_DIR}/src/cli ${PROJECT_SOURCE_DIR}/src/plugin/runner ${PROJECT_SOURCE_DIR}/src/mcp)
-target_link_libraries(tst_cli PRIVATE wsmcp Qt6::Test ntdll shell32 ole32 advapi32)
+target_link_libraries(tst_cli PRIVATE wsmcp Qt6::Test ntdll shell32 ole32 oleaut32 uuid advapi32)
 target_compile_definitions(tst_cli PRIVATE
     WINSHUN_CLI="$<TARGET_FILE:ws>"
     WINSHUN_CLI_SKILL="${PROJECT_SOURCE_DIR}/src/cli/SKILL.md")

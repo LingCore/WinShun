@@ -76,10 +76,43 @@ void Stream::put(std::wstring_view text)
             flush();
         return;
     }
-    if (m_encoder.append(m_bytes, text) > 0)
-        m_lineLossy = true;
+    const std::size_t lost = m_encoder.append(m_bytes, text);
+    if (lost > 0 || m_lineLossy)
+        countLoss(text, lost);
     if (m_bytes.size() >= kFlushAt)
         flush();
+}
+
+// `lost` characters of `text` came out as '?': counted for the lines they are in,
+// however the text is cut into writes (ws text writes a whole document at once).
+// A line that is not finished stays pending in m_lineLossy.
+void Stream::countLoss(std::wstring_view text, std::size_t lost)
+{
+    if (lost == 0 && text.find(L'\n') == std::wstring_view::npos)
+        return; // the line goes on, with nothing to settle
+    for (std::size_t start = 0; start < text.size();) {
+        const std::size_t newline = text.find(L'\n', start);
+        const std::size_t end = newline == std::wstring_view::npos ? text.size() : newline + 1;
+        if (lost > 0 && !m_lineLossy) {
+            std::string scratch; // which of the lines it is: asked of this one alone
+            m_lineLossy = m_encoder.append(scratch, text.substr(start, end - start)) > 0;
+        }
+        if (newline != std::wstring_view::npos) {
+            if (m_lineLossy)
+                ++m_lossyLines;
+            m_lineLossy = false;
+        }
+        start = end;
+    }
+}
+
+void Stream::fail(DWORD error) noexcept
+{
+    m_broken = true;
+    // The reader went away: not an error. Anything else (a full disk) is, and
+    // the caller says so once.
+    if (error != ERROR_NO_DATA && error != ERROR_BROKEN_PIPE && error != ERROR_PIPE_NOT_CONNECTED && m_writeError == 0)
+        m_writeError = error != 0 ? error : ERROR_WRITE_FAULT;
 }
 
 void Stream::write(std::wstring_view text, Style style)
@@ -111,11 +144,7 @@ void Stream::writeUtf8(std::string_view text)
 void Stream::newline()
 {
     pending();
-    put(L"\n");
-    if (m_lineLossy) {
-        ++m_lossyLines;
-        m_lineLossy = false;
-    }
+    put(L"\n"); // settles the line's count
 }
 
 void Stream::nul()
@@ -140,7 +169,7 @@ void Stream::writeOut(const void* data, std::size_t bytes)
         DWORD written = 0;
         const DWORD chunk = static_cast<DWORD>(std::min<std::size_t>(bytes, 1u << 20));
         if (!::WriteFile(m_handle, p, chunk, &written, nullptr) || written == 0) {
-            m_broken = true; // the pipe's reader went (ERROR_NO_DATA, ERROR_BROKEN_PIPE), the disk is full…
+            fail(::GetLastError()); // the pipe's reader went, the disk is full…
             return;
         }
         p += written;
@@ -161,7 +190,7 @@ void Stream::flush()
             DWORD written = 0;
             const DWORD chunk = static_cast<DWORD>(std::min<std::size_t>(rest.size(), 8192));
             if (!::WriteConsoleW(m_handle, rest.data(), chunk, &written, nullptr) || written == 0) {
-                m_broken = true;
+                fail(::GetLastError());
                 break;
             }
             rest.remove_prefix(written);

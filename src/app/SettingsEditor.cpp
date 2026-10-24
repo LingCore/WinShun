@@ -2756,6 +2756,25 @@ void SettingsEditor::refreshMcpClients()
     emit mcpClientsChanged();
 }
 
+void SettingsEditor::refreshSkillState()
+{
+    const QString file = mcpclients::skillPath();
+    const bool there = QFileInfo::exists(file);
+    bool changed = false;
+    for (QVariant& item : m_mcpClients) {
+        QVariantMap client = item.toMap();
+        if (client.value(u"id"_s).toString() != u"claude-code"
+            || (client.value(u"skillInstalled"_s).toBool() == there && client.value(u"skillPath"_s).toString() == file))
+            continue;
+        client.insert(u"skillInstalled"_s, there);
+        client.insert(u"skillPath"_s, file);
+        item = client;
+        changed = true;
+    }
+    if (changed)
+        emit mcpClientsChanged();
+}
+
 void SettingsEditor::connectMcpClient(const QString& id)
 {
     // Connecting a client is wanting the connection: the switch goes on with it.
@@ -2778,12 +2797,16 @@ void SettingsEditor::copyMcpSnippet(const QString& id)
 
 void SettingsEditor::installMcpSkill(const QString& id)
 {
-    if (id != u"claude-code")
-        return;
+    if (id != u"claude-code" || m_mcpSkillBusy)
+        return; // a second click while ws runs would start a second ws (the two meet over one file)
+    m_mcpSkillBusy = true;
     setMcpMessage(tr("正在装 Skill…"));
+    emit mcpMessageChanged(); // the busy flag too, whether or not the text changed
     mcpclients::installSkill(cli::wsExe(cli::binFolder()), this, [this](const mcpclients::Result& result) {
+        m_mcpSkillBusy = false;
         setMcpMessage(result.message);
         refreshMcpClients();
+        emit mcpMessageChanged();
     });
 }
 

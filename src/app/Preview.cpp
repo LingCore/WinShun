@@ -556,7 +556,7 @@ int runSettings(const QStringList& args)
     // The command line as the page would read it off this PC, made up so that
     // the longest texts and every button can be seen whatever this PC has:
     // rich (the default: on the user's PATH by WinShun, another ws in front),
-    // notonpath, missing or system (--cli-state).
+    // notonpath, missing, system, pending (the PATH not looked at yet) or unreadable (--cli-state).
     {
         cli::Status status;
         status.bin = u"C:\\Program Files\\WinShun\\bin"_s;
@@ -570,8 +570,15 @@ int runSettings(const QStringList& args)
         } else if (which == u"system") {
             status.where = cli::Status::Where::System;
         }
-        editor->cli()->setProbe([status] { return status; });
-        editor->cli()->refresh();
+        if (which == u"unreadable")
+            status.pathError = ERROR_UNSUPPORTED_TYPE; // a PATH that is not text in the registry
+        // "pending": the PATH not looked at yet (the first look is on its way): ws.exe known, the PATH not.
+        if (which == u"pending") {
+            editor->cli()->setNeverLooks(true);
+        } else {
+            editor->cli()->setProbe([status] { return status; });
+            editor->cli()->refresh();
+        }
         if (args.contains(u"--cli-message"_s))
             editor->cli()->enable(); // there is no ws.exe by this program: it says so (the result row)
     }
@@ -887,6 +894,41 @@ int runSettings(const QStringList& args)
                 qWarning("preview: favorites section missing");
             }
             return finish(window, saved);
+        }
+    }
+
+    // 命令行 › 启用命令行 with the connection switch off: it turns the switch on, which shows rows
+    // above the section and the page's tabs (--hold-demo). The section has to stay where it was
+    // on screen (SettingsWindow.holdInView): before and after pictured, the two positions compared.
+    if (args.contains(u"--hold-demo"_s)) {
+        editor->setMcp(false);
+        QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(aiPage)), Q_ARG(QVariant, QVariant(0)));
+        window->setHeight(480);
+        settle(window, 3);
+        auto* flickItem = qobject_cast<QQuickItem*>(flick);
+        QQuickItem* section = visualNamed(window->contentItem(), u"cliSection"_s);
+        QQuickItem* button = visualNamed(window->contentItem(), u"enableCliButton"_s);
+        if (!flickItem || !section || !button) {
+            qWarning("preview: --hold-demo: the section or its button is missing");
+        } else {
+            const auto top = [&] { return section->mapToItem(flickItem, QPointF(0, 0)).y(); };
+            const double before = top();
+            const double contentBefore = flickItem->property("contentHeight").toDouble();
+            saved = saveGrab(window, out.filePath(u"hold-before.png"_s)) && saved;
+            QMetaObject::invokeMethod(button, "clicked"); // the button's own handler, holdPlace(cli.enable)
+            settle(window, 3);
+            pump(300);
+            const double after = top();
+            saved = saveGrab(window, out.filePath(u"hold-after.png"_s)) && saved;
+            say(u"hold-demo: the section stood at y %1, now %2 (the page grew from %3 to %4, scrolled to %5), switch %6"_s.arg(before)
+                    .arg(after).arg(contentBefore).arg(flickItem->property("contentHeight").toDouble())
+                    .arg(flickItem->property("contentY").toDouble()).arg(editor->mcp()));
+            if (!editor->mcp())
+                qWarning("preview: --hold-demo: the connection switch did not go on");
+            if (std::abs(after - before) > 1.5)
+                qWarning("preview: --hold-demo: the section moved from y %.1f to %.1f", before, after);
+            if (flickItem->property("contentHeight").toDouble() <= contentBefore)
+                qWarning("preview: --hold-demo: the page did not grow, nothing was tested");
         }
     }
 

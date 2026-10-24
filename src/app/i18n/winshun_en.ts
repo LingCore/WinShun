@@ -226,8 +226,16 @@
         <translation>ws.exe is in %1, but this folder is not on the PATH yet: typing ws in a terminal finds nothing</translation>
     </message>
     <message>
-        <source>注意：PATH 里已有另一个叫 ws 的程序，终端里会先运行它：%1</source>
-        <translation>Note: another program called ws is already on the PATH, and a terminal runs it first: %1</translation>
+        <source>你的 PATH 在注册表里不是文本类型，Win顺 读不了它，也不会去改它</source>
+        <translation>Your PATH is not a text value in the registry: WinShun cannot read it and will not change it</translation>
+    </message>
+    <message>
+        <source>没能读出 PATH（错误 %1），上面说的可能不全</source>
+        <translation>Could not read the PATH (error %1), so what is said above may be incomplete</translation>
+    </message>
+    <message>
+        <source>注意：PATH 里已有另一个叫 ws 的程序，终端里会先运行它：</source>
+        <translation>Note: another program called ws is already on the PATH, and a terminal runs it first:</translation>
     </message>
     <message>
         <source>上面的开关关着：ws 连不上 Win顺</source>
@@ -7316,6 +7324,10 @@
         <translation>ws report</translation>
     </message>
     <message>
+        <source>Win顺 现在是用另一个账户（管理员）运行的，PATH 是那个账户的，不是你登录的这个。请先退出 Win顺，再正常打开它，然后在这里启用。</source>
+        <translation>WinShun is running as another account (an administrator), and the PATH is that account&apos;s, not the one you are logged on as. Quit WinShun, open it normally, then enable it here.</translation>
+    </message>
+    <message>
         <source>连接已打开，但没找到 ws.exe（应在 %1）。重新安装 Win顺 就有了。</source>
         <translation>The connection is on, but ws.exe was not found (it should be in %1). Reinstalling WinShun brings it back.</translation>
     </message>
@@ -7328,8 +7340,8 @@
         <translation>The command line is on. Type ws in a newly opened terminal to try it.</translation>
     </message>
     <message>
-        <source>已加进你的 PATH：新打开的终端里就能用 ws 了。</source>
-        <translation>Added to your PATH: ws works in newly opened terminals.</translation>
+        <source>命令行已启用：新打开的终端里就能用 ws 了。</source>
+        <translation>The command line is on: ws works in newly opened terminals.</translation>
     </message>
     <message>
         <source>已从你的 PATH 里去掉。已经开着的终端要重开才生效。</source>
@@ -7338,6 +7350,18 @@
     <message>
         <source>这一项不是 Win顺 加的，没有动它。</source>
         <translation>That entry was not added by WinShun, so it was left alone.</translation>
+    </message>
+    <message>
+        <source>你的 PATH 不是文本类型的值（注册表里的类型不对），为了不弄坏它，Win顺 没有动。可以用 ws 的完整路径，或自己修好它。</source>
+        <translation>Your PATH is not a text value (it has the wrong type in the registry), so WinShun left it alone rather than break it. Use ws by its full path, or fix it yourself.</translation>
+    </message>
+    <message>
+        <source>你的 PATH 刚被别的程序改着，没有写成；再点一次。</source>
+        <translation>Another program was changing your PATH just now and nothing was written; click again.</translation>
+    </message>
+    <message>
+        <source>没有权限改你的 PATH（错误 5）。</source>
+        <translation>No permission to change your PATH (error 5).</translation>
     </message>
     <message>
         <source>没能写进你的 PATH（错误 %1）。</source>

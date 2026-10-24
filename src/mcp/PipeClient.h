@@ -49,11 +49,20 @@ public:
 
     // A line with its newline; false once the pipe is closed or broken.
     bool write(std::string_view line);
-    // The next line (without its newline); false at the end.
-    bool readLine(std::string& line);
+    // The next line (without its newline); false at the end. `idleMs`: how
+    // long the pipe may stay silent while a line is awaited (the time since the
+    // last bytes came, not a total); then the read is given up, false is
+    // returned and timedOut() says why. INFINITE: as long as it takes.
+    bool readLine(std::string& line, DWORD idleMs = INFINITE);
+    // The last readLine() ended because the pipe stayed silent for idleMs.
+    bool timedOut() const noexcept { return m_timedOut; }
+
+    // The process that serves the other end of the pipe; 0 when it cannot be told.
+    DWORD serverProcessId() const noexcept;
 
 private:
     HANDLE m_handle = INVALID_HANDLE_VALUE; // overlapped
+    bool m_timedOut = false;
     HANDLE m_readEvent; // one read at a time, one write at a time
     HANDLE m_writeEvent;
     std::mutex m_writeMutex;
