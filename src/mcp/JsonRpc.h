@@ -49,6 +49,9 @@ QByteArray serialize(const QJsonObject& message);
 QByteArray request(const QJsonValue& id, const QString& method, const QJsonObject& params = {});
 QByteArray notification(const QString& method, const QJsonObject& params = {});
 QByteArray response(const QJsonValue& id, const QJsonValue& result);
+// The same with the result made into compact JSON already (elsewhere, on
+// another thread): byte for byte what response() writes.
+QByteArray responseWithResult(const QJsonValue& id, const QByteArray& result);
 QByteArray errorResponse(const QJsonValue& id, int code, const QString& message, const QJsonValue& data = {});
 QJsonObject errorObject(int code, const QString& message, const QJsonValue& data = {});
 
