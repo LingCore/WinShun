@@ -442,6 +442,8 @@ private:
                     const ULONGLONG until = ::GetTickCount64() + kStartWaitMs;
                     while (!ensureConnected() && ::GetTickCount64() < until)
                         ::Sleep(300);
+                } else if (launch::runsElevated()) {
+                    logLine("Win顺 is not running; not started from here, as this relay runs as administrator and Win顺 would too");
                 } else {
                     logLine("Win顺 is not running and could not be started");
                 }

@@ -22,6 +22,7 @@
 #include "Text.h"
 
 #include "IndexService.h"
+#include "Launch.h"
 #include "McpServer.h"
 #include "McpTools.h"
 #include "Ntfs.h"
@@ -1012,6 +1013,50 @@ private slots:
             QCOMPARE(starts, before);
             ::CloseHandle(other);
         }
+    }
+
+    // Starting Win顺 (launch::startWinShun, ws's and the relay's), with
+    // fakes: the program itself only from a process without administrator
+    // rights, which it would get too; the task whoever asks.
+    void startNotElevated()
+    {
+        std::vector<std::wstring> started;
+        bool task = false;
+        bool elevated = false;
+        launch::StartSteps steps;
+        steps.runTask = [&] { return task; };
+        steps.elevated = [&] { return elevated; };
+        steps.exe = [] { return std::wstring(L"C:\\Program Files\\WinShun\\WinShun.exe"); };
+        steps.startExe = [&](const std::wstring& exe) {
+            started.push_back(exe);
+            return true;
+        };
+        QVERIFY(launch::startWinShun(steps)); // no task: the program
+        QCOMPARE(started.size(), std::size_t {1});
+        elevated = true;
+        QVERIFY(!launch::startWinShun(steps)); // ws then: "not running", exit 3
+        QCOMPARE(started.size(), std::size_t {1});
+        task = true;
+        QVERIFY(launch::startWinShun(steps));
+        QCOMPARE(started.size(), std::size_t {1});
+        steps.exe = [] { return std::wstring(); };
+        task = false;
+        elevated = false;
+        QVERIFY(!launch::startWinShun(steps)); // nothing to start
+        QCOMPARE(started.size(), std::size_t {1});
+
+        // The real check agrees with this process's token (the tests run
+        // without administrator rights, and as administrator alike).
+        HANDLE token = nullptr;
+        QVERIFY(::OpenProcessToken(::GetCurrentProcess(), TOKEN_QUERY, &token));
+        TOKEN_ELEVATION elevation {};
+        DWORD size = 0;
+        QVERIFY(::GetTokenInformation(token, TokenElevation, &elevation, sizeof elevation, &size));
+        ::CloseHandle(token);
+        if (elevation.TokenIsElevated)
+            QVERIFY(launch::runsElevated());
+        else
+            QVERIFY(!launch::runsElevated()); // a medium label: neither elevated nor high
     }
 
     // ---- ws.exe against Win顺 ---------------------------------------------------
