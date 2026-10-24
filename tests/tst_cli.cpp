@@ -1746,8 +1746,7 @@ private slots:
             const json::Value::Array& items = r->structured["items"].toArray();
             return !items.empty() && !items.front().has("size");
         });
-        if (!cliServer)
-            QSKIP("needs the server changes of branch cli");
+        QVERIFY2(cliServer, "Win顺 should leave sizes out for ws when asked (size: false)");
 
         // --in is Win顺's: no note.
         Outcome r = ws({u"find"_s, u"c"_s, u"--in"_s, at(u"sub"_s)});
