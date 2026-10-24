@@ -104,7 +104,6 @@ private:
     void getPrompt(Session& session, const QJsonValue& id, const QJsonObject& params);
     void endSession(SessionId id);
     void toolsChanged();
-    static QJsonObject toolResult(const ToolResult& result, bool cli);
     QByteArray response(const Session& session, const QJsonValue& id, const QString& tool, const ToolResult& result) const;
 
     ToolHost* m_host;
