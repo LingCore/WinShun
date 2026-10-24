@@ -44,6 +44,7 @@ add_subdirectory(src/extract)
 add_subdirectory(src/core)
 add_subdirectory(src/mcp)
 add_subdirectory(src/plugin)
+add_subdirectory(src/cli) # ws.exe; sets WS_CLI_SOURCES for tst_cli
 add_subdirectory(src/tools-plugin)
 add_subdirectory(src/semantic-plugin)
 add_subdirectory(src/capture)
