@@ -25,11 +25,10 @@
 #include <cstdint>
 #include <deque>
 #include <functional>
-#include <list>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <stop_token>
-#include <thread>
 #include <vector>
 
 namespace ws {
@@ -40,6 +39,8 @@ class SearchEngine;
 
 namespace mcp {
 
+class AsideWorkers;
+struct AsideContext;
 class Visibility;
 
 // Whether AI may change Win顺's settings (change_settings): not at all, each
@@ -55,6 +56,9 @@ inline const char* settingsModeName(SettingsMode mode) noexcept
 struct Policy {
     bool allowOpen = false; // open_item, show_in_folder
     bool allowClipboard = false; // clipboard_history, clipboard_get, screenshot_history
+    // Win顺 keeps a clipboard history at all (设置 → 剪贴板 → 记录剪贴板历史):
+    // without it the clipboard tools are off too, whatever allowClipboard says.
+    bool clipboardHistory = true;
     // take_screenshot; even so every call waits for the user to allow it on
     // the screen (Services::takeScreenshot).
     bool allowScreenshot = false;
@@ -128,6 +132,14 @@ struct ToolResult {
     // codes; its sessions get it as structuredContent.error). One of
     // kErrorNotFound, kErrorOff, kErrorTooLarge; empty for the others.
     QString errorCode;
+    // The MCP result as it goes out (callToolResult as compact JSON), made
+    // where the work was done, off the GUI thread, for a call that asked
+    // for it (CallOptions::encode); `structured` then keeps only what the
+    // call's log line reads. Empty: McpServer makes it.
+    QByteArray encoded;
+    // The answer would have been this many bytes, more than one message
+    // holds: this is the too_large error in its place (tooLargeResult).
+    qint64 tooLargeBytes = 0;
 };
 
 // No such path, or one the caller may not see (not listable, or excluded for
@@ -137,6 +149,13 @@ inline constexpr const char* kErrorNotFound = "not_found";
 inline constexpr const char* kErrorOff = "off";
 // The answer would not fit in one message (pipe::kMaxLineBytes).
 inline constexpr const char* kErrorTooLarge = "too_large";
+
+// A tool's result as a session gets it (MCP's CallToolResult). An AI client
+// gets the words of an error, and a result also as text; ws (`cli`) gets an
+// error's kind (structuredContent.error) and a result once, without the text.
+QJsonObject callToolResult(const ToolResult& result, bool cli);
+// The error in place of an answer of `bytes`, more than one message holds.
+ToolResult tooLargeResult(qint64 bytes);
 
 // ---- the settings tools (the app answers: src/app/AiSettings) ---------------------------------
 
@@ -250,6 +269,12 @@ struct Services {
     // %TEMP%\WinShun\mcp.
     QString tempFolder;
     std::function<void(const QString& line)> log; // one line per call
+    // Whether a path is on a network share that cannot be reached now; any
+    // thread. Empty: the index's shares say (ShareIndexer::offline).
+    std::function<bool(const QString& path)> offline;
+    // Tests: called on the thread of each job aside as it begins (the tool's
+    // name, and the job's stop token), which may hold it there.
+    std::function<void(const QString& tool, const std::stop_token& stop)> asideStarting;
 };
 
 // A tool from outside the host: a plugin's command (plugin::AiBridge, the
@@ -280,6 +305,9 @@ struct CallOptions {
     // context): higher limits (50 000 names), and items without the name the
     // path ends with. Formats and limits only, never what may be seen.
     bool cli = false;
+    // The answer goes out as it is (McpServer): made into its JSON where the
+    // work is done aside (ToolResult::encoded), not on this thread.
+    bool encode = false;
 };
 
 class ToolHost : public QObject {
@@ -307,10 +335,11 @@ public:
     void setExternalTools(std::vector<ExternalTool> tools);
 
     // Runs a tool. `done` runs on this object's thread, once, unless the call
-    // is cancelled first. Searches of a kind run one at a time, each call
-    // answered before the next starts: names on the engine, content on its
-    // own (Services::contentEngine), so neither waits for the other.
-    // `client`: for the log.
+    // is cancelled first. Searches of a kind run on their engine one at a
+    // time (names on the engine, content on its own, Services::contentEngine,
+    // so neither waits for the other); what comes of each is then made aside
+    // while the next one searches, so answers may come in another order than
+    // the calls. `client`: for the log.
     using Done = std::function<void(ToolResult)>;
     void call(std::uint64_t id, const QString& client, const QString& tool, const QJsonObject& arguments, Done done,
         CallOptions options = {});
@@ -332,16 +361,21 @@ private:
     struct Call;
     struct Active;
     struct Lane;
-    // Work of a call off this thread (Visibility: the caller's rights).
-    using AsideWork = std::function<ToolResult(const std::stop_token& stop, Visibility& view)>;
+    // Work of a call off this thread.
+    using AsideWork = std::function<ToolResult(AsideContext& aside)>;
     void addTools();
     std::unique_ptr<Lane> makeLane(SearchEngine* engine);
     Lane& laneOf(const Tool& tool);
     void start(std::shared_ptr<Call> call);
     void finish(const std::shared_ptr<Call>& call, ToolResult result);
     void next(Lane& lane); // the next queued search, if any
-    void aside(const std::shared_ptr<Call>& call, AsideWork work, std::function<void(ToolResult)> back);
-    void finishSearch(Lane& lane, const std::shared_ptr<Call>& call, AsideWork work);
+    // Runs `work` on m_workers, then `back` here with what came of it.
+    // `answer`: that is the call's answer (made into JSON there when the
+    // call asked for it, CallOptions::encode); false: back() goes on with it.
+    void aside(const std::shared_ptr<Call>& call, AsideWork work, std::function<void(ToolResult)> back, bool answer = true);
+    void runAside(const std::shared_ptr<Call>& call, AsideWork work); // answered by `work`, among m_others meanwhile
+    void finishSearch(Lane& lane, AsideWork work);
+    void expireQueued(Lane& lane, const std::weak_ptr<Call>& call); // search_content's timeout ran out while it waited
     void onResults(Lane& lane, quint64 requestId, const SearchResults& results, qint64 totalMatches, qint64 elapsedUs);
     void onContentResults(Lane& lane, quint64 requestId, const SearchResults& results);
     void onContentProgress(Lane& lane, quint64 requestId, int scanned, int total, bool finished);
@@ -376,11 +410,17 @@ private:
     std::vector<Tool> m_tools;
     std::vector<std::shared_ptr<Tool>> m_external; // shared: a call keeps its tool while the list is replaced
     WorkerPool m_pool {WorkerPool::defaultThreadCount()}; // recent_files scans the index
+    // One scan of the index at a time (recent_files), taken before the
+    // index's lock: none waits for the pool (one loop at a time) holding it.
+    std::mutex m_scanMutex;
     std::unique_ptr<Lane> m_names; // name searches, and content searches too without an engine of their own
     std::unique_ptr<Lane> m_contents; // content searches on Services::contentEngine; null without one
-    std::vector<std::shared_ptr<Call>> m_others; // calls under way that need no engine (opening, reading)
+    // Calls under way off the engines: opening, reading, and every call's
+    // work aside, a search's once its engine answered.
+    std::vector<std::shared_ptr<Call>> m_others;
     std::unique_ptr<DocExtractor> m_extractor; // read_file_text: documents the content index has no text of
-    std::list<std::jthread> m_threads; // the work aside (aside()); last: stopped and joined before the rest goes
+    // The work aside (aside()). Last: stopped and joined before the rest goes.
+    std::unique_ptr<AsideWorkers> m_workers;
 };
 
 } // namespace mcp

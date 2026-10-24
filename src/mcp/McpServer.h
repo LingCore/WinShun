@@ -33,6 +33,12 @@ namespace ws::mcp {
 // these; else the newest.
 inline constexpr const char* kProtocolVersions[] = {"2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"};
 inline constexpr const char* kServerName = "winshun";
+// What ws may rely on, said in the initialize result as
+// capabilities.experimental.winshun = {"cli": kCliContract}: the command
+// line's limits, the byte budget (truncated), folders, answers without the
+// text copy, and the error kinds not_found / off / too_large. Raised
+// whenever any of that changes; ws checks it before relying on any of it.
+inline constexpr int kCliContract = 1;
 
 class McpServer : public QObject {
     Q_OBJECT
@@ -53,7 +59,9 @@ public:
     // run of ws is a session of its own, a few milliseconds long, many a
     // minute: they are counted here, not listed (sessions()).
     struct CliTally {
-        int calls = 0;
+        int calls = 0; // runs of ws that called a tool: one each, however many calls it made
+        // The last run's tool: index_status only when the run asked nothing
+        // else (ws status), as ws asks it first to see that it may go on.
         QString lastTool;
         QDateTime lastCall;
     };
@@ -96,7 +104,6 @@ private:
     void getPrompt(Session& session, const QJsonValue& id, const QJsonObject& params);
     void endSession(SessionId id);
     void toolsChanged();
-    static QJsonObject toolResult(const ToolResult& result, bool cli);
     QByteArray response(const Session& session, const QJsonValue& id, const QString& tool, const ToolResult& result) const;
 
     ToolHost* m_host;

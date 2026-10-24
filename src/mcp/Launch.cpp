@@ -78,15 +78,50 @@ std::wstring winShunExe()
     return fileExists(exe) ? exe : std::wstring();
 }
 
-bool startWinShun()
+bool runsElevated()
 {
-    if (runAutostartTask())
-        return true;
-    const std::wstring exe = winShunExe();
-    if (exe.empty())
+    HANDLE token = nullptr;
+    if (!::OpenProcessToken(::GetCurrentProcess(), TOKEN_QUERY, &token))
         return false;
+    TOKEN_ELEVATION elevation {};
+    DWORD size = 0;
+    bool elevated = ::GetTokenInformation(token, TokenElevation, &elevation, sizeof elevation, &size) && elevation.TokenIsElevated != 0;
+    // The label too, never TokenElevationType (pitfalls): a token can be
+    // high without being elevated, and SYSTEM's is above high.
+    alignas(TOKEN_MANDATORY_LABEL) BYTE label[64];
+    if (!elevated && ::GetTokenInformation(token, TokenIntegrityLevel, label, sizeof label, &size)) {
+        const PSID sid = reinterpret_cast<const TOKEN_MANDATORY_LABEL*>(label)->Label.Sid;
+        if (const UCHAR count = *::GetSidSubAuthorityCount(sid); count > 0)
+            elevated = *::GetSidSubAuthority(sid, count - 1) >= SECURITY_MANDATORY_HIGH_RID;
+    }
+    ::CloseHandle(token);
+    return elevated;
+}
+
+bool startProgram(const std::wstring& exe)
+{
     const std::wstring folder = exe.substr(0, exe.find_last_of(L'\\'));
     return reinterpret_cast<INT_PTR>(::ShellExecuteW(nullptr, nullptr, exe.c_str(), L"--background", folder.c_str(), SW_SHOWNORMAL)) > 32;
+}
+
+bool startWinShun(const StartSteps& steps)
+{
+    // The task runs Win顺 as it was set up, whoever asks.
+    if (steps.runTask())
+        return true;
+    // The program started from here would have this process's token: from
+    // an elevated ws or relay, Win顺 would run as administrator, where it
+    // is meant to run with the user's ordinary rights (the service reads
+    // the disks for it). Left to the user then.
+    if (steps.elevated())
+        return false;
+    const std::wstring exe = steps.exe();
+    return !exe.empty() && steps.startExe(exe);
+}
+
+bool startWinShun()
+{
+    return startWinShun(StartSteps {});
 }
 
 } // namespace ws::launch

@@ -85,20 +85,17 @@ QString decode(std::string_view bytes, TextEncoding encoding)
     return {};
 }
 
-Result readTextFile(const std::wstring& path, std::uint64_t size)
+// `file`: open for reading.
+Result readTextFile(HANDLE file, std::uint64_t size)
 {
     Result result;
-    win32::UniqueHandle file(::CreateFileW(win32::longPath(path).c_str(), GENERIC_READ,
-        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, nullptr));
-    if (!file.valid())
-        return result;
     const std::size_t want = static_cast<std::size_t>(std::min<std::uint64_t>(size, kMaxTextFileBytes));
     std::string bytes(want, '\0');
     std::size_t got = 0;
     while (got < want) {
         DWORD n = 0;
         const DWORD ask = static_cast<DWORD>(std::min<std::size_t>(want - got, 1u << 20));
-        if (!::ReadFile(file.get(), bytes.data() + got, ask, &n, nullptr))
+        if (!::ReadFile(file, bytes.data() + got, ask, &n, nullptr))
             return result;
         if (n == 0)
             break;
@@ -123,15 +120,29 @@ Result readTextFile(const std::wstring& path, std::uint64_t size)
 
 Result read(const std::wstring& path, const Sources& sources, std::int64_t maxBytes, const std::function<bool()>& cancelled)
 {
-    Result result;
-    WIN32_FILE_ATTRIBUTE_DATA data {};
-    if (!::GetFileAttributesExW(win32::longPath(path).c_str(), GetFileExInfoStandard, &data)) {
+    // Neither read nor write access to begin with: no antivirus scan of a
+    // file whose text the content index has, and no download of a cloud
+    // file (nor a recall of one kept elsewhere); a folder opens too.
+    const win32::UniqueHandle file(::CreateFileW(win32::longPath(path).c_str(), FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_NO_RECALL, nullptr));
+    if (!file.valid()) {
         const DWORD error = ::GetLastError();
+        Result result;
         result.status = error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND || error == ERROR_INVALID_NAME
             ? Status::Missing
             : Status::Unreadable;
         return result;
     }
+    return read(file.get(), path, sources, maxBytes, cancelled);
+}
+
+Result read(void* file, const std::wstring& path, const Sources& sources, std::int64_t maxBytes, const std::function<bool()>& cancelled)
+{
+    Result result;
+    BY_HANDLE_FILE_INFORMATION data {};
+    if (!::GetFileInformationByHandle(file, &data))
+        return result;
     if (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
         result.status = Status::Folder;
         return result;
@@ -155,20 +166,29 @@ Result read(const std::wstring& path, const Sources& sources, std::int64_t maxBy
         }
     }
 
-    if (data.dwFileAttributes & (FILE_ATTRIBUTE_OFFLINE | FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS)) {
+    if (data.dwFileAttributes & (FILE_ATTRIBUTE_OFFLINE | FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS | FILE_ATTRIBUTE_RECALL_ON_OPEN)) {
         result.status = Status::CloudOnly;
         return result;
     }
-    if (!result.document)
-        return readTextFile(path, size);
-
-    if (static_cast<std::int64_t>(size) > maxBytes) {
+    if (result.document && static_cast<std::int64_t>(size) > maxBytes) {
         result.status = Status::TooLarge;
         return result;
     }
-    if (!sources.extractor)
+    if (result.document && (!sources.extractor || size == 0))
         return result;
-    DocExtractor::Result read = sources.extractor->extractFile(path, maxBytes, cancelled);
+    // The same file again, now to read it: what was opened, not what the
+    // path leads to by now.
+    const win32::UniqueHandle reading(::ReOpenFile(file, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        FILE_FLAG_SEQUENTIAL_SCAN));
+    if (!reading.valid())
+        return result;
+    if (!result.document)
+        return readTextFile(reading.get(), size);
+
+    FILE_IO_PRIORITY_HINT_INFO hint {};
+    hint.PriorityHint = IoPriorityHintLow;
+    ::SetFileInformationByHandle(reading.get(), FileIoPriorityHintInfo, &hint, sizeof hint);
+    DocExtractor::Result read = sources.extractor->extract(reading.get(), size, cancelled);
     if (read.status != extractproto::Status::Ok) {
         result.status = read.large ? Status::TooLarge : Status::Unreadable;
         return result;

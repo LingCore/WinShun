@@ -9,6 +9,7 @@
 #include <QJsonDocument>
 
 #include <algorithm>
+#include <utility>
 
 using namespace Qt::StringLiterals;
 
@@ -23,6 +24,8 @@ struct McpServer::Session {
     QString client;
     QString clientVersion;
     bool cli = false; // ws, the command line (kCliClient)
+    bool cliCounted = false; // this run of ws is in the tally
+    bool cliNamed = false; // it called a tool other than index_status: that one names it
     QDateTime since;
     int calls = 0;
     QString lastTool;
@@ -206,7 +209,9 @@ void McpServer::handleRequest(Session& session, const QJsonValue& id, const QStr
         session.initialized = true;
         reply({{u"protocolVersion"_s, version},
             {u"capabilities"_s,
-                QJsonObject {{u"tools"_s, QJsonObject {{u"listChanged"_s, true}}}, {u"prompts"_s, QJsonObject {{u"listChanged"_s, false}}}}},
+                QJsonObject {{u"tools"_s, QJsonObject {{u"listChanged"_s, true}}}, {u"prompts"_s, QJsonObject {{u"listChanged"_s, false}}},
+                    // For ws (kCliContract); any client may see it, as it is said before the client is known.
+                    {u"experimental"_s, QJsonObject {{QString::fromLatin1(kServerName), QJsonObject {{u"cli"_s, kCliContract}}}}}}},
             {u"serverInfo"_s,
                 QJsonObject {{u"name"_s, QString::fromLatin1(kServerName)}, {u"title"_s, u"Win顺 · WinShun"_s}, {u"version"_s, m_version},
                     {u"description"_s, u"Search files, folders and text on this PC with Win顺"_s},
@@ -300,11 +305,11 @@ void McpServer::callTool(Session& session, const QJsonValue& id, const QJsonObje
     case ToolHost::Known::Off: {
         const QString reason = m_host->offReason(name);
         session.sink(jsonrpc::response(id,
-            toolResult({{}, true,
-                           reason.isEmpty()
-                               ? u"The tool '%1' is turned off in Win顺's settings (设置 → AI 助手). Ask the user to turn it on there, then call it again."_s.arg(name)
-                               : reason,
-                           QString::fromLatin1(kErrorOff)},
+            callToolResult({{}, true,
+                               reason.isEmpty()
+                                   ? u"The tool '%1' is turned off in Win顺's settings (设置 → AI 助手). Ask the user to turn it on there, then call it again."_s.arg(name)
+                                   : reason,
+                               QString::fromLatin1(kErrorOff)},
                 session.cli)));
         return;
     }
@@ -315,8 +320,15 @@ void McpServer::callTool(Session& session, const QJsonValue& id, const QJsonObje
     const QString key = jsonrpc::idKey(id);
     session.inflight[key] = callId;
     if (session.cli) {
-        ++m_cliTally.calls;
-        m_cliTally.lastTool = name;
+        // One per run of ws, named by what it was run for: its own
+        // index_status probe (asked before most commands) names it only
+        // when nothing else was asked.
+        if (!std::exchange(session.cliCounted, true))
+            ++m_cliTally.calls;
+        const bool probe = name == u"index_status";
+        if (!probe || !session.cliNamed)
+            m_cliTally.lastTool = name;
+        session.cliNamed = session.cliNamed || !probe;
         m_cliTally.lastCall = QDateTime::currentDateTime();
         emit cliCalled();
     } else {
@@ -332,45 +344,29 @@ void McpServer::callTool(Session& session, const QJsonValue& id, const QJsonObje
             return; // the session ended meanwhile
         it->second->inflight.erase(key);
         it->second->sink(response(*it->second, id, name, result));
-    }, {session.token.valid() ? session.token.get() : nullptr, session.cli});
+    }, {session.token.valid() ? session.token.get() : nullptr, session.cli, true});
 }
 
-// The answer to a tools/call. One longer than a line may be (pipe::
-// kMaxLineBytes) would end the connection at the other end (the relay, ws)
-// with nothing said: it becomes an error that says what to ask for instead.
+// The answer to a tools/call: made into JSON where the host did the work,
+// for most tools (ToolResult::encoded), else here. One longer than a line
+// may be (pipe::kMaxLineBytes) would end the connection at the other end
+// (the relay, ws) with nothing said: it is an error that says what to ask
+// for instead (tooLargeResult), made there or, as a last resort, here.
 QByteArray McpServer::response(const Session& session, const QJsonValue& id, const QString& tool, const ToolResult& result) const
 {
-    QByteArray line = jsonrpc::response(id, toolResult(result, session.cli));
-    if (static_cast<std::size_t>(line.size()) <= pipe::kMaxLineBytes)
-        return line;
-    const QString size = QString::number(static_cast<double>(line.size()) / (1 << 20), 'f', 1);
-    m_host->log(u"%1 %2 %3 → the answer, %4 MB, is too large to send: an error was sent instead"_s.arg(
-        QDateTime::currentDateTime().toString(Qt::ISODate), session.client, tool, size));
-    const ToolResult tooLarge {{}, true,
-        u"The answer is too large to send: %1 MB, where one message holds at most %2 MB. Ask for less: a smaller limit (or max_chars), fewer folders, a more specific query, or size: false."_s
-            .arg(size)
-            .arg(pipe::kMaxLineBytes >> 20),
-        QString::fromLatin1(kErrorTooLarge)};
-    return jsonrpc::response(id, toolResult(tooLarge, session.cli));
-}
-
-QJsonObject McpServer::toolResult(const ToolResult& result, bool cli)
-{
-    if (result.isError) {
-        QJsonObject out {{u"content"_s, QJsonArray {QJsonObject {{u"type"_s, u"text"_s}, {u"text"_s, result.errorText}}}}, {u"isError"_s, true}};
-        // ws acts on the kind (its exit codes); an AI client reads the words,
-        // and might hold a structured error against the tool's outputSchema.
-        if (cli && !result.errorCode.isEmpty())
-            out.insert(u"structuredContent"_s, QJsonObject {{u"error"_s, result.errorCode}});
-        return out;
+    QByteArray line = result.encoded.isEmpty() ? jsonrpc::response(id, callToolResult(result, session.cli))
+                                               : jsonrpc::responseWithResult(id, result.encoded);
+    qint64 tooLarge = result.tooLargeBytes;
+    if (static_cast<std::size_t>(line.size()) > pipe::kMaxLineBytes) {
+        tooLarge = line.size();
+        line = jsonrpc::response(id, callToolResult(tooLargeResult(tooLarge), session.cli));
     }
-    // ws reads the structured result alone: the same again as text would
-    // double the answer (and its 50 000 items).
-    if (cli)
-        return {{u"content"_s, QJsonArray()}, {u"structuredContent"_s, result.structured}, {u"isError"_s, false}};
-    const QString text = QString::fromUtf8(QJsonDocument(result.structured).toJson(QJsonDocument::Compact));
-    return {{u"content"_s, QJsonArray {QJsonObject {{u"type"_s, u"text"_s}, {u"text"_s, text}}}},
-        {u"structuredContent"_s, result.structured}, {u"isError"_s, false}};
+    if (tooLarge > 0) {
+        m_host->log(u"%1 %2 %3 → the answer, %4 MB, is too large to send: an error was sent instead"_s.arg(
+            QDateTime::currentDateTime().toString(Qt::ISODate), session.client, tool,
+            QString::number(static_cast<double>(tooLarge) / (1 << 20), 'f', 1)));
+    }
+    return line;
 }
 
 void McpServer::toolsChanged()

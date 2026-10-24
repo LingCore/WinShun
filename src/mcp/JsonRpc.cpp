@@ -110,6 +110,16 @@ QByteArray response(const QJsonValue& id, const QJsonValue& result)
     return serialize({{u"jsonrpc"_s, u"2.0"_s}, {u"id"_s, id}, {u"result"_s, result}});
 }
 
+QByteArray responseWithResult(const QJsonValue& id, const QByteArray& result)
+{
+    // As serialize() writes the object above: its keys in order.
+    const QByteArray key = idKey(id).toUtf8();
+    QByteArray line;
+    line.reserve(result.size() + key.size() + 40);
+    line.append(R"({"id":)").append(key).append(R"(,"jsonrpc":"2.0","result":)").append(result).append("}\n");
+    return line;
+}
+
 QJsonObject errorObject(int code, const QString& message, const QJsonValue& data)
 {
     QJsonObject error {{u"code"_s, code}, {u"message"_s, message}};

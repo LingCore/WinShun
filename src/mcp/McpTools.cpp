@@ -1,11 +1,15 @@
 #include "McpTools.h"
 
+#include "Aside.h"
 #include "DocExtractor.h"
 #include "Documents.h"
 #include "FileIndex.h"
 #include "FileText.h"
 #include "IndexService.h"
+#include "Pipe.h"
 #include "SearchEngine.h"
+#include "ShareLister.h"
+#include "Unc.h"
 #include "Visibility.h"
 #include "Win32Util.h"
 #include "Wtf8.h"
@@ -24,8 +28,10 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <iterator>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 using namespace Qt::StringLiterals;
@@ -60,12 +66,25 @@ constexpr int kContentThreads = 8;
 constexpr int kMaxSettingChanges = 20;
 constexpr int kMaxReasonChars = 200;
 constexpr int kMaxClientChars = 60;
+// The tools' work off the GUI thread (AsideWorkers): access checks, sizes,
+// reads. A few at once, so that one run of ws asking for 50 000 sizes from
+// a hard disk does not take the disk from everything else.
+constexpr int kAsideThreads = 3;
+
+// What one answer may hold, in bytes of JSON. A message holds 16 MB
+// (pipe::kMaxLineBytes); an answer that would not fit is the too_large
+// error instead, which gives nothing of what was found. So a list stops
+// short of this (truncated: true), and a text sooner (next_offset). An AI
+// client's answer goes out twice (the structured result, and the same again
+// as escaped text): a third of it there (Budget).
+constexpr qint64 kAnswerBudget = qint64 {15} << 20;
+// Around an answer made aside: the JSON-RPC envelope (jsonrpc::responseWithResult).
+constexpr qint64 kEnvelopeBytes = 4096;
 
 // The most a call may ask for. An AI client's answers go into the model's
 // context, where a few hundred items is already a lot (and the schemas say
 // so); ws's go to a program or a terminal: `ws find -n 0` asks for all there
-// is. 50 000 compact items stay well under a message's 16 MB
-// (pipe::kMaxLineBytes); McpServer turns a longer answer into an error.
+// is. Whatever is asked, an answer stays within kAnswerBudget.
 struct Limits {
     int files; // search_files, recent_files
     int content; // search_content
@@ -281,12 +300,15 @@ struct ItemShape {
     bool size = true; // asked not to (size: false), no read of the disk for each
 };
 
-QJsonObject fileItem(const QString& path, const QString& name, bool isDir, std::uint32_t modified, ItemShape shape)
+// Made aside: the size is read from the disk, at the disk's pace (QuietIo).
+QJsonObject fileItem(AsideContext& aside, const QString& path, const QString& name, bool isDir, std::uint32_t modified,
+    ItemShape shape)
 {
     QJsonObject item {{u"path"_s, path}, {u"type"_s, isDir ? u"folder"_s : u"file"_s}, {u"modified"_s, isoTime(modified)}};
     if (shape.name)
         item.insert(u"name"_s, name);
     if (shape.size && !isDir) {
+        aside.quiet.at(path);
         if (const auto size = sizeOf(path))
             item.insert(u"size"_s, *size);
     }
@@ -405,7 +427,427 @@ QString stateName(IndexService::State state)
     return u"ready"_s;
 }
 
+// ---- the size of an answer ------------------------------------------------------
+
+// The bytes of JSON the character at `i` takes, at least as many as
+// QJsonDocument writes (compact UTF-8, a control character as an escape of
+// up to six), and how many UTF-16 units it is.
+qint64 charJsonBytes(QStringView text, qsizetype i, qsizetype& units)
+{
+    units = 1;
+    const char16_t c = text[i].unicode();
+    if (c < 0x20 || c == 0x7F)
+        return 6;
+    if (c == u'"' || c == u'\\')
+        return 2;
+    if (c < 0x80)
+        return 1;
+    if (c < 0x800)
+        return 2;
+    if (QChar::isHighSurrogate(c) && i + 1 < text.size() && QChar::isLowSurrogate(text[i + 1].unicode())) {
+        units = 2;
+        return 4;
+    }
+    return QChar::isSurrogate(c) ? 6 : 3; // half a character alone: an escape, or a replacement
+}
+
+qint64 stringJsonBytes(QStringView text)
+{
+    qint64 bytes = 2;
+    qsizetype units = 1;
+    for (qsizetype i = 0; i < text.size(); i += units)
+        bytes += charJsonBytes(text, i, units);
+    return bytes;
+}
+
+// At least the bytes of `value` as compact JSON.
+qint64 jsonBytes(const QJsonValue& value)
+{
+    switch (value.type()) {
+    case QJsonValue::Null:
+        return 4;
+    case QJsonValue::Bool:
+        return 5;
+    case QJsonValue::Double:
+        return 24; // "-1.2345678901234567e-308"
+    case QJsonValue::String:
+        return stringJsonBytes(value.toString());
+    case QJsonValue::Array: {
+        qint64 bytes = 2;
+        for (const QJsonValue& v : value.toArray())
+            bytes += jsonBytes(v) + 1;
+        return bytes;
+    }
+    case QJsonValue::Object: {
+        const QJsonObject object = value.toObject();
+        qint64 bytes = 2;
+        for (auto it = object.constBegin(); it != object.constEnd(); ++it)
+            bytes += stringJsonBytes(it.key()) + 1 + jsonBytes(it.value()) + 1;
+        return bytes;
+    }
+    case QJsonValue::Undefined:
+        break;
+    }
+    return 0;
+}
+
+// Where a text from `from` ends, at `to` at most, within `bytes` of JSON:
+// not between the halves of a character.
+qsizetype fitText(QStringView text, qsizetype from, qsizetype to, qint64 bytes)
+{
+    qint64 used = 2;
+    qsizetype at = from;
+    qsizetype units = 1;
+    while (at < to) {
+        const qint64 cost = charJsonBytes(text, at, units);
+        if (at + units > to || used + cost > bytes)
+            break;
+        used += cost;
+        at += units;
+    }
+    return at;
+}
+
+// What is left of an answer's bytes (kAnswerBudget) as its items go in. Once
+// one does not fit, the list ends there: truncated.
+class Budget {
+public:
+    explicit Budget(bool cli)
+        : m_left(cli ? kAnswerBudget : kAnswerBudget / 3)
+    {
+    }
+
+    bool take(const QJsonValue& item) { return takeBytes(jsonBytes(item) + 1); }
+    bool takeBytes(qint64 bytes)
+    {
+        if (m_cut || bytes > m_left) {
+            m_cut = true;
+            return false;
+        }
+        m_left -= bytes;
+        return true;
+    }
+    bool cut() const noexcept { return m_cut; }
+    qint64 left() const noexcept { return m_left; }
+
+private:
+    qint64 m_left;
+    bool m_cut = false;
+};
+
+// The answer as it goes out, made where the work was done: the JSON of
+// 50 000 items is megabytes, too much to make on the GUI thread. One larger
+// than a message holds is the too_large error instead. `structured` keeps
+// only what the call's log line reads (logCall).
+void encodeAnswer(ToolResult& result, bool cli)
+{
+    result.encoded = QJsonDocument(callToolResult(result, cli)).toJson(QJsonDocument::Compact);
+    if (result.encoded.size() + kEnvelopeBytes > static_cast<qint64>(pipe::kMaxLineBytes)) {
+        result = tooLargeResult(result.encoded.size());
+        result.encoded = QJsonDocument(callToolResult(result, cli)).toJson(QJsonDocument::Compact);
+        return;
+    }
+    QJsonObject kept;
+    for (const QString& key : {u"returned"_s, u"opened"_s}) {
+        if (const QJsonValue v = result.structured.value(key); !v.isUndefined())
+            kept.insert(key, v);
+    }
+    result.structured = kept;
+}
+
+// ---- what a caller may know of a path it names ---------------------------------------
+
+QString notInIndex(const QString& folder)
+{
+    return u"The folder is not in the index: it may not exist, be excluded from indexing, or be on a drive that is not indexed. Check it with get_file_info: "_s
+        + folder;
+}
+
+// A folder a call names (search_files, search_content, recent_files,
+// list_folder), as the index has it.
+struct FolderArg {
+    QString given; // as asked, for the answers
+    QString native; // the same, clean (nativePath)
+    QString path; // as the index has it; empty: not in the index
+    bool isDir = false;
+    bool remote = false; // on a network share (EntryFlag::Remote)
+};
+
+// Looks `folders` up in the index: a moment under its lock, no disk.
+std::vector<FolderArg> lookUp(const FileIndex& index, const QStringList& folders)
+{
+    std::vector<FolderArg> out;
+    const auto lock = index.readLock();
+    for (const QString& given : folders) {
+        FolderArg folder {given, nativePath(given)};
+        if (const EntryId id = index.findPath(indexPath(given)); id != kNoEntry) {
+            const Entry& e = index.entry(id);
+            folder.path = QString::fromStdWString(index.wpath(id));
+            folder.isDir = e.isDir();
+            folder.remote = (e.flags & EntryFlag::Remote) != 0;
+        }
+        out.push_back(std::move(folder));
+    }
+    return out;
+}
+
+// Whether any of `folders` needs no search for its answer (it is not one to
+// search in), or else checkFolders after the search says what of them the
+// caller may know.
+bool answeredWithoutSearch(const std::vector<FolderArg>& folders, const std::function<bool(const QString&)>& offline, bool content)
+{
+    return std::ranges::any_of(folders,
+        [&](const FolderArg& f) { return f.path.isEmpty() || !f.isDir || (content && f.remote) || offline(f.native); });
+}
+
+// What the caller may know of the folders a call names, in an order that
+// tells it no more than that (aside: the checks go to the disk). One on a
+// share that cannot be reached now is not there: no check waits for the
+// network. Nor is one the index does not have, or one the caller cannot
+// see; one it can see may then be called a file. A folder must be one it can
+// list: its names are what the call is about. `content`: and not on a share.
+std::optional<ToolResult> checkFolders(AsideContext& aside, const std::vector<FolderArg>& folders,
+    const std::function<bool(const QString&)>& offline, bool content)
+{
+    for (const FolderArg& f : folders) {
+        if (offline(f.native))
+            return notFound(u"The folder is on a network share that cannot be reached now: "_s + f.given);
+        if (f.path.isEmpty())
+            return notFound(notInIndex(f.given));
+        if (!f.isDir) {
+            if (!aside.sees(f.path))
+                return notFound(notInIndex(f.given));
+            return failure(u"The path is a file, not a folder: "_s + f.given);
+        }
+        if (!aside.canList(f.path))
+            return notFound(notInIndex(f.given));
+        if (content && f.remote)
+            return failure(u"The folder is on a network share: Win顺 does not read file contents there. "_s + f.given);
+    }
+    return std::nullopt;
+}
+
+// "\\?\C:\x", "\\.\C:", "\??\C:\x": paths Windows takes as they are written,
+// past the cleaning (and the checks) of the others.
+bool isDevicePath(QString path)
+{
+    path.replace(u'/', u'\\');
+    return path.startsWith(u"\\\\?\\") || path.startsWith(u"\\\\.\\") || path.startsWith(u"\\??\\") || path == u"\\\\?"
+        || path == u"\\\\.";
+}
+
+// Whether a network path's host is this computer: its files then, by
+// another path.
+bool isThisComputer(QString host)
+{
+    host = host.toCaseFolded();
+    if (host.endsWith(u'.'))
+        host.chop(1);
+    const bool ipv4 = !host.isEmpty() && std::ranges::all_of(host, [](QChar c) { return c.isDigit() || c == u'.'; });
+    if (host.isEmpty() || host == u"localhost" || (ipv4 && host.startsWith(u"127.")) || host == u"::1" || host == u"[::1]"
+        || host == u"0--1.ipv6-literal.net")
+        return true;
+    for (const COMPUTER_NAME_FORMAT format : {ComputerNameNetBIOS, ComputerNameDnsHostname, ComputerNameDnsFullyQualified}) {
+        wchar_t name[256] {};
+        DWORD size = static_cast<DWORD>(std::size(name));
+        if (::GetComputerNameExW(format, name, &size) && size > 0 && host == QString::fromWCharArray(name, size).toCaseFolded())
+            return true;
+    }
+    return false;
+}
+
+// Why a path a call names is not looked at, from how it is written alone (no
+// disk). `excluded`: the folders AI never sees.
+std::optional<ToolResult> pathProblem(const std::vector<QString>& excluded, const QString& given, const QString& native)
+{
+    if (isDevicePath(given) || isDevicePath(native))
+        return failure(u"Device paths (\\\\?\\…, \\\\.\\…) are not taken: give the path as File Explorer shows it, like D:\\Projects\\file.txt."_s);
+    if (excludedIndexPath(excluded, native))
+        return notFound(u"This path is not visible to AI (excluded in Win顺's settings)."_s);
+    const std::wstring wide = native.toStdWString();
+    if (!excluded.empty() && unc::isUnc(wide) && isThisComputer(QString::fromStdWString(std::wstring(unc::host(wide))))) {
+        return notFound(u"This network path leads back to this computer. While folders are hidden from AI (Win顺's settings), Win顺 takes this computer's files only by their own paths (C:\\…)."_s);
+    }
+    return std::nullopt;
+}
+
+// Where an open file is, by its own name ("C:\dir\file", "\\server\share\
+// file"): what the path given led to, through links, junctions and short
+// names. Empty when Windows cannot say; `exact`: nor in the long names
+// (FILE_NAME_NORMALIZED), which are what the folders AI never sees are
+// compared with.
+QString finalPathOf(HANDLE file, bool exact)
+{
+    std::wstring buffer(MAX_PATH, L'\0');
+    for (const DWORD flags : {DWORD {FILE_NAME_NORMALIZED}, DWORD {FILE_NAME_OPENED}}) {
+        if (flags == FILE_NAME_OPENED && exact)
+            break;
+        DWORD length = ::GetFinalPathNameByHandleW(file, buffer.data(), static_cast<DWORD>(buffer.size()), flags | VOLUME_NAME_DOS);
+        if (length >= buffer.size()) {
+            buffer.resize(length + 1);
+            length = ::GetFinalPathNameByHandleW(file, buffer.data(), static_cast<DWORD>(buffer.size()), flags | VOLUME_NAME_DOS);
+        }
+        if (length == 0 || length >= buffer.size())
+            continue;
+        std::wstring_view path(buffer.data(), length);
+        if (path.starts_with(L"\\\\?\\UNC\\"))
+            return u"\\\\"_s + QString::fromWCharArray(path.data() + 8, static_cast<qsizetype>(path.size() - 8));
+        if (path.starts_with(L"\\\\?\\"))
+            path.remove_prefix(4);
+        if (path.size() >= 2 && path[1] == L':')
+            return QString::fromWCharArray(path.data(), static_cast<qsizetype>(path.size()));
+    }
+    return {};
+}
+
+// Whether a file opened through a network path is on a volume of this
+// computer that holds a folder AI never sees: a share of this computer
+// reached by an address of its own (its LAN address, a name in the hosts
+// file) is its own files by another path. The server gives its volume's
+// serial number; the same as such a volume's is taken to be that volume.
+bool onExcludedVolume(const BY_HANDLE_FILE_INFORMATION& info, const std::vector<QString>& excluded)
+{
+    for (const QString& folder : excluded) {
+        if (folder.size() < 3 || folder[1] != u':' || folder[2] != u'\\')
+            continue;
+        DWORD serial = 0;
+        if (::GetVolumeInformationW(folder.left(3).toStdWString().c_str(), nullptr, 0, &serial, nullptr, nullptr, nullptr, 0)
+            && serial == info.dwVolumeSerialNumber)
+            return true;
+    }
+    return false;
+}
+
+// What opening a path a call names came to.
+enum class Reach {
+    Ok,
+    Missing, // not there, or not for the caller: the same to it
+    Unreachable, // on a network share that cannot be reached now
+    Error, // there, the caller may see it, and it cannot be opened (Opened::error)
+};
+
+struct Opened {
+    Reach reach = Reach::Missing;
+    DWORD error = 0;
+    win32::UniqueHandle handle; // no read access: attributes, and ReOpenFile to read it
+    QString path; // the final path (finalPathOf)
+    BY_HANDLE_FILE_INFORMATION info {};
+
+    bool isDir() const noexcept { return (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0; }
+};
+
+// Opens a path a call names (get_file_info, open_item, read_file_text), no
+// data read: what it leads to, whatever it is written as, is what is checked
+// against the folders AI never sees and then what the caller may see (by its
+// final path), and what a read reads (through this handle). A network path
+// is asked of its server first, briefly: one that is off would hold the
+// thread for the half minute Windows waits.
+Opened openGiven(AsideContext& aside, const QString& native, const std::vector<QString>& excluded,
+    const std::function<bool(const QString&)>& offline)
+{
+    Opened opened;
+    const std::wstring wide = native.toStdWString();
+    const std::wstring network = unc::isUnc(wide) ? wide : unc::fromMappedDrive(wide);
+    if (!network.empty() && unc::isUnc(network)
+        && (offline(QString::fromStdWString(network)) || !share::reachable(unc::host(network)))) {
+        opened.reach = Reach::Unreachable;
+        return opened;
+    }
+    aside.quiet.at(native);
+    opened.handle.reset(::CreateFileW(win32::longPath(wide).c_str(), FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_NO_RECALL, nullptr));
+    if (!opened.handle.valid() || !::GetFileInformationByHandle(opened.handle.get(), &opened.info)) {
+        const DWORD error = ::GetLastError();
+        opened.handle.reset();
+        // Not there, or kept from Win顺 (and so from its callers): the same
+        // to them. Any other failure is told only of a path the caller sees,
+        // and never while folders are hidden from AI: the path may be one of
+        // theirs by another name, unknown without the file.
+        const bool missing = error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND || error == ERROR_INVALID_NAME
+            || error == ERROR_BAD_NETPATH || error == ERROR_BAD_NET_NAME || error == ERROR_BAD_PATHNAME
+            || error == ERROR_DIRECTORY || error == ERROR_ACCESS_DENIED;
+        if (!missing && excluded.empty() && aside.sees(native)) {
+            opened.reach = Reach::Error;
+            opened.error = error;
+        }
+        return opened;
+    }
+    // Where it led: that is what may or may not be seen. While folders are
+    // hidden from AI, a path whose end cannot be told is not followed.
+    opened.path = finalPathOf(opened.handle.get(), !excluded.empty());
+    if (opened.path.isEmpty()) {
+        if (!excluded.empty()) {
+            opened.handle.reset();
+            return opened;
+        }
+        opened.path = native;
+    }
+    if (!excluded.empty()) {
+        const std::wstring final = opened.path.toStdWString();
+        const bool hidden = excludedIndexPath(excluded, opened.path)
+            || (unc::isUnc(final)
+                && (isThisComputer(QString::fromStdWString(std::wstring(unc::host(final)))) || onExcludedVolume(opened.info, excluded)));
+        if (hidden) {
+            opened.handle.reset();
+            return opened;
+        }
+    }
+    opened.reach = Reach::Ok;
+    return opened;
+}
+
+// search_content's timeout_ms, as the call has it (the handler says what is
+// wrong with it).
+int contentTimeout(const QJsonObject& arguments)
+{
+    Args args(arguments);
+    return args.integer(u"timeout_ms"_s, kDefaultTimeoutMs, kMinTimeoutMs, kMaxTimeoutMs);
+}
+
+// search_content's answer when its timeout ran out before the engine was
+// free for it: nothing was searched.
+ToolResult waitedTooLong(const QElapsedTimer& timer)
+{
+    return {{{u"items"_s, QJsonArray()}, {u"returned"_s, 0}, {u"complete"_s, false}, {u"files_checked"_s, 0},
+        {u"files_candidates"_s, 0}, {u"elapsed_ms"_s, static_cast<double>(timer.elapsed())},
+        {u"note"_s, u"Another content search was running the whole time, so this one did not start before its timeout_ms ran out. Call it again once the other one has answered, or with a larger timeout_ms."_s}}};
+}
+
 } // namespace
+
+// ---- results as they go out ------------------------------------------------------
+
+QJsonObject callToolResult(const ToolResult& result, bool cli)
+{
+    if (result.isError) {
+        QJsonObject out {{u"content"_s, QJsonArray {QJsonObject {{u"type"_s, u"text"_s}, {u"text"_s, result.errorText}}}}, {u"isError"_s, true}};
+        // ws acts on the kind (its exit codes); an AI client reads the words,
+        // and might hold a structured error against the tool's outputSchema.
+        if (cli && !result.errorCode.isEmpty())
+            out.insert(u"structuredContent"_s, QJsonObject {{u"error"_s, result.errorCode}});
+        return out;
+    }
+    // ws reads the structured result alone: the same again as text would
+    // double the answer (and its 50 000 items).
+    if (cli)
+        return {{u"content"_s, QJsonArray()}, {u"structuredContent"_s, result.structured}, {u"isError"_s, false}};
+    const QString text = QString::fromUtf8(QJsonDocument(result.structured).toJson(QJsonDocument::Compact));
+    return {{u"content"_s, QJsonArray {QJsonObject {{u"type"_s, u"text"_s}, {u"text"_s, text}}}},
+        {u"structuredContent"_s, result.structured}, {u"isError"_s, false}};
+}
+
+ToolResult tooLargeResult(qint64 bytes)
+{
+    const QString size = QString::number(static_cast<double>(bytes) / (1 << 20), 'f', 1);
+    ToolResult result {{}, true,
+        u"The answer is too large to send: %1 MB, where one message holds at most %2 MB. Ask for less: a smaller limit (or max_chars), fewer folders, a more specific query, or size: false."_s
+            .arg(size)
+            .arg(pipe::kMaxLineBytes >> 20),
+        QString::fromLatin1(kErrorTooLarge)};
+    result.tooLargeBytes = bytes;
+    return result;
+}
 
 // ---- the host ---------------------------------------------------------------
 
@@ -435,7 +877,8 @@ struct ToolHost::Tool {
         if (external)
             return offered;
         return offered
-            && (gate == Gate::None || (gate == Gate::Open && policy.allowOpen) || (gate == Gate::Clipboard && policy.allowClipboard)
+            && (gate == Gate::None || (gate == Gate::Open && policy.allowOpen)
+                || (gate == Gate::Clipboard && policy.allowClipboard && policy.clipboardHistory)
                 || (gate == Gate::Documents && policy.allowDocuments) || (gate == Gate::Screenshot && policy.allowScreenshot)
                 || (gate == Gate::Settings && policy.settingsMode != SettingsMode::Off));
     }
@@ -462,15 +905,11 @@ struct ToolHost::Call {
     bool settingsCard = false; // change_settings: the card asking the user is up for this call
     HANDLE token = nullptr; // the caller's, for Visibility; null: the default
     bool cli = false; // CallOptions::cli
+    bool encode = false; // CallOptions::encode
     std::stop_source stop {std::nostopstate}; // its work aside (aside()), stopped when the call is cancelled
     int checks = 0; // access checks made, and their time, for the log
     qint64 checkUs = 0;
 
-    void checked(const Visibility& view)
-    {
-        checks += view.checks();
-        checkUs += view.microseconds();
-    }
     const Limits& limits() const noexcept { return cli ? kCliLimits : kModelLimits; }
     ItemShape shape(bool size = true) const noexcept { return {!cli, size}; }
 };
@@ -478,24 +917,25 @@ struct ToolHost::Call {
 // The search running on a lane's engine for a call, and what it gathered.
 struct ToolHost::Active {
     std::shared_ptr<Call> call;
-    // The engine's id for it while it searches; 0 before it was submitted (a
-    // handler that found the arguments wrong submits none) and once the
-    // engine is done with it, while the call's work aside finishes it.
+    // The engine's id for it while it searches; 0 before it was submitted:
+    // a handler that answers without a search (the arguments are wrong, or
+    // a folder named is not one to search in) submits none.
     quint64 requestId = 0;
     bool content = false;
     int limit = 0;
+    int requestLimit = 0; // search_files: what the engine was asked for (Request::limit)
     QString kind; // search_files: all | files | folders
     bool sizes = true; // search_files: read each file's size
-    QStringList folders; // search_files: the folders asked for, as the index has them
+    std::vector<FolderArg> folders; // the folders asked for, checked once the engine answered (checkFolders)
     SearchResults found; // content matches so far
     int scanned = 0;
     int total = 0;
 };
 
 // A search engine and the calls waiting for it. An engine runs only its
-// newest request, so a lane runs one call at a time, and the next starts
-// once the one before has answered (in order: three calls in a row answer
-// as they were made).
+// newest request, so a lane runs one search at a time; the next starts as
+// soon as the engine answered the one before, which is finished aside
+// meanwhile (finishSearch): calls in a row may answer in another order.
 struct ToolHost::Lane {
     SearchEngine* engine = nullptr;
     std::deque<std::shared_ptr<Call>> queue;
@@ -507,14 +947,23 @@ ToolHost::ToolHost(Services services, QObject* parent)
     : QObject(parent)
     , m_services(std::move(services))
 {
+    if (!m_services.offline) {
+        IndexService* service = m_services.index;
+        m_services.offline = [service](const QString& path) {
+            return service && path.startsWith(u"\\\\") && service->shares().offline(path.toStdWString());
+        };
+    }
     addTools();
     m_names = makeLane(m_services.engine);
     // Two lanes on one engine would cancel each other's searches: content
     // searches get a lane of their own only with an engine of their own.
     if (m_services.contentEngine && m_services.contentEngine != m_services.engine)
         m_contents = makeLane(m_services.contentEngine);
+    m_workers = std::make_unique<AsideWorkers>(kAsideThreads);
 }
 
+// m_workers goes first (the last member): every job told to stop, then
+// waited for, while all they use is still there.
 ToolHost::~ToolHost() = default;
 
 // Each engine's answers go to its own lane: the request ids are the
@@ -627,6 +1076,12 @@ QString ToolHost::offReason(const QString& name) const
                "设置 → AI 助手 → 权限 → “允许 AI 修改设置” (every time ask me, or change directly), then call it again. "
                "If they would rather do it themselves, open_settings shows them where a setting is."_s.arg(name);
     }
+    // Allowed to AI, but there is no history to read: the switch to name is
+    // the history's own, not the AI one (the default words).
+    if (tool && tool->gate == Tool::Gate::Clipboard && m_policy.allowClipboard && !m_policy.clipboardHistory) {
+        return u"The tool '%1' is off: Win顺 is not keeping a clipboard history, so there is nothing to read. Ask the user to turn on "
+               "设置 → 剪贴板 → “记录剪贴板历史”, then call it again (what was copied while it was off is not there)."_s.arg(name);
+    }
     return tool && tool->external ? tool->offReason : QString();
 }
 
@@ -680,6 +1135,7 @@ void ToolHost::call(std::uint64_t id, const QString& client, const QString& tool
     call->done = std::move(done);
     call->token = options.token;
     call->cli = options.cli;
+    call->encode = options.encode;
     call->timer.start();
     for (const Tool& t : m_tools) {
         if (t.name == tool)
@@ -711,11 +1167,29 @@ void ToolHost::call(std::uint64_t id, const QString& client, const QString& tool
     }
     if (call->tool->engine != Tool::Engine::None) {
         Lane& lane = laneOf(*call->tool);
+        // search_content's timeout counts from now: one still waiting for
+        // the engine when it runs out answers then, without having searched.
+        if (call->tool->engine == Tool::Engine::Content && (lane.active || !lane.queue.empty())) {
+            QTimer::singleShot(std::chrono::milliseconds(contentTimeout(call->arguments)), this,
+                [this, &lane, weak = std::weak_ptr<Call>(call)] { expireQueued(lane, weak); });
+        }
         lane.queue.push_back(std::move(call));
         next(lane);
     } else {
         start(std::move(call));
     }
+}
+
+void ToolHost::expireQueued(Lane& lane, const std::weak_ptr<Call>& weak)
+{
+    const std::shared_ptr<Call> call = weak.lock();
+    if (!call)
+        return;
+    const auto it = std::ranges::find(lane.queue, call);
+    if (it == lane.queue.end())
+        return; // it started (or was cancelled)
+    lane.queue.erase(it);
+    finish(call, waitedTooLong(call->timer));
 }
 
 void ToolHost::cancel(std::uint64_t id)
@@ -778,51 +1252,73 @@ void ToolHost::next(Lane& lane)
 // (and Windows may hand the same value to another handle): the thread gets
 // a handle of its own to the same token. One that cannot be had is an error,
 // never the default token, which may see more than the caller.
-void ToolHost::aside(const std::shared_ptr<Call>& call, AsideWork work, std::function<void(ToolResult)> back)
+//
+// The work runs on m_workers, a few at a time, the rest waiting their turn;
+// cancelled while it waits, it never runs. What it held goes on its thread
+// (a search's results), as does the making of the answer's JSON
+// (encodeAnswer), unless `answer` is false: then `back` goes on with what
+// came of it. Stopped (cancelled, or the host going), nothing comes back.
+void ToolHost::aside(const std::shared_ptr<Call>& call, AsideWork work, std::function<void(ToolResult)> back, bool answer)
 {
-    win32::UniqueHandle token;
+    std::shared_ptr<void> token;
     if (call->token) {
         HANDLE copy = nullptr;
         if (!::DuplicateHandle(::GetCurrentProcess(), call->token, ::GetCurrentProcess(), &copy, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
             back(failure(u"Win顺 could not check what this client may see (error %1). Try again."_s.arg(::GetLastError())));
             return;
         }
-        token.reset(copy);
+        token.reset(copy, ::CloseHandle);
     }
-    const auto at = m_threads.emplace(m_threads.end());
-    *at = std::jthread(
-        [this, at, call, work = std::move(work), back = std::move(back), token = std::move(token)](std::stop_token stop) mutable {
-            Visibility view(token.get()); // null: the default token
-            ToolResult result = work(stop, view);
-            // Back here even when stopped, to let go of this thread; `back`
-            // finds the call gone (cancelled) then. Stopped as the host goes,
-            // the invocation is dropped with it.
-            QMetaObject::invokeMethod(this,
-                [this, at, call = std::move(call), back = std::move(back), result = std::move(result), checks = view.checks(),
-                    us = view.microseconds()]() mutable {
-                    m_threads.erase(at);
+    const bool encode = answer && call->encode;
+    call->stop = m_workers->post([this, weak = std::weak_ptr<Call>(call), work = std::move(work), back = std::move(back), token,
+                                     encode, cli = call->cli, tool = call->tool ? call->tool->name : QString(),
+                                     starting = m_services.asideStarting](const std::stop_token& stop) mutable {
+        if (starting)
+            starting(tool, stop);
+        QuietIo quiet;
+        Visibility view(static_cast<HANDLE>(token.get())); // null: the default token
+        AsideContext context {stop, view, quiet};
+        ToolResult result = work(context);
+        work = nullptr; // what it held goes here, not on the GUI thread
+        if (stop.stop_requested())
+            return;
+        if (encode)
+            encodeAnswer(result, cli);
+        QMetaObject::invokeMethod(this,
+            [weak, back = std::move(back), result = std::move(result), checks = view.checks(), us = view.microseconds()]() mutable {
+                if (const std::shared_ptr<Call> call = weak.lock()) {
                     call->checks += checks;
                     call->checkUs += us;
-                    back(std::move(result));
-                },
-                Qt::QueuedConnection);
-        });
-    call->stop = at->get_stop_source();
+                }
+                back(std::move(result));
+            },
+            Qt::QueuedConnection);
+    });
 }
 
-// A lane's call whose search is done: finished by `work` aside, answered in
-// its turn (the lane's next search waits for it, so answers keep their
-// order), unless it was cancelled meanwhile.
-void ToolHost::finishSearch(Lane& lane, const std::shared_ptr<Call>& call, AsideWork work)
+// A call answered by `work` aside, among the others meanwhile (where
+// cancel() finds it).
+void ToolHost::runAside(const std::shared_ptr<Call>& call, AsideWork work)
 {
-    lane.active->requestId = 0;
-    aside(call, std::move(work), [this, &lane, call](ToolResult result) {
-        if (!lane.active || lane.active->call != call)
-            return; // cancelled meanwhile
-        lane.active.reset();
+    m_others.push_back(call);
+    aside(call, std::move(work), [this, call](ToolResult result) {
+        if (std::ranges::find(m_others, call) == m_others.end())
+            return; // cancelled
+        std::erase(m_others, call);
         finish(call, std::move(result));
-        next(lane);
     });
+}
+
+// A lane's search that its engine is done with: the lane goes on to the next
+// one at once, and this call is finished by `work` aside meanwhile (its
+// checks of the disk may take a while), so answers may come in another order
+// than the calls were made.
+void ToolHost::finishSearch(Lane& lane, AsideWork work)
+{
+    const std::shared_ptr<Call> call = std::move(lane.active->call);
+    lane.active.reset();
+    runAside(call, std::move(work));
+    next(lane);
 }
 
 void ToolHost::start(std::shared_ptr<Call> call)
@@ -929,42 +1425,52 @@ void ToolHost::onResults(Lane& lane, quint64 requestId, const SearchResults& res
     const Active* active = lane.active.get();
     if (!active || active->requestId != requestId || active->content)
         return;
-    const std::shared_ptr<Call> call = active->call;
+    const Call& call = *active->call;
     // Only what the caller may see: no count of the rest is given either
     // (the engine's total would count files the caller cannot list). The
     // access checks and the sizes go to the disk (a share: the network),
     // thousands of them for ws: aside.
-    AsideWork work = [results, kind = active->kind, limit = active->limit, folders = active->folders,
-                         shape = call->shape(active->sizes), excluded = m_excluded, index = m_services.index, totalMatches,
-                         elapsedUs](const std::stop_token& stop, Visibility& view) -> ToolResult {
+    AsideWork work = [results, kind = active->kind, limit = active->limit, requestLimit = active->requestLimit,
+                         folders = active->folders, shape = call.shape(active->sizes), cli = call.cli, excluded = m_excluded,
+                         offline = m_services.offline, index = m_services.index, totalMatches, elapsedUs](AsideContext& aside) -> ToolResult {
         // A folder asked for that the caller cannot list is, to it, not
         // there: the same answer as for one the index does not have.
-        for (const QString& folder : folders) {
-            if (!view.canList(folder))
-                return notFound(u"The folder is not in the index: it may not exist, be excluded from indexing, or be on a drive that is not indexed. Check it with get_file_info: "_s + folder);
-        }
+        if (std::optional<ToolResult> problem = checkFolders(aside, folders, offline, false))
+            return *std::move(problem);
+        const auto ofKind = [&](const SearchResult& r) {
+            return !r.isApp() && !((kind == u"files" && r.isDir) || (kind == u"folders" && !r.isDir));
+        };
+        Budget budget(cli);
         QJsonArray items;
+        bool beyond = false; // one more to show than the limit takes
         for (const SearchResult& r : results) {
-            if (stop.stop_requested())
+            if (aside.stopped())
                 return {};
-            if (r.isApp())
+            // On a share that cannot be reached now: nothing of it can be
+            // checked (nor its size read) without waiting for the network.
+            if (!ofKind(r) || r.offline || offline(r.path) || excludedIndexPath(excluded, r.path) || !aside.sees(r.path))
                 continue;
-            if ((kind == u"files" && r.isDir) || (kind == u"folders" && !r.isDir))
-                continue;
-            if (excludedIndexPath(excluded, r.path) || !view.sees(r.path))
-                continue;
-            if (items.size() >= limit)
+            if (items.size() >= limit) {
+                beyond = true;
                 break;
-            items.push_back(fileItem(r.path, r.name, r.isDir, r.modified, shape));
+            }
+            const QJsonObject item = fileItem(aside, r.path, r.name, r.isDir, r.modified, shape);
+            if (!budget.take(item))
+                break;
+            items.push_back(item);
         }
-        QJsonObject out {{u"items"_s, items}, {u"returned"_s, items.size()},
-            {u"truncated"_s, totalMatches > results.size() || items.size() >= limit},
+        // The engine found more than it gave. Asked for files, it gives the
+        // folders that match too (kept apart, each kind to its limit): only
+        // with all the files it could give are there more of them.
+        const bool more = totalMatches > results.size()
+            && (kind != u"files" || std::ranges::count_if(results, ofKind) >= requestLimit);
+        QJsonObject out {{u"items"_s, items}, {u"returned"_s, items.size()}, {u"truncated"_s, beyond || budget.cut() || more},
             {u"elapsed_ms"_s, static_cast<double>(elapsedUs) / 1000.0}};
         if (index && index->state() != IndexService::State::Ready)
             out.insert(u"index_state"_s, stateName(index->state()));
         return {out};
     };
-    finishSearch(lane, call, std::move(work));
+    finishSearch(lane, std::move(work));
 }
 
 void ToolHost::onContentResults(Lane& lane, quint64 requestId, const SearchResults& results)
@@ -994,30 +1500,38 @@ void ToolHost::finishContent(Lane& lane, bool complete)
     lane.timeout.stop();
     if (!complete)
         lane.engine->cancel();
-    const std::shared_ptr<Call> call = active->call;
+    const Call& call = *active->call;
     // The caller must be able to read the file itself (not only to see it):
     // the snippet is its contents. Checks of the disk: aside.
     AsideWork work = [found = std::move(active->found), limit = active->limit, scanned = active->scanned, total = active->total,
-                         complete, shape = call->shape(), excluded = m_excluded,
-                         timer = call->timer](const std::stop_token& stop, Visibility& view) mutable -> ToolResult {
+                         complete, folders = active->folders, shape = call.shape(), cli = call.cli, excluded = m_excluded,
+                         offline = m_services.offline, timer = call.timer](AsideContext& aside) mutable -> ToolResult {
+        if (std::optional<ToolResult> problem = checkFolders(aside, folders, offline, true))
+            return *std::move(problem);
         std::ranges::stable_sort(found, std::ranges::greater {}, &SearchResult::relevance);
+        Budget budget(cli);
         QJsonArray items;
         for (const SearchResult& r : found) {
-            if (stop.stop_requested())
+            if (aside.stopped())
                 return {};
-            if (excludedIndexPath(excluded, r.path) || !view.sees(r.path) || !view.canRead(r.path))
+            if (r.offline || offline(r.path) || excludedIndexPath(excluded, r.path) || !aside.sees(r.path) || !aside.canRead(r.path))
                 continue;
             if (items.size() >= limit)
                 break;
-            items.push_back(contentItem(r, shape));
+            const QJsonObject item = contentItem(r, shape);
+            if (!budget.take(item))
+                break;
+            items.push_back(item);
         }
         QJsonObject out {{u"items"_s, items}, {u"returned"_s, items.size()}, {u"complete"_s, complete},
             {u"files_checked"_s, scanned}, {u"files_candidates"_s, total}, {u"elapsed_ms"_s, static_cast<double>(timer.elapsed())}};
-        if (!complete)
+        if (budget.cut())
+            out.insert(u"note"_s, u"More matched than one answer holds: these are the best. Ask for fewer (limit), or narrow the query or the folders."_s);
+        else if (!complete)
             out.insert(u"note"_s, u"The timeout ran out: these are the matches found so far, best first. Call again with a larger timeout_ms or a more specific query for the rest."_s);
         return {out};
     };
-    finishSearch(lane, call, std::move(work));
+    finishSearch(lane, std::move(work));
 }
 
 // ---- the tools ----------------------------------------------------------------
@@ -1096,7 +1610,9 @@ void ToolHost::addTools()
         {u"limit"_s, integer(u"How many at most"_s, 1, kMaxFiles, kDefaultFiles)},
         {u"size"_s, sizeArgument()}});
     recent.outputSchema = object({{u"items"_s, array(itemSchema(), u"Newest first"_s)}, {u"returned"_s, typed("integer", u"How many items"_s)},
-        {u"elapsed_ms"_s, typed("number", u"Scan time"_s)}});
+        {u"truncated"_s, typed("boolean", u"More matched than returned: narrow it (folder, extensions, days), or raise the limit"_s)},
+        {u"elapsed_ms"_s, typed("number", u"Scan time"_s)},
+        {u"index_state"_s, typed("string", u"Present while the index is still being built: results may be incomplete"_s)}});
     recent.annotations = annotations(true, true);
     recent.run = [this](const std::shared_ptr<Call>& call) { recentFiles(call); };
     m_tools.push_back(std::move(recent));
@@ -1112,7 +1628,8 @@ void ToolHost::addTools()
                                   {u"size"_s, sizeArgument()}},
         {u"path"_s});
     list.outputSchema = object({{u"path"_s, typed("string", u"The folder"_s)}, {u"items"_s, array(itemSchema(), u"Its entries"_s)},
-        {u"returned"_s, typed("integer", u"How many items"_s)}, {u"total"_s, typed("integer", u"How many entries the folder has"_s)},
+        {u"returned"_s, typed("integer", u"How many items"_s)},
+        {u"total"_s, typed("integer", u"How many entries the folder has (not counting any in folders hidden from AI)"_s)},
         {u"truncated"_s, typed("boolean", u"More than returned"_s)}});
     list.annotations = annotations(true, true);
     list.run = [this](const std::shared_ptr<Call>& call) { listFolder(call); };
@@ -1329,7 +1846,7 @@ void ToolHost::addTools()
         {u"version"_s, typed("string", u"Its version"_s)},
         {u"index"_s, typed("object", u"state (loading, building, ready), items, volumes"_s)},
         {u"content_index"_s, typed("object", u"enabled, files, pending, reading"_s)},
-        {u"ai"_s, typed("object", u"open_allowed, clipboard_allowed, screenshot_allowed, capture_enabled, settings_mode (off, ask, auto), excluded_folders"_s)}, {u"hint"_s, typed("string", u"What to tell the user when Win顺 is not running"_s)}});
+        {u"ai"_s, typed("object", u"open_allowed, clipboard_allowed (and readable), clipboard_history (Win顺 keeps one), screenshot_allowed, capture_enabled, settings_mode (off, ask, auto), excluded_folders"_s)}, {u"hint"_s, typed("string", u"What to tell the user when Win顺 is not running"_s)}});
     status.annotations = annotations(true, true);
     status.run = [this](const std::shared_ptr<Call>& call) { indexStatus(call); };
     m_tools.push_back(std::move(status));
@@ -1396,27 +1913,28 @@ void ToolHost::searchFiles(const std::shared_ptr<Call>& call)
         return finish(call, failure(args.error()));
     if (query.isEmpty())
         return finish(call, failure(u"query is empty. For the newest files without a query, use recent_files."_s));
+    QStringList named;
+    for (const QString& folder : folders) {
+        if (folder.isEmpty())
+            continue;
+        if (!isFullPath(folder))
+            return finish(call, failure(u"folders must be full paths, like D:\\Projects or \\\\server\\share\\folder: "_s + folder));
+        if (excluded(folder))
+            return finish(call, notFound(u"This folder is not visible to AI (excluded in Win顺's settings): "_s + folder));
+        named.push_back(folder);
+    }
     // The folders to look in, as the index has them: the engine keeps to
     // them as it goes through the names (Request::folders), so the limit
-    // counts only what lies in them.
-    QStringList under;
-    if (!folders.isEmpty()) {
-        const auto index = m_services.index->index();
-        const auto lock = index->readLock();
-        for (const QString& folder : folders) {
-            if (folder.isEmpty())
-                continue;
-            if (!isFullPath(folder))
-                return finish(call, failure(u"folders must be full paths, like D:\\Projects or \\\\server\\share\\folder: "_s + folder));
-            if (excluded(folder))
-                return finish(call, notFound(u"This folder is not visible to AI (excluded in Win顺's settings): "_s + folder));
-            const EntryId id = index->findPath(indexPath(folder));
-            if (id == kNoEntry)
-                return finish(call, notFound(u"The folder is not in the index: it may not exist, be excluded from indexing, or be on a drive that is not indexed. Check it with get_file_info: "_s + folder));
-            if (!index->entry(id).isDir())
-                return finish(call, failure(u"The path is a file, not a folder: "_s + folder));
-            under.push_back(QString::fromStdWString(index->wpath(id)));
-        }
+    // counts only what lies in them. What the caller may know of them is
+    // checked aside (checkFolders): once the engine answered, or, for one
+    // that is not a folder to search in, without a search.
+    std::vector<FolderArg> under;
+    if (!named.isEmpty())
+        under = lookUp(*m_services.index->index(), named);
+    if (answeredWithoutSearch(under, m_services.offline, false)) {
+        return runAside(call, [under, offline = m_services.offline](AsideContext& aside) {
+            return checkFolders(aside, under, offline, false).value_or(notFound(notInIndex(under.front().given)));
+        });
     }
 
     SearchEngine::Request request;
@@ -1426,7 +1944,8 @@ void ToolHost::searchFiles(const std::shared_ptr<Call>& call)
     // apart: asked for files, they go first, or a page of folders would take
     // the places of the files (the folders are dropped afterwards).
     request.kindOrder = kind == u"files" ? KindOrder::FilesFirst : m_policy.kindOrder;
-    request.folders = under;
+    for (const FolderArg& folder : under)
+        request.folders.push_back(folder.path);
     request.rankBy = sort == u"modified" ? RankBy::Newest : sort == u"oldest" ? RankBy::Oldest : RankBy::Match;
     // The launcher's other sorts (#44), over every match, not the first page.
     if (sort == u"name")
@@ -1450,6 +1969,7 @@ void ToolHost::searchFiles(const std::shared_ptr<Call>& call)
     Active& active = *lane.active;
     active.content = false;
     active.limit = limit;
+    active.requestLimit = request.limit;
     active.kind = kind;
     active.sizes = sizes;
     active.folders = std::move(under);
@@ -1470,24 +1990,30 @@ void ToolHost::searchContent(const std::shared_ptr<Call>& call)
         return finish(call, {{}, true, u"query is empty"_s});
     if (!m_policy.content)
         return finish(call, {{}, true, u"File content search is turned off in WinShun's settings"_s});
+    // The timeout counts from the call's arrival: what it waited for the
+    // engine is gone (call()).
+    const qint64 left = timeout - call->timer.elapsed();
+    if (left <= 0)
+        return finish(call, waitedTooLong(call->timer));
     folders.removeIf([](const QString& folder) { return folder.trimmed().isEmpty(); });
-    if (!folders.isEmpty()) {
-        const auto index = m_services.index->index();
-        const auto lock = index->readLock();
-        for (QString& folder : folders) {
-            folder = folder.trimmed();
-            if (excluded(folder))
-                return finish(call, notFound(u"This folder is not visible to AI (excluded in Win顺's settings): "_s + folder));
-            const EntryId id = index->findPath(indexPath(folder));
-            if (id == kNoEntry)
-                return finish(call, notFound(u"The folder is not in the index: it may not exist, be excluded from indexing, or be on a drive that is not indexed. Check it with get_file_info: "_s + folder));
-            if (!index->entry(id).isDir())
-                return finish(call, {{}, true, u"The path is a file, not a folder: "_s + folder});
-            if (index->entry(id).flags & EntryFlag::Remote)
-                return finish(call, {{}, true, u"The folder is on a network share: Win顺 does not read file contents there. "_s + folder});
-            folder = QString::fromStdWString(index->wpath(id));
-        }
+    for (QString& folder : folders) {
+        folder = folder.trimmed();
+        if (excluded(folder))
+            return finish(call, notFound(u"This folder is not visible to AI (excluded in Win顺's settings): "_s + folder));
     }
+    // As search_files' (checkFolders): checked once the engine answered, or
+    // without a search for one that is not a folder to read in.
+    std::vector<FolderArg> under;
+    if (!folders.isEmpty())
+        under = lookUp(*m_services.index->index(), folders);
+    if (answeredWithoutSearch(under, m_services.offline, true)) {
+        return runAside(call, [under, offline = m_services.offline](AsideContext& aside) {
+            return checkFolders(aside, under, offline, true).value_or(notFound(notInIndex(under.front().given)));
+        });
+    }
+    folders.clear();
+    for (const FolderArg& folder : under)
+        folders.push_back(folder.path);
 
     SearchEngine::Request request;
     request.text = query;
@@ -1504,8 +2030,9 @@ void ToolHost::searchContent(const std::shared_ptr<Call>& call)
     Active& active = *lane.active;
     active.content = true;
     active.limit = limit;
+    active.folders = std::move(under);
     active.requestId = lane.engine->submit(std::move(request));
-    lane.timeout.start(timeout);
+    lane.timeout.start(std::chrono::milliseconds(left));
 }
 
 void ToolHost::recentFiles(const std::shared_ptr<Call>& call)
@@ -1543,10 +2070,9 @@ void ToolHost::recentFiles(const std::shared_ptr<Call>& call)
 
     // The scan of the index (millions of entries), and the checks and sizes
     // from the disk: aside.
-    m_others.push_back(call);
     AsideWork work = [this, folder, wanted = std::move(wanted), skipped = std::move(skipped), days, kind, system, hidden, limit,
-                         shape = call->shape(sizes), excluded = m_excluded,
-                         service = m_services.index](const std::stop_token& stop, Visibility& view) -> ToolResult {
+                         shape = call->shape(sizes), cli = call->cli, excluded = m_excluded, offline = m_services.offline,
+                         service = m_services.index](AsideContext& aside) -> ToolResult {
         QElapsedTimer timer;
         timer.start();
         struct Hit {
@@ -1560,25 +2086,34 @@ void ToolHost::recentFiles(const std::shared_ptr<Call>& call)
             FileTime modified;
         };
         const auto index = service->index();
+        if (!folder.isEmpty()) {
+            if (std::optional<ToolResult> problem = checkFolders(aside, lookUp(*index, {folder}), offline, false))
+                return *std::move(problem);
+        }
         std::vector<Hit> hits;
         std::vector<Row> rows;
+        bool cut = false; // more matched than were kept: some older than the last row
         {
-            const auto lock = index->readLock();
+            // One scan at a time, the pool taken before the index (it waits
+            // for no other scan holding a lock); the index read for long
+            // without holding up its searches (longReadLock).
+            const std::lock_guard scan(m_scanMutex);
+            const auto lock = index->longReadLock();
             EntryId under = kNoEntry;
             if (!folder.isEmpty()) {
+                // Again: it may have gone since it was checked.
                 under = index->findPath(indexPath(folder));
-                if (under == kNoEntry)
-                    return notFound(u"The folder is not in the index: it may not exist, be excluded from indexing, or be on a drive that is not indexed. Check it with get_file_info."_s);
-                if (!index->entry(under).isDir())
-                    return failure(u"The path is a file, not a folder."_s);
+                if (under == kNoEntry || !index->entry(under).isDir())
+                    return notFound(notInIndex(folder));
             }
             const FileTime since = days > 0
                 ? static_cast<FileTime>(std::max<qint64>(1, QDateTime::currentSecsSinceEpoch() - static_cast<qint64>(days) * 86400))
                 : 1;
             const std::size_t keep = static_cast<std::size_t>(limit) * 2; // some may be excluded afterwards
             std::vector<std::vector<Hit>> found(index->chunkCount());
+            std::vector<char> overflowed(index->chunkCount(), 0); // a chunk had more than `keep`
             m_pool.parallelFor(index->chunkCount(), [&](std::size_t c) {
-                if (stop.stop_requested())
+                if (aside.stopped())
                     return;
                 std::unordered_map<EntryId, bool> below; // folder -> under `under`
                 const auto isUnder = [&](EntryId id) {
@@ -1621,7 +2156,10 @@ void ToolHost::recentFiles(const std::shared_ptr<Call>& call)
                     const FileTime modified = index->modified(id);
                     if (modified < since)
                         continue;
-                    if (!mine.empty() && mine.size() >= keep && modified <= mine.front().modified)
+                    // Older than the oldest of a full heap: not kept. Once
+                    // one such was found to match, the rest need not be.
+                    const bool older = mine.size() >= keep && modified <= mine.front().modified;
+                    if (older && overflowed[c])
                         continue;
                     if (!wanted.empty()) {
                         if (e.isDir())
@@ -1647,18 +2185,24 @@ void ToolHost::recentFiles(const std::shared_ptr<Call>& call)
                     }
                     if (!isUnder(id))
                         continue;
+                    if (older) {
+                        overflowed[c] = 1;
+                        continue;
+                    }
                     mine.push_back({id, modified});
                     std::ranges::push_heap(mine, byTime);
                     if (mine.size() > keep) {
                         std::ranges::pop_heap(mine, byTime);
                         mine.pop_back();
+                        overflowed[c] = 1;
                     }
                 }
             });
-            if (stop.stop_requested())
+            if (aside.stopped())
                 return {};
             for (auto& f : found)
                 hits.insert(hits.end(), f.begin(), f.end());
+            cut = std::ranges::any_of(overflowed, [](char o) { return o != 0; });
             // The newest `keep` of them, newest first: with ws's limits each
             // chunk keeps nearly all it has, millions together, of which a
             // selection is linear where a sort of them all was not.
@@ -1666,6 +2210,7 @@ void ToolHost::recentFiles(const std::shared_ptr<Call>& call)
             if (hits.size() > keep) {
                 std::ranges::nth_element(hits, hits.begin() + static_cast<std::ptrdiff_t>(keep), newer);
                 hits.resize(keep);
+                cut = true;
             }
             std::ranges::sort(hits, newer);
             rows.reserve(hits.size());
@@ -1675,27 +2220,30 @@ void ToolHost::recentFiles(const std::shared_ptr<Call>& call)
             }
         }
         // The access checks and the sizes go to the disk: not under the index's lock.
+        Budget budget(cli);
         QJsonArray items;
+        bool beyond = false; // one more to show than the limit takes
         for (const Row& row : rows) {
-            if (stop.stop_requested())
+            if (aside.stopped())
                 return {};
-            if (excludedIndexPath(excluded, row.path) || !view.sees(row.path))
+            if (offline(row.path) || excludedIndexPath(excluded, row.path) || !aside.sees(row.path))
                 continue;
-            if (items.size() >= limit)
+            if (items.size() >= limit) {
+                beyond = true;
                 break;
-            items.push_back(fileItem(row.path, row.name, row.isDir, row.modified, shape));
+            }
+            const QJsonObject item = fileItem(aside, row.path, row.name, row.isDir, row.modified, shape);
+            if (!budget.take(item))
+                break;
+            items.push_back(item);
         }
-        QJsonObject out {{u"items"_s, items}, {u"returned"_s, items.size()}, {u"elapsed_ms"_s, static_cast<double>(timer.elapsed())}};
+        QJsonObject out {{u"items"_s, items}, {u"returned"_s, items.size()}, {u"truncated"_s, beyond || budget.cut() || cut},
+            {u"elapsed_ms"_s, static_cast<double>(timer.elapsed())}};
         if (service->state() != IndexService::State::Ready)
             out.insert(u"index_state"_s, stateName(service->state()));
         return {out};
     };
-    aside(call, std::move(work), [this, call](ToolResult result) {
-        if (std::ranges::find(m_others, call) == m_others.end())
-            return; // cancelled
-        std::erase(m_others, call);
-        finish(call, std::move(result));
-    });
+    runAside(call, std::move(work));
 }
 
 void ToolHost::listFolder(const std::shared_ptr<Call>& call)
@@ -1714,9 +2262,15 @@ void ToolHost::listFolder(const std::shared_ptr<Call>& call)
 
     // A large folder holds tens of thousands, each with its size from the
     // disk unless asked not to: aside.
-    m_others.push_back(call);
-    AsideWork work = [path, kind, limit, shape = call->shape(sizes), excluded = m_excluded,
-                         service = m_services.index](const std::stop_token& stop, Visibility& view) -> ToolResult {
+    AsideWork work = [path, kind, limit, shape = call->shape(sizes), cli = call->cli, excluded = m_excluded,
+                         offline = m_services.offline, service = m_services.index](AsideContext& aside) -> ToolResult {
+        const auto index = service->index();
+        // A folder the caller cannot list is, to it, not there: the same
+        // answer as for one that is not in the index; nor is a file it
+        // cannot see a file. Its entries' names are all visible once it can
+        // be listed.
+        if (std::optional<ToolResult> problem = checkFolders(aside, lookUp(*index, {path}), offline, false))
+            return *std::move(problem);
         struct Child {
             QString name;
             bool isDir;
@@ -1725,13 +2279,12 @@ void ToolHost::listFolder(const std::shared_ptr<Call>& call)
         std::vector<Child> children;
         QString folderPath;
         {
-            const auto index = service->index();
-            const auto lock = index->readLock();
+            // Hundreds of thousands, it may be: read for long without
+            // holding up the index's searches.
+            const auto lock = index->longReadLock();
             const EntryId folder = index->findPath(indexPath(path));
-            if (folder == kNoEntry)
-                return notFound(u"The folder is not in the index: it may not exist, be excluded from indexing, or be on a drive that is not indexed. Check it with get_file_info."_s);
-            if (!index->entry(folder).isDir())
-                return failure(u"The path is a file, not a folder."_s);
+            if (folder == kNoEntry || !index->entry(folder).isDir())
+                return notFound(notInIndex(path)); // gone since it was checked
             folderPath = index->path(folder);
             for (EntryId child = index->entry(folder).firstChild; child != kNoEntry; child = index->entry(child).nextSibling) {
                 const Entry& e = index->entry(child);
@@ -1742,36 +2295,34 @@ void ToolHost::listFolder(const std::shared_ptr<Call>& call)
                 children.push_back({wtf8::toQString(index->name(e)), e.isDir(), index->modified(child)});
             }
         }
-        // A folder the caller cannot list is, to it, not there: the same
-        // answer as for one that is not in the index. Its entries' names are
-        // all visible once it can be listed.
-        if (!view.canList(folderPath))
-            return notFound(u"The folder is not in the index: it may not exist, be excluded from indexing, or be on a drive that is not indexed. Check it with get_file_info."_s);
+        if (aside.stopped())
+            return {};
         std::ranges::sort(children, [](const Child& a, const Child& b) {
             if (a.isDir != b.isDir)
                 return a.isDir;
             return QString::compare(a.name, b.name, Qt::CaseInsensitive) < 0;
         });
+        const QString prefix = folderPath.endsWith(u'\\') ? folderPath : folderPath + u'\\';
+        Budget budget(cli);
         QJsonArray items;
+        qint64 total = 0; // the entries the caller may see: not those in folders AI never sees
         for (const Child& child : children) {
-            if (stop.stop_requested())
+            if (aside.stopped())
                 return {};
-            if (items.size() >= limit)
-                break;
-            const QString childPath = folderPath + (folderPath.endsWith(u'\\') ? u""_s : u"\\"_s) + child.name;
+            const QString childPath = prefix + child.name;
             if (excludedIndexPath(excluded, childPath))
                 continue;
-            items.push_back(fileItem(childPath, child.name, child.isDir, child.modified, shape));
+            ++total;
+            if (items.size() >= limit || budget.cut())
+                continue;
+            const QJsonObject item = fileItem(aside, childPath, child.name, child.isDir, child.modified, shape);
+            if (budget.take(item))
+                items.push_back(item);
         }
-        return {{{u"path"_s, folderPath}, {u"items"_s, items}, {u"returned"_s, items.size()},
-            {u"total"_s, static_cast<qint64>(children.size())}, {u"truncated"_s, std::ssize(children) > items.size()}}};
+        return {{{u"path"_s, folderPath}, {u"items"_s, items}, {u"returned"_s, items.size()}, {u"total"_s, total},
+            {u"truncated"_s, total > items.size()}}};
     };
-    aside(call, std::move(work), [this, call](ToolResult result) {
-        if (std::ranges::find(m_others, call) == m_others.end())
-            return; // cancelled
-        std::erase(m_others, call);
-        finish(call, std::move(result));
-    });
+    runAside(call, std::move(work));
 }
 
 void ToolHost::fileInfo(const std::shared_ptr<Call>& call)
@@ -1782,42 +2333,43 @@ void ToolHost::fileInfo(const std::shared_ptr<Call>& call)
         return finish(call, {{}, true, args.error()});
     if (given.isEmpty())
         return finish(call, {{}, true, u"path is empty"_s});
-    if (excluded(given))
-        return finish(call, {{}, true, u"This path is not visible to AI (excluded in Win顺's settings)."_s});
     const QString path = nativePath(given);
-    WIN32_FILE_ATTRIBUTE_DATA data {};
-    if (!::GetFileAttributesExW(win32::longPath(path.toStdWString()).c_str(), GetFileExInfoStandard, &data)) {
-        const DWORD error = ::GetLastError();
+    if (std::optional<ToolResult> problem = pathProblem(m_excluded, given, path))
+        return finish(call, *std::move(problem));
+    // The disk (a share: the network): aside.
+    AsideWork work = [path, excluded = m_excluded, offline = m_services.offline, service = m_services.index](AsideContext& aside) -> ToolResult {
+        const Opened opened = openGiven(aside, path, excluded, offline);
         QJsonObject out {{u"exists"_s, false}, {u"path"_s, path}};
-        if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PATH_NOT_FOUND && error != ERROR_INVALID_NAME)
-            out.insert(u"error"_s, u"Cannot be read (Win32 error %1)"_s.arg(error));
-        return finish(call, {out});
-    }
-    // What the caller could not see or read the attributes of is, to it, not there.
-    Visibility view(call->token);
-    const bool visible = view.sees(path) && view.canReadAttributes(path);
-    call->checked(view);
-    if (!visible)
-        return finish(call, {{{u"exists"_s, false}, {u"path"_s, path}}});
-    const bool isDir = data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY;
-    const QString name = path.section(u'\\', -1);
-    QJsonObject out {{u"exists"_s, true}, {u"path"_s, path}, {u"name"_s, name}, {u"type"_s, isDir ? u"folder"_s : u"file"_s},
-        {u"created"_s, isoFileTime(data.ftCreationTime)}, {u"modified"_s, isoFileTime(data.ftLastWriteTime)},
-        {u"accessed"_s, isoFileTime(data.ftLastAccessTime)}, {u"hidden"_s, (data.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) != 0},
-        {u"read_only"_s, (data.dwFileAttributes & FILE_ATTRIBUTE_READONLY) != 0},
-        {u"system"_s, (data.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM) != 0},
-        {u"cloud_placeholder"_s, (data.dwFileAttributes & (FILE_ATTRIBUTE_OFFLINE | FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS)) != 0}};
-    if (!isDir) {
-        out.insert(u"size"_s, static_cast<qint64>((static_cast<quint64>(data.nFileSizeHigh) << 32) | data.nFileSizeLow));
-        if (const qsizetype dot = name.lastIndexOf(u'.'); dot > 0)
-            out.insert(u"extension"_s, name.mid(dot + 1).toLower());
-    }
-    {
-        const auto index = m_services.index->index();
-        const auto lock = index->readLock();
-        out.insert(u"indexed"_s, index->findPath(indexPath(path)) != kNoEntry);
-    }
-    finish(call, {out});
+        if (opened.reach == Reach::Unreachable)
+            out.insert(u"error"_s, u"Its network share cannot be reached now"_s);
+        else if (opened.reach == Reach::Error)
+            out.insert(u"error"_s, u"Cannot be read (Win32 error %1)"_s.arg(opened.error));
+        // What the caller could not see or read the attributes of is, to it,
+        // not there: where the path led (a link's target) is what counts.
+        if (opened.reach != Reach::Ok || !aside.sees(opened.path) || !aside.canReadAttributes(opened.path))
+            return {out};
+        const BY_HANDLE_FILE_INFORMATION& data = opened.info;
+        const QString name = path.section(u'\\', -1);
+        out = {{u"exists"_s, true}, {u"path"_s, path}, {u"name"_s, name}, {u"type"_s, opened.isDir() ? u"folder"_s : u"file"_s},
+            {u"created"_s, isoFileTime(data.ftCreationTime)}, {u"modified"_s, isoFileTime(data.ftLastWriteTime)},
+            {u"accessed"_s, isoFileTime(data.ftLastAccessTime)}, {u"hidden"_s, (data.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) != 0},
+            {u"read_only"_s, (data.dwFileAttributes & FILE_ATTRIBUTE_READONLY) != 0},
+            {u"system"_s, (data.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM) != 0},
+            {u"cloud_placeholder"_s,
+                (data.dwFileAttributes & (FILE_ATTRIBUTE_OFFLINE | FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS | FILE_ATTRIBUTE_RECALL_ON_OPEN)) != 0}};
+        if (!opened.isDir()) {
+            out.insert(u"size"_s, static_cast<qint64>((static_cast<quint64>(data.nFileSizeHigh) << 32) | data.nFileSizeLow));
+            if (const qsizetype dot = name.lastIndexOf(u'.'); dot > 0)
+                out.insert(u"extension"_s, name.mid(dot + 1).toLower());
+        }
+        {
+            const auto index = service->index();
+            const auto lock = index->readLock();
+            out.insert(u"indexed"_s, index->findPath(indexPath(opened.path)) != kNoEntry);
+        }
+        return {out};
+    };
+    runAside(call, std::move(work));
 }
 
 void ToolHost::openItem(const std::shared_ptr<Call>& call, bool reveal)
@@ -1828,31 +2380,41 @@ void ToolHost::openItem(const std::shared_ptr<Call>& call, bool reveal)
         return finish(call, {{}, true, args.error()});
     if (given.isEmpty())
         return finish(call, {{}, true, u"path is empty"_s});
-    if (excluded(given))
-        return finish(call, {{}, true, u"This path is not visible to AI (excluded in Win顺's settings)."_s});
     const QString path = nativePath(given);
-    const DWORD attributes = ::GetFileAttributesW(win32::longPath(path.toStdWString()).c_str());
-    if (attributes == INVALID_FILE_ATTRIBUTES)
-        return finish(call, {{}, true, u"There is no such file or folder: "_s + path});
-    // Only what the caller could open itself; the rest is, to it, not there.
-    Visibility view(call->token);
-    const bool isDir = attributes & FILE_ATTRIBUTE_DIRECTORY;
-    const bool visible = view.sees(path) && (isDir ? view.canList(path) : view.canRead(path));
-    call->checked(view);
-    if (!visible)
-        return finish(call, {{}, true, u"There is no such file or folder: "_s + path});
+    if (std::optional<ToolResult> problem = pathProblem(m_excluded, given, path))
+        return finish(call, *std::move(problem));
+    // The checks go to the disk: aside. Only what the caller could open
+    // itself; the rest is, to it, not there.
+    AsideWork work = [path, excluded = m_excluded, offline = m_services.offline](AsideContext& aside) -> ToolResult {
+        const Opened opened = openGiven(aside, path, excluded, offline);
+        if (opened.reach != Reach::Ok || !aside.sees(opened.path)
+            || !(opened.isDir() ? aside.canList(opened.path) : aside.canRead(opened.path)))
+            return notFound(u"There is no such file or folder: "_s + path);
+        return {{{u"path"_s, opened.path}}};
+    };
     m_others.push_back(call);
-    const auto& action = reveal ? m_services.reveal : m_services.open;
-    action(path, [this, call, path](bool ok) {
-        // Any thread: back to ours.
-        QMetaObject::invokeMethod(this, [this, call, path, ok] {
+    aside(call, std::move(work), [this, call, reveal](ToolResult checked) {
+        if (std::ranges::find(m_others, call) == m_others.end())
+            return; // cancelled
+        if (checked.isError) {
             std::erase(m_others, call);
-            if (ok)
-                finish(call, {{{u"opened"_s, true}, {u"path"_s, path}}});
-            else
-                finish(call, {{}, true, u"Could not open it: no Explorer to open it with the user's normal rights. The user can try again in a moment."_s});
-        }, Qt::QueuedConnection);
-    });
+            return finish(call, std::move(checked));
+        }
+        // What the path led to, as it was checked (a link's target, the long
+        // names), is what opens.
+        const QString target = checked.structured.value(u"path"_s).toString();
+        const auto& action = reveal ? m_services.reveal : m_services.open;
+        action(target, [this, call, target](bool ok) {
+            // Any thread: back to ours.
+            QMetaObject::invokeMethod(this, [this, call, target, ok] {
+                std::erase(m_others, call);
+                if (ok)
+                    finish(call, {{{u"opened"_s, true}, {u"path"_s, target}}});
+                else
+                    finish(call, {{}, true, u"Could not open it: no Explorer to open it with the user's normal rights. The user can try again in a moment."_s});
+            }, Qt::QueuedConnection);
+        });
+    }, false);
 }
 
 void ToolHost::clipboardHistory(const std::shared_ptr<Call>& call)
@@ -1978,22 +2540,26 @@ void ToolHost::readFileText(const std::shared_ptr<Call>& call)
         return finish(call, {{}, true, args.error()});
     if (given.isEmpty())
         return finish(call, {{}, true, u"path is empty"_s});
-    if (excluded(given))
-        return finish(call, notFound(u"This path is not visible to AI (excluded in Win顺's settings)."_s));
     const QString path = nativePath(given);
+    if (std::optional<ToolResult> problem = pathProblem(m_excluded, given, path))
+        return finish(call, *std::move(problem));
 
     if (!m_extractor)
         m_extractor = std::make_unique<DocExtractor>(1, DocExtractor::Priority::Normal);
     filetext::Sources sources {m_services.index->index(), m_services.index->contentIndex(), m_extractor.get()};
-    const std::int64_t maxBytes = m_policy.contentSizeLimits.of(path.toStdWString());
-    m_others.push_back(call);
-    // The access checks, the disk and the extractor: aside, back here with the text.
-    AsideWork work = [path, sources, maxBytes, offset, maxChars](const std::stop_token& stop, Visibility& view) -> ToolResult {
-        // Only what the caller could read itself; the rest is, to it, not there.
-        if (!view.sees(path) || !view.canRead(path))
+    // The access checks, the disk and the extractor: aside.
+    AsideWork work = [path, sources, sizeLimits = m_policy.contentSizeLimits, offset, maxChars, cli = call->cli, excluded = m_excluded,
+                         offline = m_services.offline](AsideContext& aside) -> ToolResult {
+        // Only what the caller could read itself; the rest is, to it, not
+        // there. What the path led to is what is checked, and read: through
+        // the handle that was checked.
+        const Opened opened = openGiven(aside, path, excluded, offline);
+        if (opened.reach != Reach::Ok || !aside.sees(opened.path) || !aside.canRead(opened.path))
             return notFound(u"There is no such file: "_s + path);
-        const filetext::Result read = filetext::read(path.toStdWString(), sources, maxBytes, [&stop] { return stop.stop_requested(); });
-        if (stop.stop_requested())
+        const std::wstring final = opened.path.toStdWString();
+        aside.quiet.at(opened.path);
+        const filetext::Result read = filetext::read(opened.handle.get(), final, sources, sizeLimits.of(final), [&aside] { return aside.stopped(); });
+        if (aside.stopped())
             return {};
         using filetext::Status;
         switch (read.status) {
@@ -2017,6 +2583,10 @@ void ToolHost::readFileText(const std::shared_ptr<Call>& call)
         qsizetype to = std::min<qsizetype>(from + maxChars, chars);
         if (to < chars && to > from && read.text.at(to - 1).isHighSurrogate())
             --to; // not half a character
+        // No more than one answer holds (kAnswerBudget): the rest from next_offset.
+        Budget budget(cli);
+        budget.takeBytes(stringJsonBytes(path) + 1024); // the rest of the answer
+        to = fitText(read.text, from, to, budget.left());
         QJsonObject out {{u"path"_s, path}, {u"kind"_s, read.document ? u"document"_s : u"text"_s},
             {u"text"_s, read.text.mid(from, to - from)}, {u"chars"_s, chars}, {u"offset"_s, from}, {u"cut"_s, read.cut}};
         if (to < chars)
@@ -2026,12 +2596,7 @@ void ToolHost::readFileText(const std::shared_ptr<Call>& call)
                                                 : u"The file is empty."_s);
         return {out};
     };
-    aside(call, std::move(work), [this, call](ToolResult result) {
-        if (std::ranges::find(m_others, call) == m_others.end())
-            return; // cancelled
-        std::erase(m_others, call);
-        finish(call, std::move(result));
-    });
+    runAside(call, std::move(work));
 }
 
 void ToolHost::listDocuments(const std::shared_ptr<Call>& call)
@@ -2064,63 +2629,78 @@ void ToolHost::listDocuments(const std::shared_ptr<Call>& call)
             wanted.push_back(ext.toLower().toStdString());
     }
 
-    struct Row {
-        QString path;
-        std::uint32_t stamp;
-        bool document;
-    };
-    std::vector<Row> rows;
-    std::optional<EntryId> next;
-    const std::vector<ContentIndex::DocInfo> documents = content->documents(); // ascending by entry
-    {
-        const auto index = m_services.index->index();
-        const auto lock = index->readLock();
-        auto it = std::ranges::lower_bound(documents, static_cast<EntryId>(cursor), {}, &ContentIndex::DocInfo::entry);
-        for (; it != documents.end(); ++it) {
-            if (std::ssize(rows) >= limit) {
-                next = it->entry;
+    // The index's lock and the access checks: aside.
+    AsideWork work = [content, service = m_services.index, folders = std::move(folders), wanted = std::move(wanted), system, cursor,
+                         limit, cli = call->cli, reading = m_services.index->readingContent(),
+                         excluded = m_excluded](AsideContext& aside) -> ToolResult {
+        struct Row {
+            QString path;
+            EntryId entry;
+            std::uint32_t stamp;
+            bool document;
+        };
+        std::vector<Row> rows;
+        std::optional<EntryId> next;
+        const std::vector<ContentIndex::DocInfo> documents = content->documents(); // ascending by entry
+        {
+            // All the documents, it may be, to find a page in some folders:
+            // read for long without holding up the index's searches.
+            const auto index = service->index();
+            const auto lock = index->longReadLock();
+            auto it = std::ranges::lower_bound(documents, static_cast<EntryId>(cursor), {}, &ContentIndex::DocInfo::entry);
+            for (; it != documents.end(); ++it) {
+                if (std::ssize(rows) >= limit) {
+                    next = it->entry;
+                    break;
+                }
+                // One being read again has no current text yet: it comes in a later listing.
+                if (it->need != ContentIndex::Need::None || it->entry >= index->slotCount())
+                    continue;
+                const Entry& e = index->entry(it->entry);
+                if (e.isDeleted() || e.isDir() || (!system && (e.flags & EntryFlag::LowPriority)))
+                    continue;
+                if (!wanted.empty()) {
+                    std::size_t extLength = 0;
+                    const std::string_view name = index->fileName(e, extLength);
+                    if (extLength == 0)
+                        continue;
+                    std::string ext(name.substr(name.size() - extLength));
+                    std::ranges::transform(ext, ext.begin(), [](char ch) { return static_cast<char>(std::tolower(static_cast<unsigned char>(ch))); });
+                    if (std::ranges::find(wanted, ext) == wanted.end())
+                        continue;
+                }
+                QString path = index->path(it->entry);
+                if (!folders.empty()) {
+                    const QString folded = path.toCaseFolded();
+                    if (std::ranges::none_of(folders, [&](const QString& f) { return folded.startsWith(f); }))
+                        continue;
+                }
+                const bool document = isDocumentPath(path.toStdWString());
+                rows.push_back({std::move(path), it->entry, it->stamp, document});
+            }
+        }
+        // What the caller could not read is, to it, not there.
+        Budget budget(cli);
+        QJsonArray items;
+        for (const Row& row : rows) {
+            if (aside.stopped())
+                return {};
+            if (excludedIndexPath(excluded, row.path) || !aside.sees(row.path) || !aside.canRead(row.path))
+                continue;
+            const QJsonObject item {{u"path"_s, row.path}, {u"kind"_s, row.document ? u"document"_s : u"text"_s},
+                {u"stamp"_s, static_cast<qint64>(row.stamp)}};
+            if (!budget.take(item)) {
+                next = row.entry; // the next page goes on from here
                 break;
             }
-            // One being read again has no current text yet: it comes in a later listing.
-            if (it->need != ContentIndex::Need::None || it->entry >= index->slotCount())
-                continue;
-            const Entry& e = index->entry(it->entry);
-            if (e.isDeleted() || e.isDir() || (!system && (e.flags & EntryFlag::LowPriority)))
-                continue;
-            if (!wanted.empty()) {
-                std::size_t extLength = 0;
-                const std::string_view name = index->fileName(e, extLength);
-                if (extLength == 0)
-                    continue;
-                std::string ext(name.substr(name.size() - extLength));
-                std::ranges::transform(ext, ext.begin(), [](char ch) { return static_cast<char>(std::tolower(static_cast<unsigned char>(ch))); });
-                if (std::ranges::find(wanted, ext) == wanted.end())
-                    continue;
-            }
-            QString path = index->path(it->entry);
-            if (!folders.empty()) {
-                const QString folded = path.toCaseFolded();
-                if (std::ranges::none_of(folders, [&](const QString& f) { return folded.startsWith(f); }))
-                    continue;
-            }
-            const bool document = isDocumentPath(path.toStdWString());
-            rows.push_back({std::move(path), it->stamp, document});
+            items.push_back(item);
         }
-    }
-    // What the caller could not read is, to it, not there.
-    Visibility view(call->token);
-    QJsonArray items;
-    for (const Row& row : rows) {
-        if (excluded(row.path) || !view.sees(row.path) || !view.canRead(row.path))
-            continue;
-        items.push_back(QJsonObject {{u"path"_s, row.path}, {u"kind"_s, row.document ? u"document"_s : u"text"_s},
-            {u"stamp"_s, static_cast<qint64>(row.stamp)}});
-    }
-    call->checked(view);
-    QJsonObject out {{u"items"_s, items}, {u"returned"_s, items.size()}, {u"reading"_s, m_services.index->readingContent()}};
-    if (next)
-        out.insert(u"next_cursor"_s, static_cast<qint64>(*next));
-    finish(call, {out});
+        QJsonObject out {{u"items"_s, items}, {u"returned"_s, items.size()}, {u"reading"_s, reading}};
+        if (next)
+            out.insert(u"next_cursor"_s, static_cast<qint64>(*next));
+        return {out};
+    };
+    runAside(call, std::move(work));
 }
 
 void ToolHost::indexStatus(const std::shared_ptr<Call>& call)
@@ -2150,7 +2730,9 @@ void ToolHost::indexStatus(const std::shared_ptr<Call>& call)
         content.insert(u"enabled"_s, false);
     }
     const QJsonObject ai {{u"open_allowed"_s, m_policy.allowOpen && m_services.open != nullptr},
-        {u"clipboard_allowed"_s, m_policy.allowClipboard && m_services.clipboard != nullptr},
+        // Allowed and there to read: with Win顺's clipboard history off there is none.
+        {u"clipboard_allowed"_s, m_policy.allowClipboard && m_policy.clipboardHistory && m_services.clipboard != nullptr},
+        {u"clipboard_history"_s, m_policy.clipboardHistory},
         {u"screenshot_allowed"_s, m_policy.allowScreenshot && m_services.takeScreenshot != nullptr},
         {u"capture_enabled"_s, m_policy.captureEnabled},
         {u"settings_mode"_s, QString::fromLatin1(settingsModeName(m_policy.settingsMode))},
