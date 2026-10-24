@@ -32,6 +32,8 @@ Result<Exit> runText(Context& context)
             given += L' ';
         given += word;
     }
+    if (Result<void> clean = noQuoteIn(given); !clean)
+        return std::move(clean).failure();
     const std::wstring path = absolutePath(given);
     const PathKind kindHere = pathKind(path);
     if (args.words.size() > 1 && kindHere == PathKind::None)

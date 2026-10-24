@@ -86,6 +86,10 @@ inline constexpr Text kRecentNoWords {L"ws recent 不接查询词：限定文件
 inline constexpr Text kOneIn {L"ws {} 只能有一个 --in", L"ws {} takes one --in"};
 inline constexpr Text kRecentHiddenPlaces {L"这里改过的只有系统、程序或工具文件夹里的文件（或隐藏文件）：平时不列，这次一并列出",
     L"Only files in system, program or tool folders (or hidden ones) changed here: usually left out, listed this time"};
+inline constexpr Text kQuoteInPath {
+    L"路径里有引号：{}\n在 cmd 和 PowerShell 5.1 里，\"C:\\文件夹\\\" 末尾的反斜杠会把后面的引号吃掉，后面的参数也被并了进来；去掉路径末尾的反斜杠就行",
+    L"The path has a quote in it: {}\nIn cmd and PowerShell 5.1 the backslash before the closing quote of \"C:\\My Folder\\\" "
+    L"swallows the quote, and the arguments after it with it; leave the trailing backslash off the path"};
 inline constexpr Text kFilesOrFolders {L"--files 和 --folders 只能选一个", L"Use --files or --folders, not both"};
 inline constexpr Text kNoFolder {L"没有这个文件夹：{}", L"There is no such folder: {}"};
 inline constexpr Text kMissingQuery {L"少了要找的东西；ws help 看用法", L"Nothing to look for; see ws help"};
@@ -102,6 +106,10 @@ inline constexpr Text kNoTextDocument {L"没有读出文字：可能是扫描件
 inline constexpr Text kEmptyFile {L"文件是空的", L"The file is empty"};
 inline constexpr Text kSkillInstalled {L"装好了：Claude Code 从下一个对话起就会用它", L"Installed: Claude Code uses it from its next conversation"};
 inline constexpr Text kSkillWriteFailed {L"写不进 {}：{}", L"Could not write {}: {}"};
+inline constexpr Text kConfigDirRelative {L"CLAUDE_CONFIG_DIR 要写完整路径（含盘符），现在是：{}；没有装 Skill",
+    L"CLAUDE_CONFIG_DIR must be a full path (with the drive), it is: {}; the Skill was not installed"};
+inline constexpr Text kNoProfile {L"找不到你的用户文件夹，没有装 Skill（可以设 CLAUDE_CONFIG_DIR 指定 Claude Code 的文件夹）",
+    L"Cannot find your user profile folder, so the Skill was not installed (set CLAUDE_CONFIG_DIR to name Claude Code's folder)"};
 inline constexpr Text kSkillMissing {L"这个 ws.exe 里没有 SKILL.md", L"This ws.exe has no SKILL.md in it"};
 
 } // namespace ws::cli::msg

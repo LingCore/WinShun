@@ -23,7 +23,9 @@
 #include "Output.h"
 #include "Run.h"
 #include "Session.h"
+#include "Skill.h"
 #include "Text.h"
+#include "Win.h"
 
 #include "IndexService.h"
 #include "McpServer.h"
@@ -44,6 +46,8 @@
 #include <QTest>
 
 #include <windows.h>
+
+#include <shlobj.h>
 
 #include <algorithm>
 #include <atomic>
@@ -800,7 +804,13 @@ private slots:
         QCOMPARE(cli::firstWord(std::vector<std::wstring> {L"--in", L".", L"报告"}), std::optional<std::size_t>(2));
         QCOMPARE(cli::firstWord(std::vector<std::wstring> {L"-n20", L"报告"}), std::optional<std::size_t>(1));
         QVERIFY(cli::commandNamed(L"RECENT") == cli::commandNamed(L"recent"));
-        QVERIFY(cli::commandNamed(L"search") == &cli::defaultCommand());
+        // Only the documented names: an alias would take a word from a query (ws dir listed instead of searching "dir").
+        for (const wchar_t* alias : {L"search", L"read", L"dir", L"clipboard"})
+            QVERIFY2(!cli::commandNamed(alias), qPrintable(QString::fromWCharArray(alias)));
+        QStringList names;
+        for (const cli::Command& command : cli::commandTable())
+            names << QString::fromStdWString(std::wstring(command.name));
+        QCOMPARE(names, (QStringList {u"find"_s, u"grep"_s, u"recent"_s, u"text"_s, u"ls"_s, u"open"_s, u"clip"_s, u"status"_s, u"skill"_s, u"help"_s}));
         QVERIFY(!cli::commandNamed(L"报告"));
 
         QCOMPARE(cli::editDistance(L"exts", L"ext"), std::size_t {1});
@@ -1374,6 +1384,113 @@ private slots:
         QCOMPARE(r.code, 2);
     }
 
+    // Paths ws looks at itself: short and long.
+    void pathsAsWsSeesThem()
+    {
+        // 8.3 short names are the long ones the index knows (C:\Users\ADMINI~1 for a user with a long name).
+        const QString longName = native(m_scratch.path() + u"/A Rather Long Folder Name"_s);
+        QVERIFY(QDir().mkpath(longName));
+        QVERIFY(writeFile(longName + u"\\file with a long name.txt"_s, "x"));
+        wchar_t shortForm[MAX_PATH] {};
+        const DWORD n = ::GetShortPathNameW(longName.toStdWString().c_str(), shortForm, MAX_PATH);
+        if (n > 0 && n < MAX_PATH && QString::fromWCharArray(shortForm).contains(u'~')) {
+            const QString shortPath = QString::fromWCharArray(shortForm);
+            QCOMPARE(QString::fromStdWString(cli::absolutePath(shortPath.toStdWString())).toLower(), longName.toLower());
+            // Relative to a current folder that is a short name too.
+            QCOMPARE(QString::fromStdWString(cli::absolutePath((shortPath + u"\\.").toStdWString())).toLower(), longName.toLower());
+            // One that is not there stays as written (nothing to ask the disk).
+            QCOMPARE(QString::fromStdWString(cli::absolutePath(L"X:\\nowhere~1\\x")), u"X:\\nowhere~1\\x"_s);
+        } else {
+            qInfo("this volume keeps no 8.3 names: the expansion is not tried");
+        }
+        // A path over MAX_PATH is seen: exists, a folder, a file (the \\?\ form for the local checks).
+        QString deep = native(m_scratch.path());
+        QString extended = u"\\\\?\\"_s + deep; // the prefix: the only form that can make them
+        while (deep.size() < 300) {
+            const QString part = u"\\a-folder-with-a-longish-name"_s;
+            deep += part;
+            extended += part;
+            QVERIFY2(::CreateDirectoryW(extended.toStdWString().c_str(), nullptr) || ::GetLastError() == ERROR_ALREADY_EXISTS, "cannot make the deep folder");
+        }
+        const HANDLE file = ::CreateFileW((extended + u"\\deep.txt"_s).toStdWString().c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        QVERIFY(file != INVALID_HANDLE_VALUE);
+        ::CloseHandle(file);
+        QVERIFY(deep.size() > 260);
+        QVERIFY(cli::pathExists(deep.toStdWString()));
+        QVERIFY(cli::pathKind(deep.toStdWString()) == cli::PathKind::Folder);
+        QVERIFY(cli::pathKind((deep + u"\\deep.txt"_s).toStdWString()) == cli::PathKind::File);
+        QVERIFY(cli::pathKind((deep + u"\\missing.txt"_s).toStdWString()) == cli::PathKind::None);
+        QCOMPARE(QString::fromStdWString(cli::extendedPath(L"C:\\x")), u"C:\\x"_s); // short ones as they are
+        QVERIFY(QString::fromStdWString(cli::extendedPath(deep.toStdWString())).startsWith(u"\\\\?\\"_s));
+        QVERIFY(QString::fromStdWString(cli::extendedPath((u"\\\\server\\share\\"_s + QString(300, u'x')).toStdWString())).startsWith(u"\\\\?\\UNC\\server"_s));
+        // `ws open` takes a long path that is there as the path it is (it fell back to a name search).
+        const Outcome r = ws({u"open"_s, deep + u"\\deep.txt"_s}, {}, testPipeName("nobody"));
+        QCOMPARE(r.code, 0);
+        QCOMPARE(QString::fromUtf8(readAll(m_opened)), u"open "_s + deep + u"\\deep.txt\n"_s);
+    }
+
+    // cmd and PowerShell 5.1 hand "C:\My Folder\" -n 5 over as one argument, the quote gone and the
+    // rest in the path: said, not looked for as a folder of that name.
+    void aQuoteInAPath()
+    {
+        const QString swallowed = at(u"with space"_s) + u"\\\" -n 5"_s;
+        for (const QStringList& command : {QStringList {u"find"_s, u"a"_s, u"--in"_s, swallowed}, QStringList {u"grep"_s, u"a"_s, u"--in"_s, swallowed},
+                 QStringList {u"recent"_s, u"--in"_s, swallowed}, QStringList {u"ls"_s, swallowed}, QStringList {u"text"_s, swallowed}}) {
+            const Outcome r = ws(command);
+            QVERIFY2(r.code == 2, qPrintable(command.join(u' ') + u": "_s + r.errors()));
+            QVERIFY2(r.errors().contains(u"路径里有引号"_s) && r.errors().contains(u"反斜杠"_s), qPrintable(r.errors()));
+            QVERIFY(r.out.isEmpty());
+        }
+        const Outcome en = ws({u"ls"_s, swallowed}, {{L"WS_LANG", L"en"}});
+        QCOMPARE(en.code, 2);
+        QVERIFY2(en.errors().contains(u"trailing backslash"_s), qPrintable(en.errors()));
+        // A quote in a query is the query's own business (a phrase).
+        QCOMPARE(ws({u"find"_s, u"\"报告\""_s}).code, 0);
+        // ... and in open's words, which may be a query.
+        QCOMPARE(ws({u"open"_s, u"\"报告\""_s}).code, 0);
+    }
+
+    // The options every command takes are the ones it can honour: status neither waits for the
+    // index nor starts Win顺.
+    void statusTakesNoWaitOrNoStart()
+    {
+        for (const QString& language : {u"zh"_s, u"en"_s}) {
+            const std::map<std::wstring, std::wstring> lang {{L"WS_LANG", language.toStdWString()}};
+            Outcome r = ws({u"help"_s, u"status"_s}, lang);
+            QCOMPARE(r.code, 0);
+            // Their rows (the details of status name them, saying it has none).
+            QVERIFY2(!r.text().contains(u"--wait <"_s) && !r.text().contains(u"不启动它"_s) && !r.text().contains(u"Do not start WinShun"_s), qPrintable(r.text()));
+            QVERIFY2(r.text().contains(u"--color"_s) && r.text().contains(u"--encoding"_s) && r.text().contains(u"--json"_s), qPrintable(r.text()));
+            r = ws({u"help"_s, u"find"_s}, lang);
+            QVERIFY2(r.text().contains(u"--no-start"_s) && r.text().contains(u"--wait <"_s), qPrintable(r.text()));
+        }
+        Outcome r = ws({u"status"_s, u"--wait"_s, u"5s"_s});
+        QCOMPARE(r.code, 2);
+        QVERIFY2(r.errors().contains(u"ws status 不认 --wait"_s), qPrintable(r.errors()));
+        r = ws({u"status"_s, u"--no-start"_s});
+        QCOMPARE(r.code, 2);
+        QCOMPARE(ws({u"status"_s}).code, 0);
+        QCOMPARE(ws({u"status"_s, u"--json"_s, u"--color"_s, u"never"_s}).code, 0);
+        // The first word `dir`, `read`, `search`, `clipboard` is a query, as any other.
+        const std::wstring name = testPipeName("aliases");
+        FakeServer fake(name, [&](const std::string& line) -> std::optional<std::string> {
+            const Request request = requestOf(line);
+            if (request.method == "initialize")
+                return initializeAnswer(request.id);
+            if (request.tool == "index_status")
+                return readyAnswer(request.id);
+            if (request.tool == "search_files")
+                return toolAnswer(request.id, json::Value::Object {{"items", json::Value::Array {}}, {"returned", 0}, {"truncated", false}});
+            return std::string();
+        });
+        for (const char* word : {"dir", "read", "search", "clipboard"}) {
+            fake.forget();
+            r = ws({QString::fromLatin1(word)}, {}, name);
+            QCOMPARE(r.code, 1);
+            QVERIFY2(fake.saw(std::string("\"query\":\"") + word + "\""), word);
+        }
+    }
+
     // A first word that names a command is the command; -- or find makes it a query.
     void reservedWords()
     {
@@ -1700,16 +1817,47 @@ private slots:
             QCOMPARE(r.code, 0);
             QCOMPARE(r.text(), installed + u'\n');
             const QString written = QString::fromUtf8(readAll(installed));
-            QVERIFY2(written.contains(u"run it by its full path: `\""_s + exe + u"\"`"_s, Qt::CaseInsensitive), qPrintable(written));
+            // The full path to run again as a separate command, not chained after `ws` with ||
+            // (a permission rule such as Bash(ws:*) blocks the chained command whole).
+            QVERIFY2(written.contains(u"run the same command again by its full path, as a separate command"_s)
+                    && written.contains(u"not chained after the failed one with `||`"_s)
+                    && written.contains(u"`\""_s + exe + u"\"`"_s, Qt::CaseInsensitive),
+                qPrintable(written));
             QStringList withoutPath = written.split(u'\n');
-            withoutPath.removeIf([](const QString& line) { return line.startsWith(u"If `ws` is not found"_s); });
+            withoutPath.removeIf([](const QString& line) { return line.startsWith(u"If `ws` is not recognized"_s); });
             QString rest = withoutPath.join(u'\n');
             rest.replace(u"\n\n\n"_s, u"\n\n"_s);
             QCOMPARE(rest, QString::fromUtf8(text));
             QVERIFY(!QFileInfo::exists(installed + u".new"_s));
+            // Nothing else left in the folder: the temporary file went with the rename.
+            QCOMPARE(QDir(QFileInfo(installed).absolutePath()).entryList(QDir::Files), QStringList {u"SKILL.md"_s});
             QFile::setPermissions(installed, QFileDevice::ReadOwner);
         }
         QFile::setPermissions(installed, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+        // The temporary name is the install's own: another file in the way, even one held open
+        // exclusively (a second install under way), is no obstacle.
+        {
+            const std::wstring held = (installed + u".new"_s).toStdWString();
+            const HANDLE other = ::CreateFileW(held.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+            QVERIFY(other != INVALID_HANDLE_VALUE);
+            r = ws({u"skill"_s, u"--install"_s, u"claude"_s}, {}, testPipeName("nobody"));
+            ::CloseHandle(other);
+            QCOMPARE(r.code, 0);
+            QFile::remove(installed + u".new"_s);
+        }
+        // CLAUDE_CONFIG_DIR is a full path or nothing: relative to the folder ws happens to run in, it
+        // would be a guess. Nothing is written, in the folder it names or anywhere.
+        const QString relative = u"relative\\claude"_s;
+        r = ws({u"skill"_s, u"--install"_s, u"claude"_s}, {{L"CLAUDE_CONFIG_DIR", relative.toStdWString()}}, testPipeName("nobody"));
+        QCOMPARE(r.code, 7);
+        QVERIFY(r.out.isEmpty());
+        QVERIFY2(r.errors().contains(u"CLAUDE_CONFIG_DIR 要写完整路径"_s) && r.errors().contains(relative), qPrintable(r.errors()));
+        RunOptions inScratch;
+        inScratch.folder = m_scratch.path();
+        QVERIFY(!QFileInfo::exists(m_scratch.path() + u"/relative"_s));
+        r = ws({u"skill"_s, u"--install"_s, u"claude"_s}, {{L"CLAUDE_CONFIG_DIR", relative.toStdWString()}}, testPipeName("nobody"), inScratch);
+        QCOMPARE(r.code, 7);
+        QVERIFY(!QFileInfo::exists(m_scratch.path() + u"/relative"_s));
         // Where nothing can be written (under a file): 7, nothing on stdout
         // (the settings page reads it), the file it meant on stderr.
         const QString blocked = m_iniOn + u"\\x"_s;
@@ -1718,6 +1866,43 @@ private slots:
         QVERIFY(r.out.isEmpty());
         QVERIFY2(r.errors().contains(u"写不进 "_s + blocked + u"\\skills\\winshun\\SKILL.md"_s), qPrintable(r.errors()));
         QCOMPARE(ws({u"skill"_s, u"--install"_s, u"nobody"_s}).code, 2);
+    }
+
+    // Without CLAUDE_CONFIG_DIR the folder is the profile's, as the shell has it: a USERPROFILE
+    // emptied by whoever started ws gave C:\.claude.
+    void skillFolderOfTheProfile()
+    {
+        const auto set = [](const wchar_t* name, const wchar_t* value) { _wputenv_s(name, value); };
+        const QByteArray profileBefore = qgetenv("USERPROFILE");
+        const QByteArray configBefore = qgetenv("CLAUDE_CONFIG_DIR");
+        const auto restore = qScopeGuard([&] {
+            set(L"USERPROFILE", QString::fromLocal8Bit(profileBefore).toStdWString().c_str());
+            set(L"CLAUDE_CONFIG_DIR", QString::fromLocal8Bit(configBefore).toStdWString().c_str());
+        });
+        PWSTR known = nullptr;
+        QVERIFY(SUCCEEDED(::SHGetKnownFolderPath(FOLDERID_Profile, KF_FLAG_DEFAULT, nullptr, &known)));
+        const QString profile = QString::fromWCharArray(known);
+        ::CoTaskMemFree(known);
+        const QString expected = profile + u"\\.claude\\skills\\winshun\\SKILL.md"_s;
+        set(L"CLAUDE_CONFIG_DIR", L"");
+        set(L"USERPROFILE", L"");
+        cli::Result<std::wstring> file = cli::claudeSkillFile();
+        QVERIFY(file);
+        QCOMPARE(QString::fromStdWString(*file), expected);
+        set(L"USERPROFILE", L"X:\\somewhere\\else");
+        file = cli::claudeSkillFile();
+        QVERIFY(file);
+        QCOMPARE(QString::fromStdWString(*file), expected);
+        set(L"CLAUDE_CONFIG_DIR", L"D:\\claude\\");
+        file = cli::claudeSkillFile();
+        QVERIFY(file);
+        QCOMPARE(QString::fromStdWString(*file), u"D:\\claude\\skills\\winshun\\SKILL.md"_s);
+        set(L"CLAUDE_CONFIG_DIR", L"claude");
+        QVERIFY(!cli::claudeSkillFile());
+        set(L"CLAUDE_CONFIG_DIR", L"\\claude");
+        QVERIFY(!cli::claudeSkillFile());
+        set(L"CLAUDE_CONFIG_DIR", L"\\\\server\\share\\claude");
+        QVERIFY(cli::claudeSkillFile());
     }
 
     void encodings()
@@ -2239,8 +2424,8 @@ private slots:
             if (r.tool == "index_status")
                 return readyAnswer(r.id);
             if (r.tool == "search_files") {
-                const bool small = r.arguments["query"].toString() == "one";
-                return answer(r.id, small ? one : items, small ? 1 : 50'000);
+                const bool single = r.arguments["query"].toString() == "one"; // (not "small": a macro of rpcndr.h)
+                return answer(r.id, single ? one : items, single ? 1 : 50'000);
             }
             return std::string();
         });

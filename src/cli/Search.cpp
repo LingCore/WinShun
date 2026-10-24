@@ -233,6 +233,8 @@ Result<Exit> runLs(Context& context)
     std::wstring folder = joinedWords(args);
     if (folder.empty())
         folder = L".";
+    if (Result<void> clean = noQuoteIn(folder); !clean)
+        return std::move(clean).failure();
     std::wstring path = absolutePath(folder);
     const PathKind kindHere = pathKind(path);
     if (args.words.size() > 1 && kindHere == PathKind::None)

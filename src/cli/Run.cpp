@@ -103,7 +103,7 @@ int run(std::span<const std::wstring> args)
     const std::optional<std::size_t> skip = command ? first : std::nullopt;
     if (!command)
         command = &defaultCommand();
-    Result<Parsed> parsed = parseArgs(args, skip, command->options, command->name);
+    Result<Parsed> parsed = parseArgs(args, skip, command->options, command->name, command->shared);
     static const Parsed kNothing;
     const Parsed& given = parsed ? *parsed : kNothing;
 

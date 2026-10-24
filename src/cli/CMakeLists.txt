@@ -42,7 +42,8 @@ add_executable(ws
     ${ws_sources}
     ${PROJECT_SOURCE_DIR}/src/mcp/PipeClient.cpp ${PROJECT_SOURCE_DIR}/src/mcp/PipeClient.h
     ${PROJECT_SOURCE_DIR}/src/mcp/Launch.cpp ${PROJECT_SOURCE_DIR}/src/mcp/Launch.h
-    ${PROJECT_SOURCE_DIR}/resources/ws.rc)
+    ${PROJECT_SOURCE_DIR}/resources/ws.rc
+    ${PROJECT_SOURCE_DIR}/resources/ws.manifest)
 # The resource compiler does not see that SKILL.md is part of ws.rc.
 set_source_files_properties(${PROJECT_SOURCE_DIR}/resources/ws.rc PROPERTIES OBJECT_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/SKILL.md)
 target_include_directories(ws PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/src/mcp)

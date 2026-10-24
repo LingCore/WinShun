@@ -96,10 +96,10 @@ private:
 std::optional<std::size_t> firstWord(std::span<const std::wstring> args);
 
 // Reads `args` for command `command` (its name, for messages), which takes
-// `allowed` (and the global options); the word at `skip` (its name) is left
-// out. A wrong option: Exit::Usage with what to write instead.
+// `allowed` (and the global options in `shared`); the word at `skip` (its name)
+// is left out. A wrong option: Exit::Usage with what to write instead.
 Result<Parsed> parseArgs(std::span<const std::wstring> args, std::optional<std::size_t> skip, std::span<const Opt> allowed,
-    std::wstring_view command);
+    std::wstring_view command, std::span<const Opt> shared = kGlobalOptions);
 
 // The option most like `name` (a long name, without "--") among `among`;
 // nothing when none is close enough.
