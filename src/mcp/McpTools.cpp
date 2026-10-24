@@ -6,6 +6,7 @@
 #include "FileIndex.h"
 #include "FileText.h"
 #include "IndexService.h"
+#include "IsoTime.h"
 #include "Pipe.h"
 #include "SearchEngine.h"
 #include "ShareLister.h"
@@ -263,14 +264,6 @@ private:
 
 // ---- values -----------------------------------------------------------------
 
-QJsonValue isoTime(qint64 secs)
-{
-    if (secs <= 0)
-        return QJsonValue::Null;
-    const QDateTime time = QDateTime::fromSecsSinceEpoch(secs);
-    return time.toOffsetFromUtc(time.offsetFromUtc()).toString(Qt::ISODate);
-}
-
 QJsonValue isoTimeMs(qint64 ms)
 {
     if (ms <= 0)
@@ -301,10 +294,12 @@ struct ItemShape {
 };
 
 // Made aside: the size is read from the disk, at the disk's pace (QuietIo).
-QJsonObject fileItem(AsideContext& aside, const QString& path, const QString& name, bool isDir, std::uint32_t modified,
-    ItemShape shape)
+// `times`: the list's, one for all its items.
+QJsonObject fileItem(AsideContext& aside, LocalTimes& times, const QString& path, const QString& name, bool isDir,
+    std::uint32_t modified, ItemShape shape)
 {
-    QJsonObject item {{u"path"_s, path}, {u"type"_s, isDir ? u"folder"_s : u"file"_s}, {u"modified"_s, isoTime(modified)}};
+    QJsonObject item {
+        {u"path"_s, path}, {u"type"_s, isDir ? u"folder"_s : u"file"_s}, {u"modified"_s, times.iso(modified)}};
     if (shape.name)
         item.insert(u"name"_s, name);
     if (shape.size && !isDir) {
@@ -385,9 +380,9 @@ QString contentWhere(SearchResult::Where where)
     return u"line"_s;
 }
 
-QJsonObject contentItem(const SearchResult& r, ItemShape shape)
+QJsonObject contentItem(const SearchResult& r, LocalTimes& times, ItemShape shape)
 {
-    QJsonObject item {{u"path"_s, r.path}, {u"modified"_s, isoTime(r.modified)}};
+    QJsonObject item {{u"path"_s, r.path}, {u"modified"_s, times.iso(r.modified)}};
     if (shape.name)
         item.insert(u"name"_s, r.name);
     QJsonObject location {{u"kind"_s, contentWhere(r.where)}};
@@ -1441,6 +1436,7 @@ void ToolHost::onResults(Lane& lane, quint64 requestId, const SearchResults& res
             return !r.isApp() && !((kind == u"files" && r.isDir) || (kind == u"folders" && !r.isDir));
         };
         Budget budget(cli);
+        LocalTimes times;
         QJsonArray items;
         bool beyond = false; // one more to show than the limit takes
         for (const SearchResult& r : results) {
@@ -1454,7 +1450,7 @@ void ToolHost::onResults(Lane& lane, quint64 requestId, const SearchResults& res
                 beyond = true;
                 break;
             }
-            const QJsonObject item = fileItem(aside, r.path, r.name, r.isDir, r.modified, shape);
+            const QJsonObject item = fileItem(aside, times, r.path, r.name, r.isDir, r.modified, shape);
             if (!budget.take(item))
                 break;
             items.push_back(item);
@@ -1510,6 +1506,7 @@ void ToolHost::finishContent(Lane& lane, bool complete)
             return *std::move(problem);
         std::ranges::stable_sort(found, std::ranges::greater {}, &SearchResult::relevance);
         Budget budget(cli);
+        LocalTimes times;
         QJsonArray items;
         bool beyond = false; // one more the caller may read, past the limit
         for (const SearchResult& r : found) {
@@ -1521,7 +1518,7 @@ void ToolHost::finishContent(Lane& lane, bool complete)
                 beyond = true;
                 break;
             }
-            const QJsonObject item = contentItem(r, shape);
+            const QJsonObject item = contentItem(r, times, shape);
             if (!budget.take(item))
                 break;
             items.push_back(item);
@@ -2225,6 +2222,7 @@ void ToolHost::recentFiles(const std::shared_ptr<Call>& call)
         }
         // The access checks and the sizes go to the disk: not under the index's lock.
         Budget budget(cli);
+        LocalTimes times;
         QJsonArray items;
         bool beyond = false; // one more to show than the limit takes
         for (const Row& row : rows) {
@@ -2236,7 +2234,7 @@ void ToolHost::recentFiles(const std::shared_ptr<Call>& call)
                 beyond = true;
                 break;
             }
-            const QJsonObject item = fileItem(aside, row.path, row.name, row.isDir, row.modified, shape);
+            const QJsonObject item = fileItem(aside, times, row.path, row.name, row.isDir, row.modified, shape);
             if (!budget.take(item))
                 break;
             items.push_back(item);
@@ -2308,6 +2306,7 @@ void ToolHost::listFolder(const std::shared_ptr<Call>& call)
         });
         const QString prefix = folderPath.endsWith(u'\\') ? folderPath : folderPath + u'\\';
         Budget budget(cli);
+        LocalTimes times;
         QJsonArray items;
         qint64 total = 0; // the entries the caller may see: not those in folders AI never sees
         for (const Child& child : children) {
@@ -2319,7 +2318,7 @@ void ToolHost::listFolder(const std::shared_ptr<Call>& call)
             ++total;
             if (items.size() >= limit || budget.cut())
                 continue;
-            const QJsonObject item = fileItem(aside, childPath, child.name, child.isDir, child.modified, shape);
+            const QJsonObject item = fileItem(aside, times, childPath, child.name, child.isDir, child.modified, shape);
             if (budget.take(item))
                 items.push_back(item);
         }

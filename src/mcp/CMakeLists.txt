@@ -19,6 +19,7 @@ target_link_libraries(wsmcp_proto PUBLIC Qt6::Core winshun_options PRIVATE advap
 # wsmcp: the server side, on top of the search engine (wscore).
 qt_add_library(wsmcp STATIC
     Aside.cpp Aside.h
+    IsoTime.cpp IsoTime.h
     McpServer.cpp McpServer.h
     McpTools.cpp McpTools.h
     PipeServer.cpp PipeServer.h

@@ -9,6 +9,7 @@
 #include "FileIndex.h"
 #include "Host.h"
 #include "IndexService.h"
+#include "IsoTime.h"
 #include "JsonRpc.h"
 #include "McpServer.h"
 #include "McpTools.h"
@@ -29,6 +30,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <QTimeZone>
 
 #include <windows.h>
 #include <aclapi.h>
@@ -1813,6 +1815,67 @@ private slots:
         reply = s.exchange(callLine(12, u"search_files"_s, {{u"query"_s, u"ext:txt"_s}}));
         QVERIFY(reply);
         QCOMPARE(names(outcomeOf(*reply).structured).size(), 3);
+    }
+
+    // The times of the items (IsoTime.h): made by hand for the many of one
+    // answer, the offset asked once a day, the same text as QDateTime's.
+    void localTimes()
+    {
+        // At an offset: as QDateTime writes it there ("Z" for 0).
+        const int offsets[] {0, 3'600, -3'600, 8 * 3'600, -5 * 3'600, 19'800, 20'700, -34'200, 50'400, -43'200, 2'700};
+        for (qint64 secs = 1; secs <= 0xFFFF'FFFFll; secs += 9'999'991) {
+            for (const int offset : offsets) {
+                QCOMPARE(isoText(secs, offset),
+                    QDateTime::fromSecsSinceEpoch(secs, QTimeZone::UTC).toOffsetFromUtc(offset).toString(Qt::ISODate));
+            }
+        }
+        for (const qint64 secs : {qint64 {1}, qint64 {86'399}, qint64 {86'400}, qint64 {951'782'400},
+                 qint64 {4'102'444'799}, qint64 {0xFFFF'FFFFll}}) {
+            for (const int offset : offsets) {
+                QCOMPARE(isoText(secs, offset),
+                    QDateTime::fromSecsSinceEpoch(secs, QTimeZone::UTC).toOffsetFromUtc(offset).toString(Qt::ISODate));
+            }
+        }
+        QCOMPARE(isoText(1'700'000'000, 0), u"2023-11-14T22:13:20Z"_s);
+        QCOMPARE(isoText(1'700'000'000, 8 * 3'600), u"2023-11-15T06:13:20+08:00"_s);
+
+        // The system's zone, as the tools gave each one before (isoTime);
+        // nothing for 0 and before (not known).
+        LocalTimes local;
+        QVERIFY(local.iso(0).isNull());
+        QVERIFY(local.iso(-86'400).isNull());
+        for (qint64 secs = 1; secs <= 0xFFFF'FFFFll; secs += 86'399 * 3 + 1'234)
+            QCOMPARE(local.iso(secs), isoTime(secs));
+
+        // Zones that change their offset, by the hour around each change
+        // since 2000 and at the second it comes: those in the middle of a UTC
+        // day (Lord Howe moves 30 minutes at 15:30 UTC) go time by time.
+        int changesSeen = 0;
+        for (const char* id :
+            {"Europe/Berlin", "America/St_Johns", "Australia/Lord_Howe", "America/Sao_Paulo", "Asia/Kathmandu"}) {
+            const QTimeZone zone {QByteArray(id)};
+            if (!zone.isValid())
+                continue;
+            LocalTimes times(
+                [&](qint64 secs) { return zone.offsetFromUtc(QDateTime::fromSecsSinceEpoch(secs, QTimeZone::UTC)); });
+            const auto expected = [&](qint64 secs) {
+                const QDateTime at = QDateTime::fromSecsSinceEpoch(secs, zone);
+                return QJsonValue(at.toOffsetFromUtc(at.offsetFromUtc()).toString(Qt::ISODate));
+            };
+            const auto changes = zone.transitions(QDateTime::fromSecsSinceEpoch(946'684'800, QTimeZone::UTC),
+                QDateTime::fromSecsSinceEpoch(1'893'456'000, QTimeZone::UTC));
+            for (const QTimeZone::OffsetData& change : changes) {
+                ++changesSeen;
+                const qint64 at = change.atUtc.toSecsSinceEpoch();
+                for (qint64 secs = at - 2 * 86'400; secs <= at + 2 * 86'400; secs += 3'600)
+                    QCOMPARE(times.iso(secs), expected(secs));
+                for (const qint64 secs : {at - 61, at - 1, at, at + 1, at + 61})
+                    QCOMPARE(times.iso(secs), expected(secs));
+            }
+            for (qint64 secs = 946'684'800; secs < 1'893'456'000; secs += 86'399 * 11 + 7)
+                QCOMPARE(times.iso(secs), expected(secs));
+        }
+        QVERIFY(changesSeen > 0);
     }
 
     void cancelAndQueue()
