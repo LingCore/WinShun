@@ -59,6 +59,10 @@ struct Connection {
     ~Connection() { session.reset(); }
 };
 
+// The percentage the "loading the index" line shows: never lower than `shown`,
+// the highest said so far (-1: none, or unknown), whatever Win顺 now reports.
+int stablePercent(int shown, int reported);
+
 // How to reach Win顺 for this run: its pipe, the settings file's switch, --no-start.
 ConnectOptions connectOptions(Context& context);
 // Connects, starting Win顺 when it should be (docs/design-cli.md §7).

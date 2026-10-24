@@ -56,13 +56,21 @@ public:
     void nul();
     void flush();
 
-    // The reader went away (a closed pipe): writing stops; the caller may too.
+    // Writing stopped: the reader went away (a closed pipe) or the write failed
+    // (a full disk); the caller may stop too.
     bool broken() const noexcept { return m_broken; }
-    // Lines with a character the code page could not hold ('?' instead).
-    std::size_t lossyLines() const noexcept { return m_lossyLines; }
+    // Why a write failed (GetLastError), unless the reader merely went away
+    // (`ws ... | head`: ERROR_NO_DATA, ERROR_BROKEN_PIPE, ERROR_PIPE_NOT_CONNECTED),
+    // which is no error to report; 0 when there is none.
+    DWORD writeError() const noexcept { return m_writeError; }
+    // Lines with a character the code page could not hold ('?' instead), the
+    // line still being written included.
+    std::size_t lossyLines() const noexcept { return m_lossyLines + (m_lineLossy ? 1 : 0); }
 
 private:
     void put(std::wstring_view text);
+    void countLoss(std::wstring_view text, std::size_t lost);
+    void fail(DWORD error) noexcept;
     void pending();
     void writeOut(const void* data, std::size_t bytes);
 
@@ -73,9 +81,10 @@ private:
     Stream* m_partner = nullptr;
     std::wstring m_wide; // console: waiting to be written
     std::string m_bytes; // otherwise
-    bool m_lineLossy = false;
-    std::size_t m_lossyLines = 0;
+    bool m_lineLossy = false; // the line being written has one already
+    std::size_t m_lossyLines = 0; // finished lines with one
     bool m_broken = false;
+    DWORD m_writeError = 0;
 };
 
 // The console's output modes with virtual-terminal processing on (colours,

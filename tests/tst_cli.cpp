@@ -16,9 +16,12 @@
 #include "Commands.h"
 #include "Config.h"
 #include "Connect.h"
+#include "Context.h"
 #include "Encoding.h"
 #include "Format.h"
 #include "Open.h"
+#include "Output.h"
+#include "Run.h"
 #include "Session.h"
 #include "Text.h"
 
@@ -36,6 +39,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
+#include <QScopeGuard>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -202,6 +206,7 @@ struct RunOptions {
     std::map<std::wstring, std::wstring> env; // added to this process's; an empty value removes
     QString folder; // the current folder
     bool newGroup = false; // its own process group, on this console (Ctrl+Break)
+    QString readOnlyStdout; // an existing file opened for reading only is its stdout: every write to it fails
     int timeoutMs = 60'000;
     std::function<void(DWORD pid)> started;
     std::function<void()> tick; // each turn of the wait, on this thread
@@ -223,12 +228,16 @@ Outcome runProcess(const RunOptions& options)
     ::SetHandleInformation(outRead, HANDLE_FLAG_INHERIT, 0);
     ::SetHandleInformation(errRead, HANDLE_FLAG_INHERIT, 0);
     const HANDLE nul = ::CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &inherit, OPEN_EXISTING, 0, nullptr);
+    HANDLE readOnly = INVALID_HANDLE_VALUE;
+    if (!options.readOnlyStdout.isEmpty())
+        readOnly = ::CreateFileW(native(options.readOnlyStdout).toStdWString().c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &inherit,
+            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
 
     STARTUPINFOW startup {};
     startup.cb = sizeof startup;
     startup.dwFlags = STARTF_USESTDHANDLES;
     startup.hStdInput = nul;
-    startup.hStdOutput = outWrite;
+    startup.hStdOutput = readOnly != INVALID_HANDLE_VALUE ? readOnly : outWrite;
     startup.hStdError = errWrite;
     PROCESS_INFORMATION process {};
     std::vector<wchar_t> environment = environmentBlock(options.env);
@@ -241,6 +250,8 @@ Outcome runProcess(const RunOptions& options)
     ::CloseHandle(outWrite);
     ::CloseHandle(errWrite);
     ::CloseHandle(nul);
+    if (readOnly != INVALID_HANDLE_VALUE)
+        ::CloseHandle(readOnly);
     if (!created) {
         ::CloseHandle(outRead);
         ::CloseHandle(errRead);
@@ -1743,6 +1754,176 @@ private slots:
         QVERIFY(r.notes().isEmpty());
         const QJsonArray items = QJsonDocument::fromJson(fromCodePage(r.out, acp).toUtf8()).array();
         QCOMPARE(items.first().toObject().value(u"path"_s).toString(), at(u"报告𠀀.txt"_s));
+    }
+
+    // ---- the output: what could not be written, what failed to be ----------------------
+
+    // Lines with a character the code page lacks are counted wherever the text is cut into
+    // writes: a whole document in one write (ws text), a line in pieces, NUL-separated.
+    void streamCountsLossyLines()
+    {
+        HANDLE read = nullptr, write = nullptr;
+        QVERIFY(::CreatePipe(&read, &write, nullptr, 1 << 20));
+        const auto close = qScopeGuard([&] {
+            ::CloseHandle(read);
+            ::CloseHandle(write);
+        });
+        cli::Stream out(write, 1252); // Latin-1: no Chinese
+        out.write(L"ab\n日本\ncd"); // one write: a lossy line inside, an unfinished one at the end
+        QCOMPARE(out.lossyLines(), std::size_t {1});
+        out.write(L"x日y"); // the unfinished one goes on, and has one now
+        QCOMPARE(out.lossyLines(), std::size_t {2});
+        out.newline();
+        QCOMPARE(out.lossyLines(), std::size_t {2});
+        out.write(L"日");
+        out.write(L"日"); // two in a line: the line once
+        out.newline();
+        QCOMPARE(out.lossyLines(), std::size_t {3});
+        out.write(L"clean");
+        out.newline();
+        out.write(L"日");
+        out.nul();
+        QCOMPARE(out.lossyLines(), std::size_t {4});
+        out.write(L"日"); // still being written at the end: settled by the count
+        QCOMPARE(out.lossyLines(), std::size_t {5});
+        out.setJsonEscapes(true); // \\uXXXX loses nothing
+        out.write(L"日本\n");
+        QCOMPARE(out.lossyLines(), std::size_t {5});
+        QVERIFY(!out.broken());
+        QCOMPARE(out.writeError(), DWORD {0});
+    }
+
+    // A reader that went away (`ws … | head`) is quiet; a write that failed for another reason is reported.
+    void streamWriteErrors()
+    {
+        HANDLE read = nullptr, write = nullptr;
+        QVERIFY(::CreatePipe(&read, &write, nullptr, 0));
+        ::CloseHandle(read); // the reader is gone
+        {
+            cli::Stream out(write, CP_UTF8);
+            out.write(L"hello");
+            out.flush();
+            QVERIFY(out.broken());
+            QCOMPARE(out.writeError(), DWORD {0});
+        }
+        ::CloseHandle(write);
+        // A file that cannot be written to (a full disk fails the same way, with another code).
+        const QString file = native(m_scratch.path() + u"/readonly.txt"_s);
+        QVERIFY(writeFile(file, "x"));
+        const HANDLE handle = ::CreateFileW(file.toStdWString().c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        QVERIFY(handle != INVALID_HANDLE_VALUE);
+        {
+            cli::Stream out(handle, CP_UTF8);
+            out.write(L"hello");
+            out.flush();
+            QVERIFY(out.broken());
+            QVERIFY(out.writeError() != 0);
+        }
+        ::CloseHandle(handle);
+        // The whole run: exit 7 with the reason, though the search itself worked; the bytes stay unwritten.
+        RunOptions toFile;
+        toFile.readOnlyStdout = file;
+        const Outcome r = ws({u"find"_s, u"报告"_s}, {}, {}, toFile);
+        QCOMPARE(r.code, 7);
+        QVERIFY2(r.errors().contains(u"写出结果时出错"_s), qPrintable(r.errors()));
+        QCOMPARE(readAll(file), QByteArray("x"));
+    }
+
+    void chineseAndTheNoteAboutIt()
+    {
+        // Simplified Chinese only in the code pages that have it; not in Big5 or Shift-JIS, nor Western ones.
+        QVERIFY(cli::holdsChinese(936));
+        QVERIFY(cli::holdsChinese(CP_UTF8));
+        QVERIFY(cli::holdsChinese(cli::kGb18030CodePage));
+        QVERIFY(cli::holdsChinese(cli::kUtf16CodePage));
+        QVERIFY(!cli::holdsChinese(950));
+        QVERIFY(!cli::holdsChinese(932));
+        QVERIFY(!cli::holdsChinese(437));
+        QVERIFY(!cli::holdsChinese(1252));
+        // Under PowerShell (the only case that is lossy by default) the profile; not --encoding utf8.
+        cli::setLanguage(cli::Lang::En);
+        QString note = QString::fromStdWString(cli::lossyNote(3, 437, true, false));
+        QVERIFY2(note.contains(u"3 line(s)"_s) && note.contains(u"code page 437"_s), qPrintable(note));
+        QVERIFY2(note.contains(u"[Console]::OutputEncoding"_s) && !note.contains(u"--encoding"_s) && !note.contains(u"--json"_s), qPrintable(note));
+        note = QString::fromStdWString(cli::lossyNote(3, 437, true, true));
+        QVERIFY2(note.contains(u"[Console]::OutputEncoding"_s) && note.contains(u"--json"_s) && !note.contains(u"--encoding"_s), qPrintable(note));
+        // Anywhere else (--encoding ansi, say) --encoding utf8; --json only for the commands that have it.
+        note = QString::fromStdWString(cli::lossyNote(1, 1252, false, false));
+        QVERIFY2(note.contains(u"--encoding utf8"_s) && !note.contains(u"--json"_s) && !note.contains(u"Console"_s), qPrintable(note));
+        note = QString::fromStdWString(cli::lossyNote(1, 1252, false, true));
+        QVERIFY2(note.contains(u"--encoding utf8"_s) && note.contains(u"--json"_s), qPrintable(note));
+        cli::setLanguage(cli::Lang::Zh);
+        note = QString::fromStdWString(cli::lossyNote(2, 936, true, false));
+        QVERIFY2(note.contains(u"2 行"_s) && note.contains(u"[Console]::OutputEncoding"_s), qPrintable(note));
+    }
+
+    // The text of ws text is one write: the lines with a character the code page lacks are still counted.
+    void lossyLinesInWsText()
+    {
+        const UINT acp = ::GetACP();
+        if (acp == CP_UTF8 || acp == cli::kGb18030CodePage)
+            QSKIP("the ANSI code page holds every character");
+        const std::wstring name = testPipeName("lossytext");
+        FakeServer fake(name, [&](const std::string& line) -> std::optional<std::string> {
+            const Request request = requestOf(line);
+            if (request.method == "initialize")
+                return initializeAnswer(request.id);
+            if (request.tool == "read_file_text") {
+                return toolAnswer(request.id, json::Value::Object {{"path", request.arguments["path"].toString()}, {"kind", "text"},
+                                                  {"text", "a \xF0\xA0\x80\x80\nb\n\xF0\xA0\x80\x81 c \xF0\xA0\x80\x82\n"}, {"chars", 15}, {"offset", 0},
+                                                  {"cut", false}});
+            }
+            return std::string();
+        });
+        const Outcome r = ws({u"text"_s, at(u"notes.md"_s), u"--encoding"_s, u"ansi"_s}, {}, name);
+        QCOMPARE(r.code, 0);
+        QVERIFY(r.out.contains('?'));
+        const QString note = fromCodePage(r.err, acp);
+        QVERIFY2(note.contains(u"2 行"_s) || note.contains(u"2 line(s)"_s), qPrintable(note));
+    }
+
+    void conflictingFormats()
+    {
+        QCOMPARE(ws({u"find"_s, u"报告"_s, u"-l"_s, u"-0"_s}).code, 2);
+        QCOMPARE(ws({u"find"_s, u"报告"_s, u"--json"_s, u"-0"_s}).code, 2);
+        QCOMPARE(ws({u"ls"_s, root(), u"--long"_s, u"--null"_s}).code, 2);
+        Outcome r = ws({u"grep"_s, u"销售额"_s, u"--json"_s, u"-0"_s});
+        QCOMPARE(r.code, 2);
+        QVERIFY2(r.errors().contains(u"--json 和 -0"_s), qPrintable(r.errors()));
+        QVERIFY(r.out.isEmpty());
+        // Fine together: the JSON with sizes.
+        r = ws({u"find"_s, u"报告"_s, u"--json"_s, u"-l"_s});
+        QCOMPARE(r.code, 0);
+    }
+
+    void encodingChoices()
+    {
+        // The last --encoding counts, in the pre-scan that picks the language and code page too.
+        Outcome r = ws({u"--exts"_s, u"pdf"_s, u"x"_s, u"--encoding"_s, u"utf16"_s, u"--encoding"_s, u"utf8"_s});
+        QCOMPARE(r.code, 2);
+        QVERIFY2(r.errors().contains(u"是不是 --ext"_s), qPrintable(r.errors()));
+        r = ws({u"find"_s, u"报告"_s, u"--files"_s, u"--encoding=utf8"_s, u"--encoding=utf16"_s});
+        const QString line = at(u"报告𠀀.txt"_s) + u'\n';
+        QCOMPARE(r.out, QByteArray(reinterpret_cast<const char*>(line.utf16()), line.size() * 2));
+        // A WS_ENCODING that means nothing is said; --encoding beats it.
+        r = ws({u"find"_s, u"报告"_s}, {{L"WS_ENCODING", L"gbk"}});
+        QCOMPARE(r.code, 2);
+        QVERIFY2(r.errors().contains(u"WS_ENCODING 只能是"_s) && r.errors().contains(u"“gbk”"_s), qPrintable(r.errors()));
+        r = ws({u"find"_s, u"报告"_s, u"--encoding"_s, u"utf8"_s}, {{L"WS_ENCODING", L"gbk"}});
+        QCOMPARE(r.code, 0);
+    }
+
+    // The loading line only goes up, though the volumes still being read average lower as one finishes.
+    void indexPercentNeverGoesBack()
+    {
+        int shown = -1;
+        QVector<int> said;
+        for (const int reported : {43, 5, 21, -1, 60, 59, 99}) {
+            shown = cli::stablePercent(shown, reported);
+            said.push_back(shown);
+        }
+        QCOMPARE(said, (QVector<int> {43, 43, 43, 43, 60, 60, 99}));
+        QCOMPARE(cli::stablePercent(-1, -1), -1);
     }
 
     // ---- raw servers -------------------------------------------------------------

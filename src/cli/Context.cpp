@@ -44,7 +44,10 @@ Result<void> waitForIndex(Context& context, Session& session, IndexState state)
         return Failure {Exit::NotReady, std::wstring(tr(msg::kNotReadyNoWait))};
     const ULONGLONG start = ::GetTickCount64();
     const ULONGLONG deadline = start + static_cast<ULONGLONG>(context.waitMs);
+    int shown = -1; // the highest percentage said so far
     for (;;) {
+        state.percent = stablePercent(shown, state.percent);
+        shown = state.percent;
         context.progress(state.percent >= 0 ? fmt(msg::kLoadingPercent, state.percent) : std::wstring(tr(msg::kLoading)));
         const ULONGLONG now = ::GetTickCount64();
         if (now >= deadline) {
@@ -70,6 +73,13 @@ Result<void> waitForIndex(Context& context, Session& session, IndexState state)
 }
 
 } // namespace
+
+int stablePercent(int shown, int reported)
+{
+    // The average is over the volumes still being read: when one finishes it drops
+    // out and the average falls (43%, 5%, 21%…). The line only ever goes up.
+    return std::max(shown, reported);
+}
 
 void Context::note(std::wstring_view text)
 {

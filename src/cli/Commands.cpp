@@ -34,7 +34,7 @@ const Command kCommands[] = {
             L"extensions; folder\\name needs a parent folder named like \"folder\"; D:\\Projects\\ report searches in that "
             L"folder.\n"
             L"Quote the query: bash turns * into the names in the current folder first. When the first word is a command's "
-            L"name (recent, ls…), write ws find recent or ws -- recent."},
+            L"name (recent, ls...), write ws find recent or ws -- recent."},
         {L"ws \"周报\"\nws find \"report\" --ext pdf,docx -n 20\nws find \"*.psd\" --in . --sort newest -l",
             L"ws \"weekly report\"\nws find \"report\" --ext pdf,docx -n 20\nws find \"*.psd\" --in . --sort newest -l"},
         kFindOptions, true, runFind},
@@ -74,7 +74,7 @@ const Command kCommands[] = {
         kOpenOptions, true, runOpen},
     {L"clip", L"clipboard", {L"剪贴板历史，最新的在前", L"The clipboard history, newest first"}, {L"ws clip [查询] [选项]", L"ws clip [query] [options]"},
         {L"要先在 Win顺 的 设置 → AI 助手 里打开“允许 AI 读取剪贴板历史”。每条一行，换行写成 \\n；-0 给出完整的文字。",
-            L"Needs \"Allow AI to read the clipboard history\" turned on in WinShun's Settings → AI assistants. One entry a "
+            L"Needs \"Allow AI to read the clipboard history\" turned on in WinShun's Settings > AI assistants. One entry a "
             L"line, line breaks written as \\n; -0 gives the whole texts."},
         {L"ws clip -n 5\nws clip \"http\" --kind link", L"ws clip -n 5\nws clip \"http\" --kind link"}, kClipOptions, true, runClip},
     {L"status", {}, {L"Win顺 在不在运行、索引好了没", L"Whether WinShun runs and its index is ready"}, {L"ws status [选项]", L"ws status [options]"},

@@ -45,7 +45,9 @@ std::wstring oneLine(std::wstring_view text)
 
 std::wstring pictureText(const json::Value& item)
 {
-    return std::wstring(language() == Lang::Zh ? L"[图片 " : L"[picture ") + std::to_wstring(item["width"].toInt()) + L"×"
+    // English in plain ASCII: a code page that cannot write Chinese (437) cannot write × either.
+    const bool zh = language() == Lang::Zh;
+    return std::wstring(zh ? L"[图片 " : L"[picture ") + std::to_wstring(item["width"].toInt()) + (zh ? L"×" : L"x")
         + std::to_wstring(item["height"].toInt()) + L"]";
 }
 
@@ -100,7 +102,7 @@ Result<Exit> runClip(Context& context)
                 } else {
                     writeMarked(out, oneLine(wide(item["text"].toString())), terms, Style::Plain, Style::Match);
                     if (item["truncated"].toBool())
-                        out.write(L"…", Style::Dim);
+                        out.write(language() == Lang::Zh ? L"…" : L"...", Style::Dim);
                 }
                 out.newline();
             }
