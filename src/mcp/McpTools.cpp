@@ -806,10 +806,11 @@ int contentTimeout(const QJsonObject& arguments)
 }
 
 // search_content's answer when its timeout ran out before the engine was
-// free for it: nothing was searched.
+// free for it: nothing was searched. `queued` says so to a program (ws), for
+// which complete: false alone reads as a search that stopped at its limit.
 ToolResult waitedTooLong(const QElapsedTimer& timer)
 {
-    return {{{u"items"_s, QJsonArray()}, {u"returned"_s, 0}, {u"complete"_s, false}, {u"files_checked"_s, 0},
+    return {{{u"items"_s, QJsonArray()}, {u"returned"_s, 0}, {u"complete"_s, false}, {u"queued"_s, true}, {u"files_checked"_s, 0},
         {u"files_candidates"_s, 0}, {u"elapsed_ms"_s, static_cast<double>(timer.elapsed())},
         {u"note"_s, u"Another content search was running the whole time, so this one did not start before its timeout_ms ran out. Call it again once the other one has answered, or with a larger timeout_ms."_s}}};
 }
@@ -824,8 +825,12 @@ QJsonObject callToolResult(const ToolResult& result, bool cli)
         QJsonObject out {{u"content"_s, QJsonArray {QJsonObject {{u"type"_s, u"text"_s}, {u"text"_s, result.errorText}}}}, {u"isError"_s, true}};
         // ws acts on the kind (its exit codes); an AI client reads the words,
         // and might hold a structured error against the tool's outputSchema.
-        if (cli && !result.errorCode.isEmpty())
-            out.insert(u"structuredContent"_s, QJsonObject {{u"error"_s, result.errorCode}});
+        if (cli && !result.errorCode.isEmpty()) {
+            QJsonObject kind {{u"error"_s, result.errorCode}};
+            if (!result.errorSetting.isEmpty())
+                kind.insert(u"setting"_s, result.errorSetting);
+            out.insert(u"structuredContent"_s, kind);
+        }
         return out;
     }
     // ws reads the structured result alone: the same again as text would
@@ -1083,6 +1088,17 @@ QString ToolHost::offReason(const QString& name) const
                "设置 → 剪贴板 → “记录剪贴板历史”, then call it again (what was copied while it was off is not there)."_s.arg(name);
     }
     return tool && tool->external ? tool->offReason : QString();
+}
+
+QString ToolHost::offSetting(const QString& name) const
+{
+    const Tool* tool = find(name);
+    // As Tool::allowed asks: AI's switch first, then the history's.
+    if (tool && tool->gate == Tool::Gate::Clipboard)
+        return !m_policy.allowClipboard ? QString::fromLatin1(kSettingAiClipboard)
+             : !m_policy.clipboardHistory ? QString::fromLatin1(kSettingClipboardHistory)
+                                          : QString();
+    return {};
 }
 
 void ToolHost::setExternalTools(std::vector<ExternalTool> tools)
@@ -1592,7 +1608,9 @@ void ToolHost::addTools()
                                        u"The matches, best first"_s)},
         {u"returned"_s, typed("integer", u"How many items"_s)},
         {u"truncated"_s, typed("boolean", u"More matched than returned: narrow the query or the folders, or raise the limit"_s)},
-        {u"complete"_s, typed("boolean", u"False when the timeout ran out first"_s)}, {u"files_checked"_s, typed("integer", u"Files looked at"_s)}, {u"files_candidates"_s, typed("integer", u"Files that could contain the words"_s)},
+        {u"complete"_s, typed("boolean", u"False when the timeout ran out first"_s)},
+        {u"queued"_s, typed("boolean", u"True (only then present) when another content search kept the engine for the whole timeout: nothing was searched"_s)},
+        {u"files_checked"_s, typed("integer", u"Files looked at"_s)}, {u"files_candidates"_s, typed("integer", u"Files that could contain the words"_s)},
         {u"elapsed_ms"_s, typed("number", u"Search time"_s)}, {u"note"_s, typed("string", u"Advice when the result is partial"_s)}});
     content.annotations = annotations(true, true);
     content.engine = Tool::Engine::Content;

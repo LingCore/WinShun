@@ -132,6 +132,10 @@ struct ToolResult {
     // codes; its sessions get it as structuredContent.error). One of
     // kErrorNotFound, kErrorOff, kErrorTooLarge; empty for the others.
     QString errorCode;
+    // kErrorOff: which switch is off, when the tool has more than one that
+    // can keep it off (kSettingAiClipboard, kSettingClipboardHistory); ws
+    // names the right one (structuredContent.setting). Empty: not said.
+    QString errorSetting;
     // The MCP result as it goes out (callToolResult as compact JSON), made
     // where the work was done, off the GUI thread, for a call that asked
     // for it (CallOptions::encode); `structured` then keeps only what the
@@ -147,6 +151,11 @@ struct ToolResult {
 inline constexpr const char* kErrorNotFound = "not_found";
 // The tool's switch in the settings is off.
 inline constexpr const char* kErrorOff = "off";
+// With kErrorOff, for the clipboard tools: AI's own switch is off (设置 → AI
+// 助手 → 允许 AI 读取剪贴板历史), or Win顺 keeps no history to read (设置 →
+// 剪贴板 → 记录剪贴板历史). AI's is named when both are off.
+inline constexpr const char* kSettingAiClipboard = "ai_clipboard";
+inline constexpr const char* kSettingClipboardHistory = "clipboard_history";
 // The answer would not fit in one message (pipe::kMaxLineBytes).
 inline constexpr const char* kErrorTooLarge = "too_large";
 
@@ -329,6 +338,9 @@ public:
     // Known::Off: the tool's own words on why, when it has any (an external
     // tool's offReason, change_settings' switch); empty for the others.
     QString offReason(const QString& name) const;
+    // Known::Off: which switch it is, for ws (kSettingAiClipboard,
+    // kSettingClipboardHistory); empty for the tools with one switch.
+    QString offSetting(const QString& name) const;
     // The external tools, all of them at once (the earlier ones go; a call
     // under way on one of them finishes). toolsChanged() when what is on
     // offer differs.

@@ -175,6 +175,7 @@ Result<CallResult> Session::wait(long long id)
     out.isError = result["isError"].toBool();
     if (out.isError) {
         out.errorCode = result["structuredContent"]["error"].toString();
+        out.errorSetting = result["structuredContent"]["setting"].toString();
         for (const json::Value& part : result["content"].toArray()) {
             if (part["type"].toString() == "text") {
                 out.errorText = wide(part["text"].toString());
@@ -242,9 +243,18 @@ bool clipboardTool(std::string_view tool)
     return tool == "clipboard_history" || tool == "clipboard_get";
 }
 
+// A clipboard tool kept off because Win顺 keeps no history to read (its own
+// switch), not because AI may not read it: by the switch a Win顺 made for ws
+// names, else (an older one) by its words.
+bool noHistory(std::string_view setting, const std::wstring& text)
+{
+    return setting == "clipboard_history" || (setting.empty() && contains(text, L"not keeping a clipboard history"));
+}
+
 } // namespace
 
-Failure toolFailure(std::string_view tool, std::string_view errorCode, const std::wstring& text, std::wstring_view subject)
+Failure toolFailure(std::string_view tool, std::string_view errorCode, std::string_view errorSetting, const std::wstring& text,
+    std::wstring_view subject)
 {
     // The path Win顺 names (of several --in folders, the one it refused), else
     // the one ws asked about.
@@ -254,8 +264,11 @@ Failure toolFailure(std::string_view tool, std::string_view errorCode, const std
     // A Win顺 made for ws says what kind of refusal it is.
     if (errorCode == "not_found")
         return {Exit::NotVisible, fmt(contains(text, L"not in the index") ? msg::kNotIndexed : msg::kNotVisible, about)};
-    if (errorCode == "off")
-        return {Exit::Off, clipboardTool(tool) ? std::wstring(tr(msg::kClipOff)) : fmt(msg::kTurnedOff, wide(tool))};
+    if (errorCode == "off") {
+        if (clipboardTool(tool))
+            return {Exit::Off, std::wstring(tr(noHistory(errorSetting, text) ? msg::kClipUnavailable : msg::kClipOff))};
+        return {Exit::Off, fmt(msg::kTurnedOff, wide(tool))};
+    }
     if (errorCode == "too_large")
         return {Exit::Failed, std::wstring(tr(msg::kAnswerTooLarge))};
     // An older one only in words.
@@ -275,6 +288,9 @@ Failure toolFailure(std::string_view tool, std::string_view errorCode, const std
         return {Exit::Usage, fmt(msg::kIsFolder, about)};
     if (contains(text, L"content search is turned off"))
         return {Exit::Failed, std::wstring(tr(msg::kContentOff))};
+    // (its words say "is off:", so this goes before the next)
+    if (clipboardTool(tool) && noHistory({}, text))
+        return {Exit::Off, std::wstring(tr(msg::kClipUnavailable))};
     if (contains(text, L"turned off") || contains(text, L"is off:")) {
         if (clipboardTool(tool))
             return {Exit::Off, std::wstring(tr(msg::kClipOff))};

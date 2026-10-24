@@ -53,7 +53,7 @@ es 只管文件名。我们多出来、对 AI 最有用的两样：**内容搜�
 | `ws text <文件>` | 读出文件里的文字（文档带 `[page 3]` 这类位置行） | `read_file_text` | `--from <字数>`，`--max <字数>`（默认 20 000，`0` 不限） |
 | `ws ls <文件夹>` | 从索引列文件夹（大文件夹也快） | `list_folder` | `-n`，`-l` |
 | `ws open <查询或路径>` | 打开最匹配的那个（和启动器里按 Enter 一样） | `search_files`，打开由 ws 自己做 | `--reveal` 在文件夹里显示 |
-| `ws clip` | 剪贴板历史（剪贴板开关开着才行） | `clipboard_history` | `-n`，`--kind text\|link\|path\|files\|image` |
+| `ws clip` | 剪贴板历史（AI 的剪贴板开关开着、Win顺 也在记录才行） | `clipboard_history` | `-n`，`--kind text\|link\|path\|files\|image` |
 | `ws status` | Win顺 在不在、索引好了没、版本 | `index_status` | |
 | `ws skill` | 打印给 AI 用的 SKILL.md；`--install claude` 装进 Claude Code | 本地 | |
 | `ws help [命令]` | 帮助 | 本地 | |
@@ -154,7 +154,7 @@ es 只管文件名。我们多出来、对 AI 最有用的两样：**内容搜�
 | 1 | 成功，但没有结果（和 grep、ripgrep 一样） |
 | 2 | 用法不对（参数错、少了查询） |
 | 3 | Win顺 没在运行，也没能启动 |
-| 4 | Win顺 在运行，但 AI / 命令行连接关着（stderr 说明在哪打开）；`ws clip` 时也可能是剪贴板历史没对 AI 开放（“允许 AI 读取剪贴板历史”） |
+| 4 | Win顺 在运行，但 AI / 命令行连接关着（stderr 说明在哪打开）；`ws clip` 时也可能是剪贴板历史没对 AI 开放（“允许 AI 读取剪贴板历史”），或 Win顺 根本没有记录剪贴板历史（设置 → 剪贴板 →“记录剪贴板历史”），stderr 说的是关着的那个 |
 | 5 | 索引还没准备好（等到 `--wait` 用完） |
 | 6 | 这个路径看不到（不存在、没权限、在“不让 AI 看到的文件夹”里，说法相同） |
 | 7 | 其他错误（管道断了、Win顺 回了错误） |
@@ -163,8 +163,9 @@ es 只管文件名。我们多出来、对 AI 最有用的两样：**内容搜�
 Win顺 拒绝时怎么定退出码（2026-10-24 实现）：
 
 - 新版 Win顺 对命令行会话在 `structuredContent.error` 里给出类别：`not_found` → 6，`off` → 4（并说在哪打开），`too_large` → 7（回答超过 16 MB：提示用 `-n` 少要一些或把查询写细；`ws text` 自己换成小段重读）。其余拒绝都是 7，原样转述 Win顺 的话。
+- `off` 时可能再带 `structuredContent.setting`，说是哪个开关关着（见第 9 节第 8 条）：剪贴板的工具有两个开关，ws 照它挑提示，不靠认话。没有这个字段的版本，`ws` 才退到认英文原话（“not keeping a clipboard history”）。
 - 旧版 Win顺 不给类别，ws 按它的英文原话归类（不在索引里、没有这个文件、是文件不是文件夹、内容搜索关着……），归不了类就是 7。
-- 内容搜索关着，新旧 Win顺 都只用话说（不给 `off`），ws 认出来指向 设置 → 文件内容搜索，退出码 7。`off` 对 ws 用到的工具只会来自剪贴板（“允许 AI 读取剪贴板历史”），退出码 4；搜索、列目录、读文本这几个工具没有开关。
+- 内容搜索关着，新旧 Win顺 都只用话说（不给 `off`），ws 认出来指向 设置 → 文件内容搜索，退出码 7。`off` 对 ws 用到的工具只会来自剪贴板，退出码 4，有两个开关：AI 的“允许 AI 读取剪贴板历史”（`setting: "ai_clipboard"`）和 Win顺 自己的“记录剪贴板历史”（`setting: "clipboard_history"`）；搜索、列目录、读文本这几个工具没有开关。
 - 提示里说的路径：Win顺 的话末尾带路径就用它（几个 `--in` 里被拒的那一个），不带（`recent_files`、`list_folder`、`read_file_text` 有几处不带）才用 ws 自己问的那个。
 - “是文件夹”“是文件”这类用错了命令的，ws 在本地先看出来，退出码 2（见第 3 节）。
 
@@ -222,6 +223,8 @@ Win顺 拒绝时怎么定退出码（2026-10-24 实现）：
    - Claude Code 会同时跑几个命令：一个 `ws grep --timeout 5s` 会让同时发出的 `ws find`（本来几毫秒）跟着等 5 秒。
    - 改成两个引擎：名字搜索一个，内容搜索一个（2026-10-24 实现时改：和名字的那个一起建，不等第一次内容搜索；建一个是十几个闲着的线程（搜索线程、线程池），不占 CPU，用到时再建反而要多管一种状态）。同类的照旧排队；名字搜索每个几毫秒，排队不明显。
    - 隐私要求的是“同一套 Policy”，不是“同一个引擎”，所以这样拆不影响第 2 节。MCP 客户端也一起受益。
+8. **`off` 说是哪个开关**（2026-10-24 实测后加）：剪贴板的工具有两个开关能让它关着，AI 的“允许 AI 读取剪贴板历史”（`[Mcp] Clipboard`）和 Win顺 自己的“记录剪贴板历史”（`[Clipboard] Enabled`），提示要指对。命令行会话的 `off` 错误在 `structuredContent` 里多一个 `setting`：`ai_clipboard`（AI 的开关关着）或 `clipboard_history`（Win顺 没有记录历史，AI 的开关开着）；两个都关着时说 `ai_clipboard`，和英文原话一致。别的 `off` 不带这个字段（那些工具只有一个开关）。ws 照它选提示；`ws status` 读 `index_status` 的 `ai.clipboard_history`（没有这个字段的旧版不当作没记录）。
+9. **内容搜索排了一整个超时都没轮到**（2026-10-24 实测后加）：一个 `search_content` 的 `timeout_ms` 在队里等完了，回答是没有条目、`complete: false`，原来 ws 把它当成“搜到时间上限停了，结果可能不全”（退出码 1），AI 会以为没有文件含这些词。回答现在多一个 `queued: true`（只有这时才有；也写进 `outputSchema`），意思是一个文件也没搜。`ws grep` 见到它退出码 7，说另一个内容搜索一直在进行、这一个没轮到，等它搜完再试或加大 `--timeout`；`--json`、`-0` 也什么都不写。没有这个字段的旧版：照原来。
 
 ### 服务端声明（2026-10-24 复查后加）
 
@@ -321,7 +324,7 @@ src/mcp/PipeClient.cpp/h、Launch.cpp/h   和中继共用的源文件（第 9 �
 - `tst_cli`（29 个测试函数，其中 1 个合并前跳过）：
   - 零件：帮助和 SKILL.md 里提到的每个参数都在参数表里、参数解析和拼写建议、编码器、设置文件、大小和时间的格式、拉起的判断（假的启动器）；
   - 真的 ws.exe 对着测试进程里的 MCP 服务（测试管道，临时文件夹走一遍得到的索引）：每个子命令的字节和退出码、`--json`、`-0`、`-l`、颜色、UTF-16 和代码页、没运行（拉起换成写一个文件）、开关关着、有互斥量没管道、索引没好；
-  - 自己写的管道服务端演 Win顺 演不了的：Ctrl+Break 取消（Win顺 收到 `notifications/cancelled`，退出码 130）、管道断了、旧版 Win顺、新版的拒绝类别、`ws text` 遇到 `too_large` 换小段、5 万条的回答、`ws recent` 的第二次问；
+  - 自己写的管道服务端演 Win顺 演不了的：Ctrl+Break 取消（Win顺 收到 `notifications/cancelled`，退出码 130）、管道断了、旧版 Win顺、新版的拒绝类别（含剪贴板两个开关各自的提示 `clipboardOffKinds`、`ws status` 的剪贴板一行 `statusClipboardLine`）、`ws text` 遇到 `too_large` 换小段、5 万条的回答、`ws recent` 的第二次问、`ws grep` 遇到 `queued`（`queuedContentSearch`）；
   - 一律用测试管道、测试互斥量、`WS_TEST_START`、`WS_TEST_OPEN`、临时的 `CLAUDE_CONFIG_DIR`，不碰用户的 Win顺 和 `~\.claude`。
   - 要 cli 分支服务端改动的几项（`--in` 由 Win顺 筛、一次超过 200 条、不读大小）合并前 QSKIP，合并后自动跑。
 - 性能（10 次中位数，对着用户在跑的 Win顺，索引 368 万项）：`ws find 报告 -n 20` 15.1 ms，`ws --version` 6.8 ms。5 万条、8.2 MB 的回答：解析 45 ms，`ws find -n 0` 从启动到退出 108 ms。

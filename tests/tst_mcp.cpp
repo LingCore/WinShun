@@ -1304,6 +1304,7 @@ private slots:
             Outcome out = outcomeOf(*reply);
             QVERIFY(out.isError);
             QCOMPARE(out.structured.value(u"error"_s).toString(), u"off"_s); // ws: exit 4
+            QCOMPARE(out.structured.value(u"setting"_s).toString(), u"clipboard_history"_s); // ... naming the history's switch
             QVERIFY2(out.text.contains(u"设置 → 剪贴板 → “记录剪贴板历史”"), qPrintable(out.text));
             reply = ai.exchange(callLine(id++, tool, arguments));
             QVERIFY(reply);
@@ -1336,6 +1337,26 @@ private slots:
         out = outcomeOf(*reply);
         QVERIFY(out.isError);
         QVERIFY2(out.text.contains(u"AI 助手") && !out.text.contains(u"记录剪贴板历史"), qPrintable(out.text));
+        QVERIFY(!out.structured.contains(u"setting"_s)); // an AI client reads the words
+        // ... and so does the setting name it, to ws, whether the history is kept or not.
+        for (const bool kept : {false, true}) {
+            policy.clipboardHistory = kept;
+            f.host->setPolicy(policy);
+            reply = cli.exchange(callLine(id++, u"clipboard_history"_s));
+            QVERIFY(reply);
+            out = outcomeOf(*reply);
+            QVERIFY(out.isError);
+            QCOMPARE(out.structured.value(u"error"_s).toString(), u"off"_s);
+            QCOMPARE(out.structured.value(u"setting"_s).toString(), u"ai_clipboard"_s);
+        }
+        // A tool with one switch names none.
+        QCOMPARE(f.host->known(u"open_item"_s), ToolHost::Known::Off);
+        reply = cli.exchange(callLine(id++, u"open_item"_s, {{u"path"_s, f.root}}));
+        QVERIFY(reply);
+        out = outcomeOf(*reply);
+        QVERIFY(out.isError);
+        QCOMPARE(out.structured.value(u"error"_s).toString(), u"off"_s);
+        QVERIFY(!out.structured.contains(u"setting"_s));
     }
 
     // take_screenshot: off unless switched on; then only what the user
@@ -2395,6 +2416,7 @@ private slots:
         Outcome out = outcomeOf(s.received.last());
         QVERIFY2(!out.isError, qPrintable(out.text));
         QVERIFY(!out.structured.value(u"complete"_s).toBool());
+        QVERIFY(out.structured.value(u"queued"_s).toBool()); // nothing was searched: ws tells it from a search that ran out of time
         QCOMPARE(out.structured.value(u"returned"_s).toInt(), 0);
         QCOMPARE(out.structured.value(u"items"_s).toArray().size(), 0);
         QVERIFY2(out.structured.value(u"note"_s).toString().contains(u"did not start"), qPrintable(out.structured.value(u"note"_s).toString()));
@@ -2412,6 +2434,7 @@ private slots:
         out = outcomeOf(s.received.last());
         QVERIFY2(!out.isError, qPrintable(out.text));
         QVERIFY(!out.structured.value(u"complete"_s).toBool());
+        QVERIFY(!out.structured.contains(u"queued"_s)); // it waited, then searched
         QVERIFY2(out.structured.value(u"note"_s).toString().contains(u"timeout ran out"), qPrintable(out.structured.value(u"note"_s).toString()));
         lock.reset();
         QTRY_COMPARE(f.host->pendingCalls(), 0);

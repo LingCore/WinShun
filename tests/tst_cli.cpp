@@ -581,13 +581,18 @@ std::string readyAnswer(long long id)
     return toolAnswer(id, json::Value::Object {{"index", json::Value::Object {{"state", "ready"}, {"items", 1}, {"refreshing", false}}}});
 }
 
-// A refusal as a Win顺 made for ws sends it: the words, and its kind when it has one.
-std::string refusalAnswer(long long id, const std::string& text, const std::string& code)
+// A refusal as a Win顺 made for ws sends it: the words, and its kind when it has one
+// (and for "off" which switch, when it names one).
+std::string refusalAnswer(long long id, const std::string& text, const std::string& code, const std::string& setting = {})
 {
     json::Value::Object result {
         {"content", json::Value::Array {json::Value::Object {{"type", "text"}, {"text", text}}}}, {"isError", true}};
-    if (!code.empty())
-        result.emplace("structuredContent", json::Value::Object {{"error", code}});
+    if (!code.empty()) {
+        json::Value::Object kind {{"error", code}};
+        if (!setting.empty())
+            kind.emplace("setting", setting);
+        result.emplace("structuredContent", std::move(kind));
+    }
     return answerLine(id, std::move(result));
 }
 
@@ -1625,6 +1630,27 @@ private slots:
         m_served->host->setPolicy(policy);
         QCOMPARE(r.code, 4);
         QVERIFY2(r.errors().contains(u"允许 AI 读取剪贴板历史"_s), qPrintable(r.errors()));
+        r = ws({u"status"_s});
+        QVERIFY2(r.text().contains(u"剪贴板历史：命令行和 AI 可以读"_s), qPrintable(r.text()));
+        // AI may read it but Win顺 keeps none (设置 → 剪贴板): that switch is the one named,
+        // by the server (the `setting` of its refusal), and by status.
+        policy.allowClipboard = true;
+        policy.clipboardHistory = false;
+        m_served->host->setPolicy(policy);
+        r = ws({u"clip"_s});
+        Outcome history = ws({u"status"_s});
+        QCOMPARE(r.code, 4);
+        QVERIFY2(r.errors().contains(u"“记录剪贴板历史”"_s) && !r.errors().contains(u"允许 AI 读取剪贴板历史"_s), qPrintable(r.errors()));
+        QVERIFY2(history.text().contains(u"剪贴板历史：Win顺 没有记录"_s), qPrintable(history.text()));
+        // Both off: AI's switch first, as the server's own words do.
+        policy.allowClipboard = false;
+        m_served->host->setPolicy(policy);
+        r = ws({u"clip"_s});
+        QCOMPARE(r.code, 4);
+        QVERIFY2(r.errors().contains(u"允许 AI 读取剪贴板历史"_s), qPrintable(r.errors()));
+        policy.allowClipboard = true;
+        policy.clipboardHistory = true;
+        m_served->host->setPolicy(policy);
         m_served->clips.clear();
     }
 
@@ -2461,6 +2487,148 @@ private slots:
         QVERIFY(fake.saw("\"max_chars\":20000"));
         QVERIFY(fake.saw("\"max_chars\":5000"));
         QVERIFY(fake.saw("\"max_chars\":1000"));
+    }
+
+    // Two switches keep the clipboard history from ws (AI's, and Win顺 keeping a history at
+    // all): the refusal names the one that is off, by the setting a Win顺 made for ws sends
+    // and, from one that does not, by its words.
+    void clipboardOffKinds()
+    {
+        const std::wstring name = testPipeName("clipoff");
+        // Win顺's own words (branch cli's McpTools.cpp, ToolHost::offReason).
+        const std::string noHistory =
+            "The tool 'clipboard_history' is off: Win顺 is not keeping a clipboard history, so there is nothing to read. Ask the user "
+            "to turn on 设置 → 剪贴板 → “记录剪贴板历史”, then call it again (what was copied while it was off is not there).";
+        const std::string aiOff = "The tool 'clipboard_history' is turned off in Win顺's settings (设置 → AI 助手). Ask the user to turn it on "
+                                  "there, then call it again.";
+        FakeServer fake(name, [&](const std::string& line) -> std::optional<std::string> {
+            const Request request = requestOf(line);
+            if (request.method == "initialize")
+                return initializeAnswer(request.id);
+            if (request.tool == "index_status")
+                return readyAnswer(request.id);
+            if (request.tool != "clipboard_history")
+                return std::string();
+            const std::string which = request.arguments["query"].toString();
+            if (which == "history") // the setting alone says it: the words are no help
+                return refusalAnswer(request.id, "The tool is off.", "off", "clipboard_history");
+            if (which == "ai")
+                return refusalAnswer(request.id, aiOff, "off", "ai_clipboard");
+            if (which == "ai-words") // the setting rules over words that say otherwise
+                return refusalAnswer(request.id, noHistory, "off", "ai_clipboard");
+            if (which == "code") // a kind but no setting: the words
+                return refusalAnswer(request.id, noHistory, "off");
+            if (which == "words") // no kind either (the words of an older Win顺)
+                return refusalAnswer(request.id, noHistory, "");
+            if (which == "old-ai")
+                return refusalAnswer(request.id, aiOff, "");
+            return std::string();
+        });
+        const auto askedFor = [&](const char* which, const char* language) {
+            return ws({u"clip"_s, QString::fromLatin1(which)}, {{L"WS_LANG", QString::fromLatin1(language).toStdWString()}}, name);
+        };
+        for (const char* which : {"history", "code", "words"}) {
+            Outcome r = askedFor(which, "zh");
+            QCOMPARE(r.code, 4);
+            QVERIFY2(r.errors().contains(u"设置 → 剪贴板 里打开“记录剪贴板历史”"_s) && !r.errors().contains(u"允许 AI"_s), qPrintable(r.errors()));
+            QVERIFY(r.out.isEmpty());
+            r = askedFor(which, "en");
+            QCOMPARE(r.code, 4);
+            QVERIFY2(r.errors().contains(u"turn on \"Keep a clipboard history\" in Settings > Clipboard"_s) && !r.errors().contains(u"Allow AI"_s),
+                qPrintable(r.errors()));
+        }
+        for (const char* which : {"ai", "ai-words", "old-ai"}) {
+            Outcome r = askedFor(which, "zh");
+            QCOMPARE(r.code, 4);
+            QVERIFY2(r.errors().contains(u"在 设置 → AI 助手 里打开“允许 AI 读取剪贴板历史”"_s) && !r.errors().contains(u"记录剪贴板历史"_s),
+                qPrintable(r.errors()));
+            r = askedFor(which, "en");
+            QCOMPARE(r.code, 4);
+            QVERIFY2(r.errors().contains(u"turn on \"Allow AI to read the clipboard history\" in Settings > AI assistants"_s), qPrintable(r.errors()));
+        }
+    }
+
+    // ws status names the history's own switch when Win顺 keeps no history (then
+    // clipboard_allowed is false too, which says nothing about AI's switch), and does
+    // not take a Win顺 that does not report the history for one that keeps none.
+    void statusClipboardLine()
+    {
+        enum Report { Open, AiOff, NoHistory, NoHistoryField };
+        std::atomic<int> report {Open};
+        const std::wstring name = testPipeName("clipstatus");
+        FakeServer fake(name, [&](const std::string& line) -> std::optional<std::string> {
+            const Request request = requestOf(line);
+            if (request.method == "initialize")
+                return initializeAnswer(request.id);
+            if (request.tool != "index_status")
+                return std::string();
+            json::Value::Object ai {{"clipboard_allowed", report == Open}};
+            if (report != NoHistoryField) // (the field an older Win顺 does not have)
+                ai.emplace("clipboard_history", report != NoHistory);
+            return toolAnswer(request.id, json::Value::Object {{"version", "9.9"},
+                {"index", json::Value::Object {{"state", "ready"}, {"items", 5}, {"refreshing", false}}},
+                {"content_index", json::Value::Object {{"enabled", false}}}, {"ai", std::move(ai)}});
+        });
+        const auto status = [&](Report what, const wchar_t* language) {
+            report = what;
+            return ws({u"status"_s}, {{L"WS_LANG", language}}, name);
+        };
+        Outcome r = status(Open, L"zh");
+        QCOMPARE(r.code, 0);
+        QVERIFY2(r.text().contains(u"剪贴板历史：命令行和 AI 可以读"_s), qPrintable(r.text()));
+        r = status(AiOff, L"zh");
+        QVERIFY2(r.text().contains(u"剪贴板历史：不给命令行和 AI 读"_s), qPrintable(r.text()));
+        r = status(NoHistory, L"zh");
+        QVERIFY2(r.text().contains(u"剪贴板历史：Win顺 没有记录（设置 → 剪贴板 → “记录剪贴板历史”）"_s) && !r.text().contains(u"不给命令行"_s),
+            qPrintable(r.text()));
+        r = status(NoHistory, L"en");
+        QVERIFY2(r.text().contains(u"Clipboard history: WinShun is not keeping one (Settings > Clipboard > \"Keep a clipboard history\")"_s),
+            qPrintable(r.text()));
+        // No field: the old line, not "no history".
+        r = status(NoHistoryField, L"zh");
+        QVERIFY2(r.text().contains(u"剪贴板历史：不给命令行和 AI 读"_s), qPrintable(r.text()));
+    }
+
+    // Another content search had the engine for this one's whole timeout: Win顺 says so
+    // (`queued`), and ws exits 7 and says nothing was searched, instead of "nothing found" (1)
+    // or a search that stopped at its limit. A Win顺 without the field: as before.
+    void queuedContentSearch()
+    {
+        const std::wstring name = testPipeName("queued");
+        FakeServer fake(name, [&](const std::string& line) -> std::optional<std::string> {
+            const Request request = requestOf(line);
+            if (request.method == "initialize")
+                return initializeAnswer(request.id);
+            if (request.tool == "index_status")
+                return readyAnswer(request.id);
+            if (request.tool != "search_content")
+                return std::string();
+            json::Value::Object answer {{"items", json::Value::Array {}}, {"returned", 0}, {"truncated", false}, {"complete", false},
+                {"files_checked", 0}, {"files_candidates", 0}, {"elapsed_ms", 5000.0}};
+            if (request.arguments["query"].toString() == "queued")
+                answer.emplace("queued", true);
+            return toolAnswer(request.id, std::move(answer));
+        });
+        Outcome r = ws({u"grep"_s, u"queued"_s}, {}, name);
+        QCOMPARE(r.code, 7);
+        QVERIFY2(r.errors().contains(u"没有搜：另一个内容搜索一直在进行"_s) && r.errors().contains(u"--timeout"_s) && !r.errors().contains(u"结果可能不全"_s),
+            qPrintable(r.errors()));
+        QVERIFY(r.out.isEmpty());
+        // Nothing written whatever the format: no empty list for a script to take for an answer.
+        for (const QString& format : {u"--json"_s, u"-0"_s}) {
+            r = ws({u"grep"_s, u"queued"_s, format}, {}, name);
+            QCOMPARE(r.code, 7);
+            QVERIFY2(r.out.isEmpty(), qPrintable(format));
+        }
+        r = ws({u"grep"_s, u"queued"_s}, {{L"WS_LANG", L"en"}}, name);
+        QCOMPARE(r.code, 7);
+        QVERIFY2(r.errors().contains(u"another content search was running the whole time and this one never got its turn"_s)
+                && r.errors().contains(u"--timeout"_s),
+            qPrintable(r.errors()));
+        // Not queued, out of time: nothing found, and the results may be missing.
+        r = ws({u"grep"_s, u"slow"_s}, {}, name);
+        QCOMPARE(r.code, 1);
+        QVERIFY2(r.errors().contains(u"搜到时间上限就停了，结果可能不全"_s), qPrintable(r.errors()));
     }
 
     // A newer Win顺's answer to ws find -n 0: 50 000 items, about 9 MB of JSON.

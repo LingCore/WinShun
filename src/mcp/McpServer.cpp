@@ -309,7 +309,7 @@ void McpServer::callTool(Session& session, const QJsonValue& id, const QJsonObje
                                reason.isEmpty()
                                    ? u"The tool '%1' is turned off in Win顺's settings (设置 → AI 助手). Ask the user to turn it on there, then call it again."_s.arg(name)
                                    : reason,
-                               QString::fromLatin1(kErrorOff)},
+                               QString::fromLatin1(kErrorOff), m_host->offSetting(name)},
                 session.cli)));
         return;
     }

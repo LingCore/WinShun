@@ -22,6 +22,8 @@ constexpr Text kContentPending {L"（还有 {} 个待读）", L" ({} waiting)"};
 constexpr Text kContentOff {L"内容索引：关", L"Content index: off"};
 constexpr Text kClipboardAllowed {L"剪贴板历史：命令行和 AI 可以读", L"Clipboard history: the command line and AI may read it"};
 constexpr Text kClipboardKept {L"剪贴板历史：不给命令行和 AI 读", L"Clipboard history: kept from the command line and AI"};
+constexpr Text kClipboardNotKept {L"剪贴板历史：Win顺 没有记录（设置 → 剪贴板 → “记录剪贴板历史”）",
+    L"Clipboard history: WinShun is not keeping one (Settings > Clipboard > \"Keep a clipboard history\")"};
 constexpr Text kNotRunning {L"Win顺 没在运行（用 ws 搜索时会启动它）", L"WinShun is not running (ws starts it when you search)"};
 constexpr Text kWinShunVersion {L"Win顺 {}", L"WinShun {}"};
 constexpr Text kBareReady {L"Win顺 {} 在运行，索引就绪（{} 项）。", L"WinShun {} is running; its index is ready ({} items)."};
@@ -82,7 +84,7 @@ Result<Exit> runStatus(Context& context)
     if (!status)
         return std::move(status).failure();
     if (status->isError)
-        return toolFailure("index_status", status->errorCode, status->errorText, {});
+        return toolFailure("index_status", status->errorCode, status->errorSetting, status->errorText, {});
     const json::Value& s = status->structured;
     const json::Value& index = s["index"];
     const bool ready = index["state"].toString() == "ready";
@@ -114,7 +116,12 @@ Result<Exit> runStatus(Context& context)
     } else {
         line(out, tr(kContentOff));
     }
-    line(out, tr(s["ai"]["clipboard_allowed"].toBool() ? kClipboardAllowed : kClipboardKept));
+    // clipboard_allowed is false without a history too: that one is the history's own switch to
+    // name (an older Win顺 has no clipboard_history here; it is not told off for that).
+    if (!s["ai"]["clipboard_history"].toBool(true))
+        line(out, tr(kClipboardNotKept));
+    else
+        line(out, tr(s["ai"]["clipboard_allowed"].toBool() ? kClipboardAllowed : kClipboardKept));
     return ready ? Exit::Found : Exit::NotReady;
 }
 

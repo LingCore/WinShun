@@ -28,6 +28,10 @@ struct CallResult {
     // (structuredContent.error of a refusal); empty for the rest, and from a
     // Win顺 older than ws.
     std::string errorCode;
+    // With "off": which switch, when the tool has more than one that can keep
+    // it off ("ai_clipboard", "clipboard_history": structuredContent.setting);
+    // empty from a Win顺 that does not say.
+    std::string errorSetting;
     std::wstring errorText;
     json::Value structured; // structuredContent (Win顺 always sends it)
 };
@@ -87,9 +91,11 @@ private:
 };
 
 // Win顺's refusal mapped to an exit code and the user's language
-// (docs/design-cli.md §6): by its code (`errorCode`) when it has one, else by
-// the English words of a Win顺 before ws. `subject`: the path it is about;
-// empty: the path Win顺's words end with, if any.
-Failure toolFailure(std::string_view tool, std::string_view errorCode, const std::wstring& text, std::wstring_view subject);
+// (docs/design-cli.md §6): by its code (`errorCode`, and for "off" the switch
+// it names, `errorSetting`) when it has one, else by the English words of a
+// Win顺 before ws. `subject`: the path it is about; empty: the path Win顺's
+// words end with, if any.
+Failure toolFailure(std::string_view tool, std::string_view errorCode, std::string_view errorSetting, const std::wstring& text,
+    std::wstring_view subject);
 
 } // namespace ws::cli

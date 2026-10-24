@@ -56,6 +56,9 @@ inline constexpr Text kLossyHintEncoding {L"；用 --encoding utf8 可以保留"
 inline constexpr Text kLossyHintJson {L"，或者用 --json", L", or use --json"};
 inline constexpr Text kIncomplete {L"搜到时间上限就停了，结果可能不全；用 --timeout 30s 多搜一会儿",
     L"The search stopped at its time limit, so results may be missing; --timeout 30s searches longer"};
+// A content search runs one at a time: this one waited its whole time for another's turn, so nothing was searched.
+inline constexpr Text kQueuedOut {L"没有搜：另一个内容搜索一直在进行，这一个始终没轮到；等它搜完再试一次，或者用 --timeout 30s 多等一会儿",
+    L"Nothing was searched: another content search was running the whole time and this one never got its turn; run it again when that one is done, or wait longer with --timeout 30s"};
 
 // ---- what Win顺 said no to -------------------------------------------------
 inline constexpr Text kNotVisible {L"看不到这个路径（不存在、没有权限，或在不让 AI 看到的文件夹里）：{}",
@@ -68,7 +71,8 @@ inline constexpr Text kTurnedOff {L"Win顺 的设置里关着它（设置 → AI
 inline constexpr Text kClipOff {L"剪贴板历史没有对命令行和 AI 开放：在 设置 → AI 助手 里打开“允许 AI 读取剪贴板历史”",
     L"The clipboard history is not open to the command line and AI: turn on \"Allow AI to read the clipboard history\" in "
     L"Settings > AI assistants"};
-inline constexpr Text kClipUnavailable {L"Win顺 的剪贴板历史没开（设置 → 剪贴板）", L"WinShun's clipboard history is off (Settings > Clipboard)"};
+inline constexpr Text kClipUnavailable {L"Win顺 没有记录剪贴板历史：在 设置 → 剪贴板 里打开“记录剪贴板历史”",
+    L"WinShun is not keeping a clipboard history: turn on \"Keep a clipboard history\" in Settings > Clipboard"};
 inline constexpr Text kContentOff {L"Win顺 的文件内容搜索关着：在 设置 → 文件内容搜索 里打开",
     L"Content search is off in WinShun: turn it on in Settings > File contents"};
 inline constexpr Text kUnknownTool {L"这个版本的 Win顺 没有 {}；请更新 Win顺", L"This WinShun has no {}; update it"};

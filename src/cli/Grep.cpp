@@ -80,6 +80,10 @@ Result<Exit> runGrep(Context& context)
         folders->empty() ? std::wstring_view() : std::wstring_view(folders->front()));
     if (!result)
         return std::move(result).failure();
+    // Another content search had the engine for this one's whole time: nothing was searched, which
+    // is not "nothing found" (and an older Win顺 does not say so: it reads as a search that ran out of time).
+    if ((*result)["queued"].toBool())
+        return Failure {Exit::Failed, std::wstring(tr(msg::kQueuedOut))};
     const json::Value::Array& items = (*result)["items"].toArray();
 
     Stream& out = context.out;

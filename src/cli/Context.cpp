@@ -204,7 +204,7 @@ Result<json::Value> callTool(Context& context, Connection& connection, std::stri
     if (result->isError) {
         if (errorCode)
             *errorCode = result->errorCode;
-        return toolFailure(tool, result->errorCode, result->errorText, subject);
+        return toolFailure(tool, result->errorCode, result->errorSetting, result->errorText, subject);
     }
     return std::move(result->structured);
 }
