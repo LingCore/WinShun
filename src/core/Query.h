@@ -152,6 +152,9 @@ public:
     // Whether the query is one plain term that is the whole name (UTF-8),
     // with or without its extension: "readme" for "README.md".
     bool isExactName(std::string_view name, bool isDir) const;
+    // The same for a name as Qt holds it, converted only when its length
+    // allows it to be one.
+    bool isExactName(QStringView name, bool isDir) const;
 
 private:
     struct Positive {
