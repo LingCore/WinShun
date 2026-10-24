@@ -1142,6 +1142,72 @@ private slots:
             QVERIFY2(!line.contains(u"季度报表"), qPrintable(line));
     }
 
+    // Win顺's clipboard history off (设置 → 剪贴板 → 记录剪贴板历史), AI's
+    // switch for it on: there is nothing to read, so the three tools are off
+    // and name the history's switch; index_status says it is not readable
+    // (ws status shows that).
+    void clipboardHistoryOff()
+    {
+        Fixture f;
+        f.clips.push_back({1, u"text"_s, u"hello world"_s, 11, 1'700'000'000'000, 1'700'000'000'000, u"notepad"_s, {}, false, 0, 0});
+        Policy policy = f.host->policy();
+        policy.allowClipboard = true;
+        policy.captureEnabled = true;
+        policy.clipboardHistory = false;
+        f.host->setPolicy(policy);
+        const QStringList tools {u"clipboard_history"_s, u"clipboard_get"_s, u"screenshot_history"_s};
+        for (const QString& tool : tools)
+            QVERIFY2(!f.host->toolNames().contains(tool), qPrintable(tool));
+        Session ai(f.server.get());
+        QVERIFY(ai.initialize());
+        Session cli(f.server.get());
+        QVERIFY(cli.initialize(u"2025-11-25"_s, u"ws"_s));
+        const auto status = [&](int id) {
+            const auto reply = cli.exchange(callLine(id, u"index_status"_s));
+            return reply ? outcomeOf(*reply).structured.value(u"ai"_s).toObject() : QJsonObject();
+        };
+        int id = 2;
+        for (const QString& tool : tools) {
+            const QJsonObject arguments = tool == u"clipboard_get" ? QJsonObject {{u"id"_s, 1}} : QJsonObject();
+            auto reply = cli.exchange(callLine(id++, tool, arguments));
+            QVERIFY(reply);
+            Outcome out = outcomeOf(*reply);
+            QVERIFY(out.isError);
+            QCOMPARE(out.structured.value(u"error"_s).toString(), u"off"_s); // ws: exit 4
+            QVERIFY2(out.text.contains(u"设置 → 剪贴板 → “记录剪贴板历史”"), qPrintable(out.text));
+            reply = ai.exchange(callLine(id++, tool, arguments));
+            QVERIFY(reply);
+            out = outcomeOf(*reply);
+            QVERIFY(out.isError);
+            QVERIFY2(out.text.contains(u"记录剪贴板历史"), qPrintable(out.text));
+        }
+        QJsonObject state = status(id++);
+        QVERIFY(!state.value(u"clipboard_allowed"_s).toBool(true));
+        QVERIFY(!state.value(u"clipboard_history"_s).toBool(true));
+
+        // The history back on: there to read.
+        policy.clipboardHistory = true;
+        f.host->setPolicy(policy);
+        auto reply = cli.exchange(callLine(id++, u"clipboard_history"_s));
+        QVERIFY(reply);
+        Outcome out = outcomeOf(*reply);
+        QVERIFY2(!out.isError, qPrintable(out.text));
+        QCOMPARE(out.structured.value(u"returned"_s).toInt(), 1);
+        state = status(id++);
+        QVERIFY(state.value(u"clipboard_allowed"_s).toBool());
+        QVERIFY(state.value(u"clipboard_history"_s).toBool());
+
+        // Both off: AI's own switch is the one to name.
+        policy.allowClipboard = false;
+        policy.clipboardHistory = false;
+        f.host->setPolicy(policy);
+        reply = ai.exchange(callLine(id++, u"clipboard_history"_s));
+        QVERIFY(reply);
+        out = outcomeOf(*reply);
+        QVERIFY(out.isError);
+        QVERIFY2(out.text.contains(u"AI 助手") && !out.text.contains(u"记录剪贴板历史"), qPrintable(out.text));
+    }
+
     // take_screenshot: off unless switched on; then only what the user
     // answers (here a stand-in for App::confirmScreenshot) decides.
     void takeScreenshot()

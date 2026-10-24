@@ -435,7 +435,8 @@ struct ToolHost::Tool {
         if (external)
             return offered;
         return offered
-            && (gate == Gate::None || (gate == Gate::Open && policy.allowOpen) || (gate == Gate::Clipboard && policy.allowClipboard)
+            && (gate == Gate::None || (gate == Gate::Open && policy.allowOpen)
+                || (gate == Gate::Clipboard && policy.allowClipboard && policy.clipboardHistory)
                 || (gate == Gate::Documents && policy.allowDocuments) || (gate == Gate::Screenshot && policy.allowScreenshot)
                 || (gate == Gate::Settings && policy.settingsMode != SettingsMode::Off));
     }
@@ -626,6 +627,12 @@ QString ToolHost::offReason(const QString& name) const
         return u"The tool '%1' is off: the user has not allowed AI to change Win顺's settings. Ask them to turn it on in "
                "设置 → AI 助手 → 权限 → “允许 AI 修改设置” (every time ask me, or change directly), then call it again. "
                "If they would rather do it themselves, open_settings shows them where a setting is."_s.arg(name);
+    }
+    // Allowed to AI, but there is no history to read: the switch to name is
+    // the history's own, not the AI one (the default words).
+    if (tool && tool->gate == Tool::Gate::Clipboard && m_policy.allowClipboard && !m_policy.clipboardHistory) {
+        return u"The tool '%1' is off: Win顺 is not keeping a clipboard history, so there is nothing to read. Ask the user to turn on "
+               "设置 → 剪贴板 → “记录剪贴板历史”, then call it again (what was copied while it was off is not there)."_s.arg(name);
     }
     return tool && tool->external ? tool->offReason : QString();
 }
@@ -1329,7 +1336,7 @@ void ToolHost::addTools()
         {u"version"_s, typed("string", u"Its version"_s)},
         {u"index"_s, typed("object", u"state (loading, building, ready), items, volumes"_s)},
         {u"content_index"_s, typed("object", u"enabled, files, pending, reading"_s)},
-        {u"ai"_s, typed("object", u"open_allowed, clipboard_allowed, screenshot_allowed, capture_enabled, settings_mode (off, ask, auto), excluded_folders"_s)}, {u"hint"_s, typed("string", u"What to tell the user when Win顺 is not running"_s)}});
+        {u"ai"_s, typed("object", u"open_allowed, clipboard_allowed (and readable), clipboard_history (Win顺 keeps one), screenshot_allowed, capture_enabled, settings_mode (off, ask, auto), excluded_folders"_s)}, {u"hint"_s, typed("string", u"What to tell the user when Win顺 is not running"_s)}});
     status.annotations = annotations(true, true);
     status.run = [this](const std::shared_ptr<Call>& call) { indexStatus(call); };
     m_tools.push_back(std::move(status));
@@ -2150,7 +2157,9 @@ void ToolHost::indexStatus(const std::shared_ptr<Call>& call)
         content.insert(u"enabled"_s, false);
     }
     const QJsonObject ai {{u"open_allowed"_s, m_policy.allowOpen && m_services.open != nullptr},
-        {u"clipboard_allowed"_s, m_policy.allowClipboard && m_services.clipboard != nullptr},
+        // Allowed and there to read: with Win顺's clipboard history off there is none.
+        {u"clipboard_allowed"_s, m_policy.allowClipboard && m_policy.clipboardHistory && m_services.clipboard != nullptr},
+        {u"clipboard_history"_s, m_policy.clipboardHistory},
         {u"screenshot_allowed"_s, m_policy.allowScreenshot && m_services.takeScreenshot != nullptr},
         {u"capture_enabled"_s, m_policy.captureEnabled},
         {u"settings_mode"_s, QString::fromLatin1(settingsModeName(m_policy.settingsMode))},

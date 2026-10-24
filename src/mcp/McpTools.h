@@ -55,6 +55,9 @@ inline const char* settingsModeName(SettingsMode mode) noexcept
 struct Policy {
     bool allowOpen = false; // open_item, show_in_folder
     bool allowClipboard = false; // clipboard_history, clipboard_get, screenshot_history
+    // Win顺 keeps a clipboard history at all (设置 → 剪贴板 → 记录剪贴板历史):
+    // without it the clipboard tools are off too, whatever allowClipboard says.
+    bool clipboardHistory = true;
     // take_screenshot; even so every call waits for the user to allow it on
     // the screen (Services::takeScreenshot).
     bool allowScreenshot = false;
