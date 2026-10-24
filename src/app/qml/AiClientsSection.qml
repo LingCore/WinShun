@@ -18,8 +18,9 @@ SettingsSection {
     // Whether the PATH has been looked at yet: not "off it" before that.
     readonly property bool cliChecked: editor.cli.state.checked === true
 
-    // The Skill file may have been deleted (or made) meanwhile: looked at when this shows.
-    onVisibleChanged: if (visible) clientsSection.editor.refreshMcpClients()
+    // The Skill file may have been deleted (or made) meanwhile: looked at when this shows, the
+    // one path only, and not while the settings are searched (it shows and hides with each letter).
+    onVisibleChanged: if (visible && !clientsSection.searching) clientsSection.editor.refreshSkillState()
 
     note: relayFound ? qsTr("点“连接”就写进那个客户端的配置（原文件先备份成 .bak）。装了的客户端才列出来。Claude Code 还可以“装 Skill”：让它在终端里用命令行 ws，比 MCP 更省上下文。")
                      : qsTr("没找到 WinShunMcp.exe，重新安装 Win顺 就有了。")

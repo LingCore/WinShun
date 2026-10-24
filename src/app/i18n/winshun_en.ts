@@ -7325,7 +7325,7 @@
     </message>
     <message>
         <source>Win顺 现在是用另一个账户（管理员）运行的，PATH 是那个账户的，不是你登录的这个。请先退出 Win顺，再正常打开它，然后在这里启用。</source>
-        <translation>WinShun is running as another account (an administrator), and the PATH is that account's, not the one you are logged on as. Quit WinShun, open it normally, then enable it here.</translation>
+        <translation>WinShun is running as another account (an administrator), and the PATH is that account&apos;s, not the one you are logged on as. Quit WinShun, open it normally, then enable it here.</translation>
     </message>
     <message>
         <source>连接已打开，但没找到 ws.exe（应在 %1）。重新安装 Win顺 就有了。</source>

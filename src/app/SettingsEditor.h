@@ -806,7 +806,10 @@ public:
     void setMcpStatus(const QString& status); // set by the app: who is connected
     QVariantList mcpClients() const { return m_mcpClients; }
     QString mcpRelayPath() const { return m_mcpRelayPath; }
-    Q_INVOKABLE void refreshMcpClients(); // looks again (as the window comes to the front)
+    Q_INVOKABLE void refreshMcpClients(); // looks again (the window opens); it walks the PATH for `claude`, which a dead share stalls
+    // Only whether Claude Code's Skill file is there (one path): for the window coming to the front
+    // and the page showing, where refreshMcpClients() would stall the GUI thread on that PATH.
+    Q_INVOKABLE void refreshSkillState();
     Q_INVOKABLE void connectMcpClient(const QString& id); // writes Win顺 into its configuration; mcpMessage says how it went
     Q_INVOKABLE void copyMcpSnippet(const QString& id); // its configuration (or command) to the clipboard; "": the generic JSON
     Q_INVOKABLE void installMcpSkill(const QString& id); // Claude Code's Skill for ws; mcpMessage says how it went

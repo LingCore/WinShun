@@ -57,7 +57,9 @@ SettingsSection {
             change()
     }
 
-    onVisibleChanged: if (visible) cli.refresh() // the PATH changed meanwhile, in a terminal or by an installer
+    // The PATH changed meanwhile, in a terminal or by an installer; not while the settings are
+    // searched (the section shows and hides with each letter, a look each on a thread of its own).
+    onVisibleChanged: if (visible && !cliSection.searching) cliSection.cli.refresh()
 
     title: qsTr("命令行")
     note: qsTr("在终端里输入 ws，就能搜文件名、搜文件里的文字、读出 Word 和 PDF 的文字。能运行命令的 AI 助手（Claude Code 这类）用它比 MCP 更省上下文。和 MCP 共用上面的开关。")

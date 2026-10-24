@@ -131,8 +131,9 @@ bool sameText(std::wstring_view a, std::wstring_view b)
 
 bool processElevated()
 {
-    // The tests: 1 pretends to be elevated, 0 not to be, whatever the token says.
-    if (const std::wstring forced = environment(L"WS_TEST_ELEVATED"); !forced.empty())
+    // The tests: 1 pretends to be elevated, 0 not to be, whatever the token says. Only where
+    // nothing is opened for real (WS_TEST_OPEN): an environment variable cannot turn the safeguard off.
+    if (const std::wstring forced = environment(L"WS_TEST_ELEVATED"); !forced.empty() && !environment(L"WS_TEST_OPEN").empty())
         return forced != L"0";
     HANDLE token = nullptr;
     if (!::OpenProcessToken(::GetCurrentProcess(), TOKEN_QUERY, &token))

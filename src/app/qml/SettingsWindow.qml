@@ -111,7 +111,7 @@ Window {
             editor.refreshDoubleCtrlClash()
             editor.refreshOpusFolderMenu()
             editor.cli.refresh() // the PATH changed in a terminal or another program
-            editor.refreshMcpClients() // the Skill file deleted, a client installed
+            editor.refreshSkillState() // the Skill file deleted (not the whole look: it walks the PATH)
         }
     }
 

@@ -2756,6 +2756,25 @@ void SettingsEditor::refreshMcpClients()
     emit mcpClientsChanged();
 }
 
+void SettingsEditor::refreshSkillState()
+{
+    const QString file = mcpclients::skillPath();
+    const bool there = QFileInfo::exists(file);
+    bool changed = false;
+    for (QVariant& item : m_mcpClients) {
+        QVariantMap client = item.toMap();
+        if (client.value(u"id"_s).toString() != u"claude-code"
+            || (client.value(u"skillInstalled"_s).toBool() == there && client.value(u"skillPath"_s).toString() == file))
+            continue;
+        client.insert(u"skillInstalled"_s, there);
+        client.insert(u"skillPath"_s, file);
+        item = client;
+        changed = true;
+    }
+    if (changed)
+        emit mcpClientsChanged();
+}
+
 void SettingsEditor::connectMcpClient(const QString& id)
 {
     // Connecting a client is wanting the connection: the switch goes on with it.

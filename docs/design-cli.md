@@ -274,7 +274,7 @@ src/mcp/PipeClient.cpp/h、Launch.cpp/h   和中继共用的源文件（第 9 �
 ```
 
 - **参数用 `wmain` 的宽字符 argv**（实现时改：原写 `CommandLineToArgvW`）。一样不丢中文，又不用为它在启动时加载 shell32.dll：ws 把 shell32、ole32 延迟加载，只有 `open` 和拉起 Win顺 时才用。
-- **测试用的开关**：隐藏参数 `--pipe`、`--instance`（不进帮助），环境变量 `WS_SETTINGS`（设置文件）、`WS_TEST_START`（写一个文件代替拉起 Win顺）、`WS_TEST_OPEN`（写一个文件代替打开），`CLAUDE_CONFIG_DIR`（Claude Code 自己也认）。
+- **测试用的开关**：隐藏参数 `--pipe`、`--instance`（不进帮助），环境变量 `WS_SETTINGS`（设置文件）、`WS_TEST_START`（写一个文件代替拉起 Win顺）、`WS_TEST_OPEN`（写一个文件代替打开：一行 `open `、`user-open `〔提权时交给 Explorer 的〕或 `reveal ` 加路径），`CLAUDE_CONFIG_DIR`（Claude Code 自己也认）。2026-10-24 复查后又加：`WS_TEST_IDLE_MS`（读回答的期限，毫秒）、`WS_TEST_ELEVATED`（`1` 当作提权、`0` 当作没提权；只在设了 `WS_TEST_OPEN` 时才算数，所以环境里的它削弱不了真的打开）、`WS_TEST_VERIFY`（带 `--pipe` 时也查管道另一头是不是 WinShun.exe）、`WS_TEST_ASSUME_CLI`（当作 Win顺 声明了 `cli` 约定）。
 
 ## 11. Skill（用户真正要的东西）
 
