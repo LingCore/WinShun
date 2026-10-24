@@ -385,7 +385,7 @@ App::App()
     });
     m_cliTallyTimer.setSingleShot(true);
     m_cliTallyTimer.setInterval(500ms);
-    connect(&m_cliTallyTimer, &QTimer::timeout, this, &App::refreshMcpStatus);
+    connect(&m_cliTallyTimer, &QTimer::timeout, this, &App::refreshCliTally);
     m_contentStatusTimer.setInterval(2s);
     connect(&m_contentStatusTimer, &QTimer::timeout, this, &App::refreshContentIndexStatus);
     connect(&m_contentStatusTimer, &QTimer::timeout, this, &App::refreshShareStatuses); // counts while reading
@@ -5243,20 +5243,33 @@ void App::refreshMcpStatus()
                 names.push_back(name);
         }
         status = names.isEmpty() ? tr("还没有 AI 客户端连接；连上以后显示在这里") : tr("已连接：%1").arg(names.join(u"、"_s));
-        // The command line ws: its runs last a few milliseconds each and are not
-        // listed as sessions; counted, with the last one's time (a clock time: it
-        // does not go stale on the screen as "3 分钟前" would) and tool.
+    } else if (m_settings.mcp) {
+        status = tr("没能建立连接通道，详见 WinShun.log");
+    }
+    m_settingsEditor->setMcpStatus(status);
+    refreshCliTally();
+}
+
+void App::refreshCliTally()
+{
+    if (!m_settingsEditor)
+        return;
+    // The command line ws: its runs last a few milliseconds each and are not
+    // listed as sessions; counted, with the last one's time (a clock time: it
+    // does not go stale on the screen as "3 分钟前" would) and tool. Shown in
+    // the 命令行 section, a row of its own: as a second line of the switch's
+    // row it pushed that section down with the first run, from under the mouse.
+    QString text;
+    if (m_mcpServer && m_mcpServer->listening()) {
         const mcp::McpServer::CliTally& tally = m_mcpServer->cliTally();
         if (tally.calls > 0) {
             const QLocale locale;
             const QString when = tally.lastCall.date() == QDate::currentDate() ? locale.toString(tally.lastCall.time(), QLocale::ShortFormat)
                                                                               : locale.toString(tally.lastCall, QLocale::ShortFormat);
-            status += u'\n' + tr("命令行：%1 次调用，最近 %2（%3）").arg(tally.calls).arg(when, tally.lastTool);
+            text = tr("%1 次调用，最近 %2（%3）").arg(tally.calls).arg(when, tally.lastTool);
         }
-    } else if (m_settings.mcp) {
-        status = tr("没能建立连接通道，详见 WinShun.log");
     }
-    m_settingsEditor->setMcpStatus(status);
+    m_settingsEditor->setCliTally(text);
 }
 
 void App::writeMcpToolsCache()

@@ -386,7 +386,8 @@ private:
     // is shown in the settings window.
     void applyMcp();
     mcp::Policy mcpPolicy() const;
-    void refreshMcpStatus();
+    void refreshMcpStatus(); // and the ws tally below
+    void refreshCliTally(); // m_cliTallyTimer's: ws runs many a minute
     void writeMcpToolsCache(); // the tools, for the relay to list while Win顺 is not running
     // The plugins' commands as the AI's tools (plugin::AiBridge): what the
     // [Mcp] Plugins switches and the cards' "给 AI 用" say, applied from

@@ -289,6 +289,18 @@
         <source>知道了</source>
         <translation>Got it</translation>
     </message>
+    <message>
+        <source>调用记录</source>
+        <translation>Calls so far</translation>
+    </message>
+    <message>
+        <source>调用;次数;最近;命令行;ws;calls;last;recent;history</source>
+        <translation>calls;count;last;recent;history;command line;ws;调用;次数;命令行</translation>
+    </message>
+    <message>
+        <source>还没有调用；在终端里用一次 ws，这里就会显示</source>
+        <translation>No calls yet; run ws once in a terminal and it shows here</translation>
+    </message>
 </context>
 <context>
     <name>AiPrivacySection</name>
@@ -6954,8 +6966,8 @@
         <translation>Connected: %1</translation>
     </message>
     <message>
-        <source>命令行：%1 次调用，最近 %2（%3）</source>
-        <translation>Command line: %1 calls, last at %2 (%3)</translation>
+        <source>%1 次调用，最近 %2（%3）</source>
+        <translation>%1 calls, last at %2 (%3)</translation>
     </message>
     <message>
         <source>没能建立连接通道，详见 WinShun.log</source>

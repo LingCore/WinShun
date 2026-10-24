@@ -2749,6 +2749,14 @@ void SettingsEditor::setMcpStatus(const QString& status)
     emit mcpStatusChanged();
 }
 
+void SettingsEditor::setCliTally(const QString& tally)
+{
+    if (m_cliTally == tally)
+        return;
+    m_cliTally = tally;
+    emit cliTallyChanged();
+}
+
 void SettingsEditor::refreshMcpClients()
 {
     m_mcpClients = mcpclients::toVariant(mcpclients::detect());

@@ -282,6 +282,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool mcpPluginActions READ mcpPluginActions WRITE setMcpPluginActions NOTIFY changed FINAL) // and their actions
     Q_PROPERTY(QStringList mcpExcludedPaths READ mcpExcludedPaths NOTIFY changed FINAL) // expanded, for display
     Q_PROPERTY(QString mcpStatus READ mcpStatus NOTIFY mcpStatusChanged FINAL)
+    Q_PROPERTY(QString cliTally READ cliTally NOTIFY cliTallyChanged FINAL) // empty: ws has not been run yet
     Q_PROPERTY(QVariantList mcpClients READ mcpClients NOTIFY mcpClientsChanged FINAL)
     Q_PROPERTY(QString mcpRelayPath READ mcpRelayPath NOTIFY mcpClientsChanged FINAL) // empty: WinShunMcp.exe is missing
     Q_PROPERTY(QString mcpMessage READ mcpMessage NOTIFY mcpMessageChanged FINAL)
@@ -804,6 +805,10 @@ public:
     Q_INVOKABLE void removeMcpExcludedPath(int index);
     QString mcpStatus() const { return m_mcpStatus; }
     void setMcpStatus(const QString& status); // set by the app: who is connected
+    QString cliTally() const { return m_cliTally; }
+    // Set by the app: how often ws was run and when last. Not part of mcpStatus: that is a
+    // row's text, and a line that comes with the first run pushes the rows below it down.
+    void setCliTally(const QString& tally);
     QVariantList mcpClients() const { return m_mcpClients; }
     QString mcpRelayPath() const { return m_mcpRelayPath; }
     Q_INVOKABLE void refreshMcpClients(); // looks again (the window opens); it walks the PATH for `claude`, which a dead share stalls
@@ -867,6 +872,7 @@ signals:
     void signInRequested(const QString& path); // a share, or "\\host"
     void signedIn(const QString& path, const QString& problem); // empty problem: connected
     void mcpStatusChanged();
+    void cliTallyChanged();
     void mcpClientsChanged();
     void mcpMessageChanged();
     void indexAccessStateChanged();
@@ -938,6 +944,7 @@ private:
     struct TaskbarWatch; // the taskbar's pinned programs and Windows' search box setting
     std::unique_ptr<TaskbarWatch> m_taskbarWatch;
     QString m_mcpStatus;
+    QString m_cliTally;
     QVariantList m_mcpClients;
     QString m_mcpRelayPath;
     QString m_mcpMessage;

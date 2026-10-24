@@ -5,9 +5,10 @@ import WinShun
 // Settings → AI 助手 › 权限 › 命令行: ws, the search command for a terminal
 // (src/cli), which AI assistants that can run commands use too. It shares the
 // connection switch above; here is whether it can be run (ws.exe there, its
-// folder on the PATH, no other ws in front) and the one button that sets it
-// up (CliSetup). On the first tab, not next to the clients: the other tabs
-// are gone while the switch is off, and this is where it gets turned on.
+// folder on the PATH, no other ws in front), the one button that sets it
+// up (CliSetup) and, last, how often it was run. On the first tab, not next
+// to the clients: the other tabs are gone while the switch is off, and this
+// is where it gets turned on.
 SettingsSection {
     id: cliSection
     objectName: "cliSection"
@@ -117,5 +118,14 @@ SettingsSection {
             flat: true
             onClicked: cliSection.cli.clearMessage()
         }
+    }
+
+    // Last, so that nothing above it moves, and there whenever the switch is on, a run counted or not:
+    // the first run changes its words, not the height of the section.
+    SettingRow {
+        title: qsTr("调用记录")
+        keywords: qsTr("调用;次数;最近;命令行;ws;calls;last;recent;history").split(";")
+        description: cliSection.editor.cliTally.length > 0 ? cliSection.editor.cliTally : qsTr("还没有调用；在终端里用一次 ws，这里就会显示")
+        shown: cliSection.editor.mcp
     }
 }

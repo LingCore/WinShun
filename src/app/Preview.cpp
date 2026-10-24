@@ -552,7 +552,9 @@ int runSettings(const QStringList& args)
     auto* updater = new Updater(editor); // never setAutomatic() or check(): no network
     editor->plugins()->setLocale(u"zh"_s);
     editor->plugins()->loadPreview(); // a plugin::Host would start WinShunPluginHost.exe: made-up cards instead
-    editor->setMcpStatus(u"已连接：Claude Desktop（12 次调用）\n命令行：38 次调用，最近 14:32（search_files）"_s);
+    editor->setMcpStatus(u"已连接：Claude Desktop（12 次调用）"_s);
+    if (!args.contains(u"--no-cli-tally"_s)) // (the row's text before any run)
+        editor->setCliTally(u"38 次调用，最近 14:32（search_files）"_s);
     // The command line as the page would read it off this PC, made up so that
     // the longest texts and every button can be seen whatever this PC has:
     // rich (the default: on the user's PATH by WinShun, another ws in front),
