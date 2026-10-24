@@ -95,10 +95,10 @@ QString offlineText()
 {
     if (winShunRunning()) {
         return u"Win顺 (WinShun) is running, but its AI connection is off (or this version of Win顺 has none), so "
-               "this tool cannot answer. Ask the user to turn on 允许 AI 连接 (Allow AI assistants to connect) in "
-               "Win顺's settings › AI 助手, or to update Win顺; then call the tool again. "
+               "this tool cannot answer. Ask the user to turn on 允许 AI 助手和命令行连接 (Allow AI assistants and the "
+               "command line to connect) in Win顺's settings › AI 助手, or to update Win顺; then call the tool again. "
                "／Win顺 在运行，但没有开放 AI 连接（或这个版本还没有这个功能）。请在 Win顺 的设置 → AI 助手 里打开"
-               "“允许 AI 连接”，或者更新 Win顺，然后再试一次。"_s;
+               "“允许 AI 助手和命令行连接”，或者更新 Win顺，然后再试一次。"_s;
     }
     return u"Win顺 (WinShun) is not running on this PC, so this tool cannot answer right now. "
            "Ask the user to start Win顺 (Start menu › Win顺, or the tray icon), then call the tool again: "
