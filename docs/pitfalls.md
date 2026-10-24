@@ -3604,3 +3604,28 @@
 - **现象**（2026-10-24，0.13.0 截图）：截图配置在 `F:\电脑便捷工具\tools\screenshots\work\profile`，按意思找显示“语义索引停下了：数据文件夹不能用”；`plugins.log` 里有“无法给 …\winshun.semantic.data 打低完整性标签”，`winshun.tools` 也一样。0.12.0 的截图没事，是因为那时截图工具用提权的 Win顺。
 - **原因**：设置强制完整性标签要 `WRITE_OWNER`。Windows 给新格式化的盘根目录的默认 ACL 是 Authenticated Users“修改”（没有 `WRITE_OWNER`），Administrators、SYSTEM 完全控制；不提权的进程在那里建的文件夹虽然归自己，也打不上标签（`icacls /setintegritylevel` 同样“拒绝访问”）。`%LOCALAPPDATA%` 里用户自己是完全控制，所以装好的 Win顺 一直没事；便携版放在 D:、F: 这类盘上（不提权是默认）、或 `--profile` 指向那里时就会中。标签没打上，低完整性的插件写不进去（不能往上写），`Store::open` 建不了 `semantic` 子文件夹。另外 `dataDirFor` 只在新建文件夹时打标签，失败一次以后永远不再试。
 - **做法**：`labelLow` 遇到拒绝访问时先给当前用户加一条可继承的完全控制（文件夹的主人隐含 `WRITE_DAC`，能改 DACL），再打一次标签；`dataDirFor` 对已有但没有低标签的严格插件文件夹也补打（先用 `isLabelledLow` 读，不每次都重打——重打会把标签传到里面每个文件）。`tst_plugin::labelLowWithoutWriteOwner` 用复刻盘根默认 ACL 的文件夹测。
+
+## 命令行 ws（2026-10-24）
+
+### 拷回来的源文件带着旧的修改时间，ninja 不重编它
+
+- **现象**：计时对比时把 `src/cli/main.cpp` 临时换成另一种写法、编好，再用 `Copy-Item` 把原文件拷回来重编：main.cpp 没有重新编译，ws.exe 和临时那版的哈希一模一样。
+- **原因**：`Copy-Item`（`CopyFile`）保留源文件的修改时间。拷回来的文件比临时版编出的 .obj 旧，ninja 按时间认为它没变。
+- **做法**：拷回之后把修改时间改成现在（`(Get-Item 文件).LastWriteTime = Get-Date`），或者用编辑工具写回；编完核对产物（哈希，或 `Select-String` 查只有临时版才有的字符串）。
+
+### `//` 注释以反斜杠结尾，下一行也成了注释
+
+- **现象**（编译前检查出来的）：`src/cli/Connect.h` 里一个成员的注释写成 `// … without \\.\pipe\`，下一行的成员声明会被并进这条注释，悄悄消失，编译错误会报在用到它的地方。
+- **原因**：续行在去掉注释之前处理（翻译阶段 2 在 3 之前）：行尾的 `\` 把下一行接上来，`//` 注释里也一样。
+- **做法**：注释里的路径不以 `\` 结尾（写 `D:\…`、加引号，或换个说法）；写完用 `rg '\\$' src/cli` 查一遍。
+
+### 测试替 ws 加的参数放在后面：遇到 `--` 就成了查询词，连到用户真的管道
+
+- **现象**（写 `tst_cli` 时核对代码发现，没真跑出来）：测试的辅助函数把 `--pipe <测试管道>` 追加在用例参数的后面。`ws -- recent` 这类用例里，`--` 之后全是查询词，`--pipe` 不再算参数，ws 连的是默认管道：用户正开着的 Win顺。
+- **做法**：测试自己的参数（`--pipe`、`--instance`）一律放在最前面。另外用 `WS_TEST_START`（写文件代替拉起 Win顺）、`WS_TEST_OPEN`（写文件代替打开）、临时的 `CLAUDE_CONFIG_DIR` 兜底，万一连错了也不会动到用户的东西。
+
+### `recent_files` 在 AppData 下的文件夹里一个也不给
+
+- **现象**：`tst_cli` 在 `QTemporaryDir`（`%TEMP%`，在 AppData 下）里建文件，`ws recent --in <那个文件夹>` 退出码 1，什么也没有。
+- **原因**：`recent_files` 默认不列隐藏的项和“系统、程序、工具文件夹”里的项（`EntryFlag::Hidden`、`LowPriority`，都往下继承），要 `include_hidden`、`include_system` 才列。AppData 本身是隐藏文件夹，在 Win顺 的设置里又算工具文件夹，所以它下面的全被滤掉。
+- **做法**：ws 对 `--in` 的文件夹第一次问不到时，带上这两个再问一次，并在 stderr 说明（`docs/design-cli.md` 第 3 节）。不一开始就带：`ws recent --in D:\项目` 会被 node_modules 里的改动淹没。

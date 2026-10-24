@@ -211,6 +211,7 @@
   - 可以设不让 AI 看到的文件夹；
   - 每次调用都有记录。
 - **帮你设置**：对 AI 说“帮我把 Win顺 调顺手”，它会问几个问题，再一次改好几项设置。改之前先弹窗问你，改完在右下角告诉你，几秒内能撤销；涉及安全的几项总会先问你。
+- **命令行 `ws`**：在终端里搜，像 Everything 的 `es`：`ws 报告`（文件名）、`ws grep 发票`（内容）、`ws text 计划.docx`（读出文档里的文字）、`ws recent --days 7`。能跑命令的 AI（Claude Code、Codex）用它比用 MCP 省上下文，`ws skill --install claude` 装上用法说明。和 MCP 共用一个开关、同一套安全设置。
 
 #### 🎨 外观和设置
 
@@ -390,6 +391,7 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
   - **What**: WinShun is an MCP server. Claude Desktop, Claude Code, Cursor and VS Code connect in one click and search file names, file contents and recent changes.
   - **Safety**: read-only by default, limited to what the AI client may see, with folders kept from AI and a call log.
   - **Setting up**: tell the AI to “set up WinShun for me”; it asks a few questions and changes several settings in one go. A window asks you first, a notice at the bottom right says what changed and offers Undo for a few seconds; security-related settings always ask.
+  - **Command line `ws`**: search from a terminal, like Everything's `es`: `ws report` (names), `ws grep invoice` (contents), `ws text plan.docx` (a document's text), `ws recent --days 7`. AI agents that run commands (Claude Code, Codex) need less context with it than with MCP; `ws skill --install claude` installs its instructions. It shares MCP's switch and safety settings.
 - 🎨 **Looks and settings**
   - **Looks**: light and dark themes following Windows, Windows 11 Mica, rounded or square corners (square as in Windows 10), sharp icons at any scaling; compact, standard or roomy sizes, and a monochrome tray and taskbar icon if you like.
   - **Settings**: searchable (`Ctrl+F`); changes apply at once.
