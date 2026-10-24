@@ -623,6 +623,11 @@ private slots:
         QCOMPARE(result.value(u"serverInfo"_s).toObject().value(u"name"_s).toString(), u"winshun"_s);
         QVERIFY(result.value(u"capabilities"_s).toObject().value(u"tools"_s).toObject().value(u"listChanged"_s).toBool());
         QVERIFY(result.value(u"capabilities"_s).toObject().contains(u"prompts"_s));
+        // What ws checks before relying on the command line's contract: an integer.
+        const QJsonValue contract =
+            result.value(u"capabilities"_s).toObject().value(u"experimental"_s).toObject().value(u"winshun"_s).toObject().value(u"cli"_s);
+        QVERIFY(contract.isDouble());
+        QCOMPARE(contract.toInt(), kCliContract);
         QVERIFY(result.value(u"instructions"_s).toString().contains(u"pinyin"));
 
         reply = s.exchange(requestLine(12, u"tools/list"_s));
@@ -1869,19 +1874,41 @@ private slots:
         QVERIFY(reply);
         QCOMPARE(outcomeOf(*reply).structured.value(u"error"_s).toString(), u"off"_s);
 
-        // Counted (every call that reached a tool), never listed, also as it goes.
+        // Counted once per run (a session), however many calls reached a
+        // tool; never listed, also as it goes.
         const auto sessions = f.server->sessions();
         QCOMPARE(sessions.size(), std::size_t {1});
         QCOMPARE(sessions.front().client, u"tst_mcp"_s);
         QCOMPARE(f.server->sessionCount(), 2);
-        QCOMPARE(f.server->cliTally().calls, 7);
+        QCOMPARE(f.server->cliTally().calls, 1);
         QCOMPARE(f.server->cliTally().lastTool, u"read_file_text"_s);
         QVERIFY(f.server->cliTally().lastCall.isValid());
-        QCOMPARE(counted.count(), 7);
+        QCOMPARE(counted.count(), 7); // told at every call that reached a tool
         const qsizetype before = listed.count();
         f.server->closeSession(cli.id);
         QCOMPARE(listed.count(), before);
         QCOMPARE(f.server->sessionCount(), 1);
+
+        // A run is named by what it was run for, not by ws's index_status
+        // probe before it; by the probe only when nothing else was asked.
+        {
+            Session run(f.server.get());
+            QVERIFY(run.initialize(u"2025-11-25"_s, u"ws"_s));
+            QVERIFY(run.exchange(callLine(2, u"index_status"_s)));
+            QCOMPARE(f.server->cliTally().calls, 2);
+            QVERIFY(run.exchange(callLine(3, u"search_files"_s, query)));
+            QVERIFY(run.exchange(callLine(4, u"index_status"_s)));
+            QCOMPARE(f.server->cliTally().calls, 2);
+            QCOMPARE(f.server->cliTally().lastTool, u"search_files"_s);
+        }
+        {
+            Session status(f.server.get());
+            QVERIFY(status.initialize(u"2025-11-25"_s, u"ws"_s));
+            QVERIFY(status.exchange(callLine(2, u"index_status"_s)));
+            QVERIFY(status.exchange(callLine(3, u"index_status"_s)));
+        }
+        QCOMPARE(f.server->cliTally().calls, 3);
+        QCOMPARE(f.server->cliTally().lastTool, u"index_status"_s); // ws status
     }
 
     // size: false reads no sizes from the disk (ws without -l: thousands of
