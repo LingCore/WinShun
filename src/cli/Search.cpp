@@ -108,7 +108,7 @@ Result<Exit> runFind(Context& context)
     if (!printItems(context, items, listStyle(args, request->query)))
         return interrupt::requested() ? Result<Exit>(Failure {Exit::Interrupted, {}}) : Result<Exit>(Exit::Found);
     if ((*result)["truncated"].toBool())
-        noteTruncated(context, items.size(), *limit);
+        noteTruncated(context, items.size(), *limit, madeForWs(**connection));
     return items.empty() ? Exit::NothingFound : Exit::Found;
 }
 
@@ -219,10 +219,11 @@ Result<Exit> runRecent(Context& context)
         return interrupt::requested() ? Result<Exit>(Failure {Exit::Interrupted, {}}) : Result<Exit>(Exit::Found);
     if (hiddenPlaces)
         context.note(tr(msg::kRecentHiddenPlaces));
-    // No "truncated" here: a full page means there is likely more. An older
-    // Win顺 gives at most 200, whatever was asked.
-    if (static_cast<long long>(items.size()) >= *limit || (*limit > kOlderMost && items.size() == kOlderMost))
-        noteTruncated(context, items.size(), *limit);
+    // An older Win顺 says nothing of more: a full page means there likely is,
+    // and it gives at most 200, whatever was asked.
+    if (const bool made = madeForWs(**connection); made ? (*result)["truncated"].toBool()
+            : static_cast<long long>(items.size()) >= *limit || (*limit > kOlderMost && items.size() == kOlderMost))
+        noteTruncated(context, items.size(), *limit, made);
     return items.empty() ? Exit::NothingFound : Exit::Found;
 }
 
@@ -262,7 +263,7 @@ Result<Exit> runLs(Context& context)
     if (!printItems(context, items, listStyle(args)))
         return interrupt::requested() ? Result<Exit>(Failure {Exit::Interrupted, {}}) : Result<Exit>(Exit::Found);
     if ((*result)["truncated"].toBool())
-        noteTruncated(context, items.size(), *limit, (*result)["total"].isNumber() ? (*result)["total"].toInt() : -1);
+        noteTruncated(context, items.size(), *limit, madeForWs(**connection), (*result)["total"].isNumber() ? (*result)["total"].toInt() : -1);
     return items.empty() ? Exit::NothingFound : Exit::Found;
 }
 

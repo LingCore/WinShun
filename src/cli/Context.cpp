@@ -163,6 +163,14 @@ Result<void> requireCliContract(Connection& connection, std::wstring_view option
     return {};
 }
 
+bool madeForWs(Connection& connection)
+{
+    if (environmentSet(L"WS_TEST_ASSUME_CLI"))
+        return true;
+    Result<bool> made = connection.session->hasCliContract();
+    return made && *made;
+}
+
 Result<json::Value> callTool(Context& context, Connection& connection, std::string_view tool, const json::Value& arguments, bool needsIndex,
     std::wstring_view subject, std::string* errorCode)
 {

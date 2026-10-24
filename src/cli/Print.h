@@ -35,6 +35,6 @@ void writePath(Stream& out, std::wstring_view path, bool folder, const std::vect
 void writeMarked(Stream& out, std::wstring_view text, const std::vector<std::wstring>& terms, Style style, Style matchStyle);
 
 // The truncation note: "only the first N…".
-void noteTruncated(Context& context, std::size_t returned, long long asked, long long total = -1);
+void noteTruncated(Context& context, std::size_t returned, long long asked, bool madeForWs, long long total = -1);
 
 } // namespace ws::cli

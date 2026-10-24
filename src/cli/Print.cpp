@@ -140,10 +140,12 @@ json::Value jsonItem(const json::Value& item, bool keepSize)
     return copy;
 }
 
-void noteTruncated(Context& context, std::size_t returned, long long asked, long long total)
+void noteTruncated(Context& context, std::size_t returned, long long asked, bool madeForWs, long long total)
 {
-    if (asked > static_cast<long long>(returned)) // more matched, yet fewer came than asked: Win顺's own limit
-        context.note(fmt(msg::kServerCapped, returned));
+    // More matched, yet fewer came than asked: a Win顺 made for ws stopped at its
+    // answer's byte budget; an older one gives no more than its own limit.
+    if (asked > static_cast<long long>(returned))
+        context.note(fmt(madeForWs ? msg::kAnswerBudget : msg::kServerCapped, returned));
     else if (context.args.value(Opt::Limit) == L"0") // -n 0 already: as many as ws takes
         context.note(fmt(msg::kTruncatedMax, returned));
     else if (total >= 0)

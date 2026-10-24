@@ -1511,19 +1511,22 @@ void ToolHost::finishContent(Lane& lane, bool complete)
         std::ranges::stable_sort(found, std::ranges::greater {}, &SearchResult::relevance);
         Budget budget(cli);
         QJsonArray items;
+        bool beyond = false; // one more the caller may read, past the limit
         for (const SearchResult& r : found) {
             if (aside.stopped())
                 return {};
             if (r.offline || offline(r.path) || excludedIndexPath(excluded, r.path) || !aside.sees(r.path) || !aside.canRead(r.path))
                 continue;
-            if (items.size() >= limit)
+            if (items.size() >= limit) {
+                beyond = true;
                 break;
+            }
             const QJsonObject item = contentItem(r, shape);
             if (!budget.take(item))
                 break;
             items.push_back(item);
         }
-        QJsonObject out {{u"items"_s, items}, {u"returned"_s, items.size()}, {u"complete"_s, complete},
+        QJsonObject out {{u"items"_s, items}, {u"returned"_s, items.size()}, {u"truncated"_s, beyond || budget.cut()}, {u"complete"_s, complete},
             {u"files_checked"_s, scanned}, {u"files_candidates"_s, total}, {u"elapsed_ms"_s, static_cast<double>(timer.elapsed())}};
         if (budget.cut())
             out.insert(u"note"_s, u"More matched than one answer holds: these are the best. Ask for fewer (limit), or narrow the query or the folders."_s);
@@ -1587,8 +1590,9 @@ void ToolHost::addTools()
                                                            {u"snippet"_s, typed("string", u"The matching line or passage"_s)},
                                                            {u"score"_s, typed("integer", u"Relevance, higher is better"_s)}}),
                                        u"The matches, best first"_s)},
-        {u"returned"_s, typed("integer", u"How many items"_s)}, {u"complete"_s, typed("boolean", u"False when the timeout ran out first"_s)},
-        {u"files_checked"_s, typed("integer", u"Files looked at"_s)}, {u"files_candidates"_s, typed("integer", u"Files that could contain the words"_s)},
+        {u"returned"_s, typed("integer", u"How many items"_s)},
+        {u"truncated"_s, typed("boolean", u"More matched than returned: narrow the query or the folders, or raise the limit"_s)},
+        {u"complete"_s, typed("boolean", u"False when the timeout ran out first"_s)}, {u"files_checked"_s, typed("integer", u"Files looked at"_s)}, {u"files_candidates"_s, typed("integer", u"Files that could contain the words"_s)},
         {u"elapsed_ms"_s, typed("number", u"Search time"_s)}, {u"note"_s, typed("string", u"Advice when the result is partial"_s)}});
     content.annotations = annotations(true, true);
     content.engine = Tool::Engine::Content;

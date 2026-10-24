@@ -120,8 +120,10 @@ Result<Exit> runGrep(Context& context)
         return Failure {Exit::Interrupted, {}};
     if (!(*result)["complete"].toBool(true))
         context.note(tr(msg::kIncomplete));
-    else if (static_cast<long long>(items.size()) >= *limit || (*limit > kOlderMost && items.size() == kOlderMost))
-        noteTruncated(context, items.size(), *limit);
+    // An older Win顺 says nothing of more: a full page means there likely is.
+    else if (const bool made = madeForWs(**connection); made ? (*result)["truncated"].toBool()
+            : static_cast<long long>(items.size()) >= *limit || (*limit > kOlderMost && items.size() == kOlderMost))
+        noteTruncated(context, items.size(), *limit, made);
     return items.empty() ? Exit::NothingFound : Exit::Found;
 }
 

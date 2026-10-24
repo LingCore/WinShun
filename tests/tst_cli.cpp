@@ -666,12 +666,6 @@ class TestCli : public QObject {
     QString m_claude; // CLAUDE_CONFIG_DIR
     std::wstring m_mutex; // the test's single-instance mutex name (absent unless a test makes it)
     std::unique_ptr<Served> m_served; // the standard files, served
-    // This tree's Win顺 announces that it was made for ws in initialize. Not yet,
-    // until the branch with the server changes (cli-fix-server) is merged: then
-    // ws would refuse --in of it, and the tests that use --in on it say so to ws
-    // (WS_TEST_ASSUME_CLI) meanwhile. serverAnnouncesCliContract() stops skipping
-    // once the merge makes it announce.
-    bool m_serverHasCli = false;
 
     // ws with the test's pipe and mutex (first: a "--" in `args` must not
     // take them for words) and environment.
@@ -684,8 +678,6 @@ class TestCli : public QObject {
             {L"WS_TEST_START", m_marker.toStdWString()}, {L"WS_TEST_OPEN", m_opened.toStdWString()},
             {L"CLAUDE_CONFIG_DIR", m_claude.toStdWString()}, {L"NO_COLOR", L""}, {L"WS_ENCODING", L""},
             {L"WS_TEST_ELEVATED", L"0"}, {L"WS_TEST_VERIFY", L""}, {L"WS_TEST_IDLE_MS", L""}, {L"WS_TEST_ASSUME_CLI", L""}};
-        if (!m_serverHasCli && pipe.empty())
-            all[L"WS_TEST_ASSUME_CLI"] = L"1"; // this tree's Win顺 (the default pipe) cannot say it yet
         for (const auto& [name, value] : env)
             all[name] = value;
         extra.env = std::move(all);
@@ -711,7 +703,6 @@ private slots:
         m_served = std::make_unique<Served>("main", standardFiles);
         QVERIFY(m_served->ready);
         QVERIFY(m_served->listen());
-        m_serverHasCli = announcesCli(m_served->pipe);
     }
 
     void cleanupTestCase() { m_served.reset(); }
@@ -2294,13 +2285,61 @@ private slots:
         QVERIFY(fake.saw("\"folders\":["));
     }
 
-    // Branch cli-fix-server makes this tree's Win顺 announce the contract. Until it is
-    // merged this skips; after the merge it must pass (and the WS_TEST_ASSUME_CLI the
-    // other tests add for the default pipe stops being set).
+    // "Only the first N": fewer than asked from a Win顺 made for ws is its
+    // answer's byte budget (narrow it), from an older one its own limit
+    // (update it). recent and grep go by its "truncated"; with an older one a
+    // full page counts as more.
+    void truncationNotes()
+    {
+        for (const bool made : {true, false}) {
+            const std::wstring name = testPipeName(made ? "cutmade" : "cutolder");
+            bool more = true;
+            int count = 2;
+            FakeServer fake(name, [&](const std::string& line) -> std::optional<std::string> {
+                const Request request = requestOf(line);
+                if (request.method == "initialize")
+                    return initializeAnswer(request.id, made);
+                if (request.tool == "index_status")
+                    return readyAnswer(request.id);
+                if (!request.tool.empty()) {
+                    json::Value::Array items;
+                    for (int i = 0; i < count; ++i) {
+                        const std::string path = cli::utf8(at(u"t%1.txt"_s.arg(i)).toStdWString());
+                        items.emplace_back(json::Value::Object {{"path", path}, {"type", "file"}, {"modified", nullptr},
+                            {"location", json::Value::Object {{"kind", "line"}, {"line", 1}}}, {"snippet", "t"}});
+                    }
+                    return toolAnswer(request.id, json::Value::Object {{"items", items}, {"returned", count}, {"truncated", more}});
+                }
+                return std::string();
+            });
+            const QString budget = u"一次的回答最多约 15 MB"_s;
+            const QString capped = u"更新后可以多给"_s;
+            for (const QString& command : {u"find"_s, u"recent"_s, u"grep"_s}) {
+                QStringList args {command};
+                if (command != u"recent"_s)
+                    args << u"t"_s;
+                more = true;
+                count = 2;
+                Outcome r = ws(args + QStringList {u"-n"_s, u"5"_s}, {}, name);
+                QCOMPARE(r.code, 0);
+                const bool noted = r.errors().contains(made ? budget : capped);
+                // An older Win顺's recent and grep say nothing of more, and the page is not full.
+                QVERIFY2(noted == (made || command == u"find"_s), qPrintable(command + u": "_s + r.errors()));
+                // A full page: from a Win顺 made for ws only when it says so.
+                more = false;
+                count = 5;
+                r = ws(args + QStringList {u"-n"_s, u"5"_s}, {}, name);
+                QCOMPARE(r.code, 0);
+                const bool full = r.errors().contains(u"只列了前 5 个"_s);
+                QVERIFY2(full == (!made && command != u"find"_s), qPrintable(command + u": "_s + r.errors()));
+            }
+        }
+    }
+
+    // This tree's Win顺 says in initialize that it was made for ws: --in is taken.
     void serverAnnouncesCliContract()
     {
-        if (!m_serverHasCli)
-            QSKIP("this tree's Win顺 does not announce capabilities.experimental.winshun.cli yet (branch cli-fix-server)");
+        QVERIFY(announcesCli(m_served->pipe));
         const Outcome r = ws({u"find"_s, u"c"_s, u"--in"_s, at(u"sub"_s)});
         QCOMPARE(r.code, 0);
         QCOMPARE(r.lines(), QStringList {at(u"sub\\deep\\c.txt"_s)});

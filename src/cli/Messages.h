@@ -46,6 +46,8 @@ inline constexpr Text kTruncatedOf {L"只列了前 {} 个（共 {} 个），用 
 inline constexpr Text kTruncatedMax {L"只列了前 {} 个（一次最多这么多），把查询写细一点", L"Only the first {} are listed (the most at a time); narrow the query"};
 inline constexpr Text kServerCapped {L"只列了前 {} 个：这个版本的 Win顺 一次最多给这么多，更新后可以多给",
     L"Only the first {} are listed: this WinShun gives no more at a time (update it for more)"};
+inline constexpr Text kAnswerBudget {L"只列了前 {} 个：一次的回答最多约 15 MB，把查询写细一点，或用 --in 缩小范围",
+    L"Only the first {} are listed: one answer holds about 15 MB at most; narrow the query, or use --in"};
 // A note about characters the code page could not write: the count, then what to do.
 inline constexpr Text kLossy {L"有 {} 行含代码页 {} 写不出的字，已写成 ?", L"{} line(s) had characters code page {} cannot hold, written as ?"};
 inline constexpr Text kLossyHintPowerShell {L"；在 PowerShell 的 profile 里加 [Console]::OutputEncoding = [Text.UTF8Encoding]::new() 就不会丢",

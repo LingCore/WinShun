@@ -73,6 +73,9 @@ Result<std::unique_ptr<Connection>> connect(Context& context);
 // (initialize says so) and refuses with exit 7, naming `option`, when it is an
 // older one. Costs the wait for initialize's answer: ask only for those.
 Result<void> requireCliContract(Connection& connection, std::wstring_view option);
+// The same, without refusing: false for an older Win顺 (or when it cannot be
+// told). After a call initialize's answer is in: nothing more to wait for.
+bool madeForWs(Connection& connection);
 
 // Calls a tool. `needsIndex`: the index must be ready; its state is asked in
 // the same breath, and when it is still loading the call is cancelled, ws
