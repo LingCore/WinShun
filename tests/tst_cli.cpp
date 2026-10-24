@@ -18,6 +18,7 @@
 #include "Connect.h"
 #include "Encoding.h"
 #include "Format.h"
+#include "Open.h"
 #include "Session.h"
 #include "Text.h"
 
@@ -543,9 +544,14 @@ std::string answerLine(long long id, json::Value result)
     return json::write(json::Value::Object {{"jsonrpc", "2.0"}, {"id", id}, {"result", std::move(result)}}) + "\n";
 }
 
-std::string initializeAnswer(long long id)
+// `cli`: announces that it was made for ws (capabilities.experimental.winshun.cli),
+// as a Win顺 of the branch with the server changes does.
+std::string initializeAnswer(long long id, bool cli = true)
 {
-    return answerLine(id, json::Value::Object {{"protocolVersion", "2025-11-25"}, {"capabilities", json::Value::Object {}},
+    json::Value::Object capabilities;
+    if (cli)
+        capabilities.emplace("experimental", json::Value::Object {{"winshun", json::Value::Object {{"cli", 1}}}});
+    return answerLine(id, json::Value::Object {{"protocolVersion", "2025-11-25"}, {"capabilities", std::move(capabilities)},
                               {"serverInfo", json::Value::Object {{"name", "fake"}, {"version", "9.9"}}}});
 }
 
@@ -611,6 +617,20 @@ bool isKnownOption(const QString& written)
     return false;
 }
 
+// Whether the Win顺 on `pipe` (served by this process: asked from another thread) says
+// in initialize that it was made for ws.
+bool announcesCli(const std::wstring& pipe)
+{
+    return offThread([&] {
+        pipe::LineClient client;
+        if (!client.connect(pipe, 2000))
+            return false;
+        cli::Session session(client);
+        const cli::Result<bool> made = session.hasCliContract();
+        return made && *made;
+    });
+}
+
 qint64 median(std::vector<qint64> values)
 {
     std::ranges::sort(values);
@@ -630,6 +650,12 @@ class TestCli : public QObject {
     QString m_claude; // CLAUDE_CONFIG_DIR
     std::wstring m_mutex; // the test's single-instance mutex name (absent unless a test makes it)
     std::unique_ptr<Served> m_served; // the standard files, served
+    // This tree's Win顺 announces that it was made for ws in initialize. Not yet,
+    // until the branch with the server changes (cli-fix-server) is merged: then
+    // ws would refuse --in of it, and the tests that use --in on it say so to ws
+    // (WS_TEST_ASSUME_CLI) meanwhile. serverAnnouncesCliContract() stops skipping
+    // once the merge makes it announce.
+    bool m_serverHasCli = false;
 
     // ws with the test's pipe and mutex (first: a "--" in `args` must not
     // take them for words) and environment.
@@ -640,7 +666,10 @@ class TestCli : public QObject {
             + args;
         std::map<std::wstring, std::wstring> all {{L"WS_SETTINGS", m_iniOn.toStdWString()}, {L"WS_LANG", L"zh"},
             {L"WS_TEST_START", m_marker.toStdWString()}, {L"WS_TEST_OPEN", m_opened.toStdWString()},
-            {L"CLAUDE_CONFIG_DIR", m_claude.toStdWString()}, {L"NO_COLOR", L""}, {L"WS_ENCODING", L""}};
+            {L"CLAUDE_CONFIG_DIR", m_claude.toStdWString()}, {L"NO_COLOR", L""}, {L"WS_ENCODING", L""},
+            {L"WS_TEST_ELEVATED", L"0"}, {L"WS_TEST_VERIFY", L""}, {L"WS_TEST_IDLE_MS", L""}, {L"WS_TEST_ASSUME_CLI", L""}};
+        if (!m_serverHasCli && pipe.empty())
+            all[L"WS_TEST_ASSUME_CLI"] = L"1"; // this tree's Win顺 (the default pipe) cannot say it yet
         for (const auto& [name, value] : env)
             all[name] = value;
         extra.env = std::move(all);
@@ -666,6 +695,7 @@ private slots:
         m_served = std::make_unique<Served>("main", standardFiles);
         QVERIFY(m_served->ready);
         QVERIFY(m_served->listen());
+        m_serverHasCli = announcesCli(m_served->pipe);
     }
 
     void cleanupTestCase() { m_served.reset(); }
@@ -948,6 +978,119 @@ private slots:
             QCOMPARE(starts, 0);
             running = false;
         }
+        // Running without the pipe while another ws is starting it (its mutex): waits for the
+        // start, not just the grace; the pipe comes meanwhile: connected, and not started again.
+        {
+            options.graceMs = 100;
+            options.startWaitMs = 1500;
+            const HANDLE other = ::CreateMutexW(nullptr, FALSE, options.startingMutex.c_str());
+            running = true;
+            HANDLE pipe = INVALID_HANDLE_VALUE;
+            std::thread comes([&] {
+                ::Sleep(400);
+                pipe = ::CreateNamedPipeW(pipePath.c_str(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE, 1, 4096, 4096, 0, nullptr);
+            });
+            std::vector<std::wstring> notes;
+            options.note = [&](std::wstring_view text) { notes.emplace_back(text); };
+            pipe::LineClient client;
+            QElapsedTimer timer;
+            timer.start();
+            const auto r = cli::connectToWinShun(client, options, launcher);
+            comes.join();
+            QVERIFY(r);
+            QVERIFY(timer.elapsed() >= 350);
+            QCOMPARE(starts, 0);
+            QCOMPARE(notes.size(), std::size_t {1}); // "starting, waiting for it"
+            client.close();
+            ::CloseHandle(pipe);
+            // No pipe coming: the whole start-up waited for, then 4.
+            options.startWaitMs = 600;
+            options.note = nullptr;
+            timer.restart();
+            const auto none = cli::connectToWinShun(client, options, launcher);
+            QVERIFY(!none);
+            QCOMPARE(none.failure().code, cli::Exit::Off);
+            QVERIFY(timer.elapsed() >= 550);
+            ::CloseHandle(other);
+            running = false;
+            options.graceMs = 200;
+            options.startWaitMs = 300;
+        }
+        // Running without the pipe, its process moments old: waits what is left of freshMs
+        // (the pipe comes after the window, at logon after a good deal else); an old one, not.
+        {
+            options.graceMs = 100;
+            options.freshMs = 1200;
+            running = true;
+            launcher.runningFor = [] { return std::optional<unsigned long long>(200); }; // 1000 ms left
+            HANDLE pipe = INVALID_HANDLE_VALUE;
+            std::thread comes([&] {
+                ::Sleep(400);
+                pipe = ::CreateNamedPipeW(pipePath.c_str(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE, 1, 4096, 4096, 0, nullptr);
+            });
+            pipe::LineClient client;
+            QElapsedTimer timer;
+            timer.start();
+            const auto r = cli::connectToWinShun(client, options, launcher);
+            comes.join();
+            QVERIFY(r);
+            QVERIFY(timer.elapsed() >= 350);
+            client.close();
+            ::CloseHandle(pipe);
+            launcher.runningFor = [] { return std::optional<unsigned long long>(60'000); };
+            timer.restart();
+            const auto old = cli::connectToWinShun(client, options, launcher);
+            QVERIFY(!old);
+            QCOMPARE(old.failure().code, cli::Exit::Off);
+            QVERIFY(timer.elapsed() < 600);
+            launcher.runningFor = [] { return std::optional<unsigned long long>(); }; // cannot be told: the grace only
+            timer.restart();
+            QVERIFY(!cli::connectToWinShun(client, options, launcher));
+            QVERIFY(timer.elapsed() < 600);
+            launcher.runningFor = nullptr;
+            running = false;
+            options.graceMs = 200;
+            options.freshMs = 8000;
+        }
+        // The same waiting for status (connectIfThere), which never starts Win顺.
+        {
+            options.graceMs = 100;
+            options.startWaitMs = 1500;
+            const HANDLE other = ::CreateMutexW(nullptr, FALSE, options.startingMutex.c_str());
+            running = true;
+            HANDLE pipe = INVALID_HANDLE_VALUE;
+            std::thread comes([&] {
+                ::Sleep(400);
+                pipe = ::CreateNamedPipeW(pipePath.c_str(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE, 1, 4096, 4096, 0, nullptr);
+            });
+            pipe::LineClient client;
+            const auto there = cli::connectIfThere(client, options, launcher);
+            comes.join();
+            QVERIFY(there);
+            QVERIFY(*there);
+            QCOMPARE(starts, 0);
+            client.close();
+            ::CloseHandle(pipe);
+            ::CloseHandle(other);
+            // Not running (or the switch off): at once, false, never started.
+            running = false;
+            QElapsedTimer timer;
+            timer.start();
+            const auto absent = cli::connectIfThere(client, options, launcher);
+            QVERIFY(absent);
+            QVERIFY(!*absent);
+            QVERIFY(timer.elapsed() < 300);
+            running = true;
+            options.switchOn = false;
+            const auto off = cli::connectIfThere(client, options, launcher);
+            QVERIFY(off && !*off);
+            QVERIFY(timer.elapsed() < 300);
+            options.switchOn = true;
+            running = false;
+            QCOMPARE(starts, 0);
+            options.graceMs = 200;
+            options.startWaitMs = 300;
+        }
         // Not running, --no-start: 3.
         {
             pipe::LineClient client;
@@ -1169,6 +1312,14 @@ private slots:
         QVERIFY(r.errors().contains(u"ws ls"_s));
         r = ws({u"text"_s});
         QCOMPARE(r.code, 2);
+        // --from beyond the end: no text, exit 1, and a note saying why.
+        r = ws({u"text"_s, file, u"--from"_s, u"1000"_s});
+        QCOMPARE(r.code, 1);
+        QVERIFY(r.out.isEmpty());
+        QVERIFY2(r.errors().contains(u"已经读完"_s) && r.errors().contains(u"18"_s) && r.errors().contains(u"1000"_s), qPrintable(r.errors()));
+        r = ws({u"text"_s, file, u"--from"_s, u"18"_s});
+        QCOMPARE(r.code, 1);
+        QVERIFY2(r.errors().contains(u"已经读完"_s), qPrintable(r.errors()));
     }
 
     void ls()
@@ -1238,6 +1389,53 @@ private slots:
         QCOMPARE(QString::fromUtf8(readAll(m_opened)), u"reveal "_s + at(u"notes.md"_s) + u'\n');
         r = ws({u"open"_s, u"zzqqxx"_s});
         QCOMPARE(r.code, 1);
+        QFile::remove(m_opened);
+
+        // ws as administrator: a file a search found is handed to Explorer (the user's rights),
+        // not started with ws's own token; a path the user named still is opened directly; reveal
+        // only selects.
+        const std::map<std::wstring, std::wstring> elevated {{L"WS_TEST_ELEVATED", L"1"}};
+        r = ws({u"open"_s, u"报告"_s, u"--ext"_s, u"txt"_s}, elevated);
+        QCOMPARE(r.code, 0);
+        QCOMPARE(QString::fromUtf8(readAll(m_opened)), u"user-open "_s + at(u"报告𠀀.txt"_s) + u'\n');
+        QFile::remove(m_opened);
+        r = ws({u"open"_s, at(u"notes.md"_s)}, elevated, testPipeName("nobody"));
+        QCOMPARE(QString::fromUtf8(readAll(m_opened)), u"open "_s + at(u"notes.md"_s) + u'\n');
+        QFile::remove(m_opened);
+        r = ws({u"open"_s, u"报告"_s, u"--ext"_s, u"txt"_s, u"--reveal"_s}, elevated);
+        QCOMPARE(QString::fromUtf8(readAll(m_opened)), u"reveal "_s + at(u"报告𠀀.txt"_s) + u'\n');
+        QFile::remove(m_opened);
+
+        // The pipe's other end must be Win顺 (any program can create the pipe of that name first):
+        // here the server is this test, so a check asked for refuses, and nothing is opened.
+        r = ws({u"open"_s, u"报告"_s, u"--ext"_s, u"txt"_s}, {{L"WS_TEST_VERIFY", L"1"}});
+        QCOMPARE(r.code, 7);
+        QVERIFY2(r.errors().contains(u"不是 Win顺"_s), qPrintable(r.errors()));
+        QVERIFY(r.out.isEmpty());
+        QVERIFY(!QFileInfo::exists(m_opened));
+        // find does not need it (nothing is acted on).
+        QCOMPARE(ws({u"find"_s, u"报告"_s}, {{L"WS_TEST_VERIFY", L"1"}}).code, 0);
+    }
+
+    // Win顺's own program, as the check tells it from another.
+    void winShunImage()
+    {
+        const std::wstring wsExe = L"C:\\Program Files\\WinShun\\bin\\ws.exe";
+        QVERIFY(cli::isWinShunImage(L"C:\\Program Files\\WinShun\\WinShun.exe", wsExe, L""));
+        QVERIFY(cli::isWinShunImage(L"c:\\program files\\winshun\\WINSHUN.EXE", wsExe, L""));
+        QVERIFY(!cli::isWinShunImage(L"C:\\Users\\x\\Evil\\WinShun.exe", wsExe, L""));
+        QVERIFY(!cli::isWinShunImage(L"C:\\Program Files\\WinShun\\Other.exe", wsExe, L""));
+        QVERIFY(!cli::isWinShunImage(L"C:\\Program Files\\WinShun\\bin\\WinShun.exe", wsExe, L"")); // bin\ holds ws alone
+        QVERIFY(!cli::isWinShunImage(L"WinShun.exe", wsExe, L""));
+        QVERIFY(!cli::isWinShunImage({}, wsExe, L""));
+        // A copy of ws.exe elsewhere: the installed one counts (the uninstall entry's folder, any slash).
+        const std::wstring copied = L"C:\\Tools\\ws.exe";
+        QVERIFY(!cli::isWinShunImage(L"D:\\Apps\\WinShun\\WinShun.exe", copied, L""));
+        QVERIFY(cli::isWinShunImage(L"D:\\Apps\\WinShun\\WinShun.exe", copied, L"D:\\Apps\\WinShun\\"));
+        QVERIFY(!cli::isWinShunImage(L"D:\\Other\\WinShun.exe", copied, L"D:\\Apps\\WinShun\\"));
+        // The real one is a folder of this machine, or nothing.
+        const std::wstring installed = cli::installedFolder();
+        QVERIFY(installed.empty() || installed.find(L'\\') != std::wstring::npos);
     }
 
     void clip()
@@ -1287,6 +1485,108 @@ private slots:
         r = ws({u"status"_s, u"--json"_s}, {{L"WS_SETTINGS", m_iniOff.toStdWString()}}, testPipeName("nobody"));
         QCOMPARE(r.code, 4);
         QCOMPARE(QJsonDocument::fromJson(r.out).object().value(u"connected"_s).toBool(true), false);
+    }
+
+    // Win顺 is on its way up: another ws (or the logon autostart) has started it, and the pipe
+    // comes later than the 2 seconds ws used to wait. status waits too, and still never starts it.
+    void waitsForAStartingWinShun()
+    {
+        const HANDLE running = ::CreateMutexW(nullptr, FALSE, m_mutex.c_str());
+        const HANDLE starting = ::CreateMutexW(nullptr, FALSE, (m_mutex + L".Starting").c_str());
+        const auto cleanup = qScopeGuard([&] {
+            ::CloseHandle(running);
+            ::CloseHandle(starting);
+        });
+        int round = 0;
+        for (const QStringList& command : {QStringList {u"status"_s}, QStringList {u"find"_s, u"启动中"_s}}) {
+            Served late(round++ == 0 ? "starting0" : "starting1", [](const QString& root) { writeFile(root + u"\\启动中.txt"_s, "x"); });
+            QVERIFY(late.ready);
+            bool listening = false;
+            QElapsedTimer since;
+            since.start();
+            RunOptions watch;
+            watch.tick = [&] {
+                if (!listening && since.elapsed() > 2600) // after the old grace of 2 s
+                    listening = late.listen();
+            };
+            const Outcome r = ws(command, {}, late.pipe, watch);
+            QVERIFY(listening);
+            QVERIFY2(r.code == 0, qPrintable(u"%1: %2"_s.arg(command.join(u' '), r.errors())));
+            QVERIFY2(r.errors().contains(u"正在启动"_s), qPrintable(r.errors()));
+            QVERIFY(!QFileInfo::exists(m_marker)); // not started: it was on its way already
+            QVERIFY(r.ms >= 2500);
+        }
+    }
+
+    // Win顺 hangs, or a program squats on the pipe's name and never answers: ws gives up (7)
+    // after the silence, status and --version after a short one; Ctrl+C aside.
+    void aSilentWinShun()
+    {
+        const std::wstring name = testPipeName("silent");
+        std::atomic<bool> answerInitialize {true};
+        FakeServer fake(name, [&](const std::string& line) -> std::optional<std::string> {
+            const Request request = requestOf(line);
+            if (request.method == "initialize" && answerInitialize)
+                return initializeAnswer(request.id);
+            return std::string(); // nothing, ever
+        });
+        const std::map<std::wstring, std::wstring> quick {{L"WS_TEST_IDLE_MS", L"500"}};
+        Outcome r = ws({u"find"_s, u"x"_s}, quick, name);
+        QCOMPARE(r.code, 7);
+        QVERIFY2(r.errors().contains(u"没有回答"_s), qPrintable(r.errors()));
+        QVERIFY(r.ms >= 450 && r.ms < 5000);
+        QVERIFY(r.out.isEmpty());
+        // status and --version: the same, with the shorter limit (here the test's).
+        r = ws({u"status"_s}, quick, name);
+        QCOMPARE(r.code, 7);
+        QVERIFY2(r.errors().contains(u"没有回答"_s), qPrintable(r.errors()));
+        r = ws({u"--version"_s}, quick, name);
+        QCOMPARE(r.code, 0);
+        QCOMPARE(r.text(), u"ws " WINSHUN_VERSION u"\nWin顺 9.9\n"_s); // initialize was answered
+        // Not even initialize answered (a squatter): ws gives up, --version still exits 0 with its own line.
+        answerInitialize = false;
+        r = ws({u"find"_s, u"x"_s}, quick, name);
+        QCOMPARE(r.code, 7);
+        r = ws({u"--version"_s}, quick, name);
+        QCOMPARE(r.code, 0);
+        QCOMPARE(r.text(), u"ws " WINSHUN_VERSION u"\n"_s);
+        // The silence is the time since the last bytes, not a total: a slow answer within the limit is waited for.
+        const std::wstring slowName = testPipeName("slow");
+        FakeServer slow(slowName, [&](const std::string& line) -> std::optional<std::string> {
+            const Request request = requestOf(line);
+            if (request.method == "initialize")
+                return initializeAnswer(request.id);
+            if (request.tool == "index_status")
+                return readyAnswer(request.id);
+            if (request.tool == "search_files") {
+                ::Sleep(300); // under the limit
+                return toolAnswer(request.id, json::Value::Object {{"items", json::Value::Array {}}, {"returned", 0}, {"truncated", false}});
+            }
+            return std::string();
+        });
+        r = ws({u"find"_s, u"x"_s}, quick, slowName);
+        QCOMPARE(r.code, 1);
+    }
+
+    // An error answer with no id (a parse error is answered with id null) is the answer to
+    // what was sent: ws fails with it, not waits for the one that never comes.
+    void anErrorWithoutAnId()
+    {
+        const std::wstring name = testPipeName("noid");
+        FakeServer fake(name, [](const std::string& line) -> std::optional<std::string> {
+            const Request request = requestOf(line);
+            if (request.method == "initialize")
+                return initializeAnswer(request.id);
+            if (request.tool == "index_status")
+                return readyAnswer(request.id);
+            if (request.tool == "search_files")
+                return std::string("{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32700,\"message\":\"Parse error\"}}\n");
+            return std::string();
+        });
+        const Outcome r = ws({u"find"_s, u"x"_s}, {{L"WS_TEST_IDLE_MS", L"20000"}}, name);
+        QCOMPARE(r.code, 7);
+        QVERIFY2(r.errors().contains(u"Parse error"_s), qPrintable(r.errors()));
+        QVERIFY(r.ms < 10'000); // not the silence
     }
 
     void usageErrors()
@@ -1498,8 +1798,10 @@ private slots:
         QVERIFY2(r.errors().contains(u"连接断了"_s), qPrintable(r.errors()));
     }
 
-    // A Win顺 before ws ignores --in (and gives names and sizes always): ws
-    // keeps to the folder, says so, and prints the same fields as from a newer one.
+    // A Win顺 before ws gives names and sizes always: ws prints the same fields as
+    // from a newer one. It also ignores --in (`folders`) and answers for everything:
+    // ws says so (initialize does not announce the contract) and exits 7, never
+    // filtering the answer itself, and sends no search; `open` opens nothing.
     void olderServer()
     {
         const std::wstring name = testPipeName("older");
@@ -1508,10 +1810,10 @@ private slots:
         FakeServer fake(name, [&](const std::string& line) -> std::optional<std::string> {
             const Request request = requestOf(line);
             if (request.method == "initialize")
-                return initializeAnswer(request.id);
+                return initializeAnswer(request.id, false);
             if (request.tool == "index_status")
                 return readyAnswer(request.id);
-            if (request.tool == "search_files") {
+            if (request.tool == "search_files" || request.tool == "search_content") {
                 json::Value::Array items;
                 for (const std::string& path : {outside, inside})
                     items.emplace_back(json::Value::Object {{"path", path}, {"name", "c.txt"}, {"type", "file"}, {"modified", nullptr}, {"size", 1}});
@@ -1519,20 +1821,78 @@ private slots:
             }
             return std::string();
         });
-        Outcome r = ws({u"find"_s, u"c"_s, u"--in"_s, at(u"sub"_s), u"--json"_s}, {}, name);
+        Outcome r = ws({u"find"_s, u"c"_s, u"--json"_s}, {}, name);
         QCOMPARE(r.code, 0);
         const QJsonArray items = QJsonDocument::fromJson(r.out).array();
-        QCOMPARE(items.size(), 1);
+        QCOMPARE(items.size(), 2);
         const QJsonObject item = items.first().toObject();
-        QCOMPARE(item.value(u"path"_s).toString(), at(u"sub\\c.txt"_s));
         QVERIFY(!item.contains(u"size"_s));
         QVERIFY(!item.contains(u"name"_s));
-        QVERIFY2(r.errors().contains(u"不认 --in"_s), qPrintable(r.errors()));
-        // What ws asked: its name, the limit always, the folders, no sizes.
+        // What ws asked: its name, the limit always, no sizes.
         QVERIFY(fake.saw("\"clientInfo\":{\"name\":\"ws\""));
         QVERIFY(fake.saw("\"limit\":100"));
-        QVERIFY(fake.saw("\"folders\":["));
         QVERIFY(fake.saw("\"size\":false"));
+
+        // --in: refused before any search is sent, in find, open and grep.
+        fake.forget();
+        QFile::remove(m_opened);
+        for (const QStringList& command : {QStringList {u"find"_s, u"c"_s}, QStringList {u"open"_s, u"c"_s}, QStringList {u"grep"_s, u"c"_s}}) {
+            r = ws(command + QStringList {u"--in"_s, at(u"sub"_s)}, {}, name);
+            QCOMPARE(r.code, 7);
+            QVERIFY2(r.errors().contains(u"不认 --in"_s) && r.errors().contains(u"更新"_s), qPrintable(r.errors()));
+            QVERIFY(r.out.isEmpty());
+        }
+        QVERIFY(!fake.saw("search_files"));
+        QVERIFY(!fake.saw("search_content"));
+        QVERIFY(!QFileInfo::exists(m_opened));
+        r = ws({u"find"_s, u"c"_s, u"--in"_s, at(u"sub"_s)}, {{L"WS_LANG", L"en"}}, name);
+        QVERIFY2(r.errors().contains(u"does not understand --in"_s) && r.errors().contains(u"update WinShun"_s), qPrintable(r.errors()));
+    }
+
+    // A Win顺 that announces the contract: --in goes to it as `folders`, and what it
+    // answers is printed as it is (ws does not filter: the answer may well hold a path
+    // outside the folder; keeping that out is Win顺's).
+    void inWithTheContract()
+    {
+        const std::wstring name = testPipeName("contract");
+        const std::string outside = cli::utf8(at(u"c.txt"_s).toStdWString());
+        FakeServer fake(name, [&](const std::string& line) -> std::optional<std::string> {
+            const Request request = requestOf(line);
+            if (request.method == "initialize")
+                return initializeAnswer(request.id, true);
+            if (request.tool == "index_status")
+                return readyAnswer(request.id);
+            if (request.tool == "search_files" || request.tool == "search_content") {
+                json::Value::Array items;
+                items.emplace_back(json::Value::Object {{"path", outside}, {"type", "file"}, {"modified", nullptr}, {"snippet", "x"},
+                    {"location", json::Value::Object {{"line", 1}}}});
+                return toolAnswer(request.id, json::Value::Object {{"items", items}, {"returned", 1}, {"truncated", false}});
+            }
+            return std::string();
+        });
+        for (const QStringList& command : {QStringList {u"find"_s, u"c"_s}, QStringList {u"grep"_s, u"c"_s}}) {
+            const Outcome r = ws(command + QStringList {u"--in"_s, at(u"sub"_s)}, {}, name);
+            QCOMPARE(r.code, 0);
+            QVERIFY2(r.text().contains(at(u"c.txt"_s)), qPrintable(r.text()));
+            QVERIFY2(r.notes().isEmpty(), qPrintable(r.errors()));
+        }
+        QVERIFY(fake.saw("\"folders\":["));
+        fake.forget();
+        const Outcome opened = ws({u"open"_s, u"c"_s, u"--in"_s, at(u"sub"_s)}, {}, name);
+        QCOMPARE(opened.code, 0);
+        QVERIFY(fake.saw("\"folders\":["));
+    }
+
+    // Branch cli-fix-server makes this tree's Win顺 announce the contract. Until it is
+    // merged this skips; after the merge it must pass (and the WS_TEST_ASSUME_CLI the
+    // other tests add for the default pipe stops being set).
+    void serverAnnouncesCliContract()
+    {
+        if (!m_serverHasCli)
+            QSKIP("this tree's Win顺 does not announce capabilities.experimental.winshun.cli yet (branch cli-fix-server)");
+        const Outcome r = ws({u"find"_s, u"c"_s, u"--in"_s, at(u"sub"_s)});
+        QCOMPARE(r.code, 0);
+        QCOMPARE(r.lines(), QStringList {at(u"sub\\deep\\c.txt"_s)});
     }
 
     // recent in a folder where all is in system, program or tool folders, or

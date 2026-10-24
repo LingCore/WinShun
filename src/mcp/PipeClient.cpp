@@ -131,8 +131,18 @@ bool LineClient::write(std::string_view line)
     return true;
 }
 
-bool LineClient::readLine(std::string& line)
+DWORD LineClient::serverProcessId() const noexcept
 {
+    ULONG pid = 0;
+    const HANDLE handle = m_handle;
+    if (handle == INVALID_HANDLE_VALUE || !::GetNamedPipeServerProcessId(handle, &pid))
+        return 0;
+    return pid;
+}
+
+bool LineClient::readLine(std::string& line, DWORD idleMs)
+{
+    m_timedOut = false;
     for (;;) {
         // Only what came since the last look is searched: a long line (a
         // large result) arrives in many reads.
@@ -154,8 +164,20 @@ bool LineClient::readLine(std::string& line)
         ::ResetEvent(m_readEvent);
         DWORD got = 0;
         if (!::ReadFile(handle, chunk, sizeof chunk, &got, &overlapped)) {
-            if (::GetLastError() != ERROR_IO_PENDING || !::GetOverlappedResult(handle, &overlapped, &got, TRUE))
+            if (::GetLastError() != ERROR_IO_PENDING)
                 return false;
+            if (idleMs != INFINITE && ::WaitForSingleObject(m_readEvent, idleMs) == WAIT_TIMEOUT) {
+                // Silent for that long: give the read up. The system still owns
+                // `chunk` and `overlapped` (on this stack) until it reports the
+                // cancel, so wait for that; bytes that came in the meantime count.
+                ::CancelIoEx(handle, &overlapped);
+                if (!::GetOverlappedResult(handle, &overlapped, &got, TRUE)) {
+                    m_timedOut = ::GetLastError() == ERROR_OPERATION_ABORTED;
+                    return false;
+                }
+            } else if (!::GetOverlappedResult(handle, &overlapped, &got, TRUE)) {
+                return false;
+            }
         }
         if (got == 0)
             return false;

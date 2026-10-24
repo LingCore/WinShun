@@ -20,6 +20,7 @@ set(ws_sources
     Help.cpp
     Interrupt.cpp Interrupt.h
     Messages.h
+    Open.cpp Open.h
     Output.cpp Output.h
     Print.cpp Print.h
     Result.h
@@ -45,10 +46,10 @@ add_executable(ws
 # The resource compiler does not see that SKILL.md is part of ws.rc.
 set_source_files_properties(${PROJECT_SOURCE_DIR}/resources/ws.rc PROPERTIES OBJECT_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/SKILL.md)
 target_include_directories(ws PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/src/mcp)
-# ntdll: the parent process (Encoding.cpp). shell32 and ole32 only for
-# `ws open` and starting Win顺: loaded when used, not on every run.
-target_link_libraries(ws PRIVATE wsplugin_lite advapi32 ntdll shell32 ole32 delayimp)
-target_link_options(ws PRIVATE /DELAYLOAD:shell32.dll /DELAYLOAD:ole32.dll)
+# ntdll: the parent process (Encoding.cpp). shell32, ole32 and oleaut32 only
+# for `ws open` and starting Win顺: loaded when used, not on every run.
+target_link_libraries(ws PRIVATE wsplugin_lite advapi32 ntdll shell32 ole32 oleaut32 uuid delayimp)
+target_link_options(ws PRIVATE /DELAYLOAD:shell32.dll /DELAYLOAD:ole32.dll /DELAYLOAD:oleaut32.dll)
 set_target_properties(ws PROPERTIES
     AUTOMOC OFF
     MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"

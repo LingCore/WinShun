@@ -3,6 +3,10 @@
 #include "Encoding.h"
 #include "Interrupt.h"
 #include "Messages.h"
+#include "Win.h"
+
+#include <algorithm>
+#include <cwchar>
 
 namespace ws::cli {
 
@@ -45,6 +49,8 @@ Session::Session(pipe::LineClient& client)
         {"clientInfo", json::Value::Object {{"name", "ws"}, {"version", WINSHUN_VERSION}}}};
     m_out = requestLine(m_initializeId, "initialize", std::move(params));
     m_out += notificationLine("notifications/initialized", nullptr);
+    if (const std::wstring forced = environment(L"WS_TEST_IDLE_MS"); !forced.empty())
+        m_idleOverride = m_idleMs = static_cast<unsigned>(std::max(1l, std::wcstol(forced.c_str(), nullptr, 10)));
     interrupt::setAction([this] { onInterrupt(); });
 }
 
@@ -117,13 +123,22 @@ Result<json::Value> Session::answer(long long id)
     for (;;) {
         if (interrupt::requested())
             return Failure {Exit::Interrupted, {}};
-        if (!m_client.readLine(line)) {
+        if (!m_client.readLine(line, m_idleMs)) {
             if (interrupt::requested())
                 return Failure {Exit::Interrupted, {}};
+            if (m_client.timedOut())
+                return Failure {Exit::Failed, fmt(msg::kNoAnswer, (m_idleMs + 999) / 1000)};
             return Failure {Exit::Failed, std::wstring(tr(msg::kBroken))};
         }
         std::optional<json::Value> message = json::parse(line);
-        if (!message || !message->isObject() || !message->has("id") || !(*message)["id"].isNumber())
+        if (!message || !message->isObject())
+            continue;
+        // An error answer without an id of ours (a parse error answers with id
+        // null): a notification never carries "error", so it is the answer to
+        // something we sent, and no other will come for that.
+        if (message->has("error") && (!message->has("id") || !(*message)["id"].isNumber()))
+            return Failure {Exit::Failed, fmt(msg::kServerError, wide((*message)["error"]["message"].toString()))};
+        if (!message->has("id") || !(*message)["id"].isNumber())
             continue; // a notification (tools/list_changed…), or not ours
         const long long got = (*message)["id"].toInt();
         {
@@ -192,7 +207,18 @@ Result<std::wstring> Session::serverVersion()
     if ((*response).has("error"))
         return Failure {Exit::Failed, fmt(msg::kServerError, wide((*response)["error"]["message"].toString()))};
     m_version = wide((*response)["result"]["serverInfo"]["version"].toString());
+    m_cliContract = (*response)["result"]["capabilities"]["experimental"]["winshun"]["cli"].toInt() >= 1;
     return m_version;
+}
+
+Result<bool> Session::hasCliContract()
+{
+    if (m_initializeId != 0) {
+        Result<std::wstring> version = serverVersion();
+        if (!version)
+            return std::move(version).failure();
+    }
+    return m_cliContract;
 }
 
 namespace {

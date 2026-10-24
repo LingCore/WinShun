@@ -325,7 +325,7 @@ add_dependencies(tst_mcp WinShunMcp WinShunPluginHost plugin_fake)
 qt_add_executable(tst_cli tst_cli.cpp ${WS_CLI_SOURCES}
     ${PROJECT_SOURCE_DIR}/src/plugin/runner/Json.cpp ${PROJECT_SOURCE_DIR}/src/mcp/Launch.cpp)
 target_include_directories(tst_cli PRIVATE ${PROJECT_SOURCE_DIR}/src/cli ${PROJECT_SOURCE_DIR}/src/plugin/runner ${PROJECT_SOURCE_DIR}/src/mcp)
-target_link_libraries(tst_cli PRIVATE wsmcp Qt6::Test ntdll shell32 ole32 advapi32)
+target_link_libraries(tst_cli PRIVATE wsmcp Qt6::Test ntdll shell32 ole32 oleaut32 uuid advapi32)
 target_compile_definitions(tst_cli PRIVATE
     WINSHUN_CLI="$<TARGET_FILE:ws>"
     WINSHUN_CLI_SKILL="${PROJECT_SOURCE_DIR}/src/cli/SKILL.md")

@@ -23,6 +23,9 @@ inline constexpr Text kStarting {L"Win顺 没在运行，正在启动…", L"Win
 inline constexpr Text kCannotStart {L"Win顺 没在运行，也没能启动它（找不到它的开机自启任务和 WinShun.exe）",
     L"WinShun is not running and could not be started (found neither its autostart task nor WinShun.exe)"};
 inline constexpr Text kStartTimedOut {L"启动了 Win顺，但它 {} 秒内没有回应；稍后再试", L"Started WinShun, but it did not answer within {} seconds; try again in a moment"};
+inline constexpr Text kStartingWait {L"Win顺 正在启动，等它准备好…", L"WinShun is starting; waiting for it…"};
+inline constexpr Text kNoAnswer {L"Win顺 {} 秒没有回答（它可能卡住了）；稍后再试", L"WinShun has not answered for {} seconds (it may be stuck); try again in a moment"};
+inline constexpr Text kWinShunTooOld {L"这个版本的 Win顺 不认 {}：请把 Win顺 更新到最新版", L"This WinShun does not understand {}: update WinShun to the latest version"};
 inline constexpr Text kBroken {L"和 Win顺 的连接断了", L"The connection to WinShun broke"};
 inline constexpr Text kServerError {L"Win顺 回答：{}", L"WinShun answered: {}"};
 inline constexpr Text kNoResult {L"Win顺 的回答里没有结果", L"WinShun's answer has no result in it"};
@@ -43,8 +46,6 @@ inline constexpr Text kTruncatedOf {L"只列了前 {} 个（共 {} 个），用 
 inline constexpr Text kTruncatedMax {L"只列了前 {} 个（一次最多这么多），把查询写细一点", L"Only the first {} are listed (the most at a time); narrow the query"};
 inline constexpr Text kServerCapped {L"只列了前 {} 个：这个版本的 Win顺 一次最多给这么多，更新后可以多给",
     L"Only the first {} are listed: this WinShun gives no more at a time (update it for more)"};
-inline constexpr Text kInIgnored {L"这个版本的 Win顺 不认 --in，结果是 ws 自己筛的，可能比 -n 少；请更新 Win顺",
-    L"This WinShun ignores --in: ws filtered the results itself, so there may be fewer than -n; update WinShun"};
 inline constexpr Text kLossy {L"有 {} 行含代码页 {} 写不出的字，已写成 ?；用 --encoding utf8 或 --json 可以保留",
     L"{} line(s) had characters code page {} cannot hold, written as ?; --encoding utf8 or --json keeps them"};
 inline constexpr Text kIncomplete {L"搜到时间上限就停了，结果可能不全；用 --timeout 30s 多搜一会儿",
@@ -86,7 +87,12 @@ inline constexpr Text kNoFolder {L"没有这个文件夹：{}", L"There is no su
 inline constexpr Text kMissingQuery {L"少了要找的东西；ws help 看用法", L"Nothing to look for; see ws help"};
 inline constexpr Text kNotFound {L"没找到", L"Nothing found"};
 inline constexpr Text kOpenFailed {L"打不开 {}：{}", L"Could not open {}: {}"};
+inline constexpr Text kOpenNotElevated {L"ws 以管理员身份运行，没能交给资源管理器打开 {}（搜到的文件不会用管理员权限打开，所以没有直接打开）",
+    L"ws runs as administrator and could not hand {} to Explorer to open (a file found by a search is not opened with administrator rights, so it was not opened directly)"};
+inline constexpr Text kServerUnknown {L"看不出和 ws 连着的是哪个程序，没有打开任何东西", L"Cannot tell which program is at the other end of the pipe: nothing was opened"};
+inline constexpr Text kNotWinShun {L"管道那头不是 Win顺（是 {}），没有打开任何东西", L"The program at the other end of the pipe is not WinShun ({}): nothing was opened"};
 inline constexpr Text kMoreText {L"还有 {} 字没读，用 --from {} 接着读", L"{} more characters: go on with --from {}"};
+inline constexpr Text kReadPastEnd {L"已经读完了：全文共 {} 字，--from {} 在它后面", L"Nothing left to read: the text has {} characters and --from {} is past them"};
 inline constexpr Text kTextCut {L"文件很长，Win顺 只读了前面的部分（16 MB 文字）", L"The file is long: WinShun read only its first part (16 MB of text)"};
 inline constexpr Text kNoTextDocument {L"没有读出文字：可能是扫描件（整页都是图片）", L"No text in it: perhaps a scanned document (pictures of pages)"};
 inline constexpr Text kEmptyFile {L"文件是空的", L"The file is empty"};

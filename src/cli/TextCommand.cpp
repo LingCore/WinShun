@@ -123,6 +123,9 @@ Result<Exit> runText(Context& context)
         context.note(tr(kind == "document" ? msg::kNoTextDocument : msg::kEmptyFile));
         return Exit::NothingFound;
     }
+    // --from beyond the end: no text, and exit 1 would say nothing of why.
+    if (collected == 0 && *from >= total)
+        context.note(fmt(msg::kReadPastEnd, total, *from));
     if (next >= 0)
         context.note(fmt(msg::kMoreText, total - next, next));
     if (cut)

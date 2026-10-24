@@ -3,6 +3,7 @@
 #include "Encoding.h"
 #include "Interrupt.h"
 #include "Messages.h"
+#include "Win.h"
 
 #include <algorithm>
 #include <cmath>
@@ -118,20 +119,38 @@ void Context::endProgress()
     m_progressLength = 0;
 }
 
-Result<std::unique_ptr<Connection>> connect(Context& context)
+ConnectOptions connectOptions(Context& context)
 {
-    auto connection = std::make_unique<Connection>();
     ConnectOptions options;
     options.pipe = context.pipe;
     options.switchOn = context.config.connectionOn;
     options.mayStart = context.mayStart;
     options.startingMutex = context.instanceMutex + L".Starting";
     options.note = [&context](std::wstring_view text) { context.note(text); };
-    Result<void> connected = connectToWinShun(connection->client, options, context.launcher);
+    return options;
+}
+
+Result<std::unique_ptr<Connection>> connect(Context& context)
+{
+    auto connection = std::make_unique<Connection>();
+    Result<void> connected = connectToWinShun(connection->client, connectOptions(context), context.launcher);
     if (!connected)
         return std::move(connected).failure();
     connection->session = std::make_unique<Session>(connection->client);
     return connection;
+}
+
+Result<void> requireCliContract(Connection& connection, std::wstring_view option)
+{
+    // The tests, with a Win顺 that cannot announce it yet.
+    if (environmentSet(L"WS_TEST_ASSUME_CLI"))
+        return {};
+    Result<bool> made = connection.session->hasCliContract();
+    if (!made)
+        return std::move(made).failure();
+    if (!*made)
+        return Failure {Exit::Failed, fmt(msg::kWinShunTooOld, option)};
+    return {};
 }
 
 Result<json::Value> callTool(Context& context, Connection& connection, std::string_view tool, const json::Value& arguments, bool needsIndex,

@@ -5,12 +5,9 @@
 #include "Format.h"
 #include "Interrupt.h"
 #include "Messages.h"
+#include "Open.h"
 #include "Print.h"
 #include "Win.h"
-
-#include <objbase.h>
-#include <shellapi.h>
-#include <shlobj.h>
 
 #include <algorithm>
 
@@ -85,58 +82,6 @@ Result<FindRequest> findRequest(const Parsed& args, std::wstring_view command, l
     return request;
 }
 
-// An older Win顺 ignores `folders`: keep what is inside them. True when it had to.
-bool keepInside(json::Value::Array& items, const std::vector<std::wstring>& folders)
-{
-    if (folders.empty())
-        return false;
-    const std::size_t before = items.size();
-    std::erase_if(items, [&](const json::Value& item) {
-        const std::wstring path = wide(item["path"].toString());
-        return std::none_of(folders.begin(), folders.end(), [&](const std::wstring& folder) { return isUnder(path, folder); });
-    });
-    return items.size() != before;
-}
-
-Result<void> shellOpen(const std::wstring& path, bool reveal)
-{
-    // The tests': what would be opened, written to this file.
-    if (const std::wstring record = environment(L"WS_TEST_OPEN"); !record.empty()) {
-        const Handle file(::CreateFileW(record.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr));
-        const std::string line = utf8((reveal ? L"reveal " : L"open ") + path + L"\n");
-        DWORD written = 0;
-        if (!file || !::WriteFile(file.get(), line.data(), static_cast<DWORD>(line.size()), &written, nullptr))
-            return Failure {Exit::Failed, fmt(msg::kOpenFailed, path, systemMessage(::GetLastError()))};
-        return {};
-    }
-    // The shell wants COM (and no DDE) on the thread that asks it.
-    const HRESULT com = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-    Result<void> result;
-    if (reveal) {
-        PIDLIST_ABSOLUTE item = nullptr;
-        HRESULT hr = ::SHParseDisplayName(path.c_str(), nullptr, &item, 0, nullptr);
-        if (SUCCEEDED(hr)) {
-            hr = ::SHOpenFolderAndSelectItems(item, 0, nullptr, 0);
-            ::CoTaskMemFree(item);
-        }
-        if (FAILED(hr))
-            result = Failure {Exit::Failed, fmt(msg::kOpenFailed, path, systemMessage(static_cast<DWORD>(hr)))};
-    } else {
-        SHELLEXECUTEINFOW info {};
-        info.cbSize = sizeof info;
-        info.fMask = SEE_MASK_NOASYNC; // ws ends right after: finish here
-        info.lpFile = path.c_str();
-        const std::wstring folder = path.substr(0, nameStart(path));
-        info.lpDirectory = folder.empty() ? nullptr : folder.c_str();
-        info.nShow = SW_SHOWNORMAL;
-        if (!::ShellExecuteExW(&info))
-            result = Failure {Exit::Failed, fmt(msg::kOpenFailed, path, systemMessage(::GetLastError()))};
-    }
-    if (SUCCEEDED(com))
-        ::CoUninitialize();
-    return result;
-}
-
 } // namespace
 
 Result<Exit> runFind(Context& context)
@@ -151,18 +96,19 @@ Result<Exit> runFind(Context& context)
     Result<std::unique_ptr<Connection>> connection = connect(context);
     if (!connection)
         return std::move(connection).failure();
+    if (!request->folders.empty()) {
+        // Only a Win顺 made for ws narrows by folder itself; an older one would answer for everything.
+        if (Result<void> made = requireCliContract(**connection, L"--in"); !made)
+            return std::move(made).failure();
+    }
     Result<json::Value> result = callTool(context, **connection, "search_files", json::Value(request->arguments), true);
     if (!result)
         return std::move(result).failure();
-    json::Value::Array items = (*result)["items"].toArray();
-    const std::size_t returned = items.size();
-    const bool filtered = keepInside(items, request->folders);
+    const json::Value::Array& items = (*result)["items"].toArray();
     if (!printItems(context, items, listStyle(args, request->query)))
         return interrupt::requested() ? Result<Exit>(Failure {Exit::Interrupted, {}}) : Result<Exit>(Exit::Found);
-    if (filtered)
-        context.note(tr(msg::kInIgnored));
-    else if ((*result)["truncated"].toBool())
-        noteTruncated(context, returned, *limit);
+    if ((*result)["truncated"].toBool())
+        noteTruncated(context, items.size(), *limit);
     return items.empty() ? Exit::NothingFound : Exit::Found;
 }
 
@@ -174,7 +120,8 @@ Result<Exit> runOpen(Context& context)
     // A path that is there: opened as it is, Win顺 not asked.
     if (const std::wstring words = joinedWords(args); !words.empty() && !narrowed) {
         if (const std::wstring path = absolutePath(words); pathExists(path)) {
-            Result<void> opened = shellOpen(path, reveal);
+            // A path the user named: opened as it is, with ws's own rights (as `start` would).
+            Result<void> opened = openPath(path, reveal, false);
             if (!opened)
                 return std::move(opened).failure();
             context.out.write(path);
@@ -189,17 +136,30 @@ Result<Exit> runOpen(Context& context)
     Result<std::unique_ptr<Connection>> connection = connect(context);
     if (!connection)
         return std::move(connection).failure();
+    // `open` acts on the answer. The pipe's name is the user's SID, which any
+    // program can create first: before anything is asked of it, the process
+    // behind the pipe must be Win顺. (Not with a --pipe of the tests' own,
+    // unless WS_TEST_VERIFY asks for it.)
+    if (!context.args.has(Opt::Pipe) || environmentSet(L"WS_TEST_VERIFY")) {
+        if (Result<void> genuine = checkWinShunServes((*connection)->client); !genuine)
+            return std::move(genuine).failure();
+    }
+    // A Win顺 that ignored --in would open a file outside the folder.
+    if (!request->folders.empty()) {
+        if (Result<void> made = requireCliContract(**connection, L"--in"); !made)
+            return std::move(made).failure();
+    }
     Result<json::Value> result = callTool(context, **connection, "search_files", json::Value(request->arguments), true);
     if (!result)
         return std::move(result).failure();
-    json::Value::Array items = (*result)["items"].toArray();
-    keepInside(items, request->folders);
+    const json::Value::Array& items = (*result)["items"].toArray();
     if (items.empty()) {
         context.note(tr(msg::kNotFound));
         return Exit::NothingFound;
     }
     const std::wstring path = wide(items.front()["path"].toString());
-    Result<void> opened = shellOpen(path, reveal);
+    // A search result: never opened with more rights than the user has (ws elevated: through Explorer).
+    Result<void> opened = openPath(path, reveal, true);
     if (!opened)
         return std::move(opened).failure();
     context.out.write(path);
