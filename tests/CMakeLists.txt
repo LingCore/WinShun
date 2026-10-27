@@ -556,3 +556,18 @@ set_tests_properties(tst_clipselect PROPERTIES
 # Let ctest find the Qt DLLs without a deploy step.
 set_tests_properties(tst_core tst_service tst_keylistener tst_clipboard tst_favorites tst_backup tst_color tst_elide tst_placement tst_dragout tst_siteicon tst_ocr tst_tools tst_semantic tst_mcp tst_plugin PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# The in-app update (Updater): the update service's answer, downloads from
+# mirrors then GitHub checked by size and SHA-256 (a fake server on
+# 127.0.0.1), the version resource, unpacking a portable zip safely, and
+# WinShunUpdate.exe's swap of a portable copy's files (data kept, rolled back).
+qt_add_executable(tst_updater tst_updater.cpp ${PROJECT_SOURCE_DIR}/src/app/UpdatePackage.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/Http.cpp ${PROJECT_SOURCE_DIR}/src/updater/Swap.cpp)
+target_include_directories(tst_updater PRIVATE ${PROJECT_SOURCE_DIR}/src/app ${PROJECT_SOURCE_DIR}/src/updater)
+target_link_libraries(tst_updater PRIVATE wscore miniz Qt6::Test version winhttp ws2_32)
+target_compile_definitions(tst_updater PRIVATE WINSHUN_UPDATE_EXE="$<TARGET_FILE:WinShunUpdate>")
+set_target_properties(tst_updater PROPERTIES WIN32_EXECUTABLE FALSE)
+add_dependencies(tst_updater WinShunUpdate)
+add_test(NAME tst_updater COMMAND tst_updater)
+set_tests_properties(tst_updater PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
