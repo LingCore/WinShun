@@ -6772,16 +6772,8 @@
         <translation>You’re up to date</translation>
     </message>
     <message>
-        <source>你现在用的是 %1。下载安装程序（Setup）运行就行，它会先关掉正在运行的 Win顺，设置和索引都会保留。</source>
-        <translation>You have %1. Download the installer (Setup) and run it: it closes the running WinShun first, and your settings and index are kept.</translation>
-    </message>
-    <message>
         <source>Win顺 %1 是目前最新的版本。</source>
         <translation>WinShun %1 is the latest version.</translation>
-    </message>
-    <message>
-        <source>在 GitHub 上查看完整说明</source>
-        <translation>Full release notes on GitHub</translation>
     </message>
     <message>
         <source>跳过这个版本</source>
@@ -6790,14 +6782,6 @@
     <message>
         <source>以后再说</source>
         <translation>Later</translation>
-    </message>
-    <message>
-        <source>去 GitHub 看看</source>
-        <translation>Open GitHub</translation>
-    </message>
-    <message>
-        <source>去下载</source>
-        <translation>Download</translation>
     </message>
     <message>
         <source>关闭</source>
@@ -6810,6 +6794,50 @@
     <message>
         <source>好</source>
         <translation>OK</translation>
+    </message>
+    <message>
+        <source>正在下载… %1 / %2 MB</source>
+        <translation>Downloading… %1 / %2 MB</translation>
+    </message>
+    <message>
+        <source>正在校验安装包…</source>
+        <translation>Checking the package…</translation>
+    </message>
+    <message>
+        <source>Win顺 马上关闭并替换程序文件，完成后自动重新打开。</source>
+        <translation>WinShun will close now, replace its program files and open again when done.</translation>
+    </message>
+    <message>
+        <source>正在安装：Win顺 会先关闭，装好后自动重新打开。为所有用户安装的，系统会先确认管理员权限。</source>
+        <translation>Installing: WinShun closes first and opens again when done. Installed for all users, Windows asks for administrator permission first.</translation>
+    </message>
+    <message>
+        <source>你现在用的是 %1。下载并校验后自动替换程序文件并重新打开，data 文件夹里的设置和索引原样保留。</source>
+        <translation>You have %1. It is downloaded, checked, put in place of the program files and opened again; the settings and index in the data folder stay as they are.</translation>
+    </message>
+    <message>
+        <source>你现在用的是 %1。下载并校验后自动安装并重新打开，设置和索引都会保留。</source>
+        <translation>You have %1. It is downloaded, checked, installed and opened again; your settings and index are kept.</translation>
+    </message>
+    <message>
+        <source>查看完整说明</source>
+        <translation>Full release notes</translation>
+    </message>
+    <message>
+        <source>取消</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>打开下载页</source>
+        <translation>Open the download page</translation>
+    </message>
+    <message>
+        <source>下载并更新</source>
+        <translation>Download and update</translation>
+    </message>
+    <message>
+        <source>下载并安装</source>
+        <translation>Download and install</translation>
     </message>
 </context>
 <context>
@@ -11189,24 +11217,88 @@
 <context>
     <name>ws::Updater</name>
     <message>
-        <source>GitHub 暂时不让查（访问太频繁），过一会儿再试。</source>
-        <translation>GitHub is limiting requests right now. Try again in a while.</translation>
+        <source>更新服务器暂时不让查（访问太频繁），过一会儿再试。</source>
+        <translation>The update server is limiting requests right now. Try again in a while.</translation>
     </message>
     <message>
-        <source>GitHub 返回了错误（%1）。</source>
-        <translation>GitHub returned an error (%1).</translation>
+        <source>更新服务器返回了错误（%1）。</source>
+        <translation>The update server returned an error (%1).</translation>
     </message>
     <message>
-        <source>没看懂 GitHub 的回答，过一会儿再试。</source>
-        <translation>GitHub’s answer didn’t make sense. Try again in a while.</translation>
+        <source>没看懂更新服务器的回答，过一会儿再试。</source>
+        <translation>The update server’s answer didn’t make sense. Try again in a while.</translation>
     </message>
     <message>
-        <source>连接 GitHub 超时，请检查网络（或代理）后重试。</source>
-        <translation>GitHub took too long to answer. Check your network (or proxy) and try again.</translation>
+        <source>连接更新服务器超时，请检查网络（或代理）后重试。</source>
+        <translation>The update server took too long to answer. Check your network (or proxy) and try again.</translation>
     </message>
     <message>
-        <source>连不上 GitHub，请检查网络（或代理）后重试。</source>
-        <translation>Couldn’t reach GitHub. Check your network (or proxy) and try again.</translation>
+        <source>连不上更新服务器，请检查网络（或代理）后重试。</source>
+        <translation>Couldn’t reach the update server. Check your network (or proxy) and try again.</translation>
+    </message>
+    <message>
+        <source>这份 Win顺 既不是安装版，也不是便携版，没法在这里更新。已打开下载页。</source>
+        <translation>This copy of WinShun is neither installed nor portable, so it can’t update itself. The download page is open.</translation>
+    </message>
+    <message>
+        <source>便携版所在的文件夹（%1）不能写入，没法在这里更新。已打开下载页：请把新的便携包解压到自己能写入的文件夹。</source>
+        <translation>The portable copy’s folder (%1) can’t be written to, so it can’t update itself. The download page is open: unzip the new portable package into a folder you can write to.</translation>
+    </message>
+    <message>
+        <source>更新服务器给出的安装包信息不完整（没有校验值），为了安全没有下载。请稍后再试。</source>
+        <translation>The update server didn’t give a checksum for the package, so it wasn’t downloaded. Try again later.</translation>
+    </message>
+    <message>
+        <source>更新服务器没有给出可用的下载地址，请稍后再试。</source>
+        <translation>The update server gave no usable download address. Try again later.</translation>
+    </message>
+    <message>
+        <source>没法创建下载文件夹 %1。</source>
+        <translation>Couldn’t create the download folder %1.</translation>
+    </message>
+    <message>
+        <source>下载没有成功：几个下载地址都连不上，或下载到的文件没有通过校验（已删除）。请检查网络后重试。</source>
+        <translation>The download failed: no download address worked, or what came didn’t pass the check (it was deleted). Check your network and try again.</translation>
+    </message>
+    <message>
+        <source>下载的安装包没有通过检查（已删除），没有安装。请重试。</source>
+        <translation>The downloaded package didn’t pass the check (it was deleted) and wasn’t installed. Try again.</translation>
+    </message>
+    <message>
+        <source>安装程序没能启动，旧版本照常可用。请重试。</source>
+        <translation>The installer didn’t start. This version still works; try again.</translation>
+    </message>
+    <message>
+        <source>没有安装（安装程序退出代码 %1，可能是在系统提示里选了“否”）。旧版本照常可用，可以重试。</source>
+        <translation>Nothing was installed (installer exit code %1; maybe “No” was chosen when Windows asked). This version still works; you can try again.</translation>
+    </message>
+    <message>
+        <source>便携版里缺少 WinShunUpdate.exe，没法在这里更新。请从下载页下载新的便携包。</source>
+        <translation>WinShunUpdate.exe is missing from the portable copy, so it can’t update itself. Download the new portable package from the download page.</translation>
+    </message>
+    <message>
+        <source>更新助手没能启动，旧版本照常可用。请重试。</source>
+        <translation>The update helper didn’t start. This version still works; try again.</translation>
+    </message>
+    <message>
+        <source>更新助手没有响应，旧版本照常可用。请重试。</source>
+        <translation>The update helper didn’t respond. This version still works; try again.</translation>
+    </message>
+    <message>
+        <source>Win顺 已更新到 %1</source>
+        <translation>WinShun is updated to %1</translation>
+    </message>
+    <message>
+        <source>设置、索引和剪贴板记录都还在。</source>
+        <translation>Your settings, index and clipboard history are all still there.</translation>
+    </message>
+    <message>
+        <source>Win顺 没有更新到 %1</source>
+        <translation>WinShun wasn’t updated to %1</translation>
+    </message>
+    <message>
+        <source>现在仍是 %1，照常可用。可以稍后再试一次。</source>
+        <translation>It is still %1 and works as before. You can try again later.</translation>
     </message>
 </context>
 <context>

@@ -4,8 +4,8 @@ import WinShun
 
 // "Software update", a Windows 11 style dialog over the settings window:
 // checking, up to date, failed, or a new version with what changed in it.
-// "Download" opens the release page in the browser; nothing installs itself
-// (see Updater).
+// "Download and install" downloads, checks and installs it (see Updater),
+// with the download's progress and a way to cancel it.
 Item {
     id: dialog
 
@@ -39,6 +39,8 @@ Item {
         id: card
 
         readonly property bool newer: dialog.updater.available
+        readonly property string stage: dialog.updater.installStage // "" when nothing is under way
+        readonly property bool cancellable: stage === "downloading"
 
         anchors.centerIn: parent
         width: Math.min(520, parent.width - 48)
@@ -103,10 +105,20 @@ Item {
                         width: parent.width
                         visible: text.length > 0
                         text: dialog.updater.checking ? ""
-                            : card.newer ? qsTr("你现在用的是 %1。下载安装程序（Setup）运行就行，它会先关掉正在运行的 Win顺，设置和索引都会保留。").arg(dialog.updater.currentVersion)
+                            : card.newer && card.stage === "downloading" ? qsTr("正在下载… %1 / %2 MB")
+                                .arg(dialog.updater.downloadedMB.toFixed(1)).arg(dialog.updater.packageMB.toFixed(1))
+                            : card.newer && card.stage === "verifying" ? qsTr("正在校验安装包…")
+                            : card.newer && card.stage === "installing" ? (dialog.updater.portable
+                                ? qsTr("Win顺 马上关闭并替换程序文件，完成后自动重新打开。")
+                                : qsTr("正在安装：Win顺 会先关闭，装好后自动重新打开。为所有用户安装的，系统会先确认管理员权限。"))
+                            : card.newer && dialog.updater.installProblem.length > 0 ? dialog.updater.installProblem
+                            : card.newer ? (dialog.updater.portable
+                                ? qsTr("你现在用的是 %1。下载并校验后自动替换程序文件并重新打开，data 文件夹里的设置和索引原样保留。").arg(dialog.updater.currentVersion)
+                                : qsTr("你现在用的是 %1。下载并校验后自动安装并重新打开，设置和索引都会保留。").arg(dialog.updater.currentVersion))
                             : dialog.updater.problem.length > 0 ? dialog.updater.problem
                             : qsTr("Win顺 %1 是目前最新的版本。").arg(dialog.updater.currentVersion)
-                        color: !card.newer && dialog.updater.problem.length > 0 ? Theme.danger : Theme.subtext
+                        color: (card.newer ? card.stage === "" && dialog.updater.installProblem.length > 0
+                                           : dialog.updater.problem.length > 0) ? Theme.danger : Theme.subtext
                         font.pixelSize: Theme.fontCaption
                         wrapMode: Text.Wrap
                         lineHeight: 1.15
@@ -141,6 +153,23 @@ Item {
                             }
                         }
                     }
+                }
+            }
+
+            Rectangle { // how much is downloaded
+                visible: card.newer && card.stage === "downloading"
+                width: parent.width
+                height: 4
+                radius: Theme.progressRadius
+                color: Theme.track
+
+                Rectangle {
+                    width: parent.width * dialog.updater.installProgress
+                    height: parent.height
+                    radius: Theme.progressRadius
+                    color: Theme.accent
+
+                    Behavior on width { NumberAnimation { duration: 150 } }
                 }
             }
 
@@ -218,9 +247,9 @@ Item {
                 }
             }
 
-            Text { // the full notes on GitHub
+            Text { // the full notes, on lcstp.com
                 visible: card.newer
-                text: qsTr("在 GitHub 上查看完整说明")
+                text: qsTr("查看完整说明")
                 color: Theme.accent
                 font.pixelSize: Theme.fontCaption
                 font.underline: linkArea.containsMouse
@@ -240,7 +269,7 @@ Item {
                 height: primary.implicitHeight
 
                 FlatButton { // not reminded of this version again; still shown when asked
-                    visible: card.newer && !dialog.updater.skipped
+                    visible: card.newer && !dialog.updater.skipped && card.stage === ""
                     anchors.left: parent.left
                     flat: true
                     text: qsTr("跳过这个版本")
@@ -255,9 +284,15 @@ Item {
                     spacing: 8
 
                     FlatButton {
-                        visible: !dialog.updater.checking && (card.newer || dialog.updater.problem.length > 0)
-                        text: card.newer ? qsTr("以后再说") : qsTr("去 GitHub 看看")
+                        visible: !dialog.updater.checking && (card.stage === "" || card.cancellable)
+                                 && (card.newer || dialog.updater.problem.length > 0)
+                        text: card.cancellable ? qsTr("取消")
+                            : card.newer ? qsTr("以后再说") : qsTr("打开下载页")
                         onClicked: {
+                            if (card.cancellable) {
+                                dialog.updater.cancelInstall()
+                                return
+                            }
                             if (!card.newer)
                                 dialog.updater.openDownloadPage()
                             dialog.close()
@@ -266,15 +301,16 @@ Item {
                     FlatButton {
                         id: primary
                         highlighted: true
+                        enabled: !card.newer || card.stage === ""
                         glyph: card.newer ? "" : "" // Download
-                        text: card.newer ? qsTr("去下载")
+                        text: card.newer ? (dialog.updater.portable ? qsTr("下载并更新") : qsTr("下载并安装"))
                             : dialog.updater.checking ? qsTr("关闭")
                             : dialog.updater.problem.length > 0 ? qsTr("重试")
                             : qsTr("好")
                         onClicked: {
                             if (card.newer) {
-                                dialog.updater.openDownloadPage()
-                                dialog.close()
+                                if (card.stage === "")
+                                    dialog.updater.install()
                             } else if (!dialog.updater.checking && dialog.updater.problem.length > 0) {
                                 dialog.updater.check(true)
                             } else {
