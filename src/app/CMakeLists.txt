@@ -283,7 +283,7 @@ qt_add_qml_module(WinShun
         SoundClip.cpp SoundClip.h
         SystemTheme.cpp SystemTheme.h
         UiSize.h
-        Updater.cpp Updater.h
+        Updater.cpp Updater.h UpdatePackage.cpp UpdatePackage.h
         Backup.cpp Backup.h BackupFiles.cpp BackupFiles.h
         WindowFrame.cpp WindowFrame.h
         # The screen capture's QML-facing part (src/capture/CMakeLists.txt has the rest).

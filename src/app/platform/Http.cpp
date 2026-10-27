@@ -6,6 +6,7 @@
 #include <winhttp.h>
 
 #include <memory>
+#include <vector>
 
 using namespace Qt::StringLiterals;
 
@@ -40,10 +41,10 @@ HINTERNET sharedSession()
     return session;
 }
 
-} // namespace
-
-Response get(const QString& url, const QList<std::pair<QString, QString>>& headers, int timeoutMs, qsizetype maxBytes,
-    Session sessionKind, const Progress& progress)
+// get() and download(): with a `sink` the body goes there, and is read
+// only for an answer of 2xx.
+Response perform(const QString& url, const QList<std::pair<QString, QString>>& headers, int timeoutMs,
+    qint64 maxBytes, Session sessionKind, const Progress& progress, const Sink& sink)
 {
     Response response;
     const auto fail = [&response] {
@@ -114,6 +115,43 @@ Response get(const QString& url, const QList<std::pair<QString, QString>>& heade
                 &typeBytes, WINHTTP_NO_HEADER_INDEX))
             response.contentType = QString::fromWCharArray(type.c_str());
     }
+    wchar_t lengthText[32] = {};
+    DWORD lengthBytes = sizeof(lengthText);
+    if (::WinHttpQueryHeaders(request.get(), WINHTTP_QUERY_CONTENT_LENGTH, WINHTTP_HEADER_NAME_BY_INDEX, lengthText,
+            &lengthBytes, WINHTTP_NO_HEADER_INDEX)) {
+        bool ok = false;
+        const qint64 length = QString::fromWCharArray(lengthText).trimmed().toLongLong(&ok);
+        if (ok && length >= 0)
+            response.contentLength = length;
+    }
+    if (sink) {
+        response.status = static_cast<int>(status);
+        if (status < 200 || status >= 300)
+            return response;
+        if (maxBytes > 0 && response.contentLength > maxBytes) {
+            response.error = ERROR_FILE_TOO_LARGE;
+            return response;
+        }
+        std::vector<char> buffer(256 * 1024);
+        qint64 received = 0;
+        for (;;) {
+            DWORD read = 0;
+            if (!::WinHttpReadData(request.get(), buffer.data(), static_cast<DWORD>(buffer.size()), &read))
+                return fail();
+            if (read == 0)
+                break;
+            received += read;
+            if (maxBytes > 0 && received > maxBytes) {
+                response.error = ERROR_FILE_TOO_LARGE;
+                return response;
+            }
+            if (!sink(buffer.data(), read)) {
+                response.error = ERROR_CANCELLED;
+                return response;
+            }
+        }
+        return response;
+    }
     while (maxBytes <= 0 || response.body.size() < maxBytes) {
         DWORD available = 0;
         if (!::WinHttpQueryDataAvailable(request.get(), &available))
@@ -134,6 +172,20 @@ Response get(const QString& url, const QList<std::pair<QString, QString>>& heade
     }
     response.status = static_cast<int>(status);
     return response;
+}
+
+} // namespace
+
+Response get(const QString& url, const QList<std::pair<QString, QString>>& headers, int timeoutMs, qsizetype maxBytes,
+    Session sessionKind, const Progress& progress)
+{
+    return perform(url, headers, timeoutMs, maxBytes, sessionKind, progress, {});
+}
+
+Response download(const QString& url, const QList<std::pair<QString, QString>>& headers, int timeoutMs,
+    qint64 maxBytes, const Sink& sink)
+{
+    return perform(url, headers, timeoutMs, maxBytes, Session::Own, {}, sink);
 }
 
 } // namespace ws::http

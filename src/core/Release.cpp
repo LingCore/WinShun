@@ -1,8 +1,11 @@
 #include "Release.h"
 
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QRegularExpression>
 #include <QStringList>
+#include <QUrl>
 
 using namespace Qt::StringLiterals;
 
@@ -92,7 +95,82 @@ std::optional<Info> parse(const QByteArray& json)
     info.version = normalized(tag);
     info.pageUrl = release.value(u"html_url"_s).toString();
     info.notes = release.value(u"body"_s).toString();
+    for (const QJsonValue& value : release.value(u"assets"_s).toArray()) {
+        const QJsonObject a = value.toObject();
+        Asset asset;
+        asset.name = a.value(u"name"_s).toString();
+        asset.url = a.value(u"browser_download_url"_s).toString();
+        for (const QJsonValue& mirror : a.value(u"mirrors"_s).toArray())
+            if (mirror.isString())
+                asset.mirrors.append(mirror.toString());
+        asset.size = static_cast<qint64>(a.value(u"size"_s).toDouble());
+        const QString digest = a.value(u"digest"_s).toString().trimmed();
+        static const QRegularExpression sha256(u"^sha256:([0-9a-fA-F]{64})$"_s);
+        if (const QRegularExpressionMatch m = sha256.match(digest); m.hasMatch())
+            asset.sha256 = m.captured(1).toLower();
+        info.assets.append(asset);
+    }
     return info;
+}
+
+Answer judge(int status, const QByteArray& body, const QString& current, std::optional<Info>* newer)
+{
+    if (newer)
+        newer->reset();
+    if (status == 204)
+        return Answer::UpToDate;
+    const std::optional<Info> latest = status == 200 ? parse(body) : std::nullopt;
+    if (!latest)
+        return Answer::Invalid;
+    if (!isNewer(latest->version, current))
+        return Answer::UpToDate;
+    if (newer)
+        *newer = latest;
+    return Answer::Newer;
+}
+
+bool sameVersion(const QString& a, const QString& b)
+{
+    return !a.trimmed().isEmpty() && !b.trimmed().isEmpty() && !isNewer(a, b) && !isNewer(b, a);
+}
+
+std::optional<Asset> packageAsset(const Info& info, Package package)
+{
+    if (info.assets.size() != 1)
+        return std::nullopt;
+    const Asset& asset = info.assets.first();
+    const QString suffix = package == Package::Setup ? u"-x64-setup.exe"_s : u"-x64-portable.zip"_s;
+    if (!asset.name.startsWith(u"WinShun-"_s) || !asset.name.endsWith(suffix) || asset.size <= 0
+        || asset.sha256.isEmpty())
+        return std::nullopt;
+    return asset;
+}
+
+bool loopbackHttpUrl(const QString& url)
+{
+    const QUrl u(url);
+    const QString host = u.host().toLower();
+    return u.isValid() && u.scheme() == u"http" && (host == u"127.0.0.1" || host == u"localhost" || host == u"::1");
+}
+
+QStringList downloadUrls(const Asset& asset, bool loopbackHttp)
+{
+    QStringList urls;
+    for (const QString& url : asset.mirrors + QStringList {asset.url}) {
+        const QUrl u(url, QUrl::StrictMode);
+        const bool https = u.isValid() && u.scheme() == u"https" && !u.host().isEmpty();
+        if ((https || (loopbackHttp && loopbackHttpUrl(url))) && !urls.contains(url))
+            urls.append(url);
+    }
+    return urls;
+}
+
+QString releasePage(const QString& pageUrl)
+{
+    const QUrl u(pageUrl, QUrl::StrictMode);
+    if (pageUrl.startsWith(u"https://lcstp.com/"_s) && u.isValid() && u.host() == u"lcstp.com" && u.userInfo().isEmpty())
+        return pageUrl;
+    return QString::fromLatin1(kProjectPage);
 }
 
 QString summary(const QString& notes, bool chinese)

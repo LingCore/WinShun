@@ -701,6 +701,10 @@ bool App::start(const StartOptions& options)
             tr("点这里查看更新内容"));
         m_updateNotified = true;
     });
+    // After an update put in place from here: whether it came in.
+    connect(m_updater.get(), &Updater::notice, this,
+        [this](const QString& title, const QString& text) { m_messages->showNotification(title, text); });
+    m_updater->afterStart();
 
     if (!createWindow())
         return false;
