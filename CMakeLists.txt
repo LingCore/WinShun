@@ -50,6 +50,7 @@ add_subdirectory(src/capture)
 add_subdirectory(src/app)
 add_subdirectory(src/stub)
 add_subdirectory(src/service)
+add_subdirectory(src/updater)
 
 # The plugins that come with Win顺 (plugins/, docs/plugins.md), staged next
 # to the build's WinShun.exe the way the installer lays them out: each
