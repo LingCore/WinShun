@@ -41,4 +41,11 @@
 
 先创建草稿 Release，使用明确的提交 SHA 为目标，上传安装包、便携包和 SHA256 文件。确认三个附件齐全、大小及远端 SHA256 与本地一致后，才发布草稿并设为最新正式版本。最后确认公开 Release、最新版本接口和标签提交一致；不要在没有核验结果时仅凭上传命令成功报告完成。
 
+软件内更新问的是 lcstp.com，它最多 10 分钟后才从 GitHub 同步到新版本。发布后用 `curl` 查这两个地址，核对 `tag_name`、文件名、`size` 和 `digest` 是否和 `SHA256SUMS.txt` 一致：
+
+```powershell
+curl.exe -s 'https://lcstp.com/updates/winshun/stable.json?platform=windows&arch=x64&osVersion=10.0.22631'
+curl.exe -s 'https://lcstp.com/updates/winshun/stable.json?platform=windows&arch=x64&osVersion=10.0.22631&package=portable'
+```
+
 已发布成功的单次任务不得重复执行；若由一次性自动化触发，成功后关闭它。论坛文案可另行提供，但发布到论坛或向他人发消息需要用户明确要求。

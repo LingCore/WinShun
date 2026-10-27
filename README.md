@@ -256,7 +256,7 @@
 
 1. 到 [Releases 页面](https://github.com/LingCore/WinShun/releases/latest) 下载 `WinShun-版本号-x64-setup.exe`，双击安装。Windows 提示“已保护你的电脑”时，点 **更多信息 → 仍要运行**（还没有代码签名证书）。安装时可以选“为所有用户安装”（要管理员同意，带索引服务，最快）或“只为我安装”（不要管理员权限，不装索引服务，只索引你选的文件夹）。
 2. 装完托盘里出现 Win顺 的图标，索引几秒就建好。连按两下 Ctrl 开始搜索。
-3. 升级时运行新的安装程序，设置和索引都保留。卸载在 Windows 的“设置 → 应用”里。
+3. 有新版本时，在更新提醒里点“下载并安装”（便携版是“下载并更新”），Win顺 自己下载、核对后装好并重新打开；也可以手动运行新的安装程序。设置和索引都保留。卸载在 Windows 的“设置 → 应用”里。
 
 不想安装的话，下载 `WinShun-版本号-x64-portable.zip`，解压到任意文件夹，运行里面的 `WinShun.exe` 就行。设置、记录、剪贴板历史和索引都存在它旁边的 `data` 文件夹里，整个文件夹可以拷到 U 盘或别的电脑；第一次启动时，这台电脑上原来的设置和数据（`%APPDATA%\WinShun`、`%LOCALAPPDATA%\WinShun`）会复制过来，原处的不动。升级时把新版解压到同一个位置覆盖，`data` 留着。删掉 `data` 文件夹（先退出 Win顺），就和安装版一样存在原来的地方。
 
@@ -291,7 +291,7 @@ Listary、PowerToys 的“查找鼠标”默认也用双击 Ctrl，关掉其中�
 到 **设置 › 高级 › 诊断日志** 点“导出诊断日志”，把打开的文件夹里的 `WinShun-diagnostics.zip` 发到 GitHub Issues 或论坛。诊断包记的是版本、系统、磁盘、索引进度和错误，以及界面显示、字体和剪贴板按键转发的状态（字显示不对时先导出再重启），不含设置、剪贴板内容、搜索历史和文档正文。剪贴板搜索失效时，关闭面板后尽快导出即可；转发记录只含次数、放行原因和错误码，不记录具体按键或搜索词。
 
 **收费吗？会上传数据吗？**
-完全免费，MIT 开源。只在这些时候联网：到 GitHub 检查新版本（可以关掉）；第一次显示某个网页搜索或书签时取一次那个网站的图标；打开设置里的“插件库”这一页、点“刷新”或安装插件时，到插件库取列表和插件；在网站关键词后打字时，把这些字发给那个网站取搜索建议（不打关键词时一个字也不发，可以在设置里关掉）；你自己打开“按意思找”插件并选了云服务时，把文档的文字发给你选的服务商。索引和历史只存在本机（`%LOCALAPPDATA%\WinShun`）。
+完全免费，MIT 开源。只在这些时候联网：检查新版本时连接 lcstp.com（可以关掉；只发送系统版本和安装方式，不带个人信息），你点“下载并安装”后经第三方镜像或 GitHub 下载安装包，并用 SHA-256 校验；第一次显示某个网页搜索或书签时取一次那个网站的图标；打开设置里的“插件库”这一页、点“刷新”或安装插件时，到插件库取列表和插件；在网站关键词后打字时，把这些字发给那个网站取搜索建议（不打关键词时一个字也不发，可以在设置里关掉）；你自己打开“按意思找”插件并选了云服务时，把文档的文字发给你选的服务商。索引和历史只存在本机（`%LOCALAPPDATA%\WinShun`）。
 
 ### 反馈
 
@@ -445,7 +445,7 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
 
 1. Download `WinShun-<version>-x64-setup.exe` from the [Releases page](https://github.com/LingCore/WinShun/releases/latest) and run it. If Windows says “Windows protected your PC”, click **More info → Run anyway**: the app is not code-signed yet. Setup offers “for all users” (an administrator approves it; comes with the index service, the fastest) or “for me only” (no administrator needed, no index service; only the folders you choose are indexed).
 2. When the WinShun icon appears in the notification area, it is running; the first index takes a few seconds. Press Ctrl twice and type.
-3. To upgrade, run a newer installer: your settings and index are kept. Uninstall from Windows Settings → Apps.
+3. To upgrade, click “Download and install” (“Download and update” for the portable copy) when WinShun tells you about a new version: it downloads, checks and installs it, then starts again. Running a newer installer yourself works too. Your settings and index are kept. Uninstall from Windows Settings → Apps.
 
 To skip the installer, download `WinShun-<version>-x64-portable.zip`, unzip it anywhere and run `WinShun.exe` in it. Settings, history, clipboard and index are kept in the `data` folder beside it, so the whole folder can go on a USB stick or another PC; on the first start, what this PC already has (`%APPDATA%\WinShun`, `%LOCALAPPDATA%\WinShun`) is copied in, the originals left in place. To upgrade, unzip the newer one over it and keep `data`. Without the `data` folder (quit WinShun first), it keeps them where the installed copy does.
 
@@ -480,7 +480,7 @@ With “Direct (administrator)” chosen, WinShun runs as administrator, and Win
 Under **Settings › Advanced › Diagnostic logs**, click “Export diagnostic logs” and attach the `WinShun-diagnostics.zip` from the folder that opens to a GitHub issue. It holds the version, system, disks, indexing progress and errors, not your settings, clipboard, search history or document text.
 
 **Is it free? Does it collect data?**
-Free and MIT-licensed. It goes online only to check GitHub for new versions (you can turn that off), to fetch a web shortcut's or bookmark's site icon once, to fetch the plugin list and plugins when you open the Plugin library page in the settings, press Refresh or install one, to ask a site for search suggestions while you type after its keyword (nothing is sent without a site keyword; you can turn this off), and, if you turn on the “Search by meaning” plugin with a cloud service, to send document text to the service you chose. The index and history stay on your PC (`%LOCALAPPDATA%\WinShun`).
+Free and MIT-licensed. It goes online only to check lcstp.com for new versions (you can turn that off; only the Windows version and the kind of install are sent, nothing personal) and, when you click “Download and install”, to download the package through third-party mirrors or GitHub, checked against its SHA-256, to fetch a web shortcut's or bookmark's site icon once, to fetch the plugin list and plugins when you open the Plugin library page in the settings, press Refresh or install one, to ask a site for search suggestions while you type after its keyword (nothing is sent without a site keyword; you can turn this off), and, if you turn on the “Search by meaning” plugin with a cloud service, to send document text to the service you chose. The index and history stay on your PC (`%LOCALAPPDATA%\WinShun`).
 
 ### Feedback
 

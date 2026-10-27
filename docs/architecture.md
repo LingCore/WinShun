@@ -217,9 +217,17 @@ cmake --build --preset release --target update_translations   # lupdate：把新
 
 ## 检查更新和发布
 
-没有自己的服务器：新版本就是 GitHub 上的 Release。`Updater` 用 WinHTTP（走系统代理设置，不用给 Qt Network 带 TLS 插件）请求 `api.github.com/repos/LingCore/WinShun/releases/latest`，比较 `tag_name` 和当前版本；有新版本时在托盘提示（设置窗口开着时直接弹对话框），“去下载”用浏览器打开那个 Release 的页面。上次检查的时间、跳过的版本、上次提醒的时间存在 `%LOCALAPPDATA%\WinShun\update.ini`；同一个版本自动提醒最多三天一次，跳过的版本只在手动检查时显示。测试时可以用环境变量 `WINSHUN_UPDATE_FEED` 指向一个假的接口地址。
+新版本仍是 GitHub 上的 Release；检查更新问的是拾穗发布服务（lcstp.com），它每 10 分钟从 GitHub Releases 同步一次，回答 GitHub 兼容的格式，另外给出安装包的大小、`digest`（服务器从 GitHub API 读的 SHA-256）和镜像地址。`Updater` 用 WinHTTP（走系统代理设置，不用给 Qt Network 带 TLS 插件）请求 `https://lcstp.com/updates/winshun/stable.json?platform=windows&arch=x64&osVersion=10.0.x`，便携版再加 `&package=portable`；204（没有内容）算“已是最新”。比较 `tag_name` 和当前版本；有新版本时在托盘提示（设置窗口开着时直接弹对话框）。上次检查的时间、跳过的版本、上次提醒的时间存在 `update.ini`（安装版在 `%LOCALAPPDATA%\WinShun`，便携版在 `data`）；同一个版本自动提醒最多三天一次，跳过的版本只在手动检查时显示。测试时可以用环境变量 `WINSHUN_UPDATE_FEED` 指向一个假的接口地址（它是 `http://127.0.0.1` 或 `localhost` 时，安装包也可以从本机用 http 下载；正式地址只用 https）。“查看完整说明”只打开 `https://lcstp.com/` 开头的 `html_url`，否则打开固定的 `https://lcstp.com/projects/winshun`。
 
-不做自动下载和替换：没有代码签名的程序在后台下载 exe、再改写自己的文件，正是杀毒软件启发式检测盯的行为，何况 Win顺 以管理员身份运行。FlClash 也是只提示、打开浏览器下载。
+“下载并安装”（`Updater::install`，下载和校验在 `UpdatePackage`）：
+
+- **下载**：只接受服务器给的唯一一个、名字对得上（`-x64-setup.exe` 或 `-x64-portable.zip`）、带有效 `sha256:` digest 的安装包；没有 digest 就不下载。依次试镜像，最后试 GitHub，只用 https。流式写进 `%LOCALAPPDATA%\WinShun\Updates\<名字>.partial`，大小和 SHA-256 都对上才改成正式文件名；任何一步不对就删掉临时文件、换下一个地址，全部失败才报错。镜像半分钟后平均不到约 16 KB/s 就换下一个；每一步 30 秒超时，大小上限 400 MB，可以取消。镜像是不可信的第三方，可信的只有 lcstp.com 的 https 回答里的 digest。
+- **安装前再查一遍**：用只许读、不许写也不许删的方式打开文件（`HeldFile`），再算一遍 SHA-256，一直拿着到用完，防止核对之后被换掉；再读版本资源，和 `tag_name` 不一致就拒绝（安装版读 setup.exe 自己，便携版读解压出来的 WinShun.exe）。安装包没有 Authenticode 签名，所以安全性就来自三点：https 连 lcstp.com、SHA-256、版本一致。以后有了签名证书，在校验处加 `WinVerifyTrust`，发布者证书写死在程序里，不能从服务器回答里读。
+- **安装版**：安装方式看 `Uninstall\{C582F95C-…}_is1` 在 HKLM 还是 HKCU，而且它的 `InstallLocation` 必须就是正在运行的这个文件夹（开发用的副本不会去更新 Program Files 里的那份）。以普通权限启动 `setup.exe /SILENT /SUPPRESSMSGBOXES /NORESTART /SP- /ALLUSERS|/CURRENTUSER /LOG=…`。为所有用户安装时由 Inno Setup 自己弹 UAC：如果 Win顺 用 runas 把它提权后再启动，它 [Run] 里的 `runasoriginaluser` 就没有普通用户的身份可用，装完后 Win顺 和它的自启任务都会以管理员身份运行（GitHub #21）。之后就是安装包原有的流程：PrepareToInstall 用 `--quit` 关掉 Win顺（正常退出，保存索引、设置和剪贴板），停索引服务；[Run] 重新注册服务（`--install`）、`--take-autostart`，再用 `--background` 把新版本启动到托盘（静默安装也会跑这几项，iss 不用改）。Setup 在 Win顺 还没退出时就结束了（UAC 里点了取消、InitializeSetup 拒绝），Win顺 提示失败、删除安装包，可以重试。Setup 关掉 Win顺 之后才失败时它不会再启动 Win顺：`WinShunUpdate.exe --watch-setup`（从 Updates 文件夹运行）等 Setup 结束，几秒后没有 Win顺 在运行就把装好的那份启动起来。
+- **便携版**：便携版判断沿用 `Settings::portableFolder()`。程序文件夹写不进去（比如放进了 Program Files）就提示并打开下载页，不申请管理员。zip 在内存里校验后解压到程序文件夹里的 `.winshun-update-new`（同一个卷，后面全是改名）：逐条检查条目名，拒绝 `..`、绝对路径、盘符、`:`、设备名、末尾是点或空格的名字、符号链接（Unix 模式或 reparse 属性）、加密条目和大小写重名，限制条目数和总大小；去掉 zip 外层的 `WinShun\`，忽略 zip 里的 `data`；里面必须有 WinShun.exe 且版本等于 `tag_name`。然后把 `WinShunUpdate.exe` 复制到 Updates 文件夹运行，等它拿到 Win顺 进程的句柄（命名事件）后，Win顺 正常退出。助手等 Win顺 和程序文件夹里启动的其他进程（MCP 中转、插件宿主等）结束，只替换新版本里有的顶层项：旧的先移到 `.winshun-update-old`，新的再移进来；`data` 和用户自己放的文件不动。再启动新版本，等它的消息窗口出现（最多 3 分钟），成功就删掉备份和临时文件夹；任何一步失败都按相反顺序移回去，启动旧版本。助手运行期间持有 `Local\WinShun.Updating`，这时启动的 Win顺 不会去清理这两个文件夹。日志在 `Updates\update.log`。
+- **结果**：启动安装器或助手前把目标版本记进 `update.ini` 的 `PendingVersion`。下次启动时版本对上就提示“已更新到 x”，对不上就提示“没有更新到 x”；然后清掉标记和 Updates 里残留的下载（日志保留）。
+
+不再有打开 GitHub 的入口：检查失败时“打开下载页”、“查看完整说明”都去 lcstp.com。已经装着的旧版本仍然查 GitHub，装上这一版之后才走 lcstp.com。
 
 发布新版本：
 
@@ -295,6 +303,7 @@ src/app/             界面与 Windows 集成
   qml/               界面：Main / SearchBar / ResultRow / Footer / ClipboardPage / SettingsWindow …
 src/stub/            WinShunSearch.exe：用户固定到任务栏的按钮，不带 Qt、不提权，点一下通知 Win顺；也替它以普通权限打开截图；粘贴为文件也是它做（PasteAsFile，见下文）
 src/service/         WinShunService.exe：索引服务（Windows 服务 "WinShun"，LocalSystem，不带 Qt、静态 C 运行库），替普通权限的 Win顺 读 NTFS 的 MFT 和变更日志，见下文“权限分离”；Server（接受连接、每连接一线程、握手、限额、让出磁盘）、Volumes（OpenMft / QueryJournal / FollowJournal / CloseVolume 的服务端）、Log、InputListener（按客户端会话启动 UIAccess 双击 Ctrl 监听子进程，连接拥有其生命周期）、main（SERVICE_MAIN、--install / --uninstall / --console / --listen-keys）
+src/updater/         WinShunUpdate.exe：软件内更新的助手（不带 Qt、静态 C 运行库，从 Updates 文件夹运行）；--portable 等 Win顺 退出后换便携版的文件（data 不动）并启动新版，失败就换回旧版；--watch-setup 在静默安装没把 Win顺 重新打开时打开它。Swap（换进、换回），tests/tst_updater.cpp 再编一遍
 src/mcp/             AI 助手：Win顺 作为 MCP 服务器（见下文“AI 助手”）
   JsonRpc / Pipe     每行一条 JSON-RPC 消息的解析和拼装；命名管道的名字、安全描述符和客户端一端（只依赖 Qt Core，中继也用）
   McpTools           给 AI 的工具：每个工具的名字、JSON Schema、注解、要哪个开关放行，以及在搜索引擎和索引上怎么做（ToolHost；以后插件也走这一层）
