@@ -6,6 +6,8 @@
 #include <winhttp.h>
 
 #include <memory>
+#include <mutex>
+#include <string>
 #include <vector>
 
 using namespace Qt::StringLiterals;
@@ -19,10 +21,41 @@ struct InternetHandle {
 };
 using Handle = std::unique_ptr<void, InternetHandle>;
 
-HINTERNET openSession()
+// The proxy setting. WinHTTP takes it when a session is opened and nowhere
+// later (the option is refused on a request: ERROR_WINHTTP_INCORRECT_HANDLE_STATE),
+// so a session is of one choice: each Own session is opened with the current
+// one, and the shared session, which lives for the whole run and may be in
+// use by other threads at this very moment (a handle in use is never closed),
+// is opened again after a change, the old one left to its calls and its idle
+// connections, which WinHTTP lets go of itself. One small handle for each
+// change of the setting.
+struct ProxyChoice {
+    Proxy mode = Proxy::System;
+    std::wstring server;
+    unsigned generation = 0; // up by one for each setProxy()
+};
+std::mutex g_proxyLock;
+ProxyChoice g_proxy;
+
+ProxyChoice currentProxy()
+{
+    const std::lock_guard lock(g_proxyLock);
+    return g_proxy;
+}
+
+HINTERNET openSession(const ProxyChoice& choice)
 {
     const std::wstring agent = (QCoreApplication::applicationName() + u'/' + QCoreApplication::applicationVersion())
                                    .toStdWString();
+    switch (choice.mode) {
+    case Proxy::None:
+        return ::WinHttpOpen(agent.c_str(), WINHTTP_ACCESS_TYPE_NO_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    case Proxy::Named:
+        // "<local>": the names of the machine's own network (no dot in them) go direct, as Windows' own do.
+        return ::WinHttpOpen(agent.c_str(), WINHTTP_ACCESS_TYPE_NAMED_PROXY, choice.server.c_str(), L"<local>", 0);
+    case Proxy::System:
+        break;
+    }
     // Automatic proxy: the system's settings, including PAC scripts (Windows 8.1+).
     return ::WinHttpOpen(agent.c_str(), WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME,
         WINHTTP_NO_PROXY_BYPASS, 0);
@@ -32,12 +65,18 @@ HINTERNET openSession()
 // handles may be used from several threads at once.
 HINTERNET sharedSession()
 {
-    static const HINTERNET session = [] {
-        const HINTERNET s = openSession();
-        if (s) // the name lookup's timeout is the session's alone (WinHTTP's own: none); the rest are per request
-            ::WinHttpSetTimeouts(s, 2000, 2000, 2000, 2000);
-        return s;
-    }();
+    static std::mutex lock;
+    static HINTERNET session = nullptr;
+    static unsigned generation = ~0u; // of the setting `session` was opened for
+    const std::lock_guard guard(lock);
+    const ProxyChoice choice = currentProxy();
+    if (!session || generation != choice.generation) {
+        const HINTERNET opened = openSession(choice);
+        if (opened) // the name lookup's timeout is the session's alone (WinHTTP's own: none); the rest are per request
+            ::WinHttpSetTimeouts(opened, 2000, 2000, 2000, 2000);
+        session = opened;
+        generation = choice.generation;
+    }
     return session;
 }
 
@@ -68,7 +107,7 @@ Response perform(const QString& url, const QList<std::pair<QString, QString>>& h
     if (sessionKind == Session::Shared) {
         session = sharedSession();
     } else {
-        own.reset(openSession());
+        own.reset(openSession(currentProxy()));
         session = own.get();
         if (session) // the name lookup's timeout is the session's alone
             ::WinHttpSetTimeouts(session, timeoutMs, timeoutMs, timeoutMs, timeoutMs);
@@ -186,6 +225,20 @@ Response download(const QString& url, const QList<std::pair<QString, QString>>& 
     qint64 maxBytes, const Sink& sink)
 {
     return perform(url, headers, timeoutMs, maxBytes, Session::Own, {}, sink);
+}
+
+QString proxyServer()
+{
+    const ProxyChoice choice = currentProxy();
+    return choice.mode == Proxy::Named ? QString::fromStdWString(choice.server) : QString();
+}
+
+void setProxy(Proxy mode, const QString& server)
+{
+    const std::lock_guard lock(g_proxyLock);
+    g_proxy.mode = mode == Proxy::Named && server.isEmpty() ? Proxy::System : mode;
+    g_proxy.server = server.toStdWString();
+    ++g_proxy.generation;
 }
 
 } // namespace ws::http

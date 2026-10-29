@@ -279,6 +279,20 @@ FilePreview::FilePreview(QObject* parent)
         if (m_open && !m_external && m_kind == Loading && (!m_window || !m_window->isVisible()))
             showWindow({});
     });
+    // Seer 2.8 has the window Win顺 talks to, takes the file and shows
+    // nothing: ours then, and that Seer is not asked again. Told to hide
+    // all the same: one that was only slow must not stay on the screen.
+    m_externalCheck.setSingleShot(true);
+    m_externalCheck.setInterval(1500);
+    connect(&m_externalCheck, &QTimer::timeout, this, [this] {
+        if (!m_open || m_external != extpreview::Engine::Seer || extpreview::answered(*m_external))
+            return;
+        qWarning("WinShun: Seer (no version told) showed nothing; previewing with Win顺's own while it runs");
+        extpreview::close(*m_external);
+        extpreview::passOver(*m_external);
+        m_external.reset();
+        load(m_item);
+    });
 }
 
 FilePreview::~FilePreview()
@@ -341,6 +355,11 @@ QString FilePreview::iconUrl() const
     return m_item.path.isEmpty() ? QString() : FileIconProvider::iconUrl(m_item.path, m_item.isDir);
 }
 
+bool FilePreview::showsElsewhere() const
+{
+    return !m_builtInOnly && extpreview::running().has_value();
+}
+
 bool FilePreview::isShowing(const QString& path) const
 {
     return m_open && m_item.path.compare(path, Qt::CaseInsensitive) == 0;
@@ -352,11 +371,14 @@ void FilePreview::show(const Item& item)
         if (const std::optional<extpreview::Engine> engine = extpreview::running()) {
             if (m_open && !m_external)
                 close(); // ours, opened while none ran
+            const bool known = extpreview::knownToShow(*engine); // first: busy with the file, Seer may not answer
             if (extpreview::show(*engine, item.path)) {
                 m_open = true;
                 m_external = engine;
                 m_externalSince.start();
                 m_item = item;
+                if (!known)
+                    m_externalCheck.start();
                 return;
             }
         }
@@ -401,6 +423,7 @@ void FilePreview::close()
     m_side = -1;
     ++m_generation;
     m_slowTimer.stop();
+    m_externalCheck.stop();
     if (m_external) {
         extpreview::close(*m_external);
         m_external.reset();

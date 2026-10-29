@@ -39,7 +39,7 @@ SettingsSection {
     SettingRow {
         id: dropPieRow
 
-        readonly property string how: qsTr("在文件上按住左键（不用拖动），再按 Esc 下面那个键（中文输入法下是 ·）。朝文件夹的方向拖，松开就放进去：同一个盘里移动，到别的盘复制，按住 Ctrl 复制、按住 Shift 移动")
+        readonly property string how: qsTr("在文件上按住左键（不用拖动），再按数字 1 左边那个键（一般是 `，中文输入法下是 ·）。朝文件夹的方向拖，松开就放进去：同一个盘里移动，到别的盘复制，按住 Ctrl 复制、按住 Shift 移动")
 
         title: qsTr("拖文件时按 ` 键，弹出收藏圆盘")
         keywords: qsTr("拖放;拖动;拖拽;圆盘;按键;移动;复制;drag;drop;pie;key").split(";")
@@ -391,9 +391,10 @@ SettingsSection {
                                     section.draft = null
                                     section.editing = -1
                                 }
-                                onEdited: (name, keyword, commandLine, directory, icon) => section.draft = {
+                                onEdited: (name, keyword, commandLine, directory, icon, silent, administrator) => section.draft = {
                                     path: favRow.modelData.path, name: name, keyword: keyword,
-                                    commandLine: commandLine, directory: directory, icon: icon
+                                    commandLine: commandLine, directory: directory, icon: icon,
+                                    silent: silent, administrator: administrator
                                 }
                                 onMoveRequested: (to) => {
                                     const from = favRow.index

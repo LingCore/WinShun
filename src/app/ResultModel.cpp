@@ -365,9 +365,13 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
         }
         return FileIconProvider::iconUrl(r->path, r->isDir);
     case ThumbnailRole:
+        if (!m_thumbnails && r->clipId <= 0)
+            return QString();
+        [[fallthrough]];
+    case GalleryThumbnailRole:
         if (r->clipId > 0) // a screenshot (jt): its picture, whatever the option says
             return r->target.isEmpty() ? QString() : ThumbnailProvider::url(r->target, r->modified);
-        if (!m_thumbnails || r->isApp() || r->isDir || r->offline || r->missing)
+        if (r->isApp() || r->isDir || r->offline || r->missing)
             return QString();
         return ThumbnailProvider::url(r->path, r->modified);
     case SnippetHtmlRole:
@@ -453,6 +457,19 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
     }
     case StatusRowRole:
         return r->statusRow;
+    case ElsewhereRole:
+        return r->elsewhere;
+    case PluginCopiesRole: {
+        // Not a row that does something else and has nothing of its own to
+        // copy (GitHub #113: 传's 接收 row offered to copy the word 接收).
+        if (!r->isPlugin() || !r->plugin)
+            return false;
+        const PluginRow& p = *r->plugin;
+        return !p.copy.isEmpty()
+            || (p.valid && p.actions.isEmpty() && p.openKind == PluginRow::OpenKind::None && p.searchQuery.isEmpty() && p.setQuery.isEmpty());
+    }
+    case FolderAwayRole:
+        return r->isPlugin() && r->plugin ? r->plugin->subtitleAway : QString();
     default:
         return {};
     }
@@ -480,6 +497,7 @@ QHash<int, QByteArray> ResultModel::roleNames() const
         {IsDirRole, "isDir"},
         {IconRole, "icon"},
         {ThumbnailRole, "thumbnail"},
+        {GalleryThumbnailRole, "galleryThumbnail"},
         {SnippetHtmlRole, "snippetHtml"},
         {LineRole, "line"},
         {LocationRole, "location"},
@@ -516,6 +534,9 @@ QHash<int, QByteArray> ResultModel::roleNames() const
         {SwitchErrorRole, "switchError"},
         {SwitchReadyRole, "switchReady"},
         {StatusRowRole, "statusRow"},
+        {ElsewhereRole, "elsewhere"},
+        {PluginCopiesRole, "pluginCopies"},
+        {FolderAwayRole, "folderAway"},
     };
 }
 
@@ -523,6 +544,21 @@ QString ResultModel::pathAt(int row) const
 {
     const SearchResult* r = at(row);
     return r ? r->path : QString();
+}
+
+QStringList ResultModel::copyTexts() const
+{
+    constexpr int kRows = 64;
+    QStringList texts;
+    const int rows = std::min<int>(rowCount(), kRows);
+    for (int i = 0; i < rows; ++i) {
+        const SearchResult* r = at(i);
+        const PluginRow* p = r && r->isPlugin() ? r->plugin.operator->() : nullptr;
+        const bool copiesTitle = p && p->valid && p->openKind == PluginRow::OpenKind::None && p->searchQuery.isEmpty()
+                                 && p->setQuery.isEmpty() && !p->copy.isEmpty();
+        texts.push_back(copiesTitle ? r->name : QString());
+    }
+    return texts;
 }
 
 QString ResultModel::elidedHtml(
@@ -578,6 +614,7 @@ void ResultModel::assign(SearchResults items, QStringList highlights)
     if (newCount != oldCount)
         emit countChanged();
     keepSelectionInList();
+    findElsewhere();
 }
 
 void ResultModel::update(int row, const SearchResult& item)
@@ -586,6 +623,7 @@ void ResultModel::update(int row, const SearchResult& item)
         return;
     m_items[row] = item;
     emit dataChanged(index(row), index(row));
+    findElsewhere();
 }
 
 void ResultModel::append(const SearchResults& items)
@@ -596,6 +634,7 @@ void ResultModel::append(const SearchResults& items)
     m_items.append(items);
     endInsertRows();
     emit countChanged();
+    findElsewhere();
 }
 
 void ResultModel::insert(int row, const SearchResult& item)
@@ -605,6 +644,7 @@ void ResultModel::insert(int row, const SearchResult& item)
     m_items.insert(row, item);
     endInsertRows();
     emit countChanged();
+    findElsewhere();
 }
 
 bool ResultModel::remove(const QString& path)
@@ -617,6 +657,7 @@ bool ResultModel::remove(const QString& path)
     endRemoveRows();
     emit countChanged();
     keepSelectionInList();
+    findElsewhere();
     return true;
 }
 
@@ -630,6 +671,21 @@ void ResultModel::removeRange(int row, int rows)
     endRemoveRows();
     emit countChanged();
     keepSelectionInList();
+    findElsewhere();
+}
+
+// The rows not in the folder typed in come last (SearchEngine::Request::
+// currentFolder): the first of them is where they start. A few hundred rows
+// at most, looked through after each change.
+void ResultModel::findElsewhere()
+{
+    const SearchResults& items = std::as_const(m_items);
+    const auto it = std::ranges::find_if(items, [](const SearchResult& r) { return r.elsewhere; });
+    const int row = it == items.cend() ? -1 : static_cast<int>(it - items.cbegin());
+    if (row == m_elsewhereRow)
+        return;
+    m_elsewhereRow = row;
+    emit elsewhereRowChanged();
 }
 
 int ResultModel::removeAll(const QSet<QString>& paths)
@@ -653,6 +709,7 @@ int ResultModel::removeAll(const QSet<QString>& paths)
     if (removed > 0) {
         emit countChanged();
         keepSelectionInList();
+        findElsewhere();
     }
     return removed;
 }

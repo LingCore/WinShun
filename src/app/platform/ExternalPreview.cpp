@@ -102,11 +102,44 @@ bool quickLookVisible()
 constexpr ULONG_PTR kSeerInvoke = 5000; // SEER_INVOKE_W32
 constexpr ULONG_PTR kSeerIsVisible = 5004; // SEER_IS_VISIBLE
 constexpr ULONG_PTR kSeerHide = 5005; // SEER_HIDE
+constexpr ULONG_PTR kSeerVersion = 5007; // answers its version, 4.7.0 as 40700
 constexpr int kSeerInterval = 200; // ms between two SEER_INVOKE_* (ipc.h)
+
+DWORD g_passedOverSeer = 0; // its process (passOver); GUI thread only
+
+DWORD processOf(HWND window)
+{
+    DWORD process = 0;
+    if (window)
+        ::GetWindowThreadProcessId(window, &process);
+    return process;
+}
 
 HWND seerWindow()
 {
     return ::FindWindowW(L"SeerWindowClass", nullptr);
+}
+
+// A visible window of the process, of some size: its preview, whatever the
+// version calls it.
+bool seerShowsWindow()
+{
+    struct Search {
+        DWORD process;
+        bool found = false;
+    } search {processOf(seerWindow())};
+    if (!search.process)
+        return false;
+    ::EnumWindows([](HWND window, LPARAM param) -> BOOL {
+        auto& s = *reinterpret_cast<Search*>(param);
+        RECT r {};
+        if (processOf(window) != s.process || !::IsWindowVisible(window) || !::GetWindowRect(window, &r)
+            || r.right - r.left < 50 || r.bottom - r.top < 50)
+            return TRUE;
+        s.found = true;
+        return FALSE;
+    }, reinterpret_cast<LPARAM>(&search));
+    return search.found;
 }
 
 // A message to it, answered within a moment or not at all (Seer busy, or
@@ -128,6 +161,23 @@ bool sendSeer(ULONG_PTR command, const QString& text, LRESULT* answer = nullptr)
     if (answer)
         *answer = static_cast<LRESULT>(result);
     return true;
+}
+
+// Its version, asked once a process (again when it was busy); 0 when it
+// does not tell.
+LRESULT seerVersion()
+{
+    static DWORD askedOf = 0;
+    static LRESULT version = 0;
+    const DWORD process = processOf(seerWindow());
+    if (process && process != askedOf) {
+        LRESULT answer = 0;
+        if (sendSeer(kSeerVersion, QString(), &answer)) {
+            askedOf = process;
+            version = answer;
+        }
+    }
+    return process && process == askedOf ? version : 0;
 }
 
 // Invocations no closer together than Seer takes them: the latest path waits.
@@ -180,9 +230,33 @@ std::optional<Engine> running()
 {
     if (quickLookRunning())
         return Engine::QuickLook;
-    if (seerWindow())
+    if (const HWND seer = seerWindow(); seer && processOf(seer) != g_passedOverSeer)
         return Engine::Seer;
     return std::nullopt;
+}
+
+bool knownToShow(Engine engine)
+{
+    switch (engine) {
+    case Engine::QuickLook: return true;
+    case Engine::Seer: return seerVersion() > 0;
+    }
+    return false;
+}
+
+bool answered(Engine engine)
+{
+    switch (engine) {
+    case Engine::QuickLook: return quickLookVisible();
+    case Engine::Seer: return visible(Engine::Seer) || seerShowsWindow();
+    }
+    return false;
+}
+
+void passOver(Engine engine)
+{
+    if (engine == Engine::Seer)
+        g_passedOverSeer = processOf(seerWindow());
 }
 
 bool show(Engine engine, const QString& path)

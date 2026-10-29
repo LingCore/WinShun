@@ -58,6 +58,14 @@ void putFileNames(IDataObject* data, const QStringList& paths)
     put(data, CF_HDROP, bytes.data(), bytes.size());
 }
 
+// Pasted or dropped, the files are copied, never moved.
+void preferCopy(IDataObject* data)
+{
+    static const auto preferred = static_cast<CLIPFORMAT>(::RegisterClipboardFormatW(CFSTR_PREFERREDDROPEFFECT));
+    const DWORD copy = DROPEFFECT_COPY;
+    put(data, preferred, &copy, sizeof copy);
+}
+
 } // namespace
 
 ComPtr<IDataObject> dataObject(const QStringList& paths)
@@ -90,9 +98,23 @@ ComPtr<IDataObject> dataObject(const QStringList& paths)
     if (FAILED(made))
         return {};
     putFileNames(data.Get(), found);
-    static const auto preferred = static_cast<CLIPFORMAT>(::RegisterClipboardFormatW(CFSTR_PREFERREDDROPEFFECT));
-    const DWORD copy = DROPEFFECT_COPY;
-    put(data.Get(), preferred, &copy, sizeof copy);
+    preferCopy(data.Get());
+    return data;
+}
+
+ComPtr<IDataObject> fileNamesObject(const QStringList& paths)
+{
+    if (paths.isEmpty())
+        return {};
+    // The shell's object with no items holds whatever is put in it.
+    ComPtr<IDataObject> data;
+    if (FAILED(::SHCreateDataObject(nullptr, 0, nullptr, nullptr, IID_PPV_ARGS(&data))))
+        return {};
+    QStringList native;
+    for (const QString& path : paths)
+        native.append(QDir::toNativeSeparators(path));
+    putFileNames(data.Get(), native);
+    preferCopy(data.Get());
     return data;
 }
 

@@ -56,10 +56,26 @@ void openTerminal(const QString& folder, std::function<void(bool)> done = {});
 // A command or shell location ("%windir%\system32\control.exe /name X",
 // "ms-settings:display"): a place in Windows (see SystemCatalog).
 void run(const QString& command, std::function<void(bool)> done = {});
+// What a custom command asks for besides running (GitHub #112).
+struct CommandOptions {
+    // No console window: for a console program, a .bat/.cmd or a .ps1 (the
+    // last two run by cmd.exe and PowerShell then); a program with windows of
+    // its own, or anything else, starts as ever.
+    bool silent = false;
+    bool administrator = false; // UAC asks; declined, nothing is reported
+};
 // User-defined command. Expands environment variables before inserting the
 // query as one argument; never implicitly starts cmd.exe or PowerShell.
+// Neither option: through Explorer, with the user's normal rights, as it was
+// (Foxit warns about a caller it does not know, #64).
 void runCustom(const QString& command, const QString& directory, const QString& query,
-    std::function<void(bool)> done = {});
+    std::function<void(bool)> done = {}, CommandOptions options = {});
+// The elevated half of a command run as administrator through Win顺 itself
+// (silent, or a script that keeps its window): when this process was started
+// as "WinShun.exe --run-hidden <command line>" (or --run-shown), creates that
+// command, without a window or with its own, and returns 0 (1: it did not
+// start) for main to return at once; -1 when it was not.
+int hiddenHelper();
 // An installed app by its launch path, "shell:AppsFolder\<id>" (see AppCatalog).
 void launchApp(const QString& launchPath, bool asAdministrator = false, std::function<void(bool)> done = {});
 // Moves the items to the Recycle Bin, in one operation (asks before deleting
@@ -68,7 +84,7 @@ void launchApp(const QString& launchPath, bool asAdministrator = false, std::fun
 void recycle(const QStringList& paths, HWND owner, std::function<void(bool)> done);
 
 void copyText(const QString& text);
-void copyFiles(const QStringList& paths); // paste-able in Explorer
+void copyFiles(const QStringList& paths); // the files, as Explorer copies them (no text)
 
 bool canRunAsAdministrator(const QString& path);
 

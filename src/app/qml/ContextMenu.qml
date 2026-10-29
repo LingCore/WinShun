@@ -69,7 +69,7 @@ Window {
 
     function activate(i) {
         const entry = entries[i]
-        if (!entry || entry.separator)
+        if (!entry || entry.separator || entry.enabled === false)
             return
         const r = row
         dismiss()
@@ -82,7 +82,7 @@ Window {
         let i = from
         for (let k = 0; k < n; ++k) {
             i = ((i + delta) % n + n) % n
-            if (!entries[i].separator)
+            if (!entries[i].separator && entries[i].enabled !== false)
                 return i
         }
         return -1
@@ -133,6 +133,7 @@ Window {
                 required property var modelData
                 required property int index
                 readonly property bool separator: modelData.separator === true
+                readonly property bool disabled: modelData.enabled === false // shown, cannot be picked
 
                 width: menu.width - 2 * menu.padding
                 height: separator ? 9 : menu.itemHeight
@@ -148,7 +149,7 @@ Window {
                 }
 
                 Rectangle {
-                    visible: !entry.separator && menu.highlighted === entry.index
+                    visible: !entry.separator && !entry.disabled && menu.highlighted === entry.index
                     anchors.fill: parent
                     radius: Theme.controlRadius
                     color: Theme.menuHover
@@ -158,9 +159,10 @@ Window {
                     visible: !entry.separator
                     x: 14
                     anchors.verticalCenter: parent.verticalCenter
-                    glyph: entry.modelData.glyph ?? ""
+                    // `checked: true` marks the entry as on (a column that is shown) in the icon's place
+                    glyph: entry.modelData.checked === true ? String.fromCharCode(0xE73E) : (entry.modelData.glyph ?? "") // CheckMark
                     size: 16
-                    color: Theme.text
+                    color: entry.disabled ? Theme.faint : Theme.text
                 }
 
                 Text {
@@ -169,7 +171,7 @@ Window {
                     x: 44
                     anchors.verticalCenter: parent.verticalCenter
                     text: entry.modelData.text ?? ""
-                    color: Theme.text
+                    color: entry.disabled ? Theme.faint : Theme.text
                     font.pixelSize: Theme.fontBody
                 }
 
@@ -186,7 +188,7 @@ Window {
 
                 MouseArea {
                     anchors.fill: parent
-                    enabled: !entry.separator
+                    enabled: !entry.separator && !entry.disabled
                     hoverEnabled: true
                     acceptedButtons: Qt.LeftButton | Qt.RightButton
                     onEntered: menu.highlighted = entry.index

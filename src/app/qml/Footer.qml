@@ -9,14 +9,16 @@ import WinShun
 // these), or from the 更多 menu by name, folder, type or size (#44). Beside it a word
 // when there is something to say ("已复制路径"); keyboard hints on the
 // right (the three used most; the info button after them lists the rest),
-// and at the very right a button that clears the recent items (while there
-// are some to clear). The divider above shows work going on.
-// Dragging it moves the window.
+// then a button that clears the recent items (while there are some to clear),
+// and in the panel at the very right its 列表 / 大图 switch. The divider above
+// shows work going on. Dragging it moves the window.
 Item {
     id: footer
 
     required property Launcher launcher
     required property WindowFrame frame
+
+    signal galleryRequested(bool gallery) // the panel's view switch
 
     implicitHeight: Theme.footerHeight // 界面大小
 
@@ -321,7 +323,10 @@ Item {
             ["Ctrl+S", qsTr("切换排序；不输入时切换最近打开、最近修改")],
             ["Ctrl+E", qsTr("展开为搜索面板，或收回搜索框")],
             ["Ctrl+T", qsTr("钉住：点别处、打开文件后都不收起；再按一次取消")]
-        ].concat(footer.launcher.numberKeys === "off" ? []
+        ].concat(footer.launcher.typingFolder.length === 0 // typed in a folder's window (GitHub #110): where
+                 || footer.launcher.scope === Launcher.Content || footer.launcher.panel ? [] // switchTypingFolder takes it
+                 : [["Ctrl+D", qsTr("只搜当前文件夹，或也搜其他位置")]])
+         .concat(footer.launcher.numberKeys === "off" ? []
                  : [[modifier + "+1…9", qsTr("打开第几行（图标上标着快捷键）")]])
          .concat([
             ["Shift+F10", qsTr("右键菜单")],
@@ -330,8 +335,8 @@ Item {
 
         host: footer.launcher
         frame: footer.frame
-        anchors.right: clearHistory.visible ? clearHistory.left : parent.right
-        anchors.rightMargin: clearHistory.visible ? 2 : 6
+        anchors.right: clearHistory.visible ? clearHistory.left : viewSwitch.visible ? viewSwitch.left : parent.right
+        anchors.rightMargin: clearHistory.visible ? 2 : viewSwitch.visible ? 10 : 6
         anchors.verticalCenter: parent.verticalCenter
     }
 
@@ -342,8 +347,8 @@ Item {
         property bool armed: false
 
         visible: footer.launcher.canClearHistory
-        anchors.right: parent.right
-        anchors.rightMargin: 6
+        anchors.right: viewSwitch.visible ? viewSwitch.left : parent.right
+        anchors.rightMargin: viewSwitch.visible ? 8 : 6
         anchors.verticalCenter: parent.verticalCenter
         glyph: "\uE74D" // Delete
         tip: armed ? "" : qsTr("清除最近使用记录")
@@ -366,6 +371,17 @@ Item {
             interval: 3000
             onTriggered: clearHistory.armed = false
         }
+    }
+
+    FileViewSwitch {
+        id: viewSwitch
+        visible: footer.launcher.panel
+        anchors.right: parent.right
+        anchors.rightMargin: 10
+        anchors.verticalCenter: parent.verticalCenter
+        launcher: footer.launcher
+        onModeRequested: gallery => footer.galleryRequested(gallery)
+        Component.onCompleted: footer.frame.addControl(viewSwitch) // buttons, not part of the drag area
     }
 
     HoverTip {

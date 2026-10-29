@@ -1,7 +1,9 @@
 #include "Shell.h"
 
 #include "AutostartRun.h"
+#include "CommandLaunch.h"
 
+#include "DragOut.h"
 #include "FileManagers.h"
 #include "Favorites.h"
 #include "Integrity.h"
@@ -246,7 +248,7 @@ bool executeAsUser(const std::wstring& file, const std::wstring& args, const std
 
 // Starts `command` with the desktop shell's own token: the user's normal
 // rights. Invalid when there is no shell to take them from.
-win32::UniqueHandle startWithShellToken(std::wstring command, const std::wstring& dir)
+win32::UniqueHandle startWithShellToken(std::wstring command, const std::wstring& dir, DWORD flags = 0)
 {
     DWORD pid = 0;
     const HWND shellWindow = ::GetShellWindow();
@@ -265,7 +267,7 @@ win32::UniqueHandle startWithShellToken(std::wstring command, const std::wstring
     const win32::UniqueHandle token(primaryToken);
     STARTUPINFOW startup {sizeof(STARTUPINFOW)};
     PROCESS_INFORMATION started {};
-    if (!::CreateProcessWithTokenW(token.get(), 0, nullptr, command.data(), 0, nullptr,
+    if (!::CreateProcessWithTokenW(token.get(), 0, nullptr, command.data(), flags, nullptr,
             dir.empty() ? nullptr : dir.c_str(), &startup, &started))
         return {};
     ::CloseHandle(started.hThread);
@@ -367,6 +369,77 @@ bool executeAsAdministrator(const std::wstring& file, const std::wstring& args, 
     return true;
 }
 
+// A custom command (GitHub #112), on the shell thread. Silent: a console
+// program, a .bat or a .ps1 is created with CREATE_NO_WINDOW, so that no
+// console exists to be seen (see commandlaunch::Kind); the rest starts as
+// it would without the option. Never through cmd.exe or PowerShell unless
+// the file is a script of theirs. False when it did not start.
+bool startHidden(const commandlaunch::Plan& plan, const std::wstring& dir)
+{
+    std::wstring line = plan.commandLine.toStdWString();
+    if (integrity::processElevated()) // the user's normal rights: the shell's token
+        return startWithShellToken(std::move(line), dir, CREATE_NO_WINDOW).valid();
+    STARTUPINFOW startup {sizeof(STARTUPINFOW)};
+    PROCESS_INFORMATION started {};
+    if (!::CreateProcessW(nullptr, line.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr,
+            dir.empty() ? nullptr : dir.c_str(), &startup, &started))
+        return false;
+    ::CloseHandle(started.hThread);
+    ::CloseHandle(started.hProcess);
+    return true;
+}
+
+// As administrator and without a window: UAC asks for Win顺's own exe, which
+// has no console (it is of the Windows subsystem) and creates the program
+// with CREATE_NO_WINDOW (hiddenHelper). ShellExecute's own SW_HIDE would
+// leave the console the elevated program gets to flash.
+bool startViaHelperAsAdministrator(const commandlaunch::Plan& plan, const std::wstring& dir, bool hidden)
+{
+    wchar_t exe[MAX_PATH] = {};
+    const DWORD n = ::GetModuleFileNameW(nullptr, exe, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH)
+        return false;
+    const char16_t* const mode = hidden ? commandlaunch::kHiddenSwitch : commandlaunch::kShownSwitch;
+    const std::wstring parameters = std::wstring(reinterpret_cast<const wchar_t*>(mode)) + L' ' + plan.commandLine.toStdWString();
+    return executeAsAdministrator(exe, parameters, dir, nullptr, SW_HIDE);
+}
+
+bool launchCustom(const QString& command, const QString& directory, const QString& query, CommandOptions options)
+{
+    const auto [file, arguments] = splitCommand(command);
+    if (file.isEmpty())
+        return false;
+    const std::wstring dir = win32::expandEnvironment(directory.toStdWString());
+    commandlaunch::Plan plan;
+    bool script = false; // .bat, .cmd, .ps1
+    if (options.silent || options.administrator) {
+        const QString program = commandlaunch::resolveProgram(file, QString::fromStdWString(dir));
+        const commandlaunch::Kind kind = program.isEmpty() ? commandlaunch::Kind::Other : commandlaunch::kindOf(program);
+        // The template is expanded before the words are put in: a %NAME%
+        // typed after the keyword stays text.
+        const QString expandedArguments = QString::fromStdWString(win32::expandEnvironment(arguments.toStdWString()));
+        script = kind == commandlaunch::Kind::Batch || kind == commandlaunch::Kind::PowerShell;
+        if (kind == commandlaunch::Kind::Batch && !query.isEmpty() && !commandlaunch::safeForCmd(query))
+            return false; // cmd.exe would read & | < > ^ % in them as its own
+        plan = commandlaunch::silentPlan(program, commandArguments(expandedArguments, query), kind, commandlaunch::systemTools(),
+            !options.silent);
+    }
+    bool ok;
+    if (plan.ok && options.silent) {
+        ok = options.administrator ? startViaHelperAsAdministrator(plan, dir, true) : startHidden(plan, dir);
+    } else if (plan.ok && script) {
+        // As administrator with its window: the interpreter asked for, not the file (see kShownSwitch).
+        ok = startViaHelperAsAdministrator(plan, dir, false);
+    } else if (options.administrator) {
+        ok = executeAsAdministrator(file.toStdWString(), commandArguments(arguments, query).toStdWString(), dir);
+    } else {
+        ok = executeUnelevated(file.toStdWString(), commandArguments(arguments, query).toStdWString(), dir);
+    }
+    // Declining the UAC prompt is an answer, not a failure to report. Read at once: nothing in between has run.
+    const DWORD error = ok ? ERROR_SUCCESS : ::GetLastError();
+    return ok || (options.administrator && error == ERROR_CANCELLED);
+}
+
 } // namespace
 
 void open(const QString& path, bool asAdministrator, std::function<void(bool)> done)
@@ -444,17 +517,49 @@ void launchApp(const QString& launchPath, bool asAdministrator, std::function<vo
     });
 }
 
-void runCustom(const QString& command, const QString& directory, const QString& query, std::function<void(bool)> done)
+void runCustom(const QString& command, const QString& directory, const QString& query, std::function<void(bool)> done,
+    CommandOptions options)
 {
     ::AllowSetForegroundWindow(ASFW_ANY);
-    runOnShellThread([command, directory, query, done = std::move(done)] {
-        const auto [file, arguments] = splitCommand(command);
-        const bool ok = !file.isEmpty()
-            && executeUnelevated(file.toStdWString(), commandArguments(arguments, query).toStdWString(),
-                win32::expandEnvironment(directory.toStdWString()));
+    runOnShellThread([command, directory, query, options, done = std::move(done)] {
+        const bool ok = launchCustom(command, directory, query, options);
         if (done)
             done(ok);
     });
+}
+
+int hiddenHelper()
+{
+    // "WinShun.exe --run-hidden <command line>" (or --run-shown): the rest of the line, as it is.
+    const wchar_t* line = ::GetCommandLineW();
+    if (line[0] == L'"') {
+        ++line;
+        while (*line && *line != L'"')
+            ++line;
+        if (*line)
+            ++line;
+    } else {
+        while (*line && *line != L' ')
+            ++line;
+    }
+    while (*line == L' ')
+        ++line;
+    std::wstring_view prefix(reinterpret_cast<const wchar_t*>(commandlaunch::kHiddenSwitch));
+    DWORD flags = CREATE_NO_WINDOW;
+    if (std::wstring_view(line).substr(0, prefix.size()) != prefix || line[prefix.size()] != L' ') {
+        prefix = std::wstring_view(reinterpret_cast<const wchar_t*>(commandlaunch::kShownSwitch));
+        flags = 0; // its own console window, as it would have without the helper
+        if (std::wstring_view(line).substr(0, prefix.size()) != prefix || line[prefix.size()] != L' ')
+            return -1;
+    }
+    std::wstring rest = line + prefix.size() + 1;
+    STARTUPINFOW startup {sizeof(STARTUPINFOW)};
+    PROCESS_INFORMATION started {};
+    if (!::CreateProcessW(nullptr, rest.data(), nullptr, nullptr, FALSE, flags, nullptr, nullptr, &startup, &started))
+        return 1;
+    ::CloseHandle(started.hThread);
+    ::CloseHandle(started.hProcess);
+    return 0;
 }
 
 bool startElevated(const std::wstring& program, const std::wstring& args, const std::wstring& cwd)
@@ -626,17 +731,20 @@ void copyText(const QString& text)
 
 void copyFiles(const QStringList& paths)
 {
-    auto* mime = new QMimeData;
-    QList<QUrl> urls;
-    for (const QString& p : paths)
-        urls.append(QUrl::fromLocalFile(p));
-    mime->setUrls(urls);
-    mime->setText(paths.join(u'\n'));
-    // Tell Explorer this is a copy, not a cut.
-    const DWORD effect = DROPEFFECT_COPY;
-    mime->setData(u"application/x-qt-windows-mime;value=\"Preferred DropEffect\""_s,
-        QByteArray(reinterpret_cast<const char*>(&effect), sizeof effect));
-    QGuiApplication::clipboard()->setMimeData(mime);
+    // As Explorer copies files: the files only. Qt's way added the paths as
+    // text and as file:// URLs, which WPS pasted instead of a copied picture
+    // (GitHub #130); 复制完整路径 is there for the text.
+    const ComPtr<IDataObject> data = dragout::fileNamesObject(paths);
+    if (!data)
+        return;
+    for (int attempt = 0; attempt < 5; ++attempt) {
+        if (SUCCEEDED(::OleSetClipboard(data.Get()))) {
+            ::OleFlushClipboard(); // on the clipboard itself: kept when Win顺 exits
+            return;
+        }
+        ::Sleep(20); // another program has the clipboard open for a moment
+    }
+    qWarning("copyFiles: the clipboard stayed busy");
 }
 
 bool canRunAsAdministrator(const QString& path)

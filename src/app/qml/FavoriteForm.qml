@@ -19,6 +19,8 @@ Item {
     property string error
     property bool ready: false // the fields filled in
     property string iconData
+    property bool silent: false // 静默执行, 以管理员身份运行 (GitHub #112)
+    property bool administrator: false
     property int iconRequest: 0
     readonly property bool iconLoading: iconRequest > 0
     property string previewCommand
@@ -33,14 +35,14 @@ Item {
     readonly property string pieLabel: pieName.length > 0 ? DropPieText.label(pieName) : ""
 
     signal finished()
-    signal edited(string name, string keyword, string commandLine, string directory, string icon)
+    signal edited(string name, string keyword, string commandLine, string directory, string icon, bool silent, bool administrator)
     signal moveRequested(int to) // 上移 or 下移: the form goes with it
 
     function save() {
         if (form.iconLoading)
             return
         form.error = form.command
-            ? form.favorites.saveCommand(form.index, nameField.text, keywordField.text, commandField.text, directoryField.text, form.iconData)
+            ? form.favorites.saveCommand(form.index, nameField.text, keywordField.text, commandField.text, directoryField.text, form.iconData, form.silent, form.administrator)
             : form.favorites.save(form.index, nameField.text, keywordField.text)
         if (form.error.length === 0)
             form.finished()
@@ -49,10 +51,12 @@ Item {
     function changed() {
         error = ""
         if (ready)
-            edited(nameField.text, keywordField.text, commandField.text, directoryField.text, form.iconData)
+            edited(nameField.text, keywordField.text, commandField.text, directoryField.text, form.iconData, form.silent, form.administrator)
     }
 
     onIconDataChanged: form.changed()
+    onSilentChanged: form.changed()
+    onAdministratorChanged: form.changed()
 
     Timer {
         id: previewDelay
@@ -86,6 +90,8 @@ Item {
         commandField.text = form.draft ? form.draft.commandLine ?? "" : form.favorite.command ?? ""
         directoryField.text = form.draft ? form.draft.directory ?? "" : form.favorite.workingDirectory ?? ""
         form.iconData = form.draft ? form.draft.icon ?? "" : form.favorite.commandIcon ?? ""
+        form.silent = form.draft ? form.draft.silent ?? false : form.favorite.silent ?? false
+        form.administrator = form.draft ? form.draft.administrator ?? false : form.favorite.administrator ?? false
         form.previewCommand = commandField.text
         form.previewDirectory = directoryField.text
         form.ready = true
@@ -125,6 +131,46 @@ Item {
             font.pixelSize: Theme.fontCaption
             wrapMode: Text.Wrap
             lineHeight: 1.15
+        }
+    }
+
+    // A switch with its label and what it does beneath.
+    component Option: Row {
+        id: option
+
+        property string label
+        property string hint
+        property alias checked: toggle.checked
+        signal toggled(bool on)
+
+        spacing: 12
+
+        ToggleSwitch {
+            id: toggle
+            word: false
+            anchors.verticalCenter: parent.verticalCenter
+            Accessible.name: option.label
+            onToggled: (on) => option.toggled(on)
+        }
+        Column {
+            width: option.width - toggle.width - option.spacing
+            spacing: 2
+
+            Text {
+                width: parent.width
+                text: option.label
+                color: Theme.text
+                font.pixelSize: Theme.fontCaption
+                wrapMode: Text.Wrap
+            }
+            Text {
+                width: parent.width
+                text: option.hint
+                color: Theme.subtext
+                font.pixelSize: Theme.fontCaption
+                wrapMode: Text.Wrap
+                lineHeight: 1.15
+            }
         }
     }
 
@@ -224,6 +270,27 @@ Item {
             hint: qsTr("不填则由 Windows 决定；路径不用加引号")
             onTextChanged: { form.changed(); previewDelay.restart() }
             onAccepted: form.save()
+        }
+
+        Option {
+            objectName: "favoriteSilent"
+            visible: form.command
+            width: parent.width
+            label: qsTr("静默执行")
+            hint: qsTr("控制台程序、.bat、.cmd 和 .ps1 不弹出黑色窗口，输出不显示。自带窗口的程序照常显示")
+            checked: form.silent
+            onToggled: (on) => form.silent = on
+        }
+        Option {
+            objectName: "favoriteAdministrator"
+            visible: form.command
+            width: parent.width
+            label: qsTr("以管理员身份运行")
+            hint: form.silent
+                  ? qsTr("每次运行都会先弹出系统的权限确认，确认框里显示的是 Win顺")
+                  : qsTr("每次运行都会先弹出系统的权限确认")
+            checked: form.administrator
+            onToggled: (on) => form.administrator = on
         }
 
         Column {

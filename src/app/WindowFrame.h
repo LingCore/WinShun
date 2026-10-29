@@ -53,6 +53,12 @@ public:
     Q_INVOKABLE void addDragArea(QQuickItem* item);
     // Inside a drag area, still the window's own (buttons, text fields).
     Q_INVOKABLE void addControl(QQuickItem* item);
+    // Laid over the window while it is shown (an open menu: DropMenu.qml, the
+    // editor's key list): the window's own, ahead of everything here (drag
+    // areas, the maximise button, resizing edges), so a press on it is its
+    // own, not a drag of the window. Kept once, however often it is added;
+    // hidden, it counts for nothing.
+    Q_INVOKABLE void addPopup(QQuickItem* item);
     // Inside a drag area, dragged it moves the window as the rest does;
     // clicked (let go before the system's drag distance) it emits
     // handleClicked() (the launcher's search icon: the settings). Not a
@@ -115,6 +121,7 @@ private:
     WId m_hwnd = 0;
     QList<QPointer<QQuickItem>> m_dragAreas;
     QList<QPointer<QQuickItem>> m_controls;
+    QList<QPointer<QQuickItem>> m_popups;
     QList<QPointer<QQuickItem>> m_handles;
     QPointer<QQuickItem> m_maximizeButton;
     QPointF m_pointer {-1, -1};

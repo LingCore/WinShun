@@ -100,6 +100,8 @@ public:
     void setTextExtensions(QStringList extensions);
 
     bool isOpen() const { return m_open; }
+    // A file shown now would go to QuickLook or Seer (预览方式 自动, one runs).
+    bool showsElsewhere() const;
     // Shown in QuickLook or Seer, which the user closed there (its own
     // Space or Esc, a click): no longer open here either. Not every key
     // (Seer is asked through a message), only when it matters: Alt+P, Esc.
@@ -193,6 +195,7 @@ private:
     bool m_slow = false;
     QTimer m_slowTimer;
     QTimer m_relayout; // the launcher moved or changed size: placed again
+    QTimer m_externalCheck; // Seer asked: did it show anything? (GitHub #131)
     QString m_noHandlerFor; // a handler failed on it: shown as facts instead
 };
 

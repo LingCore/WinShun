@@ -40,6 +40,10 @@ class Host;
 class Merge;
 struct Effect;
 struct Item;
+struct Open;
+}
+namespace share {
+enum class Reach : std::uint8_t; // ShareReach.h
 }
 
 // The view-model behind the search window: query and scope in, results and
@@ -130,6 +134,10 @@ class Launcher : public QObject {
     // scope Folders). Kept while in another scope: 文件 comes back as it
     // was left, 文件夹 too (fileChoice, remembered between runs).
     Q_PROPERTY(int fileType READ fileType NOTIFY fileTypeChanged FINAL)
+    Q_PROPERTY(QList<int> selectedFileTypes READ selectedFileTypes NOTIFY fileTypeChanged FINAL)
+    Q_PROPERTY(QString queryError READ queryError NOTIFY queryErrorChanged FINAL)
+    Q_PROPERTY(bool gallery READ gallery WRITE setGallery NOTIFY galleryChanged FINAL)
+    Q_PROPERTY(int thumbnailSize READ thumbnailSize WRITE setThumbnailSize NOTIFY galleryChanged FINAL)
     // The kinds as the settings have them: [{name, extensions: "jpg png …"}].
     Q_PROPERTY(QVariantList fileTypes READ fileTypes NOTIFY fileTypesChanged FINAL)
     // Plugins (plugin::Host, the plugin design §4.1): a keyword typed first
@@ -200,6 +208,13 @@ class Launcher : public QObject {
     // How many files and folders the last name search found in all (the
     // panel's footer says so); 0 while not known.
     Q_PROPERTY(int totalMatches READ totalMatches NOTIFY statusChanged FINAL)
+    // Typed in a folder's window (setTypingFolder, GitHub #110): that
+    // folder's name ("work", "D:"), while the box still starts with it; empty
+    // otherwise. typingFolderOnly: only that folder is searched this time
+    // (FolderTyping, or switchTypingFolder); else what is in it comes first,
+    // then the rest, under a caption (ResultModel::elsewhereRow).
+    Q_PROPERTY(QString typingFolder READ typingFolder NOTIFY typingFolderChanged FINAL)
+    Q_PROPERTY(bool typingFolderOnly READ typingFolderOnly NOTIFY typingFolderChanged FINAL)
 
 public:
     // As ws::Scope. 文件夹 is shown within 文件, as a chip of its strip
@@ -212,6 +227,8 @@ public:
     // EditFavorite: the settings' 收藏夹 page, at the row's favorite.
     // OpenTerminal: a command prompt in a folder, or in the folder a file is in.
     // PluginAction + n: the nth of a plugin row's actions (its context menu).
+    // PluginFileAction + n: the nth of the plugins' `files` commands for a
+    // file's or folder's row, or the selection (Catalog::fileCommands; #113).
     enum Action {
         Open,
         Reveal,
@@ -237,7 +254,8 @@ public:
         SwitchOff,
         EditPicture, // 编辑: a screenshot's row, in the editing window (Shift+Enter)
         BrowseFolder, // list a folder in Win顺, then keep typing to search there
-        PluginAction = 100
+        PluginAction = 100,
+        PluginFileAction = 200
     };
     Q_ENUM(Action)
     // The first three as ws::RankBy and ws::StartList; the rest are a
@@ -330,6 +348,24 @@ public:
     // Explorer's "search here": the folder is typed; one not indexed is
     // walked at once for what is typed after it, as the user named it.
     void noteSearchHere(const QString& folder);
+    // Typed in a folder's window (App::typingFolderKnown, GitHub #110): the
+    // box starts with `prefix`, the folder and a space ("D:\work\ "). While
+    // it still does, the words after it are looked for in that folder first,
+    // then everywhere else, as Listary does it; or only there (the setting,
+    // setFolderTypingOnly, or switched for this time: switchTypingFolder).
+    // Edited, it is a path typed: only that folder, as ever. Empty: none
+    // (the window opened for anything else).
+    void setTypingFolder(const QString& prefix);
+    // FolderTyping: "only" set (only the folder), else its rows first.
+    void setFolderTypingOnly(bool only);
+    QString typingFolder() const;
+    bool typingFolderOnly() const { return !m_typingPrefix.isEmpty() && m_typingOnly; }
+    // Ctrl+D, or the caption's or hint's link: this time only the folder
+    // typed in, or its rows first and then the rest (not the setting).
+    // False when the box is not for a folder typed in (nothing to switch).
+    Q_INVOKABLE bool switchTypingFolder();
+    // How long the name search behind the rows shown took (--dump, for tests).
+    qint64 elapsedUs() const noexcept { return m_elapsedUs; }
     // More results for the query are on the way. Not while quietly
     // refreshing results that were already complete, nor for a hint's
     // one-off search (searchLeftOut): the rows are the query's, and the hint
@@ -376,8 +412,9 @@ public:
     void setResultOptions(KindOrder kindOrder, bool showModified, bool showFileSize, bool thumbnails, const QString& numberKeys);
     // 优先显示的文件类型 (Settings::preferredTypes): searched again in the new order when shown.
     void setPreferredTypes(const QStringList& types);
-    // Files with these extensions are left out of every list and search.
-    void setExcludedTypes(const QStringList& types);
+    // Files with these extensions, or so named (wildcards), are left out of
+    // every list and search.
+    void setExcludedFiles(const QStringList& types, const QStringList& names);
     Sort sort() const { return m_sort; }
     void setSort(Sort sort);
     StartList startList() const { return m_startList; }
@@ -420,7 +457,31 @@ public:
     void handleShown();
     void handleHidden();
     void retranslate(); // the language changed: status, placeholder, rows
-    void flash(const QString& message); // a few words in the footer for a moment ("已复制")
+    // A few words in the footer for a moment ("已复制"); longer for one that
+    // stands until a result replaces it ("正在连接 …").
+    void flash(const QString& message, std::chrono::milliseconds shown = std::chrono::seconds(2));
+    // An action waiting for a slow server is no longer wanted: by any other
+    // action, the launcher going, and its menu opening (ContextMenu.qml).
+    Q_INVOKABLE void dropServerWait();
+    // "正在连接 …" for the server of `path`, waited for off the UI thread
+    // ("正在启动 Windows 的 WebDAV 服务…" while `clientStarting`); the
+    // m_serverWaitId its answer must still match.
+    quint64 showServerWait(const QString& path, bool clientStarting);
+    // For the preview's checks: the server checks started so far (one per
+    // files asked about while it is under way), and what copies files in
+    // place of shell::copyFiles (the clipboard left be).
+    quint64 serverChecksStarted() const { return m_serverChecksStarted; }
+    void setFileCopier(std::function<void(const QStringList& files)> copier) { m_fileCopier = std::move(copier); }
+    // A plugin's effects from outside a row: a click on its system
+    // notification (Host::toastRequested), held to its permissions as an
+    // action's are.
+    void applyPluginEffects(const QString& pluginId, const QList<ws::plugin::Effect>& effects) { applyEffects(pluginId, effects); }
+    // Its list is opening from a click on that plugin's notification: for a
+    // moment (kToastOpenMs) a row coming in on top under the keyboard's first
+    // row keeps the keyboard there, once (followCurrentRow): it is what the
+    // notification was about. Otherwise the keyboard follows its row.
+    void openedFromToast(const QString& pluginId);
+    static constexpr int kToastOpenMs = 3000;
 
     // An action on a row; on a row of a selection of several, on all of it.
     Q_INVOKABLE void trigger(int row, int action);
@@ -476,6 +537,13 @@ public:
     void systemCommandDone() { m_systemCommand = false; }
     Q_INVOKABLE void cycleScope(int delta);
     int fileType() const { return m_fileType; }
+    QList<int> selectedFileTypes() const;
+    QString queryError() const;
+    bool gallery() const { return m_gallery; }
+    void setGallery(bool gallery);
+    int thumbnailSize() const { return m_thumbnailSize; }
+    void setThumbnailSize(int size);
+    Q_INVOKABLE void toggleFileType(int type);
     QVariantList fileTypes() const;
     void setFileTypes(const FileTypes& types); // named (Settings::namedFileTypes)
     void setFolderKeyword(const QString& keyword);
@@ -589,6 +657,8 @@ signals:
     void webSettingsRequested(); // the settings window, on its 网页搜索 page
     void fileTypeSettingsRequested(); // ... on its 结果列表 page, at the file types
     void fileTypeChanged();
+    void galleryChanged();
+    void queryErrorChanged();
     void fileTypesChanged();
     void fileChoiceChanged();
     void favoriteSettingsRequested(const QString& path); // ... on its 收藏夹 page, at this favorite
@@ -618,16 +688,23 @@ signals:
     // `path`; `screenshot`: it is one of the history's.
     void pinRequested(const QString& path, bool screenshot);
     void folderChipsChanged();
+    void typingFolderChanged();
     void panelChanged();
     void panelToggleRequested();
     void pinnedChanged();
     void settingsRequested();
     void folderSettingsRequested(); // the settings' page of the chosen folders
+    void shareSettingsRequested(); // the settings' section of network and WSL folders (GitHub #114)
     void folderAddRequested(const QString& path); // a folder not indexed, to be (the app adds it as the settings do)
     void folderNoteDismissed(); // 不再提示
     void filtersChanged();
     void panelSortChanged();
     void panelRowRestored(int index);
+    // A keyword's list changed by itself (a plugin's rerun, a later batch)
+    // under the keyboard: the keyboard goes to `index` (its row's new place,
+    // or the last row when its place is past the end of a shorter list);
+    // -1: it stays where it is (its row went). The menu open for it closes.
+    void currentRowMoved(int index);
 
 private:
     class ModelSink; // the result model as plugin::Merge sees it
@@ -661,11 +738,39 @@ private:
     void onPluginFinished(std::uint64_t queryId, const QString& pluginId);
     void onPluginFailed(std::uint64_t queryId, const QString& pluginId, const QString& why);
     void onPluginProgress(std::uint64_t queryId, const QString& pluginId, const QString& text);
-    void onPluginActionDone(std::uint64_t requestId, const QList<ws::plugin::Effect>& effects, bool ok, const QString& error);
+    void onPluginActionDone(std::uint64_t requestId, const QString& pluginId, const QList<ws::plugin::Effect>& effects, bool ok, const QString& error);
     void pluginSettled(const QString& pluginId); // answered, or failed
     QString pluginName(const QString& pluginId) const;
     void performPlugin(const SearchResult& result, Action action);
-    void applyEffects(const QList<ws::plugin::Effect>& effects);
+    void applyEffects(const QString& pluginId, const QList<ws::plugin::Effect>& effects);
+    // The files a plugin's `files` command gets from the menu of `row`: the
+    // selection's when the row is in one, else the row's; false when any of
+    // them is not a file or folder that is there (an app, a site, a plugin's
+    // row, a screenshot, a file gone or offline).
+    bool fileCommandPaths(int row, QStringList* paths, QList<bool>* folders) const;
+    void runFileCommand(int row, int index); // PluginFileAction + index into m_menuFileCommands
+    // The files commands the last menu offered (menuItems), by their place in
+    // it: which plugin's which command, for which files. Looked up by those at
+    // the click, never by the place alone (the plugins may have changed).
+    struct MenuFileCommand {
+        QString pluginId;
+        QString commandId;
+        QStringList paths;
+    };
+    mutable std::vector<MenuFileCommand> m_menuFileCommands;
+    // After a keyword's list changed by itself (onPluginResults): the
+    // keyboard kept on its row (currentRowMoved), and for a moment a click
+    // or a number key on a row that changed, or Enter on one that went, does
+    // nothing. Forgotten when another list comes or the window hides.
+    void followCurrentRow(const QStringList& before, const QString& currentPath);
+    bool rowJustChanged(int row) const;
+    void forgetRowChanges();
+    // A plugin may only have Win顺 carry out a declarative `open` (an item's
+    // default action, or an `open` effect) within its permissions: without
+    // `processes` it cannot start a program or open a non-web link (OpenPolicy).
+    // True when it may go ahead; otherwise shows a plain notice, logs it once,
+    // and returns false so the caller does nothing.
+    bool pluginOpenAllowed(const QString& pluginId, const ws::plugin::Open& open);
     void showPluginRows(SearchResults rows); // keyword mode: the whole list (showRows)
     RankBy rankBy() const; // as the current scope has it
     // The names' order when it is a column's (the panel's, or the sorts by
@@ -711,7 +816,17 @@ private:
     QString switchAlready(const SearchResult& row, const SwitchIntent& resolved) const; // "蓝牙已经是关的"
     void performWeb(const SearchResult& web, Action action);
     void performFavorite(const SearchResult& result, Action action); // AddFavorite … EditFavorite
-    void performMany(const SearchResults& items, Action action);
+    // Files on servers looked up off the UI thread: what of each (share::Reach).
+    using ServerFound = QHash<QString, share::Reach>;
+    // `found`: files on SMB and WebDAV servers among them looked up off the
+    // UI thread; the call that does it calls again with what it found.
+    void performMany(const SearchResults& items, Action action, const ServerFound* found = nullptr);
+    // `paths` (on servers) looked up off the UI thread, then `then` with what
+    // was found, unless another action came first or the launcher went
+    // (dropServerWait). Asked again while that is under way (Enter held
+    // down), the same files join it, the answer going to the newest.
+    void checkServersThen(const QStringList& paths, std::function<void(const ServerFound&)> then);
+    void copyFiles(const QStringList& files); // m_fileCopier, else shell::copyFiles
     navigation::TabAction tabAction(int row) const;
     void browseFolder(const SearchResult& folder);
     // Opened: into the history, if it is kept. `query`: the text the list it
@@ -723,7 +838,9 @@ private:
     // elsewhere), now and a little later (a confirmation, a progress window).
     void runSystemMenu(const QStringList& paths, std::optional<QPointF> globalPos);
     void forgetGone(const QStringList& paths, int attempt);
-    bool forgetRecycled(const SearchResult& result); // its row and count; false if it is still there
+    bool forgetRecycled(const SearchResult& result); // forgetRow, unless it is still there (then false)
+    void forgetRow(const SearchResult& result); // out of the list (its count) and the history
+    void forgetMissing(const SearchResult& r, Action action); // an action's file not there: said so, out of the history
     std::function<void(bool)> reportFailure(const QString& name);
     void onRecycled(const SearchResult& result, bool ok);
     void onRecycledMany(const SearchResults& items, bool ok);
@@ -803,6 +920,18 @@ private:
     // has not found again yet. Removed if it finishes without them.
     QSet<QString> m_unconfirmed;
     QSet<QString> m_wslOpening;
+    quint64 m_serverWaitId = 0; // which wait for a slow share is still wanted (bumped by any new action, by hiding)
+    QString m_serverWaitFlash; // its "正在连接 …", which goes with it (dropServerWait)
+    // Checks under way (checkServersThen), by the files asked about: the
+    // newest asking's wait and what then.
+    struct ServerCheck {
+        quint64 wait = 0; // m_serverWaitId as it was asked
+        bool clientStarting = false; // WebClient started first: waited for longer (checkServers)
+        std::function<void(const ServerFound&)> then;
+    };
+    QHash<QString, ServerCheck> m_serverChecks;
+    quint64 m_serverChecksStarted = 0;
+    std::function<void(const QStringList& files)> m_fileCopier; // setFileCopier
     qint64 m_totalMatches = 0;
     qint64 m_elapsedUs = 0;
     bool m_contentRunning = false;
@@ -835,6 +964,28 @@ private:
     bool m_folderNoteDismissed = false;
     QString m_hereFolder; // "search here" named it (noteSearchHere)
     bool m_hereSeen = false; // ... and the query has been that folder since
+    // Typed in a folder's window (setTypingFolder, GitHub #110): the box's
+    // start as the app put it ("D:\work\ "; empty: none), that folder
+    // ("D:\work"), and whether only it is searched this time (from the
+    // setting, m_typingOnlyDefault, each time; switchTypingFolder).
+    QString m_typingPrefix;
+    QString m_typingFolder;
+    bool m_typingOnly = false;
+    bool m_typingOnlyDefault = false;
+    QString m_shownTyping; // typingKey() of the rows on screen, as m_shownText
+    // The box is for the folder typed in: it still starts with it, and the
+    // list is the names' (not 内容, which takes the folder as a path typed;
+    // not the panel, which has a folder filter of its own).
+    bool typedInFolder() const;
+    // What the name search looks for: typed in a folder, the words after it
+    // (none: the folder's own listing, as the path typed); else searchText().
+    QString nameText() const;
+    // The words after the folder typed in when there are some and the box is
+    // for it (typedInFolder): "" otherwise.
+    QString typingWords() const;
+    // How the folder typed in shapes the list ("first:D:\work",
+    // "only:D:\work"; empty: not at all), for telling a new list from a refresh.
+    QString typingKey() const;
     mutable QString m_outsideQuery; // outsideFolder() was last asked for this query ...
     mutable QString m_outside; // ... and said this
     mutable bool m_outsideKnown = false;
@@ -845,13 +996,17 @@ private:
     QVariantMap m_keyHints; // see keyHints
     FileTypes m_fileTypes;
     QString m_folderKeyword = QStringLiteral("folder");
-    struct PrefixScope { Scope scope; int type; bool folders; };
+    struct PrefixScope { Scope scope; QStringList typeKeys; bool folders; };
     std::optional<PrefixScope> m_filePrefix;
     QString m_prefixWords;
     QString searchText() const { return m_filePrefix ? m_prefixWords : m_query.trimmed(); }
     void updateQueryPrefix();
     bool clearQueryPrefix(); // an explicit scope/type choice replaces the typed prefix
     int m_fileType = -1; // see fileType
+    QList<int> m_extraFileTypes;
+    bool m_gallery = false;
+    int m_thumbnailSize = 160;
+    QString m_queryError;
     bool m_foldersChosen = false; // 文件夹 was the strip's last choice (fileChoice)
     static QString fileTypeKey(const FileType& type); // as fileChoice names it
     int fileTypeIndex(const QString& key) const; // -1: none
@@ -885,6 +1040,7 @@ private:
     KindOrder m_kindOrder = KindOrder::FilesFirst;
     QStringList m_preferredTypes; // files of these types first among those that match about as well
     QStringList m_excludedTypes; // files of these types never listed (Settings::excludedTypes)
+    QStringList m_excludedFileNames; // ... nor so named (Settings::excludedFileNames)
     Sort m_sort = BestMatch;
     StartList m_startList = RecentlyOpened;
     bool m_showModified = true;
@@ -950,12 +1106,22 @@ private:
     QSet<QString> m_pluginPending; // answering the current query
     QElapsedTimer m_pluginTimer; // since they were asked
     qint64 m_pluginElapsedUs = 0; // keyword mode: until the answer
+    // followCurrentRow: when each row last changed by itself (m_rowClock's
+    // ms + 1; 0 never), whatever number of changes came within a moment;
+    // when the keyboard's row last went; the keyboard moving with its row.
+    QElapsedTimer m_rowClock;
+    QList<qint64> m_rowChangedAt;
+    QElapsedTimer m_currentGone;
+    bool m_following = false;
+    QString m_toastPlugin; // openedFromToast: whose notification, and when
+    QElapsedTimer m_toastOpened;
     QTimer m_pluginWait; // 150 ms: only then does the status say who is being waited for
     bool m_pluginSlow = false;
     QString m_pluginProgress; // winshun/progress: what the keyword's plugin says it is doing
     QString m_pluginError; // "X 没有响应": shown for a few seconds
     QTimer m_pluginErrorTimer;
     std::uint64_t m_pluginRequest = 0; // actions sent
+    QSet<QString> m_openBlockedLogged; // plugins whose blocked `open` was already logged (once each)
 
     QPointer<FilePreview> m_preview;
     QPoint m_pointerAtKeys {-1, -1}; // where the pointer was when the keyboard last moved (keyboardMoved)

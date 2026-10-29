@@ -217,6 +217,9 @@ void WindowFrame::setWindow(QWindow* window)
     m_hwnd = window->winId();
     const HWND hwnd = reinterpret_cast<HWND>(m_hwnd);
     ::SetWindowSubclass(hwnd, &Hook::proc, 0, reinterpret_cast<DWORD_PTR>(this));
+    // The frame's dark mode as it is shown too, not only as it activates
+    // (WM_NCACTIVATE above): the clipboard and the preview open without the focus.
+    win::keepDarkFrameOnShow(window);
     connect(window, &QWindow::visibleChanged, this, [this](bool visible) {
         if (!visible) { // no leave message comes then
             m_trackingLeave = false;
@@ -282,6 +285,15 @@ void WindowFrame::addControl(QQuickItem* item)
         m_controls.append(item);
 }
 
+void WindowFrame::addPopup(QQuickItem* item)
+{
+    // Added each time it opens, and a plugin card's menu goes with its card:
+    // the ones gone leave the list here.
+    m_popups.removeIf([](const QPointer<QQuickItem>& popup) { return popup.isNull(); });
+    if (item && !m_popups.contains(item))
+        m_popups.append(item);
+}
+
 void WindowFrame::addHandle(QQuickItem* item)
 {
     if (item)
@@ -312,6 +324,8 @@ int WindowFrame::hitTest(int screenX, int screenY) const
 {
     const HWND hwnd = reinterpret_cast<HWND>(m_hwnd);
     const QPointF pos = toWindow(screenX, screenY);
+    if (anyCovers(m_popups, pos))
+        return HTCLIENT; // an open menu over a drag area or the title bar: the press is the menu's
     const bool onMaximize = m_ownFrame && covers(m_maximizeButton, pos);
     const bool onControl = onMaximize || anyCovers(m_controls, pos);
     if ((m_ownFrame || m_resizable) && !::IsZoomed(hwnd)) {

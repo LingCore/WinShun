@@ -41,7 +41,8 @@ public:
     // once they are. An empty name: its own (the file's, the app's).
     Q_INVOKABLE QString save(int index, const QString& name, const QString& keyword);
     Q_INVOKABLE QString saveCommand(int index, const QString& name, const QString& keyword,
-        const QString& command, const QString& directory, const QString& icon = {});
+        const QString& command, const QString& directory, const QString& icon = {}, bool silent = false,
+        bool administrator = false);
     Q_INVOKABLE QString pickCommand();
     Q_INVOKABLE QString commandIconUrl(const QString& command, const QString& directory, const QString& icon, bool dark) const;
     Q_INVOKABLE int pickCommandIcon(); // 0: cancelled; otherwise commandIconReady carries this request

@@ -84,6 +84,7 @@ Item {
         Glyph {
             anchors.centerIn: parent
             glyph: button.glyph
+            caption: true
             size: 10
             color: button.red ? (button.pressed ? Qt.rgba(1, 1, 1, 0.7) : "white")
                  : button.pressed ? Qt.rgba(bar.ink.r, bar.ink.g, bar.ink.b, bar.ink.a * 0.7)

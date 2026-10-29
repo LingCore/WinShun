@@ -14,7 +14,9 @@
 //     top-level window titled "QuickLook" of class "HwndWrapper[QuickLook.exe;…".
 //   Seer: WM_COPYDATA to the window of class "SeerWindowClass" (Seer-sdk,
 //     seer/ipc.h): 5000 shows a path (at least 200 ms apart), 5004 asks
-//     whether it is visible, 5005 hides it.
+//     whether it is visible, 5005 hides it, 5007 tells its version (4.x).
+//     Older ones (2.8) have the window and show nothing (GitHub #131): see
+//     knownToShow, passOver.
 //   PowerToys Peek: left out. It takes a path on its command line only, as a
 //     new process each time that takes the focus (the launcher would go),
 //     and cannot be given the next file.
@@ -29,8 +31,19 @@ namespace ws::extpreview {
 
 enum class Engine { QuickLook, Seer };
 
-// The one running now, QuickLook first; none when neither is.
+// The one running now, QuickLook first; none when neither is (or the one
+// running was passed over).
 std::optional<Engine> running();
+// Shows what it is asked to, as far as can be told beforehand: QuickLook,
+// and a Seer that tells its version (4.x; 2.8 does not, and shows nothing).
+// The others are checked a moment later (answered).
+bool knownToShow(Engine engine);
+// Asked to show a file a moment ago: something of it is on the screen now
+// (Seer: told so, or a window of its own came up).
+bool answered(Engine engine);
+// It took the file and showed nothing: left out from now on, while the
+// same process runs (started again, a newer one, it is asked again).
+void passOver(Engine engine);
 // Shows the file (a folder too); false when it could not be told.
 bool show(Engine engine, const QString& path);
 // While its preview is up: the next file instead (Seer: no sooner than

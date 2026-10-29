@@ -10,14 +10,17 @@
 #include "Host.h"
 #include "IndexService.h"
 #include "Merge.h"
+#include "OpenPolicy.h"
 #include "PathText.h"
 #include "Query.h"
 #include "SearchEngine.h"
 #include "ShareLister.h"
+#include "ShareReach.h"
 #include "SwitchBackend.h"
 #include "Switches.h"
 #include "SystemCatalog.h"
 #include "Unc.h"
+#include "WebDav.h"
 #include "platform/DragOut.h"
 #include "platform/Shell.h"
 #include "platform/ShellContextMenu.h"
@@ -29,9 +32,11 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QLocale>
 #include <QPointer>
 #include <QRegularExpression>
+#include <QScopedValueRollback>
 #include <QScreen>
 #include <QSet>
 #include <QSettings>
@@ -41,6 +46,8 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <condition_variable>
+#include <mutex>
 #include <thread>
 
 using namespace Qt::StringLiterals;
@@ -75,6 +82,9 @@ constexpr std::int64_t kLargestFile = 4096ll << 20;
 constexpr QLatin1StringView kLargeHint("large");
 constexpr QLatin1StringView kSystemHint("system");
 constexpr QLatin1StringView kTypesHint("types");
+// Files on shares and in WSL whose contents are not indexed (GitHub #114):
+// the settings' section of those folders, where they are turned on.
+constexpr QLatin1StringView kRemoteHint("remote");
 constexpr QLatin1StringView kDriveHint("drive:"); // + "E:"
 // With only the chosen folders indexed (GitHub #52): a folder not among them
 // walked for the query (+ its path), the same folder added to them (+ its
@@ -83,6 +93,9 @@ constexpr QLatin1StringView kFolderHint("folder:");
 constexpr QLatin1StringView kAddFolderHint("addfolder:");
 constexpr QLatin1StringView kFoldersHint("folders");
 constexpr QLatin1StringView kFoldersDismissHint("folders-dismiss");
+// Typed in a folder's window with only that folder searched (GitHub #110):
+// the rest of the index after its rows, this time (switchTypingFolder).
+constexpr QLatin1StringView kEverywhereHint("everywhere");
 
 // What a hint that walks the disk walks: a drive's root, or a folder.
 QString walkedPath(const QString& kind)
@@ -125,19 +138,227 @@ int timePlace(int count, At at, const SearchResult& r, int floor, RankBy by, Kin
     return row;
 }
 
-// Whether the server of a network path answers (share::reachable: a few
-// milliseconds, at most 1.5 seconds); true for a local path. Asked first and
-// afresh, as asking Windows about a file on a server that went away (even
-// seconds ago) holds the launcher up for half a minute. `fresh` false takes
-// an answer of the last seconds: for many paths on one server.
-bool serverAnswers(const QString& path, bool fresh = true)
+// How long an action on a file on a server waits for it (GitHub #116: a NAS
+// answering after 2.5-4 s): the probe and Windows alike (share::reach); all
+// its servers at once, and no longer (share::checkFiles); "正在连接 …" says
+// so meanwhile.
+constexpr std::chrono::milliseconds kServerWait {8000};
+constexpr std::chrono::milliseconds kServersWait = 2 * kServerWait + std::chrono::seconds(1); // share::reach at most
+constexpr std::chrono::milliseconds kServerWaitShown = kServersWait + std::chrono::seconds(1);
+// WebClient stopped (GitHub #114): an action on a WebDAV file starts it
+// first (share::actionSteps), "正在启动 Windows 的 WebDAV 服务…" meanwhile.
+// It ran in 70 ms here and its first access took 0.1 s, but that first
+// access is said to take up to a minute: Windows waited for that long
+// (twice kClientStartWait once the probe said yes), the action's other
+// servers with it.
+constexpr std::chrono::milliseconds kClientStartWait {30000};
+constexpr std::chrono::milliseconds kClientStartsWait = 2 * kClientStartWait + std::chrono::seconds(1);
+constexpr std::chrono::milliseconds kClientStartShown = kClientStartsWait + std::chrono::seconds(1);
+// A server that answered this recently answers again at once: its
+// "正在连接 …" waits a moment, not to flicker past.
+constexpr std::chrono::seconds kJustHeard {3};
+constexpr std::chrono::milliseconds kQuietWait {300};
+// A drag asks no server that did not answer this recently (each try would
+// hold the window up again), nor one heard to answer this recently (Windows
+// getting there too: the probe may say no there, GitHub #116); the others
+// all at once, for this long together.
+constexpr std::chrono::seconds kNoAgain {10};
+constexpr std::chrono::seconds kTrustYes {30};
+constexpr std::chrono::milliseconds kDragWait {1500};
+
+// Whether the server of a network path answers, asked here and now
+// (share::reachablePath: a few milliseconds, at most 1.5 seconds; a WebDAV
+// server over HTTP, GitHub #114); true for a local path, WSL's state without
+// asking. Asked afresh, as asking Windows about a file on a server that
+// went away (even seconds ago) holds the launcher up for half a minute.
+// Actions on files on servers ask off the UI thread (checkServers).
+bool serverAnswers(const QString& path)
 {
     if (!path.startsWith(u"\\\\"))
         return true;
     const std::wstring p = path.toStdWString();
     if (!unc::wslDistribution(p).empty())
         return wsl::cachedState(p) == wsl::State::Running;
-    return !unc::isUnc(p) || share::reachable(unc::host(p), std::chrono::milliseconds(1500), fresh);
+    return share::reachablePath(p, true);
+}
+
+// A path on an SMB or WebDAV server: asked about off the UI thread
+// (checkServers). WSL's are not: wsl::probe, and its own state.
+bool onServer(const QString& path)
+{
+    const std::wstring p = path.toStdWString();
+    return unc::isUnc(p) && unc::wslDistribution(p).empty();
+}
+
+// How the footer names the server of a path: "nas", "nas:5006" (WebDAV).
+QString serverName(const QString& path)
+{
+    return QString::fromStdWString(webdav::displayHost(unc::host(path.toStdWString())));
+}
+
+// The server of a path, for asking each once: an SMB one and a WebDAV one
+// of the same name are two.
+QString serverKey(const QString& path)
+{
+    return serverName(path).toLower() + (share::smbPath(path.toStdWString()) ? u""_s : u" webdav"_s);
+}
+
+// For a drag, which starts now or not at all (the shell reads the files as
+// it goes: a server gone away holds it up for long): which of `asked` (a
+// path on each server) answer. A server heard from lately is taken at its
+// word (kNoAgain; Windows' yes for kTrustYes, the probe's no since
+// notwithstanding); the others are asked all at once, kDragWait for all of
+// them on the UI thread (a WebDAV server's name looked up within it too:
+// webdav::answers).
+QSet<QString> dragAnswers(const QStringList& asked)
+{
+    struct Probes {
+        std::mutex mutex;
+        std::condition_variable cv;
+        QSet<QString> yes;
+        int asking = 0;
+    };
+    const auto probes = std::make_shared<Probes>(); // a probe late for the drag still holds it
+    QSet<QString> answer;
+    for (const QString& path : asked) {
+        const std::wstring p = path.toStdWString();
+        if (const std::optional<bool> heard = share::lastHeard(p, kNoAgain, kTrustYes)) {
+            if (*heard)
+                answer.insert(path);
+            continue;
+        }
+        {
+            std::lock_guard lock(probes->mutex);
+            ++probes->asking;
+        }
+        std::thread([probes, path, p] {
+            const bool yes = share::reachablePath(p, true, kDragWait - std::chrono::milliseconds(100));
+            std::lock_guard lock(probes->mutex);
+            if (yes)
+                probes->yes.insert(path);
+            --probes->asking;
+            probes->cv.notify_all();
+        }).detach();
+    }
+    std::unique_lock lock(probes->mutex);
+    probes->cv.wait_for(lock, kDragWait, [&] { return probes->asking == 0; });
+    answer.unite(probes->yes);
+    return answer;
+}
+
+// Off the UI thread: whether `path` on a server is there, the probe and
+// Windows asked at once (share::reach; Windows gets where the probe may not,
+// GitHub #116; a WebDAV one's through WebClient), Windows for `windowsWait`.
+share::Reach reachFile(const std::wstring& path, std::chrono::milliseconds windowsWait)
+{
+    return share::reach(share::actionSteps(path, kServerWait), windowsWait);
+}
+
+// Off the UI thread: whether `path` is there, on a server that answered a
+// moment ago (reachFile): Windows alone, waited for as long.
+share::Reach lookUp(const std::wstring& path, std::chrono::milliseconds windowsWait)
+{
+    share::ReachSteps steps = share::actionSteps(path, kServerWait);
+    steps.probe = [] { return false; }; // asked already
+    return share::reach(std::move(steps), windowsWait);
+}
+
+// Off the UI thread: what is there of `paths`, all on servers: each server
+// asked once (reachFile), the rest of its files then while it answers
+// (lookUp); every server at once, kServersWait for all (share::checkFiles).
+// With WebClient started first (clientStarts), its servers longer.
+QHash<QString, share::Reach> checkServers(const QStringList& paths, bool clientStarting)
+{
+    std::vector<std::wstring> files;
+    for (const QString& path : paths)
+        files.push_back(path.toStdWString());
+    const auto windowsWait = [clientStarting](const std::wstring& file) {
+        return clientStarting && webdav::isWebDavPath(file) ? kClientStartWait : kServerWait;
+    };
+    share::FileSteps steps;
+    steps.server = [](const std::wstring& file) { return serverKey(QString::fromStdWString(file)).toStdWString(); };
+    steps.first = [windowsWait](const std::wstring& file) { return reachFile(file, windowsWait(file)); };
+    steps.next = [windowsWait](const std::wstring& file) { return lookUp(file, windowsWait(file)); };
+    QHash<QString, share::Reach> found;
+    for (const auto& [file, reach] : share::checkFiles(files, clientStarting ? kClientStartsWait : kServersWait, steps))
+        found.insert(QString::fromStdWString(file), reach);
+    return found;
+}
+
+// Whether an action on `paths` starts WebClient first (share::actionSteps):
+// a WebDAV file among them, the service stopped and not disabled. Asked of
+// Windows now: a moment.
+bool clientStarts(const QStringList& paths)
+{
+    const bool webDav = std::any_of(
+        paths.cbegin(), paths.cend(), [](const QString& p) { return webdav::isWebDavPath(p.toStdWString()); });
+    return webDav && !webdav::clientRunning() && !webdav::clientDisabled();
+}
+
+// Why nothing was done with files on servers: the most telling of what was
+// found for them (`paths` in their order; others left out). A server that
+// did not answer, a share not there now, WebClient off; empty when they
+// are gone (what is done says so then), or there.
+QString whyNot(const QStringList& paths, const QHash<QString, share::Reach>& found)
+{
+    using R = share::Reach;
+    QString shareAway;
+    QString noService;
+    for (const QString& path : paths) {
+        const auto it = found.constFind(path);
+        if (it == found.cend())
+            continue;
+        switch (*it) {
+        case R::There:
+        case R::Missing:
+            break;
+        case R::ShareAway:
+            if (shareAway.isEmpty())
+                shareAway = Launcher::tr("%1 上的共享暂时不可用，稍后再试").arg(serverName(path));
+            break;
+        case R::NoService:
+            if (!share::smbPath(path.toStdWString())) {
+                if (noService.isEmpty())
+                    noService = webdav::clientDisabled() ? Launcher::tr("WebClient 服务被禁用，打不开 WebDAV 文件夹")
+                                                         : Launcher::tr("WebClient 服务没能启动，打不开 WebDAV 文件夹");
+                break;
+            }
+            [[fallthrough]]; // no service of WebDAV's: the network's
+        case R::Unreachable:
+            return Launcher::tr("连不上 %1（离线或不在同一网络）").arg(serverName(path));
+        }
+    }
+    return !shareAway.isEmpty() ? shareAway : noService;
+}
+
+// What an action found out about files on servers goes to the shares they
+// are in (GitHub #116, #114), found by the path that holds them, written
+// either way for WebDAV (unc::canonical). One Online whose file was not got
+// to has its server asked whether it is still there (checkReach: nothing is
+// read); an offline one whose server answered comes back (verifyNow, as
+// 立即核对). The card shows it, the rows follow (sharesChanged).
+void tellShares(ShareIndexer& shares, const QHash<QString, share::Reach>& found)
+{
+    std::vector<std::pair<std::wstring, ShareIndexer::Status>> roots;
+    for (ShareIndexer::Status& s : shares.statuses())
+        roots.emplace_back(unc::canonical(s.path), std::move(s));
+    for (auto it = found.cbegin(); it != found.cend(); ++it) {
+        if (*it == share::Reach::NoService)
+            continue; // Windows did not get as far as the server
+        const std::wstring file = unc::canonical(it.key().toStdWString());
+        const auto in = std::find_if(roots.cbegin(), roots.cend(), [&](const auto& root) {
+            return unc::contains(root.first, file) || webdav::rootHolds(root.first, file);
+        });
+        if (in == roots.cend())
+            continue;
+        const ShareIndexer::Status& s = in->second;
+        if (*it == share::Reach::Unreachable) {
+            if (s.state == ShareIndexer::State::Online)
+                shares.checkReach(s.path);
+        } else if (s.state == ShareIndexer::State::Problem) {
+            shares.verifyNow(s.path);
+        }
+    }
 }
 
 // The drives being read from disk now, with how far: "D: 45%、E:".
@@ -198,9 +419,30 @@ public:
     const SearchResult& row(int index) const override { return *m_launcher.m_results.at(index); }
     int currentRow() const override { return m_launcher.m_currentRow; }
     void assign(SearchResults rows) override { m_launcher.showPluginRows(std::move(rows)); }
-    void append(const SearchResults& rows) override { m_launcher.m_results.append(rows); }
-    void insert(int index, const SearchResult& row) override { m_launcher.m_results.insert(index, row); }
-    void update(int index, const SearchResult& row) override { m_launcher.m_results.update(index, row); }
+    // Typed in a folder's window (GitHub #110), a row put among the rows
+    // found elsewhere is listed as one of them: they stay together, under
+    // their caption (ResultModel::elsewhereRow).
+    void append(const SearchResults& rows) override
+    {
+        SearchResults placed = rows;
+        for (SearchResult& r : placed)
+            r.elsewhere = m_launcher.m_results.elsewhereRow() >= 0;
+        m_launcher.m_results.append(placed);
+    }
+    void insert(int index, const SearchResult& row) override
+    {
+        const int elsewhere = m_launcher.m_results.elsewhereRow();
+        SearchResult placed = row;
+        placed.elsewhere = elsewhere >= 0 && index > elsewhere;
+        m_launcher.m_results.insert(index, placed);
+    }
+    void update(int index, const SearchResult& row) override
+    {
+        SearchResult placed = row;
+        if (const SearchResult* was = m_launcher.m_results.at(index))
+            placed.elsewhere = was->elsewhere;
+        m_launcher.m_results.update(index, placed);
+    }
     void remove(int index) override
     {
         if (const SearchResult* r = m_launcher.m_results.at(index))
@@ -284,6 +526,26 @@ Launcher::Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places,
             search();
         refreshStatus();
     });
+    connect(m_index, &IndexService::sharesChanged, this, [this] {
+        // A share gone offline or back: its rows say so now, as its card
+        // does, not at the next search (GitHub #116); only those that change.
+        if (!m_window || !m_window->isVisible())
+            return;
+        bool current = false;
+        for (int row = 0; row < m_results.count(); ++row) {
+            const SearchResult* r = m_results.at(row);
+            if (!r || r->isApp() || !r->path.startsWith(u"\\\\"))
+                continue;
+            if (const bool offline = m_index->shares().offline(r->path.toStdWString()); offline != r->offline) {
+                SearchResult changed = *r;
+                changed.offline = offline;
+                m_results.update(row, changed);
+                current = current || row == m_currentRow;
+            }
+        }
+        if (current)
+            followPreview(); // an offline row's file is not previewed
+    });
     connect(m_apps, &AppCatalog::changed, this, [this] {
         // Apps installed or removed (or the first list arrived): 全部 shows them.
         if (m_window && m_window->isVisible() && m_scope == All)
@@ -324,26 +586,40 @@ void Launcher::updateQueryPrefix()
     const FileTypeQuery parsed = splitFileTypeQuery(m_query, m_fileTypes, m_folderKeyword);
     const Scope oldScope = m_scope;
     const int oldType = m_fileType;
+    const auto oldExtra = m_extraFileTypes;
     const bool oldFolders = m_foldersChosen;
     if (parsed.type) {
-        if (!m_filePrefix)
-            m_filePrefix = PrefixScope{m_scope, m_fileType, m_foldersChosen};
+        if (!m_filePrefix) {
+            QStringList keys;
+            for (int type : selectedFileTypes())
+                keys.append(fileTypeKey(m_fileTypes[type]));
+            m_filePrefix = PrefixScope{m_scope, keys, m_foldersChosen};
+        }
         m_prefixWords = parsed.words;
         m_scope = *parsed.type == kFoldersChip ? Folders : Files;
         m_fileType = std::max(-1, *parsed.type);
+        m_extraFileTypes = parsed.types;
+        m_extraFileTypes.removeAll(m_fileType);
         m_foldersChosen = m_scope == Folders;
     } else if (m_filePrefix) {
         m_scope = m_filePrefix->scope;
-        m_fileType = m_filePrefix->type < m_fileTypes.size() ? m_filePrefix->type : -1;
+        QList<int> types;
+        for (const QString& key : m_filePrefix->typeKeys) {
+            const int type = fileTypeIndex(key);
+            if (type >= 0)
+                types.append(type);
+        }
+        m_fileType = types.isEmpty() ? -1 : types.takeFirst();
+        m_extraFileTypes = types;
         m_foldersChosen = m_filePrefix->folders;
         m_filePrefix.reset();
         m_prefixWords.clear();
     }
-    if (oldType != m_fileType)
+    if (oldType != m_fileType || oldExtra != m_extraFileTypes)
         emit fileTypeChanged();
-    if (oldType != m_fileType || oldFolders != m_foldersChosen)
+    if (oldType != m_fileType || oldExtra != m_extraFileTypes || oldFolders != m_foldersChosen)
         emit fileChoiceChanged();
-    if (oldScope != m_scope || oldType != m_fileType)
+    if (oldScope != m_scope || oldType != m_fileType || oldExtra != m_extraFileTypes)
         emit scopeChanged();
 }
 
@@ -374,6 +650,9 @@ void Launcher::setQuery(const QString& query)
     if (query == m_query)
         return;
     m_query = query;
+    // The folder typed in, edited: a path typed from now on (GitHub #110).
+    if (!m_typingPrefix.isEmpty() && !m_query.startsWith(m_typingPrefix, Qt::CaseInsensitive))
+        setTypingFolder({});
     updateQueryPrefix();
     emit queryChanged();
     m_results.setSelection({});
@@ -463,6 +742,73 @@ void Launcher::noteSearchHere(const QString& folder)
     m_hereSeen = false;
 }
 
+void Launcher::setTypingFolder(const QString& prefix)
+{
+    const QString folder = pathtext::pathFromText(prefix);
+    if (prefix.isEmpty() || folder.isEmpty()) {
+        if (m_typingPrefix.isEmpty())
+            return;
+        m_typingPrefix.clear();
+        m_typingFolder.clear();
+        emit typingFolderChanged();
+        return;
+    }
+    m_typingPrefix = prefix;
+    m_typingFolder = folder;
+    m_typingOnly = m_typingOnlyDefault; // as set, each time; switched, for this time only
+    emit typingFolderChanged();
+    // The words after it, if any are typed already, are looked for anew.
+    if (!typingWords().isEmpty() && m_window && m_window->isVisible())
+        search();
+}
+
+void Launcher::setFolderTypingOnly(bool only)
+{
+    m_typingOnlyDefault = only;
+}
+
+QString Launcher::typingFolder() const
+{
+    return m_typingPrefix.isEmpty() ? QString() : folderLabel(m_typingFolder);
+}
+
+bool Launcher::typedInFolder() const
+{
+    return !m_typingPrefix.isEmpty() && m_scope != Content && !m_panel && !m_filePrefix
+        && m_query.startsWith(m_typingPrefix, Qt::CaseInsensitive);
+}
+
+QString Launcher::typingWords() const
+{
+    return typedInFolder() ? m_query.mid(m_typingPrefix.size()).trimmed() : QString();
+}
+
+QString Launcher::nameText() const
+{
+    const QString words = typingWords();
+    return words.isEmpty() ? searchText() : words;
+}
+
+QString Launcher::typingKey() const
+{
+    if (typingWords().isEmpty())
+        return {};
+    return (m_typingOnly ? u"only:"_s : u"first:"_s) + m_typingFolder;
+}
+
+bool Launcher::switchTypingFolder()
+{
+    if (!typedInFolder())
+        return false;
+    m_typingOnly = !m_typingOnly;
+    emit typingFolderChanged();
+    if (!typingWords().isEmpty())
+        search(); // a list of its own (typingKey): the first row is current again
+    else
+        refreshStatus();
+    return true;
+}
+
 QString Launcher::outsideFolder() const
 {
     if (!m_foldersOnly || m_scope == Content || m_keyword)
@@ -535,6 +881,12 @@ QVariantList Launcher::leftOutHints() const
     }
     if (!hintsSettled())
         return hints;
+    // Typed in a folder's window, only that folder searched (GitHub #110):
+    // first, the rest of the index after its rows; under no rows at all, the
+    // way out of 没有找到. Not drives then: only that folder was asked for.
+    const bool onlyTypingFolder = m_typingOnly && !typingWords().isEmpty();
+    if (onlyTypingFolder)
+        add(kEverywhereHint, tr("只在 %1 里搜").arg(typingFolder()), tr("也搜其他位置"));
     // The counts are of files not read, whatever was typed: offered under
     // every list they would be noise. Only when what was found does not fill
     // the window (Main.qml maxRows), where "is that all?" is the question.
@@ -557,8 +909,10 @@ QVariantList Launcher::leftOutHints() const
                     : tr("还有 %Ln 个 %1 文件不在内容搜索的类型里", nullptr, m_leftOut.otherTypes).arg(named),
                 tr("也搜这些"));
         }
+        if (m_scope == Content && m_leftOut.remote > 0)
+            add(kRemoteHint, tr("网络位置上还有 %Ln 个文件没建内容索引", nullptr, m_leftOut.remote), tr("设置…"));
     }
-    if (m_scope != Content && !m_moreNames) {
+    if (m_scope != Content && !m_moreNames && !onlyTypingFolder) {
         for (const RemovableDrive& drive : m_drives) {
             const QString kind = kDriveHint + drive.root;
             if (m_hintsTaken.contains(kind))
@@ -621,6 +975,10 @@ void Launcher::searchLeftOut(const QString& kind)
         }))
         return;
     // Not searches: the settings' page, the note closed, a folder added.
+    if (kind == kRemoteHint) {
+        emit shareSettingsRequested();
+        return;
+    }
     if (kind == kFoldersHint || kind == kFoldersDismissHint) {
         m_folderNoteDismissed = true; // its button was taken either way: said once
         emit folderNoteDismissed();
@@ -637,6 +995,10 @@ void Launcher::searchLeftOut(const QString& kind)
         refreshStatus();
         return;
     }
+    if (kind == kEverywhereHint) { // a list of its own, the folder's rows first (GitHub #110)
+        switchTypingFolder();
+        return;
+    }
     if (m_pending || m_contentRunning) {
         m_engine->cancel();
         m_pending = false;
@@ -648,9 +1010,11 @@ void Launcher::searchLeftOut(const QString& kind)
     request.rankBy = rankBy();
     request.preferredTypes = m_preferredTypes;
     request.excludedTypes = m_excludedTypes;
+    request.excludedFileNames = m_excludedFileNames;
     if (kind.startsWith(kDriveHint) || kind.startsWith(kFolderHint)) {
-        // A folder typed as a path: the words after it are what is looked for.
-        request.text = kind.startsWith(kFolderHint) ? pathtext::splitTyped(searchText()).name.trimmed() : searchText();
+        // A folder typed as a path: the words after it are what is looked for
+        // (typed in a folder's window, on a drive too: nameText).
+        request.text = kind.startsWith(kFolderHint) ? pathtext::splitTyped(searchText()).name.trimmed() : nameText();
         request.scope = m_scope == Folders ? ws::Scope::Folders : ws::Scope::Files; // 全部: its files and folders
         request.extensions = fileExtensions();
         request.limit = kPage;
@@ -751,8 +1115,12 @@ QString Launcher::placeholder() const
 {
     switch (m_scope) {
     case Files:
-        if (m_fileType >= 0)
-            return tr("搜索%1", "a kind of file, as 图片").arg(m_fileTypes[m_fileType].name);
+        if (m_fileType >= 0) {
+            QStringList names;
+            for (int type : selectedFileTypes())
+                names.append(m_fileTypes[type].name);
+            return tr("搜索%1", "a kind of file, as 图片").arg(names.join(tr("、")));
+        }
         return tr("搜索文件和文件夹");
     case Folders:
         return tr("搜索文件夹");
@@ -924,11 +1292,12 @@ void Launcher::setPreferredTypes(const QStringList& types)
         search();
 }
 
-void Launcher::setExcludedTypes(const QStringList& types)
+void Launcher::setExcludedFiles(const QStringList& types, const QStringList& names)
 {
-    if (types == m_excludedTypes)
+    if (types == m_excludedTypes && names == m_excludedFileNames)
         return;
     m_excludedTypes = types;
+    m_excludedFileNames = names;
     // Files come or go in whatever is listed now: asked again, in place.
     if (m_window && m_window->isVisible())
         search();
@@ -1081,6 +1450,7 @@ void Launcher::startOver()
 {
     m_filePrefix.reset();
     m_prefixWords.clear();
+    setTypingFolder({});
     if (!m_contentFolder.isEmpty() || !m_contentPick.folder.isEmpty()) {
         m_contentFolder.clear();
         m_contentPick = {};
@@ -1186,6 +1556,7 @@ void Launcher::retranslate()
 void Launcher::handleHidden()
 {
     closePreview(); // the wish to have it stays (m_previewWanted)
+    dropServerWait();
     m_previewResume = false;
     m_index->contentIndexer()->setSearchBoxOpen(false);
     m_systemCommand = false;
@@ -1211,6 +1582,7 @@ void Launcher::handleHidden()
     m_pluginPending.clear();
     m_pluginWait.stop();
     m_pluginSlow = false;
+    forgetRowChanges();
     // Opened again, a page, as quick as ever; more as it is scrolled again.
     m_pages = 1;
     m_loadingMore = false;
@@ -1231,12 +1603,20 @@ void Launcher::search(bool more)
     // (the first is selected). So is a plugin command's list in place of
     // the names' (or back): "=" and "= " are the same text trimmed.
     std::optional<KeywordMode> keyword = m_filePrefix ? std::nullopt : matchKeyword(m_query);
+    const QString error = m_scope == Content || keyword || typedKeyword(m_web, m_query)
+        ? QString() : parseQuery(nameText()).error;
+    if (m_queryError != error) {
+        m_queryError = error;
+        emit queryErrorChanged();
+    }
     const QString keywordKey = keyword ? keyword->pluginId + u'/' + keyword->commandId : QString();
+    // The folder typed in, first or alone (typingKey), is a list of its own too.
     m_refresh = m_haveResults && !m_replacePending && text == m_shownText && m_scope == m_shownScope
         && fileExtensions() == m_shownExtensions && rankBy() == m_shownRankBy && nameOrder() == m_shownOrder && m_kindOrder == m_shownKindOrder
         && m_preferredTypes == m_shownPreferredTypes && keywordKey == m_shownKeyword
         && (m_scope != Content || (m_contentFolder == m_shownContentFolder && pickKey(m_contentPick) == m_shownPick))
-        && (!text.isEmpty() || m_startList == m_shownStartList) && panelKey() == m_shownPanelKey;
+        && (!text.isEmpty() || m_startList == m_shownStartList) && panelKey() == m_shownPanelKey
+        && typingKey() == m_shownTyping;
     m_replacePending = !m_refresh;
     // The text is the one shown (another scope, order, kind of file): nobody
     // is typing, so a content scan starts at once, without waiting for a pause.
@@ -1317,16 +1697,23 @@ void Launcher::search(bool more)
     }
 
     SearchEngine::Request request;
-    request.text = searchText();
+    request.text = nameText();
+    // Typed in a folder's window (GitHub #110): its words, there first (or
+    // only there). The folder alone is listed as the path typed it is.
+    if (!typingWords().isEmpty()) {
+        request.currentFolder = m_typingFolder;
+        request.currentFolderOnly = m_typingOnly;
+    }
     request.scope = static_cast<ws::Scope>(m_scope);
     request.extensions = fileExtensions();
     request.kindOrder = m_kindOrder;
     request.rankBy = rankBy();
     request.preferredTypes = m_preferredTypes;
     request.excludedTypes = m_excludedTypes;
+    request.excludedFileNames = m_excludedFileNames;
     request.startList = m_startList == RecentlyModified ? ws::StartList::Modified : ws::StartList::Opened;
     request.limit = kPage * m_pages;
-    request.browse = m_filePrefix.has_value();
+    request.browse = m_filePrefix.has_value() || (m_scope == Files && m_fileType >= 0);
     if (m_panel) { // its filters and order; nothing typed lists everything
         request.filter = panelFilter();
         if (!m_folderFilter.isEmpty())
@@ -1389,11 +1776,13 @@ void Launcher::showRows(SearchResults rows, QStringList highlights)
     m_shownContentFolder = m_contentFolder;
     m_shownPick = pickKey(m_contentPick);
     m_shownPanelKey = panelKey();
+    m_shownTyping = typingKey();
     m_haveResults = true;
     if (m_replacePending) {
         m_replacePending = false;
         m_slowSearch.stop();
         m_searchSlow = false;
+        forgetRowChanges(); // another list: what changed in the last one says nothing here
         emit resultsReplaced();
         if (const auto held = std::exchange(m_held, std::nullopt))
             emit heldKey(held->first, held->second); // on the rows it was pressed for
@@ -1518,10 +1907,17 @@ void Launcher::dropSuggestions()
 // after a web shortcut's keyword: that is a search on the web ("gh
 // WinShun"), and reading files for it only costs time. Nor for a path
 // ("C:\Users\me\x"): that is a place to go to. Nor for a favorite's keyword.
+// Nor typed in a folder's window (GitHub #110), whatever the words: every key
+// there would start a scan of the whole disk.
 QString Launcher::contentNeedle() const
 {
+    if (typedInFolder())
+        return {};
     const QString text = searchText();
     const ParsedQuery query = ws::parseQuery(text);
+    if (!query.alternatives.empty() || !query.error.isEmpty()
+        || std::ranges::any_of(query.terms, [](const QueryTerm& t) { return t.regex; }))
+        return {};
     if (query.terms.empty() || m_keyword || typedKeyword(m_web, m_query) || !pathtext::splitTyped(text).folder.isEmpty())
         return {};
     if (m_favorites && (typedFavoriteKeyword(m_favorites->items(), text) >= 0
@@ -1541,6 +1937,7 @@ void Launcher::startContentSearch()
     request.scope = ws::Scope::Content;
     request.rankBy = rankBy();
     request.excludedTypes = m_excludedTypes;
+    request.excludedFileNames = m_excludedFileNames;
     request.maxContentResults = kPage * m_pages;
     request.contentExtensions = m_contentExtensions;
     request.contentSizeLimits = m_contentSizeLimits;
@@ -1628,11 +2025,16 @@ void Launcher::onResults(quint64 id, const SearchResults& results, qint64 total,
     }
     if (m_refresh) {
         // Likewise the rows a walk of a drive brought (searchLeftOut): the
-        // index has nothing to find them by again. After the names, as they came.
+        // index has nothing to find them by again. After the names, as they
+        // came; the folder typed in's own before the rest (GitHub #110).
         for (int row = 0; row < m_results.count(); ++row) {
             const SearchResult* r = m_results.at(row);
-            if (r->line == 0 && !r->isPlugin() && m_leftOutFound.contains(r->path) && !names.contains(r->path))
-                rows.append(*r);
+            if (r->line == 0 && !r->isPlugin() && m_leftOutFound.contains(r->path) && !names.contains(r->path)) {
+                const auto at = r->elsewhere
+                    ? rows.end()
+                    : std::ranges::find_if(rows, [](const SearchResult& x) { return x.elsewhere; });
+                rows.insert(at, *r);
+            }
         }
     }
     if (m_refresh) {
@@ -1643,6 +2045,15 @@ void Launcher::onResults(quint64 id, const SearchResults& results, qint64 total,
             const SearchResult* r = m_results.at(row);
             if (r->isPlugin())
                 rows.insert(std::min<qsizetype>(row, rows.size()), *r);
+        }
+        // Typed in a folder's window, one of the rows found elsewhere when it
+        // now falls among them (GitHub #110), as ModelSink puts one there.
+        const SearchResults& listed = std::as_const(rows);
+        const qsizetype elsewhere
+            = std::ranges::find_if(listed, [](const SearchResult& r) { return r.elsewhere && !r.isPlugin(); }) - listed.begin();
+        for (qsizetype i = 0; i < rows.size(); ++i) {
+            if (rows.at(i).isPlugin() && rows.at(i).elsewhere != (i > elsewhere))
+                rows[i].elsewhere = i > elsewhere;
         }
     }
     m_contentHits = static_cast<int>(m_unconfirmed.size());
@@ -1662,7 +2073,7 @@ void Launcher::onResults(quint64 id, const SearchResults& results, qint64 total,
     // heading says so (approximateHeading), and the names are highlighted by
     // the pinyin, as the result list reads "bg" back into 报告.
     m_approximate = std::ranges::any_of(results, [](const SearchResult& r) { return r.approximate; });
-    const ParsedQuery query = ws::parseQuery(searchText());
+    const ParsedQuery query = ws::parseQuery(nameText()); // typed in a folder, its words each (GitHub #110)
     QStringList highlights = query.highlights;
     if (m_approximate) {
         highlights.clear();
@@ -1791,20 +2202,32 @@ void Launcher::onRemovableDrives(quint64 id, const RemovableDrives& drives)
 }
 
 // A drive's rows, as the walk finds them: after the rows there are (the hint
-// taken up stands there), each file once.
+// taken up stands there), each file once. Typed in a folder's window with
+// its rows first (GitHub #110): a drive's are elsewhere, after the caption;
+// the folder's own (not indexed: GitHub #52) go with its rows, before it.
 void Launcher::onDriveResults(quint64 id, const SearchResults& results)
 {
     if (id != m_requestId)
         return;
+    const bool grouped = !m_typingOnly && !typingWords().isEmpty();
+    const bool ownFolder = m_hintRunning.startsWith(kFolderHint)
+        && pathtext::sameFolder(walkedPath(m_hintRunning), m_typingFolder);
     SearchResults fresh;
-    for (const SearchResult& r : results) {
+    for (SearchResult r : results) {
         if (m_results.indexOf(r.path) < 0) {
-            fresh.append(r);
+            r.elsewhere = grouped && !ownFolder;
             m_leftOutFound.insert(r.path);
+            fresh.append(std::move(r));
         }
     }
     m_hintHits += static_cast<int>(fresh.size());
-    m_results.append(fresh);
+    const int at = grouped && ownFolder ? m_results.elsewhereRow() : -1;
+    if (at < 0) {
+        m_results.append(fresh);
+        return;
+    }
+    for (qsizetype i = 0; i < fresh.size(); ++i)
+        m_results.insert(at + static_cast<int>(i), fresh[i]);
 }
 
 void Launcher::onDriveProgress(quint64 id, int seen, bool finished)
@@ -1988,9 +2411,10 @@ QJsonObject Launcher::pluginFilters() const
             : QJsonValue(QDateTime::fromSecsSinceEpoch(value, QTimeZone::UTC).toString(Qt::ISODate));
     };
     QJsonArray kinds;
-    if (m_fileType >= 0 && m_fileType < m_fileTypes.size())
-        kinds.append(m_fileTypes[m_fileType].id.isEmpty() ? m_fileTypes[m_fileType].name : m_fileTypes[m_fileType].id);
-    else if (m_scope == Folders)
+    if (m_fileType >= 0 && m_fileType < m_fileTypes.size()) {
+        for (int type : selectedFileTypes())
+            kinds.append(m_fileTypes[type].id.isEmpty() ? m_fileTypes[type].name : m_fileTypes[type].id);
+    } else if (m_scope == Folders)
         kinds.append(u"folders"_s);
     else if (m_scope == Files)
         kinds.append(u"files"_s);
@@ -2186,6 +2610,8 @@ void Launcher::refreshStatus()
     }
     if (const int selected = m_results.selectedCount(); selected > 0)
         s = tr("已选择 %Ln 项", nullptr, selected);
+    if (!m_queryError.isEmpty())
+        s = m_queryError;
     if (s != m_status) {
         m_status = s;
         emit statusChanged();
@@ -2201,6 +2627,16 @@ void Launcher::setCurrentRow(int row)
     if (row == m_currentRow)
         return;
     m_currentRow = row;
+    // The keyboard chose another row: that one is meant, unless it changed a
+    // moment ago by itself (a number key, an arrow onto a row that just
+    // came): then Enter waits a moment as for a row that went. Moving with
+    // its own row (followCurrentRow) changes neither.
+    if (!m_following) {
+        if (rowJustChanged(row))
+            m_currentGone.start();
+        else
+            m_currentGone.invalidate();
+    }
     emit currentRowChanged();
     refreshKeyHints();
     followPreview();
@@ -2308,11 +2744,101 @@ void Launcher::switchKeyHints(const SearchResult& row, QString& enter, QString& 
     second = row.switchId == u"keep-awake" ? tr("电源设置") : tr("打开设置");
 }
 
-void Launcher::flash(const QString& message)
+void Launcher::flash(const QString& message, std::chrono::milliseconds shown)
 {
     m_flash = message;
-    m_flashTimer.start();
+    m_flashTimer.start(shown); // sets the interval: every flash says how long
     emit statusChanged();
+}
+
+// An action waiting for a slow server is no longer wanted: its answer is
+// ignored when it comes, and its "正在连接 …" goes now.
+void Launcher::dropServerWait()
+{
+    ++m_serverWaitId;
+    if (!m_serverWaitFlash.isEmpty() && m_flash == m_serverWaitFlash) {
+        m_flashTimer.stop();
+        m_flash.clear();
+        emit statusChanged();
+    }
+    m_serverWaitFlash.clear();
+}
+
+// `r`, which an action needed, is not there (any more): out of the history
+// (and of the list, when it was to be deleted), and said so.
+void Launcher::forgetMissing(const SearchResult& r, Action action)
+{
+    if (action == Recycle)
+        m_results.remove(r.path);
+    m_history->remove(r.path);
+    emit historyChanged();
+    // A favorite stays: it may be back (a drive plugged in again), or be picked anew.
+    flash(r.favorite ? tr("“%1” 已不存在；右键可从收藏夹移除").arg(r.name) : tr("“%1” 已不存在").arg(r.name));
+}
+
+// "正在连接 …" for the server of `path`, which an action waits for off the
+// UI thread: at once, the window never waiting with it (GitHub #116). A
+// moment later for a server that answered a moment ago: it answers again
+// in milliseconds, and the words would only flicker past. WebClient started
+// first (GitHub #114) is said instead, at once.
+quint64 Launcher::showServerWait(const QString& path, bool clientStarting)
+{
+    const quint64 id = m_serverWaitId;
+    const QString text = clientStarting ? tr("正在启动 Windows 的 WebDAV 服务…") : tr("正在连接 %1…").arg(serverName(path));
+    const auto shown = clientStarting ? kClientStartShown : kServerWaitShown;
+    const auto show = [this, id, text, shown] {
+        if (m_serverWaitId != id)
+            return; // answered meanwhile
+        m_serverWaitFlash = text;
+        flash(text, shown); // until the answer's flash replaces it
+    };
+    if (!clientStarting && share::lastHeard(path.toStdWString(), kJustHeard).value_or(false))
+        QTimer::singleShot(kQuietWait, this, show);
+    else
+        show();
+    return id;
+}
+
+// The files go to the shares' cards in any case (tellShares). Joined, the
+// check started by the first asking is answered once, for the newest: Enter
+// held on a server gone away starts no new thread at each repeat, each one
+// queueing behind the last for Windows (askWindows: one at a time).
+void Launcher::checkServersThen(const QStringList& paths, std::function<void(const ServerFound&)> then)
+{
+    QStringList keys;
+    for (const QString& path : paths)
+        keys.append(pathtext::pathKey(path));
+    keys.sort();
+    const QString key = keys.join(u'\n');
+    const auto underWay = m_serverChecks.constFind(key);
+    const bool joined = underWay != m_serverChecks.cend();
+    // Joined, as the check under way was started (with WebClient or not).
+    const bool clientStarting = joined ? underWay->clientStarting : clientStarts(paths);
+    m_serverChecks.insert(key, {showServerWait(paths.first(), clientStarting), clientStarting, std::move(then)});
+    if (joined)
+        return;
+    ++m_serverChecksStarted;
+    std::thread([guard = QPointer(this), paths, key, clientStarting] {
+        const ServerFound found = checkServers(paths, clientStarting);
+        QMetaObject::invokeMethod(qApp, [guard, key, found] {
+            if (!guard)
+                return;
+            tellShares(guard->m_index->shares(), found);
+            const ServerCheck check = guard->m_serverChecks.take(key);
+            if (!check.then || guard->m_serverWaitId != check.wait)
+                return; // another action since, or the launcher went: not wanted any more
+            guard->dropServerWait(); // answered: "正在连接 …" goes either way
+            check.then(found);
+        });
+    }).detach();
+}
+
+void Launcher::copyFiles(const QStringList& files)
+{
+    if (m_fileCopier)
+        m_fileCopier(files);
+    else
+        shell::copyFiles(files);
 }
 
 void Launcher::cycleScope(int delta)
@@ -2338,11 +2864,20 @@ void Launcher::setFileTypes(const FileTypes& types)
         return;
     // The kind chosen stays chosen where it went (moved up, renamed: by its
     // id or name); gone, any kind.
-    const QString chosen = m_fileType >= 0 ? fileTypeKey(m_fileTypes[m_fileType]) : QString();
+    QStringList chosen;
+    const auto oldTypes = selectedFileTypes();
+    for (int type : oldTypes)
+        chosen.append(fileTypeKey(m_fileTypes[type]));
     m_fileTypes = types;
-    const int at = chosen.isEmpty() ? -1 : fileTypeIndex(chosen);
-    if (at != m_fileType) {
-        m_fileType = at;
+    QList<int> selected;
+    for (const QString& key : chosen) {
+        const int type = fileTypeIndex(key);
+        if (type >= 0)
+            selected.append(type);
+    }
+    if (selected != oldTypes) {
+        m_fileType = selected.isEmpty() ? -1 : selected.takeFirst();
+        m_extraFileTypes = selected;
         emit fileTypeChanged();
         emit fileChoiceChanged();
     }
@@ -2356,22 +2891,85 @@ void Launcher::setFileTypes(const FileTypes& types)
 
 QStringList Launcher::fileExtensions() const
 {
-    return m_scope == Files && m_fileType >= 0 ? m_fileTypes[m_fileType].extensions : QStringList();
+    QStringList extensions;
+    if (m_scope == Files) {
+        for (int type : selectedFileTypes())
+            extensions.append(m_fileTypes[type].extensions);
+    }
+    extensions.removeDuplicates();
+    return extensions;
+}
+
+QList<int> Launcher::selectedFileTypes() const
+{
+    QList<int> types = m_extraFileTypes;
+    if (m_fileType >= 0)
+        types.prepend(m_fileType);
+    return types;
+}
+
+QString Launcher::queryError() const
+{
+    return m_queryError;
+}
+
+void Launcher::setGallery(bool gallery)
+{
+    if (m_gallery == gallery)
+        return;
+    m_gallery = gallery;
+    emit galleryChanged();
+}
+
+void Launcher::setThumbnailSize(int size)
+{
+    size = std::clamp(size, 96, 320);
+    if (size == m_thumbnailSize)
+        return;
+    m_thumbnailSize = size;
+    emit galleryChanged();
+}
+
+void Launcher::toggleFileType(int type)
+{
+    if (type < 0 || type >= m_fileTypes.size()) {
+        chooseFileType(type);
+        return;
+    }
+    clearQueryPrefix();
+    auto types = m_scope == Files ? selectedFileTypes() : QList<int>();
+    if (types.contains(type))
+        types.removeAll(type);
+    else
+        types.append(type);
+    m_scope = Files;
+    m_foldersChosen = false;
+    m_fileType = types.isEmpty() ? -1 : types.takeFirst();
+    m_extraFileTypes = types;
+    emit fileTypeChanged();
+    emit fileChoiceChanged();
+    emit scopeChanged();
+    m_results.setSelection({});
+    m_held.reset();
+    refreshKeyHints();
+    search();
 }
 
 void Launcher::chooseFileType(int type)
 {
+    const bool hadMultiple = !m_extraFileTypes.isEmpty();
+    m_extraFileTypes.clear();
     const bool hadPrefix = clearQueryPrefix();
     const Scope scope = type == kFoldersChip ? Folders : Files;
     if (type < -1 || type >= m_fileTypes.size())
         type = -1;
-    if (scope == m_scope && type == m_fileType) {
+    if (scope == m_scope && type == m_fileType && !hadMultiple) {
         if (hadPrefix)
             search();
         return;
     }
     m_scope = scope;
-    if (type != m_fileType || m_foldersChosen != (scope == Folders)) {
+    if (type != m_fileType || m_foldersChosen != (scope == Folders) || hadMultiple) {
         m_fileType = type;
         m_foldersChosen = scope == Folders;
         emit fileTypeChanged();
@@ -2415,19 +3013,46 @@ int Launcher::fileTypeIndex(const QString& key) const
 
 QString Launcher::fileChoice() const
 {
+    if (!m_foldersChosen && !m_extraFileTypes.isEmpty()) {
+        QStringList keys;
+        for (int type : selectedFileTypes())
+            keys.append(fileTypeKey(m_fileTypes[type]));
+        return QString::fromUtf8(QJsonDocument(QJsonArray::fromStringList(keys)).toJson(QJsonDocument::Compact));
+    }
     return m_foldersChosen ? u"folders"_s : m_fileType >= 0 ? fileTypeKey(m_fileTypes[m_fileType]) : QString();
 }
 
 void Launcher::setFileChoice(const QString& choice)
 {
+    const auto array = QJsonDocument::fromJson(choice.toUtf8()).array();
+    if (!array.isEmpty()) {
+        QList<int> types;
+        for (const QJsonValue& value : array) {
+            const int type = fileTypeIndex(value.toString());
+            if (type >= 0 && !types.contains(type))
+                types.append(type);
+        }
+        m_fileType = types.isEmpty() ? -1 : types.takeFirst();
+        m_extraFileTypes = types;
+        m_foldersChosen = false;
+        emit fileTypeChanged();
+        emit fileChoiceChanged();
+        if (m_scope == Files || m_scope == Folders) {
+            m_scope = Files;
+            emit scopeChanged();
+            search();
+        }
+        return;
+    }
     const int type = choice == u"folders" || choice.isEmpty() ? -1 : fileTypeIndex(choice);
     if (m_scope == Files || m_scope == Folders) {
         chooseFileType(choice == u"folders" ? kFoldersChip : type);
         return;
     }
     m_foldersChosen = choice == u"folders";
-    if (type != m_fileType) {
+    if (type != m_fileType || !m_extraFileTypes.isEmpty()) {
         m_fileType = type;
+        m_extraFileTypes.clear();
         emit fileTypeChanged();
     }
 }
@@ -2541,9 +3166,6 @@ QVariantList Launcher::folderChips() const
         case Status::NotFound:
             chip(kMissingChip, tr("%1 不在索引里").arg(label), tr("这个文件夹不存在、被排除在索引之外，或在没有收录的磁盘上"), false);
             return chips;
-        case Status::OnShare:
-            chip(kMissingChip, tr("%1 在网络共享上").arg(label), tr("网络共享上的文件不搜内容"), false);
-            return chips;
         case Status::Words:
             break; // no folder so named: what was typed is among the words, the strip as without it
         case Status::Searched: {
@@ -2584,7 +3206,7 @@ QString Launcher::folderChip() const
         return {};
     if (const ContentScope::Place* place = typedPlace()) {
         using Status = ContentScope::Status;
-        if (place->status == Status::NotFound || place->status == Status::OnShare)
+        if (place->status == Status::NotFound)
             return kMissingChip.toString();
         if (place->status == Status::Searched) {
             if (!place->chosen.isEmpty())
@@ -2661,7 +3283,7 @@ QString Launcher::whereMissing() const
                return !p.typed.isEmpty() && p.status != ContentScope::Status::Words;
            }))
         place = givenPlace(m_contentScope, m_contentFolder);
-    if (!place || (place->status != ContentScope::Status::NotFound && place->status != ContentScope::Status::OnShare))
+    if (!place || place->status != ContentScope::Status::NotFound)
         return {};
     return place->folders.value(0, place->typed);
 }
@@ -2764,6 +3386,7 @@ void Launcher::setPreview(FilePreview* preview)
 
 void Launcher::togglePreview(int row)
 {
+    dropServerWait(); // a server still being waited for no longer matters (Space, Alt+P: not through trigger)
     if (!m_preview)
         return;
     const SearchResult* r = m_results.at(row);
@@ -2816,9 +3439,12 @@ void Launcher::followPreview()
         return;
     }
     // Left open last time: back with the launcher, on the first row that
-    // has a file to show.
+    // has a file to show. Ours only: QuickLook's or Seer's window popping up
+    // while one types is in the way (GitHub #131); Alt+P brings it.
     if (m_previewWanted && m_previewResume) {
-        if (const std::optional<FilePreview::Item> item = previewItem(m_results.at(m_currentRow))) {
+        if (m_preview->showsElsewhere())
+            m_previewResume = false;
+        else if (const std::optional<FilePreview::Item> item = previewItem(m_results.at(m_currentRow))) {
             m_previewResume = false;
             m_preview->show(*item);
         }
@@ -2838,8 +3464,19 @@ QVariant Launcher::pointerIfMoved() const
 
 void Launcher::trigger(int row, int action)
 {
+    dropServerWait(); // a server still being waited for no longer matters: this is asked now
+    if (row == m_currentRow && m_currentGone.isValid() && m_currentGone.elapsed() < 800) {
+        // Its row went a moment ago (a plugin's list changed by itself): the
+        // key was meant for that one, not for what took its place.
+        flash(tr("这一行刚刚变了，看清楚再按一次"));
+        return;
+    }
     if (action == SystemMenu) { // takes the selection itself, from Win顺's menu (Main.qml says where)
         showSystemMenu(row);
+        return;
+    }
+    if (action >= PluginFileAction) { // one request for the whole selection, not one per row
+        runFileCommand(row, action - PluginFileAction);
         return;
     }
     if (action == Preview) { // the row it was asked on, not a selection
@@ -2857,6 +3494,10 @@ void Launcher::trigger(int row, int action)
 
 void Launcher::clickRow(int row, bool onSwitch)
 {
+    if (rowJustChanged(row)) { // another row under the pointer a moment ago
+        flash(tr("这一行刚刚变了，看清楚再点一次"));
+        return;
+    }
     const SearchResult* r = m_results.at(row);
     if (r && drawsSwitch(*r)) {
         // Two clicks within the system's double-click interval are one: the
@@ -2910,6 +3551,11 @@ bool Launcher::stepSwitch(int row, int steps)
 
 void Launcher::triggerSelection(int action)
 {
+    if (action >= PluginFileAction) {
+        if (m_results.selectedCount() > 0)
+            runFileCommand(m_results.indexOf(m_results.selection().first().path), action - PluginFileAction);
+        return;
+    }
     const SearchResults items = m_results.selection();
     if (items.size() == 1)
         perform(items.first(), static_cast<Action>(action));
@@ -2922,14 +3568,38 @@ void Launcher::dragOut(int row)
     const SearchResult* at = m_results.at(row);
     if (!at)
         return;
+    dropServerWait(); // a server still being waited for no longer matters
     const SearchResults items = m_results.isSelected(row) && m_results.selectedCount() > 1 ? m_results.selection()
                                                                                          : SearchResults {*at};
-    QStringList paths;
+    // A share that does not answer would hold the shell up for long: each
+    // server asked by its first file, all together (dragAnswers).
+    QHash<QString, QString> asker; // serverKey: the file it is asked by
+    QStringList asked;
     for (const SearchResult& r : items) {
-        // A share that does not answer would hold the shell up for long.
-        if (!r.isApp() && !r.offline && serverAnswers(r.path))
+        if (!r.isApp() && !r.offline && onServer(r.path) && !asker.contains(serverKey(r.path))) {
+            asker.insert(serverKey(r.path), r.path);
+            asked.append(r.path);
+        }
+    }
+    const QSet<QString> answering = dragAnswers(asked);
+    QStringList paths;
+    QString away; // the first that did not answer
+    for (const SearchResult& r : items) {
+        if (r.isApp() || r.offline)
+            continue;
+        bool answers = true;
+        if (onServer(r.path)) {
+            answers = answering.contains(asker.value(serverKey(r.path)));
+            if (!answers && away.isEmpty())
+                away = serverName(r.path);
+        } else {
+            answers = serverAnswers(r.path); // WSL: its state, without asking
+        }
+        if (answers)
             paths.append(r.path);
     }
+    if (paths.isEmpty() && !away.isEmpty())
+        flash(tr("连不上 %1（离线或不在同一网络）").arg(away));
     if (paths.isEmpty() || !m_window)
         return;
     const auto hwnd = reinterpret_cast<HWND>(m_window->winId());
@@ -2971,6 +3641,8 @@ void Launcher::clearSelection()
 void Launcher::perform(const SearchResult& result, Action action, bool fileChecked)
 {
     const SearchResult r = result; // the model may change underneath us
+    if (!fileChecked)
+        dropServerWait(); // a server still being waited for no longer matters
     if (action == EditWebShortcuts) {
         emit webSettingsRequested();
         return;
@@ -3052,12 +3724,31 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
         }).detach();
         return;
     }
-    if (needsFile && !fileChecked && !serverAnswers(r.path)) {
-        flash(tr("连不上 %1：它离线了，或不在同一网络").arg(QString::fromStdWString(std::wstring(unc::host(sourcePath)))));
+    if (needsFile && !fileChecked && onServer(r.path)) {
+        // Never asked on the UI thread (GitHub #116): an online server
+        // answers in milliseconds, but one gone away holds Windows up for
+        // half a minute (even seconds after it last answered), and a NAS just
+        // started takes seconds. The probe and Windows at once; the action
+        // once they answered.
+        checkServersThen({r.path}, [this, r, action](const ServerFound& found) {
+            switch (found.value(r.path, share::Reach::Unreachable)) {
+            case share::Reach::There:
+                perform(r, action, true);
+                break;
+            case share::Reach::Missing:
+                forgetMissing(r, action);
+                break;
+            case share::Reach::ShareAway: // nothing forgotten: it comes back
+            case share::Reach::NoService:
+            case share::Reach::Unreachable:
+                flash(whyNot({r.path}, found));
+                break;
+            }
+        });
         return;
     }
-    if (needsFile && r.offline)
-        m_index->shares().networkChanged(); // it answers again: its share is back
+    if (needsFile && r.offline && !distro.empty())
+        m_index->shares().networkChanged(); // WSL answers again: its share is back
     if (action == SearchInFolder) {
         if (!r.isDir)
             return;
@@ -3081,12 +3772,7 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
         return;
     }
     if (needsFile && !fileChecked && !QFileInfo::exists(r.path)) {
-        if (action == Recycle)
-            m_results.remove(r.path);
-        m_history->remove(r.path);
-        emit historyChanged();
-        // A favorite stays: it may be back (a drive plugged in again), or be picked anew.
-        flash(r.favorite ? tr("“%1” 已不存在；右键可从收藏夹移除").arg(r.name) : tr("“%1” 已不存在").arg(r.name));
+        forgetMissing(r, action);
         return;
     }
     switch (action) {
@@ -3113,7 +3799,7 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
         flash(tr("已复制名称"));
         break;
     case CopyItem:
-        shell::copyFiles({r.path});
+        copyFiles({r.path});
         flash(tr("已复制，可在资源管理器中粘贴"));
         break;
     case ForgetRecent:
@@ -3213,7 +3899,8 @@ void Launcher::performPlace(const SearchResult& place, Action action)
     case RunAsAdmin:
         remember(place.path, m_shownText);
         if (place.isCommand())
-            shell::runCustom(place.target, place.workingDirectory, place.words, reportFailure(place.name));
+            shell::runCustom(place.target, place.workingDirectory, place.words, reportFailure(place.name),
+                {place.silent, place.runAsAdmin || action == RunAsAdmin});
         else
             shell::run(place.target, reportFailure(place.name));
         emit dismissRequested();
@@ -3451,18 +4138,50 @@ void Launcher::performFavorite(const SearchResult& result, Action action)
 
 // Several selected results at once. Those an action does not apply to
 // (running a folder as administrator, recycling an app) are left out.
-void Launcher::performMany(const SearchResults& items, Action action)
+void Launcher::performMany(const SearchResults& items, Action action, const ServerFound* found)
 {
-    // Each server asked afresh once, then taken at its word.
-    QSet<QString> asked;
-    const auto exists = [&asked](const QString& path) {
-        const QString host = QString::fromStdWString(std::wstring(unc::host(path.toStdWString()))).toLower();
-        const bool fresh = !asked.contains(host);
-        asked.insert(host);
-        return serverAnswers(path, fresh) && QFileInfo::exists(path);
-    };
+    if (!found)
+        dropServerWait(); // a server still being waited for no longer matters
     if (action == Alternate)
         action = Open;
+    // Not for copying, as for one row: the files go to the clipboard as they
+    // are, and Explorer finds out on pasting.
+    if (!found && (action == Open || action == RunAsAdmin || action == Reveal || action == Recycle)) {
+        // Files on servers asked about off the UI thread first, each server
+        // once (see perform); the action once they answered.
+        QStringList network;
+        QSet<QString> seen;
+        bool elsewhere = false; // some not on a server: what is done with them says so
+        for (const SearchResult& r : items) {
+            // What the action looks up for it: an app's target where that is
+            // shown (its shortcut starts it as it is).
+            const QString path = !r.isApp() ? r.path : action == Reveal ? r.target : QString();
+            if (!onServer(path))
+                elsewhere = true;
+            else if (!seen.contains(path)) {
+                seen.insert(path);
+                network.append(path);
+            }
+        }
+        if (!network.isEmpty()) {
+            checkServersThen(network, [this, items, action, network, elsewhere](const ServerFound& found) {
+                performMany(items, action, &found);
+                // Why nothing was done, when it was all on servers; else what was done says so.
+                const bool anyThere
+                    = std::any_of(found.cbegin(), found.cend(), [](share::Reach r) { return r == share::Reach::There; });
+                if (const QString why = whyNot(network, found); !anyThere && !elsewhere && !why.isEmpty())
+                    flash(why);
+            });
+            return;
+        }
+    }
+    // Files on SMB and WebDAV servers were looked up just now (`found`);
+    // WSL's go by its state, unasked.
+    const auto exists = [found](const QString& path) {
+        if (onServer(path))
+            return found && found->value(path, share::Reach::Unreachable) == share::Reach::There;
+        return serverAnswers(path) && QFileInfo::exists(path);
+    };
     if (action == AddFavorite && m_favorites) {
         FavoriteList favorites;
         for (const SearchResult& r : items) {
@@ -3551,14 +4270,14 @@ void Launcher::performMany(const SearchResults& items, Action action)
         QStringList files;
         for (const SearchResult& r : items) {
             const QString file = r.isApp() ? (r.hasCopyableTarget() ? r.target : QString()) : r.path;
-            if (!file.isEmpty() && exists(file))
+            if (!file.isEmpty() && (onServer(file) || exists(file))) // on a server: not asked (see above)
                 files.append(file);
         }
         if (files.isEmpty()) {
             flash(tr("选中的项目没有可以复制的文件"));
             return;
         }
-        shell::copyFiles(files);
+        copyFiles(files);
         flash(tr("已复制 %Ln 项，可在资源管理器中粘贴", nullptr, static_cast<int>(files.size())));
         break;
     }
@@ -3598,7 +4317,13 @@ void Launcher::performMany(const SearchResults& items, Action action)
             if (r.isApp()) // apps are uninstalled in Windows Settings
                 continue;
             if (!exists(r.path)) {
-                forgetRecycled(r);
+                // Gone: out of the list. One on a server is not asked again
+                // here (it may hold the window up): out when its server said
+                // so; kept when it did not answer, or its share is away.
+                if (!onServer(r.path))
+                    forgetRecycled(r);
+                else if (found && found->value(r.path, share::Reach::Unreachable) == share::Reach::Missing)
+                    forgetRow(r);
                 continue;
             }
             files.append(r);
@@ -3712,6 +4437,12 @@ bool Launcher::forgetRecycled(const SearchResult& result)
 {
     if (QFileInfo::exists(result.path))
         return false;
+    forgetRow(result);
+    return true;
+}
+
+void Launcher::forgetRow(const SearchResult& result)
+{
     m_history->remove(result.path);
     emit historyChanged();
     const SearchResult* row = m_results.at(m_results.indexOf(result.path));
@@ -3722,11 +4453,11 @@ bool Launcher::forgetRecycled(const SearchResult& result)
         else if (m_totalMatches > 0)
             --m_totalMatches;
     }
-    return true;
 }
 
 QVariantList Launcher::menuItems(int row) const
 {
+    m_menuFileCommands.clear(); // this menu's, filled by fileCommandItems
     const SearchResult* r = m_results.at(row);
     if (!r)
         return {};
@@ -3739,6 +4470,34 @@ QVariantList Launcher::menuItems(int row) const
         };
     };
     const QVariantMap separator {{u"separator"_s, true}};
+    // The plugins' `files` commands (用局域网发送… and the like) for the row's
+    // file or folder, or the whole selection: a group of their own.
+    const auto fileCommandItems = [&](QVariantList& into) {
+        QStringList paths;
+        QList<bool> folders;
+        if (!m_plugins || !fileCommandPaths(row, &paths, &folders))
+            return;
+        const QString locale = uiLocale();
+        const std::vector<plugin::Catalog::FileCommand> commands = m_plugins->catalog().fileCommands(paths, folders);
+        for (std::size_t i = 0; i < commands.size() && i < 20; ++i) {
+            const plugin::Catalog::FileCommand& c = commands[i];
+            QString text = c.trigger->title.pick(locale);
+            if (text.isEmpty())
+                text = c.command->title.pick(locale);
+            if (text.isEmpty())
+                text = c.entry->manifest->name.pick(locale);
+            // A glyph of the command's (or the plugin's) icon, else the puzzle.
+            const QString icon = !c.command->icon.isEmpty() ? c.command->icon : c.entry->manifest->icon;
+            bool ok = false;
+            const uint code = icon.startsWith(u"glyph:U+", Qt::CaseInsensitive) ? icon.mid(8).toUInt(&ok, 16) : 0;
+            const QChar glyph(static_cast<char16_t>(ok && code >= 0xE000 && code <= 0xF8FF ? code : 0xEA86));
+            if (i == 0)
+                into.append(separator);
+            into.append(entry(static_cast<Action>(PluginFileAction + static_cast<int>(m_menuFileCommands.size())), text, QString(),
+                QString(glyph)));
+            m_menuFileCommands.push_back({c.entry->id, c.command->id, paths});
+        }
+    };
 
     if (m_results.isSelected(row) && m_results.selectedCount() > 1) { // for the whole selection
         const SearchResults selection = m_results.selection();
@@ -3747,6 +4506,7 @@ QVariantList Launcher::menuItems(int row) const
         items.append(entry(Open, tr("打开 %Ln 项", nullptr, static_cast<int>(selection.size())), u"Enter"_s, u"\uE8E5"_s));
         if (any([](const SearchResult& r) { return !r.isApp() || (!r.isPlace() && !r.target.isEmpty()); }))
             items.append(entry(Reveal, tr("打开所在位置"), u"Ctrl+Enter"_s, u"\uE8DA"_s));
+        fileCommandItems(items);
         items.append(separator);
         if (any([](const SearchResult& r) { return !r.isApp() || r.hasCopyableTarget(); }))
             items.append(entry(CopyItem, tr("复制"), u"Ctrl+C"_s, u"\uE8C8"_s));
@@ -3909,6 +4669,7 @@ QVariantList Launcher::menuItems(int row) const
         items.append(entry(SearchInFolder, tr("在此文件夹中搜内容"), QString(), u"\uE721"_s)); // Search
     if (!r->isDir && shell::canRunAsAdministrator(r->path))
         items.append(entry(RunAsAdmin, tr("以管理员身份运行"), u"Ctrl+Shift+Enter"_s, u"\uE7EF"_s));
+    fileCommandItems(items);
     items.append(separator);
     items.append(entry(CopyItem, tr("复制"), u"Ctrl+C"_s, u"\uE8C8"_s));
     items.append(entry(CopyPath, tr("复制完整路径"), u"Ctrl+Shift+C"_s, u"copyPath"_s));
@@ -3948,15 +4709,21 @@ void Launcher::showSystemMenu(int row, const QVariant& globalPos)
     const SearchResult* at = m_results.at(row);
     if (!at || !hasSystemMenu(row) || m_systemMenuOpen || !m_window)
         return;
+    dropServerWait(); // a server still being waited for no longer matters (nor opens under the menu)
     // The selection when the row is in it (its files; apps and the like
     // have no shell menu), else the row alone, as Win顺's menu has it.
     const SearchResults items = m_results.isSelected(row) && m_results.selectedCount() > 1 ? m_results.selection()
                                                                                          : SearchResults {*at};
     QStringList paths;
+    QStringList network; // asked off the UI thread, below: a share that does not answer would hold the shell up for long
     for (const SearchResult& r : items) {
-        // A share that does not answer would hold the shell up for long.
-        if (!r.isApp() && !r.missing && !r.offline && serverAnswers(r.path))
-            paths.append(r.path);
+        if (r.isApp() || r.missing || r.offline)
+            continue;
+        if (onServer(r.path))
+            network.append(r.path);
+        else if (!serverAnswers(r.path)) // WSL: its state, without asking
+            continue;
+        paths.append(r.path);
     }
     if (paths.isEmpty())
         return;
@@ -3964,6 +4731,24 @@ void Launcher::showSystemMenu(int row, const QVariant& globalPos)
         paths.move(here, 0); // the row asked on first: the one the menu falls back to
     const std::optional<QPointF> pos = globalPos.canConvert<QPointF>() ? std::optional(globalPos.toPointF()) : std::nullopt;
     m_systemMenuAsked.start();
+    if (!network.isEmpty()) {
+        // Each server asked once (see perform); the menu once they
+        // answered, for the files found there.
+        checkServersThen(network, [this, paths, network, pos, name = at->name](const ServerFound& found) {
+            QStringList there;
+            for (const QString& path : paths) {
+                if (!onServer(path) || found.value(path, share::Reach::Unreachable) == share::Reach::There)
+                    there.append(path);
+            }
+            if (!there.isEmpty())
+                runSystemMenu(there, pos); // from the event loop already
+            else if (const QString why = whyNot(network, found); !why.isEmpty())
+                flash(why);
+            else
+                flash(paths.size() == 1 ? tr("“%1” 已不存在").arg(name) : tr("选中的项目都已不存在"));
+        });
+        return;
+    }
     // From the event loop, not from inside the click's handler: the menu's
     // loop runs for as long as it is up (with the queued work going on
     // underneath: results coming in, rows rewritten), and the command may
@@ -4367,6 +5152,16 @@ void Launcher::startPluginQuery(const QString& text, std::optional<KeywordMode> 
     m_pluginWait.stop();
     m_pluginSlow = false;
     m_pluginProgress.clear();
+    if (!m_queryError.isEmpty()) {
+        ++m_pluginQueryId;
+        if (m_plugins)
+            m_plugins->cancelAll();
+        if (m_merge)
+            m_merge->begin(m_pluginQueryId, text, {}, {});
+        if (was)
+            emit pluginChanged();
+        return;
+    }
     if (keyword && keyword->pluginId == kShotPlugin) {
         // Win顺's own list: no plugin is asked, and whatever they were
         // asked before is moot (their answers come for an older id).
@@ -4409,6 +5204,15 @@ void Launcher::onPluginResults(std::uint64_t queryId, const QString& pluginId, c
         return;
     const SearchResult* current = m_results.at(m_currentRow);
     const QString currentPath = current ? current->path : QString();
+    // The keyword's list as it stands, when this changes it by itself (a
+    // rerun, a later batch: not the first rows for what was typed).
+    const bool update = m_keyword && m_keyword->pluginId == pluginId && !m_replacePending && !m_panel;
+    QStringList before;
+    if (update) {
+        before.reserve(m_results.count());
+        for (int i = 0; i < m_results.count(); ++i)
+            before.append(m_results.at(i)->path);
+    }
     plugin::Items filtered = items;
     if (m_panel) {
         const EntryFilter filter = panelFilter();
@@ -4441,7 +5245,71 @@ void Launcher::onPluginResults(std::uint64_t queryId, const QString& pluginId, c
     if (m_merge->takeBetterFirstRow())
         emit betterFirstRow();
     sortShownPanel(currentPath);
+    if (update)
+        followCurrentRow(before, currentPath);
     refreshStatus();
+}
+
+// A keyword's list changed by itself (onPluginResults): rows come and go
+// above the keyboard's (a request arrives, a device shows up), so the row
+// the keyboard is on would be another under the same Enter. The keyboard
+// follows its row, the first row's too (GitHub #113: a request coming in on
+// top never takes an Enter meant for the row below; the user moves onto it).
+// A row that went, or a row clicked that changed, does nothing for a moment
+// (trigger, clickRow). Only right after the list opened from that plugin's
+// notification (openedFromToast) does the first row stay first, once: the
+// list opens as it was when hidden, and the request the notification was
+// about comes in on top a moment later. Enter waits a moment there too.
+void Launcher::followCurrentRow(const QStringList& before, const QString& currentPath)
+{
+    const int count = m_results.count();
+    if (!m_rowClock.isValid())
+        m_rowClock.start();
+    m_rowChangedAt.resize(count);
+    QStringList after;
+    after.reserve(count);
+    for (int i = 0; i < count; ++i) {
+        after.append(m_results.at(i)->path);
+        if (i >= before.size() || after[i] != before[i])
+            m_rowChangedAt[i] = m_rowClock.elapsed() + 1;
+    }
+    const bool standIn = m_currentGone.isValid() && m_currentGone.elapsed() < 800;
+    const bool openedForIt = m_toastOpened.isValid() && m_toastOpened.elapsed() < kToastOpenMs && m_keyword
+                             && m_keyword->pluginId == m_toastPlugin;
+    const navigation::RowFollow follow = navigation::followRow(before, after, m_currentRow, currentPath, standIn, openedForIt);
+    if (follow.kind == navigation::RowFollow::Kind::Stay)
+        return;
+    const QScopedValueRollback following(m_following, true);
+    if (follow.kind == navigation::RowFollow::Kind::Wait) {
+        // Past the end of a shorter list it goes to the last row, still
+        // waiting (the list would move it there later, as if chosen).
+        if (m_currentRow == 0 && openedForIt)
+            m_toastOpened.invalidate(); // once: what the notification was about came
+        m_currentGone.start();
+        if (m_currentRow != 0)
+            emit currentRowMoved(m_currentRow < count ? -1 : count - 1); // -1: only closes a menu opened on it
+        return;
+    }
+    emit currentRowMoved(follow.row);
+}
+
+void Launcher::openedFromToast(const QString& pluginId)
+{
+    m_toastPlugin = pluginId;
+    m_toastOpened.start();
+}
+
+bool Launcher::rowJustChanged(int row) const
+{
+    if (row < 0 || row >= m_rowChangedAt.size() || m_rowChangedAt[row] == 0)
+        return false;
+    return m_rowClock.elapsed() + 1 - m_rowChangedAt[row] < 800;
+}
+
+void Launcher::forgetRowChanges()
+{
+    m_rowChangedAt.clear();
+    m_currentGone.invalidate();
 }
 
 void Launcher::onPluginFinished(std::uint64_t queryId, const QString& pluginId)
@@ -4516,24 +5384,43 @@ void Launcher::performPlugin(const SearchResult& result, Action action)
         return;
     if (index == 0) {
         switch (p.openKind) {
-        case PluginRow::OpenKind::Path:
+        case PluginRow::OpenKind::Path: {
             // A program with arguments or a working folder is started as
-            // such; anything else opens as the shell would open it.
+            // such; anything else opens as the shell would open it. Win顺
+            // carries this out, so a plugin without `processes` may not have
+            // it start a program (pluginOpenAllowed); the launcher stays open
+            // to show the notice.
+            plugin::Open open;
+            open.kind = plugin::Open::Kind::Path;
+            open.target = p.openTarget;
+            open.args = p.openArgs;
+            open.cwd = p.openCwd;
+            if (!pluginOpenAllowed(p.pluginId, open))
+                return;
             if (p.openArgs.isEmpty() && p.openCwd.isEmpty())
                 shell::open(p.openTarget, false, reportFailure(result.name));
             else if (!shell::startUnelevated(p.openTarget.toStdWString(), p.openArgs.toStdWString(), p.openCwd.toStdWString()).valid())
                 emit openFailed(result.name);
             emit dismissRequested();
             return;
-        case PluginRow::OpenKind::Url:
+        }
+        case PluginRow::OpenKind::Url: {
             // "winshun:settings": Win顺's own settings at the plugin's card
             // (a row saying what to set up); never handed to the shell.
-            if (p.openTarget.compare(u"winshun:settings", Qt::CaseInsensitive) == 0)
+            if (p.openTarget.compare(u"winshun:settings", Qt::CaseInsensitive) == 0) {
                 emit pluginSettingsRequested(p.pluginId);
-            else
-                shell::openUrl(p.openTarget);
+                emit dismissRequested();
+                return;
+            }
+            plugin::Open open;
+            open.kind = plugin::Open::Kind::Url;
+            open.target = p.openTarget;
+            if (!pluginOpenAllowed(p.pluginId, open))
+                return;
+            shell::openUrl(p.openTarget);
             emit dismissRequested();
             return;
+        }
         case PluginRow::OpenKind::None:
             break;
         }
@@ -4557,19 +5444,87 @@ void Launcher::performPlugin(const SearchResult& result, Action action)
     m_plugins->action(++m_pluginRequest, p.pluginId, p.commandId, actionId, p.item, words);
 }
 
-void Launcher::onPluginActionDone(std::uint64_t requestId, const QList<ws::plugin::Effect>& effects, bool ok, const QString& error)
+void Launcher::onPluginActionDone(std::uint64_t requestId, const QString& pluginId, const QList<ws::plugin::Effect>& effects, bool ok, const QString& error)
 {
     (void)requestId;
     if (!ok) {
         flash(error.isEmpty() ? tr("插件没有完成这个操作") : error);
         return;
     }
-    applyEffects(effects);
+    applyEffects(pluginId, effects);
 }
 
-// What a plugin asked for after an action, in its order: hide (the
-// default), keep, setQuery, notify, copy, open, replace (its items as the list).
-void Launcher::applyEffects(const QList<ws::plugin::Effect>& effects)
+bool Launcher::fileCommandPaths(int row, QStringList* paths, QList<bool>* folders) const
+{
+    const SearchResult* at = m_results.at(row);
+    if (!at)
+        return false;
+    const SearchResults items = m_results.isSelected(row) && m_results.selectedCount() > 1 ? m_results.selection()
+                                                                                         : SearchResults {*at};
+    for (const SearchResult& r : items) {
+        if (r.isApp() || r.clipId > 0 || r.missing || r.offline || r.path.isEmpty())
+            return false;
+        paths->append(QDir::toNativeSeparators(r.path));
+        folders->append(r.isDir);
+    }
+    return !paths->isEmpty();
+}
+
+// A plugin's `files` command from a file's menu (menuItems): one action
+// request with every path, its effects as an action's (onPluginActionDone).
+// The plugin and command the menu named, for the files it was for, if they
+// still take them (GitHub #113: by its place alone, the files could go to
+// another plugin once the plugins changed under the menu).
+void Launcher::runFileCommand(int row, int index)
+{
+    dropServerWait(); // a server still being waited for no longer matters
+    if (index < 0 || static_cast<std::size_t>(index) >= m_menuFileCommands.size())
+        return;
+    const MenuFileCommand chosen = m_menuFileCommands[static_cast<std::size_t>(index)];
+    QStringList paths;
+    QList<bool> folders;
+    if (!m_plugins || !fileCommandPaths(row, &paths, &folders))
+        return;
+    if (paths != chosen.paths || !plugin::Catalog::hasFileCommand(m_plugins->catalog().fileCommands(paths, folders), chosen.pluginId, chosen.commandId)) {
+        flash(tr("插件或选中的文件刚刚变了，再打开一次菜单"));
+        return;
+    }
+    m_plugins->action(++m_pluginRequest, chosen.pluginId, chosen.commandId, u"files"_s, QJsonObject {}, QString(), paths);
+}
+
+// Win顺 carries out a plugin's declarative open (an item's default action, or
+// an `open` effect): to a program or a non-web link only when the plugin has
+// `processes` (OpenPolicy). Blocked: don't run it, say so plainly, log the
+// first block of each plugin.
+bool Launcher::pluginOpenAllowed(const QString& pluginId, const plugin::Open& open)
+{
+    // Off, or a newer version waiting for the user's OK on more permissions
+    // (Catalog::setConfirmed): its rows still on show open nothing, as its
+    // manifest's permissions are not the user's word yet.
+    if (m_plugins && !m_plugins->catalog().enabled(pluginId)) {
+        flash(m_plugins->catalog().awaitingConsent(pluginId).isEmpty()
+                ? tr("“%1”已停用").arg(pluginName(pluginId))
+                : tr("“%1”的新版本要更多权限，到设置里同意后才能用").arg(pluginName(pluginId)));
+        return false;
+    }
+    const plugin::Entry* e = m_plugins ? m_plugins->catalog().find(pluginId) : nullptr;
+    const bool hasProcesses = e && e->manifest && e->manifest->permissions.has(plugin::Permission::Processes);
+    const plugin::OpenRuling ruling = plugin::ruleOpen(open, hasProcesses, plugin::systemProbe());
+    if (ruling.allowed())
+        return true;
+    const QString shown = ruling.target.size() > 60 ? ruling.target.left(57) + QStringLiteral("…") : ruling.target;
+    flash(tr("“%1”没有“启动程序”权限，没能打开 %2").arg(pluginName(pluginId), shown));
+    if (!m_openBlockedLogged.contains(pluginId)) {
+        m_openBlockedLogged.insert(pluginId);
+        qWarning().noquote() << u"[plugin] "_s + pluginId + u" 没有 processes 权限，拦下 open："_s + ruling.target;
+    }
+    return false;
+}
+
+// What a plugin asked for after an action, in its order: hide (the default),
+// keep, setQuery, notify, copy, open, replace (its items as the list).
+// `pluginId`: whose action it was (onPluginActionDone), for the open policy.
+void Launcher::applyEffects(const QString& pluginId, const QList<ws::plugin::Effect>& effects)
 {
     bool hide = false;
     for (const plugin::Effect& e : effects) {
@@ -4590,18 +5545,30 @@ void Launcher::applyEffects(const QList<ws::plugin::Effect>& effects)
             break;
         case plugin::Effect::Kind::Open:
             if (e.open.kind == plugin::Open::Kind::Url && e.open.target.compare(u"winshun:settings", Qt::CaseInsensitive) == 0) {
-                if (m_keyword)
-                    emit pluginSettingsRequested(m_keyword->pluginId); // its own card (see performPlugin)
-            } else if (e.open.kind == plugin::Open::Kind::Url)
-                shell::openUrl(e.open.target);
-            else if (e.open.args.isEmpty() && e.open.cwd.isEmpty())
-                shell::open(e.open.target, false);
-            else
-                shell::startUnelevated(e.open.target.toStdWString(), e.open.args.toStdWString(), e.open.cwd.toStdWString());
+                const QString card = !pluginId.isEmpty() ? pluginId : (m_keyword ? m_keyword->pluginId : QString());
+                if (!card.isEmpty())
+                    emit pluginSettingsRequested(card); // its own card (see performPlugin)
+            } else if (pluginOpenAllowed(pluginId, e.open)) {
+                if (e.open.kind == plugin::Open::Kind::Url)
+                    shell::openUrl(e.open.target);
+                else if (e.open.args.isEmpty() && e.open.cwd.isEmpty())
+                    shell::open(e.open.target, false);
+                else
+                    shell::startUnelevated(e.open.target.toStdWString(), e.open.args.toStdWString(), e.open.cwd.toStdWString());
+            }
             break;
         case plugin::Effect::Kind::Replace:
-            if (m_merge && m_keyword)
+            if (m_merge && m_keyword) {
+                // As a rerun's rows (onPluginResults): the keyboard stays on its row.
+                const SearchResult* current = m_results.at(m_currentRow);
+                const QString currentPath = current ? current->path : QString();
+                QStringList before;
+                for (int i = 0; i < m_results.count(); ++i)
+                    before.append(m_results.at(i)->path);
                 m_merge->replace(m_keyword->pluginId, m_keyword->commandId, e.items);
+                if (!m_panel)
+                    followCurrentRow(before, currentPath);
+            }
             break;
         }
     }

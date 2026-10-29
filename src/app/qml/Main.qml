@@ -25,7 +25,11 @@ Window {
     // the rows' list and the search bar are the panel's own, and everything
     // here that works a list or the bar goes through `view` and `searchBar`.
     readonly property bool panel: launcher.panel
-    readonly property ListView view: panel ? panelPage.view : boxList
+    readonly property var view: panel ? panelPage.view : boxList
+    readonly property int gridColumns: panel ? panelPage.gridColumns : 1
+    // Keep the input method in the text field while arrows browse the grid.
+    // Typing or clicking the field returns horizontal arrows to its caret.
+    property bool galleryNavigation: false
     readonly property SearchBar searchBar: panel ? panelPage.searchBar : boxBar
     readonly property int viewRowHeight: panel ? panelPage.rowHeight : rowHeight
 
@@ -41,9 +45,86 @@ Window {
     // TypeStrip's animated height sizes this window through the column, so
     // its outer edge, rows and footer follow the same animation. At the
     // taskbar the list gives the strip its room and the window stays full height.
-    // As many rows as fit between the window's top and the bottom of the screen.
+    // As many rows as fit between the window's top and the bottom of the screen
+    // (with the caption over the rows found elsewhere, when it is among them).
     readonly property int fitRows: Math.max(minRows, Math.min(maxRows,
-                                            Math.floor((placement.room - chromeHeight) / rowHeight)))
+                                            Math.floor((placement.room - chromeHeight - captionRoom - (fullHeight ? 0 : detailSpace)) / rowHeight)))
+    // Rows whose title is the payload (a translation, a sum: a plugin's row
+    // that only copies, ResultModel.copyTexts) and one of them cut short by
+    // its line (GitHub #117): the list gets a text area (detailBlock) under
+    // the rows, tall enough for the longest of them, and it shows the text of
+    // the current row when that is one. So the window changes its height only
+    // when the results change, not as the selection moves. The rows keep
+    // their one height; the area is budgeted in fitRows (within the screen),
+    // or, at the taskbar, takes room from the list.
+    property var copyTexts: [] // per row, "" for any other
+    function refreshCopyTexts() { copyTexts = panel ? [] : launcher.results.copyTexts() }
+    Connections {
+        target: window.launcher.results
+        function onModelReset() { Qt.callLater(window.refreshCopyTexts) }
+        function onRowsInserted() { Qt.callLater(window.refreshCopyTexts) }
+        function onRowsRemoved() { Qt.callLater(window.refreshCopyTexts) }
+        function onRowsMoved() { Qt.callLater(window.refreshCopyTexts) }
+        function onLayoutChanged() { Qt.callLater(window.refreshCopyTexts) }
+        function onDataChanged() { Qt.callLater(window.refreshCopyTexts) }
+    }
+    QtObject { Component.onCompleted: window.refreshCopyTexts() }
+    FontMetrics { id: detailMetrics; font.pixelSize: Theme.uiTitle }
+    // A row's title gets about the list's width less its icon and the buttons
+    // (a little less, so that no cut row is missed).
+    readonly property real detailLine: Math.max(0, boxList.width - 160)
+    readonly property string detailLongest: {
+        if (panel || clipboardBelow)
+            return ""
+        let best = ""
+        let wide = detailLine
+        for (const t of copyTexts) {
+            const w = t ? detailMetrics.advanceWidth(t) : 0
+            if (w > wide) {
+                best = t
+                wide = w
+            }
+        }
+        return best
+    }
+    // What the area shows: the current row's text; empty on any other row.
+    readonly property string detailText: detailLongest.length === 0 ? "" : (copyTexts[boxList.currentIndex] || "")
+    readonly property int detailSpace: detailLongest.length === 0 ? 0
+                                       : fullHeight ? Math.min(detailBlock.wanted, Math.max(0, (listRows - 1) * rowHeight))
+                                       : detailBlock.wanted
+    // Typed in a folder's window, its own rows first (GitHub #110): the rows
+    // found elsewhere start here (Launcher.results.elsewhereRow; -1: none),
+    // under a caption between the rows (ElsewhereCaption, the list's section
+    // heading). Among the rows the window shows, the list area grows by it;
+    // at the taskbar the area keeps its height, and the rows scroll.
+    readonly property int elsewhereRow: launcher.results.elsewhereRow
+    readonly property int captionHeight: Theme.labelRowHeight
+    readonly property int captionRoom: !fullHeight && elsewhereRow >= 0
+                                       && elsewhereRow < Math.min(maxRows, Math.floor((placement.room - chromeHeight) / rowHeight))
+                                       ? captionHeight : 0
+    // Only where it fits: at the fewest rows (minRows) the window keeps those
+    // and the caption scrolls with the rows, as at the taskbar.
+    readonly property int captionSpace: !fullHeight && elsewhereRow >= 0 && elsewhereRow < listRows
+                                        && listRows * rowHeight + hintSpace + captionHeight <= placement.room - chromeHeight
+                                        ? captionHeight : 0
+    // The row at `y` in the list (its content's own coordinates), a caption
+    // taken as part of the row after it (`after`), or of the one before. With
+    // one, the rows are not all of a height: the list places those it has not
+    // made by their average size, so the ones made are asked where they are
+    // (again once laid out: contentHeight); where there is none, counted.
+    function rowAtY(y, after) {
+        const h = viewRowHeight
+        if (panel || elsewhereRow < 0 || boxList.contentHeight <= 0)
+            return Math.floor(y / h)
+        const at = boxList.indexAt(boxList.contentX + 1, y)
+        if (at >= 0)
+            return at
+        const under = boxList.itemAtIndex(elsewhereRow)
+        const top = under ? under.y - captionHeight : elsewhereRow * h
+        if (y >= top && y < top + captionHeight)
+            return after ? elsewhereRow : elsewhereRow - 1
+        return Math.floor((y < top ? y : y - captionHeight) / h)
+    }
     readonly property bool contentMode: launcher.scope === Launcher.Content
     readonly property string trimmedQuery: launcher.query.trim()
     // What was typed, on one line to show it (with a line break in it, it
@@ -163,7 +244,8 @@ Window {
     }
 
     // Nothing found: under the search box, or in the list area at full height.
-    readonly property string emptyTitle: contentMode && launcher.whereMissing.length > 0
+    readonly property string emptyTitle: launcher.queryError.length > 0 ? launcher.queryError
+        : contentMode && launcher.whereMissing.length > 0
         ? qsTr("%1 不在索引里，没法在里面搜").arg(launcher.whereMissing)
         : contentMode && launcher.contentWhere.length > 0 && launcher.contentWords.length === 0
         ? qsTr("在 %1 里搜：接着输入要找的文字").arg(launcher.contentWhere)
@@ -420,9 +502,9 @@ Window {
     // as a global hotkey stays its (numberkeys::heldMask).
     readonly property int numberKey: launcher.numberKeys === "ctrl" ? Qt.Key_Control
                                    : launcher.numberKeys === "alt" ? Qt.Key_Alt : -1
-    readonly property int firstShownRow: Math.max(0, Math.floor((view.contentY + viewRowHeight / 2) / viewRowHeight))
+    readonly property int firstShownRow: Math.max(0, rowAtY(view.contentY + viewRowHeight / 2, true) * gridColumns)
     readonly property int lastShownRow: Math.min(view.count - 1, firstShownRow + 8,
-                                                 Math.floor((view.contentY + view.height - viewRowHeight / 2) / viewRowHeight))
+                                                 rowAtY(view.contentY + view.height - viewRowHeight / 2, false) * gridColumns + gridColumns - 1)
     readonly property string numberModifier: numberKey === Qt.Key_Alt ? "Alt" : "Ctrl"
     NumberHints {
         id: numberHints
@@ -477,6 +559,9 @@ Window {
     function openContextMenu(index, globalPos) {
         if (index < 0 || index >= view.count)
             return
+        // A file still waited for (a slow server, GitHub #116) is not opened
+        // under the menu once it answers: the menu is what is asked for now.
+        window.launcher.dropServerWait()
         if (!window.launcher.results.isSelected(index))
             window.launcher.clearSelection() // as in Explorer: the menu is for this row alone
         view.currentIndex = index
@@ -495,6 +580,7 @@ Window {
     function closeContextMenu() {
         if (contextMenu)
             contextMenu.dismiss()
+        panelPage.closeColumns() // the panel's columns menu goes with it
     }
 
     // The system's own menu for a file's or folder's row (the shell's, with
@@ -554,6 +640,10 @@ Window {
             event.accepted = true
             return
         }
+        if (panelPage.columnMenuOpen && panelPage.columnMenu.handleKey(event)) {
+            event.accepted = true
+            return
+        }
         // Alone, it would open the window menu, and the next keys would go to
         // that: also on the first of a double Alt that comes too slowly.
         if (event.key === Qt.Key_Alt) {
@@ -593,20 +683,28 @@ Window {
             event.accepted = true
             return
         }
-        if (event.key === Qt.Key_Down || event.key === Qt.Key_Up || event.key === Qt.Key_PageDown || event.key === Qt.Key_PageUp)
+        if (event.key === Qt.Key_Down || event.key === Qt.Key_Up || event.key === Qt.Key_PageDown || event.key === Qt.Key_PageUp) {
             window.launcher.keyboardMoved() // Alt+P is for this row now, not the one under a pointer left where it was
+            if (panel && launcher.gallery && searchBar.composition.length === 0)
+                galleryNavigation = true
+        }
         switch (event.key) {
-        case Qt.Key_Down: shift ? extendSelection(1) : moveSelection(1); break
+        case Qt.Key_Down: shift ? extendSelection(gridColumns) : moveSelection(gridColumns); break
         case Qt.Key_Up:
             if (!shift && showHome && view.currentIndex <= 0)
                 enterHome()
             else
-                shift ? extendSelection(-1) : moveSelection(-1)
+                shift ? extendSelection(-gridColumns) : moveSelection(-gridColumns)
             break
-        case Qt.Key_PageDown: shift ? extendSelection(fitRows) : moveSelection(fitRows); break
-        case Qt.Key_PageUp: shift ? extendSelection(-fitRows) : moveSelection(-fitRows); break
+        case Qt.Key_PageDown: shift ? extendSelection(panel ? Math.max(1, Math.floor(view.height / viewRowHeight)) * gridColumns : fitRows) : moveSelection(panel ? Math.max(1, Math.floor(view.height / viewRowHeight)) * gridColumns : fitRows); break
+        case Qt.Key_PageUp: shift ? extendSelection(panel ? -Math.max(1, Math.floor(view.height / viewRowHeight)) * gridColumns : -fitRows) : moveSelection(panel ? -Math.max(1, Math.floor(view.height / viewRowHeight)) * gridColumns : -fitRows); break
         case Qt.Key_Left:
         case Qt.Key_Right: // Alt+← →: the volume's row, in steps of 5 (held, on and on); plain ← → are the box's caret
+            if (panel && launcher.gallery && galleryNavigation && !ctrl && !(event.modifiers & Qt.AltModifier)) {
+                const delta = event.key === Qt.Key_Right ? 1 : -1
+                shift ? extendSelection(delta) : moveSelection(delta)
+                break
+            }
             if ((event.modifiers & ~Qt.KeypadModifier) !== Qt.AltModifier || hintIndex >= 0
                     || searchBar.composition.length > 0
                     || !window.launcher.stepSwitch(view.currentIndex, event.key === Qt.Key_Right ? 1 : -1))
@@ -667,6 +765,10 @@ Window {
                 return
             window.launcher.togglePanel()
             break
+        case Qt.Key_D: // typed in a folder's window: its rows first, or there alone (GitHub #110)
+            if (!ctrl || shift || !window.launcher.switchTypingFolder())
+                return
+            break
         case Qt.Key_Menu: // Shift+Menu: the system's menu for the row; the Menu key alone comes back as a context-menu event (Win顺's menu)
             if (!shift || view.currentIndex < 0 || !openSystemMenu(view.currentIndex, rowPoint(view.currentIndex)))
                 return
@@ -700,6 +802,10 @@ Window {
             // (always the files, once rows have been picked).
             if (!ctrl || (!shift && searchBar.hasSelection && selectedCount === 0))
                 return
+            if (!shift && detailEdit.selectedText.length > 0) { // picked in the long text under the rows
+                detailEdit.copy()
+                break
+            }
             act(shift ? Launcher.CopyPath : Launcher.CopyItem)
             break
         default:
@@ -771,6 +877,11 @@ Window {
             if (window.homeIndex < 0 && view.count > 0)
                 view.currentIndex = window.launcher.results.defaultRow()
         }
+        function onCurrentRowMoved(index) { // a plugin's list changed under the keyboard: it stays on its row
+            window.closeContextMenu() // it was for the row where it stood
+            if (index >= 0 && index < view.count && window.homeIndex < 0 && window.hintIndex < 0)
+                view.currentIndex = index
+        }
         function onContextMenuKeyPressed(system) { // Menu key, Shift+F10; Shift+Menu when an IME kept the key itself
             const row = view.currentIndex
             if (system && row >= 0 && row < view.count && window.openSystemMenu(row, window.rowPoint(row)))
@@ -778,6 +889,7 @@ Window {
             window.openContextMenu(row)
         }
         function onQueryChanged() {
+            window.galleryNavigation = false
             nameTip.dismiss() // typed: the keys go to the field, not handleKey
             if (boxBar.text !== window.launcher.query)
                 boxBar.text = window.launcher.query
@@ -785,6 +897,7 @@ Window {
                 panelPage.searchBar.text = window.launcher.query
         }
         function onPanelChanged() { // the other bar has the keyboard now, the words as they were
+            window.galleryNavigation = false
             nameTip.dismiss()
             window.closeContextMenu()
             window.searchBar.focusAtEnd()
@@ -836,6 +949,7 @@ Window {
         frame: window.frame
         dimmed: window.dimRows
         onKeyPressed: (event) => window.handleKey(event)
+        onEditingRequested: window.galleryNavigation = false
         onRowClicked: (index, modifiers) => window.rowClicked(index, modifiers)
         onRowDoubleClicked: (index, modifiers) => window.rowDoubleClicked(index, modifiers)
         onRowMenuRequested: (index, globalPos, modifiers) => window.rowMenuRequested(index, globalPos, modifiers)
@@ -852,7 +966,7 @@ Window {
             selectTo(index, ctrl)
         } else if (ctrl) {
             toggleRow(index)
-        } else if (launcher.doubleClickToOpen) {
+        } else if (launcher.doubleClickToOpen || (panel && launcher.gallery)) {
             // Only selected (#44); the double click opens. A row of a picked
             // set keeps the set, so the double click opens all of it.
             if (!launcher.results.isSelected(index))
@@ -863,11 +977,13 @@ Window {
             view.currentIndex = index
             launcher.clickRow(index) // a selected row opens the selection
         }
+        if (panel && launcher.gallery)
+            galleryNavigation = true
     }
     // A double click opens, where a click only selects; with Ctrl or Shift it
     // is two selecting clicks and nothing more.
     function rowDoubleClicked(index, modifiers) {
-        if (!launcher.doubleClickToOpen || (modifiers & (Qt.ControlModifier | Qt.ShiftModifier)))
+        if (!(launcher.doubleClickToOpen || (panel && launcher.gallery)) || (modifiers & (Qt.ControlModifier | Qt.ShiftModifier)))
             return
         view.currentIndex = index
         launcher.clickRow(index)
@@ -921,8 +1037,8 @@ Window {
         Item {
             id: listArea
             width: parent.width
-            height: window.listRows > 0 ? window.listRows * window.rowHeight + 8 + window.hintSpace
-                                          + (window.fullHeight ? -typeStrip.height : window.headingHeight) : 0
+            height: window.listRows > 0 ? window.listRows * window.rowHeight + 8 + window.hintSpace + window.captionSpace
+                                          + (window.fullHeight ? -typeStrip.height : window.headingHeight + window.detailSpace) : 0
             visible: window.listRows > 0 && !window.clipboardBelow
 
             Text { // nothing is named as typed: these rows sound like it (window.headingHeight)
@@ -1053,6 +1169,7 @@ Window {
                 id: boxList
                 anchors.fill: parent
                 anchors.topMargin: (window.showHome ? home.height : 0) + window.headingHeight
+                anchors.bottomMargin: window.detailSpace
                 topMargin: 4
                 bottomMargin: 4
                 clip: true
@@ -1071,6 +1188,24 @@ Window {
                     view: boxList
                     animate: SystemTheme.animations
                     snapRows: true
+                    headingRow: window.elsewhereRow
+                    headingHeight: window.captionHeight
+                }
+                // Typed in a folder's window, its own rows first (GitHub #110):
+                // the rows found elsewhere under a caption, the way to the
+                // folder alone at its end (as Ctrl+D).
+                section.property: "elsewhere"
+                section.delegate: ElsewhereCaption {
+                    id: caption
+                    width: boxList.width
+                    folder: window.launcher.typingFolder
+                    alone: window.elsewhereRow === 0
+                    transform: ScrollPixelAlignment { // on whole device pixels, as the rows
+                        view: boxList
+                        viewY: layout.y + listArea.y + boxList.y
+                        itemY: caption.y
+                    }
+                    onOnlyRequested: window.launcher.switchTypingFolder()
                 }
                 onContentYChanged: nameTip.dismiss() // scrolled: another row under the pointer
                 onCurrentIndexChanged: {
@@ -1230,9 +1365,72 @@ Window {
                 flickable: boxList
                 anchors.right: parent.right
                 anchors.top: boxList.top
-                anchors.bottom: parent.bottom
+                anchors.bottom: boxList.bottom
                 // Its own at the window's right edge, not the edge that widens the window.
                 Component.onCompleted: window.frame.addControl(boxScrollBar)
+            }
+
+            TextEdit { // measures the longest text at the area's width (detailBlock.wanted)
+                id: detailMeasure
+                visible: false
+                width: listArea.width - 40
+                text: window.detailLongest
+                wrapMode: TextEdit.Wrap
+                textFormat: TextEdit.PlainText
+                font.pixelSize: Theme.uiTitle
+            }
+
+            Item { // detailText, all of it wrapped; scrolls beyond a few lines. Never takes the focus: the keys stay in the box.
+                id: detailBlock
+                readonly property int pad: 10
+                readonly property int maxLines: 6
+                readonly property real lineHeight: detailMeasure.lineCount > 0 ? detailMeasure.contentHeight / detailMeasure.lineCount : detailMeasure.font.pixelSize * 1.4
+                // What the longest text wants, whole logical pixels: the divider, its padding and up to maxLines lines.
+                readonly property int wanted: window.detailLongest.length === 0 ? 0
+                                              : Math.ceil(Math.min(detailMeasure.contentHeight, maxLines * lineHeight)) + 2 * pad + 1
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: window.detailSpace
+                visible: height > 0
+                clip: true
+
+                Rectangle {
+                    width: parent.width
+                    height: Theme.edge(Screen.devicePixelRatio)
+                    color: Theme.divider
+                }
+
+                Flickable {
+                    id: detailFlick
+                    x: 20
+                    y: detailBlock.pad + 1
+                    width: parent.width - 40
+                    height: Math.max(0, parent.height - 2 * detailBlock.pad - 1)
+                    contentWidth: width
+                    contentHeight: detailEdit.contentHeight
+                    boundsBehavior: Flickable.StopAtBounds
+                    clip: true
+
+                    TextEdit {
+                        id: detailEdit
+                        objectName: "detailText"
+                        width: detailFlick.width
+                        text: window.detailText
+                        readOnly: true
+                        selectByMouse: true
+                        persistentSelection: true
+                        activeFocusOnPress: false // a click selects; the box keeps the keys
+                        activeFocusOnTab: false
+                        wrapMode: TextEdit.Wrap
+                        textFormat: TextEdit.PlainText
+                        color: Theme.text
+                        selectionColor: Theme.accentFill
+                        selectedTextColor: "white"
+                        font.pixelSize: Theme.uiTitle
+                        onTextChanged: deselect()
+                    }
+                }
             }
 
             Text { // held open while file contents are still being searched, or a plugin answers
@@ -1299,11 +1497,13 @@ Window {
     // (a right click on a row then opens it again there).
     MouseArea {
         anchors.fill: parent
-        enabled: window.menuOpen
+        enabled: window.menuOpen || panelPage.columnMenuOpen
         acceptedButtons: Qt.AllButtons
         onPressed: (mouse) => {
+            // The columns menu is closed by any click, a right click on the header included
+            const columns = panelPage.columnMenuOpen
             window.closeContextMenu()
-            mouse.accepted = mouse.button !== Qt.RightButton
+            mouse.accepted = columns || mouse.button !== Qt.RightButton
         }
         onWheel: (wheel) => window.closeContextMenu()
     }

@@ -611,6 +611,70 @@ private slots:
         }
         QVERIFY(qAbs(contentY() - destination(120.4, -15)) < 0.001);
     }
+
+    // A heading between the rows (the launcher's caption over the rows found
+    // elsewhere, GitHub #110) goes with the row under it: a notch rests on
+    // its top, the next one on that row's bottom, never between the two
+    // (there is no row there to read an edge from).
+    void headingGoesWithItsRow()
+    {
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQuick
+            Window {
+                width: 760; height: 560; visible: true
+                ListModel {
+                    id: rows
+                    Component.onCompleted: {
+                        for (let i = 0; i < 30; ++i)
+                            append({far: i >= 5})
+                    }
+                }
+                ListView {
+                    id: list
+                    objectName: "view"
+                    y: 65; width: 760; height: 488
+                    topMargin: 4; bottomMargin: 4
+                    boundsBehavior: Flickable.StopAtBounds
+                    model: rows
+                    ListWheelScroll {
+                        view: list
+                        snapRows: true; animate: false; scrollLines: 1
+                        headingRow: 5; headingHeight: 24
+                    }
+                    section.property: "far"
+                    section.delegate: Item {
+                        required property string section
+                        width: 760
+                        height: section === "true" ? 24 : 0
+                    }
+                    delegate: Rectangle {
+                        width: 760; height: 60
+                        color: "black"
+                    }
+                }
+            }
+        )", QUrl::fromLocalFile(QStringLiteral(WINSHUN_QML_DIR) + "/heading-scroll-test.qml"));
+        window.reset(qobject_cast<QQuickWindow*>(component.create()));
+        QVERIFY2(window, qPrintable(component.errorString()));
+        view = window->findChild<QQuickItem*>("view");
+        QVERIFY(view);
+        QMetaObject::invokeMethod(view, "forceLayout");
+        QCoreApplication::processEvents();
+        scrollTo(top()); // -4: the first row's top under the margin
+        const auto notches = [&](int delta, int count) {
+            QList<qreal> stops;
+            for (int notch = 0; notch < count; ++notch) {
+                wheel(delta);
+                QCoreApplication::processEvents();
+                stops.append(contentY());
+            }
+            return stops;
+        };
+        // Rows of 60, the heading (24) over the sixth: its top at 300, the row's bottom at 384.
+        QCOMPARE(notches(-120, 7), (QList<qreal> {56, 116, 176, 236, 296, 380, 440}));
+        QCOMPARE(notches(120, 3), (QList<qreal> {380, 296, 236}));
+    }
 };
 
 QTEST_MAIN(ScrollAlignmentTest)

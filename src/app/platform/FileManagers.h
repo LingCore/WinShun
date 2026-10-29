@@ -76,10 +76,11 @@ struct Folder {
 // the GUI thread.
 std::vector<Folder> openFolders();
 
-// An Explorer tab by its window (ShellTabWindowClass; the top-level window
-// on Windows 10, which has none): the folder on disk it shows (empty for
-// Home, This PC, a search and the like), and taking it to another folder
-// there, as going there in it would (its Back button comes back). Need COM.
+// An Explorer tab by its window (ShellTabWindowClass: one per tab, Windows
+// 10 has one; the top-level window should it have none): the folder on disk
+// it shows (empty for Home, This PC, a search and the like), and taking it
+// to another folder there, as going there in it would (its Back button
+// comes back). Need COM.
 // False when the tab is not among the shell's windows (they can miss one).
 std::wstring explorerFolder(HWND tab);
 // The exact Opus file-display tab; not whichever pane became active since

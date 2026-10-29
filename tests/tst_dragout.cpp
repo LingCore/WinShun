@@ -129,6 +129,27 @@ private slots:
         QVERIFY(!dragout::dataObject({QDir::toNativeSeparators(dir.filePath(u"gone.txt"_s))}));
         QVERIFY(!dragout::dataObject({}));
     }
+
+    // Copied (Ctrl+C): the files and nothing a program could paste as text
+    // instead. WPS pasted a copied picture's path from the text (GitHub #130).
+    void copiedFilesOnly()
+    {
+        // Never looked up: a server that went away must not hold the copy up.
+        const QString offline = u"\\\\192.0.2.1\\share\\照片 1.jpg"_s;
+        const QString local = u"C:/no such folder/b.png"_s;
+        const auto data = dragout::fileNamesObject({offline, local});
+        QVERIFY(data);
+        QCOMPARE(dropped(data.Get()), (QStringList {offline, QDir::toNativeSeparators(local)}));
+        QCOMPARE(preferredEffect(data.Get()), DWORD(DROPEFFECT_COPY));
+        const QStringList offered = formats(data.Get());
+        QCOMPARE(offered.size(), 2); // CF_HDROP and Preferred DropEffect
+        QVERIFY2(offered.contains(QString::number(CF_HDROP)), qPrintable(offered.join(u", ")));
+        for (const UINT text : {CF_UNICODETEXT, CF_TEXT, CF_OEMTEXT}) {
+            FORMATETC f {static_cast<CLIPFORMAT>(text), nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
+            QVERIFY(data->QueryGetData(&f) != S_OK);
+        }
+        QVERIFY(!dragout::fileNamesObject({}));
+    }
 };
 
 QTEST_GUILESS_MAIN(TestDragOut)

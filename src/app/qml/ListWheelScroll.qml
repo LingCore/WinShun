@@ -9,6 +9,7 @@ Item {
 
     required property Flickable view
     property bool animate: true
+    property int acceptedModifiers: Qt.KeyboardModifierMask
     property int scrollLines: Application.styleHints.wheelScrollLines
     // Variable-height ListView reflows round contentY during layout. Giving
     // those views integral coordinates leaves no layout fixup to interrupt
@@ -23,6 +24,12 @@ Item {
     // it stops at the end (the bottom edge of the last row), never back for
     // the top's sake.
     property bool snapRows: false
+    // A heading between the rows (a section's: the launcher's caption over
+    // the rows found elsewhere, GitHub #110), over row `headingRow`, as tall
+    // as `headingHeight`; -1: none. It goes with the row under it: no edge
+    // between them, the edge above it is that row's top.
+    property int headingRow: -1
+    property real headingHeight: 0
     readonly property bool running: glide.running
     // A list laid out bottom to top (ListView.BottomToTop: the clipboard
     // turned over) has its first row at the bottom and rests there; content
@@ -65,11 +72,18 @@ Item {
     // keeps the ones in view and its cacheBuffer only).
     function rowEdge(y, dir) {
         const list = view as ListView
-        const index = list.indexAt(list.contentX + 1, y + list.topMargin + dir * 0.5)
+        const probe = y + list.topMargin + dir * 0.5
+        let index = list.indexAt(list.contentX + 1, probe)
+        if (index < 0 && headingRow >= 0) { // on the heading: the row it goes with
+            const under = list.itemAtIndex(headingRow)
+            if (under && probe >= under.y - headingHeight && probe < under.y)
+                index = headingRow
+        }
         const row = index >= 0 ? list.itemAtIndex(index) : null
         if (!row)
             return NaN
-        return (dir > 0 ? row.y + row.height : row.y) - list.topMargin
+        const top = index === headingRow ? row.y - headingHeight : row.y
+        return (dir > 0 ? row.y + row.height : top) - list.topMargin
     }
 
     function aligned(y) {
@@ -238,6 +252,7 @@ Item {
         // Setting WheelEvent.accepted in this signal does not forward events.
         // angleDelta already includes the OS's natural-scrolling direction.
         acceptedDevices: PointerDevice.Mouse
+        acceptedModifiers: scroll.acceptedModifiers
         enabled: scroll.view.interactive
         onWheel: event => {
             if (event.angleDelta.y)

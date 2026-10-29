@@ -26,6 +26,7 @@ Item {
 
     signal keyPressed(var event)
     signal keyReleased(var event)
+    signal editingRequested()
 
     // On whole device pixels, as the rows' text (ResultRow.qml): centred, at
     // 150 % the field's text sits on a half pixel, and while the window slides
@@ -177,6 +178,10 @@ Item {
         // Still shown while the clipboard under it has the keyboard: what a
         // paste there goes over.
         persistentSelection: true
+        TapHandler {
+            acceptedButtons: Qt.LeftButton
+            onPressedChanged: if (pressed) bar.editingRequested()
+        }
         onTextChanged: {
             bar.launcher.query = text
             bar.reportField()

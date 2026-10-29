@@ -25,6 +25,17 @@ struct Response {
 // a reused connection answers in tens of milliseconds instead of hundreds.
 enum class Session { Own, Shared };
 
+// Which proxy the requests go through (设置 › 高级 › 网络代理, GitHub #84).
+// System: what Windows has (the proxy of its settings, a PAC script, the
+// automatic detection: WinHTTP's automatic proxy). None: none, whatever the
+// system has. Named: `server` ("127.0.0.1:7890", see proxy::parse), an HTTP
+// proxy; WinHTTP has no SOCKS. Meant for every request the app makes, by
+// WinHTTP: the plugin library, the update check, site icons, search
+// suggestions. Applies from the next request on, without a restart.
+enum class Proxy { System, None, Named };
+void setProxy(Proxy mode, const QString& server = {});
+QString proxyServer(); // the named proxy now in use ("127.0.0.1:7890"); empty for the others
+
 // Hears how much of the body has come, after each piece read; false stops
 // the call, which then ends with no answer (error ERROR_CANCELLED).
 using Progress = std::function<bool(qint64 received)>;

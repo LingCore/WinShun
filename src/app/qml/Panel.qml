@@ -20,13 +20,15 @@ Item {
     required property WindowFrame frame
     required property Placement placement
     property NameTip nameTip: null // the window's, for a name or folder cut short (Main.qml)
-    readonly property alias view: list
+    readonly property var view: launcher.gallery ? gallery : list
     readonly property alias searchBar: bar
-    readonly property int rowHeight: Theme.panelRowHeight
+    readonly property int rowHeight: launcher.gallery ? gallery.cellHeight : Theme.panelRowHeight
+    readonly property int gridColumns: launcher.gallery ? gallery.columns : 1
     // The rows are the last query's while a slow search has found nothing yet (Main.qml's dimRows).
     property bool dimmed: false
 
     signal keyPressed(var event)
+    signal editingRequested()
     signal rowClicked(int index, int modifiers)
     signal rowDoubleClicked(int index, int modifiers)
     signal rowMenuRequested(int index, point globalPos, int modifiers)
@@ -54,40 +56,63 @@ Item {
     }
     function columnX(id) { return columnLayout[id] ? columnLayout[id].x : 0 }
     function columnWidth(id) { return columnLayout[id] ? columnLayout[id].width : 0 }
-    function openColumns(globalPos) { columnMenu.popup(panel, panel.mapFromGlobal(globalPos)) }
 
-    Menu {
-        id: columnMenu
-        objectName: "panelColumnsMenu"
-        popupType: Popup.Window
-        font.pixelSize: Theme.uiBody
-        palette.windowText: Theme.text
-        palette.text: Theme.text
-        palette.highlight: Theme.selection
-        palette.highlightedText: Theme.text
-        background: Rectangle { color: Theme.menuBackground; radius: Theme.controlRadius; border.color: Theme.divider }
-        Instantiator {
-            model: panel.launcher.panelColumns.availableColumns
-            delegate: MenuItem {
-                required property var modelData
-                text: modelData.title
-                checkable: true
-                checked: modelData.visible
-                enabled: modelData.id !== "name"
-                onTriggered: panel.launcher.panelColumns.toggle(modelData.id)
-            }
-            onObjectAdded: (index, object) => columnMenu.insertItem(index, object)
-            onObjectRemoved: (index, object) => columnMenu.removeItem(object)
+    // The columns menu is the launcher's own ContextMenu (a topmost window of its
+    // own): Controls' Menu with Popup.Window opened behind the topmost launcher.
+    // Main.qml forwards the keys to it (handleKey) and closes it with the others.
+    // Untyped: this file's QtQuick.Controls.Basic import has a ContextMenu of its own, so `as ContextMenu` fails here.
+    readonly property var columnMenu: columnLoader.item
+    readonly property bool columnMenuOpen: columnMenu !== null && columnMenu.visible
+    readonly property int resetColumnsAction: -1 // the other actions are the column's index
+
+    // A second call while it is open closes it (the opener toggles what it opened).
+    function openColumns(globalPos, fromKeyboard) {
+        if (columnMenuOpen) {
+            closeColumns()
+            return
         }
-        MenuSeparator {}
-        MenuItem { text: qsTr("恢复默认列"); onTriggered: panel.launcher.panelColumns.reset() }
+        const columns = launcher.panelColumns.availableColumns
+        const entries = columns.map((column, i) => ({
+            text: column.title, checked: column.visible, enabled: column.id !== "name", action: i
+        }))
+        entries.push({ separator: true })
+        entries.push({ text: qsTr("恢复默认列"), action: resetColumnsAction })
+        columnLoader.active = true
+        columnMenu.popup(-1, "columns", entries, globalPos, fromKeyboard === true)
+    }
+    function closeColumns() {
+        if (columnMenu)
+            columnMenu.dismiss()
+    }
+
+    Loader {
+        id: columnLoader
+        active: false
+        sourceComponent: ContextMenu {
+            objectName: "panelColumnsMenu"
+            host: panel.launcher
+            // Like Explorer's header menu, one pick closes it.
+            onTriggered: (row, action) => {
+                if (action === panel.resetColumnsAction)
+                    panel.launcher.panelColumns.reset()
+                else
+                    panel.launcher.panelColumns.toggle(panel.launcher.panelColumns.availableColumns[action].id)
+            }
+        }
     }
 
     function onPixel(v) { return Math.round(v * Screen.devicePixelRatio) / Screen.devicePixelRatio }
 
     // Fades in as the window grows into it (the window is resized once;
     // the rows then come in over it).
-    onVisibleChanged: if (visible) fadeIn.restart()
+    onVisibleChanged: {
+        if (visible) {
+            fadeIn.restart()
+        } else { // also free the menu window until it is needed again
+            closeColumns()
+            columnLoader.active = false
+        }
+    }
     NumberAnimation { id: fadeIn; target: panel; property: "opacity"; from: 0; to: 1; duration: 160; easing.type: Easing.OutCubic }
 
     SearchBar {
@@ -98,6 +123,7 @@ Item {
         frame: panel.frame
         panelMode: true
         onKeyPressed: (event) => panel.keyPressed(event)
+        onEditingRequested: panel.editingRequested()
     }
 
     Rectangle {
@@ -184,6 +210,7 @@ Item {
         property string text
         property string tip
         property bool active: false
+        property bool multi: false
         readonly property bool tipWanted: chipArea.containsMouse && tip.length > 0
 
         signal clicked()
@@ -194,9 +221,12 @@ Item {
         color: active ? Theme.chipActive : chipArea.containsMouse ? Theme.chipHover : "transparent"
         border.width: active ? 1 : 0
         border.color: Theme.chipBorder
-        Accessible.role: Accessible.RadioButton
+        Accessible.role: multi ? Accessible.CheckBox : Accessible.RadioButton
         Accessible.name: text
         Accessible.checked: active
+        activeFocusOnTab: true
+        Keys.onSpacePressed: chip.clicked()
+        Keys.onReturnPressed: chip.clicked()
 
         Text {
             id: chipLabel
@@ -311,7 +341,7 @@ Item {
                     }
                 }
 
-                GroupTitle { text: qsTr("类型") }
+                GroupTitle { text: qsTr("类型（可多选）") }
                 Chips {
                     Chip {
                         text: qsTr("不限")
@@ -324,10 +354,11 @@ Item {
                         delegate: Chip {
                             required property int index
                             required property var modelData
+                            multi: true
                             text: modelData.name
                             tip: modelData.extensions.split(" ").slice(0, 12).map(e => "." + e).join(" ")
-                            active: panel.launcher.scope !== Launcher.Folders && panel.launcher.fileType === index
-                            onClicked: panel.launcher.chooseFileType(index)
+                            active: panel.launcher.scope !== Launcher.Folders && panel.launcher.selectedFileTypes.includes(index)
+                            onClicked: panel.launcher.toggleFileType(index)
                         }
                     }
                 }
@@ -504,12 +535,23 @@ Item {
         Accessible.role: Accessible.Button
         Accessible.name: text
         activeFocusOnTab: true
-        Keys.onSpacePressed: panel.launcher.sortBy(key)
-        Keys.onReturnPressed: panel.launcher.sortBy(key)
-        Keys.onMenuPressed: panel.openColumns(mapToGlobal(0, height))
+        // These run before onPressed: with the menu open the key belongs to the menu.
+        Keys.onSpacePressed: (event) => header.activate(event)
+        Keys.onReturnPressed: (event) => header.activate(event)
+        function activate(event) {
+            if (panel.columnMenuOpen)
+                panel.keyPressed(event)
+            else
+                panel.launcher.sortBy(key)
+        }
+        Keys.onMenuPressed: panel.openColumns(mapToGlobal(0, height), true)
         Keys.onPressed: (event) => {
+            if (panel.columnMenuOpen) { // the menu never takes the focus: Main.qml hands its keys over
+                panel.keyPressed(event)
+                return
+            }
             if (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier)) {
-                panel.openColumns(mapToGlobal(0, height))
+                panel.openColumns(mapToGlobal(0, height), true)
                 event.accepted = true
             }
         }
@@ -624,7 +666,8 @@ Item {
         anchors.leftMargin: 1
         anchors.right: parent.right
         anchors.top: topDivider.bottom
-        height: Theme.labelRowHeight + 8
+        height: panel.launcher.gallery ? 0 : Theme.labelRowHeight + 8
+        visible: !panel.launcher.gallery
         clip: true
 
         Repeater {
@@ -655,6 +698,7 @@ Item {
 
     ListView {
         id: list
+        visible: !panel.launcher.gallery
         objectName: "panelResultList"
         anchors.left: sidebar.right
         anchors.leftMargin: 1
@@ -666,7 +710,7 @@ Item {
         clip: true
         opacity: panel.dimmed ? 0.45 : 1
         Behavior on opacity { NumberAnimation { duration: 150 } }
-        model: panel.launcher.results
+        model: visible ? panel.launcher.results : null
         boundsBehavior: Flickable.StopAtBounds
         highlightMoveDuration: 0
         reuseItems: true
@@ -696,7 +740,7 @@ Item {
 
         // Scrolled to the end: a page more (Launcher.loadMore), as the box's list.
         function loadMoreAtEnd() {
-            if (atYEnd && count > 0 && panel.launcher.moreAvailable && !panel.launcher.searching)
+            if (visible && atYEnd && count > 0 && panel.launcher.moreAvailable && !panel.launcher.searching)
                 panel.launcher.loadMore()
         }
         onAtYEndChanged: Qt.callLater(loadMoreAtEnd)
@@ -709,7 +753,7 @@ Item {
         delegate: PanelRow {
             id: panelRow
             width: list.contentWidth
-            height: panel.rowHeight
+            height: Theme.panelRowHeight
             columns: panel.columnSpecs
             columnLayout: panel.columnLayout
             nameTip: panel.nameTip
@@ -728,7 +772,7 @@ Item {
 
     ListScrollBar {
         id: listScrollBar
-        flickable: list
+        flickable: panel.view
         anchors.right: parent.right
         anchors.top: list.top
         anchors.bottom: list.bottom
@@ -736,18 +780,39 @@ Item {
         Component.onCompleted: panel.frame.addControl(listScrollBar)
     }
 
+    Gallery {
+        id: gallery
+        objectName: "panelGallery"
+        visible: panel.launcher.gallery
+        anchors.left: sidebar.right
+        anchors.leftMargin: 8
+        anchors.right: parent.right
+        anchors.rightMargin: 12
+        anchors.top: columns.bottom
+        anchors.topMargin: 8
+        anchors.bottom: footer.top
+        launcher: panel.launcher
+        nameTip: panel.nameTip
+        opacity: panel.dimmed ? 0.45 : 1
+        onRowClicked: (index, modifiers) => panel.rowClicked(index, modifiers)
+        onRowDoubleClicked: (index, modifiers) => panel.rowDoubleClicked(index, modifiers)
+        onRowMenuRequested: (index, globalPos, modifiers) => panel.rowMenuRequested(index, globalPos, modifiers)
+        onRowDragRequested: index => panel.rowDragRequested(index)
+    }
+
     Text { // nothing to list, or not yet
         readonly property string query: panel.launcher.query.trim().replace(/\s+/g, " ")
-        anchors.centerIn: list
-        width: list.width - 80
+        anchors.centerIn: panel.view
+        width: panel.view.width - 48
         horizontalAlignment: Text.AlignHCenter
-        visible: list.count === 0
-        text: panel.launcher.searching ? (panel.launcher.scope === Launcher.Content ? qsTr("正在搜索文件内容…") : qsTr("正在搜索…"))
+        visible: panel.view.count === 0
+        text: panel.launcher.queryError.length > 0 ? panel.launcher.queryError
+            : panel.launcher.searching ? (panel.launcher.scope === Launcher.Content ? qsTr("正在搜索文件内容…") : qsTr("正在搜索…"))
             : query.length > 0 ? qsTr("没有找到“%1”").arg(query)
             : panel.launcher.filtersActive ? qsTr("没有符合筛选条件的文件")
             : qsTr("输入名称或拼音，或在左侧加筛选条件")
         textFormat: Text.PlainText
-        elide: Text.ElideMiddle
+        wrapMode: Text.Wrap
         color: Theme.faint
         font.pixelSize: Theme.uiBody
     }
@@ -758,5 +823,15 @@ Item {
         width: parent.width
         launcher: panel.launcher
         frame: panel.frame
+        // The other view, on the same file where there is one.
+        onGalleryRequested: gallery => {
+            const path = panel.launcher.results.pathAt(panel.view.currentIndex)
+            panel.launcher.gallery = gallery
+            Qt.callLater(() => {
+                const index = panel.launcher.results.indexOf(path)
+                panel.view.currentIndex = index >= 0 ? index : panel.launcher.results.defaultRow()
+                panel.searchBar.focusAtEnd()
+            })
+        }
     }
 }

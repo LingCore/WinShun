@@ -32,6 +32,9 @@ class ResultModel : public QAbstractListModel {
     Q_PROPERTY(int count READ count NOTIFY countChanged FINAL)
     Q_PROPERTY(QColor highlightColor READ highlightColor WRITE setHighlightColor NOTIFY highlightColorChanged FINAL)
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY selectionChanged FINAL)
+    // Typed in a folder's window (GitHub #110): the first row that is not in
+    // that folder (ElsewhereRole), where the list's caption goes; -1: none.
+    Q_PROPERTY(int elsewhereRow READ elsewhereRow NOTIFY elsewhereRowChanged FINAL)
 
 public:
     enum Role {
@@ -44,6 +47,7 @@ public:
         // A picture's, video's, PDF's thumbnail (ThumbnailProvider), shown over
         // the icon once loaded; "" for none, or when they are turned off.
         ThumbnailRole,
+        GalleryThumbnailRole, // gallery previews also work when list thumbnails are off
         SnippetHtmlRole,
         LineRole,
         LocationRole, // of a content match: "第 3 行", "第 2 页", "Sheet1 第 12 行"
@@ -84,6 +88,13 @@ public:
         SwitchErrorRole, // ... in red: why the last write failed
         SwitchReadyRole, // draws its switch (ready, or not read yet); else the row is an ordinary place
         StatusRowRole, // listed above the recent items because it is on (SearchResult::statusRow)
+        ElsewhereRole, // typed in a folder's window: not in that folder (SearchResult::elsewhere)
+        // A plugin's row that has its own text to copy (`copy`), or whose Enter
+        // copies its title: it shows the copy button (Ctrl+C copies any row's).
+        PluginCopiesRole,
+        // A plugin's row: its second line while the keyboard is on another
+        // row (PluginRow::subtitleAway); empty: the folder line as ever.
+        FolderAwayRole,
     };
 
     explicit ResultModel(QObject* parent = nullptr);
@@ -93,13 +104,18 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     int count() const noexcept { return static_cast<int>(m_items.size()); }
+    int elsewhereRow() const noexcept { return m_elsewhereRow; }
     const SearchResult* at(int row) const;
-    int indexOf(const QString& path) const; // -1 if no row has that path
+    Q_INVOKABLE int indexOf(const QString& path) const; // -1 if no row has that path
     Q_INVOKABLE QString pathAt(int row) const; // empty if out of range
     // The row the highlight starts on when rows are new: the first, but not
     // a status row (keep awake, listed above the recent items), which Enter
     // must not act on at once. 0 when there is no other.
     Q_INVOKABLE int defaultRow() const;
+    // Per row (the first 64), what Enter copies when the row's title is the
+    // payload: a plugin's row that opens, searches and sets nothing and says
+    // what to copy (a translation, a sum). Empty for every other row.
+    Q_INVOKABLE QStringList copyTexts() const;
     // `text` with `matches` (NameMatchesRole, FolderMatchesRole) highlighted,
     // shortened in the middle to `width` in `font` as Text.ElideMiddle would,
     // but around them: they stay in sight, with the start and the end of the
@@ -147,10 +163,13 @@ signals:
     void countChanged();
     void highlightColorChanged();
     void selectionChanged();
+    void elsewhereRowChanged();
 
 private:
     QString switchTitle(const SearchResult& r) const; // a switch row's title when it is not its name, else empty
     void keepSelectionInList(); // after rows went away
+    void findElsewhere(); // after rows changed: elsewhereRow
+    int m_elsewhereRow = -1;
     SearchResults m_items;
     QStringList m_highlights;
     QColor m_highlightColor {0x00, 0x5F, 0xB8};

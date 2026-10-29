@@ -7,7 +7,8 @@ import WinShun
 // below. While open it lives on the window's content item, on top of
 // everything (as HoverTip does): left inside the button, the rows and cards
 // that come after it in the page would cover it, whatever its z (z orders
-// siblings only). A press anywhere else, or the wheel, closes it.
+// siblings only). A press anywhere else, or the wheel, closes it; a press on
+// the menu itself stays with it.
 Item {
     id: dropMenu
 
@@ -17,6 +18,14 @@ Item {
     property real menuWidth: 200
     property bool open: false
 
+    // The window's WindowFrame, where it has one (ours keep it as `frame`; a
+    // Window says nothing of it, hence the untyped step). Where the open box
+    // lies over a drag area (the launcher's footer, a title bar), the frame
+    // would take the presses there for a drag of the window: the box is a
+    // popup to it.
+    readonly property var hostWindow: anchor ? anchor.Window.window : null
+    readonly property WindowFrame frame: hostWindow ? (hostWindow.frame ?? null) : null
+
     signal activated(int index)
 
     parent: anchor ? anchor.Window.contentItem : null
@@ -24,7 +33,13 @@ Item {
     z: 1000
     visible: open
 
-    onOpenChanged: if (open) place()
+    onOpenChanged: {
+        if (!open)
+            return
+        if (frame)
+            frame.addPopup(box)
+        place()
+    }
 
     function place() {
         if (!parent || !anchor)
@@ -61,6 +76,11 @@ Item {
         color: Theme.menuBackground
         border.width: 1
         border.color: Theme.windowEdge
+
+        MouseArea { // the edge and gaps around the entries: a press there is the menu's, and goes no further
+            anchors.fill: parent
+            acceptedButtons: Qt.AllButtons
+        }
 
         Column {
             id: column

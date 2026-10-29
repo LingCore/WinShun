@@ -191,7 +191,9 @@ Item {
                     id: chip
 
                     required property var modelData
-                    readonly property bool active: modelData.type === strip.current
+                    readonly property bool active: !strip.folders && modelData.type >= 0
+                        ? strip.launcher.scope !== Launcher.Folders && strip.launcher.selectedFileTypes.includes(modelData.type)
+                        : modelData.type === strip.current
                     readonly property bool tipWanted: area.containsMouse
                     onTipWantedChanged: {
                         if (tipWanted) {
@@ -209,7 +211,7 @@ Item {
                     color: active ? Theme.chipActive : area.containsMouse ? Theme.chipHover : "transparent"
                     border.width: active ? 1 : 0
                     border.color: Theme.chipBorder
-                    Accessible.role: Accessible.RadioButton
+                    Accessible.role: !strip.folders && modelData.type >= 0 ? Accessible.CheckBox : Accessible.RadioButton
                     Accessible.name: modelData.name
                     Accessible.checked: active
 
@@ -239,7 +241,7 @@ Item {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: strip.folders ? strip.launcher.chooseFolderChip(chip.modelData.type)
-                                                 : strip.launcher.chooseFileType(chip.modelData.type)
+                                                 : strip.launcher.toggleFileType(chip.modelData.type)
                     }
                 }
             }
@@ -298,8 +300,8 @@ Item {
         id: indexSwitch
 
         readonly property bool indexOn: strip.launcher.contentIndex
-        readonly property string tip: indexOn ? qsTr("在后台记下文件里的文字，内容搜索快得多。关掉会清空内容索引")
-                                         : qsTr("打开后在后台记下文件里的文字，内容搜索快得多。只用于 NTFS 磁盘，约占一两百 MB")
+        readonly property string tip: indexOn ? qsTr("在后台记下文件里的文字，内容搜索快得多。关掉会清空本机文件的内容索引")
+                                         : qsTr("打开后在后台记下文件里的文字，内容搜索快得多。只用于 NTFS 磁盘，约占一两百 MB。网络位置在设置里另有开关")
         readonly property bool tipWanted: indexHover.hovered || indexToggle.hovered
         // Its room with the gap before it, whole pixels: the chips scroll and
         // the hint goes before they reach it.

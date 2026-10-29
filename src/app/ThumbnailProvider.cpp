@@ -110,7 +110,9 @@ QImage makeThumbnail(const QString& path, int px, Response* response, bool* know
     if (data.dwFileAttributes & (kNotHere | FILE_ATTRIBUTE_DIRECTORY))
         return {};
     QImage image = FileIconProvider::thumbnail(path, px, true);
-    if (!image.isNull())
+    // The compact list may have cached a 32px preview. It is not a usable
+    // large preview: ask the handler for the new size instead of enlarging it.
+    if (!image.isNull() && std::max(image.width(), image.height()) >= px)
         return image;
     if (response->cancelled()) { // scrolled away meanwhile: not known yet
         *known = false;
@@ -118,8 +120,9 @@ QImage makeThumbnail(const QString& path, int px, Response* response, bool* know
     }
     const qint64 bytes = (static_cast<qint64>(data.nFileSizeHigh) << 32) | data.nFileSizeLow;
     if (bytes > kLargestMade && !isVideo(QFileInfo(path).suffix().toLower()))
-        return {};
-    return FileIconProvider::thumbnail(path, px, false);
+        return image;
+    QImage made = FileIconProvider::thumbnail(path, px, false);
+    return made.isNull() ? image : made;
 }
 
 } // namespace
@@ -163,7 +166,7 @@ QQuickImageResponse* ThumbnailProvider::requestImageResponse(const QString& id, 
         return response;
     }
     const int asked = std::max(requestedSize.width(), requestedSize.height());
-    const int px = asked > 0 ? std::clamp(asked, 16, 512) : 64;
+    const int px = asked > 0 ? std::clamp(asked, 16, 1024) : 64;
     const QString key = id + u'@' + QString::number(px);
 
     Store& s = store();

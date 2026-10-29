@@ -20,6 +20,12 @@ namespace ws::dragout {
 // DropEffect). Null when none of the paths names an item.
 Microsoft::WRL::ComPtr<IDataObject> dataObject(const QStringList& paths);
 
+// The files by name only (CF_HDROP, preferring a copy), as Explorer's paste,
+// chats and Office read them: no text and no URL, which some programs (WPS)
+// would paste instead of the file, and no shell lookup, which can hang on a
+// network path that went away. For the clipboard (shell::copyFiles).
+Microsoft::WRL::ComPtr<IDataObject> fileNamesObject(const QStringList& paths);
+
 enum class Outcome { Dropped, Cancelled, Failed };
 
 // Drags the items until the left button is let go: a modal loop on the

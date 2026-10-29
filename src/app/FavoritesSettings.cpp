@@ -197,6 +197,8 @@ void FavoritesSettings::refresh()
             {u"command"_s, f.command},
             {u"workingDirectory"_s, f.workingDirectory},
             {u"commandIcon"_s, f.icon},
+            {u"silent"_s, f.silent},
+            {u"administrator"_s, f.runAsAdmin},
         });
     }
     if (items == m_items)
@@ -306,7 +308,7 @@ QString FavoritesSettings::save(int index, const QString& name, const QString& k
 }
 
 QString FavoritesSettings::saveCommand(int index, const QString& name, const QString& keyword,
-    const QString& command, const QString& directory, const QString& icon)
+    const QString& command, const QString& directory, const QString& icon, bool silent, bool administrator)
 {
     if (!m_store || index < -1 || index >= m_store->items().size()
         || (index >= 0 && m_store->items()[index].kind != Favorite::Kind::Command))
@@ -337,6 +339,8 @@ QString FavoritesSettings::saveCommand(int index, const QString& name, const QSt
     f.command = line;
     f.workingDirectory = QDir::toNativeSeparators(directory.trimmed());
     f.icon = icon;
+    f.silent = silent;
+    f.runAsAdmin = administrator;
     if (index < 0)
         m_store->add(f);
     else
@@ -501,7 +505,7 @@ void FavoritesSettings::open(int index)
     const Favorite& f = m_store->items()[index];
     switch (f.kind) {
     case Favorite::Kind::Command:
-        shell::runCustom(f.command, f.workingDirectory, {});
+        shell::runCustom(f.command, f.workingDirectory, {}, {}, {f.silent, f.runAsAdmin});
         break;
     case Favorite::Kind::App:
         shell::launchApp(f.path);

@@ -26,8 +26,9 @@ import WinShun
 // and tagged "离线".
 // A plugin's row (an app in the list's terms) is tagged with the plugin's
 // name, shows what the plugin said under its title, and has one button,
-// which copies its text (its actions are the plugin's: Enter, Ctrl+Enter,
-// Shift+Enter, and the menu).
+// which copies its text, when it has text of its own to copy or its Enter
+// copies (its actions are the plugin's: Enter, Ctrl+Enter, Shift+Enter, and
+// the menu).
 // The rows shown carry their shortcut on the icon (Ctrl+1 opens the first one
 // shown); one another program holds is struck through, its tip says why.
 // A file's or folder's row can be dragged out with the mouse, into a chat or
@@ -65,6 +66,8 @@ Item {
     required property bool offline // on a network share that cannot be reached now: dimmed, tagged
     required property bool plugin // a plugin's row
     required property string source // ... the plugin's name
+    required property bool pluginCopies // ... with its own text to copy, or Enter copies: its copy button
+    required property string folderAway // ... its second line while the keyboard is on another row; "": the folder line
     required property bool favorite // one of its user's favorites: tagged 收藏 (with its keyword)
     required property string favoriteKeyword
     required property bool missing // a favorite no longer there: dimmed, tagged
@@ -91,13 +94,15 @@ Item {
     readonly property int selectedCount: ListView.view ? ListView.view.model.selectedCount : 0
     readonly property var results: ListView.view ? ListView.view.model : null // the ResultModel
     readonly property bool showActions: current || area.containsMouse
+    // ... and it has some: a plugin's row may have none, its badge then stays (GitHub #113).
+    readonly property bool actionsShown: showActions && actions.visibleChildren.length > 0
     // The volume's number and bar, left of its switch (their room kept before the level is read).
     readonly property bool levelShown: switchReady && switchId === "volume"
     readonly property real levelSpace: levelShown ? levelControl.width + levelControl.anchors.rightMargin : 0
     // Room kept on the right for the buttons, the badge or the label.
     readonly property real trailingSpace: (switchReady ? switchControl.width + switchControl.anchors.rightMargin + levelSpace
                                                          + (showActions ? actions.width + 2 : 0)
-                                           : showActions ? actions.width + actions.anchors.rightMargin
+                                           : actionsShown ? actions.width + actions.anchors.rightMargin
                                            : isApp ? badge.width + badge.anchors.rightMargin
                                            : trailing.width + trailing.anchors.rightMargin) + 10
     property bool deleteArmed: false // first click on delete; the second one deletes
@@ -158,7 +163,7 @@ Item {
             return
         }
         nameTip.offer(row, title, {
-            name: name, folder: folder, path: path, size: size, modified: modifiedDate,
+            name: name, folder: folderLine.away ? folderAway : folder, path: path, size: size, modified: modifiedDate,
             onDisk: !isApp && !offline && !missing, at: area.mapToGlobal(area.mouseX, area.mouseY)
         })
     }
@@ -283,15 +288,20 @@ Item {
 
         Text {
             id: folderLine
+            // A plugin's row with a line for while the keyboard is on another
+            // row (how to get there and what Enter then does: 传's request
+            // that came in above it, GitHub #113): plain, kept from its start.
+            readonly property bool away: !row.current && !row.contentMode && row.folderAway.length > 0
             // A term found in a folder rather than the name stands out there,
             // and stays in sight when the path is shortened.
-            readonly property bool marked: !row.contentMode && row.folderMatches.length > 0 && row.results !== null
+            readonly property bool marked: !away && !row.contentMode && row.folderMatches.length > 0 && row.results !== null
             width: parent.width
             text: row.contentMode ? row.snippetHtml
+                : away ? row.folderAway
                 : marked ? row.results.elidedHtml(row.folder, row.folderMatches, width, font, row.results.highlightColor)
                 : row.folder
             textFormat: row.contentMode || marked ? Text.StyledText : Text.PlainText
-            elide: row.contentMode || marked ? Text.ElideRight : Text.ElideMiddle
+            elide: row.contentMode || marked || away ? Text.ElideRight : Text.ElideMiddle
             maximumLineCount: 1
             color: row.switchError.length > 0 ? Theme.danger : Theme.subtext
             font.pixelSize: Theme.uiCaption
@@ -356,7 +366,7 @@ Item {
 
     Rectangle {
         id: badge
-        visible: row.isApp && !row.showActions && !row.switchReady
+        visible: row.isApp && !row.actionsShown && !row.switchReady
         anchors.right: parent.right
         anchors.rightMargin: 16
         anchors.verticalCenter: parent.verticalCenter
@@ -524,7 +534,7 @@ Item {
             }
             RowAction {
                 id: copyPathAction
-                visible: !row.switchReady
+                visible: !row.switchReady && (!row.plugin || row.pluginCopies)
                 glyph: row.plugin ? "" : "copyPath" // Copy; else drawn by Glyph: a box holding "\\.."
                 tip: row.plugin ? qsTr("复制") : row.web ? qsTr("复制网址") : row.place ? qsTr("复制打开命令") : qsTr("复制完整路径")
                 tipShortcut: row.plugin ? "Ctrl+C" : "Ctrl+Shift+C"
