@@ -1,4 +1,8 @@
-#include "Preview.h"
+// --preview-long-capture (CapturePreview.h). Its window takes Enter and Esc
+// while it runs; the exit code counts the checks that failed. Its auto
+// target is a separate generated fixture.
+
+#include "CapturePreview.h"
 
 #include "Capture.h"
 #include "CaptureSession.h"
@@ -27,7 +31,7 @@
 
 using namespace Qt::StringLiterals;
 
-namespace ws::preview {
+namespace ws::captureplugin::preview {
 
 // Real Capture -> selection -> LongCapture -> WGC -> pixels. The fixture
 // contains only generated images; it starts no App, clipboard or user profile.
@@ -53,7 +57,7 @@ int runLongCapture(const QStringList& args)
         }
     };
     QTranslator translator;
-    if (args.contains(u"--english"_s) && translator.load(u":/i18n/winshun_en.qm"_s))
+    if (args.contains(u"--english"_s) && translator.load(u":/i18n/capture_en.qm"_s))
         QCoreApplication::installTranslator(&translator);
     const double dpr = QGuiApplication::primaryScreen()->devicePixelRatio();
     constexpr int width = 600, header = 40, viewport = 360, footer = 40, bodyHeight = 2880;
@@ -375,4 +379,4 @@ int runLongCapture(const QStringList& args)
     return failed;
 }
 
-} // namespace ws::preview
+} // namespace ws::captureplugin::preview

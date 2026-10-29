@@ -271,10 +271,12 @@ private slots:
         Env env;
         env.keywordOwner = [](const QString& k) { return k == u"zzfav" ? u"My favorite"_s : QString(); };
         QVERIFY(problemText(add({{u"keyword"_s, u"zzfav"_s}, {u"url"_s, u"https://x.org"_s}}, env)).contains(u"My favorite"));
-        State capture = state;
-        capture.settings.captureEnabled = true;
-        QVERIFY(!makePlan(capture, adding(key, QJsonObject {{u"keyword"_s, capture.settings.captureKeyword}, {u"url"_s, u"https://x.org"_s}}), {})
-                     .problems.isEmpty());
+        // The screenshot history's keyword, while the screenshot plugin is on.
+        const QJsonObject history {{u"keyword"_s, state.settings.captureKeyword}, {u"url"_s, u"https://x.org"_s}};
+        QVERIFY2(add(history).problems.isEmpty(), qPrintable(problemText(add(history))));
+        Env plugin;
+        plugin.screenshotHistory = [] { return true; };
+        QVERIFY(problemText(add(history, plugin)).contains(u"screenshot history"));
         QVERIFY(!makePlan(state, one(key, QJsonArray()), {}).problems.isEmpty()); // value: not for this one
     }
 
@@ -371,7 +373,7 @@ private slots:
         QCOMPARE(Settings::hotkeyAllowed(hotkey), accepted);
         // Whatever the app's own check says, and with none.
         for (const Env& env : {appEnv(), Env {}}) {
-            for (const char* key : {"Launcher/Hotkey", "Launcher/FolderMenuHotkey", "Clipboard/Hotkey", "Capture/Hotkey"}) {
+            for (const char* key : {"Launcher/Hotkey", "Launcher/FolderMenuHotkey", "Clipboard/Hotkey"}) {
                 const Plan plan = makePlan(defaultState(), one(QString::fromLatin1(key), hotkey), env);
                 QVERIFY2(plan.problems.isEmpty() == accepted, qPrintable(hotkey + u" for "_s + QString::fromLatin1(key) + u": "_s + problemText(plan)));
             }
@@ -406,11 +408,6 @@ private slots:
         plan = makePlan(state, QJsonArray {QJsonObject {{u"key"_s, u"Clipboard/Hotkey"_s}, {u"value"_s, u"Ctrl+Alt+Z"_s}},
                                  QJsonObject {{u"key"_s, u"Launcher/FolderMenuHotkey"_s}, {u"value"_s, u"Alt+Ctrl+Z"_s}}}, env);
         QVERIFY(!plan.problems.isEmpty());
-        // The screenshot shortcut counts while capture is on.
-        state.settings.captureHotkey = u"Ctrl+Alt+A"_s;
-        QVERIFY(makePlan(state, one(u"Clipboard/Hotkey"_s, u"Ctrl+Alt+A"_s), env).problems.isEmpty());
-        state.settings.captureEnabled = true;
-        QVERIFY(!makePlan(state, one(u"Clipboard/Hotkey"_s, u"Ctrl+Alt+A"_s), env).problems.isEmpty());
     }
 
     // The card shows all that is applied: name, address and home of a web shortcut.
@@ -535,12 +532,11 @@ private slots:
         state.settings.clipboardExcludedApps = {u"KeePass.exe"_s};
         state.settings.clipboard = false;
         state.settings.clipboardImages = false;
-        state.settings.captureEnabled = false;
         state.settings.includeRemovableDrives = false;
         state.settings.contentInLowPriority = false;
         state.settings.contentSearch = false;
         state.settings.contentDocuments = false;
-        for (const char* key : {"Clipboard/Enabled", "Clipboard/Images", "Capture/Enabled", "Index/IncludeRemovableDrives",
+        for (const char* key : {"Clipboard/Enabled", "Clipboard/Images", "Index/IncludeRemovableDrives",
                  "Content/IncludeSystemFolders", "Content/Enabled", "Content/Documents"}) {
             QVERIFY2(makePlan(state, one(QString::fromLatin1(key), true), env).askAlways(), key); // turning on
             State on = state;

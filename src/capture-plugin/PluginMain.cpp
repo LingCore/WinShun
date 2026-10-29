@@ -4,6 +4,7 @@
 // models are Win顺's own, nothing of them comes with the plugin.
 
 #include "CaptureApp.h"
+#include "CapturePreview.h"
 #include "DiagnosticLog.h"
 #include "Phosphor.h"
 #include "PluginShell.h"
@@ -21,8 +22,10 @@
 #include <QQuickImageProvider>
 #include <QQuickWindow>
 #include <QClipboard>
+#include <QStringList>
 
 #include <windows.h>
+#include <shellapi.h>
 #include <shlobj.h>
 
 #include <algorithm>
@@ -148,4 +151,36 @@ extern "C" __declspec(dllexport) int winshunCaptureMain(const wchar_t* appDirNam
     protocol.respond(first->value(u"id"_s), QJsonObject {{u"protocolVersion"_s, u"1"_s}, {u"name"_s, u"winshun.capture"_s}});
     capture.start(appearance);
     return app.exec();
+}
+
+// A preview (CapturePreview.h): WinShunCapture.exe --preview-… with
+// --app-dir <Win顺's folder>, for checking the capture without Win顺.
+extern "C" __declspec(dllexport) int winshunCapturePreview(const wchar_t* appDirName)
+{
+    const QString appDir = QString::fromWCharArray(appDirName);
+    _setmaxstdio(8192);
+    ::SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
+    QStringList args;
+    int count = 0;
+    if (LPWSTR* wide = ::CommandLineToArgvW(::GetCommandLineW(), &count)) {
+        for (int i = 1; i < count; ++i)
+            args.push_back(QString::fromWCharArray(wide[i]));
+        ::LocalFree(wide);
+    }
+    namespace preview = ws::captureplugin::preview;
+    if (!preview::wanted(args))
+        return 2;
+    preview::prepare(args);
+    QCoreApplication::setLibraryPaths({appDir});
+    QCoreApplication::setOrganizationName(u"WinShun"_s);
+    QCoreApplication::setApplicationName(u"WinShun"_s);
+    int argc = 1;
+    char name[] = "WinShunCapture";
+    char* argv[] = {name, nullptr};
+    QGuiApplication app(argc, argv);
+    QGuiApplication::setApplicationDisplayName(u"Win顺"_s);
+    preview::note(u"loading the font"_s);
+    applyUiFont(appDir);
+    ws::phosphor::loadFonts();
+    return preview::run(args);
 }

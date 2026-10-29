@@ -9,23 +9,22 @@ add_executable(WinShunCapture stub/main.cpp)
 target_link_libraries(WinShunCapture PRIVATE winshun_options)
 set_target_properties(WinShunCapture PROPERTIES AUTOMOC OFF MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
-# The capture's C++ (src/capture, wscapture) and its QML, with the common
-# controls they use: the same source files as WinShun's own module, built
+# The capture's C++ (src/capture, wscapture) and its QML (qml/), with the
+# common controls they use from WinShun's own module (src/app/qml): built
 # into this one, whose URI is WinShun too (another process, so no clash).
 set(app_dir ${PROJECT_SOURCE_DIR}/src/app)
 set(shared_qml
     Theme.qml WindowEdge.qml HoverTip.qml DropMenu.qml Glyph.qml TitleBar.qml ToggleSwitch.qml FlatButton.qml
     InputBox.qml CenteredNumber.qml KeyCap.qml HotkeyRecorder.qml ListScrollBar.qml ListWheelScroll.qml
-    ScrollPixelAlignment.qml
-    CaptureOverlay.qml AnnotateToolbar.qml AnnotateStylePanel.qml AnnotateSmartHint.qml AnnotateLayer.qml
-    AnnotateObjects.qml EditWindow.qml OcrPanel.qml LongCapturePanel.qml RecordingPanel.qml)
+    ScrollPixelAlignment.qml)
 set(capture_qml)
 foreach(name IN LISTS shared_qml)
     list(APPEND capture_qml "${app_dir}/qml/${name}")
 endforeach()
-list(APPEND capture_qml
-    ${CMAKE_CURRENT_SOURCE_DIR}/qml/CaptureOptions.qml
-    ${CMAKE_CURRENT_SOURCE_DIR}/qml/CaptureSettingsWindow.qml)
+foreach(name IN ITEMS CaptureOverlay AnnotateToolbar AnnotateStylePanel AnnotateSmartHint AnnotateLayer AnnotateObjects
+                      EditWindow OcrPanel LongCapturePanel RecordingPanel CaptureOptions CaptureSettingsWindow)
+    list(APPEND capture_qml "${CMAKE_CURRENT_SOURCE_DIR}/qml/${name}.qml")
+endforeach()
 set_source_files_properties("${app_dir}/qml/Theme.qml" PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 foreach(file IN LISTS capture_qml)
     get_filename_component(name "${file}" NAME)
@@ -35,6 +34,7 @@ endforeach()
 qt_add_library(WinShunCaptureApp SHARED
     PluginMain.cpp
     CaptureApp.cpp CaptureApp.h
+    CapturePreview.cpp CapturePreview.h LongCapturePreview.cpp
     RawClicks.cpp RawClicks.h
     Protocol.cpp Protocol.h
     PluginShell.cpp PluginShell.h

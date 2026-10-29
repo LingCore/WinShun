@@ -87,7 +87,7 @@ Entry base(const Head& head, Type type)
     e.tab = head.tab;
     e.about = QString::fromUtf8(head.about);
     e.type = type;
-    if (e.section == u"capture" || e.section == u"paste_file") // a card of the 插件 page, not a row the search finds
+    if (e.section == u"paste_file") // a card of the 插件 page, not a row the search finds
         e.rowTitle = "";
     return e;
 }
@@ -616,79 +616,10 @@ std::vector<Entry> buildCatalog()
             {u"hide"_s, u"hidden"_s, QT_TRANSLATE_NOOP("AiSettings", "自动隐藏")},
             {u"clean"_s, u"removed"_s, QT_TRANSLATE_NOOP("AiSettings", "自动清理")}}));
 
-    // ---- 截图 (the 插件 page's card, on its 已安装 tab, not the one left on) ----
-    add(recording({"Capture/Enabled", QT_TRANSLATE_NOOP("AiSettings", "屏幕截图"), "capture", 0,
-                    "Win顺's screen capture with its screenshot history. Off until turned on; nothing of it runs while off. Turning it on starts keeping screenshots, so that asks the user."},
-        &Settings::captureEnabled));
-    add(hotkey({"Capture/Hotkey", QT_TRANSLATE_NOOP("AiSettings", "截图快捷键"), "capture", 0,
-                   "The shortcut that starts a capture, written like Ctrl+Alt+A. Empty: none."},
-        &Settings::captureHotkey));
-    add(boolean({"Capture/PrintScreen", QT_TRANSLATE_NOOP("AiSettings", "PrtScn 键也截图"), "capture", 0,
-                    "The PrintScreen key starts a capture too, taken from the Snipping Tool."},
-        &Settings::capturePrintScreen));
-    add(boolean({"Capture/CopyOnSelect", QT_TRANSLATE_NOOP("AiSettings", "选中后直接复制"), "capture", 0,
-                    "Letting go of a drag, or a click on a window, copies the picture at once."},
-        &Settings::captureCopyOnSelect));
-    add(boolean({"Capture/Magnifier", QT_TRANSLATE_NOOP("AiSettings", "框选时显示放大镜"), "capture", 0,
-                    "The magnifier with the colour under the pointer while picking an area; off also turns off C (copy the colour) and Shift (colour format)."},
-        &Settings::captureMagnifier));
-    add(boolean({"Capture/HdrFile", QT_TRANSLATE_NOOP("AiSettings", "HDR 屏幕上同时保存 HDR 图片"), "capture", 0,
-                    "On a monitor with HDR on, saving a screenshot also writes a JPEG XR (.jxr) of the same name beside the PNG, which keeps the bright parts as bright (Windows Photos shows it in HDR); annotations go in it too. Copies, pins, long screenshots and recordings stay as they are. Off by default."},
-        &Settings::captureHdrFile));
+    // ---- 截图历史 (the screenshot is the plugin winshun.capture's, its settings its own) ----
     {
-        // What each mouse button does once a selection is there (issue #46); with an annotation tool on, a stroke
-        // or a text under way, the right button steps back as Esc does and the others do nothing.
-        const auto mouseChoices = [](bool withBack) {
-            std::vector<Choice> list {{u"none"_s, u"nothing"_s, QT_TRANSLATE_NOOP("AiSettings", "无")},
-                {u"copy"_s, u"copy the picture and close"_s, QT_TRANSLATE_NOOP("AiSettings", "复制并关闭")},
-                {u"save"_s, u"save the picture to a file and close"_s, QT_TRANSLATE_NOOP("AiSettings", "保存")},
-                {u"pin"_s, u"pin the picture on the screen"_s, QT_TRANSLATE_NOOP("AiSettings", "贴图")},
-                {u"ocr"_s, u"read the words in the picture"_s, QT_TRANSLATE_NOOP("AiSettings", "识别文字")},
-                {u"ocrcopy"_s, u"read the words and copy them, then close"_s, QT_TRANSLATE_NOOP("AiSettings", "识别文字并复制")},
-                {u"ocrsearch"_s, u"read the words and search them in the launcher"_s, QT_TRANSLATE_NOOP("AiSettings", "识别文字并搜索")},
-                {u"ocrweb"_s, u"read the words and search them on the web"_s, QT_TRANSLATE_NOOP("AiSettings", "识别文字并网页搜索")},
-                {u"cancel"_s, u"end the capture"_s, QT_TRANSLATE_NOOP("AiSettings", "取消截图")}};
-            if (withBack)
-                list.insert(list.begin() + 1, {u"back"_s, u"put the selection down to choose again (Esc's step)"_s,
-                                                  QT_TRANSLATE_NOOP("AiSettings", "后退（重新框选）")});
-            return list;
-        };
-        add(choice({"Capture/MouseDoubleLeft", QT_TRANSLATE_NOOP("AiSettings", "截图：双击左键"), "capture", 0,
-                       "What a double click with the left button inside the selection does."},
-            &Settings::captureMouseDoubleLeft, mouseChoices(false)));
-        add(choice({"Capture/MouseRight", QT_TRANSLATE_NOOP("AiSettings", "截图：右键"), "capture", 0,
-                       "What the right button does once there is a selection. Esc always steps back."},
-            &Settings::captureMouseRight, mouseChoices(true)));
-        add(choice({"Capture/MouseMiddle", QT_TRANSLATE_NOOP("AiSettings", "截图：中键"), "capture", 0,
-                       "What the middle button does once there is a selection."},
-            &Settings::captureMouseMiddle, mouseChoices(false)));
-        add(choice({"Capture/MouseBack", QT_TRANSLATE_NOOP("AiSettings", "截图：侧键（后退）"), "capture", 0,
-                       "What the side button toward the user (back, X1) does once there is a selection."},
-            &Settings::captureMouseBack, mouseChoices(false)));
-        add(choice({"Capture/MouseForward", QT_TRANSLATE_NOOP("AiSettings", "截图：侧键（前进）"), "capture", 0,
-                       "What the side button away from the user (forward, X2) does once there is a selection."},
-            &Settings::captureMouseForward, mouseChoices(false)));
-    }
-    {
-        // GitHub #98. "all" puts what is typed, passwords too, into the videos: every change asks the user.
-        Entry& e = add(choice({"Capture/RecordingKeys", QT_TRANSLATE_NOOP("AiSettings", "录屏时显示按键"), "capture", 0,
-                                  "Screen recordings (MP4 and GIF) show the keys pressed as keycaps in a corner of the video. "
-                                  "'shortcuts' shows key combinations with Ctrl, Alt or Win and keys such as Esc, Enter or F1, "
-                                  "never typing; 'all' shows typing too, passwords included. Keys typed into Win顺's own windows "
-                                  "are not shown."},
-            &Settings::captureRecordingKeys,
-            {{u"off"_s, u"no keys shown"_s, QT_TRANSLATE_NOOP("AiSettings", "不显示")},
-                {u"shortcuts"_s, u"key combinations and command keys, never typing"_s, QT_TRANSLATE_NOOP("AiSettings", "仅快捷键")},
-                {u"all"_s, u"every key, typing and passwords included"_s, QT_TRANSLATE_NOOP("AiSettings", "全部按键")}}));
-        e.access = Access::AlwaysAsk;
-    }
-    add(boolean({"Capture/RecordingMouseButtons", QT_TRANSLATE_NOOP("AiSettings", "录屏时显示鼠标按键"), "capture", 0,
-                    "Screen recordings show which mouse button was pressed (left, right, middle or a side button) as a "
-                    "keycap in a corner of the video, with Ctrl, Shift, Alt or Win when held."},
-        &Settings::captureRecordingMouseButtons));
-    {
-        Entry e = base({"Capture/Keyword", QT_TRANSLATE_NOOP("AiSettings", "截图历史的关键词"), "capture", 0,
-                           "The word typed first in the search box (with a space after it) that lists the screenshot history. One word, no spaces or quotes; not one a web search or a favorite has."},
+        Entry e = base({"Capture/Keyword", QT_TRANSLATE_NOOP("AiSettings", "截图历史的关键词"), "clipboard", 0,
+                           "The word typed first in the search box (with a space after it) that lists the screenshots of the clipboard history, while the screenshot plugin (winshun.capture) is on. One word, no spaces or quotes; not one a web search or a favorite has."},
             Type::Text);
         e.field = &Settings::captureKeyword;
         e.check = [](const State& s, const QString& value, const Env& env) -> QString {
@@ -708,7 +639,7 @@ std::vector<Entry> buildCatalog()
         add(std::move(e));
     }
 
-    // ---- 粘贴为文件 (the 插件 page's card, beside 截图) ----
+    // ---- 粘贴为文件 (the 插件 page's card) ----
     add(boolean({"PasteFile/Enabled", QT_TRANSLATE_NOOP("AiSettings", "粘贴为文件"), "paste_file", 0,
                     "Pastes the words or the picture on the clipboard into a folder as a new file (.txt, .csv, .json, .html, .png and so on, told from what it holds), named after its first line or the time, ready to be renamed. Off until turned on."},
         &Settings::pasteFileEnabled));
@@ -991,8 +922,8 @@ QString addShortcut(State& s, const QJsonObject& o, const Env& env)
         if (const QString problem = textProblem(o.value(field).toString(), kMaxPathChars, u"The "_s + field); !problem.isEmpty())
             return problem;
     }
-    const KeywordClaim claim = keywordClaim(w.keyword, shortcuts, -1, s.settings.captureEnabled ? s.settings.captureKeyword : QString(),
-        env.keywordOwner);
+    const bool history = env.screenshotHistory && env.screenshotHistory();
+    const KeywordClaim claim = keywordClaim(w.keyword, shortcuts, -1, history ? s.settings.captureKeyword : QString(), env.keywordOwner);
     switch (claim.by) {
     case KeywordClaim::By::WebShortcut:
         return u"The keyword '%1' is already the web search '%2'; remove that first to replace it."_s.arg(w.keyword, claim.owner);
@@ -1415,7 +1346,6 @@ const std::vector<Section>& sections()
         {u"favorites"_s, QT_TRANSLATE_NOOP("AiSettings", "收藏夹"), 6},
         {u"clipboard"_s, QT_TRANSLATE_NOOP("AiSettings", "剪贴板"), 7},
         {u"advanced"_s, QT_TRANSLATE_NOOP("AiSettings", "高级"), 8},
-        {u"capture"_s, QT_TRANSLATE_NOOP("AiSettings", "截图"), 10},
         {u"paste_file"_s, QT_TRANSLATE_NOOP("AiSettings", "粘贴为文件"), 10},
     };
     return all;
@@ -1674,7 +1604,7 @@ namespace {
 // look set and do nothing.
 void checkHotkeysDiffer(Plan& plan)
 {
-    static const QStringList own {u"Launcher/Hotkey"_s, u"Launcher/FolderMenuHotkey"_s, u"Clipboard/Hotkey"_s, u"Capture/Hotkey"_s};
+    static const QStringList own {u"Launcher/Hotkey"_s, u"Launcher/FolderMenuHotkey"_s, u"Clipboard/Hotkey"_s};
     for (const Item& item : plan.items) {
         const QString wanted = Settings::normalizedHotkey(item.newValue.toString());
         if (!item.changed || item.entry->type != Type::Hotkey || wanted.isEmpty())
@@ -1683,8 +1613,6 @@ void checkHotkeysDiffer(Plan& plan)
             const Entry* other = find(key);
             if (!other || key.compare(item.entry->key, Qt::CaseInsensitive) == 0)
                 continue;
-            if (key == u"Capture/Hotkey" && !plan.result.settings.captureEnabled)
-                continue; // not in use
             if (Settings::normalizedHotkey(other->text(plan.result)) == wanted) {
                 plan.problems.push_back(u"%1: '%2' is already the shortcut of '%3' (%4); a shortcut can have one use."_s.arg(
                     item.entry->key, item.newValue.toString(), other->titleText(), key));

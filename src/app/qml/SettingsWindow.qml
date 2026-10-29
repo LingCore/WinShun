@@ -437,7 +437,6 @@ Window {
         target: window.editor
         property: "recordingHotkey"
         value: hotkeyRecorder.recording || clipHotkeyRecorder.recording || folderMenuHotkeyRecorder.recording
-               || pluginsSection.recordingHotkey
                || window.editor.plugins.recordingHotkey
     }
     Binding { // the plugin cards read their processes' memory only while on show
@@ -3537,6 +3536,39 @@ Window {
                     ToggleSwitch {
                         checked: window.editor.clipboardImages
                         onToggled: (on) => window.editor.clipboardImages = on
+                    }
+                }
+
+                SettingRow {
+                    // The screenshots the screenshot plugin (winshun.capture)
+                    // put in the history, listed by a word in the search box
+                    // (App::screenshotKeyword); while the plugin is on.
+                    title: qsTr("截图历史关键词")
+                    keywords: qsTr("截图;截图历史;截屏;关键词;screenshot").split(";")
+                    values: [window.editor.captureKeyword]
+                    description: qsTr("在搜索框输入“%1”加空格，列出截过的图，再输入文字按图里识别出的文字筛选；Enter 复制并粘贴，Ctrl+Enter 贴到屏幕，Delete 删除").arg(window.editor.captureKeyword)
+                    shown: window.editor.screenshotHistory
+                    bodyShown: captureKeywordError.text.length > 0
+
+                    InputBox {
+                        width: 96
+                        text: window.editor.captureKeyword
+                        maximumLength: 16
+                        function commit() {
+                            captureKeywordError.text = window.editor.saveCaptureKeyword(text)
+                            if (captureKeywordError.text.length === 0)
+                                text = Qt.binding(() => window.editor.captureKeyword)
+                        }
+                        onAccepted: commit()
+                        onEditingFinished: commit()
+                    }
+
+                    body: Text {
+                        id: captureKeywordError
+                        width: parent.width
+                        color: Theme.danger
+                        font.pixelSize: Theme.fontCaption
+                        wrapMode: Text.Wrap
                     }
                 }
 

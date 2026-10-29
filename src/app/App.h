@@ -29,6 +29,7 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -84,15 +85,6 @@ class TypeToSearch;
 class LauncherKeysWatch;
 class Updater;
 class Backup;
-namespace capture {
-class Capture;
-class CaptureEditor;
-class CaptureOcr;
-struct SmartHooks;
-class PinManager;
-class PinWindow;
-namespace recording { class ClickStream; }
-}
 class VolumeNotifier;
 class WindowFrame;
 class WindowLogo;
@@ -198,39 +190,29 @@ private:
     bool createWindow();
     bool createClipWindow();
     QQuickWindow* createPreviewWindow(); // FilePreview's, the first time it is wanted
-    // 识别文字 from a capture or a pin: the OCR window (OcrPanel.qml), made
-    // the first time, beside `where` (physical), reading `image`.
-    // `texts`: show these (QR codes, none found when empty) instead of reading `image`.
-    void showCaptureOcr(const QImage& image, double dpr, const QRect& where, const QStringList* texts = nullptr);
-    void showQrResult(const QStringList& codes, const QRect& where);
-    void closeCaptureOcr(bool destroy = false); // `destroy`: the capture was turned off
-    // The OCR window's reader, made the first time it is wanted: the window's
-    // text and smart redaction's scans go through the same thread and model.
-    capture::CaptureOcr& captureOcr();
-    // How the capture and the editing window ask for smart redaction's scans,
-    // its rules and whether it scans by itself ([Capture] Smart...).
-    capture::SmartHooks smartHooks();
-    // 识别文字并复制 / 搜索 / 网页搜索: read `image` on a reader of its own, no
-    // window (the OCR window is up only when the models are missing, to say so),
-    // then go on with the words. The reader goes when it has answered.
-    enum class OcrThen { Copy, Search, Web };
-    void captureOcrThen(const QImage& image, double dpr, const QRect& where, OcrThen then);
-    void quickOcrDone();
     void openWebSearch(const QString& query); // the default web search (defaultWebSearchUrl)
-    // The pictures pinned on the screen: made when first wanted (a capture's
-    // 贴图, or 贴到屏幕 with the capture off too); closed with the capture.
-    capture::PinManager& pins();
-    // 编辑: the editing window (EditWindow.qml, CaptureEditor), made the
-    // first time, on a history entry (jt, the clipboard window) or a pin.
-    // With the capture off too.
-    capture::CaptureEditor* editor();
-    void editHistory(qint64 clipId);
-    void editPin(capture::PinWindow* pin);
-    // 贴到屏幕: a picture file, read off the GUI thread; `screenshot`: one
-    // of the screenshot history's (PinWindow::screenshot).
-    void pinPicture(const QString& path, bool screenshot = false);
-    // The screenshot history's keyword as it works now (jt): none with the
-    // capture off, nor when a web search or a favorite has the word.
+    // The screenshot and recording are a plugin of the plugin library
+    // (winshun.capture, GitHub #138). What such a plugin, with windows of
+    // its own, does with Win顺's: a submenu of the tray menu (trayMenu,
+    // asked for as the tray icon is pressed, so the menu waits for nothing),
+    // 贴到屏幕 and 编辑 on pictures (`pictures`), a 设置 button on its card
+    // (settingsWindow), Win顺's look (appearance).
+    bool screenshotPluginOn() const; // installed, on and allowed: the screenshot history works
+    // The plugin on and running that does `verb` ("pin", "edit") with
+    // pictures; empty: none, and the entries are not offered.
+    QString picturePlugin(const QString& verb) const;
+    void pluginPicturesChanged(); // which of them are on offer: to the launcher and the clipboard
+    // 贴到屏幕 / 编辑: an entry of the clipboard history (`clipId`; its
+    // picture's file and project) or a picture file (`clipId` 0).
+    void pictureAction(const QString& verb, qint64 clipId, const QString& path, bool screenshot);
+    void prefetchTrayMenus();
+    QJsonObject pluginLook() const; // the look plugin::Host::setAppearance passes on
+    void setUpAppTools(); // plugin::Host::setAppTools: what the screenshot plugin asks of Win顺
+    // PrtScn taken over by a Win顺 before 0.17 ([Capture] PrintScreenBefore),
+    // the screenshot plugin not here to keep it: given back to the Snipping Tool.
+    void restorePrintScreen();
+    // The screenshot history's keyword as it works now (jt): none without
+    // the screenshot plugin, nor when a web search or a favorite has the word.
     QString screenshotKeyword() const;
     void applyScreenshots(); // the keyword to the launcher and the plugins' catalog
     // take_screenshot (MCP): the user is asked on the screen
@@ -352,13 +334,10 @@ private:
     // that is going back to it are let go of before it does, and registered
     // again by the apply functions once it is up.
     void releaseWinChordsForExplorer();
-    void applyWinKeyedHotkeys(); // the launcher's, the folder menu's and the capture's, any of which may be a Win+S or Win+V
+    void applyWinKeyedHotkeys(); // the launcher's and the folder menu's, either of which may be a Win+S or Win+V
     void giveBackWinKey(const QString& letter); // "S" or "V": out of DisabledHotkeys, whoever put it there
     void setClipboardPaused(bool paused);
     void showClipboardSettings(); // the settings window on its 剪贴板 page
-    // "截图已保存" (or why not) as a tray notification; a click shows the file
-    // in its folder, in the file manager chosen (GitHub #99).
-    void notifyCaptureSaved(const QString& path, const QString& error);
     void showWebSettings(); // ... on its 网页搜索 page (a web row's menu)
     void showFileTypeSettings(); // ... on its 结果列表 page, at the file types (the + of the launcher's strip)
     void showFavoriteSettings(const QString& path); // ... on its 收藏夹 page, at that favorite (a row's menu)
@@ -369,11 +348,6 @@ private:
     void applyFolderMenuHotkey(); // ... and on its hotkey, anywhere (GitHub #25)
     void applyDropPie(); // the favorite folders round the pointer, on the key under Esc with a file held
     void folderMenuHotkey(); // the hotkey was pressed: the menu, the launcher out of the way first
-    // The screen capture (src/capture): made while it is on in the settings,
-    // its hotkey and PrtScn (taken from the Snipping Tool and given back).
-    void applyCapture();
-    void applyCaptureHotkeys();
-    void triggerCapture(); // the hotkey, PrtScn, the tray menu: one more press ends it
     void excludeFromDialogBar(const QString& app); // "not in this program" from the bar's menu
     void answerAutoJump(const QString& when); // asked under the bar: "open", "back" or "" (DialogBar::autoJumpAnswered)
     bool createBarWindow();
@@ -576,11 +550,6 @@ private:
     std::unique_ptr<MissingFiles> m_missingFiles; // its entries of files that are gone (GitHub #54)
     std::unique_ptr<FilePreview> m_preview; // Alt+P on a result
     std::unique_ptr<WindowFrame> m_previewFrame;
-    std::unique_ptr<capture::CaptureOcr> m_captureOcr; // the OCR window's view-model, made with it
-    std::unique_ptr<WindowFrame> m_ocrFrame;
-    QPointer<QQuickWindow> m_ocrWindow;
-    std::unique_ptr<capture::CaptureOcr> m_quickOcr; // while a read for ocrcopy / ocrsearch / ocrweb runs
-    OcrThen m_quickOcrThen = OcrThen::Copy;
     // Destroyed before the two above: its thread calls back into the app, and
     // the page waits on its writes.
     std::unique_ptr<ClipboardWatcher> m_clipWatcher;
@@ -665,8 +634,7 @@ private:
     std::vector<std::wstring> m_sharesBuilding; // being read for the first time: told when done
     std::unique_ptr<KeyListener> m_keyListener; // double Ctrl, double clicks for the folder menu
     std::unique_ptr<ServiceKeyListener> m_serviceKeyListener; // destroyed before its target KeyListener
-    int m_keyListenerMode = 0; // 1 double Ctrl, 2 double clicks, 4 drop pie, 8 recording clicks; -1 shutting down
-    std::shared_ptr<capture::recording::ClickStream> m_recordingClicks;
+    int m_keyListenerMode = 0; // 1 double Ctrl, 2 double clicks, 4 drop pie; -1 shutting down
     std::unique_ptr<FolderMenu> m_folderMenu; // before the window: its view-model
     QPointer<QQuickWindow> m_folderMenuWindow;
     std::unique_ptr<DropPie> m_dropPie; // before the window: its view-model
@@ -703,13 +671,9 @@ private:
     FrameReveal m_launcherReveal; // armed once the fresh results are ready (showLauncher)
     std::atomic<bool> m_prewarming {false}; // shown cloaked for one frame (see prewarmLauncher)
     std::unique_ptr<QQmlApplicationEngine> m_qml; // destroyed first: QML references the objects above
-    // Its overlay windows are the engine's: reset in ~App, before the engine goes.
-    std::unique_ptr<capture::Capture> m_capture;
-    std::unique_ptr<capture::PinManager> m_pins; // pins(); reset in ~App with the capture
-    // The editing window and what it needs; the window is the engine's, deleted in ~App before it.
-    std::unique_ptr<capture::CaptureEditor> m_editor;
-    std::unique_ptr<WindowFrame> m_editFrame;
-    QPointer<QQuickWindow> m_editWindow;
+    // The plugins' tray submenus as they last answered trayMenu (prefetchTrayMenus): plugin id -> entries.
+    std::map<QString, QJsonArray> m_trayMenus;
+    std::map<QString, QStringList> m_pluginHotkeys; // the shortcuts plugins register themselves (winshun/hotkeys)
     struct ScreenshotAsk { // take_screenshot waiting for the user's answer: one at a time
         std::function<void(mcp::ScreenshotTaken)> done;
         HMONITOR monitor = nullptr;
@@ -736,7 +700,6 @@ private:
     // In front when the launcher last opened: where a screenshot of the
     // history (jt, Enter) is pasted.
     HWND m_launcherTarget = nullptr;
-    std::jthread m_pinSaver; // 保存 on a pin while the capture is off (capture::saveImage)
     QPointer<QQuickWindow> m_window;
     WindowLogo* m_launcherLogo = nullptr; // m_window's
     QPointer<QQuickWindow> m_clipWindow; // the clipboard's; created a moment after the start

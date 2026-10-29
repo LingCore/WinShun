@@ -307,6 +307,9 @@ public:
     };
     // `keyword` empty: no keyword (the capture off, or the word another's).
     void setScreenshots(const QString& keyword, ScreenshotHooks hooks);
+    // Whether a plugin pins and edits pictures (App::picturePlugin): 贴到屏幕
+    // and 编辑 on pictures only then.
+    void setPictureVerbs(bool pin, bool edit) { m_pictureVerbs = {pin, edit}; }
     QString screenshotKeyword() const { return m_shotKeyword; }
     bool screenshotMode() const;
     void refreshScreenshots(); // the history changed: listed again while shown
@@ -1103,6 +1106,7 @@ private:
     std::optional<KeywordMode> m_keyword;
     QString m_shotKeyword; // setScreenshots
     ScreenshotHooks m_shotHooks;
+    struct { bool pin = false; bool edit = false; } m_pictureVerbs;
     QSet<QString> m_pluginPending; // answering the current query
     QElapsedTimer m_pluginTimer; // since they were asked
     qint64 m_pluginElapsedUs = 0; // keyword mode: until the answer

@@ -34,6 +34,7 @@ Rectangle {
     required property var permissions
     required property var settings
     required property bool hasReadme
+    required property bool settingsWindow // the plugin's own settings window: 设置 beside the switch
     required property bool hasData
     required property bool aiExpose // the manifest offers its commands to the AI: the switch below shows
     required property bool aiEnabled
@@ -254,6 +255,13 @@ Rectangle {
                 y: 0
                 spacing: 8
 
+                FlatButton { // the plugin's own window, while it runs
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: card.settingsWindow && card.usable && card.pluginEnabled
+                    implicitHeight: 32
+                    text: qsTr("设置")
+                    onClicked: card.plugins.showSettings(card.pluginId)
+                }
                 ToggleSwitch {
                     anchors.verticalCenter: parent.verticalCenter
                     enabled: card.usable
