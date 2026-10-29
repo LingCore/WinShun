@@ -90,6 +90,15 @@ void Session::receive(const QByteArray& line)
         } else if (method == u"winshun/refresh") {
             if (m_handlers.refresh)
                 m_handlers.refresh();
+        } else if (method == u"winshun/hotkeys") {
+            if (m_handlers.hotkeys) {
+                QStringList keys;
+                for (const QJsonValue& key : message->params.value(u"keys"_s).toArray()) {
+                    if (key.isString() && keys.size() < 32)
+                        keys.append(key.toString().left(64));
+                }
+                m_handlers.hotkeys(keys);
+            }
         }
         // Others: nothing to do.
         return;

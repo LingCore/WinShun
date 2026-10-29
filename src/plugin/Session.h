@@ -37,6 +37,9 @@ public:
         std::function<void(const QString& title, const QString& text, const QJsonArray& click)> toast;
         std::function<void(std::uint64_t queryId, const QString& text)> progress; // winshun/progress
         std::function<void()> refresh; // winshun/refresh: what the launcher shows changed by itself
+        // winshun/hotkeys: the shortcuts it registers itself (the screenshot's),
+        // which Win顺 then leaves to it.
+        std::function<void(const QStringList& keys)> hotkeys;
         // winshun/tool: answer with respond() or respondError(), by id.
         std::function<void(const QJsonValue& id, const QString& tool, const QJsonObject& arguments)> toolCall;
         std::function<void(const QString& problem, const QByteArray& line)> protocolError;

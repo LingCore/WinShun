@@ -164,6 +164,15 @@ struct Manifest {
     QList<Command> commands;
     QList<Setting> settings;
     bool aiExpose = false;
+    // A resident plugin with windows of its own (`ui`; GitHub #138): a
+    // submenu of Win顺's tray menu with this title, its entries asked for
+    // (trayMenu) as the menu opens; what it does with Win顺's pictures (the
+    // clipboard history's, picture files among the results): "pin" (贴到屏幕)
+    // and "edit" (编辑), asked for as `picture`; a 设置 button on its card
+    // that asks it to show its own settings window (showSettings).
+    Text trayMenu;
+    QStringList pictures;
+    bool settingsWindow = false;
 
     const Command* command(QStringView commandId) const;
     bool resident() const noexcept { return runtime && runtime->mode == RunMode::Resident; }

@@ -29,6 +29,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <vector>
 
 namespace ws::plugin {
 
@@ -68,6 +69,7 @@ public:
         QString appDir;
         QString locale = QStringLiteral("zh");
         QString theme = QStringLiteral("light");
+        QJsonObject appearance; // setAppearance's `look`
         QString version; // of Win顺
         int maxResident = 8;
     };
@@ -79,8 +81,35 @@ public:
     const Options& options() const noexcept { return m_options; }
     void setToolBridge(ToolBridge bridge) { m_bridge = std::move(bridge); }
     // The interface's language and theme changed: for the plugins started
-    // from now on (the ones running keep what they were told).
-    void setAppearance(const QString& locale, const QString& theme);
+    // from now on (the ones running keep what they were told). `look`, for
+    // the plugins with windows of their own (initialize's appearance): the
+    // language and Win顺's 外观 settings (themeSetting, corners, uiSize,
+    // transparency, renderer); the running ones with the `ui` permission
+    // hear appearance when it changes.
+    void setAppearance(const QString& locale, const QString& theme, const QJsonObject& look = {});
+
+    // Win顺's tools for plugins alone, not the AI's (the screenshot plugin,
+    // GitHub #138: a picture into the clipboard history, the launcher with a
+    // text), answered by the app: held to the manifest's permission as the
+    // others are (onToolCall); `run` learns who asks and its data folder.
+    struct AppTool {
+        QString name;
+        Permission permission;
+        std::function<void(const QString& pluginId, const QString& dataDir, const QJsonObject& arguments,
+            std::function<void(mcp::ToolResult)> done)>
+            run;
+    };
+    void setAppTools(std::vector<AppTool> tools) { m_appTools = std::move(tools); }
+
+    // What Win顺 asks of a resident plugin besides queries, for what its
+    // manifest declares (trayMenu, pictures, settingsWindow): only
+    // while it runs and is ready, else false (and `reply` at once, failed).
+    // `reply` once, on this thread: failed for an error, the plugin gone or
+    // no answer within its timeoutMs. `foreground`: for what the user just
+    // chose, the plugin may bring a window of its own to the front.
+    using Reply = std::function<void(bool ok, const QJsonValue& result)>;
+    bool request(const QString& id, const QString& method, const QJsonObject& params, Reply reply, bool foreground = false);
+    bool notify(const QString& id, const QString& method, const QJsonObject& params, bool foreground = false);
 
     // From the settings (stage 2 wires the INI): which plugins are on,
     // keywords the user changed, the [WebSearch] keywords, each plugin's
@@ -174,6 +203,9 @@ signals:
     void queryFailed(std::uint64_t queryId, const QString& pluginId, const QString& why); // timed out, crashed, errored
     void progress(std::uint64_t queryId, const QString& pluginId, const QString& text);
     void notice(const QString& pluginId, const QString& text); // winshun/notify: for the footer
+    // winshun/hotkeys: the shortcuts a plugin registers itself; empty when it
+    // says so, or its process ended.
+    void hotkeysChanged(const QString& pluginId, const QStringList& keys);
     // winshun/notify with "toast" from a plugin with the "notifications"
     // permission: a system notification. At most one per plugin every
     // kToastGapMs (a newer one waiting replaces the one before it); the
@@ -258,6 +290,7 @@ private:
     Options m_options;
     Catalog m_catalog;
     ToolBridge m_bridge;
+    std::vector<AppTool> m_appTools;
     std::unique_ptr<Runner> m_runner;
     int m_runnerRestarts = 0;
     QTimer m_runnerBackoff;
