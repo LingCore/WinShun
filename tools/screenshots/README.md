@@ -112,6 +112,7 @@ tools\screenshots\run.ps1 -Exe <要拍的 WinShun.exe，发布版，带拖放圆
 - 代理会丢掉参数开头的空格：要打“关键词 + 空格 + 文字”，先 `tap 23`（End）、`tap 20`（空格）再 `type`。
 - 开拍前系统剪贴板里要有东西（比如复制一段字）：场景开头按 Delete 删掉 Win顺 启动时记下的那一条，剪贴板是空的时它什么都没记，删掉的就是演示历史里最新的那张图片，剪贴板搜图里的字那张就没了。
 - Windows 11 的文本光标指示器（品红色）可能被抠进图里；演示配置只排除了各盘的文件夹，盘根目录下的文件仍能搜到，查询别碰上它们。
+- 截图 0.17 起是插件（GitHub #138）：`profile --capture` 把构建出的插件（`build\release\library-plugins\winshun.capture`，别处的用 `--capture-plugin <文件夹>`）复制进演示配置的 `plugins\`、打开它，快捷键写进它自己的 `capture.ini`；`release016.py` 拍截图工具条和录屏面板要 `--capture <WinShunCapture.exe>`，它用 `--exe` 那个文件夹里的 Qt。
 - `profile start` 现在会把 `demo/` 里新加的文件补进 `F:\Win顺演示`（只加不改不删）；新文件的修改时间写在 `stage.CHANGED` 里（要老，别让“最新的在前”那张图里冒出它们）。
 - 资源管理器里别连点同一行：第二下是改名，打进去的字就改了演示文件夹里的名字（`Esc` 取消）。用 `front` 把窗口放前面，只点一次没选过的行。
 - `profile stop` 现在用普通权限启动用户自己的那份（以前是提权的，要自己 `--quit` 再启动）；`QuitWs` 也会退掉 `dist` 里正在跑的那份，所以用 `-Exe` 拍别的构建时不用先退它。

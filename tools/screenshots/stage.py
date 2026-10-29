@@ -18,6 +18,8 @@ from art import NAMES, background
 from capture import Desktop
 
 CAPTURE_HOTKEY = "Ctrl+Alt+F10"  # the profile's capture hotkey (agent: down 11, down 12, tap 79)
+# The screenshot plugin as the build stages it (a plugin since 0.17, GitHub #138).
+CAPTURE_PLUGIN = pathlib.Path(__file__).resolve().parents[2] / "build/release/library-plugins/winshun.capture"
 PROFILE_MARK = "made-for-screenshots.txt"  # a profile folder this may empty again
 
 # The folder the shots show (its name shows in them too, as in the Open
@@ -244,7 +246,7 @@ def sync_demo():
 
 
 def make_profile(folder, files, recent, number_keys="ctrl", number_hints="held", pie=False, capture=False,
-                 explorer_typing=False):
+                 explorer_typing=False, capture_plugin=None):
     """A folder for `WinShun.exe --profile <folder>`: this user's settings,
     but nothing indexed outside `files`, no update check, the built-in web
     shortcuts only, no shares, `recent` (paths, newest first) as the recently
@@ -285,11 +287,23 @@ def make_profile(folder, files, recent, number_keys="ctrl", number_hints="held",
     if pie:  # the drop pie on (the default); the favorites it shows are PIE_FAVORITES
         text = ini_set(text, "Favorites", {"DropPie": "true"})
     # The capture (a hotkey of its own for the agent; the Snipping Tool's PrtScn is left alone), the tour's
-    # smart redaction on; whatever of this user's [Capture] was there is replaced.
-    text = ini_drop(text, "Capture")
+    # smart redaction on; whatever of this user's [Capture] was there is replaced. It is the plugin
+    # winshun.capture (`capture_plugin`, default CAPTURE_PLUGIN): copied into the profile's plugins,
+    # turned on with the permissions it asks for, its settings in its own capture.ini.
+    text = ini_drop(text, "Capture", "Plugin.winshun.capture")
     if capture:
-        text = ini_set(text, "Capture", {"Enabled": "true", "Hotkey": CAPTURE_HOTKEY, "PrintScreen": "false",
-                                         "IncludeCursor": "false", "SmartPrescan": "true"})
+        source = pathlib.Path(capture_plugin or CAPTURE_PLUGIN)
+        manifest = source / "plugin.json"
+        if not manifest.is_file():
+            sys.exit(f"no screenshot plugin in {source}: build WinShun, or name it with --capture-plugin")
+        plugins = folder / "WinShun" / "plugins"
+        shutil.copytree(source, plugins / "winshun.capture")
+        permissions = json.loads(manifest.read_text(encoding="utf-8"))["permissions"]
+        text = ini_set(text, "Plugin.winshun.capture", {"Enabled": "true", "Confirmed": ", ".join(permissions)})
+        (plugins / "winshun.capture.data").mkdir()
+        (plugins / "winshun.capture.data" / "capture.ini").write_text(ini_set("", "Capture", {
+            "Hotkey": CAPTURE_HOTKEY, "PrintScreen": "false", "IncludeCursor": "false", "SmartPrescan": "true"}),
+            encoding="utf-8")
     # Search by meaning on the demo folder, with this user's model service (and
     # its key, in Windows' credentials); its vectors are the profile's own.
     text = ini_set(text, "Plugin.winshun.semantic", {"Enabled": "true", "Confirmed": "winshun:content, network",
