@@ -1,0 +1,18 @@
+{
+  "manifest": 1,
+  "id": "winshun.capture",
+  "name": {"zh": "截图与录屏", "en": "Screenshot and recording"},
+  "version": "0.0.1",
+  "description": {"zh": "截图、标注、贴图、长截图、识别文字和录屏", "en": "Screenshots, annotations, pins, long screenshots, text recognition and screen recording"},
+  "author": "LingCore",
+  "homepage": "https://github.com/LingCore/WinShun",
+  "license": "MIT",
+  "runtime": {"mode": "resident", "program": "WinShunCapture.exe", "start": "lazy", "sandbox": "normal", "timeoutMs": 10000, "idleExitSec": 0, "memoryMB": 2048},
+  "permissions": ["ui", "clipboard:read", "clipboard:write", "files:write", "notifications"],
+  "commands": [{
+    "id": "probe",
+    "keyword": ["capprobe"],
+    "title": {"zh": "截图插件自检", "en": "Screenshot plugin self-check"},
+    "icon": "glyph:U+E722"
+  }]
+}
