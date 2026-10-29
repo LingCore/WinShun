@@ -35,6 +35,7 @@ endforeach()
 qt_add_library(WinShunCaptureApp SHARED
     PluginMain.cpp
     CaptureApp.cpp CaptureApp.h
+    RawClicks.cpp RawClicks.h
     Protocol.cpp Protocol.h
     PluginShell.cpp PluginShell.h
     ${app_dir}/Phosphor.cpp ${app_dir}/Phosphor.h

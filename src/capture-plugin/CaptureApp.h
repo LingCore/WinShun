@@ -35,6 +35,7 @@ namespace recording { class ClickStream; }
 namespace ws::captureplugin {
 
 class Protocol;
+class RawClicks;
 
 // The screen capture as a plugin of Win顺's (GitHub #138): what App did for
 // it up to 0.16 (App::applyCapture and the rest), in a process of its own.
@@ -88,10 +89,9 @@ private:
     void notify(const QString& title, const QString& text, const QString& folder = {});
     void searchText(const QString& text, bool web);
 
-    // ---- hotkeys and the mouse while recording, on a window of its own ----
+    // ---- hotkeys, on a window of its own ----
     static LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM w, LPARAM l);
     void hotkey(int id);
-    void listenToClicks(std::shared_ptr<capture::recording::ClickStream> clicks);
 
     Protocol& m_protocol;
     const QString m_appDir;
@@ -112,7 +112,8 @@ private:
     QPointer<QQuickWindow> m_ocrWindow;
     std::unique_ptr<WindowFrame> m_settingsFrame;
     QPointer<QQuickWindow> m_settingsWindow;
-    std::shared_ptr<capture::recording::ClickStream> m_clicks;
+    std::unique_ptr<RawClicks> m_clicks; // while a recording shows the clicks
+    QStringList m_reportedHotkeys; // what Win顺 was told it holds (applyHotkeys)
     std::jthread m_pinSaver;
     // The history pictures being edited: what Win顺 handed over for them.
     struct HistoryPicture {

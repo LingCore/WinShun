@@ -118,7 +118,8 @@ CaptureOptions CaptureOptions::load(const QString& file)
     o.recordingFolder = readOrDefault(s, u"Capture/RecordingFolder"_s, d.recordingFolder).trimmed();
     o.recordingSystemAudio = readOrDefault(s, u"Capture/RecordingSystemAudio"_s, d.recordingSystemAudio);
     o.recordingMicrophone = readOrDefault(s, u"Capture/RecordingMicrophone"_s, d.recordingMicrophone);
-    o.recordingQuality = readOrDefault(s, u"Capture/RecordingQuality"_s, d.recordingQuality);
+    o.recordingQuality = readOrDefault(s, u"Capture/RecordingQuality"_s,
+        readOrDefault(s, u"Capture/RecordingHighQuality"_s, false) ? 2 : d.recordingQuality); // the first version's
     if (o.recordingQuality < 0 || o.recordingQuality > 2)
         o.recordingQuality = d.recordingQuality;
     o.recordingCursor = readOrDefault(s, u"Capture/RecordingCursor"_s, d.recordingCursor);

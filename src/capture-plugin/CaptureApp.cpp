@@ -13,6 +13,7 @@
 #include "PinManager.h"
 #include "PinWindow.h"
 #include "PrintScreen.h"
+#include "RawClicks.h"
 #include "RecordingPointer.h"
 #include "SavedFile.h"
 #include "SystemTheme.h"
@@ -214,7 +215,7 @@ CaptureApp::CaptureApp(Protocol& protocol, QString appDir, QString dataDir, QObj
 
 CaptureApp::~CaptureApp()
 {
-    listenToClicks({});
+    m_clicks.reset();
     m_capture.reset(); // its overlays, before the QML engine they were made with
     m_pins.reset();
     if (m_editWindow) {
@@ -301,11 +302,13 @@ void CaptureApp::requested(const QJsonValue& id, const QString& method, const QJ
         });
     } else if (method == u"trayMenu") {
         m_protocol.respond(id, QJsonObject {{u"items"_s, trayMenu()}});
-    } else if (method == u"pin") {
-        pinPicture(params.value(u"file"_s).toString(), params.value(u"screenshot"_s).toBool());
-        m_protocol.respond(id, QJsonObject {});
-    } else if (method == u"edit") {
-        editPicture(params.value(u"clipId"_s).toInteger(-1), params.value(u"file"_s).toString(), params.value(u"project"_s).toString());
+    } else if (method == u"picture") { // "pictures" in plugin.json
+        const QString action = params.value(u"action"_s).toString();
+        const QString file = params.value(u"file"_s).toString();
+        if (action == u"pin")
+            pinPicture(file, params.value(u"screenshot"_s).toBool());
+        else if (action == u"edit")
+            editPicture(params.value(u"clipId"_s).toInteger(-1), file, params.value(u"project"_s).toString());
         m_protocol.respond(id, QJsonObject {});
     } else if (method == u"showSettings") {
         showSettings();
@@ -405,9 +408,13 @@ void CaptureApp::apply()
         };
         callbacks.recording.finished = [this] { m_idleTrim->poke(); };
         callbacks.recording.clicks = [this](std::shared_ptr<capture::recording::ClickStream> input) {
-            const bool wanted = input != nullptr;
-            listenToClicks(std::move(input));
-            return !wanted || m_clicks != nullptr;
+            m_clicks.reset();
+            if (!input)
+                return true;
+            m_clicks = std::make_unique<RawClicks>(std::move(input));
+            if (!m_clicks->active())
+                m_clicks.reset();
+            return m_clicks != nullptr;
         };
         // The screenshot's hotkey and PrtScn (taken over) end a recording
         // (Capture::trigger): their keys are not shown in it (GitHub #98).
@@ -472,27 +479,49 @@ void CaptureApp::applyHotkeys()
 {
     for (int id = CaptureKey; id <= LastPinKey; ++id)
         ::UnregisterHotKey(m_window, id);
-    if (!m_capture || m_settings.recordingHotkey())
-        return; // the keys being pressed must reach the settings window
-    const CaptureOptions& o = m_settings.options();
-    const auto take = [this](int id, const QString& hotkey) -> QString {
-        UINT modifiers = 0;
-        UINT vk = 0;
-        if (hotkey.isEmpty())
-            return {};
-        if (hotkeys::parse(hotkey, &modifiers, &vk) && ::RegisterHotKey(m_window, id, modifiers, vk))
-            return {};
-        return hotkeyProblem(hotkey);
-    };
-    if (o.printScreen)
-        take(PrintScreenKey, u"PrintScreen"_s);
+    if (m_settings.recordingHotkey())
+        return; // the keys being pressed must reach the settings window (Win顺 is told nothing: a moment)
+    QStringList wanted;
+    bool failed = false;
     CaptureSettings::Problems problems;
-    problems.note = m_settings.captureNote();
-    problems.hotkey = take(CaptureKey, o.hotkey);
-    problems.pinsHotkey = take(PinsKey, o.pinsHotkey);
-    problems.pinsRestoreHotkey = take(PinsRestoreKey, o.pinsRestoreHotkey);
-    problems.lastPinHotkey = take(LastPinKey, o.lastPinHotkey);
-    m_settings.setProblems(problems); // shown next to each shortcut
+    if (m_capture) {
+        const CaptureOptions& o = m_settings.options();
+        const auto take = [this, &wanted, &failed](int id, const QString& hotkey) -> QString {
+            UINT modifiers = 0;
+            UINT vk = 0;
+            if (hotkey.isEmpty())
+                return {};
+            const bool valid = hotkeys::parse(hotkey, &modifiers, &vk);
+            if (valid)
+                wanted.append(hotkey);
+            if (valid && ::RegisterHotKey(m_window, id, modifiers, vk))
+                return {};
+            failed = true;
+            return hotkeyProblem(hotkey);
+        };
+        if (o.printScreen)
+            take(PrintScreenKey, u"PrintScreen"_s);
+        problems.note = m_settings.captureNote();
+        problems.hotkey = take(CaptureKey, o.hotkey);
+        problems.pinsHotkey = take(PinsKey, o.pinsHotkey);
+        problems.pinsRestoreHotkey = take(PinsRestoreKey, o.pinsRestoreHotkey);
+        problems.lastPinHotkey = take(LastPinKey, o.lastPinHotkey);
+        m_settings.setProblems(problems); // shown next to each shortcut
+    }
+    // Win顺 leaves these to the plugin (winshun/hotkeys): Win+Shift+S, its
+    // taskbar search's second key, and its quick paste's digits. One it held
+    // is free a moment after it is told: tried once more then, and the
+    // problems said after that.
+    if (wanted != m_reportedHotkeys) {
+        m_reportedHotkeys = wanted;
+        m_protocol.notify(u"winshun/hotkeys"_s, {{u"keys"_s, QJsonArray::fromStringList(wanted)}});
+        if (failed) {
+            QTimer::singleShot(300, this, &CaptureApp::applyHotkeys);
+            return;
+        }
+    }
+    if (!m_capture)
+        return;
     if (!(m_settingsWindow && m_settingsWindow->isVisible())) {
         for (const QString& error : {problems.hotkey, problems.pinsHotkey, problems.pinsRestoreHotkey, problems.lastPinHotkey}) {
             if (!error.isEmpty()) {
@@ -1074,25 +1103,6 @@ LRESULT CALLBACK CaptureApp::windowProc(HWND hwnd, UINT message, WPARAM w, LPARA
         self->hotkey(static_cast<int>(w));
         return 0;
     }
-    if (self && message == WM_INPUT && self->m_clicks) {
-        RAWINPUT raw {};
-        UINT size = sizeof raw;
-        if (::GetRawInputData(reinterpret_cast<HRAWINPUT>(l), RID_INPUT, &raw, &size, sizeof(RAWINPUTHEADER)) != static_cast<UINT>(-1)
-            && raw.header.dwType == RIM_TYPEMOUSE) {
-            const USHORT flags = raw.data.mouse.usButtonFlags;
-            POINT point {};
-            if ((flags & (RI_MOUSE_LEFT_BUTTON_DOWN | RI_MOUSE_RIGHT_BUTTON_DOWN)) && ::GetPhysicalCursorPos(&point)) {
-                // The device's buttons: with them swapped (left-handed), its right one clicks.
-                const bool swapped = ::GetSystemMetrics(SM_SWAPBUTTON) != 0;
-                const auto time = static_cast<std::uint32_t>(::GetMessageTime());
-                if (flags & RI_MOUSE_LEFT_BUTTON_DOWN)
-                    self->m_clicks->pushInput(QPoint(point.x, point.y), swapped, time);
-                if (flags & RI_MOUSE_RIGHT_BUTTON_DOWN)
-                    self->m_clicks->pushInput(QPoint(point.x, point.y), !swapped, time);
-            }
-        }
-        return ::DefWindowProcW(hwnd, message, w, l);
-    }
     return ::DefWindowProcW(hwnd, message, w, l);
 }
 
@@ -1120,25 +1130,6 @@ void CaptureApp::hotkey(int id)
         break;
     default:
         break;
-    }
-}
-
-// 显示鼠标点击 while recording: every button press, wherever it lands (raw
-// input, as Win顺's own KeyListener listens), drawn by the recorder.
-void CaptureApp::listenToClicks(std::shared_ptr<capture::recording::ClickStream> clicks)
-{
-    constexpr USHORT kGenericDesktop = 0x01;
-    constexpr USHORT kMouse = 0x02;
-    if (clicks) {
-        const RAWINPUTDEVICE mouse {kGenericDesktop, kMouse, RIDEV_INPUTSINK, m_window};
-        if (::RegisterRawInputDevices(&mouse, 1, sizeof mouse))
-            m_clicks = std::move(clicks);
-        else
-            qWarning() << "Screen capture: no raw mouse input for the clicks, error" << ::GetLastError();
-    } else if (m_clicks) {
-        m_clicks.reset();
-        const RAWINPUTDEVICE remove {kGenericDesktop, kMouse, RIDEV_REMOVE, nullptr};
-        ::RegisterRawInputDevices(&remove, 1, sizeof remove);
     }
 }
 

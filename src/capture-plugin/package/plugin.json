@@ -9,7 +9,10 @@
   "license": "MIT",
   "minWinShun": "0.17.0",
   "runtime": {"mode": "resident", "program": "WinShunCapture.exe", "start": "eager", "sandbox": "normal", "timeoutMs": 10000, "idleExitSec": 0, "memoryMB": 2048},
-  "permissions": ["ui", "clipboard:read", "clipboard:write", "files:write", "notifications"],
+  "permissions": ["ui", "clipboard:read", "clipboard:write", "files:write", "notifications", "winshun:open"],
+  "trayMenu": {"zh": "截图", "en": "Screenshot"},
+  "pictures": ["pin", "edit"],
+  "settingsWindow": true,
   "commands": [{
     "id": "capture",
     "keyword": ["cap"],
