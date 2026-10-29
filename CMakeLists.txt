@@ -59,8 +59,7 @@ add_subdirectory(src/updater)
 # The plugins that come with Win顺 (plugins/, docs/plugins.md), staged next
 # to the build's WinShun.exe the way the installer lays them out: each
 # folder as it is in the source tree, the SDK file it uses (src/plugins-sdk)
-# copied in, WinShunTools.exe into winshun.tools, WinShunBreak.exe into
-# winshun.break. The app reads <exe dir>\
+# copied in, WinShunTools.exe into winshun.tools. The app reads <exe dir>\
 # plugins as the bundled folder; wsbench --plugin and the tests use these
 # staged copies; build.ps1 -Deploy takes the folder into dist\.
 set(bundled_plugins_dir "${CMAKE_BINARY_DIR}/plugins")
@@ -69,11 +68,8 @@ add_custom_target(bundled_plugins ALL
     COMMAND ${CMAKE_COMMAND} -E rm -rf "${bundled_plugins_dir}"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/plugins" "${bundled_plugins_dir}"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/src/plugins-sdk/WinShun.psm1" "${bundled_plugins_dir}/winshun.kill/WinShun.psm1"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/src/plugins-sdk/winshun.py" "${bundled_plugins_dir}/winshun.bookmarks/winshun.py"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/src/plugins-sdk/winshun.py" "${bundled_plugins_dir}/winshun.translate/winshun.py"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunTools>" "${bundled_plugins_dir}/winshun.tools/WinShunTools.exe"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunBreak>" "${bundled_plugins_dir}/winshun.break/WinShunBreak.exe"
-    DEPENDS WinShunTools WinShunBreak
+    DEPENDS WinShunTools
     COMMENT "Staging the bundled plugins into ${bundled_plugins_dir}"
     VERBATIM)
 install(DIRECTORY "${bundled_plugins_dir}/" DESTINATION plugins)
@@ -89,13 +85,15 @@ add_custom_target(library_plugins ALL
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunSemantic>" "${library_plugins_dir}/winshun.semantic/WinShunSemantic.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/localsend-plugin/package" "${library_plugins_dir}/winshun.localsend"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunLocalSend>" "${library_plugins_dir}/winshun.localsend/WinShunLocalSend.exe"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/break-plugin/package" "${library_plugins_dir}/winshun.break"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunBreak>" "${library_plugins_dir}/winshun.break/WinShunBreak.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/capture-plugin/package" "${library_plugins_dir}/winshun.capture"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunCapture>" "${library_plugins_dir}/winshun.capture/WinShunCapture.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunCaptureApp>" "${library_plugins_dir}/winshun.capture/WinShunCaptureApp.dll"
     # What is compiled into WinShunCaptureApp.dll; Qt, ONNX Runtime and the OCR models are Win顺's.
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/zxing-cpp/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/zxing-cpp.txt"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/miniz/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/miniz.txt"
-    DEPENDS WinShunSemantic WinShunLocalSend WinShunCapture WinShunCaptureApp
+    DEPENDS WinShunSemantic WinShunLocalSend WinShunBreak WinShunCapture WinShunCaptureApp
     COMMENT "Staging the library plugins into ${library_plugins_dir}"
     VERBATIM)
 

@@ -564,11 +564,10 @@ void PluginGallery::loadPreview()
         rows.push_back(r);
     }
     {
-        PluginGalleryModel::Row r = row(u"winshun.bookmarks"_s, tr("浏览器书签"), tr("bm 词：搜 Chrome 和 Edge 的书签，Enter 打开"), u"1.1.0"_s, u"bundled"_s);
+        PluginGalleryModel::Row r = row(u"winshun.bookmarks"_s, tr("浏览器书签"), tr("bm 词：搜 Chrome 和 Edge 的书签，Enter 打开"), u"2.0.0"_s, u"install"_s);
         r.icon = glyph(u"U+E728"_s);
         r.keywords = {u"bm"_s, u"sq"_s};
         r.permissions = {permission(plugin::Permission::FilesRead)};
-        r.needs = tr("需要 Python 3");
         rows.push_back(r);
     }
     {

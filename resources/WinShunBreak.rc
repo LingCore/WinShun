@@ -2,7 +2,7 @@
 #include <winver.h>
 
 // WinShunBreak.exe (src/break-plugin): the winshun.break plugin that
-// comes with Win顺 -- break reminders (休息提醒).
+// is in the plugin library -- break reminders (休息提醒).
 IDI_ICON1 ICON "app.ico"
 
 VS_VERSION_INFO VERSIONINFO

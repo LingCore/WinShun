@@ -353,7 +353,10 @@ src/localsend-plugin/ WinShunLocalSend.exe：插件库里的 winshun.localsend �
 src/capture/         截图、标注、贴图、长截图、录屏（静态库，只链进 WinShunCaptureApp.dll）
 src/capture-plugin/  插件库里的 winshun.capture（0.16 是 WinShun.exe 的一部分）：stub/ 是不带 Qt 的 WinShunCapture.exe，载入用 Win顺 的 Qt 的 WinShunCaptureApp.dll；CaptureApp（协议、快捷键、托盘子菜单、图片）、CaptureSettings（capture.ini）、RawClicks（录屏点击高亮的 Raw Input）、CapturePreview（--preview-* 验证入口）、qml/（截图的界面）
 src/tools-plugin/    WinShunTools.exe：随包的 winshun.tools 插件（无 Qt，静态 C 运行库，用 winshun.h 写的，strict 沙箱）；Calc（算式）、Units（单位）、Color（颜色写法）、Codec（Base64、CNG 哈希、UUID、时间戳）是不依赖 Qt 的纯逻辑，tests/tst_tools.cpp 再编一遍
-plugins/             随安装包的插件（docs/plugins.md）：winshun.web、winshun.go（零代码）、winshun.kill（PowerShell 常驻）、winshun.bookmarks（Python 一次性）、winshun.translate（Python 常驻）、winshun.tools、winshun.semantic、winshun.localsend（C++）；构建时和 SDK、WinShunTools.exe、WinShunSemantic.exe、WinShunLocalSend.exe 一起整理到 build\<preset>\plugins，build.ps1 -Deploy 放进 dist\WinShun\plugins，安装到 <安装目录>\plugins，默认全部停用
+src/break-plugin/    WinShunBreak.exe：插件库里的 winshun.break 插件（休息提醒，WinShun-plugins #7；无 Qt，静态 C 运行库，常驻 eager，只要 ui）；Schedule（纯时钟，tests/tst_break.cpp 再编一遍）、Sense（空闲、锁屏、全屏、勿扰）、Ui（Direct2D 分层窗口，自己的线程）
+src/translate-plugin/ WinShunTranslate.exe：插件库里的 winshun.translate 插件（翻译；0.7–0.17 是随包的 Python 插件；无 Qt，静态 C 运行库，常驻，debounceMs 300）；DeepL 或 OpenAI 兼容接口（WinHTTP，系统代理，整次请求一个时限），纯逻辑由 tests/tst_translate.cpp 再编一遍
+src/bookmarks-plugin/ WinShunBookmarks.exe：插件库里的 winshun.bookmarks 插件（浏览器书签；0.7–0.17 是随包的 Python 插件；无 Qt，静态 C 运行库，一次性）；读 Chrome、Edge 每个配置文件的 Bookmarks 和设置里指定的文件，纯逻辑由 tests/tst_bookmarks.cpp 再编一遍
+plugins/             随安装包的插件（docs/plugins.md）：winshun.web、winshun.go（零代码）、winshun.kill（PowerShell 常驻）、winshun.tools（C++）；构建时和 SDK、WinShunTools.exe 一起整理到 build\<preset>\plugins，build.ps1 -Deploy 放进 dist\WinShun\plugins，安装到 <安装目录>\plugins，默认全部停用。Win顺 自己的其余插件（截图、按意思找、局域网传输、休息提醒、翻译、浏览器书签）在 src\<名字>-plugin\package，构建时整理到 build\<preset>\library-plugins\<id>，release.ps1 打成 <id>-<版本>.wsplugin 给插件库；以前随包的由 MovedPlugins 在升级后自动装上
 tests/               单元测试（Qt Test）；tests/plugin_fake.cpp 是 tst_plugin、tst_mcp 和 wsbench --plugin 用的假插件（--once / --serve / --probe），tests/plugins/ 是 wsbench 用的 PowerShell、Python、exe 示例
 tools/wsbench.cpp    在真实索引上测内存和搜索耗时（--switches 只读地列出每个系统开关的状态和读取耗时；--stats 看各部分怎么构成，--check 把每个查询的结果和逐项匹配比对）；--mft 读各盘的 MFT 并与遍历比对，--mft-time 比较读 MFT 的几种做法，--service 照首次运行建一遍索引（--service --content 连内容索引一起，量要多久），--content-index 建一遍内容索引并核对（报出每个文件读和交给索引各花多久；--no-add 不交给索引，--grams-only 只量切片段，--merge-threads 定合并用几个线程，--merge-times 再用 16 / 8 / 4 / 1 个线程各合并一次），--service --documents 只建文档的那部分（报出几个副本没再读），--service --content --from 文件夹 从已有的索引文件开始（升级后的那次重建），--content-search 用程序自己的内容索引看一次内容搜索要读哪些文件，--extract 读一遍所有文档，--share 路径 读一个网络共享（--indexer 走一遍 ShareIndexer，--watch 秒 再看变更通知），--plugin 文件夹 --query 文字 按程序的方式跑一个插件（校验 manifest、经 runner 起进程、打印结果 JSON 和冷启动 / 首次往返 / 稳态往返的耗时）
 tools/plugin-probe.cpp 插件系统阶段 0 的探针（无 Qt，静态 C 运行库）：`--parent` 把自己当子进程按每条路起一遍（资源管理器令牌 + CreateProcessWithTokenW、自己的令牌降权、链接令牌、普通 CreateProcessW、不提权的 runner），报出子进程的令牌、作业、缓解策略、stdio、环境和起进程的耗时（提权和不提权各跑一次；结论见 pitfalls 的“插件系统”）
@@ -883,7 +886,7 @@ Win顺 是一个 MCP（Model Context Protocol）服务器：Claude Desktop、Cla
 ```powershell
 ctest --preset release                         # 单元测试（含 tst_tools：小工具插件的算式、单位、颜色、编码的边界）
 build\release\wsbench.exe --plugin tests\plugins\bench.ps --query "ps 你好"   # 按程序的方式跑一个插件：校验 manifest、经 runner 起进程、结果 JSON 和耗时，以及插件进程的完整性 / 是否提权 / 是否在作业里
-build\release\wsbench.exe --plugin build\release\plugins\winshun.bookmarks --query "bm 报告" --setting extraFile=D:\Bookmarks   # 给声明的设置项一个值（这里：临时的书签文件）
+build\release\wsbench.exe --plugin build\release\library-plugins\winshun.bookmarks --query "bm 报告" --setting extraFile=D:\Bookmarks   # 给声明的设置项一个值（这里：临时的书签文件）
 build\release\wsbench.exe --plugin build\release\plugins\winshun.kill --query "kill 测试进程" --action kill   # 对第一条结果执行动作，打印 effects
 build\release\wsbench.exe --mcp-host --plugins build\release\plugins     # 插件当 AI 工具提供在测试管道上；用 WinShunMcp.exe --pipe <名字> 当客户端（tools/list 里有 plugin_*）
 Start-Process <部署目录>\WinShun.exe -Verb RunAs -Wait -ArgumentList '--preview-plugins F:\out\ai-dark.png --dark --scale 1.5 --page ai'   # AI 助手页（插件的两个开关）

@@ -8,7 +8,9 @@ Plugins add keyword commands to the search box and mix their rows into the list.
 | **Once** (a process per query) | any language; the query comes in environment variables, the rows go to stdout | small tools, used now and then |
 | **Resident** | any language; JSON-RPC lines on stdio | anything queried on every key, anything with state, PowerShell (slow to start) |
 
-The plugins that come with Win顺 are in `<install dir>\plugins\` (all off until you turn them on under Settings → Plugins): `winshun.tools` (calculator, units, colours, timestamps, UUIDs, Base64, hashes; C++), `winshun.kill` (end a process; PowerShell), `winshun.bookmarks` (browser bookmarks; Python, once), `winshun.translate` (translation with your own API key; Python, resident), `winshun.semantic` (search by meaning: `? a sentence` finds documents by what they are about, with the embedding model you pick — Ollama on this PC or a cloud service's key; C++, resident, takes the text Win顺 already read through `winshun:content`), `winshun.localsend` (LAN transfer: phones and computers on the same network send each other files and text, works with the LocalSend app; `传` or `ls`, or 用局域网发送… on a file's menu; C++, resident and eager, uses `network:listen`, `notifications` and the `files` trigger), `winshun.break` (break reminder: a short break every 20 minutes and a long one every other time, a small bar before, then every monitor dimmed with a countdown; `休息` or `break`; C++, resident and eager, only `ui`, draws its own windows and holds the keyboard with a hook during a break), `winshun.web` and `winshun.go` (zero-code). Each is a working example with a README.
+The plugins that come with Win顺 are in `<install dir>\plugins\` (all off until you turn them on under Settings → Plugins): `winshun.tools` (calculator, units, colours, timestamps, UUIDs, Base64, hashes; C++), `winshun.kill` (end a process; PowerShell), `winshun.web` and `winshun.go` (zero-code).
+
+Win顺's other own plugins are not in the setup but in the plugin library, to install when you want them (Settings → Plugins → Library; sources in `src\<name>-plugin\`, the manifest and README in its `package\`): `winshun.capture` (screenshots and recording; C++ on Win顺's own Qt, see "Resident plugins with windows of their own" below), `winshun.semantic` (search by meaning: `? a sentence` finds documents by what they are about, with the embedding model you pick — Ollama on this PC or a cloud service's key; C++, resident, takes the text Win顺 already read through `winshun:content`), `winshun.localsend` (LAN transfer: phones and computers on the same network send each other files and text, works with the LocalSend app; `传` or `ls`, or 用局域网发送… on a file's menu; C++, resident and eager, uses `network:listen`, `notifications` and the `files` trigger), `winshun.break` (break reminder: a short break every 20 minutes and a long one every other time, a small bar before, then every monitor dimmed with a countdown; `休息` or `break`; C++, resident and eager, only `ui`, draws its own windows and holds the keyboard with a hook during a break), `winshun.translate` (`tr sentence` with your own DeepL or OpenAI-compatible API key; C++, resident, `debounceMs` 300, a "Translating…" row first), `winshun.bookmarks` (`bm words` searches Chrome and Edge bookmarks; C++, once). One that came with an earlier Win顺 and that you had on is installed from the library after the upgrade, settings kept. Each is a working example with a README.
 
 Plugins by other people, and a place to share yours: [WinShun-plugins](https://github.com/LingCore/WinShun-plugins) (install and update them right from Settings → Plugins → Library: each download is checked against the list's size and sha256, then installed as an archive would be; or download a `.wsplugin` yourself and install it from the archive on the Installed tab; see its CONTRIBUTING to submit one). The Library goes online only when its tab is opened (at most once in ten minutes), when Refresh is pressed, or to install; the last list is kept in the data folder as `plugin-index.json`.
 
@@ -51,7 +53,7 @@ A plugin is a folder under `%LOCALAPPDATA%\WinShun\plugins\<id>\` with a `plugin
 }
 ```
 
-`me.hello\main.py` (copy `winshun.py` from `src/plugins-sdk/` or from any bundled plugin's folder):
+`me.hello\main.py` (copy `winshun.py` from `src/plugins-sdk/` or start from the Python template of "New plugin…" under Settings → Plugins):
 
 ```python
 import winshun
@@ -94,7 +96,7 @@ PowerShell takes a few hundred milliseconds to start the first time, then a few 
 
 ## The SDK
 
-Three files in `src/plugins-sdk/`; "New plugin…" copies the right one into the plugin's folder, and every bundled plugin carries its own. They only wrap the protocol: using them is optional.
+Three files in `src/plugins-sdk/`; "New plugin…" copies the right one into the plugin's folder, and a bundled plugin that uses one carries its own (`winshun.kill`, `WinShun.psm1`). They only wrap the protocol: using them is optional.
 
 | File | Once | Resident |
 |---|---|---|
@@ -139,7 +141,7 @@ Top level:
 | `env` | extra environment variables (`WS_*` cannot be overridden) |
 | `encoding` | stdout's encoding: `utf-8` (default) or `oem` (Windows PowerShell 5.1 without an encoding set; the templates set UTF-8) |
 | `timeoutMs` | one query's budget: resident 1500, once 3000, at most 10000 |
-| `debounceMs` | once plugins: default 120 |
+| `debounceMs` | asks only once typing pauses this long: once plugins default to 120; resident ones to 0 (every key), and one that goes online for every query sets it (Translate: 300) — the process still starts at the first key |
 | `idleExitSec` | resident: idle seconds before exit, default 600; `0` never |
 | `start` | resident: `lazy` (default) or `eager` (started 10 s after Win顺; for push plugins) |
 | `memoryMB` | the job's memory limit, default 512, at most 2048 |

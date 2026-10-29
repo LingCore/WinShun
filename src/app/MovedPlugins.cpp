@@ -25,8 +25,10 @@ namespace gallery = plugin::gallery;
 
 namespace {
 
-// Came with 0.16.0, in the library since (GitHub #138).
-constexpr std::array<QStringView, 3> kMoved {u"winshun.localsend", u"winshun.semantic", kCapture};
+// Came with Win顺, in the library since (GitHub #138): 局域网传输 and 按意思找
+// with 0.16.0, the screenshot as part of WinShun.exe, 翻译 and 浏览器书签 (in
+// Python then, C++ now) since 0.7.0.
+constexpr std::array<QStringView, 5> kMoved {u"winshun.localsend", u"winshun.semantic", kCapture, u"winshun.translate", u"winshun.bookmarks"};
 
 constexpr int kListTimeoutMs = 15000; // as the 插件库 tab's
 constexpr int kPackageTimeoutMs = 30000;

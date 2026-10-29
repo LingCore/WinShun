@@ -1,5 +1,5 @@
-// WinShunBreak.exe: the winshun.break plugin that comes with Win顺 (plugins/
-// winshun.break, "休息提醒", WinShun-plugins #7). A resident C++ plugin on the
+// WinShunBreak.exe: the winshun.break plugin in the plugin library (package/,
+// "休息提醒", WinShun-plugins #7; not in the setup). A resident C++ plugin on the
 // single-header SDK (src/plugins-sdk/winshun.h), started with Win顺 and kept
 // running: every `interval` minutes a short break, every `longEvery`-th one
 // long. The clock is Schedule.cpp, what it reads from Windows Sense.cpp, the

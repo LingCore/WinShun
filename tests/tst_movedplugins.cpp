@@ -1,8 +1,11 @@
 // The plugins that left Win顺's setup for the plugin library (GitHub #138,
 // src/app/MovedPlugins): the screenshot's settings, [Capture] of
-// WinShun.ini up to 0.16, moved to the plugin's capture.ini.
+// WinShun.ini up to 0.16, moved to the plugin's capture.ini; which ones a
+// user is missing.
 
 #include "MovedPlugins.h"
+
+#include "Catalog.h"
 
 #include <QDir>
 #include <QFile>
@@ -93,6 +96,37 @@ private slots:
         for (const QJsonValue& p : permissions)
             names.push_back(p.toString());
         QCOMPARE(ws::moved::capturePermissions(), names);
+    }
+
+    // Who gets one fetched: on, and no copy of it anywhere. 休息提醒 never
+    // came with Win顺, so it is nobody's to miss.
+    void missingAreTheOnesTurnedOn()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString userDir = dir.filePath(u"user"_s);
+        const QString bundledDir = dir.filePath(u"bundled"_s);
+        QVERIFY(QDir().mkpath(userDir));
+        QVERIFY(QDir().mkpath(bundledDir + u"/winshun.bookmarks"_s));
+        QFile old(bundledDir + u"/winshun.bookmarks/plugin.json"_s); // an old setup's folder, still there
+        QVERIFY(old.open(QIODevice::WriteOnly));
+        old.write(R"({"manifest": 1, "id": "winshun.bookmarks", "name": "B", "version": "1.1.0", "commands": [{"id": "bm", "keyword": "bm", "title": "B", "run": {"url": "https://example.com/?q=%s"}}]})");
+        old.close();
+        ws::plugin::Catalog catalog(userDir, bundledDir);
+        catalog.scan();
+        QVERIFY(catalog.find(u"winshun.bookmarks"));
+        const auto on = [](const QString& id, bool enabled) {
+            PluginConfig c;
+            c.id = id;
+            c.enabled = enabled;
+            return c;
+        };
+        const QList<PluginConfig> plugins {on(u"winshun.translate"_s, true), on(u"winshun.bookmarks"_s, true),
+            on(u"winshun.localsend"_s, false), on(u"winshun.semantic"_s, true), on(u"winshun.break"_s, true), on(u"winshun.tools"_s, true)};
+        QCOMPARE(ws::moved::missing(catalog, plugins), (QStringList {u"winshun.semantic"_s, u"winshun.translate"_s}));
+        QFile::remove(bundledDir + u"/winshun.bookmarks/plugin.json"_s); // the setup took it out
+        catalog.scan();
+        QCOMPARE(ws::moved::missing(catalog, plugins), (QStringList {u"winshun.semantic"_s, u"winshun.translate"_s, u"winshun.bookmarks"_s}));
     }
 };
 

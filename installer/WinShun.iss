@@ -185,6 +185,8 @@ Source: "{#SourceDir}\WinShunMcp.exe"; DestDir: "{app}"; Flags: ignoreversion
 ; from the library at the next start (MovedPlugins), settings kept.
 Type: filesandordirs; Name: "{app}\plugins\winshun.localsend"
 Type: filesandordirs; Name: "{app}\plugins\winshun.semantic"
+Type: filesandordirs; Name: "{app}\plugins\winshun.translate"
+Type: filesandordirs; Name: "{app}\plugins\winshun.bookmarks"
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"

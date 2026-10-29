@@ -1,8 +1,9 @@
 #pragma once
 
 // Plugins that came with an earlier Win顺 and are in the plugin library now
-// (GitHub #138: 局域网传输 and 按意思找 came with 0.16.0, and the screenshot
-// was part of WinShun.exe up to then: moveCaptureSettings). The installer takes
+// (GitHub #138: 局域网传输 and 按意思找 came with 0.16.0, 翻译 and 浏览器书签
+// with 0.7.0, and the screenshot was part of WinShun.exe up to then:
+// moveCaptureSettings). The installer takes
 // their old folders out of <install dir>\plugins and a portable update
 // leaves them behind, so who had one on would find it gone. Such a plugin
 // is fetched from the library at the next start and installed into the

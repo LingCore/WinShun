@@ -253,6 +253,7 @@ private:
 
     // Resident plugins.
     void startResident(Plugin& p);
+    void sendOrHold(Plugin& p, const Pending& q); // now, or once the process is ready
     void sendQuery(Plugin& p, const Pending& q);
     void onQueryReply(const QString& id, std::uint64_t queryId, const jsonrpc::Message& response);
     void onQueryTimeout(const QString& id);

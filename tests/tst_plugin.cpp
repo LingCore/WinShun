@@ -2295,6 +2295,42 @@ private slots:
         QCOMPARE(answers.size(), now);
     }
 
+    // A resident plugin's debounceMs (翻译, online for every query): asked
+    // only once typing pauses, the process started meanwhile; the keys
+    // before reach it not at all, and a cancel in the pause stops it.
+    void residentDebounce()
+    {
+        Fixture f;
+        Spec spec;
+        spec.runtimeExtra = {{u"debounceMs"_s, 300}};
+        QVERIFY(!f.install(spec).isEmpty());
+        std::vector<std::uint64_t> answered;
+        QObject::connect(f.host.get(), &Host::results, [&](std::uint64_t id, const QString&, const QString&, const Items&, bool partial, bool) {
+            if (!partial)
+                answered.push_back(id);
+        });
+        QElapsedTimer clock;
+        QVERIFY(f.host->query(u"fk a"_s, Scope::All, 1));
+        QTest::qWait(60);
+        QVERIFY(f.host->query(u"fk ab"_s, Scope::All, 2));
+        QTest::qWait(60);
+        clock.start();
+        QVERIFY(f.host->query(u"fk abc"_s, Scope::All, 3));
+        QVERIFY2(f.waitFinal(3), qPrintable(f.logs.join(u'\n')));
+        QVERIFY2(clock.elapsed() >= 280, qPrintable(QString::number(clock.elapsed())));
+        QCOMPARE(answered, std::vector<std::uint64_t> {3});
+        QCOMPARE(f.finalFor(3)->items[0].title, u"serve: abc"_s);
+        // Running now: still only after the pause.
+        clock.restart();
+        QVERIFY(f.host->query(u"fk abcd"_s, Scope::All, 4));
+        QVERIFY(f.waitFinal(4));
+        QVERIFY2(clock.elapsed() >= 280, qPrintable(QString::number(clock.elapsed())));
+        QVERIFY(f.host->query(u"fk x"_s, Scope::All, 5));
+        f.host->cancel(5); // the launcher closed in the pause
+        QTest::qWait(600);
+        QCOMPARE(answered, (std::vector<std::uint64_t> {3, 4}));
+    }
+
     // A rerun answered too late once: asked again as before, so a list that
     // changes by itself (传's progress) does not freeze until the next key.
     void rerunAfterATimeout()

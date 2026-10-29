@@ -257,7 +257,7 @@ struct Host::Plugin {
     int timeouts = 0;
     std::map<std::uint64_t, std::uint64_t> actions; // our request id -> JSON-RPC id (resident)
     std::map<std::uint64_t, std::uint64_t> toolCalls; // the bridge's call id -> nothing (to cancel)
-    // Once plugins.
+    // Once plugins, and resident ones with a debounceMs.
     QTimer debounce;
     std::optional<Pending> waiting;
     std::map<std::uint64_t, std::unique_ptr<OnceRun>> runs; // instance -> run
@@ -495,7 +495,11 @@ Host::Plugin& Host::plugin(const QString& id)
             if (raw->waiting) {
                 const Pending q = *raw->waiting;
                 raw->waiting.reset();
-                launchOnce(*raw, q);
+                const Entry* e = entry(raw->id);
+                if (e && e->manifest && e->manifest->resident())
+                    sendOrHold(*raw, q);
+                else
+                    launchOnce(*raw, q);
             }
         });
         connect(&raw->backoff, &QTimer::timeout, this, [this, raw] {
@@ -784,12 +788,15 @@ bool Host::query(const QString& text, Scope scope, std::uint64_t queryId, const 
         q.limit = m.kind == Match::Kind::Push ? m.maxItems : kMaxItems;
         any = true;
         if (m.entry->manifest->resident()) {
-            if (p.phase == Plugin::Phase::Ready) {
-                sendQuery(p, q);
-            } else {
-                p.pending = q; // the newest waits for the process
+            if (const int debounce = m.entry->manifest->runtime->debounceMs; debounce > 0) {
+                // Asked only once typing pauses (翻译 goes online, and pays,
+                // for every query); the process starts meanwhile.
+                p.waiting = q;
+                p.debounce.start(debounce);
                 if (p.phase == Plugin::Phase::Stopped)
                     startResident(p);
+            } else {
+                sendOrHold(p, q);
             }
         } else {
             const int debounce = m.entry->manifest->runtime->debounceMs;
@@ -1078,6 +1085,21 @@ void Host::onStarted(std::uint64_t instance, quint32 pid)
         flushCommandCalls(q);
     });
     p.queryTimer.start(e->manifest->runtime->timeoutMs * 2); // initialize: twice a query's time
+}
+
+void Host::sendOrHold(Plugin& p, const Pending& q)
+{
+    if (p.disabledByCrashes) { // since its debounce started
+        emit queryFailed(q.queryId, p.id, u"插件连续崩溃，已停用"_s);
+        return;
+    }
+    if (p.phase == Plugin::Phase::Ready) {
+        sendQuery(p, q);
+        return;
+    }
+    p.pending = q; // the newest waits for the process
+    if (p.phase == Plugin::Phase::Stopped)
+        startResident(p);
 }
 
 void Host::sendQuery(Plugin& p, const Pending& q)

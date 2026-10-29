@@ -10,7 +10,9 @@ Win顺 的插件给搜索框加关键字命令、把结果混进列表。界面�
 | **一次性脚本**（`once`） | 任何语言；查询从环境变量进，结果打印到 stdout | 几十行的小工具，偶尔用 |
 | **常驻**（`resident`） | 任何语言；stdio 上一行一条 JSON-RPC | 每键都查的、要缓存的、PowerShell（它冷启动慢） |
 
-随 Win顺 装好的插件在 `<安装目录>\plugins\`（默认全部关着，设置 → 插件 里打开）：`winshun.tools`（计算器、单位换算、颜色、时间戳、UUID、Base64、哈希；C++）、`winshun.kill`（结束进程；PowerShell）、`winshun.bookmarks`（浏览器书签；Python 一次性）、`winshun.translate`（翻译；Python 常驻，要自己填 API 密钥）、`winshun.semantic`（按意思找：`? 一句话` 按文档讲的内容找文件，用你选的嵌入模型——本机的 Ollama 或云服务的密钥；C++ 常驻，用 `winshun:content` 拿 Win顺 已经读出的文字）、`winshun.localsend`（局域网传输：同一网络里的手机、电脑互传文件和文字，兼容 LocalSend；`传` 或 `ls`，或文件右键菜单的"用局域网发送…"；C++ 常驻、eager，用到 `network:listen`、`notifications` 和 `files` 触发）、`winshun.break`（休息提醒：每 20 分钟小休、隔一次大休，提前一个小条，到点调暗所有显示器显示倒计时；`休息` 或 `break`；C++ 常驻、eager，只要 `ui`，自己画窗口、休息时用键盘钩子拦按键）、`winshun.web` 和 `winshun.go`（零代码）。每个都是一份能跑的示例，文件夹里有 README。
+随 Win顺 装好的插件在 `<安装目录>\plugins\`（默认全部关着，设置 → 插件 里打开）：`winshun.tools`（计算器、单位换算、颜色、时间戳、UUID、Base64、哈希；C++）、`winshun.kill`（结束进程；PowerShell）、`winshun.web` 和 `winshun.go`（零代码）。
+
+Win顺 自己的另外几个插件不随安装包，在插件库里，要用时装上（设置 → 插件 → 插件库；源码在 `src\<名字>-plugin\`，清单和 README 在其中的 `package\`）：`winshun.capture`（截图与录屏；C++，用 Win顺 自己的 Qt，见下面“有自己窗口的常驻插件”）、`winshun.semantic`（按意思找：`? 一句话` 按文档讲的内容找文件，用你选的嵌入模型——本机的 Ollama 或云服务的密钥；C++ 常驻，用 `winshun:content` 拿 Win顺 已经读出的文字）、`winshun.localsend`（局域网传输：同一网络里的手机、电脑互传文件和文字，兼容 LocalSend；`传` 或 `ls`，或文件右键菜单的"用局域网发送…"；C++ 常驻、eager，用到 `network:listen`、`notifications` 和 `files` 触发）、`winshun.break`（休息提醒：每 20 分钟小休、隔一次大休，提前一个小条，到点调暗所有显示器显示倒计时；`休息` 或 `break`；C++ 常驻、eager，只要 `ui`，自己画窗口、休息时用键盘钩子拦按键）、`winshun.translate`（翻译：`tr 句子`，用你自己的 DeepL 或 OpenAI 兼容接口，要自己填 API 密钥；C++ 常驻，`debounceMs` 300，先推一行"翻译中…"）、`winshun.bookmarks`（浏览器书签：`bm 词` 搜 Chrome 和 Edge 的书签；C++ 一次性）。以前随安装包、你又开着的，升级后 Win顺 自动从插件库装上，设置照旧。每个都是一份能跑的示例，有 README。
 
 别人写的插件、以及分享你自己的插件：[WinShun-plugins](https://github.com/LingCore/WinShun-plugins)（设置 → 插件 → 插件库 里直接安装和更新：下载后先核对大小和 sha256，再走和压缩包一样的安装；也可以自己下载 `.wsplugin`，在“已安装”里从压缩包安装；投稿见那里的 CONTRIBUTING）。插件库只在打开这一页（十分钟内不重复取）、点“刷新”或安装时联网，上次的列表存在数据文件夹的 `plugin-index.json`。
 
@@ -55,7 +57,7 @@ English version: [plugins.en.md](plugins.en.md).
 }
 ```
 
-`me.hello\main.py`（把 `winshun.py` 从 `src/plugins-sdk/` 或任何随包插件的文件夹复制过来）：
+`me.hello\main.py`（把 `winshun.py` 从 `src/plugins-sdk/` 复制过来，或者用 设置 → 插件 里的"新建插件…"选 Python 模板）：
 
 ```python
 import winshun
@@ -98,7 +100,7 @@ Start-WinShunPlugin -Name 'me.ps' -OnQuery {
 
 ## SDK
 
-三个文件在仓库的 `src/plugins-sdk/`，"新建插件…"会复制进插件文件夹；随包插件的文件夹里也有。它们只是把协议包起来，不用也可以。
+三个文件在仓库的 `src/plugins-sdk/`，"新建插件…"会复制进插件文件夹；用到它的随包插件（`winshun.kill` 的 `WinShun.psm1`）文件夹里也有。它们只是把协议包起来，不用也可以。
 
 | 文件 | 一次性 | 常驻 |
 |---|---|---|
@@ -143,7 +145,7 @@ effects 的辅助：Python `winshun.hide() / keep() / notify(text) / copy(text) 
 | `env` | 额外环境变量（`WS_*` 不能覆盖） |
 | `encoding` | stdout 的编码：`utf-8`（默认）或 `oem`（Windows PowerShell 5.1 不设编码时的输出；模板已经把输出设成 UTF-8，不需要） |
 | `timeoutMs` | 一次查询的上限：常驻默认 1500，一次性默认 3000，最大 10000 |
-| `debounceMs` | 一次性插件的防抖，默认 120（每键都起进程太浪费） |
+| `debounceMs` | 防抖：打字停下这么久才查询。一次性插件默认 120（每键都起进程太浪费）；常驻插件默认 0（每键都问），每次查询都联网的设上它（翻译用 300），停顿时进程照样先起来 |
 | `idleExitSec` | 常驻插件空闲多久退出，默认 600；`0` 不退 |
 | `start` | 常驻：`lazy`（默认，第一次用到时起）或 `eager`（Win顺 启动 10 秒后预起；推送型插件用） |
 | `memoryMB` | 作业对象的内存上限，默认 512，最大 2048 |
