@@ -163,9 +163,9 @@
 - **插件**：
   - 随包的小工具：`= 1+2*3` 计算器、`12 inch to cm` 单位换算、`#ff8800` 颜色，还有时间戳、UUID、Base64、哈希；
   - `kill` 结束进程，`bm` 搜浏览器书签，`tr` 翻译；
-  - **局域网传输**（默认关）：和同一个网络里开着 [LocalSend](https://localsend.org) 的手机、电脑互传文件和文字，不用服务器和账号。别人发来时先问你，输入 `传 ` 收发，或在结果上右键“用局域网发送…”；
-  - **按意思找**（默认关）：`? 去年报销的规定` 也能找到写着“差旅费用申请”的文档。用你选的模型：本机的 Ollama、LM Studio 什么都不上传；硅基流动、百炼、OpenAI 等填自己的密钥，第一次计算前告诉你要发出去多少字，你按回车才开始。见 [plugins/winshun.semantic](plugins/winshun.semantic/README.md)；
-  - **插件库**：设置 › 插件 › 插件库 里看别人写的插件（来自 [WinShun-plugins](https://github.com/LingCore/WinShun-plugins)），点一下安装或更新，下载后先核对大小和校验值；只在打开这一页、点“刷新”或安装时联网；连不上 GitHub 时在 设置 › 高级 › 网络代理 里选“手动”填代理地址；
+  - **局域网传输**（在插件库里，要用时装上）：和同一个网络里开着 [LocalSend](https://localsend.org) 的手机、电脑互传文件和文字，不用服务器和账号。别人发来时先问你，输入 `传 ` 收发，或在结果上右键“用局域网发送…”；
+  - **按意思找**（在插件库里，要用时装上）：`? 去年报销的规定` 也能找到写着“差旅费用申请”的文档。用你选的模型：本机的 Ollama、LM Studio 什么都不上传；硅基流动、百炼、OpenAI 等填自己的密钥，第一次计算前告诉你要发出去多少字，你按回车才开始。见 [它的说明](src/semantic-plugin/package/README.md)；
+  - **插件库**：设置 › 插件 › 插件库 里装 Win顺 自己的截图与录屏、局域网传输、按意思找，也看别人写的插件（来自 [WinShun-plugins](https://github.com/LingCore/WinShun-plugins)），点一下安装或更新，下载后先核对大小和校验值；只在打开这一页、点“刷新”或安装时联网；连不上 GitHub 时在 设置 › 高级 › 网络代理 里选“手动”填代理地址；
   - 自己写插件：零代码的 `plugin.json`、任意语言的脚本或常驻进程都行，附 Python / PowerShell / C++ SDK；
   - 插件以普通权限、限内存运行。见 [docs/plugins.md](docs/plugins.md)。
 
@@ -203,11 +203,11 @@
 - **复制过的文件被删了**：那一条会标“已不存在”；可以设成自动隐藏或自动清理（固定的和分组里的不动，拔掉的 U 盘不算）。
 - **从别处导入**：设置 › 剪贴板 › 保留 里的“导入剪贴板历史”，可以导入 Ditto 的数据库（装了 Ditto 的话一键导入）、`.txt` 文本和 `.csv` 表格（中文 Excel 存的 GBK 也认）；导入的放进一个新分组，不会被自动删除，已经有的内容会跳过。
 - **隐私**：密码管理器复制的密码不记录，历史只存在本机。
-- **截图**（默认关，在设置 › 插件里打开；快捷键自己录，想用 `PrtScn` 也在那里打开）：
+- **截图**（插件库里的“截图与录屏”插件，在 设置 › 插件 › 插件库 装上；快捷键自己录，想用 `PrtScn` 也在它卡片上的“设置”里打开。以前开着截图的，升级后自动装上，设置照旧）：
   - **区域录屏和 GIF**：框选后点“录屏”或按 `Ctrl+R`，录 MP4 或 GIF；可以暂停、继续、选择画质、鼠标指针和点击高亮，还能在视频角落显示按下的快捷键和鼠标按键（默认关闭；选“全部按键”时打的字也会录进去）。MP4 可选系统声音和麦克风，默认都关闭；GIF 不含音频，后台生成时显示进度。控制条不录进画面，录完能继续录下一段。
   - **框选**：鼠标移到窗口、按钮上就把它框出来，框外变暗，点一下选中，也可以拖出一块；滚轮扩大或缩小框。设置、计算器这类程序里的侧栏和按钮也能框出来（Chrome、Edge、VS Code、微信这类 Chromium 程序里面不识别，只框整个窗口，需要时手动拖选）。`Shift+R` 回到上一次的那一块。
   - **放大镜和取色**：跟着鼠标放大像素，`C` 复制鼠标下的颜色并结束截图，单按 `Shift` 在 `#RRGGBB`、`rgb()`、`hsl()` 三种写法之间换。选好区域后放大镜只在选区里出现。
-  - **HDR 屏幕**：开着 HDR 时截图颜色照常，不发灰；在 设置 › 插件 › 截图 打开“HDR 屏幕上同时保存 HDR 图片”（默认关），`Ctrl+S` 保存时在 PNG 旁边多存一份同名的 `.jxr`，亮的地方保持原来的亮度，用 Windows 的“照片”就能看。
+  - **HDR 屏幕**：开着 HDR 时截图颜色照常，不发灰；在截图的设置里打开“HDR 屏幕上同时保存 HDR 图片”（默认关），`Ctrl+S` 保存时在 PNG 旁边多存一份同名的 `.jxr`，亮的地方保持原来的亮度，用 Windows 的“照片”就能看。
   - **识别文字并复制**：`Shift+C` 把选区里的文字识别出来，直接复制。
   - **延时**：`D` 或工具条的“延时”，倒计时（秒数在设置里选）到点才定住屏幕，用来截菜单、悬停提示。设置里可以让截图带上鼠标指针（默认关）。
   - **二维码**：`Q` 读选区里的二维码，文字显示在小窗口里可以复制；是网址时多一个“打开链接”，点了才打开。
@@ -300,7 +300,7 @@ Listary、PowerToys 的“查找鼠标”默认也用双击 Ctrl，关掉其中�
 到 **设置 › 高级 › 诊断日志** 点“导出诊断日志”，把打开的文件夹里的 `WinShun-diagnostics.zip` 发到 GitHub Issues 或论坛。诊断包记的是版本、系统、磁盘、索引进度和错误，以及界面显示、字体和剪贴板按键转发的状态（字显示不对时先导出再重启），不含设置、剪贴板内容、搜索历史和文档正文。剪贴板搜索失效时，关闭面板后尽快导出即可；转发记录只含次数、放行原因和错误码，不记录具体按键或搜索词。
 
 **收费吗？会上传数据吗？**
-完全免费，MIT 开源。只在这些时候联网：检查新版本时连接 lcstp.com（可以关掉；只发送系统版本和安装方式，不带个人信息），你点“下载并安装”后经第三方镜像或 GitHub 下载安装包，并用 SHA-256 校验；第一次显示某个网页搜索或书签时取一次那个网站的图标；打开设置里的“插件库”这一页、点“刷新”或安装插件时，到插件库取列表和插件；在网站关键词后打字时，把这些字发给那个网站取搜索建议（不打关键词时一个字也不发，可以在设置里关掉）；你自己打开“按意思找”插件并选了云服务时，把文档的文字发给你选的服务商。索引和历史只存在本机（`%LOCALAPPDATA%\WinShun`）。
+完全免费，MIT 开源。只在这些时候联网：检查新版本时连接 lcstp.com（可以关掉；只发送系统版本和安装方式，不带个人信息），你点“下载并安装”后经第三方镜像或 GitHub 下载安装包，并用 SHA-256 校验；第一次显示某个网页搜索或书签时取一次那个网站的图标；打开设置里的“插件库”这一页、点“刷新”或安装插件时，到插件库取列表和插件（以前开着、现在不再随 Win顺 自带的截图与录屏、局域网传输、按意思找，升级后也从插件库取一次）；在网站关键词后打字时，把这些字发给那个网站取搜索建议（不打关键词时一个字也不发，可以在设置里关掉）；你自己打开“按意思找”插件并选了云服务时，把文档的文字发给你选的服务商。索引和历史只存在本机（`%LOCALAPPDATA%\WinShun`）。
 
 ### 反馈
 
@@ -378,9 +378,9 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
   - **Press `` ` `` while dragging**: hold the left button on files or folders (no need to drag yet; File Explorer, the desktop, Total Commander or another program) and press the key below `Esc` (it types nothing during the drag): your first 8 favorite folders appear round the pointer. Drag toward a folder to pick it, as in a marking menu, and let go to drop there: as in File Explorer, within a drive it moves and to another drive it copies, `Ctrl` copies and `Shift` moves. The progress and name-conflict windows are Windows' own, and `Ctrl+Z` in File Explorer undoes it. Let go in the middle or press `Esc` and nothing happens; press the key again or drag further away and it closes, and the drag goes on as usual. On by default; turn it off in Settings › Favorites (“Press ` while dragging files to bring up the favorites pie”). It does not work while WinShun itself runs as administrator.
 - 🧩 **Plugins**
   - **Bundled**: `= 1+2*3`, `12 inch to cm`, `#ff8800`, timestamps, UUID, Base64, hashes; `kill` processes, `bm` browser bookmarks, `tr` translation.
-  - **LAN transfer** (off by default): send files and text to and from phones and PCs on the same network that run [LocalSend](https://localsend.org), with no server or account. You are asked before anything is received; type `ls ` to send and receive, or right-click a result › Send over LAN….
-  - **Search by meaning** (off by default): `? last year's expense rules` finds a document that says “travel cost requests”. It uses the model you pick: Ollama or LM Studio on your PC uploads nothing; for SiliconFlow, Model Studio, OpenAI and others you enter your own key, and before the first run it says how much text would be sent and waits for your Enter. See [plugins/winshun.semantic](plugins/winshun.semantic/README.md).
-  - **Plugin library**: Settings › Plugins › Plugin library lists plugins other people wrote (from [WinShun-plugins](https://github.com/LingCore/WinShun-plugins)); one click installs or updates one, after its size and checksum are checked. It goes online only when that page is opened, on Refresh, or to install. If GitHub cannot be reached, Settings › Advanced › Network proxy takes a proxy address by hand.
+  - **LAN transfer** (in the plugin library, to install when you want it): send files and text to and from phones and PCs on the same network that run [LocalSend](https://localsend.org), with no server or account. You are asked before anything is received; type `ls ` to send and receive, or right-click a result › Send over LAN….
+  - **Search by meaning** (in the plugin library, to install when you want it): `? last year's expense rules` finds a document that says “travel cost requests”. It uses the model you pick: Ollama or LM Studio on your PC uploads nothing; for SiliconFlow, Model Studio, OpenAI and others you enter your own key, and before the first run it says how much text would be sent and waits for your Enter. See [its guide](src/semantic-plugin/package/README.md).
+  - **Plugin library**: Settings › Plugins › Plugin library has WinShun's own Screenshot and recording, LAN transfer and Search by meaning, and plugins other people wrote (from [WinShun-plugins](https://github.com/LingCore/WinShun-plugins)); one click installs or updates one, after its size and checksum are checked. It goes online only when that page is opened, on Refresh, or to install. If GitHub cannot be reached, Settings › Advanced › Network proxy takes a proxy address by hand.
   - **Your own**: zero-code `plugin.json`, scripts in any language, or resident processes, with SDKs for Python, PowerShell and C++. Plugins run with normal rights under a memory limit. See [docs/plugins.en.md](docs/plugins.en.md).
 - 📂 **Open / Save dialogs**
   - **Search bar**: a search bar under every file dialog; type a name (pinyin too), press Enter, and the dialog goes there; web page uploads, WPS dialogs and the "Browse For Folder" box of VBA macros too. The "Browse for folder" window of installers made with Inno Setup has it as well: a pick only fills in the path, and you press the installer's OK yourself (the Start Menu folder picker is left alone).
@@ -411,12 +411,12 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
   - **Copied files that are gone**: their entry says “no longer there”, and can be hidden or cleaned out automatically (pinned and grouped entries stay; a pulled-out USB drive does not count).
   - **Import**: Settings › Clipboard › Keeping › Import clipboard history takes a Ditto database (one click if Ditto is installed), `.txt` text and `.csv` tables (GBK files saved by Chinese Excel are recognised); what is imported goes into a new group, is never cleaned out automatically, and entries you already have are skipped.
   - **Privacy**: passwords from password managers are not kept, and the history stays on your PC.
-  - **Screenshots** (off by default; turn it on in Settings › Plugins, record your own shortcut there, and turn on `PrtScn` too if you want it):
+  - **Screenshots** (the Screenshot and recording plugin: install it in Settings › Plugins › Plugin library, record your own shortcut under Settings on its card, and turn on `PrtScn` there too if you want it. Who had screenshots on gets it installed with the update, settings as they were):
     - **Region recording**: choose Record or press `Ctrl+R` after selecting an area, for MP4 or GIF. Pause and resume, choose quality, cursor and click highlights, and optionally show the shortcuts and mouse buttons pressed as keycaps in a corner (off by default; "All keys" records typing too). MP4 audio is optional and off by default; GIF is silent. Controls stay out of the recording. Choose a save folder, or record another take without replacing the previous file.
-    - **Toolbar and saving**: drag the toolbar by its left grip together with its style panel. Choose the screenshot save folder and a shortcut to pin the latest screenshot in Settings › Plugins › Screenshot. After a save, click the notification to see the file selected in your file manager.
+    - **Toolbar and saving**: drag the toolbar by its left grip together with its style panel. Choose the screenshot save folder and a shortcut to pin the latest screenshot in the screenshot's settings. After a save, click the notification to see the file selected in your file manager.
     - **Choosing**: rest the pointer on a window or a button and it is outlined, with everything outside it dimmed; click to take it, or drag an area; the wheel makes the outline larger or smaller. Side panels and buttons in apps that draw their own interface, such as Settings and Calculator, are outlined too (not inside Chromium apps such as Chrome, Edge, VS Code and WeChat, where only the whole window is outlined; drag an area there). `Shift+R` goes back to the area of the last screenshot.
     - **Magnifier and color**: the pixels under the pointer, enlarged; `C` copies the color under it and ends the capture, and `Shift` alone switches between `#RRGGBB`, `rgb()` and `hsl()`. Once an area is chosen, the magnifier shows only inside it.
-    - **HDR screens**: captures on an HDR screen keep their normal colors. Turn on “Also save an HDR picture on HDR screens” in Settings › Plugins › Screenshot (off by default) and `Ctrl+S` saves a `.jxr` of the same name beside the PNG, with the bright parts as bright as they were; Windows Photos shows it.
+    - **HDR screens**: captures on an HDR screen keep their normal colors. Turn on “Also save an HDR picture on HDR screens” in the screenshot's settings (off by default) and `Ctrl+S` saves a `.jxr` of the same name beside the PNG, with the bright parts as bright as they were; Windows Photos shows it.
     - **Copy the words**: `Shift+C` reads the words in the area and copies them.
     - **Delay**: `D`, or Delay on the toolbar, counts down (the seconds are a setting) and freezes the screen only at the end, for menus and tooltips. “Include the mouse cursor” in the settings puts the pointer in the picture (off by default).
     - **QR codes**: `Q` reads a QR code in the area and shows its text to copy; for a web address there is an Open link button, and nothing opens until you click it.
@@ -495,7 +495,7 @@ With “Direct (administrator)” chosen, WinShun runs as administrator, and Win
 Under **Settings › Advanced › Diagnostic logs**, click “Export diagnostic logs” and attach the `WinShun-diagnostics.zip` from the folder that opens to a GitHub issue. It holds the version, system, disks, indexing progress and errors, not your settings, clipboard, search history or document text.
 
 **Is it free? Does it collect data?**
-Free and MIT-licensed. It goes online only to check lcstp.com for new versions (you can turn that off; only the Windows version and the kind of install are sent, nothing personal) and, when you click “Download and install”, to download the package through third-party mirrors or GitHub, checked against its SHA-256, to fetch a web shortcut's or bookmark's site icon once, to fetch the plugin list and plugins when you open the Plugin library page in the settings, press Refresh or install one, to ask a site for search suggestions while you type after its keyword (nothing is sent without a site keyword; you can turn this off), and, if you turn on the “Search by meaning” plugin with a cloud service, to send document text to the service you chose. The index and history stay on your PC (`%LOCALAPPDATA%\WinShun`).
+Free and MIT-licensed. It goes online only to check lcstp.com for new versions (you can turn that off; only the Windows version and the kind of install are sent, nothing personal) and, when you click “Download and install”, to download the package through third-party mirrors or GitHub, checked against its SHA-256, to fetch a web shortcut's or bookmark's site icon once, to fetch the plugin list and plugins when you open the Plugin library page in the settings, press Refresh or install one (and once after an update, for Screenshot and recording, LAN transfer or Search by meaning if you had them on: they no longer come with WinShun), to ask a site for search suggestions while you type after its keyword (nothing is sent without a site keyword; you can turn this off), and, if you turn on the “Search by meaning” plugin with a cloud service, to send document text to the service you chose. The index and history stay on your PC (`%LOCALAPPDATA%\WinShun`).
 
 ### Feedback
 

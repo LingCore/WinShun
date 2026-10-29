@@ -40,9 +40,15 @@
 - `clipboard_add_image {file, project, copy}`（要 `clipboard:write`）：截图进剪贴板历史、标"截图"、带可再编辑的项目；`copy: false` 是 Ctrl+S / F3 那种只记历史不动剪贴板。图片是插件数据文件夹里的临时文件，主程序读进来后删掉。照旧看剪贴板历史开没开、暂停没有。
 - `show_launcher {text}`：识别文字并搜索，把字填进搜索框。
 - `web_search {text}`：识别文字并网页搜索，用 Win顺 设置的搜索引擎。
+- 做的时候又加了 `clipboard_copy {text}`（取色、识别出的字进剪贴板和历史）和 `clipboard_copy_entry {id}`（编辑窗口里没改的图，把历史里那一条重新放上剪贴板）；`clipboard_add_image` 多一个 `screenshot`（标“截图”）。
+- `winshun/hotkeys {keys}`（通知）：插件自己注册的快捷键。Win顺 让出 Win+Shift+S（它接管 Win+S 时自己占着）和剪贴板的 Ctrl/Alt+数字；进程结束就收回。
 
 Win顺 → 插件（manifest 声明，宿主照着画）：
-- `"menus": [{"id", "title", "icon", "where": ["tray" | "picture"]}]`：托盘菜单里的项（截图、贴上最近一次截图、恢复草稿）和图片行上的项（贴到屏幕、编辑：剪贴板历史的图片、截图历史、搜索结果里的图片文件）。点了发 `menu {id, picture: {path, project, clipId}}`。发之前宿主 `AllowSetForegroundWindow(ASFW_ANY)`，插件的窗口才到得了前台。
+- ~~`"menus"`~~ 做的时候拆成了两样：
+  - `"trayMenu": 文字`：托盘菜单里一个子菜单。右键按下托盘图标时宿主问 `trayMenu`，插件回当时的项（`{id, title, checked, enabled, children}`，两层），松开时菜单弹出；选了发 `menu {id}`。比 manifest 里写死的项好：贴图有几张、延时几秒、有没有放弃的标注，都是那一刻的。
+  - `"pictures": ["pin", "edit"]`：剪贴板历史的图片、截图历史、搜索结果里的图片文件上的“贴到屏幕”“编辑”，发 `picture {action, file, clipId, project, screenshot}`。文件是 Win顺 的，插件只读。
+  - 这些和 `showSettings` 发之前，宿主 `AllowSetForegroundWindow(插件的 pid)`（不是 `ASFW_ANY`），插件的窗口才到得了前台。
+- `appearance`（`initialize` 里一份，变了再发通知，只给有 `ui` 权限的）：Win顺 的界面语言和外观设置，插件的窗口照着画。
 - `"settingsWindow": true`：卡片上的"设置"按钮发 `showSettings`，插件开自己的设置窗口（选项太多，宿主的 `settings[]` 画不下）。
 
 插件自己做：注册快捷键（`WM_HOTKEY` 给它前台权）、接管 PrtScn 并在 `shutdown` 时还回去、录屏时的键盘鼠标钩子、系统通知（`winshun/notify` toast，点了打开保存的文件夹）。
@@ -54,6 +60,8 @@ Win顺 → 插件（manifest 声明，宿主照着画）：
 - 装不上（离线）而 PrtScn 被接管着：主程序先把 PrtScn 还回去，下次启动再试。
 - AI 改截图设置的那几项（`AiSettings` 的 `Capture/*`）去掉：插件的设置 AI 改不了。
 
+做成的样子：`App::moveCapture` 在启动时（插件主机建好之后、应用快捷键之前）调 `moved::moveCaptureSettings`：`capture.ini` 已经有了就不覆盖；`Enabled` 和其余键从 WinShun.ini 删掉，只留 `Keyword`（截图历史的关键词，还是 Win顺 的，`AiSettings` 里也只剩它），所以不会搬两次。`PrintScreenBefore` 跟着搬给插件，由插件关掉时写回；插件没开时主程序自己写回（`App::restorePrintScreen`）。插件以 `moved::capturePermissions()` 打开（和 plugin.json 的权限一样，`tst_movedplugins` 核对），十秒后由 `installMovedPlugins` 从插件库装上，和局域网传输、按意思找一样。
+
 ## 5. 先后
 
 0. 探针（`src/capture-plugin/Probe.cpp`）：插件进程在 runner 的作业里加载 Win顺 的 Qt、开 QML 窗口、截屏、注册快捷键、低级键盘钩子、打开剪贴板。全过了才往下。
@@ -61,7 +69,15 @@ Win顺 → 插件（manifest 声明，宿主照着画）：
 2. 主程序：删掉截图（`App`、`Settings`、`SettingsEditor`、`AiSettings`、`Preview`、托盘、QML），加 §3 的工具和 `menus` / `settingsWindow`，PrtScn 兜底。
 3. 迁移、测试、文档、截图海报；真机测试（插件库装、升级迁移、快捷键、PrtScn、贴图、编辑剪贴板图片、录屏、识字）。
 
+## 做到哪了
+
+- 阶段 0–2 已提交（`e3219f6` 协议、`af68bca` 插件、`1034520` 主程序去掉截图），阶段 3 的迁移 `9eef3f1`，文档随后。
+- 验证过：插件自检 5/5（`wsbench --plugin … --query "cap __selftest" --app-dir …`）；`WinShunCapture.exe --preview-capture-tools`、`--toolbar-drag` 0 警告；`WinShun --preview-settings` 12 页 0 警告；ctest 89/89。
+- 还没做：真机测试（插件库装、升级迁移、托盘子菜单、贴图和编辑剪贴板图片、设置按钮、Win+Shift+S 交接、PrtScn、录屏、长截图、识字），插件包和插件库索引的发布。
+
 ## 未定 / 风险
+
+- 开着截图、接管了 PrtScn 的人升级后插件一直装不上（离线）：`PrintScreenBefore` 已经搬进 `capture.ini`，主程序不会替它还，PrtScn 是 Windows 老的“整屏复制到剪贴板”（不是没反应），插件装上后照常接管。
 
 - 作业的内存上限：manifest 的 `memoryMB` 最多 2048；长截图和 4K 录屏可能更大，要实测后定（必要时放宽上限）。
 - 插件 eager 在 Win顺 启动 10 秒后才起：开机后头 10 秒按截图快捷键没反应。
