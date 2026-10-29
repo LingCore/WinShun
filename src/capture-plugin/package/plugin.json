@@ -2,17 +2,19 @@
   "manifest": 1,
   "id": "winshun.capture",
   "name": {"zh": "截图与录屏", "en": "Screenshot and recording"},
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": {"zh": "截图、标注、贴图、长截图、识别文字和录屏", "en": "Screenshots, annotations, pins, long screenshots, text recognition and screen recording"},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",
   "license": "MIT",
-  "runtime": {"mode": "resident", "program": "WinShunCapture.exe", "start": "lazy", "sandbox": "normal", "timeoutMs": 10000, "idleExitSec": 0, "memoryMB": 2048},
+  "minWinShun": "0.17.0",
+  "runtime": {"mode": "resident", "program": "WinShunCapture.exe", "start": "eager", "sandbox": "normal", "timeoutMs": 10000, "idleExitSec": 0, "memoryMB": 2048},
   "permissions": ["ui", "clipboard:read", "clipboard:write", "files:write", "notifications"],
   "commands": [{
-    "id": "probe",
-    "keyword": ["capprobe"],
-    "title": {"zh": "截图插件自检", "en": "Screenshot plugin self-check"},
+    "id": "capture",
+    "keyword": ["cap"],
+    "title": {"zh": "截图", "en": "Screenshot"},
+    "description": {"zh": "开始截图、延时截图、贴上最近一次截图、截图设置", "en": "Take a screenshot, after a delay, pin the last one, settings"},
     "icon": "glyph:U+E722"
   }]
 }
