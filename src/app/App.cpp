@@ -627,6 +627,7 @@ bool App::start(const StartOptions& options)
         remember(&Settings::startList, kLists[m_launcher->startList()].toString());
     });
     createPluginHost();
+    moveCapture();
 
     // Clipboard history (Win+V), in clipboard\ next to the index.
     m_clipStore = std::make_unique<ClipStore>(dataDir + u"\\clipboard"_s);
@@ -5776,9 +5777,30 @@ void App::createPluginHost()
     });
 }
 
-// 局域网传输 and 按意思找 came with 0.16.0 and are in the plugin library now
-// (GitHub #138, MovedPlugins.h): one the user had on is fetched from it,
-// then started as the others were at 10 s.
+// The screenshot of a Win顺 before 0.17, on: the plugin winshun.capture,
+// turned on with its settings (MovedPlugins.h), fetched with the others.
+void App::moveCapture()
+{
+    if (!m_settings.captureEnabled || m_settings.plugin(moved::kCapture))
+        return;
+    if (!moved::moveCaptureSettings(Settings::filePath(), m_pluginHost->options().dataRoot)) {
+        qWarning() << "Screenshot: its settings not moved to the plugin; tried again at the next start";
+        return;
+    }
+    PluginConfig config;
+    config.id = moved::kCapture.toString();
+    config.enabled = true;
+    config.confirmed = moved::capturePermissions();
+    m_settings.plugins.push_back(std::move(config));
+    m_settings.captureEnabled = false; // gone from the file: not moved twice
+    m_settings.capturePrintScreenBefore.clear(); // the plugin's to give back
+    m_settings.save();
+    qInfo() << "Screenshot: its settings moved to the plugin" << moved::kCapture;
+}
+
+// 局域网传输, 按意思找 and the screenshot came with 0.16.0 and are in the
+// plugin library now (GitHub #138, MovedPlugins.h): one the user had on is
+// fetched from it, then started as the others were at 10 s.
 void App::installMovedPlugins()
 {
     const QStringList ids = moved::missing(m_pluginHost->catalog(), m_settings.plugins);

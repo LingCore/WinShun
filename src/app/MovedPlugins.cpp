@@ -6,7 +6,10 @@
 #include "platform/Http.h"
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <QSettings>
 #include <QThreadPool>
 
 #include <windows.h>
@@ -23,7 +26,7 @@ namespace gallery = plugin::gallery;
 namespace {
 
 // Came with 0.16.0, in the library since (GitHub #138).
-constexpr std::array kMoved {u"winshun.localsend", u"winshun.semantic"};
+constexpr std::array<QStringView, 3> kMoved {u"winshun.localsend", u"winshun.semantic", kCapture};
 
 constexpr int kListTimeoutMs = 15000; // as the 插件库 tab's
 constexpr int kPackageTimeoutMs = 30000;
@@ -108,6 +111,41 @@ QStringList missing(const plugin::Catalog& catalog, const QList<PluginConfig>& p
             ids.push_back(id.toString());
     }
     return ids;
+}
+
+QStringList capturePermissions()
+{
+    return {u"ui"_s, u"clipboard:read"_s, u"clipboard:write"_s, u"files:write"_s, u"notifications"_s, u"winshun:open"_s};
+}
+
+bool moveCaptureSettings(const QString& settingsFile, const QString& dataRoot)
+{
+    QSettings from(settingsFile, QSettings::IniFormat);
+    from.beginGroup(u"Capture"_s);
+    if (!from.value(u"Enabled"_s).toBool())
+        return false;
+    const QString folder = QDir(dataRoot).filePath(kCapture.toString() + u".data"_s);
+    const QString file = QDir(folder).filePath(u"capture.ini"_s);
+    const QStringList keys = from.childKeys();
+    if (!QFileInfo::exists(file)) {
+        if (!QDir().mkpath(folder))
+            return false;
+        QSettings to(file, QSettings::IniFormat);
+        for (const QString& key : keys) {
+            if (key != u"Enabled" && key != u"Keyword") // the switch is the plugin's now; the keyword stays Win顺's
+                to.setValue(u"Capture/"_s + key, from.value(key));
+        }
+        to.sync();
+        if (to.status() != QSettings::NoError)
+            return false;
+    }
+    for (const QString& key : keys) {
+        if (key != u"Keyword")
+            from.remove(key);
+    }
+    from.endGroup();
+    from.sync();
+    return from.status() == QSettings::NoError;
 }
 
 void install(const QStringList& ids, const QString& userDir, const QString& locale, std::function<void(const QList<Outcome>&)> done)

@@ -468,6 +468,18 @@ target_link_libraries(tst_favorites PRIVATE wscore Qt6::Test)
 qt_add_executable(tst_commandlaunch tst_commandlaunch.cpp)
 target_link_libraries(tst_commandlaunch PRIVATE wscore Qt6::Test)
 
+# The plugins that left the setup for the plugin library (GitHub #138,
+# src/app/MovedPlugins): the screenshot's settings moved to its plugin.
+qt_add_executable(tst_movedplugins tst_movedplugins.cpp ${PROJECT_SOURCE_DIR}/src/app/MovedPlugins.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/Http.cpp)
+target_include_directories(tst_movedplugins PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_movedplugins PRIVATE wscore wsplugin Qt6::Test winhttp ws2_32)
+target_compile_definitions(tst_movedplugins PRIVATE WINSHUN_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+set_target_properties(tst_movedplugins PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_movedplugins COMMAND tst_movedplugins)
+set_tests_properties(tst_movedplugins PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # The proxy setting (GitHub #84): the address check, and WinHTTP going where
 # the setting says, against two small servers of the test's own.
 qt_add_executable(tst_proxy tst_proxy.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/Http.cpp)
