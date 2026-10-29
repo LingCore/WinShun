@@ -469,6 +469,30 @@ SearchResult fromIndex(const FileIndex& index, EntryId id)
     return r;
 }
 
+// The rows of `ids`, in their order, each with its own time (though a hit
+// was ordered as one not known when it was ahead). Many are made by the
+// pool's threads, a share each: ws's 50 000, and as many folders kept
+// apart, took 80 ms one after another. Caller holds index.readLock().
+SearchResults fromIndex(const FileIndex& index, const std::vector<EntryId>& ids, WorkerPool& pool)
+{
+    constexpr std::size_t kShare = 4096;
+    SearchResults rows(static_cast<qsizetype>(ids.size()));
+    SearchResult* const out = rows.data();
+    const auto make = [&](std::size_t share) {
+        const std::size_t end = std::min(ids.size(), (share + 1) * kShare);
+        for (std::size_t i = share * kShare; i < end; ++i) {
+            out[i] = fromIndex(index, ids[i]);
+            out[i].modified = knownTime(index.modified(ids[i]));
+        }
+    };
+    const std::size_t shares = (ids.size() + kShare - 1) / kShare;
+    if (shares > 1)
+        pool.parallelFor(shares, make);
+    else if (shares == 1)
+        make(0);
+    return rows;
+}
+
 // A recent item that is not among the matches found in the index (or one
 // listed with nothing typed).
 SearchResult fromDisk(const QString& path, const RecentOnDisk::Item& item)
@@ -802,8 +826,8 @@ void markRecent(SearchResults& results, const QStringList& history)
 SearchResults::iterator exactFirst(SearchResults::iterator begin, SearchResults::iterator end, const NameMatcher& matcher,
     const PreferredTypes& preferred)
 {
-    const auto exactEnd = std::stable_partition(begin, end,
-        [&](const SearchResult& r) { return matcher.isExactName(wtf8::fromUtf16(wtf8::view(r.name)), r.isDir); });
+    const auto exactEnd = std::stable_partition(
+        begin, end, [&](const SearchResult& r) { return matcher.isExactName(r.name, r.isDir); });
     if (!preferred.empty()) {
         std::stable_partition(begin, exactEnd, [&](const SearchResult& r) {
             return !r.isDir && !r.isApp() && preferred.hasName(wtf8::fromUtf16(wtf8::view(r.name)));
@@ -1422,23 +1446,27 @@ void SearchEngine::runNameSearch(const Job& job)
             if (out.cancelled || isStale(job.id))
                 return;
             total = static_cast<qint64>(out.totalMatches);
-            results.reserve(static_cast<qsizetype>(out.hits.size()));
             // The folders of a typed path match names anywhere along the way:
             // only what really lies under the folder typed. One the index does
             // not have holds nothing (#49: "F1\" found the files of "F11"
             // and of every folder with "f1" in its name); the disk listing
             // below has what it holds.
             UnderFolder under(*index, folder);
+            std::vector<EntryId> ids;
+            std::vector<char> elsewhere; // insideFirst: each hit's !inside
+            ids.reserve(out.hits.size());
             for (const NameHit& hit : out.hits) {
                 if (!typedIn && !typedPath.folder.isEmpty() && !under(hit.id)) {
                     --total;
                     continue;
                 }
-                SearchResult r = fromIndex(*index, hit.id);
-                r.modified = knownTime(index->modified(hit.id)); // its own, though ordered as unknown when ahead
-                r.elsewhere = insideFirst && !hit.inside;
-                results.push_back(std::move(r));
+                ids.push_back(hit.id);
+                if (insideFirst)
+                    elsewhere.push_back(!hit.inside);
             }
+            results = fromIndex(*index, ids, m_pool);
+            for (std::size_t i = 0; i < elsewhere.size(); ++i)
+                results[static_cast<qsizetype>(i)].elsewhere = elsewhere[i] != 0;
         }
         arrange(results, request, matcher, rankBy, *m_onDisk, typedPath.folder);
 

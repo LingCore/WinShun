@@ -8,6 +8,8 @@
 #include "Launcher.h"
 #include "Placement.h"
 #include "SystemCatalog.h"
+#include "CliSetup.h"
+#include "CommandLine.h"
 #include "FavoritesSettings.h"
 #include "FileIconProvider.h"
 #include "PluginSettings.h"
@@ -665,6 +667,46 @@ int runSettings(const QStringList& args)
     editor->plugins()->setLocale(u"zh"_s);
     editor->plugins()->loadPreview(); // a plugin::Host would start WinShunPluginHost.exe: made-up cards instead
     editor->setMcpStatus(u"已连接：Claude Desktop（12 次调用）"_s);
+    if (!args.contains(u"--no-cli-tally"_s)) // (the row's text before any run)
+        editor->setCliTally(u"38 次调用，最近 14:32（search_files）"_s);
+    // The command line as the page would read it off this PC, made up so that
+    // the longest texts and every button can be seen whatever this PC has:
+    // rich (the default: on the user's PATH by WinShun, another ws in front),
+    // notonpath, missing, system, pending (the PATH not looked at yet) or unreadable (--cli-state).
+    {
+        cli::Status status;
+        status.bin = u"C:\\Program Files\\WinShun\\bin"_s;
+        const QString which = valueAfter(args, u"--cli-state", u"rich"_s);
+        if (which != u"missing")
+            status.exe = status.bin + u"\\ws.exe"_s;
+        if (which == u"rich") {
+            status.where = cli::Status::Where::User;
+            status.removable = true;
+            status.shadow = u"C:\\Users\\me\\AppData\\Local\\Microsoft\\WindowsApps\\ws.exe"_s;
+        } else if (which == u"system") {
+            status.where = cli::Status::Where::System;
+        }
+        if (which == u"unreadable")
+            status.pathError = ERROR_UNSUPPORTED_TYPE; // a PATH that is not text in the registry
+        // "pending": the PATH not looked at yet (the first look is on its way): ws.exe known, the PATH not.
+        if (which == u"pending") {
+            editor->cli()->setNeverLooks(true);
+        } else {
+            editor->cli()->setProbe([status] { return status; });
+            editor->cli()->refresh();
+        }
+        if (args.contains(u"--cli-message"_s))
+            editor->cli()->enable(); // there is no ws.exe by this program: it says so (the result row)
+    }
+    // A Skill installed, for Claude Code's row (--skill): in a configuration folder of its own.
+    QTemporaryDir claudeConfig;
+    if (args.contains(u"--skill"_s) && claudeConfig.isValid()) {
+        _wputenv_s(L"CLAUDE_CONFIG_DIR", QDir::toNativeSeparators(claudeConfig.path()).toStdWString().c_str()); // not qputenv: that is the ANSI code page
+        QDir().mkpath(claudeConfig.filePath(u"skills/winshun"_s));
+        QFile skill(claudeConfig.filePath(u"skills/winshun/SKILL.md"_s));
+        if (skill.open(QIODevice::WriteOnly))
+            skill.write("---\nname: winshun\n---\n");
+    }
     editor->setShareStatuses({
         shareStatus(shareOnline, ShareIndexer::State::Online, share::Problem::None, 48213),
         shareStatus(shareSignIn, ShareIndexer::State::Problem, share::Problem::NeedsSignIn, 0),
@@ -722,6 +764,8 @@ int runSettings(const QStringList& args)
     armWatchdog(watchdog, 600);
     if (args.contains(u"--command-form"_s) && args.contains(u"--compact"_s))
         window->resize(760, 420);
+    if (const int width = valueAfter(args, u"--width").toInt(); width >= window->minimumWidth()) // narrower than usual, down to the window's least
+        window->resize(width, window->height());
     showOffScreen(window);
     const int baseHeight = window->height(); // 720: what the page column gets on a screen
     settle(window);
@@ -1094,6 +1138,41 @@ int runSettings(const QStringList& args)
         }
     }
 
+    // 命令行 › 启用命令行 with the connection switch off: it turns the switch on, which shows rows
+    // above the section and the page's tabs (--hold-demo). The section has to stay where it was
+    // on screen (SettingsWindow.holdInView): before and after pictured, the two positions compared.
+    if (args.contains(u"--hold-demo"_s)) {
+        editor->setMcp(false);
+        QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(aiPage)), Q_ARG(QVariant, QVariant(0)));
+        window->setHeight(480);
+        settle(window, 3);
+        auto* flickItem = qobject_cast<QQuickItem*>(flick);
+        QQuickItem* section = visualNamed(window->contentItem(), u"cliSection"_s);
+        QQuickItem* button = visualNamed(window->contentItem(), u"enableCliButton"_s);
+        if (!flickItem || !section || !button) {
+            qWarning("preview: --hold-demo: the section or its button is missing");
+        } else {
+            const auto top = [&] { return section->mapToItem(flickItem, QPointF(0, 0)).y(); };
+            const double before = top();
+            const double contentBefore = flickItem->property("contentHeight").toDouble();
+            saved = saveGrab(window, out.filePath(u"hold-before.png"_s)) && saved;
+            QMetaObject::invokeMethod(button, "clicked"); // the button's own handler, holdPlace(cli.enable)
+            settle(window, 3);
+            pump(300);
+            const double after = top();
+            saved = saveGrab(window, out.filePath(u"hold-after.png"_s)) && saved;
+            say(u"hold-demo: the section stood at y %1, now %2 (the page grew from %3 to %4, scrolled to %5), switch %6"_s.arg(before)
+                    .arg(after).arg(contentBefore).arg(flickItem->property("contentHeight").toDouble())
+                    .arg(flickItem->property("contentY").toDouble()).arg(editor->mcp()));
+            if (!editor->mcp())
+                qWarning("preview: --hold-demo: the connection switch did not go on");
+            if (std::abs(after - before) > 1.5)
+                qWarning("preview: --hold-demo: the section moved from y %.1f to %.1f", before, after);
+            if (flickItem->property("contentHeight").toDouble() <= contentBefore)
+                qWarning("preview: --hold-demo: the page did not grow, nothing was tested");
+        }
+    }
+
     // The settings search: a word typed, the page it narrows to pictured,
     // then Enter (goToCurrent), which must land on the right page and tab.
     struct Probe {
@@ -1115,6 +1194,10 @@ int runSettings(const QStringList& args)
         {QCoreApplication::translate("SettingsWindow", "对话框旁的搜索框"), 0, 2},
         {QCoreApplication::translate("SettingsWindow", "在 Directory Opus 里直接打字搜索"), 0, 2},
         {u"AI"_s, aiPage, 0},
+        {u"命令行"_s, aiPage, 0},
+        {u"ws"_s, aiPage, 0},
+        {u"command line"_s, aiPage, 0},
+        {u"终端"_s, aiPage, 0},
         {u"收藏"_s, favoritesPage, 0},
         {QCoreApplication::translate("SettingsWindow", "网络与 WSL 文件夹"), 2, 3},
         {QCoreApplication::translate("SettingsWindow", "排序"), 3, 0},

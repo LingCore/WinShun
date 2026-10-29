@@ -4,26 +4,6 @@
 <context>
     <name>AiAccessSection</name>
     <message>
-        <source>Claude、Cursor、VS Code 等 AI 助手通过 MCP（Model Context Protocol）连接 Win顺，就能搜文件名、文件里的文字和最近改过的文件：和你在搜索框里一样快，拼音也行。默认只读，不改动任何文件。</source>
-        <translation>AI assistants such as Claude, Cursor and VS Code connect to WinShun through MCP (Model Context Protocol) and can then search file names, the text inside files and the files changed lately, as fast as you do from the search box, pinyin included. Read-only by default: nothing is changed.</translation>
-    </message>
-    <message>
-        <source>允许 AI 连接</source>
-        <translation>Allow AI assistants to connect</translation>
-    </message>
-    <message>
-        <source>MCP;AI;Claude;Cursor;智能;助手;大模型;人工智能</source>
-        <translation>MCP;AI;Claude;Cursor;assistant;model;LLM</translation>
-    </message>
-    <message>
-        <source>关着时 AI 客户端连不上 Win顺</source>
-        <translation>Off: AI clients cannot reach WinShun</translation>
-    </message>
-    <message>
-        <source>AI 客户端启动 WinShunMcp.exe 就能连上</source>
-        <translation>An AI client connects by starting WinShunMcp.exe</translation>
-    </message>
-    <message>
         <source>允许 AI 打开文件和文件夹</source>
         <translation>Allow AI to open files and folders</translation>
     </message>
@@ -32,8 +12,28 @@
         <translation>open;folder;show;reveal;AI</translation>
     </message>
     <message>
-        <source>用默认程序打开文件、在文件管理器里显示；以普通权限打开，AI 客户端每次会先问你</source>
-        <translation>Opens files with their default program and shows them in the file manager, with your normal rights; the AI client asks you first each time</translation>
+        <source>Claude、Cursor、VS Code 等 AI 助手通过 MCP（Model Context Protocol）连接 Win顺，就能搜文件名、文件里的文字和最近改过的文件：和你在搜索框里一样快，拼音也行。能运行命令的 AI 助手和你自己也可以在终端里用命令行 ws。默认只读，不改动任何文件。</source>
+        <translation>AI assistants such as Claude, Cursor and VS Code connect to WinShun through MCP (Model Context Protocol) and can then search file names, the text inside files and the files changed lately, as fast as you do from the search box, pinyin included. Assistants that can run commands, and you, can also use the command line ws in a terminal. Read-only by default: nothing is changed.</translation>
+    </message>
+    <message>
+        <source>允许 AI 助手和命令行连接</source>
+        <translation>Allow AI assistants and the command line to connect</translation>
+    </message>
+    <message>
+        <source>MCP;AI;Claude;Cursor;智能;助手;大模型;人工智能;命令行;终端;ws;command line;cli;terminal;shell;powershell;cmd</source>
+        <translation>MCP;AI;Claude;Cursor;assistant;model;LLM;command line;terminal;ws;cli;shell;powershell;cmd;命令行;终端</translation>
+    </message>
+    <message>
+        <source>关着时 AI 客户端和命令行 ws 都连不上 Win顺</source>
+        <translation>Off: AI clients and the command line (ws) cannot reach WinShun</translation>
+    </message>
+    <message>
+        <source>AI 客户端启动 WinShunMcp.exe 就能连上；在终端里输入 ws 也行</source>
+        <translation>An AI client connects by starting WinShunMcp.exe; in a terminal, type ws</translation>
+    </message>
+    <message>
+        <source>只管通过 MCP 连接的 AI 客户端：用默认程序打开文件、在文件管理器里显示；以普通权限打开，客户端每次会先问你。命令行的 ws open 按你自己的权限打开，不受这个开关管</source>
+        <translation>Only for AI clients connected through MCP: opens files with their default program and shows them in the file manager, with your normal rights; the client asks you first each time. ws open on the command line opens with your own rights and is not governed by this switch</translation>
     </message>
     <message>
         <source>允许 AI 读取剪贴板历史</source>
@@ -119,20 +119,32 @@
 <context>
     <name>AiClientsSection</name>
     <message>
-        <source>点“连接”就写进那个客户端的配置（原文件先备份成 .bak）。装了的客户端才列出来。</source>
-        <translation>“Connect” writes WinShun into that client&apos;s configuration (the file is backed up as .bak first). Only installed clients are listed.</translation>
-    </message>
-    <message>
         <source>没找到 WinShunMcp.exe，重新安装 Win顺 就有了。</source>
         <translation>WinShunMcp.exe is missing; reinstalling WinShun brings it back.</translation>
     </message>
     <message>
-        <source>连接;配置;MCP;AI;%1</source>
-        <translation>connect;configure;MCP;AI;%1</translation>
+        <source>点“连接”就写进那个客户端的配置（原文件先备份成 .bak）。装了的客户端才列出来。Claude Code 还可以“装 Skill”：让它在终端里用命令行 ws，比 MCP 更省上下文。</source>
+        <translation>“Connect” writes WinShun into that client&apos;s configuration (the file is backed up as .bak first). Only installed clients are listed. For Claude Code you can also “Install Skill”: it then uses the command line ws, which costs less context than MCP.</translation>
+    </message>
+    <message>
+        <source>连接;配置;MCP;AI;Skill;%1</source>
+        <translation>connect;configure;MCP;AI;Skill;%1</translation>
     </message>
     <message>
         <source>已连接 · %1</source>
         <translation>Connected · %1</translation>
+    </message>
+    <message>
+        <source>已装 Skill · %1</source>
+        <translation>Skill installed · %1</translation>
+    </message>
+    <message>
+        <source>没找到 ws.exe，装不了 Skill；重新安装 Win顺 就有了</source>
+        <translation>ws.exe was not found, so the Skill cannot be installed; reinstalling WinShun brings it back</translation>
+    </message>
+    <message>
+        <source>ws 还没加进 PATH：Skill 里写着 ws.exe 的完整路径，照样能用；建议先在“权限”页的“命令行”里启用</source>
+        <translation>ws is not on the PATH yet: the Skill carries ws.exe&apos;s full path and works anyway, but it is better to turn on the command line first (Permissions tab, “Command line”)</translation>
     </message>
     <message>
         <source>重新连接</source>
@@ -141,6 +153,14 @@
     <message>
         <source>连接</source>
         <translation>Connect</translation>
+    </message>
+    <message>
+        <source>重装 Skill</source>
+        <translation>Reinstall Skill</translation>
+    </message>
+    <message>
+        <source>装 Skill</source>
+        <translation>Install Skill</translation>
     </message>
     <message>
         <source>复制命令</source>
@@ -177,6 +197,109 @@
     <message>
         <source>知道了</source>
         <translation>Got it</translation>
+    </message>
+</context>
+<context>
+    <name>AiCommandLineSection</name>
+    <message>
+        <source>正在检查…</source>
+        <translation>Checking…</translation>
+    </message>
+    <message>
+        <source>没找到 ws.exe（应在 %1），重新安装 Win顺 就有了</source>
+        <translation>ws.exe was not found (it should be in %1); reinstalling WinShun brings it back</translation>
+    </message>
+    <message>
+        <source>已在系统的 PATH 里（安装程序添加，由它管理）：%1</source>
+        <translation>On the system PATH (added by the installer, which manages it): %1</translation>
+    </message>
+    <message>
+        <source>已在你的 PATH 里（Win顺 加的）：%1</source>
+        <translation>On your PATH (added by WinShun): %1</translation>
+    </message>
+    <message>
+        <source>已在你的 PATH 里：%1</source>
+        <translation>On your PATH: %1</translation>
+    </message>
+    <message>
+        <source>ws.exe 在 %1，这个文件夹还不在 PATH 里：终端里输入 ws 会找不到</source>
+        <translation>ws.exe is in %1, but this folder is not on the PATH yet: typing ws in a terminal finds nothing</translation>
+    </message>
+    <message>
+        <source>你的 PATH 在注册表里不是文本类型，Win顺 读不了它，也不会去改它</source>
+        <translation>Your PATH is not a text value in the registry: WinShun cannot read it and will not change it</translation>
+    </message>
+    <message>
+        <source>没能读出 PATH（错误 %1），上面说的可能不全</source>
+        <translation>Could not read the PATH (error %1), so what is said above may be incomplete</translation>
+    </message>
+    <message>
+        <source>注意：PATH 里已有另一个叫 ws 的程序，终端里会先运行它：</source>
+        <translation>Note: another program called ws is already on the PATH, and a terminal runs it first:</translation>
+    </message>
+    <message>
+        <source>上面的开关关着：ws 连不上 Win顺</source>
+        <translation>The switch above is off: ws cannot reach WinShun</translation>
+    </message>
+    <message>
+        <source>命令行</source>
+        <translation>Command line</translation>
+    </message>
+    <message>
+        <source>在终端里输入 ws，就能搜文件名、搜文件里的文字、读出 Word 和 PDF 的文字。能运行命令的 AI 助手（Claude Code 这类）用它比 MCP 更省上下文。和 MCP 共用上面的开关。</source>
+        <translation>Type ws in a terminal to search file names, search the text inside files, and read out the text of Word and PDF files. AI assistants that can run commands (Claude Code and the like) use it with less context than MCP. It shares the switch above with MCP.</translation>
+    </message>
+    <message>
+        <source>ws 命令</source>
+        <translation>ws command</translation>
+    </message>
+    <message>
+        <source>命令行;终端;ws;command line;cli;terminal;shell;PowerShell;cmd;PATH;环境变量;启用</source>
+        <translation>command line;terminal;ws;cli;shell;PowerShell;cmd;PATH;environment variable;enable;命令行;终端</translation>
+    </message>
+    <message>
+        <source>启用命令行</source>
+        <translation>Turn on the command line</translation>
+    </message>
+    <message>
+        <source>从 PATH 移除</source>
+        <translation>Remove from PATH</translation>
+    </message>
+    <message>
+        <source>试一试</source>
+        <translation>Try it</translation>
+    </message>
+    <message>
+        <source>示例;例子;试试;命令行;ws;example;try;terminal;终端</source>
+        <translation>example;try;command line;terminal;ws;命令行;终端</translation>
+    </message>
+    <message>
+        <source>新打开的终端才认得新的 PATH，已经开着的不行（VS Code 的终端要重开 VS Code）。在终端里输入：</source>
+        <translation>Only newly opened terminals know a new PATH; ones already open do not (restart VS Code for its terminal). Type in a terminal:</translation>
+    </message>
+    <message>
+        <source>复制命令</source>
+        <translation>Copy command</translation>
+    </message>
+    <message>
+        <source>刚才的结果</source>
+        <translation>Last result</translation>
+    </message>
+    <message>
+        <source>知道了</source>
+        <translation>Got it</translation>
+    </message>
+    <message>
+        <source>调用记录</source>
+        <translation>Calls so far</translation>
+    </message>
+    <message>
+        <source>调用;次数;最近;命令行;ws;calls;last;recent;history</source>
+        <translation>calls;count;last;recent;history;command line;ws;调用;次数;命令行</translation>
+    </message>
+    <message>
+        <source>还没有调用；在终端里用一次 ws，这里就会显示</source>
+        <translation>No calls yet; run ws once in a terminal and it shows here</translation>
     </message>
 </context>
 <context>
@@ -2034,6 +2157,30 @@
     <message>
         <source>不认识的客户端</source>
         <translation>Unknown client</translation>
+    </message>
+    <message>
+        <source>没找到 ws.exe，重新安装 Win顺 就有了</source>
+        <translation>ws.exe was not found; reinstalling WinShun brings it back</translation>
+    </message>
+    <message>
+        <source>没能运行 ws.exe</source>
+        <translation>Could not run ws.exe</translation>
+    </message>
+    <message>
+        <source>ws.exe 在 %1 秒内没有回答，已结束它</source>
+        <translation>ws.exe did not answer within %1 seconds and was ended</translation>
+    </message>
+    <message>
+        <source>已装 Skill：%1。Claude Code 新开的会话里就能用。</source>
+        <translation>Skill installed: %1. It works in new Claude Code sessions.</translation>
+    </message>
+    <message>
+        <source>装 Skill 没有成功（退出码 %1）：%2</source>
+        <translation>Installing the Skill failed (exit code %1): %2</translation>
+    </message>
+    <message>
+        <source>ws.exe 没有说明原因</source>
+        <translation>ws.exe gave no reason</translation>
     </message>
 </context>
 <context>
@@ -6399,6 +6546,10 @@
         <translation>Connected: %1</translation>
     </message>
     <message>
+        <source>%1 次调用，最近 %2（%3）</source>
+        <translation>%1 calls, last at %2 (%3)</translation>
+    </message>
+    <message>
         <source>没能建立连接通道，详见 WinShun.log</source>
         <translation>The connection channel could not be set up; see WinShun.log</translation>
     </message>
@@ -6712,6 +6863,61 @@
     <message>
         <source>写不进 %1</source>
         <translation>Cannot write to %1</translation>
+    </message>
+</context>
+<context>
+    <name>ws::CliSetup</name>
+    <message>
+        <source>ws 报告</source>
+        <translation>ws report</translation>
+    </message>
+    <message>
+        <source>Win顺 现在是用另一个账户（管理员）运行的，PATH 是那个账户的，不是你登录的这个。请先退出 Win顺，再正常打开它，然后在这里启用。</source>
+        <translation>WinShun is running as another account (an administrator), and the PATH is that account&apos;s, not the one you are logged on as. Quit WinShun, open it normally, then enable it here.</translation>
+    </message>
+    <message>
+        <source>连接已打开，但没找到 ws.exe（应在 %1）。重新安装 Win顺 就有了。</source>
+        <translation>The connection is on, but ws.exe was not found (it should be in %1). Reinstalling WinShun brings it back.</translation>
+    </message>
+    <message>
+        <source>没找到 ws.exe（应在 %1）。重新安装 Win顺 就有了。</source>
+        <translation>ws.exe was not found (it should be in %1). Reinstalling WinShun brings it back.</translation>
+    </message>
+    <message>
+        <source>命令行已启用。在新打开的终端里输入 ws 试试。</source>
+        <translation>The command line is on. Type ws in a newly opened terminal to try it.</translation>
+    </message>
+    <message>
+        <source>命令行已启用：新打开的终端里就能用 ws 了。</source>
+        <translation>The command line is on: ws works in newly opened terminals.</translation>
+    </message>
+    <message>
+        <source>已从你的 PATH 里去掉。已经开着的终端要重开才生效。</source>
+        <translation>Removed from your PATH. Terminals that are already open must be restarted for this to take effect.</translation>
+    </message>
+    <message>
+        <source>这一项不是 Win顺 加的，没有动它。</source>
+        <translation>That entry was not added by WinShun, so it was left alone.</translation>
+    </message>
+    <message>
+        <source>你的 PATH 不是文本类型的值（注册表里的类型不对），为了不弄坏它，Win顺 没有动。可以用 ws 的完整路径，或自己修好它。</source>
+        <translation>Your PATH is not a text value (it has the wrong type in the registry), so WinShun left it alone rather than break it. Use ws by its full path, or fix it yourself.</translation>
+    </message>
+    <message>
+        <source>你的 PATH 刚被别的程序改着，没有写成；再点一次。</source>
+        <translation>Another program was changing your PATH just now and nothing was written; click again.</translation>
+    </message>
+    <message>
+        <source>没有权限改你的 PATH（错误 5）。</source>
+        <translation>No permission to change your PATH (error 5).</translation>
+    </message>
+    <message>
+        <source>没能写进你的 PATH（错误 %1）。</source>
+        <translation>Could not write your PATH (error %1).</translation>
+    </message>
+    <message>
+        <source>没能改你的 PATH（错误 %1）。</source>
+        <translation>Could not change your PATH (error %1).</translation>
     </message>
 </context>
 <context>
@@ -8843,8 +9049,8 @@
         <translation>Unusable: %1</translation>
     </message>
     <message>
-        <source>AI 助手页的“允许 AI 连接”关着</source>
-        <translation>“Allow AI assistants to connect” on the AI assistants page is off</translation>
+        <source>AI 助手页的“允许 AI 助手和命令行连接”关着</source>
+        <translation>“Allow AI assistants and the command line to connect” on the AI assistants page is off</translation>
     </message>
     <message>
         <source>AI 助手页的“AI 可以使用插件”关着，打开后才成为工具</source>
@@ -9912,6 +10118,10 @@
     <message>
         <source>已复制，粘贴到那个客户端的 MCP 配置文件里</source>
         <translation>Copied; paste it into that client&apos;s MCP configuration file</translation>
+    </message>
+    <message>
+        <source>正在装 Skill…</source>
+        <translation>Installing the Skill…</translation>
     </message>
     <message>
         <source>给类型起个名字</source>

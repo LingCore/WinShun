@@ -4,6 +4,7 @@
 #include "AppCatalog.h"
 #include "Backup.h"
 #include "Grabber.h" // take_screenshot (MCP)
+#include "CliSetup.h"
 #include "ClipImportJob.h"
 #include "ClipStore.h"
 #include "Clipboard.h"
@@ -35,6 +36,7 @@
 #include "Secrets.h"
 #include "ServiceVolumeAccess.h"
 #include "ShortcutAgain.h"
+#include "SettingsCommand.h"
 #include "SettingsEditor.h"
 #include "Switches.h"
 #include "SystemCatalog.h"
@@ -377,6 +379,9 @@ App::App()
     });
     m_holdTimer.setInterval(std::chrono::milliseconds(hotkeysteps::kPollMs));
     connect(&m_holdTimer, &QTimer::timeout, this, &App::checkClipboardHold);
+    m_cliTallyTimer.setSingleShot(true);
+    m_cliTallyTimer.setInterval(500ms);
+    connect(&m_cliTallyTimer, &QTimer::timeout, this, &App::refreshCliTally);
     m_contentStatusTimer.setInterval(2s);
     connect(&m_contentStatusTimer, &QTimer::timeout, this, &App::refreshContentIndexStatus);
     connect(&m_contentStatusTimer, &QTimer::timeout, this, &App::refreshShareStatuses); // counts while reading
@@ -412,6 +417,7 @@ App::~App()
     m_mcpServer.reset();
     m_mcpHost.reset();
     m_mcpEngine.reset();
+    m_mcpContentEngine.reset();
     delete m_noticeWindow.data();
     m_noticeFrame.reset();
     delete m_folderMenuWindow; // before its view-model and the QML engine
@@ -2936,6 +2942,7 @@ void App::showSettings()
         editor->setClassicTaskbar(m_classicTaskbar);
         editor->refreshFileManagers();
         editor->refreshMcpClients();
+        editor->cli()->refresh();
         refreshMcpStatus();
         refreshIndexAccess();
         if (m_serviceWanted && m_index->volumeAccessKind() == ntfs::VolumeAccess::Kind::None)
@@ -3315,9 +3322,11 @@ void App::handleCommand(const QString& command)
         // Explicit exit must bypass the retained windows' Close vetoes.
         // App's destructor saves the index and disposes of those windows.
         QCoreApplication::exit(0);
-    else if (command == u"settings")
+    else if (QString place; settingscommand::parse(command, &place)) {
         showSettings();
-    else if (command.startsWith(u"query:"))
+        if (m_settingsWindow && !place.isEmpty())
+            QMetaObject::invokeMethod(m_settingsWindow, "showPlace", Q_ARG(QVariant, QVariant(place)));
+    } else if (command.startsWith(u"query:"))
         showLauncher(command.mid(6));
     else if (command.startsWith(u"dump:"))
         dumpLauncher(command.mid(5));
@@ -5396,6 +5405,7 @@ mcp::Policy App::mcpPolicy() const
     mcp::Policy policy;
     policy.allowOpen = m_settings.mcpAllowOpen;
     policy.allowClipboard = m_settings.mcpClipboard;
+    policy.clipboardHistory = m_settings.clipboard; // without a history there is nothing to read
     policy.allowScreenshot = m_settings.mcpScreenshot;
     policy.settingsMode = m_settings.mcpSettings == u"auto" ? mcp::SettingsMode::Auto
         : m_settings.mcpSettings == u"off"                  ? mcp::SettingsMode::Off
@@ -5603,15 +5613,22 @@ void App::applyMcp()
         m_mcpServer.reset();
         m_mcpHost.reset();
         m_mcpEngine.reset();
+        m_mcpContentEngine.reset();
         refreshMcpStatus();
         return;
     }
     if (!m_mcpServer) {
         // Its own engine: an engine runs only its newest request, so one
-        // shared with the launcher would drop the launcher's searches.
+        // shared with the launcher would drop the launcher's searches. And
+        // one more for content searches (seconds), which a name search
+        // (milliseconds) would otherwise wait behind: an AI agent runs
+        // several ws commands at once. Made now: an idle engine is a dozen or
+        // so sleeping threads (its worker and pool), no work for the CPU.
         m_mcpEngine = std::make_unique<SearchEngine>(m_index.get(), m_apps.get(), m_places.get());
+        m_mcpContentEngine = std::make_unique<SearchEngine>(m_index.get());
         mcp::Services services = toolServices();
         services.engine = m_mcpEngine.get();
+        services.contentEngine = m_mcpContentEngine.get();
         // The AI's alone: plugins never take pictures of the screen.
         services.takeScreenshot = [this](const mcp::ScreenshotRequest& request, std::function<void(mcp::ScreenshotTaken)> done) {
             confirmScreenshot(request, std::move(done));
@@ -5631,6 +5648,12 @@ void App::applyMcp()
         m_mcpHost->setPolicy(mcpPolicy());
         m_mcpServer = std::make_unique<mcp::McpServer>(m_mcpHost.get(), QStringLiteral(WINSHUN_VERSION));
         connect(m_mcpServer.get(), &mcp::McpServer::sessionsChanged, this, &App::refreshMcpStatus);
+        // ws calls: not one status line per call (an agent runs several a second),
+        // and none at all while no settings window is there to show it.
+        connect(m_mcpServer.get(), &mcp::McpServer::cliCalled, this, [this] {
+            if (m_settingsEditor && !m_cliTallyTimer.isActive())
+                m_cliTallyTimer.start();
+        });
         connect(m_mcpHost.get(), &mcp::ToolHost::toolsChanged, this, &App::writeMcpToolsCache);
         DWORD error = 0;
         if (!m_mcpServer->listen(pipe::defaultName(), &error))
@@ -5919,6 +5942,29 @@ void App::refreshMcpStatus()
         status = tr("没能建立连接通道，详见 WinShun.log");
     }
     m_settingsEditor->setMcpStatus(status);
+    refreshCliTally();
+}
+
+void App::refreshCliTally()
+{
+    if (!m_settingsEditor)
+        return;
+    // The command line ws: its runs last a few milliseconds each and are not
+    // listed as sessions; counted, with the last one's time (a clock time: it
+    // does not go stale on the screen as "3 分钟前" would) and tool. Shown in
+    // the 命令行 section, a row of its own: as a second line of the switch's
+    // row it pushed that section down with the first run, from under the mouse.
+    QString text;
+    if (m_mcpServer && m_mcpServer->listening()) {
+        const mcp::McpServer::CliTally& tally = m_mcpServer->cliTally();
+        if (tally.calls > 0) {
+            const QLocale locale;
+            const QString when = tally.lastCall.date() == QDate::currentDate() ? locale.toString(tally.lastCall.time(), QLocale::ShortFormat)
+                                                                              : locale.toString(tally.lastCall, QLocale::ShortFormat);
+            text = tr("%1 次调用，最近 %2（%3）").arg(tally.calls).arg(when, tally.lastTool);
+        }
+    }
+    m_settingsEditor->setCliTally(text);
 }
 
 void App::writeMcpToolsCache()

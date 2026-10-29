@@ -535,7 +535,7 @@ PluginListModel::Card PluginSettings::cardFor(const QString& id) const
     if (c.aiExpose) {
         const QStringList tools = plugin::AiBridge::toolNamesOf(m, settings.mcpPluginActions);
         if (!settings.mcp)
-            c.aiNote = tr("AI 助手页的“允许 AI 连接”关着");
+            c.aiNote = tr("AI 助手页的“允许 AI 助手和命令行连接”关着");
         else if (!settings.mcpPlugins)
             c.aiNote = tr("AI 助手页的“AI 可以使用插件”关着，打开后才成为工具");
         else if (!c.aiEnabled)

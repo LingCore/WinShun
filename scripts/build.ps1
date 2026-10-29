@@ -71,6 +71,9 @@ try {
         Copy-Item "$root\build\$preset\WinShunSearch.exe" $dist
         # The MCP server AI clients start (src/mcp); it relays to WinShun over a pipe.
         Copy-Item "$root\build\$preset\WinShunMcp.exe" $dist
+        # The command line ws.exe (src/cli), alone in bin\: that folder goes on PATH, never one with Qt's DLLs.
+        New-Item -ItemType Directory -Force "$dist\bin" | Out-Null
+        Copy-Item "$root\build\$preset\bin\ws.exe" "$dist\bin"
         # Plugin processes are started by WinShunPluginHost.exe (src/plugin/runner), with the user's normal rights.
         Copy-Item "$root\build\$preset\WinShunPluginHost.exe" $dist
         # The index service (src/service): reads the MFT and change journals for a Win顺 with normal rights.

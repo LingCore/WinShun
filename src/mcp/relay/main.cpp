@@ -19,6 +19,7 @@
 //       --start-winshun: a tool call may start Win顺 when it is not running
 
 #include "JsonRpc.h"
+#include "Launch.h"
 #include "Pipe.h"
 
 #include <QByteArray>
@@ -87,26 +88,17 @@ QString cachePath()
     return QDir::toNativeSeparators(local + u"\\WinShun\\mcp-tools.json"_s);
 }
 
-// Whether Win顺 is running at all (its single-instance mutex exists),
-// whatever it serves: one that runs without the pipe has the AI connection
-// turned off, or is a version without it.
-bool winShunRunning()
-{
-    if (const HANDLE mutex = ::OpenMutexW(SYNCHRONIZE, FALSE, L"Local\\WinShun.Instance")) {
-        ::CloseHandle(mutex);
-        return true;
-    }
-    return ::GetLastError() == ERROR_ACCESS_DENIED; // there, but an elevated process's: not ours to open
-}
+using launch::startWinShun;
+using launch::winShunRunning;
 
 QString offlineText()
 {
     if (winShunRunning()) {
         return u"Win顺 (WinShun) is running, but its AI connection is off (or this version of Win顺 has none), so "
-               "this tool cannot answer. Ask the user to turn on 允许 AI 连接 (Allow AI assistants to connect) in "
-               "Win顺's settings › AI 助手, or to update Win顺; then call the tool again. "
+               "this tool cannot answer. Ask the user to turn on 允许 AI 助手和命令行连接 (Allow AI assistants and the "
+               "command line to connect) in Win顺's settings › AI 助手, or to update Win顺; then call the tool again. "
                "／Win顺 在运行，但没有开放 AI 连接（或这个版本还没有这个功能）。请在 Win顺 的设置 → AI 助手 里打开"
-               "“允许 AI 连接”，或者更新 Win顺，然后再试一次。"_s;
+               "“允许 AI 助手和命令行连接”，或者更新 Win顺，然后再试一次。"_s;
     }
     return u"Win顺 (WinShun) is not running on this PC, so this tool cannot answer right now. "
            "Ask the user to start Win顺 (Start menu › Win顺, or the tray icon), then call the tool again: "
@@ -134,71 +126,6 @@ QJsonObject statusTool()
         {u"inputSchema"_s, QJsonObject {{u"type"_s, u"object"_s}, {u"additionalProperties"_s, false}}},
         {u"annotations"_s,
             QJsonObject {{u"readOnlyHint"_s, true}, {u"destructiveHint"_s, false}, {u"idempotentHint"_s, true}, {u"openWorldHint"_s, false}}}};
-}
-
-// Runs Win顺's autostart task. False when there is no such task, or it fails.
-bool runAutostartTask()
-{
-    wchar_t system[MAX_PATH] {};
-    if (!::GetSystemDirectoryW(system, MAX_PATH))
-        return false;
-    std::wstring command = L"\"" + std::wstring(system) + L"\\schtasks.exe\" /Run /TN WinShun";
-    STARTUPINFOW startup {};
-    startup.cb = sizeof startup;
-    PROCESS_INFORMATION process {};
-    if (!::CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &startup, &process))
-        return false;
-    DWORD code = 1;
-    if (::WaitForSingleObject(process.hProcess, 5000) == WAIT_OBJECT_0)
-        ::GetExitCodeProcess(process.hProcess, &code);
-    ::CloseHandle(process.hThread);
-    ::CloseHandle(process.hProcess);
-    return code == 0;
-}
-
-// The WinShun.exe to start without the task: the one beside this program
-// (they are installed together), else the one the Run key's value starts
-// (the autostart of an account that could not have the task, GitHub #52).
-std::wstring winShunExe()
-{
-    wchar_t self[MAX_PATH * 2] {};
-    const DWORD length = ::GetModuleFileNameW(nullptr, self, static_cast<DWORD>(std::size(self)));
-    if (length > 0 && length < std::size(self)) {
-        std::wstring beside(self, length);
-        beside.resize(beside.find_last_of(L'\\') + 1);
-        beside += L"WinShun.exe";
-        if (::GetFileAttributesW(beside.c_str()) != INVALID_FILE_ATTRIBUTES)
-            return beside;
-    }
-    wchar_t command[MAX_PATH * 2 + 32] {};
-    DWORD bytes = sizeof command - sizeof(wchar_t);
-    if (::RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", L"WinShun", RRF_RT_REG_SZ,
-            nullptr, command, &bytes)
-        != ERROR_SUCCESS)
-        return {};
-    std::wstring exe(command);
-    if (!exe.empty() && exe.front() == L'"') {
-        const std::size_t close = exe.find(L'"', 1);
-        exe = exe.substr(1, close == std::wstring::npos ? std::wstring::npos : close - 1);
-    } else {
-        exe = exe.substr(0, exe.find(L' '));
-    }
-    return ::GetFileAttributesW(exe.c_str()) != INVALID_FILE_ATTRIBUTES ? exe : std::wstring();
-}
-
-// Starts Win顺 when it is not running: through its autostart task, which
-// starts it elevated without a UAC prompt (the taskbar button does the same);
-// when there is none that can be run (an account whose task name was taken, a
-// policy), the program itself with --background, as the stub does.
-bool startWinShun()
-{
-    if (runAutostartTask())
-        return true;
-    const std::wstring exe = winShunExe();
-    if (exe.empty())
-        return false;
-    std::wstring folder = exe.substr(0, exe.find_last_of(L'\\'));
-    return reinterpret_cast<INT_PTR>(::ShellExecuteW(nullptr, nullptr, exe.c_str(), L"--background", folder.c_str(), SW_SHOWNORMAL)) > 32;
 }
 
 class Relay {
@@ -515,6 +442,8 @@ private:
                     const ULONGLONG until = ::GetTickCount64() + kStartWaitMs;
                     while (!ensureConnected() && ::GetTickCount64() < until)
                         ::Sleep(300);
+                } else if (launch::runsElevated()) {
+                    logLine("Win顺 is not running; not started from here, as this relay runs as administrator and Win顺 would too");
                 } else {
                     logLine("Win顺 is not running and could not be started");
                 }

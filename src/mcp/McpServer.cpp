@@ -1,6 +1,7 @@
 #include "McpServer.h"
 
 #include "JsonRpc.h"
+#include "Pipe.h"
 #include "PipeServer.h"
 #include "Win32Util.h"
 
@@ -8,6 +9,7 @@
 #include <QJsonDocument>
 
 #include <algorithm>
+#include <utility>
 
 using namespace Qt::StringLiterals;
 
@@ -21,6 +23,9 @@ struct McpServer::Session {
     QString protocolVersion;
     QString client;
     QString clientVersion;
+    bool cli = false; // ws, the command line (kCliClient)
+    bool cliCounted = false; // this run of ws is in the tally
+    bool cliNamed = false; // it called a tool other than index_status: that one names it
     QDateTime since;
     int calls = 0;
     QString lastTool;
@@ -29,6 +34,10 @@ struct McpServer::Session {
     // The client's own token (Visibility): what it may see. Invalid for
     // sessions without one: the host's default token then.
     win32::UniqueHandle token;
+
+    // In sessions(): an AI client that said who it is. Not before (a
+    // connection is nobody yet), never ws (many a minute: cliTally()).
+    bool listed() const noexcept { return initialized && !cli; }
 };
 
 McpServer::McpServer(ToolHost* host, QString version, QObject* parent)
@@ -63,8 +72,7 @@ bool McpServer::listen(const std::wstring& name, DWORD* error)
                 if (m_pipe)
                     m_pipe->send(id, line);
             };
-            m_sessions[id] = std::move(session);
-            emit sessionsChanged();
+            m_sessions[id] = std::move(session); // listed once it says who it is (initialize)
         }, Qt::QueuedConnection);
     };
     callbacks.identified = [this](pipe::Server::Id id, HANDLE token) {
@@ -113,8 +121,7 @@ McpServer::SessionId McpServer::openSession(std::function<void(const QByteArray&
     session->since = QDateTime::currentDateTime();
     session->sink = std::move(sink);
     const SessionId id = session->id;
-    m_sessions[id] = std::move(session);
-    emit sessionsChanged();
+    m_sessions[id] = std::move(session); // listed once it says who it is (initialize)
     return id;
 }
 
@@ -136,16 +143,21 @@ void McpServer::endSession(SessionId id)
         return;
     for (const auto& [key, call] : it->second->inflight)
         m_host->cancel(call);
+    const bool listed = it->second->listed();
     m_sessions.erase(it);
-    emit sessionsChanged();
+    if (listed)
+        emit sessionsChanged();
 }
 
 std::vector<McpServer::SessionInfo> McpServer::sessions() const
 {
     std::vector<SessionInfo> out;
-    for (const auto& [id, session] : m_sessions)
-        out.push_back({id, session->client, session->clientVersion, session->since, session->calls, session->lastTool, session->lastCall,
-            session->token.valid()});
+    for (const auto& [id, session] : m_sessions) {
+        if (session->listed())
+            out.push_back({id, session->client, session->clientVersion, session->since, session->calls, session->lastTool,
+                session->lastCall, session->token.valid()});
+    }
+    // Initialized without clientInfo: nameless, last.
     std::ranges::stable_sort(out, [](const SessionInfo& a, const SessionInfo& b) { return !a.client.isEmpty() && b.client.isEmpty(); });
     return out;
 }
@@ -186,21 +198,27 @@ void McpServer::handleRequest(Session& session, const QJsonValue& id, const QStr
         QString name = client.value(u"title"_s).toString();
         if (name.isEmpty())
             name = client.value(u"name"_s).toString();
+        const bool wasListed = session.listed();
         if (!name.isEmpty()) { // initialized again without clientInfo: the name stays
-            session.client = name;
+            // ws is known by its name (whatever title it gives), and logged so.
+            session.cli = client.value(u"name"_s).toString() == QLatin1StringView(kCliClient);
+            session.client = session.cli ? QString::fromLatin1(kCliClient) : name;
             session.clientVersion = client.value(u"version"_s).toString();
         }
         session.protocolVersion = version;
         session.initialized = true;
         reply({{u"protocolVersion"_s, version},
             {u"capabilities"_s,
-                QJsonObject {{u"tools"_s, QJsonObject {{u"listChanged"_s, true}}}, {u"prompts"_s, QJsonObject {{u"listChanged"_s, false}}}}},
+                QJsonObject {{u"tools"_s, QJsonObject {{u"listChanged"_s, true}}}, {u"prompts"_s, QJsonObject {{u"listChanged"_s, false}}},
+                    // For ws (kCliContract); any client may see it, as it is said before the client is known.
+                    {u"experimental"_s, QJsonObject {{QString::fromLatin1(kServerName), QJsonObject {{u"cli"_s, kCliContract}}}}}}},
             {u"serverInfo"_s,
                 QJsonObject {{u"name"_s, QString::fromLatin1(kServerName)}, {u"title"_s, u"Win顺 · WinShun"_s}, {u"version"_s, m_version},
                     {u"description"_s, u"Search files, folders and text on this PC with Win顺"_s},
                     {u"websiteUrl"_s, u"https://github.com/LingCore/WinShun"_s}}},
             {u"instructions"_s, ToolHost::instructions()}});
-        emit sessionsChanged();
+        if (wasListed || session.listed())
+            emit sessionsChanged();
         return;
     }
     if (method == u"ping") {
@@ -287,10 +305,12 @@ void McpServer::callTool(Session& session, const QJsonValue& id, const QJsonObje
     case ToolHost::Known::Off: {
         const QString reason = m_host->offReason(name);
         session.sink(jsonrpc::response(id,
-            toolResult({{}, true,
-                reason.isEmpty()
-                    ? u"The tool '%1' is turned off in Win顺's settings (设置 → AI 助手). Ask the user to turn it on there, then call it again."_s.arg(name)
-                    : reason})));
+            callToolResult({{}, true,
+                               reason.isEmpty()
+                                   ? u"The tool '%1' is turned off in Win顺's settings (设置 → AI 助手). Ask the user to turn it on there, then call it again."_s.arg(name)
+                                   : reason,
+                               QString::fromLatin1(kErrorOff), m_host->offSetting(name)},
+                session.cli)));
         return;
     }
     case ToolHost::Known::Yes:
@@ -299,33 +319,61 @@ void McpServer::callTool(Session& session, const QJsonValue& id, const QJsonObje
     const std::uint64_t callId = m_nextCall++;
     const QString key = jsonrpc::idKey(id);
     session.inflight[key] = callId;
-    ++session.calls;
-    session.lastTool = name;
-    session.lastCall = QDateTime::currentDateTime();
-    emit sessionsChanged();
+    if (session.cli) {
+        // One per run of ws, named by what it was run for: its own
+        // index_status probe (asked before most commands) names it only
+        // when nothing else was asked.
+        if (!std::exchange(session.cliCounted, true))
+            ++m_cliTally.calls;
+        const bool probe = name == u"index_status";
+        if (!probe || !session.cliNamed)
+            m_cliTally.lastTool = name;
+        session.cliNamed = session.cliNamed || !probe;
+        m_cliTally.lastCall = QDateTime::currentDateTime();
+        emit cliCalled();
+    } else {
+        ++session.calls;
+        session.lastTool = name;
+        session.lastCall = QDateTime::currentDateTime();
+        emit sessionsChanged();
+    }
     const SessionId sessionId = session.id;
-    m_host->call(callId, session.client, name, arguments.toObject(), [this, sessionId, id, key](ToolResult result) {
+    m_host->call(callId, session.client, name, arguments.toObject(), [this, sessionId, id, key, name](ToolResult result) {
         const auto it = m_sessions.find(sessionId);
         if (it == m_sessions.end())
             return; // the session ended meanwhile
         it->second->inflight.erase(key);
-        it->second->sink(jsonrpc::response(id, toolResult(result)));
-    }, session.token.valid() ? session.token.get() : nullptr);
+        it->second->sink(response(*it->second, id, name, result));
+    }, {session.token.valid() ? session.token.get() : nullptr, session.cli, true});
 }
 
-QJsonObject McpServer::toolResult(const ToolResult& result)
+// The answer to a tools/call: made into JSON where the host did the work,
+// for most tools (ToolResult::encoded), else here. One longer than a line
+// may be (pipe::kMaxLineBytes) would end the connection at the other end
+// (the relay, ws) with nothing said: it is an error that says what to ask
+// for instead (tooLargeResult), made there or, as a last resort, here.
+QByteArray McpServer::response(const Session& session, const QJsonValue& id, const QString& tool, const ToolResult& result) const
 {
-    if (result.isError)
-        return {{u"content"_s, QJsonArray {QJsonObject {{u"type"_s, u"text"_s}, {u"text"_s, result.errorText}}}}, {u"isError"_s, true}};
-    const QString text = QString::fromUtf8(QJsonDocument(result.structured).toJson(QJsonDocument::Compact));
-    return {{u"content"_s, QJsonArray {QJsonObject {{u"type"_s, u"text"_s}, {u"text"_s, text}}}},
-        {u"structuredContent"_s, result.structured}, {u"isError"_s, false}};
+    QByteArray line = result.encoded.isEmpty() ? jsonrpc::response(id, callToolResult(result, session.cli))
+                                               : jsonrpc::responseWithResult(id, result.encoded);
+    qint64 tooLarge = result.tooLargeBytes;
+    if (static_cast<std::size_t>(line.size()) > pipe::kMaxLineBytes) {
+        tooLarge = line.size();
+        line = jsonrpc::response(id, callToolResult(tooLargeResult(tooLarge), session.cli));
+    }
+    if (tooLarge > 0) {
+        m_host->log(u"%1 %2 %3 → the answer, %4 MB, is too large to send: an error was sent instead"_s.arg(
+            QDateTime::currentDateTime().toString(Qt::ISODate), session.client, tool,
+            QString::number(static_cast<double>(tooLarge) / (1 << 20), 'f', 1)));
+    }
+    return line;
 }
 
 void McpServer::toolsChanged()
 {
     for (const auto& [id, session] : m_sessions) {
-        if (session->initialized)
+        // ws asks one thing and goes: it keeps no list of the tools.
+        if (session->initialized && !session->cli)
             session->sink(jsonrpc::notification(u"notifications/tools/list_changed"_s));
     }
 }

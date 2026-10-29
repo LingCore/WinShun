@@ -37,10 +37,26 @@ QString pathKey(QStringView path)
 
 bool samePath(QStringView a, QStringView b)
 {
-    if (a == b)
-        return true;
     if (a.startsWith(u"\\\\") || b.startsWith(u"\\\\"))
-        return pathKey(a) == pathKey(b);
+        return a == b || pathKey(a) == pathKey(b);
+    // Each recent item is looked for among all the rows (ws's 110 000): told
+    // apart by their lengths first (a case-insensitive comparison goes unit
+    // by unit: it never finds two lengths equal), then from the end, where
+    // paths mostly differ: from the start, it goes through all they have in
+    // common (C:\Users\...). A surrogate is left to the comparison, which
+    // reads them in pairs.
+    if (a.size() != b.size())
+        return false;
+    for (qsizetype i = a.size() - 1; i >= 0; --i) {
+        const QChar x = a[i];
+        const QChar y = b[i];
+        if (x == y)
+            continue;
+        if (x.isSurrogate() || y.isSurrogate())
+            break;
+        if (x.toCaseFolded() != y.toCaseFolded())
+            return false;
+    }
     return a.compare(b, Qt::CaseInsensitive) == 0;
 }
 

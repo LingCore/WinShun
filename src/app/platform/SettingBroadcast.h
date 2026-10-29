@@ -6,6 +6,7 @@ namespace ws::settingbroadcast {
 enum class Area : unsigned char {
     ImmersiveColorSet, // light or dark mode (SwitchTheme)
     ShellState, // Explorer's view settings, when SHGetSetSettings could not set them (SwitchExplorer)
+    Environment, // the PATH in the registry was written (CliSetup): new terminals read it from the registry again
 };
 
 // Tells every program that a setting changed (WM_SETTINGCHANGE), Win顺's own

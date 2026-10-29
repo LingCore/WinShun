@@ -1969,6 +1969,128 @@
 - **原因**：`open(p, 'w')` 在 Windows 上把 LF 写成 CRLF，而仓库里的 `.ts` 是 LF。
 - **做法**：用 `open(p, 'wb')` 写字节，或 `open(p, 'w', newline='')`。检查有没有丢条目：用 `xml.etree` 把 HEAD 和现在的 `(context, source, comment)` 各读成一张表比较（`git diff` 里 lupdate 插入新条目会让旧条目看起来像删了又加）。
 
+### 两个搜索引擎的请求编号会撞，内容搜索还先发一个空结果
+
+- **现象**（2026-10-24，给内容搜索单独一个引擎时）：要是两个引擎的 `resultsReady` 接到同一个处理函数、只比请求编号，名字搜索会拿到一个空的结果就收尾了。
+- **原因**：每个 `SearchEngine` 的请求编号各自从 1 数起（`++m_counter`），两个引擎上同时在跑的请求可以都是 1；`runContentSearch` 一开始就发一个 `resultsReady(id, {}, 0, 0)`（给界面清空列表用），这个空结果的编号正好对得上另一个引擎上的名字搜索。
+- **做法**：`ToolHost` 每个引擎一条车道（`Lane`），信号按车道接，只认自己引擎发的；在跑的那个记着是不是内容搜索，名字的车道不收内容的信号。以后再加引擎也一样：编号只在一个引擎里唯一。
+
+### `kind: "files"` 回来的文件比 limit 少，甚至一个没有
+
+- **现象**：用户设了“文件夹在前”，查询又匹配很多文件夹时，`search_files` 的 `kind: "files"` 只回几个文件或一个没有，`truncated` 却是 true。命令行的上限放到 50 000 以后更容易碰到。
+- **原因**：引擎把文件和文件夹分开各取到 `limit` 个（`kindsApart`），再按 `kindOrder` 排在一起、截成 `limit` 个；文件夹在前时，被截掉的是排在后面的文件，之后才按 `kind` 把文件夹去掉。
+- **做法**：要文件时请求里用 `KindOrder::FilesFirst`（不管用户的设置），截掉的是文件夹；要文件夹时本来就是 `Scope::Folders`。
+
+### 超过 16 MB 的一行，客户端直接断开，不报错
+
+- **现象**：回答太大时（命令行一次要 50 000 条、路径又长，或 `read_file_text` 要几百万字），客户端那边像是 Win顺 掉线了，收不到任何错误。
+- **原因**：`pipe::Client::readLine`（ws.exe 和 WinShunMcp.exe 都用）读到 `kMaxLineBytes`（16 MB）还没见到换行就当连接坏了，断开。服务端照写不误，所以服务端的日志也看不出问题。
+- **做法**：`McpServer::response` 序列化完先量长度，超了就改回一个 `isError` 的工具结果（命令行的会话带 `structuredContent.error: "too_large"`），文字说多大、上限多少、怎么要少一点（小一点的 limit 或 max_chars、少几个文件夹、写细查询、`size: false`），mcp.log 记一行，会话照常。实测 50 000 条约 8.9–9.5 MB（每条 178–190 字节），每条平均超过约 335 字节才会撞线。可这样一撞线就什么也拿不到（见下面“回答一大就整个变成错误”），这只留作最后一道关。
+
+### 列 50 000 条时，时间的文字比搜索本身还慢
+
+- **现象**（2026-10-24，`wsbench --mcp-host --frozen`，真实索引 367 万项）：ws 要 50 000 条（不带大小）服务端用 2.0–2.4 s，引擎只占约 0.33 s，访问检查 0.6–0.9 s，剩下约 1 s 是组条目。
+- **原因**：几乎都在 `isoTime`：`QDateTime::fromSecsSinceEpoch` 按本地时间换算、`offsetFromUtc`、`toOffsetFromUtc`、`toString(Qt::ISODate)`，每条约 15–20 µs；组 `QJsonObject` 和放进数组只占零头。
+- **做法**（2026-10-24 改了，cli-perf 分支）：一次回答一个 `LocalTimes`（`src/mcp/IsoTime.h`），按 UTC 的一天记本地偏移：这一天开头和第二天开头的偏移相同就整天用它，不同（换夏令时的那天）就逐条问；偏移不是整分钟的（只有历史上的地方时）照旧交给 `QDateTime`。文字自己拼（`isoText`，偏移 0 写 `Z`，和 `toOffsetFromUtc(0)` 一样）。`tst_mcp::localTimes` 拿 `QDateTime` 的结果逐个对照：11 个固定偏移、系统时区，柏林、圣约翰斯（差半小时）、豪勋爵岛（夏令时只拨半小时）、圣保罗、加德满都（差 45 分）在 2000–2030 年每次换时的前后两天逐小时、换的那一秒前后。5 万条的组条目从约 1 s 降到约 0.11 s（剩下的是组 `QJsonObject`）。量这类开销时别把计时器套在会调用同一函数的两处：`fileItem` 里面也调 `isoTime`，分开计会算两遍。
+
+### 上限一大，每块的堆都照上限预留：`ws find -n 0` 一次多提交 370 MB（2026-10-24）
+
+- **现象**：`ws find report -n 0` 只有 4 703 个匹配，进程的峰值提交却从 159 MB 涨到 527 MB，`-n 100` 时不涨：内存跟着上限走，不跟着结果走（`wsbench --mcp-search`，索引 371 万项）。`a` 的 `-n 0` 引擎要 0.22 s，`-n 100` 14 ms。
+- **原因**：`searchNames` 把索引切成每块 16 384 项（227 块）并行地扫，每块一个最小堆（`TopHits`；文件、文件夹分开时两个），建堆时 `reserve(limit)`。命令行的上限是 55 000（5 万加一成余量），454 个堆一共预留约 380 MB（每项 16 字节），可一块最多 16 384 项。合并时 `partial_sort` 从各块的命中里取前 55 000 个：`a` 的命中有 200 万个，要 60 ms。出来的 11 万行（文件、文件夹各 55 000）一个一个做又是 80 ms。
+- **做法**：堆先留 1 024 个（启动器一页够），满了再长；上限不小于这一块的项数时不建堆，来一个收一个，合并时 `nth_element` 选出前 `limit` 个、只排这些（`keepBest`）；行在引擎自己的线程池里分份做（`fromIndex`，每份 4 096 个，少于一份时照旧在本线程）。`tst_core::nameSearchLargeLimits` 用十几种顺序、分不分文件夹、三个上限比对（大上限的前 N 个必须和小上限的一样），再用 5 000 万的上限搜一次，峰值提交涨幅要在 64 MB 以内：换回 `reserve(limit)` 涨 4.5 GB，测试失败。凡是按上限预留的地方都想一想：上限是给最坏情况的，按块并行时还要乘块数。
+
+### `GetNamedSecurityInfoW` 多线程一起调几乎不快：访问检查改用 `GetFileSecurityW`（2026-10-24）
+
+- **现象**：命令行 `a` 5 万条要 15 000 次访问检查，一个一个来，热的 0.37–1.1 s（第一次安全描述符没进缓存时 4.7 s）。放进 16 个线程，`GetNamedSecurityInfoW` 每次只从 28–30 µs 降到 12 µs（8 个线程 15–16 µs）。
+- **原因**：没深究。它是通用的接口（按对象类型分派，描述符另外 `LocalAlloc` 一块），线程一多就互相等。
+- **做法**：改用 `GetFileSecurityW`（栈上 1 KB，不够再按它说的大小分配）：一个线程 11–14 µs，16 个线程每次 3 µs；4.1 万个文件夹的结论和原来一个不差，联接点读的也是它自己的描述符（“Application Data”照样列不了）。按句柄（`CreateFileW` + `GetSecurityInfo`）也快，但不加 `FILE_FLAG_OPEN_REPARSE_POINT` 时打开的是联接点的目标，读的是目标的描述符，结论就变了。并行只在本机的固态盘上（`QuietIo::solid`，一批里 32 个以上没查过的文件夹才一起查）：机械盘几个线程一起读只会更慢，网络共享上照旧一个一个来。
+
+### 设置页的“命令行”放不进“连接客户端”标签（2026-10-24）
+
+- **现象**：想把“启用命令行”放在客户端列表旁边（那里还有 Claude Code 的“装 Skill”）。可“允许 AI 助手和命令行连接”关着时，这一页没有标签：`SettingsWindow.qml` 的 `pageTabs` 在 `editor.mcp` 为假时给 `[]`，只剩第一个标签（权限）里的开关；放在第二个标签里的“启用命令行”，开关关着时点不到，而它正是用来打开开关的。
+- **做法**：“命令行”这一节（`AiCommandLineSection`）放在**权限**标签里、开关那张卡的下面（`tab` 不写，和开关同一个标签）；“装 Skill”留在客户端那一行，它要开关开着才有那一行。代价：开关开着时，这一节在六行权限的下面，一屏（720 px 高的窗口）看不到，要往下滚，设置搜索“命令行”“ws”“终端”会直接带到它。不想滚的话，要把权限那些行拆成另一张卡，`unlocks` 跨节引用（现在靠 `lockedElsewhere` 传）要跟着改，没有为这一项动。
+
+### 设置搜索“ws”：带出一堆含 “Windows” 的行（2026-10-24）
+
+- **现象**：设置里搜 `ws`，二十项：隐藏任务栏上的 Windows 搜索、用 Win+S 打开 Win顺 ……都在里面。
+- **原因**：说明文字按字面（子串）匹配，“Windo**ws**” 里有 “ws”；不是新加的关键字造成的（搜 `ws` 的关键字命中分数更高，“ws 命令”排第一，回车去的是它）。
+- **做法**：不动匹配器（它是整个设置共用的，规则在 `SettingsMatch.cpp`）；两个字母以内的词本来就容易撞上说明里的词。别因此把“ws”去掉：这是用户最先会敲的词。
+
+### 改用户的 PATH：读原始值，只追加，只拿自己记下的那一项（2026-10-24）
+
+- **现象**：（设计阶段想到的，测试里钉死的）用 `QSettings` 读 `HKCU\Environment` 的 `Path` 再写回，值被展开：`%USERPROFILE%\bin` 变成 `C:\Users\某人\bin`，类型从 `REG_EXPAND_SZ` 变成 `REG_SZ`，别的程序的条目就被改了；用户改了用户名或移动了文件夹之后那些条目是死的。
+- **原因**：`QSettings` 的注册表后端读 `REG_EXPAND_SZ` 时展开环境变量，写回只写 `REG_SZ`。
+- **做法**：`cli::readValue` 用 `RegGetValueW` + `RRF_NOEXPAND` 读原始文字和类型；`withEntry` 只在末尾追加（已有就原样返回），`withoutEntry` 只去掉对得上的项和它的一个 `;`，引号、`%VAR%`、空项一个字符不动；写回时类型照旧，没有这个值才建 `REG_EXPAND_SZ`。“在用户 PATH 里”不等于“Win顺 加的”：“只为我”安装的安装程序也写 `HKCU\Environment`，所以设置页只拿 `HKCU\Software\WinShun\CliPathEntry` 记着的那一项（`cli::addToUserPath` 真写了才记；已经有就不记）。测试在 `HKCU\Software\WinShunTest\<guid>` 的键里做，不碰真的。Inno 里同理：`RegQueryStringValue` 不展开，`RegWriteExpandStringValue` 写回，不用 `[Registry]` 的 `{olddata}` 拼接，也不用 `uninsdeletevalue`（那会删掉整个 PATH）。
+
+### Windows 上设环境变量：`qputenv` 走 ANSI，`SetEnvironmentVariableW` Qt 读不到（2026-10-24）
+
+- **现象**：`tst_commandline` 里把 `CLAUDE_CONFIG_DIR` 设成带中文的临时路径，`McpClients::skillPath()` 读到的是乱码（`é…•ç½®`）；改用 `SetEnvironmentVariableW` 后，`qEnvironmentVariable` 读到的还是原来的值。
+- **原因**：`qputenv` 按本地 8 位代码页把字节交给 C 运行库（UTF-8 字节被当成 GBK / 1252）；Qt 读环境变量读的是 C 运行库自己的那份拷贝，`SetEnvironmentVariableW` 只改操作系统的那份，拷贝不更新。子进程拿的是操作系统的那份。
+- **做法**：测试和预览用 `_wputenv_s`（宽字符，两份一起更新）。提权运行时 `CreateProcessWithTokenW` 起的子进程拿的是令牌的环境，拿不到 Win顺 进程里临时设的变量：`tst_commandline` 的装 Skill 一项提权时跳过，否则 ws 会写进真的 `~\.claude`。
+
+### 从界面程序起一个控制台程序并拿它的输出：`startUnelevated` 不够（2026-10-24）
+
+- **现象**：“装 Skill”要运行 `ws.exe skill --install claude`，成功读标准输出里的路径，失败读标准错误里的原因。`shell::startUnelevated` 只回一个进程句柄，没有输出；而且不带 `CREATE_NO_WINDOW`，界面程序（`WinShun.exe` 是 GUI 子系统）起的控制台程序会开一个黑窗口。
+- **做法**：`shell::runUnelevatedCaptured`：一根匿名管道，标准输出和标准错误都接到写端（ws 成功和失败不会同时写），标准输入接 `NUL`；没提权时 `CreateProcessW` 带 `PROC_THREAD_ATTRIBUTE_HANDLE_LIST`，只有这两个句柄进子进程；提权时 `CreateProcessWithTokenW` + `STARTF_USESTDHANDLES`（见上面“`CreateProcessWithTokenW` 不接受 `EXTENDED_STARTUPINFO_PRESENT`”，句柄由 seclogon 复制进去；提权时在测试里实测过，输出、退出码、超时结束都对）。读不用阻塞的 `ReadFile`：每 10 毫秒 `PeekNamedPipe` 一次再等进程，这样超时能真的结束它，不会卡在读上。
+
+### 一行三个按钮，窗口最窄时按钮旁边的文字只剩一百来个像素（2026-10-24）
+
+- **现象**：Claude Code 那一行加了“装 Skill”，在 760 逻辑像素宽的窗口里，三个按钮占掉一多半，说明只剩约 110 px，“已装 Skill · C:\Users\…”这种路径在字当中折断（`Text.Wrap` 遇到太长的词就在任意位置断）；命令行那一行的“另一个 ws 在 C:\Users\…”也一样断在 “C:” 后面。
+- **做法**：路径单独成行（`"…：" + "\n" + 路径`，和“其他支持 MCP 的客户端”那一行一样），Skill 的状态放进行的 `body`（占满整行，`bodyShown` 在没有字时关掉，否则别的行底下多出 12 px 空白）。用 `--preview-settings … --page 9 --width 760` 看最窄的样子。
+
+### 回答一大就整个变成错误，找到的一条也给不了（2026-10-24）
+
+- **现象**（代码审查发现，测试里复现）：`ws find budget -n 0` 搜到 2 万个长名字（每条约 860 字节），回答 16.5 MB，ws 只拿到 `too_large`；`ws text` 读一个满是控制字符的 3 MB 文件也会这样（每个字转义成 6 字节，算下来 18 MB）。
+- **原因**：一行最多 16 MB，旧的做法是整个回答做好了再量，超了就换成错误，前面找到的全丢。条数上限管不住字节数：路径长、中文多、控制字符多时，同样的条数能差好几倍。
+- **做法**：每个回答一个字节预算（`kAnswerBudget` 15 MB；AI 客户端三分之一，它的回答连同文字副本发两遍，文字里的引号、反斜杠还要再转义一次），条目按 JSON 的字节数（`jsonBytes`：控制字符按 6、引号和反斜杠按 2、汉字按 3，只会往多里算）一条条放，放不下就停，`truncated: true`；文字放到预算为止（`fitText`，不切开代理对），`next_offset` 接着读。`too_large` 只剩切不开的（插件工具的回答）。
+
+### 拿着索引的读锁等线程池，所有搜索跟着卡住（2026-10-24）
+
+- **现象**（代码审查发现）：两个 `recent_files` 同时跑（AI 代理一次起好几个 ws）时，第二个拿着索引的读锁在等线程池；这时变更日志要写索引，之后所有名字搜索都卡住，直到第一个扫完（命令行 50 000 条时一秒多）。
+- **原因**：`WorkerPool::parallelFor` 一次只给一个调用者（`m_callMutex`），第二个在里面排队，可它进去之前已经拿了 `readLock`；`std::shared_mutex`（SRW 锁）有写的人在等时不再放新的读者进来，于是写的人等第二个，搜索等写的人。
+- **做法**：先拿 `ToolHost::m_scanMutex`（一次一个扫描）再拿索引的锁，绝不拿着索引的锁等线程池；长时间的读用 `FileIndex::longReadLock()`（读者先过 `m_writerGate`，写的人在闸门外等，不占着 SRW 锁，普通 `readLock` 的搜索照常）。`list_folder` 列几十万项、`list_documents` 翻所有文档也用它。
+
+### 按字面比对“不让 AI 看到的文件夹”，联接点、短名、`\\?\` 都绕得过去（2026-10-24）
+
+- **现象**（代码审查发现，测试里复现）：排除了 `…\private-folder`，`read_file_text` 读 `…\link\p.txt`（`mklink /J …\link …\private-folder`）照样读出内容；8.3 短名 `…\PRIVAT~1\p.txt`、`\\?\` 开头的同一路径、有排除时的 `\\localhost\C$\…` 也一样。
+- **原因**：排除只比对调用者写下的字面（`nativePath` 后按前缀比），Windows 打开时才跟着联接点、符号链接走，才把短名换成长名；`\\?\` 开头的路径连 `.`、`..`、`/` 的整理都跳过。
+- **做法**：设备路径（`\\?\`、`\\.\`、`\??\`，`/` 写的也算）直接拒绝；其余先打开（只要 `FILE_READ_ATTRIBUTES`，`BACKUP_SEMANTICS` 让文件夹也能开，`OPEN_NO_RECALL`），`GetFinalPathNameByHandleW(FILE_NAME_NORMALIZED)` 取最终的长路径，按它比对排除、做访问检查，读就读这个句柄（`ReOpenFile` 加读权限，检查完路径再被换掉也读不到别处）。有排除时，网络路径的主机是本机、或打开后卷序列号和某个排除文件夹的卷相同，也当看不到。没堵上的：硬链接（最终路径就是打开用的那个名字）、指进排除文件夹的 `.lnk`（`open_item` 交给资源管理器，它跟着快捷方式走）。测试先看临时文件夹本身是不是短名写的（`GetLongPathNameW`），是就跳过：最终路径是长名，和短名写的排除对不上。
+
+### 列不了的文件夹里的文件被说成“是文件”（2026-10-24）
+
+- **现象**（代码审查发现）：`search_files` 的 `folders`（`list_folder` 的 `path`、`recent_files` 的 `folder` 也一样）给一个调用者列不了的文件夹里的文件，回“The path is a file, not a folder”，等于告诉它那里有这么个文件；不存在的文件回的却是“不在索引里”。
+- **原因**：先看索引里是不是文件夹，后做访问检查。
+- **做法**：`checkFolders` 按这个顺序：在掉线的共享上 → 索引里没有 → 是文件时先看调用者看不看得到，看不到就和不存在说法一样（`not_found`）→ 看得到才说是文件 → 文件夹列不了也说不在。
+
+### 掉线的共享上的结果，两次访问检查等了 2.7 秒（2026-10-24）
+
+- **现象**（把修改改回去试的）：索引里有一个不存在的服务器上的共享（`\\ws-test-gone\share`），搜到它上面的两条，回答用了 2.7 秒，mcp.log 记着“2 access checks, 2710 ms”；命令行一次几千条时就是几分钟，还占着处理回答的线程。
+- **原因**：`GetNamedSecurityInfo` 对 UNC 路径要连服务器，服务器不在时等名字解析和 SMB 连接超时；读大小（`sizeOf`）也一样。
+- **做法**：先问 `ShareIndexer::offline`（查表，很快）或 `SearchResult::offline`，掉线共享上的条目直接跳过，不检查、不读大小；点名的文件夹在上面回 `not_found`；路径参数在网络上（或是映射到网络的盘）时先 `share::reachable`（1.5 秒，结果缓存），连不上就不去打开。测试用 `Services::offline` 冒充掉线，别真的去碰一个不存在的服务器。
+
+### `truncated` 一到上限就是 true（2026-10-24）
+
+- **现象**：正好 3 个文件、`limit: 3`，`search_files` 回 `truncated: true`，ws 就提示还有更多；文件夹里有被排除的子文件夹时，`list_folder` 的 `total` 比看得到的多一个，`truncated` 也是 true。
+- **原因**：旧的判断是 `totalMatches > results.size() || items.size() >= limit`：到上限就算还有；引擎的总数还算上了看不到、被排除的。`list_folder` 的 `total` 数的是所有子项。
+- **做法**：只有真看到了上限以外还有一条看得到的（或回答被字节预算截断，或引擎按它自己的上限截掉了同一种的）才是 true；`total` 不数排除的。`recent_files` 也回 `truncated`：每块索引留要的两倍，有一块装不下就算还有。
+
+### 排在后面的内容搜索，`timeout_ms` 从开始搜才算（2026-10-24）
+
+- **现象**（ws 实测）：一个内容搜索在跑，另一个 `timeout_ms: 800` 的排在后面，等前一个跑完（最长 30 秒）才回答。
+- **原因**：超时的计时器在这次搜索开始时才启动，排队的时间不算。
+- **做法**：从调用到达时算：排着队时到点（`QTimer::singleShot`，按 `weak_ptr` 找它）就从队列里拿掉，回 `complete: false`、没有条目和一句英文说明；开始搜时只给剩下的时间。
+
+### 只能移动的句柄放不进 `std::function`（2026-10-24）
+
+- **现象**：把复制的调用者令牌（`win32::UniqueHandle`）按值抓进交给工作线程的活（`std::function`），编译不过。
+- **原因**：`std::function` 要可复制的可调用对象（`std::move_only_function` 是 C++23），只能移动的捕获让 lambda 不可复制。
+- **做法**：令牌放进 `std::shared_ptr<void>(copy, ::CloseHandle)`：可复制，最后一个持有者关句柄，活在它的线程上做完就关了。
+
+### 后台模式不能叠着开（2026-10-24）
+
+- **现象**：（Windows 的文档写着，写 `QuietIo` 时照它做的）线程已经在后台模式时再 `SetThreadPriority(THREAD_MODE_BACKGROUND_BEGIN)` 会失败（`ERROR_THREAD_MODE_ALREADY_BACKGROUND`）；忘了 `END` 的线程，下一件活一开始就是后台模式，读固态硬盘也慢好几倍（见上面“内容索引”里后台模式的实测）。
+- **做法**：只在要换时调用（记着自己是不是开着），活做完（`QuietIo` 析构）一定 `END`；线程池的线程上尤其要配对，下一件活不知道上一件留下了什么。测试 `quietIo` 连开两次，第二次还能进后台模式，说明第一次收干净了。
+
 ## 插件系统（阶段 0：探针）
 
 `tools/plugin-probe.cpp`（`build\release\plugin-probe.exe --parent --out 文件`，提权和不提权各跑一次）实测的，2026-10-11，Windows 11 26200。结论：插件进程不由提权的 Win顺 直接起；由它用资源管理器的令牌起一次不提权的 runner，插件由 runner 用普通 `CreateProcessW` 起。
@@ -4473,3 +4595,91 @@
 - **现象**：只加了十几句、删了截图的几百句，`git diff --stat` 却是 +5000 / −7000。
 - **原因**：lupdate 按名字重排上下文（`<context>`），原文件的顺序不是它排的那样；Git 默认的差异算法把整段搬动算成删了又加。
 - **做法**：提交前把上下文放回原来的顺序（新上下文插在按名字该在的地方），只换位置，不改内容；`git diff --histogram --stat` 看真正改了多少（这次 +135 / −2288）。
+
+## 命令行 ws（2026-10-24）
+
+### 拷回来的源文件带着旧的修改时间，ninja 不重编它
+
+- **现象**：计时对比时把 `src/cli/main.cpp` 临时换成另一种写法、编好，再用 `Copy-Item` 把原文件拷回来重编：main.cpp 没有重新编译，ws.exe 和临时那版的哈希一模一样。
+- **原因**：`Copy-Item`（`CopyFile`）保留源文件的修改时间。拷回来的文件比临时版编出的 .obj 旧，ninja 按时间认为它没变。
+- **做法**：拷回之后把修改时间改成现在（`(Get-Item 文件).LastWriteTime = Get-Date`），或者用编辑工具写回；编完核对产物（哈希，或 `Select-String` 查只有临时版才有的字符串）。
+
+### `//` 注释以反斜杠结尾，下一行也成了注释
+
+- **现象**（编译前检查出来的）：`src/cli/Connect.h` 里一个成员的注释写成 `// … without \\.\pipe\`，下一行的成员声明会被并进这条注释，悄悄消失，编译错误会报在用到它的地方。
+- **原因**：续行在去掉注释之前处理（翻译阶段 2 在 3 之前）：行尾的 `\` 把下一行接上来，`//` 注释里也一样。
+- **做法**：注释里的路径不以 `\` 结尾（写 `D:\…`、加引号，或换个说法）；写完用 `rg '\\$' src/cli` 查一遍。
+
+### 测试替 ws 加的参数放在后面：遇到 `--` 就成了查询词，连到用户真的管道
+
+- **现象**（写 `tst_cli` 时核对代码发现，没真跑出来）：测试的辅助函数把 `--pipe <测试管道>` 追加在用例参数的后面。`ws -- recent` 这类用例里，`--` 之后全是查询词，`--pipe` 不再算参数，ws 连的是默认管道：用户正开着的 Win顺。
+- **做法**：测试自己的参数（`--pipe`、`--instance`）一律放在最前面。另外用 `WS_TEST_START`（写文件代替拉起 Win顺）、`WS_TEST_OPEN`（写文件代替打开）、临时的 `CLAUDE_CONFIG_DIR` 兜底，万一连错了也不会动到用户的东西。
+
+### `recent_files` 在 AppData 下的文件夹里一个也不给
+
+- **现象**：`tst_cli` 在 `QTemporaryDir`（`%TEMP%`，在 AppData 下）里建文件，`ws recent --in <那个文件夹>` 退出码 1，什么也没有。
+- **原因**：`recent_files` 默认不列隐藏的项和“系统、程序、工具文件夹”里的项（`EntryFlag::Hidden`、`LowPriority`，都往下继承），要 `include_hidden`、`include_system` 才列。AppData 本身是隐藏文件夹，在 Win顺 的设置里又算工具文件夹，所以它下面的全被滤掉。
+- **做法**：ws 对 `--in` 的文件夹第一次问不到时，带上这两个再问一次，并在 stderr 说明（`docs/design-cli.md` 第 3 节）。不一开始就带：`ws recent --in D:\项目` 会被 node_modules 里的改动淹没。
+
+### 注册表读不出来不等于“没有这个值”：PATH 被整个换成一项（H1，2026-10-24 复查）
+
+- **现象**：用户的 `Path` 如果是 `REG_BINARY` 之类（或两次读之间变长了），“启用命令行”把它当成空，写回 `<bin>` 一项：用户原来的整个 PATH 丢了。“从 PATH 移除”读不出时照样删掉记录、报成功，PATH 里的那一项还在。安装程序里同样的写法（`RegQueryStringValue` 失败就当没有，`Path := Folder`）会改系统 PATH。
+- **原因**：`readValue` / `RegQueryStringValue` 失败只返回“没读到”，不分“没有这个值”和“有但读不了”。
+- **做法**：只有 `ERROR_FILE_NOT_FOUND`（安装程序里是 `RegValueExists` 为假）才是没有；类型不对、没权限、一直变长都是错误，原样返回，不写、不动记录，界面写明原因；`ERROR_MORE_DATA` 整个重读。写之前再读一遍对比，变了就从头来，别拿旧快照覆盖别的程序刚改的 PATH。测试用 `REG_BINARY` / `REG_DWORD` / `REG_MULTI_SZ` 的值，在两次读之间的钩子里把值写长。
+
+### PATH 里一项带 `;`：按 `;` 切就认不出它，每点一次追加一次
+
+- **现象**：`bin` 的路径里有 `;` 时，原来不加引号追加，之后“已经在 PATH 里吗”按 `;` 切成两半，永远认不出，每点一次“启用命令行”多一项；Windows 自己读 PATH 时把 `"C:\a;b\bin"` 当一项。
+- **做法**：写成带引号的（`entryOf`），所有切 PATH 的地方（`hasEntry`、`analyse`、移除）按引号切（`splitPath`，拼回去一个字节不差）；记录里存写进去的原样文字，移除时只拿掉和它**一模一样**的那一项（原来拿掉所有写法，包括用户自己写的）。
+
+### `GetLongPathNameW` 对 PATH 里的每一项都问，共享上的项要等很多秒
+
+- **现象**：比较 PATH 项时对每一项调 `GetLongPathNameW`（为了展开 `PROGRA~1`）；PATH 里有一个断开的共享，设置页就卡住，窗口激活一次读一次。
+- **做法**：只有带 `~` 的才问文件系统（`normalized`）；测试里用保留给文档的 `192.0.2.1` 的共享做回归（不该碰它，所以不等）。`ws` 里同理：`absolutePath` 只对带 `~` 的存在的路径展开。
+
+### 拼音匹配把英文字母当首字母：“ws”匹配每个 “Windows”
+
+- **现象**：设置里搜 “ws” 出 21 项，大半是写着 Windows 的项，“ws 命令” 那几行混在里面。
+- **原因**：两层。`findWord` 允许词中间的匹配（`Windows` 的 `ws` 在词尾，分数 80）；拼音匹配器把文字里的英文字母当成它自己的首字母，`ws` 又在 `Windows` 的末两个字母上匹配成“首字母”（68 分）。
+- **做法**：1 到 2 个 ASCII 字符的词只在词首或整词匹配（`Term::atWordStart`，3 个字母以上照旧可以在词中）；拼音匹配里一个全是 ASCII 的片段不算拼音匹配（只是找错了位置的词）。回车去的是得分最高的那一行（`ws 命令`，标题以这个词开头，100 分）；各行仍按页面里的先后排列，不按分数重排。
+
+### 一个变量设在注册表里，Win顺 起的子进程却看不见（`CLAUDE_CONFIG_DIR`）
+
+- **现象**：用户 `setx CLAUDE_CONFIG_DIR` 之后，设置页的“装 Skill”还是装到老地方；Win顺 以管理员运行时，子进程拿到的是管理员的环境。
+- **原因**：`CreateProcessW(…, lpEnvironment = nullptr)` 继承 Win顺 启动时的环境；提权时用的 `CreateProcessWithTokenW` 不传环境块，也不是明确“用这个令牌的用户的环境”。
+- **做法**：`CreateEnvironmentBlock`：不提权时 `bInherit = TRUE`（用户的变量按注册表现在的样子盖在自己的环境上，父进程设的仍在）；提权时用桌面 shell 的令牌、`bInherit = FALSE`，加 `CREATE_UNICODE_ENVIRONMENT`。要链 `userenv`。“已装”以 ws 打印的路径为准，不用 Win顺 自己猜的。
+
+### 第二次 `--settings --settings-at` 转交给运行中的 Win顺 时位置丢了
+
+- **现象**：`WinShun.exe --settings --settings-at 9,0` 对已经开着的 Win顺 只打开设置窗口的第一页。
+- **原因**：`main.cpp` 把第二次启动的参数转成命令字符串，`--settings` 只转成 `settings`，`--settings-at` 没人转；只有 Win顺 自己第一次启动时（`StartOptions::settingsAt`）才认。
+- **做法**：命令改成 `settings:<位置>`（`SettingsCommand.h`），`App::handleCommand` 解开后调 `showPlace`。位置的格式 `<页>,<标签>`（从 0 数）或 `indexAccess`，写在 architecture.md 的命令行参数一段。没在真机上对着运行中的 Win顺 试过（那会动用户的窗口）：解析有单元测试，`showPlace` 本身由 `--preview-settings` 的搜索探针走过。
+
+### 开关打开后上面多出几行，把刚点的那一节顶出窗口
+
+- **现象**：设置 → AI 助手，点“启用命令行”，开关打开，上面多出权限那几行、页面多出标签，“命令行”一节被顶到窗口下面看不见。
+- **原因**：行是带动画出来的：只在改变那一刻补偿滚动位置不够，补偿完它们还在长。
+- **做法**：`SettingsWindow.holdInView(item, change)`：记下那一节在窗口里的位置，做改变，之后页面每次变高（`implicitHeight`）就把滚动位置补回去，守 0.8 秒或用户一滚动就放开。`--preview-settings … --hold-demo` 前后各抓一张并比较位置（150% 下相差 1 个设备像素以内）。
+
+### 管道名里只有用户的 SID：谁都能先建一根
+
+- **现象**（推演，没有真实的攻击样本）：同一用户下的任何程序可以先建 `\\.\pipe\WinShun.Mcp.<SID>`，ws 连上去的是它；`ws open` 会照它回答的路径打开文件。
+- **做法**：`ws open` 在发任何东西之前，用 `GetNamedPipeServerProcessId` 看管道另一头是不是安装位置里的 `WinShun.exe`；连接用 `SECURITY_IMPERSONATION`，服务端读到数据后才能模拟，所以先查再写就连模拟的机会也没有。别的命令只读，不查。
+
+### 测试文件里 `#include <shlobj.h>` 之后变量名 `small` 变成了 `char`
+
+- **现象**：`tst_cli.cpp` 里 `const bool small = …` 报“语法错误：意外的 char”，指着完全无关的一行。
+- **原因**：`rpcndr.h` 有 `#define small char`，`shlobj.h` 带进来了。
+- **做法**：换名字（`single`）；这类名字：`small`、`near`、`far`、`min`、`max`、`interface`。
+
+### 设置搜索：两个字母的拼音首字母在关键字当中也匹配（“ws”命中“允许 AI 修改设置”）
+
+- **现象**：设置里搜 `ws`，“允许 AI 修改设置”排在前面，它和命令行 ws 毫无关系。
+- **原因**：它的关键字“帮我设置”读成首字母是 b-w-s-z，`ws` 正好是中间的“我设”。`findWord` 早就让短词（一两个字母；拼音匹配器要两个字母起）只在词首或整词匹配（`Term::atWordStart`），`findPinyin` 没有这条：中文没有空格，“跟在另一个汉字后面”也算词首，所以拼音那条路把它放了进来。
+- **做法**：`findPinyin` 对 `atWordStart` 的词，匹配只能从文本开头或分隔符（`separates`，字段文字没有像查询那样先 NFKC，全角的“，”“；”按它们变成的 `,` `;` 算）后面开始；Matcher 只给第一处，被拒了就从下一个位置接着找，后面的词里还有就还能命中（“帮我设置 我设”仍命中 `ws`）。三个字母以上照旧在哪里都能匹配。`tst_core` 的 `settingsMatch` 用那一行的真实关键字测。
+
+### 状态文字多出一行，把下面的一栏连同按钮顶下去
+
+- **现象**：设置 → AI 助手，ws 第一次被调用后，“允许 AI 助手和命令行连接”那一行多了一行“命令行：N 次调用…”，下面的“命令行”一栏和它的按钮往下挪了约 35 像素；正要点按钮的人点偏了。
+- **原因**：调用次数是那一行 `description` 的第二行，它在后台的 ws 第一次运行时才出现，行高跟着变，下面所有东西都得挪。
+- **做法**：会在没人操作时冒出来的文字，不放在别的行的文字里，也不放在别的东西上面。次数放在“命令行”一栏自己的最后一行（`SettingsEditor::cliTally`，没有调用时写说明），开关开着时一直在：第一次调用只换字，上面不动，这一栏也不变高。`--preview-settings` 看 150% 下的样子；`--no-cli-tally` 是还没有调用的一行。

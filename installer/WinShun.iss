@@ -63,6 +63,10 @@ UsePreviousTasks=yes
 ; It is closed in PrepareToInstall, the way it saves its index.
 CloseApplications=no
 RestartApplications=no
+; The ws task puts {app}\bin on the PATH (the system's or the user's, by the
+; install mode): the programs that are open are told to read it again, at the
+; end of Setup and of the uninstall alike.
+ChangesEnvironment=yes
 
 WizardStyle=modern dynamic windows11
 ; Win顺's own pictures, light and dark (tools/make_installer_images.py).
@@ -145,9 +149,20 @@ chinesesimplified.FilesNotFreed=还有程序在用 Win顺 的文件，这次没�
 ; The Start menu shortcut users pin to the taskbar (WinShunSearch.exe).
 english.SearchShortcut=WinShun Search
 chinesesimplified.SearchShortcut=Win顺 搜索
+; The command line ws (bin\ws.exe, src/cli): the task that puts its folder on the PATH.
+english.WsGroup=Command line:
+chinesesimplified.WsGroup=命令行：
+english.WsCommand=Add the ws command (search files from the command line)
+chinesesimplified.WsCommand=添加 ws 命令（在命令行里搜索文件）
+english.WsNewTerminal=To use the ws command, type ws in a newly opened terminal. Terminals that are already open do not see the change (restart VS Code for its terminal).
+chinesesimplified.WsNewTerminal=要用 ws 命令，请在新打开的终端里输入 ws。已经开着的终端看不到这个变化（VS Code 的终端要重开 VS Code）。
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+; Checked, as asking costs a click and the command is no use unless it is on the PATH.
+; Not a [Registry] entry: the PATH is one value that other programs write
+; too, and it is only appended to (AddWsToPath), never replaced.
+Name: "wscommand"; Description: "{cm:WsCommand}"; GroupDescription: "{cm:WsGroup}"
 
 [Files]
 ; Everything build.ps1 -Deploy put in dist\WinShun, the index service
@@ -657,6 +672,229 @@ end;
 var
   FilesInstalled: Boolean; // the new files are in (ssPostInstall)
 
+// ---- The command line ws: {app}\bin on the PATH ----------------------------
+
+const
+  SystemEnvironmentKey = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
+  UserEnvironmentKey = 'Environment';
+  // Where WinShun's settings page notes the folder it put on the user's PATH.
+  CliRecordKey = 'Software\WinShun';
+  CliRecordName = 'CliPathEntry';
+
+var
+  WsOnPath: Boolean; // the folder is on the PATH now (put there, or there already)
+
+// ws.exe lives alone in {app}\bin, and only that folder goes on the PATH: the
+// install folder holds Qt's DLLs, which other programs would find through the
+// PATH and use.
+function WsFolder(): String;
+begin
+  Result := ExpandConstant('{app}\bin');
+end;
+
+// The PATH of the install mode: the system's for all users, the user's own
+// for "only me" (HKA is HKLM or HKCU by the same mode).
+function PathKey(): String;
+begin
+  if IsAdminInstallMode then
+    Result := SystemEnvironmentKey
+  else
+    Result := UserEnvironmentKey;
+end;
+
+// Whether a PATH entry names Folder: compared without quotes, a closing
+// backslash and case. A %VAR% entry is not expanded: not recognised, it stays.
+function EntryIsFolder(Entry, Folder: String): Boolean;
+begin
+  Entry := Trim(Entry);
+  if (Length(Entry) >= 2) and (Entry[1] = '"') and (Entry[Length(Entry)] = '"') then
+    Entry := Trim(Copy(Entry, 2, Length(Entry) - 2));
+  StringChangeEx(Entry, '/', '\', True);
+  while (Length(Entry) > 3) and (Entry[Length(Entry)] = '\') do
+    Delete(Entry, Length(Entry), 1);
+  Result := CompareText(Entry, Folder) = 0;
+end;
+
+// Takes the first entry off Path: up to the first ";" outside double quotes, as
+// Windows reads a PATH, where a folder with a ";" in its name is one entry
+// ("C:\a;b\bin"). Entry is that text without the ";", Path what follows it.
+// False when it was the last entry (Path is then empty).
+function NextPathEntry(var Path, Entry: String): Boolean;
+var
+  I: Integer;
+  InQuotes: Boolean;
+begin
+  InQuotes := False;
+  for I := 1 to Length(Path) do
+  begin
+    if Path[I] = '"' then
+      InQuotes := not InQuotes
+    else if (Path[I] = ';') and not InQuotes then
+    begin
+      Entry := Copy(Path, 1, I - 1);
+      Delete(Path, 1, I);
+      Result := True;
+      exit;
+    end;
+  end;
+  Entry := Path;
+  Path := '';
+  Result := False;
+end;
+
+function PathHasFolder(Path, Folder: String): Boolean;
+var
+  Entry: String;
+  More: Boolean;
+begin
+  Result := False;
+  repeat
+    More := NextPathEntry(Path, Entry);
+    Result := Result or EntryIsFolder(Entry, Folder);
+  until not More;
+end;
+
+// Path without the entries that name Folder, each with one ";"; every other
+// character as it was (quotes, %VAR%, empty entries).
+function PathWithoutFolder(Path, Folder: String; var Found: Boolean): String;
+var
+  Part: String;
+  First, More: Boolean;
+begin
+  Result := '';
+  Found := False;
+  First := True;
+  repeat
+    More := NextPathEntry(Path, Part);
+    if EntryIsFolder(Part, Folder) then
+      Found := True
+    else
+    begin
+      if not First then
+        Result := Result + ';';
+      Result := Result + Part;
+      First := False;
+    end;
+  until not More;
+end;
+
+// How Folder is written on a PATH: in quotes when its name holds a ";", which
+// would otherwise cut it in two.
+function PathEntryOf(Folder: String): String;
+begin
+  if Pos(';', Folder) > 0 then
+    Result := '"' + Folder + '"'
+  else
+    Result := Folder;
+end;
+
+// The PATH value of Key, to change it. False: leave it alone. A value that is
+// there but that RegQueryStringValue cannot read (REG_BINARY, say, or no access
+// to it) is not an absent one, and writing it anew would replace everything on
+// the PATH by one folder. Exists says whether the value is there at all; it
+// is not, Path is empty.
+function ReadPathToChange(Root: Integer; Key: String; var Path: String; var Exists: Boolean): Boolean;
+begin
+  Path := '';
+  Result := True;
+  Exists := RegValueExists(Root, Key, 'Path');
+  if Exists and not RegQueryStringValue(Root, Key, 'Path', Path) then
+  begin
+    Log('The PATH value in ' + Key + ' exists but cannot be read as text (a type other than REG_SZ or REG_EXPAND_SZ, or no access): left as it is.');
+    Path := '';
+    Result := False;
+  end;
+end;
+
+// Appended to the PATH of the install mode (RegQueryStringValue does not expand
+// it, so %VAR% entries go back as they were); not twice, which an update would
+// otherwise do. Not when ws.exe is not in the folder: no entry for a folder
+// that holds nothing. A PATH value that cannot be read as text is left alone
+// (ReadPathToChange), and WsOnPath says "yes" only when the folder is on the
+// PATH for sure, so that the last page does not promise ws where it is not.
+procedure AddWsToPath();
+var
+  Path, Folder: String;
+  Exists, Written: Boolean;
+begin
+  Folder := WsFolder();
+  if not FileExists(Folder + '\ws.exe') then
+    exit;
+  if not ReadPathToChange(HKA, PathKey(), Path, Exists) then
+    exit;
+  if Exists and PathHasFolder(Path, Folder) then
+  begin
+    WsOnPath := True;
+    exit;
+  end;
+  if Path = '' then
+    Path := PathEntryOf(Folder)
+  else if Path[Length(Path)] = ';' then
+    Path := Path + PathEntryOf(Folder)
+  else
+    Path := Path + ';' + PathEntryOf(Folder);
+  // The type stays as it is: RegWriteStringValue keeps a REG_EXPAND_SZ (Windows'
+  // own PATH is one) and a REG_SZ stays what it is; a PATH that is not there yet is made REG_EXPAND_SZ.
+  if Exists then
+    Written := RegWriteStringValue(HKA, PathKey(), 'Path', Path)
+  else
+    Written := RegWriteExpandStringValue(HKA, PathKey(), 'Path', Path);
+  if Written then
+    WsOnPath := True
+  else
+    Log('The PATH value in ' + PathKey() + ' could not be written: ' + Folder + ' is not on the PATH.');
+end;
+
+// Folder out of the PATH of Root\Key, if it is there; nothing is written when
+// the value is absent or cannot be read as text, or has no such entry.
+procedure RemoveFolderFromPath(Root: Integer; Key, Folder: String);
+var
+  Path: String;
+  Exists, Found: Boolean;
+begin
+  if not ReadPathToChange(Root, Key, Path, Exists) or not Exists then
+    exit;
+  Path := PathWithoutFolder(Path, Folder, Found);
+  // The value is there, so RegWriteStringValue keeps its type (REG_EXPAND_SZ or REG_SZ).
+  if Found and not RegWriteStringValue(Root, Key, 'Path', Path) then
+    Log('The PATH value in ' + Key + ' could not be written: ' + Folder + ' is still on it.');
+end;
+
+// Uninstalling takes that entry out and nothing else: from the PATH of the
+// install mode, and, for all users, from the user's own, where the settings
+// page may have put it for whoever runs this. The note it keeps of that goes.
+procedure RemoveWsFromPath();
+var
+  Recorded: String;
+begin
+  RemoveFolderFromPath(HKA, PathKey(), WsFolder());
+  if IsAdminInstallMode then
+    RemoveFolderFromPath(HKCU, UserEnvironmentKey, WsFolder());
+  if RegQueryStringValue(HKCU, CliRecordKey, CliRecordName, Recorded) and EntryIsFolder(Recorded, WsFolder()) then
+  begin
+    RegDeleteValue(HKCU, CliRecordKey, CliRecordName);
+    RegDeleteKeyIfEmpty(HKCU, CliRecordKey);
+  end;
+end;
+
+// The last page says where to try it: terminals that are open now do not see a new PATH.
+procedure CurPageChanged(CurPageID: Integer);
+var
+  Delta: Integer;
+begin
+  if (CurPageID <> wpFinished) or not WsOnPath then
+    exit;
+  WizardForm.FinishedLabel.Caption := WizardForm.FinishedLabel.Caption + #13#10#13#10 + CustomMessage('WsNewTerminal');
+  // A label is as high as it was made, not as its text: Setup's own call sizes it
+  // to the new text and says by how much; what is under it moves down by as much.
+  Delta := WizardForm.AdjustLabelHeight(WizardForm.FinishedLabel);
+  if Delta > 0 then
+  begin
+    WizardForm.RunList.Top := WizardForm.RunList.Top + Delta;
+    WizardForm.RunList.Height := WizardForm.RunList.Height - Delta;
+  end;
+end;
+
 // Started in the tray as the files were in place ([Run]); "run Win顺" left
 // unticked on the last page, it goes again. A silent install leaves it
 // running, as it was before an update.
@@ -670,6 +908,13 @@ begin
     FilesInstalled := True;
     RemoveTapCopies();
     RemoveMovedRelay(True);
+    if WizardIsTaskSelected('wscommand') then
+      AddWsToPath()
+    else
+      // Unticked on an update: the entry an earlier install added goes, from the
+      // PATH of the install mode as at the uninstall (the user's own list of an
+      // all-users install, where the settings page may have put it, is not touched).
+      RemoveFolderFromPath(HKA, PathKey(), WsFolder());
   end;
   // After [Run] re-registered the service from {app}: a portable copy's old
   // service folder is now stale.
@@ -1152,6 +1397,7 @@ begin
       Exec(ExpandConstant('{app}\WinShunService.exe'), '--uninstall', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     RemoveAutostart();
     RemoveExplorerMenu();
+    RemoveWsFromPath(); // ChangesEnvironment tells the other programs when the uninstall ends
     // Directory Opus's double click on blank space, if Win顺 set it to run this copy.
     Exec(ExpandConstant('{app}\WinShunSearch.exe'), '--opus-menu-off', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     GiveBackKey('Clipboard', 'WinV', 'V');

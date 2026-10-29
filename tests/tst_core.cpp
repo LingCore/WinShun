@@ -72,6 +72,7 @@
 #include <ws2tcpip.h>
 
 #include <windows.h>
+#include <psapi.h>
 #include <sddl.h>
 #include <winioctl.h>
 
@@ -2520,6 +2521,106 @@ private slots:
         const auto page1 = names(searchNames(index, everything, o, pool, {}));
         o.limit = 6;
         QCOMPARE(names(searchNames(index, everything, o, pool, {})).first(3), page1);
+    }
+
+    // A limit larger than a slice of the index has entries (ws asks for
+    // 50 000): such a slice keeps all it finds, as found, and the merge picks
+    // the best; under it each slice keeps a heap of its best. The same list
+    // either way, a longer one beginning as the shorter, in every order. And
+    // room is taken as found, not for the limit: a heap set aside for ws's
+    // 55 000 in each slice was 370 MB more for one search.
+    void nameSearchLargeLimits()
+    {
+        FileIndex index;
+        const EntryId root = index.addRoot("D:");
+        constexpr FileTime t0 = 1'760'000'000;
+        std::vector<EntryId> dirs;
+        for (int d = 0; d < 300; ++d) {
+            const EntryId parent = d < 20 ? root : dirs[static_cast<std::size_t>(d % 20)];
+            const std::string name = (d % 3 == 0 ? "ab-folder" : "folder") + std::to_string(d);
+            const EntryId dir = index.add(parent, name, EntryFlag::Directory);
+            index.setModified(dir, t0 + static_cast<FileTime>(d % 50) * 3600);
+            dirs.push_back(dir);
+        }
+        // Names that match "ab" well, less well or not, times and sizes that
+        // often tie.
+        for (int i = 0; i < 40'000; ++i) {
+            const std::string n = std::to_string(i % 9'000);
+            const std::string names[] {"ab" + n + ".txt", "x-ab-" + n + ".log", "Abc" + n, "zzab" + n + ".md", "ab.txt",
+                "other" + n + ".txt", "AB"};
+            const EntryId id = index.add(dirs[static_cast<std::size_t>(i * 7 % 300)], names[i % 7], 0);
+            index.setModified(id, i % 11 == 0 ? FileTime {0} : t0 + static_cast<FileTime>(i * 7'919 % 100'000));
+            if (i % 5 != 0)
+                index.setSize(id, packSize(static_cast<std::uint64_t>(i % 1'000) * 37));
+        }
+        // Three slices (16 384 entries each, NameSearch.cpp's kSliceSize), the
+        // last with fewer than 10 000.
+        QVERIFY(index.slotCount() > 2 * 16'384 && index.slotCount() < 2 * 16'384 + 10'000);
+        WorkerPool pool(4);
+        const auto ids = [](const NameSearchOutput& out) {
+            std::vector<EntryId> list;
+            for (const NameHit& h : out.hits)
+                list.push_back(h.id);
+            return list;
+        };
+        const auto first = [](std::vector<EntryId> list, std::size_t n) {
+            list.resize(std::min(n, list.size()));
+            return list;
+        };
+        struct Order {
+            SortOrder order;
+            RankBy rankBy;
+        };
+        const Order orders[] {{{SortKey::Rank, false}, RankBy::Match}, {{SortKey::Rank, false}, RankBy::Newest},
+            {{SortKey::Rank, false}, RankBy::Oldest}, {{SortKey::Name, false}, RankBy::Match},
+            {{SortKey::Name, true}, RankBy::Match}, {{SortKey::Path, false}, RankBy::Match},
+            {{SortKey::Path, true}, RankBy::Match}, {{SortKey::Type, false}, RankBy::Match},
+            {{SortKey::Type, true}, RankBy::Match}, {{SortKey::Size, false}, RankBy::Match},
+            {{SortKey::Size, true}, RankBy::Match}, {{SortKey::Modified, false}, RankBy::Match},
+            {{SortKey::Modified, true}, RankBy::Match}};
+        for (const QString& typed : {u"ab"_s, u""_s}) {
+            const NameMatcher matcher(ws::parseQuery(typed));
+            for (const Order& order : orders) {
+                for (const bool apart : {false, true}) {
+                    // 50: a heap in every slice; 10 000: in the full ones, all
+                    // of the last; 100 000: all everywhere.
+                    NameSearchOptions o {.rankBy = order.rankBy, .kindsApart = apart, .order = order.order};
+                    o.limit = 100'000;
+                    const NameSearchOutput all = searchNames(index, matcher, o, pool, {});
+                    o.limit = 10'000;
+                    const NameSearchOutput mid = searchNames(index, matcher, o, pool, {});
+                    o.limit = 50;
+                    const NameSearchOutput few = searchNames(index, matcher, o, pool, {});
+                    const QByteArray what = u"'%1' order %2 descending %3 by %4 apart %5"_s.arg(typed)
+                                                .arg(static_cast<int>(order.order.key))
+                                                .arg(static_cast<int>(order.order.descending))
+                                                .arg(static_cast<int>(order.rankBy))
+                                                .arg(static_cast<int>(apart))
+                                                .toUtf8();
+                    QVERIFY2(
+                        all.totalMatches == mid.totalMatches && all.totalMatches == few.totalMatches, what.constData());
+                    QVERIFY2(all.hits.size() == all.totalMatches, what.constData());
+                    QVERIFY2(mid.hits.size() >= 10'000 && few.hits.size() >= 50, what.constData());
+                    // Kept apart, each kind has its best `limit`: the first
+                    // `limit` together are the best of all the same.
+                    QVERIFY2(first(ids(all), 10'000) == first(ids(mid), 10'000), what.constData());
+                    QVERIFY2(first(ids(all), 50) == first(ids(few), 50), what.constData());
+                }
+            }
+        }
+
+        // A limit far past what there is (50 million: 800 MB a heap, were it
+        // set aside) takes room for the 40 000 found, not for it.
+        PROCESS_MEMORY_COUNTERS before {};
+        QVERIFY(::GetProcessMemoryInfo(::GetCurrentProcess(), &before, sizeof before));
+        NameSearchOptions huge {.kindsApart = true};
+        huge.limit = 50'000'000;
+        const NameSearchOutput out = searchNames(index, NameMatcher(ws::parseQuery(u""_s)), huge, pool, {});
+        PROCESS_MEMORY_COUNTERS after {};
+        QVERIFY(::GetProcessMemoryInfo(::GetCurrentProcess(), &after, sizeof after));
+        QCOMPARE(out.hits.size(), out.totalMatches);
+        const double grewMB = static_cast<double>(after.PeakPagefileUsage - before.PeakPagefileUsage) / (1 << 20);
+        QVERIFY2(grewMB < 64, qPrintable(u"the peak commit grew %1 MB"_s.arg(grewMB, 0, 'f', 1)));
     }
 
     // The query read aloud (homophoneQueries), for names that sound the same.
@@ -7848,6 +7949,27 @@ private slots:
         QVERIFY(!readme.isExactName("readme-old.md", false));
         QVERIFY(!NameMatcher(ws::parseQuery(u"read me"_s)).isExactName("read me", true)); // two terms
         QVERIFY(!NameMatcher(ws::parseQuery(u"read*"_s)).isExactName("readme", true));
+
+        // A name as Qt holds it (the rows of a list) says the same, though
+        // most are told apart by their length alone, never converted.
+        const QStringList names {u"readme"_s, u"README.md"_s, u"readme-old.md"_s, u"readme.tar.gz"_s, u"read.me"_s,
+            u".readme"_s, u"a.b.txt"_s, u"a.b"_s, u"a.b.c"_s, u"报告.docx"_s, u"报告"_s, u"报告书.docx"_s,
+            u"年度报告.pdf"_s, u"x.报告"_s, u"Ä.txt"_s, u"ä"_s, u"𝒜.txt"_s, u""_s, u"."_s, u"a"_s, u"A.TXT"_s,
+            u"ab.txt"_s};
+        for (const QString& typed :
+            {u"readme"_s, u"a.b"_s, u"报告"_s, u"ä"_s, u"𝒜"_s, u"a"_s, u"read*"_s, u"read me"_s}) {
+            const NameMatcher matcher(ws::parseQuery(typed));
+            for (const QString& name : names) {
+                for (const bool isDir : {false, true}) {
+                    QVERIFY2(matcher.isExactName(name, isDir) == matcher.isExactName(name.toStdString(), isDir),
+                        qPrintable(typed + u" / "_s + name + (isDir ? u" (folder)"_s : u""_s)));
+                }
+            }
+        }
+        QVERIFY(
+            NameMatcher(ws::parseQuery(u"a.b"_s)).isExactName(u"a.b.txt"_s, false)); // the stem has a dot of its own
+        QVERIFY(NameMatcher(ws::parseQuery(u"报告"_s)).isExactName(u"报告.docx"_s, false));
+        QVERIFY(!NameMatcher(ws::parseQuery(u"报告"_s)).isExactName(u"报告书.docx"_s, false));
     }
 
     void appSearch()
@@ -13390,6 +13512,63 @@ private slots:
         winV.title = u"用 Win+V 打开，代替 Windows 自带的剪贴板"_s;
         QVERIFY(score(u"win + v"_s, winV) > 0);
         QVERIFY(score(u"win v"_s, winV) > 0);
+
+        // A word of one or two ASCII letters ("ws") is a word or the start of one, never the end
+        // of another: "Windows" ends in ws, and every option that says Windows came up.
+        Fields wsRow;
+        wsRow.title = u"ws 命令"_s;
+        wsRow.keywords = {u"命令行"_s, u"ws"_s, u"command line"_s};
+        wsRow.context = {u"AI 助手"_s, u"命令行"_s};
+        Fields connect;
+        connect.title = u"允许 AI 助手和命令行连接"_s;
+        connect.keywords = {u"MCP"_s, u"ws"_s, u"cli"_s};
+        Fields windows;
+        windows.title = u"跟随 Windows 的深色模式"_s;
+        windows.keywords = {u"主题"_s, u"windows"_s};
+        windows.description = u"Windows 设置里选了深色时，Win顺 也用深色；Windows 11 的 Mica 材质"_s;
+        QVERIFY(!parse(u"ws"_s).terms[0].single);
+        QVERIFY(parse(u"ws"_s).terms[0].atWordStart);
+        QVERIFY(!parse(u"win"_s).terms[0].atWordStart);
+        QVERIFY(!parse(u"命令"_s).terms[0].atWordStart);
+        QCOMPARE(score(u"ws"_s, windows), -1);
+        QVERIFY(score(u"ws"_s, wsRow) > 0);
+        QVERIFY(score(u"ws"_s, wsRow) > score(u"ws"_s, connect)); // its title starts with the word, the other has it as a keyword
+        QVERIFY(score(u"ws"_s, connect) > 0);
+        QVERIFY(score(u"ai"_s, connect) > 0); // a word
+        QVERIFY(score(u"mc"_s, connect) > 0); // the start of one
+        QCOMPARE(score(u"cp"_s, connect), -1); // not the end of MCP
+        // Three letters and more are found in the middle of a word still.
+        QVERIFY(score(u"dows"_s, windows) > 0);
+        QVERIFY(score(u"ndo"_s, windows) > 0);
+        QVERIFY(score(u"win"_s, windows) > 0);
+
+        // Pinyin initials of one or two letters start a word too. Chinese has no spaces, so "ws" is
+        // also the initials of 我设 in 帮我设置, in the middle of one keyword of 允许 AI 修改设置.
+        Fields aiSettings;
+        aiSettings.title = u"允许 AI 修改设置"_s;
+        aiSettings.keywords = {u"设置"_s, u"配置"_s, u"修改"_s, u"改设置"_s, u"帮我设置"_s, u"setting"_s, u"config"_s, u"change"_s, u"AI"_s};
+        aiSettings.context = {u"AI 助手"_s, u"权限"_s};
+        QCOMPARE(score(u"ws"_s, aiSettings), -1);
+        QVERIFY(score(u"bws"_s, aiSettings) > 0); // from three letters anywhere, and at the start
+        QVERIFY(score(u"wsz"_s, aiSettings) > 0); // ... in the middle of 帮我设置
+        QVERIFY(score(u"xgsz"_s, aiSettings) > 0); // 修改设置 in the title
+        // At the start of the text, as before.
+        QVERIFY(score(u"kj"_s, hotkey) > 0);
+        QCOMPARE(match(parse(u"kj"_s), hotkey).title, (QList<Span> {{0, 2}}));
+        QVERIFY(score(u"sz"_s, aiSettings) > 0); // 设置, the first keyword
+        // ... and after a separator, a later word of a keyword found though an earlier place would not do.
+        Fields later;
+        later.keywords = {u"帮我设置 我设"_s};
+        QVERIFY(score(u"ws"_s, later) > 0);
+        later.keywords = {u"帮我设置，我设"_s}; // a full-width comma
+        QVERIFY(score(u"ws"_s, later) > 0);
+        later.keywords = {u"帮我设置；打开(我设)"_s};
+        QVERIFY(score(u"ws"_s, later) > 0);
+        later.keywords = {u"帮我设置"_s};
+        QCOMPARE(score(u"ws"_s, later), -1);
+        QCOMPARE(score(u"wo"_s, later), -1); // not by the spelling of one character either
+        later.keywords = {u"我设置"_s};
+        QVERIFY(score(u"ws"_s, later) > 0);
 
         // What the user filled in.
         Fields names;

@@ -7,6 +7,7 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -24,6 +25,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdlib>
 #include <memory>
 
 using namespace Qt::StringLiterals;
@@ -307,6 +309,66 @@ private slots:
         QCOMPARE(QDir::cleanPath(result.value(u"cwd"_s).toString()), QDir::cleanPath(working));
         QCOMPARE(result.value(u"arguments"_s).toArray().last().toString(), query);
         qInfo() << "Launched by" << result.value(u"parent"_s).toString() << "with the requested arguments and folder";
+    }
+
+    // A console program run for what it writes (the Skill is installed so): both
+    // streams, the exit code, no window of its own.
+    void capturesWhatAProgramWrites()
+    {
+        const std::wstring cmd = qEnvironmentVariable("ComSpec").toStdWString();
+        QVERIFY(!cmd.empty());
+        const auto run = ws::shell::runUnelevatedCaptured(cmd, L"/d /c \"echo out& echo err 1>&2& exit /b 3\"", 15000);
+        QVERIFY(run.started);
+        QVERIFY(!run.timedOut);
+        QCOMPARE(run.exitCode, 3ul);
+        const QString text = QString::fromLatin1(run.output.data(), static_cast<qsizetype>(run.output.size()));
+        QVERIFY2(text.contains(u"out"_s) && text.contains(u"err"_s), qPrintable(text));
+        // Nothing on standard input to wait for: it ends at once.
+        const auto reads = ws::shell::runUnelevatedCaptured(cmd, L"/d /c \"set /p x=& echo done\"", 15000);
+        QVERIFY(reads.started && !reads.timedOut);
+        QVERIFY(QString::fromLatin1(reads.output.data(), static_cast<qsizetype>(reads.output.size())).contains(u"done"_s));
+        // A program that does not exist does not start.
+        QVERIFY(!ws::shell::runUnelevatedCaptured(L"C:\\wstest\\nothing\\not-there.exe", {}, 1000).started);
+    }
+
+    // The program gets the user's environment as the registry has it now, not the one this
+    // process started with: a variable set (setx) after Win顺 started is seen by ws.
+    void getsTheUsersEnvironmentAsTheRegistryHasIt()
+    {
+        const std::wstring cmd = qEnvironmentVariable("ComSpec").toStdWString();
+        const QString name = u"WS_TEST_ENV_"_s + QUuid::createUuid().toString(QUuid::Id128).left(12);
+        HKEY key = nullptr;
+        QCOMPARE(::RegCreateKeyExW(HKEY_CURRENT_USER, L"Environment", 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr), LSTATUS(ERROR_SUCCESS));
+        const std::wstring value = L"from the registry";
+        QCOMPARE(::RegSetValueExW(key, name.toStdWString().c_str(), 0, REG_SZ, reinterpret_cast<const BYTE*>(value.c_str()),
+                     static_cast<DWORD>((value.size() + 1) * sizeof(wchar_t))),
+            LSTATUS(ERROR_SUCCESS));
+        const auto remove = qScopeGuard([&] {
+            ::RegDeleteValueW(key, name.toStdWString().c_str());
+            ::RegCloseKey(key);
+            _wputenv_s(L"WS_TEST_ONLY_HERE", L"");
+        });
+        _wputenv_s(L"WS_TEST_ONLY_HERE", L"set by a parent");
+        const auto run = ws::shell::runUnelevatedCaptured(cmd, (L"/d /c \"echo [%" + name.toStdWString() + L"%] [%WS_TEST_ONLY_HERE%]\"").c_str(), 15000);
+        QVERIFY(run.started && !run.timedOut);
+        const QString text = QString::fromLatin1(run.output.data(), static_cast<qsizetype>(run.output.size()));
+        QVERIFY2(text.contains(u"[from the registry]"_s), qPrintable(text));
+        // Over this process's own variables (the user's account): what a parent set stays.
+        if (!ws::integrity::processElevated())
+            QVERIFY2(text.contains(u"[set by a parent]"_s), qPrintable(text));
+        // The shell's account, which this one is (the tests run as the user).
+        QVERIFY(ws::shell::runsAsShellUser());
+    }
+
+    void endsAProgramThatTakesTooLong()
+    {
+        const std::wstring cmd = qEnvironmentVariable("ComSpec").toStdWString();
+        QElapsedTimer timer;
+        timer.start();
+        const auto run = ws::shell::runUnelevatedCaptured(cmd, L"/d /c \"ping -n 30 127.0.0.1 >nul\"", 400);
+        QVERIFY(run.started);
+        QVERIFY(run.timedOut);
+        QVERIFY2(timer.elapsed() < 5000, qPrintable(QString::number(timer.elapsed())));
     }
 };
 

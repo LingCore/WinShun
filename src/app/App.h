@@ -417,7 +417,8 @@ private:
     // is shown in the settings window.
     void applyMcp();
     mcp::Policy mcpPolicy() const;
-    void refreshMcpStatus();
+    void refreshMcpStatus(); // and the ws tally below
+    void refreshCliTally(); // m_cliTallyTimer's: ws runs many a minute
     void writeMcpToolsCache(); // the tools, for the relay to list while Win顺 is not running
     // The plugins' commands as the AI's tools (plugin::AiBridge): what the
     // [Mcp] Plugins switches and the cards' "给 AI 用" say, applied from
@@ -534,9 +535,11 @@ private:
     // shared with the launcher would drop the launcher's (and its rows would
     // wait for results that never come).
     std::unique_ptr<SearchEngine> m_dialogEngine;
-    // The MCP server's own engine, host and server (applyMcp); in this
-    // order, so the server goes first and the engine before the index.
+    // The MCP server's own engines (names, and content apart so that a name
+    // search never waits behind one), host and server (applyMcp); in this
+    // order, so the server goes first and the engines before the index.
     std::unique_ptr<SearchEngine> m_mcpEngine;
+    std::unique_ptr<SearchEngine> m_mcpContentEngine;
     std::unique_ptr<mcp::ToolHost> m_mcpHost;
     std::unique_ptr<mcp::McpServer> m_mcpServer;
     std::unique_ptr<plugin::AiBridge> m_aiBridge; // with the server: the plugins' commands among its tools
@@ -718,6 +721,7 @@ private:
     QTimer m_settingsReload;
     QTimer m_indexOptionsApply; // rebuilding the crawler is costly: batch quick edits
     QTimer m_contentStatusTimer; // while the settings window is open
+    QTimer m_cliTallyTimer; // ws runs many a minute: the status line about it is made once in a while
     QTimer m_darkFrameGuard; // see guardDarkFrames
     QElapsedTimer m_darkFrameWatch;
     bool m_darkFrame = false;

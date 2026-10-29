@@ -75,7 +75,7 @@ MessageWindow::MessageWindow(Callbacks callbacks)
     // second start of Win顺 too: it runs with the user's normal rights
     // (GitHub #21), while this copy may be elevated (the 管理员直读 mode), and
     // its WM_COPYDATA would be dropped by UIPI otherwise. What it carries is
-    // one of toggle, quit, settings and query (App::handleCommand): no input
+    // one of toggle, quit, settings (with a place: SettingsCommand.h) and query (App::handleCommand): no input
     // for anything, nothing run. Not the same window as "WinShun.SearchHere"
     // below, which has its own.
     ::ChangeWindowMessageFilterEx(m_hwnd, m_taskbarCreated, MSGFLT_ALLOW, nullptr);

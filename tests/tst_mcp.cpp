@@ -4,10 +4,12 @@
 // Win顺 there and away; and the plugins' commands as tools (plugin::AiBridge).
 
 #include "AiBridge.h"
+#include "Aside.h"
 #include "ContentScanner.h"
 #include "FileIndex.h"
 #include "Host.h"
 #include "IndexService.h"
+#include "IsoTime.h"
 #include "JsonRpc.h"
 #include "McpServer.h"
 #include "McpTools.h"
@@ -15,6 +17,7 @@
 #include "Sandbox.h"
 #include "SearchEngine.h"
 #include "Visibility.h"
+#include "ShareIndexer.h"
 
 #include <QDir>
 #include <QElapsedTimer>
@@ -23,19 +26,26 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QProcess>
+#include <QScopeGuard>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <QTimeZone>
 
 #include <windows.h>
 #include <aclapi.h>
 #include <sddl.h>
 
+#include <algorithm>
+#include <chrono>
+#include <condition_variable>
 #include <cstring>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <shared_mutex>
+#include <stop_token>
 #include <string>
 #include <thread>
 #include <vector>
@@ -96,14 +106,110 @@ QStringList names(const QJsonObject& structured)
     return out;
 }
 
+// Content searches' engine (Services::contentEngine): one of their own on
+// the same index, as the app's host has; none, as the plugins' host (they
+// queue on the one engine); or one on an index of its own, empty, that a
+// test can hold locked to keep a content search where it starts.
+enum class ContentEngine { Own, None, Locked };
+
+// The work of calls aside, as it begins (Services::asideStarting): every
+// job's tool and thread are noted, and the next `count` of one tool are held
+// where they begin until released, or until told to stop (the call
+// cancelled, the host going), which then takes them `slowStop` ms, as a
+// check on a share that went away would.
+struct Hold {
+    std::mutex mutex;
+    std::condition_variable_any wake;
+    QString tool;
+    int count = 0; // of `tool`, still to be held
+    bool open = true;
+    int waiting = 0; // held now
+    int slowStop = 0;
+    QStringList started;
+    std::vector<std::thread::id> threads;
+
+    void starting(const QString& name, const std::stop_token& stop)
+    {
+        std::unique_lock lock(mutex);
+        started.push_back(name);
+        threads.push_back(std::this_thread::get_id());
+        if (name != tool || count == 0)
+            return;
+        --count;
+        ++waiting;
+        wake.wait(lock, stop, [this] { return open; });
+        --waiting;
+        const int pause = slowStop;
+        lock.unlock();
+        if (stop.stop_requested() && pause > 0)
+            std::this_thread::sleep_for(std::chrono::milliseconds(pause));
+    }
+    void hold(const QString& name, int n = 1)
+    {
+        const std::lock_guard lock(mutex);
+        tool = name;
+        count = n;
+        open = false;
+    }
+    void release()
+    {
+        {
+            const std::lock_guard lock(mutex);
+            open = true;
+            count = 0;
+        }
+        wake.notify_all();
+    }
+    int held()
+    {
+        const std::lock_guard lock(mutex);
+        return waiting;
+    }
+    int startedOf(const QString& name)
+    {
+        const std::lock_guard lock(mutex);
+        return static_cast<int>(started.count(name));
+    }
+    bool ranOn(std::thread::id thread)
+    {
+        const std::lock_guard lock(mutex);
+        return std::ranges::find(threads, thread) != threads.end();
+    }
+};
+
+// Network shares taken to be out of reach now (Services::offline), as the
+// share indexer would say of a server that went away. Any thread.
+struct OfflineShares {
+    std::mutex mutex;
+    QStringList shares; // "\\host\share", case-folded
+
+    void set(const QStringList& list)
+    {
+        const std::lock_guard lock(mutex);
+        shares.clear();
+        for (const QString& share : list)
+            shares.push_back(share.toCaseFolded());
+    }
+    bool has(const QString& path)
+    {
+        const QString folded = path.toCaseFolded();
+        const std::lock_guard lock(mutex);
+        return std::ranges::any_of(shares, [&](const QString& share) {
+            return folded == share || (folded.startsWith(share) && folded.at(share.size()) == u'\\');
+        });
+    }
+};
+
 // A folder on disk and the same in a hand-made index: the service is not
 // started (it reads no volume), its index is filled by hand to mirror the
-// folder, and the engine, host and server run on it as in the app.
+// folder, and the engines, host and server run on it as in the app.
 struct Fixture {
     QTemporaryDir dir;
     QString root; // the folder, native
     std::unique_ptr<IndexService> service;
     std::unique_ptr<SearchEngine> engine;
+    std::unique_ptr<IndexService> contentService; // ContentEngine::Locked: its own index
+    std::unique_ptr<SearchEngine> contentEngine;
     std::unique_ptr<ToolHost> host;
     std::unique_ptr<McpServer> server;
     EntryId folder = kNoEntry;
@@ -127,10 +233,15 @@ struct Fixture {
     QList<SettingsApply> settingsApplied;
     SettingsQuery lastSettingsQuery;
     QString openedAt; // "key|section"
+    // Shared with the host's services, which may outlive the test's frame
+    // on the jobs' threads.
+    std::shared_ptr<Hold> hold = std::make_shared<Hold>();
+    std::shared_ptr<OfflineShares> offline = std::make_shared<OfflineShares>();
 
     // `shares`: network locations, as configured (the service is not started:
     // none is listed or asked anything).
-    explicit Fixture(bool withShell = true, bool withClipboard = true, std::vector<ShareConfig> shares = {})
+    explicit Fixture(bool withShell = true, bool withClipboard = true, ContentEngine content = ContentEngine::Own,
+        std::vector<ShareConfig> shares = {})
     {
         root = QDir::toNativeSeparators(dir.path());
         IndexService::Options options;
@@ -139,11 +250,18 @@ struct Fixture {
         service = std::make_unique<IndexService>(dir.path() + u"/index"_s, options);
         folder = addFolder(root);
         engine = std::make_unique<SearchEngine>(service.get());
+        if (content == ContentEngine::Locked)
+            contentService = std::make_unique<IndexService>(dir.path() + u"/content-index"_s, options);
+        if (content != ContentEngine::None)
+            contentEngine = std::make_unique<SearchEngine>(contentService ? contentService.get() : service.get());
         Services services;
         services.index = service.get();
         services.engine = engine.get();
+        services.contentEngine = contentEngine.get();
         services.version = u"0.0-test"_s;
         services.log = [this](const QString& line) { log.push_back(line); };
+        services.offline = [offline = offline](const QString& path) { return offline->has(path); };
+        services.asideStarting = [hold = hold](const QString& tool, const std::stop_token& stop) { hold->starting(tool, stop); };
         if (withShell) {
             services.open = [this](const QString& path, std::function<void(bool)> done) {
                 opened.push_back(u"open "_s + path);
@@ -318,7 +436,36 @@ struct Fixture {
             setDacl(restricted, L"D:(A;OICI;FA;;;WD)", UNPROTECTED_DACL_SECURITY_INFORMATION);
         restricted.clear();
     }
-    ~Fixture() { unrestrict(); }
+    ~Fixture()
+    {
+        hold->release();
+        unrestrict();
+    }
+
+    // A network share in the index, as the share indexer keeps one: its
+    // root ("\\host\share") and entries under it, in the index alone.
+    EntryId addShare(const QString& share, const QStringList& relatives, FileTime modified)
+    {
+        const auto index = service->index();
+        const auto lock = index->writeLock();
+        const EntryId top = ShareIndexer::ensureRoot(*index, share.toStdWString());
+        for (const QString& relative : relatives) {
+            const QStringList parts = relative.split(u'\\', Qt::SkipEmptyParts);
+            EntryId at = top;
+            for (qsizetype i = 0; i < parts.size(); ++i) {
+                const bool folder = i + 1 < parts.size() || relative.endsWith(u'\\');
+                const std::string name = parts[i].toStdString();
+                EntryId child = index->findChild(at, name);
+                if (child == kNoEntry) {
+                    child = index->add(at, name,
+                        static_cast<std::uint8_t>(EntryFlag::Remote | (folder ? EntryFlag::Directory : 0)));
+                    index->setModified(child, modified);
+                }
+                at = child;
+            }
+        }
+        return top;
+    }
 
     static bool setDacl(const QString& path, const wchar_t* sddl, SECURITY_INFORMATION protection)
     {
@@ -613,6 +760,11 @@ private slots:
         QCOMPARE(result.value(u"serverInfo"_s).toObject().value(u"name"_s).toString(), u"winshun"_s);
         QVERIFY(result.value(u"capabilities"_s).toObject().value(u"tools"_s).toObject().value(u"listChanged"_s).toBool());
         QVERIFY(result.value(u"capabilities"_s).toObject().contains(u"prompts"_s));
+        // What ws checks before relying on the command line's contract: an integer.
+        const QJsonValue contract =
+            result.value(u"capabilities"_s).toObject().value(u"experimental"_s).toObject().value(u"winshun"_s).toObject().value(u"cli"_s);
+        QVERIFY(contract.isDouble());
+        QCOMPARE(contract.toInt(), kCliContract);
         QVERIFY(result.value(u"instructions"_s).toString().contains(u"pinyin"));
 
         reply = s.exchange(requestLine(12, u"tools/list"_s));
@@ -1143,6 +1295,93 @@ private slots:
         QFile original(jpegCopy);
         QVERIFY(original.open(QIODevice::ReadOnly));
         QCOMPARE(original.readAll(), QByteArray("original JPEG bytes"));
+    }
+
+    // Win顺's clipboard history off (设置 → 剪贴板 → 记录剪贴板历史), AI's
+    // switch for it on: there is nothing to read, so the three tools are off
+    // and name the history's switch; index_status says it is not readable
+    // (ws status shows that).
+    void clipboardHistoryOff()
+    {
+        Fixture f;
+        f.clips.push_back({1, u"text"_s, u"hello world"_s, 11, 1'700'000'000'000, 1'700'000'000'000, u"notepad"_s, {}, false, 0, 0});
+        Policy policy = f.host->policy();
+        policy.allowClipboard = true;
+        policy.captureEnabled = true;
+        policy.clipboardHistory = false;
+        f.host->setPolicy(policy);
+        const QStringList tools {u"clipboard_history"_s, u"clipboard_get"_s, u"screenshot_history"_s};
+        for (const QString& tool : tools)
+            QVERIFY2(!f.host->toolNames().contains(tool), qPrintable(tool));
+        Session ai(f.server.get());
+        QVERIFY(ai.initialize());
+        Session cli(f.server.get());
+        QVERIFY(cli.initialize(u"2025-11-25"_s, u"ws"_s));
+        const auto status = [&](int id) {
+            const auto reply = cli.exchange(callLine(id, u"index_status"_s));
+            return reply ? outcomeOf(*reply).structured.value(u"ai"_s).toObject() : QJsonObject();
+        };
+        int id = 2;
+        for (const QString& tool : tools) {
+            const QJsonObject arguments = tool == u"clipboard_get" ? QJsonObject {{u"id"_s, 1}} : QJsonObject();
+            auto reply = cli.exchange(callLine(id++, tool, arguments));
+            QVERIFY(reply);
+            Outcome out = outcomeOf(*reply);
+            QVERIFY(out.isError);
+            QCOMPARE(out.structured.value(u"error"_s).toString(), u"off"_s); // ws: exit 4
+            QCOMPARE(out.structured.value(u"setting"_s).toString(), u"clipboard_history"_s); // ... naming the history's switch
+            QVERIFY2(out.text.contains(u"设置 → 剪贴板 → “记录剪贴板历史”"), qPrintable(out.text));
+            reply = ai.exchange(callLine(id++, tool, arguments));
+            QVERIFY(reply);
+            out = outcomeOf(*reply);
+            QVERIFY(out.isError);
+            QVERIFY2(out.text.contains(u"记录剪贴板历史"), qPrintable(out.text));
+        }
+        QJsonObject state = status(id++);
+        QVERIFY(!state.value(u"clipboard_allowed"_s).toBool(true));
+        QVERIFY(!state.value(u"clipboard_history"_s).toBool(true));
+
+        // The history back on: there to read.
+        policy.clipboardHistory = true;
+        f.host->setPolicy(policy);
+        auto reply = cli.exchange(callLine(id++, u"clipboard_history"_s));
+        QVERIFY(reply);
+        Outcome out = outcomeOf(*reply);
+        QVERIFY2(!out.isError, qPrintable(out.text));
+        QCOMPARE(out.structured.value(u"returned"_s).toInt(), 1);
+        state = status(id++);
+        QVERIFY(state.value(u"clipboard_allowed"_s).toBool());
+        QVERIFY(state.value(u"clipboard_history"_s).toBool());
+
+        // Both off: AI's own switch is the one to name.
+        policy.allowClipboard = false;
+        policy.clipboardHistory = false;
+        f.host->setPolicy(policy);
+        reply = ai.exchange(callLine(id++, u"clipboard_history"_s));
+        QVERIFY(reply);
+        out = outcomeOf(*reply);
+        QVERIFY(out.isError);
+        QVERIFY2(out.text.contains(u"AI 助手") && !out.text.contains(u"记录剪贴板历史"), qPrintable(out.text));
+        QVERIFY(!out.structured.contains(u"setting"_s)); // an AI client reads the words
+        // ... and so does the setting name it, to ws, whether the history is kept or not.
+        for (const bool kept : {false, true}) {
+            policy.clipboardHistory = kept;
+            f.host->setPolicy(policy);
+            reply = cli.exchange(callLine(id++, u"clipboard_history"_s));
+            QVERIFY(reply);
+            out = outcomeOf(*reply);
+            QVERIFY(out.isError);
+            QCOMPARE(out.structured.value(u"error"_s).toString(), u"off"_s);
+            QCOMPARE(out.structured.value(u"setting"_s).toString(), u"ai_clipboard"_s);
+        }
+        // A tool with one switch names none.
+        QCOMPARE(f.host->known(u"open_item"_s), ToolHost::Known::Off);
+        reply = cli.exchange(callLine(id++, u"open_item"_s, {{u"path"_s, f.root}}));
+        QVERIFY(reply);
+        out = outcomeOf(*reply);
+        QVERIFY(out.isError);
+        QCOMPARE(out.structured.value(u"error"_s).toString(), u"off"_s);
+        QVERIFY(!out.structured.contains(u"setting"_s));
     }
 
     // take_screenshot: off unless switched on; then only what the user
@@ -1680,7 +1919,7 @@ private slots:
         ::CloseHandle(anonymous);
 
         // The tools, with that share configured and a file of it in the index.
-        auto f = std::make_unique<Fixture>(true, true, std::vector<ShareConfig> {{L"\\\\192.0.2.1\\share"}});
+        auto f = std::make_unique<Fixture>(true, true, ContentEngine::Own, std::vector<ShareConfig> {{L"\\\\192.0.2.1\\share"}});
         {
             const auto index = f->service->index();
             const auto lock = index->writeLock();
@@ -1722,8 +1961,14 @@ private slots:
         QVERIFY(refused(6, u"read_file_text"_s, {{u"path"_s, elsewhere}}));
         QVERIFY(refused(7, u"open_item"_s, {{u"path"_s, elsewhere}}));
         QVERIFY(refused(8, u"search_files"_s, {{u"query"_s, u"\\\\192.0.2.2\\share\\report"_s}}));
-        QVERIFY(refused(9, u"get_file_info"_s, {{u"path"_s, u"\\\\?\\UNC\\192.0.2.2\\share\\a.txt"_s}}));
-        QVERIFY(refused(10, u"get_file_info"_s, {{u"path"_s, u"\\\\.\\pipe\\x"_s}}));
+        // Device paths: refused as such, before that.
+        const auto device = [&](int id, const QString& path) {
+            const auto r = s->exchange(callLine(id, u"get_file_info"_s, {{u"path"_s, path}}));
+            const Outcome o = r ? outcomeOf(*r) : Outcome {};
+            return r && o.isError && o.text.contains(u"Device paths");
+        };
+        QVERIFY(device(9, u"\\\\?\\UNC\\192.0.2.2\\share\\a.txt"_s));
+        QVERIFY(device(10, u"\\\\.\\pipe\\x"_s));
         QVERIFY(f->opened.isEmpty());
         QVERIFY2(timer.elapsed() < 2000, qPrintable(QString::number(timer.elapsed())));
 
@@ -1745,6 +1990,115 @@ private slots:
         QVERIFY2(timer.elapsed() < 3000, qPrintable(QString::number(timer.elapsed())));
     }
 
+    // ws's answers of thousands of items in hundreds of folders: the folders
+    // are checked many at once, a batch of rows at a time (AsideContext::
+    // seeAhead), and each item is decided as one checked alone: what a
+    // folder that cannot be listed holds is left out, the rest come in the
+    // engine's order.
+    void manyFolders()
+    {
+        Fixture f;
+        // 160 folders of 40 names (in the index alone: the folder's check
+        // decides), a quarter of them in one that will be restricted: 6 400
+        // items, two batches.
+        for (int d = 0; d < 160; ++d) {
+            const QString relative = (d % 4 == 0 ? u"locked\\d%1"_s : u"open\\d%1"_s).arg(d, 3, 10, u'0');
+            const EntryId folder = f.subfolder(relative, 1'700'000'000);
+            const auto index = f.service->index();
+            const auto lock = index->writeLock();
+            for (int i = 0; i < 40; ++i) {
+                const QString name = u"kiwi-%1-%2.txt"_s.arg(d, 3, 10, u'0').arg(i, 2, 10, u'0');
+                index->setModified(index->add(folder, name.toStdString(), 0), 1'700'000'000 + d * 40 + i);
+            }
+        }
+        Session cli(f.server.get());
+        QVERIFY(cli.initialize(u"2025-11-25"_s, u"ws"_s));
+        int id = 2;
+        const auto paths = [&] {
+            const QJsonObject arguments {
+                {u"query"_s, u"kiwi"_s}, {u"limit"_s, 50'000}, {u"size"_s, false}, {u"kind"_s, u"files"_s}};
+            const auto reply = cli.exchange(callLine(id++, u"search_files"_s, arguments), 60000);
+            QStringList out;
+            if (reply) {
+                for (const QJsonValue& item : outcomeOf(*reply).structured.value(u"items"_s).toArray())
+                    out.push_back(item.toObject().value(u"path"_s).toString());
+            }
+            return out;
+        };
+        const QStringList all = paths();
+        QCOMPARE(all.size(), 6'400);
+        QVERIFY(f.restrict(u"locked"_s));
+        QStringList open;
+        for (const QString& path : all) {
+            if (!path.contains(u"\\locked\\"_s))
+                open.push_back(path);
+        }
+        QCOMPARE(open.size(), 4'800);
+        QCOMPARE(paths(), open);
+        QVERIFY2(f.log.last().contains(u"access checks"), qPrintable(f.log.last()));
+    }
+
+    // The times of the items (IsoTime.h): made by hand for the many of one
+    // answer, the offset asked once a day, the same text as QDateTime's.
+    void localTimes()
+    {
+        // At an offset: as QDateTime writes it there ("Z" for 0).
+        const int offsets[] {0, 3'600, -3'600, 8 * 3'600, -5 * 3'600, 19'800, 20'700, -34'200, 50'400, -43'200, 2'700};
+        for (qint64 secs = 1; secs <= 0xFFFF'FFFFll; secs += 9'999'991) {
+            for (const int offset : offsets) {
+                QCOMPARE(isoText(secs, offset),
+                    QDateTime::fromSecsSinceEpoch(secs, QTimeZone::UTC).toOffsetFromUtc(offset).toString(Qt::ISODate));
+            }
+        }
+        for (const qint64 secs : {qint64 {1}, qint64 {86'399}, qint64 {86'400}, qint64 {951'782'400},
+                 qint64 {4'102'444'799}, qint64 {0xFFFF'FFFFll}}) {
+            for (const int offset : offsets) {
+                QCOMPARE(isoText(secs, offset),
+                    QDateTime::fromSecsSinceEpoch(secs, QTimeZone::UTC).toOffsetFromUtc(offset).toString(Qt::ISODate));
+            }
+        }
+        QCOMPARE(isoText(1'700'000'000, 0), u"2023-11-14T22:13:20Z"_s);
+        QCOMPARE(isoText(1'700'000'000, 8 * 3'600), u"2023-11-15T06:13:20+08:00"_s);
+
+        // The system's zone, as the tools gave each one before (isoTime);
+        // nothing for 0 and before (not known).
+        LocalTimes local;
+        QVERIFY(local.iso(0).isNull());
+        QVERIFY(local.iso(-86'400).isNull());
+        for (qint64 secs = 1; secs <= 0xFFFF'FFFFll; secs += 86'399 * 3 + 1'234)
+            QCOMPARE(local.iso(secs), isoTime(secs));
+
+        // Zones that change their offset, by the hour around each change
+        // since 2000 and at the second it comes: those in the middle of a UTC
+        // day (Lord Howe moves 30 minutes at 15:30 UTC) go time by time.
+        int changesSeen = 0;
+        for (const char* id :
+            {"Europe/Berlin", "America/St_Johns", "Australia/Lord_Howe", "America/Sao_Paulo", "Asia/Kathmandu"}) {
+            const QTimeZone zone {QByteArray(id)};
+            if (!zone.isValid())
+                continue;
+            LocalTimes times(
+                [&](qint64 secs) { return zone.offsetFromUtc(QDateTime::fromSecsSinceEpoch(secs, QTimeZone::UTC)); });
+            const auto expected = [&](qint64 secs) {
+                const QDateTime at = QDateTime::fromSecsSinceEpoch(secs, zone);
+                return QJsonValue(at.toOffsetFromUtc(at.offsetFromUtc()).toString(Qt::ISODate));
+            };
+            const auto changes = zone.transitions(QDateTime::fromSecsSinceEpoch(946'684'800, QTimeZone::UTC),
+                QDateTime::fromSecsSinceEpoch(1'893'456'000, QTimeZone::UTC));
+            for (const QTimeZone::OffsetData& change : changes) {
+                ++changesSeen;
+                const qint64 at = change.atUtc.toSecsSinceEpoch();
+                for (qint64 secs = at - 2 * 86'400; secs <= at + 2 * 86'400; secs += 3'600)
+                    QCOMPARE(times.iso(secs), expected(secs));
+                for (const qint64 secs : {at - 61, at - 1, at, at + 1, at + 61})
+                    QCOMPARE(times.iso(secs), expected(secs));
+            }
+            for (qint64 secs = 946'684'800; secs < 1'893'456'000; secs += 86'399 * 11 + 7)
+                QCOMPARE(times.iso(secs), expected(secs));
+        }
+        QVERIFY(changesSeen > 0);
+    }
+
     void cancelAndQueue()
     {
         Fixture f;
@@ -1762,13 +2116,17 @@ private slots:
         QCOMPARE(parseObject(s.received.last()).value(u"id"_s).toInt(), 2);
         QCOMPARE(f.host->pendingCalls(), 0);
 
-        // Three in a row all answer, in order.
+        // Three in a row all answer: each finished aside once the engine is
+        // done with it, so in any order.
         const qsizetype start = s.received.size();
         for (int i = 4; i <= 6; ++i)
             f.server->receive(s.id, callLine(i, u"search_files"_s, {{u"query"_s, u"q"_s}}));
         QTRY_COMPARE(s.received.size(), start + 3);
+        QList<int> ids;
         for (int i = 0; i < 3; ++i)
-            QCOMPARE(parseObject(s.received.at(start + i)).value(u"id"_s).toInt(), 4 + i);
+            ids.push_back(parseObject(s.received.at(start + i)).value(u"id"_s).toInt());
+        std::ranges::sort(ids);
+        QCOMPARE(ids, (QList<int> {4, 5, 6}));
 
         // A session that ends takes its calls with it.
         {
@@ -1778,6 +2136,951 @@ private slots:
         }
         QTest::qWait(200);
         QCOMPARE(f.host->pendingCalls(), 0);
+    }
+
+    // A name search answers while a content search is under way: each kind
+    // has an engine of its own (Services::contentEngine). The content
+    // engine here reads an index of its own that the test holds locked: a
+    // content search stops where it starts, after its opening (empty)
+    // resultsReady, which must not finish a name search (the two engines'
+    // request ids both start at 1). Cancelling and ending a session reach the
+    // search on the right engine.
+    void namesBesideContent()
+    {
+        Fixture f(true, true, ContentEngine::Locked);
+        f.write(u"lane.txt"_s, "lane", 1'700'000'000);
+        Session s(f.server.get());
+        QVERIFY(s.initialize());
+        std::optional<std::unique_lock<std::shared_mutex>> lock(f.contentService->index()->writeLock());
+        const QJsonObject content {{u"query"_s, u"lane"_s}, {u"timeout_ms"_s, 30000}};
+        const qsizetype start = s.received.size();
+        f.server->receive(s.id, callLine(2, u"search_content"_s, content));
+        auto reply = s.exchange(callLine(3, u"search_files"_s, {{u"query"_s, u"lane"_s}}));
+        QVERIFY(reply);
+        QCOMPARE(parseObject(*reply).value(u"id"_s).toInt(), 3);
+        QCOMPARE(names(outcomeOf(*reply).structured), QStringList {u"lane.txt"_s});
+        QCOMPARE(s.received.size(), start + 1); // nothing for the content search yet
+        QCOMPARE(f.host->pendingCalls(), 1);
+
+        // A second content search waits behind the first; cancelled, the
+        // first makes way for it. Names answer all along.
+        f.server->receive(s.id, callLine(4, u"search_content"_s, content));
+        QCOMPARE(f.host->pendingCalls(), 2);
+        f.server->receive(s.id, jsonrpc::notification(u"notifications/cancelled"_s, {{u"requestId"_s, 2}}));
+        QCOMPARE(f.host->pendingCalls(), 1);
+        reply = s.exchange(callLine(5, u"search_files"_s, {{u"query"_s, u"lane"_s}}));
+        QVERIFY(reply);
+        QCOMPARE(parseObject(*reply).value(u"id"_s).toInt(), 5);
+        // A name search queued behind another and cancelled never answers;
+        // the content search is left alone.
+        const qsizetype mark = s.received.size();
+        f.server->receive(s.id, callLine(6, u"search_files"_s, {{u"query"_s, u"lane"_s}}));
+        f.server->receive(s.id, callLine(7, u"search_files"_s, {{u"query"_s, u"lane"_s}}));
+        f.server->receive(s.id, jsonrpc::notification(u"notifications/cancelled"_s, {{u"requestId"_s, 7}}));
+        QTRY_COMPARE(s.received.size(), mark + 1);
+        QTest::qWait(200);
+        QCOMPARE(s.received.size(), mark + 1);
+        QCOMPARE(parseObject(s.received.last()).value(u"id"_s).toInt(), 6);
+        QCOMPARE(f.host->pendingCalls(), 1);
+
+        // Let go: the content search that is left answers (its index is
+        // empty: nothing found, every candidate looked at), and only it.
+        lock.reset();
+        QTRY_COMPARE_WITH_TIMEOUT(s.received.size(), mark + 2, 10000);
+        QCOMPARE(parseObject(s.received.last()).value(u"id"_s).toInt(), 4);
+        Outcome out = outcomeOf(s.received.last());
+        QVERIFY2(!out.isError, qPrintable(out.text));
+        QVERIFY(out.structured.value(u"complete"_s).toBool());
+        QTest::qWait(200);
+        QCOMPARE(s.received.size(), mark + 2);
+        QCOMPARE(f.host->pendingCalls(), 0);
+
+        // A session that ends takes its content search with it.
+        lock.emplace(f.contentService->index()->writeLock());
+        {
+            Session other(f.server.get());
+            QVERIFY(other.initialize());
+            f.server->receive(other.id, callLine(2, u"search_content"_s, content));
+            QCOMPARE(f.host->pendingCalls(), 1);
+        }
+        QCOMPARE(f.host->pendingCalls(), 0);
+        reply = s.exchange(callLine(8, u"search_files"_s, {{u"query"_s, u"lane"_s}}));
+        QVERIFY(reply);
+        QCOMPARE(names(outcomeOf(*reply).structured), QStringList {u"lane.txt"_s});
+        lock.reset();
+        // ... and the content engine takes the next one.
+        reply = s.exchange(callLine(9, u"search_content"_s, {{u"query"_s, u"lane"_s}}), 10000);
+        QVERIFY(reply);
+        QCOMPARE(parseObject(*reply).value(u"id"_s).toInt(), 9);
+        QVERIFY(outcomeOf(*reply).structured.value(u"complete"_s).toBool());
+    }
+
+    // Without an engine for content searches (the plugins' host), every
+    // search queues on the one engine: a name search made just after a
+    // content search waits for it, rather than cancelling it (an engine runs
+    // only its newest request).
+    void oneEngine()
+    {
+        Fixture f(true, true, ContentEngine::None);
+        f.write(u"one.txt"_s, "the word kumquat", 1'700'000'000);
+        Session s(f.server.get());
+        QVERIFY(s.initialize());
+        const qsizetype start = s.received.size();
+        f.server->receive(s.id, callLine(2, u"search_content"_s, {{u"query"_s, u"kumquat"_s}}));
+        f.server->receive(s.id, callLine(3, u"search_files"_s, {{u"query"_s, u"one"_s}}));
+        QTRY_COMPARE_WITH_TIMEOUT(s.received.size(), start + 2, 20000);
+        // Each is finished aside once the engine is done with it: the two
+        // answers may come in either order.
+        const auto answerTo = [&](int id) {
+            for (qsizetype i = start; i < s.received.size(); ++i) {
+                if (parseObject(s.received.at(i)).value(u"id"_s).toInt() == id)
+                    return outcomeOf(s.received.at(i));
+            }
+            return Outcome {true, u"(no answer)"_s};
+        };
+        const Outcome content = answerTo(2);
+        QVERIFY2(!content.isError, qPrintable(content.text));
+        QVERIFY(content.structured.value(u"complete"_s).toBool());
+        QCOMPARE(names(content.structured), QStringList {u"one.txt"_s});
+        QCOMPARE(names(answerTo(3).structured), QStringList {u"one.txt"_s});
+    }
+
+    // ws, the command line: known by its client name. Higher limits, items
+    // without the name (the path ends with it), the result once (no text
+    // copy), the kind of an error; not listed among the sessions, counted.
+    void cliSession()
+    {
+        Fixture f;
+        // 600 names in one folder, in the index alone (size: false reads no disk).
+        const EntryId many = f.subfolder(u"many"_s, 1'700'000'000);
+        {
+            const auto index = f.service->index();
+            const auto lock = index->writeLock();
+            for (int i = 0; i < 600; ++i) {
+                const EntryId id = index->add(many, u"item-%1.log"_s.arg(i, 3, 10, u'0').toStdString(), 0);
+                index->setModified(id, 1'700'000'000 + i);
+            }
+        }
+        Session ai(f.server.get());
+        QVERIFY(ai.initialize());
+        QSignalSpy listed(f.server.get(), &McpServer::sessionsChanged);
+        QSignalSpy counted(f.server.get(), &McpServer::cliCalled);
+        Session cli(f.server.get());
+        QVERIFY(cli.initialize(u"2025-11-25"_s, u"ws"_s));
+
+        const QJsonObject query {{u"query"_s, u"item"_s}, {u"limit"_s, 1000}, {u"size"_s, false}};
+        auto reply = cli.exchange(callLine(2, u"search_files"_s, query));
+        QVERIFY(reply);
+        Outcome out = outcomeOf(*reply);
+        QVERIFY2(!out.isError, qPrintable(out.text));
+        QCOMPARE(out.structured.value(u"returned"_s).toInt(), 600); // an AI client: 200 at most
+        QVERIFY(!out.structured.value(u"truncated"_s).toBool());
+        QVERIFY(parseObject(*reply).value(u"result"_s).toObject().value(u"content"_s).toArray().isEmpty());
+        QJsonObject item = out.structured.value(u"items"_s).toArray().first().toObject();
+        QVERIFY2(item.value(u"path"_s).toString().startsWith(f.root + u"\\many\\item-"_s), qPrintable(item.value(u"path"_s).toString()));
+        QCOMPARE(item.value(u"type"_s).toString(), u"file"_s);
+        QVERIFY(item.contains(u"modified"_s));
+        QVERIFY(!item.contains(u"name"_s));
+        QVERIFY(!item.contains(u"size"_s));
+        QCOMPARE(listed.count(), 0); // ws's sessions are not listed...
+        QCOMPARE(counted.count(), 1); // ... but counted
+        QVERIFY2(f.log.last().contains(u" ws search_files "), qPrintable(f.log.last()));
+
+        // Its tools/list is the models' own: the limits there stay theirs.
+        reply = cli.exchange(requestLine(90, u"tools/list"_s));
+        QVERIFY(reply);
+        const QJsonArray tools = parseObject(*reply).value(u"result"_s).toObject().value(u"tools"_s).toArray();
+        const auto maximum = [&](const QString& tool, const QString& argument) {
+            for (const QJsonValue& v : tools) {
+                const QJsonObject t = v.toObject();
+                if (t.value(u"name"_s).toString() == tool)
+                    return t.value(u"inputSchema"_s).toObject().value(u"properties"_s).toObject().value(argument).toObject().value(u"maximum"_s).toInt();
+            }
+            return -1;
+        };
+        QCOMPARE(maximum(u"search_files"_s, u"limit"_s), 200);
+        QCOMPARE(maximum(u"recent_files"_s, u"limit"_s), 200);
+        QCOMPARE(maximum(u"list_folder"_s, u"limit"_s), 500);
+        QCOMPARE(maximum(u"search_content"_s, u"limit"_s), 100);
+        QCOMPARE(maximum(u"read_file_text"_s, u"max_chars"_s), 100'000);
+
+        // The same asked by an AI client: its limit, names, and the text too.
+        reply = ai.exchange(callLine(2, u"search_files"_s, query));
+        QVERIFY(reply);
+        out = outcomeOf(*reply);
+        QCOMPARE(out.structured.value(u"returned"_s).toInt(), 200);
+        QVERIFY(out.structured.value(u"truncated"_s).toBool());
+        QVERIFY(!out.text.isEmpty());
+        QVERIFY(out.structured.value(u"items"_s).toArray().first().toObject().contains(u"name"_s));
+
+        // list_folder and recent_files past the AI's 500 and 200.
+        reply = cli.exchange(callLine(3, u"list_folder"_s, {{u"path"_s, f.root + u"\\many"_s}, {u"limit"_s, 1000}, {u"size"_s, false}}));
+        QVERIFY(reply);
+        out = outcomeOf(*reply);
+        QCOMPARE(out.structured.value(u"returned"_s).toInt(), 600);
+        QVERIFY(!out.structured.value(u"items"_s).toArray().first().toObject().contains(u"name"_s));
+        reply = ai.exchange(callLine(3, u"list_folder"_s, {{u"path"_s, f.root + u"\\many"_s}, {u"limit"_s, 1000}, {u"size"_s, false}}));
+        QVERIFY(reply);
+        QCOMPARE(outcomeOf(*reply).structured.value(u"returned"_s).toInt(), 500);
+        reply = cli.exchange(callLine(4, u"recent_files"_s, {{u"folder"_s, f.root + u"\\many"_s}, {u"limit"_s, 1000}, {u"size"_s, false}}));
+        QVERIFY(reply);
+        out = outcomeOf(*reply);
+        QCOMPARE(out.structured.value(u"returned"_s).toInt(), 600);
+        QVERIFY(out.structured.value(u"items"_s).toArray().first().toObject().value(u"path"_s).toString().endsWith(u"item-599.log"_s));
+
+        // search_content past the AI's 100 matches, read_file_text past its 100 000 characters.
+        for (int i = 0; i < 120; ++i)
+            f.write(u"docs\\note-%1.txt"_s.arg(i), "kumquat", 1'700'000'000);
+        reply = cli.exchange(callLine(5, u"search_content"_s, {{u"query"_s, u"kumquat"_s}, {u"limit"_s, 1000}, {u"timeout_ms"_s, 30000}}), 40000);
+        QVERIFY(reply);
+        out = outcomeOf(*reply);
+        QVERIFY2(!out.isError, qPrintable(out.text));
+        QCOMPARE(out.structured.value(u"returned"_s).toInt(), 120);
+        item = out.structured.value(u"items"_s).toArray().first().toObject();
+        QVERIFY(item.contains(u"snippet"_s) && !item.contains(u"name"_s));
+        reply = ai.exchange(callLine(5, u"search_content"_s, {{u"query"_s, u"kumquat"_s}, {u"limit"_s, 1000}, {u"timeout_ms"_s, 30000}}), 40000);
+        QVERIFY(reply);
+        QCOMPARE(outcomeOf(*reply).structured.value(u"returned"_s).toInt(), 100);
+        const QString longText = f.write(u"long.txt"_s, QByteArray(150'000, 'a'), 1'700'000'000);
+        reply = cli.exchange(callLine(6, u"read_file_text"_s, {{u"path"_s, longText}, {u"max_chars"_s, 200'000}}), 20000);
+        QVERIFY(reply);
+        QCOMPARE(outcomeOf(*reply).structured.value(u"text"_s).toString().size(), 150'000);
+        reply = ai.exchange(callLine(6, u"read_file_text"_s, {{u"path"_s, longText}, {u"max_chars"_s, 200'000}}), 20000);
+        QVERIFY(reply);
+        QCOMPARE(outcomeOf(*reply).structured.value(u"text"_s).toString().size(), 100'000);
+
+        // An error: the words for both, its kind for ws alone.
+        reply = cli.exchange(callLine(7, u"list_folder"_s, {{u"path"_s, f.root + u"\\nowhere"_s}}));
+        QVERIFY(reply);
+        out = outcomeOf(*reply);
+        QVERIFY(out.isError);
+        QVERIFY2(out.text.contains(u"not in the index"), qPrintable(out.text));
+        QCOMPARE(out.structured.value(u"error"_s).toString(), u"not_found"_s);
+        reply = ai.exchange(callLine(7, u"list_folder"_s, {{u"path"_s, f.root + u"\\nowhere"_s}}));
+        QVERIFY(reply);
+        out = outcomeOf(*reply);
+        QVERIFY(out.isError && out.structured.isEmpty());
+        reply = cli.exchange(callLine(8, u"read_file_text"_s, {{u"path"_s, f.root + u"\\missing.txt"_s}}), 20000);
+        QVERIFY(reply);
+        QCOMPARE(outcomeOf(*reply).structured.value(u"error"_s).toString(), u"not_found"_s);
+        reply = cli.exchange(callLine(9, u"open_item"_s, {{u"path"_s, f.root}})); // its switch is off
+        QVERIFY(reply);
+        QCOMPARE(outcomeOf(*reply).structured.value(u"error"_s).toString(), u"off"_s);
+
+        // Counted once per run (a session), however many calls reached a
+        // tool; never listed, also as it goes.
+        const auto sessions = f.server->sessions();
+        QCOMPARE(sessions.size(), std::size_t {1});
+        QCOMPARE(sessions.front().client, u"tst_mcp"_s);
+        QCOMPARE(f.server->sessionCount(), 2);
+        QCOMPARE(f.server->cliTally().calls, 1);
+        QCOMPARE(f.server->cliTally().lastTool, u"read_file_text"_s);
+        QVERIFY(f.server->cliTally().lastCall.isValid());
+        QCOMPARE(counted.count(), 7); // told at every call that reached a tool
+        const qsizetype before = listed.count();
+        f.server->closeSession(cli.id);
+        QCOMPARE(listed.count(), before);
+        QCOMPARE(f.server->sessionCount(), 1);
+
+        // A run is named by what it was run for, not by ws's index_status
+        // probe before it; by the probe only when nothing else was asked.
+        {
+            Session run(f.server.get());
+            QVERIFY(run.initialize(u"2025-11-25"_s, u"ws"_s));
+            QVERIFY(run.exchange(callLine(2, u"index_status"_s)));
+            QCOMPARE(f.server->cliTally().calls, 2);
+            QVERIFY(run.exchange(callLine(3, u"search_files"_s, query)));
+            QVERIFY(run.exchange(callLine(4, u"index_status"_s)));
+            QCOMPARE(f.server->cliTally().calls, 2);
+            QCOMPARE(f.server->cliTally().lastTool, u"search_files"_s);
+        }
+        {
+            Session status(f.server.get());
+            QVERIFY(status.initialize(u"2025-11-25"_s, u"ws"_s));
+            QVERIFY(status.exchange(callLine(2, u"index_status"_s)));
+            QVERIFY(status.exchange(callLine(3, u"index_status"_s)));
+        }
+        QCOMPARE(f.server->cliTally().calls, 3);
+        QCOMPARE(f.server->cliTally().lastTool, u"index_status"_s); // ws status
+    }
+
+    // size: false reads no sizes from the disk (ws without -l: thousands of
+    // reads saved); sorted by size, in the index's order, they come all the same.
+    void sizeArgument()
+    {
+        Fixture f;
+        const QString big = f.write(u"a-big.bin"_s, QByteArray(5000, 'x'), 1'700'000'000);
+        const QString little = f.write(u"b-small.bin"_s, QByteArray(10, 'x'), 1'700'000'100);
+        {
+            const auto index = f.service->index();
+            const auto lock = index->writeLock();
+            index->setSize(index->findPath(big.toStdWString()), packSize(5000));
+            index->setSize(index->findPath(little.toStdWString()), packSize(10));
+        }
+        Session s(f.server.get());
+        QVERIFY(s.initialize());
+        // The size of each item; -1: none.
+        const auto sizes = [&](int id, const QString& tool, const QJsonObject& arguments) {
+            QList<int> out;
+            const auto reply = s.exchange(callLine(id, tool, arguments));
+            if (!reply)
+                return out;
+            for (const QJsonValue& v : outcomeOf(*reply).structured.value(u"items"_s).toArray())
+                out.push_back(v.toObject().contains(u"size"_s) ? v.toObject().value(u"size"_s).toInt() : -1);
+            return out;
+        };
+        QCOMPARE(sizes(2, u"search_files"_s, {{u"query"_s, u"ext:bin"_s}, {u"sort"_s, u"name"_s}}), (QList<int> {5000, 10}));
+        QCOMPARE(sizes(3, u"search_files"_s, {{u"query"_s, u"ext:bin"_s}, {u"sort"_s, u"name"_s}, {u"size"_s, false}}), (QList<int> {-1, -1}));
+        QCOMPARE(sizes(4, u"search_files"_s, {{u"query"_s, u"ext:bin"_s}, {u"sort"_s, u"smallest"_s}, {u"size"_s, false}}), (QList<int> {10, 5000}));
+        QCOMPARE(sizes(5, u"search_files"_s, {{u"query"_s, u"ext:bin"_s}, {u"sort"_s, u"largest"_s}, {u"size"_s, false}}), (QList<int> {5000, 10}));
+        QCOMPARE(sizes(6, u"list_folder"_s, {{u"path"_s, f.root}}), (QList<int> {5000, 10}));
+        QCOMPARE(sizes(7, u"list_folder"_s, {{u"path"_s, f.root}, {u"size"_s, false}}), (QList<int> {-1, -1}));
+        QCOMPARE(sizes(8, u"recent_files"_s, {{u"folder"_s, f.root}}), (QList<int> {10, 5000}));
+        QCOMPARE(sizes(9, u"recent_files"_s, {{u"folder"_s, f.root}, {u"size"_s, false}}), (QList<int> {-1, -1}));
+        const auto reply = s.exchange(callLine(10, u"list_folder"_s, {{u"path"_s, f.root}, {u"size"_s, u"no"_s}}));
+        QVERIFY(reply && outcomeOf(*reply).isError);
+        // In the schemas of the three.
+        int described = 0;
+        for (const QJsonValue& v : f.host->tools()) {
+            const QJsonObject tool = v.toObject();
+            const QJsonObject size = tool.value(u"inputSchema"_s).toObject().value(u"properties"_s).toObject().value(u"size"_s).toObject();
+            if (!size.isEmpty()) {
+                ++described;
+                QCOMPARE(size.value(u"type"_s).toString(), u"boolean"_s);
+                QVERIFY(size.value(u"default"_s).toBool());
+                QVERIFY(size.value(u"description"_s).toString().contains(u"skips reading sizes from disk"));
+            }
+        }
+        QCOMPARE(described, 3);
+    }
+
+    // search_files in some folders (ws find --in): only what lies in them,
+    // the limit counting only that; folders AI must not see, and those the
+    // caller cannot list, are not there for it; full paths only.
+    void searchFilesInFolders()
+    {
+        Fixture f;
+        for (const QString& folder : {u"甲"_s, u"乙"_s, u"丙"_s}) {
+            for (int i = 0; i < 4; ++i)
+                f.write(folder + u"\\plan-%1.txt"_s.arg(i), "p", 1'700'000'000 + i);
+        }
+        f.write(u"甲\\私\\plan-x.txt"_s, "p", 1'700'000'000);
+        f.write(u"plan-top.txt"_s, "p", 1'700'000'000);
+        Session s(f.server.get());
+        QVERIFY(s.initialize());
+        const QString sep = u"\\"_s;
+        const auto search = [&](int id, const QJsonArray& folders, int limit = 100) {
+            const auto reply = s.exchange(callLine(id, u"search_files"_s, {{u"query"_s, u"plan"_s}, {u"folders"_s, folders}, {u"limit"_s, limit}}));
+            return reply ? outcomeOf(*reply) : Outcome {true, u"(no answer)"_s};
+        };
+        const auto under = [&](const Outcome& out, const QStringList& folders) {
+            for (const QJsonValue& v : out.structured.value(u"items"_s).toArray()) {
+                const QString path = v.toObject().value(u"path"_s).toString();
+                if (std::ranges::none_of(folders, [&](const QString& folder) { return path.startsWith(f.root + sep + folder + sep); }))
+                    return false;
+            }
+            return true;
+        };
+
+        Outcome out = search(2, {f.root + u"\\甲"_s});
+        QVERIFY2(!out.isError, qPrintable(out.text));
+        QCOMPARE(out.structured.value(u"returned"_s).toInt(), 5); // and in the folders in it
+        QVERIFY(under(out, {u"甲"_s}));
+        // Two, one written with a separator at the end; the limit counts only theirs.
+        out = search(3, {f.root + u"\\乙"_s, f.root + u"\\丙\\"_s});
+        QCOMPARE(out.structured.value(u"returned"_s).toInt(), 8);
+        QVERIFY(under(out, {u"乙"_s, u"丙"_s}));
+        out = search(4, {f.root + u"\\乙"_s, f.root + u"\\丙"_s}, 3);
+        QCOMPARE(out.structured.value(u"returned"_s).toInt(), 3);
+        QVERIFY(out.structured.value(u"truncated"_s).toBool());
+        QVERIFY(under(out, {u"乙"_s, u"丙"_s}));
+
+        // A folder AI must not see: left out of one given, an error given itself.
+        Policy policy = f.host->policy();
+        policy.excludedPaths = {f.root + u"\\甲\\私"_s};
+        f.host->setPolicy(policy);
+        out = search(5, {f.root + u"\\甲"_s});
+        QCOMPARE(out.structured.value(u"returned"_s).toInt(), 4);
+        QVERIFY(under(out, {u"甲"_s}));
+        for (const QJsonValue& v : out.structured.value(u"items"_s).toArray())
+            QVERIFY(!v.toObject().value(u"path"_s).toString().contains(u"\\私\\"_s));
+        out = search(6, {f.root + u"\\甲\\私"_s});
+        QVERIFY(out.isError);
+        QVERIFY2(out.text.contains(u"not visible to AI"), qPrintable(out.text));
+        // One the caller cannot list: as if it were not there.
+        QVERIFY(f.restrict(u"丙"_s));
+        out = search(7, {f.root + u"\\丙"_s});
+        QVERIFY(out.isError);
+        QVERIFY2(out.text.contains(u"not in the index"), qPrintable(out.text));
+        f.unrestrict();
+        // Not there, a file, not a full path (relative to a current folder the
+        // host does not know: ws makes its own full).
+        out = search(8, {f.root + u"\\不在"_s});
+        QVERIFY(out.isError);
+        QVERIFY2(out.text.contains(u"not in the index"), qPrintable(out.text));
+        out = search(9, {f.root + u"\\乙\\plan-1.txt"_s});
+        QVERIFY(out.isError);
+        QVERIFY2(out.text.contains(u"is a file"), qPrintable(out.text));
+        int id = 10;
+        for (const QString& relative : {u"乙"_s, u".\\乙"_s, u"\\乙"_s, u"C:乙"_s}) {
+            out = search(id++, {relative});
+            QVERIFY2(out.isError && out.text.contains(u"full paths"), qPrintable(relative + u": "_s + out.text));
+        }
+    }
+
+    // An answer longer than a line may be (pipe::kMaxLineBytes) would end
+    // the connection at the other end with nothing said: an error that says
+    // so instead, and the session goes on.
+    void tooLarge()
+    {
+        Fixture f;
+        ExternalTool big;
+        big.name = u"big_answer"_s;
+        big.title = u"Big"_s;
+        big.description = u"An answer too large for a message"_s;
+        big.inputSchema = {{u"type"_s, u"object"_s}};
+        big.run = [](std::uint64_t, const QJsonObject&, std::function<void(ToolResult)> done) {
+            done({{{u"blob"_s, QString(static_cast<qsizetype>(pipe::kMaxLineBytes), u'x')}}});
+        };
+        f.host->setExternalTools({big});
+        Session s(f.server.get());
+        QVERIFY(s.initialize(u"2025-11-25"_s, u"ws"_s));
+        auto reply = s.exchange(callLine(2, u"big_answer"_s), 20000);
+        QVERIFY(reply);
+        QVERIFY(reply->size() < 4096);
+        const Outcome out = outcomeOf(*reply);
+        QVERIFY(out.isError);
+        QVERIFY2(out.text.contains(u"too large"), qPrintable(out.text));
+        QCOMPARE(out.structured.value(u"error"_s).toString(), u"too_large"_s);
+        QVERIFY2(f.log.last().contains(u"too large to send"), qPrintable(f.log.last()));
+        reply = s.exchange(requestLine(3, u"ping"_s));
+        QVERIFY(reply && parseObject(*reply).contains(u"result"_s));
+    }
+
+    // The work of a call that goes to the disk runs aside, never on the
+    // thread that takes the calls (get_file_info and open_item too): three
+    // jobs at a time, the rest waiting their turn, and one cancelled while
+    // it waits never runs. A search's engine takes the next search as soon as
+    // it answered the one before: a later call may answer first.
+    void asideWork()
+    {
+        Fixture f;
+        const QString file = f.write(u"aside.txt"_s, "a", 1'700'000'000);
+        Policy policy = f.host->policy();
+        policy.allowOpen = true;
+        f.host->setPolicy(policy);
+        Session s(f.server.get());
+        QVERIFY(s.initialize());
+        const QJsonObject at {{u"path"_s, file}};
+
+        // Held where it begins: not answered meanwhile.
+        int id = 2;
+        for (const QString& tool : {u"get_file_info"_s, u"open_item"_s}) {
+            f.hold->hold(tool);
+            const qsizetype before = s.received.size();
+            f.server->receive(s.id, callLine(id++, tool, at));
+            QCOMPARE(s.received.size(), before);
+            QTRY_COMPARE(f.hold->held(), 1);
+            QTest::qWait(50);
+            QCOMPARE(s.received.size(), before);
+            QCOMPARE(f.host->pendingCalls(), 1);
+            f.hold->release();
+            QTRY_COMPARE(s.received.size(), before + 1);
+            const Outcome out = outcomeOf(s.received.last());
+            QVERIFY2(!out.isError, qPrintable(out.text));
+        }
+        QCOMPARE(f.opened, QStringList {u"open "_s + file});
+
+        // A search held where it is finished: the next one answers first.
+        f.hold->hold(u"search_files"_s);
+        qsizetype mark = s.received.size();
+        f.server->receive(s.id, callLine(10, u"search_files"_s, {{u"query"_s, u"aside"_s}}));
+        QTRY_COMPARE(f.hold->held(), 1);
+        auto reply = s.exchange(callLine(11, u"search_files"_s, {{u"query"_s, u"aside"_s}}));
+        QVERIFY(reply);
+        QCOMPARE(parseObject(*reply).value(u"id"_s).toInt(), 11);
+        QCOMPARE(names(outcomeOf(*reply).structured), QStringList {u"aside.txt"_s});
+        f.hold->release();
+        QTRY_COMPARE(s.received.size(), mark + 2);
+        QCOMPARE(parseObject(s.received.last()).value(u"id"_s).toInt(), 10);
+        QCOMPARE(names(outcomeOf(s.received.last()).structured), QStringList {u"aside.txt"_s});
+
+        // Three at a time: with three held, a fourth waits its turn, and one
+        // cancelled meanwhile never runs.
+        const int infos = f.hold->startedOf(u"get_file_info"_s);
+        f.hold->hold(u"list_folder"_s, 3);
+        mark = s.received.size();
+        for (int i = 20; i < 23; ++i)
+            f.server->receive(s.id, callLine(i, u"list_folder"_s, {{u"path"_s, f.root}}));
+        QTRY_COMPARE(f.hold->held(), 3);
+        f.server->receive(s.id, callLine(23, u"get_file_info"_s, at));
+        f.server->receive(s.id, callLine(24, u"get_file_info"_s, at));
+        f.server->receive(s.id, jsonrpc::notification(u"notifications/cancelled"_s, {{u"requestId"_s, 24}}));
+        QTest::qWait(300);
+        QCOMPARE(f.hold->startedOf(u"get_file_info"_s), infos);
+        QCOMPARE(s.received.size(), mark);
+        QCOMPARE(f.host->pendingCalls(), 4);
+        f.hold->release();
+        QTRY_COMPARE(s.received.size(), mark + 4);
+        QTest::qWait(200);
+        QCOMPARE(s.received.size(), mark + 4);
+        QCOMPARE(f.hold->startedOf(u"get_file_info"_s), infos + 1);
+        QCOMPARE(f.host->pendingCalls(), 0);
+        QVERIFY(!f.hold->ranOn(std::this_thread::get_id()));
+    }
+
+    // The host going tells all its work aside to stop at once, and only then
+    // waits for it: three jobs that each take 600 ms to give up take about
+    // that together, not one after the other; none answers.
+    void stopAllThenJoin()
+    {
+        Fixture f;
+        f.write(u"stop.txt"_s, "s", 1'700'000'000);
+        {
+            const std::lock_guard lock(f.hold->mutex);
+            f.hold->slowStop = 600;
+        }
+        f.hold->hold(u"list_folder"_s, 3);
+        int answered = 0;
+        for (std::uint64_t id = 1; id <= 3; ++id)
+            f.host->call(id, u"tst"_s, u"list_folder"_s, {{u"path"_s, f.root}}, [&](ToolResult) { ++answered; });
+        QTRY_COMPARE(f.hold->held(), 3);
+        f.server.reset(); // no sessions: the calls are the host's alone
+        QElapsedTimer timer;
+        timer.start();
+        f.host.reset();
+        const qint64 took = timer.elapsed();
+        QVERIFY2(took >= 550 && took < 1400, qPrintable(QString::number(took)));
+        QTest::qWait(50);
+        QCOMPARE(answered, 0);
+        QCOMPARE(f.hold->held(), 0);
+    }
+
+    // search_content's timeout counts from the call: one still waiting
+    // behind another when it runs out answers then, having searched
+    // nothing; one that waited part of it searches for the rest.
+    void contentQueueTimeout()
+    {
+        Fixture f(true, true, ContentEngine::Locked);
+        f.write(u"queue.txt"_s, "kumquat", 1'700'000'000);
+        Session s(f.server.get());
+        QVERIFY(s.initialize());
+        // The content engine's index locked: a search stays where it starts.
+        std::optional<std::unique_lock<std::shared_mutex>> lock(f.contentService->index()->writeLock());
+        const auto content = [](int timeout) { return QJsonObject {{u"query"_s, u"kumquat"_s}, {u"timeout_ms"_s, timeout}}; };
+        const qsizetype start = s.received.size();
+        f.server->receive(s.id, callLine(2, u"search_content"_s, content(30000)));
+        QElapsedTimer timer;
+        timer.start();
+        f.server->receive(s.id, callLine(3, u"search_content"_s, content(800)));
+        QTRY_COMPARE_WITH_TIMEOUT(s.received.size(), start + 1, 10000);
+        QVERIFY2(timer.elapsed() >= 700, qPrintable(QString::number(timer.elapsed())));
+        QCOMPARE(parseObject(s.received.last()).value(u"id"_s).toInt(), 3);
+        Outcome out = outcomeOf(s.received.last());
+        QVERIFY2(!out.isError, qPrintable(out.text));
+        QVERIFY(!out.structured.value(u"complete"_s).toBool());
+        QVERIFY(out.structured.value(u"queued"_s).toBool()); // nothing was searched: ws tells it from a search that ran out of time
+        QCOMPARE(out.structured.value(u"returned"_s).toInt(), 0);
+        QCOMPARE(out.structured.value(u"items"_s).toArray().size(), 0);
+        QVERIFY2(out.structured.value(u"note"_s).toString().contains(u"did not start"), qPrintable(out.structured.value(u"note"_s).toString()));
+        QCOMPARE(f.host->pendingCalls(), 1); // the first searches on
+
+        // Waited 1.5 s of its 3: it searches for the other 1.5 s.
+        timer.restart();
+        f.server->receive(s.id, callLine(4, u"search_content"_s, content(3000)));
+        QTest::qWait(1500);
+        f.server->receive(s.id, jsonrpc::notification(u"notifications/cancelled"_s, {{u"requestId"_s, 2}}));
+        QTRY_COMPARE_WITH_TIMEOUT(s.received.size(), start + 2, 10000);
+        const qint64 took = timer.elapsed();
+        QVERIFY2(took >= 2900 && took < 4000, qPrintable(QString::number(took)));
+        QCOMPARE(parseObject(s.received.last()).value(u"id"_s).toInt(), 4);
+        out = outcomeOf(s.received.last());
+        QVERIFY2(!out.isError, qPrintable(out.text));
+        QVERIFY(!out.structured.value(u"complete"_s).toBool());
+        QVERIFY(!out.structured.contains(u"queued"_s)); // it waited, then searched
+        QVERIFY2(out.structured.value(u"note"_s).toString().contains(u"timeout ran out"), qPrintable(out.structured.value(u"note"_s).toString()));
+        lock.reset();
+        QTRY_COMPARE(f.host->pendingCalls(), 0);
+    }
+
+    // truncated: only when there was more to give than was given (one more
+    // seen past the limit, or the list cut to fit one answer), not when the
+    // limit was just reached, nor for what is hidden from AI; list_folder's
+    // total counts only what AI may see.
+    void truncatedOnlyWhenMore()
+    {
+        Fixture f;
+        for (int i = 0; i < 3; ++i)
+            f.write(u"exact-%1.txt"_s.arg(i), "x", 1'700'000'000 + i);
+        for (int i = 0; i < 20; ++i)
+            f.subfolder(u"exact-dir-%1"_s.arg(i, 2, 10, u'0'), 1'700'000'000);
+        f.write(u"private\\exact-p.txt"_s, "x", 1'700'000'100); // the newest, hidden from AI
+        Policy policy = f.host->policy();
+        policy.excludedPaths = {f.root + u"\\private"_s};
+        f.host->setPolicy(policy);
+        Session s(f.server.get());
+        QVERIFY(s.initialize());
+        int id = 2;
+        const auto ask = [&](const QString& tool, const QJsonObject& arguments) {
+            const auto reply = s.exchange(callLine(id++, tool, arguments));
+            return reply ? outcomeOf(*reply).structured : QJsonObject {};
+        };
+        const auto shown = [](const QJsonObject& out) {
+            return std::pair {out.value(u"returned"_s).toInt(), out.value(u"truncated"_s).toBool()};
+        };
+        using Shown = std::pair<int, bool>;
+        // Files: exactly the limit, all of them (the folders that match, and
+        // the file hidden from AI, are not more of them); one fewer, more.
+        const QJsonObject files {{u"query"_s, u"exact"_s}, {u"kind"_s, u"files"_s}};
+        QJsonObject arguments = files;
+        arguments.insert(u"limit"_s, 3);
+        QCOMPARE(shown(ask(u"search_files"_s, arguments)), (Shown {3, false}));
+        arguments.insert(u"limit"_s, 2);
+        QCOMPARE(shown(ask(u"search_files"_s, arguments)), (Shown {2, true}));
+        // Both kinds: 3 files and 20 folders.
+        QCOMPARE(shown(ask(u"search_files"_s, {{u"query"_s, u"exact"_s}, {u"limit"_s, 23}})), (Shown {23, false}));
+        QCOMPARE(shown(ask(u"search_files"_s, {{u"query"_s, u"exact"_s}, {u"limit"_s, 22}})), (Shown {22, true}));
+        // recent_files: the newest is the hidden one; kept two per one asked
+        // for, the rest are more.
+        QCOMPARE(shown(ask(u"recent_files"_s, {{u"folder"_s, f.root}, {u"limit"_s, 3}})), (Shown {3, false}));
+        QCOMPARE(shown(ask(u"recent_files"_s, {{u"folder"_s, f.root}, {u"limit"_s, 2}})), (Shown {2, true}));
+        QCOMPARE(shown(ask(u"recent_files"_s, {{u"folder"_s, f.root}, {u"limit"_s, 1}})), (Shown {1, true}));
+        // list_folder: 23 entries AI may see, beside the folder it may not.
+        QJsonObject out = ask(u"list_folder"_s, {{u"path"_s, f.root}, {u"limit"_s, 23}});
+        QCOMPARE(shown(out), (Shown {23, false}));
+        QCOMPARE(out.value(u"total"_s).toInt(), 23);
+        out = ask(u"list_folder"_s, {{u"path"_s, f.root}, {u"limit"_s, 22}});
+        QCOMPARE(shown(out), (Shown {22, true}));
+        QCOMPARE(out.value(u"total"_s).toInt(), 23);
+    }
+
+    // An answer is held to about 15 MB (5 for a model's, which goes out
+    // twice, as text too): past that a list ends there, truncated, and a
+    // text at next_offset. too_large is left for what cannot be cut.
+    void answerBudget()
+    {
+        Fixture f;
+        // 20 000 names of 257 characters, most three bytes: 17 MB of items for ws.
+        const EntryId big = f.subfolder(u"big"_s, 1'700'000'000);
+        const QString wide(240, QChar(0x20AC));
+        {
+            const auto index = f.service->index();
+            const auto lock = index->writeLock();
+            for (int i = 0; i < 20'000; ++i) {
+                const EntryId entry = index->add(big, (u"budget-%1-"_s.arg(i, 5, 10, u'0') + wide + u".log"_s).toStdString(), 0);
+                index->setModified(entry, 1'700'000'000 + i);
+            }
+        }
+        // 3 million control characters, an escape of six bytes each: 18 MB of text.
+        const QString control = f.write(u"control.txt"_s, QByteArray(3'000'000, '\x01'), 1'700'000'000);
+        Session cli(f.server.get());
+        QVERIFY(cli.initialize(u"2025-11-25"_s, u"ws"_s));
+
+        const QString folder = f.root + u"\\big"_s;
+        const std::pair<QString, QJsonObject> lists[] {
+            {u"search_files"_s, {{u"query"_s, u"budget"_s}, {u"limit"_s, 50'000}, {u"size"_s, false}}},
+            {u"list_folder"_s, {{u"path"_s, folder}, {u"limit"_s, 50'000}, {u"size"_s, false}}},
+            {u"recent_files"_s, {{u"folder"_s, folder}, {u"limit"_s, 50'000}, {u"size"_s, false}}},
+        };
+        int id = 2;
+        for (const auto& [tool, arguments] : lists) {
+            const auto reply = cli.exchange(callLine(id++, tool, arguments), 60000);
+            QVERIFY2(reply, qPrintable(tool));
+            QVERIFY2(static_cast<std::size_t>(reply->size()) <= pipe::kMaxLineBytes, qPrintable(tool + u": "_s + QString::number(reply->size())));
+            const Outcome out = outcomeOf(*reply);
+            QVERIFY2(!out.isError, qPrintable(tool + u": "_s + out.text));
+            const int returned = out.structured.value(u"returned"_s).toInt();
+            QVERIFY2(returned >= 10'000 && returned < 20'000, qPrintable(tool + u": "_s + QString::number(returned)));
+            QCOMPARE(out.structured.value(u"items"_s).toArray().size(), returned);
+            QVERIFY2(out.structured.value(u"truncated"_s).toBool(), qPrintable(tool));
+        }
+
+        // A text: as much as fits, then the rest from next_offset.
+        auto reply = cli.exchange(callLine(10, u"read_file_text"_s, {{u"path"_s, control}, {u"max_chars"_s, 4'000'000}}), 60000);
+        QVERIFY(reply);
+        QVERIFY2(static_cast<std::size_t>(reply->size()) <= pipe::kMaxLineBytes, qPrintable(QString::number(reply->size())));
+        Outcome out = outcomeOf(*reply);
+        QVERIFY2(!out.isError, qPrintable(out.text));
+        const qsizetype first = out.structured.value(u"text"_s).toString().size();
+        QVERIFY2(first >= 2'000'000 && first < 3'000'000, qPrintable(QString::number(first)));
+        QCOMPARE(out.structured.value(u"chars"_s).toInt(), 3'000'000);
+        QCOMPARE(out.structured.value(u"next_offset"_s).toInt(), first);
+        reply = cli.exchange(callLine(11, u"read_file_text"_s, {{u"path"_s, control}, {u"max_chars"_s, 4'000'000}, {u"offset"_s, first}}), 60000);
+        QVERIFY(reply);
+        out = outcomeOf(*reply);
+        QCOMPARE(out.structured.value(u"text"_s).toString().size(), 3'000'000 - first);
+        QVERIFY(!out.structured.contains(u"next_offset"_s));
+
+        // A model's 100 000 characters fit its own budget whole.
+        Session ai(f.server.get());
+        QVERIFY(ai.initialize());
+        reply = ai.exchange(callLine(2, u"read_file_text"_s, {{u"path"_s, control}, {u"max_chars"_s, 100'000}}), 60000);
+        QVERIFY(reply);
+        out = outcomeOf(*reply);
+        QCOMPARE(out.structured.value(u"text"_s).toString().size(), 100'000);
+        QCOMPARE(out.structured.value(u"next_offset"_s).toInt(), 100'000);
+    }
+
+    // What a folder named in a call tells of a path the caller cannot see:
+    // nothing. A file it can see is called a file; one in a folder it cannot
+    // list is not in the index for it, as one on no disk at all
+    // (search_files, search_content, list_folder, recent_files).
+    void privacyOrder()
+    {
+        Fixture f;
+        const QString seen = f.write(u"open\\seen.txt"_s, "kumquat", 1'700'000'000);
+        const QString unseen = f.write(u"locked\\unseen.txt"_s, "kumquat", 1'700'000'000);
+        QVERIFY(f.restrict(u"locked"_s));
+        Session s(f.server.get());
+        QVERIFY(s.initialize(u"2025-11-25"_s, u"ws"_s));
+        int id = 2;
+        const auto ask = [&](const QString& tool, const QString& path) {
+            QJsonObject arguments {{u"query"_s, u"kumquat"_s}, {u"folders"_s, QJsonArray {path}}};
+            if (tool == u"list_folder")
+                arguments = {{u"path"_s, path}};
+            else if (tool == u"recent_files")
+                arguments = {{u"folder"_s, path}};
+            const auto reply = s.exchange(callLine(id++, tool, arguments), 20000);
+            return reply ? outcomeOf(*reply) : Outcome {true, u"(no answer)"_s};
+        };
+        for (const QString& tool : {u"search_files"_s, u"search_content"_s, u"list_folder"_s, u"recent_files"_s}) {
+            Outcome out = ask(tool, seen);
+            QVERIFY2(out.isError && out.text.contains(u"is a file"), qPrintable(tool + u": "_s + out.text));
+            QVERIFY(out.structured.value(u"error"_s).toString().isEmpty());
+            for (const QString& path : {unseen, f.root + u"\\locked\\nothing.txt"_s, f.root + u"\\nothing.txt"_s}) {
+                out = ask(tool, path);
+                QVERIFY2(out.isError && out.text.contains(u"not in the index"), qPrintable(tool + u" " + path + u": "_s + out.text));
+                QCOMPARE(out.structured.value(u"error"_s).toString(), u"not_found"_s);
+            }
+        }
+    }
+
+    // A network share that cannot be reached now: nothing on it is looked
+    // at (an access check, a size, a path opened there would wait for the
+    // network), its entries are left out, and a folder or a path on it is
+    // not there.
+    void offlineShares()
+    {
+        const QString share = u"\\\\ws-test-gone\\share"_s;
+        Fixture f(true, true, ContentEngine::Own, {ShareConfig {share.toStdWString()}});
+        Policy policy = f.host->policy();
+        policy.allowOpen = true;
+        f.host->setPolicy(policy);
+        f.addShare(share, {u"remote-kumquat.txt"_s, u"docs\\remote-kumquat-2.txt"_s}, 1'700'000'500);
+        f.offline->set({share});
+        Session s(f.server.get());
+        QVERIFY(s.initialize());
+        const qsizetype logged = f.log.size();
+        QElapsedTimer timer;
+        timer.start();
+
+        auto reply = s.exchange(callLine(2, u"search_files"_s, {{u"query"_s, u"remote-kumquat"_s}}));
+        QVERIFY(reply);
+        Outcome out = outcomeOf(*reply);
+        QVERIFY2(!out.isError, qPrintable(out.text));
+        QCOMPARE(out.structured.value(u"returned"_s).toInt(), 0);
+        reply = s.exchange(callLine(3, u"recent_files"_s));
+        QVERIFY(reply);
+        out = outcomeOf(*reply);
+        QVERIFY2(!out.isError, qPrintable(out.text));
+        QCOMPARE(out.structured.value(u"returned"_s).toInt(), 0);
+
+        // Named: not there.
+        const QString docs = share + u"\\docs"_s;
+        const QString remote = share + u"\\remote-kumquat.txt"_s;
+        const std::pair<QString, QJsonObject> named[] {
+            {u"search_files"_s, {{u"query"_s, u"kumquat"_s}, {u"folders"_s, QJsonArray {docs}}}},
+            {u"search_content"_s, {{u"query"_s, u"kumquat"_s}, {u"folders"_s, QJsonArray {share}}}},
+            {u"list_folder"_s, {{u"path"_s, docs}}},
+            {u"recent_files"_s, {{u"folder"_s, share}}},
+            {u"read_file_text"_s, {{u"path"_s, remote}}},
+            {u"open_item"_s, {{u"path"_s, remote}}},
+        };
+        int id = 4;
+        for (const auto& [tool, arguments] : named) {
+            reply = s.exchange(callLine(id++, tool, arguments));
+            QVERIFY2(reply, qPrintable(tool));
+            out = outcomeOf(*reply);
+            QVERIFY2(out.isError, qPrintable(tool));
+            QVERIFY2(out.text.contains(u"cannot be reached now") || out.text.contains(u"no such file"), qPrintable(tool + u": "_s + out.text));
+        }
+        reply = s.exchange(callLine(id++, u"get_file_info"_s, {{u"path"_s, remote}}));
+        QVERIFY(reply);
+        out = outcomeOf(*reply);
+        QVERIFY2(!out.isError, qPrintable(out.text));
+        QVERIFY(!out.structured.value(u"exists"_s).toBool());
+        QVERIFY2(out.structured.value(u"error"_s).toString().contains(u"cannot be reached now"), qPrintable(out.structured.value(u"error"_s).toString()));
+        QVERIFY(f.opened.isEmpty());
+        // None of it waited for the network, nor checked anything there.
+        QVERIFY2(timer.elapsed() < 3000, qPrintable(QString::number(timer.elapsed())));
+        for (qsizetype i = logged; i < f.log.size(); ++i)
+            QVERIFY2(!f.log.at(i).contains(u"access checks"), qPrintable(f.log.at(i)));
+    }
+
+    // A path is taken for where it leads: not a way into a folder hidden
+    // from AI by a junction, a short (8.3) name, a device path (\\?\), or
+    // this computer's own share by a network path. Without such folders a
+    // link is followed: get_file_info says the path given, open_item opens
+    // where it leads.
+    void finalPaths()
+    {
+        Fixture f;
+        wchar_t longName[4096] {};
+        const DWORD longLength = ::GetLongPathNameW(f.root.toStdWString().c_str(), longName, 4096);
+        if (QString::fromWCharArray(longName, longLength).compare(f.root, Qt::CaseInsensitive) != 0)
+            QSKIP("The temporary folder is named by short names here: what paths lead to is compared in long names");
+        const QString secret = f.write(u"private-folder\\p.txt"_s, "secret kumquat", 1'700'000'000);
+        const QString open = f.write(u"open.txt"_s, "open", 1'700'000'000);
+        Policy policy = f.host->policy();
+        policy.allowOpen = true;
+        policy.excludedPaths = {f.root + u"\\private-folder"_s};
+        f.host->setPolicy(policy);
+        const QString link = f.root + u"\\link"_s;
+        QCOMPARE(QProcess::execute(u"cmd.exe"_s, {u"/c"_s, u"mklink"_s, u"/J"_s, link, f.root + u"\\private-folder"_s}), 0);
+        const auto unlink = qScopeGuard([&] { ::RemoveDirectoryW(link.toStdWString().c_str()); });
+        QVERIFY(QFileInfo::exists(link + u"\\p.txt"_s));
+        Session s(f.server.get());
+        QVERIFY(s.initialize(u"2025-11-25"_s, u"ws"_s));
+        int id = 2;
+        const auto call = [&](const QString& tool, const QString& path) {
+            const auto reply = s.exchange(callLine(id++, tool, {{u"path"_s, path}}), 20000);
+            return reply ? outcomeOf(*reply) : Outcome {true, u"(no answer)"_s};
+        };
+        const auto shown = [](const Outcome& out) {
+            return out.text + u" "_s + QString::fromUtf8(QJsonDocument(out.structured).toJson(QJsonDocument::Compact));
+        };
+        // Empty: hidden from all three tools, as it should be.
+        const auto hidden = [&](const QString& path) -> QString {
+            Outcome out = call(u"read_file_text"_s, path);
+            if (!out.isError || out.structured.value(u"error"_s).toString() != u"not_found")
+                return u"read_file_text: "_s + shown(out);
+            out = call(u"get_file_info"_s, path);
+            if (out.isError ? out.structured.value(u"error"_s).toString() != u"not_found" : out.structured.value(u"exists"_s).toBool())
+                return u"get_file_info: "_s + shown(out);
+            out = call(u"open_item"_s, path);
+            if (!out.isError || out.structured.value(u"error"_s).toString() != u"not_found")
+                return u"open_item: "_s + shown(out);
+            return {};
+        };
+        for (const QString& path : {secret, link + u"\\p.txt"_s, link, link + u"\\..\\link\\p.txt"_s}) {
+            const QString problem = hidden(path);
+            QVERIFY2(problem.isEmpty(), qPrintable(path + u": "_s + problem));
+        }
+        // A short name, where the volume makes them.
+        wchar_t shortName[4096] {};
+        const DWORD shortLength = ::GetShortPathNameW(secret.toStdWString().c_str(), shortName, 4096);
+        const QString shortPath = QString::fromWCharArray(shortName, shortLength);
+        if (shortLength > 0 && shortLength < 4096 && !shortPath.contains(u"private-folder"_s, Qt::CaseInsensitive)) {
+            const QString problem = hidden(shortPath);
+            QVERIFY2(problem.isEmpty(), qPrintable(shortPath + u": "_s + problem));
+        } else {
+            qInfo("No 8.3 names on this volume: short names are not tried");
+        }
+        QVERIFY(f.opened.isEmpty());
+
+        // Device paths: never, whatever they lead to.
+        for (const QString& device : {u"\\\\?\\"_s + secret, u"\\\\.\\"_s + open, u"//?/"_s + QDir::fromNativeSeparators(open), u"\\??\\"_s + open}) {
+            for (const QString& tool : {u"get_file_info"_s, u"read_file_text"_s, u"open_item"_s}) {
+                const Outcome out = call(tool, device);
+                QVERIFY2(out.isError && out.text.contains(u"Device paths"), qPrintable(tool + u" " + device + u": "_s + shown(out)));
+            }
+        }
+        // This computer by a network path: not while folders are hidden from AI.
+        wchar_t computer[256] {};
+        DWORD size = 256;
+        QVERIFY(::GetComputerNameExW(ComputerNameNetBIOS, computer, &size));
+        const QString tail = f.root.left(1) + u"$"_s + f.root.mid(2) + u"\\open.txt"_s;
+        for (const QString& host : {u"localhost"_s, u"127.0.0.1"_s, u"LocalHost."_s, QString::fromWCharArray(computer, size)}) {
+            const QString unc = u"\\\\"_s + host + u"\\"_s + tail;
+            for (const QString& tool : {u"get_file_info"_s, u"read_file_text"_s}) {
+                const Outcome out = call(tool, unc);
+                QVERIFY2(out.isError && out.text.contains(u"leads back"), qPrintable(tool + u" " + unc + u": "_s + shown(out)));
+                QCOMPARE(out.structured.value(u"error"_s).toString(), u"not_found"_s);
+            }
+        }
+        QVERIFY(f.opened.isEmpty());
+
+        // No folder hidden: a link is followed.
+        policy.excludedPaths.clear();
+        f.host->setPolicy(policy);
+        Outcome out = call(u"get_file_info"_s, link + u"\\p.txt"_s);
+        QVERIFY2(out.structured.value(u"exists"_s).toBool(), qPrintable(shown(out)));
+        QCOMPARE(out.structured.value(u"path"_s).toString(), link + u"\\p.txt"_s);
+        QVERIFY(out.structured.value(u"indexed"_s).toBool()); // where it leads is in the index
+        out = call(u"read_file_text"_s, link + u"\\p.txt"_s);
+        QCOMPARE(out.structured.value(u"text"_s).toString(), u"secret kumquat"_s);
+        out = call(u"open_item"_s, link + u"\\p.txt"_s);
+        QVERIFY2(!out.isError, qPrintable(shown(out)));
+        QCOMPARE(f.opened.size(), 1);
+        QCOMPARE(f.opened.first().compare(u"open "_s + secret, Qt::CaseInsensitive), 0);
+    }
+
+    // The answer's JSON is made where the work was done (CallOptions::encode,
+    // as McpServer asks): the same bytes on the wire as made on this thread,
+    // and the result keeps only what its log line reads.
+    void encodedAside()
+    {
+        Fixture f;
+        f.write(u"enc.txt"_s, "e", 1'700'000'000);
+        std::optional<ToolResult> got;
+        const auto run = [&](std::uint64_t id, const QJsonObject& arguments, CallOptions options) {
+            got.reset();
+            f.host->call(id, u"tst"_s, u"list_folder"_s, arguments, [&](ToolResult r) { got = std::move(r); }, options);
+            return QTest::qWaitFor([&] { return got.has_value(); }, 10000);
+        };
+        const QJsonObject list {{u"path"_s, f.root}};
+        QVERIFY(run(1, list, {nullptr, false, true}));
+        QVERIFY(!got->encoded.isEmpty());
+        QCOMPARE(got->structured, (QJsonObject {{u"returned"_s, 1}}));
+        const QByteArray bytes = got->encoded;
+        const QJsonObject encoded = QJsonDocument::fromJson(bytes).object();
+        QCOMPARE(encoded.value(u"structuredContent"_s).toObject().value(u"items"_s).toArray().size(), 1);
+        QCOMPARE(encoded.value(u"content"_s).toArray().size(), 1); // a model's: the text too
+        // Not asked for: the whole result, made into JSON here (McpServer), the same.
+        QVERIFY(run(2, list, {nullptr, false, false}));
+        QVERIFY(got->encoded.isEmpty());
+        QCOMPARE(QJsonDocument(callToolResult(*got, false)).toJson(QJsonDocument::Compact), bytes);
+        for (const QJsonValue& id : {QJsonValue(7), QJsonValue(u"seven"_s), QJsonValue(1e15), QJsonValue(-2)})
+            QCOMPARE(jsonrpc::responseWithResult(id, bytes), jsonrpc::response(id, encoded));
+        // ws's: an error with its kind.
+        QVERIFY(run(3, {{u"path"_s, f.root + u"\\nowhere"_s}}, {nullptr, true, true}));
+        QVERIFY(got->isError);
+        const QJsonObject error = QJsonDocument::fromJson(got->encoded).object();
+        QVERIFY(error.value(u"isError"_s).toBool());
+        QCOMPARE(error.value(u"structuredContent"_s).toObject().value(u"error"_s).toString(), u"not_found"_s);
+    }
+
+    // The work aside goes at a hard disk's pace while the user is there, as
+    // the indexer's quiet mode does: background mode for a path on one, the
+    // network and the user away at full speed; ended with it.
+    void quietIo()
+    {
+        const QString drive = QDir::toNativeSeparators(QDir::rootPath()).left(2).toUpper();
+        qputenv("WINSHUN_SPINNING", drive.toUtf8()); // this drive counts as a hard disk
+        const auto unset = qScopeGuard([] { qunsetenv("WINSHUN_SPINNING"); });
+        {
+            QuietIo quiet(false);
+            QVERIFY(!quiet.background());
+            quiet.at(drive + u"\\Windows"_s);
+            QVERIFY(quiet.background());
+            quiet.at(drive + u"\\Windows\\System32"_s);
+            QVERIFY(quiet.background());
+            quiet.at(u"\\\\server\\share\\file"_s);
+            QVERIFY(!quiet.background());
+            quiet.at(drive + u"\\x"_s);
+            QVERIFY(quiet.background());
+        }
+        {
+            // Begun anew: the thread was let go of (begun twice, it fails).
+            QuietIo again(false);
+            again.at(drive + u"\\x"_s);
+            QVERIFY(again.background());
+        }
+        {
+            QuietIo away(true);
+            away.at(drive + u"\\x"_s);
+            QVERIFY(!away.background());
+        }
     }
 
     void pipeEndToEnd()

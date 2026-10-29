@@ -134,16 +134,34 @@
 //                      that name no app here, and the shortcuts that run
 //                      something else through a host program (cmd /k ...);
 //                      --all lists every app with its arguments and program
-//   wsbench --mcp-host [--pipe NAME] [--index FOLDER] [--plugins DIR]
+//   wsbench --mcp-host [--pipe NAME] [--index FOLDER] [--plugins DIR] [--history FILE] [--frozen]
 //                      serves Win顺's MCP tools (src/mcp) on a named pipe as
 //                      the app does, over a copy of the index files (made in
 //                      the temporary folder unless --index names a folder
 //                      with index.bin), for testing with real AI clients
-//                      (WinShunMcp.exe --pipe NAME) while the app runs; the
-//                      pipe's name defaults to the app's with ".bench" added.
+//                      (WinShunMcp.exe --pipe NAME) or ws while the app runs;
+//                      the pipe's name defaults to the app's with ".bench"
+//                      added. The ranking uses the app's history.txt (read
+//                      only), or FILE. --frozen: the index as the snapshot
+//                      has it, no disk read or walked (without administrator
+//                      rights the volumes cannot be opened, and walking every
+//                      disk instead takes minutes): for measuring searches.
 //                      With --plugins, the plugins of DIR (every one enabled,
 //                      actions allowed) are tools too, as the AI 助手 page's
 //                      switches would make them (plugin::AiBridge)
+//   wsbench --mcp-search [--index FOLDER] [--history FILE] [--runs N] [--limit A,B] [--sort S,T]
+//                      [--kind K] [--size] [QUERY ...]
+//                      what ws's name searches cost Win顺: search_files as
+//                      ws asks for it (ToolHost in this process, no pipe)
+//                      over a frozen copy of the index (or the one in
+//                      FOLDER), ranked with the app's history.txt (read
+//                      only) or FILE. For each query (report and a unless
+//                      given), sort (relevance) and limit (100,50000), N
+//                      runs (3): the time to the answer, the engine's part,
+//                      the access checks, the rest, the items, the answer's
+//                      MB and the process's peak commit so far (one query
+//                      at --limit 100,50000: the large limit should not
+//                      move it)
 //   wsbench --plugin FOLDER --query "TEXT" [--runs N] [--setting KEY=VALUE ...] [--action ID] [--app-dir DIR]
 //                      a plugin (src/plugin) as the app runs it: checks its
 //                      plugin.json, starts it through WinShunPluginHost.exe
@@ -5105,6 +5123,12 @@ int runMcpHost(QStringList args)
         pluginsDir = QDir(args[at + 1]).absolutePath();
         args.remove(at, 2);
     }
+    QString historyFile;
+    if (const qsizetype at = args.indexOf(u"--history"_s); at >= 0 && at + 1 < args.size()) {
+        historyFile = args[at + 1];
+        args.remove(at, 2);
+    }
+    const bool frozen = args.removeAll(u"--frozen"_s) > 0;
     ws::Settings settings;
     settings.load();
     QTemporaryDir temp;
@@ -5132,11 +5156,25 @@ int runMcpHost(QStringList args)
     options.content.extensions = settings.contentExtensions;
     options.content.documents = settings.contentDocuments;
     options.content.sizeLimits = settings.contentSizeLimits();
+    if (frozen) {
+        // No way to the volumes, and waited for all the while: the passes
+        // neither catch up nor walk (IndexService::awaitAccess).
+        options.volumeAccess = std::make_shared<ws::ntfs::NoVolumeAccess>();
+        options.accessWaitMs = std::numeric_limits<int>::max();
+    }
     ws::IndexService service(indexFolder, options);
+    // Two engines, as the app's host has: content searches on their own.
     ws::SearchEngine engine(&service);
+    ws::SearchEngine contentEngine(&service);
+    // The ranking with the app's history, as the app's host ranks (read
+    // only: never recorded or saved here).
+    ws::History history(historyFile.isEmpty() ? ws::Settings::dataDir() + u"\\history.txt"_s : historyFile);
+    history.load();
     ws::mcp::Services services;
     services.index = &service;
     services.engine = &engine;
+    services.contentEngine = &contentEngine;
+    services.history = [&history] { return history.items(); };
     services.version = QStringLiteral(WINSHUN_VERSION "-bench");
     services.log = [](const QString& line) {
         std::printf("%s\n", qUtf8Printable(line));
@@ -5216,6 +5254,148 @@ int runMcpHost(QStringList args)
     bridge.reset();
     if (plugins)
         plugins->shutdown();
+    service.shutdown();
+    return 0;
+}
+
+// ---- search_files as ws asks for it (--mcp-search) -------------------------------
+
+// What ws's name searches cost Win顺, in this process and without a pipe:
+// ToolHost's search_files with ws's options (CallOptions cli and encode, the
+// default token) over a frozen copy of the index, ranked with the app's
+// history as the app's host ranks. For each query, sort and limit, N runs:
+// the time from the call to its answer, the engine's part (elapsed_ms), the
+// access checks (how many, and how long the call waited for them, as its
+// log line says), the rest (the items made, the JSON), the items returned,
+// the bytes of the answer and the process's peak commit so far (a run after
+// a larger one shows the larger one's). The first run of a query meets the
+// folders' security descriptors as they are; repeat it for the warm ones.
+int runMcpSearch(QStringList args)
+{
+    const auto take = [&](const QString& flag) {
+        QString value;
+        if (const qsizetype at = args.indexOf(flag); at >= 0 && at + 1 < args.size()) {
+            value = args[at + 1];
+            args.remove(at, 2);
+        }
+        return value;
+    };
+    QString indexFolder = take(u"--index"_s);
+    const QString historyFile = take(u"--history"_s);
+    const QString runsArg = take(u"--runs"_s);
+    const int runs = runsArg.isEmpty() ? 3 : std::max(1, runsArg.toInt());
+    QList<int> limits {100, 50'000};
+    if (const QString list = take(u"--limit"_s); !list.isEmpty()) {
+        limits.clear();
+        for (const QString& n : list.split(u',', Qt::SkipEmptyParts))
+            limits.push_back(n.toInt());
+    }
+    QStringList sorts {u"relevance"_s};
+    if (const QString list = take(u"--sort"_s); !list.isEmpty())
+        sorts = list.split(u',', Qt::SkipEmptyParts);
+    QString kind = take(u"--kind"_s);
+    if (kind.isEmpty())
+        kind = u"all"_s;
+    const bool sizes = args.removeAll(u"--size"_s) > 0;
+    QStringList queries = args;
+    if (queries.isEmpty())
+        queries = {u"report"_s, u"a"_s};
+
+    ws::Settings settings;
+    settings.load();
+    QTemporaryDir temp;
+    if (indexFolder.isEmpty()) {
+        const QString from = QDir::fromNativeSeparators(settings.indexDir());
+        indexFolder = temp.path();
+        if (!QFile::copy(from + u"/index.bin"_s, indexFolder + u"/index.bin"_s)) {
+            std::printf("no index at %s\n", qUtf8Printable(QDir::toNativeSeparators(from)));
+            return 1;
+        }
+    }
+    ws::IndexService::Options options;
+    options.rules = settings.crawlRules();
+    options.rescanOnStartup = false;
+    options.content.enabled = false;
+    // The index as the snapshot has it: no volume read, no walk (--frozen).
+    options.volumeAccess = std::make_shared<ws::ntfs::NoVolumeAccess>();
+    options.accessWaitMs = std::numeric_limits<int>::max();
+    ws::IndexService service(indexFolder, options);
+    ws::SearchEngine engine(&service);
+    ws::History history(historyFile.isEmpty() ? ws::Settings::dataDir() + u"\\history.txt"_s : historyFile);
+    history.load();
+    QStringList logged;
+    ws::mcp::Services services;
+    services.index = &service;
+    services.engine = &engine;
+    services.history = [&history] { return history.items(); };
+    services.version = QStringLiteral(WINSHUN_VERSION "-bench");
+    services.log = [&logged](const QString& line) { logged.push_back(line); };
+    ws::mcp::ToolHost host(std::move(services));
+    ws::mcp::Policy policy;
+    policy.kindOrder = settings.foldersFirst ? ws::KindOrder::FoldersFirst : ws::KindOrder::FilesFirst;
+    policy.excludedPaths = settings.mcpExcludedPaths;
+    policy.excludedTypes = settings.excludedTypes;
+    host.setPolicy(policy);
+
+    QElapsedTimer loadTimer;
+    loadTimer.start();
+    service.start();
+    while (service.state() != ws::IndexService::State::Ready && loadTimer.elapsed() < 120'000) {
+        QEventLoop wait;
+        QTimer::singleShot(20, &wait, &QEventLoop::quit);
+        wait.exec();
+    }
+    if (service.state() != ws::IndexService::State::Ready) {
+        std::printf("the index did not load\n");
+        return 1;
+    }
+    std::printf("index: %zu items, loaded in %.0f ms; history: %lld items; size: %s\n", service.itemCount(),
+        msSince(loadTimer), static_cast<long long>(history.items().size()), sizes ? "read" : "not read");
+    std::printf("%-12s %-9s %6s %3s %9s %9s %16s %9s %7s %8s %9s\n", "query", "sort", "limit", "run", "total ms",
+        "engine", "checks (ms)", "rest ms", "items", "MB", "commit MB");
+    std::fflush(stdout);
+
+    std::uint64_t id = 0;
+    for (const QString& query : std::as_const(queries)) {
+        for (const QString& sort : std::as_const(sorts)) {
+            for (const int limit : std::as_const(limits)) {
+                for (int run = 1; run <= runs; ++run) {
+                    const QJsonObject arguments {{u"query"_s, query}, {u"limit"_s, limit}, {u"size"_s, sizes},
+                        {u"kind"_s, kind}, {u"sort"_s, sort}};
+                    std::optional<ws::mcp::ToolResult> answer;
+                    QEventLoop loop;
+                    QElapsedTimer timer;
+                    timer.start();
+                    host.call(++id, u"ws"_s, u"search_files"_s, arguments,
+                        [&](ws::mcp::ToolResult result) {
+                            answer = std::move(result);
+                            loop.quit();
+                        },
+                        {nullptr, true, true});
+                    if (!answer)
+                        loop.exec();
+                    const double total = msSince(timer);
+                    const QJsonObject structured
+                        = QJsonDocument::fromJson(answer->encoded).object().value(u"structuredContent"_s).toObject();
+                    // "... (N access checks, X ms)" at the end of the call's line
+                    QString checks = u"-"_s;
+                    double checkMs = 0;
+                    static const QRegularExpression counted(u"\\((\\d+) access checks, ([0-9.]+) ms\\)"_s);
+                    if (const QRegularExpressionMatch m = counted.match(logged.isEmpty() ? QString() : logged.last());
+                        m.hasMatch()) {
+                        checkMs = m.captured(2).toDouble();
+                        checks = u"%1 (%2)"_s.arg(m.captured(1), m.captured(2));
+                    }
+                    const double engineMs = structured.value(u"elapsed_ms"_s).toDouble();
+                    std::printf("%-12s %-9s %6d %3d %9.1f %9.1f %16s %9.1f %7d %8.2f %9.0f\n", qUtf8Printable(query),
+                        qUtf8Printable(sort), limit, run, total, engineMs, qUtf8Printable(checks),
+                        total - engineMs - checkMs, structured.value(u"returned"_s).toInt(),
+                        static_cast<double>(answer->encoded.size()) / (1 << 20), peakCommitMB());
+                    std::fflush(stdout);
+                }
+            }
+        }
+    }
     service.shutdown();
     return 0;
 }
@@ -5932,6 +6112,10 @@ int main(int argc, char* argv[])
     if (args.contains(u"--mcp-host"_s)) {
         args.removeAll(u"--mcp-host"_s);
         return runMcpHost(args);
+    }
+    if (args.contains(u"--mcp-search"_s)) {
+        args.removeAll(u"--mcp-search"_s);
+        return runMcpSearch(args);
     }
     if (args.contains(u"--launcher-sim"_s)) {
         args.removeAll(u"--launcher-sim"_s);

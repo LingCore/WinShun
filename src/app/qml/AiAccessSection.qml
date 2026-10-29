@@ -13,16 +13,16 @@ SettingsSection {
     // Rows on other tabs shown only while AI may connect (AiPrivacySection.lockedRows).
     property var lockedElsewhere: []
 
-    note: qsTr("Claude、Cursor、VS Code 等 AI 助手通过 MCP（Model Context Protocol）连接 Win顺，就能搜文件名、文件里的文字和最近改过的文件：和你在搜索框里一样快，拼音也行。默认只读，不改动任何文件。")
+    note: qsTr("Claude、Cursor、VS Code 等 AI 助手通过 MCP（Model Context Protocol）连接 Win顺，就能搜文件名、文件里的文字和最近改过的文件：和你在搜索框里一样快，拼音也行。能运行命令的 AI 助手和你自己也可以在终端里用命令行 ws。默认只读，不改动任何文件。")
 
     SettingRow {
         id: enableRow
 
-        title: qsTr("允许 AI 连接")
-        keywords: qsTr("MCP;AI;Claude;Cursor;智能;助手;大模型;人工智能").split(";")
-        description: !aiSection.editor.mcp ? qsTr("关着时 AI 客户端连不上 Win顺")
+        title: qsTr("允许 AI 助手和命令行连接")
+        keywords: qsTr("MCP;AI;Claude;Cursor;智能;助手;大模型;人工智能;命令行;终端;ws;command line;cli;terminal;shell;powershell;cmd").split(";")
+        description: !aiSection.editor.mcp ? qsTr("关着时 AI 客户端和命令行 ws 都连不上 Win顺")
                    : aiSection.editor.mcpStatus.length > 0 ? aiSection.editor.mcpStatus
-                   : qsTr("AI 客户端启动 WinShunMcp.exe 就能连上")
+                   : qsTr("AI 客户端启动 WinShunMcp.exe 就能连上；在终端里输入 ws 也行")
         unlocks: [openRow, clipboardRow, screenshotRow, settingsRow, pluginsRow, actionsRow, ...aiSection.lockedElsewhere]
 
         ToggleSwitch {
@@ -36,7 +36,7 @@ SettingsSection {
 
         title: qsTr("允许 AI 打开文件和文件夹")
         keywords: qsTr("打开;文件夹;显示;open;AI").split(";")
-        description: qsTr("用默认程序打开文件、在文件管理器里显示；以普通权限打开，AI 客户端每次会先问你")
+        description: qsTr("只管通过 MCP 连接的 AI 客户端：用默认程序打开文件、在文件管理器里显示；以普通权限打开，客户端每次会先问你。命令行的 ws open 按你自己的权限打开，不受这个开关管")
         shown: aiSection.editor.mcp
 
         ToggleSwitch {

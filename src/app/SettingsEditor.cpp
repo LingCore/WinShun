@@ -1,6 +1,8 @@
 #include "SettingsEditor.h"
 
 #include "ClipImport.h"
+#include "CliSetup.h"
+#include "CommandLine.h"
 #include "FavoritesSettings.h"
 #include "FileIconProvider.h"
 #include "IndexFolder.h"
@@ -125,6 +127,7 @@ SettingsEditor::SettingsEditor(const Settings& settings, const QString& runningR
     , m_taskbarWatch(std::make_unique<TaskbarWatch>())
     , m_plugins(new PluginSettings(this, this))
     , m_favorites(new FavoritesSettings(this, this))
+    , m_cli(new CliSetup(this, this))
 {
     connect(this, &SettingsEditor::changed, this, &SettingsEditor::drivesChanged);
     connect(siteicons::notifier(), &siteicons::Notifier::fetched, this, [this] {
@@ -3147,11 +3150,38 @@ void SettingsEditor::setMcpStatus(const QString& status)
     emit mcpStatusChanged();
 }
 
+void SettingsEditor::setCliTally(const QString& tally)
+{
+    if (m_cliTally == tally)
+        return;
+    m_cliTally = tally;
+    emit cliTallyChanged();
+}
+
 void SettingsEditor::refreshMcpClients()
 {
     m_mcpClients = mcpclients::toVariant(mcpclients::detect());
     m_mcpRelayPath = mcpclients::relayPath();
     emit mcpClientsChanged();
+}
+
+void SettingsEditor::refreshSkillState()
+{
+    const QString file = mcpclients::skillPath();
+    const bool there = QFileInfo::exists(file);
+    bool changed = false;
+    for (QVariant& item : m_mcpClients) {
+        QVariantMap client = item.toMap();
+        if (client.value(u"id"_s).toString() != u"claude-code"
+            || (client.value(u"skillInstalled"_s).toBool() == there && client.value(u"skillPath"_s).toString() == file))
+            continue;
+        client.insert(u"skillInstalled"_s, there);
+        client.insert(u"skillPath"_s, file);
+        item = client;
+        changed = true;
+    }
+    if (changed)
+        emit mcpClientsChanged();
 }
 
 void SettingsEditor::connectMcpClient(const QString& id)
@@ -3172,6 +3202,21 @@ void SettingsEditor::copyMcpSnippet(const QString& id)
 {
     shell::copyText(mcpclients::snippet(id));
     setMcpMessage(id == u"claude-code" ? tr("已复制命令，在终端里运行它就行") : tr("已复制，粘贴到那个客户端的 MCP 配置文件里"));
+}
+
+void SettingsEditor::installMcpSkill(const QString& id)
+{
+    if (id != u"claude-code" || m_mcpSkillBusy)
+        return; // a second click while ws runs would start a second ws (the two meet over one file)
+    m_mcpSkillBusy = true;
+    setMcpMessage(tr("正在装 Skill…"));
+    emit mcpMessageChanged(); // the busy flag too, whether or not the text changed
+    mcpclients::installSkill(cli::wsExe(cli::binFolder()), this, [this](const mcpclients::Result& result) {
+        m_mcpSkillBusy = false;
+        setMcpMessage(result.message);
+        refreshMcpClients();
+        emit mcpMessageChanged();
+    });
 }
 
 void SettingsEditor::setMcpMessage(const QString& message)

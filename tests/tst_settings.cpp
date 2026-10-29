@@ -1,5 +1,6 @@
 #include "Settings.h"
 #include "Query.h"
+#include "SettingsCommand.h"
 
 #include "ServiceVolumeAccess.h"
 
@@ -613,6 +614,34 @@ private slots:
             QVERIFY(!ws::Settings::isNetworkPath(f));
             for (const QString& o : defaults)
                 QVERIFY2(f == o || !f.startsWith(o + u'\\', Qt::CaseInsensitive), qPrintable(f + u" in "_s + o));
+        }
+    }
+
+    // `WinShun.exe --settings --settings-at 9,0` to a copy that is running: the place travels
+    // with the command (it was dropped, and the window opened on its first page).
+    void settingsCommandCarriesThePlace()
+    {
+        namespace sc = ws::settingscommand;
+        QCOMPARE(sc::make({}), u"settings"_s);
+        QCOMPARE(sc::make(u"9,0"_s), u"settings:9,0"_s);
+        QCOMPARE(sc::make(u"indexAccess"_s), u"settings:indexAccess"_s);
+        QString place = u"left over"_s;
+        QVERIFY(sc::parse(u"settings"_s, &place));
+        QVERIFY(place.isEmpty());
+        QVERIFY(sc::parse(u"settings:9,1"_s, &place));
+        QCOMPARE(place, u"9,1"_s);
+        QVERIFY(sc::parse(u"settings:indexAccess"_s, &place));
+        QCOMPARE(place, u"indexAccess"_s);
+        QVERIFY(sc::parse(u"settings:"_s, &place)); // no place: just open
+        QVERIFY(place.isEmpty());
+        QVERIFY(sc::parse(u"settings"_s, nullptr));
+        // Other commands are not this one.
+        for (const QString& other : {u"toggle"_s, u"quit"_s, u"show"_s, u"query:settings"_s, u"settingsx"_s, QString()})
+            QVERIFY2(!sc::parse(other, &place), qPrintable(other));
+        // What make() builds, parse() reads back.
+        for (const QString& at : {u"0,0"_s, u"9,2"_s, u"indexAccess"_s}) {
+            QVERIFY(sc::parse(sc::make(at), &place));
+            QCOMPARE(place, at);
         }
     }
 };

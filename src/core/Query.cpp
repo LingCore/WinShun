@@ -1184,6 +1184,20 @@ bool NameMatcher::isExactName(std::string_view name, bool isDir) const
         && text::equalsFolded(name.substr(0, name.size() - extLength - 1), t);
 }
 
+bool NameMatcher::isExactName(QStringView name, bool isDir) const
+{
+    if (m_positive.size() != 1 || m_positive[0].term.wildcard || m_positive[0].term.text.empty())
+        return false;
+    // A UTF-16 unit is a byte of UTF-8 at least: a name longer than what
+    // was typed is it only by its extension, the dot no further in than
+    // that. The rest are not converted (ws's 100 000 rows: 14 ms of it).
+    const auto typed = static_cast<qsizetype>(m_positive[0].term.text.size());
+    if (name.size() > typed && !name.first(typed + 1).contains(u'.'))
+        return false;
+    return isExactName(
+        wtf8::fromUtf16(std::u16string_view(name.utf16(), static_cast<std::size_t>(name.size()))), isDir);
+}
+
 int NameMatcher::matchName(std::string_view name) const
 {
     if (m_invalid)

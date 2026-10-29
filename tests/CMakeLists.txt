@@ -93,6 +93,29 @@ add_test(NAME tst_shelllaunch COMMAND tst_shelllaunch -o -,txt)
 set_tests_properties(tst_shelllaunch PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# The command line ws as the settings page sees it (src/app/CommandLine,
+# McpClients): the PATH as text, where ws is, the user's PATH written in keys
+# of the test's own, and Claude Code's Skill installed through a stand-in for
+# ws.exe (fake_ws.cpp).
+add_executable(fake_ws fake_ws.cpp)
+set_target_properties(fake_ws PROPERTIES AUTOMOC OFF)
+qt_add_executable(tst_commandline tst_commandline.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/CommandLine.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/McpClients.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/Shell.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/FileManagers.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/FolderViewHit.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/Integrity.cpp)
+target_include_directories(tst_commandline PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_commandline PRIVATE wscore Qt6::Gui Qt6::Test
+    ole32 oleaut32 oleacc shell32 shlwapi user32 advapi32 taskschd userenv)
+target_compile_definitions(tst_commandline PRIVATE WINSHUN_FAKE_WS="$<TARGET_FILE:fake_ws>")
+add_dependencies(tst_commandline fake_ws)
+set_target_properties(tst_commandline PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_commandline COMMAND tst_commandline)
+set_tests_properties(tst_commandline PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 qt_add_executable(tst_windowvisibility tst_windowvisibility.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/WindowEffects.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/Foreground.cpp)
@@ -617,6 +640,20 @@ target_compile_definitions(tst_mcp PRIVATE
     WINSHUN_PLUGIN_FAKE="$<TARGET_FILE:plugin_fake>")
 add_dependencies(tst_mcp WinShunMcp WinShunPluginHost plugin_fake)
 
+# The command line ws.exe (src/cli): its pieces built in again (the option
+# table, the parser, the encoder, the start decision), and the real ws.exe,
+# whose path it is told, against the MCP server in the test on a test pipe.
+# The runner's JSON and Launch.cpp are built in as ws has them (wsplugin
+# would bring the JSON in twice).
+qt_add_executable(tst_cli tst_cli.cpp ${WS_CLI_SOURCES}
+    ${PROJECT_SOURCE_DIR}/src/plugin/runner/Json.cpp ${PROJECT_SOURCE_DIR}/src/mcp/Launch.cpp)
+target_include_directories(tst_cli PRIVATE ${PROJECT_SOURCE_DIR}/src/cli ${PROJECT_SOURCE_DIR}/src/plugin/runner ${PROJECT_SOURCE_DIR}/src/mcp)
+target_link_libraries(tst_cli PRIVATE wsmcp Qt6::Test ntdll shell32 ole32 oleaut32 uuid advapi32)
+target_compile_definitions(tst_cli PRIVATE
+    WINSHUN_CLI="$<TARGET_FILE:ws>"
+    WINSHUN_CLI_SKILL="${PROJECT_SOURCE_DIR}/src/cli/SKILL.md")
+add_dependencies(tst_cli ws)
+
 # The pieces of the tools plugin that compute (src/tools-plugin), built in
 # again: the calculator and the conversions have edges (division by zero,
 # overflow, bad input) worth pinning down.
@@ -679,6 +716,7 @@ add_test(NAME tst_ocr COMMAND tst_ocr)
 add_test(NAME tst_tools COMMAND tst_tools)
 add_test(NAME tst_semantic COMMAND tst_semantic)
 add_test(NAME tst_mcp COMMAND tst_mcp)
+add_test(NAME tst_cli COMMAND tst_cli)
 add_test(NAME tst_plugin COMMAND tst_plugin)
 # Importing clipboard history (Ditto, text, CSV): the reader with a real store.
 qt_add_executable(tst_clipimport tst_clipimport.cpp ${PROJECT_SOURCE_DIR}/src/app/ClipImport.cpp
@@ -720,7 +758,7 @@ add_test(NAME tst_clipselect COMMAND tst_clipselect)
 set_tests_properties(tst_clipselect PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 # Let ctest find the Qt DLLs without a deploy step.
-set_tests_properties(tst_core tst_service tst_keylistener tst_clipboard tst_favorites tst_backup tst_color tst_elide tst_savedfile tst_placement tst_dragout tst_siteicon tst_ocr tst_tools tst_semantic tst_mcp tst_plugin PROPERTIES
+set_tests_properties(tst_core tst_service tst_keylistener tst_clipboard tst_favorites tst_backup tst_color tst_elide tst_savedfile tst_placement tst_dragout tst_siteicon tst_ocr tst_tools tst_semantic tst_mcp tst_cli tst_plugin PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 # The in-app update (Updater): the update service's answer, downloads from

@@ -175,23 +175,33 @@ private:
     std::vector<std::uint64_t> m_words;
 };
 
-// The best `limit` of `hits`, best first.
+// The best `limit` of `hits`, best first. Picked, then only those sorted:
+// ws's limit (50 000) is met by all the slices' hits together, two million
+// for "a", which a partial sort took 60 ms for, a selection a few.
 template <typename Order> void keepBest(std::vector<NameHit>& hits, std::size_t limit, const Order& order)
 {
-    const std::size_t keep = std::min(limit, hits.size());
-    std::partial_sort(hits.begin(), hits.begin() + static_cast<std::ptrdiff_t>(keep), hits.end(), order);
-    hits.resize(keep);
+    if (hits.size() > limit) {
+        std::nth_element(hits.begin(), hits.begin() + static_cast<std::ptrdiff_t>(limit), hits.end(), order);
+        hits.resize(limit);
+    }
+    std::sort(hits.begin(), hits.end(), order);
 }
 
 // Fixed-capacity min-heap holding the best hits seen so far, by `order`
-// (a comparator: whether the first hit goes before the second).
+// (a comparator: whether the first hit goes before the second). With room
+// for all there are to see (`most`: a slice's entries, where ws's limit
+// is larger), it keeps them all as they come, in no order: the merge
+// picks the best of all (keepBest). Room is taken as it fills, not for
+// the limit at once: ws's 55 000 for each of 450 heaps (two a slice) was
+// 370 MB more for one search, nearly all of it never used.
 template <typename Order> class TopHits {
 public:
-    TopHits(std::size_t capacity, const Order& order)
+    TopHits(std::size_t capacity, std::size_t most, const Order& order)
         : m_capacity(capacity)
+        , m_all(capacity >= most)
         , m_order(order)
     {
-        m_heap.reserve(capacity);
+        m_heap.reserve(std::min(capacity, kFirstRoom));
     }
 
     // Whether a hit could still make it, from what is known before its last
@@ -203,7 +213,9 @@ public:
 
     void push(const NameHit& hit)
     {
-        if (m_heap.size() < m_capacity) {
+        if (m_all) {
+            m_heap.push_back(hit);
+        } else if (m_heap.size() < m_capacity) {
             m_heap.push_back(hit);
             std::push_heap(m_heap.begin(), m_heap.end(), m_order);
         } else if (m_order(hit, m_heap.front())) {
@@ -216,7 +228,9 @@ public:
     std::vector<NameHit> take() { return std::move(m_heap); }
 
 private:
+    static constexpr std::size_t kFirstRoom = 1024; // the launcher's lists fit
     std::size_t m_capacity;
+    bool m_all;
     const Order& m_order;
     std::vector<NameHit> m_heap;
 };
@@ -491,8 +505,8 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
             = index.chunk(first >> FileIndex::kChunkBits).data() + (first & (FileIndex::kChunkSize - 1));
 
         const auto order = makeOrder(index);
-        TopHits<decltype(order)> top(limit, order);
-        TopHits<decltype(order)> folders(apart ? limit : 0, order);
+        TopHits<decltype(order)> top(limit, count, order);
+        TopHits<decltype(order)> folders(apart ? limit : 0, count, order);
         NameMatcher::Folders seen;
         UnderAny under(index, filter.folders);
         // Each slice its own, as `under`: their caches are written as they are asked.

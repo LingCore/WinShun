@@ -48,6 +48,7 @@ qt_add_executable(WinShun WIN32
     main.cpp
     AiSettings.cpp AiSettings.h
     App.cpp App.h
+    CommandLine.cpp CommandLine.h
     ColorText.cpp ColorText.h
     ContextMenuGuard.cpp ContextMenuGuard.h # a right-click on a window's top-left pixel crashed Qt Quick (QTBUG-146671)
     DialogBarVisibility.cpp DialogBarVisibility.h
@@ -194,6 +195,7 @@ set(qml_files
     qml/GleaningPage.qml
     qml/AiAccessSection.qml
     qml/AiClientsSection.qml
+    qml/AiCommandLineSection.qml
     qml/AiPrivacySection.qml
     qml/PluginsSection.qml
     qml/PluginCard.qml
@@ -250,6 +252,7 @@ qt_add_qml_module(WinShun
     SOURCES
         AuthorMark.cpp AuthorMark.h
         BoxSide.h
+        CliSetup.cpp CliSetup.h
         ClipImage.cpp ClipImage.h
         ClipFiles.cpp ClipFiles.h
         ClipImport.cpp ClipImport.h
@@ -276,6 +279,7 @@ qt_add_qml_module(WinShun
         MovedPlugins.cpp MovedPlugins.h # the plugins that came with 0.16.0, from the library now (GitHub #138)
         ResultModel.cpp ResultModel.h
         PanelColumns.cpp PanelColumns.h
+        SettingsCommand.h
         SettingsEditor.cpp SettingsEditor.h
         Diagnostics.cpp Diagnostics.h
         DisplayDiagnostics.cpp DisplayDiagnostics.h # how Win顺 draws, for display problems (GitHub #70)
@@ -338,7 +342,7 @@ target_link_libraries(WinShun PRIVATE
     mfplat mfreadwrite mfuuid delayimp
     windowsapp # TextRecognizer: Windows.Media.Ocr, through C++/WinRT from the Windows SDK
     onnxruntime_headers) # PaddleOcr
-target_link_libraries(WinShun PRIVATE advapi32 miniz) # miniz: settings backups (BackupFiles)
+target_link_libraries(WinShun PRIVATE advapi32 userenv miniz) # userenv: the user's environment for ws (Shell); miniz: settings backups (BackupFiles)
 # The execution level (asInvoker, since 0.8.0) comes from app.manifest alone,
 # with the rest of the manifest; the linker's own UAC fragment would be a
 # second one. Media Foundation is loaded only when used (SoundClip): Windows

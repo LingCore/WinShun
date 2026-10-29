@@ -18,6 +18,7 @@
 
 namespace ws {
 
+class CliSetup;
 class FavoritesSettings;
 class PluginSettings;
 class ShortcutCapture;
@@ -276,9 +277,13 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool mcpPluginActions READ mcpPluginActions WRITE setMcpPluginActions NOTIFY changed FINAL) // and their actions
     Q_PROPERTY(QStringList mcpExcludedPaths READ mcpExcludedPaths NOTIFY changed FINAL) // expanded, for display
     Q_PROPERTY(QString mcpStatus READ mcpStatus NOTIFY mcpStatusChanged FINAL)
+    Q_PROPERTY(QString cliTally READ cliTally NOTIFY cliTallyChanged FINAL) // empty: ws has not been run yet
     Q_PROPERTY(QVariantList mcpClients READ mcpClients NOTIFY mcpClientsChanged FINAL)
     Q_PROPERTY(QString mcpRelayPath READ mcpRelayPath NOTIFY mcpClientsChanged FINAL) // empty: WinShunMcp.exe is missing
     Q_PROPERTY(QString mcpMessage READ mcpMessage NOTIFY mcpMessageChanged FINAL)
+    Q_PROPERTY(bool mcpSkillBusy READ mcpSkillBusy NOTIFY mcpMessageChanged FINAL) // 装 Skill is running: its button waits
+    // AI 助手 → 命令行 (ws): whether it can be used from a terminal, and the button that sets it up.
+    Q_PROPERTY(ws::CliSetup* cli READ cli CONSTANT FINAL)
     // 插件: the page's own view-model (PluginSettings), which edits the
     // [Plugin.<id>] sections here.
     Q_PROPERTY(ws::PluginSettings* plugins READ plugins CONSTANT FINAL)
@@ -796,12 +801,22 @@ public:
     Q_INVOKABLE void removeMcpExcludedPath(int index);
     QString mcpStatus() const { return m_mcpStatus; }
     void setMcpStatus(const QString& status); // set by the app: who is connected
+    QString cliTally() const { return m_cliTally; }
+    // Set by the app: how often ws was run and when last. Not part of mcpStatus: that is a
+    // row's text, and a line that comes with the first run pushes the rows below it down.
+    void setCliTally(const QString& tally);
     QVariantList mcpClients() const { return m_mcpClients; }
     QString mcpRelayPath() const { return m_mcpRelayPath; }
-    Q_INVOKABLE void refreshMcpClients(); // looks again (as the window comes to the front)
+    Q_INVOKABLE void refreshMcpClients(); // looks again (the window opens); it walks the PATH for `claude`, which a dead share stalls
+    // Only whether Claude Code's Skill file is there (one path): for the window coming to the front
+    // and the page showing, where refreshMcpClients() would stall the GUI thread on that PATH.
+    Q_INVOKABLE void refreshSkillState();
     Q_INVOKABLE void connectMcpClient(const QString& id); // writes Win顺 into its configuration; mcpMessage says how it went
     Q_INVOKABLE void copyMcpSnippet(const QString& id); // its configuration (or command) to the clipboard; "": the generic JSON
+    Q_INVOKABLE void installMcpSkill(const QString& id); // Claude Code's Skill for ws; mcpMessage says how it went
+    CliSetup* cli() const { return m_cli; }
     QString mcpMessage() const { return m_mcpMessage; }
+    bool mcpSkillBusy() const { return m_mcpSkillBusy; }
     Q_INVOKABLE void clearMcpMessage() { setMcpMessage({}); }
     Q_INVOKABLE void openMcpLog(); // mcp.log, or the data folder while there is none
 
@@ -856,6 +871,7 @@ signals:
     void signInRequested(const QString& path); // a share, or "\\host"
     void signedIn(const QString& path, const QString& problem); // empty problem: connected
     void mcpStatusChanged();
+    void cliTallyChanged();
     void mcpClientsChanged();
     void mcpMessageChanged();
     void indexAccessStateChanged();
@@ -927,11 +943,14 @@ private:
     struct TaskbarWatch; // the taskbar's pinned programs and Windows' search box setting
     std::unique_ptr<TaskbarWatch> m_taskbarWatch;
     QString m_mcpStatus;
+    QString m_cliTally;
     QVariantList m_mcpClients;
     QString m_mcpRelayPath;
     QString m_mcpMessage;
+    bool m_mcpSkillBusy = false; // installMcpSkill is waiting for ws
     PluginSettings* m_plugins = nullptr; // a child
     FavoritesSettings* m_favorites = nullptr; // a child
+    CliSetup* m_cli = nullptr; // a child
 };
 
 } // namespace ws
