@@ -742,8 +742,8 @@
         <translation>Take screenshots with PrtScn</translation>
     </message>
     <message>
-        <source>让 PrtScn 不再打开 Windows 的截图工具，改用这里的截图。Win顺 没在运行时，PrtScn 会把整个屏幕复制到剪贴板；关掉这项恢复原来的设置</source>
-        <translation>PrtScn takes a screenshot here instead of opening the Windows Snipping Tool. While WinShun is not running, PrtScn copies the whole screen to the clipboard; turning this off restores the previous setting</translation>
+        <source>让 PrtScn 不再打开 Windows 的截图工具，改用这里的截图。Win顺 退出时还给截图工具，下次启动再接管；关掉这项也恢复原来的设置</source>
+        <translation>PrtScn takes a screenshot here instead of opening the Windows Snipping Tool. It goes back to the Snipping Tool when WinShun quits and is taken again at the next start; turning this off restores the previous setting too</translation>
     </message>
     <message>
         <source>截图保存文件夹</source>

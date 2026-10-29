@@ -271,7 +271,7 @@ Item {
                         }
                         Text {
                             width: parent.width
-                            text: qsTr("让 PrtScn 不再打开 Windows 的截图工具，改用这里的截图。Win顺 没在运行时，PrtScn 会把整个屏幕复制到剪贴板；关掉这项恢复原来的设置")
+                            text: qsTr("让 PrtScn 不再打开 Windows 的截图工具，改用这里的截图。Win顺 退出时还给截图工具，下次启动再接管；关掉这项也恢复原来的设置")
                             color: Theme.subtext
                             font.pixelSize: Theme.fontCaption
                             wrapMode: Text.Wrap
