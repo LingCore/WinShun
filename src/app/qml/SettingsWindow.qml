@@ -3876,7 +3876,7 @@ Window {
                 page: window.advancedPage
                 width: parent.width
                 title: qsTr("更新")
-                note: qsTr("检查更新只访问 GitHub，不发送任何个人信息。")
+                note: qsTr("检查更新访问 lcstp.com，只发送 Windows 版本和安装方式，不发送个人信息。")
 
                 SettingRow {
                     title: qsTr("版本 %1").arg(window.updater.currentVersion)

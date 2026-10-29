@@ -6273,8 +6273,8 @@
         <translation>To the right of the name, such as “Yesterday 14:32”</translation>
     </message>
     <message>
-        <source>检查更新只访问 GitHub，不发送任何个人信息。</source>
-        <translation>Checking for updates contacts only GitHub and sends no personal information.</translation>
+        <source>检查更新访问 lcstp.com，只发送 Windows 版本和安装方式，不发送个人信息。</source>
+        <translation>Checking for updates contacts lcstp.com and sends only the Windows version and the kind of install, nothing personal.</translation>
     </message>
     <message>
         <source>比上限大的文件不查找内容。</source>
