@@ -30,6 +30,7 @@
 #include <shlobj.h>
 #include <shobjidl.h>
 #include <taskschd.h>
+#include <userenv.h>
 #include <wrl/client.h>
 #include <wrl/implements.h>
 
@@ -64,6 +65,30 @@ public:
 
 private:
     BSTR m_p = nullptr;
+};
+
+// The user's environment as the registry has it now (CreateEnvironmentBlock
+// for `token`), not Win顺's own: what Explorer gives what it starts, the
+// variables set since Win顺 started included. Null when it cannot be made.
+class UserEnvironment {
+public:
+    explicit UserEnvironment(HANDLE token)
+    {
+        if (!::CreateEnvironmentBlock(&m_block, token, FALSE))
+            m_block = nullptr;
+    }
+    UserEnvironment(const UserEnvironment&) = delete;
+    UserEnvironment& operator=(const UserEnvironment&) = delete;
+    ~UserEnvironment()
+    {
+        if (m_block)
+            ::DestroyEnvironmentBlock(m_block);
+    }
+    void* block() const noexcept { return m_block; }
+    DWORD flags() const noexcept { return m_block ? CREATE_UNICODE_ENVIRONMENT : 0; }
+
+private:
+    void* m_block = nullptr;
 };
 
 } // namespace
@@ -247,7 +272,7 @@ bool executeAsUser(const std::wstring& file, const std::wstring& args, const std
 }
 
 // Starts `command` with the desktop shell's own token: the user's normal
-// rights. Invalid when there is no shell to take them from.
+// rights and environment. Invalid when there is no shell to take them from.
 win32::UniqueHandle startWithShellToken(std::wstring command, const std::wstring& dir, DWORD flags = 0)
 {
     DWORD pid = 0;
@@ -265,10 +290,11 @@ win32::UniqueHandle startWithShellToken(std::wstring command, const std::wstring
             nullptr, SecurityImpersonation, TokenPrimary, &primaryToken))
         return {};
     const win32::UniqueHandle token(primaryToken);
+    const UserEnvironment environment(token.get());
     STARTUPINFOW startup {sizeof(STARTUPINFOW)};
     PROCESS_INFORMATION started {};
-    if (!::CreateProcessWithTokenW(token.get(), 0, nullptr, command.data(), flags, nullptr,
-            dir.empty() ? nullptr : dir.c_str(), &startup, &started))
+    if (!::CreateProcessWithTokenW(token.get(), 0, nullptr, command.data(), flags | environment.flags(),
+            environment.block(), dir.empty() ? nullptr : dir.c_str(), &startup, &started))
         return {};
     ::CloseHandle(started.hThread);
     return win32::UniqueHandle(started.hProcess);
@@ -292,6 +318,21 @@ bool isShellTarget(const std::wstring& file)
     return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY);
 }
 
+// rundll32 starting `file` with ShellExecute. Empty when `file` cannot be
+// quoted on the command line (no path has a quote).
+std::wstring rundllCommand(const std::wstring& file, const std::wstring& args)
+{
+    wchar_t folder[MAX_PATH] = {};
+    const UINT n = ::GetSystemDirectoryW(folder, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH || file.find(L'"') != std::wstring::npos)
+        return {};
+    std::wstring command
+        = L'"' + std::wstring(folder, n) + L"\\rundll32.exe\" shell32.dll,ShellExec_RunDLL \"" + file + L'"';
+    if (!args.empty())
+        command += L' ' + args;
+    return command;
+}
+
 // Without an Explorer window to ask (another shell is in use, or Explorer
 // lists none), start the target with the desktop shell's own token: the
 // user's normal rights. Folders, shell locations and URIs go to a new
@@ -304,8 +345,8 @@ bool executeWithShellToken(const std::wstring& file, const std::wstring& args, c
 {
     if (file.find(L'"') != std::wstring::npos)
         return false; // cannot be quoted on the command line (no path has one)
-    wchar_t folder[MAX_PATH] = {};
     if (args.empty() && isShellTarget(file)) {
+        wchar_t folder[MAX_PATH] = {};
         const UINT n = ::GetWindowsDirectoryW(folder, MAX_PATH);
         if (n == 0 || n >= MAX_PATH)
             return false;
@@ -313,21 +354,81 @@ bool executeWithShellToken(const std::wstring& file, const std::wstring& args, c
         const std::wstring target = file.ends_with(L'\\') ? file : L'"' + file + L'"';
         return startWithShellToken(L'"' + std::wstring(folder, n) + L"\\explorer.exe\" " + target, {}).valid();
     }
-    const UINT n = ::GetSystemDirectoryW(folder, MAX_PATH);
-    if (n == 0 || n >= MAX_PATH)
+    std::wstring command = rundllCommand(file, args);
+    return !command.empty() && startWithShellToken(std::move(command), dir).valid();
+}
+
+// The program a shortcut starts. Empty for one to no file (a Control Panel
+// item, an app of the Store).
+std::wstring shortcutTarget(const std::wstring& link)
+{
+    ComPtr<IShellLinkW> shortcut;
+    ComPtr<IPersistFile> file;
+    wchar_t target[MAX_PATH] {};
+    if (FAILED(::CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&shortcut)))
+        || FAILED(shortcut.As(&file)) || FAILED(file->Load(link.c_str(), STGM_READ))
+        || shortcut->GetPath(target, MAX_PATH, nullptr, 0) != S_OK)
+        return {};
+    return target;
+}
+
+// A console program, or a shortcut to one, which must not start through
+// Explorer: a console program whose parent is explorer.exe takes it for a
+// double-click in a folder window, and command-line tools built with Go's
+// cobra then only say "This is a command line tool" and quit (GitHub #139).
+// Only .exe, .com and .lnk files and bare names ("cmd") are looked at: a
+// folder, a document or a URI never is one.
+bool startsConsole(const std::wstring& file, const std::wstring& dir)
+{
+    const QString name = QString::fromStdWString(file);
+    const QString suffix = QFileInfo(name).suffix().toLower();
+    QString program;
+    if (suffix == u"lnk")
+        program = QString::fromStdWString(shortcutTarget(file));
+    else if (suffix == u"exe" || suffix == u"com"
+        || (suffix.isEmpty() && !name.contains(u'\\') && !name.contains(u'/') && !name.contains(u':')))
+        program = commandlaunch::resolveProgram(name, QString::fromStdWString(dir));
+    return !program.isEmpty() && commandlaunch::kindOf(program) == commandlaunch::Kind::Console;
+}
+
+// A console program (startsConsole): rundll32 starts it as Explorer would
+// (ShellExecute: a console of its own, the shell's checks of downloaded
+// files, a shortcut's settings) and exits. With the user's normal rights and
+// environment as Explorer has them, not Win顺's own: our own token, or the
+// desktop shell's when we are elevated.
+bool executeConsoleProgram(const std::wstring& file, const std::wstring& args, const std::wstring& dir)
+{
+    // rundll32 starts nothing for a path with forward slashes, and exits 0 all the same.
+    std::wstring path = file;
+    std::replace(path.begin(), path.end(), L'/', L'\\');
+    std::wstring command = rundllCommand(path, args);
+    if (command.empty())
         return false;
-    std::wstring command
-        = L'"' + std::wstring(folder, n) + L"\\rundll32.exe\" shell32.dll,ShellExec_RunDLL \"" + file + L'"';
-    if (!args.empty())
-        command += L' ' + args;
-    return startWithShellToken(std::move(command), dir).valid();
+    if (integrity::processElevated())
+        return startWithShellToken(std::move(command), dir).valid();
+    HANDLE ownToken = nullptr;
+    if (!::OpenProcessToken(::GetCurrentProcess(), TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_IMPERSONATE, &ownToken))
+        return false;
+    const win32::UniqueHandle token(ownToken);
+    const UserEnvironment environment(token.get());
+    STARTUPINFOW startup {sizeof(STARTUPINFOW)};
+    PROCESS_INFORMATION started {};
+    if (!::CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, environment.flags(), environment.block(),
+            dir.empty() ? nullptr : dir.c_str(), &startup, &started))
+        return false;
+    ::CloseHandle(started.hThread);
+    ::CloseHandle(started.hProcess);
+    return true;
 }
 
 // Starts through Explorer with the user's normal rights. Without Explorer:
 // ShellExecute from a normal process, or the shell token from an elevated
-// one. Only the latter waits briefly for the desktop shell to restart.
+// one. Only the latter waits briefly for the desktop shell to restart. A
+// console program never goes to Explorer (startsConsole).
 bool executeUnelevated(const std::wstring& file, const std::wstring& args, const std::wstring& dir)
 {
+    if (startsConsole(file, dir))
+        return executeConsoleProgram(file, args, dir);
     if (executeAsUser(file, args, dir))
         return true;
     if (!integrity::processElevated()) {

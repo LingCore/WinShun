@@ -87,7 +87,7 @@ qt_add_executable(tst_shelllaunch WIN32 tst_shelllaunch.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/Integrity.cpp)
 target_include_directories(tst_shelllaunch PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_shelllaunch PRIVATE wscore Qt6::Gui Qt6::Test
-    ole32 oleaut32 oleacc shell32 shlwapi user32 advapi32 taskschd uiautomationcore)
+    ole32 oleaut32 oleacc shell32 shlwapi user32 advapi32 taskschd uiautomationcore userenv)
 add_test(NAME tst_shelllaunch COMMAND tst_shelllaunch -o -,txt)
 set_tests_properties(tst_shelllaunch PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
@@ -487,7 +487,7 @@ qt_add_executable(tst_commandicons tst_commandicons.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/Foreground.cpp)
 target_include_directories(tst_commandicons PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_commandicons PRIVATE wscore wsplugin Qt6::Quick Qt6::Svg Qt6::Test
-    comctl32 gdi32 dwmapi ole32 oleaut32 oleacc shell32 shlwapi user32 advapi32 taskschd uiautomationcore winhttp)
+    comctl32 gdi32 dwmapi ole32 oleaut32 oleacc shell32 shlwapi user32 advapi32 taskschd uiautomationcore userenv winhttp)
 set_target_properties(tst_commandicons PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
 add_test(NAME tst_commandicons COMMAND tst_commandicons)
 set_tests_properties(tst_commandicons PROPERTIES

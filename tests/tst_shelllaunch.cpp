@@ -1,3 +1,4 @@
+#include "CommandLaunch.h"
 #include "platform/Integrity.h"
 #include "platform/FileManagers.h"
 #include "platform/FolderViewHit.h"
@@ -247,8 +248,20 @@ private slots:
         restore.dismiss();
     }
 
-    void customCommandViaExplorer()
+    // A program starts through Explorer, a console program not: one whose
+    // parent is explorer.exe takes it for a double-click in a folder window,
+    // and Go tools built with cobra then quit (GitHub #139). The console one
+    // is this probe with its PE subsystem word made the console's.
+    void customCommand_data()
     {
+        QTest::addColumn<bool>("console");
+        QTest::newRow("program, via Explorer") << false;
+        QTest::newRow("console program, not via Explorer") << true;
+    }
+
+    void customCommand()
+    {
+        QFETCH(bool, console);
         if (!::GetShellWindow())
             QSKIP("No desktop shell in this test session");
         QTemporaryDir temporary(QDir::tempPath() + u"/WinShun launch-XXXXXX"_s);
@@ -257,6 +270,16 @@ private slots:
         // helper and its Qt DLLs so the test also works on a clean build.
         const QString helper = temporary.filePath(u"launch-probe.exe"_s);
         QVERIFY(QFile::copy(QCoreApplication::applicationFilePath(), helper));
+        if (console) {
+            QFile exe(helper);
+            QVERIFY(exe.open(QIODevice::ReadWrite) && exe.seek(0x3c));
+            quint32 header = 0;
+            QCOMPARE(exe.read(reinterpret_cast<char*>(&header), 4), 4);
+            const quint16 subsystem = IMAGE_SUBSYSTEM_WINDOWS_CUI; // after "PE\0\0" and the file header, 68 bytes in
+            QVERIFY(exe.seek(header + 4 + 20 + 68));
+            QCOMPARE(exe.write(reinterpret_cast<const char*>(&subsystem), 2), 2);
+        }
+        QCOMPARE(ws::commandlaunch::kindOf(helper), console ? ws::commandlaunch::Kind::Console : ws::commandlaunch::Kind::Gui);
         const QDir qtBin(QLibraryInfo::path(QLibraryInfo::BinariesPath));
         for (const auto* module : {"Core", "Gui", "Sql", "Test"}) {
             const QString dll = u"Qt6"_s + QString::fromLatin1(module)
@@ -277,7 +300,8 @@ private slots:
         QFile file(output);
         QVERIFY(file.open(QIODevice::ReadOnly));
         const QJsonObject result = QJsonDocument::fromJson(file.readAll()).object();
-        QVERIFY2(result.value(u"parent"_s).toString().endsWith(u"\\explorer.exe", Qt::CaseInsensitive),
+        // Through rundll32, which has often quit already: no parent to name.
+        QVERIFY2(result.value(u"parent"_s).toString().endsWith(u"\\explorer.exe", Qt::CaseInsensitive) == !console,
             qPrintable(result.value(u"parent"_s).toString()));
         QVERIFY(!result.value(u"elevated"_s).toBool());
         QCOMPARE(QDir::cleanPath(result.value(u"cwd"_s).toString()), QDir::cleanPath(working));
