@@ -2242,9 +2242,9 @@ private slots:
         QCOMPARE(t.maxFiles, 1000);
         QCOMPARE(t.title.pick(u"zh"_s), u"用局域网发送…"_s);
         QCOMPARE(t.title.pick(u"en"_s), u"Send over LAN…"_s);
-        // The one that ships parses, as the user's Win顺 reads it. (__FILE__
+        // The one the plugin library has parses, as the user's Win顺 reads it. (__FILE__
         // is UTF-8 here; QFINDTESTDATA does not find this folder's Chinese name.)
-        const QString shippedPath = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(u"../plugins/winshun.localsend/plugin.json"_s);
+        const QString shippedPath = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(u"../src/localsend-plugin/package/plugin.json"_s);
         QVERIFY2(QFileInfo::exists(shippedPath), qPrintable(shippedPath));
         QFile file(shippedPath);
         QVERIFY(file.open(QIODevice::ReadOnly));
