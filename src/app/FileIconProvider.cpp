@@ -4,6 +4,7 @@
 #include "Favorites.h"
 #include "Items.h"
 #include "Manifest.h"
+#include "Phosphor.h"
 #include "SiteIconImage.h"
 #include "SystemTheme.h"
 #include "SystemCatalog.h"
@@ -18,6 +19,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QFont>
+#include <QFontMetrics>
 #include <QFontMetricsF>
 #include <QPainter>
 #include <QPainterPath>
@@ -204,7 +206,8 @@ QImage shellThumbnail(const std::wstring& path, int size, bool cachedOnly = fals
     if (FAILED(::SHCreateItemFromParsingName(path.c_str(), nullptr, IID_PPV_ARGS(&factory))))
         return {};
     HBITMAP bitmap = nullptr;
-    const SIIGBF flags = cachedOnly ? SIIGBF_THUMBNAILONLY | SIIGBF_INCACHEONLY : SIIGBF_THUMBNAILONLY;
+    const SIIGBF flags = SIIGBF_THUMBNAILONLY | SIIGBF_BIGGERSIZEOK
+        | (cachedOnly ? SIIGBF_INCACHEONLY : SIIGBF_RESIZETOFIT);
     if (FAILED(factory->GetImage({size, size}, flags, &bitmap)) || !bitmap)
         return {};
     QImage image = fromShellBitmap(bitmap);
@@ -283,8 +286,10 @@ QHash<QString, QString> g_pluginFolders; // plugin id -> its folder (native)
 QHash<QString, QByteArray> g_pluginData; // sha1 -> the bytes of a data: icon
 constexpr qsizetype kPluginDataKept = 64;
 
-// "U+E8E5" (or "E8E5") from an icon font, drawn in the subtext colour of the
-// theme, about three quarters of the box, as Glyph.qml shows them.
+// "U+E8E5" (or "E8E5"), a Segoe Fluent / MDL2 code point, drawn with Phosphor
+// where mapped (phosphor::forSegoe), else with the system icon font; in the
+// subtext colour of the theme, about three quarters of the box, as Glyph.qml
+// shows them.
 QImage glyphIcon(const QString& code, int px, bool dark)
 {
     bool ok = false;
@@ -292,16 +297,23 @@ QImage glyphIcon(const QString& code, int px, bool dark)
     const uint point = hex.toUInt(&ok, 16);
     if (!ok || point == 0 || point > 0x10FFFF)
         return {};
+    const QString text = QString::fromUcs4(reinterpret_cast<const char32_t*>(&point), 1);
+    const std::optional<phosphor::Icon> icon = phosphor::forSegoe(text);
+    QFont font(icon ? icon->family : SystemTheme::iconFontName());
+    font.setPixelSize(std::max(8, int(px * 3 / 4 * (icon ? phosphor::kScale : 1.0))));
+    // Never a character from another font: where an older icon font lacks
+    // one, nothing, and the caller's fallback icon instead.
+    font.setStyleStrategy(QFont::NoFontMerging);
+    if (!icon && !QFontMetrics(font).inFontUcs4(point))
+        return {};
     QImage image(px, px, QImage::Format_ARGB32_Premultiplied);
     image.fill(Qt::transparent);
     QPainter painter(&image);
     painter.setRenderHint(QPainter::Antialiasing);
     painter.setRenderHint(QPainter::TextAntialiasing);
-    QFont font(SystemTheme::iconFontName());
-    font.setPixelSize(std::max(8, px * 3 / 4));
     painter.setFont(font);
     painter.setPen(dark ? QColor(0xA7, 0xA7, 0xA7) : QColor(0x66, 0x66, 0x66));
-    painter.drawText(QRect(0, 0, px, px), Qt::AlignCenter, QString::fromUcs4(reinterpret_cast<const char32_t*>(&point), 1));
+    painter.drawText(QRect(0, 0, px, px), Qt::AlignCenter, icon ? icon->text : text);
     painter.end();
     return image;
 }

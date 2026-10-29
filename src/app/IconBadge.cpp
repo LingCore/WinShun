@@ -1,5 +1,7 @@
 #include "IconBadge.h"
 
+#include "Phosphor.h"
+
 #include <QFont>
 #include <QFontMetricsF>
 #include <QLinearGradient>
@@ -34,17 +36,19 @@ void IconBadge::paint(QPainter* painter)
         return;
     // The glyph's outline taken at a large size, where hinting cannot bend
     // it, and scaled down to half the badge. Icon fonts draw within their em
-    // square, so that is what gets centred.
+    // square, so that is what gets centred. Phosphor where it has the icon.
     constexpr qreal kOutlineSize = 256;
-    QFont font(m_iconFont);
+    const std::optional<phosphor::Icon> icon = phosphor::forSegoe(m_glyph);
+    const QString text = icon ? icon->text : m_glyph;
+    QFont font(icon ? icon->family : m_iconFont);
     font.setPixelSize(int(kOutlineSize));
     font.setHintingPreference(QFont::PreferNoHinting);
     const QFontMetricsF metrics(font);
     QPainterPath glyph;
-    glyph.addText(0, 0, font, m_glyph);
-    const qreal scale = s * 0.5 / kOutlineSize;
+    glyph.addText(0, 0, font, text);
+    const qreal scale = s * 0.5 * (icon ? phosphor::kScale : 1.0) / kOutlineSize;
     painter->scale(scale, scale);
-    painter->translate(-metrics.horizontalAdvance(m_glyph) / 2, (metrics.ascent() - metrics.descent()) / 2);
+    painter->translate(-metrics.horizontalAdvance(text) / 2, (metrics.ascent() - metrics.descent()) / 2);
     painter->setBrush(m_glyphColor);
     painter->drawPath(glyph);
 }

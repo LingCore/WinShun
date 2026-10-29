@@ -2,17 +2,21 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import WinShun
 
-// A Segoe Fluent / MDL2 icon glyph, e.g. "" (search), or the name of an
-// icon the font lacks, drawn here instead (see `drawn`).
+// An icon named by its Segoe Fluent / MDL2 code point, e.g. "" (search),
+// drawn with Phosphor (see phosphor::forSegoe); or the name of one drawn here
+// (see `drawn`).
 Item {
     id: icon
 
     property string glyph
     // A second font glyph drawn over the first, as MDL2 fills pair with their
-    // outlines: PinnedFill is only the head, the needle is in Pin.
+    // outlines: PinnedFill is only the head, the needle is in Pin. Not for a
+    // Phosphor icon, whole in one glyph.
     property string overlay
     property real size: 16
     property color color: Theme.subtext
+    // A window's caption button: Windows' own glyph, as its own windows have.
+    property bool caption: false
 
     // Icons drawn like Fluent System Icons: a master per device-pixel size,
     // with outer edges on whole pixels and the stroke growing inwards (1 px at
@@ -51,20 +55,30 @@ Item {
         }
     })[glyph] ?? null
 
+    // {text, family}, or undefined: the system icon font draws it.
+    readonly property var phosphor: drawn || caption ? undefined : SystemTheme.phosphorIcon(glyph)
+    // Not in the system icon font (an older Windows 10; seen 2026-10-29):
+    // nothing, never the character some other font has there (see
+    // SystemTheme.hasGlyph).
+    readonly property string shown: drawn ? glyph
+                                  : phosphor ? phosphor.text
+                                  : SystemTheme.hasGlyph(glyph) ? glyph : ""
+    readonly property bool missing: shown.length === 0 && glyph.length > 0 // keeps its room
+
     // The icon fonts' line box is exactly their em square, so drawn icons
-    // line up with the glyphs.
-    implicitWidth: drawn ? size : label.implicitWidth
-    implicitHeight: drawn ? size : label.implicitHeight
+    // line up with the glyphs. A Phosphor icon, drawn larger, stays in its box.
+    implicitWidth: drawn || phosphor || missing ? size : label.implicitWidth
+    implicitHeight: drawn || phosphor || missing ? size : label.implicitHeight
 
     Text {
         id: label
         anchors.centerIn: parent
         visible: !icon.drawn
-        text: icon.drawn ? "" : icon.glyph
-        font.family: Theme.iconFont
+        text: icon.drawn ? "" : icon.shown
+        font.family: icon.phosphor ? icon.phosphor.family : Theme.iconFont
         // In points: font.pixelSize is a whole number of logical pixels, which
         // would round a size like 64/3 (32 device pixels at 150%) down.
-        font.pointSize: icon.size * 72 / 96
+        font.pointSize: icon.size * (icon.phosphor ? SystemTheme.iconScale : 1) * 72 / 96
         color: icon.color
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
@@ -72,7 +86,7 @@ Item {
 
     Text {
         anchors.centerIn: parent
-        visible: !icon.drawn && icon.overlay.length > 0
+        visible: !icon.drawn && !icon.phosphor && icon.overlay.length > 0 && SystemTheme.hasGlyph(icon.overlay)
         text: icon.overlay
         font: label.font
         color: icon.color

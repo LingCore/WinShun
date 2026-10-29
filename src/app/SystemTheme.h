@@ -2,7 +2,10 @@
 
 #include <QAbstractNativeEventFilter>
 #include <QColor>
+#include <QHash>
 #include <QObject>
+#include <QRawFont>
+#include <QVariant>
 #include <QtQml/qqmlregistration.h>
 
 namespace ws {
@@ -18,6 +21,8 @@ class SystemTheme : public QObject, public QAbstractNativeEventFilter {
     // A fill that carries white words or marks (see accentFill()).
     Q_PROPERTY(QColor accentFill READ accentFill NOTIFY changed FINAL)
     Q_PROPERTY(QString iconFont READ iconFont CONSTANT FINAL)
+    // How much larger a Phosphor icon is drawn than its box (phosphor::kScale).
+    Q_PROPERTY(qreal iconScale READ iconScale CONSTANT FINAL)
     // Settings > Accessibility > Visual effects > Animation effects.
     Q_PROPERTY(bool animations READ animations NOTIFY changed FINAL)
     // Whether our windows can stand on Mica (see WindowEffects): Windows 11
@@ -48,6 +53,19 @@ public:
     static QColor accentColor(); // accent(), for C++
     QString iconFont() const { return m_iconFont; }
     static QString iconFontName(); // iconFont(), for C++ (FileIconProvider draws glyph icons)
+    static qreal iconScale();
+    // The Phosphor icon drawn for a Segoe code point, as {text, family}, or
+    // undefined: the icon font draws it then (see phosphor::forSegoe).
+    Q_INVOKABLE QVariant phosphorIcon(const QString& glyph) const;
+    // The icon font has the glyph (every character of it). An older Windows
+    // 10 has an older "Segoe MDL2 Assets", without the icons added since: the
+    // text would then take the character from whatever font has it, a Chinese
+    // character from a font of a company's own characters, say. Remembered;
+    // the GUI thread only.
+    Q_INVOKABLE bool hasGlyph(const QString& glyph) const;
+    // hasGlyph's check, in any installed font; true when the font is not
+    // there to ask (the text is drawn as it ever was).
+    static bool fontHas(const QString& family, const QString& glyph);
     bool animations() const;
     static int hoverTime();
     bool materials() const;
@@ -76,6 +94,8 @@ private:
     static inline QString s_uiSize = QStringLiteral("standard");
     static inline SystemTheme* s_instance = nullptr; // the QML singleton
     QString m_iconFont;
+    mutable QRawFont m_iconRaw; // made the first time hasGlyph asks
+    mutable QHash<QString, bool> m_glyphs; // hasGlyph's answers
 };
 
 } // namespace ws

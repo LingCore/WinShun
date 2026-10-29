@@ -88,6 +88,8 @@ try {
         Copy-Item "$($pdfium.FullName)\LICENSE" "$dist\licenses\pdfium\LICENSE.txt"
         Copy-Item "$($pdfium.FullName)\licenses\*" "$dist\licenses\pdfium"
         Copy-Item "$root\third_party\miniz\LICENSE" "$dist\licenses\miniz.txt"
+        # The icons: Phosphor (MIT), compiled into WinShun.exe.
+        Copy-Item "$root\third_party\phosphor\LICENSE" "$dist\licenses\phosphor.txt"
         # The words in pictures (platform/PaddleOcr): ONNX Runtime and the
         # PP-OCRv6 tiny models, with their licenses.
         Copy-Item "$root\build\$preset\onnxruntime.dll" $dist

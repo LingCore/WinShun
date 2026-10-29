@@ -1,9 +1,11 @@
 #include "SystemTheme.h"
 
+#include "Phosphor.h"
 #include "UiSize.h"
 #include "platform/WindowEffects.h"
 
 #include <QEvent>
+#include <QFont>
 #include <QGuiApplication>
 #include <QOperatingSystemVersion>
 #include <QPalette>
@@ -34,6 +36,52 @@ QString SystemTheme::iconFontName()
     // Decided by OS version: enumerating all installed fonts is expensive.
     return QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows11 ? u"Segoe Fluent Icons"_s
                                                                                     : u"Segoe MDL2 Assets"_s;
+}
+
+qreal SystemTheme::iconScale()
+{
+    return phosphor::kScale;
+}
+
+QVariant SystemTheme::phosphorIcon(const QString& glyph) const
+{
+    const std::optional<phosphor::Icon> icon = phosphor::forSegoe(glyph);
+    if (!icon)
+        return {};
+    return QVariantMap {{u"text"_s, icon->text}, {u"family"_s, icon->family}};
+}
+
+namespace {
+
+bool supports(const QRawFont& font, const QString& family, const QString& glyph)
+{
+    if (!font.isValid() || font.familyName().compare(family, Qt::CaseInsensitive) != 0)
+        return true; // another font stands in: nothing to tell
+    const QList<uint> characters = glyph.toUcs4();
+    return std::ranges::all_of(characters, [&](uint c) { return font.supportsCharacter(c); });
+}
+
+} // namespace
+
+bool SystemTheme::fontHas(const QString& family, const QString& glyph)
+{
+    return supports(QRawFont::fromFont(QFont(family)), family, glyph);
+}
+
+bool SystemTheme::hasGlyph(const QString& glyph) const
+{
+    if (glyph.isEmpty())
+        return true;
+    if (const auto known = m_glyphs.constFind(glyph); known != m_glyphs.cend())
+        return *known;
+    if (!m_iconRaw.isValid())
+        m_iconRaw = QRawFont::fromFont(QFont(m_iconFont));
+    const bool has = supports(m_iconRaw, m_iconFont, glyph);
+    m_glyphs.insert(glyph, has);
+    if (!has) // in the diagnostics: which icons an old font lacks
+        qWarning("WinShun: the icon font (%s) has no U+%04X; drawn another way, or not at all", qPrintable(m_iconFont),
+            glyph.toUcs4().value(0));
+    return has;
 }
 
 bool SystemTheme::backdropSystem() const
