@@ -39,6 +39,7 @@ public:
         MovableRole, // can be moved in its group's own order (a drag, Ctrl+Up/Down)
         AfterPinnedRole, // the first row after those in "固定" listed first: a line above it
         ScreenshotRole, // a picture Win顺's capture took (Clip::screenshot): tagged 截图
+        PastedRole, // pasted from the list before, and marksPasted: a mark on the row
     };
 
     // Which rows can be moved in their group's order: none (a search, the
@@ -69,6 +70,9 @@ public:
         m_movable = movable;
     }
     bool movable(int row) const;
+    // Rows pasted before get a mark: wanted while a paste leaves the entry in
+    // its place (ClipStore::keepsPlaceOnPaste); else the last pasted is on top.
+    void setMarksPasted(bool on);
     void refreshTimes(); // "3 分钟前" moved on
     void retranslate() { refreshTimes(); }
     void pictureSaved(qint64 id); // its file is there now (ClipStore::imagePending)
@@ -116,6 +120,7 @@ private:
     QList<qint64> m_selected; // ids, in the order picked
     QColor m_highlightColor {0x00, 0x5F, 0xB8};
     bool m_pinnedFirst = false;
+    bool m_marksPasted = false;
     Movable m_movable = Movable::None;
     qint64 m_now = 0; // what "3 分钟前" is counted from
     mutable QHash<QString, bool> m_missing; // path -> gone, while the rows stay

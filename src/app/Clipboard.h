@@ -3,6 +3,7 @@
 #include "ClipModel.h"
 #include "ClipStore.h"
 #include "platform/ClipboardWatcher.h"
+#include "platform/Paster.h"
 #include "platform/TextRecognizer.h"
 
 #include <QElapsedTimer>
@@ -97,6 +98,14 @@ class Clipboard : public QObject {
     // The search box at the end away from the caret, the entries by it
     // (Settings::clipboardSearchBoxSide "far"); else the search box by it.
     Q_PROPERTY(bool searchFar READ searchFar NOTIFY layoutOptionsChanged FINAL)
+    // Its hotkey held after it opened the window (GitHub #107, App,
+    // Settings::clipboardHoldToStep): the key pressed again moves to the next
+    // older row (stepped), letting go of the hotkey pastes that row as Enter
+    // would. holdHint: letting go pastes now (a step made, or held a second),
+    // and the footer says so; holdKeys: what to let go of ("Ctrl").
+    Q_PROPERTY(bool holdToStep READ holdToStep NOTIFY holdChanged FINAL)
+    Q_PROPERTY(bool holdHint READ holdHint NOTIFY holdChanged FINAL)
+    Q_PROPERTY(QString holdKeys READ holdKeys NOTIFY holdChanged FINAL)
     Q_PROPERTY(QString query READ query WRITE setQuery NOTIFY queryChanged FINAL)
     Q_PROPERTY(int category READ category WRITE setCategory NOTIFY categoryChanged FINAL)
     // [{title, group (id, 0 for the kinds), size (entries in a group)}]
@@ -159,6 +168,23 @@ public:
     bool flipAbove() const { return m_flipAbove; }
     bool searchFar() const { return m_searchFar; }
     void setLayoutOptions(bool flipAbove, bool searchFar);
+    bool holdToStep() const { return m_holdToStep; }
+    void setHoldToStep(bool on);
+    bool holdHint() const { return m_holdHint; }
+    QString holdKeys() const { return m_holdKeys; }
+    // The hold (App), on an entry rather than a row: a copy coming in moves
+    // it down, it stays the one. Begun as the window opens, on the first
+    // entry once it shows (handleShown); a step; held a second without one
+    // (that entry, the hint); let go (pasted as Enter, its keys past `guard`,
+    // the hold's hook; false: the entry is gone, nothing pasted); over
+    // without a paste (Esc, a click, another key).
+    void beginSteps(const QString& keys);
+    void step();
+    void holdFirst();
+    bool finishSteps(std::unique_ptr<paste::Guard> guard = nullptr);
+    void endSteps();
+    // The row of the entry the hold is on; -1 without one (the list empty as it opened).
+    Q_INVOKABLE int heldRow() const;
     QString query() const { return m_query; }
     void setQuery(const QString& query);
     int category() const { return m_category; }
@@ -276,6 +302,8 @@ signals:
     void numberKeysChanged();
     void rowOptionsChanged();
     void layoutOptionsChanged();
+    void holdChanged();
+    void stepped(int row); // the hold moved on to this row: the current one now
     void activeChanged();
     void keysRoutedChanged();
     void pinnedChanged();
@@ -380,6 +408,11 @@ private:
     bool m_largePictures = false;
     bool m_flipAbove = true;
     bool m_searchFar = false;
+    bool m_holdToStep = false;
+    bool m_holding = false; // beginSteps .. endSteps
+    bool m_holdHint = false;
+    QString m_holdKeys;
+    qint64 m_heldId = 0; // the entry the hold is on; 0: none (the list empty as it opened)
     QString m_query;
     int m_category = 0;
     qint64 m_categoryGroup = 0; // the group the category tab is, kept when groups come and go
@@ -401,6 +434,8 @@ private:
     std::vector<qint64> m_touched; // moved up once pasted (joined pastes; a single one moves up by itself)
     QString m_doneMessage; // a copy without pasting says so
     HWND m_pasteWindow = nullptr;
+    std::unique_ptr<paste::Guard> m_nextGuard; // finishSteps', for startPaste
+    std::unique_ptr<paste::Guard> m_pasteGuard; // the hook its keys go past (a hold's paste)
     QElapsedTimer m_pasteClock;
     QElapsedTimer m_frontClock; // since the target came to the front
     QTimer m_keysTimer; // waits for the modifier keys to be let go

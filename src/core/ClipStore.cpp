@@ -421,6 +421,7 @@ bool ClipStore::open(qint64 now)
         bool hasFormats = false;
         bool hasImageFormat = false;
         bool hasAnimated = false;
+        bool hasPasted = false;
         QSqlQuery columns(db);
         columns.prepare(u"PRAGMA table_info(clips)"_s);
         if (!run(columns, "Reading the columns"))
@@ -433,6 +434,7 @@ bool ClipStore::open(qint64 now)
             hasFormats = hasFormats || columns.value(1).toString() == u"formats"_s;
             hasImageFormat = hasImageFormat || columns.value(1).toString() == u"imageFormat"_s;
             hasAnimated = hasAnimated || columns.value(1).toString() == u"animated"_s;
+            hasPasted = hasPasted || columns.value(1).toString() == u"pasted"_s;
         }
         columns.finish();
         if (!hasOcr && !run(db, u"ALTER TABLE clips ADD COLUMN ocr TEXT"_s))
@@ -466,6 +468,10 @@ bool ClipStore::open(qint64 now)
             return loaded;
         if (!hasAnimated && !run(db, u"ALTER TABLE clips ADD COLUMN animated INTEGER NOT NULL DEFAULT 0"_s))
             return loaded;
+        // When it was last pasted from the list (0: never), GitHub #122. An
+        // older Win顺 ignores the column: its queries name their columns.
+        if (!hasPasted && !run(db, u"ALTER TABLE clips ADD COLUMN pasted INTEGER NOT NULL DEFAULT 0"_s))
+            return loaded;
 
         QSqlQuery groups(db);
         groups.prepare(u"SELECT id, name FROM groups ORDER BY position, id"_s);
@@ -478,7 +484,7 @@ bool ClipStore::open(qint64 now)
         clips.setForwardOnly(true);
         clips.prepare(u"SELECT id, kind, substr(text, 1, %1), length, hash, created, used, source, sourcePath, groupId, "
                       u"width, height, bytes, html IS NOT NULL, rtf IS NOT NULL, ocr, rank, screenshot, project, "
-                      u"formats IS NOT NULL, imageFormat, animated FROM clips ORDER BY used DESC, id DESC"_s
+                      u"formats IS NOT NULL, imageFormat, animated, pasted FROM clips ORDER BY used DESC, id DESC"_s
                 .arg(kTextInMemory));
         if (!run(clips, "Reading the history"))
             return loaded;
@@ -507,6 +513,7 @@ bool ClipStore::open(qint64 now)
             clip.formats = clip.kind == ClipKind::Image && clips.value(19).toBool();
             clip.imageFormat = static_cast<ClipImageFormat>(std::clamp(clips.value(20).toInt(), 0, 2));
             clip.animated = clip.kind == ClipKind::Image && clips.value(21).toBool();
+            clip.pasted = clips.value(22).toLongLong();
             loaded.clips.push_back(std::move(clip));
         }
         QSqlQuery last(db);
@@ -837,11 +844,18 @@ void ClipStore::touch(qint64 id, qint64 now)
     const auto it = std::ranges::find(m_clips, id, &Clip::id);
     if (it == m_clips.end())
         return;
-    it->used = now;
-    moveToFront(static_cast<std::size_t>(it - m_clips.begin()));
-    m_writer->post([id, now](QSqlDatabase& db) {
+    const bool moves = !m_keepsPlace;
+    it->pasted = now;
+    if (moves) {
+        it->used = now;
+        moveToFront(static_cast<std::size_t>(it - m_clips.begin()));
+    }
+    m_writer->post([id, now, moves](QSqlDatabase& db) {
         QSqlQuery query(db);
-        query.prepare(u"UPDATE clips SET used = ? WHERE id = ?"_s);
+        query.prepare(moves ? u"UPDATE clips SET used = ?, pasted = ? WHERE id = ?"_s
+                            : u"UPDATE clips SET pasted = ? WHERE id = ?"_s);
+        if (moves)
+            query.addBindValue(now);
         query.addBindValue(now);
         query.addBindValue(id);
         run(query, "Updating an entry");
@@ -901,8 +915,9 @@ void ClipStore::restore(std::vector<ClipRecord> records)
         db.transaction();
         QSqlQuery query(db);
         query.prepare(u"INSERT OR REPLACE INTO clips (id, kind, text, length, html, rtf, hash, created, used, source, "
-                      u"sourcePath, groupId, width, height, bytes, ocr, rank, screenshot, project, formats, imageFormat, animated) "
-                      u"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"_s);
+                      u"sourcePath, groupId, width, height, bytes, ocr, rank, screenshot, project, formats, imageFormat, animated, "
+                      u"pasted) "
+                      u"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"_s);
         for (const ClipRecord& record : records) {
             const Clip& c = record.clip;
             query.addBindValue(c.id);
@@ -927,6 +942,7 @@ void ClipStore::restore(std::vector<ClipRecord> records)
             query.addBindValue(blob(record.formats));
             query.addBindValue(static_cast<int>(c.imageFormat));
             query.addBindValue(c.animated ? 1 : 0);
+            query.addBindValue(c.pasted);
             written.push_back(run(query, "Restoring an entry"));
         }
         db.commit();
@@ -992,7 +1008,9 @@ void ClipStore::prune(qint64 now)
     for (const Clip& c : m_clips) {
         if (c.group != 0)
             continue;
-        if (c.used < cutoff || (m_limits.maxItems > 0 && ++kept > m_limits.maxItems))
+        // Old by the later of its last copy and its last paste; the count
+        // limit keeps the first ones listed (clips() order).
+        if (std::max(c.used, c.pasted) < cutoff || (m_limits.maxItems > 0 && ++kept > m_limits.maxItems))
             drop.push_back(c.id);
     }
     dropRows(drop);

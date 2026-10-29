@@ -161,6 +161,128 @@ private slots:
         QCOMPARE(path.files(), (QStringList {u"C:\\a b\\c.txt"_s, u"D:\\d.txt"_s}));
     }
 
+    void pasteKeepsPlaceWhenAsked() // GitHub #122
+    {
+        QTemporaryDir dir;
+        ClipStore store(dir.path());
+        QVERIFY(store.open(kStart));
+        const qint64 a = store.add(text(u"甲"_s), kStart);
+        const qint64 b = store.add(text(u"乙"_s), kStart + 1);
+        const qint64 c = store.add(text(u"丙"_s), kStart + 2);
+        QVERIFY(!store.keepsPlaceOnPaste()); // off: today's behaviour
+        store.touch(a, kStart + 3);
+        QCOMPARE(texts(store), (QStringList {u"甲"_s, u"丙"_s, u"乙"_s}));
+
+        store.setKeepsPlaceOnPaste(true);
+        store.touch(b, kStart + 4); // pasted from the middle: stays
+        store.touch(c, kStart + 5);
+        QCOMPARE(texts(store), (QStringList {u"甲"_s, u"丙"_s, u"乙"_s}));
+        QCOMPARE(store.clip(b)->used, kStart + 1);
+        // Pinned or grouped entries too; copying the content again is a new copy.
+        store.setGroup(std::span(&b, 1), ClipStore::kPinned);
+        store.touch(b, kStart + 6);
+        QCOMPARE(texts(store), (QStringList {u"甲"_s, u"丙"_s, u"乙"_s}));
+        QCOMPARE(store.add(text(u"乙"_s), kStart + 7), b);
+        QCOMPARE(texts(store), (QStringList {u"乙"_s, u"甲"_s, u"丙"_s}));
+
+        // Pasted is set either way; `used` only when the entry moves.
+        QCOMPARE(store.clip(b)->pasted, kStart + 6);
+        QCOMPARE(store.clip(c)->pasted, kStart + 5);
+        QCOMPARE(store.clip(a)->pasted, kStart + 3);
+        QCOMPARE(store.clip(c)->used, kStart + 2);
+
+        // The same order after a restart (the list is sorted by `used`).
+        store.touch(a, kStart + 8);
+        store.close();
+        QVERIFY(store.open(kStart + 9));
+        QCOMPARE(texts(store), (QStringList {u"乙"_s, u"甲"_s, u"丙"_s}));
+        QCOMPARE(store.clip(a)->pasted, kStart + 8);
+        QCOMPARE(store.clip(c)->pasted, kStart + 5);
+        QCOMPARE(store.clip(c)->used, kStart + 2);
+        store.setKeepsPlaceOnPaste(false);
+        store.touch(c, kStart + 10);
+        QCOMPARE(texts(store), (QStringList {u"丙"_s, u"乙"_s, u"甲"_s}));
+        QCOMPARE(store.clip(c)->pasted, kStart + 10);
+        QCOMPARE(store.clip(c)->used, kStart + 10);
+    }
+
+    // Expiry goes by the later of the last copy and the last paste; the count
+    // limit still keeps the first ones listed.
+    void pastedEntriesDoNotExpire()
+    {
+        QTemporaryDir dir;
+        ClipStore store(dir.path());
+        QVERIFY(store.open(kStart));
+        store.setKeepsPlaceOnPaste(true);
+        const qint64 old = store.add(text(u"旧"_s), kStart);
+        const qint64 stale = store.add(text(u"更旧"_s), kStart);
+        store.setLimits({100, 30}, kStart + 20 * kDay); // both are 20 days old
+        QVERIFY(store.clip(old) && store.clip(stale));
+        store.touch(old, kStart + 35 * kDay); // pasted every few weeks, never copied again
+        const qint64 fresh = store.add(text(u"新"_s), kStart + 39 * kDay);
+        store.setLimits({100, 30}, kStart + 40 * kDay);
+        QVERIFY(store.clip(old));
+        QVERIFY(!store.clip(stale));
+        QVERIFY(store.clip(fresh));
+        QCOMPARE(store.clip(old)->used, kStart); // still where it was, as old as ever
+        QCOMPARE(texts(store).first(), u"新"_s);
+        // Past 30 days since the paste too: gone, kept or not.
+        store.setLimits({100, 30}, kStart + 66 * kDay);
+        QVERIFY(!store.clip(old));
+        // The count limit counts in list order, whatever was pasted.
+        store.setLimits({2, 0}, kStart + 67 * kDay);
+        const qint64 other = store.add(text(u"又一条"_s), kStart + 66 * kDay);
+        store.touch(fresh, kStart + 67 * kDay); // pasted last, but listed second
+        store.setLimits({1, 0}, kStart + 67 * kDay);
+        QVERIFY(store.clip(other));
+        QVERIFY(!store.clip(fresh));
+    }
+
+    // A history from before `pasted`: the column is added, nothing is lost;
+    // an older Win顺 opening the upgraded file still reads it.
+    void pastedColumnAddedToAnOldHistory()
+    {
+        QTemporaryDir dir;
+        {
+            ClipStore store(dir.path());
+            QVERIFY(store.open(kStart));
+            QVERIFY(store.add(text(u"旧记录"_s), kStart) > 0);
+        }
+        const auto sql = [&](const QString& statement) {
+            bool ok = false;
+            {
+                QSqlDatabase db = QSqlDatabase::addDatabase(u"QSQLITE"_s, u"old3"_s);
+                db.setDatabaseName(dir.filePath(u"clipboard.db"_s));
+                ok = db.open() && QSqlQuery(db).exec(statement);
+                db.close();
+            }
+            QSqlDatabase::removeDatabase(u"old3"_s);
+            return ok;
+        };
+        QVERIFY(sql(u"ALTER TABLE clips DROP COLUMN pasted"_s)); // as a file from before
+        qint64 id = 0;
+        {
+            ClipStore store(dir.path());
+            QVERIFY(store.open(kStart + 1));
+            QCOMPARE(store.clips().size(), std::size_t(1));
+            id = store.clips().front().id;
+            QCOMPARE(store.clip(id)->pasted, qint64(0));
+            store.touch(id, kStart + 2);
+        }
+        {
+            ClipStore store(dir.path());
+            QVERIFY(store.open(kStart + 3));
+            QCOMPARE(store.clip(id)->pasted, kStart + 2);
+        }
+        // What an older version does with the file: its own columns, no `pasted`.
+        QVERIFY(sql(u"INSERT INTO clips (id, kind, text, hash, created, used) VALUES (99, 0, 'x', 'h', %1, %1)"_s.arg(kStart + 3)));
+        QVERIFY(sql(u"UPDATE clips SET used = %1 WHERE id = 99"_s.arg(kStart + 3)));
+        ClipStore store(dir.path());
+        QVERIFY(store.open(kStart + 4));
+        QVERIFY(store.clip(99));
+        QCOMPARE(store.clip(99)->pasted, qint64(0));
+    }
+
     void addMovesCopiesToTheTop()
     {
         QTemporaryDir dir;

@@ -83,6 +83,13 @@ Item {
         list.positionViewAtBeginning()
         list.contentY = list.restY()
     }
+    // The clipboard's hotkey held (GitHub #107): on the entry its steps are
+    // on (Clipboard.heldRow), wherever the list moved it.
+    function selectHeld(row: int) {
+        selectionAnchor = -1
+        list.currentIndex = row
+        list.positionViewAtIndex(row, ListView.Contain)
+    }
     function windowHidden() {
         previewClickTimer.stop()
         clearHover()
@@ -427,7 +434,10 @@ Item {
         function onDataChanged() { page.previewRevision++ }
         function onModelReset() { // an entry moved up (copied again): stay on a row
             page.clearHover()
-            if (list.count > 0 && (list.currentIndex < 0 || list.currentIndex >= list.count))
+            const held = page.clipboard.heldRow()
+            if (held >= 0)
+                page.selectHeld(held)
+            else if (list.count > 0 && (list.currentIndex < 0 || list.currentIndex >= list.count))
                 list.currentIndex = 0
             page.previewRevision++
         }
@@ -453,6 +463,8 @@ Item {
             input.text = ""
             page.pinyinHint = false
             pinyinHintTimer.stop()
+            if (holdFade.running) // a hold's paste hid it mid-fade, no frame drawn to carry it on
+                holdFade.complete()
             page.selectionAnchor = -1
             page.previewOpen = false // the list alone as it is put in place ...
             page.selectFirst()
@@ -469,7 +481,11 @@ Item {
             page.selectionAnchor = -1
             page.closeContextMenu()
             page.selectFirst()
+            const held = page.clipboard.heldRow()
+            if (held >= 0)
+                page.selectHeld(held)
         }
+        function onStepped(row) { page.selectHeld(row) }
         function onQueryChanged() {
             pinyinHintTimer.stop() // also for a paste, which goes past handleKey
             if (input.text !== page.clipboard.query)
@@ -959,10 +975,14 @@ Item {
                 id: statusLabel
                 anchors.left: parent.left
                 anchors.leftMargin: 18
-                anchors.right: pinyinNote.visible ? pinyinNote.left : hints.shown ? hints.left : infoButton.left
-                anchors.rightMargin: pinyinNote.visible || hints.shown ? 12 : 8
+                anchors.right: holdNote.visible ? holdNote.left
+                             : pinyinNote.visible ? pinyinNote.left
+                             : hints.shown ? hints.left : infoButton.left
+                anchors.rightMargin: holdNote.visible || pinyinNote.visible || hints.shown ? 12 : 8
                 anchors.verticalCenter: parent.verticalCenter
+                // Beside the hold's note only if it fits whole: the note says what letting go does.
                 visible: page.selectedCount === 0
+                         && (!holdNote.visible || statusLabel.implicitWidth <= footer.width - hints.reserved - holdNote.width)
                 text: page.clipboard.statusText
                 textFormat: Text.PlainText
                 color: Theme.subtext
@@ -1038,7 +1058,7 @@ Item {
                 readonly property bool shown: !(page.clipboard.pinned && !page.clipboard.keysRouted && !page.Window.active)
                                               && (page.selectedCount > 0
                                                   || statusLabel.implicitWidth <= footer.width - reserved - implicitWidth)
-                opacity: shown && !pinyinNote.visible ? 1 : 0 // still laid out: its width tells when it fits again
+                opacity: shown && !pinyinNote.visible && !holdNote.visible ? 1 : 0 // still laid out: its width tells when it fits again
 
                 // The ones always there, and their gaps; then Tab's and →'s
                 // where there is room beside them and the status (beside the
@@ -1069,7 +1089,7 @@ Item {
             Text {
                 id: pinyinNote
                 readonly property bool shown: pinyinHintTimer.running && page.selectedCount === 0
-                                              && page.clipboard.keysRouted
+                                              && page.clipboard.keysRouted && !holdNote.shown
                 anchors.right: infoButton.left
                 anchors.rightMargin: 8
                 anchors.verticalCenter: parent.verticalCenter
@@ -1082,6 +1102,27 @@ Item {
                 color: Theme.faint
                 font.pixelSize: Theme.uiBody
                 elide: Text.ElideRight
+            }
+
+            // In the key hints' place while letting go of the hotkey pastes the
+            // current row (GitHub #107, Clipboard.holdHint): only once it does,
+            // a step made or held a second, so a quick press shows nothing.
+            Row {
+                id: holdNote
+                readonly property bool shown: page.clipboard.holdHint && list.count > 0
+                // Where the line is short (a narrow list, longer words), Esc's goes first.
+                readonly property bool escFits: holdReleaseHint.fullWidth + spacing + holdEscHint.fullWidth
+                                                <= footer.width - hints.reserved
+                anchors.right: infoButton.left
+                anchors.rightMargin: 8
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 14
+                opacity: shown ? 1 : 0
+                visible: opacity > 0
+                Behavior on opacity { enabled: SystemTheme.animations; NumberAnimation { id: holdFade; duration: 150 } }
+
+                KeyHint { id: holdReleaseHint; keys: page.clipboard.holdKeys; label: qsTr("松开粘贴") }
+                KeyHint { id: holdEscHint; keys: "Esc"; label: qsTr("取消"); visible: holdNote.escFits }
             }
 
             // The other keys, while the mouse rests on it.
@@ -1099,6 +1140,9 @@ Item {
                     .concat(page.intoField ? [] : [["Shift+Enter", qsTr("粘贴为纯文本")]])
                     .concat(page.numberKey < 0 ? []
                             : [[modifier + "+Shift+1…9", qsTr("第几条粘贴为纯文本")]])
+                    // Only where it works: a hotkey with something to hold (a lone F9 has not), over another program.
+                    .concat(!page.clipboard.holdToStep || page.intoField || !page.clipboard.shortcut.includes("+") ? []
+                            : [[page.clipboard.shortcut, qsTr("按住连按往下选，松开粘贴")]])
                     .concat([
                         ["→  Alt+P", qsTr("打开或关闭预览")],
                         ["Shift+Tab", qsTr("上一个分类")],

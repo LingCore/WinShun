@@ -275,7 +275,7 @@ private slots:
             {u"icon"_s, QUrl::fromLocalFile(path).toString()},
             {u"image"_s, QUrl::fromLocalFile(path).toString()}, {u"swatch"_s, QString()},
             {u"order"_s, 0}, {u"groupName"_s, QString()}, {u"pinned"_s, false},
-            {u"missing"_s, false}, {u"movable"_s, false}, {u"afterPinned"_s, false}, {u"screenshot"_s, false},
+            {u"missing"_s, false}, {u"movable"_s, false}, {u"afterPinned"_s, false}, {u"screenshot"_s, false}, {u"pasted"_s, false},
         }));
         QVERIFY2(object, qPrintable(component.errorString()));
         auto* row = qobject_cast<QQuickItem*>(object.get());

@@ -117,6 +117,7 @@ QHash<int, QByteArray> ClipModel::roleNames() const
         {MovableRole, "movable"},
         {AfterPinnedRole, "afterPinned"},
         {ScreenshotRole, "screenshot"},
+        {PastedRole, "pasted"},
     };
 }
 
@@ -176,6 +177,8 @@ QVariant ClipModel::data(const QModelIndex& index, int role) const
         return movable(index.row());
     case ScreenshotRole:
         return c->screenshot;
+    case PastedRole:
+        return m_marksPasted && c->pasted > 0;
     case AfterPinnedRole: {
         const Clip* above = at(index.row() - 1);
         return m_pinnedFirst && c->group != ClipStore::kPinned && above && above->group == ClipStore::kPinned;
@@ -332,6 +335,15 @@ QString ClipModel::when(qint64 ms, qint64 now)
     if (then.date().year() == today.year())
         return QLocale().toString(then.date(), tr("M月d日"));
     return QLocale().toString(then.date(), tr("yyyy年M月d日"));
+}
+
+void ClipModel::setMarksPasted(bool on)
+{
+    if (m_marksPasted == on)
+        return;
+    m_marksPasted = on;
+    if (count() > 0)
+        emit dataChanged(index(0), index(count() - 1), {PastedRole});
 }
 
 void ClipModel::setRows(const std::vector<int>& rows, const QString& query)

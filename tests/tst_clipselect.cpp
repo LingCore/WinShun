@@ -1,5 +1,6 @@
 #include "ClipModel.h"
 #include "FileIconProvider.h"
+#include "HotkeySteps.h"
 
 #include <QElapsedTimer>
 #include <QDir>
@@ -204,6 +205,26 @@ private slots:
         QCOMPARE(f.model.listedIds(false).size(), std::size_t(3));
         QCOMPARE(f.store.groupSize(ClipStore::kPinned), 2);
         QCOMPARE(f.store.groupSize(f.work), 1);
+    }
+
+    // A hold of the clipboard's hotkey is on an entry (GitHub #107): a copy
+    // coming in above moves it a row down, it stays the one; gone, its row is
+    // -1 and letting go pastes nothing (Clipboard::finishSteps).
+    void heldEntryFollowsItsRow()
+    {
+        Fixture f;
+        const qint64 held = f.model.idAt(ws::hotkeysteps::stepRow(f.model.rowOf(f.model.idAt(0)), f.model.count()));
+        QCOMPARE(f.model.rowOf(held), 1);
+        f.store.add(text(u"新复制的"_s), kStart + 100);
+        f.show({});
+        QCOMPARE(f.model.rowOf(held), 2);
+        QCOMPARE(ws::hotkeysteps::stepRow(f.model.rowOf(held), f.model.count()), 3);
+        const qint64 last = f.model.idAt(f.model.count() - 1);
+        QCOMPARE(ws::hotkeysteps::stepRow(f.model.rowOf(last), f.model.count()), f.model.count() - 1);
+        const qint64 gone[] {held};
+        f.store.remove(gone);
+        f.show({});
+        QCOMPARE(f.model.rowOf(held), -1);
     }
 
     // Deleted entries leave the picks (the whole list picked, then deleted).

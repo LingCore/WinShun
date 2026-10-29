@@ -3,6 +3,7 @@
 #include "ClipFiles.h"
 #include "ColorText.h"
 #include "FileIconProvider.h"
+#include "HotkeySteps.h"
 #include "TextField.h"
 #include "platform/ComWorker.h"
 #include "platform/DragOut.h"
@@ -159,6 +160,7 @@ Clipboard::Clipboard(ClipStore* store, ClipboardWatcher* watcher, QObject* paren
                   : m_pasteClock.elapsed() < kFocusWaitMs)
             return;
         m_focusTimer.stop();
+        const std::unique_ptr<paste::Guard> guard = std::move(m_pasteGuard); // done with either way
         // File lists go into an upload dialog's name field, even if its folder
         // list held focus. Never send Ctrl+V there: it could copy files into
         // that folder. Leave Open to the user, as a normal paste would (#57).
@@ -185,7 +187,7 @@ Clipboard::Clipboard(ClipStore* store, ClipboardWatcher* watcher, QObject* paren
         }
         m_pasting = false;
         if (front) {
-            if (!paste::sendPasteKeys(m_pasteWindow) && m_into == Into::CurrentProgram)
+            if (!paste::sendPasteKeys(m_pasteWindow, guard.get()) && m_into == Into::CurrentProgram)
                 failPaste(tr("内容已复制，自动粘贴失败，请按 Ctrl+V 粘贴"));
         } else if (m_window && m_window->isVisible())
             flash(tr("已复制。那个窗口没有回到前面，请自己按 Ctrl+V 粘贴"));
@@ -310,6 +312,87 @@ void Clipboard::setLayoutOptions(bool flipAbove, bool searchFar)
     m_flipAbove = flipAbove;
     m_searchFar = searchFar;
     emit layoutOptionsChanged();
+}
+
+void Clipboard::setHoldToStep(bool on)
+{
+    if (m_holdToStep == on)
+        return;
+    m_holdToStep = on;
+    emit holdChanged();
+}
+
+void Clipboard::beginSteps(const QString& keys)
+{
+    m_holding = true;
+    m_heldId = 0;
+    m_holdHint = false;
+    m_holdKeys = keys;
+    emit holdChanged();
+}
+
+void Clipboard::step()
+{
+    if (!m_holding)
+        return;
+    // One older than the entry it is on (the first as it opened, until a
+    // step; the first row if the list was empty then).
+    const int row = hotkeysteps::stepRow(m_heldId ? m_model.rowOf(m_heldId) : 0, m_model.count());
+    if (row >= 0) {
+        m_heldId = m_model.idAt(row);
+        emit stepped(row);
+    }
+    if (!m_holdHint) {
+        m_holdHint = true;
+        emit holdChanged();
+    }
+}
+
+void Clipboard::holdFirst()
+{
+    if (!m_holding || m_holdHint)
+        return;
+    if (!m_heldId && m_model.count() > 0) {
+        m_heldId = m_model.idAt(0);
+        emit stepped(0);
+    }
+    m_holdHint = true;
+    emit holdChanged();
+}
+
+bool Clipboard::finishSteps(std::unique_ptr<paste::Guard> guard)
+{
+    if (!m_holding)
+        return false;
+    // On no entry: the list was empty as it opened; the first row, if one
+    // came in since.
+    const qint64 held = m_heldId;
+    const int row = held ? m_model.rowOf(held) : (m_model.count() > 0 ? 0 : -1);
+    endSteps();
+    if (row < 0) {
+        if (held) // nothing to say for an empty list
+            flash(tr("那一条已不在列表里，没有粘贴"));
+        return false;
+    }
+    m_nextGuard = std::move(guard);
+    paste(row, false);
+    m_nextGuard.reset(); // not taken: no paste keys (a field of Win顺's own, one in progress)
+    return true;
+}
+
+void Clipboard::endSteps()
+{
+    if (!m_holding)
+        return;
+    m_holding = false;
+    m_heldId = 0;
+    m_holdHint = false;
+    emit holdChanged();
+}
+
+int Clipboard::heldRow() const
+{
+    return m_holding && m_heldId ? m_model.rowOf(m_heldId) : -1;
 }
 
 void Clipboard::setNumberHints(const QString& hints)
@@ -521,6 +604,7 @@ void Clipboard::failPaste(const QString& message)
 {
     m_keysTimer.stop();
     m_focusTimer.stop();
+    m_pasteGuard.reset();
     m_pasting = false;
     flash(message);
     if (m_into == Into::CurrentProgram)
@@ -544,6 +628,10 @@ void Clipboard::handleShown()
     }
     m_model.refreshTimes();
     refresh();
+    // Its hotkey held (beginSteps, before this): on the first entry from
+    // now on, not the first row, which a copy just coming in would take.
+    if (m_holding && !m_heldId && m_model.count() > 0)
+        m_heldId = m_model.idAt(0);
     emit categoriesChanged();
     emit listChanged();
     emit shown();
@@ -700,6 +788,7 @@ void Clipboard::startPaste(ClipWrite write, Into into, std::vector<qint64> touch
     m_pasting = true;
     m_write = std::move(write);
     m_into = into;
+    m_pasteGuard = into == Into::Program ? std::move(m_nextGuard) : nullptr;
     if (into == Into::CurrentProgram)
         m_pasteWindow = m_target;
     m_touched = std::move(touched);
@@ -739,6 +828,7 @@ void Clipboard::onWritten(bool ok)
         m_pasteWindow = paste::usableTarget(m_target);
     if (!m_pasteWindow) {
         m_pasting = false;
+        m_pasteGuard.reset();
         flash(tr("已复制。没有找到要粘贴进去的窗口，可以自己按 Ctrl+V"));
         return;
     }

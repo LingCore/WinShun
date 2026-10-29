@@ -27,6 +27,7 @@ Item {
     required property bool movable // in its group's own order: a handle to drag, Ctrl+Up/Down
     required property bool afterPinned // the first after those in "固定" listed first
     required property bool screenshot // a picture Win顺's capture took: tagged 截图 (when in no group)
+    required property bool pasted // pasted from the list before, with 粘贴后保持位置 on (else the last pasted is on top): a check mark
     property int hint: 0 // the number that pastes this row (Alt+1...), on its icon; 0 for none
     property string hintModifier: "Alt" // ... with this held
     property bool hintTaken: false // another program holds that chord as a global hotkey: shown struck through
@@ -204,6 +205,30 @@ Item {
                 color: Theme.accentText
                 font.pixelSize: 12
                 font.weight: Font.DemiBold
+            }
+        }
+
+        Rectangle { // pasted before: a white check on a blue disc, ringed like the order badge
+            id: pastedMark
+            objectName: "clipboardPastedMark"
+            visible: row.pasted
+            // Whole device pixels at 100%, 150% and 200%: even logical sizes.
+            x: parent.width - 12
+            y: parent.height - 12
+            width: 20
+            height: 20
+            radius: width / 2
+            color: Theme.accentFill
+            border.width: 2
+            border.color: Theme.background
+            Accessible.role: Accessible.Graphic
+            Accessible.name: qsTr("已粘贴过")
+
+            Glyph {
+                anchors.centerIn: parent
+                glyph: String.fromCharCode(0xE73E) // CheckMark
+                size: 12
+                color: Theme.accentText
             }
         }
     }
@@ -389,8 +414,11 @@ Item {
                                            : removeAction.tipWanted ? removeAction : null
         readonly property bool onKeys: !hovered && iconNumber.visible && iconNumber.taken && area.containsMouse // (a hover handler under the area gets no hover)
                                           && iconNumber.contains(iconNumber.mapFromItem(area, area.mouseX, area.mouseY))
-        target: hovered ? hovered : onKeys ? iconNumber : null
+        readonly property bool onMark: !hovered && !onKeys && pastedMark.visible && area.containsMouse
+                                       && pastedMark.contains(pastedMark.mapFromItem(area, area.mouseX, area.mouseY))
+        target: hovered ? hovered : onKeys ? iconNumber : onMark ? pastedMark : null
         text: hovered ? hovered.tip
+            : onMark ? qsTr("已粘贴过")
             : onKeys ? qsTr("%1 被别的程序占用了，在这里按也会交给那个程序。可在设置里改用 %2")
                        .arg(iconNumber.keys).arg(row.hintModifier === "Alt" ? "Ctrl" : "Alt")
             : ""

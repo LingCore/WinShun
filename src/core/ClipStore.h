@@ -66,6 +66,9 @@ struct Clip {
     QByteArray hash; // of the content: copying the same again moves the entry to the top
     qint64 created = 0; // ms since the epoch, first copied
     qint64 used = 0; // last copied or pasted: the list is newest first by this
+    // Last pasted from the history, 0 = never. Expiry counts the later of
+    // this and `used`; with keepsPlaceOnPaste a paste sets only this one.
+    qint64 pasted = 0;
     QString source; // the program it was copied from ("微信") ...
     QString sourcePath; // ... and its file
     qint64 group = 0; // 0: none (it expires); else a ClipGroup, kept for good
@@ -292,7 +295,16 @@ public:
     // top (and keeps its group), unless the capture is `initial`. Returns its
     // id, 0 if it could not be saved.
     qint64 add(const ClipCapture& capture, qint64 now);
-    void touch(qint64 id, qint64 now); // pasted from the history: to the top
+    // Pasted from the history: `pasted` is set, and the entry goes to the top
+    // (unless keepsPlaceOnPaste).
+    void touch(qint64 id, qint64 now);
+    // On, a paste from the history leaves the entry where it is: neither its
+    // place nor `used` changes (the list is sorted by it on every start, so
+    // changing it alone would move the entry then); `pasted` keeps it from
+    // expiring. Copying the content again is a new copy and still moves it
+    // up (add()). GitHub #122.
+    void setKeepsPlaceOnPaste(bool on) { m_keepsPlace = on; }
+    bool keepsPlaceOnPaste() const { return m_keepsPlace; }
     // The pictures (and projects) of removed entries stay until
     // discardImages(), so that restore() can put them back.
     std::vector<ClipRecord> remove(std::span<const qint64> ids);
@@ -379,6 +391,7 @@ private:
     QString m_connection; // name of this store's database connection
     bool m_open = false;
     Limits m_limits;
+    bool m_keepsPlace = false;
     std::vector<Clip> m_clips;
     std::vector<ClipGroup> m_groups;
     qint64 m_nextId = 1; // ids are never used twice (a removed entry's picture stays for undo)
