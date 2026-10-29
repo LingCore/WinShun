@@ -110,18 +110,23 @@ private slots:
         QVERIFY(QDir().mkpath(bundledDir + u"/winshun.bookmarks"_s));
         QFile old(bundledDir + u"/winshun.bookmarks/plugin.json"_s); // an old setup's folder, still there
         QVERIFY(old.open(QIODevice::WriteOnly));
-        old.write(R"({"manifest": 1, "id": "winshun.bookmarks", "name": "B", "version": "1.1.0", "commands": [{"id": "bm", "keyword": "bm", "title": "B", "run": {"url": "https://example.com/?q=%s"}}]})");
+        // (Built with QJsonDocument: moc loses the class over a raw string literal.)
+        const QJsonObject command {{u"id"_s, u"bm"_s}, {u"keyword"_s, u"bm"_s}, {u"title"_s, u"B"_s},
+            {u"run"_s, QJsonObject {{u"url"_s, u"https://example.com/?q=%s"_s}}}};
+        old.write(QJsonDocument(QJsonObject {{u"manifest"_s, 1}, {u"id"_s, u"winshun.bookmarks"_s}, {u"name"_s, u"B"_s},
+                                    {u"version"_s, u"1.1.0"_s}, {u"commands"_s, QJsonArray {command}}})
+                      .toJson());
         old.close();
         ws::plugin::Catalog catalog(userDir, bundledDir);
         catalog.scan();
         QVERIFY(catalog.find(u"winshun.bookmarks"));
         const auto on = [](const QString& id, bool enabled) {
-            PluginConfig c;
+            ws::PluginConfig c;
             c.id = id;
             c.enabled = enabled;
             return c;
         };
-        const QList<PluginConfig> plugins {on(u"winshun.translate"_s, true), on(u"winshun.bookmarks"_s, true),
+        const QList<ws::PluginConfig> plugins {on(u"winshun.translate"_s, true), on(u"winshun.bookmarks"_s, true),
             on(u"winshun.localsend"_s, false), on(u"winshun.semantic"_s, true), on(u"winshun.break"_s, true), on(u"winshun.tools"_s, true)};
         QCOMPARE(ws::moved::missing(catalog, plugins), (QStringList {u"winshun.semantic"_s, u"winshun.translate"_s}));
         QFile::remove(bundledDir + u"/winshun.bookmarks/plugin.json"_s); // the setup took it out
