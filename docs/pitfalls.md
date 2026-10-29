@@ -604,6 +604,17 @@
 - **原因**：资源管理器（开了一天的那个 explorer.exe）的桌面从 `ShellWindows` 里掉了：`FindWindowSW(SWC_DESKTOP)` 返回 `S_FALSE`，所以 `executeAsUser` 失败（第一次一个窗口也列不出来；第二次列得出 2 个文件夹窗口，只是没有桌面）。退到 `rundll32 shell32.dll,ShellExec_RunDLL "目标"`：凡是外壳命名空间里的目标都要交给正在运行的资源管理器，它不再接，结果什么都没开，rundll32 照样退出码 0，算作成功。2026-10-10 提权探针实测，全部“成功”却什么都没开：文件夹、`shell:AppsFolder\{…}\Listary\Listary.exe`（开始菜单应用）、`shell:AppsFolder\…!App`（商店应用）、`shell:::{7007ACC7-…}`（控制面板项）、`ms-settings:storagesense`、`windowsdefender://threat`。磁盘上的 exe 不受影响（rundll32 自己启动它）。“以管理员身份运行”是 `ShellExecuteEx(runas)`，不经过资源管理器，所以能开。“在单独的进程中打开文件夹窗口”是关着的，`explorer.exe F:\DCF` 却开在了一个新进程里：转交失败时它自己开窗口。
 - **做法**（`Shell.cpp`）：`executeAsUser` 找不到桌面时，借 `ShellWindows` 里任意一个文件夹窗口的 Application 对象来 `ShellExecute`（同样是普通权限，约 30 ms；上面每一种目标都实测能开）。一个窗口都没有时以桌面外壳的令牌启动：文件夹、`shell:`、`::{…}`、URI 交给新的 `explorer.exe "目标"`（约 200 ms，全都实测能开）；文件和带参数的命令仍走 rundll32。exe 不能交给 explorer.exe：程序的工作目录会变成 System32（传给 explorer.exe 的工作目录不起作用），rundll32 和借窗口两条路都是程序自己的文件夹。盘符根目录（`D:\`）不加引号：右引号前的反斜杠会把引号转义掉；带逗号的路径加了引号 explorer.exe 也认。查法：`ShellWindows` 的个数和 `FindWindowSW` 的返回值，再用 `EnumWindows` 数 `CabinetWClass` 窗口（`ShellWindows` 自己可能就不全）；打开后数目标进程、新的 `CabinetWClass` 窗口，不要信返回值。
 
+### 命令行程序一打开就说 “This is a command line tool”，然后退出（GitHub #139）
+
+- **现象**：2026-10-29 用户在 Win顺 里用 Alt+数字打开绿色版 Surge.exe（Go 写的命令行下载工具），控制台只显示 “This is a command line tool. You need to open cmd.exe and run it from there.” 就关了；用 Lertaro 打开正常。
+- **原因**：这句话是 Go 的命令行库 cobra 打出来的。它用 mousetrap 查父进程：父进程是 explorer.exe，就当成在文件夹里双击打开的，提示一句就退出。Win顺 打开程序一律交给资源管理器（`executeAsUser`，桌面的 `IShellDispatch2::ShellExecute`），程序的父进程正是 explorer.exe。用一个记录父进程的小控制台程序复现过：经资源管理器启动得到 `parent=explorer.exe`。
+- **做法**（`Shell.cpp`）：`executeUnelevated` 先判断目标是不是控制台程序（`startsConsole`）：.exe/.com 看 PE 头里的子系统，.lnk 看它指向的程序，不带路径的名字用 `resolveProgram` 找到再看。文件夹、文档、URI 不读。是控制台程序就不交给资源管理器，改由 `rundll32 shell32.dll,ShellExec_RunDLL "程序" 参数` 启动（`executeConsoleProgram`）。rundll32 用 ShellExecute 启动它后马上退出，所以父进程是一个已经退出的进程，cobra 查不到 explorer.exe。程序照样有自己的控制台，在前台打开，Windows Terminal 当默认终端时也一样。快捷方式的参数、工作目录、窗口标题照旧。下载来的文件照样过 SmartScreen：实测带 `Zone.Identifier`（ZoneId=3）的程序会弹出 CHXSmartScreen，不会直接运行。
+  - 环境变量用 `CreateEnvironmentBlock` 按注册表现在的值重建，不继承 Win顺 自己的：Win顺 启动后才加的 PATH 也在，`QT_D3D_NO_VBLANK_THREAD` 这类 Win顺 自己的变量不会带过去。系统 PATH 和用户 PATH 里的目录都在，重复项被 Windows 去掉。提权时用桌面外壳的令牌（`startWithShellToken` 现在也显式传这个环境）。
+  - GUI 程序照旧经资源管理器启动：Foxit 那类程序会查调用者（#64）。
+- **rundll32 不认正斜杠**：`ShellExec_RunDLL "C:/a/b.exe"` 什么都不启动，退出码却是 0；资源管理器的 ShellExecute 认正斜杠。交给 rundll32 前先把 `/` 换成 `\`。`tst_shelllaunch` 的 `customCommand` 用同一个探针跑两遍：原样跑（GUI，父进程应是 explorer.exe），再跑一份把 PE 子系统改成控制台的副本（父进程不应是 explorer.exe，参数和工作目录原样）。正斜杠的问题就是这个测试抓到的。
+- **对比环境时别拿资源管理器当标准**：这台机器的 explorer.exe 曾从 VS Code 的终端里重启过，它的环境里带着 `CLAUDE_*`、`VSCODE_*` 变量，经它启动的程序都会继承。
+- **没覆盖**：开始菜单里的应用经 `shell:AppsFolder\…` 启动，仍交给资源管理器，所以开始菜单里指向命令行工具的快捷方式还会遇到这个问题。
+
 ### 从文件管理器切回对话框不自动转（issue #7）
 
 - **现象**：开着“自动转过去”，Word 的“另存为”第一次出现能转到资源管理器的文件夹；不关对话框，切到资源管理器换个文件夹再切回来，对话框不动（Listary 会转）。
