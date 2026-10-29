@@ -123,6 +123,9 @@ Top level:
 | `commands` | yes | at least one |
 | `settings` | no | see "Settings" |
 | `ai` | no | `{"expose": true}`: the commands may become AI tools (the user still has to allow it); see "For AI" |
+| `trayMenu` | no | the title (text) of a submenu in the tray menu; see "Resident plugins with windows of their own" below |
+| `pictures` | no | `["pin", "edit"]`: Pin to screen and Edit on the pictures of the clipboard history and picture files among the results go to this plugin; see "Resident plugins with windows of their own" below |
+| `settingsWindow` | no | `true`: the plugin has a settings window of its own, and its card a Settings button; see "Resident plugins with windows of their own" below |
 
 `runtime`:
 
@@ -176,7 +179,7 @@ One process, JSON-RPC 2.0 lines on stdin / stdout, UTF-8. **Only protocol messag
 Win顺 → plugin:
 
 ```
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"1","winshun":"0.7.0","pluginDir":"…","dataDir":"…","locale":"zh","theme":"dark","settings":{…}}}
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"1","winshun":"0.7.0","pluginDir":"…","dataDir":"…","locale":"zh","theme":"dark","appearance":{…},"settings":{…}}}
 ← {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"1","name":"…"}}
 {"jsonrpc":"2.0","id":2,"method":"query","params":{"queryId":17,"command":"kill","trigger":"keyword","keyword":"kill","text":"note","raw":"kill note","limit":200}}
 ← (optional, any number) {"jsonrpc":"2.0","method":"query/partial","params":{"queryId":17,"items":[…],"replace":false}}
@@ -209,6 +212,37 @@ The C++ SDK's `initialized()` runs once, after `initialize` was answered: an `ea
 `winshun/tool` takes the same names and arguments as Win顺's MCP tools: `search_files`, `search_content`, `recent_files`, `list_folder`, `get_file_info`, `open_item`, `show_in_folder`, `clipboard_history`, `clipboard_get`, `read_file_text`, `index_status`, and, for plugins only, `list_documents` (the files whose text the content index holds, a page at a time, each with a `stamp` that changes when the file does); gated by the manifest's permissions (`winshun:search`, `winshun:open`, `clipboard:read`; `winshun:content` for `read_file_text` and `list_documents`; `index_status` always). The result is the MCP `structuredContent`.
 
 Timeouts: one timer per query (`timeoutMs`); a late answer is dropped. A resident plugin that misses three in a row is restarted with backoff (1 → 5 → 30 s); three crashes in five minutes turn it off, with the reason on its card. After `idleExitSec` it gets `shutdown`. At most 200 rows per answer, 16 MB per line.
+
+### Resident plugins with windows of their own (#138)
+
+The screenshot plugin, `winshun.capture`, is one: it opens its own windows and registers its own shortcuts, and Win顺 hands it a few things. All of these need a resident plugin (`runtime.mode` `resident`) with the `ui` permission, or the manifest does not pass.
+
+```
+{"jsonrpc":"2.0","method":"appearance","params":{"locale":"en","themeSetting":"system","corners":"round","uiSize":"standard","transparency":"on","renderer":"d3d11"}}
+{"jsonrpc":"2.0","id":6,"method":"trayMenu","params":{}}
+← {"jsonrpc":"2.0","id":6,"result":{"items":[{"id":"capture","title":"Take a screenshot\tCtrl+Alt+A"},{"title":"Delayed","children":[{"id":"delay3","title":"3 seconds","checked":true}]},{},{"id":"closePins","title":"Close all pins","enabled":false}]}}
+{"jsonrpc":"2.0","method":"menu","params":{"id":"capture"}}
+{"jsonrpc":"2.0","id":7,"method":"picture","params":{"action":"pin","file":"C:\\…\\123.png","clipId":123,"project":"C:\\…\\123.wsedit","screenshot":true}}
+{"jsonrpc":"2.0","id":8,"method":"showSettings","params":{}}
+plugin → {"jsonrpc":"2.0","method":"winshun/hotkeys","params":{"keys":["Win+Shift+S","Ctrl+Alt+A"]}}
+```
+
+- **Look**: `appearance` in `initialize`, and the `appearance` notification after it, are Win顺's interface language and Appearance settings (theme setting, corners, interface size, transparency, renderer), for the plugin's windows to look like Win顺's. Sent when they change, to plugins with the `ui` permission only.
+- **Tray submenu** (`trayMenu`): as the right button goes down on the tray icon, Win顺 sends `trayMenu`, and the menu opens as it comes up, so answer at once (a few milliseconds); a late answer is used the next time. The submenu is under the clipboard's entries, titled by the manifest's `trayMenu`. Each of `items` is `{id, title, checked, enabled, children}`, `{}` a line, two levels at most; what follows a `\t` in `title` is shown on the right (a shortcut); no items, no submenu. The entry chosen comes as the `menu` notification with its `id`.
+- **Pictures** (`pictures`): Pin to screen (`pin`) or Edit (`edit`) chosen on a picture of the clipboard history or a picture file among the results is sent as `picture`. `file` is the picture; from the clipboard history there is also `clipId`, `project` when it has an annotation project, and `screenshot` when it is a screenshot. These files are Win顺's: read them, never change or delete them. When several plugins claim the same verb, the first one turned on gets it.
+- **Settings window** (`settingsWindow`): the card's Settings button sends `showSettings`; when the plugin is not running, the button says to try again in a moment.
+- **Foreground**: `menu`, `picture` and `showSettings` are what the user just chose, and Win顺 lets the plugin bring its window to the front (`AllowSetForegroundWindow`) before sending them. Win顺 waits the plugin's `timeoutMs` for an answer to what it asks, then takes it as failed.
+- **Shortcuts** (`winshun/hotkeys`): the shortcuts the plugin registers itself (`RegisterHotKey`), all of them each time they change (`[]`: none). Win顺 leaves those to it: Win+Shift+S while it holds Win+S, the clipboard's Ctrl/Alt+digits. The process ending counts as `[]`. Win顺 may still hold one as the plugin starts, so report the ones that failed too and register again a moment (300 ms) later.
+
+And tools for plugins, not for AI (called with `winshun/tool` as the others, held to the permissions):
+
+| Tool | Permission | Arguments | What it does |
+|---|---|---|---|
+| `clipboard_add_image` | `clipboard:write` | `file`, `project` (optional), `copy` (default true), `screenshot` | puts a picture in the plugin's data folder (and its annotation project) into the clipboard history; with `copy` false it is recorded but not put on the clipboard. Win顺 deletes both files once read. Answers `{kept}`: false while the clipboard history or its pictures are off or paused |
+| `clipboard_copy` | `clipboard:write` | `text` | text onto the clipboard (at most a million characters), into the history as any copy |
+| `clipboard_copy_entry` | `clipboard:write` | `id` | an entry of the clipboard history onto the clipboard again, moved to the top |
+| `show_launcher` | `ui` | `text` | opens the search box with this text |
+| `web_search` | `winshun:open` | `text` | searches the web for this text with Win顺's default web search |
 
 ### Item fields
 

@@ -127,6 +127,9 @@ effects 的辅助：Python `winshun.hide() / keep() / notify(text) / copy(text) 
 | `commands` | 是 | 至少一个 |
 | `settings` | 否 | 见"设置项" |
 | `ai` | 否 | `{"expose": true}`：允许命令成为 AI 的工具（用户还要在设置里打开），见"给 AI 用" |
+| `trayMenu` | 否 | 托盘菜单里一个子菜单的标题（文字），见下面"有自己窗口的常驻插件" |
+| `pictures` | 否 | `["pin", "edit"]`：剪贴板历史里的图片、结果里的图片文件，右键菜单的"贴到屏幕""编辑"交给这个插件，见下面"有自己窗口的常驻插件" |
+| `settingsWindow` | 否 | `true`：插件有自己的设置窗口，卡片上多一个"设置"按钮，见下面"有自己窗口的常驻插件" |
 
 `runtime`：
 
@@ -180,7 +183,7 @@ effects 的辅助：Python `winshun.hide() / keep() / notify(text) / copy(text) 
 Win顺 → 插件：
 
 ```
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"1","winshun":"0.7.0","pluginDir":"…","dataDir":"…","locale":"zh","theme":"dark","settings":{…}}}
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"1","winshun":"0.7.0","pluginDir":"…","dataDir":"…","locale":"zh","theme":"dark","appearance":{…},"settings":{…}}}
 ← {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"1","name":"…"}}
 {"jsonrpc":"2.0","id":2,"method":"query","params":{"queryId":17,"command":"kill","trigger":"keyword","keyword":"kill","text":"note","raw":"kill note","limit":200}}
 ←（可选，任意条）{"jsonrpc":"2.0","method":"query/partial","params":{"queryId":17,"items":[…],"replace":false}}
@@ -213,6 +216,37 @@ C++ SDK 的 `initialized()` 在回答完 `initialize` 后调一次：`eager` 插
 `winshun/tool` 和 Win顺 给 AI 的 MCP 工具同名同参数：`search_files`、`search_content`、`recent_files`、`list_folder`、`get_file_info`、`open_item`、`show_in_folder`、`clipboard_history`、`clipboard_get`、`read_file_text`、`index_status`，另有只给插件的 `list_documents`（内容索引里有文字的文件，分页，带一个文件变了就变的 `stamp`）；按 manifest 的权限放行（`winshun:search`、`winshun:open`、`clipboard:read`；`read_file_text` 和 `list_documents` 要 `winshun:content`；`index_status` 总可以）。结果和 MCP 的 `structuredContent` 一样。
 
 超时：每次查询一个计时器（`timeoutMs`），到点这次的结果作废；常驻插件连续 3 次超时当挂死，结束后退避重启（1 → 5 → 30 秒）；5 分钟内崩 3 次就停用，卡片上红字说明。空闲 `idleExitSec` 后收到 `shutdown`。每条响应最多 200 条结果，一行最多 16 MB。
+
+### 有自己窗口的常驻插件（#138）
+
+截图插件 `winshun.capture` 就是这样一个插件：它自己开窗口、自己注册快捷键，Win顺 只在几个地方把事情交给它。下面这些都要常驻（`runtime.mode` 是 `resident`）并要 `ui` 权限，否则 manifest 校验不过。
+
+```
+{"jsonrpc":"2.0","method":"appearance","params":{"locale":"zh","themeSetting":"system","corners":"round","uiSize":"standard","transparency":"on","renderer":"d3d11"}}
+{"jsonrpc":"2.0","id":6,"method":"trayMenu","params":{}}
+← {"jsonrpc":"2.0","id":6,"result":{"items":[{"id":"capture","title":"开始截图\tCtrl+Alt+A"},{"title":"延时截图","children":[{"id":"delay3","title":"3 秒","checked":true}]},{},{"id":"closePins","title":"关闭全部贴图","enabled":false}]}}
+{"jsonrpc":"2.0","method":"menu","params":{"id":"capture"}}
+{"jsonrpc":"2.0","id":7,"method":"picture","params":{"action":"pin","file":"C:\\…\\123.png","clipId":123,"project":"C:\\…\\123.wsedit","screenshot":true}}
+{"jsonrpc":"2.0","id":8,"method":"showSettings","params":{}}
+插件 → {"jsonrpc":"2.0","method":"winshun/hotkeys","params":{"keys":["Win+Shift+S","Ctrl+Alt+A"]}}
+```
+
+- **外观**：`initialize` 的 `appearance` 和之后的 `appearance` 通知，是 Win顺 的界面语言和"外观"设置（主题设置、圆角、界面大小、透明效果、渲染方式）。插件的窗口照着画，就和 Win顺 一个样子；变了才发，只发给有 `ui` 权限的插件。
+- **托盘子菜单**（`trayMenu`）：右键按下托盘图标时，Win顺 发 `trayMenu`，松开时菜单弹出，所以要马上回答（几毫秒）；赶不上的，下次弹菜单时用。子菜单在剪贴板那几项下面，标题是 manifest 的 `trayMenu`。`items` 每项 `{id, title, checked, enabled, children}`，`{}` 是分隔线，最多两层；`title` 里 `\t` 后面的字靠右显示（快捷键）；没有项就不出这个子菜单。用户选了一项，Win顺 发 `menu` 通知，`id` 是那一项的。
+- **图片**（`pictures`）：用户在剪贴板历史的图片上、结果里的图片文件上选"贴到屏幕"（`pin`）或"编辑"（`edit`），Win顺 发 `picture`。`file` 是图片文件；来自剪贴板历史时还有 `clipId`，有标注工程时有 `project`，`screenshot` 表示它是截的图。这些文件是 Win顺 的：读，不要改、不要删。几个插件都声明同一项时，交给第一个开着的。
+- **设置窗口**（`settingsWindow`）：卡片上的"设置"按钮发 `showSettings`；插件没在运行时按钮提示稍后再试。
+- **前台**：`menu`、`picture`、`showSettings` 是用户刚点的，Win顺 发之前允许插件把自己的窗口放到前台（`AllowSetForegroundWindow`）。Win顺 发出的请求按插件的 `timeoutMs` 等回答，等不到就当失败。
+- **快捷键**（`winshun/hotkeys`）：插件自己用 `RegisterHotKey` 注册的快捷键，变了就发一次全部（`[]` 是都放了）。Win顺 就把它们让出来：接管 Win+S 时的 Win+Shift+S、剪贴板的 Ctrl/Alt+数字。进程结束等于发了 `[]`。插件启动时 Win顺 可能还占着其中一个，所以注册失败也照样报上，过一会儿（300 毫秒）再注册一次。
+
+另有只给插件、不给 AI 的工具（照样用 `winshun/tool` 调，按权限放行）：
+
+| 工具 | 权限 | 参数 | 做什么 |
+|---|---|---|---|
+| `clipboard_add_image` | `clipboard:write` | `file`、`project`（可选）、`copy`（默认 true）、`screenshot` | 把插件数据文件夹里的一张图（和标注工程）放进剪贴板历史；`copy` 为 false 时只记下、不放到剪贴板。Win顺 读完就删掉这两个文件。回 `{kept}`：剪贴板历史或图片记录关着、暂停着时是 false |
+| `clipboard_copy` | `clipboard:write` | `text` | 文字放到剪贴板（最多 100 万字），像平常复制一样进历史 |
+| `clipboard_copy_entry` | `clipboard:write` | `id` | 剪贴板历史里的一条重新放到剪贴板，并移到最前 |
+| `show_launcher` | `ui` | `text` | 打开搜索框并填上这段文字 |
+| `web_search` | `winshun:open` | `text` | 用 Win顺 的默认网页搜索搜这段文字 |
 
 ### item 字段
 
