@@ -296,7 +296,7 @@ def make_profile(folder, files, recent, number_keys="ctrl", number_hints="held",
         manifest = source / "plugin.json"
         if not manifest.is_file():
             sys.exit(f"no screenshot plugin in {source}: build WinShun, or name it with --capture-plugin")
-        plugins = folder / "WinShun" / "plugins"
+        plugins = folder / "plugins"  # the profile's data folder is the profile itself
         shutil.copytree(source, plugins / "winshun.capture")
         permissions = json.loads(manifest.read_text(encoding="utf-8"))["permissions"]
         text = ini_set(text, "Plugin.winshun.capture", {"Enabled": "true", "Confirmed": ", ".join(permissions)})
