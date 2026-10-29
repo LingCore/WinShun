@@ -185,6 +185,8 @@ public:
     //   fill        "none" | "soft" | "solid" (Rect, Ellipse)
     //   size, sizes     font size and presets (Text, Number)
     //   bold, boxed     Text
+    //   stroke, strokes     Text: the outline's width (0: none) and its presets, logical px
+    //   strokeColor, strokeAuto     Text: the outline's "#RRGGBB" as drawn, and whether it follows the text's
     //   mode        "mosaic" | "blur" | "solid" (Redact)
     //   cell, cells     mosaic cell and presets (Redact)
     //   start       the current series' first number (Number)
@@ -205,7 +207,8 @@ public:
     // round the text, image px; 0 when not boxed), pitch (baseline to
     // baseline) and ascent (top to the first baseline), image px, as the
     // compositor lays the text out, clickX, clickY (where the press landed
-    // inside it, relative to x, y; -1 when it began with a new text)}.
+    // inside it, relative to x, y; -1 when it began with a new text),
+    // stroke (the outline's width, image px, 0: none) and strokeColor ("#RRGGBB")}.
     // The words of a Number are the same map (number: true, x, y the words'
     // top left to the right of the disc, not bold, never boxed).
     QVariantMap editing() const;
@@ -280,7 +283,7 @@ public:
     // has the words already (editing.text follows them).
     Q_INVOKABLE void setEditingText(const QString& text);
     // A change on the panel: any of color ("#RRGGBB"), width, fill, size,
-    // bold, boxed, mode, cell (logical units). Goes to the selected object
+    // bold, boxed, stroke (0: none; logical px), strokeColor ("#RRGGBB", or "auto"), mode, cell (logical units). Goes to the selected object
     // when there is one, and is remembered as the tool's style either way.
     Q_INVOKABLE void setPanel(const QVariantMap& change);
     Q_INVOKABLE void undo();
@@ -396,7 +399,7 @@ private:
     void smartSchedule();
     void smartInvalidate();
     void smartStart(bool apply);
-    void smartScanned(int ticket, const QImage& scanned, QList<RedactLine> lines);
+    void smartScanned(int ticket, RedactScan scan);
     const QList<RedactHit>& smartHits() const;
     void reset();
     void sync();

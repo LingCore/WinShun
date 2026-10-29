@@ -88,15 +88,25 @@ void CaptureOcr::showTexts(const QStringList& texts, const QString& title, const
 
 void CaptureOcr::scan(const QImage& image, double dpr, std::function<void(QList<RedactLine>)> done)
 {
+    enqueueScan(image, image.rect(), dpr, false, [done = std::move(done)](RedactScan scan) { done(std::move(scan.lines)); });
+}
+
+void CaptureOcr::scan(const QImage& image, const QRect& region, double dpr, std::function<void(RedactScan)> done)
+{
+    enqueueScan(image, region, dpr, true, std::move(done));
+}
+
+void CaptureOcr::enqueueScan(const QImage& image, const QRect& region, double dpr, bool grayscale, std::function<void(RedactScan)> done)
+{
     const int ticket = ++m_scanTicket;
     m_scanDone = std::move(done);
-    if (image.isNull() || !available()) {
+    if (image.isNull() || region.intersected(image.rect()).isEmpty() || !available()) {
         QMetaObject::invokeMethod(this, [this, ticket] { scanDone(ticket, {}); }, Qt::QueuedConnection);
         return;
     }
     {
         std::lock_guard lock(m_mutex);
-        m_scan = ScanJob {ticket, image, ocrUpscale(image.size(), dpr), {}}; // an older one not started yet is dropped
+        m_scan = ScanJob {ticket, image, region.intersected(image.rect()), dpr, grayscale}; // an older one not started yet is dropped
     }
     m_wake.notify_all();
 }
@@ -109,13 +119,13 @@ void CaptureOcr::cancelScan()
     m_scan.reset();
 }
 
-void CaptureOcr::scanDone(int ticket, QList<RedactLine> lines)
+void CaptureOcr::scanDone(int ticket, RedactScan scan)
 {
     if (ticket != m_scanTicket || !m_scanDone)
         return; // asked again or given up since
-    std::function<void(QList<RedactLine>)> done = std::move(m_scanDone);
+    std::function<void(RedactScan)> done = std::move(m_scanDone);
     m_scanDone = nullptr;
-    done(std::move(lines));
+    done(std::move(scan));
 }
 
 QString CaptureOcr::oneLine(const QString& text)
@@ -188,12 +198,16 @@ void CaptureOcr::work(const std::stop_token& stop)
             loadMs = clock.elapsed();
         }
         if (scan) {
-            QList<RedactLine> lines;
+            const QImage region = scan->region == scan->image.rect() ? scan->image : scan->image.copy(scan->region);
+            const double scale = ocrUpscale(region.size(), scan->dpr);
+            RedactScan result;
+            if (scan->grayscale)
+                result.gray = region.convertToFormat(QImage::Format_Grayscale8);
             if (reader) {
-                QImage picture = scan->image;
-                if (scan->scale > 1.0)
-                    picture = picture.scaled(std::max(1, static_cast<int>(std::lround(picture.width() * scan->scale))),
-                        std::max(1, static_cast<int>(std::lround(picture.height() * scan->scale))), Qt::IgnoreAspectRatio,
+                QImage picture = region;
+                if (scale > 1.0)
+                    picture = picture.scaled(std::max(1, static_cast<int>(std::lround(picture.width() * scale))),
+                        std::max(1, static_cast<int>(std::lround(picture.height() * scale))), Qt::IgnoreAspectRatio,
                         Qt::SmoothTransformation);
                 QList<OcrPiece> pieces;
                 if (reader->readPieces(picture, &pieces, &error)) {
@@ -201,21 +215,21 @@ void CaptureOcr::work(const std::stop_token& stop)
                         RedactLine line;
                         line.text = p.text;
                         for (const QPointF& corner : p.quad)
-                            line.quad.append(corner / scan->scale);
+                            line.quad.append(corner / scale);
                         line.chars = p.chars;
-                        lines.append(std::move(line));
+                        result.lines.append(std::move(line));
                     }
                 }
             }
             qInfo().noquote() << u"Screen capture: scan for redaction read in %1 ms (loading %2 ms), %3x%4 at %5x, %6 lines"_s.arg(clock.elapsed())
                                      .arg(loadMs)
-                                     .arg(scan->image.width())
-                                     .arg(scan->image.height())
-                                     .arg(scan->scale, 0, 'f', 2)
-                                     .arg(lines.size());
+                                     .arg(region.width())
+                                     .arg(region.height())
+                                     .arg(scale, 0, 'f', 2)
+                                     .arg(result.lines.size());
             if (!error.isEmpty())
                 qWarning().noquote() << "Screen capture: scan for redaction failed:" << error;
-            QMetaObject::invokeMethod(this, [this, ticket = scan->ticket, lines = std::move(lines)]() mutable { scanDone(ticket, std::move(lines)); },
+            QMetaObject::invokeMethod(this, [this, ticket = scan->ticket, result = std::move(result)]() mutable { scanDone(ticket, std::move(result)); },
                 Qt::QueuedConnection);
             continue;
         }

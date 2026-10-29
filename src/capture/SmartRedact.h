@@ -46,6 +46,11 @@ struct RedactHit {
     QString category; // phone, id, card, email, secret, identity, ip, word, text: only for counting
 };
 
+struct RedactScan {
+    QList<RedactLine> lines;
+    QImage gray; // the scanned region's grayscale pixels, prepared by the reader thread
+};
+
 // The boxes to hide, top to bottom: matches in each line, widened and merged
 // where they touch on one line; those that `alreadyCovered` (the boxes of the
 // redactions already there) hides by 80 % or more are left out. The reader
@@ -66,10 +71,11 @@ QRect matchBox(const RedactLine& line, int from, int to, const QImage& gray = {}
 // result need not know the reader: the app gives these to the capture and to
 // the editing window.
 struct SmartHooks {
-    // Reads `image` (taken at `dpr`) in the background; `done` is called on
-    // the GUI thread with its lines, in the image's own pixels, unless
+    // Crops `region` from the shared frozen image and reads it in the
+    // background. `done` is called on the GUI thread with the region's
+    // lines and grayscale pixels, unless
     // cancel() or a newer scan came first (then it is not called).
-    std::function<void(const QImage& image, double dpr, std::function<void(QList<RedactLine>)> done)> scan;
+    std::function<void(const QImage& image, const QRect& region, double dpr, std::function<void(RedactScan)> done)> scan;
     std::function<void()> cancel;
     std::function<RedactRules()> rules;
     std::function<bool()> prescan; // [Capture] SmartPrescan

@@ -168,6 +168,37 @@ Item {
             color: textBox.ed.fill ?? "transparent"
         }
 
+        // The outline the words get when committed, under the glyphs: copies of
+        // the words round a circle of the stroke's radius, the same font and place
+        // as the box, so the ring moves with the typed glyphs (the committed one is the
+        // compositor's; the box and the compositor already differ by one device pixel vertically).
+        Repeater {
+            id: ring
+
+            readonly property real radius: textBox.active ? (textBox.ed.stroke ?? 0) * over.sx : 0
+            // Copies a pixel or so apart on the circle; a wide outline (4 image px and more) also gets half a ring
+            // inside it, which closes the small gaps the circle leaves at the dots of i and j and at full stops.
+            readonly property int outer: radius > 0 ? Math.max(12, Math.min(64, Math.ceil(2 * Math.PI * radius))) : 0
+            readonly property int inner: radius > 0 && (textBox.ed.stroke ?? 0) >= 4 ? Math.ceil(outer / 2) : 0
+
+            model: outer + inner
+            delegate: Text {
+                required property int index
+                readonly property bool onInner: index >= ring.outer
+                readonly property real angle: onInner ? 2 * Math.PI * (index - ring.outer + 0.5) / ring.inner
+                                                      : 2 * Math.PI * index / ring.outer
+                readonly property real reach: onInner ? ring.radius / 2 : ring.radius
+
+                x: edit.x + Math.cos(angle) * reach
+                y: edit.y + Math.sin(angle) * reach
+                text: edit.text
+                textFormat: Text.PlainText
+                renderType: Text.NativeRendering
+                font: edit.font
+                color: textBox.ed.strokeColor ?? "#FFFFFF"
+            }
+        }
+
         TextEdit {
             id: edit
 

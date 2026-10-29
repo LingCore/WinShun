@@ -418,6 +418,121 @@ private slots:
         QVERIFY2(d <= 1, qPrintable(u"%1 at %2,%3"_s.arg(d).arg(at.x()).arg(at.y())));
     }
 
+    void upwardFromBottom()
+    {
+        Page p;
+        p.withButton = false;
+        ScrollStitcher stitcher(QSize(kWidth, kFrame), {}, {kIgnoreRight});
+        int previous = kBody - kViewport;
+        QCOMPARE(stitcher.add(p.frame(previous)).state, ScrollStitcher::State::Appended);
+        while (previous > 0) {
+            const int position = std::max(0, previous - 160);
+            const auto step = stitcher.add(p.frame(position));
+            QCOMPARE(step.state, ScrollStitcher::State::Appended);
+            QCOMPARE(step.dy, position - previous);
+            QCOMPARE(step.height, kBody - kViewport - position + kFrame);
+            previous = position;
+        }
+        QCOMPARE(stitcher.fixedTop(), kHeader);
+        QCOMPARE(stitcher.fixedBottom(), kFooter);
+        QCOMPARE(stitcher.result(), p.truth);
+        QVERIFY(!stitcher.partial());
+        // While extending upwards, the preview follows the new top.
+        QCOMPARE(stitcher.preview(QSize(kWidth, 120)), p.truth.copy(0, 0, kWidth, 120));
+        // An elastic overscroll at the top is trimmed when it springs back.
+        QCOMPARE(stitcher.add(p.frame(-60)).state, ScrollStitcher::State::Appended);
+        QCOMPARE(stitcher.add(p.frame(0)).state, ScrollStitcher::State::Behind);
+        QCOMPARE(stitcher.result(), p.truth);
+    }
+
+    void extendBothEnds()
+    {
+        Page p;
+        p.withButton = false;
+        ScrollStitcher stitcher(QSize(kWidth, kFrame), {}, {kIgnoreRight});
+        const std::vector<int> positions {1280, 1120, 960, 800, 640, 800, 960, 1120, 1280, 1440,
+            1600, 1760, 1920, 2080, 2240, 2400, 2560, 2616, 2456, 2296, 2136, 1976, 1816,
+            1656, 1496, 1336, 1176, 1016, 856, 696, 536, 376, 216, 56, 0};
+        int nearest = positions.front();
+        int farthest = nearest;
+        int previous = nearest;
+        for (size_t i = 0; i < positions.size(); ++i) {
+            const int position = positions[i];
+            const auto step = stitcher.add(p.frame(position));
+            const bool grows = !i || position < nearest || position > farthest;
+            QCOMPARE(step.state, grows ? ScrollStitcher::State::Appended : ScrollStitcher::State::Behind);
+            if (i)
+                QCOMPARE(step.dy, position - previous);
+            nearest = std::min(nearest, position);
+            farthest = std::max(farthest, position);
+            QCOMPARE(step.height, farthest - nearest + kFrame);
+            previous = position;
+        }
+        QCOMPARE(stitcher.result(), p.truth);
+        // Revisited content must not duplicate rows or shrink the result.
+        QCOMPARE(stitcher.add(p.frame(160)).state, ScrollStitcher::State::Behind);
+        QCOMPARE(stitcher.result(), p.truth);
+    }
+
+    void upwardWithFloatingButton()
+    {
+        const Page& p = page();
+        ScrollStitcher stitcher(QSize(kWidth, kFrame), {}, {kIgnoreRight});
+        int position = kBody - kViewport;
+        stitcher.add(p.frame(position));
+        while (position > 0) {
+            position = std::max(0, position - 160);
+            QCOMPARE(stitcher.add(p.frame(position)).state, ScrollStitcher::State::Appended);
+        }
+        const QRect button = p.button.translated(0, kBody - kViewport);
+        QVERIFY(difference(stitcher.result(), p.truth, button) <= 1);
+        QCOMPARE(stitcher.result().copy(button), p.frame(kBody - kViewport).copy(p.button));
+    }
+
+    void upwardLimitAndRelease()
+    {
+        Page p;
+        p.withButton = false;
+        ScrollStitcher stitcher(QSize(kWidth, kFrame), {1000, 60'000'000}, {kIgnoreRight});
+        for (int position : {1600, 1440, 1280, 1120, 960}) {
+            const auto step = stitcher.add(p.frame(position));
+            if (step.state == ScrollStitcher::State::Full)
+                break;
+        }
+        QVERIFY(stitcher.full());
+        QCOMPARE(stitcher.height(), 1000);
+        const QImage result = stitcher.result();
+        QCOMPARE(result.size(), QSize(kWidth, 1000));
+        QCOMPARE(result.copy(0, 1000 - kFooter, kWidth, kFooter), p.footer);
+        stitcher.release();
+        QCOMPARE(stitcher.height(), 0);
+        QCOMPARE(stitcher.add(p.frame(0)).state, ScrollStitcher::State::Appended);
+        QCOMPARE(stitcher.result(), p.frame(0));
+    }
+
+    void signedBlockEdgesAndLostRecovery()
+    {
+        Page p;
+        p.withButton = false;
+        ScrollStitcher stitcher(QSize(kWidth, kFrame), {}, {kIgnoreRight});
+        stitcher.add(p.frame(900));
+        for (int position : {899, 644, 388, 132, 0})
+            QCOMPARE(stitcher.add(p.frame(position)).state, ScrollStitcher::State::Appended);
+        QImage expected(kWidth, 900 + kFrame, QImage::Format_RGB32);
+        for (int y = 0; y < expected.height(); ++y) {
+            const QImage& source = y < kHeader ? p.header : y < expected.height() - kFooter ? p.body : p.footer;
+            const int row = y < kHeader ? y : y < expected.height() - kFooter ? y - kHeader : y - (expected.height() - kFooter);
+            std::memcpy(expected.scanLine(y), source.constScanLine(row), size_t(kWidth) * 4);
+        }
+        QCOMPARE(stitcher.result(), expected);
+        const QImage before = stitcher.result();
+        QCOMPARE(stitcher.add(p.frame(2200)).state, ScrollStitcher::State::Lost);
+        QCOMPARE(stitcher.result(), before);
+        QCOMPARE(stitcher.add(p.frame(0)).state, ScrollStitcher::State::Unchanged);
+        QCOMPARE(stitcher.add(p.frame(160)).state, ScrollStitcher::State::Behind);
+        QCOMPARE(stitcher.result(), before);
+    }
+
     // Text drawn again a little differently each frame (WinUI: up to 8
     // levels on the edges of letters): the shifts are still exact.
     void redrawnText()

@@ -28,12 +28,11 @@ class Grabber;
 // stitched into one tall picture that goes to the editing window.
 //
 // While it runs the overlay is gone and the program under the region keeps
-// the focus, the wheel and the keyboard. Ours on the screen: a border just
-// outside the region (four layered, click-through windows: 1 logical px of
-// Theme.windowEdge with 1 px of half-white outside it) and a panel beside it
-// (LongCapturePanel.qml, made the first time and hidden after; it never
-// takes the focus). Both are left out of every capture
-// (WDA_EXCLUDEFROMCAPTURE) and lie outside the region besides. Esc and
+// the focus, the wheel and the keyboard. Ours on the screen: a selection
+// border in Theme.accent, kept inside the monitor at its edges, and a
+// persistent action strip (LongCapturePanel.qml), with an optional preview
+// window beside it. These never take focus and are left out of every capture
+// (WDA_EXCLUDEFROMCAPTURE). Esc and
 // Enter are global hotkeys for as long as it runs (cancel, finish), always
 // given back; the capture hotkey finishes too (Capture::trigger).
 //
@@ -66,14 +65,17 @@ public:
     enum class Status {
         Waiting, // the first frame only
         Stitching,
-        Behind, // scrolled back up: nothing is added
+        Behind, // revisiting content already captured
         Lost, // no overlap with the last frame stitched
         Full, // at the limit
     };
     Q_ENUM(Status)
 
+    enum class Output { Edit, Copy, Save, Pin };
+    Q_ENUM(Output)
+
     struct Hooks {
-        std::function<void(const QImage&)> done; // the picture, for the editing window
+        std::function<void(const QImage&, Output, QPoint)> done;
         std::function<void(const QString&)> copyText; // 复制诊断信息
         std::function<void()> ended; // over and the memory let go of
     };
@@ -98,11 +100,12 @@ public:
     QSize previewBox() const { return {kPreviewWidth, kPreviewHeight}; }
 
     Q_INVOKABLE void finish(); // 完成, Enter, the capture hotkey
+    Q_INVOKABLE void exportTo(Output output); // the toolbar's copy, save and pin
     Q_INVOKABLE void cancel(); // 取消, Esc
     Q_INVOKABLE void copyDiagnostics();
 
     // What the panel says under the picture (engine → GUI).
-    enum class Hint { None, Auto, Manual, MouseOutside, Elevated, NothingWorks, Lost, NoFrames, Full, Copied };
+    enum class Hint { None, Auto, Manual, MouseOutside, Elevated, NothingWorks, Reconnect, NoFrames, AtLimit, Copied };
     Q_ENUM(Hint)
 
     static constexpr int kPreviewWidth = 300; // logical px: the panel's width less its padding
@@ -133,6 +136,7 @@ private:
     std::jthread m_thread;
     std::unique_ptr<Border> m_border;
     QPointer<QQuickWindow> m_panel;
+    QPointer<QQuickWindow> m_previewWindow;
     bool m_hotkeys = false;
 
     Status m_status = Status::Waiting;

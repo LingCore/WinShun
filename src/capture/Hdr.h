@@ -1,8 +1,11 @@
 #pragma once
 
 #include <QImage>
+#include <QRect>
+#include <QString>
 
 #include <cstdint>
+#include <vector>
 
 namespace ws::capture {
 
@@ -34,6 +37,32 @@ DisplayColorMode displayColorMode(const wchar_t* device);
 QImage mapScRgbToSdr(const std::uint16_t* pixels, int width, int height, int rowBytes, double sdrWhiteNits);
 
 float halfToFloat(std::uint16_t half);
+std::uint16_t floatToHalf(float value); // rounded to the nearest
 std::uint8_t encodeSrgb(float linear);
+float decodeSrgb(std::uint8_t encoded);
+
+// An HDR monitor's frame kept as captured, for an HDR file beside the
+// picture (GitHub #133): scRGB half floats, RGBA, rows packed.
+struct HdrPixels {
+    int width = 0;
+    int height = 0;
+    double sdrWhiteNits = 80; // as when it was taken
+    std::vector<std::uint16_t> rgba; // width * height * 4
+
+    static HdrPixels fromScRgb(const std::uint16_t* pixels, int width, int height, int rowBytes, double sdrWhiteNits);
+    HdrPixels copy(const QRect& rect) const; // `rect` inside
+    bool isNull() const noexcept { return rgba.empty(); }
+};
+
+// What was drawn over the picture (annotations, the mouse pointer) put on
+// the HDR pixels too: where `drawn` differs from `plain` (both 8-bit, of
+// the HDR pixels' size), its colour at the SDR white level, as Windows
+// shows SDR content on that monitor. The rest stays as captured.
+void paintSdrOver(HdrPixels& hdr, const QImage& plain, const QImage& drawn);
+
+// A JPEG XR file of the pixels as they are: Windows' own HDR picture (Game
+// Bar's), shown in HDR by Photos; through WIC, no codec of our own.
+// Lossless: a screenshot's text stays sharp. Any COM apartment.
+bool writeJxr(const QString& path, const HdrPixels& pixels);
 
 } // namespace ws::capture

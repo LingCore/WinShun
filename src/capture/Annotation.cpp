@@ -174,7 +174,9 @@ bool hits(const Item& item, QPointF q, qreal tolerance, qreal dpr, int number, N
     case Kind::Text: {
         if (item.text.isEmpty())
             return false;
-        return QRectF(textGeometry(item).box).contains(q);
+        // The outline is part of the text: a click on it picks the text.
+        const int stroke = textStrokeWidth(item);
+        return QRectF(textGeometry(item).box).adjusted(-stroke, -stroke, stroke, stroke).contains(q);
     }
     case Kind::Number: {
         const NumberGeometry g = numberGeometry(item, number, dpr, format);
@@ -859,6 +861,20 @@ QRgb numberOutlineColor()
     return qRgba(0x21, 0x21, 0x21, 77);
 }
 
+int textStrokeWidth(const Item& item)
+{
+    if (item.kind != Kind::Text || item.style.boxed)
+        return 0;
+    return std::clamp(item.style.textStroke, 0, kMaxTextStroke);
+}
+
+QRgb textStrokeColorOf(const Item& item)
+{
+    if (item.style.textStrokeColor != 0)
+        return item.style.textStrokeColor | 0xff000000u;
+    return inkOn(item.style.color);
+}
+
 TextGeometry textGeometry(const Item& item)
 {
     TextGeometry g;
@@ -875,6 +891,8 @@ TextGeometry textGeometry(const Item& item)
         g.radius = 0.25 * f;
     }
     g.ink = m.ink.translated(QPointF(topLeft));
+    if (const int stroke = textStrokeWidth(item); stroke > 0 && !g.ink.isEmpty())
+        g.ink.adjust(-stroke, -stroke, stroke, stroke);
     return g;
 }
 

@@ -162,9 +162,12 @@ void ScrollStitcher::release()
             ::VirtualFree(block, 0, MEM_RELEASE);
     m_blocks.clear();
     m_blocks.shrink_to_fit();
+    m_firstBlock = 0;
     m_prev.reset();
     m_far = QImage();
     m_prevOffset = m_farOffset = m_farRows = m_farFrom = 0;
+    m_nearOffset = 0;
+    m_previewTop = false;
     m_top = m_bottom = 0;
     m_bandsKnown = false;
     m_velocity = m_lost = m_frames = 0;
@@ -179,7 +182,14 @@ int ScrollStitcher::limitHeight() const
 
 uint32_t* ScrollStitcher::row(int y)
 {
-    const size_t block = size_t(y / kBlockRows);
+    const int number = y >= 0 ? y / kBlockRows : (y + 1) / kBlockRows - 1;
+    if (m_blocks.empty())
+        m_firstBlock = number;
+    while (number < m_firstBlock) {
+        m_blocks.push_front(nullptr);
+        --m_firstBlock;
+    }
+    const size_t block = size_t(number - m_firstBlock);
     if (block >= m_blocks.size())
         m_blocks.resize(block + 1, nullptr);
     if (!m_blocks[block]) {
@@ -188,21 +198,28 @@ uint32_t* ScrollStitcher::row(int y)
         if (!m_blocks[block])
             return nullptr;
     }
-    return m_blocks[block] + size_t(y % kBlockRows) * size_t(m_size.width());
+    return m_blocks[block] + size_t(y - number * kBlockRows) * size_t(m_size.width());
 }
 
 const uint32_t* ScrollStitcher::row(int y) const
 {
-    const size_t block = size_t(y / kBlockRows);
+    const int number = y >= 0 ? y / kBlockRows : (y + 1) / kBlockRows - 1;
+    if (number < m_firstBlock)
+        return nullptr;
+    const size_t block = size_t(number - m_firstBlock);
     if (block >= m_blocks.size() || !m_blocks[block])
         return nullptr;
-    return m_blocks[block] + size_t(y % kBlockRows) * size_t(m_size.width());
+    return m_blocks[block] + size_t(y - number * kBlockRows) * size_t(m_size.width());
 }
 
 bool ScrollStitcher::write(const QImage& frame, int offset, int from, int to)
 {
-    const int limit = limitHeight();
+    const int limit = m_nearOffset + limitHeight();
     bool ok = true;
+    if (offset + from < m_nearOffset) {
+        from = m_nearOffset - offset;
+        ok = false;
+    }
     if (offset + to > limit) {
         to = limit - offset;
         ok = false;
@@ -427,12 +444,13 @@ ScrollStitcher::Match ScrollStitcher::match(const Analysis& a, const Analysis& b
 // were the page pulled past its end, now that `now` shows it moved back
 // down by them: plain wherever they differ from what `now` has in their
 // place (what stayed, a floating button or a side bar, is left out).
-bool ScrollStitcher::bounced(const Analysis& end, const Analysis& now, int gone) const
+bool ScrollStitcher::bounced(const Analysis& end, const Analysis& now, int gone, bool top) const
 {
     const int h = end.h;
     if (gone <= 0 || gone > (h - m_top - m_bottom) / 2)
         return false;
-    for (int y = h - m_bottom - gone; y < h - m_bottom; ++y)
+    const int first = top ? m_top : h - m_bottom - gone;
+    for (int y = first; y < first + gone; ++y)
         for (int k = 0; k < kSegments; ++k)
             if (end.actAt(y, k) != 0 && !now.agrees(y, end, y, k))
                 return false;
@@ -475,6 +493,10 @@ ScrollStitcher::Step ScrollStitcher::add(const QImage& frame, std::optional<int>
             // The end's newest look: a picture that loaded, a fade that ended.
             write(b->image, m_farOffset, m_farFrom, h - m_bottom);
             m_far = b->image;
+        } else if (m_prevOffset == m_nearOffset) {
+            const int to = h - m_bottom - (h - m_top - m_bottom) / 6;
+            write(b->image, m_nearOffset, 0, to);
+            m_farFrom = std::max(m_farFrom, std::min(h - m_bottom, m_nearOffset + to - m_farOffset));
         }
         m_prev = std::move(b);
         m_lost = 0;
@@ -503,6 +525,24 @@ ScrollStitcher::Step ScrollStitcher::add(const QImage& frame, std::optional<int>
         m_bottom = std::min(m_bottom, m.bottom);
     }
     const int offset = m_prevOffset + m.dy;
+    if (offset < m_nearOffset) {
+        const int begin = m_nearOffset + m_top;
+        const int safeTo = h - m_bottom - (h - m_top - m_bottom) / 6;
+        const int to = std::clamp(begin - offset, safeTo, h - m_bottom);
+        m_nearOffset = std::max(offset, m_farOffset + m_farRows - limitHeight());
+        const bool ok = write(b->image, offset, 0, to);
+        // The new content can replace the old top frame's header in the
+        // overlap. Keep only the untouched suffix of the bottommost frame.
+        m_farFrom = std::max(m_farFrom, std::min(h - m_bottom, offset + to - m_farOffset));
+        m_prev = std::move(b);
+        m_prevOffset = offset;
+        m_previewTop = true;
+        if (!ok || height() >= limitHeight()) {
+            m_full = true;
+            return finish(State::Full);
+        }
+        return finish(State::Appended);
+    }
     if (offset <= m_farOffset) {
         // Behind: nothing is added. Right after the end, moving back down
         // by rows that were the page pulled past its end (a bounce) makes
@@ -511,7 +551,14 @@ ScrollStitcher::Step ScrollStitcher::add(const QImage& frame, std::optional<int>
             m_far = b->image;
             m_farOffset = offset;
             m_farFrom = std::max(m_top, h / 6);
-            m_farRows = std::min(h, limitHeight() - offset);
+            m_farRows = std::min(h, m_nearOffset + limitHeight() - offset);
+        } else if (m_prevOffset == m_nearOffset && !step.predicted && bounced(*m_prev, *b, offset - m_nearOffset, true)) {
+            // The symmetric bounce at the top must remove its blank rows
+            // and restore the header from the frame now at rest.
+            m_nearOffset = offset;
+            const int to = h - m_bottom - (h - m_top - m_bottom) / 6;
+            write(b->image, offset, 0, to);
+            m_farFrom = std::max(m_farFrom, std::min(h - m_bottom, offset + to - m_farOffset));
         }
         m_prev = std::move(b);
         m_prevOffset = offset;
@@ -529,8 +576,9 @@ ScrollStitcher::Step ScrollStitcher::add(const QImage& frame, std::optional<int>
     m_far = m_prev->image;
     m_farOffset = offset;
     m_farFrom = from;
-    m_farRows = std::min(h, limitHeight() - offset);
-    if (!ok || offset + h >= limitHeight()) {
+    m_farRows = std::min(h, m_nearOffset + limitHeight() - offset);
+    m_previewTop = false;
+    if (!ok || height() >= limitHeight()) {
         m_full = true;
         return finish(State::Full);
     }
@@ -541,7 +589,7 @@ int ScrollStitcher::height() const
 {
     if (m_far.isNull())
         return 0;
-    return m_farOffset + std::max(0, m_farRows);
+    return m_farOffset + std::max(0, m_farRows) - m_nearOffset;
 }
 
 QImage ScrollStitcher::result() const
@@ -553,16 +601,16 @@ QImage ScrollStitcher::result() const
     if (out.isNull())
         return {};
     const size_t bytes = size_t(m_size.width()) * sizeof(uint32_t);
-    const int canvasRows = std::min(total, m_farOffset + m_farFrom);
+    const int canvasRows = std::min(total, m_farOffset + m_farFrom - m_nearOffset);
     for (int y = 0; y < canvasRows; ++y) {
-        const uint32_t* src = row(y);
+        const uint32_t* src = row(m_nearOffset + y);
         if (src)
             std::memcpy(out.scanLine(y), src, bytes);
         else
             std::memset(out.scanLine(y), 0, bytes);
     }
     for (int y = canvasRows; y < total; ++y)
-        std::memcpy(out.scanLine(y), m_far.constScanLine(y - m_farOffset), bytes);
+        std::memcpy(out.scanLine(y), m_far.constScanLine(m_nearOffset + y - m_farOffset), bytes);
     return out;
 }
 
@@ -575,7 +623,7 @@ QImage ScrollStitcher::preview(QSize box) const
     const int rows = std::min(total, int(box.height() / scale) + 1);
     QImage part(m_size.width(), rows, QImage::Format_RGB32);
     const size_t bytes = size_t(m_size.width()) * sizeof(uint32_t);
-    const int first = total - rows;
+    const int first = m_nearOffset + (m_previewTop ? 0 : total - rows);
     const int canvasRows = m_farOffset + m_farFrom;
     for (int i = 0; i < rows; ++i) {
         const int y = first + i;
@@ -588,7 +636,7 @@ QImage ScrollStitcher::preview(QSize box) const
     const int w = std::max(1, int(m_size.width() * scale + 0.5));
     const int scaledRows = std::max(1, int(rows * scale + 0.5));
     const int hh = std::min(box.height(), scaledRows);
-    return part.scaled(w, scaledRows, Qt::IgnoreAspectRatio, Qt::SmoothTransformation).copy(0, scaledRows - hh, w, hh);
+    return part.scaled(w, scaledRows, Qt::IgnoreAspectRatio, Qt::SmoothTransformation).copy(0, m_previewTop ? 0 : scaledRows - hh, w, hh);
 }
 
 QString stateName(ScrollStitcher::State state)

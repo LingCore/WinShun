@@ -4,6 +4,8 @@
 #include <QRect>
 #include <QString>
 
+#include "Hdr.h"
+
 #include <windows.h>
 
 #include <memory>
@@ -35,6 +37,9 @@ public:
         QImage image; // the monitor's pixels, Format_RGB32
         bool wgc = false; // else BitBlt
         bool hdr = false; // mapped from scRGB (Hdr.h)
+        // As captured, when asked for (grab's `keepHdr`) and `hdr`: for an
+        // HDR file beside the picture. Shared: a 4K monitor's are 66 MB.
+        std::shared_ptr<HdrPixels> hdrPixels;
     };
 
     Grabber();
@@ -64,8 +69,13 @@ public:
     // The monitors changed: their capture items are made again.
     void refresh();
     // A picture of every monitor; blocks until they are taken. `report`
-    // (may be null) tells how, for the log.
-    std::vector<Shot> grab(QString* report = nullptr);
+    // (may be null) tells how, for the log; `keepHdr`: an HDR monitor's
+    // frame as captured too (Shot::hdrPixels).
+    //
+    // WINSHUN_TEST_HDR_CAPTURE set: every monitor is taken as an HDR one
+    // (half floats, SDR white at 80 nits), so that an SDR screen tries the
+    // HDR path; what comes out looks the same.
+    std::vector<Shot> grab(QString* report = nullptr, bool keepHdr = false);
     // A stream of `region` (physical pixels, virtual desktop, inside one
     // monitor); null when WGC cannot (no device, no capture item for that
     // monitor). It is the capture thread's job while it lasts: grab() and

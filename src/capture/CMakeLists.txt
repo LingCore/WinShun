@@ -11,7 +11,9 @@
 # parts that need no QML: the pins' turning, collapsing and text picking
 # (PinTools), the small features (CaptureTools), the QR reader (QrCode), the
 # UI Automation probe (UiaProbe) and the delayed capture's countdown
-# (CountdownWindow). What the
+# (CountdownWindow), and the keys a recording shows (GitHub #98: Keycaps, which
+# keys and rows; KeycapRender, their picture; KeyStream, the hooks while
+# recording). What the
 # overlays bind to (CaptureSession, CaptureImage) and the controller
 # (Capture) are in this folder too, but built into WinShun's QML module
 # (src/app/CMakeLists.txt), which registers their types.
@@ -38,6 +40,9 @@ add_library(wscapture STATIC
     Recording.cpp Recording.h
     GifExport.cpp GifExport.h
     RecordingPointer.cpp RecordingPointer.h
+    Keycaps.cpp Keycaps.h
+    KeycapRender.cpp KeycapRender.h
+    KeyStream.cpp KeyStream.h
     PrintScreen.cpp PrintScreen.h
     WindowSnapshot.cpp WindowSnapshot.h
     Grabber.cpp Grabber.h
@@ -57,6 +62,7 @@ add_library(wscapture STATIC
     CaptureTools.cpp CaptureTools.h
     UiaProbe.cpp UiaProbe.h
     CountdownWindow.cpp CountdownWindow.h
+    CaptureDiagnostics.cpp CaptureDiagnostics.h
 )
 target_include_directories(wscapture PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 # miniz: the projects' zip (AnnotationFormat). ole32: UI Automation (ScrollInput).

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AnnotationFormat.h"
+#include "CaptureDiagnostics.h"
 #include "CaptureSession.h"
 #include "CaptureTools.h"
 #include "CountdownWindow.h"
@@ -12,6 +13,7 @@
 #include "WindowSnapshot.h"
 
 #include <QElapsedTimer>
+#include <QJsonObject>
 #include <QColor>
 #include <QImage>
 #include <QObject>
@@ -36,9 +38,12 @@ namespace ws::capture {
 // A picture written as PNG off the GUI thread (`thread` joined first: one at
 // a time), into `path`, or with none into the Screenshots folder named for
 // now (WinShun_yyyyMMdd_HHmmss.png); `done(path, error)` back on `context`'s
-// thread. The capture's Ctrl+S and the pins' 保存 / 另存为… alike.
+// thread. The capture's Ctrl+S and the pins' 保存 / 另存为… alike. With
+// `hdr` (the picture's pixels as an HDR monitor showed them), a JPEG XR
+// beside it, of the same name (GitHub #133).
 void saveImage(std::jthread& thread, QObject* context, const QImage& image, const QString& path,
-    std::function<void(const QString& path, const QString& error)> done, const QString& folder = {});
+    std::function<void(const QString& path, const QString& error)> done, const QString& folder = {},
+    std::shared_ptr<const HdrPixels> hdr = {});
 
 // The screen capture (docs/design-capture.md; docs/architecture.md, 截图):
 // exists while it is turned on in the settings, and holds everything it
@@ -93,17 +98,28 @@ public:
         std::function<void(const QString&)> colorFormatChanged;
         // A fill that carries white words (the countdown's).
         std::function<QColor()> accent;
+        // An overlay window was made (named "capture-overlay-<i>"), before it
+        // shows: the app watches its graphics (diagnostics).
+        std::function<void(QQuickWindow*, const QString& name)> windowCreated;
     };
 
     Capture(QQmlEngine* engine, Callbacks callbacks, QObject* parent = nullptr);
     ~Capture() override;
 
     void setCopyOnSelect(bool on) { m_session.setCopyOnSelect(on); }
+    void setMagnifier(bool on)
+    {
+        m_session.setMagnifier(on);
+        m_magnifierOn = on;
+    }
     void setPinOnCopy(bool on) { m_session.setPinOnCopy(on); }
     void setMouseActions(const CaptureSession::MouseActions& actions) { m_session.setMouseActions(actions); }
     void setHiddenButtons(const QStringList& ids) { m_session.setHiddenButtons(ids); }
     // The mouse cursor drawn into the frozen picture ([Capture] IncludeCursor).
     void setIncludeCursor(bool on) { m_includeCursor = on; }
+    // On an HDR monitor, saving writes an HDR file (.jxr) beside the PNG too
+    // ([Capture] HdrFile, GitHub #133); copies and pins stay as they are.
+    void setHdrFile(bool on) { m_hdrFile = on; }
     // UI Automation for the controls that are not child windows ([Capture] ControlsUia).
     void setControlDetection(bool on) { m_uiaEnabled = on; }
     void setColorFormat(ColorFormat format) { m_session.setColorFormat(format); }
@@ -132,7 +148,7 @@ public:
     static constexpr int kDraftMs = 10 * 60 * 1000;
     // Ctrl+S, 保存 on a pin: into the Screenshots folder (or `path`), off the
     // GUI thread; saved() tells how it went.
-    void save(const QImage& image, const QString& path = {});
+    void save(const QImage& image, const QString& path = {}, std::shared_ptr<const HdrPixels> hdr = {});
 
 private:
     enum class State { Idle, Waiting, Showing, Closing };
@@ -162,6 +178,13 @@ private:
     void drawCursorInShots(); // [Capture] IncludeCursor
     void askUia(std::size_t window, QPoint point); // the hover is in top-level window `window`
     void uiaAnswered(const UiaProbe::Answer& answer);
+    // Diagnostics (CaptureDiagnostics.h): a tick every 50 ms while the overlay
+    // shows tells how long the GUI thread was held up and whether the pointer
+    // over the overlay is hidden; recordCapture() writes the capture's summary.
+    void startWatch();
+    void watchTick();
+    bool pointerOverOverlay(POINT at) const;
+    void recordCapture(CaptureSession::Action action, const QRect& rect);
 
     QQmlEngine* m_engine;
     Callbacks m_callbacks;
@@ -183,6 +206,7 @@ private:
     State m_state = State::Idle;
     QElapsedTimer m_clock; // since the hotkey
     bool m_includeCursor = false;
+    bool m_hdrFile = false;
     bool m_uiaEnabled = true;
     std::unique_ptr<UiaProbe> m_uia; // made with the first question of a capture
     UiaGate m_uiaGate;
@@ -216,6 +240,22 @@ private:
     std::vector<qint64> m_gestureFrames;
     std::vector<qint64> m_allGestureFrames;
     bool m_gestureFrameOpen = false;
+    // Diagnostics: the watch runs from show() to finish().
+    bool m_magnifierOn = true;
+    QTimer m_watchTimer;
+    QElapsedTimer m_tickClock; // the last tick
+    QElapsedTimer m_shownClock; // since show()
+    QElapsedTimer m_upClock; // since the overlay was up (invalid: not yet)
+    diag::StallWatch m_stalls;
+    int m_ticks = 0;
+    QJsonObject m_pointerFacts; // read at show()
+    QJsonObject m_cursorShown; // the pointer over the overlay, the first time seen
+    QJsonObject m_cursorDragging; // and the first time seen while dragging
+    int m_wgcShots = 0;
+    int m_hdrShots = 0;
+    qint64 m_prescanMs = -1; // the first scan to finish in this capture
+    bool m_scanRunning = false;
+    int m_scanTicket = 0;
     QTimer m_flyoutWait;
     QTimer m_hideTimeout;
     QTimer m_rebuild;

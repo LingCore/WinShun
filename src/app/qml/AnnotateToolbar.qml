@@ -61,7 +61,7 @@ Rectangle {
         qsTr("滚轮"), qsTr("有工具或选中对象时改粗细"),
         qsTr("方向键"), qsTr("挪动选中的对象，按住 Shift 一次 10 像素；没有选中时微调选区"),
         "H", qsTr("隐藏 / 显示工具条"),
-        "C、Shift", qsTr("复制颜色；单按 Shift 换颜色格式（HEX、RGB、HSL）"),
+        "C、Shift", qsTr("复制颜色并结束截图；单按 Shift 换颜色格式（HEX、RGB、HSL）"),
         "Shift+C", qsTr("识别选区里的文字并复制"),
         "Shift+R", qsTr("还没选区时：用上一次的选区"),
         "Q", qsTr("识别选区里的二维码"),
@@ -129,6 +129,16 @@ Rectangle {
     // The tool or button the mouse is on, for the one HoverTip.
     property var tip: null // item and tool change together, including when a drag crosses buttons
     property bool keysOpen: false
+    // The window's WindowFrame, where it has one (the editor's, as `frame`;
+    // the capture overlay has none). In a short editor window the open key
+    // list goes up over the title bar: a popup to the frame, it takes the
+    // presses there, not the drag area or the maximise button.
+    readonly property var hostWindow: bar.Window.window
+    onKeysOpenChanged: {
+        const frame = hostWindow ? (hostWindow.frame ?? null) : null
+        if (keysOpen && frame)
+            frame.addPopup(keysCard)
+    }
 
     function shows(id) { return hidden.indexOf(id) < 0 }
     // Logical to whole device pixels.
@@ -589,7 +599,7 @@ Rectangle {
     }
 
     // A tool's 16 logical px icon. The rectangle, ellipse, pen and marker are
-    // Segoe Fluent Icons glyphs; the arrow, line, T, numbered disc and mosaic
+    // glyphs (Phosphor, through Glyph.qml); the arrow, line, T, numbered disc and mosaic
     // are drawn in device pixels, as Glyph.qml draws its own: 1 px strokes up
     // to 20 device px (100 %, 125 %), 1.5 px up to 28 (150 %, 175 %), 2 above.
     component ToolIcon: Item {

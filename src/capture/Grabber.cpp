@@ -269,6 +269,8 @@ struct Grabber::Worker {
                 m.handle = handle;
                 m.rect = toRect(info.rcMonitor);
                 m.color = displayColorMode(info.szDevice);
+                if (!m.color.hdr && qEnvironmentVariableIsSet("WINSHUN_TEST_HDR_CAPTURE"))
+                    m.color = {true, 80.0}; // see Grabber::grab
                 self->monitors.push_back(std::move(m));
                 return TRUE;
             },
@@ -299,7 +301,8 @@ struct Grabber::Worker {
         wgc::Direct3D11CaptureFrame frame {nullptr};
     };
 
-    QImage readFrame(const wgc::Direct3D11CaptureFrame& frame, const Monitor& m)
+    // `keep`: an HDR monitor's pixels as they are too.
+    QImage readFrame(const wgc::Direct3D11CaptureFrame& frame, const Monitor& m, HdrPixels* keep)
     {
         winrt::com_ptr<ID3D11Texture2D> texture;
         const auto access = frame.Surface().as<::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess>();
@@ -323,6 +326,10 @@ struct Grabber::Worker {
         if (m.color.hdr) {
             image = mapScRgbToSdr(static_cast<const std::uint16_t*>(mapped.pData), static_cast<int>(desc.Width),
                 static_cast<int>(desc.Height), static_cast<int>(mapped.RowPitch), m.color.sdrWhiteNits);
+            if (keep) {
+                *keep = HdrPixels::fromScRgb(static_cast<const std::uint16_t*>(mapped.pData), static_cast<int>(desc.Width),
+                    static_cast<int>(desc.Height), static_cast<int>(mapped.RowPitch), m.color.sdrWhiteNits);
+            }
         } else {
             image = QImage(static_cast<int>(desc.Width), static_cast<int>(desc.Height), QImage::Format_RGB32);
             const std::size_t row = std::size_t(desc.Width) * 4;
@@ -334,7 +341,7 @@ struct Grabber::Worker {
         return image;
     }
 
-    std::vector<Shot> grabAll(QString* report)
+    std::vector<Shot> grabAll(QString* report, bool keepHdr)
     {
         QElapsedTimer clock;
         clock.start();
@@ -383,8 +390,12 @@ struct Grabber::Worker {
             Pending* p = pending[i].get();
             if (p) {
                 try {
-                    if (::WaitForSingleObject(p->arrived, 0) == WAIT_OBJECT_0 && p->frame)
-                        shots[i].image = readFrame(p->frame, monitors[i]);
+                    if (::WaitForSingleObject(p->arrived, 0) == WAIT_OBJECT_0 && p->frame) {
+                        auto kept = keepHdr && monitors[i].color.hdr ? std::make_shared<HdrPixels>() : nullptr;
+                        shots[i].image = readFrame(p->frame, monitors[i], kept.get());
+                        if (kept && !kept->isNull() && !shots[i].image.isNull())
+                            shots[i].hdrPixels = std::move(kept);
+                    }
                 } catch (const winrt::hresult_error& e) {
                     qWarning().noquote() << u"Screen capture: could not read a frame (0x%1)"_s.arg(
                         static_cast<quint32>(e.code().value), 8, 16, QChar(u'0'));
@@ -604,12 +615,12 @@ void Grabber::refresh()
     });
 }
 
-std::vector<Grabber::Shot> Grabber::grab(QString* report)
+std::vector<Grabber::Shot> Grabber::grab(QString* report, bool keepHdr)
 {
     std::promise<std::vector<Shot>> promise;
     auto future = promise.get_future();
     Worker* worker = m_worker.get();
-    worker->post([worker, &promise, report] { promise.set_value(worker->grabAll(report)); });
+    worker->post([worker, &promise, report, keepHdr] { promise.set_value(worker->grabAll(report, keepHdr)); });
     return future.get();
 }
 

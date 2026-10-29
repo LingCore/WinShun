@@ -189,6 +189,51 @@ Window {
                     Accessible.description: qsTr("在视频中显示鼠标点击圈，暂停期间和控制条上的点击不显示。")
                     onClicked: panel.recorder.clickHighlights = !panel.recorder.clickHighlights
                 }
+                RecordingButton {
+                    objectName: "recordingMouseButtons"
+                    option: true
+                    text: qsTr("鼠标按键：%1").arg(panel.recorder.mouseButtons ? qsTr("开") : qsTr("关"))
+                    highlighted: panel.recorder.mouseButtons
+                    Accessible.description: qsTr("在视频角落显示按下的是左键、右键、中键还是侧键。")
+                    onClicked: panel.recorder.mouseButtons = !panel.recorder.mouseButtons
+                }
+            }
+            Flow {
+                width: parent.width
+                spacing: 8
+                RecordingButton {
+                    objectName: "recordingKeysOff"
+                    option: true
+                    exclusive: true
+                    text: qsTr("不显示按键")
+                    highlighted: panel.recorder.keys === Recorder.KeysOff
+                    onClicked: panel.recorder.keys = Recorder.KeysOff
+                }
+                RecordingButton {
+                    objectName: "recordingKeysShortcuts"
+                    option: true
+                    exclusive: true
+                    text: qsTr("仅快捷键")
+                    highlighted: panel.recorder.keys === Recorder.KeysShortcuts
+                    onClicked: panel.recorder.keys = Recorder.KeysShortcuts
+                }
+                RecordingButton {
+                    objectName: "recordingKeysAll"
+                    option: true
+                    exclusive: true
+                    text: qsTr("全部按键")
+                    highlighted: panel.recorder.keys === Recorder.KeysAll
+                    onClicked: panel.recorder.keys = Recorder.KeysAll
+                }
+            }
+            Text {
+                width: parent.width
+                text: panel.recorder.keys === Recorder.KeysAll ? qsTr("打的字也会录进视频，包括密码；输入密码前请先暂停。")
+                    : panel.recorder.keys === Recorder.KeysShortcuts ? qsTr("在视频角落显示 Ctrl、Alt、Win 组合键和 Esc、Enter、F1 等功能键，打的字不显示。")
+                    : qsTr("可在视频角落显示按下的键；推荐“仅快捷键”，不会录下打的字。")
+                color: panel.recorder.keys === Recorder.KeysAll ? Theme.caution : Theme.subtext
+                font.pixelSize: Theme.fontCaption
+                wrapMode: Text.Wrap
             }
             Text {
                 width: parent.width
@@ -220,6 +265,14 @@ Window {
             text: panel.gif ? qsTr("GIF 动图 · 无音频") : qsTr("系统声音：%1 · 麦克风：%2").arg(panel.recorder.systemAudio ? qsTr("开") : qsTr("关"))
                 .arg(panel.recorder.microphone ? qsTr("开") : qsTr("关"))
             color: Theme.subtext
+            font.pixelSize: Theme.fontCaption
+            wrapMode: Text.Wrap
+        }
+        Text {
+            visible: panel.recording && panel.recorder.keys === Recorder.KeysAll
+            width: parent.width
+            text: qsTr("正在显示全部按键：打的字会录进视频，输入密码前请先暂停。")
+            color: Theme.caution
             font.pixelSize: Theme.fontCaption
             wrapMode: Text.Wrap
         }

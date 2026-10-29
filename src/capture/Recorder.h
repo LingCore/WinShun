@@ -16,6 +16,10 @@
 class QQmlEngine;
 class QQuickWindow;
 
+namespace ws::capture::recording {
+class KeyHook;
+}
+
 namespace ws::capture {
 
 class Recorder : public QObject {
@@ -38,6 +42,8 @@ class Recorder : public QObject {
     Q_PROPERTY(bool cursor READ cursor WRITE setCursor NOTIFY changed FINAL)
     Q_PROPERTY(bool countdown READ countdown WRITE setCountdown NOTIFY changed FINAL)
     Q_PROPERTY(bool clickHighlights READ clickHighlights WRITE setClickHighlights NOTIFY changed FINAL)
+    Q_PROPERTY(KeyDisplay keys READ keys WRITE setKeys NOTIFY changed FINAL)
+    Q_PROPERTY(bool mouseButtons READ mouseButtons WRITE setMouseButtons NOTIFY changed FINAL)
 
 public:
     enum Stage { Ready, Counting, Starting, Recording, Paused, Saving, Done, Failed };
@@ -46,6 +52,9 @@ public:
     Q_ENUM(Quality)
     enum Format { Mp4, Gif }; // persisted as 0, 1
     Q_ENUM(Format)
+    // GitHub #98's keycaps; keycaps::Mode's order, persisted by its names.
+    enum KeyDisplay { KeysOff, KeysShortcuts, KeysAll };
+    Q_ENUM(KeyDisplay)
 
     struct Preferences {
         QString folder;
@@ -56,6 +65,8 @@ public:
         bool countdown = true;
         bool clickHighlights = false;
         Format format = Mp4;
+        KeyDisplay keys = KeysOff;
+        bool mouseButtons = false;
     };
     struct Hooks {
         std::function<Preferences()> preferences;
@@ -63,6 +74,8 @@ public:
         std::function<void()> starting;
         std::function<void()> finished;
         std::function<bool(std::shared_ptr<recording::ClickStream>)> clicks;
+        // Win顺's hotkeys that end a recording: never shown in it.
+        std::function<std::vector<keycaps::Hotkey>()> ownKeys;
     };
 
     Recorder(QQmlEngine* engine, Hooks hooks, QObject* parent = nullptr);
@@ -85,6 +98,8 @@ public:
     bool cursor() const { return m_preferences.cursor; }
     bool countdown() const { return m_preferences.countdown; }
     bool clickHighlights() const { return m_preferences.clickHighlights; }
+    KeyDisplay keys() const { return m_preferences.keys; }
+    bool mouseButtons() const { return m_preferences.mouseButtons; }
     void setSystemAudio(bool on);
     void setMicrophone(bool on);
     void setQuality(Quality value);
@@ -92,6 +107,8 @@ public:
     void setCursor(bool on);
     void setCountdown(bool on);
     void setClickHighlights(bool on);
+    void setKeys(KeyDisplay value);
+    void setMouseButtons(bool on);
 
     Q_INVOKABLE void start();
     Q_INVOKABLE void skipCountdown();
@@ -114,6 +131,7 @@ private:
     void remember();
     void createPanel();
     void releaseClicks();
+    void releaseKeys();
 
     QQmlEngine* m_engine;
     Hooks m_hooks;
@@ -132,6 +150,7 @@ private:
     std::unique_ptr<recording::Control> m_control;
     std::jthread m_worker;
     bool m_clicksActive = false;
+    std::unique_ptr<recording::KeyHook> m_keyHook; // while recording with keycaps
     bool m_exporting = false;
 };
 

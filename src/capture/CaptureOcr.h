@@ -60,6 +60,8 @@ public:
     // unless a newer scan() or cancelScan() came first. Nothing the picture
     // says is kept or logged.
     void scan(const QImage& image, double dpr, std::function<void(QList<RedactLine>)> done);
+    // Crop and grayscale conversion run on the reader thread, too.
+    void scan(const QImage& image, const QRect& region, double dpr, std::function<void(RedactScan)> done);
     void cancelScan();
 
     // The window shows `texts` (one per line) under `title`, no reading: the QR
@@ -101,12 +103,14 @@ private:
     struct ScanJob {
         int ticket = 0;
         QImage image;
-        double scale = 1.0;
-        std::function<void(QList<RedactLine>)> done;
+        QRect region;
+        double dpr = 1.0;
+        bool grayscale = true;
     };
+    void enqueueScan(const QImage& image, const QRect& region, double dpr, bool grayscale, std::function<void(RedactScan)> done);
     void work(const std::stop_token& stop);
     void done(int round, const QString& text, const QString& error);
-    void scanDone(int ticket, QList<RedactLine> lines);
+    void scanDone(int ticket, RedactScan scan);
 
     bool m_busy = false;
     QString m_text;
@@ -120,7 +124,7 @@ private:
     std::optional<Job> m_job;
     std::optional<ScanJob> m_scan;
     int m_scanTicket = 0; // the GUI thread's: the scan whose result is wanted
-    std::function<void(QList<RedactLine>)> m_scanDone;
+    std::function<void(RedactScan)> m_scanDone;
     std::jthread m_thread; // last: started once the rest is there
 };
 

@@ -137,6 +137,17 @@ bool applyPanel(const QVariantMap& change, Kind kind, annot::Style& style, qreal
         } else if (key == u"boxed" && kind == Kind::Text) {
             style.boxed = value.toBool();
             any = true;
+        } else if (key == u"stroke" && kind == Kind::Text) {
+            // 0: none; else the outline's width, logical px
+            const double v = value.toDouble();
+            style.textStroke = std::isfinite(v) && v >= 0.5 ? annot::toImagePx(logicalValue(value), scale) : 0;
+            style.textStroke = std::min(style.textStroke, annot::kMaxTextStroke);
+            any = true;
+        } else if (key == u"strokeColor" && kind == Kind::Text) {
+            // "#RRGGBB", or anything else (auto) for the colour opposite the text's
+            const std::optional<QRgb> color = annot::parseColor(value.toString());
+            style.textStrokeColor = color ? (*color | 0xff000000u) : 0;
+            any = true;
         } else if (key == u"mode" && kind == Kind::Redact) {
             if (const std::optional<annot::RedactMode> mode = annot::redactModeFromName(value.toString())) {
                 style.redact = *mode;
@@ -682,6 +693,8 @@ QVariantMap AnnotationModel::panel() const
         t.size = annot::toLogicalPx(s.fontPx, dpr);
         t.bold = s.bold;
         t.boxed = s.boxed;
+        t.stroke = s.textStroke > 0 ? annot::toLogicalPx(s.textStroke, dpr) : 0;
+        t.strokeColor = s.textStrokeColor;
         t.mode = s.redact;
         t.shape = s.shape;
         if (s.shape == annot::RedactShape::Brush)
@@ -717,6 +730,12 @@ QVariantMap AnnotationModel::panel() const
     if (kind == Kind::Text) {
         m[u"bold"_s] = t.bold;
         m[u"boxed"_s] = t.boxed;
+        // The outline: its width (0: none), the presets, and the colour it is
+        // drawn in (automatic: the opposite of the text's) with whether that is automatic.
+        m[u"stroke"_s] = t.stroke;
+        m[u"strokes"_s] = variantList(annot::strokePresets());
+        m[u"strokeAuto"_s] = t.strokeColor == 0;
+        m[u"strokeColor"_s] = colorHex(t.strokeColor != 0 ? t.strokeColor : annot::inkOn(t.color));
     }
     if (kind == Kind::Redact) {
         m[u"mode"_s] = annot::redactModeName(t.mode);
@@ -796,12 +815,18 @@ QVariantMap AnnotationModel::editing() const
     const annot::TextMetrics metrics = annot::textMetrics(QString(), f, style.bold);
     const int pad = style.boxed ? qRound(0.3 * f) : 0; // as textGeometry() pads the box
     const qreal radius = style.boxed ? 0.25 * f : 0;
+    // The outline the words get when committed (image px; 0 when none or boxed): the edit box draws it under the glyphs.
+    annot::Item outlined;
+    outlined.kind = Kind::Text;
+    outlined.style = style;
+    const int stroke = annot::textStrokeWidth(outlined);
+    const QString strokeColor = colorHex(annot::textStrokeColorOf(outlined));
     return QVariantMap {{u"id"_s, int(m_editing->id)}, {u"x"_s, m_editing->at.x()}, {u"y"_s, m_editing->at.y()},
         {u"fontPx"_s, f}, {u"bold"_s, style.bold}, {u"boxed"_s, style.boxed},
         {u"color"_s, colorHex(style.boxed ? annot::inkOn(style.color) : style.color)},
         {u"fill"_s, colorHex(style.color)}, {u"text"_s, m_editing->text}, {u"pad"_s, pad}, {u"radius"_s, radius},
         {u"pitch"_s, metrics.pitch}, {u"ascent"_s, metrics.ascent}, {u"clickX"_s, m_editing->click.x()},
-        {u"clickY"_s, m_editing->click.y()}};
+        {u"clickY"_s, m_editing->click.y()}, {u"stroke"_s, stroke}, {u"strokeColor"_s, strokeColor}};
 }
 
 QVariantMap AnnotationModel::numberEdit() const
@@ -2649,24 +2674,23 @@ void AnnotationModel::smartStart(bool apply)
     s.scanning = true;
     s.apply = apply;
     const int ticket = s.ticket;
-    const QImage picture = m_base.copy(rect);
     QPointer<AnnotationModel> self(this);
-    s.hooks.scan(picture, dpr(), [self, ticket, picture](QList<RedactLine> lines) {
+    s.hooks.scan(m_base, rect, dpr(), [self, ticket](RedactScan scan) {
         if (self)
-            self->smartScanned(ticket, picture, std::move(lines));
+            self->smartScanned(ticket, std::move(scan));
     });
     sync();
 }
 
-void AnnotationModel::smartScanned(int ticket, const QImage& scanned, QList<RedactLine> lines)
+void AnnotationModel::smartScanned(int ticket, RedactScan scan)
 {
     Private::Smart& s = d->smart;
     if (ticket != s.ticket)
         return;
     s.scanning = false;
     s.ready = true;
-    s.lines = std::move(lines);
-    s.gray = scanned.convertToFormat(QImage::Format_Grayscale8);
+    s.lines = std::move(scan.lines);
+    s.gray = std::move(scan.gray);
     s.all.reset();
     s.hits.reset();
     const bool apply = std::exchange(s.apply, false);

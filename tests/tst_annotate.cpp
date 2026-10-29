@@ -32,6 +32,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <numbers>
@@ -1075,6 +1076,333 @@ private slots:
         QVERIFY(textMetrics(u"x"_s, 27, false) == layoutText(u"x"_s, 27, false).metrics);
     }
 
+    // --- text outline (#101) --------------------------------------------------
+
+    static Item outlinedText(const QString& text, int stroke, QRgb color = kRed, QRgb strokeColor = 0, int pixelSize = 27)
+    {
+        Item item = textItem(QPoint(20, 20), text, pixelSize, false, false, color);
+        item.style.textStroke = stroke;
+        item.style.textStrokeColor = strokeColor;
+        return item;
+    }
+
+    // The stroke's colour: the one chosen, else opposite the text's.
+    void textOutlineColour()
+    {
+        QCOMPARE(textStrokeColorOf(outlinedText(u"a"_s, 2, kRed)), kWhite);
+        QCOMPARE(textStrokeColorOf(outlinedText(u"a"_s, 2, kYellow)), kDark);
+        QCOMPARE(textStrokeColorOf(outlinedText(u"a"_s, 2, kDark)), kWhite);
+        QCOMPARE(textStrokeColorOf(outlinedText(u"a"_s, 2, kWhite)), kDark);
+        QCOMPARE(textStrokeColorOf(outlinedText(u"a"_s, 2, kRed, kBlue)), kBlue);
+        QCOMPARE(textStrokeWidth(outlinedText(u"a"_s, 2)), 2);
+        QCOMPARE(textStrokeWidth(outlinedText(u"a"_s, 999)), kMaxTextStroke);
+        Item boxed = outlinedText(u"a"_s, 2);
+        boxed.style.boxed = true;
+        QCOMPARE(textStrokeWidth(boxed), 0); // white words on a box: no outline
+        Item number = outlinedText(u"a"_s, 2);
+        number.kind = Kind::Number;
+        QCOMPARE(textStrokeWidth(number), 0);
+    }
+
+    // The outline is painted under the words: a text with stroke 0 is the text
+    // as before; with a stroke, every pixel that is full text colour is the
+    // same, the ring stands round the glyphs, and nothing is painted outside the bounds.
+    void textOutlineRenders_data()
+    {
+        QTest::addColumn<qreal>("dpr");
+        QTest::addColumn<int>("logical");
+        QTest::addColumn<QRgb>("color");
+        for (qreal dpr : {1.0, 1.5}) {
+            for (int logical : {1, 2, 3})
+                QTest::addRow("%d%% %dpx red", int(dpr * 100), logical) << dpr << logical << kRed;
+        }
+        QTest::addRow("100%% 2px dark") << 1.0 << 2 << kDark;
+        QTest::addRow("150%% 3px yellow") << 1.5 << 3 << kYellow;
+    }
+
+    void textOutlineRenders()
+    {
+        QFETCH(qreal, dpr);
+        QFETCH(int, logical);
+        QFETCH(QRgb, color);
+        const int stroke = toImagePx(logical, dpr);
+        const int fontPx = toImagePx(24, dpr);
+        const QRgb page = qRgb(0x60, 0x70, 0x80);
+        const QImage base = plainImage(QSize(420, 160), page);
+        const QRect all(QPoint(0, 0), base.size());
+        Compositor compositor;
+        const Item plain = outlinedText(u"Win顺 Hello\n截图 gWy"_s, 0, color, 0, fontPx);
+        Document docPlain = emptyDoc(base.size(), dpr);
+        addItem(docPlain, plain);
+        const QImage a = renderArea(compositor, docPlain, base, all, all);
+        // A colour with no width draws nothing: the same bytes.
+        Item zero = plain;
+        zero.style.textStrokeColor = kBlue;
+        Document docZero = emptyDoc(base.size(), dpr);
+        addItem(docZero, zero);
+        QVERIFY2(compare(renderArea(compositor, docZero, base, all, all), a).count == 0, "stroke 0 changed the text");
+
+        Item ringed = plain;
+        ringed.style.textStroke = stroke;
+        Document docRing = emptyDoc(base.size(), dpr);
+        addItem(docRing, ringed);
+        const QImage b = renderArea(compositor, docRing, base, all, all);
+        const QRgb ringColour = textStrokeColorOf(ringed) | 0xff000000u;
+        const QRgb ink = color | 0xff000000u;
+        // 1. Full text pixels stay the text's.
+        const auto away = [](QRgb p, QRgb q) { return std::abs(qRed(p) - qRed(q)) + std::abs(qGreen(p) - qGreen(q)) + std::abs(qBlue(p) - qBlue(q)); };
+        QList<QPoint> touched; // the pixels the plain text covers by half or more
+        QList<QPoint> faint; // every pixel it changes
+        int full = 0;
+        for (int y = 0; y < a.height(); ++y) {
+            for (int x = 0; x < a.width(); ++x) {
+                if (a.pixel(x, y) == page)
+                    continue;
+                faint.append(QPoint(x, y));
+                if (away(a.pixel(x, y), page) * 2 >= away(ink, page))
+                    touched.append(QPoint(x, y));
+                if (a.pixel(x, y) == ink) {
+                    ++full;
+                    QCOMPARE(b.pixel(x, y), ink);
+                }
+            }
+        }
+        QVERIFY(full > 200);
+        // 2. The ring: page pixels at least 1.5 px inside the stroke's reach of a text pixel are (nearly) the
+        //    ring's colour, none further out than stroke + 1.5 is touched, and there is a ring at all.
+        int inner = 0;
+        int missing = 0;
+        int farEdge = 0;
+        int ring = 0;
+        QPoint firstMissing;
+        for (int y = 0; y < a.height(); ++y) {
+            for (int x = 0; x < a.width(); ++x) {
+                if (a.pixel(x, y) != page)
+                    continue;
+                qreal nearest = 1e9;
+                qreal nearestAny = 1e9;
+                for (const QPoint& s : std::as_const(touched)) {
+                    if (std::abs(s.x() - x) <= stroke + 3 && std::abs(s.y() - y) <= stroke + 3)
+                        nearest = std::min(nearest, std::hypot(s.x() - x, s.y() - y));
+                }
+                for (const QPoint& s : std::as_const(faint)) {
+                    if (std::abs(s.x() - x) <= stroke + 3 && std::abs(s.y() - y) <= stroke + 3)
+                        nearestAny = std::min(nearestAny, std::hypot(s.x() - x, s.y() - y));
+                }
+                const QRgb got = b.pixel(x, y);
+                ring += got != page;
+                if (nearest <= stroke - 1.0) {
+                    ++inner;
+                    if (away(got, ringColour) > 60 && missing++ == 0)
+                        firstMissing = QPoint(x, y);
+                } else if (nearestAny > stroke + 1.5 && away(got, page) > 6) {
+                    ++farEdge;
+                }
+            }
+        }
+        QVERIFY(ring > 300);
+        if (stroke >= 3)
+            QVERIFY(inner > 100);
+        QVERIFY2(missing == 0, qPrintable(u"ring hole at (%1, %2), %3 of %4"_s.arg(firstMissing.x()).arg(firstMissing.y()).arg(missing).arg(inner)));
+        QCOMPARE(farEdge, 0);
+        // 3. Nothing outside the item's bounds, which only grew.
+        const QRectF grown = bounds(docRing, docRing.items[0]);
+        const QRectF was = bounds(docPlain, docPlain.items[0]);
+        QVERIFY2(!changedOutside(a, b, grown.toAlignedRect()), "the outline paints outside the bounds");
+        QVERIFY(grown.contains(was));
+        QVERIFY(grown.width() >= was.width() + stroke);
+        // 4. The export is the same pixels.
+        const QImage exported = compositor.exportImage(docRing, base, all);
+        QVERIFY(compare(exported.convertToFormat(QImage::Format_RGB32), b).count == 0);
+        // 5. Tiles equal the whole.
+        QImage tiled(base.size(), QImage::Format_RGB32);
+        for (const QRect& tile : {QRect(0, 0, 200, 160), QRect(200, 0, 220, 160)}) {
+            QImage piece;
+            compositor.render(docRing, base, tile, tile, &piece);
+            blit(tiled, tile.topLeft(), piece);
+        }
+        QVERIFY(compare(tiled, b).count == 0);
+        const QString shots = qEnvironmentVariable("WS_TEST_SHOTS");
+        if (!shots.isEmpty()) {
+            const QString tag = u"%1-%2px-%3"_s.arg(int(dpr * 100)).arg(logical).arg(color, 0, 16);
+            QVERIFY(a.save(u"%1/text-plain-%2.png"_s.arg(shots, tag)));
+            QVERIFY(b.save(u"%1/text-outlined-%2.png"_s.arg(shots, tag)));
+        }
+    }
+
+    // The outline layer of big text is built once and cached; it must not take long on the GUI thread
+    // (64 px words, 3 lines, the widest outline at 300 %).
+    void textOutlineSpeed()
+    {
+        const int stroke = toImagePx(3, 3.0);
+        const QImage base = plainImage(QSize(900, 420), qRgb(0x60, 0x70, 0x80));
+        const QRect all(QPoint(0, 0), base.size());
+        Item item = outlinedText(u"Win顺 截图 Annotate\n第二行 描边 gWy\nThird line 123"_s, stroke, kRed, 0, 64);
+        Document doc = emptyDoc(base.size(), 3.0);
+        addItem(doc, item);
+        Compositor compositor;
+        QElapsedTimer timer;
+        timer.start();
+        const QImage out = renderArea(compositor, doc, base, all, all);
+        const qint64 first = timer.elapsed();
+        QVERIFY(!out.isNull());
+        qInfo().noquote() << u"outline layer, 64 px x 3 lines, stroke %1 px: first render %2 ms"_s.arg(stroke).arg(first);
+        const QString shots = qEnvironmentVariable("WS_TEST_SHOTS");
+        if (!shots.isEmpty())
+            QVERIFY(out.save(u"%1/speed-stroke%2.png"_s.arg(shots).arg(stroke)));
+        item.style.textStroke = kMaxTextStroke;
+        Document wide = emptyDoc(base.size(), 3.0);
+        addItem(wide, item);
+        timer.restart();
+        renderArea(compositor, wide, base, all, all);
+        qInfo().noquote() << u"the same at the widest allowed outline (%1 px): %2 ms"_s.arg(kMaxTextStroke).arg(timer.elapsed());
+    }
+
+    // Boxed words keep their box and take no outline.
+    void textOutlineBoxedIsPlain()
+    {
+        const QImage base = plainImage(QSize(260, 100), qRgb(0x60, 0x70, 0x80));
+        const QRect all(QPoint(0, 0), base.size());
+        Item boxed = outlinedText(u"Boxed 文字"_s, 0);
+        boxed.style.boxed = true;
+        Document one = emptyDoc(base.size());
+        addItem(one, boxed);
+        boxed.style.textStroke = 3;
+        Document two = emptyDoc(base.size());
+        addItem(two, boxed);
+        Compositor compositor;
+        QVERIFY(compare(renderArea(compositor, one, base, all, all), renderArea(compositor, two, base, all, all)).count == 0);
+        QCOMPARE(bounds(one, one.items[0]), bounds(two, two.items[0]));
+    }
+
+    // The outline is saved with the text; a file made before it has none.
+    void textOutlineFormat()
+    {
+        Document doc = emptyDoc(QSize(300, 200));
+        addItem(doc, outlinedText(u"one"_s, 3, kRed, kBlue));
+        addItem(doc, outlinedText(u"two"_s, 2));
+        addItem(doc, outlinedText(u"three"_s, 0));
+        const QJsonObject json = toJson(doc);
+        const QJsonArray items = json.value(u"items"_s).toArray();
+        QCOMPARE(items.size(), 3);
+        const auto styleOf = [&](qsizetype i) { return items[i].toObject().value(u"style"_s).toObject(); };
+        QCOMPARE(styleOf(0).value(u"textStroke"_s).toInt(), 3);
+        QCOMPARE(styleOf(0).value(u"textStrokeColor"_s).toString(), u"#1E88E5"_s);
+        QVERIFY(!styleOf(1).contains(u"textStrokeColor"_s)); // automatic: not written
+        QVERIFY(!styleOf(2).contains(u"textStroke"_s)); // none: as before
+        // A colour picked and then "no outline": the colour is kept and written, as any field off its default.
+        Item picked = outlinedText(u"four"_s, 0, kRed, kBlue);
+        Document pickedDoc = emptyDoc(QSize(300, 200));
+        addItem(pickedDoc, picked);
+        const std::optional<Document> pickedBack = fromJson(toJson(pickedDoc), nullptr);
+        QVERIFY(pickedBack);
+        QCOMPARE(*pickedBack, pickedDoc);
+        QString error;
+        const std::optional<Document> back = fromJson(json, &error);
+        QVERIFY2(back, qPrintable(error));
+        QCOMPARE(*back, doc);
+        QCOMPARE(back->items[0].style.textStroke, 3);
+        QCOMPARE(back->items[0].style.textStrokeColor, kBlue);
+        QCOMPARE(back->items[1].style.textStrokeColor, QRgb(0));
+        // A text without the fields (an older file) loads with no outline; odd values are tamed.
+        const auto withStyle = [&](const std::function<void(QJsonObject&)>& edit) {
+            QJsonObject out = json;
+            QJsonArray list = out.value(u"items"_s).toArray();
+            for (qsizetype i = 0; i < list.size(); ++i) {
+                QJsonObject item = list[i].toObject();
+                QJsonObject style = item.value(u"style"_s).toObject();
+                edit(style);
+                item[u"style"_s] = style;
+                list[i] = item;
+            }
+            out[u"items"_s] = list;
+            return out;
+        };
+        const std::optional<Document> older = fromJson(withStyle([](QJsonObject& style) {
+            style.remove(u"textStroke"_s);
+            style.remove(u"textStrokeColor"_s);
+        }), &error);
+        QVERIFY2(older, qPrintable(error));
+        for (const Item& item : older->items) {
+            QCOMPARE(item.style.textStroke, 0);
+            QCOMPARE(item.style.textStrokeColor, QRgb(0));
+        }
+        const std::optional<Document> tamed = fromJson(withStyle([](QJsonObject& style) {
+            style[u"textStroke"_s] = 100000;
+            style[u"textStrokeColor"_s] = u"blue"_s;
+        }), &error);
+        QVERIFY2(tamed, qPrintable(error));
+        QCOMPARE(tamed->items[0].style.textStroke, 0);
+        QCOMPARE(tamed->items[0].style.textStrokeColor, QRgb(0));
+        // The v1 sample from before the outline reads as it did.
+        QFile file(QStringLiteral(WINSHUN_ANNOTATE_DATA) + u"/doc-v1.json"_s);
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const std::optional<Document> sample = fromJson(QJsonDocument::fromJson(file.readAll()).object(), nullptr);
+        QVERIFY(sample);
+        for (const Item& item : sample->items)
+            QCOMPARE(item.style.textStroke, 0);
+    }
+
+    // What the text tool remembers: width and colour, at any scale.
+    void textOutlineStyles()
+    {
+        const StyleMemory defaults;
+        QCOMPARE(defaults.forTool(Kind::Text, 1.5).textStroke, 0);
+        for (qreal dpr : {1.0, 1.25, 1.5, 1.75, 2.0}) {
+            StyleMemory memory;
+            Style s = memory.forTool(Kind::Text, dpr);
+            s.textStroke = toImagePx(2, dpr);
+            s.textStrokeColor = kBlue;
+            memory.remember(Kind::Text, s, dpr);
+            QCOMPARE(memory.tool(Kind::Text).stroke, 2);
+            const Style again = memory.forTool(Kind::Text, dpr);
+            QCOMPARE(again.textStroke, toImagePx(2, dpr));
+            QCOMPARE(again.textStrokeColor, kBlue);
+            QVERIFY(StyleMemory::fromJson(memory.toJson()) == memory);
+            s.textStroke = 0;
+            memory.remember(Kind::Text, s, dpr);
+            QCOMPARE(memory.forTool(Kind::Text, dpr).textStroke, 0);
+        }
+        StyleMemory memory;
+        Style s = memory.forTool(Kind::Text, 1.0);
+        s.textStroke = 3;
+        memory.remember(Kind::Text, s, 1.0);
+        QVERIFY(memory.toJson().contains(u"\"stroke\":3"_s));
+        QVERIFY(!memory.toJson().contains(u"strokeColor"_s));
+        QCOMPARE(memory.forTool(Kind::Number, 1.0).textStroke, 0); // another tool never takes it
+        QCOMPARE(StyleMemory::fromJson(u"{\"version\":1,\"text\":{\"stroke\":9999}}"_s).tool(Kind::Text).stroke, 0);
+        QCOMPARE(StyleMemory::fromJson(u"{\"version\":1,\"text\":{\"stroke\":2,\"strokeColor\":\"#00FF00\"}}"_s).tool(Kind::Text).strokeColor, QRgb(0xff00ff00));
+        QCOMPARE(strokePresets(), (QList<int>{1, 2, 3}));
+    }
+
+    // Changing the outline of a text is one undoable step; undone, the text is as it was.
+    void textOutlineUndo()
+    {
+        Document doc = emptyDoc(QSize(300, 120), 1.5);
+        const quint32 id = addItem(doc, outlinedText(u"undo me"_s, 0));
+        const Document before = doc;
+        const QRectF plainBounds = bounds(doc, *findItem(doc, id));
+        Style style = findItem(doc, id)->style;
+        style.textStroke = 3;
+        style.textStrokeColor = kBlue;
+        Restyle command(doc, QList<quint32>{id}, QList<Style>{style});
+        Change change = command.apply(doc);
+        QCOMPARE(findItem(doc, id)->style.textStroke, 3);
+        QVERIFY(change.dirty.contains(bounds(doc, *findItem(doc, id)))); // the grown outline is redrawn
+        QVERIFY(bounds(doc, *findItem(doc, id)).width() > plainBounds.width());
+        // The ring is part of the text for a click.
+        const TextGeometry g = textGeometry(*findItem(doc, id));
+        const QPoint justOutside(g.content.left() - 2, g.content.center().y());
+        QVERIFY(hitTest(doc, justOutside, 0).has_value());
+        QVERIFY(!hitTest(doc, QPoint(g.content.left() - 4, g.content.center().y()), 0).has_value());
+        change = command.revert(doc);
+        QVERIFY(!hitTest(doc, justOutside, 0).has_value());
+        QCOMPARE(doc, before);
+        QVERIFY(change.dirty.contains(bounds(doc, *findItem(doc, id))));
+        command.apply(doc);
+        QCOMPARE(findItem(doc, id)->style.textStrokeColor, kBlue);
+    }
+
     // --- tiles == whole ---------------------------------------------------------
 
     // Qt's FreeType engine keeps the last sub-pixel offset of its glyph cache
@@ -2107,6 +2435,8 @@ private slots:
         Item& any = doc.items.last();
         any.style.fontPx = 99;
         any.style.cell = 3;
+        any.style.textStroke = 4;
+        any.style.textStrokeColor = kBlue;
         any.style.shape = RedactShape::Brush;
         any.text = u"stray \"text\"\n第二行 😀"_s;
         any.seed = 0xFFFFFFFFFFFFFFFFull;

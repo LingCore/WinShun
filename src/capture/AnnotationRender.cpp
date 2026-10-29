@@ -256,15 +256,100 @@ struct TextLayer {
     QImage image; // premultiplied; null when there is nothing to draw
 };
 
-QString textLayerKey(const QString& text, int pixelSize, bool bold, QRgb color)
+// `stroke` > 0 makes the layer of a text's outline (docs: Style::textStroke)
+// instead of the words: the same glyphs' outlines, grown by `stroke` px with
+// round joins, in `color`; it goes under the words' own layer.
+QString textLayerKey(const QString& text, int pixelSize, bool bold, QRgb color, int stroke = 0)
 {
-    return QString::number(pixelSize) + (bold ? u'b' : u'n') + QString::number(color, 16) + u'|' + text;
+    return QString::number(pixelSize) + (bold ? u'b' : u'n') + QString::number(color, 16)
+        + (stroke > 0 ? u's' + QString::number(stroke) : QString()) + u'|' + text;
 }
 
-using TextLayers = std::function<std::shared_ptr<const TextLayer>(const QString& text, int pixelSize, bool bold, QRgb color)>;
+using TextLayers = std::function<std::shared_ptr<const TextLayer>(const QString& text, int pixelSize, bool bold, QRgb color, int stroke)>;
 
-std::shared_ptr<const TextLayer> makeTextLayer(const QString& text, int pixelSize, bool bold, QRgb color)
+std::shared_ptr<const TextLayer> makeTextLayer(const QString& text, int pixelSize, bool bold, QRgb color, int stroke = 0);
+
+// The outline layer: the words' own pixels grown by `stroke` px all round, a
+// disc as the brush (round joins), with a half pixel of antialiasing at its
+// edge. It is grown from the pixels the words are drawn with, not from the
+// glyph outlines: the font engine hints the drawn glyphs (vertical hinting),
+// so outlines stroked by QPainterPathStroker sat up to a pixel off them and
+// left a thin or lopsided ring.
+std::shared_ptr<const TextLayer> makeStrokeLayer(const QString& text, int pixelSize, bool bold, QRgb color, int stroke)
 {
+    auto made = std::make_shared<TextLayer>();
+    made->key = textLayerKey(text, pixelSize, bold, color, stroke);
+    const std::shared_ptr<const TextLayer> words = makeTextLayer(text, pixelSize, bold, qRgb(255, 255, 255));
+    if (!words || words->image.isNull())
+        return made;
+    const QImage& src = words->image;
+    const int w = src.width() + 2 * stroke;
+    const int h = src.height() + 2 * stroke;
+    std::vector<quint8> alpha(std::size_t(w) * std::size_t(h), 0);
+    struct Reach {
+        int dx;
+        int dy;
+        int weight; // 0..255
+    };
+    std::vector<Reach> disc;
+    for (int dy = -stroke - 1; dy <= stroke + 1; ++dy) {
+        for (int dx = -stroke - 1; dx <= stroke + 1; ++dx) {
+            const qreal cover = std::clamp(stroke + 0.5 - std::hypot(qreal(dx), qreal(dy)), 0.0, 1.0);
+            if (cover > 0)
+                disc.push_back({dx, dy, int(std::lround(cover * 255))});
+        }
+    }
+    // A pixel the words cover fully (doubled alpha 255) with all eight neighbours the same adds nothing but
+    // its own place: its disc lies inside its neighbours' (every point of it but that one is nearer to one
+    // of them). So only the rim of the words spreads, and the cost follows the outline, not the area.
+    const auto full = [&src](int x, int y) {
+        return x >= 0 && y >= 0 && x < src.width() && y < src.height()
+            && qAlpha(reinterpret_cast<const QRgb*>(src.constScanLine(y))[x]) >= 128;
+    };
+    for (int y = 0; y < src.height(); ++y) {
+        const QRgb* line = reinterpret_cast<const QRgb*>(src.constScanLine(y));
+        for (int x = 0; x < src.width(); ++x) {
+            if (qAlpha(line[x]) >= 128 && full(x - 1, y - 1) && full(x, y - 1) && full(x + 1, y - 1) && full(x - 1, y)
+                && full(x + 1, y) && full(x - 1, y + 1) && full(x, y + 1) && full(x + 1, y + 1)) {
+                // only its own place is left to it: the neighbours' discs reach it at a lesser weight
+                alpha[std::size_t(y + stroke) * std::size_t(w) + std::size_t(x + stroke)] = 255;
+                continue;
+            }
+            // Doubled: a pixel the word covers by half or more counts as the word,
+            // so that the ring stands full against the edge, not as faint as the edge pixel.
+            const int a = std::min(255, 2 * qAlpha(line[x]));
+            if (a == 0)
+                continue;
+            for (const Reach& r : disc) {
+                quint8& out = alpha[std::size_t(y + stroke + r.dy) * std::size_t(w) + std::size_t(x + stroke + r.dx)];
+                const int v = (a * r.weight + 127) / 255;
+                if (v > out)
+                    out = quint8(v);
+            }
+        }
+    }
+    QImage layer(w, h, QImage::Format_ARGB32_Premultiplied);
+    if (layer.isNull())
+        return made;
+    const int cr = qRed(color);
+    const int cg = qGreen(color);
+    const int cb = qBlue(color);
+    for (int y = 0; y < h; ++y) {
+        QRgb* line = reinterpret_cast<QRgb*>(layer.scanLine(y));
+        for (int x = 0; x < w; ++x) {
+            const int a = alpha[std::size_t(y) * std::size_t(w) + std::size_t(x)];
+            line[x] = qRgba((cr * a + 127) / 255, (cg * a + 127) / 255, (cb * a + 127) / 255, a);
+        }
+    }
+    made->offset = words->offset - QPoint(stroke, stroke);
+    made->image = std::move(layer);
+    return made;
+}
+
+std::shared_ptr<const TextLayer> makeTextLayer(const QString& text, int pixelSize, bool bold, QRgb color, int stroke)
+{
+    if (stroke > 0)
+        return makeStrokeLayer(text, pixelSize, bold, color, stroke);
     auto made = std::make_shared<TextLayer>();
     made->key = textLayerKey(text, pixelSize, bold, color);
     const TextLayout layout = layoutText(text, pixelSize, bold);
@@ -313,9 +398,9 @@ std::shared_ptr<const TextLayer> makeTextLayer(const QString& text, int pixelSiz
 }
 
 void addText(Recipe& recipe, const TextLayers& layers, const QString& text, int pixelSize, bool bold, QPoint origin,
-    QRgb color)
+    QRgb color, int stroke = 0)
 {
-    const std::shared_ptr<const TextLayer> layer = layers(text, pixelSize, bold, color);
+    const std::shared_ptr<const TextLayer> layer = layers(text, pixelSize, bold, color, stroke);
     if (!layer || layer->image.isNull())
         return;
     Op op;
@@ -432,6 +517,11 @@ std::shared_ptr<const Recipe> buildRecipe(const Item& item, qreal dpr, int numbe
             box.addRoundedRect(QRectF(QPointF(0, 0), QSizeF(g.box.size())), g.radius, g.radius);
             addFill(*recipe, box, g.box.topLeft(), color);
             ink = inkOn(item.style.color);
+        }
+        // The outline first, under the words, which are drawn as ever.
+        if (const int stroke = textStrokeWidth(item); stroke > 0) {
+            addText(*recipe, layers, item.text, std::max(1, item.style.fontPx), item.style.bold, g.content.topLeft(),
+                textStrokeColorOf(item), stroke);
         }
         addText(*recipe, layers, item.text, std::max(1, item.style.fontPx), item.style.bold, g.content.topLeft(), ink);
         break;
@@ -956,8 +1046,8 @@ struct Compositor::Private {
                 return entry->recipe;
         }
         std::shared_ptr<const Recipe> made = buildRecipe(item, dpr, number, format,
-            [this](const QString& text, int pixelSize, bool bold, QRgb color) {
-                return textLayer(text, pixelSize, bold, color);
+            [this](const QString& text, int pixelSize, bool bold, QRgb color, int stroke) {
+                return textLayer(text, pixelSize, bold, color, stroke);
             });
         Entry entry;
         entry.bytes = made->bytes;
@@ -968,15 +1058,15 @@ struct Compositor::Private {
 
     // Kept by the words and their look, never by item: nothing an item does
     // makes it stale. Two texts whose keys hash alike take turns.
-    std::shared_ptr<const TextLayer> textLayer(const QString& text, int pixelSize, bool bold, QRgb color)
+    std::shared_ptr<const TextLayer> textLayer(const QString& text, int pixelSize, bool bold, QRgb color, int stroke)
     {
-        const QString name = textLayerKey(text, pixelSize, bold, color);
+        const QString name = textLayerKey(text, pixelSize, bold, color, stroke);
         const quint64 key = cacheKey(Slot::Text, quint32(qHash(name)));
         if (const Entry* entry = touch(key)) {
             if (entry->text->key == name)
                 return entry->text;
         }
-        std::shared_ptr<const TextLayer> made = makeTextLayer(text, pixelSize, bold, color);
+        std::shared_ptr<const TextLayer> made = makeTextLayer(text, pixelSize, bold, color, stroke);
         Entry entry;
         entry.bytes = qint64(sizeof(TextLayer)) + made->key.size() * 2 + made->image.sizeInBytes();
         entry.text = made;

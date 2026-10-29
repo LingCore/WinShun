@@ -38,6 +38,7 @@ void CaptureScreen::setImage(const QImage& image)
     m_image = image;
     if (image.isNull()) {
         m_loupe = {};
+        m_loupeImageKey = 0;
         m_color.clear();
         m_colorText.clear();
     }
@@ -66,30 +67,39 @@ void CaptureScreen::setCursor(bool here, QPoint at, int shape)
     m_cursor = at;
     m_cursorShape = shape;
     if (moved && here && !m_image.isNull()) {
-        // The pixels around the cursor, those off the picture black; the
-        // magnifier scales them up by a whole number, unsmoothed.
-        constexpr int half = kLoupeCells / 2;
-        QImage loupe(kLoupeCells, kLoupeCells, QImage::Format_RGB32);
-        loupe.fill(Qt::black);
-        for (int y = 0; y < kLoupeCells; ++y) {
-            const int sy = at.y() - half + y;
-            if (sy < 0 || sy >= m_image.height())
-                continue;
-            const auto* in = reinterpret_cast<const QRgb*>(m_image.constScanLine(sy));
-            auto* out = reinterpret_cast<QRgb*>(loupe.scanLine(y));
-            for (int x = 0; x < kLoupeCells; ++x) {
-                const int sx = at.x() - half + x;
-                if (sx >= 0 && sx < m_image.width())
-                    out[x] = in[sx] | 0xFF000000u;
-            }
-        }
-        m_loupe = loupe;
         const bool inside = at.x() >= 0 && at.y() >= 0 && at.x() < m_image.width() && at.y() < m_image.height();
         m_rgb = inside ? m_image.pixel(at) : 0;
         m_color = inside ? colorHex(m_rgb) : QString();
         m_colorText = inside ? capture::colorText(m_rgb, m_colorFormat) : QString();
     }
     emit cursorChanged();
+}
+
+QImage CaptureScreen::loupe() const
+{
+    if (!m_cursorHere || m_image.isNull())
+        return {};
+    if (m_loupeAt == m_cursor && m_loupeImageKey == m_image.cacheKey())
+        return m_loupe;
+    constexpr int half = kLoupeCells / 2;
+    QImage image(kLoupeCells, kLoupeCells, QImage::Format_RGB32);
+    image.fill(Qt::black);
+    for (int y = 0; y < kLoupeCells; ++y) {
+        const int sy = m_cursor.y() - half + y;
+        if (sy < 0 || sy >= m_image.height())
+            continue;
+        const auto* in = reinterpret_cast<const QRgb*>(m_image.constScanLine(sy));
+        auto* out = reinterpret_cast<QRgb*>(image.scanLine(y));
+        for (int x = 0; x < kLoupeCells; ++x) {
+            const int sx = m_cursor.x() - half + x;
+            if (sx >= 0 && sx < m_image.width())
+                out[x] = in[sx] | 0xFF000000u;
+        }
+    }
+    m_loupe = image;
+    m_loupeAt = m_cursor;
+    m_loupeImageKey = m_image.cacheKey();
+    return m_loupe;
 }
 
 void CaptureScreen::setColorFormat(ColorFormat format)
@@ -243,6 +253,7 @@ void CaptureSession::begin(std::vector<CaptureScreen*> screens, Windows windows)
     m_windows = std::move(windows);
     m_flyout = {};
     m_phase = Phase::Hover;
+    m_releaseClock.invalidate();
     m_selection = {};
     m_previous = {};
     m_handle = Handle::None;
@@ -458,7 +469,7 @@ void CaptureSession::publish()
     const CaptureScreen* cursorScreen = screenAt(m_cursorScreen);
     const int line = std::max(1, static_cast<int>(std::lround(cursorScreen ? cursorScreen->dpr() : 1.0)));
     const bool overShown = shown.screen == m_cursorScreen && shown.rect.adjusted(-line, -line, line, line).contains(m_cursorAt);
-    const bool magnifier = !m_cursorCovered && (hovering || adjusting || overShown);
+    const bool magnifier = m_magnifier && !m_cursorCovered && (hovering || adjusting || overShown);
     for (CaptureScreen* s : m_screens) {
         const QRect hover = hovering && s->index() == m_hoverScreen ? hoverRect() : QRect();
         const QRect selection = s->index() == shown.screen ? shown.rect : QRect();
@@ -611,6 +622,7 @@ void CaptureSession::pointerRelease(int screen, QPoint p, Qt::MouseButton button
     }
     if (!m_active || button != Qt::LeftButton)
         return;
+    m_releaseClock.start();
     switch (m_phase) {
     case Phase::Pressed:
         if (m_previous.screen >= 0) {
@@ -894,12 +906,13 @@ bool CaptureSession::key(int key, Qt::KeyboardModifiers modifiers)
             finish(Action::OcrCopy);
             return true;
         }
-        // C goes with the magnifier, which shows the colour and that it was copied.
+        // C goes with the magnifier, which shows the colour: copied, and the
+        // capture ends, as Ctrl+C ends it with the picture (as in Snipaste and
+        // PixPin). Annotations are kept, as when the hotkey ends it.
         CaptureScreen* s = screenAt(m_cursorScreen);
         if (s && s->magnifierShown() && !s->colorText().isEmpty()) {
-            const QString text = s->colorText();
-            emit colorCopied(text);
-            s->setFlash(tr("已复制 %1").arg(text));
+            emit colorCopied(s->colorText());
+            finish(Action::Cancel);
         }
         return true;
     }

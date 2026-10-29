@@ -1,9 +1,11 @@
 #include "Recording.h"
 #include "GifExport.h"
+#include "KeyStream.h"
 #include "RecordingPointer.h"
 
 #include <QDir>
 #include <QFile>
+#include <QGuiApplication>
 #include <QImage>
 #include <QImageReader>
 #include <QScopeGuard>
@@ -17,14 +19,73 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <thread>
 
 using namespace Qt::StringLiterals;
 using namespace ws::capture::recording;
 using Microsoft::WRL::ComPtr;
+
+namespace {
+
+// Every frame of an MP4 as 32-bit BGRX, top row first, with its time. On
+// the caller's thread, which has COM.
+HRESULT forEachFrame(const QString& path, const std::function<void(qint64 ms, const unsigned char* top, LONG pitch)>& frame)
+{
+    HRESULT hr = ::MFStartup(MF_VERSION);
+    if (FAILED(hr)) return hr;
+    const auto shutdown = qScopeGuard([] { ::MFShutdown(); });
+    ComPtr<IMFAttributes> attributes;
+    ::MFCreateAttributes(&attributes, 1);
+    attributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE);
+    ComPtr<IMFSourceReader> reader;
+    hr = ::MFCreateSourceReaderFromURL(reinterpret_cast<const wchar_t*>(path.utf16()), attributes.Get(), &reader);
+    if (FAILED(hr)) return hr;
+    ComPtr<IMFMediaType> type;
+    ::MFCreateMediaType(&type);
+    type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+    type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
+    hr = reader->SetCurrentMediaType(DWORD(MF_SOURCE_READER_FIRST_VIDEO_STREAM), nullptr, type.Get());
+    if (FAILED(hr)) return hr;
+    type.Reset();
+    reader->GetCurrentMediaType(DWORD(MF_SOURCE_READER_FIRST_VIDEO_STREAM), &type);
+    UINT32 width = 0, height = 0;
+    ::MFGetAttributeSize(type.Get(), MF_MT_FRAME_SIZE, &width, &height);
+    const LONG stride = LONG(::MFGetAttributeUINT32(type.Get(), MF_MT_DEFAULT_STRIDE, width * 4));
+    for (int i = 0; i < 1000; ++i) {
+        DWORD flags = 0;
+        LONGLONG time = 0;
+        ComPtr<IMFSample> sample;
+        hr = reader->ReadSample(DWORD(MF_SOURCE_READER_FIRST_VIDEO_STREAM), 0, nullptr, &flags, &time, &sample);
+        if (FAILED(hr)) return hr;
+        if (flags & MF_SOURCE_READERF_ENDOFSTREAM) break;
+        if (!sample) continue;
+        ComPtr<IMFMediaBuffer> buffer;
+        sample->GetBufferByIndex(0, &buffer);
+        ComPtr<IMF2DBuffer> twoD;
+        BYTE* top = nullptr;
+        LONG pitch = 0;
+        if (SUCCEEDED(buffer.As(&twoD))) {
+            hr = twoD->Lock2D(&top, &pitch);
+            if (FAILED(hr)) return hr;
+            frame(time / 10000, top, pitch);
+            twoD->Unlock2D();
+        } else {
+            DWORD length = 0;
+            hr = buffer->Lock(&top, nullptr, &length);
+            if (FAILED(hr)) return hr;
+            frame(time / 10000, stride < 0 ? top + qint64(height - 1) * -stride : top, stride);
+            buffer->Unlock();
+        }
+    }
+    return S_OK;
+}
+
+} // namespace
 
 class TestRecording : public QObject {
     Q_OBJECT
@@ -393,6 +454,91 @@ private slots:
             QVERIFY2(orangePixels(pixels) > 20, "The GPU click ring must survive MP4 encoding");
             QVERIFY2(orangePixels(lastPixels) == 0, "The click ring must fade out without altering the source frame");
         }
+    }
+
+    // GitHub #98: "Ctrl + S" at 100 ms in Shortcuts mode, through the GPU
+    // overlay and the encoder: there in the frames after it, gone 2.5 s
+    // (and a fade) later, and gone at once with a pause.
+    void keycapsInFrames_data()
+    {
+        QTest::addColumn<bool>("pause");
+        QTest::newRow("shown-then-gone") << false;
+        QTest::newRow("cleared-by-a-pause") << true;
+    }
+
+    void keycapsInFrames()
+    {
+        QFETCH(bool, pause);
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        Options options;
+        options.path = temporary.filePath(u"keys.mp4"_s);
+        options.region = QRect(0, 0, 640, 360);
+        options.keys.mode = ws::capture::keycaps::Mode::Shortcuts;
+        options.keyFont = QGuiApplication::font();
+        options.keyInput = std::make_shared<KeyStream>(); // the hook's queue, empty here
+        // The row: 36 px high (unit), 18 px from the bottom right corner;
+        // its "S" keycap the 26 px before its 5 px padding.
+        const QRect spot(594, 312, 20, 22);
+        Control control;
+        std::atomic<qint64> pausedAt {-1};
+        Result result;
+        HRESULT decoded = E_FAIL;
+        QList<QPair<qint64, double>> frames; // time, the dark share of the spot
+        std::jthread worker([&] {
+            result = sample(options, pause ? 1200 : 3200, control, [&](const Progress& progress) {
+                if (pause && pausedAt < 0 && progress.elapsedMs >= 250) {
+                    pausedAt = progress.elapsedMs;
+                    control.paused = true;
+                }
+            });
+            if (!result.error.isEmpty()) return;
+            decoded = ::CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+            if (FAILED(decoded)) return;
+            const auto uninit = qScopeGuard([] { ::CoUninitialize(); });
+            decoded = forEachFrame(result.path, [&](qint64 ms, const unsigned char* top, LONG pitch) {
+                int dark = 0;
+                for (int y = spot.top(); y <= spot.bottom(); ++y) {
+                    const unsigned char* row = top + qint64(y) * pitch;
+                    for (int x = spot.left(); x <= spot.right(); ++x) {
+                        const unsigned char* bgr = row + x * 4;
+                        if (bgr[0] + bgr[1] + bgr[2] < 3 * 120) ++dark;
+                    }
+                }
+                frames.append({ms, double(dark) / (spot.width() * spot.height())});
+            });
+        });
+        if (pause) {
+            QTRY_VERIFY_WITH_TIMEOUT(pausedAt.load() >= 0, 10000);
+            QTest::qSleep(300);
+            control.paused = false;
+        }
+        worker.join();
+        QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
+        QVERIFY2(SUCCEEDED(decoded), qPrintable(u"Decode HRESULT 0x%1"_s.arg(quint32(decoded), 8, 16, QChar(u'0'))));
+        // Ended: what the hook hands over now is not kept (a GIF's export).
+        ws::capture::keycaps::Key late;
+        late.vk = 'A';
+        late.time = monotonicTime();
+        options.keyInput->push(late);
+        QCOMPARE(options.keyInput->take().count, size_t(0));
+        QString seen = u"paused at %1 ms; "_s.arg(pausedAt.load());
+        for (const auto& [ms, dark] : frames)
+            seen += u"%1:%2 "_s.arg(ms).arg(dark, 0, 'f', 2);
+        int shown = 0, gone = 0;
+        for (const auto& [ms, dark] : frames) {
+            if (ms < 90) {
+                QVERIFY2(dark < 0.3, qPrintable(seen)); // nothing before the key (the sample's own text: ~0.13)
+            } else if (ms >= 190 && ms <= (pause ? 240 : 2500)) {
+                QVERIFY2(dark > 0.6, qPrintable(seen));
+                ++shown;
+            } else if (pause ? ms > pausedAt + 40 : ms >= 2850) {
+                QVERIFY2(dark < 0.3, qPrintable(seen));
+                ++gone;
+            }
+        }
+        QVERIFY2(shown >= (pause ? 1 : 60), qPrintable(seen));
+        QVERIFY2(gone >= (pause ? 20 : 8), qPrintable(seen));
     }
 };
 

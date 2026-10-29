@@ -67,6 +67,8 @@ struct Style {
     int fontPx = 27; // Text and Number, image px
     bool bold = false;
     bool boxed = false; // Text: a coloured box behind white words
+    int textStroke = 0; // Text: an outline round the glyphs, image px wide (0: none); not drawn when boxed
+    QRgb textStrokeColor = 0; // Text: the outline's colour, opaque; 0: automatic (textStrokeColorOf)
     RedactMode redact = RedactMode::Mosaic;
     RedactShape shape = RedactShape::Box;
     int cell = 18; // mosaic cell, image px
@@ -233,12 +235,21 @@ void clearTextMetrics();
 // where white cannot be read (3.5, the exception for the user's colours).
 QRgb inkOn(QRgb fill);
 
+// A Text's outline (Style::textStroke): its width in image px, 0 when there is
+// none or when the text is boxed (the white words sit on a colour already);
+// never over kMaxTextStroke, whatever a file says.
+constexpr int kMaxTextStroke = 16; // 3 logical px at 400 %, more than any screen has
+int textStrokeWidth(const Item& item);
+// Its colour: the one chosen, else the opposite of the text's own: dark
+// round light words, white round dark ones (inkOn()), so it reads on any picture.
+QRgb textStrokeColorOf(const Item& item);
+
 // Where a Text item's parts are.
 struct TextGeometry {
     QRect content; // the text, its top left at points[0]
     QRect box; // the coloured box when boxed, else the same as content
     qreal radius = 0; // the box's corners
-    QRectF ink; // where glyphs may reach
+    QRectF ink; // where glyphs may reach, the outline's width included
 };
 TextGeometry textGeometry(const Item& item);
 

@@ -319,8 +319,9 @@ Window {
         border.width: edge
         border.color: Theme.windowEdge
 
-        CaptureImage {
+        CaptureLoupe {
             id: loupe
+            objectName: "captureLoupe"
             x: magnifier.edge
             y: magnifier.edge
             width: overlay.px(magnifier.cells * magnifier.cell)
@@ -399,23 +400,29 @@ Window {
         }
     }
 
-    MouseArea { // under the toolbar: its buttons take their own clicks
+    CapturePointer { // under the toolbar: its buttons take their own clicks
         anchors.fill: parent
         z: -1
-        hoverEnabled: true
-        acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton | Qt.BackButton | Qt.ForwardButton
-        cursorShape: overlay.screenModel.cursorShape
-        onPositionChanged: (mouse) => overlay.session.mouseMoved(overlay.screenModel.index, mouse.x, mouse.y)
-        onExited: overlay.session.mouseLeft(overlay.screenModel.index) // onto the toolbar: no magnifier there
-        onEntered: overlay.session.mouseMoved(overlay.screenModel.index, mouseX, mouseY) // the toolbar gone from under it too
-        onPressed: (mouse) => overlay.session.mousePressed(overlay.screenModel.index, mouse.x, mouse.y, mouse.button)
-        onReleased: (mouse) => overlay.session.mouseReleased(overlay.screenModel.index, mouse.x, mouse.y, mouse.button)
-        // Only the left button's: a second middle or side click is two presses of their own
-        onDoubleClicked: (mouse) => {
-            if (mouse.button === Qt.LeftButton)
-                overlay.session.mouseDoubleClicked(overlay.screenModel.index, mouse.x, mouse.y)
+        shape: overlay.screenModel.cursorShape
+        dpr: overlay.dpr
+
+        MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: undefined // inherit CapturePointer's RGBA crosshair
+            acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton | Qt.BackButton | Qt.ForwardButton
+            onPositionChanged: (mouse) => overlay.session.mouseMoved(overlay.screenModel.index, mouse.x, mouse.y)
+            onExited: overlay.session.mouseLeft(overlay.screenModel.index) // onto the toolbar: no magnifier there
+            onEntered: overlay.session.mouseMoved(overlay.screenModel.index, mouseX, mouseY) // the toolbar gone from under it too
+            onPressed: (mouse) => overlay.session.mousePressed(overlay.screenModel.index, mouse.x, mouse.y, mouse.button)
+            onReleased: (mouse) => overlay.session.mouseReleased(overlay.screenModel.index, mouse.x, mouse.y, mouse.button)
+            // Only the left button's: a second middle or side click is two presses of their own
+            onDoubleClicked: (mouse) => {
+                if (mouse.button === Qt.LeftButton)
+                    overlay.session.mouseDoubleClicked(overlay.screenModel.index, mouse.x, mouse.y)
+            }
+            onWheel: (wheel) => overlay.session.wheeled(overlay.screenModel.index, wheel.x, wheel.y, wheel.angleDelta.y)
         }
-        onWheel: (wheel) => overlay.session.wheeled(overlay.screenModel.index, wheel.x, wheel.y, wheel.angleDelta.y)
     }
 
     Item { // the keys; no input method here, so R, T, 1 reach the session even with Chinese input on

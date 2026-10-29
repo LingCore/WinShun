@@ -4,6 +4,8 @@
 #include <QRect>
 #include <QSize>
 
+class QImage;
+
 #include <array>
 #include <memory>
 #include <mutex>
@@ -24,7 +26,8 @@ struct Click {
 };
 
 // The existing Raw Input listener is the producer. The media worker drains
-// this bounded queue; no keyboard data or mouse movement is kept.
+// this bounded queue; no keyboard data or mouse movement is kept. The keys
+// and buttons shown as keycaps (GitHub #98) come through KeyStream instead.
 class ClickStream {
 public:
     static constexpr size_t capacity = 16;
@@ -57,13 +60,24 @@ private:
     size_t m_count = 0;
 };
 
+// One keycap row (GitHub #98): from the picture (KeycapRender) to its place
+// in the frame, pixel for pixel.
+struct KeycapDraw {
+    QRect from;
+    QPoint to;
+    float opacity = 1;
+};
+
 // Direct2D draws into a D3D11 texture on the media worker. With no active
-// pulse it returns the original texture, without a copy or a draw call.
+// pulse and no keycap row showing it returns the original texture, without
+// a copy or a draw call.
 class PointerOverlay {
 public:
     PointerOverlay(ID3D11Device* device, ID3D11DeviceContext* context, QSize size, double scale);
     ~PointerOverlay();
-    ID3D11Texture2D* draw(ID3D11Texture2D* source, std::span<const Click> clicks, qint64 time);
+    void setKeycaps(const QImage& picture); // premultiplied ARGB32; a null image for none
+    ID3D11Texture2D* draw(ID3D11Texture2D* source, std::span<const Click> clicks, qint64 time,
+        std::span<const KeycapDraw> keycaps = {});
 private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;

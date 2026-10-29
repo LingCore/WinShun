@@ -9,6 +9,7 @@
 #include <QString>
 
 #include <functional>
+#include <array>
 #include <vector>
 
 // The computations of the screen capture that need no window, no screen and
@@ -62,6 +63,9 @@ struct ToolbarPlace {
     Where where = Below;
 };
 ToolbarPlace placeToolbar(const QRect& selection, QSize bar, const QRect& screen, int gap);
+// Long capture's four click-through strips: outside the selection where
+// there is room, inside the screen edge when the selection touches it.
+std::array<QRect, 4> longCaptureBorder(const QRect& selection, const QRect& screen, int thickness);
 // The size label: over the selection's top left corner, inside it at the
 // top when the screen's edge is in the way.
 QPoint placeSizeLabel(const QRect& selection, QSize label, const QRect& screen, int gap);

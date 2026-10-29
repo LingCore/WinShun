@@ -21,7 +21,7 @@ Rectangle {
     readonly property bool narrow: body.width < 520
     readonly property var groups: [
         { title: qsTr("快捷键"), terms: qsTr("截图快捷键;截图历史关键词;PrtScn;Print Screen").split(";") },
-        { title: qsTr("截图"), terms: qsTr("选好就复制;复制截图时同时贴图;鼠标指针;识别控件;Electron;WinUI;延时截图;截图保存文件夹;保存目录;录屏").split(";") },
+        { title: qsTr("截图"), terms: qsTr("选好就复制;框选时显示放大镜;复制截图时同时贴图;鼠标指针;识别控件;Electron;WinUI;延时截图;截图保存文件夹;保存目录;录屏;HDR;JXR").split(";") },
         { title: qsTr("鼠标"), terms: qsTr("框选后的鼠标操作;双击左键;右键;中键;侧键;复制并贴图;识别文字并复制;识别文字并搜索;识别文字并网页搜索").split(";") },
         { title: qsTr("贴图"), terms: qsTr("双击贴图;贴上最近一次截图的快捷键;隐藏 / 显示全部贴图的快捷键;找回穿透贴图的快捷键").split(";") },
         { title: qsTr("打码"), terms: qsTr("智能打码;框选后自动识别;IP;MAC;把所有文字都打码;我自己的词").split(";") },
@@ -557,10 +557,14 @@ Rectangle {
 
                 Repeater { // what goes into the picture and how controls are found (stage 7)
                     model: [
+                        { key: "captureMagnifier", title: qsTr("框选时显示放大镜"),
+                          words: qsTr("在指针旁放大显示像素和颜色值。关闭后，按 C 复制颜色、按 Shift 换颜色格式也一并停用。") },
                         { key: "capturePinOnCopy", title: qsTr("复制截图时同时贴图"),
                           words: qsTr("复制时同步贴到屏幕，也适用于“选好就复制”。只想偶尔使用，可在“鼠标”分类设置“复制并贴图”。") },
                         { key: "captureCursor", title: qsTr("截图带上鼠标指针"),
                           words: qsTr("在图片中保留截图那一刻的鼠标指针，复制、保存、贴图均生效。") },
+                        { key: "captureHdrFile", title: qsTr("HDR 屏幕上同时保存 HDR 图片"),
+                          words: qsTr("在开着 HDR 的屏幕上保存截图时，PNG 旁边再存一份同名的 .jxr，亮的地方保持原来的亮度，可用 Windows 自带的“照片”查看。复制和贴图不变。") },
                         { key: "captureControlsUia", title: qsTr("识别 WinUI 等程序里的控件"),
                           words: qsTr("自动框选设置、计算器等程序中的按钮和侧栏。Chrome、Edge、VS Code 这类 Chromium 程序不问（一问它们就打开屏幕阅读器模式），只框子窗口或整个窗口，可手动框选；管理员权限程序中的控件可能不可用。") }
                     ]

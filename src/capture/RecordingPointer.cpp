@@ -3,6 +3,8 @@
 
 #include "RecordingPointer.h"
 
+#include <QImage>
+
 #include <d2d1_1.h>
 #include <d3d11.h>
 #include <dxgi.h>
@@ -86,6 +88,7 @@ struct PointerOverlay::Impl {
     winrt::com_ptr<ID2D1DeviceContext> painter;
     winrt::com_ptr<ID2D1Bitmap1> target;
     winrt::com_ptr<ID2D1SolidColorBrush> brush;
+    winrt::com_ptr<ID2D1Bitmap1> keycaps;
     float scale;
 
     Impl(ID3D11Device* device, ID3D11DeviceContext* context, QSize size, double dpr)
@@ -123,9 +126,24 @@ PointerOverlay::PointerOverlay(ID3D11Device* device, ID3D11DeviceContext* contex
     : m_impl(std::make_unique<Impl>(device, context, size, scale)) { }
 PointerOverlay::~PointerOverlay() = default;
 
-ID3D11Texture2D* PointerOverlay::draw(ID3D11Texture2D* source, std::span<const Click> clicks, qint64 time)
+void PointerOverlay::setKeycaps(const QImage& picture)
 {
-    if (clicks.empty()) return source;
+    auto& draw = *m_impl;
+    draw.keycaps = nullptr;
+    if (picture.isNull() || picture.format() != QImage::Format_ARGB32_Premultiplied)
+        return;
+    // 96 DPI, as the target: its pixels land on the frame's one to one.
+    const D2D1_BITMAP_PROPERTIES1 properties {{DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED}, 96, 96,
+        D2D1_BITMAP_OPTIONS_NONE, nullptr};
+    winrt::check_hresult(draw.painter->CreateBitmap(D2D1::SizeU(UINT32(picture.width()), UINT32(picture.height())),
+        picture.constBits(), UINT32(picture.bytesPerLine()), properties, draw.keycaps.put()));
+}
+
+ID3D11Texture2D* PointerOverlay::draw(ID3D11Texture2D* source, std::span<const Click> clicks, qint64 time,
+    std::span<const KeycapDraw> keycaps)
+{
+    const bool rows = m_impl->keycaps && std::any_of(keycaps.begin(), keycaps.end(), [](const KeycapDraw& row) { return row.opacity > 0; });
+    if (clicks.empty() && !rows) return source;
     auto& draw = *m_impl;
     draw.graphics->CopyResource(draw.texture.get(), source); // never paint into the retained WGC frame
     draw.painter->BeginDraw();
@@ -141,6 +159,14 @@ ID3D11Texture2D* PointerOverlay::draw(ID3D11Texture2D* source, std::span<const C
         draw.painter->FillEllipse(circle, draw.brush.get());
         draw.brush->SetOpacity(opacity * 0.95f);
         draw.painter->DrawEllipse(circle, draw.brush.get(), 2.5f * draw.scale);
+    }
+    if (rows) {
+        for (const auto& row : keycaps) {
+            if (row.opacity <= 0) continue;
+            const D2D1_RECT_F from {float(row.from.left()), float(row.from.top()), float(row.from.right() + 1), float(row.from.bottom() + 1)};
+            const D2D1_RECT_F to {float(row.to.x()), float(row.to.y()), float(row.to.x() + row.from.width()), float(row.to.y() + row.from.height())};
+            draw.painter->DrawBitmap(draw.keycaps.get(), &to, std::min(row.opacity, 1.0f), D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, &from, nullptr);
+        }
     }
     winrt::check_hresult(draw.painter->EndDraw());
     draw.graphics->OMSetRenderTargets(0, nullptr, nullptr);

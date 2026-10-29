@@ -1,6 +1,7 @@
 #include "Capture.h"
 
 #include "CaptureOcr.h"
+#include "DiagnosticLog.h"
 #include "QrCode.h"
 #include "platform/Foreground.h"
 #include "platform/KeyRouter.h" // kOwnInput
@@ -12,6 +13,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QJsonArray>
 #include <QPointer>
 #include <QQmlComponent>
 #include <QQmlEngine>
@@ -77,6 +79,35 @@ QString screenshotsFolder()
     return QDir::toNativeSeparators(folder);
 }
 
+// Which capture this is in the run, for the diagnostics.
+bool g_firstCapture = true;
+QElapsedTimer g_lastCapture; // when the one before ended
+
+QString outcomeName(CaptureSession::Action action)
+{
+    switch (action) {
+    case CaptureSession::Action::Copy: return u"copied"_s;
+    case CaptureSession::Action::CopyPin: return u"copied_pinned"_s;
+    case CaptureSession::Action::Save: return u"saved"_s;
+    case CaptureSession::Action::Pin: return u"pinned"_s;
+    case CaptureSession::Action::Ocr:
+    case CaptureSession::Action::OcrCopy:
+    case CaptureSession::Action::OcrSearch:
+    case CaptureSession::Action::OcrWeb: return u"ocr"_s;
+    case CaptureSession::Action::Cancel: return u"cancelled"_s;
+    case CaptureSession::Action::Long: return u"long"_s;
+    case CaptureSession::Action::Record: return u"record"_s;
+    case CaptureSession::Action::Qr: return u"qr"_s;
+    case CaptureSession::Action::Delay: return u"delay"_s;
+    }
+    return u"other"_s;
+}
+
+QString sizeText(const QSize& size)
+{
+    return size.isEmpty() ? QString() : u"%1x%2"_s.arg(size.width()).arg(size.height());
+}
+
 void sendEscape()
 {
     INPUT keys[2] {};
@@ -95,7 +126,34 @@ Capture::Capture(QQmlEngine* engine, Callbacks callbacks, QObject* parent)
     , m_callbacks(std::move(callbacks))
 {
     m_session.setOcrAvailable(CaptureOcr::available());
+    // The redaction's scans (the pre-scan among them) timed for the diagnostics.
+    if (auto scan = m_callbacks.smart.scan) {
+        m_callbacks.smart.scan = [this, scan](const QImage& image, const QRect& region, double dpr, std::function<void(RedactScan)> done) {
+            const int ticket = ++m_scanTicket;
+            m_scanRunning = true;
+            QElapsedTimer began;
+            began.start();
+            scan(image, region, dpr, [self = QPointer<Capture>(this), ticket, began, done = std::move(done)](RedactScan result) {
+                if (self) {
+                    if (ticket == self->m_scanTicket)
+                        self->m_scanRunning = false;
+                    if (self->m_prescanMs < 0)
+                        self->m_prescanMs = began.elapsed();
+                }
+                done(std::move(result));
+            });
+        };
+    }
+    if (auto cancel = m_callbacks.smart.cancel) {
+        m_callbacks.smart.cancel = [this, cancel] {
+            m_scanRunning = false;
+            cancel();
+        };
+    }
     m_session.setSmartHooks(m_callbacks.smart);
+    m_watchTimer.setTimerType(Qt::PreciseTimer);
+    m_watchTimer.setInterval(diag::kTickMs);
+    connect(&m_watchTimer, &QTimer::timeout, this, &Capture::watchTick);
     m_draftTimer.setSingleShot(true);
     m_draftTimer.setInterval(kDraftMs);
     connect(&m_draftTimer, &QTimer::timeout, this, [this] { m_draft.reset(); });
@@ -187,6 +245,8 @@ void Capture::buildOverlays()
             continue;
         }
         overlay.window = window;
+        if (m_callbacks.windowCreated)
+            m_callbacks.windowCreated(window, u"capture-overlay-%1"_s.arg(i));
         window->setScreen(screen);
         window->setGeometry(screen->geometry());
         CaptureScreen* model = overlay.model;
@@ -258,10 +318,14 @@ void Capture::start()
     // flyout in front stays in the picture (wanted), and is closed after.
     const HWND foreground = ::GetForegroundWindow();
     const bool flyout = win::isShellFlyout(foreground);
-    m_shots = m_grabber.grab(&m_grabReport);
+    m_shots = m_grabber.grab(&m_grabReport, m_hdrFile);
     if (m_includeCursor)
         drawCursorInShots();
     m_grabMs = m_clock.elapsed();
+    m_wgcShots = static_cast<int>(std::ranges::count_if(m_shots, [](const Grabber::Shot& shot) { return shot.wgc; }));
+    m_hdrShots = static_cast<int>(std::ranges::count_if(m_shots, [](const Grabber::Shot& shot) { return shot.hdr; }));
+    m_prescanMs = -1;
+    m_scanRunning = false;
     std::vector<HWND> overlayWindows;
     for (const Overlay& overlay : m_overlays)
         if (overlay.window)
@@ -373,6 +437,85 @@ void Capture::show()
     }
     if (underIndex >= 0)
         m_session.pointerMove(underIndex, underAt); // the hover and the magnifier before the mouse moves
+    startWatch();
+}
+
+void Capture::startWatch()
+{
+    m_stalls.reset();
+    m_ticks = 0;
+    m_upClock.invalidate();
+    m_cursorShown = {};
+    m_cursorDragging = {};
+    // As early as it can be: a cold stall has come 12 ms after the overlay was up.
+    m_shownClock.start();
+    m_tickClock.start();
+    m_watchTimer.start();
+    m_pointerFacts = diag::pointerFacts();
+}
+
+bool Capture::pointerOverOverlay(POINT at) const
+{
+    const HWND hit = ::WindowFromPoint(at);
+    const HWND root = hit ? ::GetAncestor(hit, GA_ROOT) : nullptr;
+    return root && std::ranges::any_of(m_overlays, [root](const Overlay& o) {
+        return o.window && reinterpret_cast<HWND>(o.window->winId()) == root;
+    });
+}
+
+void Capture::watchTick()
+{
+    const qint64 interval = m_tickClock.restart();
+    ++m_ticks;
+    const qint64 sinceShow = m_shownClock.elapsed();
+    const qint64 sinceUp = m_upClock.isValid() ? m_upClock.elapsed() : -1;
+    const QString phase = m_session.phaseName();
+    const QRect selected = m_session.hasSelection() ? m_session.selectionRect() : QRect();
+    if (const auto stall = m_stalls.note(interval, sinceShow, phase); stall && stall->record) {
+        diagnostics::record(u"capture-stall"_s, {{u"stall_ms"_s, stall->ms}, {u"ms_since_overlay_up"_s, sinceUp},
+            {u"ms_since_show"_s, sinceShow}, {u"ms_since_release"_s, m_session.msSinceRelease()}, {u"phase"_s, phase},
+            {u"selection"_s, sizeText(selected.size())}, {u"prescan_running"_s, m_scanRunning},
+            {u"first_since_start"_s, g_firstCapture}});
+    }
+    CURSORINFO info {sizeof info};
+    if (!::GetCursorInfo(&info) || !pointerOverOverlay(info.ptScreenPos))
+        return;
+    if (diag::cursorHidden(info.flags) && m_stalls.noteHidden()) {
+        diagnostics::record(u"capture-cursor-hidden"_s, {{u"flags"_s, static_cast<qint64>(info.flags)},
+            {u"ms_since_overlay_up"_s, sinceUp}, {u"ms_since_show"_s, sinceShow}, {u"phase"_s, phase}});
+    }
+    // Not at the first tick: the overlay has had a chance to set its cursor.
+    if (m_ticks >= 2 && m_cursorShown.isEmpty())
+        m_cursorShown = diag::cursorFacts(info.hCursor, info.flags);
+    if (phase == u"dragging"_s && m_cursorDragging.isEmpty())
+        m_cursorDragging = diag::cursorFacts(info.hCursor, info.flags);
+}
+
+void Capture::recordCapture(CaptureSession::Action action, const QRect& rect)
+{
+    m_watchTimer.stop();
+    QJsonArray dprs;
+    for (const Overlay& overlay : m_overlays)
+        dprs.append(overlay.model->dpr());
+    const QRect selected = !rect.isEmpty() ? rect : m_session.hasSelection() ? m_session.selectionRect() : QRect();
+    QJsonObject details {{u"overlay_up_ms"_s, m_reported && m_upClock.isValid() ? m_clock.elapsed() - m_upClock.elapsed() : -1},
+        {u"grab_ms"_s, m_grabMs}, {u"monitors"_s, static_cast<int>(m_overlays.size())}, {u"dpr"_s, dprs},
+        {u"wgc"_s, m_wgcShots}, {u"hdr"_s, m_hdrShots}, {u"magnifier"_s, m_magnifierOn},
+        {u"smart_prescan"_s, m_callbacks.smart.prescan && m_callbacks.smart.prescan()},
+        {u"first_since_start"_s, g_firstCapture}, {u"seconds_since_start"_s, diag::secondsSinceProcessStart()},
+        {u"seconds_since_last_capture"_s, g_lastCapture.isValid() ? g_lastCapture.elapsed() / 1000 : -1},
+        {u"session_ms"_s, m_upClock.isValid() ? m_upClock.elapsed() : -1}, {u"outcome"_s, outcomeName(action)},
+        {u"selection"_s, sizeText(selected.size())}, {u"stalls"_s, m_stalls.summary()}, {u"pointer"_s, m_pointerFacts},
+        {u"cursor_shown"_s, m_cursorShown}};
+    if (!m_allGestureFrames.empty())
+        details[u"gesture_frames"_s] = diag::frameStats(m_allGestureFrames);
+    if (m_prescanMs >= 0)
+        details[u"prescan_ms"_s] = m_prescanMs;
+    if (!m_cursorDragging.isEmpty())
+        details[u"cursor_dragging"_s] = m_cursorDragging;
+    diagnostics::record(u"capture"_s, details);
+    g_firstCapture = false;
+    g_lastCapture.start();
 }
 
 void Capture::frameDrawn(QQuickWindow* window)
@@ -421,6 +564,7 @@ void Capture::frameDrawn(QQuickWindow* window)
     win::setCloaked(window, false);
     if (!m_reported && std::ranges::none_of(m_overlays, [](const Overlay& o) { return o.window && o.window->isVisible() && o.cloaked; })) {
         m_reported = true;
+        m_upClock.start();
         qInfo().noquote() << u"Screen capture: overlay up %1 ms after the hotkey (grab %2 ms: %3; %4 windows listed in %5 ms%6)"_s
                                  .arg(m_clock.elapsed())
                                  .arg(m_grabMs)
@@ -451,6 +595,7 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
     m_flyout = nullptr;
     QImage picture;
     QByteArray project;
+    std::shared_ptr<HdrPixels> hdr; // saved from an HDR monitor: the picture as it showed it
     QPoint origin; // the picture's top left on the screen, physical
     double dpr = 1.0;
     AnnotationModel* annotation = m_session.annotation();
@@ -478,6 +623,11 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
                 origin = overlay.model->rect().topLeft() + rect.topLeft();
                 dpr = overlay.model->dpr();
                 m_session.setLastSelection(QRect(origin, rect.size())); // Shift+R brings it back
+                const auto shot = std::ranges::find(m_shots, overlay.monitor, &Grabber::Shot::monitor);
+                if (action == CaptureSession::Action::Save && shot != m_shots.end() && shot->hdrPixels) {
+                    if (HdrPixels region = shot->hdrPixels->copy(rect); !region.isNull())
+                        hdr = std::make_shared<HdrPixels>(std::move(region));
+                }
             }
         }
         // Annotated: the picture is the composition, and the project goes with
@@ -486,6 +636,8 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
             && annotation->selectionRect() == rect) {
             const QImage composed = annotation->composed();
             if (composed.size() == picture.size()) {
+                if (hdr)
+                    paintSdrOver(*hdr, picture, composed); // the annotations in the HDR file too
                 picture = composed;
                 const annot::Project packed = annotation->project();
                 project = annot::writeProject(packed.doc, packed.base);
@@ -507,6 +659,7 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
             }
         }
     }
+    recordCapture(action, rect);
     m_allGestureFrames.clear();
     m_gestureFrames.clear();
     m_gestureFrameOpen = false;
@@ -552,7 +705,7 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
             m_callbacks.copy(picture, project);
         break;
     case CaptureSession::Action::Save:
-        save(picture);
+        save(picture, {}, std::move(hdr));
         if (m_callbacks.record)
             m_callbacks.record(picture, project);
         break;
@@ -703,9 +856,28 @@ LongCapture& Capture::longCapture()
 {
     if (!m_long) {
         LongCapture::Hooks hooks;
-        hooks.done = [this](const QImage& picture) {
-            if (m_callbacks.longCapture)
-                m_callbacks.longCapture(picture);
+        hooks.done = [this](const QImage& picture, LongCapture::Output output, QPoint origin) {
+            switch (output) {
+            case LongCapture::Output::Edit:
+                if (m_callbacks.longCapture)
+                    m_callbacks.longCapture(picture);
+                break;
+            case LongCapture::Output::Copy:
+                if (m_callbacks.copy)
+                    m_callbacks.copy(picture, {});
+                break;
+            case LongCapture::Output::Save:
+                save(picture);
+                if (m_callbacks.record)
+                    m_callbacks.record(picture, {});
+                break;
+            case LongCapture::Output::Pin:
+                if (PinManager* pins = m_callbacks.pins ? m_callbacks.pins() : nullptr)
+                    pins->pin(picture, origin);
+                if (m_callbacks.record)
+                    m_callbacks.record(picture, {});
+                break;
+            }
         };
         hooks.copyText = [this](const QString& text) {
             if (m_callbacks.copyText)
@@ -727,7 +899,10 @@ void Capture::drawCursorInShots()
         return;
     for (Grabber::Shot& shot : m_shots) {
         if (shot.rect.contains(info.ptScreenPos.x, info.ptScreenPos.y)) {
+            const QImage before = shot.hdrPixels ? shot.image.copy() : QImage(); // the HDR pixels get it too
             const bool drawn = drawCursor(shot.image, QPoint(info.ptScreenPos.x, info.ptScreenPos.y) - shot.rect.topLeft(), info.hCursor);
+            if (drawn && shot.hdrPixels)
+                paintSdrOver(*shot.hdrPixels, before, shot.image);
             qInfo().noquote() << u"Screen capture: mouse cursor %1 (handle %2) at %3,%4"_s.arg(drawn ? u"drawn"_s : u"not drawn"_s)
                                      .arg(reinterpret_cast<quintptr>(info.hCursor))
                                      .arg(info.ptScreenPos.x)
@@ -838,19 +1013,26 @@ void Capture::cancelCountdown()
     qInfo() << "Screen capture: delayed capture cancelled";
 }
 
-void Capture::save(const QImage& image, const QString& path)
+void Capture::save(const QImage& image, const QString& path, std::shared_ptr<const HdrPixels> hdr)
 {
-    saveImage(m_saver, this, image, path, m_callbacks.saved, m_callbacks.saveFolder ? m_callbacks.saveFolder() : QString());
+    saveImage(m_saver, this, image, path, m_callbacks.saved, m_callbacks.saveFolder ? m_callbacks.saveFolder() : QString(),
+        std::move(hdr));
 }
 
 void saveImage(std::jthread& thread, QObject* context, const QImage& image, const QString& path,
-    std::function<void(const QString& path, const QString& error)> done, const QString& preferredFolder)
+    std::function<void(const QString& path, const QString& error)> done, const QString& preferredFolder,
+    std::shared_ptr<const HdrPixels> hdr)
 {
     if (thread.joinable())
         thread.join(); // the last one, done by now
     const QString folder = path.isEmpty() ? (preferredFolder.isEmpty() ? screenshotsFolder() : preferredFolder) : QString();
+    // The HDR file's name: the picture's, .jxr.
+    const auto hdrPath = [](const QString& picture) {
+        const QFileInfo info(picture);
+        return QDir::toNativeSeparators(info.dir().filePath(info.completeBaseName() + u".jxr"_s));
+    };
     // PNG encoding of a whole screen takes a moment: not on the GUI thread.
-    thread = std::jthread([context, done = std::move(done), image, folder, chosen = path] {
+    thread = std::jthread([context, done = std::move(done), image, folder, chosen = path, hdr = std::move(hdr), hdrPath] {
         QString path = chosen;
         QString error;
         if (!path.isEmpty()) { // 另存为…
@@ -860,11 +1042,15 @@ void saveImage(std::jthread& thread, QObject* context, const QImage& image, cons
             error = Capture::tr("找不到“屏幕截图”文件夹");
         } else {
             const QDir dir(folder);
-            path = QDir::toNativeSeparators(dir.filePath(screenshotFileName(QDateTime::currentDateTime(),
-                [&dir](const QString& name) { return QFileInfo::exists(dir.filePath(name)); })));
+            // A name neither file has yet.
+            path = QDir::toNativeSeparators(dir.filePath(screenshotFileName(QDateTime::currentDateTime(), [&](const QString& name) {
+                return QFileInfo::exists(dir.filePath(name)) || (hdr && QFileInfo::exists(hdrPath(dir.filePath(name))));
+            })));
             if (!image.save(path, "PNG"))
                 error = Capture::tr("无法保存到 %1").arg(path);
         }
+        if (hdr && error.isEmpty() && !writeJxr(hdrPath(path), *hdr))
+            error = Capture::tr("截图已保存，但 HDR 图片没能保存到 %1").arg(hdrPath(path));
         QMetaObject::invokeMethod(context, [done, path, error] {
             if (done)
                 done(path, error);

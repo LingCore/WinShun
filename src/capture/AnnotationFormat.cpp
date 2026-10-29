@@ -81,6 +81,10 @@ QJsonObject styleJson(Kind kind, const Style& s)
         o[u"bold"_s] = s.bold;
     if (kind == Kind::Text || s.boxed != defaults.boxed)
         o[u"boxed"_s] = s.boxed;
+    if (s.textStroke != 0)
+        o[u"textStroke"_s] = s.textStroke;
+    if (s.textStrokeColor != 0)
+        o[u"textStrokeColor"_s] = colorHex(s.textStrokeColor);
     if (redact || s.redact != defaults.redact)
         o[u"redact"_s] = redactModeName(s.redact);
     if (redact || s.shape != defaults.shape)
@@ -108,6 +112,11 @@ Style styleFrom(const QJsonObject& o)
         s.bold = o.value(u"bold"_s).toBool();
     if (o.value(u"boxed"_s).isBool())
         s.boxed = o.value(u"boxed"_s).toBool();
+    // Added later: a file without them has no outline.
+    if (const auto stroke = wholeFrom(o.value(u"textStroke"_s), 0, kMaxStyleValue))
+        s.textStroke = int(std::min<qint64>(*stroke, kMaxTextStroke)); // a crafted file cannot ask for a huge ring
+    if (const auto color = parseColor(o.value(u"textStrokeColor"_s).toString()))
+        s.textStrokeColor = *color | 0xff000000u;
     if (const auto mode = redactModeFromName(o.value(u"redact"_s).toString()))
         s.redact = *mode;
     if (const auto shape = redactShapeFromName(o.value(u"shape"_s).toString()))

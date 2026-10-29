@@ -204,6 +204,18 @@ ToolbarPlace placeToolbar(const QRect& selection, QSize bar, const QRect& screen
     return place;
 }
 
+std::array<QRect, 4> longCaptureBorder(const QRect& selection, const QRect& screen, int thickness)
+{
+    if (selection.isEmpty() || screen.isEmpty())
+        return {};
+    const int t = std::max(1, thickness);
+    const QRect outer = selection.adjusted(-t, -t, t, t).intersected(screen);
+    return {QRect(outer.left(), outer.top(), outer.width(), t),
+        QRect(outer.left(), outer.bottom() + 1 - t, outer.width(), t),
+        QRect(outer.left(), outer.top() + t, t, outer.height() - 2 * t),
+        QRect(outer.right() + 1 - t, outer.top() + t, t, outer.height() - 2 * t)};
+}
+
 QPoint placeSizeLabel(const QRect& selection, QSize label, const QRect& screen, int gap)
 {
     const int screenRight = screen.left() + screen.width();

@@ -1,6 +1,7 @@
 #include "CaptureImage.h"
 
 #include <QQuickWindow>
+#include <QPainter>
 #include <QSGImageNode>
 #include <QSGTexture>
 
@@ -44,6 +45,31 @@ QSGNode* CaptureImage::updatePaintNode(QSGNode* old, UpdatePaintNodeData*)
     node->setRect(boundingRect());
     node->setSourceRect(QRectF(QPointF(0, 0), m_image.size()));
     return node;
+}
+
+CaptureLoupe::CaptureLoupe(QQuickItem* parent)
+    : QQuickPaintedItem(parent)
+{
+    setOpaquePainting(true);
+    setFillColor(Qt::black);
+    setSmooth(false);
+}
+
+void CaptureLoupe::setImage(const QImage& image)
+{
+    if (m_image.cacheKey() == image.cacheKey())
+        return;
+    m_image = image;
+    update();
+    emit imageChanged();
+}
+
+void CaptureLoupe::paint(QPainter* painter)
+{
+    if (!m_image.isNull()) {
+        painter->setRenderHint(QPainter::SmoothPixmapTransform, false);
+        painter->drawImage(boundingRect(), m_image);
+    }
 }
 
 } // namespace ws::capture

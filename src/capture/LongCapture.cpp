@@ -132,19 +132,19 @@ public:
     HWND keys() const { return m_strips[0]; }
 
     // Round `region` (physical): 1 logical px of `edge`, then 1 px of half-white outside it.
-    void show(const QRect& region, double dpr, QColor edge)
+    void show(const QRect& region, const QRect& screen, double dpr, QColor edge)
     {
         const int g = std::max(1, qRound(dpr));
         const int t = g + 1;
-        const QRect o = region.adjusted(-t, -t, t, t);
+        const auto strips = longCaptureBorder(region, screen, t);
         const uint32_t grey = 0xFF000000u | (uint32_t(edge.red()) << 16) | (uint32_t(edge.green()) << 8) | uint32_t(edge.blue());
         const uint32_t white = 0x99999999u; // premultiplied white at 0.6
-        const int w = o.width();
-        paint(m_strips[0], QRect(o.left(), o.top(), w, t), [&](int x, int y) { return y == 0 || x == 0 || x == w - 1 ? white : grey; });
-        paint(m_strips[1], QRect(o.left(), region.bottom() + 1, w, t),
+        const int w = strips[0].width();
+        paint(m_strips[0], strips[0], [&](int x, int y) { return y == 0 || x == 0 || x == w - 1 ? white : grey; });
+        paint(m_strips[1], strips[1],
             [&](int x, int y) { return y == t - 1 || x == 0 || x == w - 1 ? white : grey; });
-        paint(m_strips[2], QRect(o.left(), region.top(), t, region.height()), [&](int x, int) { return x == 0 ? white : grey; });
-        paint(m_strips[3], QRect(region.right() + 1, region.top(), t, region.height()),
+        paint(m_strips[2], strips[2], [&](int x, int) { return x == 0 ? white : grey; });
+        paint(m_strips[3], strips[3],
             [&](int x, int) { return x == t - 1 ? white : grey; });
     }
 
@@ -219,6 +219,7 @@ struct LongCapture::Run {
     std::atomic<bool> autoScroll {false}; // the panel's switch; the engine turns it off when lost
     std::mutex mutex; // the diagnostics
     ScrollDiagnostics diag;
+    Output output = Output::Edit; // GUI thread only, used once the worker has finished
 };
 
 struct LongCapture::Update {
@@ -275,7 +276,7 @@ QString LongCapture::hint() const
     case Hint::Auto:
         return tr("正在自动滚动。Enter 完成，Esc 取消");
     case Hint::Manual:
-        return tr("滚动区域里的内容，滚完按 Enter 或点“完成”");
+        return tr("在区域内向上或向下滚动，滚完按 Enter 或点“完成”");
     case Hint::MouseOutside:
         return tr("把鼠标放到要滚动的区域上");
     case Hint::Elevated:
@@ -285,11 +286,11 @@ QString LongCapture::hint() const
         return tr("这个程序以管理员身份运行，请手动滚动，滚完点“完成”");
     case Hint::NothingWorks:
         return tr("自动滚动不起作用，请自己滚动");
-    case Hint::Lost:
-        return tr("跟丢了：往回滚一点，接上刚才的地方");
+    case Hint::Reconnect:
+        return tr("没接上：慢慢往回滚一点，接上后再继续");
     case Hint::NoFrames:
         return tr("5 秒没有新画面");
-    case Hint::Full:
+    case Hint::AtLimit:
         return tr("到上限了（3 万像素高）");
     case Hint::Copied:
         return tr("诊断信息已复制");
@@ -318,11 +319,20 @@ QQuickWindow* LongCapture::panel()
     ::SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
     ::SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ::GetWindowLongPtrW(hwnd, GWL_EXSTYLE) | WS_EX_NOACTIVATE);
     m_panel = window;
+    m_previewWindow = window->findChild<QQuickWindow*>(u"longCapturePreview"_s);
+    if (m_previewWindow) {
+        m_previewWindow->create();
+        win::styleFramelessWindow(m_previewWindow, false);
+        const HWND preview = reinterpret_cast<HWND>(m_previewWindow->winId());
+        ::SetWindowDisplayAffinity(preview, WDA_EXCLUDEFROMCAPTURE);
+        ::SetWindowLongPtrW(preview, GWL_EXSTYLE, ::GetWindowLongPtrW(preview, GWL_EXSTYLE) | WS_EX_NOACTIVATE);
+    }
     return window;
 }
 
-// Beside the region (placeBeside), on its monitor; with no room there, the
-// work area's corner where it covers the least of it.
+// Keep the controls by the original selection, as the capture toolbar was.
+// The optional preview takes separate room beside it and never displaces
+// the actions. Both stay on the selected monitor's work area.
 void LongCapture::placePanel(const QRect& region, HMONITOR monitor)
 {
     MONITORINFO info {sizeof info};
@@ -335,23 +345,23 @@ void LongCapture::placePanel(const QRect& region, HMONITOR monitor)
     const QSize box(qRound(m_panel->width() * ratio), qRound(m_panel->height() * ratio));
     const int gap = qRound(8 * ratio);
     const int border = std::max(1, qRound(ratio)) + 1;
-    QPoint at = placeBeside(region.adjusted(-border, -border, border, border), box, work, gap);
-    if (QRect(at, box).intersects(region)) {
-        const QRect inner = work.adjusted(gap, gap, -gap, -gap);
-        const std::array<QPoint, 4> corners {inner.topLeft(), QPoint(inner.right() + 1 - box.width(), inner.top()),
-            QPoint(inner.left(), inner.bottom() + 1 - box.height()),
-            QPoint(inner.right() + 1 - box.width(), inner.bottom() + 1 - box.height())};
-        qint64 least = -1;
-        for (const QPoint& corner : corners) {
-            const QRect covered = QRect(corner, box).intersected(region);
-            const qint64 area = qint64(covered.width()) * covered.height();
-            if (least < 0 || area < least) {
-                least = area;
-                at = corner;
-            }
-        }
+    const QRect bounds = work.adjusted(gap, gap, -gap, -gap);
+    const QRect anchor = region.adjusted(-border, -border, border, border);
+    const QPoint at = placeToolbar(anchor, box, bounds, gap).topLeft;
+    const auto place = [&](QQuickWindow* window, QPoint position) {
+        window->setScreen(screen);
+        window->setPosition(screen->geometry().topLeft() + (position - toRect(info.rcMonitor).topLeft()) / ratio);
+    };
+    place(m_panel, at);
+    if (m_previewWindow) {
+        const QSize previewBox(qRound(m_previewWindow->width() * ratio), qRound(m_previewWindow->height() * ratio));
+        const QPoint previewAt = placeBeside(anchor, previewBox, bounds, gap);
+        const QRect previewRect(previewAt, previewBox);
+        // When the selection fills the screen, show the actions first. The
+        // preview can still be opened explicitly instead of covering content.
+        m_panel->setProperty("previewVisible", !previewRect.intersects(anchor) && !previewRect.intersects(QRect(at, box)));
+        place(m_previewWindow, previewAt);
     }
-    m_panel->setPosition(screen->geometry().topLeft() + (at - toRect(info.rcMonitor).topLeft()) / ratio);
 }
 
 void LongCapture::hotkeys(bool on)
@@ -408,9 +418,12 @@ void LongCapture::start(const QRect& wanted, HMONITOR monitor, double dpr)
 
     if (!m_border)
         m_border = std::make_unique<Border>(this);
-    m_border->show(region, dpr, window->property("edgeColor").value<QColor>());
+    m_border->show(region, toRect(info.rcMonitor), dpr, window->property("edgeColor").value<QColor>());
     placePanel(region, monitor);
     window->show();
+    // Explicitly raise the control strip without taking the target's focus.
+    ::SetWindowPos(reinterpret_cast<HWND>(window->winId()), HWND_TOPMOST, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
     hotkeys(true);
     qInfo().noquote() << u"Long screenshot: %1x%2 at %3,%4, auto-scroll %5"_s.arg(region.width())
                              .arg(region.height())
@@ -424,8 +437,11 @@ void LongCapture::start(const QRect& wanted, HMONITOR monitor, double dpr)
 // WINSHUN_SCROLL_DUMP: the panel as it was at the end (no screenshot shows it).
 void LongCapture::dumpPanel()
 {
-    if (m_run && !m_run->dump.isEmpty() && m_panel && m_panel->isVisible() && QDir().mkpath(m_run->dump))
+    if (m_run && !m_run->dump.isEmpty() && m_panel && m_panel->isVisible() && QDir().mkpath(m_run->dump)) {
         m_panel->grabWindow().save(QDir(m_run->dump).filePath(u"panel.png"_s), "PNG");
+        if (m_previewWindow && m_previewWindow->isVisible())
+            m_previewWindow->grabWindow().save(QDir(m_run->dump).filePath(u"preview.png"_s), "PNG");
+    }
 }
 
 void LongCapture::finish()
@@ -439,6 +455,14 @@ void LongCapture::finish()
     m_border->hide();
     if (m_panel)
         m_panel->hide();
+}
+
+void LongCapture::exportTo(Output output)
+{
+    if (!m_run || m_run->stop || output < Output::Edit || output > Output::Pin)
+        return;
+    m_run->output = output;
+    finish();
 }
 
 void LongCapture::cancel()
@@ -505,6 +529,8 @@ void LongCapture::wrapUp()
     emit previewChanged();
     if (m_panel)
         m_panel->releaseResources(); // hidden: what it drew with goes (as the editing window's)
+    if (m_previewWindow)
+        m_previewWindow->releaseResources();
     if (!m_run)
         return;
     QString text;
@@ -525,12 +551,14 @@ void LongCapture::ended(const QImage& picture, const QString& how)
     if (m_thread.joinable())
         m_thread.join();
     dumpPanel(); // when it ended by itself
+    const Output output = m_run->output;
+    const QPoint origin = m_run->region.topLeft();
     wrapUp();
     m_run.reset();
     qInfo().noquote() << u"Long screenshot: %1, %2x%3"_s.arg(how).arg(picture.width()).arg(picture.height());
     emit changed();
     if (!picture.isNull() && m_hooks.done)
-        m_hooks.done(picture);
+        m_hooks.done(picture, output, origin);
     if (m_hooks.ended)
         m_hooks.ended();
 }
@@ -677,24 +705,26 @@ void LongCapture::engine(Run& r)
                 shown = Status::Full;
                 break;
             case ScrollStitcher::State::Lost: // the caller decides what to show
-            case ScrollStitcher::State::Unchanged:
             case ScrollStitcher::State::Waiting:
+                break;
+            case ScrollStitcher::State::Unchanged:
+                if (shown == Status::Lost)
+                    shown = stitcher.height() > r.region.height() ? Status::Stitching : Status::Waiting;
                 break;
             }
             return step;
         };
 
-        // The first frame: WGC gives one when it starts. Then at rest, as after
-        // a step: our notification fading out (hideNotification) or a page still
-        // gliding would be in it, and the frames after would not fit it (live
-        // test 2026-10-23: "lost" before any scrolling). By hand not long: the
-        // user may be scrolling already.
+        // Manual capture keeps the first viewport immediately: replacing it
+        // during a settling delay loses the start when the user scrolls at
+        // once. Subsequent stationary changes can refresh it in the stitcher.
+        // Auto-scroll still waits for a quiet initial viewport before moving.
         QImage first;
-        while (!r.stop && first.isNull() && clock.elapsed() < 3000)
+        while (r.stop != 2 && first.isNull() && clock.elapsed() < 3000)
             first = grabber.changed(100);
         const qint64 firstAt = clock.elapsed();
-        const int firstSettleMs = r.autoScroll && ladder.method() != ScrollMethod::Manual ? kSettleMs : kMoveWaitMs;
-        while (!first.isNull() && !r.stop && clock.elapsed() - firstAt < firstSettleMs) {
+        while (!first.isNull() && !r.stop && r.autoScroll && ladder.method() != ScrollMethod::Manual
+            && clock.elapsed() - firstAt < kSettleMs) {
             const QImage next = grabber.changed(kQuietMs);
             if (next.isNull())
                 break;
@@ -738,7 +768,7 @@ void LongCapture::engine(Run& r)
                     const bool lost = lostSince >= 0 && clock.elapsed() - lostSince >= kLostShownMs;
                     if (lost)
                         shown = Status::Lost;
-                    told = lost                                                ? Hint::Lost
+                    told = lost                                                ? Hint::Reconnect
                         : ladder.hint() == ScrollLadder::Hint::Elevated     ? Hint::Elevated
                         : ladder.hint() == ScrollLadder::Hint::NothingWorks ? Hint::NothingWorks
                                                                             : Hint::Manual;
@@ -831,7 +861,7 @@ void LongCapture::engine(Run& r)
                     // No overlap and nothing to guess with: by hand from here.
                     r.autoScroll = false;
                     shown = Status::Lost;
-                    told = Hint::Lost;
+                    told = Hint::Reconnect;
                     lostSince = clock.elapsed() - kLostShownMs;
                     log(u"lost: auto-scroll off"_s);
                     break;
@@ -843,6 +873,20 @@ void LongCapture::engine(Run& r)
                     break;
                 }
                 publish();
+            }
+        }
+        // Finish can arrive while WGC or a smooth scroll still has the final
+        // changed frame in flight. Drain it before exporting; cancellation
+        // never waits for or exports these frames.
+        if (r.stop == 1 && stitcher.frames() > 0 && !stitcher.full()) {
+            const qint64 finishAt = clock.elapsed();
+            while (r.stop != 2 && clock.elapsed() - finishAt < kMoveWaitMs) {
+                const QImage last = grabber.changed(kQuietMs);
+                if (last.isNull())
+                    break;
+                stitch(last, std::nullopt, false);
+                if (stitcher.full())
+                    break;
             }
         }
         // The picture, then the memory back (the stream and UI Automation go with this scope).

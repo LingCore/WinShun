@@ -6,6 +6,7 @@
 #include <QtGlobal>
 
 #include <cstdint>
+#include <deque>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -29,16 +30,17 @@
 // take no part; a strip on the right (Options::ignoreRight, an overlay
 // scroll bar) neither. Newer frames are drawn over older ones (a picture
 // that loaded late is in the result) but for the top sixth of each frame,
-// where a bar that sticks only once the page scrolls would be.
+// where a bar that sticks only once the page scrolls would be. Upward
+// growth protects the bottom sixth of the scrolling content instead.
 namespace ws::capture {
 
 class ScrollStitcher {
 public:
     enum class State {
         Waiting, // no frame yet, or the first
-        Appended, // new rows were added at the end
+        Appended, // new rows were added at either end
         Unchanged, // nothing moved
-        Behind, // moved, but nothing new: scrolled back up, or not yet past the end again
+        Behind, // moved inside the part already captured: nothing new
         Lost, // no overlap with the frame before
         Full, // at the limit: nothing more is added
     };
@@ -80,10 +82,10 @@ public:
     bool full() const { return m_full; }
     int fixedTop() const { return m_top; }
     int fixedBottom() const { return m_bottom; }
-    // The header (the first frame's fixed top band) + the content + the
-    // footer (the farthest frame's fixed bottom band), Format_RGB32.
+    // The topmost frame's header + the content + the bottommost frame's
+    // footer, Format_RGB32. Either end can grow from the initial viewport.
     QImage result() const;
-    // The end of the result, scaled to `box`'s width: what fits in `box`.
+    // The end most recently extended, scaled to `box`'s width.
     QImage preview(QSize box) const;
     // Gives the memory back (the result was taken); add() starts over.
     void release();
@@ -97,17 +99,20 @@ private:
     const uint32_t* row(int y) const;
     bool write(const QImage& frame, int offset, int from, int to); // false: at the limit
     Match match(const Analysis& a, const Analysis& b, std::optional<int> expectDy);
-    bool bounced(const Analysis& end, const Analysis& now, int gone) const;
+    bool bounced(const Analysis& end, const Analysis& now, int gone, bool top = false) const;
     int limitHeight() const;
 
     QSize m_size;
     Limits m_limits;
     Options m_options;
-    // The canvas, in the content's coordinates (the first frame's top row is
-    // 0): blocks of kBlockRows rows, each VirtualAlloc'd, freed by release().
-    std::vector<uint32_t*> m_blocks;
+    // Signed content coordinates, so scrolling above the first viewport
+    // allocates blocks at the front without moving any captured pixels.
+    std::deque<uint32_t*> m_blocks;
+    int m_firstBlock = 0;
     std::unique_ptr<Analysis> m_prev; // the last frame that matched
     int m_prevOffset = 0;
+    int m_nearOffset = 0; // topmost row of the result, possibly negative
+    bool m_previewTop = false;
     QImage m_far; // the frame that went farthest: the result's end comes from it
     int m_farOffset = 0;
     int m_farRows = 0; // of m_far's rows, those in the result (fewer at the limit)

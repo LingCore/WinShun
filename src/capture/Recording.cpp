@@ -7,6 +7,8 @@
 
 #include "Recording.h"
 #include "RecordingPointer.h"
+#include "KeycapRender.h"
+#include "KeyStream.h"
 #include "Hdr.h"
 
 #include <QCoreApplication>
@@ -34,6 +36,7 @@
 #include <cmath>
 #include <cstring>
 #include <deque>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -693,13 +696,26 @@ Result run(const Options& options, Control& control, const std::function<void(co
                 painter.drawText(20, y, QCoreApplication::translate("Recording", "WinShun  区域录屏 — clear text 0123456789    C++20 / MP4"));
         }
         std::unique_ptr<PointerOverlay> pointer;
-        if (options.clickHighlights && image && !control.stop)
+        const bool showKeys = options.keys.mode != keycaps::Mode::Off || options.keys.mouse;
+        if ((options.clickHighlights || showKeys) && image && !control.stop)
             pointer = std::make_unique<PointerOverlay>(graphics.device.get(), graphics.context.get(), options.region.size(), options.pointerScale);
         const qint64 start = nowTicks();
         Timeline clock(start);
         ClickPulses pulses;
         qint64 syntheticClick = 0;
         if (options.clickInput) options.clickInput->discardBefore(start);
+        // GitHub #98's keycaps: the rows at each frame's time, drawn into a
+        // picture again only when they change.
+        keycaps::Model keys(options.keys);
+        const int keyUnit = keycaps::unitFor(options.region.size(), options.pointerScale, options.outputScale);
+        const size_t keyRows = size_t(keycaps::rowsThatFit(options.region.size(), keyUnit));
+        keycaps::Picture keyPicture;
+        std::vector<QPoint> keyPlaces;
+        std::vector<KeycapDraw> keyDraws;
+        quint64 keysDrawn = keys.revision();
+        bool keysLeft = false;
+        qint64 syntheticKey = showKeys && syntheticMs >= 0 ? kSecond / 10 : -1;
+        if (options.keyInput) options.keyInput->discardBefore(start);
         for (const auto& input : audio) input->start();
         qint64 nextVideo = 0, nextAudio = 0, lastUpdate = -kSecond;
         const qint64 interval = kSecond / options.fps;
@@ -735,6 +751,8 @@ Result run(const Options& options, Control& control, const std::function<void(co
                 }
                 pulses.clear();
                 if (options.clickInput) options.clickInput->discardBefore(wall);
+                keys.clear(); // nothing pressed before a pause shows after it
+                if (options.keyInput) options.keyInput->discardBefore(wall);
                 paused = requestedPause;
             }
             const qint64 elapsed = clock.elapsed(wall);
@@ -749,7 +767,23 @@ Result run(const Options& options, Control& control, const std::function<void(co
                         pulses.add(click);
                     }
             }
-            if (pointer && syntheticMs >= 0 && elapsed >= syntheticClick) {
+            if (options.keyInput) {
+                const auto batch = options.keyInput->take();
+                if (!paused)
+                    for (auto key : batch.view()) {
+                        key.time = clock.elapsed(key.time);
+                        keys.feed(key);
+                    }
+            }
+            if (syntheticKey >= 0 && elapsed >= syntheticKey && !paused) {
+                keycaps::Key key;
+                key.time = elapsed;
+                key.vk = options.keys.mode != keycaps::Mode::Off ? std::uint16_t('S') : std::uint16_t(VK_LBUTTON);
+                key.mods = options.keys.mode != keycaps::Mode::Off ? std::uint8_t(keycaps::kCtrl) : std::uint8_t(0);
+                keys.feed(key);
+                syntheticKey = -1;
+            }
+            if (pointer && options.clickHighlights && syntheticMs >= 0 && elapsed >= syntheticClick) {
                 pulses.add({QPoint(options.region.width() * 3 / 4, options.region.height() / 4), elapsed, false});
                 syntheticClick = elapsed + kSecond;
             }
@@ -764,8 +798,28 @@ Result run(const Options& options, Control& control, const std::function<void(co
                 }
                 // Fixed cadence keeps static recordings and pause/resume
                 // duration exact. Inter-frame compression makes repeats cheap.
+                if (pointer && showKeys) {
+                    keys.advance(elapsed);
+                    const auto& rows = keys.rows();
+                    if (keyPicture.rows.empty() && !rows.empty() && syntheticMs < 0) {
+                        // A new stack: out of the pointer's way.
+                        POINT cursor {};
+                        keysLeft = ::GetPhysicalCursorPos(&cursor)
+                            && keycaps::preferLeft(QPoint(cursor.x, cursor.y) - options.region.topLeft(), options.region.size(), keyUnit);
+                    }
+                    if (keys.revision() != keysDrawn) {
+                        keysDrawn = keys.revision();
+                        keyPicture = keycaps::render(std::span(rows).last(std::min(rows.size(), keyRows)), options.keyFont, keyUnit);
+                        keyPlaces = keycaps::place(keyPicture, options.region.size(), keyUnit, keysLeft);
+                        pointer->setKeycaps(keyPicture.image);
+                    }
+                    keyDraws.clear();
+                    const size_t first = rows.size() - keyPicture.rows.size();
+                    for (size_t i = 0; i < keyPicture.rows.size(); ++i)
+                        keyDraws.push_back({keyPicture.rows[i], keyPlaces[i], keycaps::Model::opacity(rows[first + i], elapsed)});
+                }
                 ID3D11Texture2D* input = image;
-                if (pointer) input = pointer->draw(image, pulses.active(elapsed), elapsed);
+                if (pointer) input = pointer->draw(image, pulses.active(elapsed), elapsed, keyDraws);
                 if (padded) {
                     const UINT w = UINT(options.region.width()), h = UINT(options.region.height());
                     const D3D11_BOX whole {0, 0, 0, w, h, 1};
@@ -842,6 +896,9 @@ Result run(const Options& options, Control& control, const std::function<void(co
     } catch (const std::exception& failure) {
         result.error = QCoreApplication::translate("Recording", "录屏失败：%1").arg(QString::fromUtf8(failure.what()));
     }
+    // Nothing pressed lives on past the recording (through a GIF's export):
+    // what the hook handed over since the last frame goes, and anything later.
+    if (options.keyInput) options.keyInput->discardBefore(std::numeric_limits<qint64>::max());
     writer.reset();
     if (!result.frames && control.stop) result.error.clear(); // cancelled during initialization
     if (control.discard || !result.frames) {
@@ -866,6 +923,11 @@ Result record(const Options& options, Control& control, const std::function<void
 Result sample(const Options& options, int milliseconds, const std::function<void(const Progress&)>& progress)
 {
     Control control;
+    return sample(options, milliseconds, control, progress);
+}
+
+Result sample(const Options& options, int milliseconds, Control& control, const std::function<void(const Progress&)>& progress)
+{
     return run(options, control, progress, std::max(1, milliseconds));
 }
 

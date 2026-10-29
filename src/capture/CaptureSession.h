@@ -4,6 +4,7 @@
 #include "CaptureTools.h"
 #include "Geometry.h"
 
+#include <QElapsedTimer>
 #include <QImage>
 #include <QObject>
 #include <QPoint>
@@ -74,7 +75,7 @@ public:
     bool magnifierShown() const { return m_magnifierShown; }
     bool cursorHere() const { return m_cursorHere; }
     QPoint cursor() const { return m_cursor; }
-    QImage loupe() const { return m_loupe; }
+    QImage loupe() const; // sampled lazily, once per pointer position and frozen image
     QString color() const { return m_color; }
     QString colorText() const { return m_colorText; }
     int cursorShape() const { return m_cursorShape; }
@@ -125,7 +126,9 @@ private:
     bool m_magnifierShown = false;
     bool m_cursorHere = false;
     QPoint m_cursor {-1, -1};
-    QImage m_loupe;
+    mutable QImage m_loupe;
+    mutable QPoint m_loupeAt {-1, -1};
+    mutable qint64 m_loupeImageKey = 0;
     QString m_color;
     QString m_colorText;
     QRgb m_rgb = 0;
@@ -221,8 +224,25 @@ public:
     bool hasSelection() const { return m_selection.screen >= 0; }
     int selectionScreen() const { return m_selection.screen; }
     QRect selectionRect() const { return m_selection.rect; } // physical, that monitor's own
+    // For the diagnostics: where the gesture is (hover, dragging, selected,
+    // adjusting, annotating), and the time since the left button was last let
+    // go of in this capture (-1: not yet).
+    QString phaseName() const
+    {
+        switch (m_phase) {
+        case Phase::Hover: return QStringLiteral("hover");
+        case Phase::Pressed:
+        case Phase::Dragging: return QStringLiteral("dragging");
+        case Phase::Selected: return QStringLiteral("selected");
+        case Phase::Adjusting: return QStringLiteral("adjusting");
+        case Phase::Annotating: return QStringLiteral("annotating");
+        }
+        return QStringLiteral("other");
+    }
+    qint64 msSinceRelease() const { return m_releaseClock.isValid() ? m_releaseClock.elapsed() : -1; }
     QRect hoverRect() const;
     void setCopyOnSelect(bool on) { m_copyOnSelect = on; } // a drag or a click on a window copies at once
+    void setMagnifier(bool on) { m_magnifier = on; } // takes effect with the next publish()
     void setPinOnCopy(bool on) { m_pinOnCopy = on; }
 
     // What the mouse buttons do once a selection is there (issue #46), as
@@ -326,6 +346,7 @@ private:
     bool m_ocrAvailable = false;
     QStringList m_hiddenButtons;
     bool m_copyOnSelect = false;
+    bool m_magnifier = true; // off: no magnifier, so no colour picking either
     bool m_pinOnCopy = false;
     MouseAct m_actDoubleLeft = MouseAct::Copy;
     MouseAct m_actRight = MouseAct::Back;
@@ -367,6 +388,7 @@ private:
     ColorFormat m_colorFormat = ColorFormat::Hex;
     QRect m_lastSelection;
     QTimer m_noticeTimer;
+    QElapsedTimer m_releaseClock; // the left button's last release (diagnostics)
 };
 
 } // namespace ws::capture

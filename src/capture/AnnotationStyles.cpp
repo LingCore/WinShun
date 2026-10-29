@@ -39,6 +39,7 @@ struct Fields {
     bool size = false;
     bool bold = false;
     bool boxed = false;
+    bool outline = false; // Text: stroke and strokeColor
     bool mode = false;
     bool shape = false; // Redact: box or brush
     bool cell = false;
@@ -64,6 +65,7 @@ Fields fieldsOf(Kind kind)
         f.size = true;
         f.bold = true;
         f.boxed = true;
+        f.outline = true;
         break;
     case Kind::Number:
         f.size = true;
@@ -128,6 +130,11 @@ QList<int> sizePresets(Kind kind)
     default:
         return {2, 4, 7};
     }
+}
+
+QList<int> strokePresets()
+{
+    return {1, 2, 3};
 }
 
 QList<int> brushWidths()
@@ -226,6 +233,15 @@ StyleMemory StyleMemory::fromJson(const QString& json)
             t.bold = o.value(u"bold"_s).toBool();
         if (f.boxed && o.value(u"boxed"_s).isBool())
             t.boxed = o.value(u"boxed"_s).toBool();
+        if (f.outline) {
+            const QJsonValue stroke = o.value(u"stroke"_s);
+            if (stroke.isDouble() && stroke.toDouble() == 0)
+                t.stroke = 0;
+            else
+                readSize(stroke, t.stroke);
+            if (const auto color = parseColor(o.value(u"strokeColor"_s).toString()))
+                t.strokeColor = *color | 0xff000000u;
+        }
         if (f.mode) {
             if (const auto mode = redactModeFromName(o.value(u"mode"_s).toString()))
                 t.mode = *mode;
@@ -271,6 +287,10 @@ QString StyleMemory::toJson() const
             o[u"bold"_s] = t.bold;
         if (f.boxed)
             o[u"boxed"_s] = t.boxed;
+        if (f.outline && t.stroke > 0)
+            o[u"stroke"_s] = t.stroke;
+        if (f.outline && t.strokeColor != 0)
+            o[u"strokeColor"_s] = colorHex(t.strokeColor);
         if (f.mode)
             o[u"mode"_s] = redactModeName(t.mode);
         if (f.shape)
@@ -305,6 +325,10 @@ Style StyleMemory::forTool(Kind kind, qreal dpr) const
         s.bold = t.bold;
     if (f.boxed)
         s.boxed = t.boxed;
+    if (f.outline) {
+        s.textStroke = t.stroke > 0 ? std::min(kMaxTextStroke, toImagePx(t.stroke, dpr)) : 0;
+        s.textStrokeColor = t.strokeColor;
+    }
     if (f.mode)
         s.redact = t.mode;
     if (f.shape)
@@ -334,6 +358,10 @@ void StyleMemory::remember(Kind kind, const Style& style, qreal dpr)
         t.bold = style.bold;
     if (f.boxed)
         t.boxed = style.boxed;
+    if (f.outline) {
+        t.stroke = style.textStroke > 0 ? std::min(kMaxLogical, toLogicalPx(style.textStroke, dpr)) : 0;
+        t.strokeColor = style.textStrokeColor ? (style.textStrokeColor | 0xff000000u) : 0;
+    }
     if (f.mode)
         t.mode = style.redact;
     if (f.shape)

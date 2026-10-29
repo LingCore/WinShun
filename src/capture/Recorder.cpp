@@ -2,6 +2,7 @@
 
 #include "Geometry.h"
 #include "GifExport.h"
+#include "KeyStream.h"
 #include "RecordingPointer.h"
 #include "platform/Shell.h"
 #include "platform/WindowEffects.h"
@@ -18,6 +19,7 @@
 #include <QScreen>
 #include <QStandardPaths>
 
+#include <algorithm>
 #include <array>
 #include <utility>
 
@@ -90,6 +92,7 @@ Recorder::~Recorder()
     if (m_control) m_control->stop = true; // keep the recording when the feature is switched off
     if (m_worker.joinable()) m_worker.join();
     releaseClicks();
+    releaseKeys();
     m_border.reset();
     delete m_panel.data();
 }
@@ -201,6 +204,26 @@ void Recorder::setClickHighlights(bool on)
     remember();
 }
 
+void Recorder::setKeys(KeyDisplay value)
+{
+    if (m_stage != Ready || value < KeysOff || value > KeysAll || m_preferences.keys == value) return;
+    m_preferences.keys = value;
+    remember();
+}
+
+void Recorder::setMouseButtons(bool on)
+{
+    if (m_stage != Ready || m_preferences.mouseButtons == on) return;
+    m_preferences.mouseButtons = on;
+    remember();
+}
+
+// The hooks out at once: nothing pressed after the stop is looked at.
+void Recorder::releaseKeys()
+{
+    m_keyHook.reset();
+}
+
 void Recorder::releaseClicks()
 {
     if (std::exchange(m_clicksActive, false) && m_hooks.clicks) m_hooks.clicks({});
@@ -234,6 +257,8 @@ void Recorder::prepare(const QRect& region, HMONITOR monitor, double dpr)
         m_preferences.quality = Standard;
     if (m_preferences.format < Mp4 || m_preferences.format > Gif)
         m_preferences.format = Mp4;
+    if (m_preferences.keys < KeysOff || m_preferences.keys > KeysAll)
+        m_preferences.keys = KeysOff;
     m_exporting = false;
     m_progress = {};
     m_path.clear();
@@ -312,6 +337,31 @@ void Recorder::begin()
         }
         m_clicksActive = true;
     }
+    const int gifLongest = quality() == SmallFile ? 960 : quality() == HighQuality ? 1920 : 1280;
+    const auto keyMode = static_cast<keycaps::Mode>(keys());
+    if (keyMode != keycaps::Mode::Off || mouseButtons()) {
+        // GitHub #98: the keys and buttons pressed, drawn into the frames.
+        options.keys.mode = keyMode;
+        options.keys.mouse = mouseButtons();
+        options.keys.words = {tr("空格"), tr("左键"), tr("右键"), tr("中键"), tr("后退键"), tr("前进键")};
+        if (m_hooks.ownKeys) options.keys.own = m_hooks.ownKeys();
+        options.keys.doubleTap = qint64(std::clamp<UINT>(::GetDoubleClickTime(), 400, 900)) * 10'000;
+        options.keyFont = QGuiApplication::font();
+        // A GIF is scaled down: its keycaps are drawn larger to stay legible.
+        if (gif)
+            options.outputScale = std::min(1.0, double(recording::gifSize(m_region.size(), gifLongest).width()) / m_region.width());
+        options.keyInput = std::make_shared<recording::KeyStream>();
+        m_keyHook = std::make_unique<recording::KeyHook>(recording::KeyHook::Setup {
+            keyMode, m_region, m_panel ? quintptr(m_panel->winId()) : 0, options.keyInput});
+        if (m_keyHook->failed()) {
+            releaseKeys();
+            recording::Result failure;
+            failure.error = keyMode != keycaps::Mode::Off ? tr("无法显示按键，请选“不显示按键”后重试。")
+                                                          : tr("无法显示鼠标按键，请关闭该选项后重试。");
+            completed(failure);
+            return;
+        }
+    }
     const QString base = u"WinShun_%1"_s.arg(QDateTime::currentDateTime().toString(u"yyyyMMdd_HHmmss_zzz"_s));
     QString name = base + u".mp4"_s;
     for (int i = 2; QFileInfo::exists(QDir(folder()).filePath(name))
@@ -319,7 +369,7 @@ void Recorder::begin()
         name = base + u"_%1.mp4"_s.arg(i);
     options.path = QDir(folder()).filePath(name);
     const recording::GifOptions gifOptions {QDir(folder()).filePath(QFileInfo(name).completeBaseName() + u".gif"_s),
-        options.fps, quality() == SmallFile ? 960 : quality() == HighQuality ? 1920 : 1280};
+        options.fps, gifLongest};
     m_control = std::make_unique<recording::Control>();
     m_stage = Starting;
     emit changed();
@@ -342,6 +392,7 @@ void Recorder::begin()
                 m_progress.elapsedMs = elapsedMs;
                 m_border.reset();
                 releaseClicks();
+                releaseKeys();
                 emit changed();
             }, Qt::QueuedConnection);
             auto exported = recording::exportGif(result.path, gifOptions, *control, update);
@@ -361,6 +412,7 @@ void Recorder::pause()
     if (!m_control || (m_stage != Recording && m_stage != Paused)) return;
     m_stage = m_stage == Recording ? Paused : Recording;
     m_control->paused = m_stage == Paused;
+    if (m_keyHook) m_keyHook->setPaused(m_stage == Paused); // out while paused: nothing typed then is looked at
     emit changed();
 }
 
@@ -368,6 +420,7 @@ void Recorder::finish()
 {
     if (m_control) {
         m_control->stop = true;
+        releaseKeys();
         m_stage = Saving;
         emit changed();
     } else {
@@ -379,6 +432,7 @@ void Recorder::completed(const recording::Result& result)
 {
     if (m_worker.joinable()) m_worker.join();
     releaseClicks(); // detach before a changed handler can begin the next take
+    releaseKeys();
     m_control.reset();
     m_progress = result;
     m_path = result.path;

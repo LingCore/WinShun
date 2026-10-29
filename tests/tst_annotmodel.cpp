@@ -17,6 +17,7 @@
 #include "Geometry.h"
 
 #include <QColor>
+#include <QElapsedTimer>
 #include <QGuiApplication>
 #include <QImageReader>
 #include <QJsonDocument>
@@ -244,15 +245,21 @@ struct FakeReader {
     int scans = 0;
     int cancels = 0;
     QImage last;
+    QImage frozen;
+    QRect region;
     std::function<void(QList<RedactLine>)> answer;
     bool prescan = true;
     SmartHooks hooks()
     {
         SmartHooks h;
-        h.scan = [this](const QImage& image, double, std::function<void(QList<RedactLine>)> done) {
+        h.scan = [this](const QImage& image, const QRect& rect, double, std::function<void(RedactScan)> done) {
             ++scans;
-            last = image;
-            answer = std::move(done);
+            frozen = image;
+            region = rect;
+            last = image.copy(rect);
+            answer = [done = std::move(done), gray = last.convertToFormat(QImage::Format_Grayscale8)](QList<RedactLine> lines) {
+                done(RedactScan {std::move(lines), gray});
+            };
         };
         h.cancel = [this] { ++cancels; };
         h.rules = [] { return RedactRules(); };
@@ -648,6 +655,42 @@ private slots:
 
     // ---- smart redaction (4.1): the pre-scan and the one-click redaction ----
 
+    void smartDispatchSharesLargeFrozenPixels()
+    {
+        QImage base(3840, 2160, QImage::Format_RGB32);
+        base.fill(Qt::white);
+        QImage pending;
+        QRect requested;
+        SmartHooks hooks;
+        hooks.prescan = [] { return false; };
+        hooks.scan = [&](const QImage& image, const QRect& region, double, std::function<void(RedactScan)>) {
+            pending = image; // the reader queue keeps the immutable snapshot
+            requested = region;
+        };
+        AnnotationModel model;
+        model.setSmartHooks(std::move(hooks));
+        model.begin(base, 1.5, StyleMemory());
+        QList<qint64> preprocessing, dispatch;
+        for (int sample = 0; sample < 8; ++sample) {
+            const QRect region(40, 40, 3500 - sample, 1900);
+            model.setSelection(region);
+            QElapsedTimer timer;
+            timer.start();
+            const QImage oldGray = base.copy(region).convertToFormat(QImage::Format_Grayscale8);
+            preprocessing.append(timer.nsecsElapsed());
+            QCOMPARE(oldGray.size(), region.size());
+            timer.restart();
+            model.smartRedact();
+            dispatch.append(timer.nsecsElapsed());
+            QCOMPARE(pending.constBits(), base.constBits());
+            QCOMPARE(requested, region);
+        }
+        std::ranges::sort(preprocessing);
+        std::ranges::sort(dispatch);
+        qInfo().noquote() << u"4K smart scan boundary: old crop/gray p50 %1 ms; shared-image GUI dispatch p50 %2 ms (OCR excluded)"_s
+            .arg(preprocessing[4] / 1e6, 0, 'f', 3).arg(dispatch[4] / 1e6, 0, 'f', 3);
+    }
+
     void smartScansOnceTheSelectionHoldsStill()
     {
         FakeReader reader;
@@ -658,6 +701,8 @@ private slots:
         m.setSelection(QRect(10, 10, 200, 150)); // still moving
         QCOMPARE(reader.scans, 0);
         QTRY_COMPARE_WITH_TIMEOUT(reader.scans, 1, 1500);
+        QCOMPARE(reader.frozen.constBits(), m.base().constBits()); // no GUI-thread crop or deep copy
+        QCOMPARE(reader.region, QRect(10, 10, 200, 150));
         QCOMPARE(reader.last.size(), QSize(200, 150)); // the settled selection, nothing else
         QCOMPARE(m.smartFound(), -1); // nothing yet
         // The selection moves while it is read: that answer is for nothing.
@@ -1421,6 +1466,78 @@ private slots:
         QCOMPARE(m.styles(), styles);
         QCOMPARE(m.itemCount(), 0);
         QCOMPARE(m.tool(), -1);
+    }
+
+    // The text outline (#101) through the panel: the tool's memory, the selected text, undo, boxed, and a
+    // screen kept up to date by the dirty regions alone.
+    void textOutlinePanel()
+    {
+        Rig rig(QSize(400, 300), 1.5);
+        AnnotationModel& m = rig.model;
+        Screen screen(m);
+        m.setTool(toolIndex(Kind::Text));
+        QVariantMap p = m.panel();
+        QCOMPARE(p.value(u"stroke"_s).toInt(), 0);
+        QCOMPARE(p.value(u"strokes"_s).toList().size(), strokePresets().size());
+        QVERIFY(p.value(u"strokeAuto"_s).toBool());
+        QCOMPARE(p.value(u"strokeColor"_s).toString(), u"#FFFFFF"_s); // red words: white outline
+        click(m, QPoint(100, 100));
+        m.commitText(u"Win顺 outline"_s);
+        const quint32 id = lastOf(m, Kind::Text)->id;
+        QCOMPARE(findItem(m.document(), id)->style.textStroke, 0);
+        CHECK_SCREEN(screen);
+        const QRectF plain = bounds(m.document(), *findItem(m.document(), id));
+        // Selected: the panel's change goes to the text and to the tool's memory.
+        m.setTool(-1);
+        click(m, pointOn(m, id));
+        QCOMPARE(selectedId(m), id);
+        m.setPanel({{u"stroke"_s, 2}});
+        QCOMPARE(findItem(m.document(), id)->style.textStroke, 3); // 2 logical px at 150 %
+        QCOMPARE(m.panel().value(u"stroke"_s).toInt(), 2);
+        QCOMPARE(m.styles().tool(Kind::Text).stroke, 2);
+        QVERIFY(bounds(m.document(), *findItem(m.document(), id)).width() > plain.width());
+        CHECK_SCREEN(screen);
+        m.setPanel({{u"strokeColor"_s, u"#1E88E5"_s}});
+        QCOMPARE(findItem(m.document(), id)->style.textStrokeColor, qRgb(0x1E, 0x88, 0xE5));
+        QVERIFY(!m.panel().value(u"strokeAuto"_s).toBool());
+        QCOMPARE(m.panel().value(u"strokeColor"_s).toString(), u"#1E88E5"_s);
+        CHECK_SCREEN(screen);
+        m.setPanel({{u"strokeColor"_s, u"auto"_s}});
+        QCOMPARE(findItem(m.document(), id)->style.textStrokeColor, QRgb(0));
+        CHECK_SCREEN(screen);
+        m.setPanel({{u"stroke"_s, 3}});
+        CHECK_SCREEN(screen);
+        // Undo and redo (the panel's changes may merge into fewer steps): the old outline back, nothing left of the grown one.
+        int steps = 0;
+        while (findItem(m.document(), id)->style.textStroke != 0 && m.canUndo() && steps++ < 10) {
+            m.undo();
+            CHECK_SCREEN(screen);
+        }
+        QCOMPARE(findItem(m.document(), id)->style.textStroke, 0);
+        QCOMPARE(bounds(m.document(), *findItem(m.document(), id)), plain);
+        while (m.canRedo() && steps-- > 0) {
+            m.redo();
+            CHECK_SCREEN(screen);
+        }
+        QCOMPARE(findItem(m.document(), id)->style.textStroke, 5);
+        // Boxed words take no outline: it stays in the style, nothing is drawn.
+        m.setPanel({{u"boxed"_s, true}});
+        QVERIFY(m.panel().value(u"boxed"_s).toBool());
+        CHECK_SCREEN(screen);
+        // Other kinds do not take it.
+        m.setTool(toolIndex(Kind::Number));
+        m.setPanel({{u"stroke"_s, 2}});
+        QVERIFY(!m.panel().contains(u"stroke"_s));
+        QCOMPARE(m.styles().tool(Kind::Number).stroke, 0);
+        // The new text starts with the remembered outline.
+        m.setTool(toolIndex(Kind::Text));
+        click(m, QPoint(100, 220));
+        m.commitText(u"next"_s);
+        QCOMPARE(lastOf(m, Kind::Text)->style.textStroke, 5);
+        // The memory comes back with the next capture.
+        const StyleMemory styles = m.styles();
+        QVERIFY(styles.toJson().contains(u"\"stroke\":3"_s));
+        QVERIFY(StyleMemory::fromJson(styles.toJson()) == styles);
     }
 
     void wheelSteps()

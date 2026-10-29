@@ -1,22 +1,66 @@
 // The screen capture's pure parts (src/capture): the geometry (Qt's buffer
 // scale, edges and handles, nudges, where the toolbar goes, what a click
-// picks), the file names, the HDR tone mapping, the PrtScn value kept, and
-// the session's state machine driven with physical pixels, without windows.
+// picks), the file names, the HDR tone mapping and HDR file, the PrtScn
+// value kept, and the session's state machine driven with physical pixels,
+// without windows.
+#include "CaptureDiagnostics.h"
 #include "CaptureSession.h"
 #include "Geometry.h"
 #include "Hdr.h"
 #include "PrintScreen.h"
 #include "WindowSnapshot.h"
 
+#include <QDir>
+#include <QFileInfo>
+#include <QScopeGuard>
 #include <QSignalSpy>
+#include <QTemporaryDir>
 #include <QTest>
+
+#include <wincodec.h>
+#include <wrl/client.h>
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <vector>
 
 using namespace ws::capture;
 using namespace Qt::StringLiterals;
+using Microsoft::WRL::ComPtr;
+
+namespace {
+
+// A JPEG XR's pixels as half floats, RGBA (WIC); empty when it cannot be read.
+std::vector<std::uint16_t> readJxr(const QString& path)
+{
+    const HRESULT init = ::CoInitializeEx(nullptr, COINIT_MULTITHREADED); // a guiless test: none yet
+    const auto uninit = qScopeGuard([init] {
+        if (SUCCEEDED(init))
+            ::CoUninitialize();
+    });
+    ComPtr<IWICImagingFactory> factory;
+    if (FAILED(::CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory))))
+        return {};
+    ComPtr<IWICBitmapDecoder> decoder;
+    const QString native = QDir::toNativeSeparators(path);
+    if (FAILED(factory->CreateDecoderFromFilename(reinterpret_cast<const wchar_t*>(native.utf16()), nullptr, GENERIC_READ,
+            WICDecodeMetadataCacheOnDemand, &decoder)))
+        return {};
+    ComPtr<IWICBitmapFrameDecode> frame;
+    UINT width = 0;
+    UINT height = 0;
+    WICPixelFormatGUID format {};
+    if (FAILED(decoder->GetFrame(0, &frame)) || FAILED(frame->GetSize(&width, &height)) || FAILED(frame->GetPixelFormat(&format))
+        || !::IsEqualGUID(format, GUID_WICPixelFormat64bppRGBAHalf))
+        return {};
+    std::vector<std::uint16_t> pixels(std::size_t(width) * height * 4);
+    if (FAILED(frame->CopyPixels(nullptr, width * 8, UINT(pixels.size() * 2), reinterpret_cast<BYTE*>(pixels.data()))))
+        return {};
+    return pixels;
+}
+
+} // namespace
 
 namespace {
 
@@ -64,6 +108,31 @@ class TestCapture : public QObject {
     Q_OBJECT
 
 private slots:
+    void longCaptureFrameStaysOnScreen()
+    {
+        for (const QRect screen : {QRect(0, 0, 2560, 1600), QRect(-1920, -1080, 1920, 1080)}) {
+            for (int thickness : {2, 3, 4}) {
+                const auto full = longCaptureBorder(screen, screen, thickness);
+                for (const QRect& strip : full) {
+                    QVERIFY(screen.contains(strip));
+                    QVERIFY(!strip.isEmpty());
+                }
+                QCOMPARE(full[0].top(), screen.top());
+                QCOMPARE(full[1].bottom(), screen.bottom());
+                QCOMPARE(full[2].left(), screen.left());
+                QCOMPARE(full[3].right(), screen.right());
+                const QRect inner = screen.adjusted(40, 40, -40, -40);
+                for (const QRect& strip : longCaptureBorder(inner, screen, thickness)) {
+                    QVERIFY(screen.contains(strip));
+                    QVERIFY(!inner.intersects(strip));
+                }
+                const QRect corner(screen.topLeft(), QSize(600, 440));
+                for (const QRect& strip : longCaptureBorder(corner, screen, thickness))
+                    QVERIFY(screen.contains(strip));
+            }
+        }
+    }
+
     void regionRecordingAction()
     {
         Rig rig;
@@ -453,6 +522,73 @@ private slots:
         QVERIFY(qRed(dimmer.pixel(2, 0)) < 255);
     }
 
+    // GitHub #133: the HDR file beside a saved picture. Every half comes back
+    // from floatToHalf as it was; the frame is kept and cut as captured; what
+    // was drawn over it goes in at the SDR white level; and the JPEG XR holds
+    // the half floats as they are, above 1.0 too (12.5 = 1000 nits).
+    void hdrFileKeepsTheFrame()
+    {
+        for (std::uint32_t h = 0; h < 0x10000; ++h) {
+            if ((h & 0x7C00) == 0x7C00 && (h & 0x3FF))
+                continue; // NaN
+            QCOMPARE(floatToHalf(halfToFloat(std::uint16_t(h))), std::uint16_t(h));
+        }
+        QCOMPARE(floatToHalf(1e6f), std::uint16_t(0x7C00)); // beyond the largest half: infinity
+        QCOMPARE(floatToHalf(65519.0f), std::uint16_t(0x7BFF)); // rounds down to 65504
+        QCOMPARE(decodeSrgb(0), 0.0f);
+        QCOMPARE(decodeSrgb(255), 1.0f);
+        for (int v : {1, 50, 188, 254})
+            QCOMPARE(int(encodeSrgb(decodeSrgb(std::uint8_t(v)))), v);
+
+        // 5x3, rows padded to 8 pixels, each pixel's red its index / 10 (up to 1.4), the rest of row 0 HDR.
+        constexpr int kW = 5;
+        constexpr int kH = 3;
+        constexpr int kPitch = 8 * 4;
+        std::vector<std::uint16_t> source(std::size_t(kPitch) * kH, 0xFFFF);
+        for (int y = 0; y < kH; ++y)
+            for (int x = 0; x < kW; ++x) {
+                std::uint16_t* p = &source[std::size_t(y) * kPitch + std::size_t(x) * 4];
+                p[0] = floatToHalf((y * kW + x) / 10.0f);
+                p[1] = floatToHalf(y == 0 ? 12.5f : 0.25f);
+                p[2] = floatToHalf(0.5f);
+                p[3] = floatToHalf(1.0f);
+            }
+        const HdrPixels frame = HdrPixels::fromScRgb(source.data(), kW, kH, kPitch * 2, 240.0);
+        QCOMPARE(frame.width, kW);
+        QCOMPARE(frame.rgba.size(), std::size_t(kW * kH * 4));
+        QCOMPARE(frame.rgba[(1 * kW + 2) * 4], floatToHalf(0.7f));
+        HdrPixels cut = frame.copy(QRect(1, 1, 3, 2));
+        QCOMPARE(QSize(cut.width, cut.height), QSize(3, 2));
+        QCOMPARE(cut.sdrWhiteNits, 240.0);
+        QCOMPARE(cut.rgba[0], floatToHalf(0.6f)); // (1, 1)
+        QCOMPARE(cut.rgba[(1 * 3 + 2) * 4], floatToHalf(1.3f)); // (3, 2)
+        QVERIFY(frame.copy(QRect(3, 0, 3, 1)).isNull()); // not inside
+        QVERIFY(frame.copy(QRect()).isNull());
+
+        // Drawn over: one pixel changed, to 50% grey; at 240 nits SDR white that is 3x its linear value.
+        QImage plain(3, 2, QImage::Format_RGB32);
+        plain.fill(qRgb(10, 20, 30));
+        QImage drawn = plain.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+        drawn.setPixel(1, 0, qRgb(188, 188, 188));
+        const std::vector<std::uint16_t> before = cut.rgba;
+        paintSdrOver(cut, plain, drawn);
+        for (std::size_t i = 0; i < cut.rgba.size(); ++i) {
+            if (i / 4 != 1)
+                QCOMPARE(cut.rgba[i], before[i]);
+        }
+        QVERIFY(std::abs(halfToFloat(cut.rgba[4]) - decodeSrgb(188) * 3.0f) < 0.005f);
+        QCOMPARE(cut.rgba[7], floatToHalf(1.0f));
+
+        // The JPEG XR, read back through WIC.
+        QTemporaryDir dir;
+        const QString jxr = dir.filePath(u"frame.jxr"_s);
+        QVERIFY(writeJxr(jxr, frame));
+        QCOMPARE(readJxr(jxr), frame.rgba);
+        QVERIFY(!writeJxr(dir.filePath(u"none/there.jxr"_s), frame)); // no folder: no file, no crash
+        QVERIFY(!writeJxr(dir.filePath(u"empty.jxr"_s), HdrPixels()));
+        QVERIFY(!QFileInfo::exists(dir.filePath(u"empty.jxr"_s)));
+    }
+
     // ---- PrtScn ----------------------------------------------------------
 
     void printScreenValueRoundTrips()
@@ -634,16 +770,33 @@ private slots:
         QCOMPARE(rig.screen.loupe().size(), QSize(CaptureScreen::kLoupeCells, CaptureScreen::kLoupeCells));
         QCOMPARE(rig.screen.loupe().pixel(CaptureScreen::kLoupeCells / 2, CaptureScreen::kLoupeCells / 2),
             qRgb(0xAB, 0xCD, 0xEF));
+        const qint64 loupe = rig.screen.loupe().cacheKey();
+        rig.screen.setColorFormat(ColorFormat::Rgb);
+        QCOMPARE(rig.screen.loupe().cacheKey(), loupe); // changing text does not upload the same pixels again
+        rig.screen.setColorFormat(ColorFormat::Hex);
         QVERIFY(rig.session.key(Qt::Key_C, Qt::NoModifier));
         QCOMPARE(colors.count(), 1);
         QCOMPARE(colors[0][0].toString(), u"#ABCDEF"_s);
-        QVERIFY(rig.screen.flash().contains(u"#ABCDEF"_s));
-        QCOMPARE(finished.count(), 0);
+        QCOMPARE(finished.count(), 1); // and the capture ends, as with Ctrl+C
+        QCOMPARE(finished[0][0].value<CaptureSession::Action>(), CaptureSession::Action::Cancel);
+        rig.begin();
         QVERIFY(!rig.session.key(Qt::Key_S, Qt::NoModifier)); // S alone: nothing
         rig.drag({100, 100}, {199, 199});
         QVERIFY(rig.session.key(Qt::Key_S, Qt::ControlModifier));
-        QCOMPARE(finished.count(), 1);
-        QCOMPARE(finished[0][0].value<CaptureSession::Action>(), CaptureSession::Action::Save);
+        QCOMPARE(finished.count(), 2);
+        QCOMPARE(finished[1][0].value<CaptureSession::Action>(), CaptureSession::Action::Save);
+    }
+
+    void magnifierCanBeTurnedOff()
+    {
+        Rig rig;
+        rig.begin();
+        rig.session.setMagnifier(false);
+        rig.session.pointerMove(0, {50, 50});
+        QVERIFY(!rig.screen.magnifierShown());
+        rig.session.setMagnifier(true);
+        rig.session.pointerMove(0, {60, 60});
+        QVERIFY(rig.screen.magnifierShown());
     }
 
     void magnifierOnlyOverASelectionMade()
@@ -1216,6 +1369,9 @@ private slots:
         QVERIFY(rig.session.key(Qt::Key_C, Qt::NoModifier));
         QCOMPARE(colors.count(), 1);
         QCOMPARE(colors[0][0].toString(), u"rgb(171, 205, 239)"_s);
+        rig.begin(); // C ended it; the format stays
+        rig.session.pointerMove(0, {10, 10});
+        QCOMPARE(rig.screen.colorText(), u"rgb(171, 205, 239)"_s);
         tapShift();
         QCOMPARE(rig.screen.colorText(), u"hsl(210, 68%, 80%)"_s);
         tapShift();
@@ -1384,6 +1540,112 @@ private slots:
             if (name == u"save")
                 QCOMPARE(finished[0][0].value<CaptureSession::Action>(), CaptureSession::Action::Save);
         }
+    }
+
+    // The diagnostics' bookkeeping (CaptureDiagnostics.h): a tick that comes
+    // after more than 150 ms is a stall of the time over 50; five are recorded
+    // one by one, the rest only counted; the longest is kept with where it was.
+    void diagStallWatch()
+    {
+        diag::StallWatch watch;
+        QVERIFY(!watch.note(50, 100, u"hover"_s));
+        QVERIFY(!watch.note(150, 150, u"hover"_s)); // at the line: not yet
+        const auto first = watch.note(375 + 50, 200, u"hover"_s);
+        QVERIFY(first);
+        QCOMPARE(first->ms, qint64(375));
+        QVERIFY(first->record);
+        for (int i = 1; i < diag::kMaxStallEvents; ++i)
+            QVERIFY(watch.note(200, 300 + i, u"dragging"_s)->record);
+        const auto sixth = watch.note(600, 900, u"selected"_s);
+        QVERIFY(sixth);
+        QVERIFY(!sixth->record);
+        QCOMPARE(sixth->ms, qint64(550));
+        QCOMPARE(watch.count(), 6);
+        QCOMPARE(watch.longestMs(), qint64(550));
+        QCOMPARE(watch.longestAtMs(), qint64(900));
+        QCOMPARE(watch.longestPhase(), u"selected"_s);
+        QVERIFY(watch.noteHidden());
+        QVERIFY(!watch.noteHidden()); // one event per capture, every tick counted
+        QCOMPARE(watch.summary()[u"hidden_ticks"_s].toInt(), 2);
+        watch.reset();
+        QCOMPARE(watch.count(), 0);
+        QCOMPARE(watch.hiddenTicks(), 0);
+    }
+
+    void diagSmallParts()
+    {
+        QVERIFY(!diag::cursorHidden(CURSOR_SHOWING));
+        QVERIFY(diag::cursorHidden(0));
+        QVERIFY(diag::cursorHidden(CURSOR_SHOWING | CURSOR_SUPPRESSED));
+        QCOMPARE(diag::fileNameOf(u"%SystemRoot%\\cursors\\cross_rl.cur"_s), u"cross_rl.cur"_s);
+        QCOMPARE(diag::fileNameOf({}), QString());
+        QVERIFY(diag::frameStats({}).isEmpty());
+        std::vector<qint64> frames;
+        for (int i = 1; i <= 100; ++i)
+            frames.push_back(i * 1'000'000);
+        const QJsonObject stats = diag::frameStats(frames);
+        QCOMPARE(stats[u"count"_s].toInt(), 100);
+        QCOMPARE(stats[u"max_ms"_s].toDouble(), 100.0);
+        QCOMPARE(stats[u"p95_ms"_s].toDouble(), 95.0);
+    }
+
+    // A monochrome cursor (no colour bitmap; the mask is twice as tall) and a
+    // colour one read back as such, with their hotspots.
+    void diagCursorKinds()
+    {
+        const auto make = [](bool colour) {
+            const int bytes = 32 * 32 / 8;
+            std::vector<BYTE> bits(static_cast<std::size_t>(bytes) * 2, 0xFF);
+            ICONINFO info {};
+            info.fIcon = FALSE;
+            info.xHotspot = 7;
+            info.yHotspot = 9;
+            info.hbmMask = ::CreateBitmap(32, colour ? 32 : 64, 1, 1, bits.data());
+            info.hbmColor = colour ? ::CreateBitmap(32, 32, 1, 32, nullptr) : nullptr;
+            const HICON cursor = ::CreateIconIndirect(&info);
+            ::DeleteObject(info.hbmMask);
+            if (info.hbmColor)
+                ::DeleteObject(info.hbmColor);
+            return cursor;
+        };
+        const HICON mono = make(false);
+        const HICON colour = make(true);
+        QVERIFY(mono && colour);
+        QCOMPARE(diag::describeBitmaps(mono), u"monochrome 32x32"_s);
+        QCOMPARE(diag::describeBitmaps(colour), u"colour 32bpp 32x32"_s);
+        const QJsonObject facts = diag::cursorFacts(colour, CURSOR_SHOWING);
+        QCOMPARE(facts[u"kind"_s].toString(), u"colour 32bpp"_s);
+        QCOMPARE(facts[u"size"_s].toString(), u"32x32"_s);
+        QCOMPARE(facts[u"hotspot_x"_s].toInt(), 7);
+        QCOMPARE(facts[u"hotspot_y"_s].toInt(), 9);
+        QCOMPARE(facts[u"flags"_s].toInt(), 1);
+        QCOMPARE(diag::cursorFacts(nullptr, 0)[u"kind"_s].toString(), u"none"_s);
+        ::DestroyIcon(mono);
+        ::DestroyIcon(colour);
+
+        // The system's own pointers and the settings are read without a fuss.
+        const QJsonObject pointer = diag::pointerFacts();
+        QVERIFY(pointer[u"cursor_base_size"_s].toInt() >= 16);
+        QVERIFY(!pointer[u"system_cross"_s].toString().isEmpty());
+        QVERIFY(!pointer[u"crosshair_file"_s].toString().contains(u'\\'));
+        QVERIFY(diag::secondsSinceProcessStart() >= 0);
+    }
+
+    void diagSessionPhase()
+    {
+        Rig rig;
+        rig.begin();
+        QCOMPARE(rig.session.phaseName(), u"hover"_s);
+        QCOMPARE(rig.session.msSinceRelease(), qint64(-1));
+        rig.session.pointerPress(0, {100, 100}, Qt::LeftButton);
+        rig.session.pointerMove(0, {199, 199});
+        QCOMPARE(rig.session.phaseName(), u"dragging"_s);
+        QCOMPARE(rig.session.msSinceRelease(), qint64(-1));
+        rig.session.pointerRelease(0, {199, 199}, Qt::LeftButton);
+        QCOMPARE(rig.session.phaseName(), u"selected"_s);
+        QVERIFY(rig.session.msSinceRelease() >= 0);
+        rig.begin();
+        QCOMPARE(rig.session.msSinceRelease(), qint64(-1));
     }
 };
 

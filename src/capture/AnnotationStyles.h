@@ -31,6 +31,8 @@ const QList<ToolInfo>& tools();
 QString toolName(Kind kind);
 // The panel's eight colours.
 const QList<QRgb>& palette();
+// The widths of a text's outline, logical px (the panel adds "none").
+QList<int> strokePresets();
 // The panel's sizes for a tool, logical px: widths, font sizes or cells.
 QList<int> sizePresets(Kind kind);
 // The brush redaction's widths, logical px.
@@ -42,7 +44,7 @@ int toLogicalPx(int image, qreal dpr);
 
 // What each tool remembers, kept in [Capture] AnnotateStyles as JSON:
 // {"version": 1, "rect": {"color": "#E53935", "width": 4, "fill": "none"},
-//  "text": {"color": "#E53935", "size": 18, "bold": false, "boxed": false},
+//  "text": {"color": "#E53935", "size": 18, "bold": false, "boxed": false, "stroke": 2, "strokeColor": "#FFFFFF"},
 //  "redact": {"mode": "mosaic", "cell": 12, "shape": "brush", "width": 24, "color": "#212121"}, ...}
 // Only tools changed from their defaults are written, so a later change of
 // a default reaches everyone who never changed that tool.
@@ -56,6 +58,8 @@ public:
         int size = 18;
         bool bold = false;
         bool boxed = false;
+        int stroke = 0; // Text: the outline's width, logical px (0: none)
+        QRgb strokeColor = 0; // Text: the outline's colour; 0: automatic
         RedactMode mode = RedactMode::Mosaic;
         RedactShape shape = RedactShape::Box; // Redact: along a box or along a stroke
         int cell = 12;

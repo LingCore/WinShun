@@ -1,5 +1,8 @@
 #pragma once
 
+#include "Keycaps.h"
+
+#include <QFont>
 #include <QRect>
 #include <QString>
 
@@ -10,6 +13,7 @@
 namespace ws::capture::recording {
 
 class ClickStream;
+class KeyStream;
 
 // All times are 100 ns, as used by Media Foundation and WASAPI.
 class Timeline {
@@ -35,6 +39,13 @@ struct Options {
     bool clickHighlights = false;
     double pointerScale = 1;
     std::shared_ptr<ClickStream> clickInput;
+    // GitHub #98: the keys and mouse buttons pressed, as keycap rows in a
+    // corner (keys.mode Off and keys.mouse off: none). keyInput is their
+    // hook's output (KeyStream.h).
+    keycaps::Config keys;
+    std::shared_ptr<KeyStream> keyInput;
+    QFont keyFont; // Win顺's
+    double outputScale = 1; // a GIF scaled down: its size against the region's
     bool software = false; // the probe's deterministic software-encoder path
 };
 
@@ -64,7 +75,9 @@ struct Result : Progress {
 Result record(const Options& options, Control& control, const std::function<void(const Progress&)>& progress);
 
 // Generated desktop-like pixels, through the same GPU conversion, MP4
-// writer and timestamp handling. No desktop capture or audio devices.
+// writer and timestamp handling. No desktop capture or audio devices. With
+// keycaps on, "Ctrl + S" (or a click) at 100 ms. `control` pauses it.
 Result sample(const Options& options, int milliseconds, const std::function<void(const Progress&)>& progress = {});
+Result sample(const Options& options, int milliseconds, Control& control, const std::function<void(const Progress&)>& progress = {});
 
 } // namespace ws::capture::recording

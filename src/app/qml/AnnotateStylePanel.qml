@@ -46,6 +46,12 @@ Rectangle {
     readonly property bool showFill: p.fill !== undefined
     readonly property bool showSizes: p.sizes !== undefined
     readonly property bool showText: p.bold !== undefined
+    // The text's outline: not for words on a box. While the colour button
+    // beside it is on, the colour row below picks the outline's colour.
+    readonly property bool showStroke: p.stroke !== undefined && p.boxed !== true
+    readonly property bool strokeOn: showStroke && p.stroke > 0
+    property bool strokeMode: false
+    readonly property bool strokeColors: strokeMode && strokeOn
     readonly property bool showCells: p.cells !== undefined && p.mode !== "solid" && p.mode !== "smooth"
     // The redaction's shape (box, or along a stroke) is the tool's, so it is not offered for a selected object.
     readonly property bool showShape: redact && p.shape !== undefined && !showObject
@@ -61,6 +67,9 @@ Rectangle {
     }
 
     property PanelButton tipItem: null
+
+    onStrokeOnChanged: if (!strokeOn) strokeMode = false
+    onKindChanged: strokeMode = false
 
     function snap(v) { return Math.round(v * dpr) / dpr }
     function change(map) { if (annot) annot.setPanel(map) }
@@ -173,6 +182,13 @@ Rectangle {
         }
 
         Separator { visible: panel.redact && panel.showColors }
+        WordButton { // the outline's colour is the automatic one: opposite the text's
+            visible: panel.showColors && panel.strokeColors
+            words: qsTr("自动")
+            checked: panel.p.strokeAuto === true
+            tip: qsTr("描边颜色自动：深色字配白边，浅色字配深边")
+            onClicked: panel.change({strokeColor: "auto"})
+        }
         Row { // the eight colours
             visible: panel.showColors
             Repeater {
@@ -180,9 +196,10 @@ Rectangle {
                 delegate: PanelButton {
                     id: swatch
                     required property string modelData
-                    readonly property bool chosen: panel.same(panel.p.color, modelData)
+                    readonly property bool chosen: panel.strokeColors ? (panel.p.strokeAuto !== true && panel.same(panel.p.strokeColor, modelData))
+                                                                      : panel.same(panel.p.color, modelData)
                     tip: modelData
-                    onClicked: panel.change({color: modelData})
+                    onClicked: panel.change(panel.strokeColors ? {strokeColor: modelData} : {color: modelData})
 
                     Rectangle {
                         x: panel.snap((panel.cellWidth - panel.swatchSize) / 2)
@@ -207,7 +224,7 @@ Rectangle {
         }
 
         Row { // a colour taken with the eyedropper is not among the eight: shown, ticked, after them
-            visible: panel.showColors && !panel.inPalette
+            visible: panel.showColors && !panel.inPalette && !panel.strokeColors
             PanelButton {
                 id: customSwatch
                 tip: panel.p.color !== undefined ? panel.p.color : ""
@@ -234,7 +251,7 @@ Rectangle {
         }
         PanelButton { // the eyedropper (I): the next click on the picture takes its colour
             id: pickerButton
-            visible: panel.showColors
+            visible: panel.showColors && !panel.strokeColors
             checked: panel.annot !== null && panel.annot.picking
             tip: qsTr("吸管：点图上的一点，取它的颜色")
             tipKeys: "I"
@@ -367,6 +384,41 @@ Rectangle {
                         font.pixelSize: panel.boxLetter
                         font.weight: Font.DemiBold
                     }
+                }
+            }
+        }
+
+        Separator { visible: panel.showStroke }
+        Row { // the outline: none, thin, medium, thick; then its colour
+            visible: panel.showStroke
+            WordLabel { words: qsTr("描边") }
+            Repeater {
+                model: [[0, qsTr("无边"), qsTr("文字不描边")]].concat(panel.p.strokes !== undefined
+                    ? panel.p.strokes.map((w, i) => [w, [qsTr("细"), qsTr("中"), qsTr("粗")][Math.min(i, 2)], qsTr("描边 %1").arg(w)]) : [])
+                delegate: WordButton {
+                    required property var modelData
+                    words: modelData[1]
+                    checked: panel.p.stroke === modelData[0]
+                    tip: modelData[2]
+                    onClicked: panel.change({stroke: modelData[0]})
+                }
+            }
+            PanelButton {
+                id: strokeColorButton
+                visible: panel.strokeOn
+                checked: panel.strokeMode
+                tip: qsTr("描边颜色：开启后，色块改为选描边的颜色")
+                onClicked: panel.strokeMode = !panel.strokeMode
+
+                Rectangle {
+                    x: panel.snap((panel.cellWidth - panel.swatchSize) / 2)
+                    y: panel.snap((panel.controlHeight - panel.swatchSize) / 2)
+                    width: panel.swatchSize
+                    height: panel.swatchSize
+                    radius: Theme.smallControlRadius
+                    color: panel.p.strokeColor !== undefined ? panel.p.strokeColor : "transparent"
+                    border.width: 1
+                    border.color: strokeColorButton.checked ? Theme.accentText : Theme.windowEdge
                 }
             }
         }

@@ -4,12 +4,14 @@
 #include "Geometry.h"
 #include "PaddleOcr.h"
 #include "SmartRedact.h"
+#include "CaptureOcr.h"
 
 #include <QCoreApplication>
 #include <QFont>
 #include <QFontMetricsF>
 #include <QPainter>
 #include <QTest>
+#include <QThread>
 
 #include <cmath>
 
@@ -48,6 +50,44 @@ class TestOcr : public QObject {
 
 private slots:
     void installed() { QVERIFY(ws::PaddleOcr::installed(QCoreApplication::applicationDirPath())); }
+
+    void backgroundScanCropsAndReturnsGray()
+    {
+        using namespace ws::capture;
+        const QImage words = drawn({u"13812345678"_s}, 24, Qt::black, Qt::white);
+        QImage frozen(words.width() + 160, words.height() + 100, QImage::Format_RGB32);
+        frozen.fill(Qt::red);
+        const QRect region(QPoint(70, 40), words.size());
+        { QPainter painter(&frozen); painter.drawImage(region.topLeft(), words); }
+        CaptureOcr reader;
+        bool done = false;
+        RedactScan result;
+        reader.scan(frozen, region, 1.5, [&](RedactScan scan) {
+            QCOMPARE(QThread::currentThread(), reader.thread());
+            result = std::move(scan);
+            done = true;
+        });
+        frozen.fill(Qt::blue); // the queued job owns a snapshot, even if its caller edits the image
+        QTRY_VERIFY_WITH_TIMEOUT(done, 15000);
+        QCOMPARE(result.gray, words.convertToFormat(QImage::Format_Grayscale8));
+        QVERIFY(!result.lines.isEmpty());
+        QVERIFY(result.lines.first().text.contains(u"13812345678"_s));
+        for (const RedactLine& line : result.lines) {
+            QVERIFY(words.rect().contains(line.quad.boundingRect().toAlignedRect()));
+        }
+        done = false;
+        reader.scan(words, 1.5, [&](QList<RedactLine> lines) {
+            QVERIFY(!lines.isEmpty());
+            QCOMPARE(lines.first().text, result.lines.first().text); // the pin menu's existing entry still works
+            done = true;
+        });
+        QTRY_VERIFY_WITH_TIMEOUT(done, 15000);
+        done = false;
+        reader.scan(words, words.rect(), 1.5, [&](RedactScan) { done = true; });
+        reader.cancelScan();
+        QTest::qWait(500);
+        QVERIFY(!done);
+    }
 
     // Small UI text, Chinese with English and decimals, one line each.
     void screenshotText()
