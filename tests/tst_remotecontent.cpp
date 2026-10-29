@@ -176,6 +176,16 @@ ShareIndexer::Status settledStatus(const ShareIndexer& shares)
     return s;
 }
 
+// A document of an earlier run, for an entry the index has not got: an
+// indexer made with {1h, 1h, 1h, 0ms} then waits its hour before a first
+// pass. On a first run it passes at once, and with nothing to read that pass
+// tidies the index, holding the shares' threads (mayReadRemote) meanwhile:
+// a slice then comes back in 5 s instead.
+bool notFirstRun(ContentIndex& content)
+{
+    return content.add(100000, {}, true, 1, 0);
+}
+
 // One share at `path`, read once and tried again soon (Options::retry, short here).
 ShareIndexer::Options oneShare(const std::wstring& path)
 {
@@ -848,6 +858,7 @@ private slots:
             listed(c, u"sub/c.txt"_s);
         }
         auto content = std::make_shared<ContentIndex>(tmp.filePath(u"content"_s));
+        QVERIFY(notFirstRun(*content)); // so no pass of the indexer's own
         bool followed = true; // the share answers, and no pass runs
         ContentIndexer::Source source;
         source.index = [&] { return index; };
@@ -1036,6 +1047,7 @@ private slots:
         };
         listed();
         auto content = std::make_shared<ContentIndex>(tmp.filePath(u"content"_s));
+        QVERIFY(notFirstRun(*content)); // so no pass of the indexer's own
         ContentIndexer::Source source;
         source.index = [&] { return index; };
         source.volumes = [&] {
@@ -1507,6 +1519,7 @@ private slots:
         }
         listed();
         auto content = std::make_shared<ContentIndex>(tmp.filePath(u"content"_s));
+        QVERIFY(notFirstRun(*content)); // so no pass of the indexer's own
         ContentIndexer::Source source;
         source.index = [&] { return index; };
         source.volumes = [&] {
@@ -1832,6 +1845,7 @@ private slots:
         QTemporaryDir tmp;
         QVERIFY(tmp.isValid());
         auto content = std::make_shared<ContentIndex>(tmp.filePath(u"content"_s));
+        QVERIFY(notFirstRun(*content)); // so no pass of the indexer's own
         ContentIndexer::Source source;
         source.index = [&] { return files; };
         source.volumes = [&] {
