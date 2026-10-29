@@ -17,6 +17,7 @@
 #include "SearchTypes.h"
 
 #include <QHash>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QObject>
 #include <QString>
@@ -100,8 +101,12 @@ public:
     // `item`: as the plugin gave it (itemToJson), sent back as it came.
     void action(std::uint64_t requestId, const QString& pluginId, const QString& commandId, const QString& actionId,
         const Item& item, const QString& text);
+    // `files`: a `files` trigger chosen on the result menu (Catalog::
+    // fileCommands; GitHub #113): the action "files" with these paths, no
+    // item (resident: params trigger "files" and files; once: WS_TRIGGER and
+    // WS_FILES).
     void action(std::uint64_t requestId, const QString& pluginId, const QString& commandId, const QString& actionId,
-        const QJsonObject& item, const QString& text);
+        const QJsonObject& item, const QString& text, const QStringList& files = {});
     // A command asked from outside the launcher (an AI's tool call through
     // AiBridge, the plugin design §6.2): one query, answered by `reply`
     // once, on this thread. Unlike query(), it cancels nothing of the
@@ -142,6 +147,17 @@ public:
     // Tests: the backoff delays multiplied by this (1 = the real ones).
     void setBackoffScale(double scale) { m_backoffScale = scale; }
     static int backoffDelayMs(int step); // 1000, 5000, 30000, 30000 …
+    static constexpr int kToastGapMs = 2000;
+    // A final answer's `rerun` (seconds): the same query is sent again then,
+    // while it is still the launcher's (no new key, not hidden), its rows
+    // merged in place. Within these bounds.
+    static constexpr double kRerunMin = 0.5;
+    static constexpr double kRerunMax = 60;
+    // A resident plugin's winshun/refresh (what the launcher shows changed by
+    // itself, GitHub #113): while its `rerun` is armed, the query is sent again
+    // now, though not sooner than this after the last one went out (a plugin
+    // saying it again and again gets one query, not a storm).
+    static constexpr int kRefreshGapMs = 100;
 
 signals:
     // A plugin is answering `queryId` (zero-code: at once, within query()).
@@ -155,7 +171,21 @@ signals:
     void queryFailed(std::uint64_t queryId, const QString& pluginId, const QString& why); // timed out, crashed, errored
     void progress(std::uint64_t queryId, const QString& pluginId, const QString& text);
     void notice(const QString& pluginId, const QString& text); // winshun/notify: for the footer
-    void actionDone(std::uint64_t requestId, const ws::plugin::Effects& effects, bool ok, const QString& error);
+    // winshun/notify with "toast" from a plugin with the "notifications"
+    // permission: a system notification. At most one per plugin every
+    // kToastGapMs (a newer one waiting replaces the one before it); the
+    // title begins with the plugin's name ("局域网传输：…"; one the user put
+    // in "插件「…」：…", its id when the name shows nothing: ToastPolicy),
+    // title and text cut to 63 and 200 characters, without the characters
+    // that do not show or turn words around; no text, the title is the text. `click`: the effects of a click, only those
+    // that cannot surprise, one of each (toastClick: its own list, a local
+    // file or folder, a copy with clipboard:write; empty: nothing to do),
+    // still to be held to the plugin's permissions like an action's
+    // (OpenPolicy).
+    void toastRequested(const QString& pluginId, const QString& title, const QString& text, const ws::plugin::Effects& click);
+    // `pluginId`: whose action it was, so the launcher can hold a plugin-supplied
+    // `open` effect to that plugin's permissions (OpenPolicy), whatever asked.
+    void actionDone(std::uint64_t requestId, const QString& pluginId, const ws::plugin::Effects& effects, bool ok, const QString& error);
     void processStarted(const QString& pluginId, quint32 pid);
     void processExited(const QString& pluginId, quint32 code);
     void restartScheduled(const QString& pluginId, int delayMs); // the real delay
@@ -195,7 +225,12 @@ private:
     void crashed(Plugin& p, const QString& why);
     void evictIfCrowded(const QString& starting);
     void dropInflight(Plugin& p, bool tellPlugin);
+    void stopRerun(Plugin& p);
+    void onRefresh(const QString& id);
     void onToolCall(const QString& id, const QJsonValue& requestId, const QString& tool, const QJsonObject& arguments);
+    void onToast(const QString& id, const QString& title, const QString& text, const QJsonArray& click);
+    void showToast(Plugin& p);
+    bool opensOwnList(const QString& id, const QString& query) const; // a toast click's setQuery (ToastPolicy)
 
     // Once plugins.
     void launchOnce(Plugin& p, const Pending& q);

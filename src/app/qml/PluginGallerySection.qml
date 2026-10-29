@@ -16,6 +16,7 @@ SettingsSection {
 
     signal showInstalled(string pluginId) // 查看: its card on the 已安装 tab
     signal showDeveloper()
+    signal showProxySettings() // 设置网络代理: the row on 高级
 
     note: qsTr("Win顺 插件库里的插件，下载后先核对文件再安装。装好的插件默认关着，打开时会先列出它要的权限。")
 
@@ -56,6 +57,11 @@ SettingsSection {
                 color: Theme.danger
                 font.pixelSize: Theme.fontCaption
                 wrapMode: Text.Wrap
+            },
+            FlatButton { // GitHub could not be reached: the way round it (GitHub #84)
+                visible: gallerySection.gallery.problemIsConnection
+                text: qsTr("设置网络代理…")
+                onClicked: gallerySection.showProxySettings()
             },
             InputBox {
                 id: filterBox

@@ -44,11 +44,14 @@ enum class Permission : std::uint32_t {
     WinshunHistory = 1u << 8,
     FilesRead = 1u << 9,
     WinshunContent = 1u << 10,
+    Notifications = 1u << 11, // winshun/notify with "toast": a system notification (Host gates it)
+    NetworkListen = 1u << 12, // it opens ports for devices nearby (a declaration)
 };
 
 struct Permissions {
     std::uint32_t flags = 0;
     QStringList readPaths; // files:read: what it says it reads (a declaration)
+    QStringList listens; // network:listen: the ports it says it opens ("TCP 53317-53320")
     bool has(Permission p) const noexcept { return (flags & static_cast<std::uint32_t>(p)) != 0; }
     QStringList names() const; // "processes", "clipboard:read" …
     friend bool operator==(const Permissions&, const Permissions&) = default;
@@ -90,6 +93,7 @@ struct Trigger {
     QString fileKind; // Files: file | folder | any
     QStringList extensions;
     int maxFiles = 20;
+    Text title; // Files: the result menu's entry ("用局域网发送…"); empty: the command's title
     friend bool operator==(const Trigger&, const Trigger&) = default;
 };
 

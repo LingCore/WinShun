@@ -242,10 +242,12 @@ SettingsSection {
                     buttonSlot: builtinRow.buttonSlot
                     glyph: String.fromCharCode(0xE765) // KeyboardClassic
                     title: builtinRow.explorerTypingTitle
-                    description: qsTr("文件列表有焦点时直接打字，就在这个文件夹里搜，代替资源管理器的“按首字母跳到文件”")
+                    description: qsTr("文件列表有焦点时直接打字就用 Win顺 搜，代替资源管理器的“按首字母跳到文件”")
                     checked: pluginsSection.editor.explorerTyping
+                    linkText: qsTr("更多设置") // to its switch; where it searches first (GitHub #110) is just below
                     marked: builtinRow.explorerTypingFound
                     onToggled: (on) => pluginsSection.editor.explorerTyping = on
+                    onLinkActivated: pluginsSection.settingRequested("explorerTyping")
                 }
             }
             Loader {
@@ -271,7 +273,7 @@ SettingsSection {
                     glyph: String.fromCharCode(0xE734) // FavoriteStar
                     title: builtinRow.dropPieTitle
                     description: pluginsSection.editor.isElevated ? qsTr("Win顺 以管理员身份运行时用不了")
-                                 : qsTr("按住文件时按 Esc 下面那个键，收藏的文件夹围着指针弹出，朝哪个拖就放进哪个")
+                                 : qsTr("按住文件时按数字 1 左边那个键，收藏的文件夹围着指针弹出，朝哪个拖就放进哪个")
                     checked: pluginsSection.editor.dropPie && !pluginsSection.editor.isElevated
                     available: !pluginsSection.editor.isElevated
                     marked: builtinRow.dropPieFound

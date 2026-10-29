@@ -42,6 +42,9 @@ struct Item {
     QString id;
     QString title;
     QString subtitle;
+    // The second line while the keyboard is on another row ("按 ↑ 选中，再
+    // Enter 接收" on a row that came in above it); empty: `subtitle` always.
+    QString subtitleAway;
     std::uint32_t modified = 0; // Unix seconds (0: not supplied)
     std::uint32_t created = 0;
     qint64 size = -1; // bytes (-1: not supplied)

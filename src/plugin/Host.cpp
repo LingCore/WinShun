@@ -1,13 +1,16 @@
 #include "Host.h"
 
+#include "OpenPolicy.h"
 #include "Programs.h"
 #include "Session.h"
+#include "ToastPolicy.h"
 #include "ZeroCode.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDeadlineTimer>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -17,6 +20,7 @@
 #include <sddl.h>
 
 #include <algorithm>
+#include <utility>
 #include <vector>
 
 using namespace Qt::StringLiterals;
@@ -41,6 +45,18 @@ const char* kindName(Match::Kind kind)
     return "keyword";
 }
 
+// `text` cut to `most` characters with "…", never inside a surrogate pair.
+QString capped(QString text, qsizetype most)
+{
+    text = text.trimmed();
+    if (text.size() <= most)
+        return text;
+    qsizetype cut = most - 1;
+    if (cut > 0 && text.at(cut - 1).isHighSurrogate())
+        --cut;
+    return text.left(cut) + u'…';
+}
+
 // Which permission a tool of Win顺's needs (the plugin design, §6.3).
 std::optional<Permission> permissionFor(const QString& tool)
 {
@@ -56,6 +72,13 @@ std::optional<Permission> permissionFor(const QString& tool)
     if (tool == u"index_status")
         return std::nullopt;
     return Permission::WinshunHistory; // unknown names: the strictest, and the bridge says "unknown" anyway
+}
+
+// Why a plugin that is not enabled() does nothing: off, or a newer version
+// waiting for the user's OK on more permissions (Catalog::setConfirmed).
+QString offText(const Catalog& catalog, const QString& id)
+{
+    return catalog.awaitingConsent(id).isEmpty() ? u"插件已停用"_s : u"插件的新版本要更多权限，要先在设置里同意"_s;
 }
 
 } // namespace
@@ -182,6 +205,7 @@ struct Host::Pending {
     std::uint64_t requestId = 0;
     QString actionId;
     QJsonObject item;
+    QStringList files; // a `files` trigger's action: the paths chosen
     std::uint64_t commandCall = 0; // a callCommand() query: its answer goes to the call, not the signals
 };
 
@@ -195,6 +219,7 @@ struct Host::OnceRun {
     QTimer timer; // the query's timeout
     bool discarded = false; // superseded: whatever it says is dropped
     quint32 pid = 0;
+    Pending query; // Query: what it was started for (a `rerun` starts it again)
 };
 
 // A command asked from outside the launcher (callCommand): one query with
@@ -247,6 +272,28 @@ struct Host::Plugin {
     // JSON-RPC id, for the time to its response.
     std::map<std::uint64_t, qint64> sentAt;
     bool restartWhenGone = false; // reload(): start again once the process has left
+    // A final answer's `rerun`: the query, sent again when `rerun` fires
+    // while it is still the launcher's (cancel, cancelAll and the process
+    // leaving forget it).
+    std::optional<Pending> lastQuery;
+    QTimer rerun;
+    std::uint64_t rerunQuery = 0; // the query whose answer asked for `rerun`, every rerunMs
+    int rerunMs = 0;
+    // winshun/refresh while that query was in flight: its answer may predate
+    // the change, so it is asked again right after that answer (onRefresh).
+    bool refreshAfterReply = false;
+    QElapsedTimer lastQuerySent; // for kRefreshGapMs
+    // Toasts: one shown every kToastGapMs at most; the newest of those that
+    // came meanwhile waits for `toastGap`.
+    struct Toast {
+        QString title;
+        QString text;
+        QJsonArray click;
+    };
+    std::optional<Toast> toastWaiting;
+    QTimer toastGap;
+    QElapsedTimer lastToast; // monotonic: a clock set back must not hold toasts back
+    bool toastRefusedLogged = false;
 };
 
 Host::Host(Options options, QObject* parent)
@@ -329,7 +376,7 @@ void Host::stop(const QString& id)
             else if (run->kind == RunKind::Query)
                 emit queryFailed(run->queryId, id, u"插件已停止"_s);
             else
-                emit actionDone(run->requestId, {}, false, u"插件已停止"_s);
+                emit actionDone(run->requestId, id, {}, false, u"插件已停止"_s);
             if (m_runner)
                 m_runner->stop(instance);
         }
@@ -431,8 +478,19 @@ Host::Plugin& Host::plugin(const QString& id)
         p->debounce.setSingleShot(true);
         p->backoff.setSingleShot(true);
         p->idle.setSingleShot(true);
+        p->rerun.setSingleShot(true);
+        p->toastGap.setSingleShot(true);
         Plugin* raw = p.get();
         connect(&raw->queryTimer, &QTimer::timeout, this, [this, id] { onQueryTimeout(id); });
+        connect(&raw->rerun, &QTimer::timeout, this, [this, raw] {
+            // Still the launcher's (cancel() and cancelAll() forget it), and
+            // nothing else asked meanwhile: the same query again.
+            if (raw->lastQuery && raw->phase == Plugin::Phase::Ready && raw->session && !raw->inflight) {
+                const Pending q = *raw->lastQuery;
+                sendQuery(*raw, q);
+            }
+        });
+        connect(&raw->toastGap, &QTimer::timeout, this, [this, raw] { showToast(*raw); });
         connect(&raw->debounce, &QTimer::timeout, this, [this, raw] {
             if (raw->waiting) {
                 const Pending q = *raw->waiting;
@@ -614,7 +672,7 @@ void Host::onRunnerExited()
                 p->queryTimer.stop();
             }
             for (const auto& [requestId, rpcId] : p->actions)
-                emit actionDone(requestId, {}, false, u"插件进程退出了"_s);
+                emit actionDone(requestId, id, {}, false, u"插件进程退出了"_s);
             p->actions.clear();
             if (!asked)
                 crashed(*p, u"runner 退出"_s);
@@ -629,7 +687,7 @@ void Host::onRunnerExited()
             else if (run->kind == RunKind::Query)
                 emit queryFailed(run->queryId, id, u"插件进程退出了"_s);
             else
-                emit actionDone(run->requestId, {}, false, u"插件进程退出了"_s);
+                emit actionDone(run->requestId, id, {}, false, u"插件进程退出了"_s);
         }
         p->runs.clear();
     }
@@ -699,11 +757,44 @@ void Host::dropInflight(Plugin& p, bool tellPlugin)
         p.session->forget(p.inflight->requestId);
     p.inflight.reset();
     p.queryTimer.stop();
+    p.refreshAfterReply = false;
+}
+
+void Host::stopRerun(Plugin& p)
+{
+    p.rerun.stop();
+    p.lastQuery.reset();
+    p.refreshAfterReply = false;
+}
+
+// winshun/refresh: the rows the launcher shows changed by themselves (传: a
+// request came). Only a list still shown whose last answer asked for
+// `rerun`, as the rerun timer would send it; else nothing.
+void Host::onRefresh(const QString& id)
+{
+    Plugin& p = plugin(id);
+    if (p.phase != Plugin::Phase::Ready || !p.session || !p.lastQuery)
+        return;
+    if (p.inflight) {
+        // Its answer may be from before the change (a key typed just then,
+        // or the first query): onQueryReply asks again if it wants `rerun`.
+        if (p.inflight->queryId == p.lastQuery->queryId)
+            p.refreshAfterReply = true;
+        return;
+    }
+    if (p.rerunMs <= 0 || p.rerunQuery != p.lastQuery->queryId || !p.rerun.isActive())
+        return;
+    const qint64 since = p.lastQuerySent.isValid() ? p.lastQuerySent.elapsed() : kRefreshGapMs;
+    const int wait = static_cast<int>(std::max<qint64>(0, kRefreshGapMs - since));
+    if (p.rerun.remainingTime() > wait) // a burst of them: the first one decides
+        p.rerun.start(wait);
 }
 
 void Host::cancel(std::uint64_t queryId)
 {
     for (auto& [id, p] : m_plugins) {
+        if (p->lastQuery && p->lastQuery->queryId == queryId)
+            stopRerun(*p);
         if (p->inflight && p->inflight->queryId == queryId)
             dropInflight(*p, true);
         if (p->pending && p->pending->queryId == queryId)
@@ -726,6 +817,7 @@ void Host::cancel(std::uint64_t queryId)
 void Host::cancelAll()
 {
     for (auto& [id, p] : m_plugins) {
+        stopRerun(*p);
         dropInflight(*p, true);
         p->pending.reset();
         if (p->waiting) {
@@ -768,13 +860,15 @@ Runner::Spec Host::specFor(Plugin& p, const Entry& e, RunKind kind, const Pendin
         spec.env.push_back({u"WS_TEXT"_s, q->raw});
         spec.env.push_back({u"WS_QUERY"_s, q->text});
         spec.env.push_back({u"WS_FILTERS"_s, QString::fromUtf8(QJsonDocument(q->filters).toJson(QJsonDocument::Compact))});
-        spec.env.push_back({u"WS_TRIGGER"_s, QString::fromLatin1(kindName(q->kind))});
+        spec.env.push_back({u"WS_TRIGGER"_s, q->files.isEmpty() ? QString::fromLatin1(kindName(q->kind)) : u"files"_s});
         if (!q->keyword.isEmpty())
             spec.env.push_back({u"WS_KEYWORD"_s, q->keyword});
         spec.env.push_back({u"WS_MATCH"_s, QString::fromUtf8(QJsonDocument(QJsonArray::fromStringList(q->captures)).toJson(QJsonDocument::Compact))});
         if (kind == RunKind::Action) {
             spec.env.push_back({u"WS_ACTION"_s, q->actionId});
             spec.env.push_back({u"WS_ITEM"_s, QString::fromUtf8(QJsonDocument(q->item).toJson(QJsonDocument::Compact))});
+            if (!q->files.isEmpty())
+                spec.env.push_back({u"WS_FILES"_s, QString::fromUtf8(QJsonDocument(QJsonArray::fromStringList(q->files)).toJson(QJsonDocument::Compact))});
         }
     }
     const Permissions& permissions = e.manifest->permissions;
@@ -886,11 +980,13 @@ void Host::onStarted(std::uint64_t instance, quint32 pid)
     };
     handlers.log = [this, id](const QString& level, const QString& text) { log(u"%1 [%2] %3"_s.arg(id, level, text)); };
     handlers.notify = [this, id](const QString& text) { emit notice(id, text); };
+    handlers.toast = [this, id](const QString& title, const QString& text, const QJsonArray& click) { onToast(id, title, text, click); };
     handlers.progress = [this, id](std::uint64_t queryId, const QString& text) {
         Plugin& q = plugin(id);
         if (q.inflight && q.inflight->queryId == queryId)
             emit progress(queryId, id, text);
     };
+    handlers.refresh = [this, id] { onRefresh(id); };
     handlers.toolCall = [this, id](const QJsonValue& requestId, const QString& tool, const QJsonObject& arguments) {
         onToolCall(id, requestId, tool, arguments);
     };
@@ -935,6 +1031,9 @@ void Host::sendQuery(Plugin& p, const Pending& q)
         return;
     dropInflight(p, true);
     touch(p);
+    p.rerun.stop();
+    p.refreshAfterReply = false; // this query is the asking again (also after onRunnerExited, which skips dropInflight)
+    p.lastQuery = q;
     QJsonObject params {{u"queryId"_s, static_cast<double>(q.queryId)}, {u"command"_s, q.commandId},
         {u"trigger"_s, QString::fromLatin1(kindName(q.kind))}, {u"text"_s, q.text}, {u"raw"_s, q.raw}, {u"limit"_s, q.limit}};
     if (!q.keyword.isEmpty())
@@ -948,6 +1047,7 @@ void Host::sendQuery(Plugin& p, const Pending& q)
         onQueryReply(id, queryId, response);
     });
     p.inflight = Plugin::Inflight {q.queryId, q.commandId, requestId};
+    p.lastQuerySent.start();
     const Entry* e = entry(p.id);
     p.queryTimer.start(e ? e->manifest->runtime->timeoutMs : 1500);
 }
@@ -962,6 +1062,7 @@ void Host::onQueryReply(const QString& id, std::uint64_t queryId, const jsonrpc:
     p.queryTimer.stop();
     touch(p);
     if (response.failed) {
+        stopRerun(p);
         emit queryFailed(queryId, id, response.error.value(u"message"_s).toString());
         return;
     }
@@ -970,6 +1071,20 @@ void Host::onQueryReply(const QString& id, std::uint64_t queryId, const jsonrpc:
     const QueryResult result = parseResult(response.result);
     emit results(queryId, id, commandId, result.items, false, true);
     emit queryFinished(queryId, id);
+    // Asked again in a while (a list that changes by itself: progress, devices
+    // coming and going), unless the launcher moved on meanwhile.
+    Plugin& again = plugin(id);
+    const bool refreshed = std::exchange(again.refreshAfterReply, false);
+    if (result.rerun > 0 && again.lastQuery && again.lastQuery->queryId == queryId && !again.inflight) {
+        again.rerunQuery = queryId;
+        again.rerunMs = static_cast<int>(std::clamp(result.rerun, kRerunMin, kRerunMax) * 1000);
+        // A refresh came while this was being answered: the answer may be
+        // from before the change, so it is asked again now (onRefresh).
+        again.rerun.start(refreshed ? static_cast<int>(std::max<qint64>(0, kRefreshGapMs - again.lastQuerySent.elapsed())) : again.rerunMs);
+    } else if (again.lastQuery && again.lastQuery->queryId == queryId) {
+        again.rerunQuery = 0; // this answer did not ask for `rerun`: a refresh does nothing
+        again.rerunMs = 0;
+    }
 }
 
 void Host::onQueryTimeout(const QString& id)
@@ -997,6 +1112,10 @@ void Host::onQueryTimeout(const QString& id)
         log(u"%1: 连续 %2 次没有响应，重启"_s.arg(id).arg(p.timeouts));
         p.timeouts = 0;
         stopResident(p, true);
+    } else if (p.lastQuery && p.lastQuery->queryId == queryId && p.rerunQuery == queryId && p.rerunMs > 0) {
+        // A list that changes by itself answered late once: asked again as
+        // before, so it does not freeze until the next key.
+        p.rerun.start(p.rerunMs);
     }
 }
 
@@ -1008,6 +1127,7 @@ void Host::stopResident(Plugin& p, bool restartAfter)
         return;
     p.idle.stop();
     dropInflight(p, false);
+    stopRerun(p);
     p.restartAfterStop = restartAfter;
     if (p.phase == Plugin::Phase::ShuttingDown)
         return;
@@ -1071,7 +1191,7 @@ void Host::onFailed(std::uint64_t instance, const QString& stage, quint32 error)
             else if (run->second->kind == RunKind::Query)
                 emit queryFailed(run->second->queryId, p.id, why);
             else
-                emit actionDone(run->second->requestId, {}, false, why);
+                emit actionDone(run->second->requestId, p.id, {}, false, why);
         }
         p.runs.erase(run);
         return;
@@ -1125,6 +1245,7 @@ void Host::onInstanceExited(std::uint64_t instance, quint32 code, const QStringL
     p.phase = Plugin::Phase::Stopped;
     p.idle.stop();
     p.queryTimer.stop();
+    stopRerun(p);
     p.sentAt.clear();
     if (p.session)
         p.session->failAll(jsonrpc::kUnavailable, u"插件进程退出了"_s); // the query in flight fails through its reply
@@ -1139,7 +1260,7 @@ void Host::onInstanceExited(std::uint64_t instance, quint32 code, const QStringL
         p.inflight.reset();
     }
     for (const auto& [requestId, rpcId] : p.actions)
-        emit actionDone(requestId, {}, false, u"插件进程退出了"_s);
+        emit actionDone(requestId, p.id, {}, false, u"插件进程退出了"_s);
     p.actions.clear();
     failCommandCalls(p.id, u"插件进程退出了"_s); // the ones sent failed through their replies already; the waiting ones here
     if (was == Plugin::Phase::ShuttingDown && !p.restartAfterStop) {
@@ -1162,6 +1283,12 @@ void Host::onToolCall(const QString& id, const QJsonValue& requestId, const QStr
     Plugin& p = plugin(id);
     if (!p.session)
         return;
+    // Turned off, or a newer manifest waiting for the user's OK, while the
+    // process is on its way out: its permissions are not the user's word.
+    if (!m_catalog.enabled(id)) {
+        p.session->respondError(requestId, jsonrpc::kUnavailable, u"The plugin is off in Win顺's settings, or waits for the user to allow new permissions"_s);
+        return;
+    }
     const Entry* e = entry(id);
     const std::optional<Permission> needed = permissionFor(tool);
     if (!m_bridge.call || !m_bridge.known) {
@@ -1182,6 +1309,21 @@ void Host::onToolCall(const QString& id, const QJsonValue& requestId, const QStr
         p.session->respondError(requestId, kPermissionDenied,
             u"The plugin's manifest does not ask for the '%1' permission, which '%2' needs"_s.arg(permissionName(*needed), tool));
         return;
+    }
+    // open_item opens any path the plugin names, with the user's rights, outside
+    // the sandbox -- the same reach as a declarative `open`. Without `processes`
+    // a plugin may use it for folders and ordinary files, never to start a
+    // program (the same rule as OpenPolicy; show_in_folder only selects, so it
+    // is left alone).
+    if (tool == u"open_item" && e && !e->manifest->permissions.has(Permission::Processes)) {
+        Open open;
+        open.kind = Open::Kind::Path;
+        open.target = arguments.value(u"path"_s).toString();
+        if (!ruleOpen(open, false, systemProbe()).allowed()) {
+            p.session->respondError(requestId, kPermissionDenied,
+                u"The plugin lacks the 'processes' permission, so Win顺 will not open a program for it: "_s + open.target);
+            return;
+        }
     }
     const std::uint64_t callId = m_nextToolCall++;
     p.toolCalls[callId] = 0;
@@ -1213,7 +1355,7 @@ void Host::launchOnce(Plugin& p, const Pending& q)
         else if (kind == RunKind::Query)
             emit queryFailed(q.queryId, p.id, why);
         else
-            emit actionDone(q.requestId, {}, false, why);
+            emit actionDone(q.requestId, p.id, {}, false, why);
     };
     if (!ensureRunner()) {
         if (kind == RunKind::Query)
@@ -1239,6 +1381,8 @@ void Host::launchOnce(Plugin& p, const Pending& q)
     run->requestId = q.requestId;
     run->commandCall = q.commandCall;
     run->commandId = q.commandId;
+    if (kind == RunKind::Query && !q.commandCall)
+        run->query = q;
     run->timer.setSingleShot(true);
     const QString id = p.id;
     connect(&run->timer, &QTimer::timeout, this, [this, id, instance] {
@@ -1253,7 +1397,7 @@ void Host::launchOnce(Plugin& p, const Pending& q)
         else if (it->second->kind == RunKind::Query)
             emit queryFailed(it->second->queryId, id, u"没有响应"_s);
         else
-            emit actionDone(it->second->requestId, {}, false, u"没有响应"_s);
+            emit actionDone(it->second->requestId, id, {}, false, u"没有响应"_s);
         if (m_runner)
             m_runner->stop(instance);
     });
@@ -1279,7 +1423,7 @@ void Host::finishOnce(Plugin& p, std::uint64_t instance, quint32 code, const QSt
         else if (run->kind == RunKind::Query)
             emit queryFailed(run->queryId, p.id, why);
         else
-            emit actionDone(run->requestId, {}, false, why);
+            emit actionDone(run->requestId, p.id, {}, false, why);
     };
     if (overlong) {
         log(u"%1: 一行超过 16 MB"_s.arg(p.id));
@@ -1298,6 +1442,13 @@ void Host::finishOnce(Plugin& p, std::uint64_t instance, quint32 code, const QSt
         const QueryResult result = parseOutput(run->output);
         emit results(run->queryId, p.id, run->commandId, result.items, false, true);
         emit queryFinished(run->queryId, p.id);
+        // `rerun`: started again then, as a query waiting for its debounce
+        // (cancel() and cancelAll() forget it), at most once a second.
+        Plugin& again = plugin(p.id);
+        if (result.rerun > 0 && !again.waiting && run->query.queryId == run->queryId) {
+            again.waiting = run->query;
+            again.debounce.start(static_cast<int>(std::clamp(result.rerun, 1.0, kRerunMax) * 1000));
+        }
     } else {
         const QByteArray trimmed = run->output.trimmed();
         Effects effects;
@@ -1307,8 +1458,89 @@ void Host::finishOnce(Plugin& p, std::uint64_t instance, quint32 code, const QSt
             const QJsonDocument document = QJsonDocument::fromJson(trimmed);
             effects = parseEffects(document.isArray() ? QJsonValue(document.array()) : QJsonValue(document.object()));
         }
-        emit actionDone(run->requestId, effects, true, {});
+        emit actionDone(run->requestId, p.id, effects, true, {});
     }
+}
+
+// ---- toasts (winshun/notify with "toast") ----------------------------------------
+
+void Host::onToast(const QString& id, const QString& title, const QString& text, const QJsonArray& click)
+{
+    Plugin& p = plugin(id);
+    const Entry* e = entry(id);
+    if (!e || !e->manifest || !e->manifest->permissions.has(Permission::Notifications)) {
+        // Not declared: the launcher's footer, as a plain notify would be.
+        if (!p.toastRefusedLogged) {
+            p.toastRefusedLogged = true;
+            log(u"%1: 没有 notifications 权限，系统通知改成了启动器里的提示"_s.arg(id));
+        }
+        const QString shown = text.trimmed().isEmpty() ? title : text;
+        if (!shown.trimmed().isEmpty())
+            emit notice(id, shown);
+        return;
+    }
+    if (title.trimmed().isEmpty() && text.trimmed().isEmpty())
+        return;
+    // The newest waits: what came before it is out of date (a progress, a
+    // count), and a plugin cannot flood the Action Center.
+    // Of its click the first few only: a click does one of each kind at most (toastClick).
+    QJsonArray clickRead;
+    for (qsizetype i = 0; i < click.size() && i < kToastClickMost; ++i)
+        clickRead.append(click.at(i));
+    p.toastWaiting = Plugin::Toast {capped(title, 64), capped(text, 200), clickRead};
+    const qint64 since = p.lastToast.isValid() ? p.lastToast.elapsed() : kToastGapMs;
+    if (since >= kToastGapMs) {
+        p.toastGap.stop();
+        showToast(p);
+    } else if (!p.toastGap.isActive())
+        p.toastGap.start(static_cast<int>(kToastGapMs - since));
+}
+
+void Host::showToast(Plugin& p)
+{
+    if (!p.toastWaiting)
+        return;
+    const Plugin::Toast toast = *std::exchange(p.toastWaiting, std::nullopt);
+    const Entry* e = entry(p.id);
+    if (!e || !e->manifest || !e->manifest->permissions.has(Permission::Notifications) || !m_catalog.enabled(p.id))
+        return; // turned off or gone meanwhile
+    p.lastToast.start();
+    // No click effects: nothing to do on a click (parseEffects would make
+    // that a Hide). Of the rest only what cannot surprise (ToastPolicy): its
+    // own list, a local file or folder, a copy with clipboard:write.
+    const Effects asked = toast.click.isEmpty() ? Effects {} : parseEffects(QJsonValue(toast.click));
+    const QString id = p.id;
+    const Effects click = toastClick(asked, [this, &id](const QString& query) { return opensOwnList(id, query); },
+        e->manifest->permissions.has(Permission::ClipboardWrite));
+    if (click.size() < asked.size() && !(asked.size() == 1 && asked.first().kind == Effect::Kind::Hide))
+        log(u"%1: 系统通知的点击只留下打开自己的列表、本机文件或文件夹、复制（要 clipboard:write），每样一个"_s.arg(p.id));
+    constexpr bool oneLine = false; // the text keeps its line breaks
+    const QString heading = toastWords(toast.title);
+    const QString words = toastWords(toast.text, oneLine);
+    if (heading.isEmpty() && words.isEmpty()) {
+        log(u"%1: 系统通知里没有能显示的字，没有弹出"_s.arg(p.id));
+        return;
+    }
+    log(u"%1: 系统通知"_s.arg(p.id)); // never its words: they may be private
+    // Its name first, which it cannot leave out: never taken for Win顺's own
+    // (toastName: one the user put in shows in 插件「…」, its id when its
+    // name shows nothing). No text: the title is the text too (a tray
+    // notification without one is taken away instead of shown).
+    const ToastFrom from = e->source == Entry::Source::Bundled ? ToastFrom::Bundled : ToastFrom::User;
+    emit toastRequested(p.id, toastTitle(from, p.id, e->manifest->name.pick(m_options.locale), toast.title, m_options.locale),
+        words.isEmpty() ? heading : words, click);
+}
+
+// `query` opens one of this plugin's commands: its keyword (with a space for
+// a list), as the launcher would read it (Catalog::match, hint).
+bool Host::opensOwnList(const QString& id, const QString& query) const
+{
+    for (const Match& m : m_catalog.match(query)) {
+        if (m.kind == Match::Kind::Keyword)
+            return m.entry && m.entry->id == id;
+    }
+    const std::optional<Match> alone = m_catalog.hint(query);
+    return alone && alone->entry && alone->entry->id == id;
 }
 
 // ---- actions ------------------------------------------------------------------
@@ -1320,21 +1552,28 @@ void Host::action(std::uint64_t requestId, const QString& pluginId, const QStrin
 }
 
 void Host::action(std::uint64_t requestId, const QString& pluginId, const QString& commandId, const QString& actionId,
-    const QJsonObject& item, const QString& text)
+    const QJsonObject& item, const QString& text, const QStringList& files)
 {
     const Entry* e = entry(pluginId);
     const Command* command = e ? e->manifest->command(commandId) : nullptr;
     if (!command) {
-        emit actionDone(requestId, {}, false, u"没有这个命令"_s);
+        emit actionDone(requestId, pluginId, {}, false, u"没有这个命令"_s);
+        return;
+    }
+    // Off, or waiting for the user's OK on a newer version's permissions:
+    // its rows still on show, a `files` command, an AI's _run do nothing
+    // (a once plugin's launchOnce would just return, with no answer).
+    if (!m_catalog.enabled(pluginId)) {
+        emit actionDone(requestId, pluginId, {}, false, offText(m_catalog, pluginId));
         return;
     }
     if (command->zeroCode()) {
-        emit actionDone(requestId, {Effect {}}, true, {});
+        emit actionDone(requestId, pluginId, {Effect {}}, true, {});
         return;
     }
     Plugin& p = plugin(pluginId);
     if (p.disabledByCrashes) {
-        emit actionDone(requestId, {}, false, u"插件已停用"_s);
+        emit actionDone(requestId, pluginId, {}, false, u"插件已停用"_s);
         return;
     }
     Pending q;
@@ -1344,7 +1583,13 @@ void Host::action(std::uint64_t requestId, const QString& pluginId, const QStrin
     q.item = item;
     q.text = text;
     q.raw = text;
+    q.files = files;
     if (!e->manifest->resident()) {
+        // WS_FILES is one environment variable: 32,767 characters at most.
+        if (!files.isEmpty() && QJsonDocument(QJsonArray::fromStringList(files)).toJson(QJsonDocument::Compact).size() > 32000) {
+            emit actionDone(requestId, pluginId, {}, false, u"选的文件太多了，少选一些再试"_s);
+            return;
+        }
         launchOnce(p, q);
         return;
     }
@@ -1352,34 +1597,38 @@ void Host::action(std::uint64_t requestId, const QString& pluginId, const QStrin
         // Not running: start it, and act once it is. One action waits at a time.
         if (p.phase == Plugin::Phase::Stopped)
             startResident(p);
-        QTimer::singleShot(0, this, [this, requestId, pluginId, commandId, actionId, item, text, tries = 0]() mutable {
+        QTimer::singleShot(0, this, [this, requestId, pluginId, commandId, actionId, item, text, files, tries = 0]() mutable {
             Plugin& q = plugin(pluginId);
             if (q.phase == Plugin::Phase::Ready && q.session) {
-                action(requestId, pluginId, commandId, actionId, item, text);
+                action(requestId, pluginId, commandId, actionId, item, text, files);
                 return;
             }
             if (q.phase == Plugin::Phase::Stopped || q.disabledByCrashes || ++tries > 100) {
-                emit actionDone(requestId, {}, false, q.error.isEmpty() ? u"插件没有启动"_s : q.error);
+                emit actionDone(requestId, pluginId, {}, false, q.error.isEmpty() ? u"插件没有启动"_s : q.error);
                 return;
             }
             // Still starting: look again shortly.
-            QTimer::singleShot(50, this, [this, requestId, pluginId, commandId, actionId, item, text] {
-                action(requestId, pluginId, commandId, actionId, item, text);
+            QTimer::singleShot(50, this, [this, requestId, pluginId, commandId, actionId, item, text, files] {
+                action(requestId, pluginId, commandId, actionId, item, text, files);
             });
         });
         return;
     }
     touch(p);
-    const QJsonObject params {{u"command"_s, commandId}, {u"action"_s, q.actionId}, {u"item"_s, q.item}, {u"text"_s, text}};
+    QJsonObject params {{u"command"_s, commandId}, {u"action"_s, q.actionId}, {u"item"_s, q.item}, {u"text"_s, text}};
+    if (!files.isEmpty()) {
+        params.insert(u"trigger"_s, u"files"_s);
+        params.insert(u"files"_s, QJsonArray::fromStringList(files));
+    }
     const std::uint64_t rpcId = p.session->request(u"action"_s, params, [this, pluginId, requestId](const jsonrpc::Message& response) {
         Plugin& q = plugin(pluginId);
         q.actions.erase(requestId);
         touch(q);
         if (response.failed) {
-            emit actionDone(requestId, {}, false, response.error.value(u"message"_s).toString());
+            emit actionDone(requestId, pluginId, {}, false, response.error.value(u"message"_s).toString());
             return;
         }
-        emit actionDone(requestId, parseEffects(response.result), true, {});
+        emit actionDone(requestId, pluginId, parseEffects(response.result), true, {});
     });
     p.actions[requestId] = rpcId;
 }
@@ -1392,7 +1641,7 @@ std::uint64_t Host::callCommand(const QString& pluginId, const QString& commandI
     const Entry* e = entry(pluginId);
     const Command* command = e ? e->manifest->command(commandId) : nullptr;
     if (!command || !m_catalog.enabled(pluginId)) {
-        reply(false, {}, !command ? u"没有这个命令"_s : u"插件已停用"_s);
+        reply(false, {}, !command ? u"没有这个命令"_s : offText(m_catalog, pluginId));
         return id;
     }
     if (command->zeroCode()) {

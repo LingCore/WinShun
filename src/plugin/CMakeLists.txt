@@ -35,10 +35,12 @@ qt_add_library(wsplugin STATIC
     Items.cpp Items.h
     Manifest.cpp Manifest.h
     Merge.cpp Merge.h
+    OpenPolicy.cpp OpenPolicy.h
     Programs.cpp Programs.h
     Runner.cpp Runner.h
     Secrets.cpp Secrets.h
     Session.cpp Session.h
+    ToastPolicy.cpp ToastPolicy.h
     Tools.cpp Tools.h
     ZeroCode.cpp ZeroCode.h
     runner/Sandbox.cpp
@@ -46,4 +48,5 @@ qt_add_library(wsplugin STATIC
 target_include_directories(wsplugin PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/runner)
 # miniz: archives of plugins (Install.cpp); the Credential Manager keeps
 # their passwords (Secrets.cpp).
-target_link_libraries(wsplugin PUBLIC wscore wsmcp wsmcp_proto PRIVATE miniz advapi32 userenv user32)
+# shlwapi: AssocIsDangerous, for the open policy (OpenPolicy.cpp).
+target_link_libraries(wsplugin PUBLIC wscore wsmcp wsmcp_proto PRIVATE miniz advapi32 userenv user32 shlwapi)

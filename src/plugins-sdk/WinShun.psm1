@@ -71,10 +71,12 @@ function New-WinShunItem {
         [string] $Match,
         $Modified,
         $Created,
-        [long] $Size = -1
+        [long] $Size = -1,
+        [string] $AwaySubtitle # subtitleAway: the second line while the keyboard is on another row (named so that -Sub… is still -Subtitle)
     )
     $row = [ordered]@{ id = $Id; title = $Title }
     if ($Subtitle) { $row.subtitle = $Subtitle }
+    if ($AwaySubtitle) { $row.subtitleAway = $AwaySubtitle }
     if ($Icon) { $row.icon = $Icon }
     if ($Score -ge 0) { $row.score = $Score }
     if ($PSBoundParameters.ContainsKey('Copy')) { $row.copy = $Copy }
@@ -102,6 +104,11 @@ function New-WinShunEffect {
     What an action asks Win顺 to do, in order: -Hide (the window closes;
     the default), -Keep, -Notify text (the footer), -Copy text, -SetQuery
     text, -OpenPath path, -OpenUrl url, -Replace items (a second-level list).
+
+    Win顺 carries out -OpenPath/-OpenUrl (and an item's open). Without the
+    "processes" permission it opens only a folder or an ordinary (non-program,
+    non-script) file, and only http/https/mailto URLs; anything else is refused
+    with a footer notice. Declare "processes" to open a program or a non-web link.
     #>
     param([switch] $Hide, [switch] $Keep, [string] $Notify, [string] $Copy, [string] $SetQuery, [string] $OpenPath,
         [string] $OpenUrl, [array] $Replace)
@@ -151,9 +158,14 @@ function Test-WinShunAction {
 }
 
 function Get-WinShunActionRequest {
+    <# The action a once plugin was started for. A `files` trigger chosen on Win顺's result menu: trigger 'files', action 'files', files = the chosen paths. #>
     $item = @{}
     if ($env:WS_ITEM) { try { $item = ConvertFrom-Json $env:WS_ITEM } catch { } }
-    [pscustomobject]@{ action = [string]$env:WS_ACTION; item = $item; command = [string]$env:WS_COMMAND; text = [string]$env:WS_QUERY }
+    $files = @()
+    if ($env:WS_FILES) { try { $files = @(ConvertFrom-Json $env:WS_FILES) } catch { } }
+    $trigger = if ($env:WS_TRIGGER -eq 'files') { 'files' } else { '' }
+    [pscustomobject]@{ action = [string]$env:WS_ACTION; item = $item; command = [string]$env:WS_COMMAND; text = [string]$env:WS_QUERY
+        trigger = $trigger; files = $files }
 }
 
 function Send-WinShunReply {
@@ -193,6 +205,18 @@ function Send-WinShunNotify {
     <# A line in the launcher's footer. #>
     param([Parameter(Mandatory = $true, Position = 0)] [string] $Text)
     Send-WinShunNotification 'winshun/notify' @{ text = $Text }
+}
+
+function Send-WinShunToast {
+    <#
+    A system notification (needs the "notifications" permission; without it
+    the text goes to the launcher's footer). At most one every 2 seconds is
+    shown, the newest of those waiting; keep file names and other private
+    words out: it stays in the Action Center. -Click: effects for a click on
+    it (New-WinShunEffect), e.g. -SetQuery 'kw '.
+    #>
+    param([Parameter(Mandatory = $true, Position = 0)] [string] $Title, [string] $Text = '', [array] $Click = @())
+    Send-WinShunNotification 'winshun/notify' @{ toast = $true; title = $Title; text = $Text; click = @($Click) }
 }
 
 function Send-WinShunProgress {
@@ -290,7 +314,8 @@ function Start-WinShunPlugin {
                 }
             }
             'action' {
-                $a = [pscustomobject]@{ action = [string]$params.action; item = $params.item; command = [string]$params.command; text = [string]$params.text }
+                $a = [pscustomobject]@{ action = [string]$params.action; item = $params.item; command = [string]$params.command; text = [string]$params.text
+                    trigger = [string]$params.trigger; files = @($params.files | Where-Object { $null -ne $_ }) }
                 if ($null -eq $OnAction) {
                     $text = if ($null -ne $a.item.copy) { [string]$a.item.copy } else { [string]$a.item.title }
                     $done = if ($plugin.locale -eq 'en') { 'Copied' } else { '已复制' }
@@ -325,5 +350,5 @@ function Start-WinShunPlugin {
 
 Export-ModuleMember -Function Write-WinShunDebug, New-WinShunItem, New-WinShunAction, New-WinShunEffect, Get-WinShunQuery,
     Get-WinShunSettings, Get-WinShunDataDir, Test-WinShunAction, Get-WinShunActionRequest, Send-WinShunReply, Send-WinShunEffects,
-    Send-WinShunPartial, Write-WinShunLog, Send-WinShunNotify, Send-WinShunProgress, Invoke-WinShunTool, Get-WinShunPluginSettings,
+    Send-WinShunPartial, Write-WinShunLog, Send-WinShunNotify, Send-WinShunToast, Send-WinShunProgress, Invoke-WinShunTool, Get-WinShunPluginSettings,
     Get-WinShunLocale, Start-WinShunPlugin

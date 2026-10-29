@@ -19,6 +19,7 @@
       "hint": {"zh": "算式，或 12 inch to cm", "en": "an expression, or 12 inch to cm"},
       "triggers": [
         {"regex": "^(?!.*/.*/)(?=.*[+*/^×÷(])[-+*/^×÷%!(),.\\d\\s]{3,64}$", "minLength": 3, "maxLength": 64},
+        {"regex": "^(?:(?!(?:19|20)\\d\\d-(?:(?:19|20)\\d\\d|0?[1-9]|1[0-2])$)\\d+(?:\\.\\d+)?-\\d+(?:\\.\\d+)?|(?=.*\\s)[-+]?\\d[\\d.,]*(?:\\s*-\\s*\\d[\\d.,]*)+)$", "minLength": 3, "maxLength": 64},
         {"regex": "^[-+]?\\d[\\d,]*(?:\\.\\d+)?\\s*[A-Za-z°℃℉″′\"'一-鿿]{1,12}\\s*(?:to|in|as|into|=|->|→|转成|换成|等于|转|换|到|成)\\s*[A-Za-z°℃℉″′\"'一-鿿]{1,12}$", "minLength": 5, "maxLength": 48}
       ],
       "ai": {"description": "Evaluate an arithmetic expression (2^10, sqrt(2), (1+2)*3, 80*15%, 5!) or convert units (12 inch to cm, 100 f to c, 1.5 GB in MB, 3 斤 to kg). The first item's title is the result."}

@@ -38,6 +38,8 @@ constexpr Named kPermissions[] = {
     {Permission::WinshunHistory, u"winshun:history"},
     {Permission::WinshunContent, u"winshun:content"},
     {Permission::FilesRead, u"files:read"},
+    {Permission::Notifications, u"notifications"},
+    {Permission::NetworkListen, u"network:listen"},
 };
 
 // Collects the first error; every check after it is skipped.
@@ -251,6 +253,8 @@ Permissions readPermissions(const QJsonValue& value, Check& check)
                 p.flags |= static_cast<std::uint32_t>(*permission);
                 if (*permission == Permission::FilesRead)
                     p.readPaths += stringList(it.value(), u"permissions.files:read"_s, check);
+                else if (*permission == Permission::NetworkListen)
+                    p.listens += stringList(it.value(), u"permissions.network:listen"_s, check);
             }
         } else {
             check.fail(u"permissions 里有不是字符串的项"_s);
@@ -294,6 +298,7 @@ Trigger readTrigger(const QJsonValue& value, const QString& where, Check& check)
         for (QString& e : t.extensions)
             e = e.toLower().remove(u'.');
         t.maxFiles = intField(files, u"max"_s, 20, 1, 1000, where + u".files"_s, check);
+        t.title = readText(files.value(u"title"_s), where + u".files.title"_s, check).value_or(Text {});
     } else if (o.contains(u"clipboard"_s)) {
         t.kind = Trigger::Kind::Clipboard;
         const QJsonObject clip = o.value(u"clipboard"_s).toObject();

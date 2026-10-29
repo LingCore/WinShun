@@ -412,7 +412,7 @@ void PluginSettings::clearMessage()
 
 QString PluginSettings::permissionsNote() const
 {
-    return tr("这些由 Windows 强制：不是管理员、内存上限、子进程、剪贴板、窗口。这些只是插件自己的说明，Win顺 挡不住：联网、读哪些文件、写哪些文件（严格沙箱的插件除外）。只安装你信得过来源的插件。");
+    return tr("这些由 Windows 强制：不是管理员、内存上限、子进程、剪贴板、窗口。这些只是插件自己的说明，Win顺 挡不住：联网、开端口、读哪些文件、写哪些文件（严格沙箱的插件除外）。只安装你信得过来源的插件。");
 }
 
 // What each permission means and whether Windows holds the plugin to it
@@ -461,6 +461,12 @@ QVariantList PluginSettings::permissionRows(const QString& id) const
         row(u"files:read"_s, m.permissions.readPaths.isEmpty() ? permissionText(P::FilesRead) : tr("读这些文件：%1").arg(m.permissions.readPaths.join(u"、"_s)), false);
     if (m.permissions.has(P::Network))
         row(u"network"_s, permissionText(P::Network), false, tr("Win顺 不能阻止它联网"));
+    if (m.permissions.has(P::NetworkListen))
+        row(u"network:listen"_s, m.permissions.listens.isEmpty() ? permissionText(P::NetworkListen)
+            : tr("在局域网上开端口，让别的设备连进来：%1").arg(m.permissions.listens.join(u"、"_s)), false,
+            tr("Win顺 不能阻止它开端口"));
+    if (m.permissions.has(P::Notifications))
+        row(u"notifications"_s, permissionText(P::Notifications), true, tr("经 Win顺 弹出，每 2 秒最多一条"));
     return rows;
 }
 
@@ -468,7 +474,7 @@ QString PluginSettings::permissionText(plugin::Permission p)
 {
     using P = plugin::Permission;
     switch (p) {
-    case P::Processes: return tr("启动其他程序（子进程）");
+    case P::Processes: return tr("启动程序（起子进程，或打开程序、非网页链接）");
     case P::ClipboardRead: return tr("读剪贴板");
     case P::ClipboardWrite: return tr("写剪贴板");
     case P::Ui: return tr("打开自己的窗口、切换前台");
@@ -479,6 +485,8 @@ QString PluginSettings::permissionText(plugin::Permission p)
     case P::FilesWrite: return tr("写文件");
     case P::FilesRead: return tr("读你的文件");
     case P::Network: return tr("联网");
+    case P::NetworkListen: return tr("在局域网上开端口，让别的设备连进来");
+    case P::Notifications: return tr("弹出系统通知");
     }
     return plugin::permissionName(p);
 }
@@ -509,6 +517,12 @@ PluginListModel::Card PluginSettings::cardFor(const QString& id) const
         return c;
     }
     const plugin::Manifest& m = *e->manifest;
+    // A newer version asking for more than the user said yes to waits for
+    // their OK (Catalog::setConfirmed): its switch shows off, so that one
+    // click asks with the new ones marked, and the state line says what.
+    const QStringList awaiting = catalog.awaitingConsent(id);
+    if (!awaiting.isEmpty())
+        c.enabled = false;
     c.name = m.name.pick(m_locale);
     c.version = m.version;
     c.author = m.author;
@@ -526,7 +540,7 @@ PluginListModel::Card PluginSettings::cardFor(const QString& id) const
         else if (!c.aiEnabled)
             c.aiNote = tr("关着：AI 看不到这个插件的命令");
         else if (!c.enabled)
-            c.aiNote = tr("插件停用时 AI 调用会得到“已停用”的提示");
+            c.aiNote = awaiting.isEmpty() ? tr("插件停用时 AI 调用会得到“已停用”的提示") : tr("同意了新权限，AI 才能用它");
         else
             c.aiNote = tr("工具：%1").arg(tools.join(u"、"_s));
     }
@@ -543,6 +557,18 @@ PluginListModel::Card PluginSettings::cardFor(const QString& id) const
     QString memory;
     switch (state.status) {
     case Status::Off:
+        if (!awaiting.isEmpty()) { // what it asks for, as the permission rows say it
+            QStringList asked;
+            for (const QString& name : awaiting) {
+                const std::optional<plugin::Permission> p = plugin::permissionFromName(name);
+                asked.push_back(u"“"_s + (p ? permissionText(*p) : name) + u"”"_s);
+            }
+            const bool never = !config || config->confirmed.isEmpty(); // a hand turned it on: no new version to speak of
+            c.status = (never ? tr("还没同意它要的权限：%1。打开开关、同意后才能用") : tr("新版本要更多权限：%1。打开开关、同意后才能用"))
+                           .arg(asked.join(tr("、")));
+            c.tone = u"warn"_s;
+            break;
+        }
         c.status = tr("已停用");
         c.tone = u"idle"_s;
         break;
@@ -731,6 +757,20 @@ void PluginSettings::setEnabled(const QString& id, bool on)
         return;
     }
     confirmEnable(id);
+}
+
+void PluginSettings::declineEnable(const QString& id)
+{
+    // The dialog's no (or Esc). A plugin switched on that waits for the OK
+    // goes off for real: a normal off card, asking again next time it is
+    // turned on. Others have nothing to undo.
+    if (!m_host || m_host->catalog().awaitingConsent(id).isEmpty())
+        return;
+    const PluginConfig* config = m_editor->m_settings.plugin(id);
+    if (!config || !config->enabled)
+        return;
+    m_editor->m_settings.pluginConfig(id).enabled = false;
+    m_editor->commit();
 }
 
 void PluginSettings::confirmEnable(const QString& id)
@@ -930,10 +970,14 @@ void PluginSettings::finishInstall(plugin::install::Candidate candidate)
     }
     m_host->catalog().scan();
     // Installed, and off until the user turns it on (the permissions are
-    // shown then); a version installed over asks again when it wants more.
+    // shown then); a version put over one that is on and asking for more
+    // waits for the user's OK (Catalog::setConfirmed), its switch asking.
     const PluginConfig* config = m_editor->m_settings.plugin(id);
-    setMessage(config && config->enabled ? tr("已安装 %1 %2").arg(name, candidate.manifest->version)
-                                         : tr("已安装 %1 %2，打开它的开关就能用").arg(name, candidate.manifest->version));
+    const QString version = candidate.manifest->version;
+    if (!m_host->catalog().awaitingConsent(id).isEmpty())
+        setMessage(tr("已安装 %1 %2。新版本要更多权限，先停着；打开它的开关、同意后才能用").arg(name, version));
+    else
+        setMessage(config && config->enabled ? tr("已安装 %1 %2").arg(name, version) : tr("已安装 %1 %2，打开它的开关就能用").arg(name, version));
     rebuild();
 }
 
@@ -1279,7 +1323,7 @@ void PluginSettings::loadPreview()
         c.status = tr("运行中 · %1").arg(u"38 MB"_s) + tr(" · 超时 %n 次", "", 2);
         c.tone = u"ok"_s;
         c.keywords = {keyword(u"kill"_s, tr("结束进程"), u"kill jc"_s, u"kill jc"_s, {}, false)};
-        c.permissions = {admin, permission(u"processes"_s, tr("启动其他程序（子进程）"), true)};
+        c.permissions = {admin, permission(u"processes"_s, tr("启动程序（起子进程，或打开程序、非网页链接）"), true)};
         c.settings = {QVariantMap {{u"key"_s, u"showSystem"_s}, {u"type"_s, u"bool"_s}, {u"title"_s, tr("也列出系统进程")}, {u"hint"_s, QString()}, {u"value"_s, true}}};
         c.hasReadme = true;
         c.hasData = true;

@@ -1,6 +1,7 @@
 #include "Catalog.h"
 
 #include "ChangeWatcher.h"
+#include "Install.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -152,6 +153,29 @@ void Catalog::setEnabled(const QString& id, bool on)
     emit changed();
 }
 
+QStringList Catalog::setConfirmed(QHash<QString, QStringList> confirmed)
+{
+    if (m_holdToConfirmed && m_confirmed == confirmed)
+        return {};
+    const QList<QString> waiting = m_awaiting.keys();
+    m_holdToConfirmed = true;
+    m_confirmed = std::move(confirmed);
+    rebuildIndex();
+    QStringList allowed; // waited before, waits for nothing now
+    for (const QString& id : waiting) {
+        if (!m_awaiting.contains(id))
+            allowed.push_back(id);
+    }
+    emit changed();
+    return allowed;
+}
+
+bool Catalog::enabled(QStringView id) const
+{
+    const QString key = id.toString();
+    return m_enabled.contains(key) && !m_awaiting.contains(key);
+}
+
 void Catalog::setKeywordOverrides(QHash<QString, QString> overrides)
 {
     if (m_overrides == overrides)
@@ -195,6 +219,19 @@ QStringList Catalog::keywordsOf(QStringView id, QStringView command) const
 
 void Catalog::rebuildIndex()
 {
+    // Who waits for the user's OK first (see setConfirmed): the index
+    // leaves them out, keywords and triggers alike.
+    m_awaiting.clear();
+    if (m_holdToConfirmed) {
+        for (const Entry& entry : m_entries) {
+            if (entry.source != Entry::Source::User || !entry.manifest || !m_enabled.contains(entry.id))
+                continue;
+            QStringList more = install::unconfirmed(*entry.manifest, m_confirmed.value(entry.id));
+            if (!more.isEmpty())
+                m_awaiting.insert(entry.id, std::move(more));
+        }
+    }
+
     m_keywords.clear();
     m_effective.clear();
     m_conflicts.clear();
@@ -222,7 +259,7 @@ void Catalog::rebuildIndex()
         favorites.insert(keyword.toLower(), name.isEmpty() ? keyword : name);
     std::vector<Claim> claims;
     for (const Entry& entry : m_entries) {
-        if (!entry.manifest || !m_enabled.contains(entry.id))
+        if (!entry.manifest || !enabled(entry.id))
             continue;
         for (const Command& command : entry.manifest->commands) {
             const QString key = entry.id + u'/' + command.id;
@@ -272,7 +309,7 @@ void Catalog::rebuildIndex()
     }
 
     for (const Entry& entry : m_entries) {
-        if (!entry.manifest || !m_enabled.contains(entry.id))
+        if (!entry.manifest || !enabled(entry.id))
             continue;
         for (const Command& command : entry.manifest->commands) {
             for (const Trigger& trigger : command.triggers) {
@@ -425,6 +462,41 @@ std::vector<Match> Catalog::hints(const QString& typed) const
         ++partial;
     }
     return out;
+}
+
+std::vector<Catalog::FileCommand> Catalog::fileCommands(const QStringList& paths, const QList<bool>& folders) const
+{
+    std::vector<FileCommand> out;
+    if (paths.isEmpty() || folders.size() != paths.size())
+        return out;
+    const bool anyFolder = folders.contains(true);
+    const bool anyFile = folders.contains(false);
+    for (const Entry& e : m_entries) {
+        if (!e.usable() || !enabled(e.id))
+            continue;
+        for (const Command& c : e.manifest->commands) {
+            for (const Trigger& t : c.triggers) {
+                if (t.kind != Trigger::Kind::Files || paths.size() > t.maxFiles)
+                    continue;
+                if ((t.fileKind == u"file" && anyFolder) || (t.fileKind == u"folder" && anyFile))
+                    continue;
+                bool extensionsFit = true;
+                for (qsizetype i = 0; i < paths.size() && extensionsFit && !t.extensions.isEmpty(); ++i)
+                    extensionsFit = folders[i] || t.extensions.contains(QFileInfo(paths[i]).suffix().toLower());
+                if (!extensionsFit)
+                    continue;
+                out.push_back({&e, &c, &t});
+                break; // one entry per command
+            }
+        }
+    }
+    return out;
+}
+
+bool Catalog::hasFileCommand(const std::vector<FileCommand>& commands, QStringView pluginId, QStringView commandId)
+{
+    return std::any_of(commands.begin(), commands.end(),
+        [&](const FileCommand& c) { return c.entry && c.command && c.entry->id == pluginId && c.command->id == commandId; });
 }
 
 } // namespace ws::plugin

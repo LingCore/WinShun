@@ -137,6 +137,7 @@ Item parseItem(const QJsonObject& o)
     item.id = o.value(u"id"_s).toString();
     item.title = o.value(u"title"_s).toString();
     item.subtitle = o.value(u"subtitle"_s).toString();
+    item.subtitleAway = o.value(u"subtitleAway"_s).toString();
     const auto time = [](const QJsonValue& value) -> std::uint32_t {
         const double seconds = value.isString()
             ? static_cast<double>(QDateTime::fromString(value.toString(), Qt::ISODateWithMs).toSecsSinceEpoch())
@@ -289,6 +290,8 @@ QJsonObject itemToJson(const Item& item)
     o.insert(u"title"_s, item.title);
     if (!item.subtitle.isEmpty())
         o.insert(u"subtitle"_s, item.subtitle);
+    if (!item.subtitleAway.isEmpty())
+        o.insert(u"subtitleAway"_s, item.subtitleAway);
     if (item.modified != 0)
         o.insert(u"modified"_s, static_cast<qint64>(item.modified));
     if (item.created != 0)

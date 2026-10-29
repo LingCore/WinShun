@@ -147,9 +147,16 @@ void AiBridge::rebuild()
             if (!e.manifest || !e.manifest->aiExpose || m_options.excluded.contains(e.id))
                 continue;
             const bool offered = m_host->catalog().enabled(e.id);
-            const QString offReason = offered ? QString()
-                                              : u"The plugin '%1' is turned off in Win顺's settings (设置 → 插件). Ask the user to turn it on there, then call this again."_s.arg(
-                                                    e.manifest->name.pick(u"en"_s));
+            // Off, or a newer version waiting for the user's OK on more
+            // permissions (Catalog::setConfirmed): the words say which.
+            const QStringList awaiting = m_host->catalog().awaitingConsent(e.id);
+            const QString name = e.manifest->name.pick(u"en"_s);
+            QString offReason;
+            if (!offered && awaiting.isEmpty())
+                offReason = u"The plugin '%1' is turned off in Win顺's settings (设置 → 插件). Ask the user to turn it on there, then call this again."_s.arg(name);
+            else if (!offered)
+                offReason = u"The plugin '%1' waits for the user to allow permissions its installed version asks for (%2). Ask the user to allow them in Win顺's settings (设置 → 插件: turn its switch on), then call this again."_s.arg(
+                    name, awaiting.join(u", "_s));
             for (const Command& c : e.manifest->commands) {
                 tools.push_back(queryTool(e, c, offered, offReason));
                 if (m_options.actions && !c.zeroCode())
@@ -286,8 +293,9 @@ mcp::ExternalTool AiBridge::actionTool(const Entry& e, const Command& c, bool of
     return t;
 }
 
-void AiBridge::onActionDone(std::uint64_t requestId, const Effects& effects, bool ok, const QString& error)
+void AiBridge::onActionDone(std::uint64_t requestId, const QString& pluginId, const Effects& effects, bool ok, const QString& error)
 {
+    Q_UNUSED(pluginId) // AiBridge keys by its own request map; attribution is for the launcher
     const auto it = m_actions.find(requestId);
     if (it == m_actions.end())
         return;

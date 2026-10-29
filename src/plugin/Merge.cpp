@@ -90,6 +90,7 @@ SearchResult toRow(const Entry& entry, const Command& command, const Item& item,
     p->itemId = item.id.isEmpty() ? u'#' + QString::number(index) : item.id;
     p->source = entry.manifest ? entry.manifest->name.pick(locale) : entry.id;
     p->subtitle = item.subtitle;
+    p->subtitleAway = item.subtitleAway;
     p->icon = iconText(item.icon);
     if (p->icon.isEmpty())
         p->icon = iconText(parseIcon(command.icon));

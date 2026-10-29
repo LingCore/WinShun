@@ -22,6 +22,7 @@
 import json
 import os
 import sys
+import threading
 
 __all__ = ["Query", "ActionRequest", "item", "action", "query", "settings", "reply", "effects",
            "is_action", "action_request", "serve", "Plugin", "debug",
@@ -97,6 +98,11 @@ def set_query(text):
     return {"type": "setQuery", "text": str(text)}
 
 
+# open_path / open_url (and an item's open=...): Win顺 carries these out. A
+# plugin without the "processes" permission may only open a folder or an
+# ordinary (non-program, non-script) file, and only http/https/mailto URLs,
+# with no args/cwd; anything else is refused with a footer notice. Declare
+# "processes" to open a program or a non-web link.
 def open_path(path):
     return {"type": "open", "path": path}
 
@@ -135,13 +141,17 @@ class Query:
 class ActionRequest:
     """An action on an item: `action` is the action's id ("default" when
     the command declares none), `item` the item as the plugin gave it
-    (its `data` included), `text` the words in the box."""
+    (its `data` included), `text` the words in the box. A `files` trigger
+    chosen on Win顺's result menu: `trigger` is "files", `action` "files",
+    `files` the chosen files and folders (full paths), no item."""
 
-    def __init__(self, action="default", item=None, command="", text=""):
+    def __init__(self, action="default", item=None, command="", text="", trigger="", files=None):
         self.action = action
         self.item = item or {}
         self.command = command
         self.text = text
+        self.trigger = trigger
+        self.files = list(files or [])
 
 
 # ---- once plugins ---------------------------------------------------------------
@@ -197,19 +207,32 @@ def action_request():
         item_value = json.loads(_env("WS_ITEM", "{}") or "{}")
     except ValueError:
         item_value = {}
-    return ActionRequest(action=_env("WS_ACTION", "default"), item=item_value, command=_env("WS_COMMAND"), text=_env("WS_QUERY"))
+    try:
+        files = json.loads(_env("WS_FILES", "[]") or "[]")
+    except ValueError:
+        files = []
+    trigger = _env("WS_TRIGGER")
+    return ActionRequest(action=_env("WS_ACTION", "default"), item=item_value, command=_env("WS_COMMAND"), text=_env("WS_QUERY"),
+                         trigger=trigger if trigger == "files" else "", files=files if isinstance(files, list) else [])
+
+
+_write_lock = threading.Lock()
 
 
 def _write(obj):
-    _out.write(json.dumps(obj, ensure_ascii=False).encode("utf-8"))
-    _out.write(b"\n")
-    _out.flush()
+    # One whole line at a time: a helper (refresh(), progress()) may be
+    # called from another thread while the handler answers.
+    line = json.dumps(obj, ensure_ascii=False).encode("utf-8") + b"\n"
+    with _write_lock:
+        _out.write(line)
+        _out.flush()
 
 
 def reply(items, rerun=0, cache=0):
     """A once plugin's whole answer: the items (dicts from item()), then
-    the process ends. `rerun`: seconds until Win顺 asks again (a changing
-    list); `cache`: seconds the answer may be reused for the same text."""
+    the process ends. `rerun`: seconds until Win顺 asks again while the
+    list is still shown (a changing list; at least 1 for a once plugin);
+    `cache`: seconds the answer may be reused for the same text."""
     result = {"items": list(items)}
     if rerun:
         result["rerun"] = rerun
@@ -263,8 +286,23 @@ class Plugin:
     def notify_user(self, text):
         self._notify("winshun/notify", {"text": str(text)})
 
+    def toast(self, title, text="", click=None):
+        """A system notification (needs the "notifications" permission;
+        without it the text goes to the launcher's footer). At most one
+        every 2 seconds is shown, the newest of those waiting; keep file
+        names and other private words out: it stays in the Action Center.
+        `click`: effects for a click on it, e.g. [set_query("kw ")]."""
+        self._notify("winshun/notify", {"toast": True, "title": str(title), "text": str(text), "click": list(click or [])})
+
     def progress(self, query_id, text):
         self._notify("winshun/progress", {"queryId": query_id, "text": str(text)})
+
+    def refresh(self):
+        """What the launcher shows changed by itself (a request came, a job
+        ended): when the last answer asked for `rerun` and the list is still
+        shown, Win顺 asks again now instead of when `rerun` is up. Call it
+        after the state the next query reads is written."""
+        self._notify("winshun/refresh", {})
 
     def tool(self, name, **arguments):
         """One of Win顺's tools (search_files, search_content, recent_files,
@@ -330,7 +368,8 @@ class Plugin:
                 self._send({"id": msg_id, "result": {"items": list(result or [])}})
         elif method == "action":
             a = ActionRequest(action=params.get("action", "default"), item=params.get("item") or {},
-                              command=params.get("command", ""), text=params.get("text", ""))
+                              command=params.get("command", ""), text=params.get("text", ""),
+                              trigger=params.get("trigger", ""), files=params.get("files") or [])
             if self._on_action is None:
                 text = a.item.get("copy", a.item.get("title", ""))
                 result = [copy(text), notify("已复制" if self.locale != "en" else "Copied"), hide()]

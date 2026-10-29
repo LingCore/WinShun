@@ -8,6 +8,10 @@
 
 #include <QDir>
 #include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QRegularExpression>
 #include <QTest>
 
 #include <cmath>
@@ -118,6 +122,39 @@ private slots:
         QVERIFY(!calc::looksLikeExpression("report"));
         QVERIFY(!calc::looksLikeExpression("v2.1+beta")); // letters
         QVERIFY(!calc::looksLikeExpression("1+(2")); // unbalanced
+    }
+
+    // The manifest's regex triggers decide which typed text reaches the
+    // calculator without "=": a subtraction alone (#123) must, a date must not.
+    void calcTriggerCoversSubtraction()
+    {
+        QFile file(QStringLiteral(WINSHUN_TOOLS_MANIFEST));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const QJsonArray commands = QJsonDocument::fromJson(file.readAll()).object().value(u"commands"_s).toArray();
+        QVERIFY(!commands.isEmpty());
+        QList<QRegularExpression> triggers;
+        for (const QJsonValue t : commands.first().toObject().value(u"triggers"_s).toArray())
+            triggers.append(QRegularExpression(t.toObject().value(u"regex"_s).toString()));
+        QVERIFY(triggers.size() >= 3);
+        const auto fires = [&](const QString& text) {
+            if (text.size() < 3 || text.size() > 64)
+                return false;
+            for (const QRegularExpression& re : triggers) {
+                if (re.match(text).hasMatch())
+                    return true;
+            }
+            return false;
+        };
+        for (const QString& yes : {u"99-9"_s, u"10 - 4"_s, u"10 -4"_s, u"5-3*2"_s, u"-5+3"_s, u"1+2"_s, u"3.5-1.5"_s, u"100 - 20 - 5"_s, u"2026 - 10"_s, u"1999-5000"_s, u"2024 - 2023"_s})
+            QVERIFY2(fires(yes), qPrintable(yes));
+        for (const QString& no : {u"2026-10"_s, u"2026-1"_s, u"2024-01-02"_s, u"1999-12"_s, u"2023-2024"_s, u"1998-2003"_s, u"400-800-1234"_s, u"2024-01-02 15:04"_s,
+                 u"report-2"_s, u"99"_s, u"-5"_s, u"abc-9"_s})
+            QVERIFY2(!fires(no), qPrintable(no));
+        // What the plugin then computes.
+        QCOMPARE(value("2023-2024"), -1.0); // "= 2023-2024" still computes
+        QCOMPARE(value("99-9"), 90.0);
+        QCOMPARE(value("10 - 4"), 6.0);
+        QCOMPARE(value("100 - 20 - 5"), 75.0);
     }
 
     void calcFormat()

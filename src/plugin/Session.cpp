@@ -78,12 +78,18 @@ void Session::receive(const QByteArray& line)
             if (m_handlers.log)
                 m_handlers.log(message->params.value(u"level"_s).toString(u"info"_s), message->params.value(u"text"_s).toString());
         } else if (method == u"winshun/notify") {
-            if (m_handlers.notify)
-                m_handlers.notify(message->params.value(u"text"_s).toString());
+            const QJsonObject& params = message->params;
+            if (params.value(u"toast"_s).toBool() && m_handlers.toast)
+                m_handlers.toast(params.value(u"title"_s).toString(), params.value(u"text"_s).toString(), params.value(u"click"_s).toArray());
+            else if (m_handlers.notify)
+                m_handlers.notify(params.value(u"text"_s).toString());
         } else if (method == u"winshun/progress") {
             if (m_handlers.progress)
                 m_handlers.progress(static_cast<std::uint64_t>(message->params.value(u"queryId"_s).toDouble()),
                     message->params.value(u"text"_s).toString());
+        } else if (method == u"winshun/refresh") {
+            if (m_handlers.refresh)
+                m_handlers.refresh();
         }
         // Others: nothing to do.
         return;

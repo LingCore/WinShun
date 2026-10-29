@@ -34,7 +34,9 @@ Item {
             plugins.confirmUninstall(details.id, withData === true)
     }
     function reject() {
-        if (kind === "install")
+        if (kind === "permissions")
+            plugins.declineEnable(info.id)
+        else if (kind === "install")
             plugins.cancelInstall()
         close()
     }

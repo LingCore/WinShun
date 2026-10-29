@@ -2,11 +2,12 @@
   "manifest": 1,
   "id": "winshun.go",
   "name": {"zh": "快捷跳转", "en": "Go to"},
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": {"zh": "零代码示例：code 用 VS Code 打开、dl 下载文件夹、pdf 找 PDF、go 常用位置", "en": "Zero-code sample: code opens in VS Code, dl Downloads, pdf finds PDFs, go common places"},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",
   "license": "MIT",
+  "permissions": ["processes"],
   "commands": [
     {
       "id": "code", "keyword": "code", "title": {"zh": "用 VS Code 打开", "en": "Open in VS Code"}, "icon": "glyph:U+E943",

@@ -51,10 +51,12 @@ bool darkMode()
     return QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
 }
 
-// What a plugin may do that matters most: go online, write files, start programs.
+// What a plugin may do that matters most: go online, take connections from
+// the network, write files, start programs.
 bool risky(plugin::Permission p)
 {
-    return p == plugin::Permission::Network || p == plugin::Permission::FilesWrite || p == plugin::Permission::Processes;
+    return p == plugin::Permission::Network || p == plugin::Permission::NetworkListen || p == plugin::Permission::FilesWrite
+        || p == plugin::Permission::Processes;
 }
 
 // Every word typed is somewhere in the row.
@@ -266,6 +268,7 @@ void PluginGallery::refresh()
         return;
     m_fetching = true;
     m_problem.clear();
+    m_problemIsConnection = false;
     emit stateChanged();
     const QString from = source();
     QThreadPool::globalInstance()->start([self = QPointer(this), from] {
@@ -286,12 +289,14 @@ void PluginGallery::finishFetch(const QString& from, const gallery::Fetched& fet
         index = gallery::parse(fetched.body, from, &error);
     if (!index) {
         m_problem = fetched.status == 200 ? tr("没看懂插件列表，过一会儿再试。") : networkProblem(fetched);
+        m_problemIsConnection = connectionFailed(fetched);
         qWarning().noquote() << "Plugin library: no list from" << from << fetched.status << fetched.error << error;
         emit stateChanged();
         return;
     }
     m_fetchedThisRun.start();
     m_problem.clear();
+    m_problemIsConnection = false;
     m_index = std::move(*index);
     m_hasIndex = true;
     m_listTime = QDateTime::currentDateTime();
@@ -491,18 +496,28 @@ QString PluginGallery::networkProblem(const gallery::Fetched& fetched) const
         return tr("GitHub 上没有这个文件了，可能刚更新过：点“刷新”再试。");
     if (fetched.status != 0)
         return tr("GitHub 返回了错误（%1）。").arg(fetched.status);
+    // The proxy that was set by hand, when the way to it is what failed (GitHub #84).
+    if (const QString proxy = http::proxyServer(); !proxy.isEmpty() && connectionFailed(fetched))
+        return tr("连不上你设置的代理 %1。看看代理软件开着没有，或者到“网络代理”里改一下。").arg(proxy);
     switch (fetched.error) {
     case ERROR_WINHTTP_NAME_NOT_RESOLVED:
-        return tr("网络不通，找不到 GitHub。检查一下网络。");
+        return tr("找不到 GitHub。网络不通，或者要设置网络代理才能访问。");
     case ERROR_WINHTTP_TIMEOUT:
-        return tr("连接 GitHub 超时。网络没问题的话，可能要开代理。");
+        return tr("连不上 GitHub，等了太久也没有回应。网络没问题的话，要设置网络代理才能访问。");
     case ERROR_FILE_NOT_FOUND:
     case ERROR_ACCESS_DENIED:
     case ERROR_READ_FAULT: // a list or package of a file (WINSHUN_PLUGIN_INDEX)
         return tr("读不了这个文件（错误 %1）。").arg(fetched.error);
     default:
-        return tr("连不上 GitHub。网络没问题的话，可能要开代理。");
+        return tr("连不上 GitHub。网络没问题的话，要设置网络代理才能访问。");
     }
+}
+
+bool PluginGallery::connectionFailed(const gallery::Fetched& fetched)
+{
+    // No answer at all, and not for want of the file (a list or package of a file).
+    return fetched.status == 0 && fetched.error != ERROR_FILE_NOT_FOUND && fetched.error != ERROR_ACCESS_DENIED
+        && fetched.error != ERROR_READ_FAULT && fetched.error != ERROR_CANCELLED;
 }
 
 void PluginGallery::openRepository()

@@ -82,7 +82,25 @@ public:
     // the favorites' (keyword, name). Each rebuilds the index.
     void setEnabled(const QSet<QString>& ids);
     void setEnabled(const QString& id, bool on);
-    bool enabled(QStringView id) const { return m_enabled.contains(id.toString()); }
+    // From the settings too: the permissions the user said yes to, by
+    // plugin ("<id>" -> Confirmed=). From the first call on, a plugin of
+    // the user's that is switched on but whose manifest asks for more (a
+    // newer version put over it) waits for the user's OK: not enabled(),
+    // so not started, queried, offered to the AI or heard, and out of the
+    // index, until the settings say yes to the new ones too. The bundled
+    // ones come with Win顺 and are trusted as they come. Without the call
+    // (tests, wsbench, the preview) nothing waits.
+    // Returns who waited until now and no longer does (the user said yes):
+    // the caller clears their crash state, as switching them on would.
+    QStringList setConfirmed(QHash<QString, QStringList> confirmed);
+    // Switched on and waiting for nothing: it may run.
+    bool enabled(QStringView id) const;
+    // The switch as the settings have it, whatever it waits for.
+    bool switchedOn(QStringView id) const { return m_enabled.contains(id.toString()); }
+    // What a plugin that is switched on asks for beyond what the user said
+    // yes to, in Win顺's order of the permissions (Permissions::names()): it
+    // waits for their OK on these. Empty when it waits for nothing.
+    QStringList awaitingConsent(QStringView id) const { return m_awaiting.value(id.toString()); }
     void setKeywordOverrides(QHash<QString, QString> overrides);
     void setWebKeywords(QList<std::pair<QString, QString>> keywords);
     void setFavoriteKeywords(QList<std::pair<QString, QString>> keywords);
@@ -114,6 +132,20 @@ public:
     static constexpr int kPrefixCandidates = 4;
     std::vector<Match> hints(const QString& text) const;
 
+    // The enabled commands whose `files` trigger takes these files and
+    // folders (`folders[i]`: paths[i] is one), for the result menu: each
+    // trigger's kind, extensions and count must fit the whole selection.
+    // In the catalog's order.
+    struct FileCommand {
+        const Entry* entry = nullptr;
+        const Command* command = nullptr;
+        const Trigger* trigger = nullptr;
+    };
+    std::vector<FileCommand> fileCommands(const QStringList& paths, const QList<bool>& folders) const;
+    // `pluginId`'s `commandId` is one of `commands`: a menu's choice, looked
+    // up again at the click by who it was, never by its place (GitHub #113).
+    static bool hasFileCommand(const std::vector<FileCommand>& commands, QStringView pluginId, QStringView commandId);
+
 signals:
     void changed(); // entries or the index
     // Files other than plugin.json changed under these plugins' folders (the
@@ -142,6 +174,9 @@ private:
     QString m_bundledDir;
     std::vector<Entry> m_entries;
     QSet<QString> m_enabled;
+    bool m_holdToConfirmed = false; // setConfirmed() was called: the user's plugins wait for their OK on more
+    QHash<QString, QStringList> m_confirmed;
+    QHash<QString, QStringList> m_awaiting; // id -> what it waits for the user's OK on (rebuildIndex)
     QHash<QString, QString> m_overrides;
     QList<std::pair<QString, QString>> m_web;
     QList<std::pair<QString, QString>> m_favorites;

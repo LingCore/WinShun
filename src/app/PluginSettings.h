@@ -204,6 +204,7 @@ public:
     // was never confirmed or asks for more permissions than it did.
     Q_INVOKABLE void setEnabled(const QString& id, bool on);
     Q_INVOKABLE void confirmEnable(const QString& id); // the dialog's yes
+    Q_INVOKABLE void declineEnable(const QString& id); // its no: one waiting for the OK goes off
     Q_INVOKABLE void setAiEnabled(const QString& id, bool on); // the card's "给 AI 用" switch
     Q_INVOKABLE void setKeyword(const QString& id, const QString& command, const QString& keyword); // the user's; empty: none
     Q_INVOKABLE void resetKeyword(const QString& id, const QString& command); // back to the manifest's

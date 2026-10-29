@@ -51,7 +51,7 @@ private:
         std::function<void(mcp::ToolResult)> done;
         QString pluginId;
     };
-    void onActionDone(std::uint64_t requestId, const Effects& effects, bool ok, const QString& error);
+    void onActionDone(std::uint64_t requestId, const QString& pluginId, const Effects& effects, bool ok, const QString& error);
     mcp::ExternalTool queryTool(const Entry& e, const Command& c, bool offered, const QString& offReason);
     mcp::ExternalTool actionTool(const Entry& e, const Command& c, bool offered, const QString& offReason);
 

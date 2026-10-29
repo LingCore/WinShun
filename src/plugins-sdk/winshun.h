@@ -30,6 +30,7 @@
 #include <deque>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <utility>
@@ -413,10 +414,53 @@ inline std::optional<Json> Json::parse(const std::string& text, std::string* pro
 
 inline std::string Json::quote(const std::string& s)
 {
+    // The length of the well-formed UTF-8 sequence at s[i], or 0. A line that
+    // is not UTF-8 is dropped whole by the host, so a byte that does not fit
+    // (text cut in the middle of a character, a peer's raw bytes) is written
+    // as U+FFFD instead.
+    const auto sequence = [&s](std::size_t i) -> std::size_t {
+        const auto at = [&s](std::size_t k) { return static_cast<unsigned char>(s[k]); };
+        const unsigned char lead = at(i);
+        std::size_t n = 0;
+        unsigned char low = 0x80, high = 0xBF; // the second byte's range (Unicode table 3-7)
+        if (lead >= 0xC2 && lead <= 0xDF)
+            n = 2;
+        else if (lead >= 0xE0 && lead <= 0xEF) {
+            n = 3;
+            if (lead == 0xE0)
+                low = 0xA0;
+            else if (lead == 0xED)
+                high = 0x9F;
+        } else if (lead >= 0xF0 && lead <= 0xF4) {
+            n = 4;
+            if (lead == 0xF0)
+                low = 0x90;
+            else if (lead == 0xF4)
+                high = 0x8F;
+        } else
+            return 0;
+        if (i + n > s.size() || at(i + 1) < low || at(i + 1) > high)
+            return 0;
+        for (std::size_t k = 2; k < n; ++k) {
+            if (at(i + k) < 0x80 || at(i + k) > 0xBF)
+                return 0;
+        }
+        return n;
+    };
     std::string out;
     out.reserve(s.size() + 2);
     out += '"';
-    for (const char c : s) {
+    for (std::size_t i = 0; i < s.size(); ++i) {
+        const char c = s[i];
+        if (static_cast<unsigned char>(c) >= 0x80) {
+            const std::size_t n = sequence(i);
+            if (n) {
+                out.append(s, i, n);
+                i += n - 1;
+            } else
+                out += "\xEF\xBF\xBD";
+            continue;
+        }
         switch (c) {
         case '"': out += "\\\""; break;
         case '\\': out += "\\\\"; break;
@@ -545,6 +589,7 @@ struct Item {
     std::string id;
     std::string title;
     std::string subtitle;
+    std::string subtitleAway; // the second line while the keyboard is on another row; empty: `subtitle`
     std::string icon; // "file:C:\…", "ext:pdf", "glyph:U+E8E5", "color:#ff8800", "icon.png", "data:image/png;base64,…", "site:https://…"
     int score = -1; // 0–100; -1: not given
     std::string match;
@@ -565,6 +610,7 @@ struct Item {
     {
     }
     Item& withIcon(std::string s) { icon = std::move(s); return *this; }
+    Item& withSubtitleAway(std::string s) { subtitleAway = std::move(s); return *this; }
     Item& withScore(int s) { score = s; return *this; }
     Item& withCopy(std::string s) { copy = std::move(s); return *this; }
     Item& withAutocomplete(std::string s) { autocomplete = std::move(s); return *this; }
@@ -583,6 +629,8 @@ struct Item {
         Json::Object o {{"id", id}, {"title", title}};
         if (!subtitle.empty())
             o["subtitle"] = subtitle;
+        if (!subtitleAway.empty())
+            o["subtitleAway"] = subtitleAway;
         if (!modified.isNull()) o["modified"] = modified;
         if (!created.isNull()) o["created"] = created;
         if (size >= 0) o["size"] = size;
@@ -630,6 +678,11 @@ inline Json keep() { return Json::Object {{"type", "keep"}}; }
 inline Json notify(std::string text) { return Json::Object {{"type", "notify"}, {"text", std::move(text)}}; }
 inline Json copy(std::string text) { return Json::Object {{"type", "copy"}, {"text", std::move(text)}}; }
 inline Json setQuery(std::string text) { return Json::Object {{"type", "setQuery"}, {"text", std::move(text)}}; }
+// openPath / openUrl (and an item's open): Win顺 carries these out. Without the
+// "processes" permission it opens only a folder or an ordinary (non-program,
+// non-script) file, and only http/https/mailto URLs, with no args/cwd; anything
+// else is refused with a footer notice. Declare "processes" to open a program
+// or a non-web link.
 inline Json openPath(std::string path) { return Json::Object {{"type", "open"}, {"path", std::move(path)}}; }
 inline Json openUrl(std::string url) { return Json::Object {{"type", "open"}, {"url", std::move(url)}}; }
 inline Json replace(const Items& items) { return Json::Object {{"type", "replace"}, {"items", itemsJson(items)}}; }
@@ -655,6 +708,10 @@ struct ActionRequest {
     std::string action; // the action's id ("default" when the command declares none)
     std::string text; // the words in the box
     Json item; // the item as the plugin gave it
+    // A `files` trigger chosen on Win顺's result menu: trigger "files",
+    // action "files", the chosen files and folders (full paths), no item.
+    std::string trigger;
+    std::vector<std::string> files;
 };
 
 // ---- the lines ------------------------------------------------------------------
@@ -751,8 +808,13 @@ inline ActionRequest onceAction()
     a.command = env("WS_COMMAND");
     a.action = env("WS_ACTION");
     a.text = env("WS_QUERY");
+    a.trigger = env("WS_TRIGGER");
     if (const auto item = Json::parse(env("WS_ITEM")))
         a.item = *item;
+    if (const auto files = Json::parse(env("WS_FILES"))) {
+        for (const Json& f : files->toArray())
+            a.files.push_back(f.toString());
+    }
     return a;
 }
 inline int onceEffects(const Effects& effects)
@@ -793,12 +855,26 @@ public:
     const std::string& dataDir() const { return m_dataDir; }
     bool chinese() const { return m_locale != "en"; }
 
-    // Notifications to Win顺, at any time.
+    // Notifications to Win顺, at any time and from any thread (the lines go
+    // out one at a time).
     void log(const std::string& level, const std::string& text)
     {
         notify("winshun/log", Json::Object {{"level", level}, {"text", text}});
     }
     void notifyUser(const std::string& text) { notify("winshun/notify", Json::Object {{"text", text}}); }
+    // A system notification, for when the launcher is not open (the manifest
+    // asks for "notifications"; without it the text goes to the footer).
+    // `click`: what a click on it does, as an action's effects would
+    // (effect::setQuery("kw ") opens the launcher on those words). At most
+    // one every two seconds per plugin: a newer one waiting replaces the one
+    // before it. Leave out what should not stay in the Action Center.
+    void toast(const std::string& title, const std::string& text, const Effects& click = {})
+    {
+        Json::Array a;
+        for (const Json& e : click)
+            a.push_back(e);
+        notify("winshun/notify", Json::Object {{"title", title}, {"text", text}, {"toast", true}, {"click", Json(std::move(a))}});
+    }
     void progress(long long queryId, const std::string& text)
     {
         notify("winshun/progress", Json::Object {{"queryId", queryId}, {"text", text}});
@@ -808,11 +884,17 @@ public:
     {
         notify("query/partial", Json::Object {{"queryId", queryId}, {"items", itemsJson(items)}, {"replace", replace}});
     }
+    // What the launcher shows changed by itself (a request came, a transfer
+    // ended): when the last answer asked for `rerun` and the launcher still
+    // shows it, Win顺 asks again now instead of when `rerun` is up. Call it
+    // after the state the next query reads is written. Otherwise nothing.
+    void refresh() { notify("winshun/refresh", Json::Object {}); }
     // One of Win顺's tools (the same names and arguments as its MCP tools:
     // search_files, search_content, recent_files, list_folder, get_file_info,
     // open_item, show_in_folder, clipboard_history, clipboard_get,
     // index_status), as the manifest's permissions allow. The result, or an
     // object with "error" {code, message}. Lines meanwhile are kept for after.
+    // Only from the thread in serve() (it reads the answer itself).
     Json tool(const std::string& name, Json arguments)
     {
         const long long id = m_nextId++;
@@ -838,6 +920,15 @@ protected:
         return {effect::copy(text), effect::notify(chinese() ? "已复制" : "Copied"), effect::hide()};
     }
     virtual void settingsChanged(const Json& settings) { (void)settings; }
+    // Once, right after initialize: settings(), dataDir() and the rest are
+    // known. A plugin that works without being asked (start "eager": a
+    // server, a watcher) starts that here, not at its first query.
+    virtual void initialized() {}
+    // Right before the answer to shutdown: the host ends the process as soon
+    // as it has that answer, so what must not be left behind (half-written
+    // files, a peer waiting) is put right here. Keep it short: the host waits
+    // about 2 seconds for the answer.
+    virtual void shuttingDown() {}
     virtual void cancel(long long queryId) { (void)queryId; }
     virtual std::string name() const { return "plugin"; }
     // A query's whole answer, when `rerun` (seconds) or `cache` (seconds)
@@ -849,7 +940,9 @@ private:
     {
         Json m = message;
         m.set("jsonrpc", "2.0");
-        detail::writeLine(m.dump());
+        const std::string line = m.dump();
+        const std::lock_guard lock(m_sendMutex); // a whole line at a time, whichever thread sends
+        detail::writeLine(line);
     }
     void notify(const std::string& method, Json params) { send(Json::Object {{"method", method}, {"params", std::move(params)}}); }
     void respond(const Json& id, Json result) { send(Json::Object {{"id", id}, {"result", std::move(result)}}); }
@@ -858,7 +951,9 @@ private:
         send(Json::Object {{"id", id}, {"error", Json::Object {{"code", code}, {"message", text}}}});
     }
 
-    // One line; true when the loop is to end.
+    // One line; true when the loop is to end. What the plugin throws (no
+    // memory, a bug) answers that request with an error, once, and the loop
+    // goes on: a process that ends is restarted, and after three it is off.
     bool handle(const std::string& line)
     {
         if (trim(line).empty())
@@ -871,14 +966,43 @@ private:
         const Json& m = *message;
         const std::string method = m["method"].toString();
         const Json id = m["id"];
-        const Json params = m["params"];
+        bool answered = false;
+        try {
+            return dispatch(method, id, m["params"], answered);
+        } catch (const std::exception& e) {
+            debug("winshun.h: " + method + " threw: " + e.what());
+        } catch (...) {
+            debug("winshun.h: " + method + " threw");
+        }
+        try {
+            if (!answered && !id.isNull()) {
+                if (method == "shutdown")
+                    respond(id, Json::Object {}); // ended all the same
+                else
+                    fail(id, -32603, "Internal error");
+            }
+        } catch (...) {
+            // Not even that: Win顺's wait for the answer runs out.
+        }
+        return method == "shutdown";
+    }
+
+    // `answered`: set once `id` has its answer (initialize answers before
+    // initialized(): an exception there is not answered twice).
+    bool dispatch(const std::string& method, const Json& id, const Json& params, bool& answered)
+    {
+        const auto answer = [&](Json result) {
+            respond(id, std::move(result));
+            answered = true;
+        };
         if (method == "initialize") {
             m_settings = params["settings"];
             m_locale = params["locale"].toString();
             m_theme = params["theme"].toString();
             m_pluginDir = params["pluginDir"].toString();
             m_dataDir = params["dataDir"].toString();
-            respond(id, Json::Object {{"protocolVersion", "1"}, {"name", name()}});
+            answer(Json::Object {{"protocolVersion", "1"}, {"name", name()}});
+            initialized();
         } else if (method == "query") {
             Query q;
             q.queryId = params["queryId"].toInt();
@@ -891,32 +1015,38 @@ private:
             q.limit = static_cast<int>(params["limit"].toInt(200));
             for (const Json& group : params["match"].toArray())
                 q.match.push_back(group.toString());
-            respond(id, queryResult(q));
+            answer(queryResult(q));
         } else if (method == "action") {
             ActionRequest a;
             a.command = params["command"].toString();
             a.action = params["action"].toString();
             a.text = params["text"].toString();
             a.item = params["item"];
+            a.trigger = params["trigger"].toString();
+            for (const Json& f : params["files"].toArray())
+                a.files.push_back(f.toString());
             Json::Array effects;
             for (const Json& e : action(a))
                 effects.push_back(e);
-            respond(id, Json::Object {{"effects", Json(std::move(effects))}});
+            answer(Json::Object {{"effects", Json(std::move(effects))}});
         } else if (method == "cancel") {
             cancel(params["queryId"].toInt());
         } else if (method == "settingsChanged") {
             m_settings = params["settings"];
             settingsChanged(m_settings);
         } else if (method == "shutdown") {
-            respond(id, Json::Object {});
+            shuttingDown();
+            answer(Json::Object {});
             return true;
         } else if (!id.isNull()) {
             fail(id, -32601, "Method not found: " + method);
+            answered = true;
         }
         return false;
     }
 
     detail::LineReader m_reader {::GetStdHandle(STD_INPUT_HANDLE)};
+    std::mutex m_sendMutex;
     std::deque<std::string> m_queued; // lines that came while a tool call waited
     long long m_nextId = 1;
     Json m_settings;

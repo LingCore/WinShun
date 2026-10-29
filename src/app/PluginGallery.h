@@ -108,6 +108,8 @@ class PluginGallery : public QObject {
     Q_PROPERTY(bool fetching READ fetching NOTIFY stateChanged FINAL)
     Q_PROPERTY(QString status READ status NOTIFY stateChanged FINAL) // how many, from when, or that it is being fetched
     Q_PROPERTY(QString problem READ problem NOTIFY stateChanged FINAL) // why the last fetch failed; empty when it did not
+    // ... and it is that GitHub could not be reached: the page offers the proxy setting (GitHub #84).
+    Q_PROPERTY(bool problemIsConnection READ problemIsConnection NOTIFY stateChanged FINAL)
     Q_PROPERTY(bool downloading READ downloading NOTIFY stateChanged FINAL) // a package is on its way (one at a time)
 
 public:
@@ -124,6 +126,7 @@ public:
     bool fetching() const { return m_fetching; }
     QString status() const;
     QString problem() const { return m_problem; }
+    bool problemIsConnection() const { return m_problemIsConnection; }
     bool downloading() const { return !m_downloadId.isEmpty(); }
 
     Q_INVOKABLE void refresh(); // 刷新
@@ -153,6 +156,7 @@ private:
     void finishDownload(const QString& id, const Download& download);
     void setRowProgress(const QString& id, double progress);
     QString networkProblem(const plugin::gallery::Fetched& fetched) const;
+    static bool connectionFailed(const plugin::gallery::Fetched& fetched); // no answer: the network, the proxy or GitHub
 
     PluginSettings* m_settings;
     plugin::gallery::Index m_index;
@@ -163,6 +167,7 @@ private:
     bool m_active = false;
     bool m_fetching = false;
     QString m_problem;
+    bool m_problemIsConnection = false;
     QString m_filter;
     // The download: its plugin, what stops it, and its number (a result
     // from one cancelled meanwhile is let go of).
