@@ -5,6 +5,7 @@
 #include "RecentFolders.h"
 #include "SearchEngine.h"
 #include "platform/Integrity.h"
+#include "platform/DialogOwner.h"
 #include "platform/WindowEffects.h"
 
 #include <QClipboard>
@@ -48,6 +49,11 @@ constexpr int kMinDialogWidth = 640; // made narrower down to this, then moved a
 constexpr int kMaxExplorer = 5; // suggestions of each kind
 constexpr int kMaxRecent = 10;
 constexpr int kMaxListed = 200; // of a folder whose path is typed
+
+int minimumPanelHeight()
+{
+    return DialogBar::metrics().barHeight + DialogBar::kListChrome + 2 * DialogBar::metrics().barRow;
+}
 
 // The tag of a folder open in a file manager. The others by their own names.
 QString managerName(filemanager::Kind kind)
@@ -99,7 +105,7 @@ std::optional<Placing> placingOf(HWND hwnd)
     return Placing {frame, info.rcWork, screenOf(monitor)};
 }
 
-// The bar and a full list fit on that side of the dialog, as the dialog is.
+// The bar and at least two rows fit on that side of the dialog as it is.
 // Beside it, the bar goes up as far as the list needs.
 bool fitsBy(const Placing& at, DialogBar::Place side)
 {
@@ -110,25 +116,21 @@ bool fitsBy(const Placing& at, DialogBar::Place side)
     case DialogBar::Place::Right:
         return at.frame.right + qRound((kGap + kSideWidth) * scale) <= at.work.right;
     default:
-        return at.frame.bottom + qRound((kGap + DialogBar::panelHeight()) * scale) <= at.work.bottom;
+        return at.frame.bottom + qRound((kGap + minimumPanelHeight()) * scale) <= at.work.bottom;
     }
 }
 
-// Where the bar goes now: the side set if it fits there, else where it is
-// if that still fits (no going back and forth as the dialog moves), else the
-// first that fits of below, right and left; below if none does.
+// Where the bar goes now: the side set if it fits there (below: while the
+// bar itself fits, the list opening upward), else where it is if that still
+// fits (no going back and forth as the dialog moves), else the first that
+// fits of below, right and left; below if none does.
 DialogBar::Place sideFor(const Placing& at, DialogBar::Place set, DialogBar::Place current)
 {
-    using enum DialogBar::Place;
-    if (set != Auto && fitsBy(at, set))
-        return set;
-    if (fitsBy(at, current))
-        return current;
-    for (const DialogBar::Place side : {Below, Right, Left}) {
-        if (fitsBy(at, side))
-            return side;
-    }
-    return Below;
+    const qreal scale = at.screen->devicePixelRatio();
+    return dialogbar::chooseSide(at.work.bottom - at.frame.bottom, at.frame.left - at.work.left,
+        at.work.right - at.frame.right, qRound((kGap + minimumPanelHeight()) * scale),
+        qRound(kGap * scale) + qRound(DialogBar::metrics().barHeight * scale), // as place() puts it
+        qRound((kGap + kSideWidth) * scale), qRound(24 * scale), set, current);
 }
 
 // Along one axis: the frame from `first` to `last`, the work area from
@@ -355,10 +357,12 @@ void DialogBar::setDialog(HWND dialog)
         m_movingTo.reset();
         m_moveTimeout.stop();
         const filedialog::Kind kind = filedialog::kind(dialog);
-        const bool copyOnly = integrity::higherThanOurs(dialog);
-        if (kind != m_kind || copyOnly != m_copyOnly) {
+        const bool elevated = integrity::higherThanOurs(dialog);
+        const bool copyOnly = elevated && !m_elevatedNavAvailable;
+        if (kind != m_kind || copyOnly != m_copyOnly || elevated != m_elevated) {
             m_kind = kind;
             m_copyOnly = copyOnly;
+            m_elevated = elevated;
             emit dialogKindChanged();
         }
         m_pathCopied = false;
@@ -387,6 +391,22 @@ void DialogBar::dialogMoved()
 {
     if (m_inFront)
         follow();
+}
+
+void DialogBar::dialogRestacked()
+{
+    // Its thread put windows in another Z-order, which it does often (a click
+    // into it, a menu): a whole follow() only when the bar is no longer right
+    // above it, showing (the dialog came up over it, #95), or no longer in the
+    // band followDialog gives it (topmost only by an elevated or topmost
+    // dialog: the dialog may have left that band). Moves, shows and hides
+    // come as events of their own.
+    const auto topmost = [](HWND hwnd) { return (::GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0; };
+    const HWND bar = m_window ? reinterpret_cast<HWND>(m_window->winId()) : nullptr;
+    if (m_inFront && bar && m_visibility.isRevealed() && !m_dragged && !m_movingTo
+        && ::GetWindow(m_dialog, GW_HWNDPREV) == bar && topmost(bar) == (m_elevated || topmost(m_dialog)))
+        return;
+    dialogMoved();
 }
 
 void DialogBar::dialogDragged(bool dragged)
@@ -432,7 +452,7 @@ void DialogBar::follow()
     showWindow();
 }
 
-// Once for each dialog: should the bar and a full list not fit by it on its
+// Once for each dialog: should the bar and two rows not fit by it on its
 // screen (Place), it gets smaller there, its far edge staying: shorter for
 // below, down to kMinDialogHeight; narrower for a side, down to
 // kMinDialogWidth. Then it moves for the rest. Windows keeps a dialog's size
@@ -444,7 +464,7 @@ void DialogBar::follow()
 // stays.
 void DialogBar::makeRoom()
 {
-    if (m_copyOnly)
+    if (m_elevated) // never resize or move an elevated dialog's window across UIPI
         return;
     std::erase_if(m_roomMade, [](HWND dialog) { return !::IsWindow(dialog); });
     if (std::ranges::find(m_roomMade, m_dialog) != m_roomMade.end())
@@ -481,7 +501,7 @@ void DialogBar::makeRoom()
     const bool resizable = ::GetWindowLongPtrW(m_dialog, GWL_STYLE) & WS_THICKFRAME;
     // A logical pixel more than fitsBy() wants: a dialog unaware of DPI
     // comes out a physical pixel off what it is given.
-    const int below = physical(kGap + panelHeight() + 1);
+    const int below = physical(kGap + minimumPanelHeight() + 1);
     const int beside = physical(kGap + kSideWidth + 1);
     RECT to = frame;
     if (side == Place::Below) {
@@ -616,6 +636,7 @@ void DialogBar::search()
     request.scope = foldersOnly() ? Scope::Folders : Scope::Files;
     request.kindOrder = m_kind == filedialog::Kind::Save ? KindOrder::FoldersFirst : KindOrder::FilesFirst;
     request.excludedTypes = m_excludedTypes;
+    request.excludedFileNames = m_excludedFileNames;
     if (m_recordHistory)
         request.history = m_history->items();
     if (m_favorites)
@@ -837,6 +858,33 @@ void DialogBar::setAskAutoJump(bool on)
     updateAsking();
 }
 
+void DialogBar::setElevatedNavAvailable(bool on)
+{
+    if (on == m_elevatedNavAvailable)
+        return;
+    m_elevatedNavAvailable = on;
+    // An elevated dialog is copy-only only when the service cannot drive it.
+    const bool copyOnly = m_elevated && !on;
+    const bool copyOnlyChanged = copyOnly != m_copyOnly;
+    m_copyOnly = copyOnly;
+    emit dialogKindChanged(); // copyOnly / elevatedJump / canOpen for the current dialog
+    if (copyOnlyChanged) {
+        m_pathCopied = false;
+        emit copyStateChanged();
+        updateAsking();
+        if (m_window && m_window->isVisible())
+            place();
+    }
+}
+
+void DialogBar::setCopyOnlyHint(const QString& hint)
+{
+    if (hint == m_copyOnlyHint)
+        return;
+    m_copyOnlyHint = hint;
+    emit dialogKindChanged();
+}
+
 void DialogBar::updateAsking()
 {
     const bool asking = !m_copyOnly && m_askAutoJump && m_dialog && !hidden() && !m_explorer.isEmpty();
@@ -869,17 +917,28 @@ void DialogBar::goBack()
     goTo(origin, false);
 }
 
+void DialogBar::copyPathFallback(HWND dialog, const QString& path)
+{
+    // Also comes late (the service's helper may take ~12 s to give up): only
+    // while that dialog is still the one in front. setDialog(nullptr) keeps
+    // m_dialog for its coming back, so that alone is no proof; the clipboard
+    // and the foreground of whatever the user went on to are left alone.
+    if (!m_inFront || dialog != m_dialog || !dialog || !::IsWindow(dialog))
+        return;
+    QGuiApplication::clipboard()->setText(QDir::toNativeSeparators(path));
+    m_pathCopied = true;
+    emit copyStateChanged();
+    setQuery({});
+    ::SetForegroundWindow(dialog);
+}
+
 void DialogBar::goTo(QString path, bool isFile, bool open)
 {
     const HWND dialog = m_dialog;
     if (!dialog || !::IsWindow(dialog) || !m_mover)
         return;
     if (m_copyOnly) {
-        QGuiApplication::clipboard()->setText(QDir::toNativeSeparators(path));
-        m_pathCopied = true;
-        emit copyStateChanged();
-        setQuery({});
-        ::SetForegroundWindow(dialog);
+        copyPathFallback(dialog, path);
         return;
     }
     setQuery({}); // as it was before typing; the list closes as the dialog takes the focus
@@ -1037,14 +1096,19 @@ void DialogBar::prepareMenuWindow(QWindow* menu) const
         return;
     // Showing it must not take the focus from the bar, which keeps handling the keys.
     menu->setProperty("_q_showWithoutActivating", true);
+    menu->setTransientParent(nullptr);
+    win::followOwner(reinterpret_cast<HWND>(menu->winId()), nullptr);
+    menu->setFlag(Qt::WindowStaysOnTopHint, false);
+    menu->setTransientParent(m_window);
     const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
     win::styleFramelessWindow(menu);
     win::setDarkFrame(menu, dark);
+    win::followOwner(reinterpret_cast<HWND>(menu->winId()), reinterpret_cast<HWND>(m_window->winId()));
 }
 
 void DialogBar::showWindow()
 {
-    m_visibility.show();
+    m_visibility.show(m_dialog, m_elevated);
 }
 
 void DialogBar::hideWindow()
@@ -1054,6 +1118,7 @@ void DialogBar::hideWindow()
 
 void DialogBar::showLogo()
 {
+    m_logo.setOwner(reinterpret_cast<HWND>(m_window->winId()));
     m_logo.show(m_logoHost, m_logoRow, m_logoWork, &m_logoAvoid, m_logoScale);
 }
 

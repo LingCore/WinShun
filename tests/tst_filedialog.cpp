@@ -1,16 +1,22 @@
+#include "FakeFileDialog.h"
 #include "platform/FileDialog.h"
 #include "Win32Util.h"
 
 #include <QTest>
 #include <QDir>
+#include <QFile>
 #include <QScopeGuard>
 #include <QTemporaryDir>
 #include <QUuid>
 
 #include <windows.h>
 
+#include <chrono>
+#include <future>
+
 using ws::filedialog::Kind;
 namespace fd = ws::filedialog;
+using namespace std::chrono_literals;
 
 namespace {
 void registerClass(const wchar_t* name, const wchar_t* base = nullptr)
@@ -106,6 +112,99 @@ private slots:
         Window readonlyTree(L"TFolderTreeView", readonlyDialog.handle);
         Window readonlyEdit(L"TNewPathEdit", readonlyDialog.handle, ES_READONLY);
         QCOMPARE(fd::kind(readonlyDialog.handle), Kind::None);
+    }
+
+    // The address bar gets the folder with a trailing backslash, so it can
+    // only resolve a folder ("a.txt" too), and the file name box nothing.
+    void addressBar_data()
+    {
+        QTest::addColumn<QString>("leaf"); // under a temporary folder; empty: that drive's root
+        QTest::addColumn<bool>("slash"); // asked for with the backslash already
+        QTest::newRow("folder") << QStringLiteral("target") << false;
+        QTest::newRow("with backslash") << QStringLiteral("target") << true;
+        QTest::newRow("named like a file") << QStringLiteral("a.txt") << false;
+        QTest::newRow("non-ascii, space") << QStringLiteral("目标 文件夹") << false;
+        QTest::newRow("drive root") << QString() << false;
+    }
+
+    void addressBar()
+    {
+        QFETCH(QString, leaf);
+        QFETCH(bool, slash);
+        QTemporaryDir root;
+        QVERIFY(root.isValid());
+        const QString base = QDir::toNativeSeparators(root.path());
+        if (!leaf.isEmpty())
+            QVERIFY(QDir(root.path()).mkdir(leaf));
+        QString folder = leaf.isEmpty() ? base.left(3) : base + QLatin1Char('\\') + leaf; // "C:\"
+        if (slash)
+            folder += QLatin1Char('\\');
+        fakedialog::OpenDialog dialog((base + QStringLiteral("\\start")).toStdWString());
+        QVERIFY(dialog.valid());
+        QCOMPARE(fd::kind(dialog.handle()), Kind::Open);
+        QVERIFY(fd::goTo(dialog.handle(), folder.toStdWString()));
+        QCOMPARE(dialog.entered().size(), std::size_t(1));
+        const QString typed = folder.endsWith(QLatin1Char('\\')) ? folder : folder + QLatin1Char('\\');
+        QCOMPARE(QString::fromStdWString(dialog.entered().front()), typed);
+        QCOMPARE(QString::fromStdWString(fd::currentFolder(dialog.handle())),
+            QDir::toNativeSeparators(QDir::cleanPath(folder)));
+        QCOMPARE(QString::fromStdWString(dialog.fileName()), QString());
+    }
+
+    // No text box yet: one click on the crumbs makes it. A dialog that is
+    // not DPI aware never shows the one it makes, which is used all the same
+    // (not the file name box and OK).
+    void addressBarByClick_data()
+    {
+        QTest::addColumn<bool>("shown");
+        QTest::newRow("shown") << true;
+        QTest::newRow("left hidden (not DPI aware)") << false;
+    }
+
+    void addressBarByClick()
+    {
+        QFETCH(bool, shown);
+        QTemporaryDir root;
+        QVERIFY(root.isValid());
+        QVERIFY(QDir(root.path()).mkdir(QStringLiteral("target")));
+        const QString base = QDir::toNativeSeparators(root.path());
+        const QString folder = base + QStringLiteral("\\target");
+        fakedialog::OpenDialog dialog((base + QStringLiteral("\\start")).toStdWString(),
+            shown ? fakedialog::AddressBox::ShownByClick : fakedialog::AddressBox::HiddenByClick);
+        QVERIFY(dialog.valid());
+        // From another thread, as by the app's worker: this one takes the
+        // posted click (and the messages sent) meanwhile, and must till it is
+        // done: GetWindowText among them waits on these windows with no timeout.
+        auto going = std::async(std::launch::async, [&] { return fd::goTo(dialog.handle(), folder.toStdWString()); });
+        while (going.wait_for(0ms) != std::future_status::ready)
+            QTest::qWait(5);
+        QVERIFY(going.get());
+        QVERIFY(dialog.clicks() >= 1); // one, but another if this thread was held up past 300 ms
+        QCOMPARE(dialog.entered().size(), std::size_t(1));
+        QCOMPARE(QString::fromStdWString(dialog.entered().front()), folder + QLatin1Char('\\'));
+        QCOMPARE(QString::fromStdWString(fd::currentFolder(dialog.handle())), folder);
+        QCOMPARE(QString::fromStdWString(dialog.fileName()), QString());
+    }
+
+    // A folder gone by the time the dialog would go there, or a file: nothing
+    // is typed anywhere (the file name box and OK would get an error box).
+    void addressBarGone()
+    {
+        QTemporaryDir root;
+        QVERIFY(root.isValid());
+        const QString base = QDir::toNativeSeparators(root.path());
+        QFile file(root.filePath(QStringLiteral("note.txt")));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.close();
+        fakedialog::OpenDialog dialog((base + QStringLiteral("\\start")).toStdWString());
+        QVERIFY(dialog.valid());
+        const std::wstring before = dialog.address();
+        for (const QString& gone : {base + QStringLiteral("\\gone"), base + QStringLiteral("\\note.txt")}) {
+            QVERIFY(!fd::goTo(dialog.handle(), gone.toStdWString()));
+            QVERIFY(dialog.entered().empty());
+            QCOMPARE(QString::fromStdWString(dialog.fileName()), QString());
+            QCOMPARE(QString::fromStdWString(dialog.address()), QString::fromStdWString(before));
+        }
     }
 
     void realInnoPicker()

@@ -4,10 +4,12 @@
 #include "platform/ComWorker.h"
 #include "platform/FolderViewHit.h"
 
+#include <QJsonObject>
 #include <QObject>
 #include <QPointF>
 #include <QPointer>
 #include <QRectF>
+#include <QSet>
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
 
@@ -17,6 +19,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 
 class QWindow;
 
@@ -131,6 +134,10 @@ private:
     void stopKeys();
     void goTo(const QString& folder);
     POINT hotkeyAnchor(HWND root) const; // where the menu goes for the hotkey (physical pixels)
+    // The double click's way, for the diagnostics journal (GitHub #45). On
+    // the worker; `chain`: the window classes, when there is no hit.
+    void journal(const QString& step, const folderview::Hit& hit, const std::wstring& chain, folderview::BlankTrace* trace,
+        const QJsonObject& more = {});
 
     History* m_history;
     Favorites* m_favorites;
@@ -161,6 +168,7 @@ private:
     // menu comes with these, and they are gathered again after it.
     QStringList m_recent;
     bool m_recentKnown = false;
+    QSet<QString> m_journaled; // the double clicks' stories told this run (worker thread only)
     ComWorker m_worker; // last: its tasks use the members above
 };
 

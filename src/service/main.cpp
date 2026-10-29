@@ -464,6 +464,13 @@ int wmain(int argc, wchar_t** argv)
                 return ERROR_INVALID_PARAMETER;
             return ws::service::runInputListener(pid, reinterpret_cast<HWND>(window));
         }
+        if (option == L"--navigate-dialog" && argc == 4) {
+            wchar_t* end = nullptr;
+            const auto window = std::wcstoull(argv[2], &end, 10);
+            if (!window || !end || *end)
+                return ERROR_INVALID_PARAMETER;
+            return ws::service::runDialogNav(reinterpret_cast<HWND>(window), argv[3]);
+        }
         if (option == L"--install")
             return install();
         if (option == L"--uninstall")

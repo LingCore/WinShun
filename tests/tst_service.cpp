@@ -351,6 +351,91 @@ private slots:
         QVERIFY(QString::fromStdWString(nothing.lastError()).contains(u"not running"));
     }
 
+    void dialogNavRefusedForOthers()
+    {
+        // GitHub #104: dialog navigation is for Win顺's own UI only (WinShun.exe
+        // beside the service). This test process is not, so it is neither told
+        // of it (whether or not the service could launch the helper: an admin
+        // --console service cannot, one running as SYSTEM can) nor given it.
+        RawClient raw;
+        QVERIFY(raw.connect(m_pipe));
+        volproto::Type reply {};
+        std::vector<std::byte> payload;
+        QVERIFY(raw.hello(volproto::kMajor, reply, payload));
+        QCOMPARE(reply, volproto::Type::HelloOk);
+        volproto::HelloOk ok;
+        QVERIFY(decode(payload, ok));
+        QVERIFY(!(ok.capabilities & volproto::kCapabilityDialogNav));
+        volproto::Writer w;
+        w.u64(0x1234);
+        w.string(std::wstring(L"C:\\"));
+        QVERIFY(raw.channel.write(w.finish(volproto::Type::OpenDialogNav), 5000));
+        QVERIFY(raw.channel.read(reply, payload, 5000));
+        QCOMPARE(reply, volproto::Type::Error);
+        volproto::Error error;
+        QVERIFY(decode(payload, error));
+        QCOMPARE(error.code, static_cast<std::uint32_t>(ERROR_ACCESS_DENIED));
+    }
+
+    void keyListenerForAnyClient()
+    {
+        // The UIAccess double-tap listener, unlike dialog navigation, is for
+        // any client the pipe lets in (a portable copy keeps double taps over
+        // admin windows): advertised wherever the service can launch it (as
+        // SYSTEM, WINSHUN_TEST_PIPE), never refused for who asks. Such a
+        // service tells this client, not beside it, that it keeps the
+        // navigator from it.
+        RawClient raw;
+        QVERIFY(raw.connect(m_pipe));
+        volproto::Type reply {};
+        std::vector<std::byte> payload;
+        QVERIFY(raw.hello(volproto::kMajor, reply, payload));
+        QCOMPARE(reply, volproto::Type::HelloOk);
+        volproto::HelloOk ok;
+        QVERIFY(decode(payload, ok));
+        const bool listener = ok.capabilities & volproto::kCapabilityKeyListener;
+        QCOMPARE(bool(ok.capabilities & volproto::kCapabilityDialogNavBesideOnly), listener);
+        QVERIFY(!(ok.capabilities & volproto::kCapabilityDialogNav));
+        if (listener) {
+            qInfo("the service launches the listener: tst_keylistener's serviceWorker runs it");
+            return;
+        }
+        volproto::Writer w;
+        w.u64(0x1234);
+        QVERIFY(raw.channel.write(w.finish(volproto::Type::OpenKeyListener), 5000));
+        QVERIFY(raw.channel.read(reply, payload, 5000));
+        QCOMPARE(reply, volproto::Type::Error);
+        volproto::Error error;
+        QVERIFY(decode(payload, error));
+        QCOMPARE(error.code, static_cast<std::uint32_t>(ERROR_NOT_SUPPORTED)); // cannot, not "not for you"
+    }
+
+    void dialogNavRejectsBadFolder()
+    {
+        // The folder is checked as a string before anything else, the caller
+        // included: no helper command line is ever built from a relative,
+        // quoted, control-character, device or overlong path.
+        const std::wstring bad[] = {L"relative\\x", L"C:", L"C:\\a\"b", L"C:\\a\tb", L"\\\\.\\PhysicalDrive0",
+            L"C:\\a\\..\\b", std::wstring(L"C:\\") + std::wstring(300, L'a')};
+        for (const std::wstring& folder : bad) {
+            RawClient raw;
+            QVERIFY(raw.connect(m_pipe));
+            volproto::Type reply {};
+            std::vector<std::byte> payload;
+            QVERIFY(raw.hello(volproto::kMajor, reply, payload));
+            QCOMPARE(reply, volproto::Type::HelloOk);
+            volproto::Writer w;
+            w.u64(0x1234);
+            w.string(folder);
+            QVERIFY(raw.channel.write(w.finish(volproto::Type::OpenDialogNav), 5000));
+            QVERIFY(raw.channel.read(reply, payload, 5000));
+            QCOMPARE(reply, volproto::Type::Error);
+            volproto::Error error;
+            QVERIFY(decode(payload, error));
+            QCOMPARE(error.code, static_cast<std::uint32_t>(ERROR_INVALID_PARAMETER));
+        }
+    }
+
     void wrongProtocolRefused()
     {
         RawClient raw;

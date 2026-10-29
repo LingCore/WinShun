@@ -1,10 +1,12 @@
 #include "FolderMenu.h"
 
+#include "DiagnosticLog.h"
 #include "Favorites.h"
 #include "History.h"
 #include "RecentFolders.h"
 #include "platform/FileDialog.h"
 #include "platform/FileManagers.h"
+#include "platform/Integrity.h"
 #include "platform/KeyRouter.h"
 #include "platform/Shell.h"
 #include "platform/WindowEffects.h"
@@ -14,6 +16,7 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QGuiApplication>
+#include <QJsonObject>
 #include <QScreen>
 #include <QStyleHints>
 #include <QTimer>
@@ -38,6 +41,24 @@ namespace {
 constexpr int kMaxFavorites = 12;
 constexpr int kMaxRecent = 5;
 constexpr int kMaxWindows = 5;
+constexpr int kMaxJournal = 24; // different stories of the double click a run (journal())
+
+// The DPI awareness a window was made with, for the journal.
+const char* awarenessOf(HWND window)
+{
+    const DPI_AWARENESS_CONTEXT context = ::GetWindowDpiAwarenessContext(window);
+    if (::AreDpiAwarenessContextsEqual(context, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2))
+        return "per-monitor-v2";
+    if (::AreDpiAwarenessContextsEqual(context, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE))
+        return "per-monitor";
+    if (::AreDpiAwarenessContextsEqual(context, DPI_AWARENESS_CONTEXT_SYSTEM_AWARE))
+        return "system";
+    if (::AreDpiAwarenessContextsEqual(context, DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED))
+        return "gdi-scaled";
+    if (::AreDpiAwarenessContextsEqual(context, DPI_AWARENESS_CONTEXT_UNAWARE))
+        return "unaware";
+    return "unknown";
+}
 
 // Listary's own process (not its service): it brings up its menu on the
 // same double click (docs/pitfalls.md). Asked at most every few seconds.
@@ -201,32 +222,106 @@ void FolderMenu::setGroups(bool favorites, bool recent, bool windows)
 void FolderMenu::doubleClicked(HWND window, POINT pt)
 {
     // On the listener thread: class names only, nothing that waits.
-    const folderview::Hit hit = folderview::classify(window, pt);
-    if ((hit.surface == folderview::Surface::Explorer && !m_explorer) || (hit.surface == folderview::Surface::Desktop && !m_desktop)
-        || hit.surface == folderview::Surface::None)
+    const folderview::Hit hit = folderview::classify(window, pt, true);
+    if (hit.surface == folderview::Surface::None) {
+        // A folder view's window all the same, of a kind not known (another
+        // shell's, a file dialog's): for the journal (GitHub #45).
+        if (folderview::inShellView(window))
+            m_worker.post([this, chain = folderview::classChain(window)] { journal(u"classify"_s, {}, chain, nullptr); });
         return;
+    }
+    if ((hit.surface == folderview::Surface::Explorer && !m_explorer) || (hit.surface == folderview::Surface::Desktop && !m_desktop)) {
+        // Its own switch in the settings is off (the journal: the diagnostics
+        // have no settings file).
+        m_worker.post([this, hit] { journal(u"switched-off"_s, hit, {}, nullptr); });
+        return;
+    }
     QMetaObject::invokeMethod(this, [this, hit] {
-        if (m_blocked && m_blocked())
+        if (m_blocked && m_blocked()) {
+            m_worker.post([this, hit] { journal(u"blocked"_s, hit, {}, nullptr); });
             return;
+        }
         const int ask = ++m_asks;
         const bool yield = m_yieldToListary;
         const bool recordHistory = m_recordHistory;
         const QStringList history = recordHistory && m_history ? m_history->items() : QStringList();
         m_worker.post([this, hit, ask, yield, recordHistory, history] {
-            if (ask != m_asks || (yield && listaryRuns()))
+            if (ask != m_asks)
                 return;
+            if (yield && listaryRuns()) {
+                journal(u"listary"_s, hit, {}, nullptr);
+                return;
+            }
             QElapsedTimer clock;
             clock.start();
-            if (!folderview::isBlank(hit))
+            folderview::BlankTrace trace;
+            if (!folderview::isBlank(hit, &trace)) {
+                journal(u"not-blank"_s, hit, {}, &trace, {{u"ms"_s, clock.elapsed()}});
                 return;
+            }
             const qint64 blankMs = clock.elapsed();
+            // Before asking Explorer for the folder: should that never come
+            // back, the journal still says the double click got this far.
+            // (A story not told yet costs one accessibility walk, once.)
+            journal(u"blank"_s, hit, {}, &trace, {{u"ms"_s, blankMs}});
+            clock.restart();
             const QString folder = hit.surface == folderview::Surface::Explorer
                 ? QString::fromStdWString(filemanager::explorerFolder(hit.tab))
                 : QString();
-            qInfo().noquote() << u"Folder menu: blank %1, folder %2 ms"_s.arg(blankMs).arg(clock.elapsed());
+            qInfo().noquote() << u"Folder menu: blank %1 (%2), folder %3 ms"_s.arg(blankMs)
+                                     .arg(QString::fromLatin1(trace.by))
+                                     .arg(clock.elapsed());
             gatherHere(hit, ask, folder, recordHistory, history);
         });
     }, Qt::QueuedConnection);
+}
+
+// The double click's way in the diagnostics journal (GitHub #45): where it
+// stopped (classify: a folder view's window of a kind not known; switched-off;
+// blocked; listary; not-blank; not-in-front) or that it got through (blank), told by
+// window classes, accessibility roles and UI Automation class names, never
+// a file's or folder's name. Each different story once a run, at most
+// kMaxJournal; only a story not told yet costs the accessibility walk added
+// for comparison (one more round to Explorer). On the worker.
+void FolderMenu::journal(const QString& step, const folderview::Hit& hit, const std::wstring& chain,
+    folderview::BlankTrace* trace, const QJsonObject& more)
+{
+    if (m_journaled.size() >= kMaxJournal)
+        return;
+    const QString classes = QString::fromStdWString(hit.view ? folderview::classChain(hit.view) : chain);
+    QString story = step + u'|' + classes;
+    if (trace)
+        story += u'|' + QString::fromLatin1(trace->by) + u'|' + QString::fromStdWString(trace->uiaClass);
+    if (m_journaled.contains(story))
+        return;
+    m_journaled.insert(story);
+    QJsonObject details = more;
+    details[u"step"_s] = step;
+    details[u"surface"_s] = hit.surface == folderview::Surface::Explorer ? u"explorer"_s
+        : hit.surface == folderview::Surface::Desktop                    ? u"desktop"_s
+                                                                         : u"none"_s;
+    details[u"classes"_s] = classes;
+    if (trace) {
+        if (trace->msaa.empty())
+            trace->msaa = folderview::accessibleTrace(hit); // what the walk alone would have said
+        details[u"by"_s] = QString::fromLatin1(trace->by);
+        details[u"uia"_s] = QString::fromStdWString(trace->uiaClass);
+        details[u"uiaType"_s] = static_cast<qint64>(trace->uiaControlType);
+        details[u"uiaResult"_s] = u"0x%1"_s.arg(static_cast<quint32>(trace->uiaResult), 8, 16, u'0');
+        details[u"uiaOtherProcess"_s] = trace->uiaOtherProcess;
+        details[u"msaa"_s] = QString::fromStdWString(trace->msaa);
+    }
+    if (hit.view && ::IsWindow(hit.view)) {
+        details[u"dpi"_s] = static_cast<int>(::GetDpiForWindow(hit.view));
+        details[u"awareness"_s] = QString::fromLatin1(awarenessOf(hit.view));
+        DWORD process = 0;
+        DWORD desktop = 0;
+        ::GetWindowThreadProcessId(hit.view, &process);
+        ::GetWindowThreadProcessId(::GetShellWindow(), &desktop);
+        details[u"desktopProcess"_s] = process == desktop; // false: folder windows in a process of their own
+        details[u"higherIntegrity"_s] = integrity::higherThanOurs(hit.root);
+    }
+    diagnostics::record(u"folder-menu-double-click"_s, details);
 }
 
 void FolderMenu::requested(const QString& folder)
@@ -418,8 +513,13 @@ void FolderMenu::show(const folderview::Hit& hit, const Found& found)
     // dialog given the front back from its bar may not have it yet.)
     const HWND foreground = ::GetForegroundWindow();
     const HWND front = foreground ? ::GetAncestor(foreground, GA_ROOT) : nullptr;
-    if (!front || (front != hit.root && !(m_dialogOf && m_dialogOf(front) == hit.root)))
+    if (!front || (front != hit.root && !(m_dialogOf && m_dialogOf(front) == hit.root))) {
+        if (hit.view) // a double click's (the hotkey's have no view)
+            m_worker.post([this, hit, front = QString::fromStdWString(folderview::classChain(front))] {
+                journal(u"not-in-front"_s, hit, {}, nullptr, {{u"front"_s, front}});
+            });
         return;
+    }
     m_hit = hit;
     m_folder = found.folder;
     m_entries.clear();

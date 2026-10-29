@@ -363,8 +363,17 @@ bool Server::handshake(Connection& conn)
     ok.version[1] = WINSHUN_VERSION_MINOR;
     ok.version[2] = WINSHUN_VERSION_PATCH;
     ok.capabilities = m_options.bulkReads ? kCapabilityBulkRead : 0;
-    if (m_options.keyListener)
+    // Both session helpers start the same way but are not given alike. The
+    // key listener only reports double taps of Ctrl, Alt or Shift, so any
+    // client the pipe lets in gets it in its own session, as before #104 (a
+    // portable copy keeps double taps over admin windows). The navigator acts
+    // on another program's elevated window with uiAccess rights, so only the
+    // WinShun.exe beside this service gets it; another copy is told it is kept
+    // from it, to say so instead of suggesting to install the service.
+    if (m_options.keyListener) {
         ok.capabilities |= kCapabilityKeyListener;
+        ok.capabilities |= requesterIsWinShun(conn.pid) ? kCapabilityDialogNav : kCapabilityDialogNavBesideOnly;
+    }
     encode(w, ok);
     return conn.channel.write(w.finish(Type::HelloOk), m_options.writeTimeoutMs);
 }
@@ -393,6 +402,9 @@ void Server::serve(std::shared_ptr<Connection> conn)
                 break;
             case Type::OpenKeyListener:
                 serveInputListener(*this, *conn, payload);
+                break;
+            case Type::OpenDialogNav:
+                serveDialogNav(*this, *conn, payload);
                 break;
             default:
                 log::write(L"pid %lu: unknown request %u", conn->pid, static_cast<unsigned>(type));

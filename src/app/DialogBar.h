@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DialogBarVisibility.h"
+#include "DialogBarPlacement.h"
 #include "Favorites.h"
 #include "History.h"
 #include "PathText.h"
@@ -74,6 +75,14 @@ class DialogBar : public QObject {
     Q_PROPERTY(bool foldersOnly READ foldersOnly NOTIFY dialogKindChanged FINAL) // a folder picker
     Q_PROPERTY(bool canOpen READ canOpen NOTIFY dialogKindChanged FINAL) // an Open dialog: Ctrl+Enter
     Q_PROPERTY(bool copyOnly READ copyOnly NOTIFY dialogKindChanged FINAL)
+    // Why an elevated dialog is copy-only, for the bar's hint: "service" (no
+    // service runs: installing it lets this copy jump), "installed" (only the
+    // installed Win顺 can: the service keeps the navigator from a portable or
+    // other copy), or "" (no reason worth telling, e.g. an older service).
+    Q_PROPERTY(QString copyOnlyHint READ copyOnlyHint NOTIFY dialogKindChanged FINAL)
+    // An elevated dialog the index service's helper can navigate for us: it
+    // jumps (to a folder), but never opens a file and never types a name.
+    Q_PROPERTY(bool elevatedJump READ elevatedJump NOTIFY dialogKindChanged FINAL)
     Q_PROPERTY(bool pathCopied READ pathCopied NOTIFY copyStateChanged FINAL)
     Q_PROPERTY(bool nothingFound READ nothingFound NOTIFY resultsReplaced FINAL)
     // The folder whose contents are listed for a path typed; empty while searching.
@@ -119,11 +128,12 @@ public:
     };
     Q_ENUM(Action)
 
-    // Where the bar goes by the dialog. Auto: below, else on the right, else
-    // on the left, wherever it fits as the dialog is; the dialog is made
+    // Where the bar goes by the dialog. Auto: below with at least two rows,
+    // else on the right or left; switching back below needs extra clearance.
+    // The dialog is made
     // shorter where none does. A side set: the dialog is made smaller (or
     // moved) for room there.
-    enum class Place { Auto, Below, Left, Right };
+    using Place = dialogbar::Side;
 
     // Takes a dialog to a folder or a file (DialogJump::go).
     using Mover = std::function<void(HWND dialog, std::wstring path, bool isFile, bool open)>;
@@ -136,11 +146,24 @@ public:
     QQuickWindow* window() const { return m_window; }
     // Off: what was opened lately is neither offered nor ranks first.
     void setRecordHistory(bool on) { m_recordHistory = on; }
-    void setExcludedTypes(const QStringList& types) { m_excludedTypes = types; } // Settings::excludedTypes
+    void setExcludedFiles(const QStringList& types, const QStringList& names) // Settings::excludedTypes, excludedFileNames
+    {
+        m_excludedTypes = types;
+        m_excludedFileNames = names;
+    }
     void setExcludedApps(const QStringList& apps); // program files ("notepad.exe") whose dialogs go without
     void setPlace(const QString& name); // Settings::dialogBarPlace: "auto", "below", "left", "right"
     void setResultOptions(bool showModified, bool thumbnails, const QString& numberKeys); // Settings: "ctrl", "alt", "off"
     void setAskAutoJump(bool on); // not answered yet (Settings::dialogAutoJumpAsked)
+    // Whether the index service can navigate elevated dialogs for us (#104):
+    // when it can, an elevated dialog jumps (folder-only) instead of being
+    // copy-only. Follows ServiceDialogNav::available.
+    void setElevatedNavAvailable(bool on);
+    void setCopyOnlyHint(const QString& hint); // copyOnlyHint, from ServiceDialogNav::reach
+    // The service was asked to navigate an elevated dialog but could not after
+    // all (e.g. a tree path it could not match): copy the path so the user can
+    // paste it, as in copy-only mode.
+    void copyPathFallback(HWND dialog, const QString& path);
     bool showModified() const { return m_showModified; }
     QString numberKeys() const { return m_numberKeys; }
     int numberKeysLeft() const { return static_cast<int>(m_numberKeysLeft); }
@@ -155,6 +178,9 @@ public:
 
     void setDialog(HWND dialog); // in front, or nullptr (DialogJump::dialogChanged)
     void dialogMoved();
+    // The dialog's thread reordered the top-level windows (DialogJump::dialogRestacked):
+    // dialogMoved unless the bar is still right above it, showing.
+    void dialogRestacked();
     // Taken by its frame (true): the bar hides till the dialog is let go, as
     // moving it after each step would slow the drag (DialogJump::dialogDragged).
     void dialogDragged(bool dragged);
@@ -174,8 +200,10 @@ public:
     QString explorerSource() const;
     QString originName() const;
     bool foldersOnly() const { return m_kind == filedialog::Kind::Folder || m_kind == filedialog::Kind::Browse; }
-    bool canOpen() const { return !m_copyOnly && m_kind == filedialog::Kind::Open; }
+    bool canOpen() const { return !m_elevated && m_kind == filedialog::Kind::Open; }
     bool copyOnly() const { return m_copyOnly; }
+    QString copyOnlyHint() const { return m_copyOnlyHint; }
+    bool elevatedJump() const { return m_elevated && m_elevatedNavAvailable; }
     bool pathCopied() const { return m_pathCopied; }
     bool nothingFound() const { return m_nothingFound; }
     QString browsedFolder() const { return m_browsed; }
@@ -256,12 +284,16 @@ private:
     HWND m_dialog = nullptr;
     QString m_dialogApp; // its program file, "notepad.exe"
     filedialog::Kind m_kind = filedialog::Kind::None;
-    bool m_copyOnly = false; // UIPI: search is available, applying the path is manual
+    bool m_copyOnly = false; // UIPI: search is available, applying the path is manual (no service helper)
+    bool m_elevated = false; // the dialog is of a higher-integrity (elevated) process
+    bool m_elevatedNavAvailable = false; // the service can drive elevated dialogs (#104)
+    QString m_copyOnlyHint = QStringLiteral("service"); // as for no service, until App says otherwise
     bool m_pathCopied = false;
     bool m_inFront = false; // m_dialog (or the bar) is in front
     bool m_dragged = false; // m_dialog is being moved or sized by its frame
     bool m_recordHistory = true;
     QStringList m_excludedTypes;
+    QStringList m_excludedFileNames;
     QStringList m_excludedApps;
     HWND m_hiddenUnder = nullptr; // HideHere
     std::vector<HWND> m_roomMade; // the dialogs makeRoom() is done with

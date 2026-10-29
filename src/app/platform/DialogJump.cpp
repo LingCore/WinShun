@@ -11,16 +11,35 @@
 #include <algorithm>
 #include <utility>
 
+using namespace std::chrono_literals;
+
 namespace ws {
 
 namespace {
 
 DialogJump* g_instance = nullptr; // for the WinEvent callbacks
 
+// How long a window is awaited to become a file dialog (DialogJump::await),
+// and the pauses between the looks at it when nothing happens in it: doubled
+// each time, up to the longest; then, for a file dialog left behind, one a
+// second. After its thread makes, shows or focuses a window it is looked at
+// again a moment later, once for a burst.
+constexpr auto kAwaitFor = 5s;
+constexpr auto kFirstLook = 30ms;
+constexpr auto kLongestLook = 800ms;
+constexpr auto kBehindLook = 1s;
+constexpr auto kAfterEvent = 15ms;
+
 bool hasClass(HWND hwnd, const wchar_t* name)
 {
     wchar_t buffer[32] {};
     return hwnd && ::GetClassNameW(hwnd, buffer, static_cast<int>(std::size(buffer))) > 0 && ::wcscmp(buffer, name) == 0;
+}
+
+// A window that may become a file dialog once all of its controls are there.
+bool dialogLike(HWND hwnd)
+{
+    return hasClass(hwnd, L"#32770") || hasClass(hwnd, L"TSelectFolderForm") || hasClass(hwnd, L"TSelectDirDlg");
 }
 
 bool sameFolder(const std::wstring& a, const std::wstring& b)
@@ -34,16 +53,8 @@ DialogJump::DialogJump(Callbacks callbacks)
     : m_callbacks(std::move(callbacks))
 {
     g_instance = this;
-    m_recheck.setInterval(100);
-    QObject::connect(&m_recheck, &QTimer::timeout, &m_recheck, [this] {
-        const HWND foreground = ::GetForegroundWindow();
-        if (foreground == m_pending && filedialog::kind(foreground) != filedialog::Kind::None) {
-            m_recheck.stop();
-            setDialog(foreground, m_pendingFromManager);
-        } else if (foreground != m_pending || --m_retries <= 0) {
-            m_recheck.stop();
-        }
-    });
+    m_recheck.setSingleShot(true);
+    QObject::connect(&m_recheck, &QTimer::timeout, &m_recheck, [this] { recheck(); });
     // Out of context: delivered through this (the GUI) thread's message loop.
     m_foregroundHook = ::SetWinEventHook(
         EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, nullptr, &DialogJump::onForeground, 0, 0, WINEVENT_OUTOFCONTEXT);
@@ -52,6 +63,7 @@ DialogJump::DialogJump(Callbacks callbacks)
 
 DialogJump::~DialogJump()
 {
+    stopAwaiting();
     if (m_foregroundHook)
         ::UnhookWinEvent(m_foregroundHook);
     if (m_locationHook)
@@ -64,18 +76,60 @@ DialogJump::~DialogJump()
 
 void CALLBACK DialogJump::onForeground(HWINEVENTHOOK, DWORD, HWND hwnd, LONG, LONG, DWORD, DWORD)
 {
-    // What is in front now, rather than the window the event names: File
-    // Explorer, taken to another folder by a program, says it came to the
-    // front while the dialog stays there; and the event comes a moment late.
-    // (None in front, between two: the one named.)
     if (!g_instance)
         return;
+    // What is in front now goes first: File Explorer, taken to another folder
+    // by a program, says it came to the front while the dialog stays there.
+    // (None in front, between two: the one named.)
     const HWND foreground = ::GetForegroundWindow();
     g_instance->follow(foreground ? foreground : hwnd);
+    // But a dialog the event names may not be in front: opened by a program
+    // that may not take the front (a console program's, from Windows
+    // Terminal), it stays behind, and when it does come up no event may come
+    // (docs/pitfalls.md). So it is awaited, unless one in front is.
+    if (foreground && hwnd && hwnd != foreground && g_instance->m_pending != foreground)
+        g_instance->await(hwnd, false);
+}
+
+void CALLBACK DialogJump::onPending(HWINEVENTHOOK, DWORD event, HWND hwnd, LONG object, LONG, DWORD, DWORD)
+{
+    if (!g_instance || !g_instance->m_pending)
+        return;
+    const HWND pending = g_instance->m_pending;
+    QTimer& recheck = g_instance->m_recheck;
+    if (event == EVENT_OBJECT_DESTROY) {
+        if (hwnd == pending && object == OBJID_WINDOW)
+            g_instance->stopAwaiting();
+        return;
+    }
+    // In the dialog, a control made or shown (it may be the one still
+    // missing) or the focus taken; not in the program's other windows on that
+    // thread. Or the thread restacked its windows (named by the desktop): it
+    // came up, which no foreground event says for a window opened behind
+    // (docs/pitfalls.md), measured 3 ms after.
+    const bool inDialog = hwnd == pending || ::IsChild(pending, hwnd);
+    const bool look = (inDialog
+                          && (event == EVENT_OBJECT_FOCUS
+                              || ((event == EVENT_OBJECT_CREATE || event == EVENT_OBJECT_SHOW) && object == OBJID_WINDOW)))
+        || (event == EVENT_OBJECT_REORDER && hwnd == ::GetDesktopWindow());
+    if (look && (!recheck.isActive() || recheck.remainingTimeAsDuration() > kAfterEvent))
+        recheck.start(kAfterEvent);
 }
 
 void CALLBACK DialogJump::onLocation(HWINEVENTHOOK, DWORD event, HWND hwnd, LONG object, LONG, DWORD, DWORD)
 {
+    // The dialog's thread reordered the top-level windows (named by the
+    // desktop): clicked into, the dialog came up, or with its program's
+    // window, a click on the disabled owner of a modal one. No owner keeps
+    // the bar above them (#95): it follows as for a move, unless it is still
+    // right above the dialog (dialogRestacked).
+    if (event == EVENT_OBJECT_REORDER && hwnd == ::GetDesktopWindow() && g_instance) {
+        if (g_instance->m_callbacks.dialogRestacked)
+            g_instance->m_callbacks.dialogRestacked();
+        else if (g_instance->m_callbacks.dialogMoved)
+            g_instance->m_callbacks.dialogMoved();
+        return;
+    }
     if (!g_instance || !hwnd || hwnd != g_instance->m_dialog)
         return;
     if (event == EVENT_SYSTEM_MOVESIZESTART || event == EVENT_SYSTEM_MOVESIZEEND) {
@@ -92,7 +146,7 @@ void CALLBACK DialogJump::onLocation(HWINEVENTHOOK, DWORD event, HWND hwnd, LONG
 
 void DialogJump::follow(HWND foreground)
 {
-    m_recheck.stop();
+    m_probing = nullptr;
     std::erase_if(m_wentToManager, [](HWND dialog) { return !::IsWindow(dialog); });
     if (foreground && std::ranges::find(m_companions, foreground) != m_companions.end()) {
         // The bar, the clipboard: the dialog is still the one. Not back from
@@ -119,33 +173,113 @@ void DialogJump::follow(HWND foreground)
         setDialog(nullptr, false);
         return;
     }
-    // Elevated dialogs can still be searched: DialogBar copies the selected
-    // path for manual paste. Never send navigation messages across UIPI.
+    // Elevated dialogs: the UI cannot send them navigation across UIPI, but
+    // the index service's helper can (setDialog registers Ctrl+G and auto-jump
+    // only when canFollow allows it); without the service, DialogBar copies
+    // the path for manual paste.
     const bool fileDialog = filedialog::kind(foreground) != filedialog::Kind::None;
+    if (fileDialog && foreground == m_pending)
+        stopAwaiting(); // up, and an event said so this time
     setDialog(fileDialog ? foreground : nullptr, fromManager);
     if (fileDialog)
         return;
-    // A dialog may come to the front before all of its controls are there.
-    if (hasClass(foreground, L"#32770") || hasClass(foreground, L"TSelectFolderForm")
-        || hasClass(foreground, L"TSelectDirDlg")) {
-        m_pending = foreground;
-        m_pendingFromManager = fromManager;
-        m_retries = 5;
-        m_recheck.start();
+    // A dialog may come to the front before all of its controls are there:
+    // some come seconds later (opened behind another window, on a slow drive).
+    if (dialogLike(foreground)) {
+        await(foreground, fromManager);
     } else if (filedialog::mayBeKingsoft(foreground) && !filedialog::probed(foreground)) {
         // WPS Office's own, asked through UI Automation: on the worker, as
         // that waits on the program.
-        m_pending = foreground;
-        m_pendingFromManager = fromManager;
+        m_probing = foreground;
+        m_probingFromManager = fromManager;
         m_worker.post([this, hwnd = foreground] {
             if (filedialog::probe(hwnd) == filedialog::Kind::None)
                 return;
             QMetaObject::invokeMethod(&m_recheck, [this, hwnd] {
-                if (hwnd == m_pending && ::GetForegroundWindow() == hwnd)
-                    setDialog(hwnd, m_pendingFromManager);
+                if (hwnd == m_probing && ::GetForegroundWindow() == hwnd)
+                    setDialog(hwnd, m_probingFromManager);
             }, Qt::QueuedConnection);
         });
     }
+}
+
+void DialogJump::await(HWND candidate, bool fromManager)
+{
+    DWORD process = 0;
+    const DWORD thread = ::GetWindowThreadProcessId(candidate, &process);
+    if (!thread || (thread == ::GetCurrentThreadId() && process == ::GetCurrentProcessId()) || isCompanion(candidate)
+        || (!dialogLike(candidate) && filedialog::kind(candidate) == filedialog::Kind::None))
+        return;
+    const bool front = ::GetForegroundWindow() == candidate;
+    if (candidate != m_pending) {
+        // A file dialog left behind stays awaited over a window that is
+        // neither in front nor a file dialog yet (a message box, say).
+        if (m_pending && !front && ::IsWindow(m_pending) && filedialog::kind(candidate) == filedialog::Kind::None
+            && filedialog::kind(m_pending) != filedialog::Kind::None)
+            return;
+        stopAwaiting();
+        m_pending = candidate;
+        m_pendingUntil = std::chrono::steady_clock::now() + kAwaitFor;
+        m_pendingStep = kFirstLook;
+        m_pendingFront = front;
+        // Out of context, its thread only, and only while awaited (onPending).
+        m_pendingHook = ::SetWinEventHook(EVENT_OBJECT_CREATE, EVENT_OBJECT_FOCUS, nullptr, &DialogJump::onPending,
+            process, thread, WINEVENT_OUTOFCONTEXT);
+    }
+    m_pendingFromManager = m_pendingFromManager || fromManager;
+    m_recheck.stop();
+    recheck();
+}
+
+void DialogJump::recheck()
+{
+    const HWND dialog = m_pending;
+    if (!dialog)
+        return;
+    if (!::IsWindow(dialog)) {
+        stopAwaiting();
+        return;
+    }
+    // Taken once in front with all a file dialog has; asked again each time,
+    // as what the event named may since have become something else.
+    const bool fileDialog = filedialog::kind(dialog) != filedialog::Kind::None;
+    const bool front = ::GetForegroundWindow() == dialog;
+    if (fileDialog && front) {
+        const bool fromManager = std::erase(m_wentToManager, dialog) > 0 || m_pendingFromManager;
+        stopAwaiting();
+        setDialog(dialog, fromManager);
+        return;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if (front && !m_pendingFront) {
+        // Up only now: the whole while again for its controls, from here.
+        m_pendingUntil = now + kAwaitFor;
+        m_pendingStep = kFirstLook;
+    }
+    m_pendingFront = front;
+    if (now >= m_pendingUntil) {
+        // Still no file dialog: none (a message box, say). A file dialog
+        // behind is watched until it comes up or goes.
+        if (!fileDialog)
+            stopAwaiting();
+        else
+            m_recheck.start(kBehindLook);
+        return;
+    }
+    const auto left = std::chrono::ceil<std::chrono::milliseconds>(m_pendingUntil - now);
+    m_recheck.start(std::min(m_pendingStep, left));
+    m_pendingStep = std::min(m_pendingStep * 2, std::chrono::milliseconds(kLongestLook));
+}
+
+void DialogJump::stopAwaiting()
+{
+    m_recheck.stop();
+    if (m_pendingHook) {
+        ::UnhookWinEvent(m_pendingHook);
+        m_pendingHook = nullptr;
+    }
+    m_pending = nullptr;
+    m_pendingFromManager = false;
 }
 
 void DialogJump::setDialog(HWND dialog, bool fromManager)
@@ -173,11 +307,11 @@ void DialogJump::setDialog(HWND dialog, bool fromManager)
                 &DialogJump::onLocation, process, thread, WINEVENT_OUTOFCONTEXT);
         }
     }
-    setRegistered(m_hotkeyEnabled && dialog && !integrity::higherThanOurs(dialog));
+    setRegistered(m_hotkeyEnabled && canFollow(dialog));
     if (m_callbacks.dialogChanged)
         m_callbacks.dialogChanged(dialog);
 
-    if (dialog && m_autoJump && !integrity::higherThanOurs(dialog)) {
+    if (dialog && m_autoJump && canFollow(dialog)) {
         std::erase_if(m_seen, [](HWND seen) { return !::IsWindow(seen); });
         const bool first = std::ranges::find(m_seen, dialog) == m_seen.end();
         if (first)
@@ -192,7 +326,27 @@ void DialogJump::setDialog(HWND dialog, bool fromManager)
 void DialogJump::setHotkeyEnabled(bool on)
 {
     m_hotkeyEnabled = on;
-    setRegistered(on && m_dialog && !integrity::higherThanOurs(m_dialog));
+    setRegistered(on && canFollow(m_dialog));
+}
+
+bool DialogJump::canFollow(HWND dialog) const
+{
+    if (!dialog)
+        return false;
+    if (!integrity::higherThanOurs(dialog))
+        return true;
+    return m_callbacks.elevatedNavAvailable && m_callbacks.elevatedNavAvailable();
+}
+
+bool DialogJump::elevatedNav(HWND dialog) const
+{
+    return dialog && integrity::higherThanOurs(dialog) && m_callbacks.navigateElevated
+        && m_callbacks.elevatedNavAvailable && m_callbacks.elevatedNavAvailable();
+}
+
+void DialogJump::refreshElevated()
+{
+    setRegistered(m_hotkeyEnabled && canFollow(m_dialog));
 }
 
 void DialogJump::setRegistered(bool on)
@@ -218,7 +372,8 @@ void DialogJump::noteManager(HWND dialog)
 
 void DialogJump::autoJump(HWND dialog, bool first, bool atOpen)
 {
-    if (integrity::higherThanOurs(dialog))
+    const bool elevated = integrity::higherThanOurs(dialog);
+    if (elevated && !elevatedNav(dialog))
         return;
     const std::vector<filemanager::Folder> folders = filemanager::openFolders();
     if (folders.empty())
@@ -233,6 +388,15 @@ void DialogJump::autoJump(HWND dialog, bool first, bool atOpen)
         if (left == m_leftFor.end() || sameFolder(left->second, folder))
             return;
         left->second = folder;
+    }
+    if (elevated) {
+        // We cannot read the elevated dialog's current folder across UIPI; the
+        // helper navigates it (a no-op if it is already there). No "go back"
+        // origin, since we never read where it was.
+        m_callbacks.navigateElevated(dialog, folder);
+        if (std::ranges::find(m_jumped, dialog) == m_jumped.end())
+            m_jumped.push_back(dialog);
+        return;
     }
     filedialog::waitForFront(dialog);
     if (first) // where it opened: to go back to, and not to be gone to after us
@@ -255,14 +419,23 @@ void DialogJump::autoJump(HWND dialog, bool first, bool atOpen)
 void DialogJump::jump()
 {
     const HWND dialog = m_dialog;
-    if (!dialog || !::IsWindow(dialog) || integrity::higherThanOurs(dialog))
+    if (!dialog || !::IsWindow(dialog))
+        return;
+    const bool elevated = integrity::higherThanOurs(dialog);
+    if (elevated && !elevatedNav(dialog))
         return;
     if (std::ranges::find(m_companions, ::GetForegroundWindow()) != m_companions.end())
         ::SetForegroundWindow(dialog); // ours is in front, so it may hand that on
-    m_worker.post([dialog] {
+    m_worker.post([this, dialog, elevated] {
         const std::vector<filemanager::Folder> folders = filemanager::openFolders();
+        if (folders.empty())
+            return;
+        if (elevated) {
+            m_callbacks.navigateElevated(dialog, folders.front().path); // the helper drives it
+            return;
+        }
         filedialog::waitForFront(dialog);
-        if (!folders.empty() && !filedialog::goTo(dialog, folders.front().path))
+        if (!filedialog::goTo(dialog, folders.front().path))
             qWarning() << "Ctrl+G: the file dialog did not go to the folder";
     });
 }

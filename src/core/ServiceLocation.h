@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include <string>
+#include <string_view>
 
 // Where the index service's executable must live before it is registered as a
 // LocalSystem service (a local privilege-escalation fix). A portable copy of
@@ -112,5 +113,14 @@ void secureLogFolder(const std::wstring& dir);
 // folder, so --uninstall removes it (and the folder) but leaves the installer's
 // {app} copy alone.
 bool parentIs(const std::wstring& path, const std::wstring& dir);
+
+// True when `clientImage` is a WinShun.exe in the very folder of
+// `serviceImage`: both full paths as QueryFullProcessImageNameW and
+// GetModuleFileNameW give them, compared without regard to case. The service
+// offers its session helpers (the UIAccess double-tap listener, the elevated
+// file-dialog navigator of GitHub #104) only to such a client, Win顺's own UI
+// from the same install; a portable or development copy elsewhere is refused
+// them. Pure: no file is opened.
+bool isWinShunBeside(std::wstring_view clientImage, std::wstring_view serviceImage) noexcept;
 
 } // namespace ws::svcloc

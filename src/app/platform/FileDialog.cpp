@@ -65,10 +65,10 @@ HWND crumbBar(HWND dialog)
     return descend(addressBar(dialog), {L"Breadcrumb Parent", L"ToolbarWindow32"});
 }
 
-HWND addressBox(HWND dialog) // only while it is shown
+// The address bar's text box, shown or hidden; none until it is first made.
+HWND addressBox(HWND dialog)
 {
-    const HWND edit = descend(addressBar(dialog), {L"ComboBoxEx32", L"ComboBox", L"Edit"});
-    return edit && ::IsWindowVisible(edit) ? edit : nullptr;
+    return descend(addressBar(dialog), {L"ComboBoxEx32", L"ComboBox", L"Edit"});
 }
 
 // The file name box: in an Open dialog (and the Windows XP style) a combo
@@ -144,6 +144,12 @@ bool setText(HWND hwnd, const std::wstring& text)
     return send(hwnd, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(text.c_str()));
 }
 
+bool isFolder(const std::wstring& path)
+{
+    const DWORD attributes = ::GetFileAttributesW(path.c_str());
+    return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY);
+}
+
 bool waitFor(std::predicate auto done, std::chrono::milliseconds limit)
 {
     const auto end = std::chrono::steady_clock::now() + limit;
@@ -164,7 +170,10 @@ HWND focusedControl(HWND dialog)
 
 // Types the folder into the address bar, as in Explorer. Unlike the file
 // name box, the address bar never accepts the dialog: in a folder picker,
-// OK with a folder in the box would choose it and close the dialog.
+// OK with a folder in the box would choose it and close the dialog. It goes
+// in with a trailing backslash, which the address bar resolves only as a
+// folder (a folder named "a.txt" is never taken for a file to open), and is
+// checked again right before, as by the service's helper (DialogNav.cpp).
 bool goByAddress(HWND dialog, const std::wstring& folder)
 {
     const HWND bar = addressBar(dialog);
@@ -177,7 +186,9 @@ bool goByAddress(HWND dialog, const std::wstring& folder)
     // since an earlier edit (it takes a path and Enter just as well), else
     // not made yet. Only then a click past the last crumb, to make it: such
     // clicks have gone unanswered, for a reason not found (docs/pitfalls.md).
-    HWND box = descend(bar, {L"ComboBoxEx32", L"ComboBox", L"Edit"});
+    // In a program that is not DPI aware the click makes the box but never
+    // shows it, and the hidden box is taken all the same (docs/pitfalls.md).
+    HWND box = addressBox(dialog);
     if (!box) {
         // In the dialog's own coordinates: a program that is not DPI aware has scaled ones.
         RECT client {};
@@ -188,19 +199,23 @@ bool goByAddress(HWND dialog, const std::wstring& folder)
         for (int attempt = 0; attempt < 3 && !box; ++attempt) {
             ::PostMessageW(crumbs, WM_LBUTTONDOWN, MK_LBUTTON, at);
             ::PostMessageW(crumbs, WM_LBUTTONUP, 0, at);
-            waitFor([&] { return (box = addressBox(dialog)) != nullptr; }, 300ms);
+            waitFor([&] { return (box = addressBox(dialog)) && ::IsWindowVisible(box); }, 300ms);
         }
         if (!box)
             return false;
     }
-    if (!setText(box, folder) || !send(box, WM_KEYDOWN, VK_RETURN, 0x001C0001)
-        || !send(box, WM_KEYUP, VK_RETURN, 0xC01C0001))
+    // Enter only once the box holds the folder (still one) just typed: never
+    // on what it held before.
+    const std::wstring typed = folder.ends_with(L'\\') ? folder : folder + L'\\';
+    if (!isFolder(folder) || !setText(box, typed) || controlText(box) != typed
+        || !send(box, WM_KEYDOWN, VK_RETURN, 0x001C0001) || !send(box, WM_KEYUP, VK_RETURN, 0xC01C0001))
         return false;
     // Gone there (or it was there already): the crumbs show it, and the text
     // box has closed, which leaves the keyboard focus on the crumbs. Back to
     // where it was (usually the file name); not if the user has gone on
     // meanwhile (to the bar): the dialog would take the front back.
-    waitFor([&] { return !::IsWindowVisible(box) && caption(crumbs) != shown; }, 1500ms);
+    if (!waitFor([&] { return !::IsWindowVisible(box) && caption(crumbs) != shown; }, 1500ms))
+        qWarning() << "The file dialog had not shown the folder typed into its address bar after 1.5 s";
     if (focus && ::GetForegroundWindow() == dialog && focusedControl(dialog) != focus && !::IsChild(bar, focus)
         && ::IsChild(dialog, focus) && ::IsWindowVisible(focus))
         send(dialog, WM_NEXTDLGCTL, reinterpret_cast<WPARAM>(focus), TRUE);
@@ -222,7 +237,8 @@ bool goByName(HWND dialog, const std::wstring& folder)
     const std::wstring typed = controlText(box);
     const std::wstring shown = crumbs ? caption(crumbs) : std::wstring();
     const std::wstring target = folder.ends_with(L'\\') ? folder : folder + L'\\';
-    if (!setText(box, target) || !send(dialog, WM_COMMAND, MAKEWPARAM(IDOK, BN_CLICKED), reinterpret_cast<LPARAM>(ok)))
+    if (!isFolder(folder) || !setText(box, target)
+        || !send(dialog, WM_COMMAND, MAKEWPARAM(IDOK, BN_CLICKED), reinterpret_cast<LPARAM>(ok)))
         return false;
     // A dialog of Windows Vista and later goes there after OK returns, and
     // then clears the box.
@@ -463,8 +479,7 @@ Kind probe(HWND hwnd)
 
 bool goTo(HWND hwnd, const std::wstring& folder)
 {
-    const DWORD attributes = ::GetFileAttributesW(folder.c_str());
-    if (attributes == INVALID_FILE_ATTRIBUTES || !(attributes & FILE_ATTRIBUTE_DIRECTORY))
+    if (!isFolder(folder))
         return false; // spared its message box
     const Dialog dialog(hwnd);
     if (!dialog)
@@ -625,6 +640,8 @@ bool goTo(HWND dialog, const std::wstring& folder)
         // that would accept the picker, rather than let the user review it.
         return setText(edit, folder) && controlText(edit) == folder;
     }
+    if (!isFolder(folder))
+        return false; // gone (or a file): nothing is typed anywhere
     const Kind k = kind(dialog);
     if (k == Kind::Legacy)
         return goByName(dialog, folder);

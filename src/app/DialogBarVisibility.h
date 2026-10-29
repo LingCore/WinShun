@@ -8,6 +8,8 @@
 #include <atomic>
 #include <functional>
 
+#include <windows.h>
+
 namespace ws {
 
 // The passive bar waits for a painted frame before it and its separate logo
@@ -15,7 +17,7 @@ namespace ws {
 class DialogBarVisibility : public QObject {
 public:
     void setWindow(QQuickWindow* window, std::function<void(bool)> showLogo);
-    void show();
+    void show(HWND dialog = nullptr, bool elevated = false); // elevated: of higher integrity than ours
     void hide();
     bool isRevealed() const;
 

@@ -1,5 +1,6 @@
 #include "DialogBarVisibility.h"
 
+#include "platform/DialogOwner.h"
 #include "platform/WindowEffects.h"
 
 #include <QEvent>
@@ -48,9 +49,15 @@ bool DialogBarVisibility::eventFilter(QObject* watched, QEvent* event)
     return QObject::eventFilter(watched, event);
 }
 
-void DialogBarVisibility::show()
+void DialogBarVisibility::show(HWND dialog, bool elevated)
 {
-    if (!m_window || m_pending.load() || isRevealed())
+    if (!m_window)
+        return;
+    const HWND hwnd = reinterpret_cast<HWND>(m_window->winId());
+    // Right above the dialog again, in its band: also when the bar is up
+    // already, as the dialog may have come up over it.
+    win::followDialog(hwnd, dialog, elevated);
+    if (m_pending.load() || isRevealed())
         return;
     m_showLogo(false);
     win::setCloaked(m_window, true);
@@ -61,9 +68,11 @@ void DialogBarVisibility::show()
     m_window->setProperty("_q_showWithoutActivating", QVariant());
     // Qt can still consider a natively hidden window visible: show() then
     // does nothing. Recover it without taking focus from the file dialog.
-    const HWND hwnd = reinterpret_cast<HWND>(m_window->winId());
     if (!::IsWindowVisible(hwnd) || ::IsIconic(hwnd))
         ::ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+    // Showing may put it elsewhere in the Z-order: back over the dialog while
+    // the bar is still cloaked, before the first frame reveals it.
+    win::followDialog(hwnd, dialog, elevated);
     m_window->update(); // a fresh frame even if its query and size did not change
 }
 

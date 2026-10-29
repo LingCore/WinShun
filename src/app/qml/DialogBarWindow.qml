@@ -25,9 +25,8 @@ Window {
     readonly property ContextMenu contextMenu: menuLoader.item as ContextMenu
     readonly property bool menuOpen: contextMenu !== null && contextMenu.visible
 
-    // On top: it shows only while the dialog (or the bar) is in front, and
-    // Win顺 has no right to bring a window of its own above others then.
-    flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+    // Native ownership follows the file dialog, including its Z-order band.
+    flags: Qt.Tool | Qt.FramelessWindowHint
     color: Theme.background
     title: qsTr("Win顺")
 
@@ -283,7 +282,10 @@ Window {
                 anchors.fill: parent
                 verticalAlignment: Text.AlignVCenter
                 text: window.bar.pathCopied ? qsTr("路径已复制，请粘贴到对话框的路径输入框")
-                      : window.bar.copyOnly ? qsTr("管理员窗口：搜索后复制路径，再手动粘贴")
+                      : window.bar.copyOnly ? (window.bar.copyOnlyHint === "installed" ? qsTr("管理员窗口：搜索后复制路径再手动粘贴（安装版才能直接跳转）")
+                                               : window.bar.copyOnlyHint === "service" ? qsTr("管理员窗口：搜索后复制路径再手动粘贴（装 Win顺 服务可直接跳转）")
+                                               : qsTr("管理员窗口：搜索后复制路径再手动粘贴"))
+                      : window.bar.elevatedJump ? qsTr("管理员窗口：直接跳转到文件夹")
                       : window.bar.foldersOnly ? qsTr("搜索文件夹，或输入路径") : qsTr("搜索文件或文件夹，或输入路径")
                 color: Theme.faint
                 font: input.font
@@ -547,6 +549,8 @@ Window {
             tag: {
                 if (window.bar.copyOnly && rowItem.current)
                     return qsTr("Enter 复制路径")
+                if (window.bar.elevatedJump && rowItem.current && !rowItem.isDir)
+                    return qsTr("Enter 转到所在文件夹")
                 if (window.typed && rowItem.current) {
                     if (!rowItem.isDir && window.bar.canOpen)
                         return qsTr("Ctrl+Enter 直接打开")

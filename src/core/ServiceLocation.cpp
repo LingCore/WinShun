@@ -437,4 +437,21 @@ bool parentIs(const std::wstring& path, const std::wstring& dir)
     return parent.size() == dir.size() && ::CompareStringOrdinal(parent.c_str(), -1, dir.c_str(), -1, TRUE) == CSTR_EQUAL;
 }
 
+bool isWinShunBeside(std::wstring_view clientImage, std::wstring_view serviceImage) noexcept
+{
+    const auto folderOf = [](std::wstring_view path) {
+        const std::size_t slash = path.find_last_of(L'\\');
+        return slash == std::wstring_view::npos ? std::wstring_view() : path.substr(0, slash);
+    };
+    const auto same = [](std::wstring_view a, std::wstring_view b) {
+        return a.size() == b.size()
+            && ::CompareStringOrdinal(a.data(), static_cast<int>(a.size()), b.data(), static_cast<int>(b.size()), TRUE)
+            == CSTR_EQUAL;
+    };
+    const std::wstring_view clientFolder = folderOf(clientImage);
+    const std::wstring_view serviceFolder = folderOf(serviceImage);
+    return !clientFolder.empty() && same(clientImage.substr(clientFolder.size() + 1), L"WinShun.exe")
+        && same(clientFolder, serviceFolder);
+}
+
 } // namespace ws::svcloc
