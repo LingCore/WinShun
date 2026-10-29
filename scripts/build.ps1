@@ -99,8 +99,6 @@ try {
         Copy-Item "$($ort.FullName)\LICENSE" "$dist\licenses\onnxruntime\LICENSE.txt"
         Copy-Item "$($ort.FullName)\ThirdPartyNotices.txt" "$dist\licenses\onnxruntime"
         Copy-Item "$root\third_party\ppocr\LICENSE" "$dist\licenses\paddleocr.txt"
-        # QR codes (capture/QrCode): zxing-cpp, Apache-2.0, compiled into WinShun.exe.
-        Copy-Item "$root\third_party\zxing-cpp\LICENSE" "$dist\licenses\zxing-cpp.txt"
         # Only what the app uses: no shader compilers (software renderer), no
         # QML debugger, network, TLS or SVG plugins, and of the database
         # drivers only SQLite (the clipboard history).
