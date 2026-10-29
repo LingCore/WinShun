@@ -80,6 +80,24 @@ Compress-Archive -Path (Join-Path $stage 'WinShun') -DestinationPath $portable -
 Remove-Item $stage -Recurse -Force
 Write-Host "Packaged $portable"
 
+# The official plugins that are not in the setup (GitHub #138): one
+# <id>-<version>.wsplugin each from the build's library-plugins\<id> (the
+# package's files at the top of the zip, as install::inspect reads them),
+# for a release of the plugin library (LingCore/WinShun-plugins). Not part
+# of this release's assets: the library lists each on its own.
+$libraryOut = Join-Path $dist 'library-plugins'
+New-Item -ItemType Directory -Force $libraryOut | Out-Null
+foreach ($folder in Get-ChildItem (Join-Path $root 'build\release\library-plugins') -Directory) {
+    $manifest = Get-Content (Join-Path $folder.FullName 'plugin.json') -Raw -Encoding utf8 | ConvertFrom-Json
+    if ($manifest.id -ne $folder.Name) { throw "library-plugins\$($folder.Name): its manifest says $($manifest.id)" }
+    $package = Join-Path $libraryOut "$($manifest.id)-$($manifest.version).wsplugin"
+    Remove-Item $package -ErrorAction SilentlyContinue
+    $zip = [IO.Path]::ChangeExtension($package, '.zip') # Compress-Archive will not write another extension
+    Compress-Archive -Path (Join-Path $folder.FullName '*') -DestinationPath $zip -CompressionLevel Optimal
+    Move-Item $zip $package
+    Write-Host "Packaged $package"
+}
+
 $sums = Join-Path $dist 'SHA256SUMS.txt'
 $lines = foreach ($file in $setup, $portable) {
     "$((Get-FileHash $file -Algorithm SHA256).Hash.ToLower())  $(Split-Path $file -Leaf)"

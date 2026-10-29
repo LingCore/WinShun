@@ -80,6 +80,7 @@ set_tests_properties(tst_dialognav PROPERTIES
 # Launch only a short-lived copy of this test, writing into QTemporaryDir.
 qt_add_executable(tst_shelllaunch WIN32 tst_shelllaunch.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/Shell.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/ShellDialogs.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/DragOut.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/FileDialog.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/FileManagers.cpp
@@ -225,6 +226,15 @@ target_link_libraries(tst_settings PRIVATE wscore Qt6::Gui Qt6::Test)
 set_target_properties(tst_settings PROPERTIES WIN32_EXECUTABLE FALSE)
 add_test(NAME tst_settings COMMAND tst_settings)
 set_tests_properties(tst_settings PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# The screenshot plugin's settings, capture.ini (src/capture-plugin/CaptureSettings).
+qt_add_executable(tst_capturesettings tst_capturesettings.cpp ${PROJECT_SOURCE_DIR}/src/capture-plugin/CaptureSettings.cpp)
+target_include_directories(tst_capturesettings PRIVATE ${PROJECT_SOURCE_DIR}/src/capture-plugin ${PROJECT_SOURCE_DIR}/src/app ${PROJECT_SOURCE_DIR}/src/core)
+target_link_libraries(tst_capturesettings PRIVATE winshun_options Qt6::Gui Qt6::Qml Qt6::Test)
+set_target_properties(tst_capturesettings PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+add_test(NAME tst_capturesettings COMMAND tst_capturesettings)
+set_tests_properties(tst_capturesettings PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 # The screen capture's geometry, HDR mapping and state machine (src/capture),
@@ -458,6 +468,18 @@ target_link_libraries(tst_favorites PRIVATE wscore Qt6::Test)
 qt_add_executable(tst_commandlaunch tst_commandlaunch.cpp)
 target_link_libraries(tst_commandlaunch PRIVATE wscore Qt6::Test)
 
+# The plugins that left the setup for the plugin library (GitHub #138,
+# src/app/MovedPlugins): the screenshot's settings moved to its plugin.
+qt_add_executable(tst_movedplugins tst_movedplugins.cpp ${PROJECT_SOURCE_DIR}/src/app/MovedPlugins.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/Http.cpp)
+target_include_directories(tst_movedplugins PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_movedplugins PRIVATE wscore wsplugin Qt6::Test winhttp ws2_32)
+target_compile_definitions(tst_movedplugins PRIVATE WINSHUN_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+set_target_properties(tst_movedplugins PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_movedplugins COMMAND tst_movedplugins)
+set_tests_properties(tst_movedplugins PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # The proxy setting (GitHub #84): the address check, and WinHTTP going where
 # the setting says, against two small servers of the test's own.
 qt_add_executable(tst_proxy tst_proxy.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/Http.cpp)
@@ -478,6 +500,7 @@ qt_add_executable(tst_commandicons tst_commandicons.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/SiteIcons.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/Http.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/Shell.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/ShellDialogs.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/DragOut.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/FileDialog.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/FileManagers.cpp

@@ -65,6 +65,7 @@ struct Env {
     std::function<bool()> isElevated; // Win顺 itself runs with administrator rights
     std::function<bool(const QString& manager)> fileManagerAvailable; // installed (explorer, custom: always)
     std::function<QString(const QString& keyword)> keywordOwner; // the favorite that has the keyword; empty: none
+    std::function<bool()> screenshotHistory; // the screenshot plugin on: Capture/Keyword is in use
 };
 
 struct Choice {

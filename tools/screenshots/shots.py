@@ -219,6 +219,7 @@ def main() -> None:
                    help="the launcher's number keys (default: ctrl, as WinShun's own; off takes the numbers off the icons)")
     c.add_argument("--pie-favorites", action="store_true", help="the favorites are the drop pie's ring (folders only)")
     c.add_argument("--capture", action="store_true", help="the capture on (hotkey stage.CAPTURE_HOTKEY), smart redaction on")
+    c.add_argument("--capture-plugin", help="the screenshot plugin's folder (default: stage.CAPTURE_PLUGIN, the build's)")
     c.add_argument("--explorer-typing", action="store_true", help="typing in Explorer opens the launcher")
     c.add_argument("--number-hints", default="held", choices=("held", "always", "off"),
                    help="when the numbers show on the icons (default: held, as WinShun's own: only while Ctrl is held)")
@@ -283,7 +284,7 @@ def main() -> None:
         files = pathlib.Path(args.files) if args.files else stage.DEMO
         recent = args.recent if args.recent is not None else [stage.DEMO / name for name in stage.RECENT]             if files == stage.DEMO else []
         return stage.make_profile(args.folder, files, recent, args.number_keys, args.number_hints,
-                                  args.pie_favorites, args.capture, args.explorer_typing)
+                                  args.pie_favorites, args.capture, args.explorer_typing, args.capture_plugin)
     if args.command == "render":
         if unknown := set(args.sets) - set(SETS):
             parser.error(f"no such set: {', '.join(sorted(unknown))} (there are {', '.join(SETS)})")

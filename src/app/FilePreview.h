@@ -16,6 +16,8 @@
 #include <QVector>
 #include <QtQml/qqmlregistration.h>
 
+#include "PictureFile.h"
+
 #include <atomic>
 #include <functional>
 #include <memory>
@@ -31,13 +33,6 @@ class PreviewHost;
 namespace extpreview {
 enum class Engine;
 }
-
-// A picture file's first frame (PNG, JPEG, BMP, GIF, WebP, … whatever
-// Windows Imaging Component reads), upright as the camera says, at most
-// `largest` pixels on its longer side (0: as stored); null if it cannot be
-// read. Any thread with COM initialised. For 贴到屏幕 (dist has no Qt image
-// plugins: QImage alone reads PNG and BMP only).
-QImage decodePictureFile(const QString& path, int largest, QSize* original = nullptr);
 
 // A look at a result's file without opening it (Alt+P on a row, 预览 in its
 // menu; the forum's #157, #162, #225): QuickLook (QL-Win) or Seer when one of

@@ -1,5 +1,7 @@
 # Win顺 截图：设计草案（2026-10-17）
 
+> 0.17 起截图不再是 WinShun.exe 里的内置模块，而是插件库里的插件 `winshun.capture`（GitHub #138，见 [design-capture-plugin.md](design-capture-plugin.md)）。本文是当初做成内置模块时的设计。
+
 ## 0. 需求从哪来
 
 论坛用户：上班要同时开 Everything + 快速启动 + 剪贴板 + 截图四个软件。他现在用 mosheng1 的两款软件：QuickClipboard（Tauri，已停更）和它的重写版 QcClip（Rust + GPUI，纯剪贴板）。“剪贴板和截图合并成一个”实际说的是同一作者的 **CitePix**：闭源，有截图、录屏、贴图、标注、OCR、二维码、长截图，截图历史能反复编辑，还有“万能贴图”（选中的文字或文件也能贴到桌面）。

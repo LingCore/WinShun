@@ -123,6 +123,7 @@ QVariant PluginListModel::data(const QModelIndex& index, int role) const
     case PermissionsRole: return c.permissions;
     case SettingsRole: return c.settings;
     case HasReadmeRole: return c.hasReadme;
+    case SettingsWindowRole: return c.settingsWindow;
     case HasDataRole: return c.hasData;
     case AiExposeRole: return c.aiExpose;
     case AiEnabledRole: return c.aiEnabled;
@@ -136,7 +137,7 @@ QHash<int, QByteArray> PluginListModel::roleNames() const
     return {{IdRole, "pluginId"}, {NameRole, "name"}, {VersionRole, "version"}, {AuthorRole, "author"}, {HomepageRole, "homepage"},
         {DescriptionRole, "description"}, {BundledRole, "bundled"}, {IconRole, "icon"}, {EnabledRole, "pluginEnabled"}, {UsableRole, "usable"},
         {StatusRole, "status"}, {ToneRole, "tone"}, {ErrorRole, "error"}, {ResidentRole, "resident"}, {KeywordsRole, "keywords"},
-        {PermissionsRole, "permissions"}, {SettingsRole, "settings"}, {HasReadmeRole, "hasReadme"}, {HasDataRole, "hasData"},
+        {PermissionsRole, "permissions"}, {SettingsRole, "settings"}, {HasReadmeRole, "hasReadme"}, {SettingsWindowRole, "settingsWindow"}, {HasDataRole, "hasData"},
         {AiExposeRole, "aiExpose"}, {AiEnabledRole, "aiEnabled"}, {AiNoteRole, "aiNote"}};
 }
 
@@ -546,6 +547,7 @@ PluginListModel::Card PluginSettings::cardFor(const QString& id) const
     }
     c.description = m.description.pick(m_locale);
     c.resident = m.resident();
+    c.settingsWindow = m.settingsWindow;
     // The manifest's icon, else its first command's (as the rows and the
     // chip in the scope tabs fall back), else the puzzle piece.
     QString icon = m.icon;
@@ -1033,6 +1035,15 @@ void PluginSettings::openFolder(const QString& id)
         return;
     if (const plugin::Entry* e = m_host->catalog().find(id))
         shell::open(e->dir);
+}
+
+// The plugin opens the window itself, in front (it may, AllowSetForegroundWindow).
+void PluginSettings::showSettings(const QString& id)
+{
+    if (!m_host)
+        return;
+    if (!m_host->request(id, u"showSettings"_s, {}, {}, true))
+        setMessage(tr("插件还没准备好，请稍后再试"));
 }
 
 void PluginSettings::openReadme(const QString& id)

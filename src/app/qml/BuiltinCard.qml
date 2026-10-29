@@ -2,8 +2,8 @@ import QtQuick
 import WinShun
 
 // A built-in feature on the 插件 page's 内置功能 (PluginsSection), drawn as
-// the screen capture's card is (CaptureCard): icon, name, 内置, what it does
-// and where it stands, its switch on the right. Its options, if any, fold
+// a plugin's card is (PluginCard): icon, name, 内置, what it does and where
+// it stands, its switch on the right. Its options, if any, fold
 // under 设置 (`options`); a feature whose options live on another page
 // takes the user there instead (`linkText`, linkActivated). The switch is
 // the feature's own: the same setting as on its page.

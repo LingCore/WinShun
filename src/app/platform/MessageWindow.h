@@ -31,6 +31,7 @@ public:
         // then decides what a press does (ShortcutAgain, GitHub #111).
         std::function<void(std::uint32_t time)> trayActivated; // left click
         std::function<void()> trayMenuRequested; // right click
+        std::function<void()> trayMenuSoon; // the right button pressed on the icon: the menu is coming
         std::function<void(int id, std::uint32_t time)> hotkeyPressed;
         std::function<void(const QString&)> commandReceived;
         std::function<void(const QString& folder)> searchHere; // "D:\Work", "\\nas\docs"

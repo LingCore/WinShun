@@ -611,6 +611,25 @@ std::optional<Manifest> Manifest::parse(const QByteArray& json, QString* error)
     if (o.value(u"ai"_s).isObject())
         m.aiExpose = o.value(u"ai"_s).toObject().value(u"expose"_s).toBool();
 
+    m.trayMenu = textOr(o.value(u"trayMenu"_s), u"trayMenu"_s, check);
+    if (o.contains(u"pictures"_s)) {
+        const QJsonValue pictures = o.value(u"pictures"_s);
+        if (!pictures.isArray())
+            check.fail(u"pictures 要是数组"_s);
+        for (const QJsonValue& v : pictures.toArray()) {
+            const QString verb = v.toString();
+            if (verb != u"pin" && verb != u"edit")
+                check.fail(u"pictures 里只能有 pin 和 edit"_s);
+            else if (!m.pictures.contains(verb))
+                m.pictures.append(verb);
+        }
+    }
+    m.settingsWindow = o.value(u"settingsWindow"_s).toBool();
+    // What Win顺 asks of the plugin's own process, which shows windows.
+    if ((!m.trayMenu.isEmpty() || !m.pictures.isEmpty() || m.settingsWindow)
+        && (!m.resident() || !m.permissions.has(Permission::Ui)))
+        check.fail(u"trayMenu、pictures 和 settingsWindow 要常驻（runtime.mode resident）并要 ui 权限"_s);
+
     if (check.failed())
         return fail(check.error);
     return m;

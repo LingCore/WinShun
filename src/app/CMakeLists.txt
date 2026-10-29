@@ -60,7 +60,6 @@ qt_add_executable(WinShun WIN32
     PieLabels.cpp PieLabels.h
     Phosphor.cpp Phosphor.h
     Preview.cpp Preview.h
-    LongCapturePreview.cpp
     RecentFolders.cpp RecentFolders.h
     Settings.cpp Settings.h
     SiteIconImage.cpp SiteIconImage.h
@@ -98,7 +97,7 @@ qt_add_executable(WinShun WIN32
     platform/PeekingLogo.cpp platform/PeekingLogo.h
     platform/PointerWatch.cpp platform/PointerWatch.h
     platform/PreviewHost.cpp platform/PreviewHost.h
-    platform/Shell.cpp platform/Shell.h
+    platform/Shell.cpp platform/Shell.h platform/ShellDialogs.cpp
     platform/ShellContextMenu.cpp platform/ShellContextMenu.h
     platform/ShellMenu.cpp platform/ShellMenu.h
     platform/ShortcutCapture.cpp platform/ShortcutCapture.h
@@ -204,19 +203,8 @@ set(qml_files
     qml/PluginGallerySection.qml
     qml/PluginGalleryEntry.qml
     qml/PluginsPreview.qml
-    qml/CaptureOverlay.qml
-    qml/AnnotateToolbar.qml
-    qml/AnnotateStylePanel.qml
-    qml/AnnotateSmartHint.qml
-    qml/AnnotateLayer.qml
-    qml/AnnotateObjects.qml
-    qml/EditWindow.qml
-    qml/CaptureCard.qml
     qml/BuiltinCard.qml
     qml/PasteFileCard.qml
-    qml/OcrPanel.qml
-    qml/LongCapturePanel.qml
-    qml/RecordingPanel.qml
     qml/ScreenshotConfirm.qml
     qml/SettingsConfirm.qml
     qml/SettingsNotice.qml
@@ -274,6 +262,7 @@ qt_add_qml_module(WinShun
         FileDropTarget.cpp FileDropTarget.h
         FileFacts.cpp FileFacts.h
         FilePreview.cpp FilePreview.h
+        PictureFile.cpp PictureFile.h
         FolderMenu.cpp FolderMenu.h
         DropPie.cpp DropPie.h # the favorite folders round the pointer while dragging files (DropPieWindow.qml)
         DropPieText.cpp DropPieText.h
@@ -284,6 +273,7 @@ qt_add_qml_module(WinShun
         Placement.cpp Placement.h
         PluginGallery.cpp PluginGallery.h
         PluginSettings.cpp PluginSettings.h
+        MovedPlugins.cpp MovedPlugins.h # the plugins that came with 0.16.0, from the library now (GitHub #138)
         ResultModel.cpp ResultModel.h
         PanelColumns.cpp PanelColumns.h
         SettingsEditor.cpp SettingsEditor.h
@@ -297,33 +287,15 @@ qt_add_qml_module(WinShun
         Updater.cpp Updater.h UpdatePackage.cpp UpdatePackage.h
         Backup.cpp Backup.h BackupFiles.cpp BackupFiles.h
         WindowFrame.cpp WindowFrame.h
-        # The screen capture's QML-facing part (src/capture/CMakeLists.txt has the rest).
-        ../capture/Capture.cpp ../capture/Capture.h
-        ../capture/CaptureImage.cpp ../capture/CaptureImage.h
-        ../capture/CapturePointer.cpp ../capture/CapturePointer.h
-        ../capture/AnnotationModel.cpp ../capture/AnnotationModel.h
-        ../capture/AnnotationCanvas.cpp ../capture/AnnotationCanvas.h
-        ../capture/CaptureSession.cpp ../capture/CaptureSession.h
-        ../capture/CaptureEditor.cpp ../capture/CaptureEditor.h
-        ../capture/CaptureOcr.cpp ../capture/CaptureOcr.h
-        ../capture/LongCapture.cpp ../capture/LongCapture.h
-        ../capture/Recorder.cpp ../capture/Recorder.h
-        ../capture/PinManager.cpp ../capture/PinManager.h
-        ../capture/PinWindow.cpp ../capture/PinWindow.h
 )
 
 # The UI is written in Chinese; English comes from i18n/winshun_en.ts, built
 # into ":/i18n/winshun_en.qm" and switched at run time (App::applyAppearance).
 # After changing UI text: cmake --build --preset release --target update_translations,
 # then translate the new entries in the .ts file (Qt Linguist or by hand).
-# The annotation's words that live in the wscapture library (tool names, undo labels, errors).
+# The screenshot's words are the plugin's (src/capture-plugin/i18n/capture_en.ts).
 qt_add_lupdate(WinShun
     TS_FILES i18n/winshun_en.ts
-    SOURCES ${PROJECT_SOURCE_DIR}/src/capture/AnnotationCommands.cpp
-            ${PROJECT_SOURCE_DIR}/src/capture/AnnotationFormat.cpp
-            ${PROJECT_SOURCE_DIR}/src/capture/AnnotationStyles.cpp
-            ${PROJECT_SOURCE_DIR}/src/capture/CountdownWindow.cpp
-            ${PROJECT_SOURCE_DIR}/src/capture/Recording.cpp
     OPTIONS -source-language zh_CN -no-obsolete -locations none)
 # lrelease reads its arguments in the ANSI code page, which mangles a Chinese
 # path (this project's folder) unless Windows uses a Chinese one; so not

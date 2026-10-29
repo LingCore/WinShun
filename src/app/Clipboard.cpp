@@ -1447,9 +1447,9 @@ QVariantList Clipboard::menuItems(int row) const
             items.append(entry(OpenLink, tr("在浏览器中打开"), QString(), u""_s));
         else if (c.kind == ClipKind::Files || c.kind == ClipKind::Path)
             items.append(entry(Reveal, tr("打开所在位置"), QString(), u""_s));
-        else if (c.kind == ClipKind::Image)
+        else if (c.kind == ClipKind::Image && m_pictureVerbs.pin) // the screenshot plugin's
             items.append(entry(PinImage, c.animated ? tr("贴首帧到屏幕") : tr("贴到屏幕"), QString(), u"\uE718"_s));
-        if (c.kind == ClipKind::Image)
+        if (c.kind == ClipKind::Image && m_pictureVerbs.edit)
             items.append(entry(EditImage, c.animated ? tr("编辑首帧") : tr("编辑"), QString(), u"\uE70F"_s));
         if (c.kind == ClipKind::Image)
             items.append(entry(OpenImage, tr("打开图片"), QString(), u""_s));
@@ -1550,7 +1550,7 @@ void Clipboard::trigger(int row, int action)
             flash(tr("图片还在保存，请稍后再试"));
             break;
         }
-        emit pinRequested(m_store->imagePath(c->id));
+        emit pinRequested(c->id);
         break;
     }
     case EditImage: {

@@ -1,6 +1,7 @@
 #include "App.h"
 #include "ContextMenuGuard.h"
 #include "Diagnostics.h"
+#include "FileIconProvider.h"
 #include "DisplayDiagnostics.h"
 #include "Backup.h"
 #include "Migration.h"
@@ -8,6 +9,7 @@
 #include "Preview.h"
 #include "RepeatFilter.h"
 #include "Settings.h"
+#include "WindowFrame.h"
 #include "SystemCatalog.h"
 #include "platform/MessageWindow.h"
 #include "platform/Shell.h"
@@ -196,6 +198,14 @@ QJsonObject applyUiFont()
     return loaded;
 }
 
+// The program's icon in the title bars (TitleBar.qml), from the file's own.
+// Native separators: the shell does not parse "F:/..." and the generic
+// program icon would come back.
+void setWindowIcon()
+{
+    ws::WindowFrame::setIcon(ws::FileIconProvider::iconUrl(QDir::toNativeSeparators(QCoreApplication::applicationFilePath()), false));
+}
+
 // The arguments as one command line (CreateProcess, ShellExecute): quoted
 // where they have spaces (a --profile folder), quotes escaped.
 std::wstring commandLine(const QStringList& arguments)
@@ -295,6 +305,7 @@ int main(int argc, char* argv[])
         ws::preview::note(u"loading the font"_s);
         applyUiFont();
         ws::phosphor::loadFonts();
+        setWindowIcon();
         return ws::preview::run(wideArgs);
     }
 
@@ -416,6 +427,7 @@ int main(int argc, char* argv[])
 
     QJsonObject uiFont = applyUiFont(); // the UI font (see above)
     ws::phosphor::loadFonts(); // the icons
+    setWindowIcon();
     uiFont[u"platform"_s] = platform;
     ws::diagnostics::setUiFont(uiFont);
     ws::diagnostics::watchDisplay();

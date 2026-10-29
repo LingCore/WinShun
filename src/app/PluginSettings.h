@@ -58,6 +58,7 @@ public:
         QVariantList permissions; // [{name, text, enforced, note}]
         QVariantList settings; // [{key, type, title, hint, value, options, optionIndex}]
         bool hasReadme = false;
+        bool settingsWindow = false; // the plugin draws its own settings window (manifest settingsWindow): 设置 on the card
         bool hasData = false;
         bool aiExpose = false; // the manifest offers its commands to the AI (ai.expose): the card shows the switch
         bool aiEnabled = true; // the switch: [Plugin.<id>] Ai=
@@ -83,6 +84,7 @@ public:
         PermissionsRole,
         SettingsRole,
         HasReadmeRole,
+        SettingsWindowRole,
         HasDataRole,
         AiExposeRole,
         AiEnabledRole,
@@ -223,6 +225,7 @@ public:
     Q_INVOKABLE void reload(const QString& id);
     Q_INVOKABLE void openFolder(const QString& id);
     Q_INVOKABLE void openReadme(const QString& id);
+    Q_INVOKABLE void showSettings(const QString& id); // the plugin's own settings window (settingsWindow)
     Q_INVOKABLE void openHomepage(const QString& id);
     Q_INVOKABLE void openLog();
     Q_INVOKABLE void openUserDir();

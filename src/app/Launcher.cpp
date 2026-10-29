@@ -3660,7 +3660,7 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
         return;
     }
     if (action == PinPicture) {
-        if (!r.isApp() && !r.isDir) {
+        if (!r.isApp() && !r.isDir && m_pictureVerbs.pin) {
             emit pinRequested(r.path, false);
             emit dismissRequested();
         }
@@ -4559,8 +4559,10 @@ QVariantList Launcher::menuItems(int row) const
     };
     if (r->clipId > 0) { // a screenshot of the history
         items.append(entry(Open, tr("复制并粘贴"), u"Enter"_s, u"\uE77F"_s)); // Paste
-        items.append(entry(PinPicture, tr("贴到屏幕"), u"Ctrl+Enter"_s, u"\uE718"_s)); // Pin
-        items.append(entry(EditPicture, tr("编辑"), u"Shift+Enter"_s, u"\uE70F"_s)); // Edit
+        if (m_pictureVerbs.pin)
+            items.append(entry(PinPicture, tr("贴到屏幕"), u"Ctrl+Enter"_s, u"\uE718"_s)); // Pin
+        if (m_pictureVerbs.edit)
+            items.append(entry(EditPicture, tr("编辑"), u"Shift+Enter"_s, u"\uE70F"_s)); // Edit
         items.append(entry(Preview, tr("预览"), u"Alt+P"_s, u"\uE890"_s)); // View
         items.append(separator);
         items.append(entry(CopyItem, tr("复制图片"), u"Ctrl+C"_s, u"\uE8C8"_s));
@@ -4662,7 +4664,7 @@ QVariantList Launcher::menuItems(int row) const
         items.append(entry(BrowseFolder, tr("进入此文件夹搜索"), QString(), u"\uE721"_s));
     if (!r->missing && !r->offline)
         items.append(entry(Preview, tr("预览"), u"Alt+P"_s, u"\uE890"_s)); // View
-    if (!r->isDir && !r->missing && !r->offline && pinnablePicture(r->path))
+    if (!r->isDir && !r->missing && !r->offline && m_pictureVerbs.pin && pinnablePicture(r->path))
         items.append(entry(PinPicture, tr("贴到屏幕"), QString(), u"\uE718"_s)); // Pin
     items.append(entry(OpenTerminal, tr("在终端中打开"), QString(), u"\uE756"_s)); // CommandPrompt
     if (r->isDir && m_contentEnabled && !r->path.startsWith(u"\\\\"_s)) // shares: contents are not read there
@@ -5088,6 +5090,8 @@ void Launcher::performScreenshot(const SearchResult& result, Action action)
     case Reveal:
     case PinPicture:
     case PluginAction + 1:
+        if (!m_pictureVerbs.pin)
+            return;
         emit pinRequested(result.target, true);
         emit dismissRequested();
         return;

@@ -92,51 +92,10 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString folderMenuHotkey READ folderMenuHotkey WRITE setFolderMenuHotkey NOTIFY changed FINAL)
     Q_PROPERTY(bool dropPie READ dropPie WRITE setDropPie NOTIFY changed FINAL) // 拖放圆盘
     Q_PROPERTY(QString folderMenuHotkeyError READ folderMenuHotkeyError NOTIFY hotkeyErrorChanged FINAL)
-    // The screen capture's card on the 插件 page ([Capture]): its switch, its
-    // hotkey and that hotkey's error (as hotkeyError), PrtScn, and whether
-    // letting go of a drag copies at once; captureNote says what PrtScn's
-    // takeover could not do.
-    Q_PROPERTY(QString captureLastPinHotkey READ captureLastPinHotkey WRITE setCaptureLastPinHotkey NOTIFY changed FINAL)
-    Q_PROPERTY(QString captureSaveFolder READ captureSaveFolder WRITE setCaptureSaveFolder NOTIFY changed FINAL)
-    Q_PROPERTY(QString captureRecordingFolder READ captureRecordingFolder WRITE setCaptureRecordingFolder NOTIFY changed FINAL)
-    Q_PROPERTY(bool captureRecordingSystemAudio READ captureRecordingSystemAudio WRITE setCaptureRecordingSystemAudio NOTIFY changed FINAL)
-    Q_PROPERTY(bool captureRecordingMicrophone READ captureRecordingMicrophone WRITE setCaptureRecordingMicrophone NOTIFY changed FINAL)
-    Q_PROPERTY(int captureRecordingQuality READ captureRecordingQuality WRITE setCaptureRecordingQuality NOTIFY changed FINAL)
-    Q_PROPERTY(bool captureRecordingCursor READ captureRecordingCursor WRITE setCaptureRecordingCursor NOTIFY changed FINAL)
-    Q_PROPERTY(bool captureRecordingCountdown READ captureRecordingCountdown WRITE setCaptureRecordingCountdown NOTIFY changed FINAL)
-    Q_PROPERTY(bool captureRecordingClicks READ captureRecordingClicks WRITE setCaptureRecordingClicks NOTIFY changed FINAL)
-    Q_PROPERTY(QString captureLastPinHotkeyError READ captureLastPinHotkeyError NOTIFY hotkeyErrorChanged FINAL)
-    Q_PROPERTY(bool captureEnabled READ captureEnabled WRITE setCaptureEnabled NOTIFY changed FINAL)
-    Q_PROPERTY(QString captureHotkey READ captureHotkey WRITE setCaptureHotkey NOTIFY changed FINAL)
-    Q_PROPERTY(QString captureHotkeyError READ captureHotkeyError NOTIFY hotkeyErrorChanged FINAL)
-    Q_PROPERTY(bool capturePrintScreen READ capturePrintScreen WRITE setCapturePrintScreen NOTIFY changed FINAL)
-    Q_PROPERTY(bool captureCopyOnSelect READ captureCopyOnSelect WRITE setCaptureCopyOnSelect NOTIFY changed FINAL)
-    Q_PROPERTY(bool captureMagnifier READ captureMagnifier WRITE setCaptureMagnifier NOTIFY changed FINAL)
-    Q_PROPERTY(bool capturePinOnCopy READ capturePinOnCopy WRITE setCapturePinOnCopy NOTIFY changed FINAL)
-    Q_PROPERTY(QString captureMouseDoubleLeft READ captureMouseDoubleLeft WRITE setCaptureMouseDoubleLeft NOTIFY changed FINAL)
-    Q_PROPERTY(QString captureMouseRight READ captureMouseRight WRITE setCaptureMouseRight NOTIFY changed FINAL)
-    Q_PROPERTY(QString captureMouseMiddle READ captureMouseMiddle WRITE setCaptureMouseMiddle NOTIFY changed FINAL)
-    Q_PROPERTY(QString captureMouseBack READ captureMouseBack WRITE setCaptureMouseBack NOTIFY changed FINAL)
-    Q_PROPERTY(QString captureMouseForward READ captureMouseForward WRITE setCaptureMouseForward NOTIFY changed FINAL)
-    // The capture toolbar's buttons left off it: comma separated ids (Settings::captureToolbarButtonIds).
-    Q_PROPERTY(QString captureToolbarHidden READ captureToolbarHidden WRITE setCaptureToolbarHidden NOTIFY changed FINAL)
-    Q_PROPERTY(QString captureNote READ captureNote NOTIFY hotkeyErrorChanged FINAL)
-    // Smart redaction's options (Settings::captureSmart*).
-    Q_PROPERTY(bool captureCursor READ captureCursor WRITE setCaptureCursor NOTIFY changed FINAL)
-    Q_PROPERTY(bool captureHdrFile READ captureHdrFile WRITE setCaptureHdrFile NOTIFY changed FINAL)
-    Q_PROPERTY(bool captureControlsUia READ captureControlsUia WRITE setCaptureControlsUia NOTIFY changed FINAL)
-    Q_PROPERTY(int captureDelay READ captureDelay WRITE setCaptureDelay NOTIFY changed FINAL)
-    Q_PROPERTY(QString capturePinDoubleClick READ capturePinDoubleClick WRITE setCapturePinDoubleClick NOTIFY changed FINAL)
-    Q_PROPERTY(QString capturePinsHotkey READ capturePinsHotkey WRITE setCapturePinsHotkey NOTIFY changed FINAL)
-    Q_PROPERTY(QString capturePinsRestoreHotkey READ capturePinsRestoreHotkey WRITE setCapturePinsRestoreHotkey NOTIFY changed FINAL)
-    Q_PROPERTY(QString capturePinsHotkeyError READ capturePinsHotkeyError NOTIFY hotkeyErrorChanged FINAL)
-    Q_PROPERTY(QString capturePinsRestoreHotkeyError READ capturePinsRestoreHotkeyError NOTIFY hotkeyErrorChanged FINAL)
-    Q_PROPERTY(bool captureSmartPrescan READ captureSmartPrescan WRITE setCaptureSmartPrescan NOTIFY changed FINAL)
-    Q_PROPERTY(bool captureSmartIpMac READ captureSmartIpMac WRITE setCaptureSmartIpMac NOTIFY changed FINAL)
-    Q_PROPERTY(bool captureSmartAllText READ captureSmartAllText WRITE setCaptureSmartAllText NOTIFY changed FINAL)
-    Q_PROPERTY(QString captureSmartWords READ captureSmartWords WRITE setCaptureSmartWords NOTIFY changed FINAL)
     // The screenshot history's keyword (jt): set through saveCaptureKeyword.
     Q_PROPERTY(QString captureKeyword READ captureKeyword NOTIFY changed FINAL)
+    // Whether it works now: the screenshot plugin installed and on (App).
+    Q_PROPERTY(bool screenshotHistory READ screenshotHistory NOTIFY screenshotHistoryChanged FINAL)
     // 粘贴为文件's card on the 插件 page ([PasteFile]): its switch, Ctrl+V in
     // Explorer and on the desktop, the right-click menu's verb.
     Q_PROPERTY(bool pasteFileEnabled READ pasteFileEnabled WRITE setPasteFileEnabled NOTIFY changed FINAL)
@@ -409,82 +368,9 @@ public:
     void setFolderMenuHotkey(const QString& hotkey);
     QString folderMenuHotkeyError() const { return m_folderMenuHotkeyError; }
     void setFolderMenuHotkeyError(const QString& error);
-    QString captureLastPinHotkey() const { return m_settings.captureLastPinHotkey; }
-    void setCaptureLastPinHotkey(const QString& value);
-    QString captureSaveFolder() const { return m_settings.captureSaveFolder; }
-    void setCaptureSaveFolder(const QString& value);
-    QString captureRecordingFolder() const { return m_settings.captureRecordingFolder; }
-    void setCaptureRecordingFolder(const QString& value);
-    bool captureRecordingSystemAudio() const { return m_settings.captureRecordingSystemAudio; }
-    void setCaptureRecordingSystemAudio(bool value);
-    bool captureRecordingMicrophone() const { return m_settings.captureRecordingMicrophone; }
-    void setCaptureRecordingMicrophone(bool value);
-    int captureRecordingQuality() const { return m_settings.captureRecordingQuality; }
-    void setCaptureRecordingQuality(int value);
-    bool captureRecordingCursor() const { return m_settings.captureRecordingCursor; }
-    void setCaptureRecordingCursor(bool value);
-    bool captureRecordingCountdown() const { return m_settings.captureRecordingCountdown; }
-    void setCaptureRecordingCountdown(bool value);
-    bool captureRecordingClicks() const { return m_settings.captureRecordingClicks; }
-    void setCaptureRecordingClicks(bool value);
-    QString captureLastPinHotkeyError() const { return m_captureLastPinHotkeyError; }
-    void setCaptureLastPinHotkeyError(const QString& error);
-    bool captureEnabled() const { return m_settings.captureEnabled; }
-    void setCaptureEnabled(bool on);
-    QString captureHotkey() const { return m_settings.captureHotkey; }
-    void setCaptureHotkey(const QString& hotkey);
-    QString captureHotkeyError() const { return m_captureHotkeyError; }
-    void setCaptureHotkeyError(const QString& error);
-    bool capturePrintScreen() const { return m_settings.capturePrintScreen; }
-    void setCapturePrintScreen(bool on);
-    bool captureCopyOnSelect() const { return m_settings.captureCopyOnSelect; }
-    void setCaptureCopyOnSelect(bool on);
-    bool captureMagnifier() const { return m_settings.captureMagnifier; }
-    void setCaptureMagnifier(bool on);
-    bool capturePinOnCopy() const { return m_settings.capturePinOnCopy; }
-    void setCapturePinOnCopy(bool on);
-    // What the mouse buttons do after a selection (Settings::captureMouse*).
-    QString captureMouseDoubleLeft() const { return m_settings.captureMouseDoubleLeft; }
-    void setCaptureMouseDoubleLeft(const QString& action) { setCaptureMouse(m_settings.captureMouseDoubleLeft, action, false); }
-    QString captureMouseRight() const { return m_settings.captureMouseRight; }
-    void setCaptureMouseRight(const QString& action) { setCaptureMouse(m_settings.captureMouseRight, action, true); }
-    QString captureMouseMiddle() const { return m_settings.captureMouseMiddle; }
-    void setCaptureMouseMiddle(const QString& action) { setCaptureMouse(m_settings.captureMouseMiddle, action, false); }
-    QString captureMouseBack() const { return m_settings.captureMouseBack; }
-    void setCaptureMouseBack(const QString& action) { setCaptureMouse(m_settings.captureMouseBack, action, false); }
-    QString captureMouseForward() const { return m_settings.captureMouseForward; }
-    void setCaptureMouseForward(const QString& action) { setCaptureMouse(m_settings.captureMouseForward, action, false); }
-    QString captureToolbarHidden() const { return m_settings.captureToolbarHidden; }
-    void setCaptureToolbarHidden(const QString& ids);
-    bool captureCursor() const { return m_settings.captureCursor; }
-    void setCaptureCursor(bool on);
-    bool captureHdrFile() const { return m_settings.captureHdrFile; }
-    void setCaptureHdrFile(bool on);
-    bool captureControlsUia() const { return m_settings.captureControlsUia; }
-    void setCaptureControlsUia(bool on);
-    int captureDelay() const { return m_settings.captureDelay; }
-    void setCaptureDelay(int seconds);
-    QString capturePinDoubleClick() const { return m_settings.capturePinDoubleClick; }
-    void setCapturePinDoubleClick(const QString& action);
-    QString capturePinsHotkey() const { return m_settings.capturePinsHotkey; }
-    void setCapturePinsHotkey(const QString& hotkey);
-    QString capturePinsRestoreHotkey() const { return m_settings.capturePinsRestoreHotkey; }
-    void setCapturePinsRestoreHotkey(const QString& hotkey);
-    QString capturePinsHotkeyError() const { return m_capturePinsHotkeyError; }
-    QString capturePinsRestoreHotkeyError() const { return m_capturePinsRestoreHotkeyError; }
-    void setCapturePinsHotkeyError(const QString& error);
-    void setCapturePinsRestoreHotkeyError(const QString& error);
-    bool captureSmartPrescan() const { return m_settings.captureSmartPrescan; }
-    void setCaptureSmartPrescan(bool on);
-    bool captureSmartIpMac() const { return m_settings.captureSmartIpMac; }
-    void setCaptureSmartIpMac(bool on);
-    bool captureSmartAllText() const { return m_settings.captureSmartAllText; }
-    void setCaptureSmartAllText(bool on);
-    QString captureSmartWords() const { return m_settings.captureSmartWords; }
-    void setCaptureSmartWords(const QString& words);
-    QString captureNote() const { return m_captureNote; }
-    void setCaptureNote(const QString& note);
     QString captureKeyword() const { return m_settings.captureKeyword; }
+    bool screenshotHistory() const { return m_screenshotHistory; }
+    void setScreenshotHistory(bool on);
     bool pasteFileEnabled() const { return m_settings.pasteFileEnabled; }
     void setPasteFileEnabled(bool on);
     bool pasteFileCtrlV() const { return m_settings.pasteFileCtrlV; }
@@ -494,7 +380,7 @@ public:
     // Saved if no web search or favorite has it (they keep theirs; a
     // plugin's alike gives way): empty, else what is wrong.
     Q_INVOKABLE QString saveCaptureKeyword(const QString& keyword);
-    // The keyword is the screenshot history's (the capture on): what a web
+    // The keyword is the screenshot history's (the plugin on): what a web
     // search or a favorite given it is told; empty when it is free.
     QString captureKeywordTaken(const QString& keyword) const;
     Q_INVOKABLE void refreshFileManagers();
@@ -926,6 +812,7 @@ public:
     FavoritesSettings* favorites() const { return m_favorites; }
 
 signals:
+    void screenshotHistoryChanged();
     void diagnosticsChanged();
     void diagnosticsExportRequested();
     void historyCountChanged();
@@ -979,7 +866,6 @@ private:
     friend class PluginSettings; // edits m_settings' plugin sections and commits
     friend class FavoritesSettings; // reads the web shortcuts' keywords and the window
     void commit();
-    void setCaptureMouse(QString& field, const QString& action, bool allowBack);
     void noteFoldersEdited(); // foldersChanged() when the chosen folders (or the shares) are others now
     // m_settings.indexFolders as IndexService has them (Settings::indexFolderPath),
     // worked out when they change, not each time the cards are: no disk is read for those.
@@ -996,11 +882,7 @@ private:
     QString m_clipboardQuickPasteError;
     QString m_doubleCtrlClash;
     QString m_folderMenuHotkeyError;
-    QString m_captureLastPinHotkeyError;
-    QString m_captureHotkeyError;
-    QString m_capturePinsHotkeyError;
-    QString m_capturePinsRestoreHotkeyError;
-    QString m_captureNote;
+    bool m_screenshotHistory = false;
     QString m_opusFolderMenu = QStringLiteral("manual");
     QString m_opusFolderMenuTaken;
     QString m_opusFolderMenuProblem;

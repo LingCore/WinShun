@@ -15,11 +15,9 @@ SettingsSection {
     required property PluginSettings plugins
     // Rows on the 开发者 tab shown only in developer mode (PluginDevSection.lockedRows).
     property var lockedElsewhere: []
-    // The built-in features drawn as cards here (CaptureCard); null in a
-    // preview without one.
+    // The built-in features drawn as cards here (PasteFileCard, BuiltinCard);
+    // null in a preview without one.
     property SettingsEditor editor: null
-    // A built-in card records a hotkey (SettingsWindow stops the app's hotkeys meanwhile).
-    readonly property bool recordingHotkey: captureCard.item ? captureCard.item.recordingHotkey : false
 
     // The cards unfolded, by plugin id: here, not in the cards, for the list
     // is reset (the cards made again) when a plugin comes or goes. For as
@@ -106,7 +104,7 @@ SettingsSection {
     signal settingRequested(string which)
 
     // What comes with Win顺 and stays out of the way until wanted, each a
-    // card: the screen capture, 粘贴为文件, and features of other pages
+    // card: 粘贴为文件, and features of other pages
     // whose switch is here too (the same setting). The search finds the
     // row by any card's words, marks the cards they fit and leaves the
     // others out meanwhile (all stay when only the row's own words fit).
@@ -116,8 +114,6 @@ SettingsSection {
         id: builtinRow
 
         // The names and words of the cards, and whether the words searched fit each.
-        readonly property var captureTerms: qsTr("截图;截屏;屏幕截图;PrtScn;Print Screen;放大镜;取色;鼠标;中键;右键;侧键;双击;贴图;识别文字;框选;screenshot;capture;mouse").split(";")
-                                            .concat(captureCard.item ? captureCard.item.searchTerms : [])
         readonly property var pasteTerms: pasteCard.item ? pasteCard.item.searchTerms : []
         readonly property string folderMenuTitle: qsTr("文件夹菜单")
         readonly property var folderMenuTerms: qsTr("双击空白处;收藏的文件夹;最近的文件夹;Listary;folder menu").split(";")
@@ -129,14 +125,13 @@ SettingsSection {
         readonly property var opusTypingTerms: qsTr("Opus;DOpus;直接打字;双栏;type to search").split(";")
         readonly property string dropPieTitle: qsTr("收藏圆盘")
         readonly property var dropPieTerms: qsTr("拖放;拖文件;drag;drop;pie").split(";")
-        readonly property bool captureFound: fits(qsTr("截图"), captureTerms)
         readonly property bool pasteFound: fits(qsTr("粘贴为文件"), pasteTerms)
         readonly property bool folderMenuFound: fits(folderMenuTitle, folderMenuTerms)
         readonly property bool dialogBarFound: fits(dialogBarTitle, dialogBarTerms)
         readonly property bool explorerTypingFound: fits(explorerTypingTitle, explorerTypingTerms)
         readonly property bool opusTypingFound: fits(opusTypingTitle, opusTypingTerms)
         readonly property bool dropPieFound: fits(dropPieTitle, dropPieTerms)
-        readonly property bool anyFound: captureFound || pasteFound || folderMenuFound || dialogBarFound
+        readonly property bool anyFound: pasteFound || folderMenuFound || dialogBarFound
                                          || explorerTypingFound || opusTypingFound || dropPieFound
         function fits(name, terms) {
             return searching && !!search.match(search.revision, { title: name, keywords: terms })
@@ -147,14 +142,11 @@ SettingsSection {
         readonly property real buttonSlot: Math.max(foldMeasure.implicitWidth, linkMeasure.implicitWidth)
 
         title: qsTr("内置功能")
-        keywords: captureTerms.concat(pasteTerms, [folderMenuTitle, dialogBarTitle, explorerTypingTitle, opusTypingTitle, dropPieTitle],
+        keywords: pasteTerms.concat([folderMenuTitle, dialogBarTitle, explorerTypingTitle, opusTypingTitle, dropPieTitle],
                                       folderMenuTerms, dialogBarTerms, explorerTypingTerms, opusTypingTerms, dropPieTerms)
-        values: pluginsSection.editor ? [pluginsSection.editor.captureHotkey] : []
         description: qsTr("随 Win顺 一起提供，用到哪个开哪个；关闭后停止对应功能，暂不支持单独卸载")
         shown: pluginsSection.editor !== null
         onRevealRequested: {
-            if (captureFound && captureCard.item)
-                captureCard.item.revealGroup(captureCard.item.matchedGroup)
             if (pasteFound && pasteCard.item && pluginsSection.editor.pasteFileEnabled)
                 pasteCard.item.expanded = true
         }
@@ -174,19 +166,6 @@ SettingsSection {
                 visible: false
                 text: qsTr("更多设置")
                 trailingGlyph: String.fromCharCode(0xE76C)
-            }
-
-            Loader {
-                id: captureCard
-                width: parent.width
-                active: pluginsSection.editor !== null
-                visible: builtinRow.kept(builtinRow.captureFound)
-                sourceComponent: CaptureCard {
-                    editor: pluginsSection.editor
-                    marked: builtinRow.captureFound
-                    search: builtinRow.search
-                    buttonSlot: builtinRow.buttonSlot
-                }
             }
 
             Loader {

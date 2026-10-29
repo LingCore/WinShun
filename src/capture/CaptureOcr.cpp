@@ -42,9 +42,14 @@ CaptureOcr::~CaptureOcr()
         m_thread.join();
 }
 
+QString CaptureOcr::programFolder()
+{
+    return s_programFolder.isEmpty() ? QCoreApplication::applicationDirPath() : s_programFolder;
+}
+
 bool CaptureOcr::available()
 {
-    return PaddleOcr::installed(QCoreApplication::applicationDirPath());
+    return PaddleOcr::installed(programFolder());
 }
 
 void CaptureOcr::read(const QImage& image, double dpr)
@@ -165,7 +170,7 @@ void CaptureOcr::done(int round, const QString& text, const QString& error)
 void CaptureOcr::work(const std::stop_token& stop)
 {
     ::SetThreadPriority(::GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
-    const QString folder = QCoreApplication::applicationDirPath();
+    const QString folder = programFolder();
     // Its own threads besides this one, as the clipboard's: up to 4, half the processors.
     const int threads = std::clamp(static_cast<int>(std::thread::hardware_concurrency()) / 2, 1, 4);
     std::unique_ptr<PaddleOcr> reader;

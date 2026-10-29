@@ -236,6 +236,9 @@ public:
     // A colour's other notation, as a new entry unless it would not read back
     // as that colour (#AARRGGBB).
     Q_INVOKABLE void copyText(const QString& text, bool remember);
+    // Whether a plugin pins and edits pictures (App::picturePlugin): 贴到屏幕
+    // and 编辑 on a picture's menu only then.
+    void setPictureVerbs(bool pin, bool edit) { m_pictureVerbs = {pin, edit}; }
     // A picture (a screen capture, a pin) onto the clipboard, the way copyText
     // puts text there: with `remember`, as a new history entry on top, whose
     // words are then read like any copied picture's; `screenshot`: one Win顺's
@@ -337,13 +340,13 @@ signals:
     void fieldChanged();
     // The field the window goes back to: its own window in front again (App).
     void fieldRequested(QQuickItem* field);
-    // 贴到屏幕 on a picture's row: its file, for the app to pin (PinManager).
-    void pinRequested(const QString& imagePath);
-    // 编辑 on a picture: the entry's id, for the editing window (its project
-    // if it has one, else the picture as the base of an empty document).
+    // 贴到屏幕 and 编辑 on a picture: the entry's id, for the plugin that
+    // does them (App::pictureAction; the screenshot plugin).
+    void pinRequested(qint64 id);
     void editRequested(qint64 id);
 
 private:
+    struct { bool pin = false; bool edit = false; } m_pictureVerbs;
     struct Category {
         ClipFilter::Category kind;
         qint64 group = 0;

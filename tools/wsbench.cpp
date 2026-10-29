@@ -144,7 +144,7 @@
 //                      With --plugins, the plugins of DIR (every one enabled,
 //                      actions allowed) are tools too, as the AI 助手 page's
 //                      switches would make them (plugin::AiBridge)
-//   wsbench --plugin FOLDER --query "TEXT" [--runs N] [--setting KEY=VALUE ...] [--action ID]
+//   wsbench --plugin FOLDER --query "TEXT" [--runs N] [--setting KEY=VALUE ...] [--action ID] [--app-dir DIR]
 //                      a plugin (src/plugin) as the app runs it: checks its
 //                      plugin.json, starts it through WinShunPluginHost.exe
 //                      (next to wsbench), prints the items of the first
@@ -4390,8 +4390,13 @@ int runPlugin(QStringList args)
         actionId = args[at + 1];
         args.remove(at, 2);
     }
+    QString appDir; // --app-dir DIR: WS_APP_DIR, a deployed Win顺 whose Qt the plugin may use (winshun.capture)
+    if (const qsizetype at = args.indexOf(u"--app-dir"_s); at >= 0 && at + 1 < args.size()) {
+        appDir = QDir(args[at + 1]).absolutePath();
+        args.remove(at, 2);
+    }
     if (folder.isEmpty() || query.isEmpty()) {
-        std::printf("usage: wsbench --plugin FOLDER --query \"TEXT\" [--runs N] [--setting KEY=VALUE ...] [--action ID]\n");
+        std::printf("usage: wsbench --plugin FOLDER --query \"TEXT\" [--runs N] [--setting KEY=VALUE ...] [--action ID] [--app-dir DIR]\n");
         return 1;
     }
     const QFileInfo info(folder);
@@ -4421,6 +4426,7 @@ int runPlugin(QStringList args)
     options.bundledPluginDir = info.absolutePath();
     options.dataRoot = temp.path() + u"/data"_s;
     options.runnerExe = QCoreApplication::applicationDirPath() + u"/WinShunPluginHost.exe"_s;
+    options.appDir = appDir;
     options.version = QStringLiteral(WINSHUN_VERSION "-bench");
     ws::plugin::Host host(options);
     host.setEnabled(manifest->id, true);
@@ -5230,7 +5236,8 @@ int runSemantic(QStringList args)
             pluginSettings.insert(pair.left(eq), pair.mid(eq + 1));
         args.remove(at, 2);
     }
-    QString pluginsDir = QCoreApplication::applicationDirPath() + u"/plugins"_s;
+    // From the plugin library, not with Win顺 (GitHub #138): the build stages it there.
+    QString pluginsDir = QCoreApplication::applicationDirPath() + u"/library-plugins"_s;
     if (const qsizetype at = args.indexOf(u"--plugins"_s); at >= 0 && at + 1 < args.size()) {
         pluginsDir = QDir(args[at + 1]).absolutePath();
         args.remove(at, 2);

@@ -49,8 +49,11 @@ public:
     explicit CaptureOcr(QObject* parent = nullptr);
     ~CaptureOcr() override;
 
-    // The models are next to the program (cheap; nothing is loaded).
+    // The models are next to the program (cheap; nothing is loaded): next to
+    // WinShun.exe, which the screen capture plugin says it is in (setProgramFolder).
     static bool available();
+    static void setProgramFolder(const QString& folder) { s_programFolder = folder; }
+    static QString programFolder();
 
     // Reads `image`, taken on a monitor at `dpr` (its text's size).
     void read(const QImage& image, double dpr);
@@ -95,6 +98,7 @@ signals:
     void openLinkRequested(const QString& url);
 
 private:
+    static inline QString s_programFolder;
     struct Job {
         int round = 0;
         QImage image;

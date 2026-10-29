@@ -1,6 +1,9 @@
 """Capture 0.16's changed UI with the real executable, then reuse the poster template.
 
 python tools/screenshots/release016.py --exe C:/WinShun/WinShun.exe --work C:/wsrel016/shots
+The screenshot's pictures come from its plugin (a plugin since 0.17, GitHub #138):
+--capture names its WinShunCapture.exe (build\release\library-plugins\winshun.capture),
+run on the Qt of --exe's folder.
 Use --capture-only to inspect raw renders first, or --export-only to recompose.
 The preview modes use temporary profiles; they never stop the running WinShun.
 Recording previews briefly show their own demo window and record only its client area.
@@ -43,6 +46,7 @@ SOURCES = {
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--exe", type=pathlib.Path, required=True)
+    parser.add_argument("--capture", type=pathlib.Path)
     parser.add_argument("--work", type=pathlib.Path, default=shots.WORK / "release016")
     parser.add_argument("--temp", type=pathlib.Path, default=pathlib.Path("C:/Temp"))
     parser.add_argument("--videos", type=pathlib.Path, default=pathlib.Path("C:/录屏"))
@@ -51,6 +55,9 @@ def main():
     mode.add_argument("--export-only", action="store_true")
     args = parser.parse_args()
     exe = args.exe.resolve(strict=True)
+    if not args.export_only and not args.capture:
+        parser.error("--capture is needed for the screenshot's pictures")
+    capture = args.capture.resolve(strict=True) if args.capture else None
     work = args.work.resolve()
     work.mkdir(parents=True, exist_ok=True)
     demo = shots.HERE / "scenes/区域销售额.png"
@@ -62,16 +69,19 @@ def main():
         ("mp4", "--preview-recording", ["--auto"]),
         ("gif", "--preview-recording", ["--auto", "--gif", "--clicks"]),
     )
+    plugin_flags = {"--preview-capture-tools", "--preview-recording"}
     if not args.export_only:
         args.temp.mkdir(parents=True, exist_ok=True)
         env = {**os.environ, "TEMP": str(args.temp), "TMP": str(args.temp)}
         for folder, flag, options in runs:
-            print(f"Capturing {folder} with {exe}", flush=True)
+            program = capture if flag in plugin_flags else exe
+            print(f"Capturing {folder} with {program}", flush=True)
             # A recording is saved where the preview writes, and the panel shows that folder.
             out = args.videos if flag == "--preview-recording" else work / folder
             if out == args.videos and out.exists():
                 shutil.rmtree(out)
-            result = subprocess.run([str(exe), flag, str(out), "--scale", "2",
+            app_dir = ["--app-dir", str(exe.parent)] if program == capture else []
+            result = subprocess.run([str(program), flag, str(out), *app_dir, "--scale", "2",
                                      "--renderer", "d3d11", *options], env=env)
             if result.returncode:
                 print(f"  {folder}: exit {result.returncode} (warnings; check the renders)", flush=True)
@@ -80,6 +90,7 @@ def main():
                 shutil.move(str(out), str(work / folder))
         (work / "capture.json").write_text(json.dumps({
             "exe": str(exe), "sha256": hashlib.sha256(exe.read_bytes()).hexdigest(),
+            "capture": str(capture), "capture_sha256": hashlib.sha256(capture.read_bytes()).hexdigest(),
             "scale": 2, "renderer": "d3d11", "profiles": "temporary, demo entries only",
         }, indent=2), encoding="utf-8")
     if args.capture_only:

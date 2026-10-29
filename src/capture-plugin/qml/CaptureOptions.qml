@@ -2,61 +2,36 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import WinShun
 
-// The screen capture's card on the 插件 page (src/capture; [Capture] in
-// WinShun.ini): built in, off until switched on here. Drawn like a plugin's
-// card (PluginCard): icon, name, a tag, what it does and where it stands,
-// the switch on the right. Options stay folded until requested; categories
-// show one group at a time, including when reached through settings search.
-// Turned off, the app makes no
-// window, registers no key and holds no graphics device for it.
-Rectangle {
+// The screen capture's options (CaptureSettings: [Capture] in capture.ini),
+// the page of the plugin's settings window: one group at a time. Up to 0.16
+// they were the folded part of the 截图 card on Win顺's 插件 page.
+Item {
     id: card
 
-    objectName: "captureSettingsCard"
-    required property SettingsEditor editor
-    property bool expanded: false
+    objectName: "captureOptions"
+    required property CaptureSettings editor
     property int currentGroup: 0
-    property SettingsSearch search: null
-    property real buttonSlot: 0 // as BuiltinCard's: 设置 right-aligned in it, the switches of 内置功能 in one column
     readonly property bool narrow: body.width < 520
     readonly property var groups: [
-        { title: qsTr("快捷键"), terms: qsTr("截图快捷键;截图历史关键词;PrtScn;Print Screen").split(";") },
-        { title: qsTr("截图"), terms: qsTr("选好就复制;框选时显示放大镜;复制截图时同时贴图;鼠标指针;识别控件;Electron;WinUI;延时截图;截图保存文件夹;保存目录;录屏;HDR;JXR").split(";") },
-        { title: qsTr("鼠标"), terms: qsTr("框选后的鼠标操作;双击左键;右键;中键;侧键;复制并贴图;识别文字并复制;识别文字并搜索;识别文字并网页搜索").split(";") },
-        { title: qsTr("贴图"), terms: qsTr("双击贴图;贴上最近一次截图的快捷键;隐藏 / 显示全部贴图的快捷键;找回穿透贴图的快捷键").split(";") },
-        { title: qsTr("打码"), terms: qsTr("智能打码;框选后自动识别;IP;MAC;把所有文字都打码;我自己的词").split(";") },
-        { title: qsTr("工具条"), terms: qsTr("工具条上的按钮;撤销;重做;长截图;二维码;显示按钮;隐藏按钮").split(";") }
+        { title: qsTr("快捷键") },
+        { title: qsTr("截图") },
+        { title: qsTr("鼠标") },
+        { title: qsTr("贴图") },
+        { title: qsTr("打码") },
+        { title: qsTr("工具条") }
     ]
-    readonly property var searchTerms: [].concat(...groups.map(group => [group.title, ...group.terms]))
-    readonly property int matchedGroup: {
-        if (!search || !search.active)
-            return -1
-        let best = -1
-        let score = -1
-        for (let i = 0; i < groups.length; ++i) {
-            const hit = search.match(search.revision, {
-                title: groups[i].title, keywords: groups[i].terms, context: [qsTr("截图")]
-            })
-            if (hit && hit.score > score) {
-                best = i
-                score = hit.score
-            }
-        }
-        return best
-    }
 
-    function revealGroup(index) {
-        currentGroup = Math.max(0, Math.min(groups.length - 1, index))
-        expanded = true
-    }
     function moveGroup(delta) {
         currentGroup = (currentGroup + delta + groups.length) % groups.length
         groupButtons.itemAt(currentGroup).forceActiveFocus(Qt.TabFocusReason)
     }
-    onMatchedGroupChanged: if (matchedGroup >= 0) revealGroup(matchedGroup)
-    property bool marked: false // what the settings search found
-    // The hotkey box records: SettingsWindow's binding stops the app's hotkeys meanwhile.
+    // The hotkey box records: the plugin lets go of its hotkeys meanwhile (CaptureApp).
     readonly property bool recordingHotkey: hotkeyRecorder.recording || pinsHotkeyRow.recording || restoreHotkeyRow.recording || lastPinHotkeyRow.recording
+    Binding {
+        target: card.editor
+        property: "recordingHotkey"
+        value: card.recordingHotkey
+    }
 
     // The mouse buttons' choices (Settings::captureMouse*), the right button's with 后退 besides.
     readonly property var mouseChoices: [
@@ -170,127 +145,16 @@ Rectangle {
         }
     }
 
-    implicitHeight: body.implicitHeight + 24
-    radius: Theme.controlRadius
-    color: marked ? Theme.selection : "transparent"
-    border.width: 1
-    border.color: Theme.cardBorder
+    implicitHeight: body.implicitHeight
 
     Column {
         id: body
-        x: 14
-        y: 12
-        width: parent.width - 28
+        width: parent.width
         spacing: 12
 
-        Item { // the header
-            width: parent.width
-            height: card.narrow ? texts.implicitHeight + 12 + headerControls.implicitHeight
-                               : Math.max(texts.implicitHeight, headerControls.implicitHeight)
-
-            Glyph {
-                id: icon
-                y: 2
-                width: 32
-                height: 32
-                glyph: "" // Camera
-                size: 24
-                color: Theme.text
-            }
-
-            Column {
-                id: texts
-                anchors.left: icon.right
-                anchors.leftMargin: 12
-                anchors.right: card.narrow ? parent.right : headerControls.left
-                anchors.rightMargin: card.narrow ? 0 : 12
-                spacing: 4
-
-                Row {
-                    spacing: 8
-
-                    Text {
-                        text: qsTr("截图")
-                        color: Theme.text
-                        font.pixelSize: Theme.fontBody
-                        wrapMode: Text.Wrap
-                        font.weight: Font.DemiBold
-                    }
-                    Tag {
-                        text: qsTr("内置")
-                    }
-                }
-                Text {
-                    width: parent.width
-                    text: qsTr("框选窗口或区域，标注、识别文字、复制和贴图")
-                    color: Theme.subtext
-                    font.pixelSize: Theme.fontCaption
-                    wrapMode: Text.Wrap
-                }
-                Text {
-                    width: parent.width
-                    text: !card.editor.captureEnabled ? qsTr("关着")
-                          : card.editor.captureHotkey.length > 0 ? qsTr("开着：按 %1，或从托盘菜单截图").arg(card.editor.captureHotkey)
-                          : card.editor.capturePrintScreen ? qsTr("开着：按 PrtScn，或从托盘菜单截图")
-                          : qsTr("开着：从托盘菜单截图，也可以在设置里录一个快捷键")
-                    color: card.editor.captureEnabled ? Theme.text : Theme.subtext
-                    font.pixelSize: Theme.fontCaption
-                    wrapMode: Text.Wrap
-                }
-            }
-
-            Row {
-                id: headerControls
-                y: card.narrow ? texts.implicitHeight + 12 : 0
-                anchors.right: parent.right
-                spacing: 12
-
-                ToggleSwitch {
-                    anchors.verticalCenter: parent.verticalCenter
-                    checked: card.editor.captureEnabled
-                    onToggled: (on) => {
-                        card.editor.captureEnabled = on
-                        card.expanded = on
-                        if (on)
-                            card.currentGroup = 0
-                    }
-                }
-                Item {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: Math.max(card.buttonSlot, expandButton.visible ? expandButton.implicitWidth : 0)
-                    height: 36
-                    visible: width > 0
-
-                    FlatButton {
-                        id: expandButton
-                        objectName: "captureExpandButton"
-                        anchors.right: parent.right
-                        visible: card.editor.captureEnabled
-                        text: card.expanded ? qsTr("收起设置") : qsTr("设置")
-                        trailingGlyph: String.fromCharCode(card.expanded ? 0xE70E : 0xE70D)
-                        flat: true
-                        Accessible.role: Accessible.Button
-                        Accessible.name: card.expanded ? qsTr("收起截图设置") : qsTr("展开截图设置")
-                        Accessible.onPressAction: clicked()
-                        onClicked: {
-                            forceActiveFocus(Qt.MouseFocusReason)
-                            card.expanded = !card.expanded
-                        }
-                    }
-                }
-            }
-        }
-
-        Column { // one category at a time; keep the editors alive while folded
-            visible: card.editor.captureEnabled && card.expanded
+        Column { // one category at a time; keep the editors alive while hidden
             width: parent.width
             spacing: 12
-
-            Rectangle { // between the header and the options
-                width: parent.width
-                height: Theme.edge(Screen.devicePixelRatio)
-                color: Theme.cardBorder
-            }
 
             Flow {
                 width: parent.width
@@ -387,57 +251,6 @@ Rectangle {
                     }
                 }
 
-                Item { // the screenshot history's keyword (jt)
-                    width: parent.width
-                    height: Math.max(keywordTexts.implicitHeight, keywordBox.implicitHeight)
-
-                    Column {
-                        id: keywordTexts
-                        anchors.left: parent.left
-                        anchors.right: keywordBox.left
-                        anchors.rightMargin: 12
-                        spacing: 4
-
-                        Text {
-                            width: parent.width
-                            text: qsTr("截图历史关键词")
-                            color: Theme.text
-                            font.pixelSize: Theme.fontBody
-                            wrapMode: Text.Wrap
-                        }
-                        Text {
-                            width: parent.width
-                            text: qsTr("在搜索框输入“%1”加空格，列出截过的图，再输入文字按图里识别出的文字筛选；Enter 复制并粘贴，Ctrl+Enter 贴到屏幕，Delete 删除").arg(card.editor.captureKeyword)
-                            color: Theme.subtext
-                            font.pixelSize: Theme.fontCaption
-                            wrapMode: Text.Wrap
-                        }
-                        Text {
-                            id: keywordError
-                            visible: text.length > 0
-                            width: parent.width
-                            color: Theme.danger
-                            font.pixelSize: Theme.fontCaption
-                            wrapMode: Text.Wrap
-                        }
-                    }
-                    InputBox {
-                        id: keywordBox
-                        anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 96
-                        text: card.editor.captureKeyword
-                        maximumLength: 16
-                        function commit() {
-                            keywordError.text = card.editor.saveCaptureKeyword(text)
-                            if (keywordError.text.length === 0)
-                                text = Qt.binding(() => card.editor.captureKeyword)
-                        }
-                        onAccepted: commit()
-                        onEditingFinished: commit()
-                    }
-                }
-
                 Item {
                     width: parent.width
                     height: Math.max(printTexts.implicitHeight, printToggle.implicitHeight)
@@ -458,7 +271,7 @@ Rectangle {
                         }
                         Text {
                             width: parent.width
-                            text: qsTr("让 PrtScn 不再打开 Windows 的截图工具，改用这里的截图。Win顺 没在运行时，PrtScn 会把整个屏幕复制到剪贴板；关掉这项恢复原来的设置")
+                            text: qsTr("让 PrtScn 不再打开 Windows 的截图工具，改用这里的截图。Win顺 退出时还给截图工具，下次启动再接管；关掉这项也恢复原来的设置")
                             color: Theme.subtext
                             font.pixelSize: Theme.fontCaption
                             wrapMode: Text.Wrap

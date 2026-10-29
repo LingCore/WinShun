@@ -569,10 +569,63 @@ QJsonObject Host::pluginSettings(const QString& id) const
     return settings;
 }
 
-void Host::setAppearance(const QString& locale, const QString& theme)
+void Host::setAppearance(const QString& locale, const QString& theme, const QJsonObject& look)
 {
     m_options.locale = locale;
     m_options.theme = theme;
+    if (look == m_options.appearance)
+        return;
+    m_options.appearance = look;
+    for (const auto& [id, p] : m_plugins) {
+        const Entry* e = entry(id);
+        if (p->phase == Plugin::Phase::Ready && p->session && e && e->manifest->permissions.has(Permission::Ui))
+            p->session->notify(u"appearance"_s, look);
+    }
+}
+
+bool Host::request(const QString& id, const QString& method, const QJsonObject& params, Reply reply, bool foreground)
+{
+    const auto it = m_plugins.find(id);
+    Plugin* p = it == m_plugins.end() ? nullptr : it->second.get();
+    const Entry* e = entry(id);
+    if (!p || p->phase != Plugin::Phase::Ready || !p->session || !e || !e->manifest->runtime) {
+        if (reply)
+            reply(false, {});
+        return false;
+    }
+    touch(*p);
+    if (foreground && p->pid)
+        ::AllowSetForegroundWindow(p->pid);
+    // Answered or timed out, whichever is first; the other finds it taken.
+    auto pending = std::make_shared<Reply>(std::move(reply));
+    const std::uint64_t instance = p->instance;
+    const std::uint64_t requestId = p->session->request(method, params, [pending](const jsonrpc::Message& response) {
+        if (Reply done = std::exchange(*pending, {}))
+            done(!response.failed, response.result);
+    });
+    QTimer::singleShot(e->manifest->runtime->timeoutMs, this, [this, id, method, instance, requestId, pending] {
+        Reply done = std::exchange(*pending, {});
+        if (!done)
+            return;
+        const auto at = m_plugins.find(id);
+        if (at != m_plugins.end() && at->second->instance == instance && at->second->session)
+            at->second->session->forget(requestId);
+        log(u"%1: %2 没有及时回答"_s.arg(id, method));
+        done(false, {});
+    });
+    return true;
+}
+
+bool Host::notify(const QString& id, const QString& method, const QJsonObject& params, bool foreground)
+{
+    const auto it = m_plugins.find(id);
+    if (it == m_plugins.end() || it->second->phase != Plugin::Phase::Ready || !it->second->session)
+        return false;
+    touch(*it->second);
+    if (foreground && it->second->pid)
+        ::AllowSetForegroundWindow(it->second->pid);
+    it->second->session->notify(method, params);
+    return true;
 }
 
 void Host::setPluginSettings(const QString& id, const QJsonObject& settings)
@@ -851,6 +904,7 @@ Runner::Spec Host::specFor(Plugin& p, const Entry& e, RunKind kind, const Pendin
     spec.env += runtime.env;
     spec.env.push_back({u"WS_PLUGIN_DIR"_s, e.dir});
     spec.env.push_back({u"WS_DATA_DIR"_s, dataDirFor(e)});
+    spec.env.push_back({u"WS_APP_DIR"_s, QDir::toNativeSeparators(m_options.appDir.isEmpty() ? QFileInfo(m_options.runnerExe).absolutePath() : m_options.appDir)});
     spec.env.push_back({u"WS_LOCALE"_s, m_options.locale});
     spec.env.push_back({u"WS_THEME"_s, m_options.theme});
     spec.env.push_back({u"WS_VERSION"_s, m_options.version});
@@ -987,6 +1041,7 @@ void Host::onStarted(std::uint64_t instance, quint32 pid)
             emit progress(queryId, id, text);
     };
     handlers.refresh = [this, id] { onRefresh(id); };
+    handlers.hotkeys = [this, id](const QStringList& keys) { emit hotkeysChanged(id, keys); };
     handlers.toolCall = [this, id](const QJsonValue& requestId, const QString& tool, const QJsonObject& arguments) {
         onToolCall(id, requestId, tool, arguments);
     };
@@ -997,7 +1052,7 @@ void Host::onStarted(std::uint64_t instance, quint32 pid)
 
     const QJsonObject params {{u"protocolVersion"_s, QString::fromLatin1(kProtocolVersion)}, {u"winshun"_s, m_options.version},
         {u"pluginDir"_s, e->dir}, {u"dataDir"_s, dataDirFor(*e)}, {u"locale"_s, m_options.locale}, {u"theme"_s, m_options.theme},
-        {u"settings"_s, pluginSettings(p.id)}};
+        {u"appearance"_s, m_options.appearance}, {u"settings"_s, pluginSettings(p.id)}};
     p.session->request(u"initialize"_s, params, [this, id, instance](const jsonrpc::Message& response) {
         Plugin& q = plugin(id);
         if (q.instance != instance || q.phase != Plugin::Phase::Starting)
@@ -1238,6 +1293,7 @@ void Host::onInstanceExited(std::uint64_t instance, quint32 code, const QStringL
     if (p.instance != instance)
         return;
     emit processExited(p.id, code);
+    emit hotkeysChanged(p.id, {}); // the process held them
     traceEvent(p.id, u"进程退出（代码 %1）"_s.arg(code));
     const Plugin::Phase was = p.phase;
     p.instance = 0;
@@ -1290,6 +1346,25 @@ void Host::onToolCall(const QString& id, const QJsonValue& requestId, const QStr
         return;
     }
     const Entry* e = entry(id);
+    // Win顺's own for plugins (setAppTools): not the AI's, so not through the bridge.
+    if (const auto app = std::ranges::find(m_appTools, tool, &AppTool::name); app != m_appTools.end() && app->run) {
+        if (!e || !e->manifest->permissions.has(app->permission)) {
+            p.session->respondError(requestId, kPermissionDenied,
+                u"The plugin's manifest does not ask for the '%1' permission, which '%2' needs"_s.arg(permissionName(app->permission), tool));
+            return;
+        }
+        const std::uint64_t instance = p.instance;
+        app->run(id, dataDirFor(*e), arguments, [this, id, instance, requestId](mcp::ToolResult result) {
+            Plugin& q = plugin(id);
+            if (q.instance != instance || !q.session)
+                return;
+            if (result.isError)
+                q.session->respondError(requestId, kToolFailed, result.errorText);
+            else
+                q.session->respond(requestId, result.structured);
+        });
+        return;
+    }
     const std::optional<Permission> needed = permissionFor(tool);
     if (!m_bridge.call || !m_bridge.known) {
         p.session->respondError(requestId, jsonrpc::kUnavailable, u"Win顺's tools are not available here"_s);

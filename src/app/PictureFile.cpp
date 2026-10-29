@@ -1,0 +1,94 @@
+#include "PictureFile.h"
+
+#include <QTransform>
+
+#include <windows.h>
+#include <propvarutil.h>
+#include <wincodec.h>
+#include <wrl/client.h>
+
+#include <algorithm>
+#include <string>
+
+using namespace Qt::StringLiterals;
+using Microsoft::WRL::ComPtr;
+
+namespace ws {
+
+namespace {
+
+// The first frame, decoded by Windows Imaging Component and turned upright
+// as the camera says (EXIF orientation); at most `largest` pixels on its
+// longer side. `original`: its size as stored.
+QImage decodePicture(const std::wstring& path, QSize* original, int largest)
+{
+    ComPtr<IWICImagingFactory> wic;
+    if (FAILED(::CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic))))
+        return {};
+    ComPtr<IWICBitmapDecoder> decoder;
+    if (FAILED(wic->CreateDecoderFromFilename(path.c_str(), nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand, &decoder)))
+        return {};
+    ComPtr<IWICBitmapFrameDecode> frame;
+    if (FAILED(decoder->GetFrame(0, &frame)))
+        return {};
+    UINT width = 0;
+    UINT height = 0;
+    if (FAILED(frame->GetSize(&width, &height)) || width == 0 || height == 0)
+        return {};
+    USHORT orientation = 1;
+    ComPtr<IWICMetadataQueryReader> metadata;
+    if (SUCCEEDED(frame->GetMetadataQueryReader(&metadata))) {
+        PROPVARIANT value;
+        ::PropVariantInit(&value);
+        // The property system's name reads it from JPEG, TIFF and HEIF alike.
+        if (SUCCEEDED(metadata->GetMetadataByName(L"System.Photo.Orientation", &value)) && value.vt == VT_UI2)
+            orientation = value.uiVal;
+        ::PropVariantClear(&value);
+    }
+    ComPtr<IWICBitmapSource> source = frame;
+    UINT w = width;
+    UINT h = height;
+    if (largest > 0 && std::max(width, height) > static_cast<UINT>(largest)) {
+        const double scale = static_cast<double>(largest) / std::max(width, height);
+        w = std::max(1u, static_cast<UINT>(width * scale + 0.5));
+        h = std::max(1u, static_cast<UINT>(height * scale + 0.5));
+        ComPtr<IWICBitmapScaler> scaler;
+        if (FAILED(wic->CreateBitmapScaler(&scaler))
+            || FAILED(scaler->Initialize(frame.Get(), w, h, WICBitmapInterpolationModeHighQualityCubic)))
+            return {};
+        source = scaler;
+    }
+    ComPtr<IWICFormatConverter> converter;
+    if (FAILED(wic->CreateFormatConverter(&converter))
+        || FAILED(converter->Initialize(source.Get(), GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, nullptr, 0,
+            WICBitmapPaletteTypeMedianCut)))
+        return {};
+    QImage image(static_cast<int>(w), static_cast<int>(h), QImage::Format_ARGB32_Premultiplied);
+    if (image.isNull()
+        || FAILED(converter->CopyPixels(nullptr, static_cast<UINT>(image.bytesPerLine()), static_cast<UINT>(image.sizeInBytes()),
+            image.bits())))
+        return {};
+    if (original)
+        *original = QSize(static_cast<int>(width), static_cast<int>(height));
+    switch (orientation) {
+    case 2: return image.flipped(Qt::Horizontal);
+    case 3: return image.flipped(Qt::Horizontal | Qt::Vertical);
+    case 4: return image.flipped(Qt::Vertical);
+    case 5: return image.transformed(QTransform().rotate(90)).flipped(Qt::Horizontal);
+    case 6: return image.transformed(QTransform().rotate(90));
+    case 7: return image.transformed(QTransform().rotate(90)).flipped(Qt::Vertical);
+    case 8: return image.transformed(QTransform().rotate(270));
+    default: return image;
+    }
+}
+
+} // namespace
+
+QImage decodePictureFile(const QString& path, int largest, QSize* original)
+{
+    QString native = path;
+    native.replace(u'/', u'\\');
+    return decodePicture(native.toStdWString(), original, largest);
+}
+
+} // namespace ws
