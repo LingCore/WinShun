@@ -693,6 +693,17 @@ add_test(NAME tst_break COMMAND tst_break)
 set_tests_properties(tst_break PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# winshun.translate's logic (src/translate-plugin/Translate), built in again:
+# the target language, the DeepL and chat requests, reading the answers and
+# the services' errors, and the rows in both languages. No network.
+qt_add_executable(tst_translate tst_translate.cpp ${PROJECT_SOURCE_DIR}/src/translate-plugin/Translate.cpp)
+target_include_directories(tst_translate PRIVATE ${PROJECT_SOURCE_DIR}/src/translate-plugin ${PROJECT_SOURCE_DIR}/src/plugins-sdk)
+target_link_libraries(tst_translate PRIVATE winshun_options Qt6::Test)
+set_target_properties(tst_translate PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_translate COMMAND tst_translate)
+set_tests_properties(tst_translate PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # The plugin system (src/plugin): manifests, items, zero-code, the catalog,
 # and plugin processes started through the runner WinShunPluginHost.exe,
 # played by plugin_fake.exe (no Qt, as a plugin would be); both paths are
