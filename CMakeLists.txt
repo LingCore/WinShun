@@ -50,6 +50,7 @@ add_subdirectory(src/semantic-plugin)
 add_subdirectory(src/localsend-plugin)
 add_subdirectory(src/break-plugin)
 add_subdirectory(src/bookmarks-plugin)
+add_subdirectory(src/translate-plugin)
 add_subdirectory(src/capture)
 add_subdirectory(src/capture-plugin)
 add_subdirectory(src/app)
@@ -90,13 +91,15 @@ add_custom_target(library_plugins ALL
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunBreak>" "${library_plugins_dir}/winshun.break/WinShunBreak.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/bookmarks-plugin/package" "${library_plugins_dir}/winshun.bookmarks"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunBookmarks>" "${library_plugins_dir}/winshun.bookmarks/WinShunBookmarks.exe"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/translate-plugin/package" "${library_plugins_dir}/winshun.translate"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunTranslate>" "${library_plugins_dir}/winshun.translate/WinShunTranslate.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/capture-plugin/package" "${library_plugins_dir}/winshun.capture"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunCapture>" "${library_plugins_dir}/winshun.capture/WinShunCapture.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunCaptureApp>" "${library_plugins_dir}/winshun.capture/WinShunCaptureApp.dll"
     # What is compiled into WinShunCaptureApp.dll; Qt, ONNX Runtime and the OCR models are Win顺's.
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/zxing-cpp/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/zxing-cpp.txt"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/miniz/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/miniz.txt"
-    DEPENDS WinShunSemantic WinShunLocalSend WinShunBreak WinShunBookmarks WinShunCapture WinShunCaptureApp
+    DEPENDS WinShunSemantic WinShunLocalSend WinShunBreak WinShunBookmarks WinShunTranslate WinShunCapture WinShunCaptureApp
     COMMENT "Staging the library plugins into ${library_plugins_dir}"
     VERBATIM)
 
