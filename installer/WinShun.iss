@@ -163,6 +163,14 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "WinShunService.exe,\WinSh
 Source: "{#SourceDir}\WinShunService.exe"; DestDir: "{app}"; Flags: ignoreversion; Check: IsAdminInstallMode
 Source: "{#SourceDir}\WinShunMcp.exe"; DestDir: "{app}"; Flags: ignoreversion
 
+[InstallDelete]
+; Plugins that came with an earlier Win顺 and are in the plugin library now
+; (GitHub #138): an upgrade would leave their old folders in plugins\, and
+; Win顺 would go on taking them for bundled ones. Who had one on gets it
+; from the library at the next start (MovedPlugins), settings kept.
+Type: filesandordirs; Name: "{app}\plugins\winshun.localsend"
+Type: filesandordirs; Name: "{app}\plugins\winshun.semantic"
+
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
 ; The taskbar button. Its AppUserModelID, the one WinShunSearch.exe sets for
@@ -175,14 +183,12 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopico
 ; (LocalSystem, automatic start) and started, by the installer's own
 ; (elevated) rights; installed again, it is pointed at the new files.
 Filename: "{app}\WinShunService.exe"; Parameters: "--install"; Flags: runhidden waituntilterminated runascurrentuser; Check: IsAdminInstallMode
-; LAN transfer (the bundled plugin winshun.localsend, GitHub #113): phones and
-; computers on the same network reach it on its LocalSend ports, from the
-; local subnet only, on any network type (the plugin itself asks before it
-; receives on a public one). Win顺 never changes the firewall; this admin
-; install does, anew every time (silent ones too); the uninstaller removes it.
+; LAN transfer (winshun.localsend, GitHub #113) came with 0.16.0, and its
+; firewall rules for {app}\plugins\winshun.localsend with it. It is in the
+; plugin library now (GitHub #138; [InstallDelete] takes the old folder
+; away): Windows asks the first time it listens, as for any program, so
+; the rules for a program no longer there go too.
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""WinShun LAN transfer"""; Flags: runhidden waituntilterminated runascurrentuser; Check: IsAdminInstallMode
-Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""WinShun LAN transfer"" dir=in action=allow program=""{app}\plugins\winshun.localsend\WinShunLocalSend.exe"" protocol=TCP localport=53317-53320 remoteip=localsubnet profile=any enable=yes"; Flags: runhidden waituntilterminated runascurrentuser; Check: IsAdminInstallMode
-Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""WinShun LAN transfer"" dir=in action=allow program=""{app}\plugins\winshun.localsend\WinShunLocalSend.exe"" protocol=UDP localport=53317 remoteip=localsubnet profile=any enable=yes"; Flags: runhidden waituntilterminated runascurrentuser; Check: IsAdminInstallMode
 ; The rest as the user who started Setup, with normal rights (runasoriginaluser):
 ; WinShun runs so, and its autostart task and settings are that user's, not
 ; the administrator's who answered UAC for a standard user (GitHub #21).
@@ -200,7 +206,8 @@ Filename: "{app}\{#AppExe}"; Parameters: "--background"; Flags: nowait runasorig
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent runasoriginaluser
 
 [UninstallRun]
-; LAN transfer's firewall rules ([Run]): they go with Win顺.
+; LAN transfer's firewall rules of 0.16.0 ([Run]), should an upgrade not have
+; removed them (a per-user Setup over an admin one): they go with Win顺.
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""WinShun LAN transfer"""; Flags: runhidden waituntilterminated; Check: IsAdminInstallMode; RunOnceId: "DelLanTransferRules"
 
 [UninstallDelete]

@@ -63,6 +63,9 @@ public:
         QString dataRoot; // where <id>.data folders go; empty: userPluginDir
         QString logPath; // plugins.log; empty: no file
         QString runnerExe; // WinShunPluginHost.exe
+        // Win顺's own folder, told to plugins as WS_APP_DIR: where its Qt is,
+        // for a plugin built on it (winshun.capture, GitHub #138). Empty: the runner's.
+        QString appDir;
         QString locale = QStringLiteral("zh");
         QString theme = QStringLiteral("light");
         QString version; // of Win顺

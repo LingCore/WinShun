@@ -284,6 +284,7 @@ qt_add_qml_module(WinShun
         Placement.cpp Placement.h
         PluginGallery.cpp PluginGallery.h
         PluginSettings.cpp PluginSettings.h
+        MovedPlugins.cpp MovedPlugins.h # the plugins that came with 0.16.0, from the library now (GitHub #138)
         ResultModel.cpp ResultModel.h
         PanelColumns.cpp PanelColumns.h
         SettingsEditor.cpp SettingsEditor.h

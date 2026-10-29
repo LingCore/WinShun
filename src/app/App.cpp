@@ -30,6 +30,7 @@
 #include "McpServer.h"
 #include "McpTools.h"
 #include "MissingFiles.h"
+#include "MovedPlugins.h"
 #include "Pipe.h"
 #include "Placement.h"
 #include "PluginSettings.h"
@@ -6181,6 +6182,7 @@ void App::createPluginHost()
         options.bundledPluginDir = appDir + u"\\plugins"_s;
     options.logPath = dataDir + u"\\plugins.log"_s;
     options.runnerExe = appDir + u"\\WinShunPluginHost.exe"_s;
+    options.appDir = appDir;
     options.locale = m_language;
     options.theme = isDarkMode() ? u"dark"_s : u"light"_s;
     options.version = QStringLiteral(WINSHUN_VERSION);
@@ -6244,8 +6246,10 @@ void App::createPluginHost()
     // Resident plugins that want starting early: after the start-up rescan
     // has had its say (see RescanOnStartup), not with it.
     QTimer::singleShot(10s, this, [this] {
-        if (m_pluginHost)
-            m_pluginHost->preload();
+        if (!m_pluginHost)
+            return;
+        m_pluginHost->preload();
+        installMovedPlugins();
     });
     // On the way out: shutdown requests, two seconds, then the job ends them.
     // Not the two seconds when Windows ends the session (Qt says aboutToQuit
@@ -6253,6 +6257,42 @@ void App::createPluginHost()
     connect(qApp, &QCoreApplication::aboutToQuit, this, [this] {
         if (m_pluginHost)
             m_pluginHost->shutdown(::GetSystemMetrics(SM_SHUTTINGDOWN) == 0);
+    });
+}
+
+// 局域网传输 and 按意思找 came with 0.16.0 and are in the plugin library now
+// (GitHub #138, MovedPlugins.h): one the user had on is fetched from it,
+// then started as the others were at 10 s.
+void App::installMovedPlugins()
+{
+    const QStringList ids = moved::missing(m_pluginHost->catalog(), m_settings.plugins);
+    if (ids.isEmpty())
+        return;
+    qInfo().noquote() << "Plugins moved to the library, installing:" << ids.join(u", "_s);
+    moved::install(ids, m_pluginHost->options().userPluginDir, m_language, [self = QPointer(this)](const QList<moved::Outcome>& outcomes) {
+        if (!self || !self->m_pluginHost)
+            return;
+        QStringList installed;
+        QStringList failed;
+        for (const moved::Outcome& o : outcomes) {
+            if (o.error.isEmpty()) {
+                installed.push_back(o.name);
+                continue;
+            }
+            qWarning().noquote() << "Plugin moved to the library, not installed:" << o.id << o.error;
+            if (!o.offline) // no network: again at the next start, nothing said
+                failed.push_back(tr("%1（%2）").arg(o.name, o.error));
+        }
+        if (!installed.isEmpty()) {
+            self->m_pluginHost->catalog().scan();
+            self->applyPlugins(); // its settings
+            self->m_pluginHost->preload();
+            self->m_messages->showNotification(tr("插件已从插件库装好"),
+                tr("%1 不再随 Win顺 自带，已经从插件库为你装上，设置照旧。").arg(installed.join(u"、"_s)));
+        } else if (!failed.isEmpty()) {
+            self->m_messages->showNotification(tr("插件没能装上"),
+                tr("%1 不再随 Win顺 自带，从插件库安装没有成功。可以到 设置 → 插件 → 插件库 里再装。").arg(failed.join(u"、"_s)));
+        }
     });
 }
 

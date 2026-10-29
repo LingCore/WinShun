@@ -851,6 +851,7 @@ Runner::Spec Host::specFor(Plugin& p, const Entry& e, RunKind kind, const Pendin
     spec.env += runtime.env;
     spec.env.push_back({u"WS_PLUGIN_DIR"_s, e.dir});
     spec.env.push_back({u"WS_DATA_DIR"_s, dataDirFor(e)});
+    spec.env.push_back({u"WS_APP_DIR"_s, QDir::toNativeSeparators(m_options.appDir.isEmpty() ? QFileInfo(m_options.runnerExe).absolutePath() : m_options.appDir)});
     spec.env.push_back({u"WS_LOCALE"_s, m_options.locale});
     spec.env.push_back({u"WS_THEME"_s, m_options.theme});
     spec.env.push_back({u"WS_VERSION"_s, m_options.version});

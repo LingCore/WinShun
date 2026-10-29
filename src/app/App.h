@@ -453,6 +453,7 @@ private:
     // sections and [WebSearch] say; its plugins answer in the launcher.
     void createPluginHost();
     void applyPlugins();
+    void installMovedPlugins(); // the ones that came with 0.16.0, from the library (GitHub #138)
     void pluginsChanged(); // the catalog's entries: the icon provider's folders
     // Win顺's tools for the plugins' winshun/tool (plugin::Tools): made
     // with the first call, whatever the AI switch says.
