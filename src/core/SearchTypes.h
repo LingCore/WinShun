@@ -81,6 +81,7 @@ struct PluginRow {
     QString itemId; // the item's own, or made up from its place in the answer
     QString source; // the plugin's name, in the interface's language: the badge
     QString subtitle;
+    QString subtitleAway; // the second line while the keyboard is on another row; empty: `subtitle`
     QString icon; // as the item wrote it ("file:C:\…", "glyph:U+E8E5", "icon.png"), else the command's or plugin's
     QString autocomplete; // Tab puts this in the box
     QString copy; // Ctrl+C; empty: the title
@@ -139,6 +140,10 @@ struct SearchResult {
     // Found by how its name reads, not by what was typed (年度报告 for
     // 年度报高; homophoneQueries): listed under a heading that says so.
     bool approximate = false;
+    // Typed in a folder's window (SearchEngine::Request::currentFolder,
+    // GitHub #110): not in that folder. Listed after the rows that are,
+    // under a caption that says so (其他位置).
+    bool elsewhere = false;
     // One of its user's favorites (Favorites): listed first, marked 收藏.
     // With `recent`, what a plugin's rows never go above.
     bool favorite = false;
@@ -156,6 +161,8 @@ struct SearchResult {
     // empty. A place's command ("ms-settings:display").
     QString target;
     QString workingDirectory; // a custom command's working directory; otherwise empty
+    bool silent = false; // a custom command: no console window (GitHub #112)
+    bool runAsAdmin = false; // a custom command: as administrator
     QString icon; // places: PlaceInfo::icon; web: home page; commands: embedded PNG data URL
 
     // Places only: the system switch the row stands for (PlaceInfo::switchId,

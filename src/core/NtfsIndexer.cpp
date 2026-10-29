@@ -221,10 +221,15 @@ void UsnApplier::apply(std::span<const ntfs::UsnRecord> records, std::stop_token
                 noteWritten(records[i]);
                 noteTime(records[i]);
             }
-            if (!m_written.empty()) {
-                m_onWritten(m_written);
-                m_written.clear();
-            }
+        }
+        // Told once the write lock is let go (GitHub #115): the content index
+        // waits for a content search's lookup that reads it off the disk
+        // (seconds, from a hard disk), and name searches would wait for this
+        // lock all that time. The caller's journal lock keeps the ids as they
+        // are meanwhile (no compaction).
+        if (!m_written.empty()) {
+            m_onWritten(m_written);
+            m_written.clear();
         }
         if (!m_toRead.empty())
             readTimes();

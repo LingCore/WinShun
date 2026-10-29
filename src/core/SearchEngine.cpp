@@ -12,6 +12,7 @@
 #include "NameSearch.h"
 #include "PathText.h"
 #include "Query.h"
+#include "RemoteContent.h"
 #include "SystemCatalog.h"
 #include "SwitchCommand.h"
 #include "ShareLister.h"
@@ -24,6 +25,7 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFileInfo>
+#include <QScopeGuard>
 #include <QTimeZone>
 
 #include <windows.h>
@@ -50,9 +52,10 @@ namespace ws {
 // network share whose server is gone (seconds, or minutes). A search waiting
 // for it would leave the last query's rows on screen all that time, so a
 // search waits a moment only. A drive still busy then answers in its own
-// time; until it does, its items keep the answer from before, or are left
-// out. The threads hold only the state they share: a drive that never answers
-// holds up nothing else, quitting included.
+// time, and no search waits for it until it does; meanwhile its items keep
+// the answer from before, or are left out. The threads hold only the state
+// they share: a drive that never answers holds up nothing else, quitting
+// included.
 class RecentOnDisk {
 public:
     struct Item {
@@ -86,10 +89,13 @@ public:
         State& s = *m_state;
         std::unique_lock lock(s.mutex);
         const auto now = Clock::now();
+        const auto counted = qScopeGuard([&] { m_waited += Clock::now() - now; });
         std::vector<qsizetype> awaited;
         std::vector<quint64> since(found.size()); // the answer wanted: from a look begun at this one or later
+        std::vector<Drive*> drives(found.size());
         for (qsizetype i = 0; i < paths.size(); ++i) {
             Drive& drive = driveOf(paths[i]);
+            drives[static_cast<std::size_t>(i)] = &drive;
             if (drive.busySince && drive.busyPath == paths[i]) {
                 since[static_cast<std::size_t>(i)] = drive.busyLook; // being looked at: that answer will do
             } else {
@@ -97,9 +103,10 @@ public:
                 if (std::find(drive.queue.cbegin(), drive.queue.cend(), paths[i]) == drive.queue.cend())
                     drive.queue.push_back(paths[i]);
             }
-            // Slow today (still on an earlier one after the wait, or the last
-            // one took longer): not waited for, until it answers in time again.
-            if ((!drive.busySince || now - *drive.busySince < kWait) && drive.lastTook < kWait)
+            // Slow today (a search's wait ran out on it, or it is still on an
+            // earlier one after the wait, or the last one took longer): not
+            // waited for, until it answers in time again.
+            if (!drive.missedWait && (!drive.busySince || now - *drive.busySince < kWait) && drive.lastTook < kWait)
                 awaited.push_back(i);
         }
         s.work.notify_all();
@@ -107,7 +114,15 @@ public:
             const auto it = s.answers.find(paths[i]);
             return it != s.answers.end() && it->second.look >= since[static_cast<std::size_t>(i)];
         };
-        s.answered.wait_until(lock, now + kWait, [&] { return std::all_of(awaited.cbegin(), awaited.cend(), answered); });
+        if (!s.answered.wait_until(lock, now + kWait, [&] { return std::all_of(awaited.cbegin(), awaited.cend(), answered); })) {
+            // Marked here, not by when its thread began on it: a new thread
+            // on a busy computer may begin tens of milliseconds late, and the
+            // next search would sit out the whole wait again.
+            for (const qsizetype i : awaited) {
+                if (!answered(i))
+                    drives[static_cast<std::size_t>(i)]->missedWait = true;
+            }
+        }
         for (qsizetype i = 0; i < paths.size(); ++i) {
             if (const auto it = s.answers.find(paths[i]); it != s.answers.end()) {
                 found[static_cast<std::size_t>(i)] = it->second.item;
@@ -117,6 +132,9 @@ public:
         }
         return found;
     }
+
+    // How long look() has taken in all, for the log (the caller's thread only).
+    std::chrono::steady_clock::duration waited() const noexcept { return m_waited; }
 
 private:
     using Clock = std::chrono::steady_clock;
@@ -133,6 +151,7 @@ private:
         QString busyPath;
         quint64 busyLook = 0;
         Clock::duration lastTook {}; // logged when it grows long
+        bool missedWait = false; // a search's wait ran out on it; it has not answered since
     };
     struct State {
         std::mutex mutex;
@@ -142,6 +161,10 @@ private:
         std::unordered_map<QString, Answer> answers; // by path
         quint64 looks = 0; // begun so far
         bool quitting = false;
+        // For testing: WINSHUN_SILENT_SHARES set as the engine is made, a
+        // share's thread never gets to what it is asked, as a server that is
+        // not there (without the network) or a thread a busy computer runs late.
+        const bool silentShares = qEnvironmentVariableIsSet("WINSHUN_SILENT_SHARES");
     };
 
     // Caller holds the lock.
@@ -181,6 +204,10 @@ private:
         State& s = *state;
         std::unique_lock lock(s.mutex);
         Drive& drive = s.drives[key];
+        if (s.silentShares && key.startsWith(u"\\\\")) {
+            s.work.wait(lock, [&] { return s.quitting; });
+            return;
+        }
         for (;;) {
             s.work.wait(lock, [&] { return s.quitting || !drive.queue.empty(); });
             if (s.quitting)
@@ -217,6 +244,7 @@ private:
             lock.lock();
             drive.busySince.reset();
             drive.busyPath.clear();
+            drive.missedWait = false; // how long it took says from here on
             s.answers[path] = {look, item, gone};
             s.answered.notify_all();
             // Once while it stays slow: a share whose server is gone takes as long every time.
@@ -229,6 +257,7 @@ private:
     }
 
     std::shared_ptr<State> m_state = std::make_shared<State>();
+    Clock::duration m_waited {};
 };
 
 namespace {
@@ -263,40 +292,67 @@ std::vector<std::string> foldedExtensions(const QStringList& extensions)
     return folded;
 }
 
+// The files Settings skip and the search shows none of: of these types
+// (folded extensions), or so named (folded wildcards, nameMatchesAny).
+struct Hidden {
+    std::vector<std::string> types;
+    std::vector<std::string> names;
+    bool empty() const noexcept { return types.empty() && names.empty(); }
+};
+
 // Whether the file at `path` (or so named) has one of `types` (folded): any
 // file or folder when there are none, never a folder when there are.
-// A file of one of `hidden` (the skipped types) is none.
-bool ofType(const QString& path, bool isDir, const std::vector<std::string>& types,
-    const std::vector<std::string>& hidden = {})
+// A file `hidden` names (a skipped type or name) is none.
+bool ofType(const QString& path, bool isDir, const std::vector<std::string>& types, const Hidden& hidden = {})
 {
     if (types.empty() && hidden.empty())
         return true;
+    const qsizetype slash = std::max(path.lastIndexOf(u'\\'), path.lastIndexOf(u'/'));
+    if (!isDir && !hidden.names.empty() && nameMatchesAny(wtf8::fromUtf16(wtf8::view(path.sliced(slash + 1))), hidden.names))
+        return false;
     const qsizetype dot = path.lastIndexOf(u'.');
-    if (isDir || dot < 0 || dot + 1 >= path.size() || dot < path.lastIndexOf(u'\\') || dot < path.lastIndexOf(u'/'))
+    if (isDir || dot < 0 || dot + 1 >= path.size() || dot < slash)
         return types.empty();
     const std::string ext = wtf8::fromUtf16(wtf8::view(path.sliced(dot + 1)));
     const auto is = [&](const std::string& t) { return text::equalsFolded(ext, t); };
-    return (types.empty() || std::any_of(types.begin(), types.end(), is)) && std::none_of(hidden.begin(), hidden.end(), is);
+    return (types.empty() || std::any_of(types.begin(), types.end(), is)) && std::none_of(hidden.types.begin(), hidden.types.end(), is);
 }
 
-// Request::excludedTypes, folded, less those asked for: by the type chosen
-// (`types`) or ext: typed. Those are shown all the same.
-std::vector<std::string> hiddenTypes(
-    const SearchEngine::Request& request, const ParsedQuery& query, const std::vector<std::string>& types)
+// Request::excludedTypes and excludedFileNames, folded, less those asked
+// for. Shown all the same: a type chosen (`types`) or ext: typed; a name
+// that a word typed is ("~$报告" is "~$*", "~$" quoted; a word with
+// wildcards, when it is one as it is written: "~$*.docx" too).
+Hidden hiddenOf(const SearchEngine::Request& request, const ParsedQuery& query, const std::vector<std::string>& types)
 {
-    std::vector<std::string> hidden = foldedExtensions(request.excludedTypes);
-    const auto asked = [&](const std::string& h) {
-        return std::ranges::find(types, h) != types.end() || std::ranges::find(query.extensions, h) != query.extensions.end();
+    const auto anywhere = [&](auto&& in) {
+        const auto look = [&](auto&& self, const ParsedQuery& part) -> bool {
+            return in(part) || std::ranges::any_of(part.alternatives, [&](const ParsedQuery& branch) { return self(self, branch); });
+        };
+        return look(look, query);
     };
-    std::erase_if(hidden, asked);
+    Hidden hidden {foldedExtensions(request.excludedTypes), foldedExtensions(request.excludedFileNames)};
+    std::erase_if(hidden.types, [&](const std::string& h) {
+        return std::ranges::find(types, h) != types.end()
+            || anywhere([&](const ParsedQuery& part) { return std::ranges::find(part.extensions, h) != part.extensions.end(); });
+    });
+    std::erase_if(hidden.names, [&](const std::string& pattern) {
+        return anywhere([&](const ParsedQuery& part) {
+            return std::ranges::any_of(part.terms, [&](const QueryTerm& t) {
+                return !t.negated && !t.text.empty() && text::globMatch(t.text, pattern); // ^~$报告 too
+            });
+        });
+    });
     return hidden;
 }
 
 // The query with the type chosen: its extensions, or with ext: typed too,
-// those in both (none: an extension no name has, "/"); and the types skipped.
-ParsedQuery withTypes(ParsedQuery query, const std::vector<std::string>& types, const std::vector<std::string>& hidden)
+// those in both (none: an extension no name has, "/"); and the files skipped.
+ParsedQuery withTypes(ParsedQuery query, const std::vector<std::string>& types, const Hidden& hidden)
 {
-    query.excludedExtensions = hidden;
+    for (ParsedQuery& branch : query.alternatives)
+        branch = withTypes(std::move(branch), types, hidden);
+    query.excludedExtensions = hidden.types;
+    query.excludedFileNames = hidden.names;
     if (types.empty())
         return query;
     if (query.extensions.empty()) {
@@ -570,15 +626,9 @@ ContentScope::Place resolvePlace(const FileIndex& index, const ContentFolderSpec
         if (!request.contentInLowPriority && !std::ranges::all_of(ids, aside))
             std::erase_if(ids, aside);
     }
-    const auto remote = [&](EntryId id) { return (index.entry(id).flags & EntryFlag::Remote) != 0; };
-    if (std::ranges::all_of(ids, remote)) {
-        place.status = Status::OnShare;
-        for (const EntryId id : ids | std::views::take(ContentScope::kListed))
-            place.folders.append(QString::fromStdWString(index.wpath(id)));
-        place.count = static_cast<int>(ids.size());
-        return place;
-    }
-    std::erase_if(ids, remote);
+    // Folders on shares and in WSL as well: what the content index has of
+    // their files is looked through (GitHub #114), the rest counted
+    // (ContentLeftOut::remote).
 
     // Your own first, then elsewhere, hidden ones, system and program
     // folders; the shallowest first in each.
@@ -649,19 +699,46 @@ ContentScope resolveScope(const FileIndex& index, const SearchEngine::Request& r
     return out;
 }
 
+// Which recent items promoteHistory may put first, by where they are.
+enum class RecentPart : std::uint8_t {
+    Anywhere,
+    Typed, // in the folder of a path typed, or that folder itself
+    Inside, // in the folder typed in (GitHub #110), at any depth: listed first
+    Outside, // anywhere else (that folder itself too): listed after those
+};
+
 // Recently opened items that match jump to the top (at most a few).
 // Returns how many did.
-qsizetype promoteHistory(
-    SearchResults& results, const SearchEngine::Request& request, const NameMatcher& matcher, RecentOnDisk& onDisk)
+qsizetype promoteHistory(SearchResults& results, const SearchEngine::Request& request, const NameMatcher& matcher,
+    RecentOnDisk& onDisk, const QString& folder, RecentPart part)
 {
     const bool foldersOnly = request.scope == Scope::Folders;
     // A path typed: only what lies in that folder. The folders typed match
     // names anywhere along an item's way, here as in the index (UnderFolder
     // keeps the index's to the folder): "D:\x\F1\" would bring up what was
     // opened in D:\x\F11 (#49: "search here" on F1 showed F11's files).
-    QString within = pathtext::splitTyped(request.text).folder;
-    if (!within.isEmpty() && !within.endsWith(u'\\'))
-        within += u'\\'; // "D:\" has one
+    // Typed in a folder's window, its rows and the others each have their
+    // own; the folder itself is with the others, as in the index (UnderAny).
+    QString stem = part == RecentPart::Anywhere ? QString() : folder;
+    while (stem.endsWith(u'\\'))
+        stem.chop(1); // "D:\" as "D:", which unc::contains wants
+    const std::wstring stemPath = stem.toStdWString();
+    const auto fits = [&](const QString& path) {
+        if (stem.isEmpty())
+            return true;
+        const bool in = unc::contains(stemPath, path.toStdWString());
+        switch (part) {
+        case RecentPart::Typed:
+            return in;
+        case RecentPart::Inside:
+            return in && !pathtext::sameFolder(path, folder);
+        case RecentPart::Outside:
+            return !in || pathtext::sameFolder(path, folder);
+        case RecentPart::Anywhere:
+            break;
+        }
+        return true;
+    };
     SearchResults promoted;
     qsizetype next = 0;
     while (promoted.size() < kRecentPromoted && next < request.history.size()) {
@@ -671,7 +748,7 @@ qsizetype promoteHistory(
             const QString& path = request.history[next++];
             if (isAppLaunchPath(path) || isPlacePath(path))
                 continue; // apps and places rank by their own rules (searchApps, searchPlaces)
-            if (!within.isEmpty() && !unc::contains(within.chopped(1).toStdWString(), path.toStdWString()))
+            if (!fits(path))
                 continue;
             const auto it = std::find_if(results.begin(), results.end(),
                 [&](const SearchResult& r) { return pathtext::samePath(r.path, path); });
@@ -739,9 +816,10 @@ SearchResults::iterator exactFirst(SearchResults::iterator begin, SearchResults:
 // lately first (promoteHistory), then those named just what was typed
 // ("readme" finds README.md and the folder readme; programs and scripts
 // first: exactFirst), then the files and the folders apart, as asked, each
-// best first. By time, the two kinds apart, newest first.
-void arrange(SearchResults& results, const SearchEngine::Request& request, const NameMatcher& matcher, RankBy rankBy,
-    RecentOnDisk& onDisk)
+// best first. By time, the two kinds apart, newest first. The recent items
+// put first are those of `part` (of `folder`: promoteHistory).
+void arrangePart(SearchResults& results, const SearchEngine::Request& request, const NameMatcher& matcher, RankBy rankBy,
+    RecentOnDisk& onDisk, const QString& folder, RecentPart part)
 {
     // The launcher sorted by name, folder, type or size (#44) is the same list
     // as by time: nothing put first, the kinds apart as asked. The panel's
@@ -756,9 +834,10 @@ void arrange(SearchResults& results, const SearchEngine::Request& request, const
     // Recent items first, as rows of their own (they need not be in the
     // index): not into a list narrowed by when, how large or where, which
     // the history knows nothing of (a recent file would show through the filter).
-    const bool filtered = request.filter.any() || !request.folders.isEmpty() || parseQuery(request.text).filter.any();
-    const qsizetype promoted
-        = rankBy == RankBy::Match && !ordered && !filtered ? promoteHistory(results, request, matcher, onDisk) : 0;
+    const bool filtered = request.filter.any() || !request.folders.isEmpty() || parseQuery(request.text).hasFilters();
+    const qsizetype promoted = rankBy == RankBy::Match && !ordered && !filtered
+        ? promoteHistory(results, request, matcher, onDisk, folder, part)
+        : 0;
     auto rest = results.begin() + promoted; // after promoteHistory: it puts `results` together anew
     if (rankBy == RankBy::Match && !ordered) {
         const auto exactBegin = rest;
@@ -770,6 +849,36 @@ void arrange(SearchResults& results, const SearchEngine::Request& request, const
     }
     const bool foldersFirst = request.kindOrder == KindOrder::FoldersFirst;
     std::stable_partition(rest, results.end(), [&](const SearchResult& r) { return r.isDir == foldersFirst; });
+    if (results.size() > request.limit)
+        results.resize(request.limit);
+}
+
+// The files and folders found, arranged (arrangePart): with a path typed,
+// the recent items put first only from its folder (`typedFolder`). Typed in
+// a folder's window (Request::currentFolder, GitHub #110), the rows in it
+// first and the rest after them (SearchResult::elsewhere), each part
+// arranged on its own, so that a file opened lately elsewhere, one named
+// just what was typed elsewhere, or the folders elsewhere (文件夹在前) never
+// go above what is in the folder: the folder is the first key, whatever the
+// order, as Explorer's 分组依据 is above its 排序方式.
+void arrange(SearchResults& results, const SearchEngine::Request& request, const NameMatcher& matcher, RankBy rankBy,
+    RecentOnDisk& onDisk, const QString& typedFolder)
+{
+    if (request.currentFolder.isEmpty() || request.currentFolderOnly) {
+        const RecentPart part = !request.currentFolder.isEmpty() ? RecentPart::Inside
+            : typedFolder.isEmpty()                              ? RecentPart::Anywhere
+                                                                 : RecentPart::Typed;
+        arrangePart(results, request, matcher, rankBy, onDisk, typedFolder, part);
+        return;
+    }
+    const auto split = std::stable_partition(results.begin(), results.end(), [](const SearchResult& r) { return !r.elsewhere; });
+    SearchResults outside(std::make_move_iterator(split), std::make_move_iterator(results.end()));
+    results.erase(split, results.end());
+    arrangePart(results, request, matcher, rankBy, onDisk, typedFolder, RecentPart::Inside);
+    arrangePart(outside, request, matcher, rankBy, onDisk, typedFolder, RecentPart::Outside);
+    for (SearchResult& r : outside)
+        r.elsewhere = true; // the recent ones promoteHistory found on the disk too
+    results.append(std::move(outside));
     if (results.size() > request.limit)
         results.resize(request.limit);
 }
@@ -889,6 +998,8 @@ SearchResults favoriteRows(const QList<const Favorite*>& favorites, const AppLis
             r.app = AppKind::Tool;
             r.target = f.command;
             r.workingDirectory = f.workingDirectory;
+            r.silent = f.silent;
+            r.runAsAdmin = f.runAsAdmin;
             r.icon = f.icon;
             r.words = commandWords(f, typed);
         } else if (f.kind == Favorite::Kind::App) {
@@ -961,8 +1072,11 @@ void promoteFavorites(SearchResults& results, qint64& total, const SearchEngine:
     }
 
     QList<const Favorite*> wanted;
-    const qsizetype command = typedCommandKeyword(favorites, request.text);
-    const qsizetype keyword = command >= 0 ? command : typedFavoriteKeyword(favorites, request.text);
+    // Typed in a folder's window (GitHub #110), the words are looked for in
+    // it, never a keyword: they need not end in a space there.
+    const bool keywords = request.currentFolder.isEmpty();
+    const qsizetype command = keywords ? typedCommandKeyword(favorites, request.text) : -1;
+    const qsizetype keyword = command >= 0 ? command : keywords ? typedFavoriteKeyword(favorites, request.text) : -1;
     if (keyword >= 0 && favoriteShown(request.scope, favorites[keyword], types))
         wanted.push_back(&favorites[keyword]);
     const bool keyed = !wanted.isEmpty();
@@ -1047,63 +1161,118 @@ SearchEngine::SearchEngine(IndexService* index, AppCatalog* apps, SystemCatalog*
     , m_apps(apps)
     , m_places(places)
     , m_onDisk(std::make_unique<RecentOnDisk>())
+    , m_slowReads(qEnvironmentVariableIntValue("WINSHUN_SLOW_READS"))
 {
     qRegisterMetaType<ws::SearchResults>();
     qRegisterMetaType<ws::ContentLeftOut>();
     qRegisterMetaType<ws::ContentScope>();
     qRegisterMetaType<ws::RemovableDrives>();
-    m_worker = std::jthread([this](std::stop_token stop) { workerLoop(stop); });
+    m_drivesWorker = std::jthread([this](std::stop_token stop) { drivesLoop(stop); });
+    m_scanWorker = std::jthread([this](std::stop_token stop) { workerLoop(stop, Lane::Scans); });
+    m_nameWorker = std::jthread([this](std::stop_token stop) { workerLoop(stop, Lane::Names); });
 }
 
 SearchEngine::~SearchEngine()
 {
     {
         std::lock_guard lock(m_mutex);
-        m_pending.reset();
+        for (std::optional<Job>& pending : m_pending)
+            pending.reset();
+        m_drivesFor.reset();
+        leaveBehind(std::chrono::steady_clock::now());
         m_latest.store(~quint64 {0}); // marks any running job stale
+        m_latestNames.store(0);
     }
-    m_worker.request_stop();
+    for (std::jthread* worker : {&m_nameWorker, &m_scanWorker, &m_drivesWorker})
+        worker->request_stop();
     m_cv.notify_all();
-    if (m_worker.joinable())
-        m_worker.join();
+    for (std::jthread* worker : {&m_nameWorker, &m_scanWorker, &m_drivesWorker}) {
+        if (worker->joinable())
+            worker->join();
+    }
 }
 
 quint64 SearchEngine::submit(Request request)
 {
     std::lock_guard lock(m_mutex);
     const quint64 id = ++m_counter;
+    const auto now = std::chrono::steady_clock::now();
+    const Lane lane = laneOf(request);
+    leaveBehind(now);
     m_latest.store(id);
-    m_pending = Job {id, std::move(request), std::chrono::steady_clock::now()};
-    m_cv.notify_one();
+    if (lane == Lane::Names)
+        m_latestNames.store(id);
+    for (std::optional<Job>& pending : m_pending)
+        pending.reset(); // one waiting on the other lane is old now too
+    m_pending[static_cast<std::size_t>(lane)] = Job {id, std::move(request), now};
+    m_cv.notify_all();
     return id;
 }
 
 void SearchEngine::cancel()
 {
     std::lock_guard lock(m_mutex);
+    leaveBehind(std::chrono::steady_clock::now());
     m_latest.store(++m_counter);
-    m_pending.reset();
+    m_latestNames.store(0);
+    for (std::optional<Job>& pending : m_pending)
+        pending.reset();
+    m_drivesFor.reset();
 }
 
-void SearchEngine::workerLoop(std::stop_token stop)
+void SearchEngine::leaveBehind(std::chrono::steady_clock::time_point now)
 {
+    static_assert(std::is_same_v<std::chrono::steady_clock::rep, std::int64_t>); // m_scanLeftBehindAt holds its ticks
+    if (m_scanRunning != 0 && m_scanRunning == m_latest.load())
+        m_scanLeftBehindAt.store(now.time_since_epoch().count());
+}
+
+void SearchEngine::workerLoop(std::stop_token stop, Lane lane)
+{
+    std::optional<Job>& pending = m_pending[static_cast<std::size_t>(lane)];
+    const bool scans = lane == Lane::Scans;
     for (;;) {
         Job job;
         {
             std::unique_lock lock(m_mutex);
-            if (!m_cv.wait(lock, stop, [this] { return m_pending.has_value(); }))
+            if (scans)
+                m_scanRunning = 0;
+            if (!m_cv.wait(lock, stop, [&] { return pending.has_value(); }))
                 return;
-            job = std::move(*m_pending);
-            m_pending.reset();
+            job = std::move(*pending);
+            pending.reset();
+            if (scans)
+                m_scanRunning = job.id;
         }
         if (isStale(job.id))
             continue;
-        if (job.request.scope == Scope::Content)
-            runContentSearch(job);
-        else if (!job.request.walkFolder.isEmpty())
-            runDriveWalk(job);
-        else
+        if (!scans)
             runNameSearch(job);
+        else if (job.request.scope == Scope::Content)
+            runContentSearch(job);
+        else
+            runDriveWalk(job);
+    }
+}
+
+void SearchEngine::drivesLoop(std::stop_token stop)
+{
+    // Told for the newest name search only, even when a content scan came
+    // after it (全部): the launcher keeps the drives of the names' request.
+    const auto current = [this](quint64 id) { return m_latestNames.load(std::memory_order_relaxed) == id; };
+    for (;;) {
+        quint64 id = 0;
+        {
+            std::unique_lock lock(m_mutex);
+            if (!m_cv.wait(lock, stop, [this] { return m_drivesFor.has_value(); }))
+                return;
+            id = *std::exchange(m_drivesFor, std::nullopt);
+        }
+        if (!current(id))
+            continue;
+        const RemovableDrives drives = unindexedRemovableDrives(); // told even when there are none: one unplugged goes
+        if (current(id))
+            emit removableDrives(id, drives);
     }
 }
 
@@ -1113,6 +1282,10 @@ void SearchEngine::runNameSearch(const Job& job)
     timer.start();
     const Request& request = job.request;
     const ParsedQuery query = parseQuery(request.text);
+    if (!query.error.isEmpty() && !typedKeyword(request.web, request.text)) {
+        emit resultsReady(job.id, {}, 0, 0);
+        return;
+    }
     SearchResults results;
     qint64 total = 0;
     const auto apps = appsOf(m_apps);
@@ -1121,17 +1294,19 @@ void SearchEngine::runNameSearch(const Job& job)
     // For the log, when it takes long.
     using Clock = std::chrono::steady_clock;
     const auto began = Clock::now();
+    const auto onDiskBefore = m_onDisk->waited();
     Clock::duration lockWait {};
     Clock::duration names {};
+    Clock::duration alike {}; // the names that sound the same (homophoneQueries)
 
     const bool foldersOnly = request.scope == Scope::Folders;
     // 文件 with a type chosen: only its files, whatever is typed or listed.
     const std::vector<std::string> types = foldersOnly ? std::vector<std::string>() : foldedExtensions(request.extensions);
-    const std::vector<std::string> hidden = hiddenTypes(request, query, types); // skipped, and not asked for
+    const Hidden hidden = hiddenOf(request, query, types); // skipped, and not asked for
     // Narrowed by when, how large or where (the panel's filters, size: and
     // dm: typed): files and folders alone, in the index's own terms. Nothing
     // typed in the panel lists them all the same (browse).
-    const bool filtered = request.filter.any() || !request.folders.isEmpty() || query.filter.any();
+    const bool filtered = request.filter.any() || !request.folders.isEmpty() || query.hasFilters();
     const bool listing = filtered || (request.browse && query.isEmpty());
     if (query.isEmpty() && request.startList == StartList::Modified && !listing) {
         // The files written last (in 文件夹, the folders they are in), newest first.
@@ -1142,7 +1317,8 @@ void SearchEngine::runNameSearch(const Job& job)
             .perTree = kModifiedPerTree,
             .notAfter = trustedUntil(),
             .extensions = types,
-            .excludedExtensions = hidden};
+            .excludedExtensions = hidden.types,
+            .excludedFileNames = hidden.names};
         const auto index = m_index->index();
         const auto lock = index->readLock();
         lockWait = Clock::now() - began;
@@ -1204,8 +1380,15 @@ void SearchEngine::runNameSearch(const Job& job)
         const RankBy rankBy = request.rankBy;
         // A path typed or pasted ("C:\Users\me\Tencent Files\x"): what that
         // folder holds and is so named, from the disk as Explorer lists it,
-        // then what lies deeper in it and is so named, from the index.
-        const pathtext::TypedPath typedPath = pathtext::splitTyped(request.text);
+        // then what lies deeper in it and is so named, from the index. Typed
+        // in a folder's window (Request::currentFolder, GitHub #110), the
+        // same for its words, then what is so named elsewhere (insideFirst),
+        // unless only that folder is asked for.
+        const bool typedIn = !request.currentFolder.isEmpty();
+        const bool insideFirst = typedIn && !request.currentFolderOnly;
+        const pathtext::TypedPath typedPath = typedIn
+            ? pathtext::TypedPath {pathtext::pathFromText(request.currentFolder), request.text}
+            : pathtext::splitTyped(request.text);
         EntryFilter filter = request.filter;
         filter.merge(query.filter);
         {
@@ -1217,12 +1400,19 @@ void SearchEngine::runNameSearch(const Job& job)
                 const EntryId id = index->findPath(folder.toStdWString());
                 filter.folders.push_back(id == kNoEntry ? kNoEntry - 1 : id);
             }
+            const EntryId folder = typedPath.folder.isEmpty() ? kNoEntry : index->findPath(typedPath.folder.toStdWString());
+            // Typed in a folder's window, its words alone, and only there:
+            // looked for under the folder itself, not under every folder so
+            // named (which the typed path's own words are, then UnderFolder).
+            if (typedIn && request.currentFolderOnly)
+                filter.folders.push_back(folder == kNoEntry ? kNoEntry - 1 : folder);
             std::ranges::sort(filter.folders);
             const NameSearchOptions options {.limit = static_cast<std::size_t>(request.limit),
                 .foldersOnly = foldersOnly,
                 .rankBy = rankBy,
                 .kindsApart = !request.browse || request.order.key == SortKey::Rank,
                 .filter = filter,
+                .insideFirst = insideFirst ? folder : kNoEntry, // one not in the index: everything is elsewhere
                 .order = request.order,
                 .trustedUntil = trustedUntil(),
                 .preferred = preferred};
@@ -1238,27 +1428,38 @@ void SearchEngine::runNameSearch(const Job& job)
             // not have holds nothing (#49: "F1\" found the files of "F11"
             // and of every folder with "f1" in its name); the disk listing
             // below has what it holds.
-            const EntryId folder = typedPath.folder.isEmpty() ? kNoEntry : index->findPath(typedPath.folder.toStdWString());
             UnderFolder under(*index, folder);
             for (const NameHit& hit : out.hits) {
-                if (!typedPath.folder.isEmpty() && !under(hit.id)) {
+                if (!typedIn && !typedPath.folder.isEmpty() && !under(hit.id)) {
                     --total;
                     continue;
                 }
                 SearchResult r = fromIndex(*index, hit.id);
                 r.modified = knownTime(index->modified(hit.id)); // its own, though ordered as unknown when ahead
+                r.elsewhere = insideFirst && !hit.inside;
                 results.push_back(std::move(r));
             }
         }
-        arrange(results, request, matcher, rankBy, *m_onDisk);
+        arrange(results, request, matcher, rankBy, *m_onDisk, typedPath.folder);
 
         // A network folder is listed only when its server answers: one that
         // is not there would hold the search up for the half minute Windows
-        // waits. Known to be away (a share searched), or not answering now.
-        const bool listable = !unc::isUnc(typedPath.folder.toStdWString())
-            || (!m_index->shares().offline(typedPath.folder.toStdWString())
-                && share::reachablePath(typedPath.folder.toStdWString()));
-        if (!typedPath.folder.isEmpty() && listable && !filtered) {
+        // waits. Known to be away (a share searched), or not answering now
+        // (Windows asked, on a server it got to where the probe did not:
+        // GitHub #116).
+        const auto listable = [&] {
+            const std::wstring folder = typedPath.folder.toStdWString();
+            return !unc::isUnc(folder) || (!m_index->shares().offline(folder) && share::answersNow(folder, false));
+        };
+        if (!typedPath.folder.isEmpty() && !filtered && listable()) {
+            // Typed in a folder's window: with the rows in the folder, before
+            // the others (arrange), which wait meanwhile.
+            SearchResults outside;
+            if (insideFirst) {
+                const auto split = std::ranges::find_if(results, [](const SearchResult& r) { return r.elsewhere; });
+                outside = SearchResults(std::make_move_iterator(split), std::make_move_iterator(results.end()));
+                results.erase(split, results.end());
+            }
             // The ones named just so first; with nothing more typed than the
             // folder, the folder itself (listTyped puts it first).
             // In an order the user chose (time, or the launcher's sorts #44) the
@@ -1294,6 +1495,11 @@ void SearchEngine::runNameSearch(const Job& job)
                 if (rows.size() > request.limit)
                     rows.resize(request.limit);
                 results = std::move(rows);
+            }
+            if (!outside.isEmpty()) {
+                results.append(std::move(outside));
+                if (results.size() > request.limit)
+                    results.resize(request.limit);
             }
         }
         // On a share that cannot be reached now: shown all the same, dimmed.
@@ -1477,6 +1683,9 @@ void SearchEngine::runNameSearch(const Job& job)
         // an entry found by several keeps its best score.
         if (results.isEmpty() && typedPath.folder.isEmpty() && pathtext::splitRelative(request.text).names.isEmpty()
             && !isStale(job.id)) {
+            const auto alikeBegan = Clock::now();
+            const auto alikeOnDisk = m_onDisk->waited(); // its recent items: counted with the others
+            const auto counted = qScopeGuard([&] { alike = Clock::now() - alikeBegan - (m_onDisk->waited() - alikeOnDisk); });
             std::vector<ParsedQuery> readings = homophoneQueries(query);
             for (ParsedQuery& reading : readings)
                 reading.filter = query.filter; // the bounds stay as typed
@@ -1531,7 +1740,7 @@ void SearchEngine::runNameSearch(const Job& job)
                     }
                 }
                 total = static_cast<qint64>(best.size());
-                arrange(results, request, NameMatcher(withTypes(readings.front(), types, hidden)), rankBy, *m_onDisk);
+                arrange(results, request, NameMatcher(withTypes(readings.front(), types, hidden)), rankBy, *m_onDisk, {});
                 for (SearchResult& r : results)
                     r.approximate = true; // the recent ones arrange() puts first too
             }
@@ -1577,9 +1786,12 @@ void SearchEngine::runNameSearch(const Job& job)
     };
     const auto end = Clock::now();
     if (end - job.submitted > 2s) {
-        qWarning("WinShun: a search took %lld ms (%lld waiting for the search before, %lld for the index, "
-                 "%lld finding names, %lld the rest)",
-            ms(end - job.submitted), ms(began - job.submitted), ms(lockWait), ms(names), ms(end - began - lockWait - names));
+        const auto onDisk = m_onDisk->waited() - onDiskBefore;
+        qWarning("WinShun: a search took %lld ms (%lld waiting for the name search before, %lld for the index, "
+                 "%lld finding names, %lld asking the disk about recent items and favorites, %lld names that "
+                 "sound the same, %lld the rest)",
+            ms(end - job.submitted), ms(began - job.submitted), ms(lockWait), ms(names), ms(onDisk), ms(alike),
+            ms(end - began - lockWait - names - onDisk - alike));
     }
 
     if (isStale(job.id))
@@ -1589,10 +1801,12 @@ void SearchEngine::runNameSearch(const Job& job)
     // index leaves out could hold what was not found (the launcher offers to
     // walk it). Not while the list goes on past what was asked for: there,
     // the end of the list is a page more, not the end of what there is.
+    // Asked on the drives thread (drivesLoop): the next name search goes
+    // ahead meanwhile.
     if (!query.isEmpty() && results.size() < request.limit) {
-        const RemovableDrives drives = unindexedRemovableDrives(); // told even when there are none: one unplugged goes
-        if (!isStale(job.id))
-            emit removableDrives(job.id, drives);
+        std::lock_guard lock(m_mutex);
+        m_drivesFor = job.id;
+        m_cv.notify_all();
     }
 }
 
@@ -1641,7 +1855,7 @@ void SearchEngine::runDriveWalk(const Job& job)
     const ParsedQuery query = parseQuery(request.text);
     const bool foldersOnly = request.scope == Scope::Folders;
     const std::vector<std::string> types = foldersOnly ? std::vector<std::string>() : foldedExtensions(request.extensions);
-    const std::vector<std::string> hidden = hiddenTypes(request, query, types);
+    const Hidden hidden = hiddenOf(request, query, types);
     const NameMatcher matcher(withTypes(query, types, hidden));
     const RankBy rankBy = request.rankBy;
     const auto stale = [&] { return isStale(job.id); };
@@ -1714,7 +1928,9 @@ void SearchEngine::runDriveWalk(const Job& job)
             const QString qpath = QString::fromStdWString(path);
             if (!hidden.empty() && !ofType(qpath, isDir, {}, hidden))
                 continue;
-            int score = matcher.matchPath(qpath, isDir);
+            const auto modified = knownTime(fileTimeOf(win32::ticks(fd.ftLastWriteTime)));
+            const auto bytes = (std::uint64_t(fd.nFileSizeHigh) << 32) | fd.nFileSizeLow;
+            int score = matcher.matchPath(qpath, isDir, modified, isDir ? kUnknownSize : packSize(bytes));
             if (score < 0)
                 continue;
             score -= std::min(depth + 1, 12); // as a name search ranks depth
@@ -1748,10 +1964,33 @@ void SearchEngine::runContentSearch(const Job& job)
         emit contentProgress(job.id, 0, 0, true);
         return;
     }
+    // Stopped by a newer search: said in the log when that took long, with
+    // what it was doing then (GitHub #115: a search waited for it). No paths
+    // and no words: what kind of file held it up, and for how long.
+    const char* phase = "looking for the folders named";
+    const auto enter = [&](const char* next) {
+        if (!isStale(job.id))
+            phase = next; // else the one it was stopped in stays
+    };
+    // Of the files in hand as it stopped, the slowest: its milliseconds times
+    // two, plus one for a document (one value, so both are of the same file).
+    std::atomic<long long> slowestFile {0};
+    const auto stopLog = qScopeGuard([&] {
+        using Clock = std::chrono::steady_clock;
+        const Clock::time_point leftBehind {Clock::duration(m_scanLeftBehindAt.load())};
+        if (!isStale(job.id) || leftBehind < job.submitted)
+            return; // not stopped by a request (the time is an earlier scan's)
+        if (const auto took = Clock::now() - leftBehind; took > 1s) {
+            const long long file = slowestFile.load();
+            qWarning("WinShun: a content scan took %lld ms to stop (%s; the slowest file in hand %lld ms, %s)",
+                static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(took).count()), phase,
+                file / 2, file % 2 ? "a document" : "text");
+        }
+    });
     const auto index = m_index->index();
     // Where it looks, and what for: "年度报告 abc/" in the folders named abc.
-    // Named, and none found there (a path not in the index, one on a
-    // share): nowhere, not everywhere.
+    // Named, and none found there (a path not in the index): nowhere, not
+    // everywhere.
     ScopeFolders scope;
     ContentScope where;
     {
@@ -1785,6 +2024,7 @@ void SearchEngine::runContentSearch(const Job& job)
         std::uint8_t order; // lower first
         bool indexed; // the content index knows it
         FileTime modified; // knownTime: 0 when not known
+        bool remote = false; // on a share or in WSL: its text as indexed, the file never opened (GitHub #114)
     };
     using ContentSet = SearchEngine::ContentSet;
     const ContentSet set = request.contentSet;
@@ -1797,6 +2037,7 @@ void SearchEngine::runContentSearch(const Job& job)
     const ContentFilter filter {ExtensionFilter(set == ContentSet::OtherTypes ? otherTypes.extensions() : listed),
         request.contentInLowPriority || set == ContentSet::LowPriority};
     const ExtensionFilter skipped(request.excludedTypes); // packed once, asked of each candidate
+    const std::vector<std::string> skippedNames = foldedExtensions(request.excludedFileNames);
     const auto content = m_index->contentIndex();
     const ContentIndex::SearchGuard searching(content.get()); // the content indexer waits meanwhile
     std::vector<Candidate> candidates;
@@ -1817,7 +2058,9 @@ void SearchEngine::runContentSearch(const Job& job)
     // index would wait for that, and name searches behind it.
     QElapsedTimer lookupTimer;
     lookupTimer.start();
+    enter("asking the content index");
     const ContentIndex::Lookup lookup = content && !oneOff ? content->lookup(terms) : ContentIndex::Lookup();
+    enter("picking the files to read");
     if (lookupTimer.elapsed() > 50) // a few milliseconds from the cache: it was read off the disk
         m_index->prewarmSoon(std::chrono::seconds(5));
     if (isStale(job.id))
@@ -1856,6 +2099,7 @@ void SearchEngine::runContentSearch(const Job& job)
         std::vector<int> ruledOutOf(index->chunkCount(), 0);
         std::vector<std::vector<EntryId>> largeOf(index->chunkCount());
         std::vector<int> lowPriorityOf(index->chunkCount(), 0);
+        std::vector<int> remoteOf(index->chunkCount(), 0);
         std::vector<std::vector<int>> otherTypesOf(index->chunkCount()); // per kind (otherTypes.count()), made when first met
         const bool bounded = request.filter.byTime() || request.filter.bySize(); // the panel's: when written, how large
         m_pool.parallelFor(index->chunkCount(), [&](std::size_t c) {
@@ -1878,9 +2122,18 @@ void SearchEngine::runContentSearch(const Job& job)
                     continue; // only those: the rest were read
                 std::string_view name;
                 std::size_t extLength = 0;
+                bool remote = false;
                 switch (filter.classify(*index, e, name, extLength)) {
                 case ContentVerdict::Never:
                     continue;
+                case ContentVerdict::Remote:
+                    // On a share or in WSL (GitHub #114): looked through as
+                    // the content index has it, never opened here; not in a
+                    // part read this once, which the index does not answer.
+                    if (oneOff)
+                        continue;
+                    remote = true;
+                    break;
                 case ContentVerdict::LowPriority:
                     if (aside)
                         break;
@@ -1899,8 +2152,10 @@ void SearchEngine::runContentSearch(const Job& job)
                 case ContentVerdict::Read:
                     break;
                 }
-                // A skipped type (Settings): neither read nor counted as passed over.
+                // A skipped type or name (Settings): neither read nor counted as passed over.
                 if (!skipped.empty() && skipped.matches(name, extLength))
+                    continue;
+                if (!skippedNames.empty() && nameMatchesAny(name, skippedNames))
                     continue;
                 const auto id = static_cast<EntryId>(first + i);
                 if (bounded && !request.filter.fits(index->modified(id), index->size(id), false))
@@ -1909,12 +2164,19 @@ void SearchEngine::runContentSearch(const Job& job)
                 bool likely = false;
                 while (k < lookup.known.size() && (lookup.known[k] & ~kMatch) < id)
                     ++k;
-                if (k < lookup.known.size() && (lookup.known[k] & ~kMatch) == id) {
-                    indexed = true;
+                // On a share or in WSL, written to since it was read (another
+                // size or time as listed; read again a while later,
+                // ShareContent::kReadAgain): what the index has is not the
+                // file's, neither a match nor a miss. Not read yet, then
+                // (GitHub #114).
+                if (k < lookup.known.size() && (lookup.known[k] & ~kMatch) == id)
+                    indexed = !remote || content->docStamp(id) == remotecontent::stampOf(*index, id);
+                if (indexed) {
                     // Known to be over the size limit: left out whatever the
                     // phrase (opening it would only find that out again).
                     if (!lookup.large.empty() && std::ranges::binary_search(lookup.large, id)) {
-                        largeOf[c].push_back(id);
+                        if (!remote) // a share's is not offered (the hint's search would read it over the network)
+                            largeOf[c].push_back(id);
                         ++ruledOutOf[c];
                         continue;
                     }
@@ -1926,9 +2188,13 @@ void SearchEngine::runContentSearch(const Job& job)
                         likely = true;
                     }
                 }
+                if (remote && !indexed) {
+                    ++remoteOf[c];
+                    continue;
+                }
                 const std::uint8_t priority = priorityOf(e, id, inProfile);
                 found[c].push_back({id, static_cast<std::uint8_t>(likely ? priority : 4 + priority), indexed,
-                    byTime ? sortTime(index->modified(id), until) : FileTime {0}});
+                    byTime ? sortTime(index->modified(id), until) : FileTime {0}, remote});
             }
         });
         if (isStale(job.id))
@@ -1944,6 +2210,7 @@ void SearchEngine::runContentSearch(const Job& job)
             for (const EntryId id : largeOf[c])
                 leftOut.large.append(QString::fromStdWString(index->wpath(id)));
             leftOut.lowPriority += lowPriorityOf[c];
+            leftOut.remote += remoteOf[c];
             for (std::size_t t = 0; t < otherTypesOf[c].size(); ++t)
                 otherCounts[t] += otherTypesOf[c][t];
         }
@@ -1960,6 +2227,7 @@ void SearchEngine::runContentSearch(const Job& job)
                 leftOut.otherExtensions.append(otherTypes.extension(t));
         }
     }
+    enter("putting the files in order");
     if (byTime) {
         const bool newest = request.rankBy == RankBy::Newest;
         std::stable_sort(candidates.begin(), candidates.end(), [newest](const Candidate& a, const Candidate& b) {
@@ -2017,6 +2285,7 @@ void SearchEngine::runContentSearch(const Job& job)
         emit contentProgress(job.id, scanned.load(), total, finished);
     };
 
+    enter("reading files");
     {
         std::vector<std::jthread> workers;
         workers.reserve(threadCount);
@@ -2029,6 +2298,21 @@ void SearchEngine::runContentSearch(const Job& job)
                     if (i >= candidates.size())
                         break;
                     const Candidate& candidate = candidates[i];
+                    // The file in hand as the scan is stopped: how long it held it up (stopLog).
+                    const auto fileStart = std::chrono::steady_clock::now();
+                    bool fileIsDocument = false;
+                    const auto inHand = qScopeGuard([&] {
+                        if (!stale())
+                            return;
+                        const long long took = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now() - fileStart).count();
+                        const long long mine = took * 2 + (fileIsDocument ? 1 : 0);
+                        long long slowest = slowestFile.load();
+                        while (mine / 2 > slowest / 2 && !slowestFile.compare_exchange_weak(slowest, mine)) {
+                        }
+                    });
+                    if (m_slowReads > 0ms)
+                        std::this_thread::sleep_for(m_slowReads); // WINSHUN_SLOW_READS: a disk that keeps it waiting
                     bool gone = false;
                     FileTime modified = 0;
                     FileTime created = 0;
@@ -2052,7 +2336,29 @@ void SearchEngine::runContentSearch(const Job& job)
                     doctext::Location location;
                     bool overLimit = false; // more than maxBytes: left unread
                     const bool document = isDocumentPath(path);
-                    if (document) {
+                    fileIsDocument = document;
+                    const auto scanText = [&](const doctext::DocText& text) {
+                        std::size_t at = 0;
+                        const std::string& s = text.text;
+                        return scanner.scan(
+                            [&](char* buffer, std::size_t capacity) {
+                                const std::size_t n = std::min(capacity, s.size() - at);
+                                std::memcpy(buffer, s.data() + at, n);
+                                at += n;
+                                return n;
+                            },
+                            ContentScanner::kChunkBytes, stale);
+                    };
+                    if (candidate.remote) {
+                        // Its text as the index keeps it, a text file's too: no
+                        // network, nor the server at all. None now (read
+                        // again since, its contents turned off): passed over.
+                        if (const std::optional<doctext::DocText> text = content->textOf(candidate.id)) {
+                            match = scanText(*text);
+                            if (match && document)
+                                location = doctext::locate(*text, static_cast<std::uint32_t>(match->line));
+                        }
+                    } else if (document) {
                         // Its text as the index keeps it; else read now (not
                         // indexed yet, changed since, or on a volume not
                         // followed), and kept for next time if it can be.
@@ -2072,16 +2378,7 @@ void SearchEngine::runContentSearch(const Job& job)
                             overLimit = read.large;
                         }
                         if (text) {
-                            std::size_t at = 0;
-                            const std::string& s = text->text;
-                            match = scanner.scan(
-                                [&](char* buffer, std::size_t capacity) {
-                                    const std::size_t n = std::min(capacity, s.size() - at);
-                                    std::memcpy(buffer, s.data() + at, n);
-                                    at += n;
-                                    return n;
-                                },
-                                ContentScanner::kChunkBytes, stale);
+                            match = scanText(*text);
                             if (match)
                                 location = doctext::locate(*text, static_cast<std::uint32_t>(match->line));
                         }
@@ -2107,6 +2404,8 @@ void SearchEngine::runContentSearch(const Job& job)
                     r.modified = modified;
                     r.created = knownTime(created);
                     if (size != kUnknownSize) r.size = static_cast<std::int64_t>(unpackSize(size));
+                    // Found in what was indexed while its share answered: dimmed as its name rows are.
+                    r.offline = candidate.remote && m_index->shares().offline(path);
                     r.line = match->line;
                     if (document) {
                         switch (location.kind) {
@@ -2169,6 +2468,7 @@ void SearchEngine::runContentSearch(const Job& job)
         }
     }
     flush(true);
+    enter("giving its memory back");
     candidates = decltype(candidates)(); // free them before compacting (`= {}` keeps the capacity)
     ::HeapCompact(::GetProcessHeap(), 0); // return the scan's scratch memory to the OS
 }

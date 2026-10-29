@@ -205,7 +205,7 @@ private slots:
         QVERIFY(!newer);
         QVERIFY(!readFavoritesFile("{\"format\": \"something\", \"version\": 1, \"favorites\": []}", &newer));
         QVERIFY(!newer);
-        QVERIFY(!readFavoritesFile("{\"format\": \"winshun-favorites\", \"version\": 4, \"favorites\": []}", &newer));
+        QVERIFY(!readFavoritesFile("{\"format\": \"winshun-favorites\", \"version\": 5, \"favorites\": []}", &newer));
         QVERIFY(newer);
     }
 

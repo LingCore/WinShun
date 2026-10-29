@@ -58,6 +58,7 @@ struct NameHit {
     EntryId id = kNoEntry;
     int score = 0;
     FileTime modified = 0;
+    bool inside = false; // lies in NameSearchOptions::insideFirst (at any depth)
     FileSize size = kUnknownSize; // read when the search is by size, or filters by it
 };
 
@@ -71,6 +72,12 @@ struct NameSearchOptions {
     bool kindsApart = false;
     // Besides the names: when written, how large, under which folders.
     EntryFilter filter;
+    // Typed in a folder's window (GitHub #110): the hits that lie in this
+    // folder, at any depth, go before all the others, each part in the
+    // order asked for (NameHit::inside tells them apart), so that one pass
+    // over the index lists the folder's matches first and the rest after
+    // them. kNoEntry: one list.
+    EntryId insideFirst = kNoEntry;
     // A column's order (the search panel) in place of the rank; Rank: rankBy.
     SortOrder order;
     // Ordered as not known when later than this (sortTime, trustedUntil):
@@ -108,8 +115,10 @@ struct NewestOptions {
     // Files: only those with one of these extensions (folded, without the
     // dot); empty: any.
     std::vector<std::string> extensions;
-    // Files with these extensions (folded, without the dot) are left out.
+    // Files with these extensions (folded, without the dot) are left out,
+    // and those with these names (folded wildcards: nameMatchesAny).
     std::vector<std::string> excludedExtensions;
+    std::vector<std::string> excludedFileNames;
 };
 
 struct NewestOutput {

@@ -7,6 +7,7 @@
 #include <QDateTime>
 #include <QString>
 #include <QStringList>
+#include <QRegularExpression>
 
 #include <string>
 #include <string_view>
@@ -18,6 +19,7 @@ namespace ws {
 struct FileTypeQuery {
     QString words;
     std::optional<int> type; // -2: folders; otherwise an index in FileTypes
+    QList<int> types; // multiple file categories, joined by a comma
 };
 std::optional<QString> normalizedTypeKeyword(QStringView text);
 FileTypeQuery splitFileTypeQuery(const QString& text, const FileTypes& types, QStringView folderKeyword);
@@ -46,20 +48,28 @@ struct QueryTerm {
     bool negated = false;
     bool wildcard = false;
     std::string literal; // wildcard terms: longest part without * or ?, a cheap pre-filter
+    bool regex = false;
+    QRegularExpression expression; // compiled once; names only, no pinyin expansion
 };
 
 struct ParsedQuery {
+    std::vector<ParsedQuery> alternatives; // OR of AND groups; filters belong to their group
+    QString error;
     std::vector<QueryTerm> terms;
     std::vector<std::string> extensions; // folded, without the dot
     // Set by the search, not typed: files with these extensions never match
     // (Settings' skipped file types), but in NameMatcher::match(index, ...)
     // only; a favorite or a path asked for by name stays.
     std::vector<std::string> excludedExtensions; // folded, without the dot
+    // The same for Settings' skipped file names (GitHub #132): folded
+    // wildcards ("~$*"), each against a file's whole name.
+    std::vector<std::string> excludedFileNames;
     EntryFilter filter; // size: and dm: (never folders)
     QStringList highlights; // plain terms to highlight in result names
 
     // Nothing to find by: a filter alone (size:>1gb) lists what fits it.
-    bool isEmpty() const noexcept { return terms.empty() && extensions.empty() && !filter.any(); }
+    bool isEmpty() const noexcept { return error.isEmpty() && alternatives.empty() && terms.empty() && extensions.empty() && !filter.any(); }
+    bool hasFilters() const noexcept;
 };
 
 // What a size: or dm: token stands for (parseQuery takes them from the
@@ -69,6 +79,10 @@ bool parseSizeToken(QStringView token, EntryFilter& filter);
 bool parseDateToken(QStringView token, const QDateTime& now, EntryFilter& filter);
 // A size in bytes written briefly: "1.2 MB", "356 KB", "0 B".
 QString sizeText(std::uint64_t bytes);
+
+// Whether a name (UTF-8, its extension and all, any case) is one of the
+// patterns: folded, with * and ? (Settings' skipped file names).
+bool nameMatchesAny(std::string_view name, const std::vector<std::string>& foldedPatterns) noexcept;
 
 // What was typed, split at whitespace; "within quotes" is one word, spaces
 // and all (the quotes go).
@@ -139,6 +153,7 @@ public:
         };
         static constexpr std::size_t kSlots = 1024;
         std::vector<Slot> m_slots; // made when first needed
+        std::vector<Folders> m_alternatives;
     };
 
     // Whether an entry with this name (stored in the index, so padded) may
@@ -151,10 +166,10 @@ public:
     bool filtersNames() const noexcept;
 
     // Caller holds index.readLock().
-    int match(const FileIndex& index, const Entry& entry, Folders& folders) const;
+    int match(const FileIndex& index, const Entry& entry, Folders& folders, EntryId id = kNoEntry) const;
     int match(const FileIndex& index, const Entry& entry) const;
     // Matches a full path that is not (necessarily) in the index, e.g. history.
-    int matchPath(const QString& fullPath, bool isDir) const;
+    int matchPath(const QString& fullPath, bool isDir, FileTime modified = 0, FileSize size = kUnknownSize) const;
     // Matches a bare UTF-8 name with no folders or extension, such as an
     // app's display name: folder terms and ext: never match it.
     int matchName(std::string_view name) const;
@@ -163,6 +178,9 @@ public:
     bool isExactName(std::string_view name, bool isDir) const;
 
 private:
+    bool m_invalid = false;
+    EntryFilter m_filter;
+    std::vector<NameMatcher> m_alternatives;
     struct Positive {
         QueryTerm term;
         pinyin::Matcher pinyin; // valid() when the term can be read as pinyin
@@ -191,6 +209,7 @@ private:
     std::vector<std::string> m_extensions;
     std::vector<std::string> m_excluded; // ParsedQuery::excludedExtensions
     std::size_t m_excludedLongest = 0; // of those: a longer extension is none of them
+    std::vector<std::string> m_excludedNames; // ParsedQuery::excludedFileNames
 };
 
 } // namespace ws

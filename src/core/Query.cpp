@@ -40,6 +40,19 @@ FileTypeQuery splitFileTypeQuery(const QString& text, const FileTypes& types, QS
     const QStringView keyword = trimmed.mid(1, end - 1);
     if (keyword.isEmpty())
         return result;
+    if (keyword.contains(u',')) {
+        const auto keywords = keyword.toString().split(u',', Qt::KeepEmptyParts);
+        for (const QString& part : keywords) {
+            const auto found = splitFileTypeQuery(u":"_s + part, types, folderKeyword);
+            if (!found.type || *found.type < 0)
+                return result;
+            if (!result.types.contains(*found.type))
+                result.types.append(*found.type);
+        }
+        result.type = result.types.first();
+        result.words = trimmed.mid(end).trimmed().toString();
+        return result;
+    }
     if (!folderKeyword.isEmpty() && keyword.compare(folderKeyword, Qt::CaseInsensitive) == 0)
         result.type = -2;
     else {
@@ -74,6 +87,11 @@ const QRegularExpression& separatorRegex()
 }
 
 } // namespace
+
+bool nameMatchesAny(std::string_view name, const std::vector<std::string>& foldedPatterns) noexcept
+{
+    return std::ranges::any_of(foldedPatterns, [&](const std::string& p) { return text::globMatch(name, p); });
+}
 
 QStringList queryWords(const QString& text)
 {
@@ -555,14 +573,51 @@ QString sizeText(std::uint64_t bytes)
 ParsedQuery parseQuery(const QString& text)
 {
     ParsedQuery q;
+    qsizetype start = 0;
+    const auto spans = pieces(text);
+    for (const Piece& piece : spans) {
+        if (piece.quoted || QStringView(text).sliced(piece.start, piece.end - piece.start) != u"|")
+            continue;
+        const QString branch = text.sliced(start, piece.start - start).trimmed();
+        if (branch.isEmpty() || q.alternatives.size() >= 32) {
+            q.error = branch.isEmpty() ? QObject::tr("“|”两侧都需要搜索条件") : QObject::tr("搜索条件过多");
+            return q;
+        }
+        q.alternatives.push_back(parseQuery(branch));
+        start = piece.end;
+    }
+    if (!q.alternatives.empty()) {
+        const QString branch = text.sliced(start).trimmed();
+        if (branch.isEmpty()) {
+            q.error = QObject::tr("“|”两侧都需要搜索条件");
+            return q;
+        }
+        q.alternatives.push_back(parseQuery(branch));
+        for (const ParsedQuery& group : q.alternatives) {
+            q.highlights.append(group.highlights);
+            if (!group.error.isEmpty())
+                q.error = group.error;
+        }
+        q.highlights.removeDuplicates();
+        return q;
+    }
     // A path typed or pasted whole ("C:\Users\me\Tencent Files\x") is one
     // term: its spaces are in the names, not between terms.
     const pathtext::TypedPath typed = pathtext::splitTyped(text);
-    const QStringList tokens = typed.folder.isEmpty()
-        ? queryWords(text)
-        : QStringList {(typed.folder.endsWith(u'\\') ? typed.folder : typed.folder + u'\\') + typed.name.trimmed()};
+    struct Token { QString text; bool quotedLiteral; };
+    std::vector<Token> tokens;
+    if (typed.folder.isEmpty()) {
+        for (const Piece& span : spans) {
+            const QString raw = text.sliced(span.start, span.end - span.start);
+            const QString word = queryWords(raw).value(0);
+            if (!word.isEmpty())
+                tokens.push_back({word, raw.startsWith(u'"')});
+        }
+    } else {
+        tokens.push_back({(typed.folder.endsWith(u'\\') ? typed.folder : typed.folder + u'\\') + typed.name.trimmed(), false});
+    }
     const QDateTime now = QDateTime::currentDateTime();
-    for (QString token : tokens) {
+    for (auto [token, quotedLiteral] : tokens) {
         if (token.startsWith(u"size:", Qt::CaseInsensitive) && parseSizeToken(token, q.filter))
             continue;
         if (token.startsWith(u"dm:", Qt::CaseInsensitive) && parseDateToken(token, now, q.filter))
@@ -582,6 +637,35 @@ ParsedQuery parseQuery(const QString& text)
         if (token.size() > 1 && token.startsWith(u'!')) {
             term.negated = true;
             token.remove(0, 1);
+        }
+
+        const bool regex = !quotedLiteral && token.startsWith(u"regex:", Qt::CaseInsensitive);
+        const bool anchored = !quotedLiteral && (token.startsWith(u'^') || token.endsWith(u'$'));
+        if (regex || anchored) {
+            QString pattern;
+            if (regex) {
+                pattern = token.mid(6);
+            } else {
+                const bool prefix = token.startsWith(u'^');
+                const bool suffix = token.endsWith(u'$');
+                token = token.mid(prefix ? 1 : 0, token.size() - (prefix ? 1 : 0) - (suffix ? 1 : 0));
+                pattern = (prefix ? u"\\A"_s : QString()) + QRegularExpression::escape(token)
+                    + (suffix ? u"\\z"_s : QString());
+            }
+            term.regex = true;
+            term.text = foldedUtf8(token);
+            term.expression = QRegularExpression(u"(*LIMIT_MATCH=10000)(*LIMIT_DEPTH=100)"_s + pattern,
+                QRegularExpression::CaseInsensitiveOption | QRegularExpression::UseUnicodePropertiesOption);
+            if ((regex && pattern.isEmpty()) || !term.expression.isValid()) {
+                q.error = QObject::tr("正则表达式无效：%1").arg(pattern.isEmpty() ? QObject::tr("请输入表达式")
+                    : term.expression.errorString());
+                return q;
+            }
+            term.expression.optimize();
+            if (!regex && !term.negated && !token.isEmpty())
+                q.highlights.append(token);
+            q.terms.push_back(std::move(term));
+            continue;
         }
 
         if (std::any_of(token.cbegin(), token.cend(), isPathSeparator)) {
@@ -615,8 +699,16 @@ ParsedQuery parseQuery(const QString& text)
     return q;
 }
 
+bool ParsedQuery::hasFilters() const noexcept
+{
+    return filter.any() || std::ranges::any_of(alternatives, [](const ParsedQuery& q) { return q.hasFilters(); });
+}
+
 std::vector<ParsedQuery> homophoneQueries(const ParsedQuery& query)
 {
+    if (!query.alternatives.empty() || !query.error.isEmpty()
+        || std::ranges::any_of(query.terms, [](const QueryTerm& t) { return t.regex; }))
+        return {};
     constexpr std::size_t kMostQueries = 8; // each is a search over the whole index
     // Each term to read, in pieces: a Chinese character's readings, or a run
     // of other characters as it is (one "reading").
@@ -718,7 +810,12 @@ std::vector<ParsedQuery> homophoneQueries(const ParsedQuery& query)
 NameMatcher::NameMatcher(const ParsedQuery& query)
     : m_extensions(query.extensions)
     , m_excluded(query.excludedExtensions)
+    , m_excludedNames(query.excludedFileNames)
 {
+    m_invalid = !query.error.isEmpty();
+    m_filter = query.filter;
+    for (const ParsedQuery& branch : query.alternatives)
+        m_alternatives.emplace_back(branch);
     for (const std::string& e : m_excluded)
         m_excludedLongest = std::max(m_excludedLongest, e.size());
     for (const auto& t : query.terms) {
@@ -726,7 +823,7 @@ NameMatcher::NameMatcher(const ParsedQuery& query)
             m_negative.push_back(t); // exclusions stay literal: no surprises
             continue;
         }
-        const std::string_view text = t.wildcard ? std::string_view() : std::string_view(t.text);
+        const std::string_view text = t.wildcard || t.regex ? std::string_view() : std::string_view(t.text);
         Positive p {t, pinyin::Matcher(text), pinyin::Matcher(text, true), {}};
         for (const std::string& segment : t.ancestors)
             p.folders.emplace_back(segment);
@@ -741,13 +838,13 @@ NameMatcher::NameMatcher(const ParsedQuery& query)
     if (m_positive.size() + (m_extensions.empty() ? 0 : 1) >= 2) {
         for (std::size_t i = 0; i < m_positive.size() && i < 64; ++i) {
             const QueryTerm& t = m_positive[i].term;
-            if (!t.wildcard && !t.text.empty() && t.ancestors.empty())
+            if (!t.wildcard && !t.regex && !t.text.empty() && t.ancestors.empty())
                 m_folderTerms |= std::uint64_t {1} << i;
         }
     }
     for (std::size_t i = 0; i < m_positive.size() && i < 64; ++i) {
         const QueryTerm& t = m_positive[i].term;
-        if (!t.wildcard && !t.text.empty() && !(m_folderTerms >> i & 1)) {
+        if (!t.wildcard && !t.regex && !t.text.empty() && !(m_folderTerms >> i & 1)) {
             m_quick = static_cast<int>(i);
             break;
         }
@@ -772,6 +869,8 @@ template <bool Padded, typename Han, typename AncestorsMatch, typename FolderTer
 int NameMatcher::score(std::string_view name, bool isDir, Han&& han, std::size_t extLength,
     AncestorsMatch&& ancestorsMatch, FolderTerms&& folderTerms) const
 {
+    if (m_invalid)
+        return -1;
     int score = 0;
     std::size_t covered = 0;
     std::optional<pinyin::Span> pinyinMatch; // of a lone term, for the exact-name bonus
@@ -781,8 +880,12 @@ int NameMatcher::score(std::string_view name, bool isDir, Han&& han, std::size_t
     for (std::size_t i = 0; i < m_positive.size(); ++i) {
         const Positive& p = m_positive[i];
         const QueryTerm& t = p.term;
-        if (!t.text.empty()) {
-            if (t.wildcard) {
+        if (!t.text.empty() || t.regex) {
+            if (t.regex) {
+                if (!t.expression.match(wtf8::toQString(name)).hasMatch())
+                    return -1;
+                score += 20;
+            } else if (t.wildcard) {
                 if (!t.literal.empty() && find<Padded>(name, t.literal) == text::npos)
                     return -1;
                 if (!text::globMatch(name, t.text))
@@ -837,7 +940,8 @@ int NameMatcher::score(std::string_view name, bool isDir, Han&& han, std::size_t
     // such a folder; "!tmp\*.log" only the .log files in one.
     for (const auto& t : m_negative) {
         const bool nameHit
-            = t.text.empty() || (t.wildcard ? text::globMatch(name, t.text) : find<Padded>(name, t.text) != text::npos);
+            = t.regex ? t.expression.match(wtf8::toQString(name)).hasMatch()
+            : t.text.empty() || (t.wildcard ? text::globMatch(name, t.text) : find<Padded>(name, t.text) != text::npos);
         if (nameHit && (t.ancestors.empty() || ancestorsMatch(t.ancestors, nullptr)))
             return -1;
     }
@@ -859,7 +963,7 @@ int NameMatcher::score(std::string_view name, bool isDir, Han&& han, std::size_t
         score += 3 * std::popcount(elsewhere);
     }
 
-    if (m_positive.size() == 1 && !m_positive[0].term.wildcard && !m_positive[0].term.text.empty()) {
+    if (m_positive.size() == 1 && !m_positive[0].term.wildcard && !m_positive[0].term.regex && !m_positive[0].term.text.empty()) {
         const std::string& t = m_positive[0].term.text;
         const std::size_t stem
             = extLength > 0 && name.size() > extLength + 1 ? name.size() - extLength - 1 : name.size();
@@ -937,8 +1041,23 @@ std::uint64_t NameMatcher::termsInFolders(const FileIndex& index, EntryId folder
     return terms;
 }
 
-int NameMatcher::match(const FileIndex& index, const Entry& entry, Folders& folders) const
+int NameMatcher::match(const FileIndex& index, const Entry& entry, Folders& folders, EntryId id) const
 {
+    if (m_invalid)
+        return -1;
+    if (!m_alternatives.empty()) {
+        folders.m_alternatives.resize(m_alternatives.size());
+        int best = -1;
+        for (std::size_t i = 0; i < m_alternatives.size(); ++i)
+            best = std::max(best, m_alternatives[i].match(index, entry, folders.m_alternatives[i], id));
+        return best;
+    }
+    if (m_filter.any()) {
+        if (id == kNoEntry)
+            id = index.findChild(entry.parent, index.name(entry), true);
+        if (id == kNoEntry || !m_filter.fits(index.modified(id), index.size(id), entry.isDir()))
+            return -1;
+    }
     // A skipped type: a file only (a folder named "x.bak" stays), and before
     // the rest, so that the name is not searched for nothing. Not in
     // nameMayMatch: a name is shared by a file and a folder.
@@ -951,7 +1070,7 @@ int NameMatcher::match(const FileIndex& index, const Entry& entry, Folders& fold
                 return -1;
         }
     }
-    return score<true>(
+    const int scored = score<true>(
         index.name(entry), entry.isDir(), [&] { return (entry.flags & EntryFlag::Han) != 0; }, index.extLength(entry),
         [&](const std::vector<std::string>& segments, const pinyin::Matcher* folders) {
             // Walk up from the parent, consuming segments innermost-first.
@@ -966,10 +1085,19 @@ int NameMatcher::match(const FileIndex& index, const Entry& entry, Folders& fold
             return j < 0;
         },
         [&] { return termsInFolders(index, entry.parent, &folders); });
+    // A skipped file name, files only as above; after the rest, as a pattern
+    // costs more than an extension and few names that match are skipped.
+    if (scored >= 0 && !m_excludedNames.empty() && !entry.isDir() && nameMatchesAny(index.name(entry), m_excludedNames))
+        return -1;
+    return scored;
 }
 
 bool NameMatcher::nameMayMatch(std::string_view name, std::size_t fileExtLength, bool han) const
 {
+    if (m_invalid)
+        return false;
+    if (!m_alternatives.empty())
+        return std::ranges::any_of(m_alternatives, [&](const NameMatcher& m) { return m.nameMayMatch(name, fileExtLength, han); });
     if (m_quick >= 0) {
         const Positive& p = m_positive[static_cast<std::size_t>(m_quick)];
         if (text::findFoldedPadded(name, p.term.text) == text::npos && !(han && p.pinyin.valid() && p.pinyin.findUtf8(name)))
@@ -989,9 +1117,11 @@ bool NameMatcher::nameMayMatch(std::string_view name, std::size_t fileExtLength,
 
 bool NameMatcher::filtersNames() const noexcept
 {
+    if (!m_alternatives.empty())
+        return std::ranges::all_of(m_alternatives, [](const NameMatcher& m) { return m.filtersNames(); });
     if (!m_extensions.empty())
         return true;
-    const auto byName = [](const QueryTerm& t) { return !t.text.empty(); };
+    const auto byName = [](const QueryTerm& t) { return t.regex || !t.text.empty(); };
     return std::any_of(m_positive.begin(), m_positive.end(), [&](const Positive& p) { return byName(p.term); })
         || std::any_of(m_negative.begin(), m_negative.end(),
             [&](const QueryTerm& t) { return byName(t) && t.ancestors.empty(); });
@@ -1003,8 +1133,18 @@ int NameMatcher::match(const FileIndex& index, const Entry& entry) const
     return match(index, entry, folders);
 }
 
-int NameMatcher::matchPath(const QString& fullPath, bool isDir) const
+int NameMatcher::matchPath(const QString& fullPath, bool isDir, FileTime modified, FileSize size) const
 {
+    if (m_invalid)
+        return -1;
+    if (!m_alternatives.empty()) {
+        int best = -1;
+        for (const NameMatcher& m : m_alternatives)
+            best = std::max(best, m.matchPath(fullPath, isDir, modified, size));
+        return best;
+    }
+    if (!m_filter.fits(modified, size, isDir))
+        return -1;
     QStringList parts = fullPath.split(separatorRegex(), Qt::SkipEmptyParts);
     if (parts.isEmpty())
         return -1;
@@ -1034,7 +1174,7 @@ int NameMatcher::matchPath(const QString& fullPath, bool isDir) const
 
 bool NameMatcher::isExactName(std::string_view name, bool isDir) const
 {
-    if (m_positive.size() != 1 || m_positive[0].term.wildcard || m_positive[0].term.text.empty())
+    if (m_invalid || !m_alternatives.empty() || m_positive.size() != 1 || m_positive[0].term.wildcard || m_positive[0].term.regex || m_positive[0].term.text.empty())
         return false;
     const std::string& t = m_positive[0].term.text;
     if (text::equalsFolded(name, t))
@@ -1046,6 +1186,16 @@ bool NameMatcher::isExactName(std::string_view name, bool isDir) const
 
 int NameMatcher::matchName(std::string_view name) const
 {
+    if (m_invalid)
+        return -1;
+    if (!m_alternatives.empty()) {
+        int best = -1;
+        for (const NameMatcher& m : m_alternatives)
+            best = std::max(best, m.matchName(name));
+        return best;
+    }
+    if (m_filter.any())
+        return -1;
     return score<false>(
         name, false, [&] { return pinyin::hasHan(name); }, 0,
         [](const std::vector<std::string>&, const pinyin::Matcher*) { return false; },

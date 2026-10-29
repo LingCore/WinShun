@@ -191,6 +191,15 @@
 //                      from, and the time from the last key to the plugin's
 //                      rows. A text no plugin answers is run again without
 //                      plugins and the two lists compared
+//   wsbench --typing [--pause MS] [--rounds N] [--index FOLDER] [--content-index on|off] [--no-content] [--history] ["TEXT" ...]
+//                      全部 as words are typed (GitHub #115): each TEXT's
+//                      names, then the content scan 全部 starts 300 ms after
+//                      them, and the next TEXT MS after the last (default
+//                      800); prints how long each TEXT's names took to come
+//                      (before #115 they waited for the scan before to
+//                      stop) and how far that scan had got. Over a
+//                      copy of the index files; --rounds types the TEXTs
+//                      again (the first round as new words)
 //   wsbench --scroll-replay FOLDER [--save FILE.png]
 //                      a long screenshot's frames again (dumped with
 //                      WINSHUN_SCROLL_DUMP=FOLDER: frame_NNNN.png and
@@ -211,6 +220,7 @@
 #include "Catalog.h"
 #include "Extract.h"
 #include "Gallery.h"
+#include "History.h"
 #include "Host.h"
 #include "IndexService.h"
 #include "Install.h"
@@ -4526,7 +4536,7 @@ int runPlugin(QStringList args)
             QElapsedTimer timer;
             timer.start();
             const QMetaObject::Connection finished = QObject::connect(&host, &ws::plugin::Host::actionDone,
-                [&](std::uint64_t, const ws::plugin::Effects& effects, bool ok, const QString& error) {
+                [&](std::uint64_t, const QString&, const ws::plugin::Effects& effects, bool ok, const QString& error) {
                     done = true;
                     actionOk = ok;
                     std::printf("action %s on \"%s\": %s in %.1f ms\n", qUtf8Printable(actionId), qUtf8Printable(firstItems.first().title),
@@ -4866,6 +4876,206 @@ int runLauncherSim(QStringList args)
     return failures == 0 ? 0 : 1;
 }
 
+// ---- typing in 全部, headless (--typing) ------------------------------------
+
+// What 全部 does as words are typed (Launcher::search): each text's name
+// search, and once its names are in, the content scan 全部 starts for it
+// 300 ms later (Launcher::startContentSearch: a few threads, a page of
+// matches); --pause ms after the text was asked, the next one, as the next
+// word committed by an input method. Printed for each text: how long its
+// names took from asked to answered (what the launcher shows 正在搜索… for
+// after a second), and how far the scan before it had got. Over a copy of
+// the app's index files (--index FOLDER: those), the content index on or
+// off as the settings say (--content-index on|off), names only with
+// --no-content, the profile's history and favorites with --history;
+// --rounds N types the texts N times (the first round as a new word, the
+// rest as one typed before).
+int runTypingSim(QStringList args)
+{
+    int pauseMs = 800;
+    int rounds = 1;
+    QString indexFolder;
+    std::optional<bool> contentIndex;
+    if (const qsizetype at = args.indexOf(u"--pause"_s); at >= 0 && at + 1 < args.size()) {
+        pauseMs = std::max(0, args[at + 1].toInt());
+        args.remove(at, 2);
+    }
+    if (const qsizetype at = args.indexOf(u"--rounds"_s); at >= 0 && at + 1 < args.size()) {
+        rounds = std::max(1, args[at + 1].toInt());
+        args.remove(at, 2);
+    }
+    if (const qsizetype at = args.indexOf(u"--index"_s); at >= 0 && at + 1 < args.size()) {
+        indexFolder = args[at + 1];
+        args.remove(at, 2);
+    }
+    if (const qsizetype at = args.indexOf(u"--content-index"_s); at >= 0 && at + 1 < args.size()) {
+        contentIndex = args[at + 1] == u"on"_s;
+        args.remove(at, 2);
+    }
+    const bool noContent = args.removeAll(u"--no-content"_s) > 0;
+    const bool withHistory = args.removeAll(u"--history"_s) > 0;
+    QStringList texts = args;
+    if (texts.isEmpty())
+        texts = {u"口味"_s, u"口"_s, u"报告"_s, u"合同"_s, u"report"_s};
+
+    ws::Settings settings;
+    settings.load();
+    QTemporaryDir temp;
+    if (indexFolder.isEmpty()) {
+        // The app's files, copied: it goes on writing its own.
+        const QString from = QDir::fromNativeSeparators(settings.indexDir());
+        indexFolder = temp.path() + u"/index"_s;
+        if (!temp.isValid() || !QDir().mkpath(indexFolder + u"/content"_s)) {
+            std::printf("no folder to copy the index to\n");
+            return 1;
+        }
+        if (!QFile::copy(from + u"/index.bin"_s, indexFolder + u"/index.bin"_s)) {
+            std::printf("no index at %s\n", qUtf8Printable(QDir::toNativeSeparators(from)));
+            return 1;
+        }
+        for (const QFileInfo& file : QDir(from + u"/content"_s).entryInfoList(QDir::Files)) {
+            if (!QFile::copy(file.filePath(), indexFolder + u"/content/"_s + file.fileName())) {
+                std::printf("could not copy %s\n", qUtf8Printable(QDir::toNativeSeparators(file.filePath())));
+                return 1;
+            }
+        }
+    }
+    ws::IndexService::Options options; // as the app's (App.cpp indexOptions), from the index as saved
+    options.rules = settings.crawlRules();
+    options.rescanOnStartup = false;
+    options.content.enabled = settings.contentSearch && contentIndex.value_or(settings.contentIndex);
+    options.content.extensions = settings.contentExtensions;
+    options.content.sizeLimits = settings.contentSizeLimits();
+    options.content.includeLowPriority = settings.contentInLowPriority;
+    options.content.documents = settings.contentDocuments;
+    ws::IndexService service(indexFolder, options);
+    ws::AppCatalog apps;
+    ws::SystemCatalog places;
+    ws::SearchEngine engine(&service, &apps, &places);
+    service.start();
+    apps.refresh(true);
+    places.refresh(true);
+    QElapsedTimer ready;
+    ready.start();
+    bool appsIn = false;
+    bool placesIn = false;
+    QObject::connect(&apps, &ws::AppCatalog::changed, [&] { appsIn = true; });
+    QObject::connect(&places, &ws::SystemCatalog::changed, [&] { placesIn = true; });
+    while ((service.state() != ws::IndexService::State::Ready || !appsIn || !placesIn) && ready.elapsed() < 60'000)
+        QCoreApplication::processEvents(QEventLoop::AllEvents | QEventLoop::WaitForMoreEvents, 50);
+    if (service.state() != ws::IndexService::State::Ready) {
+        // A half-loaded index finds little and fast: no figures from it.
+        std::printf("the index is not ready after %.0f ms\n", msSince(ready));
+        service.shutdown();
+        return 1;
+    }
+    const QString dataDir = ws::Settings::dataDir();
+    ws::History history(dataDir + u"\\history.txt"_s);
+    ws::Favorites favorites(dataDir + u"\\favorites.json"_s);
+    if (withHistory) {
+        history.load();
+        favorites.load();
+    }
+    const bool scans = settings.contentSearch && !noContent;
+    std::printf("index %s (%zu items) after %.0f ms; content search in 全部 %s, content index %s, history %s\n\n",
+        service.state() == ws::IndexService::State::Ready ? "ready" : "NOT READY", service.itemCount(), msSince(ready),
+        scans ? "on" : "off", options.content.enabled ? "on" : "off", withHistory ? "the profile's" : "none");
+
+    // The engine emits from its worker thread: queued to this one, as to the launcher.
+    QObject receiver;
+    quint64 nameId = 0;
+    quint64 contentId = 0;
+    bool namesIn = false;
+    qint64 nameRows = 0;
+    int scanned = 0;
+    int candidates = 0;
+    int contentRows = 0;
+    bool scanDone = false;
+    QObject::connect(&engine, &ws::SearchEngine::resultsReady, &receiver,
+        [&](quint64 id, const ws::SearchResults& results, qint64, qint64) {
+            if (id == nameId) {
+                namesIn = true;
+                nameRows = results.size();
+            }
+        });
+    QObject::connect(&engine, &ws::SearchEngine::contentResults, &receiver, [&](quint64 id, const ws::SearchResults& results) {
+        if (id == contentId)
+            contentRows += static_cast<int>(results.size());
+    });
+    QObject::connect(&engine, &ws::SearchEngine::contentProgress, &receiver, [&](quint64 id, int s, int total, bool finished) {
+        if (id != contentId)
+            return;
+        scanned = s;
+        candidates = total;
+        scanDone = finished;
+    });
+    const auto wait = [](const std::function<bool()>& until, int ms) {
+        const QDeadlineTimer deadline(ms);
+        while (!(until && until()) && !deadline.hasExpired())
+            QCoreApplication::processEvents(QEventLoop::AllEvents | QEventLoop::WaitForMoreEvents, 5);
+    };
+
+    int slow = 0;
+    for (int round = 1; round <= rounds; ++round) {
+        std::printf("-- round %d\n", round);
+        for (const QString& text : texts) {
+            // The scan before, as it stands when this text comes.
+            const QString before = contentId == 0 ? u"-"_s
+                : scanDone ? u"done (%1 of %2 files, %3 rows)"_s.arg(scanned).arg(candidates).arg(contentRows)
+                           : u"running (%1 of %2 files, %3 rows)"_s.arg(scanned).arg(candidates).arg(contentRows);
+            ws::SearchEngine::Request request;
+            request.text = text;
+            request.scope = ws::Scope::All;
+            request.kindOrder = settings.foldersFirst ? ws::KindOrder::FoldersFirst : ws::KindOrder::FilesFirst;
+            request.preferredTypes = settings.preferredTypes;
+            request.excludedTypes = settings.excludedTypes;
+            request.limit = 256; // the launcher's kPage
+            if (withHistory) {
+                request.history = history.ranked(text, QDateTime::currentMSecsSinceEpoch());
+                request.favorites = favorites.items();
+            }
+            request.web = settings.webShortcuts;
+            QElapsedTimer key;
+            key.start();
+            namesIn = false;
+            nameId = engine.submit(std::move(request)); // also stops the scan before
+            contentId = 0;
+            wait([&] { return namesIn; }, 120'000);
+            const double namesMs = msSince(key);
+            slow += namesMs > 1000;
+            std::printf("%-12s names %8.1f ms%s (%lld rows); the scan before: %s\n", qUtf8Printable(text), namesMs,
+                namesMs > 1000 ? " SLOW" : "", static_cast<long long>(nameRows), qUtf8Printable(before));
+            // 全部's own scan, 300 ms after the names (Launcher: m_contentDebounce).
+            const ws::ParsedQuery parsed = ws::parseQuery(text);
+            const bool nameSyntax = !parsed.alternatives.empty() || !parsed.extensions.empty()
+                || std::ranges::any_of(parsed.terms, [](const ws::QueryTerm& t) { return t.negated || t.wildcard || t.regex; });
+            if (scans && !nameSyntax && !parsed.terms.empty()) {
+                wait({}, 300);
+                ws::SearchEngine::Request content;
+                content.text = text;
+                content.scope = ws::Scope::Content;
+                content.excludedTypes = settings.excludedTypes;
+                content.maxContentResults = 256;
+                content.contentExtensions = settings.contentExtensions;
+                content.contentSizeLimits = settings.contentSizeLimits();
+                content.contentDocuments = settings.contentDocuments;
+                content.contentThreads = std::clamp(static_cast<int>(std::thread::hardware_concurrency()) / 2, 2, 6);
+                scanned = candidates = contentRows = 0;
+                scanDone = false;
+                contentId = engine.submit(std::move(content));
+            }
+            wait({}, std::max(0, pauseMs - static_cast<int>(msSince(key))));
+        }
+    }
+    // How far the last scan got, then it is stopped.
+    const QString last = !scanDone && contentId != 0 ? u"stopped at %1 of %2 files"_s.arg(scanned).arg(candidates) : u"-"_s;
+    engine.cancel();
+    std::printf("\n%d of %d texts waited over a second for their names; last scan %s\n", slow,
+        static_cast<int>(texts.size()) * rounds, qUtf8Printable(last));
+    service.shutdown();
+    return 0;
+}
+
 // ---- the MCP server, headless (--mcp-host) ----------------------------------
 
 // Win顺's MCP tools on a pipe, as the app serves them, over a copy of the
@@ -5162,7 +5372,7 @@ int runSemantic(QStringList args)
     if (!status.isEmpty() && status.first().id == u"start"_s && yes) {
         bool done = false;
         const auto finished = QObject::connect(&host, &ws::plugin::Host::actionDone,
-            [&](std::uint64_t, const ws::plugin::Effects&, bool ok, const QString& error) {
+            [&](std::uint64_t, const QString&, const ws::plugin::Effects&, bool ok, const QString& error) {
                 std::printf("start: %s\n", ok ? "ok" : qUtf8Printable(error));
                 done = true;
             });
@@ -5720,6 +5930,10 @@ int main(int argc, char* argv[])
         args.removeAll(u"--launcher-sim"_s);
         return runLauncherSim(args);
     }
+    if (args.contains(u"--typing"_s)) {
+        args.removeAll(u"--typing"_s);
+        return runTypingSim(args);
+    }
     if (args.contains(u"--plugin"_s))
         return runPlugin(args);
     if (args.contains(u"--plugin-index"_s))
@@ -6015,6 +6229,16 @@ int main(int argc, char* argv[])
             preferred.push_back(ext.toLower().toStdString());
         args.remove(at, 2);
     }
+    // --inside FOLDER: typed in that folder's window (GitHub #110), each query
+    // also with the folder's rows first (one pass, NameSearchOptions::
+    // insideFirst), only there (a filter), and as the path typed before the
+    // words was searched before (the folder a term of the query, as a typed
+    // path is), beside the plain search.
+    QString inside;
+    if (const qsizetype at = args.indexOf(u"--inside"_s); at >= 0 && at + 1 < args.size()) {
+        inside = ws::pathtext::pathFromText(args[at + 1]);
+        args.remove(at, 2);
+    }
     int failures = 0;
     ws::WorkerPool pool(ws::WorkerPool::defaultThreadCount());
     const auto lock = index->readLock();
@@ -6050,6 +6274,35 @@ int main(int argc, char* argv[])
         }
         std::printf("%-16s %9zu matches  %6.1f ms   top: %s\n", qPrintable(q), out.totalMatches, best,
             out.hits.empty() ? "-" : qPrintable(index->path(out.hits.front().id)));
+        if (!inside.isEmpty()) {
+            const ws::EntryId folder = index->findPath(inside.toStdWString());
+            const auto timed = [&](const ws::NameMatcher& m, const ws::NameSearchOptions& o, ws::NameSearchOutput& result) {
+                double fastest = 1e9;
+                for (int run = 0; run < 5; ++run) {
+                    timer.restart();
+                    result = ws::searchNames(*index, m, o, pool, {});
+                    fastest = std::min(fastest, static_cast<double>(timer.nsecsElapsed()) / 1e6);
+                }
+                return fastest;
+            };
+            ws::NameSearchOptions first = options;
+            first.insideFirst = folder;
+            ws::NameSearchOutput firstOut;
+            const double firstMs = timed(matcher, first, firstOut);
+            ws::NameSearchOptions only = options;
+            only.filter.folders = {folder == ws::kNoEntry ? ws::kNoEntry - 1 : folder};
+            ws::NameSearchOutput onlyOut;
+            const double onlyMs = timed(matcher, only, onlyOut);
+            const ws::ParsedQuery typedParsed = ws::parseQuery(inside + (inside.endsWith(u'\\') ? u" "_s : u"\\ "_s) + q);
+            const ws::NameMatcher typedMatcher(typedParsed);
+            ws::NameSearchOptions typed = options;
+            typed.filter = typedParsed.filter;
+            ws::NameSearchOutput typedOut;
+            const double typedMs = timed(typedMatcher, typed, typedOut);
+            std::printf("  in %s: first %6.1f ms (%lld of %zu listed inside), only %6.1f ms (%zu), as typed %6.1f ms (%zu)\n",
+                qPrintable(inside), firstMs, static_cast<long long>(std::ranges::count_if(firstOut.hits, &ws::NameHit::inside)),
+                firstOut.hits.size(), onlyMs, onlyOut.totalMatches, typedMs, typedOut.totalMatches);
+        }
         if (check) {
             // Every entry through the matcher, as before names were tested first: the same matches?
             std::size_t brute = 0;

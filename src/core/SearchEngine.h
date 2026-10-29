@@ -9,6 +9,7 @@
 #include <QObject>
 #include <QStringList>
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -25,11 +26,12 @@ class IndexService;
 class RecentOnDisk;
 class SystemCatalog;
 
-// Runs searches on a worker thread. Only the newest request matters: a new
-// submit() cancels whatever is running, so typing never queues up work.
+// Runs searches on worker threads (name searches apart from content scans and
+// drive walks). Only the newest request matters: a new submit() cancels
+// whatever is running, so typing never queues up work.
 // Name searches also go through the installed apps, the places in Windows
 // (`apps` and `places` may be null) and the web shortcuts.
-// Signals are emitted from the worker thread (queued to the receivers).
+// Signals are emitted from the worker threads (queued to the receivers).
 // Whether content match `a` goes before `b`: the better match, or by when
 // last written (a time not known last either way, the better match on a tie).
 bool rankedBefore(const SearchResult& a, const SearchResult& b, RankBy by) noexcept;
@@ -42,6 +44,9 @@ struct ContentLeftOut {
     int lowPriority = 0; // of a listed type, in system, program and tool folders (not asked for: contentInLowPriority)
     int otherTypes = 0; // text of a kind not listed (OtherTextTypes)
     QStringList otherExtensions; // ... the most numerous few of those kinds, "vue", "kt"
+    // Of a listed type, on a share or in WSL, the content index not having
+    // read them: their share's contents are not indexed, or not yet (GitHub #114).
+    int remote = 0;
     friend bool operator==(const ContentLeftOut&, const ContentLeftOut&) = default;
 };
 
@@ -53,7 +58,6 @@ struct ContentScope {
     enum class Status : std::uint8_t {
         Searched, // its folders are looked in
         NotFound, // a path that is not in the index (not there, left out, a drive not indexed)
-        OnShare, // on a network share: contents are not read there
         Words, // no folder so named: what was typed is among the words instead
     };
     struct Place {
@@ -114,12 +118,25 @@ public:
         // these never come up, names or content, unless asked for by that
         // extension (in `extensions`, or ext: typed).
         QStringList excludedTypes;
+        // And the skipped file names (GitHub #132: "~$*", Office's and WPS's
+        // lock files): wildcards against a file's whole name, any case;
+        // shown when a word typed is one of them ("~$报告").
+        QStringList excludedFileNames;
         // The search panel's filters: when written and how large (with
         // size: and dm: typed, the narrower of the two), and the folders to
         // look under (full paths; empty: anywhere). Names only; 内容 takes
         // its folders as contentFolders.
         EntryFilter filter;
         QStringList folders;
+        // Typed in a folder's window (Explorer, Directory Opus: GitHub #110):
+        // that folder, and `text` is what was typed after it. What it finds
+        // in the folder comes first (its own files and folders from the
+        // disk, as a typed path lists them, then what lies deeper), then
+        // what it finds elsewhere, marked (SearchResult::elsewhere), as
+        // Listary lists it; with `currentFolderOnly`, nothing elsewhere.
+        // Names only: 内容 is given the folder in its text, as typed.
+        QString currentFolder;
+        bool currentFolderOnly = false;
         // The panel's column order; Rank: rankBy.
         SortOrder order;
         // The panel: with nothing typed, every file and folder the filters
@@ -221,11 +238,25 @@ private:
         std::chrono::steady_clock::time_point submitted;
     };
 
-    void workerLoop(std::stop_token stop);
+    // Each request runs on one of two threads (GitHub #115): name searches on
+    // one, content scans and drive walks on the other. A scan stops at its own
+    // pace (the file in hand: an antivirus checking it, a hard disk spinning
+    // up; the content index read off the disk first), and the name search
+    // typed meanwhile does not wait for it. Only the newest request runs at
+    // all (m_latest): the other thread's, if any, is stopping.
+    enum class Lane : std::uint8_t { Names, Scans };
+    static Lane laneOf(const Request& request) noexcept
+    {
+        return request.scope == Scope::Content || !request.walkFolder.isEmpty() ? Lane::Scans : Lane::Names;
+    }
+
+    void workerLoop(std::stop_token stop, Lane lane);
+    void drivesLoop(std::stop_token stop);
+    void leaveBehind(std::chrono::steady_clock::time_point now); // m_mutex held, before m_latest moves on
     void runNameSearch(const Job& job);
     void runContentSearch(const Job& job);
     void runDriveWalk(const Job& job);
-    RemovableDrives unindexedRemovableDrives(); // worker thread: as of a moment ago (m_removable)
+    RemovableDrives unindexedRemovableDrives(); // the drives thread: as of a moment ago (m_removable)
     bool isStale(quint64 id) const noexcept { return m_latest.load(std::memory_order_relaxed) != id; }
 
     IndexService* m_index;
@@ -233,18 +264,39 @@ private:
     AppCatalog* m_apps;
     SystemCatalog* m_places;
     std::unique_ptr<RecentOnDisk> m_onDisk; // whether recent items are still there
+    // For testing (GitHub #115): WINSHUN_SLOW_READS=<ms> set as the engine is
+    // made, each file a content scan reads keeps it that much longer, a newer
+    // search notwithstanding, as a hard disk spinning up or an antivirus
+    // holding the file would.
+    const std::chrono::milliseconds m_slowReads;
     // The removable drives as last looked at (unindexedRemovableDrives), and
     // when: asked of Windows every few seconds at most (the volume label is
-    // read from the drive), worker thread only.
+    // read from the drive), the drives thread only.
     RemovableDrives m_removable;
     std::chrono::steady_clock::time_point m_removableAt {};
-    WorkerPool m_pool {WorkerPool::defaultThreadCount()};
+    WorkerPool m_pool {WorkerPool::defaultThreadCount()}; // both lanes: one parallelFor at a time
     std::mutex m_mutex;
-    std::condition_variable_any m_cv;
-    std::optional<Job> m_pending;
+    std::condition_variable_any m_cv; // both lanes and the drives thread
+    std::array<std::optional<Job>, 2> m_pending; // by Lane
+    // The name search whose rows ask which removable drives there are, on a
+    // thread of their own: Windows may take its time to say, and the index's
+    // list of volumes waits for its journal work.
+    std::optional<quint64> m_drivesFor;
     quint64 m_counter = 0;
     std::atomic<quint64> m_latest {0};
-    std::jthread m_worker; // last: started after everything above exists
+    // The newest name search (0: cancelled since). Its drives are told even
+    // after the content scan that follows it in 全部, as the launcher keeps
+    // them for the names' request.
+    std::atomic<quint64> m_latestNames {0};
+    // For the log, how long a content scan left behind took to stop: the one
+    // running (0: none; under m_mutex), and when the request came that left
+    // it behind (steady_clock ticks).
+    quint64 m_scanRunning = 0;
+    std::atomic<std::int64_t> m_scanLeftBehindAt {0};
+    // Last: started after everything above exists.
+    std::jthread m_drivesWorker;
+    std::jthread m_scanWorker;
+    std::jthread m_nameWorker;
 };
 
 } // namespace ws

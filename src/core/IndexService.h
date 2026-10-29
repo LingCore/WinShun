@@ -6,6 +6,7 @@
 #include "Crawler.h"
 #include "FileIndex.h"
 #include "Ntfs.h"
+#include "RemoteContent.h"
 #include "ShareIndexer.h"
 
 #include <QObject>
@@ -241,6 +242,9 @@ public:
     // The one in use (a ServiceVolumeAccess says the service's version, or why not).
     std::shared_ptr<ntfs::VolumeAccess> volumeAccess() const { return m_access.load(); }
     ShareIndexer& shares() const noexcept { return *m_shares; }
+    // The contents of the shares that have them indexed (GitHub #114): how
+    // far each is read. A change is told by sharesChanged().
+    std::vector<remotecontent::Indexer::Status> shareContent() const { return m_shareContent->statuses(); }
     bool isRefreshing() const noexcept { return m_refreshing.load(); }
     std::size_t itemCount() const;
     // A volume being read from disk now: its MFT, or walked.
@@ -353,6 +357,7 @@ private:
     // the content index checks them again.
     void contentUnsureOf(const std::wstring& root);
     std::vector<ContentIndexer::Volume> contentVolumes() const;
+    static std::shared_ptr<const std::vector<std::wstring>> contentSharesOf(const ShareIndexer::Options& shares);
     void compactIfWasteful(bool always = false); // drops removed items once they add up
     // Without `wait`, a save that would have to wait for the files (being
     // moved, or saved by another thread) is left to the next one.
@@ -415,8 +420,12 @@ private:
     std::vector<Reading> m_reading; // readingVolumes()
 
     std::shared_ptr<ContentIndex> m_content;
+    // The shares whose contents are indexed (ShareConfig::content): for
+    // contentVolumes(), on the indexer's and searches' threads.
+    std::atomic<std::shared_ptr<const std::vector<std::wstring>>> m_contentShares;
     std::unique_ptr<ContentIndexer> m_contentIndexer;
     std::unique_ptr<ShareIndexer> m_shares;
+    std::unique_ptr<remotecontent::Indexer> m_shareContent; // after m_shares: its threads ask it
     std::atomic<bool> m_compactOwed {false}; // put off while ids were pinned
 
     // The files on disk: saving, loading and moving them, and where they are.

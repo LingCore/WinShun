@@ -33,6 +33,10 @@ struct Favorite {
     QString command; // Command only: executable and arguments; {query} is one quoted argument
     QString workingDirectory; // Command only, optional
     QString icon; // Command only: a normalized PNG data URL; empty: the program's icon
+    // Command only (GitHub #112): no console window for a console program, a
+    // script or a .bat (a GUI program is shown as ever); and as administrator.
+    bool silent = false;
+    bool runAsAdmin = false;
 
     bool isFileOrFolder() const noexcept { return kind == Kind::Folder || kind == Kind::File; }
     friend bool operator==(const Favorite&, const Favorite&) = default;

@@ -6,6 +6,7 @@
 #include <array>
 #include <atomic>
 #include <cstring>
+#include <optional>
 #include <unordered_map>
 
 namespace ws {
@@ -424,6 +425,19 @@ private:
     std::array<Slot, 4096> m_cache {};
 };
 
+// The hits in the folder typed in first (NameSearchOptions::insideFirst),
+// then the others, each part in `order`: one key more in front of it, so the
+// slices' heaps and their merge keep the best of the folder's own first.
+template <typename Order> struct InsideFirst {
+    Order order;
+    bool operator()(const NameHit& a, const NameHit& b) const noexcept
+    {
+        if (a.inside != b.inside)
+            return a.inside;
+        return order(a, b);
+    }
+};
+
 // `makeOrder(index)`: the order for one slice (or the merge), made anew each
 // time (PathOrder keeps a slice's folder paths).
 template <typename MakeOrder>
@@ -448,6 +462,10 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
     std::vector<std::vector<NameHit>> partialFolders(apart ? slices : 0);
     std::atomic<std::size_t> total {0};
     std::atomic<bool> cancelled {false};
+    // The folder typed in (insideFirst), for UnderAny: one, so its test is a
+    // compare per folder up the way, remembered by parent as for the filter.
+    const std::vector<EntryId> insideOf
+        = options.insideFirst == kNoEntry ? std::vector<EntryId>() : std::vector<EntryId> {options.insideFirst};
 
     NameBits* names = nullptr;
     if (matcher.filtersNames()) {
@@ -477,6 +495,10 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
         TopHits<decltype(order)> folders(apart ? limit : 0, order);
         NameMatcher::Folders seen;
         UnderAny under(index, filter.folders);
+        // Each slice its own, as `under`: their caches are written as they are asked.
+        std::optional<UnderAny> inside;
+        if (!insideOf.empty())
+            inside.emplace(index, insideOf);
         std::size_t matches = 0;
         for (std::size_t i = 0; i < count; ++i) {
             const Entry& e = entries[i];
@@ -495,7 +517,7 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
                 continue;
             if (!filter.folders.empty() && !under(e))
                 continue;
-            int score = matcher.match(index, e, seen);
+            int score = matcher.match(index, e, seen, id);
             if (score < 0)
                 continue;
             ++matches;
@@ -506,9 +528,22 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
             if (prefer && !e.isDir())
                 score += preferredBonus(index, e, matcher, options.preferred);
             TopHits<decltype(order)>& heap = apart && e.isDir() ? folders : top;
-            NameHit hit {id, score, modified > options.trustedUntil ? FileTime {0} : modified, size};
+            // Asked first as if it were in the folder typed in (InsideFirst
+            // puts those first), so its parents are walked only for hits
+            // that could still make the list; one found elsewhere is asked
+            // again before its depth is counted (another walk up).
+            NameHit hit {.id = id,
+                .score = score,
+                .modified = modified > options.trustedUntil ? FileTime {0} : modified,
+                .inside = inside.has_value(),
+                .size = size};
             if (!heap.mayAccept(hit))
                 continue;
+            if (inside) {
+                hit.inside = (*inside)(e);
+                if (!hit.inside && !heap.mayAccept(hit))
+                    continue;
+            }
             hit.score -= std::min(index.depth(id), 12);
             heap.push(hit);
         }
@@ -543,6 +578,19 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
     }
     output.totalMatches = total.load();
     return output;
+}
+
+// search() in `makeOrder`'s order, or with the hits in the folder typed in
+// first (insideFirst): each order is made both ways, so that a search
+// without one costs nothing more than before.
+template <typename MakeOrder>
+NameSearchOutput searchIn(const FileIndex& index, const NameMatcher& matcher, const NameSearchOptions& options,
+    WorkerPool& pool, const std::function<bool()>& isCancelled, MakeOrder&& makeOrder)
+{
+    if (options.insideFirst == kNoEntry)
+        return search(index, matcher, options, pool, isCancelled, makeOrder);
+    return search(index, matcher, options, pool, isCancelled,
+        [&makeOrder](const FileIndex& i) { return InsideFirst<decltype(makeOrder(i))> {makeOrder(i)}; });
 }
 
 } // namespace
@@ -601,38 +649,38 @@ NameSearchOutput searchNames(const FileIndex& index, const NameMatcher& matcher,
     const bool down = options.order.descending;
     switch (options.order.key) {
     case SortKey::Name:
-        return search(index, matcher, options, pool, isCancelled, [down](const FileIndex& i) { return NameOrder {i, down}; });
+        return searchIn(index, matcher, options, pool, isCancelled, [down](const FileIndex& i) { return NameOrder {i, down}; });
     case SortKey::Path: {
         const std::vector<std::uint32_t> ranks = folderRanks(index);
-        return search(index, matcher, options, pool, isCancelled,
+        return searchIn(index, matcher, options, pool, isCancelled,
             [down, &ranks](const FileIndex& i) { return PathOrder {i, ranks, down}; });
     }
     case SortKey::Type:
-        return search(index, matcher, options, pool, isCancelled, [down](const FileIndex& i) { return TypeOrder {i, down}; });
+        return searchIn(index, matcher, options, pool, isCancelled, [down](const FileIndex& i) { return TypeOrder {i, down}; });
     case SortKey::Created:
-        return search(index, matcher, options, pool, isCancelled, [down](const FileIndex& i) { return CreatedOrder {i, down}; });
+        return searchIn(index, matcher, options, pool, isCancelled, [down](const FileIndex& i) { return CreatedOrder {i, down}; });
     case SortKey::Folder:
-        return search(index, matcher, options, pool, isCancelled, [down](const FileIndex& i) { return FolderOrder {i, down}; });
+        return searchIn(index, matcher, options, pool, isCancelled, [down](const FileIndex& i) { return FolderOrder {i, down}; });
     case SortKey::Source:
-        return search(index, matcher, options, pool, isCancelled, [down](const FileIndex& i) { return NameOrder {i, down}; });
+        return searchIn(index, matcher, options, pool, isCancelled, [down](const FileIndex& i) { return NameOrder {i, down}; });
     case SortKey::Size:
-        return search(index, matcher, options, pool, isCancelled, [down](const FileIndex&) { return SizeOrder {down}; });
+        return searchIn(index, matcher, options, pool, isCancelled, [down](const FileIndex&) { return SizeOrder {down}; });
     case SortKey::Modified:
         if (down)
-            return search(index, matcher, options, pool, isCancelled, [](const FileIndex&) { return RankOrder<RankBy::Newest> {}; });
-        return search(index, matcher, options, pool, isCancelled, [](const FileIndex&) { return RankOrder<RankBy::Oldest> {}; });
+            return searchIn(index, matcher, options, pool, isCancelled, [](const FileIndex&) { return RankOrder<RankBy::Newest> {}; });
+        return searchIn(index, matcher, options, pool, isCancelled, [](const FileIndex&) { return RankOrder<RankBy::Oldest> {}; });
     case SortKey::Rank:
         break;
     }
     switch (options.rankBy) {
     case RankBy::Newest:
-        return search(index, matcher, options, pool, isCancelled, [](const FileIndex&) { return RankOrder<RankBy::Newest> {}; });
+        return searchIn(index, matcher, options, pool, isCancelled, [](const FileIndex&) { return RankOrder<RankBy::Newest> {}; });
     case RankBy::Oldest:
-        return search(index, matcher, options, pool, isCancelled, [](const FileIndex&) { return RankOrder<RankBy::Oldest> {}; });
+        return searchIn(index, matcher, options, pool, isCancelled, [](const FileIndex&) { return RankOrder<RankBy::Oldest> {}; });
     case RankBy::Match:
         break;
     }
-    return search(index, matcher, options, pool, isCancelled, [](const FileIndex&) { return RankOrder<RankBy::Match> {}; });
+    return searchIn(index, matcher, options, pool, isCancelled, [](const FileIndex&) { return RankOrder<RankBy::Match> {}; });
 }
 
 namespace {
@@ -754,6 +802,8 @@ NewestOutput newestFiles(const FileIndex& index, const NewestOptions& options, W
                         [&](const std::string& x) { return text::equalsFolded(ext, x); }))
                     continue;
             }
+            if (!options.excludedFileNames.empty() && nameMatchesAny(name, options.excludedFileNames))
+                continue;
             if (isWorkFile(name, false) || outputs.contains(e.parent))
                 continue;
             top.push({id, 0, modified});

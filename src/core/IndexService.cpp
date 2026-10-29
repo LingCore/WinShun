@@ -649,6 +649,7 @@ IndexService::IndexService(QString folder, Options options, QObject* parent)
     resetFolderStatuses();
     m_index.store(std::make_shared<FileIndex>());
     m_content = std::make_shared<ContentIndex>(indexfolder::contentPath(m_folder));
+    m_contentShares.store(contentSharesOf(m_options.shares));
     ContentIndexer::Source source;
     source.index = [this] { return m_index.load(); };
     source.volumes = [this] { return contentVolumes(); };
@@ -665,14 +666,39 @@ IndexService::IndexService(QString folder, Options options, QObject* parent)
     shareSource.ready = [this] { return state() == State::Ready && m_volumesKnown.load(); };
     ShareIndexer::Callbacks shareCallbacks;
     shareCallbacks.changed = [this] {
+        if (m_shareContent)
+            m_shareContent->statusesChanged(); // a share Online now, or no longer: it reads, or stops
         QMetaObject::invokeMethod(this, [this] { emit sharesChanged(); }, Qt::QueuedConnection);
     };
     shareCallbacks.dirty = [this] { m_dirty = true; };
+    shareCallbacks.filesChanged = [this](const std::wstring& path) {
+        if (m_shareContent)
+            m_shareContent->wake(path); // names or sizes came in: that share's files may want reading
+    };
     shareCallbacks.reading = [this](const std::wstring& path, bool reading) {
         setReading(path, reading);
         notifyLater();
     };
     m_shares = std::make_unique<ShareIndexer>(std::move(shareSource), m_options.shares, std::move(shareCallbacks));
+
+    // Their contents, where they are indexed (GitHub #114): read while the
+    // share is Online, on threads of their own.
+    remotecontent::Indexer::Source contentSource;
+    contentSource.index = [this] { return m_index.load(); };
+    contentSource.indexer = m_contentIndexer.get();
+    contentSource.online = [this](const std::wstring& path) {
+        const std::vector<ShareIndexer::Status> statuses = m_shares->statuses();
+        return std::ranges::any_of(statuses, [&](const ShareIndexer::Status& s) {
+            return s.state == ShareIndexer::State::Online && unc::equal(s.path, path);
+        });
+    };
+    remotecontent::Indexer::Callbacks contentCallbacks;
+    contentCallbacks.changed = [this] {
+        QMetaObject::invokeMethod(this, [this] { emit sharesChanged(); }, Qt::QueuedConnection);
+    };
+    contentCallbacks.dirty = [this] { m_dirty = true; };
+    m_shareContent = std::make_unique<remotecontent::Indexer>(std::move(contentSource), std::move(contentCallbacks));
+    m_shareContent->setShares(*m_contentShares.load());
 
     m_saveTimer.setInterval(kSaveCheck);
     connect(&m_saveTimer, &QTimer::timeout, this, &IndexService::saveInBackground);
@@ -731,6 +757,7 @@ void IndexService::start()
     m_accessDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(m_options.accessWaitMs);
     launch(Pass::Startup);
     m_shares->start();
+    m_shareContent->start();
     m_saveTimer.start();
     m_verifyTimer.start();
     m_prewarmer = std::jthread([this](std::stop_token stop) { prewarmLoop(stop); });
@@ -752,10 +779,17 @@ void IndexService::setOptions(Options options)
     if (!(options.content == m_options.content)) {
         m_options.content = options.content;
         m_contentIndexer->setOptions(std::move(options.content));
+        m_shareContent->wake(); // turned on, other types or limits: shares' files to read
     }
     if (!(options.shares == m_options.shares)) {
         m_options.shares = options.shares;
+        auto content = contentSharesOf(m_options.shares);
+        const bool contentChanged = *content != *m_contentShares.load();
+        m_contentShares.store(std::move(content));
         m_shares->setOptions(std::move(options.shares)); // the local disks carry on
+        m_shareContent->setShares(*m_contentShares.load());
+        if (contentChanged) // a share's contents turned on or off: read, or let go at once (not 2 minutes later)
+            m_contentIndexer->volumesChanged();
     }
     m_options.folderVerifyEvery = options.folderVerifyEvery; // the next look at what is due goes by it
     const bool rulesChanged = !(options.rules == m_options.rules);
@@ -1062,10 +1096,12 @@ void IndexService::shutdown()
     }
     m_contentIndexer->stop();
     // Network shares stop where they are but are waited for only after the
-    // save: one may be waiting on a server that went away, and at the end of
-    // the session Windows gives us only seconds. Saving with them still
-    // running is what the periodic save does anyway.
+    // save: a pass may be waiting on a server that went away, and at the end
+    // of the session Windows gives us only seconds. Saving with them still
+    // running is what the periodic save does anyway. Their contents' threads
+    // wait for no server (a file being read is let go of: remotecontent::readFile).
     m_shares->requestStop();
+    m_shareContent->requestStop(); // the indexer takes nothing more from them (stop() above)
     stopWorker();
     m_watcher.reset();
     if (m_pendingSave.valid())
@@ -1074,6 +1110,7 @@ void IndexService::shutdown()
         m_dirty = true;
     if (m_dirty)
         saveSnapshot();
+    m_shareContent->stop();
     m_shares->stop();
 }
 
@@ -2601,14 +2638,42 @@ void IndexService::contentUnsureOf(const std::wstring& root)
     });
 }
 
+std::shared_ptr<const std::vector<std::wstring>> IndexService::contentSharesOf(const ShareIndexer::Options& shares)
+{
+    auto out = std::make_shared<std::vector<std::wstring>>();
+    for (const ShareConfig& s : shares.shares) {
+        if (s.content)
+            out->push_back(s.path);
+    }
+    return out;
+}
+
 std::vector<ContentIndexer::Volume> IndexService::contentVolumes() const
 {
+    // The shares whose contents are indexed (GitHub #114), as configured
+    // (ContentIndexer matches them to their roots with unc::equal): always
+    // there, so that their documents are kept; suspended but while read and
+    // followed (offline, read again, not known yet after the start). Asked
+    // before the journal mutex is taken: the share indexer has one of its own.
+    std::vector<ContentIndexer::Volume> shares;
+    if (const auto content = m_contentShares.load(); content && !content->empty()) {
+        const std::vector<ShareIndexer::Status> statuses = m_shares ? m_shares->statuses() : std::vector<ShareIndexer::Status> {};
+        for (const std::wstring& path : *content) {
+            const auto it = std::ranges::find_if(statuses, [&](const ShareIndexer::Status& s) { return unc::equal(s.path, path); });
+            ContentIndexer::Volume v;
+            v.root = toUtf8(path);
+            v.suspended = it == statuses.end() || it->state != ShareIndexer::State::Online;
+            v.remote = true;
+            shares.push_back(std::move(v));
+        }
+    }
     std::lock_guard lock(m_journalMutex);
     std::vector<ContentIndexer::Volume> out;
     for (std::size_t i = 0; i < m_volumes.size() && i < m_journals.size(); ++i) {
         if (m_journals[i].journalId != 0)
             out.push_back({toUtf8(m_volumes[i].root), contains(m_suspended, m_volumes[i].root), m_volumes[i].serial});
     }
+    out.insert(out.end(), std::make_move_iterator(shares.begin()), std::make_move_iterator(shares.end()));
     return out;
 }
 

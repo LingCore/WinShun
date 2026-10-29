@@ -24,7 +24,7 @@ namespace ws {
 namespace {
 
 constexpr auto kFileFormat = "winshun-favorites";
-constexpr int kFileVersion = 3;
+constexpr int kFileVersion = 4;
 constexpr qint64 kMaxFile = 16 << 20;
 
 QString kindName(Favorite::Kind kind)
@@ -94,6 +94,8 @@ std::optional<Favorite> favoriteOf(const SearchResult& row)
         f.command = row.target;
         f.workingDirectory = row.workingDirectory;
         f.icon = row.icon;
+        f.silent = row.silent;
+        f.runAsAdmin = row.runAsAdmin;
     } else if (row.isPlace())
         f.kind = Favorite::Kind::Place;
     else if (row.isApp())
@@ -226,8 +228,15 @@ QByteArray writeFavoritesFile(const FavoriteList& favorites)
             version = std::max(version, 2);
             entry.insert(u"command"_s, f.command);
             entry.insert(u"workingDirectory"_s, f.workingDirectory);
-            if (!f.icon.isEmpty()) {
+            if (f.silent || f.runAsAdmin) { // version 4: an older copy would drop them on its next save
                 version = kFileVersion;
+                if (f.silent)
+                    entry.insert(u"silent"_s, true);
+                if (f.runAsAdmin)
+                    entry.insert(u"admin"_s, true);
+            }
+            if (!f.icon.isEmpty()) {
+                version = std::max(version, 3);
                 entry.insert(u"icon"_s, f.icon);
             }
         }
@@ -270,6 +279,8 @@ std::optional<FavoritesFile> readFavoritesFile(QByteArrayView json, bool* newer)
             f.command = entry.value(u"command"_s).toString().trimmed();
             f.workingDirectory = entry.value(u"workingDirectory"_s).toString().trimmed();
             f.icon = entry.value(u"icon"_s).toString();
+            f.silent = entry.value(u"silent"_s).toBool();
+            f.runAsAdmin = entry.value(u"admin"_s).toBool();
             if (!f.icon.isEmpty() && favoriteIconPng(f.icon).isEmpty()) {
                 f.icon.clear();
                 ++result.badIcons;

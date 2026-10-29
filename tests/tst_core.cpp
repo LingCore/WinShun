@@ -14,9 +14,16 @@
 #include "DoubleTapDetector.h"
 #include "Extract.h"
 #include "GameGuard.h"
+#include "JournalBudget.h"
+#include "KeyListenerProtocol.h"
+#include "KeyPresses.h"
+#include "ShortcutAgain.h"
+#include "TapTeller.h"
 #include "FileIndex.h"
 #include "FileText.h"
 #include "History.h"
+#include "HotkeySteps.h"
+#include "PasteKeys.h"
 #include "IndexFolder.h"
 #include "IndexService.h"
 #include "NameSearch.h"
@@ -34,6 +41,7 @@
 #include "SettingsMatch.h"
 #include "ShareIndexer.h"
 #include "ShareLister.h"
+#include "ShareReach.h"
 #include "Snapshot.h"
 #include "SwitchCommand.h"
 #include "SystemCatalog.h"
@@ -60,15 +68,22 @@
 #include <QTemporaryDir>
 #include <QTest>
 
+#include <winsock2.h>
+#include <ws2tcpip.h>
+
 #include <windows.h>
 #include <sddl.h>
 #include <winioctl.h>
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
+#include <deque>
+#include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <numeric>
@@ -763,6 +778,440 @@ bool resaveSnapshot(const QString& store, const std::function<void(snapshot::Con
     const auto lock = contents->index->readLock();
     return snapshot::save(*contents->index, contents->volumes, contents->journals, *contents->rules, path);
 }
+
+// A hold (searchtyping::Hold) played out the way platform/TypeToSearch drives
+// it: the input queue, where each key goes down the hook chain alone and
+// SendInput's keys queue up behind the ones already waiting; the hook
+// (Hold::key, then Hold::went once a key got to the window, and ownPassed);
+// the message that the keys typed again went by, handled once the keys
+// waiting have gone; the timer; and the window in front: every key that got
+// there, in order.
+class HoldRun {
+public:
+    using Hold = searchtyping::Hold;
+    struct Key {
+        unsigned vk = 0;
+        unsigned scanCode = 0;
+        bool press = true;
+        bool own = false;
+        bool extended = false;
+    };
+
+    Hold hold;
+    Hold::Front front {.ours = true, .sourceFocused = true};
+    std::uint32_t now = 10'000; // GetTickCount
+    std::uint32_t startedAt = 0;
+    std::vector<Key> window; // what got to the window in front
+    std::vector<std::vector<searchtyping::Stroke>> batches; // every Step's keys sent
+    bool ended = false;
+    std::uint32_t endedAt = 0;
+    int asksAgain = 0;
+    int masksNow = 0; // masks the hook sent at once (Take::YesMask)
+    bool looking = false; // the front looked at again shortly
+    std::optional<unsigned> timer; // armed: ms after timerFrom
+    std::uint32_t timerFrom = 0;
+    std::optional<std::size_t> nextSendPutsIn; // the next SendInput puts in only this many
+    std::function<bool(const Key&)> takenLater; // a hook after this one takes the key
+    std::function<bool(const Key&)> lostOnTheWay; // ... a hook before it: never seen here, nor in the window
+    // What a key types with AltGr: the layout's character (the platform asks ToUnicodeEx).
+    std::function<std::u16string(unsigned vk)> altGr = [](unsigned) { return std::u16string(); };
+
+    static unsigned scanOf(unsigned vk)
+    {
+        switch (vk) {
+        case searchtyping::kVkLShift:
+            return 0x2A;
+        case searchtyping::kVkRShift:
+            return searchtyping::kRightShiftScan;
+        case searchtyping::kVkCapital:
+            return 0x3A;
+        case searchtyping::kVkLControl:
+            return 0x1D;
+        case searchtyping::kVkRMenu:
+        case searchtyping::kVkLMenu:
+            return 0x38;
+        default:
+            return vk; // letters: distinct, and none of the above
+        }
+    }
+
+    // A key that got to the window before the hold (Shift held down already).
+    void before(unsigned vk, bool press) { window.push_back({vk, scanOf(vk), press}); }
+    // The first key, taken where the hook starts a hold.
+    void start(unsigned vk, bool forFolder = false, searchtyping::Shifts shifts = {})
+    {
+        startedAt = now;
+        apply(hold.begin(forFolder, shifts, now));
+        hook({vk, scanOf(vk), true});
+        run();
+    }
+    void press(unsigned vk, unsigned scanCode = 0, bool extended = false)
+    {
+        m_queue.push_back({vk, scanCode ? scanCode : scanOf(vk), true, false, extended});
+    }
+    void release(unsigned vk, unsigned scanCode = 0, bool extended = false)
+    {
+        m_queue.push_back({vk, scanCode ? scanCode : scanOf(vk), false, false, extended});
+    }
+    void tap(unsigned vk)
+    {
+        press(vk);
+        release(vk);
+    }
+    // Letters pressed and let go, one after another (Shift as it is).
+    void letters(const char* text)
+    {
+        for (; *text; ++text)
+            tap(static_cast<unsigned>(std::toupper(static_cast<unsigned char>(*text))));
+    }
+    // AltGr down (the left Ctrl Windows makes up, then the right Alt) or up.
+    void altGrKey(bool down)
+    {
+        const Key ctrl {searchtyping::kVkLControl, 0x1D | searchtyping::kSimulatedScan, down};
+        const Key alt {searchtyping::kVkRMenu, 0x38, down, false, true};
+        m_queue.push_back(down ? ctrl : alt);
+        m_queue.push_back(down ? alt : ctrl);
+    }
+    // The user's keys queued now come in right after the `n`-th of Win顺's
+    // keys from now has gone by (among a batch typed again).
+    void during(int n)
+    {
+        while (!m_queue.empty()) {
+            m_among.emplace(m_ownSeen + n, m_queue.front());
+            m_queue.pop_front();
+        }
+    }
+
+    // Everything queued goes down the chain, then the posted message (unless
+    // postponed: the test changes what is in front first, passedNow).
+    void run()
+    {
+        while (!m_queue.empty()) {
+            const Key key = m_queue.front();
+            m_queue.pop_front();
+            hook(key);
+        }
+        if (!postponePassed)
+            passedNow();
+    }
+    bool postponePassed = false;
+    void passedNow()
+    {
+        if (std::exchange(m_passed, false)) {
+            apply(hold.passed(front, now));
+            run();
+        }
+    }
+    void deliver(bool ready = true)
+    {
+        apply(hold.deliver(ready, front, now));
+        run();
+    }
+    void giveBack()
+    {
+        apply(hold.giveBack(front, now));
+        run();
+    }
+    void lookAgainAt(unsigned msSinceStart)
+    {
+        now = startedAt + msSinceStart;
+        apply(hold.lookAgain(front, now));
+        run();
+    }
+    // Win顺 lets go of the hold (TypeToSearch goes); the hook goes with it.
+    void stop()
+    {
+        apply(hold.stop());
+        run();
+    }
+    // The timer comes when due.
+    void fire()
+    {
+        if (!timer)
+            return;
+        now = timerFrom + *timer;
+        timer.reset();
+        apply(hold.timeout(front, now));
+        run();
+    }
+
+    searchtyping::Shifts windowShift() const
+    {
+        searchtyping::Shifts shift;
+        for (const Key& key : window)
+            shift.seen(key.vk, key.press);
+        return shift;
+    }
+    // What the window typed: letters with Shift and Caps Lock as it had them
+    // at each, characters as they are, other keys as <vk>.
+    QString typed() const
+    {
+        searchtyping::Shifts shift;
+        bool capsLock = false;
+        QString text;
+        for (const Key& key : window) {
+            if (searchtyping::isShift(key.vk)) {
+                shift.seen(key.vk, key.press);
+            } else if (!key.press || key.vk == kMaskKey || searchtyping::isModifier(key.vk)) {
+                if (key.press && key.vk == searchtyping::kVkCapital)
+                    capsLock = !capsLock;
+            } else if (key.vk == searchtyping::kVkPacket) {
+                text += QChar(static_cast<char16_t>(key.scanCode));
+            } else if (key.vk >= 'A' && key.vk <= 'Z') {
+                text += QChar(static_cast<char16_t>(shift.any() != capsLock ? key.vk : key.vk + 0x20));
+            } else {
+                text += u'<' + QString::number(key.vk, 16) + u'>';
+            }
+        }
+        return text;
+    }
+    // Shift pressed and let go with no other key pressed between, as the window saw it.
+    int taps() const
+    {
+        searchtyping::Shifts shift;
+        bool alone = false;
+        int taps = 0;
+        for (const Key& key : window) {
+            if (searchtyping::isShift(key.vk)) {
+                const bool wasDown = key.vk == searchtyping::kVkRShift ? shift.right : shift.left;
+                if (key.press && !wasDown)
+                    alone = true;
+                else if (!key.press && alone)
+                    ++taps, alone = false;
+                shift.seen(key.vk, key.press);
+            } else if (key.press) {
+                alone = false;
+            }
+        }
+        return taps;
+    }
+    // Keys other than Shift the window still has down, as <vk>.
+    QString stuck() const
+    {
+        std::set<unsigned> down;
+        for (const Key& key : window) {
+            if (searchtyping::isShift(key.vk) || key.vk == searchtyping::kVkPacket)
+                continue;
+            if (key.press)
+                down.insert(key.vk);
+            else
+                down.erase(key.vk);
+        }
+        QString text;
+        for (const unsigned vk : down)
+            text += u'<' + QString::number(vk, 16) + u'>';
+        return text;
+    }
+    // The keys the window got, by name: "A+ LShift- mask+ char(ż)+ <24>-".
+    QString trace() const
+    {
+        QStringList names;
+        for (const Key& key : window) {
+            QString name;
+            switch (key.vk) {
+            case searchtyping::kVkLShift:
+                name = u"LShift"_s;
+                break;
+            case searchtyping::kVkRShift:
+                name = u"RShift"_s;
+                break;
+            case searchtyping::kVkLControl:
+                name = (key.scanCode & searchtyping::kSimulatedScan) ? u"AltGrCtrl"_s : u"LCtrl"_s;
+                break;
+            case searchtyping::kVkRMenu:
+                name = u"RAlt"_s;
+                break;
+            case searchtyping::kVkCapital:
+                name = u"Caps"_s;
+                break;
+            case kMaskKey:
+                name = u"mask"_s;
+                break;
+            case searchtyping::kVkPacket:
+                name = u"char("_s + QChar(static_cast<char16_t>(key.scanCode)) + u')';
+                break;
+            default:
+                name = key.vk >= 'A' && key.vk <= 'Z' ? QString(QChar(static_cast<char16_t>(key.vk)))
+                                                      : u'<' + QString::number(key.vk, 16) + u'>';
+                break;
+            }
+            names << name + QLatin1Char(key.press ? '+' : '-');
+        }
+        return names.join(u' ');
+    }
+    // Win顺's own Shift keys sent, all batches.
+    int ownShifts() const
+    {
+        int n = 0;
+        for (const auto& batch : batches)
+            n += static_cast<int>(std::ranges::count_if(batch, [](const auto& s) { return searchtyping::isShift(s.vk); }));
+        return n;
+    }
+
+private:
+    void hook(const Key& key)
+    {
+        if (key.own && lostOnTheWay && lostOnTheWay(key))
+            return;
+        const Hold::KeyEvent event {key.vk, key.scanCode, key.extended, key.press, key.own};
+        if (!key.own && hold.holding()) {
+            const Hold::Take take = hold.key(event,
+                [this](const Hold::KeyEvent& k, searchtyping::Shifts, bool) { return altGr(k.vk); });
+            if (take == Hold::Take::YesMask) {
+                // Sent from the hook: behind the keys of Win顺's already
+                // waiting, ahead of the user's next (they come later).
+                ++masksNow;
+                const auto next = std::ranges::find_if(m_queue, [](const Key& k) { return !k.own; });
+                const Key mask[] {{kMaskKey, 0, true, true}, {kMaskKey, 0, false, true}};
+                m_queue.insert(next, std::begin(mask), std::end(mask));
+            }
+            if (take != Hold::Take::No)
+                return;
+        }
+        const bool got = !(takenLater && takenLater(key));
+        if (got)
+            window.push_back(key);
+        if (key.own && hold.ownPassed(key.vk, !key.press))
+            m_passed = true; // posted: handled once the keys waiting have gone
+        if (got)
+            hold.went(event);
+        if (key.own) {
+            ++m_ownSeen;
+            const auto [from, to] = m_among.equal_range(m_ownSeen);
+            std::vector<Key> next;
+            for (auto it = from; it != to; ++it)
+                next.push_back(it->second);
+            m_among.erase(from, to);
+            for (auto it = next.rbegin(); it != next.rend(); ++it)
+                m_queue.push_front(*it);
+        }
+    }
+    void apply(Hold::Step step)
+    {
+        if (step.askAgain)
+            ++asksAgain;
+        if (step.lookAgain)
+            looking = true;
+        else if (!step.send.empty() || step.ended)
+            looking = false;
+        if (step.timerMs) {
+            timer = step.timerMs;
+            timerFrom = now;
+        }
+        if (!step.send.empty()) {
+            batches.push_back(step.send);
+            const std::size_t putIn = std::min(nextSendPutsIn.value_or(step.send.size()), step.send.size());
+            nextSendPutsIn.reset();
+            for (std::size_t i = 0; i < putIn; ++i) {
+                const searchtyping::Stroke& s = step.send[i];
+                m_queue.push_back({s.vk, s.scanCode, !s.release, true, s.extended});
+            }
+            if (putIn < step.send.size())
+                apply(hold.sent(putIn));
+        }
+        if (step.ended) {
+            ended = true;
+            endedAt = now;
+            timer.reset();
+        }
+    }
+
+    std::deque<Key> m_queue;
+    std::multimap<int, Key> m_among;
+    int m_ownSeen = 0;
+    bool m_passed = false;
+};
+
+// A server on 127.0.0.1 for share::probeAt (GitHub #116), answering each
+// framing of the probe's NEGOTIATE as it is told: in SMB 2 or SMB 1, not at
+// all (the connection kept open, as a proxy in TUN mode does), or by hanging
+// up. On another loopback address (127.0.0.2, in host order) and a given
+// port, for a server with two addresses; port() 0 when that is taken.
+class FakeSmb {
+public:
+    enum class Then : std::uint8_t { Smb2, Smb1, Quiet, HangUp };
+
+    FakeSmb(Then smb1Framing, Then smb2Framing, std::uint32_t address = INADDR_LOOPBACK, std::uint16_t port = 0)
+        : m_smb1Framing(smb1Framing)
+        , m_smb2Framing(smb2Framing)
+    {
+        WSADATA data;
+        ::WSAStartup(MAKEWORD(2, 2), &data);
+        m_listener = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        sockaddr_in at {};
+        at.sin_family = AF_INET;
+        at.sin_addr.s_addr = htonl(address);
+        at.sin_port = htons(port);
+        int length = sizeof at;
+        if (::bind(m_listener, reinterpret_cast<const sockaddr*>(&at), sizeof at) == 0
+            && ::getsockname(m_listener, reinterpret_cast<sockaddr*>(&at), &length) == 0 && ::listen(m_listener, 16) == 0)
+            m_port = ntohs(at.sin_port);
+        m_accepting = std::thread([this] {
+            for (;;) {
+                const SOCKET s = ::accept(m_listener, nullptr, nullptr);
+                if (s == INVALID_SOCKET)
+                    return; // closed: the end
+                std::lock_guard lock(m_mutex);
+                m_open.push_back(s);
+                m_serving.emplace_back([this, s] { serve(s); });
+            }
+        });
+    }
+    ~FakeSmb()
+    {
+        ::closesocket(m_listener);
+        m_accepting.join();
+        for (const SOCKET s : m_open)
+            ::shutdown(s, SD_BOTH); // a quiet one's recv() returns
+        for (std::thread& t : m_serving)
+            t.join();
+        for (const SOCKET s : m_open)
+            ::closesocket(s);
+        ::WSACleanup();
+    }
+    FakeSmb(const FakeSmb&) = delete;
+    FakeSmb& operator=(const FakeSmb&) = delete;
+
+    std::uint16_t port() const { return m_port; }
+    int asked(bool smb2Framing) const { return (smb2Framing ? m_smb2Asked : m_smb1Asked).load(); }
+
+private:
+    void serve(SOCKET s)
+    {
+        unsigned char head[5] {}; // the NetBIOS header, then 0xFF (SMB 1 framing) or 0xFE
+        for (int got = 0; got < 5;) {
+            const int n = ::recv(s, reinterpret_cast<char*>(head) + got, 5 - got, 0);
+            if (n <= 0)
+                return;
+            got += n;
+        }
+        const bool smb2 = head[4] == 0xFE;
+        ++(smb2 ? m_smb2Asked : m_smb1Asked);
+        const Then then = smb2 ? m_smb2Framing : m_smb1Framing;
+        if (then == Then::HangUp) {
+            ::shutdown(s, SD_BOTH);
+            return;
+        }
+        if (then != Then::Quiet) {
+            const unsigned char reply[8] {0, 0, 0, 4, static_cast<unsigned char>(then == Then::Smb2 ? 0xFE : 0xFF), 'S', 'M', 'B'};
+            ::send(s, reinterpret_cast<const char*>(reply), sizeof reply, 0);
+        }
+        char c = 0;
+        while (::recv(s, &c, 1, 0) > 0) {
+        } // until the probe hangs up (or the end)
+    }
+
+    Then m_smb1Framing;
+    Then m_smb2Framing;
+    SOCKET m_listener = INVALID_SOCKET;
+    std::uint16_t m_port = 0;
+    std::thread m_accepting;
+    std::mutex m_mutex;
+    std::vector<SOCKET> m_open;
+    std::vector<std::thread> m_serving;
+    std::atomic<int> m_smb1Asked {0};
+    std::atomic<int> m_smb2Asked {0};
+};
 
 } // namespace
 
@@ -3790,7 +4239,8 @@ private slots:
 
     // With nothing typed the recent items are listed, each looked up on disk:
     // the local ones answer at once, and a share whose server is gone (seconds
-    // to say so) neither holds up the search nor shows up.
+    // to say so) holds up the first search for the one wait only, the next
+    // not at all, and never shows up.
     void recentItemsDoNotWaitForSlowDrives()
     {
         QTemporaryDir dir;
@@ -3799,36 +4249,129 @@ private slots:
         QVERIFY(file.open(QIODevice::WriteOnly));
         file.close();
         const QString gone = QDir::toNativeSeparators(dir.filePath(u"gone.txt"_s));
-        const QString remote = u"\\\\10.255.255.1\\share\\far.txt"_s; // nobody there
+        const QString remote = u"\\\\10.255.255.1\\share\\far.txt"_s; // never answers
 
+        // The share stays silent without the network: one really not there
+        // takes 10-20 s, but for half a minute after any program's lookup
+        // there timed out Windows says "not found" at once, and the slow way
+        // went untried. Its thread never gets to it either, as a busy
+        // computer may run a new thread late (the search after the first
+        // then waited the whole wait again).
+        qputenv("WINSHUN_SILENT_SHARES", "1"); // read as the engine is made
         SearchEngine engine(nullptr);
-        QSignalSpy spy(&engine, &SearchEngine::resultsReady);
+        qunsetenv("WINSHUN_SILENT_SHARES");
+        // Each search's rows queued to this thread, not a QSignalSpy: its
+        // wait() counts from where the spy is when it begins, so a search
+        // done before then (a busy computer) would be waited for 5 s in vain.
+        quint64 asked = 0;
+        std::optional<std::pair<QStringList, qint64>> rows; // and how long the search took
+        QObject receiver;
+        QObject::connect(&engine, &SearchEngine::resultsReady, &receiver,
+            [&](quint64 id, const SearchResults& results, qint64, qint64 elapsedUs) {
+                if (id != asked)
+                    return;
+                QStringList paths;
+                for (const SearchResult& r : results)
+                    paths.append(r.path);
+                rows = {paths, elapsedUs};
+            },
+            Qt::QueuedConnection);
         const auto listed = [&](const QStringList& history, qint64& elapsedUs) {
-            spy.clear();
+            rows.reset();
             SearchEngine::Request request;
             request.history = history;
-            engine.submit(std::move(request));
-            if (!spy.wait(5000))
+            asked = engine.submit(std::move(request));
+            if (!QTest::qWaitFor([&] { return rows.has_value(); }, 5000))
                 return QStringList {u"(no results)"_s};
-            elapsedUs = spy.at(0).at(3).toLongLong();
-            QStringList paths;
-            for (const SearchResult& r : spy.at(0).at(1).value<SearchResults>())
-                paths.append(r.path);
-            return paths;
+            elapsedUs = rows->second;
+            return rows->first;
         };
 
         qint64 us = 0;
+        // The drive's thread running first: a new thread may start too late
+        // for the first look's wait on a busy computer (up to 0.1 s beside 32
+        // busy threads), which is up to Windows.
+        QTRY_COMPARE(listed({here}, us), QStringList {here});
+        // "At once" is under the wait (100 ms), which a search that sat it out
+        // takes at least: the rest is room for a busy computer putting a
+        // thread off (once 42 ms, beside 64 busy threads).
         QCOMPARE(listed({here, gone}, us), QStringList {here});
         qInfo("local only: %lld us", us);
-        QVERIFY2(us < 50'000, qPrintable(QString::number(us)));
+        QVERIFY2(us < 90'000, qPrintable(QString::number(us)));
 
         QCOMPARE(listed({remote, here, gone}, us), QStringList {here});
         qInfo("with the share, first time: %lld us", us);
-        QVERIFY2(us < 400'000, qPrintable(QString::number(us))); // at most the one wait (100 ms)
+        QVERIFY2(us >= 90'000, qPrintable(QString::number(us))); // waited for: it might have answered
+        QVERIFY2(us < 400'000, qPrintable(QString::number(us))); // the one wait (100 ms), room for a busy computer
 
         QCOMPARE(listed({remote, here, gone}, us), QStringList {here});
         qInfo("with the share, again: %lld us", us);
-        QVERIFY2(us < 50'000, qPrintable(QString::number(us))); // slow today: not waited for
+        QVERIFY2(us < 90'000, qPrintable(QString::number(us))); // slow today: not waited for
+    }
+
+    // GitHub #115: a content scan stops at its own pace (the file in hand: a
+    // hard disk spinning up, an antivirus holding it), and the name search
+    // typed meanwhile has its rows at once all the same, not after it.
+    void namesDoNotWaitForContentScans()
+    {
+        QTemporaryDir tree;
+        QTemporaryDir store;
+        const QString docs = QDir::toNativeSeparators(tree.filePath(u"docs"_s));
+        QVERIFY(QDir().mkpath(docs));
+        for (const QString& name : {u"alpha.txt"_s, u"beta.txt"_s}) {
+            QFile file(docs + u'\\' + name);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write("a needle in a haystack");
+        }
+        IndexService service(store.path(), walkedOptions(std::vector {docs.toStdWString()}));
+        service.start();
+        QTRY_VERIFY_WITH_TIMEOUT(allReady(service), 30'000);
+        QVERIFY(indexedIn(service, docs + u"\\beta.txt"_s));
+
+        qputenv("WINSHUN_SLOW_READS", "3000"); // read as the engine is made: each file takes 3 s more
+        auto engine = std::make_unique<SearchEngine>(&service);
+        qunsetenv("WINSHUN_SLOW_READS");
+        quint64 asked = 0;
+        std::optional<QStringList> rows;
+        QObject receiver;
+        QObject::connect(engine.get(), &SearchEngine::resultsReady, &receiver,
+            [&](quint64 id, const SearchResults& results, qint64, qint64) {
+                if (id != asked)
+                    return;
+                QStringList paths;
+                for (const SearchResult& r : results)
+                    paths.append(r.path);
+                rows = paths;
+            },
+            Qt::QueuedConnection);
+
+        SearchEngine::Request content;
+        content.text = u"needle"_s;
+        content.scope = Scope::Content;
+        content.contentExtensions = {u"txt"_s};
+        content.contentFolders = {docs};
+        content.contentThreads = 1;
+        asked = engine->submit(std::move(content));
+        QTRY_VERIFY(rows.has_value()); // the (empty) start of the scan
+        QTest::qWait(300); // in its first file by now
+
+        rows.reset();
+        SearchEngine::Request names;
+        names.text = u"beta"_s;
+        const auto began = std::chrono::steady_clock::now();
+        asked = engine->submit(std::move(names));
+        QTRY_VERIFY_WITH_TIMEOUT(rows.has_value(), 5000);
+        const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - began).count();
+        qInfo("names beside a scan in a slow file: %lld ms", static_cast<long long>(ms));
+        QVERIFY2(ms < 1500, qPrintable(QString::number(ms))); // not once the file is done
+        QVERIFY(rows->contains(docs + u"\\beta.txt"_s));
+
+        // And the scan was in its file all the while: it stops once that is
+        // read (else the names had nothing to wait for).
+        const auto quitting = std::chrono::steady_clock::now();
+        engine.reset();
+        const auto stopping = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - quitting).count();
+        QVERIFY2(stopping > 1000, qPrintable(QString::number(stopping)));
     }
 
     void snapshotRoundTrip()
@@ -5491,6 +6034,835 @@ private slots:
         shares.stop();
     }
 
+    // GitHub #116: a server gone away is probed again after 1, 2, 4, then
+    // every 5 minutes, and Windows itself is asked every quarter of an hour
+    // (the probe can be wrong). Three days of it, at once.
+    void shareRetry()
+    {
+        using namespace std::chrono_literals;
+        using ms = std::chrono::milliseconds;
+        share::Retry retry;
+        QCOMPARE(retry.away(), ms(1min));
+        QCOMPARE(retry.away(), ms(2min));
+        QCOMPARE(retry.away(), ms(4min));
+        QCOMPARE(retry.away(), ms(5min));
+        QCOMPARE(retry.away(), ms(5min));
+        retry.answered(); // the probe answers again, reading fails all the same: soon again
+        QCOMPARE(retry.away(), ms(1min));
+
+        share::Retry r;
+        const auto start = share::Retry::Clock::time_point {} + 1000h;
+        auto t = start;
+        QVERIFY(r.windowsDue(t, false)); // not since it was read: before calling it offline
+        r.askedWindows(t);
+        QVERIFY(!r.windowsDue(t + 1min, false));
+        QVERIFY(r.windowsDue(t + 1min, true)); // 立即核对: at once, whenever
+        auto lastWindows = t;
+        ms longestProbe {0};
+        ms longestWindows {0};
+        int windows = 1;
+        while (t - start < 72h) {
+            const ms wait = r.away();
+            longestProbe = std::max(longestProbe, wait);
+            t += wait;
+            if (r.windowsDue(t, false)) {
+                longestWindows = std::max(longestWindows, std::chrono::duration_cast<ms>(t - lastWindows));
+                r.askedWindows(t);
+                lastWindows = t;
+                ++windows;
+            }
+        }
+        // A server back at any time is seen within 5 minutes by the probe,
+        // within 20 by Windows where the probe cannot see it.
+        QCOMPARE(longestProbe, ms(5min));
+        QVERIFY(longestWindows >= ms(15min) && longestWindows <= ms(20min));
+        QVERIFY(windows >= 72 * 3 && windows <= 72 * 4 + 1);
+        r.read();
+        QVERIFY(r.windowsDue(t, false));
+        QCOMPARE(r.away(), ms(1min));
+
+        // A wait cut short (woken: the network changed, the user asked) does
+        // not make the next one longer.
+        share::Retry woken;
+        QCOMPARE(woken.away(true), ms(1min)); // nothing waited yet
+        QCOMPARE(woken.away(), ms(2min));
+        QCOMPARE(woken.away(true), ms(2min));
+        QCOMPARE(woken.away(true), ms(2min));
+        QCOMPARE(woken.away(), ms(4min));
+        woken.answered();
+        QCOMPARE(woken.away(true), ms(1min));
+        QCOMPARE(share::RetryTimes {}.shown, ms(1s)); // 立即核对 seen to check, however quick the answer
+
+        share::Retry quick({.first = 50ms, .last = 200ms, .windows = 1s, .answer = 300ms, .problem = 2s});
+        QCOMPARE(quick.away(), ms(50));
+        QCOMPARE(quick.away(), ms(100));
+        QCOMPARE(quick.away(), ms(200));
+        QCOMPARE(quick.away(), ms(200));
+    }
+
+    // GitHub #116, the share thread with the network faked (the probe, and
+    // Windows opening the share); what it reads is this computer's own Users
+    // share. Away from the start: offline, tried again by itself. 立即核对
+    // while away: shown at once, answered, Windows asked once for two quick
+    // clicks, a quick answer still shown as checking a moment; why, where
+    // only a server tells. Windows getting there late, or where the probe says no: read,
+    // and it stays online. Away and back: online again by itself. Stopping
+    // while Windows still tries returns at once, the try let go of.
+    void shareIndexerRetries()
+    {
+        using namespace std::chrono_literals;
+        using State = ShareIndexer::State;
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        const QString local = QDir::toNativeSeparators(tmp.path());
+        const QString users = QDir::toNativeSeparators(QDir(qEnvironmentVariable("SystemDrive") + u"/Users"_s).path());
+        if (!local.startsWith(users + u'\\', Qt::CaseInsensitive))
+            QSKIP("the temporary folder is not under C:\\Users");
+        const std::wstring path = L"\\\\localhost\\Users" + local.mid(users.size()).toStdWString();
+        if (!QFileInfo(QString::fromStdWString(path)).isDir())
+            QSKIP("no Users share on this computer");
+        for (const QString& name : {u"a.txt"_s, u"b.txt"_s, u"c.txt"_s}) {
+            QFile f(QDir(tmp.path()).filePath(name));
+            QVERIFY(f.open(QIODevice::WriteOnly));
+        }
+
+        auto index = std::make_shared<FileIndex>();
+        // The network faked; a try of Windows' that stop() lets go of
+        // holds it still.
+        struct Network {
+            std::atomic<bool> probe {false};
+            std::atomic<int> opens {0};
+            std::atomic<int> opened {0}; // tries that have answered
+            std::atomic<unsigned long> openError {ERROR_BAD_NETPATH};
+            std::atomic<int> openMs {0};
+        };
+        const auto network = std::make_shared<Network>();
+        std::atomic<bool>& probe = network->probe;
+        std::atomic<int>& opens = network->opens;
+        std::atomic<unsigned long>& openError = network->openError;
+        std::atomic<int>& openMs = network->openMs;
+        ShareIndexer::Source source {[&] { return index; }, [] { return true; },
+            [network](const std::wstring&, bool) { return network->probe.load(); },
+            [network](const std::wstring&) {
+                ++network->opens;
+                std::this_thread::sleep_for(std::chrono::milliseconds(network->openMs.load()));
+                ++network->opened;
+                return network->openError.load();
+            }};
+        ShareIndexer::Options o;
+        o.shares = {{path, {}}};
+        o.verifyEvery = 0min;
+        o.verifyEveryUnwatched = 0min;
+        o.watch = false;
+        o.retry = {.first = 100ms, .last = 400ms, .windows = 1s, .answer = 300ms, .problem = 2s, .shown = 200ms};
+        std::atomic<int> problems {0}; // times it was found in Problem by `changed`
+        ShareIndexer* self = nullptr;
+        ShareIndexer::Callbacks callbacks;
+        callbacks.changed = [&] {
+            if (self && !self->statuses().empty() && self->statuses().front().state == State::Problem)
+                ++problems;
+        };
+        ShareIndexer shares(source, o, callbacks);
+        self = &shares;
+        const auto status = [&] {
+            const auto all = shares.statuses();
+            return all.empty() ? ShareIndexer::Status {} : all.front();
+        };
+        const auto until = [&](const std::function<bool(const ShareIndexer::Status&)>& done, std::chrono::milliseconds limit) {
+            const auto end = std::chrono::steady_clock::now() + limit;
+            while (std::chrono::steady_clock::now() < end) {
+                if (done(status()))
+                    return true;
+                std::this_thread::sleep_for(10ms);
+            }
+            return done(status());
+        };
+        const auto offline = [](const ShareIndexer::Status& s) { return s.state == State::Problem && !s.checking; };
+
+        // Away from the start: Windows asked before it is called offline, and
+        // again every second (`windows`) while the probe goes on saying no.
+        shares.start();
+        QVERIFY(until(offline, 3s));
+        QCOMPARE(status().problem, share::Problem::Offline);
+        QVERIFY(status().lastAttempt != 0);
+        QCOMPARE(opens.load(), 1);
+        QVERIFY(shares.offline(path + L"\\a.txt"));
+        QVERIFY(until([&](const auto&) { return opens.load() >= 2; }, 3s));
+
+        // 立即核对 while away, clicked twice: shown at once, Windows asked once.
+        openMs = 150;
+        const int before = opens.load();
+        shares.verifyNow(path);
+        QVERIFY(status().checking);
+        shares.verifyNow(path);
+        QVERIFY(until(offline, 2s));
+        QCOMPARE(opens.load(), before + 1);
+        QCOMPARE(status().problem, share::Problem::Offline);
+
+        // Answered at once (Windows says no straight away): still shown as
+        // checking for `shown`, so that the click is seen to do something.
+        openMs = 0;
+        const auto clicked = std::chrono::steady_clock::now();
+        shares.verifyNow(path);
+        QVERIFY(until(offline, 2s));
+        const auto checkingFor = std::chrono::steady_clock::now() - clicked;
+        QVERIFY(checkingFor >= 200ms);
+        QVERIFY(checkingFor < 1s);
+
+        // What Windows says counts where only a server that answered says it
+        // (signing in); a code of its own for a NAS starting up leaves the
+        // share offline, tried again in minutes rather than half an hour.
+        openError = ERROR_NOT_READY; // share::Problem::Other
+        shares.verifyNow(path);
+        QVERIFY(until(offline, 2s));
+        QCOMPARE(status().problem, share::Problem::Offline);
+        QCOMPARE(status().error, static_cast<unsigned long>(ERROR_NOT_READY));
+        openError = ERROR_LOGON_FAILURE;
+        shares.verifyNow(path);
+        QVERIFY(until(offline, 2s));
+        QCOMPARE(status().problem, share::Problem::NeedsSignIn);
+        openError = ERROR_BAD_NETPATH;
+
+        // Windows gets there, after the share thread stopped waiting for it
+        // (`answer`): that wakes the share, and it is read.
+        openMs = 1200;
+        openError = 0;
+        const auto asked = std::chrono::steady_clock::now();
+        shares.verifyNow(path);
+        QVERIFY(until([](const ShareIndexer::Status& s) { return !s.checking; }, 2s));
+        QVERIFY(std::chrono::steady_clock::now() - asked < 900ms); // answered after `answer`, not Windows' time
+        QVERIFY(until([](const ShareIndexer::Status& s) { return s.state == State::Online; }, 5s));
+        QCOMPARE(status().items, std::size_t {3});
+        QVERIFY(!shares.offline(path + L"\\a.txt"));
+
+        // The probe still says no, Windows gets there: it stays online.
+        openMs = 0;
+        problems = 0;
+        for (int i = 0; i < 2; ++i) {
+            shares.verifyNow(path);
+            QVERIFY(until([](const ShareIndexer::Status& s) { return s.state == State::Online && !s.checking; }, 5s));
+        }
+        QCOMPARE(problems.load(), 0);
+
+        // Away for real, then back: online again by itself, within `last`
+        // (and the time a pass takes).
+        openError = ERROR_BAD_NETPATH;
+        shares.verifyNow(path);
+        QVERIFY(until(offline, 2s));
+        QVERIFY(shares.offline(path));
+        probe = true;
+        const auto back = std::chrono::steady_clock::now();
+        QVERIFY(until([](const ShareIndexer::Status& s) { return s.state == State::Online; }, 5s));
+        qInfo("online again %lld ms after the server came back",
+            static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - back).count()));
+
+        // Away again, Windows slow to give up: stopping does not wait for it
+        // (quitting or restarting Win顺 would hang a minute on a server gone
+        // away); the try let go of ends by itself and leaves the share be.
+        probe = false;
+        openMs = 1500;
+        const int tried = opens.load();
+        shares.verifyNow(path);
+        QVERIFY(until(offline, 2s));
+        QVERIFY(opens.load() > tried);
+        QVERIFY(network->opened.load() < opens.load()); // Windows still trying
+        const auto stopping = std::chrono::steady_clock::now();
+        shares.stop();
+        const auto stopTook = std::chrono::steady_clock::now() - stopping;
+        QVERIFY2(stopTook < 500ms,
+            qPrintable(QString::number(std::chrono::duration_cast<std::chrono::milliseconds>(stopTook).count())));
+        self = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT(network->opened.load() == network->opens.load(), 5000);
+    }
+
+    // GitHub #116: the probe said no where Windows got there.
+    void shareProbeRace()
+    {
+        using namespace std::chrono_literals;
+        using A = share::Answer;
+        using Then = FakeSmb::Then;
+        const auto timed = [](const std::function<A()>& ask) {
+            const auto from = std::chrono::steady_clock::now();
+            const A answer = ask();
+            return std::pair {answer,
+                std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - from)};
+        };
+        const auto ms = [](std::chrono::milliseconds d) { return QByteArray::number(static_cast<qint64>(d.count())) + " ms"; };
+        {
+            FakeSmb server(Then::Smb2, Then::Smb2);
+            QVERIFY(server.port() != 0);
+            const auto [answer, took] = timed([&] { return share::probeAt({L"127.0.0.1"}, server.port(), 1500ms); });
+            QCOMPARE(answer, A::Smb2);
+            QVERIFY2(took < 500ms, ms(took).constData());
+        }
+        {
+            // A first address that never answers (one the NAS no longer has
+            // after a restart, an IPv6 one it does not listen on; behind a
+            // TUN proxy, any): before, asked one after the other, it took all
+            // the time and the next was never asked. Here one that takes the
+            // connection and says nothing, the server on a second address.
+            std::unique_ptr<FakeSmb> quiet;
+            std::unique_ptr<FakeSmb> server;
+            for (int i = 0; i < 5 && !(server && server->port() != 0); ++i) {
+                server.reset();
+                quiet = std::make_unique<FakeSmb>(Then::Quiet, Then::Quiet);
+                server = std::make_unique<FakeSmb>(Then::Smb2, Then::Smb2, 0x7F000002, quiet->port()); // 127.0.0.2
+            }
+            QVERIFY(quiet->port() != 0 && server->port() == quiet->port());
+            const auto [answer, took] = timed([&] { return share::probeAt({L"127.0.0.1", L"127.0.0.2"}, server->port(), 3000ms); });
+            QCOMPARE(answer, A::Smb2);
+            QVERIFY2(took < 300ms, ms(took).constData()); // not after the quiet one's silence (400 ms)
+        }
+        {
+            // Quiet to SMB 1 framing, answering SMB 2: asked in SMB 2 after a
+            // moment's silence, not only once hung up on.
+            FakeSmb server(Then::Quiet, Then::Smb2);
+            const auto [answer, took] = timed([&] { return share::probeAt({L"127.0.0.1"}, server.port(), 3000ms); });
+            QCOMPARE(answer, A::Smb2);
+            QVERIFY2(took >= 400ms && took < 1500ms, ms(took).constData());
+            QCOMPARE(server.asked(true), 1);
+        }
+        {
+            FakeSmb server(Then::HangUp, Then::Smb2); // hangs up on SMB 1 framing: SMB 2 at once
+            const auto [answer, took] = timed([&] { return share::probeAt({L"127.0.0.1"}, server.port(), 3000ms); });
+            QCOMPARE(answer, A::Smb2);
+            QVERIFY2(took < 400ms, ms(took).constData());
+        }
+        {
+            FakeSmb server(Then::Smb1, Then::HangUp); // an old one
+            QCOMPARE(share::probeAt({L"127.0.0.1"}, server.port(), 1500ms), A::Smb1Only);
+        }
+        {
+            // Takes the connection and says nothing, in either framing (a
+            // proxy in TUN mode with no server behind it): not a server.
+            FakeSmb server(Then::Quiet, Then::Quiet);
+            const auto [answer, took] = timed([&] { return share::probeAt({L"127.0.0.1"}, server.port(), 600ms); });
+            QCOMPARE(answer, A::None);
+            QVERIFY2(took >= 550ms && took < 1200ms, ms(took).constData());
+            QCOMPARE(server.asked(false), 1);
+            QCOMPARE(server.asked(true), 1);
+        }
+        std::uint16_t closed = 0;
+        {
+            const FakeSmb gone(Then::Smb2, Then::Smb2);
+            closed = gone.port();
+        }
+        QCOMPARE(share::probeAt({L"127.0.0.1"}, closed, 1500ms), A::None); // nothing listening
+    }
+
+    // GitHub #116: what an action on a file on a server finds, the probe and
+    // Windows asked at once, Windows having the last word.
+    void shareReach()
+    {
+        using namespace std::chrono_literals;
+        using R = share::Reach;
+        using Clock = std::chrono::steady_clock;
+        const auto shown = [](Clock::duration d) {
+            return QByteArray::number(static_cast<qint64>(std::chrono::duration_cast<std::chrono::milliseconds>(d).count()))
+                + " ms";
+        };
+        // Steps answering after `ms`; they own what they hold, as their
+        // threads can outlive reach().
+        const auto probe = [](bool yes, int ms = 0) {
+            return [yes, ms] {
+                std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+                return yes;
+            };
+        };
+        const auto windows = [](unsigned long error, int ms = 0, std::shared_ptr<std::atomic<bool>> done = {}) {
+            return [error, ms, done] {
+                std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+                if (done)
+                    *done = true;
+                return error;
+            };
+        };
+        const auto steps = [](std::function<bool()> p, std::function<unsigned long()> w) {
+            share::ReachSteps s;
+            s.probe = std::move(p);
+            s.windows = std::move(w);
+            return s;
+        };
+        // Answers that come at once are taken at once: none of these waits
+        // for the limit.
+        auto from = Clock::now();
+        // The probe says no, Windows gets there: it opens.
+        QCOMPARE(share::reach(steps(probe(false), windows(0, 50)), 2s), R::There);
+        // Neither: 连不上.
+        QCOMPARE(share::reach(steps(probe(false), windows(ERROR_BAD_NETPATH, 20)), 2s), R::Unreachable);
+        // Windows has the last word, the probe's yes notwithstanding.
+        QCOMPARE(share::reach(steps(probe(true), windows(ERROR_FILE_NOT_FOUND)), 2s), R::Missing);
+        QCOMPARE(share::reach(steps(probe(true), windows(ERROR_BAD_NETPATH, 20)), 2s), R::Unreachable);
+        // Not there: the file, its folder.
+        QCOMPARE(share::reach(steps(probe(true), windows(ERROR_PATH_NOT_FOUND)), 2s), R::Missing);
+        // The share not there now (a NAS starting up, a folder still locked):
+        // not the file gone, nothing is forgotten for it.
+        QCOMPARE(share::reach(steps(probe(false), windows(ERROR_BAD_NET_NAME)), 2s), R::ShareAway);
+        // The server answered, not plainly (kept from this user, signing in):
+        // the action goes on and its own error says why; never "not there".
+        QCOMPARE(share::reach(steps(probe(true), windows(ERROR_ACCESS_DENIED)), 2s), R::There);
+        QCOMPARE(share::reach(steps(probe(false), windows(ERROR_LOGON_FAILURE)), 2s), R::There);
+        // The service Windows needs for it is off (WebClient, for WebDAV).
+        QCOMPARE(share::reach(steps(probe(true), windows(ERROR_SERVICE_DISABLED)), 2s), R::NoService);
+        // No Windows step: the probe decides.
+        QCOMPARE(share::reach(steps(probe(true), {}), 2s), R::There);
+        QCOMPARE(share::reach(steps(probe(false), {}), 2s), R::Unreachable);
+        auto took = Clock::now() - from;
+        QVERIFY2(took < 1s, shown(took).constData());
+        // What Windows' answers mean, by themselves.
+        QCOMPARE(share::reachOf(0), R::There);
+        QCOMPARE(share::reachOf(ERROR_FILE_NOT_FOUND), R::Missing);
+        QCOMPARE(share::reachOf(ERROR_PATH_NOT_FOUND), R::Missing);
+        QCOMPARE(share::reachOf(ERROR_BAD_NET_NAME), R::ShareAway);
+        QCOMPARE(share::reachOf(ERROR_SERVICE_DISABLED), R::NoService);
+        QCOMPARE(share::reachOf(ERROR_ACCESS_DENIED), R::There);
+        QCOMPARE(share::reachOf(ERROR_BAD_NETPATH), R::Unreachable);
+        QCOMPARE(share::reachOf(ERROR_SEM_TIMEOUT), R::Unreachable);
+        QCOMPARE(share::reachOf(ERROR_NETNAME_DELETED), R::Unreachable);
+        QCOMPARE(share::reachOf(ERROR_TIMEOUT), R::Unreachable);
+        QCOMPARE(share::reachOf(ERROR_NO_NET_OR_BAD_PATH), R::Unreachable);
+
+        // Windows quick, the probe slow: Windows' word at once.
+        from = Clock::now();
+        QCOMPARE(share::reach(steps(probe(false, 1500), windows(0, 20)), 300ms), R::There);
+        took = Clock::now() - from;
+        QVERIFY2(took < 200ms, shown(took).constData());
+
+        // Windows slow to give up, the probe saying no: the limit holds, and
+        // what Windows says late is not waited for (its thread ends by itself).
+        auto late = std::make_shared<std::atomic<bool>>(false);
+        from = Clock::now();
+        QCOMPARE(share::reach(steps(probe(false), windows(0, 1500, late)), 300ms), R::Unreachable);
+        took = Clock::now() - from;
+        QVERIFY2(took >= 290ms && took < 500ms, shown(took).constData());
+        QVERIFY(!*late);
+        QTRY_VERIFY_WITH_TIMEOUT(late->load(), 5000);
+        // The probe not back by the limit either (a server gone away, the
+        // probe's own limit longer): Unreachable at the limit, not twice it.
+        late = std::make_shared<std::atomic<bool>>(false);
+        from = Clock::now();
+        QCOMPARE(share::reach(steps(probe(true, 1000), windows(0, 1500, late)), 300ms), R::Unreachable);
+        took = Clock::now() - from;
+        QVERIFY2(took >= 290ms && took < 500ms, shown(took).constData());
+        QTRY_VERIFY_WITH_TIMEOUT(late->load(), 5000);
+        // The probe said yes in time, Windows nothing yet: the server is
+        // there, Windows on its way. Waited for twice the limit, then a
+        // verdict all the same...
+        late = std::make_shared<std::atomic<bool>>(false);
+        from = Clock::now();
+        QCOMPARE(share::reach(steps(probe(true, 100), windows(0, 1500, late)), 300ms), R::Unreachable);
+        took = Clock::now() - from;
+        QVERIFY2(took >= 590ms && took < 800ms, shown(took).constData());
+        QTRY_VERIFY_WITH_TIMEOUT(late->load(), 5000);
+        // ... and what Windows says in that time is taken.
+        from = Clock::now();
+        QCOMPARE(share::reach(steps(probe(true), windows(ERROR_FILE_NOT_FOUND, 450)), 300ms), R::Missing);
+        took = Clock::now() - from;
+        QVERIFY2(took >= 440ms && took < 650ms, shown(took).constData());
+    }
+
+    // GitHub #116 review: an action on a WebDAV file asks Windows too (its
+    // WebClient), as on SMB. The HTTP probe lets through a server that
+    // refuses this user (401, https not signed in to), and that is not the
+    // file gone. With WebClient disabled Windows is not asked: it opens no
+    // WebDAV folder then. GitHub #114: stopped, WebClient is started first
+    // (until then Windows says of any WebDAV folder that it is not there),
+    // and no file is forgotten for what Windows says without it.
+    void shareActionSteps()
+    {
+        using namespace std::chrono_literals;
+        using R = share::Reach;
+        using Clock = std::chrono::steady_clock;
+        const auto shown = [](Clock::duration d) {
+            return QByteArray::number(static_cast<qint64>(std::chrono::duration_cast<std::chrono::milliseconds>(d).count()))
+                + " ms";
+        };
+        const std::wstring dav = L"\\\\127.0.0.1@8714\\DavWWWRoot\\docs\\a.txt";
+        const std::wstring smb = L"\\\\nas\\share\\a.txt";
+        struct Asked {
+            std::atomic<int> windows {0};
+            std::atomic<int> starts {0};
+            std::mutex mutex;
+            std::wstring path; // what Windows was last asked about
+            QByteArray order; // 's' for each start of WebClient, 'w' for each time Windows was asked
+        };
+        const auto asked = std::make_shared<Asked>(); // held by the steps, whose threads can outlive reach()
+        // WebClient running, or stopped and started (or not) in `startMs`;
+        // `runningAfter`: still running once Windows answered.
+        struct Client {
+            bool running = true;
+            bool starts = true;
+            int startMs = 0;
+            bool runningAfter = true;
+        };
+        const auto with = [asked](bool probeYes, unsigned long error, bool clientDisabled, int windowsMs = 0,
+                              Client client = {}) {
+            share::ReachProbes p;
+            p.probe = [probeYes](const std::wstring&, std::chrono::milliseconds) { return probeYes; };
+            p.windows = [asked, error, windowsMs](const std::wstring& path) {
+                ++asked->windows;
+                {
+                    std::lock_guard lock(asked->mutex);
+                    asked->path = path;
+                    asked->order += 'w';
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(windowsMs));
+                return error;
+            };
+            p.webClientDisabled = [clientDisabled] { return clientDisabled; };
+            p.webClientRunning = [client] { return client.runningAfter; };
+            p.startWebClient = [asked, client](std::chrono::milliseconds) {
+                if (client.running)
+                    return true; // as webdav::startClient: nothing to start
+                ++asked->starts;
+                {
+                    std::lock_guard lock(asked->mutex);
+                    asked->order += 's';
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(client.startMs));
+                return client.starts;
+            };
+            return p;
+        };
+        const auto order = [asked] { // and anew
+            std::lock_guard lock(asked->mutex);
+            return std::exchange(asked->order, {});
+        };
+        const auto reach = [](const std::wstring& path, std::chrono::milliseconds wait, share::ReachProbes p) {
+            return share::reach(share::actionSteps(path, wait, std::move(p)), wait);
+        };
+        // The HTTP probe let it through; Windows says: refused (signing in)
+        // goes on, its own error saying why; not there; not got to (a
+        // certificate refused). And where the probe said no, it got there.
+        QCOMPARE(reach(dav, 2s, with(true, ERROR_ACCESS_DENIED, false)), R::There);
+        QCOMPARE(reach(dav, 2s, with(true, ERROR_LOGON_FAILURE, false)), R::There);
+        QCOMPARE(reach(dav, 2s, with(true, ERROR_FILE_NOT_FOUND, false)), R::Missing);
+        QCOMPARE(reach(dav, 2s, with(true, ERROR_BAD_NETPATH, false)), R::Unreachable);
+        QCOMPARE(reach(dav, 2s, with(false, 0, false)), R::There);
+        QCOMPARE(asked->windows.load(), 5);
+        {
+            std::lock_guard lock(asked->mutex);
+            QVERIFY(asked->path == dav);
+        }
+        // WebClient disabled: Windows not asked, NoService at once.
+        auto from = Clock::now();
+        QCOMPARE(reach(dav, 2s, with(true, 0, true)), R::NoService);
+        auto took = Clock::now() - from;
+        QVERIFY2(took < 200ms, shown(took).constData());
+        QCOMPARE(asked->windows.load(), 5);
+        // Nothing to do with SMB.
+        QCOMPARE(reach(smb, 2s, with(false, ERROR_FILE_NOT_FOUND, true)), R::Missing);
+        QCOMPARE(asked->windows.load(), 6);
+        // WebClient slow (its first access can take half a minute): the limit holds.
+        from = Clock::now();
+        QCOMPARE(reach(dav, 300ms, with(false, 0, false, 1500)), R::Unreachable);
+        took = Clock::now() - from;
+        QVERIFY2(took >= 290ms && took < 500ms, shown(took).constData());
+        QCOMPARE(asked->starts.load(), 0); // running all along: nothing started
+        order();
+
+        // WebClient stopped: started, then Windows asked, which has the last word.
+        QCOMPARE(reach(dav, 2s, with(true, 0, false, 0, {.running = false})), R::There);
+        QCOMPARE(order(), QByteArray("sw"));
+        QCOMPARE(reach(dav, 2s, with(true, ERROR_FILE_NOT_FOUND, false, 0, {.running = false})), R::Missing);
+        QCOMPARE(order(), QByteArray("sw"));
+        // Its start taking a while, within the time Windows is waited for.
+        from = Clock::now();
+        QCOMPARE(reach(dav, 2s, with(false, 0, false, 0, {.running = false, .startMs = 400})), R::There);
+        took = Clock::now() - from;
+        QVERIFY2(took >= 390ms && took < 1500ms, shown(took).constData());
+        QCOMPARE(order(), QByteArray("sw"));
+        // Not started (nothing starts it, or not in time): Windows not
+        // asked, the file not forgotten.
+        QCOMPARE(reach(dav, 2s, with(true, ERROR_PATH_NOT_FOUND, false, 0, {.running = false, .starts = false})),
+            R::NoService);
+        QCOMPARE(order(), QByteArray("s"));
+        // Stopped meanwhile: what Windows said is of that, not of the file;
+        // while it runs, a folder not there is just that.
+        QCOMPARE(reach(dav, 2s, with(true, ERROR_PATH_NOT_FOUND, false, 0, {.runningAfter = false})), R::NoService);
+        QCOMPARE(reach(dav, 2s, with(true, ERROR_BAD_NETPATH, false, 0, {.runningAfter = false})), R::NoService);
+        QCOMPARE(reach(dav, 2s, with(true, ERROR_PATH_NOT_FOUND, false)), R::Missing);
+        QCOMPARE(order(), QByteArray("www"));
+        // Disabled: not started. SMB: no WebClient.
+        QCOMPARE(reach(dav, 2s, with(true, 0, true, 0, {.running = false})), R::NoService);
+        QCOMPARE(reach(smb, 2s, with(true, ERROR_PATH_NOT_FOUND, false, 0, {.running = false, .runningAfter = false})),
+            R::Missing);
+        QCOMPARE(order(), QByteArray("w"));
+        QCOMPARE(asked->starts.load(), 4);
+        QCOMPARE(share::reachOf(ERROR_SERVICE_NOT_ACTIVE), R::NoService);
+    }
+
+    // GitHub #116 review: the files of one action, each server asked at
+    // once, under one time limit for all (servers gone away one after the
+    // other added up); a server's first file with the probe and Windows, its
+    // others then with Windows alone, none once it did not answer.
+    void shareCheckFiles()
+    {
+        using namespace std::chrono_literals;
+        using R = share::Reach;
+        using Clock = std::chrono::steady_clock;
+        const auto shown = [](Clock::duration d) {
+            return QByteArray::number(static_cast<qint64>(std::chrono::duration_cast<std::chrono::milliseconds>(d).count()))
+                + " ms";
+        };
+        // Files "server\\name": servers answering after 300 ms ("a", "b",
+        // "c"), one past any limit here ("slow"), one gone away ("dead", said
+        // after 100 ms); "gone" files are not there.
+        struct Log {
+            std::mutex mutex;
+            std::vector<std::wstring> asked; // "first a\\1", "next a\\2"
+        };
+        const auto log = std::make_shared<Log>(); // held by the steps, whose threads can outlive checkFiles()
+        const auto answer = [log](const std::wstring& file, bool first) {
+            {
+                std::lock_guard lock(log->mutex);
+                log->asked.push_back((first ? L"first " : L"next ") + file);
+            }
+            const std::wstring server = file.substr(0, file.find(L'\\'));
+            if (server == L"dead") {
+                std::this_thread::sleep_for(100ms);
+                return R::Unreachable;
+            }
+            std::this_thread::sleep_for(server == L"slow" ? 2000ms : 300ms);
+            return file.find(L"gone") != std::wstring::npos ? R::Missing : R::There;
+        };
+        share::FileSteps steps;
+        steps.server = [](const std::wstring& file) { return file.substr(0, file.find(L'\\')); };
+        steps.first = [answer](const std::wstring& file) { return answer(file, true); };
+        steps.next = [answer](const std::wstring& file) { return answer(file, false); };
+        const auto taken = [log] {
+            std::lock_guard lock(log->mutex);
+            return std::exchange(log->asked, {});
+        };
+        const auto has = [](const std::vector<std::wstring>& asked, const std::wstring& what) {
+            return std::find(asked.begin(), asked.end(), what) != asked.end();
+        };
+
+        // Three servers at once: the time of one (one after the other, 900 ms).
+        auto from = Clock::now();
+        auto found = share::checkFiles({L"a\\1", L"b\\1", L"c\\1"}, 2s, steps);
+        auto took = Clock::now() - from;
+        QCOMPARE(found.size(), std::size_t {3});
+        QVERIFY(found[L"a\\1"] == R::There && found[L"b\\1"] == R::There && found[L"c\\1"] == R::There);
+        QVERIFY2(took >= 290ms && took < 550ms, shown(took).constData());
+        taken();
+
+        // A server's files one after the other, the first with the probe; a
+        // server past the limit is Unreachable at the limit, the others kept.
+        from = Clock::now();
+        found = share::checkFiles({L"a\\1", L"slow\\1", L"a\\gone"}, 800ms, steps);
+        took = Clock::now() - from;
+        QCOMPARE(found.size(), std::size_t {3});
+        QVERIFY(found[L"a\\1"] == R::There);
+        QVERIFY(found[L"a\\gone"] == R::Missing);
+        QVERIFY(found[L"slow\\1"] == R::Unreachable);
+        QVERIFY2(took >= 790ms && took < 1100ms, shown(took).constData());
+        auto asked = taken();
+        QVERIFY(has(asked, L"first a\\1"));
+        QVERIFY(has(asked, L"next a\\gone"));
+        QVERIFY(has(asked, L"first slow\\1"));
+
+        // A server gone away: its other files are not asked about, nor waited for.
+        from = Clock::now();
+        found = share::checkFiles({L"dead\\1", L"dead\\2", L"a\\1", L"dead\\3"}, 2s, steps);
+        took = Clock::now() - from;
+        QVERIFY(found[L"dead\\1"] == R::Unreachable && found[L"dead\\2"] == R::Unreachable
+            && found[L"dead\\3"] == R::Unreachable);
+        QVERIFY(found[L"a\\1"] == R::There);
+        QVERIFY2(took >= 290ms && took < 550ms, shown(took).constData());
+        asked = taken();
+        QVERIFY(has(asked, L"first dead\\1"));
+        QVERIFY(std::none_of(asked.begin(), asked.end(), [](const std::wstring& s) { return s.starts_with(L"next dead"); }));
+    }
+
+    // GitHub #116 review: Windows asked one at a time for a server (each ask
+    // can take a minute on one gone away). A failure that began before a
+    // caller asked says nothing of now: it asks afresh, once for all who
+    // waited with it. A server's own answer (the file not there) is about
+    // that file alone. Other servers are not held up.
+    void shareOneAtATime()
+    {
+        using namespace std::chrono_literals;
+        using Clock = std::chrono::steady_clock;
+        const auto shown = [](Clock::duration d) {
+            return QByteArray::number(static_cast<qint64>(std::chrono::duration_cast<std::chrono::milliseconds>(d).count()))
+                + " ms";
+        };
+        struct Count {
+            std::atomic<int> asks {0};
+            std::atomic<int> now {0}; // under way
+            std::atomic<int> most {0}; // under way at once, at most
+        };
+        const auto ask = [](const std::shared_ptr<Count>& count, unsigned long error, int ms) {
+            return [count, error, ms] {
+                ++count->asks;
+                const int n = ++count->now;
+                for (int most = count->most.load(); n > most && !count->most.compare_exchange_weak(most, n);) {
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+                --count->now;
+                return error;
+            };
+        };
+        const auto soon = [](const std::function<bool()>& done) {
+            for (const auto end = Clock::now() + 2s; !done() && Clock::now() < end;)
+                std::this_thread::sleep_for(2ms);
+            return done();
+        };
+        constexpr auto kNoPath = static_cast<unsigned long>(ERROR_BAD_NETPATH);
+        share::OneAtATime asking;
+
+        // One under way (400 ms), three more asking meanwhile: not its
+        // failure (begun before they asked), one ask of theirs, shared.
+        const auto nas = std::make_shared<Count>();
+        std::atomic<unsigned long> firstSaid {0};
+        std::jthread first([&] { firstSaid = asking.ask(L"nas", ask(nas, kNoPath, 400)); });
+        QVERIFY(soon([&] { return nas->asks.load() == 1; }));
+        const auto from = Clock::now();
+        std::atomic<unsigned long> said[3] {};
+        std::vector<std::jthread> more; // joined, should a check fail on the way
+        for (int i = 0; i < 3; ++i)
+            more.emplace_back([&, i] { said[i] = asking.ask(L"NAS", ask(nas, kNoPath, 300)); });
+        // Meanwhile another server is not held up.
+        const auto other = std::make_shared<Count>();
+        const auto otherFrom = Clock::now();
+        QCOMPARE(asking.ask(L"other", ask(other, 0, 50)), 0UL);
+        const auto otherTook = Clock::now() - otherFrom;
+        QVERIFY2(otherTook < 250ms, shown(otherTook).constData());
+        first.join();
+        for (std::jthread& t : more)
+            t.join();
+        const auto took = Clock::now() - from;
+        QCOMPARE(firstSaid.load(), kNoPath);
+        for (const std::atomic<unsigned long>& s : said)
+            QCOMPARE(s.load(), kNoPath);
+        QCOMPARE(nas->asks.load(), 2); // the first, and one afresh for the three
+        QCOMPARE(nas->most.load(), 1); // never two at once
+        QVERIFY2(took >= 550ms, shown(took).constData()); // the first's failure taken: about 400 ms
+        // Asked again after: afresh.
+        QCOMPARE(asking.ask(L"nas", ask(nas, 0, 0)), 0UL);
+        QCOMPARE(nas->asks.load(), 3);
+
+        // A server's own answer is about its file: one waiting meanwhile asks about its own.
+        const auto files = std::make_shared<Count>();
+        std::atomic<unsigned long> gone {0};
+        std::jthread missing([&] { gone = asking.ask(L"nas", ask(files, ERROR_FILE_NOT_FOUND, 300)); });
+        QVERIFY(soon([&] { return files->asks.load() == 1; }));
+        QCOMPARE(asking.ask(L"nas", ask(files, 0, 20)), 0UL);
+        missing.join();
+        QCOMPARE(gone.load(), static_cast<unsigned long>(ERROR_FILE_NOT_FOUND));
+        QCOMPARE(files->asks.load(), 2);
+        QCOMPARE(files->most.load(), 1);
+    }
+
+    void shareServerAnswered()
+    {
+        // The server talking: there, not there, signing in, kept from us, its IPC$.
+        const unsigned long answered[] {0, ERROR_FILE_NOT_FOUND, ERROR_BAD_NET_NAME, ERROR_ACCESS_DENIED,
+            ERROR_LOGON_FAILURE, ERROR_NOT_SUPPORTED};
+        for (const unsigned long e : answered)
+            QVERIFY2(share::serverAnswered(e), qPrintable(QString::number(e)));
+        // The network failing on the way, or Windows giving up by its own clock.
+        const unsigned long silent[] {ERROR_BAD_NETPATH, ERROR_NETNAME_DELETED, ERROR_SEM_TIMEOUT, ERROR_TIMEOUT,
+            ERROR_NO_NET_OR_BAD_PATH, ERROR_HOST_UNREACHABLE};
+        for (const unsigned long e : silent)
+            QVERIFY2(!share::serverAnswered(e), qPrintable(QString::number(e)));
+    }
+
+    void shareWindowsMemory()
+    {
+        using namespace std::chrono_literals;
+        share::WindowsMemory memory;
+        const auto asked = std::make_shared<std::atomic<int>>(0);
+        const auto ask = [asked](unsigned long error, int ms = 0) {
+            return [asked, error, ms] {
+                ++*asked;
+                std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+                return error;
+            };
+        };
+        // Windows never got there: the probe decides.
+        QVERIFY(!memory.quick(L"nas", true, 1s, ask(0)));
+        memory.said(L"nas", ERROR_BAD_NETPATH);
+        QVERIFY(!memory.quick(L"nas", true, 1s, ask(0)));
+        QCOMPARE(asked->load(), 0);
+        // It got there (openRoot, askWindows): a yes of the last seconds
+        // stands; afresh, Windows is asked.
+        memory.said(L"NAS", 0);
+        QVERIFY(memory.quick(L"nas", false, 1s, ask(0)) == std::optional(true));
+        QCOMPARE(asked->load(), 0);
+        QVERIFY(memory.quick(L"nas", true, 1s, ask(0)) == std::optional(true));
+        QCOMPARE(asked->load(), 1);
+        // Asked afresh, it does not get there: no, and the probe decides again.
+        QVERIFY(memory.quick(L"nas", true, 1s, ask(ERROR_BAD_NETPATH)) == std::optional(false));
+        QVERIFY(!memory.quick(L"nas", true, 1s, ask(0)));
+        // Slow: the wait holds, no answer in time is a no; until Windows gets there after all.
+        memory.said(L"nas", 0);
+        const auto from = std::chrono::steady_clock::now();
+        QVERIFY(memory.quick(L"nas", true, 200ms, ask(0, 800)) == std::optional(false));
+        QVERIFY(std::chrono::steady_clock::now() - from < 700ms);
+        QVERIFY(!memory.quick(L"nas", false, 200ms, ask(0)));
+        QTRY_VERIFY_WITH_TIMEOUT(memory.quick(L"nas", false, 200ms, ask(0)) == std::optional(true), 5000);
+
+        // Quick checks at once (keys pressed again) ask Windows once, its
+        // answer for all of them.
+        share::WindowsMemory together;
+        together.said(L"nas", 0);
+        const int before = asked->load();
+        std::atomic<int> yes {0};
+        {
+            std::vector<std::jthread> checks;
+            for (int i = 0; i < 4; ++i) {
+                checks.emplace_back([&] {
+                    if (together.quick(L"nas", true, 2s, ask(0, 500)) == std::optional(true))
+                        ++yes;
+                });
+            }
+        }
+        QCOMPARE(yes.load(), 4);
+        QCOMPARE(asked->load(), before + 1);
+    }
+
+    void shareHearsay()
+    {
+        using namespace std::chrono_literals;
+        share::Hearsay heard;
+        QVERIFY(!heard.last(L"nas", 1s));
+        heard.probeSaid(L"nas", false);
+        QVERIFY(heard.last(L"NAS", 1s) == std::optional(false));
+        // Windows got there: a no from the probe after it does not undo
+        // that while it is recent (the probe can be wrong there).
+        heard.windowsSaid(L"nas", true);
+        heard.probeSaid(L"nas", false);
+        QVERIFY(heard.last(L"nas", 1s) == std::optional(true));
+        heard.windowsSaid(L"nas", false); // Windows not getting there does
+        QVERIFY(heard.last(L"nas", 1s) == std::optional(false));
+        heard.probeSaid(L"nas", true);
+        QVERIFY(heard.last(L"nas", 1s) == std::optional(true));
+        heard.probeSaid(L"old", false); // lately only
+        heard.windowsSaid(L"long", true);
+        std::this_thread::sleep_for(80ms);
+        QVERIFY(!heard.last(L"old", 50ms));
+        QVERIFY(heard.last(L"old", 5s) == std::optional(false));
+        // Windows' yes can be taken for longer than the rest (a drag does),
+        // the probe's no since notwithstanding; Windows' own no undoes it.
+        QVERIFY(!heard.last(L"long", 50ms));
+        QVERIFY(heard.last(L"long", 50ms, 5s) == std::optional(true));
+        heard.probeSaid(L"long", false);
+        QVERIFY(heard.last(L"long", 50ms) == std::optional(false));
+        QVERIFY(heard.last(L"long", 50ms, 5s) == std::optional(true));
+        heard.windowsSaid(L"long", false);
+        QVERIFY(heard.last(L"long", 50ms, 5s) == std::optional(false));
+
+        // By path (share::lastHeard): a local one is there, WSL answers for
+        // itself; a server just probed is known, WebDAV on its port apart.
+        QVERIFY(share::lastHeard(L"C:\\Windows", 1s) == std::optional(true));
+        QVERIFY(!share::lastHeard(L"\\\\wsl.localhost\\Ubuntu\\home", 1s));
+        QCOMPARE(share::probe(L"192.0.2.1", 300ms, true), share::Answer::None); // TEST-NET-1: nothing there
+        QVERIFY(share::lastHeard(L"\\\\192.0.2.1\\share\\a.txt", 10s) == std::optional(false));
+        QVERIFY(!share::lastHeard(L"\\\\192.0.2.1\\DavWWWRoot\\a.txt", 10s));
+    }
+
     void nameSearchTopK()
     {
         FileIndex index;
@@ -5933,6 +7305,88 @@ private slots:
         QVERIFY(matcher.match(index, index.entry(other)) >= 0);
     }
 
+    // GitHub #132: Settings' skipped file names (wildcards, any case) leave
+    // files so named out of names and the start list; a folder so named is
+    // not a file; a word typed that is such a name shows them.
+    void skippedFileNames()
+    {
+        const QString root = u"F:\\wsskipnames\\"_s;
+        QTemporaryDir dir;
+        IndexService::Options options;
+        options.content.enabled = false;
+        IndexService service(dir.path() + u"/index"_s, options);
+        {
+            const auto index = service.index();
+            const auto lock = index->writeLock();
+            const EntryId f = index->addRoot("F:");
+            const EntryId test = index->add(f, "wsskipnames", EntryFlag::Directory);
+            for (const char* name : {"~$report.docx", "report.docx", "report~$.txt", "~$report", "Thumbs.db", "draft-report.txt"})
+                index->add(test, name, name == std::string("~$report") ? EntryFlag::Directory : 0);
+            FileTime t = 1'700'000'000;
+            for (std::size_t i = 0; i < index->slotCount(); ++i)
+                index->setModified(static_cast<EntryId>(i), t += 100);
+        }
+        SearchEngine engine(&service);
+        QSignalSpy spy(&engine, &SearchEngine::resultsReady);
+        const auto run = [&](SearchEngine::Request request) {
+            spy.clear();
+            engine.submit(std::move(request));
+            QStringList names;
+            if (!spy.wait(5000))
+                return QStringList {u"(no results)"_s};
+            for (const SearchResult& r : spy.at(0).at(1).value<SearchResults>())
+                names.append(r.path.mid(root.size()));
+            names.sort();
+            return names;
+        };
+        const auto search = [&](const QString& text, const QStringList& skipped, Scope scope = Scope::All) {
+            SearchEngine::Request request;
+            request.text = text;
+            request.scope = scope;
+            request.excludedFileNames = skipped;
+            return run(std::move(request));
+        };
+        QCOMPARE(search(u"report"_s, {}),
+            (QStringList {u"draft-report.txt"_s, u"report.docx"_s, u"report~$.txt"_s, u"~$report"_s, u"~$report.docx"_s}));
+        // The file goes, the folder so named stays; "~$" elsewhere in a name is no "~$*".
+        QCOMPARE(search(u"report"_s, {u"~$*"_s}),
+            (QStringList {u"draft-report.txt"_s, u"report.docx"_s, u"report~$.txt"_s, u"~$report"_s}));
+        // A whole name, any case; and "?" one character.
+        QCOMPARE(search(u"thumbs"_s, {u"THUMBS.DB"_s}), QStringList());
+        QCOMPARE(search(u"report"_s, {u"report.doc?"_s}),
+            (QStringList {u"draft-report.txt"_s, u"report~$.txt"_s, u"~$report"_s, u"~$report.docx"_s}));
+        // Asked for: a word typed that is such a name, as it is or with wildcards.
+        QVERIFY(search(u"~$report"_s, {u"~$*"_s}).contains(u"~$report.docx"_s));
+        QVERIFY(search(u"~$*.docx"_s, {u"~$*"_s}).contains(u"~$report.docx"_s));
+        QVERIFY(search(u"docx \"~$\""_s, {u"~$*"_s}).contains(u"~$report.docx"_s));
+        QVERIFY(search(u"^~$rep"_s, {u"~$*"_s}).contains(u"~$report.docx"_s));
+        // Not asked for: a word that is not one (*.docx), or one ruled out.
+        QCOMPARE(search(u"*.docx"_s, {u"~$*"_s}), (QStringList {u"report.docx"_s}));
+        QCOMPARE(search(u"report !~$x"_s, {u"~$*"_s}),
+            (QStringList {u"draft-report.txt"_s, u"report.docx"_s, u"report~$.txt"_s, u"~$report"_s}));
+        // Nothing typed, the files written last.
+        {
+            SearchEngine::Request request;
+            request.startList = StartList::Modified;
+            request.excludedFileNames = {u"draft-*"_s};
+            const QStringList names = run(std::move(request));
+            QVERIFY(names.contains(u"report.docx"_s));
+            QVERIFY(!names.contains(u"draft-report.txt"_s));
+        }
+        // The matcher alone: files only, as the index has them.
+        FileIndex index;
+        const EntryId top = index.addRoot("C:");
+        const EntryId file = index.add(top, "~$A.DOCX", 0);
+        const EntryId folder = index.add(top, "~$b", EntryFlag::Directory);
+        const EntryId other = index.add(top, "c~$.txt", 0);
+        ws::ParsedQuery query = ws::parseQuery(u""_s);
+        query.excludedFileNames = {"~$*.docx"};
+        const NameMatcher matcher(query);
+        QCOMPARE(matcher.match(index, index.entry(file)), -1);
+        QVERIFY(matcher.match(index, index.entry(folder)) >= 0);
+        QVERIFY(matcher.match(index, index.entry(other)) >= 0);
+    }
+
     // GitHub #49: "search here" on F1 (the box holds "…\F1\ ") also showed
     // what F11 holds: the folders of a typed path match by name, and "f1" is
     // in "f11".
@@ -6140,6 +7594,139 @@ private slots:
         const auto it = std::ranges::find(rows, newInF1, &SearchResult::path);
         QVERIFY(it != rows.end());
         QVERIFY(it->recent);
+    }
+
+    // GitHub #110: typed in a folder's window, what is in that folder (at any
+    // depth) comes first, then what is so named anywhere else, marked, as
+    // Listary lists it; or that folder alone. One search of the index: each
+    // part ranked as a list of its own, as the order asks.
+    void folderTypedInListsItsOwnFirst()
+    {
+        constexpr FileTime T = 1'700'000'000;
+        QTemporaryDir dir;
+        IndexService::Options options;
+        options.content.enabled = false;
+        IndexService service(dir.path() + u"/index"_s, options);
+        {
+            const auto index = service.index();
+            const auto lock = index->writeLock();
+            const auto add = [&](EntryId folder, const char* name, FileTime when, std::uint8_t flags = 0) {
+                const EntryId id = index->add(folder, name, flags);
+                index->setModified(id, when);
+                return id;
+            };
+            const EntryId top = index->add(index->addRoot("F:"), "ws110", EntryFlag::Directory);
+            const EntryId work = add(top, "work", T, EntryFlag::Directory);
+            add(work, "report-a.txt", T + 100);
+            add(work, "notes.md", T + 50);
+            add(add(work, "sub", T, EntryFlag::Directory), "report-deep.txt", T + 300);
+            add(work, "report-plan", T + 60, EntryFlag::Directory);
+            const EntryId other = add(top, "other", T, EntryFlag::Directory);
+            add(other, "report.txt", T + 500); // named just so: first of its part, not above the folder's
+            add(other, "report-b.txt", T + 400);
+            add(other, "deep-report.txt", T + 200);
+            add(other, "readme.md", T + 600);
+            add(top, "report-top.txt", T + 700);
+            add(add(top, "worker", T, EntryFlag::Directory), "report-w.txt", T + 800); // "work" in its name: not in it
+        }
+        SearchEngine engine(&service);
+        QSignalSpy spy(&engine, &SearchEngine::resultsReady);
+        struct Found {
+            QStringList names; // "~" before a row found elsewhere
+            qint64 total = -1;
+            SearchResults rows;
+        };
+        const auto search = [&](const QString& text, const QString& folder, bool only = false, RankBy rankBy = RankBy::Match,
+                                const QStringList& history = {}, int limit = 100) {
+            spy.clear();
+            SearchEngine::Request request;
+            request.text = text;
+            request.currentFolder = folder;
+            request.currentFolderOnly = only;
+            request.rankBy = rankBy;
+            request.history = history;
+            request.limit = limit;
+            engine.submit(std::move(request));
+            Found found;
+            if (!spy.wait(5000)) {
+                found.names = {u"(no results)"_s};
+                return found;
+            }
+            found.rows = spy.at(0).at(1).value<SearchResults>();
+            found.total = spy.at(0).at(2).toLongLong();
+            for (const SearchResult& r : found.rows)
+                found.names.append(r.elsewhere ? u'~' + r.name : r.name);
+            return found;
+        };
+        const auto sorted = [](QStringList names) {
+            names.sort();
+            return names;
+        };
+        // One run of the folder's rows, then one of the others.
+        const auto grouped = [](const Found& f) {
+            const auto split = std::ranges::find_if(f.rows, &SearchResult::elsewhere);
+            return std::all_of(split, f.rows.cend(), [](const SearchResult& r) { return r.elsewhere; });
+        };
+        using L = QStringList;
+        const QString work = u"F:\\ws110\\work"_s;
+        const L inside {u"report-a.txt"_s, u"report-deep.txt"_s, u"report-plan"_s};
+        const L elsewhere {u"~deep-report.txt"_s, u"~report-b.txt"_s, u"~report-top.txt"_s, u"~report-w.txt"_s, u"~report.txt"_s};
+
+        Found first = search(u"report"_s, work);
+        QVERIFY2(grouped(first), qPrintable(first.names.join(u'|')));
+        QCOMPARE(sorted(first.names.mid(0, 3)), inside);
+        QCOMPARE(sorted(first.names.mid(3)), elsewhere);
+        QCOMPARE(first.names.at(3), u"~report.txt"_s); // named just so, first after the folder's rows
+        QVERIFY(first.rows.at(3).exact);
+        QCOMPARE(first.total, qint64 {8});
+        // As the folder is written in the box: with its backslash, or the other slash.
+        QCOMPARE(search(u"report"_s, work + u"\\"_s).names, first.names);
+        QCOMPARE(search(u"report"_s, u"F:/ws110/work"_s).names, first.names);
+
+        // Only the folder: its rows alone, and the count of them.
+        const Found only = search(u"report"_s, work, true);
+        QCOMPARE(sorted(only.names), inside);
+        QCOMPARE(only.total, qint64 {3});
+        // The same as a path typed (the box edited, "search here"): that folder alone, as ever (#49).
+        QCOMPARE(sorted(search(work + u"\\ report"_s, {}).names), inside);
+
+        // An order chosen: the folder first all the same, each part in it.
+        QCOMPARE(search(u"report"_s, work, false, RankBy::Newest).names,
+            (L {u"report-deep.txt"_s, u"report-a.txt"_s, u"report-plan"_s, u"~report-w.txt"_s, u"~report-top.txt"_s,
+                u"~report.txt"_s, u"~report-b.txt"_s, u"~deep-report.txt"_s}));
+        QCOMPARE(search(u"report"_s, work, false, RankBy::Oldest).names.mid(0, 4),
+            (L {u"report-a.txt"_s, u"report-deep.txt"_s, u"report-plan"_s, u"~deep-report.txt"_s}));
+
+        // Opened lately: first of its own part, never above the folder's rows.
+        const Found recent = search(u"report"_s, work, false, RankBy::Match,
+            {u"F:\\ws110\\other\\deep-report.txt"_s, u"F:\\ws110\\work\\sub\\report-deep.txt"_s});
+        QVERIFY2(grouped(recent), qPrintable(recent.names.join(u'|')));
+        QCOMPARE(recent.names.at(0), u"report-deep.txt"_s);
+        QVERIFY(recent.rows.at(0).recent);
+        QCOMPARE(recent.names.at(3), u"~deep-report.txt"_s);
+        QVERIFY(recent.rows.at(3).recent);
+        QCOMPARE(recent.names.at(4), u"~report.txt"_s);
+
+        // All the words, and a kind of file, after the folder as anywhere.
+        QCOMPARE(search(u"report deep"_s, work).names, (L {u"report-deep.txt"_s, u"~deep-report.txt"_s}));
+        QCOMPARE(search(u"*.md"_s, work).names, (L {u"notes.md"_s, u"~readme.md"_s}));
+        QCOMPARE(search(u"*.md"_s, work, true).names, L {u"notes.md"_s});
+
+        // A page more adds to the end: the folder's rows, then the rest.
+        QCOMPARE(search(u"report"_s, work, false, RankBy::Match, {}, 3).names, first.names.mid(0, 3));
+        const Found page = search(u"report"_s, work, false, RankBy::Match, {}, 5);
+        QCOMPARE(page.names.mid(0, 3), first.names.mid(0, 3));
+        QCOMPARE(page.rows.size(), qsizetype {5});
+        QVERIFY2(grouped(page) && page.rows.at(3).elsewhere, qPrintable(page.names.join(u'|')));
+
+        // A folder the index does not have: everything is elsewhere (alone: nothing);
+        // a drive: everything is in it.
+        const Found missing = search(u"report"_s, u"F:\\ws110\\gone"_s);
+        QCOMPARE(sorted(missing.names), sorted(L {u"~report-a.txt"_s, u"~report-deep.txt"_s, u"~report-plan"_s} + elsewhere));
+        QCOMPARE(search(u"report"_s, u"F:\\ws110\\gone"_s, true).names, L {});
+        const Found drive = search(u"report"_s, u"F:\\"_s);
+        QCOMPARE(drive.rows.size(), qsizetype {8});
+        QVERIFY(std::ranges::none_of(drive.rows, &SearchResult::elsewhere));
     }
 
     void newestFiles()
@@ -9087,6 +10674,92 @@ private slots:
             QVERIFY(!d.keyDown(ctrl, 10'200, 0, 0));
             QVERIFY(d.keyUp(ctrl, 10'260, 0, 0));
         }
+        { // ...and the other Ctrl's too, its release still not seen
+            constexpr std::uint32_t rightCtrl = 0xA3;
+            DoubleTapDetector d;
+            d.keyDown(ctrl, 0, 0, 0);
+            d.keyDown(ctrl, 500, 0, 0); // auto-repeat
+            QVERIFY(!d.keyDown(rightCtrl, 10'000, 0, 0));
+            QVERIFY(!d.keyUp(rightCtrl, 10'080, 0, 0));
+            QVERIFY(!d.keyDown(rightCtrl, 10'200, 0, 0));
+            QVERIFY(d.keyUp(rightCtrl, 10'260, 0, 0));
+            DoubleTapDetector e; // while one is held (repeating), the other's press is both at once
+            e.keyDown(ctrl, 0, 0, 0);
+            e.keyDown(ctrl, 500, 0, 0);
+            e.keyDown(ctrl, 533, 0, 0);
+            QVERIFY(!e.keyDown(rightCtrl, 600, 0, 0));
+            QVERIFY(!e.keyUp(rightCtrl, 650, 0, 0));
+            QVERIFY(!e.keyDown(rightCtrl, 700, 0, 0));
+            QVERIFY(!e.keyUp(rightCtrl, 750, 0, 0));
+        }
+        // GitHub #111: a program's slow low-level hook held the first press
+        // up (an app busy just after a switch). Windows times a key as it
+        // gets to it: the release, the second press and its release, made
+        // meanwhile, all came the moment the hook let go, the first press
+        // seeming 609 ms long. Let go and pressed again quicker than a
+        // finger can: it was a tap.
+        {
+            DoubleTapDetector d;
+            QVERIFY(!d.keyDown(ctrl, 1000, 0, 0));
+            QVERIFY(!d.keyUp(ctrl, 1609, 0, 0));
+            QVERIFY(!d.keyDown(ctrl, 1609, 0, 0));
+            QVERIFY(d.keyUp(ctrl, 1609, 0, 0));
+            QCOMPARE(d.queuedMs(), 609u);
+            QCOMPARE(d.firstPressTime(), 1000u);
+            QCOMPARE(d.takeMiss().reason, DoubleTapDetector::MissReason::None);
+        }
+        { // on the next tick of the input's clock; the second let go after the hook
+            DoubleTapDetector d;
+            d.keyDown(ctrl, 1000, 0, 0);
+            d.keyUp(ctrl, 1900, 0, 0);
+            d.keyDown(ctrl, 1916, 0, 0);
+            QVERIFY(d.keyUp(ctrl, 1980, 0, 0));
+            QCOMPARE(d.queuedMs(), 900u);
+            d.keyDown(ctrl, 5000, 0, 0); // the next double tap, an ordinary one
+            d.keyUp(ctrl, 5060, 0, 0);
+            d.keyDown(ctrl, 5200, 0, 0);
+            QVERIFY(d.keyUp(ctrl, 5260, 0, 0));
+            QCOMPARE(d.queuedMs(), 0u);
+        }
+        { // a finger's: held long, then let go and pressed again in 31 ms or more
+            DoubleTapDetector d;
+            d.keyDown(ctrl, 1000, 0, 0);
+            d.keyUp(ctrl, 1600, 0, 0);
+            d.keyDown(ctrl, 1631, 0, 0);
+            QVERIFY(!d.keyUp(ctrl, 1690, 0, 0));
+            DoubleTapDetector e; // a long hold, and a tap 150 ms later
+            e.keyDown(ctrl, 1000, 0, 0);
+            e.keyUp(ctrl, 1500, 0, 0);
+            e.keyDown(ctrl, 1650, 0, 0);
+            QVERIFY(!e.keyUp(ctrl, 1700, 0, 0));
+        }
+        { // none but a press held too long goes that way: spoiled (Shift), moved, the other Ctrl
+            constexpr std::uint32_t rightCtrl = 0xA3, shift = 0xA0;
+            DoubleTapDetector d;
+            d.keyDown(shift, 990, 0, 0);
+            d.keyDown(ctrl, 1000, 0, 0);
+            d.keyUp(shift, 1010, 0, 0);
+            d.keyUp(ctrl, 1609, 0, 0);
+            d.keyDown(ctrl, 1609, 0, 0);
+            QVERIFY(!d.keyUp(ctrl, 1609, 0, 0));
+            DoubleTapDetector e;
+            e.keyDown(ctrl, 1000, 0, 0);
+            e.keyUp(ctrl, 1609, 0, 0);
+            e.keyDown(ctrl, 1609, 300, 0);
+            QVERIFY(!e.keyUp(ctrl, 1609, 300, 0));
+            DoubleTapDetector f;
+            f.keyDown(ctrl, 1000, 0, 0);
+            f.keyUp(ctrl, 1609, 0, 0);
+            f.keyDown(rightCtrl, 1609, 0, 0);
+            QVERIFY(!f.keyUp(rightCtrl, 1609, 0, 0));
+            DoubleTapDetector g; // with a letter typed during it: Ctrl+C
+            g.keyDown(ctrl, 1000, 0, 0);
+            g.keyDown('C', 1020, 0, 0);
+            g.keyUp('C', 1040, 0, 0);
+            g.keyUp(ctrl, 1609, 0, 0);
+            g.keyDown(ctrl, 1609, 0, 0);
+            QVERIFY(!g.keyUp(ctrl, 1609, 0, 0));
+        }
         { // held a long while, repeating: not a tap when let go
             DoubleTapDetector d;
             d.keyDown(ctrl, 0, 0, 0);
@@ -9573,6 +11246,17 @@ private slots:
         QCOMPARE(typingWindow(3, 1, 0), 0); // another window came forward silently
         QCOMPARE(typingWindow(0, 1, 2), 0); // nothing in front (switching)
         QCOMPARE(typingWindow(0, 0, 0), 0); // no Explorer window: the hook is not there
+        // ... and one opened behind before Win顺 started (its event unseen),
+        // kept as `behind` at the start: the topmost not in front that is
+        // still the active window of its own thread.
+        using Folders = std::vector<OpenFolder<int>>;
+        QCOMPARE(openedBehind(9, Folders {}), 0); // no folder window open
+        QCOMPARE(openedBehind(9, Folders {{1, false}, {2, false}}), 0); // switched away from: they come back with an event
+        QCOMPARE(openedBehind(9, Folders {{1, false}, {2, true}}), 2); // opened behind Notepad (9)
+        QCOMPARE(openedBehind(2, Folders {{2, true}}), 0); // in front itself: the first look takes it as `seen`
+        QCOMPARE(openedBehind(1, Folders {{1, true}, {2, true}}), 2); // behind the folder window in front
+        QCOMPARE(openedBehind(9, Folders {{3, true}, {2, true}}), 3); // two: the topmost (only one is kept)
+        QCOMPARE(openedBehind(0, Folders {{2, true}}), 2); // nothing in front (switching): kept, the key looks
         // The keys typed again go by first; the ones typed meanwhile wait
         // behind the last of them (GitHub #39: "qz" came out "zq").
         Retyped retyped;
@@ -9597,17 +11281,1031 @@ private slots:
         // #66): Qt called it active with the Start menu still in front, or
         // the Start menu took the front back, and they went into Windows'
         // search.
-        QCOMPARE(delivery(true, false, true, false, 0, 0), Delivery::Type);
-        QCOMPARE(delivery(true, true, true, true, 0, 5000), Delivery::Type); // ours in front: whatever else
-        QCOMPARE(delivery(false, true, true, false, 0, 300), Delivery::Wait); // its Esc may still be closing it
-        QCOMPARE(delivery(false, true, true, false, 0, kAskAgainMs), Delivery::AskAgain); // back in front: ask again
-        QCOMPARE(delivery(false, true, true, false, kMaxAsksAgain - 1, 900), Delivery::AskAgain);
-        QCOMPARE(delivery(false, true, true, false, kMaxAsksAgain, 5000), Delivery::Wait); // asked enough: the hold runs out
+        QCOMPARE(delivery({.oursInFront = true, .launcherReady = true, .forStartMenu = true}), Delivery::Type);
+        QCOMPARE(delivery({.oursInFront = true, .launcherReady = true, .startMenuInFront = true, .forStartMenu = true,
+                     .typedAlready = true, .msSinceAsked = 5000}),
+            Delivery::Type); // ours in front: whatever else
+        FrontState back {.launcherReady = true, .startMenuInFront = true, .forStartMenu = true, .msSinceAsked = 300};
+        QCOMPARE(delivery(back), Delivery::Wait); // its Esc may still be closing it
+        back.msSinceAsked = kAskAgainMs;
+        QCOMPARE(delivery(back), Delivery::AskAgain); // back in front: ask again
+        back.asksAgain = kMaxAsksAgain - 1;
+        back.msSinceAsked = 900;
+        QCOMPARE(delivery(back), Delivery::AskAgain);
+        back.asksAgain = kMaxAsksAgain;
+        back.msSinceAsked = 5000;
+        QCOMPARE(delivery(back), Delivery::Wait); // asked enough: the hold runs out
         // Some typed into it already: shown again it would select them, and
         // the rest would replace them.
-        QCOMPARE(delivery(false, true, true, true, 0, 5000), Delivery::Wait);
-        QCOMPARE(delivery(false, false, true, false, 0, 5000), Delivery::Wait); // another window (the one before, coming and going)
-        QCOMPARE(delivery(false, true, false, false, 0, 5000), Delivery::Wait); // typed in Explorer: not the Start menu's to ask for
+        back.asksAgain = 0;
+        back.typedAlready = true;
+        QCOMPARE(delivery(back), Delivery::Wait);
+        back.typedAlready = false;
+        back.startMenuInFront = false;
+        QCOMPARE(delivery(back), Delivery::Wait); // another window (the one before, coming and going)
+        back.startMenuInFront = true;
+        back.forStartMenu = false;
+        QCOMPARE(delivery(back), Delivery::Wait); // typed in Explorer: not the Start menu's to ask for
+        // And only while the launcher's word that it is ready holds (GitHub
+        // #103). Gone before it was ready (App's hideLauncher), or asked for
+        // again, it is shown anew, cloaked, its field not the focus object
+        // yet: Win顺 in front is not enough, the keys wait for its word again.
+        QCOMPARE(delivery({.oursInFront = true, .forStartMenu = true}), Delivery::Wait);
+        QCOMPARE(delivery({.oursInFront = true, .startMenuInFront = true, .forStartMenu = true, .typedAlready = true,
+                     .asksAgain = 1, .msSinceAsked = 5000}),
+            Delivery::Wait); // whatever else
+        QCOMPARE(delivery({.startMenuInFront = true, .forStartMenu = true, .msSinceAsked = kAskAgainMs}),
+            Delivery::AskAgain); // the Start menu in front: asked for
+        QCOMPARE(delivery({.startMenuInFront = true, .forStartMenu = true, .asksAgain = kMaxAsksAgain, .msSinceAsked = 5000}),
+            Delivery::Wait);
+        QCOMPARE(delivery({.msSinceAsked = 5000}), Delivery::Wait);
+        // One deadline a hold: kWaitForLauncherMs from its first key (App's
+        // handoff gives up on a launcher that never became active as long
+        // after asking). Asked for again, the launcher gets at most a second
+        // more from then, and the hold never runs past kHoldCapMs (it ran to
+        // 9 s when each ask started the whole wait over).
+        QVERIFY(kAskAgainMs < kAskAgainWaitMs && kAskAgainWaitMs <= 1000);
+        QVERIFY(kWaitForLauncherMs < kHoldCapMs);
+        QCOMPARE(holdDeadline(kWaitForLauncherMs, 600), kWaitForLauncherMs); // asked early: no longer
+        QCOMPARE(holdDeadline(kWaitForLauncherMs, 2800), 3800u); // late: a second from then
+        QCOMPARE(holdDeadline(3800, 3400), kHoldCapMs); // never past the cap
+        QCOMPARE(holdDeadline(kHoldCapMs, 9000), kHoldCapMs);
+        // The keys held back, typed again in order, each with Shift as it was
+        // pressed (GitHub #103): Shift goes on as it comes, so by then it can
+        // be up for a capital ("Desktop" came out "desktop") or down for a
+        // small letter. Wherever an input method would see it pressed and let
+        // go with no key in between (its switch between Chinese and English:
+        // Sogou in Chinese, typing "Desktop", ended up in English) and the user
+        // made no such tap, the mask goes in; one the user made goes as it is.
+        const auto press = [](unsigned vk, bool shift = false) { return HeldKey {.vk = vk, .scanCode = 0x1E, .shift = shift}; };
+        const auto release = [](unsigned vk) { return HeldKey {.vk = vk, .scanCode = 0x1E, .release = true}; };
+        const auto plan = [](const std::vector<HeldKey>& held, ShiftState window, ShiftState user) {
+            QStringList strokes;
+            for (const Stroke& stroke : retype(held, window, user)) {
+                const QString name = stroke.vk == kVkLShift ? u"LShift"_s
+                    : stroke.vk == kVkRShift                ? u"RShift"_s
+                    : stroke.vk == kMaskKey                 ? u"mask"_s
+                    : stroke.vk == kVkPacket                ? u"char"_s
+                    : stroke.vk == kVkCapital               ? u"Caps"_s
+                                                            : QString(QChar(stroke.vk));
+                strokes << name + QLatin1Char(stroke.release ? '-' : '+');
+            }
+            return strokes.join(u' ');
+        };
+        const ShiftState up;
+        const ShiftState left {.keys = {.left = true}}; // down, keys pressed since
+        const ShiftState leftAlone {.keys = {.left = true}, .alone = true}; // down, nothing pressed since
+        const ShiftState right {.keys = {.right = true}};
+        const ShiftState rightAlone {.keys = {.right = true}, .alone = true};
+        // Shift let go before they went: pressed for the capital alone.
+        QCOMPARE(plan({press('D', true), release('D'), press('E'), release('E')}, up, up), u"LShift+ D+ D- LShift- E+ E-"_s);
+        QCOMPARE(plan({press('A', true)}, up, up), u"LShift+ A+ LShift-"_s);
+        // Still held over all of them: nothing to add.
+        QCOMPARE(plan({press('A', true), release('A'), press('B', true), release('B')}, left, left), u"A+ A- B+ B-"_s);
+        // Pressed since for the next ones ("macOS"): let go for the small
+        // letters, the window in front having seen it go down with nothing
+        // since (the mask first), pressed again for the capital.
+        QCOMPARE(plan({press('M'), release('M'), press('O', true), release('O')}, leftAlone, left),
+            u"mask+ mask- LShift- M+ M- LShift+ O+ O-"_s);
+        // ... the window saw a key since (the mask the hook sent at once for
+        // the O held, or Ctrl): no mask needed to let go.
+        QCOMPARE(plan({press('M'), release('M'), press('O', true), release('O')}, left, left),
+            u"LShift- M+ M- LShift+ O+ O-"_s);
+        // ... with no key held for it yet: pressed again at the end. The
+        // user's release comes next: a tap if the user made one (pressed it,
+        // nothing since: it reaches the window as one), the mask after it if
+        // not (a key typed with it went on, Ctrl).
+        QCOMPARE(plan({press('M'), release('M')}, leftAlone, leftAlone), u"mask+ mask- LShift- M+ M- LShift+"_s);
+        QCOMPARE(plan({press('M'), release('M')}, leftAlone, left), u"mask+ mask- LShift- M+ M- LShift+ mask+ mask-"_s);
+        QCOMPARE(plan({press('M')}, rightAlone, right), u"mask+ mask- RShift- M+ RShift+ mask+ mask-"_s);
+        // The mask before the user's own Shift only: Win顺's goes with a key.
+        QCOMPARE(plan({press('M'), press('O', true), press('N')}, leftAlone, left),
+            u"mask+ mask- LShift- M+ LShift+ O+ LShift- N+ LShift+ mask+ mask-"_s);
+        // A program's characters and the releases go as they are.
+        QCOMPARE(plan({press(kVkPacket), release('A')}, left, left), u"char+ A-"_s);
+        QCOMPARE(plan({press(kVkPacket, true)}, up, up), u"char+"_s);
+        QCOMPARE(plan({}, left, left), QString());
+        // The user let go of Shift or pressed it while keys typed again were
+        // on their way, and those went by around it ("Desktop" typed in
+        // Explorer: the e came in among the D's keys): from Shift as the
+        // window has it to the user's, with the next keys or alone before the
+        // hold ends. Left as it was, it stayed down after the capital.
+        QCOMPARE(plan({release('M')}, leftAlone, up), u"M- mask+ mask- LShift-"_s);
+        QCOMPARE(plan({press('C'), release('C')}, leftAlone, up), u"mask+ mask- LShift- C+ C-"_s);
+        QCOMPARE(plan({}, leftAlone, up), u"mask+ mask- LShift-"_s);
+        QCOMPARE(plan({}, left, up), u"LShift-"_s); // after a capital: no tap to see
+        QCOMPARE(plan({}, up, left), u"LShift+ mask+ mask-"_s);
+        QCOMPARE(plan({}, up, leftAlone), u"LShift+"_s); // the user's tap, still to come, stays one
+        QCOMPARE(plan({}, rightAlone, left), u"mask+ mask- RShift- LShift+ mask+ mask-"_s);
+        QCOMPARE(plan({press('A', true)}, up, right), u"LShift+ A+ LShift- RShift+ mask+ mask-"_s);
+        QCOMPARE(plan({}, up, up), QString());
+        QCOMPARE(plan({press('O', true), release('O')}, up, left), u"LShift+ O+ O-"_s);
+        // The user's own Shift and Caps Lock held back with the keys (Hold) go
+        // where they came, as they came: a tap made while keys typed again
+        // were on their way is a tap; Shift pressed between the keys makes
+        // the capitals after it; Caps Lock changes only the keys after it.
+        const HeldKey shiftDown {.vk = kVkLShift, .scanCode = 0x2A};
+        const HeldKey shiftUp {.vk = kVkLShift, .scanCode = 0x2A, .release = true};
+        QCOMPARE(plan({shiftDown, shiftUp}, up, up), u"LShift+ LShift-"_s);
+        QCOMPARE(plan({press('M'), shiftDown, press('O', true), release('O'), shiftUp}, up, up),
+            u"M+ LShift+ O+ O- LShift-"_s);
+        QCOMPARE(plan({press('A'), release('A'), {.vk = kVkCapital, .scanCode = 0x3A},
+                     {.vk = kVkCapital, .scanCode = 0x3A, .release = true}, press('B'), release('B')},
+                     up, up),
+            u"A+ A- Caps+ Caps- B+ B-"_s);
+        // Ctrl went on between the user's Shift held back and its release: not
+        // a tap of theirs, the mask between them (Hold::went puts it there).
+        QCOMPARE(plan({shiftDown, {.vk = kMaskKey}, shiftUp}, up, up), u"LShift+ mask+ mask- LShift-"_s);
+        // The keys typed with it were dropped (the Start menu's): the press
+        // goes, the mask after it, the user's release is no tap.
+        QCOMPARE(plan({shiftDown}, up, left), u"LShift+ mask+ mask-"_s);
+        // Shift as the hook sees it go by; VK_SHIFT is the left one.
+        Shifts shifts;
+        shifts.seen(kVkLShift, true);
+        QVERIFY((shifts == Shifts {.left = true}));
+        shifts.seen(kVkRShift, true);
+        shifts.seen(kVkShift, false);
+        QVERIFY((shifts == Shifts {.right = true}));
+        shifts.seen('A', true); // not Shift
+        QVERIFY((shifts == Shifts {.right = true}));
+        QVERIFY(shifts.any() && !Shifts {}.any());
+        // ... and whether it went down with nothing pressed since: let go
+        // then, it is a tap.
+        ShiftState state;
+        state.seen(kVkLShift, true);
+        QVERIFY(state.alone);
+        state.seen(kVkLShift, true); // a repeat
+        QVERIFY(state.alone);
+        state.seen('A', true);
+        QVERIFY(!state.alone);
+        state.seen(kVkLShift, true); // a repeat after a key: still not
+        QVERIFY(!state.alone);
+        state.seen(kVkLShift, false);
+        QVERIFY((state == ShiftState {}));
+        state.seen(kVkRShift, true);
+        state.seen(kMaskKey, true); // the mask is a key between
+        QVERIFY(!state.alone && state.keys.right);
+        state.seen(kVkRShift, false);
+        state.seen(kVkLShift, true);
+        state.seen('A', false); // a release is not
+        QVERIFY(state.alone);
+        // Each key with its own scan code and extended flag, the user's Shift
+        // with its own; the Shift Win顺 adds and the mask with none (the hook's
+        // keyboard layout gives it), the mask never extended.
+        const std::vector<Stroke> carried
+            = retype({{.vk = kVkLeft, .scanCode = 0x4B, .extended = true}, press('A', true)}, {}, {});
+        QCOMPARE(carried.size(), std::size_t(4));
+        QVERIFY((carried[0] == Stroke {.vk = kVkLeft, .scanCode = 0x4B, .extended = true}));
+        QVERIFY((carried[1] == Stroke {.vk = kVkLShift}));
+        QVERIFY((carried[2] == Stroke {.vk = 'A', .scanCode = 0x1E}));
+        QVERIFY((carried[3] == Stroke {.vk = kVkLShift, .release = true}));
+        const std::vector<Stroke> masked = retype({press('M')}, leftAlone, left);
+        QCOMPARE(masked.size(), std::size_t(7));
+        QVERIFY((masked[0] == Stroke {.vk = kMaskKey}));
+        QVERIFY((masked[1] == Stroke {.vk = kMaskKey, .release = true}));
+        QVERIFY((masked[2] == Stroke {.vk = kVkLShift, .release = true}));
+        QVERIFY((masked[3] == Stroke {.vk = 'M', .scanCode = 0x1E}));
+        QVERIFY((masked[4] == Stroke {.vk = kVkLShift}));
+        QVERIFY((masked[5] == Stroke {.vk = kMaskKey}));
+        QVERIFY((masked[6] == Stroke {.vk = kMaskKey, .release = true}));
+        const std::vector<Stroke> theirs = retype({{.vk = kVkRShift, .scanCode = 0x36}}, up, right);
+        QCOMPARE(theirs.size(), std::size_t(3));
+        QVERIFY((theirs[0] == Stroke {.vk = kVkRShift, .scanCode = 0x36})); // the user's, as it came
+        QVERIFY((theirs[1] == Stroke {.vk = kMaskKey}));
+        // What a batch waits to see go by: not the mask; a character as VK_PACKET.
+        const std::vector<Retyped::Key> waitedFor = awaited({{.vk = kMaskKey}, {.vk = kMaskKey, .release = true},
+            {.vk = kVkLShift, .release = true}, {.vk = kVkPacket, .scanCode = 0x017C}, {.vk = 'A', .scanCode = 0x1E}});
+        QCOMPARE(waitedFor.size(), std::size_t(3));
+        QVERIFY(waitedFor[0].vk == kVkLShift && waitedFor[0].release);
+        QVERIFY(waitedFor[1].vk == kVkPacket && !waitedFor[1].release);
+        QVERIFY(waitedFor[2].vk == 'A' && !waitedFor[2].release);
+        // AltGr is the right Alt with the left Ctrl Windows makes up for it
+        // (its scan code marked): typing. The right Alt alone, or with the
+        // left Ctrl pressed for real, makes shortcuts.
+        Modifiers modifiers;
+        modifiers.seen(kVkLControl, 0x1D | kSimulatedScan, true);
+        QVERIFY(!modifiers.chord() && !modifiers.altGr());
+        modifiers.seen(kVkRMenu, 0x38, true);
+        QVERIFY(!modifiers.chord() && modifiers.altGr());
+        modifiers.seen(kVkRMenu, 0x38, false); // the left Ctrl's release, should it come unmarked, is not Ctrl's
+        QVERIFY(!modifiers.chord() && !modifiers.altGr());
+        modifiers.seen(kVkLControl, 0x1D | kSimulatedScan, false);
+        modifiers.seen(kVkRMenu, 0x38, true);
+        QVERIFY(modifiers.chord() && !modifiers.altGr()); // no AltGr on the layout: Alt
+        modifiers.seen(kVkLControl, 0x1D, true);
+        QVERIFY(modifiers.chord() && !modifiers.altGr()); // Ctrl+Alt
+        modifiers = {};
+        modifiers.seen(kVkLControl, 0x1D, true);
+        modifiers.seen(kVkRMenu, 0x38, true); // AltGr with Ctrl held: Windows adds no Ctrl, a shortcut
+        QVERIFY(modifiers.chord() && !modifiers.altGr());
+        modifiers = {};
+        for (const unsigned vk : {kVkControl, kVkRControl, kVkMenu, kVkLMenu, kVkLWin, kVkRWin}) {
+            modifiers.seen(vk, 0, true);
+            QVERIFY(modifiers.chord());
+            modifiers.seen(vk, 0, false);
+            QVERIFY(!modifiers.chord());
+        }
+    }
+
+    // A hold played out (HoldRun, as platform/TypeToSearch drives it): the
+    // keys typed while the launcher is asked for reach it in order, with
+    // Shift, Caps Lock and AltGr as they were typed; shortcuts go at once;
+    // and every way a hold ends leaves Shift as the user holds it, and ends
+    // it (its hook may go, the Raw Input set aside comes back).
+    void typingHold()
+    {
+        using namespace searchtyping;
+        const Shifts none;
+        const Shifts left {.left = true};
+        const Hold::Front startMenu {.startMenu = true, .sourceFocused = true};
+        // "baidu" in the Start menu, the launcher ready once "ai" was held;
+        // "d" typed while those were on their way follows them (GitHub #39,
+        // #66: it came out "dbaiu"), "u" after the hold.
+        {
+            HoldRun run;
+            run.start('B');
+            QCOMPARE(run.timer.value_or(0), kWaitForLauncherMs);
+            run.release('B');
+            run.letters("ai");
+            run.run();
+            QVERIFY(run.window.empty());
+            run.letters("d");
+            run.during(1);
+            run.deliver();
+            QVERIFY(run.ended);
+            run.letters("u");
+            run.run();
+            QCOMPARE(run.typed(), u"baidu"_s);
+            QCOMPARE(run.batches.size(), std::size_t(2));
+            QVERIFY(run.windowShift() == none && run.stuck().isEmpty() && run.taps() == 0);
+        }
+        // Capitals typed with Shift held from before: the mask goes to the
+        // window at the first key held (it saw Shift go down, then nothing),
+        // and the user's release later is no tap.
+        {
+            HoldRun run;
+            run.before(kVkLShift, true);
+            run.start('B', false, left);
+            QCOMPARE(run.masksNow, 1);
+            run.release('B');
+            run.letters("aidu");
+            run.run();
+            run.deliver();
+            run.release(kVkLShift);
+            run.run();
+            QVERIFY(run.ended);
+            QCOMPARE(run.typed(), u"BAIDU"_s);
+            QCOMPARE(run.masksNow, 1);
+            QVERIFY(run.windowShift() == none && run.taps() == 0 && run.stuck().isEmpty());
+        }
+        // "macOS": Shift pressed after "mac" was held goes on (nothing on its
+        // way); the small letters go without it, the capitals with it.
+        {
+            HoldRun run;
+            run.start('M');
+            run.release('M');
+            run.letters("ac");
+            run.press(kVkLShift);
+            run.letters("os");
+            run.release(kVkLShift);
+            run.run();
+            QCOMPARE(run.masksNow, 1); // O held with Shift seen alone by the window
+            run.deliver();
+            QCOMPARE(run.typed(), u"macOS"_s);
+            QVERIFY(run.ended && run.windowShift() == none && run.taps() == 0 && run.stuck().isEmpty());
+        }
+        // Shift let go while the capitals were held: Win顺 presses it for them.
+        {
+            HoldRun run;
+            run.before(kVkLShift, true);
+            run.start('A', false, left);
+            run.release('A');
+            run.letters("b");
+            run.release(kVkLShift);
+            run.run();
+            run.deliver();
+            QCOMPARE(run.typed(), u"AB"_s);
+            QVERIFY(run.ended && run.windowShift() == none && run.taps() == 0 && run.stuck().isEmpty());
+        }
+        // ... let go while they were on their way, between them: the release
+        // goes on (GitHub #91), so the capital after it is small (the known
+        // case, docs/pitfalls.md); Shift ends as the user has it all the same.
+        {
+            HoldRun run;
+            run.before(kVkLShift, true);
+            run.start('A', false, left);
+            run.release('A');
+            run.letters("b");
+            run.run();
+            run.release(kVkLShift);
+            run.during(2);
+            run.deliver();
+            QCOMPARE(run.typed(), u"Ab"_s);
+            QVERIFY(run.ended && run.windowShift() == none && run.taps() == 0 && run.stuck().isEmpty());
+        }
+        // A tap of Shift made while keys typed again were on their way (to
+        // switch the input method): held back, its release with it, and typed
+        // again as a tap, after the keys before it (GitHub #103).
+        {
+            HoldRun run;
+            run.start('A');
+            run.release('A');
+            run.run();
+            run.tap(kVkLShift);
+            run.letters("b");
+            run.during(1);
+            run.deliver();
+            QCOMPARE(run.trace(), u"A+ A- LShift+ LShift- B+ B-"_s);
+            QCOMPARE(run.taps(), 1);
+            QVERIFY(run.ended && run.windowShift() == none);
+        }
+        // Shift pressed while nothing was on its way goes on; the small
+        // letter held from before goes without it, then Shift is pressed
+        // again for the user: their release makes the tap they made...
+        {
+            HoldRun run;
+            run.start('M');
+            run.release('M');
+            run.press(kVkLShift);
+            run.run();
+            run.deliver();
+            run.release(kVkLShift);
+            run.run();
+            QCOMPARE(run.trace(), u"LShift+ mask+ mask- LShift- M+ M- LShift+ LShift-"_s);
+            QCOMPARE(run.taps(), 1);
+        }
+        // ... but not when Ctrl went down with it meanwhile: Win顺's press is
+        // masked.
+        {
+            HoldRun run;
+            run.start('M');
+            run.release('M');
+            run.press(kVkLShift);
+            run.tap(kVkLControl);
+            run.run();
+            run.deliver();
+            run.release(kVkLShift);
+            run.run();
+            QCOMPARE(run.trace(), u"LShift+ LCtrl+ LCtrl- LShift- M+ M- LShift+ mask+ mask- LShift-"_s);
+            QCOMPARE(run.taps(), 0);
+        }
+        // Ctrl+Shift+T while keys typed again are on their way: Shift is not
+        // held back with Ctrl down, the shortcut goes at once, whole.
+        {
+            HoldRun run;
+            run.start('A');
+            run.release('A');
+            run.run();
+            run.press(kVkLControl);
+            run.press(kVkLShift);
+            run.tap('T');
+            run.release(kVkLShift);
+            run.release(kVkLControl);
+            run.during(1);
+            run.deliver();
+            QCOMPARE(run.trace(), u"A+ LCtrl+ LShift+ T+ T- LShift- LCtrl- A-"_s);
+            QVERIFY(run.ended && run.windowShift() == none);
+        }
+        // Shortcuts while the keys wait go at once (Ctrl+C), and a key held
+        // when Ctrl went down is let go in order: its release, let through,
+        // came before its press typed again and left it down.
+        {
+            HoldRun run;
+            run.start('B');
+            run.press('A');
+            run.press(kVkLControl);
+            run.tap('C');
+            run.release('A');
+            run.release(kVkLControl);
+            run.release('B');
+            run.run();
+            QCOMPARE(run.trace(), u"LCtrl+ C+ C- LCtrl-"_s);
+            run.deliver();
+            QCOMPARE(run.trace(), u"LCtrl+ C+ C- LCtrl- B+ A+ A- B-"_s);
+            QVERIFY(run.ended && run.stuck().isEmpty());
+        }
+        // A shortcut still held when the launcher is ready (Ctrl+Shift+F24
+        // while "ba" waited, live): the keys wait for its Ctrl to be let go;
+        // typed with it down, the b came as Ctrl+B ("aidu").
+        {
+            HoldRun run;
+            run.start('B');
+            run.release('B');
+            run.letters("a");
+            run.press(kVkLControl);
+            run.press(kVkLShift);
+            run.tap(0x87); // F24
+            run.release(kVkLShift);
+            run.run();
+            run.deliver();
+            QVERIFY(run.looking && !run.ended);
+            QCOMPARE(run.trace(), u"LCtrl+ LShift+ <87>+ <87>- LShift-"_s);
+            run.lookAgainAt(300); // still held
+            QVERIFY(run.batches.empty() && !run.ended);
+            run.release(kVkLControl);
+            run.run();
+            run.lookAgainAt(320);
+            QCOMPARE(run.trace(), u"LCtrl+ LShift+ <87>+ <87>- LShift- LCtrl- B+ B- A+ A-"_s);
+            QVERIFY(run.ended && run.stuck().isEmpty() && run.windowShift() == none && run.taps() == 0);
+        }
+        // ... given back to the file display just the same.
+        {
+            HoldRun run;
+            run.start('A', true);
+            run.release('A');
+            run.letters("b");
+            run.press(kVkLControl);
+            run.run();
+            run.giveBack();
+            QVERIFY(run.looking && !run.ended && run.typed().isEmpty());
+            run.release(kVkLControl);
+            run.run();
+            run.lookAgainAt(200);
+            QCOMPARE(run.typed(), u"ab"_s);
+            QVERIFY(run.ended && run.stuck().isEmpty());
+        }
+        // ... held until the hold runs out: dropped, not typed as shortcuts,
+        // even in a file display.
+        {
+            HoldRun run;
+            run.start('A', true);
+            run.release('A');
+            run.press(kVkLControl);
+            run.run();
+            run.fire();
+            QCOMPARE(run.endedAt - run.startedAt, kWaitForLauncherMs);
+            QCOMPARE(run.trace(), u"LCtrl+ A-"_s); // the release goes all the same (keepState): it changes nothing
+            QVERIFY(run.ended && run.batches.size() == 1);
+            run.release(kVkLControl);
+            run.run();
+            QCOMPARE(run.stuck(), QString());
+        }
+        // A number pad key with NumLock on: let go under another code (Shift
+        // between); told apart by its scan code, let go as it was pressed.
+        {
+            HoldRun run;
+            run.start('A');
+            run.release('A');
+            run.press(0x24, 0x47); // VK_HOME
+            run.release(0x67, 0x47); // VK_NUMPAD7
+            run.run();
+            run.deliver();
+            QCOMPARE(run.trace(), u"A+ A- <24>+ <24>-"_s);
+            QVERIFY(run.stuck().isEmpty());
+        }
+        // Caps Lock pressed between the keys held: in order with them,
+        // "aB", not "AB".
+        {
+            HoldRun run;
+            run.start('A');
+            run.release('A');
+            run.tap(kVkCapital);
+            run.letters("b");
+            run.run();
+            QVERIFY(run.window.empty());
+            run.deliver();
+            QCOMPARE(run.typed(), u"aB"_s);
+            QCOMPARE(run.trace(), u"A+ A- Caps+ Caps- B+ B-"_s);
+        }
+        // AltGr between the keys held (Polish "zażółć", German @): typing, not
+        // a shortcut. Each such key is held as the character it types and
+        // typed again in order; one that types nothing goes on. Ctrl+C
+        // still goes at once.
+        {
+            HoldRun run;
+            run.altGr = [](unsigned vk) {
+                return vk == 'Z' ? std::u16string(1, char16_t(0x017C)) : vk == 'Q' ? std::u16string(u"@") : std::u16string();
+            };
+            run.start('Z');
+            run.release('Z');
+            run.letters("a");
+            run.altGrKey(true);
+            run.tap('Z');
+            run.tap('Q');
+            run.tap('X');
+            run.altGrKey(false);
+            run.letters("o");
+            run.press(kVkLControl);
+            run.tap('C');
+            run.release(kVkLControl);
+            run.run();
+            QCOMPARE(run.trace(), u"AltGrCtrl+ RAlt+ X+ X- RAlt- AltGrCtrl- LCtrl+ C+ C- LCtrl-"_s);
+            run.deliver();
+            QCOMPARE(run.typed().right(5), u"zaż@o"_s);
+            QVERIFY(run.ended && run.stuck().isEmpty());
+        }
+
+        // Every way a hold ends: Shift as the user holds it, the hold over.
+        // Typed again into the launcher: above. Given back to the file
+        // display they were typed in...
+        {
+            HoldRun run;
+            run.start('A', true);
+            run.release('A');
+            run.letters("bc");
+            run.run();
+            run.giveBack();
+            QCOMPARE(run.typed(), u"abc"_s);
+            QVERIFY(run.ended && run.windowShift() == none && run.stuck().isEmpty());
+        }
+        // ... the user moved on (another window, an edit field): nothing typed
+        // into it, Shift as they hold it.
+        {
+            HoldRun run;
+            run.start('A', true);
+            run.release('A');
+            run.run();
+            run.front.sourceFocused = false;
+            run.giveBack();
+            QCOMPARE(run.typed(), QString());
+            QVERIFY(run.ended && run.windowShift() == none && run.stuck().isEmpty());
+        }
+        // ... typed in a file display, the launcher never came: back to it.
+        {
+            HoldRun run;
+            run.start('A', true);
+            run.release('A');
+            run.run();
+            run.fire();
+            QCOMPARE(run.endedAt - run.startedAt, kWaitForLauncherMs);
+            QCOMPARE(run.typed(), u"a"_s);
+            QVERIFY(run.ended && run.windowShift() == none && run.stuck().isEmpty());
+        }
+        // ... typed in the Start menu, the launcher never in front again: the
+        // keys dropped (they would go into Windows' search), but the user's
+        // Shift held back with them goes, as they hold it (it was dropped
+        // too, and the window never had it), the mask after it (the user typed
+        // with it: their release is no tap); Caps Lock pressed among them goes,
+        // and so do the releases (B's changes nothing: its press was dropped).
+        for (const bool capsLock : {false, true}) {
+            HoldRun run;
+            run.start('A');
+            run.release('A');
+            run.run();
+            run.press(kVkLShift); // while the A goes by
+            run.tap('B');
+            if (capsLock)
+                run.tap(kVkCapital);
+            run.during(1);
+            run.postponePassed = true;
+            run.deliver();
+            run.front = startMenu; // took the front back as they went
+            run.postponePassed = false;
+            run.passedNow();
+            QVERIFY(!run.ended && run.looking);
+            run.fire();
+            QCOMPARE(run.endedAt - run.startedAt, kWaitForLauncherMs);
+            QCOMPARE(run.typed(), u"a"_s);
+            QCOMPARE(run.trace(), capsLock ? u"A+ A- LShift+ B- Caps+ Caps-"_s : u"A+ A- LShift+ B- mask+ mask-"_s);
+            QVERIFY(run.ended && run.windowShift() == left && run.stuck().isEmpty());
+            run.release(kVkLShift);
+            run.run();
+            QCOMPARE(run.taps(), 0);
+        }
+        // ... a key typed again whose release comes as that batch goes by (held
+        // behind it: its press was taken), and the launcher loses the front:
+        // the hold runs out, or Win顺 lets go of it, and the keys held are
+        // dropped, but not that release. Dropped, B stayed down for Windows:
+        // its press got there, typed again, and its release was taken.
+        for (const bool stopped : {false, true}) {
+            HoldRun run;
+            run.start('B');
+            run.release('B');
+            run.press('A');
+            run.during(1);
+            run.postponePassed = true;
+            run.deliver();
+            run.front = {}; // another window took the front
+            run.postponePassed = false;
+            run.passedNow();
+            QVERIFY(run.looking && !run.ended);
+            if (stopped)
+                run.stop();
+            else
+                run.fire();
+            QVERIFY(run.ended);
+            QCOMPARE(run.trace(), u"B+ B-"_s); // A dropped
+            QCOMPARE(run.stuck(), QString());
+        }
+        // ... the same with Win顺's own Shift left down for the window (a hook
+        // after this one took its release): set right while the keys wait,
+        // and the hold ends with Shift as the user has it.
+        {
+            HoldRun run;
+            run.before(kVkLShift, true);
+            run.start('A', false, left);
+            run.release('A');
+            run.release(kVkLShift);
+            run.run();
+            int eaten = 0;
+            run.takenLater = [&eaten](const HoldRun::Key& key) {
+                return key.own && key.vk == kVkLShift && !key.press && eaten++ == 0;
+            };
+            run.letters("c");
+            run.during(2);
+            run.postponePassed = true;
+            run.deliver();
+            QVERIFY(run.windowShift() == left);
+            run.front = startMenu;
+            run.postponePassed = false;
+            run.passedNow();
+            QVERIFY(run.windowShift() == none); // set right at once, not at the end
+            QVERIFY(!run.ended);
+            run.fire();
+            QVERIFY(run.ended && run.windowShift() == none && run.stuck().isEmpty());
+            QCOMPARE(run.typed(), u"A"_s); // the c dropped
+        }
+        // ... typed again, and some never went by (a hook before this one took
+        // them): after kPassTimeoutMs the rest go after them, and it ends.
+        {
+            HoldRun run;
+            run.start('A');
+            run.release('A');
+            run.letters("b");
+            run.run();
+            run.lostOnTheWay = [](const HoldRun::Key& key) { return key.own && key.vk == 'B' && key.press; };
+            run.deliver();
+            QVERIFY(!run.ended);
+            run.letters("c");
+            run.run();
+            run.fire();
+            QVERIFY(run.ended);
+            QCOMPARE(run.endedAt - run.startedAt, kPassTimeoutMs);
+            QCOMPARE(run.typed(), u"ac"_s);
+            QVERIFY(run.windowShift() == none && run.stuck().isEmpty());
+        }
+        // ... SendInput put in only some of them: what went down is let go,
+        // Shift as the user has it, and it ends.
+        {
+            HoldRun run;
+            run.before(kVkLShift, true);
+            run.start('A', false, left);
+            run.release('A');
+            run.release(kVkLShift);
+            run.run();
+            run.nextSendPutsIn = 2; // LShift+ A+
+            run.deliver();
+            QVERIFY(run.ended);
+            QCOMPARE(run.trace(), u"LShift+ mask+ mask- LShift- LShift+ A+ A- LShift-"_s);
+            QVERIFY(run.windowShift() == none && run.stuck().isEmpty());
+        }
+        // Win顺's Shift taken by a hook after this one every time: set right
+        // once more at most, and the hold still ends.
+        {
+            HoldRun run;
+            run.before(kVkLShift, true);
+            run.start('A', false, left);
+            run.release('A');
+            run.release(kVkLShift);
+            run.run();
+            run.takenLater = [](const HoldRun::Key& key) { return key.own && key.vk == kVkLShift && !key.press; };
+            run.deliver();
+            QVERIFY(run.ended);
+            QCOMPARE(run.batches.size(), std::size_t(3));
+            QCOMPARE(run.ownShifts(), 4); // its press, and three releases
+        }
+        // ... a Shift set right that never even goes by: the timer ends it.
+        {
+            HoldRun run;
+            run.before(kVkLShift, true);
+            run.start('A', false, left);
+            run.release('A');
+            run.release(kVkLShift);
+            run.run();
+            run.takenLater = [](const HoldRun::Key& key) { return key.own && key.vk == kVkLShift && !key.press; };
+            run.lostOnTheWay = [&run](const HoldRun::Key& key) {
+                return key.own && key.vk == kVkLShift && !key.press && run.batches.size() > 1;
+            };
+            run.deliver();
+            QVERIFY(!run.ended);
+            run.fire();
+            QCOMPARE(run.batches.size(), std::size_t(3)); // the keys, the fix-up lost, Shift once more
+            QVERIFY(!run.ended); // ... waited for as well (lost too)
+            run.fire();
+            QVERIFY(run.ended && run.stuck().isEmpty());
+            QCOMPARE(run.batches.size(), std::size_t(3));
+        }
+
+        // One deadline a hold: the launcher asked for again from the
+        // Start menu gets at most kAskAgainWaitMs from then, never past
+        // kHoldCapMs; an early ask moves nothing.
+        {
+            HoldRun run;
+            run.front = startMenu;
+            run.start('A');
+            run.release('A');
+            run.run();
+            run.deliver();
+            QVERIFY(run.looking && run.asksAgain == 0);
+            run.lookAgainAt(700);
+            QCOMPARE(run.asksAgain, 1);
+            run.lookAgainAt(2800);
+            QCOMPARE(run.asksAgain, 2);
+            QCOMPARE(run.timer.value_or(0), 1000u);
+            QVERIFY(run.hold.timeout(run.front, run.startedAt + kWaitForLauncherMs).timerMs == 800u); // the old deadline: not yet
+            run.lookAgainAt(3500);
+            QCOMPARE(run.asksAgain, kMaxAsksAgain);
+            run.fire();
+            QVERIFY(run.ended);
+            QCOMPARE(run.endedAt - run.startedAt, 3800u);
+            QCOMPARE(run.typed(), QString());
+            QVERIFY(run.stuck().isEmpty());
+        }
+        {
+            HoldRun run;
+            run.front = startMenu;
+            run.start('A');
+            run.release('A');
+            run.run();
+            run.deliver();
+            run.lookAgainAt(2600);
+            run.lookAgainAt(3300);
+            QCOMPARE(run.asksAgain, 2);
+            run.fire();
+            QCOMPARE(run.endedAt - run.startedAt, kHoldCapMs);
+            QVERIFY(run.ended && run.stuck().isEmpty());
+        }
+
+        // Win顺 lets go mid-hold (TypeToSearch goes): the keys held are
+        // dropped, Shift goes as the user holds it, after the batch still on
+        // its way. Here A's release typed again never gets here (a hook before
+        // this one took it), and the user pressed Shift meanwhile.
+        {
+            HoldRun run;
+            run.start('A');
+            run.release('A');
+            run.run();
+            run.lostOnTheWay = [](const HoldRun::Key& key) { return key.vk == 'A' && !key.press; };
+            run.deliver();
+            run.tap('B');
+            run.press(searchtyping::kVkLShift);
+            run.run();
+            QVERIFY(!run.ended && !run.windowShift().any()); // held behind the batch
+            run.stop();
+            QVERIFY(run.ended && !run.hold.holding());
+            QCOMPARE(run.trace(), u"A+ B- LShift+"_s); // B dropped but for its release, Shift as it came
+            QCOMPARE(run.windowShift(), (searchtyping::Shifts {.left = true}));
+            run.release(searchtyping::kVkLShift);
+            run.run();
+            QCOMPARE(run.taps(), 1); // the user's own tap
+        }
+        {
+            HoldRun run; // waiting for Win顺 to be in front again, the user's Shift held among the keys
+            run.start('A');
+            run.release('A');
+            run.run();
+            run.press(searchtyping::kVkLShift);
+            run.during(1);
+            run.postponePassed = true;
+            run.deliver();
+            run.front.ours = false;
+            run.passedNow();
+            QVERIFY(run.looking && !run.ended);
+            QCOMPARE(run.trace(), u"A+ A-"_s);
+            run.stop();
+            QVERIFY(run.ended);
+            QCOMPARE(run.trace(), u"A+ A- LShift+"_s);
+            run.release(searchtyping::kVkLShift);
+            run.run();
+            QCOMPARE(run.taps(), 1);
+            QVERIFY(run.hold.stop().send.empty()); // idle: nothing
+        }
+
+        // A character a program sends (VK_PACKET, the character in the scan
+        // code) is held as a key, also one with the bit Windows marks its
+        // made-up keys with: 你 is U+4F60. Taken for made up, it went on at
+        // once, ahead of the keys held before it (second review).
+        {
+            HoldRun run;
+            run.start('A');
+            run.release('A');
+            run.press(kVkPacket, 0x4F60);
+            run.release(kVkPacket, 0x4F60);
+            run.run();
+            QVERIFY(run.window.empty());
+            run.deliver();
+            QCOMPARE(run.typed(), u"a你"_s);
+            QVERIFY(run.ended && run.stuck().isEmpty());
+        }
+        // Dropped in the Start menu, Shift+H left Shift alone: a tap the
+        // user never made, which switched the input method. The mask goes in
+        // before its release; a tap the user did make stays one.
+        for (const bool tapFirst : {false, true}) {
+            HoldRun run;
+            run.start('A');
+            run.release('A');
+            run.run();
+            if (tapFirst) {
+                run.press(kVkLShift);
+                run.release(kVkLShift);
+            }
+            run.press(kVkLShift); // while the A goes by: held, as the keys after it
+            run.tap('H');
+            run.release(kVkLShift);
+            run.during(1);
+            run.postponePassed = true;
+            run.deliver();
+            run.front = startMenu;
+            run.postponePassed = false;
+            run.passedNow();
+            QVERIFY(!run.ended && run.looking);
+            run.fire();
+            QVERIFY(run.ended);
+            QCOMPARE(run.typed(), u"a"_s);
+            QCOMPARE(run.taps(), tapFirst ? 1 : 0);
+            QCOMPARE(run.windowShift(), none);
+            QCOMPARE(run.stuck(), QString());
+        }
+        // The user lets go of Shift and presses it again while the keys wait
+        // (a tap to come): the keys typed again go in after it, so it is let
+        // go and pressed again after them, and the user's release is a tap.
+        {
+            HoldRun run;
+            run.before(kVkLShift, true);
+            run.start('A', false, left);
+            run.release('A');
+            run.tap('B');
+            run.release(kVkLShift); // goes on: nothing on its way, no Shift held among the keys
+            run.press(kVkLShift);
+            run.run();
+            run.deliver();
+            QVERIFY(run.ended);
+            QCOMPARE(run.typed(), u"AB"_s);
+            run.release(kVkLShift);
+            run.run();
+            QCOMPARE(run.taps(), 1);
+            QCOMPARE(run.stuck(), QString());
+        }
+        // Caps Lock with Ctrl held (a Japanese input method's switch) goes on
+        // at once, as every shortcut does.
+        {
+            HoldRun run;
+            run.start('A');
+            run.press(kVkLControl);
+            run.tap(kVkCapital);
+            run.release(kVkLControl);
+            run.release('A');
+            run.run();
+            QCOMPARE(run.trace(), u"LCtrl+ Caps+ Caps- LCtrl-"_s);
+            run.deliver();
+            QCOMPARE(run.trace(), u"LCtrl+ Caps+ Caps- LCtrl- A+ A-"_s);
+        }
+        // NumLock on, Shift held: Windows lets go of Shift for a number pad
+        // key and presses it again after (made-up keys, 0x22A). Held
+        // meanwhile, the key is typed again without it: Home, not Shift+Home.
+        {
+            HoldRun run;
+            run.before(kVkLShift, true);
+            run.start('A', false, left);
+            run.release('A');
+            run.release(kVkLShift, 0x2A | kSimulatedScan);
+            run.press(0x24, 0x47); // VK_HOME, number pad 7
+            run.release(0x24, 0x47);
+            run.press(kVkLShift, 0x2A | kSimulatedScan);
+            run.run();
+            run.deliver();
+            QVERIFY(run.ended);
+            QCOMPARE(run.trace(), u"LShift+ mask+ mask- LShift- LShift+ A+ A- LShift- <24>+ <24>- LShift+ mask+ mask-"_s);
+            QCOMPARE(run.stuck(), QString());
+        }
+        // The keys typed again never go by (a hook before this one takes
+        // them): at the timeout those held since go after them, and the hold
+        // ends once those have gone by. SendInput putting in only some of
+        // them, what went down is let go (it was left down: the hold had ended).
+        {
+            HoldRun run;
+            run.start('A');
+            run.release('A');
+            run.run();
+            run.lostOnTheWay = [](const HoldRun::Key& key) { return key.vk == 'A'; };
+            run.deliver();
+            run.tap('B'); // held: A is still on its way
+            run.run();
+            QVERIFY(!run.ended && run.window.empty());
+            run.lostOnTheWay = nullptr;
+            run.nextSendPutsIn = 1; // B's press only
+            run.fire();
+            QVERIFY(run.ended);
+            QCOMPARE(run.trace(), u"B+ B-"_s);
+            QCOMPARE(run.stuck(), QString());
+        }
+    }
+
+    // The keyboard's Raw Input set aside while a hold or a recording needs
+    // the hook to see the keys typed into Win顺's own windows (GitHub #66),
+    // shared and counted (KeyListener's KeyboardRawInputAside): it goes back
+    // when the last holder goes, as KeyListener has it then, and double Ctrl
+    // is never lost for good.
+    void rawInputAside()
+    {
+        using searchtyping::RawInputAside;
+        const RawInputAside::Registration listener {.window = 0x10, .flags = 0x100};
+        const RawInputAside::Registration newer {.window = 0x20, .flags = 0x100};
+        {
+            RawInputAside aside;
+            QVERIFY(aside.take()); // the first takes it away
+            aside.taken(listener);
+            QVERIFY(aside.aside());
+            QVERIFY(aside.give() == listener);
+            QVERIFY(!aside.aside());
+            QVERIFY(!aside.give()); // one too many: nothing
+        }
+        {
+            // A recording while a hold is on (or the other way round): put
+            // back when the last goes, not under the other.
+            RawInputAside aside;
+            QVERIFY(aside.take());
+            aside.taken(listener);
+            QVERIFY(!aside.take());
+            aside.taken(std::nullopt); // never asked: only the first takes it away
+            QVERIFY(!aside.give());
+            QVERIFY(aside.aside());
+            QVERIFY(aside.give() == listener);
+        }
+        {
+            // A new KeyListener registered meanwhile (the settings changed):
+            // the old one's window went first, the new one goes back.
+            RawInputAside aside;
+            QVERIFY(aside.take());
+            aside.taken(listener);
+            QVERIFY(!aside.removes(listener.window));
+            QVERIFY(!aside.registers(newer));
+            QVERIFY(aside.give() == newer);
+            QVERIFY(aside.registers(listener)); // set aside no more: Windows' now
+            QVERIFY(aside.removes(listener.window));
+        }
+        {
+            // Its KeyListener went (double Ctrl and the drop pie off): nothing
+            // goes back; another window going leaves it alone.
+            RawInputAside aside;
+            QVERIFY(aside.take());
+            aside.taken(listener);
+            QVERIFY(!aside.removes(newer.window));
+            QVERIFY(!aside.removes(listener.window));
+            QVERIFY(!aside.give());
+        }
+        {
+            // None registered (double Ctrl off), or Windows kept it: nothing to
+            // put back.
+            RawInputAside aside;
+            QVERIFY(aside.take());
+            aside.taken(std::nullopt);
+            QVERIFY(!aside.give());
+        }
+        {
+            // Windows refused to put it back: kept, and the next holder to go
+            // tries again.
+            RawInputAside aside;
+            QVERIFY(aside.take());
+            aside.taken(listener);
+            const auto back = aside.give();
+            QVERIFY(back == listener);
+            aside.notPutBack(*back);
+            QVERIFY(aside.take());
+            aside.taken(std::nullopt); // not registered now
+            QVERIFY(aside.give() == listener);
+            // ... unless KeyListener registered since, set aside no more.
+            aside.notPutBack(listener);
+            QVERIFY(aside.registers(newer));
+            QVERIFY(aside.take());
+            aside.taken(newer);
+            QVERIFY(aside.give() == newer);
+        }
+    }
+
+    // The keys held for the launcher go once it takes typing as it would a
+    // user's (GitHub #103), or kHandoffCapMs after it first became active all
+    // the same.
+    void typingHandoff()
+    {
+        using namespace searchtyping;
+        const LauncherState ready {.active = true, .fieldFocused = true, .revealed = true};
+        QCOMPARE(handoff(ready, 0u), Handoff::Deliver); // a pinned launcher already up: at once
+        QCOMPARE(handoff(ready, 5000u), Handoff::Deliver);
+        // Active, but still cloaked (its first frame not drawn) or its field
+        // not the focus object yet: they wait, until the cap.
+        LauncherState cloaked = ready;
+        cloaked.revealed = false;
+        QCOMPARE(handoff(cloaked, 0u), Handoff::Wait);
+        QCOMPARE(handoff(cloaked, kHandoffCapMs - 1), Handoff::Wait);
+        QCOMPARE(handoff(cloaked, kHandoffCapMs), Handoff::DeliverLate); // never stranded
+        LauncherState unfocused = ready;
+        unfocused.fieldFocused = false;
+        QCOMPARE(handoff(unfocused, 30u), Handoff::Wait);
+        QCOMPARE(handoff(unfocused, kHandoffCapMs + 500), Handoff::DeliverLate);
+        // Not active yet: nothing goes, however long ago it was asked for
+        // (the hook's hold gives up on the keys).
+        LauncherState inactive = ready;
+        inactive.active = false;
+        QCOMPARE(handoff(inactive, std::nullopt), Handoff::Wait);
+        QCOMPARE(handoff(LauncherState {}, std::nullopt), Handoff::Wait);
+        // Active once, then not (the Start menu took the front back, GitHub
+        // #66): after the cap the keys go to the hook all the same, which
+        // types them only into a window of Win顺's in front and asks for the
+        // launcher again.
+        QCOMPARE(handoff(inactive, 30u), Handoff::Wait);
+        QCOMPARE(handoff(inactive, kHandoffCapMs), Handoff::DeliverLate);
+        QCOMPARE(handoff(LauncherState {}, kHandoffCapMs + 1), Handoff::DeliverLate);
     }
 
     // The folder menu's hotkey (GitHub #25): a press opens, closes or
@@ -9673,6 +12371,520 @@ private slots:
         QVERIFY(same(menuhotkey::anchor(false, {500, 600}, {-1920, 0}, 24), Point {-1896, 24})); // a monitor left of the primary
     }
 
+    // The clipboard's hotkey held after it opened the window (GitHub #107):
+    // the hook's side (Watch) key by key, the GUI thread's (Hold) by notes
+    // and WM_HOTKEYs in the order they came.
+    void hotkeySteps()
+    {
+        using namespace ws::hotkeysteps;
+        constexpr unsigned kBackquote = 0xC0, kF9 = 0x78, kV = 0x56, kA = 0x41;
+        constexpr unsigned kLCtrl = 0xA2, kRCtrl = 0xA3, kLShift = 0xA0, kLWin = 0x5B;
+        using N = Note;
+        const auto noted = [](Watch::Answer a, Note note, Note then = Note::None, bool take = false) {
+            return a.note == note && a.then == then && a.take == take;
+        };
+        const auto sides = [](std::initializer_list<unsigned> down) {
+            Sides s;
+            for (const unsigned vk : down)
+                s.set(vk, true);
+            return s;
+        };
+
+        { // A modifier is held while either side is; the generic codes are the left ones.
+            Sides s = sides({kLCtrl, kRCtrl});
+            s.set(kLCtrl, false);
+            QCOMPARE(s.held(), kCtrl);
+            s.set(kRCtrl, false);
+            QCOMPARE(s.held(), 0u);
+            s.set(0x11, true); // VK_CONTROL
+            s.set(kLShift, true);
+            QCOMPARE(s.held(), kCtrl | kShift);
+            s.set(kLCtrl, false); // the same side
+            QCOMPARE(s.held(), kShift);
+            QCOMPARE(modifierOf(kLWin), kWin);
+            QCOMPARE(modifierOf(kBackquote), 0u);
+        }
+        { // Ctrl+`: held, ` again steps, its repeats taken, letting go of all ends it.
+            Watch w(kCtrl, kBackquote, sides({kLCtrl}), true, 1000);
+            QVERIFY(w.holding());
+            QCOMPARE(w.start(), N::None);
+            QVERIFY(noted(w.key(kBackquote, true, 1500), N::None, N::None, true)); // its own repeat
+            QVERIFY(noted(w.key(kBackquote, false, 1600), N::Lifted));
+            QVERIFY(noted(w.key(kBackquote, true, 1700), N::Step)); // goes on: the WM_HOTKEY comes
+            QVERIFY(noted(w.key(kBackquote, true, 1750), N::None, N::None, true));
+            QVERIFY(noted(w.key(kBackquote, false, 1800), N::None)); // lifted once
+            QVERIFY(noted(w.key(kBackquote, true, 1900), N::Step));
+            QVERIFY(noted(w.key(kBackquote, false, 1950), N::None));
+            QVERIFY(noted(w.key(kLCtrl, true, 1990), N::None)); // Ctrl's own repeat
+            QVERIFY(noted(w.key(kLCtrl, false, 2000), N::AllUp));
+            QVERIFY(noted(w.key(kBackquote, true, 2100), N::None)); // over: as ever
+            QVERIFY(noted(w.key(kVkEscape, true, 2200), N::None)); // Esc too
+        }
+        { // ... the key let go last: Lifted at Ctrl, AllUp at the key.
+            Watch w(kCtrl, kBackquote, sides({kLCtrl}), true, 1000);
+            QVERIFY(noted(w.key(kLCtrl, false, 1100), N::Lifted));
+            QVERIFY(noted(w.key(kBackquote, false, 1200), N::AllUp));
+        }
+        { // ... both at once (the last event): Lifted, then AllUp.
+            Watch w(kCtrl, kBackquote, sides({kLCtrl}), false, 1000);
+            QCOMPARE(w.start(), N::Lifted); // a quick press: the key up before the hook went in
+            QCOMPARE(w.start(), N::None);
+            QVERIFY(noted(w.key(kLCtrl, false, 1100), N::AllUp));
+        }
+        { // Let go of one side, the other still down: held.
+            Watch w(kCtrl, kBackquote, sides({kLCtrl, kRCtrl}), true, 1000);
+            QVERIFY(noted(w.key(kBackquote, false, 1100), N::Lifted));
+            QVERIFY(noted(w.key(kLCtrl, false, 1200), N::None));
+            QVERIFY(noted(w.key(kBackquote, true, 1300), N::Step));
+            QVERIFY(noted(w.key(kBackquote, false, 1350), N::None));
+            QVERIFY(noted(w.key(kRCtrl, false, 1400), N::AllUp));
+        }
+        { // Another modifier with it: another chord, no step and no break.
+            Watch w(kCtrl, kBackquote, sides({kLCtrl}), false, 1000);
+            QCOMPARE(w.start(), N::Lifted);
+            QVERIFY(noted(w.key(kLShift, true, 1100), N::None));
+            QVERIFY(noted(w.key(kBackquote, true, 1200), N::None));
+            QVERIFY(noted(w.key(kBackquote, false, 1250), N::None));
+            QVERIFY(noted(w.key(kLShift, false, 1300), N::None));
+            QVERIFY(noted(w.key(kBackquote, true, 1400), N::Step));
+            QVERIFY(noted(w.key(kBackquote, false, 1450), N::None));
+            QVERIFY(noted(w.key(kLCtrl, false, 1500), N::AllUp)); // not over before
+        }
+        { // Ctrl+Shift+F9, Shift let go and pressed again: a fresh press, not a step.
+            Watch w(kCtrl | kShift, kF9, sides({kLCtrl, kLShift}), true, 1000);
+            QVERIFY(noted(w.key(kF9, false, 1100), N::Lifted));
+            QVERIFY(noted(w.key(kLShift, false, 1200), N::None)); // Ctrl still down
+            QVERIFY(noted(w.key(kLShift, true, 1300), N::None));
+            QVERIFY(noted(w.key(kF9, true, 1400), N::Fresh));
+        }
+        { // Win+V; the modifiers not all down as it began: no hold.
+            Watch w(kWin, kV, sides({kLWin}), true, 1000);
+            QVERIFY(w.holding());
+            QVERIFY(noted(w.key(kV, false, 1100), N::Lifted));
+            QVERIFY(noted(w.key(kV, true, 1200), N::Step));
+            QVERIFY(!Watch(kCtrl | kShift, kF9, sides({kLCtrl}), true, 1000).holding());
+            QVERIFY(!Watch(0, kF9, sides({}), true, 1000).holding()); // a lone F9: nothing to hold
+        }
+        { // Esc: taken from the start (Ctrl+Esc would open Start), its repeat and release too.
+            Watch w(kCtrl, kBackquote, sides({kLCtrl}), true, 1000);
+            QVERIFY(noted(w.key(kVkEscape, true, 1100), N::Escape, N::None, true));
+            QVERIFY(w.holdsTaken());
+            QVERIFY(noted(w.key(kVkEscape, true, 1600), N::None, N::None, true));
+            QVERIFY(noted(w.key(kVkEscape, false, 1650), N::None, N::None, true));
+            QVERIFY(!w.holdsTaken());
+            QVERIFY(noted(w.key(kVkEscape, true, 1700), N::Escape, N::None, true)); // again: the GUI decides
+            w.stop(); // the GUI is done with it, the Esc still down
+            QVERIFY(noted(w.key(kVkEscape, false, 1750), N::None, N::None, true));
+            QVERIFY(!w.holdsTaken());
+            QVERIFY(noted(w.key(kVkEscape, true, 1800), N::None)); // stopped: as ever
+        }
+        { // Another key: the hold means nothing any more (once).
+            Watch w(kCtrl, kBackquote, sides({kLCtrl}), true, 1000);
+            QVERIFY(noted(w.key(0xFF, true, 1050), N::None)); // part of an escaped sequence
+            QVERIFY(noted(w.key(0xE8, true, 1060), N::None)); // a masking key (AutoHotkey's)
+            QVERIFY(noted(w.key(kA, false, 1080), N::None)); // a release: no new key
+            QVERIFY(noted(w.key(kA, true, 1100), N::Other));
+            QVERIFY(noted(w.key(kA, true, 1200), N::None));
+            QVERIFY(noted(w.key(kLCtrl, false, 1300), N::None));
+        }
+        { // A release that went by unseen (the secure desktop): a press long after is a press.
+            Watch w(kCtrl, kBackquote, sides({kLCtrl}), true, 1000);
+            QVERIFY(noted(w.key(kBackquote, true, 1000 + kRepeatWithinMs - 1), N::None, N::None, true));
+            QVERIFY(noted(w.key(kBackquote, true, 1000 + 3 * kRepeatWithinMs), N::Step));
+        }
+
+        { // Pressed, let go quickly: it browses; never a hint.
+            Hold h(10'000);
+            QVERIFY(!h.hint(10'000));
+            QCOMPARE(h.note(N::Lifted, 10'120), Hold::Outcome::None);
+            QVERIFY(!h.hint(11'500));
+            QCOMPARE(h.note(N::AllUp, 10'200), Hold::Outcome::End);
+            QCOMPARE(h.note(N::Escape, 10'300), Hold::Outcome::None); // over
+            QCOMPARE(h.press(), Hold::Press::Normal); // the window's own from now on
+        }
+        { // Steps, then let go: pasted. A WM_HOTKEY steps only right after its note.
+            Hold h(10'000);
+            QCOMPARE(h.press(), Hold::Press::Normal); // no note before it
+            QCOMPARE(h.note(N::Lifted, 10'100), Hold::Outcome::None);
+            QCOMPARE(h.note(N::Step, 10'200), Hold::Outcome::None);
+            QVERIFY(!h.hint(10'200)); // until the WM_HOTKEY is through
+            QCOMPARE(h.press(), Hold::Press::Step);
+            QVERIFY(h.hint(10'210));
+            QCOMPARE(h.press(), Hold::Press::Normal); // each note once
+            QCOMPARE(h.note(N::Step, 10'300), Hold::Outcome::None);
+            QCOMPARE(h.press(), Hold::Press::Step);
+            QCOMPARE(h.steps(), 2);
+            QCOMPARE(h.note(N::Step, 10'400), Hold::Outcome::None);
+            QCOMPARE(h.note(N::Fresh, 10'401), Hold::Outcome::None); // another note between: not its WM_HOTKEY
+            QCOMPARE(h.press(), Hold::Press::Normal);
+            QCOMPARE(h.note(N::AllUp, 10'500), Hold::Outcome::Paste);
+            QCOMPARE(h.steps(), 2);
+        }
+        { // A step 10 ms after the window was there to be seen is a step; the
+          // same press as a second one (let go first) would only raise it (A2).
+            Hold h(10'000);
+            QVERIFY(!seenBy(10'050, 10'060));
+            QCOMPARE(h.note(N::Step, 10'060), Hold::Outcome::None);
+            QCOMPARE(h.press(), Hold::Press::Step);
+            QCOMPARE(h.note(N::Fresh, 10'200), Hold::Outcome::None); // part of it let go first
+            QCOMPARE(h.press(), Hold::Press::Normal);
+        }
+        { // The whole hotkey held a second, no step: letting go pastes the first row.
+            Hold h(10'000);
+            QVERIFY(!h.hint(10'000 + kHoldMs - 1));
+            QVERIFY(h.hint(10'000 + kHoldMs));
+            QCOMPARE(h.note(N::Lifted, 11'100), Hold::Outcome::None);
+            QVERIFY(h.hint(11'200));
+            QCOMPARE(h.note(N::AllUp, 11'300), Hold::Outcome::Paste);
+            QCOMPARE(h.heldFor(12'000), 1'100u);
+        }
+        { // ... only the whole of it: the key let go early, Ctrl held on.
+            Hold h(10'000);
+            QCOMPARE(h.note(N::Lifted, 10'300), Hold::Outcome::None);
+            QVERIFY(!h.hint(11'500));
+            QCOMPARE(h.note(N::AllUp, 11'500), Hold::Outcome::End);
+        }
+        { // Esc with nothing waiting to be pasted: closes, as ever.
+            Hold h(10'000);
+            QCOMPARE(h.note(N::Escape, 10'300), Hold::Outcome::Close);
+            QCOMPARE(h.note(N::AllUp, 10'400), Hold::Outcome::None); // over
+        }
+        { // Esc after a step: nothing pasted, the window stays; Esc again closes it.
+            Hold h(10'000);
+            QCOMPARE(h.note(N::Step, 10'100), Hold::Outcome::None);
+            QCOMPARE(h.press(), Hold::Press::Step);
+            QCOMPARE(h.note(N::Escape, 10'200), Hold::Outcome::Cancel);
+            QVERIFY(h.cancelled());
+            QVERIFY(!h.hint(10'210));
+            QCOMPARE(h.note(N::Step, 10'300), Hold::Outcome::None);
+            QCOMPARE(h.press(), Hold::Press::Normal); // the hotkey as ever: closes it
+            QCOMPARE(h.note(N::Escape, 10'400), Hold::Outcome::Close);
+        }
+        { // ... or let go then: nothing pasted, the hold over.
+            Hold h(10'000);
+            QCOMPARE(h.note(N::Step, 10'100), Hold::Outcome::None);
+            QCOMPARE(h.press(), Hold::Press::Step);
+            QCOMPARE(h.note(N::Escape, 10'200), Hold::Outcome::Cancel);
+            QCOMPARE(h.note(N::AllUp, 10'300), Hold::Outcome::End);
+        }
+        { // ... and after the second held, likewise.
+            Hold h(10'000);
+            QCOMPARE(h.note(N::Escape, 11'200), Hold::Outcome::Cancel);
+            QCOMPARE(h.note(N::AllUp, 11'300), Hold::Outcome::End);
+        }
+        { // Another key: over, nothing pasted; later notes change nothing.
+            Hold h(10'000);
+            QCOMPARE(h.note(N::Step, 10'100), Hold::Outcome::None);
+            QCOMPARE(h.press(), Hold::Press::Step);
+            QCOMPARE(h.note(N::Other, 10'200), Hold::Outcome::End);
+            QCOMPARE(h.note(N::AllUp, 10'300), Hold::Outcome::None);
+            QCOMPARE(h.press(), Hold::Press::Normal);
+        }
+        { // The GUI thread's own look at the keys (poll): the hint once the whole
+          // hotkey is held a second, once.
+            Hold h(10'000);
+            QCOMPARE(h.poll(Hold::Held::Whole, 10'000 + kHoldMs - 1), Hold::Poll::None);
+            QCOMPARE(h.poll(Hold::Held::Part, 10'000 + kHoldMs), Hold::Poll::None); // the key let go, Ctrl held on
+            QCOMPARE(h.poll(Hold::Held::Whole, 10'000 + kHoldMs + kPollMs), Hold::Poll::Hint);
+            QCOMPARE(h.poll(Hold::Held::Whole, 10'000 + kHoldMs + 2 * kPollMs), Hold::Poll::None);
+            QCOMPARE(h.note(N::AllUp, 11'200), Hold::Outcome::Paste);
+        }
+        { // ... not after a step (the hint shows already), nor after Esc.
+            Hold h(10'000);
+            QCOMPARE(h.note(N::Step, 10'100), Hold::Outcome::None);
+            QCOMPARE(h.press(), Hold::Press::Step);
+            QCOMPARE(h.poll(Hold::Held::Whole, 11'500), Hold::Poll::None);
+            Hold c(10'000);
+            QCOMPARE(c.note(N::Escape, 11'100), Hold::Outcome::Cancel); // held a second: pending
+            QCOMPARE(c.poll(Hold::Held::Whole, 11'150), Hold::Poll::None);
+        }
+        { // All of it up kSilentMs, as GetAsyncKeyState has it, and no word from the
+          // hook: Windows dropped it. Down again in between: from the start.
+            Hold h(10'000);
+            QCOMPARE(h.poll(Hold::Held::None, 10'200), Hold::Poll::None);
+            QCOMPARE(h.poll(Hold::Held::Part, 10'250), Hold::Poll::None);
+            QCOMPARE(h.poll(Hold::Held::None, 10'300), Hold::Poll::None);
+            QCOMPARE(h.poll(Hold::Held::None, 10'300 + kSilentMs - 1), Hold::Poll::None);
+            QCOMPARE(h.poll(Hold::Held::None, 10'300 + kSilentMs), Hold::Poll::Silent);
+            Hold o(10'000);
+            QCOMPARE(o.note(N::Other, 10'100), Hold::Outcome::End);
+            QCOMPARE(o.poll(Hold::Held::None, 10'200), Hold::Poll::None); // over: nothing more
+            QCOMPARE(o.poll(Hold::Held::None, 10'200 + kSilentMs), Hold::Poll::None);
+        }
+        QCOMPARE(Hold::Press {}, Hold::Press::Normal); // the neutral one first
+        // The row a step goes to: the next older; the last stays; gone: the first.
+        QCOMPARE(stepRow(0, 6), 1);
+        QCOMPARE(stepRow(4, 6), 5);
+        QCOMPARE(stepRow(5, 6), 5);
+        QCOMPARE(stepRow(-1, 6), 0);
+        QCOMPARE(stepRow(0, 1), 0);
+        QCOMPARE(stepRow(0, 0), -1);
+    }
+
+    void pasteKeys()
+    {
+        namespace pk = ws::pastekeys;
+        using Sequence = std::vector<pk::Key>;
+        const pk::Key ctrlDown {.vk = pk::kControl}, ctrlUp {.vk = pk::kControl, .up = true, .restores = true};
+        const pk::Key vDown {.vk = pk::kV}, vUp {.vk = pk::kV, .up = true};
+        const pk::Key shiftDown {.vk = pk::kShift}, shiftUp {.vk = pk::kShift, .up = true, .restores = true};
+        const pk::Key insertDown {.vk = pk::kInsert, .extended = true};
+        const pk::Key insertUp {.vk = pk::kInsert, .up = true, .extended = true};
+        const pk::Key mask {.vk = 0xE8, .mask = true}, maskUp {.vk = 0xE8, .up = true, .mask = true};
+        const auto lift = [](std::uint16_t vk, bool extended = false) {
+            return pk::Key {.vk = vk, .up = true, .extended = extended, .mask = true};
+        };
+        const auto back = [](std::uint16_t vk, bool extended = false) {
+            return pk::Key {.vk = vk, .extended = extended, .mask = true, .restores = true};
+        };
+        // Unwatched: its modifier up, pressed and let go of around the key;
+        // down already (either side), the key alone; another one stays.
+        QVERIFY(pk::sequence(pk::Keys::CtrlV, 0, false) == (Sequence {ctrlDown, vDown, vUp, ctrlUp}));
+        QVERIFY(pk::sequence(pk::Keys::ShiftInsert, 0, false) == (Sequence {shiftDown, insertDown, insertUp, shiftUp}));
+        QVERIFY(pk::sequence(pk::Keys::CtrlV, 0x04, false) == (Sequence {vDown, vUp})); // left Ctrl
+        QVERIFY(pk::sequence(pk::Keys::CtrlV, 0x08, false) == (Sequence {vDown, vUp})); // right Ctrl
+        QVERIFY(pk::sequence(pk::Keys::ShiftInsert, 0x02, false) == (Sequence {insertDown, insertUp})); // right Shift
+        QVERIFY(pk::sequence(pk::Keys::CtrlV, 0x10, false) == (Sequence {ctrlDown, vDown, vUp, ctrlUp})); // left Alt
+        QVERIFY(pk::sequence(pk::Keys::ShiftInsert, 0x04, false) == (Sequence {shiftDown, insertDown, insertUp, shiftUp}));
+        // Watched: its own pressed even if down; the others lifted after the
+        // mask, pressed back last in turn.
+        QVERIFY(pk::sequence(pk::Keys::CtrlV, 0, true) == (Sequence {ctrlDown, vDown, vUp, ctrlUp}));
+        QVERIFY(pk::sequence(pk::Keys::CtrlV, 0x04, true) == (Sequence {ctrlDown, vDown, vUp, ctrlUp}));
+        QVERIFY(pk::sequence(pk::Keys::CtrlV, 0x08, true) // the right Ctrl: ours on that side
+            == (Sequence {pk::Key {.vk = 0xA3, .extended = true}, vDown, vUp,
+                pk::Key {.vk = 0xA3, .up = true, .extended = true, .restores = true}}));
+        QVERIFY(pk::sequence(pk::Keys::ShiftInsert, 0x02, true)
+            == (Sequence {pk::Key {.vk = 0xA1}, insertDown, insertUp, pk::Key {.vk = 0xA1, .up = true, .restores = true}}));
+        QVERIFY(pk::sequence(pk::Keys::CtrlV, 0x01 | 0x04, true) // Ctrl+Shift, the hotkey again
+            == (Sequence {mask, maskUp, lift(0xA0), ctrlDown, vDown, vUp, ctrlUp, back(0xA0)}));
+        QVERIFY(pk::sequence(pk::Keys::CtrlV, 0x02 | 0x10 | 0x40, true) // right Shift, left Alt, left Win
+            == (Sequence {mask, maskUp, lift(0xA1), lift(0xA4), lift(0x5B, true), ctrlDown, vDown, vUp, ctrlUp,
+                back(0x5B, true), back(0xA4), back(0xA1)}));
+        QVERIFY(pk::sequence(pk::Keys::ShiftInsert, 0x01 | 0x08 | 0x20, true) // Shift; right Ctrl and Alt
+            == (Sequence {mask, maskUp, lift(0xA3, true), lift(0xA5, true), shiftDown, insertDown, insertUp, shiftUp,
+                back(0xA5, true), back(0xA3, true)}));
+        // The sides as the hook is told them, a program's plain modifiers too.
+        QCOMPARE(pk::sided(0x11, false), std::uint16_t {0xA2});
+        QCOMPARE(pk::sided(0x11, true), std::uint16_t {0xA3});
+        QCOMPARE(pk::sided(0x10, false, 0x36), std::uint16_t {0xA1});
+        QCOMPARE(pk::sided(0x10, false, 0x2A), std::uint16_t {0xA0});
+        QCOMPARE(pk::sided(0x12, true), std::uint16_t {0xA5});
+        QCOMPARE(pk::sided(0x5C, true), std::uint16_t {0x5C});
+        QCOMPARE(pk::sideBit(0xA5), 0x20u);
+        QCOMPARE(pk::sideBit(0x56), 0u);
+    }
+
+    void pasteGuard()
+    {
+        namespace pk = ws::pastekeys;
+        // The paste's key `i` reaching the hook; true: it goes on.
+        const auto own = [](pk::Guard& guard, std::span<const pk::Key> keys, std::size_t i) {
+            return guard.own(keys, pk::sided(keys[i].vk, keys[i].extended), keys[i].up);
+        };
+        const auto through = [&](pk::Guard& guard, std::span<const pk::Key> keys, std::size_t from, std::size_t to) {
+            for (std::size_t i = from; i < to; ++i) {
+                if (!own(guard, keys, i))
+                    return false;
+            }
+            return true;
+        };
+        const std::vector<pk::Key> plain = pk::sequence(pk::Keys::CtrlV, 0, true);
+        {
+            pk::Guard guard; // nothing pressed meanwhile: all go
+            QVERIFY(through(guard, plain, 0, plain.size()));
+            QCOMPARE(guard.passed(), plain.size());
+        }
+        {
+            pk::Guard guard; // the hand's Ctrl pressed after our V, kept: ours not let go
+            QVERIFY(through(guard, plain, 0, 3));
+            QVERIFY(!guard.user(0xA2, false));
+            QVERIFY(!own(guard, plain, 3));
+            QVERIFY(!guard.user(0xA2, true)); // the hand's let-go goes as ever
+        }
+        {
+            pk::Guard guard; // pressed before ours came (on its way through the hooks as the keys were read)
+            QVERIFY(!guard.user(0xA2, false));
+            QVERIFY(through(guard, plain, 0, 3));
+            QVERIFY(!own(guard, plain, 3));
+        }
+        {
+            pk::Guard guard; // the right Ctrl pressed: our left one let go of, the right holds the chord
+            QVERIFY(through(guard, plain, 0, 2));
+            QVERIFY(!guard.user(0xA3, false));
+            QVERIFY(through(guard, plain, 2, 4));
+        }
+        const std::vector<pk::Key> right = pk::sequence(pk::Keys::CtrlV, 0x08, true);
+        {
+            pk::Guard guard(0x08); // the right Ctrl let go of before the V: ours on that side goes for it
+            QVERIFY(own(guard, right, 0));
+            QVERIFY(guard.user(0xA3, true));
+            QVERIFY(through(guard, right, 1, 4));
+        }
+        const std::vector<pk::Key> held = pk::sequence(pk::Keys::CtrlV, 0x04, true);
+        {
+            pk::Guard guard(0x04); // held all along: ours not let go
+            QVERIFY(through(guard, held, 0, 3));
+            QVERIFY(!own(guard, held, 3));
+        }
+        {
+            pk::Guard guard(0x04); // let go of before the V: kept back, ours goes for it after the V
+            QVERIFY(own(guard, held, 0));
+            QVERIFY(guard.user(0xA2, true));
+            QVERIFY(through(guard, held, 1, 4));
+            QVERIFY(!guard.user(0xA2, false)); // pressed again: as ever
+            QVERIFY(!guard.user(0xA2, true));
+        }
+        const std::vector<pk::Key> alt = pk::sequence(pk::Keys::CtrlV, 0x10, true); // its Alt lifted, last pressed back
+        {
+            pk::Guard guard(0x10); // still held: back down
+            QVERIFY(through(guard, alt, 0, alt.size()));
+        }
+        {
+            pk::Guard guard(0x10); // let go of meanwhile: not pressed back, it would stay down
+            QVERIFY(through(guard, alt, 0, 3));
+            QVERIFY(!guard.user(0xA4, true));
+            QVERIFY(through(guard, alt, 3, alt.size() - 1));
+            QVERIFY(!own(guard, alt, alt.size() - 1));
+            QCOMPARE(guard.passed(), alt.size());
+        }
+        {
+            pk::Guard guard; // not the paste's next (KeyRouter's mask, a key typed): as it is, the paste where it was
+            QVERIFY(guard.own(plain, 0xE8, false));
+            QVERIFY(guard.own(plain, 0xA2, true));
+            QCOMPARE(guard.passed(), std::size_t {0});
+        }
+        {
+            pk::Guard guard; // the rest lost (fewer went): the hand's let-go not kept back
+            QVERIFY(own(guard, plain, 0));
+            guard.finish();
+            QVERIFY(!guard.user(0xA2, true));
+        }
+        // Overtaken while the hooks before had it (agrees, once they are
+        // through): the hand's key, sent meanwhile, came to the hook first.
+        {
+            pk::Guard guard; // our Ctrl's let-go judged with the hand's up; the hand's pressed meanwhile: kept back after all
+            QVERIFY(through(guard, plain, 0, 3));
+            QVERIFY(guard.agrees()); // not a key that puts a side back
+            QVERIFY(own(guard, plain, 3));
+            QVERIFY(guard.agrees());
+            QVERIFY(!guard.user(0xA2, false));
+            QVERIFY(!guard.agrees());
+        }
+        {
+            pk::Guard guard(0x10); // the Alt pressed back as held; let go of meanwhile: kept back after all
+            QVERIFY(through(guard, alt, 0, alt.size()));
+            QVERIFY(guard.agrees());
+            QVERIFY(!guard.user(0xA4, true));
+            QVERIFY(!guard.agrees());
+        }
+        {
+            pk::Guard guard; // the hand's keys on other sides change nothing
+            QVERIFY(through(guard, plain, 0, plain.size()));
+            QVERIFY(!guard.user(0xA3, false));
+            QVERIFY(!guard.user(0xA4, false));
+            QVERIFY(guard.agrees());
+        }
+        {
+            pk::Guard guard; // judged after a key that puts nothing back: nothing to disagree with
+            QVERIFY(through(guard, plain, 0, 2));
+            QVERIFY(!guard.user(0xA2, false));
+            QVERIFY(guard.agrees());
+        }
+        {
+            pk::Guard guard(0x10); // a key not the paste's before its last (KeyRouter's mask): the judgement stays our Ctrl's let-go
+            QVERIFY(through(guard, alt, 0, alt.size() - 1));
+            QVERIFY(guard.agrees());
+            QVERIFY(!guard.user(0xA2, false));
+            QVERIFY(!guard.agrees());
+            QVERIFY(guard.own(alt, 0xE8, false));
+            QVERIFY(!guard.agrees());
+            QVERIFY(own(guard, alt, alt.size() - 1)); // the Alt still held: back down, judged on its own
+            QVERIFY(guard.agrees());
+        }
+    }
+
+    void shortcutAgain()
+    {
+        // shown, active, panel, expand-on-again
+        QCOMPARE(shortcutAction(false, false, false, true), ShortcutAction::Show);
+        QCOMPARE(shortcutAction(false, true, false, false), ShortcutAction::Show); // hidden or on its way out
+        QCOMPARE(shortcutAction(true, false, false, true), ShortcutAction::Show); // behind another window: forward, not expand
+        QCOMPARE(shortcutAction(true, false, true, true), ShortcutAction::Show);
+        QCOMPARE(shortcutAction(true, true, false, false), ShortcutAction::Hide); // today
+        QCOMPARE(shortcutAction(true, true, true, false), ShortcutAction::Hide);
+        QCOMPARE(shortcutAction(true, true, false, true), ShortcutAction::ExpandPanel);
+        QCOMPARE(shortcutAction(true, true, true, true), ShortcutAction::Hide); // the third press
+
+        // Pressed before it was there to be seen (GitHub #111): it comes, and
+        // stays; neither closed nor expanded, active or not.
+        QCOMPARE(shortcutAction(true, true, false, false, false), ShortcutAction::Raise);
+        QCOMPARE(shortcutAction(true, true, false, true, false), ShortcutAction::Raise);
+        QCOMPARE(shortcutAction(true, false, false, false, false), ShortcutAction::Raise);
+        QCOMPARE(shortcutAction(false, false, false, false, false), ShortcutAction::Show); // not up: shown
+
+        // seenBy: on the screen at least kSeenBeforeMs before the press.
+        QVERIFY(!seenBy(std::nullopt, 10'000)); // hidden, or still cloaked for its first frame
+        QVERIFY(!seenBy(10'000, 9'000)); // came after the press: the press waited behind the opening
+        QVERIFY(!seenBy(10'000, 10'000 + kSeenBeforeMs - 1)); // too soon to have been seen
+        QVERIFY(seenBy(10'000, 10'000 + kSeenBeforeMs));
+        // #111's case: the first double Ctrl at 0 got its launcher up at 2130
+        // (the program in front busy); the second, made at 1500 because
+        // nothing came, got there at 2160 and closed it. Now it stays.
+        QVERIFY(!seenBy(2130, 1500));
+        QCOMPARE(shortcutAction(true, true, false, false, seenBy(2130, 1500)), ShortcutAction::Raise);
+        QCOMPARE(shortcutAction(true, true, false, false, seenBy(2130, 2700)), ShortcutAction::Hide);
+        { // A double tap counts from its first press: the GUI behind, the
+          // launcher came at 10'000, and a double Ctrl made again as nothing
+          // had come began 50 ms before (80 ms presses, 150 ms apart). It
+          // let go 260 ms after the launcher came: by that, pressed again.
+            DoubleTapDetector d;
+            d.keyDown(0xA2, 9'950, 0, 0);
+            QVERIFY(!d.keyUp(0xA2, 10'030, 0, 0));
+            d.keyDown(0xA2, 10'180, 0, 0);
+            QVERIFY(d.keyUp(0xA2, 10'260, 0, 0));
+            QCOMPARE(d.firstPressTime(), 9'950u);
+            QVERIFY(seenBy(10'000, 10'260)); // the release: it closed the launcher
+            QCOMPARE(shortcutAction(true, true, false, false, seenBy(10'000, d.firstPressTime())), ShortcutAction::Raise);
+            // Begun once the launcher had been there kSeenBeforeMs: pressed again.
+            QCOMPARE(shortcutAction(true, true, false, false, seenBy(10'000, 10'000 + kSeenBeforeMs)),
+                ShortcutAction::Hide);
+        }
+        { // A tap of the other Ctrl starts over: the double tap begins at the next tap.
+            DoubleTapDetector d;
+            d.keyDown(0xA3, 1000, 0, 0);
+            QVERIFY(!d.keyUp(0xA3, 1060, 0, 0));
+            d.keyDown(0xA2, 1200, 0, 0);
+            QVERIFY(!d.keyUp(0xA2, 1260, 0, 0));
+            d.keyDown(0xA2, 1400, 0, 0);
+            QVERIFY(d.keyUp(0xA2, 1460, 0, 0));
+            QCOMPARE(d.firstPressTime(), 1200u);
+        }
+
+        // tickTime: a message's 32-bit time on the 64-bit clock, across the wrap after 49.7 days.
+        QCOMPARE(tickTime(1000u, 5000u), std::uint64_t {1000});
+        QCOMPARE(tickTime(0xFFFF'FF00u, 0x1'0000'0100ull), std::uint64_t {0xFFFF'FF00}); // made before the wrap, here after
+        QCOMPARE(tickTime(0x100u, 0x1'0000'0200ull), std::uint64_t {0x1'0000'0100});
+        QCOMPARE(tickTime(5000u, 5000u), std::uint64_t {5000});
+    }
+
+    void journalBudget()
+    {
+        diagnostics::JournalBudget budget({.notablePerHour = 2, .ordinaryAtStart = 2, .ordinaryEveryMs = 1000});
+        QVERIFY(budget.take(false, 0)); // the first ordinary ones of a run
+        QVERIFY(budget.take(false, 10));
+        QVERIFY(!budget.take(false, 20)); // then one every ordinaryEveryMs
+        QVERIFY(budget.take(true, 30)); // a notable one: kept...
+        QCOMPARE(budget.skipped(), 1); // ...saying how many were left out before it
+        QVERIFY(budget.take(true, 40));
+        QCOMPARE(budget.skipped(), 0);
+        QVERIFY(!budget.take(true, 50)); // up to notablePerHour
+        QVERIFY(budget.take(false, 1010));
+        QCOMPARE(budget.skipped(), 1);
+        QVERIFY(!budget.take(false, 1020));
+        QVERIFY(budget.take(true, 3'600'030)); // a new hour
+        QCOMPARE(budget.skipped(), 1);
+    }
+
     void gameGuard()
     {
         const GameGuardOptions defaults; // games on, full screen off, no list
@@ -9710,6 +12922,386 @@ private slots:
         ForegroundFacts ours;
         ours.coversMonitor = ours.cursorHidden = ours.exclusiveFullScreen = true;
         QCOMPARE(doubleCtrlIgnoreReason(ours, fullScreen), IgnoreReason::None);
+
+        // GitHub #111: hidden by Windows on a key press ("hide pointer while
+        // typing") in a full-screen page or editor: the mouse is not taken.
+        ForegroundFacts typed = in(true, true, false);
+        typed.cursorHiddenByTyping = true;
+        QCOMPARE(doubleCtrlIgnoreReason(typed, defaults), IgnoreReason::None);
+        // Kept in the window all the same: a game's, whatever hid it.
+        ForegroundFacts typedConfined = typed;
+        typedConfined.cursorConfined = true;
+        QCOMPARE(doubleCtrlIgnoreReason(typedConfined, defaults), IgnoreReason::MouseTaken);
+        ForegroundFacts typedCaptured = typed;
+        typedCaptured.cursorCaptured = true;
+        QCOMPARE(doubleCtrlIgnoreReason(typedCaptured, defaults), IgnoreReason::MouseTaken);
+        // Exclusive full screen stays out of bounds, and "not over full screen" too.
+        ForegroundFacts typedExclusive = in(true, true, false, true);
+        typedExclusive.cursorHiddenByTyping = true;
+        QCOMPARE(doubleCtrlIgnoreReason(typedExclusive, defaults), IgnoreReason::ExclusiveFullScreen);
+        QCOMPARE(doubleCtrlIgnoreReason(typed, fullScreen), IgnoreReason::FullScreen);
+        // Captured (SetCapture) rather than confined: a game turning the view, windowed too.
+        ForegroundFacts captured = in(false, true, false);
+        captured.cursorCaptured = true;
+        QCOMPARE(doubleCtrlIgnoreReason(captured, defaults), IgnoreReason::MouseTaken);
+        captured.cursorHidden = false; // shown: a drag somewhere, not a game
+        QCOMPARE(doubleCtrlIgnoreReason(captured, defaults), IgnoreReason::None);
+    }
+
+    void hiddenForTypingRule()
+    {
+        // A key (not a modifier) went down to this window shortly before the hide.
+        QVERIFY(hiddenForTyping(true, 10'015, 10'000u, 9'000));
+        QVERIFY(hiddenForTyping(true, 10'000 + kTypingHideMs, 10'000u, 9'000)); // a program slow to take the key
+        QVERIFY(!hiddenForTyping(true, 10'001 + kTypingHideMs, 10'000u, 9'000)); // long after it: the program's
+        QVERIFY(!hiddenForTyping(true, 10'200, 10'000u, 9'000)); // a game's own (the 500 ms from before passed it)
+        QVERIFY(!hiddenForTyping(false, 10'015, 10'000u, 9'000)); // the setting off: always the program's
+        QVERIFY(!hiddenForTyping(true, 10'015, std::nullopt, 9'000)); // no key known
+        QVERIFY(!hiddenForTyping(true, 9'990, 10'000u, 9'000)); // the key came after the hide
+        // The key went down before the window came to the front (Alt+Tab),
+        // or on the same tick (Win+1): a game hiding it as it comes up.
+        QVERIFY(!hiddenForTyping(true, 10'015, 10'000u, 10'005));
+        QVERIFY(!hiddenForTyping(true, 10'015, 10'000u, 10'000));
+        QVERIFY(hiddenForTyping(true, 10'015, 10'000u, 9'999));
+        // Across the 32-bit clock's wrap.
+        QVERIFY(hiddenForTyping(true, 5u, 0xFFFF'FFF0u, 0xFFFF'FF00u));
+        QVERIFY(!hiddenForTyping(true, 5u, 0xFFFF'FFF0u, 0xFFFF'FFF8u));
+    }
+
+    // The presses hiddenForTyping goes by (GitHub #111): a game played with
+    // the keys hid the pointer itself while one was held, and the repeat just
+    // before passed for typing; with the GUI busy at the hide, the keys typed
+    // meanwhile pushed the press before it out of the last eight.
+    void keyPresses()
+    {
+        using Kept = std::optional<std::uint32_t>;
+        constexpr std::uint32_t right = 0x27, w = 0x57, a = 0x41;
+        { // a held key: its first press, not its repeats
+            KeyPresses p;
+            QVERIFY(p.down(right, 10'000));
+            for (std::uint32_t t = 10'500; t < 12'000; t += 33)
+                QVERIFY(!p.down(right, t)); // the keyboard's repeats, from 500 ms on, every 33 ms
+            QVERIFY(p.atOrBefore(11'990) == Kept(10'000));
+            // The game hid the pointer 30 ms after a repeat: its own hide.
+            QVERIFY(!hiddenForTyping(true, 11'990, p.atOrBefore(11'990), 9'000));
+            p.up(right);
+            QVERIFY(p.down(right, 12'100)); // let go and pressed again
+            QVERIFY(hiddenForTyping(true, 12'115, p.atOrBefore(12'115), 9'000)); // Windows' hide, the next tick
+        }
+        { // its release unseen (the secure desktop, UIPI): down again after a quiet spell is a press
+            KeyPresses p;
+            QVERIFY(p.down(w, 1000));
+            QVERIFY(!p.down(w, 1000 + KeyPresses::kLostReleaseMs));
+            QVERIFY(p.down(w, 1001 + 2 * KeyPresses::kLostReleaseMs));
+        }
+        { // kept by time, not by count: the hide at 20'010, a second of typing before the GUI got to it
+            KeyPresses p;
+            QVERIFY(p.down(a, 20'000));
+            p.up(a);
+            for (std::uint32_t i = 0; i < 12; ++i) {
+                QVERIFY(p.down(0x42 + i, 20'100 + i * 80));
+                p.up(0x42 + i);
+            }
+            QVERIFY(p.atOrBefore(20'010) == Kept(20'000));
+            QVERIFY(hiddenForTyping(true, 20'010, p.atOrBefore(20'010), 9'000));
+            // Gone once more than kKeptMs older than the newest.
+            QVERIFY(p.down(a, 20'001 + KeyPresses::kKeptMs));
+            QVERIFY(!p.atOrBefore(20'010));
+            QVERIFY(p.atOrBefore(20'150) == Kept(20'100));
+        }
+        { // more than kMost within kKeptMs is no one's typing: the oldest go
+            KeyPresses p;
+            for (std::uint32_t i = 0; i < KeyPresses::kMost + 10; ++i) {
+                QVERIFY(p.down(0x41 + i % 26, 1000 + i));
+                p.up(0x41 + i % 26);
+            }
+            QVERIFY(!p.atOrBefore(1009));
+            QVERIFY(p.atOrBefore(1010) == Kept(1010));
+        }
+        { // across the 32-bit clock's wrap
+            KeyPresses p;
+            QVERIFY(p.down(a, 0xFFFF'FFF0u));
+            p.up(a);
+            QVERIFY(p.down(w, 0x10u));
+            QVERIFY(p.atOrBefore(5u) == Kept(0xFFFF'FFF0u));
+            QVERIFY(p.atOrBefore(0x20u) == Kept(0x10u));
+            QVERIFY(!KeyPresses().atOrBefore(0x20u)); // none at all
+        }
+    }
+
+    void doubleTapNearMiss()
+    {
+        using Reason = DoubleTapDetector::MissReason;
+        using Cause = DoubleTapDetector::Cause;
+        constexpr std::uint32_t ctrl = 0xA2, rightCtrl = 0xA3, shift = 0xA0, letter = 0x41;
+        const auto tap = [](DoubleTapDetector& d, std::uint32_t vk, std::uint32_t down, std::uint32_t held = 60,
+                             int x = 0) {
+            d.keyDown(vk, down, x, 0);
+            return d.keyUp(vk, down + held, x, 0);
+        };
+        { // the second came late: 450 ms after the first's release (400 at most)
+            DoubleTapDetector d;
+            QVERIFY(!tap(d, ctrl, 1000));
+            QCOMPARE(d.takeMiss().reason, Reason::None);
+            QVERIFY(!tap(d, ctrl, 1060 + 450));
+            const auto miss = d.takeMiss();
+            QCOMPARE(miss.reason, Reason::Late);
+            QCOMPARE(miss.ms, 450u);
+            QCOMPARE(d.takeMiss().reason, Reason::None); // once
+        }
+        { // past twice the gap: not meant as one
+            DoubleTapDetector d;
+            tap(d, ctrl, 1000);
+            tap(d, ctrl, 1060 + 900);
+            QCOMPARE(d.takeMiss().reason, Reason::None);
+        }
+        { // the second held too long
+            DoubleTapDetector d;
+            tap(d, ctrl, 1000);
+            QVERIFY(!tap(d, ctrl, 1200, 450));
+            const auto miss = d.takeMiss();
+            QCOMPARE(miss.reason, Reason::Held);
+            QCOMPARE(miss.ms, 450u);
+        }
+        { // the other Ctrl
+            DoubleTapDetector d;
+            tap(d, ctrl, 1000);
+            QVERIFY(!tap(d, rightCtrl, 1200));
+            QCOMPARE(d.takeMiss().reason, Reason::OtherSide);
+        }
+        { // the pointer moved between the taps
+            DoubleTapDetector d;
+            tap(d, ctrl, 1000, 60, 0);
+            QVERIFY(!tap(d, ctrl, 1200, 60, 50));
+            QCOMPARE(d.takeMiss().reason, Reason::Moved);
+        }
+        { // Shift held at the second press
+            DoubleTapDetector d;
+            tap(d, ctrl, 1000);
+            d.keyDown(shift, 1150, 0, 0);
+            QVERIFY(!tap(d, ctrl, 1200));
+            d.keyUp(shift, 1300, 0, 0);
+            const auto miss = d.takeMiss();
+            QCOMPARE(miss.reason, Reason::Spoiled);
+            QCOMPARE(miss.by, Cause::Modifier);
+        }
+        { // a click between the taps
+            DoubleTapDetector d;
+            tap(d, ctrl, 1000);
+            d.mouseUsed();
+            QVERIFY(!tap(d, ctrl, 1200));
+            const auto miss = d.takeMiss();
+            QCOMPARE(miss.reason, Reason::Interrupted);
+            QCOMPARE(miss.by, Cause::Mouse);
+        }
+        { // typing between them is none: Ctrl, a letter, Ctrl
+            DoubleTapDetector d;
+            tap(d, ctrl, 1000);
+            tap(d, letter, 1100);
+            QVERIFY(!tap(d, ctrl, 1200));
+            QCOMPARE(d.takeMiss().reason, Reason::None);
+        }
+        { // a program's key between them is no typing (GitHub #111)
+            DoubleTapDetector d;
+            tap(d, ctrl, 1000);
+            d.keyDown(letter, 1100, 0, 0, true);
+            d.keyUp(letter, 1100, 0, 0, true);
+            QVERIFY(!tap(d, ctrl, 1200));
+            const auto miss = d.takeMiss();
+            QCOMPARE(miss.reason, Reason::Interrupted);
+            QCOMPARE(miss.by, Cause::ProgramKey);
+        }
+        { // a double tap is none, nor a third tap after it
+            DoubleTapDetector d;
+            tap(d, ctrl, 1000);
+            QVERIFY(tap(d, ctrl, 1200));
+            QCOMPARE(d.takeMiss().reason, Reason::None);
+            QVERIFY(!tap(d, ctrl, 1400));
+            QCOMPARE(d.takeMiss().reason, Reason::None);
+        }
+        // GitHub #111: the press before a tap was none, so the tap had
+        // nothing to make a double tap with.
+        { // Shift held at the first press
+            DoubleTapDetector d;
+            d.keyDown(shift, 950, 0, 0);
+            QVERIFY(!tap(d, ctrl, 1000));
+            d.keyUp(shift, 1100, 0, 0);
+            QCOMPARE(d.takeMiss().reason, Reason::None); // not yet: no tap followed
+            QVERIFY(!tap(d, ctrl, 1200));
+            const auto miss = d.takeMiss();
+            QCOMPARE(miss.reason, Reason::FirstSpoiled);
+            QCOMPARE(miss.by, Cause::Modifier);
+            QVERIFY(tap(d, ctrl, 1400)); // that tap counts as a first one
+            QCOMPARE(d.takeMiss().reason, Reason::None);
+        }
+        { // a program's key during the first press
+            DoubleTapDetector d;
+            d.keyDown(ctrl, 1000, 0, 0);
+            d.keyDown(letter, 1020, 0, 0, true);
+            d.keyUp(letter, 1020, 0, 0, true);
+            QVERIFY(!d.keyUp(ctrl, 1060, 0, 0));
+            QVERIFY(!tap(d, ctrl, 1200));
+            const auto miss = d.takeMiss();
+            QCOMPARE(miss.reason, Reason::FirstSpoiled);
+            QCOMPARE(miss.by, Cause::ProgramKey);
+        }
+        { // the first held too long
+            DoubleTapDetector d;
+            QVERIFY(!tap(d, ctrl, 1000, 450));
+            QVERIFY(!tap(d, ctrl, 1700));
+            const auto miss = d.takeMiss();
+            QCOMPARE(miss.reason, Reason::FirstHeld);
+            QCOMPARE(miss.ms, 450u);
+        }
+        { // the pointer moved during the first press
+            DoubleTapDetector d;
+            d.keyDown(ctrl, 1000, 0, 0);
+            QVERIFY(!d.keyUp(ctrl, 1060, 50, 0));
+            QVERIFY(!tap(d, ctrl, 1200, 60, 50));
+            QCOMPARE(d.takeMiss().reason, Reason::FirstMoved);
+        }
+        { // typing is none: Ctrl+C, then a tap; nor after typing in between, nor much later
+            DoubleTapDetector d;
+            d.keyDown(ctrl, 1000, 0, 0);
+            tap(d, letter, 1020);
+            d.keyUp(ctrl, 1100, 0, 0);
+            QVERIFY(!tap(d, ctrl, 1300));
+            QCOMPARE(d.takeMiss().reason, Reason::None);
+            DoubleTapDetector e;
+            QVERIFY(!tap(e, ctrl, 1000, 450));
+            tap(e, letter, 1500);
+            QVERIFY(!tap(e, ctrl, 1600));
+            QCOMPARE(e.takeMiss().reason, Reason::None);
+            DoubleTapDetector f;
+            QVERIFY(!tap(f, ctrl, 1000, 450));
+            QVERIFY(!tap(f, ctrl, 1450 + 900));
+            QCOMPARE(f.takeMiss().reason, Reason::None);
+        }
+        { // typed after something else spoiled it first: none (Ctrl+Shift+S, Shift held then Ctrl+S, Ctrl+click then C)
+            DoubleTapDetector d;
+            d.keyDown(ctrl, 1000, 0, 0);
+            d.keyDown(shift, 1010, 0, 0);
+            tap(d, 'S', 1020);
+            d.keyUp(shift, 1090, 0, 0);
+            d.keyUp(ctrl, 1100, 0, 0);
+            QVERIFY(!tap(d, ctrl, 1300));
+            QCOMPARE(d.takeMiss().reason, Reason::None);
+            DoubleTapDetector e;
+            e.keyDown(shift, 990, 0, 0);
+            e.keyDown(ctrl, 1000, 0, 0);
+            tap(e, 'S', 1020);
+            e.keyUp(ctrl, 1100, 0, 0);
+            e.keyUp(shift, 1110, 0, 0);
+            QVERIFY(!tap(e, ctrl, 1300));
+            QCOMPARE(e.takeMiss().reason, Reason::None);
+            DoubleTapDetector f;
+            f.keyDown(ctrl, 1000, 0, 0);
+            f.mouseUsed();
+            tap(f, 'C', 1050);
+            f.keyUp(ctrl, 1100, 0, 0);
+            QVERIFY(!tap(f, ctrl, 1300));
+            QCOMPARE(f.takeMiss().reason, Reason::None);
+        }
+        { // held too long twice (a slow hook holding up each key, GitHub #111): told at the second
+            DoubleTapDetector d;
+            QVERIFY(!tap(d, ctrl, 1000, 344));
+            QCOMPARE(d.takeMiss().reason, Reason::None);
+            QVERIFY(!tap(d, ctrl, 1344 + 359, 344));
+            const auto miss = d.takeMiss();
+            QCOMPARE(miss.reason, Reason::Held);
+            QCOMPARE(miss.ms, 344u);
+            QVERIFY(!tap(d, ctrl, 2400)); // a tap after it: the press before was told already
+            QCOMPARE(d.takeMiss().reason, Reason::None);
+        }
+        { // the second of a double tap held up by a hook after a stray tap: Held told, the double tap counts
+            DoubleTapDetector d;
+            tap(d, ctrl, 1000);
+            d.keyDown(ctrl, 1100, 0, 0);
+            QVERIFY(!d.keyUp(ctrl, 1700, 0, 0));
+            QCOMPARE(d.takeMiss().reason, Reason::Held);
+            d.keyDown(ctrl, 1700, 0, 0);
+            QVERIFY(d.keyUp(ctrl, 1700, 0, 0));
+            QCOMPARE(d.takeMiss().reason, Reason::None);
+        }
+        QCOMPARE(QString::fromLatin1(DoubleTapDetector::name(Reason::FirstSpoiled)), u"first-spoiled"_s);
+        QCOMPARE(QString::fromLatin1(DoubleTapDetector::name(Cause::ProgramKey)), u"program-key"_s);
+        QCOMPARE(QString::fromLatin1(DoubleTapDetector::name(Reason::OtherSide)), u"other-side"_s);
+        QCOMPARE(QString::fromLatin1(DoubleTapDetector::name(Reason::None)), u"none"_s);
+    }
+
+    // GitHub #111: the service's listener told of a double tap seconds late,
+    // and that word was dropped while this process's own was set aside.
+    void tapTeller()
+    {
+        using Verdict = TapTeller::Verdict;
+        const auto quiet = [] { return true; };
+        const auto busy = [] { return false; };
+        { // two words of one tap (both listeners), an older one, a newer one
+            TapTeller t;
+            QCOMPARE(t.judge(5000, 5001, busy), Verdict::Tell);
+            QCOMPARE(t.judge(5000, 5120, busy), Verdict::Duplicate); // the other listener's, 120 ms on
+            QCOMPARE(t.judge(4800, 5130, busy), Verdict::Duplicate); // an older tap, told after
+            QVERIFY(t.toldAlready(5000, 5200));
+            QVERIFY(!t.toldAlready(6000, 6010));
+            QCOMPARE(t.judge(6000, 6010, busy), Verdict::Tell);
+        }
+        { // late: as it is up to 1 s; then only if nothing came since; never past 3 s
+            TapTeller t;
+            QCOMPARE(t.judge(10'000, 10'999, busy), Verdict::Tell);
+            QCOMPARE(t.judge(20'000, 21'000, busy), Verdict::Stale);
+            QCOMPARE(t.judge(20'000, 21'000, quiet), Verdict::Tell);
+            QCOMPARE(t.judge(30'000, 32'999, quiet), Verdict::Tell);
+            QCOMPARE(t.judge(40'000, 43'000, quiet), Verdict::Stale);
+            QVERIFY(!t.toldAlready(40'000, 43'000)); // dropped, not told
+        }
+        { // whether nothing came is asked only for a late one
+            TapTeller t;
+            int asked = 0;
+            const auto counted = [&] { ++asked; return true; };
+            t.judge(1000, 1500, counted);
+            QCOMPARE(asked, 0);
+            t.judge(3000, 4500, counted);
+            QCOMPARE(asked, 1);
+            t.judge(3000, 4600, counted); // a duplicate: not asked
+            QCOMPARE(asked, 1);
+        }
+        { // across the clock's wrap (49.7 days)
+            TapTeller t;
+            QCOMPARE(t.judge(0xFFFF'FF00u, 0xFFFF'FF10u, busy), Verdict::Tell);
+            QCOMPARE(t.judge(0x0000'0050u, 0x0000'0060u, busy), Verdict::Tell);
+            QCOMPARE(t.judge(0xFFFF'FF00u, 0x0000'0070u, busy), Verdict::Duplicate);
+        }
+        { // one told long ago does not hide a new one whose difference to it turned negative (> 24.8 days)
+            TapTeller t;
+            QCOMPARE(t.judge(0, 10, busy), Verdict::Tell);
+            QCOMPARE(t.judge(0x9000'0000u, 0x9000'0010u, busy), Verdict::Tell);
+        }
+        { // the other word of a told tap, however late, is a duplicate: never dropped (and noted) as too old
+            TapTeller t;
+            QCOMPARE(t.judge(5000, 5010, busy), Verdict::Tell);
+            QCOMPARE(t.judge(5000, 17'010, quiet), Verdict::Duplicate); // the UIAccess listener's, starved 12 s
+            QCOMPARE(t.judge(4000, 5000 + 3'600'000, busy), Verdict::Duplicate); // an older one, an hour on
+            QCOMPARE(t.judge(6000, 6010, busy), Verdict::Tell);
+        }
+        { // a dropped tap is noted once, whichever listener's word comes second
+            TapTeller t;
+            QVERIFY(t.firstDrop(7000));
+            QVERIFY(!t.firstDrop(7000));
+            QVERIFY(t.firstDrop(8000));
+        }
+    }
+
+    // kTap's lParam (GitHub #111): the first press rides in the upper half,
+    // which a GUI from before never reads; a listener from before sends 0.
+    void tapProtocol()
+    {
+        const LPARAM times = keyproto::tapTimes(0xFFFF'FFF0u, 310);
+        QCOMPARE(keyproto::tapTime(times), 0xFFFF'FFF0u);
+        QCOMPARE(keyproto::tapSpan(times), 310u);
+        QCOMPARE(static_cast<std::uint32_t>(times), 0xFFFF'FFF0u); // as a GUI from before reads it
+        const LPARAM before = std::uint32_t {0xFFFF'FFF0u}; // PostMessageW(…, tap.time) from before
+        QCOMPARE(keyproto::tapTime(before), 0xFFFF'FFF0u);
+        QCOMPARE(keyproto::tapSpan(before), 0u);
     }
 
     void settingsMatch()
