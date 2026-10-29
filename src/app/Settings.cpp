@@ -1,4 +1,5 @@
 #include "Settings.h"
+#include "platform/HotkeyText.h"
 #include "PathText.h"
 #include "Query.h"
 
@@ -694,47 +695,7 @@ QString Settings::excludedFolderName(const QString& text)
 
 QString Settings::normalizedHotkey(const QString& shortcut)
 {
-    bool win = false;
-    bool ctrl = false;
-    bool alt = false;
-    bool shift = false;
-    QString key;
-    for (const QString& part : shortcut.split(u'+', Qt::SkipEmptyParts)) {
-        const QString name = part.trimmed().toLower();
-        if (name == u"ctrl" || name == u"control")
-            ctrl = true;
-        else if (name == u"alt")
-            alt = true;
-        else if (name == u"shift")
-            shift = true;
-        else if (name == u"win" || name == u"meta")
-            win = true;
-        else if (!key.isEmpty() || name.isEmpty())
-            return {}; // two keys
-        else if (name == u"return")
-            key = u"enter"_s;
-        else if (name == u"print" || name == u"prtsc")
-            key = u"printscreen"_s;
-        else if (name == u"backquote")
-            key = u"`"_s;
-        else
-            key = name;
-    }
-    // The keys MessageWindow::parseHotkey knows.
-    static const QRegularExpression knownKey(u"^([a-z0-9]|f([1-9]|1\\d|2[0-4])|space|tab|enter|printscreen|`)$"_s);
-    if (!knownKey.match(key).hasMatch())
-        return {};
-    QStringList parts;
-    if (win)
-        parts.push_back(u"win"_s);
-    if (ctrl)
-        parts.push_back(u"ctrl"_s);
-    if (alt)
-        parts.push_back(u"alt"_s);
-    if (shift)
-        parts.push_back(u"shift"_s);
-    parts.push_back(key);
-    return parts.join(u'+');
+    return hotkeys::normalized(shortcut);
 }
 
 QStringList Settings::captureToolbarButtonIds()
@@ -768,14 +729,7 @@ QString Settings::normalizedToolbarHidden(const QString& text)
 
 bool Settings::hotkeyAllowed(const QString& shortcut)
 {
-    const QString normal = normalizedHotkey(shortcut);
-    if (normal.isEmpty())
-        return false;
-    const QStringList parts = normal.split(u'+');
-    static const QRegularExpression functionKey(u"^f([1-9]|1\\d|2[0-4])$"_s);
-    if (functionKey.match(parts.last()).hasMatch())
-        return true;
-    return parts.contains(u"ctrl") || parts.contains(u"alt") || parts.contains(u"win");
+    return hotkeys::allowed(shortcut);
 }
 
 FileTypes Settings::namedFileTypes() const

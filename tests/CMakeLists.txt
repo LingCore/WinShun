@@ -80,6 +80,7 @@ set_tests_properties(tst_dialognav PROPERTIES
 # Launch only a short-lived copy of this test, writing into QTemporaryDir.
 qt_add_executable(tst_shelllaunch WIN32 tst_shelllaunch.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/Shell.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/ShellDialogs.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/DragOut.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/FileDialog.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/FileManagers.cpp
@@ -478,6 +479,7 @@ qt_add_executable(tst_commandicons tst_commandicons.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/SiteIcons.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/Http.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/Shell.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/ShellDialogs.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/DragOut.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/FileDialog.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/FileManagers.cpp

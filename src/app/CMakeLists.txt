@@ -98,7 +98,7 @@ qt_add_executable(WinShun WIN32
     platform/PeekingLogo.cpp platform/PeekingLogo.h
     platform/PointerWatch.cpp platform/PointerWatch.h
     platform/PreviewHost.cpp platform/PreviewHost.h
-    platform/Shell.cpp platform/Shell.h
+    platform/Shell.cpp platform/Shell.h platform/ShellDialogs.cpp
     platform/ShellContextMenu.cpp platform/ShellContextMenu.h
     platform/ShellMenu.cpp platform/ShellMenu.h
     platform/ShortcutCapture.cpp platform/ShortcutCapture.h
@@ -274,6 +274,7 @@ qt_add_qml_module(WinShun
         FileDropTarget.cpp FileDropTarget.h
         FileFacts.cpp FileFacts.h
         FilePreview.cpp FilePreview.h
+        PictureFile.cpp PictureFile.h
         FolderMenu.cpp FolderMenu.h
         DropPie.cpp DropPie.h # the favorite folders round the pointer while dragging files (DropPieWindow.qml)
         DropPieText.cpp DropPieText.h

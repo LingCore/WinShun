@@ -1,4 +1,5 @@
 #include "MessageWindow.h"
+#include "HotkeyText.h"
 
 #include "MonoLogo.h"
 
@@ -265,43 +266,7 @@ void MessageWindow::hideNotification()
 
 bool MessageWindow::parseHotkey(const QString& shortcut, UINT* modifiers, UINT* vk)
 {
-    *modifiers = MOD_NOREPEAT;
-    *vk = 0;
-    const QStringList parts = shortcut.split(u'+', Qt::SkipEmptyParts);
-    for (QString part : parts) {
-        part = part.trimmed();
-        const QString key = part.toLower();
-        if (key == u"ctrl" || key == u"control")
-            *modifiers |= MOD_CONTROL;
-        else if (key == u"alt")
-            *modifiers |= MOD_ALT;
-        else if (key == u"shift")
-            *modifiers |= MOD_SHIFT;
-        else if (key == u"win" || key == u"meta")
-            *modifiers |= MOD_WIN;
-        else if (key == u"space")
-            *vk = VK_SPACE;
-        else if (key == u"tab")
-            *vk = VK_TAB;
-        else if (key == u"enter" || key == u"return")
-            *vk = VK_RETURN;
-        else if (key == u"`" || key == u"backquote")
-            *vk = VK_OEM_3;
-        else if (key == u"printscreen" || key == u"print" || key == u"prtsc")
-            *vk = VK_SNAPSHOT; // the screen capture's, once taken over from the Snipping Tool (printscreen::)
-        else if (key.size() == 1 && key[0].isLetterOrNumber() && key[0].unicode() < 128)
-            *vk = part.toUpper()[0].unicode();
-        else if (key.startsWith(u'f') && key.size() <= 3) {
-            bool ok = false;
-            const int n = key.mid(1).toInt(&ok);
-            if (!ok || n < 1 || n > 24)
-                return false;
-            *vk = VK_F1 + n - 1;
-        } else {
-            return false;
-        }
-    }
-    return *vk != 0;
+    return hotkeys::parse(shortcut, modifiers, vk);
 }
 
 bool MessageWindow::registerHotkey(int id, const QString& shortcut)

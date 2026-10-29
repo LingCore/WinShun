@@ -1,6 +1,5 @@
 #include "WindowFrame.h"
 
-#include "FileIconProvider.h"
 #include "platform/WindowEffects.h"
 
 #include <QCoreApplication>
@@ -303,13 +302,6 @@ void WindowFrame::addHandle(QQuickItem* item)
 bool WindowFrame::onHandle(int screenX, int screenY) const
 {
     return anyCovers(m_handles, toWindow(screenX, screenY));
-}
-
-QString WindowFrame::icon() const
-{
-    // Native separators: the shell does not parse "F:/..." and the generic
-    // program icon would come back.
-    return FileIconProvider::iconUrl(QDir::toNativeSeparators(QCoreApplication::applicationFilePath()), false);
 }
 
 QPointF WindowFrame::toWindow(int screenX, int screenY) const
