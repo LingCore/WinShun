@@ -78,29 +78,39 @@ def fixed_drives():
     kernel32 = ctypes.WinDLL("kernel32")
     mask = kernel32.GetLogicalDrives()
     roots = [f"{chr(65 + i)}:\\" for i in range(26) if mask >> i & 1]
-    return [root for root in roots if kernel32.GetDriveTypeW(root) == 3]  # DRIVE_FIXED
+    return [root for root in roots if kernel32.GetDriveTypeW(root) == 3 and not is_subst(root)]  # DRIVE_FIXED
+
+
+def is_subst(root):
+    """A subst drive (W: of another session's scratchpad, say) is a folder seen as
+    a fixed drive: its files would come up in the shots."""
+    target = ctypes.create_unicode_buffer(1024)
+    ok = ctypes.WinDLL("kernel32").QueryDosDeviceW(root[:2], target, len(target))
+    return bool(ok) and target.value.startswith("\\??\\")
 
 
 def everything_but(files):
     """Folders to exclude so that only `files` is left of the fixed drives
     (WinShun can't exclude a whole drive): the top folders of every drive,
-    and on the way down to `files` the folders beside it."""
+    and on the way down to `files` the folders beside it; and the names of
+    the files lying in those folders (a drive's root has some), skipped by name."""
     keep = pathlib.Path(files).resolve()
     chain = [keep, *keep.parents]
-    excluded = []
+    excluded, loose = [], []
     for root in fixed_drives():
         folder = pathlib.Path(root)
         while True:
             inside = next((p for p in chain if p.parent == folder and p != folder), None)  # towards `files`
             try:
-                children = [p for p in folder.iterdir() if p.is_dir()]
+                entries = list(folder.iterdir())
             except OSError:
-                children = []
-            excluded += [p for p in children if p != inside]
+                entries = []
+            excluded += [p for p in entries if p.is_dir() and p != inside]
+            loose += [p.name for p in entries if p != inside and not p.is_dir() and p.name not in loose]
             if inside is None or inside == keep:
                 break
             folder = inside
-    return excluded
+    return excluded, loose
 
 
 def ini_list(paths):
@@ -257,9 +267,11 @@ def make_profile(folder, files, recent, number_keys="ctrl", number_hints="held",
     (folder / PROFILE_MARK).write_text("A WinShun profile for screenshots (tools/screenshots).\n")
     real = pathlib.Path(os.environ["APPDATA"]) / "WinShun" / "WinShun.ini"
     text = real.read_text(encoding="utf-8") if real.exists() else ""
-    excluded = everything_but(files)
+    excluded, loose = everything_but(files)
+    # the drives named: a subst drive (or one only the unelevated user sees) stays out
     text = ini_set(text, "Index", {"ExcludedPaths": ini_list(excluded), "IncludeRemovableDrives": "false",
-                                   "Folder": ""})
+                                   "Drives": ini_list(pathlib.PurePath(root[:2]) for root in fixed_drives()), "Folder": "",
+                                   "ExcludedFileNames": ini_list(pathlib.PurePath(name) for name in ["~$*", *loose])})
     text = ini_set(text, "Update", {"Automatic": "false"})
     text = ini_drop(text, "WebSearch", "Shares")  # one's own sites and shares stay out; the defaults come back
     text = ini_set(text, "Results", {"Sort": "match", "StartList": "recent", "NumberKeys": number_keys,

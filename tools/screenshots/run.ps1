@@ -1,10 +1,11 @@
 ﻿# Runs a scene file with the elevated agent, the way the live tests are meant to be (F:\wswt\RULES.md "Live testing"):
-#   tools\screenshots\run.ps1 [-Scene scenes\release013.txt] [-Exe <WinShun.exe under test>]
+#   tools\screenshots\run.ps1 [-Scene scenes\release013.txt] [-Exe <WinShun.exe under test>] [-UserExe <the user's own>]
 # waits for 20 s without the user's input, takes F:\wswt\ui.lock (waits while another session has it), runs agent.ps1
 # elevated (no prompt on this machine) and waits for it, then puts everything back whatever happened: the theme and
-# wallpaper (shots.py restore), the cover, the user's own WinShun (dist, not elevated), the lock. Run it from a normal
+# wallpaper (shots.py restore), the cover, the user's own WinShun (the copy that was running: the installed one, or
+# dist; not elevated), the lock. Run it from a normal
 # (not elevated) PowerShell: that is how the user's WinShun is started again.
-param([string]$Scene = 'scenes\release013.txt', [string]$Exe)
+param([string]$Scene = 'scenes\release013.txt', [string]$Exe, [string]$UserExe)
 $ErrorActionPreference = 'Stop'
 Add-Type -TypeDefinition @'
 using System; using System.Runtime.InteropServices;
@@ -16,7 +17,9 @@ public static class IdleMs {
 '@
 $here = $PSScriptRoot
 $root = (Resolve-Path (Join-Path $here '..\..')).Path
-$userExe = Join-Path $root 'dist\WinShun\WinShun.exe'
+# the user's own copy: given, else the one running now (seen from this unelevated shell), else dist's
+if (-not $UserExe) { $UserExe = Get-Process WinShun -ErrorAction SilentlyContinue | Where-Object { $_.Path } | Select-Object -First 1 -ExpandProperty Path }
+$userExe = if ($UserExe) { $UserExe } else { Join-Path $root 'dist\WinShun\WinShun.exe' }
 $lock = 'F:\wswt\ui.lock'
 $sw = [Diagnostics.Stopwatch]::StartNew()
 while ([IdleMs]::Get() -lt 20000) {
@@ -32,6 +35,7 @@ while ($true) {
 try {
     $args2 = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $here 'agent.ps1'), '-Scene', $Scene)
     if ($Exe) { $args2 += @('-Exe', $Exe) }
+    $args2 += @('-UserExe', "`"$userExe`"") # C:\Program Files: quoted for the new process's command line
     $p = Start-Process powershell.exe -Verb RunAs -PassThru -WindowStyle Hidden -ArgumentList $args2
     $p.WaitForExit()
     Write-Host "agent exit code $($p.ExitCode); log: $(Join-Path $here 'work\agent.txt')"
@@ -51,11 +55,21 @@ try {
             foreach ($left in @(Get-Process WinShun -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $Exe })) { Stop-Process -Id $left.Id -Force }
         }
     }
+    # the demo copy, if the agent stopped before its profile stop: the same exe as the user's when that is the
+    # installed one, told apart by its --profile
+    $demo = { @(Get-CimInstance Win32_Process -Filter "Name='WinShun.exe'" | Where-Object { $_.CommandLine -like '*--profile*' }) }
+    if ((& $demo).Count) {
+        Start-Process $userExe -ArgumentList '--profile', "`"$profileDir`"", '--quit' -WindowStyle Normal
+        $sw.Restart()
+        while ((& $demo).Count -and $sw.Elapsed.TotalSeconds -lt 30) { Start-Sleep -Milliseconds 300 }
+        foreach ($left in (& $demo)) { Stop-Process -Id $left.ProcessId -Force }
+    }
     # the user's own copy, from this (not elevated) shell, never from a .bak
-    if (-not (Get-Process WinShun -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $userExe })) {
+    $mine = { @(Get-CimInstance Win32_Process -Filter "Name='WinShun.exe'" | Where-Object { $_.ExecutablePath -eq $userExe -and $_.CommandLine -notlike '*--profile*' }) }
+    if (-not (& $mine).Count) {
         Start-Process $userExe -ArgumentList '--background' -WindowStyle Normal
         Start-Sleep -Seconds 6
     }
-    Write-Host ("the user's WinShun running: " + [bool](Get-Process WinShun -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $userExe }))
+    Write-Host ("the user's WinShun running: " + [bool](& $mine).Count)
     if (Test-Path $lock) { [IO.File]::Delete($lock) }
 }

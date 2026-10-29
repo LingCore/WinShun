@@ -28,7 +28,7 @@
 #     dragged, shaken at (dx,dy) from the frame, held over a sector; pie end: Esc, button up -- never released over a sector)
 #   matte <name> [winshun|beside|hold] [with <window class>]   (hold: the pointer stays, a drag going on)
 #   profile start [--unelevated] ...: WinShun not elevated (a drop from Explorer can't reach an elevated one)
-param([string]$Scene, [string]$Exe) # Exe: another WinShun.exe than dist's (a build under test)
+param([string]$Scene, [string]$Exe, [string]$UserExe) # Exe: another WinShun.exe than dist's (a build under test); UserExe: the user's own copy when not dist's (run.ps1 passes the one that was running)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 Add-Type -TypeDefinition @'
@@ -163,7 +163,7 @@ $profileDir = Join-Path $work 'profile'
 New-Item -ItemType Directory -Force $shots | Out-Null
 $cmdFile = Join-Path $work 'cmd.txt'
 $log = Join-Path $work 'agent.txt'
-$userExe = Join-Path $root 'dist\WinShun\WinShun.exe' # the user's own copy
+$userExe = if ($UserExe) { $UserExe } else { Join-Path $root 'dist\WinShun\WinShun.exe' } # the user's own copy
 $exe = if ($Exe) { $Exe } else { $userExe }
 $tool = Join-Path $here 'shots.py'
 $demo = 'F:\Win' + [char]0x987A + [char]0x6F14 + [char]0x793A # the demo folder the shots show (stage.py's DEMO)
@@ -573,7 +573,8 @@ function RunLines($lines) {
                     $script:minimized += $h; [A]::ShowWindow($h, 6) | Out-Null; Start-Sleep -Milliseconds 500
                 }
             }
-            'restorewins' { foreach ($h in @($script:minimized)) { [A]::ShowWindow($h, 9) | Out-Null }; $script:minimized = @(); Start-Sleep -Milliseconds 500 }
+            # restorewins: Where-Object, as with none minimized @($null) would be one null handle
+            'restorewins' { foreach ($h in @($script:minimized | Where-Object { $_ })) { [A]::ShowWindow($h, 9) | Out-Null }; $script:minimized = @(); Start-Sleep -Milliseconds 500 }
             'winstate' { # save|restore <title part>: where a window was, and maximized or not, put back afterwards (a program remembers the window it closes with)
                 $q = $arg -split '\s+', 2
                 $h = [A]::FindTitle($q[1])
