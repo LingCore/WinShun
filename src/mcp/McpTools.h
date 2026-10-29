@@ -28,6 +28,7 @@
 #include <list>
 #include <memory>
 #include <optional>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -67,6 +68,7 @@ struct Policy {
     bool contentDocuments = true;
     bool contentInLowPriority = false;
     QStringList excludedTypes; // file types left out of searches, as the launcher's (Settings::excludedTypes)
+    QStringList excludedFileNames; // ... and file names (Settings::excludedFileNames)
     KindOrder kindOrder = KindOrder::FilesFirst;
 
     bool operator==(const Policy&) const = default;
@@ -297,7 +299,16 @@ private:
     struct Tool;
     struct Call;
     struct Active;
+    struct Mailbox;
     void addTools();
+    // The index's roots on servers and in WSL, canonical (Visibility).
+    std::vector<std::wstring> remoteRoots() const;
+    // A call's work with the disk or a server, off the GUI thread: one slow
+    // to answer (a share gone away: half a minute) holds up the call, not
+    // Win顺. `work(closing)` runs on a thread of its own that nothing waits
+    // for, holding only what it is given; then `then(answer)` runs here,
+    // unless the call was cancelled. The call is among m_others meanwhile.
+    template <typename Work, typename Then> void offThread(const std::shared_ptr<Call>& call, Work work, Then then);
     void start(std::shared_ptr<Call> call);
     void finish(const std::shared_ptr<Call>& call, ToolResult result);
     void next(); // the next queued search, if any
@@ -339,8 +350,10 @@ private:
     std::unique_ptr<Active> m_active; // the search running on the engine
     std::vector<std::shared_ptr<Call>> m_others; // calls under way that need no engine (opening, reading)
     QTimer m_contentTimeout;
-    std::unique_ptr<DocExtractor> m_extractor; // read_file_text: documents the content index has no text of
-    std::list<std::jthread> m_reads; // last: stopped and joined before the rest goes
+    // read_file_text: documents the content index has no text of. Shared
+    // with the reads under way, which outlive the host (offThread).
+    std::shared_ptr<DocExtractor> m_extractor;
+    std::shared_ptr<Mailbox> m_mailbox;
 };
 
 } // namespace mcp

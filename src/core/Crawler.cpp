@@ -12,7 +12,9 @@
 #include <condition_variable>
 #include <cwctype>
 #include <mutex>
+#include <string_view>
 #include <thread>
+#include <unordered_set>
 #include <utility>
 
 namespace ws {
@@ -565,16 +567,44 @@ void applyChanges(FileIndex& index, const std::vector<FsChange>& changes, const 
     const Crawler::Lister& list)
 {
     using Kind = FsChange::Kind;
+    // Written to (GitHub #114: a share's watcher tells of writes): a file's
+    // size and time once, as told last. Not a folder's own (each name change
+    // in it brings one), nor of what the index has not got (its Added does
+    // it): over the network each probe is a round trip.
+    std::vector<bool> lastWrite(changes.size(), false); // the last Modified of its path
+    if (std::ranges::any_of(changes, [](const FsChange& c) { return c.kind == Kind::Modified; })) {
+        std::unordered_set<std::wstring_view> later;
+        for (std::size_t k = changes.size(); k-- > 0;)
+            lastWrite[k] = changes[k].kind == Kind::Modified && later.insert(changes[k].path).second;
+    }
     std::size_t i = 0;
     while (i < changes.size()) {
+        if (stop.stop_requested())
+            return; // what is left, the next pass reads (each probe can wait on a server)
         std::size_t end = std::min(changes.size(), i + kApplyBatch);
         if (end < changes.size() && changes[end - 1].kind == Kind::RenamedFrom)
             ++end; // keep rename pairs in one batch
 
+        // Which writes are to files the index has, batch by batch (a read
+        // lock no longer than that, and the batches before seen).
+        std::vector<bool> written(end - i, false);
+        if (std::find(lastWrite.begin() + i, lastWrite.begin() + end, true) != lastWrite.begin() + end) {
+            const auto lock = index.readLock();
+            for (std::size_t k = i; k < end; ++k) {
+                if (!lastWrite[k])
+                    continue;
+                const EntryId id = index.findPath(changes[k].path);
+                written[k - i] = id != kNoEntry && !(index.entry(id).flags & (EntryFlag::Directory | EntryFlag::Root));
+            }
+        }
+
         // File system probes happen before taking the lock.
         std::vector<PathProbe> probes(end - i);
         for (std::size_t k = i; k < end; ++k) {
-            if (changes[k].kind == Kind::Added || (changes[k].kind == Kind::RenamedTo && !changes[k].moveOnly))
+            if (stop.stop_requested())
+                return;
+            if (changes[k].kind == Kind::Added || (changes[k].kind == Kind::RenamedTo && !changes[k].moveOnly)
+                || written[k - i])
                 probes[k - i] = probePath(changes[k].path);
         }
 
@@ -629,6 +659,16 @@ void applyChanges(FileIndex& index, const std::vector<FsChange>& changes, const 
                 return index.move(id, parent, utf8);
             };
 
+            const auto writtenTo = [&](const std::wstring& path, const PathProbe& p) {
+                if (p.attributes == INVALID_FILE_ATTRIBUTES || (p.attributes & FILE_ATTRIBUTE_DIRECTORY))
+                    return; // gone again (its Removed comes), or a folder after all
+                const EntryId id = index.pathForUpdate(path);
+                if (id == kNoEntry || (index.entry(id).flags & (EntryFlag::Directory | EntryFlag::Root)))
+                    return;
+                index.setModified(id, p.modified);
+                index.setSize(id, p.size);
+            };
+
             for (std::size_t k = i; k < end; ++k) {
                 const FsChange& c = changes[k];
                 switch (c.kind) {
@@ -639,6 +679,9 @@ void applyChanges(FileIndex& index, const std::vector<FsChange>& changes, const 
                     if (k + 1 < end && changes[k + 1].kind == Kind::RenamedTo
                         && movePath(c.path, changes[k + 1].path)) {
                         ++k;
+                        // A file saved by a rename (a temporary file, a
+                        // download's .part): its size and time as it is now.
+                        writtenTo(changes[k].path, probes[k - i]);
                         break;
                     }
                     removePath(c.path);
@@ -647,6 +690,10 @@ void applyChanges(FileIndex& index, const std::vector<FsChange>& changes, const 
                 case Kind::RenamedTo:
                     if (!c.moveOnly) // GitHub #52: the move could not be made, and nothing comes instead
                         addPath(c.path, probes[k - i]);
+                    break;
+                case Kind::Modified:
+                    if (written[k - i])
+                        writtenTo(c.path, probes[k - i]);
                     break;
                 case Kind::Overflow:
                     break;

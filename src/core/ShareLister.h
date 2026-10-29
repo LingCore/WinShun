@@ -5,6 +5,8 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <initializer_list>
+#include <optional>
 #include <stop_token>
 #include <string>
 #include <string_view>
@@ -37,6 +39,22 @@ enum class Problem : std::uint8_t {
 Problem classify(unsigned long error, bool atRoot) noexcept;
 // Problems with the server or share as a whole: a pass stops at them.
 bool affectsShare(Problem problem) noexcept;
+// How a WebDAV server turned Windows away at the folder added, in codes that
+// say nothing of a share anywhere else (Problem::Other; GitHub #114, measured
+// over http 2026-10-29). Not "online, 0 items", then, but what each is.
+enum class DavRefusal : std::uint8_t {
+    None,
+    // "Not supported" (50): WebClient took the server for none, as it does one
+    // that wants a password even for OPTIONS. Perhaps a sign-in: the button,
+    // and tried again within minutes rather than half an hour.
+    MaybeSignIn,
+    // "Cannot access the file" (1920): its 403. Not for this account: the
+    // button, for another one; tried again as a sign-in is.
+    Forbidden,
+    // "Not functioning" (31): its 500. Tried again within minutes.
+    ServerError,
+};
+DavRefusal davRefusal(std::wstring_view path, Problem problem, unsigned long error) noexcept;
 
 // What answers on the SMB port (445) of a server.
 enum class Answer : std::uint8_t {
@@ -46,20 +64,65 @@ enum class Answer : std::uint8_t {
 };
 
 // Asks `host` within `timeout`, so an offline server costs this much rather
-// than the 20-45 seconds Windows spends on it. Remembered for a while
-// (shorter when nothing answered); `fresh` asks again.
+// than the 20-45 seconds Windows spends on it: all its addresses at once, as
+// Windows does (GitHub #116: one after the other, a first address that never
+// answered took all the time). Remembered for a while (shorter when nothing
+// answered); `fresh` asks again.
 Answer probe(std::wstring_view host, std::chrono::milliseconds timeout = std::chrono::milliseconds(1500),
     bool fresh = false);
-// Whether an SMB server answers on `host` (probe()).
-inline bool reachable(std::wstring_view host, std::chrono::milliseconds timeout = std::chrono::milliseconds(1500),
-    bool fresh = false)
-{
-    return probe(host, timeout, fresh) != Answer::None;
-}
+// probe() without what it remembers, on `port`, every address of each of
+// `hosts` asked at once: for tests, with servers faked on 127.0.0.x.
+Answer probeAt(std::initializer_list<std::wstring_view> hosts, std::uint16_t port, std::chrono::milliseconds timeout);
+// Whether the server `host` answers: an SMB server (probe()), or a WebDAV one
+// for a host in WebClient's form ("nas@SSL@5006": webdav::answers()).
+bool reachable(std::wstring_view host, std::chrono::milliseconds timeout = std::chrono::milliseconds(1500),
+    bool fresh = false);
 
 // Background only: WSL checks its running state without touching its filesystem;
-// SMB checks its server. Unlike reachable(), this takes the complete path.
-bool reachablePath(std::wstring_view path, bool fresh = false);
+// SMB and WebDAV check their server. Unlike reachable(), this takes the complete
+// path, which tells a WebDAV server's root on port 80 ("\\server\DavWWWRoot").
+bool reachablePath(std::wstring_view path, bool fresh = false,
+    std::chrono::milliseconds timeout = std::chrono::milliseconds(1500));
+
+// Opens the share (or the folder added in it) as File Explorer does: through
+// Windows' own connection to the server, which gets there where the probe
+// may not (GitHub #116: a NAS slow to answer). 0 when it could, else why not
+// (GetLastError); kept for its server, as askWindows() keeps it. Takes as long as
+// Windows does to give up on a server, up to a minute: never on the UI thread.
+unsigned long openRoot(std::wstring_view path);
+
+// A UNC path on an SMB server: not WSL's, not WebDAV.
+bool smbPath(std::wstring_view path) noexcept;
+
+// Asks Windows itself about `path` (its attributes), as File Explorer gets
+// there: 0 when it is there, else why not (GetLastError). On an SMB server,
+// what it says is kept for answersNow() and lastHeard(), and one is asked
+// at a time (OneAtATime: an ask under way answers for the next when the
+// server did not answer it, and it began after the next was asked). As slow
+// as openRoot(): never on the UI thread.
+unsigned long askWindows(std::wstring_view path);
+
+// Whether the server of `path` answers, for a thread the user waits on (a
+// folder typed, listed by the search): the probe (reachablePath); but on a
+// server Windows itself got to (askWindows, openRoot: GitHub #116, the probe
+// can be wrong there), Windows asked about `path` afresh, for at most
+// `windowsWait` (no answer in time is a no, and the probe decides again
+// until Windows gets there). `fresh` false takes an answer of the last
+// seconds. Up to a second and a half: not on the UI thread. True for a local
+// path; WSL and WebDAV as reachablePath().
+bool answersNow(std::wstring_view path, bool fresh = true,
+    std::chrono::milliseconds windowsWait = std::chrono::milliseconds(1500));
+
+// The last word on the server of `path`, when it came within `within`: the
+// probe, reachablePath() asked afresh, Windows (askWindows, openRoot; its
+// yes outranks a later no from the probe, see Hearsay). For the UI thread,
+// which cannot wait (a drag starts at once): a server that just did not
+// answer is not asked again at each try. Nothing lately: nullopt. Never
+// touches the network. True for a local path; nullopt for WSL. Windows'
+// yes stands for `windowsYes` when given (longer: the probe can say no
+// where Windows gets there, GitHub #116).
+std::optional<bool> lastHeard(std::wstring_view path, std::chrono::milliseconds within,
+    std::optional<std::chrono::milliseconds> windowsYes = std::nullopt);
 
 // The folders `host` shares (NetShareEnum): disk shares only, without the
 // hidden ones ("C$"). Slow when the server is: call after reachable().
@@ -92,7 +155,9 @@ public:
     std::size_t deniedFolders() const noexcept { return m_denied.load(std::memory_order_relaxed); }
 
 private:
-    bool listWslDirectory(const Crawler::Root& dir, DirListing& out);
+    // With FindFirstFile: for WSL and WebDAV (`wsl` false), whose providers
+    // need not implement the SMB directory information classes.
+    bool listWithFind(const Crawler::Root& dir, DirListing& out, bool wsl);
     bool fail(unsigned long error, bool atRoot);
     bool excludedFile(std::wstring_view name) const noexcept;
 

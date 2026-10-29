@@ -14,6 +14,7 @@
 #include "Pipe.h"
 #include "Sandbox.h"
 #include "SearchEngine.h"
+#include "Visibility.h"
 
 #include <QDir>
 #include <QElapsedTimer>
@@ -127,11 +128,14 @@ struct Fixture {
     SettingsQuery lastSettingsQuery;
     QString openedAt; // "key|section"
 
-    explicit Fixture(bool withShell = true, bool withClipboard = true)
+    // `shares`: network locations, as configured (the service is not started:
+    // none is listed or asked anything).
+    explicit Fixture(bool withShell = true, bool withClipboard = true, std::vector<ShareConfig> shares = {})
     {
         root = QDir::toNativeSeparators(dir.path());
         IndexService::Options options;
         options.content.enabled = false;
+        options.shares.shares = std::move(shares);
         service = std::make_unique<IndexService>(dir.path() + u"/index"_s, options);
         folder = addFolder(root);
         engine = std::make_unique<SearchEngine>(service.get());
@@ -1616,6 +1620,129 @@ private slots:
         reply = s.exchange(callLine(12, u"search_files"_s, {{u"query"_s, u"ext:txt"_s}}));
         QVERIFY(reply);
         QCOMPARE(names(outcomeOf(*reply).structured).size(), 3);
+    }
+
+    // GitHub #114: paths on servers and in WSL.
+    void remotePaths()
+    {
+        // Where a path is, from its text alone.
+        using Place = Visibility::Place;
+        const std::vector<std::wstring> roots {L"\\\\nas\\docs", L"\\\\127.0.0.1@8714\\DavWWWRoot", L"\\\\wsl.localhost\\Ubuntu"};
+        QCOMPARE(Visibility::placeOf(u"C:\\Users\\me"_s, roots), Place::Local);
+        QCOMPARE(Visibility::placeOf(u"d:"_s, roots), Place::Local);
+        QCOMPARE(Visibility::placeOf(u"D:/data/a.txt"_s, roots), Place::Local);
+        QCOMPARE(Visibility::placeOf(u"C:relative"_s, roots), Place::Elsewhere);
+        QCOMPARE(Visibility::placeOf(u"relative\\a.txt"_s, roots), Place::Elsewhere);
+        QCOMPARE(Visibility::placeOf(u"\\\\nas\\docs"_s, roots), Place::Remote);
+        QCOMPARE(Visibility::placeOf(u"\\\\NAS\\Docs\\a.txt"_s, roots), Place::Remote);
+        QCOMPARE(Visibility::placeOf(u"//nas/docs/a.txt"_s, roots), Place::Remote);
+        QCOMPARE(Visibility::placeOf(u"\\\\nas\\docs2\\a.txt"_s, roots), Place::Elsewhere);
+        QCOMPARE(Visibility::placeOf(u"\\\\nas\\other\\a.txt"_s, roots), Place::Elsewhere);
+        QCOMPARE(Visibility::placeOf(u"\\\\nas"_s, roots), Place::Elsewhere);
+        QCOMPARE(Visibility::placeOf(u"\\\\attacker.example\\share\\a.txt"_s, roots), Place::Elsewhere);
+        QCOMPARE(Visibility::placeOf(u"\\\\?\\UNC\\nas\\docs\\a.txt"_s, roots), Place::Elsewhere);
+        QCOMPARE(Visibility::placeOf(u"\\\\?\\C:\\a.txt"_s, roots), Place::Elsewhere);
+        QCOMPARE(Visibility::placeOf(u"\\\\.\\pipe\\x"_s, roots), Place::Elsewhere);
+        QCOMPARE(Visibility::placeOf(u"\\\\nas\\docs\\a.txt"_s, {}), Place::Elsewhere);
+        // WebDAV: the server's root holds every folder on it, written either way.
+        QCOMPARE(Visibility::placeOf(u"\\\\127.0.0.1@8714\\DavWWWRoot\\dav\\a.txt"_s, roots), Place::Remote);
+        QCOMPARE(Visibility::placeOf(u"\\\\127.0.0.1@8714\\dav\\a.txt"_s, roots), Place::Remote);
+        QCOMPARE(Visibility::placeOf(u"\\\\127.0.0.1@8715\\dav\\a.txt"_s, roots), Place::Elsewhere);
+        // WSL by either of its names; another distribution is not under the root.
+        QCOMPARE(Visibility::placeOf(u"\\\\wsl$\\Ubuntu\\home\\me"_s, roots), Place::Remote);
+        QCOMPARE(Visibility::placeOf(u"\\\\wsl.localhost\\Debian\\home"_s, roots), Place::Elsewhere);
+
+        // Under a root on a server, what the index has is this user's to see
+        // and read, and no server is asked (nothing answers at 192.0.2.1: one
+        // asked would hold every check up for seconds). Anyone else: nothing.
+        const std::vector<std::wstring> away {L"\\\\192.0.2.1\\share"};
+        QElapsedTimer timer;
+        timer.start();
+        {
+            Visibility mine(nullptr, away);
+            QVERIFY(mine.sees(u"\\\\192.0.2.1\\share\\a.txt"_s));
+            QVERIFY(mine.canRead(u"\\\\192.0.2.1\\share\\a.txt"_s));
+            QVERIFY(mine.canList(u"\\\\192.0.2.1\\share"_s));
+            QVERIFY(!mine.canRead(u"\\\\192.0.2.1\\other\\a.txt"_s)); // not under the root
+            QCOMPARE(mine.checks(), 0);
+        }
+        QVERIFY2(timer.elapsed() < 1000, qPrintable(QString::number(timer.elapsed())));
+        HANDLE anonymous = nullptr;
+        QVERIFY(::ImpersonateAnonymousToken(::GetCurrentThread()));
+        const BOOL opened = ::OpenThreadToken(::GetCurrentThread(), TOKEN_QUERY, TRUE, &anonymous);
+        ::RevertToSelf();
+        QVERIFY(opened);
+        {
+            Visibility other(anonymous, away);
+            QVERIFY(!other.sees(u"\\\\192.0.2.1\\share\\a.txt"_s));
+            QVERIFY(!other.canRead(u"\\\\192.0.2.1\\share\\a.txt"_s));
+        }
+        ::CloseHandle(anonymous);
+
+        // The tools, with that share configured and a file of it in the index.
+        auto f = std::make_unique<Fixture>(true, true, std::vector<ShareConfig> {{L"\\\\192.0.2.1\\share"}});
+        {
+            const auto index = f->service->index();
+            const auto lock = index->writeLock();
+            const EntryId shareRoot = index->addRoot("\\\\192.0.2.1\\share");
+            const EntryId file = index->add(shareRoot, "remote-report.txt", 0);
+            index->setModified(file, 1'700'000'000);
+            index->setSize(file, packSize(1234));
+        }
+        Policy policy = f->host->policy();
+        policy.allowOpen = true;
+        f->host->setPolicy(policy);
+        auto s = std::make_unique<Session>(f->server.get());
+        QVERIFY(s->initialize());
+        timer.restart();
+        auto reply = s->exchange(callLine(2, u"search_files"_s, {{u"query"_s, u"remote-report"_s}}));
+        QVERIFY(reply);
+        Outcome out = outcomeOf(*reply);
+        QVERIFY2(!out.isError, qPrintable(out.text));
+        QCOMPARE(names(out.structured), QStringList {u"remote-report.txt"_s});
+        QCOMPARE(out.structured.value(u"items"_s).toArray().first().toObject().value(u"size"_s).toInt(), 1234); // the index's
+        reply = s->exchange(callLine(3, u"list_folder"_s, {{u"path"_s, u"\\\\192.0.2.1\\share"_s}}));
+        QVERIFY(reply);
+        QCOMPARE(names(outcomeOf(*reply).structured), QStringList {u"remote-report.txt"_s});
+        reply = s->exchange(callLine(4, u"recent_files"_s, {{u"folder"_s, u"\\\\192.0.2.1\\share"_s}}));
+        QVERIFY(reply);
+        QCOMPARE(names(outcomeOf(*reply).structured), QStringList {u"remote-report.txt"_s});
+        QVERIFY2(timer.elapsed() < 3000, qPrintable(QString::number(timer.elapsed()))); // no server was asked
+
+        // A path on a server the index has no root on is refused before
+        // anything touches it (that would sign in to it).
+        timer.restart();
+        const QString elsewhere = u"\\\\192.0.2.2\\share\\a.txt"_s;
+        const auto refused = [&](int id, const QString& tool, const QJsonObject& arguments) {
+            const auto r = s->exchange(callLine(id, tool, arguments));
+            const Outcome o = r ? outcomeOf(*r) : Outcome {};
+            return r && o.isError && o.text.contains(u"network locations Win顺 indexes");
+        };
+        QVERIFY(refused(5, u"get_file_info"_s, {{u"path"_s, elsewhere}}));
+        QVERIFY(refused(6, u"read_file_text"_s, {{u"path"_s, elsewhere}}));
+        QVERIFY(refused(7, u"open_item"_s, {{u"path"_s, elsewhere}}));
+        QVERIFY(refused(8, u"search_files"_s, {{u"query"_s, u"\\\\192.0.2.2\\share\\report"_s}}));
+        QVERIFY(refused(9, u"get_file_info"_s, {{u"path"_s, u"\\\\?\\UNC\\192.0.2.2\\share\\a.txt"_s}}));
+        QVERIFY(refused(10, u"get_file_info"_s, {{u"path"_s, u"\\\\.\\pipe\\x"_s}}));
+        QVERIFY(f->opened.isEmpty());
+        QVERIFY2(timer.elapsed() < 2000, qPrintable(QString::number(timer.elapsed())));
+
+        // A file under the root is asked of its server off the GUI thread: one
+        // that does not answer holds up that call alone, and the host goes
+        // without waiting for it.
+        const qsizetype before = s->received.size();
+        timer.restart();
+        f->server->receive(s->id, callLine(11, u"get_file_info"_s, {{u"path"_s, u"\\\\192.0.2.1\\share\\remote-report.txt"_s}}));
+        f->server->receive(s->id, callLine(12, u"read_file_text"_s, {{u"path"_s, u"\\\\192.0.2.1\\share\\remote-report.txt"_s}}));
+        QVERIFY2(timer.elapsed() < 500, qPrintable(QString::number(timer.elapsed())));
+        f->server->receive(s->id, requestLine(13, u"ping"_s));
+        QTRY_VERIFY_WITH_TIMEOUT(std::ranges::any_of(s->received.mid(before),
+                                     [](const QByteArray& line) { return parseObject(line).value(u"id"_s).toInt() == 13; }),
+            1000);
+        timer.restart();
+        s.reset();
+        f.reset();
+        QVERIFY2(timer.elapsed() < 3000, qPrintable(QString::number(timer.elapsed())));
     }
 
     void cancelAndQueue()

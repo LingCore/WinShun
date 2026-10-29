@@ -6,6 +6,8 @@
 
 #include <algorithm>
 #include <memory>
+#include <string_view>
+#include <unordered_set>
 
 namespace ws {
 
@@ -14,6 +16,7 @@ namespace {
 constexpr std::size_t kBufferBytes = 64 * 1024;
 constexpr std::size_t kVolumeBufferBytes = 1024 * 1024; // GitHub #52: lost events cost a walk
 constexpr DWORD kNotifyFilter = FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME;
+constexpr DWORD kWriteFilter = FILE_NOTIFY_CHANGE_SIZE | FILE_NOTIFY_CHANGE_LAST_WRITE; // GitHub #114
 
 struct Watch {
     std::wstring root;
@@ -22,6 +25,7 @@ struct Watch {
     OVERLAPPED overlapped {};
     std::unique_ptr<DWORD[]> buffer; // DWORD-aligned, as the API requires
     DWORD bytes = 0;
+    DWORD filter = kNotifyFilter;
     bool pending = false;
 
     void resize(std::size_t size)
@@ -36,7 +40,7 @@ struct Watch {
         overlapped = OVERLAPPED {};
         overlapped.hEvent = event.get();
         pending = ::ReadDirectoryChangesW(
-            dir.get(), buffer.get(), bytes, TRUE, kNotifyFilter, nullptr, &overlapped, nullptr);
+            dir.get(), buffer.get(), bytes, TRUE, filter, nullptr, &overlapped, nullptr);
         return pending;
     }
 
@@ -53,6 +57,9 @@ struct Watch {
 
 void parse(const Watch& w, DWORD bytes, std::vector<FsChange>& out)
 {
+    const bool writes = (w.filter & kWriteFilter) != 0;
+    // A file written in many pieces, its size and its time apart: once.
+    std::unordered_set<std::wstring_view> written;
     const auto* base = reinterpret_cast<const std::byte*>(w.buffer.get());
     const std::byte* p = base;
     for (;;) {
@@ -75,6 +82,10 @@ void parse(const Watch& w, DWORD bytes, std::vector<FsChange>& out)
         case FILE_ACTION_RENAMED_NEW_NAME:
             kind = FsChange::Kind::RenamedTo;
             break;
+        case FILE_ACTION_MODIFIED:
+            kind = FsChange::Kind::Modified;
+            known = writes && written.insert(rel).second;
+            break;
         default:
             known = false;
             break;
@@ -87,10 +98,11 @@ void parse(const Watch& w, DWORD bytes, std::vector<FsChange>& out)
     }
 }
 
-std::unique_ptr<Watch> openWatch(const std::wstring& root)
+std::unique_ptr<Watch> openWatch(const std::wstring& root, bool writes)
 {
     auto w = std::make_unique<Watch>();
     w->root = root;
+    w->filter = writes ? kNotifyFilter | kWriteFilter : kNotifyFilter;
     const std::wstring dirPath = root + L'\\';
     w->dir.reset(::CreateFileW(dirPath.c_str(), FILE_LIST_DIRECTORY, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
         nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, nullptr));
@@ -111,8 +123,9 @@ std::unique_ptr<Watch> openWatch(const std::wstring& root)
 
 } // namespace
 
-ChangeWatcher::ChangeWatcher(Handler handler)
+ChangeWatcher::ChangeWatcher(Handler handler, Tell tell)
     : m_handler(std::move(handler))
+    , m_tell(tell)
     , m_wake(::CreateEventW(nullptr, FALSE, FALSE, nullptr))
 {
     m_thread = std::jthread([this](std::stop_token stop) { run(stop); });
@@ -210,7 +223,7 @@ void ChangeWatcher::run(std::stop_token stop)
                     return true;
                 }
             }
-            if (auto w = openWatch(path)) {
+            if (auto w = openWatch(path, m_tell == Tell::Writes)) {
                 next.push_back(std::move(w));
                 return true;
             }

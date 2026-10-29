@@ -5,6 +5,7 @@
 #include "Documents.h"
 #include "DiagnosticLog.h"
 #include "TextUtil.h"
+#include "Unc.h"
 #include "Win32Util.h"
 #include "Wtf8.h"
 
@@ -398,6 +399,12 @@ ContentIndexer::~ContentIndexer()
 
 void ContentIndexer::stop()
 {
+    // Before the snapshot is saved: a share's thread still reading a file
+    // then (they are joined after it) must not append its text to the index.
+    {
+        std::unique_lock gate(m_intakeGate); // a hand-over under way finishes first
+        m_stopping = true;
+    }
     if (!m_thread.joinable())
         return;
     m_content->setChangeListener({});
@@ -436,6 +443,26 @@ bool ContentIndexer::enabled()
     return m_options.enabled;
 }
 
+ContentIndexer::Options ContentIndexer::options()
+{
+    std::lock_guard lock(m_mutex);
+    return m_options;
+}
+
+bool ContentIndexer::mayReadRemote(bool few)
+{
+    {
+        std::lock_guard lock(m_mutex);
+        if (!m_options.enabled || m_paused || m_stopping.load())
+            return false;
+    }
+    // Nor while the index is merged: a document added meanwhile makes a full
+    // merge (ContentIndex::merge) throw its work away.
+    if (m_merging.load() || batterySaverOn() || m_content->searching())
+        return false;
+    return few || !searchBoxHolds();
+}
+
 ContentIndexer::BulkStats ContentIndexer::bulkStats() const noexcept
 {
     return {m_bulk.sessions.load(), m_bulk.sessionsFailed.load(), m_bulk.files.load(), m_bulk.bytes.load(),
@@ -448,6 +475,15 @@ void ContentIndexer::wake()
     {
         std::lock_guard lock(m_mutex);
         m_woken = true;
+    }
+    m_cv.notify_all();
+}
+
+void ContentIndexer::volumesChanged()
+{
+    {
+        std::lock_guard lock(m_mutex);
+        m_optionsChanged = true; // as for new options: a pass now, and one under way starts over
     }
     m_cv.notify_all();
 }
@@ -607,14 +643,26 @@ std::vector<ContentIndexer::Work> ContentIndexer::findWork(
         EntryId entry;
         std::size_t volume;
         bool suspended;
+        bool remote;
     };
     std::vector<Root> roots;
     for (const EntryId r : index.roots()) {
-        const auto it = std::find_if(
-            volumes.begin(), volumes.end(), [&](const Volume& v) { return v.root == index.name(r); });
-        if (it != volumes.end())
-            roots.push_back({r, static_cast<std::size_t>(it - volumes.begin()), it->suspended});
+        // A share as configured, its root as the index names it ("\\NAS\Docs"
+        // for "\\nas\docs", "\\wsl$\..." for "\\wsl.localhost\...": unc::equal).
+        const std::string_view name = index.name(r);
+        const auto it = std::find_if(volumes.begin(), volumes.end(), [&](const Volume& v) {
+            if (!v.remote)
+                return v.root == name;
+            std::u16string a;
+            std::u16string b;
+            wtf8::decodeAppend(a, v.root);
+            wtf8::decodeAppend(b, name);
+            return unc::equal(wtf8::wview(a), wtf8::wview(b));
+        });
+        if (it != volumes.end() && (it->remote || options.local))
+            roots.push_back({r, static_cast<std::size_t>(it - volumes.begin()), it->suspended, it->remote});
     }
+    const bool anyRemote = std::ranges::any_of(roots, &Root::remote);
     const std::vector<ContentIndex::DocInfo> docs = m_content->documents();
     const auto now = std::chrono::steady_clock::now();
     std::erase_if(m_recentReads, [&](const auto& r) { return now - r.second >= m_timing.cooldown; });
@@ -628,7 +676,10 @@ std::vector<ContentIndexer::Work> ContentIndexer::findWork(
         const auto entries = index.chunk(c);
         for (std::size_t i = 0; i < entries.size(); ++i) {
             const Entry& e = entries[i];
-            if (!filter.accepts(index, e))
+            // A remote file a search looks in (ContentVerdict::Remote): kept
+            // when its share's contents are indexed, read by its own thread.
+            const bool remote = (e.flags & EntryFlag::Remote) != 0;
+            if (remote ? !anyRemote || !filter.acceptsRemote(index, e) : !filter.accepts(index, e))
                 continue;
             const auto id = static_cast<EntryId>((c << FileIndex::kChunkBits) + i);
             const RootFinder::Place place = finder.placeOf(id);
@@ -636,11 +687,12 @@ std::vector<ContentIndexer::Work> ContentIndexer::findWork(
                 = std::find_if(roots.begin(), roots.end(), [&](const Root& r) { return r.entry == place.root; });
             if (volume == roots.end())
                 continue;
-            candidates.push_back(id);
+            if (!remote)
+                candidates.push_back(id);
             for (; k < docs.size() && docs[k].entry < id; ++k)
                 retired.push_back(docs[k].entry);
             const bool known = k < docs.size() && docs[k].entry == id;
-            if (volume->suspended) {
+            if (volume->suspended || volume->remote) {
                 k += known ? 1 : 0;
                 continue;
             }
@@ -774,7 +826,9 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
     diagnostics::record(u"content-gather-finished"_s,
         {{u"files"_s, static_cast<qint64>(work.size())}, {u"elapsed_ms"_s, steadyMs() - gatherStarted}});
     if (work.empty()) {
-        tidy(m_taken.exchange(0)); // what searches handed over
+        m_merging = true; // the shares' threads wait meanwhile (mayReadRemote)
+        tidy(m_taken.exchange(0)); // what searches and shares' threads handed over
+        m_merging = false;
         return true;
     }
 
@@ -795,8 +849,8 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
     {
         std::vector<std::pair<std::uint32_t, Queue*>> disks;
         for (std::size_t v = 0; v < volumes.size(); ++v) {
-            if (volumes[v].suspended)
-                continue; // not touched: it is being ejected or locked
+            if (volumes[v].suspended || volumes[v].remote)
+                continue; // not touched: it is being ejected or locked; a share's own thread reads it
             const VolumePlacement p = placementOf(QString::fromStdString(volumes[v].root).toStdWString());
             if (!p.seeks)
                 continue;
@@ -1546,21 +1600,28 @@ win32::UniqueHandle openText(std::wstring_view path, std::int64_t maxBytes, Cont
         nullptr));
     if (!file.valid()) {
         // No access will not change by itself; in use or gone may (and the
-        // journal reports a file that is gone).
-        if (::GetLastError() == ERROR_ACCESS_DENIED)
+        // journal reports a file that is gone). Nor will WebDAV's size limit
+        // (WebClient's FileSizeLimitInBytes): too large, as below.
+        out.error = ::GetLastError();
+        if (out.error == ERROR_ACCESS_DENIED || out.error == ERROR_FILE_TOO_LARGE)
             out.outcome = ContentIndexer::Outcome::Empty;
+        out.large = out.error == ERROR_FILE_TOO_LARGE;
         return {};
     }
     FILE_BASIC_INFO basic {};
     LARGE_INTEGER size {};
     if (!::GetFileInformationByHandleEx(file.get(), FileBasicInfo, &basic, sizeof basic)
-        || !::GetFileSizeEx(file.get(), &size))
+        || !::GetFileSizeEx(file.get(), &size)) {
+        out.error = ::GetLastError();
         return {};
+    }
     constexpr DWORD kNotHere = FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_OFFLINE | FILE_ATTRIBUTE_RECALL_ON_OPEN
         | FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS;
     if (basic.FileAttributes & kNotHere)
         return {}; // never download a cloud file
     out.stamp = ContentIndex::stampOf(size.QuadPart, basic.LastWriteTime.QuadPart);
+    out.bytes = size.QuadPart;
+    out.written = basic.LastWriteTime.QuadPart;
     if (size.QuadPart <= 0 || (maxBytes > 0 && size.QuadPart > maxBytes)) {
         out.outcome = ContentIndexer::Outcome::Empty; // as ContentScanner::scanFile skips it
         out.large = size.QuadPart > 0;
@@ -1596,25 +1657,27 @@ ContentIndexer::FileText ContentIndexer::readFile(std::wstring_view path, std::i
             thread_local std::vector<char> through;
             through.resize(1 << 20);
             DWORD got = 0;
-            while (!cancelled() && ::ReadFile(file.get(), through.data(), static_cast<DWORD>(through.size()), &got, nullptr)
-                && got > 0) {
+            DWORD failed = NO_ERROR;
+            while (!cancelled()) {
+                if (!::ReadFile(file.get(), through.data(), static_cast<DWORD>(through.size()), &got, nullptr)) {
+                    failed = ::GetLastError();
+                    break;
+                }
+                if (got == 0)
+                    break;
             }
             if (cancelled())
                 return out;
+            if (failed != NO_ERROR && disk.remote) {
+                out.error = failed; // the server went away, most likely: later
+                return out;
+            }
         }
-        DocExtractor::Result read = documents->extract(file.get(), static_cast<std::uint64_t>(size.QuadPart), cancelled);
-        if (read.retry)
-            return out;
-        out.outcome = Outcome::Empty; // nothing to find: no text, a password, damaged, crashed the reader
-        if (read.status != extractproto::Status::Ok)
-            return out;
-        grams::Collector collector(TextEncoding::Utf8, ContentScanner::legacyCodePage());
-        collector.feed(read.text.text.data(), read.text.text.size());
-        out.keys = collector.finish();
-        out.text = ContentIndex::packText(read.text);
-        out.document = std::move(read.text);
-        out.outcome = Outcome::Indexed;
-        return out;
+        FileText read = extractDocument(file.get(), static_cast<std::uint64_t>(size.QuadPart), documents, cancelled);
+        read.stamp = out.stamp;
+        read.bytes = out.bytes;
+        read.written = out.written;
+        return read;
     }
 
     thread_local std::vector<char> buffer;
@@ -1651,6 +1714,27 @@ ContentIndexer::FileText ContentIndexer::readFile(std::wstring_view path, std::i
         collector.feed(buffer.data(), n);
     }
     out.keys = collector.finish();
+    out.outcome = Outcome::Indexed;
+    return out;
+}
+
+ContentIndexer::FileText ContentIndexer::extractDocument(HANDLE file, std::uint64_t size, DocExtractor* documents,
+    const std::function<bool()>& cancelled)
+{
+    FileText out;
+    if (!documents)
+        return out;
+    DocExtractor::Result read = documents->extract(file, size, cancelled);
+    if (read.retry)
+        return out;
+    out.outcome = Outcome::Empty; // nothing to find: no text, a password, damaged, crashed the reader
+    if (read.status != extractproto::Status::Ok)
+        return out;
+    grams::Collector collector(TextEncoding::Utf8, ContentScanner::legacyCodePage());
+    collector.feed(read.text.text.data(), read.text.text.size());
+    out.keys = collector.finish();
+    out.text = ContentIndex::packText(read.text);
+    out.document = std::move(read.text);
     out.outcome = Outcome::Indexed;
     return out;
 }
@@ -1733,18 +1817,26 @@ ContentIndexer::Intake::Intake(ContentIndexer* indexer)
 {
     if (!indexer)
         return;
+    bool local = true;
     {
         std::lock_guard lock(indexer->m_mutex);
-        if (!indexer->m_options.enabled || indexer->m_paused)
+        if (!indexer->m_options.enabled || indexer->m_paused || indexer->m_stopping.load())
             return;
+        local = indexer->m_options.local;
     }
     if (!indexer->m_source.ready())
         return; // as the indexer: ids may not be final yet
     for (const Volume& v : indexer->m_source.volumes()) {
-        if (!v.suspended)
+        if (v.suspended)
+            continue;
+        if (v.remote) {
+            std::u16string root;
+            wtf8::decodeAppend(root, v.root);
+            m_remote.emplace_back(wtf8::wview(root));
+        } else if (local)
             m_roots.push_back(QString::fromStdString(v.root).toStdWString() + L'\\');
     }
-    if (m_roots.empty())
+    if (m_roots.empty() && m_remote.empty())
         return;
     m_indexer = indexer;
     m_indexer->m_content->beginReads();
@@ -1763,9 +1855,13 @@ ContentIndexer::Intake::~Intake()
 
 bool ContentIndexer::Intake::wants(std::wstring_view path) const noexcept
 {
-    return std::any_of(m_roots.begin(), m_roots.end(), [&](const std::wstring& root) {
-        return path.size() > root.size() && win32::equalsIgnoreCase(path.substr(0, root.size()), root);
-    });
+    return std::any_of(m_roots.begin(), m_roots.end(),
+               [&](const std::wstring& root) {
+                   return path.size() > root.size() && win32::equalsIgnoreCase(path.substr(0, root.size()), root);
+               })
+        // A share as configured ("\\wsl$\..." for the index's "\\wsl.localhost\...").
+        || std::any_of(m_remote.begin(), m_remote.end(),
+            [&](const std::wstring& root) { return unc::contains(root, path) && !unc::equal(root, path); });
 }
 
 std::uint64_t ContentIndexer::Intake::since() const noexcept
@@ -1773,19 +1869,21 @@ std::uint64_t ContentIndexer::Intake::since() const noexcept
     return m_indexer ? m_indexer->m_content->changeSequence() : 0;
 }
 
-void ContentIndexer::Intake::take(EntryId entry, const FileText& text, std::uint64_t since)
+bool ContentIndexer::Intake::take(EntryId entry, const FileText& text, std::uint64_t since)
 {
     if (!m_indexer || text.outcome == Outcome::Skipped)
-        return;
+        return false;
     std::shared_lock gate(m_indexer->m_intakeGate);
     {
         std::lock_guard lock(m_indexer->m_mutex);
-        if (m_indexer->m_paused || !m_indexer->m_options.enabled)
-            return;
+        if (m_indexer->m_paused || !m_indexer->m_options.enabled || m_indexer->m_stopping.load())
+            return false;
     }
-    if (m_indexer->m_content->add(
+    if (!m_indexer->m_content->add(
             entry, text.keys, text.outcome == Outcome::Empty, text.stamp, since, text.text, text.large))
-        ++m_taken;
+        return false;
+    ++m_taken;
+    return true;
 }
 
 std::optional<std::uint32_t> ContentIndexer::stampOf(std::wstring_view path)

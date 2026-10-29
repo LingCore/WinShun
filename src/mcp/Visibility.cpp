@@ -1,5 +1,7 @@
 #include "Visibility.h"
 
+#include "Unc.h"
+#include "WebDav.h"
 #include "Win32Util.h"
 
 #include <QDir>
@@ -7,11 +9,67 @@
 
 #include <aclapi.h>
 
+#include <cstddef>
+
 namespace ws::mcp {
 
-Visibility::Visibility(HANDLE token)
-    : m_token(token ? token : defaultToken())
+namespace {
+
+// The TokenUser of `token`; empty when it cannot be had.
+std::vector<std::byte> userOf(HANDLE token)
 {
+    DWORD size = 0;
+    ::GetTokenInformation(token, TokenUser, nullptr, 0, &size);
+    std::vector<std::byte> user(size);
+    if (size == 0 || !::GetTokenInformation(token, TokenUser, user.data(), size, &size))
+        return {};
+    return user;
+}
+
+} // namespace
+
+Visibility::Visibility(HANDLE token, std::vector<std::wstring> remoteRoots)
+    : m_token(token ? token : defaultToken())
+    , m_roots(std::move(remoteRoots))
+{
+}
+
+Visibility::Place Visibility::placeOf(const QString& path, const std::vector<std::wstring>& remoteRoots)
+{
+    const QString p = QDir::toNativeSeparators(path);
+    if (p.size() >= 2 && p[0].unicode() < 128 && p[0].isLetter() && p[1] == u':' && (p.size() == 2 || p[2] == u'\\'))
+        return Place::Local;
+    const std::wstring wide = p.toStdWString();
+    if (!unc::isUnc(wide))
+        return Place::Elsewhere; // "\\?\…", "\\.\…", "dir\file", "\file"
+    const std::wstring canonical = unc::canonical(wide);
+    if (canonical.empty())
+        return Place::Elsewhere; // a server alone
+    for (const std::wstring& root : remoteRoots) {
+        if (unc::contains(root, canonical) || webdav::rootHolds(root, canonical))
+            return Place::Remote;
+    }
+    return Place::Elsewhere;
+}
+
+bool Visibility::sameUser(HANDLE token)
+{
+    // Never destroyed: a call's own thread may still ask while the process ends.
+    static const std::vector<std::byte>* const own = [] {
+        auto* user = new std::vector<std::byte>;
+        HANDLE process = nullptr;
+        if (::OpenProcessToken(::GetCurrentProcess(), TOKEN_QUERY, &process)) {
+            *user = userOf(process);
+            ::CloseHandle(process);
+        }
+        return user;
+    }();
+    if (!token || own->empty())
+        return false;
+    const std::vector<std::byte> viewer = userOf(token);
+    return !viewer.empty()
+        && ::EqualSid(reinterpret_cast<const TOKEN_USER*>(viewer.data())->User.Sid,
+            reinterpret_cast<const TOKEN_USER*>(own->data())->User.Sid);
 }
 
 HANDLE Visibility::defaultToken()
@@ -62,6 +120,16 @@ bool Visibility::check(const QString& path, DWORD desired)
 {
     if (!m_token)
         return false;
+    switch (placeOf(path, m_roots)) {
+    case Place::Local:
+        break;
+    case Place::Remote: // see the header: no server is asked
+        if (!m_sameUser)
+            m_sameUser = sameUser(m_token);
+        return *m_sameUser;
+    case Place::Elsewhere:
+        return false;
+    }
     QElapsedTimer timer;
     timer.start();
     ++m_checks;
@@ -110,6 +178,10 @@ bool Visibility::canReadAttributes(const QString& path)
 
 bool Visibility::sees(const QString& path)
 {
+    // Not on a drive: as the place has it, a root of the index there too
+    // (its parent is not under one).
+    if (placeOf(path, m_roots) != Place::Local)
+        return check(path, FILE_LIST_DIRECTORY);
     return canList(parentOf(path));
 }
 

@@ -5,6 +5,8 @@
 #include "DocExtractor.h"
 #include "Documents.h"
 #include "FileIndex.h"
+#include "RemoteContent.h"
+#include "Unc.h"
 #include "Win32Util.h"
 
 #include <QStringDecoder>
@@ -143,7 +145,11 @@ Result read(const std::wstring& path, const Sources& sources, std::int64_t maxBy
         std::optional<doctext::DocText> kept;
         {
             const auto lock = sources.index->readLock();
-            if (const EntryId id = sources.index->findPath(path); id != kNoEntry)
+            // On a server or in WSL the text can be older than the file for a
+            // while (RemoteContent reads a changed file again after a pause):
+            // kept only when it is of the file as the index has it now (#114).
+            if (const EntryId id = sources.index->findPath(path); id != kNoEntry
+                && (!unc::isUnc(path) || sources.content->docStamp(id) == remotecontent::stampOf(*sources.index, id)))
                 kept = sources.content->textOf(id);
         }
         if (kept) {

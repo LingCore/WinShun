@@ -1,11 +1,16 @@
 #include "Unc.h"
 
+#include "WebDav.h"
 #include "Win32Util.h"
 
 #include <windows.h>
 
+#include <winnetwk.h>
+
 #include <algorithm>
+#include <cstdint>
 #include <cwctype>
+#include <optional>
 
 namespace ws::unc {
 
@@ -52,6 +57,46 @@ std::wstring normalize(std::wstring_view path)
     if (isWslHost(host(out)))
         out.replace(2, slash - 2, L"wsl.localhost");
     return out;
+}
+
+std::wstring canonical(std::wstring_view path)
+{
+    std::wstring out = normalize(path);
+    if (out.empty() && isUnc(path)) {
+        std::wstring_view server = path.substr(2);
+        while (!server.empty() && server.back() == L'\\')
+            server.remove_suffix(1);
+        if (server.find(L'\\') == std::wstring_view::npos && webdav::parseHost(server))
+            out = normalize(L"\\\\" + std::wstring(server) + L"\\DavWWWRoot");
+    }
+    if (out.empty() || !webdav::isWebDavPath(out))
+        return out;
+    const std::wstring_view server = host(out);
+    std::optional<webdav::Host> parsed = webdav::parseHost(server);
+    if (!parsed && server.find(L'@') != std::wstring_view::npos)
+        return out; // "\\nas@0\DavWWWRoot": no server in WebClient's form, kept as written
+    // No '@': "\\server\DavWWWRoot", plain http on 80 as WebClient takes it.
+    const webdav::Host h = std::move(parsed).value_or(webdav::Host {std::wstring(server), 80, false});
+    std::wstring canon = L"\\\\";
+    for (const wchar_t c : h.name)
+        canon.push_back(static_cast<wchar_t>(std::towlower(c)));
+    if (h.tls)
+        canon += L"@SSL";
+    if (!h.tls || h.port != 443)
+        canon += L'@' + std::to_wstring(h.port);
+    std::wstring_view rest = std::wstring_view(out).substr(2 + server.size() + 1); // normalize(): a share follows
+    // The root goes before a folder, but not before one of that name: in
+    // "\\h@80\DavWWWRoot\DavWWWRoot\x" the second is the folder /DavWWWRoot.
+    const auto rooted = [](std::wstring_view s) { return win32::equalsIgnoreCase(s.substr(0, s.find(L'\\')), L"DavWWWRoot"); };
+    if (rooted(rest)) {
+        const std::size_t slash = rest.find(L'\\');
+        const std::wstring_view after = slash == std::wstring_view::npos ? std::wstring_view() : rest.substr(slash + 1);
+        if (!rooted(after))
+            rest = after;
+    }
+    canon += L'\\';
+    canon += rest.empty() ? std::wstring_view(L"DavWWWRoot") : rest; // its folders keep their case
+    return canon;
 }
 
 std::wstring_view host(std::wstring_view path) noexcept
@@ -138,22 +183,107 @@ std::vector<std::wstring> subKeys(HKEY parent, const wchar_t* path)
 
 } // namespace
 
+namespace {
+
+DWORD readDword(HKEY key, const wchar_t* subKey, const wchar_t* value)
+{
+    DWORD data = 0;
+    DWORD bytes = sizeof data;
+    return ::RegGetValueW(key, subKey, value, RRF_RT_REG_DWORD, nullptr, &data, &bytes) == ERROR_SUCCESS ? data : 0;
+}
+
+bool isWebAddress(std::wstring_view text) noexcept
+{
+    const auto starts = [&](std::wstring_view prefix) {
+        return text.size() > prefix.size() && win32::equalsIgnoreCase(text.substr(0, prefix.size()), prefix);
+    };
+    return starts(L"http://") || starts(L"https://");
+}
+
+// A WebDAV folder on port 80 in a form that says so: "\\server\dav" -> "\\server@80\dav".
+std::wstring withWebDavPort(std::wstring path)
+{
+    if (path.empty() || webdav::parseHost(host(path)))
+        return path;
+    const std::size_t slash = path.find(L'\\', 2);
+    path.insert(slash == std::wstring::npos ? path.size() : slash, L"@80");
+    return path;
+}
+
+// WebClient's network provider, by name ("Web Client Network" in English).
+bool isWebDavProvider(const wchar_t* provider)
+{
+    if (!provider || !*provider)
+        return false;
+    wchar_t name[256];
+    DWORD size = static_cast<DWORD>(std::size(name));
+    return ::WNetGetProviderNameW(WNNC_NET_DAV, name, &size) == NO_ERROR && win32::equalsIgnoreCase(provider, name);
+}
+
+// Whether a connected drive letter is WebClient's, from Windows' list of
+// connections (kept on this computer: nothing is asked of a server).
+bool connectedToWebDav(wchar_t letter)
+{
+    HANDLE e = nullptr;
+    if (::WNetOpenEnumW(RESOURCE_CONNECTED, RESOURCETYPE_DISK, 0, nullptr, &e) != NO_ERROR)
+        return false;
+    std::vector<std::uint64_t> buffer(16 * 1024 / sizeof(std::uint64_t));
+    bool dav = false;
+    for (bool more = true; more && !dav;) {
+        DWORD count = static_cast<DWORD>(-1);
+        DWORD bytes = static_cast<DWORD>(buffer.size() * sizeof(std::uint64_t));
+        const DWORD result = ::WNetEnumResourceW(e, &count, buffer.data(), &bytes);
+        if (result == ERROR_MORE_DATA) {
+            buffer.resize(bytes / sizeof(std::uint64_t) + 1);
+            continue;
+        }
+        more = result == NO_ERROR;
+        const auto* found = reinterpret_cast<const NETRESOURCEW*>(buffer.data());
+        for (DWORD i = 0; more && i < count; ++i) {
+            if (found[i].lpLocalName && std::towupper(found[i].lpLocalName[0]) == letter)
+                dav = isWebDavProvider(found[i].lpProvider);
+        }
+    }
+    ::WNetCloseEnum(e);
+    return dav;
+}
+
+} // namespace
+
 std::wstring fromMappedDrive(std::wstring_view path)
 {
     if (path.size() < 2 || path[1] != L':' || !std::iswalpha(path[0]) || (path.size() > 2 && path[2] != L'\\'))
         return {};
-    const std::wstring key = L"Network\\" + std::wstring(1, static_cast<wchar_t>(std::towupper(path[0])));
-    const std::wstring remote = normalize(readString(HKEY_CURRENT_USER, key.c_str(), L"RemotePath"));
+    const auto letter = static_cast<wchar_t>(std::towupper(path[0]));
+    const std::wstring key = L"Network\\" + std::wstring(1, letter);
+    // Persistent: as Windows remembers it. A WebDAV drive keeps its web address
+    // ("http://nas:5244/dav/"), and on port 80 a UNC path that does not say so.
+    const std::wstring remembered = readString(HKEY_CURRENT_USER, key.c_str(), L"RemotePath");
+    std::wstring remote = isWebAddress(remembered) ? webdav::uncFromUrl(remembered) : normalize(remembered);
+    if (!remote.empty() && readDword(HKEY_CURRENT_USER, key.c_str(), L"ProviderType") == WNNC_NET_DAV)
+        remote = withWebDavPort(std::move(remote));
+    if (remote.empty()) {
+        // Mapped for this sign-in only ("net use Z: ... /persistent:no"): the
+        // connection itself, which an elevated process does not see.
+        const wchar_t drive[] {letter, L':', L'\0'};
+        wchar_t name[MAX_PATH + 1];
+        DWORD size = static_cast<DWORD>(std::size(name));
+        if (::WNetGetConnectionW(drive, name, &size) == NO_ERROR) {
+            remote = normalize(name);
+            if (!remote.empty() && !webdav::isWebDavPath(remote) && connectedToWebDav(letter))
+                remote = withWebDavPort(std::move(remote));
+        }
+    }
     if (remote.empty())
         return {};
-    return normalize(remote + std::wstring(path.substr(2)));
+    return canonical(remote + std::wstring(path.substr(2)));
 }
 
 std::vector<Known> knownShares()
 {
     std::vector<Known> known;
     const auto add = [&](std::wstring path, std::wstring drive) {
-        path = normalize(path);
+        path = canonical(path); // a WebDAV folder as a drive's and as Explorer's: once
         if (path.empty())
             return;
         const auto same = [&](const Known& k) { return win32::equalsIgnoreCase(k.path, path); };
@@ -164,12 +294,17 @@ std::vector<Known> knownShares()
         }
         known.push_back({std::move(path), std::move(drive)});
     };
-    // Mapped drives: "Network\Z" with RemotePath.
+    // Mapped drives: "Network\Z" with RemotePath (a web address for WebDAV).
     for (const std::wstring& letter : subKeys(HKEY_CURRENT_USER, L"Network")) {
         if (letter.size() != 1)
             continue;
         const std::wstring key = L"Network\\" + letter;
-        add(readString(HKEY_CURRENT_USER, key.c_str(), L"RemotePath"), letter + L':');
+        std::wstring remote = readString(HKEY_CURRENT_USER, key.c_str(), L"RemotePath");
+        if (isWebAddress(remote))
+            remote = webdav::uncFromUrl(remote);
+        else if (readDword(HKEY_CURRENT_USER, key.c_str(), L"ProviderType") == WNNC_NET_DAV)
+            remote = withWebDavPort(normalize(remote));
+        add(std::move(remote), letter + L':');
     }
     // Shares Explorer has opened: "##host#share" ('#' for '\').
     for (std::wstring name : subKeys(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints2")) {

@@ -63,6 +63,9 @@ public:
         ContentSizeLimits sizeLimits;
         bool documents = true; // and documentExtensions()
         bool includeLowPriority = false;
+        // The local disks too ([Content] Index). Off while it is on: only the
+        // shares whose contents are indexed (Volume::remote; GitHub #114).
+        bool local = true;
 
         bool operator==(const Options&) const = default;
     };
@@ -71,6 +74,10 @@ public:
         std::string root; // "C:"
         bool suspended = false; // being ejected or locked: not touched, its documents kept
         std::uint32_t serial = 0; // VolumeInfo's, for the bulk reads (0: not checked)
+        // A network share or WSL folder ("\\nas\docs") whose contents are
+        // indexed: its documents are kept, and its own thread reads its
+        // files (RemoteContent), not a pass. Suspended while offline.
+        bool remote = false;
     };
     struct Source {
         std::function<std::shared_ptr<FileIndex>()> index;
@@ -112,6 +119,10 @@ public:
 
     void setOptions(Options options);
     void wake(); // documents turned dirty: read them again a little later
+    // What Source::volumes gives changed so that a pass should look now, not
+    // after the wait for more changes: a share's contents turned on or off
+    // (its documents read, or let go at once; GitHub #114).
+    void volumesChanged();
     bool reading() const noexcept { return m_reading.load(); } // files are being read now
     // Of the files the pass under way looks at: how many it has done, of how
     // many; and of those, the ones in crowded folders (read last).
@@ -158,7 +169,19 @@ public:
     // (IndexService::moveTo).
     void pause();
     void resume();
-    void stop(); // idempotent
+    void stop(); // idempotent; nothing is taken (Intake) from when it starts
+
+    // For the threads of network shares and WSL folders, which read their
+    // files' contents themselves (RemoteContent; GitHub #114).
+    Options options();
+    // Whether such a thread may read a file now, as a pass would: on, not
+    // paused or stopping, no battery saver, no content search reading and no
+    // search box open (or just closed). `few`: a handful of files written to
+    // lately, read even while the search box is open.
+    bool mayReadRemote(bool few);
+    bool stopping() const noexcept { return m_stopping.load(); } // stop() has begun: a read under way gives up
+    DocExtractor* documents() noexcept { return &m_documents; }
+    const std::shared_ptr<ContentIndex>& content() const noexcept { return m_content; }
 
     // One file, read as ContentScanner reads it.
     enum class Outcome {
@@ -173,17 +196,31 @@ public:
         QByteArray text; // a document's, packed (ContentIndex::packText)
         std::optional<doctext::DocText> document; // ... and as read, for a search to look through
         bool large = false; // Empty for having more bytes than the limit (a search counts those)
+        unsigned long error = 0; // why it could not be opened (Skipped; Empty for no access)
+        // The file's size and last write time (FILETIME ticks) as opened; -1: not opened.
+        std::int64_t bytes = -1;
+        std::int64_t written = 0;
     };
     // A file on a hard disk: a document is read through once, in order,
     // before the extractor jumps about in it. `quiet` (someone uses the
     // computer): at very low I/O priority, after whatever else wants the disk.
+    // `remote` (on a share: RemoteContent): a read through that fails is the
+    // server's doing, not the file's; the file is left for later (Skipped,
+    // FileText::error), not handed to the extractor, which would find nothing.
     struct HardDisk {
         bool on = false;
         bool quiet = false;
+        bool remote = false;
     };
     // A document (isDocumentPath) goes to `documents`; without it, it is skipped.
     static FileText readFile(std::wstring_view path, std::int64_t maxBytes, const std::function<bool()>& cancelled,
         DocExtractor* documents = nullptr, HardDisk disk = {});
+    // readFile()'s last step for a document: its text from the file open in
+    // `file` (`size` bytes), through `documents`. The stamp, size and time
+    // are left to the caller, which opened it (RemoteContent: on a thread
+    // of its own, GitHub #114).
+    static FileText extractDocument(HANDLE file, std::uint64_t size, DocExtractor* documents,
+        const std::function<bool()>& cancelled);
     // A text file's bytes, read elsewhere (the bulk way): the same grams as
     // readFile() takes from the file, with `stamp` (ContentIndex::stampOf).
     static FileText collectText(std::span<const char> bytes, std::uint32_t stamp);
@@ -212,11 +249,13 @@ public:
 
         bool wants(std::wstring_view path) const noexcept; // a file on a volume it takes from
         std::uint64_t since() const noexcept; // before reading a file, for take()
-        void take(EntryId entry, const FileText& text, std::uint64_t since);
+        // False: not taken (Skipped, the indexer paused, off or stopping, or no room left).
+        bool take(EntryId entry, const FileText& text, std::uint64_t since);
 
     private:
         ContentIndexer* m_indexer = nullptr;
         std::vector<std::wstring> m_roots; // "C:\"
+        std::vector<std::wstring> m_remote; // "\\nas\docs" (Volume::remote; unc::contains)
         std::atomic<std::size_t> m_taken {0};
     };
 
@@ -253,6 +292,7 @@ private:
     bool m_woken = false;
     bool m_passRunning = false;
     bool m_paused = false;
+    std::atomic<bool> m_stopping {false}; // stop() has begun: nothing more is taken
     std::atomic<bool> m_interrupt {false}; // checked before each file
     std::atomic<bool> m_reading {false};
     bool searchBoxHolds() const noexcept;

@@ -161,9 +161,13 @@ struct ContentSizeLimits {
 // Whether a content search reads a file, and if not, why (ContentFilter::classify).
 enum class ContentVerdict : std::uint8_t {
     Read,
-    Never, // deleted, a folder, a cloud placeholder, on a network share, an Office lock file, no extension
+    Never, // deleted, a folder, a cloud placeholder, an Office lock file, no extension; on a share: see Remote
     LowPriority, // of a listed type, but in a system, program or tool folder, and those are not asked for
     OtherType, // not of a listed type (a file otherwise fit to read: whether it is text of another kind is the caller's to ask)
+    // Of a listed type on a network share or in WSL, outside its system and
+    // tool folders: read only where its share's contents are indexed, or
+    // its folder is searched by name (GitHub #114). Other remote files are Never.
+    Remote,
 };
 
 // The files a content search looks in. The content indexer covers the same
@@ -180,15 +184,20 @@ struct ContentFilter {
         std::size_t extLength;
         return classify(index, e, name, extLength) == ContentVerdict::Read;
     }
+    // A remote file of a listed type, outside system and tool folders (ContentVerdict::Remote).
+    bool acceptsRemote(const FileIndex& index, const Entry& e) const noexcept
+    {
+        std::string_view name;
+        std::size_t extLength;
+        return classify(index, e, name, extLength) == ContentVerdict::Remote;
+    }
 
     // As accepts(), and why not, for a search that counts what it passes
     // over (SearchEngine: ContentLeftOut). `name` and `extLength` are the
-    // file's once its name was looked at (Read, LowPriority, OtherType).
+    // file's once its name was looked at (Read, LowPriority, OtherType, Remote).
     ContentVerdict classify(const FileIndex& index, const Entry& e, std::string_view& name, std::size_t& extLength) const noexcept
     {
-        // Files on network shares neither: reading them is slow, and a server
-        // that went away would hold a search up for the seconds Windows waits.
-        constexpr std::uint8_t kNever = EntryFlag::Deleted | EntryFlag::Directory | EntryFlag::Offline | EntryFlag::Remote;
+        constexpr std::uint8_t kNever = EntryFlag::Deleted | EntryFlag::Directory | EntryFlag::Offline;
         if (e.flags & kNever)
             return ContentVerdict::Never;
         name = index.fileName(e, extLength); // not a folder: ruled out above
@@ -196,6 +205,14 @@ struct ContentFilter {
             return ContentVerdict::Never;
         if (name.starts_with("~$"))
             return ContentVerdict::Never; // Office's lock file next to an open document
+        // Files on network shares and in WSL only where asked for (Remote):
+        // reading them is slow, and a server that went away would hold a
+        // search up for the seconds Windows waits. Never their system and
+        // tool folders, nor other kinds of text, not even this once.
+        if (e.flags & EntryFlag::Remote) {
+            return extensions.matches(name, extLength) && !(e.flags & EntryFlag::LowPriority) ? ContentVerdict::Remote
+                                                                                               : ContentVerdict::Never;
+        }
         if (!extensions.matches(name, extLength))
             return ContentVerdict::OtherType;
         if (!includeLowPriority && (e.flags & EntryFlag::LowPriority))
@@ -276,6 +293,8 @@ public:
     Lookup lookup(std::span<const QString> terms) const;
     Lookup lookup(const QString& phrase) const { return lookup(std::span(&phrase, 1)); }
     bool knows(EntryId entry) const; // its content is known (as Lookup::known)
+    // The stamp (stampOf) its file had when that content was read; none: not known.
+    std::optional<std::uint32_t> docStamp(EntryId entry) const;
 
     // While a content search runs, the indexer waits: both would open files.
     class SearchGuard {

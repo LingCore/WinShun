@@ -1969,6 +1969,15 @@ bool ContentIndex::knows(EntryId entry) const
     return d != kNoDoc && isCurrent(m_docState[d]);
 }
 
+std::optional<std::uint32_t> ContentIndex::docStamp(EntryId entry) const
+{
+    std::shared_lock lock(m_mutex);
+    const DocId d = findDoc(entry);
+    if (d == kNoDoc || !isCurrent(m_docState[d]))
+        return std::nullopt;
+    return m_docStamp[d];
+}
+
 ContentIndex::Lookup ContentIndex::lookup(std::span<const QString> terms) const
 {
     Lookup out;

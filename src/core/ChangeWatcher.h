@@ -13,7 +13,9 @@
 namespace ws {
 
 struct FsChange {
-    enum class Kind : std::uint8_t { Added, Removed, RenamedFrom, RenamedTo, Overflow };
+    // Modified: a file written to (its size or time), from a watcher asked
+    // for writes only; a folder's own too, when a name in it changed.
+    enum class Kind : std::uint8_t { Added, Removed, RenamedFrom, RenamedTo, Overflow, Modified };
     Kind kind;
     std::wstring path; // full path; the root watched ("C:", or a folder) for Overflow
     // GitHub #52: a RenamedTo that only ends a move, of a folder above chosen
@@ -42,8 +44,14 @@ public:
     // One wait takes at most 64 handles, two of them the thread's own.
     static constexpr std::size_t kMaxWatches = 62;
 
+    // What a watcher tells of: names (added, removed, renamed), or files
+    // written to as well (Modified, once a read): for shares, whose files are
+    // read for their contents and which keep no change journal (GitHub #114).
+    // Over SMB they come within a second or two.
+    enum class Tell : std::uint8_t { Names, Writes };
+
     // The handler runs on the watcher thread.
-    explicit ChangeWatcher(Handler handler);
+    explicit ChangeWatcher(Handler handler, Tell tell = Tell::Names);
     ~ChangeWatcher();
 
     ChangeWatcher(const ChangeWatcher&) = delete;
@@ -76,6 +84,7 @@ private:
     void run(std::stop_token stop);
 
     Handler m_handler;
+    const Tell m_tell;
     mutable std::mutex m_mutex;
     std::condition_variable m_applied;
     std::vector<std::wstring> m_wanted; // guarded by m_mutex, like the four below
