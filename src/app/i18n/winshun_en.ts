@@ -229,6 +229,18 @@
         <translation>Type to search in Directory Opus</translation>
     </message>
     <message>
+        <source>在文件夹里打字时</source>
+        <translation>When typing in a folder</translation>
+    </message>
+    <message>
+        <source>当前文件夹优先</source>
+        <translation>Current folder first</translation>
+    </message>
+    <message>
+        <source>只搜当前文件夹</source>
+        <translation>Current folder only</translation>
+    </message>
+    <message>
         <source>Tab 进入收藏文件夹</source>
         <translation>Browse favorite folders with Tab</translation>
     </message>
@@ -247,6 +259,18 @@
     <message>
         <source>用哪一边</source>
         <translation>Which side</translation>
+    </message>
+    <message>
+        <source>再次按下快捷键时</source>
+        <translation>When the shortcut is pressed again</translation>
+    </message>
+    <message>
+        <source>关闭 Win顺</source>
+        <translation>Close WinShun</translation>
+    </message>
+    <message>
+        <source>展开为搜索面板</source>
+        <translation>Expand to the search panel</translation>
     </message>
     <message>
         <source>玩游戏时不响应双击 Ctrl、Alt 或 Shift</source>
@@ -497,6 +521,10 @@
         <translation>Skipped file types</translation>
     </message>
     <message>
+        <source>跳过的文件名</source>
+        <translation>Skipped file names</translation>
+    </message>
+    <message>
         <source>包括 U 盘和移动硬盘</source>
         <translation>Include USB and external drives</translation>
     </message>
@@ -697,6 +725,10 @@
         <translation>Click to paste</translation>
     </message>
     <message>
+        <source>粘贴后保持位置</source>
+        <translation>Keep place after pasting</translation>
+    </message>
+    <message>
         <source>大图片缩略图</source>
         <translation>Large picture thumbnails</translation>
     </message>
@@ -727,6 +759,10 @@
     <message>
         <source>另设快捷键</source>
         <translation>Another shortcut</translation>
+    </message>
+    <message>
+        <source>按住连按快捷键，松开粘贴</source>
+        <translation>Hold and press again, release to paste</translation>
     </message>
     <message>
         <source>最多保留</source>
@@ -771,6 +807,14 @@
     <message>
         <source>选中后直接复制</source>
         <translation>Copy right after selecting</translation>
+    </message>
+    <message>
+        <source>框选时显示放大镜</source>
+        <translation>Show the magnifier while selecting</translation>
+    </message>
+    <message>
+        <source>HDR 屏幕上同时保存 HDR 图片</source>
+        <translation>Also save an HDR picture on HDR screens</translation>
     </message>
     <message>
         <source>截图：双击左键</source>
@@ -963,6 +1007,26 @@
         <source>不打开面板直接粘贴</source>
         <translation>Paste without opening the panel</translation>
     </message>
+    <message>
+        <source>搜索框显示 Logo</source>
+        <translation>Show the logo by the search box</translation>
+    </message>
+    <message>
+        <source>录屏时显示按键</source>
+        <translation>Show keys in recordings</translation>
+    </message>
+    <message>
+        <source>仅快捷键</source>
+        <translation>Shortcuts only</translation>
+    </message>
+    <message>
+        <source>全部按键</source>
+        <translation>All keys</translation>
+    </message>
+    <message>
+        <source>录屏时显示鼠标按键</source>
+        <translation>Show mouse buttons in recordings</translation>
+    </message>
 </context>
 <context>
     <name>AnnotateLayer</name>
@@ -1030,6 +1094,46 @@
     <message>
         <source>底框</source>
         <translation>Box</translation>
+    </message>
+    <message>
+        <source>描边</source>
+        <translation>Outline</translation>
+    </message>
+    <message>
+        <source>无边</source>
+        <translation>None</translation>
+    </message>
+    <message>
+        <source>文字不描边</source>
+        <translation>No outline on the text</translation>
+    </message>
+    <message>
+        <source>细</source>
+        <translation>Thin</translation>
+    </message>
+    <message>
+        <source>中</source>
+        <translation>Medium</translation>
+    </message>
+    <message>
+        <source>粗</source>
+        <translation>Thick</translation>
+    </message>
+    <message>
+        <source>描边 %1</source>
+        <translation>Outline %1</translation>
+    </message>
+    <message>
+        <source>描边颜色：开启后，色块改为选描边的颜色</source>
+        <translation>Outline colour: while on, the swatches pick the outline's colour</translation>
+    </message>
+    <message>
+        <source>自动</source>
+        <translation>Auto</translation>
+    </message>
+    <message>
+        <source>描边颜色自动：深色字配白边，浅色字配深边</source>
+        <translation>Automatic outline: white round dark text, dark round light text</translation>
     </message>
     <message>
         <source>格子 %1</source>
@@ -1219,8 +1323,8 @@
         <translation>With no selection yet: use the last selection</translation>
     </message>
     <message>
-        <source>复制颜色；单按 Shift 换颜色格式（HEX、RGB、HSL）</source>
-        <translation>Copy the colour; Shift alone changes its format (HEX, RGB, HSL)</translation>
+        <source>复制颜色并结束截图；单按 Shift 换颜色格式（HEX、RGB、HSL）</source>
+        <translation>Copy the colour and end the capture; Shift alone changes its format (HEX, RGB, HSL)</translation>
     </message>
     <message>
         <source>识别选区里的文字并复制</source>
@@ -1640,6 +1744,10 @@
         <translation>Include the mouse cursor</translation>
     </message>
     <message>
+        <source>HDR 屏幕上同时保存 HDR 图片</source>
+        <translation>Also save an HDR picture on HDR screens</translation>
+    </message>
+    <message>
         <source>延时</source>
         <translation>Delay</translation>
     </message>
@@ -1698,6 +1806,14 @@
     <message>
         <source>选好就复制</source>
         <translation>Copy as soon as it is picked</translation>
+    </message>
+    <message>
+        <source>框选时显示放大镜</source>
+        <translation>Show the magnifier while selecting</translation>
+    </message>
+    <message>
+        <source>在指针旁放大显示像素和颜色值。关闭后，按 C 复制颜色、按 Shift 换颜色格式也一并停用。</source>
+        <translation>Magnified pixels and the colour value beside the pointer. When off, C (copy colour) and Shift (colour format) do nothing either.</translation>
     </message>
     <message>
         <source>框选后的鼠标操作</source>
@@ -1908,6 +2024,10 @@
         <translation>Include the cursor as it appeared when the screen was captured. Applies to copied, saved and pinned pictures.</translation>
     </message>
     <message>
+        <source>在开着 HDR 的屏幕上保存截图时，PNG 旁边再存一份同名的 .jxr，亮的地方保持原来的亮度，可用 Windows 自带的“照片”查看。复制和贴图不变。</source>
+        <translation>When you save a screenshot on a screen with HDR on, a .jxr of the same name goes beside the PNG and keeps the bright parts as bright. Open it in Windows Photos. Copies and pins don&apos;t change.</translation>
+    </message>
+    <message>
         <source>自动框选设置、计算器等程序中的按钮和侧栏。Chrome、Edge、VS Code 这类 Chromium 程序不问（一问它们就打开屏幕阅读器模式），只框子窗口或整个窗口，可手动框选；管理员权限程序中的控件可能不可用。</source>
         <translation>Detect buttons and sidebars in apps such as Settings and Calculator. Chromium apps (Chrome, Edge, VS Code) are not asked, because asking makes them switch to screen reader mode: only their child windows or the whole window are picked; select manually when you need more. Controls in administrator apps may be unavailable.</translation>
     </message>
@@ -1928,8 +2048,8 @@
         <translation>Highlighted buttons are visible; click to toggle. Shortcuts still work when buttons are hidden. Annotation tools always stay visible. Text recognition has no shortcut; assign a mouse action if you hide its button.</translation>
     </message>
     <message>
-        <source>选好就复制;复制截图时同时贴图;鼠标指针;识别控件;Electron;WinUI;延时截图;截图保存文件夹;保存目录;录屏</source>
-        <translation>Copy on selection;Pin when copying;Mouse pointer;Detect controls;Electron;WinUI;Delayed capture;Screenshot folder;Save folder;Screen recording</translation>
+        <source>选好就复制;框选时显示放大镜;复制截图时同时贴图;鼠标指针;识别控件;Electron;WinUI;延时截图;截图保存文件夹;保存目录;录屏;HDR;JXR</source>
+        <translation>Copy on selection;Show the magnifier while selecting;Pin when copying;Mouse pointer;Detect controls;Electron;WinUI;Delayed capture;Screenshot folder;Save folder;Screen recording;HDR;JXR</translation>
     </message>
     <message>
         <source>双击贴图;贴上最近一次截图的快捷键;隐藏 / 显示全部贴图的快捷键;找回穿透贴图的快捷键</source>
@@ -2066,6 +2186,10 @@
 <context>
     <name>ClipRow</name>
     <message>
+        <source>已粘贴过</source>
+        <translation>Pasted before</translation>
+    </message>
+    <message>
         <source>%1 被别的程序占用了，在这里按也会交给那个程序。可在设置里改用 %2</source>
         <translation>Another program uses %1, so pressing it here goes to that program. Settings can switch to %2</translation>
     </message>
@@ -2174,6 +2298,18 @@
     <message>
         <source>直接打拼音：tupian → 图片</source>
         <translation>Type pinyin: tupian → 图片</translation>
+    </message>
+    <message>
+        <source>松开粘贴</source>
+        <translation>Release to paste</translation>
+    </message>
+    <message>
+        <source>取消</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>按住连按往下选，松开粘贴</source>
+        <translation>Hold and press again to move down, release to paste</translation>
     </message>
     <message>
         <source>取消钉住</source>
@@ -2349,12 +2485,28 @@
         <translation>Path copied. Paste it into the dialog’s path field.</translation>
     </message>
     <message>
-        <source>管理员窗口：搜索后复制路径，再手动粘贴</source>
+        <source>管理员窗口：搜索后复制路径再手动粘贴（装 Win顺 服务可直接跳转）</source>
+        <translation>Administrator window: search, copy the path, then paste it (install the WinShun service to jump directly).</translation>
+    </message>
+    <message>
+        <source>管理员窗口：搜索后复制路径再手动粘贴（安装版才能直接跳转）</source>
+        <translation>Administrator window: search, copy the path, then paste it (only the installed WinShun can jump directly).</translation>
+    </message>
+    <message>
+        <source>管理员窗口：搜索后复制路径再手动粘贴</source>
         <translation>Administrator window: search, copy the path, then paste it.</translation>
+    </message>
+    <message>
+        <source>管理员窗口：直接跳转到文件夹</source>
+        <translation>Administrator window: jumps straight to the folder.</translation>
     </message>
     <message>
         <source>Enter 复制路径</source>
         <translation>Enter to copy path</translation>
+    </message>
+    <message>
+        <source>Enter 转到所在文件夹</source>
+        <translation>Enter to go to the containing folder</translation>
     </message>
 </context>
 <context>
@@ -2366,6 +2518,21 @@
     <message>
         <source>缩放</source>
         <translation>Zoom</translation>
+    </message>
+</context>
+<context>
+    <name>ElsewhereCaption</name>
+    <message>
+        <source>%1 里没有，以下在其他位置</source>
+        <translation>Nothing in %1. Found elsewhere:</translation>
+    </message>
+    <message>
+        <source>其他位置</source>
+        <translation>Elsewhere</translation>
+    </message>
+    <message>
+        <source>只搜 %1</source>
+        <translation>Only in %1</translation>
     </message>
 </context>
 <context>
@@ -2470,6 +2637,26 @@
         <source>不填则由 Windows 决定；路径不用加引号</source>
         <translation>Leave blank to let Windows choose. Do not quote the path.</translation>
     </message>
+    <message>
+        <source>静默执行</source>
+        <translation>Run silently</translation>
+    </message>
+    <message>
+        <source>控制台程序、.bat、.cmd 和 .ps1 不弹出黑色窗口，输出不显示。自带窗口的程序照常显示</source>
+        <translation>Console programs, .bat, .cmd and .ps1 files run without a black window, and their output is not shown. Programs with windows of their own are shown as usual</translation>
+    </message>
+    <message>
+        <source>以管理员身份运行</source>
+        <translation>Run as administrator</translation>
+    </message>
+    <message>
+        <source>每次运行都会先弹出系统的权限确认，确认框里显示的是 Win顺</source>
+        <translation>Windows asks for permission each time it runs; the prompt names WinShun, not the program</translation>
+    </message>
+    <message>
+        <source>每次运行都会先弹出系统的权限确认</source>
+        <translation>Windows asks for permission each time it runs</translation>
+    </message>
 </context>
 <context>
     <name>FavoritesSection</name>
@@ -2517,8 +2704,8 @@
         <translation>Right-click a search result → Add to favorites, click “Add folder”, or drop files and folders here</translation>
     </message>
     <message>
-        <source>在文件上按住左键（不用拖动），再按 Esc 下面那个键（中文输入法下是 ·）。朝文件夹的方向拖，松开就放进去：同一个盘里移动，到别的盘复制，按住 Ctrl 复制、按住 Shift 移动</source>
-        <translation>Hold the left button on files (no need to drag), then press the key below Esc. Drag toward a folder and let go to drop the files there: within a drive they move, to another drive they are copied; hold Ctrl to copy, Shift to move</translation>
+        <source>在文件上按住左键（不用拖动），再按数字 1 左边那个键（一般是 `，中文输入法下是 ·）。朝文件夹的方向拖，松开就放进去：同一个盘里移动，到别的盘复制，按住 Ctrl 复制、按住 Shift 移动</source>
+        <translation>Hold the left button on files (no need to drag), then press the key left of 1 (usually `). Drag toward a folder and let go to drop the files there: within a drive they move, to another drive they are copied; hold Ctrl to copy, Shift to move</translation>
     </message>
     <message>
         <source>拖文件时按 ` 键，弹出收藏圆盘</source>
@@ -2563,6 +2750,10 @@
 </context>
 <context>
     <name>Footer</name>
+    <message>
+        <source>只搜当前文件夹，或也搜其他位置</source>
+        <translation>Only the current folder, or elsewhere too</translation>
+    </message>
     <message>
         <source>最近打开</source>
         <translation>Opened</translation>
@@ -2849,20 +3040,20 @@
 <context>
     <name>LongCapturePanel</name>
     <message>
-        <source>等待</source>
-        <translation>Waiting</translation>
+        <source>等待滚动</source>
+        <translation>Ready to scroll</translation>
     </message>
     <message>
         <source>拼接中</source>
         <translation>Stitching</translation>
     </message>
     <message>
-        <source>往回滚了</source>
-        <translation>Scrolled back</translation>
+        <source>已截取的内容</source>
+        <translation>Already captured</translation>
     </message>
     <message>
-        <source>跟丢了</source>
-        <translation>Lost track</translation>
+        <source>需要接回</source>
+        <translation>Reconnect here</translation>
     </message>
     <message>
         <source>到上限</source>
@@ -2899,6 +3090,38 @@
     <message>
         <source>完成</source>
         <translation>Done</translation>
+    </message>
+    <message>
+        <source>有一段是推测着接上的，请检查预览</source>
+        <translation>Check the preview: part of the image was joined by a guess</translation>
+    </message>
+    <message>
+        <source>预览</source>
+        <translation>Preview</translation>
+    </message>
+    <message>
+        <source>诊断</source>
+        <translation>Diagnostics</translation>
+    </message>
+    <message>
+        <source>贴图</source>
+        <translation>Pin</translation>
+    </message>
+    <message>
+        <source>保存</source>
+        <translation>Save</translation>
+    </message>
+    <message>
+        <source>复制</source>
+        <translation>Copy</translation>
+    </message>
+    <message>
+        <source>完成并编辑</source>
+        <translation>Finish and edit</translation>
+    </message>
+    <message>
+        <source>长图预览</source>
+        <translation>Long image preview</translation>
     </message>
 </context>
 <context>
@@ -3111,6 +3334,10 @@
 </context>
 <context>
     <name>Panel</name>
+    <message>
+        <source>类型（可多选）</source>
+        <translation>Type (multiple allowed)</translation>
+    </message>
     <message>
         <source>筛选</source>
         <translation>Filters</translation>
@@ -3691,6 +3918,10 @@
         <source>创建插件</source>
         <translation>Create plugin</translation>
     </message>
+    <message>
+        <source>设置网络代理…</source>
+        <translation>Set a network proxy…</translation>
+    </message>
 </context>
 <context>
     <name>PluginsPreview</name>
@@ -3715,8 +3946,8 @@
         <translation>Runs in the strict sandbox: low integrity, not administrator, cannot write your files (only its own data folder); memory limit %1 MB</translation>
     </message>
     <message>
-        <source>启动其他程序（子进程）</source>
-        <translation>Start other programs (child processes)</translation>
+        <source>启动程序（起子进程，或打开程序、非网页链接）</source>
+        <translation>Start programs (child processes, or opening a program or a non-web link)</translation>
     </message>
     <message>
         <source>联网</source>
@@ -3806,16 +4037,16 @@
         <translation>Search folders and files beside Open and Save As dialogs and go straight to the one chosen</translation>
     </message>
     <message>
-        <source>文件列表有焦点时直接打字，就在这个文件夹里搜，代替资源管理器的“按首字母跳到文件”</source>
-        <translation>Typing while the file list has the focus searches that folder, in place of Explorer’s jump to a name by its first letters</translation>
+        <source>文件列表有焦点时直接打字就用 Win顺 搜，代替资源管理器的“按首字母跳到文件”</source>
+        <translation>Typing while the file list has the focus searches with WinShun, in place of Explorer’s jump to a name by its first letters</translation>
     </message>
     <message>
         <source>Win顺 以管理员身份运行时用不了</source>
         <translation>Not available while WinShun runs as administrator</translation>
     </message>
     <message>
-        <source>按住文件时按 Esc 下面那个键，收藏的文件夹围着指针弹出，朝哪个拖就放进哪个</source>
-        <translation>While holding files, press the key below Esc: your favorite folders come up round the pointer, and the files go into the one you drag toward</translation>
+        <source>按住文件时按数字 1 左边那个键，收藏的文件夹围着指针弹出，朝哪个拖就放进哪个</source>
+        <translation>While holding files, press the key left of 1: your favorite folders come up round the pointer, and the files go into the one you drag toward</translation>
     </message>
     <message>
         <source>已安装的插件</source>
@@ -4743,6 +4974,22 @@
         <translation>Could not change the Windows setting: Win+S still opens Windows search</translation>
     </message>
     <message>
+        <source>没能修改 Windows 的设置，Win+S 和 Win+Shift+S 仍被禁用</source>
+        <translation>Could not change the Windows setting: Win+S and Win+Shift+S are still switched off</translation>
+    </message>
+    <message>
+        <source>Windows 的 Win+S 和 Win+Shift+S 仍被禁用（可能是旧版 Win顺 或其他软件设置的）</source>
+        <translation>Windows’ Win+S and Win+Shift+S are still switched off (maybe by an older WinShun or another program)</translation>
+    </message>
+    <message>
+        <source>Windows 的 Win+V 仍被禁用（可能是旧版 Win顺 或其他软件设置的）</source>
+        <translation>Windows’ Win+V is still switched off (maybe by an older WinShun or another program)</translation>
+    </message>
+    <message>
+        <source>还给 Windows</source>
+        <translation>Give back to Windows</translation>
+    </message>
+    <message>
         <source>在开始菜单里打字，也用 Win顺 搜索</source>
         <translation>Typing in the Start menu searches with WinShun</translation>
     </message>
@@ -4847,6 +5094,22 @@
         <translation>e.g. wbk, bak</translation>
     </message>
     <message>
+        <source>跳过的文件名</source>
+        <translation>Skipped file names</translation>
+    </message>
+    <message>
+        <source>排除;忽略;文件名;通配符;临时文件;~$;exclude</source>
+        <translation>exclude;ignore;file name;wildcard;temporary file;lock file;~$</translation>
+    </message>
+    <message>
+        <source>这些名字的文件不出现在结果里，* 代表任意几个字，例如 ~$*（Office、WPS 临时文件）</source>
+        <translation>Files so named don&apos;t appear in results; * stands for any characters, e.g. ~$* (Office and WPS temporary files)</translation>
+    </message>
+    <message>
+        <source>例如 ~$*, Thumbs.db</source>
+        <translation>e.g. ~$*, Thumbs.db</translation>
+    </message>
+    <message>
         <source>添加</source>
         <translation>Add</translation>
     </message>
@@ -4917,6 +5180,10 @@
     <message>
         <source>没能修改 Windows 的设置，Win+V 仍是 Windows 自带的剪贴板</source>
         <translation>Could not change the Windows setting: Win+V still opens Windows’ clipboard</translation>
+    </message>
+    <message>
+        <source>没能修改 Windows 的设置，Win+V 仍被禁用</source>
+        <translation>Could not change the Windows setting: Win+V is still switched off</translation>
     </message>
     <message>
         <source>现在重启资源管理器</source>
@@ -5159,6 +5426,18 @@
         <translation>shortcut;hotkey;key combination</translation>
     </message>
     <message>
+        <source>按住连按快捷键，松开粘贴</source>
+        <translation>Hold and press again, release to paste</translation>
+    </message>
+    <message>
+        <source>快捷键;按住;连按;松开;选择;Ditto;hotkey</source>
+        <translation>shortcut;hold;press again;release;select;Ditto;hotkey</translation>
+    </message>
+    <message>
+        <source>按住快捷键里的 Ctrl、Alt、Shift 或 Win，每再按一下就往下选一条，松开就粘贴；按住约一秒再松开，粘贴第一条；按住时按 Esc 不粘贴。开着时，按住再按快捷键不再关闭窗口。</source>
+        <translation>Keep its Ctrl, Alt, Shift or Win held: each further press moves one entry down, letting go pastes it. Held about a second, letting go pastes the first entry; Esc while holding pastes nothing. While on, pressing the shortcut again with them held no longer closes the window.</translation>
+    </message>
+    <message>
         <source>快捷键;数字键;序号;Alt+1;Ctrl+1;冲突;hotkey</source>
         <translation>shortcut;number keys;numbers;Alt+1;Ctrl+1;conflict;hotkey</translation>
     </message>
@@ -5258,8 +5537,28 @@
         <translation>typing;type;type to search;current folder;File Explorer;Listary;explorer</translation>
     </message>
     <message>
-        <source>文件列表有焦点时直接打字，就在这个窗口显示的文件夹里搜，和 Listary 一样；代替了资源管理器自己的“按首字母跳到文件”</source>
-        <translation>Just type while the file list has the focus to search the folder that window shows, as in Listary; it takes the place of Explorer&apos;s own jump to a file by its first letters</translation>
+        <source>文件列表有焦点时直接打字就用 Win顺 搜，和 Listary 一样；代替了资源管理器自己的“按首字母跳到文件”</source>
+        <translation>Just type while the file list has the focus to search with WinShun, as in Listary; it takes the place of Explorer&apos;s own jump to a file by its first letters</translation>
+    </message>
+    <message>
+        <source>在文件夹里打字时</source>
+        <translation>When typing in a folder</translation>
+    </message>
+    <message>
+        <source>打字;当前文件夹;优先;只搜;其他位置;子文件夹;Listary;Ctrl+D;current folder;type to search</source>
+        <translation>typing;current folder;first;only;elsewhere;subfolders;Listary;Ctrl+D;current folder;type to search</translation>
+    </message>
+    <message>
+        <source>当前文件夹优先：先列这个文件夹和子文件夹里的，再列其他位置的，和 Listary 一样。搜索时按 Ctrl+D 临时切换</source>
+        <translation>Current folder first: what is in this folder and its subfolders, then what is elsewhere, as in Listary. Press Ctrl+D while searching to switch for that search</translation>
+    </message>
+    <message>
+        <source>当前文件夹优先</source>
+        <translation>Current folder first</translation>
+    </message>
+    <message>
+        <source>只搜当前文件夹</source>
+        <translation>Current folder only</translation>
     </message>
     <message>
         <source>在 Directory Opus 的空白处双击</source>
@@ -5672,6 +5971,18 @@
     <message>
         <source>点一下就粘贴，和 Windows 自带的剪贴板一样，手机远程操作时也方便。按住 Ctrl 或 Shift 点击仍是多选；关掉时单击选中、双击粘贴</source>
         <translation>One click pastes, as in Windows&apos; own clipboard history, which also helps when you control the PC from a phone. Ctrl+click and Shift+click still pick several; off, a click selects and a double click pastes</translation>
+    </message>
+    <message>
+        <source>粘贴后保持位置</source>
+        <translation>Keep place after pasting</translation>
+    </message>
+    <message>
+        <source>位置;顺序;排序;跳到最前;置顶;不动;固定顺序;粘贴后</source>
+        <translation>place;position;order;sort;jump to top;stay;fixed order;after paste</translation>
+    </message>
+    <message>
+        <source>从列表里粘贴一条后，它留在原来的位置，不再跳到最前面。重新复制同样的内容，仍会排到最前。粘贴过的条目右下角带一个蓝色对勾，也不会因为“保留天数”到期而被删</source>
+        <translation>After you paste an entry from the list it stays where it is instead of jumping to the top. Copying the same content again still puts it first. Entries you have pasted carry a blue check mark and are not deleted when "keep for days" runs out</translation>
     </message>
     <message>
         <source>大图片缩略图</source>
@@ -6128,6 +6439,26 @@
         <translation>Another key combination that opens the search box, such as Alt+Space</translation>
     </message>
     <message>
+        <source>再次按下快捷键时</source>
+        <translation>When the shortcut is pressed again</translation>
+    </message>
+    <message>
+        <source>关闭 Win顺</source>
+        <translation>Close WinShun</translation>
+    </message>
+    <message>
+        <source>展开为搜索面板</source>
+        <translation>Expand to the search panel</translation>
+    </message>
+    <message>
+        <source>再次;两次;再按;搜索面板;展开;Ctrl+E;面板;关闭;panel;again;expand</source>
+        <translation>Again;Twice;Press again;Search panel;Expand;Ctrl+E;Panel;Close;panel;again;expand</translation>
+    </message>
+    <message>
+        <source>搜索框已打开时再按一次快捷键（自己设的组合键，或双击 Ctrl、Alt、Shift）：关闭它，或展开成搜索面板，保留已输入的字；面板里再按一次才关闭</source>
+        <translation>With the box open, pressing the shortcut once more (your own key combination, or a double tap of Ctrl, Alt or Shift) either closes it or expands it to the search panel, keeping what you typed; in the panel one more press closes it</translation>
+    </message>
+    <message>
         <source>只存在这台电脑上，不会上传。按住 Ctrl 或 Shift 点击可以多选，合在一起粘贴。</source>
         <translation>Kept on this PC only, never uploaded. Ctrl+click or Shift+click to pick several and paste them together.</translation>
     </message>
@@ -6418,12 +6749,12 @@
         <translation>Diagnostic logs</translation>
     </message>
     <message>
-        <source>诊断;日志;索引慢;排查;反馈;显示;字体;错字;乱码;diagnostics;log</source>
-        <translation>diagnostics;log;slow indexing;troubleshooting;feedback;display;font;wrong characters;garbled text</translation>
+        <source>诊断;日志;索引慢;排查;反馈;显示;字体;错字;乱码;截图;光标;指针;卡顿;diagnostics;log;capture;cursor</source>
+        <translation>diagnostics;log;slow indexing;troubleshooting;feedback;display;font;wrong characters;garbled text;screenshot;cursor;pointer;stutter;capture;lag</translation>
     </message>
     <message>
-        <source>导出后会打开文件夹，把 WinShun-diagnostics.zip 发给开发者即可。包含索引耗时和错误、界面显示和字体的状态，可能含文件路径；不含设置、剪贴板或文档正文。界面显示不对时先导出再重启，重启后就查不到了。诊断记录最多 3 MB，过期自动清理；诊断包只保留一份</source>
-        <translation>Export opens the folder: send WinShun-diagnostics.zip to the developer. It includes indexing times and errors and the state of the display and fonts, and may contain file paths. Settings, clipboard and document text are excluded. If something on screen looks wrong, export before restarting: a restart clears what shows the cause. Diagnostic records are capped at 3 MB; files untouched for 7 days are removed. Only the latest archive is kept</translation>
+        <source>导出后会打开文件夹，把 WinShun-diagnostics.zip 发给开发者即可。包含索引耗时和错误、截图的耗时和卡顿、鼠标指针设置、界面显示和字体的状态，可能含文件路径；不含设置、剪贴板或文档正文。界面显示不对时先导出再重启，重启后就查不到了。诊断记录最多 3 MB，过期自动清理；诊断包只保留一份</source>
+        <translation>Export opens the folder: send WinShun-diagnostics.zip to the developer. It includes indexing times and errors, how long screenshots take and where they stutter, mouse pointer settings, and the state of the display and fonts, and may contain file paths. Settings, clipboard and document text are excluded. If something on screen looks wrong, export before restarting: a restart clears what shows the cause. Diagnostic records are capped at 3 MB; files untouched for 7 days are removed. Only the latest archive is kept</translation>
     </message>
     <message>
         <source>正在导出…</source>
@@ -6573,24 +6904,24 @@
         <translation>Network &amp; WSL</translation>
     </message>
     <message>
-        <source>只收录文件名和文件夹名，不读取文件内容。服务器离线或 WSL 停止时，收录过的照样能搜到；恢复后自动更新。</source>
-        <translation>Index file and folder names only. Previously indexed items remain searchable when the server is offline or WSL is stopped, and update automatically when it returns.</translation>
+        <source>默认只收录文件名和文件夹名；打开“搜索文件内容”的，会在电脑空闲时读取文件内容。服务器离线或 WSL 停止时，收录过的照样能搜到；恢复后自动更新。</source>
+        <translation>Only file and folder names are indexed, unless “Search file contents” is on: then contents are read while the PC is idle. Previously indexed items remain searchable when the server is offline or WSL is stopped, and update automatically when it returns.</translation>
     </message>
     <message>
         <source>网络与 WSL 文件夹</source>
         <translation>Network and WSL folders</translation>
     </message>
     <message>
-        <source>网络;共享;局域网;内网;NAS;服务器;SMB;映射;网络驱动器;WSL;Linux;Ubuntu;子系统;network;share</source>
-        <translation>network;share;LAN;NAS;server;SMB;mapped;network drive;WSL;Linux;Ubuntu;subsystem</translation>
+        <source>网络;共享;局域网;内网;NAS;服务器;SMB;映射;网络驱动器;WSL;Linux;Ubuntu;子系统;WebDAV;内容;全文;搜索文件内容;network;share;content</source>
+        <translation>network;share;LAN;NAS;server;SMB;mapped;network drive;WSL;Linux;Ubuntu;subsystem;WebDAV;content;full text;search file contents</translation>
     </message>
     <message>
         <source>添加 NAS、共享文件夹或 WSL 中的项目、用户目录，和本机文件一起搜索</source>
         <translation>Add a NAS, shared folder, or WSL project or home folder to search alongside local files</translation>
     </message>
     <message>
-        <source>粘贴网络或 WSL 文件夹路径</source>
-        <translation>Paste a network or WSL folder path</translation>
+        <source>粘贴网络路径、WebDAV 网址或 WSL 文件夹</source>
+        <translation>Network path, WebDAV URL or WSL folder</translation>
     </message>
     <message>
         <source>查看 WSL 发行版</source>
@@ -6668,6 +6999,46 @@
         <source>已关闭，历史记录保留在本机；开启后显示条数</source>
         <translation>Disabled. Saved history stays on this PC; enable to see the entry count.</translation>
     </message>
+    <message>
+        <source>搜索框显示 Logo</source>
+        <translation>Show the logo by the search box</translation>
+    </message>
+    <message>
+        <source>Logo;图标;标志;隐藏;简洁;搜索框上面的图标;logo</source>
+        <translation>logo;icon;hide;clean;simple;mascot;brand</translation>
+    </message>
+    <message>
+        <source>搜索框、剪贴板和对话框旁搜索框的边上探出来的 Logo。关掉后更简洁</source>
+        <translation>The logo peeking out from behind the search box, the clipboard and the bar by file dialogs. Off, it looks cleaner.</translation>
+    </message>
+    <message>
+        <source>网络代理</source>
+        <translation>Network proxy</translation>
+    </message>
+    <message>
+        <source>代理;翻墙;梯子;科学上网;Clash;v2ray;GitHub;连不上;超时;插件库;更新;网络;proxy;vpn;timeout</source>
+        <translation>proxy;vpn;clash;v2ray;github;cannot connect;timeout;plugin library;update;network</translation>
+    </message>
+    <message>
+        <source>插件库、检查更新等联网都走这里。“跟随系统”用 Windows 设置里的代理（包括自动检测和 PAC 脚本）；用代理软件时，打开它的“系统代理”就行，或者手动填地址</source>
+        <translation>The plugin library, update checks and the rest of WinShun's network use go through this. "Follow system" uses the proxy in Windows settings (automatic detection and PAC scripts included); with a proxy program, turn on its "system proxy", or enter the address by hand</translation>
+    </message>
+    <message>
+        <source>不使用代理</source>
+        <translation>No proxy</translation>
+    </message>
+    <message>
+        <source>手动</source>
+        <translation>Manual</translation>
+    </message>
+    <message>
+        <source>代理地址，例如 %1</source>
+        <translation>Proxy address, such as %1</translation>
+    </message>
+    <message>
+        <source>HTTP 代理，地址写 127.0.0.1:7890 或 http://127.0.0.1:7890。改完马上生效，不用重启</source>
+        <translation>An HTTP proxy: write 127.0.0.1:7890 or http://127.0.0.1:7890. Takes effect at once, no restart</translation>
+    </message>
 </context>
 <context>
     <name>ShareCard</name>
@@ -6690,6 +7061,10 @@
     <message>
         <source>启动并索引</source>
         <translation>Start and index</translation>
+    </message>
+    <message>
+        <source>搜索文件内容</source>
+        <translation>Search file contents</translation>
     </message>
 </context>
 <context>
@@ -6741,12 +7116,12 @@
         <translation>Add the folders you search often to Favorites: they show up here</translation>
     </message>
     <message>
-        <source>在后台记下文件里的文字，内容搜索快得多。关掉会清空内容索引</source>
-        <translation>Notes the text in files in the background, which makes content searches much faster. Turning it off clears the content index</translation>
+        <source>在后台记下文件里的文字，内容搜索快得多。关掉会清空本机文件的内容索引</source>
+        <translation>Notes the text in files in the background, which makes content searches much faster. Turning it off clears the content index of this PC&apos;s files</translation>
     </message>
     <message>
-        <source>打开后在后台记下文件里的文字，内容搜索快得多。只用于 NTFS 磁盘，约占一两百 MB</source>
-        <translation>Turned on, it notes the text in files in the background, which makes content searches much faster. NTFS disks only; takes about 100–200 MB</translation>
+        <source>打开后在后台记下文件里的文字，内容搜索快得多。只用于 NTFS 磁盘，约占一两百 MB。网络位置在设置里另有开关</source>
+        <translation>Turned on, it notes the text in files in the background, which makes content searches much faster. NTFS disks only; takes about 100–200 MB. Network locations have their own switch in the settings</translation>
     </message>
     <message>
         <source>内容索引</source>
@@ -7394,6 +7769,14 @@
         <translation>Windows would not let Win顺 have Win+S, not changed</translation>
     </message>
     <message>
+        <source>没能把 Win+V 还给 Windows，未修改</source>
+        <translation>Could not give Win+V back to Windows, not changed</translation>
+    </message>
+    <message>
+        <source>没能把 Win+S 还给 Windows，未修改</source>
+        <translation>Could not give Win+S back to Windows, not changed</translation>
+    </message>
+    <message>
         <source>Windows 没有接受，未修改</source>
         <translation>Windows did not accept it, not changed</translation>
     </message>
@@ -7556,6 +7939,10 @@
     <message>
         <source>截图已保存</source>
         <translation>Screenshot saved</translation>
+    </message>
+    <message>
+        <source>点击打开所在文件夹</source>
+        <translation>Click to show it in its folder</translation>
     </message>
     <message>
         <source>截图没能保存</source>
@@ -7825,6 +8212,10 @@
     <message>
         <source>贴首帧到屏幕</source>
         <translation>Pin first frame to screen</translation>
+    </message>
+    <message>
+        <source>那一条已不在列表里，没有粘贴</source>
+        <translation>That entry is no longer in the list; nothing was pasted</translation>
     </message>
     <message>
         <source>编辑首帧</source>
@@ -8711,6 +9102,14 @@
 <context>
     <name>ws::Launcher</name>
     <message>
+        <source>“%1”已停用</source>
+        <translation>“%1” is off</translation>
+    </message>
+    <message>
+        <source>“%1”的新版本要更多权限，到设置里同意后才能用</source>
+        <translation>The new version of “%1” asks for more permissions; allow them in the settings to use it</translation>
+    </message>
+    <message>
         <source>进入此文件夹搜索</source>
         <translation>Search in this folder</translation>
     </message>
@@ -8897,6 +9296,14 @@
         <translation>Search it this time</translation>
     </message>
     <message>
+        <source>只在 %1 里搜</source>
+        <translation>Searching only in %1</translation>
+    </message>
+    <message>
+        <source>也搜其他位置</source>
+        <translation>Search elsewhere too</translation>
+    </message>
+    <message>
         <source>这个文件夹不在索引范围内</source>
         <translation>This folder is not in the index</translation>
     </message>
@@ -9064,8 +9471,28 @@
         <translation>Complete</translation>
     </message>
     <message>
-        <source>连不上 %1：它离线了，或不在同一网络</source>
-        <translation>Cannot reach %1: it is offline, or on another network</translation>
+        <source>连不上 %1（离线或不在同一网络）</source>
+        <translation>Cannot reach %1 (offline or on another network)</translation>
+    </message>
+    <message>
+        <source>正在连接 %1…</source>
+        <translation>Connecting to %1…</translation>
+    </message>
+    <message>
+        <source>正在启动 Windows 的 WebDAV 服务…</source>
+        <translation>Starting Windows&apos; WebDAV service…</translation>
+    </message>
+    <message>
+        <source>%1 上的共享暂时不可用，稍后再试</source>
+        <translation>The share on %1 is not available right now; try again later</translation>
+    </message>
+    <message>
+        <source>WebClient 服务被禁用，打不开 WebDAV 文件夹</source>
+        <translation>The WebClient service is disabled; WebDAV folders cannot be opened</translation>
+    </message>
+    <message>
+        <source>WebClient 服务没能启动，打不开 WebDAV 文件夹</source>
+        <translation>The WebClient service did not start; WebDAV folders cannot be opened</translation>
     </message>
     <message>
         <source>“%1” 已不存在</source>
@@ -9244,6 +9671,18 @@
     <message>
         <source>插件没有完成这个操作</source>
         <translation>The plugin did not complete the action</translation>
+    </message>
+    <message>
+        <source>这一行刚刚变了，看清楚再按一次</source>
+        <translation>That row just changed. Check it, then press again</translation>
+    </message>
+    <message>
+        <source>插件或选中的文件刚刚变了，再打开一次菜单</source>
+        <translation>The plugins or the selected files just changed. Open the menu again</translation>
+    </message>
+    <message>
+        <source>这一行刚刚变了，看清楚再点一次</source>
+        <translation>That row just changed. Check it, then click again</translation>
     </message>
     <message>
         <source>打开所在位置</source>
@@ -9558,6 +9997,17 @@
         <source>“%1” 已不存在，或当前 Linux 用户没有访问权限</source>
         <translation>“%1” no longer exists, or the current Linux user cannot access it.</translation>
     </message>
+    <message numerus="yes">
+        <source>网络位置上还有 %Ln 个文件没建内容索引</source>
+        <translation>
+            <numerusform>%Ln file on network locations has no content index yet</numerusform>
+            <numerusform>%Ln files on network locations have no content index yet</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>设置…</source>
+        <translation>Settings…</translation>
+    </message>
 </context>
 <context>
     <name>ws::PluginGallery</name>
@@ -9698,12 +10148,48 @@
         <source>bq 词：记一句话，再搜出来</source>
         <translation>bq: jot down a line, find it again later</translation>
     </message>
+    <message>
+        <source>连不上你设置的代理 %1。看看代理软件开着没有，或者到“网络代理”里改一下。</source>
+        <translation>Cannot reach the proxy you set, %1. Check that the proxy program is running, or change it under Network proxy.</translation>
+    </message>
+    <message>
+        <source>找不到 GitHub。网络不通，或者要设置网络代理才能访问。</source>
+        <translation>Cannot find GitHub. The network may be down, or a network proxy is needed to reach it.</translation>
+    </message>
+    <message>
+        <source>连不上 GitHub，等了太久也没有回应。网络没问题的话，要设置网络代理才能访问。</source>
+        <translation>Cannot reach GitHub: no answer after a long wait. If the network is fine, a network proxy is needed to reach it.</translation>
+    </message>
+    <message>
+        <source>连不上 GitHub。网络没问题的话，要设置网络代理才能访问。</source>
+        <translation>Cannot reach GitHub. If the network is fine, a network proxy is needed to reach it.</translation>
+    </message>
 </context>
 <context>
     <name>ws::PluginSettings</name>
     <message>
-        <source>这些由 Windows 强制：不是管理员、内存上限、子进程、剪贴板、窗口。这些只是插件自己的说明，Win顺 挡不住：联网、读哪些文件、写哪些文件（严格沙箱的插件除外）。只安装你信得过来源的插件。</source>
-        <translation>These are enforced by Windows: not administrator, the memory limit, child processes, the clipboard, windows. These are only the plugin&apos;s own word, which WinShun cannot enforce: going online, which files it reads, which files it writes (except for plugins in the strict sandbox). Only install plugins from sources you trust.</translation>
+        <source>新版本要更多权限：%1。打开开关、同意后才能用</source>
+        <translation>The new version asks for more permissions: %1. Turn it on and allow them to use it</translation>
+    </message>
+    <message>
+        <source>还没同意它要的权限：%1。打开开关、同意后才能用</source>
+        <translation>The permissions it asks for are not allowed yet: %1. Turn it on and allow them to use it</translation>
+    </message>
+    <message>
+        <source>、</source>
+        <translation>, </translation>
+    </message>
+    <message>
+        <source>同意了新权限，AI 才能用它</source>
+        <translation>AI can use it once you allow the new permissions</translation>
+    </message>
+    <message>
+        <source>已安装 %1 %2。新版本要更多权限，先停着；打开它的开关、同意后才能用</source>
+        <translation>Installed %1 %2. The new version asks for more permissions, so it is paused; turn it on and allow them to use it</translation>
+    </message>
+    <message>
+        <source>这些由 Windows 强制：不是管理员、内存上限、子进程、剪贴板、窗口。这些只是插件自己的说明，Win顺 挡不住：联网、开端口、读哪些文件、写哪些文件（严格沙箱的插件除外）。只安装你信得过来源的插件。</source>
+        <translation>These are enforced by Windows: not administrator, the memory limit, child processes, the clipboard, windows. These are only the plugin&apos;s own word, which WinShun cannot enforce: going online, opening ports, which files it reads, which files it writes (except for plugins in the strict sandbox). Only install plugins from sources you trust.</translation>
     </message>
     <message>
         <source>不运行自己的程序：Win顺 按它的清单打开网址、程序或文件夹，用你的普通权限，不是管理员</source>
@@ -9718,8 +10204,8 @@
         <translation>Runs with your normal rights, not as administrator; memory limit %1 MB</translation>
     </message>
     <message>
-        <source>启动其他程序（子进程）</source>
-        <translation>Start other programs (child processes)</translation>
+        <source>启动程序（起子进程，或打开程序、非网页链接）</source>
+        <translation>Start programs (child processes, or opening a program or a non-web link)</translation>
     </message>
     <message>
         <source>读剪贴板</source>
@@ -9780,6 +10266,26 @@
     <message>
         <source>Win顺 不能阻止它联网</source>
         <translation>WinShun cannot stop it going online</translation>
+    </message>
+    <message>
+        <source>在局域网上开端口，让别的设备连进来：%1</source>
+        <translation>Opens ports on the local network for other devices to connect to: %1</translation>
+    </message>
+    <message>
+        <source>Win顺 不能阻止它开端口</source>
+        <translation>WinShun cannot stop it opening ports</translation>
+    </message>
+    <message>
+        <source>经 Win顺 弹出，每 2 秒最多一条</source>
+        <translation>Shown by WinShun, at most one every 2 seconds</translation>
+    </message>
+    <message>
+        <source>在局域网上开端口，让别的设备连进来</source>
+        <translation>Open ports on the local network for other devices to connect to</translation>
+    </message>
+    <message>
+        <source>弹出系统通知</source>
+        <translation>Show system notifications</translation>
     </message>
     <message>
         <source>无法使用：%1</source>
@@ -10702,6 +11208,26 @@
         <translation>Sign-in needed: Windows has no user name and password for %1 yet</translation>
     </message>
     <message>
+        <source>需要登录，但 Windows 默认只在 https 地址上发送密码，这个 http 地址多半登录不上：请改用 https 地址</source>
+        <translation>Sign-in needed, but by default Windows sends passwords to https addresses only, so signing in at this http address will most likely fail: use its https address instead</translation>
+    </message>
+    <message>
+        <source>登录不上：Windows 默认只在 https 地址上发送密码，请改用 https 地址</source>
+        <translation>Could not sign in: by default Windows sends passwords to https addresses only. Use the https address instead</translation>
+    </message>
+    <message>
+        <source>可能需要登录：%1 不让 Windows 读取，点“登录”输入用户名和密码试试</source>
+        <translation>Sign-in may be needed: %1 does not let Windows read it. Click “Sign in” and enter a user name and password</translation>
+    </message>
+    <message>
+        <source>服务器不让这个账号看这个文件夹</source>
+        <translation>The server does not let this account see this folder</translation>
+    </message>
+    <message>
+        <source>服务器出错了，稍后自动重试</source>
+        <translation>The server ran into an error; trying again shortly</translation>
+    </message>
+    <message>
         <source>%1 只允许来宾（不用密码）访问，Windows 默认不允许这样连接。请在 %1 上建一个带密码的账户，再点“登录”；或者请管理员在组策略里启用“不安全的来宾登录”（会降低安全性）</source>
         <translation>%1 allows guests only (no password), which Windows does not allow by default. Create an account with a password on %1, then click “Sign in”; or ask your administrator to enable insecure guest logons in Group Policy (less secure)</translation>
     </message>
@@ -10722,20 +11248,32 @@
         <translation>Something went wrong (error %1); trying again shortly</translation>
     </message>
     <message>
-        <source>稍后开始收录</source>
-        <translation>To be read shortly</translation>
+        <source>Windows 的 WebClient 服务被禁用了，WebDAV 网址都打不开：请在“服务”里把它的启动类型改回“手动”</source>
+        <translation>Windows&apos; WebClient service is disabled, so no WebDAV address opens: in Services, set its startup type back to “Manual”</translation>
     </message>
     <message>
         <source>%1核对过</source>
         <translation>checked %1</translation>
     </message>
     <message>
+        <source>正在检查 %1…</source>
+        <translation>Checking %1…</translation>
+    </message>
+    <message>
+        <source>正在连接 %1…</source>
+        <translation>Connecting to %1…</translation>
+    </message>
+    <message>
+        <source>%1又试过</source>
+        <translation>tried again %1</translation>
+    </message>
+    <message>
         <source>稍后连接</source>
         <translation>connecting shortly</translation>
     </message>
     <message>
-        <source>正在收录…已收录 %1</source>
-        <translation>Reading… %1 so far</translation>
+        <source>正在建立索引… 已收录 %1</source>
+        <translation>Indexing… %1 so far</translation>
     </message>
     <message>
         <source>正在核对… · %1</source>
@@ -10749,15 +11287,23 @@
         <source>实时跟踪变化</source>
         <translation>changes followed live</translation>
     </message>
+    <message>
+        <source>服务器不会通知变化，每小时核对一次</source>
+        <translation>The server does not report changes: checked every hour</translation>
+    </message>
+    <message>
+        <source>服务器不会通知变化，只在启动时核对</source>
+        <translation>The server does not report changes: checked only when WinShun starts</translation>
+    </message>
     <message numerus="yes">
-        <source>服务器不通知变化，每 %n 小时核对一次</source>
+        <source>服务器不会通知变化，每 %n 小时核对一次</source>
         <translation>
-            <numerusform>the server does not report changes: checked every hour</numerusform>
-            <numerusform>the server does not report changes: checked every %n hours</numerusform>
+            <numerusform>The server does not report changes: checked every hour</numerusform>
+            <numerusform>The server does not report changes: checked every %n hours</numerusform>
         </translation>
     </message>
     <message>
-        <source>已收录的 %1 照常能搜到</source>
+        <source>已收录的 %1照常能搜到</source>
         <translation>The %1 read before can still be searched</translation>
     </message>
     <message>
@@ -10773,8 +11319,20 @@
         <translation>Add the shared folder&apos;s name too, such as \\%1\Documents</translation>
     </message>
     <message>
-        <source>请输入网络路径，例如 \\192.168.1.10\资料</source>
-        <translation>Enter a network path, such as \\192.168.1.10\Documents</translation>
+        <source>WebDAV 网址要以 http:// 或 https:// 开头，例如 https://192.168.1.10:5006/资料</source>
+        <translation>A WebDAV address starts with http:// or https://, such as https://192.168.1.10:5006/Documents</translation>
+    </message>
+    <message>
+        <source>WebDAV 网址不能用 IPv6 地址，请改用服务器的名字或 IPv4 地址</source>
+        <translation>A WebDAV address cannot use an IPv6 address: use the server&apos;s name or its IPv4 address instead</translation>
+    </message>
+    <message>
+        <source>这个 WebDAV 网址不对，请检查服务器名和端口，例如 https://192.168.1.10:5006/资料</source>
+        <translation>This WebDAV address is not right: check the server name and the port, such as https://192.168.1.10:5006/Documents</translation>
+    </message>
+    <message>
+        <source>请输入网络路径或 WebDAV 网址，例如 \\192.168.1.10\资料、https://192.168.1.10:5006/资料</source>
+        <translation>Enter a network path or a WebDAV address, such as \\192.168.1.10\Documents or https://192.168.1.10:5006/Documents</translation>
     </message>
     <message>
         <source>已经添加过了</source>
@@ -10787,6 +11345,10 @@
     <message>
         <source>连不上 %1（已关机、不在同一网络，或 VPN 没连）</source>
         <translation>Cannot reach %1 (turned off, on another network, or the VPN is not connected)</translation>
+    </message>
+    <message>
+        <source>WebDAV 服务器列不出共享的文件夹，请直接粘贴文件夹的网址（http:// 或 https:// 开头）</source>
+        <translation>A WebDAV server does not list its shared folders: paste the folder&apos;s address instead (starting with http:// or https://)</translation>
     </message>
     <message>
         <source>%1 要先登录才能列出共享</source>
@@ -10957,7 +11519,7 @@
         <translation>Access denied. Choose a folder accessible to the current Linux user.</translation>
     </message>
     <message>
-        <source>%1 未运行；启动后会自动继续收录</source>
+        <source>%1 未运行；启动后会自动继续索引</source>
         <translation>%1 is stopped. Indexing resumes automatically when it starts.</translation>
     </message>
     <message>
@@ -11027,6 +11589,85 @@
     <message>
         <source>已包含在整盘索引中，无需重复扫描</source>
         <translation>Already covered by whole-drive indexing; no extra scan needed</translation>
+    </message>
+    <message>
+        <source>还没填代理地址，例如 127.0.0.1:7890。填好之前先跟随系统</source>
+        <translation>No proxy address yet, such as 127.0.0.1:7890. The system's proxy is used until there is one</translation>
+    </message>
+    <message>
+        <source>地址后面要写端口，例如 127.0.0.1:7890</source>
+        <translation>The address needs a port, such as 127.0.0.1:7890</translation>
+    </message>
+    <message>
+        <source>地址格式不对，应该像 127.0.0.1:7890</source>
+        <translation>That is not an address. It should look like 127.0.0.1:7890</translation>
+    </message>
+    <message>
+        <source>端口应该是 1 到 65535 之间的数字</source>
+        <translation>The port should be a number from 1 to 65535</translation>
+    </message>
+    <message>
+        <source>暂时不支持 SOCKS 代理。代理软件通常同一个端口也支持 HTTP，填那个端口就行</source>
+        <translation>SOCKS proxies are not supported yet. Proxy programs usually take HTTP on the same port: enter that port</translation>
+    </message>
+    <message>
+        <source>只支持 HTTP 代理，开头写 http:// 或者不写</source>
+        <translation>Only HTTP proxies work: start with http:// or nothing</translation>
+    </message>
+    <message>
+        <source>暂时不支持带用户名和密码的代理</source>
+        <translation>Proxies that need a user name and password are not supported yet</translation>
+    </message>
+    <message>
+        <source>马上开始读取文件内容</source>
+        <translation>File contents will be read shortly</translation>
+    </message>
+    <message>
+        <source>连上后读取文件内容</source>
+        <translation>File contents will be read once it can be reached</translation>
+    </message>
+    <message>
+        <source>按流量计费的网络：暂停读取文件内容，文件名照常更新</source>
+        <translation>Metered connection: reading file contents is paused; names still update</translation>
+    </message>
+    <message>
+        <source>没有要读取内容的文件</source>
+        <translation>No files whose contents are searched</translation>
+    </message>
+    <message>
+        <source>正在读取文件内容 %1</source>
+        <translation>Reading file contents %1</translation>
+    </message>
+    <message>
+        <source>连不上：搜索时用上次读取的内容（%1）</source>
+        <translation>Not reachable: searches use the contents read before (%1)</translation>
+    </message>
+    <message numerus="yes">
+        <source>已读取全部 %Ln 个文件的内容</source>
+        <translation>
+            <numerusform>Contents of %Ln file read</numerusform>
+            <numerusform>Contents of all %Ln files read</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>已读取 %1 个文件的内容；读取时服务器没有响应，稍后再试</source>
+        <translation>Contents of %1 files read; the server stopped responding, trying again later</translation>
+    </message>
+    <message>
+        <source>已读取 %1 个文件的内容，电脑空闲时继续</source>
+        <translation>Contents of %1 files read; more while the PC is idle</translation>
+    </message>
+    <message>
+        <source>已读取 %1 个文件的内容</source>
+        <translation>Contents of %1 files read</translation>
+    </message>
+    <message>
+        <source>内容搜索已关闭，不读取文件内容</source>
+        <translation>Content search is off: file contents are not read</translation>
+    </message>
+    <message>
+        <source>打开后，电脑空闲时读取文件内容；离线时也能搜到</source>
+        <translation>When on, file contents are read while the PC is idle, and stay searchable offline</translation>
     </message>
 </context>
 <context>
@@ -11393,6 +12034,10 @@
         <source>无法保存到 %1</source>
         <translation>Could not save to %1</translation>
     </message>
+    <message>
+        <source>截图已保存，但 HDR 图片没能保存到 %1</source>
+        <translation>The screenshot was saved, but the HDR picture could not be saved to %1</translation>
+    </message>
 </context>
 <context>
     <name>ws::capture::CaptureEditor</name>
@@ -11487,8 +12132,8 @@ click here to cancel</translation>
         <translation>Scrolling by itself. Enter finishes, Esc cancels</translation>
     </message>
     <message>
-        <source>滚动区域里的内容，滚完按 Enter 或点“完成”</source>
-        <translation>Scroll the content in the region, then press Enter or click “Done”</translation>
+        <source>在区域内向上或向下滚动，滚完按 Enter 或点“完成”</source>
+        <translation>Scroll up or down in the region. Enter or “Done” finishes</translation>
     </message>
     <message>
         <source>把鼠标放到要滚动的区域上</source>
@@ -11503,8 +12148,8 @@ click here to cancel</translation>
         <translation>Auto-scroll doesn’t work here: please scroll yourself</translation>
     </message>
     <message>
-        <source>跟丢了：往回滚一点，接上刚才的地方</source>
-        <translation>Lost track: scroll back a little to where it was</translation>
+        <source>没接上：慢慢往回滚一点，接上后再继续</source>
+        <translation>Scroll back slowly to reconnect, then continue</translation>
     </message>
     <message>
         <source>5 秒没有新画面</source>
@@ -11960,6 +12605,42 @@ click here to cancel</translation>
         <source>GIF 自动循环播放，不含音频；停止后会显示生成进度。</source>
         <translation>GIFs loop without audio. Export progress appears after recording stops.</translation>
     </message>
+    <message>
+        <source>鼠标按键：%1</source>
+        <translation>Mouse buttons: %1</translation>
+    </message>
+    <message>
+        <source>在视频角落显示按下的是左键、右键、中键还是侧键。</source>
+        <translation>Shows in a corner of the video whether the left, right, middle or a side button was pressed.</translation>
+    </message>
+    <message>
+        <source>不显示按键</source>
+        <translation>No keys</translation>
+    </message>
+    <message>
+        <source>仅快捷键</source>
+        <translation>Shortcuts only</translation>
+    </message>
+    <message>
+        <source>全部按键</source>
+        <translation>All keys</translation>
+    </message>
+    <message>
+        <source>打的字也会录进视频，包括密码；输入密码前请先暂停。</source>
+        <translation>Typing is recorded too, passwords included. Pause before typing a password.</translation>
+    </message>
+    <message>
+        <source>在视频角落显示 Ctrl、Alt、Win 组合键和 Esc、Enter、F1 等功能键，打的字不显示。</source>
+        <translation>Shows Ctrl, Alt and Win combinations and keys like Esc, Enter and F1 in a corner of the video. Typing is not shown.</translation>
+    </message>
+    <message>
+        <source>可在视频角落显示按下的键；推荐“仅快捷键”，不会录下打的字。</source>
+        <translation>Can show the keys pressed in a corner of the video. &quot;Shortcuts only&quot; is recommended: it never records typing.</translation>
+    </message>
+    <message>
+        <source>正在显示全部按键：打的字会录进视频，输入密码前请先暂停。</source>
+        <translation>Showing all keys: typing is recorded. Pause before typing a password.</translation>
+    </message>
 </context>
 <context>
     <name>ws::capture::Recorder</name>
@@ -12041,6 +12722,38 @@ click here to cancel</translation>
         <translation>%1
 Original video kept at: %2</translation>
     </message>
+    <message>
+        <source>空格</source>
+        <translation>Space</translation>
+    </message>
+    <message>
+        <source>左键</source>
+        <translation>Left click</translation>
+    </message>
+    <message>
+        <source>右键</source>
+        <translation>Right click</translation>
+    </message>
+    <message>
+        <source>中键</source>
+        <translation>Middle click</translation>
+    </message>
+    <message>
+        <source>后退键</source>
+        <translation>Back button</translation>
+    </message>
+    <message>
+        <source>前进键</source>
+        <translation>Forward button</translation>
+    </message>
+    <message>
+        <source>无法显示按键，请选“不显示按键”后重试。</source>
+        <translation>Could not show the keys. Choose &quot;No keys&quot; and try again.</translation>
+    </message>
+    <message>
+        <source>无法显示鼠标按键，请关闭该选项后重试。</source>
+        <translation>Could not show the mouse buttons. Turn off this option and try again.</translation>
+    </message>
 </context>
 <context>
     <name>AppearancePreview</name>
@@ -12114,5 +12827,24 @@ Original video kept at: %2</translation>
         <source>无法保存 GIF，请检查文件是否已存在或磁盘是否已满。</source>
         <translation>Could not save the GIF. Check whether the file exists or the disk is full.</translation>
     </message>
+</context>
+<context>
+    <name>FileViewSwitch</name>
+    <message><source>缩略图大小</source><translation>Thumbnail size</translation></message>
+    <message><source>列表</source><translation>List</translation></message>
+    <message><source>大图</source><translation>Large icons</translation></message>
+    <message><source>Alt+滚轮</source><translation>Alt+wheel</translation></message>
+</context>
+<context>
+    <name>ResultTile</name>
+    <message><source>离线</source><translation>Offline</translation></message>
+    <message><source>已不存在</source><translation>Missing</translation></message>
+</context>
+<context>
+    <name>QObject</name>
+    <message><source>“|”两侧都需要搜索条件</source><translation>Enter a search condition on both sides of “|”</translation></message>
+    <message><source>搜索条件过多</source><translation>Too many search conditions</translation></message>
+    <message><source>正则表达式无效：%1</source><translation>Invalid regular expression: %1</translation></message>
+    <message><source>请输入表达式</source><translation>Enter an expression</translation></message>
 </context>
 </TS>

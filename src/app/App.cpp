@@ -33,17 +33,22 @@
 #include "Pipe.h"
 #include "Placement.h"
 #include "PluginSettings.h"
+#include "ProxyAddress.h"
+#include "SavedFile.h"
 #include "SearchEngine.h"
 #include "Secrets.h"
 #include "ServiceVolumeAccess.h"
+#include "ShortcutAgain.h"
 #include "SettingsEditor.h"
 #include "Switches.h"
 #include "SystemCatalog.h"
 #include "SystemTheme.h"
 #include "TextField.h"
 #include "Tools.h"
+#include "TriggerJournal.h"
 #include "Unc.h"
 #include "Updater.h"
+#include "WebDav.h"
 #include "WindowFrame.h"
 #include "WindowLogo.h"
 #include "platform/ClipboardWatcher.h"
@@ -53,6 +58,7 @@
 #include "platform/ExternalPreview.h"
 #include "platform/FileManagers.h"
 #include "platform/Foreground.h"
+#include "platform/Http.h"
 #include "platform/IdleTrim.h"
 #include "platform/Integrity.h"
 #include "platform/KeyListener.h"
@@ -60,6 +66,8 @@
 #include "platform/NetworkNotifier.h"
 #include "platform/NumberKeys.h"
 #include "platform/Paster.h"
+#include "platform/PointerWatch.h"
+#include "platform/ServiceDialogNav.h"
 #include "platform/ServiceKeyListener.h"
 #include "platform/Shell.h"
 #include "platform/ShellContextMenu.h"
@@ -196,12 +204,16 @@ IndexService::Options indexOptions(const Settings& settings, bool folders)
             options.selectedDrives->push_back(root.toStdWString());
     }
     options.rescanOnStartup = settings.rescanOnStartup;
-    options.content.enabled = settings.contentSearch && settings.contentIndex; // off: the index is cleared
+    options.shares = settings.shareOptions();
+    // The local disks' contents ([Content] Index), and each share's on its own
+    // (GitHub #114). Neither: the index is cleared.
+    const bool shareContent = std::ranges::any_of(options.shares.shares, &ShareConfig::content);
+    options.content.enabled = settings.contentSearch && (settings.contentIndex || shareContent);
+    options.content.local = settings.contentIndex;
     options.content.extensions = settings.contentExtensions;
     options.content.sizeLimits = settings.contentSizeLimits();
     options.content.includeLowPriority = settings.contentInLowPriority;
     options.content.documents = settings.contentDocuments;
-    options.shares = settings.shareOptions();
     if (folders)
         options.folders = settings.indexFolderPaths();
     else
@@ -372,15 +384,17 @@ App::App()
     connect(&m_darkFrameGuard, &QTimer::timeout, this, [this] {
         if (m_darkFrameWatch.elapsed() < 50) // Qt's own, after some 5 ms, first
             return;
-        for (QWindow* window : {static_cast<QWindow*>(m_window), static_cast<QWindow*>(m_settingsWindow),
-                 static_cast<QWindow*>(m_barWindow), static_cast<QWindow*>(m_clipWindow),
-                 static_cast<QWindow*>(m_preview ? m_preview->window() : nullptr)}) {
-            if (window && win::isDarkFrame(window) != m_darkFrame)
+        // Qt sets every window's, so every native window here: the notices,
+        // panels and menus too, shown or not.
+        for (QWindow* window : QGuiApplication::topLevelWindows()) {
+            if (window->handle() && win::isDarkFrame(window) != m_darkFrame)
                 win::setDarkFrame(window, m_darkFrame);
         }
         if (m_darkFrameWatch.elapsed() > 1000)
             m_darkFrameGuard.stop();
     });
+    m_holdTimer.setInterval(std::chrono::milliseconds(hotkeysteps::kPollMs));
+    connect(&m_holdTimer, &QTimer::timeout, this, &App::checkClipboardHold);
     m_contentStatusTimer.setInterval(2s);
     connect(&m_contentStatusTimer, &QTimer::timeout, this, &App::refreshContentIndexStatus);
     connect(&m_contentStatusTimer, &QTimer::timeout, this, &App::refreshShareStatuses); // counts while reading
@@ -395,10 +409,16 @@ App::~App()
     siteicons::shutdown(); // an icon arriving now would be told to no one
     m_keyRouter.reset(); // no keys taken from here on
     m_drainingRouter.reset();
+    m_holdWatch.reset();
+    m_drainingWatch.reset();
     m_keyListenerMode = -1; // recorder teardown must not recreate input listeners
     m_recordingClicks.reset();
     m_serviceKeyListener.reset();
     m_keyListener.reset(); // no double click told to the folder menu
+    // DialogJump's worker may be asking m_serviceNav about an elevated dialog,
+    // and its hooks reach the bar: it goes while both are here (joined), the
+    // bar and then the navigator at the end, as applyDialogs does.
+    m_dialogJump.reset();
     m_capture.reset(); // its overlays, before the QML engine they were made with
     m_pins.reset();
     if (m_editWindow) {
@@ -431,6 +451,8 @@ App::~App()
     delete m_settingsWindow; // before the QML engine it was created with
     delete m_barWindow;
     delete m_clipWindow;
+    m_dialogBar.reset(); // after its window
+    m_serviceNav.reset(); // after the two that use it (members would go the other way round)
 }
 
 bool App::start(const StartOptions& options)
@@ -505,6 +527,12 @@ bool App::start(const StartOptions& options)
     // Shares that could not be reached are tried again when the network changes.
     m_network = std::make_unique<NetworkNotifier>([index = m_index.get()] { index->shares().networkChanged(); });
     m_idleTrim = std::make_unique<IdleTrim>([this]() -> const char* {
+        // A recording: its media thread and its keycaps' low-level hooks
+        // touch their pages all the time. Emptied, the next hook call can
+        // wait on hard faults past Windows' timeout, and the hook is taken
+        // out (GitHub #98). A delayed or long screenshot too.
+        if (m_capture && m_capture->busy())
+            return "capturing or recording";
         if (!m_index || m_index->state() != IndexService::State::Ready)
             return "loading";
         if (m_index->isRefreshing())
@@ -514,6 +542,11 @@ bool App::start(const StartOptions& options)
         if (m_index->moving())
             return "moving";
         return nullptr;
+    }, [this] {
+        // Up and in use without the focus: the clipboard (the keys routed to
+        // it, the focus left where it was), a pinned launcher, a file dialog's bar.
+        return (m_clipWindow && m_clipWindow->isVisible() && !m_clipPrewarming.load())
+            || (m_launcher && m_launcher->pinned() && launcherShown()) || (m_dialogBar && m_dialogBar->isShown());
     });
     // Loaded, caught up, done reading: emptied now, not at the next recheck.
     connect(m_index.get(), &IndexService::stateChanged, m_idleTrim.get(), &IdleTrim::poke);
@@ -557,6 +590,13 @@ bool App::start(const StartOptions& options)
     connect(m_launcher.get(), &Launcher::settingsRequested, this, [this] { showSettings(); });
     // Only the chosen folders are indexed (GitHub #52): the notes under the results.
     connect(m_launcher.get(), &Launcher::folderSettingsRequested, this, [this] { showSettingsFor(u"Index/Folders"_s); });
+    // Not a setting the AI settings know of: the section, by its row's title (SettingsWindow.qml).
+    connect(m_launcher.get(), &Launcher::shareSettingsRequested, this, [this] {
+        showSettings();
+        if (m_settingsWindow)
+            QMetaObject::invokeMethod(m_settingsWindow, "showSetting", Q_ARG(QVariant, 2), Q_ARG(QVariant, 3),
+                Q_ARG(QVariant, QCoreApplication::translate("SettingsWindow", "网络与 WSL 文件夹")));
+    });
     connect(m_launcher.get(), &Launcher::folderAddRequested, this, &App::addFolderFromLauncher);
     connect(m_launcher.get(), &Launcher::folderNoteDismissed, this, [this] {
         if (m_settings.folderHintDismissed)
@@ -624,6 +664,7 @@ bool App::start(const StartOptions& options)
     // The user's limits before open(), which prunes: with the defaults it
     // would drop what a longer limit (or none) keeps, on every start.
     m_clipStore->setLimits({m_settings.clipboardMaxItems, m_settings.clipboardMaxDays}, QDateTime::currentMSecsSinceEpoch());
+    m_clipStore->setKeepsPlaceOnPaste(m_settings.clipboardKeepPlace);
     if (m_settings.clipboard && !m_clipStore->open(QDateTime::currentMSecsSinceEpoch()))
         qWarning() << "Clipboard history: cannot be kept";
     ClipboardWatcher::Callbacks clipCallbacks;
@@ -698,8 +739,7 @@ bool App::start(const StartOptions& options)
             return;
         }
         m_messages->showNotification(tr("Win顺 %1 可以更新了").arg(m_updater->availableVersion()),
-            tr("点这里查看更新内容"));
-        m_updateNotified = true;
+            tr("点这里查看更新内容"), [this] { showUpdate(); });
     });
     // After an update put in place from here: whether it came in.
     connect(m_updater.get(), &Updater::notice, this,
@@ -710,17 +750,15 @@ bool App::start(const StartOptions& options)
         return false;
 
     MessageWindow::Callbacks callbacks;
-    callbacks.trayActivated = [this] { toggleLauncher(); };
-    callbacks.trayMenuRequested = [this] { showTrayMenu(); };
-    callbacks.notificationClicked = [this] {
-        if (std::exchange(m_updateNotified, false))
-            showUpdate();
-        else if (std::exchange(m_clipboardNotified, false))
-            showClipboardSettings();
-        else if (std::exchange(m_foldersNotified, false))
-            showSettingsFor(u"Index/Folders"_s);
+    callbacks.trayActivated = [this](std::uint32_t time) {
+        const std::uint64_t pressedAt = tickTime(time, ::GetTickCount64());
+        beginTrigger(TriggerSource::Tray, pressedAt);
+        toggleLauncher(false, pressedAt);
     };
-    callbacks.hotkeyPressed = [this](int id) {
+    callbacks.trayMenuRequested = [this] { showTrayMenu(); };
+    callbacks.hotkeyPressed = [this](int id, std::uint32_t time) {
+        // When the keys were pressed, on the clock of a window's reveal (seenBy).
+        const std::uint64_t pressedAt = tickTime(time, ::GetTickCount64());
         if (id > kQuickPasteHotkeyId && id <= kQuickPasteHotkeyId + 9) {
             const int number = id - kQuickPasteHotkeyId;
             // A message already queued before the keys were suspended must
@@ -728,9 +766,17 @@ bool App::start(const StartOptions& options)
             if ((m_quickPasteKeys & (1u << number)) && !QGuiApplication::focusWindow() && !m_clipboard->active())
                 m_clipboard->pasteDirect(m_clipStore->quickPasteEntry(number, m_clipboard->pinnedFirst()),
                     ::GetForegroundWindow());
-        } else if (id == kWinVHotkeyId || id == kClipboardHotkeyId)
-            toggleClipboard();
-        else if (id == kWinSHotkeyId)
+        } else if (id == kWinVHotkeyId || id == kClipboardHotkeyId) {
+            // Pressed again while held since it opened the window (#107): a
+            // step, never a second press (no seenBy, not a trigger).
+            if (clipboardStepPress(id))
+                return;
+            beginTrigger(id == kWinVHotkeyId ? TriggerSource::WinV : TriggerSource::ClipboardHotkey, pressedAt);
+            armClipboardHold(id, pressedAt); // before the window: the keys from the opening press on
+            toggleClipboard(pressedAt);
+            if (m_hold && !m_keyRouter) // its own window has the keyboard: the hook hears nothing (docs/pitfalls.md)
+                endClipboardHold("not-routed");
+        } else if (id == kWinSHotkeyId)
             toggleAtTaskbar(false);
         else if (id == kScreenClipHotkeyId)
             startScreenClip();
@@ -750,9 +796,10 @@ bool App::start(const StartOptions& options)
             if (m_pins)
                 m_pins->clearClickThrough();
         }
-        else if (id != kDialogJumpHotkeyId)
-            toggleLauncher();
-        else if (m_dialogJump && m_settings.dialogJump)
+        else if (id != kDialogJumpHotkeyId) {
+            beginTrigger(TriggerSource::Hotkey, pressedAt);
+            toggleLauncher(true, pressedAt);
+        } else if (m_dialogJump && m_settings.dialogJump)
             m_dialogJump->jump();
     };
     callbacks.shellRestarted = [this] { // Explorer let go of Win+V or Win+S, or took them back
@@ -763,6 +810,7 @@ bool App::start(const StartOptions& options)
         QTimer::singleShot(3s, this, [this] { // once it has registered its own keys
             applyClipboardHotkeys();
             applyTaskbarHotkeys();
+            applyWinKeyedHotkeys(); // ours, as the user chose them, if Explorer left them
         });
     };
     callbacks.commandReceived = [this](const QString& command) { handleCommand(command); };
@@ -800,6 +848,21 @@ bool App::start(const StartOptions& options)
         m_index->shares().networkChanged(); // the servers may have gone, or come back, meanwhile
         if (m_switches)
             m_switches->refresh(); // keep awake whose end time passed while asleep ends now
+        // Its pages are read back from the disk now, while the user signs in,
+        // not at the first double Ctrl: after a hibernation, Windows had
+        // dropped those IdleTrim handed back (~8,700 page faults, a first
+        // opening ~260 ms instead of ~30, GitHub #111). Once the drivers and
+        // the graphics device are back; after a sleep, everything is still
+        // in memory and this costs one frame. IdleTrim keeps them until the
+        // first use (IdleTrim::resumed): handed back at wake, they went while
+        // every program read its own back (GitHub #111). The clipboard's too:
+        // the first hotkey after a while away may be its.
+        m_idleTrim->resumed();
+        QTimer::singleShot(5s, this, [this] {
+            if (!launcherShown())
+                prewarmLauncher();
+        });
+        QTimer::singleShot(6s, this, &App::prewarmClipboard);
     };
     callbacks.drawingMessage = [](UINT message, WPARAM wParam) { diagnostics::noteSystemMessage(message, wParam); };
     m_messages = std::make_unique<MessageWindow>(std::move(callbacks));
@@ -828,6 +891,16 @@ bool App::start(const StartOptions& options)
     // The launcher's strip of kinds of file as its user left it (after
     // applySettings: the kinds are known by then).
     m_launcher->setFileChoice(QSettings(statePath(), QSettings::IniFormat).value(u"Search/FileType"_s).toString());
+    {
+        QSettings state(statePath(), QSettings::IniFormat);
+        m_launcher->setGallery(state.value(u"Search/Gallery"_s, false).toBool());
+        m_launcher->setThumbnailSize(state.value(u"Search/ThumbnailSize"_s, 160).toInt());
+    }
+    connect(m_launcher.get(), &Launcher::galleryChanged, this, [this] {
+        QSettings state(statePath(), QSettings::IniFormat);
+        state.setValue(u"Search/Gallery"_s, m_launcher->gallery());
+        state.setValue(u"Search/ThumbnailSize"_s, m_launcher->thumbnailSize());
+    });
     connect(m_launcher.get(), &Launcher::fileChoiceChanged, this, [this] {
         QSettings(statePath(), QSettings::IniFormat).setValue(u"Search/FileType"_s, m_launcher->fileChoice());
     });
@@ -854,8 +927,13 @@ bool App::start(const StartOptions& options)
     autostart::adoptIfOrphaned();
     if (firstRun) {
         // Autostart is on by default; the settings switch turns it off for good
-        // (the settings file exists from now on, so this runs once).
-        autostart::setEnabled(true);
+        // (the settings file exists from now on, so this runs once). The task
+        // is one for every copy: not taken from another copy that has it (the
+        // installed one, when a portable copy first starts), and not by a
+        // --profile copy at all (a second set of settings, or a test run).
+        const bool otherProfile = !Settings::profile().isEmpty() && Settings::portableFolder().isEmpty();
+        if (!otherProfile && !autostart::isSetUp())
+            autostart::setEnabled(true);
         // A portable copy walks the folders (no UAC, like Everything's): the
         // settings offer the index service and running as administrator.
         const bool walking = !Settings::portableFolder().isEmpty()
@@ -867,19 +945,21 @@ bool App::start(const StartOptions& options)
         // None of the known folders on this PC's disks (all on a server, say:
         // GitHub #52 review): nothing is indexed until some are added.
         const bool noFolders = m_foldersInEffect && m_settings.indexFolderPaths().empty();
+        std::function<void()> onClick;
+        if (noFolders)
+            onClick = [this] { showSettingsFor(u"Index/Folders"_s); };
         m_messages->showNotification(tr("Win顺已在后台运行"),
             noFolders ? tr("双击 Ctrl 打开搜索。还没有要索引的文件夹，点这里在设置里添加；放在服务器上的文件夹，请加到“网络共享”里。")
                 : m_foldersInEffect ? tr("双击 Ctrl 打开搜索。Win顺 先索引你常用的文件夹（桌面、文档、下载等），可以在设置里增减。")
                 : cannotInstall ? tr("双击 Ctrl 打开搜索。Win顺 按文件夹遍历建立索引，首次运行需要一点时间。")
                 : walking ? tr("双击 Ctrl 打开搜索。便携版按文件夹遍历建立索引；要快一些，可以在设置里安装索引服务，或以管理员身份运行。")
-                          : tr("双击 Ctrl 打开搜索。首次运行需要一点时间建立文件索引。"));
-        m_foldersNotified = noFolders;
+                          : tr("双击 Ctrl 打开搜索。首次运行需要一点时间建立文件索引。"),
+            std::move(onClick));
     } else if (clipboardIsNew) {
         m_messages->showNotification(tr("Win顺 现在有剪贴板历史了"),
             m_settings.clipboard ? tr("复制过的文字、图片和文件都能找回来。点这里设置用 Win+V 打开它。")
-                                 : tr("复制过的文字、图片和文件都能找回来。点这里打开它。"));
-        m_updateNotified = false;
-        m_clipboardNotified = true;
+                                 : tr("复制过的文字、图片和文件都能找回来。点这里打开它。"),
+            [this] { showClipboardSettings(); });
     } else if (!m_indexFolderProblem.isEmpty()) {
         m_messages->showNotification(tr("索引位置"), m_indexFolderProblem);
     }
@@ -1008,12 +1088,14 @@ bool App::createWindow()
                 && !(onBox && taskbar::isTaskbar(front)) && !win::isShellFlyout(front);
             if (m_searchBox && m_launcherOverBox && !elsewhere && (justShown || onBox))
                 m_boxPressGrace.start();
-            else
+            else {
+                logLauncherLostFront(front);
                 hideLauncher();
+            }
         } else if (m_window && m_window->isActive()) {
             m_launcher->systemCommandDone();
             m_boxPressGrace.stop();
-            deliverTyping(); // asked for from the Start menu
+            deliverTyping(); // asked for by typing elsewhere: the keys, if it is ready for them now
         }
         updateNumberKeys();
     });
@@ -1023,6 +1105,23 @@ bool App::createWindow()
     connect(m_window, &QQuickWindow::frameSwapped, this, [this] {
         if (m_prewarming.load())
             QMetaObject::invokeMethod(this, &App::finishPrewarm, Qt::QueuedConnection);
+    }, Qt::DirectConnection);
+    // Keys typed elsewhere wait for it (deliverTyping): its field becoming
+    // the focus object (Qt has given the window its input method context by
+    // then), and the cap. Then a moment's watch of what came of them.
+    connect(qGuiApp, &QGuiApplication::focusObjectChanged, this, &App::deliverTyping);
+    m_typingCap.setSingleShot(true);
+    m_typingCap.setTimerType(Qt::PreciseTimer);
+    connect(&m_typingCap, &QTimer::timeout, this, &App::deliverTyping);
+    m_handoffWatch.setSingleShot(true);
+    m_handoffWatch.setInterval(500ms);
+    connect(&m_handoffWatch, &QTimer::timeout, this, &App::endHandoff);
+    m_keysWatch = std::make_unique<LauncherKeysWatch>(); // kept: the render thread's calls below use it
+    connect(m_window, &QQuickWindow::afterSynchronizing, this, [watch = m_keysWatch.get()] {
+        watch->synchronized();
+    }, Qt::DirectConnection);
+    connect(m_window, &QQuickWindow::frameSwapped, this, [watch = m_keysWatch.get()] {
+        watch->frameSwapped();
     }, Qt::DirectConnection);
     return true;
 }
@@ -1128,8 +1227,8 @@ capture::CaptureOcr& App::captureOcr()
 capture::SmartHooks App::smartHooks()
 {
     capture::SmartHooks hooks;
-    hooks.scan = [this](const QImage& image, double dpr, std::function<void(QList<capture::RedactLine>)> done) {
-        captureOcr().scan(image, dpr, std::move(done));
+    hooks.scan = [this](const QImage& image, const QRect& region, double dpr, std::function<void(capture::RedactScan)> done) {
+        captureOcr().scan(image, region, dpr, std::move(done));
     };
     hooks.cancel = [this] {
         if (m_captureOcr)
@@ -1287,6 +1386,16 @@ void App::closeCaptureOcr(bool destroy)
 
 bool App::eventFilter(QObject* watched, QEvent* event)
 {
+    // Qt has just set this window's frame light, and every other frameless
+    // one's: the application palette changed, the scheme maybe not (an
+    // accent colour; Windows' own colours coming in after sign-in, GitHub
+    // #120), and then applyTheme does not run.
+    if (event->type() == QEvent::ApplicationPaletteChange)
+        guardDarkFrames();
+    // A click in the clipboard window while its hotkey is held (#107): the
+    // mouse picks the row now, letting go pastes nothing.
+    if (m_hold && watched == m_clipWindow && event->type() == QEvent::MouseButtonPress)
+        endClipboardHold("click");
     if (event->type() == QEvent::Close && (watched == m_window || watched == m_clipWindow || watched == m_ocrWindow)) {
         // These windows are kept between openings. QWindow::close would
         // destroy the HWND and detach Placement, WindowFrame and WindowLogo.
@@ -1312,6 +1421,19 @@ bool App::eventFilter(QObject* watched, QEvent* event)
             if (rects & Qt::ImAnchorRectangle)
                 query->setValue(Qt::ImAnchorRectangle, *caret);
             return true;
+        }
+    }
+    // Keys typed elsewhere just went to the launcher (GitHub #103): when its
+    // field first got a composition or text from them. Never what.
+    if (watched == m_searchField && m_keysWatch && m_keysWatch->watching()) {
+        if (event->type() == QEvent::InputMethod) {
+            const auto* input = static_cast<QInputMethodEvent*>(event);
+            if (!input->commitString().isEmpty())
+                m_keysWatch->fieldGot(true);
+            else if (!input->preeditString().isEmpty())
+                m_keysWatch->fieldGot(false);
+        } else if (event->type() == QEvent::KeyPress && !static_cast<QKeyEvent*>(event)->text().isEmpty()) {
+            m_keysWatch->fieldGot(true);
         }
     }
     // Pasted into a one-line field (the search boxes, the settings' fields):
@@ -1369,9 +1491,14 @@ void App::applyTheme()
     if (m_barWindow)
         styleWindow(m_barWindow);
     updateSearchBoxLook(); // the accent
+    guardDarkFrames();
+}
+
+void App::guardDarkFrames()
+{
     // The frames' dark mode only once Qt has set its own (light) one, a few
     // milliseconds later; then watch them for a while (see win::setDarkFrame).
-    m_darkFrame = dark;
+    m_darkFrame = isDarkMode();
     m_darkFrameWatch.start();
     m_darkFrameGuard.start();
 }
@@ -1379,6 +1506,18 @@ void App::applyTheme()
 // Theme and language take effect at once, in every window, without a restart.
 void App::applyAppearance()
 {
+    // 搜索框显示 Logo (GitHub #109): one switch for the launcher's, the clipboard's and
+    // the dialog bar's. Off, one still on screen goes at once; on, each comes back
+    // with its window's next show.
+    if (win::PeekingLogo::enabled() != m_settings.searchLogo) {
+        win::PeekingLogo::setEnabled(m_settings.searchLogo);
+        if (!m_settings.searchLogo) {
+            for (WindowLogo* logo : {m_launcherLogo, m_clipLogo}) {
+                if (logo)
+                    logo->conceal();
+            }
+        }
+    }
     SystemTheme::setRoundedCorners(m_settings.corners == u"round");
     updateSearchBoxLook(); // the native child redraws on its own thread
     // 界面大小: QML follows SystemTheme; the bar by file dialogs is placed by its heights.
@@ -1477,7 +1616,21 @@ void App::applyKeyListener(bool force)
                     static std::atomic<int> logged {0};
                     if (!tap.sent.empty() && logged.fetch_add(1) < 10)
                         qWarning().noquote() << "Double tap partly sent by a program:" << QString::fromStdString(tap.sent);
-                    QMetaObject::invokeMethod(this, &App::onDoubleCtrl, Qt::QueuedConnection);
+                    // Counted only by a release and press no finger makes
+                    // that quick: held up by a program's slow hook (GitHub #111).
+                    static std::atomic<int> queued {0};
+                    if (tap.queuedMs && queued.fetch_add(1) < 10)
+                        qWarning() << "Double tap: its first press seemed" << tap.queuedMs
+                                   << "ms long, let go as the second was pressed: both waited behind a program's slow "
+                                      "keyboard hook";
+                    // With the tap's own time: how long it waited for the
+                    // GUI thread, and whether the launcher was there to be
+                    // seen before it (GitHub #111).
+                    QMetaObject::invokeMethod(this, [this, tap] { onDoubleCtrl(tap); }, Qt::QueuedConnection);
+                };
+            if (m_settings.doubleCtrl) // a double tap that came to nothing, for the journal
+                callbacks.note = [this](const KeyListener::Note& note) {
+                    QMetaObject::invokeMethod(this, [this, note] { journalTapNote(note); }, Qt::QueuedConnection);
                 };
             if (FolderMenu* menu = doubleClicks ? m_folderMenu.get() : nullptr)
                 callbacks.doubleClick = [menu](HWND window, POINT pt) { menu->doubleClicked(window, pt); };
@@ -1504,16 +1657,34 @@ void App::applyKeyListener(bool force)
                 : m_settings.doubleCtrlKey == u"right"            ? DoubleTapDetector::Side::Right
                                                                   : DoubleTapDetector::Side::Both);
     }
+    // With double tap paused in games: whether a hidden pointer was Windows'
+    // doing for typing, by the keys the listener saw (GameGuard, GitHub #111).
+    if (m_keyListener && m_settings.doubleCtrl && m_settings.doubleCtrlPauseInGames) {
+        if (!m_pointerWatch)
+            m_pointerWatch = std::make_unique<PointerWatch>([this](std::uint32_t atOrBefore) {
+                return m_keyListener ? m_keyListener->keyDownAtOrBefore(atOrBefore) : std::nullopt;
+            });
+    } else {
+        m_pointerWatch.reset();
+    }
 }
 
 void App::applySettings(bool initial)
 {
+    // 网络代理 (GitHub #84): for every request over WinHTTP, from the next on. A
+    // manual address that is not a good one follows the system's, as the page says.
+    if (const proxy::Address address = proxy::parse(m_settings.proxyAddress); m_settings.proxyMode == u"none")
+        http::setProxy(http::Proxy::None);
+    else if (m_settings.proxyMode == u"manual" && address.ok())
+        http::setProxy(http::Proxy::Named, address.server);
+    else
+        http::setProxy(http::Proxy::System);
     applyFolderMenu(); // before the listener, which tells it double clicks
     applyDropPie(); // likewise its key
     applyKeyListener();
     applyDialogs();
-    applyClipboard();
-    applyTaskbar();
+    applyClipboard(initial);
+    applyTaskbar(initial);
     // The tray's icon and the taskbar box's: Win顺's colours, or the taskbar's one.
     m_messages->setTrayIconMono(m_settings.taskbarIcon == u"mono");
     m_messages->setTrayTooltip(trayTooltip()); // which Ctrl
@@ -1536,10 +1707,11 @@ void App::applySettings(bool initial)
         m_settings.showModified, m_settings.showFileSize, m_settings.thumbnails, m_settings.numberKeys);
     m_launcher->setDoubleClickToOpen(m_settings.doubleClickToOpen);
     m_launcher->setTabEntersFavoriteFolder(m_settings.tabEntersFavoriteFolder);
+    m_launcher->setFolderTypingOnly(m_settings.folderTyping == u"only");
     m_launcher->results()->setShowModifiedTime(m_settings.showModifiedTime);
     m_launcher->setPreferredTypes(m_settings.preferredTypes);
     m_launcher->setFolderKeyword(m_settings.folderKeyword);
-    m_launcher->setExcludedTypes(m_settings.excludedTypes);
+    m_launcher->setExcludedFiles(m_settings.excludedTypes, m_settings.excludedFileNames);
     m_launcher->setSort(static_cast<Launcher::Sort>(sortIndex(m_settings.sort)));
     m_launcher->setStartList(m_settings.startList == u"modified" ? Launcher::RecentlyModified
             : m_settings.startList == u"none"                     ? Launcher::NoStartList
@@ -1552,6 +1724,9 @@ void App::applySettings(bool initial)
     m_clipboard->setNumberHints(m_settings.numberHints);
     m_clipboard->setRowOptions(m_settings.clipboardClickToPaste, m_settings.clipboardLargePictures);
     m_clipboard->setLayoutOptions(m_settings.clipboardFlipAbove, m_settings.clipboardSearchBoxSide == u"far");
+    m_clipboard->setHoldToStep(m_settings.clipboardHoldToStep);
+    if (!m_settings.clipboardHoldToStep && m_hold)
+        endClipboardHold("setting-off");
     updateNumberKeys();
     applyHotkey();
     applyFolderMenuHotkey(); // after applyFolderMenu: the menu it brings up
@@ -1670,10 +1845,7 @@ void App::applyCapture()
         };
         callbacks.saveFolder = [this] { return m_settings.captureSaveFolder; };
         callbacks.saved = [this](const QString& path, const QString& error) {
-            if (error.isEmpty())
-                m_messages->showNotification(tr("截图已保存"), QDir::toNativeSeparators(path));
-            else
-                m_messages->showNotification(tr("截图没能保存"), error);
+            notifyCaptureSaved(path, error);
         };
         // The pictures and textures are let go of: the pages go back to Windows.
         callbacks.ended = [this] { m_idleTrim->poke(); };
@@ -1709,7 +1881,9 @@ void App::applyCapture()
             return capture::Recorder::Preferences {m_settings.captureRecordingFolder, m_settings.captureRecordingSystemAudio,
                 m_settings.captureRecordingMicrophone, static_cast<capture::Recorder::Quality>(m_settings.captureRecordingQuality),
                 m_settings.captureRecordingCursor, m_settings.captureRecordingCountdown, m_settings.captureRecordingClicks,
-                static_cast<capture::Recorder::Format>(m_settings.captureRecordingFormat)};
+                static_cast<capture::Recorder::Format>(m_settings.captureRecordingFormat),
+                static_cast<capture::Recorder::KeyDisplay>(capture::keycaps::modeFromName(m_settings.captureRecordingKeys)),
+                m_settings.captureRecordingMouseButtons};
         };
         callbacks.recording.remember = [this](const capture::Recorder::Preferences& prefs) {
             m_settings.captureRecordingFolder = prefs.folder;
@@ -1720,6 +1894,8 @@ void App::applyCapture()
             m_settings.captureRecordingCountdown = prefs.countdown;
             m_settings.captureRecordingClicks = prefs.clickHighlights;
             m_settings.captureRecordingFormat = prefs.format;
+            m_settings.captureRecordingKeys = capture::keycaps::modeName(static_cast<capture::keycaps::Mode>(prefs.keys));
+            m_settings.captureRecordingMouseButtons = prefs.mouseButtons;
             m_settings.save();
             if (m_settingsEditor) m_settingsEditor->setSettings(m_settings);
         };
@@ -1730,7 +1906,20 @@ void App::applyCapture()
             applyKeyListener(true);
             return !m_recordingClicks || (m_keyListener && m_keyListener->isActive());
         };
+        // The screenshot's hotkey and PrtScn (taken over) end a recording
+        // (Capture::trigger): their keys are not shown in it (GitHub #98).
+        callbacks.recording.ownKeys = [this] {
+            std::vector<capture::keycaps::Hotkey> keys;
+            UINT modifiers = 0;
+            UINT vk = 0;
+            if (MessageWindow::parseHotkey(m_settings.captureHotkey.trimmed(), &modifiers, &vk))
+                keys.push_back(capture::keycaps::fromRegistered(modifiers, vk));
+            if (m_settings.capturePrintScreen)
+                keys.push_back({0, VK_SNAPSHOT});
+            return keys;
+        };
         callbacks.accent = [] { return SystemTheme::accentColor(); };
+        callbacks.windowCreated = [](QQuickWindow* window, const QString& name) { diagnostics::watchWindow(window, name); };
         m_capture = std::make_unique<capture::Capture>(m_qml.get(), std::move(callbacks));
     } else if (!m_settings.captureEnabled && m_capture) {
         m_capture.reset();
@@ -1743,11 +1932,13 @@ void App::applyCapture()
     }
     if (m_capture) {
         m_capture->setCopyOnSelect(m_settings.captureCopyOnSelect);
+        m_capture->setMagnifier(m_settings.captureMagnifier);
         m_capture->setPinOnCopy(m_settings.capturePinOnCopy);
         m_capture->setMouseActions({m_settings.captureMouseDoubleLeft, m_settings.captureMouseRight,
             m_settings.captureMouseMiddle, m_settings.captureMouseBack, m_settings.captureMouseForward});
         m_capture->setHiddenButtons(m_settings.captureToolbarHidden.split(u',', Qt::SkipEmptyParts));
         m_capture->setIncludeCursor(m_settings.captureCursor);
+        m_capture->setHdrFile(m_settings.captureHdrFile);
         m_capture->setControlDetection(m_settings.captureControlsUia);
         m_capture->setDelay(m_settings.captureDelay);
         m_capture->setColorFormat(capture::colorFormatFromName(m_settings.captureColorFormat));
@@ -1938,12 +2129,9 @@ capture::PinManager& App::pins()
             m_clipboard->copyImage(image, m_settings.clipboard && m_settings.clipboardImages && !m_clipboardPaused, screenshot);
         };
         callbacks.save = [this](const QImage& image, const QString& path) {
-            capture::saveImage(m_pinSaver, this, image, path, [this](const QString& saved, const QString& error) {
-                if (error.isEmpty())
-                    m_messages->showNotification(tr("截图已保存"), QDir::toNativeSeparators(saved));
-                else
-                    m_messages->showNotification(tr("截图没能保存"), error);
-            }, m_settings.captureSaveFolder);
+            capture::saveImage(m_pinSaver, this, image, path,
+                [this](const QString& saved, const QString& error) { notifyCaptureSaved(saved, error); },
+                m_settings.captureSaveFolder);
         };
         callbacks.ocr = [this](const QImage& image, double dpr, const QRect& where) { showCaptureOcr(image, dpr, where); };
         callbacks.edit = [this](capture::PinWindow* pin) { editPin(pin); };
@@ -2027,12 +2215,9 @@ capture::CaptureEditor* App::editor()
             m_clipboard->recordImage(image, project);
     };
     hooks.save = [this](const QImage& image, const QString& path) {
-        capture::saveImage(m_pinSaver, this, image, path, [this](const QString& saved, const QString& error) {
-            if (error.isEmpty())
-                m_messages->showNotification(tr("截图已保存"), QDir::toNativeSeparators(saved));
-            else
-                m_messages->showNotification(tr("截图没能保存"), error);
-        }, m_settings.captureSaveFolder);
+        capture::saveImage(m_pinSaver, this, image, path,
+            [this](const QString& saved, const QString& error) { notifyCaptureSaved(saved, error); },
+            m_settings.captureSaveFolder);
     };
     hooks.pin = [this](const QImage& image, const QByteArray& project, QPoint origin) {
         pins().pin(image, origin, true, project);
@@ -2173,15 +2358,22 @@ ClipboardWatcher::Options App::clipboardOptions() const
     return {m_settings.clipboard && !m_clipboardPaused, m_settings.clipboardImages, m_settings.clipboardExcludedApps};
 }
 
-void App::applyClipboard()
+// How a reconcile of Explorer's DisabledHotkeys came about (winv::Origin).
+static winv::Origin winKeyOrigin(bool initial)
 {
-    // Explorer gives Win+V up (or gets it back) when it next starts. Only
-    // when the switch moved, or it is on at start: someone else may have put
-    // a V there for another program.
-    if (m_winVApplied ? *m_winVApplied != m_settings.clipboardWinV : m_settings.clipboardWinV)
-        m_winVRegistryFailed = !winv::setReleasedByExplorer(L'V', m_settings.clipboardWinV);
-    m_winVApplied = m_settings.clipboardWinV;
+    if (!initial)
+        return winv::Origin::Toggle;
+    return Settings::profile().isEmpty() ? winv::Origin::Startup : winv::Origin::StartupOtherProfile;
+}
+
+void App::applyClipboard(bool initial)
+{
+    // Explorer gives Win+V up (or gets it back) when it next starts. A V we
+    // did not put there is not ours to take out (winv::reconcile).
+    m_winVRegistryFailed = !winv::reconcile(L'V', m_settings.clipboardWinV, winKeyOrigin(initial));
     m_clipStore->setLimits({m_settings.clipboardMaxItems, m_settings.clipboardMaxDays}, QDateTime::currentMSecsSinceEpoch());
+    m_clipStore->setKeepsPlaceOnPaste(m_settings.clipboardKeepPlace);
+    m_clipboard->items()->setMarksPasted(m_settings.clipboardKeepPlace);
     const bool reopening = m_settings.clipboard && !m_clipStore->isOpen();
     if (reopening && !m_clipStore->open(QDateTime::currentMSecsSinceEpoch()))
         qWarning() << "Clipboard history: cannot be kept";
@@ -2238,7 +2430,11 @@ void App::applyClipboardHotkeys()
     QString state = u"off"_s;
     if (m_settings.clipboardWinV) {
         state = winV ? u"on"_s : m_winVRegistryFailed ? u"failed"_s : u"waiting"_s; // waiting: Explorer still has it
-    } else if (!winv::releasedByExplorer(L'V') && m_messages->registerHotkey(kWinVHotkeyId, u"Win+V"_s)) {
+    } else if (winv::releasedByExplorer(L'V')) {
+        // A V that is not ours: Win+V is dead until it goes. Failed: taking it
+        // out (还给 Windows, or ours as the switch went off) was not written.
+        state = m_winVRegistryFailed ? u"failed"_s : u"blocked"_s;
+    } else if (m_messages->registerHotkey(kWinVHotkeyId, u"Win+V"_s)) {
         m_messages->unregisterHotkey(kWinVHotkeyId); // nobody has it: Explorer takes it back when it restarts
         state = u"releasing"_s;
     }
@@ -2310,13 +2506,11 @@ void App::applyQuickPasteHotkeys()
     }
 }
 
-void App::applyTaskbar()
+void App::applyTaskbar(bool initial)
 {
     // As Win+V (applyClipboard): Explorer gives Win+S up, or takes it back,
     // when it next starts.
-    if (m_winSApplied ? *m_winSApplied != m_settings.taskbarWinS : m_settings.taskbarWinS)
-        m_winSRegistryFailed = !winv::setReleasedByExplorer(L'S', m_settings.taskbarWinS);
-    m_winSApplied = m_settings.taskbarWinS;
+    m_winSRegistryFailed = !winv::reconcile(L'S', m_settings.taskbarWinS, winKeyOrigin(initial));
     applyTaskbarHotkeys();
 
     applyTypeToSearch();
@@ -2558,20 +2752,138 @@ void App::startMenuTyped()
 {
     // Over the taskbar, where the Start menu was (showing it closes the
     // Start menu, see win::bringToFront), over Win顺's box if it is there;
-    // the keys follow once it has the keyboard.
-    m_deliverTyping = true;
+    // the keys follow once it is ready for them.
+    beginHandoff(u"start"_s);
     if (m_searchBoxShown)
         showLauncherInBox();
     else
         showLauncher({}, taskbar::locate(false));
-    if (m_window && m_window->isActive())
-        deliverTyping();
+    deliverTyping(); // pinned and up already: it may be now
+}
+
+void App::beginHandoff(const QString& surface)
+{
+    if (m_deliverTyping)
+        m_handoff.outcome = u"replaced"_s; // asked for again before the keys went
+    endHandoff(); // the last one's, should its watch still be on
+    m_deliverTyping = true;
+    m_handoff = {.surface = surface, .asked = std::chrono::steady_clock::now()};
 }
 
 void App::deliverTyping()
 {
-    if (std::exchange(m_deliverTyping, false) && m_typing)
-        m_typing->deliver();
+    using Clock = std::chrono::steady_clock;
+    using std::chrono::milliseconds;
+    if (!m_deliverTyping)
+        return;
+    if (!m_typing || !m_window) { // gone meanwhile: nothing left to wait for
+        m_typingCap.stop();
+        m_deliverTyping = false;
+        m_handoff.outcome = u"gone"_s;
+        endHandoff();
+        return;
+    }
+    // Ready as a user's typing would find it (searchtyping::handoff): active,
+    // its field Qt's focus object (the one with the window's input method
+    // context), its first frame on the screen. In front too, which the hook
+    // waits for as it types (GitHub #66).
+    const Clock::time_point now = Clock::now();
+    const HWND window = reinterpret_cast<HWND>(m_window->winId());
+    const QObject* focus = QGuiApplication::focusObject();
+    const searchtyping::LauncherState state {
+        .active = m_window->isActive(),
+        .fieldFocused = focus && (focus == m_searchField || focus->objectName() == u"panelSearchField"),
+        .revealed = m_window->isVisible() && !m_launcherReveal.pending() && !m_prewarming.load() && !isCloaked(window),
+    };
+    const auto note = [now](Clock::time_point& at, bool came) {
+        if (came && at == Clock::time_point {})
+            at = now;
+    };
+    note(m_handoff.active, state.active);
+    note(m_handoff.focused, state.active && state.fieldFocused);
+    note(m_handoff.revealed, state.revealed);
+    const bool wasActive = m_handoff.active != Clock::time_point {};
+    std::optional<unsigned> sinceActive;
+    if (wasActive)
+        sinceActive = static_cast<unsigned>(std::chrono::duration_cast<milliseconds>(now - m_handoff.active).count());
+    const searchtyping::Handoff handoff = searchtyping::handoff(state, sinceActive);
+    if (handoff == searchtyping::Handoff::Wait) {
+        // Never active: the hook's hold has dropped the keys by then.
+        const Clock::time_point until
+            = wasActive ? m_handoff.active + milliseconds(searchtyping::kHandoffCapMs)
+                        : m_handoff.asked + milliseconds(searchtyping::kWaitForLauncherMs);
+        if (!wasActive && now >= until) {
+            m_deliverTyping = false;
+            m_handoff.outcome = u"never-active"_s;
+            endHandoff();
+            return;
+        }
+        m_typingCap.start(std::max(1, static_cast<int>(std::chrono::ceil<milliseconds>(until - now).count())));
+        return;
+    }
+    m_typingCap.stop();
+    m_deliverTyping = false;
+    m_handoff.delivered = now;
+    m_handoff.outcome = handoff == searchtyping::Handoff::Deliver ? u"ready"_s : u"cap"_s;
+    QStringList missing;
+    if (!state.active)
+        missing << u"active"_s;
+    if (!state.fieldFocused)
+        missing << u"focused"_s;
+    if (!state.revealed)
+        missing << u"revealed"_s;
+    m_handoff.missing = missing.join(u',');
+    m_handoff.inFront = ::GetForegroundWindow() == window;
+    m_handoff.layout = static_cast<quint32>(reinterpret_cast<quintptr>(::GetKeyboardLayout(0)));
+    m_typing->deliver();
+    m_keysWatch->start(window);
+    m_handoffWatch.start();
+}
+
+void App::endHandoff()
+{
+    using Clock = std::chrono::steady_clock;
+    m_handoffWatch.stop();
+    const LauncherKeysWatch::Seen seen = m_keysWatch ? m_keysWatch->stop() : LauncherKeysWatch::Seen {};
+    if (m_handoff.surface.isEmpty())
+        return;
+    // From the first key of the hold (the hook's), unless that is a later
+    // hold's already; -1: did not come.
+    const TypeToSearch::Timing timing = m_typing ? m_typing->timing() : TypeToSearch::Timing {};
+    const bool sameHold = timing.firstKey != Clock::time_point {} && timing.firstKey <= m_handoff.asked;
+    const Clock::time_point from = sameHold ? timing.firstKey : m_handoff.asked;
+    const auto ms = [from](Clock::time_point at) {
+        return at == Clock::time_point {} ? -1
+                                          : static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(at - from).count());
+    };
+    const InputMethodInfo inputMethod = activeInputMethod(); // TSF's, off the keys' way (a moment after)
+    const quint32 layout = m_handoff.layout ? m_handoff.layout : static_cast<quint32>(inputMethod.layout);
+    QJsonObject details {
+        {u"surface"_s, m_handoff.surface},
+        {u"outcome"_s, m_handoff.outcome},
+        {u"missing"_s, m_handoff.missing},
+        {u"inFront"_s, m_handoff.inFront},
+        {u"presses"_s, sameHold && timing.sent != Clock::time_point {} ? timing.presses : -1},
+        {u"hkl"_s, u"0x%1"_s.arg(layout, 8, 16, u'0')},
+        {u"tip"_s, QString::fromStdWString(inputMethod.service)},
+        {u"tipName"_s, QString::fromStdWString(inputMethod.name)},
+        {u"askedMs"_s, ms(m_handoff.asked)},
+        {u"activeMs"_s, ms(m_handoff.active)},
+        {u"focusedMs"_s, ms(m_handoff.focused)},
+        {u"revealedMs"_s, ms(m_handoff.revealed)},
+        {u"deliveredMs"_s, ms(m_handoff.delivered)},
+        {u"sentMs"_s, ms(sameHold ? timing.sent : Clock::time_point {})},
+        {u"keyMs"_s, ms(seen.key)},
+        {u"imeTook"_s, seen.imeTook},
+        {u"keyDowns"_s, seen.keys},
+        {u"compositionMs"_s, ms(seen.composition)},
+        {u"candidatesMs"_s, ms(seen.candidates)},
+        {u"preeditMs"_s, ms(seen.preedit)},
+        {u"textMs"_s, ms(seen.text)},
+        {u"drawnMs"_s, ms(seen.drawn)},
+    };
+    m_handoff = {};
+    diagnostics::record(u"typing-handoff"_s, details);
 }
 
 void App::folderTyped(HWND root, HWND tab, bool opus, std::uint64_t request)
@@ -2613,13 +2925,16 @@ void App::typingFolderKnown(HWND root, HWND tab, bool opus, std::uint64_t reques
     }
     // The folder typed, the words to come after it (as Explorer's "search
     // here", GitHub #20); on the monitor of that window, which need not be
-    // the mouse's. The keys follow once the launcher has the keyboard.
-    m_deliverTyping = true;
-    showLauncher(folder.endsWith(u'\\') ? folder + u' ' : folder + u"\\ "_s, {}, false,
-        screenOf(::MonitorFromWindow(root, MONITOR_DEFAULTTONEAREST)));
+    // the mouse's. The keys follow once the launcher is ready for them.
+    beginHandoff(opus ? u"opus"_s : u"explorer"_s);
+    const QString prefix = folder.endsWith(u'\\') ? folder + u' ' : folder + u"\\ "_s;
+    showLauncher(prefix, {}, false, screenOf(::MonitorFromWindow(root, MONITOR_DEFAULTTONEAREST)));
     m_typingOrigin = {root, tab, opus}; // after showLauncher, which clears it
-    if (m_window && m_window->isActive())
-        deliverTyping();
+    // What is found in that folder first, then elsewhere (or there alone, as
+    // set: Launcher::setFolderTypingOnly), as Listary lists it (GitHub #110).
+    // After showLauncher too, which forgets the folder typed in before.
+    m_launcher->setTypingFolder(prefix);
+    deliverTyping(); // pinned and up already: it may be now
 }
 
 bool App::revealInTypingTab(const QString& path)
@@ -2688,7 +3003,11 @@ void App::applyTaskbarHotkeys()
     QString state = u"off"_s;
     if (m_settings.taskbarWinS) {
         state = winS ? u"on"_s : m_winSRegistryFailed ? u"failed"_s : u"waiting"_s; // waiting: Explorer still has it
-    } else if (!winv::releasedByExplorer(L'S') && m_messages->registerHotkey(kWinSHotkeyId, u"Win+S"_s)) {
+    } else if (winv::releasedByExplorer(L'S')) {
+        // An S that is not ours: Win+S and Win+Shift+S are dead until it goes.
+        // Failed: taking it out (还给 Windows, or ours) was not written.
+        state = m_winSRegistryFailed ? u"failed"_s : u"blocked"_s;
+    } else if (m_messages->registerHotkey(kWinSHotkeyId, u"Win+S"_s)) {
         m_messages->unregisterHotkey(kWinSHotkeyId); // nobody has it: Explorer takes it back when it restarts
         state = u"releasing"_s;
     }
@@ -2696,7 +3015,12 @@ void App::applyTaskbarHotkeys()
     // from here while Win+S is ours. Not while it goes back (releasing):
     // held as the new Explorer starts, it would be gone for good, Explorer
     // registers its keys once.
-    if (winS)
+    // The user's own capture shortcut, if it is that very chord, wins.
+    UINT clipModifiers = 0, clipVk = 0, captureModifiers = 0, captureVk = 0;
+    MessageWindow::parseHotkey(u"Win+Shift+S"_s, &clipModifiers, &clipVk);
+    const bool ownCapture = m_settings.captureEnabled && MessageWindow::parseHotkey(m_settings.captureHotkey.trimmed(), &captureModifiers, &captureVk)
+        && captureModifiers == clipModifiers && captureVk == clipVk;
+    if (winS && !ownCapture)
         m_messages->registerHotkey(kScreenClipHotkeyId, u"Win+Shift+S"_s);
     m_winSState = state;
     if (m_settingsEditor)
@@ -2746,6 +3070,7 @@ void App::restartExplorer()
     if (m_restartingExplorer)
         return;
     m_restartingExplorer = true;
+    releaseWinChordsForExplorer();
     // Seconds of waiting for Explorer to end and to start again: not on the
     // GUI thread.
     if (m_explorerRestart.joinable())
@@ -2757,6 +3082,55 @@ void App::restartExplorer()
                 self->explorerRestarted(back);
         }, Qt::QueuedConnection);
     });
+}
+
+void App::releaseWinChordsForExplorer()
+{
+    const std::pair<int, QString> ours[] = {
+        {kHotkeyId, m_settings.hotkey},
+        {kFolderMenuHotkeyId, m_settings.folderMenuHotkey},
+        {kClipboardHotkeyId, m_settings.clipboardHotkey},
+        {kCaptureHotkeyId, m_settings.captureHotkey},
+        {kPinsHotkeyId, m_settings.capturePinsHotkey},
+        {kPinsRestoreHotkeyId, m_settings.capturePinsRestoreHotkey},
+        {kLastPinHotkeyId, m_settings.captureLastPinHotkey},
+        {kWinVHotkeyId, u"Win+V"_s},
+        {kWinSHotkeyId, u"Win+S"_s},
+        {kScreenClipHotkeyId, u"Win+Shift+S"_s},
+    };
+    for (const auto& [id, chord] : ours) {
+        UINT modifiers = 0;
+        UINT vk = 0;
+        if (!MessageWindow::parseHotkey(chord.trimmed(), &modifiers, &vk) || !(modifiers & MOD_WIN) || (vk != 'S' && vk != 'V'))
+            continue;
+        // A letter in DisabledHotkeys is one Explorer leaves alone.
+        if (!winv::releasedByExplorer(static_cast<wchar_t>(vk)))
+            m_messages->unregisterHotkey(id);
+    }
+}
+
+void App::giveBackWinKey(const QString& letter)
+{
+    const wchar_t key = letter == u"V" ? L'V' : letter == u"S" ? L'S' : L'\0';
+    if (key == L'\0')
+        return;
+    const bool ok = winv::giveBack(key);
+    if (key == L'V') {
+        m_winVRegistryFailed = !ok;
+        applyClipboardHotkeys();
+    } else {
+        m_winSRegistryFailed = !ok;
+        applyTaskbarHotkeys();
+    }
+    if (ok && winv::canRestartExplorer())
+        restartExplorer();
+}
+
+void App::applyWinKeyedHotkeys()
+{
+    applyHotkey();
+    applyFolderMenuHotkey();
+    applyCaptureHotkeys();
 }
 
 void App::explorerRestarted(bool back)
@@ -2772,6 +3146,8 @@ void App::explorerRestarted(bool back)
     // also says when it is up (shellRestarted).
     applyClipboardHotkeys();
     applyTaskbarHotkeys();
+    if (!back)
+        applyWinKeyedHotkeys(); // no new Explorer to race
 }
 
 void App::setClipboardPaused(bool paused)
@@ -2838,6 +3214,7 @@ void App::showSettings()
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyFolderMenuHotkey);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyCaptureHotkeys);
         connect(editor, &SettingsEditor::explorerRestartRequested, this, &App::restartExplorer);
+        connect(editor, &SettingsEditor::giveBackRequested, this, &App::giveBackWinKey);
         connect(editor, &SettingsEditor::autostartRequested, this, &App::setAutostart);
         connect(editor, &SettingsEditor::clipboardClearRequested, this, [this, editor] {
             if (!m_clipStore->isOpen() && !m_clipStore->open(QDateTime::currentMSecsSinceEpoch()))
@@ -3045,6 +3422,27 @@ void App::showClipboardSettings()
         QMetaObject::invokeMethod(m_settingsWindow, "showClipboardPage");
 }
 
+void App::notifyCaptureSaved(const QString& path, const QString& error)
+{
+    if (!error.isEmpty()) {
+        m_messages->showNotification(tr("截图没能保存"), error);
+        return;
+    }
+    // The toast shows about four lines of text and a balloon holds 255
+    // characters: a long path must not push the hint off its end.
+    QString shown = QDir::toNativeSeparators(path);
+    constexpr qsizetype kMostPathChars = 80;
+    if (shown.size() > kMostPathChars)
+        shown = shown.left(kMostPathChars / 2 - 1) + u'…' + shown.right(kMostPathChars / 2);
+    m_messages->showNotification(tr("截图已保存"), shown + u'\n' + tr("点击打开所在文件夹"), [path] {
+        const saved::Target target = saved::target(path);
+        if (target.show == saved::Show::File)
+            shell::reveal(target.path); // in the file manager chosen, the file selected
+        else if (target.show == saved::Show::Folder)
+            shell::open(target.path); // the file is gone: its folder, if that is still there
+    });
+}
+
 void App::showWebSettings()
 {
     showSettings();
@@ -3089,13 +3487,17 @@ void App::refreshContentIndexStatus()
     QString status;
     if (m_settings.contentSearch && m_settings.contentIndex) {
         const ContentIndex::Stats stats = m_index->contentIndex()->stats();
-        const int files = static_cast<int>(stats.documents);
+        // This PC's files alone: the network locations' are told on their cards (GitHub #114).
+        std::size_t remote = 0;
+        for (const remotecontent::Indexer::Status& s : m_index->shareContent())
+            remote += s.progress.indexed;
+        const int files = static_cast<int>(stats.documents - std::min(remote, stats.documents));
         if (m_index->readingContent())
             status = tr("正在建立索引… 已收录 %Ln 个文件", nullptr, files)
                 + tr("，这一轮读到 %1 / %2")
                       .arg(QLocale().toString(static_cast<qulonglong>(m_index->contentIndexer()->progress().done)),
                           QLocale().toString(static_cast<qulonglong>(m_index->contentIndexer()->progress().total)));
-        else if (stats.documents == 0)
+        else if (files == 0)
             status = tr("文件索引一建好，就开始建立");
         else
             status = tr("已收录 %Ln 个文件，占用 %1 磁盘空间", nullptr, files)
@@ -3125,8 +3527,10 @@ void App::refreshShareStatuses()
                     tr("已收录 %L1 项，之后有变化会自动更新。").arg(static_cast<qulonglong>(s.items)));
         }
     }
-    if (m_settingsEditor)
+    if (m_settingsEditor) {
         m_settingsEditor->setShareStatuses(std::move(statuses));
+        m_settingsEditor->setShareContentStatuses(m_index->shareContent()); // GitHub #114
+    }
 }
 
 // Windows' own dialog for the user name and password of the server of
@@ -3148,9 +3552,21 @@ void App::signInToServer(const QString& path, unsigned long error, const QString
         return;
     std::thread([this, guard = QPointer<QObject>(this), path, entered] {
         const unsigned long result = credentials::connect(path.toStdWString(), *entered);
-        QMetaObject::invokeMethod(qApp, [this, guard, path, entered, result] {
+        // An http WebDAV server that takes the password in the clear alone,
+        // which Windows does not send (BasicAuthLevel): Windows says the
+        // folder is not there (67), whatever is typed; the server, asked,
+        // wants a password (GitHub #114).
+        const bool clear = result != NO_ERROR && webdav::httpSignInBlocked(path.toStdWString())
+            && webdav::wantsClearPassword(path.toStdWString());
+        QMetaObject::invokeMethod(qApp, [this, guard, path, entered, result, clear] {
             if (!guard)
                 return;
+            // Asked again, it would fail again, and say nothing of why.
+            if (clear) {
+                if (m_settingsEditor)
+                    m_settingsEditor->setSignedIn(path, SettingsEditor::httpSignInText(true));
+                return;
+            }
             if (result == ERROR_LOGON_FAILURE || result == ERROR_INVALID_PASSWORD || result == ERROR_ACCOUNT_RESTRICTION) {
                 signInToServer(path, result, QString::fromStdWString(entered->user)); // wrong: again, saying so
                 return;
@@ -3352,9 +3768,10 @@ void App::refreshIndexFolder(bool measure)
 
 void App::handleCommand(const QString& command)
 {
-    if (command == u"toggle")
+    if (command == u"toggle") {
+        beginTrigger(TriggerSource::Command, ::GetTickCount64()); // its time is when it got here
         toggleLauncher();
-    else if (command == u"quit")
+    } else if (command == u"quit")
         // Explicit exit must bypass the retained windows' Close vetoes.
         // App's destructor saves the index and disposes of those windows.
         QCoreApplication::exit(0);
@@ -3411,6 +3828,13 @@ void App::dumpLauncher(const QString& file) const
     state[u"selected"_s] = m_launcher->results()->selectedCount();
     state[u"currentRow"_s] = m_launcher->currentRow();
     state[u"keyHints"_s] = QJsonObject::fromVariantMap(m_launcher->keyHints()); // Enter, the second key, Tab: what they do on the current row
+    // Typed in a folder's window (GitHub #110): that folder, whether only it
+    // is searched, where 其他位置 begins, and the hint rows under the list.
+    state[u"typingFolder"_s] = m_launcher->typingFolder();
+    state[u"typingFolderOnly"_s] = m_launcher->typingFolderOnly();
+    state[u"elsewhereRow"_s] = m_launcher->results()->elsewhereRow();
+    state[u"leftOutHints"_s] = QJsonArray::fromVariantList(m_launcher->leftOutHints());
+    state[u"elapsedUs"_s] = static_cast<double>(m_launcher->elapsedUs());
     QJsonArray rows;
     const ResultModel* model = m_launcher->results();
     for (int i = 0; i < model->count(); ++i) {
@@ -3419,7 +3843,8 @@ void App::dumpLauncher(const QString& file) const
         QJsonObject row {{u"name"_s, r->name}, {u"path"_s, r->path}, {u"isDir"_s, r->isDir},
             {u"size"_s, static_cast<double>(r->size)}, {u"sizeText"_s, model->data(at, ResultModel::SizeRole).toString()},
             {u"modified"_s, static_cast<double>(r->modified)},
-            {u"modifiedDate"_s, model->data(at, ResultModel::ModifiedDateRole).toString()}, {u"app"_s, r->isApp()}};
+            {u"modifiedDate"_s, model->data(at, ResultModel::ModifiedDateRole).toString()}, {u"app"_s, r->isApp()},
+            {u"elsewhere"_s, r->elsewhere}};
         if (!r->switchId.isEmpty()) { // a system switch's row: its title, what it asks, and its state as the row draws it
             static constexpr const char16_t* kAvailability[] {u"unknown", u"ready", u"noDevice", u"denied", u"blocked", u"unsupported"};
             static constexpr const char16_t* kKind[] {u"toggle", u"on", u"off", u"setLevel", u"stepLevel", u"awakeFor", u"awakeUntil", u"openSettings"};
@@ -3542,6 +3967,20 @@ void App::applyDropPie()
     }
 }
 
+namespace {
+// The bar's word for an elevated dialog it can only copy for (#104). The
+// service navigates only for the WinShun.exe beside it; a portable copy never
+// is (its --install puts the service in Program Files), so installing the
+// service is no answer there either.
+QString copyOnlyHint(ServiceDialogNav::Reach reach)
+{
+    using Reach = ServiceDialogNav::Reach;
+    if (reach == Reach::OtherCopy || (reach != Reach::Available && !Settings::portableFolder().isEmpty()))
+        return u"installed"_s;
+    return reach == Reach::NoService ? u"service"_s : QString();
+}
+} // namespace
+
 void App::applyDialogs()
 {
     if (m_settings.dialogBar && !m_dialogBar) {
@@ -3549,6 +3988,33 @@ void App::applyDialogs()
             m_dialogEngine = std::make_unique<SearchEngine>(m_index.get(), m_apps.get(), m_places.get());
         m_dialogBar = std::make_unique<DialogBar>(m_dialogEngine.get(), m_history.get(),
             m_favorites.get(), [this](HWND dialog, std::wstring path, bool isFile, bool open) {
+                // An elevated dialog goes through the service helper (folder
+                // only); a failure falls back to copying the path. A normal one
+                // is driven directly.
+                if (integrity::higherThanOurs(dialog)) {
+                    const QString copyPath = QString::fromStdWString(path);
+                    if (!(m_serviceNav && m_serviceNav->available())) {
+                        // A copy-only bar copies by itself; this one still
+                        // thought the service could (not told yet that it
+                        // went): copy here, never nothing at all.
+                        if (m_dialogBar)
+                            m_dialogBar->copyPathFallback(dialog, copyPath);
+                        return;
+                    }
+                    const std::size_t slash = path.find_last_of(L'\\');
+                    std::wstring folder = !isFile ? path
+                        : slash == std::wstring::npos ? path
+                                                      : path.substr(0, slash == 2 ? 3 : slash);
+                    m_serviceNav->navigate(dialog, std::move(folder), [this, dialog, copyPath](bool ok) {
+                        if (ok)
+                            return;
+                        QMetaObject::invokeMethod(this, [this, dialog, copyPath] {
+                            if (m_dialogBar)
+                                m_dialogBar->copyPathFallback(dialog, copyPath);
+                        }, Qt::QueuedConnection);
+                    });
+                    return;
+                }
                 if (m_dialogJump)
                     m_dialogJump->go(dialog, std::move(path), isFile, open);
             });
@@ -3562,15 +4028,31 @@ void App::applyDialogs()
     }
     if (m_dialogBar) {
         m_dialogBar->setRecordHistory(m_settings.recordHistory);
-        m_dialogBar->setExcludedTypes(m_settings.excludedTypes);
+        m_dialogBar->setExcludedFiles(m_settings.excludedTypes, m_settings.excludedFileNames);
         m_dialogBar->setExcludedApps(m_settings.dialogBarExcludedApps);
         m_dialogBar->setPlace(m_settings.dialogBarPlace);
         m_dialogBar->setResultOptions(m_settings.showModified, m_settings.thumbnails, m_settings.numberKeys);
         m_dialogBar->results()->setShowModifiedTime(m_settings.showModifiedTime);
         m_dialogBar->setAskAutoJump(!m_settings.dialogAutoJump && !m_settings.dialogAutoJumpAsked);
+        m_dialogBar->setCopyOnlyHint(copyOnlyHint(m_serviceNav ? m_serviceNav->reach() : ServiceDialogNav::Reach::NoService));
+        m_dialogBar->setElevatedNavAvailable(m_serviceNav && m_serviceNav->available());
     }
 
     const bool followDialogs = m_settings.dialogJump || m_settings.dialogBar || m_settings.dialogAutoJump;
+    if (followDialogs && !m_serviceNav) {
+        // The background pipe client that asks the service to navigate elevated
+        // dialogs (#104); it tells us when that ability appears or goes.
+        m_serviceNav = std::make_unique<ServiceDialogNav>([this](ServiceDialogNav::Reach reach) { // worker thread
+            QMetaObject::invokeMethod(this, [this, reach] {
+                if (m_dialogBar) {
+                    m_dialogBar->setCopyOnlyHint(copyOnlyHint(reach));
+                    m_dialogBar->setElevatedNavAvailable(reach == ServiceDialogNav::Reach::Available);
+                }
+                if (m_dialogJump)
+                    m_dialogJump->refreshElevated();
+            }, Qt::QueuedConnection);
+        });
+    }
     if (followDialogs && !m_dialogJump) {
         DialogJump::Callbacks callbacks;
         callbacks.setHotkey = [this](bool on) {
@@ -3580,12 +4062,20 @@ void App::applyDialogs()
             return true;
         };
         callbacks.dialogChanged = [this](HWND dialog) {
+            // An elevated dialog just came up: re-probe so the bar knows at
+            // once whether it can jump or must fall back to copy.
+            if (dialog && m_serviceNav && integrity::higherThanOurs(dialog))
+                m_serviceNav->refresh();
             if (m_dialogBar && (!dialog || m_barWindow || createBarWindow()))
                 m_dialogBar->setDialog(dialog);
         };
         callbacks.dialogMoved = [this] {
             if (m_dialogBar)
                 m_dialogBar->dialogMoved();
+        };
+        callbacks.dialogRestacked = [this] {
+            if (m_dialogBar)
+                m_dialogBar->dialogRestacked();
         };
         callbacks.dialogDragged = [this](bool dragged) {
             if (m_dialogBar)
@@ -3597,10 +4087,16 @@ void App::applyDialogs()
                     m_dialogBar->setOrigin(dialog, from);
             }, Qt::QueuedConnection);
         };
+        callbacks.elevatedNavAvailable = [this] { return m_serviceNav && m_serviceNav->available(); };
+        callbacks.navigateElevated = [this](HWND dialog, std::wstring folder) { // may be the worker thread
+            if (m_serviceNav)
+                m_serviceNav->navigate(dialog, std::move(folder), {});
+        };
         m_dialogJump = std::make_unique<DialogJump>(std::move(callbacks));
         updateCompanions();
     } else if (!followDialogs) {
         m_dialogJump.reset();
+        m_serviceNav.reset();
     }
     if (m_dialogJump) {
         m_dialogJump->setHotkeyEnabled(m_settings.dialogJump);
@@ -3697,18 +4193,43 @@ void App::updateCompanions()
     m_dialogJump->setCompanions(std::move(windows));
 }
 
-void App::onDoubleCtrl()
+void App::onDoubleCtrl(const KeyListener::Tap& tap)
 {
-    const ForegroundFacts facts = foreground::facts();
+    const std::uint64_t now = ::GetTickCount64();
+    const std::uint64_t pressedAt = tickTime(tap.time, now);
+    // Which listener told of it, and when: late by the listener, or by this
+    // thread (queue_ms), GitHub #111.
+    beginTrigger(TriggerSource::DoubleTap, pressedAt,
+        TriggerJournal::Told {tap.from == KeyListener::Tap::From::Helper  ? "helper"
+                : tap.from == KeyListener::Tap::From::OwnBackup ? "own-backup"
+                                                                : "own",
+            static_cast<std::int64_t>(static_cast<std::int32_t>(tap.toldAt - tap.time)), tap.queuedMs});
+    ForegroundFacts facts = foreground::facts();
+    // Hidden by Windows as the user typed ("hide pointer while typing"),
+    // not by a game: the mouse is not taken (GitHub #111).
+    if (facts.cursorHidden && m_pointerWatch)
+        facts.cursorHiddenByTyping = m_pointerWatch->hiddenByTyping();
     const IgnoreReason reason = doubleCtrlIgnoreReason(facts,
         {m_settings.doubleCtrlPauseInGames, m_settings.doubleCtrlPauseInFullScreen, m_settings.doubleCtrlExcludedApps});
     if (reason == IgnoreReason::None) {
-        toggleLauncher();
+        // Pressed again or not by where it began (seenBy): a double tap made
+        // again just before the launcher came, as nothing had, ends after it,
+        // and judged by its release it closed what had just come (GitHub
+        // #111). By its release when its first press is not known (an older
+        // UIAccess listener's word).
+        toggleLauncher(true, tickTime(tap.firstPress.value_or(tap.time), now));
         return;
     }
     // Nothing shown over a game. The log says why, for "double Ctrl does nothing".
     static const char* const why[] {"", "it is in the list", "it is full screen", "it is in exclusive full screen",
-        "it has taken the mouse (cursor hidden and confined, or full screen)"};
+        "it has taken the mouse (cursor hidden by it, and confined, captured or full screen)"};
+    static const char* const names[] {"", "listed", "full-screen", "exclusive-full-screen", "mouse-taken"};
+    m_triggers->ignored(names[static_cast<int>(reason)],
+        static_cast<std::uint8_t>((facts.coversMonitor ? TriggerJournal::kCovers : 0)
+            | (facts.exclusiveFullScreen ? TriggerJournal::kExclusive : 0)
+            | (facts.cursorHidden ? TriggerJournal::kHidden : 0) | (facts.cursorConfined ? TriggerJournal::kConfined : 0)
+            | (facts.cursorCaptured ? TriggerJournal::kCaptured : 0)
+            | (facts.cursorHiddenByTyping ? TriggerJournal::kTyping : 0)));
     const QString key = facts.program + u' ' + QString::number(static_cast<int>(reason));
     if (!m_doubleCtrlIgnoredLogged.contains(key)) {
         m_doubleCtrlIgnoredLogged.append(key);
@@ -3717,12 +4238,23 @@ void App::onDoubleCtrl()
     }
 }
 
-void App::toggleLauncher()
+void App::toggleLauncher(bool byShortcut, std::optional<std::uint64_t> pressedAt)
 {
+    const std::uint64_t at = pressedAt.value_or(::GetTickCount64());
+    const auto decided = [this](const char* action, std::optional<TriggerWindow> coming = std::nullopt) {
+        if (m_triggers)
+            m_triggers->decided(action, coming);
+    };
     // The clipboard in front: back into the box it came from, or over to searching.
     if (clipboardInCharge()) {
+        // Pressed before it was there to be seen (GitHub #111): it stays.
+        if (!seenBy(m_clipRevealedAt, at)) {
+            decided("clipboard-stays");
+            return;
+        }
         if (m_clipboard->field()) {
             m_clipboard->dismiss();
+            decided("clipboard-back");
             return;
         }
         hideClipboard();
@@ -3730,21 +4262,120 @@ void App::toggleLauncher()
     // In front of a file dialog: into its search bar, and back.
     if (m_dialogBar && m_dialogBar->isShown()) {
         m_dialogBar->toggleFocus();
+        decided("dialog-bar");
         return;
     }
-    if (launcherShown() && m_window->isActive())
+    // Pressed again (ShortcutAgain): the box becomes the panel, as with Ctrl+E.
+    // The tray and the command line say "toggle" and keep closing it. Not a
+    // press made before it was there to be seen (seenBy): one that waited
+    // behind a slow opening, or was made again because nothing came, closed
+    // the launcher the first had just opened (GitHub #111).
+    switch (shortcutAction(launcherShown(), m_window->isActive(), m_launcher->panel(),
+        byShortcut && m_settings.shortcutAgain == u"panel", seenBy(m_launcherRevealedAt, at))) {
+    case ShortcutAction::Hide:
         hideLauncher();
-    else
+        decided("hide");
+        break;
+    case ShortcutAction::ExpandPanel:
+        setPanel(true);
+        decided("panel");
+        break;
+    case ShortcutAction::Raise:
+        // Coming, or up already: to the front as it is, neither placed again nor closed.
+        toFront(m_window);
+        m_window->requestActivate();
+        decided("raise");
+        break;
+    case ShortcutAction::Show:
+        decided("show", TriggerWindow::Launcher);
         showLauncher();
+        if (m_triggers && !m_launcherReveal.pending()) // up already (behind a window, sliding out): seen now
+            m_triggers->seen(TriggerWindow::Launcher);
+        break;
+    }
 }
 
-void App::toggleClipboard()
+void App::toggleClipboard(std::optional<std::uint64_t> pressedAt)
 {
-    // Again in front: back to the field it was opened from, or hidden.
-    if (clipboardInCharge())
+    // Again in front: back to the field it was opened from, or hidden. Not
+    // by a press made before it was there to be seen (seenBy, GitHub #111):
+    // it comes, and stays.
+    if (clipboardInCharge() && seenBy(m_clipRevealedAt, pressedAt.value_or(::GetTickCount64()))) {
         m_clipboard->dismiss();
-    else
-        showClipboard();
+        if (m_triggers)
+            m_triggers->decided("clipboard-back");
+        return;
+    }
+    if (m_triggers) // in front and still coming: it comes, as it is
+        m_triggers->decided(clipboardInCharge() ? "raise" : "show", TriggerWindow::Clipboard);
+    showClipboard();
+    if (m_triggers && m_clipWindow && !m_clipReveal.pending()) // up already
+        m_triggers->seen(TriggerWindow::Clipboard);
+}
+
+void App::beginTrigger(TriggerSource source, std::uint64_t pressedAt, std::optional<TriggerJournal::Told> told)
+{
+    if (!m_triggers)
+        m_triggers = std::make_unique<TriggerJournal>();
+    TriggerJournal::Context context;
+    context.helper = m_keyListener && m_keyListener->serviceActive();
+    context.trimmed = m_idleTrim && m_idleTrim->trimmed();
+    context.rawInput = rawInputState();
+    context.told = told;
+    m_triggers->begin(source, pressedAt, context);
+}
+
+// A double tap that came to nothing (KeyListener::Note): in the journal, a
+// few an hour (JournalBudget). The key by name; nothing typed.
+void App::journalTapNote(const KeyListener::Note& note)
+{
+    if (!m_tapNotes.take(true, ::GetTickCount64()))
+        return;
+    const bool alt = note.key == VK_LMENU || note.key == VK_RMENU;
+    const bool shift = note.key == VK_LSHIFT || note.key == VK_RSHIFT;
+    const bool right = note.key == VK_RCONTROL || note.key == VK_RMENU || note.key == VK_RSHIFT;
+    QJsonObject details {
+        {u"key"_s, QString::fromLatin1(alt ? "alt" : shift ? "shift" : "ctrl")},
+        {u"side"_s, QString::fromLatin1(right ? "right" : "left")},
+        {u"ms"_s, static_cast<qint64>(note.ms)},
+    };
+    if (note.kind == KeyListener::Note::Kind::NearMiss) {
+        details.insert(u"reason"_s, QString::fromLatin1(DoubleTapDetector::name(note.miss)));
+        if (note.by != DoubleTapDetector::Cause::None) // what spoiled it, never which key
+            details.insert(u"by"_s, QString::fromLatin1(DoubleTapDetector::name(note.by)));
+    } else
+        details.insert(u"reason"_s, note.kind == KeyListener::Note::Kind::Late ? u"late"_s : u"set-aside"_s);
+    if (m_tapNotes.skipped() > 0)
+        details.insert(u"skipped"_s, m_tapNotes.skipped());
+    diagnostics::record(note.kind == KeyListener::Note::Kind::NearMiss ? u"double-tap-near-miss"_s
+                                                                       : u"double-tap-dropped"_s,
+        details);
+}
+
+win::Front App::toFront(QWindow* window)
+{
+    QElapsedTimer timer;
+    timer.start();
+    const win::Front front = win::bringToFront(window);
+    if (m_triggers && m_triggers->open())
+        m_triggers->front(front, static_cast<double>(timer.nsecsElapsed()) / 1e6);
+    return front;
+}
+
+// Double tap works only while the keyboard's Raw Input comes to the
+// listener's window (KeyListener): ok, none (gone; it is set aside on
+// purpose while TypeToSearch holds keys, or a shortcut is recorded), other
+// (another window of ours took it), unknown (Windows could not say).
+const char* App::rawInputState() const
+{
+    if (!m_keyListener || !m_settings.doubleCtrl)
+        return "off";
+    const KeyboardRawInput raw = keyboardRawInput();
+    if (raw.error)
+        return "unknown";
+    if (!raw.registration)
+        return "none";
+    return raw.registration->hwndTarget == m_keyListener->window() ? "ok" : "other";
 }
 
 void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>& spot, bool inBox, QScreen* on)
@@ -3752,6 +4383,8 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
     if (!m_window)
         return;
     m_typingOrigin = {}; // opened anew: set again by typingFolderKnown when that is why
+    if (!query.isEmpty())
+        m_launcher->setTypingFolder({}); // a path given ("search here") is searched alone, as typed (GitHub #110)
     if (m_idleTrim->takeTrimmed() && m_index->index()) {
         // The index's pages back while the window comes up, before the first
         // search needs them (IdleTrim, FileIndex::warm).
@@ -3763,6 +4396,8 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
     hideClipboard(false); // from under its search box: searching again
     m_boxPressGrace.stop();
     m_launcherShown.start();
+    m_idleTrim->used();
+    m_index->shares().lookedAt(); // a WebDAV server stopped meanwhile shows as offline (GitHub #114)
     if (!launcherShown()) { // what a screenshot of the history pastes into (jt, Enter)
         const HWND front = ::GetForegroundWindow();
         if (front != reinterpret_cast<HWND>(m_window->winId()))
@@ -3775,7 +4410,7 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
         // spot, or the field into the taskbar's box.
         if (!query.isEmpty())
             m_launcher->setQuery(query);
-        win::bringToFront(m_window);
+        toFront(m_window);
         m_window->requestActivate();
         m_launcher->handleShown(); // refreshed (something was opened meanwhile), all typed selected
         if (!query.isEmpty())
@@ -3788,6 +4423,9 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
     // it are drawn, so the old words and rows are never seen.
     if (m_settings.clearOnOpen && !wasClosing && (!m_window->isVisible() || m_prewarming.load()))
         m_launcher->startOver();
+    // Nor there to be seen until then, however it went last (seenBy, GitHub #111).
+    if (!m_window->isVisible() || m_prewarming.load())
+        m_launcherRevealedAt.reset();
     const bool wasInBox = m_launcher->inTaskbarBox();
     // Pinned, it stays while the user works elsewhere: a window of its own,
     // with its own field, the box idle (see launcherPinnedChanged).
@@ -3826,7 +4464,8 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
         m_launcherReveal.begin();
     }
     m_window->show();
-    win::bringToFront(m_window);
+    toFront(m_window);
+    m_launcherFrontTick = ::GetTickCount(); // input after this is not its own empty one (logLauncherLostFront)
     m_window->requestActivate();
     m_launcher->handleShown(); // selects all that is typed
     if (!query.isEmpty()) // typed for the user (a folder, --query): words go after it
@@ -3839,6 +4478,7 @@ void App::showClipboard()
 {
     if (!m_clipWindow && !createClipWindow())
         return;
+    m_idleTrim->used(); // it never takes the focus, which would tell IdleTrim
     // Digits another program holds as global hotkeys stay its (KeyRouter
     // passes them on): their rows carry no number.
     if (m_settings.clipboardNumberKeys != u"off") {
@@ -3855,6 +4495,7 @@ void App::showClipboard()
     const bool prewarming = m_clipPrewarming.exchange(false); // up already, cloaked
     bool keepFocus = false; // where it is, with the program it pastes into
     if (!m_clipWindow->isVisible() || prewarming) {
+        m_clipRevealedAt.reset(); // there to be seen from its first frame on, however it went last (seenBy)
         // It pastes into what had the keyboard before it: a text field of
         // Win顺's own (read before the window takes the focus from it), or
         // else the window in front.
@@ -3909,7 +4550,7 @@ void App::showClipboard()
         return;
     }
     m_clipWindow->show();
-    win::bringToFront(m_clipWindow);
+    toFront(m_clipWindow);
     m_clipWindow->requestActivate();
 }
 
@@ -3966,6 +4607,10 @@ bool App::startKeyRouting(HWND target)
 
 void App::stopKeyRouting()
 {
+    // Its own window in front (activated), hidden, given up: the hook would
+    // hear nothing more (docs/pitfalls.md), or nothing would be pasted into.
+    if (m_hold)
+        endClipboardHold("unrouted");
     if (m_keyRouter) {
         // No key is taken any more; the releases of those it took still are
         // its own, for a moment.
@@ -4030,6 +4675,191 @@ void App::routedForeground(HWND window)
         return;
     }
     hideClipboard(); // another program in front: as a menu
+}
+
+namespace {
+
+// A hotkey's modifiers as the footer names them, in its own order: "Ctrl+Shift".
+QString holdKeysOf(const QString& shortcut)
+{
+    QStringList keys;
+    for (const QString& part : shortcut.split(u'+', Qt::SkipEmptyParts)) {
+        const QString key = part.trimmed().toLower();
+        if (key == u"ctrl" || key == u"control")
+            keys << u"Ctrl"_s;
+        else if (key == u"alt")
+            keys << u"Alt"_s;
+        else if (key == u"shift")
+            keys << u"Shift"_s;
+        else if (key == u"win" || key == u"meta")
+            keys << u"Win"_s;
+    }
+    return keys.join(u'+');
+}
+
+} // namespace
+
+void App::armClipboardHold(int hotkey, std::uint64_t pressedAt)
+{
+    if (m_hold || m_holdWatch)
+        endClipboardHold("again");
+    if (!m_settings.clipboardHoldToStep || (m_clipWindow && m_clipWindow->isVisible() && !m_clipPrewarming.load()))
+        return; // off, or the window up already: a press as ever
+    const QString shortcut = hotkey == kWinVHotkeyId ? u"Win+V"_s : m_settings.clipboardHotkey.trimmed();
+    UINT modifiers = 0;
+    UINT vk = 0;
+    if (!MessageWindow::parseHotkey(shortcut, &modifiers, &vk) || !(modifiers & hotkeysteps::kModifiers))
+        return; // nothing to hold
+    // Over a program that keeps the keyboard, as showClipboard routes its
+    // keys: else the window takes the keyboard, and the hook hears nothing.
+    const HWND foreground = ::GetForegroundWindow();
+    const HWND target = paste::usableTarget(foreground);
+    if (!target || win::isShellFlyout(foreground) || integrity::higherThanOurs(target))
+        return;
+    // Whether the keys stayed down since the press: only so soon after it.
+    const std::uint64_t now = ::GetTickCount64();
+    const std::uint64_t late = now > pressedAt ? now - pressedAt : 0;
+    if (late > hotkeysteps::kArmWithinMs) {
+        diagnostics::record(u"clipboard-hold-skipped"_s, {{u"reason"_s, u"late"_s}, {u"ms"_s, static_cast<qint64>(late)}});
+        return;
+    }
+    const std::uint64_t run = ++m_holdRun;
+    HoldWatch::Callbacks callbacks;
+    callbacks.note = [this, run](hotkeysteps::Note note, std::uint32_t time) {
+        if (m_holdWatch && m_holdRun == run)
+            clipboardHoldNote(note, tickTime(time, ::GetTickCount64()));
+    };
+    callbacks.drained = [this, run] { // the watch's thread
+        QMetaObject::invokeMethod(this, [this, run] {
+            if (m_drainingWatchRun == run)
+                m_drainingWatch.reset();
+        }, Qt::QueuedConnection);
+    };
+    auto watch = std::make_unique<HoldWatch>(modifiers & hotkeysteps::kModifiers, vk, std::move(callbacks));
+    if (!watch->isActive()) { // let go already, or no hook
+        diagnostics::record(u"clipboard-hold-skipped"_s,
+            {{u"reason"_s, QString::fromLatin1(watch->inactiveReason())},
+             {u"error"_s, static_cast<qint64>(watch->setupError())}, {u"ms"_s, static_cast<qint64>(late)}});
+        return;
+    }
+    m_holdWatch = std::move(watch);
+    m_hold.emplace(pressedAt);
+    m_holdHotkey = hotkey;
+    m_holdModifiers = modifiers & hotkeysteps::kModifiers;
+    m_holdVk = vk;
+    m_holdLate = late;
+    m_clipboard->beginSteps(holdKeysOf(shortcut));
+    m_holdTimer.start();
+}
+
+bool App::clipboardStepPress(int hotkey)
+{
+    if (!m_hold || hotkey != m_holdHotkey)
+        return false;
+    if (m_hold->press() == hotkeysteps::Hold::Press::Normal) {
+        endClipboardHold("pressed-again"); // part of it let go first: closes, or raises, as ever
+        return false;
+    }
+    m_clipboard->step();
+    return true;
+}
+
+void App::clipboardHoldNote(hotkeysteps::Note note, std::uint64_t at)
+{
+    if (!m_hold)
+        return;
+    using Outcome = hotkeysteps::Hold::Outcome;
+    switch (m_hold->note(note, at)) {
+    case Outcome::None:
+        return;
+    case Outcome::Paste: { // as Enter on that row: the window goes, the paste keys to the program, past the hook
+        const bool pasted = m_clipboard->finishSteps(m_holdWatch ? m_holdWatch->guardPaste() : nullptr);
+        endClipboardHold(pasted ? "paste" : "gone");
+        return;
+    }
+    case Outcome::Cancel: // nothing pasted; the window stays, on that row, until Esc again
+        m_clipboard->endSteps();
+        return;
+    case Outcome::Close: // nothing was waiting to be pasted: Esc as ever
+        endClipboardHold("escape");
+        m_clipboard->dismiss();
+        return;
+    case Outcome::End:
+        endClipboardHold(note == hotkeysteps::Note::Other ? "other-key"
+                : m_hold->cancelled()                      ? "cancelled"
+                                                           : "browse");
+        return;
+    }
+}
+
+void App::checkClipboardHold()
+{
+    if (!m_hold) {
+        m_holdTimer.stop();
+        return;
+    }
+    const auto down = [](int vk) { return (::GetAsyncKeyState(vk) & 0x8000) != 0; };
+    unsigned held = 0;
+    if (down(VK_CONTROL))
+        held |= hotkeysteps::kCtrl;
+    if (down(VK_MENU))
+        held |= hotkeysteps::kAlt;
+    if (down(VK_SHIFT))
+        held |= hotkeysteps::kShift;
+    if (down(VK_LWIN) || down(VK_RWIN))
+        held |= hotkeysteps::kWin;
+    const bool keyDown = down(static_cast<int>(m_holdVk));
+    const unsigned modifiers = held & m_holdModifiers;
+    using Held = hotkeysteps::Hold::Held;
+    using Poll = hotkeysteps::Hold::Poll;
+    switch (m_hold->poll(keyDown && modifiers == m_holdModifiers ? Held::Whole
+                         : keyDown || modifiers                 ? Held::Part
+                                                                : Held::None,
+        ::GetTickCount64())) {
+    case Poll::None:
+        return;
+    case Poll::Hint: // letting go pastes the first entry, and the footer says so from now on
+        m_clipboard->holdFirst();
+        return;
+    case Poll::Silent: // Windows dropped the hook (too slow once, the secure desktop): nothing pasted
+        endClipboardHold("no-word");
+        return;
+    }
+}
+
+void App::endClipboardHold(const char* why)
+{
+    m_holdTimer.stop();
+    if (m_hold) {
+        diagnostics::record(u"clipboard-hold-end"_s,
+            {{u"why"_s, QString::fromLatin1(why)}, {u"steps"_s, m_hold->steps()},
+             {u"heldMs"_s, static_cast<qint64>(m_hold->heldFor(::GetTickCount64()))},
+             {u"lateMs"_s, static_cast<qint64>(m_holdLate)}});
+        m_hold.reset();
+    }
+    m_clipboard->endSteps();
+    if (m_holdWatch) {
+        // The keys as ever from here on; an Esc it took stays its own until
+        // let go. Not destroyed here: this may be its window's message.
+        m_holdWatch->drain();
+        m_drainingWatch = std::move(m_holdWatch); // one still draining before it: gone
+        m_drainingWatchRun = m_holdRun;
+        QTimer::singleShot(std::chrono::milliseconds(hotkeysteps::kDrainCapMs), this,
+            [this, run = m_drainingWatchRun] { capDrainingWatch(run); });
+    }
+}
+
+void App::capDrainingWatch(std::uint64_t run)
+{
+    if (m_drainingWatchRun != run || !m_drainingWatch)
+        return;
+    // Not while the paste keys go past it: a modifier put back halfway could
+    // be left as the hand no longer has it.
+    if (m_drainingWatch->pastePassing()) {
+        QTimer::singleShot(std::chrono::milliseconds(50), this, [this, run] { capDrainingWatch(run); });
+        return;
+    }
+    m_drainingWatch.reset(); // an Esc held that long is the program's again; a paste that long in coming goes unwatched
 }
 
 void App::clipboardShiftTapped()
@@ -4098,7 +4928,7 @@ void App::engageClipboard()
         }
     }
     m_clipFrame->setNoActivate(false);
-    win::bringToFront(m_clipWindow);
+    toFront(m_clipWindow);
     m_clipWindow->requestActivate();
 }
 
@@ -4120,6 +4950,11 @@ void App::uncloakClipboard()
     // The logo when it is on its own: under a box, that box's window has one.
     if (m_clipWindow->isVisible() && !m_clipboard->field() && m_clipLogo)
         m_clipLogo->reveal();
+    if (m_clipWindow->isVisible() && !m_clipPrewarming.load()) {
+        m_clipRevealedAt = ::GetTickCount64(); // there to be seen from now on (seenBy)
+        if (m_triggers)
+            m_triggers->seen(TriggerWindow::Clipboard);
+    }
 }
 
 void App::hideClipboard(bool launcherToo)
@@ -4138,6 +4973,7 @@ void App::hideClipboard(bool launcherToo)
     }
     const bool underLauncher = clipboardUnderLauncher();
     m_clipWindow->hide();
+    m_clipRevealedAt.reset(); // only here: pinned, it stays up when it lets go of the keys
     stopKeyRouting(); // hidden first: no inactive backdrop on the way out
     m_clipReveal.cancel();
     win::setCloaked(m_clipWindow, false);
@@ -4225,6 +5061,12 @@ void App::revealLauncher()
     win::setCloaked(m_window, false);
     if (m_launcherLogo && launcherShown())
         m_launcherLogo->reveal();
+    if (launcherShown()) {
+        m_launcherRevealedAt = ::GetTickCount64(); // there to be seen from now on (seenBy)
+        if (m_triggers)
+            m_triggers->seen(TriggerWindow::Launcher);
+    }
+    deliverTyping(); // asked for by typing elsewhere: the keys, if they waited for its first frame
 }
 
 bool App::launcherShown() const
@@ -4257,6 +5099,31 @@ void App::finishPrewarm()
     win::setCloaked(m_window, false);
 }
 
+// The launcher lost the front just after it was asked for, and goes: said
+// in the log, with what took it and whether any input came since it was
+// put in front (a click or a key elsewhere: the user's doing; none: the
+// other program's, a window of its own up or the front taken back with an
+// empty SendInput, which counts as input too). Before, it just went, with
+// no word anywhere, and a double Ctrl seemed to do nothing (GitHub #111).
+// Twenty a run at most.
+void App::logLauncherLostFront(HWND front)
+{
+    static constexpr qint64 kJustShownMs = 1500;
+    if (!m_launcherShown.isValid() || m_launcherShown.elapsed() > kJustShownMs || m_launcherLostFrontLogged >= 20)
+        return;
+    ++m_launcherLostFrontLogged;
+    LASTINPUTINFO last {sizeof last};
+    const bool input = !::GetLastInputInfo(&last) || static_cast<std::int32_t>(last.dwTime - m_launcherFrontTick) > 0;
+    QString what = u"no window"_s;
+    if (front) {
+        wchar_t className[256] {};
+        ::GetClassNameW(front, className, static_cast<int>(std::size(className)));
+        what = QString::fromWCharArray(className) + u" (" + foreground::programOf(front) + u')';
+    }
+    qWarning().noquote() << "Launcher: lost the front" << m_launcherShown.elapsed() << "ms after it was asked for, to"
+                         << what << (input ? "- input since" : "- no input since") << "- it goes";
+}
+
 void App::hideLauncher()
 {
     m_typingOrigin = {}; // whatever opened it, that opening is over
@@ -4266,7 +5133,22 @@ void App::hideLauncher()
         ::EndMenu(); // the shell's menu over it (Shift+right-click) goes with it: double Ctrl, say
     m_launcherHidden.start();
     m_boxPressGrace.stop();
-    m_deliverTyping = false;
+    if (std::exchange(m_deliverTyping, false)) {
+        // Going before the keys typed for it went (they wait for it to be
+        // ready, deliverTyping): once it was active, the hook has them as it
+        // did before that wait, asking for the launcher again from the Start
+        // menu (GitHub #66). Not ready: they go once it says it is again,
+        // shown anew, never into it as it is now (GitHub #103). Never active,
+        // its hold gives up on them.
+        m_typingCap.stop();
+        const bool wasActive = m_handoff.active != std::chrono::steady_clock::time_point {};
+        m_handoff.outcome = wasActive ? u"hidden"_s : u"hidden-before-active"_s;
+        if (wasActive && m_typing) {
+            m_handoff.delivered = std::chrono::steady_clock::now();
+            m_typing->deliver(false);
+        }
+    }
+    endHandoff();
     m_launcher->closePreview(); // at once, not after the slide
     if (clipboardUnderLauncher())
         hideClipboard(false);
@@ -4290,6 +5172,10 @@ void App::hideLauncher()
 
 void App::finishHidingLauncher()
 {
+    // Gone, no longer on its way out: what comes next is a new opening. Not
+    // earlier (hideLauncher): brought back while it slid out, it was seen
+    // all along, and a press after that closes it.
+    m_launcherRevealedAt.reset();
     m_launcherClosing = false;
     m_launcherOverBox = false;
     if (m_launcher->inTaskbarBox()) {
@@ -5020,6 +5906,7 @@ mcp::Policy App::mcpPolicy() const
     policy.contentDocuments = m_settings.contentDocuments;
     policy.contentInLowPriority = m_settings.contentInLowPriority;
     policy.excludedTypes = m_settings.excludedTypes;
+    policy.excludedFileNames = m_settings.excludedFileNames;
     policy.kindOrder = m_settings.foldersFirst ? KindOrder::FoldersFirst : KindOrder::FilesFirst;
     return policy;
 }
@@ -5308,6 +6195,39 @@ void App::createPluginHost()
         const plugin::Entry* e = m_pluginHost->catalog().find(id);
         m_launcher->flash(tr("已重新加载 %1").arg(e && e->manifest ? e->manifest->name.pick(m_language) : id));
     });
+    // A plugin's system notification (winshun/notify with "toast"; the host
+    // held it to the "notifications" permission and to its pace, put its
+    // name first and kept of its click only its own list, a local file or
+    // folder and a copy it may make: ToastPolicy). A click does those as an
+    // action's effects (Launcher::applyEffects: the open policy holds); its
+    // own list shows the launcher with it, the keyboard on what came in on
+    // top (openedFromToast). Nothing once the plugin is off. Win顺's own
+    // notifications win over it (MessageWindow: it waits while one is up).
+    connect(m_pluginHost.get(), &plugin::Host::toastRequested, this,
+        [this](const QString& id, const QString& title, const QString& text, const plugin::Effects& click) {
+            std::function<void()> onClick;
+            if (!click.isEmpty()) {
+                onClick = [this, id, click] {
+                    if (!m_pluginHost || !m_pluginHost->catalog().enabled(id))
+                        return;
+                    plugin::Effects effects;
+                    QString query;
+                    for (const plugin::Effect& e : click) {
+                        if (e.kind == plugin::Effect::Kind::SetQuery)
+                            query = e.text;
+                        else if (e.kind != plugin::Effect::Kind::Hide && e.kind != plugin::Effect::Kind::Keep
+                            && e.kind != plugin::Effect::Kind::Replace)
+                            effects.push_back(e);
+                    }
+                    if (!query.isEmpty()) {
+                        m_launcher->openedFromToast(id);
+                        showLauncher(query);
+                    }
+                    m_launcher->applyPluginEffects(id, effects);
+                };
+            }
+            m_messages->showNotification(title, text, std::move(onClick), id);
+        });
     // Its winshun/tool calls: the plugins' own tools, made when first asked.
     plugin::ToolBridge bridge;
     bridge.call = [this](std::uint64_t callId, const QString& client, const QString& tool, const QJsonObject& arguments,
@@ -5354,16 +6274,28 @@ void App::applyPlugins()
     plugin::Catalog& catalog = m_pluginHost->catalog();
     QSet<QString> enabled;
     QHash<QString, QString> overrides;
+    QHash<QString, QStringList> confirmed;
     for (const PluginConfig& c : m_settings.plugins) {
         if (c.enabled)
             enabled.insert(c.id);
+        confirmed.insert(c.id, c.confirmed);
         for (const auto& [command, keyword] : c.keywords)
             overrides.insert(c.id + u'/' + command, keyword);
     }
-    // Through the host where the state changes (it forgets a plugin's
-    // crashes when it is turned on again), the catalog otherwise.
+    // What the user said yes to, before the switches: a plugin of theirs
+    // whose newer version asks for more waits for their OK from the moment
+    // it is on (Catalog::setConfirmed; the bundled ones are trusted).
+    // Allowed ones that had been switched off after repeated crashes start
+    // fresh, as when switched off and on (Host::setEnabled forgets them).
+    for (const QString& id : catalog.setConfirmed(std::move(confirmed))) {
+        if (enabled.contains(id))
+            m_pluginHost->setEnabled(id, true);
+    }
+    // Through the host where the switch changes (it forgets a plugin's
+    // crashes when it is turned on again), the catalog otherwise. The
+    // switch, not enabled(): one waiting for the user's OK is still on.
     for (const plugin::Entry& e : catalog.entries()) {
-        if (catalog.enabled(e.id) != enabled.contains(e.id))
+        if (catalog.switchedOn(e.id) != enabled.contains(e.id))
             m_pluginHost->setEnabled(e.id, enabled.contains(e.id));
     }
     catalog.setEnabled(enabled); // the ones not installed yet count too
@@ -5538,12 +6470,16 @@ App::AiApplyReport App::applyAiState(const aisettings::State& wanted,
             failure.why = u"Another program or Windows already uses that shortcut, so the setting stays %1."_s.arg(
                 before.toString().isEmpty() ? u"empty"_s : u'"' + before.toString() + u'"');
             failure.shown = tr("被其他程序占用，未修改");
-        } else if (key == u"Clipboard/WinV" && m_settings.clipboardWinV && m_winVRegistryFailed) {
-            failure.why = u"Windows would not let Win顺 have Win+V (its registry setting could not be written)."_s;
-            failure.shown = tr("Windows 不让 Win顺 用 Win+V，未修改");
-        } else if (key == u"Taskbar/WinS" && m_settings.taskbarWinS && m_winSRegistryFailed) {
-            failure.why = u"Windows would not let Win顺 have Win+S (its registry setting could not be written)."_s;
-            failure.shown = tr("Windows 不让 Win顺 用 Win+S，未修改");
+        } else if (key == u"Clipboard/WinV" && m_winVRegistryFailed) { // either way: taking it, or giving it back
+            failure.why = m_settings.clipboardWinV
+                ? u"Windows would not let Win顺 have Win+V (its registry setting could not be written)."_s
+                : u"WinShun could not give Win+V back to Windows (its registry setting could not be written), so the setting stays on."_s;
+            failure.shown = m_settings.clipboardWinV ? tr("Windows 不让 Win顺 用 Win+V，未修改") : tr("没能把 Win+V 还给 Windows，未修改");
+        } else if (key == u"Taskbar/WinS" && m_winSRegistryFailed) {
+            failure.why = m_settings.taskbarWinS
+                ? u"Windows would not let Win顺 have Win+S (its registry setting could not be written)."_s
+                : u"WinShun could not give Win+S back to Windows (its registry setting could not be written), so the setting stays on."_s;
+            failure.shown = m_settings.taskbarWinS ? tr("Windows 不让 Win顺 用 Win+S，未修改") : tr("没能把 Win+S 还给 Windows，未修改");
         } else if (key == u"Launcher/Autostart" && autostart::isEnabled() != wanted.autostart) {
             failure.why = u"Windows did not take the change (the task in the Task Scheduler could not be %1), so autostart stays as it was."_s.arg(
                 wanted.autostart ? u"made"_s : u"removed"_s);
@@ -5563,6 +6499,8 @@ App::AiApplyReport App::applyAiState(const aisettings::State& wanted,
             if (state == u"waiting" || state == u"releasing") {
                 report.explorerRestart = true;
                 report.notes.insert(key, u"Takes effect once File Explorer restarts: Win顺 offers a button for it, or the user can sign out and in."_s);
+            } else if (state == u"blocked") {
+                report.notes.insert(key, u"The switch is off, but a registry setting Win顺 did not make (DisabledHotkeys) keeps Windows from using that shortcut. Win顺 leaves it alone; the settings page has a button that gives it back to Windows."_s);
             }
         } else if (entry->effect == aisettings::Effect::AppRestart) {
             report.notes.insert(key, u"Takes effect after Win顺 restarts."_s);

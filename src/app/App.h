@@ -3,8 +3,11 @@
 #include "AiSettings.h"
 #include "FrameReveal.h"
 #include "Settings.h"
+#include "TriggerJournal.h"
 #include "Win32Util.h"
 #include "platform/ClipboardWatcher.h"
+#include "platform/HoldWatch.h"
+#include "platform/KeyListener.h"
 #include "platform/KeyRouter.h"
 #include "platform/TaskbarSearch.h"
 #include "platform/TaskbarSearchBox.h"
@@ -23,6 +26,7 @@
 #include <QVariantMap>
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -60,7 +64,14 @@ class History;
 class IndexService;
 class IdleTrim;
 class KeyListener;
+class PointerWatch;
+class ServiceDialogNav;
 class ServiceKeyListener;
+class TriggerJournal;
+enum class TriggerSource : std::uint8_t;
+namespace win {
+enum class Front : std::uint8_t;
+}
 class Launcher;
 class MessageWindow;
 class MissingFiles;
@@ -70,6 +81,7 @@ class SearchEngine;
 class SettingsEditor;
 class Switches;
 class TypeToSearch;
+class LauncherKeysWatch;
 class Updater;
 class Backup;
 namespace capture {
@@ -130,8 +142,12 @@ public:
     bool start(const StartOptions& options);
     void handleCommand(const QString& command); // from a second instance
 
-    void toggleLauncher();
-    void toggleClipboard(); // the clipboard window (Win+V)
+    // byShortcut: the custom key or the double tap (ShortcutAgain);
+    // pressedAt: when, on the 64-bit tick clock (now if not known): a press
+    // made before the window was there to be seen does not close it (seenBy,
+    // GitHub #111).
+    void toggleLauncher(bool byShortcut = false, std::optional<std::uint64_t> pressedAt = std::nullopt);
+    void toggleClipboard(std::optional<std::uint64_t> pressedAt = std::nullopt); // the clipboard window (Win+V)
     // With `spot`, over the taskbar, as Windows' own search (taskbar::);
     // `inBox`: over Win顺's box there, its field drawn in the box when the
     // box is wide enough for it.
@@ -222,7 +238,15 @@ private:
     // its own, into a PNG in the temporary folder (never the clipboard).
     void confirmScreenshot(const mcp::ScreenshotRequest& request, std::function<void(mcp::ScreenshotTaken)> done);
     Q_INVOKABLE void screenshotAnswered(int how); // the window's answered(): 1 allowed, 0 refused, -1 no answer
-    void onDoubleCtrl(); // toggleLauncher(), unless a game is played (GameGuard)
+    void onDoubleCtrl(const KeyListener::Tap& tap); // toggleLauncher(), unless a game is played (GameGuard)
+    // A press that opens or closes a window of ours reached the GUI thread
+    // (the diagnostics journal's "trigger", TriggerJournal); a double tap's
+    // also says which listener told of it, and when.
+    void beginTrigger(TriggerSource source, std::uint64_t pressedAt, std::optional<TriggerJournal::Told> told = {});
+    void journalTapNote(const KeyListener::Note& note);
+    // win::bringToFront for a window a press asked for: how, and how long, to the journal.
+    win::Front toFront(QWindow* window);
+    const char* rawInputState() const; // the keyboard's Raw Input registration, for the journal
     // `launcherToo`: and the launcher, when the clipboard was under its
     // search box and the keyboard went elsewhere.
     void hideClipboard(bool launcherToo = true);
@@ -235,6 +259,17 @@ private:
     void stopKeyRouting();
     void routedKey(const KeyRouter::Key& key);
     void routedForeground(HWND window);
+    // The clipboard's hotkey held after it opened the window (GitHub #107,
+    // Settings::clipboardHoldToStep, hotkeysteps): its key again moves to an
+    // older row, letting go pastes it. Watched (HoldWatch) from the opening
+    // press, if it came over a program that keeps the keyboard, until the
+    // whole hotkey is let go or something else ends it.
+    void armClipboardHold(int hotkey, std::uint64_t pressedAt);
+    bool clipboardStepPress(int hotkey); // its WM_HOTKEY: a step (done here), or a press as ever
+    void clipboardHoldNote(hotkeysteps::Note note, std::uint64_t at);
+    void checkClipboardHold(); // m_holdTimer: the hint a second in; the hook gone quiet
+    void endClipboardHold(const char* why); // nothing pasted (any more); the window as it is
+    void capDrainingWatch(std::uint64_t run); // its drain not over in time (kDrainCapMs)
     // A Shift pressed alone meanwhile (KeyRouter::Callbacks::shiftTapped),
     // meant for a Chinese input method, which none of the routed keys reach:
     // under a Chinese layout the page says that pinyin finds Chinese
@@ -263,11 +298,11 @@ private:
     void applySettings(bool initial);
     void applyKeyListener(bool force = false);
     ClipboardWatcher::Options clipboardOptions() const;
-    void applyClipboard(); // the [Clipboard] settings
+    void applyClipboard(bool initial = false); // the [Clipboard] settings
     void applyClipboardHotkeys(); // Win+V and the other shortcut; where Win+V stands, for the settings
     void applyQuickPasteHotkeys(); // global digits, suspended while Win顺 has the keys
     void clipCaptured(const ClipCapture& capture);
-    void applyTaskbar(); // the [Taskbar] settings: Win+S, typing in the Start menu
+    void applyTaskbar(bool initial = false); // the [Taskbar] settings: Win+S, typing in the Start menu
     void applyTaskbarHotkeys(); // Win+S and Win+Shift+S; where Win+S stands, for the settings
     // The taskbar button was clicked (`clicked`), or Win+S pressed: the
     // launcher over the taskbar, or away again.
@@ -305,10 +340,25 @@ private:
     // What the launcher's field has, drawn in the box while it is open over it.
     void mirrorField(const QString& text, int cursor, int selectionStart, int selectionEnd, const QString& composition);
     std::optional<QRectF> boxCaretInField() const; // the box's caret, in the field's coordinates
-    void deliverTyping(); // ... has the keyboard: the keys typed there go to it
+    // Asked for by typing there (startMenuTyped, typingFolderKnown): the
+    // keys typed go to it once it is ready for them (searchtyping::handoff,
+    // GitHub #103). Looked at again as each part of that comes (activeChanged,
+    // the focus object, revealLauncher) and at the cap.
+    void deliverTyping();
+    void beginHandoff(const QString& surface); // typed in "start", "explorer" or "opus": the launcher comes for the keys
+    void endHandoff(); // its diagnostics recorded (one entry each, times alone), its watch over
     void explorerRestarted(bool back); // `back`: the taskbar is
+    // Explorer registers its keys once, as it starts: ours with a Win+<letter>
+    // that is going back to it are let go of before it does, and registered
+    // again by the apply functions once it is up.
+    void releaseWinChordsForExplorer();
+    void applyWinKeyedHotkeys(); // the launcher's, the folder menu's and the capture's, any of which may be a Win+S or Win+V
+    void giveBackWinKey(const QString& letter); // "S" or "V": out of DisabledHotkeys, whoever put it there
     void setClipboardPaused(bool paused);
     void showClipboardSettings(); // the settings window on its 剪贴板 page
+    // "截图已保存" (or why not) as a tray notification; a click shows the file
+    // in its folder, in the file manager chosen (GitHub #99).
+    void notifyCaptureSaved(const QString& path, const QString& error);
     void showWebSettings(); // ... on its 网页搜索 page (a web row's menu)
     void showFileTypeSettings(); // ... on its 结果列表 page, at the file types (the + of the launcher's strip)
     void showFavoriteSettings(const QString& path); // ... on its 收藏夹 page, at that favorite (a row's menu)
@@ -367,6 +417,7 @@ private:
     void tellLauncherFolders();
     void addFolderFromLauncher(const QString& path); // its "加入索引": as the settings add one
     void applyTheme();
+    void guardDarkFrames(); // the frames' dark mode back once Qt has set it light (theme or palette change)
     void applyAppearance(); // the chosen theme and language
     QString trayTooltip() const;
     QString doubleCtrlName() const;
@@ -533,11 +584,7 @@ private:
     // the page waits on its writes.
     std::unique_ptr<ClipboardWatcher> m_clipWatcher;
     bool m_clipboardPaused = false; // from the tray menu, until Win顺 restarts
-    bool m_clipboardNotified = false; // the last tray notification told of the clipboard history
-    bool m_foldersNotified = false; // ... that there are no chosen folders yet (GitHub #52)
-    std::optional<bool> m_winVApplied; // the Win+V switch, as last put into the registry
     bool m_winVRegistryFailed = false;
-    std::optional<bool> m_winSApplied; // the Win+S switch, likewise
     bool m_winSRegistryFailed = false;
     bool m_restartingExplorer = false;
     // restartExplorer's waiting, waited for on exit: quitting between ending
@@ -547,6 +594,22 @@ private:
     std::unique_ptr<QWinEventNotifier> m_taskbarNotifier; // waits on it; goes first
     QElapsedTimer m_launcherHidden; // since the launcher last went away
     QElapsedTimer m_launcherShown; // since it was last asked for
+    // It lost the front right after it came: said in the log (GitHub #111).
+    // The tick it was brought to the front: input after that is not its
+    // own empty one (bringToFront).
+    void logLauncherLostFront(HWND front);
+    std::uint32_t m_launcherFrontTick = 0;
+    int m_launcherLostFrontLogged = 0;
+    // When the launcher, and the clipboard, last came on the screen
+    // (revealLauncher, uncloakClipboard; GetTickCount64), until hidden: a
+    // press of their key before that moment did not see them (seenBy).
+    std::optional<std::uint64_t> m_launcherRevealedAt;
+    std::optional<std::uint64_t> m_clipRevealedAt;
+    std::unique_ptr<TriggerJournal> m_triggers; // what each press came to, for the diagnostics journal
+    diagnostics::JournalBudget m_tapNotes; // double taps that came to nothing (journalTapNote)
+    // Whether a hidden pointer was Windows' doing on a key press (GameGuard;
+    // with double tap and its pause in games).
+    std::unique_ptr<PointerWatch> m_pointerWatch;
     bool m_launcherClosing = false; // sliding out (hideLauncher)
     std::unique_ptr<ComWorker> m_typingWorker; // queries a file display's folder (folderTyped); before m_typing
     std::unique_ptr<TypeToSearch> m_typing; // while StartMenuTyping, ExplorerTyping, OpusTyping or PasteFile is on
@@ -577,11 +640,24 @@ private:
     QPointer<QQuickItem> m_searchField; // the launcher's (SearchBar.qml): the input method asks it where the caret is
     taskbar::SearchBox::Text m_fieldShown; // what it last reported (mirrorField), for the box
     bool m_deliverTyping = false; // the launcher was asked for by typing in the Start menu or in Explorer
+    QTimer m_typingCap; // ... the keys go all the same when this runs out (searchtyping::kHandoffCapMs)
+    // The handoff of those keys, for its diagnostics (endHandoff): when each
+    // part came, from App's side; the hook's and the window's are added then.
+    struct TypingHandoff {
+        QString surface; // "start", "explorer", "opus"; empty: none
+        std::chrono::steady_clock::time_point asked, active, focused, revealed, delivered;
+        QString outcome; // ready, cap, hidden, hidden-before-active, never-active, replaced
+        QString missing; // what was not ready when they went (cap)
+        bool inFront = false; // the launcher was the window in front when they went
+        quint32 layout = 0; // the keyboard layout (HKL) then
+    };
+    TypingHandoff m_handoff;
+    std::unique_ptr<LauncherKeysWatch> m_keysWatch; // the launcher's window, a moment after the keys went
+    QTimer m_handoffWatch; // ... that moment
     QString m_clipboardShortcut; // what opens the clipboard: "Win+V", another shortcut, or nothing
     std::unique_ptr<MessageWindow> m_messages;
     std::unique_ptr<Updater> m_updater;
     std::unique_ptr<Backup> m_backup; // of the settings, into a folder chosen
-    bool m_updateNotified = false; // the last tray notification announced a new version
     std::unique_ptr<VolumeNotifier> m_volumeNotifier; // after m_messages, whose window it uses
     std::unique_ptr<NetworkNotifier> m_network; // after m_index, whose shares it tells
     std::unique_ptr<IdleTrim> m_idleTrim; // gives the memory back while nothing is in use
@@ -597,6 +673,7 @@ private:
     QStringList m_doubleCtrlIgnoredLogged; // "program reason", logged once each: a game gets many
     std::unique_ptr<DialogJump> m_dialogJump; // file dialogs: Ctrl+G, the bar; after m_messages, which has the hotkey
     std::unique_ptr<DialogBar> m_dialogBar; // the search bar under file dialogs
+    std::unique_ptr<ServiceDialogNav> m_serviceNav; // navigates elevated dialogs via the service (#104)
     QDeadlineTimer m_barFocusDeadline; // gone back to from the clipboard: until then, it takes the keyboard as it shows
     std::unique_ptr<Placement> m_placement; // where the launcher opens; moving it
     std::unique_ptr<WindowFrame> m_frame; // the launcher's header and footer drag it
@@ -608,6 +685,18 @@ private:
     std::uint64_t m_keyRouterRun = 0; // which routing its posted keys belong to
     std::unique_ptr<KeyRouter> m_drainingRouter; // done, until the keys it took are let go (KeyRouter::drain)
     std::uint64_t m_drainingRun = 0;
+    // The clipboard's hotkey held (armClipboardHold): the watch, what its
+    // notes came to, which hotkey (its id) and keys.
+    std::unique_ptr<HoldWatch> m_holdWatch;
+    std::uint64_t m_holdRun = 0; // which hold the watch's notes belong to
+    std::unique_ptr<HoldWatch> m_drainingWatch; // done, until an Esc it took is let go (HoldWatch::drain)
+    std::uint64_t m_drainingWatchRun = 0;
+    std::optional<hotkeysteps::Hold> m_hold;
+    int m_holdHotkey = 0;
+    unsigned m_holdModifiers = 0; // hotkeysteps::kAlt...
+    unsigned m_holdVk = 0;
+    std::uint64_t m_holdLate = 0; // ms from the opening press to the watch, for the journal
+    QTimer m_holdTimer;
     FrameReveal m_clipReveal; // shown cloaked until a frame from this opening
     std::atomic<bool> m_clipPrewarming {false}; // shown cloaked for one frame (see prewarmClipboard)
     FrameReveal m_launcherReveal; // armed once the fresh results are ready (showLauncher)
@@ -640,7 +729,7 @@ private:
     quint64 m_settingsBatchIds = 0;
     QHash<QString, QString> m_applyProblems; // noteApplyProblem
     bool m_aiApplying = false; // an AI's change is being applied: what goes wrong is in its answer, not in a balloon
-    QString m_winVState; // as applyClipboardHotkeys last found it: off, on, waiting, releasing, failed
+    QString m_winVState; // as applyClipboardHotkeys last found it: off, on, waiting, releasing, failed, blocked
     unsigned m_quickPasteKeys = 0; // successfully registered digits, 1 << n
     QString m_winSState; // likewise for Win+S
     // In front when the launcher last opened: where a screenshot of the
@@ -664,7 +753,7 @@ private:
     QTimer m_settingsReload;
     QTimer m_indexOptionsApply; // rebuilding the crawler is costly: batch quick edits
     QTimer m_contentStatusTimer; // while the settings window is open
-    QTimer m_darkFrameGuard; // see applyTheme
+    QTimer m_darkFrameGuard; // see guardDarkFrames
     QElapsedTimer m_darkFrameWatch;
     bool m_darkFrame = false;
     bool m_diagnosticsExporting = false;

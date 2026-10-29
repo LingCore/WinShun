@@ -4,6 +4,7 @@
 
 #include "ServiceVolumeAccess.h"
 #include "Unc.h"
+#include "WebDav.h"
 #include "Win32Util.h"
 
 #include <QCoreApplication>
@@ -22,6 +23,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cwctype>
+#include <type_traits>
 
 using namespace Qt::StringLiterals;
 
@@ -195,7 +197,14 @@ template <typename T> T readOrDefault(QSettings& s, const QString& key, const T&
         s.setValue(key, fallback);
         return fallback;
     }
-    return s.value(key).value<T>();
+    // A number written by hand that is none ("abc", "", "1h"): the default,
+    // not the 0 a failed conversion gives (每 0 小时). A switch reads as before.
+    if constexpr (std::is_arithmetic_v<T> && !std::is_same_v<T, bool>) {
+        QVariant value = s.value(key);
+        return value.convert(QMetaType::fromType<T>()) ? value.value<T>() : fallback;
+    } else {
+        return s.value(key).value<T>();
+    }
 }
 
 void writeWebShortcuts(QSettings& s, const WebShortcuts& shortcuts, bool suggestions)
@@ -334,11 +343,13 @@ void writeShares(QSettings& s, const QList<NetworkShare>& shares)
         s.setArrayIndex(i);
         s.setValue(u"Path"_s, shares[i].path);
         s.setValue(u"Name"_s, shares[i].name);
+        if (shares[i].content)
+            s.setValue(u"Content"_s, true);
     }
     s.endArray();
 }
 
-// Paths written by hand are tidied (unc::normalize; a mapped drive becomes
+// Paths written by hand are tidied (unc::canonical; a mapped drive becomes
 // the share it maps); what is no share at all, or twice, is left out.
 QList<NetworkShare> readShares(QSettings& s)
 {
@@ -354,7 +365,7 @@ QList<NetworkShare> readShares(QSettings& s)
         if (path.isEmpty()
             || std::ranges::any_of(shares, [&](const NetworkShare& n) { return unc::equal(n.path.toStdWString(), path.toStdWString()); }))
             continue;
-        shares.append({path, s.value(u"Name"_s).toString().trimmed()});
+        shares.append({path, s.value(u"Name"_s).toString().trimmed(), s.value(u"Content"_s, false).toBool()});
     }
     s.endArray();
     return shares;
@@ -434,11 +445,16 @@ PluginConfig& Settings::pluginConfig(const QString& id)
 
 QString Settings::sharePath(const QString& text)
 {
+    // A WebDAV folder's web address too ("https://nas:5006/dav/"): as WebClient opens it.
+    if (const std::wstring dav = webdav::uncFromUrl(text.trimmed().toStdWString()); !dav.empty())
+        return QString::fromStdWString(dav);
     const QString parsed = pathtext::pathFromText(text);
     std::wstring path = (parsed.isEmpty() ? QDir::toNativeSeparators(text.trimmed()) : parsed).toStdWString();
     if (path.size() >= 2 && path[1] == L':')
         path = unc::fromMappedDrive(path);
-    return QString::fromStdWString(unc::normalize(path));
+    // GitHub #114: a WebDAV folder in one form, however it was written, so
+    // that one added already is seen to be ("\\nas@SSL\DavWWWRoot\dav" is "\\nas@SSL\dav").
+    return QString::fromStdWString(unc::canonical(path));
 }
 
 bool Settings::isNetworkPath(const QString& path)
@@ -630,6 +646,22 @@ QStringList Settings::fileExtensions(const QString& text)
     return extensions;
 }
 
+QStringList Settings::fileNamePatterns(const QString& text)
+{
+    static const QRegularExpression separators(u"[,;，；、\\r\\n]+"_s);
+    QStringList patterns;
+    for (QString pattern : text.split(separators, Qt::SkipEmptyParts)) {
+        pattern = pattern.trimmed();
+        // Wildcards alone ("*", "*.*") would be every file.
+        const bool everyFile = std::ranges::all_of(pattern, [](QChar c) { return c == u'*' || c == u'?' || c == u'.'; });
+        if (everyFile || pattern.contains(u'\\') || pattern.contains(u'/') || pattern.contains(u':')
+            || patterns.contains(pattern, Qt::CaseInsensitive))
+            continue;
+        patterns.append(pattern);
+    }
+    return patterns;
+}
+
 QStringList Settings::contentExtensionList(const QString& text)
 {
     static const QRegularExpression separators(u"[\\s,;，；、]+"_s);
@@ -770,6 +802,7 @@ Settings Settings::defaults()
     Settings d;
     d.excludedPaths = kDefaultExcludedPaths;
     d.excludedNames = kDefaultExcludedNames;
+    d.excludedFileNames = {u"~$*"_s}; // Office's and WPS's lock files
     d.indexFolders = defaultIndexFolders();
     d.contentExtensions = kDefaultContentExtensions;
     d.preferredTypes = defaultPreferredTypes();
@@ -825,7 +858,14 @@ void Settings::load()
         = readOrDefault(s, u"Launcher/DoubleCtrlPauseInFullScreen"_s, d.doubleCtrlPauseInFullScreen);
     doubleCtrlExcludedApps = readOrDefault(s, u"Launcher/DoubleCtrlExcludedApps"_s, d.doubleCtrlExcludedApps);
     hotkey = readOrDefault(s, u"Launcher/Hotkey"_s, d.hotkey);
+    shortcutAgain = readOrDefault(s, u"Launcher/ShortcutAgain"_s, d.shortcutAgain).trimmed().toLower();
+    if (shortcutAgain != u"panel")
+        shortcutAgain = d.shortcutAgain;
     renderer = resolveRenderer(readOrDefault(s, u"Launcher/Renderer"_s, d.renderer).trimmed().toLower());
+    proxyMode = readOrDefault(s, u"Proxy/Mode"_s, d.proxyMode).trimmed().toLower();
+    if (proxyMode != u"none" && proxyMode != u"manual")
+        proxyMode = d.proxyMode;
+    proxyAddress = readOrDefault(s, u"Proxy/Address"_s, d.proxyAddress).trimmed();
     recordHistory = readOrDefault(s, u"Launcher/History"_s, d.recordHistory);
     dialogJump = readOrDefault(s, u"Launcher/DialogJump"_s, d.dialogJump);
     // Off for new installs; an ini from before without the key had it on.
@@ -849,6 +889,9 @@ void Settings::load()
     explorerMenu = readOrDefault(s, u"Launcher/ExplorerMenu"_s, d.explorerMenu);
     explorerTyping = readOrDefault(s, u"Launcher/ExplorerTyping"_s, d.explorerTyping);
     opusTyping = readOrDefault(s, u"Launcher/OpusTyping"_s, d.opusTyping);
+    folderTyping = readOrDefault(s, u"Launcher/FolderTyping"_s, d.folderTyping).trimmed().toLower();
+    if (folderTyping != u"only")
+        folderTyping = d.folderTyping; // the folder first (GitHub #110), for those who had nothing to set before too
     // Off for new installs, auto before (as dialogBar).
     const QString folderMenuBefore = firstRun ? d.folderMenu : u"auto"_s;
     folderMenu = readOrDefault(s, u"Launcher/FolderMenu"_s, folderMenuBefore).trimmed().toLower();
@@ -913,6 +956,7 @@ void Settings::load()
     taskbarIcon = readOrDefault(s, u"Appearance/TaskbarIcon"_s, d.taskbarIcon).trimmed().toLower();
     if (taskbarIcon != u"mono")
         taskbarIcon = d.taskbarIcon;
+    searchLogo = readOrDefault(s, u"Appearance/SearchLogo"_s, d.searchLogo);
     uiSize = readOrDefault(s, u"Appearance/UiSize"_s, d.uiSize).trimmed().toLower();
     if (uiSize != u"compact" && uiSize != u"roomy")
         uiSize = d.uiSize;
@@ -933,6 +977,7 @@ void Settings::load()
     excludedNames = readOrDefault(s, u"Index/ExcludedNames"_s, d.excludedNames);
     // As written by hand too: ".WBK; bak" is wbk and bak.
     excludedTypes = fileExtensions(readOrDefault(s, u"Index/ExcludedTypes"_s, d.excludedTypes).join(u' '));
+    excludedFileNames = fileNamePatterns(readOrDefault(s, u"Index/ExcludedFileNames"_s, d.excludedFileNames).join(u';'));
     includeRemovableDrives = readOrDefault(s, u"Index/IncludeRemovableDrives"_s, d.includeRemovableDrives);
     selectedDrives.reset();
     if (s.contains(u"Index/Drives"_s)) {
@@ -1026,7 +1071,9 @@ void Settings::load()
     clipboardImages = readOrDefault(s, u"Clipboard/Images"_s, d.clipboardImages);
     clipboardClickToPaste = readOrDefault(s, u"Clipboard/ClickToPaste"_s, d.clipboardClickToPaste);
     clipboardLargePictures = readOrDefault(s, u"Clipboard/LargePictures"_s, d.clipboardLargePictures);
+    clipboardKeepPlace = readOrDefault(s, u"Clipboard/KeepPlace"_s, d.clipboardKeepPlace);
     clipboardFlipAbove = readOrDefault(s, u"Clipboard/FlipAbove"_s, d.clipboardFlipAbove);
+    clipboardHoldToStep = readOrDefault(s, u"Clipboard/HoldToStep"_s, d.clipboardHoldToStep);
     clipboardSearchBoxSide = readOrDefault(s, u"Clipboard/SearchBoxSide"_s, d.clipboardSearchBoxSide).trimmed().toLower();
     if (clipboardSearchBoxSide != u"far")
         clipboardSearchBoxSide = d.clipboardSearchBoxSide;
@@ -1053,6 +1100,7 @@ void Settings::load()
     capturePrintScreen = readOrDefault(s, u"Capture/PrintScreen"_s, d.capturePrintScreen);
     capturePrintScreenBefore = readOrDefault(s, u"Capture/PrintScreenBefore"_s, d.capturePrintScreenBefore).trimmed();
     captureCopyOnSelect = readOrDefault(s, u"Capture/CopyOnSelect"_s, d.captureCopyOnSelect);
+    captureMagnifier = readOrDefault(s, u"Capture/Magnifier"_s, d.captureMagnifier);
     capturePinOnCopy = readOrDefault(s, u"Capture/PinOnCopy"_s, d.capturePinOnCopy);
     const auto mouseAction = [&](const QString& key, const QString& fallback, bool allowBack) {
         const QString v = readOrDefault(s, key, fallback).trimmed().toLower();
@@ -1082,6 +1130,7 @@ void Settings::load()
             : (wordsRaw.isValid() ? wordsRaw.toString() : d.captureSmartWords)).join(u',');
 
     captureCursor = readOrDefault(s, u"Capture/IncludeCursor"_s, d.captureCursor);
+    captureHdrFile = readOrDefault(s, u"Capture/HdrFile"_s, d.captureHdrFile);
     captureControlsUia = readOrDefault(s, u"Capture/ControlsUia"_s, d.captureControlsUia);
     {
         const int seconds = readOrDefault(s, u"Capture/DelaySeconds"_s, d.captureDelay);
@@ -1107,6 +1156,10 @@ void Settings::load()
     captureRecordingClicks = readOrDefault(s, u"Capture/RecordingClicks"_s, d.captureRecordingClicks);
     captureRecordingFormat = readOrDefault(s, u"Capture/RecordingFormat"_s, d.captureRecordingFormat);
     if (captureRecordingFormat < 0 || captureRecordingFormat > 1) captureRecordingFormat = d.captureRecordingFormat;
+    captureRecordingKeys = readOrDefault(s, u"Capture/RecordingKeys"_s, d.captureRecordingKeys).trimmed().toLower();
+    if (captureRecordingKeys != u"shortcuts" && captureRecordingKeys != u"all")
+        captureRecordingKeys = d.captureRecordingKeys;
+    captureRecordingMouseButtons = readOrDefault(s, u"Capture/RecordingMouseButtons"_s, d.captureRecordingMouseButtons);
     {
         const QString action = readOrDefault(s, u"Capture/PinDoubleClick"_s, d.capturePinDoubleClick).trimmed().toLower();
         capturePinDoubleClick = action == u"close" || action == u"collapse" || action == u"none" ? action : u"reset"_s;
@@ -1163,7 +1216,10 @@ void Settings::save() const
     s.setValue(u"Launcher/DoubleCtrlPauseInFullScreen"_s, doubleCtrlPauseInFullScreen);
     s.setValue(u"Launcher/DoubleCtrlExcludedApps"_s, doubleCtrlExcludedApps);
     s.setValue(u"Launcher/Hotkey"_s, hotkey);
+    s.setValue(u"Launcher/ShortcutAgain"_s, shortcutAgain);
     s.setValue(u"Launcher/Renderer"_s, renderer);
+    s.setValue(u"Proxy/Mode"_s, proxyMode);
+    s.setValue(u"Proxy/Address"_s, proxyAddress);
     s.setValue(u"Launcher/History"_s, recordHistory);
     s.setValue(u"Launcher/DialogJump"_s, dialogJump);
     s.setValue(u"Launcher/DialogBar"_s, dialogBar);
@@ -1178,6 +1234,7 @@ void Settings::save() const
     s.setValue(u"Launcher/ExplorerMenu"_s, explorerMenu);
     s.setValue(u"Launcher/ExplorerTyping"_s, explorerTyping);
     s.setValue(u"Launcher/OpusTyping"_s, opusTyping);
+    s.setValue(u"Launcher/FolderTyping"_s, folderTyping);
     s.setValue(u"Launcher/FolderMenu"_s, folderMenu);
     s.setValue(u"Launcher/FolderMenuExplorer"_s, folderMenuExplorer);
     s.setValue(u"Launcher/FolderMenuDesktop"_s, folderMenuDesktop);
@@ -1209,6 +1266,7 @@ void Settings::save() const
     s.setValue(u"Appearance/Language"_s, language);
     s.setValue(u"Appearance/Transparency"_s, transparency);
     s.setValue(u"Appearance/TaskbarIcon"_s, taskbarIcon);
+    s.setValue(u"Appearance/SearchLogo"_s, searchLogo);
     s.setValue(u"Appearance/UiSize"_s, uiSize);
     s.setValue(u"Appearance/Corners"_s, corners);
     s.setValue(u"Update/Automatic"_s, autoUpdate);
@@ -1216,6 +1274,7 @@ void Settings::save() const
     s.setValue(u"Index/ExcludedPaths"_s, excludedPaths);
     s.setValue(u"Index/ExcludedNames"_s, excludedNames);
     s.setValue(u"Index/ExcludedTypes"_s, excludedTypes);
+    s.setValue(u"Index/ExcludedFileNames"_s, excludedFileNames);
     s.setValue(u"Index/IncludeRemovableDrives"_s, includeRemovableDrives);
     if (selectedDrives)
         s.setValue(u"Index/Drives"_s, *selectedDrives);
@@ -1248,7 +1307,9 @@ void Settings::save() const
     s.setValue(u"Clipboard/Images"_s, clipboardImages);
     s.setValue(u"Clipboard/ClickToPaste"_s, clipboardClickToPaste);
     s.setValue(u"Clipboard/LargePictures"_s, clipboardLargePictures);
+    s.setValue(u"Clipboard/KeepPlace"_s, clipboardKeepPlace);
     s.setValue(u"Clipboard/FlipAbove"_s, clipboardFlipAbove);
+    s.setValue(u"Clipboard/HoldToStep"_s, clipboardHoldToStep);
     s.setValue(u"Clipboard/SearchBoxSide"_s, clipboardSearchBoxSide);
     s.setValue(u"Clipboard/ExcludedApps"_s, clipboardExcludedApps);
     s.setValue(u"Clipboard/NumberKeys"_s, clipboardNumberKeys);
@@ -1262,6 +1323,7 @@ void Settings::save() const
     s.setValue(u"Capture/PrintScreen"_s, capturePrintScreen);
     s.setValue(u"Capture/PrintScreenBefore"_s, capturePrintScreenBefore);
     s.setValue(u"Capture/CopyOnSelect"_s, captureCopyOnSelect);
+    s.setValue(u"Capture/Magnifier"_s, captureMagnifier);
     s.setValue(u"Capture/PinOnCopy"_s, capturePinOnCopy);
     s.setValue(u"Capture/MouseDoubleLeft"_s, captureMouseDoubleLeft);
     s.setValue(u"Capture/MouseRight"_s, captureMouseRight);
@@ -1276,6 +1338,7 @@ void Settings::save() const
     s.setValue(u"Capture/SmartAllText"_s, captureSmartAllText);
     s.setValue(u"Capture/SmartWords"_s, captureSmartWords);
     s.setValue(u"Capture/IncludeCursor"_s, captureCursor);
+    s.setValue(u"Capture/HdrFile"_s, captureHdrFile);
     s.setValue(u"Capture/ControlsUia"_s, captureControlsUia);
     s.setValue(u"Capture/DelaySeconds"_s, captureDelay);
     s.setValue(u"Capture/ColorFormat"_s, captureColorFormat);
@@ -1291,6 +1354,8 @@ void Settings::save() const
     s.setValue(u"Capture/RecordingCountdown"_s, captureRecordingCountdown);
     s.setValue(u"Capture/RecordingClicks"_s, captureRecordingClicks);
     s.setValue(u"Capture/RecordingFormat"_s, captureRecordingFormat);
+    s.setValue(u"Capture/RecordingKeys"_s, captureRecordingKeys);
+    s.setValue(u"Capture/RecordingMouseButtons"_s, captureRecordingMouseButtons);
     s.setValue(u"Capture/PinDoubleClick"_s, capturePinDoubleClick);
     s.setValue(u"PasteFile/Enabled"_s, pasteFileEnabled);
     s.setValue(u"PasteFile/CtrlV"_s, pasteFileCtrlV);
@@ -1411,7 +1476,7 @@ ShareIndexer::Options Settings::shareOptions() const
 {
     ShareIndexer::Options o;
     for (const NetworkShare& n : shares)
-        o.shares.push_back({n.path.toStdWString(), n.name.toStdWString()});
+        o.shares.push_back({n.path.toStdWString(), n.name.toStdWString(), n.content});
     o.rules = crawlRules();
     for (const QString& n : networkExcludedNames) {
         if (!n.trimmed().isEmpty())

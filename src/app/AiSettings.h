@@ -47,7 +47,7 @@ enum class Widens {
 enum class Effect { Now, ExplorerRestart, AppRestart };
 // What the items of a list are, and so how one is written and kept.
 // LocalFolders: folders on this PC's disks, no network paths (网络共享 has those).
-enum class ListKind { Programs, Extensions, ContentExtensions, Names, Folders, LocalFolders };
+enum class ListKind { Programs, Extensions, ContentExtensions, Names, FileNames, Folders, LocalFolders };
 
 // The settings as a change works on them: those of Settings, and the one
 // that lives elsewhere (autostart, a task in the Task Scheduler).

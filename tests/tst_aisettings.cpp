@@ -82,6 +82,8 @@ QJsonValue sampleFor(const aisettings::Entry& e, State& s, int variant)
             return QJsonArray {u"zzz"_s, u"yyy"_s};
         case ListKind::Names:
             return QJsonArray {u"sample_folder"_s};
+        case ListKind::FileNames:
+            return QJsonArray {u"~$*"_s, u"Sample*.tmp"_s};
         case ListKind::Folders:
             return QJsonArray {u"D:\\Sample\\Folder"_s};
         case ListKind::LocalFolders: // on a disk of this PC's whatever the test machine is
@@ -145,7 +147,7 @@ private slots:
                  "Mcp/Plugins", "Mcp/PluginActions", "Mcp/Settings", "Plugin.winshun.tools/Enabled", "Plugin.x/Setting.token",
                  "Plugins/DeveloperMode", "Launcher/FileManagerOpenCommand", "Launcher/FileManagerRevealCommand", "Backup/Folder",
                  "Index/Folder", "Shares/size", "Shares/1\\Path", "Capture/PrintScreenBefore", "Launcher/FolderMenuOpusBefore",
-                 "Launcher/DialogAutoJumpAsked", "Network/Threads"})
+                 "Launcher/DialogAutoJumpAsked", "Network/Threads", "Proxy/Mode", "Proxy/Address"})
             QTest::newRow(key) << QString::fromLatin1(key);
     }
     void neverWritable()

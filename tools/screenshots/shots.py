@@ -103,7 +103,7 @@ README_ONLY = (
     ("switches", "L-switch1+L-switch2+L-switch3", "系统开关，[打字就切]", "行尾就是现在的状态，回车就地切换，窗口不关"),
     ("edit", "L-edit", "截图标完，[还能再改]", "箭头、方框、文字：从剪贴板历史打开，随时再编辑"),
     # 0.13.0 (scenes/release013.txt): "screen" = a piece of the screen, not a window with its own transparency
-    ("droppie", "L-droppie", "收藏夹与[拖放圆盘设置]", "按住文件，再按 Esc 下方的键呼出圆盘"),
+    ("droppie", "L-droppie", "收藏夹与[拖放圆盘设置]", "按住文件，再按数字 1 左边的键呼出圆盘"),
     ("longshot", "L-longshot", "比屏幕还长，[拼成一张图]", "Ctrl+L 后手动滚动、自动拼接；需要时开启自动滚动"),
     ("redact", "L-redact", "截图里的隐私，[一键打码]", "手机号、身份证、银行卡、邮箱，本机识别可撤销", "screen"),
     ("pins", "L-pins", "截图，[贴在屏幕上]", "F3 贴图：悬在所有窗口上，拖到哪放哪，滚轮缩放", "screen"),

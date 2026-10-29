@@ -41,6 +41,7 @@ class SettingsEditor : public QObject {
             NOTIFY changed FINAL)
     Q_PROPERTY(QStringList doubleCtrlExcludedApps READ doubleCtrlExcludedApps NOTIFY changed FINAL)
     Q_PROPERTY(QString hotkey READ hotkey WRITE setHotkey NOTIFY changed FINAL)
+    Q_PROPERTY(QString shortcutAgain READ shortcutAgain WRITE setShortcutAgain NOTIFY changed FINAL) // close | panel
     Q_PROPERTY(QString hotkeyError READ hotkeyError NOTIFY hotkeyErrorChanged FINAL)
     Q_PROPERTY(bool recordingHotkey READ recordingHotkey WRITE setRecordingHotkey NOTIFY recordingHotkeyChanged FINAL)
     Q_PROPERTY(bool autostart READ autostart WRITE setAutostart NOTIFY autostartChanged FINAL)
@@ -68,6 +69,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool explorerMenu READ explorerMenu WRITE setExplorerMenu NOTIFY changed FINAL)
     Q_PROPERTY(bool explorerTyping READ explorerTyping WRITE setExplorerTyping NOTIFY changed FINAL)
     Q_PROPERTY(bool opusTyping READ opusTyping WRITE setOpusTyping NOTIFY changed FINAL)
+    Q_PROPERTY(QString folderTyping READ folderTyping WRITE setFolderTyping NOTIFY changed FINAL) // first | only (GitHub #110)
     // The folder menu on a double click (Settings::folderMenu: on unless "off").
     Q_PROPERTY(bool folderMenu READ folderMenu WRITE setFolderMenu NOTIFY changed FINAL)
     Q_PROPERTY(bool folderMenuExplorer READ folderMenuExplorer WRITE setFolderMenuExplorer NOTIFY changed FINAL)
@@ -109,6 +111,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString captureHotkeyError READ captureHotkeyError NOTIFY hotkeyErrorChanged FINAL)
     Q_PROPERTY(bool capturePrintScreen READ capturePrintScreen WRITE setCapturePrintScreen NOTIFY changed FINAL)
     Q_PROPERTY(bool captureCopyOnSelect READ captureCopyOnSelect WRITE setCaptureCopyOnSelect NOTIFY changed FINAL)
+    Q_PROPERTY(bool captureMagnifier READ captureMagnifier WRITE setCaptureMagnifier NOTIFY changed FINAL)
     Q_PROPERTY(bool capturePinOnCopy READ capturePinOnCopy WRITE setCapturePinOnCopy NOTIFY changed FINAL)
     Q_PROPERTY(QString captureMouseDoubleLeft READ captureMouseDoubleLeft WRITE setCaptureMouseDoubleLeft NOTIFY changed FINAL)
     Q_PROPERTY(QString captureMouseRight READ captureMouseRight WRITE setCaptureMouseRight NOTIFY changed FINAL)
@@ -120,6 +123,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString captureNote READ captureNote NOTIFY hotkeyErrorChanged FINAL)
     // Smart redaction's options (Settings::captureSmart*).
     Q_PROPERTY(bool captureCursor READ captureCursor WRITE setCaptureCursor NOTIFY changed FINAL)
+    Q_PROPERTY(bool captureHdrFile READ captureHdrFile WRITE setCaptureHdrFile NOTIFY changed FINAL)
     Q_PROPERTY(bool captureControlsUia READ captureControlsUia WRITE setCaptureControlsUia NOTIFY changed FINAL)
     Q_PROPERTY(int captureDelay READ captureDelay WRITE setCaptureDelay NOTIFY changed FINAL)
     Q_PROPERTY(QString capturePinDoubleClick READ capturePinDoubleClick WRITE setCapturePinDoubleClick NOTIFY changed FINAL)
@@ -179,6 +183,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QStringList excludedPaths READ excludedPaths NOTIFY changed FINAL) // expanded, for display
     Q_PROPERTY(QStringList excludedNames READ excludedNames NOTIFY changed FINAL)
     Q_PROPERTY(QStringList excludedTypes READ excludedTypes NOTIFY changed FINAL)
+    Q_PROPERTY(QStringList excludedFileNames READ excludedFileNames NOTIFY changed FINAL)
     Q_PROPERTY(bool contentSearch READ contentSearch WRITE setContentSearch NOTIFY changed FINAL)
     Q_PROPERTY(QStringList contentExtensions READ contentExtensions NOTIFY changed FINAL)
     // Size limits in MB by kind of file (ContentSizeLimits::Kind: text, code, data),
@@ -227,7 +232,9 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool clipboardImages READ clipboardImages WRITE setClipboardImages NOTIFY changed FINAL)
     Q_PROPERTY(bool clipboardClickToPaste READ clipboardClickToPaste WRITE setClipboardClickToPaste NOTIFY changed FINAL)
     Q_PROPERTY(bool clipboardLargePictures READ clipboardLargePictures WRITE setClipboardLargePictures NOTIFY changed FINAL)
+    Q_PROPERTY(bool clipboardKeepPlace READ clipboardKeepPlace WRITE setClipboardKeepPlace NOTIFY changed FINAL)
     Q_PROPERTY(bool clipboardFlipAbove READ clipboardFlipAbove WRITE setClipboardFlipAbove NOTIFY changed FINAL)
+    Q_PROPERTY(bool clipboardHoldToStep READ clipboardHoldToStep WRITE setClipboardHoldToStep NOTIFY changed FINAL)
     Q_PROPERTY(QString clipboardSearchBoxSide READ clipboardSearchBoxSide WRITE setClipboardSearchBoxSide NOTIFY changed FINAL) // near | far
     Q_PROPERTY(QStringList clipboardExcludedApps READ clipboardExcludedApps NOTIFY changed FINAL)
     Q_PROPERTY(int clipboardCount READ clipboardCount NOTIFY clipboardCountChanged FINAL)
@@ -266,16 +273,21 @@ class SettingsEditor : public QObject {
     // 网络共享: for each, {path, name, tone (ok | busy | idle | warn | error),
     // status (where it stands, said for the user), signIn (it needs a user
     // name and password), suspect (a pass found much less: accept it?), busy
-    // (being read)}. As the app reports (setShareStatuses).
+    // (being read), content (its files' contents indexed too, GitHub #114),
+    // contentStatus (how far those are read; empty while off)}. As the app
+    // reports (setShareStatuses, setShareContentStatuses).
     Q_PROPERTY(QVariantList shares READ shares NOTIFY sharesChanged FINAL)
     // Shares the user opened in File Explorer or mapped, not added yet: [{path, drive}]
     Q_PROPERTY(QVariantList knownShares READ knownShares NOTIFY sharesChanged FINAL)
     Q_PROPERTY(QVariantList wslFolders READ wslFolders NOTIFY sharesChanged FINAL)
     Q_PROPERTY(QString renderer READ renderer WRITE setRenderer NOTIFY changed FINAL)
+    Q_PROPERTY(QString proxyMode READ proxyMode WRITE setProxyMode NOTIFY changed FINAL) // system | none | manual
+    Q_PROPERTY(QString proxyAddress READ proxyAddress WRITE setProxyAddress NOTIFY changed FINAL)
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY changed FINAL)
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY changed FINAL)
     Q_PROPERTY(QString transparency READ transparency WRITE setTransparency NOTIFY changed FINAL)
     Q_PROPERTY(QString taskbarIcon READ taskbarIcon WRITE setTaskbarIcon NOTIFY changed FINAL) // color | mono
+    Q_PROPERTY(bool searchLogo READ searchLogo WRITE setSearchLogo NOTIFY changed FINAL)
     Q_PROPERTY(QString uiSize READ uiSize WRITE setUiSize NOTIFY changed FINAL) // compact | standard | roomy
     Q_PROPERTY(QString corners READ corners WRITE setCorners NOTIFY changed FINAL) // round | square
     Q_PROPERTY(bool autoUpdate READ autoUpdate WRITE setAutoUpdate NOTIFY changed FINAL)
@@ -333,6 +345,8 @@ public:
     void setDoubleCtrlPauseInFullScreen(bool on);
     QStringList doubleCtrlExcludedApps() const { return m_settings.doubleCtrlExcludedApps; }
     QString hotkey() const { return m_settings.hotkey; }
+    QString shortcutAgain() const { return m_settings.shortcutAgain; }
+    void setShortcutAgain(const QString& what);
     void setHotkey(const QString& hotkey);
     QString hotkeyError() const { return m_hotkeyError; }
     void setHotkeyError(const QString& error);
@@ -375,6 +389,8 @@ public:
     void setExplorerTyping(bool on);
     bool opusTyping() const { return m_settings.opusTyping; }
     void setOpusTyping(bool on);
+    QString folderTyping() const { return m_settings.folderTyping; }
+    void setFolderTyping(const QString& how);
     bool folderMenu() const { return m_settings.folderMenu != u"off"; }
     void setFolderMenu(bool on);
     bool folderMenuExplorer() const { return m_settings.folderMenuExplorer; }
@@ -423,6 +439,8 @@ public:
     void setCapturePrintScreen(bool on);
     bool captureCopyOnSelect() const { return m_settings.captureCopyOnSelect; }
     void setCaptureCopyOnSelect(bool on);
+    bool captureMagnifier() const { return m_settings.captureMagnifier; }
+    void setCaptureMagnifier(bool on);
     bool capturePinOnCopy() const { return m_settings.capturePinOnCopy; }
     void setCapturePinOnCopy(bool on);
     // What the mouse buttons do after a selection (Settings::captureMouse*).
@@ -440,6 +458,8 @@ public:
     void setCaptureToolbarHidden(const QString& ids);
     bool captureCursor() const { return m_settings.captureCursor; }
     void setCaptureCursor(bool on);
+    bool captureHdrFile() const { return m_settings.captureHdrFile; }
+    void setCaptureHdrFile(bool on);
     bool captureControlsUia() const { return m_settings.captureControlsUia; }
     void setCaptureControlsUia(bool on);
     int captureDelay() const { return m_settings.captureDelay; }
@@ -568,6 +588,7 @@ public:
     QStringList excludedPaths() const;
     QStringList excludedNames() const { return m_settings.excludedNames; }
     QStringList excludedTypes() const { return m_settings.excludedTypes; }
+    QStringList excludedFileNames() const { return m_settings.excludedFileNames; }
     bool contentSearch() const { return m_settings.contentSearch; }
     void setContentSearch(bool on);
     QStringList contentExtensions() const { return m_settings.contentExtensions; }
@@ -584,6 +605,12 @@ public:
     void setContentIndexStatus(const QString& status); // "已收录 … 个文件"; set by the app
     QString renderer() const { return m_settings.renderer; }
     void setRenderer(const QString& renderer);
+    QString proxyMode() const { return m_settings.proxyMode; }
+    void setProxyMode(const QString& mode);
+    QString proxyAddress() const { return m_settings.proxyAddress; }
+    void setProxyAddress(const QString& address); // as typed, trimmed; a bad one is kept and not used (see proxyProblem)
+    // Why `address` cannot be a proxy, in plain words; empty when it can.
+    Q_INVOKABLE QString proxyProblem(const QString& address) const;
     QString theme() const { return m_settings.theme; }
     void setTheme(const QString& theme);
     QString language() const { return m_settings.language; }
@@ -592,6 +619,8 @@ public:
     void setTransparency(const QString& transparency);
     QString taskbarIcon() const { return m_settings.taskbarIcon; }
     void setTaskbarIcon(const QString& style);
+    bool searchLogo() const { return m_settings.searchLogo; }
+    void setSearchLogo(bool on);
     QString uiSize() const { return m_settings.uiSize; }
     void setUiSize(const QString& size);
     QString corners() const { return m_settings.corners; }
@@ -647,8 +676,12 @@ public:
     void setClipboardClickToPaste(bool on);
     bool clipboardLargePictures() const { return m_settings.clipboardLargePictures; }
     void setClipboardLargePictures(bool on);
+    bool clipboardKeepPlace() const { return m_settings.clipboardKeepPlace; }
+    void setClipboardKeepPlace(bool on);
     bool clipboardFlipAbove() const { return m_settings.clipboardFlipAbove; }
     void setClipboardFlipAbove(bool on);
+    bool clipboardHoldToStep() const { return m_settings.clipboardHoldToStep; }
+    void setClipboardHoldToStep(bool on);
     QString clipboardSearchBoxSide() const { return m_settings.clipboardSearchBoxSide; }
     void setClipboardSearchBoxSide(const QString& side);
     QStringList clipboardExcludedApps() const { return m_settings.clipboardExcludedApps; }
@@ -747,6 +780,8 @@ public:
     Q_INVOKABLE bool isWslPath(const QString& text) const;
     Q_INVOKABLE void startWslShare(int index);
     void setShareStatuses(std::vector<ShareIndexer::Status> statuses); // set by the app
+    void setShareContentStatuses(std::vector<remotecontent::Indexer::Status> statuses); // set by the app
+    Q_INVOKABLE void setShareContent(int index, bool on); // its files' contents indexed too (GitHub #114)
     // "\\host", "\\host\": a server, whose shares can be listed; its name, else empty.
     Q_INVOKABLE QString serverOf(const QString& text) const;
     // Adds a share typed or chosen ("\\host\share[\folder]", or a mapped "Z:\...").
@@ -760,6 +795,9 @@ public:
     Q_INVOKABLE void listServerShares(const QString& server);
     Q_INVOKABLE void signInToServer(const QString& server); // to list its shares
     void setSignedIn(const QString& path, const QString& problem); // set by the app: how signing in went
+    // Why signing in to an http WebDAV address fails (webdav::httpSignInBlocked):
+    // `failed`, once it did; else, as it asks for a sign-in.
+    static QString httpSignInText(bool failed);
 
     void setSettings(const Settings& settings); // the file was changed outside this editor
     void setWindow(QWindow* window) { m_window = window; }
@@ -777,6 +815,8 @@ public:
     Q_INVOKABLE void removeExcludedName(int index);
     Q_INVOKABLE bool addExcludedTypes(const QString& text); // "wbk, .bak *.tmp"
     Q_INVOKABLE void removeExcludedType(int index);
+    Q_INVOKABLE bool addExcludedFileNames(const QString& text); // "~$*; Thumbs.db"
+    Q_INVOKABLE void removeExcludedFileName(int index);
     Q_INVOKABLE void removeDialogBarExcludedApp(int index);
     Q_INVOKABLE bool addContentExtensions(const QString& text); // "md, .log *.csv"
     Q_INVOKABLE void removeContentExtension(int index);
@@ -829,6 +869,8 @@ public:
     void setClipboardImportProgress(int done, int total);
     void setClipboardImportDone(const clipimport::Report& report, const QString& group);
     Q_INVOKABLE void restartExplorer() { emit explorerRestartRequested(); }
+    // "S" or "V": the letter out of Windows' DisabledHotkeys, though it is not ours.
+    Q_INVOKABLE void giveBackToWindows(const QString& letter) { emit giveBackRequested(letter); }
     Q_INVOKABLE void restoreDefaults();
     Q_INVOKABLE void clearHistory() { emit historyClearRequested(); }
     Q_INVOKABLE void resetLauncherWidth() { emit launcherWidthResetRequested(); }
@@ -912,6 +954,7 @@ signals:
     void clipboardImportRequested(const QString& path, int split);
     void clipboardImportCancelled();
     void explorerRestartRequested(); // Win+V changes hands when Explorer starts again
+    void giveBackRequested(const QString& letter);
     void edited(const ws::Settings& settings);
     void restartRequested();
     void sharesChanged();
@@ -986,6 +1029,7 @@ private:
     QString m_diagnosticsStatus;
     bool m_diagnosticsBusy = false;
     std::vector<ShareIndexer::Status> m_shareStatuses;
+    std::vector<remotecontent::Indexer::Status> m_shareContentStatuses;
     std::vector<unc::Known> m_knownShares; // read once, with the window
     std::vector<wsl::Distribution> m_knownWsl;
     QStringList m_wslStarting;

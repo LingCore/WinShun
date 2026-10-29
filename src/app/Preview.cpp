@@ -12,6 +12,7 @@
 #include "FileIconProvider.h"
 #include "PluginSettings.h"
 #include "ResultModel.h"
+#include "ThumbnailProvider.h"
 #include "Settings.h"
 #include "SettingsEditor.h"
 #include "SystemTheme.h"
@@ -72,6 +73,7 @@ constexpr auto kResultsFlag = u"--preview-results";
 constexpr auto kAiCardsFlag = u"--preview-ai-cards";
 constexpr auto kCaptureToolsFlag = u"--preview-capture-tools";
 constexpr auto kRecordingFlag = u"--preview-recording";
+constexpr auto kLongCaptureFlag = u"--preview-long-capture";
 
 int g_warnings = 0;
 bool g_edges = false; // --edges (or --tree): every grab also writes <png>.edges.txt
@@ -1274,8 +1276,154 @@ int runSettings(const QStringList& args)
     return finish(window, saved);
 }
 
-// The production delegates and model, with made-up folders and local Qt key
-// events: no global shortcuts, file opening, or user's profile involved.
+// The production window, real temporary images, and local Qt input events;
+// no global shortcuts, external file opening, or user's profile involved.
+void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engine, const QDir& output)
+{
+    QTemporaryDir temporary;
+    const auto check = [](bool okay, const char* reason) {
+        if (!okay) qWarning("file gallery regression: %s", reason);
+    };
+    ClipStore store(temporary.filePath(u"clipboard"_s));
+    check(store.open(QDateTime::currentMSecsSinceEpoch()), "could not open isolated clipboard");
+    ClipboardWatcher watcher({}, {});
+    Clipboard clipboard(&store, &watcher);
+    Placement placement(temporary.filePath(u"state.ini"_s), u"Launcher"_s);
+    WindowFrame frame(false);
+    QQmlComponent component(engine, u"WinShun"_s, u"Main"_s);
+    std::unique_ptr<QObject> object(component.createWithInitialProperties({
+        {u"launcher"_s, QVariant::fromValue(&launcher)}, {u"clipboard"_s, QVariant::fromValue(&clipboard)},
+        {u"frame"_s, QVariant::fromValue(&frame)}, {u"placement"_s, QVariant::fromValue(&placement)}}));
+    auto* window = qobject_cast<QQuickWindow*>(object.get());
+    if (!window) { qWarning().noquote() << "gallery main:" << component.errorString(); return; }
+    window->create();
+    window->resize(1200, 680);
+    launcher.setWindow(window);
+    frame.setWindow(window);
+    placement.setWindow(window);
+    showOffScreen(window);
+    SearchResults pictures;
+    for (int i = 0; i < 18; ++i) {
+        const bool portrait = i % 3 == 0;
+        QImage image(portrait ? QSize(400, 720) : QSize(960, 540), QImage::Format_RGB32);
+        image.fill(QColor::fromHsl((i * 39) % 360, 110, 150));
+        QPainter painter(&image);
+        painter.setPen(QPen(Qt::white, 8));
+        painter.drawRect(image.rect().adjusted(30, 30, -30, -30));
+        painter.setFont(QFont(u"Segoe UI"_s, 72));
+        painter.drawText(image.rect(), Qt::AlignCenter, QString::number(i + 1));
+        painter.end();
+        const QString path = temporary.filePath(u"测试照片_%1.png"_s.arg(i + 1, 2, 10, QLatin1Char('0')));
+        check(image.save(path), "could not create isolated image");
+        pictures.append(SearchResult{.name = QFileInfo(path).fileName(), .path = QDir::toNativeSeparators(path),
+            .modified = static_cast<FileTime>(QDateTime::currentSecsSinceEpoch())});
+    }
+    {
+        const auto files = index.index();
+        const auto lock = files->writeLock();
+        const auto root = files->addRoot(QDir::toNativeSeparators(temporary.path()).toStdString());
+        for (const SearchResult& picture : pictures) {
+            if (!picture.name.endsWith(u".png"))
+                continue;
+            const auto id = files->add(root, picture.name.toStdString(), 0);
+            files->setModified(id, picture.modified);
+            files->setSize(id, packSize(QFileInfo(picture.path).size()));
+        }
+    }
+    launcher.chooseFileType(1);
+    launcher.setQuery(u"测试照片"_s);
+    QElapsedTimer timeout;
+    timeout.start();
+    while (launcher.searching() && timeout.elapsed() < 2000)
+        pump(10);
+    check(!launcher.searching() && launcher.results()->count() == 18,
+        "real image search did not produce the gallery rows");
+    if (auto* field = visualNamed(window->contentItem(), u"panelSearchField"_s))
+        field->setProperty("text", u"测试照片"_s);
+    launcher.setGallery(true);
+    settle(window);
+    pump(1200);
+    settle(window);
+    auto* grid = visualNamed(window->contentItem(), u"panelGallery"_s);
+    check(grid && grid->property("count").toInt() == 18, "production model not displayed");
+    if (auto* image = visualNamed(window->contentItem(), u"fileGalleryThumbnail"_s)) {
+        const qreal longest = std::max(image->implicitWidth(), image->implicitHeight());
+        check(longest >= 128, "large previews reused a small list thumbnail");
+    } else check(false, "gallery thumbnail missing");
+    check(saveGrab(window, output.filePath(u"files-large-icons.png"_s)), "could not render the gallery");
+    if (grid) {
+        const auto key = [&](int code, Qt::KeyboardModifiers modifiers = {}, const QString& text = {}) {
+            QKeyEvent event(QEvent::KeyPress, code, modifiers, text);
+            QCoreApplication::sendEvent(window, &event);
+        };
+        auto* field = visualNamed(window->contentItem(), u"panelSearchField"_s);
+        check(field != nullptr, "production search field missing");
+        if (field) {
+            field->forceActiveFocus();
+            grid->setProperty("currentIndex", 0);
+            key(Qt::Key_Down);
+            const int row = grid->property("currentIndex").toInt();
+            check(row == grid->property("columns").toInt(), "Down did not navigate a grid row");
+            key(Qt::Key_Right);
+            check(grid->property("currentIndex").toInt() == row + 1, "Right did not navigate a grid column");
+            key(Qt::Key_Right, Qt::ShiftModifier);
+            check(launcher.results()->selectedCount() == 2, "Shift+Right did not select a range");
+            key(Qt::Key_Z, {}, u"z"_s);
+            check(launcher.query().endsWith(u'z') && field->hasActiveFocus(), "typing from the grid did not resume search");
+            launcher.setQuery(u"测试照片"_s);
+            timeout.restart();
+            while (launcher.searching() && timeout.elapsed() < 2000)
+                pump(10);
+        }
+        const auto click = [&](QQuickItem* item) {
+            if (!item) { check(false, "click target missing"); return; }
+            const QPointF at = item->mapToScene(QPointF(item->width() / 2, item->height() / 2));
+            QMouseEvent press(QEvent::MouseButtonPress, at, window->mapToGlobal(at.toPoint()), Qt::LeftButton, Qt::LeftButton, {});
+            QMouseEvent release(QEvent::MouseButtonRelease, at, window->mapToGlobal(at.toPoint()), Qt::LeftButton, {}, {});
+            QCoreApplication::sendEvent(window, &press);
+            QCoreApplication::sendEvent(window, &release);
+        };
+        grid->setProperty("currentIndex", 5);
+        const QString chosen = launcher.results()->pathAt(5);
+        click(visualNamed(window->contentItem(), u"fileViewList"_s));
+        settle(window);
+        auto* view = window->property("view").value<QObject*>();
+        check(!launcher.gallery() && view && launcher.results()->pathAt(view->property("currentIndex").toInt()) == chosen,
+            "switching to list lost the current file");
+        click(visualNamed(window->contentItem(), u"fileViewGallery"_s));
+        settle(window);
+        check(launcher.gallery() && launcher.results()->pathAt(grid->property("currentIndex").toInt()) == chosen,
+            "switching back to gallery lost the current file");
+        launcher.setResultOptions(KindOrder::FilesFirst, true, false, false, u"ctrl"_s);
+        check(launcher.results()->data(launcher.results()->index(0), ResultModel::ThumbnailRole).toString().isEmpty()
+            && !launcher.results()->data(launcher.results()->index(0), ResultModel::GalleryThumbnailRole).toString().isEmpty(),
+            "gallery previews depended on the compact list's thumbnail preference");
+        grid->setProperty("currentIndex", 10);
+        grid->setProperty("contentY", 300);
+        launcher.setThumbnailSize(224);
+        pump(100);
+        check(grid->property("currentIndex").toInt() == 10 && grid->property("contentY").toReal() > 0,
+            "zoom lost the selection or jumped to the beginning");
+        const QPointF at = grid->mapToScene(QPointF(100, 100));
+        QWheelEvent wheel(at, window->mapToGlobal(at.toPoint()), {}, QPoint(0, 120),
+            Qt::NoButton, Qt::AltModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(window, &wheel);
+        check(launcher.thumbnailSize() == 240, "Alt+wheel did not resize thumbnails");
+        launcher.setThumbnailSize(320);
+        window->resize(640, 480);
+        settle(window);
+        check(saveGrab(window, output.filePath(u"files-large-icons-compact.png"_s)), "could not render minimum width");
+    }
+    launcher.setGallery(false);
+    settle(window);
+    launcher.results()->clear();
+    launcher.setGallery(true);
+    settle(window);
+    check(saveGrab(window, output.filePath(u"files-large-icons-empty.png"_s)), "could not render empty gallery");
+    launcher.setGallery(false);
+    say(u"large icons: production QML/model, real temporary PNGs, Alt+wheel, viewport retention, minimum width"_s);
+}
+
 void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDir& output, bool gallery)
 {
     QTemporaryDir temporary;
@@ -1301,6 +1449,7 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
         files->setSize(report, packSize(1234567));
         const auto empty = files->add(root, "照片.png", 0);
         files->setSize(empty, packSize(0));
+        files->add(root, "假日视频.mp4", 0);
         files->add(root, "报告.txt", 0);
     }
     const auto check = [](bool condition, const char* reason) {
@@ -1346,6 +1495,29 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
         "zero bytes were treated as unknown");
     query({});
     check(launcher.scope() == Launcher::All, "removing a prefix did not restore the original scope");
+    launcher.chooseFileType(1);
+    launcher.toggleFileType(2);
+    query({});
+    check(launcher.selectedFileTypes() == (QList<int>{1, 2}) && launcher.results()->count() == 3,
+        "multiple categories did not union their extensions");
+    const QString savedTypes = launcher.fileChoice();
+    launcher.chooseFileType(-1);
+    launcher.setFileChoice(savedTypes);
+    check(launcher.selectedFileTypes() == (QList<int>{1, 2}), "multiple categories did not round trip through saved state");
+    query(u":pictures,videos"_s);
+    check(launcher.selectedFileTypes() == (QList<int>{1, 2}) && launcher.results()->count() == 3,
+        "multiple type prefix did not reach the real engine");
+    query({});
+    check(launcher.selectedFileTypes() == (QList<int>{1, 2}), "removing the prefix lost the previous multiple selection");
+    launcher.chooseFileType(-1);
+    query(u"regex:["_s);
+    check(!launcher.queryError().isEmpty() && launcher.results()->count() == 0,
+        "invalid regex was not reported or retained stale results");
+    query(u"regex:^.*\\.mp4$ | ^照片"_s);
+    check(launcher.queryError().isEmpty() && launcher.results()->count() == 2,
+        "OR and regex did not reach the real engine");
+    launcher.setScope(Launcher::All);
+    query({});
     query(u":folder 报告"_s);
     launcher.chooseFileType(0);
     check(launcher.query() == u"报告" && launcher.fileType() == 0 && launcher.scope() == Launcher::Files,
@@ -1426,6 +1598,103 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
         .keyword = u"example"_s, .words = u"report"_s, .suggestion = true};
     showRow(suggestion);
     check(launcher.autocomplete(0) && launcher.query() == u"example report", "web suggestion completion changed");
+    {
+        // GitHub #116: Enter on a file whose server does not answer
+        // (TEST-NET-1, nothing there) says "正在连接 …" at once, the window
+        // never waiting for the network; "连不上 …" once the probe and
+        // Windows gave up, off the UI thread.
+        const SearchResult remote {.name = u"报告.txt"_s, .path = u"\\\\192.0.2.1\\share\\报告.txt"_s};
+        showRow(remote);
+        QElapsedTimer enter;
+        enter.start();
+        quint64 checks = launcher.serverChecksStarted();
+        launcher.trigger(0, Launcher::Open);
+        const qint64 returned = enter.elapsed();
+        const QString connecting = QCoreApplication::translate("ws::Launcher", "正在连接 %1…").arg(u"192.0.2.1"_s);
+        check(returned < 100 && launcher.statusText() == connecting, "Enter on an unreachable share held the window up or said nothing");
+        const QString cannot = QCoreApplication::translate("ws::Launcher", "连不上 %1（离线或不在同一网络）").arg(u"192.0.2.1"_s);
+        while (launcher.statusText() != cannot && enter.elapsed() < 30000)
+            pump(50);
+        check(launcher.statusText() == cannot, "no 连不上 for an unreachable share");
+        say(u"#116 Enter on \\\\192.0.2.1\\share\\报告.txt: 正在连接 shown as Enter returned, %1 ms; 连不上 after %2 ms; checks started %3"_s
+                .arg(returned)
+                .arg(enter.elapsed())
+                .arg(launcher.serverChecksStarted() - checks));
+
+        // Its menu opened while it waits (Main.qml's openContextMenu): the
+        // wait is dropped, and nothing is opened or said for it later.
+        showRow(remote);
+        launcher.trigger(0, Launcher::Open);
+        const bool waited = launcher.statusText() == connecting;
+        launcher.dropServerWait();
+        const bool cleared = launcher.statusText() != connecting;
+        QElapsedTimer menu;
+        menu.start();
+        bool saidLater = false;
+        while (!saidLater && menu.elapsed() < 10000) { // the check ends after 8 s
+            pump(50);
+            saidLater = launcher.statusText() == cannot;
+        }
+        check(waited && cleared && !saidLater, "a menu opened while waiting for a server left the wait on");
+        say(u"#116 right-click while waiting: 正在连接 %1, gone at once %2, 连不上 in the next 10 s %3"_s
+                .arg(waited ? u"shown"_s : u"NOT shown"_s, cleared ? u"yes"_s : u"NO"_s, saidLater ? u"YES"_s : u"no"_s));
+
+        // Enter held (repeating at 30 a second): one check for the row,
+        // answered once, for the newest press.
+        showRow(remote);
+        checks = launcher.serverChecksStarted();
+        QElapsedTimer held;
+        held.start();
+        qint64 slowest = 0;
+        for (int i = 0; i < 30; ++i) {
+            QElapsedTimer press;
+            press.start();
+            launcher.trigger(0, Launcher::Open);
+            slowest = std::max(slowest, press.elapsed());
+            pump(33);
+        }
+        const qint64 pressedFor = held.elapsed();
+        const quint64 started = launcher.serverChecksStarted() - checks;
+        const bool stillWaiting = launcher.statusText() == connecting;
+        while (launcher.statusText() != cannot && held.elapsed() < 30000)
+            pump(50);
+        check(started == 1 && stillWaiting && slowest < 100 && launcher.statusText() == cannot,
+            "Enter held on an unreachable share started a check per press, or held the window up");
+        say(u"#116 Enter held, 30 presses over %1 ms: checks started %2, slowest press %3 ms, 正在连接 after the last %4, 连不上 %5 ms after the first"_s
+                .arg(pressedFor)
+                .arg(started)
+                .arg(slowest)
+                .arg(stillWaiting ? u"yes"_s : u"NO"_s)
+                .arg(held.elapsed()));
+
+        // Ctrl+C on two selected rows there: copied at once, no server asked
+        // (Explorer finds out on pasting), as for one row; nothing lost. The
+        // clipboard (and the user's history in it) left alone.
+        const SearchResult second {.name = u"附件.txt"_s, .path = u"\\\\192.0.2.1\\share\\附件.txt"_s};
+        launcher.setScope(Launcher::All);
+        query({});
+        launcher.results()->assign({remote, second}, {});
+        launcher.setCurrentRow(0);
+        launcher.selectRange(0, 1, false);
+        QStringList copied;
+        launcher.setFileCopier([&copied](const QStringList& files) { copied = files; });
+        checks = launcher.serverChecksStarted();
+        QElapsedTimer copy;
+        copy.start();
+        launcher.triggerSelection(Launcher::CopyItem); // Main.qml's act() with rows selected
+        const qint64 copyTook = copy.elapsed();
+        const QString copiedText = QCoreApplication::translate("ws::Launcher", "已复制 %Ln 项，可在资源管理器中粘贴", nullptr, 2);
+        check(copied.size() == 2 && copyTook < 100 && launcher.statusText() == copiedText
+                && launcher.serverChecksStarted() == checks,
+            "Ctrl+C on a selection on an unreachable share was lost or waited for the server");
+        say(u"#116 Ctrl+C on 2 selected rows there: %1 file(s) handed to the clipboard in %2 ms, checks started %3, footer \"%4\""_s
+                .arg(copied.size())
+                .arg(copyTook)
+                .arg(launcher.serverChecksStarted() - checks)
+                .arg(launcher.statusText()));
+        launcher.setFileCopier({});
+        launcher.clearSelection();
+    }
     query({}); // let the last search settle before its controller and engine go away
     say(u"launcher prefix, panel-sort and favorite Tab regressions: real controllers/engine over isolated fixtures"_s);
 
@@ -1584,22 +1853,53 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
         launcher.panelColumns()->toggle(u"created"_s);
         settle(panelWindow);
         check(saveGrab(panelWindow, output.filePath(u"panel-gallery.png"_s)), "could not render the panel gallery");
-        // Render the same menu inside its parent for a single offscreen grab;
-        // the regression above already exercised its production popup window.
-        if (auto* menu = panelWindow->findChild<QObject*>(u"panelColumnsMenu"_s))
-            menu->setProperty("popupType", 0);
-        if (auto* header = visualNamed(panelWindow->contentItem(), u"columnHeader-created"_s)) {
+        // The columns menu is a top-level window of its own (ContextMenu): open it
+        // the production way (right click -> Panel.openColumns), grab both
+        // windows and lay the menu over the panel at its real position.
+        // A header away from the right edge: the menu opens at the click and
+        // would run past the panel's image (on screen it may, it is a window).
+        if (auto* header = visualNamed(panelWindow->contentItem(), u"columnHeader-type"_s)) {
             const QPointF at = header->mapToScene(QPointF(header->width() / 2, header->height() / 2));
             mouse(QEvent::MouseButtonPress, at, Qt::RightButton, Qt::RightButton);
             mouse(QEvent::MouseButtonRelease, at, Qt::RightButton, {});
             settle(panelWindow);
-            check(saveGrab(panelWindow, output.filePath(u"panel-gallery-menu.png"_s)), "could not render the columns menu");
-            if (auto* menu = panelWindow->findChild<QObject*>(u"panelColumnsMenu"_s))
+            auto* menu = panelWindow->findChild<QQuickWindow*>(u"panelColumnsMenu"_s);
+            bool composed = false;
+            if (menu && menu->isVisible()) {
+                menu->contentItem()->polish();
+                pump(150);
+                const QImage base = panelWindow->grabWindow();
+                QImage popup = menu->grabWindow();
+                const qreal dpr = panelWindow->devicePixelRatio();
+                if (!base.isNull() && !popup.isNull()) {
+                    // Grabs carry the window's DPR; paint in device pixels.
+                    QImage image = base.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+                    image.setDevicePixelRatio(1);
+                    popup.setDevicePixelRatio(1);
+                    const QPoint menuAt((menu->position() - panelWindow->position()) * dpr);
+                    QPainter painter(&image);
+                    painter.drawImage(menuAt, popup);
+                    painter.end();
+                    composed = QRect(QPoint(), image.size()).contains(QRect(menuAt, popup.size()))
+                        && image.save(output.filePath(u"panel-gallery-menu.png"_s), "PNG");
+                    say(u"%1 panel-gallery-menu.png (menu %2x%3 at %4,%5 of %6x%7)"_s
+                            .arg(composed ? u"saved"_s : u"NOT saved"_s).arg(popup.width()).arg(popup.height())
+                            .arg(menuAt.x()).arg(menuAt.y()).arg(image.width()).arg(image.height()));
+                }
+            }
+            check(composed, "could not render the columns menu inside the panel image");
+            if (menu)
                 QMetaObject::invokeMethod(menu, "close");
         }
     }
     launcher.setWindow(window);
     query({});
+    if (gallery) {
+        launcher.setWindow(panelWindow);
+        checkFileGallery(launcher, index, qmlEngine, output);
+        launcher.setWindow(window);
+        query({});
+    }
     say(u"panel column drag/resize/persistence and plugin metadata: production QML with isolated fixtures"_s);
 }
 
@@ -1703,6 +2003,7 @@ int runResults(const QStringList& args)
     engine.addImageProvider(u"fileicon"_s, new FileIconProvider);
     ResultModel results;
     results.setThumbnails(false); // synthetic paths: no thumbnail handler or real file access
+    engine.addImageProvider(u"thumbnail"_s, new ThumbnailProvider);
     SearchResults rows;
     for (const QString& name : {u"设计"_s, u"图纸"_s, u"照片"_s, u"合同"_s, u"资料"_s, u"归档"_s, u"参考"_s, u"备份"_s}) {
         SearchResult row;
@@ -1762,7 +2063,7 @@ int runResults(const QStringList& args)
         return 3;
     }
     QTimer watchdog;
-    armWatchdog(watchdog, 45);
+    armWatchdog(watchdog, 90); // GitHub #116's readouts wait about 30 s for a server that never answers
     showOffScreen(window);
     settle(window);
     pump(500);
@@ -1818,7 +2119,7 @@ int runResults(const QStringList& args)
     key(QEvent::KeyRelease);
     if (args.contains(u"--file-metadata"_s)) {
         const QString galleryImage = valueAfter(args, u"--gallery-image");
-        checkLauncherFilters(window, &engine, out, !galleryImage.isEmpty());
+        checkLauncherFilters(window, &engine, out, !galleryImage.isEmpty() || args.contains(u"--file-gallery"_s));
         checkClipboardInteractions(&engine, out, galleryImage);
         SearchResults files;
         const QDateTime when(QDate(2024, 3, 5), QTime(14, 32));
@@ -2485,7 +2786,7 @@ int runAiCards(const QStringList& args)
 bool wanted(const QStringList& args)
 {
     return args.contains(kFlag) || args.contains(kSettingsFlag) || args.contains(kResultsFlag) || args.contains(kAiCardsFlag)
-        || args.contains(kCaptureToolsFlag) || args.contains(kRecordingFlag);
+        || args.contains(kCaptureToolsFlag) || args.contains(kRecordingFlag) || args.contains(kLongCaptureFlag);
 }
 
 void note(const QString& line)
@@ -2496,7 +2797,7 @@ void note(const QString& line)
 void prepare(const QStringList& args)
 {
     const bool resultsMode = args.contains(kResultsFlag);
-    const QString folder = valueAfter(args, args.contains(kRecordingFlag) ? kRecordingFlag : resultsMode ? kResultsFlag : args.contains(kCaptureToolsFlag) ? kCaptureToolsFlag
+    const QString folder = valueAfter(args, args.contains(kLongCaptureFlag) ? kLongCaptureFlag : args.contains(kRecordingFlag) ? kRecordingFlag : resultsMode ? kResultsFlag : args.contains(kCaptureToolsFlag) ? kCaptureToolsFlag
         : args.contains(kAiCardsFlag) ? kAiCardsFlag : kSettingsFlag);
     if (!folder.isEmpty()) {
         QDir().mkpath(folder);
@@ -2511,7 +2812,7 @@ void prepare(const QStringList& args)
     qputenv("QT_SCALE_FACTOR", valueAfter(args, u"--scale", u"1"_s).toLatin1());
     const bool webForm = args.contains(u"--web-form"_s);
     // --renderer d3d11: the window as the desktop shows it (for counting edge pixels), not the software renderer's.
-    const bool nativeWeb = (webForm || args.contains(QString(kSettingsFlag)) || args.contains(kCaptureToolsFlag) || args.contains(kRecordingFlag))
+    const bool nativeWeb = (webForm || args.contains(QString(kSettingsFlag)) || args.contains(kCaptureToolsFlag) || args.contains(kRecordingFlag) || args.contains(kLongCaptureFlag))
         && valueAfter(args, u"--renderer") == u"d3d11";
     if (nativeWeb)
         qputenv("QSG_RHI_BACKEND", "d3d11");
@@ -2531,7 +2832,8 @@ int run(const QStringList& args)
     const bool cardsMode = args.contains(kAiCardsFlag);
     const bool captureMode = args.contains(kCaptureToolsFlag);
     const bool recordingMode = args.contains(kRecordingFlag);
-    if (valueAfter(args, recordingMode ? kRecordingFlag : resultsMode ? kResultsFlag : captureMode ? kCaptureToolsFlag : cardsMode ? kAiCardsFlag : settingsMode ? kSettingsFlag : kFlag).isEmpty()) {
+    const bool longCaptureMode = args.contains(kLongCaptureFlag);
+    if (valueAfter(args, longCaptureMode ? kLongCaptureFlag : recordingMode ? kRecordingFlag : resultsMode ? kResultsFlag : captureMode ? kCaptureToolsFlag : cardsMode ? kAiCardsFlag : settingsMode ? kSettingsFlag : kFlag).isEmpty()) {
         std::fprintf(stderr, "usage: WinShun --preview-plugins <file.png> [--dark] [--scale 1.5] [--dialog] [--page ai]\n"
                              "       WinShun --preview-settings <folder> [--dark] [--scale 1.5] [--tree] [--edges] [--renderer d3d11]\n");
         return 2;
@@ -2540,6 +2842,10 @@ int run(const QStringList& args)
     g_edges = args.contains(u"--edges"_s) || args.contains(u"--tree"_s);
     QGuiApplication::styleHints()->setColorScheme(args.contains(u"--dark"_s) ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
     SystemTheme::setBackdropAvailable(false); // plain colours, as a window without Mica
+    if (longCaptureMode) {
+        const int checks = runLongCapture(args);
+        return checks + g_warnings;
+    }
     return recordingMode ? runRecording(args) : resultsMode ? runResults(args) : captureMode ? runCaptureTools(args) : cardsMode ? runAiCards(args) : settingsMode ? runSettings(args) : runPlugins(args);
 }
 

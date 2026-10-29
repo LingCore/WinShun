@@ -1,9 +1,12 @@
 #include "App.h"
+#include "ContextMenuGuard.h"
 #include "Diagnostics.h"
 #include "DisplayDiagnostics.h"
 #include "Backup.h"
 #include "Migration.h"
+#include "Phosphor.h"
 #include "Preview.h"
+#include "RepeatFilter.h"
 #include "Settings.h"
 #include "SystemCatalog.h"
 #include "platform/MessageWindow.h"
@@ -25,6 +28,8 @@
 #include <windows.h>
 #include <shellapi.h>
 
+#include <chrono>
+#include <cstdio>
 #include <mutex>
 #include <string_view>
 
@@ -33,42 +38,114 @@ using namespace Qt::StringLiterals;
 namespace {
 
 QtMessageHandler g_defaultHandler = nullptr;
+std::mutex g_logMutex; // messages come from every thread
+// A message that comes again and again: its first copies and a count
+// (GitHub #96, see RepeatFilter). Under g_logMutex.
+ws::diagnostics::RepeatFilter g_repeats;
+// This thread is inside the handler: a Qt message from there (g_logMutex is
+// held and not recursive) only goes to the debugger.
+thread_local bool g_writing = false;
 
-// Warnings and errors also go to %LOCALAPPDATA%\WinShun\WinShun.log: a
-// tray app has no console, and the user's machine is where things go wrong.
-// Over 1 MB, the log becomes WinShun.old.log and a new one starts. With
-// WINSHUN_LOG_INFO set (a test, a user asked to), the info lines too (what
-// the folder menu did, the dialogs followed…).
+const char* levelName(int type)
+{
+    return type == QtInfoMsg ? "info" : type == QtWarningMsg ? "warning" : type == QtCriticalMsg ? "error" : "fatal";
+}
+
+// One line of WinShun.log; the caller holds g_logMutex.
+void appendToLogFile(const char* level, const QString& message)
+{
+    const QString path = ws::Settings::dataDir() + u"\\WinShun.log"_s;
+    const QByteArray text = message.left(4096).toUtf8();
+    bool canAppend = true;
+    if (QFile::exists(path) && QFile(path).size() + text.size() + 64 > (1 << 20)) {
+        const QString old = ws::Settings::dataDir() + u"\\WinShun.old.log"_s;
+        QFile::remove(old);
+        canAppend = QFile::rename(path, old);
+    }
+    QFile file(path);
+    if (canAppend && file.open(QIODevice::Append | QIODevice::Text))
+        file.write(QDateTime::currentDateTime().toString(Qt::ISODateWithMs).toUtf8() + ' ' + level + ": " + text + '\n');
+}
+
+// How often a message came that was not written; the caller holds g_logMutex.
+void writeRepeats(const std::vector<ws::diagnostics::RepeatFilter::Repeat>& repeats)
+{
+    for (const auto& repeat : repeats) {
+        const qint64 ms = std::chrono::duration_cast<std::chrono::milliseconds>(repeat.span).count();
+        ws::diagnostics::record(u"app-message-repeated"_s,
+            {{u"level"_s, QString::fromLatin1(levelName(repeat.kind))}, {u"message"_s, repeat.message},
+                {u"times"_s, repeat.times}, {u"milliseconds"_s, ms}});
+        appendToLogFile(levelName(repeat.kind),
+            repeat.message + u" [%1 more times in %2 s, not written]"_s.arg(repeat.times).arg(ms / 1000.0, 0, 'f', 1));
+    }
+}
+
+// Warnings and errors also go to %LOCALAPPDATA%\WinShun\WinShun.log and the
+// diagnostics journal: a tray app has no console, and the user's machine is
+// where things go wrong. Over 1 MB, the log becomes WinShun.old.log and a new
+// one starts. With WINSHUN_LOG_INFO set (a test, a user asked to), the info
+// lines too (what the folder menu did, the dialogs followed…). A message that
+// comes in a loop is written a few times, then counted (RepeatFilter).
 void logToFile(QtMsgType type, const QMessageLogContext& context, const QString& message)
 {
     static const bool info = qEnvironmentVariableIsSet("WINSHUN_LOG_INFO");
-    if (type != QtDebugMsg && (type != QtInfoMsg || info)) {
-        ws::diagnostics::record(u"app-message"_s,
-            {{u"level"_s, type == QtWarningMsg ? u"warning"_s : type == QtCriticalMsg ? u"error"_s
-                    : type == QtFatalMsg ? u"fatal"_s : u"info"_s},
-                {u"message"_s, message}});
-        static std::mutex mutex; // messages come from every thread
-        const std::lock_guard lock(mutex);
-        const QString path = ws::Settings::dataDir() + u"\\WinShun.log"_s;
-        const QByteArray text = message.left(4096).toUtf8();
-        bool canAppend = true;
-        if (QFile::exists(path) && QFile(path).size() + text.size() + 64 > (1 << 20)) {
-            const QString old = ws::Settings::dataDir() + u"\\WinShun.old.log"_s;
-            QFile::remove(old);
-            canAppend = QFile::rename(path, old);
+    if (type != QtDebugMsg && (type != QtInfoMsg || info) && !g_writing) {
+        const std::lock_guard lock(g_logMutex);
+        g_writing = true;
+        const auto verdict = g_repeats.check(message, type, std::chrono::steady_clock::now());
+        writeRepeats(verdict.repeats);
+        if (verdict.write) {
+            ws::diagnostics::record(u"app-message"_s,
+                {{u"level"_s, QString::fromLatin1(levelName(type))}, {u"message"_s, message}});
+            appendToLogFile(levelName(type), message);
         }
-        QFile file(path);
-        if (canAppend && file.open(QIODevice::Append | QIODevice::Text)) {
-            const char* level = type == QtInfoMsg ? "info"
-                : type == QtWarningMsg         ? "warning"
-                : type == QtCriticalMsg        ? "error"
-                                               : "fatal";
-            file.write(QDateTime::currentDateTime().toString(Qt::ISODateWithMs).toUtf8() + ' ' + level + ": "
-                + text + '\n');
-        }
+        g_writing = false;
+        if (!verdict.write)
+            return; // one more copy: not to the debugger either
     }
     if (g_defaultHandler)
         g_defaultHandler(type, context, message); // the debugger's output, as before
+}
+
+// At exit: the counts of messages still coming when it ended.
+void writeOpenRepeats()
+{
+    const std::lock_guard lock(g_logMutex);
+    g_writing = true; // as in logToFile
+    writeRepeats(g_repeats.takeAll());
+    g_writing = false;
+}
+
+// Declared before the QGuiApplication in main(), so it runs after the
+// application object is gone: warnings from its destructor are still logged,
+// and the counts still open are written (the data folder does not depend on
+// the application object).
+struct LogShutdown {
+    ~LogShutdown()
+    {
+        if (!armed)
+            return;
+        writeOpenRepeats();
+        qInstallMessageHandler(g_defaultHandler); // not into g_repeats while statics are destroyed
+    }
+    bool armed = false;
+};
+
+// Qt's FreeType engine (the font engine of the GPU renderers, see main) reads
+// each font face through a C runtime stream (fopen) that stays open while the
+// face is in use, and font fallback for a character the UI font lacks opens a
+// face of one installed family after another, up to 255 per font. The C
+// runtime allows 512 streams by default: on a PC with many fonts they ran out
+// after a while, every new face failed from then on, the settings window came
+// up all boxes and Qt's warning for each family it tried instead held the GUI
+// thread for minutes (GitHub #96). 8192 is the C runtime's maximum (64 KB of
+// table); Qt's DLLs share this C runtime (ucrtbase.dll) with the program.
+bool raiseStreamLimit()
+{
+#if !defined(_DLL)
+#error "raiseStreamLimit needs the shared C runtime (/MD): Qt's DLLs share its stream table"
+#endif
+    return _setmaxstdio(8192) == 8192;
 }
 
 // UI font: Alibaba PuHuiTi 3.0 (Regular + Bold) from fonts\ next to the
@@ -160,6 +237,11 @@ void startAgain(const QStringList& arguments, ws::App::Elevation elevation)
 
 int main(int argc, char* argv[])
 {
+    // "--run-hidden <command line>": the elevated half of a silent custom
+    // command (GitHub #112), before anything else is set up.
+    if (const int hidden = ws::shell::hiddenHelper(); hidden >= 0)
+        return hidden;
+    const bool manyStreams = raiseStreamLimit(); // before any font is read (see there)
     // Never show "insert a disk" dialogs while probing drives.
     ::SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
     // --profile <folder> (see Settings::useProfile), before anything reads
@@ -212,6 +294,7 @@ int main(int argc, char* argv[])
         QGuiApplication::setApplicationDisplayName(u"Win顺"_s);
         ws::preview::note(u"loading the font"_s);
         applyUiFont();
+        ws::phosphor::loadFonts();
         return ws::preview::run(wideArgs);
     }
 
@@ -225,6 +308,7 @@ int main(int argc, char* argv[])
     QCoreApplication::setOrganizationName(u"WinShun"_s);
     QCoreApplication::setApplicationName(u"WinShun"_s);
     QCoreApplication::setApplicationVersion(QStringLiteral(WINSHUN_VERSION));
+    LogShutdown logShutdown; // before app: runs after it
     QGuiApplication app(argc, argv);
     const QString platform = qEnvironmentVariable("QT_QPA_PLATFORM"); // the font engine, for the record
     if (setPlatform)
@@ -242,6 +326,10 @@ int main(int argc, char* argv[])
     // ("Retrying to obtain clipboard."). Pasting reads it when it happens, and
     // the clipboard history has its own listener (ClipboardWatcher).
     QGuiApplication::clipboard()->blockSignals(true);
+    // A right-click on the top-left pixel of a menu (any window of ours that
+    // never takes the focus) crashed Qt Quick (QTBUG-146671, ContextMenuGuard.h).
+    ws::ContextMenuGuard contextMenuGuard;
+    app.installEventFilter(&contextMenuGuard);
 
     QCommandLineParser parser;
     parser.setApplicationDescription(u"Win顺 · WinShun — 文件、文件夹与文本内容搜索"_s);
@@ -322,8 +410,12 @@ int main(int argc, char* argv[])
     ws::diagnostics::initialize(ws::Settings::dataDir());
     ws::diagnostics::record(u"app-start"_s, ws::diagnostics::environment());
     g_defaultHandler = qInstallMessageHandler(logToFile); // the running copy only
+    logShutdown.armed = true;
+    if (!manyStreams)
+        qWarning("Fonts: only %d C runtime streams; with many fonts installed, text may turn into boxes", _getmaxstdio());
 
     QJsonObject uiFont = applyUiFont(); // the UI font (see above)
+    ws::phosphor::loadFonts(); // the icons
     uiFont[u"platform"_s] = platform;
     ws::diagnostics::setUiFont(uiFont);
     ws::diagnostics::watchDisplay();
@@ -352,5 +444,5 @@ int main(int argc, char* argv[])
     // unless the 索引方式 setting asked for others (App::Elevation).
     if (restart)
         startAgain(*restart, elevation);
-    return code;
+    return code; // logShutdown: the open counts and the handler, after the application object
 }

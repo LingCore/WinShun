@@ -6,11 +6,14 @@
 #include "IndexFolder.h"
 #include "McpClients.h"
 #include "PathText.h"
+#include "ProxyAddress.h"
 #include "PluginSettings.h"
 #include "Query.h"
 #include "ShareLister.h"
+#include "ShareReach.h"
 #include "SvgIcon.h"
 #include "SystemCatalog.h"
+#include "WebDav.h"
 #include "WebShortcut.h"
 #include "Win32Util.h"
 #include "platform/FileManagers.h"
@@ -32,6 +35,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeyEvent>
+#include <QLocale>
 #include <QRegularExpression>
 #include <QProcess>
 #include <QTimer>
@@ -44,6 +48,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <thread>
 
 using namespace Qt::StringLiterals;
@@ -71,6 +76,23 @@ bool addProgram(QStringList& list, const QString& name)
         return false;
     list.append(app);
     return true;
+}
+
+// Off the UI thread: whether the server `host` answers, before its shares
+// are listed (NetShareEnum waits long for one that is not there). The probe,
+// and for SMB Windows too, as File Explorer gets there (its IPC$; GitHub
+// #116: the probe can be wrong where Windows gets there).
+bool serverAnswers(const std::wstring& host)
+{
+    share::ReachSteps steps;
+    steps.probe = [host] { return share::reachable(host, std::chrono::milliseconds(1500), true); };
+    if (!webdav::parseHost(host)) // WebDAV answers for itself
+        steps.windows = [ipc = L"\\\\" + host + L"\\IPC$"] { return share::askWindows(ipc); };
+    if (share::reach(std::move(steps), std::chrono::seconds(5)) != share::Reach::Unreachable)
+        return true;
+    // One that speaks only SMB 1, which Windows no longer does: there all the
+    // same, and listing its shares says why not (the probe's answer, kept).
+    return !webdav::parseHost(host) && share::probe(host) == share::Answer::Smb1Only;
 }
 
 } // namespace
@@ -158,7 +180,8 @@ void SettingsEditor::setSettings(const Settings& settings)
         || settings.capturePinsHotkey != m_settings.capturePinsHotkey
         || settings.capturePinsRestoreHotkey != m_settings.capturePinsRestoreHotkey
         || settings.captureLastPinHotkey != m_settings.captureLastPinHotkey;
-    const bool shares = settings.shares != m_settings.shares;
+    // The shares' cards say whether their contents are read, too (GitHub #114).
+    const bool shares = settings.shares != m_settings.shares || settings.contentSearch != m_settings.contentSearch;
     const bool drives = settings.selectedDrives != m_settings.selectedDrives;
     m_settings = settings;
     emit changed();
@@ -490,6 +513,14 @@ void SettingsEditor::setHotkey(const QString& hotkey)
     commit();
 }
 
+void SettingsEditor::setShortcutAgain(const QString& what)
+{
+    if (m_settings.shortcutAgain == what || (what != u"close" && what != u"panel"))
+        return;
+    m_settings.shortcutAgain = what;
+    commit();
+}
+
 void SettingsEditor::setHotkeyError(const QString& error)
 {
     if (m_hotkeyError == error)
@@ -614,6 +645,7 @@ void SettingsEditor::setContentSearch(bool on)
         return;
     m_settings.contentSearch = on;
     commit();
+    emit sharesChanged(); // their cards say whether their contents are read (GitHub #114)
 }
 
 void SettingsEditor::setContentIndex(bool on)
@@ -646,6 +678,46 @@ void SettingsEditor::setContentIndexStatus(const QString& status)
         return;
     m_contentIndexStatus = status;
     emit contentIndexStatusChanged();
+}
+
+void SettingsEditor::setProxyMode(const QString& mode)
+{
+    if (m_settings.proxyMode == mode || (mode != u"system" && mode != u"none" && mode != u"manual"))
+        return;
+    m_settings.proxyMode = mode;
+    commit();
+}
+
+void SettingsEditor::setProxyAddress(const QString& address)
+{
+    const QString text = address.trimmed();
+    if (m_settings.proxyAddress == text)
+        return;
+    m_settings.proxyAddress = text;
+    commit();
+}
+
+QString SettingsEditor::proxyProblem(const QString& address) const
+{
+    switch (proxy::parse(address).problem) {
+    case proxy::Problem::None:
+        return {};
+    case proxy::Problem::Empty:
+        return tr("还没填代理地址，例如 127.0.0.1:7890。填好之前先跟随系统");
+    case proxy::Problem::NoPort:
+        return tr("地址后面要写端口，例如 127.0.0.1:7890");
+    case proxy::Problem::BadAddress:
+        return tr("地址格式不对，应该像 127.0.0.1:7890");
+    case proxy::Problem::BadPort:
+        return tr("端口应该是 1 到 65535 之间的数字");
+    case proxy::Problem::Socks:
+        return tr("暂时不支持 SOCKS 代理。代理软件通常同一个端口也支持 HTTP，填那个端口就行");
+    case proxy::Problem::OtherScheme:
+        return tr("只支持 HTTP 代理，开头写 http:// 或者不写");
+    case proxy::Problem::Credentials:
+        return tr("暂时不支持带用户名和密码的代理");
+    }
+    return {};
 }
 
 void SettingsEditor::setRenderer(const QString& renderer)
@@ -685,6 +757,14 @@ void SettingsEditor::setTaskbarIcon(const QString& style)
     if (m_settings.taskbarIcon == style)
         return;
     m_settings.taskbarIcon = style;
+    commit();
+}
+
+void SettingsEditor::setSearchLogo(bool on)
+{
+    if (m_settings.searchLogo == on)
+        return;
+    m_settings.searchLogo = on;
     commit();
 }
 
@@ -977,6 +1057,14 @@ void SettingsEditor::setOpusTyping(bool on)
     commit();
 }
 
+void SettingsEditor::setFolderTyping(const QString& how)
+{
+    if (m_settings.folderTyping == how || (how != u"first" && how != u"only"))
+        return;
+    m_settings.folderTyping = how;
+    commit();
+}
+
 void SettingsEditor::setFolderMenu(bool on)
 {
     if (folderMenu() == on)
@@ -1179,6 +1267,14 @@ void SettingsEditor::setCaptureCopyOnSelect(bool on)
     commit();
 }
 
+void SettingsEditor::setCaptureMagnifier(bool on)
+{
+    if (m_settings.captureMagnifier == on)
+        return;
+    m_settings.captureMagnifier = on;
+    commit();
+}
+
 void SettingsEditor::setCapturePinOnCopy(bool on)
 {
     if (m_settings.capturePinOnCopy == on)
@@ -1211,6 +1307,14 @@ void SettingsEditor::setCaptureCursor(bool on)
     if (m_settings.captureCursor == on)
         return;
     m_settings.captureCursor = on;
+    commit();
+}
+
+void SettingsEditor::setCaptureHdrFile(bool on)
+{
+    if (m_settings.captureHdrFile == on)
+        return;
+    m_settings.captureHdrFile = on;
     commit();
 }
 
@@ -1562,6 +1666,14 @@ void SettingsEditor::setClipboardClickToPaste(bool on)
     commit();
 }
 
+void SettingsEditor::setClipboardKeepPlace(bool on)
+{
+    if (m_settings.clipboardKeepPlace == on)
+        return;
+    m_settings.clipboardKeepPlace = on;
+    commit();
+}
+
 void SettingsEditor::setClipboardLargePictures(bool on)
 {
     if (m_settings.clipboardLargePictures == on)
@@ -1575,6 +1687,14 @@ void SettingsEditor::setClipboardFlipAbove(bool on)
     if (m_settings.clipboardFlipAbove == on)
         return;
     m_settings.clipboardFlipAbove = on;
+    commit();
+}
+
+void SettingsEditor::setClipboardHoldToStep(bool on)
+{
+    if (m_settings.clipboardHoldToStep == on)
+        return;
+    m_settings.clipboardHoldToStep = on;
     commit();
 }
 
@@ -2097,6 +2217,21 @@ QString sinceText(qint64 time)
     return SettingsEditor::tr("%1月%2日").arg(day.month()).arg(day.day());
 }
 
+// `pattern` ("%1核对过") with sinceText(time): a number and the Chinese after
+// it apart, as everywhere in the UI ("10 分钟前", "3 项"): "今天 14:52 核对过",
+// and still "刚刚核对过", "10月3日核对过".
+QString withTime(const QString& pattern, qint64 time)
+{
+    const QString when = sinceText(time);
+    const qsizetype at = pattern.indexOf(u"%1"_s);
+    QString text = pattern.arg(when);
+    const qsizetype end = at + when.size();
+    if (at >= 0 && !when.isEmpty() && when.back().isDigit() && end < text.size()
+        && text[end].script() == QChar::Script_Han)
+        text.insert(end, u' ');
+    return text;
+}
+
 QString itemsText(std::size_t items)
 {
     return SettingsEditor::tr("%L1 项").arg(static_cast<qulonglong>(items));
@@ -2106,8 +2241,11 @@ QString itemsText(std::size_t items)
 QString problemText(const ShareIndexer::Status& s)
 {
     using P = share::Problem;
-    const QString host = QString::fromStdWString(std::wstring(unc::host(s.path)));
+    const QString host = QString::fromStdWString(webdav::displayHost(unc::host(s.path))); // "nas:5006"
     const QString distro = QString::fromStdWString(std::wstring(unc::wslDistribution(s.path)));
+    // WebDAV goes through Windows' WebClient service: with it disabled, no address opens.
+    if (webdav::isWebDavPath(s.path) && webdav::clientDisabled())
+        return SettingsEditor::tr("Windows 的 WebClient 服务被禁用了，WebDAV 网址都打不开：请在“服务”里把它的启动类型改回“手动”");
     switch (s.problem) {
     case P::None:
     case P::Offline:
@@ -2121,6 +2259,8 @@ QString problemText(const ShareIndexer::Status& s)
             return SettingsEditor::tr("找不到这个 WSL 文件夹，请检查路径是否已改名或删除");
         return SettingsEditor::tr("找不到这个共享文件夹：%1 在线，但上面没有它（改名或删除了？）").arg(host);
     case P::NeedsSignIn:
+        if (webdav::httpSignInBlocked(s.path))
+            return SettingsEditor::httpSignInText(false);
         return SettingsEditor::tr("需要登录：Windows 还没有 %1 的用户名和密码").arg(host);
     case P::GuestBlocked:
         return SettingsEditor::tr(
@@ -2136,15 +2276,73 @@ QString problemText(const ShareIndexer::Status& s)
             return SettingsEditor::tr("没有权限读取这个 WSL 文件夹，请选择当前 Linux 用户有权限的文件夹");
         return SettingsEditor::tr("没有权限读取这个文件夹：换一个有权限的账户登录试试");
     case P::Other:
+        switch (share::davRefusal(s.path, s.problem, s.error)) {
+        case share::DavRefusal::MaybeSignIn:
+            return SettingsEditor::tr("可能需要登录：%1 不让 Windows 读取，点“登录”输入用户名和密码试试").arg(host);
+        case share::DavRefusal::Forbidden:
+            return SettingsEditor::tr("服务器不让这个账号看这个文件夹");
+        case share::DavRefusal::ServerError:
+            return SettingsEditor::tr("服务器出错了，稍后自动重试");
+        case share::DavRefusal::None:
+            break;
+        }
         break;
     case P::WslStopped:
-        return SettingsEditor::tr("%1 未运行；启动后会自动继续收录").arg(distro);
+        return SettingsEditor::tr("%1 未运行；启动后会自动继续索引").arg(distro);
     case P::WslNotRegistered:
         return SettingsEditor::tr("找不到 WSL 发行版 %1，请检查是否已卸载或改名").arg(distro);
     case P::WslUnavailable:
         return SettingsEditor::tr("暂时无法读取 WSL 状态，稍后自动重试；也可在终端检查 WSL 是否正常");
     }
     return SettingsEditor::tr("出错了（错误 %1），稍后自动重试").arg(s.error);
+}
+
+// How far a share's files' contents are read (GitHub #114), for its card.
+// `share`: the share's own status; null: not known yet.
+QString contentText(const remotecontent::ShareContent::Progress& p, const ShareIndexer::Status* share)
+{
+    using State = ShareIndexer::State;
+    const bool online = share && share->state == State::Online;
+    if (!p.known)
+        return online ? SettingsEditor::tr("马上开始读取文件内容") : SettingsEditor::tr("连上后读取文件内容");
+    if (p.metered)
+        return SettingsEditor::tr("按流量计费的网络：暂停读取文件内容，文件名照常更新");
+    if (p.files == 0)
+        return SettingsEditor::tr("没有要读取内容的文件");
+    const QLocale locale;
+    const QString counts = u"%1/%2"_s.arg(locale.toString(static_cast<qulonglong>(p.current)),
+        locale.toString(static_cast<qulonglong>(p.files)));
+    if (share && share->state == State::Problem) // away: what was read answers searches meanwhile
+        return SettingsEditor::tr("连不上：搜索时用上次读取的内容（%1）").arg(counts);
+    if (p.reading)
+        return SettingsEditor::tr("正在读取文件内容 %1").arg(counts);
+    if (p.current >= p.files)
+        return SettingsEditor::tr("已读取全部 %Ln 个文件的内容", nullptr,
+            static_cast<int>(std::min<std::size_t>(p.files, std::numeric_limits<int>::max())));
+    if (p.error != 0)
+        return SettingsEditor::tr("已读取 %1 个文件的内容；读取时服务器没有响应，稍后再试").arg(counts);
+    if (p.held)
+        return SettingsEditor::tr("已读取 %1 个文件的内容，电脑空闲时继续").arg(counts);
+    return SettingsEditor::tr("已读取 %1 个文件的内容").arg(counts);
+}
+
+// A share's title on its card: the name it was given, else the folder as
+// users know it: "Ubuntu · /home" for WSL, the web address for WebDAV
+// ("http://nas:5244/dav", GitHub #114; the card's second line has the path
+// Windows opens), else its path.
+QString shareTitle(const NetworkShare& share)
+{
+    if (!share.name.isEmpty())
+        return share.name;
+    const std::wstring path = share.path.toStdWString();
+    if (const auto distro = unc::wslDistribution(path); !distro.empty()) {
+        QString folder = QString::fromStdWString(path.substr(static_cast<std::size_t>(distro.data() - path.data()) + distro.size()));
+        folder.replace(u'\\', u'/');
+        return QString::fromStdWString(std::wstring(distro)) + u" · "_s + (folder.isEmpty() ? u"/"_s : folder);
+    }
+    if (const std::wstring url = webdav::urlOf(path); !url.empty())
+        return QString::fromStdWString(url);
+    return share.path;
 }
 
 } // namespace
@@ -2161,12 +2359,15 @@ QVariantList SettingsEditor::shares() const
             return unc::equal(s.path, path);
         });
         QString tone = u"idle"_s;
-        QString status = tr("稍后开始收录");
+        QString status = tr("稍后开始索引");
         bool signIn = false;
         bool busy = false;
         if (it != m_shareStatuses.end()) {
             const ShareIndexer::Status& s = *it;
-            const QString verified = s.lastVerified ? tr("%1核对过").arg(sinceText(s.lastVerified)) : QString();
+            const QString verified = s.lastVerified ? withTime(tr("%1核对过"), s.lastVerified) : QString();
+            const QString connecting = isWsl
+                ? tr("正在检查 %1…").arg(QString::fromStdWString(std::wstring(distro)))
+                : tr("正在连接 %1…").arg(QString::fromStdWString(webdav::displayHost(unc::host(path))));
             switch (s.state) {
             case State::Waiting:
                 if (s.lastVerified)
@@ -2175,31 +2376,57 @@ QVariantList SettingsEditor::shares() const
             case State::Building:
                 tone = u"busy"_s;
                 busy = true;
-                status = tr("正在收录…已收录 %1").arg(itemsText(s.items));
+                status = tr("正在建立索引… 已收录 %1").arg(itemsText(s.items));
                 break;
             case State::Verifying:
                 tone = u"busy"_s;
                 busy = true;
                 status = tr("正在核对… · %1").arg(itemsText(s.items));
                 break;
-            case State::Online:
+            case State::Online: {
                 tone = u"ok"_s;
-                status = QStringList {tr("在线"), itemsText(s.items), verified,
-                    isWsl ? tr("自动核对变化")
-                    : s.watching ? tr("实时跟踪变化")
-                               : tr("服务器不通知变化，每 %n 小时核对一次", "", m_settings.networkVerifyHoursUnwatched)}
-                             .join(u" · "_s);
+                QStringList parts {tr("在线"), itemsText(s.items), verified};
+                if (isWsl)
+                    parts.append(tr("自动核对变化"));
+                else if (s.watching)
+                    parts.append(tr("实时跟踪变化"));
+                parts.removeAll(QString());
+                status = parts.join(u" · "_s);
+                // A line of its own, as a folder's 没有实时更新: at the usual
+                // width, the end of one long line went alone onto the next.
+                if (!isWsl && !s.watching) {
+                    const int hours = m_settings.networkVerifyHoursUnwatched; // 0: on start (and when asked) alone
+                    status += u'\n'
+                        + (hours <= 0   ? tr("服务器不会通知变化，只在启动时核对")
+                              : hours == 1 ? tr("服务器不会通知变化，每小时核对一次")
+                                           : tr("服务器不会通知变化，每 %n 小时核对一次", "", hours));
+                }
                 break;
+            }
             case State::Problem: {
                 const bool away = s.problem == share::Problem::Offline || s.problem == share::Problem::Dropped
                     || s.problem == share::Problem::WslStopped || s.problem == share::Problem::WslUnavailable;
                 tone = away ? u"idle"_s : u"error"_s;
+                // Also a WebDAV root that perhaps wants signing in, or turns this
+                // account away (another may do).
+                const share::DavRefusal refusal = share::davRefusal(s.path, s.problem, s.error);
                 signIn = !isWsl && (s.problem == share::Problem::NeedsSignIn || s.problem == share::Problem::GuestBlocked
-                    || s.problem == share::Problem::Denied);
-                status = problemText(s);
-                if (s.items > 0)
-                    status += u"\n"_s + tr("已收录的 %1 照常能搜到").arg(itemsText(s.items))
-                        + (s.lastVerified ? u" · "_s + verified : QString());
+                    || s.problem == share::Problem::Denied || refusal == share::DavRefusal::MaybeSignIn
+                    || refusal == share::DavRefusal::Forbidden);
+                status = s.checking ? connecting : problemText(s);
+                QStringList details;
+                if (s.items > 0) {
+                    details.append(tr("已收录的 %1照常能搜到").arg(itemsText(s.items)));
+                    if (s.lastVerified)
+                        details.append(verified);
+                }
+                if (!details.isEmpty())
+                    status += u"\n"_s + details.join(u" · "_s);
+                // GitHub #116: it is tried again by itself, and says so. A line
+                // of its own: at the usual width, ending the line above it
+                // left its last character alone on a line.
+                if (s.lastAttempt && !s.checking && s.problem != share::Problem::WslStopped)
+                    status += u"\n"_s + withTime(tr("%1又试过"), s.lastAttempt);
                 break;
             }
             case State::Suspect:
@@ -2208,6 +2435,14 @@ QVariantList SettingsEditor::shares() const
                             "确实删掉了，就点“按现在的内容更新”")
                              .arg(itemsText(s.missing), itemsText(s.items));
                 break;
+            }
+            // Asked to check (立即核对): shown at once, the button off, until
+            // a pass starts or the server failed to answer (GitHub #116).
+            if (s.checking) {
+                tone = u"busy"_s;
+                busy = true;
+                if (s.state == State::Waiting || s.state == State::Online || s.state == State::Suspect)
+                    status = s.lastVerified ? tr("正在核对… · %1").arg(itemsText(s.items)) : connecting;
             }
         }
         const bool starting = m_wslStarting.contains(share.path);
@@ -2219,15 +2454,18 @@ QVariantList SettingsEditor::shares() const
             tone = u"error"_s;
             status = error.value();
         }
-        QString name = share.name.isEmpty() ? share.path : share.name;
-        if (isWsl && share.name.isEmpty()) {
-            QString folder = QString::fromStdWString(path.substr(static_cast<std::size_t>(distro.data() - path.data()) + distro.size()));
-            folder.replace(u'\\', u'/');
-            name = QString::fromStdWString(std::wstring(distro)) + u" · "_s + (folder.isEmpty() ? u"/"_s : folder);
+        QString contentStatus = tr("打开后，电脑空闲时读取文件内容；离线时也能搜到");
+        if (share.content && !m_settings.contentSearch) {
+            contentStatus = tr("内容搜索已关闭，不读取文件内容");
+        } else if (share.content) {
+            const auto c = std::ranges::find_if(m_shareContentStatuses,
+                [&](const remotecontent::Indexer::Status& s) { return unc::equal(s.path, path); });
+            contentStatus = contentText(c != m_shareContentStatuses.end() ? c->progress : remotecontent::ShareContent::Progress {},
+                it != m_shareStatuses.end() ? &*it : nullptr);
         }
         list.append(QVariantMap {
             {u"path"_s, share.path},
-            {u"name"_s, name},
+            {u"name"_s, shareTitle(share)},
             {u"wsl"_s, isWsl},
             {u"startable"_s, isWsl && !starting && it != m_shareStatuses.end()
                 && (it->problem == share::Problem::WslStopped || m_wslStartProblems.contains(share.path))},
@@ -2236,6 +2474,8 @@ QVariantList SettingsEditor::shares() const
             {u"signIn"_s, signIn},
             {u"suspect"_s, it != m_shareStatuses.end() && it->state == State::Suspect},
             {u"busy"_s, busy},
+            {u"content"_s, share.content},
+            {u"contentStatus"_s, contentStatus},
         });
     }
     return list;
@@ -2333,6 +2573,25 @@ void SettingsEditor::setShareStatuses(std::vector<ShareIndexer::Status> statuses
         emit sharesChanged();
 }
 
+void SettingsEditor::setShareContentStatuses(std::vector<remotecontent::Indexer::Status> statuses)
+{
+    if (statuses == m_shareContentStatuses)
+        return;
+    const QVariantList before = shares();
+    m_shareContentStatuses = std::move(statuses);
+    if (shares() != before)
+        emit sharesChanged();
+}
+
+void SettingsEditor::setShareContent(int index, bool on)
+{
+    if (index < 0 || index >= m_settings.shares.size() || m_settings.shares[index].content == on)
+        return;
+    m_settings.shares[index].content = on;
+    commit();
+    emit sharesChanged();
+}
+
 QString SettingsEditor::serverOf(const QString& text) const
 {
     QString t = QDir::toNativeSeparators(text.trimmed());
@@ -2359,22 +2618,54 @@ QString SettingsEditor::addShare(const QString& text)
             return tr("%1 不是映射的网络驱动器").arg(t.left(2).toUpper());
         if (const QString host = serverOf(t); !host.isEmpty())
             return tr("还要写上共享文件夹的名字，例如 \\\\%1\\资料").arg(host);
-        return tr("请输入网络路径，例如 \\\\192.168.1.10\\资料");
+        if (t.contains(u"://"_s)) {
+            switch (webdav::urlProblem(t.toStdWString())) {
+            case webdav::UrlProblem::Scheme:
+                return tr("WebDAV 网址要以 http:// 或 https:// 开头，例如 https://192.168.1.10:5006/资料");
+            case webdav::UrlProblem::Ipv6: // WebClient's UNC form takes none
+                return tr("WebDAV 网址不能用 IPv6 地址，请改用服务器的名字或 IPv4 地址");
+            case webdav::UrlProblem::None:
+            case webdav::UrlProblem::Address:
+                break;
+            }
+            return tr("这个 WebDAV 网址不对，请检查服务器名和端口，例如 https://192.168.1.10:5006/资料");
+        }
+        return tr("请输入网络路径或 WebDAV 网址，例如 \\\\192.168.1.10\\资料、https://192.168.1.10:5006/资料");
     }
+    // Both canonical (sharePath): a WebDAV server's root holds its folders,
+    // which are written without it (webdav::rootHolds).
+    const std::wstring wanted = path.toStdWString();
+    const auto holds = [](const std::wstring& outer, const std::wstring& inner) {
+        return unc::contains(outer, inner) || webdav::rootHolds(outer, inner);
+    };
     for (const NetworkShare& share : m_settings.shares) {
-        if (unc::equal(share.path.toStdWString(), path.toStdWString()))
+        if (unc::equal(share.path.toStdWString(), wanted))
             return tr("已经添加过了");
-        if (unc::contains(share.path.toStdWString(), path.toStdWString()))
-            return tr("它在已添加的 %1 里面，已经能搜到").arg(share.path);
+        if (holds(share.path.toStdWString(), wanted))
+            return tr("它在已添加的 %1 里面，已经能搜到").arg(shareTitle(share));
     }
-    // A share holding one already added takes its place: no item twice.
+    // A share holding one already added takes its place: no item twice. Its
+    // files' contents are searched if those of one it replaces were (the
+    // texts read go: the content index keeps them by the files' entries,
+    // which go with the replaced share's root).
+    bool content = false;
     m_settings.shares.removeIf([&](const NetworkShare& share) {
-        return unc::contains(path.toStdWString(), share.path.toStdWString());
+        const bool inner = holds(wanted, share.path.toStdWString());
+        content = content || (inner && share.content);
+        return inner;
     });
-    m_settings.shares.append({path, {}});
+    m_settings.shares.append({path, {}, content});
     commit();
     emit sharesChanged();
     return {};
+}
+
+QString SettingsEditor::httpSignInText(bool failed)
+{
+    // Before signing in: a server that takes another way than plain text
+    // (rare on a NAS) still lets one in, so the 登录 button stays.
+    return failed ? tr("登录不上：Windows 默认只在 https 地址上发送密码，请改用 https 地址")
+                  : tr("需要登录，但 Windows 默认只在 https 地址上发送密码，这个 http 地址多半登录不上：请改用 https 地址");
 }
 
 void SettingsEditor::removeShare(int index)
@@ -2663,7 +2954,8 @@ QVariantList SettingsEditor::commonFolders() const
             // On a server: offered for 网络共享, unless a share added has it.
             const QString share = Settings::sharePath(k.path);
             if (share.isEmpty() || std::ranges::any_of(m_settings.shares, [&](const NetworkShare& s) {
-                    return unc::contains(s.path.toStdWString(), share.toStdWString());
+                    return unc::contains(s.path.toStdWString(), share.toStdWString())
+                        || webdav::rootHolds(s.path.toStdWString(), share.toStdWString());
                 }))
                 continue;
         } else if (const std::wstring key = knownKey(k.path);
@@ -2787,8 +3079,12 @@ void SettingsEditor::listServerShares(const QString& server)
                 found.append(QString::fromStdWString(d.name));
             if (found.isEmpty())
                 problem = tr("这台电脑还没有安装 WSL 发行版");
-        } else if (!share::reachable(host.toStdWString(), std::chrono::milliseconds(1500), true)) {
-            problem = tr("连不上 %1（已关机、不在同一网络，或 VPN 没连）").arg(host);
+        } else if (!serverAnswers(host.toStdWString())) {
+            problem = tr("连不上 %1（已关机、不在同一网络，或 VPN 没连）")
+                          .arg(QString::fromStdWString(webdav::displayHost(host.toStdWString())));
+        } else if (webdav::parseHost(host.toStdWString())) {
+            // WebDAV has no list of shares (NetShareEnum is SMB's): the folder's own address, then.
+            problem = tr("WebDAV 服务器列不出共享的文件夹，请直接粘贴文件夹的网址（http:// 或 https:// 开头）");
         } else {
             unsigned long error = 0;
             for (const std::wstring& name : share::listShares(host.toStdWString(), &error))
@@ -2888,6 +3184,28 @@ void SettingsEditor::removeExcludedType(int index)
     if (index < 0 || index >= m_settings.excludedTypes.size())
         return;
     m_settings.excludedTypes.removeAt(index);
+    commit();
+}
+
+bool SettingsEditor::addExcludedFileNames(const QString& text)
+{
+    bool added = false;
+    for (const QString& pattern : Settings::fileNamePatterns(text)) {
+        if (m_settings.excludedFileNames.contains(pattern, Qt::CaseInsensitive))
+            continue;
+        m_settings.excludedFileNames.append(pattern);
+        added = true;
+    }
+    if (added)
+        commit();
+    return added;
+}
+
+void SettingsEditor::removeExcludedFileName(int index)
+{
+    if (index < 0 || index >= m_settings.excludedFileNames.size())
+        return;
+    m_settings.excludedFileNames.removeAt(index);
     commit();
 }
 

@@ -1090,6 +1090,18 @@ Window {
                         wrapMode: Text.Wrap
                     }
                 }
+
+                SettingRow {
+                    title: qsTr("再次按下快捷键时")
+                    keywords: qsTr("再次;两次;再按;搜索面板;展开;Ctrl+E;面板;关闭;panel;again;expand").split(";")
+                    description: qsTr("搜索框已打开时再按一次快捷键（自己设的组合键，或双击 Ctrl、Alt、Shift）：关闭它，或展开成搜索面板，保留已输入的字；面板里再按一次才关闭")
+
+                    ScopeTabs {
+                        labels: [qsTr("关闭 Win顺"), qsTr("展开为搜索面板")]
+                        current: window.editor.shortcutAgain === "panel" ? 1 : 0
+                        onActivated: (index) => window.editor.shortcutAgain = index === 1 ? "panel" : "close"
+                    }
+                }
             }
 
             SettingsSection {
@@ -1243,13 +1255,22 @@ Window {
                                 switch (window.editor.winSState) {
                                 case "waiting": return qsTr("资源管理器重启后生效，下次登录 Windows 时也会自动生效")
                                 case "releasing": return qsTr("资源管理器重启后，Win+S 和 Win+Shift+S 回到 Windows 自带的")
-                                case "failed": return qsTr("没能修改 Windows 的设置，Win+S 仍是 Windows 搜索")
+                                case "failed": return window.editor.taskbarWinS
+                                                      ? qsTr("没能修改 Windows 的设置，Win+S 仍是 Windows 搜索")
+                                                      : qsTr("没能修改 Windows 的设置，Win+S 和 Win+Shift+S 仍被禁用")
+                                case "blocked": return qsTr("Windows 的 Win+S 和 Win+Shift+S 仍被禁用（可能是旧版 Win顺 或其他软件设置的）")
                                 default: return ""
                                 }
                             }
                             color: window.editor.winSState === "failed" ? Theme.danger : Theme.text
                             font.pixelSize: Theme.fontCaption
                             wrapMode: Text.Wrap
+                        }
+                        FlatButton {
+                            visible: window.editor.winSState === "blocked"
+                                     || (window.editor.winSState === "failed" && !window.editor.taskbarWinS)
+                            text: qsTr("还给 Windows")
+                            onClicked: window.editor.giveBackToWindows("S")
                         }
                         FlatButton {
                             visible: parent.restartable
@@ -1393,7 +1414,8 @@ Window {
                     id: explorerTypingRow
                     title: qsTr("在资源管理器里直接打字搜索")
                     keywords: qsTr("打字;输入;直接搜索;当前文件夹;资源管理器;Listary;type to search;explorer").split(";")
-                    description: qsTr("文件列表有焦点时直接打字，就在这个窗口显示的文件夹里搜，和 Listary 一样；代替了资源管理器自己的“按首字母跳到文件”")
+                    description: qsTr("文件列表有焦点时直接打字就用 Win顺 搜，和 Listary 一样；代替了资源管理器自己的“按首字母跳到文件”")
+                    unlocks: [folderTypingRow]
 
                     ToggleSwitch {
                         checked: window.editor.explorerTyping
@@ -1406,12 +1428,27 @@ Window {
                     title: qsTr("在 Directory Opus 里直接打字搜索")
                     keywords: qsTr("Opus;DOpus;直接打字;输入;当前文件夹;双栏;type to search").split(";")
                     description: qsTr("文件列表有焦点时，从字母或数字开始输入，就用 Win顺 搜索当前标签的文件夹。符号键保留给 Opus，改名和地址栏不受影响。")
+                    unlocks: [folderTypingRow]
 
                     ToggleSwitch {
                         objectName: "opusTypingToggle"
                         checked: window.editor.opusTyping
                         Accessible.name: qsTr("在 Directory Opus 里直接打字搜索")
                         onToggled: (on) => window.editor.opusTyping = on
+                    }
+                }
+
+                SettingRow { // GitHub #110
+                    id: folderTypingRow
+                    shown: window.editor.explorerTyping || window.editor.opusTyping
+                    title: qsTr("在文件夹里打字时")
+                    keywords: qsTr("打字;当前文件夹;优先;只搜;其他位置;子文件夹;Listary;Ctrl+D;current folder;type to search").split(";")
+                    description: qsTr("当前文件夹优先：先列这个文件夹和子文件夹里的，再列其他位置的，和 Listary 一样。搜索时按 Ctrl+D 临时切换")
+
+                    ScopeTabs {
+                        labels: [qsTr("当前文件夹优先"), qsTr("只搜当前文件夹")]
+                        current: window.editor.folderTyping === "only" ? 1 : 0
+                        onActivated: (index) => window.editor.folderTyping = index === 1 ? "only" : "first"
                     }
                 }
 
@@ -1911,6 +1948,17 @@ Window {
                 }
 
                 SettingRow {
+                    title: qsTr("搜索框显示 Logo")
+                    keywords: qsTr("Logo;图标;标志;隐藏;简洁;搜索框上面的图标;logo").split(";")
+                    description: qsTr("搜索框、剪贴板和对话框旁搜索框的边上探出来的 Logo。关掉后更简洁")
+
+                    ToggleSwitch {
+                        checked: window.editor.searchLogo
+                        onToggled: (on) => window.editor.searchLogo = on
+                    }
+                }
+
+                SettingRow {
                     title: qsTr("语言")
                     keywords: qsTr("中文;英文;简体;language").split(";")
                     description: qsTr("“跟随系统”时按 Windows 的语言显示中文或英文")
@@ -2308,6 +2356,48 @@ Window {
                         }
                     ]
                 }
+
+                SettingRow {
+                    id: excludedFileNamesRow
+                    title: qsTr("跳过的文件名")
+                    keywords: qsTr("排除;忽略;文件名;通配符;临时文件;~$;exclude").split(";")
+                    values: window.editor.excludedFileNames
+                    description: qsTr("这些名字的文件不出现在结果里，* 代表任意几个字，例如 ~$*（Office、WPS 临时文件）")
+
+                    body: [
+                        Flow {
+                            width: parent.width
+                            spacing: 6
+
+                            Repeater {
+                                model: window.editor.excludedFileNames
+
+                                delegate: Chip {
+                                    required property int index
+                                    required property string modelData
+                                    text: modelData
+                                    marked: excludedFileNamesRow.valueFound(modelData)
+                                    onRemoveClicked: window.editor.removeExcludedFileName(index)
+                                }
+                            }
+                        },
+                        Row {
+                            spacing: 8
+
+                            InputBox {
+                                id: fileNameInput
+                                width: 240
+                                placeholder: qsTr("例如 ~$*, Thumbs.db")
+                                onAccepted: if (window.editor.addExcludedFileNames(text)) clear()
+                            }
+                            FlatButton {
+                                text: qsTr("添加")
+                                enabled: fileNameInput.text.trim().length > 0
+                                onClicked: if (window.editor.addExcludedFileNames(fileNameInput.text)) fileNameInput.clear()
+                            }
+                        }
+                    ]
+                }
             }
 
             SettingsSection {
@@ -2519,12 +2609,12 @@ Window {
                 page: 2
                 tab: 3
                 width: parent.width
-                note: qsTr("只收录文件名和文件夹名，不读取文件内容。服务器离线或 WSL 停止时，收录过的照样能搜到；恢复后自动更新。")
+                note: qsTr("默认只收录文件名和文件夹名；打开“搜索文件内容”的，会在电脑空闲时读取文件内容。服务器离线或 WSL 停止时，收录过的照样能搜到；恢复后自动更新。")
 
                 SettingRow {
                     id: sharesRow
                     title: qsTr("网络与 WSL 文件夹")
-                    keywords: qsTr("网络;共享;局域网;内网;NAS;服务器;SMB;映射;网络驱动器;WSL;Linux;Ubuntu;子系统;network;share").split(";")
+                    keywords: qsTr("网络;共享;局域网;内网;NAS;服务器;SMB;映射;网络驱动器;WSL;Linux;Ubuntu;子系统;WebDAV;内容;全文;搜索文件内容;network;share;content").split(";")
                     values: window.editor.shares.map(share => share.path + " " + share.name)
                     description: qsTr("添加 NAS、共享文件夹或 WSL 中的项目、用户目录，和本机文件一起搜索")
 
@@ -2581,8 +2671,8 @@ Window {
 
                             InputBox {
                                 id: shareInput
-                                width: Math.min(340, parent.width)
-                                placeholder: qsTr("粘贴网络或 WSL 文件夹路径")
+                                width: Math.min(360, parent.width) // room for the placeholder
+                                placeholder: qsTr("粘贴网络路径、WebDAV 网址或 WSL 文件夹")
                                 onAccepted: {
                                     if (sharesRow.typedServer.length > 0)
                                         sharesRow.listShares(sharesRow.typedServer) // a server alone: what it shares
@@ -2733,6 +2823,7 @@ Window {
                                     onSignInClicked: window.editor.signInToShare(index)
                                     onAcceptClicked: window.editor.acceptShareMissing(index)
                                     onRemoveClicked: window.editor.removeShare(index)
+                                    onContentToggled: (on) => window.editor.setShareContent(index, on)
                                 }
                             }
                         }
@@ -3461,6 +3552,17 @@ Window {
                 }
 
                 SettingRow {
+                    title: qsTr("粘贴后保持位置")
+                    keywords: qsTr("位置;顺序;排序;跳到最前;置顶;不动;固定顺序;粘贴后").split(";")
+                    description: qsTr("从列表里粘贴一条后，它留在原来的位置，不再跳到最前面。重新复制同样的内容，仍会排到最前。粘贴过的条目右下角带一个蓝色对勾，也不会因为“保留天数”到期而被删")
+
+                    ToggleSwitch {
+                        checked: window.editor.clipboardKeepPlace
+                        onToggled: (on) => window.editor.clipboardKeepPlace = on
+                    }
+                }
+
+                SettingRow {
                     title: qsTr("大图片缩略图")
                     keywords: qsTr("缩略图;图片;截图;放大;看清;细节").split(";")
                     description: qsTr("图片的那一行更高，缩略图大到能看清细节，不用打开预览")
@@ -3577,7 +3679,10 @@ Window {
                                 case "on": return qsTr("已生效：Win+V 打开 Win顺的剪贴板")
                                 case "waiting": return qsTr("资源管理器重启后生效，下次登录 Windows 时也会自动生效")
                                 case "releasing": return qsTr("资源管理器重启后，Win+V 回到 Windows 自带的剪贴板")
-                                case "failed": return qsTr("没能修改 Windows 的设置，Win+V 仍是 Windows 自带的剪贴板")
+                                case "failed": return window.editor.clipboardWinV
+                                                      ? qsTr("没能修改 Windows 的设置，Win+V 仍是 Windows 自带的剪贴板")
+                                                      : qsTr("没能修改 Windows 的设置，Win+V 仍被禁用")
+                                case "blocked": return qsTr("Windows 的 Win+V 仍被禁用（可能是旧版 Win顺 或其他软件设置的）")
                                 default: return ""
                                 }
                             }
@@ -3594,6 +3699,22 @@ Window {
                                 text: qsTr("现在重启资源管理器")
                                 glyph: "" // Sync
                                 onClicked: window.editor.restartExplorer()
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: qsTr("任务栏会闪一下，打开的文件夹窗口会关闭")
+                                color: Theme.faint
+                                font.pixelSize: Theme.fontCaption
+                            }
+                        }
+                        Row {
+                            visible: window.editor.winVState === "blocked"
+                                     || (window.editor.winVState === "failed" && !window.editor.clipboardWinV)
+                            spacing: 12
+
+                            FlatButton {
+                                text: qsTr("还给 Windows")
+                                onClicked: window.editor.giveBackToWindows("V")
                             }
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
@@ -3630,6 +3751,17 @@ Window {
                         color: Theme.danger
                         font.pixelSize: Theme.fontCaption
                         wrapMode: Text.Wrap
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("按住连按快捷键，松开粘贴")
+                    keywords: qsTr("快捷键;按住;连按;松开;选择;Ditto;hotkey").split(";")
+                    description: qsTr("按住快捷键里的 Ctrl、Alt、Shift 或 Win，每再按一下就往下选一条，松开就粘贴；按住约一秒再松开，粘贴第一条；按住时按 Esc 不粘贴。开着时，按住再按快捷键不再关闭窗口。")
+
+                    ToggleSwitch {
+                        checked: window.editor.clipboardHoldToStep
+                        onToggled: (on) => window.editor.clipboardHoldToStep = on
                     }
                 }
 
@@ -4007,6 +4139,55 @@ Window {
                 width: parent.width
 
                 SettingRow {
+                    id: proxyRow
+
+                    // The address as typed and kept: its problem shows under it
+                    // while manual is chosen. The system's proxy is followed
+                    // while it is not a good one (App::applySettings).
+                    readonly property bool manual: window.editor.proxyMode === "manual"
+                    readonly property string problem: manual ? window.editor.proxyProblem(proxyBox.text) : ""
+                    readonly property var modes: ["system", "none", "manual"]
+
+                    title: qsTr("网络代理")
+                    keywords: qsTr("代理;翻墙;梯子;科学上网;Clash;v2ray;GitHub;连不上;超时;插件库;更新;网络;proxy;vpn;timeout").split(";")
+                    description: qsTr("插件库、检查更新等联网都走这里。“跟随系统”用 Windows 设置里的代理（包括自动检测和 PAC 脚本）；用代理软件时，打开它的“系统代理”就行，或者手动填地址")
+                    bodyShown: manual
+
+                    ScopeTabs {
+                        labels: [qsTr("跟随系统"), qsTr("不使用代理"), qsTr("手动")]
+                        current: Math.max(0, proxyRow.modes.indexOf(window.editor.proxyMode))
+                        onActivated: (index) => window.editor.proxyMode = proxyRow.modes[index]
+                    }
+
+                    body: [
+                        InputBox {
+                            id: proxyBox
+                            width: Math.min(parent.width, 320)
+                            text: window.editor.proxyAddress
+                            placeholder: qsTr("代理地址，例如 %1").arg("127.0.0.1:7890")
+                            onEditingFinished: window.editor.proxyAddress = text
+                        },
+                        Text {
+                            visible: proxyRow.problem.length > 0
+                            width: parent.width
+                            text: proxyRow.problem
+                            textFormat: Text.PlainText
+                            color: Theme.danger
+                            font.pixelSize: Theme.fontCaption
+                            wrapMode: Text.Wrap
+                        },
+                        Text {
+                            visible: proxyRow.problem.length === 0
+                            width: parent.width
+                            text: qsTr("HTTP 代理，地址写 127.0.0.1:7890 或 http://127.0.0.1:7890。改完马上生效，不用重启")
+                            color: Theme.subtext
+                            font.pixelSize: Theme.fontCaption
+                            wrapMode: Text.Wrap
+                        }
+                    ]
+                }
+
+                SettingRow {
                     title: qsTr("界面绘制方式")
                     keywords: qsTr("渲染;GPU;显卡;内存;模糊;清晰;renderer").split(";")
                     description: window.editor.restartRequired
@@ -4123,8 +4304,8 @@ Window {
 
                 SettingRow {
                     title: qsTr("诊断日志")
-                    keywords: qsTr("诊断;日志;索引慢;排查;反馈;显示;字体;错字;乱码;diagnostics;log").split(";")
-                    description: qsTr("导出后会打开文件夹，把 WinShun-diagnostics.zip 发给开发者即可。包含索引耗时和错误、界面显示和字体的状态，可能含文件路径；不含设置、剪贴板或文档正文。界面显示不对时先导出再重启，重启后就查不到了。诊断记录最多 3 MB，过期自动清理；诊断包只保留一份")
+                    keywords: qsTr("诊断;日志;索引慢;排查;反馈;显示;字体;错字;乱码;截图;光标;指针;卡顿;diagnostics;log;capture;cursor").split(";")
+                    description: qsTr("导出后会打开文件夹，把 WinShun-diagnostics.zip 发给开发者即可。包含索引耗时和错误、截图的耗时和卡顿、鼠标指针设置、界面显示和字体的状态，可能含文件路径；不含设置、剪贴板或文档正文。界面显示不对时先导出再重启，重启后就查不到了。诊断记录最多 3 MB，过期自动清理；诊断包只保留一份")
                                  + (window.editor.diagnosticsStatus.length > 0 ? "\n" + window.editor.diagnosticsStatus : "")
 
                     FlatButton {
@@ -4205,6 +4386,7 @@ Window {
                 width: parent.width
                 plugins: window.editor.plugins
                 onShowInstalled: (pluginId) => window.showPluginPage(pluginId)
+                onShowProxySettings: window.goTo(proxyRow)
                 onShowDeveloper: {
                     window.editor.plugins.developerMode = true
                     window.showTab(2)

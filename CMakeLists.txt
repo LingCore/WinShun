@@ -46,6 +46,7 @@ add_subdirectory(src/mcp)
 add_subdirectory(src/plugin)
 add_subdirectory(src/tools-plugin)
 add_subdirectory(src/semantic-plugin)
+add_subdirectory(src/localsend-plugin)
 add_subdirectory(src/capture)
 add_subdirectory(src/app)
 add_subdirectory(src/stub)
@@ -55,7 +56,8 @@ add_subdirectory(src/updater)
 # The plugins that come with Win顺 (plugins/, docs/plugins.md), staged next
 # to the build's WinShun.exe the way the installer lays them out: each
 # folder as it is in the source tree, the SDK file it uses (src/plugins-sdk)
-# copied in, WinShunTools.exe into winshun.tools (WinShunSemantic.exe into winshun.semantic). The app reads <exe dir>\
+# copied in, WinShunTools.exe into winshun.tools (WinShunSemantic.exe into winshun.semantic,
+# WinShunLocalSend.exe into winshun.localsend). The app reads <exe dir>\
 # plugins as the bundled folder; wsbench --plugin and the tests use these
 # staged copies; build.ps1 -Deploy takes the folder into dist\.
 set(bundled_plugins_dir "${CMAKE_BINARY_DIR}/plugins")
@@ -66,7 +68,8 @@ add_custom_target(bundled_plugins ALL
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/src/plugins-sdk/winshun.py" "${bundled_plugins_dir}/winshun.translate/winshun.py"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunTools>" "${bundled_plugins_dir}/winshun.tools/WinShunTools.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunSemantic>" "${bundled_plugins_dir}/winshun.semantic/WinShunSemantic.exe"
-    DEPENDS WinShunTools WinShunSemantic
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunLocalSend>" "${bundled_plugins_dir}/winshun.localsend/WinShunLocalSend.exe"
+    DEPENDS WinShunTools WinShunSemantic WinShunLocalSend
     COMMENT "Staging the bundled plugins into ${bundled_plugins_dir}"
     VERBATIM)
 install(DIRECTORY "${bundled_plugins_dir}/" DESTINATION plugins)

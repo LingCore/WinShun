@@ -51,6 +51,7 @@ inline int sortIndex(QStringView name)
 struct NetworkShare {
     QString path; // "\\host\share", or a folder in it (unc::normalize)
     QString name; // shown instead of the path; empty: the path
+    bool content = false; // its files' contents indexed too ([Shares] N\Content; GitHub #114)
 
     bool operator==(const NetworkShare&) const = default;
 };
@@ -85,7 +86,14 @@ struct Settings {
     bool doubleCtrlPauseInFullScreen = false; // not over any full-screen window
     QStringList doubleCtrlExcludedApps; // program files ("TheFinals.exe") in front of which double Ctrl does nothing
     QString hotkey; // e.g. "Alt+Space"; empty = none
+    QString shortcutAgain = QStringLiteral("close"); // close | panel: what the shortcut does when the box is up and in front
     QString renderer; // software | d3d11; defaults() picks by memory (defaultRenderer)
+    // 网络代理 (GitHub #84), for every request over WinHTTP: system (what Windows
+    // has: its proxy, a PAC script, auto-detection) | none | manual (an HTTP
+    // proxy at proxyAddress, "127.0.0.1:7890"; checked by proxy::parse, and
+    // while it is not a good one, the system's is followed).
+    QString proxyMode = QStringLiteral("system");
+    QString proxyAddress;
     bool recordHistory = true; // remember what was opened: listed with nothing typed, first among matches
     bool dialogJump = true; // Ctrl+G in an Open or Save dialog goes to the folder open in a file manager (filemanager::)
     // A search bar under Open and Save dialogs (DialogBar). Off for new
@@ -116,6 +124,11 @@ struct Settings {
     // letters: off unless asked for, so that an upgrade changes nothing.
     bool explorerTyping = false;
     bool opusTyping = false; // opt in per manager: typing in an Opus file display (GitHub #82)
+    // first | only: typed in such a window, what is found in its folder
+    // first, then the rest of the index under a caption, as Listary lists it
+    // (GitHub #110); or that folder alone, as it searched before. Ctrl+D
+    // switches it for the time. An ini without the key (from before): first.
+    QString folderTyping = QStringLiteral("first");
     // auto | on | off: a double click on the blank space of a File Explorer
     // folder or of the desktop brings up a menu of favorite and recent
     // folders (FolderMenu, GitHub #22); auto: not while Listary runs, which
@@ -193,6 +206,11 @@ struct Settings {
     FileTypes namedFileTypes() const; // each with its name, a built-in one's in the language shown
     // "jpg, .PNG *.gif" → {"jpg", "png", "gif"}: lower case, no dots, each once.
     static QStringList fileExtensions(const QString& text);
+    // "~$*; Thumbs.db，*.tmp~" → {"~$*", "Thumbs.db", "*.tmp~"}: one name or
+    // pattern each, between commas, semicolons or lines (a name may have
+    // spaces), each once; what has a folder in it is none, nor wildcards
+    // alone ("*": every file).
+    static QStringList fileNamePatterns(const QString& text);
     // The extensions of content search's list, as the settings window takes
     // them: like fileExtensions but "tar.gz" stays whole.
     static QStringList contentExtensionList(const QString& text);
@@ -223,6 +241,7 @@ struct Settings {
     QString language = QStringLiteral("system"); // system | zh | en
     QString transparency; // off | on: Mica behind the windows, where Windows 11 has it; defaults() picks by memory
     QString taskbarIcon = QStringLiteral("color"); // color | mono: the tray's and the taskbar box's icon (monologo)
+    bool searchLogo = true; // the logo peeking out behind the launcher, the clipboard and the dialog bar (GitHub #109)
     QString uiSize = QStringLiteral("standard"); // compact | standard | roomy: type and row heights (uisize::)
     QString corners; // round | square: defaults() picks by Windows version
 
@@ -238,6 +257,10 @@ struct Settings {
     // File types (extensions, lower case, no dot) left out of search results.
     // Not of the index: the files stay in it, so a change needs no rescan.
     QStringList excludedTypes;
+    // And files so named (GitHub #132): wildcards against the whole name,
+    // any case ("~$*": the lock files Office and WPS leave next to an open
+    // document), as fileNamePatterns() keeps them. Search results only too.
+    QStringList excludedFileNames;
     bool includeRemovableDrives = false;
     std::optional<QStringList> selectedDrives; // unset: all eligible disks; empty: no local disks
     bool rescanOnStartup = true;
@@ -319,10 +342,16 @@ struct Settings {
     QString clipboardQuickPaste = QStringLiteral("off"); // off | ctrl | alt: the first nine of All, without opening the window
     bool clipboardClickToPaste = false; // a click pastes the row (Windows' way); off: picks it, a double click pastes
     bool clipboardLargePictures = false; // pictures on taller rows, thumbnails large enough to make out
+    bool clipboardKeepPlace = false; // pasting from the history leaves the entry where it is (GitHub #122); off: it moves to the top
     // Opened over the caret (or a search box; Placement::above), the window
     // turned upside down: the newest entry by the caret, older ones upwards.
     bool clipboardFlipAbove = true;
     QString clipboardSearchBoxSide = QStringLiteral("near"); // near | far: the search box's end, by the caret or away from it
+    // The clipboard's hotkey held after it opened the window, as Ditto's
+    // "Move selection on open hot key" (GitHub #107, hotkeysteps): its key
+    // again moves to the next older entry, letting go pastes it. Off: Win+V
+    // pressed again closes the window, as Windows' own (and Win顺) always did.
+    bool clipboardHoldToStep = false;
 
     // [Taskbar]: Win顺 in the place of Windows' search (see taskbar::)
     bool taskbarWinS = false; // Win+S opens it over the taskbar, instead of Windows' search (see winv::)
@@ -339,6 +368,7 @@ struct Settings {
     // ("absent" or the number), to put back when given up; empty while not taken.
     QString capturePrintScreenBefore;
     bool captureCopyOnSelect = false; // letting go of a drag or a click on a window copies at once
+    bool captureMagnifier = true; // the magnifier with the colour beside the pointer while picking an area
     bool capturePinOnCopy = false; // copying a screenshot also pins it (#59)
     // What a mouse button does once a selection is there (and no annotation
     // tool, stroke or text is under way): none | copy | copypin | save | pin | ocr |
@@ -376,6 +406,9 @@ struct Settings {
     // Shift alone); the hotkeys that hide / show every pin and that give click-through
     // pins the mouse back (PinsHotkey, PinsRestoreHotkey: recorded, none by default).
     bool captureCursor = false;
+    // Saving a capture from an HDR monitor writes an HDR file (.jxr) beside
+    // the PNG too (HdrFile, GitHub #133). Off: the frames stay 8-bit.
+    bool captureHdrFile = false;
     bool captureControlsUia = true;
     int captureDelay = 5;
     QString captureColorFormat = QStringLiteral("hex");
@@ -391,6 +424,10 @@ struct Settings {
     bool captureRecordingCountdown = true;
     bool captureRecordingClicks = false;
     int captureRecordingFormat = 0; // 0: MP4, 1: GIF
+    // GitHub #98: the keys pressed shown in recordings: off | shortcuts
+    // (Ctrl/Alt/Win combinations and Esc, Enter, F1…; never typing) | all.
+    QString captureRecordingKeys = QStringLiteral("off");
+    bool captureRecordingMouseButtons = false; // which mouse button, shown in recordings
     // What a double click on a pin does: reset (back to 100%) | close |
     // collapse (to a tile) | none (PinDoubleClick).
     QString capturePinDoubleClick = QStringLiteral("reset");

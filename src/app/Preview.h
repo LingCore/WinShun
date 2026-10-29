@@ -30,6 +30,9 @@
 //     compares a saved ResultRow.qml and IconNumber.qml from before an edit.
 //     --file-metadata --gallery-image <demo.png> also exports the production
 //     search panel and resized clipboard with demo entries for screenshots.
+//     --file-metadata --file-gallery checks the real Main.qml gallery with
+//     generated temporary PNGs, real name searches and shell thumbnails,
+//     keyboard navigation, selection, mode switching, zoom and minimum width.
 //
 //   WinShun.exe --preview-ai-cards <folder> [--dark] [--scale 1.5]
 //     The screens for AI changing settings (SettingsConfirm.qml, SettingsNotice.qml)
@@ -39,13 +42,21 @@
 //     The real annotation model, canvas, handles and style panel over a
 //     synthetic document. --preview-results also accepts --file-metadata.
 //
+//   WinShun.exe --preview-long-capture <folder> --renderer d3d11 [--scale 1.5]
+//     [--up|--both|--auto|--interactive] [--copy|--save|--pin|--cancel] [--edge] [--english] [--dark]
+//     Generated scrolling content through the real Capture/LongCapture WGC
+//     path. Checks complete output, fixed bars, immediate finish and cleanup.
+//     Interactive mode accepts real wheel input; Enter finishes, Esc cancels.
+//
 // Nothing of the user's is read or written (a temporary profile), and
-// nothing that reaches the running Win顺 is started: no hotkeys, hooks,
+// nothing that reaches the running Win顺 is started: no persistent hotkeys, hooks,
 // clipboard listener, taskbar box, pipe server or tray icon. The
 // environment the rendering needs (the scale factor, the software renderer)
 // is set before QGuiApplication by prepare(); run() does the rest once the
 // application exists. The exit code is the number of QML warnings, so that
 // a check script can tell.
+// Long-capture preview temporarily owns Enter/Esc and returns its failed
+// verification count. Its auto target is a separate generated fixture.
 
 #include <QStringList>
 
@@ -55,5 +66,6 @@ bool wanted(const QStringList& args); // one of the preview flags is among them
 void prepare(const QStringList& args); // before QGuiApplication
 void note(const QString& line); // a line into the log, from the start on
 int run(const QStringList& args); // after it; the exit code
+int runLongCapture(const QStringList& args); // generated scroll fixture through real WGC
 
 } // namespace ws::preview

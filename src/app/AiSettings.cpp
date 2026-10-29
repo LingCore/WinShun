@@ -205,6 +205,11 @@ std::vector<Entry> buildCatalog()
     add(hotkey({"Launcher/Hotkey", QT_TRANSLATE_NOOP("AiSettings", "快捷键"), "shortcuts", 0,
                    "A keyboard shortcut that opens the search window, written like Alt+Space or Ctrl+Alt+F. Empty: none. If another program already holds it the change is not kept."},
         &Settings::hotkey));
+    add(choice({"Launcher/ShortcutAgain", QT_TRANSLATE_NOOP("AiSettings", "再次按下快捷键时"), "shortcuts", 0,
+                   "What the shortcut that opens the search window (the custom key or the double tap) does when the window is already open and in front. Pressing it once more expands the window to the search panel with the typed words kept, and a third press closes it; or the window closes at once. Behind another window it only comes to the front."},
+        &Settings::shortcutAgain,
+        {{u"close"_s, u"closes the window"_s, QT_TRANSLATE_NOOP("AiSettings", "关闭 Win顺")},
+            {u"panel"_s, u"expands the window to the search panel"_s, QT_TRANSLATE_NOOP("AiSettings", "展开为搜索面板")}}));
 
     // ---- 打开 Win顺: 任务栏 ----
     add(boolean({"Taskbar/SearchBox", QT_TRANSLATE_NOOP("AiSettings", "在任务栏使用 Win顺"), "taskbar", 1,
@@ -261,6 +266,11 @@ std::vector<Entry> buildCatalog()
                     "Off by default and independent of Explorer typing. Punctuation, shortcuts, menus and edit fields "
                     "stay in Opus."},
         &Settings::opusTyping));
+    add(choice({"Launcher/FolderTyping", QT_TRANSLATE_NOOP("AiSettings", "在文件夹里打字时"), "files_and_dialogs", 2,
+                   "What typing in a File Explorer or Directory Opus folder window lists. The folder and its subfolders come first and the rest of the PC under them (like Listary), or only that folder. Ctrl+D switches between the two for one search."},
+        &Settings::folderTyping,
+        {{u"first"_s, u"that folder's results first, then everywhere else"_s, QT_TRANSLATE_NOOP("AiSettings", "当前文件夹优先")},
+            {u"only"_s, u"only that folder and its subfolders"_s, QT_TRANSLATE_NOOP("AiSettings", "只搜当前文件夹")}}));
     add(choice({"Launcher/FolderMenu", QT_TRANSLATE_NOOP("AiSettings", "双击空白处弹出文件夹菜单"), "files_and_dialogs", 2,
                    "A double click on blank space in a File Explorer folder or on the desktop brings up a menu of favorite and recent folders (like Listary's). 'auto' leaves it to Listary while Listary runs."},
         &Settings::folderMenu,
@@ -283,7 +293,7 @@ std::vector<Entry> buildCatalog()
                     "The folder menu lists the folders open in other file manager windows. At least one of the three groups stays on."},
         &Settings::folderMenuWindows));
     add(boolean({"Favorites/DropPie", QT_TRANSLATE_NOOP("AiSettings", "拖文件时按 ` 键，弹出收藏圆盘"), "favorites", -1,
-                    "While dragging files or folders (File Explorer, the desktop, file managers), pressing the key under Esc (` and ~, · in a Chinese input method) with them held (no need to move) brings up the first eight favorite folders round the pointer. Moving toward one and letting go drops the files there: moved within a drive, copied to another, Ctrl copies and Shift moves. Does nothing while Win顺 runs as administrator."},
+                    "While dragging files or folders (File Explorer, the desktop, file managers), pressing the key left of 1 (` and ~ on most keyboards, · in a Chinese input method; it is the key's place that counts, not what is printed on it) with them held (no need to move) brings up the first eight favorite folders round the pointer. Moving toward one and letting go drops the files there: moved within a drive, copied to another, Ctrl copies and Shift moves. Does nothing while Win顺 runs as administrator."},
         &Settings::dropPie));
     add(hotkey({"Launcher/FolderMenuHotkey", QT_TRANSLATE_NOOP("AiSettings", "用快捷键弹出文件夹菜单"), "files_and_dialogs", 2,
                    "A shortcut that brings up the folder menu in whatever window is in front, like Ctrl+Alt+D. Empty: none."},
@@ -358,6 +368,9 @@ std::vector<Entry> buildCatalog()
         &Settings::taskbarIcon,
         {{u"color"_s, u"in colour"_s, QT_TRANSLATE_NOOP("AiSettings", "彩色")},
             {u"mono"_s, u"one colour, black or white as the taskbar is"_s, QT_TRANSLATE_NOOP("AiSettings", "单色")}}));
+    add(boolean({"Appearance/SearchLogo", QT_TRANSLATE_NOOP("AiSettings", "搜索框显示 Logo"), "appearance", -1,
+        "The logo peeking out from behind the search box, the clipboard window and the bar by file dialogs."},
+        &Settings::searchLogo));
     add(choice({"Appearance/Language", QT_TRANSLATE_NOOP("AiSettings", "语言"), "appearance", -1, "The language Win顺 is shown in."},
         &Settings::language,
         {{u"system"_s, u"the language Windows is shown in"_s, QT_TRANSLATE_NOOP("AiSettings", "跟随系统")},
@@ -390,6 +403,9 @@ std::vector<Entry> buildCatalog()
     add(list({"Index/ExcludedTypes", QT_TRANSLATE_NOOP("AiSettings", "跳过的文件类型"), "scope", 1,
                  "File extensions (without dot, like bak) whose files never appear in search results, names or content; the files stay in the index, so it takes effect at once. Taking one out makes those files show again, so that asks the user every time."},
         &Settings::excludedTypes, ListKind::Extensions, Widens::Shrink));
+    add(list({"Index/ExcludedFileNames", QT_TRANSLATE_NOOP("AiSettings", "跳过的文件名"), "scope", 1,
+                 "File names whose files never appear in search results, names or content, with * and ? as wildcards, any case (like ~$*, the lock files Office and WPS leave next to an open document); folders are not affected, and the files stay in the index, so it takes effect at once. A name typed in the search box that is one of them shows those files all the same. Taking one out makes those files show again, so that asks the user every time."},
+        &Settings::excludedFileNames, ListKind::FileNames, Widens::Shrink));
     add(recording({"Index/IncludeRemovableDrives", QT_TRANSLATE_NOOP("AiSettings", "包括 U 盘和移动硬盘"), "scope", 2,
                     "Also indexes USB sticks and external drives while they are plugged in. Turning it on makes their files searchable, so that asks the user."},
         &Settings::includeRemovableDrives));
@@ -544,6 +560,9 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Clipboard/ClickToPaste", QT_TRANSLATE_NOOP("AiSettings", "单击粘贴"), "clipboard", 0,
                     "A click pastes the row (Windows' way); off: a click picks it and a double click pastes."},
         &Settings::clipboardClickToPaste));
+    add(boolean({"Clipboard/KeepPlace", QT_TRANSLATE_NOOP("AiSettings", "粘贴后保持位置"), "clipboard", 0,
+                    "Pasting an entry from the history leaves it where it is in the list; off: it moves to the top."},
+        &Settings::clipboardKeepPlace));
     add(boolean({"Clipboard/LargePictures", QT_TRANSLATE_NOOP("AiSettings", "大图片缩略图"), "clipboard", 0,
                     "Pictures on taller rows, thumbnails large enough to make out."},
         &Settings::clipboardLargePictures));
@@ -564,6 +583,12 @@ std::vector<Entry> buildCatalog()
     add(hotkey({"Clipboard/Hotkey", QT_TRANSLATE_NOOP("AiSettings", "另设快捷键"), "clipboard", 1,
                    "Another shortcut that opens the clipboard history, written like Ctrl+Alt+V. Empty: none."},
         &Settings::clipboardHotkey));
+    add(boolean({"Clipboard/HoldToStep", QT_TRANSLATE_NOOP("AiSettings", "按住连按快捷键，松开粘贴"), "clipboard", 1,
+                    "As Ditto: with the modifiers of the shortcut that opened the clipboard (Ctrl, Alt, Shift or Win) "
+                    "still held, each further press of its key moves the selection one entry down, and letting go pastes "
+                    "that entry. Held about a second without a further press, letting go pastes the first entry; Esc "
+                    "while holding pastes nothing. On, pressing the shortcut again while holding no longer closes the panel."},
+        &Settings::clipboardHoldToStep));
     add(choice({"Clipboard/NumberKeys", QT_TRANSLATE_NOOP("AiSettings", "面板内数字键粘贴"), "clipboard", 1,
                    "Which modifier with 1…9 pastes the nth row while the clipboard panel is open."},
         &Settings::clipboardNumberKeys,
@@ -604,6 +629,12 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Capture/CopyOnSelect", QT_TRANSLATE_NOOP("AiSettings", "选中后直接复制"), "capture", 0,
                     "Letting go of a drag, or a click on a window, copies the picture at once."},
         &Settings::captureCopyOnSelect));
+    add(boolean({"Capture/Magnifier", QT_TRANSLATE_NOOP("AiSettings", "框选时显示放大镜"), "capture", 0,
+                    "The magnifier with the colour under the pointer while picking an area; off also turns off C (copy the colour) and Shift (colour format)."},
+        &Settings::captureMagnifier));
+    add(boolean({"Capture/HdrFile", QT_TRANSLATE_NOOP("AiSettings", "HDR 屏幕上同时保存 HDR 图片"), "capture", 0,
+                    "On a monitor with HDR on, saving a screenshot also writes a JPEG XR (.jxr) of the same name beside the PNG, which keeps the bright parts as bright (Windows Photos shows it in HDR); annotations go in it too. Copies, pins, long screenshots and recordings stay as they are. Off by default."},
+        &Settings::captureHdrFile));
     {
         // What each mouse button does once a selection is there (issue #46); with an annotation tool on, a stroke
         // or a text under way, the right button steps back as Esc does and the others do nothing.
@@ -638,6 +669,23 @@ std::vector<Entry> buildCatalog()
                        "What the side button away from the user (forward, X2) does once there is a selection."},
             &Settings::captureMouseForward, mouseChoices(false)));
     }
+    {
+        // GitHub #98. "all" puts what is typed, passwords too, into the videos: every change asks the user.
+        Entry& e = add(choice({"Capture/RecordingKeys", QT_TRANSLATE_NOOP("AiSettings", "录屏时显示按键"), "capture", 0,
+                                  "Screen recordings (MP4 and GIF) show the keys pressed as keycaps in a corner of the video. "
+                                  "'shortcuts' shows key combinations with Ctrl, Alt or Win and keys such as Esc, Enter or F1, "
+                                  "never typing; 'all' shows typing too, passwords included. Keys typed into Win顺's own windows "
+                                  "are not shown."},
+            &Settings::captureRecordingKeys,
+            {{u"off"_s, u"no keys shown"_s, QT_TRANSLATE_NOOP("AiSettings", "不显示")},
+                {u"shortcuts"_s, u"key combinations and command keys, never typing"_s, QT_TRANSLATE_NOOP("AiSettings", "仅快捷键")},
+                {u"all"_s, u"every key, typing and passwords included"_s, QT_TRANSLATE_NOOP("AiSettings", "全部按键")}}));
+        e.access = Access::AlwaysAsk;
+    }
+    add(boolean({"Capture/RecordingMouseButtons", QT_TRANSLATE_NOOP("AiSettings", "录屏时显示鼠标按键"), "capture", 0,
+                    "Screen recordings show which mouse button was pressed (left, right, middle or a side button) as a "
+                    "keycap in a corner of the video, with Ctrl, Shift, Alt or Win when held."},
+        &Settings::captureRecordingMouseButtons));
     {
         Entry e = base({"Capture/Keyword", QT_TRANSLATE_NOOP("AiSettings", "截图历史的关键词"), "capture", 0,
                            "The word typed first in the search box (with a space after it) that lists the screenshot history. One word, no spaces or quotes; not one a web search or a favorite has."},
@@ -699,7 +747,8 @@ std::vector<Entry> buildCatalog()
     // ---- never seen: paths and shares (what leaves the PC), AI's own switches, plugins, bookkeeping ----
     for (const char* key : {"Backup/Folder", "Index/Folder", "Capture/PrintScreenBefore", "Launcher/DialogAutoJumpAsked", "Index/FolderHintDismissed",
              "Launcher/FolderMenuOpusBefore", "Mcp/Enabled", "Mcp/AllowOpen", "Mcp/Clipboard", "Mcp/Screenshot",
-             "Mcp/ExcludedPaths", "Mcp/Plugins", "Mcp/PluginActions", "Mcp/Settings", "Plugins/DeveloperMode"})
+             "Mcp/ExcludedPaths", "Mcp/Plugins", "Mcp/PluginActions", "Mcp/Settings", "Plugins/DeveloperMode",
+             "Proxy/Mode", "Proxy/Address"}) // where every request goes: not for AI to turn
         add(hidden(key));
     return t;
 }
@@ -807,6 +856,12 @@ QStringList normalizedItems(ListKind kind, const QString& raw, QString& error)
         if (extensions.isEmpty())
             error = u"'%1' is not a file extension; write one like pdf, without a dot."_s.arg(raw);
         return extensions;
+    }
+    case ListKind::FileNames: {
+        const QStringList patterns = Settings::fileNamePatterns(raw);
+        if (patterns.isEmpty())
+            error = u"'%1' is not a file name; write one like ~$* or Thumbs.db, without a folder."_s.arg(raw);
+        return patterns;
     }
     case ListKind::Names: {
         const QString name = Settings::excludedFolderName(raw);
@@ -1246,6 +1301,8 @@ QString listItemsName(ListKind k)
         return u"file extensions without the dot, such as pdf"_s;
     case ListKind::Names:
         return u"folder names such as node_modules"_s;
+    case ListKind::FileNames:
+        return u"file names or patterns with * and ? such as ~$*"_s;
     case ListKind::Folders:
         return u"full folder paths such as D:\\Games"_s;
     case ListKind::LocalFolders:

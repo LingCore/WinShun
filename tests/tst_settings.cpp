@@ -119,6 +119,39 @@ private slots:
         QVERIFY(settings.explorerTyping);
     }
 
+    // GitHub #110: typed in a folder's window, its rows first (the new
+    // default, for a profile from before too) or that folder alone.
+    void folderTyping()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QCOMPARE(settings.folderTyping, u"first"_s);
+        settings.folderTyping = u"only"_s;
+        settings.save();
+        ws::Settings read;
+        read.load();
+        QCOMPARE(read.folderTyping, u"only"_s);
+
+        QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+        ini.setValue(u"Launcher/FolderTyping"_s, u" Only "_s); // by hand
+        ini.sync();
+        read.load();
+        QCOMPARE(read.folderTyping, u"only"_s);
+        for (const QString& value : {u"everywhere"_s, QString()}) {
+            ini.setValue(u"Launcher/FolderTyping"_s, value);
+            ini.sync();
+            read.load();
+            QCOMPARE(read.folderTyping, u"first"_s);
+        }
+        ini.remove(u"Launcher/FolderTyping"_s); // a profile from before: the folder first
+        ini.sync();
+        read.load();
+        QCOMPARE(read.folderTyping, u"first"_s);
+    }
+
     void selectedDrivesRoundTrip()
     {
         QTemporaryDir temporary;
@@ -141,6 +174,34 @@ private slots:
         QVERIFY(!settings.selectedDrives);
     }
 
+    // GitHub #132: skipped file names, Office's and WPS's lock files by
+    // default; an emptied list stays empty, and one written by hand is read
+    // as the settings window keeps it.
+    void skippedFileNames()
+    {
+        QCOMPARE(ws::Settings::fileNamePatterns(u" ~$* ; Thumbs.db，*.TMP、新建 文本文档*\n~$*;THUMBS.DB"_s),
+            (QStringList {u"~$*"_s, u"Thumbs.db"_s, u"*.TMP"_s, u"新建 文本文档*"_s}));
+        QVERIFY(ws::Settings::fileNamePatterns(u"D:\\x\\~$*, a/b, c:d, ,"_s).isEmpty());
+        QVERIFY(ws::Settings::fileNamePatterns(u"*; *.*; ?; **"_s).isEmpty()); // every file
+
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        ws::Settings::useProfile(temporary.path());
+        ws::Settings settings;
+        settings.load();
+        QCOMPARE(settings.excludedFileNames, QStringList {u"~$*"_s});
+        settings.excludedFileNames.clear();
+        settings.save();
+        settings.load();
+        QVERIFY(settings.excludedFileNames.isEmpty());
+        {
+            QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+            ini.setValue(u"Index/ExcludedFileNames"_s, u"~$*; *.tmp~"_s);
+        }
+        settings.load();
+        QCOMPARE(settings.excludedFileNames, (QStringList {u"~$*"_s, u"*.tmp~"_s}));
+    }
+
     void wslFolders()
     {
         const QString path = u"\\\\wsl.localhost\\Ubuntu\\home\\Dev"_s;
@@ -157,6 +218,33 @@ private slots:
         QCOMPARE(again.shares.size(), 2);
         QCOMPARE(again.shares[0].path, path);
         QCOMPARE(again.shareOptions().shares.size(), std::size_t {2});
+    }
+
+    // GitHub #114: a WebDAV folder, as its web address or as Windows writes
+    // it, is kept in one form: one added twice is seen (addShare), and two
+    // spellings of one in the settings file become one.
+    void webDavFolders()
+    {
+        const QString small = u"\\\\127.0.0.1@8714\\small"_s;
+        QCOMPARE(ws::Settings::sharePath(u"http://127.0.0.1:8714/small/"_s), small);
+        QCOMPARE(ws::Settings::sharePath(u"\\\\127.0.0.1@8714\\DavWWWRoot\\small"_s), small);
+        QCOMPARE(ws::Settings::sharePath(u"\"\\\\127.0.0.1@8714\\davwwwroot\\small\\\""_s), small);
+        QCOMPARE(ws::Settings::sharePath(u"//127.0.0.1@8714/small"_s), small);
+        QCOMPARE(ws::Settings::sharePath(u"https://NAS/dav"_s), u"\\\\nas@SSL\\dav"_s);
+        QCOMPARE(ws::Settings::sharePath(u"\\\\nas@SSL@443\\DavWWWRoot\\dav"_s), u"\\\\nas@SSL\\dav"_s);
+        QCOMPARE(ws::Settings::sharePath(u"\\\\nas@SSL@5006"_s), u"\\\\nas@SSL@5006\\DavWWWRoot"_s);
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.shares = {{u"\\\\127.0.0.1@8714\\DavWWWRoot\\small"_s, {}}, {small, {}},
+            {u"http://127.0.0.1:8714/many"_s, {}}};
+        settings.save();
+        ws::Settings again;
+        again.load();
+        QCOMPARE(again.shares.size(), 2);
+        QCOMPARE(again.shares[0].path, small);
+        QCOMPARE(again.shares[1].path, u"\\\\127.0.0.1@8714\\many"_s);
     }
 
     void fileTypePrefixes()
@@ -383,6 +471,34 @@ private slots:
         QCOMPARE(odd.captureMouseDoubleLeft, u"copy"_s);
         QCOMPARE(odd.captureMouseRight, u"back"_s);
         QCOMPARE(odd.captureMouseMiddle, u"none"_s);
+    }
+
+    // A number written by hand that is none ("abc", "", "1h") reads as the
+    // default, not as the 0 a failed conversion gives ("每 0 小时", GitHub
+    // #114); a 0 written as one stays 0 (the WebDAV folders: only at start).
+    void numbersWrittenByHand()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        const ws::Settings d;
+        const auto read = [](const QString& key, const QVariant& value) {
+            {
+                QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+                ini.setValue(key, value);
+            }
+            ws::Settings s;
+            s.load();
+            return s;
+        };
+        for (const QString& text : {u"abc"_s, QString(), u"1h"_s}) {
+            QCOMPARE(read(u"Network/VerifyHoursUnwatched"_s, text).networkVerifyHoursUnwatched, d.networkVerifyHoursUnwatched);
+            QCOMPARE(read(u"Network/Threads"_s, text).networkThreads, d.networkThreads);
+        }
+        QCOMPARE(read(u"Network/VerifyHoursUnwatched"_s, u"0"_s).networkVerifyHoursUnwatched, 0);
+        QCOMPARE(read(u"Network/VerifyHoursUnwatched"_s, u"6"_s).networkVerifyHoursUnwatched, 6);
+        QCOMPARE(read(u"Network/Threads"_s, u"8"_s).networkThreads, 8);
+        QCOMPARE(read(u"Content/MaxFileSizeMB"_s, u"lots"_s).contentMaxSizeMB[0], d.contentMaxSizeMB[0]);
     }
 
     // The OCR choices of the mouse buttons and the toolbar's buttons left off (#57).

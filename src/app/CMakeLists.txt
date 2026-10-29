@@ -49,6 +49,7 @@ qt_add_executable(WinShun WIN32
     AiSettings.cpp AiSettings.h
     App.cpp App.h
     ColorText.cpp ColorText.h
+    ContextMenuGuard.cpp ContextMenuGuard.h # a right-click on a window's top-left pixel crashed Qt Quick (QTBUG-146671)
     DialogBarVisibility.cpp DialogBarVisibility.h
     FrameReveal.cpp FrameReveal.h
     Elide.cpp Elide.h
@@ -57,7 +58,9 @@ qt_add_executable(WinShun WIN32
     Migration.cpp Migration.h
     PieGeometry.cpp PieGeometry.h
     PieLabels.cpp PieLabels.h
+    Phosphor.cpp Phosphor.h
     Preview.cpp Preview.h
+    LongCapturePreview.cpp
     RecentFolders.cpp RecentFolders.h
     Settings.cpp Settings.h
     SiteIconImage.cpp SiteIconImage.h
@@ -65,6 +68,7 @@ qt_add_executable(WinShun WIN32
     Switches.cpp Switches.h SwitchBackend.h
     TextField.cpp TextField.h
     ThumbnailProvider.cpp ThumbnailProvider.h
+    TriggerJournal.cpp TriggerJournal.h
     WebSuggester.cpp WebSuggester.h
     WindowLogo.cpp WindowLogo.h
     platform/ClipboardWatcher.cpp platform/ClipboardWatcher.h
@@ -77,19 +81,22 @@ qt_add_executable(WinShun WIN32
     platform/FileManagers.cpp platform/FileManagers.h
     platform/FolderViewHit.cpp platform/FolderViewHit.h
     platform/Foreground.cpp platform/Foreground.h
+    platform/HoldWatch.cpp platform/HoldWatch.h
     platform/Http.cpp platform/Http.h
     platform/IdleTrim.cpp platform/IdleTrim.h
     platform/Integrity.cpp platform/Integrity.h
     platform/KeyListener.cpp platform/KeyListener.h
     platform/PieDrop.cpp platform/PieDrop.h
+    platform/ServiceDialogNav.cpp platform/ServiceDialogNav.h
     platform/ServiceKeyListener.cpp platform/ServiceKeyListener.h
     platform/KeyRouter.cpp platform/KeyRouter.h
-    platform/MessageWindow.cpp platform/MessageWindow.h
+    platform/MessageWindow.cpp platform/MessageWindow.h platform/NotificationTurns.h
     platform/MonoLogo.cpp platform/MonoLogo.h
     platform/NetworkNotifier.cpp platform/NetworkNotifier.h
     platform/NumberKeys.cpp platform/NumberKeys.h
     platform/Paster.cpp platform/Paster.h
     platform/PeekingLogo.cpp platform/PeekingLogo.h
+    platform/PointerWatch.cpp platform/PointerWatch.h
     platform/PreviewHost.cpp platform/PreviewHost.h
     platform/Shell.cpp platform/Shell.h
     platform/ShellContextMenu.cpp platform/ShellContextMenu.h
@@ -125,8 +132,12 @@ set(qml_files
     qml/ScopeTabs.qml
     qml/TypeStrip.qml
     qml/ResultRow.qml
+    qml/ElsewhereCaption.qml
     qml/Panel.qml
     qml/PanelRow.qml
+    qml/Gallery.qml
+    qml/ResultTile.qml
+    qml/FileViewSwitch.qml
     qml/FileThumbnail.qml
     qml/ClipboardWindow.qml
     qml/ClipboardPage.qml
@@ -289,6 +300,7 @@ qt_add_qml_module(WinShun
         # The screen capture's QML-facing part (src/capture/CMakeLists.txt has the rest).
         ../capture/Capture.cpp ../capture/Capture.h
         ../capture/CaptureImage.cpp ../capture/CaptureImage.h
+        ../capture/CapturePointer.cpp ../capture/CapturePointer.h
         ../capture/AnnotationModel.cpp ../capture/AnnotationModel.h
         ../capture/AnnotationCanvas.cpp ../capture/AnnotationCanvas.h
         ../capture/CaptureSession.cpp ../capture/CaptureSession.h
@@ -336,6 +348,12 @@ qt_add_resources(WinShun "plugins_sdk"
           "${PROJECT_SOURCE_DIR}/src/plugins-sdk/WinShun.psm1"
           "${PROJECT_SOURCE_DIR}/src/plugins-sdk/DEVELOPMENT.md"
           "${PROJECT_SOURCE_DIR}/src/plugins-sdk/winshun.h")
+# The icons: Phosphor Icons 2.1.2 (MIT), Regular and Fill (see Phosphor.h).
+qt_add_resources(WinShun "phosphor"
+    PREFIX /fonts
+    BASE "${PROJECT_SOURCE_DIR}/third_party/phosphor"
+    FILES "${PROJECT_SOURCE_DIR}/third_party/phosphor/Phosphor.ttf"
+          "${PROJECT_SOURCE_DIR}/third_party/phosphor/Phosphor-Fill.ttf")
 
 target_include_directories(WinShun PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(WinShun PRIVATE
@@ -343,7 +361,7 @@ target_link_libraries(WinShun PRIVATE
     wscapture # the screen capture (src/capture)
     Qt6::Gui Qt6::Qml Qt6::Quick
     Qt6::Svg # SvgIcon: web shortcuts' SVG icons, drawn once into the PNG kept
-    comctl32 d2d1 dwmapi dwrite imm32 oleacc oleaut32 shcore shell32 shlwapi ole32 user32 uxtheme version winhttp winmm
+    comctl32 d2d1 dwmapi dwrite dxgi imm32 oleacc oleaut32 shcore shell32 shlwapi ole32 user32 uxtheme version winhttp winmm
     credui iphlpapi mpr psapi windowscodecs
     mfplat mfreadwrite mfuuid delayimp
     windowsapp # TextRecognizer: Windows.Media.Ocr, through C++/WinRT from the Windows SDK
