@@ -2,6 +2,8 @@
 
 #include "DoubleClickDetector.h"
 #include "DoubleTapDetector.h"
+#include "KeyPresses.h"
+#include "TapTeller.h"
 
 #include <windows.h>
 
@@ -9,6 +11,8 @@
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 
@@ -32,9 +36,39 @@ namespace ws {
 class KeyListener {
 public:
     struct Tap {
+        // Who told of it: this process's own Raw Input; the service's
+        // UIAccess listener; or this process's own, standing in for that
+        // listener's word of the same tap, which was late (kBackupMs;
+        // GitHub #111).
+        enum class From : std::uint8_t { Own, Helper, OwnBackup };
         std::string sent;
         std::uint32_t key = 0; // VK_LCONTROL, VK_RCONTROL, VK_LMENU, VK_RMENU, VK_LSHIFT or VK_RSHIFT
-        std::uint32_t time = 0; // the input's clock, shared by both listeners
+        std::uint32_t time = 0; // the second release, on the input's clock, shared by both listeners
+        // The first press, where it began (the same clock): pressed again or
+        // not goes by it (seenBy, GitHub #111). None from a UIAccess listener
+        // from before it (keyproto::tapTimes) with no word of this process's
+        // own to take it from.
+        std::optional<std::uint32_t> firstPress;
+        From from = From::Own;
+        std::uint32_t toldAt = 0; // the same clock as it was told (deliver): how late its listener was
+        // Its first press held up by a program's slow hook: how long it
+        // seemed (DoubleTapDetector::queuedMs, GitHub #111); else 0.
+        std::uint32_t queuedMs = 0;
+    };
+    // For the diagnostics journal (GitHub #111: "double Ctrl sometimes does
+    // nothing"): a double tap of the key set that came to nothing. A near
+    // miss (DoubleTapDetector::MissReason, with its `ms`); a word of a tap
+    // dropped as too old, by either listener (TapTeller; `ms`: how old); the
+    // UIAccess listener's dropped while the keyboard's Raw Input was set
+    // aside (a shortcut being recorded, keys held for the launcher). Never
+    // one told after all, by either listener.
+    struct Note {
+        enum class Kind : std::uint8_t { NearMiss, Late, SetAside };
+        Kind kind = Kind::NearMiss;
+        std::uint32_t key = 0; // as Tap::key
+        DoubleTapDetector::MissReason miss = DoubleTapDetector::MissReason::None;
+        std::uint32_t ms = 0;
+        DoubleTapDetector::Cause by = DoubleTapDetector::Cause::None; // what spoiled it (never which key)
     };
     struct Callbacks {
         // None: keyboards not listened to. A double Ctrl, Alt or Shift
@@ -65,6 +99,9 @@ public:
         // WINSHUN_KEYLOG=1 also every key event and what came of it, the
         // modifiers by name, any other key only as "key".
         std::function<void(const std::string&)> log;
+        // What came to nothing (Note), on the listener thread; as often as
+        // the user presses keys: the receiver keeps count.
+        std::function<void(const Note&)> note;
     };
 
     // Whose double taps count: the key set, or all for the UIAccess
@@ -92,9 +129,25 @@ public:
     void setKeys(Keys keys) noexcept { m_keys = keys; }
     void setSide(DoubleTapDetector::Side side) noexcept { m_side = side; }
 
+    // The last press of a key other than a modifier at or before `time` (the
+    // input's clock), as this process's Raw Input saw it: a key's first, not
+    // its repeats (KeyPresses). When only, never which key: nothing typed is
+    // kept. None if older than KeyPresses::kKeptMs before the newest, or not
+    // seen (an administrator's window in front: UIPI). From any thread. For
+    // PointerWatch: whether Windows hid the pointer for typing (GameGuard).
+    std::optional<std::uint32_t> keyDownAtOrBefore(std::uint32_t time) const;
+
 private:
     static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+    static void CALLBACK onForeground(HWINEVENTHOOK hook, DWORD event, HWND hwnd, LONG object, LONG child,
+        DWORD thread, DWORD time);
     void onInput(HRAWINPUT input);
+    void onServiceTap(std::uint32_t key, std::uint32_t time, std::uint32_t span, bool sent);
+    void holdBackup(Tap tap);
+    void onBackupTimer();
+    bool quietSince(std::uint32_t time) const;
+    void dropped(const Note& note, std::uint32_t time);
+    void note(const Note& note) const;
     void onMouse(const RAWMOUSE& mouse);
     void onDrag(const RAWMOUSE& mouse);
     void onDragKey(const RAWKEYBOARD& key);
@@ -111,6 +164,8 @@ private:
     void onStartDragTimer();
     void replayDragKey();
     void listenToMouse(bool on);
+    bool registerKeyboard(HWND window);
+    void removeKeyboard(HWND window);
     bool mouseWanted() const noexcept { return m_callbacks.doubleClick || m_callbacks.dragMenu || m_callbacks.mousePress; }
     bool keyboardWanted() const noexcept { return m_callbacks.doubleCtrl || m_callbacks.dragMenu; }
     bool serviceTells() const noexcept;
@@ -163,9 +218,57 @@ private:
     bool m_usingService = false; // listener thread only
     bool m_keyLog = false; // WINSHUN_KEYLOG=1
     bool m_oldServiceLogged = false; // listener thread only
-    bool m_delivered = false;
-    std::uint32_t m_lastDelivered = 0;
+    TapTeller m_teller; // which taps are told; listener thread only
+    // While the UIAccess listener tells of the taps, this process's own word
+    // of one, until that listener's word of it comes or kBackupMs pass
+    // (holdBackup). Listener thread only.
+    std::optional<Tap> m_backup;
+    // When a window last came to the front (EVENT_SYSTEM_FOREGROUND, the
+    // input's clock), for a word that came late (quietSince). Listener
+    // thread only.
+    HWINEVENTHOOK m_foregroundHook = nullptr;
+    std::uint32_t m_foregroundAt = 0;
+    // The presses of keys other than the modifiers (keyDownAtOrBefore).
+    mutable std::mutex m_pressesMutex;
+    KeyPresses m_presses; // guarded by m_pressesMutex
     std::jthread m_thread;
+};
+
+// The process's Raw Input registration for keyboards (KeyListener's), if any:
+// Windows keeps one per process. `error`: Windows could not say
+// (GetLastError), which is not the same as none.
+struct KeyboardRawInput {
+    std::optional<RAWINPUTDEVICE> registration;
+    DWORD error = 0;
+};
+KeyboardRawInput keyboardRawInput();
+
+// ... set aside while one of these lives. While a process takes the
+// keyboard's Raw Input, Windows calls no low-level keyboard hook of that
+// process's first in line with one of its windows in front, nor any hook
+// after it (docs/pitfalls.md). A hook of Win顺's that must see the keys typed
+// into its own windows holds one meanwhile, made before the hook and gone
+// after it: ShortcutCapture's while it records, TypeToSearch's while it holds
+// keys for the launcher (GitHub #66). The two can overlap (a shortcut
+// recorded while a hold is still on), on their own threads: the set-aside is
+// shared and counted (searchtyping::RawInputAside). The first takes the
+// registration away, the last puts it back, as KeyListener has it then (it
+// may register or remove its window meanwhile), and one Windows refuses is
+// tried again by the next. `log`: the set-aside and its return (warning
+// false), and what Windows refused or could not say (true); on the holder's
+// thread, from inside its hook for TypeToSearch's.
+class KeyboardRawInputAside {
+public:
+    using Log = void (*)(bool warning, const std::string& line);
+
+    explicit KeyboardRawInputAside(Log log = nullptr);
+    ~KeyboardRawInputAside();
+
+    KeyboardRawInputAside(const KeyboardRawInputAside&) = delete;
+    KeyboardRawInputAside& operator=(const KeyboardRawInputAside&) = delete;
+
+private:
+    Log m_log;
 };
 
 } // namespace ws

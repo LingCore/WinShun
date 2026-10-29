@@ -72,6 +72,28 @@ private slots:
         QCOMPARE(count.load(), 3);
     }
 
+    // GitHub #111: the UIAccess listener tells where the double tap began
+    // (keyproto::tapTimes), for "pressed again"; one from before, nothing.
+    void serviceTapFirstPress()
+    {
+        std::vector<KeyListener::Tap> taps; // the listener's thread adds them while the test waits in SendMessage
+        KeyListener listener({.doubleCtrl = [&](const KeyListener::Tap& tap) { taps.push_back(tap); }});
+        QVERIFY(listener.isActive());
+        constexpr DWORD pid = 12345;
+        ready(listener, pid);
+        const auto time = static_cast<std::uint32_t>(::GetTickCount() - 100);
+        ::SendMessageW(listener.window(), keyproto::kTap, keyproto::tapWord(pid, VK_LCONTROL, false),
+            keyproto::tapTimes(time, 310));
+        QCOMPARE(taps.size(), std::size_t {1});
+        QCOMPARE(taps[0].time, time);
+        QVERIFY(taps[0].firstPress == std::optional<std::uint32_t>(time - 310));
+        QVERIFY(taps[0].from == KeyListener::Tap::From::Helper);
+        tap(listener, pid, VK_LCONTROL, time + 1); // a listener from before: the time alone
+        QCOMPARE(taps.size(), std::size_t {2});
+        QCOMPARE(taps[1].time, time + 1);
+        QVERIFY(!taps[1].firstPress);
+    }
+
     void altTaps()
     {
         std::atomic<int> count {0};

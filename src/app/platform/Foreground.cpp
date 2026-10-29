@@ -54,7 +54,8 @@ ForegroundFacts facts()
     ForegroundFacts facts;
     const HWND hwnd = ::GetForegroundWindow();
     DWORD pid = 0;
-    if (!hwnd || !::GetWindowThreadProcessId(hwnd, &pid) || pid == ::GetCurrentProcessId() || isDesktop(hwnd))
+    const DWORD thread = hwnd ? ::GetWindowThreadProcessId(hwnd, &pid) : 0;
+    if (!thread || pid == ::GetCurrentProcessId() || isDesktop(hwnd))
         return facts;
     facts.program = programOf(hwnd);
     facts.coversMonitor = coversMonitor(hwnd);
@@ -74,6 +75,10 @@ ForegroundFacts facts()
         const int bottom = top + ::GetSystemMetrics(SM_CYVIRTUALSCREEN);
         facts.cursorConfined = clip.left > left || clip.top > top || clip.right < right || clip.bottom < bottom;
     }
+    // A game that turns the view with the mouse may keep it with SetCapture
+    // rather than ClipCursor.
+    GUITHREADINFO gui {sizeof gui};
+    facts.cursorCaptured = ::GetGUIThreadInfo(thread, &gui) && gui.hwndCapture;
     return facts;
 }
 

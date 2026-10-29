@@ -1,10 +1,12 @@
 #include "WindowEffects.h"
 
 #include "Foreground.h"
-#include "KeyRouter.h" // kOwnInput
+#include "OwnInput.h"
 
 #include <QDebug>
+#include <QGuiApplication>
 #include <QOperatingSystemVersion>
+#include <QStyleHints>
 #include <QWindow>
 
 #include <dwmapi.h>
@@ -182,6 +184,18 @@ bool isDarkFrame(QWindow* window)
     return value;
 }
 
+void keepDarkFrameOnShow(QWindow* window)
+{
+    // visibleChanged comes before the native window is shown. Read first: set
+    // only when it is wrong. Not created yet, there is nothing to keep (ours
+    // are created, and set, before their first show).
+    QObject::connect(window, &QWindow::visibleChanged, window, [window](bool visible) {
+        const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
+        if (visible && window->handle() && isDarkFrame(window) != dark)
+            setDarkFrame(window, dark);
+    });
+}
+
 bool roundedCorners()
 {
     return g_round.load();
@@ -247,11 +261,11 @@ void setCloaked(QWindow* window, bool cloaked)
     }
 }
 
-void bringToFront(QWindow* window)
+Front bringToFront(QWindow* window)
 {
     const HWND hwnd = handleOf(window);
     if (!hwnd)
-        return;
+        return Front::Refused;
     // STARTF_USESHOWWINDOW/SW_HIDE can hide the first normal window even
     // after QWindow::show() marked it visible. A later show() then does
     // nothing. Honour this explicit request at the native boundary too.
@@ -259,29 +273,66 @@ void bringToFront(QWindow* window)
         ::ShowWindow(hwnd, SW_RESTORE);
     else if (!::IsWindowVisible(hwnd))
         ::ShowWindow(hwnd, SW_SHOW);
-    HWND foreground = ::GetForegroundWindow();
-    if (foreground == hwnd)
-        return;
-    foreground = closeShellFlyout(foreground);
-    const DWORD self = ::GetCurrentThreadId();
-    const DWORD other = foreground ? ::GetWindowThreadProcessId(foreground, nullptr) : 0;
-    // Sharing the input state with the foreground thread lifts the
-    // focus-stealing restriction for this one call. Not with a hung one:
-    // its input stalls, and ours would with it while they are shared.
-    const bool attached
-        = other != 0 && other != self && !::IsHungAppWindow(foreground) && ::AttachThreadInput(other, self, TRUE);
-    const bool done = activate(hwnd);
-    if (attached)
-        ::AttachThreadInput(other, self, FALSE);
-    if (done)
-        return;
-    // Refused. The process that sent the latest input may change the
-    // foreground: send one that does nothing (no move, no button) and try again.
-    INPUT nothing {};
-    nothing.type = INPUT_MOUSE;
-    ::SendInput(1, &nothing, sizeof nothing);
-    if (!activate(hwnd))
-        qWarning().noquote() << "Could not bring the window to the front over" << describe(::GetForegroundWindow());
+    if (::GetForegroundWindow() == hwnd)
+        return Front::Already;
+    closeShellFlyout(::GetForegroundWindow());
+    // Directly: Windows allows it to the process that got the latest input
+    // (a hotkey, a click on its window or its tray icon) or that one let
+    // (the UIAccess listener's AllowSetForegroundWindow, a command line's).
+    // The window in front learns that it lost the focus on its own thread,
+    // in its own time: busy, slow to deactivate or hanging, ours is in front
+    // within 15 ms all the same (measured, GitHub #111). Never with the
+    // input attached to its thread (AttachThreadInput), as before: that made
+    // its deactivation ours to wait for, the 2 s of a busy program, 8.8 s of
+    // a hanging one (#111), 6.9 s in #95, the GUI thread frozen meanwhile;
+    // and it got the window to the front in no case this does not (#111).
+    //
+    // Otherwise (the latest input went elsewhere: a double Ctrl seen through
+    // Raw Input, keys routed to the clipboard) the process that sent the
+    // latest input may set the foreground: one that does nothing, a mouse
+    // event without a move, a button or the wheel. PowerToys Run does the
+    // same ("Send empty mouse event. This makes this thread the last to send
+    // input, and hence allows it to pass foreground permission checks",
+    // microsoft/PowerToys#4270). Not a key: a lone Shift, Alt or Ctrl
+    // switches an input method or opens a menu bar, and a game sees any key.
+    // It reaches Raw Input alone, as no move from no device, marked as ours
+    // for Win顺's listeners; no low-level hook, no pointer move or shape
+    // (measured 2026-10-27). Over an administrator's window, or the ghost of
+    // a hung one, UIPI drops it and Windows refuses: only the UIAccess
+    // listener's grant gets past those.
+    //
+    // Which of the two, asked before trying: AllowSetForegroundWindow for
+    // this process succeeds only when it may set the foreground, and gives
+    // it nothing it did not have. Trying is not free: a refused
+    // SetForegroundWindow still makes the window the active one of its own
+    // thread, in the background (WM_ACTIVATE and WM_SETFOCUS inside the
+    // refused call, measured 2026-10-28), and Qt's work for that came before
+    // the window got to the front: the first double Ctrl after the start,
+    // without the UIAccess listener, took 10–26 ms instead of 5–10 (#111);
+    // asked first, 7–8. A wrong answer costs nothing more: a wrong "no"
+    // sends one empty input more (without the UIAccess listener it says no
+    // every time, though Windows lets a direct try through after the first:
+    // in front in 6–13 ms all the same, measured), a wrong "yes" ends up
+    // sending it after all.
+    bool sent = false;
+    const auto sendNothing = [&sent] {
+        INPUT nothing {};
+        nothing.type = INPUT_MOUSE;
+        nothing.mi.dwExtraInfo = kOwnInput;
+        ::SendInput(1, &nothing, sizeof nothing); // a UIPI drop is not told (SendInput's documentation)
+        sent = true;
+    };
+    if (!::AllowSetForegroundWindow(::GetCurrentProcessId()))
+        sendNothing();
+    if (activate(hwnd))
+        return sent ? Front::Input : Front::Direct;
+    if (!sent) {
+        sendNothing();
+        if (activate(hwnd))
+            return Front::Input;
+    }
+    qWarning().noquote() << "Could not bring the window to the front over" << describe(::GetForegroundWindow());
+    return Front::Refused;
 }
 
 void setMenuTheme(bool dark)

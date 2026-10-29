@@ -1,3 +1,4 @@
+#include "platform/HoldWatch.h"
 #include "platform/KeyRouter.h"
 #include "Diagnostics.h"
 
@@ -121,6 +122,25 @@ private slots:
         QCOMPARE(::GetForegroundWindow(), foreground);
         QVERIFY(!::IsWindowVisible(passive.hwnd));
         QCOMPARE(keys.load(), 0);
+    }
+
+    // The clipboard hotkey's hold watch (GitHub #107), its keys not down:
+    // the hook goes in and out on its own thread, nothing to watch, done at once.
+    void holdWatchWithItsKeysUpIsInactive()
+    {
+        std::atomic<int> notes {0};
+        std::atomic<int> drained {0};
+        constexpr unsigned all = hotkeysteps::kCtrl | hotkeysteps::kAlt | hotkeysteps::kShift | hotkeysteps::kWin;
+        HoldWatch watch(all, VK_F9, {.note = [&](auto, auto) { ++notes; }, .drained = [&] { ++drained; }});
+        QVERIFY(!watch.isActive());
+        QCOMPARE(QString::fromLatin1(watch.inactiveReason()), u"keys-up"_s);
+        QCOMPARE(watch.setupError(), 0ul);
+        watch.drain();
+        QCOMPARE(drained.load(), 1);
+        watch.drain(); // once
+        QCOMPARE(drained.load(), 1);
+        QCoreApplication::processEvents();
+        QCOMPARE(notes.load(), 0);
     }
 
     void sessionSummarySurvivesDiagnosticExport()

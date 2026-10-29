@@ -1,12 +1,14 @@
 #include "KeyListener.h"
 #include "KeyListenerProtocol.h"
 #include "OwnInput.h"
+#include "SearchTyping.h" // searchtyping::RawInputAside
 
 #include <shellscalingapi.h>
 
 #include <algorithm>
 #include <format>
 #include <latch>
+#include <mutex>
 #include <optional>
 #include <string_view>
 #include <utility>
@@ -37,6 +39,16 @@ constexpr std::uint32_t kDragLookMs = 30;
 constexpr UINT_PTR kStartDragTimer = 2;
 constexpr UINT kStartDragTickMs = 20;
 constexpr int kStartDragTicks = 15;
+// While the service's UIAccess listener tells of the taps, this process's
+// own word of one stands in for that listener's after this long. Both see
+// the same events, with the same times; its word comes within a
+// millisecond or so of this one's, unless it is late.
+constexpr UINT_PTR kBackupTimer = 3;
+constexpr UINT kBackupMs = 120;
+// GetLastInputInfo's time for the tap's own last release: the same tick, or the next.
+constexpr std::int32_t kSameInputMs = 32;
+
+thread_local KeyListener* t_listener = nullptr; // on the listener thread, for its WinEvent callback
 
 // The windows that list files, where a press may become a drag of them:
 // File Explorer's view and the file dialogs (DirectUIHWND), the desktop and
@@ -112,18 +124,19 @@ bool takes(KeyListener::Keys keys, Key key)
 bool keyboardRegistered(HWND window)
 {
     // ShortcutCapture temporarily removes this registration while recording
-    // a hotkey. Its Ctrl presses must not wake the launcher via the helper.
-    UINT count = 0;
-    if (::GetRegisteredRawInputDevices(nullptr, &count, sizeof(RAWINPUTDEVICE)) == static_cast<UINT>(-1))
-        return false;
-    std::vector<RAWINPUTDEVICE> devices(count);
-    const UINT got = ::GetRegisteredRawInputDevices(devices.data(), &count, sizeof(RAWINPUTDEVICE));
-    if (got == static_cast<UINT>(-1))
-        return false;
-    return std::any_of(devices.begin(), devices.begin() + got, [window](const RAWINPUTDEVICE& d) {
-        return d.usUsagePage == kGenericDesktop && d.usUsage == kKeyboard && d.hwndTarget == window;
-    });
+    // a hotkey, TypeToSearch while it holds keys for the launcher
+    // (KeyboardRawInputAside). A hotkey's Ctrl presses must not wake the
+    // launcher via the helper.
+    const KeyboardRawInput keyboard = keyboardRawInput();
+    return keyboard.registration && keyboard.registration->hwndTarget == window;
 }
+
+// KeyboardRawInputAside's, shared by its holders on their threads and
+// KeyListener's own registering and removing.
+std::mutex g_asideMutex;
+searchtyping::RawInputAside g_aside; // guarded by g_asideMutex
+
+using Registration = searchtyping::RawInputAside::Registration;
 
 // Raw Input names Ctrl, Shift and Alt without their side: the right Ctrl and
 // Alt come with the E0 prefix, the right Shift with its own scan code.
@@ -239,13 +252,19 @@ KeyListener::KeyListener(Callbacks callbacks)
         // only around a press of the key (listenToMouse), or all the time for
         // double clicks.
         bool active = hwnd != nullptr;
-        if (hwnd && keyboardWanted()) {
-            const RAWINPUTDEVICE keyboard {kGenericDesktop, kKeyboard, RIDEV_INPUTSINK, hwnd};
-            active = ::RegisterRawInputDevices(&keyboard, 1, sizeof keyboard);
-        }
+        if (hwnd && keyboardWanted())
+            active = registerKeyboard(hwnd);
         if (hwnd && mouseWanted()) {
             listenToMouse(true);
             active = active && m_mouseOn;
+        }
+        // Which window is in front, as it changes: whether a tap told late
+        // was made over the one in front now (quietSince).
+        if (hwnd && m_callbacks.doubleCtrl) {
+            t_listener = this;
+            m_foregroundAt = static_cast<std::uint32_t>(::GetTickCount());
+            m_foregroundHook = ::SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, nullptr,
+                &KeyListener::onForeground, 0, 0, WINEVENT_OUTOFCONTEXT);
         }
         m_active = active;
         ready.count_down();
@@ -290,23 +309,17 @@ LRESULT CALLBACK KeyListener::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
         }
         return 0;
     case keyproto::kTap:
-        if (self && static_cast<DWORD>(wParam >> 32) == self->m_servicePid.load()) {
-            const auto key = static_cast<std::uint32_t>(wParam & 0xFF);
-            const auto time = static_cast<std::uint32_t>(lParam);
-            const bool taken = self->serviceTells() && keyboardRegistered(hwnd)
-                && static_cast<DWORD>(::GetTickCount()) - time < 1000;
-            if (self->m_keyLog)
-                self->log(std::format("Key log: UIAccess listener: double {} at {}{}", kRecentNames[recentKey(key)],
-                    time, taken ? "" : ", passed over (not its key now, stale, or a shortcut being recorded)"));
-            if (taken)
-                self->deliver({(wParam & 0x100) ? "UIAccess listener: partly simulated" : "", key, time});
-        }
+        if (self && static_cast<DWORD>(wParam >> 32) == self->m_servicePid.load())
+            self->onServiceTap(static_cast<std::uint32_t>(wParam & 0xFF), keyproto::tapTime(lParam),
+                keyproto::tapSpan(lParam), (wParam & 0x100) != 0);
         return 0;
     case WM_INPUT:
         if (self)
             self->onInput(reinterpret_cast<HRAWINPUT>(lParam));
         return ::DefWindowProcW(hwnd, msg, wParam, lParam); // lets Windows free the input
     case WM_TIMER:
+        if (wParam == kBackupTimer && self)
+            self->onBackupTimer();
         if (wParam == kStartDragTimer && self)
             self->onStartDragTimer();
         if (wParam == kMouseOffTimer && self) {
@@ -322,12 +335,14 @@ LRESULT CALLBACK KeyListener::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
             self->onDragKeyPressed();
         return 0;
     case WM_CLOSE: {
+        if (self && self->m_foregroundHook) {
+            ::UnhookWinEvent(self->m_foregroundHook);
+            self->m_foregroundHook = nullptr;
+        }
         if (self)
             self->guardDragKey(false);
-        if (self && self->keyboardWanted()) {
-            const RAWINPUTDEVICE keyboard {kGenericDesktop, kKeyboard, RIDEV_REMOVE, nullptr};
-            ::RegisterRawInputDevices(&keyboard, 1, sizeof keyboard);
-        }
+        if (self && self->keyboardWanted())
+            self->removeKeyboard(hwnd);
         if (self) {
             self->m_callbacks.doubleClick = nullptr; // so the mouse goes too
             self->m_callbacks.dragMenu = nullptr;
@@ -385,6 +400,13 @@ void KeyListener::onInput(HRAWINPUT input)
     followService();
     m_recent[m_recentNext] = {recentKey(vk), up, sent, time};
     m_recentNext = (m_recentNext + 1) % m_recent.size();
+    if (recentKey(vk) == 9 && !isOwnInput(key.ExtraInformation)) { // typing, which Windows may hide the pointer for
+        const std::scoped_lock lock(m_pressesMutex);
+        if (up)
+            m_presses.up(vk);
+        else
+            m_presses.down(vk, time);
+    }
     const Keys keys = m_keys.load();
     const bool tapped
         = std::ranges::any_of(m_detectors, [&](const auto& d) { return takes(keys, d.key()) && d.isKey(vk); });
@@ -411,17 +433,39 @@ void KeyListener::onInput(HRAWINPUT input)
         const bool fire = up ? d.keyUp(vk, time, pt.x, pt.y, sent) : d.keyDown(vk, time, pt.x, pt.y, sent);
         if (own && !up && mouseButtonHeld())
             d.mouseUsed();
-        if (fire && !m_usingService)
-            tap = Tap {sentTrace(d.key()), vk, time};
+        // While the UIAccess listener tells of the taps, this one's own word
+        // waits for its (holdBackup).
+        if (fire)
+            tap = Tap {.sent = sentTrace(d.key()),
+                .key = vk,
+                .time = time,
+                .firstPress = d.firstPressTime(),
+                .from = m_usingService ? Tap::From::OwnBackup : Tap::From::Own,
+                .queuedMs = d.queuedMs()};
+        const DoubleTapDetector::Miss miss = up ? d.takeMiss() : DoubleTapDetector::Miss {};
+        if (miss.reason != DoubleTapDetector::MissReason::None)
+            note({Note::Kind::NearMiss, vk, miss.reason, miss.ms, miss.by});
         if (m_keyLog)
-            states += std::format("; {} {}{}{}", d.key() == Key::Alt ? "Alt" : d.key() == Key::Shift ? "Shift" : "Ctrl", d.clean() ? "clean" : "not clean",
-                d.armed() ? ", armed" : "", fire ? ", DOUBLE TAP" : "");
+            states += std::format("; {} {}{}{}{}", d.key() == Key::Alt ? "Alt" : d.key() == Key::Shift ? "Shift" : "Ctrl", d.clean() ? "clean" : "not clean",
+                d.armed() ? ", armed" : "", fire ? ", DOUBLE TAP" : "",
+                miss.reason != DoubleTapDetector::MissReason::None
+                    ? std::format(", near miss: {} {} ms{}", DoubleTapDetector::name(miss.reason), miss.ms,
+                          miss.by != DoubleTapDetector::Cause::None
+                              ? std::format(" (by {})", DoubleTapDetector::name(miss.by))
+                              : std::string())
+                    : std::string());
     }
     if (m_keyLog)
         log(std::format("{}; keys {}, side {}; service active {}, tells {}, used {}{}",
             describeKey(key, vk, up, device, sent, time), keysName(keys), sideName(m_side.load()),
             yesNo(serviceActive()), yesNo(serviceTells()), yesNo(m_usingService), states));
-    if (tap)
+    // The UIAccess listener's word of it may be in already: a posted message
+    // is taken before the input queued ahead of it. Then nothing is held for
+    // it, and deliver passes it over as told.
+    if (tap && tap->from == Tap::From::OwnBackup
+        && !m_teller.toldAlready(tap->time, static_cast<std::uint32_t>(::GetTickCount())))
+        holdBackup(std::move(*tap));
+    else if (tap)
         deliver(std::move(*tap));
 }
 
@@ -500,6 +544,74 @@ bool KeyListener::wanted(std::uint32_t key) const noexcept
     return true;
 }
 
+// The UIAccess listener's word of a double tap: taken while that listener is
+// the one to tell of them (serviceTells; else this process's own word is)
+// and the keyboard's Raw Input is this listener's (not set aside while a
+// shortcut is recorded or keys are held for the launcher). This process's
+// own word of the same tap, waiting for it, is let go: told once. `span`:
+// how long before `time` its first press was; 0 from a listener from before
+// that (keyproto::tapTimes), which the word waiting here then tells instead.
+void KeyListener::onServiceTap(std::uint32_t key, std::uint32_t time, std::uint32_t span, bool sent)
+{
+    const bool tells = serviceTells();
+    const bool registered = keyboardRegistered(m_window.load());
+    const bool waiting = m_backup && m_backup->time == time;
+    if (m_keyLog)
+        log(std::format("Key log: UIAccess listener: double {} at {}, {} ms ago, {}{}", kRecentNames[recentKey(key)],
+            time, static_cast<DWORD>(::GetTickCount()) - time,
+            span ? std::format("begun {} ms before", span) : std::string("its first press not told"),
+            !tells        ? ", passed over: not its key now"
+                : !registered ? ", passed over: a shortcut being recorded or keys held"
+                              : ""));
+    if (!tells || (waiting && !registered))
+        return; // this process's own word counts (or counts still: holdBackup)
+    if (!registered) {
+        const auto now = static_cast<std::uint32_t>(::GetTickCount());
+        if (wanted(key) && !m_teller.toldAlready(time, now))
+            dropped({Note::Kind::SetAside, key, {}, now - time}, time);
+        return;
+    }
+    std::optional<std::uint32_t> firstPress = span ? std::optional(time - span) : std::nullopt;
+    std::uint32_t queuedMs = 0; // that listener does not say: this one's own word does
+    if (waiting) {
+        if (!firstPress)
+            firstPress = m_backup->firstPress;
+        queuedMs = m_backup->queuedMs;
+        m_backup.reset();
+        ::KillTimer(m_window.load(), kBackupTimer);
+    }
+    deliver({.sent = sent ? "UIAccess listener: partly simulated" : "",
+        .key = key,
+        .time = time,
+        .firstPress = firstPress,
+        .from = Tap::From::Helper,
+        .queuedMs = queuedMs});
+}
+
+// This process's own word of a double tap while the UIAccess listener tells
+// of them: told should that listener's not come within kBackupMs. Its word
+// can take seconds (GitHub #111), and over a window of this process's
+// integrity this one sees just as much.
+void KeyListener::holdBackup(Tap tap)
+{
+    if (m_backup) // two taps within kBackupMs cannot be; told, not lost
+        deliver(*std::exchange(m_backup, std::nullopt));
+    m_backup = std::move(tap);
+    ::SetTimer(m_window.load(), kBackupTimer, kBackupMs, nullptr);
+}
+
+void KeyListener::onBackupTimer()
+{
+    ::KillTimer(m_window.load(), kBackupTimer);
+    std::optional<Tap> backup = std::exchange(m_backup, std::nullopt);
+    if (!backup)
+        return;
+    if (m_keyLog)
+        log(std::format("Key log: no word from the UIAccess listener of double {} at {}: this process's own told",
+            kRecentNames[recentKey(backup->key)], backup->time));
+    deliver(std::move(*backup));
+}
+
 void KeyListener::deliver(Tap tap)
 {
     const char* const name = kRecentNames[recentKey(tap.key)];
@@ -508,19 +620,73 @@ void KeyListener::deliver(Tap tap)
             log(std::format("Key log: double {} passed over: not the key or side set", name));
         return;
     }
-    // Both sources can finish the same gesture during a handover. WM_INPUT
-    // uses the same event timestamp in both processes; late duplicates lose.
-    if (m_delivered && static_cast<DWORD>(::GetTickCount()) - m_lastDelivered < 1000
-        && static_cast<std::int32_t>(tap.time - m_lastDelivered) <= 0) {
+    // Both sources can finish the same gesture: during a handover, and while
+    // this process's own word stands in for the UIAccess listener's
+    // (holdBackup). WM_INPUT uses the same event timestamp in both processes:
+    // late duplicates lose. Told late, the moment has passed, unless nothing
+    // came since (TapTeller, GitHub #111).
+    const auto now = static_cast<std::uint32_t>(::GetTickCount());
+    switch (m_teller.judge(tap.time, now, [&] { return quietSince(tap.time); })) {
+    case TapTeller::Verdict::Duplicate:
         if (m_keyLog)
             log(std::format("Key log: double {} passed over: already told", name));
         return;
+    case TapTeller::Verdict::Stale:
+        if (m_keyLog)
+            log(std::format("Key log: double {} at {} passed over: {} ms old", name, tap.time, now - tap.time));
+        dropped({Note::Kind::Late, tap.key, {}, now - tap.time}, tap.time);
+        return;
+    case TapTeller::Verdict::Tell:
+        break;
     }
-    m_delivered = true;
-    m_lastDelivered = tap.time;
+    tap.toldAt = now;
     if (m_keyLog)
-        log(std::format("Key log: double {} at {} told", name, tap.time));
+        log(std::format("Key log: double {} at {} told{}, {}{}", name, tap.time,
+            tap.from == Tap::From::Helper          ? " (UIAccess listener)"
+                : tap.from == Tap::From::OwnBackup ? " (in its place)"
+                                                   : "",
+            tap.firstPress ? std::format("begun {} ms before", tap.time - *tap.firstPress)
+                           : std::string("its first press not known"),
+            tap.queuedMs ? std::format(", its first press seemingly {} ms, let go as the second was pressed", tap.queuedMs)
+                         : std::string()));
     m_callbacks.doubleCtrl(tap);
+}
+
+// Nothing came since a tap (its time, the input's clock): no other input in
+// the session, which GetLastInputInfo counts also when it goes to an
+// administrator's window (UIPI keeps that from this process's Raw Input),
+// and no window came to the front (EVENT_SYSTEM_FOREGROUND).
+bool KeyListener::quietSince(std::uint32_t time) const
+{
+    LASTINPUTINFO last {sizeof last};
+    return m_foregroundHook && ::GetLastInputInfo(&last)
+        && static_cast<std::int32_t>(last.dwTime - time) <= kSameInputMs
+        && static_cast<std::int32_t>(m_foregroundAt - time) < 0;
+}
+
+void CALLBACK KeyListener::onForeground(HWINEVENTHOOK, DWORD, HWND, LONG, LONG, DWORD, DWORD time)
+{
+    if (KeyListener* self = t_listener)
+        self->m_foregroundAt = time;
+}
+
+// A tap dropped, noted once: both listeners may tell of it.
+void KeyListener::dropped(const Note& note, std::uint32_t time)
+{
+    if (m_teller.firstDrop(time))
+        this->note(note);
+}
+
+void KeyListener::note(const Note& note) const
+{
+    if (m_callbacks.note)
+        m_callbacks.note(note);
+}
+
+std::optional<std::uint32_t> KeyListener::keyDownAtOrBefore(std::uint32_t time) const
+{
+    const std::scoped_lock lock(m_pressesMutex);
+    return m_presses.atOrBefore(time);
 }
 
 void KeyListener::log(const std::string& line) const
@@ -863,6 +1029,139 @@ void KeyListener::listenToMouse(bool on)
         on ? m_window.load() : nullptr};
     if (::RegisterRawInputDevices(&mouse, 1, sizeof mouse) || !on)
         m_mouseOn = on;
+}
+
+// The keyboard's registration, this listener's; while a hook has it set
+// aside (KeyboardRawInputAside), it is what goes back when the last of those
+// is done (true: it will). What Windows refused goes in the log, outside the
+// lock: a hook waits on that lock, and every key press in the system on it.
+bool KeyListener::registerKeyboard(HWND window)
+{
+    const RAWINPUTDEVICE keyboard {kGenericDesktop, kKeyboard, RIDEV_INPUTSINK, window};
+    DWORD error = 0;
+    {
+        const std::scoped_lock lock(g_asideMutex);
+        if (!g_aside.registers({reinterpret_cast<std::uintptr_t>(window), keyboard.dwFlags})
+            || ::RegisterRawInputDevices(&keyboard, 1, sizeof keyboard))
+            return true;
+        error = ::GetLastError();
+    }
+    log(std::format("Key listener: keyboard Raw Input not registered (error {}): no double tap, no drop pie key", error));
+    return false;
+}
+
+// ... removed as the window goes: only its own (the process has one keyboard
+// registration, and the next listener may have it already), and while set
+// aside, not put back either. One Windows cannot say whose is removed all the
+// same: most likely this one's, and left, it would take the keys away from the
+// hooks for nothing (docs/pitfalls.md).
+void KeyListener::removeKeyboard(HWND window)
+{
+    std::string line;
+    {
+        const std::scoped_lock lock(g_asideMutex);
+        if (!g_aside.removes(reinterpret_cast<std::uintptr_t>(window)))
+            return;
+        const KeyboardRawInput keyboard = keyboardRawInput();
+        if (!keyboard.error && (!keyboard.registration || keyboard.registration->hwndTarget != window))
+            return;
+        const RAWINPUTDEVICE remove {kGenericDesktop, kKeyboard, RIDEV_REMOVE, nullptr};
+        if (::RegisterRawInputDevices(&remove, 1, sizeof remove)) {
+            if (keyboard.error)
+                line = std::format("Key listener: keyboard Raw Input removed unseen (error {} asking for it)", keyboard.error);
+        } else {
+            line = std::format("Key listener: keyboard Raw Input not removed (error {})", ::GetLastError());
+        }
+    }
+    if (!line.empty())
+        log(line);
+}
+
+KeyboardRawInput keyboardRawInput()
+{
+    const auto isKeyboard = [](const RAWINPUTDEVICE& d) { return d.usUsagePage == kGenericDesktop && d.usUsage == kKeyboard; };
+    // Asked for the count first, then the list. Another thread of the process
+    // can register a device between the two (KeyListener's its mouse, around
+    // each press of the key): too small then, the list is asked for again with
+    // the count Windows gave, a few times at most.
+    std::vector<RAWINPUTDEVICE> devices;
+    for (int tries = 0; tries < 4; ++tries) {
+        UINT count = static_cast<UINT>(devices.size());
+        const UINT got = ::GetRegisteredRawInputDevices(devices.empty() ? nullptr : devices.data(), &count, sizeof(RAWINPUTDEVICE));
+        if (got == static_cast<UINT>(-1)) {
+            if (const DWORD error = ::GetLastError(); error != ERROR_INSUFFICIENT_BUFFER)
+                return {.error = error};
+        } else if (!devices.empty()) {
+            const auto end = devices.begin() + (std::min)(std::size_t {got}, devices.size());
+            const auto keyboard = std::find_if(devices.begin(), end, isKeyboard);
+            return {.registration = keyboard == end ? std::nullopt : std::optional(*keyboard)};
+        }
+        if (count == 0)
+            return {}; // none registered at all
+        devices.resize(count);
+    }
+    return {.error = ERROR_INSUFFICIENT_BUFFER};
+}
+
+KeyboardRawInputAside::KeyboardRawInputAside(Log log)
+    : m_log(log)
+{
+    std::string line;
+    bool warning = false;
+    {
+        const std::scoped_lock lock(g_asideMutex);
+        if (g_aside.take()) {
+            const KeyboardRawInput keyboard = keyboardRawInput();
+            const RAWINPUTDEVICE remove {kGenericDesktop, kKeyboard, RIDEV_REMOVE, nullptr};
+            if (keyboard.error) {
+                // Not taken away blind: what to put back would not be known.
+                warning = true;
+                line = std::format("keyboard Raw Input not looked up (error {}): if registered, the hook misses keys "
+                                   "typed into Win顺's windows",
+                    keyboard.error);
+            } else if (!keyboard.registration) {
+                // None (no double tap, no drop pie): nothing to set aside.
+            } else if (::RegisterRawInputDevices(&remove, 1, sizeof remove)) {
+                g_aside.taken(Registration {
+                    reinterpret_cast<std::uintptr_t>(keyboard.registration->hwndTarget), keyboard.registration->dwFlags});
+                line = "keyboard Raw Input set aside";
+            } else {
+                warning = true;
+                line = std::format("keyboard Raw Input not set aside (error {}): the hook misses keys typed into "
+                                   "Win顺's windows",
+                    ::GetLastError());
+            }
+        }
+    }
+    if (m_log && !line.empty())
+        m_log(warning, line); // outside the lock: the other holders and KeyListener do not wait on it
+}
+
+KeyboardRawInputAside::~KeyboardRawInputAside()
+{
+    std::string line;
+    bool warning = false;
+    {
+        const std::scoped_lock lock(g_asideMutex);
+        if (const std::optional<Registration> back = g_aside.give()) {
+            const auto window = reinterpret_cast<HWND>(back->window);
+            const RAWINPUTDEVICE keyboard {kGenericDesktop, kKeyboard, static_cast<DWORD>(back->flags), window};
+            if (!::IsWindow(window)) {
+                warning = true; // KeyListener's window went without removing it (WM_CLOSE): nothing to put back
+                line = "keyboard Raw Input not put back: its window is gone";
+            } else if (::RegisterRawInputDevices(&keyboard, 1, sizeof keyboard)) {
+                line = "keyboard Raw Input put back";
+            } else {
+                warning = true;
+                line = std::format("keyboard Raw Input not put back (error {}): no double tap until the next hold or "
+                                   "recording ends",
+                    ::GetLastError());
+                g_aside.notPutBack(*back); // the next holder that goes tries again
+            }
+        }
+    }
+    if (m_log && !line.empty())
+        m_log(warning, line);
 }
 
 } // namespace ws

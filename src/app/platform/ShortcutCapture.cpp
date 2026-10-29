@@ -1,10 +1,13 @@
 #include "ShortcutCapture.h"
 
+#include "KeyListener.h" // KeyboardRawInputAside
+
+#include <QCoreApplication>
 #include <QtLogging>
 
-#include <iterator>
 #include <latch>
 #include <optional>
+#include <utility>
 
 namespace ws {
 
@@ -12,27 +15,27 @@ namespace {
 
 thread_local ShortcutCapture* t_capture = nullptr; // a low-level hook is called on the thread that set it
 
-constexpr USHORT kGenericDesktop = 0x01;
-constexpr USHORT kKeyboard = 0x06;
-
-// The process's Raw Input registration for keyboards (KeyListener's), taken
-// away: returned to put it back.
-std::optional<RAWINPUTDEVICE> setKeyboardRawInputAside()
+// KeyboardRawInputAside's lines: the set-aside itself with WINSHUN_LOG_INFO
+// (main.cpp's logToFile drops info lines without it), what Windows refused
+// always. Written on the GUI thread, as TypeToSearch's are (that one's come
+// from inside its hook): the capture's thread only sets the hook up and takes
+// it down around them, and the settings window waits for it. With no
+// application (a test), here.
+void logRawInput(bool warning, const std::string& line)
 {
-    RAWINPUTDEVICE devices[8];
-    UINT count = std::size(devices);
-    const UINT got = ::GetRegisteredRawInputDevices(devices, &count, sizeof(RAWINPUTDEVICE));
-    if (got == static_cast<UINT>(-1))
-        return std::nullopt;
-    for (UINT i = 0; i < got; ++i) {
-        if (devices[i].usUsagePage != kGenericDesktop || devices[i].usUsage != kKeyboard)
-            continue;
-        const RAWINPUTDEVICE remove {kGenericDesktop, kKeyboard, RIDEV_REMOVE, nullptr};
-        if (!::RegisterRawInputDevices(&remove, 1, sizeof remove))
-            return std::nullopt;
-        return devices[i];
-    }
-    return std::nullopt;
+    static const bool info = qEnvironmentVariableIsSet("WINSHUN_LOG_INFO");
+    if (!warning && !info)
+        return;
+    auto write = [warning, line] {
+        if (warning)
+            qWarning("ShortcutCapture: %s", line.c_str());
+        else
+            qInfo("ShortcutCapture: %s", line.c_str());
+    };
+    if (QCoreApplication* app = QCoreApplication::instance())
+        QMetaObject::invokeMethod(app, std::move(write), Qt::QueuedConnection);
+    else
+        write();
 }
 
 // The key as the settings window's recorder knows it (see HotkeyRecorder.qml).
@@ -91,7 +94,9 @@ ShortcutCapture::ShortcutCapture(HWND window, std::function<void(const Key&)> on
         m_threadId = ::GetCurrentThreadId();
         // Every key press in the system waits for the hook's answer.
         ::SetThreadPriority(::GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
-        const std::optional<RAWINPUTDEVICE> rawInput = setKeyboardRawInputAside(); // see the header
+        // Set aside before the hook comes and until after it went (see the
+        // header); shared with a hold of TypeToSearch's still on.
+        std::optional<KeyboardRawInputAside> rawInputAside(std::in_place, &logRawInput);
         const HHOOK hook = ::SetWindowsHookExW(WH_KEYBOARD_LL, &ShortcutCapture::hookProc, ::GetModuleHandleW(nullptr), 0);
         m_active = hook != nullptr;
         if (!hook)
@@ -103,8 +108,7 @@ ShortcutCapture::ShortcutCapture(HWND window, std::function<void(const Key&)> on
             }
             ::UnhookWindowsHookEx(hook);
         }
-        if (rawInput && !::RegisterRawInputDevices(&*rawInput, 1, sizeof(RAWINPUTDEVICE)))
-            qWarning("ShortcutCapture: keyboard Raw Input not restored (error %lu)", ::GetLastError());
+        rawInputAside.reset();
     });
     ready.wait();
 }

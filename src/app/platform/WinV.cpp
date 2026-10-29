@@ -35,13 +35,13 @@ std::wstring disabledHotkeys()
 bool releasedByExplorer(wchar_t key)
 {
     const std::wstring keys = disabledHotkeys();
-    return std::ranges::any_of(keys, [key](wchar_t c) { return std::towupper(c) == key; });
+    return std::ranges::any_of(keys, [key](wchar_t c) { return c == key; });
 }
 
 bool setReleasedByExplorer(wchar_t key, bool released)
 {
     std::wstring keys = disabledHotkeys();
-    std::erase_if(keys, [key](wchar_t c) { return std::towupper(c) == key; });
+    std::erase_if(keys, [key](wchar_t c) { return c == key; });
     if (released)
         keys += key;
     win32::UniqueKey advanced;
@@ -53,6 +53,109 @@ bool setReleasedByExplorer(wchar_t key, bool released)
     return ::RegSetValueExW(advanced.get(), kDisabledHotkeys, 0, REG_SZ, reinterpret_cast<const BYTE*>(keys.c_str()),
                static_cast<DWORD>((keys.size() + 1) * sizeof(wchar_t)))
         == ERROR_SUCCESS;
+}
+
+namespace {
+
+constexpr wchar_t kOwnKey[] = L"Software\\WinShun";
+constexpr wchar_t kOwnedHotkeys[] = L"ExplorerHotkeys";
+
+std::wstring recordedKeys()
+{
+    wchar_t value[64] {};
+    DWORD size = sizeof value - sizeof(wchar_t);
+    if (::RegGetValueW(HKEY_CURRENT_USER, kOwnKey, kOwnedHotkeys, RRF_RT_REG_SZ, nullptr, value, &size) != ERROR_SUCCESS)
+        return {};
+    return value;
+}
+
+bool hasKey(const std::wstring& keys, wchar_t key)
+{
+    return std::ranges::any_of(keys, [key](wchar_t c) { return c == key; });
+}
+
+bool setRecord(wchar_t key, bool recorded)
+{
+    std::wstring keys = recordedKeys();
+    if (hasKey(keys, key) == recorded)
+        return true;
+    std::erase_if(keys, [key](wchar_t c) { return c == key; });
+    if (recorded)
+        keys += key;
+    if (keys.empty()) {
+        bool empty = false;
+        LSTATUS deleted = ERROR_SUCCESS;
+        {
+            win32::UniqueKey own;
+            const LSTATUS opened = ::RegOpenKeyExW(HKEY_CURRENT_USER, kOwnKey, 0, KEY_SET_VALUE | KEY_QUERY_VALUE, own.out());
+            if (opened != ERROR_SUCCESS)
+                return opened == ERROR_FILE_NOT_FOUND; // gone already: nothing recorded; else not cleared
+            deleted = ::RegDeleteValueW(own.get(), kOwnedHotkeys);
+            // The key goes with its last value, not with anything else in it.
+            DWORD subKeys = 0;
+            DWORD values = 0;
+            empty = ::RegQueryInfoKeyW(own.get(), nullptr, nullptr, nullptr, &subKeys, nullptr, nullptr, &values, nullptr,
+                        nullptr, nullptr, nullptr)
+                    == ERROR_SUCCESS
+                && subKeys == 0 && values == 0;
+        }
+        if (empty)
+            ::RegDeleteKeyW(HKEY_CURRENT_USER, kOwnKey);
+        return deleted == ERROR_SUCCESS || deleted == ERROR_FILE_NOT_FOUND;
+    }
+    win32::UniqueKey own;
+    if (::RegCreateKeyExW(HKEY_CURRENT_USER, kOwnKey, 0, nullptr, 0, KEY_SET_VALUE, nullptr, own.out(), nullptr) != ERROR_SUCCESS)
+        return false;
+    return ::RegSetValueExW(own.get(), kOwnedHotkeys, 0, REG_SZ, reinterpret_cast<const BYTE*>(keys.c_str()),
+               static_cast<DWORD>((keys.size() + 1) * sizeof(wchar_t)))
+        == ERROR_SUCCESS;
+}
+
+} // namespace
+
+Plan planFor(bool switchOn, bool present, bool recorded, Origin origin)
+{
+    if (switchOn) {
+        if (!present)
+            return {.addLetter = true, .recorded = true};
+        // There already: ours if the record says so, or if an older version
+        // (which kept no record) put it there, which only a start tells.
+        return {.recorded = recorded || origin == Origin::Startup};
+    }
+    // Another profile's start does not know what the main copy owns.
+    if (origin == Origin::StartupOtherProfile)
+        return {.recorded = recorded};
+    if (!present)
+        return {};
+    if (recorded)
+        return {.removeLetter = true};
+    return {.recorded = false, .blocked = true};
+}
+
+bool recordedAsOurs(wchar_t key)
+{
+    return hasKey(recordedKeys(), key);
+}
+
+bool reconcile(wchar_t key, bool switchOn, Origin origin)
+{
+    const bool present = releasedByExplorer(key);
+    const bool recorded = recordedAsOurs(key);
+    const Plan plan = planFor(switchOn, present, recorded, origin);
+    bool ok = true;
+    if (plan.addLetter)
+        ok = setReleasedByExplorer(key, true);
+    else if (plan.removeLetter)
+        ok = setReleasedByExplorer(key, false);
+    // A letter that could not be put there is not ours; one that could not be
+    // taken out still is, to try again next time.
+    return setRecord(key, plan.recorded ? present || ok : plan.removeLetter && !ok) && ok;
+}
+
+bool giveBack(wchar_t key)
+{
+    const bool released = !releasedByExplorer(key) || setReleasedByExplorer(key, false);
+    return setRecord(key, false) && released;
 }
 
 bool canRestartExplorer()

@@ -21,6 +21,7 @@
 #include <vector>
 
 #include <windows.h>
+#include <dxgi.h>
 
 using namespace Qt::StringLiterals;
 
@@ -120,6 +121,36 @@ QJsonArray adapters()
             names.append(name);
     }
     return names;
+}
+
+// The same adapters through DXGI, with the driver's version ("a.b.c.d"), for a
+// driver update that broke the drawing; software adapters left out. [{name, driver}]
+QJsonArray adapterDrivers()
+{
+    QJsonArray list;
+    IDXGIFactory1* factory = nullptr;
+    if (FAILED(::CreateDXGIFactory1(__uuidof(IDXGIFactory1), reinterpret_cast<void**>(&factory))) || !factory)
+        return list;
+    for (UINT i = 0;; ++i) {
+        IDXGIAdapter1* adapter = nullptr;
+        if (factory->EnumAdapters1(i, &adapter) != S_OK)
+            break;
+        DXGI_ADAPTER_DESC1 desc {};
+        if (SUCCEEDED(adapter->GetDesc1(&desc)) && !(desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)) {
+            LARGE_INTEGER version {};
+            QString driver;
+            if (SUCCEEDED(adapter->CheckInterfaceSupport(__uuidof(IDXGIDevice), &version)))
+                driver = u"%1.%2.%3.%4"_s.arg(HIWORD(version.HighPart)).arg(LOWORD(version.HighPart))
+                             .arg(HIWORD(version.LowPart)).arg(LOWORD(version.LowPart));
+            // One GPU can be listed several times (seen 6× on a laptop): once is enough.
+            const QJsonObject entry {{u"name"_s, QString::fromWCharArray(desc.Description)}, {u"driver"_s, driver}};
+            if (!list.contains(entry))
+                list.append(entry);
+        }
+        adapter->Release();
+    }
+    factory->Release();
+    return list;
 }
 
 QString apiName(QSGRendererInterface::GraphicsApi api)
@@ -280,8 +311,13 @@ void watchWindow(QQuickWindow* window, const QString& name)
 {
     auto starts = std::make_shared<std::atomic<int>>(0);
     {
+        // A window made again under the same name (the capture's overlays) replaces its entry.
         const std::lock_guard lock(g_windowsMutex);
-        g_windows.push_back({name, starts});
+        const auto same = std::ranges::find(g_windows, name, &WindowStarts::name);
+        if (same != g_windows.end())
+            same->starts = starts;
+        else
+            g_windows.push_back({name, starts});
     }
     // On the render thread; again after the window let its graphics go.
     QObject::connect(window, &QQuickWindow::sceneGraphInitialized, window, [window, name, starts] {
@@ -289,7 +325,8 @@ void watchWindow(QQuickWindow* window, const QString& name)
             return;
         const QSGRendererInterface* renderer = window->rendererInterface();
         record(u"graphics"_s, {{u"window"_s, name},
-            {u"api"_s, renderer ? apiName(renderer->graphicsApi()) : u"?"_s}, {u"adapters"_s, adapters()}});
+            {u"api"_s, renderer ? apiName(renderer->graphicsApi()) : u"?"_s}, {u"adapters"_s, adapters()},
+            {u"adapter_drivers"_s, adapterDrivers()}});
     }, Qt::DirectConnection);
     QObject::connect(window, &QQuickWindow::sceneGraphError, window,
         [name](QQuickWindow::SceneGraphError error, const QString& message) {
@@ -323,6 +360,7 @@ QJsonObject display(const QString& renderer, bool backdrop)
         : smoothingType == FE_FONTSMOOTHINGCLEARTYPE ? u"cleartype"_s : u"standard"_s;
     out[u"screens"_s] = screens();
     out[u"adapters"_s] = adapters();
+    out[u"adapter_drivers"_s] = adapterDrivers();
 
     FILETIME created {}, exited {}, kernel {}, user {};
     if (::GetProcessTimes(::GetCurrentProcess(), &created, &exited, &kernel, &user)) {

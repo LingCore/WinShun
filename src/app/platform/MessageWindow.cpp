@@ -2,12 +2,14 @@
 
 #include "MonoLogo.h"
 
+#include <QDebug>
 #include <QDeadlineTimer>
 #include <QStringList>
 
 #include <shellapi.h>
 
 #include <algorithm>
+#include <utility>
 
 using namespace Qt::StringLiterals;
 
@@ -18,6 +20,7 @@ namespace {
 constexpr wchar_t kClassName[] = L"WinShun.MessageWindow";
 constexpr UINT kTrayMessage = WM_APP + 1;
 constexpr UINT kTrayId = 1;
+constexpr UINT_PTR kHeldTimer = 1; // a plugin's notification held back: time to look again (showHeld)
 constexpr ULONG_PTR kCopyDataTag = 0x5753484E; // "WSHN"
 // The window Explorer's "search here" reaches (WinShunSearch.exe, src/stub).
 constexpr wchar_t kSearchHereClass[] = L"WinShun.SearchHere";
@@ -43,7 +46,9 @@ constexpr std::chrono::milliseconds kRunningInstanceWait {30000};
 
 void copyTruncated(wchar_t* dest, std::size_t capacity, const QString& text)
 {
-    const auto n = std::min<std::size_t>(capacity - 1, static_cast<std::size_t>(text.size()));
+    auto n = std::min<std::size_t>(capacity - 1, static_cast<std::size_t>(text.size()));
+    if (n > 0 && n < static_cast<std::size_t>(text.size()) && text.at(static_cast<qsizetype>(n) - 1).isHighSurrogate())
+        --n; // never half a pair
     std::memcpy(dest, text.utf16(), n * sizeof(wchar_t));
     dest[n] = 0;
 }
@@ -177,22 +182,78 @@ void MessageWindow::removeTrayIcon()
     m_trayVisible = false;
 }
 
-void MessageWindow::showNotification(const QString& title, const QString& text)
+void MessageWindow::showNotification(const QString& title, const QString& text, std::function<void()> onClick, const QString& owner)
 {
+    const std::uint64_t now = ::GetTickCount64();
+    if (!owner.isEmpty()) {
+        if (const std::uint64_t until = m_turns.ownUpUntil(now)) {
+            // Win顺's own is up: this one waits (the newest of those waiting).
+            qInfo() << "Notification: a plugin's waits for Win顺's own to go";
+            m_held = Held {title, text, std::move(onClick), owner, now};
+            holdUntil(until, now);
+            return;
+        }
+        if (m_held) {
+            qInfo() << "Notification: a newer plugin's goes first, the one waiting is dropped";
+            dropHeld();
+        }
+    }
+    m_onNotificationClick = std::move(onClick); // also when there is no tray icon to show it on
     if (!m_trayVisible)
         return;
+    m_turns.shown(owner, now);
     NOTIFYICONDATAW nid {sizeof(NOTIFYICONDATAW)};
     nid.hWnd = m_hwnd;
     nid.uID = kTrayId;
     nid.uFlags = NIF_INFO;
     nid.dwInfoFlags = NIIF_INFO | NIIF_RESPECT_QUIET_TIME;
     copyTruncated(nid.szInfoTitle, std::size(nid.szInfoTitle), title);
-    copyTruncated(nid.szInfo, std::size(nid.szInfo), text);
+    // No text would take the balloon away instead (hideNotification): the title then.
+    copyTruncated(nid.szInfo, std::size(nid.szInfo), text.trimmed().isEmpty() ? title : text);
     ::Shell_NotifyIconW(NIM_MODIFY, &nid);
+}
+
+// Its end may never be told (a balloon replaced, quiet hours): the timer
+// looks again when Win顺's own goes at the latest, or the held one is out of date.
+void MessageWindow::holdUntil(std::uint64_t until, std::uint64_t now)
+{
+    if (!m_held)
+        return;
+    const std::uint64_t at = std::min(until, m_held->since + kHeldMostMs);
+    ::SetTimer(m_hwnd, kHeldTimer, static_cast<UINT>(at > now ? at - now + 50 : 50), nullptr);
+}
+
+void MessageWindow::showHeld()
+{
+    if (!m_held)
+        return;
+    const std::uint64_t now = ::GetTickCount64();
+    if (now - m_held->since > kHeldMostMs) {
+        qInfo() << "Notification: a plugin's held back too long, dropped";
+        dropHeld();
+        return;
+    }
+    if (const std::uint64_t until = m_turns.ownUpUntil(now)) {
+        holdUntil(until, now); // another of Win顺's own came meanwhile
+        return;
+    }
+    ::KillTimer(m_hwnd, kHeldTimer);
+    Held held = std::move(*m_held);
+    m_held.reset();
+    showNotification(held.title, held.text, std::move(held.onClick), held.owner);
+}
+
+void MessageWindow::dropHeld()
+{
+    m_held.reset();
+    ::KillTimer(m_hwnd, kHeldTimer);
 }
 
 void MessageWindow::hideNotification()
 {
+    m_onNotificationClick = nullptr;
+    m_turns.clear();
+    dropHeld(); // a screenshot or a recording begins: not now, and later it is out of date
     if (!m_trayVisible)
         return;
     NOTIFYICONDATAW nid {sizeof(NOTIFYICONDATAW)};
@@ -329,16 +390,51 @@ LRESULT MessageWindow::handle(UINT msg, WPARAM wParam, LPARAM lParam)
         switch (LOWORD(lParam)) {
         case NIN_SELECT:
         case NIN_KEYSELECT:
+            // Posted, it carries the click's time; sent from Explorer's
+            // thread, it has none of its own (GetMessageTime is the last
+            // posted message's), and is handled as it comes.
             if (m_callbacks.trayActivated)
-                m_callbacks.trayActivated();
+                m_callbacks.trayActivated(
+                    ::InSendMessage() ? ::GetTickCount() : static_cast<std::uint32_t>(::GetMessageTime()));
             break;
         case WM_CONTEXTMENU:
             if (m_callbacks.trayMenuRequested)
                 m_callbacks.trayMenuRequested();
             break;
-        case NIN_BALLOONUSERCLICK:
-            if (m_callbacks.notificationClicked)
-                m_callbacks.notificationClicked();
+        case NIN_BALLOONUSERCLICK: {
+            // Taken out first: the action may show a notification of its own.
+            // Right after a plugin's replaced another owner's, which one was
+            // clicked cannot be told: nothing runs rather than another's.
+            // (Win顺's own newest: its action, which only ever does Win顺's
+            // own harmless things, runs.)
+            auto action = std::exchange(m_onNotificationClick, nullptr);
+            const bool unclear = m_turns.clickUnclear(::GetTickCount64());
+            m_turns.clear(); // clicked away
+            if (unclear && action) {
+                qInfo() << "Notification: clicked right after one of another owner's was replaced, nothing done";
+            } else if (action) {
+                qInfo() << "Notification: clicked, running its action";
+                action();
+            } else {
+                qInfo() << "Notification: clicked, nothing to do";
+            }
+            showHeld();
+            break;
+        }
+        case NIN_BALLOONSHOW:
+            qInfo() << "Notification: shown";
+            break;
+        case NIN_BALLOONHIDE: // closed with its cross, or taken away
+        case NIN_BALLOONTIMEOUT: // gone by itself: it is not kept in the Action Center, so no click can come later
+            // A newer one may already have replaced this one's action: only
+            // the newest's end clears it (one replaced may tell its end, right
+            // then, or never: NotificationTurns).
+            if (m_turns.ended(::GetTickCount64())) {
+                if (m_onNotificationClick)
+                    qInfo() << "Notification: gone, its click action dropped";
+                m_onNotificationClick = nullptr;
+            }
+            showHeld();
             break;
         default:
             break;
@@ -347,12 +443,22 @@ LRESULT MessageWindow::handle(UINT msg, WPARAM wParam, LPARAM lParam)
     }
     if (msg == m_taskbarCreated && m_taskbarCreated != 0) {
         m_trayVisible = false;
+        m_turns.clear(); // the notifications went with the old taskbar
+        m_onNotificationClick = nullptr;
+        dropHeld();
         addTrayIcon();
         if (m_callbacks.shellRestarted)
             m_callbacks.shellRestarted();
         return 0;
     }
     switch (msg) {
+    case WM_TIMER:
+        if (wParam == kHeldTimer) {
+            ::KillTimer(m_hwnd, kHeldTimer);
+            showHeld(); // Win顺's own has gone by now, its end told or not
+            return 0;
+        }
+        return ::DefWindowProcW(m_hwnd, msg, wParam, lParam);
     case WM_SETTINGCHANGE: // the taskbar light or dark, high contrast: the one-colour icon in its new ink
         if (m_mono) {
             m_mono = false;
@@ -384,9 +490,9 @@ LRESULT MessageWindow::handle(UINT msg, WPARAM wParam, LPARAM lParam)
         if (m_callbacks.drawingMessage)
             m_callbacks.drawingMessage(msg, wParam);
         return 0;
-    case WM_HOTKEY:
+    case WM_HOTKEY: // posted when the keys were pressed
         if (m_callbacks.hotkeyPressed)
-            m_callbacks.hotkeyPressed(static_cast<int>(wParam));
+            m_callbacks.hotkeyPressed(static_cast<int>(wParam), static_cast<std::uint32_t>(::GetMessageTime()));
         return 0;
     case WM_COPYDATA: {
         const auto* data = reinterpret_cast<const COPYDATASTRUCT*>(lParam);

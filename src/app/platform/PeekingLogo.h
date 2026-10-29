@@ -42,11 +42,21 @@ public:
         std::initializer_list<Edge> edges = {Edge::Top, Edge::Left, Edge::Right, Edge::Bottom}, POINT shift = {},
         BYTE alpha = 255);
     void hide();
+    // 搜索框显示 Logo (GitHub #109): off, show() keeps every logo hidden. One
+    // switch for all of them (launcher, clipboard, the bar by file dialogs);
+    // the windows lay out the same without it, as the logo is a window of its
+    // own outside theirs, so nothing needs to move.
+    static void setEnabled(bool on) { s_enabled = on; }
+    static bool enabled() { return s_enabled; }
+    void setOwner(HWND owner) { m_owner = owner; }
 
 private:
+    static inline bool s_enabled = true; // GUI thread only
+
     bool render(int size, Edge edge); // the part that shows
 
     HWND m_hwnd = nullptr;
+    HWND m_owner = nullptr; // null: the launcher's existing topmost logo
     HDC m_dc = nullptr; // holds m_bitmap
     HBITMAP m_bitmap = nullptr;
     HGDIOBJ m_dcBitmap = nullptr; // the one the DC came with

@@ -2,11 +2,23 @@
 
 #include "FolderViewHit.h"
 #include "Integrity.h"
+#include "KeyListener.h" // KeyboardRawInputAside
 #include "KeyRouter.h" // kOwnInput
 #include "PasteOffer.h"
 #include "SearchTyping.h"
 
+#include <commctrl.h>
+#include <dwmapi.h>
+#include <imm.h> // IMN_ (WIN32_LEAN_AND_MEAN leaves it out of windows.h)
+#include <msctf.h>
+#include <wrl/client.h>
+
+#include <QCoreApplication>
+#include <QtLogging>
+
+#include <algorithm>
 #include <cwchar>
+#include <format>
 #include <latch>
 #include <utility>
 
@@ -21,10 +33,7 @@ std::atomic<TypeToSearch::RequestId> g_nextFolderRequest = 0;
 constexpr UINT kDeliverMessage = WM_APP + 1; // to the hook's thread (deliver)
 constexpr UINT kGiveBackMessage = WM_APP + 2; // to the hook's thread (giveBack)
 constexpr UINT kPassedMessage = WM_APP + 3; // to the hook's thread: the keys typed again have gone by
-constexpr UINT kHoldTimeoutMs = 3000; // the launcher comes in well under a second; keys held longer are dropped
-// The keys typed again go by within milliseconds; should some never (a hook
-// before this one took them), the hold ends after this all the same.
-constexpr UINT kPassTimeoutMs = 1000;
+constexpr UINT kLookAgainMessage = WM_APP + 4; // to the hook's thread: the front changed while keys wait for it
 // Keys for the launcher wait while Win顺 is not in front (GitHub #66): how often
 // to look again, besides at each foreground event.
 constexpr UINT kFrontPollMs = 20;
@@ -60,15 +69,109 @@ bool isStartMenu(HWND window)
     return false;
 }
 
-INPUT keyInput(WORD vk, WORD scanCode, DWORD flags)
+INPUT keyInput(WORD vk, WORD scanCode, DWORD flags, ULONG_PTR mark = kOwnInput)
 {
     INPUT input {};
     input.type = INPUT_KEYBOARD;
     input.ki.wVk = vk;
     input.ki.wScan = scanCode;
     input.ki.dwFlags = flags;
-    input.ki.dwExtraInfo = kOwnInput;
+    input.ki.dwExtraInfo = mark;
     return input;
+}
+
+// One stroke of searchtyping::retype as input to send.
+INPUT inputOf(const searchtyping::Stroke& stroke)
+{
+    const DWORD up = stroke.release ? KEYEVENTF_KEYUP : 0;
+    if (stroke.vk == searchtyping::kVkPacket) // a program's character: as it came, not as a key with that code
+        return keyInput(0, static_cast<WORD>(stroke.scanCode), KEYEVENTF_UNICODE | up);
+    if (stroke.vk == kMaskKey)
+        return keyInput(kMaskKey, 0, up, kOwnMask);
+    const WORD scanCode = stroke.scanCode ? static_cast<WORD>(stroke.scanCode)
+                                          : static_cast<WORD>(::MapVirtualKeyW(stroke.vk, MAPVK_VK_TO_VSC));
+    return keyInput(static_cast<WORD>(stroke.vk), scanCode, (stroke.extended ? KEYEVENTF_EXTENDEDKEY : 0) | up);
+}
+
+// KeyRouter's mask, to the window in front (see TypeToSearch::handleKey).
+void sendMask()
+{
+    INPUT keys[] {keyInput(kMaskKey, 0, 0, kOwnMask), keyInput(kMaskKey, 0, KEYEVENTF_KEYUP, kOwnMask)};
+    ::SendInput(static_cast<UINT>(std::size(keys)), keys, sizeof(INPUT));
+}
+
+// The strokes of a Step, typed as Win顺's own: how many went in.
+std::size_t sendStrokes(const std::vector<searchtyping::Stroke>& strokes)
+{
+    std::vector<INPUT> inputs;
+    inputs.reserve(strokes.size());
+    for (const searchtyping::Stroke& stroke : strokes)
+        inputs.push_back(inputOf(stroke));
+    const UINT inserted = ::SendInput(static_cast<UINT>(inputs.size()), inputs.data(), sizeof(INPUT));
+    if (inserted < inputs.size())
+        qWarning("TypeToSearch: %u of %zu keys typed again went in (error %lu)", inserted, inputs.size(), ::GetLastError());
+    return inserted;
+}
+
+searchtyping::Hold::KeyEvent keyEvent(WPARAM message, const KBDLLHOOKSTRUCT& event)
+{
+    return {.vk = event.vkCode,
+        .scanCode = event.scanCode,
+        .extended = (event.flags & LLKHF_EXTENDED) != 0,
+        .press = message == WM_KEYDOWN || message == WM_SYSKEYDOWN,
+        .own = isOwnInput(event.dwExtraInfo)};
+}
+
+// What a key types with AltGr held (searchtyping::Hold asks only then), on
+// the keyboard layout of the window in front: Shift as the user holds it, Caps
+// Lock as it will be once the presses of it held before are typed again.
+// Empty for none, a dead key (left pending as it is: flag 4, Windows 10 1607
+// on) or a control character: the key goes on then.
+std::u16string altGrChars(const searchtyping::Hold::KeyEvent& key, searchtyping::Shifts shifts, bool capsLockFlipped)
+{
+    if (key.vk == searchtyping::kVkPacket)
+        return std::u16string(1, static_cast<char16_t>(key.scanCode)); // a program's character, as it came
+    BYTE state[256] {};
+    state[VK_CONTROL] = state[VK_LCONTROL] = state[VK_MENU] = state[VK_RMENU] = 0x80;
+    if (shifts.left)
+        state[VK_LSHIFT] = 0x80;
+    if (shifts.right)
+        state[VK_RSHIFT] = 0x80;
+    if (shifts.any())
+        state[VK_SHIFT] = 0x80;
+    if (((::GetKeyState(VK_CAPITAL) & 1) != 0) != capsLockFlipped)
+        state[VK_CAPITAL] = 0x01;
+    const HKL layout = ::GetKeyboardLayout(::GetWindowThreadProcessId(::GetForegroundWindow(), nullptr));
+    wchar_t chars[8] {};
+    const int count = ::ToUnicodeEx(key.vk, key.scanCode & 0xFF, state, chars, static_cast<int>(std::size(chars)), 0x4, layout);
+    if (count <= 0)
+        return {};
+    std::u16string text(chars, chars + count);
+    if (std::ranges::any_of(text, [](char16_t c) { return c < 0x20 || c == 0x7F; }))
+        return {};
+    return text;
+}
+
+// This thread's lines, KeyboardRawInputAside's among them: info ones (the
+// set-aside itself, every hold) with WINSHUN_LOG_INFO (main.cpp's logToFile
+// drops info lines without it), what Windows refused always. Written on the
+// GUI thread: they come from inside the hook, which every key press in the
+// system waits for, and the log is a file. With no application (a test), here.
+void logLine(bool warning, const std::string& line)
+{
+    static const bool info = qEnvironmentVariableIsSet("WINSHUN_LOG_INFO");
+    if (!warning && !info)
+        return;
+    auto write = [warning, line] {
+        if (warning)
+            qWarning("TypeToSearch: %s", line.c_str());
+        else
+            qInfo("TypeToSearch: %s", line.c_str());
+    };
+    if (QCoreApplication* app = QCoreApplication::instance())
+        QMetaObject::invokeMethod(app, std::move(write), Qt::QueuedConnection);
+    else
+        write();
 }
 
 } // namespace
@@ -93,24 +196,42 @@ TypeToSearch::TypeToSearch(Surfaces surfaces, Callbacks callbacks)
         const HWINEVENTHOOK foreground = ::SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, nullptr,
             &TypeToSearch::foregroundProc, 0, 0, WINEVENT_OUTOFCONTEXT);
         ready.count_down();
-        foregroundChanged(::GetForegroundWindow(), nullptr); // open already
+        // Open already. A folder window that opened behind another before
+        // this started raised its event unseen: kept as one seen behind is,
+        // foregroundChanged keeping it while it is still the active window
+        // of its own thread.
+        const HWND inFront = ::GetForegroundWindow();
+        m_explorerBehind = openedBehind(inFront);
+        foregroundChanged(inFront, nullptr);
+        if (m_explorerBehind)
+            logLine(false, std::format("folder window {:#x} opened behind another before the start: kept",
+                reinterpret_cast<std::uintptr_t>(m_explorerBehind)));
         // The hook and the events are called from inside GetMessage.
         while (::GetMessageW(&msg, nullptr, 0, 0) > 0) {
             if (msg.hwnd == nullptr && msg.message == kDeliverMessage)
-                typeHeld();
+                apply(m_hold.deliver(msg.wParam != 0, front(), ::GetTickCount()));
             else if (msg.hwnd == nullptr && msg.message == kGiveBackMessage) {
                 if (!msg.wParam || pending(static_cast<RequestId>(msg.wParam)))
-                    returnHeld();
+                    apply(m_hold.giveBack(front(), ::GetTickCount()));
             } else if (msg.hwnd == nullptr && msg.message == kPassedMessage)
-                heldPassed();
-            else if (msg.hwnd == nullptr && msg.message == WM_TIMER && m_frontTimer && msg.wParam == m_frontTimer)
-                heldPassed(); // looks again whether Win顺 is in front
-            else if (msg.hwnd == nullptr && msg.message == WM_TIMER && msg.wParam == m_timer)
-                dropHeld();
+                apply(m_hold.passed(front(), ::GetTickCount()));
+            else if (msg.hwnd == nullptr
+                && ((msg.message == WM_TIMER && m_frontTimer && msg.wParam == m_frontTimer)
+                    || (msg.message == kLookAgainMessage && m_frontTimer)))
+                apply(m_hold.lookAgain(front(), ::GetTickCount())); // whether Win顺 is in front now
+            else if (msg.hwnd == nullptr && msg.message == WM_TIMER && m_timer && msg.wParam == m_timer)
+                apply(m_hold.timeout(front(), ::GetTickCount()));
             else
                 ::DispatchMessageW(&msg);
         }
+        // Ended while holding: Shift as the user holds it, typed once the hook
+        // is gone (no one would answer it now, and nothing is waited for),
+        // the Raw Input put back after both.
+        const searchtyping::Hold::Step last = m_hold.stop();
         setHooked(false);
+        if (!last.send.empty())
+            sendStrokes(last.send);
+        m_rawInputAside.reset();
         if (foreground)
             ::UnhookWinEvent(foreground);
     });
@@ -124,9 +245,9 @@ TypeToSearch::~TypeToSearch()
         m_thread.join();
 }
 
-void TypeToSearch::deliver()
+void TypeToSearch::deliver(bool ready)
 {
-    ::PostThreadMessageW(m_threadId.load(), kDeliverMessage, 0, 0);
+    ::PostThreadMessageW(m_threadId.load(), kDeliverMessage, ready ? 1 : 0, 0);
 }
 
 void TypeToSearch::giveBack(RequestId request)
@@ -134,18 +255,30 @@ void TypeToSearch::giveBack(RequestId request)
     ::PostThreadMessageW(m_threadId.load(), kGiveBackMessage, static_cast<WPARAM>(request), 0);
 }
 
+TypeToSearch::Timing TypeToSearch::timing() const noexcept
+{
+    using Clock = std::chrono::steady_clock;
+    const auto at = [](Clock::rep ticks) { return ticks ? Clock::time_point(Clock::duration(ticks)) : Clock::time_point {}; };
+    return {at(m_firstKeyAt.load()), at(m_sentAt.load()), m_sentPresses.load()};
+}
+
 LRESULT CALLBACK TypeToSearch::keyboardProc(int code, WPARAM wParam, LPARAM lParam)
 {
     if (code != HC_ACTION || !t_typing)
         return ::CallNextHookEx(nullptr, code, wParam, lParam);
-    const auto& event = *reinterpret_cast<const KBDLLHOOKSTRUCT*>(lParam);
+    const KBDLLHOOKSTRUCT event = *reinterpret_cast<const KBDLLHOOKSTRUCT*>(lParam);
     if (t_typing->handleKey(wParam, event))
         return 1; // seen by nobody else
     const LRESULT result = ::CallNextHookEx(nullptr, code, wParam, lParam);
-    // Through the rest of the chain: on its way to the window, ahead of any
-    // key that comes here after it.
-    if (isOwnInput(event.dwExtraInfo))
-        t_typing->ownKeyPassed(wParam, event);
+    // What went on is counted after the rest of the chain, not before: a hook
+    // later in it (AutoHotkey, PowerToys, PixPin) that sends keys sends them
+    // from inside that call, and they come here (this hook called again) and
+    // get to the window ahead of this one; a hook that takes the key (returns
+    // nonzero) keeps it from the window. Counted before, Shift as the window
+    // has it came out wrong, and so did the order the keys typed again went by
+    // in. Once through, a key is on its way to the window, ahead of any that
+    // comes here after it.
+    t_typing->passedOn(wParam, event, result == 0);
     return result;
 }
 
@@ -174,6 +307,27 @@ bool TypeToSearch::activeBehind(HWND window)
     GUITHREADINFO info {sizeof info};
     const DWORD thread = ::GetWindowThreadProcessId(window, nullptr);
     return thread && ::GetGUIThreadInfo(thread, &info) && info.hwndActive == window;
+}
+
+// The folder window to keep apart as the hook starts (searchtyping::openedBehind):
+// the top-level windows looked at by their classes and their threads' state
+// alone, as at the events, with no message sent to Explorer. EnumWindows lists
+// them top down and calls back on this thread, from inside the call.
+HWND TypeToSearch::openedBehind(HWND front) const
+{
+    struct Search {
+        const TypeToSearch* typing;
+        std::vector<searchtyping::OpenFolder<HWND>> folders;
+    } search {this, {}};
+    ::EnumWindows(
+        [](HWND window, LPARAM data) -> BOOL {
+            auto& search = *reinterpret_cast<Search*>(data);
+            if (search.typing->watchedExplorer(window))
+                search.folders.push_back({window, activeBehind(window)});
+            return TRUE;
+        },
+        reinterpret_cast<LPARAM>(&search));
+    return searchtyping::openedBehind(front, search.folders);
 }
 
 void TypeToSearch::foregroundChanged(HWND window, HWND named)
@@ -212,13 +366,18 @@ void TypeToSearch::foregroundChanged(HWND window, HWND named)
             m_desktop = window;
     }
     setHooked(wantsHook());
+    // Keys waiting for Win顺 to come to the front: maybe now. Looked at from
+    // the loop, as the timer's are, not from here: the event can come while
+    // the hook waits in CallNextHookEx (as the keys a later hook sends do),
+    // in the middle of a key the hold has not counted yet (went()), and a
+    // batch typed again then started from Shift as it was before that key.
     if (m_frontTimer)
-        heldPassed(); // keys waiting for Win顺 to come to the front: maybe now
+        ::PostThreadMessageW(m_threadId.load(), kLookAgainMessage, 0, 0);
 }
 
 bool TypeToSearch::wantsHook() const
 {
-    return m_startInFront || m_explorer || m_explorerBehind || m_opus || m_desktop || m_holding;
+    return m_startInFront || m_explorer || m_explorerBehind || m_opus || m_desktop || m_hold.holding();
 }
 
 void TypeToSearch::setHooked(bool hooked)
@@ -332,7 +491,7 @@ bool TypeToSearch::handleKey(WPARAM message, const KBDLLHOOKSTRUCT& event)
     const bool press = message == WM_KEYDOWN || message == WM_SYSKEYDOWN;
     // Ours too: the clipboard panel's paste, an entry picked with a folder in
     // front, is a paste into it all the same.
-    if (vk == 'V' && m_surfaces.pasteFile && !m_holding && !m_startInFront
+    if (vk == 'V' && m_surfaces.pasteFile && !m_hold.holding() && !m_startInFront
         && (m_pasteTaken
             || (press && held(VK_CONTROL) && !held(VK_SHIFT) && !held(VK_MENU) && !held(VK_LWIN) && !held(VK_RWIN)))
         && handlePaste(press))
@@ -343,216 +502,164 @@ bool TypeToSearch::handleKey(WPARAM message, const KBDLLHOOKSTRUCT& event)
     // keyboard).
     if (isOwnInput(event.dwExtraInfo))
         return false;
+    if (!m_hold.holding() && !startsHold(vk, press))
+        return false;
+    switch (m_hold.key(keyEvent(message, event), &altGrChars)) {
+    case searchtyping::Hold::Take::No:
+        return false;
+    case searchtyping::Hold::Take::YesMask:
+        // The window in front saw Shift go down, and with the key held back
+        // it would see it come up alone: a tap, which input methods take for
+        // their switch between Chinese and English ("Desktop" with Sogou or
+        // Microsoft Pinyin in Chinese: the mode switched for the user, GitHub
+        // #103). The mask goes to it now; the key keeps its Shift for when it
+        // is typed again (searchtyping::retype).
+        sendMask();
+        return true;
+    case searchtyping::Hold::Take::Yes:
+        return true;
+    }
+    return false;
+}
+
+// No hold on: whether the key starts one (begun then; handleKey takes the key).
+bool TypeToSearch::startsHold(UINT vk, bool press)
+{
     if (searchtyping::isModifier(vk)) {
-        if (press && vk == VK_LMENU && !m_holding && m_startInFront)
+        if (press && vk == VK_LMENU && m_startInFront)
             m_windowsSearch = true;
-        return false; // seen as they are; the keys held back carry Shift with them
+        return false;
     }
     const bool combination = held(VK_CONTROL) || held(VK_MENU) || held(VK_LWIN) || held(VK_RWIN);
-    if (!m_holding) {
-        if (!press || combination)
+    if (!press || combination)
+        return false; // AltGr too: its left Ctrl is down
+    HWND tab = nullptr;
+    HWND source = nullptr;
+    bool opus = false;
+    if (m_startInFront) {
+        if (m_windowsSearch || !searchtyping::startsTyping(vk))
             return false;
-        HWND tab = nullptr;
-        HWND source = nullptr;
-        bool opus = false;
-        if (m_startInFront) {
-            if (m_windowsSearch || !searchtyping::startsTyping(vk))
-                return false;
-        } else if (m_opus && ::GetForegroundWindow() == m_opus) {
-            if (!searchtyping::opusStarts(vk, press, combination, held(VK_SHIFT), searchtyping::Focus::ItemsView, false)
-                || !opusFocused(tab))
-                return false;
-            source = m_opus;
-            opus = true;
-        } else if (m_surfaces.explorer && (m_explorer || m_explorerBehind)) {
-            // The key alone first; what is in front and what has the focus
-            // are asked only for one that would start a search.
-            if (!searchtyping::explorerStarts(vk, press, combination, searchtyping::Focus::ItemsView, false))
-                return false;
-            if (!explorerInFront() || !explorerFocused(tab))
-                return false;
-            source = m_explorer;
-        } else {
+    } else if (m_opus && ::GetForegroundWindow() == m_opus) {
+        if (!searchtyping::opusStarts(vk, press, combination, held(VK_SHIFT), searchtyping::Focus::ItemsView, false)
+            || !opusFocused(tab))
             return false;
-        }
-        m_holding = true;
-        m_holdingForFolder = source != nullptr;
-        m_sourceWindow = source;
-        GUITHREADINFO focus {sizeof focus};
-        m_sourceFocus = source && ::GetGUIThreadInfo(::GetWindowThreadProcessId(source, nullptr), &focus)
-            ? focus.hwndFocus
-            : nullptr;
-        m_held.clear();
-        m_toLauncher = false;
-        m_askedAt = ::GetTickCount();
-        m_asksAgain = 0;
-        m_typedAlready = false;
-        m_timer = ::SetTimer(nullptr, 0, kHoldTimeoutMs, nullptr);
-        if (m_holdingForFolder) {
-            const RequestId request = ++g_nextFolderRequest;
-            m_pendingRequest = request;
-            const auto& callback = opus ? m_callbacks.typedInOpus : m_callbacks.typedInExplorer;
-            if (callback)
-                callback(source, tab, vk, request);
-        } else if (m_callbacks.typed) {
-            m_callbacks.typed();
-        }
-    } else if (combination) {
+        source = m_opus;
+        opus = true;
+    } else if (m_surfaces.explorer && (m_explorer || m_explorerBehind)) {
+        // The key alone first; what is in front and what has the focus
+        // are asked only for one that would start a search.
+        if (!searchtyping::explorerStarts(vk, press, combination, searchtyping::Focus::ItemsView, false))
+            return false;
+        if (!explorerInFront() || !explorerFocused(tab))
+            return false;
+        source = m_explorer;
+    } else {
         return false;
     }
-    m_held.push_back({static_cast<WORD>(vk), static_cast<WORD>(event.scanCode), (event.flags & LLKHF_EXTENDED) != 0,
-        !press, press && held(VK_SHIFT)});
+    // Until the hold ends the hook must see every key: also those typed
+    // into the launcher once it is in front, and its own keys typed again
+    // as they go by. While the process takes the keyboard's Raw Input (the
+    // double Ctrl, the drop pie: on by default), Windows does not call the
+    // hook while a window of Win顺's is in front, so keys typed then went
+    // straight in, ahead of those still held ("baidu" came out "dbaiu":
+    // the launcher came to the front between "i" and "d", GitHub #66;
+    // docs/pitfalls.md). Set aside now, before the launcher is asked for.
+    if (!m_rawInputAside)
+        m_rawInputAside.emplace(&logLine);
+    // From here on Shift is the one the hook sees go by, not
+    // GetAsyncKeyState's: that one also has the Shift typed again with
+    // the keys held while it is on its way, and a key typed just then was
+    // taken for a capital ("Desktop" came out "DEsktop"). Nothing of
+    // Win顺's is on its way now.
+    apply(m_hold.begin(source != nullptr, {.left = held(VK_LSHIFT), .right = held(VK_RSHIFT)}, ::GetTickCount()));
+    m_firstKeyAt = std::chrono::steady_clock::now().time_since_epoch().count();
+    m_sentAt = 0;
+    m_sentPresses = 0;
+    m_sourceWindow = source;
+    GUITHREADINFO focus {sizeof focus};
+    m_sourceFocus = source && ::GetGUIThreadInfo(::GetWindowThreadProcessId(source, nullptr), &focus)
+        ? focus.hwndFocus
+        : nullptr;
+    if (source) {
+        const RequestId request = ++g_nextFolderRequest;
+        m_pendingRequest = request;
+        const auto& callback = opus ? m_callbacks.typedInOpus : m_callbacks.typedInExplorer;
+        if (callback)
+            callback(source, tab, vk, request);
+    } else if (m_callbacks.typed) {
+        m_callbacks.typed();
+    }
     return true;
 }
 
-void TypeToSearch::typeHeld()
+// After the rest of the chain (keyboardProc): one of Win顺's own keys typed
+// again went by, the last of them letting the keys typed meanwhile follow,
+// once out of the hook (a posted message comes after the hooks' calls already
+// waiting); and a key that got to the window counts as the window has it.
+void TypeToSearch::passedOn(WPARAM message, const KBDLLHOOKSTRUCT& event, bool delivered)
 {
-    if (!m_holding)
-        return; // nothing held
-    m_toLauncher = true;
-    if (!m_retyped.pending()) // on its way already: what is typed meanwhile follows it
-        sendHeld();
-}
-
-// The keys held, as input to send: in order, with Shift around the keys
-// pressed with it (unless it is held now).
-std::vector<INPUT> TypeToSearch::takeHeld()
-{
-    const bool shiftNow = held(VK_SHIFT);
-    std::vector<INPUT> inputs;
-    for (const Held& key : m_held) {
-        const DWORD flags = (key.extended ? KEYEVENTF_EXTENDEDKEY : 0) | (key.release ? KEYEVENTF_KEYUP : 0);
-        const bool shifted = key.shift && !key.release && !shiftNow;
-        if (shifted)
-            inputs.push_back(keyInput(VK_LSHIFT, static_cast<WORD>(::MapVirtualKeyW(VK_LSHIFT, MAPVK_VK_TO_VSC)), 0));
-        inputs.push_back(keyInput(key.vk, key.scanCode, flags));
-        if (shifted)
-            inputs.push_back(keyInput(VK_LSHIFT, static_cast<WORD>(::MapVirtualKeyW(VK_LSHIFT, MAPVK_VK_TO_VSC)),
-                KEYEVENTF_KEYUP));
-    }
-    m_held.clear();
-    return inputs;
-}
-
-// The keys held, typed again. The hold goes on until the last of them has
-// gone down the hook chain (ownKeyPassed): a key typed or let go meanwhile
-// is held too and follows them. Let through at once, it went in among them
-// (q down, z down, z up, q up) and "qz" came out "zq" (GitHub #39).
-void TypeToSearch::sendHeld()
-{
-    if (!m_toLauncher && m_holdingForFolder && !sourceFocused()) {
-        m_held.clear(); // the user moved on: never type into another window or edit field
-        endHolding();
+    if (!m_hold.holding())
         return;
-    }
-    if (m_toLauncher && !m_held.empty() && waitForFront())
-        return; // held on: not into the window in front, which is not Win顺's
-    std::vector<INPUT> inputs = takeHeld();
-    if (inputs.empty()) {
-        endHolding();
-        return;
-    }
-    std::vector<searchtyping::Retyped::Key> keys;
-    keys.reserve(inputs.size());
-    for (const INPUT& input : inputs)
-        keys.push_back({input.ki.wVk, (input.ki.dwFlags & KEYEVENTF_KEYUP) != 0});
-    m_retyped.sent(std::move(keys));
-    m_typedAlready = true;
-    restartTimer(kPassTimeoutMs);
-    if (::SendInput(static_cast<UINT>(inputs.size()), inputs.data(), sizeof(INPUT)) != inputs.size()) {
-        m_retyped.clear(); // not all went in (blocked): none to wait for
-        heldPassed();
-    }
+    const searchtyping::Hold::KeyEvent key = keyEvent(message, event);
+    if (key.own && m_hold.ownPassed(key.vk, !key.press))
+        ::PostThreadMessageW(m_threadId.load(), kPassedMessage, 0, 0);
+    if (delivered)
+        m_hold.went(key);
 }
 
-// The keys are for the launcher, which said it has the keyboard: whether a
-// window of Win顺's really is in front. Qt can call the launcher active while
-// the Start menu still is in front (its Esc came while it was still opening),
+// What is in front, for the hold. Qt can call the launcher active while the
+// Start menu still is in front (its Esc came while it was still opening),
 // and the Start menu can take the front back a few milliseconds after the
 // launcher got it (Windows slow to start it): typed then, the keys went into
-// Windows' search (GitHub #66). So they wait, looked at again at each foreground
-// event and every kFrontPollMs, and with the Start menu in front again the
-// launcher is asked for once more (searchtyping::delivery), until the hold runs
-// out (dropHeld). True: wait.
-bool TypeToSearch::waitForFront()
+// Windows' search (GitHub #66). So the keys for the launcher wait for a window
+// of Win顺's, looked for at each foreground event and every kFrontPollMs, and
+// with the Start menu in front again the launcher is asked for once more
+// (searchtyping::delivery), until the hold runs out.
+searchtyping::Hold::Front TypeToSearch::front() const
 {
-    const HWND front = ::GetForegroundWindow();
+    const HWND window = ::GetForegroundWindow();
     DWORD pid = 0;
-    ::GetWindowThreadProcessId(front, &pid);
-    const DWORD now = ::GetTickCount();
-    switch (searchtyping::delivery(front && pid == ::GetCurrentProcessId(), isStartMenu(front), !m_holdingForFolder,
-        m_typedAlready, m_asksAgain, now - m_askedAt)) {
-    case searchtyping::Delivery::Type:
+    if (window)
+        ::GetWindowThreadProcessId(window, &pid);
+    return {.ours = window && pid == ::GetCurrentProcessId(),
+        .startMenu = isStartMenu(window),
+        .sourceFocused = !m_hold.forFolder() || sourceFocused()};
+}
+
+// Does what the hold says: the keys typed again (in order, each with Shift as
+// it was pressed, as Win顺's own; the hold goes on until the last of them
+// has gone down the hook chain, so a key typed or let go meanwhile follows
+// them: let through at once, it went in among them, q down, z down, z up,
+// q up, and "qz" came out "zq", GitHub #39), the timer, asking for the
+// launcher again, looking at the front again shortly; and the end.
+void TypeToSearch::apply(searchtyping::Hold::Step step)
+{
+    if (step.askAgain && m_callbacks.typed)
+        m_callbacks.typed(); // over the taskbar again; its Esc closes the Start menu
+    if (step.timerMs)
+        restartTimer(*step.timerMs);
+    if (step.lookAgain) {
+        if (!m_frontTimer)
+            m_frontTimer = ::SetTimer(nullptr, 0, kFrontPollMs, nullptr);
+    } else if (!step.send.empty() || step.ended) {
         ::KillTimer(nullptr, m_frontTimer);
         m_frontTimer = 0;
-        return false;
-    case searchtyping::Delivery::AskAgain:
-        ++m_asksAgain;
-        m_askedAt = now;
-        if (m_callbacks.typed)
-            m_callbacks.typed(); // over the taskbar again; its Esc closes the Start menu
-        break;
-    case searchtyping::Delivery::Wait:
-        break;
     }
-    if (!m_frontTimer)
-        m_frontTimer = ::SetTimer(nullptr, 0, kFrontPollMs, nullptr);
-    return true;
-}
-
-// One of Win顺's own keys went down the chain (keyboardProc): the last of
-// those typed again lets the keys typed meanwhile follow, once out of the
-// hook (a posted message comes after the hooks' calls already waiting).
-void TypeToSearch::ownKeyPassed(WPARAM message, const KBDLLHOOKSTRUCT& event)
-{
-    if (m_retyped.passed(event.vkCode, message == WM_KEYUP || message == WM_SYSKEYUP))
-        ::PostThreadMessageW(m_threadId.load(), kPassedMessage, 0, 0);
-}
-
-void TypeToSearch::heldPassed()
-{
-    if (!m_holding || m_retyped.pending())
-        return; // over already (it waited too long), or more on their way
-    if (m_held.empty())
+    if (!step.send.empty()) {
+        if (step.intoLauncher && m_sentAt.load() == 0) { // the first into the launcher in this hold (timing)
+            m_sentPresses = static_cast<int>(std::ranges::count_if(step.send, [](const searchtyping::Stroke& stroke) {
+                return !stroke.release && !searchtyping::isShift(stroke.vk) && stroke.vk != kMaskKey;
+            }));
+            m_sentAt = std::chrono::steady_clock::now().time_since_epoch().count();
+        }
+        // Not all went in (blocked: the secure desktop, a window of higher
+        // integrity in front): what went down among those is let go, and
+        // Shift set right, tried once (searchtyping::Hold::sent).
+        if (const std::size_t inserted = sendStrokes(step.send); inserted < step.send.size())
+            apply(m_hold.sent(inserted));
+    }
+    if (step.ended)
         endHolding();
-    else
-        sendHeld(); // typed while those were on their way: after them
-}
-
-// The same keys, to the file display they were typed in, if it is still in
-// front (the launcher never showed).
-void TypeToSearch::returnHeld()
-{
-    if (!m_holding)
-        return;
-    m_toLauncher = false; // to the original file display
-    if (!m_retyped.pending())
-        sendHeld();
-}
-
-void TypeToSearch::dropHeld()
-{
-    if (!m_holding)
-        return;
-    // Typed again, and some never went by (a hook before this one took
-    // them): the keys typed since go on after them, and the hold ends.
-    if (m_retyped.pending()) {
-        m_retyped.clear();
-        std::vector<INPUT> inputs = takeHeld();
-        endHolding();
-        if (!inputs.empty())
-            ::SendInput(static_cast<UINT>(inputs.size()), inputs.data(), sizeof(INPUT));
-        return;
-    }
-    // Typed in a file display, the keys are the user's: back to it rather than
-    // lost. In the Start menu they would go into Windows' search, which was
-    // not wanted: dropped.
-    if (m_holdingForFolder) {
-        returnHeld();
-        return;
-    }
-    endHolding();
-    m_held.clear();
 }
 
 void TypeToSearch::restartTimer(UINT ms)
@@ -563,18 +670,139 @@ void TypeToSearch::restartTimer(UINT ms)
 
 void TypeToSearch::endHolding()
 {
-    m_holding = false;
-    m_holdingForFolder = false;
     m_pendingRequest = 0;
     m_sourceWindow = nullptr;
     m_sourceFocus = nullptr;
-    m_retyped.clear();
-    m_toLauncher = false;
     ::KillTimer(nullptr, m_timer);
     m_timer = 0;
     ::KillTimer(nullptr, m_frontTimer);
     m_frontTimer = 0;
     setHooked(wantsHook()); // the launcher is in front: gone
+    m_rawInputAside.reset(); // after the hook went, if it did: both with the launcher in front blind every hook
+}
+
+namespace {
+
+constexpr UINT_PTR kKeysWatchId = 0x5748; // "WH": LauncherKeysWatch (shellcontext's is "WK")
+
+} // namespace
+
+void LauncherKeysWatch::start(HWND window)
+{
+    stop();
+    m_changed = false;
+    m_inFrame = false;
+    m_drawn = 0;
+    if (window && ::SetWindowSubclass(window, &LauncherKeysWatch::proc, kKeysWatchId, reinterpret_cast<DWORD_PTR>(this)))
+        m_window = window;
+}
+
+LauncherKeysWatch::Seen LauncherKeysWatch::stop()
+{
+    if (m_window) {
+        ::RemoveWindowSubclass(m_window, &LauncherKeysWatch::proc, kKeysWatchId);
+        m_window = nullptr;
+        m_changed = false;
+        m_inFrame = false;
+        if (const Clock::rep drawn = m_drawn.exchange(0))
+            m_seen.drawn = Clock::time_point(Clock::duration(drawn));
+    }
+    return std::exchange(m_seen, {});
+}
+
+void LauncherKeysWatch::fieldGot(bool text)
+{
+    if (!m_window)
+        return;
+    Clock::time_point& at = text ? m_seen.text : m_seen.preedit;
+    if (at != Clock::time_point {})
+        return;
+    at = Clock::now();
+    changed();
+}
+
+void LauncherKeysWatch::changed()
+{
+    if (m_drawn.load() == 0)
+        m_changed = true;
+}
+
+void LauncherKeysWatch::synchronized() noexcept
+{
+    if (m_changed.exchange(false))
+        m_inFrame = true;
+}
+
+void LauncherKeysWatch::frameSwapped() noexcept
+{
+    if (m_inFrame.exchange(false) && m_drawn.load() == 0)
+        m_drawn = Clock::now().time_since_epoch().count();
+}
+
+LRESULT CALLBACK LauncherKeysWatch::proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR, DWORD_PTR data)
+{
+    auto& watch = *reinterpret_cast<LauncherKeysWatch*>(data);
+    Seen& seen = watch.m_seen;
+    const auto first = [](Clock::time_point& at) {
+        if (at != Clock::time_point {})
+            return false;
+        at = Clock::now();
+        return true;
+    };
+    switch (msg) {
+    case WM_KEYDOWN:
+    case WM_SYSKEYDOWN:
+        if (seen.keys++ == 0) {
+            seen.key = Clock::now();
+            seen.imeTook = wParam == VK_PROCESSKEY; // only that: never which key
+        }
+        break;
+    case WM_IME_STARTCOMPOSITION:
+        first(seen.composition);
+        break;
+    case WM_IME_NOTIFY:
+        if (wParam == IMN_OPENCANDIDATE || wParam == IMN_CHANGECANDIDATE)
+            first(seen.candidates);
+        break;
+    case WM_NCDESTROY: // a subclass must go before its window (never while watching, normally)
+        ::RemoveWindowSubclass(hwnd, &LauncherKeysWatch::proc, kKeysWatchId);
+        watch.m_window = nullptr;
+        break;
+    default:
+        break;
+    }
+    return ::DefSubclassProc(hwnd, msg, wParam, lParam);
+}
+
+InputMethodInfo activeInputMethod()
+{
+    InputMethodInfo info;
+    info.layout = reinterpret_cast<std::uintptr_t>(::GetKeyboardLayout(0));
+    Microsoft::WRL::ComPtr<ITfInputProcessorProfileMgr> manager;
+    if (FAILED(::CoCreateInstance(CLSID_TF_InputProcessorProfiles, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&manager))))
+        return info;
+    TF_INPUTPROCESSORPROFILE profile {};
+    if (FAILED(manager->GetActiveProfile(GUID_TFCAT_TIP_KEYBOARD, &profile))
+        || profile.dwProfileType != TF_PROFILETYPE_INPUTPROCESSOR)
+        return info; // a keyboard layout alone: its HKL says it all
+    wchar_t clsid[40] {};
+    if (::StringFromGUID2(profile.clsid, clsid, static_cast<int>(std::size(clsid))))
+        info.service = clsid;
+    Microsoft::WRL::ComPtr<ITfInputProcessorProfiles> profiles;
+    BSTR description = nullptr;
+    if (SUCCEEDED(manager.As(&profiles))
+        && SUCCEEDED(profiles->GetLanguageProfileDescription(profile.clsid, profile.langid, profile.guidProfile, &description))
+        && description) {
+        info.name.assign(description, ::SysStringLen(description));
+        ::SysFreeString(description);
+    }
+    return info;
+}
+
+bool isCloaked(HWND window)
+{
+    DWORD cloaked = 0;
+    return window && SUCCEEDED(::DwmGetWindowAttribute(window, DWMWA_CLOAKED, &cloaked, sizeof cloaked)) && cloaked != 0;
 }
 
 } // namespace ws

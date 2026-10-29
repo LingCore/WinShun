@@ -13,12 +13,42 @@
 // matters).
 namespace ws::winv {
 
-// `key` (an upper-case letter) is in DisabledHotkeys: Explorer leaves its
+// `key` (an upper-case letter, matched exactly: Explorer reads each character as a virtual-key code) is in DisabledHotkeys: Explorer leaves its
 // Win combinations alone once it (re)starts.
 bool releasedByExplorer(wchar_t key);
 // Adds `key` to DisabledHotkeys or takes it out again, keeping the other keys
 // there. Returns false if the value could not be written.
 bool setReleasedByExplorer(wchar_t key, bool released);
+
+// Which letters of DisabledHotkeys are ours is kept per user next to it
+// (HKCU\Software\WinShun, ExplorerHotkeys): a letter there that we did not put
+// there is someone else's, or a leftover, and is not ours to remove.
+//
+// What to do about one letter, given the switch, whether the letter is in
+// DisabledHotkeys, and whether the record has it.
+struct Plan {
+    bool addLetter = false;
+    bool removeLetter = false;
+    bool recorded = false; // the record has the letter afterwards
+    bool blocked = false; // switch off, the letter there, not ours: left alone
+    bool operator==(const Plan&) const = default;
+};
+// Who asks. Toggle: the user changed the switch (a letter already there is
+// someone else's). Startup: the default profile starting with the switch as
+// stored (a letter there with the switch on is an older version's, which kept
+// no record: ours). StartupOtherProfile: a --profile copy starting; the
+// letter and the record belong to the main copy, so it may add but never
+// removes or adopts.
+enum class Origin { Toggle, Startup, StartupOtherProfile };
+Plan planFor(bool switchOn, bool present, bool recorded, Origin origin = Origin::Toggle);
+// Brings DisabledHotkeys and the record in line with the switch (planFor).
+// Returns false if a write failed.
+bool reconcile(wchar_t key, bool switchOn, Origin origin = Origin::Toggle);
+// Takes the letter out of DisabledHotkeys whoever put it there, and out of
+// the record. Returns false if a write failed.
+bool giveBack(wchar_t key);
+// `key` is in the record.
+bool recordedAsOurs(wchar_t key);
 
 // Whether an Explorer runs the taskbar (one to restart).
 bool canRestartExplorer();

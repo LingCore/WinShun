@@ -2,6 +2,7 @@
 #include "Diagnostics.h"
 #include "ContentIndexer.h"
 #include "Log.h"
+#include "RepeatFilter.h"
 #include "Wtf8.h"
 
 #include <QDir>
@@ -296,6 +297,154 @@ private slots:
             QVERIFY(!file.bytes.contains("PRIVATE_DOCUMENT_BODY"));
             QVERIFY(!file.bytes.contains("private-name.txt"));
         }
+    }
+
+    // GitHub #96: a Qt warning ~800 times a second for minutes.
+    void repeatFilterCollapsesAStorm()
+    {
+        using namespace std::chrono_literals;
+        diagnostics::RepeatFilter filter; // 3 copies per 10 s
+        const auto start = diagnostics::RepeatFilter::Clock::time_point {} + 1h;
+        const QString font = u"QFontEngineFT: Failed to create FreeType font engine"_s;
+        int written = 0;
+        for (int i = 0; i < 8000; ++i) { // 10 s of it, one a millisecond...
+            const auto verdict = filter.check(font, QtWarningMsg, start + std::chrono::microseconds(i * 1250));
+            written += verdict.write;
+            QVERIFY(verdict.repeats.empty());
+        }
+        QCOMPARE(written, 3);
+        const auto next = filter.check(font, QtWarningMsg, start + 10s); // ...and on
+        QVERIFY(next.write); // a new window, its first copy
+        QCOMPARE(next.repeats.size(), std::size_t(1));
+        QCOMPARE(next.repeats[0].message, font);
+        QCOMPARE(next.repeats[0].kind, int(QtWarningMsg));
+        QCOMPARE(next.repeats[0].times, 7997);
+        QVERIFY(next.repeats[0].span > 9s);
+        // It stops: the count comes with the next other message once the
+        // window is over, or at exit.
+        QVERIFY(filter.check(font, QtWarningMsg, start + 10s + 1ms).write);
+        QVERIFY(filter.check(font, QtWarningMsg, start + 10s + 2ms).write);
+        QVERIFY(!filter.check(font, QtWarningMsg, start + 10s + 3ms).write);
+        const auto before = filter.check(u"Idle trim: 420 MB"_s, QtWarningMsg, start + 15s);
+        QVERIFY(before.write);
+        QVERIFY(before.repeats.empty()); // its window still open
+        const auto other = filter.check(u"Update check failed: 0 12002"_s, QtWarningMsg, start + 25s);
+        QVERIFY(other.write);
+        QCOMPARE(other.repeats.size(), std::size_t(1));
+        QCOMPARE(other.repeats[0].times, 1);
+        QVERIFY(filter.check(u"Update check failed: 0 12002"_s, QtWarningMsg, start + 25s).write); // its 2nd copy
+        QVERIFY(filter.takeAll().empty()); // nothing left out
+    }
+    void repeatFilterKeepsMessagesApart()
+    {
+        using namespace std::chrono_literals;
+        diagnostics::RepeatFilter filter({2, 10s, 64});
+        const auto start = diagnostics::RepeatFilter::Clock::time_point {} + 1h;
+        const QString a = u"QFontEngineFT: Failed to create FreeType font engine"_s;
+        const QString b = u"Failed to compute left/right minimum bearings for \"MS Sans Serif\""_s;
+        int writtenA = 0;
+        int writtenB = 0;
+        for (int i = 0; i < 100; ++i) { // interleaved, as Qt gives them
+            writtenA += filter.check(a, QtWarningMsg, start + i * 1ms).write;
+            writtenB += filter.check(b, QtCriticalMsg, start + i * 1ms).write;
+        }
+        QCOMPARE(writtenA, 2);
+        QCOMPARE(writtenB, 2);
+        // Once a minute, never held back; the first one after the storms
+        // hands over both counts, each with its own level.
+        for (int i = 0; i < 5; ++i) {
+            const auto verdict = filter.check(u"Idle trim: 40 MB"_s, QtWarningMsg, start + i * 1min);
+            QVERIFY(verdict.write);
+            QCOMPARE(verdict.repeats.size(), std::size_t(i == 1 ? 2 : 0));
+            for (const auto& repeat : verdict.repeats) {
+                QCOMPARE(repeat.times, 98);
+                QCOMPARE(repeat.kind, int(repeat.message == a ? QtWarningMsg : QtCriticalMsg));
+            }
+        }
+        QVERIFY(filter.takeAll().empty());
+        diagnostics::RepeatFilter atExit({2, 10s, 64});
+        for (int i = 0; i < 50; ++i)
+            atExit.check(a, QtWarningMsg, start + i * 1ms);
+        const auto left = atExit.takeAll();
+        QCOMPARE(left.size(), std::size_t(1));
+        QCOMPARE(left[0].times, 48);
+        QVERIFY(atExit.takeAll().empty());
+    }
+    void repeatFilterFollowsALimitedNumber()
+    {
+        using namespace std::chrono_literals;
+        diagnostics::RepeatFilter filter({1, 10s, 4});
+        const auto start = diagnostics::RepeatFilter::Clock::time_point {} + 1h;
+        for (int i = 0; i < 4; ++i)
+            QVERIFY(filter.check(u"message %1"_s.arg(i), QtWarningMsg, start).write);
+        // Not followed: every copy written, as before.
+        for (int i = 0; i < 5; ++i)
+            QVERIFY(filter.check(u"one more"_s, QtWarningMsg, start + 1ms).write);
+        QVERIFY(!filter.check(u"message 0"_s, QtWarningMsg, start + 2ms).write);
+        // The windows over: room again.
+        QVERIFY(filter.check(u"one more"_s, QtWarningMsg, start + 11s).write);
+        QVERIFY(!filter.check(u"one more"_s, QtWarningMsg, start + 11s).write);
+        const auto left = filter.takeAll();
+        QCOMPARE(left.size(), std::size_t(1));
+        QCOMPARE(left[0].message, u"one more"_s);
+    }
+    // A full table must not mean no throttling: a storm whose text varies.
+    void repeatFilterCapsWhatTheTableCannotFollow()
+    {
+        using namespace std::chrono_literals;
+        diagnostics::RepeatFilter filter({1, 10s, 4, 5});
+        const auto start = diagnostics::RepeatFilter::Clock::time_point {} + 1h;
+        for (int i = 0; i < 4; ++i)
+            QVERIFY(filter.check(u"message %1"_s.arg(i), QtWarningMsg, start).write);
+        int written = 0;
+        for (int i = 0; i < 1000; ++i) // "font X failed", a new X each time
+            written += filter.check(u"font %1 failed"_s.arg(i), QtWarningMsg, start + i * 1ms).write;
+        QCOMPARE(written, 5);
+        // The window over: the count comes with the next message, a new window starts.
+        const auto next = filter.check(u"font again failed"_s, QtWarningMsg, start + 11s);
+        QVERIFY(next.write);
+        QCOMPARE(next.repeats.size(), std::size_t(1));
+        QCOMPARE(next.repeats[0].times, 995);
+    }
+    void repeatFilterOtherCountComesBack()
+    {
+        using namespace std::chrono_literals;
+        diagnostics::RepeatFilter filter({1, 10s, 2, 3});
+        const auto start = diagnostics::RepeatFilter::Clock::time_point {} + 1h;
+        for (int i = 0; i < 2; ++i)
+            filter.check(u"message %1"_s.arg(i), QtWarningMsg, start);
+        for (int i = 0; i < 10; ++i)
+            filter.check(u"other %1"_s.arg(i), QtCriticalMsg, start + i * 1ms);
+        const auto next = filter.check(u"later"_s, QtWarningMsg, start + 20s);
+        QVERIFY(next.write);
+        QCOMPARE(next.repeats.size(), std::size_t(1));
+        QCOMPARE(next.repeats[0].message, diagnostics::RepeatFilter::otherMessages());
+        QCOMPARE(next.repeats[0].times, 7);
+        QCOMPARE(next.repeats[0].kind, int(QtCriticalMsg));
+        // At exit too.
+        for (int i = 0; i < 2; ++i)
+            filter.check(u"kept %1"_s.arg(i), QtWarningMsg, start + 30s);
+        for (int i = 0; i < 6; ++i)
+            filter.check(u"x %1"_s.arg(i), QtWarningMsg, start + 30s);
+        const auto left = filter.takeAll();
+        QCOMPARE(left.size(), std::size_t(1));
+        QCOMPARE(left[0].times, 3);
+    }
+    // The crash's cause is never left out, even when its text is a storm's.
+    void repeatFilterAlwaysWritesFatal()
+    {
+        using namespace std::chrono_literals;
+        diagnostics::RepeatFilter filter({1, 10s, 2, 1});
+        const auto start = diagnostics::RepeatFilter::Clock::time_point {} + 1h;
+        const QString text = u"out of memory"_s;
+        for (int i = 0; i < 5; ++i)
+            filter.check(text, QtWarningMsg, start + i * 1ms);
+        QVERIFY(!filter.check(text, QtWarningMsg, start + 6ms).write);
+        QVERIFY(filter.check(text, QtFatalMsg, start + 7ms).write);
+        // ...also with the table full of others.
+        filter.check(u"a"_s, QtWarningMsg, start);
+        QVERIFY(filter.check(u"never seen fatal"_s, QtFatalMsg, start + 8ms).write);
+        QVERIFY(filter.check(u"never seen fatal 2"_s, QtFatalMsg, start + 9ms).write);
     }
 };
 QTEST_GUILESS_MAIN(DiagnosticsTest)

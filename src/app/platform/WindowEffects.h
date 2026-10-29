@@ -4,6 +4,8 @@
 
 #include <windows.h>
 
+#include <cstdint>
+
 class QWindow;
 
 namespace ws::win {
@@ -26,11 +28,19 @@ void setWindowCorners(HWND window, bool smallCorners = false);
 
 // Dark mode for the frame and its backdrop (DWMWA_USE_IMMERSIVE_DARK_MODE);
 // Mica follows it at once. Qt sets it too, a few milliseconds after a theme
-// change, and for a frameless window always to light (qwindowswindow.cpp:
-// shouldApplyDarkFrame). Set it once Qt is done (see App::applyTheme): set
-// both ways within one composed frame, DWM keeps Mica in the old tint.
+// change and after every change of the application palette (an accent
+// colour, the scheme the same), and for a frameless window always to light
+// (qwindowswindow.cpp: shouldApplyDarkFrame). Set it once Qt is done (see
+// App::guardDarkFrames): set both ways within one composed frame, DWM keeps
+// Mica in the old tint.
 void setDarkFrame(QWindow* window, bool dark);
 bool isDarkFrame(QWindow* window);
+// From now on, as the window is shown and before its first frame, its dark
+// mode back to the colour scheme's if Qt has set it light meanwhile. Shown
+// without the focus (the clipboard, over the program it pastes into), it
+// gets no WM_NCACTIVATE (see WindowFrame) to set it back, and opened white
+// over a dark theme (GitHub #120).
+void keepDarkFrameOnShow(QWindow* window);
 
 // Whether Windows can draw Mica behind a window, the material of long-lived
 // windows such as its own Settings: Windows 11 22H2 or later
@@ -54,11 +64,18 @@ void setCloaked(QWindow* window, bool cloaked);
 // stay above every other window while open.
 bool isShellFlyout(HWND window);
 
+// How bringToFront went: in front already; directly; after an input that
+// does nothing (Windows lets the process that sent the latest input set the
+// foreground); or refused (an administrator's window or a hung one's ghost
+// in front, their input out of reach, UIPI).
+enum class Front : std::uint8_t { Already, Direct, Input, Refused };
+
 // Shows or restores a requested window, then brings it to the foreground
-// even when another app owns the focus.
-// Windows normally refuses this for background processes (focus stealing
-// protection), but a hotkey press is an explicit user request.
-void bringToFront(QWindow* window);
+// even when another app owns the focus. Windows normally refuses this to
+// background processes (focus stealing protection), but a hotkey press is
+// an explicit user request. Never waits for the program in front, however
+// busy it is, and knows at once whether it worked (GitHub #111).
+Front bringToFront(QWindow* window);
 
 // Makes native popup menus (tray, context menu) follow the dark theme.
 void setMenuTheme(bool dark);

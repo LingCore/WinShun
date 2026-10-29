@@ -1,10 +1,14 @@
 #pragma once
 
+#include "NotificationTurns.h"
+
 #include <QString>
 
 #include <windows.h>
 
+#include <cstdint>
 #include <functional>
+#include <optional>
 
 namespace ws {
 
@@ -21,10 +25,13 @@ namespace ws {
 class MessageWindow {
 public:
     struct Callbacks {
-        std::function<void()> trayActivated; // left click
+        // `time`: when the click or the key press was made, on the 32-bit
+        // tick clock (GetMessageTime), not when it got here: a busy moment
+        // may hold it up, and whether a window was there to be seen by
+        // then decides what a press does (ShortcutAgain, GitHub #111).
+        std::function<void(std::uint32_t time)> trayActivated; // left click
         std::function<void()> trayMenuRequested; // right click
-        std::function<void()> notificationClicked; // the last showNotification()
-        std::function<void(int id)> hotkeyPressed;
+        std::function<void(int id, std::uint32_t time)> hotkeyPressed;
         std::function<void(const QString&)> commandReceived;
         std::function<void(const QString& folder)> searchHere; // "D:\Work", "\\nas\docs"
         // A double click on blank space in Directory Opus showing `folder`
@@ -52,8 +59,21 @@ public:
     // The tray icon in one colour, the taskbar's (monologo), or Win顺's own
     // colours; the one-colour icon follows the taskbar's light or dark mode.
     void setTrayIconMono(bool mono);
-    void showNotification(const QString& title, const QString& text);
-    void hideNotification(); // the one on the screen, if any
+    // `onClick`: what a click on this notification does (GitHub #99). Every
+    // call replaces the one before it, and none clears it, so a click never
+    // runs what an earlier notification asked for. `owner`: whose it is,
+    // empty for Win顺's own, else a plugin's id (GitHub #113). Win顺's own
+    // win: a plugin's waits while one of Win顺's is up and is shown when it
+    // goes, its end told or not (NotificationTurns: about 8 seconds at
+    // most; the newest waiting; after kHeldMostMs it is dropped). A click
+    // right after a plugin's replaced another owner's runs nothing, as which
+    // one was clicked cannot be told. Runs on the GUI thread.
+    void showNotification(const QString& title, const QString& text, std::function<void()> onClick = {}, const QString& owner = {});
+    // The one on the screen, if any; a plugin's waiting is dropped too (it
+    // goes before a screenshot or a recording).
+    void hideNotification();
+    // A plugin's held back longer than this is out of date and dropped.
+    static constexpr std::uint64_t kHeldMostMs = 60000;
 
     bool registerHotkey(int id, const QString& shortcut); // "Alt+Space", "Ctrl+Shift+F"
     void unregisterHotkey(int id);
@@ -77,6 +97,20 @@ private:
     bool m_mono = false;
     HPOWERNOTIFY m_powerNotify = nullptr; // so that resuming is told on every kind of standby
     QString m_tooltip;
+    std::function<void()> m_onNotificationClick; // of the last showNotification()
+    NotificationTurns m_turns; // whose is up
+    // A plugin's, held back while one of Win顺's own is up.
+    struct Held {
+        QString title;
+        QString text;
+        std::function<void()> onClick;
+        QString owner;
+        std::uint64_t since = 0; // GetTickCount64
+    };
+    std::optional<Held> m_held = std::nullopt;
+    void holdUntil(std::uint64_t until, std::uint64_t now); // the timer that shows it (showHeld) once Win顺's own goes
+    void showHeld(); // the plugin's held back, once Win顺's own is gone
+    void dropHeld();
     bool m_trayVisible = false;
     UINT m_taskbarCreated = 0;
 };

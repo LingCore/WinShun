@@ -1,4 +1,5 @@
 #include "PeekingLogo.h"
+#include "DialogOwner.h"
 
 #include <QImage>
 #include <QTransform>
@@ -175,6 +176,10 @@ bool PeekingLogo::render(int size, Edge edge)
 void PeekingLogo::show(const RECT& host, const RECT& row, const RECT& work, const RECT* avoid, qreal scale,
     std::initializer_list<Edge> edges, POINT shift, BYTE alpha)
 {
+    if (!s_enabled) {
+        hide();
+        return;
+    }
     const int size = qRound(kSize * scale);
     const int inset = qRound(kInset * scale);
     const Edge* chosen = nullptr;
@@ -196,6 +201,8 @@ void PeekingLogo::show(const RECT& host, const RECT& row, const RECT& work, cons
     }
     if (!m_hwnd && !(m_hwnd = createWindow()))
         return;
+    if (m_owner)
+        followOwner(m_hwnd, m_owner);
     if ((size != m_size || *chosen != m_edge || !m_bitmap) && !render(size, *chosen))
         return;
     const RECT r = rectFor(*chosen, host, row, extentFor(size, *chosen), inset);
@@ -206,7 +213,8 @@ void PeekingLogo::show(const RECT& host, const RECT& row, const RECT& work, cons
     ::UpdateLayeredWindow(m_hwnd, nullptr, &at, &extent, m_dc, &from, 0, &blend, ULW_ALPHA);
     if (!::IsWindowVisible(m_hwnd)) {
         ::ShowWindow(m_hwnd, SW_SHOWNOACTIVATE);
-        ::SetWindowPos(m_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        if (!m_owner)
+            ::SetWindowPos(m_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
 }
 

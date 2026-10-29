@@ -12,7 +12,6 @@ namespace {
 // Low-level hooks and out-of-context events are called on the thread that set them.
 thread_local KeyRouter* t_router = nullptr;
 
-constexpr WORD kMaskKey = 0xE8; // unassigned: no program acts on it
 constexpr UINT kDrainMessage = WM_APP; // to the router's thread (drain)
 constexpr UINT kRefreshMessage = WM_APP + 1; // the search field was clicked
 constexpr UINT kToUnicodeKeepState = 0x4; // ToUnicodeEx: leave the dead key state alone (Windows 10 1607)

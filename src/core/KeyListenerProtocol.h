@@ -2,6 +2,8 @@
 
 #include <windows.h>
 
+#include <cstdint>
+
 namespace ws::keyproto {
 
 // Only notifications, to the requesting process's KeyListener window.
@@ -24,6 +26,24 @@ constexpr LPARAM kReportsShift = 2;
 constexpr WPARAM tapWord(DWORD pid, DWORD key, bool sent) noexcept
 {
     return (static_cast<WPARAM>(pid) << 32) | key | (sent ? 0x100 : 0);
+}
+
+// kTap's lParam: the second release's time on the input's clock in the lower
+// half, as every version sends it; in the upper half how long before it the
+// first press was, where the double tap began (seenBy, GitHub #111). A
+// listener from before that sends 0 there: not told. A GUI from before reads
+// the lower half alone.
+constexpr LPARAM tapTimes(std::uint32_t time, std::uint32_t span) noexcept
+{
+    return static_cast<LPARAM>((static_cast<std::uint64_t>(span) << 32) | time);
+}
+constexpr std::uint32_t tapTime(LPARAM times) noexcept
+{
+    return static_cast<std::uint32_t>(times);
+}
+constexpr std::uint32_t tapSpan(LPARAM times) noexcept
+{
+    return static_cast<std::uint32_t>(static_cast<std::uint64_t>(times) >> 32);
 }
 
 } // namespace ws::keyproto
