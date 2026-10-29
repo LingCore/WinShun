@@ -97,7 +97,7 @@ README_ONLY = (
     ("appearance", "L-appearance", "外观[随你调]", "界面大小即时预览，主题、圆角和透明效果自己选"),
     ("panel", "L-panel", "搜索面板，[列由你定]", "右键选列，拖动改宽度和顺序；布局自动保存"),
     ("clipboard-resize", "L-clipboard-resize", "剪贴板宽度，[拖动就改]", "关闭预览拖右边缘；双击恢复，图片文件也有缩略图"),
-    ("recording", "L-recording", "框选区域，[录成视频]", "Ctrl+R 开始录制 · 支持暂停和继续"),
+    ("recording", "L-recording", "框选区域，[录成视频]", "Ctrl+R 开始录制 · 暂停继续 · 角落显示按键"),
     ("recording-gif", "L-recording-gif", "录一小段，[存成 GIF]", "选择画质、鼠标和点击高亮，导出进度看得见"),
     ("preview", "L-preview", "Alt+P，[先看一眼]", "图片、文本、Office、PDF，启动器不关"),
     ("switches", "L-switch1+L-switch2+L-switch3", "系统开关，[打字就切]", "行尾就是现在的状态，回车就地切换，窗口不关"),
@@ -113,7 +113,7 @@ README_ONLY = (
     ("backup", "L-backup", "设置和收藏，[带到新电脑]", "导出 ZIP · 校验后恢复 · 恢复前保存当前配置"),
     ("file-types", "L-file-types", "文件类型，[由你来定义]", "扩展名、搜索前缀、顺序，都能自己改"),
     ("search-scope", "L-search-scope", "只索引[你需要的文件夹]", "选择收录范围，按时核对，后台更新"),
-    ("wsl", "L-wsl", "Linux 文件，[也能一起搜]", "只搜文件名和文件夹名 · 发行版停止时结果仍可用"),
+    ("wsl", "L-wsl", "Linux 文件，[也能一起搜]", "发行版停止时，收录过的照样能搜到"),
 )
 PENDING = {"L-droppie", "L-longshot", "L-redact", "L-pins", "L-capture", "L-typing"}  # shot by scenes/release013.txt;
 # render leaves them out while there is no shot yet (so the other pictures can be made again meanwhile)
