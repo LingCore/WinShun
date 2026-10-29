@@ -693,6 +693,17 @@ add_test(NAME tst_break COMMAND tst_break)
 set_tests_properties(tst_break PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# winshun.bookmarks (src/bookmarks-plugin/Bookmarks), built in again: reading
+# Bookmarks files, the folder text, percent-decoding, matching, scoring,
+# the 50-row cap and the "nothing found" rows.
+qt_add_executable(tst_bookmarks tst_bookmarks.cpp ${PROJECT_SOURCE_DIR}/src/bookmarks-plugin/Bookmarks.cpp)
+target_include_directories(tst_bookmarks PRIVATE ${PROJECT_SOURCE_DIR}/src/bookmarks-plugin ${PROJECT_SOURCE_DIR}/src/plugins-sdk)
+target_link_libraries(tst_bookmarks PRIVATE winshun_options Qt6::Test)
+set_target_properties(tst_bookmarks PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_bookmarks COMMAND tst_bookmarks)
+set_tests_properties(tst_bookmarks PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # The plugin system (src/plugin): manifests, items, zero-code, the catalog,
 # and plugin processes started through the runner WinShunPluginHost.exe,
 # played by plugin_fake.exe (no Qt, as a plugin would be); both paths are
