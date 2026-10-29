@@ -388,6 +388,17 @@ Window {
         revealAfterFrame = pluginId
     }
     property string revealAfterFrame
+    // The capture's card, unfolded at its hotkeys (常规's 截图的快捷键 row).
+    function showCaptureCard() {
+        showPage(pluginsPage, 0)
+        const card = pluginsSection.captureCardItem
+        if (!card)
+            return
+        card.revealGroup(0)
+        layoutNow()
+        revealRow(card)
+        Qt.callLater(() => revealRow(card)) // unfolded: laid out again before the next frame
+    }
     Connections {
         target: window
         enabled: window.revealAfterFrame.length > 0
@@ -1129,6 +1140,22 @@ Window {
                         color: Theme.danger
                         font.pixelSize: Theme.fontCaption
                         wrapMode: Text.Wrap
+                    }
+                }
+
+                // The capture's own hotkey is recorded on its card (插件 › 截图);
+                // here so that whoever looks among the hotkeys finds it.
+                SettingRow {
+                    title: qsTr("截图的快捷键")
+                    keywords: qsTr("截图;截屏;快捷键;热键;F1;PrtScn;PixPin;Snipaste;screenshot").split(";")
+                    values: [window.editor.captureHotkey]
+                    description: !window.editor.captureEnabled ? qsTr("截图功能还没打开：在“插件”的截图卡片上打开，再录一个快捷键，例如 F1")
+                               : window.editor.captureHotkey.length > 0 ? qsTr("现在是 %1，在“插件”的截图卡片上改；贴图等其他快捷键也在那里").arg(window.editor.captureHotkey)
+                               : qsTr("还没设，在“插件”的截图卡片上录一个，例如 F1；贴图等其他快捷键也在那里")
+
+                    FlatButton {
+                        text: qsTr("去设置")
+                        onClicked: window.showCaptureCard()
                     }
                 }
 
@@ -2943,6 +2970,42 @@ Window {
                 page: 3
                 tab: 1
                 width: parent.width
+
+                SettingRow {
+                    title: qsTr("搜索应用")
+                    keywords: qsTr("应用;程序;软件;开始菜单;启动;全部;关闭;app").split(";")
+                    description: qsTr("在“全部”里列出开始菜单里的程序和应用；关掉后只找文件和内容（收藏的应用仍会列出，在开始菜单里打字也一样）")
+
+                    ToggleSwitch {
+                        checked: window.editor.searchApps
+                        Accessible.name: qsTr("搜索应用")
+                        onToggled: (on) => window.editor.searchApps = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("搜索系统设置")
+                    keywords: qsTr("设置;系统设置;控制面板;系统开关;蓝牙;音量;全部;关闭;settings").split(";")
+                    description: qsTr("在“全部”里列出 Windows 设置页、控制面板和系统开关（如“关蓝牙”“音量 30”）；关掉后只找文件和内容")
+
+                    ToggleSwitch {
+                        checked: window.editor.searchSystem
+                        Accessible.name: qsTr("搜索系统设置")
+                        onToggled: (on) => window.editor.searchSystem = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("正则模式（Ctrl+R）")
+                    keywords: qsTr("正则;正则表达式;regex;Everything;Ctrl+R;匹配").split(";")
+                    description: qsTr("在“全部”和“文件”里，每个词都按正则表达式匹配名字，如 ^IMG_\\d{4}；ext:、!排除、“ | ”照常可用。在搜索框里按 Ctrl+R 开关，开着时搜索框旁显示 .*。不开时也可在单个词前加 regex:")
+
+                    ToggleSwitch {
+                        checked: window.editor.regexMode
+                        Accessible.name: qsTr("正则模式")
+                        onToggled: (on) => window.editor.regexMode = on
+                    }
+                }
 
                 SettingRow {
                     title: qsTr("不输入时显示")

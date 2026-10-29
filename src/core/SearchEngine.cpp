@@ -858,7 +858,7 @@ void arrangePart(SearchResults& results, const SearchEngine::Request& request, c
     // Recent items first, as rows of their own (they need not be in the
     // index): not into a list narrowed by when, how large or where, which
     // the history knows nothing of (a recent file would show through the filter).
-    const bool filtered = request.filter.any() || !request.folders.isEmpty() || parseQuery(request.text).hasFilters();
+    const bool filtered = request.filter.any() || !request.folders.isEmpty() || parseQuery(request.text, request.regex).hasFilters();
     const qsizetype promoted = rankBy == RankBy::Match && !ordered && !filtered
         ? promoteHistory(results, request, matcher, onDisk, folder, part)
         : 0;
@@ -1305,7 +1305,7 @@ void SearchEngine::runNameSearch(const Job& job)
     QElapsedTimer timer;
     timer.start();
     const Request& request = job.request;
-    const ParsedQuery query = parseQuery(request.text);
+    const ParsedQuery query = parseQuery(request.text, request.regex);
     if (!query.error.isEmpty() && !typedKeyword(request.web, request.text)) {
         emit resultsReady(job.id, {}, 0, 0);
         return;
@@ -1366,13 +1366,13 @@ void SearchEngine::runNameSearch(const Job& job)
                 if (indexOfFavorite(request.favorites, path) >= 0)
                     continue; // listed above them
                 if (isAppLaunchPath(path)) {
-                    const AppInfo* app = request.scope == Scope::All ? findApp(*apps, path) : nullptr;
+                    const AppInfo* app = request.scope == Scope::All && request.apps ? findApp(*apps, path) : nullptr;
                     if (app)
                         round.emplace_back(fromApp(*app, true));
                     continue;
                 }
                 if (isPlacePath(path)) {
-                    const PlaceInfo* place = request.scope == Scope::All ? findPlace(*places, path) : nullptr;
+                    const PlaceInfo* place = request.scope == Scope::All && request.places ? findPlace(*places, path) : nullptr;
                     // A switch is never listed here: Enter on the first row as
                     // the window opens would flip it back (pinnedPlaces).
                     if (place && place->switchId.isEmpty())
@@ -1412,7 +1412,9 @@ void SearchEngine::runNameSearch(const Job& job)
         const bool insideFirst = typedIn && !request.currentFolderOnly;
         const pathtext::TypedPath typedPath = typedIn
             ? pathtext::TypedPath {pathtext::pathFromText(request.currentFolder), request.text}
-            : pathtext::splitTyped(request.text);
+            : request.regex ? pathtext::TypedPath() : pathtext::splitTyped(request.text);
+        // A path typed from some folder along the way ("tools/out/"); none in regex mode.
+        const auto relative = [&] { return request.regex ? pathtext::RelativePath() : pathtext::splitRelative(request.text); };
         EntryFilter filter = request.filter;
         filter.merge(query.filter);
         {
@@ -1547,13 +1549,13 @@ void SearchEngine::runNameSearch(const Job& job)
                 bool guessedSwitch = false; // a switch found by a guess (PlaceHit::weak)
             };
             std::vector<Ranked> ranked;
-            for (const AppHit& hit : searchApps(*apps, query, matcher, request.history)) {
+            for (const AppHit& hit : request.apps ? searchApps(*apps, query, matcher, request.history) : std::vector<AppHit> {}) {
                 ranked.push_back({hit.score, fromApp((*apps)[hit.index], false, hit.otherName)});
                 ranked.back().result.exact = hit.exact; // by name, another name or an abbreviation ("ps")
             }
             const std::size_t appCount = ranked.size();
             std::size_t shown = 0; // places other than switches (those are few, and each one a concept)
-            for (const PlaceHit& hit : searchPlaces(*places, query, matcher, request.history)) {
+            for (const PlaceHit& hit : request.places ? searchPlaces(*places, query, matcher, request.history) : std::vector<PlaceHit> {}) {
                 const PlaceInfo& place = (*places)[hit.index];
                 const bool isSwitch = !place.switchId.isEmpty();
                 if (!isSwitch && shown >= kPlacesShown)
@@ -1584,7 +1586,7 @@ void SearchEngine::runNameSearch(const Job& job)
             // A state word alone ("深色") only tells the plain row what Enter
             // then does.
             std::optional<SearchResult> commandRow;
-            if (const std::optional<SwitchCommand> command = parseSwitchCommand(request.text, *places)) {
+            if (const std::optional<SwitchCommand> command = request.places ? parseSwitchCommand(request.text, *places) : std::nullopt) {
                 const PlaceInfo& target = (*places)[command->place];
                 if (command->onTop) {
                     commandRow = fromPlace(target, false);
@@ -1640,7 +1642,7 @@ void SearchEngine::runNameSearch(const Job& job)
         // to the best of what lies in it or is named like it. Several such
         // places: the one opened last, then your own, then the shallowest.
         if (const pathtext::RelativePath typed = typedPath.folder.isEmpty() && !filtered
-                ? pathtext::splitRelative(request.text)
+                ? relative()
                 : pathtext::RelativePath();
             !typed.names.isEmpty()) {
             std::vector<std::string> steps;
@@ -1700,7 +1702,7 @@ void SearchEngine::runNameSearch(const Job& job)
         // Favorites first, but not before what a typed path leads to, nor
         // among rows ranked by time (marked there only).
         const bool promote = rankBy == RankBy::Match && typedPath.folder.isEmpty() && !listing
-            && pathtext::splitRelative(request.text).names.isEmpty();
+            && relative().names.isEmpty();
         promoteFavorites(results, total, request, matcher, promote, *apps, *places, *m_onDisk, m_index, types);
 
         // Nothing at all is named as typed (no file or folder, no app, place
@@ -1709,7 +1711,7 @@ void SearchEngine::runNameSearch(const Job& job)
         // so (approximate). Only then: a query that finds anything costs
         // nothing more. Each reading (行: xing, hang) is a search of its own;
         // an entry found by several keeps its best score.
-        if (results.isEmpty() && typedPath.folder.isEmpty() && pathtext::splitRelative(request.text).names.isEmpty()
+        if (results.isEmpty() && typedPath.folder.isEmpty() && relative().names.isEmpty()
             && !isStale(job.id)) {
             const auto alikeBegan = Clock::now();
             const auto alikeOnDisk = m_onDisk->waited(); // its recent items: counted with the others
@@ -1880,7 +1882,7 @@ RemovableDrives SearchEngine::unindexedRemovableDrives()
 void SearchEngine::runDriveWalk(const Job& job)
 {
     const Request& request = job.request;
-    const ParsedQuery query = parseQuery(request.text);
+    const ParsedQuery query = parseQuery(request.text, request.regex);
     const bool foldersOnly = request.scope == Scope::Folders;
     const std::vector<std::string> types = foldersOnly ? std::vector<std::string>() : foldedExtensions(request.extensions);
     const Hidden hidden = hiddenOf(request, query, types);

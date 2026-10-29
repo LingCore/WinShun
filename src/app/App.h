@@ -572,6 +572,21 @@ private:
     // The tick it was brought to the front: input after that is not its
     // own empty one (bringToFront).
     void logLauncherLostFront(HWND front);
+    // It is no longer in front (Qt's activeChanged, or foregroundChanged):
+    // hidden, unless what took the front is one that keeps it.
+    void launcherLostFront();
+    // Another window came to the front (EVENT_SYSTEM_FOREGROUND): for a
+    // launcher Windows refused to bring to the front, see the constructor.
+    static void CALLBACK foregroundChanged(HWINEVENTHOOK, DWORD, HWND, LONG, LONG, DWORD, DWORD);
+    HWINEVENTHOOK m_launcherFrontHook = nullptr;
+    // Refused the front, it stays the active window of this thread, in the
+    // background: a press elsewhere on the window in front (the taskbar, in
+    // front already) changes nothing Windows would tell it of. Watched for
+    // while that lasts (the buttons' state, every 30 ms).
+    void watchStrandedLauncher();
+    void checkStrandedLauncher();
+    QTimer m_strandedWatch;
+    bool m_strandedPress = false; // a button down, seen already
     std::uint32_t m_launcherFrontTick = 0;
     int m_launcherLostFrontLogged = 0;
     // When the launcher, and the clipboard, last came on the screen

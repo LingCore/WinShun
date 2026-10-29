@@ -474,6 +474,15 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Results/TabEntersFavoriteFolder", QT_TRANSLATE_NOOP("AiSettings", "Tab 进入收藏文件夹"), "results", 1,
                     "In All, Tab browses the selected favorite folder. Off by default: Tab switches search scopes. Shift+Tab and plugin/web completion keep their usual behavior."},
         &Settings::tabEntersFavoriteFolder));
+    add(boolean({"Results/SearchApps", QT_TRANSLATE_NOOP("AiSettings", "搜索应用"), "results", 1,
+                    "All also finds apps (Start menu programs, Store apps). Off: All finds files, folders and content only."},
+        &Settings::searchApps));
+    add(boolean({"Results/SearchSystem", QT_TRANSLATE_NOOP("AiSettings", "搜索系统设置"), "results", 1,
+                    "All also finds Windows settings pages, Control Panel items and system switches (\"关蓝牙\", \"音量 30\"). Off: All finds files, folders and content only."},
+        &Settings::searchSystem));
+    add(boolean({"Results/RegexMode", QT_TRANSLATE_NOOP("AiSettings", "正则模式"), "results", 1,
+                    "Every word typed in All and Files is a regular expression on names (Ctrl+R in the search box toggles it). A single word can be one with regex: before it either way."},
+        &Settings::regexMode));
     add(boolean({"Results/ShowModified", QT_TRANSLATE_NOOP("AiSettings", "显示修改日期"), "results", 1,
                     "Each result says when the file was last written."},
         &Settings::showModified));

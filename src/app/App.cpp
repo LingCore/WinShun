@@ -345,6 +345,8 @@ void styleWindow(QWindow* window, bool backdrop = false)
     win::styleFramelessWindow(window, backdrop);
 }
 
+App* g_launcherApp = nullptr; // for foregroundChanged, a hook's callback
+
 } // namespace
 
 App::App()
@@ -392,6 +394,9 @@ App::App()
 
 App::~App()
 {
+    if (m_launcherFrontHook)
+        ::UnhookWinEvent(m_launcherFrontHook);
+    g_launcherApp = nullptr; // a change of the front queued already finds no one
     m_clipImport.reset(); // its thread joined before the history it fills goes
     siteicons::shutdown(); // an icon arriving now would be told to no one
     m_keyRouter.reset(); // no keys taken from here on
@@ -616,6 +621,8 @@ bool App::start(const StartOptions& options)
         if (m_window && m_window->isVisible() && !m_window->isActive() && !m_launcher->pinned())
             hideLauncher();
     });
+    m_strandedWatch.setInterval(30ms); // a click is held longer than that
+    connect(&m_strandedWatch, &QTimer::timeout, this, &App::checkStrandedLauncher);
     // The footer's switches (the order, the start list): remembered.
     const auto remember = [this](QString Settings::* field, QString value) {
         if (m_settings.*field == value)
@@ -631,6 +638,14 @@ bool App::start(const StartOptions& options)
     connect(m_launcher.get(), &Launcher::startListChanged, this, [this, remember] {
         static constexpr QStringView kLists[] {u"opened", u"modified", u"none"};
         remember(&Settings::startList, kLists[m_launcher->startList()].toString());
+    });
+    connect(m_launcher.get(), &Launcher::regexModeChanged, this, [this] {
+        if (m_settings.regexMode == m_launcher->regexMode())
+            return;
+        m_settings.regexMode = m_launcher->regexMode();
+        m_settings.save();
+        if (m_settingsEditor)
+            m_settingsEditor->setSettings(m_settings);
     });
     createPluginHost();
     moveCapture();
@@ -661,6 +676,8 @@ bool App::start(const StartOptions& options)
     m_clipboard = std::make_unique<Clipboard>(m_clipStore.get(), m_clipWatcher.get());
     connect(m_clipboard.get(), &Clipboard::quickPasteFailed, this,
         [this](const QString& message) { m_messages->showNotification(tr("快捷粘贴"), message); });
+    connect(m_clipboard.get(), &Clipboard::saveProblem, this,
+        [this](const QString& message) { m_messages->showNotification(tr("保存为文件"), message); });
     connect(m_clipboard.get(), &Clipboard::activeChanged, this, &App::applyQuickPasteHotkeys);
     connect(qApp, &QGuiApplication::focusWindowChanged, this, &App::applyQuickPasteHotkeys);
     // Pinned, it stays up through a paste or a file opened (hideClipboard);
@@ -999,62 +1016,8 @@ bool App::createWindow()
     if (m_searchField)
         m_searchField->installEventFilter(this); // the input method's questions, while it is in the box
     connect(m_window, &QWindow::activeChanged, this, [this] {
-        // Clicking elsewhere or switching apps dismisses the launcher, like a
-        // menu; the clipboard under its search box goes with it (see there).
-        // Not a press on Win顺's box on the taskbar: that brings it back. Nor
-        // the press that just brought it back: Qt may hear of the taskbar
-        // taking the focus for it only after that (it slid back up while on
-        // its way out). Those leave no window in front (or the taskbar, the
-        // pointer on the box), nor does the Start menu closing as it opens
-        // over it; another window in front (a click on it, on the desktop,
-        // on the rest of the taskbar) dismisses it at once, however soon
-        // after it opened.
-        if (m_window && !m_window->isActive() && m_window->isVisible() && !clipboardUnderLauncher()) {
-            // The preview (Alt+P) took the focus for a moment: a handler's
-            // window of ours (handed back at once), or QuickLook's or Seer's
-            // (which hand it back themselves). The launcher stays.
-            if (m_preview->ownsForeground()) {
-                if (m_preview->foregroundIsOurs())
-                    QMetaObject::invokeMethod(this, [this] {
-                        if (m_window && m_window->isVisible() && !m_window->isActive())
-                            win::bringToFront(m_window);
-                    }, Qt::QueuedConnection);
-                return;
-            }
-            // A command of the shell's menu that keeps the launcher (删除,
-            // say) runs, or just did: its dialogs, owned by a hidden window
-            // of ours, take the focus and hand it back (Launcher::
-            // runSystemMenu); another program's window ends that.
-            if (m_launcher->systemCommandRunning()) {
-                DWORD pid = 0;
-                ::GetWindowThreadProcessId(::GetForegroundWindow(), &pid);
-                if (pid == ::GetCurrentProcessId())
-                    return;
-                m_launcher->systemCommandDone();
-            }
-            if (m_launcher->pinned()) { // stays up, behind nothing (topmost), until Esc
-                m_typingOrigin = {}; // used elsewhere now: a folder opened later is not for that tab
-                m_boxPressGrace.stop();
-                // A press on Win顺's box took the focus: that press hides it
-                // (searchBoxPressed), as double Ctrl would.
-                if (m_searchBox && m_searchBox->underPointer())
-                    m_pinnedLostToBox.start();
-                else
-                    m_pinnedLostToBox.invalidate();
-                updateNumberKeys();
-                return;
-            }
-            const bool justShown = m_launcherShown.isValid() && m_launcherShown.elapsed() < 500;
-            const bool onBox = m_searchBox && m_searchBox->underPointer();
-            const HWND front = ::GetForegroundWindow();
-            const bool elsewhere = front && front != reinterpret_cast<HWND>(m_window->winId())
-                && !(onBox && taskbar::isTaskbar(front)) && !win::isShellFlyout(front);
-            if (m_searchBox && m_launcherOverBox && !elsewhere && (justShown || onBox))
-                m_boxPressGrace.start();
-            else {
-                logLauncherLostFront(front);
-                hideLauncher();
-            }
+        if (m_window && !m_window->isActive()) {
+            launcherLostFront();
         } else if (m_window && m_window->isActive()) {
             m_launcher->systemCommandDone();
             m_boxPressGrace.stop();
@@ -1062,6 +1025,16 @@ bool App::createWindow()
         }
         updateNumberKeys();
     });
+    // Windows refused to bring it to the front (bringToFront: the taskbar's
+    // box pressed again and again, say). The refused try made it the active
+    // window of this thread all the same, in the background; another
+    // program's window coming to the front then tells it nothing, and a
+    // click elsewhere left it up. The front changing to another program's
+    // window, Qt still holding it active, is that click. Out of context:
+    // told through this (the GUI) thread's message loop.
+    g_launcherApp = this;
+    m_launcherFrontHook = ::SetWinEventHook(
+        EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, nullptr, &App::foregroundChanged, 0, 0, WINEVENT_OUTOFCONTEXT);
     // Fresh rows coming in while it slides in beat a launcher that comes
     // late: keep the existing 60 ms fallback even if no frame arrives.
     m_launcherReveal.setWindow(m_window, 60ms, [this] { revealLauncher(); });
@@ -1496,6 +1469,8 @@ void App::applySettings(bool initial)
         m_settings.showModified, m_settings.showFileSize, m_settings.thumbnails, m_settings.numberKeys);
     m_launcher->setDoubleClickToOpen(m_settings.doubleClickToOpen);
     m_launcher->setTabEntersFavoriteFolder(m_settings.tabEntersFavoriteFolder);
+    m_launcher->setSearchKinds(m_settings.searchApps, m_settings.searchSystem);
+    m_launcher->setRegexMode(m_settings.regexMode);
     m_launcher->setFolderTypingOnly(m_settings.folderTyping == u"only");
     m_launcher->results()->setShowModifiedTime(m_settings.showModifiedTime);
     m_launcher->setPreferredTypes(m_settings.preferredTypes);
@@ -2237,9 +2212,9 @@ void App::updateSearchBoxLook()
     const QColor accent = SystemTheme::accentColor();
     taskbar::SearchBox::Look look;
     look.name = tr("Win顺 搜索").toStdWString();
-    // Typing there: what the launcher searches (its tabs say which).
-    const bool typing = m_launcher->inTaskbarBox() && !m_launcherClosing;
-    look.placeholder = (typing ? m_launcher->placeholder() : tr("搜索应用和文件")).toStdWString();
+    // One short line, typing there or not: the launcher's tabs say what it
+    // searches (the scope's words here changed with it, a fade each time).
+    look.placeholder = tr("想搜索什么…").toStdWString();
     look.label = tr("搜索").toStdWString();
     look.accent = RGB(accent.red(), accent.green(), accent.blue());
     look.monoIcon = m_settings.taskbarIcon == u"mono";
@@ -2279,7 +2254,8 @@ void App::searchBoxPressed(const taskbar::SearchBox::Press& press)
     // Open over it already: the press took the keyboard (see m_boxPressGrace).
     // Back to the launcher, the caret where the box was pressed.
     m_boxPressGrace.stop();
-    win::bringToFront(m_window);
+    if (win::bringToFront(m_window) == win::Front::Refused)
+        watchStrandedLauncher();
     m_window->requestActivate();
     if (press.at)
         emit m_launcher->caretRequested(*press.at, press.word);
@@ -3364,6 +3340,7 @@ void App::dumpLauncher(const QString& file) const
         }
     }
     state[u"query"_s] = m_launcher->query();
+    state[u"regexMode"_s] = m_launcher->regexMode();
     state[u"scope"_s] = static_cast<int>(m_launcher->scope());
     state[u"fileType"_s] = m_launcher->fileType();
     state[u"dateChoice"_s] = m_launcher->dateChoice();
@@ -3908,7 +3885,49 @@ win::Front App::toFront(QWindow* window)
     const win::Front front = win::bringToFront(window);
     if (m_triggers && m_triggers->open())
         m_triggers->front(front, static_cast<double>(timer.nsecsElapsed()) / 1e6);
+    if (window == m_window && front == win::Front::Refused)
+        watchStrandedLauncher();
     return front;
+}
+
+void App::watchStrandedLauncher()
+{
+    // A button held now (the press on the box that asked for it) is not a
+    // press elsewhere: only one that comes after.
+    m_strandedPress = (::GetAsyncKeyState(VK_LBUTTON) | ::GetAsyncKeyState(VK_RBUTTON) | ::GetAsyncKeyState(VK_MBUTTON)) & 0x8000;
+    m_strandedWatch.start();
+}
+
+void App::checkStrandedLauncher()
+{
+    // Up, active in Win顺 alone, not in front (see watchStrandedLauncher's
+    // callers): until it is in front after all, or Qt hears that it is not
+    // active (the usual way, activeChanged), or it goes.
+    const HWND hwnd = m_window ? reinterpret_cast<HWND>(m_window->winId()) : nullptr;
+    if (!hwnd || !m_window->isVisible() || m_launcherClosing || !m_window->isActive() || ::GetForegroundWindow() == hwnd) {
+        m_strandedWatch.stop();
+        return;
+    }
+    const bool down = (::GetAsyncKeyState(VK_LBUTTON) | ::GetAsyncKeyState(VK_RBUTTON) | ::GetAsyncKeyState(VK_MBUTTON)) & 0x8000;
+    if (!down || m_strandedPress) {
+        m_strandedPress = down;
+        return;
+    }
+    m_strandedPress = true;
+    // A press on a window of ours (the launcher, Win顺's box on the taskbar,
+    // a menu of ours) is for that window; anywhere else (the rest of the
+    // taskbar, which is in front already: no change of the front to hear
+    // of) is a click elsewhere.
+    POINT at {};
+    ::GetCursorPos(&at);
+    DWORD pid = 0;
+    ::GetWindowThreadProcessId(::WindowFromPoint(at), &pid);
+    if (pid == ::GetCurrentProcessId())
+        return;
+    m_strandedWatch.stop();
+    qWarning().noquote() << "Launcher: not in front (Windows refused), a press elsewhere: as if it lost the focus";
+    launcherLostFront();
+    updateNumberKeys();
 }
 
 // Double tap works only while the keyboard's Raw Input comes to the
@@ -4655,6 +4674,87 @@ void App::finishPrewarm()
 // empty SendInput, which counts as input too). Before, it just went, with
 // no word anywhere, and a double Ctrl seemed to do nothing (GitHub #111).
 // Twenty a run at most.
+void App::launcherLostFront()
+{
+    // Clicking elsewhere or switching apps dismisses the launcher, like a
+    // menu; the clipboard under its search box goes with it (see there).
+    // Not a press on Win顺's box on the taskbar: that brings it back. Nor
+    // the press that just brought it back: Qt may hear of the taskbar
+    // taking the focus for it only after that (it slid back up while on
+    // its way out). Those leave no window in front (or the taskbar, the
+    // pointer on the box), nor does the Start menu closing as it opens
+    // over it; another window in front (a click on it, on the desktop,
+    // on the rest of the taskbar) dismisses it at once, however soon
+    // after it opened.
+    if (!m_window || !m_window->isVisible() || clipboardUnderLauncher())
+        return;
+    // The preview (Alt+P) took the focus for a moment: a handler's
+    // window of ours (handed back at once), or QuickLook's or Seer's
+    // (which hand it back themselves). The launcher stays.
+    if (m_preview->ownsForeground()) {
+        if (m_preview->foregroundIsOurs())
+            QMetaObject::invokeMethod(this, [this] {
+                if (m_window && m_window->isVisible() && !m_window->isActive())
+                    win::bringToFront(m_window);
+            }, Qt::QueuedConnection);
+        return;
+    }
+    // A command of the shell's menu that keeps the launcher (删除,
+    // say) runs, or just did: its dialogs, owned by a hidden window
+    // of ours, take the focus and hand it back (Launcher::
+    // runSystemMenu); another program's window ends that.
+    if (m_launcher->systemCommandRunning()) {
+        DWORD pid = 0;
+        ::GetWindowThreadProcessId(::GetForegroundWindow(), &pid);
+        if (pid == ::GetCurrentProcessId())
+            return;
+        m_launcher->systemCommandDone();
+    }
+    if (m_launcher->pinned()) { // stays up, behind nothing (topmost), until Esc
+        m_typingOrigin = {}; // used elsewhere now: a folder opened later is not for that tab
+        m_boxPressGrace.stop();
+        // A press on Win顺's box took the focus: that press hides it
+        // (searchBoxPressed), as double Ctrl would.
+        if (m_searchBox && m_searchBox->underPointer())
+            m_pinnedLostToBox.start();
+        else
+            m_pinnedLostToBox.invalidate();
+        return;
+    }
+    const bool justShown = m_launcherShown.isValid() && m_launcherShown.elapsed() < 500;
+    const bool onBox = m_searchBox && m_searchBox->underPointer();
+    const HWND front = ::GetForegroundWindow();
+    const bool elsewhere = front && front != reinterpret_cast<HWND>(m_window->winId())
+        && !(onBox && taskbar::isTaskbar(front)) && !win::isShellFlyout(front);
+    if (m_searchBox && m_launcherOverBox && !elsewhere && (justShown || onBox))
+        m_boxPressGrace.start();
+    else {
+        logLauncherLostFront(front);
+        hideLauncher();
+    }
+}
+
+void CALLBACK App::foregroundChanged(HWINEVENTHOOK, DWORD, HWND, LONG, LONG, DWORD, DWORD)
+{
+    // After what this thread is told of the change (WM_ACTIVATE, Qt's
+    // activeChanged): a launcher that heard of it is no longer active here.
+    if (!g_launcherApp)
+        return;
+    QMetaObject::invokeMethod(g_launcherApp, [] {
+        App* app = g_launcherApp;
+        if (!app || !app->m_window || !app->m_window->isVisible() || !app->m_window->isActive())
+            return;
+        DWORD pid = 0;
+        const HWND front = ::GetForegroundWindow();
+        if (!front || (::GetWindowThreadProcessId(front, &pid), pid == ::GetCurrentProcessId()))
+            return;
+        if (!app->m_launcher->pinned())
+            qWarning().noquote() << "Launcher: active only in Win顺, another program's window in front: as if it lost the focus";
+        app->launcherLostFront();
+        app->updateNumberKeys();
+    }, Qt::QueuedConnection);
+}
+
 void App::logLauncherLostFront(HWND front)
 {
     static constexpr qint64 kJustShownMs = 1500;

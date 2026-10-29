@@ -141,6 +141,8 @@ public:
         RenameGroup, // on a category tab
         RemoveGroup,
         RemoveAll, // everything listed (not what is in a group, unless a group's tab)
+        SaveFiles, // 保存为文件: a file each, in a folder asked for (saveAsFiles)
+        SaveMerged, // the words of all in one file
         MoveToGroup = 1000, // + the group's id
     };
     Q_ENUM(Action)
@@ -230,7 +232,8 @@ public:
     Q_INVOKABLE void paste(int row, bool plainText);
     Q_INVOKABLE void quickPaste(int number, bool plainText); // Alt+1 ... Alt+9: the nth row
     Q_INVOKABLE void copy(int row);
-    // An image exported as a PNG file; its history entry remains unchanged.
+    // Dragged out as files (clipfiles::plan): pictures as they were copied,
+    // words made files, files and folders as they are. The entries stay.
     Q_INVOKABLE void dragOut(int row);
     bool dragging() const { return m_dragging; } // do not hide the window during OLE's modal loop
     // A colour's other notation, as a new entry unless it would not read back
@@ -302,6 +305,7 @@ public:
 
 signals:
     void quickPasteFailed(const QString& message); // no panel to show a failure in: App's notification
+    void saveProblem(const QString& message); // saveAsFiles, the panel gone: App's notification
     void numberKeysChanged();
     void rowOptionsChanged();
     void layoutOptionsChanged();
@@ -381,6 +385,10 @@ private:
     void dropUndo();
     QString separator() const;
     void loadHistoryState();
+    // The row (or the picked ones) as files in a folder asked for, starting
+    // in the one shown by the file manager it was opened over (else the last
+    // one); selected there afterwards.
+    void saveAsFiles(int row, bool merged);
 
     ClipStore* m_store;
     ClipboardWatcher* m_watcher;
@@ -393,7 +401,9 @@ private:
     // until the app ends, as the program dropped on may copy them later.
     // Made on the first drag; what a crash left is removed at the start.
     QString m_dragFolder;
+    int m_drags = 0; // words dragged out: a folder of their own each time, under the names they make
     bool m_dragging = false;
+    bool m_saving = false; // saveAsFiles: from the menu until written
     bool m_active = false;
     bool m_keysRouted = false;
     bool m_pinned = false;
@@ -449,6 +459,7 @@ private:
     QElapsedTimer m_returnClock;
     QTimer m_returnTimer; // waits for the field to have the keyboard
     std::unique_ptr<ComWorker> m_filePasteWorker;
+    std::unique_ptr<ComWorker> m_saveWorker; // saveAsFiles: asks the file manager, copies the files
     std::jthread m_imageEncoder; // copyImage's PNG; last, so joined first
 };
 

@@ -109,6 +109,7 @@ CaptureOptions CaptureOptions::load(const QString& file)
     o.controlsUia = readOrDefault(s, u"Capture/ControlsUia"_s, d.controlsUia);
     const int seconds = readOrDefault(s, u"Capture/DelaySeconds"_s, d.delay);
     o.delay = seconds == 3 || seconds == 5 || seconds == 10 ? seconds : d.delay;
+    o.historyCount = std::clamp(readOrDefault(s, u"Capture/HistoryCount"_s, d.historyCount), 0, 100);
     const QString format = readOrDefault(s, u"Capture/ColorFormat"_s, d.colorFormat).trimmed().toLower();
     o.colorFormat = format == u"rgb" || format == u"hsl" ? format : u"hex"_s;
     o.pinsHotkey = readOrDefault(s, u"Capture/PinsHotkey"_s, d.pinsHotkey).trimmed();
@@ -161,6 +162,7 @@ void CaptureOptions::save(const QString& file) const
     s.setValue(u"Capture/HdrFile"_s, hdrFile);
     s.setValue(u"Capture/ControlsUia"_s, controlsUia);
     s.setValue(u"Capture/DelaySeconds"_s, delay);
+    s.setValue(u"Capture/HistoryCount"_s, historyCount);
     s.setValue(u"Capture/ColorFormat"_s, colorFormat);
     s.setValue(u"Capture/PinsHotkey"_s, pinsHotkey);
     s.setValue(u"Capture/PinsRestoreHotkey"_s, pinsRestoreHotkey);

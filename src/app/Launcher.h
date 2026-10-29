@@ -183,6 +183,10 @@ class Launcher : public QObject {
     // Ctrl while it is in front) hides it. Kept while hidden, until turned
     // off or the program restarts. The app does the rest (App.cpp).
     Q_PROPERTY(bool pinned READ pinned WRITE setPinned NOTIFY pinnedChanged FINAL)
+    // Regex mode (Ctrl+R, as Everything's): every word typed is a regular
+    // expression on names (parseQuery's regexTerms), in 全部 and 文件; 内容
+    // is as ever. Kept in the settings (regexModeChanged).
+    Q_PROPERTY(bool regexMode READ regexMode WRITE setRegexMode NOTIFY regexModeChanged FINAL)
     // Its filters, applied in the panel alone (the box is the plain quick
     // search): when written (dateChoice: 0 不限, 1 今天, 2 最近 7 天, 3 最近
     // 30 天, 4 今年, 5 自定义 with dateFrom and dateTo as "yyyy-MM-dd", either
@@ -551,6 +555,8 @@ public:
     void setFileTypes(const FileTypes& types); // named (Settings::namedFileTypes)
     void setFolderKeyword(const QString& keyword);
     QString folderKeyword() const { return m_folderKeyword; }
+    // 全部 also finds apps, and Windows' settings and switches (Request::apps, places).
+    void setSearchKinds(bool apps, bool places);
     // A chip of the strip: kFoldersChip (文件夹), -1 (不限), or a kind
     // (fileTypes); in 文件 (or 文件夹) from any scope.
     static constexpr int kFoldersChip = -2;
@@ -612,6 +618,9 @@ public:
     bool pinned() const { return m_pinned; }
     void setPinned(bool on);
     Q_INVOKABLE void togglePin() { setPinned(!m_pinned); } // Ctrl+T
+    bool regexMode() const { return m_regexMode; }
+    void setRegexMode(bool on);
+    Q_INVOKABLE void toggleRegexMode(); // Ctrl+R: says so in the footer
     // The search icon clicked (not dragged, WindowFrame::handleClicked):
     // the settings window (settingsRequested).
     Q_INVOKABLE void openSettings() { emit settingsRequested(); }
@@ -673,6 +682,7 @@ signals:
     void keyHintsChanged();
     void sortChanged();
     void startListChanged();
+    void regexModeChanged();
     void resultOptionsChanged();
     void inTaskbarBoxChanged();
     void fieldReported(const QString& text, int cursor, int selectionStart, int selectionEnd, const QString& composition);
@@ -999,6 +1009,12 @@ private:
     QVariantMap m_keyHints; // see keyHints
     FileTypes m_fileTypes;
     QString m_folderKeyword = QStringLiteral("folder");
+    bool m_searchApps = true;
+    bool m_searchPlaces = true;
+    bool m_regexMode = false;
+    bool m_shownRegex = false; // of the rows on screen, as m_shownText
+    // What is typed is parsed as regexes (regexMode, and not 内容).
+    bool regexTerms() const { return m_regexMode && m_scope != Content; }
     struct PrefixScope { Scope scope; QStringList typeKeys; bool folders; };
     std::optional<PrefixScope> m_filePrefix;
     QString m_prefixWords;

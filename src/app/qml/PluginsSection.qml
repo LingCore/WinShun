@@ -38,6 +38,7 @@ SettingsSection {
             setExpanded(card.pluginId, true)
     }
 
+    readonly property Item captureCardItem: captureCard.item // SettingsWindow.showCaptureCard
     // The card of a plugin, or null (SettingsWindow.showPluginPage).
     function cardOf(pluginId) {
         for (let i = 0; i < cardsRepeater.count; ++i) {

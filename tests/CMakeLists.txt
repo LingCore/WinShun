@@ -682,6 +682,17 @@ add_test(NAME tst_localsend COMMAND tst_localsend)
 set_tests_properties(tst_localsend PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# winshun.break's clock (src/break-plugin/Schedule), built in again: the
+# notice, the wait for a pause in typing, long breaks, time away, quiet
+# times, postpone, skip and strict, with made-up times.
+qt_add_executable(tst_break tst_break.cpp ${PROJECT_SOURCE_DIR}/src/break-plugin/Schedule.cpp)
+target_include_directories(tst_break PRIVATE ${PROJECT_SOURCE_DIR}/src/break-plugin)
+target_link_libraries(tst_break PRIVATE winshun_options Qt6::Test)
+set_target_properties(tst_break PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_break COMMAND tst_break)
+set_tests_properties(tst_break PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # The plugin system (src/plugin): manifests, items, zero-code, the catalog,
 # and plugin processes started through the runner WinShunPluginHost.exe,
 # played by plugin_fake.exe (no Qt, as a plugin would be); both paths are

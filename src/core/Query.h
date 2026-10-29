@@ -33,6 +33,7 @@ FileTypeQuery splitFileTypeQuery(const QString& text, const FileTypes& types, QS
 //   !node_modules\  nothing inside a folder whose name contains "node_modules"
 //   *.pdf  a?c      wildcard match against the whole name
 //   proj\readme     "readme" in the name, under a folder containing "proj"
+//   regex:^IMG_\d+  a regular expression on the name (any case; (?-i) for exact)
 //   C:\My Files\a   a path from a drive (or share) is one term, spaces and all
 //   ext:pdf,docx    only files with these extensions
 //   size:>10mb      only files of such a size: >, >=, <, <=, 1mb..5mb (or 1mb-5mb),
@@ -120,7 +121,10 @@ struct ContentQuery {
 // "/usr/bin" in it are what it says.
 ContentQuery splitContentQuery(const QString& text);
 
-ParsedQuery parseQuery(const QString& text);
+// `regexTerms`: every term is a regular expression, as if each had regex:
+// before it (the search box's regex mode, Ctrl+R, as Everything's); ext:,
+// size:, dm:, ! and " | " still work, and a path typed is no path.
+ParsedQuery parseQuery(const QString& text, bool regexTerms = false);
 
 // The query read aloud: each term with Chinese characters as pinyin
 // ("年度报高" → "niandubaogao"), for finding a name that sounds the same

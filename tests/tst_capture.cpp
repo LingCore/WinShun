@@ -3,7 +3,9 @@
 // picks), the file names, the HDR tone mapping and HDR file, the PrtScn
 // value kept, and the session's state machine driven with physical pixels,
 // without windows.
+#include "AnnotationFormat.h"
 #include "CaptureDiagnostics.h"
+#include "CaptureHistory.h"
 #include "CaptureSession.h"
 #include "Geometry.h"
 #include "Hdr.h"
@@ -989,6 +991,122 @@ private slots:
         rig.session.key(Qt::Key_R, Qt::NoModifier);
         rig.drag(from, to);
         rig.session.key(Qt::Key_R, Qt::NoModifier); // the same key: tool off
+    }
+
+    // , and . ask for the history (Capture shows it), not in the middle of a drag or a text.
+    void historyKeysStep()
+    {
+        Rig rig;
+        rig.begin();
+        QSignalSpy steps(&rig.session, &CaptureSession::historyStep);
+        QVERIFY(rig.session.key(Qt::Key_Comma, Qt::NoModifier));
+        QVERIFY(rig.session.key(Qt::Key_Less, Qt::ShiftModifier));
+        QVERIFY(rig.session.key(Qt::Key_Period, Qt::NoModifier));
+        QVERIFY(!rig.session.key(Qt::Key_Comma, Qt::ControlModifier));
+        QCOMPARE(steps.size(), 3);
+        QCOMPARE(steps[0][0].toInt(), 1);
+        QCOMPARE(steps[1][0].toInt(), 1);
+        QCOMPARE(steps[2][0].toInt(), -1);
+        rig.session.pointerMove(0, {100, 100});
+        rig.session.pointerPress(0, {100, 100}, Qt::LeftButton);
+        rig.session.pointerMove(0, {300, 300});
+        rig.session.key(Qt::Key_Comma, Qt::NoModifier); // dragging
+        rig.session.pointerRelease(0, {300, 300}, Qt::LeftButton);
+        QCOMPARE(steps.size(), 3);
+        rig.session.key(Qt::Key_R, Qt::NoModifier); // a rectangle under way (no text: this test has no fonts)
+        rig.session.pointerMove(0, {150, 150});
+        rig.session.pointerPress(0, {150, 150}, Qt::LeftButton);
+        rig.session.pointerMove(0, {200, 200});
+        rig.session.key(Qt::Key_Comma, Qt::NoModifier);
+        rig.session.pointerRelease(0, {200, 200}, Qt::LeftButton);
+        QCOMPARE(steps.size(), 3);
+        QVERIFY(rig.session.key(Qt::Key_Comma, Qt::NoModifier)); // drawn: the tool on is no stroke under way
+        QCOMPARE(steps.size(), 4);
+    }
+
+    // Another capture's selection and annotations in place of these, and back.
+    void replaceShotRestoresSelectionAndAnnotations()
+    {
+        Rig rig;
+        rig.begin();
+        rig.drag({100, 100}, {499, 399});
+        drawRect(rig, {150, 150}, {300, 250});
+        const CaptureSession::Kept live = rig.session.kept();
+        QCOMPARE(live.screen, 0);
+        QCOMPARE(live.rect, QRect(100, 100, 400, 300));
+        QVERIFY(live.doc && live.doc->items.size() == 1);
+
+        rig.session.replaceShot({}, 0, QRect(10, 20, 30, 40), std::nullopt);
+        QCOMPARE(rig.session.selectionRect(), QRect(10, 20, 30, 40));
+        QVERIFY(!rig.session.hasAnnotations());
+        rig.session.replaceShot({}, -1, {}, std::nullopt); // one with no selection kept
+        QVERIFY(!rig.session.hasSelection());
+
+        rig.session.replaceShot({}, live.screen, live.rect, live.doc);
+        QCOMPARE(rig.session.selectionRect(), QRect(100, 100, 400, 300));
+        QVERIFY(rig.session.hasAnnotations());
+        QCOMPARE(rig.session.annotation()->document().items.size(), 1);
+        QCOMPARE(rig.session.annotation()->selectionRect(), QRect(100, 100, 400, 300));
+        QVERIFY(rig.session.key(Qt::Key_Return, Qt::NoModifier)); // and it is taken as any selection
+    }
+
+    void historyStoreKeepsTheNewest()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString folder = dir.filePath(u"capture-history"_s);
+        const auto shot = [](const QString& id, QRgb colour) {
+            HistoryShot s;
+            s.id = id;
+            QImage left(64, 48, QImage::Format_RGB32);
+            left.fill(colour);
+            QImage right(32, 48, QImage::Format_ARGB32_Premultiplied);
+            right.fill(qRgb(1, 2, 3));
+            s.screens = {{QRect(0, 0, 64, 48), 1.5, left}, {QRect(64, 0, 32, 48), 1.0, right}};
+            s.screen = 1;
+            s.selection = QRect(2, 3, 20, 10);
+            return s;
+        };
+        CaptureHistory history;
+        history.setFolder(folder);
+        history.setLimit(2);
+        history.add(shot(u"1000"_s, qRgb(10, 0, 0)));
+        HistoryShot annotated = shot(u"1001"_s, qRgb(20, 0, 0));
+        annot::Document doc;
+        doc.canvas = QSize(32, 48);
+        doc.crop = QRect(2, 3, 20, 10);
+        annotated.document = QJsonDocument(annot::toJson(doc)).toJson();
+        history.add(annotated);
+        history.add(shot(u"1002"_s, qRgb(30, 0, 0)));
+        history.flush();
+        QCOMPARE(history.ids(), QStringList({u"1002"_s, u"1001"_s}));
+
+        const std::optional<HistoryShot> read = CaptureHistory::read(folder, u"1001"_s);
+        QVERIFY(read);
+        QCOMPARE(read->screens.size(), std::size_t(2));
+        QCOMPARE(read->screens[0].rect, QRect(0, 0, 64, 48));
+        QCOMPARE(read->screens[0].dpr, 1.5);
+        QCOMPARE(read->screens[0].image.pixel(5, 5), qRgb(20, 0, 0));
+        QCOMPARE(read->screens[1].image.format(), QImage::Format_ARGB32_Premultiplied); // as it was
+        QCOMPARE(read->screen, 1);
+        QCOMPARE(read->selection, QRect(2, 3, 20, 10));
+        QVERIFY(!read->document.isEmpty());
+        QVERIFY(read->fits({QRect(64, 0, 32, 48), QRect(0, 0, 64, 48)}));
+        QVERIFY(!read->fits({QRect(0, 0, 64, 48)}));
+        QVERIFY(!read->fits({QRect(0, 0, 64, 48), QRect(64, 0, 33, 48)}));
+
+        // Taken again from the history: the old one goes.
+        history.add(shot(u"1003"_s, qRgb(40, 0, 0)), u"1002"_s);
+        history.flush();
+        QCOMPARE(history.ids(), QStringList({u"1003"_s, u"1001"_s}));
+
+        // A write cut short is never read, and goes with the next one.
+        QVERIFY(QDir(folder).mkpath(u"999.part"_s));
+        QCOMPARE(history.ids(), QStringList({u"1003"_s, u"1001"_s}));
+        history.setLimit(0);
+        history.flush();
+        QVERIFY(history.ids().isEmpty());
+        QVERIFY(QDir(folder).entryList(QDir::Dirs | QDir::NoDotAndDotDot).isEmpty());
     }
 
     void toolKeysAndDrawingGoToTheAnnotations()

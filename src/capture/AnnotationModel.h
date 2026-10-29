@@ -107,6 +107,13 @@ public:
     // picture that never was a screenshot). What the model is asked to keep
     // from here on is measured against this document (modified()).
     void begin(const annot::Project& project, qreal deviceDpr, const annot::StyleMemory& styles);
+    // A capture brought back from the history (, and . in the overlay): its
+    // monitor's frozen picture with the annotations as they were left
+    // (`doc`, on the whole picture), an empty undo stack.
+    void begin(const QImage& base, const annot::Document& doc, const annot::StyleMemory& styles);
+    // The annotations as they stand, a text or path under way included, on
+    // the whole picture (the history keeps them so); document() leaves those out.
+    annot::Document committedDocument() const { return committed(); }
     // Everything let go of (the picture, the caches, the stack).
     void end();
     bool editor() const { return m_editor; }

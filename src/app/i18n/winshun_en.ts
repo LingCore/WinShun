@@ -6178,10 +6178,6 @@
         <translation>Search</translation>
     </message>
     <message>
-        <source>搜索应用和文件</source>
-        <translation>Search apps and files</translation>
-    </message>
-    <message>
         <source>没能重启资源管理器</source>
         <translation>Could not restart File Explorer</translation>
     </message>
@@ -6826,8 +6822,16 @@
         <translation>Quick paste</translation>
     </message>
     <message>
+        <source>保存为文件</source>
+        <translation>Save as files</translation>
+    </message>
+    <message>
         <source>%1 已被其他快捷键占用，这几条无法直接粘贴；其余数字仍可用。可更换组合键，或调整冲突的快捷键。</source>
         <translation>%1 are already assigned to other shortcuts. These slots cannot paste directly; the remaining digits still work. Choose another modifier or change the conflicting shortcuts.</translation>
+    </message>
+    <message>
+        <source>想搜索什么…</source>
+        <translation>Search…</translation>
     </message>
 </context>
 <context>
@@ -7012,6 +7016,51 @@
     <message>
         <source>无法拖出图片</source>
         <translation>Could not drag the image</translation>
+    </message>
+    <message>
+        <source>无法拖出这些内容</source>
+        <translation>Could not drag these out</translation>
+    </message>
+    <message>
+        <source>无法准备要拖出的文件</source>
+        <translation>Cannot prepare the files for dragging</translation>
+    </message>
+    <message numerus="yes">
+        <source>保存 %Ln 条为文件…</source>
+        <translation>
+            <numerusform>Save %Ln entry as a file…</numerusform>
+            <numerusform>Save %Ln entries as files…</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>保存为文件…</source>
+        <translation>Save as a file…</translation>
+    </message>
+    <message>
+        <source>合并保存为一个文件…</source>
+        <translation>Save all in one file…</translation>
+    </message>
+    <message>
+        <source>保存到哪个文件夹</source>
+        <translation>Save to which folder</translation>
+    </message>
+    <message>
+        <source>没能保存到“%1”，那里可能不允许写入</source>
+        <translation>Could not save to “%1”. Writing there may not be allowed.</translation>
+    </message>
+    <message numerus="yes">
+        <source>有 %Ln 个没能保存</source>
+        <translation>
+            <numerusform>%Ln could not be saved</numerusform>
+            <numerusform>%Ln could not be saved</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%Ln 个文件已经不存在，没有保存</source>
+        <translation>
+            <numerusform>%Ln file no longer exists and was not saved</numerusform>
+            <numerusform>%Ln files no longer exist and were not saved</numerusform>
+        </translation>
     </message>
     <message>
         <source>已复制。那个窗口没有回到前面，请自己按 Ctrl+V 粘贴</source>

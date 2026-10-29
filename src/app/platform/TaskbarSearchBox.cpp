@@ -55,7 +55,7 @@ constexpr double kPadding = 12; // inside, at either end
 constexpr double kIconSize = 16;
 constexpr double kIconGap = 10;
 constexpr float kFontSize = 14;
-constexpr double kMargin = 6; // round the box in its window: for its glow
+constexpr double kMargin = 6; // round the box in its window
 // Its icon alone is a taskbar button, as Windows' own search icon is
 // (measured 2026-10-16 at 150%, dark taskbar: a slot 44 DIPs wide, the plate
 // 40 × 40 with 4 DIP corners, 4 from the taskbar's top and bottom and 2 from
@@ -687,11 +687,9 @@ struct SearchBox::Impl {
     bool hover = false;
     Tween hoverT;
     Tween activeT;
-    Tween glowT; // 0 to 1 once, as it becomes active
     Tween shownT;
     Tween placeholderT;
     Spring pressS; // 1 held down
-    Spring iconS; // the icon's scale
     bool caretOn = true;
     float scroll = 0; // the text, moved left to keep the caret in view
     bool selecting = false; // the button held down in the text
@@ -806,7 +804,6 @@ struct SearchBox::Impl {
             drawnLook = look;
             drawnText = text;
         }
-        iconS.snap(1);
         readTheme();
         startAttaching();
         loop();
@@ -844,8 +841,7 @@ struct SearchBox::Impl {
 
     bool animating() const
     {
-        return hoverT.running || activeT.running || glowT.running || shownT.running || placeholderT.running
-            || pressS.moving || iconS.moving;
+        return hoverT.running || activeT.running || shownT.running || placeholderT.running || pressS.moving;
     }
 
     void tick()
@@ -853,10 +849,9 @@ struct SearchBox::Impl {
         const double now = nowMs();
         const double ms = now - lastTick;
         lastTick = now;
-        for (Tween* t : {&hoverT, &activeT, &glowT, &shownT, &placeholderT})
+        for (Tween* t : {&hoverT, &activeT, &shownT, &placeholderT})
             t->step(now);
         pressS.step(ms);
-        iconS.step(ms);
         if (hiding && !shownT.running) {
             finishHiding();
             return;
@@ -1477,13 +1472,7 @@ struct SearchBox::Impl {
         if (next.active != drawnText.active) {
             scroll = 0;
             if (animations) {
-                activeT.go(next.active ? 1 : 0, now, next.active ? 250 : 167, kFastIn);
-                if (next.active) {
-                    glowT.snap(0);
-                    glowT.go(1, now, 600, kLinear);
-                    iconS.velocity += 2.4; // a little hop
-                    iconS.to(1, 16, 0.42);
-                }
+                activeT.go(next.active ? 1 : 0, now, next.active ? 250 : 167, kFastIn); // its fill and line alone: no ring, no hop
             } else {
                 activeT.snap(next.active ? 1 : 0);
             }
@@ -1524,7 +1513,7 @@ struct SearchBox::Impl {
         if (on)
             pressS.to(1, 45, 0.9); // in quickly
         else
-            pressS.to(0, 22, 0.5); // back with a little bounce
+            pressS.to(0, 22, 1); // back, no bounce
     }
 
     // ---- the pointer ----
@@ -1815,13 +1804,6 @@ struct SearchBox::Impl {
                 round ? std::max(0.0f, radius + out) : 0, round ? std::max(0.0f, radius + out) : 0};
         };
 
-        if (glowT.running && !highContrast && whole) { // a thin ring of the edge's grey, spreading as it fades
-            const float t = glowT.value;
-            const float strength = t < 0.15f ? t / 0.15f : 1 - kFastIn((t - 0.15f) / 0.85f);
-            brush->SetColor(faded(p.edge, 0.6f * strength * activeAmount));
-            renderTarget->DrawRoundedRectangle(rounded(s * (0.5f + 3.5f * kFastIn(t))), brush.Get(), s);
-        }
-
         // The pill, with a line round it, 1 logical px as round our windows;
         // with high contrast the highlight's, thicker, while typing in it.
         // On whole pixels, rounded as Qt rounds our windows' (2 at 150 %):
@@ -1870,7 +1852,7 @@ struct SearchBox::Impl {
                                    : std::min(std::round(static_cast<float>(kPadding) * s), std::round((w - iconSize) / 2)); // narrow: centred
         if (const ComPtr<ID2D1Bitmap>& glyph = button ? searchIcon : icon) {
             const float y = std::round((h - iconSize) / 2);
-            const float k = static_cast<float>(iconS.value) * (1 - 0.14f * std::max(0.0f, press));
+            const float k = 1 - 0.14f * std::max(0.0f, press);
             renderTarget->SetTransform(
                 D2D1::Matrix3x2F::Scale(k, k, D2D1::Point2F(iconX + iconSize / 2, y + iconSize / 2)) * base);
             renderTarget->DrawBitmap(glyph.Get(), D2D1::RectF(iconX, y, iconX + iconSize, y + iconSize), 1.0f,

@@ -8,6 +8,7 @@
 
 #include <QClipboard>
 #include <QCoreApplication>
+#include <QDir>
 #include <QEventLoop>
 #include <QGuiApplication>
 #include <QThread>
@@ -199,7 +200,7 @@ int popupMenu(HWND owner, const std::vector<MenuItem>& items, POINT screenPos, s
     return chosen;
 }
 
-QString pickFolder(HWND owner, const QString& title)
+QString pickFolder(HWND owner, const QString& title, const QString& start)
 {
     return runPicker([&] {
         const HRESULT init = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
@@ -207,13 +208,21 @@ QString pickFolder(HWND owner, const QString& title)
         {
             ComPtr<IFileOpenDialog> dialog;
             ComPtr<IShellItem> item;
+            ComPtr<IShellItem> folder;
             PWSTR path = nullptr;
             DWORD options = 0;
+            const auto startIn = [&] { // a folder gone: where it was last
+                if (!start.isEmpty()
+                    && SUCCEEDED(::SHCreateItemFromParsingName(
+                        reinterpret_cast<LPCWSTR>(QDir::toNativeSeparators(start).utf16()), nullptr, IID_PPV_ARGS(&folder))))
+                    dialog->SetFolder(folder.Get());
+                return true;
+            };
             if (SUCCEEDED(
                     ::CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog)))
                 && SUCCEEDED(dialog->GetOptions(&options))
                 && SUCCEEDED(dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST))
-                && SUCCEEDED(dialog->SetTitle(reinterpret_cast<LPCWSTR>(title.utf16())))
+                && SUCCEEDED(dialog->SetTitle(reinterpret_cast<LPCWSTR>(title.utf16()))) && startIn()
                 && SUCCEEDED(showPicker(dialog.Get(), owner)) && SUCCEEDED(dialog->GetResult(&item))
                 && SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) {
                 result = QString::fromWCharArray(path);

@@ -669,6 +669,12 @@ Window {
             event.accepted = true
             return
         }
+        // Ctrl+R: regex mode, as Everything's (the .* chip by the box says it is on).
+        if (event.key === Qt.Key_R && ctrl && !shift && (event.modifiers & Qt.AltModifier) === 0) {
+            window.launcher.toggleRegexMode()
+            event.accepted = true
+            return
+        }
         if (homeIndex >= 0) { // on the row of apps (nothing typed, so ← → move nothing else)
             switch (event.key) {
             case Qt.Key_Left: homeIndex = Math.max(0, homeIndex - 1); break

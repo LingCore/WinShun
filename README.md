@@ -125,7 +125,7 @@
 | `*.pdf`、`报告?.docx` | 通配符 |
 | `ext:pdf,docx` | 只要这些扩展名 |
 | `报告 \| 总结 2026` | OR 组合；空格 AND 优先，`\|` 两侧留空格 |
-| `^IMG`、`.pdf$`、`regex:^IMG_\d+\.(jpg\|png)$` | 名字首尾匹配、正则表达式 |
+| `^IMG`、`.pdf$`、`regex:^IMG_\d+\.(jpg\|png)$` | 名字首尾匹配、正则表达式；`Ctrl+R` 正则模式：每个词都按正则匹配，同 Everything |
 | `:pictures,videos` | 同时筛选图片和视频（关键字可在设置里改） |
 | `项目\readme` | 在名字含“项目”的文件夹下 |
 | `tools/out/`、`D:\My Files\` | 路径直达：回车进去，列出里面的内容 |
@@ -147,6 +147,7 @@
 - **应用**：开始菜单里的所有应用都能搜，含 Microsoft Store 应用。名称、拼音、首字母（`vsc`）、程序名（`winword`）都行；`Ctrl+Shift+Enter` 以管理员身份运行。
 - **系统设置**：约 1200 个 Windows 设置页和控制面板项。`shipeiqi`、“网卡”、`ncpa.cpl` 都能打开网络连接；另外补了组策略、磁盘管理、hosts、AppData 等开始菜单里没有的。
 - **系统开关**：深色模式、显示隐藏的文件、显示文件扩展名、蓝牙、WLAN、音量和静音、保持唤醒，行尾直接显示现在的状态；`Enter` 就地切换，搜索框不关，`Ctrl+Enter` 打开设置页。“关蓝牙”“静音”“音量 30”一步到位，“保持唤醒 1小时”到点自动结束。
+- 只用来找文件的话，可以在设置里关掉“搜索应用”“搜索系统设置”，“全部”里就只有文件和内容。
 
 #### 🌐 网页搜索 · ⭐ 收藏夹 · 🧩 插件
 
@@ -165,6 +166,7 @@
   - `kill` 结束进程，`bm` 搜浏览器书签，`tr` 翻译；
   - **局域网传输**（在插件库里，要用时装上）：和同一个网络里开着 [LocalSend](https://localsend.org) 的手机、电脑互传文件和文字，不用服务器和账号。别人发来时先问你，输入 `传 ` 收发，或在结果上右键“用局域网发送…”；
   - **按意思找**（在插件库里，要用时装上）：`? 去年报销的规定` 也能找到写着“差旅费用申请”的文档。用你选的模型：本机的 Ollama、LM Studio 什么都不上传；硅基流动、百炼、OpenAI 等填自己的密钥，第一次计算前告诉你要发出去多少字，你按回车才开始。见 [它的说明](src/semantic-plugin/package/README.md)；
+  - **休息提醒**（默认关）：默认每 20 分钟小休 20 秒，隔一次换成大休 5 分钟。提前 30 秒屏幕上方出个小条，可以推迟一次或跳过；到点等你停手，把所有显示器调暗、显示倒计时，按 `Esc` 提前结束。可以选“必须休完”（长按 `Esc` 3 秒才能离开）。离开电脑 5 分钟算休息过；全屏游戏、放幻灯片、开着勿扰时先等着。输入 `休息` 看还有多久、马上休息或暂停。见 [plugins/winshun.break](plugins/winshun.break/README.md)；
   - **插件库**：设置 › 插件 › 插件库 里装 Win顺 自己的截图与录屏、局域网传输、按意思找，也看别人写的插件（来自 [WinShun-plugins](https://github.com/LingCore/WinShun-plugins)），点一下安装或更新，下载后先核对大小和校验值；只在打开这一页、点“刷新”或安装时联网；连不上 GitHub 时在 设置 › 高级 › 网络代理 里选“手动”填代理地址；
   - 自己写插件：零代码的 `plugin.json`、任意语言的脚本或常驻进程都行，附 Python / PowerShell / C++ SDK；
   - 插件以普通权限、限内存运行。见 [docs/plugins.md](docs/plugins.md)。
@@ -205,7 +207,7 @@
 - **隐私**：密码管理器复制的密码不记录，历史只存在本机。
 - **截图**（插件库里的“截图与录屏”插件，在 设置 › 插件 › 插件库 装上；快捷键自己录，想用 `PrtScn` 也在它卡片上的“设置”里打开。以前开着截图的，升级后自动装上，设置照旧）：
   - **区域录屏和 GIF**：框选后点“录屏”或按 `Ctrl+R`，录 MP4 或 GIF；可以暂停、继续、选择画质、鼠标指针和点击高亮，还能在视频角落显示按下的快捷键和鼠标按键（默认关闭；选“全部按键”时打的字也会录进去）。MP4 可选系统声音和麦克风，默认都关闭；GIF 不含音频，后台生成时显示进度。控制条不录进画面，录完能继续录下一段。
-  - **框选**：鼠标移到窗口、按钮上就把它框出来，框外变暗，点一下选中，也可以拖出一块；滚轮扩大或缩小框。设置、计算器这类程序里的侧栏和按钮也能框出来（Chrome、Edge、VS Code、微信这类 Chromium 程序里面不识别，只框整个窗口，需要时手动拖选）。`Shift+R` 回到上一次的那一块。
+  - **框选**：鼠标移到窗口、按钮上就把它框出来，框外变暗，点一下选中，也可以拖出一块；滚轮扩大或缩小框。设置、计算器这类程序里的侧栏和按钮也能框出来（Chrome、Edge、VS Code、微信这类 Chromium 程序里面不识别，只框整个窗口，需要时手动拖选）。`Shift+R` 回到上一次的那一块；`,` `.` 翻看之前的截图（整屏、选区和标注都恢复，可重新框选、接着改），默认留最近 10 次。
   - **放大镜和取色**：跟着鼠标放大像素，`C` 复制鼠标下的颜色并结束截图，单按 `Shift` 在 `#RRGGBB`、`rgb()`、`hsl()` 三种写法之间换。选好区域后放大镜只在选区里出现。
   - **HDR 屏幕**：开着 HDR 时截图颜色照常，不发灰；在截图的设置里打开“HDR 屏幕上同时保存 HDR 图片”（默认关），`Ctrl+S` 保存时在 PNG 旁边多存一份同名的 `.jxr`，亮的地方保持原来的亮度，用 Windows 的“照片”就能看。
   - **识别文字并复制**：`Shift+C` 把选区里的文字识别出来，直接复制。
@@ -361,7 +363,7 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
   - **Drag out**: drag results into a chat, a mail or Explorer.
   - **Live updates**: the USN change journal is read, so renamed, new and deleted files are found at once; unplugging a USB drive never says it is in use.
   - **Large icons**: switch the search panel between a list and a thumbnail grid. Resize previews with the slider or `Alt`+wheel, select several file categories together, and keep the normal selection, menus and file dragging. The view and thumbnail size are remembered.
-  - **Query syntax**: `"exact phrase"`, `!exclude`, `!node_modules\`, wildcards `*` `?`, `ext:pdf,docx`, `folder\name`, and paths (`D:\My Files\`, `tools/out/`). Add OR groups (`report | summary 2026`, AND takes precedence), name anchors (`^IMG`, `.pdf$`), or `regex:^IMG_\d+\.(jpg|png)$`; invalid expressions explain the error. `:pictures,videos` combines type keywords.
+  - **Query syntax**: `"exact phrase"`, `!exclude`, `!node_modules\`, wildcards `*` `?`, `ext:pdf,docx`, `folder\name`, and paths (`D:\My Files\`, `tools/out/`). Add OR groups (`report | summary 2026`, AND takes precedence), name anchors (`^IMG`, `.pdf$`), or `regex:^IMG_\d+\.(jpg|png)$`; invalid expressions explain the error. `Ctrl+R` turns on regex mode, where every word is a regex, as in Everything. `:pictures,videos` combines type keywords.
 - 📄 **Full-text search**
   - **What**: the **Content** scope searches inside txt, md, logs, source code and **Word, Excel, PowerPoint, PDF and WPS** files, showing the page, slide or sheet and row.
   - **In one folder**: add a folder's name and a slash, `annual report abc/`, to search only in folders named abc (`/abc` last works too; `work/abc/` takes the one in work); folders of the same name are all searched and listed under the box, `Ctrl+Tab` picks one. Or pick a favorite folder there, or right-click a folder in the results → Search contents in this folder.
@@ -371,6 +373,7 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
 - 🚀 **Apps and settings**
   - **Apps**: everything in the Start menu (Store apps included), by name, pinyin, initials (`vsc`) or program file (`winword`).
   - **Settings**: about 1,200 Windows settings pages and Control Panel items (`ncpa.cpl`, “network adapter”), plus Group Policy, Disk Management, hosts, AppData and more.
+  - Searching for files only? Turn off app and settings results in the settings, and All lists files and content alone.
   - **Switches**: dark mode, hidden files, file extensions, Bluetooth, WLAN, volume and mute, keep awake, each with its live state at the end of its row; `Enter` flips it in place and the box stays open, `Ctrl+Enter` opens its settings page. `bluetooth off`, `mute` and `volume 30` act in one step; `awake 1h` keeps the PC awake for an hour.
 - 🌐 **Web search**: `zhihu 显卡`, `baidu 天气`: a keyword and a space search that site. Ten Chinese sites are built in; add your own with `%s` in the URL, and import or export the list and icons. The site's search suggestions show below as you type (Enter searches one, Tab puts it in the box), and a site's icon can be an SVG file or pasted SVG code.
 - ⭐ **Favorites**
@@ -381,6 +384,7 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
   - **Bundled**: `= 1+2*3`, `12 inch to cm`, `#ff8800`, timestamps, UUID, Base64, hashes; `kill` processes, `bm` browser bookmarks, `tr` translation.
   - **LAN transfer** (in the plugin library, to install when you want it): send files and text to and from phones and PCs on the same network that run [LocalSend](https://localsend.org), with no server or account. You are asked before anything is received; type `ls ` to send and receive, or right-click a result › Send over LAN….
   - **Search by meaning** (in the plugin library, to install when you want it): `? last year's expense rules` finds a document that says “travel cost requests”. It uses the model you pick: Ollama or LM Studio on your PC uploads nothing; for SiliconFlow, Model Studio, OpenAI and others you enter your own key, and before the first run it says how much text would be sent and waits for your Enter. See [its guide](src/semantic-plugin/package/README.md).
+  - **Break reminder** (off by default): a 20-second break every 20 minutes, every other one a 5-minute break. Thirty seconds before, a small bar at the top offers Postpone (once) and Skip; when it is due it waits for a pause in typing, dims every monitor with a countdown, and `Esc` ends it early. Strict mode leaves only a 3-second hold of `Esc`. Five minutes away counts as a break; full-screen games, slide shows and Do not disturb hold it back. Type `break` to see the time left, take a break now or pause. See [plugins/winshun.break](plugins/winshun.break/README.md).
   - **Plugin library**: Settings › Plugins › Plugin library has WinShun's own Screenshot and recording, LAN transfer and Search by meaning, and plugins other people wrote (from [WinShun-plugins](https://github.com/LingCore/WinShun-plugins)); one click installs or updates one, after its size and checksum are checked. It goes online only when that page is opened, on Refresh, or to install. If GitHub cannot be reached, Settings › Advanced › Network proxy takes a proxy address by hand.
   - **Your own**: zero-code `plugin.json`, scripts in any language, or resident processes, with SDKs for Python, PowerShell and C++. Plugins run with normal rights under a memory limit. See [docs/plugins.en.md](docs/plugins.en.md).
 - 📂 **Open / Save dialogs**
@@ -415,7 +419,7 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
   - **Screenshots** (the Screenshot and recording plugin: install it in Settings › Plugins › Plugin library, record your own shortcut under Settings on its card, and turn on `PrtScn` there too if you want it. Who had screenshots on gets it installed with the update, settings as they were):
     - **Region recording**: choose Record or press `Ctrl+R` after selecting an area, for MP4 or GIF. Pause and resume, choose quality, cursor and click highlights, and optionally show the shortcuts and mouse buttons pressed as keycaps in a corner (off by default; "All keys" records typing too). MP4 audio is optional and off by default; GIF is silent. Controls stay out of the recording. Choose a save folder, or record another take without replacing the previous file.
     - **Toolbar and saving**: drag the toolbar by its left grip together with its style panel. Choose the screenshot save folder and a shortcut to pin the latest screenshot in the screenshot's settings. After a save, click the notification to see the file selected in your file manager.
-    - **Choosing**: rest the pointer on a window or a button and it is outlined, with everything outside it dimmed; click to take it, or drag an area; the wheel makes the outline larger or smaller. Side panels and buttons in apps that draw their own interface, such as Settings and Calculator, are outlined too (not inside Chromium apps such as Chrome, Edge, VS Code and WeChat, where only the whole window is outlined; drag an area there). `Shift+R` goes back to the area of the last screenshot.
+    - **Choosing**: rest the pointer on a window or a button and it is outlined, with everything outside it dimmed; click to take it, or drag an area; the wheel makes the outline larger or smaller. Side panels and buttons in apps that draw their own interface, such as Settings and Calculator, are outlined too (not inside Chromium apps such as Chrome, Edge, VS Code and WeChat, where only the whole window is outlined; drag an area there). `Shift+R` goes back to the area of the last screenshot; `,` and `.` step through past captures (the whole screens, the area and the annotations, editable again), the last 10 kept by default.
     - **Magnifier and color**: the pixels under the pointer, enlarged; `C` copies the color under it and ends the capture, and `Shift` alone switches between `#RRGGBB`, `rgb()` and `hsl()`. Once an area is chosen, the magnifier shows only inside it.
     - **HDR screens**: captures on an HDR screen keep their normal colors. Turn on “Also save an HDR picture on HDR screens” in the screenshot's settings (off by default) and `Ctrl+S` saves a `.jxr` of the same name beside the PNG, with the bright parts as bright as they were; Windows Photos shows it.
     - **Copy the words**: `Shift+C` reads the words in the area and copies them.

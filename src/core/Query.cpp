@@ -570,7 +570,7 @@ QString sizeText(std::uint64_t bytes)
     return QString::number(value, 'f', decimals) + u' ' + kUnits[unit];
 }
 
-ParsedQuery parseQuery(const QString& text)
+ParsedQuery parseQuery(const QString& text, bool regexTerms)
 {
     ParsedQuery q;
     qsizetype start = 0;
@@ -583,7 +583,7 @@ ParsedQuery parseQuery(const QString& text)
             q.error = branch.isEmpty() ? QObject::tr("“|”两侧都需要搜索条件") : QObject::tr("搜索条件过多");
             return q;
         }
-        q.alternatives.push_back(parseQuery(branch));
+        q.alternatives.push_back(parseQuery(branch, regexTerms));
         start = piece.end;
     }
     if (!q.alternatives.empty()) {
@@ -592,7 +592,7 @@ ParsedQuery parseQuery(const QString& text)
             q.error = QObject::tr("“|”两侧都需要搜索条件");
             return q;
         }
-        q.alternatives.push_back(parseQuery(branch));
+        q.alternatives.push_back(parseQuery(branch, regexTerms));
         for (const ParsedQuery& group : q.alternatives) {
             q.highlights.append(group.highlights);
             if (!group.error.isEmpty())
@@ -603,7 +603,7 @@ ParsedQuery parseQuery(const QString& text)
     }
     // A path typed or pasted whole ("C:\Users\me\Tencent Files\x") is one
     // term: its spaces are in the names, not between terms.
-    const pathtext::TypedPath typed = pathtext::splitTyped(text);
+    const pathtext::TypedPath typed = regexTerms ? pathtext::TypedPath() : pathtext::splitTyped(text);
     struct Token { QString text; bool quotedLiteral; };
     std::vector<Token> tokens;
     if (typed.folder.isEmpty()) {
@@ -639,12 +639,13 @@ ParsedQuery parseQuery(const QString& text)
             token.remove(0, 1);
         }
 
-        const bool regex = !quotedLiteral && token.startsWith(u"regex:", Qt::CaseInsensitive);
+        const bool prefixed = !quotedLiteral && token.startsWith(u"regex:", Qt::CaseInsensitive);
+        const bool regex = prefixed || regexTerms;
         const bool anchored = !quotedLiteral && (token.startsWith(u'^') || token.endsWith(u'$'));
         if (regex || anchored) {
             QString pattern;
             if (regex) {
-                pattern = token.mid(6);
+                pattern = prefixed ? token.mid(6) : token;
             } else {
                 const bool prefix = token.startsWith(u'^');
                 const bool suffix = token.endsWith(u'$');

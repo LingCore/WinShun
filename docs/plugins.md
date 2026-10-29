@@ -10,7 +10,7 @@ Win顺 的插件给搜索框加关键字命令、把结果混进列表。界面�
 | **一次性脚本**（`once`） | 任何语言；查询从环境变量进，结果打印到 stdout | 几十行的小工具，偶尔用 |
 | **常驻**（`resident`） | 任何语言；stdio 上一行一条 JSON-RPC | 每键都查的、要缓存的、PowerShell（它冷启动慢） |
 
-随 Win顺 装好的插件在 `<安装目录>\plugins\`（默认全部关着，设置 → 插件 里打开）：`winshun.tools`（计算器、单位换算、颜色、时间戳、UUID、Base64、哈希；C++）、`winshun.kill`（结束进程；PowerShell）、`winshun.bookmarks`（浏览器书签；Python 一次性）、`winshun.translate`（翻译；Python 常驻，要自己填 API 密钥）、`winshun.semantic`（按意思找：`? 一句话` 按文档讲的内容找文件，用你选的嵌入模型——本机的 Ollama 或云服务的密钥；C++ 常驻，用 `winshun:content` 拿 Win顺 已经读出的文字）、`winshun.localsend`（局域网传输：同一网络里的手机、电脑互传文件和文字，兼容 LocalSend；`传` 或 `ls`，或文件右键菜单的"用局域网发送…"；C++ 常驻、eager，用到 `network:listen`、`notifications` 和 `files` 触发）、`winshun.web` 和 `winshun.go`（零代码）。每个都是一份能跑的示例，文件夹里有 README。
+随 Win顺 装好的插件在 `<安装目录>\plugins\`（默认全部关着，设置 → 插件 里打开）：`winshun.tools`（计算器、单位换算、颜色、时间戳、UUID、Base64、哈希；C++）、`winshun.kill`（结束进程；PowerShell）、`winshun.bookmarks`（浏览器书签；Python 一次性）、`winshun.translate`（翻译；Python 常驻，要自己填 API 密钥）、`winshun.semantic`（按意思找：`? 一句话` 按文档讲的内容找文件，用你选的嵌入模型——本机的 Ollama 或云服务的密钥；C++ 常驻，用 `winshun:content` 拿 Win顺 已经读出的文字）、`winshun.localsend`（局域网传输：同一网络里的手机、电脑互传文件和文字，兼容 LocalSend；`传` 或 `ls`，或文件右键菜单的"用局域网发送…"；C++ 常驻、eager，用到 `network:listen`、`notifications` 和 `files` 触发）、`winshun.break`（休息提醒：每 20 分钟小休、隔一次大休，提前一个小条，到点调暗所有显示器显示倒计时；`休息` 或 `break`；C++ 常驻、eager，只要 `ui`，自己画窗口、休息时用键盘钩子拦按键）、`winshun.web` 和 `winshun.go`（零代码）。每个都是一份能跑的示例，文件夹里有 README。
 
 别人写的插件、以及分享你自己的插件：[WinShun-plugins](https://github.com/LingCore/WinShun-plugins)（设置 → 插件 → 插件库 里直接安装和更新：下载后先核对大小和 sha256，再走和压缩包一样的安装；也可以自己下载 `.wsplugin`，在“已安装”里从压缩包安装；投稿见那里的 CONTRIBUTING）。插件库只在打开这一页（十分钟内不重复取）、点“刷新”或安装时联网，上次的列表存在数据文件夹的 `plugin-index.json`。
 

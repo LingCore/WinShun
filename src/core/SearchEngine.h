@@ -199,6 +199,13 @@ public:
         // a switch that is on and must be seen to be ended (keep awake).
         // Others in the start list: none, a switch is never listed there.
         QStringList pinnedPlaces;
+        // 全部 also finds apps, and Windows' settings pages, Control Panel
+        // items and switches ("关蓝牙"): typed, and in the start list. Off,
+        // names and content only (a favorite app or place stays).
+        bool apps = true;
+        bool places = true;
+        // Every term of `text` is a regex (parseQuery's regexTerms; names only).
+        bool regex = false;
     };
 
     explicit SearchEngine(

@@ -124,8 +124,9 @@ int popupMenu(HWND owner, const std::vector<MenuItem>& items, POINT screenPos, s
 // nothing shows. Once per process; later calls return at once.
 void prepareMenuHooks();
 
-// The standard "select folder" dialog (modal). Returns an empty string when cancelled.
-QString pickFolder(HWND owner, const QString& title);
+// The standard "select folder" dialog (modal), in `start` when given (else
+// where it was last). Returns an empty string when cancelled.
+QString pickFolder(HWND owner, const QString& title, const QString& start = {});
 // The standard "open file" dialog (modal), for one file of the kinds in
 // `filters` ({"插件压缩包", "*.zip;*.wsplugin"} pairs). Empty when cancelled.
 QString pickFile(HWND owner, const QString& title, const std::vector<std::pair<QString, QString>>& filters);

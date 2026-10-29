@@ -322,7 +322,8 @@ Item {
             ["Alt+P", qsTr("预览文件；再按一次关闭")],
             ["Ctrl+S", qsTr("切换排序；不输入时切换最近打开、最近修改")],
             ["Ctrl+E", qsTr("展开为搜索面板，或收回搜索框")],
-            ["Ctrl+T", qsTr("钉住：点别处、打开文件后都不收起；再按一次取消")]
+            ["Ctrl+T", qsTr("钉住：点别处、打开文件后都不收起；再按一次取消")],
+            ["Ctrl+R", qsTr("正则模式：每个词都按正则表达式匹配名字；再按一次关闭")]
         ].concat(footer.launcher.typingFolder.length === 0 // typed in a folder's window (GitHub #110): where
                  || footer.launcher.scope === Launcher.Content || footer.launcher.panel ? [] // switchTypingFolder takes it
                  : [["Ctrl+D", qsTr("只搜当前文件夹，或也搜其他位置")]])

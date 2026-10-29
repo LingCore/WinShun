@@ -440,6 +440,7 @@ void CaptureApp::apply()
     m_capture->setHdrFile(o.hdrFile);
     m_capture->setControlDetection(o.controlsUia);
     m_capture->setDelay(o.delay);
+    m_capture->setHistory(QDir(m_dataDir).filePath(u"capture-history"_s), o.historyCount);
     m_capture->setColorFormat(capture::colorFormatFromName(o.colorFormat));
     if (m_pins)
         m_pins->setDoubleClick(capture::pinDoubleClickFromName(o.pinDoubleClick));

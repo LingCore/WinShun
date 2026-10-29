@@ -60,6 +60,7 @@ add_library(wscapture STATIC
     QrCode.cpp QrCode.h
     PinTools.cpp PinTools.h
     CaptureTools.cpp CaptureTools.h
+    CaptureHistory.cpp CaptureHistory.h
     UiaProbe.cpp UiaProbe.h
     CountdownWindow.cpp CountdownWindow.h
     CaptureDiagnostics.cpp CaptureDiagnostics.h

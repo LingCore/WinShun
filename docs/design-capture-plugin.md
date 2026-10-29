@@ -81,4 +81,4 @@ Win顺 → 插件（manifest 声明，宿主照着画）：
 
 - 作业的内存上限：manifest 的 `memoryMB` 最多 2048；长截图和 4K 录屏可能更大，要实测后定（必要时放宽上限）。
 - 插件 eager 在 Win顺 启动 10 秒后才起：开机后头 10 秒按截图快捷键没反应。
-- 截图历史（另一个会话正在做，`CaptureHistory`）提交后跟着搬进插件。
+- 之前的画面（`CaptureHistory`）已跟着搬进插件：`HistoryCount` 在 `capture.ini`，图在插件数据文件夹的 `capture-history`。开发版在 `%APPDATA%\WinShun\capture-history` 存过的不搬（没发布过）。

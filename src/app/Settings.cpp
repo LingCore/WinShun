@@ -849,6 +849,9 @@ void Settings::load()
     doubleClickToOpen = readOrDefault(s, u"Results/DoubleClickToOpen"_s, d.doubleClickToOpen);
     tabEntersFavoriteFolder = readOrDefault(s, u"Results/TabEntersFavoriteFolder"_s, d.tabEntersFavoriteFolder);
     thumbnails = readOrDefault(s, u"Results/Thumbnails"_s, d.thumbnails);
+    searchApps = readOrDefault(s, u"Results/SearchApps"_s, d.searchApps);
+    searchSystem = readOrDefault(s, u"Results/SearchSystem"_s, d.searchSystem);
+    regexMode = readOrDefault(s, u"Results/RegexMode"_s, d.regexMode);
     if (!s.contains(u"Results/Sort"_s) && s.value(u"Results/SortByModified"_s).toBool())
         s.setValue(u"Results/Sort"_s, u"newest"_s); // 0.6.0's switch: newest first, or best match
     s.remove(u"Results/SortByModified"_s);
@@ -1116,6 +1119,9 @@ void Settings::save() const
     s.setValue(u"Results/DoubleClickToOpen"_s, doubleClickToOpen);
     s.setValue(u"Results/TabEntersFavoriteFolder"_s, tabEntersFavoriteFolder);
     s.setValue(u"Results/Thumbnails"_s, thumbnails);
+    s.setValue(u"Results/SearchApps"_s, searchApps);
+    s.setValue(u"Results/SearchSystem"_s, searchSystem);
+    s.setValue(u"Results/RegexMode"_s, regexMode);
     s.setValue(u"Results/Sort"_s, sort);
     s.setValue(u"Results/StartList"_s, startList);
     s.setValue(u"Launcher/ClearOnOpen"_s, clearOnOpen);

@@ -53,7 +53,7 @@ namespace ws {
 //
 // Opening and closing are animated (slideIn, slideOut) unless the system's
 // animation effects are off: it fades in coming a little from the taskbar's
-// side (elsewhere: rising), and fades out sinking a little. By the taskbar it
+// side (elsewhere: rising), and fades out where it is. By the taskbar it
 // stays over it all the while, moving no further than the gap between them:
 // a see-through taskbar (TranslucentTB) showed a window that slid behind it,
 // and kept the last of it in its blur once the window was hidden. The window

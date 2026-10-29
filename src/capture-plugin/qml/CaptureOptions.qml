@@ -467,6 +467,53 @@ Item {
                         }
                     }
                 }
+
+                Item { // 之前的画面: how many captures , and . bring back
+                    width: parent.width
+                    height: card.narrow ? historyTexts.implicitHeight + 8 + historyChoices.implicitHeight
+                        : Math.max(historyTexts.implicitHeight, historyChoices.implicitHeight)
+
+                    Column {
+                        id: historyTexts
+                        anchors.left: parent.left
+                        anchors.right: card.narrow ? parent.right : historyChoices.left
+                        anchors.rightMargin: card.narrow ? 0 : 12
+                        spacing: 4
+
+                        Text {
+                            width: parent.width
+                            text: qsTr("截图时翻看之前的画面")
+                            color: Theme.text
+                            font.pixelSize: Theme.fontBody
+                            wrapMode: Text.Wrap
+                        }
+                        Text {
+                            width: parent.width
+                            text: qsTr("截图时按 , 翻到上一次截图时的画面，按 . 往回翻：整个屏幕、选区和标注都恢复，可以重新框选或接着改。会在本机保存最近几次截图时的整屏画面；选“关闭”不再保存，并删除已保存的（不影响用关键词找截过的图）。")
+                            color: Theme.subtext
+                            font.pixelSize: Theme.fontCaption
+                            wrapMode: Text.Wrap
+                        }
+                    }
+                    Row {
+                        id: historyChoices
+                        anchors.right: parent.right
+                        y: card.narrow ? historyTexts.implicitHeight + 8 : (parent.height - height) / 2
+                        spacing: 8
+
+                        Repeater {
+                            model: [0, 10, 30, 100]
+
+                            delegate: FlatButton {
+                                required property int modelData
+
+                                highlighted: card.editor.captureHistoryCount === modelData
+                                text: modelData === 0 ? qsTr("关闭", "capture history") : qsTr("%1 次").arg(modelData)
+                                onClicked: card.editor.captureHistoryCount = modelData
+                            }
+                        }
+                    }
+                }
             }
 
             Column {

@@ -31,6 +31,21 @@ qint64 addImage(ClipStore& store, QRgb color)
     return store.add(capture, 1'790'000'000'000); // both copied in the same second
 }
 
+qint64 addText(ClipStore& store, ClipKind kind, const QString& text)
+{
+    ClipCapture capture;
+    capture.kind = kind;
+    capture.text = text;
+    capture.hash = clipHash(kind, text);
+    return store.add(capture, 1'790'000'000'000);
+}
+
+QByteArray readAll(const QString& path)
+{
+    QFile file(path);
+    return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+}
+
 } // namespace
 
 class ClipFilesTest : public QObject {
@@ -94,6 +109,86 @@ private slots:
         QCOMPARE(clipfiles::images(store, {store.clip(first), &text}, dir.filePath(u"mixed"_s), u"Image"_s).error,
             clipfiles::Error::NotImages);
         QVERIFY(!QFile::exists(dir.filePath(u"mixed"_s)));
+    }
+
+    // 保存为文件: each entry a file of the kind its words make, under a free name.
+    void entriesSavedAsFiles()
+    {
+        QTemporaryDir dir;
+        ClipStore store(dir.filePath(u"history"_s));
+        QVERIFY(store.open(1'790'000'000'000));
+        const auto notes = addText(store, ClipKind::Text, u"# 会议记录\n- 第一条"_s);
+        const auto again = addText(store, ClipKind::Text, u"会议记录\n另一份"_s);
+        const auto json = addText(store, ClipKind::Text, u"{\"a\": [1, 2]}"_s);
+        const auto link = addText(store, ClipKind::Link, u"https://www.example.com/docs/页面"_s);
+        const auto picture = addImage(store, qRgb(0, 128, 0));
+        const QString kept = dir.filePath(u"source/报告.final.pdf"_s);
+        QVERIFY(QDir().mkpath(dir.filePath(u"source/资料/子"_s)));
+        QFile pdf(kept);
+        QVERIFY(pdf.open(QIODevice::WriteOnly) && pdf.write("%PDF") == 4);
+        pdf.close();
+        QFile inner(dir.filePath(u"source/资料/子/a.txt"_s));
+        QVERIFY(inner.open(QIODevice::WriteOnly) && inner.write("abc") == 3);
+        inner.close();
+        const auto files = addText(store, ClipKind::Files,
+            QDir::toNativeSeparators(kept) + u"\r\n"_s + QDir::toNativeSeparators(dir.filePath(u"source/资料"_s))
+                + u"\r\n"_s + QDir::toNativeSeparators(dir.filePath(u"source/gone.txt"_s)));
+        QVERIFY(notes && again && json && link && picture && files);
+
+        const std::vector<const Clip*> selected {store.clip(notes), store.clip(again), store.clip(json),
+            store.clip(link), store.clip(picture), store.clip(files)};
+        const clipfiles::Plan plan = clipfiles::plan(store, selected, false);
+        QCOMPARE(plan.missing, 0);
+        const QString out = dir.filePath(u"out"_s);
+        QVERIFY(QDir().mkpath(out));
+        const clipfiles::Saved saved = clipfiles::save(plan, out);
+        QCOMPARE(saved.failed, 0);
+        QCOMPARE(saved.missing, 1); // gone.txt
+        QStringList names;
+        for (const QString& path : saved.paths)
+            names.append(QFileInfo(path).fileName());
+        QCOMPARE(names.size(), 7);
+        QCOMPARE(names[0], u"会议记录.txt"_s);
+        QCOMPARE(names[1], u"会议记录 (2).txt"_s);
+        QVERIFY(names[2].endsWith(u".json"_s));
+        QCOMPARE(names[3], u"example.com docs 页面.url"_s);
+        QVERIFY(names[4].startsWith(u"图片 "_s) && names[4].endsWith(u".png"_s));
+        QCOMPARE(names[5], u"报告.final.pdf"_s);
+        QCOMPARE(names[6], u"资料"_s);
+        QCOMPARE(readAll(saved.paths[0]), QByteArray("# 会议记录\n- 第一条"));
+        QVERIFY(readAll(saved.paths[3]).contains("URL=https://www.example.com/docs/%E9%A1%B5%E9%9D%A2"));
+        QCOMPARE(QImage(saved.paths[4]).pixel(0, 0), qRgb(0, 128, 0));
+        QCOMPARE(readAll(saved.paths[5]), QByteArray("%PDF"));
+        QCOMPARE(readAll(out + u"/资料/子/a.txt"_s), QByteArray("abc"));
+
+        // Again: nothing replaced, the next free names.
+        const clipfiles::Saved twice = clipfiles::save(clipfiles::plan(store, {store.clip(files)}, false), out);
+        QCOMPARE(twice.paths.size(), 2);
+        QCOMPARE(QFileInfo(twice.paths[0]).fileName(), u"报告.final (2).pdf"_s);
+        QCOMPARE(QFileInfo(twice.paths[1]).fileName(), u"资料 (2)"_s);
+        QCOMPARE(readAll(saved.paths[5]), QByteArray("%PDF"));
+
+        // A folder never into itself.
+        const clipfiles::Saved inside
+            = clipfiles::save(clipfiles::plan(store, {store.clip(files)}, false), dir.filePath(u"source/资料/子"_s));
+        QCOMPARE(inside.failed, 1);
+        QVERIFY(!QFileInfo::exists(dir.filePath(u"source/资料/子/资料"_s)));
+    }
+
+    void mergedIntoOneFile()
+    {
+        QTemporaryDir dir;
+        ClipStore store(dir.filePath(u"history"_s));
+        QVERIFY(store.open(1'790'000'000'000));
+        const auto first = addText(store, ClipKind::Text, u"第一段"_s);
+        const auto second = addText(store, ClipKind::Link, u"https://example.com"_s);
+        const clipfiles::Plan plan
+            = clipfiles::plan(store, {store.clip(first), store.clip(second)}, true, true, u"\r\n"_s);
+        QCOMPARE(plan.files.size(), std::size_t {1});
+        const clipfiles::Saved saved = clipfiles::save(plan, dir.filePath(u"drag 1"_s)); // not there yet
+        QCOMPARE(saved.paths.size(), 1);
+        QCOMPARE(QFileInfo(saved.paths[0]).fileName(), u"第一段.txt"_s);
+        QCOMPARE(readAll(saved.paths[0]), QByteArray("第一段\r\nhttps://example.com"));
     }
 
     void uploadFileNames()

@@ -282,6 +282,48 @@ void CaptureSession::begin(std::vector<CaptureScreen*> screens, Windows windows)
     emit selectionChanged();
 }
 
+void CaptureSession::replaceShot(Windows windows, int screen, const QRect& rect, const std::optional<annot::Document>& doc)
+{
+    retireAnnotation();
+    m_pendingButton = Qt::NoButton;
+    m_windows = std::move(windows);
+    m_flyout = {};
+    m_selection = {};
+    m_previous = {};
+    m_handle = Handle::None;
+    m_hoverScreen = -1;
+    m_chain.clear();
+    m_level = 0;
+    m_parked = false;
+    m_parkedSelection = {};
+    m_phase = Phase::Hover;
+    if (CaptureScreen* s = screenAt(screen); s && !rect.isEmpty() && s->bounds().contains(rect)) {
+        m_selection = {screen, rect};
+        m_phase = Phase::Selected;
+        if (doc && !doc->items.isEmpty() && doc->canvas == s->image().size()) {
+            m_annot.begin(s->image(), *doc, m_styles);
+            m_annotScreen = screen;
+        }
+        syncAnnotation();
+    }
+    emit selectionChanged();
+    if (m_cursorScreen >= 0) {
+        if (m_phase == Phase::Hover)
+            updateHover(m_cursorScreen, m_cursorAt);
+        updateCursor(m_cursorScreen, m_cursorAt);
+    }
+    publish();
+}
+
+CaptureSession::Kept CaptureSession::kept() const
+{
+    const Pick& pick = m_parked ? m_parkedSelection : m_selection;
+    Kept k {pick.screen, pick.rect, std::nullopt};
+    if (m_annot.active() && m_annot.hasItems() && m_annotScreen == pick.screen)
+        k.doc = m_annot.committedDocument();
+    return k;
+}
+
 void CaptureSession::setFlyout(const QRect& rect)
 {
     m_flyout = rect;
@@ -931,6 +973,16 @@ bool CaptureSession::key(int key, Qt::KeyboardModifiers modifiers)
             return false;
         if (!busy)
             act(static_cast<int>(Action::Qr));
+        return true;
+    case Qt::Key_Comma:
+    case Qt::Key_Less:
+    case Qt::Key_Period:
+    case Qt::Key_Greater:
+        // The history (PixPin's and Snipaste's keys): not while a text or a stroke is under way.
+        if (ctrl || modifiers & Qt::AltModifier)
+            return false;
+        if (!busy && !(m_annot.active() && (m_annot.gestureActive() || m_annot.editingText() || m_annot.editingNumber())))
+            emit historyStep(key == Qt::Key_Comma || key == Qt::Key_Less ? 1 : -1);
         return true;
     case Qt::Key_D:
         if (ctrl || shift)

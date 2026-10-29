@@ -165,6 +165,9 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool showFileSize READ showFileSize WRITE setShowFileSize NOTIFY changed FINAL)
     Q_PROPERTY(bool doubleClickToOpen READ doubleClickToOpen WRITE setDoubleClickToOpen NOTIFY changed FINAL)
     Q_PROPERTY(bool tabEntersFavoriteFolder READ tabEntersFavoriteFolder WRITE setTabEntersFavoriteFolder NOTIFY changed FINAL)
+    Q_PROPERTY(bool searchApps READ searchApps WRITE setSearchApps NOTIFY changed FINAL)
+    Q_PROPERTY(bool searchSystem READ searchSystem WRITE setSearchSystem NOTIFY changed FINAL)
+    Q_PROPERTY(bool regexMode READ regexMode WRITE setRegexMode NOTIFY changed FINAL)
     Q_PROPERTY(bool thumbnails READ thumbnails WRITE setThumbnails NOTIFY changed FINAL)
     Q_PROPERTY(bool webSuggestions READ webSuggestions WRITE setWebSuggestions NOTIFY changed FINAL)
     Q_PROPERTY(QString sort READ sort WRITE setSort NOTIFY changed FINAL) // match | newest | oldest | name | folder | type | largest | smallest (kSortNames)
@@ -602,6 +605,12 @@ public:
     void setDoubleClickToOpen(bool on);
     bool tabEntersFavoriteFolder() const { return m_settings.tabEntersFavoriteFolder; }
     void setTabEntersFavoriteFolder(bool on);
+    bool searchApps() const { return m_settings.searchApps; }
+    void setSearchApps(bool on);
+    bool searchSystem() const { return m_settings.searchSystem; }
+    void setSearchSystem(bool on);
+    bool regexMode() const { return m_settings.regexMode; }
+    void setRegexMode(bool on);
     bool thumbnails() const { return m_settings.thumbnails; }
     void setThumbnails(bool on);
     bool webSuggestions() const { return m_settings.webSuggestions; }

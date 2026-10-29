@@ -5,6 +5,7 @@
 #include <QStringList>
 #include <QtQml/qqmlregistration.h>
 
+#include <algorithm>
 #include <functional>
 
 namespace ws::captureplugin {
@@ -34,6 +35,9 @@ struct CaptureOptions {
     bool hdrFile = false;
     bool controlsUia = true;
     int delay = 5;
+    // 截图历史: the last captures' whole screens, selection and annotations,
+    // for , and . in the overlay (capture::CaptureHistory); 0: none kept.
+    int historyCount = 10;
     QString colorFormat = QStringLiteral("hex");
     QString pinsHotkey;
     QString pinsRestoreHotkey;
@@ -85,6 +89,7 @@ class CaptureSettings : public QObject {
     Q_PROPERTY(bool captureHdrFile READ captureHdrFile WRITE setCaptureHdrFile NOTIFY changed FINAL)
     Q_PROPERTY(bool captureControlsUia READ captureControlsUia WRITE setCaptureControlsUia NOTIFY changed FINAL)
     Q_PROPERTY(int captureDelay READ captureDelay WRITE setCaptureDelay NOTIFY changed FINAL)
+    Q_PROPERTY(int captureHistoryCount READ captureHistoryCount WRITE setCaptureHistoryCount NOTIFY changed FINAL)
     Q_PROPERTY(QString capturePinsHotkey READ capturePinsHotkey WRITE setCapturePinsHotkey NOTIFY changed FINAL)
     Q_PROPERTY(QString capturePinsRestoreHotkey READ capturePinsRestoreHotkey WRITE setCapturePinsRestoreHotkey NOTIFY changed FINAL)
     Q_PROPERTY(QString captureLastPinHotkey READ captureLastPinHotkey WRITE setCaptureLastPinHotkey NOTIFY changed FINAL)
@@ -144,6 +149,8 @@ public:
     void setCaptureControlsUia(bool v) { change(m_options.controlsUia, v); }
     int captureDelay() const { return m_options.delay; }
     void setCaptureDelay(int v);
+    int captureHistoryCount() const { return m_options.historyCount; }
+    void setCaptureHistoryCount(int count) { change(m_options.historyCount, std::clamp(count, 0, 100)); }
     QString capturePinsHotkey() const { return m_options.pinsHotkey; }
     void setCapturePinsHotkey(const QString& v) { change(m_options.pinsHotkey, v.trimmed()); }
     QString capturePinsRestoreHotkey() const { return m_options.pinsRestoreHotkey; }

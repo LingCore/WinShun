@@ -175,6 +175,11 @@ struct Settings {
     // Opt in to the former behavior: in 全部, Tab browses a favorite folder.
     bool tabEntersFavoriteFolder = false;
     bool thumbnails = true; // a picture, video, PDF found shows its thumbnail for an icon
+    // 全部 also finds apps, and Windows' settings pages, Control Panel items
+    // and switches; off, it finds names and content only (SearchEngine::Request).
+    bool searchApps = true;
+    bool searchSystem = true;
+    bool regexMode = false; // the search box's (Launcher::regexMode, Ctrl+R)
     // match | newest | oldest | name | folder | type | largest | smallest
     // (kSortNames): how 文件 and 文件夹 order what they find, by best match,
     // by when last written, or (#44) by name, folder, type or size (the

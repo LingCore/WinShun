@@ -17,7 +17,7 @@ using ws::captureplugin::CaptureOptions;
 
 // The folder dialog of the settings window, not opened here.
 namespace ws::shell {
-QString pickFolder(HWND, const QString&)
+QString pickFolder(HWND, const QString&, const QString&)
 {
     return {};
 }

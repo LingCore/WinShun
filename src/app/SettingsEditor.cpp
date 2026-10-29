@@ -255,6 +255,30 @@ void SettingsEditor::setTabEntersFavoriteFolder(bool on)
     commit();
 }
 
+void SettingsEditor::setSearchApps(bool on)
+{
+    if (m_settings.searchApps == on)
+        return;
+    m_settings.searchApps = on;
+    commit();
+}
+
+void SettingsEditor::setSearchSystem(bool on)
+{
+    if (m_settings.searchSystem == on)
+        return;
+    m_settings.searchSystem = on;
+    commit();
+}
+
+void SettingsEditor::setRegexMode(bool on)
+{
+    if (m_settings.regexMode == on)
+        return;
+    m_settings.regexMode = on;
+    commit();
+}
+
 void SettingsEditor::setThumbnails(bool on)
 {
     if (m_settings.thumbnails == on)

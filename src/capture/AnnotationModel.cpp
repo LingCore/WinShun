@@ -441,6 +441,16 @@ void AnnotationModel::begin(const annot::Project& project, qreal deviceDpr, cons
     smartSchedule();
 }
 
+void AnnotationModel::begin(const QImage& base, const annot::Document& doc, const annot::StyleMemory& styles)
+{
+    begin(base, doc.dpr, styles);
+    m_document = doc;
+    m_document.canvas = base.size();
+    m_document.crop &= QRect(QPoint(0, 0), m_document.canvas);
+    emit changed(QRectF());
+    sync();
+}
+
 void AnnotationModel::setView(qreal devicePerLogical, qreal zoom)
 {
     m_devicePerLogical = devicePerLogical > 0 ? devicePerLogical : 0;

@@ -2,6 +2,7 @@
 
 #include "AnnotationFormat.h"
 #include "CaptureDiagnostics.h"
+#include "CaptureHistory.h"
 #include "CaptureSession.h"
 #include "CaptureTools.h"
 #include "CountdownWindow.h"
@@ -23,6 +24,7 @@
 #include <windows.h>
 
 #include <functional>
+#include <future>
 #include <memory>
 #include <optional>
 #include <set>
@@ -123,6 +125,14 @@ public:
     // UI Automation for the controls that are not child windows ([Capture] ControlsUia).
     void setControlDetection(bool on) { m_uiaEnabled = on; }
     void setColorFormat(ColorFormat format) { m_session.setColorFormat(format); }
+    // 截图历史: each capture taken keeps its monitors' pictures, its selection
+    // and annotations in `folder` (the last `count`; 0: none, and those kept
+    // go), for , and . in the overlay ([Capture] HistoryCount).
+    void setHistory(const QString& folder, int count)
+    {
+        m_history.setFolder(folder);
+        m_history.setLimit(count);
+    }
     // 延时截图: after 3, 5 or 10 seconds (0: the last one used), a countdown at
     // the corner of the screen and then the capture as the hotkey starts it.
     // The hotkey (or a click on the countdown) cancels it.
@@ -185,6 +195,15 @@ private:
     void watchTick();
     bool pointerOverOverlay(POINT at) const;
     void recordCapture(CaptureSession::Action action, const QRect& rect);
+    // , and . in the overlay: the capture before or after the one shown (the
+    // live screens are the newest), skipping those of another monitor layout.
+    void stepHistory(int step);
+    void showHistoryShot(const HistoryShot& shot);
+    void showLive();
+    void restoreLive(); // showLive without a word: the live screens, selection and annotations back
+    std::vector<QRect> shownMonitors() const; // the overlays with a picture, physical
+    void prefetchHistory(int at); // the shot at `at` read in the background
+    void forgetHistory(); // the capture ended: the live screens again next time
 
     QQmlEngine* m_engine;
     Callbacks m_callbacks;
@@ -234,6 +253,18 @@ private:
     };
     std::optional<Draft> m_draft;
     QTimer m_draftTimer;
+    CaptureHistory m_history;
+    // While the overlay shows: where in the history it is (-1: the live
+    // screens, m_shots), the ids then (newest first), the one shown, what
+    // the live screens had when left (their windows, selection and
+    // annotations), and the next one being read.
+    int m_historyAt = -1;
+    QStringList m_historyIds;
+    QString m_historyShown;
+    CaptureSession::Windows m_liveWindows;
+    CaptureSession::Kept m_liveKept;
+    int m_prefetchAt = -1;
+    std::future<std::optional<HistoryShot>> m_prefetch;
     // The time between frames drawn while an annotation gesture is under way,
     // logged at the end of the capture: how smooth drawing was (nanoseconds).
     QElapsedTimer m_frameClock;

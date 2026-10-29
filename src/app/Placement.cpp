@@ -843,15 +843,6 @@ const QEasingCurve& fastIn()
     return curve;
 }
 
-// Exits: under way at once, then faster and faster. Not Windows' gentle exit
-// (1, 0, 1, 1), which moves a mere 4 % in its first 70 ms: the launcher
-// seemed to close late (most of all when closed again as it opened).
-const QEasingCurve& accelerate()
-{
-    static const QEasingCurve curve = bezier(0.3, 0, 1, 1);
-    return curve;
-}
-
 } // namespace
 
 void Placement::beginSlide()
@@ -921,18 +912,15 @@ void Placement::slideOut(std::function<void()> done)
         finish();
         return;
     }
-    // Faded out, sinking a little toward the taskbar, never onto it.
+    // Faded out where it is, briefly: closing needs no more show than that
+    // (it sank toward the taskbar as well once; too much motion, the user
+    // said). Caught while still coming in: from where that got to.
     Slide slide;
-    slide.from = m_offset;
+    slide.from = slide.to = m_offset;
     slide.opacityFrom = m_opacity;
-    slide.shiftFrom = m_contentShift;
-    slide.to = nearOffset(8);
+    slide.shiftFrom = slide.shiftTo = m_contentShift;
     slide.opacityTo = 0;
-    slide.moveMs = 167;
-    slide.fadeMs = 150;
-    slide.moveCurve = accelerate();
-    slide.shiftCurve = accelerate();
-    slide.shiftMs = slide.moveMs;
+    slide.fadeMs = 120;
     startSlide(std::move(slide), std::move(finish));
 }
 

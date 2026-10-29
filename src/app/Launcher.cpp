@@ -645,6 +645,33 @@ void Launcher::setFolderKeyword(const QString& keyword)
         search();
 }
 
+void Launcher::setSearchKinds(bool apps, bool places)
+{
+    if (apps == m_searchApps && places == m_searchPlaces)
+        return;
+    m_searchApps = apps;
+    m_searchPlaces = places;
+    if (m_window && m_window->isVisible())
+        search();
+}
+
+void Launcher::setRegexMode(bool on)
+{
+    if (on == m_regexMode)
+        return;
+    m_regexMode = on;
+    emit regexModeChanged();
+    if (m_window && m_window->isVisible())
+        search();
+}
+
+void Launcher::toggleRegexMode()
+{
+    setRegexMode(!m_regexMode);
+    if (m_window && m_window->isVisible())
+        flash(m_regexMode ? tr("正则模式：每个词都按正则表达式匹配名字") : tr("已关闭正则模式"));
+}
+
 void Launcher::setQuery(const QString& query)
 {
     if (query == m_query)
@@ -1019,6 +1046,7 @@ void Launcher::searchLeftOut(const QString& kind)
         request.extensions = fileExtensions();
         request.limit = kPage;
         request.walkFolder = walkedPath(kind);
+        request.regex = regexTerms();
         m_walkRunning = true;
         m_walkSeen = 0;
     } else {
@@ -1604,7 +1632,7 @@ void Launcher::search(bool more)
     // the names' (or back): "=" and "= " are the same text trimmed.
     std::optional<KeywordMode> keyword = m_filePrefix ? std::nullopt : matchKeyword(m_query);
     const QString error = m_scope == Content || keyword || typedKeyword(m_web, m_query)
-        ? QString() : parseQuery(nameText()).error;
+        ? QString() : parseQuery(nameText(), regexTerms()).error;
     if (m_queryError != error) {
         m_queryError = error;
         emit queryErrorChanged();
@@ -1616,7 +1644,7 @@ void Launcher::search(bool more)
         && m_preferredTypes == m_shownPreferredTypes && keywordKey == m_shownKeyword
         && (m_scope != Content || (m_contentFolder == m_shownContentFolder && pickKey(m_contentPick) == m_shownPick))
         && (!text.isEmpty() || m_startList == m_shownStartList) && panelKey() == m_shownPanelKey
-        && typingKey() == m_shownTyping;
+        && typingKey() == m_shownTyping && regexTerms() == m_shownRegex;
     m_replacePending = !m_refresh;
     // The text is the one shown (another scope, order, kind of file): nobody
     // is typing, so a content scan starts at once, without waiting for a pause.
@@ -1726,6 +1754,9 @@ void Launcher::search(bool more)
     if (m_recordHistory && !(text.isEmpty() && m_startList == NoStartList))
         request.history = m_history->ranked(text, QDateTime::currentMSecsSinceEpoch());
     request.web = m_web;
+    request.apps = m_searchApps;
+    request.places = m_searchPlaces;
+    request.regex = regexTerms();
     if (m_favorites)
         request.favorites = m_favorites->items();
     // Keep awake is Win顺's own state: while it is on it is listed first, to be seen and ended.
@@ -1777,6 +1808,7 @@ void Launcher::showRows(SearchResults rows, QStringList highlights)
     m_shownPick = pickKey(m_contentPick);
     m_shownPanelKey = panelKey();
     m_shownTyping = typingKey();
+    m_shownRegex = regexTerms();
     m_haveResults = true;
     if (m_replacePending) {
         m_replacePending = false;
@@ -1914,7 +1946,7 @@ QString Launcher::contentNeedle() const
     if (typedInFolder())
         return {};
     const QString text = searchText();
-    const ParsedQuery query = ws::parseQuery(text);
+    const ParsedQuery query = ws::parseQuery(text, regexTerms());
     if (!query.alternatives.empty() || !query.error.isEmpty()
         || std::ranges::any_of(query.terms, [](const QueryTerm& t) { return t.regex; }))
         return {};
@@ -2073,7 +2105,7 @@ void Launcher::onResults(quint64 id, const SearchResults& results, qint64 total,
     // heading says so (approximateHeading), and the names are highlighted by
     // the pinyin, as the result list reads "bg" back into 报告.
     m_approximate = std::ranges::any_of(results, [](const SearchResult& r) { return r.approximate; });
-    const ParsedQuery query = ws::parseQuery(nameText()); // typed in a folder, its words each (GitHub #110)
+    const ParsedQuery query = ws::parseQuery(nameText(), regexTerms()); // typed in a folder, its words each (GitHub #110)
     QStringList highlights = query.highlights;
     if (m_approximate) {
         highlights.clear();
@@ -2437,7 +2469,7 @@ void Launcher::sortShownPanel(const QString& currentPath)
     for (int i = 0; i < m_results.count(); ++i)
         rows.push_back(*m_results.at(i));
     std::stable_sort(rows.begin(), rows.end(), [&](const auto& a, const auto& b) { return resultColumnLess(a, b, m_panelSort); });
-    m_results.assign(std::move(rows), ws::parseQuery(searchText()).highlights);
+    m_results.assign(std::move(rows), ws::parseQuery(searchText(), regexTerms()).highlights);
     if (!kept.isEmpty())
         emit panelRowRestored(m_results.indexOf(kept));
 }

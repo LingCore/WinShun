@@ -48,6 +48,51 @@ private slots:
         QCOMPARE(NameMatcher(parsed).matchPath(u"D:\\work\\"_s + name, false) >= 0, expected);
     }
 
+    // The search box's regex mode (Ctrl+R): every term a regex.
+    void regexMode_data()
+    {
+        QTest::addColumn<QString>("query");
+        QTest::addColumn<QString>("name");
+        QTest::addColumn<bool>("expected");
+        QTest::newRow("whole") << u"^IMG_\\d{4}\\.(jpg|png)$"_s << u"img_2024.PNG"_s << true;
+        QTest::newRow("whole-no") << u"^IMG_\\d{4}\\.(jpg|png)$"_s << u"IMG_24.png"_s << false;
+        QTest::newRow("two-terms") << u"^IMG \\d{3}"_s << u"IMG_123.png"_s << true;
+        QTest::newRow("two-terms-no") << u"^IMG \\d{3}"_s << u"IMG_12.png"_s << false;
+        QTest::newRow("case") << u"(?-i)^IMG"_s << u"img_1.png"_s << false;
+        QTest::newRow("case-yes") << u"(?-i)^IMG"_s << u"IMG_1.png"_s << true;
+        QTest::newRow("ext") << u"^a\\d ext:txt"_s << u"a1.txt"_s << true;
+        QTest::newRow("ext-no") << u"^a\\d ext:txt"_s << u"a1.md"_s << false;
+        QTest::newRow("negated") << u"\\.png$ !^temp"_s << u"temp1.png"_s << false;
+        QTest::newRow("or") << u"^a\\d$ | ^b"_s << u"b.txt"_s << true;
+        QTest::newRow("quoted-space") << u"\"^annual report\""_s << u"Annual Report.pdf"_s << true;
+        QTest::newRow("no-pinyin") << u"bg"_s << u"报告.txt"_s << false;
+        QTest::newRow("backslash-not-path") << u"\\d+\\.log$"_s << u"run12.log"_s << true;
+    }
+
+    void regexMode()
+    {
+        QFETCH(QString, query);
+        QFETCH(QString, name);
+        QFETCH(bool, expected);
+        const auto parsed = parseQuery(query, true);
+        QVERIFY2(parsed.error.isEmpty(), qPrintable(parsed.error));
+        QCOMPARE(NameMatcher(parsed).matchPath(u"D:\\work\\"_s + name, false) >= 0, expected);
+        QVERIFY(parseQuery(u"a["_s, true).error.size() > 0);
+    }
+
+    void regexModeInIndex()
+    {
+        FileIndex index;
+        const auto root = index.addRoot("T:");
+        const auto upper = index.add(root, "IMG_1.png", 0);
+        index.add(root, "img_2.png", 0);
+        WorkerPool pool(2);
+        const auto lock = index.readLock();
+        const auto output = searchNames(index, NameMatcher(parseQuery(u"(?-i)^IMG_\\d"_s, true)), {.limit = 20}, pool, {});
+        QCOMPARE(output.totalMatches, std::size_t(1));
+        QCOMPARE(output.hits.front().id, upper);
+    }
+
     void invalidQueries()
     {
         for (const auto& text : {u"regex:["_s, u"regex:"_s, u"report |"_s, u"| report"_s, u"a | | b"_s, u"\"\" regex:["_s}) {
