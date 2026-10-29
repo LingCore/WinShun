@@ -1,0 +1,35 @@
+#pragma code_page(65001)
+#include <winver.h>
+
+// WinShunLocalSend.exe (src/localsend-plugin): the winshun.localsend plugin that
+// comes with Win顺 -- files to and from phones nearby (局域网传输, LocalSend's
+// protocol). Windows Firewall's prompt names the program by its FileDescription.
+IDI_ICON1 ICON "app.ico"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION WINSHUN_VERSION_MAJOR,WINSHUN_VERSION_MINOR,WINSHUN_VERSION_PATCH,0
+ PRODUCTVERSION WINSHUN_VERSION_MAJOR,WINSHUN_VERSION_MINOR,WINSHUN_VERSION_PATCH,0
+ FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+ FILEFLAGS 0x0L
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+ FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "080404b0"
+        BEGIN
+            VALUE "CompanyName", "WinShun"
+            VALUE "FileDescription", "Win顺 局域网传输"
+            VALUE "FileVersion", WINSHUN_VERSION
+            VALUE "InternalName", "WinShunLocalSend"
+            VALUE "OriginalFilename", "WinShunLocalSend.exe"
+            VALUE "ProductName", "Win顺 · WinShun"
+            VALUE "ProductVersion", WINSHUN_VERSION
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x804, 1200
+    END
+END

@@ -1,0 +1,31 @@
+{
+  "manifest": 1,
+  "id": "winshun.localsend",
+  "name": {"zh": "局域网传输", "en": "LAN transfer"},
+  "version": "1.0.0",
+  "description": {"zh": "兼容 LocalSend，手机电脑互传文件", "en": "Works with LocalSend: send files between phones and computers"},
+  "author": "LingCore",
+  "homepage": "https://github.com/LingCore/WinShun",
+  "license": "MIT",
+  "runtime": {"mode": "resident", "program": "WinShunLocalSend.exe", "start": "eager", "sandbox": "normal", "timeoutMs": 3000, "idleExitSec": 0, "memoryMB": 256},
+  "permissions": ["network", {"network:listen": ["TCP 53317-53320", "UDP 53317"]}, "files:write", "clipboard:read", "notifications"],
+  "commands": [{
+    "id": "send",
+    "keyword": ["传", "ls"],
+    "title": {"zh": "局域网传输", "en": "LAN transfer"},
+    "description": {"zh": "和附近开着 LocalSend 的手机、电脑互传文件和文字", "en": "Send files and text to and from phones and computers nearby running LocalSend"},
+    "icon": "glyph:U+E724",
+    "hint": {"zh": "在这里打字发文字", "en": "type to send text"},
+    "triggers": [{"files": {"kind": "any", "max": 1000, "title": {"zh": "用局域网发送…", "en": "Send over LAN…"}}}]
+  }],
+  "settings": [
+    {"key": "receive", "type": "bool", "title": {"zh": "接收文件", "en": "Receive files"}, "hint": {"zh": "让附近的设备找到这台电脑，发文件过来。每次都会先问你", "en": "Devices nearby can find this PC and send files. You are asked every time"}, "default": true},
+    {"key": "alias", "type": "text", "title": {"zh": "设备名", "en": "Device name"}, "hint": {"zh": "别的设备看到的名字；留空用这台电脑的名字", "en": "The name other devices see; empty for this PC's name"}, "default": ""},
+    {"key": "folder", "type": "folder", "title": {"zh": "保存到", "en": "Save to"}, "hint": {"zh": "留空存到「下载」", "en": "Empty for Downloads"}, "default": ""},
+    {"key": "pin", "type": "password", "title": {"zh": "接收密码", "en": "PIN"}, "hint": {"zh": "设了以后，别人要输入它才能发过来；留空不用。存在 Windows 凭据管理器里", "en": "Others must type it to send to this PC; empty for none. Kept in Windows Credential Manager"}},
+    {"key": "networks", "type": "choice", "title": {"zh": "在哪些网络上接收", "en": "Receive on"}, "options": [
+      {"value": "private", "title": {"zh": "专用网络、域网络和这台电脑开的热点（公用网络在「传」里点一下才接收）", "en": "Private and domain networks and this PC's hotspot (a public network once you allow it in the list)"}},
+      {"value": "all", "title": {"zh": "所有网络，包括公用网络", "en": "All networks, public ones too"}}
+    ], "default": "private"}
+  ]
+}
