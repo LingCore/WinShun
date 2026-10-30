@@ -84,6 +84,7 @@
 #include "PrintScreen.h"
 
 #include <QContextMenuEvent>
+#include <QClipboard>
 #include <QCursor>
 #include <QDateTime>
 #include <QDebug>
@@ -94,6 +95,7 @@
 #include <QImageReader>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QMimeData>
 #include <QOperatingSystemVersion>
 #include <QScopeGuard>
 #include <QGuiApplication>
@@ -784,12 +786,9 @@ bool App::start(const StartOptions& options)
             folderMenuHotkey();
         else if (id == kCaptureHotkeyId || id == kPrintScreenHotkeyId)
             triggerCapture();
-        else if (id == kLastPinHotkeyId) {
-            if (m_capture && m_capture->hasLast())
-                m_capture->pinLast();
-            else
-                m_messages->showNotification(tr("贴上最近一次截图"), tr("还没有截图，请先截一张。"));
-        } else if (id == kPinsHotkeyId) {
+        else if (id == kLastPinHotkeyId)
+            pinLastCapture();
+        else if (id == kPinsHotkeyId) {
             if (m_pins)
                 m_pins->setAllHidden(!m_pins->allHidden());
         } else if (id == kPinsRestoreHotkeyId) {
@@ -2319,6 +2318,26 @@ void App::pinPicture(const QString& path, bool screenshot)
 {
     if (path.isEmpty())
         return;
+    QPointer<App> self(this);
+    std::thread([self, path, screenshot] {
+        const HRESULT com = ::CoInitializeEx(nullptr, COINIT_MULTITHREADED | COINIT_DISABLE_OLE1DDE);
+        QImage image = decodePictureFile(path, 0);
+        if (SUCCEEDED(com))
+            ::CoUninitialize();
+        QMetaObject::invokeMethod(qApp, [self, path, image, screenshot] {
+            if (!self)
+                return;
+            if (image.isNull()) {
+                self->m_messages->showNotification(tr("没能贴到屏幕"), tr("读不出这张图片：%1").arg(QDir::toNativeSeparators(path)));
+                return;
+            }
+            self->pinImage(image, screenshot);
+        }, Qt::QueuedConnection);
+    }).detach();
+}
+
+void App::pinImage(QImage image, bool screenshot)
+{
     POINT cursor {};
     ::GetCursorPos(&cursor);
     MONITORINFO info {sizeof info};
@@ -2326,31 +2345,53 @@ void App::pinPicture(const QString& path, bool screenshot)
         return;
     const QRect work(info.rcWork.left, info.rcWork.top, info.rcWork.right - info.rcWork.left,
         info.rcWork.bottom - info.rcWork.top);
+    const QSize room = work.size() * 0.9;
+    if (image.width() > room.width() || image.height() > room.height())
+        image = image.scaled(room, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    if (image.isNull())
+        return;
+    image = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
     const QPoint at(cursor.x, cursor.y);
-    QPointer<App> self(this);
-    std::thread([self, path, work, at, screenshot] {
-        const HRESULT com = ::CoInitializeEx(nullptr, COINIT_MULTITHREADED | COINIT_DISABLE_OLE1DDE);
-        QImage image = decodePictureFile(path, 0);
-        if (SUCCEEDED(com))
-            ::CoUninitialize();
-        const QSize room = work.size() * 0.9;
-        if (!image.isNull() && (image.width() > room.width() || image.height() > room.height()))
-            image = image.scaled(room, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-        if (!image.isNull())
-            image = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
-        QMetaObject::invokeMethod(qApp, [self, path, image, work, at, screenshot] {
-            if (!self)
-                return;
-            if (image.isNull()) {
-                self->m_messages->showNotification(tr("没能贴到屏幕"), tr("读不出这张图片：%1").arg(QDir::toNativeSeparators(path)));
-                return;
-            }
-            QPoint origin = at - QPoint(image.width() / 2, image.height() / 2);
-            origin.setX(std::clamp(origin.x(), work.left(), std::max(work.left(), work.right() + 1 - image.width())));
-            origin.setY(std::clamp(origin.y(), work.top(), std::max(work.top(), work.bottom() + 1 - image.height())));
-            self->pins().pin(image, origin, screenshot);
-        }, Qt::QueuedConnection);
-    }).detach();
+    QPoint origin = at - QPoint(image.width() / 2, image.height() / 2);
+    origin.setX(std::clamp(origin.x(), work.left(), std::max(work.left(), work.right() + 1 - image.width())));
+    origin.setY(std::clamp(origin.y(), work.top(), std::max(work.top(), work.bottom() + 1 - image.height())));
+    pins().pin(image, origin, screenshot);
+}
+
+bool App::pinClipboardImage()
+{
+    if (!m_capture || ::GetClipboardSequenceNumber() == m_capture->lastClipboardSeq())
+        return false; // nothing copied since that capture: it is the picture to pin
+    const QClipboard* board = QGuiApplication::clipboard();
+    const QMimeData* data = board->mimeData();
+    if (data->hasImage()) {
+        const QImage image = board->image();
+        if (!image.isNull()) {
+            pinImage(image, true);
+            return true;
+        }
+    }
+    // Explorer and most viewers copy a picture as a file, not as pixels.
+    for (const QUrl& url : data->urls()) {
+        if (!url.isLocalFile())
+            continue;
+        const QString path = url.toLocalFile();
+        if (!QImageReader(path).canRead())
+            continue;
+        pinPicture(path, true);
+        return true;
+    }
+    return false;
+}
+
+void App::pinLastCapture()
+{
+    if (pinClipboardImage())
+        return;
+    if (m_capture && m_capture->hasLast())
+        m_capture->pinLast();
+    else
+        m_messages->showNotification(tr("贴上最近一次截图"), tr("还没有截图，请先截一张。"));
 }
 
 ClipboardWatcher::Options App::clipboardOptions() const
@@ -5391,8 +5432,7 @@ void App::showTrayMenu()
         QTimer::singleShot(200ms, this, [this] { triggerCapture(); });
         break;
     case PinLastCommand:
-        if (m_capture)
-            m_capture->pinLast();
+        pinLastCapture();
         break;
     case RestoreDraftCommand:
         if (m_capture)

@@ -229,6 +229,14 @@ private:
     // 贴到屏幕: a picture file, read off the GUI thread; `screenshot`: one
     // of the screenshot history's (PinWindow::screenshot).
     void pinPicture(const QString& path, bool screenshot = false);
+    // 贴上最近一次截图 (its hotkey, the tray menu): the clipboard's picture when one
+    // was copied since that capture, else the last capture, where it was.
+    void pinLastCapture();
+    // A picture pinned at the cursor, inside its monitor's work area, scaled to fit it.
+    void pinImage(QImage image, bool screenshot);
+    // The clipboard's picture, pinned (pinImage); false when the clipboard holds none,
+    // or when it has not changed since the last capture (that picture is m_last).
+    bool pinClipboardImage();
     // The screenshot history's keyword as it works now (jt): none with the
     // capture off, nor when a web search or a favorite has the word.
     QString screenshotKeyword() const;

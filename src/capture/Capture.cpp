@@ -745,6 +745,8 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
     case CaptureSession::Action::Record:
         break;
     }
+    // Taken last: copying this picture is ours, not something the user copied since.
+    m_lastSeq = ::GetClipboardSequenceNumber();
 }
 
 void Capture::pinLast()
@@ -773,6 +775,7 @@ void Capture::restoreDraft()
     m_last = picture;
     m_lastOrigin = draft.origin;
     m_lastProject = project;
+    m_lastSeq = ::GetClipboardSequenceNumber();
 }
 
 void Capture::findFlyout()
