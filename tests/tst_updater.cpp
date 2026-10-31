@@ -70,6 +70,7 @@ public:
     }
 
     QString url(const char* path) const { return u"http://127.0.0.1:%1%2"_s.arg(m_port).arg(QLatin1StringView(path)); }
+    unsigned requests() const { return m_requests.load(); }
 
 private:
     void serve()
@@ -87,6 +88,7 @@ private:
                 request.append(buffer, got);
             }
             const QByteArray path = request.split(' ').value(1);
+            ++m_requests;
             const auto it = m_routes.find(path);
             const Route route = it != m_routes.end() ? it->second : Route {404, "not found"};
             QByteArray answer = "HTTP/1.0 " + QByteArray::number(route.status) + " X\r\nContent-Length: "
@@ -98,6 +100,7 @@ private:
     }
 
     std::map<QByteArray, Route> m_routes;
+    std::atomic_uint m_requests {0};
     SOCKET m_listener = INVALID_SOCKET;
     int m_port = 0;
     std::atomic<bool> m_stop {false};
@@ -342,6 +345,22 @@ private slots:
         QVERIFY(QDir(dir.path()).isEmpty());
     }
 
+    void downloadCancelsBeforeTryingAnotherMirror()
+    {
+        const QByteArray good("valid package");
+        FakeServer server({{"/unavailable", {503, {}}}, {"/good", {200, good}}});
+        release::Asset asset;
+        asset.size = good.size();
+        asset.sha256 = QString::fromLatin1(sha256(good));
+        QTemporaryDir dir;
+        const auto result = update::download(asset, {server.url("/unavailable"), server.url("/good")}, dir.filePath(u"pkg.zip"_s),
+            [&](qint64, qint64) { return server.requests() == 0; });
+        QVERIFY(result.cancelled);
+        QVERIFY(!result.ok);
+        QCOMPARE(server.requests(), 1u);
+        QVERIFY(QDir(dir.path()).isEmpty());
+    }
+
     void heldFileRefusesChanges()
     {
         QTemporaryDir dir;
@@ -523,14 +542,18 @@ private slots:
     void liveService_data()
     {
         QTest::addColumn<bool>("portable");
-        QTest::newRow("setup") << false;
-        QTest::newRow("portable") << true;
+        QTest::addColumn<int>("sourceIndex");
+        QTest::newRow("setup") << false << -1;
+        QTest::newRow("portable") << true << -1;
+        QTest::newRow("setup-first-mirror") << false << 0;
+        QTest::newRow("setup-second-mirror") << false << 1;
     }
     void liveService()
     {
         if (qEnvironmentVariableIsEmpty("WINSHUN_UPDATE_LIVE"))
             QSKIP("set WINSHUN_UPDATE_LIVE=1 to download from lcstp.com");
         QFETCH(bool, portable);
+        QFETCH(int, sourceIndex);
         QString feed = u"https://lcstp.com/updates/winshun/stable.json?platform=windows&arch=x64&osVersion=10.0.22631"_s;
         if (portable)
             feed += u"&package=portable"_s;
@@ -543,12 +566,14 @@ private slots:
         QVERIFY(!release::packageAsset(*newer, portable ? release::Package::Setup : release::Package::Portable));
         const QStringList all = release::downloadUrls(*asset);
         QCOMPARE(all.last(), asset->url);
-        const QStringList urls = portable
-            ? QStringList {u"https://github.com/LingCore/WinShun/releases/download/v0.0.0/missing.zip"_s} + all
-            : QStringList {asset->url};
+        QVERIFY(all.size() >= 3);
+        const QStringList urls = sourceIndex >= 0 ? QStringList {all[sourceIndex]}
+            : portable ? QStringList {u"https://github.com/LingCore/WinShun/releases/download/v0.0.0/missing.zip"_s} + all
+                       : QStringList {asset->url};
         QTemporaryDir dir;
         const QString target = dir.filePath(portable ? u"p.zip"_s : u"s.exe"_s);
         const update::DownloadResult result = update::download(*asset, urls, target, {});
+        qInfo().noquote() << "requested sources:" << urls;
         qInfo().noquote() << "sources that failed:" << result.failures;
         QVERIFY(result.ok);
         QCOMPARE(result.failures.size(), portable ? 1 : 0);

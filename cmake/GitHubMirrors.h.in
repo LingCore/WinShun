@@ -1,0 +1,9 @@
+#pragma once
+
+#include <array>
+#include <string_view>
+
+namespace ws::download {
+inline constexpr std::array<std::string_view, @WINSHUN_MIRROR_COUNT@> kGitHubMirrors {
+@WINSHUN_MIRROR_ENTRIES@};
+}

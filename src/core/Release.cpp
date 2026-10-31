@@ -1,4 +1,5 @@
 #include "Release.h"
+#include "Download.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -156,7 +157,7 @@ bool loopbackHttpUrl(const QString& url)
 QStringList downloadUrls(const Asset& asset, bool loopbackHttp)
 {
     QStringList urls;
-    for (const QString& url : asset.mirrors + QStringList {asset.url}) {
+    for (const QString& url : download::sources(asset.url, asset.mirrors)) {
         const QUrl u(url, QUrl::StrictMode);
         const bool https = u.isValid() && u.scheme() == u"https" && !u.host().isEmpty();
         if ((https || (loopbackHttp && loopbackHttpUrl(url))) && !urls.contains(url))

@@ -1,4 +1,5 @@
 #include "UpdatePackage.h"
+#include "Download.h"
 
 #include "platform/Http.h"
 
@@ -182,6 +183,11 @@ DownloadResult download(const release::Asset& asset, const QStringList& urls, co
         return result;
     }
     for (qsizetype i = 0; i < urls.size(); ++i) {
+        if (progress && !progress(0, asset.size)) {
+            QFile::remove(partial);
+            result.cancelled = true;
+            return result;
+        }
         const QString& url = urls[i];
         const bool last = i == urls.size() - 1;
         QFile::remove(partial);
@@ -204,15 +210,15 @@ DownloadResult download(const release::Asset& asset, const QStringList& urls, co
             }
             hash.addData(QByteArrayView(data, size));
             received += size;
+            if (progress && !progress(received, asset.size)) {
+                cancelled = true;
+                return false;
+            }
             // A mirror that crawls (they may throttle): the next one, while
             // there is one; GitHub, last, is waited for.
             const qint64 ms = clock.elapsed();
-            if (!last && ms > 30000 && received * 1000 / ms < 16 * 1024) {
+            if (!last && download::tooSlow(received, ms)) {
                 slow = true;
-                return false;
-            }
-            if (progress && !progress(received, asset.size)) {
-                cancelled = true;
                 return false;
             }
             return true;

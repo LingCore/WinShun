@@ -272,7 +272,8 @@ void PluginGallery::refresh()
     emit stateChanged();
     const QString from = source();
     QThreadPool::globalInstance()->start([self = QPointer(this), from] {
-        gallery::Fetched fetched = gallery::fetch(from, gallery::kMaxIndexBytes + 1, webFetcher(kListTimeoutMs));
+        gallery::Fetched fetched = gallery::fetch(from, gallery::kMaxIndexBytes + 1, webFetcher(kListTimeoutMs), {},
+            [&](const QByteArray& bytes) { return bytes.size() <= gallery::kMaxIndexBytes && gallery::parse(bytes, from, nullptr).has_value(); });
         QMetaObject::invokeMethod(qApp, [self, from, fetched = std::move(fetched)] {
             if (self)
                 self->finishFetch(from, fetched);
@@ -422,7 +423,8 @@ void PluginGallery::install(const QString& id)
             return true;
         };
         // One byte more than the list says: a bigger package shows as one.
-        gallery::Fetched fetched = gallery::fetch(item.url, item.size + 1, webFetcher(kPackageTimeoutMs), progress);
+        gallery::Fetched fetched = gallery::fetch(item.url, item.size + 1, webFetcher(kPackageTimeoutMs), progress,
+            [&](const QByteArray& bytes) { return gallery::check(item, bytes) == gallery::Problem::None; });
         Download d;
         d.status = fetched.status;
         d.error = fetched.error;

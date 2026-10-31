@@ -599,6 +599,14 @@ target_include_directories(tst_ocr PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_ocr PRIVATE winshun_options wscapture Qt6::Qml Qt6::Test onnxruntime_headers)
 set_target_properties(tst_ocr PROPERTIES QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
 
+qt_add_executable(tst_download tst_download.cpp)
+target_link_libraries(tst_download PRIVATE winshun_options wsplugin Qt6::Test)
+add_test(NAME tst_download COMMAND tst_download)
+set_tests_properties(tst_download PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+add_test(NAME tst_download_cmake COMMAND ${CMAKE_COMMAND}
+    "-DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/download-cmake" -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/tst_download.cmake")
+
 # What a drop target gets when results are dragged out of Win顺.
 qt_add_executable(tst_dragout tst_dragout.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/DragOut.cpp)
 target_include_directories(tst_dragout PRIVATE ${PROJECT_SOURCE_DIR}/src/app/platform)

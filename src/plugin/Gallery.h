@@ -10,6 +10,7 @@
 // (a list made for a test, and the packages next to it).
 
 #include "Manifest.h"
+#include "Download.h"
 
 #include <QByteArray>
 #include <QString>
@@ -79,19 +80,15 @@ Local localOf(const Catalog& catalog, const QString& bundledDir, const QString& 
 State stateOf(const Item& item, const Local& local, QStringView appVersion);
 
 // What a fetch brought.
-struct Fetched {
-    int status = 0; // HTTP's; 200 for a file read whole; 0: nothing came (`error` says why)
-    QByteArray body;
-    unsigned long error = 0; // Win32 / WinHTTP's when `status` is 0; ERROR_CANCELLED: stopped
-};
+using Fetched = download::Fetched;
 // Hears how much has come, after each piece; false stops the fetch.
-using Progress = std::function<bool(qint64 received)>;
+using Progress = download::Progress;
 // A web address, fetched; the body cut at `maxBytes` (0: no limit).
-using Fetcher = std::function<Fetched(const QString& url, qint64 maxBytes, const Progress& progress)>;
+using Fetcher = download::Fetcher;
 // `source` an http(s) address (through `web`) or a file (a path or a
 // file: URL), read up to `maxBytes` (0: no limit). Blocking: run it off
 // the GUI thread.
-Fetched fetch(const QString& source, qint64 maxBytes, const Fetcher& web, const Progress& progress = {});
+using download::fetch;
 
 enum class Problem { None, TooBig, SizeMismatch, HashMismatch };
 // The package against the list: not installed unless None.

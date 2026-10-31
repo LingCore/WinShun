@@ -19,6 +19,9 @@ qt_standard_project_setup(REQUIRES 6.8)
 option(WINSHUN_BUILD_TESTS "Build unit tests" ON)
 option(WINSHUN_ASAN "Build with AddressSanitizer (MSVC), for the tests" OFF)
 
+include(cmake/Download.cmake)
+winshun_configure_mirrors("${CMAKE_BINARY_DIR}/generated/GitHubMirrors.h")
+
 # Shared compiler settings for every target in the project.
 add_library(winshun_options INTERFACE)
 target_compile_definitions(winshun_options INTERFACE

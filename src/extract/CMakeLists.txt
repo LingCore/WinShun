@@ -11,13 +11,9 @@ set(PDFIUM_SHA256 1fd8af952832dbb0eb16d9249f68fe09e5f5ebf7c3dd9f6066ea2720cc2848
 set(PDFIUM_DIR "${CMAKE_BINARY_DIR}/_deps/pdfium-${PDFIUM_BUILD}" CACHE INTERNAL "")
 if(NOT EXISTS "${PDFIUM_DIR}/bin/pdfium.dll")
     set(archive "${CMAKE_BINARY_DIR}/_deps/pdfium-win-x64-${PDFIUM_BUILD}.tgz")
-    file(DOWNLOAD
+    winshun_download(
         "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/${PDFIUM_BUILD}/pdfium-win-x64.tgz"
-        "${archive}" EXPECTED_HASH SHA256=${PDFIUM_SHA256} STATUS status)
-    list(GET status 0 code)
-    if(NOT code EQUAL 0)
-        message(FATAL_ERROR "Could not download PDFium: ${status}")
-    endif()
+        "${archive}" "${PDFIUM_SHA256}")
     file(ARCHIVE_EXTRACT INPUT "${archive}" DESTINATION "${PDFIUM_DIR}")
 endif()
 add_library(pdfium SHARED IMPORTED GLOBAL)
