@@ -86,6 +86,8 @@
 
 ## 中文
 
+全新配置首次启动会显示两页引导：第一页选择搜索与索引、打开方式，第二页选择剪贴板历史、截图。可返回调整，最后确认才统一生效；截图确认后下载组件并核对权限。也可“稍后设置”，先用文件名搜索和双击 Ctrl。已有配置升级不会重复弹出。
+
 **Win顺** 是 Windows 上免费开源的快速搜索启动器：连按两下 Ctrl 弹出搜索框，边打字边出结果。按文件名或拼音秒找文件，搜 Word、Excel、PDF 里的文字，打开应用和系统设置，还有剪贴板历史、截图和贴图、对话框搜索、任务栏搜索框、插件和给 AI 用的 MCP 搜索。
 
 它直接读 NTFS 主文件表（MFT）建索引，三百多万个文件几秒建好，增删改名实时跟上，**不用装 Everything**。不需要账号，不上传数据。界面有简体中文和英文。
@@ -339,6 +341,8 @@ Listary、PowerToys 的“查找鼠标”默认也用双击 Ctrl，关掉其中�
 <a id="english"></a>
 
 ## English
+
+A fresh profile starts with two setup pages: search and activation first, then clipboard history and screen capture. Go back to adjust your choices; all changes take effect after final confirmation. Capture downloads its component and asks for permission after confirmation. Choose “Set up later” to begin with filename search and double-tap Ctrl. Existing profiles keep their settings without seeing setup again.
 
 **WinShun** (Win顺, "Windows made smooth") is a free, open-source search launcher for Windows. Press Ctrl twice and a search bar pops up, with results as you type:
 

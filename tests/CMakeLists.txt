@@ -44,6 +44,16 @@ add_test(NAME tst_searchworkload COMMAND $<TARGET_FILE:WinShun>
 set_tests_properties(tst_searchworkload PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# First-run gating and draft/commit behavior in the real App and QML, with
+# temporary profiles and process-local HKCU redirection. No clipboard writes.
+foreach(case IN ITEMS fresh later apply legacy)
+    add_test(NAME tst_onboarding_${case} COMMAND $<TARGET_FILE:WinShun>
+        --probe-runtime "${CMAKE_CURRENT_BINARY_DIR}/onboarding-${case}"
+        --onboarding-probe ${case} --renderer d3d11)
+    set_tests_properties(tst_onboarding_${case} PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+endforeach()
+
 qt_add_executable(tst_notificationturns tst_notificationturns.cpp)
 target_include_directories(tst_notificationturns PRIVATE ${PROJECT_SOURCE_DIR}/src/app/platform)
 target_link_libraries(tst_notificationturns PRIVATE winshun_options Qt6::Test)

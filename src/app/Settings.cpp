@@ -784,6 +784,8 @@ void Settings::load()
     const Settings d = defaults();
     // Before anything below writes to it: nothing in it, a new install.
     const bool firstRun = s.allKeys().isEmpty();
+    onboardingComplete = readOrDefault(s, u"Setup/Completed"_s, !firstRun);
+    onboardingCapturePending = readOrDefault(s, u"Setup/CapturePending"_s, false);
 
     doubleCtrl = readOrDefault(s, u"Launcher/DoubleCtrl"_s, d.doubleCtrl);
     doubleTapKey = readOrDefault(s, u"Launcher/DoubleTapKey"_s, d.doubleTapKey).trimmed().toLower();
@@ -1113,7 +1115,14 @@ void Settings::load()
 
 void Settings::save() const
 {
+    saveChecked();
+}
+
+bool Settings::saveChecked() const
+{
     QSettings s(QSettings::IniFormat, QSettings::UserScope, u"WinShun"_s, u"WinShun"_s);
+    s.setValue(u"Setup/Completed"_s, onboardingComplete);
+    s.setValue(u"Setup/CapturePending"_s, onboardingCapturePending);
     s.setValue(u"Launcher/DoubleCtrl"_s, doubleCtrl);
     s.setValue(u"Launcher/DoubleTapKey"_s, doubleTapKey);
     s.setValue(u"Launcher/DoubleCtrlKey"_s, doubleCtrlKey);
@@ -1258,6 +1267,8 @@ void Settings::save() const
     s.setValue(u"Mcp/Settings"_s, mcpSettings);
     s.setValue(u"Plugins/DeveloperMode"_s, pluginDeveloperMode);
     writePlugins(s, plugins);
+    s.sync();
+    return s.status() == QSettings::NoError;
 }
 
 ContentSizeLimits Settings::contentSizeLimits() const

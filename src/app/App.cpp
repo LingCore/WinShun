@@ -29,6 +29,7 @@
 #include "McpServer.h"
 #include "McpTools.h"
 #include "MissingFiles.h"
+#include "Onboarding.h"
 #include "MovedPlugins.h"
 #include "Pipe.h"
 #include "Placement.h"
@@ -405,6 +406,11 @@ App::App()
 
 App::~App()
 {
+    delete m_onboardingWindow.data();
+    m_onboardingQml.reset();
+    m_onboarding.reset();
+    m_onboardingEditor.reset();
+    m_onboardingFrame.reset();
     if (m_launcher)
         m_launcher->setSwitches(nullptr, {});
     m_switches.reset();
@@ -485,6 +491,98 @@ bool App::start(const StartOptions& options)
         QGuiApplication::setFont(font);
     }
 
+    if (!m_settings.onboardingComplete)
+        return showOnboarding(options);
+    return startRuntime(options, firstRun, clipboardIsNew);
+}
+
+bool App::showOnboarding(const StartOptions& options)
+{
+    m_onboarding = std::make_unique<Onboarding>(m_settings);
+    m_onboardingFrame = std::make_unique<WindowFrame>(true);
+    m_onboardingQml = std::make_unique<QQmlApplicationEngine>();
+    m_onboardingQml->addImageProvider(u"fileicon"_s, new FileIconProvider);
+    m_onboardingQml->setInitialProperties({
+        {u"setup"_s, QVariant::fromValue(m_onboarding.get())},
+        {u"frame"_s, QVariant::fromValue(m_onboardingFrame.get())},
+    });
+    m_onboardingQml->loadFromModule(u"WinShun"_s, u"OnboardingWindow"_s);
+    const auto roots = m_onboardingQml->rootObjects();
+    if (roots.isEmpty())
+        return false;
+    auto* window = qobject_cast<QQuickWindow*>(roots.constFirst());
+    if (!window)
+        return false;
+    m_onboardingWindow = window;
+    window->setObjectName(u"onboardingWindow"_s);
+    m_onboardingFrame->setWindow(window);
+    m_onboardingFrame->setResizable(true);
+    m_onboarding->setWindow(window);
+    styleWindow(window, SystemTheme::backdropAvailable());
+    win::setDarkFrame(window, isDarkMode());
+    const QRect area = QGuiApplication::primaryScreen()->availableGeometry();
+    window->resize(std::min(window->width(), area.width() - 32), std::min(window->height(), area.height() - 32));
+    window->setPosition(area.center() - QPoint(window->width() / 2, window->height() / 2));
+    connect(m_onboarding.get(), &Onboarding::accepted, this, [this, options] {
+        m_settings = m_onboarding->settings();
+        StartOptions quiet;
+        quiet.background = true;
+        if (!startRuntime(quiet, true, false, true)) {
+            QCoreApplication::exit(1);
+            return;
+        }
+        if (!m_settings.onboardingCapturePending) {
+            finishOnboarding(options);
+            return;
+        }
+        m_onboardingEditor = std::make_unique<SettingsEditor>(m_settings, m_renderer);
+        m_onboardingEditor->setWindow(m_onboardingWindow);
+        connect(m_onboardingEditor.get(), &SettingsEditor::edited, this, &App::settingsEdited);
+        auto* plugins = m_onboardingEditor->plugins();
+        plugins->setLocale(m_language);
+        plugins->setHost(m_pluginHost.get());
+        m_onboarding->attachPlugins(plugins, m_pluginHost.get());
+    });
+    connect(m_onboarding.get(), &Onboarding::captureActivated, this, [this] {
+        m_settings.onboardingCapturePending = false;
+        m_settings.save();
+        if (m_onboardingEditor)
+            m_onboardingEditor->setSettings(m_settings);
+    });
+    connect(m_onboarding.get(), &Onboarding::finished, this, [this, options] { finishOnboarding(options); });
+    window->show();
+    window->raise();
+    win::bringToFront(window);
+    window->requestActivate();
+    return true;
+}
+
+void App::finishOnboarding(const StartOptions& options)
+{
+    // apply()/finish() can be on the QML call stack. Destroy its window and
+    // model on the next turn, after all signals and permission callbacks.
+    QTimer::singleShot(0, this, [this, options] {
+        if (!m_onboarding)
+            return;
+        delete m_onboardingWindow.data();
+        m_onboardingQml.reset();
+        m_onboarding.reset();
+        m_onboardingEditor.reset();
+        m_onboardingFrame.reset();
+        if (options.settings) {
+            showSettings();
+            if (!options.settingsAt.isEmpty() && m_settingsWindow)
+                QMetaObject::invokeMethod(m_settingsWindow, "showPlace", Q_ARG(QVariant, QVariant(options.settingsAt)));
+        } else {
+            // Finishing a visible welcome screen is an explicit interaction,
+            // including an installer or login start that originally used --background.
+            showLauncher(options.query);
+        }
+    });
+}
+
+bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboardIsNew, bool fromOnboarding)
+{
     const QString dataDir = Settings::dataDir();
     QDir().mkpath(dataDir);
     m_history = std::make_unique<History>(dataDir + u"\\history.txt"_s);
@@ -1001,7 +1099,8 @@ bool App::start(const StartOptions& options)
         std::function<void()> onClick;
         if (noFolders)
             onClick = [this] { showSettingsFor(u"Index/Folders"_s); };
-        m_messages->showNotification(tr("Win顺已在后台运行"),
+        if (!fromOnboarding)
+            m_messages->showNotification(tr("Win顺已在后台运行"),
             noFolders ? tr("双击 Ctrl 打开搜索。还没有要索引的文件夹，点这里在设置里添加；放在服务器上的文件夹，请加到“网络共享”里。")
                 : m_foldersInEffect ? tr("双击 Ctrl 打开搜索。Win顺 先索引你常用的文件夹（桌面、文档、下载等），可以在设置里增减。")
                 : cannotInstall ? tr("双击 Ctrl 打开搜索。Win顺 按文件夹遍历建立索引，首次运行需要一点时间。")
@@ -1013,6 +1112,9 @@ bool App::start(const StartOptions& options)
             m_settings.clipboard ? tr("复制过的文字、图片和文件都能找回来。点这里设置用 Win+V 打开它。")
                                  : tr("复制过的文字、图片和文件都能找回来。点这里打开它。"),
             [this] { showClipboardSettings(); });
+    } else if (m_settings.onboardingCapturePending && !fromOnboarding) {
+        m_messages->showNotification(tr("截图尚未启用"), tr("点这里在插件库中继续安装并确认权限。"),
+            [this] { showPluginSettings(u"winshun.capture"_s); });
     } else if (!m_indexFolderProblem.isEmpty()) {
         m_messages->showNotification(tr("索引位置"), m_indexFolderProblem);
     }
@@ -2837,6 +2939,8 @@ void App::reloadSettings()
     applySettings(false);
     if (m_settingsEditor)
         m_settingsEditor->setSettings(m_settings);
+    if (m_onboardingEditor)
+        m_onboardingEditor->setSettings(m_settings);
     if (accessChanged)
         applyIndexAccess();
 }
@@ -2846,6 +2950,8 @@ void App::settingsEdited(const Settings& settings)
     const bool accessChanged = settings.indexAccess != m_settings.indexAccess;
     m_settings = settings;
     applySettings(false);
+    if (m_onboardingEditor)
+        m_onboardingEditor->setSettings(m_settings);
     m_backup->soon();
     if (accessChanged)
         applyIndexAccess();
@@ -6000,6 +6106,17 @@ void App::createPluginHost()
     options.appearance = pluginLook();
     m_pluginHost = std::make_unique<plugin::Host>(options);
     connect(&m_pluginHost->catalog(), &plugin::Catalog::changed, this, &App::pluginsChanged);
+    connect(m_pluginHost.get(), &plugin::Host::stateChanged, this, [this](const QString& id) {
+        // A deferred install completed later from the regular plugin page.
+        if (!m_onboarding && id == u"winshun.capture" && m_settings.onboardingCapturePending
+            && m_pluginHost->catalog().enabled(id)
+            && m_pluginHost->state(id).status == plugin::Host::State::Status::Running) {
+            m_settings.onboardingCapturePending = false;
+            m_settings.save();
+            if (m_settingsEditor)
+                m_settingsEditor->setSettings(m_settings);
+        }
+    });
     setUpAppTools();
     // The shortcuts a plugin registers itself (the screenshot's): Win+Shift+S
     // and the global digits are left to it (applyTaskbarHotkeys, applyQuickPasteHotkeys).

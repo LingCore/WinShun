@@ -7,6 +7,7 @@
 #include "AppCatalog.h"
 #include "History.h"
 #include "IndexService.h"
+#include "Onboarding.h"
 #include "Launcher.h"
 #include "Placement.h"
 #include "SystemCatalog.h"
@@ -60,6 +61,7 @@
 #include <QQmlEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <stdexcept>
 #include <QScreen>
 #include <QScopeGuard>
 #include <QSettings>
@@ -148,9 +150,14 @@ void pump(int ms)
 // height the page asks for is the window's.
 void settle(QQuickWindow* window, int passes = 4)
 {
+    QPointer<QQuickWindow> liveWindow(window);
+    if (!liveWindow)
+        return;
     for (int pass = 0; pass < passes; ++pass) {
         window->contentItem()->setSize(QSizeF(window->width(), window->height()));
         pump(200);
+        if (!liveWindow)
+            return; // a queued close must not leave the probe grabbing a deleted window
         (void)window->grabWindow();
         if (window->contentItem()->height() == window->height() && pass > 0)
             break;
@@ -3754,6 +3761,347 @@ bool probeFileDialog(const QStringList& args, const QDir& out, const QString& se
     return selectedInDialog;
 }
 
+bool probeOnboarding(const QStringList& args, const QDir& out, QJsonObject& report)
+{
+    const QString action = valueAfter(args, u"--onboarding-probe");
+    bool passed = true;
+    QJsonObject checks;
+    const auto check = [&](const QString& name, bool value) {
+        checks.insert(name, value);
+        passed = passed && value;
+    };
+    const auto guideWindow = []() -> QQuickWindow* {
+        for (QWindow* candidate : QGuiApplication::allWindows()) {
+            if (candidate->property("setup").value<Onboarding*>())
+                return qobject_cast<QQuickWindow*>(candidate);
+        }
+        return nullptr;
+    };
+    const auto launcherWindow = []() -> QQuickWindow* {
+        for (QWindow* candidate : QGuiApplication::allWindows()) {
+            if (candidate->property("launcher").value<Launcher*>())
+                return qobject_cast<QQuickWindow*>(candidate);
+        }
+        return nullptr;
+    };
+    pump(100);
+    QPointer<QQuickWindow> window = guideWindow();
+    if (action == u"legacy") {
+        check(u"existing_profile_has_no_guide"_s, !window);
+        check(u"existing_profile_starts_runtime"_s, launcherWindow());
+        report.insert(u"checks"_s, checks);
+        return passed;
+    }
+    check(u"guide_created"_s, window);
+    if (!window) {
+        report.insert(u"checks"_s, checks);
+        return false;
+    }
+    QPointer<Onboarding> setup = window->property("setup").value<Onboarding*>();
+    QObject::connect(setup.data(), &Onboarding::accepted, qApp, [] { say(u"onboarding: accepted"_s); });
+    QObject::connect(window.data(), &QObject::destroyed, qApp, [] { say(u"onboarding: window destroyed"_s); });
+    const QSize guideSize = window->size();
+    const auto visible = [&](const QString& name) {
+        const auto* item = visualNamed(window->contentItem(), name);
+        return item && item->isVisible();
+    };
+    const auto navigate = [&](const QString& name) {
+        auto* button = visualNamed(window->contentItem(), name);
+        const bool clicked = button && button->isVisible() && QMetaObject::invokeMethod(button, "clicked");
+        settle(window);
+        if (!window || !setup || setup->committed()) {
+            report.insert(u"checks"_s, checks);
+            throw std::runtime_error("The guide closed or committed during navigation");
+        }
+        return clicked;
+    };
+    SystemTheme::setBackdropOn(false); // grabWindow does not capture the native Mica behind it
+    showOffScreen(window);
+    settle(window);
+    check(u"no_launcher_before_confirmation"_s, !launcherWindow());
+    check(u"no_clipboard_database_before_confirmation"_s,
+        QDir(Settings::dataDir()).entryList({u"*clip*.db*"_s, u"*clip*.sqlite*"_s}, QDir::Files).isEmpty());
+    for (const QString& name : {u"onboardingSearch"_s, u"onboardingActivation"_s, u"onboardingClipboard"_s, u"onboardingCapture"_s})
+        check(name, visualNamed(window->contentItem(), name));
+    check(u"initial_screenshot"_s, saveGrab(window, out.filePath(u"onboarding.png"_s)));
+    check(u"page_one_groups"_s, setup->page() == 0 && visible(u"onboardingSearch"_s) && visible(u"onboardingActivation"_s)
+        && !visible(u"onboardingClipboard"_s) && !visible(u"onboardingCapture"_s));
+    check(u"next_button"_s, navigate(u"onboardingNext"_s));
+    check(u"page_two_groups"_s, setup->page() == 1 && !visible(u"onboardingSearch"_s) && !visible(u"onboardingActivation"_s)
+        && visible(u"onboardingClipboard"_s) && visible(u"onboardingCapture"_s));
+    if (auto* summary = visualNamed(window->contentItem(), u"onboardingSummary"_s)) {
+        report.insert(u"summary_geometry"_s, QJsonObject {{u"width"_s, summary->width()}, {u"height"_s, summary->height()},
+            {u"implicit_height"_s, summary->implicitHeight()}, {u"visible"_s, summary->isVisible()},
+            {u"text"_s, summary->property("text").toString()}});
+        const QImage frame = window->grabWindow();
+        const qreal dpr = window->effectiveDevicePixelRatio();
+        const QRectF bounds = summary->mapRectToItem(window->contentItem(), QRectF(QPointF(), summary->size()));
+        const QRect pixels(qRound(bounds.x() * dpr), qRound(bounds.y() * dpr), qRound(bounds.width() * dpr), qRound(bounds.height() * dpr));
+        const QColor ink = summary->property("color").value<QColor>();
+        int count = 0;
+        const QRect clipped = pixels.intersected(frame.rect());
+        for (int y = clipped.top(); y <= clipped.bottom(); ++y) {
+            for (int x = clipped.left(); x <= clipped.right(); ++x) {
+                const QColor pixel = frame.pixelColor(x, y);
+                if (std::max({std::abs(pixel.red() - ink.red()), std::abs(pixel.green() - ink.green()), std::abs(pixel.blue() - ink.blue())}) < 48)
+                    ++count;
+            }
+        }
+        check(u"page_two_summary_painted"_s, summary->isVisible() && summary->height() > 0 && count > 12);
+    } else {
+        check(u"page_two_summary_painted"_s, false);
+    }
+    for (const QString& name : {u"onboardingClipboardToggle"_s, u"onboardingCaptureToggle"_s}) {
+        auto* toggle = visualNamed(window->contentItem(), name);
+        check(name + u"_visible"_s, toggle && toggle->isVisible() && toggle->width() >= toggle->implicitWidth()
+            && toggle->width() > 0 && toggle->height() > 0);
+    }
+    check(u"next_does_not_start_runtime"_s, !setup->committed() && !launcherWindow());
+    check(u"second_page_screenshot"_s, saveGrab(window, out.filePath(u"onboarding-page2.png"_s)));
+    writeTree(window, out.filePath(u"onboarding-page2.tree.txt"_s));
+    check(u"previous_button"_s, navigate(u"onboardingPrevious"_s));
+    check(u"back_to_page_one"_s, setup->page() == 0 && visible(u"onboardingSearch"_s));
+
+    // Real empty-profile startup is inspected without starting its default
+    // disk scan or enabling any global feature on the test machine.
+    if (action == u"fresh") {
+        for (int pass = 0; pass < 8; ++pass) {
+            check(u"rapid_next_%1"_s.arg(pass), navigate(u"onboardingNext"_s) && setup->page() == 1);
+            check(u"rapid_back_%1"_s.arg(pass), navigate(u"onboardingPrevious"_s) && setup->page() == 0);
+        }
+        Settings loaded;
+        loaded.load();
+        check(u"fresh_profile_still_pending"_s, !loaded.onboardingComplete);
+        report.insert(u"checks"_s, checks);
+        return passed;
+    }
+
+    auto* toggle = visualNamed(window->contentItem(), u"onboardingContentToggle"_s);
+    check(u"draft_toggle"_s, toggle && QMetaObject::invokeMethod(toggle, "toggled", Q_ARG(bool, true)));
+    Settings draft;
+    draft.load();
+    check(u"draft_not_saved"_s, !draft.onboardingComplete && !draft.contentIndex && !draft.clipboard);
+    {
+        // Exercise opt-in persistence through the production controller without
+        // recording the user's clipboard. Restore this probe's draft afterwards.
+        Onboarding consent(draft);
+        consent.setProperty("clipboard", true);
+        consent.setProperty("clipboardWinV", true);
+        consent.apply();
+        Settings optedIn;
+        optedIn.load();
+        check(u"clipboard_explicit_opt_in_saved"_s, optedIn.clipboard && optedIn.clipboardWinV && optedIn.onboardingComplete);
+        check(u"restore_private_draft"_s, draft.saveChecked());
+    }
+    for (int mode = 0; mode < 3; ++mode) {
+        setup->setProperty("activation", mode);
+        setup->beginTest();
+        const int key = mode == 0 ? Qt::Key_Control : mode == 1 ? Qt::Key_Alt : Qt::Key_Shift;
+        for (int tap = 0; tap < 2; ++tap) {
+            QKeyEvent press(QEvent::KeyPress, key, Qt::NoModifier);
+            QKeyEvent release(QEvent::KeyRelease, key, Qt::NoModifier);
+            QCoreApplication::sendEvent(window, &press);
+            QCoreApplication::sendEvent(window, &release);
+        }
+        check(u"double_tap_test_%1"_s.arg(mode), !setup->testing() && !setup->testMessage().isEmpty());
+    }
+
+    std::vector<int> freeKeys;
+    for (int number = 24; number >= 13 && freeKeys.size() < 2; --number) {
+        if (::RegisterHotKey(nullptr, 0x7351, MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT, VK_F1 + number - 1)) {
+            ::UnregisterHotKey(nullptr, 0x7351);
+            freeKeys.push_back(number);
+        }
+    }
+    check(u"isolated_shortcuts_available"_s, freeKeys.size() == 2);
+    if (freeKeys.size() != 2) {
+        report.insert(u"checks"_s, checks);
+        return false;
+    }
+    const QString launchHotkey = u"Ctrl+Alt+Shift+F%1"_s.arg(freeKeys[0]);
+    const QString captureHotkey = u"Ctrl+Alt+Shift+F%1"_s.arg(freeKeys[1]);
+    setup->setProperty("activation", 3);
+    check(u"invalid_first_page_does_not_advance"_s, navigate(u"onboardingNext"_s)
+        && setup->page() == 0 && !setup->message().isEmpty() && !setup->committed());
+    setup->setProperty("launchHotkey", launchHotkey);
+    setup->beginTest();
+    QKeyEvent testKey(QEvent::KeyPress, Qt::Key_F1 + freeKeys[0] - 1, Qt::ControlModifier | Qt::AltModifier | Qt::ShiftModifier);
+    QCoreApplication::sendEvent(window, &testKey);
+    check(u"local_shortcut_test"_s, !setup->testing() && !setup->testMessage().isEmpty());
+
+    check(u"next_with_choices"_s, navigate(u"onboardingNext"_s) && setup->page() == 1);
+    {
+        Settings uncommitted;
+        uncommitted.load();
+        check(u"next_keeps_choices_in_draft"_s, !uncommitted.onboardingComplete && !uncommitted.contentIndex
+            && uncommitted.hotkey.isEmpty() && !launcherWindow());
+    }
+    setup->setProperty("clipboard", true);
+    setup->setProperty("clipboardWinV", true);
+    setup->setProperty("capture", true);
+    setup->setProperty("captureHotkey", captureHotkey);
+    setup->beginTest(true);
+    setup->setRecording(true);
+    check(u"back_preserves_all_choices"_s, navigate(u"onboardingPrevious"_s) && setup->page() == 0
+        && setup->property("contentIndex").toBool() && setup->property("launchHotkey").toString() == launchHotkey
+        && setup->property("clipboard").toBool() && setup->property("clipboardWinV").toBool()
+        && setup->property("capture").toBool() && setup->property("captureHotkey").toString() == captureHotkey);
+    check(u"navigation_releases_key_capture"_s, !setup->testing() && !setup->recording());
+    check(u"first_page_choices_screenshot"_s, saveGrab(window, out.filePath(u"onboarding-page1-choices.png"_s)));
+    check(u"return_to_page_two"_s, navigate(u"onboardingNext"_s) && setup->page() == 1);
+    setup->setProperty("clipboard", false); // layout/consent tests never record the user's clipboard
+    setup->setProperty("clipboardWinV", false);
+
+    // An enabled screenshot without a shortcut must keep the draft open.
+    setup->setProperty("captureHotkey", QString());
+    auto* start = visualNamed(window->contentItem(), u"onboardingStart"_s);
+    QMetaObject::invokeMethod(start, "clicked");
+    check(u"invalid_shortcut_stays_in_guide"_s, !setup->committed() && !setup->message().isEmpty() && !launcherWindow());
+    setup->setProperty("captureHotkey", launchHotkey);
+    QMetaObject::invokeMethod(start, "clicked");
+    check(u"duplicate_shortcuts_rejected"_s, !setup->committed() && !setup->message().isEmpty());
+    setup->setProperty("captureHotkey", captureHotkey);
+    setup->beginTest(true);
+    QKeyEvent captureKey(QEvent::KeyPress, Qt::Key_F1 + freeKeys[1] - 1, Qt::ControlModifier | Qt::AltModifier | Qt::ShiftModifier);
+    QCoreApplication::sendEvent(window, &captureKey);
+    check(u"local_capture_shortcut_test"_s, !setup->testing() && !setup->testMessage().isEmpty());
+    setup->setProperty("launchHotkey", QString());
+    QMetaObject::invokeMethod(start, "clicked");
+    settle(window);
+    check(u"final_validation_returns_to_first_page"_s, setup->page() == 0 && !setup->committed()
+        && !setup->message().isEmpty() && visible(u"onboardingActivation"_s));
+    setup->setProperty("launchHotkey", launchHotkey);
+    check(u"repair_first_page_and_continue"_s, navigate(u"onboardingNext"_s) && setup->page() == 1
+        && setup->property("captureHotkey").toString() == captureHotkey);
+    const bool capturing = action == u"capture" || action == u"decline" || action == u"offline" || action == u"incompatible" || action == u"retry";
+    setup->setProperty("capture", capturing);
+    {
+        QTemporaryDir blocked;
+        const QString originalProfile = Settings::profile();
+        Settings::useProfile(blocked.path());
+        const auto restore = qScopeGuard([&] { Settings::useProfile(originalProfile); });
+        check(u"blocked_settings_fixture"_s, blocked.isValid() && QDir().mkpath(Settings::filePath()));
+        QMetaObject::invokeMethod(start, "clicked");
+        check(u"save_failure_keeps_guide_and_draft"_s, !setup->committed() && !setup->message().isEmpty()
+            && !launcherWindow() && setup->property("contentIndex").toBool());
+    }
+    settle(window);
+    check(u"save_error_screenshot"_s, saveGrab(window, out.filePath(u"onboarding-save-error.png"_s)));
+    setup->setProperty("contentIndex", false);
+    setup->setProperty("contentIndex", true);
+
+    setup->setProperty("clipboard", true);
+    setup->setProperty("clipboardWinV", true);
+    setup->setProperty("capture", true);
+    window->resize(660, 480);
+    settle(window);
+    auto* flick = qobject_cast<QQuickItem*>(visualNamed(window->contentItem(), u"onboardingScroll"_s));
+    if (flick)
+        flick->setProperty("contentY", std::max(0.0, flick->property("contentHeight").toDouble() - flick->height()));
+    settle(window);
+    auto* capture = qobject_cast<QQuickItem*>(visualNamed(window->contentItem(), u"onboardingCapture"_s));
+    check(u"last_feature_reachable_at_minimum_size"_s, capture && flick
+        && capture->mapToItem(flick, QPointF(0, capture->height())).y() <= flick->height() + 1);
+    check(u"compact_screenshot"_s, saveGrab(window, out.filePath(u"onboarding-compact.png"_s)));
+    window->resize(guideSize);
+    if (flick) flick->setProperty("contentY", 0);
+    settle(window);
+    check(u"choices_screenshot"_s, saveGrab(window, out.filePath(u"onboarding-choices.png"_s)));
+    setup->setProperty("clipboard", false);
+    setup->setProperty("clipboardWinV", false);
+    setup->setProperty("capture", capturing);
+    if (action == u"later")
+        check(u"later_from_first_page"_s, navigate(u"onboardingPrevious"_s) && setup->page() == 0);
+
+    const QString button = action == u"later" ? u"onboardingLater"_s : u"onboardingStart"_s;
+    QMetaObject::invokeMethod(visualNamed(window->contentItem(), button), "clicked");
+    if (capturing) {
+        QElapsedTimer waiting;
+        waiting.start();
+        bool permissionSeen = false;
+        bool retried = false;
+        while (waiting.elapsed() < 30000) {
+            pump(20);
+            auto* permissions = window->findChild<QObject*>(u"onboardingPermissions"_s);
+            if (permissions && permissions->property("open").toBool()) {
+                permissionSeen = true;
+                settle(window);
+                check(u"permission_screenshot"_s, saveGrab(window, out.filePath(u"onboarding-permissions.png"_s)));
+                window->resize(660, 480);
+                settle(window);
+                auto* permissionCard = permissions->findChild<QQuickItem*>(u"pluginDialogCard"_s);
+                auto* permissionScroll = permissions->findChild<QQuickItem*>(u"pluginDialogScroll"_s);
+                auto* acceptButton = permissions->findChild<QQuickItem*>(u"pluginDialogAccept"_s);
+                check(u"compact_permission_card_fits"_s, permissionCard
+                    && QRectF(QPointF(), window->size()).contains(permissionCard->mapRectToItem(window->contentItem(), QRectF(QPointF(), permissionCard->size()))));
+                if (acceptButton) acceptButton->forceActiveFocus(Qt::TabFocusReason);
+                settle(window);
+                check(u"compact_permission_button_reachable"_s, acceptButton
+                    && QRectF(QPointF(), window->size()).contains(acceptButton->mapRectToItem(window->contentItem(), QRectF(QPointF(), acceptButton->size()))));
+                check(u"compact_permission_screenshot"_s, saveGrab(window, out.filePath(u"onboarding-permissions-compact.png"_s)));
+                window->resize(guideSize);
+                if (permissionScroll) permissionScroll->setProperty("contentY", 0);
+                settle(window);
+                if (action == u"decline")
+                    QMetaObject::invokeMethod(permissions, "reject");
+                else
+                    QMetaObject::invokeMethod(permissions, "accept", Q_ARG(QVariant, QVariant(false)));
+            }
+            if (setup->canRetry() && action == u"retry" && !retried) {
+                check(u"offline_before_retry"_s, true);
+                // Keep Windows' Unicode environment: qgetenv/qputenv would
+                // lose the Chinese characters in this workspace's fixture path.
+                _wputenv_s(L"WINSHUN_PLUGIN_INDEX", qEnvironmentVariable("WINSHUN_ONBOARDING_RETRY_INDEX").toStdWString().c_str());
+                QMetaObject::invokeMethod(visualNamed(window->contentItem(), u"onboardingRetry"_s), "clicked");
+                retried = true;
+                continue;
+            }
+            if (setup->captureReady() || setup->canRetry())
+                break;
+        }
+        check(u"capture_committed"_s, setup->committed());
+        const bool accepted = action == u"capture" || action == u"retry";
+        check(u"permission_is_explicit"_s, accepted || action == u"decline" ? permissionSeen : !permissionSeen);
+        check(u"capture_expected_state"_s, accepted ? setup->captureReady() : setup->canRetry());
+        QSettings captureIni(Settings::dataDir() + u"/plugins/winshun.capture.data/capture.ini"_s, QSettings::IniFormat);
+        check(u"capture_shortcut_saved"_s, captureIni.value(u"Capture/Hotkey"_s).toString() == captureHotkey);
+        check(u"printscreen_unchanged"_s, !captureIni.value(u"Capture/PrintScreen"_s, true).toBool());
+        if (accepted) {
+            bool registered = false;
+            QElapsedTimer waitingForKey;
+            waitingForKey.start();
+            while (waitingForKey.elapsed() < 5000) {
+                if (::RegisterHotKey(nullptr, 0x7351, MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT, VK_F1 + freeKeys[1] - 1))
+                    ::UnregisterHotKey(nullptr, 0x7351);
+                else {
+                    registered = ::GetLastError() == ERROR_HOTKEY_ALREADY_REGISTERED;
+                    break;
+                }
+                pump(20);
+            }
+            check(u"capture_shortcut_registered_by_real_component"_s, registered);
+        }
+        report.insert(u"capture_message"_s, setup->message());
+        settle(window);
+        check(u"capture_status_screenshot"_s, saveGrab(window, out.filePath(u"onboarding-capture.png"_s)));
+        QMetaObject::invokeMethod(visualNamed(window->contentItem(), setup->captureReady() ? u"onboardingStart"_s : u"onboardingLater"_s), "clicked");
+    }
+    pump(150);
+    check(u"guide_closes_after_completion"_s, !guideWindow());
+    check(u"runtime_created_after_confirmation"_s, launcherWindow());
+    check(u"launcher_visible_after_setup"_s, launcherWindow() && launcherWindow()->isVisible());
+    Settings saved;
+    saved.load();
+    check(u"completion_saved"_s, saved.onboardingComplete);
+    check(u"index_choice_saved"_s, saved.contentIndex == (action != u"later"));
+    check(u"no_clipboard_without_opt_in"_s, !saved.clipboard && !saved.clipboardWinV);
+    check(u"capture_pending_saved"_s, saved.onboardingCapturePending == (capturing && action != u"capture" && action != u"retry"));
+    check(u"activation_choice_saved"_s, action == u"later" ? saved.doubleCtrl && saved.doubleTapKey == u"ctrl"
+        : !saved.doubleCtrl && saved.hotkey == launchHotkey);
+    report.insert(u"checks"_s, checks);
+    return passed;
+}
+
 int runRuntime(const QStringList& args)
 {
     const QDir out(valueAfter(args, kRuntimeFlag));
@@ -3786,9 +4134,13 @@ int runRuntime(const QStringList& args)
         RegCloseKey(key);
     }
     Settings settings = Settings::defaults();
+    const QString onboardingAction = valueAfter(args, u"--onboarding-probe");
+    settings.onboardingComplete = onboardingAction.isEmpty() || onboardingAction == u"legacy";
     settings.language = args.contains(u"--english"_s) ? u"en"_s : u"zh"_s;
     if (args.contains(u"--dark"_s))
         settings.theme = u"dark"_s;
+    if (!onboardingAction.isEmpty())
+        settings.transparency = u"off"_s;
     if (args.contains(u"--ocr-probe"_s)) {
         settings.theme = args.contains(u"--dark"_s) ? u"dark"_s : u"light"_s;
         settings.transparency = u"off"_s; // grabWindow cannot capture the native Mica behind a transparent surface
@@ -3875,7 +4227,14 @@ int runRuntime(const QStringList& args)
             }
         }
     }
-    settings.save(); // makes this an existing profile: no first-run autostart changes
+    settings.save(); // prepared profiles normally skip onboarding
+    if (onboardingAction == u"fresh")
+        QFile::remove(Settings::filePath()); // only this probe's private profile
+    if (onboardingAction == u"legacy") {
+        QSettings legacy(Settings::filePath(), QSettings::IniFormat);
+        legacy.remove(u"Setup/Completed"_s);
+        legacy.sync();
+    }
     if (args.contains(u"--legacy-semantic"_s)) {
         QSettings legacy(Settings::filePath(), QSettings::IniFormat);
         legacy.setValue(u"Plugin.winshun.semantic/Enabled"_s, true);
@@ -3887,6 +4246,36 @@ int runRuntime(const QStringList& args)
         legacy.setValue(u"Capture/PrintScreen"_s, false);
     }
     QJsonObject report;
+    if (!onboardingAction.isEmpty()) {
+        bool passed = false;
+        try {
+            App app;
+            passed = app.start({.background = true}) && probeOnboarding(args, out, report);
+        } catch (const std::exception& error) {
+            report.insert(u"error"_s, QString::fromUtf8(error.what()));
+            say(u"onboarding probe aborted: "_s + QString::fromUtf8(error.what()));
+        }
+        int expectedWarnings = 0;
+        if (onboardingAction == u"offline" || onboardingAction == u"retry") {
+            QFile log(g_logPath);
+            if (log.open(QIODevice::ReadOnly))
+                expectedWarnings = static_cast<int>(log.readAll().count("WARNING: Plugin library: no list from http://127.0.0.1:1/unreachable.json"));
+        }
+        report.insert(u"warnings"_s, g_warnings);
+        report.insert(u"expected_network_diagnostics"_s, expectedWarnings);
+        const int unexpected = std::max(0, g_warnings - expectedWarnings);
+        report.insert(u"unexpected_warnings"_s, unexpected);
+        report.insert(u"passed"_s, passed);
+        QFile json(out.filePath(u"onboarding.json"_s));
+        const bool saved = json.open(QIODevice::WriteOnly) && json.write(QJsonDocument(report).toJson()) > 0;
+        const QFileInfo privateProfile(Settings::profile());
+        if (privateProfile.fileName().startsWith(u"WinShun-preview-")
+            && QDir::cleanPath(privateProfile.absolutePath()).compare(QDir::cleanPath(QDir::tempPath()), Qt::CaseInsensitive) == 0)
+            QDir(privateProfile.absoluteFilePath()).removeRecursively();
+        else
+            return 4;
+        return passed && saved ? std::min(unexpected, 100) : 4;
+    }
     {
         App app;
         QElapsedTimer since;

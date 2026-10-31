@@ -6,6 +6,7 @@
 #include "ServiceVolumeAccess.h"
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QFileInfo>
 #include <QSettings>
 #include <QTemporaryDir>
@@ -25,6 +26,64 @@ class SettingsTest : public QObject {
     Q_OBJECT
 
 private slots:
+    void onboardingLifecycle()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings fresh;
+        fresh.load();
+        QVERIFY(!fresh.onboardingComplete);
+        // load() writes defaults, but an interrupted welcome is still pending.
+        ws::Settings interrupted;
+        interrupted.load();
+        QVERIFY(!interrupted.onboardingComplete);
+        interrupted.onboardingComplete = true;
+        interrupted.onboardingCapturePending = true;
+        QVERIFY(interrupted.saveChecked());
+        ws::Settings completed;
+        completed.load();
+        QVERIFY(completed.onboardingComplete);
+        QVERIFY(completed.onboardingCapturePending);
+        completed.onboardingCapturePending = false;
+        QVERIFY(completed.saveChecked());
+        ws::Settings ready;
+        ready.load();
+        QVERIFY(!ready.onboardingCapturePending);
+    }
+
+    void onboardingExistingProfile()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        {
+            QSettings legacy(ws::Settings::filePath(), QSettings::IniFormat);
+            legacy.setValue(u"Clipboard/Enabled"_s, true);
+            legacy.setValue(u"Launcher/Hotkey"_s, u"Ctrl+Alt+F9"_s);
+            legacy.setValue(u"Content/Index"_s, true);
+            legacy.sync();
+        }
+        ws::Settings upgraded;
+        upgraded.load();
+        QVERIFY(upgraded.onboardingComplete);
+        QVERIFY(upgraded.clipboard);
+        QVERIFY(upgraded.contentIndex);
+        QCOMPARE(upgraded.hotkey, u"Ctrl+Alt+F9"_s);
+        // Prepared profiles and previews deliberately skip the first-run UI.
+        QVERIFY(ws::Settings::defaults().onboardingComplete);
+    }
+
+    void settingsSaveFailure()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        // A directory cannot be atomically replaced by a settings file.
+        QVERIFY(QDir().mkpath(ws::Settings::filePath()));
+        QVERIFY(!ws::Settings::defaults().saveChecked());
+    }
+
     void systemSwitchesMigration()
     {
         const QString id = u"winshun.switches"_s;

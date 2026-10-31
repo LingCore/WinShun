@@ -60,6 +60,9 @@
 //     A separate production startup probe: real App::start, temporary profile,
 //     process-local HKCU redirection, no global shortcuts/service/shell setup.
 //     Optional clipboard recording reads but never changes the clipboard;
+//     --onboarding-probe fresh|later|apply|legacy|capture|decline|offline|incompatible|retry
+//     checks first-run gating and choices in the real guide. Capture cases use
+//     WINSHUN_PLUGIN_INDEX local fixtures; approval still uses PluginDialog.
 //     runtime.json exports resource and lifecycle checks. Plugin fixtures are
 //     copied to the profile, enabled there, and stopped on exit. The reusable
 //     tools/verify-plugin-recovery.ps1 drives recovery and permission cases,

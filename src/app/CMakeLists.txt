@@ -49,6 +49,7 @@ qt_add_executable(WinShun WIN32
     FileIconProvider.cpp FileIconProvider.h
     McpClients.cpp McpClients.h
     Migration.cpp Migration.h
+    Onboarding.cpp Onboarding.h
     PieGeometry.cpp PieGeometry.h
     PieLabels.cpp PieLabels.h
     Phosphor.cpp Phosphor.h
@@ -152,6 +153,7 @@ set(qml_files
     qml/KeyHint.qml
     qml/Glyph.qml
     qml/SettingsWindow.qml
+    qml/OnboardingWindow.qml
     qml/SettingsSearchBox.qml
     qml/TitleBar.qml
     qml/SettingsSection.qml

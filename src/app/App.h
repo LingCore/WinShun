@@ -80,6 +80,7 @@ class Launcher;
 class MessageWindow;
 class MissingFiles;
 class NetworkNotifier;
+class Onboarding;
 class Placement;
 class SearchEngine;
 class SettingsEditor;
@@ -192,6 +193,9 @@ protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
 
 private:
+    bool startRuntime(const StartOptions& options, bool firstRun, bool clipboardIsNew, bool fromOnboarding = false);
+    bool showOnboarding(const StartOptions& options);
+    void finishOnboarding(const StartOptions& options);
     bool createWindow();
     bool createClipWindow();
     QQuickWindow* createPreviewWindow(); // FilePreview's, the first time it is wanted
@@ -710,6 +714,11 @@ private:
     FrameReveal m_launcherReveal; // armed once the fresh results are ready (showLauncher)
     std::atomic<bool> m_prewarming {false}; // shown cloaked for one frame (see prewarmLauncher)
     std::unique_ptr<QQmlApplicationEngine> m_qml; // destroyed first: QML references the objects above
+    std::unique_ptr<Onboarding> m_onboarding;
+    std::unique_ptr<WindowFrame> m_onboardingFrame;
+    std::unique_ptr<SettingsEditor> m_onboardingEditor;
+    std::unique_ptr<QQmlApplicationEngine> m_onboardingQml;
+    QPointer<QQuickWindow> m_onboardingWindow;
     // The plugins' tray submenus as they last answered trayMenu (prefetchTrayMenus): plugin id -> entries.
     std::map<QString, QJsonArray> m_trayMenus;
     std::map<QString, QStringList> m_pluginHotkeys; // the shortcuts plugins register themselves (winshun/hotkeys)

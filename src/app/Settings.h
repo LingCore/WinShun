@@ -79,6 +79,10 @@ struct PluginConfig {
 // (%APPDATA%\WinShun\WinShun.ini). Missing keys are written back with
 // their defaults so every option is discoverable in the file.
 struct Settings {
+    // Existing profiles and deliberately prepared profiles skip the welcome
+    // screen. load() marks an empty profile incomplete before writing defaults.
+    bool onboardingComplete = true;
+    bool onboardingCapturePending = false;
     // [Launcher]
     bool doubleCtrl = true; // a double tap opens the launcher: of Ctrl, Alt or Shift (doubleTapKey)
     QString doubleTapKey = QStringLiteral("ctrl"); // ctrl | alt | shift
@@ -449,6 +453,7 @@ struct Settings {
 
     void load();
     void save() const;
+    bool saveChecked() const; // sync to disk; the welcome screen must not continue after a failed save
 
     bool operator==(const Settings&) const = default;
 
