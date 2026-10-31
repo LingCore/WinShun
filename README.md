@@ -82,6 +82,8 @@
 
 <a id="中文"></a>
 
+> **旧 issue 复查（开发中，尚未发布） / Historical issue audit (unreleased)**：复查 #139 及以前的反馈，补修鼠标移动时双击修饰键失效、开始菜单中的控制台程序启动、连续算式触发和 Ditto 导入保护属性；改进类型筛选、英文程序名首字母、文件夹菜单及剪贴板选项。已关闭后的新增问题也重新跟踪。逐项结论、验证范围和仍待复现的项目见 [复查记录](docs/issue-audit-20261030.md)。These changes are in the development workspace; existing downloads do not include them. The audit records verification and remaining gaps per issue.
+
 ## 中文
 
 **Win顺** 是 Windows 上免费开源的快速搜索启动器：连按两下 Ctrl 弹出搜索框，边打字边出结果。按文件名或拼音秒找文件，搜 Word、Excel、PDF 里的文字，打开应用和系统设置，还有剪贴板历史、截图和贴图、对话框搜索、任务栏搜索框、插件和给 AI 用的 MCP 搜索。
@@ -97,20 +99,21 @@
 #### 🔍 文件搜索
 
 - **WSL 文件搜索**：在设置 › 搜索范围 › 网络与 WSL 中添加 Linux 项目或用户目录；自动列出已安装的发行版，支持用户目录快捷添加、选择文件夹或粘贴路径。文件名、拼音和首字母一起搜，发行版停止时保留已收录结果，恢复运行后自动更新。
+- **网络与 WSL 扫描控制**：每个文件夹的“扫描设置”可单独限制每日时段（支持跨午夜）和最大层数；0 表示不限，1 层只读取当前文件夹。时段外暂停后台文件名和内容读取，已有结果照常可搜；“立即核对”可临时扫描一次文件名，仍遵守层数限制。默认不限制。
 
 - **双击 Ctrl** 打开（也可以改成双击 Alt 或 Shift），再按一次或 `Esc` 关闭；三百多万个文件里搜一次只要几毫秒。
 - **拼音和首字母**：`ndbg` → 年度报告，`baog` → 报告；多音字按常用读音。打错了同音字（年度报高）找不到时，自动按读音再找一遍。
 - **搜整台电脑**：所有本地磁盘，U 盘可选（没收录的 U 盘插着时，列表末尾会提示你顺手搜一下它）；**NAS、内网共享文件夹（SMB）和 WebDAV 文件夹**（NAS 的 WebDAV、坚果云这类网盘）也能加进来一起搜，服务器关机时收录过的照样能搜到，服务器重启后自己连回来；想搜它们里面文件的内容，在那个位置的卡片上打开“搜索文件内容”。没有管理员权限的电脑也能用：只索引你选的文件夹（见下面“管理员权限”）。
 - **排序懂你**：自己的文件在前，系统目录、`node_modules` 在后，名字完全一样的最前。每行显示修改日期，也可在设置中开启文件大小，无需展开窗口；两项可分别开关。`Ctrl+S` 在最匹配、最新、最早之间切换；底栏的“更多”里还能按名称、所在文件夹、类型、大小排。不输入时列出最近打开或最近修改的文件，也可以不列；还可以设成每次打开时清空搜索。结果怕点错的话，设置里可以改成双击才打开。
 - **程序优先**：搜 `curl`，`curl.exe` 排在文件夹 `curl` 和 `curl.h` 前面；优先哪些类型可以自己改（默认 exe、bat、cmd、ps1、msi，像 Listary 的“优先显示的文件类型”）。
-- **数字键直达**：`Ctrl+1`～`Ctrl+9` 打开第几行（也可改成 `Alt`）；按住 `Ctrl` 时图标上显示序号，也可以设成一直显示或不显示。
+- **数字键直达**：`Ctrl+1`～`Ctrl+9` 打开当前可见的第几项（也可改成 `Alt`）；快捷编号单独显示在图标左侧，按住时出现，也可以设成一直显示或不显示。滚动后按可见条目重新编号；被其他软件占用的数字会变灰并加删除线。
 - **按类型找**：选中 **文件** 后，下面一排是文件夹、文档、图片、视频、压缩包等类型，可以同时选择多类；再点一次取消，点“不限”重置。`Ctrl+Tab` 依次切换；点 `+` 或在设置里自己加类型。
 - **不想看到的文件**：设置 › 搜索范围 里可以跳过一些类型和文件名，`*`、`?` 通配；默认跳过 Office、WPS 打开文档时生成的 `~$` 临时文件。搜索框里打的就是这样的名字时，照样找得到。
 - **大图浏览**：搜索面板右下角可切换“列表 / 大图”，图片、视频和 PDF 使用异步缩略图；拖动滑块或按住 `Alt` 滚动滚轮调整大小，保留浏览位置，记住视图和尺寸。多选、右键菜单和拖出文件继续可用。
 - **搜索面板**：结果太多时，点搜索框右上角的小按钮或按 `Ctrl+E`，同一个窗口展开成面板（像 Listary）：左边按范围、类型、修改时间、大小、位置筛选，右边按列显示结果，点列头排序；右键列头可选名称、路径、类型、大小、修改时间、创建时间、文件夹和来源，拖动调整顺序和宽度，自动保存布局；什么都不输入也能按条件浏览整个索引（三百万个文件也是毫秒级）。`size:>10mb`、`dm:7d` 这类写法直接打在搜索框里也行。再按一次就缩回搜索框。
 - **长文件名**：名字放不下时在中间缩短，扩展名和结尾留着（“…第二版.xlsx”）；鼠标停在这一行上，显示完整的名字、位置、大小、修改和创建时间。拖动搜索框的左边或右边可以调宽（记住宽度，双击边缘恢复默认）。
 - **钉住**：按 `Ctrl+T` 或点搜索框右上角的图钉，点别处、打开文件后搜索框都不收起，`Esc` 关闭；按住左边的放大镜拖动窗口，单击它打开设置。
-- **预览**：在结果上按 `Alt+P`（或右键“预览”）看一眼文件，启动器不关：图片、文本（自动认 UTF-8 / GBK）、Word / Excel / PowerPoint / PDF（用资源管理器预览窗格的同一套预览程序）、文件夹里有什么；上下键换一行就换一个文件，再按 `Alt+P`（或点预览窗口的叉）关掉；`Esc` 关的是启动器，预览开着时下次打开还在。后台开着 QuickLook 或 Seer 时交给它们。
+- **预览**：在结果上按 `Alt+P`（或右键“预览”）看一眼文件，启动器不关：图片、文本（自动认 UTF-8 / GBK）、Word / Excel / PowerPoint / PDF（用资源管理器预览窗格的同一套预览程序）、文件夹里有什么；上下键换一行就换一个文件，再按 `Alt+P`（或点预览窗口的叉）关掉；`Esc` 关的是启动器，预览开着时下次打开还在。后台开着 QuickLook 或 Seer 时交给它们。 搜索结果的预览键可在设置中改为空格、功能键或未占用的组合键；空格模式下用 `Shift+空格` 继续输入空格。
 - **缩略图**：图片、视频、PDF 等在结果里直接显示缩略图，代替类型图标，“打开”“另存为”对话框旁的搜索框里也一样；设置 › 结果列表里可以关。
 - **右键菜单**：右键一行有打开位置、复制路径、加入收藏等；按住 `Shift` 右键（或菜单里的“更多选项”），出现 Windows 自己的完整右键菜单，和资源管理器里一样，选中几行也行；复制、剪切、删除之后搜索框不关。
 - **拖出去就能用**：结果直接拖进微信、邮件、资源管理器。
@@ -125,7 +128,7 @@
 | `*.pdf`、`报告?.docx` | 通配符 |
 | `ext:pdf,docx` | 只要这些扩展名 |
 | `报告 \| 总结 2026` | OR 组合；空格 AND 优先，`\|` 两侧留空格 |
-| `^IMG`、`.pdf$`、`regex:^IMG_\d+\.(jpg\|png)$` | 名字首尾匹配、正则表达式 |
+| `^IMG`、`.pdf$`、`regex:^IMG_\d+\.(jpg\|png)$` | 名字首尾匹配、正则表达式；`Ctrl+R` 正则模式：每个词都按正则匹配，同 Everything |
 | `:pictures,videos` | 同时筛选图片和视频（关键字可在设置里改） |
 | `项目\readme` | 在名字含“项目”的文件夹下 |
 | `tools/out/`、`D:\My Files\` | 路径直达：回车进去，列出里面的内容 |
@@ -146,7 +149,8 @@
 
 - **应用**：开始菜单里的所有应用都能搜，含 Microsoft Store 应用。名称、拼音、首字母（`vsc`）、程序名（`winword`）都行；`Ctrl+Shift+Enter` 以管理员身份运行。
 - **系统设置**：约 1200 个 Windows 设置页和控制面板项。`shipeiqi`、“网卡”、`ncpa.cpl` 都能打开网络连接；另外补了组策略、磁盘管理、hosts、AppData 等开始菜单里没有的。
-- **系统开关**：深色模式、显示隐藏的文件、显示文件扩展名、蓝牙、WLAN、音量和静音、保持唤醒，行尾直接显示现在的状态；`Enter` 就地切换，搜索框不关，`Ctrl+Enter` 打开设置页。“关蓝牙”“静音”“音量 30”一步到位，“保持唤醒 1小时”到点自动结束。
+- **系统开关插件**：在“设置 → 插件”启用，新配置默认关闭，升级保留原来的系统搜索选择。深色模式、显示隐藏的文件、显示文件扩展名、蓝牙、WLAN、音量和静音、保持唤醒，行尾直接显示现在的状态；`Enter` 就地切换，搜索框不关，`Ctrl+Enter` 打开设置页。“关蓝牙”“静音”“音量 30”一步到位，“保持唤醒 1小时”到点自动结束。
+- 只用来找文件的话，可以在设置里关掉“搜索应用”“搜索系统设置”，“全部”里就只有文件和内容。
 
 #### 🌐 网页搜索 · ⭐ 收藏夹 · 🧩 插件
 
@@ -162,19 +166,24 @@
   - **拖文件时按 `` ` `` 键**：在文件或文件夹上按住左键（不用先拖动；资源管理器、桌面、Total Commander 等别的程序都行），按一下 `Esc` 下面那个键（中文输入法下是 `·`，拖动时不会打出字），指针周围弹出前 8 个文件夹收藏；朝哪个文件夹的方向拖就选中哪个，松开就放进去：和资源管理器一样，同一个盘里移动、到别的盘复制，按住 `Ctrl` 复制、`Shift` 移动，进度和重名提示都是 Windows 自己的，在资源管理器里按 `Ctrl+Z` 能撤销。在中间松开或按 `Esc` 什么也不做，再按一次那个键或拖远一点它就收起，接着拖到别处照常放。默认开，在设置 › 收藏夹 里关；Win顺 以管理员身份运行时用不了。
 - **插件**：
   - 随包的小工具：`= 1+2*3` 计算器、`12 inch to cm` 单位换算、`#ff8800` 颜色，还有时间戳、UUID、Base64、哈希；
-  - `kill` 结束进程，`bm` 搜浏览器书签，`tr` 翻译；
-  - **局域网传输**（在插件库里，要用时装上）：和同一个网络里开着 [LocalSend](https://localsend.org) 的手机、电脑互传文件和文字，不用服务器和账号。别人发来时先问你，输入 `传 ` 收发，或在结果上右键“用局域网发送…”；
+  - `kill` 结束进程；
+  - **局域网传输**（在插件库里，要用时装上）：和同一个网络里开着 [LocalSend](https://localsend.org) 的手机、电脑互传文件和文字，不用服务器和账号。别人发来时先问你，输入 `传 ` 收发，或在搜索结果、剪贴板历史上右键“用局域网发送…”后选择设备；历史多选也能发送，不改动系统剪贴板（需要局域网传输插件 1.0.1 或更新版本）；
   - **按意思找**（在插件库里，要用时装上）：`? 去年报销的规定` 也能找到写着“差旅费用申请”的文档。用你选的模型：本机的 Ollama、LM Studio 什么都不上传；硅基流动、百炼、OpenAI 等填自己的密钥，第一次计算前告诉你要发出去多少字，你按回车才开始。见 [它的说明](src/semantic-plugin/package/README.md)；
-  - **插件库**：设置 › 插件 › 插件库 里装 Win顺 自己的截图与录屏、局域网传输、按意思找，也看别人写的插件（来自 [WinShun-plugins](https://github.com/LingCore/WinShun-plugins)），点一下安装或更新，下载后先核对大小和校验值；只在打开这一页、点“刷新”或安装时联网；连不上 GitHub 时在 设置 › 高级 › 网络代理 里选“手动”填代理地址；
+  - **休息提醒**（在插件库里，要用时装上）：默认每 20 分钟小休 20 秒，隔一次换成大休 5 分钟。提前 30 秒屏幕上方出个小条，可以推迟一次或跳过；到点等你停手，把所有显示器调暗、显示倒计时，按 `Esc` 提前结束。可以选“必须休完”（长按 `Esc` 3 秒才能离开）。离开电脑 5 分钟算休息过；全屏游戏、放幻灯片、开着勿扰时先等着。输入 `休息` 看还有多久、马上休息或暂停。见 [它的说明](src/break-plugin/package/README.md)；
+  - **翻译**（在插件库里，要用时装上）：`tr 句子` 中文译成英文、其他译成中文，用你自己的 DeepL 或 OpenAI 兼容接口密钥；没填密钥不联网，打字停下才发请求，Enter 复制译文；
+  - **浏览器书签**（在插件库里，要用时装上）：`bm 词` 搜 Chrome 和 Edge 所有配置文件里的书签，Enter 打开；
+  - **插件库**：设置 › 插件 › 插件库 里装 Win顺 自己的截图与录屏、局域网传输、按意思找、休息提醒、翻译、浏览器书签，也看别人写的插件（来自 [WinShun-plugins](https://github.com/LingCore/WinShun-plugins)），新插件点“安装并启用”，核对大小和校验值、同意权限后即可使用；更新保留原来的开关。升级后未恢复的功能可在“已安装”里重试或从本地插件包恢复；只在打开这一页、点“刷新”或安装时联网；连不上 GitHub 时在 设置 › 高级 › 网络代理 里选“手动”填代理地址；
   - 自己写插件：零代码的 `plugin.json`、任意语言的脚本或常驻进程都行，附 Python / PowerShell / C++ SDK；
   - 插件以普通权限、限内存运行。见 [docs/plugins.md](docs/plugins.md)。
 
 #### 📂 “打开”“另存为”对话框
 
 - **对话框旁的搜索框**：输入文件夹或文件名（拼音也行），回车，对话框直接转过去；网页上传文件、WPS 的对话框、VBA 宏弹出的“浏览文件夹”也认；安装程序（Inno Setup）里的“浏览文件夹”窗口也有，选好只是把路径填进去，“确定”还是你自己点（选开始菜单文件夹的那个不接管）。
-- **`Ctrl+G`**：转到资源管理器、Total Commander、Directory Opus、XYplorer、Pulse 或 OneCommander 正在显示的文件夹，和 Listary 的同名快捷键一样。OneCommander 使用当前活动面板的路径，无需额外配置。
+- **`Ctrl+G`**：转到资源管理器、Total Commander、Directory Opus、XYplorer、Pulse 或 OneCommander 正在显示的文件夹，和 Listary 的同名快捷键一样。OneCommander 使用当前活动面板的路径，无需额外配置；对话框建议也可列出其他打开的标签，状态未同步时先使用活动目录。
 - **不输入时**：列出打开着的文件夹、刚复制的路径、收藏和最近用过的文件夹。
 - **自动转过去**：可以设成对话框一出现就转到文件管理器的文件夹，或者先停在上次的位置，从文件管理器切回来时再转。
+- **Blender**：安装并启用 [文件对话框扩展](integrations/blender/winshun_file_dialog/README.md)，独立的打开、另存为和导入窗口即可使用搜索栏；保存、导出仍在 Blender 确认。Windows x64，已实测 Blender 5.2。[自定义对话框兼容与验证范围](docs/dialog-compatibility.md)。
+- **Blender (English)**: enable the [file-dialog extension](integrations/blender/winshun_file_dialog/README.md) to use WinShun in separate Open, Save As and Import windows. Save/Export confirmation stays in Blender. Tested on Windows x64 with Blender 5.2.
 
 #### 🗂️ 资源管理器里：双击空白处、右键搜索此处
 
@@ -186,6 +195,8 @@
 - **右键“用 Win顺 搜索此处”**：文件夹、文件夹的空白处和磁盘的右键菜单里都有（Windows 11 在“显示更多选项”里），搜索框带着这个文件夹打开，接着打字就在里面找。设置里可以关。
 - **直接打字搜索**：在资源管理器的文件列表里随意打字，Win顺 就带着打的字搜，和 Listary 一样：这个窗口的文件夹（含子文件夹）里的排在最前，一条细线“其他位置”下面是别处的；点“只搜 …”或按 `Ctrl+D` 就只搜这个文件夹，设置里也能设成每次都只搜它。中文输入法照常组拼音，`Esc` 回到资源管理器。选中的文件夹在同一个标签页里打开，接着打字就再往里一层；选中一个文件或文件夹按 `Ctrl+Enter`，也在这个标签页里转到它所在的文件夹并选中它（设置里选的文件管理器是资源管理器时）；资源管理器的 `Shift` 右键菜单也不会被抢走按键。设置里打开（它代替了资源管理器自己的按首字母跳到文件，所以默认关）。
 
+- **窗口避让与同步选中（开发版）**：从资源管理器打字打开时，搜索框优先放到原窗口外，空间不足时减少重叠，并保留原来的宽度和常用位置。浏览原目录的直接子项时，原标签页同步选中并显示对应项目，键盘焦点仍在搜索框；子目录和其他位置的结果不会自动带走原目录。
+
 #### 📋 剪贴板历史（代替 Win+V）
 
 - **记什么**：复制过的文字、图片、文件都记下来。
@@ -196,7 +207,7 @@
 - **按住连按，松开粘贴**（和 Ditto 一样）：设置 › 剪贴板 › 快捷键 里打开“按住连按快捷键，松开粘贴”。按住快捷键里的 Ctrl、Alt、Shift 或 Win，每再按一下就往下选一条，松开就粘贴；按住约一秒再松开粘贴第一条，按着时按 `Esc` 不粘贴。默认关。
 - **粘进上传框**：在 Windows 的“打开”文件选择框里从剪贴板历史粘贴文件，完整路径直接填进“文件名”，多个文件也行，再点“打开”。
 - **公式和嵌入的对象**：Word 里单独复制的公式、文档里嵌入的对象，记成一条带图的历史（公式的文字也搜得到），粘回 Word 里还是能编辑的公式或对象，只认图片的程序拿到的是图片；`Shift+Enter` 把公式粘贴成一行文字。（用 Word 测过。）
-- **能搜**：拼音搜索，`@wx` 只看微信里复制的；**图片里的字也能搜**（PaddleOCR 文字识别，在本机，不联网，截图里的数字和小字也认得准）。
+- **能搜**：拼音搜索，`@wx` 只看微信里复制的；**图片里的字也能搜**（默认使用 Windows 支持的识别语言；安装增强文字识别后使用 PaddleOCR，提升中英文、数字和小字的效果，识别过程都在本机完成）。
 - **预览**：全文、大图、颜色值的 HEX / RGB / HSL；GIF 动图支持播放和暂停。点一条旁边的眼睛按钮（或 `Alt+P`）开关预览，预览开着时鼠标停在哪一行就预览哪一行；预览窗口更宽，中间的竖线可以拖着调，下次还记得；图片缩略图可以调大，不打开预览也看得清。
 - **图片保留原格式**：复制来源提供 PNG、JPEG 或 GIF 时，保存原始数据；只有位图时转存 PNG。按住图片拖到文件夹，或在资源管理器里从剪贴板历史粘贴图片，都会沿用保存的格式；用 Ctrl 或 Shift 选多张还能一起保存。
 - **整理**：固定、分组、多选按顺序合并粘贴，钉住后可以一条接一条地往表格里填；固定的可以排在最前，顺序可以拖动或用 `Ctrl+↑`/`↓` 自己排。`Ctrl+A` 选中列出来的全部，行菜单里的“删除全部”一次清掉，按 `Ctrl+Z` 能恢复。
@@ -205,7 +216,7 @@
 - **隐私**：密码管理器复制的密码不记录，历史只存在本机。
 - **截图**（插件库里的“截图与录屏”插件，在 设置 › 插件 › 插件库 装上；快捷键自己录，想用 `PrtScn` 也在它卡片上的“设置”里打开。以前开着截图的，升级后自动装上，设置照旧）：
   - **区域录屏和 GIF**：框选后点“录屏”或按 `Ctrl+R`，录 MP4 或 GIF；可以暂停、继续、选择画质、鼠标指针和点击高亮，还能在视频角落显示按下的快捷键和鼠标按键（默认关闭；选“全部按键”时打的字也会录进去）。MP4 可选系统声音和麦克风，默认都关闭；GIF 不含音频，后台生成时显示进度。控制条不录进画面，录完能继续录下一段。
-  - **框选**：鼠标移到窗口、按钮上就把它框出来，框外变暗，点一下选中，也可以拖出一块；滚轮扩大或缩小框。设置、计算器这类程序里的侧栏和按钮也能框出来（Chrome、Edge、VS Code、微信这类 Chromium 程序里面不识别，只框整个窗口，需要时手动拖选）。`Shift+R` 回到上一次的那一块。
+  - **框选**：鼠标移到窗口、按钮上就把它框出来，框外变暗，点一下选中，也可以拖出一块；滚轮扩大或缩小框。设置、计算器这类程序里的侧栏和按钮也能框出来（Chrome、Edge、VS Code、微信这类 Chromium 程序里面不识别，只框整个窗口，需要时手动拖选）。`Shift+R` 回到上一次的那一块；`,` `.` 翻看之前的截图（整屏、选区和标注都恢复，可重新框选、接着改），默认留最近 10 次。
   - **放大镜和取色**：跟着鼠标放大像素，`C` 复制鼠标下的颜色并结束截图，单按 `Shift` 在 `#RRGGBB`、`rgb()`、`hsl()` 三种写法之间换。选好区域后放大镜只在选区里出现。
   - **HDR 屏幕**：开着 HDR 时截图颜色照常，不发灰；在截图的设置里打开“HDR 屏幕上同时保存 HDR 图片”（默认关），`Ctrl+S` 保存时在 PNG 旁边多存一份同名的 `.jxr`，亮的地方保持原来的亮度，用 Windows 的“照片”就能看。
   - **识别文字并复制**：`Shift+C` 把选区里的文字识别出来，直接复制。
@@ -251,7 +262,7 @@
 | 双击 `Ctrl` | 打开 / 关闭搜索框（可改成双击 `Alt` 或 `Shift`，或另设组合键，如 `Alt+Space`） |
 | `Enter` / `Ctrl+Enter` / `Ctrl+Shift+Enter` | 打开 / 打开所在文件夹 / 以管理员身份运行 |
 | `Ctrl+C` / `Ctrl+Shift+C` | 复制文件 / 复制路径 |
-| `Ctrl+1`～`Ctrl+9` | 打开第几行（按住 `Ctrl` 时图标上显示序号） |
+| `Ctrl+1`～`Ctrl+9` | 打开当前可见的第几项（按住 `Ctrl` 时在图标左侧显示编号） |
 | `Tab` / `Shift+Tab` | 切换范围：全部 / 文件 / 内容（往后 / 往前）；设置里可改为 Tab 进入选中的收藏文件夹 |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | 在 **文件** 里切换类型，在 **内容** 里切换文件夹 |
 | `Ctrl+S` | 最匹配 → 最新在前 → 最早在前（名称、类型、大小在底栏的“更多”里） |
@@ -269,6 +280,8 @@
 3. 有新版本时，在更新提醒里点“下载并安装”（便携版是“下载并更新”），Win顺 自己下载、核对后装好并重新打开；也可以手动运行新的安装程序。设置和索引都保留。AI 工具（Claude Code、Cursor 等）正连着 Win顺 时，安装程序会先问一声：现在装，它会断开，装好后在它里面重新连接 Win顺 或重启它；也可以等它用完再装。卸载在 Windows 的“设置 → 应用”里。
 
 不想安装的话，下载 `WinShun-版本号-x64-portable.zip`，解压到任意文件夹，运行里面的 `WinShun.exe` 就行。设置、记录、剪贴板历史和索引都存在它旁边的 `data` 文件夹里，整个文件夹可以拷到 U 盘或别的电脑；第一次启动时，这台电脑上原来的设置和数据（`%APPDATA%\WinShun`、`%LOCALAPPDATA%\WinShun`）会复制过来，原处的不动。升级时把新版解压到同一个位置覆盖，`data` 留着。删掉 `data` 文件夹（先退出 Win顺），就和安装版一样存在原来的地方。
+
+标准安装版和便携版按需安装增强文字识别：到 **设置 › 剪贴板 › 记录 › 增强文字识别** 下载约 12 MB 的组件，也可以选择本地组件包。安装后剪贴板和截图共用，离线识别，不需要重启。旧版已有的识别文件继续使用。无网络的电脑可选 `WinShun-版本号-x64-offline-setup.exe`，自带完整识别组件；或把 Release 中的 `WinShun-ocr-*.zip` 拷过去从本地安装。截图识别尚未安装时会保留原图，安装后继续识别。 程序更新、插件库和增强识别的 GitHub 文件默认优先通过两个加速镜像下载，连接失败或文件校验不符会自动换源，最后尝试官方原站。
 
 系统要求：Windows 10 或 11，64 位。
 
@@ -301,7 +314,7 @@ Listary、PowerToys 的“查找鼠标”默认也用双击 Ctrl，关掉其中�
 到 **设置 › 高级 › 诊断日志** 点“导出诊断日志”，把打开的文件夹里的 `WinShun-diagnostics.zip` 发到 GitHub Issues 或论坛。诊断包记的是版本、系统、磁盘、索引进度和错误，以及界面显示、字体和剪贴板按键转发的状态（字显示不对时先导出再重启），不含设置、剪贴板内容、搜索历史和文档正文。剪贴板搜索失效时，关闭面板后尽快导出即可；转发记录只含次数、放行原因和错误码，不记录具体按键或搜索词。
 
 **收费吗？会上传数据吗？**
-完全免费，MIT 开源。只在这些时候联网：检查新版本时连接 lcstp.com（可以关掉；只发送系统版本和安装方式，不带个人信息），你点“下载并安装”后经第三方镜像或 GitHub 下载安装包，并用 SHA-256 校验；第一次显示某个网页搜索或书签时取一次那个网站的图标；打开设置里的“插件库”这一页、点“刷新”或安装插件时，到插件库取列表和插件（以前开着、现在不再随 Win顺 自带的截图与录屏、局域网传输、按意思找，升级后也从插件库取一次）；在网站关键词后打字时，把这些字发给那个网站取搜索建议（不打关键词时一个字也不发，可以在设置里关掉）；你自己打开“按意思找”插件并选了云服务时，把文档的文字发给你选的服务商。索引和历史只存在本机（`%LOCALAPPDATA%\WinShun`）。
+完全免费，MIT 开源。只在这些时候联网：检查新版本时连接 lcstp.com（可以关掉；只发送系统版本和安装方式，不带个人信息），你点“下载并安装”后经第三方镜像或 GitHub 下载安装包，并用 SHA-256 校验；第一次显示某个网页搜索或书签时取一次那个网站的图标；打开设置里的“插件库”这一页、点“刷新”或安装插件时，到插件库取列表和插件（以前开着、现在不再随 Win顺 自带的截图与录屏、局域网传输、按意思找、翻译、浏览器书签，升级后也从插件库取一次）；在网站关键词后打字时，把这些字发给那个网站取搜索建议（不打关键词时一个字也不发，可以在设置里关掉）；你自己打开“按意思找”插件并选了云服务时，把文档的文字发给你选的服务商；用“翻译”插件时，把要翻译的句子发给你填的翻译服务。索引和历史只存在本机（`%LOCALAPPDATA%\WinShun`）。
 
 ### 反馈
 
@@ -341,6 +354,7 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
 **New in 0.16.0**: in-app updates, LAN transfer with LocalSend, a large-icons view, content search on network and WebDAV locations, hold-to-step clipboard history, keys shown while recording, Phosphor icons throughout, and many fixes, including hotkeys that sometimes did nothing. See the [release notes](docs/release-notes/v0.16.0.md). Install community plugins from the existing [WinShun-plugins](https://github.com/LingCore/WinShun-plugins) repository in Settings › Plugins › Plugin library.
 
 - **WSL file search**: add a Linux project or home folder under Settings › Search scope › Network & WSL. Installed distributions appear automatically. Search file and folder names alongside local files, including pinyin; indexed results remain available while WSL is stopped and update automatically when it runs again.
+- **Remote scan controls**: each network or WSL folder has independent daily scan hours (including overnight windows) and a maximum depth. Depth 0 is unlimited; depth 1 lists only the chosen folder. Background name and content reads pause outside those hours; cached results remain searchable. Check now runs one manual name scan, still respecting depth. Both limits are off by default.
 
 - 🔍 **File search**
   - **Speed**: press Ctrl twice (or Alt or Shift twice, if you prefer); a search over three million files takes milliseconds.
@@ -348,12 +362,12 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
   - **Where**: all local drives, USB drives if you like (an unindexed one that is plugged in is offered at the end of the list), and **NAS / SMB network shares and WebDAV folders** (a NAS's WebDAV, cloud drives such as Jianguoyun), still searchable while their server is off and reconnected by themselves after it restarts; turn on “Search file contents” on a location's card to search inside its files. On a PC without administrator rights it indexes only the folders you choose (see Administrator rights below).
   - **Order**: your own files first, the date modified on each row, `Ctrl+S` for best match / newest / oldest, and More in the footer sorts by name, folder, type or size. Click a result once to select and twice to open, if you would rather not open one by mistake (a setting). Recent files are listed when the box is empty, or nothing if you like; the search can also start empty each time it opens.
   - **Programs first**: `curl` lists `curl.exe` before the folder `curl` and `curl.h`; which file types go first is yours to change (exe, bat, cmd, ps1 and msi to begin with, like Listary's preferred file types).
-  - **Shortcuts**: `Ctrl+1`…`Ctrl+9` opens a row; hold `Ctrl` to see the numbers on the icons (or show them always, or never).
+  - **Shortcuts**: `Ctrl+1`…`Ctrl+9` opens a visible result (or choose `Alt`). Numbers have their own column before the icons; hold the modifier to show them, or choose always or never. They follow the visible results after scrolling; unavailable shortcuts are dimmed and struck through.
   - **Search panel**: too many hits? The small button at the box's corner or `Ctrl+E` grows the same window into a panel, as Listary has it: filters down the left (scope, kind, date modified, size, folder), sortable columns on the right; right-click headers to choose name, path, type, size, modification and creation times, folder or source, and drag to reorder or resize them; the layout is saved; with nothing typed it browses the whole index by those filters (milliseconds over three million files). `size:>10mb` and `dm:7d` work in the box too. Press it again to collapse.
   - **Long names**: a name that does not fit is shortened in the middle, keeping its extension and end ("…v3 final.xlsx"); rest the pointer on the row to see the full name, location, size, modified and created times. Drag the left or right edge of the search box to widen it (the width is remembered; double-click an edge for the default).
   - **File sizes**: Settings › Result list › Display & preview can show sizes in the compact results, alongside modification dates or on their own. Off by default; sorting by size always shows sizes. Folders and unknown sizes stay blank.
   - **Pin**: `Ctrl+T` or the pin at the box's corner keeps the search box up through clicks elsewhere and opened files; `Esc` closes it. Drag the window by the magnifier on the left; click it for the settings.
-  - **Preview**: `Alt+P` on a result (or Preview in its menu) shows the file without leaving the launcher: pictures, text (UTF-8 or GBK, detected), Word, Excel, PowerPoint and PDF (through the same preview handlers as File Explorer's preview pane), what a folder holds; the arrows move it to the next row, `Alt+P` again (or the × on the preview) closes it; `Esc` closes the launcher and leaves the preview as it is, so it is back the next time the launcher opens. QuickLook or Seer, when running in the background, shows it instead.
+  - **Preview**: `Alt+P` on a result (or Preview in its menu) shows the file without leaving the launcher: pictures, text (UTF-8 or GBK, detected), Word, Excel, PowerPoint and PDF (through the same preview handlers as File Explorer's preview pane), what a folder holds; the arrows move it to the next row, `Alt+P` again (or the × on the preview) closes it; `Esc` closes the launcher and leaves the preview as it is, so it is back the next time the launcher opens. QuickLook or Seer, when running in the background, shows it instead. The result preview shortcut can be changed to Space, a function key, or an unused chord in Settings; Shift+Space still types a space.
   - **Thumbnails**: pictures, videos, PDFs and the like show their thumbnail instead of their type's icon, in the results and in the search bar beside Open / Save dialogs; Settings › Result list can turn them off.
   - **Context menu**: right-click a row for its location, Copy path, Add to favorites and more; `Shift`+right-click (or More options in that menu) brings up Windows' own full context menu, as in File Explorer, for one row or several; after copy, cut or delete the search box stays open.
   - **By kind**: under **Files**, a row of kinds (folders, documents, pictures, videos, archives…); `Ctrl+Tab` steps through them, `+` adds your own.
@@ -361,7 +375,7 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
   - **Drag out**: drag results into a chat, a mail or Explorer.
   - **Live updates**: the USN change journal is read, so renamed, new and deleted files are found at once; unplugging a USB drive never says it is in use.
   - **Large icons**: switch the search panel between a list and a thumbnail grid. Resize previews with the slider or `Alt`+wheel, select several file categories together, and keep the normal selection, menus and file dragging. The view and thumbnail size are remembered.
-  - **Query syntax**: `"exact phrase"`, `!exclude`, `!node_modules\`, wildcards `*` `?`, `ext:pdf,docx`, `folder\name`, and paths (`D:\My Files\`, `tools/out/`). Add OR groups (`report | summary 2026`, AND takes precedence), name anchors (`^IMG`, `.pdf$`), or `regex:^IMG_\d+\.(jpg|png)$`; invalid expressions explain the error. `:pictures,videos` combines type keywords.
+  - **Query syntax**: `"exact phrase"`, `!exclude`, `!node_modules\`, wildcards `*` `?`, `ext:pdf,docx`, `folder\name`, and paths (`D:\My Files\`, `tools/out/`). Add OR groups (`report | summary 2026`, AND takes precedence), name anchors (`^IMG`, `.pdf$`), or `regex:^IMG_\d+\.(jpg|png)$`; invalid expressions explain the error. `Ctrl+R` turns on regex mode, where every word is a regex, as in Everything. `:pictures,videos` combines type keywords.
 - 📄 **Full-text search**
   - **What**: the **Content** scope searches inside txt, md, logs, source code and **Word, Excel, PowerPoint, PDF and WPS** files, showing the page, slide or sheet and row.
   - **In one folder**: add a folder's name and a slash, `annual report abc/`, to search only in folders named abc (`/abc` last works too; `work/abc/` takes the one in work); folders of the same name are all searched and listed under the box, `Ctrl+Tab` picks one. Or pick a favorite folder there, or right-click a folder in the results → Search contents in this folder.
@@ -371,21 +385,25 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
 - 🚀 **Apps and settings**
   - **Apps**: everything in the Start menu (Store apps included), by name, pinyin, initials (`vsc`) or program file (`winword`).
   - **Settings**: about 1,200 Windows settings pages and Control Panel items (`ncpa.cpl`, “network adapter”), plus Group Policy, Disk Management, hosts, AppData and more.
-  - **Switches**: dark mode, hidden files, file extensions, Bluetooth, WLAN, volume and mute, keep awake, each with its live state at the end of its row; `Enter` flips it in place and the box stays open, `Ctrl+Enter` opens its settings page. `bluetooth off`, `mute` and `volume 30` act in one step; `awake 1h` keeps the PC awake for an hour.
+  - Searching for files only? Turn off app and settings results in the settings, and All lists files and content alone.
+  - **System switches plugin**: enable it in Settings → Plugins. Off for fresh profiles; upgrades preserve the previous system-search choice. Dark mode, hidden files, file extensions, Bluetooth, WLAN, volume and mute, keep awake, each with its live state at the end of its row; `Enter` flips it in place and the box stays open, `Ctrl+Enter` opens its settings page. `bluetooth off`, `mute` and `volume 30` act in one step; `awake 1h` keeps the PC awake for an hour.
 - 🌐 **Web search**: `zhihu 显卡`, `baidu 天气`: a keyword and a space search that site. Ten Chinese sites are built in; add your own with `%s` in the URL, and import or export the list and icons. The site's search suggestions show below as you type (Enter searches one, Tab puts it in the box), and a site's icon can be an SVG file or pasted SVG code.
 - ⭐ **Favorites**
   - Right-click → Add to favorites. They come first when the box is empty; give one a keyword to open it. Right-click a folder → Search in this folder to browse it in WinShun. Tab switches scopes by default; optionally choose to browse favorite folders with Tab in Settings → Result list → Display and preview.
   - **Your own commands**: Settings › Favorites › Add command. Give it a keyword and put `{query}` in the command; what you type after the keyword goes there. With the keyword `code` and the command `"C:\Tools\Code.exe" {query}`, typing `code D:\my-project` and Enter hands that folder to the editor. No command prompt is involved, and searching or importing never runs a command. Each command can also be set to run silently (console programs, `.bat` and `.ps1` files open no black window) and to run as administrator.
   - **Press `` ` `` while dragging**: hold the left button on files or folders (no need to drag yet; File Explorer, the desktop, Total Commander or another program) and press the key below `Esc` (it types nothing during the drag): your first 8 favorite folders appear round the pointer. Drag toward a folder to pick it, as in a marking menu, and let go to drop there: as in File Explorer, within a drive it moves and to another drive it copies, `Ctrl` copies and `Shift` moves. The progress and name-conflict windows are Windows' own, and `Ctrl+Z` in File Explorer undoes it. Let go in the middle or press `Esc` and nothing happens; press the key again or drag further away and it closes, and the drag goes on as usual. On by default; turn it off in Settings › Favorites (“Press ` while dragging files to bring up the favorites pie”). It does not work while WinShun itself runs as administrator.
 - 🧩 **Plugins**
-  - **Bundled**: `= 1+2*3`, `12 inch to cm`, `#ff8800`, timestamps, UUID, Base64, hashes; `kill` processes, `bm` browser bookmarks, `tr` translation.
-  - **LAN transfer** (in the plugin library, to install when you want it): send files and text to and from phones and PCs on the same network that run [LocalSend](https://localsend.org), with no server or account. You are asked before anything is received; type `ls ` to send and receive, or right-click a result › Send over LAN….
+  - **Bundled**: `= 1+2*3`, `12 inch to cm`, `#ff8800`, timestamps, UUID, Base64, hashes; `kill` processes.
+  - **LAN transfer** (in the plugin library, to install when you want it): send files and text to and from phones and PCs on the same network that run [LocalSend](https://localsend.org), with no server or account. You are asked before anything is received; type `ls ` to send and receive, or right-click search results or clipboard history › Send over LAN… and choose a device. History selections, including multiple entries, send without changing the system clipboard (LAN transfer plugin 1.0.1 or newer).
   - **Search by meaning** (in the plugin library, to install when you want it): `? last year's expense rules` finds a document that says “travel cost requests”. It uses the model you pick: Ollama or LM Studio on your PC uploads nothing; for SiliconFlow, Model Studio, OpenAI and others you enter your own key, and before the first run it says how much text would be sent and waits for your Enter. See [its guide](src/semantic-plugin/package/README.md).
-  - **Plugin library**: Settings › Plugins › Plugin library has WinShun's own Screenshot and recording, LAN transfer and Search by meaning, and plugins other people wrote (from [WinShun-plugins](https://github.com/LingCore/WinShun-plugins)); one click installs or updates one, after its size and checksum are checked. It goes online only when that page is opened, on Refresh, or to install. If GitHub cannot be reached, Settings › Advanced › Network proxy takes a proxy address by hand.
+  - **Break reminder** (in the plugin library, to install when you want it): a 20-second break every 20 minutes, every other one a 5-minute break. Thirty seconds before, a small bar at the top offers Postpone (once) and Skip; when it is due it waits for a pause in typing, dims every monitor with a countdown, and `Esc` ends it early. Strict mode leaves only a 3-second hold of `Esc`. Five minutes away counts as a break; full-screen games, slide shows and Do not disturb hold it back. Type `break` to see the time left, take a break now or pause. See [its guide](src/break-plugin/package/README.md).
+  - **Translate** (in the plugin library, to install when you want it): `tr sentence` turns Chinese into English and anything else into Chinese, with your own DeepL or OpenAI-compatible API key. Nothing is sent without a key, a request goes out only once you stop typing, and Enter copies the translation.
+  - **Browser bookmarks** (in the plugin library, to install when you want it): `bm words` searches the bookmarks of every Chrome and Edge profile; Enter opens one.
+  - **Plugin library**: Settings › Plugins › Plugin library has WinShun's own Screenshot and recording, LAN transfer, Search by meaning, Break reminder, Translate and Browser bookmarks, and plugins other people wrote (from [WinShun-plugins](https://github.com/LingCore/WinShun-plugins)); Choose Install and enable for a new plugin and review its permissions after the package is checked. Updates keep its enabled state. Features awaiting recovery after an upgrade can be retried or installed from a local package on the Installed tab. It goes online only when that page is opened, on Refresh, or to install. If GitHub cannot be reached, Settings › Advanced › Network proxy takes a proxy address by hand.
   - **Your own**: zero-code `plugin.json`, scripts in any language, or resident processes, with SDKs for Python, PowerShell and C++. Plugins run with normal rights under a memory limit. See [docs/plugins.en.md](docs/plugins.en.md).
 - 📂 **Open / Save dialogs**
   - **Search bar**: a search bar under every file dialog; type a name (pinyin too), press Enter, and the dialog goes there; web page uploads, WPS dialogs and the "Browse For Folder" box of VBA macros too. The "Browse for folder" window of installers made with Inno Setup has it as well: a pick only fills in the path, and you press the installer's OK yourself (the Start Menu folder picker is left alone).
-  - **`Ctrl+G`**: jumps to the folder open in File Explorer, Total Commander, Directory Opus, XYplorer, Pulse or OneCommander, like Listary. OneCommander uses its active pane's folder, with no extra setup.
+  - **`Ctrl+G`**: jumps to the folder open in File Explorer, Total Commander, Directory Opus, XYplorer, Pulse or OneCommander, like Listary. OneCommander uses its active pane's folder, with no extra setup; dialog suggestions can also list its other open tabs, falling back to the active folder while tab state is out of sync.
   - **Suggestions**: open folders, a path you just copied, favorites and recent folders.
   - **Going there by itself**: optional, as the dialog opens, or only when you come back to it from the file manager.
 - 🗂️ **In File Explorer: a double click, a right-click**
@@ -396,11 +414,12 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
   - **By a shortcut**: when another program has the double click, or for Total Commander, XYplorer and Pulse, give the folder menu a shortcut in the settings and press it in any window: in File Explorer, on the desktop, in Directory Opus, Total Commander, XYplorer and Open / Save dialogs the folder picked opens in that window (in Pulse, where its “Folders opened from other apps” setting puts it: a new tab or a new window); anywhere else, in your file manager. Press it again to close the menu.
   - **“Search here with WinShun”** on the right-click menu of folders, a folder's blank space and drives (under “Show more options” on Windows 11): the search window opens with that folder typed. It can be turned off.
   - **Type to search**: type anywhere in a File Explorer file list and WinShun searches for what you typed, like Listary: what is in that window's folder (and its subfolders) comes first, the rest of the PC follows under a thin "Elsewhere" line; "Only in …" or `Ctrl+D` keeps to that folder, and a setting can make that the default. A Chinese input method composes as usual, and `Esc` goes back to File Explorer. A folder you pick opens in the same tab, so typing again goes one level deeper; `Ctrl+Enter` on a file or folder also goes, in that tab, to the folder holding it and selects it (when the file manager set in Settings is File Explorer); and the keys of Explorer's `Shift`+right-click menu stay with the menu. Turn it on in the settings (it replaces Explorer's own jump to a file by its first letters, so it is off by default).
+  - **Placement and selection (development build)**: the search box prefers space outside the originating Explorer window, reducing overlap when space is limited without narrowing it or changing its remembered position. Browsing a direct child selects and reveals it in the original tab while the search field keeps keyboard focus; nested and elsewhere results do not navigate Explorer.
 - 📋 **Clipboard history (replaces Win+V)**
 
   - **Resize**: with the preview closed, drag the right edge of the clipboard panel, or double-click it to reset. Text follows Settings › Appearance › UI size. Copied image files show thumbnails too.
   - **What**: text, pictures and files, opened with `Win+V` or your own shortcut, by the text cursor, without taking the focus.
-  - **Search**: pinyin, `@app` filters, and **words in copied pictures** (PaddleOCR text recognition, on your PC and offline, good with numbers and small print in screenshots).
+  - **Search**: pinyin, `@app` filters, and **words in copied pictures** (Windows recognition by default; install enhanced recognition for PaddleOCR, with better Chinese, English, numbers and small print. Images are processed on your PC).
   - **Preview**: full text, pictures, HEX / RGB / HSL color values. The eye button (or `Alt+P`) opens and closes it; while it is open, the row under the mouse is shown. It is wider now, and the line beside it can be dragged, the width remembered.
   - **Original image formats**: PNG, JPEG and GIF data supplied by the source are kept as received; bitmap-only copies become PNG. Drag pictures into a folder or paste them into File Explorer to save them in their stored format. Select several with Ctrl or Shift to save them together. GIF previews can play and pause.
   - **Paste**: double-click or `Enter`, or one click as in Windows' own history (an option); larger picture thumbnails as another.
@@ -415,7 +434,7 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
   - **Screenshots** (the Screenshot and recording plugin: install it in Settings › Plugins › Plugin library, record your own shortcut under Settings on its card, and turn on `PrtScn` there too if you want it. Who had screenshots on gets it installed with the update, settings as they were):
     - **Region recording**: choose Record or press `Ctrl+R` after selecting an area, for MP4 or GIF. Pause and resume, choose quality, cursor and click highlights, and optionally show the shortcuts and mouse buttons pressed as keycaps in a corner (off by default; "All keys" records typing too). MP4 audio is optional and off by default; GIF is silent. Controls stay out of the recording. Choose a save folder, or record another take without replacing the previous file.
     - **Toolbar and saving**: drag the toolbar by its left grip together with its style panel. Choose the screenshot save folder and a shortcut to pin the latest screenshot in the screenshot's settings. After a save, click the notification to see the file selected in your file manager.
-    - **Choosing**: rest the pointer on a window or a button and it is outlined, with everything outside it dimmed; click to take it, or drag an area; the wheel makes the outline larger or smaller. Side panels and buttons in apps that draw their own interface, such as Settings and Calculator, are outlined too (not inside Chromium apps such as Chrome, Edge, VS Code and WeChat, where only the whole window is outlined; drag an area there). `Shift+R` goes back to the area of the last screenshot.
+    - **Choosing**: rest the pointer on a window or a button and it is outlined, with everything outside it dimmed; click to take it, or drag an area; the wheel makes the outline larger or smaller. Side panels and buttons in apps that draw their own interface, such as Settings and Calculator, are outlined too (not inside Chromium apps such as Chrome, Edge, VS Code and WeChat, where only the whole window is outlined; drag an area there). `Shift+R` goes back to the area of the last screenshot; `,` and `.` step through past captures (the whole screens, the area and the annotations, editable again), the last 10 kept by default.
     - **Magnifier and color**: the pixels under the pointer, enlarged; `C` copies the color under it and ends the capture, and `Shift` alone switches between `#RRGGBB`, `rgb()` and `hsl()`. Once an area is chosen, the magnifier shows only inside it.
     - **HDR screens**: captures on an HDR screen keep their normal colors. Turn on “Also save an HDR picture on HDR screens” in the screenshot's settings (off by default) and `Ctrl+S` saves a `.jxr` of the same name beside the PNG, with the bright parts as bright as they were; Windows Photos shows it.
     - **Copy the words**: `Shift+C` reads the words in the area and copies them.
@@ -466,6 +485,8 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
 
 To skip the installer, download `WinShun-<version>-x64-portable.zip`, unzip it anywhere and run `WinShun.exe` in it. Settings, history, clipboard and index are kept in the `data` folder beside it, so the whole folder can go on a USB stick or another PC; on the first start, what this PC already has (`%APPDATA%\WinShun`, `%LOCALAPPDATA%\WinShun`) is copied in, the originals left in place. To upgrade, unzip the newer one over it and keep `data`. Without the `data` folder (quit WinShun first), it keeps them where the installed copy does.
 
+Standard and portable packages install enhanced text recognition on demand. Open **Settings › Clipboard › Recording › Enhanced text recognition** to download about 12 MB, or install a local component archive. Clipboard and screenshots share it and work offline after installation, with no restart. Existing recognition files remain usable. For a PC without internet, choose `WinShun-<version>-x64-offline-setup.exe`, or copy the Release’s `WinShun-ocr-*.zip` and install it locally. Screenshot recognition keeps the original image and continues once the component is installed. App updates, the plugin library and enhanced recognition prefer two download mirrors for public GitHub files, then the original source; failed connections and rejected files automatically try the next source.
+
 Requires Windows 10 or 11, 64-bit.
 
 ### Administrator rights
@@ -497,7 +518,7 @@ With “Direct (administrator)” chosen, WinShun runs as administrator, and Win
 Under **Settings › Advanced › Diagnostic logs**, click “Export diagnostic logs” and attach the `WinShun-diagnostics.zip` from the folder that opens to a GitHub issue. It holds the version, system, disks, indexing progress and errors, not your settings, clipboard, search history or document text.
 
 **Is it free? Does it collect data?**
-Free and MIT-licensed. It goes online only to check lcstp.com for new versions (you can turn that off; only the Windows version and the kind of install are sent, nothing personal) and, when you click “Download and install”, to download the package through third-party mirrors or GitHub, checked against its SHA-256, to fetch a web shortcut's or bookmark's site icon once, to fetch the plugin list and plugins when you open the Plugin library page in the settings, press Refresh or install one (and once after an update, for Screenshot and recording, LAN transfer or Search by meaning if you had them on: they no longer come with WinShun), to ask a site for search suggestions while you type after its keyword (nothing is sent without a site keyword; you can turn this off), and, if you turn on the “Search by meaning” plugin with a cloud service, to send document text to the service you chose. The index and history stay on your PC (`%LOCALAPPDATA%\WinShun`).
+Free and MIT-licensed. It goes online only to check lcstp.com for new versions (you can turn that off; only the Windows version and the kind of install are sent, nothing personal) and, when you click “Download and install”, to download the package through third-party mirrors or GitHub, checked against its SHA-256, to fetch a web shortcut's or bookmark's site icon once, to fetch the plugin list and plugins when you open the Plugin library page in the settings, press Refresh or install one (and once after an update, for Screenshot and recording, LAN transfer, Search by meaning, Translate or Browser bookmarks if you had them on: they no longer come with WinShun), to ask a site for search suggestions while you type after its keyword (nothing is sent without a site keyword; you can turn this off), and, if you turn on the “Search by meaning” plugin with a cloud service, to send document text to the service you chose, and, when you use the Translate plugin, to send the sentence to the translation service you entered. The index and history stay on your PC (`%LOCALAPPDATA%\WinShun`).
 
 ### Feedback
 
@@ -539,7 +560,7 @@ WinShun is released under the [MIT License](LICENSE). Copyright © 2026 LingCore
 随附的第三方内容按各自的许可使用，不在 MIT 许可范围内 · Bundled third-party content keeps its own license:
 
 - 图标 · Icons — [Phosphor Icons](https://phosphoricons.com) 2.1.2（MIT），见 · see `third_party/phosphor/LICENSE`；安装后在 · installed in `licenses\`。
-- `resources/fonts/` 阿里巴巴普惠体 3.0 · Alibaba PuHuiTi 3.0 — © Alibaba Group，按其免费商用授权随程序附带 · redistributed under its free commercial-use terms.
+- `resources/fonts/` 阿里巴巴普惠体 3.0 · Alibaba PuHuiTi 3.0 — © Alibaba Group，按其免费商用授权随程序附带 · redistributed unmodified under its free commercial-use terms; only the full Regular font is shipped, with heavier UI weights synthesized by Qt. See `resources/fonts/LICENSE.txt`.
 - 图片文字识别 · Text recognition — [ONNX Runtime](https://github.com/microsoft/onnxruntime)（MIT）和 · and [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) 的 PP-OCRv6 模型 · models（Apache-2.0），见 · see `third_party/ppocr/LICENSE`；安装后在 · installed in `licenses\`。
 - 二维码识别 · QR code reading — [zxing-cpp](https://github.com/zxing-cpp/zxing-cpp) 2.3.0（Apache-2.0），见 · see `third_party/zxing-cpp/LICENSE`；安装后在 · installed in `licenses\`。
 - 拼音读音数据 · Pinyin data — [pinyin-data](https://github.com/mozillazg/pinyin-data)，MIT，见 · see `tools/data/pinyin-data-LICENSE.txt`。常用字的读音以其中的《通用规范汉字字典》（2013）数据为准。
