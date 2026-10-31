@@ -1,0 +1,37 @@
+{
+  "version": "ppocr-v6-ort1.30.0-x64",
+  "name": "WinShun-ocr-ppocr-v6-ort1.30.0-x64.zip",
+  "downloadBytes": 11802525,
+  "files": [
+    {
+      "path": "onnxruntime.dll",
+      "size": 16462648,
+      "sha256": "7e39e2bdbba836d98071ef28620735ba36a47c554cf794585269aecc50fab0da"
+    },
+    {
+      "path": "ocr/PP-OCRv6_det_tiny.onnx",
+      "size": 1829618,
+      "sha256": "f42c0fbd294d95eac1a550e131b277dac97462c8025fa4b6c3cec1b7894bd3d5"
+    },
+    {
+      "path": "ocr/PP-OCRv6_rec_tiny.onnx",
+      "size": 4489813,
+      "sha256": "e16e242de5937ad92609223f19bc2aff3727ee40b095f996907c24749bad251b"
+    },
+    {
+      "path": "licenses/onnxruntime/LICENSE.txt",
+      "size": 1094,
+      "sha256": "c250d6278f0b47a6439fb7592b08b58a55eb9f535aa49a1db63211c3f982b674"
+    },
+    {
+      "path": "licenses/onnxruntime/ThirdPartyNotices.txt",
+      "size": 344457,
+      "sha256": "c53a76501ef60db6f865f20599f220761201ac4057683acefdab37d861b86622"
+    },
+    {
+      "path": "licenses/paddleocr.txt",
+      "size": 11376,
+      "sha256": "3840c5c0c61c294264d2dd77b8777be6ddd90121ef4e0e64abcd22edea581d6e"
+    }
+  ]
+}

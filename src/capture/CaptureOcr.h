@@ -44,19 +44,24 @@ class CaptureOcr : public QObject {
     Q_PROPERTY(QString title READ title NOTIFY changed FINAL)
     // The text as a web address (http or https) to offer 打开链接 for; empty when it is not one.
     Q_PROPERTY(QString link READ link NOTIFY changed FINAL)
+    Q_PROPERTY(bool needsPackage READ needsPackage NOTIFY changed FINAL)
 
 public:
     explicit CaptureOcr(QObject* parent = nullptr);
     ~CaptureOcr() override;
 
-    // The models are next to the program (cheap; nothing is loaded): next to
-    // WinShun.exe, which the screen capture plugin says it is in (setProgramFolder).
+    // Checks the shared component first, then a legacy/offline copy next to
+    // WinShun.exe (setProgramFolder). Nothing is loaded by this check.
     static bool available();
     static void setProgramFolder(const QString& folder) { s_programFolder = folder; }
     static QString programFolder();
 
     // Reads `image`, taken on a monitor at `dpr` (its text's size).
     void read(const QImage& image, double dpr);
+    void retry(); // continue the original picture after an OCR package is installed
+    void discardPending() { m_pendingImage = {}; }
+    bool needsPackage() const { return !m_pendingImage.isNull(); }
+    Q_INVOKABLE void setupRecognition() { emit setupRequested(); }
 
     // The lines of `image` with their corners and characters' places, in its
     // own pixels (SmartRedact.h); `done` is called on the GUI thread, once,
@@ -96,6 +101,7 @@ signals:
     void webSearchRequested(const QString& query);
     void closeRequested();
     void openLinkRequested(const QString& url);
+    void setupRequested();
 
 private:
     static inline QString s_programFolder;
@@ -122,6 +128,8 @@ private:
     QString m_title;
     QString m_link;
     int m_round = 0;
+    QImage m_pendingImage;
+    double m_pendingDpr = 1;
 
     std::mutex m_mutex;
     std::condition_variable_any m_wake;

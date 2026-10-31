@@ -107,6 +107,7 @@ qt_add_executable(WinShun WIN32
     platform/TaskbarSearchBox.cpp platform/TaskbarSearchBox.h
     platform/TextCaret.cpp platform/TextCaret.h
     platform/PaddleOcr.cpp platform/PaddleOcr.h
+    platform/OcrFiles.cpp platform/OcrFiles.h
     platform/TextRecognizer.cpp platform/TextRecognizer.h
     platform/VolumeNotifier.cpp platform/VolumeNotifier.h
     platform/WinV.cpp platform/WinV.h
@@ -268,6 +269,7 @@ qt_add_qml_module(WinShun
         PluginGallery.cpp PluginGallery.h
         PluginSettings.cpp PluginSettings.h
         MovedPlugins.cpp MovedPlugins.h # the plugins that came with 0.16.0, from the library now (GitHub #138)
+        platform/OcrPackage.cpp platform/OcrPackage.h
         ResultModel.cpp ResultModel.h
         PanelColumns.cpp PanelColumns.h
         SettingsCommand.h
@@ -315,6 +317,10 @@ qt_add_resources(WinShun "plugins_sdk"
           "${PROJECT_SOURCE_DIR}/src/plugins-sdk/WinShun.psm1"
           "${PROJECT_SOURCE_DIR}/src/plugins-sdk/DEVELOPMENT.md"
           "${PROJECT_SOURCE_DIR}/src/plugins-sdk/winshun.h")
+set_source_files_properties("${PROJECT_SOURCE_DIR}/resources/ocr/package.json" PROPERTIES QT_RESOURCE_ALIAS ocr.json)
+qt_add_resources(WinShun "ocr_component"
+    PREFIX /components
+    FILES "${PROJECT_SOURCE_DIR}/resources/ocr/package.json")
 # The icons: Phosphor Icons 2.1.2 (MIT), Regular and Fill (see Phosphor.h).
 qt_add_resources(WinShun "phosphor"
     PREFIX /fonts
@@ -343,7 +349,6 @@ target_link_options(WinShun PRIVATE /MANIFESTUAC:NO /DELAYLOAD:mfplat.dll /DELAY
 # UI font files, loaded from fonts\ next to the exe (see main.cpp).
 set(font_files
     ${PROJECT_SOURCE_DIR}/resources/fonts/AlibabaPuHuiTi-3-55-Regular.ttf
-    ${PROJECT_SOURCE_DIR}/resources/fonts/AlibabaPuHuiTi-3-85-Bold.ttf
 )
 add_custom_command(TARGET WinShun POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:WinShun>/fonts"
@@ -351,6 +356,10 @@ add_custom_command(TARGET WinShun POST_BUILD
     VERBATIM)
 
 install(TARGETS WinShun RUNTIME DESTINATION .)
-install(FILES "${ORT_DIR}/lib/onnxruntime.dll" DESTINATION .)
-install(FILES ${OCR_MODEL_FILES} DESTINATION ocr)
+install(FILES "${ORT_DIR}/lib/onnxruntime.dll" DESTINATION . COMPONENT EnhancedOcr EXCLUDE_FROM_ALL)
+install(FILES ${OCR_MODEL_FILES} DESTINATION ocr COMPONENT EnhancedOcr EXCLUDE_FROM_ALL)
+install(FILES "${ORT_DIR}/LICENSE" DESTINATION licenses/onnxruntime RENAME LICENSE.txt COMPONENT EnhancedOcr EXCLUDE_FROM_ALL)
+install(FILES "${ORT_DIR}/ThirdPartyNotices.txt" DESTINATION licenses/onnxruntime COMPONENT EnhancedOcr EXCLUDE_FROM_ALL)
+install(FILES "${PROJECT_SOURCE_DIR}/third_party/ppocr/LICENSE" DESTINATION licenses RENAME paddleocr.txt COMPONENT EnhancedOcr EXCLUDE_FROM_ALL)
 install(FILES ${font_files} DESTINATION fonts)
+install(FILES "${PROJECT_SOURCE_DIR}/resources/fonts/LICENSE.txt" DESTINATION licenses RENAME alibaba-font.txt)

@@ -33,6 +33,7 @@ public:
     void read(qint64 id, const QString& imageFile, bool next = false);
     void cancel(); // forget queued work; the current image finishes, then the worker releases its models and exits
     bool running() const;
+    bool refreshEngine(); // false: finish the current batch before switching engines
 
     // What reads them ("ppocr-v6-tiny", "windows"): pictures read by another
     // are read again. Can change once, when PaddleOcr does not load.
@@ -43,6 +44,7 @@ signals:
     // (no language with one installed) or recognition failed, to be tried
     // again another time. A file that cannot be loaded has no words.
     void done(qint64 id, const QString& words, bool ok);
+    void idle();
 
 private:
     struct Job {

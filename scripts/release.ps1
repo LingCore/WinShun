@@ -3,7 +3,8 @@
     Package a release: build and deploy (build.ps1 -Deploy), then the
     installer dist\WinShun-<version>-x64-setup.exe (installer\WinShun.iss,
     Inno Setup 6.5 or later), the portable dist\WinShun-<version>-x64-portable.zip
-    (the same folder) and dist\SHA256SUMS.txt. With -Publish, also the GitHub
+    (the same folder), a complete offline setup, the shared enhanced OCR ZIP
+    and dist\SHA256SUMS.txt. With -Publish, also the GitHub
     release v<version> (gh must be logged in).
 
     The version comes from project(VERSION) in CMakeLists.txt; the release
@@ -98,15 +99,37 @@ foreach ($folder in Get-ChildItem (Join-Path $root 'build\release\library-plugin
     Write-Host "Packaged $package"
 }
 
+# The enhanced OCR component is shared by the clipboard and capture plugin.
+# It is an asset of the same release, with pinned per-file hashes in the app.
+$ocrManifest = Get-Content (Join-Path $root 'resources\ocr\package.json') -Raw | ConvertFrom-Json
+$ocrPackage = Join-Path $dist $ocrManifest.name
+& python -X utf8 (Join-Path $root 'tools\package_ocr.py') --build-dir (Join-Path $root 'build\release') --output $ocrPackage
+if ($LASTEXITCODE) { throw 'Enhanced OCR packaging failed' }
+
+# A complete offline installer, using the same verified binaries. No second build.
+$offlineSetup = Join-Path $dist "WinShun-$version-x64-offline-setup.exe"
+$offlineStage = [IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetTempPath()) ('WinShun-offline-'+[guid]::NewGuid().ToString('N'))))
+$tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+if (-not $offlineStage.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Invalid offline staging path' }
+try {
+    Copy-Item -LiteralPath $deployment -Destination $offlineStage -Recurse
+    & python -X utf8 (Join-Path $root 'tools\package_ocr.py') --build-dir (Join-Path $root 'build\release') --output $ocrPackage --expand-to $offlineStage
+    if ($LASTEXITCODE) { throw 'Offline OCR deployment failed' }
+    & $Iscc /Q "/DAppVersion=$version" "/DSourceDir=$offlineStage" "/DOutputDir=$dist" '/DPackageSuffix=-offline' (Join-Path $root 'installer\WinShun.iss')
+    if ($LASTEXITCODE -or -not (Test-Path -LiteralPath $offlineSetup)) { throw 'Offline Inno Setup failed' }
+} finally {
+    if (Test-Path -LiteralPath $offlineStage) { Remove-Item -LiteralPath $offlineStage -Recurse -Force }
+}
+
 $sums = Join-Path $dist 'SHA256SUMS.txt'
-$lines = foreach ($file in $setup, $portable) {
+$lines = foreach ($file in $setup, $portable, $offlineSetup, $ocrPackage) {
     "$((Get-FileHash $file -Algorithm SHA256).Hash.ToLower())  $(Split-Path $file -Leaf)"
 }
 Set-Content $sums ($lines -join "`n") -Encoding ascii -NoNewline
 Get-Content $sums
 
 if ($Publish) {
-    gh release create $tag $setup $portable $sums --repo LingCore/WinShun --title "Win顺 $version" --notes-file $notes --target main
+    gh release create $tag $setup $portable $offlineSetup $ocrPackage $sums --repo LingCore/WinShun --title "Win顺 $version" --notes-file $notes --target main
     if ($LASTEXITCODE) { throw 'gh release create failed' }
     Write-Host "Published $tag"
 }

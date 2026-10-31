@@ -184,6 +184,15 @@ QString TextRecognizer::engine() const
     return m_paddle ? u"ppocr-v6-tiny"_s : u"windows"_s;
 }
 
+bool TextRecognizer::refreshEngine()
+{
+    const std::lock_guard lock(m_mutex);
+    if (m_running)
+        return false;
+    m_paddle = PaddleOcr::installed(QCoreApplication::applicationDirPath()) && !japaneseOrKoreanFirst();
+    return true;
+}
+
 void TextRecognizer::work(const std::stop_token& stop)
 {
     // A screenshot takes a few tenths of a second by PP-OCRv6 (1902 × 1316 px:
@@ -203,6 +212,7 @@ void TextRecognizer::work(const std::stop_token& stop)
                 std::unique_lock lock(m_mutex);
                 if (m_jobs.empty() || stop.stop_requested()) {
                     m_running = false;
+                    emit idle();
                     break;
                 }
                 job = std::move(m_jobs.front());

@@ -16,7 +16,8 @@ param(
     # Where to deploy (implies -Deploy); default dist\WinShun. For a staged
     # copy to compare with, or test from, while the deployed one is running.
     [string] $DeployDir,
-    [switch] $SkipTests
+    [switch] $SkipTests,
+    [switch] $IncludeOcr # full offline deployment; the standard package downloads enhanced OCR on demand
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -66,7 +67,8 @@ try {
         if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
         New-Item -ItemType Directory -Force $dist | Out-Null
         Copy-Item "$root\build\$preset\WinShun.exe" $dist
-        Copy-Item "$root\build\$preset\fonts" $dist -Recurse # UI font (see main.cpp)
+        New-Item -ItemType Directory -Force "$dist\fonts" | Out-Null
+        Copy-Item "$root\build\$preset\fonts\AlibabaPuHuiTi-3-55-Regular.ttf" "$dist\fonts"
         # The button users pin to the taskbar (src/stub).
         Copy-Item "$root\build\$preset\WinShunSearch.exe" $dist
         # The MCP server AI clients start (src/mcp); it relays to WinShun over a pipe.
@@ -95,17 +97,21 @@ try {
         Copy-Item "$root\third_party\phosphor\LICENSE" "$dist\licenses\phosphor.txt"
         # The words in pictures (platform/PaddleOcr): ONNX Runtime and the
         # PP-OCRv6 tiny models, with their licenses.
-        Copy-Item "$root\build\$preset\onnxruntime.dll" $dist
-        Copy-Item "$root\build\$preset\ocr" "$dist\ocr" -Recurse
+        if ($IncludeOcr) {
+            Copy-Item "$root\build\$preset\onnxruntime.dll" $dist
+            Copy-Item "$root\build\$preset\ocr" "$dist\ocr" -Recurse
+        }
         $ort = Get-ChildItem "$root\build\$preset\_deps" -Directory -Filter 'onnxruntime-win-x64-*' | Sort-Object Name | Select-Object -Last 1
         New-Item -ItemType Directory -Force "$dist\licenses\onnxruntime" | Out-Null
         Copy-Item "$($ort.FullName)\LICENSE" "$dist\licenses\onnxruntime\LICENSE.txt"
         Copy-Item "$($ort.FullName)\ThirdPartyNotices.txt" "$dist\licenses\onnxruntime"
         Copy-Item "$root\third_party\ppocr\LICENSE" "$dist\licenses\paddleocr.txt"
+        Copy-Item "$root\resources\fonts\LICENSE.txt" "$dist\licenses\alibaba-font.txt"
         # Only what the app uses: no shader compilers (software renderer), no
         # QML debugger, network, TLS or SVG plugins, and of the database
         # drivers only SQLite (the clipboard history).
-        & "$QtDir\bin\windeployqt.exe" --qmldir "$root\src\app\qml" --no-translations --no-system-d3d-compiler `
+        # The library plugins share the host's Qt, including their QML imports.
+        & "$QtDir\bin\windeployqt.exe" --qmldir "$root\src" --no-translations --no-system-d3d-compiler `
             --no-system-dxc-compiler --no-opengl-sw --no-compiler-runtime `
             --skip-plugin-types qmltooling,generic,networkinformation,tls,iconengines,imageformats `
             --exclude-plugins qsqlibase,qsqlmimer,qsqloci,qsqlodbc,qsqlpsql `

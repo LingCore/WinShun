@@ -151,7 +151,7 @@ bool raiseStreamLimit()
     return _setmaxstdio(8192) == 8192;
 }
 
-// UI font: Alibaba PuHuiTi 3.0 (Regular + Bold) from fonts\ next to the
+// UI font: complete Alibaba PuHuiTi 3.0 Regular from fonts\ next to the
 // exe. It covers Latin and CJK, so no fallback is needed for normal text.
 // Without the files, the system UI font (Microsoft YaHei UI) is kept;
 // never "Segoe UI Variable", whose CJK fallback costs ~35 MB of memory.
@@ -171,7 +171,7 @@ QJsonObject applyUiFont()
     bool ascii = true;
     for (const QChar c : fontDir)
         ascii = ascii && c.unicode() < 128;
-    for (const QString& file : {u"AlibabaPuHuiTi-3-55-Regular.ttf"_s, u"AlibabaPuHuiTi-3-85-Bold.ttf"_s}) {
+    for (const QString& file : {u"AlibabaPuHuiTi-3-55-Regular.ttf"_s}) {
         int id = -1;
         if (ascii) {
             id = QFontDatabase::addApplicationFont(fontDir + file);
@@ -182,7 +182,7 @@ QJsonObject applyUiFont()
         }
         const QStringList families = QFontDatabase::applicationFontFamilies(id);
         if (uiFamily.isEmpty() && !families.isEmpty())
-            uiFamily = families.first(); // both files share one family, Bold is its bold style
+            uiFamily = families.first(); // Qt synthesizes heavier weights from the complete regular font
         files.append(QJsonObject {{u"file"_s, file}, {u"loaded"_s, id >= 0}});
     }
     QJsonObject loaded {{u"by"_s, ascii ? u"file"_s : u"data"_s}, {u"files"_s, files}};

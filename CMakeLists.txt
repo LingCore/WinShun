@@ -105,7 +105,7 @@ qt_add_executable(wsbench tools/wsbench.cpp src/app/Settings.cpp
     src/app/platform/RegistryWatch.cpp src/app/platform/SettingBroadcast.cpp src/app/platform/SwitchAudio.cpp
     src/app/platform/SwitchExplorer.cpp src/app/platform/SwitchKeepAwake.cpp src/app/platform/SwitchRadios.cpp
     src/app/platform/SwitchTheme.cpp src/app/platform/SystemSwitches.cpp # --switches
-    src/app/platform/PaddleOcr.cpp) # --ocr
+    src/app/platform/PaddleOcr.cpp src/app/platform/OcrFiles.cpp) # --ocr
 target_include_directories(wsbench PRIVATE src/app src/app/platform) # Settings: the user's crawl rules for --sync
 target_link_libraries(wsbench PRIVATE wscore wsextract wsmcp wsplugin wscapture Qt6::Gui Qt6::Svg psapi winhttp advapi32 onnxruntime_headers
     windowsapp iphlpapi) # wsmcp: --mcp-host; wsplugin: --plugin; wscapture: --scroll-replay; advapi32: --open-probe; windowsapp, iphlpapi: --switches (the radios)

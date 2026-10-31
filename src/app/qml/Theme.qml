@@ -15,6 +15,9 @@ QtObject {
     // For fills under white words or marks (accentText): deep enough for
     // white to read, whatever the accent (SystemTheme.accentFill).
     readonly property color accentFill: SystemTheme.accentFill
+    // FreeType synthesizes a missing heavy face only from Bold (700).
+    // Keep the UI hierarchy when shipping the complete regular font alone.
+    readonly property int fontStrong: Font.Bold
 
     readonly property color background: dark ? "#202020" : "#F9F9F9"
     // The edge of our windows (WindowEdge.qml), rounded as DWM rounds them.

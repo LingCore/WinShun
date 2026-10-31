@@ -428,6 +428,7 @@ qt_add_executable(tst_cliplifecycle tst_cliplifecycle.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/ClipboardWatcher.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/TextRecognizer.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/PaddleOcr.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/OcrFiles.cpp
     ${PROJECT_SOURCE_DIR}/src/app/ClipImage.cpp)
 target_include_directories(tst_cliplifecycle PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_cliplifecycle PRIVATE winshun_options wscore wscapture Qt6::Gui Qt6::Test
@@ -593,11 +594,36 @@ target_link_libraries(tst_siteicon PRIVATE Qt6::Gui Qt6::Svg Qt6::Test)
 
 # The words in pictures: PP-OCRv6 through ONNX Runtime, the real models.
 qt_add_executable(tst_ocr tst_ocr.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/PaddleOcr.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/OcrFiles.cpp
     ${PROJECT_SOURCE_DIR}/src/capture/CaptureOcr.cpp)
 target_include_directories(tst_ocr PRIVATE ${PROJECT_SOURCE_DIR}/src/app/platform)
 target_include_directories(tst_ocr PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_ocr PRIVATE winshun_options wscapture Qt6::Qml Qt6::Test onnxruntime_headers)
 set_target_properties(tst_ocr PROPERTIES QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+
+qt_add_executable(tst_ocrpackage tst_ocrpackage.cpp
+    ${PROJECT_SOURCE_DIR}/src/capture/CaptureOcr.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/OcrPackage.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/OcrFiles.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/PaddleOcr.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/Http.cpp)
+target_include_directories(tst_ocrpackage PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_ocrpackage PRIVATE winshun_options wscore wscapture miniz Qt6::Gui Qt6::Qml Qt6::Network Qt6::Test onnxruntime_headers winhttp)
+set_target_properties(tst_ocrpackage PROPERTIES QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+set_source_files_properties("${PROJECT_SOURCE_DIR}/resources/ocr/package.json" PROPERTIES QT_RESOURCE_ALIAS ocr.json)
+qt_add_resources(tst_ocrpackage "ocr_package_test"
+    PREFIX /components
+    FILES "${PROJECT_SOURCE_DIR}/resources/ocr/package.json")
+add_test(NAME tst_ocrpackage COMMAND tst_ocrpackage)
+
+qt_add_executable(tst_uifont tst_uifont.cpp)
+target_link_libraries(tst_uifont PRIVATE winshun_options Qt6::Gui Qt6::Test)
+add_test(NAME tst_uifont_freetype COMMAND tst_uifont)
+set_tests_properties(tst_uifont_freetype PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=windows:fontengine=freetype")
+add_test(NAME tst_uifont_gdi COMMAND tst_uifont)
+set_tests_properties(tst_uifont_gdi PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=windows:fontengine=gdi")
+set_tests_properties(tst_ocrpackage tst_uifont_freetype tst_uifont_gdi PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 qt_add_executable(tst_download tst_download.cpp)
 target_link_libraries(tst_download PRIVATE winshun_options wsplugin Qt6::Test)

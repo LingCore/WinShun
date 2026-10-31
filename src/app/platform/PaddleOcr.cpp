@@ -1,4 +1,5 @@
 #include "PaddleOcr.h"
+#include "OcrFiles.h"
 
 // The API comes from the DLL loaded here (Ort::InitApi), not from linking it.
 #define ORT_API_MANUAL_INIT
@@ -54,7 +55,7 @@ QString filePath(const QString& folder, const wchar_t* name, bool model)
     return QDir::toNativeSeparators(folder + (model ? u"/ocr/"_s : u"/"_s) + QString::fromWCharArray(name));
 }
 
-// ONNX Runtime from next to the program, once.
+// ONNX Runtime from the resolved component/legacy folder, once.
 const OrtApi* loadApi(const QString& folder, QString* error)
 {
     static std::mutex mutex;
@@ -457,18 +458,18 @@ PaddleOcr::~PaddleOcr() = default;
 
 bool PaddleOcr::installed(const QString& programFolder)
 {
-    return QFile::exists(filePath(programFolder, L"onnxruntime.dll", false)) && QFile::exists(filePath(programFolder, kDetModel, true))
-        && QFile::exists(filePath(programFolder, kRecModel, true));
+    return !ocr::folder(programFolder).isEmpty();
 }
 
 std::unique_ptr<PaddleOcr> PaddleOcr::load(const QString& programFolder, int threads, QString* error)
 {
-    if (!installed(programFolder)) {
+    const QString resolvedFolder = ocr::folder(programFolder);
+    if (resolvedFolder.isEmpty()) {
         if (error)
             *error = u"the text recognition files are missing"_s;
         return nullptr;
     }
-    if (!loadApi(programFolder, error))
+    if (!loadApi(resolvedFolder, error))
         return nullptr;
     std::unique_ptr<PaddleOcr> ocr(new PaddleOcr);
     try {
@@ -486,7 +487,7 @@ std::unique_ptr<PaddleOcr> PaddleOcr::load(const QString& programFolder, int thr
             .SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL)
             .DisableCpuMemArena(); // memory back after each picture
         const auto open = [&](const wchar_t* name) {
-            const QString file = filePath(programFolder, name, true);
+            const QString file = filePath(resolvedFolder, name, true);
             return Ort::Session(impl->env, reinterpret_cast<const wchar_t*>(file.utf16()), options);
         };
         impl->det = open(kDetModel);

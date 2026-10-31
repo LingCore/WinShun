@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <utility>
 
 using namespace Qt::StringLiterals;
 using namespace std::chrono_literals;
@@ -54,6 +55,7 @@ bool CaptureOcr::available()
 
 void CaptureOcr::read(const QImage& image, double dpr)
 {
+    m_pendingImage = {};
     ++m_round;
     m_text.clear();
     m_message.clear();
@@ -67,7 +69,9 @@ void CaptureOcr::read(const QImage& image, double dpr)
     }
     if (!available()) {
         m_busy = false;
-        m_message = tr("没有安装文字识别模型（Win顺 文件夹里的 ocr 文件夹），无法识别文字。");
+        m_pendingImage = image;
+        m_pendingDpr = dpr;
+        m_message = tr("增强文字识别尚未安装。安装后可以离线使用，并继续识别这张图片。");
         emit changed();
         return;
     }
@@ -80,8 +84,15 @@ void CaptureOcr::read(const QImage& image, double dpr)
     m_wake.notify_all();
 }
 
+void CaptureOcr::retry()
+{
+    if (!m_pendingImage.isNull() && available())
+        read(std::exchange(m_pendingImage, {}), m_pendingDpr);
+}
+
 void CaptureOcr::showTexts(const QStringList& texts, const QString& title, const QString& none)
 {
+    m_pendingImage = {};
     ++m_round; // a reading still under way is for a picture no longer shown
     m_busy = false;
     m_title = title;

@@ -17,7 +17,8 @@ namespace ws {
 // better on screenshots than Windows' own recognizer: small UI text, digits
 // with decimal points, mixed Chinese and English.
 //
-// The files: onnxruntime.dll next to the program, the two models in ocr\.
+// The files: the shared, verified OCR component, or the legacy/offline
+// onnxruntime.dll next to the program with its two models in ocr\.
 // Loaded by their full paths (an older onnxruntime.dll is in System32).
 // One object reads one picture at a time; its threads run below normal
 // priority. Letting it go gives back its memory (~40 MB while reading).
