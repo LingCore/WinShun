@@ -145,16 +145,20 @@ private slots:
             }
             return false;
         };
-        for (const QString& yes : {u"99-9"_s, u"10 - 4"_s, u"10 -4"_s, u"5-3*2"_s, u"-5+3"_s, u"1+2"_s, u"3.5-1.5"_s, u"100 - 20 - 5"_s, u"2026 - 10"_s, u"1999-5000"_s, u"2024 - 2023"_s})
+        for (const QString& yes : {u"99-9"_s, u"10 - 4"_s, u"10 -4"_s, u"5-3*2"_s, u"-5+3"_s, u"1+2"_s, u"3.5-1.5"_s, u"100 - 20 - 5"_s, u"2026 - 10"_s, u"1999-5000"_s, u"2024 - 2023"_s,
+                 u"500-498-1"_s, u"1/2/2"_s, u"10/2/5"_s, u"-5-3-2"_s, u"1+2*3/4-5"_s})
             QVERIFY2(fires(yes), qPrintable(yes));
         for (const QString& no : {u"2026-10"_s, u"2026-1"_s, u"2024-01-02"_s, u"1999-12"_s, u"2023-2024"_s, u"1998-2003"_s, u"400-800-1234"_s, u"2024-01-02 15:04"_s,
-                 u"report-2"_s, u"99"_s, u"-5"_s, u"abc-9"_s})
+                 u"2024/01/02"_s, u"10/29/2026"_s, u"report-2"_s, u"99"_s, u"-5"_s, u"abc-9"_s})
             QVERIFY2(!fires(no), qPrintable(no));
         // What the plugin then computes.
         QCOMPARE(value("2023-2024"), -1.0); // "= 2023-2024" still computes
         QCOMPARE(value("99-9"), 90.0);
         QCOMPARE(value("10 - 4"), 6.0);
         QCOMPARE(value("100 - 20 - 5"), 75.0);
+        QCOMPARE(value("500-498-1"), 1.0);
+        QCOMPARE(value("1/2/2"), 0.25);
+        QCOMPARE(value("1+2*3/4-5"), -2.5);
     }
 
     void calcFormat()
