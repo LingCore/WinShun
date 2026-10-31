@@ -1,8 +1,9 @@
 #pragma once
 
 // Plugins that came with an earlier Win顺 and are in the plugin library now
-// (GitHub #138: 局域网传输 and 按意思找 came with 0.16.0, and the screenshot
-// was part of WinShun.exe up to then: moveCaptureSettings). The installer takes
+// (GitHub #138: 局域网传输 and 按意思找 came with 0.16.0, 翻译 and 浏览器书签
+// with 0.7.0, and the screenshot was part of WinShun.exe up to then:
+// moveCaptureSettings). The installer takes
 // their old folders out of <install dir>\plugins and a portable update
 // leaves them behind, so who had one on would find it gone. Such a plugin
 // is fetched from the library at the next start and installed into the
@@ -28,6 +29,7 @@ namespace ws::moved {
 // Of the plugins moved to the library, those turned on in `plugins` that
 // `catalog` has no copy of (none of the user's, none come with Win顺).
 QStringList missing(const plugin::Catalog& catalog, const QList<PluginConfig>& plugins);
+QString name(QStringView id); // the familiar feature name, including before the library is reachable
 
 // The screenshot, a plugin since 0.17 (winshun.capture). Its settings were
 // [Capture] in WinShun.ini, and its switch [Capture] Enabled.
@@ -38,9 +40,10 @@ QStringList capturePermissions();
 // For who had the screenshot on: [Capture] of `settingsFile` into the
 // plugin's capture.ini under `dataRoot` (not over one there; PrintScreenBefore
 // too, so that PrtScn can still be given back), and out of `settingsFile`
-// but the screenshot history's keyword. True: it was on, and is moved. The
-// caller turns the plugin on (capturePermissions) and missing() has it
-// fetched; with Enabled gone it is not moved twice.
+// but the screenshot history's keyword and PrtScn recovery record. The
+// plugin switch and confirmed permissions are published in the same INI
+// update; a restart can recover it even if interrupted before App saves.
+// True: it was on, and is moved; Enabled gone means it is not moved twice.
 bool moveCaptureSettings(const QString& settingsFile, const QString& dataRoot);
 
 // What became of one.
@@ -48,7 +51,7 @@ struct Outcome {
     QString id;
     QString name; // the library's, in `locale`; the id when it has none
     QString error; // empty: installed
-    bool offline = false; // no answer at all: tried again at the next start, nothing said
+    bool offline = false; // no answer at all: settings offer a retry and local installation
 };
 
 // Fetches the list from `source` (the library's, or WINSHUN_PLUGIN_INDEX's)

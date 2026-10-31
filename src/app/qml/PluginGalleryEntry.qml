@@ -99,7 +99,7 @@ Rectangle {
                         textFormat: Text.PlainText
                         color: Theme.text
                         font.pixelSize: Theme.fontBody
-                        font.weight: Font.DemiBold
+                        font.weight: Theme.fontStrong
                         elide: Text.ElideRight
                         width: Math.min(implicitWidth, parent.width - versionText.width - 8)
                         height: Theme.snapUp(implicitHeight, entry.dpr)
@@ -170,47 +170,7 @@ Rectangle {
                         font.pixelSize: Theme.fontCaption
                     }
                 }
-                Flow { // what it may do
-                    width: parent.width
-                    spacing: 12
 
-                    Text {
-                        width: Theme.snapUp(implicitWidth, entry.dpr)
-                        height: 20
-                        verticalAlignment: Text.AlignVCenter
-                        text: entry.permissions.length > 0 ? qsTr("权限") : qsTr("不需要额外的权限")
-                        color: Theme.faint
-                        font.pixelSize: Theme.fontCaption
-                    }
-                    Repeater {
-                        model: entry.permissions
-
-                        delegate: Row { // the riskiest with a warning, in the caution colour
-                            id: permission
-
-                            required property var modelData
-
-                            height: 20
-                            spacing: 4
-
-                            Glyph {
-                                anchors.verticalCenter: parent.verticalCenter
-                                visible: permission.modelData.risky
-                                glyph: "" // Warning
-                                size: 12
-                                color: Theme.caution
-                            }
-                            Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: Theme.snapUp(implicitWidth, entry.dpr)
-                                text: permission.modelData.text
-                                textFormat: Text.PlainText
-                                color: permission.modelData.risky ? Theme.caution : Theme.subtext
-                                font.pixelSize: Theme.fontCaption
-                            }
-                        }
-                    }
-                }
             }
 
             Row { // what it is here, and what can be done
@@ -230,10 +190,11 @@ Rectangle {
                     font.pixelSize: Theme.fontCaption
                 }
                 FlatButton {
+                    objectName: "installPlugin-" + entry.pluginId
                     visible: entry.busy || entry.stage !== "bundled" // nothing to do with one that comes with Win顺
                     implicitHeight: 32
                     text: entry.busy ? qsTr("取消")
-                        : entry.stage === "install" ? qsTr("安装")
+                        : entry.stage === "install" ? qsTr("安装并启用")
                         : entry.stage === "update" ? qsTr("更新到 %1").arg(entry.version)
                         : entry.stage === "app" ? qsTr("需要更新 Win顺")
                         : qsTr("查看")
@@ -243,10 +204,61 @@ Rectangle {
                     onClicked: {
                         if (entry.busy)
                             entry.gallery.cancel(entry.pluginId)
+                        else if (entry.stage === "install")
+                            entry.gallery.installAndEnable(entry.pluginId)
                         else if (entry.installable)
                             entry.gallery.install(entry.pluginId)
                         else
                             entry.showInstalled()
+                    }
+                }
+            }
+        }
+
+        Flow { // what it may do
+            id: permissionsFlow
+            x: texts.x
+            width: body.width - x
+            spacing: 12
+
+            Text {
+                width: Math.min(Theme.snapUp(implicitWidth, entry.dpr), permissionsFlow.width)
+                height: Math.max(20, Theme.snapUp(implicitHeight, entry.dpr))
+                verticalAlignment: Text.AlignVCenter
+                text: entry.permissions.length > 0 ? qsTr("权限") : qsTr("不需要额外的权限")
+                color: Theme.faint
+                font.pixelSize: Theme.fontCaption
+                wrapMode: Text.Wrap
+            }
+            Repeater {
+                model: entry.permissions
+
+                delegate: Row { // the riskiest with a warning, in the caution colour
+                    id: permission
+
+                    required property var modelData
+
+                    height: Math.max(20, permissionText.implicitHeight)
+                    spacing: 4
+
+                    Glyph {
+                        id: permissionWarning
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: permission.modelData.risky
+                        glyph: "" // Warning
+                        size: 12
+                        color: Theme.caution
+                    }
+                    Text {
+                        id: permissionText
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Math.min(Theme.snapUp(implicitWidth, entry.dpr),
+                            Math.max(0, permissionsFlow.width - (permission.modelData.risky ? permissionWarning.width + permission.spacing : 0)))
+                        text: permission.modelData.text
+                        textFormat: Text.PlainText
+                        color: permission.modelData.risky ? Theme.caution : Theme.subtext
+                        font.pixelSize: Theme.fontCaption
+                        wrapMode: Text.Wrap
                     }
                 }
             }

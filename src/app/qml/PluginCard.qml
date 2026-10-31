@@ -147,7 +147,7 @@ Rectangle {
                         textFormat: Text.PlainText
                         color: Theme.text
                         font.pixelSize: Theme.fontBody
-                        font.weight: Font.DemiBold
+                        font.weight: Theme.fontStrong
                         elide: Text.ElideRight
                         width: Math.min(implicitWidth, parent.width - (bundledTag.visible ? bundledTag.width + 8 : 0)
                                                         - (aiTag.visible ? aiTag.width + 8 : 0))

@@ -44,7 +44,7 @@ Window {
             text: preview.aiPage ? qsTr("AI 助手") : qsTr("插件")
             color: Theme.text
             font.pixelSize: Theme.fontDisplay
-            font.weight: Font.DemiBold
+            font.weight: Theme.fontStrong
         }
 
         AiAccessSection {

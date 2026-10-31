@@ -28,6 +28,7 @@
 #include <psapi.h>
 
 #include <algorithm>
+#include <utility>
 
 using namespace Qt::StringLiterals;
 
@@ -411,6 +412,21 @@ void PluginSettings::clearMessage()
     setMessage({});
 }
 
+void PluginSettings::setRecoveryState(const QString& message, bool busy)
+{
+    if (m_recoveryMessage == message && m_recovering == busy)
+        return;
+    m_recoveryMessage = message;
+    m_recovering = busy;
+    emit recoveryChanged();
+}
+
+void PluginSettings::retryRecovery()
+{
+    if (!m_recovering && !m_recoveryMessage.isEmpty())
+        emit recoveryRequested();
+}
+
 QString PluginSettings::permissionsNote() const
 {
     return tr("这些由 Windows 强制：不是管理员、内存上限、子进程、剪贴板、窗口。这些只是插件自己的说明，Win顺 挡不住：联网、开端口、读哪些文件、写哪些文件（严格沙箱的插件除外）。只安装你信得过来源的插件。");
@@ -468,6 +484,8 @@ QVariantList PluginSettings::permissionRows(const QString& id) const
             tr("Win顺 不能阻止它开端口"));
     if (m.permissions.has(P::Notifications))
         row(u"notifications"_s, permissionText(P::Notifications), true, tr("经 Win顺 弹出，每 2 秒最多一条"));
+    if (m.permissions.has(P::SystemSettings))
+        row(u"system:settings"_s, permissionText(P::SystemSettings), false, tr("以普通用户权限更改；Win顺 不能阻止它直接改系统设置"));
     return rows;
 }
 
@@ -488,6 +506,7 @@ QString PluginSettings::permissionText(plugin::Permission p)
     case P::Network: return tr("联网");
     case P::NetworkListen: return tr("在局域网上开端口，让别的设备连进来");
     case P::Notifications: return tr("弹出系统通知");
+    case P::SystemSettings: return tr("更改 Windows 系统设置（主题、无线电、音量、资源管理器、保持唤醒）");
     }
     return plugin::permissionName(p);
 }
@@ -897,7 +916,7 @@ void PluginSettings::install(const QString& given)
     installFrom(given, {}, {});
 }
 
-void PluginSettings::installFrom(const QString& given, const QString& expectedId, const QString& name)
+void PluginSettings::installFrom(const QString& given, const QString& expectedId, const QString& name, bool enableAfterInstall)
 {
     if (!m_host)
         return;
@@ -925,10 +944,11 @@ void PluginSettings::installFrom(const QString& given, const QString& expectedId
         QVariantMap info {{u"id"_s, id}, {u"name"_s, candidate->manifest->name.pick(m_locale)}, {u"installedVersion"_s, e->manifest->version},
             {u"newVersion"_s, candidate->manifest->version}, {u"downgrade"_s, compared < 0}, {u"same"_s, compared == 0}};
         m_pendingInstall = std::move(candidate);
+        m_pendingEnable = enableAfterInstall;
         emit installQuestion(info);
         return;
     }
-    finishInstall(std::move(*candidate));
+    finishInstall(std::move(*candidate), enableAfterInstall);
 }
 
 void PluginSettings::confirmInstall()
@@ -937,7 +957,7 @@ void PluginSettings::confirmInstall()
         return;
     plugin::install::Candidate candidate = std::move(*m_pendingInstall);
     m_pendingInstall.reset();
-    finishInstall(std::move(candidate));
+    finishInstall(std::move(candidate), std::exchange(m_pendingEnable, false));
 }
 
 void PluginSettings::cancelInstall()
@@ -946,9 +966,10 @@ void PluginSettings::cancelInstall()
         return;
     plugin::install::discard(*m_pendingInstall);
     m_pendingInstall.reset();
+    m_pendingEnable = false;
 }
 
-void PluginSettings::finishInstall(plugin::install::Candidate candidate)
+void PluginSettings::finishInstall(plugin::install::Candidate candidate, bool enableAfterInstall)
 {
     if (!m_host)
         return;
@@ -981,6 +1002,8 @@ void PluginSettings::finishInstall(plugin::install::Candidate candidate)
     else
         setMessage(config && config->enabled ? tr("已安装 %1 %2").arg(name, version) : tr("已安装 %1 %2，打开它的开关就能用").arg(name, version));
     rebuild();
+    if (enableAfterInstall)
+        setEnabled(id, true); // the normal permission dialog still applies
 }
 
 void PluginSettings::uninstall(const QString& id)

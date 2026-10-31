@@ -159,6 +159,8 @@ class PluginSettings : public QObject {
     // File Explorer (Runner::TokenSource::Restricted); empty when they do.
     Q_PROPERTY(QString restrictedNote READ restrictedNote NOTIFY stateChanged FINAL)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged FINAL) // how the last install or removal went
+    Q_PROPERTY(QString recoveryMessage READ recoveryMessage NOTIFY recoveryChanged FINAL)
+    Q_PROPERTY(bool recovering READ recovering NOTIFY recoveryChanged FINAL)
     Q_PROPERTY(QString userDir READ userDir NOTIFY stateChanged FINAL)
     Q_PROPERTY(bool active READ active WRITE setActive NOTIFY activeChanged FINAL) // the page is on show: memory figures are read
     // A card's hotkey recorder has the keyboard (SettingsWindow suspends the global hotkeys).
@@ -188,6 +190,10 @@ public:
     void setDeveloperMode(bool on);
     QString restrictedNote() const { return m_restrictedNote; }
     QString message() const { return m_message; }
+    QString recoveryMessage() const { return m_recoveryMessage; }
+    bool recovering() const { return m_recovering; }
+    void setRecoveryState(const QString& message, bool busy = false);
+    Q_INVOKABLE void retryRecovery();
     QString userDir() const { return m_userDir; }
     bool active() const { return m_active; }
     bool preview() const { return m_preview != nullptr; }
@@ -200,7 +206,7 @@ public:
     static QString permissionText(plugin::Permission p);
     // install(), for a package downloaded from the 插件库: it must be
     // `expectedId`, and is called `name` in what is said of it.
-    void installFrom(const QString& path, const QString& expectedId, const QString& name);
+    void installFrom(const QString& path, const QString& expectedId, const QString& name, bool enableAfterInstall = false);
 
     // The switch: turning on asks first (confirmationNeeded) when the plugin
     // was never confirmed or asks for more permissions than it did.
@@ -251,6 +257,8 @@ signals:
     void developerModeChanged();
     void stateChanged();
     void messageChanged();
+    void recoveryChanged();
+    void recoveryRequested();
     void activeChanged();
     void recordingHotkeyChanged();
     // The dialogs: {id, name, version, author, homepage, source, permissions: [{name, text, enforced, note}], more: bool (asked again for new ones)}.
@@ -267,7 +275,7 @@ private:
     PluginListModel::Card cardFor(const QString& id) const;
     void setMessage(const QString& message);
     void readMemory(); // the resident processes' working sets, into the status lines
-    void finishInstall(plugin::install::Candidate candidate);
+    void finishInstall(plugin::install::Candidate candidate, bool enableAfterInstall = false);
     QString pluginName(const QString& id) const;
     QVariantList permissionRows(const QString& id) const; // [{name, text, enforced, note}]
     void applyPluginSettings(const QString& id); // the host hears the values (secrets included)
@@ -280,12 +288,15 @@ private:
     QString m_logPath;
     QString m_restrictedNote;
     QString m_message;
+    QString m_recoveryMessage;
+    bool m_recovering = false;
     PluginListModel m_list;
     PluginLogModel m_log;
     QTimer m_memoryTimer;
     bool m_active = false;
     bool m_recordingHotkey = false;
     std::optional<plugin::install::Candidate> m_pendingInstall; // waiting for the user's answer
+    bool m_pendingEnable = false;
     std::unique_ptr<Preview> m_preview; // loadPreview(): no host
     PluginGallery m_gallery {this};
 };

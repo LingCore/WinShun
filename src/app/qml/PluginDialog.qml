@@ -110,7 +110,7 @@ Item {
                 textFormat: Text.PlainText
                 color: Theme.text
                 font.pixelSize: Theme.fontTitle
-                font.weight: Font.DemiBold
+                font.weight: Theme.fontStrong
                 wrapMode: Text.Wrap
             }
 

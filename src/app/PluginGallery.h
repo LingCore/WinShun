@@ -5,8 +5,8 @@
 // 已安装, 随 Win顺 自带, 需要更新 Win顺 -- and installing one: the package
 // downloaded (one at a time, with its progress, cancellable), checked
 // against the list, then handed to the page's own install
-// (PluginSettings::installFrom), which asks what it always asks and leaves
-// the plugin off until it is turned on. The list is fetched only when the
+// (PluginSettings::installFrom), which asks what it always asks. The explicit
+// install-and-enable action continues to the normal permission dialog. The list is fetched only when the
 // tab is opened (once in a while) or 刷新 is pressed; the last good copy is
 // kept (plugin-index.json in the data folder) and shown meanwhile. With
 // WINSHUN_PLUGIN_INDEX set (an address or a file), that list instead, and
@@ -131,6 +131,7 @@ public:
 
     Q_INVOKABLE void refresh(); // 刷新
     Q_INVOKABLE void install(const QString& id); // 安装, 更新到
+    Q_INVOKABLE void installAndEnable(const QString& id); // the library's explicit install-and-enable action
     Q_INVOKABLE void cancel(const QString& id); // the download
     Q_INVOKABLE void openRepository(); // 看看怎么投稿
 
@@ -148,6 +149,7 @@ signals:
 
 private:
     struct Download;
+    void beginInstall(const QString& id, bool enableAfterInstall);
     QString source() const; // the list's address or file
     bool keeping() const; // the list is the published one: its copy is kept
     QString cachePath() const;

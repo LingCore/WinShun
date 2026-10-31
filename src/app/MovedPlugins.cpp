@@ -25,8 +25,10 @@ namespace gallery = plugin::gallery;
 
 namespace {
 
-// Came with 0.16.0, in the library since (GitHub #138).
-constexpr std::array<QStringView, 3> kMoved {u"winshun.localsend", u"winshun.semantic", kCapture};
+// Came with Win顺, in the library since (GitHub #138): 局域网传输 and 按意思找
+// with 0.16.0, the screenshot as part of WinShun.exe, 翻译 and 浏览器书签 (in
+// Python then, C++ now) since 0.7.0.
+constexpr std::array<QStringView, 5> kMoved {u"winshun.localsend", u"winshun.semantic", kCapture, u"winshun.translate", u"winshun.bookmarks"};
 
 constexpr int kListTimeoutMs = 15000; // as the 插件库 tab's
 constexpr int kPackageTimeoutMs = 30000;
@@ -49,7 +51,7 @@ Outcome installOne(const gallery::Index& index, const QString& id, const QString
 {
     Outcome out;
     out.id = id;
-    out.name = id;
+    out.name = name(id);
     const gallery::Item* item = index.find(id);
     if (!item) {
         out.error = QCoreApplication::translate("MovedPlugins", "插件库里没有找到它");
@@ -65,7 +67,8 @@ Outcome installOne(const gallery::Index& index, const QString& id, const QString
         return out;
     }
     // One byte more than the list says: a bigger package shows as one.
-    const gallery::Fetched fetched = gallery::fetch(item->url, item->size + 1, webFetcher(kPackageTimeoutMs));
+    const gallery::Fetched fetched = gallery::fetch(item->url, item->size + 1, webFetcher(kPackageTimeoutMs), {},
+        [&](const QByteArray& bytes) { return gallery::check(*item, bytes) == gallery::Problem::None; });
     if (fetched.status != 200) {
         out.offline = offline(fetched);
         out.error = QCoreApplication::translate("MovedPlugins", "下载不下来（%1）").arg(fetched.status ? fetched.status : static_cast<int>(fetched.error));
@@ -113,6 +116,21 @@ QStringList missing(const plugin::Catalog& catalog, const QList<PluginConfig>& p
     return ids;
 }
 
+QString name(QStringView id)
+{
+    if (id == kCapture)
+        return QCoreApplication::translate("MovedPlugins", "截图与录屏");
+    if (id == u"winshun.localsend")
+        return QCoreApplication::translate("MovedPlugins", "局域网传输");
+    if (id == u"winshun.semantic")
+        return QCoreApplication::translate("MovedPlugins", "按意思找");
+    if (id == u"winshun.translate")
+        return QCoreApplication::translate("MovedPlugins", "翻译");
+    if (id == u"winshun.bookmarks")
+        return QCoreApplication::translate("MovedPlugins", "浏览器书签");
+    return id.toString();
+}
+
 QStringList capturePermissions()
 {
     return {u"ui"_s, u"clipboard:read"_s, u"clipboard:write"_s, u"files:write"_s, u"notifications"_s, u"winshun:open"_s};
@@ -140,10 +158,14 @@ bool moveCaptureSettings(const QString& settingsFile, const QString& dataRoot)
             return false;
     }
     for (const QString& key : keys) {
-        if (key != u"Keyword")
+        if (key != u"Keyword" && key != u"PrintScreenBefore")
             from.remove(key);
     }
     from.endGroup();
+    // Publish the plugin's enabled state in the same atomic INI update as
+    // removing the old switch. An interrupted start can then retry recovery.
+    from.setValue(u"Plugin.winshun.capture/Enabled"_s, true);
+    from.setValue(u"Plugin.winshun.capture/Confirmed"_s, capturePermissions());
     from.sync();
     return from.status() == QSettings::NoError;
 }
@@ -154,7 +176,8 @@ void install(const QStringList& ids, const QString& userDir, const QString& loca
     const QString source = given.isEmpty() ? QString(gallery::kIndexUrl) : given;
     QThreadPool::globalInstance()->start([ids, userDir, locale, source, done = std::move(done)] {
         QList<Outcome> outcomes;
-        const gallery::Fetched fetched = gallery::fetch(source, gallery::kMaxIndexBytes + 1, webFetcher(kListTimeoutMs));
+        const gallery::Fetched fetched = gallery::fetch(source, gallery::kMaxIndexBytes + 1, webFetcher(kListTimeoutMs), {},
+            [&](const QByteArray& bytes) { return bytes.size() <= gallery::kMaxIndexBytes && gallery::parse(bytes, source, nullptr).has_value(); });
         QString error;
         std::optional<gallery::Index> index;
         if (fetched.status == 200 && fetched.body.size() <= gallery::kMaxIndexBytes)
@@ -165,7 +188,8 @@ void install(const QStringList& ids, const QString& userDir, const QString& loca
                 continue;
             }
             Outcome out;
-            out.id = out.name = id;
+            out.id = id;
+            out.name = name(id);
             out.offline = offline(fetched);
             out.error = QCoreApplication::translate("MovedPlugins", "拿不到插件库的列表（%1）")
                             .arg(fetched.status ? QString::number(fetched.status) : error.isEmpty() ? QString::number(fetched.error) : error);

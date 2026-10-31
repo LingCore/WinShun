@@ -18,7 +18,7 @@ SettingsSection {
     signal showDeveloper()
     signal showProxySettings() // 设置网络代理: the row on 高级
 
-    note: qsTr("Win顺 插件库里的插件，下载后先核对文件再安装。装好的插件默认关着，打开时会先列出它要的权限。")
+    note: qsTr("只安装你需要的功能。下载后先核对文件，安装并启用时会先列出它要的权限，同意后即可使用。")
 
     SettingRow { // what the install said: not seen on the 已安装 tab from here
         title: qsTr("刚才的结果")
@@ -69,6 +69,7 @@ SettingsSection {
                 width: Math.min(parent.width, 320)
                 implicitHeight: 32
                 placeholder: qsTr("筛选：名称、关键字、说明")
+                text: gallerySection.gallery.filter
                 onTextChanged: gallerySection.gallery.filter = text
             },
             Column {

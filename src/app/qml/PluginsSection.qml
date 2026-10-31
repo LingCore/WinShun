@@ -38,6 +38,7 @@ SettingsSection {
             setExpanded(card.pluginId, true)
     }
 
+    readonly property Item captureCardItem: cardOf("winshun.capture")
     // The card of a plugin, or null (SettingsWindow.showPluginPage).
     function cardOf(pluginId) {
         for (let i = 0; i < cardsRepeater.count; ++i) {
@@ -71,7 +72,34 @@ SettingsSection {
         function onDataChanged() { pluginsSection.listRevision++ }
     }
 
-    note: qsTr("插件给搜索框加关键字命令，结果混进列表。它们只用你的普通权限；新装的默认关着，打开时会先列出它要的权限。")
+    note: qsTr("插件给搜索框加关键字命令，结果混进列表。它们只用你的普通权限；启用前会先列出权限，由你决定是否开启。")
+
+    SettingRow {
+        objectName: "pluginRecoveryRow"
+        title: qsTr("恢复升级前的功能")
+        keywords: qsTr("升级;迁移;恢复;重试;离线;upgrade;restore;retry;offline").split(";")
+        description: pluginsSection.plugins.recoveryMessage
+        shown: pluginsSection.plugins.recoveryMessage.length > 0
+
+        FlatButton {
+            objectName: "retryPluginRecovery"
+            text: pluginsSection.plugins.recovering ? qsTr("正在恢复…") : qsTr("重试恢复")
+            enabled: !pluginsSection.plugins.recovering
+            onClicked: pluginsSection.plugins.retryRecovery()
+        }
+
+        body: Flow {
+            width: parent.width
+            spacing: 8
+
+            FlatButton {
+                objectName: "installRecoveryArchive"
+                text: qsTr("从本地安装插件包…")
+                enabled: !pluginsSection.plugins.recovering
+                onClicked: pluginsSection.plugins.installFromArchive()
+            }
+        }
+    }
 
     SettingRow { // the plugins cannot see what Explorer signed in to (Runner::TokenSource::Restricted)
         title: qsTr("插件看不到你在资源管理器里登录的网络位置")
@@ -251,10 +279,8 @@ SettingsSection {
                     buttonSlot: builtinRow.buttonSlot
                     glyph: String.fromCharCode(0xE734) // FavoriteStar
                     title: builtinRow.dropPieTitle
-                    description: pluginsSection.editor.isElevated ? qsTr("Win顺 以管理员身份运行时用不了")
-                                 : qsTr("按住文件时按数字 1 左边那个键，收藏的文件夹围着指针弹出，朝哪个拖就放进哪个")
-                    checked: pluginsSection.editor.dropPie && !pluginsSection.editor.isElevated
-                    available: !pluginsSection.editor.isElevated
+                    description: qsTr("按住文件时按数字 1 左边那个键，收藏的文件夹围着指针弹出，朝哪个拖就放进哪个")
+                    checked: pluginsSection.editor.dropPie
                     marked: builtinRow.dropPieFound
                     onToggled: (on) => pluginsSection.editor.dropPie = on
                 }

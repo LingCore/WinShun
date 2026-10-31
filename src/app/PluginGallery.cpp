@@ -168,6 +168,7 @@ void PluginGalleryModel::setProgress(const QString& id, double progress)
 // ---- the tab's view-model ---------------------------------------------------------
 
 struct PluginGallery::Download {
+    bool enableAfterInstall = false;
     int status = 0;
     unsigned long error = 0;
     gallery::Problem check = gallery::Problem::None;
@@ -383,6 +384,16 @@ void PluginGallery::setRowProgress(const QString& id, double progress)
 
 void PluginGallery::install(const QString& id)
 {
+    beginInstall(id, false);
+}
+
+void PluginGallery::installAndEnable(const QString& id)
+{
+    beginInstall(id, true);
+}
+
+void PluginGallery::beginInstall(const QString& id, bool enableAfterInstall)
+{
     if (m_preview || !m_downloadId.isEmpty() || !m_settings->m_host)
         return;
     const gallery::Item* found = m_index.find(id);
@@ -405,7 +416,7 @@ void PluginGallery::install(const QString& id)
     const quint64 generation = ++m_generation;
     rebuild();
     emit stateChanged();
-    QThreadPool::globalInstance()->start([self = QPointer(this), item = *found, cancel, generation] {
+    QThreadPool::globalInstance()->start([self = QPointer(this), item = *found, cancel, generation, enableAfterInstall] {
         // The progress told now and then: a piece of the body each time would flood the page.
         QElapsedTimer sinceTold;
         sinceTold.start();
@@ -426,6 +437,7 @@ void PluginGallery::install(const QString& id)
         gallery::Fetched fetched = gallery::fetch(item.url, item.size + 1, webFetcher(kPackageTimeoutMs), progress,
             [&](const QByteArray& bytes) { return gallery::check(item, bytes) == gallery::Problem::None; });
         Download d;
+        d.enableAfterInstall = enableAfterInstall;
         d.status = fetched.status;
         d.error = fetched.error;
         if (fetched.status == 200 && !cancel->load()) {
@@ -480,13 +492,14 @@ void PluginGallery::finishDownload(const QString& id, const Download& d)
     rebuild();
     emit stateChanged();
     // The page's own install: its questions, what it says when done, and
-    // the plugin off until it is turned on. It has read the package by the
-    // time it returns (an archive is unpacked into a folder of its own,
+    // enabling it through the normal permission dialog when explicitly asked.
+    // It has read the package by the time it returns (an archive is unpacked
+    // into a folder of its own,
     // waiting there for a question's answer), so the file can go. It may
     // run events meanwhile (a plugin's program let go of): nothing of the
     // rows is held across it.
     const gallery::Item* item = m_index.find(id);
-    m_settings->installFrom(d.path, id, item ? item->name.pick(m_settings->m_locale) : id);
+    m_settings->installFrom(d.path, id, item ? item->name.pick(m_settings->m_locale) : id, d.enableAfterInstall);
     QFile::remove(d.path);
 }
 
@@ -566,11 +579,10 @@ void PluginGallery::loadPreview()
         rows.push_back(r);
     }
     {
-        PluginGalleryModel::Row r = row(u"winshun.bookmarks"_s, tr("浏览器书签"), tr("bm 词：搜 Chrome 和 Edge 的书签，Enter 打开"), u"1.1.0"_s, u"bundled"_s);
+        PluginGalleryModel::Row r = row(u"winshun.bookmarks"_s, tr("浏览器书签"), tr("bm 词：搜 Chrome 和 Edge 的书签，Enter 打开"), u"2.0.0"_s, u"install"_s);
         r.icon = glyph(u"U+E728"_s);
         r.keywords = {u"bm"_s, u"sq"_s};
         r.permissions = {permission(plugin::Permission::FilesRead)};
-        r.needs = tr("需要 Python 3");
         rows.push_back(r);
     }
     {
