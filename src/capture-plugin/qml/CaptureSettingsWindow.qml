@@ -76,7 +76,7 @@ Window {
                 text: qsTr("截图")
                 color: Theme.text
                 font.pixelSize: Theme.fontDisplay
-                font.weight: Font.DemiBold
+                font.weight: Theme.fontStrong
             }
             CaptureOptions {
                 width: parent.width

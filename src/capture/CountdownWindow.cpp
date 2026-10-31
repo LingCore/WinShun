@@ -98,7 +98,7 @@ void CountdownWindow::draw()
         painter.setPen(Qt::white);
         QFont big = QGuiApplication::font();
         big.setPixelSize(static_cast<int>(std::lround(34 * m_dpr)));
-        big.setWeight(QFont::DemiBold);
+        big.setWeight(QFont::Bold);
         painter.setFont(big);
         painter.drawText(QRectF(0, 0, 64 * m_dpr, h), Qt::AlignCenter, QString::number(std::max(0, m_seconds)));
         QFont small = QGuiApplication::font();

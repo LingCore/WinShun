@@ -8,6 +8,7 @@ struct GifOptions {
     QString path; // new output file; committed only after every frame is written
     int fps = 15;
     int maximumEdge = 1280;
+    QString temporaryDirectory; // an isolated supervisor's owned staging directory
 };
 
 QSize gifSize(QSize source, int maximumEdge);

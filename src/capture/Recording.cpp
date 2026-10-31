@@ -513,18 +513,21 @@ public:
         m_pool = wgc::Direct3D11CaptureFramePool::CreateFreeThreaded(inspectable.as<wd3d::IDirect3DDevice>(), format, 2, m_item.Size());
         m_session = m_pool.CreateCaptureSession(m_item);
         m_session.IsCursorCaptureEnabled(options.cursor);
+        // Borderless capture is optional. An unpackaged desktop program
+        // must not wait for a consent operation just to start recording.
         try {
-            if (wgc::GraphicsCaptureAccess::RequestAccessAsync(wgc::GraphicsCaptureAccessKind::Borderless).get()
-                == winrt::Windows::Security::Authorization::AppCapabilityAccess::AppCapabilityAccessStatus::Allowed)
-                m_session.IsBorderRequired(false);
+            if (auto border = m_session.try_as<wgc::IGraphicsCaptureSession3>()) border.IsBorderRequired(false);
         } catch (const winrt::hresult_error&) { }
         m_shared = std::make_shared<Shared>();
         m_token = m_pool.FrameArrived([state = m_shared](const auto& pool, const auto&) {
             try {
                 const auto frame = pool.TryGetNextFrame();
-                const std::lock_guard lock(state->mutex);
-                if (state->pending) state->pending.Close();
-                state->pending = frame; // one pending frame, never an accumulating queue
+                wgc::Direct3D11CaptureFrame previous {nullptr};
+                {
+                    const std::lock_guard lock(state->mutex);
+                    previous = std::exchange(state->pending, frame);
+                }
+                if (previous) previous.Close(); // release driver resources outside our mutex
             } catch (const winrt::hresult_error& error) {
                 const std::lock_guard lock(state->mutex);
                 state->error = error.code().value;
@@ -616,7 +619,8 @@ Result run(const Options& options, Control& control, const std::function<void(co
     }
     // A new, owned staging file beside the destination; incomplete output
     // is never mistaken for a successfully saved MP4.
-    const QString temporary = options.path + u"."_s + QUuid::createUuid().toString(QUuid::Id128) + u".partial.mp4"_s;
+    const QString temporary = options.temporary.isEmpty()
+        ? options.path + u"."_s + QUuid::createUuid().toString(QUuid::Id128) + u".partial.mp4"_s : options.temporary;
     QFile reservation(temporary);
     if (!reservation.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
         result.error = QCoreApplication::translate("Recording", "无法写入录屏文件夹：%1").arg(reservation.errorString());
@@ -625,7 +629,12 @@ Result run(const Options& options, Control& control, const std::function<void(co
     reservation.close();
     bool finalized = false;
     std::unique_ptr<Writer> writer;
+    const auto stage = [&](const QString& name) {
+        result.stage = name;
+        if (progress) progress(result);
+    };
     try {
+        stage(u"media startup"_s);
         const HMODULE platform = ::LoadLibraryExW(L"mfplat.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
         const HMODULE readwrite = ::LoadLibraryExW(L"mfreadwrite.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
         const auto libraries = qScopeGuard([&] {
@@ -644,12 +653,14 @@ Result run(const Options& options, Control& control, const std::function<void(co
             ::MFShutdown();
         });
         const RECT area {options.region.left(), options.region.top(), options.region.right() + 1, options.region.bottom() + 1};
+        stage(u"graphics device"_s);
         Graphics graphics(::MonitorFromRect(&area, MONITOR_DEFAULTTOPRIMARY));
         const QSize encodedSize((options.region.width() + 1) & ~1, (options.region.height() + 1) & ~1);
         Converter converter(graphics, encodedSize, encodedSize, options.fps);
         winrt::com_ptr<ID3D11Texture2D> padded;
         if (encodedSize != options.region.size())
             padded = graphics.texture(encodedSize, DXGI_FORMAT_B8G8R8A8_UNORM);
+        stage(u"encoder startup"_s);
         if (!options.software) {
             try { writer = std::make_unique<Writer>(graphics, options, temporary, true); }
             catch (const Failure&) { writer.reset(); }
@@ -659,6 +670,7 @@ Result run(const Options& options, Control& control, const std::function<void(co
         result.encoder = writer->encoder;
         result.hardware = writer->actualHardware;
         std::vector<std::unique_ptr<Audio>> audio;
+        stage(u"audio startup"_s);
         if (syntheticMs < 0) {
             try {
                 if (options.systemAudio) audio.push_back(std::make_unique<Audio>(true));
@@ -672,6 +684,7 @@ Result run(const Options& options, Control& control, const std::function<void(co
             }
         }
         std::unique_ptr<Source> source;
+        stage(u"screen capture startup"_s);
         winrt::com_ptr<ID3D11Texture2D> generated;
         if (syntheticMs < 0)
             source = std::make_unique<Source>(graphics, options);
@@ -717,6 +730,7 @@ Result run(const Options& options, Control& control, const std::function<void(co
         qint64 syntheticKey = showKeys && syntheticMs >= 0 ? kSecond / 10 : -1;
         if (options.keyInput) options.keyInput->discardBefore(start);
         for (const auto& input : audio) input->start();
+        stage(u"encoding"_s);
         qint64 nextVideo = 0, nextAudio = 0, lastUpdate = -kSecond;
         const qint64 interval = kSecond / options.fps;
         const bool withAudio = options.systemAudio || options.microphone;
@@ -879,9 +893,11 @@ Result run(const Options& options, Control& control, const std::function<void(co
                 for (const auto& input : audio) input->collect(clock, nowTicks(), false);
             audioUntil(end * kAudioRate / kSecond);
         }
+        stage(u"capture shutdown"_s);
         source.reset();
         pointer.reset();
         audio.clear();
+        stage(u"finalize MP4"_s);
         if (result.frames && !control.discard) check(writer->finish(), "finalize MP4");
         finalized = true;
         writer.reset();

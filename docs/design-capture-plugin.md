@@ -60,7 +60,7 @@ Win顺 → 插件（manifest 声明，宿主照着画）：
 - 装不上（离线）而 PrtScn 被接管着：主程序先把 PrtScn 还回去，下次启动再试。
 - AI 改截图设置的那几项（`AiSettings` 的 `Capture/*`）去掉：插件的设置 AI 改不了。
 
-做成的样子：`App::moveCapture` 在启动时（插件主机建好之后、应用快捷键之前）调 `moved::moveCaptureSettings`：`capture.ini` 已经有了就不覆盖；`Enabled` 和其余键从 WinShun.ini 删掉，只留 `Keyword`（截图历史的关键词，还是 Win顺 的，`AiSettings` 里也只剩它），所以不会搬两次。`PrintScreenBefore` 跟着搬给插件，由插件关掉时写回；插件没开时主程序自己写回（`App::restorePrintScreen`）。插件以 `moved::capturePermissions()` 打开（和 plugin.json 的权限一样，`tst_movedplugins` 核对），十秒后由 `installMovedPlugins` 从插件库装上，和局域网传输、按意思找一样。
+做成的样子：`App::moveCapture` 在启动时（插件主机建好之后、应用快捷键之前）调 `moved::moveCaptureSettings`：`capture.ini` 已经有了就不覆盖；WinShun.ini 保留 `Keyword`（截图历史的关键词）和 `PrintScreenBefore`（插件缺失时的系统按键还原记录），其余旧键删除。删除旧开关与写入插件的 `Enabled`、`Confirmed` 在同一次 INI 更新中完成，启动中断后仍能找到待恢复的功能。插件以 `moved::capturePermissions()` 打开（和 plugin.json 的权限一样，`tst_movedplugins` 核对），`installMovedPlugins` 异步从插件库恢复；已安装且启用的 eager 插件在配置和权限应用后异步启动，没有固定的十秒等待。恢复失败时，“已安装”页保留原因，并提供重试和本地包安装；部分成功仍显示失败项。
 
 ## 5. 先后
 
@@ -72,13 +72,14 @@ Win顺 → 插件（manifest 声明，宿主照着画）：
 ## 做到哪了
 
 - 阶段 0–2 已提交（`e3219f6` 协议、`af68bca` 插件、`1034520` 主程序去掉截图），阶段 3 的迁移 `9eef3f1`，文档随后。
-- 验证过：插件自检 5/5（`wsbench --plugin … --query "cap __selftest" --app-dir …`）；`WinShunCapture.exe --preview-capture-tools`、`--toolbar-drag` 0 警告；`WinShun --preview-settings` 12 页 0 警告；ctest 89/89。
-- 还没做：真机测试（插件库装、升级迁移、托盘子菜单、贴图和编辑剪贴板图片、设置按钮、Win+Shift+S 交接、PrtScn、录屏、长截图、识字），插件包和插件库索引的发布。
+- 拆分阶段的历史验证：插件自检 5/5（`wsbench --plugin … --query "cap __selftest" --app-dir …`）；截图工具、工具栏拖动和设置页预览 0 警告；当时 ctest 89/89。这些是阶段记录，不代表当前整条截图流程的验收。
+- 2026-10-30 补上真实程序的临时配置验证：本地插件库安装、升级迁移、离线重试、本地包恢复、部分失败、原生快捷键注册与退出释放、安装时允许／拒绝权限。当前构建、自动测试、界面检查和资源样本见 [#138 验证记录](issue138-validation.md)。
+- 仍待发布前验收：公开插件库下载、托盘子菜单、贴图和编辑剪贴板图片、Win+Shift+S 交接、真实 PrtScn 接管与还原、录屏、长截图、识字，以及插件包和插件库索引的发布。本次隔离测试没有操作用户的 PrtScn 设置。
 
 ## 未定 / 风险
 
-- 开着截图、接管了 PrtScn 的人升级后插件一直装不上（离线）：`PrintScreenBefore` 已经搬进 `capture.ini`，主程序不会替它还，PrtScn 是 Windows 老的“整屏复制到剪贴板”（不是没反应），插件装上后照常接管。
+- 旧风险已修正（2026-10-30）：迁移不再从宿主清掉 `PrintScreenBefore`，插件缺失时宿主可用它还原系统设置；原记录只搬给插件、宿主不能还原的描述已失效。数据保留和迁移失败有回归测试，真实系统 PrtScn 行为仍需发布前验收。
 
 - 作业的内存上限：manifest 的 `memoryMB` 最多 2048；长截图和 4K 录屏可能更大，要实测后定（必要时放宽上限）。
-- 插件 eager 在 Win顺 启动 10 秒后才起：开机后头 10 秒按截图快捷键没反应。
-- 截图历史（另一个会话正在做，`CaptureHistory`）提交后跟着搬进插件。
+- 旧风险已修正（2026-10-30）：eager 的固定十秒等待已移除；启用、确认权限和重新启用都由 Host 排队启动。真实进程验证使用空闲测试快捷键检查 Windows 层面的注册，而不只检查文件存在或 SDK 的 Running 状态。
+- 之前的画面（`CaptureHistory`）已跟着搬进插件：`HistoryCount` 在 `capture.ini`，图在插件数据文件夹的 `capture-history`。开发版在 `%APPDATA%\WinShun\capture-history` 存过的不搬（没发布过）。

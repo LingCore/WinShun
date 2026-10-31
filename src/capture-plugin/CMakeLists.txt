@@ -22,7 +22,7 @@ foreach(name IN LISTS shared_qml)
     list(APPEND capture_qml "${app_dir}/qml/${name}")
 endforeach()
 foreach(name IN ITEMS CaptureOverlay AnnotateToolbar AnnotateStylePanel AnnotateSmartHint AnnotateLayer AnnotateObjects
-                      EditWindow OcrPanel LongCapturePanel RecordingPanel CaptureOptions CaptureSettingsWindow)
+                      EditWindow OcrPanel LongCapturePanel RecordingPanel RecordingButton RecordingOptions CaptureOptions CaptureSettingsWindow)
     list(APPEND capture_qml "${CMAKE_CURRENT_SOURCE_DIR}/qml/${name}.qml")
 endforeach()
 set_source_files_properties("${app_dir}/qml/Theme.qml" PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
@@ -59,6 +59,7 @@ if(QT6_IS_SHARED_LIBS_BUILD)
 endif()
 qt_add_qml_module(WinShunCaptureApp
     URI WinShun
+    OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/WinShun"
     VERSION 1.0
     NO_PLUGIN
     ${qml_import_scan}

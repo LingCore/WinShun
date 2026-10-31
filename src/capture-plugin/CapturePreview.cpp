@@ -2,10 +2,14 @@
 // Preview.cpp had of the capture before it became a plugin (GitHub #138).
 
 #include "CapturePreview.h"
+#include "CaptureSettings.h"
 
 #include "AnnotationModel.h"
 #include "Capture.h"
 #include "CaptureSession.h"
+#include "CaptureOcr.h"
+#include "WindowFrame.h"
+#include "platform/OcrFiles.h"
 #include "RawClicks.h"
 #include "Recorder.h"
 #include "RecordingPointer.h"
@@ -19,6 +23,7 @@
 #include <QGuiApplication>
 #include <QImage>
 #include <QKeyEvent>
+#include <QLocale>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QQmlApplicationEngine>
@@ -29,6 +34,7 @@
 #include <QScreen>
 #include <QStyleHints>
 #include <QTimer>
+#include <QTemporaryDir>
 #include <QTranslator>
 
 #include <windows.h>
@@ -46,8 +52,10 @@ namespace ws::captureplugin::preview {
 namespace {
 
 constexpr auto kCaptureToolsFlag = u"--preview-capture-tools";
+constexpr auto kSettingsFlag = u"--preview-capture-settings";
 constexpr auto kRecordingFlag = u"--preview-recording";
 constexpr auto kLongCaptureFlag = u"--preview-long-capture";
+constexpr auto kOcrFlag = u"--preview-ocr";
 
 int g_warnings = 0;
 bool g_edges = false; // --edges (or --tree): every grab also writes <png>.edges.txt
@@ -174,6 +182,77 @@ int finish(QQuickWindow* window, bool saved)
     delete window;
     say(u"%1 warning(s)"_s.arg(g_warnings));
     return saved ? std::min(g_warnings, 100) : 4;
+}
+
+int runSettings(const QStringList& args)
+{
+    const QDir out(valueAfter(args, kSettingsFlag));
+    QTemporaryDir temporary;
+    if (!temporary.isValid())
+        return 4;
+    QTranslator translator;
+    if (args.contains(u"--english"_s) && translator.load(u":/i18n/capture_en.qm"_s))
+        QCoreApplication::installTranslator(&translator);
+    CaptureSettings editor(temporary.filePath(u"capture.ini"_s));
+    WindowFrame frame(false);
+    QQmlApplicationEngine engine;
+    engine.addImportPath(QDir(valueAfter(args, u"--app-dir")).filePath(u"qml"_s));
+    QQmlComponent component(&engine, u"WinShun"_s, u"CaptureSettingsWindow"_s);
+    auto* window = qobject_cast<QQuickWindow*>(component.createWithInitialProperties({
+        {u"editor"_s, QVariant::fromValue(&editor)}, {u"frame"_s, QVariant::fromValue(&frame)}}));
+    if (!window) { say(component.errorString()); return 3; }
+    frame.setWindow(window);
+    editor.setWindow(window);
+    window->resize(560, 640);
+    showOffScreen(window);
+    settle(window);
+    QObject* toggle = window->findChild<QObject*>(u"capturePauseFullScreen"_s);
+    bool ok = toggle != nullptr;
+    if (toggle) {
+        for (const bool enabled : {true, false}) {
+            QMetaObject::invokeMethod(toggle, "toggled", Q_ARG(bool, enabled));
+            settle(window);
+            ok = ok && editor.capturePauseInFullScreen() == enabled
+                && CaptureOptions::load(temporary.filePath(u"capture.ini"_s)).pauseInFullScreen == enabled
+                && toggle->property("checked").toBool() == enabled;
+        }
+    }
+    if (!ok)
+        qWarning("capture settings: full-screen toggle did not update the editor and isolated file");
+    const bool saved = saveGrab(window, out.filePath(u"capture-settings.png"_s));
+    return finish(window, ok && saved);
+}
+
+int runOcr(const QStringList& args)
+{
+    const QDir out(valueAfter(args, kOcrFlag));
+    QTranslator translator;
+    if (args.contains(u"--english"_s) && translator.load(u":/i18n/capture_en.qm"_s))
+        QCoreApplication::installTranslator(&translator);
+    ocr::setComponentsRoot(out.filePath(u"components"_s));
+    capture::CaptureOcr::setProgramFolder(out.filePath(u"no-bundled-copy"_s));
+    capture::CaptureOcr reader;
+    WindowFrame frame(false);
+    QQmlApplicationEngine engine;
+    engine.addImportPath(QDir(valueAfter(args, u"--app-dir")).filePath(u"qml"_s));
+    QQmlComponent component(&engine, u"WinShun"_s, u"OcrPanel"_s);
+    auto* window = qobject_cast<QQuickWindow*>(component.createWithInitialProperties({
+        {u"ocr"_s, QVariant::fromValue(&reader)}, {u"frame"_s, QVariant::fromValue(&frame)}}));
+    if (!window) { say(component.errorString()); return 3; }
+    frame.setWindow(window);
+    QImage image(600, 80, QImage::Format_RGB32);
+    image.fill(Qt::white);
+    reader.read(image, 1.0);
+    showOffScreen(window);
+    settle(window);
+    QObject* button = window->findChild<QObject*>(u"setupEnhancedOcr"_s);
+    bool requested = false;
+    QObject::connect(&reader, &capture::CaptureOcr::setupRequested, &reader, [&] { requested = true; });
+    if (button)
+        QMetaObject::invokeMethod(button, "clicked");
+    const bool saved = reader.needsPackage() && !reader.busy() && requested
+        && saveGrab(window, out.filePath(u"ocr-missing.png"_s));
+    return finish(window, saved);
 }
 
 int runToolbarDrag(const QStringList& args)
@@ -431,6 +510,8 @@ int runCaptureTools(const QStringList& args)
 int runRecording(const QStringList& args)
 {
     using namespace capture;
+    QLocale::setDefault(args.contains(u"--english"_s) ? QLocale(QLocale::English, QLocale::UnitedStates)
+                                                   : QLocale(QLocale::Chinese, QLocale::China));
     const QDir out(valueAfter(args, kRecordingFlag));
     QDir().mkpath(out.path());
     QTranslator translator;
@@ -551,7 +632,79 @@ int runRecording(const QStringList& args)
         QCoreApplication::sendEvent(panel, &press);
         QMouseEvent release(QEvent::MouseButtonRelease, at, global, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
         QCoreApplication::sendEvent(panel, &release);
+        pump(20);
     };
+    saved = panel->height() <= 60 && !panel->property("optionsShown").toBool() && saved;
+    say(u"compact ready: %1 x %2"_s.arg(panel->width()).arg(panel->height()));
+    const auto panelInsideWorkArea = [&] {
+        MONITORINFO monitor {sizeof monitor};
+        RECT bounds {};
+        const auto handle = reinterpret_cast<HWND>(panel->winId());
+        if (!::GetMonitorInfoW(::MonitorFromWindow(handle, MONITOR_DEFAULTTONEAREST), &monitor)
+            || !::GetWindowRect(handle, &bounds)) return false;
+        const auto& work = monitor.rcWork;
+        return bounds.left >= work.left && bounds.top >= work.top && bounds.right <= work.right && bounds.bottom <= work.bottom;
+    };
+    {
+        MONITORINFO monitor {sizeof monitor};
+        RECT bounds {};
+        const auto handle = reinterpret_cast<HWND>(panel->winId());
+        if (::GetMonitorInfoW(::MonitorFromWindow(handle, MONITOR_DEFAULTTONEAREST), &monitor) && ::GetWindowRect(handle, &bounds))
+            ::SetWindowPos(handle, nullptr, monitor.rcWork.right - (bounds.right - bounds.left) - 4,
+                monitor.rcWork.bottom - (bounds.bottom - bounds.top) - 4, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    const auto key = [&](int code) {
+        QKeyEvent press(QEvent::KeyPress, code, Qt::NoModifier);
+        QCoreApplication::sendEvent(panel, &press);
+        QKeyEvent release(QEvent::KeyRelease, code, Qt::NoModifier);
+        QCoreApplication::sendEvent(panel, &release);
+        pump(20);
+    };
+    auto* optionsButton = panel->findChild<QQuickItem*>(u"recordingOptions"_s);
+    if (optionsButton) {
+        optionsButton->forceActiveFocus(Qt::TabFocusReason);
+        key(Qt::Key_Space);
+        settle(panel);
+        saved = panel->property("optionsShown").toBool() && saved;
+        const bool inside = panelInsideWorkArea();
+        say(u"options expanded beside screen edge stay in work area: %1"_s.arg(inside));
+        saved = inside && saved;
+        saved = saveGrab(panel, out.filePath(u"keyboard-options.png"_s)) && saved;
+        auto* divider = panel->findChild<QQuickItem*>(u"recordingOptionsDivider"_s);
+        auto* options = panel->findChild<QQuickItem*>(u"recordingOptionsContent"_s);
+        if (divider && options) {
+            const qreal toolbarBottom = optionsButton->mapToScene(QPointF(0, optionsButton->height())).y();
+            const qreal dividerTop = divider->mapToScene(QPointF()).y();
+            const qreal optionsTop = options->mapToScene(QPointF()).y();
+            const qreal dpr = panel->devicePixelRatio();
+            const int gapBefore = qRound((dividerTop - toolbarBottom) * dpr);
+            const int gapAfter = qRound((optionsTop - dividerTop - divider->height()) * dpr);
+            const bool compact = panel->height() <= 200 && gapBefore >= qRound(8 * dpr) && gapAfter >= qRound(8 * dpr);
+            say(u"compact options with spacing on both sides of divider: %1 (%2 x %3; native gaps %4/%5 px)"_s
+                .arg(compact).arg(panel->width()).arg(panel->height()).arg(gapBefore).arg(gapAfter));
+            saved = compact && saved;
+        } else saved = false;
+        auto* loader = panel->findChild<QQuickItem*>(u"recordingOptionsLoader"_s);
+        auto* viewport = panel->findChild<QQuickItem*>(u"recordingOptionsViewport"_s);
+        auto* folderButton = panel->findChild<QQuickItem*>(u"recordingChooseFolder"_s);
+        if (loader && viewport && folderButton) {
+            const QVariant originalLimit = panel->property("maximumOptionsHeight");
+            panel->setProperty("maximumOptionsHeight", 96); // constrain the real viewport, preserving the loader's height binding
+            settle(panel);
+            folderButton->forceActiveFocus(Qt::TabFocusReason);
+            pump(20);
+            const auto box = folderButton->mapRectToItem(viewport, folderButton->boundingRect());
+            const bool visibleFocus = box.top() >= 0 && box.bottom() <= viewport->height() + 1 && viewport->property("contentY").toReal() > 0;
+            say(u"keyboard focus scrolls the final option into a short viewport: %1"_s.arg(visibleFocus));
+            saved = visibleFocus && saveGrab(panel, out.filePath(u"options-short-height.png"_s)) && saved;
+            panel->setProperty("maximumOptionsHeight", originalLimit);
+        } else saved = false;
+        key(Qt::Key_Escape);
+        settle(panel);
+        const bool escaped = !panel->property("optionsShown").toBool() && panel->isVisible();
+        say(u"keyboard Space opens options, Escape closes only options: %1"_s.arg(escaped));
+        saved = escaped && panel->activeFocusItem() == optionsButton && saved;
+    } else saved = false;
     const bool originalAudio = recorder->systemAudio();
     click("recordingSystemAudio");
     saved = recorder->systemAudio() != originalAudio && saved;
@@ -559,10 +712,22 @@ int runRecording(const QStringList& args)
     saved = recorder->systemAudio() == originalAudio && saved;
     click("recordingGif");
     saved = recorder->format() == Recorder::Gif && saved;
+    click("recordingGif"); // the selected radio must remain selected
+    saved = panel->findChild<QQuickItem*>(u"recordingGif"_s)->property("checked").toBool() && saved;
+    saved = !panel->findChild<QQuickItem*>(u"recordingSystemAudio"_s)->isEnabled() && saved;
     settle(panel);
     saved = saveGrab(panel, out.filePath(u"ready-gif.png"_s)) && saved;
     if (!args.contains(u"--gif"_s)) click("recordingMp4");
     saved = (recorder->format() == (args.contains(u"--gif"_s) ? Recorder::Gif : Recorder::Mp4)) && saved;
+    click("recordingOptions");
+    settle(panel);
+    saved = panel->property("optionsShown").toBool() && saved;
+    saved = saveGrab(panel, out.filePath(u"options.png"_s)) && saved;
+    click("recordingOptions");
+    settle(panel);
+    saved = !panel->property("optionsShown").toBool() && panel->height() <= 60 && saved;
+    click("recordingOptions");
+    settle(panel);
     const bool originalCursor = recorder->cursor(), originalCountdown = recorder->countdown(), originalClicks = recorder->clickHighlights();
     click("recordingCursor");
     saved = recorder->cursor() != originalCursor && saved;
@@ -571,19 +736,73 @@ int runRecording(const QStringList& args)
     saved = recorder->countdown() != originalCountdown && saved;
     click("recordingCountdown");
     click("recordingClicks");
+    const bool originalMouse = recorder->mouseButtons();
+    click("recordingMouseButtons");
+    saved = recorder->mouseButtons() != originalMouse && saved;
+    click("recordingMouseButtons");
+    click("recordingKeysAll");
+    saved = recorder->keys() == Recorder::KeysAll && saved;
+    settle(panel);
+    saved = saveGrab(panel, out.filePath(u"options-all-keys.png"_s)) && saved;
+    click("recordingKeysShortcuts");
+    saved = recorder->keys() == Recorder::KeysShortcuts && saved;
+    click("recordingKeysOff");
     saved = recorder->clickHighlights() != originalClicks && saved;
     click("recordingClicks");
     click("recordingSmallFile");
     saved = recorder->quality() == Recorder::SmallFile && saved;
     click("recordingHighQuality");
     saved = recorder->quality() == Recorder::HighQuality && saved;
+    click("recordingHighQuality");
+    saved = panel->findChild<QQuickItem*>(u"recordingHighQuality"_s)->property("checked").toBool() && saved;
     click(quality == Recorder::SmallFile ? "recordingSmallFile" : quality == Recorder::HighQuality ? "recordingHighQuality" : "recordingStandard");
     saved = recorder->quality() == quality && recorder->cursor() == originalCursor && recorder->countdown() == originalCountdown
         && recorder->clickHighlights() == originalClicks && saved;
+    click("recordingOptions");
     settle(panel);
+    saved = !panel->property("optionsShown").toBool() && panel->height() <= 60 && saved;
+    if (args.contains(u"--ui-only"_s)) {
+        recorder->close();
+        return saved ? 0 : 4;
+    }
+    if (args.contains(u"--failure-ui"_s)) {
+        const QString blockedPath = out.filePath(u"not-a-folder"_s);
+        QFile blocked(blockedPath);
+        saved = blocked.open(QIODevice::WriteOnly) && saved;
+        blocked.close();
+        preferences.folder = blockedPath;
+        preferences.countdown = false;
+        recorder->close();
+        recorder->prepare(region, ::MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), fixture->devicePixelRatio());
+        click("recordingStart");
+        settle(panel);
+        saved = recorder->stage() == Recorder::Ready && !recorder->error().isEmpty()
+            && panel->property("optionsShown").toBool() && saveGrab(panel, out.filePath(u"validation-error.png"_s)) && saved;
+        preferences.folder = out.absolutePath();
+        recorder->close();
+        recorder->prepare(QRect(region.topLeft(), QSize(8, 8)), ::MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), fixture->devicePixelRatio());
+        click("recordingStart");
+        QElapsedTimer failureWait;
+        failureWait.start();
+        while (recorder->stage() != Recorder::Failed && failureWait.elapsed() < 10000) pump(50);
+        settle(panel);
+        saved = recorder->stage() == Recorder::Failed && saveGrab(panel, out.filePath(u"failed.png"_s)) && saved;
+        for (const auto* name : {"recordingPlay", "recordingCopy", "recordingReveal"}) {
+            auto* action = panel->findChild<QQuickItem*>(QString::fromLatin1(name));
+            saved = action && !action->isEnabled() && saved;
+        }
+        click("recordingAgain");
+        settle(panel);
+        saved = recorder->stage() == Recorder::Ready && panel->property("optionsShown").toBool()
+            && saveGrab(panel, out.filePath(u"retry.png"_s)) && saved;
+        recorder->close();
+        return saved ? 0 : 4;
+    }
     if (originalCountdown) {
         click("recordingStart");
         saved = recorder->stage() == Recorder::Counting && saved;
+        settle(panel);
+        saved = saveGrab(panel, out.filePath(u"counting.png"_s)) && saved;
         click("recordingClose");
         saved = !recorder->active() && !panel->isVisible() && saved;
         recorder->prepare(region, ::MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), fixture->devicePixelRatio());
@@ -630,7 +849,12 @@ int runRecording(const QStringList& args)
                         && recorder->clickHighlights() == originalClicks && saved;
                     settle(panel);
                     saved = saveGrab(panel, out.filePath(u"again.png"_s)) && saved;
-                    if (recorder->countdown()) click("recordingCountdown");
+                    if (recorder->countdown()) {
+                        click("recordingOptions");
+                        settle(panel);
+                        click("recordingCountdown");
+                        click("recordingOptions");
+                    }
                     click("recordingStart"); // a second real recording, with immediate start
                     saved = (recorder->stage() == Recorder::Starting || recorder->stage() == Recorder::Recording) && saved;
                     return;
@@ -657,7 +881,7 @@ int runRecording(const QStringList& args)
 
 bool wanted(const QStringList& args)
 {
-    return args.contains(kCaptureToolsFlag) || args.contains(kRecordingFlag) || args.contains(kLongCaptureFlag);
+    return args.contains(kCaptureToolsFlag) || args.contains(kRecordingFlag) || args.contains(kLongCaptureFlag) || args.contains(kOcrFlag) || args.contains(kSettingsFlag);
 }
 
 void note(const QString& line)
@@ -667,7 +891,7 @@ void note(const QString& line)
 
 void prepare(const QStringList& args)
 {
-    const QString folder = valueAfter(args, args.contains(kLongCaptureFlag) ? kLongCaptureFlag
+    const QString folder = valueAfter(args, args.contains(kSettingsFlag) ? kSettingsFlag : args.contains(kOcrFlag) ? kOcrFlag : args.contains(kLongCaptureFlag) ? kLongCaptureFlag
                                            : args.contains(kRecordingFlag) ? kRecordingFlag : kCaptureToolsFlag);
     if (!folder.isEmpty()) {
         QDir().mkpath(folder);
@@ -692,7 +916,9 @@ int run(const QStringList& args)
 {
     const bool recordingMode = args.contains(kRecordingFlag);
     const bool longCaptureMode = args.contains(kLongCaptureFlag);
-    if (valueAfter(args, longCaptureMode ? kLongCaptureFlag : recordingMode ? kRecordingFlag : kCaptureToolsFlag).isEmpty()) {
+    const bool ocrMode = args.contains(kOcrFlag);
+    const bool settingsMode = args.contains(kSettingsFlag);
+    if (valueAfter(args, settingsMode ? kSettingsFlag : ocrMode ? kOcrFlag : longCaptureMode ? kLongCaptureFlag : recordingMode ? kRecordingFlag : kCaptureToolsFlag).isEmpty()) {
         std::fprintf(stderr, "usage: WinShunCapture --preview-capture-tools <folder> [--toolbar-drag] [--scale 1.5] [--dark] [--renderer d3d11]\n"
                              "       WinShunCapture --preview-recording <folder> --renderer d3d11 --auto [--gif] [--clicks]\n"
                              "       WinShunCapture --preview-long-capture <folder> --renderer d3d11 [--auto]\n"
@@ -703,6 +929,10 @@ int run(const QStringList& args)
     g_edges = args.contains(u"--edges"_s);
     QGuiApplication::styleHints()->setColorScheme(args.contains(u"--dark"_s) ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
     SystemTheme::setBackdropAvailable(false); // plain colours, as a window without Mica
+    if (settingsMode)
+        return runSettings(args);
+    if (ocrMode)
+        return runOcr(args);
     if (longCaptureMode)
         return runLongCapture(args) + g_warnings;
     return recordingMode ? runRecording(args) : runCaptureTools(args);

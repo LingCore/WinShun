@@ -2,10 +2,14 @@
 #include "GifExport.h"
 #include "KeyStream.h"
 #include "RecordingPointer.h"
+#include "RecordingWorker.h"
 
 #include <QDir>
 #include <QFile>
 #include <QGuiApplication>
+#include <QElapsedTimer>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QImage>
 #include <QImageReader>
 #include <QScopeGuard>
@@ -90,6 +94,82 @@ HRESULT forEachFrame(const QString& path, const std::function<void(qint64 ms, co
 class TestRecording : public QObject {
     Q_OBJECT
 private slots:
+    void isolatedEncoding()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        for (const bool software : {false, true}) {
+            Options options;
+            options.path = temporary.filePath(software ? u"software.mp4"_s : u"hardware.mp4"_s);
+            options.region = QRect(0, 0, 641, 361);
+            options.software = software;
+            options.systemAudio = true;
+            Control control;
+            const WorkerProgram program {QCoreApplication::applicationFilePath(), {}};
+            const auto result = recordIsolated(program, options, control, {}, 600);
+            QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
+            QVERIFY(result.frames >= 10);
+            QCOMPARE(result.path, options.path);
+            HRESULT decoded = E_FAIL;
+            int frames = 0;
+            std::jthread reader([&] {
+                const HRESULT com = ::CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+                if (FAILED(com)) return;
+                const auto uninit = qScopeGuard([] { ::CoUninitialize(); });
+                decoded = forEachFrame(result.path, [&](qint64, const unsigned char*, LONG) { ++frames; });
+            });
+            reader.join();
+            QVERIFY(SUCCEEDED(decoded));
+            QVERIFY(frames >= 10);
+            control.stop = true; // the production Stop and save path leaves this set
+            const auto gif = exportGifIsolated(program, result.path,
+                {temporary.filePath(software ? u"software.gif"_s : u"hardware.gif"_s), 15, 1280}, control, {});
+            QVERIFY2(gif.error.isEmpty(), qPrintable(gif.error));
+            QVERIFY(QFileInfo::exists(result.path));
+            QImageReader image(gif.path);
+            QVERIFY(image.canRead());
+            QVERIFY(image.imageCount() >= 5);
+            QCOMPARE(image.size(), QSize(642, 362));
+        }
+    }
+
+    void isolatedHardwareFailureFallsBack()
+    {
+        QTemporaryDir temporary;
+        Options options;
+        options.path = temporary.filePath(u"fallback.mp4"_s);
+        options.region = QRect(0, 0, 320, 180);
+        Control control;
+        const WorkerProgram program {QCoreApplication::applicationFilePath(), {u"--test-fail-hardware"_s}};
+        const auto result = recordIsolated(program, options, control, {}, 400);
+        QVERIFY2(result.error.isEmpty(), qPrintable(result.error));
+        QCOMPARE(result.path, options.path);
+        QVERIFY(result.frames > 0);
+        QVERIFY(!result.hardware);
+        QCOMPARE(QDir(temporary.path()).entryList({u"*.partial.mp4"_s}, QDir::Files).size(), 0);
+    }
+
+    void isolatedStallIsBoundedAndCancellable()
+    {
+        QTemporaryDir temporary;
+        Options options;
+        options.path = temporary.filePath(u"stalled.mp4"_s);
+        options.region = QRect(0, 0, 320, 180);
+        options.software = true;
+        const WorkerProgram program {QCoreApplication::applicationFilePath(), {u"--test-stall-worker"_s}, 200};
+        Control control;
+        QElapsedTimer elapsed;
+        elapsed.start();
+        const auto failure = recordIsolated(program, options, control, {}, 400);
+        QVERIFY(!failure.error.isEmpty());
+        QVERIFY(elapsed.elapsed() < 3000);
+        QVERIFY(!QFileInfo::exists(options.path));
+        std::jthread cancel([&] { std::this_thread::sleep_for(std::chrono::milliseconds(30)); control.stop = true; });
+        const auto cancelled = recordIsolated(program, options, control, {}, 400);
+        QVERIFY(cancelled.error.isEmpty());
+        QVERIFY(cancelled.path.isEmpty());
+    }
+
     void pauseClock()
     {
         Timeline clock(100);
@@ -542,5 +622,28 @@ private slots:
     }
 };
 
-QTEST_MAIN(TestRecording)
+int main(int argc, char** argv)
+{
+    QGuiApplication app(argc, argv);
+    const auto args = app.arguments();
+    if (args.contains(u"--recording-worker"_s)) {
+        if (args.contains(u"--test-stall-worker"_s)) { ::Sleep(30'000); return 9; }
+        if (args.contains(u"--test-fail-hardware"_s)) {
+            QByteArray bytes(65536, '\0');
+            DWORD count = 0;
+            QElapsedTimer waiting;
+            waiting.start();
+            while (waiting.elapsed() < 3000) {
+                if (!::PeekNamedPipe(::GetStdHandle(STD_INPUT_HANDLE), bytes.data(), DWORD(bytes.size()), &count, nullptr, nullptr)) return 8;
+                if (QByteArrayView(bytes.constData(), count).contains('\n')) break;
+                ::Sleep(5);
+            }
+            const auto json = QJsonDocument::fromJson(bytes.first(qsizetype(count)).split('\n').first()).object();
+            if (!json.value(u"software"_s).toBool()) return 7;
+        }
+        return recordingWorkerMain();
+    }
+    TestRecording test;
+    return QTest::qExec(&test, argc, argv);
+}
 #include "tst_recording.moc"

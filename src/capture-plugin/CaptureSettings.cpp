@@ -85,6 +85,7 @@ CaptureOptions CaptureOptions::load(const QString& file)
     QSettings s(file, QSettings::IniFormat);
     o.hotkey = readOrDefault(s, u"Capture/Hotkey"_s, d.hotkey).trimmed();
     o.printScreen = readOrDefault(s, u"Capture/PrintScreen"_s, d.printScreen);
+    o.pauseInFullScreen = readOrDefault(s, u"Capture/PauseInFullScreen"_s, d.pauseInFullScreen);
     o.printScreenBefore = readOrDefault(s, u"Capture/PrintScreenBefore"_s, d.printScreenBefore).trimmed();
     o.copyOnSelect = readOrDefault(s, u"Capture/CopyOnSelect"_s, d.copyOnSelect);
     o.magnifier = readOrDefault(s, u"Capture/Magnifier"_s, d.magnifier);
@@ -109,6 +110,7 @@ CaptureOptions CaptureOptions::load(const QString& file)
     o.controlsUia = readOrDefault(s, u"Capture/ControlsUia"_s, d.controlsUia);
     const int seconds = readOrDefault(s, u"Capture/DelaySeconds"_s, d.delay);
     o.delay = seconds == 3 || seconds == 5 || seconds == 10 ? seconds : d.delay;
+    o.historyCount = std::clamp(readOrDefault(s, u"Capture/HistoryCount"_s, d.historyCount), 0, 100);
     const QString format = readOrDefault(s, u"Capture/ColorFormat"_s, d.colorFormat).trimmed().toLower();
     o.colorFormat = format == u"rgb" || format == u"hsl" ? format : u"hex"_s;
     o.pinsHotkey = readOrDefault(s, u"Capture/PinsHotkey"_s, d.pinsHotkey).trimmed();
@@ -142,6 +144,7 @@ void CaptureOptions::save(const QString& file) const
     QSettings s(file, QSettings::IniFormat);
     s.setValue(u"Capture/Hotkey"_s, hotkey);
     s.setValue(u"Capture/PrintScreen"_s, printScreen);
+    s.setValue(u"Capture/PauseInFullScreen"_s, pauseInFullScreen);
     s.setValue(u"Capture/PrintScreenBefore"_s, printScreenBefore);
     s.setValue(u"Capture/CopyOnSelect"_s, copyOnSelect);
     s.setValue(u"Capture/Magnifier"_s, magnifier);
@@ -161,6 +164,7 @@ void CaptureOptions::save(const QString& file) const
     s.setValue(u"Capture/HdrFile"_s, hdrFile);
     s.setValue(u"Capture/ControlsUia"_s, controlsUia);
     s.setValue(u"Capture/DelaySeconds"_s, delay);
+    s.setValue(u"Capture/HistoryCount"_s, historyCount);
     s.setValue(u"Capture/ColorFormat"_s, colorFormat);
     s.setValue(u"Capture/PinsHotkey"_s, pinsHotkey);
     s.setValue(u"Capture/PinsRestoreHotkey"_s, pinsRestoreHotkey);

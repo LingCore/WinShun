@@ -206,7 +206,8 @@ void PinManager::closed(PinWindow* pin)
 
 void PinManager::showMenu(PinWindow* pin, POINT at)
 {
-    const QString ocr = m_callbacks.ocrAvailable ? tr("识别文字") : tr("识别文字（没有安装文字识别模型）");
+    const bool ocrAvailable = m_callbacks.ocrAvailable && m_callbacks.ocrAvailable();
+    const QString ocr = ocrAvailable ? tr("识别文字") : tr("识别文字（安装增强识别…）");
     const bool full = pin->form() == PinForm::Full;
     shell::MenuItem turn {0, tr("旋转与翻转")};
     turn.children = {
@@ -234,8 +235,8 @@ void PinManager::showMenu(PinWindow* pin, POINT at)
     };
     if (full) {
         items.push_back({EditCommand, tr("编辑")});
-        items.push_back({OcrCommand, ocr, false, m_callbacks.ocrAvailable});
-        items.push_back({PickTextCommand, tr("选择文字") + u"\tT"_s, pin->textMode(), m_callbacks.ocrAvailable && pin->canPickText()});
+        items.push_back({OcrCommand, ocr});
+        items.push_back({PickTextCommand, tr("选择文字") + u"\tT"_s, pin->textMode(), ocrAvailable && pin->canPickText()});
         items.push_back(shell::MenuItem::separator());
         items.push_back(std::move(turn));
         items.push_back(std::move(collapse));

@@ -428,6 +428,10 @@
         <translation>Hide / show the toolbar</translation>
     </message>
     <message>
+        <source>翻看之前截图时的画面（整屏、选区和标注），. 往回翻</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Esc、右键</source>
         <translation>Esc, right click</translation>
     </message>
@@ -518,6 +522,10 @@
     <message>
         <source>区域录屏：录制选区里的操作，保存为 MP4 或 GIF</source>
         <translation>Region recording: record actions in the selection as MP4 or GIF</translation>
+    </message>
+    <message>
+        <source>识别文字：安装增强文字识别后继续，安装后可离线使用</source>
+        <translation>Text recognition: install enhanced recognition to continue, then use it offline</translation>
     </message>
 </context>
 <context>
@@ -826,6 +834,23 @@
         <translation>%1 s</translation>
     </message>
     <message>
+        <source>截图时翻看之前的画面</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>截图时按 , 翻到上一次截图时的画面，按 . 往回翻：整个屏幕、选区和标注都恢复，可以重新框选或接着改。会在本机保存最近几次截图时的整屏画面；选“关闭”不再保存，并删除已保存的（不影响用关键词找截过的图）。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>关闭</source>
+        <comment>capture history</comment>
+        <translation type="unfinished">Close</translation>
+    </message>
+    <message>
+        <source>%1 次</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>框选后的鼠标操作</source>
         <translation>Mouse buttons after a selection</translation>
     </message>
@@ -948,6 +973,14 @@
     <message>
         <source>亮起的按钮会显示，点一下切换。隐藏后快捷键仍可使用；标注工具始终显示。识别文字没有快捷键，隐藏后可在“鼠标”分类设置动作。</source>
         <translation>Highlighted buttons are visible; click to toggle. Shortcuts still work when buttons are hidden. Annotation tools always stay visible. Text recognition has no shortcut; assign a mouse action if you hide its button.</translation>
+    </message>
+    <message>
+        <source>全屏时不响应截图快捷键</source>
+        <translation>Pause screenshot hotkeys in full screen</translation>
+    </message>
+    <message>
+        <source>其他程序全屏时，截图快捷键和 PrtScn 不弹出截图；仍能从菜单手动开始</source>
+        <translation>While another app is full screen, the screenshot hotkey and PrtScn do not start a capture. You can still start one from the menu.</translation>
     </message>
 </context>
 <context>
@@ -1131,6 +1164,10 @@
         <source>网页搜索</source>
         <translation>Search the web</translation>
     </message>
+    <message>
+        <source>安装增强文字识别…</source>
+        <translation>Install enhanced text recognition…</translation>
+    </message>
 </context>
 <context>
     <name>Recording</name>
@@ -1169,6 +1206,24 @@
     <message>
         <source>无法完成保存，录制文件保留在：%1</source>
         <translation>Could not finish saving. The recording is preserved at: %1</translation>
+    </message>
+    <message>
+        <source>无法启动录屏工作进程：%1</source>
+        <translation>Could not start the recording worker: %1</translation>
+    </message>
+    <message>
+        <source>录屏工作进程未响应或意外退出（%1）。请重试；已恢复操作。</source>
+        <translation>The recording worker stopped responding or exited unexpectedly (%1). You can use the controls again; please retry.</translation>
+    </message>
+    <message>
+        <source>
+未完成的录制文件保留在：%1</source>
+        <translation>
+The unfinished recording is kept at: %1</translation>
+    </message>
+    <message>
+        <source>无法创建 GIF 临时文件夹，请检查保存位置和剩余空间。</source>
+        <translation>Could not create a temporary GIF folder. Check the save location and free space.</translation>
     </message>
 </context>
 <context>
@@ -1373,6 +1428,26 @@
         <source>正在显示全部按键：打的字会录进视频，输入密码前请先暂停。</source>
         <translation>Showing all keys: typing is recorded. Pause before typing a password.</translation>
     </message>
+    <message>
+        <source>已暂停 · %1</source>
+        <translation>Paused · %1</translation>
+    </message>
+    <message>
+        <source>GIF 不含音频</source>
+        <translation>GIF has no audio</translation>
+    </message>
+    <message>
+        <source>录屏选项</source>
+        <translation>Recording options</translation>
+    </message>
+    <message>
+        <source>保存中…</source>
+        <translation>Saving…</translation>
+    </message>
+    <message>
+        <source>正在显示全部按键；输入密码前请暂停。</source>
+        <translation>All keys are shown; pause before entering passwords.</translation>
+    </message>
 </context>
 <context>
     <name>ToggleSwitch</name>
@@ -1443,6 +1518,30 @@
         <translation>Could not save to %1</translation>
     </message>
     <message>
+        <source>没有保存之前的画面，可在设置 › 截图里打开</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>已是当前画面，按 , 看之前的</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>还没有之前的画面</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>没有更早的画面了</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>之前的画面 %1/%2 · %3 · , 更早  . 更近</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>回到当前画面</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>截图已保存，但 HDR 图片没能保存到 %1</source>
         <translation>The screenshot was saved, but the HDR picture could not be saved to %1</translation>
     </message>
@@ -1487,6 +1586,10 @@
     <message>
         <source>图片里没有找到文字。</source>
         <translation>No text was found in the picture.</translation>
+    </message>
+    <message>
+        <source>增强文字识别尚未安装。安装后可以离线使用，并继续识别这张图片。</source>
+        <translation>Enhanced text recognition is not installed. Install it for offline use and to continue recognizing this image.</translation>
     </message>
 </context>
 <context>
@@ -1678,6 +1781,10 @@ click here to cancel</translation>
         <source>编辑</source>
         <translation>Edit</translation>
     </message>
+    <message>
+        <source>识别文字（安装增强识别…）</source>
+        <translation>Recognize text (install enhanced recognition…)</translation>
+    </message>
 </context>
 <context>
     <name>ws::capture::PinWindow</name>
@@ -1801,6 +1908,14 @@ Original video kept at: %2</translation>
     <message>
         <source>无法显示鼠标按键，请关闭该选项后重试。</source>
         <translation>Could not show the mouse buttons. Turn off this option and try again.</translation>
+    </message>
+    <message>
+        <source>正在切换到兼容编码…</source>
+        <translation>Switching to compatible encoding…</translation>
+    </message>
+    <message>
+        <source>%1 × %2 · %3 帧/秒</source>
+        <translation>%1 × %2 · %3 fps</translation>
     </message>
 </context>
 <context>
@@ -1972,6 +2087,117 @@ Original video kept at: %2</translation>
     <message>
         <source>还没有截图，请先截一张。</source>
         <translation>Take a screenshot first.</translation>
+    </message>
+</context>
+<context>
+    <name>RecordingOptions</name>
+    <message>
+        <source>%1：%2</source>
+        <translation>%1: %2</translation>
+    </message>
+    <message>
+        <source>开</source>
+        <translation>On</translation>
+    </message>
+    <message>
+        <source>关</source>
+        <translation>Off</translation>
+    </message>
+    <message>
+        <source>画质</source>
+        <translation>Quality</translation>
+    </message>
+    <message>
+        <source>小体积</source>
+        <translation>Smaller file</translation>
+    </message>
+    <message>
+        <source>标准画质</source>
+        <translation>Standard</translation>
+    </message>
+    <message>
+        <source>更清晰</source>
+        <translation>Clearer</translation>
+    </message>
+    <message>
+        <source>10 帧/秒，最长边 960 像素，适合简单操作。</source>
+        <translation>10 fps, up to 960 px on the longest edge. For simple actions.</translation>
+    </message>
+    <message>
+        <source>20 帧/秒，最长边 1920 像素，文件可能较大。</source>
+        <translation>20 fps, up to 1920 px on the longest edge. Files may be larger.</translation>
+    </message>
+    <message>
+        <source>15 帧/秒，最长边 1280 像素，兼顾清晰度和体积。</source>
+        <translation>15 fps, up to 1280 px on the longest edge. Balances clarity and size.</translation>
+    </message>
+    <message>
+        <source>15 帧/秒，保留原始尺寸，适合文字和简单操作。</source>
+        <translation>15 fps at the original size, for text and simple actions.</translation>
+    </message>
+    <message>
+        <source>30 帧/秒，优先保留细节，文件可能更大。</source>
+        <translation>30 fps with more detail. Files may be larger.</translation>
+    </message>
+    <message>
+        <source>30 帧/秒，兼顾清晰度和文件大小。</source>
+        <translation>30 fps, balancing clarity and file size.</translation>
+    </message>
+    <message>
+        <source>鼠标指针</source>
+        <translation>Cursor</translation>
+    </message>
+    <message>
+        <source>3 秒倒计时</source>
+        <translation>3-sec countdown</translation>
+    </message>
+    <message>
+        <source>点击高亮</source>
+        <translation>Click highlight</translation>
+    </message>
+    <message>
+        <source>鼠标按键</source>
+        <translation>Mouse buttons</translation>
+    </message>
+    <message>
+        <source>显示按键</source>
+        <translation>Show keys</translation>
+    </message>
+    <message>
+        <source>不显示</source>
+        <translation>Off</translation>
+    </message>
+    <message>
+        <source>仅快捷键</source>
+        <translation>Shortcuts only</translation>
+    </message>
+    <message>
+        <source>全部按键</source>
+        <translation>All keys</translation>
+    </message>
+    <message>
+        <source>全部按键会录下输入的文字和密码，输入密码前请暂停。</source>
+        <translation>All keys records typed text and passwords. Pause before entering passwords.</translation>
+    </message>
+    <message>
+        <source>“仅快捷键”显示组合键和功能键，不显示输入的文字。</source>
+        <translation>Shortcuts only shows combinations and function keys, without typed text.</translation>
+    </message>
+    <message>
+        <source>保存到</source>
+        <translation>Save to</translation>
+    </message>
+    <message>
+        <source>更改…</source>
+        <translation>Change…</translation>
+    </message>
+    <message>
+        <source>再次按截图快捷键可停止；控制条不会录入视频。</source>
+        <translation>The screenshot shortcut also stops recording. The controls stay out of the video.</translation>
+    </message>
+    <message>
+        <source>更改保存文件夹</source>
+        <translation>Change save folder</translation>
     </message>
 </context>
 </TS>

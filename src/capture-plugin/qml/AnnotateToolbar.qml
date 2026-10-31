@@ -64,7 +64,8 @@ Rectangle {
         "C、Shift", qsTr("复制颜色并结束截图；单按 Shift 换颜色格式（HEX、RGB、HSL）"),
         "Shift+C", qsTr("识别选区里的文字并复制"),
         "Shift+R", qsTr("还没选区时：用上一次的选区"),
-        "Q", qsTr("识别选区里的二维码"),
+        ",  .", qsTr("翻看之前截图时的画面（整屏、选区和标注），. 往回翻"),
+        "Q",qsTr("识别选区里的二维码"),
         "D", qsTr("延时截图：关掉这次，倒计时后再截"),
         "Ctrl+L", qsTr("长截图：选区里的内容一边滚动一边截"),
         "Ctrl+R", qsTr("区域录屏：把选区里的操作录成 MP4 或 GIF"),
@@ -329,11 +330,10 @@ Rectangle {
             id: ocrButton
             visible: bar.shows("ocr")
             // Without the models it still says why, in its tip and the OCR window.
-            opacity: bar.ocrAvailable ? 1 : 0.45
             glyph: String.fromCharCode(0xE8D2) // Font
             name: qsTr("识别文字")
             tipText: bar.ocrAvailable ? qsTr("识别文字：识别图里的文字，可复制或拿去搜索")
-                                      : qsTr("识别文字：没有安装文字识别模型（Win顺 文件夹里的 ocr 文件夹），无法识别文字")
+                                      : qsTr("识别文字：安装增强文字识别后继续，安装后可离线使用")
             onClicked: bar.act(CaptureSession.Ocr)
         }
 
@@ -480,7 +480,7 @@ Rectangle {
             text: qsTr("按键")
             color: Theme.text
             font.pixelSize: Theme.fontBody
-            font.weight: Font.DemiBold
+            font.weight: Theme.fontStrong
         }
 
         Grid {
@@ -500,7 +500,7 @@ Rectangle {
                     text: modelData
                     color: index % 2 === 0 ? Theme.text : Theme.subtext
                     font.pixelSize: Theme.fontCaption
-                    font.weight: index % 2 === 0 ? Font.DemiBold : Font.Normal
+                    font.weight: index % 2 === 0 ? Theme.fontStrong : Font.Normal
                 }
             }
         }

@@ -66,13 +66,20 @@ struct GameGuardOptions {
 
 enum class IgnoreReason { None, Listed, FullScreen, ExclusiveFullScreen, MouseTaken };
 
+// A real application covering its monitor. The shell and our own windows
+// have no program in ForegroundFacts and must remain usable (GitHub #121).
+inline bool fullScreenShortcutBlocked(const ForegroundFacts& facts, bool enabled) noexcept
+{
+    return enabled && !facts.program.isEmpty() && facts.coversMonitor;
+}
+
 inline IgnoreReason doubleCtrlIgnoreReason(const ForegroundFacts& facts, const GameGuardOptions& options)
 {
     if (facts.program.isEmpty())
         return IgnoreReason::None;
     if (options.programs.contains(facts.program, Qt::CaseInsensitive))
         return IgnoreReason::Listed;
-    if (options.fullScreen && facts.coversMonitor)
+    if (fullScreenShortcutBlocked(facts, options.fullScreen))
         return IgnoreReason::FullScreen;
     if (!options.games)
         return IgnoreReason::None;

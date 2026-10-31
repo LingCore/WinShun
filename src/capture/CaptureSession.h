@@ -14,6 +14,7 @@
 #include <QtQml/qqmlregistration.h>
 
 #include <functional>
+#include <optional>
 #include <vector>
 
 namespace ws::capture {
@@ -199,6 +200,20 @@ public:
     explicit CaptureSession(QObject* parent = nullptr);
 
     void begin(std::vector<CaptureScreen*> screens, Windows windows);
+    // The screens show another capture's pictures now (, and . step through
+    // the history; the caller set them): a click picks from `windows`, and
+    // the selection is `rect` on screen `screen` (an index, as finished()
+    // gives it) with `doc`'s annotations over it, or (screen -1) there is
+    // none. What there was goes; kept() first keeps it.
+    void replaceShot(Windows windows, int screen, const QRect& rect, const std::optional<annot::Document>& doc);
+    struct Kept {
+        int screen = -1;
+        QRect rect;
+        std::optional<annot::Document> doc; // annotations, on the screen's whole picture
+    };
+    // The selection and its annotations now (put down with Esc too).
+    Kept kept() const;
+    void notify(const QString& text) { showNotice(text); } // by the selection, for a few seconds
     // The Start menu (or a shell flyout) in the picture: over every window
     // listed, without controls (physical, virtual desktop). EnumWindows
     // does not list it (another band of the Z order); found from the
@@ -299,6 +314,8 @@ signals:
     // coordinates); nothing for Cancel.
     void finished(ws::capture::CaptureSession::Action action, int screen, const QRect& rect);
     void colorCopied(const QString& color);
+    // , (or <): the capture before the one shown, 1; . (or >): the one after, -1.
+    void historyStep(int step);
     void colorFormatChanged(ws::capture::ColorFormat format);
     void cursorMoveRequested(const QPoint& global); // the arrow keys with no selection: a pixel at a time
     void selectionChanged();

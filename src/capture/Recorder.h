@@ -130,6 +130,7 @@ private:
     void completed(const recording::Result& result);
     void remember();
     void createPanel();
+    void keepPanelVisible();
     void releaseClicks();
     void releaseKeys();
 
@@ -152,6 +153,7 @@ private:
     bool m_clicksActive = false;
     std::unique_ptr<recording::KeyHook> m_keyHook; // while recording with keycaps
     bool m_exporting = false;
+    bool m_compatibilityFallback = false;
 };
 
 } // namespace ws::capture

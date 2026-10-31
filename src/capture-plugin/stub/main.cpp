@@ -42,14 +42,16 @@ std::wstring folderOf(const std::wstring& path)
 int wmain(int argc, wchar_t** argv)
 {
     bool preview = false;
+    bool recordingWorker = false;
     std::wstring appDir;
     for (int i = 1; i < argc; ++i) {
         const std::wstring_view arg(argv[i]);
         preview = preview || arg.starts_with(L"--preview-");
+        recordingWorker = recordingWorker || arg == L"--recording-worker";
         if (arg == L"--app-dir" && i + 1 < argc)
             appDir = argv[i + 1];
     }
-    if (!preview || appDir.empty()) {
+    if ((!preview && !recordingWorker) || appDir.empty()) {
         appDir.assign(32768, L'\0');
         const DWORD length = ::GetEnvironmentVariableW(L"WS_APP_DIR", appDir.data(), static_cast<DWORD>(appDir.size()));
         if (length == 0 || length >= appDir.size())
@@ -58,6 +60,10 @@ int wmain(int argc, wchar_t** argv)
     }
     if (::GetFileAttributesW((appDir + L"\\Qt6Core.dll").c_str()) == INVALID_FILE_ATTRIBUTES)
         return fail(3, "no Qt6Core.dll in WS_APP_DIR: this Win顺 cannot run the plugin");
+    // Preview and media-worker starts use the same host runtime as a
+    // normal plugin start, including when --app-dir supplied it.
+    if (!::SetEnvironmentVariableW(L"WS_APP_DIR", appDir.c_str()))
+        return fail(3, "WS_APP_DIR could not be passed to child workers", ::GetLastError());
 
     std::wstring self(32768, L'\0');
     const DWORD selfLength = ::GetModuleFileNameW(nullptr, self.data(), static_cast<DWORD>(self.size()));
@@ -71,7 +77,7 @@ int wmain(int argc, wchar_t** argv)
     HMODULE module = ::LoadLibraryExW(dll.c_str(), nullptr, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR);
     if (!module)
         return fail(6, "WinShunCaptureApp.dll not loaded (a Win顺 with another Qt?)", ::GetLastError());
-    const char* name = preview ? "winshunCapturePreview" : "winshunCaptureMain";
+    const char* name = recordingWorker ? "winshunCaptureWorker" : preview ? "winshunCapturePreview" : "winshunCaptureMain";
     const auto entry = reinterpret_cast<Entry>(::GetProcAddress(module, name));
     if (!entry)
         return fail(7, preview ? "WinShunCaptureApp.dll has no winshunCapturePreview" : "WinShunCaptureApp.dll has no winshunCaptureMain");

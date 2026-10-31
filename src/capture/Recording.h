@@ -31,6 +31,7 @@ private:
 struct Options {
     QRect region; // physical pixels, virtual desktop; wholly on one display
     QString path; // a new MP4 file; never overwrite an existing file
+    QString temporary; // supervisor-owned UUID staging path; empty for a direct call
     int fps = 30;
     int quality = 75;
     bool systemAudio = false;
@@ -62,6 +63,7 @@ struct Progress {
     QString encoder;
     bool hardware = false;
     int percent = -1; // export progress; -1 while capturing or without a duration
+    QString stage; // last media operation, for timeout diagnostics
 };
 
 struct Result : Progress {

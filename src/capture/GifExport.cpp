@@ -207,7 +207,8 @@ Result exportGif(const QString& video, const GifOptions& options, Control& contr
         result.error = message("文件已存在，请选择其他保存名称。");
         return result;
     }
-    QTemporaryFile temporary(QDir(QFileInfo(options.path).absolutePath()).filePath(u".winshun-gif-XXXXXX"_s));
+    QTemporaryFile temporary(QDir(options.temporaryDirectory.isEmpty() ? QFileInfo(options.path).absolutePath()
+        : options.temporaryDirectory).filePath(u".winshun-gif-XXXXXX"_s));
     if (!temporary.open()) {
         result.error = message("无法创建 GIF 文件，请检查保存位置和剩余空间。");
         return result;

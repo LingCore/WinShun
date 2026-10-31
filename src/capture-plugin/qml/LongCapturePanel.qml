@@ -37,7 +37,7 @@ Window {
             Row {
                 id: heading
                 spacing: 10
-                Text { text: qsTr("长截图"); color: Theme.text; font.pixelSize: Theme.uiTitle; font.weight: Font.DemiBold }
+                Text { text: qsTr("长截图"); color: Theme.text; font.pixelSize: Theme.uiTitle; font.weight: Theme.fontStrong }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     width: panel.statusWidth

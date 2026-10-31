@@ -4,6 +4,7 @@
 #include "GifExport.h"
 #include "KeyStream.h"
 #include "RecordingPointer.h"
+#include "RecordingWorker.h"
 #include "platform/Shell.h"
 #include "platform/WindowEffects.h"
 
@@ -107,7 +108,7 @@ QString Recorder::status() const
     switch (m_stage) {
     case Ready: return tr("准备录屏");
     case Counting: return tr("%1 秒后开始").arg(m_countdown);
-    case Starting: return tr("正在准备录制…");
+    case Starting: return m_compatibilityFallback ? tr("正在切换到兼容编码…") : tr("正在准备录制…");
     case Recording: return tr("正在录制");
     case Paused: return tr("已暂停");
     case Saving:
@@ -144,9 +145,9 @@ QString Recorder::dimensions() const
 {
     if (format() == Gif) {
         const QSize size = recording::gifSize(m_region.size(), quality() == SmallFile ? 960 : quality() == HighQuality ? 1920 : 1280);
-        return tr("%1 × %2 · %3 帧/秒 · GIF").arg(size.width()).arg(size.height()).arg(quality() == SmallFile ? 10 : quality() == HighQuality ? 20 : 15);
+        return tr("%1 × %2 · %3 帧/秒").arg(size.width()).arg(size.height()).arg(quality() == SmallFile ? 10 : quality() == HighQuality ? 20 : 15);
     }
-    return tr("%1 × %2 · %3 帧/秒 · MP4").arg(m_region.width()).arg(m_region.height()).arg(quality() == SmallFile ? 15 : 30);
+    return tr("%1 × %2 · %3 帧/秒").arg(m_region.width()).arg(m_region.height()).arg(quality() == SmallFile ? 15 : 30);
 }
 
 void Recorder::remember()
@@ -243,6 +244,23 @@ void Recorder::createPanel()
     m_panel->create();
     win::styleFramelessWindow(m_panel, false);
     ::SetWindowDisplayAffinity(reinterpret_cast<HWND>(m_panel->winId()), WDA_EXCLUDEFROMCAPTURE);
+    connect(m_panel, &QWindow::widthChanged, this, &Recorder::keepPanelVisible, Qt::QueuedConnection);
+    connect(m_panel, &QWindow::heightChanged, this, &Recorder::keepPanelVisible, Qt::QueuedConnection);
+}
+
+void Recorder::keepPanelVisible()
+{
+    if (!m_panel || !m_panel->isVisible()) return;
+    const auto window = reinterpret_cast<HWND>(m_panel->winId());
+    MONITORINFO monitor {sizeof monitor};
+    RECT bounds {};
+    if (!::GetMonitorInfoW(::MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &monitor)
+        || !::GetWindowRect(window, &bounds)) return;
+    const auto& work = monitor.rcWork;
+    const LONG x = std::clamp(bounds.left, work.left, std::max(work.left, work.right - (bounds.right - bounds.left)));
+    const LONG y = std::clamp(bounds.top, work.top, std::max(work.top, work.bottom - (bounds.bottom - bounds.top)));
+    if (x != bounds.left || y != bounds.top)
+        ::SetWindowPos(window, nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 void Recorder::prepare(const QRect& region, HMONITOR monitor, double dpr)
@@ -260,6 +278,7 @@ void Recorder::prepare(const QRect& region, HMONITOR monitor, double dpr)
     if (m_preferences.keys < KeysOff || m_preferences.keys > KeysAll)
         m_preferences.keys = KeysOff;
     m_exporting = false;
+    m_compatibilityFallback = false;
     m_progress = {};
     m_path.clear();
     m_error.clear();
@@ -380,11 +399,17 @@ void Recorder::begin()
                 const qint64 capturedMs = m_progress.elapsedMs;
                 m_progress = progress;
                 if (m_exporting) m_progress.elapsedMs = capturedMs;
-                if (m_stage == Starting) m_stage = Recording;
+                if (progress.stage == u"software fallback" && m_stage != Saving) {
+                    m_compatibilityFallback = true;
+                    m_stage = Starting;
+                }
+                if (m_stage == Starting && progress.frames) m_stage = Recording;
                 emit changed();
             }, Qt::QueuedConnection);
         };
-        auto result = recording::record(options, *control, update);
+        const recording::WorkerProgram worker {QCoreApplication::applicationFilePath(),
+            {u"--app-dir"_s, qEnvironmentVariable("WS_APP_DIR", QCoreApplication::applicationDirPath())}};
+        auto result = recording::recordIsolated(worker, options, *control, update);
         if (gif && result.error.isEmpty() && !result.path.isEmpty()) {
             QMetaObject::invokeMethod(this, [this, elapsedMs = result.elapsedMs] {
                 m_exporting = true;
@@ -395,7 +420,7 @@ void Recorder::begin()
                 releaseKeys();
                 emit changed();
             }, Qt::QueuedConnection);
-            auto exported = recording::exportGif(result.path, gifOptions, *control, update);
+            auto exported = recording::exportGifIsolated(worker, result.path, gifOptions, *control, update);
             if (!exported.path.isEmpty() && exported.error.isEmpty()) {
                 QFile::remove(result.path); // this worker created the intermediate video
                 result = std::move(exported);
@@ -459,7 +484,7 @@ void Recorder::chooseFolder()
 {
     if (m_stage != Ready) return;
     const QString picked = shell::pickFolder(m_panel ? reinterpret_cast<HWND>(m_panel->winId()) : nullptr, tr("选择录屏保存文件夹"));
-    if (!picked.isEmpty()) { m_preferences.folder = picked; remember(); }
+    if (!picked.isEmpty()) { m_preferences.folder = picked; m_error.clear(); remember(); }
 }
 
 void Recorder::play() { if (!m_path.isEmpty()) shell::open(m_path); }

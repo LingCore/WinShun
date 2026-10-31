@@ -60,7 +60,7 @@ Window {
             text: window.ocr.title.length > 0 ? window.ocr.title : qsTr("识别文字")
             color: Theme.text
             font.pixelSize: Theme.uiTitle
-            font.weight: Font.DemiBold
+            font.weight: Theme.fontStrong
         }
         FlatButton {
             id: closeButton
@@ -146,15 +146,26 @@ Window {
             anchors.bottom: flick.bottom
         }
 
-        Text { // reading, or why there is nothing
+        Column { // reading, or the next action when the component is missing
             anchors.centerIn: parent
             width: parent.width - 32
             visible: !flick.visible
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.Wrap
-            text: window.ocr.busy ? qsTr("正在识别…") : window.ocr.message
-            color: Theme.subtext
-            font.pixelSize: Theme.uiBody
+            spacing: 12
+            Text {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+                text: window.ocr.busy ? qsTr("正在识别…") : window.ocr.message
+                color: Theme.subtext
+                font.pixelSize: Theme.uiBody
+            }
+            FlatButton {
+                objectName: "setupEnhancedOcr"
+                anchors.horizontalCenter: parent.horizontalCenter
+                visible: window.ocr.needsPackage
+                text: qsTr("安装增强文字识别…")
+                onClicked: window.ocr.setupRecognition()
+            }
         }
     }
 

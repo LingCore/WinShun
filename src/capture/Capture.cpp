@@ -14,6 +14,8 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QJsonArray>
+#include <QJsonDocument>
+#include <QLocale>
 #include <QPointer>
 #include <QQmlComponent>
 #include <QQmlEngine>
@@ -159,6 +161,7 @@ Capture::Capture(QQmlEngine* engine, Callbacks callbacks, QObject* parent)
     connect(&m_draftTimer, &QTimer::timeout, this, [this] { m_draft.reset(); });
 
     connect(&m_session, &CaptureSession::finished, this, &Capture::finish);
+    connect(&m_session, &CaptureSession::historyStep, this, &Capture::stepHistory);
     connect(&m_session, &CaptureSession::colorCopied, this, [this](const QString& color) {
         if (m_callbacks.copyColor)
             m_callbacks.copyColor(color);
@@ -382,6 +385,8 @@ void Capture::start()
                 askUia(i - extra, point);
         };
     }
+    forgetHistory();
+    m_liveWindows = windows;
     m_session.begin(byIndex, std::move(windows));
 
     if (flyout) {
@@ -438,6 +443,11 @@ void Capture::show()
     if (underIndex >= 0)
         m_session.pointerMove(underIndex, underAt); // the hover and the magnifier before the mouse moves
     startWatch();
+    // The capture before, read meanwhile: , shows it at once.
+    if (m_history.enabled()) {
+        m_historyIds = m_history.ids();
+        prefetchHistory(0);
+    }
 }
 
 void Capture::startWatch()
@@ -624,7 +634,7 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
                 dpr = overlay.model->dpr();
                 m_session.setLastSelection(QRect(origin, rect.size())); // Shift+R brings it back
                 const auto shot = std::ranges::find(m_shots, overlay.monitor, &Grabber::Shot::monitor);
-                if (action == CaptureSession::Action::Save && shot != m_shots.end() && shot->hdrPixels) {
+                if (action == CaptureSession::Action::Save && m_historyAt < 0 && shot != m_shots.end() && shot->hdrPixels) {
                     if (HdrPixels region = shot->hdrPixels->copy(rect); !region.isNull())
                         hdr = std::make_shared<HdrPixels>(std::move(region));
                 }
@@ -643,22 +653,47 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
                 project = annot::writeProject(packed.doc, packed.base);
             }
         }
-    } else if (m_session.hasAnnotations()) {
-        // Ended with annotations on the screen (the hotkey, Esc, D): kept for a
-        // while, to be found again from the tray menu.
-        const int draftScreen = m_session.annotationScreen();
-        for (const Overlay& overlay : m_overlays) {
-            if (overlay.model->index() == draftScreen) {
-                annotation->commitPending();
-                m_draft = Draft {annotation->project(), overlay.model->rect().topLeft() + annotation->selectionRect().topLeft()};
-                m_draftTimer.start();
-                qInfo().noquote() << u"Screen capture: annotations kept as a draft at %1,%2 (%3x%4)"_s.arg(m_draft->origin.x())
-                                         .arg(m_draft->origin.y())
-                                         .arg(m_draft->project.base.width())
-                                         .arg(m_draft->project.base.height());
+    } else {
+        // Ended on a capture brought back from the history: that one stays in
+        // the history, and the draft is what was drawn on the live screens.
+        if (m_historyAt >= 0)
+            restoreLive();
+        if (m_session.hasAnnotations()) {
+            // Ended with annotations on the screen (the hotkey, Esc, D): kept for a
+            // while, to be found again from the tray menu.
+            const int draftScreen = m_session.annotationScreen();
+            for (const Overlay& overlay : m_overlays) {
+                if (overlay.model->index() == draftScreen) {
+                    annotation->commitPending();
+                    m_draft = Draft {annotation->project(), overlay.model->rect().topLeft() + annotation->selectionRect().topLeft()};
+                    m_draftTimer.start();
+                    qInfo().noquote() << u"Screen capture: annotations kept as a draft at %1,%2 (%3x%4)"_s.arg(m_draft->origin.x())
+                                             .arg(m_draft->origin.y())
+                                             .arg(m_draft->project.base.width())
+                                             .arg(m_draft->project.base.height());
+                }
             }
         }
     }
+    // Taken: into the history, as the overlays show it (a capture brought
+    // back and taken again replaces itself there).
+    if (!picture.isNull() && m_history.enabled()) {
+        HistoryShot shot;
+        shot.id = QString::number(QDateTime::currentMSecsSinceEpoch());
+        for (const Overlay& overlay : m_overlays) {
+            if (!overlay.model->hasImage())
+                continue;
+            if (overlay.model->index() == screen)
+                shot.screen = static_cast<int>(shot.screens.size());
+            shot.screens.push_back({overlay.model->rect(), overlay.model->dpr(), overlay.model->image()});
+        }
+        shot.selection = rect;
+        if (m_session.hasAnnotations() && m_session.annotationScreen() == screen)
+            shot.document = QJsonDocument(annot::toJson(annotation->committedDocument())).toJson(QJsonDocument::Compact);
+        if (shot.screen >= 0)
+            m_history.add(std::move(shot), m_historyAt >= 0 ? m_historyShown : QString());
+    }
+    forgetHistory();
     recordCapture(action, rect);
     m_allGestureFrames.clear();
     m_gestureFrames.clear();
@@ -745,6 +780,122 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
     case CaptureSession::Action::Record:
         break;
     }
+}
+
+std::vector<QRect> Capture::shownMonitors() const
+{
+    std::vector<QRect> monitors;
+    for (const Overlay& overlay : m_overlays) {
+        if (overlay.model->hasImage())
+            monitors.push_back(overlay.model->rect());
+    }
+    return monitors;
+}
+
+void Capture::prefetchHistory(int at)
+{
+    if (at == m_prefetchAt || at < 0 || at >= m_historyIds.size())
+        return;
+    if (m_prefetch.valid()) // let go of off this thread: a future of std::async waits as it goes
+        std::thread([f = std::move(m_prefetch)]() mutable { f.wait(); }).detach();
+    m_prefetchAt = at;
+    m_prefetch = std::async(std::launch::async, &CaptureHistory::read, m_history.folder(), m_historyIds[at]);
+}
+
+void Capture::forgetHistory()
+{
+    if (m_prefetch.valid())
+        std::thread([f = std::move(m_prefetch)]() mutable { f.wait(); }).detach();
+    m_prefetchAt = -1;
+    m_historyAt = -1;
+    m_historyIds.clear();
+    m_historyShown.clear();
+    m_liveWindows = {};
+    m_liveKept = {};
+}
+
+void Capture::stepHistory(int step)
+{
+    if (m_state != State::Showing)
+        return;
+    if (!m_history.enabled()) {
+        m_session.notify(tr("没有保存之前的画面，可在设置 › 截图里打开"));
+        return;
+    }
+    const std::vector<QRect> monitors = shownMonitors();
+    for (int at = m_historyAt + step;; at += step) {
+        if (at < 0) {
+            if (m_historyAt < 0)
+                m_session.notify(tr("已是当前画面，按 , 看之前的"));
+            else
+                showLive();
+            return;
+        }
+        if (at >= m_historyIds.size()) {
+            m_session.notify(m_historyIds.isEmpty() ? tr("还没有之前的画面") : tr("没有更早的画面了"));
+            return;
+        }
+        std::optional<HistoryShot> shot;
+        if (at == m_prefetchAt && m_prefetch.valid()) {
+            shot = m_prefetch.get();
+            m_prefetchAt = -1;
+        } else {
+            shot = CaptureHistory::read(m_history.folder(), m_historyIds[at]);
+        }
+        if (!shot || !shot->fits(monitors))
+            continue; // taken with other monitors (or unreadable): passed over
+        if (m_historyAt < 0)
+            m_liveKept = m_session.kept();
+        m_historyAt = at;
+        showHistoryShot(*shot);
+        prefetchHistory(at + step >= 0 ? at + step : at + 1); // the next one this way
+        return;
+    }
+}
+
+void Capture::showHistoryShot(const HistoryShot& shot)
+{
+    int selectionScreen = -1;
+    for (const Overlay& overlay : m_overlays) {
+        if (!overlay.model->hasImage())
+            continue;
+        const auto match = std::ranges::find(shot.screens, overlay.model->rect(), &HistoryShot::Screen::rect);
+        overlay.model->setImage(match->image);
+        if (match - shot.screens.begin() == shot.screen)
+            selectionScreen = overlay.model->index();
+    }
+    std::optional<annot::Document> doc;
+    if (!shot.document.isEmpty())
+        doc = annot::fromJson(QJsonDocument::fromJson(shot.document).object(), nullptr);
+    m_historyShown = shot.id;
+    m_session.replaceShot({}, selectionScreen, shot.selection, doc);
+    const QDateTime when = QDateTime::fromMSecsSinceEpoch(shot.id.toLongLong());
+    m_session.notify(tr("之前的画面 %1/%2 · %3 · , 更早  . 更近")
+                         .arg(m_historyAt + 1)
+                         .arg(m_historyIds.size())
+                         .arg(QLocale().toString(when, when.date() == QDate::currentDate() ? u"HH:mm"_s : u"M/d HH:mm"_s)));
+    qInfo().noquote() << u"Screen capture: history %1 of %2 shown"_s.arg(m_historyAt + 1).arg(m_historyIds.size());
+}
+
+void Capture::showLive()
+{
+    restoreLive();
+    m_session.notify(tr("回到当前画面"));
+    prefetchHistory(0);
+}
+
+void Capture::restoreLive()
+{
+    for (const Overlay& overlay : m_overlays) {
+        if (!overlay.model->hasImage())
+            continue;
+        if (const auto shot = std::ranges::find(m_shots, overlay.monitor, &Grabber::Shot::monitor); shot != m_shots.end())
+            overlay.model->setImage(shot->image);
+    }
+    m_historyAt = -1;
+    m_historyShown.clear();
+    const CaptureSession::Kept kept = std::exchange(m_liveKept, {});
+    m_session.replaceShot(m_liveWindows, kept.screen, kept.rect, kept.doc);
 }
 
 void Capture::pinLast()

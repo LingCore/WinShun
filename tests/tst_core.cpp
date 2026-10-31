@@ -13513,6 +13513,12 @@ private slots:
         ForegroundFacts ours;
         ours.coversMonitor = ours.cursorHidden = ours.exclusiveFullScreen = true;
         QCOMPARE(doubleCtrlIgnoreReason(ours, fullScreen), IgnoreReason::None);
+        // Clipboard and screenshot hotkeys share the same foreground rule
+        // (#121), independent of game detection or a hidden pointer.
+        QVERIFY(!fullScreenShortcutBlocked(in(true, true, true), false));
+        QVERIFY(fullScreenShortcutBlocked(in(true, false, false), true));
+        QVERIFY(!fullScreenShortcutBlocked(in(false, true, true), true));
+        QVERIFY(!fullScreenShortcutBlocked(ours, true));
 
         // GitHub #111: hidden by Windows on a key press ("hide pointer while
         // typing") in a full-screen page or editor: the mouse is not taken.

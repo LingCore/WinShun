@@ -382,7 +382,7 @@ Rectangle {
                         text: "A"
                         color: boxButton.foreground
                         font.pixelSize: panel.boxLetter
-                        font.weight: Font.DemiBold
+                        font.weight: Theme.fontStrong
                     }
                 }
             }

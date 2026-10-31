@@ -9,6 +9,7 @@
 #include "Phosphor.h"
 #include "PluginShell.h"
 #include "Protocol.h"
+#include "RecordingWorker.h"
 #include "SystemTheme.h"
 #include "WindowFrame.h"
 #include "platform/WindowEffects.h"
@@ -23,6 +24,8 @@
 #include <QQuickWindow>
 #include <QClipboard>
 #include <QStringList>
+#include <QTranslator>
+#include <QLocale>
 
 #include <windows.h>
 #include <shellapi.h>
@@ -45,7 +48,7 @@ void applyUiFont(const QString& appDir)
     for (const QChar c : fontDir)
         ascii = ascii && c.unicode() < 128;
     QString family;
-    for (const QString& file : {u"AlibabaPuHuiTi-3-55-Regular.ttf"_s, u"AlibabaPuHuiTi-3-85-Bold.ttf"_s}) {
+    for (const QString& file : {u"AlibabaPuHuiTi-3-55-Regular.ttf"_s}) {
         int id = -1;
         if (ascii) {
             id = QFontDatabase::addApplicationFont(fontDir + file);
@@ -95,6 +98,24 @@ private:
 };
 
 } // namespace
+
+extern "C" __declspec(dllexport) int winshunCaptureWorker(const wchar_t* appDirName)
+{
+    const QString appDir = QString::fromWCharArray(appDirName);
+    ::SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
+    QCoreApplication::setLibraryPaths({appDir});
+    int argc = 1;
+    char name[] = "WinShunCaptureWorker";
+    char* argv[] = {name, nullptr};
+    QGuiApplication app(argc, argv);
+    applyUiFont(appDir);
+    const QLocale locale(qEnvironmentVariable("WINSHUN_RECORDING_LOCALE", u"zh_CN"_s));
+    QLocale::setDefault(locale);
+    QTranslator translation;
+    if (locale.language() == QLocale::English && translation.load(u":/i18n/capture_en.qm"_s))
+        QCoreApplication::installTranslator(&translation);
+    return ws::capture::recording::recordingWorkerMain();
+}
 
 extern "C" __declspec(dllexport) int winshunCaptureMain(const wchar_t* appDirName)
 {

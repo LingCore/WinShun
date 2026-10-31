@@ -1,4 +1,5 @@
 #include "CaptureApp.h"
+#include "platform/OcrFiles.h"
 
 #include "Protocol.h"
 
@@ -19,6 +20,7 @@
 #include "SystemTheme.h"
 #include "WindowFrame.h"
 #include "platform/WindowEffects.h"
+#include "platform/Foreground.h"
 
 #include <QClipboard>
 #include <QCoreApplication>
@@ -176,6 +178,24 @@ CaptureApp::CaptureApp(Protocol& protocol, QString appDir, QString dataDir, QObj
 {
     m_qml.addImportPath(m_appDir + u"/qml"_s); // QtQuick and the rest: Win顺's
     capture::CaptureOcr::setProgramFolder(m_appDir); // onnxruntime.dll and ocr\: Win顺's
+    QString componentRoot = qEnvironmentVariable("WS_COMPONENTS_DIR");
+    if (componentRoot.isEmpty())
+        componentRoot = QFileInfo(m_dataDir).fileName() == u"winshun.capture.data"
+            ? QDir(m_dataDir).absoluteFilePath(u"../../components"_s) : m_dataDir + u"/components"_s;
+    ocr::setComponentsRoot(componentRoot);
+    QDir().mkpath(componentRoot);
+    m_ocrWatcher.addPath(componentRoot);
+    connect(&m_ocrWatcher, &QFileSystemWatcher::directoryChanged, this, [this] {
+        if (m_captureOcr) {
+            m_captureOcr->retry();
+            if (m_resumeOcr && !m_captureOcr->needsPackage() && m_ocrWindow) {
+                m_resumeOcr = false;
+                m_ocrWindow->show();
+                m_ocrWindow->raise();
+                win::bringToFront(m_ocrWindow);
+            }
+        }
+    });
     QDir(m_dataDir).mkpath(u"out"_s);
 
     WNDCLASSW type {};
@@ -440,6 +460,7 @@ void CaptureApp::apply()
     m_capture->setHdrFile(o.hdrFile);
     m_capture->setControlDetection(o.controlsUia);
     m_capture->setDelay(o.delay);
+    m_capture->setHistory(QDir(m_dataDir).filePath(u"capture-history"_s), o.historyCount);
     m_capture->setColorFormat(capture::colorFormatFromName(o.colorFormat));
     if (m_pins)
         m_pins->setDoubleClick(capture::pinDoubleClickFromName(o.pinDoubleClick));
@@ -572,6 +593,12 @@ capture::CaptureOcr& CaptureApp::captureOcr()
 {
     if (!m_captureOcr) {
         m_captureOcr = std::make_unique<capture::CaptureOcr>();
+        connect(m_captureOcr.get(), &capture::CaptureOcr::setupRequested, this, [this] {
+            m_resumeOcr = m_ocrWindow && m_ocrWindow->isVisible();
+            if (m_resumeOcr)
+                m_ocrWindow->hide(); // the topmost OCR window must not cover the installer in Settings
+            m_protocol.tool(u"show_ocr_setup"_s, {});
+        });
         connect(m_captureOcr.get(), &capture::CaptureOcr::copyRequested, this, [this](const QString& text) {
             if (!text.isEmpty())
                 copyText(text);
@@ -630,6 +657,7 @@ void CaptureApp::prepareWindow(QQuickWindow* window, bool backdrop)
 // beside the picture, taking the focus (the text can be edited).
 void CaptureApp::showCaptureOcr(const QImage& image, double dpr, const QRect& where, const QStringList* texts)
 {
+    m_resumeOcr = false;
     if (!m_ocrWindow) {
         captureOcr();
         m_ocrFrame = std::make_unique<WindowFrame>(false);
@@ -680,6 +708,9 @@ void CaptureApp::showCaptureOcr(const QImage& image, double dpr, const QRect& wh
 
 void CaptureApp::closeCaptureOcr(bool destroy)
 {
+    m_resumeOcr = false;
+    if (m_captureOcr)
+        m_captureOcr->discardPending();
     if (m_ocrWindow) {
         if (destroy)
             delete m_ocrWindow.data(); // before its view-model
@@ -767,12 +798,10 @@ capture::PinManager& CaptureApp::pins()
             if (!text.isEmpty())
                 copyText(text);
         };
-        callbacks.ocrAvailable = capture::CaptureOcr::available();
-        if (callbacks.ocrAvailable) {
-            callbacks.readLines = [this](const QImage& image, double dpr, std::function<void(QList<capture::RedactLine>)> done) {
-                captureOcr().scan(image, dpr, std::move(done));
-            };
-        }
+        callbacks.ocrAvailable = capture::CaptureOcr::available;
+        callbacks.readLines = [this](const QImage& image, double dpr, std::function<void(QList<capture::RedactLine>)> done) {
+            captureOcr().scan(image, dpr, std::move(done));
+        };
         m_pins = std::make_unique<capture::PinManager>(std::move(callbacks));
         m_pins->setDoubleClick(capture::pinDoubleClickFromName(m_settings.options().pinDoubleClick));
     }
@@ -1111,6 +1140,9 @@ void CaptureApp::hotkey(int id)
     switch (id) {
     case CaptureKey:
     case PrintScreenKey:
+        if (m_capture && !m_capture->busy() && m_settings.options().pauseInFullScreen
+            && fullScreenShortcutBlocked(foreground::facts(), true))
+            break;
         if (m_capture)
             m_capture->trigger();
         break;

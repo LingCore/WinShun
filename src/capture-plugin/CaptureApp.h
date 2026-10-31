@@ -3,6 +3,7 @@
 #include "CaptureSettings.h"
 
 #include <QImage>
+#include <QFileSystemWatcher>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QObject>
@@ -96,6 +97,7 @@ private:
     Protocol& m_protocol;
     const QString m_appDir;
     const QString m_dataDir;
+    QFileSystemWatcher m_ocrWatcher;
     CaptureSettings m_settings;
     QQmlEngine m_qml;
     HWND m_window = nullptr;
@@ -110,6 +112,7 @@ private:
     OcrThen m_quickOcrThen = OcrThen::Copy;
     std::unique_ptr<WindowFrame> m_ocrFrame;
     QPointer<QQuickWindow> m_ocrWindow;
+    bool m_resumeOcr = false; // the original picture waits while the settings window installs OCR
     std::unique_ptr<WindowFrame> m_settingsFrame;
     QPointer<QQuickWindow> m_settingsWindow;
     std::unique_ptr<RawClicks> m_clicks; // while a recording shows the clicks

@@ -16,16 +16,38 @@
 
 #include <QGuiApplication>
 #include <QPainter>
+#include <QScopeGuard>
 #include <QTest>
 
 #include <windows.h>
 
 #include <cmath>
+#include <array>
+#include <cstring>
 
 using namespace ws::capture;
 using namespace Qt::StringLiterals;
 
 namespace {
+
+// Own the cursor fixture: IDC_ARROW can be a transparent or custom system
+// cursor. The drawing test must not depend on the user's current theme.
+HCURSOR testCursor()
+{
+    std::array<BYTE, 32 * 4> andMask;
+    andMask.fill(0xFF);
+    std::array<BYTE, 32 * 4> xorMask {};
+    for (int y = 0; y < 24; ++y) {
+        for (int x = 0; x <= y / 2; ++x) {
+            const std::size_t at = static_cast<std::size_t>(y * 4 + x / 8);
+            const BYTE bit = BYTE(0x80u >> (x % 8));
+            andMask[at] &= BYTE(~bit);
+            if (x == 0 || x == y / 2 || y == 23)
+                xorMask[at] |= bit;
+        }
+    }
+    return ::CreateCursor(nullptr, 2, 3, 32, 32, andMask.data(), xorMask.data());
+}
 
 // A picture whose every pixel differs, so a wrong turn shows.
 QImage patterned(int w, int h)
@@ -437,7 +459,8 @@ private slots:
 
     void theCursorIsDrawnWhereTheHotSpotIs()
     {
-        const HCURSOR cursor = ::LoadCursorW(nullptr, IDC_ARROW);
+        const HCURSOR cursor = testCursor();
+        const auto cleanup = qScopeGuard([cursor] { if (cursor) ::DestroyCursor(cursor); });
         QVERIFY(cursor);
         QImage image(200, 160, QImage::Format_RGB32);
         image.fill(qRgb(0x20, 0x70, 0xB0));
@@ -488,7 +511,9 @@ private slots:
 
     void aCursorAtTheEdgeIsCutAndOneOutsideDrawsNothing()
     {
-        const HCURSOR cursor = ::LoadCursorW(nullptr, IDC_ARROW);
+        const HCURSOR cursor = testCursor();
+        const auto cleanup = qScopeGuard([cursor] { if (cursor) ::DestroyCursor(cursor); });
+        QVERIFY(cursor);
         QImage image(60, 60, QImage::Format_RGB32);
         image.fill(Qt::white);
         QVERIFY(drawCursor(image, QPoint(55, 55), cursor)); // most of it is off the picture

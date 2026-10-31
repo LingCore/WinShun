@@ -33,7 +33,9 @@ constexpr auto kMappings = std::to_array<Mapping>({
     {0xE715, 0xE218, false}, // Mail: envelope-simple
     {0xE718, 0xE3E2, false}, // Pin: push-pin
     {0xE719, 0xE470, false}, // Shop: storefront
+    {0xE71A, 0xE45E, false}, // Stop: square
     {0xE71B, 0xE2E2, false}, // Link: link
+    {0xE720, 0xE326, false}, // Microphone: microphone
     {0xE721, 0xE30C, false}, // Search: magnifying-glass
     {0xE722, 0xE10E, false}, // Camera: camera
     {0xE724, 0xE396, false}, // Send: paper-plane-right
@@ -44,6 +46,7 @@ constexpr auto kMappings = std::to_array<Mapping>({
     {0xE736, 0xE0E6, false}, // ReadingMode: book-open
     {0xE738, 0xE32A, false}, // Remove: minus
     {0xE739, 0xE45E, false}, // Checkbox (the rectangle tool): square
+    {0xE73A, 0xE186, false}, // CheckboxComposite: check-square
     {0xE73E, 0xE182, false}, // CheckMark: check
     {0xE73F, 0xE09A, false}, // BackToWindow: arrows-in
     {0xE740, 0xE0A2, false}, // FullScreen: arrows-out
@@ -51,9 +54,11 @@ constexpr auto kMappings = std::to_array<Mapping>({
     {0xE74B, 0xE03E, false}, // Down: arrow-down
     {0xE74D, 0xE4A6, false}, // Delete: trash
     {0xE74E, 0xE248, false}, // Save: floppy-disk
+    {0xE74F, 0xE45A, false}, // Mute: speaker-slash
     {0xE753, 0xE1AA, false}, // Cloud: cloud
     {0xE756, 0xEAE8, false}, // CommandPrompt: terminal-window
     {0xE765, 0xE2D8, false}, // Keyboard: keyboard
+    {0xE767, 0xE44A, false}, // Volume: speaker-high
     {0xE768, 0xE3D0, false}, // Play: play
     {0xE769, 0xE39E, false}, // Pause: pause
     {0xE76C, 0xE13A, false}, // ChevronRight: caret-right
@@ -68,6 +73,7 @@ constexpr auto kMappings = std::to_array<Mapping>({
     {0xE7A6, 0xE08C, false}, // Redo: arrow-u-up-right
     {0xE7A7, 0xE08A, false}, // Undo: arrow-u-up-left
     {0xE7BA, 0xE4E0, false}, // Warning: warning
+    {0xE7C9, 0xE1DC, false}, // TouchPointer: cursor
     {0xE7E6, 0xEC76, false}, // Highlight: highlighter
     {0xE7E8, 0xE3DA, false}, // Power: power
     {0xE7EF, 0xE40C, false}, // Admin: shield-check
@@ -84,6 +90,7 @@ constexpr auto kMappings = std::to_array<Mapping>({
     {0xE8A7, 0xE5DE, false}, // OpenInNewWindow: arrow-square-out
     {0xE8A9, 0xE464, false}, // ViewAll: squares-four
     {0xE8AC, 0xEB0A, false}, // Rename: textbox
+    {0xE8B0, 0xE7C8, false}, // Click: cursor-click
     {0xE8B5, 0xE010, false}, // Import: tray-arrow-down
     {0xE8B7, 0xE24A, false}, // Folder: folder
     {0xE8BB, 0xE4F6, false}, // ChromeClose: x
@@ -109,12 +116,14 @@ constexpr auto kMappings = std::to_array<Mapping>({
     {0xE928, 0xE23E, false}, // Fingerprint: fingerprint
     {0xE943, 0xE1BC, false}, // Code: code
     {0xE946, 0xE2CE, false}, // Info: info
+    {0xE962, 0xE33A, false}, // Mouse: mouse
     {0xE968, 0xE2A0, false}, // Network: hard-drives
     {0xE99A, 0xE762, false}, // Robot: robot
     {0xE9D5, 0xEB7A, false}, // CheckList: scroll
     {0xEA3A, 0xE18A, false}, // CircleRing: circle
     {0xEA86, 0xE596, false}, // Puzzle: puzzle-piece
     {0xEB9F, 0xE2CA, false}, // Picture: image
+    {0xEC54, 0xE328, false}, // MicOff: microphone-slash
     {0xEC8F, 0xE140, false}, // (up and down chevrons; long capture): caret-up-down
     {0xED14, 0xE3E6, false}, // QRCode: qr-code
     {0xED1A, 0xE224, false}, // Hide: eye-slash

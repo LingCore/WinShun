@@ -35,9 +35,9 @@ public:
         std::function<bool()> dark;
         std::function<QColor()> accent; // a fill that carries white words
         std::function<void(const QString&)> copyText; // the text picked on a pin
-        // The lines of a picture (CaptureOcr::scan), for picking text; empty: no models.
+        // The lines of a picture (CaptureOcr::scan), for picking text.
         std::function<void(const QImage&, double dpr, std::function<void(QList<RedactLine>)> done)> readLines;
-        bool ocrAvailable = false; // the models are there (PaddleOcr::installed)
+        std::function<bool()> ocrAvailable; // checked again after an on-demand installation
     };
 
     explicit PinManager(Callbacks callbacks, QObject* parent = nullptr);

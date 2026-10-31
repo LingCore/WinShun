@@ -17,7 +17,7 @@ using ws::captureplugin::CaptureOptions;
 
 // The folder dialog of the settings window, not opened here.
 namespace ws::shell {
-QString pickFolder(HWND, const QString&)
+QString pickFolder(HWND, const QString&, const QString&)
 {
     return {};
 }
@@ -46,6 +46,23 @@ class CaptureSettingsTest : public QObject {
     Q_OBJECT
 
 private slots:
+    void pauseHotkeysInFullScreen()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString file = dir.filePath(u"capture.ini"_s);
+        auto options = CaptureOptions::load(file);
+        QVERIFY(!options.pauseInFullScreen);
+        for (const bool paused : {true, false}) {
+            options.pauseInFullScreen = paused;
+            options.hotkey = u"Ctrl+Alt+F8"_s;
+            options.save(file);
+            const auto back = CaptureOptions::load(file);
+            QCOMPARE(back.pauseInFullScreen, paused);
+            QCOMPARE(back.hotkey, options.hotkey);
+        }
+    }
+
     // GitHub #83: the recording's options and the folders, defaults and a round trip.
     void recordingAndFolders()
     {
