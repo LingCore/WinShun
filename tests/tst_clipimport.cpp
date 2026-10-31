@@ -78,15 +78,16 @@ public:
 
     // Returns the row's lID. parent: a group's lID, -1 for none.
     qint64 clip(const QString& description, qint64 date, qint64 parent, double order, double sticky,
-        const QList<std::pair<QString, QByteArray>>& formats, bool isGroup = false)
+        const QList<std::pair<QString, QByteArray>>& formats, bool isGroup = false, bool dontAutoDelete = false)
     {
         QSqlDatabase db = QSqlDatabase::database(m_name);
         QSqlQuery query(db);
         query.prepare(u"INSERT INTO Main (lDate, mText, lShortCut, lDontAutoDelete, CRC, bIsGroup, lParentID, "
                       u"clipOrder, clipGroupOrder, lastPasteDate, stickyClipOrder, stickyClipGroupOrder) "
-                      u"VALUES (?, ?, 0, 0, 0, ?, ?, ?, ?, ?, ?, ?)"_s);
+                      u"VALUES (?, ?, 0, ?, 0, ?, ?, ?, ?, ?, ?, ?)"_s);
         query.addBindValue(date);
         query.addBindValue(description);
+        query.addBindValue(dontAutoDelete ? date : 0); // Ditto stores a nonzero protection value
         query.addBindValue(isGroup ? 1 : 0);
         query.addBindValue(parent);
         query.addBindValue(order);
@@ -208,6 +209,48 @@ private slots:
         QCOMPARE(again.clips().size(), store.clips().size());
         QCOMPARE(textsIn(again, groupNamed(again, u"新来的"_s)), (QStringList {u"甲"_s, u"乙"_s}));
         QCOMPARE(again.clip(store.groupOrder(fresh).front())->created, kStart);
+    }
+
+    void dittoProtectedEntries()
+    {
+        QTemporaryDir source;
+        QTemporaryDir data;
+        QVERIFY(source.isValid() && data.isValid());
+        const QString file = source.filePath(u"Ditto.db"_s);
+        {
+            DittoDb ditto(file);
+            const auto add = [&](const QString& text, qint64 parent, bool protectedEntry, double sticky) {
+                return ditto.clip(text, 1700000100, parent, 10, sticky,
+                    {{u"CF_UNICODETEXT"_s, utf16(text)}}, false, protectedEntry);
+            };
+            const qint64 group = ditto.clip(u"Work"_s, 1700000000, -1, 0, DittoDb::kNotSticky, {}, true);
+            add(u"protected root"_s, -1, true, DittoDb::kNotSticky);
+            add(u"protected in group"_s, group, true, DittoDb::kNotSticky);
+            add(u"normal"_s, -1, false, DittoDb::kNotSticky);
+            add(u"sticky is not protection"_s, -1, false, 5);
+        }
+        ClipStore store(data.path());
+        QVERIFY(store.open(kStart));
+        const Report report = runImport(store, file);
+        QCOMPARE(report.error, Error::None);
+        QCOMPARE(report.added, 4);
+        QCOMPARE(textsIn(store, ClipStore::kPinned).size(), 2);
+        const auto check = [](const ClipStore& clips) {
+            for (const Clip& clip : clips.clips()) {
+                if (clip.text.startsWith(u"protected"))
+                    QCOMPARE(clip.group, ClipStore::kPinned);
+                else
+                    QVERIFY(clip.group != ClipStore::kPinned);
+            }
+        };
+        check(store);
+        store.setLimits({1, 1}, kStart + 1000 * kDay);
+        store.flush();
+        ClipStore reopened(data.path());
+        QVERIFY(reopened.open(kStart + 1000 * kDay));
+        QCOMPARE(textsIn(reopened, ClipStore::kPinned).size(), 2);
+        check(reopened);
+        QCOMPARE(runImport(reopened, file).duplicates, 4);
     }
 
     void dittoFixture()

@@ -220,7 +220,7 @@ private slots:
         QCOMPARE(f.model.rowOf(held), 2);
         QCOMPARE(ws::hotkeysteps::stepRow(f.model.rowOf(held), f.model.count()), 3);
         const qint64 last = f.model.idAt(f.model.count() - 1);
-        QCOMPARE(ws::hotkeysteps::stepRow(f.model.rowOf(last), f.model.count()), f.model.count() - 1);
+        QCOMPARE(ws::hotkeysteps::stepRow(f.model.rowOf(last), f.model.count()), 0); // wrap to the newest
         const qint64 gone[] {held};
         f.store.remove(gone);
         f.show({});

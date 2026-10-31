@@ -158,6 +158,7 @@ struct ClipImportItem {
     // The group it goes in, by name (made if there is none of that name);
     // empty: the import's own group. Their order in a batch is their order in it.
     QString group;
+    bool keepForever = false; // source's explicit protection: import into the built-in Fixed group (#56)
 };
 
 struct ClipImportResult {

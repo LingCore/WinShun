@@ -383,6 +383,8 @@ private:
     std::optional<LastSend> m_lastSend;
     std::unique_ptr<SendJob> m_job;
     std::vector<std::wstring> m_menuFiles;
+    std::string m_menuText; // the history's text, independent of the live system clipboard
+    bool m_menuHistory = false;
     Clock::time_point m_menuFilesAt;
     std::uint64_t m_menuSelection = 0; // counts the choices of m_menuFiles
     std::string m_keyword = "传";
@@ -820,8 +822,10 @@ void LocalSendPlugin::onSent(const SendOutcome& o, std::uint64_t selection)
         m_sendOutcome = SendOutcomeRow {o, Clock::now()};
         // Sent: not offered again. Only when it was these files (not the
         // clipboard's), and nothing else was chosen in the results meanwhile.
-        if (o.kind == SendOutcome::Kind::Sent && selection != 0 && selection == m_menuSelection)
+        if (o.kind == SendOutcome::Kind::Sent && selection != 0 && selection == m_menuSelection) {
             m_menuFiles.clear();
+            m_menuText.clear();
+        }
     }
     refresh(); // the job shows no row once finished, before this is called
     const std::string& who = o.device;
@@ -937,25 +941,32 @@ std::optional<Summary> LocalSendPlugin::summaryOf(const std::vector<std::wstring
 Payload LocalSendPlugin::payload(const std::string& words, bool describe)
 {
     Payload p;
-    const std::string text = trimmed(words);
+    std::string text = trimmed(words);
+    std::vector<std::wstring> paths;
+    bool history = false;
+    if (text.empty()) {
+        const std::lock_guard lock(m_mutex);
+        if (Clock::now() - m_menuFilesAt > kKeepMenuFiles) {
+            m_menuFiles.clear();
+            m_menuText.clear();
+        }
+        paths = m_menuFiles;
+        text = m_menuText;
+        history = m_menuHistory;
+        p.selection = m_menuSelection;
+    }
     if (!text.empty()) {
-        p.source = Payload::Source::Words;
+        p.source = p.selection ? Payload::Source::Menu : Payload::Source::Words;
         p.what.kind = Outgoing::Kind::Text;
         p.what.text = text;
         p.title = chinese() ? "文字「" + excerpt(text, 20) + "」" : "the text \"" + excerpt(text, 20) + "\"";
         p.amount = chinese() ? std::to_string(characters(text)) + " 个字" : std::to_string(characters(text)) + " characters";
         p.enter = t("Enter 发送这段文字", "Enter sends this text");
         p.detail = p.amount;
+        if (p.selection)
+            p.detail += t(" · 从剪贴板历史选的", " · Chosen from clipboard history");
         p.key = "w" + sha256Hex(text.data(), text.size()).substr(0, 16);
         return p;
-    }
-    std::vector<std::wstring> paths;
-    {
-        const std::lock_guard lock(m_mutex);
-        if (!m_menuFiles.empty() && Clock::now() - m_menuFilesAt > kKeepMenuFiles)
-            m_menuFiles.clear();
-        paths = m_menuFiles;
-        p.selection = m_menuSelection;
     }
     p.source = paths.empty() ? Payload::Source::None : Payload::Source::Menu;
     if (paths.empty()) {
@@ -985,7 +996,8 @@ Payload LocalSendPlugin::payload(const std::string& words, bool describe)
         names += chinese() ? " 等 " + std::to_string(paths.size()) + " 项" : " and " + std::to_string(paths.size() - 2) + " more";
     p.title = names;
     const bool menu = p.source == Payload::Source::Menu;
-    const std::string from = menu ? t("从搜索结果选的", "chosen in the results") : t("剪贴板里复制的", "copied to the clipboard");
+    const std::string from = menu ? (history ? t("从剪贴板历史选的", "chosen from clipboard history") : t("从搜索结果选的", "chosen in the results"))
+                                  : t("剪贴板里复制的", "copied to the clipboard");
     const std::optional<Summary> s = summaryOf(paths);
     if (!s) {
         p.amount = t("正在统计…", "Counting…");
@@ -1435,18 +1447,25 @@ Effects LocalSendPlugin::startSend(const Device& device, const Target& target, O
 
 Effects LocalSendPlugin::action(const winshun::ActionRequest& a)
 {
-    if (a.trigger == "files" || a.action == "files") {
+    if (a.trigger == "files" || a.action == "files" || a.action == "clipboard") {
         // "用局域网发送…" on Win顺's result menu: the files, then the 传 list to pick a device.
+        const bool history = a.action == "clipboard";
+        if (a.files.size() > 1000)
+            return {effect::notify(t("选的文件太多了，最多一次 1000 项", "Too many files selected; choose at most 1,000 items")), effect::keep()};
+        if (history && a.text.size() > kMaxTextBytes)
+            return {effect::notify(t("文字太长了，请保存为文件再发", "The text is too long; save it as a file to send")), effect::keep()};
         std::vector<std::wstring> files;
         for (const std::string& f : a.files) {
             if (!f.empty() && files.size() < 1000)
                 files.push_back(wide(f));
         }
-        if (files.empty())
+        if (files.empty() && (!history || a.text.empty()))
             return {effect::notify(t("没有可发送的文件", "Nothing to send")), effect::keep()};
         {
             const std::lock_guard lock(m_mutex);
             m_menuFiles = std::move(files);
+            m_menuText = history ? a.text : std::string();
+            m_menuHistory = history;
             m_menuFilesAt = Clock::now();
             ++m_menuSelection;
         }
@@ -1627,6 +1646,7 @@ Effects LocalSendPlugin::action(const winshun::ActionRequest& a)
         {
             const std::lock_guard lock(m_mutex);
             m_menuFiles.clear();
+            m_menuText.clear();
         }
         return refreshed(a.text);
     }

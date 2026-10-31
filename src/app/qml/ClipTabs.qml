@@ -93,7 +93,7 @@ Item {
                             textFormat: Text.PlainText
                             color: chip.active ? Theme.text : Theme.subtext
                             font.pixelSize: Theme.uiTab
-                            font.weight: chip.active ? Font.DemiBold : Font.Normal
+                            font.weight: chip.active ? Theme.fontStrong : Font.Normal
                         }
                     }
 

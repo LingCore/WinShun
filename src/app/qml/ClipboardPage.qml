@@ -486,6 +486,10 @@ Item {
                 page.selectHeld(held)
         }
         function onStepped(row) { page.selectHeld(row) }
+        function onBrowseStepRequested() {
+            if (list.count > 0)
+                page.selectHeld((list.currentIndex + 1) % list.count)
+        }
         function onQueryChanged() {
             pinyinHintTimer.stop() // also for a paste, which goes past handleKey
             if (input.text !== page.clipboard.query)
@@ -690,6 +694,7 @@ Item {
 
                 ListView {
                     id: list
+                    objectName: "clipboardEntries"
                     anchors.fill: parent
                     topMargin: 4
                     bottomMargin: 4

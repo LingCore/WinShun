@@ -720,6 +720,8 @@ target_link_libraries(tst_semantic PRIVATE winshun_options Qt6::Test winhttp)
 # LocalSend's HTTP and JSON, a receiver and a sender talking TLS on 127.0.0.1.
 qt_add_executable(tst_localsend tst_localsend.cpp)
 target_link_libraries(tst_localsend PRIVATE wslocalsend Qt6::Test)
+target_compile_definitions(tst_localsend PRIVATE WINSHUN_LOCALSEND_EXE="$<TARGET_FILE:WinShunLocalSend>")
+add_dependencies(tst_localsend WinShunLocalSend)
 set_target_properties(tst_localsend PROPERTIES WIN32_EXECUTABLE FALSE)
 add_test(NAME tst_localsend COMMAND tst_localsend)
 set_tests_properties(tst_localsend PROPERTIES

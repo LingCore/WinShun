@@ -204,7 +204,7 @@ Item {
                 text: row.order
                 color: Theme.accentText
                 font.pixelSize: 12
-                font.weight: Font.DemiBold
+                font.weight: Theme.fontStrong
             }
         }
 
@@ -313,7 +313,7 @@ Item {
 
     MouseArea {
         id: area
-        // Real mouse drags export images; touch still scrolls the list.
+        // Real mouse drags take rows out as files (Clipboard::dragOut); touch still scrolls the list.
         property point pressedAt: Qt.point(0, 0)
         property bool draggedOut: false
         anchors.fill: parent
@@ -322,7 +322,7 @@ Item {
         onPressed: (mouse) => {
             draggedOut = false
             pressedAt = Qt.point(mouse.x, mouse.y)
-            preventStealing = row.kind === 4 && mouse.button === Qt.LeftButton
+            preventStealing = mouse.button === Qt.LeftButton
                               && mouse.source === Qt.MouseEventNotSynthesized
         }
         onPositionChanged: (mouse) => {

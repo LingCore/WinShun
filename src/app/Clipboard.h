@@ -141,6 +141,9 @@ public:
         RenameGroup, // on a category tab
         RemoveGroup,
         RemoveAll, // everything listed (not what is in a group, unless a group's tab)
+        SaveFiles, // 保存为文件: a file each, in a folder asked for (saveAsFiles)
+        SaveMerged, // the words of all in one file
+        SendLan, // this history selection, without replacing the system clipboard
         MoveToGroup = 1000, // + the group's id
     };
     Q_ENUM(Action)
@@ -224,13 +227,15 @@ public:
     void historyChanged(); // the store changed outside this class (copied, limits, cleared)
     void resumeHistory(); // the store was reopened: restore preferences and schedule unread pictures
     void suspendHistory(); // stop OCR work and discard transient rows before closing the store
+    void refreshRecognition(); // an enhanced OCR package became available
     void retranslate();
 
     // On a row; on all of them, when it is one of several picked.
     Q_INVOKABLE void paste(int row, bool plainText);
     Q_INVOKABLE void quickPaste(int number, bool plainText); // Alt+1 ... Alt+9: the nth row
     Q_INVOKABLE void copy(int row);
-    // An image exported as a PNG file; its history entry remains unchanged.
+    // Dragged out as files (clipfiles::plan): pictures as they were copied,
+    // words made files, files and folders as they are. The entries stay.
     Q_INVOKABLE void dragOut(int row);
     bool dragging() const { return m_dragging; } // do not hide the window during OLE's modal loop
     // A colour's other notation, as a new entry unless it would not read back
@@ -239,6 +244,7 @@ public:
     // Whether a plugin pins and edits pictures (App::picturePlugin): 贴到屏幕
     // and 编辑 on a picture's menu only then.
     void setPictureVerbs(bool pin, bool edit) { m_pictureVerbs = {pin, edit}; }
+    void setLanSendAvailable(bool available, bool update = false) { m_lanSendAvailable = available; m_lanSendUpdate = update; }
     // A picture (a screen capture, a pin) onto the clipboard, the way copyText
     // puts text there: with `remember`, as a new history entry on top, whose
     // words are then read like any copied picture's; `screenshot`: one Win顺's
@@ -301,12 +307,16 @@ public:
     Q_INVOKABLE void prepareMenuWindow(QWindow* menu) const;
 
 signals:
+    void lanSendRequested(const QString& text, const QStringList& files);
+    void lanSendSetupRequested(bool update);
     void quickPasteFailed(const QString& message); // no panel to show a failure in: App's notification
+    void saveProblem(const QString& message); // saveAsFiles, the panel gone: App's notification
     void numberKeysChanged();
     void rowOptionsChanged();
     void layoutOptionsChanged();
     void holdChanged();
     void stepped(int row); // the hold moved on to this row: the current one now
+    void browseStepRequested(); // own-window hotkey: next row, no paste on release
     void activeChanged();
     void keysRoutedChanged();
     void pinnedChanged();
@@ -381,19 +391,30 @@ private:
     void dropUndo();
     QString separator() const;
     void loadHistoryState();
+    // The row (or the picked ones) as files in a folder asked for, starting
+    // in the one shown by the file manager it was opened over (else the last
+    // one); selected there afterwards.
+    void saveAsFiles(int row, bool merged);
+    void sendLan(int row);
 
     ClipStore* m_store;
     ClipboardWatcher* m_watcher;
     ClipModel m_model;
     TextRecognizer m_recognizer; // the words in pictures, for the search
     QTimer m_backlogTimer;
+    bool m_refreshRecognition = false;
     QSet<qint64> m_rereading; // read by another recognizer before: once all are back, it is noted
     QPointer<QWindow> m_window;
     // Pictures dragged out, copied here first (a folder each, by id): kept
     // until the app ends, as the program dropped on may copy them later.
     // Made on the first drag; what a crash left is removed at the start.
     QString m_dragFolder;
+    int m_drags = 0; // words dragged out: a folder of their own each time, under the names they make
     bool m_dragging = false;
+    bool m_saving = false; // saveAsFiles: from the menu until written
+    bool m_sending = false; // preparing this selection, before choosing a device
+    bool m_lanSendAvailable = false;
+    bool m_lanSendUpdate = false;
     bool m_active = false;
     bool m_keysRouted = false;
     bool m_pinned = false;
@@ -449,6 +470,8 @@ private:
     QElapsedTimer m_returnClock;
     QTimer m_returnTimer; // waits for the field to have the keyboard
     std::unique_ptr<ComWorker> m_filePasteWorker;
+    std::unique_ptr<ComWorker> m_saveWorker; // saveAsFiles: asks the file manager, copies the files
+    std::unique_ptr<ComWorker> m_sendWorker; // exports a stable history selection, without copying source folders
     std::jthread m_imageEncoder; // copyImage's PNG; last, so joined first
 };
 

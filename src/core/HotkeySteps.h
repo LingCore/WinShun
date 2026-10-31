@@ -79,13 +79,13 @@ constexpr unsigned modifierOf(unsigned vk) noexcept
 }
 
 // The row a step goes to from the one the hold is on (`from`; -1: its entry
-// is gone from the list), of `count` rows: the next older one, the last row
-// staying put; -1 with no rows.
+// is gone from the list), of `count` rows: the next older one, wrapping to
+// the first after the last (GitHub #107, #137); -1 with no rows.
 constexpr int stepRow(int from, int count) noexcept
 {
     if (count <= 0)
         return -1;
-    return from < 0 ? 0 : (from + 1 < count ? from + 1 : count - 1);
+    return from < 0 || from >= count - 1 ? 0 : from + 1;
 }
 
 // The eight sides of the four modifiers; a modifier is held while either

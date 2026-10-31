@@ -13206,7 +13206,8 @@ private slots:
         // The row a step goes to: the next older; the last stays; gone: the first.
         QCOMPARE(stepRow(0, 6), 1);
         QCOMPARE(stepRow(4, 6), 5);
-        QCOMPARE(stepRow(5, 6), 5);
+        QCOMPARE(stepRow(5, 6), 0);
+        QCOMPARE(stepRow(8, 6), 0); // the list shrank while browsing
         QCOMPARE(stepRow(-1, 6), 0);
         QCOMPARE(stepRow(0, 1), 0);
         QCOMPARE(stepRow(0, 0), -1);

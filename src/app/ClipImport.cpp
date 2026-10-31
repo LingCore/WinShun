@@ -378,9 +378,9 @@ Report importDitto(const QString& path, const Hooks& hooks)
                 const int total = scalar(u"SELECT count(*) FROM Main WHERE %1 = 0"_s.arg(col("bIsGroup", "0"))).toInt();
                 QSqlQuery rows(db);
                 rows.setForwardOnly(true);
-                const bool ok = rows.exec(u"SELECT lID, %1, mText, %2, %3 FROM Main WHERE %4 = 0 ORDER BY %5"_s
+                const bool ok = rows.exec(u"SELECT lID, %1, mText, %2, %3, %6 FROM Main WHERE %4 = 0 ORDER BY %5"_s
                                               .arg(col("lDate", "0"), col("lParentID", "-1"), col("lastPasteDate", "0"),
-                                                  col("bIsGroup", "0"), order));
+                                                  col("bIsGroup", "0"), order, col("lDontAutoDelete", "0")));
                 if (!ok) {
                     report.error = Error::NotDitto;
                 } else {
@@ -421,6 +421,7 @@ Report importDitto(const QString& path, const Hooks& hooks)
                         };
 
                         ClipImportItem item;
+                        item.keepForever = rows.value(5).toLongLong() != 0;
                         item.created = created > 0 ? created : used;
                         item.used = used > 0 ? used : created;
                         if (parent > 0 && groups.contains(parent))

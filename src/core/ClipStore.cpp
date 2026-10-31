@@ -1162,7 +1162,7 @@ ClipImportResult ClipStore::importClips(std::vector<ClipImportItem> items, const
             continue;
         }
         const QString& name = item.group.isEmpty() ? ownGroup : item.group;
-        qint64 groupId = groupIds.value(name, 0);
+        qint64 groupId = item.keepForever ? kPinned : groupIds.value(name, 0);
         if (groupId == 0) {
             const auto it = std::ranges::find_if(m_groups, [&](const ClipGroup& g) { return g.id != kPinned && g.name == name; });
             groupId = it != m_groups.end() ? it->id : addGroup(name);
@@ -1181,7 +1181,7 @@ ClipImportResult ClipStore::importClips(std::vector<ClipImportItem> items, const
             nextRank.insert(groupId, next);
         }
         known.insert(hash);
-        result.ownGroupUsed = result.ownGroupUsed || item.group.isEmpty();
+        result.ownGroupUsed = result.ownGroupUsed || (!item.keepForever && item.group.isEmpty());
         Prepared p;
         Clip& clip = p.clip;
         clip.id = m_nextId++;
