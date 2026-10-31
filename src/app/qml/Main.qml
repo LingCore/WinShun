@@ -663,6 +663,8 @@ Window {
     function handleKey(event) {
         numberHints.press(event)
         nameTip.dismiss() // as Windows' tips go on a key
+        if (panel && !menuOpen && !panelPage.columnMenuOpen && panelPage.handleContentKey(event))
+            return
         if (menuOpen && contextMenu.handleKey(event)) {
             event.accepted = true
             return

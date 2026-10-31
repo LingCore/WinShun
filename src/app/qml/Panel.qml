@@ -35,6 +35,32 @@ Item {
     signal rowDragRequested(int index)
 
     readonly property int sidebarWidth: 290
+    readonly property bool contentMode: launcher.scope === Launcher.Content
+    readonly property bool detailsVisible: contentMode && launcher.contentPane.opened
+    readonly property bool compactDetails: width - sidebarWidth < 720
+    property real draggedPaneWidth: 0
+    readonly property real paneWidth: compactDetails ? width
+        : Math.min(Math.max(320, draggedPaneWidth > 0 ? draggedPaneWidth : launcher.contentPane.preferredWidth), width - sidebarWidth - 340)
+    function handleContentKey(event) {
+        const mods = event.modifiers & ~Qt.KeypadModifier
+        if (contentMode && mods === (Qt.ControlModifier | Qt.ShiftModifier)
+                && event.key >= Qt.Key_1 && event.key <= Qt.Key_5) {
+            launcher.contentPane.opened = true
+            launcher.contentPane.tab = event.key - Qt.Key_1
+            event.accepted = true
+            return true
+        }
+        return detailsVisible && details.status === Loader.Ready ? details.item.handleKey(event) : false
+    }
+    Binding {
+        target: panel.launcher.contentPane
+        property: "active"
+        value: panel.visible && panel.contentMode && !!panel.Window.window && panel.Window.window.visible
+    }
+    Item {
+        id: resultsBoundary
+        x: panel.detailsVisible && !panel.compactDetails ? panel.width - panel.paneWidth - 6 : panel.width
+    }
     readonly property var columnSpecs: launcher.panelColumns.visibleColumns
     property string resizingColumn: ""
     property real resizingWidth: 0
@@ -261,6 +287,7 @@ Item {
 
     Item {
         id: sidebar
+        visible: !(panel.detailsVisible && panel.compactDetails)
         anchors.top: topDivider.bottom
         anchors.bottom: footer.top
         width: panel.sidebarWidth
@@ -268,6 +295,7 @@ Item {
         Flickable {
             id: filters
             anchors.fill: parent
+            anchors.topMargin: panel.contentMode ? 42 : 0
             contentWidth: width
             contentHeight: filterColumn.height + 12
             clip: true
@@ -682,7 +710,7 @@ Item {
         id: columns
         anchors.left: sidebar.right
         anchors.leftMargin: 1
-        anchors.right: parent.right
+        anchors.right: resultsBoundary.left
         anchors.top: topDivider.bottom
         height: panel.launcher.gallery ? 0 : Theme.labelRowHeight + 8
         visible: !panel.launcher.gallery
@@ -720,7 +748,7 @@ Item {
         objectName: "panelResultList"
         anchors.left: sidebar.right
         anchors.leftMargin: 1
-        anchors.right: parent.right
+        anchors.right: resultsBoundary.left
         anchors.top: columns.bottom
         anchors.bottom: contentOffer.top
         topMargin: 4
@@ -792,7 +820,7 @@ Item {
         id: listScrollBar
         objectName: "panelResultScrollBar"
         flickable: panel.view
-        anchors.right: parent.right
+        anchors.right: resultsBoundary.left
         anchors.rightMargin: panel.frame.resizeMargin(Screen.devicePixelRatio)
         anchors.top: list.top
         anchors.bottom: list.bottom
@@ -806,7 +834,7 @@ Item {
         visible: panel.launcher.gallery
         anchors.left: sidebar.right
         anchors.leftMargin: 8
-        anchors.right: parent.right
+        anchors.right: resultsBoundary.left
         anchors.rightMargin: 12
         anchors.top: columns.bottom
         anchors.topMargin: 8
@@ -846,7 +874,7 @@ Item {
         height: visible ? Theme.hintRowHeight : 0
         anchors.left: sidebar.right
         anchors.leftMargin: 12
-        anchors.right: parent.right
+        anchors.right: resultsBoundary.left
         anchors.rightMargin: 12
         anchors.bottom: footer.top
 
@@ -879,6 +907,65 @@ Item {
         }
     }
 
+    FlatButton {
+        x: 12
+        y: topDivider.y + topDivider.height + 6
+        width: panel.sidebarWidth - 24
+        height: 32
+        visible: panel.contentMode && !(panel.detailsVisible && panel.compactDetails)
+        text: panel.launcher.contentPane.opened ? qsTr("收起内容详情") : qsTr("显示内容详情")
+        flat: true
+        onClicked: panel.launcher.contentPane.opened = !panel.launcher.contentPane.opened
+        Accessible.role: Accessible.Button
+        Accessible.name: text
+    }
+    MouseArea {
+        id: paneResize
+        objectName: "contentPaneResize"
+        x: resultsBoundary.x
+        width: 6
+        anchors.top: topDivider.bottom
+        anchors.bottom: footer.top
+        visible: panel.detailsVisible && !panel.compactDetails
+        cursorShape: Qt.SizeHorCursor
+        hoverEnabled: true
+        preventStealing: true
+        activeFocusOnTab: true
+        Accessible.role: Accessible.Separator
+        Accessible.name: qsTr("内容详情宽度，左右方向键调整")
+        property real startX: 0
+        property real startWidth: 0
+        onPressed: mouse => { startX = mapToGlobal(mouse.x, mouse.y).x; startWidth = panel.paneWidth }
+        onPositionChanged: mouse => {
+            if (pressed) panel.draggedPaneWidth = Math.max(320, startWidth + startX - mapToGlobal(mouse.x, mouse.y).x)
+        }
+        onReleased: { panel.launcher.contentPane.preferredWidth = panel.paneWidth; panel.draggedPaneWidth = 0 }
+        onCanceled: panel.draggedPaneWidth = 0
+        Keys.onLeftPressed: panel.launcher.contentPane.preferredWidth = panel.paneWidth + 24
+        Keys.onRightPressed: panel.launcher.contentPane.preferredWidth = panel.paneWidth - 24
+        Rectangle {
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: paneResize.containsMouse || paneResize.pressed || paneResize.activeFocus ? 2 : Theme.edge(Screen.devicePixelRatio)
+            height: parent.height
+            color: paneResize.containsMouse || paneResize.pressed || paneResize.activeFocus ? Theme.accent : Theme.divider
+        }
+    }
+    Loader {
+        id: details
+        anchors.right: parent.right
+        anchors.top: topDivider.bottom
+        anchors.bottom: footer.top
+        width: panel.paneWidth
+        active: panel.detailsVisible
+        visible: active
+        onXChanged: panel.launcher.contentPane.movePreview()
+        sourceComponent: ContentPaneView {
+            pane: panel.launcher.contentPane
+            launcher: panel.launcher
+            compact: panel.compactDetails
+            onSearchFocusRequested: panel.searchBar.focusAtEnd()
+        }
+    }
     Footer {
         id: footer
         anchors.bottom: parent.bottom

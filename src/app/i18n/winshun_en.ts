@@ -2584,6 +2584,18 @@
         <source>文件夹大小按索引估算，不包含未索引内容；拖动分隔线调整宽度</source>
         <translation>Folder sizes are index estimates and exclude unindexed content; drag a separator to resize</translation>
     </message>
+    <message>
+        <source>收起内容详情</source>
+        <translation>Hide content details</translation>
+    </message>
+    <message>
+        <source>显示内容详情</source>
+        <translation>Show content details</translation>
+    </message>
+    <message>
+        <source>内容详情宽度，左右方向键调整</source>
+        <translation>Content details width; use Left and Right to adjust</translation>
+    </message>
 </context>
 <context>
     <name>PanelRow</name>
@@ -11654,5 +11666,540 @@
     <message><source>正在下载截图组件… %1%</source><translation>Downloading screen capture… %1%</translation></message>
     <message><source>正在安装截图组件…</source><translation>Installing screen capture…</translation></message>
     <message><source>截图尚未启用。可以重试，或稍后在“设置 → 插件”中开启。</source><translation>Capture is not enabled yet. Retry, or enable it later in Settings → Plugins.</translation></message>
+</context>
+<context>
+    <name>ContentLinesView</name>
+    <message>
+        <source>没有可显示的内容，请检查筛选条件或读取提示</source>
+        <translation>Nothing to display. Check the filter or reading status.</translation>
+    </message>
+    <message>
+        <source>选择左侧文件查看详情</source>
+        <translation>Select a file to view its details</translation>
+    </message>
+</context>
+<context>
+    <name>ContentMatchesView</name>
+    <message>
+        <source>在匹配中筛选</source>
+        <translation>Filter within hits</translation>
+    </message>
+    <message>
+        <source>区分大小写</source>
+        <translation>Match case</translation>
+    </message>
+    <message>
+        <source>词</source>
+        <translation>ab</translation>
+    </message>
+    <message>
+        <source>全词匹配</source>
+        <translation>Whole word</translation>
+    </message>
+    <message>
+        <source>正则表达式</source>
+        <translation>Regular expression</translation>
+    </message>
+    <message>
+        <source>全部工作表</source>
+        <translation>All sheets</translation>
+    </message>
+    <message>
+        <source>上下文 %1</source>
+        <translation>Context %1</translation>
+    </message>
+    <message>
+        <source>调整上下文行数，当前 %1 行</source>
+        <translation>Change context lines, currently %1</translation>
+    </message>
+    <message>
+        <source>上一处匹配，Shift+F3</source>
+        <translation>Previous match, Shift+F3</translation>
+    </message>
+    <message>
+        <source>下一处匹配，F3</source>
+        <translation>Next match, F3</translation>
+    </message>
+    <message>
+        <source>复制文本</source>
+        <translation>Copy text</translation>
+    </message>
+    <message>
+        <source>复制匹配</source>
+        <translation>Copy hits</translation>
+    </message>
+    <message>
+        <source>刷新</source>
+        <translation>Refresh</translation>
+    </message>
+</context>
+<context>
+    <name>ContentPaneView</name>
+    <message>
+        <source>本次内容搜索</source>
+        <translation>This content search</translation>
+    </message>
+    <message>
+        <source>内容详情</source>
+        <translation>Content details</translation>
+    </message>
+    <message>
+        <source>打开</source>
+        <translation>Open</translation>
+    </message>
+    <message>
+        <source>打开当前文件</source>
+        <translation>Open current file</translation>
+    </message>
+    <message>
+        <source>返回列表</source>
+        <translation>Back to list</translation>
+    </message>
+    <message>
+        <source>收起内容详情</source>
+        <translation>Hide content details</translation>
+    </message>
+    <message>
+        <source>摘要</source>
+        <translation>Summary</translation>
+    </message>
+    <message>
+        <source>匹配</source>
+        <translation>Hits</translation>
+    </message>
+    <message>
+        <source>文本</source>
+        <translation>Text</translation>
+    </message>
+    <message>
+        <source>预览</source>
+        <translation>Preview</translation>
+    </message>
+    <message>
+        <source>报告</source>
+        <translation>Report</translation>
+    </message>
+</context>
+<context>
+    <name>ContentPreviewView</name>
+    <message>
+        <source>选择文件查看原始外观</source>
+        <translation>Select a file to preview its appearance</translation>
+    </message>
+</context>
+<context>
+    <name>ContentReportView</name>
+    <message>
+        <source>按当前搜索生成报告快照，完成后可复制、打印或保存。完整搜索会继续读取其余候选文件。</source>
+        <translation>Create a report snapshot to copy, print or save. A full search also reads the remaining candidate files.</translation>
+    </message>
+    <message>
+        <source>当前结果</source>
+        <translation>Current results</translation>
+    </message>
+    <message>
+        <source>所选文件（未多选时为当前文件）</source>
+        <translation>Selected files (current file if none selected)</translation>
+    </message>
+    <message>
+        <source>完整搜索</source>
+        <translation>Full search</translation>
+    </message>
+    <message>
+        <source>报告范围</source>
+        <translation>Report scope</translation>
+    </message>
+    <message>
+        <source>文件列表</source>
+        <translation>File list</translation>
+    </message>
+    <message>
+        <source>每处匹配</source>
+        <translation>Every match</translation>
+    </message>
+    <message>
+        <source>包含上下文</source>
+        <translation>Include context</translation>
+    </message>
+    <message>
+        <source>取消</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <source>生成报告</source>
+        <translation>Generate report</translation>
+    </message>
+    <message>
+        <source>文本 (.txt)</source>
+        <translation>Text (.txt)</translation>
+    </message>
+    <message>
+        <source>导出格式</source>
+        <translation>Export format</translation>
+    </message>
+    <message>
+        <source>复制</source>
+        <translation>Copy</translation>
+    </message>
+    <message>
+        <source>打印…</source>
+        <translation>Print…</translation>
+    </message>
+    <message>
+        <source>保存…</source>
+        <translation>Save…</translation>
+    </message>
+</context>
+<context>
+    <name>ContentSummaryView</name>
+    <message>
+        <source>停止统计</source>
+        <translation>Stop counting</translation>
+    </message>
+    <message>
+        <source>统计全部匹配</source>
+        <translation>Count all matches</translation>
+    </message>
+</context>
+<context>
+    <name>ws::ContentPane</name>
+    <message>
+        <source>未开启</source>
+        <translation>Off</translation>
+    </message>
+    <message>
+        <source>分布仅展示部分条目，完整数据见报告。</source>
+        <translation>Only some distribution entries are shown. See the report for the full data.</translation>
+    </message>
+    <message>
+        <source>文件已移动或删除</source>
+        <translation>The file has been moved or deleted</translation>
+    </message>
+    <message>
+        <source>请选择一个文件</source>
+        <translation>Select a file</translation>
+    </message>
+    <message>
+        <source>此文件没有可读取的文本</source>
+        <translation>This file has no readable text</translation>
+    </message>
+    <message>
+        <source>文件超过当前读取上限</source>
+        <translation>The file exceeds the current reading limit</translation>
+    </message>
+    <message>
+        <source>文件仅保存在云端，请先下载到本机</source>
+        <translation>This file is online only. Download it first.</translation>
+    </message>
+    <message>
+        <source>无法读取文件，可能被占用、没有权限或格式不受支持</source>
+        <translation>Cannot read the file. It may be locked, access may be denied, or its format may be unsupported.</translation>
+    </message>
+    <message>
+        <source>第 %1 页</source>
+        <translation>Page %1</translation>
+    </message>
+    <message>
+        <source>第 %1 张幻灯片</source>
+        <translation>Slide %1</translation>
+    </message>
+    <message>
+        <source>%1 · 第 %2 行</source>
+        <translation>%1 · Row %2</translation>
+    </message>
+    <message>
+        <source>第 %1 行</source>
+        <translation>Line %1</translation>
+    </message>
+    <message>
+        <source>无法读取文件属性</source>
+        <translation>Cannot read the file attributes</translation>
+    </message>
+    <message>
+        <source>文件在读取时发生变化，请刷新重试</source>
+        <translation>The file changed while being read. Refresh to try again.</translation>
+    </message>
+    <message>
+        <source>此文件的预览处理程序不可用，可查看文本或打开文件</source>
+        <translation>The preview handler is unavailable. View the text or open the file.</translation>
+    </message>
+    <message>
+        <source>当前命中文件：%1
+已处理候选：%2 / %3（含索引排除）
+状态：%4
+内容索引：%5</source>
+        <translation>Current matching files: %1
+Candidates processed: %2 / %3 (including index exclusions)
+Status: %4
+Content index: %5</translation>
+    </message>
+    <message>
+        <source>正在搜索</source>
+        <translation>Searching</translation>
+    </message>
+    <message>
+        <source>当前搜索已结束</source>
+        <translation>Current search finished</translation>
+    </message>
+    <message>
+        <source>当前结果尚不完整</source>
+        <translation>Current results are incomplete</translation>
+    </message>
+    <message>
+        <source>正在更新</source>
+        <translation>Updating</translation>
+    </message>
+    <message>
+        <source>以文件版本为准</source>
+        <translation>Checked against the file version</translation>
+    </message>
+    <message>
+        <source>超过大小上限：%1</source>
+        <translation>Over the size limit: %1</translation>
+    </message>
+    <message>
+        <source>尚未搜索内容：%1</source>
+        <translation>Contents not searched: %1</translation>
+    </message>
+    <message>
+        <source>尚未索引的远程文件：%1</source>
+        <translation>Remote files not indexed: %1</translation>
+    </message>
+    <message>
+        <source>读取失败：%1</source>
+        <translation>Read failures: %1</translation>
+    </message>
+    <message>
+        <source>仅有部分提取文本：%1</source>
+        <translation>Partially extracted documents: %1</translation>
+    </message>
+    <message>
+        <source>由内容索引排除：%1</source>
+        <translation>Ruled out by the content index: %1</translation>
+    </message>
+    <message>
+        <source>搜索耗时：%1 ms</source>
+        <translation>Search time: %1 ms</translation>
+    </message>
+    <message>
+        <source>全部匹配次数按需统计；结果受上限或读取限制时会标明。</source>
+        <translation>All-match counts are calculated on request. Search and reading limits are shown explicitly.</translation>
+    </message>
+    <message>
+        <source>无扩展名</source>
+        <translation>No extension</translation>
+    </message>
+    <message>
+        <source>类型 · 命中文件</source>
+        <translation>Type · Matching files</translation>
+    </message>
+    <message>
+        <source>文件夹 · 命中文件</source>
+        <translation>Folder · Matching files</translation>
+    </message>
+    <message>
+        <source>筛选表达式无效：%1</source>
+        <translation>Invalid filter expression: %1</translation>
+    </message>
+    <message>
+        <source>仅显示部分内容或匹配，计数不是全文总数</source>
+        <translation>Only some content or matches are shown. Counts are not whole-file totals.</translation>
+    </message>
+    <message>
+        <source>来自当前版本的内容索引</source>
+        <translation>From the content index for the current file version</translation>
+    </message>
+    <message>
+        <source>正在读取与匹配…</source>
+        <translation>Reading and matching…</translation>
+    </message>
+    <message>
+        <source>选择文件查看匹配和文本</source>
+        <translation>Select a file to view hits and text</translation>
+    </message>
+    <message>
+        <source>显示 %1 / %2 处匹配 · 当前 %3</source>
+        <translation>Showing %1 / %2 matches · Current %3</translation>
+    </message>
+    <message>
+        <source>完整搜索：已处理 %1 / %2 个候选</source>
+        <translation>Full search: %1 / %2 candidates processed</translation>
+    </message>
+    <message>
+        <source>正在完整搜索，可随时取消…</source>
+        <translation>Running a full search. You can cancel at any time…</translation>
+    </message>
+    <message>
+        <source>已取消，未生成报告</source>
+        <translation>Cancelled; no report generated</translation>
+    </message>
+    <message>
+        <source>正在统计全部匹配：0 / %1 个文件</source>
+        <translation>Counting all matches: 0 / %1 files</translation>
+    </message>
+    <message>
+        <source>Win顺 · 内容搜索报告</source>
+        <translation>WinShun · Content search report</translation>
+    </message>
+    <message>
+        <source>搜索：%1</source>
+        <translation>Search: %1</translation>
+    </message>
+    <message>
+        <source>范围：完整搜索（最多 20,000 个命中文件）</source>
+        <translation>Scope: full search (up to 20,000 matching files)</translation>
+    </message>
+    <message>
+        <source>范围：生成时的结果／所选文件快照</source>
+        <translation>Scope: snapshot of results or selected files at generation time</translation>
+    </message>
+    <message>
+        <source>生成时间：%1</source>
+        <translation>Generated: %1</translation>
+    </message>
+    <message>
+        <source>搜索跳过：大小上限 %1；无法读取 %2；远程未索引 %3；延后读取 %4</source>
+        <translation>Search skipped: size limit %1; unreadable %2; remote unindexed %3; deferred %4</translation>
+    </message>
+    <message>
+        <source>文件列表</source>
+        <translation>File list</translation>
+    </message>
+    <message>
+        <source>文件</source>
+        <translation>File</translation>
+    </message>
+    <message>
+        <source>路径</source>
+        <translation>Path</translation>
+    </message>
+    <message>
+        <source>匹配次数</source>
+        <translation>Matches</translation>
+    </message>
+    <message>
+        <source>状态</source>
+        <translation>Status</translation>
+    </message>
+    <message>
+        <source>逐处匹配</source>
+        <translation>Individual matches</translation>
+    </message>
+    <message>
+        <source>位置</source>
+        <translation>Location</translation>
+    </message>
+    <message>
+        <source>关键词</source>
+        <translation>Term</translation>
+    </message>
+    <message>
+        <source>文本</source>
+        <translation>Text</translation>
+    </message>
+    <message>
+        <source>上下文</source>
+        <translation>Context</translation>
+    </message>
+    <message>
+        <source>部分内容</source>
+        <translation>Partial content</translation>
+    </message>
+    <message>
+        <source>已读取</source>
+        <translation>Read</translation>
+    </message>
+    <message>
+        <source>正在统计全部匹配：%1 / %2 个文件</source>
+        <translation>Counting all matches: %1 / %2 files</translation>
+    </message>
+    <message>
+        <source>已读取／尝试：%1 个文件；匹配：%2 处；读取失败：%3；部分内容：%4</source>
+        <translation>Files read or attempted: %1; matches: %2; read failures: %3; partial content: %4</translation>
+    </message>
+    <message>
+        <source>此报告包含未完成或未读取的内容，数字不是完整全文总数。</source>
+        <translation>This report has incomplete or unread content. Counts are not complete full-text totals.</translation>
+    </message>
+    <message>
+        <source>本报告范围内的内容已读取完成。</source>
+        <translation>Reading is complete within this report’s scope.</translation>
+    </message>
+    <message>
+        <source>安全上限：100,000 条匹配、32 MiB 正文，每个字段 32,767 字符；超出部分未写入。</source>
+        <translation>Limits: 100,000 matches, 32 MiB of text and 32,767 characters per field. Content beyond these limits was omitted.</translation>
+    </message>
+    <message>
+        <source>搜索时无法读取</source>
+        <translation>Unreadable during search</translation>
+    </message>
+    <message>
+        <source>超过大小上限</source>
+        <translation>Over the size limit</translation>
+    </message>
+    <message>
+        <source>匹配分布</source>
+        <translation>Match distribution</translation>
+    </message>
+    <message>
+        <source>类型／文件夹</source>
+        <translation>Type / Folder</translation>
+    </message>
+    <message>
+        <source>报告已就绪</source>
+        <translation>Report ready</translation>
+    </message>
+    <message>
+        <source>完整搜索 · 匹配次数</source>
+        <translation>Full search · Matches</translation>
+    </message>
+    <message>
+        <source>报告范围 · 匹配次数</source>
+        <translation>Report scope · Matches</translation>
+    </message>
+    <message>
+        <source>保存搜索报告</source>
+        <translation>Save search report</translation>
+    </message>
+    <message>
+        <source>搜索报告</source>
+        <translation>Search report</translation>
+    </message>
+    <message>
+        <source>正在保存报告…</source>
+        <translation>Saving report…</translation>
+    </message>
+    <message>
+        <source>已保存：%1</source>
+        <translation>Saved: %1</translation>
+    </message>
+    <message>
+        <source>保存失败，原文件已保留</source>
+        <translation>Saving failed. The original file was preserved.</translation>
+    </message>
+    <message>
+        <source>请选择打印机…</source>
+        <translation>Choose a printer…</translation>
+    </message>
+    <message>
+        <source>报告已发送到打印机</source>
+        <translation>Report sent to the printer</translation>
+    </message>
+    <message>
+        <source>已取消打印</source>
+        <translation>Printing cancelled</translation>
+    </message>
+    <message>
+        <source>打印失败，请检查打印机后重试</source>
+        <translation>Printing failed. Check the printer and try again.</translation>
+    </message>
+    <message>
+        <source>正在加载文件预览…</source>
+        <translation>Loading file preview…</translation>
+    </message>
+    <message>
+        <source>此文件没有可用的预览处理程序，可查看文本或打开文件</source>
+        <translation>No preview handler is available. View the text or open the file.</translation>
+    </message>
 </context>
 </TS>

@@ -4979,6 +4979,8 @@ void App::launcherLostFront()
     // after it opened.
     if (!m_window || !m_window->isVisible() || clipboardUnderLauncher())
         return;
+    if (m_launcher->contentPane()->modalOperation() || m_launcher->contentPane()->ownsForeground())
+        return;
     // The preview (Alt+P) took the focus for a moment: a handler's
     // window of ours (handed back at once), or QuickLook's or Seer's
     // (which hand it back themselves). The launcher stays.

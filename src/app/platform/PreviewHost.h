@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QString>
 #include <QTimer>
+#include <QRect>
 #include <QUuid>
 
 #include <memory>
@@ -50,6 +51,7 @@ public:
     // The popup, a window in it, or one of the handler's program (Word
     // taking the focus as it starts).
     bool owns(HWND window) const;
+    std::optional<QRect> visibleRect() const;
 
 signals:
     void failed(quint64 ticket);

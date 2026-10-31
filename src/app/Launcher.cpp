@@ -1,4 +1,5 @@
 #include "Launcher.h"
+#include "platform/ContentOpen.h"
 #include "PreviewShortcut.h"
 #include "ResultColumns.h"
 #include "Settings.h"
@@ -466,6 +467,17 @@ Launcher::Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places,
     , m_sink(std::make_unique<ModelSink>(*this))
 {
     m_columns.load(Settings::filePath());
+    m_contentPane = std::make_unique<ContentPane>(index);
+    const auto syncPane = [this] { syncContentPane(); };
+    connect(this, &Launcher::currentRowChanged, this, syncPane);
+    connect(this, &Launcher::statusChanged, this, syncPane);
+    connect(this, &Launcher::scopeChanged, this, syncPane);
+    connect(this, &Launcher::folderChipsChanged, this, syncPane);
+    connect(&m_results, &ResultModel::selectionChanged, this, syncPane);
+    connect(m_contentPane.get(), &ContentPane::openRequested, this, [this](const QString& path, int line) {
+        remember(path, m_query);
+        contentopen::open(path, line, reportFailure(QFileInfo(path).fileName()));
+    });
     m_results.setFolderIndex([index] { return index ? index->index() : nullptr; });
     m_pluginWait.setSingleShot(true);
     m_pluginWait.setInterval(150ms); // a plugin that answers within it shows nothing of the wait
@@ -1263,6 +1275,7 @@ void Launcher::setSwitches(Switches* switches, const QString& stateFile)
     m_switches = switches;
     m_switchWaiting.clear();
     m_stateFile = stateFile;
+    m_contentPane->loadPreferences(stateFile);
     m_switchPageTold = !stateFile.isEmpty() && QSettings(stateFile, QSettings::IniFormat).value(u"Hints/SwitchPage"_s).toBool();
     m_previewWanted = !stateFile.isEmpty() && QSettings(stateFile, QSettings::IniFormat).value(u"Launcher/PreviewOpen"_s).toBool();
     m_results.setSwitches(switches);
@@ -2020,7 +2033,7 @@ QString Launcher::contentNeedle() const
     return text;
 }
 
-void Launcher::startContentSearch()
+SearchEngine::Request Launcher::contentRequest() const
 {
     SearchEngine::Request request;
     request.text = m_scope == Content ? searchText() : contentNeedle();
@@ -2050,7 +2063,36 @@ void Launcher::startContentSearch()
         request.contentIndexedOnly = true;
         request.contentThreads = 1;
     }
-    m_requestId = m_engine->submit(std::move(request));
+    return request;
+}
+
+void Launcher::syncContentPane()
+{
+    if (!m_contentPane) return;
+    if (m_scope != Content) {
+        m_contentPane->setActive(false);
+        m_contentPane->cancelReport();
+        return;
+    }
+    SearchResults rows;
+    if (m_scope == Content && !stale()) {
+        rows.reserve(m_results.count());
+        for (int i = 0; i < m_results.count(); ++i) {
+            const auto* row = m_results.at(i);
+            if (row && !row->isDir && row->app == AppKind::None) rows.append(*row);
+        }
+    }
+    const QString current = m_scope == Content && !stale() ? m_results.pathAt(m_currentRow) : QString();
+    const QString words = m_contentScope.words.isEmpty() ? splitContentQuery(searchText()).words : m_contentScope.words;
+    m_contentPane->setContentIndexEnabled(m_contentIndex);
+    m_contentPane->update(contentRequest(), words, searchText() + u'\n' + panelKey() + u'\n' + pickKey(m_contentPick)
+            + u'\n' + m_contentFolder, std::move(rows), stale() ? SearchResults{} : m_results.selection(), current,
+        m_contentScanned, m_contentTotal, m_scanComplete && !m_moreContent, searching(), m_leftOut);
+}
+
+void Launcher::startContentSearch()
+{
+    m_requestId = m_engine->submit(contentRequest());
     m_pending = true;
     m_contentRunning = true;
     refreshStatus();

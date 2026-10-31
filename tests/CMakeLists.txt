@@ -1,5 +1,19 @@
 find_package(Qt6 6.8 REQUIRED COMPONENTS Test QuickTest)
 
+qt_add_executable(tst_contentdetails tst_contentdetails.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/ContentReportPrint.cpp)
+target_include_directories(tst_contentdetails PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_contentdetails PRIVATE wscore Qt6::Test miniz comdlg32 gdi32 ole32)
+set_target_properties(tst_contentdetails PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+add_test(NAME tst_contentdetails COMMAND tst_contentdetails -o -,txt)
+set_tests_properties(tst_contentdetails PROPERTIES TIMEOUT 90
+    ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+add_test(NAME tst_contentpane COMMAND $<TARGET_FILE:WinShun>
+    --preview-results "${CMAKE_CURRENT_BINARY_DIR}/content-pane" --content-pane --renderer d3d11)
+set_tests_properties(tst_contentpane PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 qt_add_executable(tst_querysyntax tst_querysyntax.cpp)
 target_link_libraries(tst_querysyntax PRIVATE wscore Qt6::Test)
 set_target_properties(tst_querysyntax PROPERTIES WIN32_EXECUTABLE FALSE)

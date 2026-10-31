@@ -1,4 +1,5 @@
 #include "Preview.h"
+#include "ContentPaneProbe.h"
 
 #include "Backup.h"
 #include "App.h"
@@ -3124,6 +3125,10 @@ int runResults(const QStringList& args)
     QGuiApplication::setFont(font);
     QQmlApplicationEngine engine;
     engine.addImageProvider(u"fileicon"_s, new FileIconProvider);
+    if (args.contains(u"--content-pane"_s)) {
+        engine.addImageProvider(u"thumbnail"_s, new ThumbnailProvider);
+        return checkContentPane(&engine, out) ? std::min(g_warnings, 100) : 4;
+    }
     if (args.contains(u"--search-workload"_s)) {
         engine.addImageProvider(u"thumbnail"_s, new ThumbnailProvider);
         return checkSearchWorkload(&engine, out) ? std::min(g_warnings, 100) : 4;

@@ -47,6 +47,8 @@
 //     --search-workload checks automatic vs explicit content searches over
 //     real temporary OOXML/text files, records app/extractor CPU time, and
 //     checks the continuation in the box, panel and gallery without busy waits.
+//     --content-pane checks all five detail tabs with real text/spreadsheet
+//     fixtures, selection races, filtering, report scopes and native preview.
 //
 //   WinShun.exe --preview-ai-cards <folder> [--dark] [--scale 1.5]
 //     The screens for AI changing settings (SettingsConfirm.qml, SettingsNotice.qml)

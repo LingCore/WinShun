@@ -629,6 +629,14 @@ void PreviewHost::hide()
     m_worker->post(kHide);
 }
 
+std::optional<QRect> PreviewHost::visibleRect() const
+{
+    const HWND popup = m_worker ? m_worker->popup.load() : nullptr;
+    RECT rect {};
+    if (!popup || !::IsWindowVisible(popup) || !::GetWindowRect(popup, &rect)) return {};
+    return QRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
+}
+
 bool PreviewHost::owns(HWND window) const
 {
     if (!m_worker || !window)

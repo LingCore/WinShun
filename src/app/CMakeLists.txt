@@ -42,6 +42,8 @@ qt_add_executable(WinShun WIN32
     App.cpp App.h
     CommandLine.cpp CommandLine.h
     ColorText.cpp ColorText.h
+    platform/ContentOpen.cpp platform/ContentOpen.h
+    platform/ContentReportPrint.cpp platform/ContentReportPrint.h
     ContextMenuGuard.cpp ContextMenuGuard.h # a right-click on a window's top-left pixel crashed Qt Quick (QTBUG-146671)
     DialogBarVisibility.cpp DialogBarVisibility.h
     FrameReveal.cpp FrameReveal.h
@@ -54,6 +56,7 @@ qt_add_executable(WinShun WIN32
     PieLabels.cpp PieLabels.h
     Phosphor.cpp Phosphor.h
     Preview.cpp Preview.h
+    ContentPaneProbe.cpp ContentPaneProbe.h
     RecentFolders.cpp RecentFolders.h
     Settings.cpp Settings.h
     SiteIconImage.cpp SiteIconImage.h
@@ -124,6 +127,13 @@ set(qml_files
     qml/ResultRow.qml
     qml/ElsewhereCaption.qml
     qml/Panel.qml
+    qml/ContentPaneView.qml
+    qml/ContentChip.qml
+    qml/ContentMatchesView.qml
+    qml/ContentLinesView.qml
+    qml/ContentSummaryView.qml
+    qml/ContentPreviewView.qml
+    qml/ContentReportView.qml
     qml/PanelRow.qml
     qml/Gallery.qml
     qml/ResultTile.qml
@@ -259,6 +269,7 @@ qt_add_qml_module(WinShun
         FileDropTarget.cpp FileDropTarget.h
         FileFacts.cpp FileFacts.h
         FilePreview.cpp FilePreview.h
+        ContentPane.cpp ContentPane.h
         PictureFile.cpp PictureFile.h
         FolderMenu.cpp FolderMenu.h
         DropPie.cpp DropPie.h # the favorite folders round the pointer while dragging files (DropPieWindow.qml)
@@ -348,7 +359,7 @@ target_link_libraries(WinShun PRIVATE
     mfplat mfreadwrite mfuuid delayimp
     windowsapp # TextRecognizer: Windows.Media.Ocr, through C++/WinRT from the Windows SDK
     onnxruntime_headers) # PaddleOcr
-target_link_libraries(WinShun PRIVATE advapi32 userenv miniz) # userenv: the user's environment for ws (Shell); miniz: settings backups (BackupFiles)
+target_link_libraries(WinShun PRIVATE advapi32 userenv miniz comdlg32 gdi32) # native report printing
 # The execution level (asInvoker, since 0.8.0) comes from app.manifest alone,
 # with the rest of the manifest; the linker's own UAC fragment would be a
 # second one. Media Foundation is loaded only when used (SoundClip): Windows

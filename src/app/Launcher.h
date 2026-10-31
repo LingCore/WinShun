@@ -6,6 +6,7 @@
 #include "LauncherNavigation.h"
 #include "ResultModel.h"
 #include "PanelColumns.h"
+#include "ContentPane.h"
 #include "SearchEngine.h"
 #include "SearchTypes.h"
 #include "WebShortcut.h"
@@ -57,6 +58,7 @@ class Launcher : public QObject {
     Q_PROPERTY(Scope scope READ scope WRITE setScope NOTIFY scopeChanged FINAL)
     Q_PROPERTY(ws::ResultModel* results READ results CONSTANT FINAL)
     Q_PROPERTY(ws::PanelColumns* panelColumns READ panelColumns CONSTANT FINAL)
+    Q_PROPERTY(ws::ContentPane* contentPane READ contentPane CONSTANT FINAL)
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusChanged FINAL)
     Q_PROPERTY(bool busy READ busy NOTIFY statusChanged FINAL)
     // Scrolled to the end, there is more to list (loadMore()): names beyond
@@ -398,11 +400,12 @@ public:
     bool searchesContent() const { return m_scope == Content || m_withContent; }
     bool contentEnabled() const { return m_contentEnabled; }
     bool contentIndex() const { return m_contentIndex; }
+    ContentPane* contentPane() { return m_contentPane.get(); }
     void setContentIndex(bool on);
     // The strip's switch: contentIndexRequested, the app changes the setting.
     Q_INVOKABLE void requestContentIndex(bool on) { emit contentIndexRequested(on); }
 
-    void setWindow(QWindow* window) { m_window = window; }
+    void setWindow(QWindow* window) { m_window = window; if (m_contentPane) m_contentPane->setWindow(window); }
     // `enabled` false: no 内容, and 全部 finds names only; a launcher in 内容 goes to 全部.
     void setContentOptions(bool enabled, QStringList extensions, const ContentSizeLimits& sizeLimits,
         bool inLowPriority, bool documents);
@@ -809,6 +812,8 @@ private:
     QString contentNeedle() const;
     QString shownExtensions() const;
     void startContentSearch();
+    SearchEngine::Request contentRequest() const;
+    void syncContentPane();
     void showRows(SearchResults rows, QStringList highlights);
     // Web suggestions (WebSuggester). Part of search(): the site's asked for
     // the words typed after its keyword, or the rows go (another site, no
@@ -907,6 +912,7 @@ private:
     SearchEngine* m_engine;
     History* m_history;
     ResultModel m_results;
+    std::unique_ptr<ContentPane> m_contentPane;
     QPointer<QWindow> m_window;
     std::function<bool(const QString& folder)> m_folderOpener; // setFolderOpener
     std::function<bool(const QString& path)> m_revealer; // setRevealer
