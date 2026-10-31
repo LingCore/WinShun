@@ -2221,6 +2221,7 @@ void SearchEngine::runContentSearch(const Job& job)
         std::vector<std::vector<EntryId>> largeOf(index->chunkCount());
         std::vector<int> lowPriorityOf(index->chunkCount(), 0);
         std::vector<int> remoteOf(index->chunkCount(), 0);
+        std::vector<int> deferredOf(index->chunkCount(), 0);
         std::vector<std::vector<int>> otherTypesOf(index->chunkCount()); // per kind (otherTypes.count()), made when first met
         const bool bounded = request.filter.byTime() || request.filter.bySize(); // the panel's: when written, how large
         m_pool.parallelFor(index->chunkCount(), [&](std::size_t c) {
@@ -2313,6 +2314,10 @@ void SearchEngine::runContentSearch(const Job& job)
                     ++remoteOf[c];
                     continue;
                 }
+                if (request.contentIndexedOnly && (!indexed || !lookup.usable)) {
+                    ++deferredOf[c];
+                    continue;
+                }
                 const std::uint8_t priority = priorityOf(e, id, inProfile);
                 found[c].push_back({id, static_cast<std::uint8_t>(likely ? priority : 4 + priority), indexed,
                     byTime ? sortTime(index->modified(id), until) : FileTime {0}, remote});
@@ -2332,6 +2337,7 @@ void SearchEngine::runContentSearch(const Job& job)
                 leftOut.large.append(QString::fromStdWString(index->wpath(id)));
             leftOut.lowPriority += lowPriorityOf[c];
             leftOut.remote += remoteOf[c];
+            leftOut.deferred += deferredOf[c];
             for (std::size_t t = 0; t < otherTypesOf[c].size(); ++t)
                 otherCounts[t] += otherTypesOf[c][t];
         }
@@ -2485,7 +2491,12 @@ void SearchEngine::runContentSearch(const Job& job)
                         // followed), and kept for next time if it can be.
                         std::optional<doctext::DocText> text
                             = candidate.indexed ? content->textOf(candidate.id) : std::nullopt;
-                        if (!text && intake.wants(path)) {
+                        if (!text && request.contentIndexedOnly) {
+                            // A missing/corrupt cache is not permission to
+                            // parse documents during an automatic search.
+                            std::lock_guard lock(largeMutex);
+                            ++leftOut.deferred;
+                        } else if (!text && intake.wants(path)) {
                             const std::uint64_t since = intake.since();
                             ContentIndexer::FileText read
                                 = ContentIndexer::readFile(path, maxBytes, stale, m_documents.get());

@@ -9405,6 +9405,17 @@
         <source>设置…</source>
         <translation>Settings…</translation>
     </message>
+    <message numerus="yes">
+        <source>还有 %Ln 个文件未搜索内容</source>
+        <translation>
+            <numerusform>Contents not searched: %Ln file</numerusform>
+            <numerusform>Contents not searched: %Ln files</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>搜索内容</source>
+        <translation>Search contents</translation>
+    </message>
 </context>
 <context>
     <name>ws::PanelColumns</name>

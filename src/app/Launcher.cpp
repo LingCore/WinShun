@@ -86,6 +86,7 @@ constexpr QLatin1StringView kTypesHint("types");
 // Files on shares and in WSL whose contents are not indexed (GitHub #114):
 // the settings' section of those folders, where they are turned on.
 constexpr QLatin1StringView kRemoteHint("remote");
+constexpr QLatin1StringView kDeferredHint("deferred");
 constexpr QLatin1StringView kDriveHint("drive:"); // + "E:"
 // With only the chosen folders indexed (GitHub #52): a folder not among them
 // walked for the query (+ its path), the same folder added to them (+ its
@@ -916,6 +917,8 @@ QVariantList Launcher::leftOutHints() const
     const bool onlyTypingFolder = m_typingOnly && !typingWords().isEmpty();
     if (onlyTypingFolder)
         add(kEverywhereHint, tr("只在 %1 里搜").arg(typingFolder()), tr("也搜其他位置"));
+    if (m_scope == All && m_scanComplete && !m_moreContent && m_leftOut.deferred > 0)
+        add(kDeferredHint, tr("还有 %Ln 个文件未搜索内容", nullptr, m_leftOut.deferred), tr("搜索内容"));
     // The counts are of files not read, whatever was typed: offered under
     // every list they would be noise. Only when what was found does not fill
     // the window (Main.qml maxRows), where "is that all?" is the question.
@@ -1003,6 +1006,10 @@ void Launcher::searchLeftOut(const QString& kind)
             return hint[u"kind"_s] == kind || hint[u"kind2"_s] == kind;
         }))
         return;
+    if (kind == kDeferredHint) {
+        setScope(Content); // explicit opt-in to read files, with the same query
+        return;
+    }
     // Not searches: the settings' page, the note closed, a folder added.
     if (kind == kRemoteHint) {
         emit shareSettingsRequested();
@@ -2037,8 +2044,11 @@ void Launcher::startContentSearch()
         request.contentThreads = kContentThreads;
         setContentPlace(request);
     } else {
-        // 全部 looks in your own files on its own, gently.
-        request.contentThreads = std::clamp(static_cast<int>(std::thread::hardware_concurrency()) / 2, 2, 6);
+        // Typing a file name must not start a parallel document-parsing
+        // workload (#153). Verify indexed matches on one reader; offer the
+        // unsearched contents explicitly instead of silently omitting them.
+        request.contentIndexedOnly = true;
+        request.contentThreads = 1;
     }
     m_requestId = m_engine->submit(std::move(request));
     m_pending = true;

@@ -48,6 +48,9 @@ struct ContentLeftOut {
     // Of a listed type, on a share or in WSL, the content index not having
     // read them: their share's contents are not indexed, or not yet (GitHub #114).
     int remote = 0;
+    // Automatic search leaves unindexed files, broad terms without grams,
+    // and unavailable document text for an explicit content search.
+    int deferred = 0;
     friend bool operator==(const ContentLeftOut&, const ContentLeftOut&) = default;
 };
 
@@ -173,8 +176,11 @@ public:
         // Also inside system, program and tool folders (EntryFlag::LowPriority).
         bool contentInLowPriority = false;
         // Files read at once (each open waits for the antivirus, so more
-        // than processors). Asked for (内容): many; 全部's own: a few.
+        // than processors). Asked for (内容): many; 全部's own: one.
         int contentThreads = 4;
+        // Automatic 全部 search: verify indexed candidates only, never launch
+        // document parsers. Explicit 内容 searches retain live file reads.
+        bool contentIndexedOnly = false;
         ContentSet contentSet = ContentSet::Listed;
         // ContentSet::Given: the files, by path (the ones a scan before left
         // out for being over the size limit, ContentLeftOut::large, asked for

@@ -722,7 +722,7 @@ Item {
         anchors.leftMargin: 1
         anchors.right: parent.right
         anchors.top: columns.bottom
-        anchors.bottom: footer.top
+        anchors.bottom: contentOffer.top
         topMargin: 4
         bottomMargin: horizontalScroll.visible ? 14 : 4
         clip: true
@@ -810,7 +810,7 @@ Item {
         anchors.rightMargin: 12
         anchors.top: columns.bottom
         anchors.topMargin: 8
-        anchors.bottom: footer.top
+        anchors.bottom: contentOffer.top
         launcher: panel.launcher
         nameTip: panel.nameTip
         opacity: panel.dimmed ? 0.45 : 1
@@ -835,6 +835,48 @@ Item {
         wrapMode: Text.Wrap
         color: Theme.faint
         font.pixelSize: Theme.uiBody
+    }
+
+    // Automatic 全部 searches can leave contents unread (#153). Keep the
+    // continuation reachable in both the table and gallery, even with rows.
+    Item {
+        id: contentOffer
+        readonly property var hint: panel.launcher.leftOutHints.find(h => h.kind === "deferred")
+        visible: !!hint
+        height: visible ? Theme.hintRowHeight : 0
+        anchors.left: sidebar.right
+        anchors.leftMargin: 12
+        anchors.right: parent.right
+        anchors.rightMargin: 12
+        anchors.bottom: footer.top
+
+        Text {
+            anchors.left: parent.left
+            anchors.right: contentAction.left
+            anchors.rightMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            text: contentOffer.hint ? contentOffer.hint.text : ""
+            textFormat: Text.PlainText
+            color: Theme.subtext
+            font.pixelSize: Theme.uiBody
+            elide: Text.ElideRight
+        }
+        FlatButton {
+            id: contentAction
+            objectName: "panelContentSearch"
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            height: Theme.hintRowHeight - 4
+            text: contentOffer.hint ? contentOffer.hint.action : ""
+            flat: true
+            visible: contentOffer.visible
+            Accessible.role: Accessible.Button
+            Accessible.name: text
+            onClicked: {
+                panel.launcher.searchLeftOut(contentOffer.hint.kind)
+                panel.searchBar.focusAtEnd()
+            }
+        }
     }
 
     Footer {

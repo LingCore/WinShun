@@ -31,11 +31,13 @@
 #include "platform/FileDialog.h"
 #include "platform/FileManagers.h"
 #include "platform/OcrPackage.h"
+#include "miniz.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QElapsedTimer>
+#include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
 #include <QFontInfo>
@@ -74,6 +76,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
+#include <map>
 #include <memory>
 
 #include <windows.h>
@@ -2844,6 +2847,260 @@ bool checkNumberColumn(QQmlEngine* qmlEngine, const QDir& output, int width)
     return ok;
 }
 
+// #153: exercise the production launcher and search workers over real files,
+// with no background indexing, hooks, clipboard capture or user data.
+bool checkSearchWorkload(QQmlEngine* qml, const QDir& output)
+{
+    QTemporaryDir temporary;
+    IndexService index(temporary.filePath(u"index"_s), IndexService::Options{});
+    AppCatalog apps;
+    SystemCatalog places;
+    apps.setApps(std::make_shared<const AppList>());
+    places.setPlaces(std::make_shared<const PlaceList>());
+    History history(temporary.filePath(u"history.tsv"_s));
+    SearchEngine search(&index, &apps, &places);
+    Launcher launcher(&index, &apps, &places, &search, &history);
+    launcher.setContentOptions(true, {u"txt"_s}, ContentSizeLimits{}, false, true);
+    ClipStore store(temporary.filePath(u"clipboard"_s));
+    if (!store.open(QDateTime::currentMSecsSinceEpoch())) return false;
+    ClipboardWatcher watcher({}, {});
+    Clipboard clipboard(&store, &watcher);
+    Placement placement(temporary.filePath(u"state.ini"_s), u"Launcher"_s);
+    WindowFrame frame(false);
+    QQmlComponent component(qml, u"WinShun"_s, u"Main"_s);
+    std::unique_ptr<QObject> object(component.createWithInitialProperties({
+        {u"launcher"_s, QVariant::fromValue(&launcher)}, {u"clipboard"_s, QVariant::fromValue(&clipboard)},
+        {u"frame"_s, QVariant::fromValue(&frame)}, {u"placement"_s, QVariant::fromValue(&placement)}}));
+    auto* window = qobject_cast<QQuickWindow*>(object.get());
+    if (!window) { say(component.errorString()); return false; }
+    window->create();
+    launcher.setWindow(window);
+    frame.setWindow(window);
+    placement.setWindow(window);
+    showOffScreen(window);
+    // A nested event loop sleeps between events. The static preview's pump()
+    // intentionally spins, which would invalidate a CPU measurement here.
+    const auto wait = [](int ms) {
+        QEventLoop loop;
+        QTimer::singleShot(ms, &loop, &QEventLoop::quit);
+        loop.exec();
+    };
+    const auto waitFor = [&](const auto& ready) {
+        QElapsedTimer timer;
+        timer.start();
+        while (!ready() && timer.elapsed() < 30000) wait(10);
+        return ready();
+    };
+    QJsonObject report;
+    bool passed = true;
+    const auto check = [&](const QString& name, bool okay) {
+        report.insert(name, okay);
+        passed = passed && okay;
+        if (!okay) say(u"search workload failed: "_s + name);
+    };
+    const auto files = index.index();
+    const EntryId root = files->addRoot(QDir::toNativeSeparators(temporary.path()).toUtf8().toStdString());
+    const auto write = [&](const QString& name, const QByteArray& bytes) {
+        QFile file(temporary.filePath(name));
+        if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size()) return kNoEntry;
+        const auto lock = files->writeLock();
+        return files->add(root, name.toUtf8().toStdString(), 0);
+    };
+    // Real OOXML parsing work, not a sleeping/fake extractor. None of these
+    // documents matches: an automatic scan would have to parse every one.
+    const QByteArray xml = "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body>"
+        + QByteArray("<w:p><w:r><w:t>unrelated document text</w:t></w:r></w:p>").repeated(25000)
+        + "</w:body></w:document>";
+    const auto document = [](const QByteArray& body) {
+        mz_zip_archive zip {};
+        if (!mz_zip_writer_init_heap(&zip, 0, 0)) return QByteArray();
+        const QByteArray types = "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/></Types>";
+        const QByteArray rels = "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\"/></Relationships>";
+        bool zipped = mz_zip_writer_add_mem(&zip, "[Content_Types].xml", types.constData(), types.size(), MZ_DEFAULT_LEVEL)
+            && mz_zip_writer_add_mem(&zip, "_rels/.rels", rels.constData(), rels.size(), MZ_DEFAULT_LEVEL)
+            && mz_zip_writer_add_mem(&zip, "word/document.xml", body.constData(), body.size(), MZ_DEFAULT_LEVEL);
+        void* buffer = nullptr;
+        size_t length = 0;
+        zipped = zipped && mz_zip_writer_finalize_heap_archive(&zip, &buffer, &length);
+        const QByteArray result = zipped ? QByteArray(static_cast<const char*>(buffer), static_cast<qsizetype>(length)) : QByteArray();
+        mz_free(buffer);
+        mz_zip_writer_end(&zip);
+        return result;
+    };
+    const QByteArray docx = document(xml);
+    if (docx.isEmpty()) return false;
+    for (int i = 0; i < 64; ++i)
+        check(u"fixture_%1"_s.arg(i), write(u"document-%1.docx"_s.arg(i), docx) != kNoEntry);
+    const QByteArray text("first line\nneedle in the document\n");
+    const EntryId cachedText = write(u"indexed.txt"_s, text);
+    const EntryId uncachedText = write(u"pending.txt"_s, text);
+    const QByteArray matchingDoc = document("<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body><w:p><w:r><w:t>first line</w:t></w:r></w:p><w:p><w:r><w:t>needle in the document</w:t></w:r></w:p></w:body></w:document>");
+    const EntryId cachedDoc = write(u"cached.docx"_s, matchingDoc);
+    const EntryId uncachedDoc = write(u"pending-match.docx"_s, matchingDoc);
+    const EntryId dirtyDoc = write(u"changed.docx"_s, matchingDoc);
+    const EntryId missingText = write(u"missing-cache.docx"_s, docx);
+    auto content = std::const_pointer_cast<ContentIndex>(index.contentIndex());
+    const auto read = ContentIndexer::readFile(QDir::toNativeSeparators(temporary.filePath(u"indexed.txt"_s)).toStdWString(), 0, {}, nullptr);
+    doctext::DocText cached;
+    cached.text = text.toStdString();
+    const QByteArray packed = ContentIndex::packText(cached);
+    check(u"seed_text"_s, content->add(cachedText, read.keys, false, read.stamp, content->changeSequence()));
+    check(u"seed_document"_s, content->add(cachedDoc, read.keys, false, read.stamp, content->changeSequence(), packed));
+    check(u"seed_missing_cache"_s, content->add(missingText, read.keys, false, read.stamp, content->changeSequence()));
+    check(u"seed_changed_document"_s, content->add(dirtyDoc, read.keys, false, read.stamp, content->changeSequence(), packed));
+    const EntryId changed[] {dirtyDoc};
+    content->markChanged(changed);
+    int starts = 0;
+    int finishes = 0;
+    QObject::connect(&search, &SearchEngine::contentProgress, &launcher,
+        [&](quint64, int, int, bool finished) { if (finished) ++finishes; });
+    QObject::connect(&search, &SearchEngine::resultsReady, &launcher,
+        [&](quint64, const SearchResults&, qint64, qint64) { ++starts; });
+    const auto contains = [&](EntryId id) {
+        return launcher.results()->indexOf(QString::fromStdWString(files->wpath(id))) >= 0;
+    };
+    const auto cpuMs = [](HANDLE process) {
+        FILETIME created {}, exited {}, kernel {}, user {};
+        if (!GetProcessTimes(process, &created, &exited, &kernel, &user)) return 0.0;
+        const auto ticks = [](FILETIME time) { return (static_cast<std::uint64_t>(time.dwHighDateTime) << 32) | time.dwLowDateTime; };
+        return static_cast<double>(ticks(kernel) + ticks(user)) / 10000.0;
+    };
+    std::map<DWORD, win32::UniqueHandle> extractors;
+    const auto sample = [&] {
+        const win32::UniqueHandle snapshot(CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0));
+        PROCESSENTRY32W entry {sizeof(entry)};
+        if (snapshot.valid() && Process32FirstW(snapshot.get(), &entry)) {
+            do {
+                if (entry.th32ParentProcessID == GetCurrentProcessId() && _wcsicmp(entry.szExeFile, L"WinShunExtract.exe") == 0
+                    && !extractors.contains(entry.th32ProcessID)) {
+                    win32::UniqueHandle process(OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, entry.th32ProcessID));
+                    if (process.valid()) extractors.emplace(entry.th32ProcessID, std::move(process));
+                }
+            } while (Process32NextW(snapshot.get(), &entry));
+        }
+    };
+    QTimer sampler;
+    sampler.setInterval(50);
+    QObject::connect(&sampler, &QTimer::timeout, &launcher, sample);
+    sampler.start();
+    const double cpuBefore = cpuMs(GetCurrentProcess());
+    QElapsedTimer elapsed;
+    elapsed.start();
+    launcher.setQuery(u"needle"_s);
+    check(u"automatic_finished"_s, waitFor([&] { return finishes > 0; }));
+    report.insert(u"automatic_ms"_s, elapsed.elapsed());
+    sample();
+    sampler.stop();
+    report.insert(u"automatic_app_cpu_ms"_s, cpuMs(GetCurrentProcess()) - cpuBefore);
+    double extractorCpu = 0;
+    for (const auto& [pid, process] : extractors) extractorCpu += cpuMs(process.get());
+    report.insert(u"automatic_extractor_cpu_ms"_s, extractorCpu);
+    report.insert(u"automatic_extractors"_s, static_cast<int>(extractors.size()));
+    check(u"automatic_starts_no_extractors"_s, extractors.empty());
+    check(u"automatic_cached_text"_s, contains(cachedText));
+    check(u"automatic_cached_document"_s, contains(cachedDoc));
+    check(u"automatic_defers_uncached_text"_s, !contains(uncachedText));
+    check(u"automatic_defers_uncached_document"_s, !contains(uncachedDoc));
+    check(u"automatic_defers_changed_document"_s, !contains(dirtyDoc));
+    QVariantMap deferred;
+    int deferredIndex = -1;
+    const QVariantList hints = launcher.leftOutHints();
+    for (qsizetype i = 0; i < hints.size(); ++i) {
+        if (hints[i].toMap().value(u"kind"_s) == u"deferred"_s) {
+            deferred = hints[i].toMap();
+            deferredIndex = static_cast<int>(i);
+        }
+    }
+    check(u"offers_content_search"_s, !deferred.isEmpty());
+    check(u"counts_unindexed_changed_and_missing_cache"_s, deferred.value(u"text"_s).toString().contains(u"68"));
+    const int settled = starts;
+    const double idleBefore = cpuMs(GetCurrentProcess());
+    wait(2000);
+    report.insert(u"stationary_app_cpu_ms"_s, cpuMs(GetCurrentProcess()) - idleBefore);
+    check(u"stationary_query_not_restarted"_s, starts == settled);
+    settle(window);
+    check(u"automatic_screenshot"_s, saveGrab(window, output.filePath(u"search-workload-all.png"_s)));
+    const int before = finishes;
+    check(u"qml_continuation_action"_s, QMetaObject::invokeMethod(window, "takeHint", Q_ARG(QVariant, QVariant(deferredIndex))));
+    check(u"explicit_content_scope"_s, launcher.scope() == Launcher::Content);
+    check(u"explicit_preserves_query"_s, launcher.query() == u"needle");
+    check(u"explicit_finished"_s, !deferred.isEmpty() && waitFor([&] { return finishes > before; }));
+    check(u"explicit_reads_uncached_text"_s, contains(uncachedText));
+    check(u"explicit_reads_uncached_document"_s, contains(uncachedDoc));
+    check(u"explicit_reads_changed_document"_s, contains(dirtyDoc));
+    check(u"explicit_keeps_cached_document"_s, contains(cachedDoc));
+    settle(window);
+    check(u"explicit_screenshot"_s, saveGrab(window, output.filePath(u"search-workload-content.png"_s)));
+    const int beforePanel = finishes;
+    launcher.setScope(Launcher::All);
+    check(u"panel_automatic_finished"_s, waitFor([&] { return finishes > beforePanel && !launcher.searching(); }));
+    launcher.setPanel(true);
+    window->resize(760, 500);
+    auto* contentAction = window->findChild<QQuickItem*>(u"panelContentSearch"_s);
+    check(u"panel_continuation_visible"_s, waitFor([&] {
+        return !launcher.searching() && !launcher.stale() && contentAction && contentAction->isVisible();
+    }));
+    // App normally owns panel sizing. These off-screen windows receive no
+    // native expose/resize events: synchronize the viewport before the grab.
+    window->resize(760, 500);
+    settle(window);
+    const auto actionPainted = [&] {
+        if (!contentAction) return false;
+        const QImage image = window->grabWindow();
+        if (image.isNull()) return false;
+        const qreal scale = image.width() / qreal(window->width());
+        const QRectF bounds = contentAction->mapRectToItem(window->contentItem(), contentAction->boundingRect());
+        const QRect pixels = QRectF(bounds.topLeft() * scale, bounds.size() * scale).toAlignedRect().intersected(image.rect());
+        if (pixels.isEmpty()) return false;
+        const QColor background = image.pixelColor(pixels.topLeft());
+        int ink = 0;
+        for (int y = pixels.top(); y <= pixels.bottom(); ++y) {
+            for (int x = pixels.left(); x <= pixels.right(); ++x) {
+                const QColor color = image.pixelColor(x, y);
+                if (std::abs(color.red() - background.red()) + std::abs(color.green() - background.green())
+                    + std::abs(color.blue() - background.blue()) > 128) ++ink;
+            }
+        }
+        return ink > 20;
+    };
+    check(u"panel_continuation_painted"_s, actionPainted());
+    check(u"panel_screenshot"_s, saveGrab(window, output.filePath(u"search-workload-panel.png"_s)));
+    launcher.setGallery(true);
+    settle(window);
+    check(u"gallery_continuation_visible"_s, contentAction && contentAction->isVisible());
+    check(u"gallery_continuation_painted"_s, actionPainted());
+    check(u"gallery_screenshot"_s, saveGrab(window, output.filePath(u"search-workload-gallery.png"_s)));
+    launcher.setGallery(false);
+    const int beforeKey = finishes;
+    if (contentAction) {
+        QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+        QCoreApplication::sendEvent(contentAction, &enter);
+    }
+    check(u"panel_keyboard_content_scope"_s, launcher.scope() == Launcher::Content);
+    check(u"panel_keyboard_content_finished"_s, waitFor([&] { return finishes > beforeKey && !launcher.searching(); }));
+    check(u"panel_keyboard_finds_document"_s, contains(uncachedDoc));
+    const int beforeShort = finishes;
+    launcher.setScope(Launcher::All);
+    launcher.setQuery(u"ne"_s); // no usable gram: do not scan every indexed file
+    check(u"short_query_finished"_s, waitFor([&] { return finishes > beforeShort && !launcher.searching(); }));
+    bool contentRow = false;
+    for (int i = 0; i < launcher.results()->count(); ++i)
+        contentRow = contentRow || launcher.results()->at(i)->line > 0;
+    check(u"short_query_does_not_scan_contents"_s, !contentRow);
+    check(u"short_query_offers_explicit_search"_s, !launcher.leftOutHints().isEmpty());
+    const int beforeFiles = finishes;
+    launcher.setScope(Launcher::Files);
+    launcher.setQuery(u"indexed"_s);
+    check(u"file_search_finished"_s, waitFor([&] { return !launcher.searching(); }));
+    check(u"file_search_keeps_name_results"_s, contains(cachedText));
+    check(u"file_search_does_not_start_content_scan"_s, finishes == beforeFiles);
+    window->hide();
+    report.insert(u"passed"_s, passed);
+    QFile result(output.filePath(u"search-workload.json"_s));
+    if (!result.open(QIODevice::WriteOnly) || result.write(QJsonDocument(report).toJson()) < 0) return false;
+    return passed;
+}
+
 int runResults(const QStringList& args)
 {
     QTranslator translator;
@@ -2860,6 +3117,10 @@ int runResults(const QStringList& args)
     QGuiApplication::setFont(font);
     QQmlApplicationEngine engine;
     engine.addImageProvider(u"fileicon"_s, new FileIconProvider);
+    if (args.contains(u"--search-workload"_s)) {
+        engine.addImageProvider(u"thumbnail"_s, new ThumbnailProvider);
+        return checkSearchWorkload(&engine, out) ? std::min(g_warnings, 100) : 4;
+    }
     ResultModel results;
     results.setThumbnails(false); // synthetic paths: no thumbnail handler or real file access
     engine.addImageProvider(u"thumbnail"_s, new ThumbnailProvider);

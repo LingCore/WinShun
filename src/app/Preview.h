@@ -44,6 +44,9 @@
 //     --preview-hotkeys runs this production key/preview check on its own.
 //     --search-navigation also checks the production result menus in the
 //     search box and panel: arrows, Ctrl+O, caret/selection, IME, and Enter.
+//     --search-workload checks automatic vs explicit content searches over
+//     real temporary OOXML/text files, records app/extractor CPU time, and
+//     checks the continuation in the box, panel and gallery without busy waits.
 //
 //   WinShun.exe --preview-ai-cards <folder> [--dark] [--scale 1.5]
 //     The screens for AI changing settings (SettingsConfirm.qml, SettingsNotice.qml)

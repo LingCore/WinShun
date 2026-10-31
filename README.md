@@ -136,6 +136,7 @@
 #### 📄 文件内容全文搜索
 
 - 切到 **内容** 范围，搜文件里的文字，结果显示命中的那一行。
+- **普通搜索更安静**：**全部** 自动补充已有内容索引中的命中，不会因为停留在搜索框就批量解析文档。还有未搜索的内容时，点“搜索内容”继续；也可以直接切到 **内容**，读取尚未索引的文件。
 - **能搜的文件**：
   - 纯文本：txt、md、log、csv、json、代码等；
   - 文档：**Word、Excel、PowerPoint、PDF、WPS**，结果里显示第几页、第几张幻灯片或哪个表的第几行。
@@ -378,6 +379,7 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
   - **Query syntax**: `"exact phrase"`, `!exclude`, `!node_modules\`, wildcards `*` `?`, `ext:pdf,docx`, `folder\name`, and paths (`D:\My Files\`, `tools/out/`). Add OR groups (`report | summary 2026`, AND takes precedence), name anchors (`^IMG`, `.pdf$`), or `regex:^IMG_\d+\.(jpg|png)$`; invalid expressions explain the error. `Ctrl+R` turns on regex mode, where every word is a regex, as in Everything. `:pictures,videos` combines type keywords.
 - 📄 **Full-text search**
   - **What**: the **Content** scope searches inside txt, md, logs, source code and **Word, Excel, PowerPoint, PDF and WPS** files, showing the page, slide or sheet and row.
+  - **Quieter everyday searches**: **All** adds matches from the existing content index without launching document parsers. Choose **Search contents** when offered, or switch to **Content**, to read files that have not been indexed yet.
   - **In one folder**: add a folder's name and a slash, `annual report abc/`, to search only in folders named abc (`/abc` last works too; `work/abc/` takes the one in work); folders of the same name are all searched and listed under the box, `Ctrl+Tab` picks one. Or pick a favorite folder there, or right-click a folder in the results → Search contents in this folder.
   - **How**: ranked by relevance, with a content index for speed; UTF-8, UTF-16 and GBK are detected. The first content index reads text files straight from the disk through the index service, so antivirus does not check them one by one and it is done much sooner. Files over the size limit, in system folders or of unlisted text types are skipped; the list says how many of each, and one click searches them too.
   - **Without the index service**: it works too, only slower, as the files are read as you search.
