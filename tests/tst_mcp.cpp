@@ -11,6 +11,7 @@
 #include "IndexService.h"
 #include "IsoTime.h"
 #include "JsonRpc.h"
+#include "LineChannel.h"
 #include "McpServer.h"
 #include "McpTools.h"
 #include "Pipe.h"
@@ -654,6 +655,32 @@ class TestMcp : public QObject {
     Q_OBJECT
 
 private slots:
+    void channelStopDoesNotWaitForClientRead()
+    {
+        const std::wstring name = L"\\\\.\\pipe\\WinShun.ChannelStop." + std::to_wstring(::GetCurrentProcessId());
+        plugin::lite::Handle server(::CreateNamedPipeW(name.c_str(), PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
+            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT, 1, 4096, 4096, 0, nullptr));
+        QVERIFY(server.valid());
+        plugin::lite::Handle client(::CreateFileW(name.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr));
+        QVERIFY(client.valid());
+        plugin::lite::Handle done(::CreateEventW(nullptr, TRUE, FALSE, nullptr));
+        QVERIFY(done.valid());
+        pipe::LineChannel channel(server.release(), {});
+        std::thread worker([&] { channel.run(); ::SetEvent(done.get()); });
+        channel.send("pending\n");
+        const bool buffered = QTest::qWaitFor([&] {
+            DWORD bytes = 0;
+            return ::PeekNamedPipe(client.get(), nullptr, 0, nullptr, &bytes, nullptr) && bytes > 0;
+        }, 1000);
+        channel.stop();
+        const DWORD stopped = ::WaitForSingleObject(done.get(), 500);
+        // Release a blocked old implementation before joining or asserting.
+        ::CloseHandle(client.release());
+        worker.join();
+        QVERIFY(buffered);
+        QCOMPARE(stopped, DWORD(WAIT_OBJECT_0));
+    }
+
     void jsonRpcParse()
     {
         QString problem;

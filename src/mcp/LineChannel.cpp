@@ -129,7 +129,8 @@ void LineChannel::run()
         ::GetOverlappedResult(m_handle, &readOverlapped, &unused, TRUE);
     if (writePending)
         ::GetOverlappedResult(m_handle, &writeOverlapped, &unused, TRUE);
-    ::FlushFileBuffers(m_handle);
+    // A named-pipe flush waits for the peer to read every buffered byte.
+    // stop() must also return when that peer is hung or no longer reading.
     ::CloseHandle(readOverlapped.hEvent);
     ::CloseHandle(writeOverlapped.hEvent);
     const std::lock_guard lock(m_mutex);
