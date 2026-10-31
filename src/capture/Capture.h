@@ -140,6 +140,9 @@ public:
     // 贴上最近一次截图 (the tray menu).
     bool hasLast() const { return !m_last.isNull(); }
     void pinLast(); // the last capture taken, where it was
+    // The clipboard as it stood when that capture was taken
+    // (GetClipboardSequenceNumber): a picture copied since is the one to pin.
+    DWORD lastClipboardSeq() const { return m_lastSeq; }
     // 找回刚放弃的标注: a capture ended with annotations on it (hotkey, Esc)
     // keeps them for kDraftMs or until the next capture; this pins their
     // picture where the capture was, with the project.
@@ -228,6 +231,7 @@ private:
     QImage m_last; // the last capture taken (copied, saved, pinned, read), for 贴上最近一次截图
     QPoint m_lastOrigin; // where it was, physical
     QByteArray m_lastProject;
+    DWORD m_lastSeq = 0; // the clipboard's sequence number as m_last was taken
     struct Draft {
         annot::Project project; // the selection's pixels and the annotations over them
         QPoint origin; // physical, virtual desktop
