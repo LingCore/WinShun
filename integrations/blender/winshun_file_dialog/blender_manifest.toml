@@ -1,0 +1,16 @@
+schema_version = "1.0.0"
+id = "winshun_file_dialog"
+version = "0.1.0"
+name = "WinShun File Dialog"
+tagline = "Search and switch folders with WinShun in the file browser"
+maintainer = "LingCore"
+type = "add-on"
+blender_version_min = "4.2.0"
+platforms = ["windows-x64"]
+license = ["SPDX:MIT"]
+
+[build]
+paths_exclude_pattern = ["__pycache__/", "*.pyc", "*.zip"]
+
+[permissions]
+files = "Read selected paths for file-browser navigation"

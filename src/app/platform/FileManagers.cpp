@@ -2,8 +2,10 @@
 
 #include "FolderViewHit.h"
 #include "Integrity.h"
+#include "OneCommanderTabs.h"
 #include "PathText.h"
 #include "Shell.h"
+#include "Unc.h"
 #include "Win32Util.h"
 
 #include <QDebug>
@@ -11,6 +13,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QSaveFile>
+#include <QStandardPaths>
 #include <QString>
 #include <QStringList>
 
@@ -383,8 +386,82 @@ public:
         return pattern && text && SUCCEEDED(pattern->SetValue(text.get()));
     }
 
+    QList<pathtext::XYplorerTab> tabs(HWND window, const std::wstring& active) const
+    {
+        const auto state = tabState();
+        if (state.size() != 2)
+            return {};
+        const QString folder = QString::fromStdWString(active);
+        QDir settings(QFileInfo(QString::fromStdWString(programOf(window))).dir().filePath(u"Settings"_s));
+        if (!settings.exists())
+            settings = QDir(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + u"/OneCommander/Settings"_s);
+        const QStringList sessions = settings.entryList({u"Tabs*1.json"_s}, QDir::Files, QDir::Name);
+        if (sessions.size() > 64)
+            return {};
+        const auto read = [&](const QString& name) {
+            QFile file(settings.filePath(name));
+            return file.size() <= 1024 * 1024 && file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+        };
+        std::optional<QList<pathtext::XYplorerTab>> found;
+        for (const QString& name : sessions) {
+            const auto candidate = onecommander::sessionTabs({read(name), read(name.chopped(6) + u"2.json"_s)}, state, folder);
+            if (!candidate)
+                continue;
+            if (found)
+                return {}; // several saved windows fit: never show a closed window's tabs
+            found = candidate;
+        }
+        return found.value_or(QList<pathtext::XYplorerTab>());
+    }
+
 private:
     using Text = std::unique_ptr<OLECHAR, decltype(&::SysFreeString)>;
+
+    std::vector<onecommander::TabState> tabState() const
+    {
+        if (!m_root)
+            return {};
+        const Text name(::SysAllocString(L"tabs"), ::SysFreeString);
+        VARIANT id {};
+        id.vt = VT_BSTR;
+        id.bstrVal = name.get();
+        ComPtr<IUIAutomationCondition> condition;
+        ComPtr<IUIAutomationElementArray> panes;
+        int paneCount = 0;
+        if (!name || FAILED(m_uia->CreatePropertyCondition(UIA_AutomationIdPropertyId, id, &condition))
+            || FAILED(m_root->FindAll(TreeScope_Descendants, condition.Get(), &panes)) || !panes
+            || FAILED(panes->get_Length(&paneCount)) || paneCount != 2)
+            return {};
+        VARIANT type {};
+        type.vt = VT_I4;
+        type.lVal = UIA_ListItemControlTypeId;
+        if (FAILED(m_uia->CreatePropertyCondition(UIA_ControlTypePropertyId, type, &condition)))
+            return {};
+        std::vector<onecommander::TabState> state;
+        for (int p = 0; p < paneCount; ++p) {
+            ComPtr<IUIAutomationElement> pane;
+            ComPtr<IUIAutomationElementArray> tabs;
+            onecommander::TabState live;
+            if (FAILED(panes->GetElement(p, &pane)) || !pane
+                || FAILED(pane->FindAll(TreeScope_Children, condition.Get(), &tabs)) || !tabs
+                || FAILED(tabs->get_Length(&live.count)) || live.count > 256)
+                return {};
+            BOOL offscreen = FALSE;
+            if (SUCCEEDED(pane->get_CurrentIsOffscreen(&offscreen)))
+                live.visible = !offscreen;
+            for (int i = 0; i < live.count; ++i) {
+                ComPtr<IUIAutomationElement> tab;
+                ComPtr<IUIAutomationSelectionItemPattern> selected;
+                BOOL onTop = FALSE;
+                if (SUCCEEDED(tabs->GetElement(i, &tab)) && tab
+                    && SUCCEEDED(tab->GetCurrentPatternAs(UIA_SelectionItemPatternId, IID_PPV_ARGS(&selected)))
+                    && SUCCEEDED(selected->get_CurrentIsSelected(&onTop)) && onTop)
+                    live.selected = i;
+            }
+            state.push_back(live);
+        }
+        return state;
+    }
 
     ComPtr<IUIAutomationValuePattern> value(const wchar_t* id) const
     {
@@ -883,7 +960,8 @@ std::vector<Folder> openFolders()
         std::vector<PulseShown> pulse;
         std::vector<Folder> onTop; // each window's folder in front
         std::vector<Folder> behind; // the others
-    } search {explorerTabs(), opusTabs(), pulseShown(), {}, {}};
+        std::vector<std::pair<std::size_t, HWND>> oneCommander;
+    } search {explorerTabs(), opusTabs(), pulseShown(), {}, {}, {}};
     // Top-level windows come front to back, and so do a window's children.
     ::EnumWindows(
         [](HWND hwnd, LPARAM param) -> BOOL {
@@ -933,15 +1011,33 @@ std::vector<Folder> openFolders()
                         (folder.state == 1 ? search.onTop : search.behind).push_back({folder.path.toStdWString(), *kind});
                 }
             } else if (kind == Kind::OneCommander && ::IsWindowVisible(hwnd)) {
-                if (std::wstring folder = OneCommanderAutomation(hwnd).folder(); !folder.empty())
-                    search.onTop.push_back({std::move(folder), *kind});
+                search.oneCommander.emplace_back(search.onTop.size(), hwnd);
+                search.onTop.push_back({{}, *kind}); // reserve its place in Z order
             }
             return TRUE;
         },
         reinterpret_cast<LPARAM>(&search));
+    // UI Automation can pump window messages. Ask after the User32
+    // enumeration returns, retaining the captured windows' front-to-back order.
+    for (const auto& [at, window] : search.oneCommander) {
+        const OneCommanderAutomation automation(window);
+        std::wstring folder = automation.folder();
+        search.onTop[at].path = folder;
+        if (folder.empty())
+            continue;
+        const auto tabs = automation.tabs(window, folder);
+        for (const int state : {2, 0}) {
+            for (const auto& tab : tabs) {
+                if (tab.state == state && isFolder(tab.path.toStdWString()))
+                    search.behind.push_back({tab.path.toStdWString(), Kind::OneCommander});
+            }
+        }
+    }
     std::vector<Folder> folders;
     for (const auto* list : {&search.onTop, &search.behind}) {
         for (const Folder& folder : *list) {
+            if (folder.path.empty())
+                continue;
             if (std::ranges::none_of(folders, [&](const Folder& f) { return ::_wcsicmp(f.path.c_str(), folder.path.c_str()) == 0; }))
                 folders.push_back(folder);
         }
@@ -961,6 +1057,48 @@ bool goTo(HWND tab, const std::wstring& folder)
     ComPtr<IWebBrowser2> web;
     ComPtr<IShellBrowser> browser;
     return findTab(tab, web, browser) && navigate(web.Get(), folder);
+}
+
+bool selectInExplorer(HWND tab, const std::wstring& folder, const std::wstring& path,
+    const std::function<bool()>& current)
+{
+    const auto active = [&] {
+        if (!current() || !::IsWindow(tab))
+            return false;
+        const HWND root = ::GetAncestor(tab, GA_ROOT);
+        const HWND first = ::FindWindowExW(root, nullptr, L"ShellTabWindowClass", nullptr);
+        return !first || first == tab;
+    };
+    if (!active())
+        return false;
+    const auto identity = [](const std::wstring& value) {
+        const auto mapped = unc::fromMappedDrive(value);
+        return QString::fromStdWString(mapped.empty() ? value : mapped);
+    };
+    const QString expected = identity(folder);
+    const QFileInfo chosen(identity(path));
+    if (!pathtext::sameFolder(chosen.absolutePath(), expected) || chosen.fileName().isEmpty())
+        return false;
+    ComPtr<IWebBrowser2> web;
+    ComPtr<IShellBrowser> browser;
+    ComPtr<IShellView> view;
+    ComPtr<IFolderView> folderView;
+    ComPtr<IShellFolder> shellFolder;
+    if (!findTab(tab, web, browser) || !active()
+        || !pathtext::sameFolder(identity(folderPath(browser.Get())), expected)
+        || FAILED(browser->QueryActiveShellView(&view)) || FAILED(view.As(&folderView))
+        || FAILED(folderView->GetFolder(IID_PPV_ARGS(&shellFolder))))
+        return false;
+    std::wstring name = chosen.fileName().toStdWString();
+    PIDLIST_RELATIVE child = nullptr;
+    if (FAILED(shellFolder->ParseDisplayName(nullptr, nullptr, name.data(), nullptr, &child, nullptr)) || !child)
+        return false;
+    // The item gets the view's cursor, but the search field keeps the keyboard.
+    constexpr UINT flags = SVSI_SELECT | SVSI_DESELECTOTHERS | SVSI_ENSUREVISIBLE | SVSI_FOCUSED | SVSI_NOTAKEFOCUS;
+    const bool selected = active() && pathtext::sameFolder(identity(folderPath(browser.Get())), expected)
+        && active() && SUCCEEDED(view->SelectItem(child, flags));
+    ::CoTaskMemFree(child);
+    return selected;
 }
 
 bool goToKeepingFocus(HWND tab, const std::wstring& folder, const std::wstring& select)

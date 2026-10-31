@@ -2,6 +2,7 @@
 
 #include "AutostartRun.h"
 #include "CommandLaunch.h"
+#include "Unc.h"
 
 #include "FileManagers.h"
 #include "Favorites.h"
@@ -20,6 +21,7 @@
 #include <ole2.h> // before exdisp.h: WIN32_LEAN_AND_MEAN keeps it out of windows.h
 
 #include <exdisp.h>
+#include <propkey.h>
 #include <shellapi.h>
 #include <shldisp.h>
 #include <shlguid.h>
@@ -365,12 +367,51 @@ bool executeConsoleProgram(const std::wstring& file, const std::wstring& args, c
     return true;
 }
 
+struct ConsoleApp {
+    std::wstring program;
+    std::wstring arguments;
+};
+
+// Applications found through the Start menu have a virtual AppsFolder path,
+// not an .exe suffix. Resolve its desktop target on this shell worker too:
+// otherwise it bypasses startsConsole and cobra still sees Explorer (#139).
+std::optional<ConsoleApp> consoleApp(const std::wstring& file)
+{
+    if (!QString::fromStdWString(file).startsWith(u"shell:AppsFolder\\", Qt::CaseInsensitive))
+        return std::nullopt;
+    ComPtr<IShellItem2> item;
+    if (FAILED(::SHCreateItemFromParsingName(file.c_str(), nullptr, IID_PPV_ARGS(&item))))
+        return std::nullopt;
+    const auto property = [&](REFPROPERTYKEY key) {
+        PWSTR value = nullptr;
+        const HRESULT result = item->GetString(key, &value);
+        std::wstring text = SUCCEEDED(result) && value ? value : L"";
+        ::CoTaskMemFree(value);
+        return text;
+    };
+    std::wstring program = property(PKEY_Link_TargetParsingPath);
+    if (program.empty() || commandlaunch::kindOf(QString::fromStdWString(program)) != commandlaunch::Kind::Console)
+        return std::nullopt; // packaged and GUI applications keep their shell activation
+    return ConsoleApp {std::move(program), property(PKEY_Link_Arguments)};
+}
+
 // Starts through Explorer with the user's normal rights. Without Explorer:
 // ShellExecute from a normal process, or the shell token from an elevated
 // one. Only the latter waits briefly for the desktop shell to restart. A
 // console program never goes to Explorer (startsConsole).
 bool executeUnelevated(const std::wstring& file, const std::wstring& args, const std::wstring& dir)
 {
+    if (auto app = consoleApp(file)) {
+        if (!args.empty()) {
+            if (!app->arguments.empty())
+                app->arguments += L' ';
+            app->arguments += args;
+        }
+        const std::wstring cwd = dir.empty()
+            ? QDir::toNativeSeparators(QFileInfo(QString::fromStdWString(app->program)).absolutePath()).toStdWString()
+            : dir;
+        return executeConsoleProgram(app->program, app->arguments, cwd);
+    }
     if (startsConsole(file, dir))
         return executeConsoleProgram(file, args, dir);
     if (executeAsUser(file, args, dir))
@@ -490,18 +531,19 @@ bool launchCustom(const QString& command, const QString& directory, const QStrin
 void open(const QString& path, bool asAdministrator, std::function<void(bool)> done)
 {
     ::AllowSetForegroundWindow(ASFW_ANY); // the launched app may take focus from us
-    const QString native = QDir::toNativeSeparators(path);
-    const QFileInfo info(native);
-    const QString workDir = info.isDir() ? QString() : QDir::toNativeSeparators(info.absolutePath());
-    // A folder goes to the file manager chosen (setFileManager); Explorer
-    // takes it if that does not start.
-    const filemanager::Kind manager
-        = info.isDir() && !asAdministrator ? g_fileManager.load() : filemanager::Kind::Explorer;
+    const auto manager = g_fileManager.load();
     runOnShellThread(
-        [file = native.toStdWString(), dir = workDir.toStdWString(), asAdministrator, manager, done = std::move(done)] {
+        [path, asAdministrator, manager, done = std::move(done)] {
+            // Network attributes and drive resolution stay off the UI thread.
+            // Index/history keys remain UNC; only the actual opening uses
+            // an active mapping, preserving the user's NAS drive (#116).
+            const auto file = unc::preferredOpenPath(QDir::toNativeSeparators(path).toStdWString());
+            const QFileInfo info(QString::fromStdWString(file));
+            const bool folder = info.isDir();
+            const auto dir = folder ? std::wstring() : QDir::toNativeSeparators(info.absolutePath()).toStdWString();
             const bool ok = asAdministrator
                 ? executeAsAdministrator(file, {}, dir)
-                : (manager != filemanager::Kind::Explorer && filemanager::openFolder(manager, file))
+                : (folder && manager != filemanager::Kind::Explorer && filemanager::openFolder(manager, file))
                     || executeUnelevated(file, {}, dir);
             if (done)
                 done(ok);
@@ -534,6 +576,24 @@ void openTerminal(const QString& folder, std::function<void(bool)> done)
                 ok = executeUnelevated(cmd, {}, dir);
             }
         }
+        if (done)
+            done(ok);
+    });
+}
+
+void openPowerShell(const QString& folder, std::function<void(bool)> done)
+{
+    ::AllowSetForegroundWindow(ASFW_ANY);
+    runOnShellThread([folder, done = std::move(done)] {
+        QString program = commandlaunch::resolveProgram(u"pwsh"_s, {});
+        if (program.isEmpty()) {
+            wchar_t system[MAX_PATH] {};
+            const UINT length = ::GetSystemDirectoryW(system, MAX_PATH);
+            if (length > 0 && length < MAX_PATH)
+                program = QString::fromWCharArray(system, length) + u"\\WindowsPowerShell\\v1.0\\powershell.exe"_s;
+        }
+        const bool ok = !program.isEmpty() && executeUnelevated(program.toStdWString(), L"-NoLogo -NoExit",
+            QDir::toNativeSeparators(folder).toStdWString());
         if (done)
             done(ok);
     });
@@ -684,7 +744,9 @@ void revealIn(const QStringList& paths, filemanager::Kind manager)
     if (natives.empty())
         return;
     ::AllowSetForegroundWindow(ASFW_ANY);
-    runOnShellThread([natives = std::move(natives), manager] {
+    runOnShellThread([natives = std::move(natives), manager]() mutable {
+        for (std::wstring& path : natives)
+            path = unc::preferredOpenPath(path);
         if (manager == filemanager::Kind::Explorer || !filemanager::reveal(manager, natives))
             selectInExplorer(natives);
     });

@@ -1,6 +1,8 @@
 #include "FileDialog.h"
+#include "BlenderFileDialog.h"
 
 #include "PathText.h"
+#include "Win32Util.h"
 
 #include <QDebug>
 #include <QString>
@@ -71,6 +73,76 @@ HWND addressBox(HWND dialog)
     return descend(addressBar(dialog), {L"ComboBoxEx32", L"ComboBox", L"Edit"});
 }
 
+struct CustomFileBoxes {
+    HWND name = nullptr;
+    HWND type = nullptr;
+};
+
+bool customCadProgram(HWND window)
+{
+    DWORD pid = 0;
+    ::GetWindowThreadProcessId(window, &pid);
+    const win32::UniqueHandle process(::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid));
+    wchar_t image[1024] {};
+    DWORD length = static_cast<DWORD>(std::size(image));
+    if (!process.valid() || !::QueryFullProcessImageNameW(process.get(), 0, image, &length))
+        return false;
+    const wchar_t* leaf = ::wcsrchr(image, L'\\');
+    return leaf && (::_wcsicmp(leaf + 1, L"acad.exe") == 0 || ::_wcsicmp(leaf + 1, L"acadlt.exe") == 0);
+}
+
+// Autodesk's CNavDialog uses its own control IDs and view host. Match the
+// roles: a file list, one editable combo below it, a file-type list below
+// that, and OK/Cancel. An arbitrary Edit in a settings dialog is not enough.
+// Upstream evidence and the runtime validation limit: docs/dialog-compatibility.md.
+CustomFileBoxes customFileBoxes(HWND dialog)
+{
+    if (!hasClass(dialog, L"#32770") || !::GetDlgItem(dialog, IDOK) || !::GetDlgItem(dialog, IDCANCEL)
+        || ::FindWindowExW(dialog, nullptr, L"DUIViewWndClassName", nullptr) || !customCadProgram(dialog))
+        return {};
+    std::vector<HWND> controls;
+    ::EnumChildWindows(dialog, [](HWND child, LPARAM data) -> BOOL {
+        reinterpret_cast<std::vector<HWND>*>(data)->push_back(child);
+        return TRUE;
+    }, reinterpret_cast<LPARAM>(&controls));
+    std::optional<LONG> listBottom;
+    for (HWND control : controls) {
+        RECT bounds {};
+        if (hasClass(control, L"SysListView32") && ::IsWindowVisible(control) && ::GetWindowRect(control, &bounds))
+            listBottom = listBottom ? std::max(*listBottom, bounds.bottom) : bounds.bottom;
+    }
+    if (!listBottom)
+        return {};
+    CustomFileBoxes boxes;
+    RECT nameBounds {};
+    for (HWND control : controls) {
+        if (!hasClass(control, L"ComboBox") || !::IsWindowVisible(control) || !::IsWindowEnabled(control))
+            continue;
+        const HWND edit = ::FindWindowExW(control, nullptr, L"Edit", nullptr);
+        RECT bounds {};
+        if (!edit || (::GetWindowLongPtrW(edit, GWL_STYLE) & ES_READONLY)
+            || !::GetWindowRect(edit, &bounds) || bounds.top < *listBottom)
+            continue;
+        if (boxes.name)
+            return {}; // ambiguous: do not type into a search/filter field
+        boxes.name = edit;
+        nameBounds = bounds;
+    }
+    if (!boxes.name)
+        return {};
+    for (HWND control : controls) {
+        RECT bounds {};
+        if (hasClass(control, L"ComboBox") && ::IsWindowVisible(control) && ::IsWindowEnabled(control)
+            && (::GetWindowLongPtrW(control, GWL_STYLE) & 3) == CBS_DROPDOWNLIST
+            && ::GetWindowRect(control, &bounds) && bounds.top >= nameBounds.bottom) {
+            if (boxes.type)
+                return {};
+            boxes.type = control;
+        }
+    }
+    return boxes.type ? boxes : CustomFileBoxes {};
+}
+
 // The file name box: in an Open dialog (and the Windows XP style) a combo
 // box with an edit field, or an edit field alone; in a Save dialog the first
 // combo box with an edit field inside the dialog's view. A folder picker's
@@ -89,7 +161,9 @@ HWND fileNameBox(HWND dialog)
                 return edit;
         }
     }
-    return ::GetDlgItem(dialog, kFileNameEdit);
+    if (const HWND edit = ::GetDlgItem(dialog, kFileNameEdit))
+        return edit;
+    return customFileBoxes(dialog).name;
 }
 
 // Inno Setup uses its own folder picker, not SHBrowseForFolder. Its Start
@@ -142,6 +216,19 @@ std::wstring caption(HWND hwnd)
 bool setText(HWND hwnd, const std::wstring& text)
 {
     return send(hwnd, WM_SETTEXT, 0, reinterpret_cast<LPARAM>(text.c_str()));
+}
+
+bool setFileBoxText(HWND dialog, HWND box, const std::wstring& text)
+{
+    if (!setText(box, text) || controlText(box) != text)
+        return false;
+    // WM_SETTEXT is not a user edit. A custom combo owner can keep its own
+    // file-name model, updated only on CBN_EDITCHANGE (MFC's OnEditChange).
+    if (customFileBoxes(dialog).name == box) {
+        const HWND combo = ::GetParent(box);
+        return send(::GetParent(combo), WM_COMMAND, MAKEWPARAM(::GetDlgCtrlID(combo), CBN_EDITCHANGE), reinterpret_cast<LPARAM>(combo));
+    }
+    return true;
 }
 
 bool isFolder(const std::wstring& path)
@@ -237,14 +324,14 @@ bool goByName(HWND dialog, const std::wstring& folder)
     const std::wstring typed = controlText(box);
     const std::wstring shown = crumbs ? caption(crumbs) : std::wstring();
     const std::wstring target = folder.ends_with(L'\\') ? folder : folder + L'\\';
-    if (!isFolder(folder) || !setText(box, target)
+    if (!isFolder(folder) || !setFileBoxText(dialog, box, target)
         || !send(dialog, WM_COMMAND, MAKEWPARAM(IDOK, BN_CLICKED), reinterpret_cast<LPARAM>(ok)))
         return false;
     // A dialog of Windows Vista and later goes there after OK returns, and
     // then clears the box.
     if (crumbs)
         waitFor([&] { return caption(crumbs) != shown; }, 1500ms);
-    setText(box, typed);
+    setFileBoxText(dialog, box, typed);
     return true;
 }
 
@@ -549,6 +636,10 @@ Kind kind(HWND hwnd)
         return Kind::None;
     if (installerFolderBox(hwnd))
         return Kind::Folder;
+    if (blenderdialog::isOne(hwnd)) {
+        const auto mode = reinterpret_cast<quintptr>(::GetPropW(hwnd, L"WinShun.Blender.Mode.v1"));
+        return mode == 1 ? Kind::Open : mode == 3 ? Kind::Folder : Kind::Save;
+    }
     if (!hasClass(hwnd, L"#32770"))
         return kingsoft::known(hwnd).value_or(Kind::None);
     // Windows Vista and later: IFileDialog, and GetOpenFileName without a hook.
@@ -564,6 +655,8 @@ Kind kind(HWND hwnd)
     }
     // The Windows XP style, still shown for GetOpenFileName with a hook or template.
     if (::FindWindowExW(hwnd, nullptr, L"SHELLDLL_DefView", nullptr) && fileNameBox(hwnd) && ::GetDlgItem(hwnd, IDOK))
+        return Kind::Legacy;
+    if (customFileBoxes(hwnd).name)
         return Kind::Legacy;
     if (browseTree(hwnd) && ::GetDlgItem(hwnd, IDOK))
         return Kind::Browse;
@@ -599,6 +692,8 @@ Kind probe(HWND hwnd)
 
 std::wstring currentFolder(HWND dialog)
 {
+    if (blenderdialog::isOne(dialog))
+        return blenderdialog::currentFolder(dialog);
     if (const HWND edit = installerFolderBox(dialog))
         return controlText(edit);
     const HWND crumbs = kingsoft::isOne(dialog) ? nullptr : crumbBar(dialog);
@@ -608,9 +703,10 @@ std::wstring currentFolder(HWND dialog)
 
 std::wstring fileType(HWND dialog)
 {
-    if (kind(dialog) != Kind::Open || kingsoft::isOne(dialog))
+    const CustomFileBoxes custom = customFileBoxes(dialog);
+    if ((kind(dialog) != Kind::Open && !custom.name) || kingsoft::isOne(dialog))
         return {};
-    const HWND types = ::GetDlgItem(dialog, kFileTypeCombo); // a drop-down list: its text is the chosen entry
+    const HWND types = custom.type ? custom.type : ::GetDlgItem(dialog, kFileTypeCombo);
     return types && hasClass(types, L"ComboBox") ? controlText(types) : std::wstring();
 }
 
@@ -621,6 +717,8 @@ bool waitForFront(HWND dialog)
 
 bool waitForLocation(HWND dialog)
 {
+    if (blenderdialog::isOne(dialog))
+        return true;
     if (installerFolderBox(dialog))
         return true;
     if (kingsoft::isOne(dialog))
@@ -643,6 +741,8 @@ bool goTo(HWND dialog, const std::wstring& folder)
     if (!isFolder(folder))
         return false; // gone (or a file): nothing is typed anywhere
     const Kind k = kind(dialog);
+    if (blenderdialog::isOne(dialog))
+        return blenderdialog::goTo(dialog, folder);
     if (k == Kind::Legacy)
         return goByName(dialog, folder);
     if (k == Kind::Browse)
@@ -663,12 +763,14 @@ bool goTo(HWND dialog, const std::wstring& folder)
 
 bool setFileName(HWND dialog, const std::wstring& name)
 {
+    if (blenderdialog::isOne(dialog))
+        return blenderdialog::setFileName(dialog, name);
     if (installerFolderBox(dialog))
         return false;
     if (kingsoft::isOne(dialog))
         return kingsoft::setFileName(dialog, name);
     const HWND box = fileNameBox(dialog);
-    if (!box || !setText(box, name))
+    if (!box || !setFileBoxText(dialog, box, name))
         return false;
     send(dialog, WM_NEXTDLGCTL, reinterpret_cast<WPARAM>(box), TRUE); // which also selects the name
     return true;
@@ -676,6 +778,8 @@ bool setFileName(HWND dialog, const std::wstring& name)
 
 bool accept(HWND dialog)
 {
+    if (blenderdialog::isOne(dialog))
+        return blenderdialog::accept(dialog);
     if (installerFolderBox(dialog))
         return false;
     if (kingsoft::isOne(dialog))

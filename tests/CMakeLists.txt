@@ -60,12 +60,21 @@ add_test(NAME tst_displaygeometry COMMAND tst_displaygeometry -o -,txt)
 set_tests_properties(tst_displaygeometry PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
-qt_add_executable(tst_filedialog tst_filedialog.cpp
-    ${PROJECT_SOURCE_DIR}/src/app/platform/FileDialog.cpp)
+set(file_dialog_backend
+    ${PROJECT_SOURCE_DIR}/src/app/platform/FileDialog.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/BlenderFileDialog.cpp)
+qt_add_executable(tst_filedialog tst_filedialog.cpp ${file_dialog_backend})
 target_include_directories(tst_filedialog PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_filedialog PRIVATE wscore Qt6::Test ole32 oleaut32 uiautomationcore user32)
-add_test(NAME tst_filedialog COMMAND tst_filedialog)
-set_tests_properties(tst_filedialog PROPERTIES
+# Process identity is part of the CAD adapter's guard. This is a copy of our
+# native protocol fixture, never AutoCAD; no Autodesk software is installed.
+set(cad_dialog_fixture "$<TARGET_FILE_DIR:tst_filedialog>/cad-dialog-fixture/acad.exe")
+add_custom_command(TARGET tst_filedialog POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:tst_filedialog>/cad-dialog-fixture"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:tst_filedialog>" "${cad_dialog_fixture}")
+add_test(NAME tst_filedialog COMMAND "${cad_dialog_fixture}" -o -,txt)
+add_test(NAME tst_filedialog_other_program COMMAND tst_filedialog customRejectsOtherProgram -o -,txt)
+set_tests_properties(tst_filedialog tst_filedialog_other_program PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 # The Qt-free dialog-navigation classifier used by the #104 service helper,
@@ -82,7 +91,7 @@ qt_add_executable(tst_shelllaunch WIN32 tst_shelllaunch.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/Shell.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/ShellDialogs.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/DragOut.cpp
-    ${PROJECT_SOURCE_DIR}/src/app/platform/FileDialog.cpp
+    ${file_dialog_backend}
     ${PROJECT_SOURCE_DIR}/src/app/platform/FileManagers.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/FolderViewHit.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/Integrity.cpp)
@@ -526,7 +535,7 @@ qt_add_executable(tst_commandicons tst_commandicons.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/Shell.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/ShellDialogs.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/DragOut.cpp
-    ${PROJECT_SOURCE_DIR}/src/app/platform/FileDialog.cpp
+    ${file_dialog_backend}
     ${PROJECT_SOURCE_DIR}/src/app/platform/FileManagers.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/FolderViewHit.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/Integrity.cpp
@@ -799,7 +808,7 @@ set_tests_properties(tst_clipimport PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 # A native file picker, enabled explicitly with WINSHUN_TEST_NATIVE_DIALOG=1.
 qt_add_executable(tst_filepaste tst_filepaste.cpp ${PROJECT_SOURCE_DIR}/src/app/ClipFiles.cpp
-    ${PROJECT_SOURCE_DIR}/src/app/platform/FileDialog.cpp)
+    ${file_dialog_backend})
 target_include_directories(tst_filepaste PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_filepaste PRIVATE wscore Qt6::Test)
 set_target_properties(tst_filepaste PROPERTIES WIN32_EXECUTABLE FALSE)

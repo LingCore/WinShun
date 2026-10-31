@@ -14,6 +14,8 @@
 // And WPS Office's own (Kingsoft's "KcfdFileDialog"): a Qt window whose
 // controls are no windows, so only UI Automation sees them. Asked on a worker
 // thread with COM only (probe(), goTo()…): they wait on the program.
+// Blender's separate file browser is available when its optional WinShun
+// extension is enabled; the extension uses Blender's own API (BlenderFileDialog).
 namespace ws::filedialog {
 
 enum class Kind {
@@ -60,7 +62,7 @@ bool waitForLocation(HWND dialog);
 // dialog (up to a few seconds): not on its thread.
 bool goTo(HWND dialog, const std::wstring& folder);
 
-// Puts `name` in the file name box and the keyboard focus on it.
+// Puts `name` in the file name box (standard dialogs also focus the box).
 bool setFileName(HWND dialog, const std::wstring& name);
 
 // Presses Open (or Save): for the name in the file name box. Does not wait

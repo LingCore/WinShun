@@ -1,6 +1,7 @@
 #include "DialogJump.h"
 
 #include "FileDialog.h"
+#include "BlenderFileDialog.h"
 #include "FileManagers.h"
 #include "Integrity.h"
 #include "PathText.h"
@@ -39,7 +40,8 @@ bool hasClass(HWND hwnd, const wchar_t* name)
 // A window that may become a file dialog once all of its controls are there.
 bool dialogLike(HWND hwnd)
 {
-    return hasClass(hwnd, L"#32770") || hasClass(hwnd, L"TSelectFolderForm") || hasClass(hwnd, L"TSelectDirDlg");
+    return hasClass(hwnd, L"#32770") || hasClass(hwnd, L"TSelectFolderForm") || hasClass(hwnd, L"TSelectDirDlg")
+        || blenderdialog::mayBe(hwnd);
 }
 
 bool sameFolder(const std::wstring& a, const std::wstring& b)
@@ -455,7 +457,11 @@ void DialogJump::go(HWND dialog, std::wstring path, bool isFile, bool open)
         // the dialog not go there, the whole path in the box does as well.
         const std::size_t slash = path.find_last_of(L'\\');
         bool named = false;
-        if (slash == std::wstring::npos) {
+        if (blenderdialog::isOne(dialog)) {
+            // Its API selects directory and filename together: one refresh
+            // and one acknowledged request, without a separate state query.
+            named = filedialog::setFileName(dialog, path);
+        } else if (slash == std::wstring::npos) {
             named = filedialog::setFileName(dialog, path);
         } else {
             const std::wstring folder = path.substr(0, slash == 2 ? 3 : slash); // "C:\" for a file at the root

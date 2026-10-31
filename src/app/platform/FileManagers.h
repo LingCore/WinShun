@@ -28,6 +28,8 @@
 // file says what its windows show (pathtext::pulseWindows), saved a few
 // seconds late, which the title of a lone window gives away. OneCommander
 // exposes CurrentPathGet/CurrentPathSet through UI Automation's ValuePattern.
+// Its other open tabs come from session panes only when the live tab counts,
+// selection and current path identify that saved window unambiguously.
 namespace ws::filemanager {
 
 enum class Kind {
@@ -83,6 +85,10 @@ std::vector<Folder> openFolders();
 // comes back). Need COM.
 // False when the tab is not among the shell's windows (they can miss one).
 std::wstring explorerFolder(HWND tab);
+// Select a direct child in that same active tab, without navigating or
+// taking keyboard focus. `current` is rechecked after blocking COM calls.
+bool selectInExplorer(HWND tab, const std::wstring& folder, const std::wstring& path,
+    const std::function<bool()>& current);
 // The exact Opus file-display tab; not whichever pane became active since
 // its first key. Uses the existing bounded, unelevated dopusrt query.
 std::wstring opusFolder(HWND tab);

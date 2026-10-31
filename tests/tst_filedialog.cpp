@@ -1,11 +1,19 @@
 #include "FakeFileDialog.h"
+#include "FakeCustomFileDialog.h"
 #include "platform/FileDialog.h"
+#include "platform/BlenderFileDialog.h"
 #include "Win32Util.h"
 
 #include <QTest>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <QElapsedTimer>
+#include <QJsonDocument>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QScopeGuard>
+#include <QSaveFile>
 #include <QTemporaryDir>
 #include <QUuid>
 
@@ -53,11 +61,220 @@ struct FixtureWindow {
         return process.valid() && ::IsProcessInJob(process.get(), job, &belongs) && belongs;
     }
 };
+
+// Match the production foreground handoff without a key or mouse movement.
+// Windows may otherwise refuse a noninteractive test's SetForegroundWindow.
+void focusFixture(HWND window)
+{
+    INPUT nothing {};
+    nothing.type = INPUT_MOUSE;
+    ::SendInput(1, &nothing, sizeof nothing);
+    ::SetForegroundWindow(window);
+}
 } // namespace
 
 class TestFileDialog : public QObject {
     Q_OBJECT
 private slots:
+    // Explicit opt-in: only an independently started factory-settings fixture,
+    // never an existing Blender instance or its possibly unsaved scene.
+    void realBlenderFileView()
+    {
+        const QString stateFile = qEnvironmentVariable("WINSHUN_TEST_BLENDER_STATE");
+        const DWORD expectedPid = qEnvironmentVariableIntValue("WINSHUN_TEST_BLENDER_PID");
+        if (stateFile.isEmpty() || !expectedPid)
+            QSKIP("Set WINSHUN_TEST_BLENDER_STATE/PID to an isolated Blender fixture");
+        const auto state = [&] {
+            QFile file(stateFile);
+            return file.open(QIODevice::ReadOnly) ? QJsonDocument::fromJson(file.readAll()).object() : QJsonObject();
+        };
+        const QJsonObject initial = state();
+        QCOMPARE(initial.value(QStringLiteral("pid")).toInteger(), qint64(expectedPid));
+        HWND window = nullptr;
+        HWND main = nullptr;
+        for (const QJsonValue& value : initial.value(QStringLiteral("windows")).toArray()) {
+            const QJsonObject item = value.toObject();
+            if (!item.value(QStringLiteral("visible")).toBool() || item.value(QStringLiteral("class")).toString() != QStringLiteral("GHOST_WindowClass"))
+                continue;
+            const HWND candidate = reinterpret_cast<HWND>(static_cast<quintptr>(item.value(QStringLiteral("hwnd")).toInteger()));
+            DWORD pid = 0;
+            ::GetWindowThreadProcessId(candidate, &pid);
+            QCOMPARE(pid, expectedPid);
+            if (ws::blenderdialog::isOne(candidate))
+                window = candidate;
+            else if (!item.value(QStringLiteral("owner")).toInteger())
+                main = candidate;
+        }
+        QVERIFY(window);
+        QCOMPARE(fd::kind(window), Kind::Open);
+        QVERIFY(main);
+        const auto command = [&](const QJsonObject& action) {
+            const QString path = QFileInfo(stateFile).dir().filePath(QStringLiteral("blender-command.json"));
+            QElapsedTimer wait;
+            wait.start();
+            while (QFile::exists(path) && wait.elapsed() < 5000)
+                QTest::qWait(20);
+            QSaveFile file(path);
+            return !QFile::exists(path) && file.open(QIODevice::WriteOnly)
+                && file.write(QJsonDocument(action).toJson()) > 0 && file.commit();
+        };
+        QCOMPARE(fd::kind(main), Kind::None);
+        QVERIFY(!ws::blenderdialog::goTo(main, L"C:\\"));
+        QVERIFY(!fd::accept(main));
+        QVERIFY(!fd::goTo(window, L"C:\\WinShun-143-nonexistent-36fd27b5"));
+        QVERIFY(command({{QStringLiteral("extension"), QStringLiteral("off")}}));
+        QTRY_COMPARE_WITH_TIMEOUT(fd::kind(window), Kind::None, 4000);
+        QVERIFY(!fd::goTo(window, QDir::tempPath().toStdWString()));
+        QVERIFY(!fd::accept(window));
+        QVERIFY(command({{QStringLiteral("extension"), QStringLiteral("on")}}));
+        QTRY_COMPARE_WITH_TIMEOUT(fd::kind(window), Kind::Open, 4000);
+        focusFixture(window);
+        QTRY_COMPARE(::GetForegroundWindow(), window);
+        const auto browser = [&] { const QJsonArray views = state().value(QStringLiteral("browsers")).toArray(); return views.isEmpty() ? QJsonObject() : views.first().toObject(); };
+        const QString oldName = browser().value(QStringLiteral("filename")).toString();
+        QTemporaryDir root;
+        QVERIFY(root.isValid());
+        const QString leaf = QStringLiteral("目标 图纸.dwg");
+        QVERIFY(QDir(root.path()).mkdir(leaf));
+        const QString target = QDir::toNativeSeparators(root.path() + QLatin1Char('/') + leaf);
+        focusFixture(window);
+        QVERIFY(fd::waitForFront(window));
+        QVERIFY(fd::goTo(window, target.toStdWString()));
+        const auto shown = [&] {
+            return QDir::toNativeSeparators(QDir::cleanPath(browser().value(QStringLiteral("directory")).toString()));
+        };
+        QTRY_COMPARE_WITH_TIMEOUT(shown(), target, 4000);
+        QCOMPARE(browser().value(QStringLiteral("filename")).toString(), oldName);
+        QVERIFY(::IsWindowVisible(window));
+        const QString name = QStringLiteral("选中的文件.blend");
+        const QString selected = target + QLatin1Char('\\') + name;
+        QVERIFY(QFile::copy(initial.value(QStringLiteral("sample")).toString(), selected));
+        focusFixture(window);
+        QVERIFY(fd::waitForFront(window));
+        QVERIFY(fd::setFileName(window, name.toStdWString()));
+        QTRY_COMPARE_WITH_TIMEOUT(browser().value(QStringLiteral("filename")).toString(), name, 4000);
+        QCOMPARE(shown(), target);
+        QVERIFY(::IsWindowVisible(window));
+        focusFixture(window);
+        QVERIFY(fd::waitForFront(window));
+        QVERIFY(fd::accept(window));
+        QTRY_VERIFY_WITH_TIMEOUT(!::IsWindow(window), 5000);
+        QTRY_COMPARE_WITH_TIMEOUT(QDir::toNativeSeparators(state().value(QStringLiteral("filepath")).toString()), selected, 5000);
+        QVERIFY(command({{QStringLiteral("save_as"), true}}));
+        HWND save = nullptr;
+        const auto findSave = [&] {
+            for (const QJsonValue& value : state().value(QStringLiteral("windows")).toArray()) {
+                const HWND candidate = reinterpret_cast<HWND>(static_cast<quintptr>(value.toObject().value(QStringLiteral("hwnd")).toInteger()));
+                DWORD pid = 0;
+                ::GetWindowThreadProcessId(candidate, &pid);
+                if (pid == expectedPid && ws::blenderdialog::isOne(candidate) && fd::kind(candidate) == Kind::Save)
+                    save = candidate;
+            }
+            return save != nullptr;
+        };
+        QTRY_VERIFY_WITH_TIMEOUT(findSave(), 5000);
+        focusFixture(save);
+        QTRY_COMPARE(::GetForegroundWindow(), save);
+        QVERIFY(fd::goTo(save, target.toStdWString()));
+        QVERIFY(fd::setFileName(save, selected.toStdWString()));
+        QVERIFY(!fd::accept(save)); // Save/Export is always confirmed in Blender
+        QVERIFY(::IsWindow(save));
+        QVERIFY(command({{QStringLiteral("cancel"), true}}));
+        QTRY_VERIFY_WITH_TIMEOUT(!::IsWindow(save), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(state().value(QStringLiteral("browsers")).toArray().isEmpty(), 5000);
+    }
+
+
+    void customNavigation_data()
+    {
+        QTest::addColumn<QString>("leaf");
+        QTest::newRow("folder") << QStringLiteral("target");
+        QTest::newRow("file-like folder") << QStringLiteral("target.dwg");
+        QTest::newRow("unicode and spaces") << QStringLiteral("图纸 项目");
+    }
+
+    void customNavigation()
+    {
+        if (QFileInfo(QCoreApplication::applicationFilePath()).fileName().compare(QStringLiteral("acad.exe"), Qt::CaseInsensitive))
+            QSKIP("Run ctest -R tst_filedialog: the CAD cases use its isolated acad.exe fixture");
+        QFETCH(QString, leaf);
+        QTemporaryDir root;
+        QVERIFY(root.isValid());
+        QVERIFY(QDir(root.path()).mkdir(leaf));
+        const std::wstring target = QDir::toNativeSeparators(root.path() + QLatin1Char('/') + leaf).toStdWString();
+        fakedialog::CustomFileDialog dialog;
+        QVERIFY(dialog.valid());
+        QCOMPARE(fd::kind(dialog.handle()), Kind::Legacy);
+        QCOMPARE(fd::fileType(dialog.handle()), std::wstring(L"Drawing (*.dwg)"));
+        QVERIFY(fd::goTo(dialog.handle(), target));
+        QCOMPARE(dialog.entered(), std::vector<std::wstring> {target + L'\\'});
+        QCOMPARE(dialog.fileName(), std::wstring(L"keep-name.dwg"));
+        QVERIFY(dialog.notifications() >= 2); // path and restored name reached the owner's model
+        QVERIFY(!dialog.accepted());
+        QVERIFY(::IsWindow(dialog.handle()));
+        QVERIFY(fd::setFileName(dialog.handle(), L"selected.dwg"));
+        QCOMPARE(dialog.fileName(), std::wstring(L"selected.dwg"));
+        QVERIFY(fd::accept(dialog.handle()));
+        QTRY_VERIFY(dialog.accepted());
+    }
+
+    void customRejectsAmbiguity_data()
+    {
+        QTest::addColumn<int>("missing");
+        QTest::newRow("file type missing") << 0;
+        QTest::newRow("file list missing") << 1;
+        QTest::newRow("cancel missing") << 2;
+        QTest::newRow("multiple editable combos") << 3;
+    }
+
+    void customRejectsAmbiguity()
+    {
+        if (QFileInfo(QCoreApplication::applicationFilePath()).fileName().compare(QStringLiteral("acad.exe"), Qt::CaseInsensitive))
+            QSKIP("Run ctest -R tst_filedialog: the CAD cases use its isolated acad.exe fixture");
+        QFETCH(int, missing);
+        fakedialog::CustomFileDialog dialog;
+        QVERIFY(dialog.valid());
+        switch (missing) {
+        case 0: dialog.withoutType(); break;
+        case 1: dialog.withoutList(); break;
+        case 2: dialog.withoutCancel(); break;
+        case 3: dialog.ambiguousName(); break;
+        }
+        QCOMPARE(fd::kind(dialog.handle()), Kind::None);
+        QVERIFY(!fd::goTo(dialog.handle(), L"C:\\"));
+        QCOMPARE(dialog.fileName(), std::wstring(L"keep-name.dwg"));
+        QCOMPARE(dialog.notifications(), 0);
+        QVERIFY(!dialog.accepted());
+    }
+
+    void customRejectsMissingFolder()
+    {
+        if (QFileInfo(QCoreApplication::applicationFilePath()).fileName().compare(QStringLiteral("acad.exe"), Qt::CaseInsensitive))
+            QSKIP("Run ctest -R tst_filedialog: the CAD cases use its isolated acad.exe fixture");
+        fakedialog::CustomFileDialog dialog;
+        QVERIFY(dialog.valid());
+        QTemporaryDir root;
+        QVERIFY(root.isValid());
+        const std::wstring target = QDir::toNativeSeparators(root.path() + QStringLiteral("/gone")).toStdWString();
+        QVERIFY(!fd::goTo(dialog.handle(), target));
+        QCOMPARE(dialog.fileName(), std::wstring(L"keep-name.dwg"));
+        QCOMPARE(dialog.notifications(), 0);
+        QVERIFY(!dialog.accepted());
+    }
+
+    void customRejectsOtherProgram()
+    {
+        if (!QFileInfo(QCoreApplication::applicationFilePath()).fileName().compare(QStringLiteral("acad.exe"), Qt::CaseInsensitive))
+            QSKIP("This negative case runs separately with the unmodified test executable name");
+        fakedialog::CustomFileDialog dialog;
+        QVERIFY(dialog.valid());
+        QCOMPARE(fd::kind(dialog.handle()), Kind::None);
+        QVERIFY(!fd::goTo(dialog.handle(), QDir::tempPath().toStdWString()));
+        QCOMPARE(dialog.fileName(), std::wstring(L"keep-name.dwg"));
+        QCOMPARE(dialog.notifications(), 0);
+        QVERIFY(!dialog.accepted());
+    }
+
     void initTestCase()
     {
         for (const auto* name : {L"TSelectFolderForm", L"TSelectDirDlg", L"TFolderTreeView", L"TStartMenuFolderTreeView"})

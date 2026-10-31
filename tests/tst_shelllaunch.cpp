@@ -1,6 +1,7 @@
 #include "CommandLaunch.h"
 #include "platform/Integrity.h"
 #include "platform/FileManagers.h"
+#include "platform/OneCommanderTabs.h"
 #include "platform/FolderViewHit.h"
 #include "platform/Shell.h"
 #include "platform/FileDialog.h"
@@ -147,6 +148,70 @@ private slots:
         QTest::addColumn<int>("model");
         QTest::newRow("production-STA") << int(COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
         QTest::newRow("MTA") << int(COINIT_MULTITHREADED);
+    }
+
+    void oneCommanderSessionTabs()
+    {
+        using ws::onecommander::TabState;
+        using ws::onecommander::sessionTabs;
+        const auto json = [](const QStringList& paths) {
+            QJsonArray tabs;
+            for (const QString& path : paths)
+                tabs.append(QJsonObject {{u"FullPath"_s, path}, {u"IsFolder"_s, true}});
+            return QJsonDocument(tabs).toJson();
+        };
+        const QString a = u"C:\\工作 目录\\A"_s;
+        const QString b = u"C:\\工作 目录\\John's B"_s;
+        const QString c = u"\\\\server\\share\\资料"_s;
+        const QString d = u"D:\\Other"_s;
+        const std::array<QByteArray, 2> panes {json({a, b}), json({c, d})};
+        std::array<TabState, 2> state {{{2, 1}, {2, 0}}};
+        const auto tabs = sessionTabs(panes, state, b);
+        QVERIFY(tabs);
+        QCOMPARE(tabs->size(), 4);
+        QCOMPARE(tabs->at(0).path, a);
+        QCOMPARE(tabs->at(0).state, 0);
+        QCOMPARE(tabs->at(1).path, b);
+        QCOMPARE(tabs->at(1).state, 1);
+        QCOMPARE(tabs->at(2).state, 2);
+        QCOMPARE(tabs->at(3).state, 0);
+        state[1].visible = false;
+        QCOMPARE(sessionTabs(panes, state, b)->size(), 2);
+        state[0].count = 1;
+        QVERIFY(!sessionTabs(panes, state, b)); // saved data predates a tab closing
+        state[0] = {2, 0};
+        QVERIFY(!sessionTabs(panes, state, b)); // selection no longer agrees
+        state[0] = {2, 1};
+        QVERIFY(!sessionTabs({QByteArray("{"), panes[1]}, state, b));
+        QVERIFY(!sessionTabs(panes, state, u"C:\\elsewhere"_s));
+        QVERIFY(!sessionTabs(panes, std::span<const TabState>(), b));
+        QCOMPARE(sessionTabs({panes[0], {}}, state, b)->size(), 2); // untouched second pane
+        const QByteArray virtualTabs = R"([{"FullPath":"::{ThisPC}","IsFolder":true},{"FullPath":"C:\\Work","IsFolder":false}])";
+        QVERIFY(!sessionTabs({virtualTabs, {}}, state, b));
+    }
+
+    void oneCommanderOpenTabs()
+    {
+        const QString root = qEnvironmentVariable("WINSHUN_ONECOMMANDER_TABS_ROOT");
+        if (root.isEmpty())
+            QSKIP("Set WINSHUN_ONECOMMANDER_TABS_ROOT to an isolated prepared tab fixture");
+        const HRESULT com = ::CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        QVERIFY(SUCCEEDED(com));
+        auto uninitialize = qScopeGuard([] { ::CoUninitialize(); });
+        const DWORD clipboard = ::GetClipboardSequenceNumber();
+        const HWND foreground = ::GetForegroundWindow();
+        QStringList paths;
+        for (const auto& folder : ws::filemanager::openFolders()) {
+            if (folder.shownIn == ws::filemanager::Kind::OneCommander)
+                paths.append(QDir::fromNativeSeparators(QString::fromStdWString(folder.path)));
+        }
+        const QDir fixtures(root);
+        QVERIFY2(paths.contains(fixtures.filePath(u"Hidden-B"_s)), qPrintable(paths.join(u'\n')));
+        QVERIFY2(paths.contains(fixtures.filePath(u"Current-A"_s)), qPrintable(paths.join(u'\n')));
+        QVERIFY(!paths.contains(fixtures.filePath(u"Other-Pane-C"_s))); // closed, but still in RecentFolders
+        QCOMPARE(paths.count(fixtures.filePath(u"Hidden-B"_s)), 1);
+        QCOMPARE(::GetClipboardSequenceNumber(), clipboard);
+        QCOMPARE(::GetForegroundWindow(), foreground);
     }
 
     // Opt-in: the HWND must belong to an isolated OneCommander copy. Uses
@@ -309,6 +374,52 @@ private slots:
         QCOMPARE(QDir::cleanPath(result.value(u"cwd"_s).toString()), QDir::cleanPath(working));
         QCOMPARE(result.value(u"arguments"_s).toArray().last().toString(), query);
         qInfo() << "Launched by" << result.value(u"parent"_s).toString() << "with the requested arguments and folder";
+    }
+
+    // The application catalog supplies an AppsFolder ID, not an .exe path.
+    // Exercise the same executeUnelevated path with Windows' own console app,
+    // passing only a command that writes to our temporary directory and exits.
+    void appsFolderConsole_data()
+    {
+        QTest::addColumn<bool>("explicitDirectory");
+        QTest::newRow("explicit working directory") << true;
+        QTest::newRow("default target directory") << false;
+    }
+
+    void appsFolderConsole()
+    {
+        QFETCH(bool, explicitDirectory);
+        if (!::GetShellWindow())
+            QSKIP("No desktop shell in this test session");
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QString output = temporary.filePath(u"app-console.json"_s);
+        QString quotedOutput = QDir::toNativeSeparators(output);
+        quotedOutput.replace(u'\'', u"''"_s);
+        const QString script = u"$p=(Get-CimInstance Win32_Process -Filter ('ProcessId='+$PID)).ParentProcessId; "_s
+            + u"$v=@{parent_pid=$p; parent=(Get-Process -Id $p -ErrorAction SilentlyContinue).ProcessName; cwd=(Get-Location).Path}; "_s
+            + u"[IO.File]::WriteAllText('"_s + quotedOutput
+            + u"',($v|ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))"_s;
+        const QString command = u"\"shell:AppsFolder\\{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe\" "_s
+            + u"-NoProfile -NonInteractive -Command \""_s + script + u'"';
+        const auto done = std::make_shared<std::atomic<int>>(-1);
+        ws::shell::runCustom(command, explicitDirectory ? temporary.path() : QString(), {},
+            [done](bool ok) { done->store(ok ? 1 : 0); });
+        QTRY_COMPARE_WITH_TIMEOUT(done->load(), 1, 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(output), 15000);
+        QFile file(output);
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QJsonParseError error;
+        const QJsonObject result = QJsonDocument::fromJson(file.readAll(), &error).object();
+        QCOMPARE(error.error, QJsonParseError::NoError);
+        QVERIFY(result.value(u"parent_pid"_s).toInteger() > 0);
+        QVERIFY(result.value(u"parent"_s).toString().compare(u"explorer"_s, Qt::CaseInsensitive) != 0);
+        wchar_t system[MAX_PATH];
+        const UINT length = ::GetSystemDirectoryW(system, MAX_PATH);
+        QVERIFY(length > 0 && length < MAX_PATH);
+        const QString expected = explicitDirectory ? temporary.path()
+            : QString::fromWCharArray(system, static_cast<qsizetype>(length)) + u"/WindowsPowerShell/v1.0"_s;
+        QCOMPARE(QDir::cleanPath(result.value(u"cwd"_s).toString()).toLower(), QDir::cleanPath(expected).toLower());
     }
 
     // A console program run for what it writes (the Skill is installed so): both
