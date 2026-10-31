@@ -41,6 +41,11 @@ bool rankedBefore(const SearchResult& a, const SearchResult& b, RankBy by) noexc
 // candidate (SearchEngine::contentLeftOut): the launcher offers each part
 // after the last row, to be searched this once (Request::contentSet).
 struct ContentLeftOut {
+    int unreadable = 0;
+    QStringList unreadableSamples; // bounded examples for the summary/report
+    int truncated = 0;
+    int indexExcluded = 0;
+    qint64 elapsedMs = 0;
     QStringList large; // over the size limit, by path (the content index knew some, the rest were opened)
     int lowPriority = 0; // of a listed type, in system, program and tool folders (not asked for: contentInLowPriority)
     int otherTypes = 0; // text of a kind not listed (OtherTextTypes)

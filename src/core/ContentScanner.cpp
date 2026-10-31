@@ -715,15 +715,19 @@ std::optional<ContentMatch> ContentScanner::scan(
 }
 
 std::optional<ContentMatch> ContentScanner::scanFile(
-    std::wstring_view path, std::int64_t maxBytes, const CancelFn& cancelled, bool* large) const
+    std::wstring_view path, std::int64_t maxBytes, const CancelFn& cancelled, bool* large, bool* unreadable) const
 {
     if (large)
         *large = false;
+    if (unreadable)
+        *unreadable = false;
     win32::UniqueHandle file(::CreateFileW(win32::longPath(path).c_str(), GENERIC_READ,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN,
         nullptr));
-    if (!file.valid())
+    if (!file.valid()) {
+        if (unreadable) *unreadable = true;
         return std::nullopt;
+    }
 
     FILE_BASIC_INFO basic {};
     constexpr DWORD kSkip = FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_OFFLINE | FILE_ATTRIBUTE_RECALL_ON_OPEN
@@ -745,11 +749,13 @@ std::optional<ContentMatch> ContentScanner::scanFile(
     ::SetFileInformationByHandle(file.get(), FileIoPriorityHintInfo, &hint, sizeof hint);
 
     const HANDLE h = file.get();
-    const ReadFn read = [h](char* buffer, std::size_t capacity) -> std::size_t {
+    const ReadFn read = [h, unreadable](char* buffer, std::size_t capacity) -> std::size_t {
         DWORD got = 0;
         const auto request = static_cast<DWORD>(std::min<std::size_t>(capacity, 1u << 30));
-        if (!::ReadFile(h, buffer, request, &got, nullptr))
+        if (!::ReadFile(h, buffer, request, &got, nullptr)) {
+            if (unreadable) *unreadable = true;
             return 0;
+        }
         return got;
     };
     return scan(read, kChunkBytes, cancelled);

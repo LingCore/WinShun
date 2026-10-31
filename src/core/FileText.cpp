@@ -88,13 +88,15 @@ QString decode(std::string_view bytes, TextEncoding encoding)
 }
 
 // `file`: open for reading.
-Result readTextFile(HANDLE file, std::uint64_t size)
+Result readTextFile(HANDLE file, std::uint64_t size, const std::function<bool()>& cancelled)
 {
     Result result;
     const std::size_t want = static_cast<std::size_t>(std::min<std::uint64_t>(size, kMaxTextFileBytes));
     std::string bytes(want, '\0');
     std::size_t got = 0;
     while (got < want) {
+        if (cancelled && cancelled())
+            return result;
         DWORD n = 0;
         const DWORD ask = static_cast<DWORD>(std::min<std::size_t>(want - got, 1u << 20));
         if (!::ReadFile(file, bytes.data() + got, ask, &n, nullptr))
@@ -159,15 +161,22 @@ Result read(void* file, const std::wstring& path, const Sources& sources, std::i
             // On a server or in WSL the text can be older than the file for a
             // while (RemoteContent reads a changed file again after a pause):
             // kept only when it is of the file as the index has it now (#114).
+            const auto written = (static_cast<std::uint64_t>(data.ftLastWriteTime.dwHighDateTime) << 32)
+                | data.ftLastWriteTime.dwLowDateTime;
             if (const EntryId id = sources.index->findPath(path); id != kNoEntry
-                && (!unc::isUnc(path) || sources.content->docStamp(id) == remotecontent::stampOf(*sources.index, id)))
+                && (sources.verifyFileVersion
+                        ? sources.content->docStamp(id) == ContentIndex::stampOf(static_cast<std::int64_t>(size),
+                            static_cast<std::int64_t>(written))
+                        : (!unc::isUnc(path) || sources.content->docStamp(id) == remotecontent::stampOf(*sources.index, id))))
                 kept = sources.content->textOf(id);
         }
         if (kept) {
             result.status = Status::Ok;
             result.fromIndex = true;
             result.cut = kept->truncated;
-            result.text = withPlaces(*kept);
+            if (sources.preserveLocations)
+                result.structured = std::make_shared<doctext::DocText>(std::move(*kept));
+            else result.text = withPlaces(*kept);
             return result;
         }
     }
@@ -189,7 +198,7 @@ Result read(void* file, const std::wstring& path, const Sources& sources, std::i
     if (!reading.valid())
         return result;
     if (!result.document)
-        return readTextFile(reading.get(), size);
+        return readTextFile(reading.get(), size, cancelled);
 
     FILE_IO_PRIORITY_HINT_INFO hint {};
     hint.PriorityHint = IoPriorityHintLow;
@@ -201,7 +210,9 @@ Result read(void* file, const std::wstring& path, const Sources& sources, std::i
     }
     result.status = Status::Ok;
     result.cut = read.text.truncated;
-    result.text = withPlaces(read.text);
+    if (sources.preserveLocations)
+        result.structured = std::make_shared<doctext::DocText>(std::move(read.text));
+    else result.text = withPlaces(read.text);
     return result;
 }
 

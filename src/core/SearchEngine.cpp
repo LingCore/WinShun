@@ -2407,6 +2407,8 @@ void SearchEngine::runContentSearch(const Job& job)
             // Every candidate was looked at (the scan did not stop at its
             // limit): the files left out for their size are all known.
             std::lock_guard lock(largeMutex);
+            leftOut.indexExcluded = ruledOut;
+            leftOut.elapsedMs = timer.elapsed();
             emit contentLeftOut(job.id, leftOut);
         }
         emit contentProgress(job.id, scanned.load(), total, finished);
@@ -2462,6 +2464,7 @@ void SearchEngine::runContentSearch(const Job& job)
                     std::optional<ContentMatch> match;
                     doctext::Location location;
                     bool overLimit = false; // more than maxBytes: left unread
+                    bool unreadable = false;
                     const bool document = isDocumentPath(path);
                     fileIsDocument = document;
                     const auto scanText = [&](const doctext::DocText& text) {
@@ -2510,9 +2513,15 @@ void SearchEngine::runContentSearch(const Job& job)
                             overLimit = read.large;
                         }
                         if (text) {
+                            if (text->truncated) {
+                                std::lock_guard lock(largeMutex);
+                                ++leftOut.truncated;
+                            }
                             match = scanText(*text);
                             if (match)
                                 location = doctext::locate(*text, static_cast<std::uint32_t>(match->line));
+                        } else if (!request.contentIndexedOnly && !overLimit && !stale()) {
+                            unreadable = true;
                         }
                     } else if (!candidate.indexed && intake.wants(path)) {
                         const std::uint64_t since = intake.since();
@@ -2520,8 +2529,14 @@ void SearchEngine::runContentSearch(const Job& job)
                         intake.take(candidate.id, read.text, since);
                         match = std::move(read.match);
                         overLimit = read.text.large;
+                        unreadable = read.text.error != 0 && !overLimit;
                     } else {
-                        match = scanner.scanFile(path, maxBytes, stale, &overLimit);
+                        match = scanner.scanFile(path, maxBytes, stale, &overLimit, &unreadable);
+                    }
+                    if (unreadable) {
+                        std::lock_guard lock(largeMutex);
+                        ++leftOut.unreadable;
+                        if (leftOut.unreadableSamples.size() < 50) leftOut.unreadableSamples.append(QString::fromStdWString(path));
                     }
                     if (overLimit) {
                         std::lock_guard lock(largeMutex);
