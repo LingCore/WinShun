@@ -102,6 +102,30 @@ add_test(NAME tst_shelllaunch COMMAND tst_shelllaunch -o -,txt)
 set_tests_properties(tst_shelllaunch PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# Folder-menu commands use the production shell worker and temporary files.
+qt_add_executable(tst_foldermenu tst_foldermenu.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/FolderMenu.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/RecentFolders.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/ComWorker.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/KeyRouter.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/WindowEffects.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/Foreground.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/Shell.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/ShellDialogs.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/DragOut.cpp
+    ${file_dialog_backend}
+    ${PROJECT_SOURCE_DIR}/src/app/platform/FileManagers.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/FolderViewHit.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/Integrity.cpp)
+target_include_directories(tst_foldermenu PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_foldermenu PRIVATE wscore Qt6::Gui Qt6::Qml Qt6::Test
+    ole32 oleaut32 oleacc shell32 shlwapi user32 advapi32 taskschd uiautomationcore userenv dwmapi comctl32 shcore)
+set_target_properties(tst_foldermenu PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+add_test(NAME tst_foldermenu COMMAND tst_foldermenu -o -,txt)
+set_tests_properties(tst_foldermenu PROPERTIES
+    RUN_SERIAL TRUE
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # The command line ws as the settings page sees it (src/app/CommandLine,
 # McpClients): the PATH as text, where ws is, the user's PATH written in keys
 # of the test's own, and Claude Code's Skill installed through a stand-in for

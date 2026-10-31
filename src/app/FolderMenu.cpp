@@ -18,6 +18,7 @@
 #include <QGuiApplication>
 #include <QJsonObject>
 #include <QScreen>
+#include <QStandardPaths>
 #include <QStyleHints>
 #include <QTimer>
 #include <QWindow>
@@ -522,6 +523,8 @@ void FolderMenu::show(const folderview::Hit& hit, const Found& found)
     }
     m_hit = hit;
     m_folder = found.folder;
+    if (m_folder.isEmpty() && hit.surface == folderview::Surface::Desktop)
+        m_folder = QStandardPaths::writableLocation(QStandardPaths::DesktopLocation);
     m_entries.clear();
     m_actions.clear();
     const auto add = [this](Kind kind, const QString& path, const QString& text, const QString& detail,
@@ -576,11 +579,23 @@ void FolderMenu::show(const folderview::Hit& hit, const Found& found)
     if (!m_folder.isEmpty()) {
         separator();
         add(Kind::Search, m_folder, tr("在“%1”里搜索").arg(nameOf(m_folder)), QString(), u"\uE721"_s); // Search
+        add(Kind::Terminal, m_folder, tr("在此打开命令提示符"), QString(), u"\uE756"_s);
+        add(Kind::PowerShell, m_folder, tr("在此打开 PowerShell"), QString(), u"\uE756"_s);
         if (m_favorites && m_favorites->contains(m_folder))
             add(Kind::RemoveFavorite, m_folder, tr("从收藏夹移除这个文件夹"), QString(), u"\uE8D9"_s); // Unfavorite
         else
             add(Kind::AddFavorite, m_folder, tr("收藏这个文件夹"), QString(), u"\uE734"_s);
     }
+    int commands = 0;
+    for (const Favorite& favorite : m_favorites ? m_favorites->items() : FavoriteList()) {
+        if (favorite.kind != Favorite::Kind::Command || commands >= kMaxFavorites)
+            continue;
+        if (commands++ == 0)
+            separator();
+        add(Kind::Command, favorite.path, favorite.name, favorite.keyword, u"\uE756"_s);
+    }
+    separator();
+    add(Kind::Settings, {}, tr("Win顺 设置…"), QString(), u"\uE713"_s);
     emit entriesChanged();
 
     // Where the second press was (or the hotkey's anchor): its top-left
@@ -668,8 +683,17 @@ void FolderMenu::trigger(int index)
     if (index < 0 || index >= static_cast<int>(m_actions.size()))
         return;
     const Entry entry = m_actions[static_cast<size_t>(index)];
-    if (entry.path.isEmpty())
+    if (entry.path.isEmpty() && entry.kind != Kind::Settings)
         return;
+    const QString title = m_entries[index].toMap().value(u"text"_s).toString();
+    const auto done = [guard = QPointer(this), title](bool ok) {
+        if (!ok) {
+            QMetaObject::invokeMethod(qApp, [guard, title] {
+                if (guard)
+                    emit guard->notice(tr("无法打开“%1”，请检查命令和工作目录").arg(title));
+            }, Qt::QueuedConnection);
+        }
+    };
     dismiss();
     switch (entry.kind) {
     case Kind::Folder:
@@ -685,6 +709,26 @@ void FolderMenu::trigger(int index)
     case Kind::RemoveFavorite:
         if (m_favorites)
             m_favorites->remove(entry.path);
+        break;
+    case Kind::Terminal:
+        shell::openTerminal(entry.path, done);
+        break;
+    case Kind::PowerShell:
+        shell::openPowerShell(entry.path, done);
+        break;
+    case Kind::Command: {
+        const auto favoriteIndex = m_favorites ? indexOfFavorite(m_favorites->items(), entry.path) : -1;
+        if (favoriteIndex < 0) {
+            emit notice(tr("这条命令已移除，请重新打开菜单"));
+            break;
+        }
+        const Favorite favorite = m_favorites->items()[favoriteIndex];
+        shell::runCustom(favorite.command, favorite.workingDirectory.isEmpty() ? m_folder : favorite.workingDirectory,
+            m_folder, done, {favorite.silent, favorite.runAsAdmin});
+        break;
+    }
+    case Kind::Settings:
+        emit settingsRequested();
         break;
     }
 }

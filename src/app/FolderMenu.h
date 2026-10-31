@@ -11,6 +11,7 @@
 #include <QRectF>
 #include <QSet>
 #include <QVariantList>
+#include <QWindow>
 #include <QtQml/qqmlregistration.h>
 
 #include <windows.h>
@@ -20,8 +21,6 @@
 #include <functional>
 #include <memory>
 #include <string>
-
-class QWindow;
 
 namespace ws {
 
@@ -117,10 +116,12 @@ signals:
     void hideRequested();
     void keyPressed(int key, const QString& text); // taken on its way to File Explorer
     void searchRequested(const QString& folder); // 在此搜索
+    void settingsRequested();
+    void notice(const QString& text);
     void openChanged(bool open);
 
 private:
-    enum class Kind { Folder, Search, AddFavorite, RemoveFavorite };
+    enum class Kind { Folder, Search, AddFavorite, RemoveFavorite, Terminal, PowerShell, Command, Settings };
     struct Entry {
         Kind kind = Kind::Folder;
         QString path;
@@ -156,7 +157,7 @@ private:
     std::atomic<bool> m_open {false};
     std::atomic<int> m_asks {0}; // the latest double click's number: older answers are dropped
     folderview::Hit m_hit; // where the menu is up
-    QString m_folder; // the folder that tab shows; empty on the desktop, Home, This PC
+    QString m_folder; // the tab's folder or Desktop directory; empty in Home / This PC
     QVariantList m_entries;
     std::vector<Entry> m_actions; // by entry
     std::unique_ptr<KeyRouter> m_router;

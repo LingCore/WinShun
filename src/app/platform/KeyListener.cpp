@@ -345,6 +345,7 @@ LRESULT CALLBACK KeyListener::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
             self->removeKeyboard(hwnd);
         if (self) {
             self->m_callbacks.doubleClick = nullptr; // so the mouse goes too
+            self->m_callbacks.middleClick = nullptr;
             self->m_callbacks.dragMenu = nullptr;
             self->m_callbacks.leftButtonUp = nullptr;
             self->m_callbacks.mousePress = nullptr;
@@ -741,6 +742,12 @@ void KeyListener::onMouse(const RAWMOUSE& mouse)
     }
     for (DoubleTapDetector& d : m_detectors)
         d.mouseUsed();
+    if (m_callbacks.middleClick && (mouse.usButtonFlags & kAnyButtonDown) == RI_MOUSE_MIDDLE_BUTTON_DOWN
+        && !modifierHeld() && !held(VK_LBUTTON) && !held(VK_RBUTTON) && !held(VK_XBUTTON1) && !held(VK_XBUTTON2)) {
+        const DWORD at = ::GetMessagePos();
+        const POINT pt {static_cast<short>(LOWORD(at)), static_cast<short>(HIWORD(at))};
+        m_callbacks.middleClick(::WindowFromPoint(pt), pt);
+    }
     if (!m_callbacks.doubleClick)
         return;
     // The device's buttons: with them swapped (left-handed), its right one

@@ -11231,12 +11231,12 @@ private slots:
             d.keyDown(ctrl, 700, 0, 0);
             QVERIFY(!d.keyUp(ctrl, 750, 0, 0));
         }
-        { // mouse moved: Ctrl+click multi-select, not a double tap
+        { // pointer motion alone is not Ctrl+click (GitHub #111)
             DoubleTapDetector d;
             d.keyDown(ctrl, 0, 100, 100);
             d.keyUp(ctrl, 50, 100, 100);
             d.keyDown(ctrl, 150, 300, 100);
-            QVERIFY(!d.keyUp(ctrl, 200, 300, 100));
+            QVERIFY(d.keyUp(ctrl, 200, 300, 100));
         }
         { // a click (or the wheel) while Ctrl is down, twice on the same spot: not a double tap
             DoubleTapDetector d;
@@ -11324,7 +11324,7 @@ private slots:
             e.keyDown(ctrl, 1650, 0, 0);
             QVERIFY(!e.keyUp(ctrl, 1700, 0, 0));
         }
-        { // none but a press held too long goes that way: spoiled (Shift), moved, the other Ctrl
+        { // a delayed press still excludes chords and the other Ctrl; pointer motion is harmless
             constexpr std::uint32_t rightCtrl = 0xA3, shift = 0xA0;
             DoubleTapDetector d;
             d.keyDown(shift, 990, 0, 0);
@@ -11337,7 +11337,7 @@ private slots:
             e.keyDown(ctrl, 1000, 0, 0);
             e.keyUp(ctrl, 1609, 0, 0);
             e.keyDown(ctrl, 1609, 300, 0);
-            QVERIFY(!e.keyUp(ctrl, 1609, 300, 0));
+            QVERIFY(e.keyUp(ctrl, 1609, 300, 0));
             DoubleTapDetector f;
             f.keyDown(ctrl, 1000, 0, 0);
             f.keyUp(ctrl, 1609, 0, 0);
@@ -11374,6 +11374,30 @@ private slots:
             d.keyUp(ctrl, 0xFFFFFF40u, 0, 0);
             d.keyDown(ctrl, 0x00000010u, 0, 0);
             QVERIFY(d.keyUp(ctrl, 0x00000050u, 0, 0));
+        }
+    }
+
+    void doubleTapWhilePointerMoves()
+    {
+        using Key = DoubleTapDetector::Key;
+        for (const auto [key, left] : {std::pair {Key::Ctrl, 0xA2u}, {Key::Alt, 0xA4u}, {Key::Shift, 0xA0u}}) {
+            for (unsigned vk : {left, left + 1}) {
+                DoubleTapDetector::Config config;
+                config.key = key;
+                DoubleTapDetector moving(config);
+                moving.keyDown(vk, 1000, 0, 0);
+                QVERIFY(!moving.keyUp(vk, 1050, 300, -200));
+                moving.keyDown(vk, 1150, -1000, 800);
+                QVERIFY(moving.keyUp(vk, 1200, 1900, 1000));
+                QCOMPARE(moving.takeMiss().reason, DoubleTapDetector::MissReason::None);
+
+                DoubleTapDetector clicking(config);
+                clicking.keyDown(vk, 1000, 0, 0);
+                clicking.mouseUsed();
+                QVERIFY(!clicking.keyUp(vk, 1050, 300, -200));
+                clicking.keyDown(vk, 1150, -1000, 800);
+                QVERIFY(!clicking.keyUp(vk, 1200, 1900, 1000));
+            }
         }
     }
 
@@ -12873,6 +12897,13 @@ private slots:
         const LauncherState ready {.active = true, .fieldFocused = true, .revealed = true};
         QCOMPARE(handoff(ready, 0u), Handoff::Deliver); // a pinned launcher already up: at once
         QCOMPARE(handoff(ready, 5000u), Handoff::Deliver);
+        // #140: activation/focus signals can run synchronously inside show().
+        // Even a visible (pinned, or still closing) window must finish resetting
+        // its field and caret before replay starts, including after the cap.
+        LauncherState preparing = ready;
+        preparing.preparing = true;
+        QCOMPARE(handoff(preparing, 0u), Handoff::Wait);
+        QCOMPARE(handoff(preparing, kHandoffCapMs + 1), Handoff::Wait);
         // Active, but still cloaked (its first frame not drawn) or its field
         // not the focus object yet: they wait, until the cap.
         LauncherState cloaked = ready;
@@ -13670,8 +13701,8 @@ private slots:
         { // the pointer moved between the taps
             DoubleTapDetector d;
             tap(d, ctrl, 1000, 60, 0);
-            QVERIFY(!tap(d, ctrl, 1200, 60, 50));
-            QCOMPARE(d.takeMiss().reason, Reason::Moved);
+            QVERIFY(tap(d, ctrl, 1200, 60, 50));
+            QCOMPARE(d.takeMiss().reason, Reason::None);
         }
         { // Shift held at the second press
             DoubleTapDetector d;
@@ -13755,8 +13786,8 @@ private slots:
             DoubleTapDetector d;
             d.keyDown(ctrl, 1000, 0, 0);
             QVERIFY(!d.keyUp(ctrl, 1060, 50, 0));
-            QVERIFY(!tap(d, ctrl, 1200, 60, 50));
-            QCOMPARE(d.takeMiss().reason, Reason::FirstMoved);
+            QVERIFY(tap(d, ctrl, 1200, 60, 50));
+            QCOMPARE(d.takeMiss().reason, Reason::None);
         }
         { // typing is none: Ctrl+C, then a tap; nor after typing in between, nor much later
             DoubleTapDetector d;

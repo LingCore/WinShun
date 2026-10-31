@@ -287,6 +287,7 @@ struct LauncherState {
     bool active = false; // Qt says the window is active
     bool fieldFocused = false; // its search field is Qt's focus object
     bool revealed = false; // shown, no reveal pending and not cloaked: its first frame is on the screen
+    bool preparing = false; // showLauncher still resets the query, focus or selection (#140)
 };
 enum class Handoff {
     Wait, // not ready yet: look again when something changes
@@ -297,6 +298,8 @@ inline constexpr unsigned kHandoffCapMs = 120;
 
 inline constexpr Handoff handoff(LauncherState launcher, std::optional<unsigned> msSinceActive) noexcept
 {
+    if (launcher.preparing)
+        return Handoff::Wait;
     if (launcher.active && launcher.fieldFocused && launcher.revealed)
         return Handoff::Deliver;
     return msSinceActive && *msSinceActive >= kHandoffCapMs ? Handoff::DeliverLate : Handoff::Wait;

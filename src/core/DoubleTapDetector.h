@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <cstdlib>
 #include <utility>
 
 namespace ws {
@@ -13,9 +12,9 @@ namespace ws {
 // or wheel in between, shorter than maxPressMs, and with no other modifier
 // held at the press: Shift, Win, and Alt for Ctrl or Ctrl for Alt (for Shift:
 // Ctrl, Alt and Win; Shift with a letter is a capital, not a tap). Two taps
-// of the same key, the same one of its two, within maxGapMs trigger, unless
-// the mouse moved in between. The exceptions are the key used with the
-// mouse, not a double tap: Ctrl+click multi-selection (the same spot twice,
+// of the same key, the same one of its two, within maxGapMs trigger. Pointer
+// motion alone does not cancel a keyboard gesture (GitHub #111). The exceptions
+// are the key used with the mouse: Ctrl+click multi-selection (the same spot twice,
 // or one row and the next), Ctrl+wheel zooming, and a touchpad pinch, which
 // Windows sends as Ctrl+wheel; Alt+click and Alt+drag alike.
 //
@@ -47,11 +46,11 @@ public:
     // did not make a double tap, for the diagnostics journal (GitHub #111:
     // "sometimes double Ctrl does not open"): it came late, was held too
     // long, was spoiled (another key, a modifier held, the mouse used while
-    // it was down), the pointer moved, it was the key's other one, or
+    // it was down), it was the key's other one, or
     // something came between the taps (a modifier, the mouse, a program's
     // key). Typing between them is not a near miss (Ctrl, a letter, Ctrl).
     // The First… ones: the press before a tap was no tap (spoiled, held too
-    // long, the pointer moved), so the tap after it had nothing to make a
+    // long), so the tap after it had nothing to make a
     // double tap with; a press spoiled by typing (Ctrl+C) is none, whatever
     // spoiled it first (Ctrl+Shift+S). Held also: a press soon after one
     // held too long, itself held too long.
@@ -60,12 +59,10 @@ public:
         Late,
         Held,
         Spoiled,
-        Moved,
         OtherSide,
         Interrupted,
         FirstSpoiled,
         FirstHeld,
-        FirstMoved,
     };
     // What spoiled a press, or came between the taps: another modifier held
     // (one whose release was never seen counts for a while, lostReleaseMs),
@@ -88,8 +85,6 @@ public:
             return "held";
         case MissReason::Spoiled:
             return "spoiled";
-        case MissReason::Moved:
-            return "moved";
         case MissReason::OtherSide:
             return "other-side";
         case MissReason::Interrupted:
@@ -98,8 +93,6 @@ public:
             return "first-spoiled";
         case MissReason::FirstHeld:
             return "first-held";
-        case MissReason::FirstMoved:
-            return "first-moved";
         case MissReason::None:
             break;
         }
@@ -127,7 +120,6 @@ public:
     struct Config {
         std::uint32_t maxPressMs = 300;
         std::uint32_t maxGapMs = 400;
-        int maxMovePx = 12;
         // Longer than a keyboard waits before it repeats a held key (1 s at
         // most) or between repeats: a press after this much quiet is a new
         // one, and the release of the last was lost.
@@ -163,7 +155,7 @@ public:
 
     // Both return true when the event completes a double tap. `sent`: a
     // program's (SendInput), not a keyboard's.
-    bool keyDown(std::uint32_t vk, std::uint32_t timeMs, int x, int y, bool sent = false) noexcept
+    bool keyDown(std::uint32_t vk, std::uint32_t timeMs, int, int, bool sent = false) noexcept
     {
         if (const int m = modifierOf(vk); m >= 0) {
             m_modifierDown[m] = true;
@@ -211,8 +203,6 @@ public:
         m_clean = !modifierHeld(timeMs);
         m_pressCause = m_clean ? Cause::None : Cause::Modifier;
         m_downTime = timeMs;
-        m_downX = x;
-        m_downY = y;
         if (m_armed && (timeMs - m_firstUpTime > m_config.maxGapMs || !m_clean))
             m_armed = false;
         // Pressed again as it was let go, quicker than a finger can
@@ -222,13 +212,11 @@ public:
         // long: it was a tap (GitHub #111: the first double Ctrl right after
         // switching apps never opened, a second one did).
         if (!m_armed && m_clean && m_spoiledFirst.miss.reason == MissReason::FirstHeld && m_spoiledFirst.key == vk
-            && timeMs - m_spoiledFirst.upTime <= kQueuedGapMs && closeTo(x, y, m_spoiledFirst.x, m_spoiledFirst.y)) {
+            && timeMs - m_spoiledFirst.upTime <= kQueuedGapMs) {
             m_armed = true;
             m_firstKey = vk;
             m_firstDownTime = m_spoiledFirst.downTime;
             m_firstUpTime = m_spoiledFirst.upTime;
-            m_firstX = m_spoiledFirst.x;
-            m_firstY = m_spoiledFirst.y;
             m_tapped = true;
             m_lastTapUp = m_spoiledFirst.upTime;
             m_queuedMs = m_spoiledFirst.miss.ms;
@@ -237,7 +225,7 @@ public:
         return false;
     }
 
-    bool keyUp(std::uint32_t vk, std::uint32_t timeMs, int x, int y, bool sent = false) noexcept
+    bool keyUp(std::uint32_t vk, std::uint32_t timeMs, int, int, bool sent = false) noexcept
     {
         if (const int m = modifierOf(vk); m >= 0)
             m_modifierDown[m] = false;
@@ -246,15 +234,13 @@ public:
         m_down = false;
         const bool sentWhole = sent && m_downSent && timeMs - m_downTime < kSentWholeMs;
         const std::uint32_t held = timeMs - m_downTime;
-        const bool moved = !closeTo(x, y, m_downX, m_downY);
-        const bool tap = m_clean && !(sentWhole && m_config.key != Key::Ctrl) && held <= m_config.maxPressMs && !moved;
+        const bool tap = m_clean && !(sentWhole && m_config.key != Key::Ctrl) && held <= m_config.maxPressMs;
         // Meant as the second of a double tap, perhaps.
         const bool second = m_tapped && m_downTime - m_lastTapUp <= 2 * m_config.maxGapMs;
         if (!tap) {
             if (!sentWhole) {
-                const Miss miss = !m_clean   ? Miss {MissReason::Spoiled, 0, m_pressCause}
-                    : held > m_config.maxPressMs ? Miss {MissReason::Held, held}
-                                                 : Miss {MissReason::Moved};
+                const Miss miss = !m_clean ? Miss {MissReason::Spoiled, 0, m_pressCause}
+                                          : Miss {MissReason::Held, held};
                 // Told now: meant as the second, perhaps, or held too long
                 // after one held too long (a slow double tap). Else told
                 // should a tap follow: meant as the first, perhaps. Either
@@ -266,14 +252,14 @@ public:
                     m_miss = miss;
                 if (miss.by != Cause::Key)
                     m_spoiledFirst = SpoiledFirst {
-                        first(miss), timeMs, m_downKey, m_downTime, m_downX, m_downY, second || heldAgain};
+                        first(miss), timeMs, m_downKey, m_downTime, second || heldAgain};
             }
             m_armed = false;
             m_tapped = false;
             return false;
         }
         // A tap of the other one starts over from this one.
-        if (m_armed && m_firstKey == m_downKey && closeTo(m_downX, m_downY, m_firstX, m_firstY)) {
+        if (m_armed && m_firstKey == m_downKey) {
             m_armed = false;
             m_tapped = false;
             m_spoiledFirst = {};
@@ -281,8 +267,7 @@ public:
         }
         if (second) {
             const std::uint32_t gap = m_downTime - m_lastTapUp;
-            m_miss = m_armed && m_firstKey != m_downKey ? Miss {MissReason::OtherSide}
-                : m_armed                                ? Miss {MissReason::Moved}
+            m_miss = m_armed                              ? Miss {MissReason::OtherSide}
                 : gap > m_config.maxGapMs                ? Miss {MissReason::Late, gap}
                                                          : Miss {MissReason::Interrupted, 0, m_gapCause};
         } else if (m_spoiledFirst.miss.reason != MissReason::None && !m_spoiledFirst.told
@@ -296,8 +281,6 @@ public:
         m_firstKey = m_downKey;
         m_firstDownTime = m_downTime;
         m_firstUpTime = timeMs;
-        m_firstX = m_downX;
-        m_firstY = m_downY;
         m_tapped = true;
         m_lastTapUp = timeMs;
         return false;
@@ -414,11 +397,6 @@ private:
         return held;
     }
 
-    bool closeTo(int x1, int y1, int x2, int y2) const noexcept
-    {
-        return std::abs(x1 - x2) <= m_config.maxMovePx && std::abs(y1 - y2) <= m_config.maxMovePx;
-    }
-
     // The first thing that spoiled the press under way, or came between a
     // tap and the next press: what a near miss says it was.
     void spoil(Cause cause) noexcept
@@ -433,9 +411,10 @@ private:
 
     static constexpr Miss first(Miss miss) noexcept
     {
-        miss.reason = miss.reason == MissReason::Spoiled ? MissReason::FirstSpoiled
-            : miss.reason == MissReason::Held            ? MissReason::FirstHeld
-                                                         : MissReason::FirstMoved;
+        if (miss.reason == MissReason::Spoiled)
+            miss.reason = MissReason::FirstSpoiled;
+        else if (miss.reason == MissReason::Held)
+            miss.reason = MissReason::FirstHeld;
         return miss;
     }
 
@@ -466,16 +445,10 @@ private:
         std::uint32_t upTime = 0;
         std::uint32_t key = 0; // the left or the right one
         std::uint32_t downTime = 0;
-        int x = 0;
-        int y = 0;
         bool told = false; // as a near miss of its own
     };
     SpoiledFirst m_spoiledFirst;
     std::uint32_t m_queuedMs = 0; // the armed tap's, queuedMs()
-    int m_downX = 0;
-    int m_downY = 0;
-    int m_firstX = 0;
-    int m_firstY = 0;
 };
 
 } // namespace ws
