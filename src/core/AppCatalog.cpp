@@ -536,7 +536,8 @@ QString appIdOf(QStringView launchPath)
 }
 
 std::vector<AppHit> searchApps(
-    const AppList& apps, const ParsedQuery& query, const NameMatcher& matcher, const QStringList& history)
+    const AppList& apps, const ParsedQuery& query, const NameMatcher& matcher, const QStringList& history,
+    const History::Affinities& affinities)
 {
     std::vector<AppHit> hits;
     if (query.isEmpty())
@@ -599,6 +600,8 @@ std::vector<AppHit> searchApps(
             better(kAbbreviationScore, -1);
         if (!initials.empty() && app.initials.starts_with(initials))
             better(initials.size() == app.initials.size() ? 45 : 30, -1);
+        else if (!initials.empty() && text::wordInitialsMatch(app.nameUtf8, initials))
+            better(28, -1);
         if (!joined.empty())
             better(wordSpanScore(app, joined), -1);
         if (score < 0)
@@ -608,8 +611,8 @@ std::vector<AppHit> searchApps(
             || std::ranges::any_of(app.aliases, typed);
         if (app.auxiliary)
             score -= 30;
-        if (const auto it = recent.constFind(app.id); it != recent.cend())
-            score += 20 - std::min(*it, 10);
+        if (recent.contains(app.id))
+            score += affinities.isEmpty() ? 4 : History::affinity(affinities, app.launchPath()).bonus();
         hits.push_back({i, score, otherName, exact});
     }
     // Stable: equal scores keep the list's alphabetical order.

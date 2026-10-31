@@ -40,6 +40,10 @@ std::size_t findFoldedPadded(std::string_view haystack, std::string_view folded)
 // or at a letter/digit transition.
 bool isWordStart(std::string_view s, std::size_t pos) noexcept;
 
+// Folded ASCII initials in order, starting at the first word. Camel-case
+// subwords may be skipped: "hsm" finds "HiBit Startup Manager" (#135).
+bool wordInitialsMatch(std::string_view name, std::string_view foldedInitials) noexcept;
+
 // Glob with '*' and '?' ('?' matches one UTF-8 code point). Pattern is folded.
 bool globMatch(std::string_view name, std::string_view foldedPattern) noexcept;
 

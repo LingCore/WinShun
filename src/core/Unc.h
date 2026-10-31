@@ -1,5 +1,6 @@
 #pragma once
 
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -52,5 +53,12 @@ struct Known {
     std::wstring drive; // "Z:" when mapped, else empty
 };
 std::vector<Known> knownShares();
+
+// For opening only: retain the user's active drive letter (#116). Index
+// identity remains UNC. A disconnected/remembered mapping is not sufficient.
+// The explicit list overload chooses the deepest matching mapping, then
+// its input order; it never touches Windows or the network.
+std::wstring preferredOpenPath(std::wstring_view path, std::span<const Known> connected);
+std::wstring preferredOpenPath(std::wstring_view path);
 
 } // namespace ws::unc

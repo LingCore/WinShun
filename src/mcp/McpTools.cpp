@@ -2422,7 +2422,7 @@ void ToolHost::listFolder(const std::shared_ptr<Call>& call)
             if (folder == kNoEntry || !index->entry(folder).isDir())
                 return notFound(notInIndex(path)); // gone since it was checked
             folderPath = index->path(folder);
-            for (EntryId child = index->entry(folder).firstChild; child != kNoEntry; child = index->entry(child).nextSibling) {
+            for (EntryId child = index->entry(folder).firstChild(); child != kNoEntry; child = index->entry(child).nextSibling) {
                 const Entry& e = index->entry(child);
                 if (e.isDeleted())
                     continue;

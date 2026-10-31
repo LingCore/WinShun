@@ -1,4 +1,5 @@
 #pragma once
+#include "History.h"
 
 #include "SearchTypes.h"
 
@@ -90,7 +91,7 @@ struct PlaceHit {
 // 隔离区's place). Recently opened places (their paths in `history`, newest
 // first) rank higher.
 std::vector<PlaceHit> searchPlaces(const PlaceList& places, const ParsedQuery& query, const NameMatcher& matcher,
-    const QStringList& history);
+    const QStringList& history, const History::Affinities& affinities = {});
 
 // A command split into what to start and its arguments, environment
 // variables expanded: "%windir%\system32\control.exe /name X" ->

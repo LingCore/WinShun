@@ -179,6 +179,26 @@ bool isWordStart(std::string_view s, std::size_t pos) noexcept
     return false;
 }
 
+bool wordInitialsMatch(std::string_view name, std::string_view foldedInitials) noexcept
+{
+    if (foldedInitials.size() < 2 || foldedInitials.size() > 12
+        || !std::ranges::all_of(foldedInitials, [](unsigned char c) { return c < 0x80 && isAlnum(c); }))
+        return false;
+    std::size_t matched = 0;
+    bool first = true;
+    for (std::size_t i = 0; i < name.size(); ++i) {
+        const auto c = static_cast<unsigned char>(name[i]);
+        if (c >= 0x80 || !isAlnum(c) || !isWordStart(name, i))
+            continue;
+        if (first && fold(c) != static_cast<unsigned char>(foldedInitials.front()))
+            return false;
+        first = false;
+        if (fold(c) == static_cast<unsigned char>(foldedInitials[matched]) && ++matched == foldedInitials.size())
+            return true;
+    }
+    return false;
+}
+
 bool globMatch(std::string_view s, std::string_view p) noexcept
 {
     std::size_t si = 0;

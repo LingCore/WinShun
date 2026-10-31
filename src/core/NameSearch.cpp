@@ -368,7 +368,7 @@ std::vector<std::uint32_t> folderRanks(const FileIndex& index)
         stack.pop_back();
         ranks[folder] = next++;
         children.clear();
-        for (EntryId c = index.entry(folder).firstChild; c != kNoEntry; c = index.entry(c).nextSibling) {
+        for (EntryId c = index.entry(folder).firstChild(); c != kNoEntry; c = index.entry(c).nextSibling) {
             const Entry& e = index.entry(c);
             if (e.isDir() && !e.isDeleted())
                 children.push_back(c);
@@ -472,8 +472,14 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
     const bool wantSize = filter.bySize() || options.order.key == SortKey::Size;
     const std::size_t slotCount = index.slotCount();
     const std::size_t slices = (slotCount + kSliceSize - 1) / kSliceSize;
-    std::vector<std::vector<NameHit>> partial(slices);
-    std::vector<std::vector<NameHit>> partialFolders(apart ? slices : 0);
+    // Small result lists keep one heap per worker, reused across slices.
+    // Large lists still collect slices without sorting every match through
+    // a large heap; the merge below bounds their temporary storage.
+    const bool grouped = limit < kSliceSize;
+    const std::size_t parts = grouped ? std::min(slices, static_cast<std::size_t>(pool.size())) : slices;
+    std::vector<std::vector<NameHit>> partial(parts);
+    std::vector<std::vector<NameHit>> partialFolders(apart ? parts : 0);
+    std::atomic<std::size_t> nextSlice {0};
     std::atomic<std::size_t> total {0};
     std::atomic<bool> cancelled {false};
     // The folder typed in (insideFirst), for UnderAny: one, so its test is a
@@ -484,87 +490,92 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
     NameBits* names = nullptr;
     if (matcher.filtersNames()) {
         names = &NameBits::forThisThread();
-        const bool built = names->build(index, pool, isCancelled,
-            [&](std::string_view name, std::size_t extLength, bool han) { return matcher.nameMayMatch(name, extLength, han); });
+        const bool built
+            = names->build(index, pool, isCancelled, [&](std::string_view name, std::size_t extLength, bool han) {
+                  return matcher.nameMayMatch(name, extLength, han);
+              });
         if (!built) {
             output.cancelled = true;
             return output;
         }
     }
 
-    pool.parallelFor(slices, [&](std::size_t slice) {
-        if (cancelled.load(std::memory_order_relaxed))
-            return;
-        if (isCancelled && isCancelled()) {
-            cancelled.store(true, std::memory_order_relaxed);
-            return;
-        }
-        const std::size_t first = slice * kSliceSize;
-        const std::size_t count = std::min(kSliceSize, slotCount - first);
-        const Entry* entries
-            = index.chunk(first >> FileIndex::kChunkBits).data() + (first & (FileIndex::kChunkSize - 1));
-
+    pool.parallelFor(parts, [&](std::size_t part) {
         const auto order = makeOrder(index);
-        TopHits<decltype(order)> top(limit, count, order);
-        TopHits<decltype(order)> folders(apart ? limit : 0, count, order);
+        const std::size_t most = grouped ? slotCount : kSliceSize;
+        TopHits<decltype(order)> top(limit, most, order);
+        TopHits<decltype(order)> folders(apart ? limit : 0, most, order);
         NameMatcher::Folders seen;
         UnderAny under(index, filter.folders);
-        // Each slice its own, as `under`: their caches are written as they are asked.
+        // Each worker its own, as `under`: their caches are written as they are asked.
         std::optional<UnderAny> inside;
         if (!insideOf.empty())
             inside.emplace(index, insideOf);
         std::size_t matches = 0;
-        for (std::size_t i = 0; i < count; ++i) {
-            const Entry& e = entries[i];
-            if (e.flags & (EntryFlag::Deleted | EntryFlag::Root))
-                continue;
-            if (options.foldersOnly && !e.isDir())
-                continue;
-            if (names && !names->has(e.nameOffset))
-                continue;
-            // The bounds before the name: a time or a size is one read, a
-            // name a search through it.
-            const auto id = static_cast<EntryId>(first + i);
-            const FileTime modified = knownTime(index.modified(id)); // 1970: none, last either way
-            const FileSize size = wantSize && !e.isDir() ? index.size(id) : kUnknownSize;
-            if (!filter.fits(modified, size, e.isDir()))
-                continue;
-            if (!filter.folders.empty() && !under(e))
-                continue;
-            int score = matcher.match(index, e, seen, id);
-            if (score < 0)
-                continue;
-            ++matches;
-            score += staticBonus(e);
-            // Before mayAccept, which takes the score for the most it can be:
-            // asking it first with the most this could add let many more
-            // through each slice's heap (1 ms slower for "a", not faster).
-            if (prefer && !e.isDir())
-                score += preferredBonus(index, e, matcher, options.preferred);
-            TopHits<decltype(order)>& heap = apart && e.isDir() ? folders : top;
-            // Asked first as if it were in the folder typed in (InsideFirst
-            // puts those first), so its parents are walked only for hits
-            // that could still make the list; one found elsewhere is asked
-            // again before its depth is counted (another walk up).
-            NameHit hit {.id = id,
-                .score = score,
-                .modified = modified > options.trustedUntil ? FileTime {0} : modified,
-                .inside = inside.has_value(),
-                .size = size};
-            if (!heap.mayAccept(hit))
-                continue;
-            if (inside) {
-                hit.inside = (*inside)(e);
-                if (!hit.inside && !heap.mayAccept(hit))
-                    continue;
+        for (std::size_t slice = grouped ? nextSlice.fetch_add(1, std::memory_order_relaxed) : part; slice < slices;
+            slice = grouped ? nextSlice.fetch_add(1, std::memory_order_relaxed) : slices) {
+            if (cancelled.load(std::memory_order_relaxed))
+                return;
+            if (isCancelled && isCancelled()) {
+                cancelled.store(true, std::memory_order_relaxed);
+                return;
             }
-            hit.score -= std::min(index.depth(id), 12);
-            heap.push(hit);
+            const std::size_t first = slice * kSliceSize;
+            const std::size_t count = std::min(kSliceSize, slotCount - first);
+            const Entry* entries
+                = index.chunk(first >> FileIndex::kChunkBits).data() + (first & (FileIndex::kChunkSize - 1));
+            for (std::size_t i = 0; i < count; ++i) {
+                const Entry& e = entries[i];
+                if (e.flags & (EntryFlag::Deleted | EntryFlag::Root))
+                    continue;
+                if (options.foldersOnly && !e.isDir())
+                    continue;
+                if (names && !names->has(e.nameOffset))
+                    continue;
+                // The bounds before the name: a time or a size is one read, a
+                // name a search through it.
+                const auto id = static_cast<EntryId>(first + i);
+                const FileTime modified = knownTime(index.modified(id)); // 1970: none, last either way
+                const FileSize size = wantSize && !e.isDir() ? index.size(id) : kUnknownSize;
+                if (!filter.fits(modified, size, e.isDir()))
+                    continue;
+                if (!filter.folders.empty() && !under(e))
+                    continue;
+                int score = matcher.match(index, e, seen, id);
+                if (score < 0)
+                    continue;
+                ++matches;
+                score += staticBonus(e);
+                // Before mayAccept, which takes the score for the most it can be:
+                // asking it first with the most this could add let many more
+                // through each slice's heap (1 ms slower for "a", not faster).
+                if (prefer && !e.isDir())
+                    score += preferredBonus(index, e, matcher, options.preferred);
+                TopHits<decltype(order)>& heap = apart && e.isDir() ? folders : top;
+                // Asked first as if it were in the folder typed in (InsideFirst
+                // puts those first), so its parents are walked only for hits
+                // that could still make the list; one found elsewhere is asked
+                // again before its depth is counted (another walk up).
+                NameHit hit {.id = id,
+                    .score = score,
+                    .modified = modified > options.trustedUntil ? FileTime {0} : modified,
+                    .inside = inside.has_value(),
+                    .size = size};
+                if (!heap.mayAccept(hit))
+                    continue;
+                if (inside) {
+                    hit.inside = (*inside)(e);
+                    if (!hit.inside && !heap.mayAccept(hit))
+                        continue;
+                }
+                hit.score -= std::min(index.depth(id), 12);
+                heap.push(hit);
+            }
         }
         total.fetch_add(matches, std::memory_order_relaxed);
-        partial[slice] = top.take();
+        partial[part] = top.take();
         if (apart)
-            partialFolders[slice] = folders.take();
+            partialFolders[part] = folders.take();
     });
 
     output.cancelled = cancelled.load();
@@ -577,10 +588,24 @@ NameSearchOutput search(const FileIndex& index, const NameMatcher& matcher, cons
         std::size_t merged = 0;
         for (const auto& p : parts)
             merged += p.size();
-        hits.reserve(merged);
-        for (auto& p : parts)
+        // Select in batches instead of duplicating all candidates at once.
+        // The limit may exceed the index: cap by what was actually found,
+        // and avoid overflowing the multiplication for arbitrary callers.
+        const std::size_t budget = limit > merged / 8 ? merged : limit * 8;
+        hits.reserve(budget);
+        for (auto& p : parts) {
+            if (hits.size() + p.size() > budget && hits.size() > limit) {
+                std::nth_element(hits.begin(), hits.begin() + static_cast<std::ptrdiff_t>(limit), hits.end(), order);
+                hits.resize(limit);
+            }
             hits.insert(hits.end(), p.begin(), p.end());
+            std::vector<NameHit>().swap(p);
+        }
         keepBest(hits, limit, order);
+        // A 50 000-row result must not keep room for millions of matches
+        // after the search returns (or while the next search is running).
+        if (hits.capacity() > hits.size() * 2)
+            return std::vector<NameHit>(hits.begin(), hits.end());
         return hits;
     };
     output.hits = merge(partial);
@@ -660,23 +685,30 @@ NameSearchOutput searchNames(const FileIndex& index, const NameMatcher& matcher,
 {
     if (options.limit == 0)
         return {};
+    if (isCancelled && isCancelled())
+        return {.cancelled = true};
     const bool down = options.order.descending;
     switch (options.order.key) {
     case SortKey::Name:
-        return searchIn(index, matcher, options, pool, isCancelled, [down](const FileIndex& i) { return NameOrder {i, down}; });
+        return searchIn(
+            index, matcher, options, pool, isCancelled, [down](const FileIndex& i) { return NameOrder {i, down}; });
     case SortKey::Path: {
         const std::vector<std::uint32_t> ranks = folderRanks(index);
         return searchIn(index, matcher, options, pool, isCancelled,
             [down, &ranks](const FileIndex& i) { return PathOrder {i, ranks, down}; });
     }
     case SortKey::Type:
-        return searchIn(index, matcher, options, pool, isCancelled, [down](const FileIndex& i) { return TypeOrder {i, down}; });
+        return searchIn(
+            index, matcher, options, pool, isCancelled, [down](const FileIndex& i) { return TypeOrder {i, down}; });
     case SortKey::Created:
-        return searchIn(index, matcher, options, pool, isCancelled, [down](const FileIndex& i) { return CreatedOrder {i, down}; });
+        return searchIn(
+            index, matcher, options, pool, isCancelled, [down](const FileIndex& i) { return CreatedOrder {i, down}; });
     case SortKey::Folder:
-        return searchIn(index, matcher, options, pool, isCancelled, [down](const FileIndex& i) { return FolderOrder {i, down}; });
+        return searchIn(
+            index, matcher, options, pool, isCancelled, [down](const FileIndex& i) { return FolderOrder {i, down}; });
     case SortKey::Source:
-        return searchIn(index, matcher, options, pool, isCancelled, [down](const FileIndex& i) { return NameOrder {i, down}; });
+        return searchIn(
+            index, matcher, options, pool, isCancelled, [down](const FileIndex& i) { return NameOrder {i, down}; });
     case SortKey::Size:
         return searchIn(index, matcher, options, pool, isCancelled, [down](const FileIndex&) { return SizeOrder {down}; });
     case SortKey::Modified:

@@ -28,6 +28,17 @@ public:
         qint64 last = 0; // ms since the epoch; 0: unknown (kept before counts were)
     };
 
+    struct Affinity {
+        int group = 3; // exact text, longer text, shorter text, unrelated
+        double weight = 0;
+        qint64 last = 0;
+
+        bool learned() const noexcept { return group <= 1 && weight >= 1.5; }
+        int bonus() const noexcept;
+        double preferenceWeight() const noexcept;
+    };
+    using Affinities = QHash<QString, Affinity>; // by pathKey(), a value snapshot for search workers
+
     explicit History(QString filePath, int capacity = 200);
 
     void load();
@@ -46,6 +57,8 @@ public:
     // for that text (the rest by the path's own), a tie to the newer. The
     // items() again, newest first, when nothing is typed.
     QStringList ranked(const QString& query, qint64 now) const;
+    Affinities affinities(const QString& query, qint64 now) const;
+    static Affinity affinity(const Affinities& affinities, const QString& path);
     // A text as it is kept and compared: no case, no filters (size:, dm:,
     // ext:) and no folder to look in (abc/), spaces as one, up to 64 characters.
     static QString normalize(const QString& query);

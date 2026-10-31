@@ -168,41 +168,72 @@ History::Use History::use(const QString& path) const
     return m_uses.value(key(path)).use;
 }
 
+int History::Affinity::bonus() const noexcept
+{
+    if (weight <= 0)
+        return 0;
+    const double scale = group == 0 ? 40 : group == 1 ? 30 : group == 2 ? 10 : 2;
+    return static_cast<int>(std::lround(scale * std::log2(1 + std::min(weight, 15.0))));
+}
+
+double History::Affinity::preferenceWeight() const noexcept
+{
+    return group <= 1 ? std::min(weight, 2.5) : weight;
+}
+
+History::Affinity History::affinity(const Affinities& affinities, const QString& path)
+{
+    return affinities.value(key(path));
+}
+
+History::Affinities History::affinities(const QString& query, qint64 now) const
+{
+    const QString text = normalize(query);
+    Affinities out;
+    out.reserve(m_uses.size());
+    for (auto it = m_uses.cbegin(); it != m_uses.cend(); ++it) {
+        const Entry& entry = it.value();
+        Affinity best {3, decayed(entry.weight, entry.use.last, now), entry.use.last};
+        if (!text.isEmpty()) {
+            for (const Typed& typed : entry.typed) {
+                const int group = typed.text == text ? 0 : typed.text.startsWith(text) ? 1 : text.startsWith(typed.text) ? 2 : 3;
+                if (group == 3)
+                    continue;
+                const double weight = decayed(typed.weight, typed.last, now);
+                if (group < best.group || (group == best.group && weight > best.weight))
+                    best = {group, weight, typed.last};
+            }
+        }
+        out.insert(it.key(), best);
+    }
+    return out;
+}
+
 QStringList History::ranked(const QString& query, qint64 now) const
 {
     const QString text = normalize(query);
     if (text.isEmpty())
         return m_items;
+    const Affinities matches = affinities(query, now);
     struct Rank {
         int group; // 0: opened for this text, 1: for one it starts, 2: for one that starts it, 3: the rest
         double weight;
+        qint64 last;
         qsizetype index; // in m_items: a tie goes to the newer
     };
     std::vector<Rank> ranks;
     ranks.reserve(static_cast<std::size_t>(m_items.size()));
     for (qsizetype i = 0; i < m_items.size(); ++i) {
-        const Entry entry = m_uses.value(key(m_items[i]));
-        Rank rank {3, decayed(entry.weight, entry.use.last, now), i};
-        double best[3] = {};
-        int group = 3;
-        for (const Typed& typed : entry.typed) {
-            const int g = typed.text == text ? 0 : typed.text.startsWith(text) ? 1 : text.startsWith(typed.text) ? 2 : 3;
-            if (g == 3)
-                continue;
-            best[g] = std::max(best[g], decayed(typed.weight, typed.last, now));
-            group = std::min(group, g);
-        }
-        if (group < 3) {
-            rank.group = group;
-            rank.weight = best[group];
-        }
-        ranks.push_back(rank);
+        const Affinity match = affinity(matches, m_items[i]);
+        ranks.push_back({match.group, match.preferenceWeight(), match.last, i});
     }
     std::ranges::sort(ranks, [](const Rank& a, const Rank& b) {
         if (a.group != b.group)
             return a.group < b.group;
         if (a.weight != b.weight)
             return a.weight > b.weight;
+        if (a.last != b.last)
+            return a.last > b.last;
         return a.index < b.index;
     });
     QStringList out;

@@ -340,7 +340,7 @@ public:
     {
         m_exactCase = exactCase;
         m_children.clear();
-        for (EntryId c = index.entry(dir).firstChild; c != kNoEntry; c = index.entry(c).nextSibling)
+        for (EntryId c = index.entry(dir).firstChild(); c != kNoEntry; c = index.entry(c).nextSibling)
             m_children.push_back({index.name(c), c});
         std::sort(m_children.begin(), m_children.end(), byName);
     }
@@ -400,7 +400,7 @@ struct Remover {
 void removeChildren(FileIndex& index, EntryId dir, const Remover& remove)
 {
     std::vector<EntryId> children;
-    for (EntryId c = index.entry(dir).firstChild; c != kNoEntry; c = index.entry(c).nextSibling)
+    for (EntryId c = index.entry(dir).firstChild(); c != kNoEntry; c = index.entry(c).nextSibling)
         children.push_back(c);
     for (const EntryId c : children)
         remove(c);
@@ -428,7 +428,7 @@ void reconcile(FileIndex& index, const Crawler::Root& dir, const DirListing& lis
                 if (index.name(id) != name)
                     index.move(id, dir.id, name); // renamed, case only
                 index.setFlags(id, item.flags);
-                if (!item.descend && index.entry(id).firstChild != kNoEntry)
+                if (!item.descend && index.entry(id).firstChild() != kNoEntry)
                     removeChildren(index, id, remove); // turned into a junction
             }
         }

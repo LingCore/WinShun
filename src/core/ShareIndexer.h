@@ -5,6 +5,7 @@
 #include "FileIndex.h"
 #include "ShareLister.h"
 #include "ShareRetry.h"
+#include "ShareScan.h"
 
 #include <atomic>
 #include <chrono>
@@ -25,6 +26,7 @@ struct ShareConfig {
     std::wstring path; // "\\host\share", or a folder in it (unc::normalize)
     std::wstring name; // shown instead of the path; empty: the path
     bool content = false; // its files' contents indexed too (RemoteContent; GitHub #114)
+    ShareScan scan;
 
     bool operator==(const ShareConfig&) const = default;
 };
@@ -61,6 +63,7 @@ public:
         Online, // read, and followed or verified now and then
         Problem, // see Status::problem
         Suspect, // a pass found much less than the index has: not believed yet
+        Paused, // outside this root's automatic scan window; cached items stay searchable
     };
     struct Status {
         std::wstring path;
@@ -106,6 +109,8 @@ public:
         // For tests, in place of the network; empty: the real thing.
         std::function<bool(const std::wstring& path, bool fresh)> reachable; // share::reachable, for the server of `path`
         std::function<unsigned long(const std::wstring& path)> openRoot; // share::openRoot
+        std::function<int()> minuteOfDay; // tests: local wall clock; empty: QTime::currentTime
+        Crawler::Lister list; // tests: folder listings instead of the network
     };
     struct Callbacks {
         std::function<void()> changed; // statuses() differ; any thread
@@ -145,6 +150,8 @@ public:
     std::vector<Status> statuses() const;
     // Whether `path` is on a share that cannot be reached now. Quick.
     bool offline(std::wstring_view path) const;
+    // Contents use the same automatic window, even after a manual name scan.
+    bool contentAllowed(std::wstring_view path) const;
 
     // Roots of the index that are shares ("\\..."): kept when configured,
     // dropped otherwise. For a freshly loaded index; caller holds the write lock.
@@ -160,7 +167,7 @@ private:
     void run(std::stop_token stop, Share& share);
     bool wait(std::stop_token stop, Share& share, Clock::duration timeout);
     std::optional<unsigned long> tryWindows(std::stop_token stop, Share& share, Clock::duration wait);
-    bool pass(std::stop_token stop, Share& share, bool building);
+    bool pass(std::stop_token stop, Share& share, bool building, bool manual);
     void applyPending(std::stop_token stop, Share& share);
     void setStatus(Share& share, const std::function<void(Status&)>& change);
     void ask(const std::function<bool(Share&)>& which);
@@ -169,6 +176,8 @@ private:
     void onChanges(std::vector<FsChange>&& changes);
     void retire(std::unique_ptr<Share> share);
     Options options() const;
+    int minuteOfDay() const;
+    std::jthread watchWindow(ShareScan scan, bool manual, std::stop_source cancel) const;
 
     Source m_source;
     Callbacks m_callbacks;

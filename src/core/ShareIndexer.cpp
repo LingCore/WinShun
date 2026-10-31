@@ -9,6 +9,7 @@
 
 #include <QJsonObject>
 #include <QString>
+#include <QTime>
 #include <QtGlobal>
 
 #include <windows.h>
@@ -47,6 +48,37 @@ constexpr std::size_t kSuspectMin = 1000; // missing items that can be a mount n
 constexpr std::size_t kRemoveBatch = 256; // removals per write lock
 constexpr std::size_t kMaxPending = 100'000; // live changes queued; beyond, the share is verified instead
 
+// Trim the *cached* tree when the user narrows its scope. No server access,
+// and no mass-deletion warning: these entries left the scope deliberately.
+std::size_t trimDepth(FileIndex& index, EntryId root, int limit)
+{
+    if (limit <= 0)
+        return 0;
+    const auto before = index.liveCount();
+    std::vector<std::pair<EntryId, int>> todo {{root, 0}};
+    while (!todo.empty()) {
+        const auto [id, depth] = todo.back();
+        todo.pop_back();
+        for (EntryId c = index.entry(id).firstChild(); c != kNoEntry;) {
+            const EntryId next = index.entry(c).nextSibling;
+            if (depth >= limit)
+                index.remove(c);
+            else if (index.entry(c).isDir())
+                todo.emplace_back(c, depth + 1);
+            c = next;
+        }
+    }
+    return before - index.liveCount();
+}
+
+void limitListing(DirListing& out, int depth, const ShareScan& scan)
+{
+    if (scan.maxDepth > 0 && depth + 1 >= scan.maxDepth) {
+        for (auto& item : out.items)
+            item.descend = false;
+    }
+}
+
 std::string toUtf8(std::wstring_view s)
 {
     return wtf8::fromUtf16(wtf8::view(s));
@@ -77,7 +109,7 @@ std::size_t subtreeSize(const FileIndex& index, EntryId id)
         const EntryId cur = stack.back();
         stack.pop_back();
         ++n;
-        for (EntryId c = index.entry(cur).firstChild; c != kNoEntry; c = index.entry(c).nextSibling)
+        for (EntryId c = index.entry(cur).firstChild(); c != kNoEntry; c = index.entry(c).nextSibling)
             stack.push_back(c);
     }
     return n;
@@ -173,6 +205,7 @@ struct ShareIndexer::Share {
     Clock::time_point probedAt {}; // its server last asked (run), or about to be (lookedAt)
     bool acceptMissing = false;
     bool passRunning = false;
+    std::stop_source passStop; // settings changes cancel an obsolete pass
     bool removed = false;
     std::vector<FsChange> pending; // live changes, applied between passes
     std::size_t suspectMissing = 0; // what the first suspect pass did not find
@@ -296,6 +329,13 @@ void ShareIndexer::setOptions(Options options)
                 continue;
             }
             Share& s = **it;
+            if (s.config.scan != kept->scan) {
+                s.config.scan = kept->scan;
+                s.passStop.request_stop();
+                s.verifyRequested = true;
+                s.wake = true;
+                s.cv.notify_all();
+            }
             s.config.name = kept->name;
             s.status.name = kept->name;
             if (s.config.content != kept->content) {
@@ -348,6 +388,41 @@ ShareIndexer::Options ShareIndexer::options() const
 {
     std::lock_guard lock(m_mutex);
     return m_options;
+}
+
+int ShareIndexer::minuteOfDay() const
+{
+    if (m_source.minuteOfDay)
+        return m_source.minuteOfDay();
+    const QTime time = QTime::currentTime();
+    return time.hour() * 60 + time.minute();
+}
+
+bool ShareIndexer::contentAllowed(std::wstring_view path) const
+{
+    std::lock_guard lock(m_mutex);
+    return std::ranges::any_of(m_shares, [&](const auto& s) {
+        return unc::equal(s->config.path, path) && s->status.state == State::Online
+            && s->config.scan.allows(minuteOfDay());
+    });
+}
+
+std::jthread ShareIndexer::watchWindow(ShareScan scan, bool manual, std::stop_source cancel) const
+{
+    if (!scan.scheduled || manual)
+        return {};
+    return std::jthread([this, scan, cancel](std::stop_token done) mutable {
+        std::mutex mutex;
+        std::condition_variable_any cv;
+        std::unique_lock lock(mutex);
+        while (!done.stop_requested() && !cancel.stop_requested()) {
+            if (!scan.allows(minuteOfDay())) {
+                cancel.request_stop();
+                break;
+            }
+            cv.wait_for(lock, done, 1s, [] { return false; });
+        }
+    });
 }
 
 void ShareIndexer::verifyNow(const std::wstring& path)
@@ -678,6 +753,7 @@ void ShareIndexer::run(std::stop_token stop, Share& share)
     bool davMissed = false;
     bool askAgain = false;
     bool probeOnly = false;
+    int appliedDepth = -1;
     // WebDAV: Windows opens nothing while WebClient is stopped, and opening
     // does not start it (webdav::startClient). Started here whenever the
     // server answers (a moment, when it runs), for the pass and the user's
@@ -735,6 +811,47 @@ void ShareIndexer::run(std::stop_token stop, Share& share)
         });
     };
     while (!stop.stop_requested()) {
+        ShareScan scan;
+        bool manual = false;
+        {
+            std::lock_guard lock(m_mutex);
+            scan = share.config.scan;
+            manual = share.checkRequested;
+        }
+        if (scan.maxDepth != appliedDepth) {
+            appliedDepth = scan.maxDepth;
+            std::size_t removed = 0;
+            std::size_t left = 0;
+            {
+                auto lock = index->writeLock();
+                const EntryId root = ensureRoot(*index, path);
+                removed = trimDepth(*index, root, appliedDepth);
+                left = subtreeSize(*index, root) - 1;
+            }
+            if (removed) {
+                setStatus(share, [&](Status& s) { s.items = left; });
+                if (m_callbacks.dirty)
+                    m_callbacks.dirty();
+                if (m_callbacks.filesChanged)
+                    m_callbacks.filesChanged(path);
+            }
+        }
+        if (!manual && !scan.allows(minuteOfDay())) {
+            setStatus(share, [](Status& s) {
+                s.state = State::Paused;
+                s.watching = false;
+            });
+            {
+                std::lock_guard lock(m_mutex);
+                share.verifyRequested = true; // catch changes missed while the watch was off
+                share.pending.clear();
+            }
+            updateWatches();
+            // Recheck wall-clock time after sleep, DST and clock adjustments.
+            if (!wait(stop, share, 30s))
+                break;
+            continue;
+        }
         const bool again = std::exchange(cutShort, false);
         // Wait out a network change before trying a server.
         Clock::time_point changedAt;
@@ -873,7 +990,7 @@ void ShareIndexer::run(std::stop_token stop, Share& share)
         }
         if (due) {
             const auto passStart = Clock::now();
-            const bool read = pass(stop, share, building);
+            const bool read = pass(stop, share, building, asked);
             const auto passTime = Clock::now() - passStart;
             if (stop.stop_requested())
                 break;
@@ -914,6 +1031,8 @@ void ShareIndexer::run(std::stop_token stop, Share& share)
         }
         if (asked)
             checked({}); // nothing to read after all (asking makes it due: not seen)
+        if (!scan.allows(minuteOfDay()))
+            continue; // a manual pass finished: show the scheduled pause immediately
         updateWatches();
         applyPending(stop, share);
 
@@ -925,15 +1044,22 @@ void ShareIndexer::run(std::stop_token stop, Share& share)
         const auto until = isWsl ? std::min<Clock::duration>(untilPass, kWslPoll)
             : dav                ? std::min<Clock::duration>(untilPass, options().webDavPoll)
                                  : untilPass;
-        if (!wait(stop, share, until))
+        if (!wait(stop, share, scan.scheduled ? std::min<Clock::duration>(until, 30s) : until))
             break;
     }
     end();
 }
 
-bool ShareIndexer::pass(std::stop_token stop, Share& share, bool building)
+bool ShareIndexer::pass(std::stop_token stop, Share& share, bool building, bool manual)
 {
     const Options o = options();
+    ShareScan scan;
+    std::stop_source passStop;
+    {
+        std::lock_guard lock(m_mutex);
+        scan = share.config.scan;
+        share.passStop = passStop;
+    }
     const Crawler crawler(o.rules);
     const auto index = m_source.index();
     const std::wstring& path = share.config.path;
@@ -958,17 +1084,39 @@ bool ShareIndexer::pass(std::stop_token stop, Share& share, bool building)
     if (m_callbacks.reading)
         m_callbacks.reading(path, true);
 
-    std::stop_source passStop;
     const std::stop_callback forward(stop, [&] { passStop.request_stop(); });
+    const auto window = watchWindow(scan, manual, passStop);
     share::Lister lister(crawler, path, {o.excludedFiles, false, 64 * 1024, &share.progress}, passStop);
     std::vector<EntryId> gone;
     Crawler::SyncStats stats;
     const int threads = building ? o.threads : std::max(2, o.threads / 2);
     crawler.sync(*index, {{root, path, EntryFlag::Remote}}, threads, false, passStop.get_token(),
-        [&](const Crawler::Root& dir, DirListing& out) { return lister(dir, out); }, &gone, &stats);
+        [&](const Crawler::Root& dir, DirListing& out) {
+            if (!manual && !scan.allows(minuteOfDay()))
+                passStop.request_stop();
+            if (passStop.stop_requested())
+                return false;
+            const bool read = m_source.list ? m_source.list(dir, out) : lister(dir, out);
+            if (!manual && !scan.allows(minuteOfDay()))
+                passStop.request_stop();
+            if (passStop.stop_requested())
+                return false;
+            limitListing(out, ShareScan::depth(path, dir.path), scan);
+            return read;
+        }, &gone, &stats);
     if (m_callbacks.reading)
         m_callbacks.reading(path, false);
-    if (stop.stop_requested()) {
+    if (passStop.stop_requested()) {
+        if (!stop.stop_requested()) {
+            std::size_t kept = 0;
+            {
+                const auto lock = index->readLock();
+                kept = subtreeSize(*index, root) - 1;
+            }
+            setStatus(share, [&](Status& s) { s.state = State::Waiting; s.items = kept; });
+            if (m_callbacks.dirty)
+                m_callbacks.dirty();
+        }
         done();
         return false; // what it added stays; nothing removed
     }
@@ -1078,8 +1226,14 @@ bool ShareIndexer::pass(std::stop_token stop, Share& share, bool building)
 void ShareIndexer::applyPending(std::stop_token stop, Share& share)
 {
     std::vector<FsChange> changes;
+    ShareScan scan;
+    std::stop_source passStop;
     {
         std::lock_guard lock(m_mutex);
+        scan = share.config.scan;
+        if (!scan.allows(minuteOfDay()))
+            return;
+        share.passStop = passStop;
         changes.swap(share.pending);
     }
     if (changes.empty())
@@ -1096,11 +1250,24 @@ void ShareIndexer::applyPending(std::stop_token stop, Share& share)
         const auto lock = index->readLock();
         pin = index->pinIds();
     }
-    std::stop_source passStop;
     const std::stop_callback forward(stop, [&] { passStop.request_stop(); });
+    const auto window = watchWindow(scan, false, passStop);
     share::Lister lister(crawler, share.config.path, {o.excludedFiles}, passStop);
     applyChanges(*index, changes, crawler, passStop.get_token(),
-        [&](const Crawler::Root& dir, DirListing& out) { return lister(dir, out); });
+        [&](const Crawler::Root& dir, DirListing& out) {
+            if (!scan.allows(minuteOfDay())) {
+                passStop.request_stop();
+                return false;
+            }
+            const int depth = ShareScan::depth(share.config.path, dir.path);
+            if (scan.maxDepth > 0 && depth >= scan.maxDepth) {
+                out.clear();
+                return true;
+            }
+            const bool read = lister(dir, out);
+            limitListing(out, depth, scan);
+            return read;
+        });
     if (named) {
         std::size_t items = 0;
         {
@@ -1158,6 +1325,7 @@ void ShareIndexer::watchLoop(std::stop_token stop)
             for (const auto& s : m_shares) {
                 // Neither 9P nor WebDAV tells of changes (ReadDirectoryChangesW: error 1).
                 const bool read = s->status.lastVerified != 0 && m_options.watch
+                    && s->config.scan.allows(minuteOfDay())
                     && unc::wslDistribution(s->config.path).empty() && !webdav::isWebDavPath(s->config.path);
                 if (read && (s->status.state == State::Online || s->status.state == State::Verifying))
                     (s->config.content ? writeRoots : roots).push_back(s->config.path);
@@ -1193,6 +1361,12 @@ void ShareIndexer::onChanges(std::vector<FsChange>&& changes)
         if (it == m_shares.end())
             continue;
         Share& s = **it;
+        if (!s.config.scan.allows(minuteOfDay())) {
+            s.verifyRequested = true;
+            continue;
+        }
+        if (s.config.scan.maxDepth > 0 && ShareScan::depth(s.config.path, c.path) > s.config.scan.maxDepth)
+            continue;
         // Lost events (or the server went away): only reading it again tells.
         if (c.kind == FsChange::Kind::Overflow || s.pending.size() >= kMaxPending) {
             s.verifyRequested = true;

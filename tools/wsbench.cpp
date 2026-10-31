@@ -1,6 +1,6 @@
 // Loads the saved index and reports memory use and search timings.
 //
-//   wsbench [snapshot] [--stats] [--check] [--top] [--prefer exe,bat] [query ...]
+//   wsbench [snapshot] [--stats] [--check] [--top] [--limit N] [--runs N] [--cancel-after MS] [--prefer exe,bat] [query ...]
 //                      --prefer: those file types first among comparable
 //                      matches (the launcher's 优先显示的文件类型);
 //                      --stats: how the entries and names are made up;
@@ -309,6 +309,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <functional>
 #include <limits>
 #include <map>
 #include <mutex>
@@ -525,7 +526,7 @@ std::map<std::u16string, std::uint8_t> subtree(const ws::FileIndex& index, ws::E
     while (!stack.empty()) {
         const ws::EntryId id = stack.back();
         stack.pop_back();
-        for (ws::EntryId c = index.entry(id).firstChild; c != ws::kNoEntry; c = index.entry(c).nextSibling) {
+        for (ws::EntryId c = index.entry(id).firstChild(); c != ws::kNoEntry; c = index.entry(c).nextSibling) {
             out.emplace(index.path16(c).substr(base.size()),
                 static_cast<std::uint8_t>(index.entry(c).flags & (ws::EntryFlag::Directory | ws::EntryFlag::Hidden)));
             stack.push_back(c);
@@ -4413,8 +4414,13 @@ int runPlugin(QStringList args)
         appDir = QDir(args[at + 1]).absolutePath();
         args.remove(at, 2);
     }
+    int lingerMs = 0; // --linger MS: keep the plugin running that long after the action (what a resident one shows)
+    if (const qsizetype at = args.indexOf(u"--linger"_s); at >= 0 && at + 1 < args.size()) {
+        lingerMs = std::max(0, args[at + 1].toInt());
+        args.remove(at, 2);
+    }
     if (folder.isEmpty() || query.isEmpty()) {
-        std::printf("usage: wsbench --plugin FOLDER --query \"TEXT\" [--runs N] [--setting KEY=VALUE ...] [--action ID] [--app-dir DIR]\n");
+        std::printf("usage: wsbench --plugin FOLDER --query \"TEXT\" [--runs N] [--setting KEY=VALUE ...] [--action ID [--linger MS]] [--app-dir DIR]\n");
         return 1;
     }
     const QFileInfo info(folder);
@@ -4585,6 +4591,9 @@ int runPlugin(QStringList args)
                 std::printf("action: no answer in 15 s\n");
                 actionOk = false;
             }
+            const QDeadlineTimer linger(lingerMs);
+            while (!linger.hasExpired())
+                QCoreApplication::processEvents(QEventLoop::AllEvents | QEventLoop::WaitForMoreEvents, 50);
         }
     }
     host.shutdown();
@@ -5657,7 +5666,8 @@ std::optional<gallery::Index> loadGallery(const QString& source)
 {
     QElapsedTimer t;
     t.start();
-    const gallery::Fetched f = gallery::fetch(source, gallery::kMaxIndexBytes + 1, webFetch);
+    const gallery::Fetched f = gallery::fetch(source, gallery::kMaxIndexBytes + 1, webFetch, {},
+        [&](const QByteArray& bytes) { return bytes.size() <= gallery::kMaxIndexBytes && gallery::parse(bytes, source, nullptr).has_value(); });
     std::printf("list: %s\n  HTTP %d (error %lu), %lld bytes, %.0f ms\n", qUtf8Printable(source), f.status, f.error,
         static_cast<long long>(f.body.size()), msSince(t));
     if (f.status != 200)
@@ -5771,7 +5781,8 @@ int runPluginInstallFromIndex(QStringList args)
         ++reports;
         return stopAfter < 0 || received < stopAfter;
     };
-    const gallery::Fetched f = gallery::fetch(item->url, item->size + 1, webFetch, progress);
+    const gallery::Fetched f = gallery::fetch(item->url, item->size + 1, webFetch, progress,
+        [&](const QByteArray& bytes) { return gallery::check(*item, bytes) == gallery::Problem::None; });
     std::printf("package: %s\n  HTTP %d (error %lu%s), %lld bytes, %.0f ms, %d progress report(s)\n", qUtf8Printable(item->url), f.status, f.error,
         f.error == ERROR_CANCELLED ? ": stopped" : "", static_cast<long long>(f.body.size()), msSince(t), reports);
     if (f.status != 200)
@@ -6401,6 +6412,34 @@ int main(int argc, char* argv[])
     const bool trim = args.removeAll(u"--trim"_s) > 0;
     // ... with FileIndex::warm() in between, as the launcher does when shown.
     const bool warm = args.removeAll(u"--warm"_s) > 0;
+    std::size_t limit = 100;
+    int runs = 5;
+    for (const QString& flag : {u"--limit"_s, u"--runs"_s}) {
+        const qsizetype at = args.indexOf(flag);
+        if (at < 0)
+            continue;
+        bool valid = false;
+        const qulonglong value = at + 1 < args.size() ? args[at + 1].toULongLong(&valid) : 0;
+        if (!valid || value == 0 || value > (flag == u"--runs" ? 1000ULL : 50'000'000ULL)) {
+            std::fprintf(stderr, "invalid %s\n", qPrintable(flag));
+            return 1;
+        }
+        if (flag == u"--limit")
+            limit = static_cast<std::size_t>(value);
+        else
+            runs = static_cast<int>(value);
+        args.remove(at, 2);
+    }
+    int cancelAfterMs = -1;
+    if (const qsizetype at = args.indexOf(u"--cancel-after"_s); at >= 0) {
+        bool valid = false;
+        cancelAfterMs = at + 1 < args.size() ? args[at + 1].toInt(&valid) : -1;
+        if (!valid || cancelAfterMs < 0 || cancelAfterMs > 60'000) {
+            std::fprintf(stderr, "invalid --cancel-after\n");
+            return 1;
+        }
+        args.remove(at, 2);
+    }
     // --order name|path|size|modified, a - after it for descending: the search
     // panel's column orders (SortKey) in place of the rank.
     ws::SortOrder order;
@@ -6437,9 +6476,12 @@ int main(int argc, char* argv[])
         const ws::ParsedQuery parsed = ws::parseQuery(q);
         const ws::NameMatcher matcher(parsed);
         const ws::NameSearchOptions options {
-            .limit = 100, .filter = parsed.filter, .order = order, .preferred = ws::PreferredTypes(preferred)};
+            .limit = limit, .filter = parsed.filter, .order = order, .preferred = ws::PreferredTypes(preferred)};
         double best = 1e9;
+        std::vector<double> timings;
         ws::NameSearchOutput out;
+        const std::function<bool()> isCancelled = cancelAfterMs < 0 ? std::function<bool()>()
+            : [&] { return timer.nsecsElapsed() >= static_cast<qint64>(cancelAfterMs) * 1'000'000; };
         if (trim) {
             timer.restart();
             ::SetProcessWorkingSetSizeEx(::GetCurrentProcess(), static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1), 0);
@@ -6454,17 +6496,27 @@ int main(int argc, char* argv[])
                 warmMs = static_cast<double>(timer.nsecsElapsed()) / 1e6;
             }
             timer.restart();
-            out = ws::searchNames(*index, matcher, options, pool, {});
+            out = ws::searchNames(*index, matcher, options, pool, isCancelled);
             std::printf("%-16s trim %.1f ms (working set %.1f MB), warm %.1f ms, search after: %6.1f ms\n",
                 qPrintable(q), trimMs, trimmedMB, warmMs, static_cast<double>(timer.nsecsElapsed()) / 1e6);
         }
-        for (int run = 0; run < 5; ++run) {
+        for (int run = 0; run < runs; ++run) {
             timer.restart();
-            out = ws::searchNames(*index, matcher, options, pool, {});
-            best = std::min(best, static_cast<double>(timer.nsecsElapsed()) / 1e6);
+            out = ws::searchNames(*index, matcher, options, pool, isCancelled);
+            timings.push_back(static_cast<double>(timer.nsecsElapsed()) / 1e6);
+            best = std::min(best, timings.back());
         }
+        std::sort(timings.begin(), timings.end());
         std::printf("%-16s %9zu matches  %6.1f ms   top: %s\n", qPrintable(q), out.totalMatches, best,
             out.hits.empty() ? "-" : qPrintable(index->path(out.hits.front().id)));
+        std::uint64_t fingerprint = 14695981039346656037ull;
+        for (const ws::NameHit& hit : out.hits)
+            fingerprint = (fingerprint ^ hit.id) * 1099511628211ull;
+        std::printf("  median %.3f ms, returned %zu, capacity %zu, ids %016llx, private %.1f MB, peak %.1f MB\n",
+            timings[timings.size() / 2], out.hits.size(), out.hits.capacity(),
+            static_cast<unsigned long long>(fingerprint), privateMB(), peakCommitMB());
+        if (cancelAfterMs >= 0)
+            std::printf("  cancellation after %d ms: %s\n", cancelAfterMs, out.cancelled ? "observed" : "search completed first");
         if (!inside.isEmpty()) {
             const ws::EntryId folder = index->findPath(inside.toStdWString());
             const auto timed = [&](const ws::NameMatcher& m, const ws::NameSearchOptions& o, ws::NameSearchOutput& result) {
@@ -6494,7 +6546,7 @@ int main(int argc, char* argv[])
                 qPrintable(inside), firstMs, static_cast<long long>(std::ranges::count_if(firstOut.hits, &ws::NameHit::inside)),
                 firstOut.hits.size(), onlyMs, onlyOut.totalMatches, typedMs, typedOut.totalMatches);
         }
-        if (check) {
+        if (check && !out.cancelled) {
             // Every entry through the matcher, as before names were tested first: the same matches?
             std::size_t brute = 0;
             ws::NameMatcher::Folders seen;

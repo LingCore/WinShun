@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <bit>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
@@ -45,13 +46,17 @@ inline constexpr std::uint8_t Inherited = LowPriority | Hidden | Remote;
 #pragma pack(push, 1)
 struct Entry {
     EntryId parent = kNoEntry;
-    EntryId firstChild = kNoEntry;
+    // A directory's first child or a file's packed size: files have no
+    // children and directories have no size. Shared without a union, so
+    // traversal can safely ask firstChild() of either kind.
+    std::uint32_t childOrSize = kNoEntry;
     EntryId nextSibling = kNoEntry;
     std::uint32_t nameOffset = 0; // in the index's name storage
     std::uint8_t flags = 0;
 
     bool isDir() const noexcept { return flags & EntryFlag::Directory; }
     bool isDeleted() const noexcept { return flags & EntryFlag::Deleted; }
+    EntryId firstChild() const noexcept { return isDir() ? childOrSize : kNoEntry; }
 };
 #pragma pack(pop)
 static_assert(sizeof(Entry) == 17, "keep Entry compact: there is one per file and folder");
@@ -94,18 +99,13 @@ using FileSize = std::uint32_t;
 inline constexpr FileSize kUnknownSize = 0xFFFF'FFFFu;
 inline FileSize packSize(std::uint64_t bytes) noexcept
 {
-    const float f = static_cast<float>(bytes);
-    FileSize packed = 0;
-    static_assert(sizeof packed == sizeof f);
-    std::memcpy(&packed, &f, sizeof packed);
-    return packed;
+    return std::bit_cast<FileSize>(static_cast<float>(bytes));
 }
 inline std::uint64_t unpackSize(FileSize packed) noexcept
 {
     if (packed == kUnknownSize)
         return 0;
-    float f = 0;
-    std::memcpy(&f, &packed, sizeof f);
+    const float f = std::bit_cast<float>(packed);
     // In double: a float's integer is exact there, and the half added does
     // not round it up (16777215 + 0.5f is 16777216 as a float).
     return f <= 0 ? 0 : static_cast<std::uint64_t>(static_cast<double>(f) + 0.5);
@@ -265,8 +265,12 @@ public:
     FileTime modified(EntryId id) const noexcept { return m_times[id >> kChunkBits][id & (kChunkSize - 1)]; }
     FileTime created(EntryId id) const noexcept { return m_created[id >> kChunkBits][id & (kChunkSize - 1)]; }
     // A file's size, packed (packSize); kUnknownSize for a folder, or a file
-    // whose size was never read. Kept apart as the times are.
-    FileSize size(EntryId id) const noexcept { return m_sizes[id >> kChunkBits][id & (kChunkSize - 1)]; }
+    // whose size was never read. Stored in the entry's unused child link.
+    FileSize size(EntryId id) const noexcept
+    {
+        const Entry& e = entry(id);
+        return e.isDir() ? kUnknownSize : e.childOrSize;
+    }
 
     // Bytes held, by part (for measuring). Caller holds a read lock.
     struct MemoryUse {
@@ -318,7 +322,12 @@ public:
     void setFlags(EntryId id, std::uint8_t flags);
     void setModified(EntryId id, FileTime time) noexcept { m_times[id >> kChunkBits][id & (kChunkSize - 1)] = time; }
     void setCreated(EntryId id, FileTime time) noexcept { m_created[id >> kChunkBits][id & (kChunkSize - 1)] = time; }
-    void setSize(EntryId id, FileSize size) noexcept { m_sizes[id >> kChunkBits][id & (kChunkSize - 1)] = size; }
+    void setSize(EntryId id, FileSize size) noexcept
+    {
+        Entry& e = mut(id);
+        if (!e.isDir())
+            e.childOrSize = size;
+    }
 
     // While interning is on, identical names share one copy (only a third of
     // the names on a typical disk are unique: index.js, __init__.py, ...).
@@ -461,7 +470,6 @@ private:
     std::vector<std::unique_ptr<Entry[]>> m_chunks;
     std::vector<std::unique_ptr<FileTime[]>> m_times; // parallel to m_chunks
     std::vector<std::unique_ptr<FileTime[]>> m_created;
-    std::vector<std::unique_ptr<FileSize[]>> m_sizes; // likewise; kUnknownSize until set
     std::vector<std::unique_ptr<char[]>> m_names;
     std::size_t m_count = 0;
     std::size_t m_nameUsed = kNameChunkSize; // forces allocation on first use

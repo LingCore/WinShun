@@ -127,7 +127,6 @@ FileIndex::MemoryUse FileIndex::memoryUse() const noexcept
     MemoryUse use;
     use.entries = m_chunks.size() * kChunkSize * sizeof(Entry);
     use.times = (m_times.size() + m_created.size()) * kChunkSize * sizeof(FileTime);
-    use.sizes = m_sizes.size() * kChunkSize * sizeof(FileSize);
     use.names = m_names.size() * (kNameChunkSize + text::kReadPastEnd);
     use.nameBytes = m_names.empty() ? 0 : (m_names.size() - 1) * kNameChunkSize + m_nameUsed; // roughly: chunks end early
     for (const auto& [root, table] : m_folderRecords)
@@ -148,8 +147,6 @@ void FileIndex::warm() const noexcept
         ranges.push_back({chunk.get(), kChunkSize * sizeof(FileTime)});
     for (const auto& chunk : m_created)
         ranges.push_back({chunk.get(), kChunkSize * sizeof(FileTime)});
-    for (const auto& chunk : m_sizes)
-        ranges.push_back({chunk.get(), kChunkSize * sizeof(FileSize)});
     for (const auto& chunk : m_names)
         ranges.push_back({chunk.get(), kNameChunkSize});
     // Pages written out to the pagefile: read in large requests, not one by
@@ -170,9 +167,6 @@ EntryId FileIndex::allocate()
         m_chunks.push_back(std::make_unique<Entry[]>(kChunkSize));
         m_times.push_back(std::make_unique<FileTime[]>(kChunkSize));
         m_created.push_back(std::make_unique<FileTime[]>(kChunkSize));
-        auto sizes = std::make_unique_for_overwrite<FileSize[]>(kChunkSize);
-        std::fill_n(sizes.get(), kChunkSize, kUnknownSize); // not read yet
-        m_sizes.push_back(std::move(sizes));
     }
     assert(m_count < kNoEntry);
     return static_cast<EntryId>(m_count++);
@@ -318,14 +312,14 @@ std::size_t FileIndex::compact(bool always, const std::function<void(const Renum
             continue;
         Entry e = entry(id);
         e.parent = renumber(e.parent);
-        e.firstChild = renumber(e.firstChild);
+        if (e.isDir())
+            e.childOrSize = renumber(e.firstChild());
         e.nextSibling = renumber(e.nextSibling);
         e.nameOffset = moveName(e);
         const EntryId to = renumber(id);
         mut(to) = e;
         setModified(to, modified(id));
         setCreated(to, created(id));
-        setSize(to, size(id));
     }
     for (EntryId& r : m_roots)
         r = renumber(r);
@@ -342,8 +336,6 @@ std::size_t FileIndex::compact(bool always, const std::function<void(const Renum
     m_times.shrink_to_fit();
     m_created.resize(m_chunks.size());
     m_created.shrink_to_fit();
-    m_sizes.resize(m_chunks.size());
-    m_sizes.shrink_to_fit();
     m_childTables = decltype(m_childTables)(); // by old ids; rebuilt on demand
     m_generation.fetch_add(1, std::memory_order_release);
     if (renumbered)
@@ -419,10 +411,10 @@ void FileIndex::link(EntryId parent, EntryId child)
 {
     Entry& c = mut(child);
     Entry& p = mut(parent);
-    const EntryId first = p.firstChild;
+    const EntryId first = p.firstChild();
     c.parent = parent;
     c.nextSibling = first;
-    p.firstChild = child;
+    p.childOrSize = child;
     if (!m_childTables.empty()) {
         if (const auto it = m_childTables.find(parent); it != m_childTables.end()) {
             ChildTable& table = it->second;
@@ -452,7 +444,7 @@ void FileIndex::unlink(EntryId child)
     bool found = false;
     if (!table) {
         std::size_t walked = 0;
-        for (EntryId c = entry(parent).firstChild; c != kNoEntry; c = entry(c).nextSibling) {
+        for (EntryId c = entry(parent).firstChild(); c != kNoEntry; c = entry(c).nextSibling) {
             found = c == child;
             if (found)
                 break;
@@ -475,7 +467,7 @@ void FileIndex::unlink(EntryId child)
     if (previous != kNoEntry)
         mut(previous).nextSibling = next;
     else
-        mut(parent).firstChild = next;
+        mut(parent).childOrSize = next;
     if (table) {
         if (const std::size_t slot = next != kNoEntry ? tableSlot(*table, next) : kNoSlot; slot != kNoSlot)
             table->previous[slot] = previous;
@@ -534,7 +526,7 @@ std::size_t FileIndex::remove(EntryId id)
         ++removed;
         if (e.isDir() && !m_childTables.empty())
             m_childTables.erase(cur);
-        for (EntryId c = e.firstChild; c != kNoEntry; c = entry(c).nextSibling)
+        for (EntryId c = e.firstChild(); c != kNoEntry; c = entry(c).nextSibling)
             stack.push_back(c);
     }
     m_live.fetch_sub(removed, std::memory_order_relaxed);
@@ -679,7 +671,7 @@ FileIndex::ChildTable& FileIndex::buildTable(EntryId parent)
 {
     ChildTable& table = m_childTables[parent];
     EntryId previous = kNoEntry;
-    for (EntryId c = entry(parent).firstChild; c != kNoEntry; c = entry(c).nextSibling) {
+    for (EntryId c = entry(parent).firstChild(); c != kNoEntry; c = entry(c).nextSibling) {
         tableInsert(table, c, previous);
         previous = c;
     }
@@ -692,7 +684,7 @@ EntryId FileIndex::findChild(EntryId parent, std::string_view childName, bool ex
         return kNoEntry;
     if (const auto it = m_childTables.find(parent); it != m_childTables.end())
         return tableFind(it->second, childName, exactCase);
-    for (EntryId c = entry(parent).firstChild; c != kNoEntry; c = entry(c).nextSibling) {
+    for (EntryId c = entry(parent).firstChild(); c != kNoEntry; c = entry(c).nextSibling) {
         if (exactCase ? name(c) == childName : text::equalsIgnoreAsciiCase(name(c), childName))
             return c;
     }
@@ -706,7 +698,7 @@ EntryId FileIndex::childForUpdate(EntryId parent, std::string_view childName, bo
     if (const auto it = m_childTables.find(parent); it != m_childTables.end())
         return tableFind(it->second, childName, exactCase);
     std::size_t walked = 0;
-    for (EntryId c = entry(parent).firstChild; c != kNoEntry; c = entry(c).nextSibling) {
+    for (EntryId c = entry(parent).firstChild(); c != kNoEntry; c = entry(c).nextSibling) {
         if (exactCase ? name(c) == childName : text::equalsIgnoreAsciiCase(name(c), childName))
             return c;
         if (++walked == kChildTableMin) // a big folder: index its children once, so the next lookups are quick

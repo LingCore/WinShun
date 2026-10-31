@@ -124,7 +124,7 @@ Plan plan(const FileIndex& index, EntryId root, const ContentFilter& filter, con
     while (!folders.empty()) {
         const EntryId folder = folders.front();
         folders.pop_front();
-        for (EntryId c = index.entry(folder).firstChild; c != kNoEntry; c = index.entry(c).nextSibling) {
+        for (EntryId c = index.entry(folder).firstChild(); c != kNoEntry; c = index.entry(c).nextSibling) {
             const Entry& e = index.entry(c);
             if (e.isDeleted())
                 continue;
@@ -593,7 +593,7 @@ std::optional<ShareContent::Clock::duration> ShareContent::slice(std::stop_token
     }
 
     const auto started = Clock::now();
-    const auto cancelled = [&] { return stop.stop_requested() || indexer.stopping(); };
+    const auto cancelled = [&] { return stop.stop_requested() || indexer.stopping() || (s.online && !s.online()); };
     int errors = 0;
     for (const Plan::File& f : todo.read) {
         if (cancelled())

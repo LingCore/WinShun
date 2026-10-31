@@ -457,7 +457,7 @@ bool save(const FileIndex& index, const std::vector<VolumeInfo>& volumes,
                 if (e.isDeleted())
                     continue;
                 f(id, e);
-                for (EntryId c = e.firstChild; c != kNoEntry; c = index.entry(c).nextSibling)
+                for (EntryId c = e.firstChild(); c != kNoEntry; c = index.entry(c).nextSibling)
                     stack.push_back(c);
             }
         }

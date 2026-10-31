@@ -2525,7 +2525,7 @@ private slots:
 
     // A limit larger than a slice of the index has entries (ws asks for
     // 50 000): such a slice keeps all it finds, as found, and the merge picks
-    // the best; under it each slice keeps a heap of its best. The same list
+    // the best; small limits reuse a heap per worker. The same list
     // either way, a longer one beginning as the shorter, in every order. And
     // room is taken as found, not for the limit: a heap set aside for ws's
     // 55 000 in each slice was 370 MB more for one search.
@@ -2544,19 +2544,21 @@ private slots:
         }
         // Names that match "ab" well, less well or not, times and sizes that
         // often tie.
-        for (int i = 0; i < 40'000; ++i) {
+        for (int i = 0; i < 80'000; ++i) {
             const std::string n = std::to_string(i % 9'000);
             const std::string names[] {"ab" + n + ".txt", "x-ab-" + n + ".log", "Abc" + n, "zzab" + n + ".md", "ab.txt",
                 "other" + n + ".txt", "AB"};
             const EntryId id = index.add(dirs[static_cast<std::size_t>(i * 7 % 300)], names[i % 7], 0);
             index.setModified(id, i % 11 == 0 ? FileTime {0} : t0 + static_cast<FileTime>(i * 7'919 % 100'000));
+            index.setCreated(id, t0 - static_cast<FileTime>(i % 10'000));
             if (i % 5 != 0)
                 index.setSize(id, packSize(static_cast<std::uint64_t>(i % 1'000) * 37));
         }
-        // Three slices (16 384 entries each, NameSearch.cpp's kSliceSize), the
-        // last with fewer than 10 000.
-        QVERIFY(index.slotCount() > 2 * 16'384 && index.slotCount() < 2 * 16'384 + 10'000);
+        // More slices than workers, including a partial slice: a worker
+        // must retain its best candidates across multiple slices.
+        QVERIFY(index.slotCount() > 4 * 16'384 && index.slotCount() < 5 * 16'384);
         WorkerPool pool(4);
+        WorkerPool serial(1);
         const auto ids = [](const NameSearchOutput& out) {
             std::vector<EntryId> list;
             for (const NameHit& h : out.hits)
@@ -2577,20 +2579,26 @@ private slots:
             {{SortKey::Path, true}, RankBy::Match}, {{SortKey::Type, false}, RankBy::Match},
             {{SortKey::Type, true}, RankBy::Match}, {{SortKey::Size, false}, RankBy::Match},
             {{SortKey::Size, true}, RankBy::Match}, {{SortKey::Modified, false}, RankBy::Match},
-            {{SortKey::Modified, true}, RankBy::Match}};
+            {{SortKey::Modified, true}, RankBy::Match}, {{SortKey::Created, false}, RankBy::Match},
+            {{SortKey::Created, true}, RankBy::Match}, {{SortKey::Folder, false}, RankBy::Match},
+            {{SortKey::Folder, true}, RankBy::Match}};
         for (const QString& typed : {u"ab"_s, u""_s}) {
             const NameMatcher matcher(ws::parseQuery(typed));
             for (const Order& order : orders) {
                 for (const bool apart : {false, true}) {
-                    // 50: a heap in every slice; 10 000: in the full ones, all
-                    // of the last; 100 000: all everywhere.
-                    NameSearchOptions o {.rankBy = order.rankBy, .kindsApart = apart, .order = order.order};
+                    // 50 and 10 000: heaps reused across slices;
+                    // 100 000: collect all matches before the reduction.
+                    NameSearchOptions o {.rankBy = order.rankBy,
+                        .kindsApart = apart,
+                        .insideFirst = typed.isEmpty() ? dirs[1] : kNoEntry,
+                        .order = order.order};
                     o.limit = 100'000;
                     const NameSearchOutput all = searchNames(index, matcher, o, pool, {});
                     o.limit = 10'000;
                     const NameSearchOutput mid = searchNames(index, matcher, o, pool, {});
                     o.limit = 50;
                     const NameSearchOutput few = searchNames(index, matcher, o, pool, {});
+                    const NameSearchOutput single = searchNames(index, matcher, o, serial, {});
                     const QByteArray what = u"'%1' order %2 descending %3 by %4 apart %5"_s.arg(typed)
                                                 .arg(static_cast<int>(order.order.key))
                                                 .arg(static_cast<int>(order.order.descending))
@@ -2605,12 +2613,15 @@ private slots:
                     // `limit` together are the best of all the same.
                     QVERIFY2(first(ids(all), 10'000) == first(ids(mid), 10'000), what.constData());
                     QVERIFY2(first(ids(all), 50) == first(ids(few), 50), what.constData());
+                    QVERIFY2(ids(few) == ids(single) && few.totalMatches == single.totalMatches, what.constData());
+                    QVERIFY2(few.hits.capacity() <= few.hits.size() * 2, what.constData());
+                    QVERIFY2(mid.hits.capacity() <= mid.hits.size() * 2, what.constData());
                 }
             }
         }
 
-        // A limit far past what there is (50 million: 800 MB a heap, were it
-        // set aside) takes room for the 40 000 found, not for it.
+        // A limit far past what there is (50 million) takes room for the
+        // 80 000 found, rather than reserving an enormous heap for the limit.
         PROCESS_MEMORY_COUNTERS before {};
         QVERIFY(::GetProcessMemoryInfo(::GetCurrentProcess(), &before, sizeof before));
         NameSearchOptions huge {.kindsApart = true};
@@ -2621,6 +2632,14 @@ private slots:
         QCOMPARE(out.hits.size(), out.totalMatches);
         const double grewMB = static_cast<double>(after.PeakPagefileUsage - before.PeakPagefileUsage) / (1 << 20);
         QVERIFY2(grewMB < 64, qPrintable(u"the peak commit grew %1 MB"_s.arg(grewMB, 0, 'f', 1)));
+
+        for (WorkerPool* workers : {&serial, &pool}) {
+            std::atomic<int> checked {0};
+            const auto stopped = searchNames(index, NameMatcher(ws::parseQuery(u""_s)), {.limit = 50}, *workers,
+                [&] { return checked.fetch_add(1) > 1; });
+            QVERIFY(stopped.cancelled);
+            QVERIFY(stopped.hits.empty());
+        }
     }
 
     // The query read aloud (homophoneQueries), for names that sound the same.
@@ -2834,7 +2853,7 @@ private slots:
         for (int i = 0; i < 3000; ++i)
             ids.push_back(index.add(big, "file" + std::to_string(i) + ".txt", 0));
         const auto linear = [&](EntryId parent, std::string_view name) {
-            for (EntryId c = index.entry(parent).firstChild; c != kNoEntry; c = index.entry(c).nextSibling) {
+            for (EntryId c = index.entry(parent).firstChild(); c != kNoEntry; c = index.entry(c).nextSibling) {
                 if (index.name(c) == name)
                     return c;
             }
@@ -2887,7 +2906,7 @@ private slots:
             std::set<EntryId> expected(ids.begin(), ids.end());
             const auto childrenOf = [&](EntryId parent) {
                 std::set<EntryId> seen;
-                for (EntryId c = index.entry(parent).firstChild; c != kNoEntry; c = index.entry(c).nextSibling) {
+                for (EntryId c = index.entry(parent).firstChild(); c != kNoEntry; c = index.entry(c).nextSibling) {
                     if (!seen.insert(c).second)
                         return std::set<EntryId> {kNoEntry}; // a loop
                 }
@@ -3276,7 +3295,7 @@ private slots:
             QCOMPARE(index->roots().size(), std::size_t {1});
             // The root holds the first folder on the way, nothing else.
             std::size_t children = 0;
-            for (EntryId c = index->entry(index->roots().front()).firstChild; c != kNoEntry; c = index->entry(c).nextSibling)
+            for (EntryId c = index->entry(index->roots().front()).firstChild(); c != kNoEntry; c = index->entry(c).nextSibling)
                 ++children;
             QCOMPARE(children, std::size_t {1});
             // Spelled as on the disk, not as it was written.
@@ -4308,6 +4327,64 @@ private slots:
         for (int i = 0; i < 80; ++i)
             cur = t.index.add(cur, "d", EntryFlag::Directory);
         QCOMPARE(t.index.path(cur).count(u'\\'), 80);
+    }
+
+    void indexStorageBudget()
+    {
+        FileIndex index;
+        const EntryId root = index.addRoot("C:");
+        // One full chunk, without a workload-dependent name pool or hash
+        // table: links and file metadata must fit in 25 bytes per slot.
+        for (std::size_t i = 1; i < FileIndex::kChunkSize; ++i)
+            index.addStored(root, index.entry(root).nameOffset, 0);
+        const auto memory = index.memoryUse();
+        const std::size_t bytes = memory.entries + memory.times + memory.sizes;
+        QVERIFY2(bytes <= index.slotCount() * 25,
+            qPrintable(u"entry metadata uses %1 bytes per slot"_s.arg(static_cast<double>(bytes) / index.slotCount())));
+    }
+
+    void indexSizesSurviveTreeChanges()
+    {
+        FileIndex index;
+        const EntryId root = index.addRoot("C:");
+        const EntryId gone = index.add(root, "gone", EntryFlag::Directory);
+        const EntryId dir = index.add(root, "work", EntryFlag::Directory);
+        const std::array<FileSize, 5> sizes {0, packSize(1), packSize(16'777'217), packSize(1ULL << 50), kUnknownSize};
+        for (std::size_t i = 0; i < sizes.size(); ++i) {
+            const EntryId id = index.add(gone, std::to_string(i), 0);
+            QCOMPARE(index.size(id), kUnknownSize);
+            index.setSize(id, sizes[i]);
+            index.setModified(id, static_cast<FileTime>(1'700'000'000 + i));
+            QVERIFY(index.move(id, dir, std::to_string(i)));
+            QCOMPARE(index.size(id), sizes[i]);
+        }
+        const EntryId removed = index.add(dir, "removed", 0);
+        index.setSize(removed, packSize(17));
+        QCOMPARE(index.remove(removed), std::size_t {1});
+        QCOMPARE(index.remove(gone), std::size_t {1});
+        QCOMPARE(index.compact(), std::size_t {2});
+
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+        const QString file = temp.filePath(u"sizes.bin"_s);
+        QVERIFY(snapshot::save(index, {}, {}, {}, file));
+        auto loaded = snapshot::load(file);
+        QVERIFY(loaded);
+        for (const FileIndex* tree : {&index, loaded->index.get()}) {
+            const EntryId folder = tree->findPath(L"C:\\work");
+            QVERIFY(folder != kNoEntry);
+            QCOMPARE(tree->size(folder), kUnknownSize);
+            for (std::size_t i = 0; i < sizes.size(); ++i) {
+                const EntryId id = tree->findChild(folder, std::to_string(i));
+                QVERIFY(id != kNoEntry);
+                QCOMPARE(tree->size(id), sizes[i]);
+                QCOMPARE(tree->modified(id), static_cast<FileTime>(1'700'000'000 + i));
+                QCOMPARE(tree->findChild(id, "anything"), kNoEntry);
+            }
+        }
+        const EntryId folder = index.findPath(L"C:\\work");
+        QCOMPARE(index.remove(folder), sizes.size() + 1);
+        QCOMPARE(index.liveCount(), std::size_t {1});
     }
 
     // While the index is saved (a long read), a writer waits at its gate, not
@@ -5807,7 +5884,7 @@ private slots:
             offsets.insert(big.entry(static_cast<EntryId>(i)).nameOffset);
         QCOMPARE(offsets.size(), std::size_t {5001});
         std::size_t children = 0;
-        for (EntryId c = big.entry(big.roots().front()).firstChild; c != kNoEntry; c = big.entry(c).nextSibling) {
+        for (EntryId c = big.entry(big.roots().front()).firstChild(); c != kNoEntry; c = big.entry(c).nextSibling) {
             QCOMPARE(big.entry(c).parent, big.roots().front());
             ++children;
         }
@@ -5876,7 +5953,7 @@ private slots:
         QCOMPARE(index.findPath(L"X:\\docs\\NEW.txt"), fresh);
         QCOMPARE(index.name(fresh), std::string_view("NEW.txt"));
         std::vector<std::string> names;
-        for (EntryId c = index.entry(docs).firstChild; c != kNoEntry; c = index.entry(c).nextSibling)
+        for (EntryId c = index.entry(docs).firstChild(); c != kNoEntry; c = index.entry(c).nextSibling)
             names.emplace_back(index.name(c));
         std::sort(names.begin(), names.end());
         QCOMPARE(names, (std::vector<std::string> {"NEW.txt", "x.txt"}));
@@ -5900,6 +5977,24 @@ private slots:
         QVERIFY(unc::contains(L"\\\\nas\\docs", L"\\\\NAS\\Docs\\a"));
         QVERIFY(unc::contains(L"\\\\nas\\docs", L"\\\\nas\\docs"));
         QVERIFY(!unc::contains(L"\\\\nas\\docs", L"\\\\nas\\docs2\\a"));
+    }
+
+    void mappedOpeningPaths()
+    {
+        const std::vector<unc::Known> connected {{L"\\\\nas\\docs", L"Z:"},
+            {L"\\\\nas\\docs\\Team", L"Y:"}, {L"\\\\nas\\docs2", L"X:"},
+            {L"\\\\nas\\bad", L"C:\\invalid"}, {L"\\\\nas\\other", L""}};
+        QCOMPARE(unc::preferredOpenPath(L"\\\\NAS\\docs\\report.txt", connected), std::wstring(L"Z:\\report.txt"));
+        QCOMPARE(unc::preferredOpenPath(L"\\\\nas\\docs", connected), std::wstring(L"Z:\\"));
+        QCOMPARE(unc::preferredOpenPath(L"\\\\nas\\docs\\Team\\报告.txt", connected), std::wstring(L"Y:\\报告.txt"));
+        QCOMPARE(unc::preferredOpenPath(L"\\\\nas\\docs2\\report.txt", connected), std::wstring(L"X:\\report.txt"));
+        for (const auto path : {L"C:\\local.txt", L"\\\\nas\\docs-extra\\a", L"\\\\nas\\bad\\a", L"\\\\nas\\other\\a"})
+            QCOMPARE(unc::preferredOpenPath(path, connected), std::wstring(path));
+        const std::wstring disconnected = L"\\\\nas\\docs\\a.txt";
+        QCOMPARE(unc::preferredOpenPath(disconnected, {}), disconnected);
+        // The runtime resolver leaves local paths alone and does not create
+        // or change any drive mapping while inspecting connections.
+        QCOMPARE(unc::preferredOpenPath(L"C:\\local.txt"), std::wstring(L"C:\\local.txt"));
     }
 
     // Shares are roots named by their path, next to the drives; a path finds
@@ -6132,12 +6227,129 @@ private slots:
         QVERIFY(settled(ShareIndexer::State::Online));
         QCOMPARE(status().items, std::size_t {102});
         QCOMPARE(index->liveCount(), std::size_t {103});
+        o.shares[0].scan.maxDepth = 1;
+        shares.setOptions(o);
+        QTRY_COMPARE_WITH_TIMEOUT(status().items, std::size_t {2}, 3000);
+        {
+            const auto lock = index->readLock();
+            QVERIFY(index->findPath(path + L"\\many") != kNoEntry);
+            QCOMPARE(index->findPath(path + L"\\many\\f1499.txt"), kNoEntry);
+        }
+        o.shares[0].scan.maxDepth = 2;
+        shares.setOptions(o);
+        QTRY_VERIFY_WITH_TIMEOUT(status().state == ShareIndexer::State::Online && status().items == 102, 5000);
+        qInfo("Share scan depth narrowed and expanded over loopback SMB");
         shares.stop();
     }
 
     // GitHub #116: a server gone away is probed again after 1, 2, 4, then
     // every 5 minutes, and Windows itself is asked every quarter of an hour
     // (the probe can be wrong). Three days of it, at once.
+    void shareScanWindow()
+    {
+        ShareScan scan;
+        for (int minute : {0, 420, 720, 1320, 1439})
+            QVERIFY(scan.allows(minute));
+        scan.scheduled = true; // default 22:00–07:00
+        QVERIFY(scan.allows(1320));
+        QVERIFY(scan.allows(0));
+        QVERIFY(scan.allows(419));
+        QVERIFY(!scan.allows(420));
+        QVERIFY(!scan.allows(1319));
+        scan.fromMinute = 9 * 60;
+        scan.untilMinute = 18 * 60;
+        QVERIFY(scan.allows(540));
+        QVERIFY(!scan.allows(539));
+        QVERIFY(!scan.allows(1080));
+        scan.untilMinute = scan.fromMinute;
+        QVERIFY(scan.allows(0));
+        QVERIFY(scan.allows(1439));
+        QCOMPARE(ShareScan::depth(L"\\\\nas\\share\\chosen", L"\\\\nas\\share\\chosen"), 0);
+        QCOMPARE(ShareScan::depth(L"\\\\nas\\share\\chosen", L"\\\\nas\\share\\chosen\\one\\two"), 2);
+    }
+
+    void shareScanPause()
+    {
+        using namespace std::chrono_literals;
+        using State = ShareIndexer::State;
+        const std::wstring path = L"\\\\nas\\docs";
+        auto index = std::make_shared<FileIndex>();
+        {
+            const auto lock = index->writeLock();
+            const EntryId root = ShareIndexer::ensureRoot(*index, path);
+            index->add(root, "cached.txt", EntryFlag::Remote); // not in the new listing
+        }
+        std::atomic<int> minute {12 * 60};
+        std::atomic<int> probes {0};
+        std::atomic<int> listings {0};
+        std::atomic<bool> crossBoundary {false};
+        const Crawler crawler({});
+        ShareIndexer::Source source;
+        source.index = [&] { return index; };
+        source.ready = [] { return true; };
+        source.reachable = [&](const auto&, bool) { ++probes; return true; };
+        source.minuteOfDay = [&] { return minute.load(); };
+        source.list = [&](const Crawler::Root& dir, DirListing& out) {
+            ++listings;
+            out.clear();
+            if (dir.path == path) {
+                crawler.addToListing(out, dir, "folder", L"folder", EntryFlag::Remote | EntryFlag::Directory, true, 0, 0);
+                crawler.addToListing(out, dir, "new.txt", {}, EntryFlag::Remote, false, 0, 0);
+            } else {
+                if (crossBoundary)
+                    minute = 12 * 60;
+                crawler.addToListing(out, dir, "deep.txt", {}, EntryFlag::Remote, false, 0, 0);
+            }
+            return true;
+        };
+        ShareIndexer::Options o;
+        o.shares = {{path, {}, true, {true, 22 * 60, 7 * 60, 0}}};
+        o.watch = false;
+        o.retry.shown = 1ms;
+        o.verifyEveryUnwatched = 0min;
+        ShareIndexer shares(source, o, {});
+        const auto status = [&] { return shares.statuses().front(); };
+        shares.start();
+        QTRY_COMPARE_WITH_TIMEOUT(status().state, State::Paused, 3000);
+        QCOMPARE(probes.load(), 0);
+        QCOMPARE(listings.load(), 0);
+        QVERIFY(!shares.contentAllowed(path));
+        QVERIFY(!shares.offline(path + L"\\cached.txt"));
+
+        // A manual name scan is explicit permission for one pass, even now.
+        shares.verifyNow(path);
+        QTRY_VERIFY_WITH_TIMEOUT(status().lastVerified != 0 && status().state == State::Paused, 3000);
+        QCOMPARE(status().items, std::size_t {3});
+        QVERIFY(!shares.contentAllowed(path));
+
+        // Narrowing depth works on the cache without touching the server.
+        const int readBefore = listings;
+        o.shares[0].scan.maxDepth = 1;
+        shares.setOptions(o);
+        QTRY_COMPARE_WITH_TIMEOUT(status().items, std::size_t {2}, 3000);
+        QCOMPARE(listings.load(), readBefore);
+        {
+            const auto lock = index->writeLock();
+            QCOMPARE(index->findPath(path + L"\\folder\\deep.txt"), kNoEntry);
+            index->add(ShareIndexer::ensureRoot(*index, path), "keep.txt", EntryFlag::Remote);
+        }
+
+        // Automatic resume, then the window closes midway through a pass.
+        // Its deferred deletions and last-complete timestamp must survive.
+        const auto verified = status().lastVerified;
+        minute = 23 * 60;
+        crossBoundary = true;
+        o.shares[0].scan.maxDepth = 0;
+        shares.setOptions(o); // wakes the worker, without a manual override
+        QTRY_VERIFY_WITH_TIMEOUT(status().state == State::Paused && listings.load() >= readBefore + 2, 3000);
+        QCOMPARE(status().lastVerified, verified);
+        {
+            const auto lock = index->readLock();
+            QVERIFY(index->findPath(path + L"\\keep.txt") != kNoEntry);
+        }
+        shares.stop();
+    }
+
     void shareRetry()
     {
         using namespace std::chrono_literals;
@@ -6964,6 +7176,37 @@ private slots:
         QVERIFY(!share::lastHeard(L"\\\\192.0.2.1\\DavWWWRoot\\a.txt", 10s));
     }
 
+    void nameSearchCancellationBeforeWork()
+    {
+        FileIndex index;
+        WorkerPool pool(1);
+        const NameMatcher matcher(ws::parseQuery(u""_s));
+        for (const SortKey key : {SortKey::Rank, SortKey::Name, SortKey::Path, SortKey::Type, SortKey::Created,
+                 SortKey::Folder, SortKey::Source, SortKey::Size, SortKey::Modified}) {
+            // Even an empty index must acknowledge an obsolete request,
+            // before allocating sort tables or scheduling any work.
+            const auto stopped = searchNames(index, matcher, {.order = {key, false}}, pool, [] { return true; });
+            QVERIFY(stopped.cancelled);
+            QVERIFY(stopped.hits.empty());
+        }
+        const EntryId root = index.addRoot("C:");
+        for (int i = 0; i < 300; ++i) {
+            const EntryId dir = index.add(root, "folder" + std::to_string(i), EntryFlag::Directory);
+            for (int j = 0; j < 32; ++j)
+                index.add(dir, "file" + std::to_string(j), 0);
+        }
+        const auto stopped = searchNames(index, matcher, {.order = {SortKey::Path, false}}, pool,
+            [] { return true; });
+        QVERIFY(stopped.cancelled);
+        QVERIFY(stopped.hits.empty());
+        // A new request still gets the complete, correctly ordered result.
+        const auto fresh = searchNames(index, matcher, {.order = {SortKey::Path, false}}, pool, {});
+        QVERIFY(!fresh.cancelled);
+        QCOMPARE(fresh.totalMatches, std::size_t {9'900});
+        QCOMPARE(fresh.hits.size(), std::size_t {100});
+        QCOMPARE(index.path(fresh.hits.front().id), u"C:\\folder0"_s);
+    }
+
     void nameSearchTopK()
     {
         FileIndex index;
@@ -7697,6 +7940,142 @@ private slots:
         QVERIFY(it->recent);
     }
 
+    // #141: a remembered mapping and its UNC path are one search location.
+    // Only a newly created key for an unused drive is touched; no connection
+    // is made and no existing mapping or user file is changed.
+    void mappedFolderSearch()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString local = QDir::toNativeSeparators(dir.path());
+        const QString remote = u"\\\\localhost\\"_s + local.left(1) + u'$' + local.mid(2);
+        QString drive;
+        std::wstring key;
+        HKEY mapping = nullptr;
+        const DWORD drives = ::GetLogicalDrives();
+        for (wchar_t letter = L'Z'; letter >= L'D'; --letter) {
+            if (drives & (DWORD {1} << (letter - L'A')))
+                continue;
+            key = L"Network\\" + std::wstring(1, letter);
+            DWORD disposition = 0;
+            if (::RegCreateKeyExW(HKEY_CURRENT_USER, key.c_str(), 0, nullptr, 0, KEY_SET_VALUE, nullptr,
+                    &mapping, &disposition) != ERROR_SUCCESS)
+                continue;
+            if (disposition == REG_CREATED_NEW_KEY) {
+                drive = QString(QChar(letter)) + u':';
+                break;
+            }
+            ::RegCloseKey(mapping);
+            mapping = nullptr;
+        }
+        QVERIFY2(mapping, "No unused drive letter for an isolated mapping");
+        const auto cleanup = qScopeGuard([&] {
+            ::RegCloseKey(mapping);
+            ::RegDeleteKeyW(HKEY_CURRENT_USER, key.c_str());
+        });
+        const std::wstring wide = remote.toStdWString();
+        QCOMPARE(::RegSetValueExW(mapping, L"RemotePath", 0, REG_SZ, reinterpret_cast<const BYTE*>(wide.c_str()),
+                     static_cast<DWORD>((wide.size() + 1) * sizeof(wchar_t))), ERROR_SUCCESS);
+        QCOMPARE(QString::fromStdWString(unc::fromMappedDrive(drive.toStdWString())), remote);
+
+        QVERIFY(QDir(dir.path()).mkdir(u"report-folder"_s));
+        QVERIFY(QDir(dir.path()).mkdir(u"sub"_s));
+        for (const QString& name : {u"report.txt"_s, u"sub/report-deep.txt"_s}) {
+            QFile file(dir.filePath(name));
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write("report");
+        }
+        IndexService::Options options;
+        options.content.enabled = false;
+        IndexService service(dir.filePath(u"index"_s), options);
+        {
+            const auto index = service.index();
+            const auto lock = index->writeLock();
+            const EntryId root = ShareIndexer::ensureRoot(*index, wide);
+            index->add(root, "report.txt", 0);
+            index->add(root, "report-folder", EntryFlag::Directory);
+            index->add(index->add(root, "sub", EntryFlag::Directory), "report-deep.txt", 0);
+            index->add(index->addRoot("C:"), "report-outside.txt", 0);
+        }
+        SearchEngine engine(&service, nullptr, nullptr);
+        QSignalSpy spy(&engine, &SearchEngine::resultsReady);
+        const auto search = [&](SearchEngine::Request request) {
+            spy.clear();
+            engine.submit(std::move(request));
+            if (spy.isEmpty() && !spy.wait(5000))
+                return SearchResults {};
+            return spy.front().at(1).value<SearchResults>();
+        };
+        SearchEngine::Request request;
+        request.text = u"report"_s;
+        request.currentFolder = drive + u'\\';
+        request.currentFolderOnly = true;
+        request.limit = 100;
+        // A panel filter avoids requiring SMB or an administrative share on CI.
+        request.folders = {remote};
+        const auto scoped = search(request);
+        QCOMPARE(scoped.size(), qsizetype {3});
+        QCOMPARE(spy.front().at(2).toLongLong(), qint64 {3});
+        QVERIFY(std::ranges::all_of(scoped, [&](const SearchResult& row) {
+            return row.path.startsWith(remote + u'\\') && !row.elsewhere;
+        }));
+        request.folders = {drive + u'\\'};
+        QCOMPARE(search(request).size(), qsizetype {3});
+        request.currentFolder.clear();
+        request.text = drive + u"\\ report"_s;
+        QCOMPARE(search(request).size(), qsizetype {3});
+        request.text = remote + u"\\ report"_s;
+        QCOMPARE(search(request).size(), qsizetype {3});
+
+        // When loopback SMB is available, exercise the actual disk/index merge
+        // as well, including history through both aliases and a later page.
+        if (QFileInfo(remote).isDir()) {
+            request.folders.clear();
+            request.currentFolder = drive + u'\\';
+            request.text = u"report"_s;
+            request.currentFolderOnly = false;
+            request.history = {drive + u"\\report.txt"_s, remote + u"\\report.txt"_s};
+            const auto rows = search(request);
+            QCOMPARE(rows.size(), qsizetype {4});
+            QCOMPARE(spy.front().at(2).toLongLong(), qint64 {4});
+            QSet<QString> paths;
+            for (const auto& row : rows)
+                paths.insert(pathtext::pathKey(row.path));
+            QCOMPARE(paths.size(), rows.size());
+            const auto file = std::ranges::find(rows, remote + u"\\report.txt"_s, &SearchResult::path);
+            QVERIFY(file != rows.end());
+            QCOMPARE(file->size, std::int64_t {6}); // real disk row, not just the synthetic index
+            QCOMPARE(std::ranges::count_if(rows, &SearchResult::elsewhere), 1);
+            QVERIFY(std::ranges::none_of(rows, [&](const SearchResult& row) { return row.path.startsWith(drive); }));
+            request.limit = 2;
+            const auto page = search(request);
+            QCOMPARE(page.size(), qsizetype {2});
+            QCOMPARE(spy.front().at(2).toLongLong(), qint64 {4});
+            QVERIFY(std::ranges::none_of(page, &SearchResult::elsewhere));
+            qInfo("Mapped-folder disk/index merge checked over loopback SMB");
+        }
+
+        // A mapping can change while WinShun keeps running. A later request
+        // must take the new source, without mixing in cached identities.
+        const std::wstring remapped = wide + L"-remapped";
+        QCOMPARE(::RegSetValueExW(mapping, L"RemotePath", 0, REG_SZ,
+                     reinterpret_cast<const BYTE*>(remapped.c_str()),
+                     static_cast<DWORD>((remapped.size() + 1) * sizeof(wchar_t))), ERROR_SUCCESS);
+        {
+            const auto index = service.index();
+            const auto lock = index->writeLock();
+            index->add(ShareIndexer::ensureRoot(*index, remapped), "report-remapped.txt", 0);
+        }
+        request = {};
+        request.text = u"report"_s;
+        request.currentFolder = drive + u'\\';
+        request.currentFolderOnly = true;
+        request.folders = {drive + u'\\'};
+        const auto changed = search(request);
+        QCOMPARE(changed.size(), qsizetype {1});
+        QCOMPARE(changed.front().path, QString::fromStdWString(remapped) + u"\\report-remapped.txt"_s);
+    }
+
     // GitHub #110: typed in a folder's window, what is in that folder (at any
     // depth) comes first, then what is so named anywhere else, marked, as
     // Listary lists it; or that folder alone. One search of the index: each
@@ -7997,11 +8376,11 @@ private slots:
                 AppKind::Store),
             app(u"PowerShell"_s, u"Microsoft.PowerShell"_s, uR"(C:\PS\pwsh.exe)"_s),
         };
-        const auto names = [&](const QString& text, const QStringList& history = {}) {
+        const auto names = [&](const QString& text, const QStringList& history = {}, const History::Affinities& affinities = {}) {
             const ParsedQuery query = ws::parseQuery(text);
             const NameMatcher matcher(query);
             QStringList out;
-            for (const AppHit& hit : searchApps(apps, query, matcher, history))
+            for (const AppHit& hit : searchApps(apps, query, matcher, history, affinities))
                 out.append(apps[hit.index].name);
             return out;
         };
@@ -8054,9 +8433,17 @@ private slots:
         QVERIFY(names(uR"(vs\code)"_s).isEmpty());
         QVERIFY(names(QString()).isEmpty());
 
-        // Recently opened apps rank higher.
+        // Unrelated history gives only a small bonus; choices for this text
+        // use their real weight rather than the position in a recent list.
         const QStringList history {uR"(D:\notes.txt)"_s, apps[4].launchPath()};
         QCOMPARE(names(u"telegram"_s, history),
+            (QStringList {u"Telegram"_s, u"Telegram FAQ"_s, u"Uninstall Telegram"_s}));
+        QTemporaryDir recent;
+        History choices(recent.filePath(u"history.txt"_s));
+        constexpr qint64 now = 1'800'000'000'000;
+        for (int i = 0; i < 3; ++i)
+            choices.record(apps[4].launchPath(), u"telegram"_s, now - 3 + i);
+        QCOMPARE(names(u"telegram"_s, choices.ranked(u"telegram"_s, now), choices.affinities(u"telegram"_s, now)),
             (QStringList {u"Telegram"_s, u"Uninstall Telegram"_s, u"Telegram FAQ"_s}));
 
         QCOMPARE(apps[2].launchPath(), u"shell:AppsFolder\\Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"_s);
@@ -8428,6 +8815,14 @@ private slots:
             QCOMPARE(history.items().first(), u"D:\\once.txt"_s); // newer
             QCOMPARE(history.ranked(u"x"_s, now).first(), u"C:\\often.txt"_s);
             QCOMPARE(history.ranked(u"y"_s, now).first(), u"D:\\once.txt"_s);
+            // A few new picks take over from an old habit, even in a
+            // file-only list. Opening the old item for another query does
+            // not change which choice was last made for "x".
+            for (int i = 0; i < 2; ++i)
+                history.record(u"D:\\once.txt"_s, u"x"_s, now - 2 + i);
+            QCOMPARE(history.ranked(u"x"_s, now).first(), u"D:\\once.txt"_s);
+            history.record(u"C:\\often.txt"_s, u"other"_s, now);
+            QCOMPARE(history.ranked(u"x"_s, now).first(), u"D:\\once.txt"_s);
         }
         {
             // Decay: 20 opens long ago, against 4 lately.
@@ -9036,6 +9431,80 @@ private slots:
         QCOMPARE(weak(u"blue"_s), std::optional<bool>(false));
         QCOMPARE(weak(u"dark"_s), std::optional<bool>(false));
         QCOMPARE(names(u"ly"_s).value(0), u"蓝牙"_s);
+    }
+
+    void learnedHistoryAcrossResultKinds()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString portable = QDir::toNativeSeparators(dir.filePath(u"FirefoxPortable.exe"_s));
+        QFile file(portable);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.close();
+
+        IndexService::Options options;
+        options.content.enabled = false;
+        IndexService service(dir.filePath(u"index"_s), options);
+        AppCatalog apps;
+        auto programs = std::make_shared<AppList>();
+        AppInfo app;
+        app.name = u"Port"_s;
+        app.id = u"Test.Port"_s;
+        app.prepare();
+        programs->push_back(app);
+        apps.setApps(programs);
+        SystemCatalog catalog;
+        auto places = std::make_shared<PlaceList>();
+        PlaceInfo place;
+        place.name = u"Device Manager"_s;
+        place.key = u"test/ports"_s;
+        place.command = u"ms-settings:test-ports"_s;
+        place.keywords = {u"port"_s};
+        place.prepare();
+        places->push_back(place);
+        catalog.setPlaces(places);
+        History history(dir.filePath(u"history.txt"_s));
+        constexpr qint64 now = 1'800'000'000'000;
+        SearchEngine engine(&service, &apps, &catalog);
+        QSignalSpy spy(&engine, &SearchEngine::resultsReady);
+        const auto search = [&](const QString& text, int limit = 20) {
+            SearchEngine::Request request;
+            request.text = text;
+            request.scope = Scope::All;
+            request.limit = limit;
+            request.history = history.ranked(text, now);
+            request.historyAffinity = history.affinities(text, now);
+            spy.clear();
+            engine.submit(std::move(request));
+            if (spy.isEmpty() && !spy.wait(5000))
+                return SearchResults {};
+            return spy.first().at(1).value<SearchResults>();
+        };
+
+        QCOMPARE(search(u"port"_s).value(0).path, app.launchPath());
+        for (int i = 0; i < 100; ++i)
+            history.record(portable, u"port"_s, now - 86'400'000 + i);
+        // Production boundary: an on-disk portable executable learned from
+        // "port" must beat even an exact app name, including a one-row list.
+        QCOMPARE(search(u"port"_s).value(0).path, portable);
+        QCOMPARE(search(u"PORT"_s, 1).value(0).path, portable);
+        QCOMPARE(search(u"por"_s).value(0).path, portable);
+        // Unrelated history never promotes the portable program for this word.
+        QCOMPARE(search(u"portable"_s).value(0).path, portable);
+        QVERIFY(!History::affinity(history.affinities(u"portable"_s, now), portable).learned());
+
+        for (int i = 0; i < 3; ++i)
+            history.record(place.path(), u"port"_s, now - 10 + i);
+        QCOMPARE(search(u"port"_s).value(0).path, place.path());
+        for (int i = 0; i < 3; ++i)
+            history.record(app.launchPath(), u"port"_s, now - 3 + i);
+        QCOMPARE(search(u"port"_s).value(0).path, app.launchPath());
+
+        History restored(dir.filePath(u"history.txt"_s));
+        restored.load();
+        QCOMPARE(History::affinity(restored.affinities(u"port"_s, now), portable).group, 0);
+        QVERIFY(History::affinity(restored.affinities(u"port"_s, now), portable).learned());
+        QVERIFY(!History::affinity(restored.affinities(u"port"_s, now + 140LL * 86'400'000), portable).learned());
     }
 
     void switchRowsInSearch()

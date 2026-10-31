@@ -21,6 +21,8 @@ std::optional<QString> normalizedTypeKeyword(QStringView text)
     text = text.trimmed();
     if (text.startsWith(u':'))
         text = text.mid(1);
+    else if (text.endsWith(u':'))
+        text = text.chopped(1);
     if (text.size() > 32 || std::ranges::any_of(text, [](QChar c) {
             return !c.isLetterOrNumber() && c != u'_' && c != u'-';
         }))
@@ -32,39 +34,59 @@ FileTypeQuery splitFileTypeQuery(const QString& text, const FileTypes& types, QS
 {
     const QStringView trimmed = QStringView(text).trimmed();
     FileTypeQuery result{trimmed.toString(), std::nullopt};
-    if (!trimmed.startsWith(u':'))
-        return result;
-    qsizetype end = 1;
-    while (end < trimmed.size() && !trimmed[end].isSpace())
-        ++end;
-    const QStringView keyword = trimmed.mid(1, end - 1);
-    if (keyword.isEmpty())
-        return result;
-    if (keyword.contains(u',')) {
-        const auto keywords = keyword.toString().split(u',', Qt::KeepEmptyParts);
-        for (const QString& part : keywords) {
-            const auto found = splitFileTypeQuery(u":"_s + part, types, folderKeyword);
-            if (!found.type || *found.type < 0)
-                return result;
-            if (!result.types.contains(*found.type))
-                result.types.append(*found.type);
+    for (qsizetype start = 0; start < trimmed.size();) {
+        while (start < trimmed.size() && trimmed[start].isSpace())
+            ++start;
+        qsizetype end = start;
+        bool quoted = false;
+        bool hasQuotes = false;
+        while (end < trimmed.size() && (quoted || !trimmed[end].isSpace())) {
+            if (trimmed[end] == u'"') {
+                quoted = !quoted;
+                hasQuotes = true;
+            }
+            ++end;
         }
-        result.type = result.types.first();
-        result.words = trimmed.mid(end).trimmed().toString();
-        return result;
-    }
-    if (!folderKeyword.isEmpty() && keyword.compare(folderKeyword, Qt::CaseInsensitive) == 0)
-        result.type = -2;
-    else {
-        for (qsizetype i = 0; i < types.size(); ++i) {
-            if (!types[i].keyword.isEmpty() && keyword.compare(types[i].keyword, Qt::CaseInsensitive) == 0) {
-                result.type = int(i);
-                break;
+        const QStringView token = trimmed.sliced(start, end - start);
+        QStringView keyword;
+        if (!hasQuotes && token.startsWith(u':'))
+            keyword = token.sliced(1);
+        else if (!hasQuotes && token.endsWith(u':')
+            && !(token.size() == 2 && token.front().isLetter())) // a drive, "C:"
+            keyword = token.chopped(1);
+        QList<int> selected;
+        if (!keyword.isEmpty()) {
+            const auto parts = keyword.toString().split(u',', Qt::KeepEmptyParts);
+            for (const QString& part : parts) {
+                int type = -1;
+                if (!folderKeyword.isEmpty() && part.compare(folderKeyword, Qt::CaseInsensitive) == 0)
+                    type = -2;
+                else {
+                    for (qsizetype i = 0; i < types.size(); ++i) {
+                        if (!types[i].keyword.isEmpty() && part.compare(types[i].keyword, Qt::CaseInsensitive) == 0) {
+                            type = int(i);
+                            break;
+                        }
+                    }
+                }
+                if (type == -1 || (type == -2 && parts.size() != 1)) {
+                    selected.clear(); // an unknown or mixed group stays literal, as before
+                    break;
+                }
+                if (!selected.contains(type))
+                    selected.append(type);
             }
         }
+        if (!selected.isEmpty()) {
+            result.type = selected.first();
+            if (keyword.contains(u','))
+                result.types = selected;
+            result.words = (trimmed.left(start).trimmed().toString() + u' '
+                + trimmed.mid(end).trimmed()).trimmed();
+            return result;
+        }
+        start = end;
     }
-    if (result.type)
-        result.words = trimmed.mid(end).trimmed().toString();
     return result;
 }
 
@@ -570,7 +592,7 @@ QString sizeText(std::uint64_t bytes)
     return QString::number(value, 'f', decimals) + u' ' + kUnits[unit];
 }
 
-ParsedQuery parseQuery(const QString& text)
+ParsedQuery parseQuery(const QString& text, bool regexTerms)
 {
     ParsedQuery q;
     qsizetype start = 0;
@@ -583,7 +605,7 @@ ParsedQuery parseQuery(const QString& text)
             q.error = branch.isEmpty() ? QObject::tr("“|”两侧都需要搜索条件") : QObject::tr("搜索条件过多");
             return q;
         }
-        q.alternatives.push_back(parseQuery(branch));
+        q.alternatives.push_back(parseQuery(branch, regexTerms));
         start = piece.end;
     }
     if (!q.alternatives.empty()) {
@@ -592,7 +614,7 @@ ParsedQuery parseQuery(const QString& text)
             q.error = QObject::tr("“|”两侧都需要搜索条件");
             return q;
         }
-        q.alternatives.push_back(parseQuery(branch));
+        q.alternatives.push_back(parseQuery(branch, regexTerms));
         for (const ParsedQuery& group : q.alternatives) {
             q.highlights.append(group.highlights);
             if (!group.error.isEmpty())
@@ -603,7 +625,7 @@ ParsedQuery parseQuery(const QString& text)
     }
     // A path typed or pasted whole ("C:\Users\me\Tencent Files\x") is one
     // term: its spaces are in the names, not between terms.
-    const pathtext::TypedPath typed = pathtext::splitTyped(text);
+    const pathtext::TypedPath typed = regexTerms ? pathtext::TypedPath() : pathtext::splitTyped(text);
     struct Token { QString text; bool quotedLiteral; };
     std::vector<Token> tokens;
     if (typed.folder.isEmpty()) {
@@ -639,12 +661,16 @@ ParsedQuery parseQuery(const QString& text)
             token.remove(0, 1);
         }
 
-        const bool regex = !quotedLiteral && token.startsWith(u"regex:", Qt::CaseInsensitive);
+        const qsizetype regexPrefix = quotedLiteral ? 0
+            : token.startsWith(u"regex:", Qt::CaseInsensitive) ? 6
+            : token.startsWith(u"re:", Qt::CaseInsensitive) ? 3 : 0;
+        const bool prefixed = regexPrefix != 0;
+        const bool regex = prefixed || regexTerms;
         const bool anchored = !quotedLiteral && (token.startsWith(u'^') || token.endsWith(u'$'));
         if (regex || anchored) {
             QString pattern;
             if (regex) {
-                pattern = token.mid(6);
+                pattern = prefixed ? token.mid(regexPrefix) : token;
             } else {
                 const bool prefix = token.startsWith(u'^');
                 const bool suffix = token.endsWith(u'$');
@@ -825,6 +851,9 @@ NameMatcher::NameMatcher(const ParsedQuery& query)
         }
         const std::string_view text = t.wildcard || t.regex ? std::string_view() : std::string_view(t.text);
         Positive p {t, pinyin::Matcher(text), pinyin::Matcher(text, true), {}};
+        p.initials = text.size() >= 2 && text.size() <= 12 && std::ranges::all_of(text, [](unsigned char c) {
+            return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
+        });
         for (const std::string& segment : t.ancestors)
             p.folders.emplace_back(segment);
         m_positive.push_back(std::move(p));
@@ -853,6 +882,17 @@ NameMatcher::NameMatcher(const ParsedQuery& query)
 }
 
 namespace {
+
+bool programInitials(std::string_view name, std::size_t extLength, std::string_view initials)
+{
+    if (extLength != 3 || name.size() <= extLength + 1)
+        return false;
+    const std::string_view extension = name.substr(name.size() - extLength);
+    constexpr std::string_view programs[] {"exe", "com", "lnk", "bat", "cmd", "ps1"};
+    if (!std::ranges::any_of(programs, [&](std::string_view ext) { return text::equalsFolded(extension, ext); }))
+        return false;
+    return text::wordInitialsMatch(name.substr(0, name.size() - extLength - 1), initials);
+}
 
 // Index names are stored with padding, so they can use the SIMD search.
 template <bool Padded> std::size_t find(std::string_view haystack, std::string_view folded)
@@ -897,22 +937,26 @@ int NameMatcher::score(std::string_view name, bool isDir, Han&& han, std::size_t
                 // Not spelled out: maybe as pinyin ("bg" for 报告), ranked a little lower,
                 // and lower still when it takes a less common reading (解 as xie).
                 auto span = p.pinyin.valid() && han() ? p.pinyin.findUtf8(name) : std::nullopt;
-                if (!span) {
+                if (!span && p.initials && !isDir && programInitials(name, extLength, t.text)) {
+                    score += 12; // below literal word matches, above a word's middle
+                    covered += t.text.size();
+                } else if (!span) {
                     if (i < 64 && (m_folderTerms >> i & 1)) {
                         elsewhere |= std::uint64_t {1} << i;
                         continue;
                     }
                     return -1;
+                } else {
+                    int bonus = -12;
+                    if (const auto common = p.commonPinyin.findUtf8(name)) {
+                        span = common;
+                        bonus = 0;
+                    }
+                    bonus += span->start == 0 ? 26 : text::isWordStart(name, span->start) ? 16 : 4;
+                    score += bonus;
+                    covered += span->length;
+                    pinyinMatch = span;
                 }
-                int bonus = -12;
-                if (const auto common = p.commonPinyin.findUtf8(name)) {
-                    span = common;
-                    bonus = 0;
-                }
-                bonus += span->start == 0 ? 26 : text::isWordStart(name, span->start) ? 16 : 4;
-                score += bonus;
-                covered += span->length;
-                pinyinMatch = span;
             } else {
                 int bonus = 4;
                 if (pos == 0) {
@@ -1100,7 +1144,8 @@ bool NameMatcher::nameMayMatch(std::string_view name, std::size_t fileExtLength,
         return std::ranges::any_of(m_alternatives, [&](const NameMatcher& m) { return m.nameMayMatch(name, fileExtLength, han); });
     if (m_quick >= 0) {
         const Positive& p = m_positive[static_cast<std::size_t>(m_quick)];
-        if (text::findFoldedPadded(name, p.term.text) == text::npos && !(han && p.pinyin.valid() && p.pinyin.findUtf8(name)))
+        if (text::findFoldedPadded(name, p.term.text) == text::npos && !(han && p.pinyin.valid() && p.pinyin.findUtf8(name))
+            && !(p.initials && programInitials(name, fileExtLength, p.term.text)))
             return false;
         if (m_quickDecides)
             return true; // the term in the name; its folders, if any, are the entry's

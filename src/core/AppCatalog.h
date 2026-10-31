@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SearchTypes.h"
+#include "History.h"
 
 #include <QHash>
 #include <QObject>
@@ -120,7 +121,7 @@ struct AppHit {
 // Uninstallers and documents rank lower; recently opened apps (their launch
 // paths in `history`, newest first) higher.
 std::vector<AppHit> searchApps(const AppList& apps, const ParsedQuery& query, const NameMatcher& matcher,
-    const QStringList& history);
+    const QStringList& history, const History::Affinities& affinities = {});
 
 // Something Windows saw started from the shell (Start menu, taskbar,
 // Explorer): its UserAssist record.

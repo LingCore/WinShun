@@ -399,7 +399,8 @@ int keywordScore(std::string_view keyword, const Word& word, bool own, bool& ini
 } // namespace
 
 std::vector<PlaceHit> searchPlaces(
-    const PlaceList& places, const ParsedQuery& query, const NameMatcher& matcher, const QStringList& history)
+    const PlaceList& places, const ParsedQuery& query, const NameMatcher& matcher, const QStringList& history,
+    const History::Affinities& affinities)
 {
     std::vector<PlaceHit> hits;
     if (query.isEmpty())
@@ -501,8 +502,8 @@ std::vector<PlaceHit> searchPlaces(
     }
     for (const Found& f : found) {
         int score = f.byInitials ? std::min(f.score, belowNames) : f.score;
-        if (const auto it = recent.constFind(places[f.index].key); it != recent.cend())
-            score += 20 - std::min(*it, 10);
+        if (recent.contains(places[f.index].key))
+            score += affinities.isEmpty() ? 4 : History::affinity(affinities, places[f.index].path()).bonus();
         hits.push_back({f.index, score, f.weak});
     }
     // Equal scores: the shorter name, which is more often the page itself

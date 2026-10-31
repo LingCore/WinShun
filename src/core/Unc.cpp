@@ -250,6 +250,23 @@ bool connectedToWebDav(wchar_t letter)
 
 } // namespace
 
+namespace {
+
+std::wstring connectedDrive(wchar_t letter)
+{
+    const wchar_t drive[] {letter, L':', L'\0'};
+    wchar_t name[32768];
+    DWORD size = static_cast<DWORD>(std::size(name));
+    if (::WNetGetConnectionW(drive, name, &size) != NO_ERROR)
+        return {};
+    std::wstring remote = normalize(name);
+    if (!remote.empty() && !webdav::isWebDavPath(remote) && connectedToWebDav(letter))
+        remote = withWebDavPort(std::move(remote));
+    return canonical(remote);
+}
+
+} // namespace
+
 std::wstring fromMappedDrive(std::wstring_view path)
 {
     if (path.size() < 2 || path[1] != L':' || !std::iswalpha(path[0]) || (path.size() > 2 && path[2] != L'\\'))
@@ -265,18 +282,50 @@ std::wstring fromMappedDrive(std::wstring_view path)
     if (remote.empty()) {
         // Mapped for this sign-in only ("net use Z: ... /persistent:no"): the
         // connection itself, which an elevated process does not see.
-        const wchar_t drive[] {letter, L':', L'\0'};
-        wchar_t name[MAX_PATH + 1];
-        DWORD size = static_cast<DWORD>(std::size(name));
-        if (::WNetGetConnectionW(drive, name, &size) == NO_ERROR) {
-            remote = normalize(name);
-            if (!remote.empty() && !webdav::isWebDavPath(remote) && connectedToWebDav(letter))
-                remote = withWebDavPort(std::move(remote));
-        }
+        remote = connectedDrive(letter);
     }
     if (remote.empty())
         return {};
     return canonical(remote + std::wstring(path.substr(2)));
+}
+
+std::wstring preferredOpenPath(std::wstring_view path, std::span<const Known> connected)
+{
+    if (!isUnc(path))
+        return std::wstring(path);
+    const std::wstring normalized = canonical(path);
+    std::wstring best;
+    std::size_t deepest = 0;
+    for (const Known& mapping : connected) {
+        if (mapping.drive.size() != 2 || mapping.drive[1] != L':'
+            || !((mapping.drive[0] >= L'A' && mapping.drive[0] <= L'Z')
+                || (mapping.drive[0] >= L'a' && mapping.drive[0] <= L'z')))
+            continue;
+        const std::wstring root = canonical(mapping.path);
+        if (root.size() <= deepest || !contains(root, normalized))
+            continue;
+        deepest = root.size();
+        best = mapping.drive + normalized.substr(root.size());
+        if (best.size() == 2)
+            best += L'\\'; // a drive's root, never its per-drive current directory
+    }
+    return best.empty() ? std::wstring(path) : best;
+}
+
+std::wstring preferredOpenPath(std::wstring_view path)
+{
+    if (!isUnc(path))
+        return std::wstring(path);
+    std::vector<Known> connected;
+    const DWORD drives = ::GetLogicalDrives();
+    for (unsigned i = 0; i < 26; ++i) {
+        if (!(drives & (1u << i)))
+            continue;
+        const wchar_t letter = static_cast<wchar_t>(L'A' + i);
+        if (std::wstring remote = connectedDrive(letter); !remote.empty())
+            connected.push_back({std::move(remote), std::wstring(1, letter) + L':'});
+    }
+    return preferredOpenPath(path, connected);
 }
 
 std::vector<Known> knownShares()
