@@ -32,6 +32,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <stop_token>
 #include <string>
 #include <thread>
 #include <vector>
@@ -53,6 +54,7 @@ class AppCatalog;
 class ClipImportJob;
 class ClipStore;
 class Clipboard;
+class OcrPackage;
 class ComWorker;
 class DialogBar;
 class DialogJump;
@@ -82,6 +84,7 @@ class Placement;
 class SearchEngine;
 class SettingsEditor;
 class Switches;
+class SwitchPlugin;
 class TypeToSearch;
 class LauncherKeysWatch;
 class Updater;
@@ -147,7 +150,8 @@ public:
     // `on`: the screen to open on (typed in an Explorer window there), else
     // the one under the mouse.
     void showLauncher(const QString& query = {}, const std::optional<taskbar::Spot>& spot = {}, bool inBox = false,
-        QScreen* on = nullptr);
+        QScreen* on = nullptr, HWND avoid = nullptr);
+    void showFolderSearch(HWND root, HWND tab, bool opus, const QString& folder);
     void hideLauncher();
     // The launcher as the search panel (Launcher::panel): the window sized
     // for it (Placement::enterPanel) and resizable, or back as the box at
@@ -302,6 +306,8 @@ private:
     // keys go back to Explorer.
     void folderTyped(HWND root, HWND tab, bool opus, std::uint64_t request);
     void typingFolderKnown(HWND root, HWND tab, bool opus, std::uint64_t request, const QString& folder);
+    void followTypingSelection();
+    void cancelTypingSelection();
     // A folder opened in the launcher (Launcher::setFolderOpener): up from
     // typing in an Explorer tab, that tab goes there and its window comes
     // back to the front, so typing goes on in the new folder (GitHub #39).
@@ -429,8 +435,10 @@ private:
     // sections and [WebSearch] say; its plugins answer in the launcher.
     void createPluginHost();
     void applyPlugins();
+    void applySwitches();
     void moveCapture();
     void installMovedPlugins(); // the ones that came with 0.16.0, from the library (GitHub #138)
+    void setPluginRecoveryState(const QString& message, bool busy = false);
     void pluginsChanged(); // the catalog's entries: the icon provider's folders
     // Win顺's tools for the plugins' winshun/tool (plugin::Tools): made
     // with the first call, whatever the AI switch says.
@@ -546,7 +554,9 @@ private:
     std::unique_ptr<plugin::AiBridge> m_aiBridge; // with the server: the plugins' commands among its tools
     std::unique_ptr<plugin::Tools> m_pluginTools; // before the host, whose bridge calls it
     std::unique_ptr<plugin::Host> m_pluginHost; // before the launcher, which asks it
+    std::unique_ptr<OcrPackage> m_ocrPackage;
     // The system switches' states (docs/design-system-switches.md); likewise.
+    std::unique_ptr<SwitchPlugin> m_switchPlugin;
     std::unique_ptr<Switches> m_switches;
     std::unique_ptr<Launcher> m_launcher;
     std::unique_ptr<ClipStore> m_clipStore; // the clipboard history
@@ -573,6 +583,20 @@ private:
     // The tick it was brought to the front: input after that is not its
     // own empty one (bringToFront).
     void logLauncherLostFront(HWND front);
+    // It is no longer in front (Qt's activeChanged, or foregroundChanged):
+    // hidden, unless what took the front is one that keeps it.
+    void launcherLostFront();
+    // Another window came to the front (EVENT_SYSTEM_FOREGROUND): for a
+    // launcher Windows refused to bring to the front, see the constructor.
+    static void CALLBACK foregroundChanged(HWINEVENTHOOK, DWORD, HWND, LONG, LONG, DWORD, DWORD);
+    HWINEVENTHOOK m_launcherFrontHook = nullptr;
+    // Refused the front (whether Qt became active or not): a press elsewhere
+    // on the window already in front raises no event. Watch while that lasts
+    // so an unactivated launcher can still be dismissed (#140).
+    void watchStrandedLauncher();
+    void checkStrandedLauncher();
+    QTimer m_strandedWatch;
+    bool m_strandedPress = false; // a button down, seen already
     std::uint32_t m_launcherFrontTick = 0;
     int m_launcherLostFrontLogged = 0;
     // When the launcher, and the clipboard, last came on the screen
@@ -586,6 +610,7 @@ private:
     // with double tap and its pause in games).
     std::unique_ptr<PointerWatch> m_pointerWatch;
     bool m_launcherClosing = false; // sliding out (hideLauncher)
+    bool m_launcherOpening = false; // query/focus/caret still being prepared; no typing replay yet (#140)
     std::unique_ptr<ComWorker> m_typingWorker; // queries a file display's folder (folderTyped); before m_typing
     std::unique_ptr<TypeToSearch> m_typing; // while StartMenuTyping, ExplorerTyping, OpusTyping or PasteFile is on
     // The launcher is up from typing in this Explorer or Opus window and tab:
@@ -596,8 +621,11 @@ private:
         HWND root = nullptr;
         HWND tab = nullptr;
         bool opus = false;
+        QString folder;
     };
     TypingOrigin m_typingOrigin;
+    QTimer m_typingSelectionTimer;
+    std::stop_source m_typingSelection;
     std::unique_ptr<taskbar::SearchBox> m_searchBox; // while [Taskbar] SearchBox is on (Windows 11)
     bool m_searchBoxShown = false; // ... and it is on the taskbar
     taskbar::SearchBox::Hidden m_searchBoxHidden = taskbar::SearchBox::Hidden::Pending; // ... or why not
@@ -670,6 +698,11 @@ private:
     int m_holdHotkey = 0;
     unsigned m_holdModifiers = 0; // hotkeysteps::kAlt...
     unsigned m_holdVk = 0;
+    // Own windows keep their keyboard: browse by repeated hotkey without
+    // the external-target hook or a paste on release (GitHub #137).
+    int m_browseHotkey = 0;
+    unsigned m_browseModifiers = 0;
+    unsigned m_browseVk = 0;
     std::uint64_t m_holdLate = 0; // ms from the opening press to the watch, for the journal
     QTimer m_holdTimer;
     FrameReveal m_clipReveal; // shown cloaked until a frame from this opening
@@ -713,6 +746,8 @@ private:
     QPointer<QQuickWindow> m_settingsWindow; // created on demand, deleted when closed
     QPointer<QQuickWindow> m_barWindow; // the dialog bar's; created with the first file dialog
     QPointer<SettingsEditor> m_settingsEditor; // owned by m_settingsWindow
+    QString m_pluginRecoveryMessage;
+    bool m_pluginRecoveryBusy = false;
     QString m_renderer; // the one in use; changing it takes a restart
     QString m_language; // resolved: zh or en
     QTranslator m_translator; // English; the source strings are Chinese

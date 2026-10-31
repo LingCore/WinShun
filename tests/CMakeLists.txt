@@ -31,6 +31,12 @@ add_test(NAME tst_launchernavigation COMMAND tst_launchernavigation)
 set_tests_properties(tst_launchernavigation PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# Real QML windows, real name searches, temporary files, process-local input.
+add_test(NAME tst_searchnavigation COMMAND $<TARGET_FILE:WinShun>
+    --preview-results "${CMAKE_CURRENT_BINARY_DIR}/search-navigation" --search-navigation --renderer d3d11)
+set_tests_properties(tst_searchnavigation PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 qt_add_executable(tst_notificationturns tst_notificationturns.cpp)
 target_include_directories(tst_notificationturns PRIVATE ${PROJECT_SOURCE_DIR}/src/app/platform)
 target_link_libraries(tst_notificationturns PRIVATE winshun_options Qt6::Test)
@@ -676,12 +682,35 @@ target_link_libraries(tst_dragout PRIVATE winshun_options Qt6::Core Qt6::Test)
 # real switch thread. Nothing of the system is read or changed.
 qt_add_executable(tst_switches tst_switches.cpp ${PROJECT_SOURCE_DIR}/src/app/Switches.cpp
     ${PROJECT_SOURCE_DIR}/src/app/Switches.h ${PROJECT_SOURCE_DIR}/src/app/platform/ComWorker.cpp
-    ${PROJECT_SOURCE_DIR}/src/app/platform/SwitchKeepAwake.cpp) # keep awake is built in, over a fake clock
-target_include_directories(tst_switches PRIVATE ${PROJECT_SOURCE_DIR}/src/app ${PROJECT_SOURCE_DIR}/src/app/platform)
+    ${PROJECT_SOURCE_DIR}/src/switches-plugin/platform/SwitchKeepAwake.cpp) # keep awake is built in, over a fake clock
+target_include_directories(tst_switches PRIVATE ${PROJECT_SOURCE_DIR}/src/app ${PROJECT_SOURCE_DIR}/src/app/platform ${PROJECT_SOURCE_DIR}/src/switches-plugin)
 target_link_libraries(tst_switches PRIVATE wscore Qt6::Test ole32 powrprof)
 set_target_properties(tst_switches PROPERTIES WIN32_EXECUTABLE FALSE)
 add_test(NAME tst_switches COMMAND tst_switches)
 set_tests_properties(tst_switches PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# Host -> runner -> production service, with isolated fake hardware writes;
+# the actual bundled plugin is also read and its own power request released.
+qt_add_executable(tst_switchplugin tst_switchplugin.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/SwitchPlugin.cpp ${PROJECT_SOURCE_DIR}/src/app/SwitchPlugin.h
+    ${PROJECT_SOURCE_DIR}/src/app/Switches.cpp ${PROJECT_SOURCE_DIR}/src/app/Switches.h
+    ${PROJECT_SOURCE_DIR}/src/app/platform/SettingBroadcast.cpp)
+target_link_libraries(tst_switchplugin PRIVATE wsplugin wsswitch_service Qt6::Test psapi)
+target_compile_definitions(tst_switchplugin PRIVATE
+    WINSHUN_PLUGIN_HOST="$<TARGET_FILE:WinShunPluginHost>"
+    WINSHUN_QT_BIN="$<TARGET_FILE_DIR:Qt6::Core>"
+    WINSHUN_SWITCH_EXE="$<TARGET_FILE:WinShunSwitches>"
+    WINSHUN_SWITCH_DLL="$<TARGET_FILE:WinShunSwitchesApp>"
+    WINSHUN_SWITCH_MANIFEST="${PROJECT_SOURCE_DIR}/src/switches-plugin/package/plugin.json")
+add_dependencies(tst_switchplugin WinShunPluginHost WinShunSwitches WinShunSwitchesApp)
+set_target_properties(tst_switchplugin PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_switchplugin COMMAND tst_switchplugin -o -,txt)
+set_tests_properties(tst_switchplugin PROPERTIES TIMEOUT 180
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+add_test(NAME tst_switchprovider_ui COMMAND WinShun --preview-results
+    "${CMAKE_CURRENT_BINARY_DIR}/switch-provider-ui" --switch-provider-probe)
+set_tests_properties(tst_switchprovider_ui PROPERTIES TIMEOUT 40 RUN_SERIAL TRUE
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 # Win+S / Win+V and Explorer's DisabledHotkeys (platform/WinV): the decision and

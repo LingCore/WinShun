@@ -1,7 +1,9 @@
 #include "Preview.h"
 
 #include "Backup.h"
+#include "App.h"
 #include "Clipboard.h"
+#include "DialogBar.h"
 #include "AppCatalog.h"
 #include "History.h"
 #include "IndexService.h"
@@ -12,16 +14,23 @@
 #include "CommandLine.h"
 #include "FavoritesSettings.h"
 #include "FileIconProvider.h"
+#include "FilePreview.h"
 #include "PluginSettings.h"
 #include "ResultModel.h"
 #include "ThumbnailProvider.h"
 #include "Settings.h"
 #include "SettingsEditor.h"
 #include "SystemTheme.h"
+#include "Switches.h"
 #include "Updater.h"
 #include "WindowFrame.h"
+#include "DropPieHelper.h"
+#include "Query.h"
 #include "Host.h"
 #include "platform/SiteIcons.h"
+#include "platform/FileDialog.h"
+#include "platform/FileManagers.h"
+#include "platform/OcrPackage.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -33,7 +42,12 @@
 #include <QFontMetricsF>
 #include <QGuiApplication>
 #include <QImage>
+#include <QPixmap>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QKeyEvent>
+#include <QInputMethodEvent>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QLibraryInfo>
@@ -45,7 +59,10 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QScreen>
+#include <QScopeGuard>
+#include <QSettings>
 #include <QStyleHints>
+#include <QStorageInfo>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QTime>
@@ -57,6 +74,17 @@
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
+#include <memory>
+
+#include <windows.h>
+#include <psapi.h>
+#include <tlhelp32.h>
+#include <ncrypt.h>
+#include <ole2.h>
+#include <shellapi.h>
+#include <exdisp.h>
+#include <shlobj.h>
+#include <wrl/client.h>
 
 using namespace Qt::StringLiterals;
 
@@ -68,6 +96,7 @@ constexpr auto kFlag = u"--preview-plugins";
 constexpr auto kSettingsFlag = u"--preview-settings";
 constexpr auto kResultsFlag = u"--preview-results";
 constexpr auto kAiCardsFlag = u"--preview-ai-cards";
+constexpr auto kRuntimeFlag = u"--probe-runtime";
 
 int g_warnings = 0;
 bool g_edges = false; // --edges (or --tree): every grab also writes <png>.edges.txt
@@ -221,11 +250,11 @@ void showOffScreen(QQuickWindow* window)
     window->show();
 }
 
-int finish(QQuickWindow* window, bool saved)
+int finish(QQuickWindow* window, bool saved, QObject* controller = nullptr)
 {
     window->hide();
     delete window;
-    QDir(Settings::dataDir()).removeRecursively();
+    delete controller; // stop profile watchers before removing their directories
     say(u"%1 warning(s)"_s.arg(g_warnings));
     return saved ? std::min(g_warnings, 100) : 4;
 }
@@ -813,6 +842,57 @@ int runSettings(const QStringList& args)
         return finish(window, previewWebForms(window, editor, out, tree));
     }
 
+    if (args.contains(u"--plugin-recovery"_s)) {
+        bool ok = true;
+        const auto check = [&](bool condition, const char* message) {
+            if (!condition) {
+                qWarning("plugin recovery: %s", message);
+                ok = false;
+            }
+        };
+        auto* plugins = editor->plugins();
+        plugins->setRecoveryState(App::tr("正在从插件库恢复 %1。原来的设置和数据会保留。")
+            .arg(QCoreApplication::translate("MovedPlugins", "截图与录屏")), true);
+        QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(pluginsPage)), Q_ARG(QVariant, QVariant(0)));
+        window->resize(args.contains(u"--compact"_s) ? QSize(760, 420) : QSize(920, 720));
+        settle(window, 3);
+        QObject* row = visualNamed(window->contentItem(), u"pluginRecoveryRow"_s);
+        QObject* retry = visualNamed(window->contentItem(), u"retryPluginRecovery"_s);
+        QObject* local = visualNamed(window->contentItem(), u"installRecoveryArchive"_s);
+        if (!row || !retry || !local)
+            return finish(window, false);
+        int requests = 0;
+        QObject::connect(plugins, &PluginSettings::recoveryRequested, plugins, [&] {
+            ++requests;
+            plugins->setRecoveryState(App::tr("正在从插件库恢复 %1。原来的设置和数据会保留。")
+                .arg(QCoreApplication::translate("MovedPlugins", "截图与录屏")), true);
+        });
+        const auto grabRecovery = [&](const QString& name) {
+            settle(window, 3);
+            ok = saveGrab(window, out.filePath(name + u".png"_s)) && ok;
+        };
+        plugins->setRecoveryState(App::tr("正在从插件库恢复 %1。原来的设置和数据会保留。")
+            .arg(QCoreApplication::translate("MovedPlugins", "截图与录屏")), true);
+        check(!retry->property("enabled").toBool() && !local->property("enabled").toBool(), "busy controls accept another operation");
+        QMetaObject::invokeMethod(retry, "clicked");
+        check(requests == 0, "busy recovery was requested again");
+        grabRecovery(u"recovery-busy"_s);
+
+        plugins->setRecoveryState(App::tr("以下功能尚未恢复：%1。原来的设置和数据仍在，可以重试或从本地安装插件包。")
+            .arg(App::tr("%1：%2").arg(QCoreApplication::translate("MovedPlugins", "截图与录屏"),
+                App::tr("网络连接失败"))));
+        check(retry->property("enabled").toBool() && local->property("enabled").toBool(), "offline recovery has no enabled retry/local action");
+        grabRecovery(u"recovery-offline"_s);
+        QMetaObject::invokeMethod(retry, "clicked");
+        check(requests == 1 && plugins->recovering(), "retry did not reach the view-model");
+        grabRecovery(u"recovery-retry"_s);
+        plugins->setRecoveryState({}, false);
+        settle(window, 2);
+        check(!row->property("shown").toBool(), "completed recovery kept its warning row");
+        say(u"plugin recovery: real QML controls, busy/offline/retry/completed states; no network or file picker used"_s);
+        return finish(window, ok);
+    }
+
     if (args.contains(u"--backup-settings"_s)) {
         bool ok = true;
         const auto check = [&](bool condition, const char* message) {
@@ -871,6 +951,78 @@ int runSettings(const QStringList& args)
             writeTree(window, out.filePath(u"backup.tree.txt"_s));
         say(u"backup worker, success/error feedback and disabled controls checked on an isolated profile"_s);
         return finish(window, ok && saved);
+    }
+
+    if (args.contains(u"--share-scan"_s)) {
+        bool ok = true;
+        const auto check = [&](bool condition, const char* message) {
+            ok = condition && ok;
+            if (!condition)
+                qWarning("share scan: %s", message);
+        };
+        editor->setShareScan(0, true, u"23:15"_s, u"06:30"_s, 3);
+        editor->setShareScan(0, true, u"26:00"_s, u"06:30"_s, 2);
+        check(editor->shares().front().toMap().value(u"scanDepth"_s).toInt() == 3, "invalid time was accepted");
+        editor->setShareScan(2, true, u"22:00"_s, u"07:00"_s, 2);
+        editor->setShareStatuses({
+            shareStatus(shareOnline, ShareIndexer::State::Paused, share::Problem::None, 48213),
+            shareStatus(shareSignIn, ShareIndexer::State::Problem, share::Problem::NeedsSignIn, 0),
+            shareStatus(shareWsl, ShareIndexer::State::Paused, share::Problem::None, 1230),
+        });
+        QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(2)), Q_ARG(QVariant, QVariant(3)));
+        window->resize(args.contains(u"--compact"_s) ? QSize(760, 420) : QSize(920, 720));
+        settle(window, 3);
+        std::function<QQuickItem*(QQuickItem*)> findControls = [&](QQuickItem* item) -> QQuickItem* {
+            if (item->objectName() == u"shareScanControls" && item->property("share").toMap().value(u"path"_s).toString() == shareOnline)
+                return item;
+            for (auto* child : item->childItems()) {
+                if (auto* found = findControls(child))
+                    return found;
+            }
+            return nullptr;
+        };
+        auto* controls = findControls(window->contentItem());
+        if (!controls)
+            return finish(window, false);
+        auto* expand = visualNamed(controls, u"scanExpand"_s);
+        check(expand && QMetaObject::invokeMethod(expand, "clicked"), "scan controls did not expand");
+        auto* from = visualNamed(controls, u"scanFrom"_s);
+        auto* until = visualNamed(controls, u"scanUntil"_s);
+        auto* depth = visualNamed(controls, u"scanDepth"_s);
+        if (!from || !until || !depth)
+            return finish(window, false);
+        QMetaObject::invokeMethod(from, "takeFocus");
+        QKeyEvent tab(QEvent::KeyPress, Qt::Key_Tab, Qt::NoModifier);
+        QCoreApplication::sendEvent(window, &tab);
+        check(until->property("inputFocused").toBool(), "Tab did not reach the end-time field");
+        from->setProperty("text", u"23:45"_s);
+        // A background status refresh must not replace an in-progress edit.
+        editor->setShareContent(0, true);
+        check(from->property("text").toString() == u"23:45", "status refresh discarded the time draft");
+        QMetaObject::invokeMethod(from, "editingFinished");
+        depth->setProperty("text", u"4"_s);
+        QMetaObject::invokeMethod(depth, "editingFinished");
+        const auto scan = editor->shares().front().toMap();
+        check(scan.value(u"scanFrom"_s).toString() == u"23:45" && scan.value(u"scanDepth"_s).toInt() == 4, "QML edits did not reach settings");
+        QMetaObject::invokeMethod(window, "goTo", Q_ARG(QVariant, QVariant::fromValue(named(window, "sharesRow"))));
+        settle(window, 3);
+        if (auto* viewport = qobject_cast<QQuickItem*>(flick)) {
+            const auto top = controls->parentItem()->mapToItem(viewport, QPointF());
+            flick->setProperty("contentY", flick->property("contentY").toDouble() + top.y() - 12);
+            settle(window, 3);
+        }
+        check(saveGrab(window, out.filePath(u"share-scan.png"_s)), "settings did not render");
+        if (args.contains(u"--compact"_s)) {
+            const auto bottom = controls->mapToItem(qobject_cast<QQuickItem*>(flick), QPointF(0, controls->height()));
+            const double height = flick->property("height").toDouble();
+            flick->setProperty("contentY", flick->property("contentY").toDouble() + std::max(0.0, bottom.y() - height + 12));
+            settle(window, 3);
+            check(saveGrab(window, out.filePath(u"share-scan-bottom.png"_s)), "compact scan controls did not render");
+        }
+        if (tree)
+            writeTree(window, out.filePath(u"share-scan.tree.txt"_s));
+        say(u"share scan: per-folder settings, validation, background refresh and QML edits checked on an isolated profile"_s);
+        return finish(window, ok);
     }
 
     if (args.contains(u"--wsl-folders"_s)) {
@@ -980,6 +1132,51 @@ int runSettings(const QStringList& args)
     bool saved = true;
     bool onePage = false;
     const int wantedPage = valueAfter(args, u"--page").toInt(&onePage);
+    if (args.contains(u"--preview-hotkeys"_s)) {
+        QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, QVariant(3)), Q_ARG(QVariant, QVariant(1)));
+        window->resize(args.contains(u"--compact"_s) ? QSize(760, 420) : QSize(920, 720));
+        settle(window, 3);
+        auto* recorder = visualNamed(window->contentItem(), u"previewHotkeyRecorder"_s);
+        if (!recorder) {
+            qWarning("preview shortcut recorder missing from production settings");
+            return finish(window, false);
+        }
+        const auto check = [](bool okay, const char* reason) {
+            if (!okay) qWarning("preview shortcut settings: %s", reason);
+        };
+        const auto key = [&](int code, Qt::KeyboardModifiers modifiers = {}, const QString& text = {}) {
+            recorder->forceActiveFocus();
+            QKeyEvent event(QEvent::KeyPress, code, modifiers, text);
+            QCoreApplication::sendEvent(recorder, &event);
+        };
+        key(Qt::Key_Space, {}, u" "_s);
+        check(editor->previewHotkey() == u"Space", "recording Space did not apply");
+        Settings restored;
+        restored.load();
+        check(restored.previewHotkey == u"Space", "recorded key was not persisted");
+        key(Qt::Key_Escape);
+        check(editor->previewHotkey() == u"Space", "Escape changed the saved shortcut");
+        key(Qt::Key_C, Qt::ControlModifier);
+        check(editor->previewHotkey() == u"Space" && !recorder->property("partial").toString().isEmpty(),
+            "a reserved editing shortcut was accepted or had no feedback");
+        key(Qt::Key_Backspace);
+        check(editor->previewHotkey().isEmpty(), "Backspace did not clear the shortcut");
+        const QString previous = editor->hotkey();
+        editor->setHotkey(u"Ctrl+P"_s);
+        editor->setPreviewHotkey(u"Ctrl+P"_s);
+        check(editor->previewHotkey().isEmpty() && !editor->previewHotkeyError().isEmpty(), "global shortcut conflict was accepted");
+        editor->setHotkey(previous);
+        editor->setPreviewHotkey(u"Space"_s);
+        settle(window, 3);
+        const QPointF at = recorder->mapToItem(qobject_cast<QQuickItem*>(flick), QPointF());
+        flick->setProperty("contentY", std::max(0.0, at.y() - 90));
+        settle(window, 3);
+        bool result = saveGrab(window, out.filePath(u"preview-hotkey-settings.png"_s));
+        editor->setPreviewHotkey(u"Alt+P"_s);
+        check(editor->previewHotkey() == u"Alt+P", "restoring the default did not apply");
+        say(u"preview shortcut settings: production recorder + SettingsEditor + persistence; record, cancel, reserved key, clear, global conflict, restore"_s);
+        return finish(window, result, editor);
+    }
     for (int page = 0; page < pages.size(); ++page) {
         if (args.contains(u"--command-form"_s))
             break;
@@ -1184,11 +1381,11 @@ int runSettings(const QStringList& args)
         ? QCoreApplication::translate("SettingsWindow", "不打开面板直接粘贴") : u"无需面板"_s;
     const Probe probes[] = {
         {quickPasteProbe, window->property("clipboardPage").toInt(), 1},
-        {u"插件"_s, pluginsPage, 0},
-        {u"插件库"_s, pluginsPage, 1},
-        {u"消息记录"_s, pluginsPage, 2}, // the 开发者 tab (developer mode is on in the preview)
-        {u"API 密钥"_s, pluginsPage, 0}, // a plugin's own setting: its card unfolds (search-API 密钥.png)
-        {u"粘贴为文件"_s, pluginsPage, 0}, // a built-in card
+        {QCoreApplication::translate("SettingsWindow", "插件"), pluginsPage, 0},
+        {QCoreApplication::translate("SettingsWindow", "插件库"), pluginsPage, 1},
+        {QCoreApplication::translate("PluginDevSection", "消息记录"), pluginsPage, 2}, // the 开发者 tab
+        {PluginSettings::tr("API 密钥"), pluginsPage, 0}, // a plugin's own setting
+        {QCoreApplication::translate("PasteFileCard", "粘贴为文件"), pluginsPage, 0}, // a built-in card
         // Shown as 内置功能 cards too, the rows of their own page first (open_settings searches them by title).
         {QCoreApplication::translate("SettingsWindow", "双击空白处弹出文件夹菜单"), 0, 2},
         {QCoreApplication::translate("SettingsWindow", "对话框旁的搜索框"), 0, 2},
@@ -1244,6 +1441,244 @@ int runSettings(const QStringList& args)
     return finish(window, saved);
 }
 
+void checkSearchMenuKeys(Launcher& launcher, QQuickWindow* window, FilePreview& preview, const QDir& output)
+{
+    QJsonArray checks;
+    bool passed = true;
+    const auto check = [&](bool okay, const QString& name) {
+        checks.append(QJsonObject {{u"name"_s, name}, {u"passed"_s, okay}});
+        passed = okay && passed;
+        if (!okay) qWarning("search navigation regression: %s", qUtf8Printable(name));
+    };
+    const auto key = [&](int code, Qt::KeyboardModifiers modifiers = {}, const QString& text = {}, bool repeated = false) {
+        QKeyEvent event(QEvent::KeyPress, code, modifiers, text, repeated);
+        QCoreApplication::sendEvent(window, &event);
+    };
+    const auto menuOpen = [&] { return window->property("menuOpen").toBool(); };
+    const QString query = launcher.query();
+    for (const bool panel : {false, true}) {
+        launcher.setPanel(panel);
+        window->resize(panel ? QSize(1200, 680) : QSize(760, 600));
+        settle(window);
+        const QString mode = panel ? u"panel: "_s : u"box: "_s;
+        auto* field = visualNamed(window->contentItem(), panel ? u"panelSearchField"_s : u"searchField"_s);
+        QObject* view = window->property("view").value<QObject*>();
+        check(field && view, mode + u"production search field and list"_s);
+        if (!field || !view) continue;
+        field->forceActiveFocus();
+        field->setProperty("cursorPosition", query.size());
+        view->setProperty("currentIndex", 2);
+        key(Qt::Key_Right);
+        auto* menu = qobject_cast<QQuickWindow*>(window->property("contextMenu").value<QObject*>());
+        check(menu && menuOpen(), mode + u"Right opens the selected row's menu"_s);
+        if (!menu) continue;
+        check(menu->property("row").toInt() == 2 && menu->property("highlighted").toInt() == 0,
+            mode + u"menu starts on the first action for the selected file"_s);
+        check(field->hasActiveFocus(), mode + u"menu keeps focus in the search field"_s);
+        check(saveGrab(menu, output.filePath(panel ? u"search-menu-panel.png"_s : u"search-menu-box.png"_s)),
+            mode + u"render the production menu"_s);
+        const QVariantList entries = menu->property("entries").toList();
+        const int count = static_cast<int>(entries.size());
+        check(count > 0, mode + u"production menu entries are available to the probe"_s);
+        const auto selectable = [&](int i) {
+            const auto entry = entries[i].toMap();
+            return !entry.value(u"separator"_s).toBool() && entry.value(u"enabled"_s, true).toBool();
+        };
+        key(Qt::Key_Up);
+        int last = count - 1;
+        while (last >= 0 && !selectable(last)) --last;
+        check(last >= 0 && menu->property("highlighted").toInt() == last, mode + u"Up wraps to the last available action"_s);
+        key(Qt::Key_Down);
+        check(menu->property("highlighted").toInt() == 0, mode + u"Down wraps to the first action"_s);
+        key(Qt::Key_Right, {}, {}, true);
+        key(Qt::Key_O, Qt::ControlModifier, {}, true);
+        check(menuOpen() && menu->property("highlighted").toInt() == 0, mode + u"holding a menu shortcut keeps the menu open"_s);
+        bool skipped = count > 0;
+        for (int i = 1; i < count; ++i) {
+            if (!selectable(i)) continue;
+            key(Qt::Key_Down);
+            skipped = skipped && menu->property("highlighted").toInt() == i;
+        }
+        check(skipped, mode + u"Down visits available actions and skips separators"_s);
+        key(Qt::Key_Left);
+        check(!menuOpen() && field->hasActiveFocus() && launcher.query() == query
+                && field->property("cursorPosition").toInt() == query.size() && view->property("currentIndex").toInt() == 2,
+            mode + u"Left returns to the same result without editing the query"_s);
+        key(Qt::Key_Right, {}, {}, true);
+        check(!menuOpen(), mode + u"holding Right to edit does not open a menu"_s);
+        field->setProperty("cursorPosition", 1);
+        key(Qt::Key_Right);
+        check(!menuOpen() && field->property("cursorPosition").toInt() == 2, mode + u"Right within the query moves the caret"_s);
+        QMetaObject::invokeMethod(field, "select", Q_ARG(int, 0), Q_ARG(int, query.size()));
+        key(Qt::Key_Right);
+        check(!menuOpen() && field->property("selectedText").toString().isEmpty(), mode + u"Right collapses a text selection"_s);
+        for (const auto modifier : {Qt::ShiftModifier, Qt::ControlModifier, Qt::AltModifier, Qt::MetaModifier}) {
+            field->setProperty("cursorPosition", query.size());
+            key(Qt::Key_Right, modifier);
+            check(!menuOpen(), mode + u"modified Right stays out of the menu (%1)"_s.arg(int(modifier)));
+        }
+        field->setProperty("cursorPosition", query.size());
+        QInputMethodEvent composing(u"shi"_s, {});
+        QCoreApplication::sendEvent(field, &composing);
+        check(field->property("preeditText").toString() == u"shi", mode + u"IME fixture is composing"_s);
+        key(Qt::Key_Right);
+        check(!menuOpen(), mode + u"Right does not open a menu during IME composition"_s);
+        QInputMethodEvent composingForShortcut(u"shi"_s, {});
+        QCoreApplication::sendEvent(field, &composingForShortcut);
+        check(field->property("preeditText").toString() == u"shi", mode + u"Ctrl+O fixture is composing"_s);
+        key(Qt::Key_O, Qt::ControlModifier);
+        check(!menuOpen(), mode + u"Ctrl+O does not open a menu during IME composition"_s);
+        QInputMethodEvent ended;
+        QCoreApplication::sendEvent(field, &ended);
+        field->setProperty("cursorPosition", 1);
+        key(Qt::Key_O, Qt::ControlModifier);
+        check(menuOpen(), mode + u"Ctrl+O opens the menu from any caret position"_s);
+        key(Qt::Key_Escape);
+        check(!menuOpen() && field->property("cursorPosition").toInt() == 1 && launcher.query() == query,
+            mode + u"Escape returns without moving the caret or clearing the query"_s);
+        key(Qt::Key_O, Qt::ControlModifier);
+        QInputMethodEvent resumedComposition(u"shi"_s, {});
+        QCoreApplication::sendEvent(field, &resumedComposition);
+        check(!menuOpen() && launcher.query() == query, mode + u"starting IME composition closes the menu"_s);
+        QCoreApplication::sendEvent(field, &ended);
+        for (const auto modifier : {Qt::ControlModifier | Qt::ShiftModifier, Qt::ControlModifier | Qt::AltModifier,
+                 Qt::ControlModifier | Qt::MetaModifier}) {
+            key(Qt::Key_O, modifier);
+            check(!menuOpen(), mode + u"Ctrl+O requires its exact modifiers (%1)"_s.arg(modifier.toInt()));
+        }
+        field->setProperty("cursorPosition", query.size());
+        key(Qt::Key_Right);
+        int previewAction = -1;
+        for (int i = 0; i < count; ++i) {
+            if (entries[i].toMap().value(u"action"_s, -1).toInt() == Launcher::Preview) previewAction = i;
+        }
+        check(previewAction >= 0, mode + u"the real file has a Preview action"_s);
+        if (previewAction >= 0) {
+            for (int i = 1; i <= previewAction; ++i)
+                if (selectable(i)) key(Qt::Key_Down);
+            key(Qt::Key_Return);
+            check(!menuOpen() && preview.isOpen(), mode + u"Enter executes the highlighted production action"_s);
+            preview.close();
+        }
+        key(Qt::Key_Right);
+        key(Qt::Key_Z, {}, u"z"_s);
+        check(!menuOpen() && launcher.query() == query + u'z' && field->hasActiveFocus(), mode + u"typing closes the menu and resumes search"_s);
+        launcher.setQuery(query);
+        QElapsedTimer timeout;
+        timeout.start();
+        while (launcher.searching() && timeout.elapsed() < 2000) pump(10);
+        check(!launcher.searching() && launcher.results()->count() == 18, mode + u"the real search recovers after editing"_s);
+        view->setProperty("currentIndex", -1);
+        field->setProperty("cursorPosition", query.size());
+        key(Qt::Key_Right);
+        key(Qt::Key_O, Qt::ControlModifier);
+        check(!menuOpen(), mode + u"no selected result opens no menu"_s);
+        view->setProperty("currentIndex", 0);
+    }
+    QFile report(output.filePath(u"search-navigation.json"_s));
+    check(report.open(QIODevice::WriteOnly), u"write the regression report"_s);
+    if (report.isOpen()) report.write(QJsonDocument(QJsonObject {{u"passed"_s, passed}, {u"checks"_s, checks}}).toJson());
+    say(u"search navigation: %1 checks, production Main.qml/Launcher/ContextMenu, local Qt key and IME events, %2"_s
+        .arg(checks.size()).arg(passed ? u"passed" : u"FAILED"));
+}
+
+void checkDialogSearchKeys(IndexService& index, QQmlEngine* engine, const QDir& output)
+{
+    QTemporaryDir temporary;
+    AppCatalog apps;
+    SystemCatalog places;
+    apps.setApps(std::make_shared<const AppList>());
+    places.setPlaces(std::make_shared<const PlaceList>());
+    SearchEngine search(&index, &apps, &places);
+    History history(temporary.filePath(u"history.tsv"_s));
+    DialogBar bar(&search, &history, nullptr, {});
+    QQmlComponent component(engine, u"WinShun"_s, u"DialogBarWindow"_s);
+    std::unique_ptr<QObject> object(component.createWithInitialProperties({{u"bar"_s, QVariant::fromValue(&bar)}}));
+    auto* window = qobject_cast<QQuickWindow*>(object.get());
+    if (!window) { qWarning().noquote() << "dialog search navigation:" << component.errorString(); return; }
+    bar.setWindow(window);
+    window->resize(760, 360);
+    showOffScreen(window);
+    const QString query = u"测试照片"_s;
+    bar.setQuery(query);
+    QElapsedTimer timeout;
+    timeout.start();
+    while (bar.results()->count() != 18 && timeout.elapsed() < 2000) pump(10);
+    QJsonArray checks;
+    bool passed = true;
+    const auto check = [&](bool okay, const QString& name) {
+        checks.append(QJsonObject {{u"name"_s, name}, {u"passed"_s, okay}});
+        passed = okay && passed;
+        if (!okay) qWarning("dialog search navigation regression: %s", qUtf8Printable(name));
+    };
+    check(bar.results()->count() == 18, u"the dialog bar receives the real name search results"_s);
+    auto* field = visualNamed(window->contentItem(), u"dialogSearchField"_s);
+    auto* list = visualNamed(window->contentItem(), u"dialogResults"_s);
+    check(field && list, u"production dialog field and result list"_s);
+    if (field && list) {
+        // Native dialog placement/activation is outside this key test. Show
+        // its real view offscreen without changing the desktop's focus.
+        list->setVisible(true);
+        list->setHeight(5 * bar.rowHeight());
+        settle(window);
+        field->forceActiveFocus();
+        field->setProperty("cursorPosition", query.size());
+        list->setProperty("currentIndex", 2);
+        const auto key = [&](int code, Qt::KeyboardModifiers modifiers = {}, bool repeated = false) {
+            QKeyEvent event(QEvent::KeyPress, code, modifiers, {}, repeated);
+            QCoreApplication::sendEvent(window, &event);
+        };
+        const auto menuOpen = [&] { return window->property("menuOpen").toBool(); };
+        key(Qt::Key_Right);
+        auto* menu = qobject_cast<QQuickWindow*>(window->property("contextMenu").value<QObject*>());
+        check(menu && menuOpen() && menu->property("row").toInt() == 2, u"Right opens the selected dialog result's menu"_s);
+        if (menu) {
+            check(saveGrab(menu, output.filePath(u"search-menu-dialog.png"_s)), u"render the production dialog menu"_s);
+            key(Qt::Key_Right, {}, true);
+            key(Qt::Key_O, Qt::ControlModifier, true);
+            check(menuOpen(), u"holding the shortcut keeps the dialog menu open"_s);
+            key(Qt::Key_Left);
+            check(!menuOpen() && field->hasActiveFocus() && bar.query() == query
+                    && list->property("currentIndex").toInt() == 2 && field->property("cursorPosition").toInt() == query.size(),
+                u"Left returns to the same dialog result and query"_s);
+            field->setProperty("cursorPosition", 1);
+            key(Qt::Key_Right);
+            check(!menuOpen() && field->property("cursorPosition").toInt() == 2, u"Right within the dialog query edits its caret"_s);
+            QMetaObject::invokeMethod(field, "select", Q_ARG(int, 0), Q_ARG(int, query.size()));
+            key(Qt::Key_Right);
+            check(!menuOpen() && field->property("selectedText").toString().isEmpty(), u"Right collapses a dialog text selection"_s);
+            key(Qt::Key_Right, Qt::ShiftModifier);
+            check(!menuOpen(), u"modified Right does not open a dialog menu"_s);
+            field->setProperty("cursorPosition", 1);
+            key(Qt::Key_O, Qt::ControlModifier);
+            check(menuOpen(), u"Ctrl+O opens the dialog menu from within the query"_s);
+            QInputMethodEvent composing(u"shi"_s, {});
+            QCoreApplication::sendEvent(field, &composing);
+            check(!menuOpen() && field->property("preeditText").toString() == u"shi", u"IME composition closes the dialog menu"_s);
+            key(Qt::Key_Right);
+            check(!menuOpen(), u"Right does not open a dialog menu while composing"_s);
+            QInputMethodEvent composingForShortcut(u"shi"_s, {});
+            QCoreApplication::sendEvent(field, &composingForShortcut);
+            check(field->property("preeditText").toString() == u"shi", u"the dialog Ctrl+O fixture is composing"_s);
+            key(Qt::Key_O, Qt::ControlModifier);
+            check(!menuOpen(), u"Ctrl+O does not open a dialog menu while composing"_s);
+            QInputMethodEvent ended;
+            QCoreApplication::sendEvent(field, &ended);
+            key(Qt::Key_O, Qt::ControlModifier);
+            key(Qt::Key_Escape);
+            check(!menuOpen() && bar.query() == query, u"Escape returns without clearing the dialog query"_s);
+            list->setVisible(false);
+            key(Qt::Key_O, Qt::ControlModifier);
+            check(!menuOpen(), u"a hidden dialog list opens no result menu"_s);
+        }
+    }
+    QFile report(output.filePath(u"dialog-navigation.json"_s));
+    check(report.open(QIODevice::WriteOnly), u"write the dialog regression report"_s);
+    if (report.isOpen()) report.write(QJsonDocument(QJsonObject {{u"passed"_s, passed}, {u"checks"_s, checks}}).toJson());
+    say(u"dialog search navigation: %1 checks, production DialogBarWindow/DialogBar, local Qt input, %2"_s
+        .arg(checks.size()).arg(passed ? u"passed" : u"FAILED"));
+}
+
 // The production window, real temporary images, and local Qt input events;
 // no global shortcuts, external file opening, or user's profile involved.
 void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engine, const QDir& output)
@@ -1252,6 +1687,7 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
     const auto check = [](bool okay, const char* reason) {
         if (!okay) qWarning("file gallery regression: %s", reason);
     };
+    launcher.setPanel(true);
     ClipStore store(temporary.filePath(u"clipboard"_s));
     check(store.open(QDateTime::currentMSecsSinceEpoch()), "could not open isolated clipboard");
     ClipboardWatcher watcher({}, {});
@@ -1270,6 +1706,22 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
     frame.setWindow(window);
     placement.setWindow(window);
     showOffScreen(window);
+    FilePreview filePreview;
+    WindowFrame previewFrame(false);
+    std::unique_ptr<QObject> previewObject;
+    engine->addImageProvider(u"preview"_s, filePreview.imageProvider());
+    filePreview.setBuiltInOnly(true);
+    filePreview.setLauncherWindow(window);
+    filePreview.setWindowFactory([&]() -> QQuickWindow* {
+        QQmlComponent previewComponent(engine, u"WinShun"_s, u"PreviewWindow"_s);
+        previewObject.reset(previewComponent.createWithInitialProperties({
+            {u"preview"_s, QVariant::fromValue(&filePreview)}, {u"frame"_s, QVariant::fromValue(&previewFrame)}}));
+        auto* previewWindow = qobject_cast<QQuickWindow*>(previewObject.get());
+        if (previewWindow)
+            previewFrame.setWindow(previewWindow);
+        return previewWindow;
+    });
+    launcher.setPreview(&filePreview);
     SearchResults pictures;
     for (int i = 0; i < 18; ++i) {
         const bool portrait = i % 3 == 0;
@@ -1308,6 +1760,8 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
         "real image search did not produce the gallery rows");
     if (auto* field = visualNamed(window->contentItem(), u"panelSearchField"_s))
         field->setProperty("text", u"测试照片"_s);
+    checkSearchMenuKeys(launcher, window, filePreview, output);
+    checkDialogSearchKeys(index, engine, output);
     launcher.setGallery(true);
     settle(window);
     pump(1200);
@@ -1329,11 +1783,67 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
         if (field) {
             field->forceActiveFocus();
             grid->setProperty("currentIndex", 0);
+            const QString typed = launcher.query();
+            launcher.setPreviewHotkey(u"Alt+P"_s);
+            key(Qt::Key_P, Qt::AltModifier);
+            check(filePreview.isOpen(), "default preview key did not reach FilePreview through Main.qml");
+            key(Qt::Key_P, Qt::AltModifier);
+            check(!filePreview.isOpen(), "default preview key did not close the preview");
+            launcher.setPreviewHotkey(u"Space"_s);
+            QInputMethodEvent composing(u"shi"_s, {});
+            QCoreApplication::sendEvent(field, &composing);
+            check(field->property("preeditText").toString() == u"shi", "IME preedit fixture did not reach the search field");
+            key(Qt::Key_Space, {}, u" "_s);
+            check(!filePreview.isOpen(), "preview stole Space during IME composition");
+            QInputMethodEvent ended;
+            QCoreApplication::sendEvent(field, &ended);
+            launcher.setQuery(typed);
+            timeout.restart();
+            while (launcher.searching() && timeout.elapsed() < 2000)
+                pump(10);
+            key(Qt::Key_Space, {}, u" "_s);
+            check(filePreview.isOpen() && launcher.query() == typed, "Space did not preview without changing the query");
+            QKeyEvent repeat(QEvent::KeyPress, Qt::Key_Space, {}, u" "_s, true);
+            QCoreApplication::sendEvent(window, &repeat);
+            check(filePreview.isOpen(), "holding the preview key repeatedly toggled the window");
+            QElapsedTimer loaded;
+            loaded.start();
+            while (filePreview.kind() == FilePreview::Loading && loaded.elapsed() < 3000)
+                pump(10);
+            check(filePreview.kind() == FilePreview::Picture, "preview did not decode the actual selected file");
+            if (filePreview.window())
+                check(saveGrab(filePreview.window(), output.filePath(u"preview-space.png"_s)), "could not render the real preview window");
+            key(Qt::Key_Space, {}, u" "_s);
+            check(!filePreview.isOpen(), "Space did not close the preview");
+            key(Qt::Key_Space, Qt::ShiftModifier, u" "_s);
+            check(!filePreview.isOpen() && launcher.query() == typed + u' ', "Shift+Space did not preserve multiword search input");
+            launcher.setQuery(typed);
+            timeout.restart();
+            while (launcher.searching() && timeout.elapsed() < 2000)
+                pump(10);
+            launcher.setPreviewHotkey(u"Ctrl+P"_s);
+            key(Qt::Key_P, Qt::AltModifier);
+            check(!filePreview.isOpen(), "old preview key remained active after reassignment");
+            key(Qt::Key_P, Qt::ControlModifier | Qt::ShiftModifier);
+            check(!filePreview.isOpen(), "preview accepted additional modifiers");
+            key(Qt::Key_P, Qt::ControlModifier);
+            check(filePreview.isOpen(), "custom preview chord did not open the preview");
+            key(Qt::Key_P, Qt::ControlModifier);
+            launcher.setPreviewHotkey({});
+            key(Qt::Key_P, Qt::ControlModifier);
+            check(!filePreview.isOpen(), "clearing the shortcut did not disable it");
+            launcher.setPreviewHotkey(u"Alt+P"_s);
+            say(u"preview hotkeys: production Main.qml + FilePreview; default, Space, IME preedit, repeat, Shift+Space, reassignment, modifiers, disabled"_s);
             key(Qt::Key_Down);
             const int row = grid->property("currentIndex").toInt();
             check(row == grid->property("columns").toInt(), "Down did not navigate a grid row");
             key(Qt::Key_Right);
             check(grid->property("currentIndex").toInt() == row + 1, "Right did not navigate a grid column");
+            key(Qt::Key_O, Qt::ControlModifier);
+            check(window->property("menuOpen").toBool(), "Ctrl+O did not open the gallery row's menu");
+            key(Qt::Key_Left);
+            check(!window->property("menuOpen").toBool() && grid->property("currentIndex").toInt() == row + 1,
+                "Left did not return from the menu to the same gallery row");
             key(Qt::Key_Right, Qt::ShiftModifier);
             check(launcher.results()->selectedCount() == 2, "Shift+Right did not select a range");
             key(Qt::Key_Z, {}, u"z"_s);
@@ -1392,7 +1902,141 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
     say(u"large icons: production QML/model, real temporary PNGs, Alt+wheel, viewport retention, minimum width"_s);
 }
 
-void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDir& output, bool gallery)
+void checkDropPieHelper(const QDir& output)
+{
+    QTemporaryDir profile;
+    Favorites favorites(profile.filePath(u"favorites.json"_s));
+    favorites.load();
+    for (int i = 0; i < 2; ++i) {
+        const QString folder = profile.filePath(u"folder-%1"_s.arg(i));
+        QDir().mkpath(folder);
+        favorites.add({Favorite::Kind::Folder, folder, u"Folder %1"_s.arg(i)});
+    }
+    QStringList notices;
+    auto helper = std::make_unique<DropPieHelper>(&favorites,
+        [&](const QString& title, const QString& text) { notices.push_back(title + u": "_s + text); });
+    Settings settings = Settings::defaults();
+    helper->update(settings);
+    const auto waitForFolders = [&](int count) {
+        QElapsedTimer waiting;
+        waiting.start();
+        while (waiting.elapsed() < 6000) {
+            const auto state = helper->state();
+            if (state.value(u"ready"_s).toBool() && state.value(u"folders"_s).toInt() == count) return true;
+            pump(20);
+        }
+        return false;
+    };
+    bool passed = waitForFolders(2);
+    QJsonObject state = helper->state();
+    passed = passed && !state.value(u"elevated"_s).toBool(true);
+    win32::UniqueHandle child(::OpenProcess(SYNCHRONIZE, FALSE, DWORD(state.value(u"pid"_s).toInteger())));
+    const QString folder = profile.filePath(u"third-folder"_s);
+    QDir().mkpath(folder);
+    favorites.add({Favorite::Kind::Folder, folder, u"Third folder"_s});
+    passed = waitForFolders(3) && passed;
+    settings.uiSize = u"compact"_s;
+    settings.theme = u"dark"_s;
+    helper->update(settings);
+    passed = waitForFolders(3) && notices.isEmpty() && passed;
+    helper.reset();
+    const bool stopped = child.valid() && ::WaitForSingleObject(child.get(), 2000) == WAIT_OBJECT_0;
+    passed = passed && stopped;
+    state.insert(u"updatedFavorites"_s, passed);
+    state.insert(u"stopped"_s, stopped);
+    state.insert(u"passed"_s, passed);
+    QFile report(output.filePath(u"drop-pie-helper.json"_s));
+    if (report.open(QIODevice::WriteOnly)) report.write(QJsonDocument(state).toJson());
+    if (!passed) qWarning().noquote() << "Drop pie helper regression failed:" << notices << state;
+    else say(u"drop pie: real ordinary-user helper, OLE target registration, favorite refresh and shutdown checked"_s);
+}
+
+bool checkSwitchProvider(QQuickWindow* window, const QDir& output)
+{
+    // Real Launcher, SearchEngine and ResultModel with asynchronous state;
+    // no App, clipboard listener or native system writes are started.
+    QTemporaryDir temporary;
+    IndexService index(temporary.path(), IndexService::Options {});
+    AppCatalog apps;
+    apps.setApps(std::make_shared<const AppList>());
+    SystemCatalog places;
+    PlaceInfo awake;
+    awake.name = u"保持唤醒"_s;
+    awake.key = u"winshun/switch-keep-awake"_s;
+    awake.command = u"ms-settings:powersleep"_s;
+    awake.kind = AppKind::Setting;
+    awake.switchId = u"keep-awake"_s;
+    awake.prepare();
+    places.setPlaces(std::make_shared<const PlaceList>(PlaceList {awake}));
+    History history(temporary.filePath(u"history.tsv"_s));
+    SearchEngine engine(&index, &apps, &places);
+    Launcher launcher(&index, &apps, &places, &engine, &history);
+    launcher.setWindow(window);
+    SwitchState state;
+    state.availability = SwitchState::Availability::Ready;
+    state.on = SwitchState::Value::Off;
+    Switches::Remote remote;
+    remote.ids = {u"keep-awake"_s};
+    remote.read = [&](const QString&, std::function<void(SwitchState)> done) {
+        QTimer::singleShot(0, &launcher, [done = std::move(done), state] { done(state); });
+    };
+    remote.write = [](const QString&, SwitchIntent, std::function<void(SwitchWrite)>) {};
+    Switches cache(std::move(remote));
+    launcher.setSwitches(&cache, temporary.filePath(u"state.ini"_s));
+    const auto detach = qScopeGuard([&] { launcher.setSwitches(nullptr, {}); });
+    const auto waitFor = [&](const auto& ready) {
+        QElapsedTimer waiting;
+        waiting.start();
+        while (!ready() && waiting.elapsed() < 5000)
+            pump(10);
+        return ready();
+    };
+    const auto hasStatus = [&] {
+        for (int row = 0; row < launcher.results()->count(); ++row)
+            if (launcher.results()->at(row)->statusRow)
+                return true;
+        return false;
+    };
+    QJsonObject report;
+    launcher.setQuery(awake.name);
+    bool passed = waitFor([&] { return launcher.results()->count() == 1 && !launcher.busy(); });
+    passed = passed && launcher.results()->data(launcher.results()->index(0), ResultModel::SwitchReadyRole).toBool();
+    launcher.setSwitches(nullptr, temporary.filePath(u"state.ini"_s));
+    const bool detached = !launcher.results()->data(launcher.results()->index(0), ResultModel::SwitchReadyRole).toBool();
+    report.insert(u"detached_row_updated"_s, detached);
+    passed = detached && passed;
+    launcher.setSwitches(&cache, temporary.filePath(u"state.ini"_s));
+    launcher.setQuery({});
+    passed = waitFor([&] { return !launcher.busy() && !hasStatus(); }) && passed;
+    state.on = SwitchState::Value::On;
+    cache.refresh(u"keep-awake");
+    const bool appeared = waitFor(hasStatus);
+    report.insert(u"async_status_appeared"_s, appeared);
+    passed = appeared && passed;
+    state.on = SwitchState::Value::Unknown;
+    state.availability = SwitchState::Availability::Blocked;
+    cache.refresh(u"keep-awake");
+    const bool removed = waitFor([&] { return !hasStatus() && !launcher.busy(); });
+    report.insert(u"crash_status_removed"_s, removed);
+    passed = removed && passed;
+    state.on = SwitchState::Value::On;
+    state.availability = SwitchState::Availability::Ready;
+    cache.refresh(u"keep-awake");
+    passed = waitFor(hasStatus) && passed;
+    launcher.setSwitches(nullptr, temporary.filePath(u"state.ini"_s));
+    const bool disabled = waitFor([&] { return !hasStatus() && !launcher.busy(); });
+    report.insert(u"disabled_status_removed"_s, disabled);
+    passed = disabled && passed;
+    report.insert(u"passed"_s, passed);
+    QFile file(output.filePath(u"switch-provider.json"_s));
+    if (!file.open(QIODevice::WriteOnly) || file.write(QJsonDocument(report).toJson()) < 0)
+        passed = false;
+    if (!passed)
+        qWarning("switch provider UI regression failed");
+    return passed;
+}
+
+void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDir& output, bool gallery, bool previewOnly = false)
 {
     QTemporaryDir temporary;
     IndexService index(temporary.path(), IndexService::Options{});
@@ -1408,6 +2052,10 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
     settings.fileTypes = Settings::defaultFileTypes();
     launcher.setFileTypes(settings.namedFileTypes());
     launcher.setContentOptions(false, {u"txt"_s}, ContentSizeLimits{}, false, false);
+    if (previewOnly) {
+        checkFileGallery(launcher, index, qmlEngine, output);
+        return;
+    }
     {
         const auto files = index.index();
         const auto lock = files->writeLock();
@@ -1708,6 +2356,8 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
     launcher.panelColumns()->load(temporary.filePath(u"panel.ini"_s));
     launcher.panelColumns()->reset();
     launcher.setPanel(true);
+    launcher.chooseFileType(-1);
+    launcher.setScope(Launcher::All);
     query(u"报告"_s);
     WindowFrame frame(false);
     Placement placement(temporary.filePath(u"state.ini"_s), u"Launcher"_s);
@@ -1732,11 +2382,56 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
     panelWindow->create();
     launcher.setWindow(panelWindow);
     frame.setWindow(panelWindow);
+    frame.setResizable(true);
     placement.setWindow(panelWindow);
     showOffScreen(panelWindow);
     pump(250);
     settle(panelWindow);
     check(saveGrab(panelWindow, output.filePath(u"panel-default.png"_s)), "could not render default panel");
+    bool sawFolderSize = false;
+    for (int row = 0; row < launcher.results()->count(); ++row) {
+        if (!launcher.results()->at(row)->isDir) continue;
+        sawFolderSize = true;
+        const QModelIndex item = launcher.results()->index(row);
+        QElapsedTimer wait;
+        wait.start();
+        while (!launcher.results()->data(item, ResultModel::SizeRole).toString().startsWith(u"≈") && wait.elapsed() < 2000)
+            pump(10);
+        check(launcher.results()->data(item, ResultModel::SizeRole).toString().startsWith(u"≈"),
+            "folder size did not reach the production result model asynchronously");
+        check(launcher.results()->data(item, ResultModel::SizeRole).toString() == u"≈ %1"_s.arg(sizeText(0)),
+            "empty folder estimate used a different size format from file rows");
+    }
+    check(sawFolderSize, "folder size regression did not include a folder result");
+    {
+        SearchResults original;
+        for (int row = 0; row < launcher.results()->count(); ++row) original.push_back(*launcher.results()->at(row));
+        SearchResults extra;
+        if (!original.isEmpty()) {
+            for (int i = 0; i < 60; ++i) extra.push_back(original.first());
+            launcher.results()->append(extra);
+            settle(panelWindow, 2);
+            auto* scroll = visualNamed(panelWindow->contentItem(), u"panelResultScrollBar"_s);
+            check(scroll && scroll->isVisible(), "scrollbar regression did not exercise an overflowing list");
+            if (scroll && scroll->isVisible()) {
+                const HWND handle = reinterpret_cast<HWND>(panelWindow->winId());
+                POINT origin {};
+                ::ClientToScreen(handle, &origin);
+                RECT client {};
+                ::GetClientRect(handle, &client);
+                const qreal dpr = panelWindow->devicePixelRatio();
+                const QPointF centre = scroll->mapToScene(QPointF(scroll->width() / 2, scroll->height() / 2));
+                const int y = origin.y + qRound(centre.y() * dpr);
+                check(::SendMessageW(handle, WM_NCHITTEST, 0, MAKELPARAM(origin.x + client.right - 1, y)) == HTRIGHT,
+                    "visible scrollbar stole the native right resize edge");
+                check(::SendMessageW(handle, WM_NCHITTEST, 0, MAKELPARAM(origin.x + qRound(centre.x() * dpr), y)) == HTCLIENT,
+                    "scrollbar's thumb was consumed by window resizing");
+                check(saveGrab(panelWindow, output.filePath(u"panel-scroll-resize.png"_s)), "could not render scrollbar resize boundary");
+            }
+            launcher.results()->assign(std::move(original), {u"报告"_s});
+            settle(panelWindow, 2);
+        }
+    }
     const auto mouse = [&](QEvent::Type type, const QPointF& at, Qt::MouseButton button, Qt::MouseButtons held) {
         QMouseEvent event(type, at, panelWindow->mapToGlobal(at.toPoint()), button, held, {});
         QCoreApplication::sendEvent(panelWindow, &event);
@@ -1871,14 +2566,16 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
     say(u"panel column drag/resize/persistence and plugin metadata: production QML with isolated fixtures"_s);
 }
 
-void checkClipboardInteractions(QQmlEngine* engine, const QDir& output, const QString& galleryImage)
+bool checkClipboardInteractions(QQmlEngine* engine, const QDir& output, const QString& galleryImage)
 {
     QTemporaryDir temporary;
     ClipStore store(temporary.path());
-    const auto check = [](bool condition, const char* reason) {
+    bool ok = true;
+    const auto check = [&](bool condition, const char* reason) {
+        ok = condition && ok;
         if (!condition) qWarning("clipboard regression: %s", reason);
     };
-    if (!store.open(QDateTime::currentMSecsSinceEpoch())) { check(false, "temporary history could not open"); return; }
+    if (!store.open(QDateTime::currentMSecsSinceEpoch())) { check(false, "temporary history could not open"); return false; }
     // Missing files stop before the native clipboard writer. The double
     // click still runs the production paste handler, safely on this fixture.
     store.add(ClipCapture {.kind = ClipKind::Files,
@@ -1895,7 +2592,7 @@ void checkClipboardInteractions(QQmlEngine* engine, const QDir& output, const QS
     std::unique_ptr<QObject> object(component.createWithInitialProperties({{u"clipboard"_s, QVariant::fromValue(&clipboard)},
         {u"placement"_s, QVariant::fromValue(&placement)}, {u"frame"_s, QVariant::fromValue(&frame)}}));
     auto* window = qobject_cast<QQuickWindow*>(object.get());
-    if (!window) { qWarning().noquote() << "clipboard regression:" << component.errorString(); return; }
+    if (!window) { qWarning().noquote() << "clipboard regression:" << component.errorString(); return false; }
     window->create();
     frame.setWindow(window);
     placement.setWindow(window);
@@ -1904,7 +2601,7 @@ void checkClipboardInteractions(QQmlEngine* engine, const QDir& output, const QS
     settle(window);
     auto* row = visualNamed(window->contentItem(), u"clipboardRow-0"_s);
     auto* page = visualNamed(window->contentItem(), u"clipboardPage"_s);
-    if (!row || !page) { check(false, "production clipboard row missing"); return; }
+    if (!row || !page) { check(false, "production clipboard row missing"); return false; }
     const auto mouse = [&](QEvent::Type type, QPointF at, Qt::MouseButton button, Qt::MouseButtons held) {
         QMouseEvent event(type, at, window->mapToGlobal(at.toPoint()), button, held, {});
         QCoreApplication::sendEvent(window, &event);
@@ -1929,6 +2626,52 @@ void checkClipboardInteractions(QQmlEngine* engine, const QDir& output, const QS
     } else check(false, "clipboard width grip missing");
     settle(window);
     check(saveGrab(window, output.filePath(u"clipboard-resized.png"_s)), "clipboard window did not render");
+    {
+        const QString words = u"历史里选中的文字，直接发送。"_s;
+        store.add(ClipCapture {.kind = ClipKind::Text, .text = words}, QDateTime::currentMSecsSinceEpoch() + 1);
+        clipboard.historyChanged();
+        int setup = 0;
+        QString sent;
+        QStringList sentFiles;
+        const auto setupConnection = QObject::connect(&clipboard, &Clipboard::lanSendSetupRequested, &clipboard, [&] { ++setup; });
+        const auto sendConnection = QObject::connect(&clipboard, &Clipboard::lanSendRequested, &clipboard,
+            [&](const QString& text, const QStringList& files) { sent = text; sentFiles = files; });
+        clipboard.trigger(0, Clipboard::SendLan);
+        check(setup == 1 && sent.isEmpty(), "disabled plugin did not offer setup");
+        clipboard.setLanSendAvailable(true);
+        settle(window);
+        check(QMetaObject::invokeMethod(page, "openContextMenu", Q_ARG(QVariant, QVariant(0)), Q_ARG(QVariant, QVariant())),
+            "clipboard context menu did not open");
+        auto* menu = qobject_cast<QQuickWindow*>(page->property("contextMenu").value<QObject*>());
+        if (menu) {
+            settle(menu);
+            check(saveGrab(menu, output.filePath(u"clipboard-send-menu.png"_s)), "send menu did not render");
+            QMetaObject::invokeMethod(menu, "triggered", Q_ARG(int, 0), Q_ARG(int, Clipboard::SendLan));
+            QMetaObject::invokeMethod(menu, "dismiss");
+        } else {
+            check(false, "production send menu is missing");
+        }
+        check(sent == words && sentFiles.isEmpty(), "menu did not send the chosen history text");
+        QObject::disconnect(setupConnection);
+        QObject::disconnect(sendConnection);
+    }
+    {
+        // #137: own-window browsing uses the actual QML selection and wraps
+        // without the external-target hold's release-to-paste hint.
+        auto* entries = visualNamed(window->contentItem(), u"clipboardEntries"_s);
+        check(entries && entries->property("count").toInt() >= 2, "browse fixture needs multiple entries");
+        if (entries) {
+            QMetaObject::invokeMethod(page, "selectFirst");
+            const int count = entries->property("count").toInt();
+            const QString before = clipboard.statusText();
+            for (int i = 1; i <= count + 2; ++i) {
+                emit clipboard.browseStepRequested();
+                check(entries->property("currentIndex").toInt() == i % count, "hotkey browsing did not cycle rows");
+            }
+            check(!clipboard.holdHint() && clipboard.statusText() == before, "browsing started a paste or a release hint");
+            say(u"clipboard browse hotkey: production QML cycles and wraps without a release paste"_s);
+        }
+    }
     if (!galleryImage.isEmpty()) {
         std::vector<qint64> ids;
         for (const auto& clip : store.clips()) ids.push_back(clip.id);
@@ -1951,6 +2694,154 @@ void checkClipboardInteractions(QQmlEngine* engine, const QDir& output, const QS
     check(!watcher.running(), "fixture must never start the native clipboard writer");
     window->hide();
     say(u"clipboard double-click preview and list resizing: real QML, temporary history; native clipboard untouched"_s);
+    return ok;
+}
+
+bool checkNumberColumn(QQmlEngine* qmlEngine, const QDir& output, int width)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const char* reason) {
+        ok = condition && ok;
+        if (!condition)
+            qWarning("number column: %s", reason);
+    };
+    QTemporaryDir temporary;
+    IndexService index(temporary.path(), IndexService::Options {});
+    AppCatalog apps;
+    SystemCatalog places;
+    apps.setApps(std::make_shared<const AppList>());
+    places.setPlaces(std::make_shared<const PlaceList>());
+    History history(temporary.filePath(u"history.tsv"_s));
+    SearchEngine search(&index, &apps, &places);
+    Launcher launcher(&index, &apps, &places, &search, &history);
+    launcher.setResultOptions(KindOrder::FilesFirst, true, false, false, u"ctrl"_s);
+    launcher.setNumberHints(u"always"_s);
+    launcher.setNumberKeysLeft(0);
+    {
+        const auto files = index.index();
+        const auto lock = files->writeLock();
+        const auto root = files->addRoot(QDir::toNativeSeparators(temporary.path()).toStdString());
+        for (int i = 1; i <= 24; ++i) {
+            const QString name = u"编号_%1"_s.arg(i, 2, 10, QLatin1Char('0'));
+            check(QDir(temporary.path()).mkdir(name), "could not create isolated folder");
+            files->add(root, name.toStdString(), EntryFlag::Directory);
+        }
+    }
+    ClipStore store(temporary.filePath(u"clipboard"_s));
+    check(store.open(QDateTime::currentMSecsSinceEpoch()), "could not open isolated history");
+    ClipboardWatcher watcher({}, {});
+    Clipboard clipboard(&store, &watcher);
+    Placement placement(temporary.filePath(u"state.ini"_s), u"Launcher"_s);
+    WindowFrame frame(false);
+    QQmlComponent component(qmlEngine, u"WinShun"_s, u"Main"_s);
+    std::unique_ptr<QObject> object(component.createWithInitialProperties({
+        {u"launcher"_s, QVariant::fromValue(&launcher)}, {u"clipboard"_s, QVariant::fromValue(&clipboard)},
+        {u"frame"_s, QVariant::fromValue(&frame)}, {u"placement"_s, QVariant::fromValue(&placement)}}));
+    auto* window = qobject_cast<QQuickWindow*>(object.get());
+    if (!window) { qWarning().noquote() << component.errorString(); return false; }
+    window->create();
+    window->resize(width, 620);
+    launcher.setWindow(window);
+    frame.setWindow(window);
+    placement.setWindow(window);
+    showOffScreen(window);
+    const auto query = [&](const QString& text) {
+        launcher.setQuery(text);
+        QElapsedTimer timer;
+        timer.start();
+        while (launcher.searching() && timer.elapsed() < 3000)
+            pump(10);
+        check(!launcher.searching(), "search did not settle");
+        settle(window, 3);
+    };
+    launcher.setScope(Launcher::Folders);
+    query(u"编号"_s);
+    check(launcher.results()->count() == 24, "fixture results missing");
+    if (launcher.results()->count() < 3)
+        return false;
+    auto* view = window->property("view").value<QObject*>();
+    const auto verifyRows = [&] {
+        const int first = window->property("firstShownRow").toInt();
+        const int last = window->property("lastShownRow").toInt();
+        check(last >= first && last - first < 9, "invalid visible shortcut range");
+        for (int i = first; i <= last; ++i) {
+            auto* row = visualNamed(window->contentItem(), u"resultRow-%1"_s.arg(i));
+            auto* number = row ? visualNamed(row, u"resultNumber"_s) : nullptr;
+            auto* slot = row ? visualNamed(row, u"resultNumberSlot"_s) : nullptr;
+            auto* icon = row ? visualNamed(row, u"resultIcon"_s) : nullptr;
+            if (!row || !number || !slot || !icon) { check(false, "production number delegate missing"); continue; }
+            check(number->property("text").toString() == QString::number(i - first + 1), "number differs from shortcut target");
+            check(slot->x() + slot->width() <= icon->x(), "number overlaps icon");
+        }
+    };
+    verifyRows();
+    check(saveGrab(window, output.filePath(u"number-column-main.png"_s)), "main did not render");
+    auto* firstRow = visualNamed(window->contentItem(), u"resultRow-0"_s);
+    auto* icon = firstRow ? visualNamed(firstRow, u"resultIcon"_s) : nullptr;
+    auto* text = firstRow ? visualNamed(firstRow, u"resultText"_s) : nullptr;
+    if (!icon || !text || !view)
+        return false;
+    const qreal iconX = icon->x();
+    const qreal textX = text->x();
+    launcher.setNumberHints(u"held"_s);
+    pump(150);
+    check(icon->x() == iconX && text->x() == textX, "hiding numbers moved result content");
+    launcher.setNumberHints(u"off"_s);
+    settle(window);
+    check(icon->x() < iconX, "disabled hints kept an empty column");
+    launcher.setNumberHints(u"always"_s);
+    settle(window);
+    QString opened;
+    launcher.setFolderOpener([&](const QString& path) { opened = path; return true; }); // never open Explorer
+    const auto press = [&](int digit, Qt::KeyboardModifier modifier) {
+        auto* bar = window->property("searchBar").value<QObject*>();
+        QMetaObject::invokeMethod(bar, "focusAtEnd");
+        QKeyEvent event(QEvent::KeyPress, Qt::Key_0 + digit, modifier);
+        QCoreApplication::sendEvent(window, &event); // Qt events only; no system hotkeys
+        settle(window);
+    };
+    launcher.setNumberKeysLeft(1u << 3);
+    press(3, Qt::ControlModifier);
+    check(opened.isEmpty(), "occupied shortcut opened a result");
+    auto* third = visualNamed(window->contentItem(), u"resultRow-2"_s);
+    auto* taken = third ? visualNamed(third, u"resultNumber"_s) : nullptr;
+    check(taken && taken->property("font").value<QFont>().strikeOut(), "occupied shortcut was not marked");
+    launcher.setNumberKeysLeft(0);
+    const QString expected = launcher.results()->at(2)->path;
+    press(3, Qt::ControlModifier);
+    check(opened == expected, "Ctrl+3 did not open the numbered result");
+    const double rowHeight = window->property("rowHeight").toDouble();
+    view->setProperty("contentY", 11.25 * rowHeight);
+    settle(window, 3);
+    verifyRows();
+    const int first = window->property("firstShownRow").toInt();
+    check(first > 0, "list did not scroll");
+    opened.clear();
+    const auto* target = launcher.results()->at(first + 1);
+    const QString scrolled = target ? target->path : QString();
+    launcher.setResultOptions(KindOrder::FilesFirst, true, false, false, u"alt"_s);
+    press(2, Qt::AltModifier);
+    check(!scrolled.isEmpty() && opened == scrolled, "Alt+2 did not follow the scrolled numbering");
+    check(saveGrab(window, output.filePath(u"number-column-scrolled.png"_s)), "scrolled results did not render");
+    query(u"编号_0"_s);
+    check(launcher.results()->count() > 0 && launcher.results()->count() < 24, "query did not replace the result set");
+    verifyRows();
+    // A programmatic refresh may retain the viewport. Its visible "1"
+    // still means that first visible result, rather than absolute row 1.
+    const int refreshedFirst = window->property("firstShownRow").toInt();
+    const auto* refreshed = launcher.results()->at(refreshedFirst);
+    const QString refreshedPath = refreshed ? refreshed->path : QString();
+    opened.clear();
+    press(1, Qt::AltModifier);
+    check(!refreshedPath.isEmpty() && opened == refreshedPath, "refreshed numbering did not match Alt+1");
+    query(u"没有这个结果145"_s);
+    opened.clear();
+    press(1, Qt::AltModifier);
+    check(opened.isEmpty(), "empty results retained a shortcut target");
+    check(!watcher.running(), "fixture must not start clipboard capture");
+    window->hide();
+    say(u"number column: real Main/Launcher, Ctrl/Alt targets, occupied digits, scrolling, refresh and stable layout checked"_s);
+    return ok;
 }
 
 int runResults(const QStringList& args)
@@ -2022,7 +2913,7 @@ int runResults(const QStringList& args)
         }
     )"_s.arg(baseline.isEmpty() ? QString() : u"import \"%1\" as Baseline"_s.arg(QUrl::fromLocalFile(baseline).toString()),
              baseline.isEmpty() ? QString() : u"Baseline."_s,
-             baseline.isEmpty() ? u"hintOpacity: hints.hintOpacity; showSize: window.showFileSize || window.sizeOrder; showModified: window.showDate"_s : QString());
+             baseline.isEmpty() ? u"hintOpacity: hints.hintOpacity; reserveHintSpace: hints.key >= 0 && hints.mode !== 'off'; showSize: window.showFileSize || window.sizeOrder; showModified: window.showDate"_s : QString());
     QQmlComponent component(&engine);
     component.setData(qml.toUtf8(), QUrl(u"qrc:/results-preview.qml"_s));
     auto* window = qobject_cast<QQuickWindow*>(component.create());
@@ -2085,10 +2976,21 @@ int runResults(const QStringList& args)
     pump(300);
     grab(u"off"_s);
     key(QEvent::KeyRelease);
+    if (args.contains(u"--switch-provider-probe"_s))
+        return finish(window, checkSwitchProvider(window, out) && saved);
+    if (args.contains(u"--number-column"_s))
+        return finish(window, checkNumberColumn(&engine, out, valueAfter(args, u"--width", u"760"_s).toInt()) && saved);
+    if (args.contains(u"--clipboard-send"_s))
+        return finish(window, checkClipboardInteractions(&engine, out, {}) && saved);
+    if (args.contains(u"--preview-hotkeys"_s) || args.contains(u"--search-navigation"_s)) {
+        checkLauncherFilters(window, &engine, out, true, true);
+        return finish(window, saved);
+    }
+    if (args.contains(u"--drop-pie-check"_s)) checkDropPieHelper(out);
     if (args.contains(u"--file-metadata"_s)) {
         const QString galleryImage = valueAfter(args, u"--gallery-image");
         checkLauncherFilters(window, &engine, out, !galleryImage.isEmpty() || args.contains(u"--file-gallery"_s));
-        checkClipboardInteractions(&engine, out, galleryImage);
+        saved = checkClipboardInteractions(&engine, out, galleryImage) && saved;
         SearchResults files;
         const QDateTime when(QDate(2024, 3, 5), QTime(14, 32));
         const QDateTime now(QDate(2026, 10, 25), QTime(15, 0));
@@ -2263,8 +3165,672 @@ int runAiCards(const QStringList& args)
     };
     notice(u"notice.png"_s, false);
     notice(u"notice-undone.png"_s, true);
-    QDir(Settings::dataDir()).removeRecursively();
     say(u"%1 warning(s)"_s.arg(g_warnings));
+    return saved ? std::min(g_warnings, 100) : 4;
+}
+
+// Starts the production App with an isolated profile and no global shortcuts,
+// shell integration, update checks or service access. Optional clipboard
+// recording reads the system clipboard but never changes it. Reports contain
+// lifecycle and resource counters, never clipboard contents or user file names.
+bool forgetRuntimeIdentity()
+{
+    // LocalSend persists a named CNG key as well as files. Forget only the
+    // identity created in this probe's private profile, before removing it.
+    QFile file(Settings::profile() + u"/plugins/winshun.localsend.data/identity.key"_s);
+    if (!file.exists())
+        return true;
+    if (!file.open(QIODevice::ReadOnly))
+        return false;
+    const QString name = QString::fromUtf8(file.readAll());
+    if (!name.startsWith(u"WinShun.LocalSend."))
+        return false;
+    HMODULE module = LoadLibraryExW(L"ncrypt.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if (!module)
+        return false;
+    const auto unload = qScopeGuard([&] { FreeLibrary(module); });
+    const auto openProvider = reinterpret_cast<decltype(&NCryptOpenStorageProvider)>(GetProcAddress(module, "NCryptOpenStorageProvider"));
+    const auto openKey = reinterpret_cast<decltype(&NCryptOpenKey)>(GetProcAddress(module, "NCryptOpenKey"));
+    const auto deleteKey = reinterpret_cast<decltype(&NCryptDeleteKey)>(GetProcAddress(module, "NCryptDeleteKey"));
+    const auto freeObject = reinterpret_cast<decltype(&NCryptFreeObject)>(GetProcAddress(module, "NCryptFreeObject"));
+    if (!openProvider || !openKey || !deleteKey || !freeObject)
+        return false;
+    NCRYPT_PROV_HANDLE provider = 0;
+    NCRYPT_KEY_HANDLE key = 0;
+    const auto release = qScopeGuard([&] {
+        if (key)
+            freeObject(key);
+        if (provider)
+            freeObject(provider);
+    });
+    if (openProvider(&provider, MS_KEY_STORAGE_PROVIDER, 0) != ERROR_SUCCESS)
+        return false;
+    const SECURITY_STATUS opened = openKey(provider, &key, name.toStdWString().c_str(), 0, NCRYPT_SILENT_FLAG);
+    if (opened == NTE_BAD_KEYSET || opened == NTE_NOT_FOUND)
+        return true;
+    if (opened != ERROR_SUCCESS || deleteKey(key, NCRYPT_SILENT_FLAG) != ERROR_SUCCESS)
+        return false;
+    key = 0;
+    return true;
+}
+
+bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonObject& report)
+{
+    using Microsoft::WRL::ComPtr;
+    bool ok = true;
+    QJsonArray checks;
+    const auto check = [&](bool passed, const char* name) {
+        checks.append(QJsonObject {{u"name"_s, QString::fromUtf8(name)}, {u"passed"_s, passed}});
+        ok = passed && ok;
+        if (!passed) qWarning("folder typing: %s", name);
+        report.insert(u"folder_typing"_s, checks);
+    };
+    const HRESULT initialized = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    const auto uninitialize = qScopeGuard([&] { if (SUCCEEDED(initialized)) ::CoUninitialize(); });
+    ComPtr<IShellWindows> windows;
+    if (FAILED(::CoCreateInstance(CLSID_ShellWindows, nullptr, CLSCTX_LOCAL_SERVER, IID_PPV_ARGS(&windows))))
+        return false;
+    const auto browsers = [&] {
+        std::vector<ComPtr<IWebBrowser2>> found;
+        long count = 0;
+        windows->get_Count(&count);
+        for (long i = 0; i < count; ++i) {
+            VARIANT at {}; at.vt = VT_I4; at.lVal = i;
+            ComPtr<IDispatch> dispatch;
+            ComPtr<IWebBrowser2> web;
+            if (windows->Item(at, &dispatch) == S_OK && dispatch && SUCCEEDED(dispatch.As(&web)))
+                found.push_back(web);
+        }
+        return found;
+    };
+    std::vector<SHANDLE_PTR> before;
+    for (const auto& web : browsers()) { SHANDLE_PTR hwnd = 0; web->get_HWND(&hwnd); before.push_back(hwnd); }
+    const HWND previous = ::GetForegroundWindow();
+    HWND root = nullptr, tab = nullptr;
+    ComPtr<IWebBrowser2> owned;
+    const auto cleanup = qScopeGuard([&] {
+        app.hideLauncher();
+        if (owned) {
+            int tabs = 0;
+            for (const auto& web : browsers()) {
+                SHANDLE_PTR hwnd = 0; web->get_HWND(&hwnd);
+                if (reinterpret_cast<HWND>(hwnd) == root) ++tabs;
+            }
+            // Never close a pre-existing window, or user-added tabs.
+            const QString shown = QString::fromStdWString(filemanager::explorerFolder(tab));
+            if (tabs == 1 && (shown == folder || shown.startsWith(folder + u'\\'))) {
+                owned->Quit();
+                QElapsedTimer closing; closing.start();
+                while (::IsWindow(root) && closing.elapsed() < 2000) pump(20);
+            }
+        }
+        if (::IsWindow(previous)) ::SetForegroundWindow(previous);
+    });
+    const std::wstring command = L"/n,/separate,\"" + folder.toStdWString() + L"\"";
+    if (reinterpret_cast<INT_PTR>(::ShellExecuteW(nullptr, L"open", L"explorer.exe", command.c_str(), nullptr, SW_SHOWNORMAL)) <= 32)
+        return false;
+    QElapsedTimer waiting; waiting.start();
+    while (!owned && waiting.elapsed() < 15000) {
+        for (const auto& web : browsers()) {
+            SHANDLE_PTR hwnd = 0; web->get_HWND(&hwnd);
+            if (std::ranges::find(before, hwnd) != before.end()) continue;
+            ComPtr<IServiceProvider> services;
+            ComPtr<IShellBrowser> browser;
+            HWND candidate = nullptr;
+            if (SUCCEEDED(web.As(&services)) && SUCCEEDED(services->QueryService(SID_STopLevelBrowser, IID_PPV_ARGS(&browser)))
+                && SUCCEEDED(browser->GetWindow(&candidate))
+                && QString::fromStdWString(filemanager::explorerFolder(candidate)) == folder) {
+                owned = web; root = reinterpret_cast<HWND>(hwnd); tab = candidate; break;
+            }
+        }
+        pump(30);
+    }
+    check(owned != nullptr, "own Explorer fixture opened in a new window");
+    if (!owned) return false;
+    MONITORINFO monitor {sizeof monitor};
+    ::GetMonitorInfoW(::MonitorFromWindow(root, MONITOR_DEFAULTTONEAREST), &monitor);
+    const RECT area = monitor.rcWork;
+    ::SetWindowPos(root, nullptr, area.left + 8, area.top + 8, (area.right - area.left) / 3,
+        area.bottom - area.top - 16, SWP_NOZORDER | SWP_NOACTIVATE);
+    pump(300);
+    ComPtr<IServiceProvider> services;
+    ComPtr<IShellBrowser> browser;
+    owned.As(&services);
+    if (!services || FAILED(services->QueryService(SID_STopLevelBrowser, IID_PPV_ARGS(&browser)))) return false;
+    const auto selected = [&] {
+        ComPtr<IShellView> shellView;
+        ComPtr<IFolderView2> view;
+        ComPtr<IShellItemArray> selection;
+        ComPtr<IShellItem> item;
+        DWORD count = 0;
+        int focused = -1;
+        if (FAILED(browser->QueryActiveShellView(&shellView)) || FAILED(shellView.As(&view))
+            || FAILED(view->GetSelection(FALSE, &selection)) || !selection
+            || FAILED(selection->GetCount(&count)) || count != 1
+            || FAILED(view->GetFocusedItem(&focused)) || focused < 0
+            || FAILED(view->GetItem(focused, IID_PPV_ARGS(&item)))) return QString();
+        PWSTR path = nullptr;
+        if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) return QString();
+        const QString result = QString::fromWCharArray(path);
+        ::CoTaskMemFree(path);
+        return result;
+    };
+    ::SetForegroundWindow(root);
+    app.showFolderSearch(root, tab, false, folder);
+    QQuickWindow* window = nullptr;
+    Launcher* launcher = nullptr;
+    for (auto* candidate : QGuiApplication::allWindows()) {
+        if (auto* controller = candidate->property("launcher").value<Launcher*>()) {
+            window = qobject_cast<QQuickWindow*>(candidate); launcher = controller; break;
+        }
+    }
+    if (!window || !launcher) return false;
+    const QString prefix = folder + u"\\ "_s;
+    launcher->setQuery(prefix + u"follow_"_s);
+    waiting.restart();
+    while ((launcher->searching() || launcher->results()->count() != 3) && waiting.elapsed() < 5000) pump(20);
+    check(launcher->results()->count() == 3, "production search found three real direct children");
+    if (launcher->results()->count() != 3) return false;
+    settle(window, 3);
+    auto* field = window->property("searchBar").value<QObject*>();
+    if (field) QMetaObject::invokeMethod(field, "focusAtEnd");
+    const auto key = [&](int code) {
+        QKeyEvent event(QEvent::KeyPress, code, Qt::NoModifier);
+        QCoreApplication::sendEvent(window, &event);
+    };
+    const auto follows = [&] {
+        const auto* row = launcher->results()->at(launcher->currentRow());
+        if (!row) return false;
+        const QString expected = row->path;
+        waiting.restart();
+        while (selected() != expected && waiting.elapsed() < 3000) pump(20);
+        return selected() == expected;
+    };
+    check(follows(), "initial result selected and focused in the real Shell view");
+    key(Qt::Key_Down);
+    check(follows(), "Down follows the production QML current row");
+    key(Qt::Key_Down); key(Qt::Key_Up); key(Qt::Key_Up); key(Qt::Key_Down);
+    check(follows(), "rapid navigation selects the latest row");
+    check(::GetForegroundWindow() == reinterpret_cast<HWND>(window->winId()) && window->isActive(),
+        "Explorer selection never took keyboard focus");
+    RECT searchRect {}, sourceRect {};
+    ::GetWindowRect(reinterpret_cast<HWND>(window->winId()), &searchRect);
+    ::GetWindowRect(root, &sourceRect);
+    RECT overlap {};
+    check(!::IntersectRect(&overlap, &searchRect, &sourceRect), "search keeps clear of the Explorer fixture");
+    const auto bounds = [](const RECT& rect) { return QJsonArray {int(rect.left), int(rect.top),
+        int(rect.right - rect.left), int(rect.bottom - rect.top)}; };
+    report.insert(u"source_bounds"_s, bounds(sourceRect));
+    report.insert(u"search_bounds"_s, bounds(searchRect));
+    if (window->screen()) {
+        // Read the composed desktop so native Mica/title bars are captured
+        // correctly. Save only the two test-owned window regions.
+        const auto desktop = window->screen()->grabWindow(0);
+        const auto region = [&](const RECT& rect) {
+            return QRect(rect.left - monitor.rcMonitor.left, rect.top - monitor.rcMonitor.top,
+                rect.right - rect.left, rect.bottom - rect.top);
+        };
+        check(desktop.copy(region(searchRect)).save(out.filePath(u"typing-search.png"_s)), "production search screenshot saved");
+        check(desktop.copy(region(sourceRect)).save(out.filePath(u"typing-explorer.png"_s)), "Explorer selection screenshot saved");
+    }
+    const QString chosen = selected();
+    check(!filemanager::selectInExplorer(tab, (folder + u"\\child"_s).toStdWString(), chosen.toStdWString(), [] { return true; }),
+        "changed source folder rejected without navigation");
+    check(!filemanager::selectInExplorer(tab, folder.toStdWString(), (folder + u"\\child\\nested-only.txt"_s).toStdWString(), [] { return true; }),
+        "nested result never navigates the original folder");
+    int guards = 0;
+    check(!filemanager::selectInExplorer(tab, folder.toStdWString(), chosen.toStdWString(), [&] { return ++guards < 3; })
+        && guards >= 3 && selected() == chosen, "superseded work rejected after COM lookup");
+    launcher->setQuery(prefix + u"nested-only"_s);
+    pump(500);
+    check(selected() == chosen && QString::fromStdWString(filemanager::explorerFolder(tab)) == folder,
+        "browsing a nested result preserves the source directory and selection");
+    launcher->setQuery(prefix + u"follow_"_s);
+    pump(300);
+    const QString beforeHide = selected();
+    key(Qt::Key_Down);
+    app.hideLauncher();
+    pump(300);
+    check(selected() == beforeHide, "hiding cancels the pending selection");
+    return ok;
+}
+
+bool probeFileDialog(const QStringList& args, const QDir& out, const QString& selected, QJsonObject& report)
+{
+    const auto samePath = [&selected](const QString& path) {
+        return QDir::cleanPath(QDir::fromNativeSeparators(path)).compare(QDir::cleanPath(selected), Qt::CaseInsensitive) == 0;
+    };
+    const HWND target = reinterpret_cast<HWND>(valueAfter(args, u"--file-dialog-window").toULongLong());
+    const DWORD expected = valueAfter(args, u"--file-dialog-pid").toULong();
+    DWORD pid = 0;
+    GetWindowThreadProcessId(target, &pid);
+    const bool valid = expected && pid == expected && filedialog::kind(target) != filedialog::Kind::None;
+    report.insert(u"dialog_target_valid"_s, valid);
+    if (!valid)
+        return false;
+    INPUT nothing {};
+    nothing.type = INPUT_MOUSE; // production's foreground permission handoff; no move/buttons/keys
+    SendInput(1, &nothing, sizeof nothing);
+    SetForegroundWindow(target);
+    QQuickWindow* window = nullptr;
+    DialogBar* bar = nullptr;
+    QElapsedTimer waiting;
+    waiting.start();
+    while (!bar && waiting.elapsed() < 5000) {
+        pump(30);
+        for (QWindow* candidate : QGuiApplication::allWindows()) {
+            auto* quick = qobject_cast<QQuickWindow*>(candidate);
+            auto* controller = quick ? quick->property("bar").value<DialogBar*>() : nullptr;
+            if (controller && controller->isShown() && quick->isVisible()) {
+                window = quick;
+                bar = controller;
+                break;
+            }
+        }
+    }
+    report.insert(u"dialog_bar_visible"_s, bar != nullptr);
+    if (!bar)
+        return false;
+    if (!window->isActive())
+        bar->toggleFocus(); // the same foreground handoff as double Ctrl
+    waiting.restart();
+    while (!window->isActive() && waiting.elapsed() < 2000)
+        pump(20);
+    report.insert(u"dialog_bar_focused"_s, window->isActive());
+    if (!window->isActive())
+        return false;
+    bar->setQuery(QFileInfo(selected).completeBaseName());
+    int row = -1;
+    waiting.restart();
+    while (row < 0 && waiting.elapsed() < 10000) {
+        pump(50);
+        for (int at = 0; at < bar->results()->rowCount(); ++at) {
+            if (samePath(bar->results()->pathAt(at))) {
+                row = at;
+                break;
+            }
+        }
+    }
+    report.insert(u"dialog_search_found"_s, row >= 0);
+    report.insert(u"dialog_query"_s, bar->query());
+    report.insert(u"dialog_result_count"_s, bar->results()->rowCount());
+    waiting.restart();
+    while (bar->rows() <= 0 && waiting.elapsed() < 1000)
+        pump(20);
+    report.insert(u"dialog_result_rows_visible"_s, bar->rows());
+    report.insert(u"dialog_can_open"_s, bar->canOpen());
+    if (row < 0 || bar->rows() <= 0 || !saveGrab(window, out.filePath(u"dialog-bar.png"_s)))
+        return false;
+    RECT dialog {}, panel {};
+    if (GetWindowRect(target, &dialog) && GetWindowRect(reinterpret_cast<HWND>(window->winId()), &panel)) {
+        RECT combined {};
+        UnionRect(&combined, &dialog, &panel);
+        QGuiApplication::primaryScreen()->grabWindow(0, combined.left, combined.top,
+            combined.right - combined.left, combined.bottom - combined.top).save(out.filePath(u"dialog-with-search.png"_s));
+    }
+    // The production controller hands focus back and calls DialogJump::go.
+    // The fixture's independent observer confirms Blender actually changed.
+    bar->choose(row, false);
+    waiting.restart();
+    bool selectedInDialog = false;
+    while (!selectedInDialog && waiting.elapsed() < 5000) {
+        pump(50);
+        QFile observer(valueAfter(args, u"--file-dialog-state"));
+        if (!observer.open(QIODevice::ReadOnly))
+            continue;
+        const QJsonObject state = QJsonDocument::fromJson(observer.readAll()).object();
+        if (state.value(u"pid"_s).toInteger() != expected)
+            continue;
+        for (const QJsonValue& item : state.value(u"browsers"_s).toArray()) {
+            const QJsonObject browser = item.toObject();
+            const QString path = QDir(browser.value(u"directory"_s).toString()).filePath(browser.value(u"filename"_s).toString());
+            selectedInDialog = samePath(path);
+            if (selectedInDialog)
+                break;
+        }
+    }
+    report.insert(u"dialog_selection_confirmed"_s, selectedInDialog);
+    return selectedInDialog;
+}
+
+int runRuntime(const QStringList& args)
+{
+    const QDir out(valueAfter(args, kRuntimeFlag));
+    const QString probeHotkey = valueAfter(args, u"--probe-hotkey", u"Ctrl+Alt+Shift+F24"_s);
+    // Redirect this process's HKCU writes too: profiles alone do not isolate
+    // shell verbs and Win+V/Win+S ownership. Child plugins use their own data
+    // folders; the capture fixture below never takes PrtScn.
+    const std::wstring registryPath = (u"Software\\WinShun\\RuntimeTests\\"_s + QUuid::createUuid().toString(QUuid::WithoutBraces)).toStdWString();
+    HKEY realUser = nullptr;
+    HKEY sandbox = nullptr;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"", 0, KEY_ALL_ACCESS, &realUser) != ERROR_SUCCESS)
+        return 4;
+    if (RegCreateKeyExW(realUser, registryPath.c_str(), 0, nullptr, 0, KEY_ALL_ACCESS, nullptr, &sandbox, nullptr) != ERROR_SUCCESS) {
+        RegCloseKey(realUser);
+        return 4;
+    }
+    const auto registryCleanup = qScopeGuard([&] {
+        RegOverridePredefKey(HKEY_CURRENT_USER, nullptr);
+        RegCloseKey(sandbox);
+        RegDeleteTreeW(realUser, registryPath.c_str());
+        RegCloseKey(realUser);
+    });
+    if (RegOverridePredefKey(HKEY_CURRENT_USER, sandbox) != ERROR_SUCCESS)
+        return 4;
+    for (const wchar_t* path : {L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+             L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced"}) {
+        HKEY key = nullptr;
+        if (RegCreateKeyExW(sandbox, path, 0, nullptr, 0, KEY_READ | KEY_WRITE, nullptr, &key, nullptr) != ERROR_SUCCESS)
+            return 4;
+        RegCloseKey(key);
+    }
+    Settings settings = Settings::defaults();
+    settings.language = args.contains(u"--english"_s) ? u"en"_s : u"zh"_s;
+    if (args.contains(u"--dark"_s))
+        settings.theme = u"dark"_s;
+    if (args.contains(u"--ocr-probe"_s)) {
+        settings.theme = args.contains(u"--dark"_s) ? u"dark"_s : u"light"_s;
+        settings.transparency = u"off"_s; // grabWindow cannot capture the native Mica behind a transparent surface
+    }
+    settings.doubleCtrl = false;
+    settings.hotkey.clear();
+    settings.dialogJump = false;
+    settings.dialogBar = args.contains(u"--file-dialog-window"_s);
+    settings.dialogAutoJumpAsked = true;
+    settings.dialogBarPlace = u"below"_s;
+    settings.dialogAutoJump = false;
+    settings.explorerMenu = false;
+    settings.explorerTyping = false;
+    settings.opusTyping = false;
+    settings.folderMenu = u"off"_s;
+    settings.folderMenuHotkey.clear();
+    settings.taskbarSearchBox = false;
+    settings.autoUpdate = false;
+    settings.proxyMode = u"none"_s; // loopback/file fixtures never use the user's proxy
+    settings.mcp = false;
+    settings.clipboard = args.contains(u"--with-clipboard"_s);
+    settings.clipboardWinV = false;
+    settings.clipboardHotkey.clear();
+    settings.pluginConfig(u"winshun.switches"_s).enabled = false; // optional unless --runtime-plugins installs it
+    settings.indexAccess = u"walk"_s;
+    settings.indexScope = u"folders"_s;
+    settings.selectedDrives = QStringList {};
+    settings.indexFoldersChosen = true;
+    settings.rescanOnStartup = false;
+    settings.indexFolders = {Settings::profile() + u"/fixture"_s};
+    std::unique_ptr<QTemporaryDir> dialogFiles;
+    const bool typingProbe = args.contains(u"--folder-typing"_s);
+    if (settings.dialogBar || typingProbe) {
+        // App's data directory is always excluded. Keep the searchable
+        // fixture in a separate owned folder, outside the private profile.
+        dialogFiles = std::make_unique<QTemporaryDir>(QDir::temp().filePath(u"WinShun-dialog-files-XXXXXX"_s));
+        if (!dialogFiles->isValid())
+            return 4;
+        settings.indexFolders = {dialogFiles->path()};
+        settings.selectedDrives = QStringList {QDir::toNativeSeparators(QStorageInfo(dialogFiles->path()).rootPath())};
+        settings.excludedPaths = {Settings::profile() + u"/excluded"_s}; // an empty list reloads the TEMP-excluding defaults
+    }
+    QDir().mkpath(settings.indexFolders.front());
+    if (typingProbe) {
+        const QDir files(settings.indexFolders.front());
+        for (int i = 1; i <= 3; ++i) {
+            QFile file(files.filePath(u"follow_%1.txt"_s.arg(i)));
+            if (!file.open(QIODevice::WriteOnly) || file.write("isolated Explorer selection fixture\n") < 0) return 4;
+        }
+        files.mkdir(u"child"_s);
+        QFile nested(files.filePath(u"child/nested-only.txt"_s));
+        if (!nested.open(QIODevice::WriteOnly)) return 4;
+    }
+    QFile fixture(settings.indexFolders.front() + u"/startup-probe.txt"_s);
+    if (!fixture.open(QIODevice::WriteOnly))
+        return 4;
+    fixture.write("WinShun isolated startup probe\n");
+    fixture.close();
+    const QString dialogSample = QDir(settings.indexFolders.front()).filePath(u"WinShun-dialog-验证.blend"_s);
+    if (settings.dialogBar && !QFile::copy(valueAfter(args, u"--file-dialog-sample"), dialogSample))
+        return 4;
+
+    const QDir plugins(valueAfter(args, u"--runtime-plugins"));
+    if (args.contains(u"--runtime-plugins"_s)) {
+        for (const QFileInfo& folder : plugins.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+            auto candidate = plugin::install::inspect(folder.absoluteFilePath());
+            if (!candidate || !candidate->manifest)
+                return 4;
+            const QString id = candidate->manifest->id;
+            QString error;
+            if (plugin::install::place(*candidate, Settings::profile() + u"/plugins"_s, &error).isEmpty()) {
+                qWarning("runtime probe install: %s", qPrintable(error));
+                return 4;
+            }
+            PluginConfig& config = settings.pluginConfig(id);
+            config.enabled = true;
+            config.confirmed = candidate->manifest->permissions.names();
+            if (id == u"winshun.localsend")
+                config.settings.append({u"receive"_s, u"false"_s});
+            if (id == u"winshun.capture") {
+                QSettings capture(Settings::profile() + u"/plugins/winshun.capture.data/capture.ini"_s, QSettings::IniFormat);
+                capture.setValue(u"Capture/Hotkey"_s, probeHotkey);
+                capture.setValue(u"Capture/PrintScreen"_s, false);
+            }
+        }
+    }
+    settings.save(); // makes this an existing profile: no first-run autostart changes
+    if (args.contains(u"--legacy-semantic"_s)) {
+        QSettings legacy(Settings::filePath(), QSettings::IniFormat);
+        legacy.setValue(u"Plugin.winshun.semantic/Enabled"_s, true);
+    }
+    if (args.contains(u"--legacy-capture"_s)) {
+        QSettings legacy(Settings::filePath(), QSettings::IniFormat);
+        legacy.setValue(u"Capture/Enabled"_s, true);
+        legacy.setValue(u"Capture/Hotkey"_s, probeHotkey);
+        legacy.setValue(u"Capture/PrintScreen"_s, false);
+    }
+    QJsonObject report;
+    {
+        App app;
+        QElapsedTimer since;
+        since.start();
+        if (!app.start({.background = true}))
+            return 4;
+        report.insert(u"start_ms"_s, static_cast<double>(since.elapsed()));
+        pump(std::clamp(valueAfter(args, u"--settle-ms", u"3000"_s).toInt(), 100, 60000));
+        if ((settings.dialogBar && !probeFileDialog(args, out, dialogSample, report))
+            || (typingProbe && !probeFolderTyping(app, out, QDir::toNativeSeparators(settings.indexFolders.front()), report))) {
+            QFile failed(out.filePath(u"runtime.json"_s));
+            if (failed.open(QIODevice::WriteOnly))
+                failed.write(QJsonDocument(report).toJson());
+            return 4;
+        }
+
+        // Private bytes can be summed; working sets also include shared pages.
+        std::vector<DWORD> owned {GetCurrentProcessId()};
+        QJsonArray processes;
+        HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if (snapshot == INVALID_HANDLE_VALUE)
+            return 4;
+        PROCESSENTRY32W entry {sizeof(entry)};
+        std::vector<PROCESSENTRY32W> all;
+        if (Process32FirstW(snapshot, &entry)) {
+            do { all.push_back(entry); } while (Process32NextW(snapshot, &entry));
+        }
+        CloseHandle(snapshot);
+        double totalPrivate = 0;
+        for (std::size_t i = 0; i < owned.size(); ++i) {
+            for (const auto& process : all) {
+                if (process.th32ParentProcessID == owned[i] && std::ranges::find(owned, process.th32ProcessID) == owned.end())
+                    owned.push_back(process.th32ProcessID);
+            }
+            const DWORD pid = owned[i];
+            HANDLE handle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+            if (!handle)
+                continue;
+            PROCESS_MEMORY_COUNTERS_EX memory {sizeof(memory)};
+            if (GetProcessMemoryInfo(handle, reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&memory), sizeof(memory))) {
+                const auto found = std::ranges::find(all, pid, &PROCESSENTRY32W::th32ProcessID);
+                processes.append(QJsonObject {{u"pid"_s, static_cast<double>(pid)},
+                    {u"name"_s, found == all.end() ? QString() : QString::fromWCharArray(found->szExeFile)},
+                    {u"private_bytes"_s, static_cast<double>(memory.PrivateUsage)},
+                    {u"working_set_bytes"_s, static_cast<double>(memory.WorkingSetSize)}});
+                totalPrivate += static_cast<double>(memory.PrivateUsage);
+            }
+            CloseHandle(handle);
+        }
+        report.insert(u"processes"_s, processes);
+        report.insert(u"total_private_bytes"_s, totalPrivate);
+        report.insert(u"clipboard"_s, settings.clipboard);
+        report.insert(u"qt"_s, QString::fromLatin1(qVersion()));
+        if (args.contains(u"--runtime-ui"_s)) {
+            app.showSettings();
+            pump(100);
+            QQuickWindow* window = nullptr;
+            SettingsEditor* editor = nullptr;
+            for (QWindow* candidate : QGuiApplication::allWindows()) {
+                if (auto* found = candidate->property("editor").value<SettingsEditor*>()) {
+                    editor = found;
+                    window = qobject_cast<QQuickWindow*>(candidate);
+                    break;
+                }
+            }
+            if (!window || !editor)
+                return 4;
+            showOffScreen(window);
+            if (args.contains(u"--ocr-probe"_s)) {
+                if (args.contains(u"--compact"_s))
+                    window->resize(760, 420);
+                QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, window->property("clipboardPage")), Q_ARG(QVariant, QVariant(0)));
+                settle(window, 3);
+                auto* row = qobject_cast<QQuickItem*>(visualNamed(window->contentItem(), u"enhancedOcrRow"_s));
+                QObject* button = visualNamed(window->contentItem(), u"downloadEnhancedOcr"_s);
+                if (!row || !button)
+                    return 4;
+                QMetaObject::invokeMethod(window, "goTo", Q_ARG(QVariant, QVariant::fromValue(row)));
+                settle(window, 3);
+                auto* model = editor->ocrPackage();
+                report.insert(u"ocr_before"_s, model->available());
+                report.insert(u"ocr_title"_s, row->property("title").toString());
+                report.insert(u"ocr_description"_s, row->property("description").toString());
+                report.insert(u"ocr_button"_s, button->property("text").toString());
+                auto* buttonItem = qobject_cast<QQuickItem*>(button);
+                const QRectF buttonRect = buttonItem ? buttonItem->mapRectToItem(row, QRectF(QPointF(), buttonItem->size())) : QRectF();
+                report.insert(u"ocr_button_inside_row"_s, !buttonRect.isEmpty() && QRectF(QPointF(-1, -1), row->size() + QSizeF(2, 2)).contains(buttonRect));
+                if (!saveGrab(window, out.filePath(u"ocr-before.png"_s)))
+                    return 4;
+                QJsonArray attempts;
+                const auto attempt = [&](const QString& source, bool local, bool cancel, int number) {
+                    if (local) {
+                        model->installFile(source);
+                    } else {
+                        _wputenv_s(L"WINSHUN_OCR_PACKAGE", source.toStdWString().c_str());
+                        QMetaObject::invokeMethod(button, "clicked");
+                    }
+                    QElapsedTimer waiting;
+                    waiting.start();
+                    while (model->busy() && model->progress() < 0.03 && waiting.elapsed() < 15000)
+                        pump(20);
+                    settle(window, 2);
+                    if (!saveGrab(window, out.filePath(u"ocr-%1-active.png"_s.arg(number))))
+                        return false;
+                    if (cancel)
+                        QMetaObject::invokeMethod(button, "clicked");
+                    while (model->busy() && waiting.elapsed() < 20000)
+                        pump(20);
+                    attempts.append(QJsonObject {{u"available"_s, model->available()}, {u"busy"_s, model->busy()},
+                        {u"status"_s, model->status()}, {u"progress"_s, model->progress()}});
+                    settle(window, 3);
+                    return saveGrab(window, out.filePath(u"ocr-%1-result.png"_s.arg(number))) && !model->busy();
+                };
+                const QString source = valueAfter(args, u"--ocr-source");
+                const QString local = valueAfter(args, u"--ocr-local");
+                if ((!source.isEmpty() || !local.isEmpty()) && !attempt(local.isEmpty() ? source : local, !local.isEmpty(), args.contains(u"--ocr-cancel"_s), 1))
+                    return 4;
+                const QString retry = valueAfter(args, u"--ocr-retry-source");
+                if (!retry.isEmpty() && !attempt(retry, false, false, 2))
+                    return 4;
+                report.insert(u"ocr_attempts"_s, attempts);
+            } else {
+            QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, window->property("pluginsPage")), Q_ARG(QVariant, QVariant(0)));
+            settle(window, 3);
+            report.insert(u"recovery_before"_s, editor->plugins()->recoveryMessage());
+            if (args.contains(u"--install-gallery"_s)) {
+                auto requests = std::make_shared<int>(0);
+                const auto connection = QObject::connect(editor->plugins(), &PluginSettings::confirmationNeeded, editor,
+                    [requests](const QVariantMap&) { ++*requests; });
+                const auto disconnect = qScopeGuard([&] { QObject::disconnect(connection); });
+                auto* gallery = editor->plugins()->gallery();
+                QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, window->property("pluginsPage")), Q_ARG(QVariant, QVariant(1)));
+                gallery->setActive(true);
+                QElapsedTimer waiting;
+                waiting.start();
+                while (gallery->fetching() && waiting.elapsed() < 15000)
+                    pump(20);
+                const QString id = valueAfter(args, u"--install-gallery");
+                settle(window, 3);
+                QObject* install = visualNamed(window->contentItem(), u"installPlugin-"_s + id);
+                if (!install || !install->property("enabled").toBool())
+                    return 4;
+                QMetaObject::invokeMethod(install, "clicked");
+                while (gallery->downloading() && waiting.elapsed() < 15000)
+                    pump(20);
+                report.insert(u"permission_requests"_s, *requests);
+                report.insert(u"enabled_before_consent"_s, QSettings(Settings::filePath(), QSettings::IniFormat).value(u"Plugin."_s + id + u"/Enabled"_s).toBool());
+                settle(window, 3);
+                if (!saveGrab(window, out.filePath(u"install-permission.png"_s)))
+                    return 4;
+                if (args.contains(u"--approve-install"_s))
+                    editor->plugins()->confirmEnable(id);
+                else
+                    editor->plugins()->declineEnable(id);
+                report.insert(u"enabled_after_consent"_s, QSettings(Settings::filePath(), QSettings::IniFormat).value(u"Plugin."_s + id + u"/Enabled"_s).toBool());
+            }
+            if (args.contains(u"--retry-index"_s)) {
+                _wputenv_s(L"WINSHUN_PLUGIN_INDEX", valueAfter(args, u"--retry-index").toStdWString().c_str());
+                QObject* retry = visualNamed(window->contentItem(), u"retryPluginRecovery"_s);
+                if (!retry)
+                    return 4;
+                QMetaObject::invokeMethod(retry, "clicked");
+            }
+            if (args.contains(u"--local-package"_s))
+                editor->plugins()->install(valueAfter(args, u"--local-package"));
+            QElapsedTimer waiting;
+            waiting.start();
+            while (editor->plugins()->recovering() && waiting.elapsed() < 15000)
+                pump(20);
+            const bool captureInstalled = QFileInfo::exists(Settings::profile() + u"/plugins/winshun.capture/plugin.json"_s);
+            const auto captureRunning = [&] {
+                auto* list = editor->plugins()->list();
+                for (int row = 0; row < list->rowCount(); ++row) {
+                    const QModelIndex at = list->index(row);
+                    if (list->data(at, PluginListModel::IdRole).toString() == u"winshun.capture")
+                        return list->data(at, PluginListModel::StatusRole).toString().startsWith(PluginSettings::tr("运行中"));
+                }
+                return false;
+            };
+            const QString readyFile = valueAfter(args, u"--probe-ready-file");
+            waiting.restart();
+            while (captureInstalled && (!captureRunning() || (!readyFile.isEmpty() && !QFileInfo::exists(readyFile)))
+                && waiting.elapsed() < 5000)
+                pump(20);
+            report.insert(u"recovery_after"_s, editor->plugins()->recoveryMessage());
+            report.insert(u"recovering"_s, editor->plugins()->recovering());
+            report.insert(u"capture_installed"_s, captureInstalled);
+            report.insert(u"capture_running"_s, captureRunning());
+            QSettings capture(Settings::profile() + u"/plugins/winshun.capture.data/capture.ini"_s, QSettings::IniFormat);
+            report.insert(u"capture_hotkey"_s, capture.value(u"Capture/Hotkey"_s).toString());
+            if (!saveGrab(window, out.filePath(u"runtime-recovery.png"_s)))
+                return 4;
+            }
+        }
+        report.insert(u"warnings"_s, g_warnings);
+    }
+    QFile json(out.filePath(u"runtime.json"_s));
+    const bool saved = json.open(QIODevice::WriteOnly) && json.write(QJsonDocument(report).toJson()) > 0;
+    if (!forgetRuntimeIdentity()) {
+        qWarning("runtime probe: could not forget its temporary LocalSend identity; profile kept at %s", qPrintable(Settings::profile()));
+        return 4;
+    }
+    QDir(Settings::profile()).removeRecursively();
+    say(u"production App startup: isolated profile, %1 process(es), %2 MiB private, %3 warning(s)"_s
+        .arg(report.value(u"processes"_s).toArray().size()).arg(report.value(u"total_private_bytes"_s).toDouble() / 1048576.0, 0, 'f', 1).arg(g_warnings));
     return saved ? std::min(g_warnings, 100) : 4;
 }
 
@@ -2272,7 +3838,7 @@ int runAiCards(const QStringList& args)
 
 bool wanted(const QStringList& args)
 {
-    return args.contains(kFlag) || args.contains(kSettingsFlag) || args.contains(kResultsFlag) || args.contains(kAiCardsFlag);
+    return args.contains(kFlag) || args.contains(kSettingsFlag) || args.contains(kResultsFlag) || args.contains(kAiCardsFlag) || args.contains(kRuntimeFlag);
 }
 
 void note(const QString& line)
@@ -2282,8 +3848,10 @@ void note(const QString& line)
 
 void prepare(const QStringList& args)
 {
+    if (args.contains(kRuntimeFlag))
+        qputenv("QT_D3D_NO_VBLANK_THREAD", "1"); // the production startup's renderer setting
     const bool resultsMode = args.contains(kResultsFlag);
-    const QString folder = valueAfter(args, resultsMode ? kResultsFlag : args.contains(kAiCardsFlag) ? kAiCardsFlag : kSettingsFlag);
+    const QString folder = valueAfter(args, args.contains(kRuntimeFlag) ? kRuntimeFlag : resultsMode ? kResultsFlag : args.contains(kAiCardsFlag) ? kAiCardsFlag : kSettingsFlag);
     if (!folder.isEmpty()) {
         QDir().mkpath(folder);
         g_logPath = QDir(folder).filePath(u"preview.log"_s);
@@ -2297,7 +3865,7 @@ void prepare(const QStringList& args)
     qputenv("QT_SCALE_FACTOR", valueAfter(args, u"--scale", u"1"_s).toLatin1());
     const bool webForm = args.contains(u"--web-form"_s);
     // --renderer d3d11: the window as the desktop shows it (for counting edge pixels), not the software renderer's.
-    const bool nativeWeb = (webForm || args.contains(QString(kSettingsFlag))) && valueAfter(args, u"--renderer") == u"d3d11";
+    const bool nativeWeb = (webForm || args.contains(QString(kSettingsFlag)) || args.contains(kRuntimeFlag)) && valueAfter(args, u"--renderer") == u"d3d11";
     if (nativeWeb)
         qputenv("QSG_RHI_BACKEND", "d3d11");
     if (resultsMode || nativeWeb)
@@ -2314,7 +3882,17 @@ int run(const QStringList& args)
     const bool settingsMode = args.contains(kSettingsFlag);
     const bool resultsMode = args.contains(kResultsFlag);
     const bool cardsMode = args.contains(kAiCardsFlag);
-    if (valueAfter(args, resultsMode ? kResultsFlag : cardsMode ? kAiCardsFlag : settingsMode ? kSettingsFlag : kFlag).isEmpty()) {
+    const bool runtimeMode = args.contains(kRuntimeFlag);
+    // QML singletons may still watch components/ after the window and its
+    // controller are gone. Clean up only after the preview's engine unwinds.
+    const QString profile = Settings::profile();
+    const auto cleanup = qScopeGuard([profile, runtimeMode] {
+        const QFileInfo folder(profile);
+        if (!runtimeMode && folder.fileName().startsWith(u"WinShun-preview-")
+            && QDir::cleanPath(folder.absolutePath()).compare(QDir::cleanPath(QDir::tempPath()), Qt::CaseInsensitive) == 0)
+            QDir(profile).removeRecursively();
+    });
+    if (valueAfter(args, runtimeMode ? kRuntimeFlag : resultsMode ? kResultsFlag : cardsMode ? kAiCardsFlag : settingsMode ? kSettingsFlag : kFlag).isEmpty()) {
         std::fprintf(stderr, "usage: WinShun --preview-plugins <file.png> [--dark] [--scale 1.5] [--dialog] [--page ai]\n"
                              "       WinShun --preview-settings <folder> [--dark] [--scale 1.5] [--tree] [--edges] [--renderer d3d11]\n");
         return 2;
@@ -2323,7 +3901,7 @@ int run(const QStringList& args)
     g_edges = args.contains(u"--edges"_s) || args.contains(u"--tree"_s);
     QGuiApplication::styleHints()->setColorScheme(args.contains(u"--dark"_s) ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
     SystemTheme::setBackdropAvailable(false); // plain colours, as a window without Mica
-    return resultsMode ? runResults(args) : cardsMode ? runAiCards(args) : settingsMode ? runSettings(args) : runPlugins(args);
+    return runtimeMode ? runRuntime(args) : resultsMode ? runResults(args) : cardsMode ? runAiCards(args) : settingsMode ? runSettings(args) : runPlugins(args);
 }
 
 } // namespace ws::preview

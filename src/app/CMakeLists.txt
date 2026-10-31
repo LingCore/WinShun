@@ -99,12 +99,6 @@ qt_add_executable(WinShun WIN32
     platform/SiteIcons.cpp platform/SiteIcons.h
     platform/RegistryWatch.cpp platform/RegistryWatch.h
     platform/SettingBroadcast.cpp platform/SettingBroadcast.h
-    platform/SwitchAudio.cpp platform/SwitchAudio.h
-    platform/SwitchExplorer.cpp platform/SwitchExplorer.h
-    platform/SwitchKeepAwake.cpp platform/SwitchKeepAwake.h
-    platform/SwitchRadios.cpp platform/SwitchRadios.h
-    platform/SwitchTheme.cpp platform/SwitchTheme.h
-    platform/SystemSwitches.cpp platform/SystemSwitches.h
     platform/TypeToSearch.cpp platform/TypeToSearch.h
     platform/TaskbarSearch.cpp platform/TaskbarSearch.h
     platform/TaskbarSearchBox.cpp platform/TaskbarSearchBox.h
@@ -300,6 +294,12 @@ qt_add_qml_module(WinShun
 # The screenshot's words are the plugin's (src/capture-plugin/i18n/capture_en.ts).
 qt_add_lupdate(WinShun
     TS_FILES i18n/winshun_en.ts
+    SOURCES
+        ../switches-plugin/platform/SwitchAudio.h ../switches-plugin/platform/SwitchAudio.cpp
+        ../switches-plugin/platform/SwitchExplorer.h ../switches-plugin/platform/SwitchExplorer.cpp
+        ../switches-plugin/platform/SwitchKeepAwake.h ../switches-plugin/platform/SwitchKeepAwake.cpp
+        ../switches-plugin/platform/SwitchRadios.h ../switches-plugin/platform/SwitchRadios.cpp
+        ../switches-plugin/platform/SwitchTheme.h ../switches-plugin/platform/SwitchTheme.cpp
     OPTIONS -source-language zh_CN -no-obsolete -locations none)
 # lrelease reads its arguments in the ANSI code page, which mangles a Chinese
 # path (this project's folder) unless Windows uses a Chinese one; so not
