@@ -14,6 +14,9 @@
 #ifndef OutputDir
   #define OutputDir "..\dist"
 #endif
+#ifndef PackageSuffix
+  #define PackageSuffix ""
+#endif
 
 #define AppName "Win顺"
 #define AppExe "WinShun.exe"
@@ -82,7 +85,7 @@ ShowLanguageDialog=no
 LanguageDetectionMethod=uilanguage
 
 OutputDir={#OutputDir}
-OutputBaseFilename=WinShun-{#AppVersion}-x64-setup
+OutputBaseFilename=WinShun-{#AppVersion}-x64{#PackageSuffix}-setup
 Compression=lzma2/ultra64
 SolidCompression=yes
 
@@ -140,8 +143,14 @@ chinesesimplified.AiTool=AI 工具
 ; them): %1 is the list, one per line.
 english.FilesInUseTitle=Some programs are still using WinShun's files
 chinesesimplified.FilesInUseTitle=还有程序在用 Win顺 的文件
-english.FilesInUse=While these are open, Setup cannot replace WinShun's files:%n%n%1%nClose them, then click Try again. One that runs as administrator has to be closed where it runs.
-chinesesimplified.FilesInUse=这些程序开着，Win顺 的文件就换不了：%n%n%1%n请先关掉它们，再点“重试”。%n以管理员身份运行的，要在它那边关。
+english.FilesInUse=These programs may be using WinShun's files:%n%n%1%nClose programs that prevent the update, then retry. If security software is only reading the files, you can try installing. Setup will ask if a file really cannot be replaced.
+chinesesimplified.FilesInUse=这些程序可能正在访问 Win顺 的文件：%n%n%1%n请关闭阻止更新的程序后重试。如果只是安全软件读取文件，可以尝试安装；实际无法替换文件时会再提示处理。
+english.FilesRetry=&Retry
+chinesesimplified.FilesRetry=重新检测(&R)
+english.FilesTryInstall=&Try installing
+chinesesimplified.FilesTryInstall=尝试安装(&I)
+english.FilesCancel=&Cancel
+chinesesimplified.FilesCancel=取消安装(&C)
 english.FilesInUseAi=%1 (connected to WinShun)
 chinesesimplified.FilesInUseAi=%1（连着 Win顺）
 english.FilesNotFreed=Other programs are still using WinShun's files, so nothing was installed. Close them and run Setup again.
@@ -179,12 +188,16 @@ Source: "{#SourceDir}\WinShunService.exe"; DestDir: "{app}"; Flags: ignoreversio
 Source: "{#SourceDir}\WinShunMcp.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [InstallDelete]
+; The full regular face covers the original characters; Qt synthesizes bold.
+Type: files; Name: "{app}\fonts\AlibabaPuHuiTi-3-85-Bold.ttf"
 ; Plugins that came with an earlier Win顺 and are in the plugin library now
 ; (GitHub #138): an upgrade would leave their old folders in plugins\, and
 ; Win顺 would go on taking them for bundled ones. Who had one on gets it
 ; from the library at the next start (MovedPlugins), settings kept.
 Type: filesandordirs; Name: "{app}\plugins\winshun.localsend"
 Type: filesandordirs; Name: "{app}\plugins\winshun.semantic"
+Type: filesandordirs; Name: "{app}\plugins\winshun.translate"
+Type: filesandordirs; Name: "{app}\plugins\winshun.bookmarks"
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
@@ -1208,7 +1221,7 @@ end;
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   Tools, Holders: String;
-  Tries, ResultCode: Integer;
+  Tries, ResultCode, Choice: Integer;
 begin
   // AI tools using Win顺 are asked about before anything is closed (GitHub
   // #97). A silent Setup (an update run by a script) goes on, as before.
@@ -1249,9 +1262,25 @@ begin
     // let go when WebClient gives the request up (~61 s, see pitfalls.md).
     if (Tries < 2) or (WizardSilent() and (Tries < 90)) then
       Sleep(1000)
-    else if WizardSilent() or (TaskDialogMsgBox(CustomMessage('FilesInUseTitle'),
-      FmtMessage(CustomMessage('FilesInUse'), [Holders]), mbError, MB_RETRYCANCEL, [], 0) <> IDRETRY) then
-      break;
+    else if WizardSilent() then
+      break
+    else
+    begin
+      // Restart Manager also lists readers that allow replacement, such as
+      // antivirus software (#97). This choice bypasses only that advisory
+      // list: Inno Setup still handles real write/sharing failures normally.
+      Choice := TaskDialogMsgBox(CustomMessage('FilesInUseTitle'),
+        FmtMessage(CustomMessage('FilesInUse'), [Holders]), mbInformation, MB_ABORTRETRYIGNORE, [
+        CustomMessage('FilesRetry'), CustomMessage('FilesTryInstall'), CustomMessage('FilesCancel')], 0);
+      if Choice = IDIGNORE then
+      begin
+        Log('User chose to attempt installation despite Restart Manager file users: ' + Holders);
+        Holders := '';
+        break;
+      end;
+      if Choice <> IDRETRY then
+        break;
+    end;
   until False;
   if Holders <> '' then
   begin
