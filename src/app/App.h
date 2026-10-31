@@ -59,6 +59,7 @@ class DialogJump;
 class Favorites;
 class FilePreview;
 class DropPie;
+class DropPieHelper;
 class FolderMenu;
 class SystemCatalog;
 class History;
@@ -642,6 +643,7 @@ private:
     std::unique_ptr<FolderMenu> m_folderMenu; // before the window: its view-model
     QPointer<QQuickWindow> m_folderMenuWindow;
     std::unique_ptr<DropPie> m_dropPie; // before the window: its view-model
+    std::unique_ptr<DropPieHelper> m_dropPieHelper;
     QPointer<QQuickWindow> m_dropPieWindow;
     QStringList m_doubleCtrlIgnoredLogged; // "program reason", logged once each: a game gets many
     std::unique_ptr<DialogJump> m_dialogJump; // file dialogs: Ctrl+G, the bar; after m_messages, which has the hotkey

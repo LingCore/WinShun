@@ -37,6 +37,7 @@ endforeach()
 
 qt_add_executable(WinShun WIN32
     main.cpp
+    DropPieHelper.cpp DropPieHelper.h
     AiSettings.cpp AiSettings.h
     App.cpp App.h
     CommandLine.cpp CommandLine.h

@@ -166,7 +166,7 @@ QFont fontOf(int pixelSize, bool bold = false)
     QFont font = QGuiApplication::font(); // what a QML Text uses unless told otherwise
     font.setPixelSize(std::max(1, pixelSize));
     if (bold)
-        font.setWeight(QFont::DemiBold);
+        font.setWeight(QFont::Bold);
     return font;
 }
 
@@ -242,21 +242,26 @@ void DropPie::setWindow(QQuickWindow* window)
 // Qt registered its own drop target when it made the window: ours in its
 // place. Qt never registers again unless the window is made anew (then its
 // handle is another), so this is looked at before every showing.
-void DropPie::takeDropSite()
+bool DropPie::takeDropSite()
 {
     if (!m_window)
-        return;
+        return false;
     const auto hwnd = reinterpret_cast<HWND>(m_window->winId());
     if (hwnd == m_hwnd && m_target)
-        return;
+        return true;
     if (m_target)
         m_target->detach();
     ::RevokeDragDrop(hwnd);
     m_target = Microsoft::WRL::Make<piedrop::DropTarget>(static_cast<piedrop::Handler*>(this));
     const HRESULT hr = m_target ? ::RegisterDragDrop(hwnd, m_target.Get()) : E_OUTOFMEMORY;
-    if (FAILED(hr))
+    if (FAILED(hr)) {
         qWarning().noquote() << u"Drop pie: could not take the window's drops (0x%1)"_s.arg(static_cast<quint32>(hr), 8, 16, u'0');
+        m_target.Reset();
+        m_hwnd = nullptr; // retry at the next summon instead of remembering a failed registration
+        return false;
+    }
     m_hwnd = hwnd;
+    return true;
 }
 
 // Shown once, a pixel big, until its first frame: the graphics are set up
@@ -349,7 +354,11 @@ void DropPie::open(POINT pt)
     emit stateChanged();
 
     m_window->setGeometry(rect);
-    takeDropSite();
+    if (!takeDropSite()) {
+        hide("drop registration failed");
+        if (m_notify) m_notify(tr("收藏圆盘未打开"), tr("暂时无法接收文件拖放，请松开鼠标后重试。"));
+        return;
+    }
     m_window->show();
     m_window->raise();
     m_shownAt = pt;

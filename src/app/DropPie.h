@@ -99,6 +99,7 @@ public:
     // drop target here, then shown once out of sight so that its first
     // real showing is not slowed by the graphics' setting up.
     void setWindow(QQuickWindow* window);
+    bool dropReady() const noexcept { return m_hwnd && m_target; }
 
     // From the listener thread (KeyListener::Callbacks): during an OLE drag
     // at `pt` (physical pixels), whose source has captured the mouse with
@@ -129,7 +130,7 @@ public:
     QString statusHint() const { return m_statusHint; }
 
     // `text` shortened in its middle with "…" to `width` logical pixels, in
-    // the application's font at `pixelSize` (DemiBold if `bold`): the same
+    // the application's font at `pixelSize` (Bold if `bold`): the same
     // fitter as the chips' labels, for the line under them.
     Q_INVOKABLE QString elide(const QString& text, int pixelSize, bool bold, qreal width) const;
 
@@ -160,7 +161,7 @@ private:
     DWORD reveal(DWORD keys, POINT pt);
     void hide(const char* why);
     void nudge() const;
-    void takeDropSite();
+    bool takeDropSite();
     void prewarm();
     void gatherFolders(); // favorites -> m_folders, places resolved on the worker
     void checkFolders(); // which local ones are missing, on the worker

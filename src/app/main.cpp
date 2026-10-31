@@ -3,6 +3,7 @@
 #include "Diagnostics.h"
 #include "FileIconProvider.h"
 #include "DisplayDiagnostics.h"
+#include "DropPieHelper.h"
 #include "Backup.h"
 #include "Migration.h"
 #include "Phosphor.h"
@@ -278,6 +279,7 @@ int main(int argc, char* argv[])
             ws::Settings::useProfile(folder);
     }
     const bool preview = ws::preview::wanted(wideArgs);
+    const bool pieHelper = wideArgs.contains(u"--drop-pie-helper"_s);
     if (preview)
         ws::preview::prepare(wideArgs);
     if (ws::Settings::profile().isEmpty())
@@ -294,7 +296,7 @@ int main(int argc, char* argv[])
     if (setPlatform)
         qputenv("QT_QPA_PLATFORM", ws::Settings::resolveRenderer(ws::Settings::storedRenderer()) == u"software"
                                        ? "windows:fontengine=gdi" : "windows:fontengine=freetype");
-    if (preview) {
+    if (preview || pieHelper) {
         // A picture of a settings page, and nothing else: before the single
         // instance below, which would hand the arguments to the running copy.
         ws::preview::note(u"making the application"_s);
@@ -307,6 +309,7 @@ int main(int argc, char* argv[])
         applyUiFont();
         ws::phosphor::loadFonts();
         setWindowIcon();
+        if (pieHelper) return ws::runDropPieHelper(wideArgs);
         return ws::preview::run(wideArgs);
     }
 

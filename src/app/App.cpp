@@ -17,6 +17,7 @@
 #include "FilePreview.h"
 #include "ThumbnailProvider.h"
 #include "DropPie.h"
+#include "DropPieHelper.h"
 #include "FolderMenu.h"
 #include "History.h"
 #include "Host.h"
@@ -3478,6 +3479,17 @@ void App::applyFolderMenu()
 // administrator, where drops from the user's programs cannot reach it (UIPI).
 void App::applyDropPie()
 {
+    if (m_settings.dropPie && integrity::processElevated()) {
+        if (!m_dropPieHelper) {
+            auto notify = [this](const QString& title, const QString& text) {
+                if (m_messages) m_messages->showNotification(title, text);
+            };
+            m_dropPieHelper = std::make_unique<DropPieHelper>(m_favorites.get(), std::move(notify));
+        }
+        m_dropPieHelper->update(m_settings);
+    } else {
+        m_dropPieHelper.reset();
+    }
     const bool on = m_settings.dropPie && !integrity::processElevated();
     if (!on && m_dropPie && m_dropPie->inDrop()) {
         // Switched off from inside its drop (a dialog's loop): once it returns.
