@@ -1562,6 +1562,315 @@ private slots:
         QCOMPARE(sink.names(), QStringList {u"second level"_s});
     }
 
+    void mergeKeywordPartialIdentities()
+    {
+        Fixture f;
+        installThree(f);
+        ListSink sink;
+        Merge merge(sink, f.host->catalog());
+        merge.begin(1, u"aa x"_s, u"test.a"_s, u"main"_s);
+        merge.results(1, u"test.a"_s, u"main"_s,
+            {scoredItem({}, u"A"_s, 50), scoredItem(u"named"_s, u"named"_s, 50)}, true, false);
+        const QString first = sink.rows[0].path;
+        merge.results(1, u"test.a"_s, u"main"_s,
+            {scoredItem({}, u"B"_s, 50), scoredItem(u"named"_s, u"duplicate"_s, 50)}, true, false);
+        QCOMPARE(sink.names(), (QStringList {u"A"_s, u"named"_s, u"B"_s}));
+        QVERIFY(sink.rows[2].path != first);
+        merge.results(1, u"test.a"_s, u"main"_s, {scoredItem({}, u"replacement"_s, 50)}, false, true);
+        QCOMPARE(sink.count(), 1);
+        QCOMPARE(sink.rows[0].path, first);
+        Items many;
+        for (int i = 0; i < kMaxItems; ++i)
+            many.append(scoredItem(QString::number(i), u"row"_s, 50));
+        merge.results(1, u"test.a"_s, u"main"_s, many, true, false);
+        QCOMPARE(sink.count(), kMaxItems);
+        merge.results(1, u"test.a"_s, u"main"_s, {scoredItem({}, u"overflow"_s, 50)}, true, false);
+        QCOMPARE(sink.count(), kMaxItems);
+    }
+
+    void installPreservesNeighborAndDataFolders()
+    {
+        Fixture f;
+        const QString userDir = f.dir.path() + u"/plugins"_s;
+        const QString source = f.dir.path() + u"/source"_s;
+        QVERIFY(writeFile(source + u"/plugin.json"_s, zeroManifest(u"test.inst"_s, u"1.0.0"_s)));
+        QVERIFY(writeFile(userDir + u"/test.inst.old/plugin.json"_s, zeroManifest(u"test.inst.old"_s, u"1.0.0"_s)));
+        const auto candidate = install::inspect(source);
+        QVERIFY(candidate && candidate->manifest);
+        QString error;
+        for (int i = 0; i < 2; ++i) {
+            QVERIFY2(!install::place(*candidate, userDir, &error).isEmpty(), qPrintable(error));
+            QVERIFY(QFileInfo::exists(userDir + u"/test.inst.old/plugin.json"_s));
+        }
+        // A previous version could use a data-folder name as a plugin id.
+        // Removing another plugin must leave that program alone.
+        QVERIFY(writeFile(userDir + u"/test.inst.data/plugin.json"_s, "old plugin"));
+        QVERIFY(!install::remove(userDir, {}, u"test.inst"_s, true).isEmpty());
+        QVERIFY(QFileInfo::exists(userDir + u"/test.inst.data/plugin.json"_s));
+        QVERIFY(!Manifest::parse(zeroManifest(u"test.inst.data"_s, u"1.0.0"_s), &error));
+        // An unrelated folder is never an installed version to replace.
+        QVERIFY(writeFile(userDir + u"/test.other/valuable.txt"_s, "kept"));
+        QVERIFY(writeFile(source + u"/plugin.json"_s, zeroManifest(u"test.other"_s, u"1.0.0"_s)));
+        const auto other = install::inspect(source);
+        QVERIFY(other && other->manifest);
+        QVERIFY(install::place(*other, userDir, &error).isEmpty());
+        QVERIFY(QFileInfo::exists(userDir + u"/test.other/valuable.txt"_s));
+    }
+
+    void keywordWinsOverOtherTriggers_data()
+    {
+        QTest::addColumn<QString>("mode");
+        QTest::newRow("resident") << u"resident"_s;
+        QTest::newRow("once") << u"once"_s;
+    }
+
+    void keywordWinsOverOtherTriggers()
+    {
+        QFETCH(QString, mode);
+        Fixture f;
+        Spec spec;
+        spec.mode = mode;
+        spec.role = mode == u"once" ? u"--once"_s : u"--serve"_s;
+        spec.runtimeExtra = {{u"debounceMs"_s, 0}};
+        spec.commands = {
+            QJsonObject {{u"id"_s, u"main"_s}, {u"keyword"_s, u"fk"_s}},
+            QJsonObject {{u"id"_s, u"secondary"_s}, {u"triggers"_s, QJsonArray {
+                QJsonObject {{u"type"_s, u"regex"_s}, {u"regex"_s, u"^fk.*$"_s}}}}}};
+        QVERIFY(!f.install(spec).isEmpty());
+        for (std::uint64_t id : {1u, 2u}) {
+            QVERIFY(f.host->query(u"fk text"_s, Scope::All, id));
+            QVERIFY2(f.waitFinal(id), qPrintable(f.logs.join(u'\n')));
+            QCOMPARE(f.finalFor(id)->command, u"main"_s);
+        }
+    }
+
+    void disabledOnceCannotFinish_data()
+    {
+        QTest::addColumn<bool>("action");
+        QTest::addColumn<int>("cause");
+        for (const bool action : {false, true}) {
+            for (int cause = 0; cause < 3; ++cause)
+                QTest::newRow(qPrintable(QString::number(action) + u'-' + QString::number(cause))) << action << cause;
+        }
+    }
+
+    void disabledOnceCannotFinish()
+    {
+        QFETCH(bool, action);
+        QFETCH(int, cause);
+        Fixture f;
+        Spec spec;
+        spec.mode = u"once"_s;
+        spec.role = u"--once"_s;
+        spec.args = {u"--slow"_s, u"2000"_s};
+        spec.runtimeExtra = {{u"debounceMs"_s, 0}, {u"timeoutMs"_s, 5000}};
+        const QString folder = f.install(spec);
+        QVERIFY(!folder.isEmpty());
+        if (action)
+            f.host->action(77, spec.id, u"main"_s, u"default"_s, QJsonObject {}, {});
+        else
+            QVERIFY(f.host->query(u"fk x"_s, Scope::All, 1));
+        QVERIFY(QTest::qWaitFor([&] { return !f.startedPids.empty(); }, 5000));
+        if (cause == 0)
+            f.host->setEnabled(spec.id, false);
+        else if (cause == 1) {
+            QVERIFY(QFile::remove(folder + u"/plugin.json"_s));
+            f.host->catalog().scan();
+        } else {
+            f.host->catalog().setConfirmed({{spec.id, {}}});
+            spec.permissions = {u"network"_s};
+            QVERIFY(writeFile(folder + u"/plugin.json"_s, manifestFor(spec)));
+            f.host->catalog().scan();
+        }
+        QVERIFY2(processGone(f.startedPids[0], 700), "an unavailable plugin must stop promptly");
+        QVERIFY(QTest::qWaitFor([&] { return action ? !f.actions.empty() : !f.failures.empty(); }, 1000));
+        QCOMPARE(f.results.size(), 0u);
+        if (action) {
+            QCOMPARE(f.actions.size(), 1u);
+            QVERIFY(!f.actions[0].ok);
+        } else
+            QCOMPARE(f.failures.size(), 1u);
+    }
+
+    void disabledDebounceEndsQuery()
+    {
+        Fixture f;
+        Spec spec;
+        spec.mode = u"once"_s;
+        spec.role = u"--once"_s;
+        spec.runtimeExtra = {{u"debounceMs"_s, 300}};
+        QVERIFY(!f.install(spec).isEmpty());
+        QVERIFY(f.host->query(u"fk x"_s, Scope::All, 1));
+        f.host->setEnabled(spec.id, false);
+        QVERIFY(f.waitFailure(1, 500));
+        QVERIFY(f.startedPids.empty());
+        QVERIFY(f.results.empty());
+        QCOMPARE(f.failures.size(), 1u);
+    }
+
+    void onceRerunCancelledFromResult()
+    {
+        Fixture f;
+        Spec spec;
+        spec.mode = u"once"_s;
+        spec.role = u"--once"_s;
+        spec.args = {u"--rerun"_s, u"0.2"_s};
+        spec.runtimeExtra = {{u"debounceMs"_s, 0}};
+        QVERIFY(!f.install(spec).isEmpty());
+        QObject::connect(f.host.get(), &Host::results, f.host.get(), [&] { f.host->cancelAll(); });
+        QVERIFY(f.host->query(u"fk x"_s, Scope::All, 1));
+        QVERIFY(f.waitFinal(1));
+        QTest::qWait(1300);
+        QCOMPARE(f.startedPids.size(), 1u);
+        QCOMPARE(f.results.size(), 1u);
+    }
+
+    void onceTotalOutputIsBounded()
+    {
+        Fixture f;
+        Spec spec;
+        spec.mode = u"once"_s;
+        spec.role = u"--once"_s;
+        spec.args = {u"--many-lines"_s, u"5000"_s}; // 20 MiB in small lines
+        spec.runtimeExtra = {{u"debounceMs"_s, 0}, {u"timeoutMs"_s, 5000}};
+        QVERIFY(!f.install(spec).isEmpty());
+        QVERIFY(f.host->query(u"fk x"_s, Scope::All, 1));
+        QVERIFY2(f.waitFailure(1), qPrintable(f.logs.join(u'\n')));
+        QVERIFY(f.failureOf(1).contains(u"16 MB"_s));
+        QCOMPARE(f.failures.size(), 1u);
+        QVERIFY(f.results.empty());
+        spec.args.clear();
+        QVERIFY(!f.install(spec).isEmpty());
+        QVERIFY(f.host->query(u"fk normal"_s, Scope::All, 2));
+        QVERIFY(f.waitFinal(2));
+    }
+
+    void queryCache_data()
+    {
+        QTest::addColumn<QString>("mode");
+        QTest::addColumn<bool>("manifestCache");
+        QTest::newRow("resident-result") << u"resident"_s << false;
+        QTest::newRow("resident-manifest") << u"resident"_s << true;
+        QTest::newRow("once-result") << u"once"_s << false;
+        QTest::newRow("once-manifest") << u"once"_s << true;
+    }
+
+    void queryCacheEvictsLargeAnswers()
+    {
+        Fixture f;
+        Spec spec;
+        spec.mode = u"once"_s;
+        spec.role = u"--once"_s;
+        spec.args = {u"--cache"_s, u"60"_s, u"--payload"_s, u"800000"_s};
+        spec.runtimeExtra = {{u"debounceMs"_s, 0}};
+        QVERIFY(!f.install(spec).isEmpty());
+        for (std::uint64_t id = 1; id <= 3; ++id) {
+            QVERIFY(f.host->query(u"fk "_s + QString::number(id), Scope::All, id));
+            QVERIFY(f.waitFinal(id));
+        }
+        QCOMPARE(f.startedPids.size(), 3u);
+        QVERIFY(f.host->query(u"fk 3"_s, Scope::All, 4));
+        QVERIFY(f.waitFinal(4));
+        QCOMPARE(f.startedPids.size(), 3u); // newest is still cached
+        QVERIFY(f.host->query(u"fk 1"_s, Scope::All, 5));
+        QVERIFY(f.waitFinal(5));
+        QCOMPARE(f.startedPids.size(), 4u); // oldest evicted by the memory budget
+    }
+
+    void queryCache()
+    {
+        QFETCH(QString, mode);
+        QFETCH(bool, manifestCache);
+        Fixture f;
+        Spec spec;
+        spec.mode = mode;
+        spec.role = mode == u"once" ? u"--once"_s : u"--serve"_s;
+        spec.runtimeExtra = {{u"debounceMs"_s, 0}};
+        if (manifestCache)
+            spec.commandExtra = {{u"cache"_s, 1}};
+        else
+            spec.args = {u"--cache"_s, u"1"_s};
+        QVERIFY(!f.install(spec).isEmpty());
+        int sent = 0;
+        f.host->setDeveloperMode(true);
+        QObject::connect(f.host.get(), &Host::traced, f.host.get(), [&](const QString&, const QString& direction,
+            const QString&, const QString& detail, int) {
+            if (direction == u"→" && detail.contains(u"\"method\":\"query\""_s))
+                ++sent;
+        });
+        const auto asks = [&] { return mode == u"once" ? int(f.startedPids.size()) : sent; };
+        QVERIFY(f.host->query(u"fk repeat"_s, Scope::All, 1));
+        QVERIFY(f.waitFinal(1));
+        QCOMPARE(asks(), 1);
+        QVERIFY(f.host->query(u"fk repeat"_s, Scope::All, 2));
+        QVERIFY(f.waitFinal(2));
+        QCOMPARE(asks(), 1); // no process start, pipe round trip or network request
+        const QJsonObject filters {{u"type"_s, u"image"_s}};
+        QVERIFY(f.host->query(u"fk repeat"_s, Scope::All, 3, filters));
+        QVERIFY(f.waitFinal(3));
+        QCOMPARE(asks(), 2);
+        f.host->setPluginSettings(spec.id, {{u"changed"_s, true}});
+        QVERIFY(f.host->query(u"fk repeat"_s, Scope::All, 4, filters));
+        QVERIFY(f.waitFinal(4));
+        QCOMPARE(asks(), 3);
+        QTest::qWait(1100);
+        QVERIFY(f.host->query(u"fk repeat"_s, Scope::All, 5, filters));
+        QVERIFY(f.waitFinal(5));
+        QCOMPARE(asks(), 4);
+        f.host->shutdown(false); // all callbacks finish while the counters live
+    }
+
+    void residentActionTimeoutCanIdleExit()
+    {
+        Fixture f;
+        Spec spec;
+        spec.args = {u"--hang-action"_s};
+        spec.runtimeExtra = {{u"timeoutMs"_s, 100}, {u"idleExitSec"_s, 1}};
+        QVERIFY(!f.install(spec).isEmpty());
+        QVERIFY(f.host->query(u"fk x"_s, Scope::All, 1));
+        QVERIFY(f.waitFinal(1));
+        f.host->action(77, spec.id, u"main"_s, u"default"_s, QJsonObject {}, {});
+        QVERIFY(QTest::qWaitFor([&] { return !f.actions.empty(); }, 1000));
+        QCOMPARE(f.actions.size(), 1u);
+        QVERIFY(!f.actions[0].ok);
+        QVERIFY(QTest::qWaitFor([&] { return !f.exitCodes.empty(); }, 3000));
+        QCOMPARE(f.actions.size(), 1u);
+    }
+
+    void runnerCrashReleasesHotkeysAndWork()
+    {
+        Fixture f;
+        f.host->setBackoffScale(1);
+        Spec spec;
+        spec.args = {u"--hotkeys"_s, u"--tool"_s, u"index_status"_s};
+        spec.runtimeExtra = {{u"timeoutMs"_s, 5000}};
+        QVERIFY(!f.install(spec).isEmpty());
+        QStringList hotkeys;
+        QObject::connect(f.host.get(), &Host::hotkeysChanged, f.host.get(), [&](const QString&, const QStringList& keys) { hotkeys = keys; });
+        std::uint64_t call = 0;
+        int cancelled = 0;
+        ToolBridge bridge;
+        bridge.known = [](const QString&) { return mcp::ToolHost::Known::Yes; };
+        bridge.call = [&](std::uint64_t id, const QString&, const QString&, const QJsonObject&, auto) { call = id; };
+        bridge.cancel = [&](std::uint64_t id) { if (id == call) ++cancelled; };
+        f.host->setToolBridge(std::move(bridge));
+        QVERIFY(f.host->query(u"fk x"_s, Scope::All, 1));
+        QVERIFY(QTest::qWaitFor([&] { return call && !hotkeys.isEmpty(); }, 5000));
+        int replies = 0;
+        bool success = true;
+        QVERIFY(f.host->request(spec.id, u"unanswered"_s, {}, [&](bool ok, const QJsonValue&) { ++replies; success = ok; }));
+        const DWORD pid = static_cast<DWORD>(f.host->runnerFacts().value(u"pid"_s).toDouble());
+        const HANDLE runner = ::OpenProcess(PROCESS_TERMINATE, FALSE, pid);
+        QVERIFY(runner);
+        const bool ended = ::TerminateProcess(runner, 9);
+        ::CloseHandle(runner);
+        QVERIFY(ended);
+        QVERIFY2(QTest::qWaitFor([&] { return replies == 1 && hotkeys.isEmpty() && cancelled == 1 && f.exitCodes.size() == 1; }, 1000),
+            qPrintable(f.logs.join(u'\n')));
+        QVERIFY(!success);
+        QCOMPARE(f.failures.size(), 1u);
+    }
+
     // ---- installing, removing, secrets (Install.h, Secrets.h) ------------------
     void installFromFolder()
     {
@@ -2295,6 +2604,75 @@ private slots:
         QCOMPARE(answers.size(), now);
     }
 
+    // A resident plugin's debounceMs (翻译, online for every query): asked
+    // only once typing pauses, the process started meanwhile; the keys
+    // before reach it not at all, and a cancel in the pause stops it.
+    void residentDebounce()
+    {
+        Fixture f;
+        Spec spec;
+        spec.runtimeExtra = {{u"debounceMs"_s, 300}};
+        QVERIFY(!f.install(spec).isEmpty());
+        std::vector<std::uint64_t> answered;
+        QObject::connect(f.host.get(), &Host::results, [&](std::uint64_t id, const QString&, const QString&, const Items&, bool partial, bool) {
+            if (!partial)
+                answered.push_back(id);
+        });
+        QElapsedTimer clock;
+        QVERIFY(f.host->query(u"fk a"_s, Scope::All, 1));
+        QTest::qWait(60);
+        QVERIFY(f.host->query(u"fk ab"_s, Scope::All, 2));
+        QTest::qWait(60);
+        clock.start();
+        QVERIFY(f.host->query(u"fk abc"_s, Scope::All, 3));
+        QVERIFY2(f.waitFinal(3), qPrintable(f.logs.join(u'\n')));
+        QVERIFY2(clock.elapsed() >= 280, qPrintable(QString::number(clock.elapsed())));
+        QCOMPARE(answered, std::vector<std::uint64_t> {3});
+        QCOMPARE(f.finalFor(3)->items[0].title, u"serve: abc"_s);
+        // Running now: still only after the pause.
+        clock.restart();
+        QVERIFY(f.host->query(u"fk abcd"_s, Scope::All, 4));
+        QVERIFY(f.waitFinal(4));
+        QVERIFY2(clock.elapsed() >= 280, qPrintable(QString::number(clock.elapsed())));
+        QVERIFY(f.host->query(u"fk x"_s, Scope::All, 5));
+        f.host->cancel(5); // the launcher closed in the pause
+        QTest::qWait(600);
+        QCOMPARE(answered, (std::vector<std::uint64_t> {3, 4}));
+    }
+
+    // The look as it changes, to a plugin with windows ("ui"): with the theme
+    // in use, so Windows turning dark under "system" is heard too; nothing
+    // when nothing changed.
+    void appearanceNotices()
+    {
+        Fixture f;
+        const QJsonObject look {{u"locale"_s, u"zh"_s}, {u"themeSetting"_s, u"system"_s}};
+        f.host->setAppearance(u"zh"_s, u"light"_s, look);
+        Spec spec;
+        spec.permissions = {u"ui"_s};
+        QVERIFY(!f.install(spec).isEmpty());
+        std::uint64_t id = 0;
+        const auto data = [&] {
+            ++id;
+            const bool asked = f.host->query(u"fk a"_s, Scope::All, id) && f.waitFinal(id);
+            return asked ? f.finalFor(id)->items[0].data.toObject() : QJsonObject();
+        };
+        QCOMPARE(data().value(u"appearance"_s).toObject(), look); // initialize's
+        f.host->setAppearance(u"zh"_s, u"dark"_s, look);
+        QJsonObject got = data();
+        QCOMPARE(got.value(u"looks"_s).toInt(), 1);
+        QCOMPARE(got.value(u"appearance"_s).toObject().value(u"theme"_s).toString(), u"dark"_s);
+        QCOMPARE(got.value(u"appearance"_s).toObject().value(u"themeSetting"_s).toString(), u"system"_s);
+        f.host->setAppearance(u"zh"_s, u"dark"_s, look);
+        QCOMPARE(data().value(u"looks"_s).toInt(), 1);
+        QJsonObject english = look;
+        english.insert(u"locale"_s, u"en"_s);
+        f.host->setAppearance(u"en"_s, u"dark"_s, english);
+        got = data();
+        QCOMPARE(got.value(u"looks"_s).toInt(), 2);
+        QCOMPARE(got.value(u"appearance"_s).toObject().value(u"locale"_s).toString(), u"en"_s);
+    }
+
     // A rerun answered too late once: asked again as before, so a list that
     // changes by itself (传's progress) does not freeze until the next key.
     void rerunAfterATimeout()
@@ -3019,6 +3397,45 @@ private slots:
         QCOMPARE(f.startedPids.size(), 2u);
         QVERIFY(static_cast<quint32>(f.host->runnerFacts().value(u"pid"_s).toDouble()) != runnerPid);
         QCOMPARE(f.host->tokenSource(), elevated() ? Runner::TokenSource::Explorer : Runner::TokenSource::Plain);
+    }
+
+    void eagerStartsWithoutQueryAndRestartsWhenEnabled()
+    {
+        Fixture f;
+        Spec spec;
+        spec.runtimeExtra = {{u"start"_s, u"eager"_s}, {u"idleExitSec"_s, 0}};
+        QVERIFY(!f.install(spec).isEmpty());
+        QVERIFY(QTest::qWaitFor([&] { return f.host->state(spec.id).status == Host::State::Status::Running; }, 5000));
+        QCOMPARE(f.startedPids.size(), 1u);
+        QVERIFY(f.results.empty());
+        f.host->catalog().scan();
+        f.host->preload();
+        QCOMPARE(f.startedPids.size(), 1u); // idempotent while already running
+        f.host->setEnabled(spec.id, false);
+        QVERIFY(QTest::qWaitFor([&] { return f.exitCodes.size() == 1; }, 5000));
+        f.host->setEnabled(spec.id, true);
+        QVERIFY(QTest::qWaitFor([&] { return f.startedPids.size() == 2; }, 5000));
+    }
+
+    void eagerWaitsForConsentAndShutdownCancelsQueuedStart()
+    {
+        Fixture f;
+        Spec spec;
+        spec.permissions = {u"notifications"_s};
+        spec.runtimeExtra = {{u"start"_s, u"eager"_s}};
+        QVERIFY(!f.install(spec).isEmpty());
+        QCoreApplication::processEvents();
+        QVERIFY(f.startedPids.empty());
+        f.host->catalog().setConfirmed({{spec.id, spec.permissions}});
+        QVERIFY(QTest::qWaitFor([&] { return !f.startedPids.empty(); }, 5000));
+
+        Fixture stopped;
+        spec.permissions.clear();
+        QVERIFY(!stopped.install(spec).isEmpty());
+        stopped.host->shutdown(false);
+        QCoreApplication::processEvents();
+        stopped.host->preload();
+        QVERIFY(stopped.startedPids.empty());
     }
 
     void idleExit()

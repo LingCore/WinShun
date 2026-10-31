@@ -2,12 +2,12 @@
   "manifest": 1,
   "id": "winshun.bookmarks",
   "name": {"zh": "浏览器书签", "en": "Browser bookmarks"},
-  "version": "1.1.0",
+  "version": "2.0.0",
   "description": {"zh": "bm 词：搜 Chrome 和 Edge 的书签，Enter 打开", "en": "bm words: searches Chrome and Edge bookmarks; Enter opens"},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",
   "license": "MIT",
-  "runtime": {"mode": "once", "program": "python", "script": "main.py", "debounceMs": 100},
+  "runtime": {"mode": "once", "program": "WinShunBookmarks.exe", "debounceMs": 100},
   "permissions": [
     {"files:read": ["%LOCALAPPDATA%\\Google\\Chrome\\User Data\\*\\Bookmarks", "%LOCALAPPDATA%\\Microsoft\\Edge\\User Data\\*\\Bookmarks"]}
   ],

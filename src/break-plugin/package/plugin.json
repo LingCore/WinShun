@@ -1,0 +1,35 @@
+{
+  "manifest": 1,
+  "id": "winshun.break",
+  "name": {"zh": "休息提醒", "en": "Break reminder"},
+  "version": "1.0.0",
+  "description": {"zh": "定时提醒休息：小休看看远处，大休起来走走，可以设成必须休完", "en": "Reminds you to take breaks: look away for a short one, get up for a long one; can be made strict"},
+  "author": "LingCore",
+  "homepage": "https://github.com/LingCore/WinShun",
+  "license": "MIT",
+  "runtime": {"mode": "resident", "program": "WinShunBreak.exe", "start": "eager", "sandbox": "normal", "timeoutMs": 1500, "idleExitSec": 0, "memoryMB": 128},
+  "permissions": ["ui"],
+  "commands": [{
+    "id": "break",
+    "keyword": ["休息", "break"],
+    "title": {"zh": "休息提醒", "en": "Break reminder"},
+    "description": {"zh": "离下次休息还有多久；现在休息、暂停、重新计时", "en": "Time to the next break; a break now, a pause, a new count"},
+    "icon": "glyph:U+E916",
+    "hint": {"zh": "选一项按 Enter", "en": "pick one, Enter"}
+  }],
+  "settings": [
+    {"key": "interval", "type": "number", "title": {"zh": "每隔多少分钟休息一次", "en": "Minutes between breaks"}, "default": 20},
+    {"key": "shortSeconds", "type": "number", "title": {"zh": "小休多少秒", "en": "Short break, seconds"}, "default": 20},
+    {"key": "longEvery", "type": "number", "title": {"zh": "每几次换成大休", "en": "Every Nth break is long"}, "hint": {"zh": "2：小休、大休轮着来；0：不要大休", "en": "2: short and long take turns; 0: no long breaks"}, "default": 2},
+    {"key": "longMinutes", "type": "number", "title": {"zh": "大休多少分钟", "en": "Long break, minutes"}, "default": 5},
+    {"key": "strict", "type": "choice", "title": {"zh": "必须休完", "en": "Strict"}, "hint": {"zh": "休息画面没有「跳过」「推迟」，长按 Esc 3 秒才能提前离开", "en": "No Skip or Postpone on the break screen; hold Esc for 3 seconds to leave early"}, "options": [
+      {"value": "off", "title": {"zh": "不用", "en": "Off"}},
+      {"value": "long", "title": {"zh": "只有大休", "en": "Long breaks only"}},
+      {"value": "all", "title": {"zh": "大休和小休", "en": "Every break"}}
+    ], "default": "off"},
+    {"key": "headsUp", "type": "number", "title": {"zh": "提前多少秒提醒", "en": "Notice, seconds ahead"}, "hint": {"zh": "屏幕上方出现一个小条，可以推迟或跳过；0：不提前", "en": "A small bar at the top of the screen, with Postpone and Skip; 0: none"}, "default": 30},
+    {"key": "snooze", "type": "number", "title": {"zh": "推迟多少分钟", "en": "Postpone by, minutes"}, "hint": {"zh": "每次休息只能推迟一次", "en": "Once per break"}, "default": 5},
+    {"key": "away", "type": "number", "title": {"zh": "离开多少分钟算休息过", "en": "Away this many minutes counts as a break"}, "hint": {"zh": "没碰键盘鼠标这么久，回来后重新计时", "en": "No keyboard or mouse for this long: the count starts again when you are back"}, "default": 5},
+    {"key": "quiet", "type": "bool", "title": {"zh": "全屏和勿扰时不打扰", "en": "Not during full screen or Do not disturb"}, "hint": {"zh": "玩游戏、放幻灯片、全屏看视频、开着勿扰时，等结束了再提醒；全屏开着的终端、远程桌面也算", "en": "Games, slide shows, full-screen video, Do not disturb: the break waits until they end; a terminal or remote desktop in full screen counts too"}, "default": true}
+  ]
+}

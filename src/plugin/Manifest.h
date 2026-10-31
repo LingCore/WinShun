@@ -46,6 +46,7 @@ enum class Permission : std::uint32_t {
     WinshunContent = 1u << 10,
     Notifications = 1u << 11, // winshun/notify with "toast": a system notification (Host gates it)
     NetworkListen = 1u << 12, // it opens ports for devices nearby (a declaration)
+    SystemSettings = 1u << 13, // change Windows settings; switch-provider integration
 };
 
 struct Permissions {
@@ -173,6 +174,7 @@ struct Manifest {
     Text trayMenu;
     QStringList pictures;
     bool settingsWindow = false;
+    bool systemSwitches = false; // provider of the search UI's existing switch rows
 
     const Command* command(QStringView commandId) const;
     bool resident() const noexcept { return runtime && runtime->mode == RunMode::Resident; }

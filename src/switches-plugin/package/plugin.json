@@ -1,0 +1,14 @@
+{
+  "manifest": 1,
+  "id": "winshun.switches",
+  "name": {"zh": "系统开关", "en": "System switches"},
+  "version": "1.0.0",
+  "description": {"zh": "在搜索结果里调整主题、音量、蓝牙和 WLAN、资源管理器选项，或保持电脑唤醒", "en": "Change theme, volume, Bluetooth/WLAN, Explorer options and keep-awake from search results"},
+  "author": "LingCore",
+  "license": "MIT",
+  "homepage": "https://github.com/LingCore/WinShun",
+  "runtime": {"mode": "resident", "program": "WinShunSwitches.exe", "start": "eager", "idleExitSec": 0, "timeoutMs": 15000, "memoryMB": 128},
+  "permissions": ["ui", "system:settings"],
+  "systemSwitches": true,
+  "commands": [{"id": "provider", "title": {"zh": "搜索中的系统开关", "en": "System switches in search"}}]
+}

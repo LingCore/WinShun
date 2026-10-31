@@ -144,6 +144,7 @@ void Merge::begin(std::uint64_t queryId, const QString& text, const QString& key
     m_keywordCommand = keywordCommand;
     m_namesReady = keywordMode(); // no name search to wait for
     m_assigned = false;
+    m_keywordItemIndex = 0;
     m_held.clear();
     m_betterFirstRow = false;
 }
@@ -199,13 +200,13 @@ int Merge::pluginRows() const
 
 // The rows of an answer, each item once (the first of an id wins), by score
 // when asked (push mode; keyword mode only when some item gave one).
-SearchResults Merge::rowsOf(const Entry& entry, const Command& command, const Items& items, bool sortByScore) const
+SearchResults Merge::rowsOf(const Entry& entry, const Command& command, const Items& items, bool sortByScore, int offset) const
 {
     SearchResults rows;
     QSet<QString> ids;
     bool scored = false;
-    for (int i = 0; i < items.size(); ++i) {
-        SearchResult row = toRow(entry, command, items[i], i, m_locale);
+    for (int i = 0; i < items.size() && i < kMaxItems; ++i) {
+        SearchResult row = toRow(entry, command, items[i], offset + i, m_locale);
         if (ids.contains(row.path))
             continue;
         ids.insert(row.path);
@@ -229,12 +230,22 @@ void Merge::results(std::uint64_t queryId, const QString& pluginId, const QStrin
         const Command* command = entry && entry->manifest ? entry->manifest->command(commandId) : nullptr;
         if (!command)
             return;
-        SearchResults rows = rowsOf(*entry, *command, items, false);
+        if (replace || !m_assigned)
+            m_keywordItemIndex = 0;
+        SearchResults rows = rowsOf(*entry, *command, items, false, m_keywordItemIndex);
+        m_keywordItemIndex += static_cast<int>(items.size());
         if (replace || !m_assigned) {
             m_sink.assign(std::move(rows));
             m_assigned = true;
-        } else
+        } else {
+            QSet<QString> ids;
+            for (int i = 0; i < m_sink.count(); ++i)
+                ids.insert(m_sink.row(i).path);
+            rows.removeIf([&ids](const SearchResult& row) { return ids.contains(row.path); });
+            if (rows.size() > std::max(0, kMaxItems - m_sink.count()))
+                rows.resize(std::max(0, kMaxItems - m_sink.count()));
             m_sink.append(rows);
+        }
         return;
     }
     // Push mode: a command's batches add up until its final answer, which
@@ -245,8 +256,13 @@ void Merge::results(std::uint64_t queryId, const QString& pluginId, const QStrin
     batch.commandId = commandId;
     if (replace)
         batch.items = items;
-    else
-        batch.items.append(items);
+    else {
+        for (const Item& item : items) {
+            if (batch.items.size() >= kMaxItems)
+                break;
+            batch.items.append(item);
+        }
+    }
     batch.complete = !partial;
     if (batch.complete && m_namesReady) {
         const Batch done = std::move(batch);
@@ -263,6 +279,7 @@ void Merge::replace(const QString& pluginId, const QString& commandId, const Ite
         return;
     m_sink.assign(rowsOf(*entry, *command, items, false));
     m_assigned = true;
+    m_keywordItemIndex = static_cast<int>(items.size());
 }
 
 // Where a pushed row of `score` goes: after the last row that is recent

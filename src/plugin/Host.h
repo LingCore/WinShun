@@ -17,6 +17,8 @@
 #include "SearchTypes.h"
 
 #include <QHash>
+#include <QCache>
+#include <QDeadlineTimer>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QObject>
@@ -222,6 +224,7 @@ signals:
     // `open` effect to that plugin's permissions (OpenPolicy), whatever asked.
     void actionDone(std::uint64_t requestId, const QString& pluginId, const ws::plugin::Effects& effects, bool ok, const QString& error);
     void processStarted(const QString& pluginId, quint32 pid);
+    void systemSwitchesChanged(const QString& pluginId, const QStringList& ids);
     void processExited(const QString& pluginId, quint32 code);
     void restartScheduled(const QString& pluginId, int delayMs); // the real delay
     void disabledAfterCrashes(const QString& pluginId);
@@ -253,6 +256,7 @@ private:
 
     // Resident plugins.
     void startResident(Plugin& p);
+    void sendOrHold(Plugin& p, const Pending& q); // now, or once the process is ready
     void sendQuery(Plugin& p, const Pending& q);
     void onQueryReply(const QString& id, std::uint64_t queryId, const jsonrpc::Message& response);
     void onQueryTimeout(const QString& id);
@@ -279,6 +283,9 @@ private:
 
     Runner::Spec specFor(Plugin& p, const Entry& e, RunKind kind, const Pending* q, QString* error);
     QString dataDirFor(const Entry& e);
+    QString cacheKey(const QString& pluginId, const Pending& query) const;
+    std::optional<Items> cached(const QString& key);
+    void remember(const QString& pluginId, const Pending& query, const QueryResult& result);
     void log(const QString& line);
     void touch(Plugin& p);
     // Developer mode's trace of a line (see traced()); `line` is a JSON-RPC
@@ -294,9 +301,15 @@ private:
     std::unique_ptr<Runner> m_runner;
     int m_runnerRestarts = 0;
     QTimer m_runnerBackoff;
+    QTimer m_preload; // coalesces catalog/configuration changes before starting eager plugins
     std::map<QString, std::unique_ptr<Plugin>> m_plugins;
     std::map<std::uint64_t, QString> m_owners; // instance -> plugin
     QHash<QString, QJsonObject> m_settings;
+    struct CachedResult {
+        Items items;
+        QDeadlineTimer expires;
+    };
+    QCache<QString, CachedResult> m_cache {2048}; // 2 MiB of serialized query/results, LRU
     std::uint64_t m_nextToolCall = 1;
     std::map<std::uint64_t, std::unique_ptr<CommandCall>> m_commandCalls;
     std::uint64_t m_nextCommandCall = std::uint64_t {1} << 40; // apart from the launcher's query ids

@@ -716,6 +716,41 @@ add_test(NAME tst_localsend COMMAND tst_localsend)
 set_tests_properties(tst_localsend PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# winshun.break's clock (src/break-plugin/Schedule), built in again: the
+# notice, the wait for a pause in typing, long breaks, time away, quiet
+# times, postpone, skip and strict, with made-up times.
+qt_add_executable(tst_break tst_break.cpp ${PROJECT_SOURCE_DIR}/src/break-plugin/Schedule.cpp)
+target_include_directories(tst_break PRIVATE ${PROJECT_SOURCE_DIR}/src/break-plugin)
+target_link_libraries(tst_break PRIVATE winshun_options Qt6::Test)
+set_target_properties(tst_break PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_break COMMAND tst_break)
+set_tests_properties(tst_break PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# winshun.bookmarks (src/bookmarks-plugin/Bookmarks), built in again: reading
+# Bookmarks files, the folder text, percent-decoding, matching, scoring,
+# the 50-row cap and the "nothing found" rows.
+qt_add_executable(tst_bookmarks tst_bookmarks.cpp ${PROJECT_SOURCE_DIR}/src/bookmarks-plugin/Bookmarks.cpp)
+target_include_directories(tst_bookmarks PRIVATE ${PROJECT_SOURCE_DIR}/src/bookmarks-plugin ${PROJECT_SOURCE_DIR}/src/plugins-sdk)
+target_link_libraries(tst_bookmarks PRIVATE winshun_options Qt6::Test)
+set_target_properties(tst_bookmarks PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_bookmarks COMMAND tst_bookmarks)
+set_tests_properties(tst_bookmarks PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# winshun.translate's logic (src/translate-plugin/Translate), built in again:
+# the target language, the DeepL and chat requests, reading the answers and
+# the services' errors, and the rows in both languages; the production HTTP
+# path against local servers that stall before headers or in the body.
+qt_add_executable(tst_translate tst_translate.cpp ${PROJECT_SOURCE_DIR}/src/translate-plugin/Translate.cpp
+    ${PROJECT_SOURCE_DIR}/src/translate-plugin/Http.cpp)
+target_include_directories(tst_translate PRIVATE ${PROJECT_SOURCE_DIR}/src/translate-plugin ${PROJECT_SOURCE_DIR}/src/plugins-sdk)
+target_link_libraries(tst_translate PRIVATE winshun_options Qt6::Test Qt6::Network winhttp)
+set_target_properties(tst_translate PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_translate COMMAND tst_translate)
+set_tests_properties(tst_translate PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # The plugin system (src/plugin): manifests, items, zero-code, the catalog,
 # and plugin processes started through the runner WinShunPluginHost.exe,
 # played by plugin_fake.exe (no Qt, as a plugin would be); both paths are
@@ -751,7 +786,7 @@ add_test(NAME tst_tools COMMAND tst_tools)
 add_test(NAME tst_semantic COMMAND tst_semantic)
 add_test(NAME tst_mcp COMMAND tst_mcp)
 add_test(NAME tst_cli COMMAND tst_cli)
-add_test(NAME tst_plugin COMMAND tst_plugin)
+add_test(NAME tst_plugin COMMAND tst_plugin -o -,txt)
 # Importing clipboard history (Ditto, text, CSV): the reader with a real store.
 qt_add_executable(tst_clipimport tst_clipimport.cpp ${PROJECT_SOURCE_DIR}/src/app/ClipImport.cpp
     ${PROJECT_SOURCE_DIR}/src/app/ClipImage.cpp

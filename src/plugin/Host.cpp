@@ -15,6 +15,7 @@
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QSet>
 
 #include <aclapi.h>
 #include <sddl.h>
@@ -34,6 +35,7 @@ constexpr int kCrashesToDisable = 3;
 constexpr int kTimeoutsToRestart = 3; // a resident plugin that misses three in a row is hung
 constexpr int kShutdownGraceMs = 2000;
 constexpr qint64 kLogRotateBytes = 1 << 20;
+constexpr qsizetype kMaxOutputBytes = 16 << 20; // cumulative stdout of one once process
 
 const char* kindName(Match::Kind kind)
 {
@@ -257,7 +259,7 @@ struct Host::Plugin {
     int timeouts = 0;
     std::map<std::uint64_t, std::uint64_t> actions; // our request id -> JSON-RPC id (resident)
     std::map<std::uint64_t, std::uint64_t> toolCalls; // the bridge's call id -> nothing (to cancel)
-    // Once plugins.
+    // Once plugins, and resident ones with a debounceMs.
     QTimer debounce;
     std::optional<Pending> waiting;
     std::map<std::uint64_t, std::unique_ptr<OnceRun>> runs; // instance -> run
@@ -305,6 +307,8 @@ Host::Host(Options options, QObject* parent)
     qRegisterMetaType<Effects>();
     if (m_options.dataRoot.isEmpty())
         m_options.dataRoot = m_options.userPluginDir;
+    m_preload.setSingleShot(true);
+    connect(&m_preload, &QTimer::timeout, this, &Host::preload);
     m_runnerBackoff.setSingleShot(true);
     connect(&m_runnerBackoff, &QTimer::timeout, this, [this] {
         // Start it again only for someone who needs it: the next query does.
@@ -312,17 +316,22 @@ Host::Host(Options options, QObject* parent)
             if (p->pending || p->waiting)
                 ensureRunner();
         }
+        preload(); // eager listeners also need recovery without another query
     });
     connect(&m_catalog, &Catalog::changed, this, [this] {
+        m_cache.clear(); // manifests, commands, permissions or enabled state changed
         // A plugin that changed or went: its process is stale.
         for (auto& [id, p] : m_plugins) {
             const Entry* e = m_catalog.find(id);
             if (!e || !e->manifest || !m_catalog.enabled(id)) {
-                if (p->phase != Plugin::Phase::Stopped && p->phase != Plugin::Phase::Backoff)
-                    stopResident(*p, false);
+                stop(id); // once processes and queued work must stop as well
             }
             emit stateChanged(id);
         }
+        // Apply all settings and permission changes before initialize is sent.
+        // Eager plugins provide hotkeys and listeners even without a query.
+        if (!m_shuttingDown)
+            m_preload.start(0);
     });
     connect(&m_catalog, &Catalog::scriptsChanged, this, [this](const QStringList& ids) {
         if (!m_developerMode)
@@ -359,8 +368,12 @@ void Host::stop(const QString& id)
         return;
     Plugin& p = *it->second;
     p.restartWhenGone = false;
+    const auto pending = p.pending;
+    const auto waiting = p.waiting;
+    const auto inflight = p.inflight;
     p.pending.reset();
     p.waiting.reset();
+    stopRerun(p);
     p.debounce.stop();
     p.backoff.stop();
     if (p.phase == Plugin::Phase::Backoff) {
@@ -382,6 +395,19 @@ void Host::stop(const QString& id)
         }
     }
     stopResident(p, false);
+    QSet<std::uint64_t> failed;
+    const auto failQuery = [&](std::uint64_t queryId) {
+        if (!failed.contains(queryId)) {
+            failed.insert(queryId);
+            emit queryFailed(queryId, id, u"插件已停止"_s);
+        }
+    };
+    if (pending && !pending->commandCall)
+        failQuery(pending->queryId);
+    if (waiting && !waiting->commandCall)
+        failQuery(waiting->queryId);
+    if (inflight)
+        failQuery(inflight->queryId);
     failCommandCalls(id, u"插件已停止"_s);
 }
 
@@ -495,7 +521,11 @@ Host::Plugin& Host::plugin(const QString& id)
             if (raw->waiting) {
                 const Pending q = *raw->waiting;
                 raw->waiting.reset();
-                launchOnce(*raw, q);
+                const Entry* e = entry(raw->id);
+                if (e && e->manifest && e->manifest->resident())
+                    sendOrHold(*raw, q);
+                else
+                    launchOnce(*raw, q);
             }
         });
         connect(&raw->backoff, &QTimer::timeout, this, [this, raw] {
@@ -571,15 +601,22 @@ QJsonObject Host::pluginSettings(const QString& id) const
 
 void Host::setAppearance(const QString& locale, const QString& theme, const QJsonObject& look)
 {
+    if (locale != m_options.locale)
+        m_cache.clear();
     m_options.locale = locale;
+    // The theme in use too: with "system" the settings stay the same when
+    // Windows turns dark.
+    const bool same = look == m_options.appearance && theme == m_options.theme;
     m_options.theme = theme;
-    if (look == m_options.appearance)
+    if (same)
         return;
     m_options.appearance = look;
+    QJsonObject sent = look;
+    sent.insert(u"theme"_s, theme);
     for (const auto& [id, p] : m_plugins) {
         const Entry* e = entry(id);
         if (p->phase == Plugin::Phase::Ready && p->session && e && e->manifest->permissions.has(Permission::Ui))
-            p->session->notify(u"appearance"_s, look);
+            p->session->notify(u"appearance"_s, sent);
     }
 }
 
@@ -632,6 +669,7 @@ void Host::setPluginSettings(const QString& id, const QJsonObject& settings)
 {
     if (const auto have = m_settings.constFind(id); have != m_settings.constEnd() && *have == settings)
         return; // nothing new to tell
+    m_cache.clear(); // cached translations and other answers used the old settings
     m_settings[id] = settings;
     const auto it = m_plugins.find(id);
     if (it != m_plugins.end() && it->second->phase == Plugin::Phase::Ready && it->second->session)
@@ -648,6 +686,46 @@ QString Host::dataDirFor(const Entry& e)
         && !labelLow(dir))
         log(u"%1: 无法给 %2 打低完整性标签"_s.arg(e.id, dir));
     return dir;
+}
+
+QString Host::cacheKey(const QString& pluginId, const Pending& q) const
+{
+    const QJsonObject key {{u"plugin"_s, pluginId}, {u"command"_s, q.commandId}, {u"kind"_s, int(q.kind)},
+        {u"keyword"_s, q.keyword}, {u"text"_s, q.text}, {u"raw"_s, q.raw}, {u"filters"_s, q.filters},
+        {u"captures"_s, QJsonArray::fromStringList(q.captures)}, {u"limit"_s, q.limit}};
+    return QString::fromUtf8(QJsonDocument(key).toJson(QJsonDocument::Compact));
+}
+
+std::optional<Items> Host::cached(const QString& key)
+{
+    const CachedResult* result = m_cache.object(key);
+    if (!result)
+        return std::nullopt;
+    if (result->expires.hasExpired()) {
+        m_cache.remove(key);
+        return std::nullopt;
+    }
+    return result->items;
+}
+
+void Host::remember(const QString& pluginId, const Pending& query, const QueryResult& result)
+{
+    if (result.rerun > 0)
+        return; // live lists must reach the plugin on every rerun
+    const Entry* e = entry(pluginId);
+    const Command* command = e ? e->manifest->command(query.commandId) : nullptr;
+    const int seconds = std::clamp(result.cacheSeconds > 0 ? result.cacheSeconds : command ? command->cacheSeconds : 0, 0, 86400);
+    if (seconds == 0)
+        return;
+    const QString key = cacheKey(pluginId, query);
+    QJsonArray items;
+    for (const Item& item : result.items)
+        items.append(itemToJson(item));
+    const qsizetype bytes = key.size() * 2 + QJsonDocument(items).toJson(QJsonDocument::Compact).size();
+    const int cost = static_cast<int>((bytes + 1023) / 1024);
+    if (cost > m_cache.maxCost())
+        return;
+    m_cache.insert(key, new CachedResult {result.items, QDeadlineTimer(std::chrono::seconds(seconds))}, std::max(1, cost));
 }
 
 void Host::touch(Plugin& p)
@@ -712,42 +790,17 @@ void Host::onRunnerExited()
     if (m_shuttingDown)
         return;
     log(u"runner 退出了"_s);
-    for (auto& [id, p] : m_plugins) {
-        if (p->phase == Plugin::Phase::Starting || p->phase == Plugin::Phase::Ready || p->phase == Plugin::Phase::ShuttingDown) {
-            const bool asked = p->phase == Plugin::Phase::ShuttingDown && !p->restartAfterStop;
-            p->phase = Plugin::Phase::Stopped;
-            p->session.reset();
-            p->instance = 0;
-            p->pid = 0;
-            if (p->inflight) {
-                emit queryFailed(p->inflight->queryId, id, u"插件进程退出了"_s);
-                p->inflight.reset();
-                p->queryTimer.stop();
-            }
-            for (const auto& [requestId, rpcId] : p->actions)
-                emit actionDone(requestId, id, {}, false, u"插件进程退出了"_s);
-            p->actions.clear();
-            if (!asked)
-                crashed(*p, u"runner 退出"_s);
-            else
-                emit stateChanged(id);
-        }
-        for (auto& [instance, run] : p->runs) {
-            if (run->discarded)
-                continue;
-            if (run->commandCall)
-                finishCommand(run->commandCall, false, {}, u"插件进程退出了"_s);
-            else if (run->kind == RunKind::Query)
-                emit queryFailed(run->queryId, id, u"插件进程退出了"_s);
-            else
-                emit actionDone(run->requestId, id, {}, false, u"插件进程退出了"_s);
-        }
-        p->runs.clear();
-    }
-    m_owners.clear();
-    failCommandCalls({}, u"插件进程退出了"_s);
+    // Reuse the normal exit path: release hotkeys, fail session requests,
+    // cancel tools and stop timers before scheduling recovery. Start the
+    // runner backoff first so callbacks cannot restart it during cleanup.
     const int delay = backoffDelayMs(m_runnerRestarts++);
     m_runnerBackoff.start(static_cast<int>(delay * m_backoffScale));
+    std::vector<std::uint64_t> instances;
+    for (const auto& [instance, id] : m_owners)
+        instances.push_back(instance);
+    for (const std::uint64_t instance : instances)
+        onInstanceExited(instance, ERROR_BROKEN_PIPE, {}, false);
+    failCommandCalls({}, u"插件进程退出了"_s);
 }
 
 // ---- queries ------------------------------------------------------------------
@@ -759,6 +812,7 @@ bool Host::query(const QString& text, Scope scope, std::uint64_t queryId, const 
         return false;
     const std::vector<Match> matches = m_catalog.match(text);
     bool any = false;
+    QSet<QString> dispatched;
     for (const Match& m : matches) {
         if (m.command->zeroCode()) {
             emit queryTaken(queryId, m.entry->id);
@@ -768,6 +822,11 @@ bool Host::query(const QString& text, Scope scope, std::uint64_t queryId, const 
             any = true;
             continue;
         }
+        // A process has one launcher query slot. Prefer the keyword, then
+        // the first regex/push, rather than silently replacing its query.
+        if (dispatched.contains(m.entry->id))
+            continue;
+        dispatched.insert(m.entry->id);
         Plugin& p = plugin(m.entry->id);
         if (p.disabledByCrashes)
             continue;
@@ -783,13 +842,21 @@ bool Host::query(const QString& text, Scope scope, std::uint64_t queryId, const 
         q.captures = m.captures;
         q.limit = m.kind == Match::Kind::Push ? m.maxItems : kMaxItems;
         any = true;
+        if (const auto answer = cached(cacheKey(p.id, q))) {
+            emit results(queryId, p.id, q.commandId, *answer, false, true);
+            emit queryFinished(queryId, p.id);
+            continue;
+        }
         if (m.entry->manifest->resident()) {
-            if (p.phase == Plugin::Phase::Ready) {
-                sendQuery(p, q);
-            } else {
-                p.pending = q; // the newest waits for the process
+            if (const int debounce = m.entry->manifest->runtime->debounceMs; debounce > 0) {
+                // Asked only once typing pauses (翻译 goes online, and pays,
+                // for every query); the process starts meanwhile.
+                p.waiting = q;
+                p.debounce.start(debounce);
                 if (p.phase == Plugin::Phase::Stopped)
                     startResident(p);
+            } else {
+                sendOrHold(p, q);
             }
         } else {
             const int debounce = m.entry->manifest->runtime->debounceMs;
@@ -825,6 +892,7 @@ void Host::stopRerun(Plugin& p)
 // `rerun`, as the rerun timer would send it; else nothing.
 void Host::onRefresh(const QString& id)
 {
+    m_cache.clear();
     Plugin& p = plugin(id);
     if (p.phase != Plugin::Phase::Ready || !p.session || !p.lastQuery)
         return;
@@ -904,6 +972,7 @@ Runner::Spec Host::specFor(Plugin& p, const Entry& e, RunKind kind, const Pendin
     spec.env += runtime.env;
     spec.env.push_back({u"WS_PLUGIN_DIR"_s, e.dir});
     spec.env.push_back({u"WS_DATA_DIR"_s, dataDirFor(e)});
+    spec.env.push_back({u"WS_COMPONENTS_DIR"_s, QDir::toNativeSeparators(QDir(m_options.dataRoot).absoluteFilePath(u"../components"_s))});
     spec.env.push_back({u"WS_APP_DIR"_s, QDir::toNativeSeparators(m_options.appDir.isEmpty() ? QFileInfo(m_options.runnerExe).absolutePath() : m_options.appDir)});
     spec.env.push_back({u"WS_LOCALE"_s, m_options.locale});
     spec.env.push_back({u"WS_THEME"_s, m_options.theme});
@@ -1042,6 +1111,12 @@ void Host::onStarted(std::uint64_t instance, quint32 pid)
     };
     handlers.refresh = [this, id] { onRefresh(id); };
     handlers.hotkeys = [this, id](const QStringList& keys) { emit hotkeysChanged(id, keys); };
+    handlers.systemSwitchesChanged = [this, id](const QStringList& ids) {
+        const Entry* e = entry(id);
+        if (e && m_catalog.enabled(id) && e->manifest->systemSwitches
+            && e->manifest->permissions.has(Permission::SystemSettings))
+            emit systemSwitchesChanged(id, ids);
+    };
     handlers.toolCall = [this, id](const QJsonValue& requestId, const QString& tool, const QJsonObject& arguments) {
         onToolCall(id, requestId, tool, arguments);
     };
@@ -1080,6 +1155,21 @@ void Host::onStarted(std::uint64_t instance, quint32 pid)
     p.queryTimer.start(e->manifest->runtime->timeoutMs * 2); // initialize: twice a query's time
 }
 
+void Host::sendOrHold(Plugin& p, const Pending& q)
+{
+    if (p.disabledByCrashes) { // since its debounce started
+        emit queryFailed(q.queryId, p.id, u"插件连续崩溃，已停用"_s);
+        return;
+    }
+    if (p.phase == Plugin::Phase::Ready) {
+        sendQuery(p, q);
+        return;
+    }
+    p.pending = q; // the newest waits for the process
+    if (p.phase == Plugin::Phase::Stopped)
+        startResident(p);
+}
+
 void Host::sendQuery(Plugin& p, const Pending& q)
 {
     if (!p.session)
@@ -1087,7 +1177,7 @@ void Host::sendQuery(Plugin& p, const Pending& q)
     dropInflight(p, true);
     touch(p);
     p.rerun.stop();
-    p.refreshAfterReply = false; // this query is the asking again (also after onRunnerExited, which skips dropInflight)
+    p.refreshAfterReply = false; // this query is the asking again, including after reconnecting
     p.lastQuery = q;
     QJsonObject params {{u"queryId"_s, static_cast<double>(q.queryId)}, {u"command"_s, q.commandId},
         {u"trigger"_s, QString::fromLatin1(kindName(q.kind))}, {u"text"_s, q.text}, {u"raw"_s, q.raw}, {u"limit"_s, q.limit}};
@@ -1124,6 +1214,8 @@ void Host::onQueryReply(const QString& id, std::uint64_t queryId, const jsonrpc:
     p.timeouts = 0;
     p.backoffStep = 0;
     const QueryResult result = parseResult(response.result);
+    if (p.lastQuery)
+        remember(id, *p.lastQuery, result);
     emit results(queryId, id, commandId, result.items, false, true);
     emit queryFinished(queryId, id);
     // Asked again in a while (a list that changes by itself: progress, devices
@@ -1266,10 +1358,29 @@ void Host::onLine(std::uint64_t instance, const QByteArray& line)
         return;
     Plugin& p = plugin(owner->second);
     if (const auto run = p.runs.find(instance); run != p.runs.end()) {
+        OnceRun& once = *run->second;
+        if (once.discarded)
+            return;
+        if (line.size() >= kMaxOutputBytes || once.output.size() > kMaxOutputBytes - line.size() - 1) {
+            once.discarded = true;
+            once.timer.stop();
+            once.output.clear();
+            if (m_runner)
+                m_runner->stop(instance);
+            const QString why = u"输出总量超过 16 MB"_s;
+            log(u"%1: %2"_s.arg(p.id, why));
+            if (once.commandCall)
+                finishCommand(once.commandCall, false, {}, why);
+            else if (once.kind == RunKind::Query)
+                emit queryFailed(once.queryId, p.id, why);
+            else
+                emit actionDone(once.requestId, p.id, {}, false, why);
+            return;
+        }
         if (m_developerMode)
             trace(p, u"←"_s, line);
-        run->second->output += line;
-        run->second->output += '\n';
+        once.output += line;
+        once.output += '\n';
         return;
     }
     if (p.instance == instance && p.session) {
@@ -1306,11 +1417,11 @@ void Host::onInstanceExited(std::uint64_t instance, quint32 code, const QStringL
     if (p.session)
         p.session->failAll(jsonrpc::kUnavailable, u"插件进程退出了"_s); // the query in flight fails through its reply
     p.session.reset();
-    for (const auto& [callId, unused] : p.toolCalls) {
+    const auto toolCalls = std::exchange(p.toolCalls, {});
+    for (const auto& [callId, unused] : toolCalls) {
         if (m_bridge.cancel)
             m_bridge.cancel(callId);
     }
-    p.toolCalls.clear();
     if (p.inflight) {
         emit queryFailed(p.inflight->queryId, p.id, u"插件进程退出了"_s);
         p.inflight.reset();
@@ -1456,8 +1567,10 @@ void Host::launchOnce(Plugin& p, const Pending& q)
     run->requestId = q.requestId;
     run->commandCall = q.commandCall;
     run->commandId = q.commandId;
-    if (kind == RunKind::Query && !q.commandCall)
+    if (kind == RunKind::Query && !q.commandCall) {
+        p.lastQuery = q; // cancellation from a result slot must invalidate rerun
         run->query = q;
+    }
     run->timer.setSingleShot(true);
     const QString id = p.id;
     connect(&run->timer, &QTimer::timeout, this, [this, id, instance] {
@@ -1515,12 +1628,14 @@ void Host::finishOnce(Plugin& p, std::uint64_t instance, quint32 code, const QSt
         finishCommand(run->commandCall, true, parseOutput(run->output).items, {});
     } else if (run->kind == RunKind::Query) {
         const QueryResult result = parseOutput(run->output);
+        remember(p.id, run->query, result);
         emit results(run->queryId, p.id, run->commandId, result.items, false, true);
         emit queryFinished(run->queryId, p.id);
         // `rerun`: started again then, as a query waiting for its debounce
         // (cancel() and cancelAll() forget it), at most once a second.
         Plugin& again = plugin(p.id);
-        if (result.rerun > 0 && !again.waiting && run->query.queryId == run->queryId) {
+        if (result.rerun > 0 && !again.waiting && again.lastQuery && again.lastQuery->queryId == run->queryId
+            && m_catalog.enabled(p.id)) {
             again.waiting = run->query;
             again.debounce.start(static_cast<int>(std::clamp(result.rerun, 1.0, kRerunMax) * 1000));
         }
@@ -1642,6 +1757,7 @@ void Host::action(std::uint64_t requestId, const QString& pluginId, const QStrin
         emit actionDone(requestId, pluginId, {}, false, offText(m_catalog, pluginId));
         return;
     }
+    m_cache.clear(); // an action can change what subsequent queries return
     if (command->zeroCode()) {
         emit actionDone(requestId, pluginId, {Effect {}}, true, {});
         return;
@@ -1706,6 +1822,18 @@ void Host::action(std::uint64_t requestId, const QString& pluginId, const QStrin
         emit actionDone(requestId, pluginId, parseEffects(response.result), true, {});
     });
     p.actions[requestId] = rpcId;
+    const std::uint64_t instance = p.instance;
+    QTimer::singleShot(e->manifest->runtime->timeoutMs, this, [this, pluginId, instance, requestId, rpcId] {
+        Plugin& q = plugin(pluginId);
+        const auto action = q.actions.find(requestId);
+        if (q.instance != instance || action == q.actions.end() || action->second != rpcId)
+            return;
+        q.actions.erase(action);
+        if (q.session)
+            q.session->forget(rpcId);
+        touch(q);
+        emit actionDone(requestId, pluginId, {}, false, u"没有响应"_s);
+    });
 }
 
 // ---- command calls (the AI's) ---------------------------------------------------
@@ -1880,6 +2008,8 @@ void Host::cancelCommand(std::uint64_t callId)
 
 void Host::preload()
 {
+    if (m_shuttingDown)
+        return;
     for (const Entry& e : m_catalog.entries()) {
         if (!e.manifest || !m_catalog.enabled(e.id) || !e.manifest->resident() || e.manifest->runtime->start != StartWhen::Eager)
             continue;
@@ -1894,6 +2024,7 @@ void Host::shutdown(bool grace)
     if (m_shuttingDown)
         return;
     m_shuttingDown = true;
+    m_preload.stop();
     m_runnerBackoff.stop();
     if (m_runner && m_runner->running()) {
         // Resident plugins get their shutdown request and a moment to go.

@@ -23,7 +23,8 @@
 //       first answer followed MS later by K winshun/refresh (1 without
 //       --refresh-burst), or preceded by one with --refresh-first), cancel
 //       (counted), action (the files and trigger of a `files` one in its
-//       notify), settingsChanged (remembered), shutdown.
+//       notify), settingsChanged (remembered), appearance (remembered and
+//       counted: data.appearance, data.looks), shutdown.
 //   --probe
 //       A once plugin whose one item carries the facts about its process
 //       (token, job, mitigations, may it start a process, read the
@@ -103,6 +104,13 @@ json::Value facts()
 
 int onceMain()
 {
+    if (has(L"--many-lines")) {
+        const int count = _wtoi(value(L"--many-lines").c_str());
+        const std::string line(4096, 'x');
+        for (int i = 0; i < count; ++i)
+            out(line);
+        return 0;
+    }
     if (has(L"--slow"))
         ::Sleep(static_cast<DWORD>(std::wcstoul(value(L"--slow").c_str(), nullptr, 10)));
     if (has(L"--fail")) {
@@ -171,12 +179,15 @@ int onceMain()
         json::Value::Object one = item("once-" + std::to_string(i), "once: " + query + (n > 1 ? " #" + std::to_string(i) : ""),
             env(L"WS_COMMAND") + "/" + env(L"WS_TRIGGER"));
         one["score"] = 70;
+        if (has(L"--payload"))
+            one["subtitle"] = std::string(static_cast<std::size_t>(_wtoi(value(L"--payload").c_str())), 'x');
         one["open"] = json::Value::Object {{"url", "https://example.com/?q=" + query}};
         items.push_back(json::Value(std::move(one)));
     }
     err("once plugin answered 已回答");
     const double rerun = has(L"--rerun") ? std::wcstod(value(L"--rerun").c_str(), nullptr) : 0.0;
-    out(json::write(json::Value(json::Value::Object {{"items", std::move(items)}, {"rerun", rerun}})));
+    const int cache = has(L"--cache") ? _wtoi(value(L"--cache").c_str()) : 0;
+    out(json::write(json::Value(json::Value::Object {{"items", std::move(items)}, {"rerun", rerun}, {"cache", cache}})));
     return 0;
 }
 
@@ -194,6 +205,8 @@ struct Server {
     int queries = 0;
     int cancelled = 0;
     json::Value settings;
+    json::Value appearance;
+    int looks = 0; // appearance notifications
     long long nextId = 1;
     lite::LineReader reader {::GetStdHandle(STD_INPUT_HANDLE)};
 
@@ -245,7 +258,10 @@ struct Server {
             const json::Value params = m["params"];
             if (method == "initialize") {
                 settings = params["settings"];
+                appearance = params["appearance"];
                 respond(id, json::Value::Object {{"protocolVersion", params["protocolVersion"].toString()}, {"name", "fake"}});
+                if (has(L"--hotkeys"))
+                    notify("winshun/hotkeys", {{"keys", json::Value::Array {"Ctrl+Shift+9"}}});
             } else if (method == "query") {
                 ++queries;
                 if (has(L"--crash") && queries == _wtoi(value(L"--crash").c_str())) {
@@ -293,7 +309,7 @@ struct Server {
                 if (!text.empty() && text[0] == '#') // a colour (a regex trigger's push): shown as a swatch
                     one["icon"] = "color:" + text;
                 one["data"] = json::Value::Object {{"cancelled", cancelled}, {"settings", settings}, {"filters", params["filters"]},
-                    {"pid", static_cast<unsigned long>(::GetCurrentProcessId())}};
+                    {"pid", static_cast<unsigned long>(::GetCurrentProcessId())}, {"appearance", appearance}, {"looks", looks}};
                 if (has(L"--toast")) {
                     // A click asking for everything: Win顺 keeps only its own
                     // list ("fk "), the local folder and (with clipboard:write) the copy.
@@ -310,6 +326,8 @@ struct Server {
                     one["data"] = json::Value::Object {{"n", queries}};
                     result["rerun"] = std::wcstod(value(L"--rerun").c_str(), nullptr);
                 }
+                if (has(L"--cache"))
+                    result["cache"] = _wtoi(value(L"--cache").c_str());
                 result["items"] = json::Value::Array {json::Value(std::move(one))};
                 const bool refreshing = has(L"--refresh") && queries == 1;
                 if (refreshing && has(L"--refresh-first"))
@@ -324,6 +342,8 @@ struct Server {
             } else if (method == "cancel") {
                 ++cancelled;
             } else if (method == "action") {
+                if (has(L"--hang-action"))
+                    continue;
                 const std::string action = params["action"].toString();
                 const std::string title = params["item"]["title"].toString();
                 std::string said = "did " + action + " on " + title;
@@ -337,6 +357,9 @@ struct Server {
                         json::Value(json::Value::Object {{"type", "hide"}})}}});
             } else if (method == "settingsChanged") {
                 settings = params["settings"];
+            } else if (method == "appearance") {
+                appearance = params;
+                ++looks;
             } else if (method == "shutdown") {
                 respond(id, json::Value::Object {});
                 return 0;

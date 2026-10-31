@@ -110,7 +110,7 @@ private:
         Items items;
         bool complete = false;
     };
-    SearchResults rowsOf(const Entry& entry, const Command& command, const Items& items, bool sortByScore) const;
+    SearchResults rowsOf(const Entry& entry, const Command& command, const Items& items, bool sortByScore, int offset = 0) const;
     void apply(const Batch& batch);
     void placeHint();
     int placeFor(int score) const;
@@ -127,6 +127,7 @@ private:
     QString m_keywordCommand;
     bool m_namesReady = false;
     bool m_assigned = false; // keyword mode: an answer has replaced the rows
+    int m_keywordItemIndex = 0; // anonymous ids span every appended batch
     std::map<QString, Batch> m_held; // "<plugin>/<command>" -> its answer so far
     bool m_betterFirstRow = false;
 };

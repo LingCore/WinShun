@@ -847,10 +847,12 @@ public:
         }
     }
 
-    // What the plugin was told at initialize.
+    // What the plugin was told at initialize (the language and the theme
+    // follow Win顺's after it for a plugin with the "ui" permission).
     const Json& settings() const { return m_settings; }
     const std::string& locale() const { return m_locale; } // zh | en
     const std::string& theme() const { return m_theme; } // light | dark
+    const Json& appearance() const { return m_appearance; } // "ui": themeSetting, corners, uiSize, transparency, renderer
     const std::string& pluginDir() const { return m_pluginDir; }
     const std::string& dataDir() const { return m_dataDir; }
     bool chinese() const { return m_locale != "en"; }
@@ -920,6 +922,9 @@ protected:
         return {effect::copy(text), effect::notify(chinese() ? "已复制" : "Copied"), effect::hide()};
     }
     virtual void settingsChanged(const Json& settings) { (void)settings; }
+    // Win顺's language or look changed ("ui" permission): locale(), theme()
+    // and appearance() already say the new one.
+    virtual void appearanceChanged() {}
     // Once, right after initialize: settings(), dataDir() and the rest are
     // known. A plugin that works without being asked (start "eager": a
     // server, a watcher) starts that here, not at its first query.
@@ -999,6 +1004,7 @@ private:
             m_settings = params["settings"];
             m_locale = params["locale"].toString();
             m_theme = params["theme"].toString();
+            m_appearance = params["appearance"];
             m_pluginDir = params["pluginDir"].toString();
             m_dataDir = params["dataDir"].toString();
             answer(Json::Object {{"protocolVersion", "1"}, {"name", name()}});
@@ -1034,6 +1040,13 @@ private:
         } else if (method == "settingsChanged") {
             m_settings = params["settings"];
             settingsChanged(m_settings);
+        } else if (method == "appearance") {
+            if (params["locale"].isString())
+                m_locale = params["locale"].toString();
+            if (params["theme"].isString())
+                m_theme = params["theme"].toString();
+            m_appearance = params;
+            appearanceChanged();
         } else if (method == "shutdown") {
             shuttingDown();
             answer(Json::Object {});
@@ -1052,6 +1065,7 @@ private:
     Json m_settings;
     std::string m_locale = "zh";
     std::string m_theme = "light";
+    Json m_appearance;
     std::string m_pluginDir;
     std::string m_dataDir;
 };

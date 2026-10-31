@@ -40,6 +40,7 @@ public:
         // winshun/hotkeys: the shortcuts it registers itself (the screenshot's),
         // which Win顺 then leaves to it.
         std::function<void(const QStringList& keys)> hotkeys;
+        std::function<void(const QStringList& ids)> systemSwitchesChanged;
         // winshun/tool: answer with respond() or respondError(), by id.
         std::function<void(const QJsonValue& id, const QString& tool, const QJsonObject& arguments)> toolCall;
         std::function<void(const QString& problem, const QByteArray& line)> protocolError;

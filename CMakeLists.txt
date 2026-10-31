@@ -51,6 +51,10 @@ add_subdirectory(src/cli) # ws.exe; sets WS_CLI_SOURCES for tst_cli
 add_subdirectory(src/tools-plugin)
 add_subdirectory(src/semantic-plugin)
 add_subdirectory(src/localsend-plugin)
+add_subdirectory(src/break-plugin)
+add_subdirectory(src/switches-plugin)
+add_subdirectory(src/bookmarks-plugin)
+add_subdirectory(src/translate-plugin)
 add_subdirectory(src/capture)
 add_subdirectory(src/capture-plugin)
 add_subdirectory(src/app)
@@ -70,10 +74,11 @@ add_custom_target(bundled_plugins ALL
     COMMAND ${CMAKE_COMMAND} -E rm -rf "${bundled_plugins_dir}"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/plugins" "${bundled_plugins_dir}"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/src/plugins-sdk/WinShun.psm1" "${bundled_plugins_dir}/winshun.kill/WinShun.psm1"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/src/plugins-sdk/winshun.py" "${bundled_plugins_dir}/winshun.bookmarks/winshun.py"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/src/plugins-sdk/winshun.py" "${bundled_plugins_dir}/winshun.translate/winshun.py"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunTools>" "${bundled_plugins_dir}/winshun.tools/WinShunTools.exe"
-    DEPENDS WinShunTools
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/switches-plugin/package" "${bundled_plugins_dir}/winshun.switches"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunSwitches>" "${bundled_plugins_dir}/winshun.switches/WinShunSwitches.exe"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunSwitchesApp>" "${bundled_plugins_dir}/winshun.switches/WinShunSwitchesApp.dll"
+    DEPENDS WinShunTools WinShunSwitches WinShunSwitchesApp
     COMMENT "Staging the bundled plugins into ${bundled_plugins_dir}"
     VERBATIM)
 install(DIRECTORY "${bundled_plugins_dir}/" DESTINATION plugins)
@@ -89,24 +94,30 @@ add_custom_target(library_plugins ALL
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunSemantic>" "${library_plugins_dir}/winshun.semantic/WinShunSemantic.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/localsend-plugin/package" "${library_plugins_dir}/winshun.localsend"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunLocalSend>" "${library_plugins_dir}/winshun.localsend/WinShunLocalSend.exe"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/break-plugin/package" "${library_plugins_dir}/winshun.break"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunBreak>" "${library_plugins_dir}/winshun.break/WinShunBreak.exe"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/bookmarks-plugin/package" "${library_plugins_dir}/winshun.bookmarks"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunBookmarks>" "${library_plugins_dir}/winshun.bookmarks/WinShunBookmarks.exe"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/translate-plugin/package" "${library_plugins_dir}/winshun.translate"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunTranslate>" "${library_plugins_dir}/winshun.translate/WinShunTranslate.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/capture-plugin/package" "${library_plugins_dir}/winshun.capture"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunCapture>" "${library_plugins_dir}/winshun.capture/WinShunCapture.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunCaptureApp>" "${library_plugins_dir}/winshun.capture/WinShunCaptureApp.dll"
     # What is compiled into WinShunCaptureApp.dll; Qt, ONNX Runtime and the OCR models are Win顺's.
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/zxing-cpp/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/zxing-cpp.txt"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/miniz/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/miniz.txt"
-    DEPENDS WinShunSemantic WinShunLocalSend WinShunCapture WinShunCaptureApp
+    DEPENDS WinShunSemantic WinShunLocalSend WinShunBreak WinShunBookmarks WinShunTranslate WinShunCapture WinShunCaptureApp
     COMMENT "Staging the library plugins into ${library_plugins_dir}"
     VERBATIM)
 
 # Developer tool: index memory and search timings on the real snapshot.
 qt_add_executable(wsbench tools/wsbench.cpp src/app/Settings.cpp
     src/app/SiteIconImage.cpp src/app/SvgIcon.cpp src/app/platform/Http.cpp src/app/platform/SiteIcons.cpp # --site-icon, --suggest
-    src/app/platform/RegistryWatch.cpp src/app/platform/SettingBroadcast.cpp src/app/platform/SwitchAudio.cpp
-    src/app/platform/SwitchExplorer.cpp src/app/platform/SwitchKeepAwake.cpp src/app/platform/SwitchRadios.cpp
-    src/app/platform/SwitchTheme.cpp src/app/platform/SystemSwitches.cpp # --switches
+    src/app/platform/RegistryWatch.cpp src/app/platform/SettingBroadcast.cpp src/switches-plugin/platform/SwitchAudio.cpp
+    src/switches-plugin/platform/SwitchExplorer.cpp src/switches-plugin/platform/SwitchKeepAwake.cpp src/switches-plugin/platform/SwitchRadios.cpp
+    src/switches-plugin/platform/SwitchTheme.cpp src/switches-plugin/platform/SystemSwitches.cpp # --switches
     src/app/platform/PaddleOcr.cpp src/app/platform/OcrFiles.cpp) # --ocr
-target_include_directories(wsbench PRIVATE src/app src/app/platform) # Settings: the user's crawl rules for --sync
+target_include_directories(wsbench PRIVATE src/app src/app/platform ${PROJECT_SOURCE_DIR}/src/switches-plugin) # Settings: the user's crawl rules for --sync
 target_link_libraries(wsbench PRIVATE wscore wsextract wsmcp wsplugin wscapture Qt6::Gui Qt6::Svg psapi winhttp advapi32 onnxruntime_headers
     windowsapp iphlpapi) # wsmcp: --mcp-host; wsplugin: --plugin; wscapture: --scroll-replay; advapi32: --open-probe; windowsapp, iphlpapi: --switches (the radios)
 add_dependencies(wsbench WinShunPluginHost bundled_plugins library_plugins) # --plugin starts it from next to wsbench; the bundled and library plugins next to it too

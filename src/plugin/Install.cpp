@@ -5,6 +5,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QSet>
+#include <QTemporaryDir>
 #include <QUuid>
 
 #include <miniz.h>
@@ -214,10 +215,14 @@ QString place(const Candidate& candidate, const QString& userDir, QString* error
     const QString sourceDir = QDir::cleanPath(candidate.dir);
     if (QDir::cleanPath(target).compare(sourceDir, Qt::CaseInsensitive) == 0)
         return QDir::toNativeSeparators(target); // installing what is installed: nothing to move
+    if (QFileInfo::exists(target) && !QFileInfo::exists(target + u"/plugin.json"_s))
+        return fail(u"%1 不是已安装的插件文件夹，为保留其中的数据，没有覆盖"_s.arg(QDir::toNativeSeparators(target)));
     // What is there goes aside first, and comes back if the new one cannot
     // be put in place.
-    const QString aside = target + u".old"_s;
-    QDir(aside).removeRecursively();
+    QTemporaryDir backup(QDir(userDir).filePath(u".winshun-update-XXXXXX"_s));
+    if (!backup.isValid())
+        return fail(u"建不了插件更新的临时文件夹"_s);
+    const QString aside = backup.filePath(u"plugin"_s);
     const bool had = QFileInfo::exists(target);
     if (had && !QDir().rename(target, aside))
         return fail(u"换不掉原来的 %1：它的程序可能还在运行"_s.arg(QDir::toNativeSeparators(target)));
@@ -228,12 +233,12 @@ QString place(const Candidate& candidate, const QString& userDir, QString* error
         why = copyTree(candidate.dir, target);
     if (!why.isEmpty()) {
         QDir(target).removeRecursively();
-        if (had)
-            QDir().rename(aside, target);
+        if (had && !QDir().rename(aside, target)) {
+            backup.setAutoRemove(false); // retain the old version if rollback fails
+            return fail(why + u"；原来的插件保留在 %1"_s.arg(QDir::toNativeSeparators(aside)));
+        }
         return fail(why);
     }
-    if (had)
-        QDir(aside).removeRecursively();
     return QDir::toNativeSeparators(target);
 }
 
@@ -248,11 +253,13 @@ QString remove(const QString& userDir, const QString& dataRoot, const QString& i
 {
     if (!validPluginId(id))
         return u"不是插件 id"_s;
+    const QString dataDir = QDir(dataRoot.isEmpty() ? userDir : dataRoot).filePath(id + u".data"_s);
+    if (data && QFileInfo::exists(dataDir + u"/plugin.json"_s))
+        return u"数据文件夹 %1 中有另一个插件，为保留它，没有删除"_s.arg(QDir::toNativeSeparators(dataDir));
     const QString folder = QDir(userDir).filePath(id);
     if (QFileInfo::exists(folder) && !QDir(folder).removeRecursively())
         return u"删不掉 %1：它的程序可能还在运行"_s.arg(QDir::toNativeSeparators(folder));
     if (data) {
-        const QString dataDir = QDir(dataRoot.isEmpty() ? userDir : dataRoot).filePath(id + u".data"_s);
         if (QFileInfo::exists(dataDir) && !QDir(dataDir).removeRecursively())
             return u"插件已删除，它的数据 %1 删不掉"_s.arg(QDir::toNativeSeparators(dataDir));
     }

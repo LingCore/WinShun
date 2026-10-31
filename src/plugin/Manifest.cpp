@@ -40,6 +40,7 @@ constexpr Named kPermissions[] = {
     {Permission::FilesRead, u"files:read"},
     {Permission::Notifications, u"notifications"},
     {Permission::NetworkListen, u"network:listen"},
+    {Permission::SystemSettings, u"system:settings"},
 };
 
 // Collects the first error; every check after it is skipped.
@@ -453,7 +454,7 @@ Command readCommand(const QJsonValue& value, int index, bool hasRuntime, Check& 
         if (cache.isObject())
             c.cacheSeconds = intField(cache.toObject(), u"seconds"_s, 0, 0, 86400, where + u".cache"_s, check);
         else if (cache.isDouble())
-            c.cacheSeconds = std::clamp(static_cast<int>(cache.toDouble()), 0, 86400);
+            c.cacheSeconds = static_cast<int>(std::clamp(cache.toDouble(), 0.0, 86400.0));
         else
             check.fail(where + u".cache 要是 {seconds} 或数字"_s);
     }
@@ -559,6 +560,8 @@ std::optional<Manifest> Manifest::parse(const QByteArray& json, QString* error)
         check.fail(u"缺少 id（作者.名字）"_s);
     else if (!validPluginId(m.id))
         check.fail(u"id 只能用小写字母、数字、点、连字符和下划线（作者.名字）"_s);
+    else if (m.id.endsWith(u".data"))
+        check.fail(u"id 不能以 .data 结尾：这个后缀留给插件数据文件夹"_s);
     const auto name = readText(o.value(u"name"_s), u"name"_s, check);
     if (!name && !check.failed())
         check.fail(u"缺少 name"_s);
@@ -625,6 +628,15 @@ std::optional<Manifest> Manifest::parse(const QByteArray& json, QString* error)
         }
     }
     m.settingsWindow = o.value(u"settingsWindow"_s).toBool();
+    if (o.contains(u"systemSwitches"_s) && !o.value(u"systemSwitches"_s).isBool())
+        check.fail(u"systemSwitches 要是布尔值"_s);
+    m.systemSwitches = o.value(u"systemSwitches"_s).toBool();
+    if (m.systemSwitches && (!m.resident() || !m.permissions.has(Permission::Ui)
+        || !m.permissions.has(Permission::SystemSettings)))
+        check.fail(u"systemSwitches 要常驻，并声明 ui 和 system:settings 权限"_s);
+    if (m.systemSwitches && m.resident()
+        && (m.runtime->start != StartWhen::Eager || m.runtime->idleExitSec != 0))
+        check.fail(u"systemSwitches 要 start eager 和 idleExitSec 0，持续监听并持有保持唤醒请求"_s);
     // What Win顺 asks of the plugin's own process, which shows windows.
     if ((!m.trayMenu.isEmpty() || !m.pictures.isEmpty() || m.settingsWindow)
         && (!m.resident() || !m.permissions.has(Permission::Ui)))

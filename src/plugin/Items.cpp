@@ -191,7 +191,7 @@ QueryResult parseResult(const QJsonValue& value)
         const QJsonObject o = value.toObject();
         items = o.value(u"items"_s).toArray();
         result.rerun = std::max(0.0, o.value(u"rerun"_s).toDouble());
-        result.cacheSeconds = std::max(0, static_cast<int>(o.value(u"cache"_s).toDouble()));
+        result.cacheSeconds = static_cast<int>(std::clamp(o.value(u"cache"_s).toDouble(), 0.0, 86400.0));
     } else
         return result;
     for (const QJsonValue& v : items) {
