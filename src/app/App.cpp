@@ -2959,6 +2959,18 @@ void App::showSettings()
             QJsonObject context {{u"content_search_enabled"_s, m_settings.contentSearch}, {u"content_index_enabled"_s, m_settings.contentIndex},
                 {u"documents_enabled"_s, m_settings.contentDocuments},
                 {u"include_system_folders"_s, m_settings.contentInLowPriority}};
+            const KeyboardRawInput pieKeyboard = keyboardRawInput();
+            context[u"drop_pie"_s] = QJsonObject {
+                {u"enabled"_s, m_settings.dropPie},
+                {u"runtime"_s, m_dropPie ? u"local"_s : m_dropPieHelper ? u"helper"_s : u"off"_s},
+                {u"local_drop_target_ready"_s, m_dropPie && m_dropPie->dropReady()},
+                {u"local_listener_active"_s, m_dropPie && m_keyListener && m_keyListener->isActive()},
+                {u"local_keyboard_input"_s, !m_dropPie || !m_keyListener ? u"off"_s
+                    : pieKeyboard.error ? u"unknown"_s : !pieKeyboard.registration ? u"none"_s
+                    : pieKeyboard.registration->hwndTarget == m_keyListener->window() ? u"ok"_s : u"other"_s},
+            };
+            if (m_dropPieHelper)
+                context[u"drop_pie_helper"_s] = m_dropPieHelper->state();
             if (const auto service = std::dynamic_pointer_cast<ntfs::ServiceVolumeAccess>(m_index->volumeAccess()))
                 context[u"index_service_version"_s] = QString::fromStdWString(service->serviceVersion());
             context[u"index_service_state"_s] = QString::fromLatin1(ntfs::ServiceVolumeAccess::stateName(ntfs::ServiceVolumeAccess::state()));

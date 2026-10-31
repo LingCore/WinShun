@@ -199,6 +199,7 @@ private:
     bool m_dragFound = false; // an OLE drag seen while the button is held; listener thread only
     std::uint32_t m_dragLooked = 0; // when it was last looked for (message time)
     bool m_dragKeyGuarded = false; // the drop pie's key held back from the drag's source
+    bool m_dragConflictLogged = false; // at most one hotkey-conflict note per primary-button press
     // The key pressed on a file still held, not dragged yet: the drag being
     // started for it (startDrag). Listener thread only.
     bool m_starting = false;
