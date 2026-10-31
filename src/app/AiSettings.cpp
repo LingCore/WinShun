@@ -1,6 +1,7 @@
 #include "AiSettings.h"
 
 #include "WebShortcut.h"
+#include "PreviewShortcut.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -283,6 +284,9 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Launcher/FolderMenuDesktop", QT_TRANSLATE_NOOP("AiSettings", "在桌面的空白处双击"), "files_and_dialogs", 2,
                     "The folder menu comes up on a double click on the desktop."},
         &Settings::folderMenuDesktop));
+    add(boolean({"Launcher/FolderMenuMiddle", QT_TRANSLATE_NOOP("AiSettings", "同时用中键打开文件夹菜单"), "files_and_dialogs", 2,
+                    "Also open the enabled blank-space folder menu with the middle mouse button. Off by default."},
+        &Settings::folderMenuMiddle));
     add(boolean({"Launcher/FolderMenuFavorites", QT_TRANSLATE_NOOP("AiSettings", "菜单里列出收藏的文件夹"), "files_and_dialogs", 2,
                     "The folder menu lists the favorite folders. At least one of the three groups stays on."},
         &Settings::folderMenuFavorites));
@@ -467,13 +471,29 @@ std::vector<Entry> buildCatalog()
         &Settings::startList,
         {{u"opened"_s, u"what was opened last"_s, QT_TRANSLATE_NOOP("AiSettings", "最近打开")},
             {u"modified"_s, u"the files written last"_s, QT_TRANSLATE_NOOP("AiSettings", "最近修改")},
-            {u"none"_s, u"nothing but the favorites"_s, QT_TRANSLATE_NOOP("AiSettings", "只有收藏夹")}}));
+            {u"none"_s, u"no recent items (favorites follow their own setting)"_s,
+                QT_TRANSLATE_NOOP("AiSettings", "不显示最近项目")}}));
+    add(integer({"Results/RecentItems", QT_TRANSLATE_NOOP("AiSettings", "最近打开的数量"), "results", 1,
+                    "How many recently opened items are listed before typing."},
+        &Settings::recentItems, 1, 200, QT_TRANSLATE_NOOP("AiSettings", "项"), "items"));
+    add(boolean({"Results/FavoritesOnStart", QT_TRANSLATE_NOOP("AiSettings", "不输入时显示收藏"), "results", 1,
+                    "Show favorites before typing. Turning this off keeps their names and keywords searchable."},
+        &Settings::favoritesOnStart));
     add(boolean({"Results/DoubleClickToOpen", QT_TRANSLATE_NOOP("AiSettings", "双击打开结果"), "results", 1,
                     "A click on a result only selects it; a double click (or Enter) opens it. Off: a click opens it."},
         &Settings::doubleClickToOpen));
     add(boolean({"Results/TabEntersFavoriteFolder", QT_TRANSLATE_NOOP("AiSettings", "Tab 进入收藏文件夹"), "results", 1,
                     "In All, Tab browses the selected favorite folder. Off by default: Tab switches search scopes. Shift+Tab and plugin/web completion keep their usual behavior."},
         &Settings::tabEntersFavoriteFolder));
+    add(boolean({"Results/SearchApps", QT_TRANSLATE_NOOP("AiSettings", "搜索应用"), "results", 1,
+                    "All also finds apps (Start menu programs, Store apps). Off: All finds files, folders and content only."},
+        &Settings::searchApps));
+    add(boolean({"Results/SearchSystem", QT_TRANSLATE_NOOP("AiSettings", "搜索系统设置"), "results", 1,
+                    "All also finds Windows settings pages, Control Panel items and system switches (\"关蓝牙\", \"音量 30\"). Off: All finds files, folders and content only."},
+        &Settings::searchSystem));
+    add(boolean({"Results/RegexMode", QT_TRANSLATE_NOOP("AiSettings", "正则模式"), "results", 1,
+                    "Every word typed in All and Files is a regular expression on names (Ctrl+R in the search box toggles it). A single word can be one with regex: before it either way."},
+        &Settings::regexMode));
     add(boolean({"Results/ShowModified", QT_TRANSLATE_NOOP("AiSettings", "显示修改日期"), "results", 1,
                     "Each result says when the file was last written."},
         &Settings::showModified));
@@ -487,11 +507,30 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Results/Thumbnails", QT_TRANSLATE_NOOP("AiSettings", "显示图片缩略图"), "results", 1,
                     "A picture, video or PDF shows its thumbnail as its icon."},
         &Settings::thumbnails));
-    add(choice({"Results/PreviewWith", QT_TRANSLATE_NOOP("AiSettings", "预览文件（Alt+P）"), "results", 1,
-                   "What Alt+P on a result shows the file with."},
+    add(choice({"Results/PreviewWith", QT_TRANSLATE_NOOP("AiSettings", "预览文件"), "results", 1,
+                   "Which viewer the result preview uses."},
         &Settings::previewWith,
         {{u"auto"_s, u"QuickLook or Seer when one runs in the background, else Win顺's own preview"_s, QT_TRANSLATE_NOOP("AiSettings", "自动")},
             {u"builtin"_s, u"always Win顺's own preview"_s, QT_TRANSLATE_NOOP("AiSettings", "内置预览")}}));
+    {
+        Entry e = base({"Results/PreviewHotkey", QT_TRANSLATE_NOOP("AiSettings", "预览快捷键"), "results", 1,
+            "Local shortcut to toggle a result's preview. Space, a function key, or an unused Ctrl/Alt chord; empty disables it. Shift+Space still types a space."}, Type::Text);
+        e.field = &Settings::previewHotkey;
+        e.check = [](const State& s, const QString& value, const Env&) {
+            if (value.isEmpty())
+                return QString();
+            if (!previewkeys::allowed(value))
+                return u"Use Space, a function key or an unused Ctrl/Alt chord; navigation and editing shortcuts are reserved."_s;
+            if (previewkeys::usedGlobally(value, {s.settings.hotkey, s.settings.clipboardHotkey, s.settings.folderMenuHotkey}))
+                return u"This shortcut is already used by a global action."_s;
+            return QString();
+        };
+        e.after = [](State& s) {
+            if (!s.settings.previewHotkey.isEmpty())
+                s.settings.previewHotkey = previewkeys::normalized(s.settings.previewHotkey);
+        };
+        add(std::move(e));
+    }
     add(boolean({"Launcher/ClearOnOpen", QT_TRANSLATE_NOOP("AiSettings", "每次打开时清空搜索"), "results", 2,
                     "Each time the search box opens nothing is typed and the scope is 全部, instead of keeping the last words selected."},
         &Settings::clearOnOpen));
@@ -566,6 +605,12 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Clipboard/LargePictures", QT_TRANSLATE_NOOP("AiSettings", "大图片缩略图"), "clipboard", 0,
                     "Pictures on taller rows, thumbnails large enough to make out."},
         &Settings::clipboardLargePictures));
+    add(boolean({"Clipboard/AtPointer", QT_TRANSLATE_NOOP("AiSettings", "剪贴板打开位置"), "clipboard", 0,
+                    "Always open the clipboard beside the mouse pointer. Off: by the text caret or focused field."},
+        &Settings::clipboardAtPointer));
+    add(boolean({"Clipboard/PauseInFullScreen", QT_TRANSLATE_NOOP("AiSettings", "全屏时不响应剪贴板快捷键"), "clipboard", 0,
+                    "Pause global clipboard opening hotkeys over a full-screen application. Recording and menu actions stay available."},
+        &Settings::clipboardPauseInFullScreen));
     add(boolean({"Clipboard/FlipAbove", QT_TRANSLATE_NOOP("AiSettings", "开在光标上方时翻转"), "clipboard", 0,
                     "Opened above the text caret, the window turns upside down: the newest entry next to the caret."},
         &Settings::clipboardFlipAbove));

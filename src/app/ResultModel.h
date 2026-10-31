@@ -10,10 +10,14 @@
 #include <QSet>
 #include <QStringList>
 #include <QtQml/qqmlregistration.h>
+#include <functional>
+#include <memory>
 
 namespace ws {
 
 class Switches;
+class FileIndex;
+class FolderSizes;
 
 // The visible result list. Holds at most a few hundred rows; HTML for match
 // highlighting is generated lazily for the rows QML actually draws.
@@ -63,7 +67,7 @@ public:
         ModifiedRole, // when a file or folder was last written, briefly: "昨天 14:32"; empty when not known
         ModifiedFullRole, // the same in full, for its tip
         ModifiedDateRole, // the panel's column: "2026-10-14 14:32"; empty when not known
-        SizeRole, // a file's size, briefly: "1.2 MB"; empty for a folder, an app, or when not known
+        SizeRole, // a file's size, or an asynchronous index estimate for a folder in the panel
         CreatedDateRole,
         TypeNameRole,
         FolderNameRole,
@@ -98,6 +102,9 @@ public:
     };
 
     explicit ResultModel(QObject* parent = nullptr);
+    ~ResultModel() override;
+    void setFolderIndex(std::function<std::shared_ptr<FileIndex>()> index);
+    void setFolderSizesEnabled(bool on);
 
     int rowCount(const QModelIndex& parent = {}) const override;
     QVariant data(const QModelIndex& index, int role) const override;
@@ -177,6 +184,8 @@ private:
     bool m_showModifiedTime = false;
     QSet<QString> m_selected; // paths
     QPointer<Switches> m_switches;
+    bool m_folderSizesEnabled = false;
+    std::unique_ptr<FolderSizes> m_folderSizes;
 };
 
 } // namespace ws

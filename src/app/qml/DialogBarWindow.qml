@@ -95,6 +95,14 @@ Window {
             contextMenu.dismiss()
     }
 
+    function openKeyboardMenu(repeated) {
+        if (input.preeditText.length > 0 || !list.visible || list.currentIndex < 0 || list.currentIndex >= list.count)
+            return false
+        if (!repeated)
+            openMenu(list.currentIndex)
+        return true
+    }
+
     // Ctrl+1… (or Alt+1…) as in the launcher (see Main.qml): the nth row
     // shown, its number up while the modifier is held.
     readonly property int numberKey: bar.numberKeys === "ctrl" ? Qt.Key_Control
@@ -178,6 +186,15 @@ Window {
         case Qt.Key_Up: move(-1); break
         case Qt.Key_PageDown: move(Math.max(1, window.bar.rows)); break
         case Qt.Key_PageUp: move(-Math.max(1, window.bar.rows)); break
+        case Qt.Key_Right:
+            if ((event.modifiers & ~Qt.KeypadModifier) !== Qt.NoModifier || input.selectedText.length > 0
+                    || input.cursorPosition !== input.length || !openKeyboardMenu(event.isAutoRepeat))
+                return
+            break
+        case Qt.Key_O:
+            if ((event.modifiers & ~Qt.KeypadModifier) !== Qt.ControlModifier || !openKeyboardMenu(event.isAutoRepeat))
+                return
+            break
         case Qt.Key_Return:
         case Qt.Key_Enter:
             if (window.bar.holdUntilShown(0, ctrl))
@@ -259,6 +276,7 @@ Window {
 
         TextInput {
             id: input
+            objectName: "dialogSearchField"
             anchors.left: searchIcon.right
             anchors.leftMargin: 10
             anchors.right: trailing.left
@@ -272,6 +290,7 @@ Window {
             selectionColor: Theme.textSelection
             selectedTextColor: Theme.text
             onTextChanged: window.bar.query = text
+            onPreeditTextChanged: if (preeditText.length > 0) window.closeMenu()
             Keys.onPressed: (event) => window.handleKey(event)
             Keys.onReleased: (event) => window.handleKeyRelease(event)
             Accessible.role: Accessible.EditableText
@@ -500,6 +519,7 @@ Window {
 
     ListView {
         id: list
+        objectName: "dialogResults"
         visible: window.bar.rows > 0
         y: window.bar.listAbove ? 0 : window.bar.barHeight + 1
         width: window.width

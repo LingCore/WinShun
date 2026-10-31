@@ -65,8 +65,12 @@ public:
 private:
     QImage pluginImage(const QString& id, int px);
 
+    // Bound pixels as well as entries: 256 icons at 256 px would hold
+    // 64 MiB. The minimum cost below keeps the ordinary list's 256 slots.
+    static constexpr qsizetype kCacheBytes = 8 * 1024 * 1024;
+    static constexpr qsizetype kCacheIcons = 256;
     QMutex m_mutex;
-    QCache<QString, QImage> m_cache {256};
+    QCache<QString, QImage> m_cache {kCacheBytes};
 };
 
 } // namespace ws

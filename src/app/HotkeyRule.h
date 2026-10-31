@@ -1,6 +1,7 @@
 #pragma once
 
 #include "platform/HotkeyText.h"
+#include "PreviewShortcut.h"
 
 #include <QObject>
 #include <QString>
@@ -22,6 +23,7 @@ public:
     }
 
     Q_INVOKABLE bool allowed(const QString& shortcut) const { return hotkeys::allowed(shortcut); }
+    Q_INVOKABLE bool previewAllowed(const QString& shortcut) const { return previewkeys::allowed(shortcut); }
 };
 
 } // namespace ws

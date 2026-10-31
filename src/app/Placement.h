@@ -53,7 +53,7 @@ namespace ws {
 //
 // Opening and closing are animated (slideIn, slideOut) unless the system's
 // animation effects are off: it fades in coming a little from the taskbar's
-// side (elsewhere: rising), and fades out sinking a little. By the taskbar it
+// side (elsewhere: rising), and fades out where it is. By the taskbar it
 // stays over it all the while, moving no further than the gap between them:
 // a see-through taskbar (TranslucentTB) showed a window that slid behind it,
 // and kept the last of it in its blur once the window was hidden. The window
@@ -113,6 +113,8 @@ public:
     QSize contentSize() const { return m_contentSize; }
     void setContentSize(QSize size);
     void placeOn(QScreen* screen); // before showing the window there, at its spot
+    // A temporary spot beside the file manager typed in; never saved as home.
+    void avoidNative(const QRect& window, QScreen* screen);
     // Before showing it, by `box` (logical pixels, on `screen`; none: the
     // screen at the box's centre).
     void attach(const QRect& box, QScreen* screen = nullptr);
@@ -229,7 +231,8 @@ private:
     // Physical pixels wide, centred on `centre` (physical), within the work area.
     void applyWidth(int width, qreal centre);
     void keepWidth(); // as it is now: remembered, and m_left (dropped) where it went
-    QPoint settleOn(QScreen* screen); // where the window goes there; sets room
+    QPoint settleOn(QScreen* screen, bool updateRoom = true); // where the window goes there; sets room
+    QPoint settleAvoiding(QScreen* screen);
     void attachBy(const QRect& box, QScreen* screen, int gap); // attach, this far off the box
     QPoint settleBy(QScreen* screen); // ... by the box; sets room, and with it the height (QML)
     QPoint settleByTaskbar(QScreen* screen); // ... over the taskbar; likewise
@@ -266,6 +269,7 @@ private:
     QPointF m_anchor; // centre across, top down; fractions of the work area
     int m_anchorWidth = 0;
     std::optional<QRect> m_box; // attached to it
+    std::optional<QRect> m_avoid; // native bounds of the file manager typed in
     int m_boxGap = 0; // ... this far off it, logical pixels
     std::optional<TaskbarBox> m_taskbar; // over it
     std::optional<taskbar::Spot> m_taskbarSpot; // ... as attachTaskbar was given it

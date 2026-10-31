@@ -60,7 +60,7 @@ Window {
                 elide: Text.ElideMiddle
                 color: Theme.text
                 font.pixelSize: Theme.uiTitle
-                font.weight: Font.DemiBold
+                font.weight: Theme.fontStrong
             }
             Text {
                 width: parent.width

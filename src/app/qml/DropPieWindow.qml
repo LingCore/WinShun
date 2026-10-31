@@ -227,7 +227,7 @@ Window {
                         textFormat: Text.PlainText
                         color: Theme.text
                         font.pixelSize: pie.labelSize + 1
-                        font.weight: bold ? Font.DemiBold : Font.Normal
+                        font.weight: bold ? Theme.fontStrong : Font.Normal
                     }
                 }
                 Item {

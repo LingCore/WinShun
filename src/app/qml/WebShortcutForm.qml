@@ -253,7 +253,7 @@ FocusScope {
             text: form.index < 0 ? qsTr("添加网页搜索") : qsTr("编辑网页搜索")
             color: Theme.text
             font.pixelSize: Theme.fontTitle
-            font.weight: Font.DemiBold
+            font.weight: Theme.fontStrong
         }
 
         Flickable {

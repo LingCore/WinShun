@@ -24,7 +24,7 @@ Rectangle {
         text: cap.keys
         color: cap.taken ? Theme.faint : Theme.text
         font.pixelSize: Theme.uiBody
-        font.weight: Font.DemiBold
+        font.weight: Theme.fontStrong
         font.strikeout: cap.taken
     }
 }

@@ -47,7 +47,7 @@ Item {
                     id: bold
                     text: item.modelData
                     font.pixelSize: Theme.fontBody
-                    font.weight: Font.DemiBold
+                    font.weight: Theme.fontStrong
                 }
                 Text {
                     anchors.centerIn: parent
@@ -55,7 +55,7 @@ Item {
                     text: item.modelData
                     color: item.selected || area.containsMouse && !area.pressed ? Theme.text : Theme.subtext
                     font.pixelSize: Theme.fontBody
-                    font.weight: item.selected ? Font.DemiBold : Font.Normal
+                    font.weight: item.selected ? Theme.fontStrong : Font.Normal
                 }
                 MouseArea {
                     id: area

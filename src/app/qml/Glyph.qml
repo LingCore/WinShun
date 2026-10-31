@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Shapes
 import WinShun
 
 // An icon named by its Segoe Fluent / MDL2 code point, e.g. "" (search),
@@ -18,45 +19,13 @@ Item {
     // A window's caption button: Windows' own glyph, as its own windows have.
     property bool caption: false
 
-    // Icons drawn like Fluent System Icons: a master per device-pixel size,
-    // with outer edges on whole pixels and the stroke growing inwards (1 px at
-    // 16 and 20, 1.5 px at 24 and 28), round caps, dots on whole pixels.
-    // `stroke` and `fill` are SVG path data in device pixels; the SVG sources
-    // are in resources/icons.
-    readonly property var drawn: ({
-        copyPath: { // a box holding "\\..": copy-path-<size>.svg
-            16: {
-                width: 1,
-                stroke: "M3.5 2.5H12.5A2 2 0 0 1 14.5 4.5V11.5A2 2 0 0 1 12.5 13.5H3.5A2 2 0 0 1 1.5 11.5V4.5A2 2 0 0 1 3.5 2.5Z"
-                        + "M3.5 5.5L5.5 10.5M6.5 5.5L8.5 10.5",
-                fill: "M10 10H11V11H10ZM12 10H13V11H12Z"
-            },
-            20: {
-                width: 1,
-                stroke: "M4 2.5H16A2.5 2.5 0 0 1 18.5 5V15A2.5 2.5 0 0 1 16 17.5H4A2.5 2.5 0 0 1 1.5 15V5A2.5 2.5 0 0 1 4 2.5Z"
-                        + "M3.5 6.5L6.5 13.5M6.5 6.5L9.5 13.5",
-                fill: "M11.5 12H12.5A0.5 0.5 0 0 1 13 12.5V13.5A0.5 0.5 0 0 1 12.5 14H11.5A0.5 0.5 0 0 1 11 13.5V12.5A0.5 0.5 0 0 1 11.5 12Z"
-                      + "M15.5 12H16.5A0.5 0.5 0 0 1 17 12.5V13.5A0.5 0.5 0 0 1 16.5 14H15.5A0.5 0.5 0 0 1 15 13.5V12.5A0.5 0.5 0 0 1 15.5 12Z"
-            },
-            24: {
-                width: 1.5,
-                stroke: "M4.25 2.75H19.75A2.5 2.5 0 0 1 22.25 5.25V18.75A2.5 2.5 0 0 1 19.75 21.25H4.25A2.5 2.5 0 0 1 1.75 18.75V5.25A2.5 2.5 0 0 1 4.25 2.75Z"
-                        + "M4.5 7.75L7.5 16.25M8.5 7.75L11.5 16.25",
-                fill: "M14.5 15H15.5A0.5 0.5 0 0 1 16 15.5V16.5A0.5 0.5 0 0 1 15.5 17H14.5A0.5 0.5 0 0 1 14 16.5V15.5A0.5 0.5 0 0 1 14.5 15Z"
-                      + "M18.5 15H19.5A0.5 0.5 0 0 1 20 15.5V16.5A0.5 0.5 0 0 1 19.5 17H18.5A0.5 0.5 0 0 1 18 16.5V15.5A0.5 0.5 0 0 1 18.5 15Z"
-            },
-            28: {
-                width: 1.5,
-                stroke: "M5.75 3.75H22.25A3 3 0 0 1 25.25 6.75V21.25A3 3 0 0 1 22.25 24.25H5.75A3 3 0 0 1 2.75 21.25V6.75A3 3 0 0 1 5.75 3.75Z"
-                        + "M5.5 8.75L9.5 19.25M9.5 8.75L13.5 19.25",
-                fill: "M17.5 18H18.5A0.5 0.5 0 0 1 19 18.5V19.5A0.5 0.5 0 0 1 18.5 20H17.5A0.5 0.5 0 0 1 17 19.5V18.5A0.5 0.5 0 0 1 17.5 18Z"
-                      + "M21.5 18H22.5A0.5 0.5 0 0 1 23 18.5V19.5A0.5 0.5 0 0 1 22.5 20H21.5A0.5 0.5 0 0 1 21 19.5V18.5A0.5 0.5 0 0 1 21.5 18Z"
-            }
-        }
-    })[glyph] ?? null
+    // The custom copy-path icon shares Phosphor Regular's 256-unit grid,
+    // 16-unit stroke and optical scale. SVG source: resources/icons/copy-path.svg.
+    readonly property bool drawn: glyph === "copyPath"
 
-    // {text, family}, or undefined: the system icon font draws it.
-    readonly property var phosphor: drawn || caption ? undefined : SystemTheme.phosphorIcon(glyph)
+    // {text, family}, or undefined: the system icon font draws it. The custom
+    // path uses terminal-window's matching frame to resolve the same font em.
+    readonly property var phosphor: caption ? undefined : SystemTheme.phosphorIcon(drawn ? "\uE756" : glyph)
     // Not in the system icon font (an older Windows 10; seen 2026-10-29):
     // nothing, never the character some other font has there (see
     // SystemTheme.hasGlyph).
@@ -74,7 +43,7 @@ Item {
         id: label
         anchors.centerIn: parent
         visible: !icon.drawn
-        text: icon.drawn ? "" : icon.shown
+        text: icon.drawn ? icon.phosphor.text : icon.shown
         font.family: icon.phosphor ? icon.phosphor.family : Theme.iconFont
         // In points: font.pixelSize is a whole number of logical pixels, which
         // would round a size like 64/3 (32 device pixels at 150%) down.
@@ -96,53 +65,32 @@ Item {
 
     Loader {
         anchors.centerIn: parent
-        active: icon.drawn !== null
-        sourceComponent: Canvas {
-            id: canvas
+        active: icon.drawn
+        sourceComponent: Shape {
+            width: 256
+            height: 256
+            // Match the font's resolved em, including Windows' font DPI.
+            scale: label.fontInfo.pixelSize / 256
+            preferredRendererType: Shape.CurveRenderer
 
-            readonly property real dpr: Screen.devicePixelRatio
-
-            // The image has exactly the device pixels it covers, so it is
-            // sampled unsmoothed: smoothly it would blur wherever it sits on a
-            // half pixel. Nudged off the exact half pixel, where the nearest
-            // sample is a tie that can take one column twice.
-            x: 1 / 64
-            y: 1 / 64
-            width: icon.size
-            height: icon.size
-            antialiasing: true
-            smooth: false
-            onDprChanged: requestPaint()
-
-            onPaint: {
-                const ctx = getContext("2d")
-                ctx.reset()
-                if (!icon.drawn)
-                    return // switched to a font glyph; the Loader is letting go of this
-                // The master made for this many device pixels, else the
-                // biggest one that scales to it by a whole factor (32 = 2 × 16),
-                // else the nearest.
-                const pixels = Math.round(width * dpr)
-                const sizes = Object.keys(icon.drawn).map(Number)
-                const master = sizes.filter(s => pixels % s === 0).pop()
-                               ?? sizes.reduce((a, b) => Math.abs(b - pixels) < Math.abs(a - pixels) ? b : a)
-                const shapes = icon.drawn[master]
-                ctx.scale(width / master, height / master)
-                ctx.strokeStyle = icon.color
-                ctx.fillStyle = icon.color
-                ctx.lineWidth = shapes.width
-                ctx.lineCap = "round"
-                ctx.lineJoin = "round"
-                ctx.path = shapes.stroke
-                ctx.stroke()
-                ctx.path = shapes.fill
-                ctx.fill()
+            ShapePath {
+                strokeWidth: 16
+                strokeColor: icon.color
+                fillColor: "transparent"
+                capStyle: ShapePath.RoundCap
+                joinStyle: ShapePath.RoundJoin
+                PathSvg {
+                    path: "M40 48H216A8 8 0 0 1 224 56V200A8 8 0 0 1 216 208H40A8 8 0 0 1 32 200V56A8 8 0 0 1 40 48Z"
+                          + "M72 96L96 160M112 96L136 160"
+                }
             }
-
-            Connections {
-                target: icon
-                function onColorChanged() { canvas.requestPaint() }
-                function onDrawnChanged() { canvas.requestPaint() }
+            ShapePath {
+                strokeColor: "transparent"
+                fillColor: icon.color
+                PathSvg {
+                    path: "M176 160A8 8 0 1 1 160 160A8 8 0 1 1 176 160Z"
+                          + "M208 160A8 8 0 1 1 192 160A8 8 0 1 1 208 160Z"
+                }
             }
         }
     }

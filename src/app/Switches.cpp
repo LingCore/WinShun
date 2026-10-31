@@ -1,6 +1,7 @@
 #include "Switches.h"
 
 #include <QDebug>
+#include <QPointer>
 #include <QTimer>
 
 #include <algorithm>
@@ -45,10 +46,10 @@ Switches::Switches(SwitchBackends backends, Options options, QObject* parent)
     : QObject(parent)
     , m_options(std::move(options))
     , m_backends(std::move(backends))
-    , m_worker(ComWorker::Apartment::MultiThreaded, [this] {
+    , m_worker(std::make_unique<ComWorker>(ComWorker::Apartment::MultiThreaded, [this] {
         for (const std::unique_ptr<SwitchBackend>& backend : m_backends)
             backend->close();
-    })
+    }))
 {
     for (const std::unique_ptr<SwitchBackend>& backend : m_backends) {
         for (const QString& id : backend->ids()) {
@@ -68,11 +69,28 @@ Switches::Switches(SwitchBackends backends, Options options, QObject* parent)
         }, Qt::QueuedConnection);
     };
     for (const std::unique_ptr<SwitchBackend>& backend : m_backends) {
-        backend->setStopToken(m_worker.stopToken());
+        backend->setStopToken(m_worker->stopToken());
         backend->watch(changed);
     }
     for (Entry& e : m_entries)
         requestRead(e);
+}
+
+Switches::Switches(Remote remote, QObject* parent)
+    : Switches(std::move(remote), Options {}, parent)
+{
+}
+
+Switches::Switches(Remote remote, Options options, QObject* parent)
+    : QObject(parent)
+    , m_options(std::move(options))
+    , m_remote(std::move(remote))
+{
+    for (const QString& id : m_remote->ids) {
+        if (!find(id))
+            m_entries.push_back(Entry {.id = id});
+    }
+    refresh();
 }
 
 Switches::~Switches() = default; // m_worker first: no task runs, nothing comes back, when the backends go
@@ -195,14 +213,19 @@ SwitchIntent Switches::stepped(int level, int steps)
 
 void Switches::refresh()
 {
-    const auto now = m_options.now();
-    for (Entry& e : m_entries) {
-        if (!e.shown.error.isEmpty() && !e.writing && now - e.errorAt >= m_options.errorShown) {
-            SwitchState state = e.shown;
+    for (const Entry& e : m_entries)
+        refresh(e.id);
+}
+
+void Switches::refresh(QStringView id)
+{
+    if (Entry* e = find(id)) {
+        if (!e->shown.error.isEmpty() && !e->writing && m_options.now() - e->errorAt >= m_options.errorShown) {
+            SwitchState state = e->shown;
             state.error.clear();
-            show(e, state);
+            show(*e, state);
         }
-        requestRead(e);
+        requestRead(*e);
     }
 }
 
@@ -227,7 +250,15 @@ void Switches::requestRead(Entry& e)
         return;
     }
     e.reading = true;
-    m_worker.post([this, backend = e.backend, id = e.id] {
+    if (m_remote) {
+        const QPointer self(this);
+        m_remote->read(e.id, [self, id = e.id](SwitchState now) {
+            if (self)
+                self->readDone(id, now);
+        });
+        return;
+    }
+    m_worker->post([this, backend = e.backend, id = e.id] {
         const SwitchState now = backend->read(id);
         QMetaObject::invokeMethod(this, [this, id, now] { readDone(id, now); }, Qt::QueuedConnection);
     });
@@ -267,7 +298,15 @@ void Switches::startWrite(Entry& e, SwitchIntent intent)
     e.writing = intent;
     e.writingSerial = ++m_serial;
     showTarget(e, intent);
-    m_worker.post([this, backend = e.backend, id = e.id, serial = e.writingSerial, intent] {
+    if (m_remote) {
+        const QPointer self(this);
+        m_remote->write(e.id, intent, [self, id = e.id, serial = e.writingSerial](SwitchWrite result) {
+            if (self)
+                self->writeDone(id, serial, result);
+        });
+        return;
+    }
+    m_worker->post([this, backend = e.backend, id = e.id, serial = e.writingSerial, intent] {
         const SwitchWrite result = backend->write(id, intent);
         QMetaObject::invokeMethod(this, [this, id, serial, result] { writeDone(id, serial, result); },
             Qt::QueuedConnection);
@@ -294,7 +333,7 @@ void Switches::writeDone(const QString& id, std::uint64_t serial, const SwitchWr
         if (!known || (e->confirmed.ready() && !already(e->confirmed, next))) {
             startWrite(*e, next);
             if (result.wrote)
-                e->backend->written(id);
+                written(*e);
             return;
         }
     }
@@ -306,7 +345,16 @@ void Switches::writeDone(const QString& id, std::uint64_t serial, const SwitchWr
     }
     show(*e, state);
     if (result.wrote)
-        e->backend->written(id); // after the row: dark mode's windows change with it here
+        written(*e); // after the row: dark mode's windows change with it here
+}
+
+void Switches::written(Entry& e)
+{
+    if (m_remote) {
+        if (m_remote->written)
+            m_remote->written(e.id);
+    } else
+        e.backend->written(e.id);
 }
 
 void Switches::show(Entry& e, const SwitchState& state)

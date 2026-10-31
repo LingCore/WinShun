@@ -198,7 +198,7 @@ Item {
                             text: chip.modelData
                             color: chip.active || area.containsMouse ? Theme.text : Theme.subtext
                             font.pixelSize: Theme.uiCaption
-                            font.weight: chip.active ? Font.DemiBold : Font.Normal
+                            font.weight: chip.active ? Theme.fontStrong : Font.Normal
                         }
 
                         MouseArea {
@@ -315,15 +315,19 @@ Item {
             ["Shift+Tab", qsTr("切换到上一个范围")],
             ["Ctrl+Tab", qsTr("在“文件”里切换类型，在“内容”里换个文件夹")],
             ["↑ ↓", qsTr("上下移动，PgUp PgDn 翻页")],
+            ["→ / Ctrl+O", qsTr("打开操作菜单；→ 需光标在末尾且未选中文字")],
+            ["← / Esc", qsTr("关闭操作菜单，返回结果列表")],
             ["Shift+↑ ↓", qsTr("选中多行，也可 Ctrl+单击、Shift+单击")],
             ["Ctrl+Shift+Enter", qsTr("以管理员身份运行")],
             ["Ctrl+C", qsTr("复制文件")],
             ["Ctrl+Shift+C", qsTr("复制路径")],
-            ["Alt+P", qsTr("预览文件；再按一次关闭")],
             ["Ctrl+S", qsTr("切换排序；不输入时切换最近打开、最近修改")],
             ["Ctrl+E", qsTr("展开为搜索面板，或收回搜索框")],
-            ["Ctrl+T", qsTr("钉住：点别处、打开文件后都不收起；再按一次取消")]
-        ].concat(footer.launcher.typingFolder.length === 0 // typed in a folder's window (GitHub #110): where
+            ["Ctrl+T", qsTr("钉住：点别处、打开文件后都不收起；再按一次取消")],
+            ["Ctrl+R", qsTr("正则模式：每个词都按正则表达式匹配名字；再按一次关闭")]
+        ].concat(footer.launcher.previewHotkey.length === 0 ? []
+                 : [[footer.launcher.previewHotkey, qsTr("预览文件；再按一次关闭")]])
+         .concat(footer.launcher.typingFolder.length === 0 // typed in a folder's window (GitHub #110): where
                  || footer.launcher.scope === Launcher.Content || footer.launcher.panel ? [] // switchTypingFolder takes it
                  : [["Ctrl+D", qsTr("只搜当前文件夹，或也搜其他位置")]])
          .concat(footer.launcher.numberKeys === "off" ? []

@@ -119,7 +119,7 @@ Window {
                 elide: Text.ElideRight
                 color: Theme.text
                 font.pixelSize: Theme.uiBody
-                font.weight: Font.DemiBold
+                font.weight: Theme.fontStrong
             }
             Rectangle {
                 id: closeButton

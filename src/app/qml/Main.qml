@@ -451,6 +451,12 @@ Window {
         property: "roomNeeded"
         value: window.chromeHeight + window.minRows * window.rowHeight
     }
+    Binding { // reserve normal result capacity before choosing a temporary spot beside Explorer
+        target: window.placement
+        property: "roomWanted"
+        value: window.chromeHeight + window.maxRows * window.rowHeight + window.captionHeight
+               + window.headingHeight + window.detailSpace
+    }
 
     onClipboardBelowChanged: closeContextMenu()
 
@@ -583,6 +589,17 @@ Window {
         panelPage.closeColumns() // the panel's columns menu goes with it
     }
 
+    function openKeyboardMenu(repeated) {
+        if (clipboardBelow || homeIndex >= 0 || hintIndex >= 0 || searchBar.composition.length > 0
+                || view.currentIndex < 0 || view.currentIndex >= view.count)
+            return false
+        if (!repeated) {
+            window.launcher.keyboardMoved()
+            openContextMenu(view.currentIndex)
+        }
+        return true
+    }
+
     // The system's own menu for a file's or folder's row (the shell's, with
     // every extension; Launcher.showSystemMenu): Shift+right-click,
     // Shift+Menu (Ctrl+Shift+F10), 更多选项 in Win顺's menu. `globalPos`
@@ -623,6 +640,16 @@ Window {
         host: window.launcher
     }
 
+    Connections {
+        target: window.searchBar
+        function onCompositionChanged() {
+            if (window.searchBar.composition.length > 0) {
+                window.closeContextMenu()
+                window.galleryNavigation = false
+            }
+        }
+    }
+
     // Along the strip under the box: in 文件 the kinds, in 内容 the folders.
     function stepStrip(delta) {
         if (launcher.pluginKeyword.length > 0 || !typeStrip.shown)
@@ -655,8 +682,10 @@ Window {
             event.accepted = true
             return
         }
-        if (event.key === Qt.Key_P && (event.modifiers & ~Qt.KeypadModifier) === Qt.AltModifier) {
-            togglePreview()
+        if (searchBar.composition.length === 0 && window.launcher.isPreviewKey(event.key, event.modifiers)
+                && homeIndex < 0 && hintIndex < 0 && (view.currentIndex >= 0 || event.key !== Qt.Key_Space)) {
+            if (!event.isAutoRepeat)
+                togglePreview()
             event.accepted = true
             return
         }
@@ -666,6 +695,12 @@ Window {
         // linux.do #157). From the row of apps too.
         if (event.key === Qt.Key_T && ctrl && !shift && (event.modifiers & Qt.AltModifier) === 0) {
             window.launcher.togglePin()
+            event.accepted = true
+            return
+        }
+        // Ctrl+R: regex mode, as Everything's (the .* chip by the box says it is on).
+        if (event.key === Qt.Key_R && ctrl && !shift && (event.modifiers & Qt.AltModifier) === 0) {
+            window.launcher.toggleRegexMode()
             event.accepted = true
             return
         }
@@ -699,12 +734,19 @@ Window {
         case Qt.Key_PageDown: shift ? extendSelection(panel ? Math.max(1, Math.floor(view.height / viewRowHeight)) * gridColumns : fitRows) : moveSelection(panel ? Math.max(1, Math.floor(view.height / viewRowHeight)) * gridColumns : fitRows); break
         case Qt.Key_PageUp: shift ? extendSelection(panel ? -Math.max(1, Math.floor(view.height / viewRowHeight)) * gridColumns : -fitRows) : moveSelection(panel ? -Math.max(1, Math.floor(view.height / viewRowHeight)) * gridColumns : -fitRows); break
         case Qt.Key_Left:
-        case Qt.Key_Right: // Alt+← →: the volume's row, in steps of 5 (held, on and on); plain ← → are the box's caret
+        case Qt.Key_Right: // In the gallery, arrows keep navigating its columns.
             if (panel && launcher.gallery && galleryNavigation && !ctrl && !(event.modifiers & Qt.AltModifier)) {
                 const delta = event.key === Qt.Key_Right ? 1 : -1
                 shift ? extendSelection(delta) : moveSelection(delta)
                 break
             }
+            // At the end of the query, Right enters the selected row's menu.
+            // Holding Right to move the caret never opens it on a repeat.
+            if (event.key === Qt.Key_Right && (event.modifiers & ~Qt.KeypadModifier) === Qt.NoModifier
+                    && !searchBar.hasSelection && searchBar.field.cursorPosition === searchBar.field.length
+                    && openKeyboardMenu(event.isAutoRepeat))
+                break
+            // Alt+← → still adjusts a system switch; other arrows edit the query.
             if ((event.modifiers & ~Qt.KeypadModifier) !== Qt.AltModifier || hintIndex >= 0
                     || searchBar.composition.length > 0
                     || !window.launcher.stepSwitch(view.currentIndex, event.key === Qt.Key_Right ? 1 : -1))
@@ -767,6 +809,10 @@ Window {
             break
         case Qt.Key_D: // typed in a folder's window: its rows first, or there alone (GitHub #110)
             if (!ctrl || shift || !window.launcher.switchTypingFolder())
+                return
+            break
+        case Qt.Key_O:
+            if ((event.modifiers & ~Qt.KeypadModifier) !== Qt.ControlModifier || !openKeyboardMenu(event.isAutoRepeat))
                 return
             break
         case Qt.Key_Menu: // Shift+Menu: the system's menu for the row; the Menu key alone comes back as a context-menu event (Win顺's menu)
@@ -1330,6 +1376,7 @@ Window {
                     showModified: window.launcher.showModified
                     showSize: window.launcher.showFileSize || window.launcher.sort === Launcher.LargestFirst || window.launcher.sort === Launcher.SmallestFirst
                     hint: window.numberOf(index)
+                    reserveHintSpace: window.numberKey >= 0 && window.launcher.numberHints !== "off"
                     hintOpacity: numberHints.hintOpacity
                     hintModifier: window.numberModifier
                     hintTaken: resultRow.hint > 0 && !window.numberUsable(resultRow.hint)

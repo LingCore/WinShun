@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- Copy full path: Phosphor Regular's grid, frame and stroke weight.
+       Glyph.qml renders these paths as vectors with the same optical scale as the font icons. -->
+  <path fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"
+        d="M40 48H216A8 8 0 0 1 224 56V200A8 8 0 0 1 216 208H40A8 8 0 0 1 32 200V56A8 8 0 0 1 40 48ZM72 96L96 160M112 96L136 160"/>
+  <path fill="currentColor"
+        d="M176 160A8 8 0 1 1 160 160A8 8 0 1 1 176 160ZM208 160A8 8 0 1 1 192 160A8 8 0 1 1 208 160Z"/>
+</svg>

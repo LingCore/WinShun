@@ -1,4 +1,5 @@
 #include "BoxSide.h"
+#include "WindowAvoidance.h"
 
 #include <QtTest>
 
@@ -52,6 +53,49 @@ class PlacementTest : public QObject {
     Q_OBJECT
 
 private slots:
+    void avoidFileManager_data()
+    {
+        QTest::addColumn<QRect>("work");
+        QTest::addColumn<QRect>("source");
+        QTest::addColumn<QPoint>("home");
+        QTest::newRow("left") << QRect(0, 0, 1920, 1032) << QRect(0, 0, 1000, 900) << QPoint(580, 200);
+        QTest::newRow("right") << QRect(0, 0, 1920, 1032) << QRect(920, 0, 1000, 900) << QPoint(580, 200);
+        QTest::newRow("above") << QRect(0, 0, 1920, 1032) << QRect(0, 0, 1920, 300) << QPoint(580, 200);
+        QTest::newRow("below") << QRect(0, 0, 1920, 1032) << QRect(0, 750, 1920, 282) << QPoint(580, 200);
+        QTest::newRow("negative monitor origin") << QRect(-2560, -200, 2560, 1400)
+            << QRect(-2560, -200, 1200, 1200) << QPoint(-1800, 100);
+        QTest::newRow("partly off screen") << QRect(0, 0, 1920, 1032) << QRect(-600, -300, 1500, 1200) << QPoint(580, 200);
+    }
+
+    void avoidFileManager()
+    {
+        QFETCH(QRect, work);
+        QFETCH(QRect, source);
+        QFETCH(QPoint, home);
+        const QSize capacity(760, 600);
+        const QRect placed(windowavoidance::place(work, source, capacity, home), capacity);
+        QVERIFY(work.contains(placed));
+        QVERIFY(!placed.intersects(source));
+        QCOMPARE(placed.size(), capacity);
+    }
+
+    void unavoidableOverlap()
+    {
+        const QRect work(0, 0, 1280, 960);
+        const QSize capacity(760, 600);
+        const QPoint home(260, 180);
+        // A maximized source leaves nowhere outside it; keep the familiar spot.
+        QCOMPARE(windowavoidance::place(work, work, capacity, home), home);
+        const QRect source(120, 100, 1040, 800);
+        const QRect moved(windowavoidance::place(work, source, capacity, home), capacity);
+        const auto covered = [&](const QRect& rect) {
+            const QRect overlap = rect.intersected(source);
+            return overlap.width() * overlap.height();
+        };
+        QVERIFY(work.contains(moved));
+        QVERIFY(covered(moved) < covered(QRect(home, capacity)));
+    }
+
     // GitHub #38: low on the screen the clipboard stayed under the caret with
     // three rows while all eight fit over it. Under it while all of it fits
     // there (b up to 389); else on the side with more whole rows.

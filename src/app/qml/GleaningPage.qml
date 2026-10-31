@@ -39,7 +39,7 @@ Flickable {
             anchors.centerIn: parent
             color: WarmPalette.ink
             font.pixelSize: parent.fontSize
-            font.weight: Font.DemiBold
+            font.weight: Theme.fontStrong
         }
     }
 
@@ -90,7 +90,7 @@ Flickable {
                     text: work.modelData.name
                     color: WarmPalette.ink
                     font.pixelSize: Theme.fontTitle
-                    font.weight: Font.DemiBold
+                    font.weight: Theme.fontStrong
                     font.underline: link.containsMouse
                 }
                 Glyph {
@@ -165,7 +165,7 @@ Flickable {
                 color: WarmPalette.ink
                 opacity: 0.85
                 font.pixelSize: Theme.fontTitle
-                font.weight: Font.DemiBold
+                font.weight: Theme.fontStrong
             }
             Text {
                 text: qsTr("新作品做好就放在这里")
@@ -298,7 +298,7 @@ Flickable {
                         text: qsTr("作者主页")
                         color: WarmPalette.ink
                         font.pixelSize: Theme.fontCaption
-                        font.weight: Font.DemiBold
+                        font.weight: Theme.fontStrong
                     }
                     Glyph {
                         anchors.verticalCenter: parent.verticalCenter
@@ -416,7 +416,7 @@ Flickable {
                             text: writeButton.usable ? Gleaning.feedbackEmail : qsTr("还没有")
                             color: "white"
                             font.pixelSize: Theme.fontCaption
-                            font.weight: Font.DemiBold
+                            font.weight: Theme.fontStrong
                         }
                     }
                     MouseArea {
@@ -444,7 +444,7 @@ Flickable {
                     color: WarmPalette.ink
                     opacity: copyArea.containsMouse ? 1 : 0.85
                     font.pixelSize: 13
-                    font.weight: Font.DemiBold
+                    font.weight: Theme.fontStrong
 
                     MouseArea {
                         id: copyArea
@@ -471,13 +471,13 @@ Flickable {
                         id: copyShort
                         text: qsTr("复制")
                         font.pixelSize: 13
-                        font.weight: Font.DemiBold
+                        font.weight: Theme.fontStrong
                     }
                     TextMetrics {
                         id: copyDone
                         text: qsTr("已复制")
                         font.pixelSize: 13
-                        font.weight: Font.DemiBold
+                        font.weight: Theme.fontStrong
                     }
                 }
             }
@@ -537,7 +537,7 @@ Flickable {
                                     text: qsTr("感谢%1收录推荐").arg(thanked.modelData.name)
                                     color: WarmPalette.ink
                                     font.pixelSize: Theme.fontBody
-                                    font.weight: Font.DemiBold
+                                    font.weight: Theme.fontStrong
                                     font.underline: thanksArea.containsMouse
                                 }
                                 Glyph {

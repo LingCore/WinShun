@@ -43,15 +43,12 @@ SettingsSection {
 
         title: qsTr("拖文件时按 ` 键，弹出收藏圆盘")
         keywords: qsTr("拖放;拖动;拖拽;圆盘;按键;移动;复制;drag;drop;pie;key").split(";")
-        description: section.editor.isElevated ? qsTr("Win顺 以管理员身份运行时用不了")
-                   : section.editor.dropPie && DropPieText.folderCount > DropPieText.maxFolders
+        description: section.editor.dropPie && DropPieText.folderCount > DropPieText.maxFolders
                      ? qsTr("%1。只放得下前 8 个文件夹收藏（现有 %2 个）").arg(how).arg(DropPieText.folderCount)
                    : how
 
         ToggleSwitch {
-            enabled: !section.editor.isElevated
-            opacity: enabled ? 1 : 0.5
-            checked: section.editor.dropPie && !section.editor.isElevated
+            checked: section.editor.dropPie
             onToggled: (on) => section.editor.dropPie = on
         }
     }
@@ -385,7 +382,7 @@ SettingsSection {
                                 index: favRow.index
                                 favorite: favRow.modelData
                                 count: section.favorites.items.length
-                                dropPie: section.editor.dropPie && !section.editor.isElevated
+                                dropPie: section.editor.dropPie
                                 draft: section.draft && section.draft.path === favRow.modelData.path ? section.draft : null
                                 onFinished: {
                                     section.draft = null

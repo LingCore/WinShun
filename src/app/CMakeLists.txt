@@ -58,6 +58,7 @@ qt_add_executable(WinShun WIN32
     SiteIconImage.cpp SiteIconImage.h
     SvgIcon.cpp SvgIcon.h
     Switches.cpp Switches.h SwitchBackend.h
+    SwitchPlugin.cpp SwitchPlugin.h
     TextField.cpp TextField.h
     ThumbnailProvider.cpp ThumbnailProvider.h
     TriggerJournal.cpp TriggerJournal.h
@@ -174,6 +175,7 @@ set(qml_files
     qml/FavoritesSection.qml
     qml/FavoriteForm.qml
     qml/ShareCard.qml
+    qml/ShareScanControls.qml
     qml/CenteredNumber.qml
     qml/IconNumber.qml
     qml/NumberHints.qml
@@ -192,6 +194,7 @@ set(qml_files
     qml/AiCommandLineSection.qml
     qml/AiPrivacySection.qml
     qml/PluginsSection.qml
+    qml/OcrPackageRow.qml
     qml/PluginCard.qml
     qml/Tag.qml
     qml/PluginDevSection.qml
@@ -244,6 +247,7 @@ qt_add_qml_module(WinShun
     QML_FILES ${qml_files}
     RESOURCES ${gleaning_images}
     SOURCES
+        ../core/KeepAwakeText.h
         AuthorMark.cpp AuthorMark.h
         BoxSide.h
         CliSetup.cpp CliSetup.h
@@ -273,6 +277,7 @@ qt_add_qml_module(WinShun
         MovedPlugins.cpp MovedPlugins.h # the plugins that came with 0.16.0, from the library now (GitHub #138)
         platform/OcrPackage.cpp platform/OcrPackage.h
         ResultModel.cpp ResultModel.h
+        FolderSizes.cpp FolderSizes.h
         PanelColumns.cpp PanelColumns.h
         SettingsCommand.h
         SettingsEditor.cpp SettingsEditor.h

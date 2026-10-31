@@ -740,6 +740,18 @@
         <translation>Double-click to open results</translation>
     </message>
     <message>
+        <source>搜索应用</source>
+        <translation>Search applications</translation>
+    </message>
+    <message>
+        <source>搜索系统设置</source>
+        <translation>Search system settings</translation>
+    </message>
+    <message>
+        <source>正则模式</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>显示修改日期</source>
         <translation>Show the date modified</translation>
     </message>
@@ -1049,6 +1061,61 @@
     <message>
         <source>搜索框显示 Logo</source>
         <translation>Show the logo by the search box</translation>
+    </message>
+    <message>
+        <source>预览文件</source>
+        <translation>Preview files</translation>
+    </message>
+    <message>
+        <source>预览快捷键</source>
+        <translation>Preview shortcut</translation>
+    </message>
+    <message>
+        <source>同时用中键打开文件夹菜单</source>
+        <translation>Also open the folder menu with a middle click</translation>
+    </message>
+    <message>
+        <source>剪贴板打开位置</source>
+        <translation>Clipboard position</translation>
+    </message>
+    <message>
+        <source>最近打开的数量</source>
+        <translation>Recently opened items</translation>
+    </message>
+    <message>
+        <source>不输入时显示收藏</source>
+        <translation>Show favorites before typing</translation>
+    </message>
+    <message>
+        <source>不显示最近项目</source>
+        <translation>Hide recent items</translation>
+    </message>
+    <message>
+        <source>项</source>
+        <translation>items</translation>
+    </message>
+    <message>
+        <source>全屏时不响应剪贴板快捷键</source>
+        <translation>Pause clipboard hotkeys in full screen</translation>
+    </message>
+</context>
+<context>
+    <name>AppearancePreview</name>
+    <message>
+        <source>界面大小效果预览</source>
+        <translation>Interface size preview</translation>
+    </message>
+    <message>
+        <source>搜索文件、文件夹…</source>
+        <translation>Search files and folders…</translation>
+    </message>
+    <message>
+        <source>项目资料</source>
+        <translation>Project files</translation>
+    </message>
+    <message>
+        <source>文件夹 · 效果预览</source>
+        <translation>Folder · Preview</translation>
     </message>
 </context>
 <context>
@@ -1705,6 +1772,116 @@
     </message>
 </context>
 <context>
+    <name>FileTypesSection</name>
+    <message>
+        <source>文件类型</source>
+        <translation>File types</translation>
+    </message>
+    <message>
+        <source>类型;扩展名;后缀;筛选;前缀;快捷键;folder;filter;type;extension</source>
+        <translation>type;extension;suffix;filter;prefix;shortcut;folder</translation>
+    </message>
+    <message>
+        <source>输入“:folder 报告”只找文件夹；类型前缀可自定义，不区分大小写。留空可停用，Ctrl+Tab 仍可切换。</source>
+        <translation>Type “:folder report” to find folders. Prefixes are customizable and case-insensitive. Leave blank to disable; Ctrl+Tab still switches types.</translation>
+    </message>
+    <message>
+        <source>恢复默认</source>
+        <translation>Restore defaults</translation>
+    </message>
+    <message>
+        <source>名称</source>
+        <translation>Name</translation>
+    </message>
+    <message>
+        <source>扩展名</source>
+        <translation>Extensions</translation>
+    </message>
+    <message>
+        <source>搜索前缀（:）</source>
+        <translation>Prefix (:)</translation>
+    </message>
+    <message>
+        <source>文件夹</source>
+        <translation>Folders</translation>
+    </message>
+    <message>
+        <source>只搜索文件夹</source>
+        <translation>Search folders only</translation>
+    </message>
+    <message>
+        <source>文件夹搜索前缀</source>
+        <translation>Folder search prefix</translation>
+    </message>
+    <message>
+        <source>类型名称</source>
+        <translation>Type name</translation>
+    </message>
+    <message>
+        <source>%1的扩展名</source>
+        <translation>Extensions for %1</translation>
+    </message>
+    <message>
+        <source>未设置</source>
+        <translation>Not set</translation>
+    </message>
+    <message>
+        <source>%1的搜索前缀</source>
+        <translation>Search prefix for %1</translation>
+    </message>
+    <message>
+        <source>上移</source>
+        <translation>Move up</translation>
+    </message>
+    <message>
+        <source>下移</source>
+        <translation>Move down</translation>
+    </message>
+    <message>
+        <source>删除</source>
+        <translation>Remove</translation>
+    </message>
+    <message>
+        <source>新类型</source>
+        <translation>New type</translation>
+    </message>
+    <message>
+        <source>新类型名称</source>
+        <translation>New type name</translation>
+    </message>
+    <message>
+        <source>扩展名，例如 dwg dxf</source>
+        <translation>Extensions, e.g. dwg dxf</translation>
+    </message>
+    <message>
+        <source>新类型扩展名</source>
+        <translation>New type extensions</translation>
+    </message>
+    <message>
+        <source>添加</source>
+        <translation>Add</translation>
+    </message>
+</context>
+<context>
+    <name>FileViewSwitch</name>
+    <message>
+        <source>缩略图大小</source>
+        <translation>Thumbnail size</translation>
+    </message>
+    <message>
+        <source>列表</source>
+        <translation>List</translation>
+    </message>
+    <message>
+        <source>大图</source>
+        <translation>Large icons</translation>
+    </message>
+    <message>
+        <source>Alt+滚轮</source>
+        <translation>Alt+wheel</translation>
+    </message>
+</context>
+<context>
     <name>Footer</name>
     <message>
         <source>只搜当前文件夹，或也搜其他位置</source>
@@ -1799,6 +1976,14 @@
         <translation>Select several rows; Ctrl+click and Shift+click too</translation>
     </message>
     <message>
+        <source>打开操作菜单；→ 需光标在末尾且未选中文字</source>
+        <translation>Open the action menu; → requires the caret at the end with no text selected</translation>
+    </message>
+    <message>
+        <source>关闭操作菜单，返回结果列表</source>
+        <translation>Close the action menu and return to the results</translation>
+    </message>
+    <message>
         <source>以管理员身份运行</source>
         <translation>Run as administrator</translation>
     </message>
@@ -1825,6 +2010,10 @@
     <message>
         <source>钉住：点别处、打开文件后都不收起；再按一次取消</source>
         <translation>Pin: stays up through clicks elsewhere and opened files; again to unpin</translation>
+    </message>
+    <message>
+        <source>正则模式：每个词都按正则表达式匹配名字；再按一次关闭</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>打开第几行（图标上标着快捷键）</source>
@@ -1991,6 +2180,10 @@
     <message>
         <source>未设置</source>
         <translation>Not set</translation>
+    </message>
+    <message>
+        <source>这个快捷键与其他操作冲突</source>
+        <translation>This shortcut conflicts with another action</translation>
     </message>
 </context>
 <context>
@@ -2191,7 +2384,7 @@
     </message>
     <message>
         <source>插件库里的版本要更新的 Win顺</source>
-        <translation>The library's version needs a newer Win顺</translation>
+        <translation>The library&apos;s version needs a newer Win顺</translation>
     </message>
     <message>
         <source>插件包太大</source>
@@ -2215,7 +2408,27 @@
     </message>
     <message>
         <source>拿不到插件库的列表（%1）</source>
-        <translation>Could not get the plugin library's list (%1)</translation>
+        <translation>Could not get the plugin library&apos;s list (%1)</translation>
+    </message>
+    <message>
+        <source>截图与录屏</source>
+        <translation>Screenshot and recording</translation>
+    </message>
+    <message>
+        <source>局域网传输</source>
+        <translation>LAN transfer</translation>
+    </message>
+    <message>
+        <source>按意思找</source>
+        <translation>Search by meaning</translation>
+    </message>
+    <message>
+        <source>翻译</source>
+        <translation>Translate</translation>
+    </message>
+    <message>
+        <source>浏览器书签</source>
+        <translation>Browser bookmarks</translation>
     </message>
 </context>
 <context>
@@ -2362,6 +2575,14 @@
     <message>
         <source>右键选择列；拖动表头调整顺序，拖动分隔线调整宽度</source>
         <translation>Right-click to choose columns; drag headers to reorder or dividers to resize</translation>
+    </message>
+    <message>
+        <source>拖动调整列宽</source>
+        <translation>Drag to resize column</translation>
+    </message>
+    <message>
+        <source>文件夹大小按索引估算，不包含未索引内容；拖动分隔线调整宽度</source>
+        <translation>Folder sizes are index estimates and exclude unindexed content; drag a separator to resize</translation>
     </message>
 </context>
 <context>
@@ -2724,6 +2945,10 @@
         <source>要 Win顺 %1 或更新的版本，可以在“高级”里检查更新</source>
         <translation>Needs WinShun %1 or newer; you can check for updates under “Advanced”</translation>
     </message>
+    <message>
+        <source>安装并启用</source>
+        <translation>Install and enable</translation>
+    </message>
 </context>
 <context>
     <name>PluginGallerySection</name>
@@ -2798,6 +3023,10 @@
     <message>
         <source>设置网络代理…</source>
         <translation>Set a network proxy…</translation>
+    </message>
+    <message>
+        <source>只安装你需要的功能。下载后先核对文件，安装并启用时会先列出它要的权限，同意后即可使用。</source>
+        <translation>Install the features you need. Downloads are checked before installation. Review the permissions to install and enable a plugin.</translation>
     </message>
 </context>
 <context>
@@ -3004,6 +3233,30 @@
         <source>收起设置</source>
         <translation>Collapse settings</translation>
     </message>
+    <message>
+        <source>恢复升级前的功能</source>
+        <translation>Restore features after upgrading</translation>
+    </message>
+    <message>
+        <source>升级;迁移;恢复;重试;离线;upgrade;restore;retry;offline</source>
+        <translation>upgrade;migration;restore;retry;offline</translation>
+    </message>
+    <message>
+        <source>正在恢复…</source>
+        <translation>Restoring…</translation>
+    </message>
+    <message>
+        <source>重试恢复</source>
+        <translation>Retry</translation>
+    </message>
+    <message>
+        <source>从本地安装插件包…</source>
+        <translation>Install a local plugin package…</translation>
+    </message>
+    <message>
+        <source>插件给搜索框加关键字命令，结果混进列表。它们只用你的普通权限；启用前会先列出权限，由你决定是否开启。</source>
+        <translation>Plugins add keyword commands to the search box and mix their results into the list. They run with your normal rights; review the permissions and choose which ones to enable.</translation>
+    </message>
 </context>
 <context>
     <name>PreviewWindow</name>
@@ -3112,6 +3365,17 @@
     </message>
 </context>
 <context>
+    <name>ResultTile</name>
+    <message>
+        <source>离线</source>
+        <translation>Offline</translation>
+    </message>
+    <message>
+        <source>已不存在</source>
+        <translation>Missing</translation>
+    </message>
+</context>
+<context>
     <name>ScopeTabs</name>
     <message>
         <source>全部</source>
@@ -3162,6 +3426,14 @@
     <message>
         <source>拖动可移动窗口 · 点击打开设置</source>
         <translation>Drag to move the window · click for the settings</translation>
+    </message>
+    <message>
+        <source>正则模式</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>正则模式：每个词都按正则表达式匹配名字 · 点击关闭</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>取消钉住</source>
@@ -4758,8 +5030,76 @@
         <translation>extension;script;PowerShell;Python;built-in features;module;plugin</translation>
     </message>
     <message>
+        <source>截图的快捷键</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>截图;截屏;快捷键;热键;F1;PrtScn;PixPin;Snipaste;screenshot</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>截图功能还没打开：在“插件”的截图卡片上打开，再录一个快捷键，例如 F1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>现在是 %1，在“插件”的截图卡片上改；贴图等其他快捷键也在那里</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>还没设，在“插件”的截图卡片上录一个，例如 F1；贴图等其他快捷键也在那里</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>去设置</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>排除;忽略;扩展名;后缀;格式;exclude</source>
         <translation>exclude;ignore;extension;suffix;format;skip</translation>
+    </message>
+    <message>
+        <source>网络;共享;局域网;内网;NAS;服务器;SMB;映射;网络驱动器;WSL;Linux;Ubuntu;子系统;WebDAV;内容;全文;搜索文件内容;扫描;时段;时间;层数;深度;network;share;content;schedule;depth</source>
+        <translation>network;share;LAN;NAS;server;SMB;mapped;network drive;WSL;Linux;Ubuntu;subsystem;WebDAV;content;full text;scan;schedule;hours;time;levels;depth</translation>
+    </message>
+    <message>
+        <source>搜索应用</source>
+        <translation>Search applications</translation>
+    </message>
+    <message>
+        <source>应用;程序;软件;开始菜单;启动;全部;关闭;app</source>
+        <translation>applications;programs;software;start menu;launch;all;disable;app</translation>
+    </message>
+    <message>
+        <source>在“全部”里列出开始菜单里的程序和应用；关掉后只找文件和内容（收藏的应用仍会列出，在开始菜单里打字也一样）</source>
+        <translation>Include Start menu programs and apps in All. When off, search files and contents; favorite apps remain available. This also applies when typing in Start.</translation>
+    </message>
+    <message>
+        <source>搜索系统设置</source>
+        <translation>Search system settings</translation>
+    </message>
+    <message>
+        <source>设置;系统设置;控制面板;系统开关;蓝牙;音量;全部;关闭;settings</source>
+        <translation>settings;system;control panel;toggles;Bluetooth;volume;all;disable</translation>
+    </message>
+    <message>
+        <source>在“全部”里列出 Windows 设置页、控制面板和系统开关（如“关蓝牙”“音量 30”）；关掉后只找文件和内容</source>
+        <translation>Include Windows settings, Control Panel and system toggles in All, such as Bluetooth and volume. When off, search files and contents.</translation>
+    </message>
+    <message>
+        <source>正则模式（Ctrl+R）</source>
+        <translation>Regular expressions (Ctrl+R)</translation>
+    </message>
+    <message>
+        <source>正则;正则表达式;regex;Everything;Ctrl+R;匹配</source>
+        <translation>regex;regular expression;Everything;Ctrl+R;match</translation>
+    </message>
+    <message>
+        <source>在“全部”和“文件”里，每个词都按正则表达式匹配名字，如 ^IMG_d{4}；ext:、!排除、“ | ”照常可用。在搜索框里按 Ctrl+R 开关，开着时搜索框旁显示 .*。不开时也可在单个词前加 regex:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>正则模式</source>
+        <translation>Regular expressions</translation>
     </message>
     <message>
         <source>预览;快速查看;看一眼;QuickLook;Seer;空格;Alt+P;preview</source>
@@ -5717,10 +6057,6 @@
         <translation>Network and WSL folders</translation>
     </message>
     <message>
-        <source>网络;共享;局域网;内网;NAS;服务器;SMB;映射;网络驱动器;WSL;Linux;Ubuntu;子系统;WebDAV;内容;全文;搜索文件内容;network;share;content</source>
-        <translation>network;share;LAN;NAS;server;SMB;mapped;network drive;WSL;Linux;Ubuntu;subsystem;WebDAV;content;full text;search file contents</translation>
-    </message>
-    <message>
         <source>添加 NAS、共享文件夹或 WSL 中的项目、用户目录，和本机文件一起搜索</source>
         <translation>Add a NAS, shared folder, or WSL project or home folder to search alongside local files</translation>
     </message>
@@ -5844,6 +6180,106 @@
         <source>HTTP 代理，地址写 127.0.0.1:7890 或 http://127.0.0.1:7890。改完马上生效，不用重启</source>
         <translation>An HTTP proxy: write 127.0.0.1:7890 or http://127.0.0.1:7890. Takes effect at once, no restart</translation>
     </message>
+    <message>
+        <source>预览文件</source>
+        <translation>Preview files</translation>
+    </message>
+    <message>
+        <source>用 Win顺 自己的预览窗口看一眼</source>
+        <translation>Preview files in WinShun's own window</translation>
+    </message>
+    <message>
+        <source>QuickLook 或 Seer 在后台运行时交给它，否则用 Win顺 自己的预览</source>
+        <translation>Use QuickLook or Seer when running; otherwise use WinShun's built-in preview</translation>
+    </message>
+    <message>
+        <source>预览快捷键</source>
+        <translation>Preview shortcut</translation>
+    </message>
+    <message>
+        <source>预览;快捷键;空格;Space;Alt+P;QuickLook;preview;shortcut</source>
+        <translation>preview;shortcut;hotkey;space;Space;Alt+P;QuickLook</translation>
+    </message>
+    <message>
+        <source>仅在搜索结果中生效，再按一次关闭。可直接录制空格；用 Shift+空格继续输入空格。Backspace 清除，Esc 取消。</source>
+        <translation>Only in search results. Press again to close. Space is supported; Shift+Space types a space. Backspace clears; Esc cancels.</translation>
+    </message>
+    <message>
+        <source>同时用中键打开文件夹菜单</source>
+        <translation>Also open the folder menu with a middle click</translation>
+    </message>
+    <message>
+        <source>中键;鼠标;滚轮;文件夹菜单;Listary</source>
+        <translation>middle click;mouse;wheel;folder menu;Listary</translation>
+    </message>
+    <message>
+        <source>在上面选中的资源管理器或桌面空白处，单击鼠标中键也能打开</source>
+        <translation>Middle-click an empty area in File Explorer or on the desktop, as enabled above.</translation>
+    </message>
+    <message>
+        <source>剪贴板打开位置</source>
+        <translation>Clipboard position</translation>
+    </message>
+    <message>
+        <source>位置;鼠标;指针;光标;跟随;弹出;输入框</source>
+        <translation>position;mouse;pointer;caret;follow;popup;text field</translation>
+    </message>
+    <message>
+        <source>每次打开时放在所选位置旁边，空间不足时自动调整到屏幕内</source>
+        <translation>Open beside the selected position, adjusting to stay on screen when space is limited.</translation>
+    </message>
+    <message>
+        <source>输入光标旁</source>
+        <translation>Beside the caret</translation>
+    </message>
+    <message>
+        <source>鼠标指针旁</source>
+        <translation>Beside the pointer</translation>
+    </message>
+    <message>
+        <source>打开搜索框还没输入时列出最近打开或最近修改的项目；底栏也能切换（Ctrl+S）。收藏由下面的开关单独控制</source>
+        <translation>Before typing, list recently opened or modified items. Switch in the footer too (Ctrl+S). Favorites have their own switch below.</translation>
+    </message>
+    <message>
+        <source>最近打开的数量</source>
+        <translation>Recently opened items</translation>
+    </message>
+    <message>
+        <source>最近;历史;数量;条数;上限;自定义;recent</source>
+        <translation>recent;history;count;items;limit;custom</translation>
+    </message>
+    <message>
+        <source>可填 1–200 项，按最近打开的顺序显示；仅在上面选择“最近打开”时生效</source>
+        <translation>Show 1–200 items, most recently opened first. Applies when Recently opened is selected above.</translation>
+    </message>
+    <message>
+        <source>不输入时显示收藏</source>
+        <translation>Show favorites before typing</translation>
+    </message>
+    <message>
+        <source>收藏;命令;显示;隐藏;关键词;空白;启动;favorite</source>
+        <translation>favorites;commands;show;hide;keyword;empty;start</translation>
+    </message>
+    <message>
+        <source>关闭后，收藏和自定义命令仍可通过名称或关键词找到</source>
+        <translation>When off, favorites and custom commands are still searchable by name or keyword.</translation>
+    </message>
+    <message>
+        <source>全屏时不响应剪贴板快捷键</source>
+        <translation>Pause clipboard hotkeys in full screen</translation>
+    </message>
+    <message>
+        <source>全屏;游戏;快捷键;屏蔽;暂停;clipboard;fullscreen</source>
+        <translation>full screen;game;hotkey;block;pause;clipboard;fullscreen</translation>
+    </message>
+    <message>
+        <source>其他程序全屏时，快捷键不弹出剪贴板；仍然记录复制内容，也能从菜单手动打开</source>
+        <translation>While another app is full screen, hotkeys do not open the clipboard. Copies are still recorded, and you can open it from the menu.</translation>
+    </message>
+    <message>
+        <source>在“全部”和“文件”里，每个词都按正则表达式匹配名字，如 ^IMG_\d{4}；ext:、!排除、“ | ”照常可用。在搜索框里按 Ctrl+R 开关，开着时搜索框旁显示 .*。不开时也可在单个词前加 regex:</source>
+        <translation>In All and Files, match names with a regular expression for each word, such as ^IMG_\d{4}. ext:, !exclude and | still work. Ctrl+R toggles this mode, shown as .* beside the box. With it off, prefix an individual word with regex: or re:.</translation>
+    </message>
 </context>
 <context>
     <name>ShareCard</name>
@@ -5870,6 +6306,69 @@
     <message>
         <source>搜索文件内容</source>
         <translation>Search file contents</translation>
+    </message>
+</context>
+<context>
+    <name>ShareScanControls</name>
+    <message>
+        <source>每天 %1–%2</source>
+        <translation>Daily %1–%2</translation>
+    </message>
+    <message>
+        <source>不限时段</source>
+        <translation>Any time</translation>
+    </message>
+    <message>
+        <source>最多 %1 层</source>
+        <translation>Up to %1 levels</translation>
+    </message>
+    <message>
+        <source>不限层数</source>
+        <translation>Unlimited depth</translation>
+    </message>
+    <message>
+        <source>扫描设置</source>
+        <translation>Scan settings</translation>
+    </message>
+    <message>
+        <source>仅在指定时段自动扫描</source>
+        <translation>Scan automatically only during these hours</translation>
+    </message>
+    <message>
+        <source>扫描开始时间，24 小时制</source>
+        <translation>Scan start time, 24-hour clock</translation>
+    </message>
+    <message>
+        <source>扫描结束时间，24 小时制</source>
+        <translation>Scan end time, 24-hour clock</translation>
+    </message>
+    <message>
+        <source>本地时间，可跨午夜；相同时间表示全天</source>
+        <translation>Local time; may cross midnight. Equal times mean all day.</translation>
+    </message>
+    <message>
+        <source>最多扫描</source>
+        <translation>Scan up to</translation>
+    </message>
+    <message>
+        <source>最大扫描层数，0 表示不限</source>
+        <translation>Maximum scan depth; 0 means unlimited</translation>
+    </message>
+    <message>
+        <source>层（0 表示不限）</source>
+        <translation>levels (0 = unlimited)</translation>
+    </message>
+    <message>
+        <source>请输入 00:00–23:59 之间的时间</source>
+        <translation>Enter a time from 00:00 to 23:59</translation>
+    </message>
+    <message>
+        <source>请输入 0–1024 之间的层数，0 表示不限</source>
+        <translation>Enter a depth from 0 to 1024; 0 means unlimited</translation>
+    </message>
+    <message>
+        <source>1 层只读取当前文件夹，不进入子文件夹。时段外暂停后台读取，已有结果保留；“立即核对”可临时扫描一次文件名。</source>
+        <translation>Depth 1 lists this folder without entering subfolders. Background reads pause outside these hours; cached results stay available. Check now runs one manual scan of file names.</translation>
     </message>
 </context>
 <context>
@@ -6176,10 +6675,6 @@
     <message>
         <source>搜索</source>
         <translation>Search</translation>
-    </message>
-    <message>
-        <source>搜索应用和文件</source>
-        <translation>Search apps and files</translation>
     </message>
     <message>
         <source>没能重启资源管理器</source>
@@ -6826,8 +7321,36 @@
         <translation>Quick paste</translation>
     </message>
     <message>
+        <source>保存为文件</source>
+        <translation>Save as files</translation>
+    </message>
+    <message>
         <source>%1 已被其他快捷键占用，这几条无法直接粘贴；其余数字仍可用。可更换组合键，或调整冲突的快捷键。</source>
         <translation>%1 are already assigned to other shortcuts. These slots cannot paste directly; the remaining digits still work. Choose another modifier or change the conflicting shortcuts.</translation>
+    </message>
+    <message>
+        <source>想搜索什么…</source>
+        <translation>Search…</translation>
+    </message>
+    <message>
+        <source>正在从插件库恢复 %1。原来的设置和数据会保留。</source>
+        <translation>Restoring %1 from the plugin library. Your settings and data will be kept.</translation>
+    </message>
+    <message>
+        <source>%1：%2</source>
+        <translation>%1: %2</translation>
+    </message>
+    <message>
+        <source>网络连接失败</source>
+        <translation>Could not connect to the network</translation>
+    </message>
+    <message>
+        <source>以下功能尚未恢复：%1。原来的设置和数据仍在，可以重试或从本地安装插件包。</source>
+        <translation>These features have not been restored: %1. Your settings and data are still here. Retry or install a local plugin package.</translation>
+    </message>
+    <message>
+        <source>部分功能尚未恢复</source>
+        <translation>Some features have not been restored</translation>
     </message>
 </context>
 <context>
@@ -7014,6 +7537,51 @@
         <translation>Could not drag the image</translation>
     </message>
     <message>
+        <source>无法拖出这些内容</source>
+        <translation>Could not drag these out</translation>
+    </message>
+    <message>
+        <source>无法准备要拖出的文件</source>
+        <translation>Cannot prepare the files for dragging</translation>
+    </message>
+    <message numerus="yes">
+        <source>保存 %Ln 条为文件…</source>
+        <translation>
+            <numerusform>Save %Ln entry as a file…</numerusform>
+            <numerusform>Save %Ln entries as files…</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>保存为文件…</source>
+        <translation>Save as a file…</translation>
+    </message>
+    <message>
+        <source>合并保存为一个文件…</source>
+        <translation>Save all in one file…</translation>
+    </message>
+    <message>
+        <source>保存到哪个文件夹</source>
+        <translation>Save to which folder</translation>
+    </message>
+    <message>
+        <source>没能保存到“%1”，那里可能不允许写入</source>
+        <translation>Could not save to “%1”. Writing there may not be allowed.</translation>
+    </message>
+    <message numerus="yes">
+        <source>有 %Ln 个没能保存</source>
+        <translation>
+            <numerusform>%Ln could not be saved</numerusform>
+            <numerusform>%Ln could not be saved</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%Ln 个文件已经不存在，没有保存</source>
+        <translation>
+            <numerusform>%Ln file no longer exists and was not saved</numerusform>
+            <numerusform>%Ln files no longer exist and were not saved</numerusform>
+        </translation>
+    </message>
+    <message>
         <source>已复制。那个窗口没有回到前面，请自己按 Ctrl+V 粘贴</source>
         <translation>Copied. That window did not come back to the front: press Ctrl+V there</translation>
     </message>
@@ -7139,6 +7707,22 @@
         <translation>Copied</translation>
     </message>
     <message>
+        <source>选中的内容已不存在，无法发送</source>
+        <translation>The selected content no longer exists and cannot be sent</translation>
+    </message>
+    <message>
+        <source>正在准备发送内容…</source>
+        <translation>Preparing content to send…</translation>
+    </message>
+    <message>
+        <source>选的文件太多了，最多一次 1000 项</source>
+        <translation>Too many files selected; choose at most 1,000 items</translation>
+    </message>
+    <message>
+        <source>无法准备发送内容，请重试</source>
+        <translation>Could not prepare the content to send. Try again.</translation>
+    </message>
+    <message>
         <source>Win顺</source>
         <translation>WinShun</translation>
     </message>
@@ -7254,6 +7838,18 @@
     <message>
         <source>打开图片</source>
         <translation>Open picture</translation>
+    </message>
+    <message>
+        <source>用局域网发送…</source>
+        <translation>Send over LAN…</translation>
+    </message>
+    <message>
+        <source>启用局域网传输…</source>
+        <translation>Enable LAN transfer…</translation>
+    </message>
+    <message>
+        <source>更新局域网传输…</source>
+        <translation>Update LAN transfer…</translation>
     </message>
     <message>
         <source>取消固定</source>
@@ -7388,10 +7984,6 @@
     <message>
         <source>无法准备要粘贴的图片文件</source>
         <translation>Could not prepare the image files to paste</translation>
-    </message>
-    <message>
-        <source>请只选择图片后再拖出</source>
-        <translation>Select only pictures to drag them out</translation>
     </message>
 </context>
 <context>
@@ -7544,6 +8136,14 @@
     <message>
         <source>这类项目只能放进本机的文件夹</source>
         <translation>Items like these can only go into folders on this computer</translation>
+    </message>
+    <message>
+        <source>收藏圆盘未打开</source>
+        <translation>Favorites pie could not open</translation>
+    </message>
+    <message>
+        <source>暂时无法接收文件拖放，请松开鼠标后重试。</source>
+        <translation>File drops are temporarily unavailable. Release the mouse button and try again.</translation>
     </message>
 </context>
 <context>
@@ -7871,6 +8471,26 @@
         <source>收藏这个文件夹</source>
         <translation>Add this folder to favorites</translation>
     </message>
+    <message>
+        <source>在此打开命令提示符</source>
+        <translation>Open Command Prompt here</translation>
+    </message>
+    <message>
+        <source>在此打开 PowerShell</source>
+        <translation>Open PowerShell here</translation>
+    </message>
+    <message>
+        <source>Win顺 设置…</source>
+        <translation>WinShun settings…</translation>
+    </message>
+    <message>
+        <source>无法打开“%1”，请检查命令和工作目录</source>
+        <translation>Could not open “%1”. Check the command and working directory.</translation>
+    </message>
+    <message>
+        <source>这条命令已移除，请重新打开菜单</source>
+        <translation>This command was removed. Reopen the menu.</translation>
+    </message>
 </context>
 <context>
     <name>ws::Launcher</name>
@@ -8071,6 +8691,14 @@
     <message>
         <source>只在 %1 里搜</source>
         <translation>Searching only in %1</translation>
+    </message>
+    <message>
+        <source>正则模式：每个词都按正则表达式匹配名字</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>已关闭正则模式</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>也搜其他位置</source>
@@ -8779,6 +9407,41 @@
     </message>
 </context>
 <context>
+    <name>ws::PanelColumns</name>
+    <message>
+        <source>名称</source>
+        <translation>Name</translation>
+    </message>
+    <message>
+        <source>路径</source>
+        <translation>Path</translation>
+    </message>
+    <message>
+        <source>大小</source>
+        <translation>Size</translation>
+    </message>
+    <message>
+        <source>修改时间</source>
+        <translation>Modified</translation>
+    </message>
+    <message>
+        <source>类型</source>
+        <translation>Type</translation>
+    </message>
+    <message>
+        <source>创建时间</source>
+        <translation>Created</translation>
+    </message>
+    <message>
+        <source>所在文件夹</source>
+        <translation>Folder</translation>
+    </message>
+    <message>
+        <source>来源</source>
+        <translation>Source</translation>
+    </message>
+</context>
+<context>
     <name>ws::PluginGallery</name>
     <message numerus="yes">
         <source>%n 个插件；正在获取最新的列表…</source>
@@ -9330,6 +9993,14 @@
     <message>
         <source>已复制开发提示；把它和创建好的模板交给 AI，再补上你想做的功能</source>
         <translation>Instructions copied. Give them and the new template to your AI assistant, then describe the feature you want.</translation>
+    </message>
+    <message>
+        <source>更改 Windows 系统设置（主题、无线电、音量、资源管理器、保持唤醒）</source>
+        <translation>Change Windows settings (theme, radios, volume, Explorer and keep-awake)</translation>
+    </message>
+    <message>
+        <source>以普通用户权限更改；Win顺 不能阻止它直接改系统设置</source>
+        <translation>Uses normal user rights; WinShun cannot stop it changing system settings directly</translation>
     </message>
 </context>
 <context>
@@ -9945,6 +10616,14 @@
         <translation>Sign-in needed: Windows has no user name and password for %1 yet</translation>
     </message>
     <message>
+        <source>等待扫描时段，已读取的内容照常能搜到</source>
+        <translation>Waiting for scan hours; indexed content remains searchable</translation>
+    </message>
+    <message>
+        <source>等待扫描时段（每天 %1–%2）</source>
+        <translation>Waiting for scan hours (%1–%2 daily)</translation>
+    </message>
+    <message>
         <source>需要登录，但 Windows 默认只在 https 地址上发送密码，这个 http 地址多半登录不上：请改用 https 地址</source>
         <translation>Sign-in needed, but by default Windows sends passwords to https addresses only, so signing in at this http address will most likely fail: use its https address instead</translation>
     </message>
@@ -10406,6 +11085,14 @@
         <source>打开后，电脑空闲时读取文件内容；离线时也能搜到</source>
         <translation>When on, file contents are read while the PC is idle, and stay searchable offline</translation>
     </message>
+    <message>
+        <source>这个快捷键用于输入或其他操作，请换一个</source>
+        <translation>This shortcut is reserved for typing or another action. Choose another.</translation>
+    </message>
+    <message>
+        <source>这个快捷键已用于全局操作，请换一个</source>
+        <translation>This shortcut is already used by a global action. Choose another.</translation>
+    </message>
 </context>
 <context>
     <name>ws::SwitchAudio</name>
@@ -10730,178 +11417,150 @@
     </message>
 </context>
 <context>
-    <name>FileTypesSection</name>
+    <name>ws::OcrPackage</name>
     <message>
-        <source>文件类型</source>
-        <translation>File types</translation>
+        <source>增强识别已安装，可以离线使用。</source>
+        <translation>Enhanced recognition is installed and works offline.</translation>
     </message>
     <message>
-        <source>类型;扩展名;后缀;筛选;前缀;快捷键;folder;filter;type;extension</source>
-        <translation>type;extension;suffix;filter;prefix;shortcut;folder</translation>
+        <source>增强识别包无效，请重新下载。</source>
+        <translation>Invalid recognition package. Download it again.</translation>
     </message>
     <message>
-        <source>输入“:folder 报告”只找文件夹；类型前缀可自定义，不区分大小写。留空可停用，Ctrl+Tab 仍可切换。</source>
-        <translation>Type “:folder report” to find folders. Prefixes are customizable and case-insensitive. Leave blank to disable; Ctrl+Tab still switches types.</translation>
+        <source>无法创建增强识别的安装目录。</source>
+        <translation>Could not create the recognition component folder.</translation>
     </message>
     <message>
-        <source>恢复默认</source>
-        <translation>Restore defaults</translation>
+        <source>另一个窗口正在安装增强识别，完成后会自动可用。</source>
+        <translation>Another window is installing enhanced recognition. It will be available when that finishes.</translation>
     </message>
     <message>
-        <source>名称</source>
-        <translation>Name</translation>
+        <source>增强识别包已损坏，请重新下载。</source>
+        <translation>The recognition package is damaged. Download it again.</translation>
     </message>
     <message>
-        <source>扩展名</source>
-        <translation>Extensions</translation>
+        <source>增强识别包包含不需要的文件。</source>
+        <translation>The recognition package contains unexpected files.</translation>
     </message>
     <message>
-        <source>搜索前缀（:）</source>
-        <translation>Prefix (:)</translation>
+        <source>已取消，稍后可以重新安装。</source>
+        <translation>Cancelled. You can install it again later.</translation>
     </message>
     <message>
-        <source>文件夹</source>
-        <translation>Folders</translation>
+        <source>增强识别包的文件大小不符，请重新下载。</source>
+        <translation>Recognition file sizes do not match. Download the package again.</translation>
     </message>
     <message>
-        <source>只搜索文件夹</source>
-        <translation>Search folders only</translation>
+        <source>增强识别包未通过校验，请重新下载。</source>
+        <translation>Recognition package verification failed. Download it again.</translation>
     </message>
     <message>
-        <source>文件夹搜索前缀</source>
-        <translation>Folder search prefix</translation>
+        <source>无法保存增强识别文件。</source>
+        <translation>Could not save the recognition files.</translation>
     </message>
     <message>
-        <source>类型名称</source>
-        <translation>Type name</translation>
+        <source>增强识别包缺少文件，请重新下载。</source>
+        <translation>Files are missing from the recognition package. Download it again.</translation>
     </message>
     <message>
-        <source>%1的扩展名</source>
-        <translation>Extensions for %1</translation>
+        <source>增强识别文件正在使用，请关闭识别窗口后重试。</source>
+        <translation>Recognition files are in use. Close the recognition window and try again.</translation>
     </message>
     <message>
-        <source>未设置</source>
-        <translation>Not set</translation>
+        <source>无法完成增强识别安装，原来的文件已保留。</source>
+        <translation>Installation could not finish. Your existing recognition files have been kept.</translation>
     </message>
     <message>
-        <source>%1的搜索前缀</source>
-        <translation>Search prefix for %1</translation>
+        <source>约 %1 MB</source>
+        <translation>about %1 MB</translation>
     </message>
     <message>
-        <source>上移</source>
-        <translation>Move up</translation>
+        <source>正在取消…</source>
+        <translation>Cancelling…</translation>
     </message>
     <message>
-        <source>下移</source>
-        <translation>Move down</translation>
+        <source>正在下载安装增强识别…</source>
+        <translation>Downloading and installing enhanced recognition…</translation>
     </message>
     <message>
-        <source>删除</source>
-        <translation>Remove</translation>
+        <source>下载没有完成，请检查网络后重试，或从本地安装增强识别包。</source>
+        <translation>Download did not finish. Check your connection and try again, or install a recognition package from a local file.</translation>
     </message>
     <message>
-        <source>新类型</source>
-        <translation>New type</translation>
+        <source>无法读取增强识别包。</source>
+        <translation>Could not read the recognition package.</translation>
     </message>
     <message>
-        <source>新类型名称</source>
-        <translation>New type name</translation>
+        <source>选择增强识别包</source>
+        <translation>Choose a recognition package</translation>
     </message>
     <message>
-        <source>扩展名，例如 dwg dxf</source>
-        <translation>Extensions, e.g. dwg dxf</translation>
-    </message>
-    <message>
-        <source>新类型扩展名</source>
-        <translation>New type extensions</translation>
-    </message>
-    <message>
-        <source>添加</source>
-        <translation>Add</translation>
+        <source>增强识别包</source>
+        <translation>Recognition package</translation>
     </message>
 </context>
 <context>
-    <name>AppearancePreview</name>
+    <name>OcrPackageRow</name>
     <message>
-        <source>界面大小效果预览</source>
-        <translation>Interface size preview</translation>
+        <source>增强文字识别</source>
+        <translation>Enhanced text recognition</translation>
     </message>
     <message>
-        <source>搜索文件、文件夹…</source>
-        <translation>Search files and folders…</translation>
+        <source>识字;OCR;图片文字;模型;离线;增强;下载;recognition;offline</source>
+        <translation>OCR;image text;models;offline;enhanced;download;recognition</translation>
     </message>
     <message>
-        <source>项目资料</source>
-        <translation>Project files</translation>
+        <source>提升截图和中英文图片的识别效果。下载 %1，安装后可离线使用；未安装时，剪贴板使用 Windows 支持的识别语言。</source>
+        <translation>Improve recognition of screenshots and Chinese and English images. Download %1 for offline use. Until installed, clipboard recognition uses the languages supported by Windows.</translation>
     </message>
     <message>
-        <source>文件夹 · 效果预览</source>
-        <translation>Folder · Preview</translation>
-    </message>
-</context>
-<context>
-    <name>ws::PanelColumns</name>
-    <message>
-        <source>名称</source>
-        <translation>Name</translation>
+        <source>取消</source>
+        <translation>Cancel</translation>
     </message>
     <message>
-        <source>路径</source>
-        <translation>Path</translation>
+        <source>下载并安装</source>
+        <translation>Download and install</translation>
     </message>
     <message>
-        <source>大小</source>
-        <translation>Size</translation>
-    </message>
-    <message>
-        <source>修改时间</source>
-        <translation>Modified</translation>
-    </message>
-    <message>
-        <source>类型</source>
-        <translation>Type</translation>
-    </message>
-    <message>
-        <source>创建时间</source>
-        <translation>Created</translation>
-    </message>
-    <message>
-        <source>所在文件夹</source>
-        <translation>Folder</translation>
-    </message>
-    <message>
-        <source>来源</source>
-        <translation>Source</translation>
+        <source>从本地安装增强识别包…</source>
+        <translation>Install a local recognition package…</translation>
     </message>
 </context>
 <context>
-    <name>FileViewSwitch</name>
+    <name>ws::FolderSizes</name>
     <message>
-        <source>缩略图大小</source>
-        <translation>Thumbnail size</translation>
+        <source>计算中…</source>
+        <translation>Calculating…</translation>
     </message>
     <message>
-        <source>列表</source>
-        <translation>List</translation>
+        <source>≈ %1</source>
+        <translation>≈ %1</translation>
     </message>
     <message>
-        <source>大图</source>
-        <translation>Large icons</translation>
-    </message>
-    <message>
-        <source>Alt+滚轮</source>
-        <translation>Alt+wheel</translation>
+        <source>未知</source>
+        <translation>Unknown</translation>
     </message>
 </context>
 <context>
-    <name>ResultTile</name>
+    <name>DropPieHelper</name>
     <message>
-        <source>离线</source>
-        <translation>Offline</translation>
+        <source>收藏圆盘未启动</source>
+        <translation>Favorites pie could not start</translation>
     </message>
     <message>
-        <source>已不存在</source>
-        <translation>Missing</translation>
+        <source>无法创建圆盘的临时配置，请检查临时文件夹。</source>
+        <translation>Could not create temporary settings for the favorites pie. Check your temporary folder.</translation>
+    </message>
+    <message>
+        <source>无法启动普通权限的圆盘进程。请确认资源管理器正在运行，再关闭并重新开启收藏圆盘。</source>
+        <translation>Could not start the favorites pie with normal permissions. Make sure File Explorer is running, then turn the favorites pie off and on again.</translation>
+    </message>
+</context>
+<context>
+    <name>ws::SwitchPlugin</name>
+    <message>
+        <source>系统开关插件暂不可用，可打开 Windows 设置</source>
+        <translation>System switches plugin unavailable. Open Windows Settings instead.</translation>
     </message>
 </context>
 </TS>

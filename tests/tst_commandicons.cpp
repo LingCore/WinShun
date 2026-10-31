@@ -12,7 +12,12 @@
 #include <QTemporaryDir>
 #include <QTest>
 
+#include <windows.h>
+#include <psapi.h>
+
 #include <cstdlib>
+#include <utility>
+#include <vector>
 
 using namespace Qt::StringLiterals;
 using namespace ws;
@@ -40,6 +45,52 @@ class TestCommandIcons : public QObject {
     Q_OBJECT
 
 private slots:
+    void largeIconCacheHasBoundedMemory()
+    {
+        FileIconProvider provider;
+        const auto url = [](int i) {
+            return FileIconProvider::pluginIconUrl({}, u"color:#%1"_s.arg(i, 6, 16, QLatin1Char('0')), false);
+        };
+        // Real provider requests, at the largest supported icon size. Warm
+        // Qt and the shell integration before measuring retained memory.
+        const QImage first = load(provider, url(0), 256);
+        QCOMPARE(first.size(), QSize(256, 256));
+        PROCESS_MEMORY_COUNTERS_EX before {};
+        QVERIFY(::GetProcessMemoryInfo(
+            ::GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&before), sizeof before));
+        QImage last;
+        for (int i = 1; i <= 512; ++i) {
+            last = load(provider, url(i), 256);
+            QCOMPARE(last.size(), QSize(256, 256));
+        }
+        PROCESS_MEMORY_COUNTERS_EX after {};
+        QVERIFY(::GetProcessMemoryInfo(
+            ::GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&after), sizeof after));
+        const qint64 growth = static_cast<qint64>(after.PrivateUsage) - static_cast<qint64>(before.PrivateUsage);
+        qInfo("512 large icon requests retained %.2f MiB of additional private memory",
+            static_cast<double>(growth) / (1 << 20));
+        QVERIFY2(growth < 16 * (1 << 20), "Large icons must not retain tens of MiB in the provider cache");
+        QCOMPARE(load(provider, url(512), 256).cacheKey(), last.cacheKey()); // recent: no decoding or redraw
+        QCOMPARE(load(provider, url(0), 256), first); // evicted: the same full-resolution pixels
+    }
+
+    void smallIconsStayCached()
+    {
+        FileIconProvider provider;
+        std::vector<std::pair<QString, qint64>> keys;
+        for (int i = 0; i < 256; ++i) {
+            const QString url
+                = FileIconProvider::pluginIconUrl({}, u"color:#%1"_s.arg(i, 6, 16, QLatin1Char('0')), false);
+            const QImage image = load(provider, url);
+            QCOMPARE(image.size(), QSize(32, 32));
+            keys.emplace_back(url, image.cacheKey());
+        }
+        // The ordinary launcher's working set still fits, preserving its
+        // cache hits while large gallery icons have a separate byte cost.
+        for (const auto& [url, key] : keys)
+            QCOMPARE(load(provider, url).cacheKey(), key);
+    }
+
     void resolvesProgramsWithoutRunningThem()
     {
         const QString cmd = QStandardPaths::findExecutable(u"cmd.exe"_s);
@@ -56,8 +107,9 @@ private slots:
         QVERIFY(temporary.isValid());
         const QString executable = temporary.filePath(u"图标程序.exe"_s);
         QVERIFY(QFile::copy(cmd, executable));
-        QCOMPARE(load(provider, FileIconProvider::commandIconUrl(u"图标程序.exe --argument"_s,
-                     temporary.path(), {}, false)), FileIconProvider::fileIcon(executable, 32));
+        QCOMPARE(
+            load(provider, FileIconProvider::commandIconUrl(u"图标程序.exe --argument"_s, temporary.path(), {}, false)),
+            FileIconProvider::fileIcon(executable, 32));
         const QString oldPath = qEnvironmentVariable("PATH");
         const auto restore = qScopeGuard([oldPath] { ::_wputenv_s(L"PATH", oldPath.toStdWString().c_str()); });
         QCOMPARE(::_wputenv_s(L"PATH", temporary.path().toStdWString().c_str()), 0);

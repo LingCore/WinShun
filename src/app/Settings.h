@@ -52,6 +52,7 @@ struct NetworkShare {
     QString path; // "\\host\share", or a folder in it (unc::normalize)
     QString name; // shown instead of the path; empty: the path
     bool content = false; // its files' contents indexed too ([Shares] N\Content; GitHub #114)
+    ShareScan scan;
 
     bool operator==(const NetworkShare&) const = default;
 };
@@ -135,6 +136,7 @@ struct Settings {
     // does the same. Off for new installs, like dialogBar; turned on, auto.
     // An ini from before without the key has auto.
     QString folderMenu = QStringLiteral("off");
+    bool folderMenuMiddle = false; // also open it with the middle button on blank space (#137)
     bool folderMenuExplorer = true; // in File Explorer's folders
     bool folderMenuDesktop = true; // on the desktop
     // Which groups the menu lists (GitHub #51). All on is what it always
@@ -175,6 +177,11 @@ struct Settings {
     // Opt in to the former behavior: in 全部, Tab browses a favorite folder.
     bool tabEntersFavoriteFolder = false;
     bool thumbnails = true; // a picture, video, PDF found shows its thumbnail for an icon
+    // 全部 also finds apps, and Windows' settings pages, Control Panel items
+    // and switches; off, it finds names and content only (SearchEngine::Request).
+    bool searchApps = true;
+    bool searchSystem = true;
+    bool regexMode = false; // the search box's (Launcher::regexMode, Ctrl+R)
     // match | newest | oldest | name | folder | type | largest | smallest
     // (kSortNames): how 文件 and 文件夹 order what they find, by best match,
     // by when last written, or (#44) by name, folder, type or size (the
@@ -184,6 +191,8 @@ struct Settings {
     // the files written last (the footer's switch, remembered), or nothing
     // but the favorites (GitHub #24: nothing of what was done shows).
     QString startList = QStringLiteral("opened");
+    int recentItems = 5; // how many recently opened items to list, 1..200 (GitHub #119)
+    bool favoritesOnStart = true; // show favorites before typing; keywords always work (#135)
     // Each time the launcher opens, nothing is typed and the scope is 全部, as
     // at its first opening (GitHub #24); else it keeps the words, selected.
     bool clearOnOpen = false;
@@ -196,6 +205,7 @@ struct Settings {
     // or Seer when one is running in the background (FilePreview), else
     // Win顺's own preview window; builtin: always that.
     QString previewWith = QStringLiteral("auto");
+    QString previewHotkey = QStringLiteral("Alt+P"); // local; empty disables keyboard preview
 
     // [FileTypes]: what 文件 can be narrowed to, in the strip under the
     // search box (图片: jpg, png…), in its user's order. Written as an
@@ -336,6 +346,8 @@ struct Settings {
     bool clipboardClickToPaste = false; // a click pastes the row (Windows' way); off: picks it, a double click pastes
     bool clipboardLargePictures = false; // pictures on taller rows, thumbnails large enough to make out
     bool clipboardKeepPlace = false; // pasting from the history leaves the entry where it is (GitHub #122); off: it moves to the top
+    bool clipboardAtPointer = false; // always open beside the mouse, including over our own fields (GitHub #105)
+    bool clipboardPauseInFullScreen = false; // only global opening hotkeys, not recording or menu actions (#121)
     // Opened over the caret (or a search box; Placement::above), the window
     // turned upside down: the newest entry by the caret, older ones upwards.
     bool clipboardFlipAbove = true;

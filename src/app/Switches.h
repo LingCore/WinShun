@@ -68,10 +68,21 @@ public:
         std::function<std::chrono::steady_clock::time_point()> now = &std::chrono::steady_clock::now; // tests
     };
 
+    // An asynchronous provider on this object's thread. The plugin adapter
+    // uses this path: no COM worker or native watcher exists in the host.
+    struct Remote {
+        QStringList ids;
+        std::function<void(const QString&, std::function<void(SwitchState)>)> read;
+        std::function<void(const QString&, SwitchIntent, std::function<void(SwitchWrite)>)> write;
+        std::function<void(const QString&)> written;
+    };
+
     // Every backend's setStopToken() and watch() are called here and its
     // switches read at once.
     explicit Switches(SwitchBackends backends, QObject* parent = nullptr);
     Switches(SwitchBackends backends, Options options, QObject* parent = nullptr);
+    explicit Switches(Remote remote, QObject* parent = nullptr);
+    Switches(Remote remote, Options options, QObject* parent = nullptr);
     // Waits for the switch thread: the task under way (a few ms at most:
     // tasks give up on its stop token) and the backends' close(). Pending
     // results and waits are dropped; nothing more is signalled.
@@ -112,6 +123,7 @@ public:
     // The launcher is shown: every switch read again (a few registry values,
     // on the switch thread); failures older than Options::errorShown cleared.
     void refresh();
+    void refresh(QStringView id); // a provider notification: read just this switch
 
 signals:
     void changed(const QString& id); // state(id) is different now
@@ -144,12 +156,14 @@ private:
     void show(Entry& e, const SwitchState& state); // changed(id) if it differs
     void showTarget(Entry& e, const SwitchIntent& intent); // busy, at the target
     void endWait(Entry& e, Outcome outcome);
+    void written(Entry& e);
 
     Options m_options;
     SwitchBackends m_backends;
+    std::optional<Remote> m_remote;
     std::vector<Entry> m_entries; // one per id, made once: pointers into it stay valid
     std::uint64_t m_serial = 0; // of the writes and the waits
-    ComWorker m_worker; // last: joined (and the backends' close() run on it) before the members above go
+    std::unique_ptr<ComWorker> m_worker; // local backends only; joined before they go
 };
 
 } // namespace ws

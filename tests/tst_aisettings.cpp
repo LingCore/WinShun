@@ -70,7 +70,7 @@ QJsonValue sampleFor(const aisettings::Entry& e, State& s, int variant)
     case Type::Number:
         return variant == 0 ? 2.5 : 0.5; // 512 KB
     case Type::Text:
-        return u"zzkw"_s;
+        return e.key == u"Results/PreviewHotkey" ? u"Space"_s : u"zzkw"_s;
     case Type::Hotkey:
         return u"Ctrl+Alt+F9"_s;
     case Type::List: {
@@ -687,6 +687,21 @@ private slots:
         // Leaving 'direct' restarts Win顺 too.
         state.settings.indexAccess = u"direct"_s;
         QVERIFY(!makePlan(state, one(u"Index/Access"_s, u"walk"_s), {}).problems.isEmpty());
+    }
+
+    void previewHotkey()
+    {
+        State state = defaultState();
+        const auto env = appEnv();
+        for (const QString& key : {u"Space"_s, u"Ctrl+P"_s, u"F8"_s, QString()}) {
+            const auto plan = makePlan(state, one(u"Results/PreviewHotkey"_s, key), env);
+            QVERIFY2(plan.problems.isEmpty(), qPrintable(problemText(plan)));
+            QCOMPARE(plan.result.settings.previewHotkey, key);
+        }
+        for (const QString& key : {u"P"_s, u"Ctrl+C"_s, u"Shift+Space"_s, u"Alt+F4"_s})
+            QVERIFY(!makePlan(state, one(u"Results/PreviewHotkey"_s, key), env).problems.isEmpty());
+        state.settings.hotkey = u"Ctrl+P"_s;
+        QVERIFY(!makePlan(state, one(u"Results/PreviewHotkey"_s, u"Ctrl+P"_s), env).problems.isEmpty());
     }
 
     void fileManagerNeedsTheUsersCommand()

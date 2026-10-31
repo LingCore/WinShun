@@ -90,6 +90,11 @@ Window {
 
     // Returns true when the key was for the menu.
     function handleKey(event) {
+        if (event.key === Qt.Key_O && (event.modifiers & ~Qt.KeypadModifier) === Qt.ControlModifier) {
+            if (highlighted < 0)
+                highlighted = step(-1, 1)
+            return true
+        }
         switch (event.key) {
         case Qt.Key_Down: highlighted = step(highlighted, 1); return true
         case Qt.Key_Up: highlighted = step(highlighted < 0 ? 0 : highlighted, -1); return true
@@ -105,9 +110,9 @@ Window {
             return true
         case Qt.Key_Escape:
         case Qt.Key_Menu:
+        case Qt.Key_Left:
             dismiss()
             return true
-        case Qt.Key_Left:
         case Qt.Key_Right:
         case Qt.Key_PageUp:
         case Qt.Key_PageDown:

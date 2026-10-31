@@ -1,4 +1,5 @@
 #include "ResultModel.h"
+#include "FolderSizes.h"
 #include "ResultColumns.h"
 
 #include "AppCatalog.h"
@@ -15,7 +16,7 @@
 #include "WebShortcut.h"
 #include "Wtf8.h"
 #include "platform/SiteIcons.h"
-#include "platform/SwitchKeepAwake.h"
+#include "KeepAwakeText.h"
 
 #include <QGuiApplication>
 #include <QLocale>
@@ -159,7 +160,7 @@ SwitchState stateOf(const Switches* switches, const SearchResult& r)
 QString switchNote(const SwitchState& state)
 {
     if (state.until.isValid() && state.on == SwitchState::Value::On)
-        return SwitchKeepAwake::noteOf(state.until, QDateTime::currentDateTime());
+        return KeepAwakeText::noteOf(state.until, QDateTime::currentDateTime());
     return state.note;
 }
 
@@ -203,18 +204,40 @@ ResultModel::ResultModel(QObject* parent)
     });
 }
 
+ResultModel::~ResultModel() = default;
+
+void ResultModel::setFolderIndex(std::function<std::shared_ptr<FileIndex>()> index)
+{
+    m_folderSizes = std::make_unique<FolderSizes>(std::move(index));
+    connect(m_folderSizes.get(), &FolderSizes::changed, this, [this](const QString& path) {
+        for (int row = 0; row < count(); ++row)
+            if (m_items[row].isDir && m_items[row].path == path)
+                emit dataChanged(this->index(row), this->index(row), {SizeRole});
+    });
+}
+
+void ResultModel::setFolderSizesEnabled(bool on)
+{
+    if (on == m_folderSizesEnabled) return;
+    m_folderSizesEnabled = on;
+    if (m_folderSizes) m_folderSizes->reset();
+    if (count()) emit dataChanged(index(0), index(count() - 1), {SizeRole});
+}
+
 void ResultModel::setSwitches(Switches* switches)
 {
     if (switches == m_switches)
         return;
+    if (m_switches)
+        disconnect(m_switches, nullptr, this, nullptr);
     m_switches = switches;
-    if (!switches)
-        return;
     // A switch changed (here, in another program, in Settings): its rows
     // are not new rows, only their switch and second line are.
-    connect(switches, &Switches::changed, this, &ResultModel::switchChanged);
+    if (switches)
+        connect(switches, &Switches::changed, this, &ResultModel::switchChanged);
     if (!m_items.isEmpty()) // read before this was set
-        emit dataChanged(index(0), index(count() - 1), {SwitchOnRole, SwitchReadyRole, FolderRole});
+        emit dataChanged(index(0), index(count() - 1), {SwitchOnRole, SwitchLevelRole, SwitchBusyRole, SwitchNoteRole,
+            SwitchErrorRole, SwitchReadyRole, NameRole, NameHtmlRole, FolderRole});
 }
 
 void ResultModel::switchChanged(const QString& id)
@@ -223,7 +246,7 @@ void ResultModel::switchChanged(const QString& id)
         if (m_items[row].switchId == id)
             emit dataChanged(index(row), index(row),
                 {SwitchOnRole, SwitchLevelRole, SwitchBusyRole, SwitchNoteRole, SwitchErrorRole, SwitchReadyRole,
-                    FolderRole});
+                    NameRole, NameHtmlRole, FolderRole});
     }
 }
 
@@ -411,6 +434,8 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
             return QString();
         return QDateTime::fromSecsSinceEpoch(r->modified).toLocalTime().toString(u"yyyy-MM-dd HH:mm"_s);
     case SizeRole:
+        if (r->isDir && !r->offline && !r->missing && m_folderSizesEnabled && m_folderSizes)
+            return m_folderSizes->text(r->path);
         return (r->isApp() && !r->isPlugin()) || r->isDir || r->size < 0 ? QString() : sizeText(static_cast<std::uint64_t>(r->size));
     case OfflineRole:
         return r->offline;
@@ -577,6 +602,7 @@ QString ResultModel::elidedHtml(
 }
 void ResultModel::assign(SearchResults items, QStringList highlights)
 {
+    if (m_folderSizes) m_folderSizes->reset();
     const int oldCount = count();
     const int newCount = static_cast<int>(items.size());
     const int common = std::min(oldCount, newCount);
@@ -600,6 +626,8 @@ void ResultModel::assign(SearchResults items, QStringList highlights)
     }
     if (first >= 0)
         emit dataChanged(index(first), index(last));
+    else if (m_folderSizesEnabled && common > 0)
+        emit dataChanged(index(0), index(common - 1), {SizeRole});
 
     if (newCount > oldCount) {
         beginInsertRows({}, oldCount, newCount - 1);

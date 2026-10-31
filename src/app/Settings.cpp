@@ -1,7 +1,9 @@
 #include "Settings.h"
+#include "PreviewShortcut.h"
 #include "platform/HotkeyText.h"
 #include "PathText.h"
 #include "Query.h"
+#include "SwitchWire.h"
 
 #include "ServiceVolumeAccess.h"
 #include "Unc.h"
@@ -346,6 +348,13 @@ void writeShares(QSettings& s, const QList<NetworkShare>& shares)
         s.setValue(u"Name"_s, shares[i].name);
         if (shares[i].content)
             s.setValue(u"Content"_s, true);
+        const ShareScan& scan = shares[i].scan;
+        if (scan.scheduled)
+            s.setValue(u"ScanScheduled"_s, true);
+        s.setValue(u"ScanFrom"_s, scan.fromMinute);
+        s.setValue(u"ScanUntil"_s, scan.untilMinute);
+        if (scan.maxDepth > 0)
+            s.setValue(u"ScanDepth"_s, scan.maxDepth);
     }
     s.endArray();
 }
@@ -366,7 +375,12 @@ QList<NetworkShare> readShares(QSettings& s)
         if (path.isEmpty()
             || std::ranges::any_of(shares, [&](const NetworkShare& n) { return unc::equal(n.path.toStdWString(), path.toStdWString()); }))
             continue;
-        shares.append({path, s.value(u"Name"_s).toString().trimmed(), s.value(u"Content"_s, false).toBool()});
+        ShareScan scan;
+        scan.scheduled = s.value(u"ScanScheduled"_s, false).toBool();
+        scan.fromMinute = std::clamp(s.value(u"ScanFrom"_s, scan.fromMinute).toInt(), 0, 1439);
+        scan.untilMinute = std::clamp(s.value(u"ScanUntil"_s, scan.untilMinute).toInt(), 0, 1439);
+        scan.maxDepth = std::clamp(s.value(u"ScanDepth"_s, 0).toInt(), 0, 1024);
+        shares.append({path, s.value(u"Name"_s).toString().trimmed(), s.value(u"Content"_s, false).toBool(), scan});
     }
     s.endArray();
     return shares;
@@ -824,6 +838,7 @@ void Settings::load()
         folderMenu = folderMenuBefore;
     folderMenuExplorer = readOrDefault(s, u"Launcher/FolderMenuExplorer"_s, d.folderMenuExplorer);
     folderMenuDesktop = readOrDefault(s, u"Launcher/FolderMenuDesktop"_s, d.folderMenuDesktop);
+    folderMenuMiddle = readOrDefault(s, u"Launcher/FolderMenuMiddle"_s, d.folderMenuMiddle);
     folderMenuFavorites = readOrDefault(s, u"Launcher/FolderMenuFavorites"_s, d.folderMenuFavorites);
     folderMenuRecent = readOrDefault(s, u"Launcher/FolderMenuRecent"_s, d.folderMenuRecent);
     folderMenuWindows = readOrDefault(s, u"Launcher/FolderMenuWindows"_s, d.folderMenuWindows);
@@ -849,6 +864,9 @@ void Settings::load()
     doubleClickToOpen = readOrDefault(s, u"Results/DoubleClickToOpen"_s, d.doubleClickToOpen);
     tabEntersFavoriteFolder = readOrDefault(s, u"Results/TabEntersFavoriteFolder"_s, d.tabEntersFavoriteFolder);
     thumbnails = readOrDefault(s, u"Results/Thumbnails"_s, d.thumbnails);
+    searchApps = readOrDefault(s, u"Results/SearchApps"_s, d.searchApps);
+    searchSystem = readOrDefault(s, u"Results/SearchSystem"_s, d.searchSystem);
+    regexMode = readOrDefault(s, u"Results/RegexMode"_s, d.regexMode);
     if (!s.contains(u"Results/Sort"_s) && s.value(u"Results/SortByModified"_s).toBool())
         s.setValue(u"Results/Sort"_s, u"newest"_s); // 0.6.0's switch: newest first, or best match
     s.remove(u"Results/SortByModified"_s);
@@ -856,6 +874,8 @@ void Settings::load()
     if (!isSortName(sort))
         sort = d.sort;
     startList = readOrDefault(s, u"Results/StartList"_s, d.startList).trimmed().toLower();
+    recentItems = std::clamp(readOrDefault(s, u"Results/RecentItems"_s, d.recentItems), 1, 200);
+    favoritesOnStart = readOrDefault(s, u"Results/FavoritesOnStart"_s, d.favoritesOnStart);
     if (startList != u"modified" && startList != u"none")
         startList = d.startList;
     clearOnOpen = readOrDefault(s, u"Launcher/ClearOnOpen"_s, d.clearOnOpen);
@@ -868,6 +888,12 @@ void Settings::load()
     previewWith = readOrDefault(s, u"Results/PreviewWith"_s, d.previewWith).trimmed().toLower();
     if (previewWith != u"builtin")
         previewWith = d.previewWith;
+    previewHotkey = readOrDefault(s, u"Results/PreviewHotkey"_s, d.previewHotkey).trimmed();
+    if (!previewHotkey.isEmpty()) {
+        previewHotkey = previewkeys::normalized(previewHotkey);
+        if (previewHotkey.isEmpty())
+            previewHotkey = d.previewHotkey;
+    }
 
     theme = readOrDefault(s, u"Appearance/Theme"_s, d.theme).trimmed().toLower();
     if (theme != u"light" && theme != u"dark")
@@ -997,6 +1023,8 @@ void Settings::load()
     clipboardClickToPaste = readOrDefault(s, u"Clipboard/ClickToPaste"_s, d.clipboardClickToPaste);
     clipboardLargePictures = readOrDefault(s, u"Clipboard/LargePictures"_s, d.clipboardLargePictures);
     clipboardKeepPlace = readOrDefault(s, u"Clipboard/KeepPlace"_s, d.clipboardKeepPlace);
+    clipboardAtPointer = readOrDefault(s, u"Clipboard/AtPointer"_s, d.clipboardAtPointer);
+    clipboardPauseInFullScreen = readOrDefault(s, u"Clipboard/PauseInFullScreen"_s, d.clipboardPauseInFullScreen);
     clipboardFlipAbove = readOrDefault(s, u"Clipboard/FlipAbove"_s, d.clipboardFlipAbove);
     clipboardHoldToStep = readOrDefault(s, u"Clipboard/HoldToStep"_s, d.clipboardHoldToStep);
     clipboardSearchBoxSide = readOrDefault(s, u"Clipboard/SearchBoxSide"_s, d.clipboardSearchBoxSide).trimmed().toLower();
@@ -1064,6 +1092,23 @@ void Settings::load()
 
     pluginDeveloperMode = readOrDefault(s, u"Plugins/DeveloperMode"_s, d.pluginDeveloperMode);
     plugins = readPlugins(s);
+    // System switches used to be unconditional native backends. Preserve
+    // existing users' system-search choice once; a fresh profile starts off.
+    // Persist the marker even when off, so the second load is not an upgrade.
+    if (!s.value(u"Plugins/SwitchesMigrated"_s, false).toBool()) {
+        if (!plugin(switchwire::kPlugin) && !firstRun) {
+            PluginConfig config;
+            config.id = switchwire::kPlugin.toString();
+            config.enabled = searchSystem;
+            config.confirmed = {u"ui"_s, u"system:settings"_s};
+            plugins.append(config);
+            const QString group = u"Plugin."_s + config.id + u'/';
+            s.setValue(group + u"Enabled"_s, config.enabled);
+            s.setValue(group + u"Confirmed"_s, config.confirmed);
+        }
+        s.setValue(u"Plugins/SwitchesMigrated"_s, true);
+        s.sync();
+    }
 }
 
 void Settings::save() const
@@ -1098,6 +1143,7 @@ void Settings::save() const
     s.setValue(u"Launcher/FolderMenu"_s, folderMenu);
     s.setValue(u"Launcher/FolderMenuExplorer"_s, folderMenuExplorer);
     s.setValue(u"Launcher/FolderMenuDesktop"_s, folderMenuDesktop);
+    s.setValue(u"Launcher/FolderMenuMiddle"_s, folderMenuMiddle);
     s.setValue(u"Launcher/FolderMenuFavorites"_s, folderMenuFavorites);
     s.setValue(u"Launcher/FolderMenuRecent"_s, folderMenuRecent);
     s.setValue(u"Launcher/FolderMenuWindows"_s, folderMenuWindows);
@@ -1116,12 +1162,18 @@ void Settings::save() const
     s.setValue(u"Results/DoubleClickToOpen"_s, doubleClickToOpen);
     s.setValue(u"Results/TabEntersFavoriteFolder"_s, tabEntersFavoriteFolder);
     s.setValue(u"Results/Thumbnails"_s, thumbnails);
+    s.setValue(u"Results/SearchApps"_s, searchApps);
+    s.setValue(u"Results/SearchSystem"_s, searchSystem);
+    s.setValue(u"Results/RegexMode"_s, regexMode);
     s.setValue(u"Results/Sort"_s, sort);
     s.setValue(u"Results/StartList"_s, startList);
+    s.setValue(u"Results/RecentItems"_s, recentItems);
+    s.setValue(u"Results/FavoritesOnStart"_s, favoritesOnStart);
     s.setValue(u"Launcher/ClearOnOpen"_s, clearOnOpen);
     s.setValue(u"Results/NumberKeys"_s, numberKeys);
     s.setValue(u"Results/NumberHints"_s, numberHints);
     s.setValue(u"Results/PreviewWith"_s, previewWith);
+    s.setValue(u"Results/PreviewHotkey"_s, previewHotkey);
     s.setValue(u"Appearance/Theme"_s, theme);
     s.setValue(u"Appearance/Language"_s, language);
     s.setValue(u"Appearance/Transparency"_s, transparency);
@@ -1168,6 +1220,8 @@ void Settings::save() const
     s.setValue(u"Clipboard/ClickToPaste"_s, clipboardClickToPaste);
     s.setValue(u"Clipboard/LargePictures"_s, clipboardLargePictures);
     s.setValue(u"Clipboard/KeepPlace"_s, clipboardKeepPlace);
+    s.setValue(u"Clipboard/AtPointer"_s, clipboardAtPointer);
+    s.setValue(u"Clipboard/PauseInFullScreen"_s, clipboardPauseInFullScreen);
     s.setValue(u"Clipboard/FlipAbove"_s, clipboardFlipAbove);
     s.setValue(u"Clipboard/HoldToStep"_s, clipboardHoldToStep);
     s.setValue(u"Clipboard/SearchBoxSide"_s, clipboardSearchBoxSide);
@@ -1302,7 +1356,7 @@ ShareIndexer::Options Settings::shareOptions() const
 {
     ShareIndexer::Options o;
     for (const NetworkShare& n : shares)
-        o.shares.push_back({n.path.toStdWString(), n.name.toStdWString(), n.content});
+        o.shares.push_back({n.path.toStdWString(), n.name.toStdWString(), n.content, n.scan});
     o.rules = crawlRules();
     for (const QString& n : networkExcludedNames) {
         if (!n.trimmed().isEmpty())

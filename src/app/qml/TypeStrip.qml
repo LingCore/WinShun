@@ -232,7 +232,7 @@ Item {
                         text: chip.modelData.name
                         color: chip.active || area.containsMouse ? Theme.text : Theme.subtext
                         font.pixelSize: Theme.uiCaption
-                        font.weight: chip.active ? Font.DemiBold : Font.Normal
+                        font.weight: chip.active ? Theme.fontStrong : Font.Normal
                     }
 
                     MouseArea {

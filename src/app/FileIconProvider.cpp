@@ -671,7 +671,7 @@ QImage FileIconProvider::requestImage(const QString& id, QSize* size, const QSiz
     *size = image.size();
     shell::prepareMenuHooks(); // the shell has loaded its icon handlers into the process by now
     QMutexLocker lock(&m_mutex);
-    m_cache.insert(key, new QImage(image));
+    m_cache.insert(key, new QImage(image), std::max(kCacheBytes / kCacheIcons, image.sizeInBytes()));
     return image;
 }
 

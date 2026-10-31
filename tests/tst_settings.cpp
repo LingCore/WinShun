@@ -1,4 +1,5 @@
 #include "Settings.h"
+#include "PreviewShortcut.h"
 #include "Query.h"
 #include "SettingsCommand.h"
 
@@ -9,6 +10,7 @@
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QtTest>
+#include <algorithm>
 
 using namespace Qt::StringLiterals;
 
@@ -23,6 +25,151 @@ class SettingsTest : public QObject {
     Q_OBJECT
 
 private slots:
+    void systemSwitchesMigration()
+    {
+        const QString id = u"winshun.switches"_s;
+        {
+            QTemporaryDir profile;
+            QVERIFY(profile.isValid());
+            ws::Settings::useProfile(profile.path());
+            ws::Settings settings;
+            settings.load();
+            QVERIFY(!settings.plugin(id) || !settings.plugin(id)->enabled);
+            settings.save();
+            settings.load();
+            QVERIFY(!settings.plugin(id) || !settings.plugin(id)->enabled);
+        }
+        for (const bool oldSearchSystem : {true, false}) {
+            QTemporaryDir profile;
+            QVERIFY(profile.isValid());
+            ws::Settings::useProfile(profile.path());
+            QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+            ini.setValue(u"Results/SearchSystem"_s, oldSearchSystem);
+            ini.sync();
+            ws::Settings settings;
+            settings.load();
+            QVERIFY(settings.plugin(id));
+            QCOMPARE(settings.plugin(id)->enabled, oldSearchSystem);
+            QVERIFY(settings.plugin(id)->confirmed.contains(u"system:settings"_s));
+            for (ws::PluginConfig& config : settings.plugins)
+                if (config.id == id)
+                    config.enabled = false;
+            settings.save();
+            settings.load();
+            QVERIFY(!settings.plugin(id)->enabled);
+        }
+        {
+            QTemporaryDir profile;
+            QVERIFY(profile.isValid());
+            ws::Settings::useProfile(profile.path());
+            QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+            ini.setValue(u"Plugin.winshun.switches/Enabled"_s, false);
+            ini.sync();
+            ws::Settings settings;
+            settings.load();
+            QVERIFY(settings.plugin(id));
+            QVERIFY(!settings.plugin(id)->enabled);
+        }
+    }
+
+    void startListOptions()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QCOMPARE(settings.recentItems, 5);
+        QVERIFY(settings.favoritesOnStart);
+        settings.recentItems = 20;
+        settings.favoritesOnStart = false;
+        settings.save();
+        ws::Settings restored;
+        restored.load();
+        QCOMPARE(restored.recentItems, 20);
+        QVERIFY(!restored.favoritesOnStart);
+        QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+        for (const int invalid : {-1, 0, 10000}) {
+            ini.setValue(u"Results/RecentItems"_s, invalid);
+            ini.sync();
+            restored.load();
+            QCOMPARE(restored.recentItems, std::clamp(invalid, 1, 200));
+        }
+    }
+
+    void clipboardOpeningPosition()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QVERIFY(!settings.clipboardAtPointer);
+        QVERIFY(!settings.clipboardPauseInFullScreen);
+        for (const bool atPointer : {true, false}) {
+            settings.clipboardAtPointer = atPointer;
+            settings.clipboardPauseInFullScreen = atPointer;
+            settings.save();
+            ws::Settings restored;
+            restored.load();
+            QCOMPARE(restored.clipboardAtPointer, atPointer);
+            QCOMPARE(restored.clipboardPauseInFullScreen, atPointer);
+        }
+    }
+
+    void previewHotkey()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QCOMPARE(settings.previewHotkey, u"Alt+P"_s);
+        for (const QString& key : {u"Space"_s, u"Ctrl+P"_s, u"F8"_s, QString()}) {
+            settings.previewHotkey = key;
+            settings.save();
+            ws::Settings restored;
+            restored.load();
+            QCOMPARE(restored.previewHotkey, key);
+        }
+        QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+        for (const QString& key : {u"P"_s, u"Enter"_s, u"Ctrl+C"_s, u"Alt+F4"_s, u"Shift+F10"_s}) {
+            ini.setValue(u"Results/PreviewHotkey"_s, key);
+            ini.sync();
+            settings.load();
+            QCOMPARE(settings.previewHotkey, u"Alt+P"_s);
+        }
+        ini.setValue(u"Results/PreviewHotkey"_s, u" ctrl + shift + p "_s);
+        ini.sync();
+        settings.load();
+        QCOMPARE(settings.previewHotkey, u"Ctrl+Shift+P"_s);
+        ini.remove(u"Results/PreviewHotkey"_s);
+        ini.sync();
+        settings.load();
+        QCOMPARE(settings.previewHotkey, u"Alt+P"_s);
+    }
+
+    void previewShortcutRules()
+    {
+        using namespace ws::previewkeys;
+        QVERIFY(allowed(u"Space"_s));
+        QVERIFY(allowed(u"Alt+P"_s));
+        QVERIFY(allowed(u"Ctrl+Shift+P"_s));
+        QVERIFY(allowed(u"F8"_s));
+        for (const QString& key : {u"Shift+Space"_s, u"Alt+Space"_s, u"P"_s, u"Shift+P"_s,
+                 u"Ctrl+1"_s, u"Alt+1"_s, u"Ctrl+C"_s, u"Ctrl+Shift+C"_s, u"Ctrl+R"_s,
+                 u"Alt+F4"_s, u"Shift+F10"_s, u"Meta+P"_s, u"Ctrl+P, Ctrl+O"_s})
+            QVERIFY2(!allowed(key), qPrintable(key));
+        const QKeySequence space(u"Space"_s);
+        QVERIFY(matches(space, Qt::Key_Space, Qt::NoModifier));
+        QVERIFY(matches(space, Qt::Key_Space, Qt::KeypadModifier));
+        QVERIFY(!matches(space, Qt::Key_Space, Qt::ShiftModifier));
+        QVERIFY(!matches(space, Qt::Key_Space, Qt::ControlModifier));
+        QVERIFY(!matches(QKeySequence(), Qt::Key_Space, Qt::NoModifier));
+        QVERIFY(matches(QKeySequence(u"Alt+P"_s), Qt::Key_P, Qt::AltModifier));
+        QVERIFY(!matches(QKeySequence(u"Alt+P"_s), Qt::Key_P, Qt::AltModifier | Qt::ShiftModifier));
+    }
+
     void oneCommander()
     {
         QTemporaryDir profile;
@@ -170,6 +317,35 @@ private slots:
         QCOMPARE(again.shareOptions().shares.size(), std::size_t {2});
     }
 
+    void shareScanSettings()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.shares = {{u"\\\\nas\\docs"_s, {}, false, {true, 23 * 60, 6 * 60 + 30, 3}},
+            {u"\\\\wsl.localhost\\Ubuntu\\home\\dev"_s, {}, true, {false, 9 * 60, 18 * 60, 1}}};
+        settings.save();
+        ws::Settings again;
+        again.load();
+        QCOMPARE(again.shares, settings.shares);
+        QCOMPARE(again.shareOptions().shares[0].scan, settings.shares[0].scan);
+        QCOMPARE(again.shareOptions().shares[1].scan, settings.shares[1].scan);
+        {
+            QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+            ini.setValue(u"Shares/1/ScanFrom"_s, -1);
+            ini.setValue(u"Shares/1/ScanUntil"_s, 9999);
+            ini.setValue(u"Shares/1/ScanDepth"_s, -5);
+            for (const QString& key : {u"ScanScheduled"_s, u"ScanFrom"_s, u"ScanUntil"_s, u"ScanDepth"_s})
+                ini.remove(u"Shares/2/"_s + key); // older settings: unchanged behaviour
+        }
+        again.load();
+        QCOMPARE(again.shares[0].scan.fromMinute, 0);
+        QCOMPARE(again.shares[0].scan.untilMinute, 1439);
+        QCOMPARE(again.shares[0].scan.maxDepth, 0);
+        QCOMPARE(again.shares[1].scan, ws::ShareScan {});
+    }
+
     // GitHub #114: a WebDAV folder, as its web address or as Windows writes
     // it, is kept in one form: one added twice is seen (addShare), and two
     // spellings of one in the settings file become one.
@@ -209,7 +385,10 @@ private slots:
         QVERIFY(pictures.words.isEmpty());
         types.append({u"设计图"_s, {u"dwg"_s, u"dxf"_s}, {}, u"cad"_s});
         QCOMPARE(ws::splitFileTypeQuery(u":CAD 泵 size:>1mb"_s, types, u"folder").words, u"泵 size:>1mb"_s);
-        for (const QString text : {u":unknown 报告"_s, u"\":folder\" 报告"_s, u"C:\\folder\\报告"_s, u"报告 :folder"_s}) {
+        const auto suffixFolder = ws::splitFileTypeQuery(u"报告 :folder"_s, types, u"folder");
+        QCOMPARE(suffixFolder.type, std::optional<int>(-2));
+        QCOMPARE(suffixFolder.words, u"报告"_s);
+        for (const QString text : {u":unknown 报告"_s, u"\":folder\" 报告"_s, u"C:\\folder\\报告"_s, u"报告 \":folder\""_s}) {
             const auto literal = ws::splitFileTypeQuery(text, types, u"folder");
             QVERIFY(!literal.type);
             QCOMPARE(literal.words, text);

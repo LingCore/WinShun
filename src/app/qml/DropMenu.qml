@@ -114,7 +114,7 @@ Item {
                     required property int index
                     readonly property real naturalWidth: label.x + label.implicitWidth + 14
 
-                    width: parent.width
+                    width: column.width
                     onNaturalWidthChanged: repeater.fit()
                     height: 34
                     radius: Theme.controlRadius

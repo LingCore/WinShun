@@ -22,6 +22,8 @@ Rectangle {
     signal acceptClicked()
     signal removeClicked()
     signal contentToggled(bool on)
+    signal scanEdited(bool scheduled, string from, string until, int depth)
+
 
     readonly property color toneColor: share.tone === "ok" ? Theme.success
                                      : share.tone === "busy" ? Theme.accent
@@ -31,7 +33,7 @@ Rectangle {
 
     readonly property real headHeight: Math.max(texts.implicitHeight, buttons.implicitHeight)
     // Whole device pixels: the cards below it in the column, and its switch, stay sharp.
-    implicitHeight: Theme.snap(headHeight + 24 + (card.kind === "share" ? contents.height + 10 : 0), Screen.devicePixelRatio)
+    implicitHeight: Theme.snap(headHeight + 24 + (card.kind === "share" ? contents.height + scanSettings.height + 18 : 0), Screen.devicePixelRatio)
     radius: Theme.controlRadius
     color: "transparent"
     border.width: 1
@@ -195,5 +197,15 @@ Rectangle {
             Accessible.name: qsTr("搜索文件内容")
             onToggled: (on) => card.contentToggled(on)
         }
+    }
+
+    ShareScanControls {
+        id: scanSettings
+        visible: card.kind === "share"
+        anchors.left: contents.left
+        anchors.right: contents.right
+        y: contents.y + contents.height + 8
+        share: card.share
+        onEdited: (scheduled, from, until, depth) => card.scanEdited(scheduled, from, until, depth)
     }
 }

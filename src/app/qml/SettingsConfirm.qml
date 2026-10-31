@@ -103,7 +103,7 @@ Window {
                 elide: Text.ElideRight
                 color: Theme.text
                 font.pixelSize: Theme.uiTitle
-                font.weight: Font.DemiBold
+                font.weight: Theme.fontStrong
             }
             Rectangle {
                 anchors.bottom: parent.bottom
@@ -213,7 +213,7 @@ Window {
                                             elide: Text.ElideRight
                                             color: Theme.text
                                             font.pixelSize: Theme.uiBody
-                                            font.weight: Font.DemiBold
+                                            font.weight: Theme.fontStrong
                                         }
                                         // A list: what goes out, then what comes in (each line is short,
                                         // "还有 N 项" for the rest); the rest: before → after.
@@ -264,7 +264,7 @@ Window {
                                                 wrapMode: Text.Wrap
                                                 color: Theme.text
                                                 font.pixelSize: Theme.uiCaption
-                                                font.weight: Font.DemiBold
+                                                font.weight: Theme.fontStrong
                                             }
                                         }
                                     }

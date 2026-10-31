@@ -1,5 +1,6 @@
 #include "PanelColumns.h"
 #include "ResultColumns.h"
+#include "FolderSize.h"
 
 #include <QSettings>
 #include <QTemporaryDir>
@@ -11,6 +12,30 @@ using namespace Qt::StringLiterals;
 class TestPanelColumns : public QObject {
     Q_OBJECT
 private slots:
+    void indexedFolderTotals()
+    {
+        FileIndex index;
+        const auto lock = index.writeLock();
+        const auto root = index.addRoot("C:");
+        const auto folder = index.add(root, "docs", EntryFlag::Directory);
+        const auto nested = index.add(folder, "nested", EntryFlag::Directory);
+        const auto first = index.add(folder, "one.txt", 0);
+        const auto second = index.add(nested, "two.txt", EntryFlag::Offline);
+        index.setSize(first, packSize(1024));
+        index.setSize(second, packSize(2048));
+        QCOMPARE(indexedFolderSize(index, folder).value(), std::uint64_t(3072));
+        QVERIFY(!indexedFolderSize(index, first));
+        QVERIFY(!indexedFolderSize(index, kNoEntry));
+        QVERIFY(!indexedFolderSize(index, folder, [] { return true; }));
+        const auto unknown = index.add(nested, "unknown.txt", 0);
+        QVERIFY(!indexedFolderSize(index, folder));
+        index.remove(unknown);
+        index.remove(nested);
+        QCOMPARE(indexedFolderSize(index, folder).value(), std::uint64_t(1024));
+        index.remove(first);
+        QCOMPARE(indexedFolderSize(index, folder).value(), std::uint64_t(0));
+    }
+
     void persistenceAndRepair()
     {
         QTemporaryDir profile;

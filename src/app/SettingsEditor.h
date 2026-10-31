@@ -1,4 +1,5 @@
 #pragma once
+#include "platform/OcrPackage.h"
 
 #include "ClipImport.h"
 #include "IndexService.h"
@@ -21,6 +22,7 @@ namespace ws {
 class CliSetup;
 class FavoritesSettings;
 class PluginSettings;
+class OcrPackage;
 class ShortcutCapture;
 class SystemCatalog;
 
@@ -73,6 +75,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString folderTyping READ folderTyping WRITE setFolderTyping NOTIFY changed FINAL) // first | only (GitHub #110)
     // The folder menu on a double click (Settings::folderMenu: on unless "off").
     Q_PROPERTY(bool folderMenu READ folderMenu WRITE setFolderMenu NOTIFY changed FINAL)
+    Q_PROPERTY(bool folderMenuMiddle READ folderMenuMiddle WRITE setFolderMenuMiddle NOTIFY changed FINAL)
     Q_PROPERTY(bool folderMenuExplorer READ folderMenuExplorer WRITE setFolderMenuExplorer NOTIFY changed FINAL)
     // The groups it lists (GitHub #51); the last one on cannot be switched off.
     Q_PROPERTY(bool folderMenuFavorites READ folderMenuFavorites WRITE setFolderMenuFavorites NOTIFY changed FINAL)
@@ -165,14 +168,21 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool showFileSize READ showFileSize WRITE setShowFileSize NOTIFY changed FINAL)
     Q_PROPERTY(bool doubleClickToOpen READ doubleClickToOpen WRITE setDoubleClickToOpen NOTIFY changed FINAL)
     Q_PROPERTY(bool tabEntersFavoriteFolder READ tabEntersFavoriteFolder WRITE setTabEntersFavoriteFolder NOTIFY changed FINAL)
+    Q_PROPERTY(bool searchApps READ searchApps WRITE setSearchApps NOTIFY changed FINAL)
+    Q_PROPERTY(bool searchSystem READ searchSystem WRITE setSearchSystem NOTIFY changed FINAL)
+    Q_PROPERTY(bool regexMode READ regexMode WRITE setRegexMode NOTIFY changed FINAL)
     Q_PROPERTY(bool thumbnails READ thumbnails WRITE setThumbnails NOTIFY changed FINAL)
     Q_PROPERTY(bool webSuggestions READ webSuggestions WRITE setWebSuggestions NOTIFY changed FINAL)
     Q_PROPERTY(QString sort READ sort WRITE setSort NOTIFY changed FINAL) // match | newest | oldest | name | folder | type | largest | smallest (kSortNames)
     Q_PROPERTY(QString startList READ startList WRITE setStartList NOTIFY changed FINAL) // opened | modified | none
+    Q_PROPERTY(int recentItems READ recentItems WRITE setRecentItems NOTIFY changed FINAL)
+    Q_PROPERTY(bool favoritesOnStart READ favoritesOnStart WRITE setFavoritesOnStart NOTIFY changed FINAL)
     Q_PROPERTY(bool clearOnOpen READ clearOnOpen WRITE setClearOnOpen NOTIFY changed FINAL)
     Q_PROPERTY(QString numberKeys READ numberKeys WRITE setNumberKeys NOTIFY changed FINAL) // ctrl | alt | off
     Q_PROPERTY(QString numberHints READ numberHints WRITE setNumberHints NOTIFY changed FINAL) // held | always | off
     Q_PROPERTY(QString previewWith READ previewWith WRITE setPreviewWith NOTIFY changed FINAL) // auto | builtin
+    Q_PROPERTY(QString previewHotkey READ previewHotkey WRITE setPreviewHotkey NOTIFY changed FINAL)
+    Q_PROPERTY(QString previewHotkeyError READ previewHotkeyError NOTIFY changed FINAL)
     // Which of the chosen number keys are other programs' hotkeys, or Win顺's
     // own shortcuts, said for the user; empty when none (refreshNumberKeys).
     Q_PROPERTY(QString numberKeysNote READ numberKeysNote NOTIFY numberKeysNoteChanged FINAL)
@@ -193,6 +203,8 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool clipboardClickToPaste READ clipboardClickToPaste WRITE setClipboardClickToPaste NOTIFY changed FINAL)
     Q_PROPERTY(bool clipboardLargePictures READ clipboardLargePictures WRITE setClipboardLargePictures NOTIFY changed FINAL)
     Q_PROPERTY(bool clipboardKeepPlace READ clipboardKeepPlace WRITE setClipboardKeepPlace NOTIFY changed FINAL)
+    Q_PROPERTY(bool clipboardAtPointer READ clipboardAtPointer WRITE setClipboardAtPointer NOTIFY changed FINAL)
+    Q_PROPERTY(bool clipboardPauseInFullScreen READ clipboardPauseInFullScreen WRITE setClipboardPauseInFullScreen NOTIFY changed FINAL)
     Q_PROPERTY(bool clipboardFlipAbove READ clipboardFlipAbove WRITE setClipboardFlipAbove NOTIFY changed FINAL)
     Q_PROPERTY(bool clipboardHoldToStep READ clipboardHoldToStep WRITE setClipboardHoldToStep NOTIFY changed FINAL)
     Q_PROPERTY(QString clipboardSearchBoxSide READ clipboardSearchBoxSide WRITE setClipboardSearchBoxSide NOTIFY changed FINAL) // near | far
@@ -287,6 +299,7 @@ class SettingsEditor : public QObject {
     // 插件: the page's own view-model (PluginSettings), which edits the
     // [Plugin.<id>] sections here.
     Q_PROPERTY(ws::PluginSettings* plugins READ plugins CONSTANT FINAL)
+    Q_PROPERTY(ws::OcrPackage* ocrPackage READ ocrPackage CONSTANT FINAL)
     // 收藏夹: the page's own view-model (FavoritesSettings), on the app's
     // favorites (not in the INI: 恢复默认设置 leaves them).
     Q_PROPERTY(ws::FavoritesSettings* favorites READ favorites CONSTANT FINAL)
@@ -358,6 +371,8 @@ public:
     bool folderMenu() const { return m_settings.folderMenu != u"off"; }
     void setFolderMenu(bool on);
     bool folderMenuExplorer() const { return m_settings.folderMenuExplorer; }
+    bool folderMenuMiddle() const { return m_settings.folderMenuMiddle; }
+    void setFolderMenuMiddle(bool on);
     void setFolderMenuExplorer(bool on);
     bool folderMenuDesktop() const { return m_settings.folderMenuDesktop; }
     void setFolderMenuDesktop(bool on);
@@ -569,6 +584,10 @@ public:
     void setClipboardLargePictures(bool on);
     bool clipboardKeepPlace() const { return m_settings.clipboardKeepPlace; }
     void setClipboardKeepPlace(bool on);
+    bool clipboardAtPointer() const { return m_settings.clipboardAtPointer; }
+    bool clipboardPauseInFullScreen() const { return m_settings.clipboardPauseInFullScreen; }
+    void setClipboardPauseInFullScreen(bool on);
+    void setClipboardAtPointer(bool on);
     bool clipboardFlipAbove() const { return m_settings.clipboardFlipAbove; }
     void setClipboardFlipAbove(bool on);
     bool clipboardHoldToStep() const { return m_settings.clipboardHoldToStep; }
@@ -602,6 +621,12 @@ public:
     void setDoubleClickToOpen(bool on);
     bool tabEntersFavoriteFolder() const { return m_settings.tabEntersFavoriteFolder; }
     void setTabEntersFavoriteFolder(bool on);
+    bool searchApps() const { return m_settings.searchApps; }
+    void setSearchApps(bool on);
+    bool searchSystem() const { return m_settings.searchSystem; }
+    void setSearchSystem(bool on);
+    bool regexMode() const { return m_settings.regexMode; }
+    void setRegexMode(bool on);
     bool thumbnails() const { return m_settings.thumbnails; }
     void setThumbnails(bool on);
     bool webSuggestions() const { return m_settings.webSuggestions; }
@@ -610,6 +635,10 @@ public:
     void setSort(const QString& sort);
     QString startList() const { return m_settings.startList; }
     void setStartList(const QString& list);
+    int recentItems() const { return m_settings.recentItems; }
+    void setRecentItems(int count);
+    bool favoritesOnStart() const { return m_settings.favoritesOnStart; }
+    void setFavoritesOnStart(bool on);
     bool clearOnOpen() const { return m_settings.clearOnOpen; }
     void setClearOnOpen(bool on);
     QString numberKeys() const { return m_settings.numberKeys; }
@@ -619,6 +648,9 @@ public:
     QString numberKeysNote() const { return m_numberKeysNote; }
     QString previewWith() const { return m_settings.previewWith; }
     void setPreviewWith(const QString& with);
+    QString previewHotkey() const { return m_settings.previewHotkey; }
+    void setPreviewHotkey(const QString& shortcut);
+    QString previewHotkeyError() const;
     // Looks again at which number keys are taken (as the window comes to the
     // front: a program may have been started or closed meanwhile).
     Q_INVOKABLE void refreshNumberKeys();
@@ -673,6 +705,7 @@ public:
     void setShareStatuses(std::vector<ShareIndexer::Status> statuses); // set by the app
     void setShareContentStatuses(std::vector<remotecontent::Indexer::Status> statuses); // set by the app
     Q_INVOKABLE void setShareContent(int index, bool on); // its files' contents indexed too (GitHub #114)
+    Q_INVOKABLE void setShareScan(int index, bool scheduled, const QString& from, const QString& until, int depth);
     // "\\host", "\\host\": a server, whose shares can be listed; its name, else empty.
     Q_INVOKABLE QString serverOf(const QString& text) const;
     // Adds a share typed or chosen ("\\host\share[\folder]", or a mapped "Z:\...").
@@ -822,6 +855,8 @@ public:
 
     // 插件 page
     PluginSettings* plugins() const { return m_plugins; }
+    OcrPackage* ocrPackage() const { return m_ocrPackage; }
+    void useOcrPackage(OcrPackage* package); // before the settings window is created
 
     // 收藏夹 page
     FavoritesSettings* favorites() const { return m_favorites; }
@@ -893,6 +928,7 @@ private:
     Settings m_settings;
     QString m_runningRenderer; // resolved: never "auto"
     QString m_hotkeyError;
+    QString m_previewHotkeyError;
     QString m_numberKeysNote;
     QString m_clipboardNumberKeysNote;
     QString m_clipboardQuickPasteError;
@@ -949,6 +985,7 @@ private:
     QString m_mcpMessage;
     bool m_mcpSkillBusy = false; // installMcpSkill is waiting for ws
     PluginSettings* m_plugins = nullptr; // a child
+    OcrPackage* m_ocrPackage = nullptr;
     FavoritesSettings* m_favorites = nullptr; // a child
     CliSetup* m_cli = nullptr; // a child
 };

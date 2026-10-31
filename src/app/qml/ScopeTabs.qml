@@ -92,7 +92,7 @@ Rectangle {
                     // The smaller tab (or the plugin's chip) current: this one is the way back to the whole.
                     color: tab.off ? Theme.faint : tab.active && !tab.subCurrent && !tab.pluginOpen ? Theme.text : Theme.subtext
                     font.pixelSize: tabs.bodySize
-                    font.weight: tab.active ? Font.DemiBold : Font.Normal
+                    font.weight: tab.active ? Theme.fontStrong : Font.Normal
                 }
 
                 MouseArea {
@@ -144,7 +144,7 @@ Rectangle {
                             text: tabs.subLabel
                             color: tab.subCurrent ? Theme.accentText : subArea.containsMouse ? Theme.text : Theme.subtext
                             font.pixelSize: tabs.captionSize
-                            font.weight: tab.subCurrent ? Font.DemiBold : Font.Normal
+                            font.weight: tab.subCurrent ? Theme.fontStrong : Font.Normal
                         }
 
                         MouseArea {
@@ -222,7 +222,7 @@ Rectangle {
                             text: tabs.pluginLabel
                             color: Theme.accentText
                             font.pixelSize: tabs.captionSize
-                            font.weight: Font.DemiBold
+                            font.weight: Theme.fontStrong
                         }
 
                         MouseArea {

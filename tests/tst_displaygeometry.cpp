@@ -16,6 +16,47 @@ using namespace Qt::StringLiterals;
 class DisplayGeometryTest : public QObject {
     Q_OBJECT
 private slots:
+    void fileManagerAvoidanceIsTemporary()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        auto* screen = QGuiApplication::primaryScreen();
+        const QRect area = screen->availableGeometry();
+        if (area.width() < 1200 || area.height() < 500)
+            QSKIP("This layout needs room for a 760-pixel launcher beside its own fixture");
+        QWindow source;
+        source.setFlags(Qt::FramelessWindowHint);
+        source.setGeometry(area.x() + 4, area.y() + 4, area.width() / 3, area.height() - 8);
+        source.create();
+        QWindow window;
+        window.resize(760, 400);
+        window.create();
+        const QString statePath = temporary.filePath(u"state.ini"_s);
+        ws::Placement placement(statePath, u"Launcher"_s);
+        placement.setRoomNeeded(240);
+        placement.setRoomWanted(400);
+        placement.rememberWidth(760, 520);
+        placement.setWindow(&window);
+        QCoreApplication::processEvents();
+        placement.placeOn(screen);
+        const QPoint home = window.position();
+        RECT native {};
+        QVERIFY(::GetWindowRect(reinterpret_cast<HWND>(source.winId()), &native));
+        placement.avoidNative(QRect(native.left, native.top, native.right - native.left, native.bottom - native.top), screen);
+        QCoreApplication::processEvents();
+        QCOMPARE(window.width(), 760);
+        QVERIFY(!window.geometry().intersects(source.geometry()));
+        QVERIFY(area.contains(window.geometry()));
+        placement.setRoomWanted(450);
+        window.resize(760, 450);
+        QCoreApplication::processEvents();
+        QVERIFY(!window.geometry().intersects(source.geometry()));
+        QVERIFY(area.contains(window.geometry()));
+        QVERIFY(!QSettings(statePath, QSettings::IniFormat).contains(u"Launcher/CenterX"_s));
+        placement.placeOn(screen);
+        QCOMPARE(window.position(), home);
+    }
+
     void userDropAfterDpiChangeKeepsItsNewPosition()
     {
         QTemporaryDir temporary;

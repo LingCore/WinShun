@@ -80,7 +80,7 @@ Window {
             text: qsTr("AI 请求截屏")
             color: Theme.text
             font.pixelSize: Theme.uiTitle
-            font.weight: Font.DemiBold
+            font.weight: Theme.fontStrong
         }
         Rectangle {
             anchors.bottom: parent.bottom

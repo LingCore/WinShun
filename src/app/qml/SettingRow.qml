@@ -13,7 +13,7 @@ Item {
     property string title
     property string description
     // Long segmented choices go below the explanation when they would squeeze it.
-    property bool stackControl: false
+    property bool stackControl: trailingRow.implicitWidth > content.width * 0.55
     default property alias trailing: trailingRow.data
     property alias body: bodyColumn.data
     property bool bodyShown: true // false: no room is kept for a body with nothing to show now

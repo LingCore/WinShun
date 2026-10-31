@@ -11,6 +11,7 @@ Rectangle {
     property alias echoMode: input.echoMode // TextInput.Password for a plugin's password setting
     property alias readOnly: input.readOnly // shown to be copied (selectable still)
     property alias maximumLength: input.maximumLength // 32767 characters unless raised
+    property alias tabFocus: input.activeFocusOnTab
     property string placeholder
     readonly property bool inputFocused: input.activeFocus
 

@@ -1,4 +1,7 @@
 #include "SettingsEditor.h"
+#include "PreviewShortcut.h"
+#include "platform/OcrFiles.h"
+#include "platform/OcrPackage.h"
 
 #include "ClipImport.h"
 #include "CliSetup.h"
@@ -115,6 +118,22 @@ struct SettingsEditor::TaskbarWatch {
     }
 };
 
+void SettingsEditor::useOcrPackage(OcrPackage* package)
+{
+    if (m_ocrPackage == package)
+        return;
+    if (m_ocrPackage)
+        disconnect(m_ocrPackage, nullptr, this, nullptr);
+    if (m_ocrPackage && m_ocrPackage->parent() == this)
+        delete m_ocrPackage;
+    m_ocrPackage = package;
+    connect(package, &OcrPackage::localRequested, this, [this] {
+        const QString file = shell::pickFile(nullptr, OcrPackage::tr("选择增强识别包"), {{OcrPackage::tr("增强识别包"), u"*.zip"_s}});
+        if (!file.isEmpty())
+            m_ocrPackage->installFile(file);
+    });
+}
+
 SettingsEditor::SettingsEditor(const Settings& settings, const QString& runningRenderer, QObject* parent)
     : QObject(parent)
     , m_settings(settings)
@@ -129,6 +148,8 @@ SettingsEditor::SettingsEditor(const Settings& settings, const QString& runningR
     , m_favorites(new FavoritesSettings(this, this))
     , m_cli(new CliSetup(this, this))
 {
+    ocr::setComponentsRoot(Settings::dataDir() + u"/components"_s);
+    useOcrPackage(new OcrPackage(this));
     connect(this, &SettingsEditor::changed, this, &SettingsEditor::drivesChanged);
     connect(siteicons::notifier(), &siteicons::Notifier::fetched, this, [this] {
         ++m_siteIconsArrived;
@@ -183,6 +204,7 @@ void SettingsEditor::setSettings(const Settings& settings)
     const bool shares = settings.shares != m_settings.shares || settings.contentSearch != m_settings.contentSearch;
     const bool drives = settings.selectedDrives != m_settings.selectedDrives;
     m_settings = settings;
+    m_previewHotkeyError.clear();
     emit changed();
     if (shares)
         emit sharesChanged();
@@ -255,6 +277,30 @@ void SettingsEditor::setTabEntersFavoriteFolder(bool on)
     commit();
 }
 
+void SettingsEditor::setSearchApps(bool on)
+{
+    if (m_settings.searchApps == on)
+        return;
+    m_settings.searchApps = on;
+    commit();
+}
+
+void SettingsEditor::setSearchSystem(bool on)
+{
+    if (m_settings.searchSystem == on)
+        return;
+    m_settings.searchSystem = on;
+    commit();
+}
+
+void SettingsEditor::setRegexMode(bool on)
+{
+    if (m_settings.regexMode == on)
+        return;
+    m_settings.regexMode = on;
+    commit();
+}
+
 void SettingsEditor::setThumbnails(bool on)
 {
     if (m_settings.thumbnails == on)
@@ -284,6 +330,23 @@ void SettingsEditor::setStartList(const QString& list)
     if (m_settings.startList == list || (list != u"opened" && list != u"modified" && list != u"none"))
         return;
     m_settings.startList = list;
+    commit();
+}
+
+void SettingsEditor::setRecentItems(int count)
+{
+    count = std::clamp(count, 1, 200);
+    if (m_settings.recentItems == count)
+        return;
+    m_settings.recentItems = count;
+    commit();
+}
+
+void SettingsEditor::setFavoritesOnStart(bool on)
+{
+    if (m_settings.favoritesOnStart == on)
+        return;
+    m_settings.favoritesOnStart = on;
     commit();
 }
 
@@ -318,6 +381,30 @@ void SettingsEditor::setPreviewWith(const QString& with)
         return;
     m_settings.previewWith = with;
     commit();
+}
+
+void SettingsEditor::setPreviewHotkey(const QString& shortcut)
+{
+    const QString value = shortcut.trimmed().isEmpty() ? QString() : previewkeys::normalized(shortcut);
+    QString error;
+    if (!shortcut.trimmed().isEmpty() && value.isEmpty())
+        error = tr("这个快捷键用于输入或其他操作，请换一个");
+    if (previewkeys::usedGlobally(value, {m_settings.hotkey, m_settings.clipboardHotkey, m_settings.folderMenuHotkey}))
+        error = tr("这个快捷键已用于全局操作，请换一个");
+    m_previewHotkeyError = error;
+    if (!error.isEmpty() || value == m_settings.previewHotkey) {
+        emit changed();
+        return;
+    }
+    m_settings.previewHotkey = value;
+    commit();
+}
+
+QString SettingsEditor::previewHotkeyError() const
+{
+    if (previewkeys::usedGlobally(m_settings.previewHotkey, {m_settings.hotkey, m_settings.clipboardHotkey, m_settings.folderMenuHotkey}))
+        return tr("这个快捷键已用于全局操作，请换一个");
+    return m_previewHotkeyError;
 }
 
 void SettingsEditor::setClipboardNumberKeys(const QString& keys)
@@ -1075,6 +1162,14 @@ void SettingsEditor::setFolderMenuExplorer(bool on)
     commit();
 }
 
+void SettingsEditor::setFolderMenuMiddle(bool on)
+{
+    if (m_settings.folderMenuMiddle == on)
+        return;
+    m_settings.folderMenuMiddle = on;
+    commit();
+}
+
 void SettingsEditor::setFolderMenuDesktop(bool on)
 {
     if (m_settings.folderMenuDesktop == on)
@@ -1401,6 +1496,22 @@ void SettingsEditor::setClipboardLargePictures(bool on)
     if (m_settings.clipboardLargePictures == on)
         return;
     m_settings.clipboardLargePictures = on;
+    commit();
+}
+
+void SettingsEditor::setClipboardAtPointer(bool on)
+{
+    if (m_settings.clipboardAtPointer == on)
+        return;
+    m_settings.clipboardAtPointer = on;
+    commit();
+}
+
+void SettingsEditor::setClipboardPauseInFullScreen(bool on)
+{
+    if (m_settings.clipboardPauseInFullScreen == on)
+        return;
+    m_settings.clipboardPauseInFullScreen = on;
     commit();
 }
 
@@ -2024,6 +2135,8 @@ QString problemText(const ShareIndexer::Status& s)
 QString contentText(const remotecontent::ShareContent::Progress& p, const ShareIndexer::Status* share)
 {
     using State = ShareIndexer::State;
+    if (share && share->state == State::Paused)
+        return SettingsEditor::tr("等待扫描时段，已读取的内容照常能搜到");
     const bool online = share && share->state == State::Online;
     if (!p.known)
         return online ? SettingsEditor::tr("马上开始读取文件内容") : SettingsEditor::tr("连上后读取文件内容");
@@ -2091,6 +2204,13 @@ QVariantList SettingsEditor::shares() const
                 ? tr("正在检查 %1…").arg(QString::fromStdWString(std::wstring(distro)))
                 : tr("正在连接 %1…").arg(QString::fromStdWString(webdav::displayHost(unc::host(path))));
             switch (s.state) {
+            case State::Paused:
+                status = tr("等待扫描时段（每天 %1–%2）").arg(
+                    QTime(0, 0).addSecs(share.scan.fromMinute * 60).toString(u"HH:mm"_s),
+                    QTime(0, 0).addSecs(share.scan.untilMinute * 60).toString(u"HH:mm"_s));
+                if (s.items > 0)
+                    status += u'\n' + tr("已收录的 %1照常能搜到").arg(itemsText(s.items));
+                break;
             case State::Waiting:
                 if (s.lastVerified)
                     status = QStringList {itemsText(s.items), verified, tr("稍后连接")}.join(u" · "_s);
@@ -2198,6 +2318,10 @@ QVariantList SettingsEditor::shares() const
             {u"busy"_s, busy},
             {u"content"_s, share.content},
             {u"contentStatus"_s, contentStatus},
+            {u"scanScheduled"_s, share.scan.scheduled},
+            {u"scanFrom"_s, QTime(0, 0).addSecs(share.scan.fromMinute * 60).toString(u"HH:mm"_s)},
+            {u"scanUntil"_s, QTime(0, 0).addSecs(share.scan.untilMinute * 60).toString(u"HH:mm"_s)},
+            {u"scanDepth"_s, share.scan.maxDepth},
         });
     }
     return list;
@@ -2310,6 +2434,22 @@ void SettingsEditor::setShareContent(int index, bool on)
     if (index < 0 || index >= m_settings.shares.size() || m_settings.shares[index].content == on)
         return;
     m_settings.shares[index].content = on;
+    commit();
+    emit sharesChanged();
+}
+
+void SettingsEditor::setShareScan(int index, bool scheduled, const QString& from, const QString& until, int depth)
+{
+    if (index < 0 || index >= m_settings.shares.size() || depth < 0 || depth > 1024)
+        return;
+    const QTime start = QTime::fromString(from, u"HH:mm"_s);
+    const QTime end = QTime::fromString(until, u"HH:mm"_s);
+    if (!start.isValid() || !end.isValid())
+        return;
+    const ShareScan scan {scheduled, start.hour() * 60 + start.minute(), end.hour() * 60 + end.minute(), depth};
+    if (m_settings.shares[index].scan == scan)
+        return;
+    m_settings.shares[index].scan = scan;
     commit();
     emit sharesChanged();
 }

@@ -177,7 +177,7 @@ Item {
             elide: Text.ElideMiddle
             color: choice.active || choiceArea.containsMouse ? Theme.text : Theme.subtext
             font.pixelSize: Theme.uiBody
-            font.weight: choice.active ? Font.DemiBold : Font.Normal
+            font.weight: choice.active ? Theme.fontStrong : Font.Normal
         }
         MouseArea {
             id: choiceArea
@@ -235,7 +235,7 @@ Item {
             text: chip.text
             color: chip.active || chipArea.containsMouse ? Theme.text : Theme.subtext
             font.pixelSize: Theme.uiBody
-            font.weight: chip.active ? Font.DemiBold : Font.Normal
+            font.weight: chip.active ? Theme.fontStrong : Font.Normal
         }
         MouseArea {
             id: chipArea
@@ -290,7 +290,7 @@ Item {
                         text: qsTr("筛选")
                         color: Theme.subtext
                         font.pixelSize: Theme.uiBody
-                        font.weight: Font.DemiBold
+                        font.weight: Theme.fontStrong
                     }
                     Text {
                         id: clearAll
@@ -576,7 +576,7 @@ Item {
             elide: Text.ElideRight
             color: header.active ? Theme.text : Theme.subtext
             font.pixelSize: Theme.uiBody
-            font.weight: header.active ? Font.DemiBold : Font.Normal
+            font.weight: header.active ? Theme.fontStrong : Font.Normal
         }
         Glyph {
             id: arrow
@@ -631,13 +631,18 @@ Item {
         HoverTip {
             target: headerArea.containsMouse && !headerArea.pressed ? header : null
             delay: 900
-            text: qsTr("右键选择列；拖动表头调整顺序，拖动分隔线调整宽度")
+            text: header.columnId === "size"
+                ? qsTr("文件夹大小按索引估算，不包含未索引内容；拖动分隔线调整宽度")
+                : qsTr("右键选择列；拖动表头调整顺序，拖动分隔线调整宽度")
         }
         MouseArea {
+            id: resizeArea
             objectName: "columnResize-" + header.columnId
-            x: parent.width + 8
-            width: 8
+            x: parent.width + 4
+            width: 16
             height: parent.height
+            hoverEnabled: true
+            preventStealing: true
             cursorShape: Qt.SizeHorCursor
             property real startX: 0
             property real startWidth: 0
@@ -657,6 +662,19 @@ Item {
                 panel.launcher.panelColumns.resize(header.columnId, width)
             }
             onCanceled: panel.resizingColumn = ""
+
+            Rectangle {
+                anchors.centerIn: parent
+                width: resizeArea.containsMouse || resizeArea.pressed ? 2 : Theme.edge(Screen.devicePixelRatio)
+                height: parent.height - 12
+                radius: width / 2
+                color: resizeArea.containsMouse || resizeArea.pressed ? Theme.accent : Theme.faint
+                Accessible.ignored: true
+            }
+            HoverTip {
+                target: resizeArea.containsMouse && !resizeArea.pressed ? resizeArea : null
+                text: qsTr("拖动调整列宽")
+            }
         }
     }
 
@@ -772,11 +790,13 @@ Item {
 
     ListScrollBar {
         id: listScrollBar
+        objectName: "panelResultScrollBar"
         flickable: panel.view
         anchors.right: parent.right
+        anchors.rightMargin: panel.frame.resizeMargin(Screen.devicePixelRatio)
         anchors.top: list.top
         anchors.bottom: list.bottom
-        // Its own at the window's right edge, not the edge that resizes the window.
+        // Leave the native resize border outside the scroll bar's hit area.
         Component.onCompleted: panel.frame.addControl(listScrollBar)
     }
 

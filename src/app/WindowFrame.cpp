@@ -26,6 +26,11 @@ namespace {
 // there, so a click on a row never sizes the window instead.
 constexpr qreal kSideEdge = 6;
 
+int resizeEdge(UINT dpi)
+{
+    return ::GetSystemMetricsForDpi(SM_CXSIZEFRAME, dpi) + ::GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
+}
+
 bool covers(const QPointer<QQuickItem>& item, QPointF pos)
 {
     return item && item->isVisible()
@@ -327,7 +332,7 @@ int WindowFrame::hitTest(int screenX, int screenY) const
         RECT client {};
         ::GetClientRect(hwnd, &client);
         const UINT dpi = ::GetDpiForWindow(hwnd);
-        const int edge = ::GetSystemMetricsForDpi(SM_CXSIZEFRAME, dpi) + ::GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
+        const int edge = resizeEdge(dpi);
         const bool top = point.y < edge;
         // Caption buttons reach the window's edge, as on the system's title
         // bar: beside them only the corner above resizes.
@@ -362,6 +367,12 @@ int WindowFrame::hitTest(int screenX, int screenY) const
     if (anyCovers(m_dragAreas, pos))
         return HTCAPTION;
     return HTCLIENT;
+}
+
+qreal WindowFrame::resizeMargin(qreal devicePixelRatio) const
+{
+    const qreal dpr = std::max(qreal(1), devicePixelRatio);
+    return std::max(kSideEdge, resizeEdge(UINT(std::lround(96 * dpr))) / dpr);
 }
 
 void WindowFrame::setResizable(bool on)

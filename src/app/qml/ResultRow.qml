@@ -29,12 +29,13 @@ import WinShun
 // which copies its text, when it has text of its own to copy or its Enter
 // copies (its actions are the plugin's: Enter, Ctrl+Enter, Shift+Enter, and
 // the menu).
-// The rows shown carry their shortcut on the icon (Ctrl+1 opens the first one
+// Shortcuts 1–9 have a column before the icons (Ctrl+1 opens the first row
 // shown); one another program holds is struck through, its tip says why.
 // A file's or folder's row can be dragged out with the mouse, into a chat or
 // a folder (with the selection, when it is in it).
 Item {
     id: row
+    objectName: "resultRow-" + index
 
     required property int index
     required property string name
@@ -81,7 +82,8 @@ Item {
     property bool showSize: false
     readonly property bool sizeShown: showSize && size.length > 0
     readonly property bool modifiedShown: showModified && modified.length > 0
-    property int hint: 0 // its number for the number keys (Ctrl+1…), on its icon; 0 for none
+    property int hint: 0 // its number for the number keys (Ctrl+1…); 0 for none
+    property bool reserveHintSpace: false // all rows align, including unnumbered and temporarily hidden hints
     property string hintModifier: "Ctrl" // ... with this held
     property bool hintTaken: false // another program holds that chord as a global hotkey: shown struck through
     property real hintOpacity: 1
@@ -203,8 +205,9 @@ Item {
 
     Item {
         id: iconSlot
+        objectName: "resultIcon"
         opacity: row.offline || row.missing ? 0.6 : 1
-        x: 16
+        x: 16 + (row.reserveHintSpace ? 28 : 0)
         anchors.verticalCenter: parent.verticalCenter
         width: 32 // 48 device pixels at 150 %, 64 at 200 %: sizes icons are drawn for
         height: 32
@@ -388,15 +391,24 @@ Item {
         }
     }
 
-    IconNumber { // "Ctrl+1" (or "Alt+1"): opens this row
-        id: iconNumber
+    Item {
+        id: numberSlot
+        objectName: "resultNumberSlot"
+        visible: row.reserveHintSpace && row.hint > 0
         opacity: row.hintOpacity
-        keys: row.hint > 0 ? row.hintModifier + "+" + row.hint : ""
-        taken: row.hintTaken
-        // From the icon's top left corner rightwards, clear of the title. Not
-        // moved onto a wide thumbnail's corner: it would cover half of it.
-        x: row.onPixel(iconSlot.x - 5)
-        y: row.onPixel(iconSlot.y - 4)
+        x: row.onPixel(14)
+        width: 24
+        height: row.height
+
+        CenteredNumber {
+            objectName: "resultNumber"
+            text: row.hint > 0 ? String(row.hint) : ""
+            font.pixelSize: Theme.uiTitle
+            font.weight: Font.Medium
+            font.strikeout: row.hintTaken
+            color: row.hintTaken ? Theme.faint : row.current ? Theme.accent : Theme.subtext
+            Accessible.ignored: true
+        }
     }
 
     MouseArea {
@@ -577,11 +589,12 @@ Item {
             return area.containsMouse && item.contains(item.mapFromItem(area, area.mouseX, area.mouseY))
         }
         readonly property bool onDate: !hovered && date.visible && under(date)
-        readonly property bool onKeys: !hovered && !onDate && iconNumber.visible && iconNumber.taken && under(iconNumber)
-        target: hovered ? hovered : onDate ? date : onKeys ? iconNumber : null
+        readonly property bool onKeys: !hovered && !onDate && numberSlot.visible && numberSlot.opacity > 0
+                                      && row.hintTaken && under(numberSlot)
+        target: hovered ? hovered : onDate ? date : onKeys ? numberSlot : null
         text: hovered ? hovered.tip : onDate ? row.modifiedFull
             : onKeys ? qsTr("%1 被别的程序占用了，在这里按也会交给那个程序。可在设置的“结果列表”里改用 %2")
-                       .arg(iconNumber.keys).arg(row.hintModifier === "Alt" ? "Ctrl" : "Alt")
+                       .arg(row.hintModifier + "+" + row.hint).arg(row.hintModifier === "Alt" ? "Ctrl" : "Alt")
             : ""
         shortcut: hovered ? hovered.tipShortcut : ""
     }

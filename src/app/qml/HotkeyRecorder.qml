@@ -9,6 +9,7 @@ Rectangle {
     id: recorder
 
     property string hotkey
+    property bool previewShortcut: false
     readonly property bool recording: activeFocus
     property string partial // modifiers held so far, or a hint
     property bool partialIsHint: false
@@ -47,13 +48,13 @@ Rectangle {
     TextMetrics {
         id: widest
         font.pixelSize: Theme.fontBody
-        font.weight: Font.DemiBold
+        font.weight: Theme.fontStrong
         text: qsTr("这个键不能用，换一个试试")
     }
     TextMetrics {
         id: widest2
         font.pixelSize: Theme.fontBody
-        font.weight: Font.DemiBold
+        font.weight: Theme.fontStrong
         text: qsTr("请同时按住 Ctrl、Alt 或 Win")
     }
     implicitWidth: Math.max(150, widest.width, widest2.width) + 28
@@ -119,8 +120,8 @@ Rectangle {
         if (key.length === 0) {
             partial = qsTr("这个键不能用，换一个试试")
             partialIsHint = true
-        } else if (!HotkeyRule.allowed(combination)) { // the rule AI's shortcuts follow too
-            partial = qsTr("请同时按住 Ctrl、Alt 或 Win")
+        } else if (!(previewShortcut ? HotkeyRule.previewAllowed(combination) : HotkeyRule.allowed(combination))) {
+            partial = previewShortcut ? qsTr("这个快捷键与其他操作冲突") : qsTr("请同时按住 Ctrl、Alt 或 Win")
             partialIsHint = true
         } else {
             recorded(combination)
@@ -144,7 +145,7 @@ Rectangle {
         color: recorder.recording && recorder.partialIsHint ? Theme.danger
              : recorder.recording || recorder.hotkey.length > 0 ? Theme.text : Theme.faint
         font.pixelSize: Theme.fontBody
-        font.weight: !recorder.recording && recorder.hotkey.length > 0 ? Font.DemiBold : Font.Normal
+        font.weight: !recorder.recording && recorder.hotkey.length > 0 ? Theme.fontStrong : Font.Normal
     }
 
     MouseArea {

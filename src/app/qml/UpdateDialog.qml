@@ -98,7 +98,7 @@ Item {
                             : qsTr("已经是最新版本")
                         color: Theme.text
                         font.pixelSize: Theme.fontTitle
-                        font.weight: Font.DemiBold
+                        font.weight: Theme.fontStrong
                         wrapMode: Text.Wrap
                     }
                     Text {

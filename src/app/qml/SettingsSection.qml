@@ -74,7 +74,7 @@ Column {
             text: section.pageInfo?.title ?? ""
             color: Theme.text
             font.pixelSize: Theme.fontTitle
-            font.weight: Font.DemiBold
+            font.weight: Theme.fontStrong
             elide: Text.ElideRight
         }
         Text { // leaves the search for the whole page
@@ -103,7 +103,7 @@ Column {
         text: section.title
         color: Theme.text
         font.pixelSize: Theme.fontTitle
-        font.weight: Font.DemiBold
+        font.weight: Theme.fontStrong
     }
 
     Text {

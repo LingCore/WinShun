@@ -75,7 +75,7 @@ Rectangle {
                         text: card.title
                         color: Theme.text
                         font.pixelSize: Theme.fontBody
-                        font.weight: Font.DemiBold
+                        font.weight: Theme.fontStrong
                         wrapMode: Text.Wrap
                     }
                     Tag {

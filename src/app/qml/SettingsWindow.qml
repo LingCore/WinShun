@@ -377,8 +377,10 @@ Window {
     function showPluginPage(pluginId) {
         showPage(pluginsPage, 0) // the cards' tab, whichever was left on
         const card = pluginsSection.cardOf(pluginId)
-        if (!card)
+        if (!card) {
+            showPluginLibrary(pluginId)
             return
+        }
         pluginsSection.expand(pluginId) // its settings are what was asked for
         layoutNow()
         revealRow(card)
@@ -387,7 +389,15 @@ Window {
         // places only the sections): every card is still at y 0. Once more after a frame.
         revealAfterFrame = pluginId
     }
+    function showPluginLibrary(pluginId) {
+        window.editor.plugins.gallery.filter = pluginId
+        showPage(pluginsPage, 1)
+    }
     property string revealAfterFrame
+    // The capture's card, unfolded at its hotkeys (常规's 截图的快捷键 row).
+    function showCaptureCard() {
+        showPluginPage("winshun.capture")
+    }
     Connections {
         target: window
         enabled: window.revealAfterFrame.length > 0
@@ -477,7 +487,7 @@ Window {
     Binding { // suspends the global hotkey and hands the recorder the keyboard (see ShortcutCapture)
         target: window.editor
         property: "recordingHotkey"
-        value: hotkeyRecorder.recording || clipHotkeyRecorder.recording || folderMenuHotkeyRecorder.recording
+        value: hotkeyRecorder.recording || clipHotkeyRecorder.recording || folderMenuHotkeyRecorder.recording || previewHotkeyRecorder.recording
                || window.editor.plugins.recordingHotkey
     }
     Binding { // the plugin cards read their processes' memory only while on show
@@ -825,7 +835,7 @@ Window {
                         text: window.searching ? qsTr("搜索结果") : window.pages[window.currentPage].title
                         color: Theme.text
                         font.pixelSize: Theme.fontDisplay
-                        font.weight: Font.DemiBold
+                        font.weight: Theme.fontStrong
                     }
                     Text {
                         visible: window.searching && settingsSearch.total > 0
@@ -1129,6 +1139,22 @@ Window {
                         color: Theme.danger
                         font.pixelSize: Theme.fontCaption
                         wrapMode: Text.Wrap
+                    }
+                }
+
+                // The capture's own hotkey is recorded on its card (插件 › 截图);
+                // here so that whoever looks among the hotkeys finds it.
+                SettingRow {
+                    title: qsTr("截图的快捷键")
+                    keywords: qsTr("截图;截屏;快捷键;热键;F1;PrtScn;PixPin;Snipaste;screenshot").split(";")
+                    values: [window.editor.captureHotkey]
+                    description: !window.editor.captureEnabled ? qsTr("截图功能还没打开：在“插件”的截图卡片上打开，再录一个快捷键，例如 F1")
+                               : window.editor.captureHotkey.length > 0 ? qsTr("现在是 %1，在“插件”的截图卡片上改；贴图等其他快捷键也在那里").arg(window.editor.captureHotkey)
+                               : qsTr("还没设，在“插件”的截图卡片上录一个，例如 F1；贴图等其他快捷键也在那里")
+
+                    FlatButton {
+                        text: qsTr("去设置")
+                        onClicked: window.showCaptureCard()
                     }
                 }
 
@@ -1524,6 +1550,18 @@ Window {
                     ToggleSwitch {
                         checked: window.editor.folderMenuDesktop
                         onToggled: (on) => window.editor.folderMenuDesktop = on
+                    }
+                }
+
+                SettingRow {
+                    shown: window.editor.folderMenu
+                    title: qsTr("同时用中键打开文件夹菜单")
+                    keywords: qsTr("中键;鼠标;滚轮;文件夹菜单;Listary").split(";")
+                    description: qsTr("在上面选中的资源管理器或桌面空白处，单击鼠标中键也能打开")
+
+                    ToggleSwitch {
+                        checked: window.editor.folderMenuMiddle
+                        onToggled: (on) => window.editor.folderMenuMiddle = on
                     }
                 }
 
@@ -2655,7 +2693,7 @@ Window {
                 SettingRow {
                     id: sharesRow
                     title: qsTr("网络与 WSL 文件夹")
-                    keywords: qsTr("网络;共享;局域网;内网;NAS;服务器;SMB;映射;网络驱动器;WSL;Linux;Ubuntu;子系统;WebDAV;内容;全文;搜索文件内容;network;share;content").split(";")
+                    keywords: qsTr("网络;共享;局域网;内网;NAS;服务器;SMB;映射;网络驱动器;WSL;Linux;Ubuntu;子系统;WebDAV;内容;全文;搜索文件内容;扫描;时段;时间;层数;深度;network;share;content;schedule;depth").split(";")
                     values: window.editor.shares.map(share => share.path + " " + share.name)
                     description: qsTr("添加 NAS、共享文件夹或 WSL 中的项目、用户目录，和本机文件一起搜索")
 
@@ -2865,6 +2903,7 @@ Window {
                                     onAcceptClicked: window.editor.acceptShareMissing(index)
                                     onRemoveClicked: window.editor.removeShare(index)
                                     onContentToggled: (on) => window.editor.setShareContent(index, on)
+                                    onScanEdited: (scheduled, from, until, depth) => window.editor.setShareScan(index, scheduled, from, until, depth)
                                 }
                             }
                         }
@@ -2945,15 +2984,84 @@ Window {
                 width: parent.width
 
                 SettingRow {
+                    title: qsTr("搜索应用")
+                    keywords: qsTr("应用;程序;软件;开始菜单;启动;全部;关闭;app").split(";")
+                    description: qsTr("在“全部”里列出开始菜单里的程序和应用；关掉后只找文件和内容（收藏的应用仍会列出，在开始菜单里打字也一样）")
+
+                    ToggleSwitch {
+                        checked: window.editor.searchApps
+                        Accessible.name: qsTr("搜索应用")
+                        onToggled: (on) => window.editor.searchApps = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("搜索系统设置")
+                    keywords: qsTr("设置;系统设置;控制面板;系统开关;蓝牙;音量;全部;关闭;settings").split(";")
+                    description: qsTr("在“全部”里列出 Windows 设置页、控制面板和系统开关（如“关蓝牙”“音量 30”）；关掉后只找文件和内容")
+
+                    ToggleSwitch {
+                        checked: window.editor.searchSystem
+                        Accessible.name: qsTr("搜索系统设置")
+                        onToggled: (on) => window.editor.searchSystem = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("正则模式（Ctrl+R）")
+                    keywords: qsTr("正则;正则表达式;regex;Everything;Ctrl+R;匹配").split(";")
+                    description: qsTr("在“全部”和“文件”里，每个词都按正则表达式匹配名字，如 ^IMG_\\d{4}；ext:、!排除、“ | ”照常可用。在搜索框里按 Ctrl+R 开关，开着时搜索框旁显示 .*。不开时也可在单个词前加 regex:")
+
+                    ToggleSwitch {
+                        checked: window.editor.regexMode
+                        Accessible.name: qsTr("正则模式")
+                        onToggled: (on) => window.editor.regexMode = on
+                    }
+                }
+
+                SettingRow {
                     title: qsTr("不输入时显示")
                     keywords: qsTr("最近;最近打开;最近修改;最近使用;历史;recent").split(";")
-                    description: qsTr("打开搜索框还没输入时列出什么：最近打开的 5 项，或最近修改的文件（往下滚动接着列出）；底栏也能切换（Ctrl+S）。选“不显示”只列收藏")
+                    description: qsTr("打开搜索框还没输入时列出最近打开或最近修改的项目；底栏也能切换（Ctrl+S）。收藏由下面的开关单独控制")
 
                     ScopeTabs {
                         readonly property var lists: ["opened", "modified", "none"]
                         labels: [qsTr("最近打开"), qsTr("最近修改"), qsTr("不显示")]
                         current: Math.max(0, lists.indexOf(window.editor.startList))
                         onActivated: (index) => window.editor.startList = lists[index]
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("最近打开的数量")
+                    keywords: qsTr("最近;历史;数量;条数;上限;自定义;recent").split(";")
+                    description: qsTr("可填 1–200 项，按最近打开的顺序显示；仅在上面选择“最近打开”时生效")
+
+                    InputBox {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 80
+                        enabled: window.editor.startList === "opened"
+                        horizontalAlignment: TextInput.AlignHCenter
+                        text: String(window.editor.recentItems)
+                        Accessible.name: qsTr("最近打开的数量")
+                        validator: IntValidator { bottom: 1; top: 200 }
+                        onEditingFinished: {
+                            const count = parseInt(text, 10)
+                            if (count > 0)
+                                window.editor.recentItems = Math.min(200, count)
+                            text = Qt.binding(() => String(window.editor.recentItems))
+                        }
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("不输入时显示收藏")
+                    keywords: qsTr("收藏;命令;显示;隐藏;关键词;空白;启动;favorite").split(";")
+                    description: qsTr("关闭后，收藏和自定义命令仍可通过名称或关键词找到")
+
+                    ToggleSwitch {
+                        checked: window.editor.favoritesOnStart
+                        onToggled: (on) => window.editor.favoritesOnStart = on
                     }
                 }
 
@@ -3036,16 +3144,48 @@ Window {
                 }
 
                 SettingRow {
-                    title: qsTr("预览文件（Alt+P）")
+                    title: qsTr("预览文件")
                     keywords: qsTr("预览;快速查看;看一眼;QuickLook;Seer;空格;Alt+P;preview").split(";")
                     description: window.editor.previewWith === "builtin"
-                                 ? qsTr("在结果上按 Alt+P，用 Win顺 自己的预览窗口看一眼")
-                                 : qsTr("在结果上按 Alt+P 看一眼；QuickLook 或 Seer 在后台运行时交给它，否则用 Win顺 自己的预览")
+                                 ? qsTr("用 Win顺 自己的预览窗口看一眼")
+                                 : qsTr("QuickLook 或 Seer 在后台运行时交给它，否则用 Win顺 自己的预览")
 
                     ScopeTabs {
                         labels: [qsTr("自动"), qsTr("内置")]
                         current: window.editor.previewWith === "builtin" ? 1 : 0
                         onActivated: (index) => window.editor.previewWith = ["auto", "builtin"][index]
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("预览快捷键")
+                    stackControl: true
+                    keywords: qsTr("预览;快捷键;空格;Space;Alt+P;QuickLook;preview;shortcut").split(";")
+                    values: [window.editor.previewHotkey]
+                    description: qsTr("仅在搜索结果中生效，再按一次关闭。可直接录制空格；用 Shift+空格继续输入空格。Backspace 清除，Esc 取消。")
+
+                    Row {
+                        spacing: 8
+                        HotkeyRecorder {
+                            id: previewHotkeyRecorder
+                            objectName: "previewHotkeyRecorder"
+                            hotkey: window.editor.previewHotkey
+                            previewShortcut: true
+                            onRecorded: (hotkey) => window.editor.previewHotkey = hotkey
+                        }
+                        FlatButton {
+                            text: qsTr("恢复默认")
+                            enabled: window.editor.previewHotkey !== "Alt+P"
+                            onClicked: window.editor.previewHotkey = "Alt+P"
+                        }
+                    }
+                    bodyShown: window.editor.previewHotkeyError.length > 0
+                    body: Text {
+                        width: parent.width
+                        text: window.editor.previewHotkeyError
+                        color: Theme.danger
+                        font.pixelSize: Theme.fontCaption
+                        wrapMode: Text.Wrap
                     }
                 }
             }
@@ -3581,6 +3721,10 @@ Window {
                     }
                 }
 
+                OcrPackageRow {
+                    ocrPackage: window.editor.ocrPackage
+                }
+
                 SettingRow {
                     // The screenshots the screenshot plugin (winshun.capture)
                     // put in the history, listed by a word in the search box
@@ -3644,6 +3788,29 @@ Window {
                     ToggleSwitch {
                         checked: window.editor.clipboardLargePictures
                         onToggled: (on) => window.editor.clipboardLargePictures = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("全屏时不响应剪贴板快捷键")
+                    keywords: qsTr("全屏;游戏;快捷键;屏蔽;暂停;clipboard;fullscreen").split(";")
+                    description: qsTr("其他程序全屏时，快捷键不弹出剪贴板；仍然记录复制内容，也能从菜单手动打开")
+
+                    ToggleSwitch {
+                        checked: window.editor.clipboardPauseInFullScreen
+                        onToggled: (on) => window.editor.clipboardPauseInFullScreen = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("剪贴板打开位置")
+                    keywords: qsTr("位置;鼠标;指针;光标;跟随;弹出;输入框").split(";")
+                    description: qsTr("每次打开时放在所选位置旁边，空间不足时自动调整到屏幕内")
+
+                    ScopeTabs {
+                        labels: [qsTr("输入光标旁"), qsTr("鼠标指针旁")]
+                        current: window.editor.clipboardAtPointer ? 1 : 0
+                        onActivated: (index) => window.editor.clipboardAtPointer = index === 1
                     }
                 }
 

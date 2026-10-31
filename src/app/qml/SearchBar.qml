@@ -70,6 +70,7 @@ Item {
         frame.addControl(tabs)
         frame.addControl(expand)
         frame.addControl(pin)
+        frame.addControl(regexChip)
         frame.addHandle(handle)
     }
 
@@ -165,8 +166,8 @@ Item {
         objectName: bar.panelMode ? "panelSearchField" : "searchField" // App answers the input method for it while it is in the box
         anchors.left: icon.right
         anchors.leftMargin: 14
-        anchors.right: tabs.left
-        anchors.rightMargin: 12
+        anchors.right: regexChip.visible ? regexChip.left : tabs.left
+        anchors.rightMargin: regexChip.visible ? 8 : 12
         y: bar.onPixel((bar.height - height) / 2)
         focus: true
         clip: true
@@ -234,6 +235,48 @@ Item {
                 function onDisplayTextChanged() { keywordHint.place() }
                 function onFontChanged() { keywordHint.place() }
             }
+        }
+    }
+
+    // Regex mode is on (Launcher.regexMode, Ctrl+R): ".*" before the tabs,
+    // as the pin shows it is on; a click turns it off. Not in 内容, where
+    // it changes nothing.
+    Rectangle {
+        id: regexChip
+
+        visible: bar.launcher.regexMode && bar.launcher.scope !== Launcher.Content && !bar.inBox
+        anchors.right: tabs.left
+        anchors.rightMargin: 6
+        y: bar.onPixel((bar.height - height) / 2)
+        width: Math.max(height, regexText.implicitWidth + 16)
+        height: tabs.height
+        radius: Theme.controlRadius
+        color: regexArea.pressed ? Theme.controlPressed : regexArea.containsMouse ? Theme.chipHover : Theme.chipActive
+        border.width: 1
+        border.color: Theme.chipBorder
+        Accessible.role: Accessible.CheckBox
+        Accessible.name: qsTr("正则模式")
+        Accessible.checked: true
+
+        Text {
+            id: regexText
+            anchors.centerIn: parent
+            text: ".*"
+            color: Theme.accent
+            font.pixelSize: Theme.uiBody
+            font.bold: true
+        }
+        MouseArea {
+            id: regexArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: bar.launcher.toggleRegexMode()
+        }
+        HoverTip {
+            target: regexArea.containsMouse ? regexChip : null
+            text: qsTr("正则模式：每个词都按正则表达式匹配名字 · 点击关闭")
+            shortcut: "Ctrl+R"
         }
     }
 
