@@ -10,6 +10,11 @@
 //     synthetic document. --toolbar-drag: the capture toolbar's grip
 //     dragged over a made-up screen (--interactive: on the screen, for a
 //     real mouse).
+//     --brush: real overlay mouse routing, stabilized traces and pixel equality
+//     with the export compositor; --interactive accepts the real mouse instead.
+//     --brush-performance: visible 12-second, up-to-500-Hz stroke; records
+//     actual presentation intervals, process CPU and memory. --busy seeds
+//     50 rectangles and five cached mosaic redactions before the stroke.
 //   --preview-capture-settings <folder> [--english] [--dark] [--scale 1.5]
 //     Real settings QML at minimum width; checks the full-screen toggle,
 //     binding and persistence in a temporary profile. Registers no hotkeys.

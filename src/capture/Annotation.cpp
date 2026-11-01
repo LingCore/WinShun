@@ -719,6 +719,59 @@ QPainterPath strokeCentreline(const QList<QPointF>& points)
     return path;
 }
 
+StrokeSampler::StrokeSampler(QPointF start, qreal radius, qreal spacing)
+    : m_filtered(start)
+    , m_radius(std::max<qreal>(0, radius))
+    , m_spacing(std::max<qreal>(0.01, spacing))
+    , m_untilNext(m_spacing)
+{
+}
+
+void StrokeSampler::append(QList<QPointF>& points, QPointF tip)
+{
+    if (points.isEmpty()) {
+        points.append(tip);
+        m_filtered = tip;
+        m_untilNext = m_spacing;
+        m_tail = 0;
+        return;
+    }
+    if (same(points.last(), tip))
+        return;
+    // Subpixel filter state advances on EVERY event, even when no new
+    // control is emitted. Selecting raw events by distance alone aliases
+    // their noise, and rounding each update reintroduces a staircase.
+    Q_ASSERT(points.size() > m_tail);
+    for (int i = 0; i < m_tail; ++i)
+        points.removeLast();
+    m_tail = 0;
+    const QPointF delta = tip - m_filtered;
+    const qreal distance = std::hypot(delta.x(), delta.y());
+    if (distance > m_radius) {
+        const QPointF next = tip - delta * (m_radius / distance);
+        const QPointF step = next - m_filtered;
+        qreal length = std::hypot(step.x(), step.y());
+        if (length > 0) {
+            const QPointF direction = step / length;
+            QPointF cursor = m_filtered;
+            while (length >= m_untilNext) {
+                cursor += direction * m_untilNext;
+                points.append(cursor);
+                length -= m_untilNext;
+                m_untilNext = m_spacing;
+            }
+            m_untilNext -= length;
+        }
+        m_filtered = next;
+    }
+    for (const QPointF p : {m_filtered, tip}) {
+        if (!same(points.last(), p)) {
+            points.append(p);
+            ++m_tail;
+        }
+    }
+}
+
 QList<QPointF> simplifyStroke(const QList<QPointF>& points, qreal tolerance)
 {
     const qsizetype n = points.size();

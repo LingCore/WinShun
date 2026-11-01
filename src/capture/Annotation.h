@@ -30,7 +30,8 @@ class QFont;
 //                          and bottom right corners, right and bottom
 //                          excluded; either order
 //   Arrow, Line            start and end, pixel centres (whole + 0.5)
-//   Pen, Marker            a polyline of pixel centres
+//   Pen, Marker            a stabilized polyline; its start and live end are
+//                          pixel centres, its interior may be subpixel
 //   Text                   the top left of the text itself (whole numbers);
 //                          its coloured box (Style::boxed) reaches further out
 //   Number                 the centre of its disc, a pixel centre; its
@@ -199,9 +200,25 @@ ArrowShape arrowShape(const Item& item, qreal dpr);
 // point, with quadratic curves through the midpoints of the segments in
 // between, which smooths the corners of a hand-drawn polyline.
 QPainterPath strokeCentreline(const QList<QPointF>& points);
+// A NEW freehand gesture: filter every input, then resample the filtered
+// trajectory at equal arc-length intervals. Keeping those stages separate
+// avoids aliasing input jitter into sparse curve controls. Only the last
+// two provisional points (filtered guide and real pointer) may change;
+// all earlier samples stay fixed. Distances are image pixels, no timer.
+class StrokeSampler {
+public:
+    explicit StrokeSampler(QPointF start = {}, qreal radius = 4, qreal spacing = 4);
+    void append(QList<QPointF>& points, QPointF tip);
+private:
+    QPointF m_filtered;
+    qreal m_radius;
+    qreal m_spacing;
+    qreal m_untilNext;
+    int m_tail = 0;
+};
 // Ramer-Douglas-Peucker: the fewest of `points` that stay within `tolerance`
-// of the polyline, the first and last kept. Run on a stroke when the mouse
-// is released, so the stored points stay pixel centres.
+// of the polyline, the first and last kept. Used for brush redactions on
+// release; visible freehand strokes keep their live geometry unchanged.
 QList<QPointF> simplifyStroke(const QList<QPointF>& points, qreal tolerance = 0.75);
 
 // The font of Text and Number: whole pixel sizes and grey antialiasing (no

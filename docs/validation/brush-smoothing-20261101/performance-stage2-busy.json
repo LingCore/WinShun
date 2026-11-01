@@ -1,0 +1,21 @@
+{
+    "busy": true,
+    "compositorCacheMiB": 0.8664283752441406,
+    "cpuOneCorePercent": 55.71236706664744,
+    "dpr": 1.5,
+    "durationMs": 12003.6185,
+    "frameMaxMs": 11.271,
+    "frameP50Ms": 4.1721,
+    "frameP95Ms": 4.9235,
+    "frameP99Ms": 8.3149,
+    "frames": 2823,
+    "framesOver33Ms": 0,
+    "idleAfterCpuOneCorePercent": 2.083333333333333,
+    "idleCpuOneCorePercent": 5.204863424383744,
+    "privateBeforeMiB": 170.01953125,
+    "privatePeakMiB": 173.04296875,
+    "refreshHz": 240,
+    "samples": 5966,
+    "storedPoints": 603,
+    "workingPeakMiB": 140.45703125
+}

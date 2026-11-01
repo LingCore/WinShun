@@ -22,6 +22,8 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QImage>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QKeyEvent>
 #include <QLocale>
 #include <QMouseEvent>
@@ -38,12 +40,15 @@
 #include <QTranslator>
 
 #include <windows.h>
+#include <psapi.h>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <functional>
 #include <memory>
+#include <mutex>
+#include <numbers>
 
 using namespace Qt::StringLiterals;
 
@@ -277,9 +282,151 @@ int runOcr(const QStringList& args)
     return finish(window, saved);
 }
 
+// Paced input in a visible production overlay. Unlike the snapshot preview,
+// this lets the normal event loop and D3D11 presentation run between samples.
+int runBrushPerformance(QQuickWindow* window, capture::CaptureSession& session, const QDir& out,
+    const std::function<void(QEvent::Type, QPointF, Qt::MouseButton, Qt::MouseButtons)>& send, bool busy)
+{
+    using namespace capture;
+    auto* model = session.annotation();
+    const qreal dpr = window->devicePixelRatio();
+    const auto tool = [&](annot::Kind kind) {
+        for (qsizetype i = 0; i < annot::tools().size(); ++i) {
+            if (annot::tools()[i].kind == kind) model->setTool(int(i));
+        }
+    };
+    if (busy) {
+        const auto box = [&](QPoint from, QPoint to) {
+            from = QPoint(qRound(from.x() * dpr), qRound(from.y() * dpr));
+            to = QPoint(qRound(to.x() * dpr), qRound(to.y() * dpr));
+            if (!model->pressFirst(from, {})) model->pressSecond(from, {});
+            model->move(to, {});
+            model->release(to);
+        };
+        tool(annot::Kind::Rect);
+        for (int i = 0; i < 50; ++i) {
+            const QPoint at(180 + (i % 10) * 70, 150 + (i / 10) * 65);
+            box(at, at + QPoint(42, 28));
+        }
+        tool(annot::Kind::Redact);
+        for (int i = 0; i < 5; ++i)
+            box(QPoint(200 + i * 130, 425), QPoint(290 + i * 130, 470));
+        tool(annot::Kind::Pen);
+    }
+    settle(window);
+    const auto rest = [](int ms) {
+        QEventLoop loop;
+        QTimer::singleShot(ms, &loop, &QEventLoop::quit);
+        loop.exec();
+    };
+    struct Usage { double cpuMs = 0; qint64 privateBytes = 0; qint64 workingBytes = 0; bool valid = false; };
+    const auto usage = [] {
+        Usage u;
+        FILETIME created {}, exited {}, kernel {}, user {};
+        PROCESS_MEMORY_COUNTERS_EX memory {};
+        memory.cb = sizeof(memory);
+        u.valid = ::GetProcessTimes(::GetCurrentProcess(), &created, &exited, &kernel, &user)
+            && ::K32GetProcessMemoryInfo(::GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&memory), sizeof(memory));
+        const auto ticks = [](FILETIME value) { return (quint64(value.dwHighDateTime) << 32) | value.dwLowDateTime; };
+        u.cpuMs = (ticks(kernel) + ticks(user)) / 10000.0;
+        u.privateBytes = qint64(memory.PrivateUsage);
+        u.workingBytes = qint64(memory.WorkingSetSize);
+        return u;
+    };
+    rest(700); // settle toolbar feedback before measuring idle CPU
+    const Usage idleStart = usage();
+    QElapsedTimer idleClock;
+    idleClock.start();
+    rest(1500);
+    const Usage before = usage();
+    const double idleCpu = (before.cpuMs - idleStart.cpuMs) / idleClock.elapsed() * 100;
+    Usage peak = before;
+    QTimer memoryTimer;
+    memoryTimer.setInterval(100);
+    QObject::connect(&memoryTimer, &QTimer::timeout, &memoryTimer, [&] {
+        const Usage u = usage();
+        peak.privateBytes = std::max(peak.privateBytes, u.privateBytes);
+        peak.workingBytes = std::max(peak.workingBytes, u.workingBytes);
+    });
+    QElapsedTimer clock;
+    clock.start();
+    std::mutex frameMutex;
+    QList<qint64> frames;
+    bool recordingFrames = true;
+    frames.reserve(5000);
+    const auto connection = QObject::connect(window, &QQuickWindow::frameSwapped, window, [&] {
+        const qint64 now = clock.nsecsElapsed();
+        const std::lock_guard guard(frameMutex);
+        if (recordingFrames) frames.append(now);
+    }, Qt::DirectConnection);
+    QEventLoop loop;
+    QTimer input;
+    input.setTimerType(Qt::PreciseTimer);
+    input.setInterval(2); // up to 500 Hz; actual delivered samples are recorded
+    int samples = 0;
+    QPointF last(520, 310);
+    send(QEvent::MouseButtonPress, last, Qt::LeftButton, Qt::LeftButton);
+    QObject::connect(&input, &QTimer::timeout, &loop, [&] {
+        const double t = clock.nsecsElapsed() / 1e9;
+        if (t >= 12.0) { loop.quit(); return; }
+        last = QPointF(520 + 300 * std::sin(t * std::numbers::pi / 4),
+            310 + 105 * std::sin(t * std::numbers::pi / 2) + 1.5 * std::sin(t * 150 * std::numbers::pi));
+        send(QEvent::MouseMove, last, Qt::NoButton, Qt::LeftButton);
+        ++samples;
+    });
+    memoryTimer.start();
+    input.start();
+    loop.exec();
+    input.stop();
+    memoryTimer.stop();
+    {
+        const std::lock_guard guard(frameMutex);
+        recordingFrames = false; // an in-flight render callback can no longer append
+    }
+    QObject::disconnect(connection);
+    const double elapsed = clock.nsecsElapsed() / 1e6;
+    const Usage after = usage();
+    send(QEvent::MouseButtonRelease, last, Qt::LeftButton, Qt::NoButton);
+    QList<double> intervals;
+    {
+        const std::lock_guard guard(frameMutex);
+        for (qsizetype i = 1; i < frames.size(); ++i)
+            intervals.append((frames[i] - frames[i - 1]) / 1e6);
+    }
+    std::sort(intervals.begin(), intervals.end());
+    const auto quantile = [&](qreal q) { return intervals.isEmpty() ? 0.0 : intervals[qsizetype(q * (intervals.size() - 1))]; };
+    const int points = model->document().items.isEmpty() ? 0 : int(model->document().items.last().points.size());
+    QJsonObject result {{u"durationMs"_s, elapsed}, {u"samples"_s, samples}, {u"storedPoints"_s, points},
+        {u"busy"_s, busy}, {u"dpr"_s, dpr}, {u"refreshHz"_s, window->screen()->refreshRate()},
+        {u"frames"_s, frames.size()}, {u"frameP50Ms"_s, quantile(0.5)}, {u"frameP95Ms"_s, quantile(0.95)},
+        {u"frameP99Ms"_s, quantile(0.99)}, {u"frameMaxMs"_s, quantile(1)},
+        {u"framesOver33Ms"_s, std::count_if(intervals.cbegin(), intervals.cend(), [](double v) { return v > 33.34; })},
+        {u"cpuOneCorePercent"_s, (after.cpuMs - before.cpuMs) / elapsed * 100},
+        {u"idleCpuOneCorePercent"_s, idleCpu}, {u"privateBeforeMiB"_s, before.privateBytes / 1048576.0},
+        {u"privatePeakMiB"_s, std::max(peak.privateBytes, after.privateBytes) / 1048576.0},
+        {u"workingPeakMiB"_s, std::max(peak.workingBytes, after.workingBytes) / 1048576.0},
+        {u"compositorCacheMiB"_s, model->compositor().cacheBytes() / 1048576.0}};
+    rest(700);
+    const Usage idleAfterStart = usage();
+    idleClock.restart();
+    rest(1500);
+    result[u"idleAfterCpuOneCorePercent"_s] = (usage().cpuMs - idleAfterStart.cpuMs) / idleClock.elapsed() * 100;
+    QFile metrics(out.filePath(u"performance.json"_s));
+    const bool measured = before.valid && after.valid && intervals.size() >= 120 && samples >= 1000;
+    const bool saved = metrics.open(QIODevice::WriteOnly) && metrics.write(QJsonDocument(result).toJson()) > 0;
+    say(QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact)));
+    model->setTool(0);
+    send(QEvent::MouseMove, QPointF(30, 30), Qt::NoButton, Qt::NoButton);
+    settle(window);
+    const bool picture = saveGrab(window, out.filePath(u"performance-overlay.png"_s));
+    return finish(window, measured && saved && picture);
+}
+
 int runToolbarDrag(const QStringList& args)
 {
     using namespace capture;
+    const bool performance = args.contains(u"--brush-performance"_s);
+    const bool brush = args.contains(u"--brush"_s) || performance;
     const QDir out(valueAfter(args, kCaptureToolsFlag));
     QDir().mkpath(out.path());
     QTranslator translator;
@@ -297,8 +444,10 @@ int runToolbarDrag(const QStringList& args)
         painter.scale(dpr, dpr);
         painter.setPen(QColor(35, 40, 45));
         painter.setFont(QFont(QGuiApplication::font().family(), 14));
-        painter.drawText(40, 55, u"截图工具条 · 按住左侧三个圆点拖动 / Drag the three dots"_s);
-        painter.drawText(180, 190, u"移动工具条不会移动选区，也不会在图片上留下标注。"_s);
+        painter.drawText(40, 55, brush ? u"截图画笔 · 实时防抖 / Stabilized freehand"_s
+                                     : u"截图工具条 · 按住左侧三个圆点拖动 / Drag the three dots"_s);
+        if (!brush)
+            painter.drawText(180, 190, u"移动工具条不会移动选区，也不会在图片上留下标注。"_s);
     }
     screen.setImage(image);
     CaptureSession session;
@@ -311,16 +460,16 @@ int runToolbarDrag(const QStringList& args)
         session.pointerMove(0, to);
         session.pointerRelease(0, to, Qt::LeftButton);
     };
-    select(QRect(160, 130, 760, 230));
+    select(QRect(160, 130, 760, brush ? 370 : 230));
     QQmlApplicationEngine engine;
     QQmlComponent component(&engine, u"WinShun"_s, u"CaptureOverlay"_s);
     auto* window = qobject_cast<QQuickWindow*>(component.createWithInitialProperties({
         {u"session"_s, QVariant::fromValue(&session)}, {u"screenModel"_s, QVariant::fromValue(&screen)}}));
     if (!window) { say(component.errorString()); return 3; }
     window->resize(logical);
-    window->setTitle(u"WinShun toolbar drag test"_s);
+    window->setTitle(brush ? u"WinShun brush test"_s : u"WinShun toolbar drag test"_s);
     window->setFlags(Qt::Window | Qt::WindowStaysOnTopHint);
-    if (args.contains(u"--interactive"_s)) {
+    if (args.contains(u"--interactive"_s) || performance) {
         window->setPosition(40, 40);
         window->show();
     } else {
@@ -339,6 +488,13 @@ int runToolbarDrag(const QStringList& args)
         settle(window);
         ok = saveGrab(window, out.filePath(name.toString() + u".png"_s)) && ok;
     };
+    if (brush) {
+        for (qsizetype i = 0; i < annot::tools().size(); ++i) {
+            if (annot::tools()[i].kind == annot::Kind::Pen)
+                session.annotation()->setTool(int(i));
+        }
+        session.annotation()->setPanel({{u"color"_s, u"#8E24AA"_s}, {u"width"_s, 4}});
+    }
     grab(u"toolbar-before");
     if (args.contains(u"--interactive"_s)) {
         struct PointerTrace : QObject {
@@ -359,17 +515,92 @@ int runToolbarDrag(const QStringList& args)
         window->installEventFilter(&trace);
         QEventLoop loop;
         QObject::connect(&session, &CaptureSession::finished, &loop, &QEventLoop::quit);
-        QTimer::singleShot(180000, &loop, &QEventLoop::quit);
+        QTimer::singleShot(brush ? 45000 : 180000, &loop, &QEventLoop::quit);
         loop.exec();
-        grab(u"toolbar-after");
+        if (brush) {
+            check(session.annotation()->itemCount() >= 2, "native mouse input did not create two strokes");
+            ok = session.annotation()->composed().save(out.filePath(u"brush-native-export.png"_s)) && ok;
+            say(u"native mouse brush objects: %1"_s.arg(session.annotation()->itemCount()));
+        }
+        grab(brush ? u"brush-native" : u"toolbar-after");
         return finish(window, ok);
     }
     const auto send = [&](QEvent::Type type, QPointF at, Qt::MouseButton button, Qt::MouseButtons buttons) {
         const QPointF global = window->mapToGlobal(at.toPoint());
         QMouseEvent event(type, at, global, button, buttons, Qt::NoModifier);
         QCoreApplication::sendEvent(window, &event);
-        QCoreApplication::processEvents();
+        if (!performance) QCoreApplication::processEvents();
     };
+    if (brush) {
+        if (performance)
+            return runBrushPerformance(window, session, out, send, args.contains(u"--busy"_s));
+        // Real Qt mouse events -> production CaptureOverlay MouseArea ->
+        // CaptureSession -> AnnotationModel -> canvas, using a synthetic base.
+        auto* model = session.annotation();
+        QList<QList<QPointF>> rawStrokes;
+        QList<qint64> eventTimes;
+        for (int row = 0; row < 3; ++row) {
+            const QPointF from(210, 200 + row * 105);
+            QList<QPointF> raw {annot::pixelCentre(from * dpr)};
+            send(QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::LeftButton);
+            for (int i = 1; i <= 620; ++i) {
+                const qreal curve = row == 0 ? i * 0.06 : row == 1 ? 26 * std::sin(i / 95.0) : 0;
+                const QPointF at = from + QPointF(i, curve + ((i / 2) % 2 ? 2 : -2));
+                raw.append(annot::pixelCentre(at * dpr));
+                QElapsedTimer timer;
+                timer.start();
+                send(QEvent::MouseMove, at, Qt::NoButton, Qt::LeftButton);
+                eventTimes.append(timer.nsecsElapsed());
+            }
+            const QPointF end = from + QPointF(621, row == 0 ? 621 * 0.06 : row == 1 ? 26 * std::sin(621 / 95.0) : 0);
+            raw.append(annot::pixelCentre(end * dpr));
+            rawStrokes.append(raw);
+            send(QEvent::MouseMove, end, Qt::NoButton, Qt::LeftButton);
+            const auto draft = model->document().items;
+            send(QEvent::MouseButtonRelease, end, Qt::LeftButton, Qt::NoButton);
+            check(model->document().items == draft, "releasing changed the live stroke");
+        }
+        check(model->itemCount() == 3, "QML pointer routing did not create three strokes");
+        model->setTool(0); // let go of the pen's selection outline
+        send(QEvent::MouseMove, QPointF(30, 30), Qt::NoButton, Qt::NoButton);
+        grab(u"brush-overlay");
+        const QImage exported = model->composed();
+        ok = exported.save(out.filePath(u"brush-export.png"_s)) && ok;
+        // Same events through the previous brush's release simplification,
+        // with both images drawn by the production compositor.
+        annot::Document previous = model->document();
+        for (qsizetype i = 0; i < previous.items.size() && i < rawStrokes.size(); ++i)
+            previous.items[i].points = annot::simplifyStroke(rawStrokes[i]);
+        annot::Compositor oldCompositor;
+        const QImage oldImage = oldCompositor.exportImage(previous, model->base(), model->sampleBounds());
+        const int caption = qRound(50 * dpr);
+        QImage comparison(QSize(exported.width() * 2, exported.height() + caption), QImage::Format_RGB32);
+        comparison.fill(Qt::white);
+        {
+            QPainter painter(&comparison);
+            QFont font = QGuiApplication::font();
+            font.setPixelSize(qRound(20 * dpr));
+            painter.setFont(font);
+            painter.setPen(QColor(35, 40, 45));
+            painter.drawText(qRound(20 * dpr), qRound(32 * dpr), u"改进前 · 同一段输入"_s);
+            painter.drawText(exported.width() + qRound(20 * dpr), qRound(32 * dpr), u"改进后 · 实时防抖"_s);
+            painter.drawImage(0, caption, oldImage);
+            painter.drawImage(exported.width(), caption, exported);
+        }
+        ok = comparison.save(out.filePath(u"brush-comparison.png"_s)) && ok;
+        std::sort(eventTimes.begin(), eventTimes.end());
+        say(u"QML move event handling p95: %1 ms (%2 events; not a display frame-rate measurement)"_s
+            .arg(eventTimes[eventTimes.size() * 95 / 100] / 1e6, 0, 'f', 3).arg(eventTimes.size()));
+        const QImage visible = window->grabWindow();
+        const QRect area(qRound(190 * dpr), qRound(170 * dpr), qRound(660 * dpr), qRound(300 * dpr));
+        QImage expected;
+        annot::Compositor fresh;
+        fresh.render(model->document(), model->base(), model->sampleBounds(), area, &expected);
+        const QImage got = visible.copy(area).convertToFormat(QImage::Format_RGB32);
+        check(got == expected, "visible brush pixels differ from the export compositor");
+        say(u"brush QML input, release stability and visible/export pixel checks: %1"_s.arg(ok ? u"passed"_s : u"failed"_s));
+        return finish(window, ok);
+    }
     const auto drag = [&](QPointF delta, int steps = 12) {
         const QPointF from = grip->mapToScene(QPointF(grip->width() / 2, grip->height() / 2));
         send(QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::LeftButton);
@@ -439,7 +670,8 @@ int runToolbarDrag(const QStringList& args)
 
 int runCaptureTools(const QStringList& args)
 {
-    if (args.contains(u"--toolbar-drag"_s)) return runToolbarDrag(args);
+    if (args.contains(u"--toolbar-drag"_s) || args.contains(u"--brush"_s) || args.contains(u"--brush-performance"_s))
+        return runToolbarDrag(args);
     using namespace capture;
     using namespace capture::annot;
     const QDir out(valueAfter(args, kCaptureToolsFlag));

@@ -1,0 +1,10 @@
+********* Start testing of TestAnnotModel *********
+Config: Using QtTest library 6.12.0, Qt 6.12.0 (x86_64-little_endian-llp64 shared (dynamic) release build; by MSVC 2022), windows 11
+PASS   : TestAnnotModel::initTestCase()
+QINFO  : TestAnnotModel::freehandFiltersSmallJitterWithoutChangingOnRelease() freehand jitter RMS, raw/stabilized: 1.44062 0.419418
+QINFO  : TestAnnotModel::freehandFiltersSmallJitterWithoutChangingOnRelease() uniform curve second difference RMS: 0.611683 stored points: 200
+FAIL!  : TestAnnotModel::freehandFiltersSmallJitterWithoutChangingOnRelease() 'roughness < 0.08' returned FALSE. (a visually smooth line must not retain dense small waves)
+F:\电脑便捷工具\tests\tst_annotmodel.cpp(613) : failure location
+PASS   : TestAnnotModel::cleanupTestCase()
+Totals: 2 passed, 1 failed, 0 skipped, 0 blacklisted, 29ms
+********* Finished testing of TestAnnotModel *********

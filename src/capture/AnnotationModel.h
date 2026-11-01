@@ -387,7 +387,7 @@ private:
     void updateGesture();
     void finishGesture();
     annot::Item shapeTo(QPoint p, bool constrain) const;
-    annot::Item strokeTo(const annot::Item& stroke, QPoint p, bool constrain) const;
+    annot::Item strokeTo(const annot::Item& stroke, QPoint p, bool constrain);
     void beginNewText(QPoint p);
     void beginEdit(const annot::Item& item, QPoint p);
     // The words of a Number: after it was put down (click -1,-1: the caret at the end) or on a click.

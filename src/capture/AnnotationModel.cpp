@@ -17,6 +17,7 @@
 #include <array>
 #include <cmath>
 #include <cstdlib>
+#include <iterator>
 #include <numbers>
 #include <utility>
 
@@ -283,31 +284,41 @@ annot::Item fitLine(const annot::Item& start, annot::Item made, const QRect& roo
     return made;
 }
 
-// What a stroke growing by one point changes: the centre line is the same
-// up to the midpoint before its last point (strokeCentreline), so only the
-// last two points, the new one and the width around them are drawn again,
-// not the whole stroke at every move. None when more may have changed: a
+// A growing stroke may replace its filtered guide and live tip as well as
+// append uniformly spaced anchors.
+// The midpoint curves before the common prefix's last two points stay the
+// same, so only the changed tails and the width around them need repainting.
+// None when more may have changed: a
 // stroke still level or upright is drawn half a pixel off its points until
 // it bends (alignedPoints), and Shift makes it a line again.
 std::optional<QRectF> strokeGrowth(const annot::Item& before, const annot::Item& after)
 {
-    const qsizetype n = before.points.size();
-    if (n < 3 || after.points.size() != n + 1 || after.style != before.style)
+    if (before.points.size() < 3 || after.points.size() < 3 || after.style != before.style)
         return std::nullopt;
-    if (!std::equal(before.points.cbegin(), before.points.cend(), after.points.cbegin()))
+    const auto mismatch = std::mismatch(before.points.cbegin(), before.points.cend(), after.points.cbegin(), after.points.cend());
+    const qsizetype common = std::distance(before.points.cbegin(), mismatch.first);
+    if (common < 2)
         return std::nullopt;
-    bool level = true;
-    bool upright = true;
-    for (const QPointF& p : before.points) {
-        level = level && p.y() == before.points[0].y();
-        upright = upright && p.x() == before.points[0].x();
+    const auto axial = [](const QList<QPointF>& points) {
+        bool level = true, upright = true;
+        for (const QPointF& p : points) {
+            level = level && p.y() == points[0].y();
+            upright = upright && p.x() == points[0].x();
+        }
+        return level || upright;
+    };
+    if (axial(before.points) || axial(after.points))
+        return std::nullopt;
+    qreal x0 = before.points[common - 2].x(), x1 = x0;
+    qreal y0 = before.points[common - 2].y(), y1 = y0;
+    for (const auto* points : {&before.points, &after.points}) {
+        for (qsizetype i = common - 2; i < points->size(); ++i) {
+            x0 = std::min(x0, (*points)[i].x());
+            x1 = std::max(x1, (*points)[i].x());
+            y0 = std::min(y0, (*points)[i].y());
+            y1 = std::max(y1, (*points)[i].y());
+        }
     }
-    if (level || upright)
-        return std::nullopt;
-    const qreal x0 = std::min({before.points[n - 2].x(), before.points[n - 1].x(), after.points[n].x()});
-    const qreal x1 = std::max({before.points[n - 2].x(), before.points[n - 1].x(), after.points[n].x()});
-    const qreal y0 = std::min({before.points[n - 2].y(), before.points[n - 1].y(), after.points[n].y()});
-    const qreal y1 = std::max({before.points[n - 2].y(), before.points[n - 1].y(), after.points[n].y()});
     // Round caps and joins reach half the width past the points (bounds()),
     // and a pixel more for the antialiased edge.
     const qreal m = std::max(1, before.style.width) / 2.0 + 2;
@@ -326,6 +337,7 @@ struct AnnotationModel::Private {
     bool applied = false;
     bool dragging = false; // moved past the drag start since the press
     QList<QPointF> pathNodes; // fixed vertices; the last point in the draft follows the mouse
+    annot::StrokeSampler strokeSampler;
     QPoint pressAt;
     QPoint last;
     Qt::KeyboardModifiers modifiers;
@@ -1421,6 +1433,8 @@ void AnnotationModel::startDraw(Kind kind, QPoint p, Qt::KeyboardModifiers modif
     case Kind::Text:
         return; // beginNewText()
     }
+    if (annot::isStrokeItem(item) && !annot::isBrush(item))
+        d->strokeSampler = annot::StrokeSampler(item.points.first(), 4 * factor(), 4 * factor());
     d->before = item;
     d->command = std::make_unique<annot::AddItems>(QList<annot::Item> {item});
     d->applied = false;
@@ -1538,11 +1552,22 @@ annot::Item AnnotationModel::shapeTo(QPoint p, bool constrain) const
     return made;
 }
 
-annot::Item AnnotationModel::strokeTo(const annot::Item& stroke, QPoint p, bool constrain) const
+annot::Item AnnotationModel::strokeTo(const annot::Item& stroke, QPoint p, bool constrain)
 {
     const QPoint to = clampToSelection(p);
-    const annot::Item made = annot::reshaped(stroke, int(annot::LineHandle::End), QPointF(to), constrain);
-    return constrain ? fitLine(stroke, made, room()) : made;
+    if (!constrain && !annot::isBrush(stroke)) {
+        annot::Item made = stroke;
+        // Logical screen distances, also when zooming in the editor.
+        d->strokeSampler.append(made.points, annot::pixelCentre(to));
+        return made;
+    }
+    annot::Item made = annot::reshaped(stroke, int(annot::LineHandle::End), QPointF(to), constrain);
+    if (constrain) {
+        made = fitLine(stroke, made, room());
+        if (!annot::isBrush(stroke))
+            d->strokeSampler = annot::StrokeSampler(made.points.last(), 4 * factor(), 4 * factor());
+    }
+    return made;
 }
 
 void AnnotationModel::move(QPoint p, Qt::KeyboardModifiers modifiers)
@@ -1738,7 +1763,7 @@ void AnnotationModel::finishGesture()
             touched(add->revert(m_document));
             return;
         }
-        if (annot::isStrokeItem(item)) {
+        if (annot::isBrush(item)) {
             const QList<QPointF> simple = annot::simplifyStroke(item.points);
             if (simple != item.points) {
                 annot::Change change = add->revert(m_document);

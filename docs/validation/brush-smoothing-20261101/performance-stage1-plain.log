@@ -1,0 +1,7 @@
+preparing
+loading the font
+saved F:/电脑便捷工具/build/brush-perf-stage1-plain/toolbar-before.png 1680x930
+Annotation canvas: 2816 polishes, 3010 tiles drawn (most 2 at once), drawing p50 0.82 ms, p95 1.56 ms, max 2.32 ms; 2816 syncs, 3010 textures made, sync p50 0.01 ms, p95 0.01 ms; 0 mosaic patches made
+{"busy":false,"compositorCacheMiB":0,"cpuOneCorePercent":48.56658684989866,"dpr":1.5,"durationMs":12000.2771,"frameMaxMs":9.0276,"frameP50Ms":4.1656,"frameP95Ms":4.7412,"frameP99Ms":8.2467,"frames":2818,"framesOver33Ms":0,"idleAfterCpuOneCorePercent":0,"idleCpuOneCorePercent":3.125,"privateBeforeMiB":159.3828125,"privatePeakMiB":164.1875,"refreshHz":240,"samples":5915,"storedPoints":1959,"workingPeakMiB":133.859375}
+saved F:/电脑便捷工具/build/brush-perf-stage1-plain/performance-overlay.png 1680x930
+0 warning(s)

@@ -915,6 +915,49 @@ private slots:
         QCOMPARE(strokeCentreline({points[0], points[1]}).elementCount(), 2);
     }
 
+    void geometryStabilizedStroke()
+    {
+        const QList<QPointF> input {QPointF(10.5, 10.5), QPointF(11.5, 11.5), QPointF(30.5, 10.5),
+            QPointF(30.5, 30.5), QPointF(10.5, 30.5), QPointF(10.5, 10.5)};
+        QList<QPointF> reference;
+        StrokeSampler referenceSampler(input.first(), 4, 4);
+        for (const QPointF p : input)
+            referenceSampler.append(reference, p);
+        for (qreal scale : {0.5, 1.0, 1.5, 2.0, 4.0}) {
+            QList<QPointF> points;
+            StrokeSampler sampler(input.first() * scale, 4 * scale, 4 * scale);
+            for (const QPointF p : input) {
+                const QList<QPointF> before = points;
+                sampler.append(points, p * scale);
+                QCOMPARE(points.first(), input.first() * scale);
+                QCOMPARE(points.last(), p * scale);
+                // Stable anchors never move; the filtered guide and tip may change.
+                for (qsizetype i = 0; i + 2 < before.size(); ++i)
+                    QCOMPARE(points[i], before[i]);
+                if (points.size() > 1) {
+                    const QPointF delta = points.last() - points[points.size() - 2];
+                    QVERIFY(std::hypot(delta.x(), delta.y()) <= 8 * scale + 1e-10);
+                }
+                const auto once = points;
+                sampler.append(points, p * scale);
+                QCOMPARE(points, once); // repeated input cannot grow the stroke
+            }
+            QCOMPARE(points.size(), reference.size());
+            for (qsizetype i = 0; i < points.size(); ++i) {
+                const QPointF error = points[i] / scale - reference[i];
+                QVERIFY(std::hypot(error.x(), error.y()) < 1e-10);
+            }
+            QCOMPARE(points.first(), points.last()); // a deliberate loop stays closed
+            QVERIFY(strokeCentreline(points).boundingRect().width() >= 18 * scale);
+            QVERIFY(strokeCentreline(points).boundingRect().height() >= 18 * scale);
+        }
+        QList<QPointF> shortStroke;
+        StrokeSampler shortSampler(input[0], 4, 4);
+        shortSampler.append(shortStroke, input[0]);
+        shortSampler.append(shortStroke, input[1]);
+        QCOMPARE(shortStroke, input.sliced(0, 2));
+    }
+
     void geometryAlignment()
     {
         const auto aligned = [](QPointF a, QPointF b, int width) { return alignedPoints(lineItem(Kind::Line, a, b, kRed, width)); };
