@@ -91,6 +91,8 @@ def main():
         (work / "capture.json").write_text(json.dumps({
             "exe": str(exe), "sha256": hashlib.sha256(exe.read_bytes()).hexdigest(),
             "capture": str(capture), "capture_sha256": hashlib.sha256(capture.read_bytes()).hexdigest(),
+            "capture_app_sha256": hashlib.sha256(capture.with_name("WinShunCaptureApp.dll").read_bytes()).hexdigest(),
+            "scale": {"results": 1.5, "other": 2}, "renderer": "d3d11",
             "profiles": "isolated preview fixtures; production UI and controllers",
         }, indent=2), encoding="utf-8")
     for source, name in ((args.onboarding, "onboarding.png"), (args.foldermenu, "foldermenu.png")):
