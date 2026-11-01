@@ -9,9 +9,11 @@
 #include "Geometry.h"
 #include "HotkeyText.h"
 #include "IdleTrim.h"
+#include "ImageOrigin.h"
 #include "Keycaps.h"
 #include "PictureFile.h"
 #include "PinManager.h"
+#include "PinImage.h"
 #include "PinWindow.h"
 #include "PrintScreen.h"
 #include "RawClicks.h"
@@ -32,6 +34,7 @@
 #include <QImageReader>
 #include <QJsonArray>
 #include <QLocale>
+#include <QMimeData>
 #include <QQmlComponent>
 #include <QQuickWindow>
 #include <QScreen>
@@ -302,8 +305,7 @@ void CaptureApp::requested(const QJsonValue& id, const QString& method, const QJ
                                                                        : QString();
         add(u"start"_s, tr("开始截图"), key.isEmpty() ? tr("框选窗口或区域") : tr("快捷键 %1").arg(key), u"E722"_s);
         add(u"delay"_s, tr("%1 秒后截图").arg(m_settings.options().delay), tr("先打开要截的菜单或提示"), u"E916"_s);
-        if (m_capture && m_capture->hasLast())
-            add(u"last"_s, tr("贴上最近一次截图"), tr("贴在原来的位置"), u"E718"_s);
+        add(u"last"_s, tr("贴图"), tr("优先剪贴板图片，否则贴回最近截图并保留标注"), u"E718"_s);
         add(u"settings"_s, tr("截图设置"), tr("快捷键、鼠标、贴图、打码和工具条"), u"E713"_s);
         m_protocol.respond(id, QJsonObject {{u"items"_s, items}});
     } else if (method == u"action") {
@@ -315,8 +317,8 @@ void CaptureApp::requested(const QJsonValue& id, const QString& method, const QJ
                 showSettings();
             else if (m_capture && item == u"delay")
                 m_capture->startDelayed(m_settings.options().delay);
-            else if (m_capture && item == u"last")
-                m_capture->pinLast();
+            else if (item == u"last")
+                pinCurrentImage();
             else if (m_capture)
                 m_capture->trigger();
         });
@@ -372,7 +374,9 @@ void CaptureApp::apply()
     const CaptureOptions& o = m_settings.options();
     if (!m_capture) {
         capture::Capture::Callbacks callbacks;
-        callbacks.copy = [this](const QImage& image, const QByteArray& project) { copyImage(image, project, true, true); };
+        callbacks.copy = [this](const QImage& image, const QByteArray& project, const QString& origin) {
+            copyImage(image, project, true, true, origin);
+        };
         // Ctrl+S and F3: in the screenshot history too, the clipboard left alone.
         callbacks.record = [this](const QImage& image, const QByteArray& project) { copyImage(image, project, false, true); };
         callbacks.annotateStyles = [this] { return m_settings.options().annotateStyles; };
@@ -933,35 +937,68 @@ void CaptureApp::pinPicture(const QString& path, bool screenshot)
 {
     if (path.isEmpty())
         return;
-    POINT cursor {};
-    ::GetCursorPos(&cursor);
-    MONITORINFO info {sizeof info};
-    if (!::GetMonitorInfoW(::MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST), &info))
+    const auto placement = pinimage::cursorPlacement();
+    if (!placement)
         return;
-    const QRect work(info.rcWork.left, info.rcWork.top, info.rcWork.right - info.rcWork.left, info.rcWork.bottom - info.rcWork.top);
-    const QPoint at(cursor.x, cursor.y);
     QPointer<CaptureApp> self(this);
-    std::thread([self, path, work, at, screenshot] {
-        const HRESULT com = ::CoInitializeEx(nullptr, COINIT_MULTITHREADED | COINIT_DISABLE_OLE1DDE);
-        QImage image = decodePictureFile(path, 0);
-        if (SUCCEEDED(com))
-            ::CoUninitialize();
-        const QSize room = work.size() * 0.9;
-        if (!image.isNull() && (image.width() > room.width() || image.height() > room.height()))
-            image = image.scaled(room, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-        if (!image.isNull())
-            image = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
-        QMetaObject::invokeMethod(qApp, [self, image, work, at, screenshot] {
+    std::thread([self, path, placement = *placement, screenshot] {
+        auto prepared = pinimage::prepare(pinimage::readFile(path, placement), placement);
+        QMetaObject::invokeMethod(qApp, [self, prepared = std::move(prepared), screenshot] {
             if (!self)
                 return;
-            if (image.isNull()) {
+            if (prepared.image.isNull()) {
                 self->notify(tr("没能贴到屏幕"), tr("读不出这张图片。"));
                 return;
             }
-            QPoint origin = at - QPoint(image.width() / 2, image.height() / 2);
-            origin.setX(std::clamp(origin.x(), work.left(), std::max(work.left(), work.right() + 1 - image.width())));
-            origin.setY(std::clamp(origin.y(), work.top(), std::max(work.top(), work.bottom() + 1 - image.height())));
-            self->pins().pin(image, origin, screenshot);
+            self->pins().pin(prepared.image, prepared.origin, screenshot);
+        }, Qt::QueuedConnection);
+    }).detach();
+}
+
+void CaptureApp::pinCurrentImage()
+{
+    if (m_pinPending)
+        return;
+    const auto placement = pinimage::cursorPlacement();
+    if (!placement)
+        return;
+    const pinimage::LastCapture last {m_capture ? m_capture->lastClipboardId() : QString(),
+        m_capture ? m_capture->lastClipboardSequence() : 0};
+    m_pinPending = true;
+    QPointer<CaptureApp> self(this);
+    std::thread([self, last, placement = *placement] {
+        auto picture = pinimage::readClipboard(last, placement);
+        auto prepared = pinimage::prepare(std::move(picture.image), placement);
+        QMetaObject::invokeMethod(qApp, [self, last, status = picture.status, prepared = std::move(prepared)] {
+            if (!self)
+                return;
+            self->m_pinPending = false;
+            if (self->m_capture && self->m_capture->lastClipboardId() != last.id) {
+                self->pinCurrentImage(); // includes an own copy that arrived during this read
+                return;
+            }
+            using Status = pinimage::ClipboardStatus;
+            switch (status) {
+            case Status::Image:
+                if (!prepared.image.isNull())
+                    self->pins().pin(prepared.image, prepared.origin, false);
+                else
+                    self->notify(tr("贴图"), tr("剪贴板里的图片读不出来，请重新复制。"));
+                break;
+            case Status::LastCapture:
+            case Status::Empty:
+                if (!self->m_capture || !self->m_capture->hasLast())
+                    self->notify(tr("贴图"), tr("剪贴板里没有可用图片，也没有最近截图。请先复制图片或截一张。"));
+                else
+                    self->m_capture->pinLast();
+                break;
+            case Status::Busy:
+                self->notify(tr("贴图"), tr("剪贴板正被别的程序占用，请再试一次。"));
+                break;
+            case Status::Unreadable:
+                self->notify(tr("贴图"), tr("剪贴板里的图片读不出来，请重新复制。"));
+                break;
+            }
         }, Qt::QueuedConnection);
     }).detach();
 }
@@ -1008,7 +1045,7 @@ QJsonArray CaptureApp::trayMenu() const
             {u"children"_s, QJsonArray {menuItem(u"delay3"_s, tr("3 秒"), o.delay == 3), menuItem(u"delay5"_s, tr("5 秒"), o.delay == 5),
                                  menuItem(u"delay10"_s, tr("10 秒"), o.delay == 10)}}};
         items.append(delay);
-        items.append(menuItem(u"pinLast"_s, tr("贴上最近一次截图"), false, m_capture->hasLast()));
+        items.append(menuItem(u"pinLast"_s, withKey(tr("贴图"), o.lastPinHotkey)));
         items.append(menuItem(u"restoreDraft"_s, tr("找回刚放弃的标注"), false, m_capture->hasDraft()));
         items.append(separator());
     }
@@ -1031,8 +1068,8 @@ void CaptureApp::menuChosen(const QString& id)
             if (m_capture)
                 m_capture->trigger();
         });
-    } else if (id == u"pinLast" && m_capture) {
-        m_capture->pinLast();
+    } else if (id == u"pinLast") {
+        pinCurrentImage();
     } else if (id == u"restoreDraft" && m_capture) {
         m_capture->restoreDraft();
     } else if (id == u"clickThrough" && m_pins) {
@@ -1058,13 +1095,13 @@ void CaptureApp::menuChosen(const QString& id)
 
 // ---- Win顺's side ---------------------------------------------------------------
 
-void CaptureApp::copyImage(const QImage& image, const QByteArray& project, bool copy, bool screenshot)
+void CaptureApp::copyImage(const QImage& image, const QByteArray& project, bool copy, bool screenshot, const QString& imageOrigin)
 {
     if (image.isNull())
         return;
     const QString base = QDir(m_dataDir).filePath(u"out/%1-%2"_s.arg(::GetCurrentProcessId()).arg(m_nextOut++));
     QPointer<CaptureApp> self(this);
-    std::thread([self, image, project, copy, screenshot, base] {
+    std::thread([self, image, project, copy, screenshot, base, imageOrigin] {
         const QString file = base + u".wimg"_s;
         bool ok = writePicture(file, image);
         QString projectFile;
@@ -1073,15 +1110,20 @@ void CaptureApp::copyImage(const QImage& image, const QByteArray& project, bool 
             QFile out(projectFile);
             ok = out.open(QIODevice::WriteOnly) && out.write(project) == project.size();
         }
-        QMetaObject::invokeMethod(qApp, [self, image, copy, screenshot, file, projectFile, ok] {
+        QMetaObject::invokeMethod(qApp, [self, image, copy, screenshot, file, projectFile, ok, imageOrigin] {
             if (!self)
                 return;
-            const auto fallback = [image, copy, file, projectFile] {
+            const auto fallback = [image, copy, file, projectFile, imageOrigin] {
                 QFile::remove(file);
                 if (!projectFile.isEmpty())
                     QFile::remove(projectFile);
-                if (copy) // onto the clipboard at least, without the history's mark
-                    QGuiApplication::clipboard()->setImage(image);
+                if (copy) {
+                    auto* data = new QMimeData;
+                    data->setImageData(image);
+                    if (!imageOrigin.isEmpty())
+                        data->setData(QString::fromLatin1(kImageOriginMime), imageOrigin.toUtf8() + '\0');
+                    QGuiApplication::clipboard()->setMimeData(data);
+                }
             };
             if (!ok) {
                 qWarning() << "Screen capture: could not write the picture for Win顺" << file;
@@ -1089,6 +1131,8 @@ void CaptureApp::copyImage(const QImage& image, const QByteArray& project, bool 
                 return;
             }
             QJsonObject arguments {{u"file"_s, QDir::toNativeSeparators(file)}, {u"copy"_s, copy}, {u"screenshot"_s, screenshot}};
+            if (!imageOrigin.isEmpty())
+                arguments.insert(u"origin"_s, imageOrigin);
             if (!projectFile.isEmpty())
                 arguments.insert(u"project"_s, QDir::toNativeSeparators(projectFile));
             self->m_protocol.tool(u"clipboard_add_image"_s, arguments, [fallback](const QJsonValue&, const QString& error) {
@@ -1147,10 +1191,7 @@ void CaptureApp::hotkey(int id)
             m_capture->trigger();
         break;
     case LastPinKey:
-        if (m_capture && m_capture->hasLast())
-            m_capture->pinLast();
-        else
-            notify(tr("贴上最近一次截图"), tr("还没有截图，请先截一张。"));
+        pinCurrentImage();
         break;
     case PinsKey:
         if (m_pins)

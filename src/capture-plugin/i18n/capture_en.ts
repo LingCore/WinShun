@@ -907,10 +907,10 @@
         <translation>Nothing</translation>
     </message>
     <message>
-        <source>贴上最近一次截图的快捷键</source>
-        <translation>Pin last screenshot shortcut</translation>
+        <source>贴图的快捷键</source>
+        <translation>Pin image shortcut</translation>
     </message>
-    <message>
+<message>
         <source>把最近截过的图贴回原位置，保留标注；不设时仍可从托盘菜单操作</source>
         <translation>Pin the last screenshot at its original position, including annotations. Also available from the tray menu.</translation>
     </message>
@@ -981,6 +981,10 @@
     <message>
         <source>其他程序全屏时，截图快捷键和 PrtScn 不弹出截图；仍能从菜单手动开始</source>
         <translation>While another app is full screen, the screenshot hotkey and PrtScn do not start a capture. You can still start one from the menu.</translation>
+    </message>
+    <message>
+        <source>优先贴剪贴板里的图片；没有新图片时，把最近截图贴回原位置并保留标注。不设时仍可从托盘菜单操作</source>
+        <translation>Pin a clipboard image first; otherwise restore the last screenshot at its original position with annotations. Also available from the tray menu.</translation>
     </message>
 </context>
 <context>
@@ -1949,10 +1953,10 @@ Original video kept at: %2</translation>
         <translation>Open the menu or tip you want first</translation>
     </message>
     <message>
-        <source>贴上最近一次截图</source>
-        <translation>Pin the last screenshot</translation>
+        <source>贴图</source>
+        <translation>Pin image</translation>
     </message>
-    <message>
+<message>
         <source>贴在原来的位置</source>
         <translation>Pin it where it was</translation>
     </message>
@@ -2085,8 +2089,20 @@ Original video kept at: %2</translation>
         <translation>Screenshot settings…</translation>
     </message>
     <message>
-        <source>还没有截图，请先截一张。</source>
-        <translation>Take a screenshot first.</translation>
+        <source>剪贴板里没有可用图片，也没有最近截图。请先复制图片或截一张。</source>
+        <translation>No usable clipboard image or recent screenshot. Copy an image or take a screenshot first.</translation>
+    </message>
+<message>
+        <source>优先剪贴板图片，否则贴回最近截图并保留标注</source>
+        <translation>Pin a clipboard image, or restore the last screenshot with annotations</translation>
+    </message>
+    <message>
+        <source>剪贴板里的图片读不出来，请重新复制。</source>
+        <translation>The clipboard image could not be read. Copy it again.</translation>
+    </message>
+    <message>
+        <source>剪贴板正被别的程序占用，请再试一次。</source>
+        <translation>Another program is using the clipboard. Try again.</translation>
     </message>
 </context>
 <context>

@@ -13,6 +13,7 @@
 //   --preview-capture-settings <folder> [--english] [--dark] [--scale 1.5]
 //     Real settings QML at minimum width; checks the full-screen toggle,
 //     binding and persistence in a temporary profile. Registers no hotkeys.
+//     --pin-image scrolls the real pin shortcut row into view and checks its bounds.
 //
 //   WinShunCapture.exe --preview-recording <folder> --renderer d3d11 [--scale 1.5] --auto
 //     A real Capture -> selection -> Recorder -> WGC -> MP4 run over a
@@ -26,6 +27,8 @@
 //     Generated scrolling content through the real Capture/LongCapture WGC
 //     path. Checks complete output, fixed bars, immediate finish and cleanup.
 //     Interactive mode accepts real wheel input; Enter finishes, Esc cancels.
+//     --preceding-capture first copies a regular capture locally, checking that
+//     a following long copy cannot inherit its clipboard identity. No system clipboard writes.
 //
 // --preview-ocr <folder> checks the missing-component panel and installation signal.
 //

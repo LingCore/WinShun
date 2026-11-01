@@ -21,6 +21,7 @@
 #include <QQmlEngine>
 #include <QQuickWindow>
 #include <QScreen>
+#include <QUuid>
 
 #include <dwmapi.h>
 #include <knownfolders.h>
@@ -730,6 +731,8 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
     m_last = picture;
     m_lastOrigin = origin;
     m_lastProject = project;
+    m_lastClipboardSequence = ::GetClipboardSequenceNumber();
+    m_lastClipboardId = QUuid::createUuid().toString(QUuid::WithoutBraces);
     switch (action) {
     case CaptureSession::Action::CopyPin:
         if (PinManager* pins = m_callbacks.pins ? m_callbacks.pins() : nullptr)
@@ -737,7 +740,7 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
         [[fallthrough]]; // copying records the picture once, including its editable project
     case CaptureSession::Action::Copy:
         if (m_callbacks.copy)
-            m_callbacks.copy(picture, project);
+            m_callbacks.copy(picture, project, m_lastClipboardId);
         break;
     case CaptureSession::Action::Save:
         save(picture, {}, std::move(hdr));
@@ -924,6 +927,8 @@ void Capture::restoreDraft()
     m_last = picture;
     m_lastOrigin = draft.origin;
     m_lastProject = project;
+    m_lastClipboardSequence = ::GetClipboardSequenceNumber();
+    m_lastClipboardId = QUuid::createUuid().toString(QUuid::WithoutBraces);
 }
 
 void Capture::findFlyout()
@@ -1015,7 +1020,7 @@ LongCapture& Capture::longCapture()
                 break;
             case LongCapture::Output::Copy:
                 if (m_callbacks.copy)
-                    m_callbacks.copy(picture, {});
+                    m_callbacks.copy(picture, {}, {}); // a long picture is not the previous regular capture
                 break;
             case LongCapture::Output::Save:
                 save(picture);

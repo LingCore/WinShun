@@ -255,7 +255,7 @@ public:
     // capture took (Clip::screenshot, the screenshot history). The PNG is made
     // off the GUI thread. `project`: the annotated picture's editable form
     // (opaque bytes, empty: none), kept with the history entry.
-    void copyImage(const QImage& image, bool remember, bool screenshot = false, QByteArray project = {});
+    void copyImage(const QImage& image, bool remember, bool screenshot = false, QByteArray project = {}, QString imageOrigin = {});
     // A picture (saved, pinned) as a screenshot entry in the history only:
     // the system clipboard is left alone and nothing is announced. Subject to
     // the same switch and pause as copyImage's `remember`; the same pixels
@@ -386,10 +386,10 @@ private:
     ClipWrite writeFor(
         const std::vector<const Clip*>& clips, bool plainText, QString* problem, HWND target = nullptr) const;
     void startPaste(ClipWrite write, Into into, std::vector<qint64> touched, QString done);
-    void encodeImage(const QImage& image, bool remember, bool screenshot, QByteArray project, bool toClipboard);
+    void encodeImage(const QImage& image, bool remember, bool screenshot, QByteArray project, bool toClipboard, QString imageOrigin = {});
     // copyImage's (and recordImage's), encoded
     void storeImage(const QByteArray& png, const QByteArray& hash, QSize size, bool remember, bool screenshot,
-        const QByteArray& project, bool toClipboard);
+        const QByteArray& project, bool toClipboard, const QString& imageOrigin);
     void onWritten(bool ok);
     void returnToField(QString text); // `text` typed into it; none: Esc
     void fillField(); // it has the keyboard again (or waited long enough)

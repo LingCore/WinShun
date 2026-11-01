@@ -1,4 +1,5 @@
 #include "ClipboardWatcher.h"
+#include "ImageOrigin.h"
 
 #include "ClipImage.h"
 
@@ -829,6 +830,10 @@ bool ClipboardWatcher::writeNow(const ClipWrite& data)
     // joined paste, which is not recorded).
     const qint64 id = data.id;
     add(f.ours, &id, sizeof id);
+    if (!data.imageOrigin.isEmpty()) {
+        const QByteArray origin = data.imageOrigin.toUtf8() + '\0';
+        add(::RegisterClipboardFormatW(kImageOriginFormat), origin.constData(), static_cast<std::size_t>(origin.size()));
+    }
 
     if (items.size() <= 1 || !openClipboard())
         return fail();

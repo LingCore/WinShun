@@ -977,3 +977,18 @@ add_dependencies(tst_updater WinShunUpdate)
 add_test(NAME tst_updater COMMAND tst_updater)
 set_tests_properties(tst_updater PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# Clipboard pinning: real native formats on a private window station, WIC
+# file decoding, asynchronous provenance and physical multi-monitor placement.
+qt_add_executable(tst_pinclipboard tst_pinclipboard.cpp
+    ${PROJECT_SOURCE_DIR}/src/capture-plugin/PinImage.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/PictureFile.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/ClipImage.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/ClipboardWatcher.cpp)
+target_include_directories(tst_pinclipboard PRIVATE ${PROJECT_SOURCE_DIR}/src/capture-plugin ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_pinclipboard PRIVATE wscore Qt6::Gui Qt6::Test user32 gdi32 shell32 ole32 windowscodecs version)
+set_target_properties(tst_pinclipboard PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+add_test(NAME tst_pinclipboard COMMAND tst_pinclipboard -o -,txt)
+set_tests_properties(tst_pinclipboard PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=windows;QT_FORCE_STDERR_LOGGING=1"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")

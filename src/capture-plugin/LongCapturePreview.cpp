@@ -101,6 +101,7 @@ int runLongCapture(const QStringList& args)
     check(body.save(out.filePath(u"body.png"_s)), "save body");
     check(foot.save(out.filePath(u"footer.png"_s)), "save footer");
     QQmlApplicationEngine engine;
+    engine.addImportPath(QDir(qEnvironmentVariable("WS_APP_DIR")).filePath(u"qml"_s));
     QQmlComponent component(&engine);
     component.setData(R"(
         import QtQuick
@@ -188,9 +189,21 @@ int runLongCapture(const QStringList& args)
     bool ended = false;
     bool copied = false;
     bool edited = false;
+    bool precedingCapture = false;
+    QString precedingOrigin;
     Capture::Callbacks callbacks;
     callbacks.longCapture = [&](const QImage& picture) { result = picture; ended = true; edited = true; };
-    callbacks.copy = [&](const QImage& picture, const QByteArray&) { result = picture; ended = true; copied = true; };
+    callbacks.copy = [&](const QImage& picture, const QByteArray&, const QString& origin) {
+        if (precedingCapture) {
+            check(!origin.isEmpty(), "regular capture must supply its own clipboard identity");
+            precedingOrigin = origin;
+            return;
+        }
+        check(origin.isEmpty(), "long capture must not inherit the preceding screenshot's identity");
+        result = picture;
+        ended = true;
+        copied = true;
+    };
     callbacks.record = [&](const QImage& picture, const QByteArray&) { result = picture; ended = true; };
     callbacks.saveFolder = [&] { return out.absolutePath(); };
     bool fileSaved = false;
@@ -218,6 +231,20 @@ int runLongCapture(const QStringList& args)
     session->pointerPress(screen->index(), region.topLeft() - screen->origin(), Qt::LeftButton);
     session->pointerMove(screen->index(), region.bottomRight() - screen->origin());
     session->pointerRelease(screen->index(), region.bottomRight() - screen->origin(), Qt::LeftButton);
+    if (args.contains(u"--preceding-capture"_s)) {
+        precedingCapture = true;
+        session->act(static_cast<int>(CaptureSession::Action::Copy));
+        check(!precedingOrigin.isEmpty() && capture.lastClipboardId() == precedingOrigin,
+            "remember the regular capture before starting a long capture");
+        precedingCapture = false;
+        pump(400);
+        capture.trigger();
+        pump(300);
+        // Overlays are reused; their screen/session objects stay alive.
+        session->pointerPress(screen->index(), region.topLeft() - screen->origin(), Qt::LeftButton);
+        session->pointerMove(screen->index(), region.bottomRight() - screen->origin());
+        session->pointerRelease(screen->index(), region.bottomRight() - screen->origin(), Qt::LeftButton);
+    }
     session->act(static_cast<int>(CaptureSession::Action::Long));
     LongCapture* controller = nullptr;
     QQuickWindow* panel = nullptr;

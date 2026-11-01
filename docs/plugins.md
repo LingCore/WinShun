@@ -260,7 +260,7 @@ C++ SDK 的 `initialized()` 在回答完 `initialize` 后调一次：`eager` 插
 
 | 工具 | 权限 | 参数 | 做什么 |
 |---|---|---|---|
-| `clipboard_add_image` | `clipboard:write` | `file`、`project`（可选）、`copy`（默认 true）、`screenshot` | 把插件数据文件夹里的一张图（和标注工程）放进剪贴板历史；`copy` 为 false 时只记下、不放到剪贴板。Win顺 读完就删掉这两个文件。回 `{kept}`：剪贴板历史或图片记录关着、暂停着时是 false |
+| `clipboard_add_image` | `clipboard:write` | `file`、`project`（可选）、`copy`（默认 true）、`screenshot`、`origin`（可选） | 把插件数据文件夹里的一张图（和标注工程）放进剪贴板历史；`copy` 为 false 时只记下、不放到剪贴板。Win顺 读完就删掉这两个文件。回 `{kept}`：剪贴板历史或图片记录关着、暂停着时是 false。`origin` 是至多 96 UTF-8 字节、不含 NUL 的图片来源标识，随实际图片一同写入剪贴板；截图插件用它保留最近截图的可编辑标注，不依赖异步调用返回时的剪贴板序号 |
 | `clipboard_copy` | `clipboard:write` | `text` | 文字放到剪贴板（最多 100 万字），像平常复制一样进历史 |
 | `clipboard_copy_entry` | `clipboard:write` | `id` | 剪贴板历史里的一条重新放到剪贴板，并移到最前 |
 | `show_launcher` | `ui` | `text` | 打开搜索框并填上这段文字 |

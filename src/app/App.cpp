@@ -2008,8 +2008,13 @@ void App::setUpAppTools()
             }
             const bool copy = arguments.value(u"copy"_s).toBool(true);
             const bool screenshot = arguments.value(u"screenshot"_s).toBool();
+            const QString imageOrigin = arguments.value(u"origin"_s).toString();
+            if (imageOrigin.toUtf8().size() > 96 || imageOrigin.contains(QChar::Null)) {
+                done(toolError(u"origin must be at most 96 UTF-8 bytes without NUL"_s));
+                return;
+            }
             QPointer<App> self(this);
-            std::thread([self, file, project, copy, screenshot, done = std::move(done)]() mutable {
+            std::thread([self, file, project, copy, screenshot, imageOrigin, done = std::move(done)]() mutable {
                 QImage image = readHandedPicture(file);
                 QByteArray bytes;
                 if (!project.isEmpty()) {
@@ -2020,7 +2025,7 @@ void App::setUpAppTools()
                 QFile::remove(file);
                 if (!project.isEmpty())
                     QFile::remove(project);
-                QMetaObject::invokeMethod(qApp, [self, image = std::move(image), bytes = std::move(bytes), copy, screenshot,
+                QMetaObject::invokeMethod(qApp, [self, image = std::move(image), bytes = std::move(bytes), copy, screenshot, imageOrigin,
                                                     done = std::move(done)]() mutable {
                     if (!self)
                         return;
@@ -2030,7 +2035,7 @@ void App::setUpAppTools()
                     }
                     const bool remember = self->m_settings.clipboard && self->m_settings.clipboardImages && !self->m_clipboardPaused;
                     if (copy)
-                        self->m_clipboard->copyImage(image, remember, screenshot, std::move(bytes));
+                        self->m_clipboard->copyImage(image, remember, screenshot, std::move(bytes), imageOrigin);
                     else if (remember)
                         self->m_clipboard->recordImage(image, std::move(bytes));
                     done({{{u"kept"_s, remember}}});

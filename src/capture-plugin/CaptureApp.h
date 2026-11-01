@@ -75,6 +75,7 @@ private:
     void quickOcrDone();
     void notifySaved(const QString& path, const QString& error);
     void pinPicture(const QString& path, bool screenshot);
+    void pinCurrentImage(); // clipboard picture first, otherwise the editable last capture
     void editPicture(qint64 clipId, const QString& file, const QString& projectFile);
     void editPin(capture::PinWindow* pin);
     void showSettings();
@@ -85,7 +86,7 @@ private:
     // ---- Win顺's side ----
     // Into the clipboard history (copy: and onto the clipboard), as a
     // screenshot when it is one; with its annotations to edit again.
-    void copyImage(const QImage& image, const QByteArray& project, bool copy, bool screenshot);
+    void copyImage(const QImage& image, const QByteArray& project, bool copy, bool screenshot, const QString& imageOrigin = {});
     void copyText(const QString& text);
     void notify(const QString& title, const QString& text, const QString& folder = {});
     void searchText(const QString& text, bool web);
@@ -127,6 +128,7 @@ private:
     quint64 m_nextOut = 1;
     QTimer m_applyLater;
     bool m_started = false;
+    bool m_pinPending = false;
 };
 
 } // namespace ws::captureplugin

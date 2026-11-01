@@ -698,8 +698,9 @@ Item {
 
                 HotkeyRow {
                     id: lastPinHotkeyRow
-                    title: qsTr("贴上最近一次截图的快捷键")
-                    words: qsTr("把最近截过的图贴回原位置，保留标注；不设时仍可从托盘菜单操作")
+                    objectName: "capturePinImageHotkey"
+                    title: qsTr("贴图的快捷键")
+                    words: qsTr("优先贴剪贴板里的图片；没有新图片时，把最近截图贴回原位置并保留标注。不设时仍可从托盘菜单操作")
                     hotkey: card.editor.captureLastPinHotkey
                     error: card.editor.captureLastPinHotkeyError
                     onRecorded: (hotkey) => card.editor.captureLastPinHotkey = hotkey

@@ -219,6 +219,28 @@ int runSettings(const QStringList& args)
     }
     if (!ok)
         qWarning("capture settings: full-screen toggle did not update the editor and isolated file");
+    if (args.contains(u"--pin-image"_s)) {
+        if (QObject* options = window->findChild<QObject*>(u"captureOptions"_s))
+            options->setProperty("currentGroup", 3);
+        settle(window);
+        auto* row = window->findChild<QQuickItem*>(u"capturePinImageHotkey"_s);
+        ok = ok && row;
+        if (row) {
+            for (QQuickItem* item = row->parentItem(); item; item = item->parentItem()) {
+                if (item->metaObject()->indexOfProperty("contentY") < 0)
+                    continue;
+                const qreal y = row->mapToItem(item, QPointF()).y() + item->property("contentY").toReal() - 24;
+                const qreal limit = (std::max)(qreal(0), item->property("contentHeight").toReal() - item->height());
+                item->setProperty("contentY", std::clamp(y, qreal(0), limit));
+                break;
+            }
+            settle(window);
+            const QRectF rect = row->mapRectToItem(window->contentItem(), row->boundingRect());
+            ok = ok && row->isVisible() && QRectF(QPointF(), window->contentItem()->size()).contains(rect);
+            say(u"pin image shortcut: %1; %2; visible=%3"_s.arg(row->property("title").toString(),
+                row->property("words").toString()).arg(ok));
+        }
+    }
     const bool saved = saveGrab(window, out.filePath(u"capture-settings.png"_s));
     return finish(window, ok && saved);
 }

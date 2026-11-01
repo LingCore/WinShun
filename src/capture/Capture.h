@@ -62,8 +62,9 @@ class Capture : public QObject {
 public:
     struct Callbacks {
         // Enter, a double click, the toolbar. `project`: the annotated
-        // picture's editable form (empty: it has no annotations).
-        std::function<void(const QImage&, const QByteArray& project)> copy;
+        // picture's editable form (empty: it has no annotations). `origin`
+        // identifies this regular capture; a long picture passes an empty id.
+        std::function<void(const QImage&, const QByteArray& project, const QString& origin)> copy;
         // Ctrl+S and F3 also put the picture in the screenshot history,
         // leaving the system clipboard alone.
         std::function<void(const QImage&, const QByteArray& project)> record;
@@ -150,6 +151,10 @@ public:
     // 贴上最近一次截图 (the tray menu).
     bool hasLast() const { return !m_last.isNull(); }
     void pinLast(); // the last capture taken, where it was
+    // The clipboard before this capture's asynchronous copy, plus an identity
+    // carried with that copy's pixels when they actually reach the clipboard.
+    quint32 lastClipboardSequence() const { return m_lastClipboardSequence; }
+    QString lastClipboardId() const { return m_lastClipboardId; }
     // 找回刚放弃的标注: a capture ended with annotations on it (hotkey, Esc)
     // keeps them for kDraftMs or until the next capture; this pins their
     // picture where the capture was, with the project.
@@ -247,6 +252,8 @@ private:
     QImage m_last; // the last capture taken (copied, saved, pinned, read), for 贴上最近一次截图
     QPoint m_lastOrigin; // where it was, physical
     QByteArray m_lastProject;
+    quint32 m_lastClipboardSequence = 0;
+    QString m_lastClipboardId;
     struct Draft {
         annot::Project project; // the selection's pixels and the annotations over them
         QPoint origin; // physical, virtual desktop

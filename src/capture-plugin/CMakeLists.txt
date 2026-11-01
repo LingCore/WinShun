@@ -34,12 +34,14 @@ endforeach()
 qt_add_library(WinShunCaptureApp SHARED
     PluginMain.cpp
     CaptureApp.cpp CaptureApp.h
+    PinImage.cpp PinImage.h
     CapturePreview.cpp CapturePreview.h LongCapturePreview.cpp
     RawClicks.cpp RawClicks.h
     Protocol.cpp Protocol.h
     PluginShell.cpp PluginShell.h
     ${app_dir}/Phosphor.cpp ${app_dir}/Phosphor.h
     ${app_dir}/PictureFile.cpp ${app_dir}/PictureFile.h
+    ${app_dir}/ClipImage.cpp ${app_dir}/ClipImage.h
     ${app_dir}/platform/DragOut.cpp ${app_dir}/platform/DragOut.h
     ${app_dir}/platform/Foreground.cpp ${app_dir}/platform/Foreground.h
     ${app_dir}/platform/HotkeyText.h

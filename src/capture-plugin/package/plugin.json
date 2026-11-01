@@ -17,7 +17,7 @@
     "id": "capture",
     "keyword": ["cap"],
     "title": {"zh": "截图", "en": "Screenshot"},
-    "description": {"zh": "开始截图、延时截图、贴上最近一次截图、截图设置", "en": "Take a screenshot, after a delay, pin the last one, settings"},
+    "description": {"zh": "开始截图、延时截图、贴图、截图设置", "en": "Take a screenshot, after a delay, pin an image, settings"},
     "icon": "glyph:U+E722"
   }]
 }
