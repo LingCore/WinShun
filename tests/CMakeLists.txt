@@ -14,6 +14,12 @@ add_test(NAME tst_contentpane COMMAND $<TARGET_FILE:WinShun>
 set_tests_properties(tst_contentpane PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# Clipboard sizing uses the production QML/native frame with temporary history.
+add_test(NAME tst_clipboardsizing COMMAND $<TARGET_FILE:WinShun>
+    --preview-results "${CMAKE_CURRENT_BINARY_DIR}/clipboard-sizing" --clipboard-sizing --renderer d3d11)
+set_tests_properties(tst_clipboardsizing PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 qt_add_executable(tst_querysyntax tst_querysyntax.cpp)
 target_link_libraries(tst_querysyntax PRIVATE wscore Qt6::Test)
 set_target_properties(tst_querysyntax PROPERTIES WIN32_EXECUTABLE FALSE)

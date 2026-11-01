@@ -131,6 +131,8 @@ struct WindowFrame::Hook {
             // moving it, the program behind keeps the front.
             if (wParam == HTCAPTION && self->m_noActivate)
                 return ::DefWindowProcW(hwnd, WM_SYSCOMMAND, SC_MOVE | HTCAPTION, lParam);
+            if (self->m_noActivate && self->m_resizable && wParam >= HTLEFT && wParam <= HTBOTTOMRIGHT)
+                return ::DefWindowProcW(hwnd, WM_SYSCOMMAND, SC_SIZE | (wParam - HTLEFT + WMSZ_LEFT), lParam);
             // A handle: dragged, it moves the window as the rest does; let go
             // before the pointer has gone the system's drag distance, a click.
             // Told apart here, before the move loop, which takes the release
@@ -372,7 +374,8 @@ int WindowFrame::hitTest(int screenX, int screenY) const
 qreal WindowFrame::resizeMargin(qreal devicePixelRatio) const
 {
     const qreal dpr = std::max(qreal(1), devicePixelRatio);
-    return std::max(kSideEdge, resizeEdge(UINT(std::lround(96 * dpr))) / dpr);
+    const UINT dpi = m_hwnd ? ::GetDpiForWindow(reinterpret_cast<HWND>(m_hwnd)) : ::GetDpiForSystem();
+    return std::max(kSideEdge, resizeEdge(dpi) / dpr);
 }
 
 void WindowFrame::setResizable(bool on)

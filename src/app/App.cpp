@@ -1266,7 +1266,9 @@ bool App::createClipWindow()
     win::setDarkFrame(window, isDarkMode());
     m_clipboard->setWindow(window);
     m_clipPlacement->setWindow(window);
+    m_clipPlacement->enableWindowSizing();
     m_clipFrame->setWindow(window);
+    m_clipFrame->setResizable(true);
     m_clipLogo = new WindowLogo(window);
     connect(window, &QWindow::activeChanged, this, [this] {
         // Clicking elsewhere or switching apps hides it, like a menu. Not at

@@ -167,8 +167,34 @@ struct Placement::Hook {
             self->m_glide.stop();
             self->settleSlide(); // grabbed on its way in: where it was going
             self->m_moveStart = self->m_window->position();
+            self->m_resizeStart = self->m_window->size();
             self->m_grabbed = false;
             self->setMoving(true);
+            break;
+        case WM_SIZING:
+            if (self->m_windowSizingEnabled) {
+                if (!self->m_windowSizing) {
+                    self->m_windowSizing = true;
+                    emit self->windowSizingChanged();
+                }
+                // Constrain the proposed native rectangle, before Windows applies it.
+                // Qt's minimum/maximum size handles the other sizing limits.
+                RECT& rect = *reinterpret_cast<RECT*>(lParam);
+                MONITORINFO info {sizeof info};
+                if (::GetMonitorInfoW(::MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &info)) {
+                    rect.left = std::max(rect.left, info.rcWork.left);
+                    rect.top = std::max(rect.top, info.rcWork.top);
+                    rect.right = std::min(rect.right, info.rcWork.right);
+                    rect.bottom = std::min(rect.bottom, info.rcWork.bottom);
+                }
+                return TRUE;
+            }
+            break;
+        case WM_NCLBUTTONDBLCLK:
+            if (self->m_windowSizingEnabled && wParam >= HTLEFT && wParam <= HTBOTTOMRIGHT) {
+                emit self->sizeResetRequested();
+                return 0;
+            }
             break;
         case WM_MOVING: {
             // Windows proposes where the window was plus the pointer's step,
@@ -218,6 +244,27 @@ struct Placement::Hook {
                 self->endSizing(false);
             break;
         case WM_EXITSIZEMOVE:
+            if (self->m_windowSizing) {
+                const QSize size = self->m_window->size();
+                if (size != self->m_resizeStart) {
+                    // A deliberate resize keeps its opposite edge fixed, including
+                    // windows attached to a caret. Automatic fitting is never saved.
+                    self->m_box.reset();
+                    self->m_avoid.reset();
+                    self->setTaskbar({});
+                    self->m_dropped = true;
+                    self->m_left = self->m_window->x();
+                    if (auto* screen = self->m_window->screen())
+                        self->setRoom(screen->availableGeometry().bottom() + 1 - self->m_window->y());
+                    emit self->windowResized(self->m_resizeStart, size);
+                }
+                self->m_windowSizing = false;
+                emit self->windowSizingChanged();
+                self->setMoving(false);
+                self->m_displaySettle.stop();
+                self->m_displayRestorePending = false;
+                break;
+            }
             self->setMoving(false);
             // A completed user move/resize owns its final geometry, including
             // a drag across DPI boundaries. Do not snap it back to the old

@@ -22,6 +22,7 @@ Item {
         }
     }
     property real parentTop // where the parent's top is in the window: to draw on whole device pixels
+    property real resizeMargin: 0
     signal copyRequested(string text, bool remember) // one of a colour's notations, a picture's words
 
     // A picture's words: those selected with the mouse, or all of them, copied
@@ -428,8 +429,10 @@ Item {
     }
 
     ListScrollBar {
+        objectName: "clipboardPreviewScrollBar"
         flickable: flick
         anchors.right: parent.right
+        anchors.rightMargin: preview.resizeMargin
         anchors.top: flick.top
         anchors.bottom: flick.bottom
     }

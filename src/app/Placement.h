@@ -100,6 +100,7 @@ class Placement : public QObject {
     Q_PROPERTY(int boxWidth READ boxWidth NOTIFY boxWidthChanged FINAL)
     // Its edge held, widening it (beginSizing).
     Q_PROPERTY(bool sizing READ sizing NOTIFY sizingChanged FINAL)
+    Q_PROPERTY(bool windowSizing READ windowSizing NOTIFY windowSizingChanged FINAL)
     // The content's logical size, independent of unsolicited native resizes.
     Q_PROPERTY(QSize contentSize READ contentSize WRITE setContentSize NOTIFY contentSizeChanged FINAL)
 
@@ -177,6 +178,9 @@ public:
     void rememberWidth(int defaultWidth, int minimumWidth);
     int boxWidth() const { return m_boxWidth; }
     bool sizing() const { return m_sizing; }
+    // Native resizing on all edges, separate from the launcher's centred width grip.
+    void enableWindowSizing() { m_windowSizingEnabled = true; }
+    bool windowSizing() const { return m_windowSizing; }
     bool customWidth() const { return m_defaultWidth > 0 && m_wantedWidth != m_defaultWidth; }
     // A press on its left or right edge (WindowFrame::sideGrabbed): the
     // window follows the pointer until the button is let go; Esc puts it back.
@@ -199,6 +203,9 @@ signals:
     void sizingChanged();
     void widthReset(); // resetWidth() changed it
     void contentSizeChanged();
+    void windowSizingChanged();
+    void windowResized(QSize previousSize, QSize size);
+    void sizeResetRequested();
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
@@ -302,6 +309,9 @@ private:
     int m_wantedWidth = 0; // its user's
     int m_boxWidth = 0; // ... within the work area it is on
     bool m_sizing = false;
+    bool m_windowSizingEnabled = false;
+    bool m_windowSizing = false;
+    QSize m_resizeStart;
     bool m_sizeLeft = false;
     RECT m_sizeStart {}; // the window as the edge was grabbed, physical pixels
     POINT m_sizeFrom {}; // ... and the pointer

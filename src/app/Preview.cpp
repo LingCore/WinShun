@@ -81,6 +81,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <thread>
 
 #include <windows.h>
 #include <psapi.h>
@@ -2578,7 +2579,168 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
     say(u"panel column drag/resize/persistence and plugin metadata: production QML with isolated fixtures"_s);
 }
 
-bool checkClipboardInteractions(QQmlEngine* engine, const QDir& output, const QString& galleryImage)
+bool checkClipboardSizing(QQuickWindow* window, Clipboard& clipboard, Placement& placement,
+    ClipStore& store, QQuickItem* page, const QDir& output)
+{
+    bool ok = true;
+    QJsonObject results;
+    const auto check = [&](const char* name, bool passed) {
+        results.insert(QString::fromLatin1(name), passed);
+        ok = ok && passed;
+        if (!passed) qWarning("clipboard sizing: %s", name);
+    };
+    const HWND hwnd = reinterpret_cast<HWND>(window->winId());
+    for (int i = 0; i < 25; ++i)
+        store.add(ClipCapture {.kind = ClipKind::Text,
+            .text = u"第 %1 条剪贴板记录：整理项目资料，检查窗口大小与滚动体验。\n"_s.arg(i + 1).repeated(50)},
+            QDateTime::currentMSecsSinceEpoch() + i);
+    clipboard.historyChanged();
+    clipboard.handleShown();
+    const auto area = window->screen()->availableGeometry();
+    placement.placeOn(window->screen());
+    window->setPosition(area.topLeft() + QPoint(50, 50));
+    settle(window);
+    const auto resize = [&](int edge, int dw, int dh, bool cancel = false) {
+        RECT original {};
+        ::GetWindowRect(hwnd, &original);
+        RECT proposed = original;
+        const LONG dx = qRound(dw * window->devicePixelRatio());
+        const LONG dy = qRound(dh * window->devicePixelRatio());
+        if (edge == WMSZ_LEFT || edge == WMSZ_TOPLEFT || edge == WMSZ_BOTTOMLEFT) proposed.left -= dx;
+        else proposed.right += dx;
+        if (edge == WMSZ_TOP || edge == WMSZ_TOPLEFT || edge == WMSZ_TOPRIGHT) proposed.top -= dy;
+        else proposed.bottom += dy;
+        ::SendMessageW(hwnd, WM_ENTERSIZEMOVE, 0, 0);
+        ::SendMessageW(hwnd, WM_SIZING, edge, reinterpret_cast<LPARAM>(&proposed));
+        ::SetWindowPos(hwnd, nullptr, proposed.left, proposed.top, proposed.right - proposed.left, proposed.bottom - proposed.top,
+            SWP_NOZORDER | SWP_NOACTIVATE);
+        pump(35);
+        check("live_page_tracks_window", std::abs(page->height() - window->height()) < 1 && std::abs(page->width() - window->width()) < 1);
+        if (cancel)
+            ::SetWindowPos(hwnd, nullptr, original.left, original.top, original.right - original.left, original.bottom - original.top,
+                SWP_NOZORDER | SWP_NOACTIVATE);
+        ::SendMessageW(hwnd, WM_EXITSIZEMOVE, 0, 0);
+        settle(window, 2);
+    };
+    const auto hit = [&](int x, int y) {
+        RECT rect {};
+        ::GetWindowRect(hwnd, &rect);
+        const int px = x < 0 ? rect.right + x : rect.left + x;
+        const int py = y < 0 ? rect.bottom + y : rect.top + y;
+        return ::SendMessageW(hwnd, WM_NCHITTEST, 0, MAKELPARAM(px, py));
+    };
+    const int midX = qRound(window->width() * window->devicePixelRatio() / 2);
+    const int midY = qRound(window->height() * window->devicePixelRatio() / 2);
+    check("all_eight_resize_edges", hit(1, 1) == HTTOPLEFT && hit(-2, 1) == HTTOPRIGHT
+        && hit(1, -2) == HTBOTTOMLEFT && hit(-2, -2) == HTBOTTOMRIGHT
+        && hit(midX, 1) == HTTOP && hit(midX, -2) == HTBOTTOM
+        && hit(1, midY) == HTLEFT && hit(-2, midY) == HTRIGHT);
+    const auto scrollbarWorks = [&](const QString& name) {
+        auto* bar = visualNamed(page, name);
+        if (!bar || !bar->isVisible()) return false;
+        const auto at = bar->mapToGlobal(QPointF(bar->width() - 3, bar->height() / 2));
+        const auto origin = window->mapToGlobal(QPoint(0, 0));
+        const auto code = hit(qRound((at.x() - origin.x()) * window->devicePixelRatio()),
+                   qRound((at.y() - origin.y()) * window->devicePixelRatio()));
+        return code == HTCLIENT;
+    };
+    check("list_scrollbar_does_not_resize", scrollbarWorks(u"clipboardListScrollBar"_s));
+    const int initialHeight = window->height();
+    resize(WMSZ_RIGHT, 100, 0);
+    check("width_saved_without_fixing_auto_height", clipboard.listWidth() == 580 && window->width() == 580
+        && clipboard.windowHeight() == 0 && window->height() == initialHeight && store.value(u"listWidth"_s) == u"580");
+    resize(WMSZ_BOTTOM, 0, 60);
+    const int chosenHeight = window->height();
+    check("height_saved", chosenHeight == initialHeight + 60 && clipboard.windowHeight() == chosenHeight
+        && store.value(u"windowHeight"_s).toInt() == chosenHeight);
+    resize(WMSZ_TOPLEFT, 20, 20);
+    check("corner_resize", clipboard.listWidth() == 600 && clipboard.windowHeight() == chosenHeight + 20);
+    const QSize chosen = window->size();
+    resize(WMSZ_BOTTOMRIGHT, 40, 40, true);
+    check("cancel_keeps_preferences", window->size() == chosen && clipboard.listWidth() == chosen.width()
+        && clipboard.windowHeight() == chosen.height());
+    clipboard.resumeHistory();
+    check("preferences_reload", clipboard.listWidth() == chosen.width() && clipboard.windowHeight() == chosen.height());
+    window->hide();
+    window->show();
+    settle(window);
+    check("reopen_keeps_size", window->size() == chosen);
+    QMetaObject::invokeMethod(page, "showPreview");
+    settle(window);
+    const int previewWidth = window->property("previewWidth").toInt();
+    const int beforeList = window->property("listWidth").toInt();
+    resize(WMSZ_RIGHT, 30, 0);
+    check("preview_resize_keeps_preview_width", window->property("previewWidth").toInt() == previewWidth
+        && clipboard.listWidth() == beforeList + 30);
+    check("preview_scrollbar_does_not_resize", scrollbarWorks(u"clipboardPreviewScrollBar"_s));
+    check("preview_screenshot", saveGrab(window, output.filePath(u"clipboard-sizing-preview.png"_s)));
+    QMetaObject::invokeMethod(page, "closePreview");
+    settle(window);
+    check("preview_close_keeps_list_size", window->width() == clipboard.listWidth() && window->height() == clipboard.windowHeight());
+    clipboard.setWindowHeight(qRound(area.height() * 0.75));
+    settle(window);
+    const int rememberedHeight = clipboard.windowHeight();
+    placement.attach(QRect(area.center(), QSize(1, 0)), window->screen());
+    settle(window);
+    check("temporary_room_does_not_overwrite_height", window->height() < rememberedHeight
+        && clipboard.windowHeight() == rememberedHeight);
+    placement.placeOn(window->screen());
+    settle(window);
+    check("larger_room_restores_height", window->height() == rememberedHeight);
+    clipboard.setLayoutOptions(true, true);
+    placement.attach(QRect(QPoint(area.left() + 50, area.bottom() - 1), QSize(1, 0)), window->screen());
+    settle(window);
+    check("above_caret_layout_is_flipped", placement.above() && page->property("flipped").toBool());
+    check("flipped_layout_screenshot", saveGrab(window, output.filePath(u"clipboard-sizing-flipped.png"_s)));
+    clipboard.setLayoutOptions(false, false);
+    placement.placeOn(window->screen());
+    ::SendMessageW(hwnd, WM_NCLBUTTONDBLCLK, HTRIGHT, 0);
+    settle(window);
+    check("edge_double_click_resets", clipboard.listWidth() == 480 && clipboard.windowHeight() == 0 && window->width() == 480);
+    clipboard.setWindowHeight(-1);
+    check("invalid_height_clamped", clipboard.windowHeight() == 0);
+    check("default_screenshot", saveGrab(window, output.filePath(u"clipboard-sizing-default.png"_s)));
+    {
+        // Real mouse input exercises the system size loop and its no-activate
+        // route. Only this fixture is on screen; the cursor is put back.
+        const HWND foreground = ::GetForegroundWindow();
+        POINT cursor {};
+        ::GetCursorPos(&cursor);
+        const auto restoreCursor = qScopeGuard([&] { ::SetCursorPos(cursor.x, cursor.y); });
+        ::SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        settle(window);
+        RECT rect {};
+        ::GetWindowRect(hwnd, &rect);
+        const QSize before = window->size();
+        std::jthread input([rect] {
+            const auto button = [](DWORD flags) {
+                INPUT event {};
+                event.type = INPUT_MOUSE;
+                event.mi.dwFlags = flags;
+                ::SendInput(1, &event, sizeof event);
+            };
+            ::SetCursorPos(rect.right - 2, rect.bottom - 2);
+            ::Sleep(50);
+            button(MOUSEEVENTF_LEFTDOWN);
+            ::Sleep(100);
+            ::SetCursorPos(rect.right + 28, rect.bottom + 28);
+            ::Sleep(100);
+            button(MOUSEEVENTF_LEFTUP);
+        });
+        pump(600);
+        input.join();
+        settle(window);
+        check("real_mouse_corner_drag", window->width() > before.width() && window->height() > before.height()
+            && clipboard.listWidth() == window->width() && clipboard.windowHeight() == window->height() && !placement.windowSizing());
+        check("resize_does_not_activate", ::GetForegroundWindow() == foreground && !window->isActive());
+    }
+    QFile report(output.filePath(u"clipboard-sizing.json"_s));
+    if (report.open(QIODevice::WriteOnly)) report.write(QJsonDocument(results).toJson(QJsonDocument::Indented));
+    say(u"clipboard native edge/corner sizing, persistence, preview and temporary fitting: isolated production QML"_s);
+    return ok;
+}
+
+bool checkClipboardInteractions(QQmlEngine* engine, const QDir& output, const QString& galleryImage, bool sizingOnly = false)
 {
     QTemporaryDir temporary;
     ClipStore store(temporary.path());
@@ -2608,12 +2770,21 @@ bool checkClipboardInteractions(QQmlEngine* engine, const QDir& output, const QS
     window->create();
     frame.setWindow(window);
     placement.setWindow(window);
+    placement.enableWindowSizing();
+    frame.setResizable(true);
+    frame.setNoActivate(true);
     showOffScreen(window);
     clipboard.handlePlaced();
     settle(window);
     auto* row = visualNamed(window->contentItem(), u"clipboardRow-0"_s);
     auto* page = visualNamed(window->contentItem(), u"clipboardPage"_s);
     if (!row || !page) { check(false, "production clipboard row missing"); return false; }
+    if (sizingOnly) {
+        const bool passed = checkClipboardSizing(window, clipboard, placement, store, page, output);
+        check(!watcher.running(), "sizing probe must never capture or write the native clipboard");
+        window->hide();
+        return ok && passed;
+    }
     const auto mouse = [&](QEvent::Type type, QPointF at, Qt::MouseButton button, Qt::MouseButtons held) {
         QMouseEvent event(type, at, window->mapToGlobal(at.toPoint()), button, held, {});
         QCoreApplication::sendEvent(window, &event);
@@ -2628,14 +2799,8 @@ bool checkClipboardInteractions(QQmlEngine* engine, const QDir& output, const QS
     pump(QGuiApplication::styleHints()->mouseDoubleClickInterval() + 80);
     check(!clipboard.previewOpen() && !page->property("previewOpen").toBool(), "double click opened or remembered a preview");
     check(clipboard.statusText() == Clipboard::tr("这些文件已经不存在了"), "double click did not reach the file paste handler");
-    if (auto* grip = visualNamed(window->contentItem(), u"clipboardWidthGrip"_s)) {
-        const QPointF edge = grip->mapToScene(QPointF(grip->width() / 2, grip->height() / 2));
-        mouse(QEvent::MouseButtonPress, edge, Qt::LeftButton, Qt::LeftButton);
-        mouse(QEvent::MouseMove, edge + QPointF(100, 0), Qt::NoButton, Qt::LeftButton);
-        mouse(QEvent::MouseButtonRelease, edge + QPointF(100, 0), Qt::LeftButton, {});
-        check(clipboard.listWidth() == 580 && window->width() == 580, "clipboard list edge did not resize and save");
-        check(store.value(u"listWidth"_s) == u"580", "clipboard width preference was not saved");
-    } else check(false, "clipboard width grip missing");
+    check(checkClipboardSizing(window, clipboard, placement, store, page, output), "clipboard sizing regression");
+    showOffScreen(window);
     settle(window);
     check(saveGrab(window, output.filePath(u"clipboard-resized.png"_s)), "clipboard window did not render");
     {
@@ -3129,6 +3294,8 @@ int runResults(const QStringList& args)
     QGuiApplication::setFont(font);
     QQmlApplicationEngine engine;
     engine.addImageProvider(u"fileicon"_s, new FileIconProvider);
+    if (args.contains(u"--clipboard-sizing"_s))
+        return checkClipboardInteractions(&engine, out, {}, true) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--content-pane"_s)) {
         engine.addImageProvider(u"thumbnail"_s, new ThumbnailProvider);
         return checkContentPane(&engine, out) ? std::min(g_warnings, 100) : 4;

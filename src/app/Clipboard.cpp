@@ -260,6 +260,16 @@ void Clipboard::setListWidth(int width)
     emit listWidthChanged();
 }
 
+void Clipboard::setWindowHeight(int height)
+{
+    height = std::clamp(height, 0, 4320);
+    if (m_windowHeight == height)
+        return;
+    m_windowHeight = height;
+    m_store->setValue(u"windowHeight"_s, QString::number(height));
+    emit windowHeightChanged();
+}
+
 void Clipboard::setPinnedFirst(bool on)
 {
     if (m_pinnedFirst == on)
@@ -558,6 +568,7 @@ void Clipboard::loadHistoryState()
     m_previewWidth = std::max(0, m_store->value(u"previewWidth"_s).toInt());
     const int savedWidth = m_store->value(u"listWidth"_s).toInt();
     m_listWidth = savedWidth >= 360 && savedWidth <= 1600 ? savedWidth : 480;
+    m_windowHeight = std::clamp(m_store->value(u"windowHeight"_s).toInt(), 0, 4320);
     m_pinnedFirst = m_store->value(u"order"_s) == u"pinnedFirst"_s;
 }
 
@@ -568,6 +579,7 @@ void Clipboard::resumeHistory()
     emit previewOpenChanged();
     emit previewWidthChanged();
     emit listWidthChanged();
+    emit windowHeightChanged();
     emit pinnedFirstChanged();
     historyChanged();
     if (m_recording && !m_paused)

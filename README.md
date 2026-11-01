@@ -205,7 +205,7 @@
 
 - **记什么**：复制过的文字、图片、文件都记下来。
 - **怎么打开**：`Win+V` 或自设的快捷键；开在输入光标旁，不抢焦点。
-- **调整宽度**：预览关闭时拖动面板右边缘，双击边缘恢复默认；文字随设置 › 外观 › 界面大小调整。复制的图片文件也显示缩略图。
+- **调整大小**：拖动剪贴板窗口的四边或四角调整宽高，预览展开时也可调整；尺寸自动保存，双击边缘恢复默认。屏幕空间不足时临时缩小，保留记住的尺寸；文字随设置 › 外观 › 界面大小调整。复制的图片文件也显示缩略图。
 - **怎么粘贴**：双击或 `Enter` 粘贴（也可以设成像 Windows 自带的那样单击就粘贴），`Shift+Enter` 粘贴为纯文本，`Alt+1`～`9` 直接粘贴第几条（图标上的序号默认一直显示，可在设置里调整）。
 - **不开面板直接粘贴**：设置 › 剪贴板 › 快捷键 里打开“不打开面板直接粘贴”（`Ctrl+1–9` 或 `Alt+1–9`），在别的程序里就能直接粘贴前九条，格式照旧。默认关，打开后这些键在别的程序里原来的用处（比如浏览器切换标签页）就让给它。
 - **按住连按，松开粘贴**（和 Ditto 一样）：设置 › 剪贴板 › 快捷键 里打开“按住连按快捷键，松开粘贴”。按住快捷键里的 Ctrl、Alt、Shift 或 Win，每再按一下就往下选一条，松开就粘贴；按住约一秒再松开粘贴第一条，按着时按 `Esc` 不粘贴。默认关。
@@ -425,7 +425,7 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
   - **Placement and selection (development build)**: the search box prefers space outside the originating Explorer window, reducing overlap when space is limited without narrowing it or changing its remembered position. Browsing a direct child selects and reveals it in the original tab while the search field keeps keyboard focus; nested and elsewhere results do not navigate Explorer.
 - 📋 **Clipboard history (replaces Win+V)**
 
-  - **Resize**: with the preview closed, drag the right edge of the clipboard panel, or double-click it to reset. Text follows Settings › Appearance › UI size. Copied image files show thumbnails too.
+  - **Resize**: drag any edge or corner to change the clipboard window's width and height, including with the preview open. Sizes are remembered; double-click an edge to reset. Limited screen space temporarily reduces the window without overwriting your preferred size. Text follows Settings › Appearance › UI size. Copied image files show thumbnails too.
   - **What**: text, pictures and files, opened with `Win+V` or your own shortcut, by the text cursor, without taking the focus.
   - **Search**: pinyin, `@app` filters, and **words in copied pictures** (Windows recognition by default; install enhanced recognition for PaddleOCR, with better Chinese, English, numbers and small print. Images are processed on your PC).
   - **Preview**: full text, pictures, HEX / RGB / HSL color values. The eye button (or `Alt+P`) opens and closes it; while it is open, the row under the mouse is shown. It is wider now, and the line beside it can be dragged, the width remembered.
