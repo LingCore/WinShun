@@ -719,9 +719,12 @@ target_include_directories(tst_ocrpackage PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_ocrpackage PRIVATE winshun_options wscore wscapture miniz Qt6::Gui Qt6::Qml Qt6::Network Qt6::Test onnxruntime_headers winhttp)
 set_target_properties(tst_ocrpackage PROPERTIES QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
 set_source_files_properties("${PROJECT_SOURCE_DIR}/resources/ocr/package.json" PROPERTIES QT_RESOURCE_ALIAS ocr.json)
+set_source_files_properties("${PROJECT_SOURCE_DIR}/third_party/ppocr/LICENSE" PROPERTIES QT_RESOURCE_ALIAS paddleocr-license.txt)
 qt_add_resources(tst_ocrpackage "ocr_package_test"
     PREFIX /components
-    FILES "${PROJECT_SOURCE_DIR}/resources/ocr/package.json")
+    FILES
+        "${PROJECT_SOURCE_DIR}/resources/ocr/package.json"
+        "${PROJECT_SOURCE_DIR}/third_party/ppocr/LICENSE")
 add_test(NAME tst_ocrpackage COMMAND tst_ocrpackage)
 
 qt_add_executable(tst_uifont tst_uifont.cpp)

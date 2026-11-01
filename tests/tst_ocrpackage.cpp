@@ -119,7 +119,7 @@ class TestOcrPackage : public QObject {
             else if (item.path == u"licenses/onnxruntime/ThirdPartyNotices.txt")
                 source = build + u"/_deps/onnxruntime-win-x64-1.30.0/ThirdPartyNotices.txt"_s;
             else if (item.path == u"licenses/paddleocr.txt")
-                source = QFINDTESTDATA("../third_party/ppocr/LICENSE");
+                source = u":/components/paddleocr-license.txt"_s;
             QFile file(source);
             if (!file.open(QIODevice::ReadOnly))
                 return {};
