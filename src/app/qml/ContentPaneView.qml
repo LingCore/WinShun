@@ -78,6 +78,7 @@ Rectangle {
             objectName: "contentPaneTabs"
             Layout.fillWidth: true
             Layout.preferredHeight: 36
+            spacing: 0
             currentIndex: root.pane.tab
             background: Rectangle { color: "transparent" }
             Repeater {
@@ -86,7 +87,7 @@ Rectangle {
                     id: tab
                     required property int index
                     required property string modelData
-                    width: tabs.width / 5
+                    width: tabs.availableWidth / 5
                     implicitWidth: 64
                     height: 36
                     leftPadding: 4
@@ -105,8 +106,7 @@ Rectangle {
                     }
                     background: Rectangle {
                         color: tab.hovered ? Theme.hover : "transparent"
-                        border.width: tab.activeFocus ? 1 : 0
-                        border.color: Theme.accent
+                        border.width: 0
                         Rectangle {
                             anchors.bottom: parent.bottom
                             anchors.horizontalCenter: parent.horizontalCenter
