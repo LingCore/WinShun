@@ -72,7 +72,7 @@ WORK = HERE / "work"
 # 18 images: as many as a Xiaohongshu post takes.
 PAGES = (
     ("01-search", "L-search", "先选类型，[再用拼音搜]", ":documents ndbg → 年度报告 · 日期、大小随行显示"),
-    ("02-numbers", "L-numbers", "按住 Ctrl，[数字直达]", "图标上显示序号，Ctrl+1～9 打开第几行"),
+    ("02-numbers", "L-numbers", "左侧编号，[数字直达]", "编号默认常显，Ctrl+1～9 打开第几行"),
     ("03-newest", "X-newest", "找[最新的那一版]", "Ctrl+S 按修改时间排，最新的或最早的在前"),
     ("04-content", "L-content", "搜[文件里的文字]", "Word、Excel、PPT、PDF、代码，一起搜"),
     ("05-apps", "L-apps", "应用和设置，[拼音直达]", "guanliqi → 任务管理器、设备管理器……"),
@@ -96,7 +96,9 @@ README_ONLY = (
     ("foldermenu", "L-foldermenu", "资源管理器里，[双击空白处]", "收藏的、最近的、开着的文件夹，一下就到"),
     ("appearance", "L-appearance", "外观[随你调]", "界面大小即时预览，主题、圆角和透明效果自己选"),
     ("panel", "L-panel", "搜索面板，[列由你定]", "右键选列，拖动改宽度和顺序；布局自动保存"),
-    ("clipboard-resize", "L-clipboard-resize", "剪贴板宽度，[拖动就改]", "关闭预览拖右边缘；双击恢复，图片文件也有缩略图"),
+    ("clipboard-resize", "L-clipboard-resize", "剪贴板大小，[拖动就改]", "四边和角落可调，宽高自动记住；双击边框恢复"),
+    ("content-details", "L-content-details", "文件内容，[分栏细看]", "摘要、匹配、文本、预览、报告，五个标签切换"),
+    ("onboarding", "L-onboarding", "第一次打开，[两步设好]", "先选使用方式，再按需安装截图等插件"),
     ("recording", "L-recording", "框选区域，[录成视频]", "Ctrl+R 开始录制 · 暂停继续 · 角落显示按键"),
     ("recording-gif", "L-recording-gif", "录一小段，[存成 GIF]", "选择画质、鼠标和点击高亮，导出进度看得见"),
     ("preview", "L-preview", "Alt+P，[先看一眼]", "图片、文本、Office、PDF，启动器不关"),

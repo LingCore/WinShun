@@ -26,6 +26,17 @@ README 必须保持原有视觉格式：`square` 方形海报模板，保留 Win
 
 ## 只重新出图
 
+0.17.0 的补拍入口是 `release017.py`，继续使用这套方形品牌模板。`--work` 必须是新目录；`--capture-only` 先保留原图，检查后用 `--export-only` 输出。新版增加左侧编号、五标签内容详情、两页首次设置及文件夹菜单分页，更新剪贴板大小、录屏控制条和受影响设置页。目录内保存程序及截图插件 SHA256、原图、无损海报和来源清单。结果页的原生尺寸检查用 150%，其余离屏渲染用 200%；不改系统缩放。
+
+```powershell
+python tools/screenshots/release017.py --exe <独立部署目录>/WinShun.exe --capture <构建目录>/library-plugins/winshun.capture/WinShunCapture.exe --work <新的原图目录> --capture-only
+python tools/screenshots/release017.py --exe <独立部署目录>/WinShun.exe --work <原图目录> --export-only --onboarding <首次设置原图.png> --foldermenu <favorites-light.png>
+```
+
+首次设置原图由独立程序的 `--probe-runtime <新目录> --onboarding-probe apply --scale 2 --renderer d3d11` 导出 `onboarding.png`；此探针隔离配置、HKCU 和快捷键。文件夹菜单来自生产组件的 `tst_foldermenu`，设置 `WINSHUN_MENU_EVIDENCE=<新目录>`、`QT_ENABLE_HIGHDPI_SCALING=0`、`QT_SCALE_FACTOR=2` 后运行该项测试，取 `favorites-light.png`。海报裁取前八个演示收藏夹；后面的长名称及滚动压力数据不进入海报。不要以隐藏首窗的方式启动这个原生测试，否则窗口曝光检查会失败。
+
+组合结果探针在替换模型／图片时会记录 `PanelRow` 的空模型和 `ClipRow` 的 `undefined` 图片警告。入口保留日志，仅在三份行为报告全部通过且没有其他警告时接受这些已知绘制警告；不将其描述为整个预览零警告。其他模式及实际发布验证见对应版本验证记录。旧的 200% 组合探针还会受到原生 DPI 与强制截图缩放差异影响，不作为剪贴板尺寸验收；实际 150% 的完整尺寸检查必须通过。
+
 0.15.0 的补拍入口是 `release015.py`。它启动已构建的真实程序，使用现有的 `--preview-*` 模式和临时配置，导出新版搜索面板、可调宽的剪贴板、外观预览、截图工具条及 MP4 / GIF 控制窗口，再交给同一个 `art.compose(..., "square", ...)` 模板。录屏验证会短暂显示它自己的演示窗口，只录这个窗口的客户区；不退出正在运行的 Win顺，不监听或改写系统剪贴板，不改系统主题和缩放。
 
 ```powershell

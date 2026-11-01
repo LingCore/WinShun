@@ -290,11 +290,13 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(::GetForegroundWindow(), sourceHandle, 3000);
 
         Favorites favorites(temporary.filePath(u"favorites.json"_s));
+        const QStringList labels {u"项目资料"_s, u"年度报告"_s, u"设计素材"_s, u"客户合同"_s,
+            u"会议记录"_s, u"归档备份"_s, u"财务报表"_s, u"产品文档"_s};
         for (int i = 0; i < 50; ++i) {
             const QString path = temporary.filePath(u"folder-%1"_s.arg(i));
             QVERIFY(QDir().mkpath(path));
             QVERIFY(favorites.add({Favorite::Kind::Folder, QDir::toNativeSeparators(path),
-                i == 0 ? u"项目资料"_s : u"文件夹 %1：一段很长的名称，用来检查省略和滚动"_s.arg(i), {}}));
+                i < labels.size() ? labels[i] : u"文件夹 %1：一段很长的名称，用来检查省略和滚动"_s.arg(i), {}}));
         }
         const QString output = temporary.filePath(u"menu-command-ran.txt"_s);
         QString quoted = QDir::toNativeSeparators(output);
