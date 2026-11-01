@@ -1,4 +1,5 @@
 #include "BoxSide.h"
+#include "DragBounds.h"
 #include "WindowAvoidance.h"
 
 #include <QtTest>
@@ -53,6 +54,35 @@ class PlacementTest : public QObject {
     Q_OBJECT
 
 private slots:
+    void dragAcrossMonitorSeam()
+    {
+        const QList<QRect> areas {{-2560, 0, 2560, 1528}, {0, 0, 3840, 2088}};
+        // #111, real dual-monitor trace: moving the pointer 8 physical
+        // pixels across x=0 used to move the 1140-pixel window by 1140.
+        for (const qreal scale : {1.0, 1.25, 1.5, 1.75, 2.0}) {
+            const QSize size(qRound(760 * scale), qRound(106 * scale));
+            const int grab = qRound(30 * scale);
+            const QPoint before(5 - grab, 300);
+            const QPoint after(-3 - grab, 300);
+            QCOMPARE(dragbounds::constrain(before, size, areas), before);
+            QCOMPARE(dragbounds::constrain(after, size, areas), after);
+        }
+        const QList<QRect> stacked {{0, -1200, 1920, 1160}, {0, 0, 1920, 1032}};
+        QCOMPARE(dragbounds::constrain({300, -80}, {760, 400}, stacked), QPoint(300, -80));
+    }
+
+    void dragKeepsOuterDesktopLimits()
+    {
+        const QList<QRect> areas {{-2560, 0, 2560, 1528}, {0, 0, 3840, 2088}};
+        QCOMPARE(dragbounds::constrain({-2600, -10}, {1140, 159}, areas), QPoint(-2560, 0));
+        QCOMPARE(dragbounds::constrain({3000, 2000}, {1140, 159}, areas), QPoint(2700, 1929));
+        QCOMPARE(dragbounds::constrain({100, 100}, {10000, 5000}, areas), QPoint(-2560, 0));
+        const QList<QRect> single {{0, 0, 1920, 1032}};
+        QCOMPARE(dragbounds::constrain({-20, 1000}, {760, 400}, single), QPoint(0, 632));
+        QCOMPARE(dragbounds::constrain({1300, 200}, {760, 400}, single), QPoint(1160, 200));
+        QCOMPARE(dragbounds::constrain({-30, 40}, {760, 400}, {}), QPoint(-30, 40));
+    }
+
     void avoidFileManager_data()
     {
         QTest::addColumn<QRect>("work");

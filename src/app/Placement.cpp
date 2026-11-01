@@ -1,6 +1,7 @@
 #include "Placement.h"
 
 #include "BoxSide.h"
+#include "DragBounds.h"
 #include "SystemTheme.h"
 #include "WindowAvoidance.h"
 
@@ -49,9 +50,8 @@ qreal scaleOf(HMONITOR monitor, qreal fallback)
     return fallback;
 }
 
-// Where a window being moved goes instead of `rect` (physical pixels): on the
-// work area of the monitor under the pointer with `room` (logical pixels)
-// below its top.
+// A held window can span monitors. Restrict only the outer desktop bounds;
+// fitting it to the pointer's monitor here would make it jump at the seam.
 void shapeMove(RECT& rect, int width, int room, qreal fallbackScale)
 {
     POINT cursor {};
@@ -60,14 +60,22 @@ void shapeMove(RECT& rect, int width, int room, qreal fallbackScale)
     MONITORINFO info {sizeof info};
     if (!::GetMonitorInfoW(monitor, &info))
         return;
-    const RECT& area = info.rcWork;
+    const auto workArea = [](const RECT& area) {
+        return QRect(area.left, area.top, area.right - area.left, area.bottom - area.top);
+    };
+    QList<QRect> areas {workArea(info.rcWork)};
+    for (QScreen* screen : QGuiApplication::screens()) {
+        const auto* native = screen->nativeInterface<QNativeInterface::QWindowsScreen>();
+        MONITORINFO other {sizeof other};
+        if (native && native->handle() != monitor && ::GetMonitorInfoW(native->handle(), &other))
+            areas.append(workArea(other.rcWork));
+    }
     // Sizes as they will be on that monitor once the window is over there.
     const qreal scale = scaleOf(monitor, fallbackScale);
     width = qRound(width * scale);
     room = qRound(room * scale);
-    const LONG x = std::clamp(rect.left, area.left, std::max(area.left, area.right - width));
-    const LONG y = std::clamp(rect.top, area.top, std::max(area.top, area.bottom - room));
-    ::OffsetRect(&rect, x - rect.left, y - rect.top);
+    const QPoint at = dragbounds::constrain(QPoint(int(rect.left), int(rect.top)), {width, room}, areas);
+    ::OffsetRect(&rect, at.x() - rect.left, at.y() - rect.top);
 }
 
 // A screen's work area in physical pixels, and where Qt puts a window's

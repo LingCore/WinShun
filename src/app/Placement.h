@@ -31,8 +31,8 @@ namespace ws {
 // The window is dragged by its header and footer (WindowFrame), in the
 // system's own move loop: the window follows the pointer exactly, crosses
 // monitors, and Esc puts it back. The loop is shaped on the way (WM_MOVING):
-// the window, as tall as it is now, stays on the work area of the monitor
-// under the pointer. Let go near the centre line or the home height, it
+// the window, as tall as it is now, stays within the outer desktop bounds
+// and may span monitors. Let go near the centre line or the home height, it
 // glides onto them; let go so low that a few rows would not fit below, it
 // glides up until they do. While moving it follows the pointer and nothing
 // else. The list shows as many rows as fit below where the window settles
