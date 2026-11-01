@@ -7,6 +7,7 @@
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",
   "license": "MIT",
+  "minWinShun": "0.17.0",
   "runtime": {"mode": "resident", "program": "WinShunTranslate.exe", "timeoutMs": 10000, "idleExitSec": 900, "debounceMs": 300},
   "permissions": ["network"],
   "commands": [{

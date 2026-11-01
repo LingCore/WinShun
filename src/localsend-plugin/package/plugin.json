@@ -7,6 +7,7 @@
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",
   "license": "MIT",
+  "minWinShun": "0.17.0",
   "runtime": {"mode": "resident", "program": "WinShunLocalSend.exe", "start": "eager", "sandbox": "normal", "timeoutMs": 3000, "idleExitSec": 0, "memoryMB": 256},
   "permissions": ["network", {"network:listen": ["TCP 53317-53320", "UDP 53317"]}, "files:write", "clipboard:read", "notifications"],
   "commands": [{

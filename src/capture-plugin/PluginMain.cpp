@@ -192,6 +192,9 @@ extern "C" __declspec(dllexport) int winshunCapturePreview(const wchar_t* appDir
     if (!preview::wanted(args))
         return 2;
     preview::prepare(args);
+    // The preview's exe lives in the plugin folder, while all Qt imports
+    // live with the host. Cover every preview engine, as CaptureApp does.
+    qputenv("QML_IMPORT_PATH", (appDir + u"/qml"_s).toUtf8());
     QCoreApplication::setLibraryPaths({appDir});
     QCoreApplication::setOrganizationName(u"WinShun"_s);
     QCoreApplication::setApplicationName(u"WinShun"_s);

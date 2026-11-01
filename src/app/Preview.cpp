@@ -1408,7 +1408,8 @@ int runSettings(const QStringList& args)
         {u"ws"_s, aiPage, 0},
         {u"command line"_s, aiPage, 0},
         {u"终端"_s, aiPage, 0},
-        {QCoreApplication::translate("SettingsWindow", "收藏夹"), favoritesPage, 0},
+        // "Favorites" also matches the opening-menu option; use this page's exact setting title.
+        {QCoreApplication::translate("FavoritesSection", "拖文件时按 ` 键，弹出收藏圆盘"), favoritesPage, 0},
         {QCoreApplication::translate("SettingsWindow", "网络与 WSL 文件夹"), 2, 3},
         {QCoreApplication::translate("SettingsWindow", "排序"), 3, 0},
         {QCoreApplication::translate("SettingsWindow", "显示修改日期"), 3, 1},

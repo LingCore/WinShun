@@ -7,6 +7,7 @@
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",
   "license": "MIT",
+  "minWinShun": "0.17.0",
   "runtime": {"mode": "resident", "program": "WinShunBreak.exe", "start": "eager", "sandbox": "normal", "timeoutMs": 1500, "idleExitSec": 0, "memoryMB": 128},
   "permissions": ["ui"],
   "commands": [{
