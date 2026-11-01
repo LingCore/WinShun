@@ -1,6 +1,6 @@
 # Writing plugins for Win顺 (WinShun)
 
-Plugins add keyword commands to the search box and mix their rows into the list. They **always run with your normal rights** (Win顺 itself is administrator; its plugins are not), and a slow or crashing plugin never holds the launcher up. Three ways to write one, a single protocol:
+Plugins add keyword commands to the search box and mix their rows into the list. The interface and plugins run with normal user rights; a separate service reads the NTFS index. A slow or crashing plugin never holds the launcher up. Three ways to write one, a single protocol:
 
 For a new plugin in the Library, choose **Install and enable** and review its permissions. Declining keeps it installed and off. Updates preserve the existing switch; installing a local archive does not automatically enable it. If an upgrade cannot restore a previously enabled feature, the Installed tab keeps the reason and offers Retry and local package installation without discarding its settings or data.
 
@@ -17,6 +17,8 @@ Win顺's other own plugins are not in the setup but in the plugin library, to in
 Plugins by other people, and a place to share yours: [WinShun-plugins](https://github.com/LingCore/WinShun-plugins) (install and update them right from Settings → Plugins → Library: each download is checked against the list's size and sha256, then installed as an archive would be; or download a `.wsplugin` yourself and install it from the archive on the Installed tab; see its CONTRIBUTING to submit one). The Library goes online only when its tab is opened (at most once in ten minutes), when Refresh is pressed, or to install; the last list is kept in the data folder as `plugin-index.json`.
 
 The Chinese version, [plugins.md](plugins.md), is the reference; this one follows it.
+
+The six official native library plugins require WinShun 0.17.0 (`minWinShun`). Their `.wsplugin` packages are built by the main repository's release script and published on the existing WinShun-plugins repository, with `bundled: false`. Registry validation permits only their named executables and capture's named DLL from that repository; community submission rules are unchanged. Never replace a published package with different contents: bump the plugin version. See the registry's [maintainer instructions](https://github.com/LingCore/WinShun-plugins/blob/main/CONTRIBUTING.md#维护者).
 
 ## Quick start
 

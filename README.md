@@ -38,41 +38,43 @@
 ## 截图 · Screenshots
 
 <p align="center">
+  <img src="https://raw.githubusercontent.com/LingCore/WinShun/cea17f99d0d548ae2d1b7c5da3f08d79b3bc973c/docs/images/onboarding.jpg" width="49%" alt="两页首次设置，按需安装可选插件 / two-page first-run setup with optional plugins">
+  <img src="https://raw.githubusercontent.com/LingCore/WinShun/cea17f99d0d548ae2d1b7c5da3f08d79b3bc973c/docs/images/content-details.jpg" width="49%" alt="文件内容详情：摘要、匹配、文本、预览和报告 / five-tab content details: summary, matches, text, preview and report">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/search.jpg" width="49%" alt="文件类型前缀与拼音搜索：:documents ndbg 找到年度报告，结果显示日期与大小 / type prefixes and pinyin search with dates and file sizes">
-  <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/numbers.jpg" width="49%" alt="图标上的序号，Ctrl+1～9 直接打开 / row numbers on the icons, Ctrl+1–9 opens a row">
+  <img src="https://raw.githubusercontent.com/LingCore/WinShun/cea17f99d0d548ae2d1b7c5da3f08d79b3bc973c/docs/images/numbers.jpg" width="49%" alt="左侧独立编号，Ctrl+1～9 直接打开 / shortcut numbers in a separate left column, Ctrl+1–9 opens a row">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/newest.jpg" width="49%" alt="按修改时间排序，找最新的那一版 / sort by date modified, newest first">
-  <img src="https://raw.githubusercontent.com/LingCore/WinShun/1df7f30c0ad1e231158df70de54c885b46068aed/docs/images/panel.jpg" width="49%" alt="搜索面板：右键选择列，拖动调整顺序和宽度，布局自动保存 / search panel: choose, reorder and resize columns with saved layouts">
+  <img src="https://raw.githubusercontent.com/LingCore/WinShun/cea17f99d0d548ae2d1b7c5da3f08d79b3bc973c/docs/images/panel.jpg" width="49%" alt="搜索面板：右键选择列，拖动调整顺序和宽度，布局自动保存 / search panel: choose, reorder and resize columns with saved layouts">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/preview.jpg" width="49%" alt="Alt+P 预览文件，启动器不关 / Alt+P previews a file beside the launcher">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/content.jpg" width="49%" alt="文件内容全文搜索：Word、Excel、PPT、PDF、代码 / full-text search inside documents and code">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/folder.jpg" width="49%" alt="只搜一个文件夹里的字：第三季度销售额 财务/ / content search in one folder: words, then folder/">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/semantic.jpg" width="49%" alt="按意思找：? 去年报销的规定 找到差旅费用管理办法 / search by meaning: find documents by what they are about">
-  <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/foldermenu.jpg" width="49%" alt="资源管理器里双击空白处：收藏、最近、开着的文件夹 / double-click empty space in Explorer for favorite, recent and open folders">
+  <img src="https://raw.githubusercontent.com/LingCore/WinShun/cea17f99d0d548ae2d1b7c5da3f08d79b3bc973c/docs/images/foldermenu.jpg" width="49%" alt="资源管理器里双击空白处：收藏、最近、开着的文件夹 / double-click empty space in Explorer for favorite, recent and open folders">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/typing.jpg" width="49%" alt="资源管理器里直接打字就搜：只搜这个文件夹 / type in an Explorer folder and Win顺 searches just that folder">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/apps.jpg" width="49%" alt="拼音搜应用：guanliqi 找到任务管理器 / launch apps by pinyin">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/places.jpg" width="49%" alt="直达 Windows 设置：shipeiqi 找到网络连接 / open Windows settings and Control Panel items">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/switches.jpg" width="49%" alt="系统开关：行尾显示现在的状态，回车就地切换；音量 30、保持唤醒 1小时一步到位 / system switches: the live state on the row, Enter flips it; set the volume or keep awake in one step">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/web.jpg" width="49%" alt="网页搜索：zhihu 显卡、bilibili、京东一步到位 / web search keywords">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/favorites.jpg" width="49%" alt="收藏夹：常去的文件夹排在最前，关键词直达 / favorites with keywords">
-  <img src="https://raw.githubusercontent.com/LingCore/WinShun/1df7f30c0ad1e231158df70de54c885b46068aed/docs/images/droppie.jpg" width="49%" alt="收藏夹与拖放圆盘设置：按住文件，再按数字 1 左边的键呼出圆盘 / favorites and drop ring settings: hold a file and press the key left of 1">
+  <img src="https://raw.githubusercontent.com/LingCore/WinShun/cea17f99d0d548ae2d1b7c5da3f08d79b3bc973c/docs/images/droppie.jpg" width="49%" alt="收藏夹与拖放圆盘设置：按住文件，再按数字 1 左边的键呼出圆盘 / favorites and drop ring settings: hold a file and press the key left of 1">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/plugins.jpg" width="49%" alt="插件：计算器、单位换算、颜色 / plugins: calculator, unit conversion, colors">
   <img src="docs/images/plugin-library.jpg" width="49%" alt="现有 WinShun-plugins 社区插件库：安装、更新与开发入口 / the existing WinShun-plugins library, installation, updates and plugin development">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/dialog.jpg" width="49%" alt="打开、另存为对话框旁的搜索框，Ctrl+G 转到资源管理器的文件夹 / search bar for Open and Save dialogs">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/clipboard.jpg" width="49%" alt="剪贴板图片原格式与 GIF 动图预览，保留 PNG、JPEG、GIF / original PNG, JPEG and GIF clipboard images with animated previews">
-  <img src="https://raw.githubusercontent.com/LingCore/WinShun/1df7f30c0ad1e231158df70de54c885b46068aed/docs/images/clipboard-resize.jpg" width="49%" alt="剪贴板面板：拖动右边缘改变宽度，复制的图片文件显示缩略图 / clipboard panel: resize the right edge and see thumbnails of copied image files">
+  <img src="https://raw.githubusercontent.com/LingCore/WinShun/cea17f99d0d548ae2d1b7c5da3f08d79b3bc973c/docs/images/clipboard-resize.jpg" width="49%" alt="剪贴板面板：拖动右边缘改变宽度，复制的图片文件显示缩略图 / clipboard panel: resize the right edge and see thumbnails of copied image files">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/clipocr.jpg" width="49%" alt="剪贴板 OCR：搜图片里的文字 / clipboard OCR: search words in copied pictures">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/edit.jpg" width="49%" alt="截图标完还能再改：方框、箭头、文字，从剪贴板历史打开接着编辑 / edit a screenshot again: boxes, arrows and text, reopened from the clipboard history">
-  <img src="https://raw.githubusercontent.com/LingCore/WinShun/1df7f30c0ad1e231158df70de54c885b46068aed/docs/images/capture.jpg" width="49%" alt="截图工具条：拖动左侧握柄，选区不动，样式面板跟着走 / screenshot toolbar: drag the grip to move the toolbar and style panel without moving the selection">
+  <img src="https://raw.githubusercontent.com/LingCore/WinShun/cea17f99d0d548ae2d1b7c5da3f08d79b3bc973c/docs/images/capture.jpg" width="49%" alt="截图工具条：拖动左侧握柄，选区不动，样式面板跟着走 / screenshot toolbar: drag the grip to move the toolbar and style panel without moving the selection">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/redact.jpg" width="49%" alt="截图里的隐私一键打码：手机号、身份证、银行卡、邮箱 / smart redaction: phone numbers, ID, bank card and email covered in one click">
-  <img src="https://raw.githubusercontent.com/LingCore/WinShun/1df7f30c0ad1e231158df70de54c885b46068aed/docs/images/recording.jpg" width="49%" alt="区域录屏：MP4、暂停与继续，系统声音和麦克风可选，角落显示按下的键 / region recording: MP4, pause and resume, optional system audio and microphone, keys shown in a corner">
-  <img src="https://raw.githubusercontent.com/LingCore/WinShun/1df7f30c0ad1e231158df70de54c885b46068aed/docs/images/recording-gif.jpg" width="49%" alt="GIF 录制：画质、鼠标指针、点击高亮和导出进度 / GIF recording: quality, cursor, click highlights and export progress">
+  <img src="https://raw.githubusercontent.com/LingCore/WinShun/cea17f99d0d548ae2d1b7c5da3f08d79b3bc973c/docs/images/recording.jpg" width="49%" alt="区域录屏：MP4、暂停与继续，系统声音和麦克风可选，角落显示按下的键 / region recording: MP4, pause and resume, optional system audio and microphone, keys shown in a corner">
+  <img src="https://raw.githubusercontent.com/LingCore/WinShun/cea17f99d0d548ae2d1b7c5da3f08d79b3bc973c/docs/images/recording-gif.jpg" width="49%" alt="GIF 录制：画质、鼠标指针、点击高亮和导出进度 / GIF recording: quality, cursor, click highlights and export progress">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/d8d6a82ab9b83d5be5804ca7d81f0983e2741ccf/docs/images/longshot.jpg" width="49%" alt="长截图：Ctrl+L 后手动滚动、自动拼接，可选自动滚动 / scrolling capture: manual scrolling with automatic stitching, optional automatic scrolling">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/pins.jpg" width="49%" alt="F3 贴图：截图悬在所有窗口上，拖到哪放哪，滚轮缩放 / pin a screenshot on top of every window, move and zoom it">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/taskbar.jpg" width="49%" alt="Win顺 任务栏搜索框 / WinShun’s search box on the taskbar">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/ai.jpg" width="49%" alt="AI 助手 MCP：Claude、Cursor、VS Code 一键连接 / MCP server for Claude, Cursor and VS Code">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/settings.jpg" width="49%" alt="设置可搜索：kjj 找到快捷键 / searchable settings">
-  <img src="https://raw.githubusercontent.com/LingCore/WinShun/1df7f30c0ad1e231158df70de54c885b46068aed/docs/images/appearance.jpg" width="49%" alt="外观：主题、透明效果、圆角或直角、界面大小、单色任务栏图标 / appearance: theme, transparency, rounded or square corners, UI size with live preview, monochrome taskbar icon">
-  <img src="https://raw.githubusercontent.com/LingCore/WinShun/1df7f30c0ad1e231158df70de54c885b46068aed/docs/images/backup.jpg" width="49%" alt="导出设置备份，在新电脑校验恢复，当前配置先备份 / export settings and restore on another PC with validation and a backup of the current configuration">
-  <img src="https://raw.githubusercontent.com/LingCore/WinShun/1df7f30c0ad1e231158df70de54c885b46068aed/docs/images/file-types.jpg" width="49%" alt="自定义文件类型、扩展名和搜索前缀 / custom file types, extensions and search prefixes">
+  <img src="https://raw.githubusercontent.com/LingCore/WinShun/cea17f99d0d548ae2d1b7c5da3f08d79b3bc973c/docs/images/appearance.jpg" width="49%" alt="外观：主题、透明效果、圆角或直角、界面大小、单色任务栏图标 / appearance: theme, transparency, rounded or square corners, UI size with live preview, monochrome taskbar icon">
+  <img src="https://raw.githubusercontent.com/LingCore/WinShun/cea17f99d0d548ae2d1b7c5da3f08d79b3bc973c/docs/images/backup.jpg" width="49%" alt="导出设置备份，在新电脑校验恢复，当前配置先备份 / export settings and restore on another PC with validation and a backup of the current configuration">
+  <img src="https://raw.githubusercontent.com/LingCore/WinShun/cea17f99d0d548ae2d1b7c5da3f08d79b3bc973c/docs/images/file-types.jpg" width="49%" alt="自定义文件类型、扩展名和搜索前缀 / custom file types, extensions and search prefixes">
   <img src="docs/images/search-scope.jpg" width="49%" alt="选择索引的文件夹及定时核对频率 / choose indexed folders and their verification schedule">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/1df7f30c0ad1e231158df70de54c885b46068aed/docs/images/wsl.jpg" width="49%" alt="网络与 WSL 文件夹：添加 Linux 用户目录或项目文件夹，发行版停止时照样能搜 / network and WSL folders: add a Linux home or project folder, still searchable while the distribution is stopped">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/dark.jpg" width="49%" alt="深色模式，Win11 云母效果 / dark theme with Windows 11 Mica">
@@ -82,7 +84,7 @@
 
 <a id="中文"></a>
 
-> **旧 issue 复查（开发中，尚未发布） / Historical issue audit (unreleased)**：复查 #139 及以前的反馈，补修鼠标移动时双击修饰键失效、开始菜单中的控制台程序启动、连续算式触发和 Ditto 导入保护属性；改进类型筛选、英文程序名首字母、文件夹菜单及剪贴板选项。已关闭后的新增问题也重新跟踪。逐项结论、验证范围和仍待复现的项目见 [复查记录](docs/issue-audit-20261030.md)。These changes are in the development workspace; existing downloads do not include them. The audit records verification and remaining gaps per issue.
+> **0.17.0 反馈复查 / Follow-up audit**：本版包含旧反馈中的搜索、快捷键、剪贴板、菜单和多屏修复；仍需原环境确认的情况继续跟踪。逐项证据及新回复见[复查记录](docs/issue-replies-audit-20261101.md)。This release includes search, hotkey, clipboard, menu and multi-monitor fixes; cases still requiring their original environment remain tracked in the audit.
 
 ## 中文
 
@@ -96,7 +98,7 @@
 
 ### 功能
 
-**0.16.0 更新**：软件内一键更新、和手机互传文件（LocalSend）、大图浏览、网络位置和 WebDAV 的内容搜索、按住快捷键翻剪贴板、录屏显示按键，图标统一换成 Phosphor，并修复快捷键偶尔没反应等许多问题。详见 [发布说明](docs/release-notes/v0.16.0.md)。社区插件继续使用 [WinShun-plugins](https://github.com/LingCore/WinShun-plugins)，在设置 › 插件 › 插件库里安装和更新。
+**0.17.0 更新**：更轻的主程序、按需安装的截图与录屏等插件、两页首次设置、ws 命令行、五标签文件内容详情、剪贴板宽高记忆和双屏拖动修复。已有配置和已开启的可选功能保留／恢复；首次启用仍先确认权限。详见[发布说明](docs/release-notes/v0.17.0.md)。
 
 #### 🔍 文件搜索
 
@@ -199,7 +201,7 @@
 - **右键“用 Win顺 搜索此处”**：文件夹、文件夹的空白处和磁盘的右键菜单里都有（Windows 11 在“显示更多选项”里），搜索框带着这个文件夹打开，接着打字就在里面找。设置里可以关。
 - **直接打字搜索**：在资源管理器的文件列表里随意打字，Win顺 就带着打的字搜，和 Listary 一样：这个窗口的文件夹（含子文件夹）里的排在最前，一条细线“其他位置”下面是别处的；点“只搜 …”或按 `Ctrl+D` 就只搜这个文件夹，设置里也能设成每次都只搜它。中文输入法照常组拼音，`Esc` 回到资源管理器。选中的文件夹在同一个标签页里打开，接着打字就再往里一层；选中一个文件或文件夹按 `Ctrl+Enter`，也在这个标签页里转到它所在的文件夹并选中它（设置里选的文件管理器是资源管理器时）；资源管理器的 `Shift` 右键菜单也不会被抢走按键。设置里打开（它代替了资源管理器自己的按首字母跳到文件，所以默认关）。
 
-- **窗口避让与同步选中（开发版）**：从资源管理器打字打开时，搜索框优先放到原窗口外，空间不足时减少重叠，并保留原来的宽度和常用位置。浏览原目录的直接子项时，原标签页同步选中并显示对应项目，键盘焦点仍在搜索框；子目录和其他位置的结果不会自动带走原目录。
+- **窗口避让与同步选中**：从资源管理器打字打开时，搜索框优先放到原窗口外，空间不足时减少重叠，并保留原来的宽度和常用位置。浏览原目录的直接子项时，原标签页同步选中并显示对应项目，键盘焦点仍在搜索框；子目录和其他位置的结果不会自动带走原目录。
 
 #### 📋 剪贴板历史（代替 Win+V）
 
@@ -357,7 +359,7 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
 
 ### Features
 
-**New in 0.16.0**: in-app updates, LAN transfer with LocalSend, a large-icons view, content search on network and WebDAV locations, hold-to-step clipboard history, keys shown while recording, Phosphor icons throughout, and many fixes, including hotkeys that sometimes did nothing. See the [release notes](docs/release-notes/v0.16.0.md). Install community plugins from the existing [WinShun-plugins](https://github.com/LingCore/WinShun-plugins) repository in Settings › Plugins › Plugin library.
+**New in 0.17.0**: a smaller core with optional screenshot and recording plugins, two-page first-run setup, the ws command line, five-tab content details, remembered clipboard size and dual-monitor dragging fixes. Existing settings and enabled optional features are retained or recovered; first-time activation still asks for permissions. See the [release notes](docs/release-notes/v0.17.0.md).
 
 - **WSL file search**: add a Linux project or home folder under Settings › Search scope › Network & WSL. Installed distributions appear automatically. Search file and folder names alongside local files, including pinyin; indexed results remain available while WSL is stopped and update automatically when it runs again.
 - **Remote scan controls**: each network or WSL folder has independent daily scan hours (including overnight windows) and a maximum depth. Depth 0 is unlimited; depth 1 lists only the chosen folder. Background name and content reads pause outside those hours; cached results remain searchable. Check now runs one manual name scan, still respecting depth. Both limits are off by default.
@@ -422,7 +424,7 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
   - **By a shortcut**: when another program has the double click, or for Total Commander, XYplorer and Pulse, give the folder menu a shortcut in the settings and press it in any window: in File Explorer, on the desktop, in Directory Opus, Total Commander, XYplorer and Open / Save dialogs the folder picked opens in that window (in Pulse, where its “Folders opened from other apps” setting puts it: a new tab or a new window); anywhere else, in your file manager. Press it again to close the menu.
   - **“Search here with WinShun”** on the right-click menu of folders, a folder's blank space and drives (under “Show more options” on Windows 11): the search window opens with that folder typed. It can be turned off.
   - **Type to search**: type anywhere in a File Explorer file list and WinShun searches for what you typed, like Listary: what is in that window's folder (and its subfolders) comes first, the rest of the PC follows under a thin "Elsewhere" line; "Only in …" or `Ctrl+D` keeps to that folder, and a setting can make that the default. A Chinese input method composes as usual, and `Esc` goes back to File Explorer. A folder you pick opens in the same tab, so typing again goes one level deeper; `Ctrl+Enter` on a file or folder also goes, in that tab, to the folder holding it and selects it (when the file manager set in Settings is File Explorer); and the keys of Explorer's `Shift`+right-click menu stay with the menu. Turn it on in the settings (it replaces Explorer's own jump to a file by its first letters, so it is off by default).
-  - **Placement and selection (development build)**: the search box prefers space outside the originating Explorer window, reducing overlap when space is limited without narrowing it or changing its remembered position. Browsing a direct child selects and reveals it in the original tab while the search field keeps keyboard focus; nested and elsewhere results do not navigate Explorer.
+  - **Placement and selection (0.17.0)**: the search box prefers space outside the originating Explorer window, reducing overlap when space is limited without narrowing it or changing its remembered position. Browsing a direct child selects and reveals it in the original tab while the search field keeps keyboard focus; nested and elsewhere results do not navigate Explorer.
 - 📋 **Clipboard history (replaces Win+V)**
 
   - **Resize**: drag any edge or corner to change the clipboard window's width and height, including with the preview open. Sizes are remembered; double-click an edge to reset. Limited screen space temporarily reduces the window without overwriting your preferred size. Text follows Settings › Appearance › UI size. Copied image files show thumbnails too.

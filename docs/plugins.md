@@ -1,5 +1,7 @@
 # Win顺 插件开发
 
+0.17.0 起，六个官方原生可选插件的最低宿主版本为 `minWinShun: 0.17.0`，由主仓库发布脚本生成 `.wsplugin`，继续在现有 WinShun-plugins 仓库分发，条目为 `bundled: false`。插件库只对该仓库中逐一指定的入口程序及截图 DLL 开放原生包规则，社区投稿限制不变。已发布同版本包不得替换内容，改动时升插件版本，详见插件仓库的[维护者说明](https://github.com/LingCore/WinShun-plugins/blob/main/CONTRIBUTING.md#维护者)。
+
 Win顺 的插件给搜索框加关键字命令、把结果混进列表。界面和插件都以普通用户权限运行，读取 NTFS 索引的是独立服务；插件崩了、慢了都不拖累主程序。三种写法，一份协议：
 
 第一次做插件，可以在“设置 → 插件 → 插件库”点“创建插件”，从能运行的模板开始。“复制 AI 开发提示”会复制协议、SDK、验证和投稿要求；创建的目录也带有同一份 [DEVELOPMENT.md](../src/plugins-sdk/DEVELOPMENT.md)。插件库和[社区投稿入口](https://github.com/LingCore/WinShun-plugins)共用现有分发体系。新插件点“安装并启用”，需要权限时先征求同意；拒绝后保留安装、保持关闭。更新保留原来的开关，本地压缩包安装不自动启用。
