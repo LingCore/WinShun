@@ -1084,7 +1084,7 @@ private:
     bool m_doubleClickToOpen = false;
     bool m_tabEntersFavoriteFolder = false;
     QString m_numberKeys = QStringLiteral("ctrl");
-    QString m_numberHints = QStringLiteral("held");
+    QString m_numberHints = QStringLiteral("always");
     QString m_previewHotkey = QStringLiteral("Alt+P");
     QKeySequence m_previewSequence {QStringLiteral("Alt+P")};
     unsigned m_numberKeysLeft = 0;

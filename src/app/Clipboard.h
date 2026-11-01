@@ -426,7 +426,7 @@ private:
     bool m_paused = false;
     QString m_shortcut;
     QString m_numberKeys = QStringLiteral("alt");
-    QString m_numberHints = QStringLiteral("held");
+    QString m_numberHints = QStringLiteral("always");
     unsigned m_numberKeysLeft = 0;
     bool m_clickToPaste = false;
     bool m_largePictures = false;

@@ -103,7 +103,7 @@ private slots:
         ws::Settings::useProfile(profile.path());
         ws::Settings settings;
         settings.load();
-        QCOMPARE(settings.numberHints, u"held"_s);
+        QCOMPARE(settings.numberHints, u"always"_s);
         for (const QString mode : {u"held"_s, u"always"_s, u"off"_s}) {
             settings.numberHints = mode;
             settings.save();
@@ -117,7 +117,7 @@ private slots:
         ini.setValue(u"Results/NumberHints"_s, u"invalid"_s);
         ini.sync();
         settings.load();
-        QCOMPARE(settings.numberHints, u"held"_s);
+        QCOMPARE(settings.numberHints, u"always"_s);
         ini.setValue(u"Results/NumberHints"_s, u" ALWAYS "_s);
         ini.sync();
         settings.load();

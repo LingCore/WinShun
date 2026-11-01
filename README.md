@@ -206,7 +206,7 @@
 - **记什么**：复制过的文字、图片、文件都记下来。
 - **怎么打开**：`Win+V` 或自设的快捷键；开在输入光标旁，不抢焦点。
 - **调整宽度**：预览关闭时拖动面板右边缘，双击边缘恢复默认；文字随设置 › 外观 › 界面大小调整。复制的图片文件也显示缩略图。
-- **怎么粘贴**：双击或 `Enter` 粘贴（也可以设成像 Windows 自带的那样单击就粘贴），`Shift+Enter` 粘贴为纯文本，`Alt+1`～`9` 直接粘贴第几条（按住 `Alt` 时序号显示在图标上）。
+- **怎么粘贴**：双击或 `Enter` 粘贴（也可以设成像 Windows 自带的那样单击就粘贴），`Shift+Enter` 粘贴为纯文本，`Alt+1`～`9` 直接粘贴第几条（图标上的序号默认一直显示，可在设置里调整）。
 - **不开面板直接粘贴**：设置 › 剪贴板 › 快捷键 里打开“不打开面板直接粘贴”（`Ctrl+1–9` 或 `Alt+1–9`），在别的程序里就能直接粘贴前九条，格式照旧。默认关，打开后这些键在别的程序里原来的用处（比如浏览器切换标签页）就让给它。
 - **按住连按，松开粘贴**（和 Ditto 一样）：设置 › 剪贴板 › 快捷键 里打开“按住连按快捷键，松开粘贴”。按住快捷键里的 Ctrl、Alt、Shift 或 Win，每再按一下就往下选一条，松开就粘贴；按住约一秒再松开粘贴第一条，按着时按 `Esc` 不粘贴。默认关。
 - **粘进上传框**：在 Windows 的“打开”文件选择框里从剪贴板历史粘贴文件，完整路径直接填进“文件名”，多个文件也行，再点“打开”。
@@ -430,7 +430,7 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
   - **Search**: pinyin, `@app` filters, and **words in copied pictures** (Windows recognition by default; install enhanced recognition for PaddleOCR, with better Chinese, English, numbers and small print. Images are processed on your PC).
   - **Preview**: full text, pictures, HEX / RGB / HSL color values. The eye button (or `Alt+P`) opens and closes it; while it is open, the row under the mouse is shown. It is wider now, and the line beside it can be dragged, the width remembered.
   - **Original image formats**: PNG, JPEG and GIF data supplied by the source are kept as received; bitmap-only copies become PNG. Drag pictures into a folder or paste them into File Explorer to save them in their stored format. Select several with Ctrl or Shift to save them together. GIF previews can play and pause.
-  - **Paste**: double-click or `Enter`, or one click as in Windows' own history (an option); larger picture thumbnails as another.
+  - **Paste**: double-click or `Enter`, or one click as in Windows' own history (an option); larger picture thumbnails as another. Number hints on the icons are always visible by default and can be adjusted in Settings.
   - **Paste without opening it**: Settings › Clipboard › Shortcuts › “Paste without opening the panel” (`Ctrl+1–9` or `Alt+1–9`) pastes the first nine entries straight into any program, format kept. Off by default; when on, those keys no longer do their usual job in other programs (switching browser tabs, say).
   - **Hold and press again**, as in Ditto: Settings › Clipboard › Shortcuts › “Hold and press again, release to paste”. Keep the shortcut's Ctrl, Alt, Shift or Win held: each further press moves one entry down, and letting go pastes it; held about a second, letting go pastes the first entry; `Esc` while holding pastes nothing. Off by default.
   - **Upload boxes**: in a Windows “Open” file box, pasting files from the clipboard history puts their full paths in the File name field, several at once if you like; then click Open.

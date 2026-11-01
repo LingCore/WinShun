@@ -885,7 +885,7 @@ void Settings::load()
     if (numberKeys != u"alt" && numberKeys != u"off")
         numberKeys = d.numberKeys;
     numberHints = readOrDefault(s, u"Results/NumberHints"_s, d.numberHints).trimmed().toLower();
-    if (numberHints != u"always" && numberHints != u"off")
+    if (numberHints != u"held" && numberHints != u"always" && numberHints != u"off")
         numberHints = d.numberHints;
     previewWith = readOrDefault(s, u"Results/PreviewWith"_s, d.previewWith).trimmed().toLower();
     if (previewWith != u"builtin")
