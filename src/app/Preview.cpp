@@ -2597,9 +2597,21 @@ bool checkClipboardSizing(QQuickWindow* window, Clipboard& clipboard, Placement&
             QDateTime::currentMSecsSinceEpoch() + i);
     clipboard.historyChanged();
     clipboard.handleShown();
-    const auto area = window->screen()->availableGeometry();
-    placement.placeOn(window->screen());
-    window->setPosition(area.topLeft() + QPoint(50, 50));
+    // Use the largest work area for the unconstrained resize assertions.
+    // An offscreen preview may start on a smaller secondary monitor.
+    auto* screen = QGuiApplication::primaryScreen();
+    for (auto* candidate : QGuiApplication::screens()) {
+        const auto a = candidate->availableGeometry();
+        const auto b = screen->availableGeometry();
+        if (qint64(a.width()) * a.height() > qint64(b.width()) * b.height())
+            screen = candidate;
+    }
+    window->setScreen(screen);
+    const auto area = screen->availableGeometry();
+    // Place through the production API so `room` matches the actual spot.
+    // A direct setPosition left the old room limit behind; releasing the
+    // first width drag then legitimately changed the automatic row count.
+    placement.attach(QRect(area.topLeft() + QPoint(50, 20), QSize(1, 0)), screen);
     settle(window);
     const auto resize = [&](int edge, int dw, int dh, bool cancel = false) {
         RECT original {};
@@ -2648,10 +2660,15 @@ bool checkClipboardSizing(QQuickWindow* window, Clipboard& clipboard, Placement&
     check("list_scrollbar_does_not_resize", scrollbarWorks(u"clipboardListScrollBar"_s));
     const int initialHeight = window->height();
     resize(WMSZ_RIGHT, 100, 0);
+    say(u"clipboard sizing: work %1x%2, DPR %3; initial height %4; width drag -> %5x%6, saved %7x%8"_s
+        .arg(area.width()).arg(area.height()).arg(window->devicePixelRatio()).arg(initialHeight)
+        .arg(window->width()).arg(window->height()).arg(clipboard.listWidth()).arg(clipboard.windowHeight()));
     check("width_saved_without_fixing_auto_height", clipboard.listWidth() == 580 && window->width() == 580
         && clipboard.windowHeight() == 0 && window->height() == initialHeight && store.value(u"listWidth"_s) == u"580");
     resize(WMSZ_BOTTOM, 0, 60);
     const int chosenHeight = window->height();
+    say(u"clipboard sizing: height drag -> %1, saved %2, expected %3"_s
+        .arg(chosenHeight).arg(clipboard.windowHeight()).arg(initialHeight + 60));
     check("height_saved", chosenHeight == initialHeight + 60 && clipboard.windowHeight() == chosenHeight
         && store.value(u"windowHeight"_s).toInt() == chosenHeight);
     resize(WMSZ_TOPLEFT, 20, 20);
