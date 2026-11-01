@@ -47,6 +47,7 @@
 #include "SystemTheme.h"
 #include "TextField.h"
 #include "Tools.h"
+#include "TrayMenu.h"
 #include "TriggerJournal.h"
 #include "Unc.h"
 #include "Updater.h"
@@ -351,7 +352,7 @@ QString statePath()
 
 // Rounded corners and the shadow, for our windows without a system title bar
 // (the launcher, the clipboard, the bar by file dialogs, the settings
-// window); each draws its edge itself (WindowEdge.qml).
+// window). Windows 11 draws their borders; WindowEdge.qml is the Windows 10 fallback.
 void styleWindow(QWindow* window, bool backdrop = false)
 {
     win::styleFramelessWindow(window, backdrop);
@@ -3656,6 +3657,7 @@ void App::applyFolderMenu()
         m_folderMenu.reset();
     } else if (on && !m_folderMenu) {
         auto menu = std::make_unique<FolderMenu>(m_history.get(), m_favorites.get());
+        menu->setCatalogs(m_apps.get(), m_places.get());
         QQmlComponent component(m_qml.get(), u"WinShun"_s, u"FolderMenuWindow"_s);
         QObject* object = component.createWithInitialProperties({{u"folderMenu"_s, QVariant::fromValue(menu.get())}});
         auto* window = qobject_cast<QQuickWindow*>(object);
@@ -5313,7 +5315,30 @@ void App::showTrayMenu()
     ::GetCursorPos(&pos);
     const DWORD built = ::GetTickCount();
     // A slow menu leaves a line in the log: which part it waited on.
-    const int chosen = shell::popupMenu(m_messages->hwnd(), items, pos, [&] {
+    for (auto& item : items) {
+        char16_t glyph = 0;
+        switch (item.id) {
+        case ShowCommand: glyph = 0xE721; break;
+        case ClipboardCommand: glyph = 0xE77F; break;
+        case PauseClipboardCommand: glyph = 0xE769; break;
+        case IndexInfo: glyph = 0xE968; break;
+        case ContentInfo: glyph = 0xE8A5; break;
+        case AccessInfo: glyph = 0xE7BA; break;
+        case RebuildCommand: glyph = 0xE895; break;
+        case AutostartCommand: glyph = 0xE7E8; break;
+        case SettingsCommand: glyph = 0xE713; break;
+        case CheckUpdateCommand: case UpdateCommand: glyph = 0xE896; break;
+        case KeepAwakeCommand: glyph = 0xE823; break;
+        case RestartCommand: glyph = 0xE72C; break;
+        case QuitCommand: glyph = 0xE8BB; break;
+        default: if (!item.children.empty()) glyph = 0xEA86; break;
+        }
+        if (glyph)
+            item.glyph = QString(QChar(glyph));
+        item.secondary = item.id == IndexInfo || item.id == ContentInfo || item.id == AccessInfo;
+    }
+    QObject* theme = m_qml->singletonInstance<QObject*>(u"WinShun"_s, u"Theme"_s);
+    const int chosen = traymenu::popup(m_messages->hwnd(), items, pos, theme, [&](HWND, HMENU) {
         const DWORD shown = ::GetTickCount();
         if (shown - input.dwTime >= kSlowMenuMs)
             qWarning().nospace() << "Tray menu shown " << shown - input.dwTime << " ms after the click: "

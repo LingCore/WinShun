@@ -94,6 +94,11 @@ bool SystemTheme::roundedCorners() const
     return win::roundedCorners();
 }
 
+bool SystemTheme::nativeWindowBorder() const
+{
+    return QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows11;
+}
+
 void SystemTheme::setRoundedCorners(bool on)
 {
     if (win::setRoundedCorners(on) && s_instance)

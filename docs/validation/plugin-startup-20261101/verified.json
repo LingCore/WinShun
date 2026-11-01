@@ -1,0 +1,37 @@
+{
+  "qtDirectoryInChildPath": false,
+  "processes": [
+    {
+      "Name": "WinShun",
+      "Id": 18372,
+      "StartTime": "2026-11-01T11:57:07.3592047+08:00",
+      "Responding": true
+    },
+    {
+      "Name": "WinShunCapture",
+      "Id": 9276,
+      "StartTime": "2026-11-01T11:57:09.4276844+08:00",
+      "Responding": true
+    },
+    {
+      "Name": "WinShunSemantic",
+      "Id": 69136,
+      "StartTime": "2026-11-01T11:57:09.5051949+08:00",
+      "Responding": true
+    },
+    {
+      "Name": "WinShunSwitches",
+      "Id": 36820,
+      "StartTime": "2026-11-01T11:57:09.517661+08:00",
+      "Responding": true
+    }
+  ],
+  "uiVerified": [
+    "winshun.capture: running",
+    "winshun.semantic: running",
+    "winshun.switches: running"
+  ],
+  "checkedAt": "2026-11-01T11:58:51.2396548+08:00",
+  "failureCount": 0,
+  "elapsedSeconds": 104.0
+}

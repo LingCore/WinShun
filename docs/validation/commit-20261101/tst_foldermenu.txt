@@ -1,0 +1,73 @@
+********* Start testing of FolderMenuTest *********
+Config: Using QtTest library 6.12.0, Qt 6.12.0 (x86_64-little_endian-llp64 shared (dynamic) release build; by MSVC 2022), windows 11
+PASS   : FolderMenuTest::initTestCase()
+PASS   : FolderMenuTest::hiddenDesktopIcons(progman-background)
+PASS   : FolderMenuTest::hiddenDesktopIcons(progman-defview)
+PASS   : FolderMenuTest::hiddenDesktopIcons(worker-background)
+PASS   : FolderMenuTest::hiddenDesktopIcons(worker-defview)
+PASS   : FolderMenuTest::desktopCanvasGuards()
+QINFO  : FolderMenuTest::commandsAndSettings() Folder menu: hotkey over another window at 1310,826
+QINFO  : FolderMenuTest::commandsAndSettings() Folder menu: hotkey, folder "" 0 ms
+QINFO  : FolderMenuTest::commandsAndSettings() Folder menu: windows 0, ready 0 ms
+QINFO  : FolderMenuTest::commandsAndSettings() Folder menu: hotkey over another window at 1310,826
+QINFO  : FolderMenuTest::commandsAndSettings() Folder menu: hotkey, folder "" 0 ms
+QINFO  : FolderMenuTest::commandsAndSettings() Folder menu: windows 0, ready 0 ms
+QINFO  : FolderMenuTest::commandsAndSettings() Folder menu: hotkey over another window at 1310,826
+QINFO  : FolderMenuTest::commandsAndSettings() Folder menu: hotkey, folder "" 0 ms
+QINFO  : FolderMenuTest::commandsAndSettings() Folder menu: windows 0, ready 0 ms
+PASS   : FolderMenuTest::commandsAndSettings()
+QINFO  : FolderMenuTest::pagesAndLongLists(light) Folder menu: hotkey over another window at 1310,826
+QINFO  : FolderMenuTest::pagesAndLongLists(light) Folder menu: hotkey, folder "" 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(light) Folder menu: windows 0, ready 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(light) Folder menu: hotkey over another window at 1310,826
+QINFO  : FolderMenuTest::pagesAndLongLists(light) Folder menu: hotkey, folder "" 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(light) Folder menu: windows 0, ready 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(light) Folder menu: hotkey over another window at 1310,826
+QINFO  : FolderMenuTest::pagesAndLongLists(light) Folder menu: hotkey, folder "" 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(light) Folder menu: windows 0, ready 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(light) Folder menu: hotkey over another window at 1310,826
+QINFO  : FolderMenuTest::pagesAndLongLists(light) Folder menu: hotkey, folder "" 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(light) Folder menu: windows 0, ready 0 ms
+PASS   : FolderMenuTest::pagesAndLongLists(light)
+QINFO  : FolderMenuTest::pagesAndLongLists(dark) Folder menu: hotkey over another window at 1310,826
+QINFO  : FolderMenuTest::pagesAndLongLists(dark) Folder menu: hotkey, folder "" 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(dark) Folder menu: windows 0, ready 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(dark) Folder menu: hotkey over another window at 1310,826
+QINFO  : FolderMenuTest::pagesAndLongLists(dark) Folder menu: hotkey, folder "" 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(dark) Folder menu: windows 0, ready 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(dark) Folder menu: hotkey over another window at 1310,826
+QINFO  : FolderMenuTest::pagesAndLongLists(dark) Folder menu: hotkey, folder "" 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(dark) Folder menu: windows 0, ready 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(dark) Folder menu: hotkey over another window at 1310,826
+QINFO  : FolderMenuTest::pagesAndLongLists(dark) Folder menu: hotkey, folder "" 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(dark) Folder menu: windows 0, ready 0 ms
+PASS   : FolderMenuTest::pagesAndLongLists(dark)
+QINFO  : FolderMenuTest::pagesAndLongLists(light-square) Folder menu: hotkey over another window at 1310,826
+QINFO  : FolderMenuTest::pagesAndLongLists(light-square) Folder menu: hotkey, folder "" 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(light-square) Folder menu: windows 0, ready 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(light-square) Folder menu: hotkey over another window at 1310,826
+QINFO  : FolderMenuTest::pagesAndLongLists(light-square) Folder menu: hotkey, folder "" 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(light-square) Folder menu: windows 0, ready 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(light-square) Folder menu: hotkey over another window at 1310,826
+QINFO  : FolderMenuTest::pagesAndLongLists(light-square) Folder menu: hotkey, folder "" 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(light-square) Folder menu: windows 0, ready 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(light-square) Folder menu: hotkey over another window at 1310,826
+QINFO  : FolderMenuTest::pagesAndLongLists(light-square) Folder menu: hotkey, folder "" 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(light-square) Folder menu: windows 0, ready 0 ms
+PASS   : FolderMenuTest::pagesAndLongLists(light-square)
+QINFO  : FolderMenuTest::pagesAndLongLists(dark-square) Folder menu: hotkey over another window at 1310,826
+QINFO  : FolderMenuTest::pagesAndLongLists(dark-square) Folder menu: hotkey, folder "" 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(dark-square) Folder menu: windows 0, ready 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(dark-square) Folder menu: hotkey over another window at 1310,826
+QINFO  : FolderMenuTest::pagesAndLongLists(dark-square) Folder menu: hotkey, folder "" 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(dark-square) Folder menu: windows 0, ready 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(dark-square) Folder menu: hotkey over another window at 1310,826
+QINFO  : FolderMenuTest::pagesAndLongLists(dark-square) Folder menu: hotkey, folder "" 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(dark-square) Folder menu: windows 0, ready 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(dark-square) Folder menu: hotkey over another window at 1310,826
+QINFO  : FolderMenuTest::pagesAndLongLists(dark-square) Folder menu: hotkey, folder "" 0 ms
+QINFO  : FolderMenuTest::pagesAndLongLists(dark-square) Folder menu: windows 0, ready 0 ms
+PASS   : FolderMenuTest::pagesAndLongLists(dark-square)
+PASS   : FolderMenuTest::cleanupTestCase()
+Totals: 12 passed, 0 failed, 0 skipped, 0 blacklisted, 6744ms
+********* Finished testing of FolderMenuTest *********

@@ -1,0 +1,31 @@
+preparing
+making the application
+loading the font
+starting (dark 0, scale 1)
+platform windows, plugins C:/Qt/6.12.0/msvc2022_64/plugins, qml C:/Qt/6.12.0/msvc2022_64/qml, library paths C:/Qt/6.12.0/msvc2022_64/plugins; D:/WinShun-validation-issues156-158-20261101
+font 'Alibaba PuHuiTi 3.0' -> 'Alibaba PuHuiTi 3.0' 24px: ascent 25.4375, descent 8.15625, height 33.5938, line spacing 33.5938, hinting 2
+loading SettingsWindow.qml
+showing 920x720 (dpr 1), active 0
+pages 12, pageKeywords 12, pageTabs 12
+page 0 tab 0 (Open WinShun / Shortcuts): window 920x1144 asked 1144, current 0/0, content 1096
+saved D:/WinShun-validation-issues156-158-20261101/evidence/settings-en-open/p00-t0.png 920x1144
+page 0 tab 1 (Open WinShun / Taskbar): window 920x720 asked 720, current 0/1, content 671
+saved D:/WinShun-validation-issues156-158-20261101/evidence/settings-en-open/p00-t1.png 920x720
+page 0 tab 2 (Open WinShun / Dialogs): window 920x2157 asked 2157, current 0/2, content 2109
+saved D:/WinShun-validation-issues156-158-20261101/evidence/settings-en-open/p00-t2.png 920x2157
+Opus typing setting: actual QML toggle, editor and isolated settings checked
+page 0 tab 3 (Open WinShun / Startup and history): window 920x720 asked 720, current 0/3, content 408
+saved D:/WinShun-validation-issues156-158-20261101/evidence/settings-en-open/p00-t3.png 920x720
+search 'Folder menu on a double click': 2 row(s), best 'Folder menu on a double click' on page 0 tab 2, searching 1
+saved D:/WinShun-validation-issues156-158-20261101/evidence/settings-en-open/search-Folder menu on a double click.png 920x720
+search 'Folder menu on a double click': Enter went to page 0 tab 2 (Open WinShun), searching 0
+search 'List favorites in the menu': 3 row(s), best 'List favorites in the menu' on page 0 tab 2, searching 1
+saved D:/WinShun-validation-issues156-158-20261101/evidence/settings-en-open/search-List favorites in the menu.png 920x720
+search 'List favorites in the menu': Enter went to page 0 tab 2 (Open WinShun), searching 0
+search 'Search bar by file dialogs': 3 row(s), best 'Search bar by file dialogs' on page 0 tab 2, searching 1
+saved D:/WinShun-validation-issues156-158-20261101/evidence/settings-en-open/search-Search bar by file dialogs.png 920x720
+search 'Search bar by file dialogs': Enter went to page 0 tab 2 (Open WinShun), searching 0
+search 'Type to search in Directory Opus': 2 row(s), best 'Type to search in Directory Opus' on page 0 tab 2, searching 1
+saved D:/WinShun-validation-issues156-158-20261101/evidence/settings-en-open/search-Type to search in Directory Opus.png 920x720
+search 'Type to search in Directory Opus': Enter went to page 0 tab 2 (Open WinShun), searching 0
+0 warning(s)

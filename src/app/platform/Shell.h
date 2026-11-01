@@ -113,6 +113,8 @@ struct MenuItem {
     bool enabled = true;
     bool isDefault = false;
     std::vector<MenuItem> children; // a submenu: `text` opens it, `id` is not chosen
+    QString glyph; // optional Segoe code point, mapped through Phosphor by the tray menu
+    bool secondary = false; // informational status, below the action text hierarchy
 
     static MenuItem separator() { return {}; }
 };

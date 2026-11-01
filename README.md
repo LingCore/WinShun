@@ -191,8 +191,8 @@
 
 #### 🗂️ 资源管理器里：双击空白处、右键搜索此处
 
-- **双击空白处**：在资源管理器或桌面的空白处双击，弹出收藏的、最近的、别的窗口里开着的文件夹，选一个就在这个窗口里转过去（桌面上开新窗口），和 Listary 一样；还能在当前文件夹里搜、把它加进收藏。这三类里要列哪几类，可以在设置里选。
-- 菜单不抢焦点，方向键、回车、Esc、首字母都能用；点别处或再双击就关。Listary 在运行时让给它。
+- **双击空白处**：在资源管理器或桌面的空白处双击，按“收藏夹 / 最近的文件夹 / 已打开的文件夹”进入二级页面。收藏夹包含文件夹、文件、应用、系统位置和自定义命令，显示名称与图标，悬停查看完整路径或命令；选文件夹就在原窗口里转过去（桌面上开新窗口）。自定义命令点击即可执行，`{query}` 接收当前目录，命令里设置的工作目录优先。三类入口可在设置里分别开关。
+- 菜单不抢焦点，支持方向键、回车、首字母和滚动；右方向键进入，左方向键、退格或 `Esc` 返回，首页 `Esc` 关闭。点别处或再双击就关。Listary 在运行时让给它。
 - **Directory Opus 里也能双击**：Win顺 可以替你在 Opus 的设置里加好这条命令（Opus 会重启一下），关掉或卸载时换回原来的。
 - **Directory Opus 里直接打字搜索**：在设置 → 打开 Win顺 → 对话框中单独开启，默认关闭。在文件列表里从字母或数字开始输入，就用 Win顺 搜，当前标签的文件夹里的排在最前（和资源管理器一样），双栏也跟随正在操作的一栏；`Esc` 回到 Opus，打开文件夹或 `Ctrl+Enter` 定位结果也回到原来的一栏。改名、地址栏、菜单和以符号开头的 Opus 查找模式仍按原来的方式操作。
 - **用快捷键弹出**：双击被别的程序占了，或者想在 Total Commander、XYplorer、Pulse 里用，就在设置里给文件夹菜单设一个快捷键，在任何窗口里按：资源管理器、桌面、Directory Opus、Total Commander、XYplorer、“打开”“另存为”对话框里选中的文件夹在那个窗口里打开（Pulse 里交给 Pulse，按它的“从其他程序打开的文件夹”设置开新标签或新窗口），别的窗口里用文件管理器打开；再按一次关闭。
@@ -415,7 +415,7 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
   - **Suggestions**: open folders, a path you just copied, favorites and recent folders.
   - **Going there by itself**: optional, as the dialog opens, or only when you come back to it from the file manager.
 - 🗂️ **In File Explorer: a double click, a right-click**
-  - **Folder menu**: double-click the blank space of a File Explorer folder or of the desktop: favorite, recent and open folders; pick one and the same window goes there (the desktop opens a new one), like Listary. Also: search this folder, add it to the favorites. Which of the three groups it lists is a setting.
+  - **Folder menu**: double-click empty space in File Explorer or on the desktop, then choose Favorites, Recent folders or Open folders. Favorites include folders, files, apps, system places and custom commands, with names and icons; hover for the full path or command. Choose a folder to navigate the same window (the desktop opens a new one), or click a command to run it; `{query}` receives the current folder and an explicit working directory takes priority. Right enters a page; Left, Backspace or Esc returns; Esc on the home page closes it. Long lists scroll and the menu keeps the source window's focus. Each group can be switched off in settings.
   - It never takes the focus: arrows, Enter, Esc and first letters work; a click elsewhere or another double click closes it. It stays out of the way while Listary runs.
   - **In Directory Opus too**: WinShun can add its command to Opus's settings for you (Opus restarts once), and puts the old one back when turned off or uninstalled.
   - **Type to search in Directory Opus**: enable it separately in Settings → Open WinShun → Dialogs (off by default). Start with a letter or digit in the file list to search, the focused tab's folder first (as in File Explorer), including either pane of a dual display. `Esc` returns to Opus; opening a folder or locating a result with `Ctrl+Enter` uses the original pane. Renaming, address bars, menus and Opus find modes starting with symbols keep their usual behavior.

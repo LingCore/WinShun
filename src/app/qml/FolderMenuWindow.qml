@@ -1,74 +1,100 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls.Basic
 import WinShun
 
-// The folder menu (FolderMenu, GitHub #22): favorite, recent and open
-// folders, brought up by a double click on the blank space of a File
-// Explorer folder or of the desktop, or by its hotkey (GitHub #25) over
-// whatever window is in front. Drawn as ContextMenu is; it never takes the
-// focus, that window stays in front, and the keys come through FolderMenu
-// (keyPressed).
+// One non-activating window preserves the source folder's focus across pages.
 Window {
     id: menu
-
     required property FolderMenu folderMenu
     property int highlighted: -1
-
-    readonly property var entries: folderMenu.entries
+    property var page: null
+    property int parentHighlight: -1
+    property Item hoveredEntry: null
+    property string hoveredText
+    property point popupAnchor
+    property rect availableArea
+    readonly property var entries: page === null ? folderMenu.entries : page.children
     readonly property int padding: 4
-    readonly property int itemHeight: 36
+    readonly property int itemHeight: Theme.menuItemHeight
+    readonly property real listHeight: entries.reduce((height, entry) => height + (entry.separator === true ? 9 : itemHeight), 0)
+    readonly property int headingHeight: page === null ? 0 : itemHeight + 5
+    readonly property real maxHeight: Math.min(600, availableArea.height > 0 ? availableArea.height - 16 : 600)
 
+    objectName: "folderMenuWindow"
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus
     color: Theme.menuBackground
-    height: content.implicitHeight + 2 * padding
-
-    // `pos`: global point (logical pixels) for the top-left corner; the menu
-    // flips left / up when it would leave the screen there.
-    function popup(pos) {
-        content.forceLayout() // the new rows' height, before it is placed by it
-        let w = 0
-        for (let i = 0; i < repeater.count; ++i)
-            w = Math.max(w, repeater.itemAt(i).implicitWidth)
-        width = Math.min(Math.max(280, w + 2 * padding), 520)
+    width: availableArea.width > 0 ? Math.min(360, availableArea.width - 16) : 360
+    height: Math.min(listHeight + 2 * padding + headingHeight, maxHeight)
+    onHeightChanged: if (visible) place()
+    onHighlightedChanged: Qt.callLater(ensureVisible)
+    onEntriesChanged: {
+        hoveredEntry = null
         highlighted = -1
+        flick.contentY = 0
+    }
 
-        const area = folderMenu.screenArea(pos)
-        let x = pos.x
-        let y = pos.y
+    function place() {
+        let x = popupAnchor.x
+        let y = popupAnchor.y
+        const area = availableArea
         if (area.width > 0) {
-            if (x + width > area.x + area.width)
-                x = x - width
-            if (y + height > area.y + area.height)
-                y = y - height
-            x = Math.max(area.x, Math.min(x, area.x + area.width - width))
-            y = Math.max(area.y, Math.min(y, area.y + area.height - height))
+            if (x + width > area.x + area.width) x -= width
+            if (y + height > area.y + area.height) y -= height
+            x = Math.max(area.x + 8, Math.min(x, area.x + area.width - width - 8))
+            y = Math.max(area.y + 8, Math.min(y, area.y + area.height - height - 8))
         }
         menu.x = x
         menu.y = y
+    }
+    function popup(pos) {
+        page = null
+        parentHighlight = -1
+        highlighted = -1
+        hoveredEntry = null
+        flick.contentY = 0
+        popupAnchor = pos
+        availableArea = folderMenu.screenArea(pos)
+        flick.forceLayout()
+        place()
         folderMenu.prepareMenuWindow(menu)
         show()
         raise()
     }
-
     function selectable(i) {
         const entry = entries[i]
         return entry !== undefined && entry.separator !== true && entry.disabled !== true
     }
-
-    // Next selectable entry from `from` in direction `delta`, wrapping around.
     function step(from, delta) {
         const n = entries.length
         let i = from
         for (let k = 0; k < n; ++k) {
             i = ((i + delta) % n + n) % n
-            if (selectable(i))
-                return i
+            if (selectable(i)) return i
         }
         return -1
     }
-
-    // The next entry after the highlighted one whose name starts with `text`.
+    function ensureVisible() {
+        if (highlighted >= 0)
+            flick.positionViewAtIndex(highlighted, ListView.Contain)
+    }
+    function activate(i) {
+        if (!selectable(i)) return
+        const entry = entries[i]
+        if (entry.children !== undefined) {
+            parentHighlight = i
+            page = entry
+            highlighted = step(-1, 1)
+        } else {
+            folderMenu.trigger(entry.action)
+        }
+    }
+    function back() {
+        if (page === null) return
+        page = null
+        highlighted = parentHighlight
+    }
     function jumpTo(text) {
         const wanted = text.toLowerCase()
         const n = entries.length
@@ -80,7 +106,6 @@ Window {
             }
         }
     }
-
     function handleKey(key, text) {
         switch (key) {
         case Qt.Key_Down: highlighted = step(highlighted, 1); return
@@ -89,113 +114,201 @@ Window {
         case Qt.Key_PageUp: highlighted = step(-1, 1); return
         case Qt.Key_End:
         case Qt.Key_PageDown: highlighted = step(0, -1); return
+        case Qt.Key_Right:
+            if (highlighted >= 0 && entries[highlighted].children !== undefined) activate(highlighted)
+            return
+        case Qt.Key_Left:
+        case Qt.Key_Backspace: back(); return
         case Qt.Key_Return:
         case Qt.Key_Enter:
-            if (highlighted >= 0)
-                folderMenu.trigger(highlighted)
-            else
-                folderMenu.dismiss()
+            if (highlighted >= 0) activate(highlighted)
             return
         case Qt.Key_Escape:
-        case Qt.Key_Menu:
-            folderMenu.dismiss()
+            if (page !== null) back()
+            else folderMenu.dismiss()
             return
+        case Qt.Key_Menu: folderMenu.dismiss(); return
         default:
-            if (text.length > 0 && text.trim().length > 0)
-                jumpTo(text)
+            if (text.length > 0 && text.trim().length > 0) jumpTo(text)
         }
     }
-
     Connections {
         target: menu.folderMenu
         function onPopupRequested(pos) { menu.popup(pos) }
         function onHideRequested() {
             menu.visible = false
+            menu.page = null
             menu.highlighted = -1
+            menu.hoveredEntry = null
         }
         function onKeyPressed(key, text) { menu.handleKey(key, text) }
     }
 
-    Column {
-        id: content
+    Item {
+        id: heading
+        visible: menu.page !== null
         x: menu.padding
         y: menu.padding
-
-        Repeater {
-            id: repeater
-            model: menu.entries
-
-            delegate: Item {
-                id: entry
-
-                required property var modelData
-                required property int index
-                readonly property bool separator: modelData.separator === true
-                readonly property bool disabled: modelData.disabled === true
-
-                width: menu.width - 2 * menu.padding
-                height: separator ? 9 : menu.itemHeight
-                implicitWidth: separator ? 0 : 44 + label.implicitWidth + 32 + detail.implicitWidth + 14
-
-                Rectangle {
-                    visible: entry.separator
-                    anchors.verticalCenter: parent.verticalCenter
-                    x: -menu.padding
-                    width: menu.width
-                    height: Theme.edge(Screen.devicePixelRatio)
-                    color: Theme.divider
+        width: menu.width - 2 * menu.padding
+        height: menu.headingHeight
+        Accessible.role: Accessible.MenuItem
+        Accessible.name: qsTr("返回")
+        Accessible.onPressAction: menu.back()
+        Rectangle {
+            width: heading.width
+            height: menu.itemHeight
+            radius: Theme.controlRadius
+            color: backMouse.containsMouse ? Theme.menuHover : "transparent"
+        }
+        Glyph {
+            x: 12
+            y: (menu.itemHeight - height) / 2
+            glyph: "\uE72B"
+            size: 16
+            color: Theme.text
+        }
+        Text {
+            x: 42
+            y: (menu.itemHeight - height) / 2
+            width: heading.width - x - 12
+            text: menu.page === null ? "" : menu.page.text
+            font.pixelSize: Theme.fontBody
+            font.weight: Font.DemiBold
+            color: Theme.text
+            elide: Text.ElideRight
+        }
+        MouseArea {
+            id: backMouse
+            width: heading.width
+            height: menu.itemHeight
+            hoverEnabled: true
+            onClicked: menu.back()
+        }
+        Rectangle {
+            anchors.bottom: parent.bottom
+            x: -menu.padding
+            width: menu.width
+            height: Theme.edge(Screen.devicePixelRatio)
+            color: Theme.divider
+        }
+    }
+    ListView {
+        id: flick
+        objectName: "folderMenuScroll"
+        x: menu.padding
+        y: menu.padding + menu.headingHeight
+        width: menu.width - 2 * menu.padding
+        height: menu.height - 2 * menu.padding - menu.headingHeight
+        boundsBehavior: Flickable.StopAtBounds
+        clip: true
+        reuseItems: true
+        model: menu.entries
+        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        delegate: Item {
+            id: entry
+            required property var modelData
+            required property int index
+            readonly property bool separator: modelData.separator === true
+            readonly property bool disabled: modelData.disabled === true
+            readonly property bool branch: modelData.children !== undefined
+            readonly property string tooltip: modelData.tooltip ?? ""
+            readonly property real trailingWidth: Math.min(detail.implicitWidth, 96) + (branch ? 20 : 0)
+            objectName: "folderMenuEntry" + index
+            width: flick.width
+            height: separator ? 9 : menu.itemHeight
+            enabled: !disabled
+            ListView.onPooled: {
+                if (menu.hoveredEntry === entry)
+                    menu.hoveredEntry = null
+            }
+            Accessible.role: Accessible.MenuItem
+            Accessible.name: modelData.text ?? ""
+            Accessible.description: tooltip
+            Accessible.ignored: separator
+            Accessible.onPressAction: menu.activate(entry.index)
+            Rectangle {
+                visible: entry.separator
+                anchors.verticalCenter: parent.verticalCenter
+                x: -menu.padding
+                width: menu.width
+                height: Theme.edge(Screen.devicePixelRatio)
+                color: Theme.divider
+            }
+            Rectangle {
+                visible: !entry.separator && menu.highlighted === entry.index
+                anchors.fill: parent
+                radius: Theme.controlRadius
+                color: Theme.menuHover
+            }
+            Image {
+                id: icon
+                visible: !entry.separator && status === Image.Ready
+                x: 12
+                anchors.verticalCenter: parent.verticalCenter
+                width: 18
+                height: 18
+                source: entry.modelData.icon ?? ""
+                sourceSize: Qt.size(18 * Screen.devicePixelRatio, 18 * Screen.devicePixelRatio)
+                asynchronous: true
+                fillMode: Image.PreserveAspectFit
+            }
+            Glyph {
+                visible: !entry.separator && !icon.visible
+                x: 13
+                anchors.verticalCenter: parent.verticalCenter
+                glyph: entry.modelData.glyph ?? ""
+                size: 16
+                color: entry.disabled ? Theme.faint : Theme.text
+            }
+            Text {
+                x: 42
+                width: Math.max(0, entry.width - x - 14 - entry.trailingWidth - 12)
+                anchors.verticalCenter: parent.verticalCenter
+                text: entry.modelData.text ?? ""
+                elide: Text.ElideRight
+                color: entry.disabled ? Theme.faint : Theme.text
+                font.pixelSize: Theme.fontBody
+            }
+            Text {
+                id: detail
+                anchors.right: parent.right
+                anchors.rightMargin: entry.branch ? 34 : 14
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.min(implicitWidth, 96)
+                text: entry.modelData.detail ?? ""
+                elide: Text.ElideRight
+                color: Theme.faint
+                font.pixelSize: Theme.fontCaption
+            }
+            Glyph {
+                visible: entry.branch
+                anchors.right: parent.right
+                anchors.rightMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                glyph: "\uE76C"
+                size: 12
+                color: entry.disabled ? Theme.faint : Theme.text
+            }
+            MouseArea {
+                anchors.fill: parent
+                enabled: !entry.separator && !entry.disabled
+                hoverEnabled: true
+                onEntered: {
+                    menu.highlighted = entry.index
+                    menu.hoveredEntry = entry
+                    menu.hoveredText = entry.tooltip
                 }
-
-                Rectangle {
-                    visible: !entry.separator && menu.highlighted === entry.index
-                    anchors.fill: parent
-                    radius: Theme.controlRadius
-                    color: Theme.menuHover
+                onExited: {
+                    if (menu.highlighted === entry.index) menu.highlighted = -1
+                    if (menu.hoveredEntry === entry) menu.hoveredEntry = null
                 }
-
-                Glyph {
-                    visible: !entry.separator
-                    x: 14
-                    anchors.verticalCenter: parent.verticalCenter
-                    glyph: entry.modelData.glyph ?? ""
-                    size: 16
-                    color: entry.disabled ? Theme.faint : Theme.text
-                }
-
-                Text {
-                    id: label
-                    visible: !entry.separator
-                    x: 44
-                    width: Math.min(implicitWidth, entry.width - 44 - 32 - detail.implicitWidth - 14)
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: entry.modelData.text ?? ""
-                    elide: Text.ElideRight
-                    color: entry.disabled ? Theme.faint : Theme.text
-                    font.pixelSize: Theme.fontBody
-                }
-
-                Text {
-                    id: detail
-                    visible: !entry.separator
-                    anchors.right: parent.right
-                    anchors.rightMargin: 14
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: entry.modelData.detail ?? ""
-                    color: Theme.faint
-                    font.pixelSize: Theme.fontCaption
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    enabled: !entry.separator && !entry.disabled
-                    hoverEnabled: true
-                    onEntered: menu.highlighted = entry.index
-                    onExited: if (menu.highlighted === entry.index) menu.highlighted = -1
-                    onClicked: menu.folderMenu.trigger(entry.index)
-                }
+                onClicked: menu.activate(entry.index)
             }
         }
     }
-
+    HoverTip {
+        target: menu.hoveredText.length > 0 ? menu.hoveredEntry : null
+        text: menu.hoveredText
+    }
     WindowEdge {}
 }

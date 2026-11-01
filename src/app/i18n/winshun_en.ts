@@ -6292,6 +6292,18 @@
         <source>在“全部”和“文件”里，每个词都按正则表达式匹配名字，如 ^IMG_\d{4}；ext:、!排除、“ | ”照常可用。在搜索框里按 Ctrl+R 开关，开着时搜索框旁显示 .*。不开时也可在单个词前加 regex:</source>
         <translation>In All and Files, match names with a regular expression for each word, such as ^IMG_\d{4}. ext:, !exclude and | still work. Ctrl+R toggles this mode, shown as .* beside the box. With it off, prefix an individual word with regex: or re:.</translation>
     </message>
+    <message>
+        <source>菜单里列出收藏夹</source>
+        <translation>List favorites in the menu</translation>
+    </message>
+    <message>
+        <source>包含收藏的文件夹、文件、应用和自定义命令</source>
+        <translation>Includes favorite folders, files, apps and custom commands</translation>
+    </message>
+    <message>
+        <source>双击;文件夹菜单;收藏;收藏夹;自定义命令</source>
+        <translation>double click;folder menu;favorites;bookmark;custom command</translation>
+    </message>
 </context>
 <context>
     <name>ShareCard</name>
@@ -8504,6 +8516,26 @@
     <message>
         <source>这条命令已移除，请重新打开菜单</source>
         <translation>This command was removed. Reopen the menu.</translation>
+    </message>
+    <message>
+        <source>收藏夹</source>
+        <translation>Favorites</translation>
+    </message>
+    <message>
+        <source>最近的文件夹</source>
+        <translation>Recent folders</translation>
+    </message>
+    <message>
+        <source>已打开的文件夹</source>
+        <translation>Open folders</translation>
+    </message>
+    <message>
+        <source>这一项已移除，请重新打开菜单</source>
+        <translation>This item was removed. Reopen the menu.</translation>
+    </message>
+    <message>
+        <source>这一项暂不可用，请稍后重试</source>
+        <translation>This item is unavailable. Try again later.</translation>
     </message>
 </context>
 <context>
@@ -12200,6 +12232,13 @@ Content index: %5</translation>
     <message>
         <source>此文件没有可用的预览处理程序，可查看文本或打开文件</source>
         <translation>No preview handler is available. View the text or open the file.</translation>
+    </message>
+</context>
+<context>
+    <name>FolderMenuWindow</name>
+    <message>
+        <source>返回</source>
+        <translation>Back</translation>
     </message>
 </context>
 </TS>

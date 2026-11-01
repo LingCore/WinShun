@@ -1,0 +1,11 @@
+{
+  "time": "2026-11-01T11:57:07.3218379+08:00",
+  "plugins": [
+    "winshun.capture",
+    "winshun.semantic"
+  ],
+  "pid": 18372,
+  "backup": "D:\\Disk-cleanup-20261101\\program-backup\\plugin-runtime-115703",
+  "runtimeFiles": 155,
+  "qtPathRemoved": true
+}

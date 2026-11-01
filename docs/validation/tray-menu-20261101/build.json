@@ -1,0 +1,33 @@
+{
+  "time": "2026-11-01T11:32:19.7550933+08:00",
+  "backup": "D:\\Disk-cleanup-20261101\\program-backup\\tray-menu-113218",
+  "previous": [
+    {
+      "path": "F:\\电脑便捷工具\\build\\release\\WinShun.exe",
+      "sha256": "E2AA39294AF36C85941CE5DCEE23895EAAD8DE0B9A43BBF6B16EE90336248410"
+    },
+    {
+      "path": "F:\\电脑便捷工具\\build\\release\\WinShunCaptureApp.dll",
+      "sha256": "F3414FCAFBECA43F66283C7FDA5092D7105C30886669254D498E69B0E5AF0CBA"
+    },
+    {
+      "path": "F:\\电脑便捷工具\\build\\release\\library-plugins\\winshun.capture\\WinShunCaptureApp.dll",
+      "sha256": "F3414FCAFBECA43F66283C7FDA5092D7105C30886669254D498E69B0E5AF0CBA"
+    }
+  ],
+  "files": [
+    {
+      "path": "F:\\电脑便捷工具\\build\\release\\WinShun.exe",
+      "sha256": "8AEEA6BA4515422A59E213C2474EE01D2F8B6E3626D14107DD6DDC43055FC9D7"
+    },
+    {
+      "path": "F:\\电脑便捷工具\\build\\release\\WinShunCaptureApp.dll",
+      "sha256": "AD7AAE2E51A90D544066A65F6E1A5C6ED426738A6DCD9AFA75A83B3A702F4F72"
+    },
+    {
+      "path": "F:\\电脑便捷工具\\build\\release\\library-plugins\\winshun.capture\\WinShunCaptureApp.dll",
+      "sha256": "AD7AAE2E51A90D544066A65F6E1A5C6ED426738A6DCD9AFA75A83B3A702F4F72"
+    }
+  ],
+  "pid": 9596
+}

@@ -1,0 +1,29 @@
+********* Start testing of AppearanceTest *********
+Config: Using QtTest library 6.12.0, Qt 6.12.0 (x86_64-little_endian-llp64 shared (dynamic) release build; by MSVC 2022), windows 11
+PASS   : AppearanceTest::initTestCase()
+QINFO  : AppearanceTest::liveComposedOutline(light-0) Desktop composition DPR: 1.5
+PASS   : AppearanceTest::liveComposedOutline(light-0)
+QINFO  : AppearanceTest::liveComposedOutline(light-1) Desktop composition DPR: 1.5
+PASS   : AppearanceTest::liveComposedOutline(light-1)
+QINFO  : AppearanceTest::liveComposedOutline(light-2) Desktop composition DPR: 1.5
+PASS   : AppearanceTest::liveComposedOutline(light-2)
+QINFO  : AppearanceTest::liveComposedOutline(dark-0) Desktop composition DPR: 1.5
+PASS   : AppearanceTest::liveComposedOutline(dark-0)
+QINFO  : AppearanceTest::liveComposedOutline(dark-1) Desktop composition DPR: 1.5
+PASS   : AppearanceTest::liveComposedOutline(dark-1)
+QINFO  : AppearanceTest::liveComposedOutline(dark-2) Desktop composition DPR: 1.5
+PASS   : AppearanceTest::liveComposedOutline(dark-2)
+QINFO  : AppearanceTest::liveComposedOutline(light-backdrop) Desktop composition DPR: 1.5
+PASS   : AppearanceTest::liveComposedOutline(light-backdrop)
+QINFO  : AppearanceTest::liveComposedOutline(dark-backdrop) Desktop composition DPR: 1.5
+PASS   : AppearanceTest::liveComposedOutline(dark-backdrop)
+PASS   : AppearanceTest::shellHosts()
+PASS   : AppearanceTest::settingsRoundTrip()
+PASS   : AppearanceTest::liveWindows()
+PASS   : AppearanceTest::liveTokensAndSquarePixels()
+QWARN  : AppearanceTest::iconFontGlyphs() WinShun: the icon font (Segoe Fluent Icons) has no U+E000; drawn another way, or not at all
+PASS   : AppearanceTest::iconFontGlyphs()
+PASS   : AppearanceTest::phosphorIcons()
+PASS   : AppearanceTest::cleanupTestCase()
+Totals: 16 passed, 0 failed, 0 skipped, 0 blacklisted, 8572ms
+********* Finished testing of AppearanceTest *********

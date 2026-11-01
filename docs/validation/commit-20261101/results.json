@@ -1,0 +1,22 @@
+[
+  {
+    "test": "tst_foldermenu",
+    "exit": 0
+  },
+  {
+    "test": "tst_traymenu",
+    "exit": 0
+  },
+  {
+    "test": "tst_appearance",
+    "exit": 0
+  },
+  {
+    "test": "tst_keyrouter",
+    "exit": 0
+  },
+  {
+    "test": "tst_opusfocus",
+    "exit": 0
+  }
+]

@@ -1,0 +1,14 @@
+{
+  "time": "2026-11-01T11:42:05.4881571+08:00",
+  "path": "F:\\电脑便捷工具\\build\\release\\WinShun.exe",
+  "sha256": "3194BEEFEF4FA61B08A8731C87BAAF4E0CE7A29BC112E3D8C5E5975F20C08D00",
+  "previousSha256": "8AEEA6BA4515422A59E213C2474EE01D2F8B6E3626D14107DD6DDC43055FC9D7",
+  "backup": "D:\\Disk-cleanup-20261101\\program-backup\\tray-compact-114204",
+  "pid": 18380,
+  "bodyFont": 14,
+  "captionFont": 12,
+  "rowHeight": 28,
+  "nativeDpi": 144,
+  "fixtureWidth": 334,
+  "fixtureHeight": 492
+}

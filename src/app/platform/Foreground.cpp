@@ -6,6 +6,21 @@
 
 namespace ws::foreground {
 
+bool isSearchHost(QStringView program)
+{
+    for (const auto host : {u"SearchHost.exe", u"StartMenuExperienceHost.exe", u"SearchApp.exe", u"SearchUI.exe"}) {
+        if (program.compare(QStringView(host), Qt::CaseInsensitive) == 0)
+            return true;
+    }
+    return false;
+}
+
+bool isShellFlyout(QStringView program)
+{
+    return isSearchHost(program) || program.compare(u"ShellExperienceHost.exe", Qt::CaseInsensitive) == 0
+        || program.compare(u"ShellHost.exe", Qt::CaseInsensitive) == 0;
+}
+
 namespace {
 
 bool isDesktop(HWND hwnd)

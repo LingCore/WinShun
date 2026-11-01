@@ -4,6 +4,7 @@
 #include <QColor>
 #include <QHash>
 #include <QObject>
+#include <QPointer>
 #include <QRawFont>
 #include <QVariant>
 #include <QtQml/qqmlregistration.h>
@@ -37,6 +38,7 @@ class SystemTheme : public QObject, public QAbstractNativeEventFilter {
     Q_PROPERTY(bool materials READ materials NOTIFY changed FINAL)
     // Rounded on Windows 11 when the appearance setting allows it.
     Q_PROPERTY(bool roundedCorners READ roundedCorners NOTIFY changed FINAL)
+    Q_PROPERTY(bool nativeWindowBorder READ nativeWindowBorder CONSTANT FINAL)
     // How large the launcher and the clipboard are drawn (界面大小: compact,
     // standard, roomy; see uisize::), and its header's height, as C++ places by.
     Q_PROPERTY(QString uiSize READ uiSize NOTIFY uiSizeChanged FINAL)
@@ -71,6 +73,7 @@ public:
     bool materials() const;
     bool backdropSystem() const;
     bool roundedCorners() const;
+    bool nativeWindowBorder() const;
     static void setRoundedCorners(bool on);
     static bool backdropAvailable() { return s_backdropAvailable; }
     static void setBackdropAvailable(bool on) { s_backdropAvailable = on; } // before the first window
@@ -92,7 +95,7 @@ private:
     static inline bool s_backdropAvailable = false;
     static inline bool s_backdropOn = true;
     static inline QString s_uiSize = QStringLiteral("standard");
-    static inline SystemTheme* s_instance = nullptr; // the QML singleton
+    static inline QPointer<SystemTheme> s_instance; // the QML singleton
     QString m_iconFont;
     mutable QRawFont m_iconRaw; // made the first time hasGlyph asks
     mutable QHash<QString, bool> m_glyphs; // hasGlyph's answers

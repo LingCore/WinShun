@@ -1,0 +1,13 @@
+Test project D:/WinShun-validation-issues156-158-20261101
+    Start 60: tst_appearance_1
+1/4 Test #60: tst_appearance_1 .................   Passed    0.70 sec
+    Start 61: tst_appearance_1.25
+2/4 Test #61: tst_appearance_1.25 ..............   Passed    0.71 sec
+    Start 62: tst_appearance_1.5
+3/4 Test #62: tst_appearance_1.5 ...............   Passed    0.79 sec
+    Start 63: tst_appearance_2
+4/4 Test #63: tst_appearance_2 .................   Passed    0.61 sec
+
+100% tests passed, 0 tests failed out of 4
+
+Total Test time (real) =   2.81 sec

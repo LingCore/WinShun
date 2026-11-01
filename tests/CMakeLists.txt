@@ -142,6 +142,13 @@ set_tests_properties(tst_shelllaunch PROPERTIES
 # Folder-menu commands use the production shell worker and temporary files.
 qt_add_executable(tst_foldermenu tst_foldermenu.cpp
     ${PROJECT_SOURCE_DIR}/src/app/FolderMenu.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/FileIconProvider.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/SiteIconImage.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/SvgIcon.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/SystemTheme.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/Phosphor.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/SiteIcons.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/Http.cpp
     ${PROJECT_SOURCE_DIR}/src/app/RecentFolders.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/ComWorker.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/KeyRouter.cpp
@@ -155,8 +162,13 @@ qt_add_executable(tst_foldermenu tst_foldermenu.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/FolderViewHit.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/Integrity.cpp)
 target_include_directories(tst_foldermenu PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
-target_link_libraries(tst_foldermenu PRIVATE wscore Qt6::Gui Qt6::Qml Qt6::Test
-    ole32 oleaut32 oleacc shell32 shlwapi user32 advapi32 taskschd uiautomationcore userenv dwmapi comctl32 shcore)
+target_link_libraries(tst_foldermenu PRIVATE wscore wsplugin Qt6::Quick Qt6::Svg Qt6::Test
+    ole32 oleaut32 oleacc shell32 shlwapi user32 advapi32 taskschd uiautomationcore userenv dwmapi comctl32 shcore gdi32 winhttp)
+target_compile_definitions(tst_foldermenu PRIVATE WINSHUN_QML_DIR="${PROJECT_SOURCE_DIR}/src/app/qml")
+qt_add_resources(tst_foldermenu "menu_icons"
+    PREFIX /fonts BASE "${PROJECT_SOURCE_DIR}/third_party/phosphor"
+    FILES "${PROJECT_SOURCE_DIR}/third_party/phosphor/Phosphor.ttf"
+          "${PROJECT_SOURCE_DIR}/third_party/phosphor/Phosphor-Fill.ttf")
 set_target_properties(tst_foldermenu PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
 add_test(NAME tst_foldermenu COMMAND tst_foldermenu -o -,txt)
 set_tests_properties(tst_foldermenu PROPERTIES
@@ -432,8 +444,28 @@ set_tests_properties(tst_annotmodel PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+qt_add_executable(tst_traymenu tst_traymenu.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/TrayMenu.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/SystemTheme.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/Phosphor.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/WindowEffects.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/Foreground.cpp)
+target_include_directories(tst_traymenu PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_compile_definitions(tst_traymenu PRIVATE WINSHUN_QML_DIR="${PROJECT_SOURCE_DIR}/src/app/qml")
+qt_add_resources(tst_traymenu "phosphor"
+    PREFIX /fonts
+    BASE "${PROJECT_SOURCE_DIR}/third_party/phosphor"
+    FILES "${PROJECT_SOURCE_DIR}/third_party/phosphor/Phosphor.ttf"
+          "${PROJECT_SOURCE_DIR}/third_party/phosphor/Phosphor-Fill.ttf")
+target_link_libraries(tst_traymenu PRIVATE wscore Qt6::Test Qt6::Quick comctl32 dwmapi gdi32 ole32 oleacc oleaut32 shcore user32)
+set_target_properties(tst_traymenu PROPERTIES QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+add_test(NAME tst_traymenu COMMAND tst_traymenu)
+set_tests_properties(tst_traymenu PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 qt_add_executable(tst_appearance tst_appearance.cpp
     ${PROJECT_SOURCE_DIR}/src/app/Settings.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/WindowFrame.cpp
     ${PROJECT_SOURCE_DIR}/src/app/SystemTheme.cpp
     ${PROJECT_SOURCE_DIR}/src/app/Phosphor.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/WindowEffects.cpp

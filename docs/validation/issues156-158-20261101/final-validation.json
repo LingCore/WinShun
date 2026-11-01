@@ -1,0 +1,18 @@
+[
+  {
+    "name": "settings-en-open",
+    "exit_code": 0
+  },
+  {
+    "name": "settings-en-favorites",
+    "exit_code": 0
+  },
+  {
+    "name": "settings-zh-open",
+    "exit_code": 0
+  },
+  {
+    "name": "production-search-navigation",
+    "exit_code": 0
+  }
+]

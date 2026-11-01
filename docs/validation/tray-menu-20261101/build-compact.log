@@ -1,0 +1,14 @@
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR)
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR)
+-- Configuring done (1.8s)
+-- Generating done (2.1s)
+-- Build files have been written to: D:/WinShun-validation-issues156-158-20261101
+[1/203] Automatic MOC and UIC for target WinShun
+[2/202] Running AUTOMOC file extraction for target WinShun
+[3/9] Automatic MOC and UIC for target tst_traymenu
+[4/8] Building CXX object src\app\CMakeFiles\WinShun.dir\TrayMenu.cpp.obj
+[5/8] Building CXX object tests\CMakeFiles\tst_traymenu.dir\__\src\app\TrayMenu.cpp.obj
+[6/8] Linking CXX executable WinShun.exe
+[7/8] Building CXX object tests\CMakeFiles\tst_traymenu.dir\tst_traymenu.cpp.obj
+F:\电脑便捷工具\tests\tst_traymenu.cpp(142): warning C4245: “参数”: 从“LONG”转换到“DWORD”，有符号/无符号不匹配
+[8/8] Linking CXX executable tst_traymenu.exe

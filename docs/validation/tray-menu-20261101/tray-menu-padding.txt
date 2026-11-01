@@ -1,0 +1,26 @@
+********* Start testing of TrayMenuTest *********
+Config: Using QtTest library 6.12.0, Qt 6.12.0 (x86_64-little_endian-llp64 shared (dynamic) release build; by MSVC 2022), windows 11
+PASS   : TrayMenuTest::initTestCase()
+QINFO  : TrayMenuTest::appearance(light-round) Menu native DPI: 144 dimensions: QSize(334, 510)
+PASS   : TrayMenuTest::appearance(light-round)
+QINFO  : TrayMenuTest::appearance(dark-round) Menu native DPI: 144 dimensions: QSize(334, 510)
+PASS   : TrayMenuTest::appearance(dark-round)
+QINFO  : TrayMenuTest::appearance(light-square) Menu native DPI: 144 dimensions: QSize(334, 510)
+PASS   : TrayMenuTest::appearance(light-square)
+QINFO  : TrayMenuTest::appearance(dark-square) Menu native DPI: 144 dimensions: QSize(334, 510)
+PASS   : TrayMenuTest::appearance(dark-square)
+QINFO  : TrayMenuTest::appearance(english-long) Menu native DPI: 144 dimensions: QSize(562, 510)
+PASS   : TrayMenuTest::appearance(english-long)
+QINFO  : TrayMenuTest::appearance(dark-selected) Menu native DPI: 144 dimensions: QSize(334, 510)
+PASS   : TrayMenuTest::appearance(dark-selected)
+PASS   : TrayMenuTest::keyboard(action)
+PASS   : TrayMenuTest::keyboard(disabled-inert)
+PASS   : TrayMenuTest::keyboard(past-disabled)
+PASS   : TrayMenuTest::keyboard(submenu-first-command)
+PASS   : TrayMenuTest::keyboard(plugin-submenu)
+PASS   : TrayMenuTest::keyboard(cancel-submenu)
+PASS   : TrayMenuTest::keyboard(explicit-mnemonic)
+PASS   : TrayMenuTest::keyboard(duplicate-prefix)
+PASS   : TrayMenuTest::cleanupTestCase()
+Totals: 16 passed, 0 failed, 0 skipped, 0 blacklisted, 3978ms
+********* Finished testing of TrayMenuTest *********

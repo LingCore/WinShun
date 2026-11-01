@@ -12,8 +12,9 @@ namespace ws::folderview {
 enum class Surface {
     None,
     Explorer, // a folder view in a File Explorer window
-    Desktop, // the desktop's icons
-    Opus, // a Directory Opus file display: blank space told by Opus itself (FolderMenu::requested), or its lister in front
+    Desktop, // the desktop's icons; also its bare canvas for the folder menu
+    Opus, // a Directory Opus file display: blank space told by Opus itself (FolderMenu::requested), or its lister in
+          // front
     // The hotkey only (FolderMenu::hotkeyPressed):
     TotalCommander, // its window in front: the panel with the focus
     XYplorer, // its window in front: the tab with the focus
@@ -28,6 +29,7 @@ struct Hit {
     // The window clicked on: DirectUIHWND (File Explorer's items view), or
     // SysListView32 (the desktop's; File Explorer's own when ExplorerPatcher
     // or a Windhawk mod brings the classic list view back, GitHub #45).
+    // classifyMenu also accepts the desktop's host / folder-view background.
     HWND view = nullptr;
     HWND tab = nullptr; // the Explorer tab (ShellTabWindowClass: one per tab on Windows 11, the only one on Windows 10)
     HWND root = nullptr; // the top-level window
@@ -43,6 +45,14 @@ struct Hit {
 // keys of type to search and the rest have not.
 Hit classify(HWND window, POINT pt, bool classicList = false);
 
+// The folder menu also accepts the bare desktop canvas when its icons are
+// hidden. Kept separate so typing/paste focus still requires an items view.
+Hit classifyMenu(HWND window, POINT pt);
+
+// Explorer can give the desktop click and foreground to different shell
+// hosts (Progman/WorkerW). Never accepts a different application's window.
+bool sameDesktop(HWND first, HWND second);
+
 // Whether the top-level window `root` is a File Explorer folder window (the
 // tab on top is the Hit's) or the desktop, by window classes alone; None
 // for anything else. For the hotkey, which has no point: `pt` is left zero.
@@ -56,7 +66,7 @@ bool isOpusFileDisplay(HWND root, HWND focus);
 // What isBlank went by, for the diagnostics journal (GitHub #45): class
 // names, roles and results only, never an item's name.
 struct BlankTrace {
-    const char* by = ""; // "uia" or "msaa": which one decided
+    const char* by = ""; // "uia", "msaa", or "desktop-background"
     std::wstring uiaClass; // UI Automation's element at the point; empty: not asked, or none
     long uiaControlType = 0;
     long uiaResult = 0; // ElementFromPoint's HRESULT
@@ -69,7 +79,9 @@ struct BlankTrace {
 // through UI Automation (its element's class name, Windows 10 and 11 alike),
 // the classic lists (the desktop's) through Microsoft Active Accessibility
 // (accHitTest); each takes one to a few milliseconds and waits on Explorer:
-// on a COM thread of its own, never the GUI's. Unsure is not blank.
+// on a COM thread of its own, never the GUI's. The bare desktop canvas is
+// rechecked with WindowFromPoint, without an icons accessibility walk.
+// Unsure is not blank.
 bool isBlank(const Hit& hit, BlankTrace* trace = nullptr);
 
 // The accessibility walk isBlank makes for a classic list, run anywhere for

@@ -30,6 +30,39 @@ std::wstring classOf(HWND window)
     return className;
 }
 
+bool desktopClass(HWND window)
+{
+    return hasClass(window, L"Progman") || hasClass(window, L"WorkerW");
+}
+
+bool shellOwned(HWND window)
+{
+    DWORD shell = 0, process = 0;
+    ::GetWindowThreadProcessId(::GetShellWindow(), &shell);
+    ::GetWindowThreadProcessId(window, &process);
+    return shell && process == shell;
+}
+
+bool desktopCanvas(HWND window)
+{
+    const HWND root = ::GetAncestor(window, GA_ROOT);
+    if (!root || !desktopClass(root))
+        return false;
+    // Only the host itself or its folder-view background, never an icon,
+    // rename field, gadget or another child. A wallpaper WorkerW may have
+    // no DefView of its own; it must then belong to the actual shell.
+    if (window != root && !(hasClass(window, L"SHELLDLL_DefView") && ::GetParent(window) == root))
+        return false;
+    if (::FindWindowExW(root, nullptr, L"SHELLDLL_DefView", nullptr) || root == ::GetShellWindow())
+        return true;
+    RECT bounds {};
+    MONITORINFO monitor {sizeof monitor};
+    return shellOwned(root) && ::GetWindowRect(root, &bounds)
+        && ::GetMonitorInfoW(::MonitorFromWindow(root, MONITOR_DEFAULTTONEAREST), &monitor)
+        && bounds.left <= monitor.rcMonitor.left && bounds.top <= monitor.rcMonitor.top
+        && bounds.right >= monitor.rcMonitor.right && bounds.bottom >= monitor.rcMonitor.bottom;
+}
+
 long roleOf(IAccessible* object, LONG child)
 {
     VARIANT id {};
@@ -48,17 +81,38 @@ std::wstring roleText(long role)
 {
     const wchar_t* name = L"";
     switch (role) {
-    case ROLE_SYSTEM_WINDOW: name = L"WINDOW"; break;
-    case ROLE_SYSTEM_CLIENT: name = L"CLIENT"; break;
-    case ROLE_SYSTEM_PANE: name = L"PANE"; break;
-    case ROLE_SYSTEM_SCROLLBAR: name = L"SCROLLBAR"; break;
-    case ROLE_SYSTEM_GROUPING: name = L"GROUPING"; break;
-    case ROLE_SYSTEM_LIST: name = L"LIST"; break;
-    case ROLE_SYSTEM_LISTITEM: name = L"LISTITEM"; break;
-    case ROLE_SYSTEM_TEXT: name = L"TEXT"; break;
-    case ROLE_SYSTEM_PUSHBUTTON: name = L"PUSHBUTTON"; break;
-    case ROLE_SYSTEM_SPLITBUTTON: name = L"SPLITBUTTON"; break;
-    default: break;
+    case ROLE_SYSTEM_WINDOW:
+        name = L"WINDOW";
+        break;
+    case ROLE_SYSTEM_CLIENT:
+        name = L"CLIENT";
+        break;
+    case ROLE_SYSTEM_PANE:
+        name = L"PANE";
+        break;
+    case ROLE_SYSTEM_SCROLLBAR:
+        name = L"SCROLLBAR";
+        break;
+    case ROLE_SYSTEM_GROUPING:
+        name = L"GROUPING";
+        break;
+    case ROLE_SYSTEM_LIST:
+        name = L"LIST";
+        break;
+    case ROLE_SYSTEM_LISTITEM:
+        name = L"LISTITEM";
+        break;
+    case ROLE_SYSTEM_TEXT:
+        name = L"TEXT";
+        break;
+    case ROLE_SYSTEM_PUSHBUTTON:
+        name = L"PUSHBUTTON";
+        break;
+    case ROLE_SYSTEM_SPLITBUTTON:
+        name = L"SPLITBUTTON";
+        break;
+    default:
+        break;
     }
     return std::format(L"{}({})", name, role);
 }
@@ -188,7 +242,8 @@ Verdict automationVerdict(const Hit& hit, BlankTrace* trace)
 {
     ComPtr<IUIAutomation> automation;
     if (FAILED(::CoCreateInstance(__uuidof(CUIAutomation8), nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&automation)))
-        && FAILED(::CoCreateInstance(__uuidof(CUIAutomation), nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&automation))))
+        && FAILED(
+            ::CoCreateInstance(__uuidof(CUIAutomation), nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&automation))))
         return Verdict::Unknown;
     ComPtr<IUIAutomation2> timed;
     if (SUCCEEDED(automation.As(&timed))) {
@@ -286,6 +341,23 @@ Hit classifyWindow(HWND root)
     return hit;
 }
 
+Hit classifyMenu(HWND window, POINT pt)
+{
+    Hit hit = classify(window, pt, true);
+    if (hit.surface == Surface::None && desktopCanvas(window)) {
+        hit.surface = Surface::Desktop;
+        hit.view = window;
+        hit.root = ::GetAncestor(window, GA_ROOT);
+        hit.pt = pt;
+    }
+    return hit;
+}
+
+bool sameDesktop(HWND first, HWND second)
+{
+    return first && second && desktopCanvas(first) && desktopCanvas(second) && shellOwned(first) && shellOwned(second);
+}
+
 bool isOpusLister(HWND root)
 {
     return root && ::GetAncestor(root, GA_ROOT) == root && hasClass(root, L"dopus.lister");
@@ -301,6 +373,13 @@ bool isBlank(const Hit& hit, BlankTrace* trace)
 {
     if (hit.surface == Surface::None || !::IsWindow(hit.view) || ::IsHungAppWindow(hit.root))
         return false;
+    if (hit.surface == Surface::Desktop && desktopCanvas(hit.view)) {
+        if (trace)
+            trace->by = "desktop-background";
+        // Recheck on the worker: icons or another window may have covered
+        // the point since the click. A hidden canvas is not blank space.
+        return ::IsWindowVisible(hit.view) && ::WindowFromPoint(hit.pt) == hit.view;
+    }
     if (hasClass(hit.view, L"DirectUIHWND")) {
         const Verdict verdict = automationVerdict(hit, trace);
         if (verdict != Verdict::Unknown) {

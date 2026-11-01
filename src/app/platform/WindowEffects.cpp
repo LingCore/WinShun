@@ -34,7 +34,7 @@ constexpr int kCornerSmall = 3; // DWMWCP_ROUNDSMALL
 constexpr wchar_t kCornerStyle[] = L"WinShun.CornerStyle";
 std::atomic<bool> g_round {true};
 std::mutex g_cornerMutex; // preview HWNDs are created on another thread
-constexpr COLORREF kColorNone = 0xFFFFFFFE; // DWMWA_COLOR_NONE
+constexpr COLORREF kColorDefault = 0xFFFFFFFF; // DWMWA_COLOR_DEFAULT
 constexpr int kBackdropMica = 2; // DWMSBT_MAINWINDOW
 constexpr UINT kUpdateCornerRegion = WM_APP + 0x3C4;
 
@@ -43,6 +43,27 @@ struct CornerRegion {
     int height = 0;
     int radius = -1;
 };
+
+LRESULT CALLBACK nativeFrameProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR)
+{
+    switch (message) {
+    case WM_NCCALCSIZE:
+        if (!::IsZoomed(window))
+            return 0; // Keep the native frame entirely in the client area.
+        break;
+    case WM_STYLECHANGING:
+        if (static_cast<int>(wParam) == GWL_STYLE) {
+            auto* styles = reinterpret_cast<STYLESTRUCT*>(lParam);
+            if (!(styles->styleNew & WS_CHILD))
+                styles->styleNew |= WS_CAPTION;
+        }
+        break;
+    case WM_NCDESTROY:
+        ::RemoveWindowSubclass(window, nativeFrameProc, id);
+        break;
+    }
+    return ::DefSubclassProc(window, message, wParam, lParam);
+}
 
 void updateCornerRegion(HWND window, CornerRegion& region)
 {
@@ -76,7 +97,8 @@ LRESULT CALLBACK cornerRegionProc(HWND window, UINT message, WPARAM wParam, LPAR
 
 void applyWindowCorners(HWND window, int style)
 {
-    const int value = g_round.load() ? style : kCornerSquare;
+    const bool round = g_round.load();
+    const int value = round ? style : kCornerSquare;
     if (SUCCEEDED(::DwmSetWindowAttribute(window, kCornerPreference, &value, sizeof value)))
         return;
     if (::GetWindowThreadProcessId(window, nullptr) != ::GetCurrentThreadId()) {
@@ -146,9 +168,7 @@ HWND closeShellFlyout(HWND foreground)
 
 bool isShellFlyout(HWND window)
 {
-    static const QStringList flyouts {
-        u"SearchHost.exe"_s, u"StartMenuExperienceHost.exe"_s, u"ShellExperienceHost.exe"_s, u"ShellHost.exe"_s};
-    return window && flyouts.contains(programOf(window), Qt::CaseInsensitive);
+    return window && foreground::isShellFlyout(programOf(window));
 }
 
 void styleFramelessWindow(QWindow* window, bool backdrop)
@@ -156,10 +176,17 @@ void styleFramelessWindow(QWindow* window, bool backdrop)
     const HWND hwnd = handleOf(window);
     if (!hwnd)
         return;
+    // Retain a fixed native frame for DWM's border and shadow, while
+    // Qt/WindowFrame still own hit testing and resizing.
+    if (::SetWindowSubclass(hwnd, nativeFrameProc, 0, 0)) {
+        ::SetWindowLongPtrW(hwnd, GWL_STYLE, ::GetWindowLongPtrW(hwnd, GWL_STYLE) | WS_CAPTION);
+        ::SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+            SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
+    }
     setWindowCorners(hwnd);
-    ::DwmSetWindowAttribute(hwnd, kBorderColor, &kColorNone, sizeof kColorNone);
-    // A one-pixel frame extension makes DWM draw its shadow around a
-    // borderless window (and keeps working on Windows 10).
+    ::DwmSetWindowAttribute(hwnd, kBorderColor, &kColorDefault, sizeof kColorDefault);
+    // Extend a single pixel for DWM's shadow when the native frame/corner
+    // style supports it, without exposing the system's caption buttons.
     const MARGINS margins {0, 0, 1, 0};
     ::DwmExtendFrameIntoClientArea(hwnd, &margins);
     // The backdrop fills the whole window, frame extended or not; extended,

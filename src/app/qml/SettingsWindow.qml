@@ -1569,8 +1569,9 @@ Window {
                 // the last one, and the switch lights up to say so.
                 SettingRow {
                     shown: window.editor.folderMenu
-                    title: qsTr("菜单里列出收藏的文件夹")
-                    keywords: qsTr("双击;文件夹菜单;收藏;收藏夹").split(";")
+                    title: qsTr("菜单里列出收藏夹")
+                    description: qsTr("包含收藏的文件夹、文件、应用和自定义命令")
+                    keywords: qsTr("双击;文件夹菜单;收藏;收藏夹;自定义命令").split(";")
 
                     ToggleSwitch {
                         checked: window.editor.folderMenuFavorites

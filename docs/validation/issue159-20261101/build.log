@@ -1,0 +1,32 @@
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR)
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR)
+-- Configuring done (1.7s)
+-- Generating done (2.3s)
+-- Build files have been written to: D:/WinShun-validation-issues156-158-20261101
+[1/214] Automatic MOC and UIC for target tst_opusfocus
+[2/213] Automatic MOC and UIC for target tst_foldermenu
+[3/213] Automatic MOC and UIC for target WinShun
+[4/213] Running AUTOMOC file extraction for target WinShun
+[5/213] Running moc --collect-json for target WinShun
+[6/22] Building CXX object tests\CMakeFiles\tst_opusfocus.dir\__\src\app\platform\FolderViewHit.cpp.obj
+F:\电脑便捷工具\src\app\platform\FolderViewHit.cpp(168): warning C4245: “参数”: 从“LONG”转换到“DWORD”，有符号/无符号不匹配
+[7/22] Building CXX object tests\CMakeFiles\tst_foldermenu.dir\tst_foldermenu_autogen\mocs_compilation.cpp.obj
+[8/22] Building CXX object tests\CMakeFiles\tst_opusfocus.dir\tst_opusfocus.cpp.obj
+[9/22] Building CXX object tests\CMakeFiles\tst_foldermenu.dir\__\src\app\FolderMenu.cpp.obj
+[10/22] Building CXX object src\app\CMakeFiles\WinShun.dir\platform\FolderViewHit.cpp.obj
+F:\电脑便捷工具\src\app\platform\FolderViewHit.cpp(168): warning C4245: “参数”: 从“LONG”转换到“DWORD”，有符号/无符号不匹配
+[11/22] Building CXX object tests\CMakeFiles\tst_foldermenu.dir\tst_foldermenu.cpp.obj
+[12/22] Building CXX object src\app\CMakeFiles\WinShun.dir\platform\FileManagers.cpp.obj
+[13/22] Linking CXX executable tst_opusfocus.exe
+[14/22] Building CXX object src\app\CMakeFiles\WinShun.dir\platform\TypeToSearch.cpp.obj
+[15/22] Building CXX object tests\CMakeFiles\tst_foldermenu.dir\__\src\app\platform\FolderViewHit.cpp.obj
+F:\电脑便捷工具\src\app\platform\FolderViewHit.cpp(168): warning C4245: “参数”: 从“LONG”转换到“DWORD”，有符号/无符号不匹配
+[16/22] Building CXX object src\app\CMakeFiles\WinShun.dir\FolderMenu.cpp.obj
+[17/22] Building CXX object src\app\CMakeFiles\WinShun.dir\WinShun_autogen\mocs_compilation.cpp.obj
+[18/22] Building CXX object tests\CMakeFiles\tst_foldermenu.dir\__\src\app\platform\FileManagers.cpp.obj
+[19/22] Linking CXX executable tst_foldermenu.exe
+[20/22] Building CXX object src\app\CMakeFiles\WinShun.dir\winshun_qmltyperegistrations.cpp.obj
+[21/22] Building CXX object src\app\CMakeFiles\WinShun.dir\App.cpp.obj
+F:\电脑便捷工具\src\app\App.cpp(2237): warning C4456: “keys”的声明隐藏了上一个本地声明
+F:\电脑便捷工具\src\app\App.cpp(2231): note: 参见“keys”的声明
+[22/22] Linking CXX executable WinShun.exe

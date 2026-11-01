@@ -1,0 +1,6 @@
+{
+  "unchanged_prior_files": 27,
+  "unexpected_changes": [],
+  "shared_files_preserved_by_targeted_patches": 5,
+  "additional_shared_file": "src/app/Preview.cpp: localized the existing Favorites probe and added the affected menu setting probe"
+}

@@ -102,6 +102,7 @@ QtObject {
     readonly property color accentText: "#FFFFFF"
     readonly property color menuBackground: dark ? "#2C2C2C" : "#F9F9F9"
     readonly property color menuHover: dark ? "#3A3A3A" : "#ECECEC"
+    readonly property int menuItemHeight: 36
     readonly property color danger: dark ? "#FF99A4" : "#C42B1C" // words and glyphs
     readonly property color dangerFill: "#C42B1C" // under white words (an armed delete button)
     readonly property color success: dark ? "#6CCB5F" : "#0F7B0F" // Windows 11's status colours

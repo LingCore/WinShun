@@ -1,6 +1,7 @@
 #include "TypeToSearch.h"
 
 #include "FolderViewHit.h"
+#include "Foreground.h"
 #include "Integrity.h"
 #include "KeyListener.h" // KeyboardRawInputAside
 #include "KeyRouter.h" // kOwnInput
@@ -48,25 +49,7 @@ bool held(int vk)
 // and StartMenuExperienceHost.exe, Windows 10 in SearchApp.exe or SearchUI.exe.
 bool isStartMenu(HWND window)
 {
-    DWORD pid = 0;
-    if (!window || !::GetWindowThreadProcessId(window, &pid) || pid == 0)
-        return false;
-    const HANDLE process = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-    if (!process)
-        return false;
-    wchar_t path[MAX_PATH] {};
-    DWORD size = MAX_PATH;
-    const bool named = ::QueryFullProcessImageNameW(process, 0, path, &size);
-    ::CloseHandle(process);
-    if (!named)
-        return false;
-    const wchar_t* slash = std::wcsrchr(path, L'\\');
-    const wchar_t* file = slash ? slash + 1 : path;
-    for (const wchar_t* host : {L"SearchHost.exe", L"StartMenuExperienceHost.exe", L"SearchApp.exe", L"SearchUI.exe"}) {
-        if (_wcsicmp(file, host) == 0)
-            return true;
-    }
-    return false;
+    return window && foreground::isSearchHost(foreground::programOf(window));
 }
 
 INPUT keyInput(WORD vk, WORD scanCode, DWORD flags, ULONG_PTR mark = kOwnInput)

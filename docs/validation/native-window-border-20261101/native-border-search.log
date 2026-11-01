@@ -1,0 +1,22 @@
+preparing
+making the application
+loading the font
+saved D:/WinShun-validation-issues156-158-20261101/native-border-search/always.png 800x540
+saved D:/WinShun-validation-issues156-158-20261101/native-border-search/held-idle.png 800x540
+saved D:/WinShun-validation-issues156-158-20261101/native-border-search/held-100ms.png 800x540
+saved D:/WinShun-validation-issues156-158-20261101/native-border-search/held-300ms.png 800x540
+saved D:/WinShun-validation-issues156-158-20261101/native-border-search/held-released.png 800x540
+saved D:/WinShun-validation-issues156-158-20261101/native-border-search/quick-taps.png 800x540
+saved D:/WinShun-validation-issues156-158-20261101/native-border-search/off.png 800x540
+saved D:/WinShun-validation-issues156-158-20261101/native-border-search/search-menu-box.png 276x314
+saved D:/WinShun-validation-issues156-158-20261101/native-border-search/search-menu-panel.png 276x314
+search navigation: 67 checks, production Main.qml/Launcher/ContextMenu, local Qt key and IME events, passed
+saved D:/WinShun-validation-issues156-158-20261101/native-border-search/search-menu-dialog.png 245x161
+dialog search navigation: 17 checks, production DialogBarWindow/DialogBar, local Qt input, passed
+saved D:/WinShun-validation-issues156-158-20261101/native-border-search/files-large-icons.png 1200x680
+saved D:/WinShun-validation-issues156-158-20261101/native-border-search/preview-space.png 432x816
+preview hotkeys: production Main.qml + FilePreview; default, Space, IME preedit, repeat, Shift+Space, reassignment, modifiers, disabled
+saved D:/WinShun-validation-issues156-158-20261101/native-border-search/files-large-icons-compact.png 640x480
+saved D:/WinShun-validation-issues156-158-20261101/native-border-search/files-large-icons-empty.png 640x480
+large icons: production QML/model, real temporary PNGs, Alt+wheel, viewport retention, minimum width
+0 warning(s)

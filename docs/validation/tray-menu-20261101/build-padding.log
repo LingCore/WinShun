@@ -1,0 +1,13 @@
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR)
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR)
+-- Configuring done (1.6s)
+-- Generating done (2.3s)
+-- Build files have been written to: D:/WinShun-validation-issues156-158-20261101
+[1/203] Automatic MOC and UIC for target WinShun
+[2/202] Running AUTOMOC file extraction for target WinShun
+[3/9] Automatic MOC and UIC for target tst_traymenu
+[4/8] Building CXX object src\app\CMakeFiles\WinShun.dir\TrayMenu.cpp.obj
+[5/8] Building CXX object tests\CMakeFiles\tst_traymenu.dir\__\src\app\TrayMenu.cpp.obj
+[6/8] Linking CXX executable WinShun.exe
+[7/8] Building CXX object tests\CMakeFiles\tst_traymenu.dir\tst_traymenu.cpp.obj
+[8/8] Linking CXX executable tst_traymenu.exe

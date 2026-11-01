@@ -135,6 +135,9 @@ bool wantedByMenu(const KeyRouter::Key& key)
     case VK_ESCAPE:
     case VK_UP:
     case VK_DOWN:
+    case VK_LEFT:
+    case VK_RIGHT:
+    case VK_BACK:
     case VK_HOME:
     case VK_END:
     case VK_PRIOR:

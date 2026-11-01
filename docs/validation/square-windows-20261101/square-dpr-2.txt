@@ -1,0 +1,18 @@
+********* Start testing of AppearanceTest *********
+Config: Using QtTest library 6.12.0, Qt 6.12.0 (x86_64-little_endian-llp64 shared (dynamic) release build; by MSVC 2022), windows 11
+PASS   : AppearanceTest::initTestCase()
+QINFO  : AppearanceTest::liveComposedOutline(light-0) Desktop composition DPR: 2
+PASS   : AppearanceTest::liveComposedOutline(light-0)
+QINFO  : AppearanceTest::liveComposedOutline(light-1) Desktop composition DPR: 2
+PASS   : AppearanceTest::liveComposedOutline(light-1)
+QINFO  : AppearanceTest::liveComposedOutline(light-2) Desktop composition DPR: 2
+PASS   : AppearanceTest::liveComposedOutline(light-2)
+QINFO  : AppearanceTest::liveComposedOutline(dark-0) Desktop composition DPR: 2
+PASS   : AppearanceTest::liveComposedOutline(dark-0)
+QINFO  : AppearanceTest::liveComposedOutline(dark-1) Desktop composition DPR: 2
+PASS   : AppearanceTest::liveComposedOutline(dark-1)
+QINFO  : AppearanceTest::liveComposedOutline(dark-2) Desktop composition DPR: 2
+PASS   : AppearanceTest::liveComposedOutline(dark-2)
+PASS   : AppearanceTest::cleanupTestCase()
+Totals: 8 passed, 0 failed, 0 skipped, 0 blacklisted, 3719ms
+********* Finished testing of AppearanceTest *********

@@ -1,0 +1,245 @@
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy...
+D:\WinShun-validation-issues156-158-20261101\WinShun.exe 64 bit, release executable [QML]
+Scanning D:\WinShun-validation-issues156-158-20261101\src\app\WinShun:
+QML imports:
+  'QtQuick' C:\Qt\6.12.0\msvc2022_64\qml\QtQuick
+  'QtQml' C:\Qt\6.12.0\msvc2022_64\qml\QtQml
+  'QML' C:\Qt\6.12.0\msvc2022_64\qml\QML
+  'QtQml.Models' C:\Qt\6.12.0\msvc2022_64\qml\QtQml\Models
+  'QtQml.WorkerScript' C:\Qt\6.12.0\msvc2022_64\qml\QtQml\WorkerScript
+  'QtQuick.Controls.Basic' C:\Qt\6.12.0\msvc2022_64\qml\QtQuick\Controls\Basic
+  'QtQuick.Templates' C:\Qt\6.12.0\msvc2022_64\qml\QtQuick\Templates
+  'QtQuick.Controls.impl' C:\Qt\6.12.0\msvc2022_64\qml\QtQuick\Controls\impl
+  'QtQuick.Controls.Basic.impl' C:\Qt\6.12.0\msvc2022_64\qml\QtQuick\Controls\Basic\impl
+  'QtQuick.Shapes' C:\Qt\6.12.0\msvc2022_64\qml\QtQuick\Shapes
+  'QtQuick.Layouts' C:\Qt\6.12.0\msvc2022_64\qml\QtQuick\Layouts
+Adding in plugin type generic for module: Qt6Gui
+Warning: Cannot find any version of the dxcompiler.dll and dxil.dll. This is not a problem unless Direct3D 12 and certain features are used by the application.
+Adding in plugin type iconengines for module: Qt6Gui
+Adding in plugin type imageformats for module: Qt6Gui
+Adding in plugin type networkinformation for module: Qt6Network
+Adding in plugin type platforms for module: Qt6Gui
+Adding in plugin type qmltooling for module: Qt6Qml
+Adding in plugin type sqldrivers for module: Qt6Sql
+Adding in plugin type tls for module: Qt6Network
+Skipping plugin qopensslbackend.dll. Use -force-openssl or specify -openssl-root if you want to use it.
+Direct dependencies: Qt6Core Qt6Gui Qt6Network Qt6OpenGL Qt6Qml Qt6QmlMeta Qt6QmlModels Qt6QmlWorkerScript Qt6Quick Qt6Sql Qt6Svg
+All dependencies   : Qt6Core Qt6Gui Qt6Network Qt6OpenGL Qt6Qml Qt6QmlMeta Qt6QmlModels Qt6QmlWorkerScript Qt6Quick Qt6QuickControls2 Qt6QuickControls2Basic Qt6QuickControls2BasicStyleImpl Qt6QuickControls2Impl Qt6QuickLayouts Qt6QuickShapes Qt6QuickTemplates2 Qt6Sql Qt6Svg
+To be deployed     : Qt6Core Qt6Gui Qt6Network Qt6OpenGL Qt6Qml Qt6QmlMeta Qt6QmlModels Qt6QmlWorkerScript Qt6Quick Qt6QuickControls2 Qt6QuickControls2Basic Qt6QuickControls2BasicStyleImpl Qt6QuickControls2Impl Qt6QuickLayouts Qt6QuickShapes Qt6QuickTemplates2 Qt6Sql Qt6Svg
+Skipping system library C:/Windows/system32/icuuc.dll
+Updating Qt6Core.dll.
+Updating Qt6Gui.dll.
+Updating Qt6Network.dll.
+Updating Qt6OpenGL.dll.
+Updating Qt6Qml.dll.
+Updating Qt6QmlMeta.dll.
+Updating Qt6QmlModels.dll.
+Updating Qt6QmlWorkerScript.dll.
+Updating Qt6Quick.dll.
+Updating Qt6QuickControls2.dll.
+Updating Qt6QuickControls2Basic.dll.
+Updating Qt6QuickControls2BasicStyleImpl.dll.
+Updating Qt6QuickControls2Impl.dll.
+Updating Qt6QuickLayouts.dll.
+Updating Qt6QuickShapes.dll.
+Updating Qt6QuickTemplates2.dll.
+Updating Qt6Sql.dll.
+Updating Qt6Svg.dll.
+Creating directory D:/WinShun-validation-issues156-158-20261101/runtime-deploy/generic.
+Updating qtuiotouchplugin.dll.
+Creating directory D:/WinShun-validation-issues156-158-20261101/runtime-deploy/iconengines.
+Updating qsvgicon.dll.
+Creating directory D:/WinShun-validation-issues156-158-20261101/runtime-deploy/imageformats.
+Updating qgif.dll.
+Updating qico.dll.
+Updating qjpeg.dll.
+Updating qsvg.dll.
+Creating directory D:/WinShun-validation-issues156-158-20261101/runtime-deploy/networkinformation.
+Updating qnetworklistmanager.dll.
+Creating directory D:/WinShun-validation-issues156-158-20261101/runtime-deploy/platforms.
+Updating qwindows.dll.
+Creating directory D:/WinShun-validation-issues156-158-20261101/runtime-deploy/qmltooling.
+Updating qmldbg_debugger.dll.
+Updating qmldbg_inspector.dll.
+Updating qmldbg_local.dll.
+Updating qmldbg_messages.dll.
+Updating qmldbg_native.dll.
+Updating qmldbg_nativedebugger.dll.
+Updating qmldbg_preview.dll.
+Updating qmldbg_profiler.dll.
+Updating qmldbg_quickeventreplay.dll.
+Updating qmldbg_quickprofiler.dll.
+Updating qmldbg_server.dll.
+Updating qmldbg_tcp.dll.
+Creating directory D:/WinShun-validation-issues156-158-20261101/runtime-deploy/sqldrivers.
+Updating qsqlibase.dll.
+Updating qsqlite.dll.
+Updating qsqlmimer.dll.
+Updating qsqloci.dll.
+Updating qsqlodbc.dll.
+Updating qsqlpsql.dll.
+Creating directory D:/WinShun-validation-issues156-158-20261101/runtime-deploy/tls.
+Updating qcertonlybackend.dll.
+Updating qschannelbackend.dll.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy\qml...
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick.
+Updating qtquick2plugin.dll.
+Updating plugins.qmltypes.
+Updating qmldir.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Controls.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Controls/Basic.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Controls/Basic/impl.
+Skipping C:\Qt\6.12.0\msvc2022_64\qml\QtQuick\Controls\designer.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Controls/FluentWinUI3.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Controls/FluentWinUI3/dark.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Controls/FluentWinUI3/dark/images.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Controls/FluentWinUI3/icons.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Controls/FluentWinUI3/impl.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Controls/FluentWinUI3/light.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Controls/FluentWinUI3/light/images.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Controls/Fusion.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Controls/Fusion/impl.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Controls/Imagine.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Controls/Imagine/impl.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Controls/impl.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Controls/Material.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Controls/Material/impl.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Controls/Native.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Controls/Universal.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Controls/Universal/impl.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Controls/Windows.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Controls/Windows/images.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Controls/Windows/impl.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Dialogs.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Dialogs/quickimpl.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Dialogs/quickimpl/qml.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Dialogs/quickimpl/qml/+Fusion.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Dialogs/quickimpl/qml/+Imagine.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Dialogs/quickimpl/qml/+Material.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Dialogs/quickimpl/qml/+Universal.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Effects.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Layouts.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/LocalStorage.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/NativeStyle.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/NativeStyle/controls.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/NativeStyle/util.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Particles.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Shapes.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Shapes/DesignHelpers.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Templates.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/tooling.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/VectorImage.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/VectorImage/Helpers.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQuick/Window.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQml.
+Updating qmlplugin.dll.
+Updating plugins.qmltypes.
+Updating qmldir.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQml/DesignSupport.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQml/Models.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQml/WorkerScript.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QtQml/XmlListModel.
+Creating D:\WinShun-validation-issues156-158-20261101\runtime-deploy/qml/QML.
+Updating plugins.qmltypes.
+Updating qmldir.
+Updating modelsplugin.dll.
+Updating plugins.qmltypes.
+Updating qmldir.
+Updating workerscriptplugin.dll.
+Updating plugins.qmltypes.
+Updating qmldir.
+Updating qtquickcontrols2basicstyleplugin.dll.
+Updating AbstractButton.qml.
+Updating Action.qml.
+Updating ActionGroup.qml.
+Updating ApplicationWindow.qml.
+Updating BusyIndicator.qml.
+Updating Button.qml.
+Updating ButtonGroup.qml.
+Updating Calendar.qml.
+Updating CalendarModel.qml.
+Updating CheckBox.qml.
+Updating CheckDelegate.qml.
+Updating ComboBox.qml.
+Updating Container.qml.
+Updating Control.qml.
+Updating DayOfWeekRow.qml.
+Updating DelayButton.qml.
+Updating Dial.qml.
+Updating Dialog.qml.
+Updating DialogButtonBox.qml.
+Updating DoubleSpinBox.qml.
+Updating Drawer.qml.
+Updating Frame.qml.
+Updating GroupBox.qml.
+Updating HorizontalHeaderView.qml.
+Updating HorizontalHeaderViewDelegate.qml.
+Updating ItemDelegate.qml.
+Updating Label.qml.
+Updating Menu.qml.
+Updating MenuBar.qml.
+Updating MenuBarItem.qml.
+Updating MenuItem.qml.
+Updating MenuSeparator.qml.
+Updating MonthGrid.qml.
+Updating Page.qml.
+Updating PageIndicator.qml.
+Updating Pane.qml.
+Updating plugins.qmltypes.
+Updating Popup.qml.
+Updating ProgressBar.qml.
+Updating qmldir.
+Updating RadioButton.qml.
+Updating RadioDelegate.qml.
+Updating RangeSlider.qml.
+Updating RoundButton.qml.
+Updating ScrollBar.qml.
+Updating ScrollIndicator.qml.
+Updating ScrollView.qml.
+Updating SearchField.qml.
+Updating SelectionRectangle.qml.
+Updating Slider.qml.
+Updating SpinBox.qml.
+Updating SplitView.qml.
+Updating StackView.qml.
+Updating SwipeDelegate.qml.
+Updating SwipeView.qml.
+Updating Switch.qml.
+Updating SwitchDelegate.qml.
+Updating TabBar.qml.
+Updating TabButton.qml.
+Updating TableViewDelegate.qml.
+Updating TextArea.qml.
+Updating TextField.qml.
+Updating ToolBar.qml.
+Updating ToolButton.qml.
+Updating ToolSeparator.qml.
+Updating ToolTip.qml.
+Updating TreeViewDelegate.qml.
+Updating Tumbler.qml.
+Updating VerticalHeaderView.qml.
+Updating VerticalHeaderViewDelegate.qml.
+Updating WeekNumberColumn.qml.
+Updating qtquicktemplates2plugin.dll.
+Updating plugins.qmltypes.
+Updating qmldir.
+Updating qtquickcontrols2implplugin.dll.
+Updating CopyAction.qml.
+Updating CutAction.qml.
+Updating DeleteAction.qml.
+Updating PasteAction.qml.
+Updating plugins.qmltypes.
+Updating qmldir.
+Updating RedoAction.qml.
+Updating SelectAllAction.qml.
+Updating UndoAction.qml.
+Updating qtquickcontrols2basicstyleimplplugin.dll.
+Updating plugins.qmltypes.
+Updating qmldir.
+Updating TextEditingContextMenu.qml.
+Updating qmlshapesplugin.dll.
+Updating plugins.qmltypes.
+Updating qmldir.
+Updating qquicklayoutsplugin.dll.
+Updating plugins.qmltypes.
+Updating qmldir.

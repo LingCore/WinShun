@@ -1,0 +1,31 @@
+preparing
+making the application
+loading the font
+starting (dark 0, scale 1)
+platform windows, plugins C:/Qt/6.12.0/msvc2022_64/plugins, qml C:/Qt/6.12.0/msvc2022_64/qml, library paths C:/Qt/6.12.0/msvc2022_64/plugins; D:/WinShun-validation-issues156-158-20261101
+font 'Alibaba PuHuiTi 3.0' -> 'Alibaba PuHuiTi 3.0' 24px: ascent 25.4375, descent 8.15625, height 33.5938, line spacing 33.5938, hinting 2
+loading SettingsWindow.qml
+showing 920x720 (dpr 1), active 0
+pages 12, pageKeywords 12, pageTabs 12
+page 0 tab 0 (打开 Win顺 / 快捷键): window 920x1000 asked 1000, current 0/0, content 952
+saved D:/WinShun-validation-issues156-158-20261101/evidence/settings-zh-open/p00-t0.png 920x1000
+page 0 tab 1 (打开 Win顺 / 任务栏): window 920x720 asked 720, current 0/1, content 601
+saved D:/WinShun-validation-issues156-158-20261101/evidence/settings-zh-open/p00-t1.png 920x720
+page 0 tab 2 (打开 Win顺 / 对话框): window 920x1901 asked 1901, current 0/2, content 1853
+saved D:/WinShun-validation-issues156-158-20261101/evidence/settings-zh-open/p00-t2.png 920x1901
+Opus typing setting: actual QML toggle, editor and isolated settings checked
+page 0 tab 3 (打开 Win顺 / 启动与历史): window 920x720 asked 720, current 0/3, content 385
+saved D:/WinShun-validation-issues156-158-20261101/evidence/settings-zh-open/p00-t3.png 920x720
+search '双击空白处弹出文件夹菜单': 1 row(s), best '双击空白处弹出文件夹菜单' on page 0 tab 2, searching 1
+saved D:/WinShun-validation-issues156-158-20261101/evidence/settings-zh-open/search-双击空白处弹出文件夹菜单.png 920x720
+search '双击空白处弹出文件夹菜单': Enter went to page 0 tab 2 (打开 Win顺), searching 0
+search '菜单里列出收藏夹': 1 row(s), best '菜单里列出收藏夹' on page 0 tab 2, searching 1
+saved D:/WinShun-validation-issues156-158-20261101/evidence/settings-zh-open/search-菜单里列出收藏夹.png 920x720
+search '菜单里列出收藏夹': Enter went to page 0 tab 2 (打开 Win顺), searching 0
+search '对话框旁的搜索框': 1 row(s), best '对话框旁的搜索框' on page 0 tab 2, searching 1
+saved D:/WinShun-validation-issues156-158-20261101/evidence/settings-zh-open/search-对话框旁的搜索框.png 920x720
+search '对话框旁的搜索框': Enter went to page 0 tab 2 (打开 Win顺), searching 0
+search '在 Directory Opus 里直接打字搜索': 1 row(s), best '在 Directory Opus 里直接打字搜索' on page 0 tab 2, searching 1
+saved D:/WinShun-validation-issues156-158-20261101/evidence/settings-zh-open/search-在 Directory Opus 里直接打字搜索.png 920x720
+search '在 Directory Opus 里直接打字搜索': Enter went to page 0 tab 2 (打开 Win顺), searching 0
+0 warning(s)

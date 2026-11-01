@@ -95,7 +95,7 @@ bool send(HWND target, WORD vk, bool up)
     input.ki.wVk = vk;
     input.ki.wScan = static_cast<WORD>(::MapVirtualKeyW(vk, MAPVK_VK_TO_VSC));
     input.ki.dwFlags = up ? KEYEVENTF_KEYUP : 0;
-    if (vk == VK_DOWN)
+    if (vk == VK_DOWN || vk == VK_LEFT || vk == VK_RIGHT)
         input.ki.dwFlags |= KEYEVENTF_EXTENDEDKEY;
     return ::SendInput(1, &input, sizeof input) == 1;
 }
@@ -286,6 +286,22 @@ private slots:
         QVERIFY(tap('E'));
         QTRY_VERIFY_WITH_TIMEOUT((output += child.readAll()).contains("down:69"), 2000);
         QCOMPARE(presses['E'].load(), 0);
+
+        output.clear();
+        std::array<std::atomic<int>, 256> menuReleases {};
+        KeyRouter menuRouter(target, passive.hwnd, {.key = [&](const KeyRouter::Key& key) {
+            if (!key.press && key.vk < menuReleases.size())
+                ++menuReleases[key.vk];
+        }}, Qt::NoModifier, KeyRouter::Policy::Menu);
+        QVERIFY(menuRouter.isActive());
+        for (const WORD vk : {WORD(VK_LEFT), WORD(VK_RIGHT), WORD(VK_BACK)}) {
+            QVERIFY(tap(vk));
+            QTRY_COMPARE_WITH_TIMEOUT(menuReleases[vk].load(), 1, 2000);
+        }
+        QCOMPARE(::GetForegroundWindow(), target);
+        output += child.readAll();
+        QVERIFY2(!output.contains("down:"), output.constData());
+        QVERIFY2(!output.contains("up:"), output.constData());
     }
 };
 

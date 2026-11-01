@@ -66,6 +66,7 @@ qt_add_executable(WinShun WIN32
     TextField.cpp TextField.h
     ThumbnailProvider.cpp ThumbnailProvider.h
     TriggerJournal.cpp TriggerJournal.h
+    TrayMenu.cpp TrayMenu.h
     WebSuggester.cpp WebSuggester.h
     WindowLogo.cpp WindowLogo.h
     platform/ClipboardWatcher.cpp platform/ClipboardWatcher.h

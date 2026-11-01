@@ -1,0 +1,67 @@
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR)
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR)
+-- Configuring done (1.6s)
+-- Generating done (2.3s)
+-- Build files have been written to: D:/WinShun-validation-issues156-158-20261101
+[1/244] Copying WinShunCaptureApp qml sources into build dir
+[2/244] Copying WinShun qml sources into build dir
+[3/244] Running rcc for resource WinShunCaptureApp_raw_qml_0
+[4/244] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_Theme_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_Theme_qml.cpp.aotstats
+[5/244] Automatic MOC and UIC for target tst_foldermenu
+[6/243] Automatic MOC and UIC for target tst_appearance
+[7/241] Automatic MOC and UIC for target WinShun
+[8/240] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\PluginShell.cpp.obj
+[9/240] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_Theme_qml.cpp.obj
+[10/240] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.qt\rcc\qrc_WinShunCaptureApp_raw_qml_0.cpp.obj
+[11/240] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\CaptureSettings.cpp.obj
+[12/240] Running AUTOMOC file extraction for target WinShun
+[13/53] Running rcc for resource WinShun_raw_qml_0
+[14/53] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\capture\PinManager.cpp.obj
+[15/53] Generating .rcc/qmlcache/WinShun_qml_Theme_qml.cpp, .rcc/qmlcache/WinShun_qml_Theme_qml.cpp.aotstats
+[16/53] Generating .rcc/qmlcache/WinShun_qml_ContextMenu_qml.cpp, .rcc/qmlcache/WinShun_qml_ContextMenu_qml.cpp.aotstats
+[17/53] Generating .rcc/qmlcache/WinShun_qml_FolderMenuWindow_qml.cpp, .rcc/qmlcache/WinShun_qml_FolderMenuWindow_qml.cpp.aotstats
+[18/53] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\app\platform\ShellDialogs.cpp.obj
+[19/53] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\capture\Recorder.cpp.obj
+[20/53] Linking CXX shared library WinShunCaptureApp.dll
+[21/53] Building CXX object tests\CMakeFiles\tst_foldermenu.dir\__\src\app\platform\Shell.cpp.obj
+[22/53] Building CXX object tests\CMakeFiles\tst_foldermenu.dir\__\src\app\FolderMenu.cpp.obj
+[23/53] Building CXX object tests\CMakeFiles\tst_foldermenu.dir\__\src\app\FileIconProvider.cpp.obj
+[24/53] Building CXX object src\app\CMakeFiles\WinShun.dir\main.cpp.obj
+[25/53] Building CXX object src\app\CMakeFiles\WinShun.dir\DropPieHelper.cpp.obj
+[26/53] Building CXX object src\app\CMakeFiles\WinShun.dir\platform\ContentOpen.cpp.obj
+[27/53] Building CXX object src\app\CMakeFiles\WinShun.dir\McpClients.cpp.obj
+[28/53] Building CXX object src\app\CMakeFiles\WinShun.dir\Migration.cpp.obj
+[29/53] Building CXX object src\app\CMakeFiles\WinShun.dir\TrayMenu.cpp.obj
+[30/53] Building CXX object src\app\CMakeFiles\WinShun.dir\FileIconProvider.cpp.obj
+[31/53] Building CXX object src\app\CMakeFiles\WinShun.dir\platform\FileManagers.cpp.obj
+[32/53] Building CXX object src\app\CMakeFiles\WinShun.dir\platform\ShellDialogs.cpp.obj
+[33/53] Building CXX object src\app\CMakeFiles\WinShun.dir\platform\Shell.cpp.obj
+[34/53] Building CXX object src\app\CMakeFiles\WinShun.dir\CliSetup.cpp.obj
+[35/53] Building CXX object src\app\CMakeFiles\WinShun.dir\Clipboard.cpp.obj
+[36/53] Building CXX object src\app\CMakeFiles\WinShun.dir\App.cpp.obj
+F:\电脑便捷工具\src\app\App.cpp(2237): warning C4456: “keys”的声明隐藏了上一个本地声明
+F:\电脑便捷工具\src\app\App.cpp(2231): note: 参见“keys”的声明
+[37/53] Building CXX object src\app\CMakeFiles\WinShun.dir\FolderMenu.cpp.obj
+[38/53] Building CXX object src\app\CMakeFiles\WinShun.dir\FavoritesSettings.cpp.obj
+[39/53] Building CXX object src\app\CMakeFiles\WinShun.dir\ContentPane.cpp.obj
+[40/53] Building CXX object src\app\CMakeFiles\WinShun.dir\PluginGallery.cpp.obj
+[41/53] Building CXX object src\app\CMakeFiles\WinShun.dir\Updater.cpp.obj
+[42/53] Building CXX object src\app\CMakeFiles\WinShun.dir\PluginSettings.cpp.obj
+[43/53] Building CXX object src\app\CMakeFiles\WinShun.dir\Launcher.cpp.obj
+[44/53] Building CXX object src\app\CMakeFiles\WinShun.dir\.qt\rcc\qrc_WinShun_raw_qml_0.cpp.obj
+[45/53] Building CXX object src\app\CMakeFiles\WinShun.dir\Backup.cpp.obj
+[46/53] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_Theme_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+[47/53] Building CXX object src\app\CMakeFiles\WinShun.dir\SettingsEditor.cpp.obj
+[48/53] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_ContextMenu_qml.cpp.obj
+[49/53] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_FolderMenuWindow_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+[50/53] Building CXX object tests\CMakeFiles\tst_foldermenu.dir\__\src\app\platform\ShellDialogs.cpp.obj
+[51/53] Building CXX object tests\CMakeFiles\tst_foldermenu.dir\__\src\app\platform\FileManagers.cpp.obj
+[52/53] Linking CXX executable WinShun.exe
+[53/53] Linking CXX executable tst_foldermenu.exe

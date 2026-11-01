@@ -18,7 +18,7 @@ Window {
     property int highlighted: -1
 
     readonly property int padding: 4
-    readonly property int itemHeight: 36
+    readonly property int itemHeight: Theme.menuItemHeight
 
     signal triggered(int row, int action)
 

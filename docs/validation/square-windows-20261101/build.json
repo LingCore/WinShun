@@ -1,0 +1,14 @@
+{
+  "date": "2026-11-01T10:27:16.7298235+08:00",
+  "executable": "D:\\WinShun-validation-issues156-158-20261101\\WinShun.exe",
+  "sha256": "38FB8C18301C4340778ADCF49165DDAEB34328078E3BD02484F8EE1CCF950451",
+  "captureDll": "D:\\WinShun-validation-issues156-158-20261101\\WinShunCaptureApp.dll",
+  "captureSha256": "6B98EDCBF0F4D328E886F2085B64E695C11DF8A481CCFD181B299CB68BB066B2",
+  "buildTargets": [
+    "WinShun",
+    "WinShunCaptureApp",
+    "tst_appearance",
+    "tst_foldermenu"
+  ],
+  "currentUserInstanceReplaced": false
+}

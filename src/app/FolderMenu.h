@@ -25,12 +25,15 @@
 namespace ws {
 
 class Favorites;
+class AppCatalog;
+class SystemCatalog;
 class History;
 class KeyRouter;
 
 // A double click on the blank space of a File Explorer folder or of the
-// desktop brings up a menu of folders to go to, as Listary's does (GitHub
-// #22): the favorite folders, the recent ones, those open in other windows;
+// desktop brings up a menu of favorites and folders, as Listary's does
+// (GitHub #22, #156): all favorite kinds, recent and open folders, grouped
+// into pages with names and icons;
 // then "search here" and adding this folder to the favorites. Chosen in a
 // File Explorer window, the same tab goes there; on the desktop, the file
 // manager opens it.
@@ -65,7 +68,7 @@ class FolderMenu : public QObject {
     Q_OBJECT
     QML_ELEMENT
     QML_UNCREATABLE("Provided by the application")
-    // {text, detail, glyph} or {separator: true}
+    // {text, detail, glyph, icon, tooltip, action}, {children: [...]} or a separator.
     Q_PROPERTY(QVariantList entries READ entries NOTIFY entriesChanged FINAL)
     Q_PROPERTY(bool open READ isOpen NOTIFY openChanged FINAL)
 
@@ -75,6 +78,7 @@ public:
 
     void setWindow(QWindow* window); // FolderMenuWindow
     void setRecordHistory(bool on);
+    void setCatalogs(AppCatalog* apps, SystemCatalog* places) { m_apps = apps; m_places = places; }
     // auto | on (Settings::folderMenu); Explorer and the desktop each on or off.
     void setOptions(bool yieldToListary, bool explorer, bool desktop);
     // Which groups it lists (GitHub #51); one left out is not even gathered.
@@ -121,10 +125,11 @@ signals:
     void openChanged(bool open);
 
 private:
-    enum class Kind { Folder, Search, AddFavorite, RemoveFavorite, Terminal, PowerShell, Command, Settings };
+    enum class Kind { Folder, Search, AddFavorite, RemoveFavorite, Terminal, PowerShell, Favorite, Settings };
     struct Entry {
         Kind kind = Kind::Folder;
         QString path;
+        QString title;
     };
     struct Found; // what the worker gathered
 
@@ -142,6 +147,8 @@ private:
 
     History* m_history;
     Favorites* m_favorites;
+    AppCatalog* m_apps = nullptr;
+    SystemCatalog* m_places = nullptr;
     QPointer<QWindow> m_window;
     std::function<bool()> m_blocked;
     std::function<bool(HWND, const QString&)> m_dialogGo;

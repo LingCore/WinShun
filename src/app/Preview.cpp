@@ -1399,6 +1399,7 @@ int runSettings(const QStringList& args)
         {QCoreApplication::translate("PasteFileCard", "粘贴为文件"), pluginsPage, 0}, // a built-in card
         // Shown as 内置功能 cards too, the rows of their own page first (open_settings searches them by title).
         {QCoreApplication::translate("SettingsWindow", "双击空白处弹出文件夹菜单"), 0, 2},
+        {QCoreApplication::translate("SettingsWindow", "菜单里列出收藏夹"), 0, 2},
         {QCoreApplication::translate("SettingsWindow", "对话框旁的搜索框"), 0, 2},
         {QCoreApplication::translate("SettingsWindow", "在 Directory Opus 里直接打字搜索"), 0, 2},
         {u"AI"_s, aiPage, 0},
@@ -1406,7 +1407,7 @@ int runSettings(const QStringList& args)
         {u"ws"_s, aiPage, 0},
         {u"command line"_s, aiPage, 0},
         {u"终端"_s, aiPage, 0},
-        {u"收藏"_s, favoritesPage, 0},
+        {QCoreApplication::translate("SettingsWindow", "收藏夹"), favoritesPage, 0},
         {QCoreApplication::translate("SettingsWindow", "网络与 WSL 文件夹"), 2, 3},
         {QCoreApplication::translate("SettingsWindow", "排序"), 3, 0},
         {QCoreApplication::translate("SettingsWindow", "显示修改日期"), 3, 1},
@@ -3118,6 +3119,9 @@ int runResults(const QStringList& args)
     QDir().mkpath(out.path());
     const QString baseline = valueAfter(args, u"--rows-source");
     SystemTheme::setUiSize(valueAfter(args, u"--size", u"standard"_s));
+    const QString corners = valueAfter(args, u"--corners", Settings::defaults().corners);
+    if (corners == u"round" || corners == u"square")
+        SystemTheme::setRoundedCorners(corners == u"round");
     QQuickWindow::setGraphicsApi(QSGRendererInterface::Direct3D11);
     QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
     QFont font = QGuiApplication::font();
