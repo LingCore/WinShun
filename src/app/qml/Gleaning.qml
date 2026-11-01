@@ -6,7 +6,7 @@ import QtQuick
 // Ported from MacShun (Gleaning.swift). The content lives here and nothing is
 // fetched: the program does not go online.
 // To use the page in another program, change only `thisApp`, `works`,
-// `authorUrl`, `feedbackEmail` and `thanks`.
+// `authorUrl`, `feedbackUrl` and `thanks`.
 QtObject {
     readonly property string title: qsTr("拾穗计划")
 
@@ -14,8 +14,8 @@ QtObject {
     readonly property string authorMotto: qsTr("为人民服务")
     // The author's homepage; when set, the author row gets a 作者主页 button.
     readonly property string authorUrl: ""
-    // Where suggestions go; when empty, the feedback card says 还没有 and its button does nothing.
-    readonly property string feedbackEmail: ""
+    // The official feedback form for this program.
+    readonly property url feedbackUrl: "https://lcstp.com/projects/winshun/feedback"
 
     // Sites that list this program, thanked at the foot of the page; [] shows nothing.
     //   logo:  the site's own logo, drawn on a light plate

@@ -2123,16 +2123,12 @@
         <translation>Your feedback matters</translation>
     </message>
     <message>
-        <source>有任何建议，或想对开发者说的话，欢迎写信给我</source>
-        <translation>Suggestions, or anything you’d like to tell the developer: write to me anytime</translation>
+        <source>有任何建议，或想对开发者说的话，欢迎到官网反馈</source>
+        <translation>Share your suggestions or a message for the developer on our website</translation>
     </message>
     <message>
-        <source>还没有</source>
-        <translation>Not yet</translation>
-    </message>
-    <message>
-        <source>%1 %2 的建议</source>
-        <translation>Feedback on %1 %2</translation>
+        <source>进官网反馈</source>
+        <translation>Send feedback on our website</translation>
     </message>
     <message>
         <source>Win顺</source>
