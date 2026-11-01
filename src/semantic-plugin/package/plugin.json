@@ -2,7 +2,7 @@
   "manifest": 1,
   "id": "winshun.semantic",
   "name": {"zh": "按意思找", "en": "Search by meaning"},
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": {"zh": "? 一句话：按文档讲的是什么来找，不用记得原词。用你选的模型（本机的 Ollama，或云服务的密钥）", "en": "? a sentence: finds documents by what they are about, not by their words. Uses the model you pick (Ollama on this PC, or a cloud service's key)"},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",

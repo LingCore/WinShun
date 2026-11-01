@@ -1,10 +1,10 @@
 # 按意思找 · Search by meaning
 
-随 Win顺 安装的 C++ 常驻插件（`WinShunSemantic.exe`，源码在 `src/semantic-plugin`），默认关着。输入 `? 一句话`（中文输入法下 `？` 也行），描述你要找的文档：不记得原词也能找到。比如 `? 去年报销的规定` 能找到《费用管理办法.docx》，哪怕里面写的是“差旅费用申请”。
+Win顺 0.17.0 或更新版本的官方可选 C++ 常驻插件（`WinShunSemantic.exe`，源码在 `src/semantic-plugin`）。在设置 → 插件 → 插件库中“安装并启用”，确认权限后使用。输入 `? 一句话`（中文输入法下 `？` 也行），描述你要找的文档：不记得原词也能找到。比如 `? 去年报销的规定` 能找到《费用管理办法.docx》，哪怕里面写的是“差旅费用申请”。
 
 **怎么用**
 1. 设置 → **文件内容搜索**要开着：插件用的是 Win顺 已经从文档里读出来的文字，不会再读一遍硬盘。
-2. 设置 → 插件 → 打开**按意思找**，选一个**模型服务**：
+2. 设置 → 插件 → 插件库中安装并启用**按意思找**，再到“已安装”的插件设置里选一个**模型服务**：
    - **Ollama / LM Studio（本机）**：什么都不上传。先装 [Ollama](https://ollama.com)，再运行 `ollama pull qwen3-embedding:0.6b`（或 `bge-m3`、`embeddinggemma`）。
    - **硅基流动、阿里云百炼、OpenAI 或其他 OpenAI 兼容接口**：填 **API 密钥**（存在 Windows 凭据管理器里）。模型留空就用推荐的。
 3. 输入 `?`，第一行告诉你大约有多少个文件、多少字要计算（云服务会按它的价格计费）。**回车之前什么都不发出去。**
@@ -18,4 +18,4 @@ AI 助手也能用它：设置 → AI 助手里打开“AI 可以使用插件”
 
 ---
 
-A resident C++ plugin that comes with Win顺, off by default. `? a sentence` finds documents by what they are about rather than by their words. It takes the text from Win顺's content index (Settings → File content search must be on), has the model you pick turn passages into vectors — Ollama or LM Studio on this PC (nothing uploaded), or SiliconFlow, Alibaba Cloud Model Studio, OpenAI or another OpenAI-compatible API with your key — and keeps and compares the vectors on this PC. Nothing is sent before you press Enter on the first row, which says how many files and about how many characters would go. Changing the model means building the index again.
+An official optional resident C++ plugin requiring WinShun 0.17.0 or later. Choose **Install and enable** in Settings → Plugins → Library, review its permissions, then choose a model service in its settings under Installed. `? a sentence` finds documents by what they are about rather than by their words. It takes the text from WinShun's content index (Settings → File content search must be on), has the model you pick turn passages into vectors — Ollama or LM Studio on this PC (nothing uploaded), or SiliconFlow, Alibaba Cloud Model Studio, OpenAI or another OpenAI-compatible API with your key — and keeps and compares the vectors on this PC. Nothing is sent before you press Enter on the first row, which says how many files and about how many characters would go. Changing the model means building the index again.
