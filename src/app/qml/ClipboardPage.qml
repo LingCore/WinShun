@@ -771,6 +771,7 @@ Item {
                         width: list.width
                         height: clipRow.picture ? page.pictureRowHeight : page.rowHeight
                         hint: page.numberKey >= 0 && index < 9 ? index + 1 : 0
+                        reserveHintSpace: page.numberKey >= 0 && page.clipboard.numberHints !== "off"
                         hintOpacity: numberHints.hintOpacity
                         hintModifier: page.numberKey === Qt.Key_Control ? "Ctrl" : "Alt"
                         hintTaken: clipRow.hint > 0 && !page.numberUsable(clipRow.hint)
@@ -1145,7 +1146,7 @@ Item {
                 anchors.right: parent.right
                 anchors.rightMargin: 6
                 anchors.verticalCenter: parent.verticalCenter
-                shortcuts: (page.numberKey < 0 ? [] : [[modifier + "+1…9", qsTr("粘贴第几条")]]) // the numbers on the rows' icons
+                shortcuts: (page.numberKey < 0 ? [] : [[modifier + "+1…9", qsTr("粘贴第几条")]]) // the numbers in the rows' left column
                     .concat(page.intoField ? [] : [["Shift+Enter", qsTr("粘贴为纯文本")]])
                     .concat(page.numberKey < 0 ? []
                             : [[modifier + "+Shift+1…9", qsTr("第几条粘贴为纯文本")]])

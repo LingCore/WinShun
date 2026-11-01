@@ -6,7 +6,7 @@ import WinShun
 // (or where the query matched), where it came from and when. A click
 // shows it in the preview; its paste button or a double click pastes it
 // (ClipboardPage.qml). With clickToPaste a click pastes it, as in Windows'
-// own history, and that button shows the preview instead. The first nine show on the icon the number that
+// own history, and that button shows the preview instead. The first nine have a separate number column that
 // pastes them (Alt+1…); picked rows show the order they will be pasted in;
 // the current and the hovered row show buttons: paste, pin, delete.
 Item {
@@ -28,7 +28,8 @@ Item {
     required property bool afterPinned // the first after those in "固定" listed first
     required property bool screenshot // a picture Win顺's capture took: tagged 截图 (when in no group)
     required property bool pasted // pasted from the list before, with 粘贴后保持位置 on (else the last pasted is on top): a check mark
-    property int hint: 0 // the number that pastes this row (Alt+1...), on its icon; 0 for none
+    property int hint: 0 // the number that pastes this row (Alt+1...); 0 for none
+    property bool reserveHintSpace: false // keep icons aligned when hints fade or a row has no number
     property string hintModifier: "Alt" // ... with this held
     property bool hintTaken: false // another program holds that chord as a global hotkey: shown struck through
     property real hintOpacity: 1
@@ -97,7 +98,8 @@ Item {
 
     Item {
         id: iconSlot
-        x: 16
+        objectName: "clipboardIconSlot"
+        x: 16 + (row.reserveHintSpace ? 28 : 0)
         anchors.verticalCenter: parent.verticalCenter
         // Pictures larger, on a taller row (ClipboardPage.pictureRowHeight):
         // what is in them shows (GitHub #9); 108 x 68 holds a 16:10 screen whole,
@@ -299,16 +301,24 @@ Item {
         }
     }
 
-    IconNumber { // "Alt+1" (or "Ctrl+1"): pastes this row
-        id: iconNumber
+    Item {
+        id: numberSlot
+        objectName: "clipboardNumberSlot"
+        visible: row.reserveHintSpace && row.hint > 0
         opacity: row.hintOpacity
-        // From the top left corner of the icon, or of the picture as drawn
-        // (narrower or flatter than its slot), rightwards, as in the launcher.
-        readonly property bool picture: row.picture && thumbnail.ready
-        keys: row.hint > 0 ? row.hintModifier + "+" + row.hint : ""
-        taken: row.hintTaken
-        x: row.onPixel(iconSlot.x + (picture ? thumbnail.x : fileIcon.visible ? fileIcon.x : 0) - 5)
-        y: row.onPixel(iconSlot.y + (picture ? thumbnail.y : fileIcon.visible ? fileIcon.y : 0) - 4)
+        x: row.onPixel(14)
+        width: 24
+        height: row.height
+
+        CenteredNumber {
+            objectName: "clipboardNumber"
+            text: row.hint > 0 ? String(row.hint) : ""
+            font.pixelSize: Theme.uiTitle
+            font.weight: Font.Medium
+            font.strikeout: row.hintTaken
+            color: row.hintTaken ? Theme.faint : row.current ? Theme.accent : Theme.subtext
+            Accessible.ignored: true
+        }
     }
 
     MouseArea {
@@ -412,15 +422,15 @@ Item {
                                            : pasteAction.tipWanted ? pasteAction
                                            : pinAction.tipWanted ? pinAction
                                            : removeAction.tipWanted ? removeAction : null
-        readonly property bool onKeys: !hovered && iconNumber.visible && iconNumber.taken && area.containsMouse // (a hover handler under the area gets no hover)
-                                          && iconNumber.contains(iconNumber.mapFromItem(area, area.mouseX, area.mouseY))
+        readonly property bool onKeys: !hovered && numberSlot.visible && numberSlot.opacity > 0 && row.hintTaken && area.containsMouse // (a hover handler under the area gets no hover)
+                                          && numberSlot.contains(numberSlot.mapFromItem(area, area.mouseX, area.mouseY))
         readonly property bool onMark: !hovered && !onKeys && pastedMark.visible && area.containsMouse
                                        && pastedMark.contains(pastedMark.mapFromItem(area, area.mouseX, area.mouseY))
-        target: hovered ? hovered : onKeys ? iconNumber : onMark ? pastedMark : null
+        target: hovered ? hovered : onKeys ? numberSlot : onMark ? pastedMark : null
         text: hovered ? hovered.tip
             : onMark ? qsTr("已粘贴过")
             : onKeys ? qsTr("%1 被别的程序占用了，在这里按也会交给那个程序。可在设置里改用 %2")
-                       .arg(iconNumber.keys).arg(row.hintModifier === "Alt" ? "Ctrl" : "Alt")
+                       .arg(row.hintModifier + "+" + row.hint).arg(row.hintModifier === "Alt" ? "Ctrl" : "Alt")
             : ""
         shortcut: hovered ? hovered.tipShortcut : ""
     }

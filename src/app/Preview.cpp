@@ -2613,6 +2613,35 @@ bool checkClipboardSizing(QQuickWindow* window, Clipboard& clipboard, Placement&
     // first width drag then legitimately changed the automatic row count.
     placement.attach(QRect(area.topLeft() + QPoint(50, 20), QSize(1, 0)), screen);
     settle(window);
+    auto* numberedRow = visualNamed(page, u"clipboardRow-0"_s);
+    auto* numberSlot = numberedRow ? visualNamed(numberedRow, u"clipboardNumberSlot"_s) : nullptr;
+    auto* number = numberedRow ? visualNamed(numberedRow, u"clipboardNumber"_s) : nullptr;
+    auto* icon = numberedRow ? visualNamed(numberedRow, u"clipboardIconSlot"_s) : nullptr;
+    check("number_column_separate_from_thumbnail", numberSlot && icon
+        && numberSlot->x() + numberSlot->width() + 6 <= icon->x());
+    check("number_column_centred_and_digit_only", number && numberSlot && numberedRow
+        && number->property("text").toString() == u"1"
+        && numberSlot->height() == numberedRow->height());
+    const qreal numberedIconX = icon ? icon->x() : -1;
+    clipboard.setNumberHints(u"held"_s);
+    settle(window);
+    pump(200);
+    check("held_number_keeps_column_alignment", icon && numberSlot
+        && icon->x() == numberedIconX && numberSlot->opacity() == 0);
+    clipboard.setNumberHints(u"off"_s);
+    settle(window);
+    check("disabled_numbers_release_column", icon && numberSlot
+        && icon->x() == numberedIconX - 28 && !numberSlot->isVisible());
+    clipboard.setNumberHints(u"always"_s);
+    clipboard.setNumberKeys(u"ctrl"_s);
+    clipboard.setNumberKeysLeft(1u << 1);
+    settle(window);
+    check("occupied_number_is_struck_through", number && numberedRow
+        && numberedRow->property("hintModifier").toString() == u"Ctrl"
+        && number->property("font").value<QFont>().strikeOut());
+    clipboard.setNumberKeysLeft(0);
+    clipboard.setNumberKeys(u"alt"_s);
+    settle(window);
     const auto resize = [&](int edge, int dw, int dh, bool cancel = false) {
         RECT original {};
         ::GetWindowRect(hwnd, &original);
