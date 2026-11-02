@@ -311,7 +311,8 @@ private slots:
         using ws::numberkeys::takenDigit;
         constexpr unsigned digits = 1u << 3 | 1u << 5;
         static_assert(takenDigit('5', Qt::ControlModifier, Modifier::Ctrl, digits) == 5);
-        QCOMPARE(takenDigit('3', Qt::ControlModifier | Qt::ShiftModifier, Modifier::Ctrl, digits), 3);
+        QCOMPARE(takenDigit('3', Qt::ControlModifier, Modifier::Ctrl, digits), 3);
+        QCOMPARE(takenDigit('3', Qt::ControlModifier | Qt::ShiftModifier, Modifier::Ctrl, digits), 0); // not probed
         QCOMPARE(takenDigit('5', Qt::AltModifier, Modifier::Alt, digits), 5);
         QCOMPARE(takenDigit('4', Qt::ControlModifier, Modifier::Ctrl, digits), 0); // nobody else holds it
         QCOMPARE(takenDigit('5', Qt::AltModifier, Modifier::Ctrl, digits), 0); // the other modifier

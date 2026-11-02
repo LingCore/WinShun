@@ -2,8 +2,9 @@
 
 ## 自动测试
 
-- `tst_numberhints`：新增 `takenDigit()`（只拿设定的修饰键 + 数字；Shift 可带；Win、AltGr、单按数字不拿）和 `shownRows()`（行高不一 20/60、上下边距 4：滚动后从第一个露出一半以上的行编号；高行露不到一半不编号；最多 9 个；`BottomToTop` 倒着排；空列表）。通过。
+- `tst_numberhints`：新增 `takenDigit()`（只拿设定的修饰键 + 数字，正是探测过的那个组合；带 Shift、Win、AltGr 或单按数字都不拿）和 `shownRows()`（行高不一 20/60、上下边距 4：滚动后从第一个露出一半以上的行编号；高行露不到一半不编号；最多 9 个；`BottomToTop` 倒着排；空列表）。通过。
 - `tst_core`：`rawInputAside()` 加了 `away()` 的检查。通过。
+- 改动牵连到的其它目标都编过并通过：`tst_keyrouter`（含 `WINSHUN_KEYROUTER_LIVE=1` 的实机部分，拿着 `ui.lock`）、`tst_keylistener`、`tst_foldermenu`，以及 `WinShunService`、`recording-probe`。
 
 ## 探针（另一个进程 `RegisterHotKey(Ctrl+5)` 数 `WM_HOTKEY`，探针窗口在前，`SendInput` 3 次）
 

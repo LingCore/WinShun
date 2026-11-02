@@ -304,7 +304,7 @@ private slots:
         KeyRouter menuRouter(target, passive.hwnd, {.key = [&](const KeyRouter::Key& key) {
             if (!key.press && key.vk < menuReleases.size())
                 ++menuReleases[key.vk];
-        }}, Qt::NoModifier, KeyRouter::Policy::Menu);
+        }}, Qt::NoModifier, 0, KeyRouter::Policy::Menu);
         QVERIFY(menuRouter.isActive());
         for (const WORD vk : {WORD(VK_LEFT), WORD(VK_RIGHT), WORD(VK_BACK)}) {
             QVERIFY(tap(vk));

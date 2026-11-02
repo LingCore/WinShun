@@ -29,8 +29,9 @@ std::vector<int> heldAsHotkeys(Modifier modifier);
 // The same as bits: 1 << n for each digit n held.
 unsigned heldMask(Modifier modifier);
 
-// Which digit the key pressed is for the hook: `vk` with `modifier` held
-// (and Shift or not), no other of Ctrl, Alt and Win, and its bit in
+// Which digit the key pressed is for the hook: `vk` with `modifier` alone
+// held (no Shift either: heldMask and App::ownNumberDigits look at that
+// chord only, so Ctrl+Shift+5 stays whoever's it is), and its bit in
 // `digits`; else 0. `held`: the modifiers down as it is pressed, Win as
 // Qt::MetaModifier.
 constexpr int takenDigit(unsigned vk, Qt::KeyboardModifiers held, Modifier modifier, unsigned digits) noexcept
@@ -38,7 +39,7 @@ constexpr int takenDigit(unsigned vk, Qt::KeyboardModifiers held, Modifier modif
     if (vk < '1' || vk > '9' || !(digits & (1u << (vk - '0'))))
         return 0;
     const Qt::KeyboardModifier wanted = modifier == Modifier::Ctrl ? Qt::ControlModifier : Qt::AltModifier;
-    return (held & ~Qt::ShiftModifier) == Qt::KeyboardModifiers(wanted) ? static_cast<int>(vk - '0') : 0;
+    return held == Qt::KeyboardModifiers(wanted) ? static_cast<int>(vk - '0') : 0;
 }
 
 // The number keys of a window of Win顺's in front taken from the keyboard,
@@ -46,7 +47,7 @@ constexpr int takenDigit(unsigned vk, Qt::KeyboardModifiers held, Modifier modif
 // hook, which every key press in the system waits on, so it lives only while
 // such a window is in front and another program holds one of its digits
 // (App::updateNumberKeys), on a thread of its own, and decides at once from
-// the key alone. It takes `digits` with the modifier (Shift too), only while
+// the key alone. It takes `digits` with the modifier alone, only while
 // a window of this process is in front; the rest goes on. A key it wants
 // goes to the hooks after it first, as KeyRouter does: a remapper there
 // (AutoHotkey) keeps what it takes. The modifier is then not pressed alone
