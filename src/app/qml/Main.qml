@@ -461,6 +461,7 @@ Window {
     onClipboardBelowChanged: closeContextMenu()
 
     function moveSelection(delta) {
+        selectionMoved()
         if (hintIndex >= 0) { // on the hints after the last row: ↓ ↑ along them, ↑ from the first back to the last row
             if (delta > 0)
                 hintIndex = Math.min(hints.length - 1, hintIndex + 1)
@@ -497,7 +498,14 @@ Window {
         window.launcher.selectRange(selectionAnchor, index, add)
         view.currentIndex = index
     }
+    // The keys moved it: Space previews from here (spaceTogglesPreview), and a
+    // hover still waiting does not take the preview off the current row.
+    function selectionMoved() {
+        spaceTogglesPreview = true
+        previewHoverTimer.stop()
+    }
     function extendSelection(delta) {
+        selectionMoved()
         if (view.count > 0)
             selectTo(Math.max(0, Math.min(view.count - 1, view.currentIndex + delta)), false)
     }
@@ -640,6 +648,17 @@ Window {
         host: window.launcher
     }
 
+    // Space types a space until the selection was moved or the preview
+    // opened, when Space is the preview key; typing brings the space back.
+    property bool spaceTogglesPreview: false
+    Connections {
+        target: window.searchBar
+        function onTyped() {
+            window.spaceTogglesPreview = false
+            previewHoverTimer.stop()
+        }
+    }
+
     Connections {
         target: window.searchBar
         function onCompositionChanged() {
@@ -685,7 +704,7 @@ Window {
             return
         }
         if (searchBar.composition.length === 0 && window.launcher.isPreviewKey(event.key, event.modifiers)
-                && homeIndex < 0 && hintIndex < 0 && (view.currentIndex >= 0 || event.key !== Qt.Key_Space)) {
+                && homeIndex < 0 && hintIndex < 0 && (event.key !== Qt.Key_Space || (spaceTogglesPreview && view.currentIndex >= 0))) {
             if (!event.isAutoRepeat)
                 togglePreview()
             event.accepted = true
@@ -863,6 +882,8 @@ Window {
                 detailEdit.copy()
                 break
             }
+            if (!shift && window.launcher.copyPreviewSelection()) // picked in the preview's text
+                break
             act(shift ? Launcher.CopyPath : Launcher.CopyItem)
             break
         default:
@@ -878,6 +899,7 @@ Window {
     function togglePreview() {
         if (homeIndex >= 0 || hintIndex >= 0)
             return
+        spaceTogglesPreview = true
         const pointer = window.launcher.pointerIfMoved()
         if (pointer !== undefined && view.count > 0) {
             const p = view.mapFromGlobal(pointer.x, pointer.y)
@@ -1018,6 +1040,8 @@ Window {
         onRowDoubleClicked: (index, modifiers) => window.rowDoubleClicked(index, modifiers)
         onRowMenuRequested: (index, globalPos, modifiers) => window.rowMenuRequested(index, globalPos, modifiers)
         onRowDragRequested: (index) => window.launcher.dragOut(index)
+        onRowPreviewRequested: (index) => window.rowPreviewRequested(index)
+        onRowHoverMoved: (index, globalPos) => window.rowHoverMoved(index, globalPos)
         nameTip: nameTip
     }
 
@@ -1025,6 +1049,7 @@ Window {
     // selection, Shift takes the rows up to it, plain opens it; the right
     // button with Shift the system's menu, else Win顺's.
     function rowClicked(index, modifiers) {
+        spaceTogglesPreview = true
         const ctrl = (modifiers & Qt.ControlModifier) !== 0
         if (modifiers & Qt.ShiftModifier) {
             selectTo(index, ctrl)
@@ -1051,6 +1076,37 @@ Window {
             return
         view.currentIndex = index
         launcher.clickRow(index)
+    }
+    // A middle click: that row's preview (as Alt+P on it), the file stays shut.
+    function rowPreviewRequested(index) {
+        selectionMoved()
+        if (panel && launcher.gallery)
+            galleryNavigation = true
+        window.launcher.clearSelection()
+        view.currentIndex = index
+        window.launcher.keyboardMoved() // the pointer is on this row, as on the keyboard's
+        window.launcher.togglePreview(index)
+    }
+    // An open preview shows the row the mouse rests on for a moment (as the
+    // clipboard's, GitHub #47 and #186), the current row stays where it is.
+    // It never opens or closes the preview. Moving the selection brings the
+    // preview back to the current row (Launcher.followPreview).
+    property point previewHoverPos: Qt.point(-1, -1) // the last real mouse move, global
+    property int previewHoverRow: -1
+    function rowHoverMoved(index, globalPos) {
+        // A wheel moving rows under a still mouse sends the same position.
+        if (globalPos.x === previewHoverPos.x && globalPos.y === previewHoverPos.y)
+            return
+        previewHoverPos = globalPos
+        if (Qt.application.keyboardModifiers & (Qt.ControlModifier | Qt.ShiftModifier))
+            return
+        previewHoverRow = index
+        previewHoverTimer.restart()
+    }
+    Timer {
+        id: previewHoverTimer
+        interval: 100
+        onTriggered: window.launcher.previewHover(window.previewHoverRow)
     }
     // A click on a system switch's own switch: it toggles, whatever the row asks.
     function rowSwitchClicked(index) {
@@ -1422,6 +1478,8 @@ Window {
                     }
                     onMenuRequested: (index, globalPos, modifiers) => window.rowMenuRequested(index, globalPos, modifiers)
                     onDragRequested: (index) => window.launcher.dragOut(index)
+                    onPreviewRequested: (index) => window.rowPreviewRequested(index)
+                    onHoverMoved: (index, globalPos) => window.rowHoverMoved(index, globalPos)
                 }
             }
 

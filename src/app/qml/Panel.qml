@@ -33,6 +33,8 @@ Item {
     signal rowDoubleClicked(int index, int modifiers)
     signal rowMenuRequested(int index, point globalPos, int modifiers)
     signal rowDragRequested(int index)
+    signal rowPreviewRequested(int index)
+    signal rowHoverMoved(int index, point globalPos)
 
     readonly property int sidebarWidth: 290
     readonly property bool contentMode: launcher.scope === Launcher.Content
@@ -813,6 +815,8 @@ Item {
             onDoubleClicked: (index, modifiers) => panel.rowDoubleClicked(index, modifiers)
             onMenuRequested: (index, globalPos, modifiers) => panel.rowMenuRequested(index, globalPos, modifiers)
             onDragRequested: (index) => panel.rowDragRequested(index)
+            onPreviewRequested: (index) => panel.rowPreviewRequested(index)
+            onHoverMoved: (index, globalPos) => panel.rowHoverMoved(index, globalPos)
         }
     }
 
@@ -846,6 +850,8 @@ Item {
         onRowDoubleClicked: (index, modifiers) => panel.rowDoubleClicked(index, modifiers)
         onRowMenuRequested: (index, globalPos, modifiers) => panel.rowMenuRequested(index, globalPos, modifiers)
         onRowDragRequested: index => panel.rowDragRequested(index)
+        onRowPreviewRequested: index => panel.rowPreviewRequested(index)
+        onRowHoverMoved: (index, globalPos) => panel.rowHoverMoved(index, globalPos)
     }
 
     Text { // nothing to list, or not yet

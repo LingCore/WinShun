@@ -28,6 +28,8 @@ Item {
     signal doubleClicked(int index, int modifiers)
     signal menuRequested(int index, point globalPos, int modifiers)
     signal dragRequested(int index)
+    signal previewRequested(int index)
+    signal hoverMoved(int index, point globalPos)
 
     Accessible.role: Accessible.ListItem
     Accessible.name: name
@@ -120,7 +122,7 @@ Item {
         id: area
         anchors.fill: parent
         hoverEnabled: true
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
         property point pressedAt
         property bool draggedOut: false
         onPressed: mouse => {
@@ -133,6 +135,7 @@ Item {
         onPositionChanged: mouse => {
             if (!pressed) {
                 tile.offerTip()
+                tile.hoverMoved(tile.index, mapToGlobal(mouse.x, mouse.y))
             } else if (preventStealing && !draggedOut && (mouse.buttons & Qt.LeftButton)
                 && Math.hypot(mouse.x - pressedAt.x, mouse.y - pressedAt.y) >= Application.styleHints.startDragDistance) {
                 draggedOut = true
@@ -145,12 +148,16 @@ Item {
                 return
             if (mouse.button === Qt.RightButton)
                 tile.menuRequested(tile.index, mapToGlobal(mouse.x, mouse.y), mouse.modifiers)
+            else if (mouse.button === Qt.MiddleButton)
+                tile.previewRequested(tile.index)
             else
                 tile.clicked(tile.index, mouse.modifiers)
         }
         onDoubleClicked: mouse => {
             if (mouse.button === Qt.LeftButton && !draggedOut)
                 tile.doubleClicked(tile.index, mouse.modifiers)
+            else if (mouse.button === Qt.MiddleButton)
+                tile.previewRequested(tile.index)
         }
     }
 }

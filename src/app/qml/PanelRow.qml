@@ -59,6 +59,8 @@ Item {
     signal doubleClicked(int index, int modifiers) // as ResultRow's
     signal menuRequested(int index, point globalPos, int modifiers)
     signal dragRequested(int index)
+    signal previewRequested(int index) // as ResultRow's
+    signal hoverMoved(int index, point globalPos)
 
     function onPixel(y) { return Math.round(y * Screen.devicePixelRatio) / Screen.devicePixelRatio }
 
@@ -206,7 +208,7 @@ Item {
 
         anchors.fill: parent
         hoverEnabled: true
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
         onPressed: (mouse) => {
             if (row.nameTip)
                 row.nameTip.dismiss()
@@ -225,6 +227,7 @@ Item {
         onPositionChanged: (mouse) => {
             if (!pressed) { // moved: a tip dismissed (a key, a scroll) may come again
                 row.offerTip()
+                row.hoverMoved(row.index, area.mapToGlobal(mouse.x, mouse.y))
                 return
             }
             if (!preventStealing || draggedOut || !(mouse.buttons & Qt.LeftButton))
@@ -239,12 +242,16 @@ Item {
                 return
             if (mouse.button === Qt.RightButton)
                 row.menuRequested(row.index, area.mapToGlobal(mouse.x, mouse.y), mouse.modifiers)
+            else if (mouse.button === Qt.MiddleButton)
+                row.previewRequested(row.index)
             else
                 row.clicked(row.index, mouse.modifiers)
         }
         onDoubleClicked: (mouse) => {
             if (mouse.button === Qt.LeftButton)
                 row.doubleClicked(row.index, mouse.modifiers)
+            else if (mouse.button === Qt.MiddleButton) // a second middle click, as quick: closes again
+                row.previewRequested(row.index)
         }
     }
 }

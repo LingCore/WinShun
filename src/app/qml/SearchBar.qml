@@ -27,6 +27,7 @@ Item {
     signal keyPressed(var event)
     signal keyReleased(var event)
     signal editingRequested()
+    signal typed() // the text was edited by the user (not set by the launcher)
 
     // On whole device pixels, as the rows' text (ResultRow.qml): centred, at
     // 150 % the field's text sits on a half pixel, and while the window slides
@@ -221,6 +222,7 @@ Item {
             bar.launcher.query = text
             bar.reportField()
         }
+        onTextEdited: bar.typed()
         onPreeditTextChanged: bar.reportField()
         onCursorPositionChanged: bar.reportField()
         onSelectionStartChanged: bar.reportField()

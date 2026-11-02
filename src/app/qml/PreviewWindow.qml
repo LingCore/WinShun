@@ -189,11 +189,46 @@ Window {
         }
 
         // The start of a text file, a line a row (long ones in pieces): numbered, monospaced, wrapped.
+// Picked with the mouse (the area over it; it does not flick), across rows;
+// Ctrl+C in the launcher copies it (FilePreview.selectedText).
         ListView {
             id: lines
+            objectName: "previewTextLines"
             readonly property bool shown: window.preview.kind === FilePreview.Text
             readonly property int digits: Math.max(2, String(window.preview.lineCount).length)
             readonly property real numberWidth: digitMetrics.advanceWidth * digits + 12
+
+            // What is picked: from where the press was (the anchor) to where
+            // the mouse is (the focus), each a row and a position in it.
+            property int anchorRow: 0
+            property int anchorPos: 0
+            property int focusRow: 0
+            property int focusPos: 0
+            readonly property bool backwards: focusRow < anchorRow || (focusRow === anchorRow && focusPos < anchorPos)
+            readonly property int fromRow: backwards ? focusRow : anchorRow
+            readonly property int fromPos: backwards ? focusPos : anchorPos
+            readonly property int toRow: backwards ? anchorRow : focusRow
+            readonly property int toPos: backwards ? anchorPos : focusPos
+
+            function pick(aRow: int, aPos: int, fRow: int, fPos: int) {
+                anchorRow = aRow
+                anchorPos = aPos
+                focusRow = fRow
+                focusPos = fPos
+                window.preview.setSelection(fromRow, fromPos, toRow, toPos)
+            }
+            // The row and position under (x, y) of this view; above or below it, the start or end of the row at its edge.
+            function pointAt(x: real, y: real): var {
+                if (count === 0)
+                    return null
+                const row = indexAt(1, contentY + Math.max(0, Math.min(height - 1, y)))
+                if (row < 0) // under the last row
+                    return {row: count - 1, pos: itemAtIndex(count - 1)?.length ?? 0}
+                const item = itemAtIndex(row)
+                if (!item)
+                    return null
+                return {row: row, pos: y < 0 ? 0 : y >= height ? item.length : item.positionAt(x, y)}
+            }
 
             visible: shown
             anchors.fill: parent
@@ -211,13 +246,37 @@ Window {
             }
             Text { id: lineFont; visible: false; font.family: "Consolas"; font.pixelSize: Theme.uiCaption + 1 }
 
+            Connections {
+                target: window.preview
+                function onContentChanged() { lines.pick(0, 0, 0, 0) }
+            }
+
             delegate: Item {
                 id: line
                 required property string display
                 required property int index
                 readonly property int number: window.preview.lineNumberAt(index)
+                readonly property int length: lineText.length
+                readonly property bool inPick: index >= lines.fromRow && index <= lines.toRow
+                readonly property int pickFrom: inPick && index === lines.fromRow ? lines.fromPos : 0
+                readonly property int pickTo: !inPick ? 0 : index === lines.toRow ? lines.toPos : lineText.length
                 width: lines.width
                 height: lineText.height
+
+                function positionAt(x: real, y: real): int {
+                    const p = lines.mapToItem(lineText, x, y)
+                    return lineText.positionAt(p.x, p.y)
+                }
+                function wordAt(position: int): var {
+                    lineText.cursorPosition = position
+                    lineText.selectWord()
+                    return {from: lineText.selectionStart, to: lineText.selectionEnd}
+                }
+                function showPick() { lineText.select(pickFrom, pickTo) }
+                onPickFromChanged: showPick()
+                onPickToChanged: showPick()
+                Component.onCompleted: showPick()
+                ListView.onReused: showPick()
 
                 Text {
                     width: lines.numberWidth
@@ -226,15 +285,71 @@ Window {
                     color: Theme.faint
                     font: lineFont.font
                 }
-                Text {
+                TextEdit {
                     id: lineText
                     x: lines.numberWidth + 12
                     width: lines.width - x - window.padding
                     text: line.display
-                    textFormat: Text.PlainText
-                    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                    textFormat: TextEdit.PlainText
+                    wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
+                    readOnly: true
+                    activeFocusOnPress: false
+                    persistentSelection: true
+                    selectionColor: Theme.textSelection
+                    selectedTextColor: Theme.text
                     color: Theme.text
                     font: lineFont.font
+                }
+            }
+        }
+        MouseArea {
+            id: picker
+            objectName: "previewTextPicker"
+            property real lastX: 0
+            property real lastY: 0
+            visible: lines.shown
+            anchors.fill: lines
+            acceptedButtons: Qt.LeftButton
+            cursorShape: Qt.IBeamCursor
+            function extend() {
+                const at = lines.pointAt(lastX, lastY)
+                if (at)
+                    lines.pick(lines.anchorRow, lines.anchorPos, at.row, at.pos)
+            }
+            onPressed: (mouse) => {
+                if (mouse.source !== Qt.MouseEventNotSynthesized) { // touch flicks the text
+                    mouse.accepted = false
+                    return
+                }
+                const at = lines.pointAt(mouse.x, mouse.y)
+                if (at)
+                    lines.pick(at.row, at.pos, at.row, at.pos)
+            }
+            onPositionChanged: (mouse) => {
+                if (!pressed)
+                    return
+                lastX = mouse.x
+                lastY = mouse.y
+                extend()
+            }
+            onDoubleClicked: (mouse) => {
+                const at = lines.pointAt(mouse.x, mouse.y)
+                const item = at ? lines.itemAtIndex(at.row) : null
+                if (item) {
+                    const word = item.wordAt(at.pos)
+                    lines.pick(at.row, word.from, at.row, word.to)
+                }
+            }
+            // Held beyond the top or bottom edge, the text runs on.
+            Timer {
+                interval: 30
+                repeat: true
+                running: picker.pressed && (picker.lastY < 0 || picker.lastY > picker.height)
+                onTriggered: {
+                    const step = Math.min(60, 4 + Math.abs(picker.lastY < 0 ? picker.lastY : picker.lastY - picker.height) / 4)
+                    lines.contentY = Math.max(lines.originY, Math.min(lines.originY + lines.contentHeight - lines.height,
+                                                                         lines.contentY + (picker.lastY < 0 ? -step : step)))
+                    picker.extend()
                 }
             }
         }

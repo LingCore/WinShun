@@ -3589,6 +3589,21 @@ void Launcher::togglePreview(int row)
     setPreviewWanted(true);
 }
 
+void Launcher::previewHover(int row)
+{
+    if (m_preview && m_preview->isOpen() && row >= 0 && row < m_results.count())
+        m_preview->follow(previewItem(m_results.at(row)));
+}
+
+bool Launcher::copyPreviewSelection()
+{
+    const QString text = m_preview && m_preview->isOpen() ? m_preview->selectedText() : QString();
+    if (text.isEmpty())
+        return false;
+    shell::copyText(text);
+    return true;
+}
+
 void Launcher::setPreviewWanted(bool on)
 {
     if (m_previewWanted == on)

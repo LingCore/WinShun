@@ -52,7 +52,7 @@ Item {
 
     signal clicked(int index, int modifiers)
     signal pasteRequested(int index) // its paste button, a double click
-    signal previewRequested(int index) // that button, with clickToPaste
+    signal previewRequested(int index) // that button, with clickToPaste; a middle click
     signal dragRequested(int index)
     signal moveRequested(int from, int to) // its handle dragged over row `to`
     signal moveHeld(bool held) // its handle pressed, let go
@@ -328,7 +328,7 @@ Item {
         property bool draggedOut: false
         anchors.fill: parent
         hoverEnabled: true
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
         onPressed: (mouse) => {
             draggedOut = false
             pressedAt = Qt.point(mouse.x, mouse.y)
@@ -350,6 +350,8 @@ Item {
                 return
             if (mouse.button === Qt.RightButton)
                 row.menuRequested(row.index, area.mapToGlobal(mouse.x, mouse.y))
+            else if (mouse.button === Qt.MiddleButton)
+                row.previewRequested(row.index)
             else
                 row.clicked(row.index, mouse.modifiers)
         }
@@ -360,6 +362,8 @@ Item {
             if (mouse.button === Qt.LeftButton && (mouse.modifiers & (Qt.ControlModifier | Qt.ShiftModifier)) === 0
                 && !row.clickToPaste)
                 row.pasteRequested(row.index)
+            else if (mouse.button === Qt.MiddleButton)
+                row.previewRequested(row.index)
         }
 
         Row {

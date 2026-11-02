@@ -606,6 +606,11 @@ public:
     // launcher. closePreview: true when there was one to close.
     void setPreview(FilePreview* preview);
     Q_INVOKABLE void togglePreview(int row);
+    // The mouse rests on a row: an open preview shows its file, the current
+    // row keeps the selection (the next move of it shows its file again).
+    Q_INVOKABLE void previewHover(int row);
+    // Ctrl+C with text picked in the preview: true when it was copied.
+    Q_INVOKABLE bool copyPreviewSelection();
     Q_INVOKABLE bool closePreview();
     // A folder opened by Enter or a click (one row, not as administrator) is
     // offered here first: true when it was taken there instead of a new

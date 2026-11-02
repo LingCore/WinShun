@@ -59,6 +59,7 @@
 #include <QKeyEvent>
 #include <QInputMethodEvent>
 #include <QMouseEvent>
+#include <QWheelEvent>
 #include <QPainter>
 #include <QLibraryInfo>
 #include <QLocale>
@@ -2161,6 +2162,13 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
             while (launcher.searching() && timeout.elapsed() < 2000)
                 pump(10);
             key(Qt::Key_Space, {}, u" "_s);
+            check(!filePreview.isOpen() && launcher.query() == typed + u' ', "Space right after typing did not type a space");
+            launcher.setQuery(typed);
+            timeout.restart();
+            while (launcher.searching() && timeout.elapsed() < 2000)
+                pump(10);
+            key(Qt::Key_Up); // the selection was moved: Space is the preview key now
+            key(Qt::Key_Space, {}, u" "_s);
             check(filePreview.isOpen() && launcher.query() == typed, "Space did not preview without changing the query");
             QKeyEvent repeat(QEvent::KeyPress, Qt::Key_Space, {}, u" "_s, true);
             QCoreApplication::sendEvent(window, &repeat);
@@ -2211,6 +2219,87 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
             timeout.restart();
             while (launcher.searching() && timeout.elapsed() < 2000)
                 pump(10);
+            // A middle click previews that tile and opens nothing; an open preview follows the mouse after a moment,
+            // and the arrow keys bring it back to the current tile.
+            const auto tile = [&](int i) {
+                QQuickItem* item = nullptr;
+                QMetaObject::invokeMethod(grid, "itemAtIndex", Q_RETURN_ARG(QQuickItem*, item), Q_ARG(int, i));
+                return item;
+            };
+            const auto mouse = [&](int i, QEvent::Type type, Qt::MouseButton button) {
+                QQuickItem* item = tile(i);
+                if (!item) { check(false, "gallery tile missing"); return; }
+                const QPointF at = item->mapToScene(QPointF(item->width() / 2 + (type == QEvent::MouseMove ? 3 : 0), item->height() / 2));
+                QMouseEvent event(type, at, window->mapToGlobal(at.toPoint()), button,
+                                  type == QEvent::MouseButtonPress ? button : Qt::NoButton, {});
+                QCoreApplication::sendEvent(window, &event);
+            };
+            const auto middleClick = [&](int i) {
+                mouse(i, QEvent::MouseButtonPress, Qt::MiddleButton);
+                mouse(i, QEvent::MouseButtonRelease, Qt::MiddleButton);
+            };
+            grid->setProperty("currentIndex", 0);
+            const QString before = launcher.query();
+            middleClick(2);
+            check(filePreview.isOpen() && filePreview.isShowing(launcher.results()->pathAt(2))
+                    && grid->property("currentIndex").toInt() == 2 && launcher.query() == before,
+                "middle click did not preview its tile");
+            mouse(3, QEvent::MouseMove, Qt::NoButton);
+            pump(60);
+            check(filePreview.isShowing(launcher.results()->pathAt(2)), "the preview followed the mouse before its moment passed");
+            pump(250);
+            check(filePreview.isShowing(launcher.results()->pathAt(3)) && grid->property("currentIndex").toInt() == 2,
+                "hovering a tile did not show it in the open preview");
+            key(Qt::Key_Left);
+            check(grid->property("currentIndex").toInt() == 1 && filePreview.isShowing(launcher.results()->pathAt(1)),
+                "an arrow key did not bring the preview back to the current tile");
+            middleClick(1);
+            check(!filePreview.isOpen(), "middle click on the shown tile did not close the preview");
+            mouse(3, QEvent::MouseMove, Qt::NoButton);
+            pump(250);
+            check(!filePreview.isOpen(), "hovering opened a closed preview");
+            say(u"preview mouse: middle click toggles, hover follows after 100 ms, arrows return to the current tile"_s);
+            // Text: dragging picks across lines instead of flicking, wheel still scrolls.
+            {
+                QFile text(temporary.filePath(u"lines.txt"_s));
+                check(text.open(QIODevice::WriteOnly), "could not create the text fixture");
+                for (int i = 1; i <= 600; ++i)
+                    text.write(QStringLiteral("line %1 alpha beta gamma\n").arg(i).toUtf8());
+                text.close();
+                filePreview.show({.path = QDir::toNativeSeparators(text.fileName()), .name = u"lines.txt"_s});
+                timeout.restart();
+                while (filePreview.kind() != FilePreview::Text && timeout.elapsed() < 3000)
+                    pump(10);
+                pump(200);
+                auto* previewWindow = qobject_cast<QQuickWindow*>(filePreview.window());
+                auto* lines = previewWindow ? visualNamed(previewWindow->contentItem(), u"previewTextLines"_s) : nullptr;
+                auto* picker = previewWindow ? visualNamed(previewWindow->contentItem(), u"previewTextPicker"_s) : nullptr;
+                check(filePreview.kind() == FilePreview::Text && lines && picker, "text preview did not show the file");
+                if (lines && picker) {
+                    const auto send = [&](QEvent::Type type, QPointF at, Qt::MouseButtons buttons) {
+                        QMouseEvent event(type, at, previewWindow->mapToGlobal(at.toPoint()), Qt::LeftButton, buttons, {});
+                        QCoreApplication::sendEvent(previewWindow, &event);
+                    };
+                    const QPointF origin = picker->mapToScene(QPointF(0, 0));
+                    const qreal top = lines->property("contentY").toReal();
+                    send(QEvent::MouseButtonPress, origin + QPointF(150, 12), Qt::LeftButton);
+                    send(QEvent::MouseMove, origin + QPointF(150, 60), Qt::LeftButton);
+                    send(QEvent::MouseMove, origin + QPointF(200, 100), Qt::LeftButton);
+                    send(QEvent::MouseButtonRelease, origin + QPointF(200, 100), Qt::NoButton);
+                    pump(50);
+                    const QString picked = filePreview.selectedText();
+                    check(picked.startsWith(u"line 1") || picked.contains(u"alpha"), "dragging in the text did not pick any");
+                    check(picked.count(u'\n') >= 2 && picked.contains(u"line 2 "), "the pick did not run across lines");
+                    check(lines->property("contentY").toReal() == top, "dragging in the text moved it");
+                    const QPointF over = origin + QPointF(150, 60);
+                    QWheelEvent wheel(over, previewWindow->mapToGlobal(over.toPoint()), {}, QPoint(0, -240), Qt::NoButton, {}, Qt::NoScrollPhase, false);
+                    QCoreApplication::sendEvent(previewWindow, &wheel);
+                    pump(50);
+                    check(lines->property("contentY").toReal() > top, "the wheel did not scroll the text");
+                    filePreview.close();
+                    check(filePreview.selectedText().isEmpty(), "the pick stayed after the preview closed");
+                }
+            }
         }
         const auto click = [&](QQuickItem* item) {
             if (!item) { check(false, "click target missing"); return; }
