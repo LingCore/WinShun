@@ -19,6 +19,7 @@ Item {
     property int wordAlign: Text.AlignRight
     property bool animated: true // false: the colours and the knob jump (a row taken for another switch)
     readonly property bool hovered: area.containsMouse
+    readonly property real dpr: Screen.devicePixelRatio // one Screen attached object for all its items (GitHub #111)
     signal toggled(bool on)
 
     // Taken for another switch (a recycled row), it is that switch's from the first frame.
@@ -64,7 +65,7 @@ Item {
 
     Row {
         id: row
-        y: Theme.snap((parent.height - height) / 2, Screen.devicePixelRatio) // whole device pixels, so that the track's edges are crisp
+        y: Theme.snap((parent.height - height) / 2, toggle.dpr) // whole device pixels, so that the track's edges are crisp
         spacing: 10
 
         Text { // as wide as the longest word, so the switch stays put ("On" / "Off")
@@ -84,7 +85,7 @@ Item {
         Rectangle {
             id: track
             readonly property bool lit: toggle.checked && !toggle.mixed && !toggle.unknown
-            y: Theme.snap((parent.height - height) / 2, Screen.devicePixelRatio)
+            y: Theme.snap((parent.height - height) / 2, toggle.dpr)
             width: 40
             height: 20
             radius: 10

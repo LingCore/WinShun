@@ -130,10 +130,14 @@ Item {
     onScoreChanged: if (search) search.report(row, section, section.page, score)
 
     width: parent ? parent.width : 0
+    // The section's (the window's, SettingsWindow.dpr), not a Screen attached
+    // object per item: each one is work on every move to another monitor
+    // (GitHub #111; docs/pitfalls.md).
+    readonly property real dpr: section ? section.dpr : Screen.devicePixelRatio
     // On whole device pixels, so that the rows below, and the card's bottom edge, stay on them.
-    readonly property real edge: Theme.edge(Screen.devicePixelRatio)
+    readonly property real edge: Theme.edge(row.dpr)
     readonly property int leftInset: row.sub ? 36 : 18
-    implicitHeight: Theme.snap(content.implicitHeight + (row.sub ? 22 : 28), Screen.devicePixelRatio)
+    implicitHeight: Theme.snap(content.implicitHeight + (row.sub ? 22 : 28), row.dpr)
     visible: shown && (!searching || score >= 0)
 
     Rectangle { // separates rows inside a card
@@ -157,9 +161,9 @@ Item {
     Rectangle {
         visible: row.sub
         x: 20
-        y: Theme.snap(8, Screen.devicePixelRatio)
+        y: Theme.snap(8, row.dpr)
         width: 2
-        height: Theme.snap(Math.max(0, parent.height - 2 * y), Screen.devicePixelRatio)
+        height: Theme.snap(Math.max(0, parent.height - 2 * y), row.dpr)
         radius: Theme.lineRadius
         color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, Theme.dark ? 0.40 : 0.32)
     }
@@ -216,14 +220,14 @@ Item {
             width: parent.width
             height: Theme.snapUp(row.stackControl
                     ? texts.implicitHeight + (trailingRow.implicitHeight > 0 ? trailingRow.implicitHeight + 12 : 0)
-                    : Math.max(texts.implicitHeight, trailingRow.implicitHeight), Screen.devicePixelRatio)
+                    : Math.max(texts.implicitHeight, trailingRow.implicitHeight), row.dpr)
 
             Column {
                 id: texts
                 anchors.left: parent.left
                 anchors.right: row.stackControl ? parent.right : trailingRow.left
-                anchors.rightMargin: row.stackControl || trailingRow.width === 0 ? 0 : Theme.snap(Math.max(24, 88 - trailingRow.width), Screen.devicePixelRatio)
-                y: row.stackControl ? 0 : Theme.snap((parent.height - height) / 2, Screen.devicePixelRatio)
+                anchors.rightMargin: row.stackControl || trailingRow.width === 0 ? 0 : Theme.snap(Math.max(24, 88 - trailingRow.width), row.dpr)
+                y: row.stackControl ? 0 : Theme.snap((parent.height - height) / 2, row.dpr)
                 spacing: 3
 
                 Row {
@@ -296,7 +300,7 @@ Item {
                 id: trailingRow
                 anchors.left: row.stackControl ? parent.left : undefined
                 anchors.right: row.stackControl ? undefined : parent.right
-                y: row.stackControl ? texts.implicitHeight + 12 : Theme.snap((parent.height - height) / 2, Screen.devicePixelRatio)
+                y: row.stackControl ? texts.implicitHeight + 12 : Theme.snap((parent.height - height) / 2, row.dpr)
                 spacing: 8
             }
         }
