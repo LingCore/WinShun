@@ -122,6 +122,7 @@ qt_add_executable(WinShun WIN32
 
 set(qml_files
     qml/Main.qml
+    qml/SearchKeys.qml
     qml/Theme.qml
     qml/WindowEdge.qml
     qml/SearchBar.qml
@@ -217,7 +218,7 @@ set(qml_files
     qml/SettingsConfirm.qml
     qml/SettingsNotice.qml
 )
-set_source_files_properties(qml/Theme.qml qml/Gleaning.qml qml/WarmPalette.qml qml/AuthorClock.qml
+set_source_files_properties(qml/Theme.qml qml/Gleaning.qml qml/WarmPalette.qml qml/AuthorClock.qml qml/SearchKeys.qml
     PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 # Serve every QML file from the module root (":/qt/qml/WinShun/Main.qml").
 foreach(file IN LISTS qml_files)

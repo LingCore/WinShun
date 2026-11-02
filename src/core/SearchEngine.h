@@ -173,7 +173,10 @@ public:
         // starts as the shorter one did, more after it; so do content matches.
         int limit = 100;
         QStringList history; // newest first
-        History::Affinities historyAffinity; // query-specific weights, copied on the GUI thread
+        History::Affinities historyAffinity; // entity and query weights, copied on the GUI thread
+        // The GUI's internal settings action, also available with app/place
+        // searching disabled. Empty for callers that cannot execute it.
+        QString settingsName;
         QStringList contentExtensions; // e.g. {"txt"}
         ContentSizeLimits contentSizeLimits; // by kind of file
         bool contentDocuments = true; // and Word, Excel, PowerPoint, PDF (documentExtensions())

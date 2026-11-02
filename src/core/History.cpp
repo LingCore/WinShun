@@ -172,13 +172,14 @@ int History::Affinity::bonus() const noexcept
 {
     if (weight <= 0)
         return 0;
-    const double scale = group == 0 ? 40 : group == 1 ? 30 : group == 2 ? 10 : 2;
+    const double scale = group == 0 ? 40 : group == 1 ? 30 : group == 2 ? 24 : 20;
     return static_cast<int>(std::lround(scale * std::log2(1 + std::min(weight, 15.0))));
 }
 
 double History::Affinity::preferenceWeight() const noexcept
 {
-    return group <= 1 ? std::min(weight, 2.5) : weight;
+    // Query choices can change quickly; entity popularity retains its frequency.
+    return group <= 2 ? std::min(weight, 2.5) : weight;
 }
 
 History::Affinity History::affinity(const Affinities& affinities, const QString& path)
@@ -193,14 +194,18 @@ History::Affinities History::affinities(const QString& query, qint64 now) const
     out.reserve(m_uses.size());
     for (auto it = m_uses.cbegin(); it != m_uses.cend(); ++it) {
         const Entry& entry = it.value();
-        Affinity best {3, decayed(entry.weight, entry.use.last, now), entry.use.last};
+        const double entityWeight = decayed(entry.weight, entry.use.last, now);
+        Affinity best {3, entityWeight, entry.use.last};
         if (!text.isEmpty()) {
             for (const Typed& typed : entry.typed) {
-                const int group = typed.text == text ? 0 : typed.text.startsWith(text) ? 1 : text.startsWith(typed.text) ? 2 : 3;
+                const int group = typed.text == text ? 0 : typed.text.contains(text) ? 1 : text.contains(typed.text) ? 2 : 3;
                 if (group == 3)
                     continue;
-                const double weight = decayed(typed.weight, typed.last, now);
-                if (group < best.group || (group == best.group && weight > best.weight))
+                const double typedWeight = decayed(typed.weight, typed.last, now);
+                if (typedWeight < 0.5) // an obsolete query must not hide a recent entity preference
+                    continue;
+                const double weight = std::max(typedWeight, entityWeight);
+                if (group < best.group || (group == best.group && (weight > best.weight || (weight == best.weight && typed.last > best.last))))
                     best = {group, weight, typed.last};
             }
         }
@@ -216,7 +221,7 @@ QStringList History::ranked(const QString& query, qint64 now) const
         return m_items;
     const Affinities matches = affinities(query, now);
     struct Rank {
-        int group; // 0: opened for this text, 1: for one it starts, 2: for one that starts it, 3: the rest
+        int group; // exact query, containing query, contained query, entity only
         double weight;
         qint64 last;
         qsizetype index; // in m_items: a tie goes to the newer

@@ -1,0 +1,121 @@
+Warning: src/app/qml/DialogBarWindow.qml:560:22: Id for object NameTip shadows property "nameTip". Rename one or the other. [id-shadows-member]
+            nameTip: nameTip
+                     ^^^^^^^
+Warning: src/app/qml/DialogBarWindow.qml:56:13: Note: Id defined here [id-shadows-member]
+        id: nameTip
+            ^^^^^^^
+Warning: src/app/qml/Main.qml:756:67: Member "cursorPosition" not found on type "QQuickItem" [missing-property]
+                    && !searchBar.hasSelection && searchBar.field.cursorPosition === searchBar.field.length
+                                                                  ^^^^^^^^^^^^^^
+Warning: src/app/qml/Main.qml:756:102: Member "length" not found on type "QQuickItem" [missing-property]
+                    && !searchBar.hasSelection && searchBar.field.cursorPosition === searchBar.field.length
+                                                                                                     ^^^^^^
+Warning: src/app/qml/Main.qml:849:40: Member "cursorPosition" not found on type "QQuickItem" [missing-property]
+                    || searchBar.field.cursorPosition < searchBar.field.length || view.currentIndex < 0)
+                                       ^^^^^^^^^^^^^^
+Warning: src/app/qml/Main.qml:849:73: Member "length" not found on type "QQuickItem" [missing-property]
+                    || searchBar.field.cursorPosition < searchBar.field.length || view.currentIndex < 0)
+                                                                        ^^^^^^
+Warning: src/app/qml/Main.qml:447:40: Unqualified access [unqualified]
+        value: window.hintIndex >= 0 ? view.count - 1 : view.currentIndex
+                                       ^^^^
+Info: view is a member of a parent element.
+      You can qualify the access with its id to avoid this warning.
+
+Suggested change:
+        value: window.hintIndex >= 0 ? window.view.count - 1 : view.currentIndex
+                                       ^^^^^^^
+Warning: src/app/qml/Main.qml:447:57: Unqualified access [unqualified]
+        value: window.hintIndex >= 0 ? view.count - 1 : view.currentIndex
+                                                        ^^^^
+Info: view is a member of a parent element.
+      You can qualify the access with its id to avoid this warning.
+
+Suggested change:
+        value: window.hintIndex >= 0 ? view.count - 1 : window.view.currentIndex
+                                                        ^^^^^^^
+Warning: src/app/qml/Main.qml:923:13: Unqualified access [unqualified]
+            searchBar.focusAndSelect()
+            ^^^^^^^^^
+Info: searchBar is a member of a parent element.
+      You can qualify the access with its id to avoid this warning.
+
+Suggested change:
+            window.searchBar.focusAndSelect()
+            ^^^^^^^
+Warning: src/app/qml/Main.qml:934:41: Unqualified access [unqualified]
+            if (window.homeIndex < 0 && view.count > 0)
+                                        ^^^^
+Info: view is a member of a parent element.
+      You can qualify the access with its id to avoid this warning.
+
+Suggested change:
+            if (window.homeIndex < 0 && window.view.count > 0)
+                                        ^^^^^^^
+Warning: src/app/qml/Main.qml:935:17: Unqualified access [unqualified]
+                view.currentIndex = window.launcher.results.defaultRow()
+                ^^^^
+Info: view is a member of a parent element.
+      You can qualify the access with its id to avoid this warning.
+
+Suggested change:
+                window.view.currentIndex = window.launcher.results.defaultRow()
+                ^^^^^^^
+Warning: src/app/qml/Main.qml:939:39: Unqualified access [unqualified]
+            if (index >= 0 && index < view.count && window.homeIndex < 0 && window.hintIndex < 0)
+                                      ^^^^
+Info: view is a member of a parent element.
+      You can qualify the access with its id to avoid this warning.
+
+Suggested change:
+            if (index >= 0 && index < window.view.count && window.homeIndex < 0 && window.hintIndex < 0)
+                                      ^^^^^^^
+Warning: src/app/qml/Main.qml:940:17: Unqualified access [unqualified]
+                view.currentIndex = index
+                ^^^^
+Info: view is a member of a parent element.
+      You can qualify the access with its id to avoid this warning.
+
+Suggested change:
+                window.view.currentIndex = index
+                ^^^^^^^
+Warning: src/app/qml/Main.qml:943:25: Unqualified access [unqualified]
+            const row = view.currentIndex
+                        ^^^^
+Info: view is a member of a parent element.
+      You can qualify the access with its id to avoid this warning.
+
+Suggested change:
+            const row = window.view.currentIndex
+                        ^^^^^^^
+Warning: src/app/qml/Main.qml:944:45: Unqualified access [unqualified]
+            if (system && row >= 0 && row < view.count && window.openSystemMenu(row, window.rowPoint(row)))
+                                            ^^^^
+Info: view is a member of a parent element.
+      You can qualify the access with its id to avoid this warning.
+
+Suggested change:
+            if (system && row >= 0 && row < window.view.count && window.openSystemMenu(row, window.rowPoint(row)))
+                                            ^^^^^^^
+Warning: src/app/qml/Main.qml:1014:18: Id for object NameTip shadows property "nameTip". Rename one or the other. [id-shadows-member]
+        nameTip: nameTip
+                 ^^^^^^^
+Warning: src/app/qml/Main.qml:638:13: Note: Id defined here [id-shadows-member]
+        id: nameTip
+            ^^^^^^^
+Warning: src/app/qml/Main.qml:1215:30: Unqualified access [unqualified]
+                    visible: view.count > 0
+                             ^^^^
+Info: view is a member of a parent element.
+      You can qualify the access with its id to avoid this warning.
+
+Suggested change:
+                    visible: window.view.count > 0
+                             ^^^^^^^
+Warning: src/app/qml/Main.qml:1394:30: Id for object NameTip shadows property "nameTip". Rename one or the other. [id-shadows-member]
+                    nameTip: nameTip
+                             ^^^^^^^
+Warning: src/app/qml/Main.qml:638:13: Note: Id defined here [id-shadows-member]
+        id: nameTip
+            ^^^^^^^
+Warning: src/app/qml/SearchKeys.qml:: Type SearchKeys not declared as singleton in qmldir but using pragma Singleton [import]

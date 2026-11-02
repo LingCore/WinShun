@@ -268,7 +268,7 @@ std::vector<Entry> buildCatalog()
                     "stay in Opus."},
         &Settings::opusTyping));
     add(choice({"Launcher/FolderTyping", QT_TRANSLATE_NOOP("AiSettings", "在文件夹里打字时"), "files_and_dialogs", 2,
-                   "What typing in a File Explorer or Directory Opus folder window lists. The folder and its subfolders come first and the rest of the PC under them (like Listary), or only that folder. Ctrl+D switches between the two for one search."},
+                   "What typing in a File Explorer or Directory Opus folder window lists. The folder and its subfolders come first and the rest of the PC under them (like Listary), or only that folder. Ctrl+Shift+D switches between the two for one search."},
         &Settings::folderTyping,
         {{u"first"_s, u"that folder's results first, then everywhere else"_s, QT_TRANSLATE_NOOP("AiSettings", "当前文件夹优先")},
             {u"only"_s, u"only that folder and its subfolders"_s, QT_TRANSLATE_NOOP("AiSettings", "只搜当前文件夹")}}));

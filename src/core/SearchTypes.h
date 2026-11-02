@@ -211,6 +211,7 @@ struct SearchResult {
     bool isApp() const noexcept { return app != AppKind::None; }
     bool isPlace() const noexcept { return app >= AppKind::Setting; }
     bool isCommand() const noexcept { return path.startsWith(u"winshun-command:"); }
+    bool isSettings() const noexcept { return app == AppKind::Tool && path == u"winshun-place:winshun/settings"; }
     bool isWeb() const noexcept { return app == AppKind::Web; }
     bool isPlugin() const noexcept { return app == AppKind::Plugin; }
     bool isPackagedApp() const noexcept

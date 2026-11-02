@@ -31,6 +31,9 @@ inline QString normalized(const QString& shortcut)
         return {};
     if (ctrl && !alt && key.size() == 1 && QStringView(u"acdefrstvxyz").contains(key))
         return {};
+    if (normal == u"ctrl+j" || normal == u"ctrl+k" || normal == u"ctrl+n" || normal == u"ctrl+p"
+        || normal == u"ctrl+u" || normal == u"ctrl+,")
+        return {};
     if ((ctrl || alt) && key.size() == 1 && key.front().isDigit())
         return {};
     const QKeySequence sequence = QKeySequence::fromString(normal, QKeySequence::PortableText);

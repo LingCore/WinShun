@@ -693,15 +693,15 @@ private slots:
     {
         State state = defaultState();
         const auto env = appEnv();
-        for (const QString& key : {u"Space"_s, u"Ctrl+P"_s, u"F8"_s, QString()}) {
+        for (const QString& key : {u"Space"_s, u"Ctrl+Shift+P"_s, u"F8"_s, QString()}) {
             const auto plan = makePlan(state, one(u"Results/PreviewHotkey"_s, key), env);
             QVERIFY2(plan.problems.isEmpty(), qPrintable(problemText(plan)));
             QCOMPARE(plan.result.settings.previewHotkey, key);
         }
         for (const QString& key : {u"P"_s, u"Ctrl+C"_s, u"Shift+Space"_s, u"Alt+F4"_s})
             QVERIFY(!makePlan(state, one(u"Results/PreviewHotkey"_s, key), env).problems.isEmpty());
-        state.settings.hotkey = u"Ctrl+P"_s;
-        QVERIFY(!makePlan(state, one(u"Results/PreviewHotkey"_s, u"Ctrl+P"_s), env).problems.isEmpty());
+        state.settings.hotkey = u"Ctrl+Shift+P"_s;
+        QVERIFY(!makePlan(state, one(u"Results/PreviewHotkey"_s, u"Ctrl+Shift+P"_s), env).problems.isEmpty());
     }
 
     void fileManagerNeedsTheUsersCommand()

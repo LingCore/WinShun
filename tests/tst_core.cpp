@@ -1852,18 +1852,14 @@ private slots:
 
     void webDefault()
     {
-        // Ten sites most used on the Chinese web, and "winshun" for the repository.
+        // The former built-in sites and the plugin-only sites now share one list.
         const WebShortcuts shortcuts = defaultWebShortcuts();
-        QCOMPARE(shortcuts.size(), 11);
+        QCOMPARE(shortcuts.size(), 14);
         QStringList keywords;
         QStringList sites;
         for (const WebShortcut& s : shortcuts) {
             QCOMPARE(normalizeWebUrl(s.url), s.url); // as the settings window would keep them
             QVERIFY(isValidWebKeyword(s.keyword));
-            // Whole words: two letters typed alone would put a site above the files.
-            QVERIFY2(s.keyword.size() >= 3, qPrintable(s.keyword));
-            // Not the winshun.web plugin's: its keyword mode would win.
-            QVERIFY(!QStringList({u"bd"_s, u"gh"_s, u"yt"_s, u"wiki"_s, u"bing"_s, u"bili"_s}).contains(s.keyword));
             QVERIFY(!keywords.contains(s.keyword));
             keywords.append(s.keyword);
             if (s.searches()) {
@@ -1872,7 +1868,7 @@ private slots:
                 sites.append(siteIconKey(s.homeUrl()));
             }
         }
-        QCOMPARE(sites.size(), 10);
+        QCOMPARE(sites.size(), 13);
         // Suggestions where the site answers a plain request (checked live 2026-10-15), none elsewhere.
         QStringList suggesting;
         for (const WebShortcut& s : shortcuts) {
@@ -1914,10 +1910,10 @@ private slots:
     void webNewDefaults()
     {
         const WebShortcuts defaults = defaultWebShortcuts();
-        // Written by 0.6.0: "winshun" alone. The ten come after it.
-        const WebShortcuts old {defaults.last()};
+        // Written by 0.6.0: "winshun" alone. New sites follow it once.
+        const WebShortcuts old {*std::find_if(defaults.cbegin(), defaults.cend(), [](const auto& s) { return s.keyword == u"winshun"; })};
         WebShortcuts merged = withNewDefaults(old, defaults);
-        QCOMPARE(merged.size(), 11);
+        QCOMPARE(merged.size(), defaults.size());
         QCOMPARE(merged.first().keyword, u"winshun"_s);
         // The user's own: a keyword taken (theirs stays), a site already there
         // under another keyword ("bd" for 百度), nothing twice.
@@ -1926,7 +1922,7 @@ private slots:
             {u"bd"_s, u"百度"_s, u"https://www.baidu.com/s?wd=%s"_s, u"https://www.baidu.com/"_s},
         };
         merged = withNewDefaults(own, defaults);
-        QCOMPARE(merged.size(), 2 + 11 - 2);
+        QCOMPARE(merged.size(), defaults.size());
         QCOMPARE(merged[0].name, u"我的知乎"_s);
         QCOMPARE(std::count_if(merged.begin(), merged.end(), [](const WebShortcut& s) { return s.name == u"百度"; }),
             std::ptrdiff_t(1));
@@ -9489,9 +9485,9 @@ private slots:
         QCOMPARE(search(u"port"_s).value(0).path, portable);
         QCOMPARE(search(u"PORT"_s, 1).value(0).path, portable);
         QCOMPARE(search(u"por"_s).value(0).path, portable);
-        // Unrelated history never promotes the portable program for this word.
+        // Entity preferences also apply to another matching query.
         QCOMPARE(search(u"portable"_s).value(0).path, portable);
-        QVERIFY(!History::affinity(history.affinities(u"portable"_s, now), portable).learned());
+        QVERIFY(History::affinity(history.affinities(u"portable"_s, now), portable).learned());
 
         for (int i = 0; i < 3; ++i)
             history.record(place.path(), u"port"_s, now - 10 + i);
@@ -9505,6 +9501,116 @@ private slots:
         QCOMPARE(History::affinity(restored.affinities(u"port"_s, now), portable).group, 0);
         QVERIFY(History::affinity(restored.affinities(u"port"_s, now), portable).learned());
         QVERIFY(!History::affinity(restored.affinities(u"port"_s, now + 140LL * 86'400'000), portable).learned());
+    }
+
+    void entityPreferenceAcrossChineseAndPinyin()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        IndexService::Options options;
+        options.content.enabled = false;
+        IndexService service(dir.filePath(u"index"_s), options);
+        AppCatalog apps;
+        auto programs = std::make_shared<AppList>();
+        for (const QString& name : {u"卸载"_s, u"强力卸载"_s, u"火绒强力卸载"_s}) {
+            AppInfo app;
+            app.name = name;
+            app.id = name;
+            app.prepare();
+            programs->push_back(app);
+        }
+        apps.setApps(programs);
+        SystemCatalog places;
+        places.setPlaces(std::make_shared<const PlaceList>());
+        SearchEngine engine(&service, &apps, &places);
+        QSignalSpy spy(&engine, &SearchEngine::resultsReady);
+        constexpr qint64 now = 1'800'000'000'000;
+        const QString target = programs->back().launchPath();
+        for (const QString& trained : {QString(), u"卸载"_s, u"QLXZ"_s, u"XZ"_s}) {
+            History history(dir.filePath(u"history.txt"_s));
+            history.record(target, trained, now);
+            History restored(dir.filePath(u"history.txt"_s));
+            restored.load();
+            for (const QString& query : {u"卸载"_s, u"强力卸载"_s, u"QLXZ"_s, u"xz"_s, u"qianglixiezai"_s}) {
+                SearchEngine::Request request;
+                request.text = query;
+                request.limit = 1; // promotion must precede truncation
+                request.history = restored.ranked(query, now + 1000);
+                request.historyAffinity = restored.affinities(query, now + 1000);
+                spy.clear();
+                engine.submit(std::move(request));
+                QTRY_VERIFY_WITH_TIMEOUT(!spy.isEmpty(), 5000);
+                const auto rows = spy.first().at(1).value<SearchResults>();
+                QCOMPARE(rows.size(), 1);
+                QCOMPARE(rows.first().path, target);
+            }
+            SearchEngine::Request unrelated;
+            unrelated.text = u"no-such-application-161"_s;
+            unrelated.history = restored.ranked(unrelated.text, now);
+            unrelated.historyAffinity = restored.affinities(unrelated.text, now);
+            spy.clear();
+            engine.submit(std::move(unrelated));
+            QTRY_VERIFY_WITH_TIMEOUT(!spy.isEmpty(), 5000);
+            QVERIFY(spy.first().at(1).value<SearchResults>().isEmpty());
+            QVERIFY(History::affinity(restored.affinities(u"xz"_s, now + 1000), target).learned());
+            QVERIFY(!History::affinity(restored.affinities(u"xz"_s, now + 140LL * 86'400'000), target).learned());
+            restored.remove(target);
+            QVERIFY(restored.affinities(u"xz"_s, now).isEmpty());
+        }
+    }
+
+    void historyContainsAndEntityFallback()
+    {
+        QTemporaryDir dir;
+        History history(dir.filePath(u"history.txt"_s));
+        constexpr qint64 now = 1'800'000'000'000;
+        const QString path = u"C:\\tools\\uninstall.exe"_s;
+        history.record(path, u"QLXZ"_s, now);
+        QCOMPARE(History::affinity(history.affinities(u"xz"_s, now), path).group, 1);
+        QCOMPARE(History::affinity(history.affinities(u"hrqlxz"_s, now), path).group, 2);
+        QCOMPARE(History::affinity(history.affinities(u"卸载"_s, now), path).group, 3);
+        QVERIFY(History::affinity(history.affinities(u"卸载"_s, now), path).learned());
+        // An ancient exact query does not mask the recently reused entity.
+        history.record(path, u"卸载"_s, now + 100LL * 86'400'000);
+        const auto reused = History::affinity(history.affinities(u"qlxz"_s, now + 100LL * 86'400'000), path);
+        QCOMPARE(reused.group, 3);
+        QVERIFY(reused.learned());
+        history.clear();
+        QVERIFY(history.affinities(u"xz"_s, now).isEmpty());
+    }
+
+    void launcherSettingsSearch()
+    {
+        QTemporaryDir dir;
+        IndexService service(dir.filePath(u"index"_s), IndexService::Options{});
+        AppCatalog apps;
+        apps.setApps(std::make_shared<const AppList>());
+        SystemCatalog places;
+        places.setPlaces(std::make_shared<const PlaceList>());
+        SearchEngine engine(&service, &apps, &places);
+        QSignalSpy spy(&engine, &SearchEngine::resultsReady);
+        for (const QString& text : {u"设置"_s, u"配置"_s, u"WinShun"_s, u"winshun settings"_s, u"settings"_s, u"sz"_s}) {
+            SearchEngine::Request request;
+            request.text = text;
+            request.settingsName = u"Win顺 设置"_s;
+            request.apps = false;
+            request.places = false;
+            spy.clear();
+            engine.submit(std::move(request));
+            QTRY_VERIFY_WITH_TIMEOUT(!spy.isEmpty(), 5000);
+            const auto rows = spy.first().at(1).value<SearchResults>();
+            QVERIFY2(!rows.isEmpty() && rows.first().isSettings(), qPrintable(text));
+        }
+        for (const auto scope : {Scope::Files, Scope::Folders, Scope::Content}) {
+            SearchEngine::Request request;
+            request.text = u"settings"_s;
+            request.settingsName = u"Win顺 设置"_s;
+            request.scope = scope;
+            spy.clear();
+            engine.submit(std::move(request));
+            QTRY_VERIFY_WITH_TIMEOUT(!spy.isEmpty(), 5000);
+            QVERIFY(spy.first().at(1).value<SearchResults>().isEmpty());
+        }
     }
 
     void switchRowsInSearch()

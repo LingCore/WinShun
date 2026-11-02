@@ -115,6 +115,8 @@ QString webSearchTitle(const SearchResult& r, std::pair<qsizetype, qsizetype>* w
 // shortcut's: the address it opens, and for its site the keyword.
 QString appOrigin(const SearchResult& r)
 {
+    if (r.isSettings())
+        return ResultModel::tr("外观、快捷键与插件");
     if (r.isCommand())
         return ResultModel::tr("自定义命令 · %1").arg(r.words.isEmpty() ? r.target : r.words);
     switch (r.app) {
@@ -374,6 +376,8 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
     case IconRole:
         if (r->isWeb() || r->isApp()) {
             const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
+            if (r->isSettings())
+                return FileIconProvider::pluginIconUrl(QString(), u"glyph:U+E713"_s, dark);
             if (r->isCommand())
                 return FileIconProvider::commandIconUrl(r->target, r->workingDirectory, r->icon, dark);
             if (r->isWeb())
@@ -423,6 +427,8 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
         return !r->isApp() || (!r->isPlace() && !r->target.isEmpty());
     case CopyableRole:
         return !r->isApp() || r->hasCopyableTarget();
+    case SettingsActionRole:
+        return r->isSettings();
     case SelectedRole:
         return m_selected.contains(r->path);
     case ModifiedRole:
@@ -535,6 +541,7 @@ QHash<int, QByteArray> ResultModel::roleNames() const
         {ElevatableRole, "elevatable"},
         {RevealableRole, "revealable"},
         {CopyableRole, "copyable"},
+        {SettingsActionRole, "settingsAction"},
         {SelectedRole, "selected"},
         {ModifiedRole, "modified"},
         {ModifiedFullRole, "modifiedFull"},

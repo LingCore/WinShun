@@ -1383,10 +1383,11 @@ void Launcher::setNumberHints(const QString& hints)
 
 void Launcher::setPreviewHotkey(const QString& shortcut)
 {
-    if (m_previewHotkey == shortcut)
+    const QString value = shortcut.isEmpty() ? QString() : previewkeys::normalized(shortcut);
+    if ((!shortcut.isEmpty() && value.isEmpty()) || m_previewHotkey == value)
         return;
-    m_previewHotkey = shortcut;
-    m_previewSequence = QKeySequence::fromString(shortcut, QKeySequence::PortableText);
+    m_previewHotkey = value;
+    m_previewSequence = QKeySequence::fromString(value, QKeySequence::PortableText);
     emit resultOptionsChanged();
 }
 
@@ -1827,6 +1828,7 @@ void Launcher::search(bool more)
     request.web = m_web;
     request.apps = m_searchApps;
     request.places = m_searchPlaces;
+    request.settingsName = tr("Win顺 设置");
     request.regex = regexTerms();
     if (m_favorites)
         request.favorites = m_favorites->items();
@@ -3779,6 +3781,11 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
     const SearchResult r = result; // the model may change underneath us
     if (!fileChecked)
         dropServerWait(); // a server still being waited for no longer matters
+    if (r.isSettings()) {
+        if (action == Open || action == Alternate || action == Reveal || action == RunAsAdmin)
+            openSettings();
+        return;
+    }
     if (action == EditWebShortcuts) {
         emit webSettingsRequested();
         return;
@@ -4605,6 +4612,8 @@ QVariantList Launcher::menuItems(int row) const
             {u"glyph"_s, glyph},
         };
     };
+    if (r->isSettings())
+        return {entry(Open, tr("打开设置"), u"Enter"_s, u"\uE713"_s)};
     const QVariantMap separator {{u"separator"_s, true}};
     // The plugins' `files` commands (用局域网发送… and the like) for the row's
     // file or folder, or the whole selection: a group of their own.

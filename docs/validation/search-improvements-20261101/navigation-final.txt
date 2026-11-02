@@ -1,0 +1,7 @@
+Test project F:/电脑便捷工具/build/search-improvements-20261101/bin
+    Start 9: tst_searchnavigation
+1/1 Test #9: tst_searchnavigation .............   Passed   12.49 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =  12.54 sec

@@ -29,11 +29,13 @@ public:
     };
 
     struct Affinity {
-        int group = 3; // exact text, longer text, shorter text, unrelated
+        int group = 3; // exact text, containing text, contained text, entity only
         double weight = 0;
         qint64 last = 0;
 
-        bool learned() const noexcept { return group <= 1 && weight >= 1.5; }
+        // One recent opening is enough, including one found with another
+        // query. Search still decides whether the entity actually matches.
+        bool learned() const noexcept { return weight >= 0.5; }
         int bonus() const noexcept;
         double preferenceWeight() const noexcept;
     };
@@ -52,8 +54,8 @@ public:
     Use use(const QString& path) const; // count 0 when not there
 
     // The paths for what is being typed, best first: those opened for just
-    // this text, then for a text this one is the start of, then for a text
-    // that is the start of this one, then the rest; each group by its weight
+    // this text, then for a text containing this one, then for a text
+    // contained in this one, then the rest; each group by its weight
     // for that text (the rest by the path's own), a tie to the newer. The
     // items() again, newest first, when nothing is typed.
     QStringList ranked(const QString& query, qint64 now) const;

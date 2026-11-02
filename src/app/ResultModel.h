@@ -99,6 +99,7 @@ public:
         // A plugin's row: its second line while the keyboard is on another
         // row (PluginRow::subtitleAway); empty: the folder line as ever.
         FolderAwayRole,
+        SettingsActionRole, // WinShun's own settings; no file or command to copy
     };
 
     explicit ResultModel(QObject* parent = nullptr);

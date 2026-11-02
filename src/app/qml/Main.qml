@@ -693,6 +693,14 @@ Window {
         }
         const ctrl = (event.modifiers & Qt.ControlModifier) !== 0
         const shift = (event.modifiers & Qt.ShiftModifier) !== 0
+        if (event.key === Qt.Key_Comma && (event.modifiers & ~Qt.KeypadModifier) === Qt.ControlModifier
+                && searchBar.composition.length === 0) {
+            if (!event.isAutoRepeat)
+                window.launcher.openSettings()
+            event.accepted = true
+            return
+        }
+        const key = SearchKeys.navigationKey(event.key, event.modifiers, searchBar.composition.length > 0)
         // Ctrl+T: pinned, or not (the pin at the box's corner; Lertaro's key,
         // linux.do #157). From the row of apps too.
         if (event.key === Qt.Key_T && ctrl && !shift && (event.modifiers & Qt.AltModifier) === 0) {
@@ -707,7 +715,7 @@ Window {
             return
         }
         if (homeIndex >= 0) { // on the row of apps (nothing typed, so ← → move nothing else)
-            switch (event.key) {
+            switch (key) {
             case Qt.Key_Left: homeIndex = Math.max(0, homeIndex - 1); break
             case Qt.Key_Right: homeIndex = Math.min(launcher.frequentApps.length - 1, homeIndex + 1); break
             case Qt.Key_Down: leaveHome(); break
@@ -720,12 +728,12 @@ Window {
             event.accepted = true
             return
         }
-        if (event.key === Qt.Key_Down || event.key === Qt.Key_Up || event.key === Qt.Key_PageDown || event.key === Qt.Key_PageUp) {
+        if (key === Qt.Key_Down || key === Qt.Key_Up || key === Qt.Key_PageDown || key === Qt.Key_PageUp) {
             window.launcher.keyboardMoved() // Alt+P is for this row now, not the one under a pointer left where it was
             if (panel && launcher.gallery && searchBar.composition.length === 0)
                 galleryNavigation = true
         }
-        switch (event.key) {
+        switch (key) {
         case Qt.Key_Down: shift ? extendSelection(gridColumns) : moveSelection(gridColumns); break
         case Qt.Key_Up:
             if (!shift && showHome && view.currentIndex <= 0)
@@ -809,8 +817,9 @@ Window {
                 return
             window.launcher.togglePanel()
             break
-        case Qt.Key_D: // typed in a folder's window: its rows first, or there alone (GitHub #110)
-            if (!ctrl || shift || !window.launcher.switchTypingFolder())
+        case Qt.Key_D: // Ctrl+Shift+D: current folder first, or alone; Ctrl+D pages down.
+            if ((event.modifiers & ~Qt.KeypadModifier) !== (Qt.ControlModifier | Qt.ShiftModifier)
+                    || searchBar.composition.length > 0 || !window.launcher.switchTypingFolder())
                 return
             break
         case Qt.Key_O:
@@ -1241,7 +1250,7 @@ Window {
                 }
                 // Typed in a folder's window, its own rows first (GitHub #110):
                 // the rows found elsewhere under a caption, the way to the
-                // folder alone at its end (as Ctrl+D).
+                // folder alone at its end (as Ctrl+Shift+D).
                 section.property: "elsewhere"
                 section.delegate: ElsewhereCaption {
                     id: caption

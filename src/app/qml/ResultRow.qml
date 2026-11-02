@@ -59,6 +59,7 @@ Item {
     required property bool elevatable
     required property bool revealable
     required property bool copyable
+    required property bool settingsAction
     required property bool selected // one of several picked with Ctrl / Shift
     required property string modified // "昨天 14:32"; empty for an app, or not known
     required property string modifiedFull
@@ -546,7 +547,7 @@ Item {
             }
             RowAction {
                 id: copyPathAction
-                visible: !row.switchReady && (!row.plugin || row.pluginCopies)
+                visible: !row.settingsAction && !row.switchReady && (!row.plugin || row.pluginCopies)
                 glyph: row.plugin ? "" : "copyPath" // Copy; else drawn by Glyph: a box holding "\\.."
                 tip: row.plugin ? qsTr("复制") : row.web ? qsTr("复制网址") : row.place ? qsTr("复制打开命令") : qsTr("复制完整路径")
                 tipShortcut: row.plugin ? "Ctrl+C" : "Ctrl+Shift+C"

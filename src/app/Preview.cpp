@@ -1492,6 +1492,30 @@ void checkSearchMenuKeys(Launcher& launcher, QQuickWindow* window, FilePreview& 
         if (!field || !view) continue;
         field->forceActiveFocus();
         field->setProperty("cursorPosition", query.size());
+        for (const auto [alias, arrow] : {std::pair{Qt::Key_J, Qt::Key_Down}, {Qt::Key_N, Qt::Key_Down},
+                 {Qt::Key_K, Qt::Key_Up}, {Qt::Key_P, Qt::Key_Up}, {Qt::Key_U, Qt::Key_PageUp}, {Qt::Key_D, Qt::Key_PageDown}}) {
+            for (const int start : {0, 2, 17}) {
+                view->setProperty("currentIndex", start);
+                key(arrow);
+                const int expected = view->property("currentIndex").toInt();
+                view->setProperty("currentIndex", start);
+                key(alias, Qt::ControlModifier);
+                check(view->property("currentIndex").toInt() == expected && launcher.query() == query && field->hasActiveFocus(),
+                    mode + u"Ctrl+%1 matches %2 from row %3, retaining text and focus"_s.arg(int(alias)).arg(int(arrow)).arg(start));
+            }
+        }
+        view->setProperty("currentIndex", 2);
+        key(Qt::Key_J, Qt::ControlModifier, {}, true);
+        check(view->property("currentIndex").toInt() == 3, mode + u"holding a navigation alias repeats"_s);
+        view->setProperty("currentIndex", 2);
+        key(Qt::Key_J, Qt::ControlModifier | Qt::AltModifier);
+        check(view->property("currentIndex").toInt() == 2, mode + u"AltGr is not navigation"_s);
+        QInputMethodEvent aliasComposition(u"shi"_s, {});
+        QCoreApplication::sendEvent(field, &aliasComposition);
+        key(Qt::Key_J, Qt::ControlModifier);
+        check(view->property("currentIndex").toInt() == 2, mode + u"aliases do not move results during IME composition"_s);
+        QInputMethodEvent aliasCompositionEnded;
+        QCoreApplication::sendEvent(field, &aliasCompositionEnded);
         view->setProperty("currentIndex", 2);
         key(Qt::Key_Right);
         auto* menu = qobject_cast<QQuickWindow*>(window->property("contextMenu").value<QObject*>());
@@ -1598,13 +1622,65 @@ void checkSearchMenuKeys(Launcher& launcher, QQuickWindow* window, FilePreview& 
         key(Qt::Key_Right);
         key(Qt::Key_O, Qt::ControlModifier);
         check(!menuOpen(), mode + u"no selected result opens no menu"_s);
+        if (!panel && launcher.results()->at(0)) {
+            const QString folder = QFileInfo(launcher.results()->at(0)->path).absolutePath();
+            const QString prefix = QDir::toNativeSeparators(folder) + u"\\ "_s;
+            launcher.setTypingFolder(prefix);
+            launcher.setQuery(prefix + query);
+            timeout.restart();
+            while (launcher.searching() && timeout.elapsed() < 2000) pump(10);
+            const bool only = launcher.typingFolderOnly();
+            key(Qt::Key_D, Qt::ControlModifier);
+            check(launcher.typingFolderOnly() == only, mode + u"Ctrl+D pages without changing the folder filter"_s);
+            key(Qt::Key_D, Qt::ControlModifier | Qt::ShiftModifier);
+            check(launcher.typingFolderOnly() != only, mode + u"Ctrl+Shift+D switches the current folder filter"_s);
+            key(Qt::Key_D, Qt::ControlModifier | Qt::ShiftModifier);
+            check(launcher.typingFolderOnly() == only, mode + u"Ctrl+Shift+D switches it back"_s);
+            launcher.setTypingFolder({});
+            launcher.setQuery(query);
+            timeout.restart();
+            while (launcher.searching() && timeout.elapsed() < 2000) pump(10);
+        }
         view->setProperty("currentIndex", 0);
     }
+    const auto previousScope = launcher.scope();
+    launcher.setScope(Launcher::All);
+    launcher.setSearchKinds(false, false);
+    launcher.setQuery(u"设置"_s);
+    QElapsedTimer settingsWait;
+    settingsWait.start();
+    while (launcher.searching() && settingsWait.elapsed() < 3000) pump(10);
+    const auto* settingsRow = launcher.results()->at(0);
+    check(settingsRow && settingsRow->isSettings(), u"settings are searchable with app and Windows place searches disabled"_s);
+    check(launcher.results()->data(launcher.results()->index(0), ResultModel::SettingsActionRole).toBool()
+            && !launcher.results()->data(launcher.results()->index(0), ResultModel::FolderRole).toString().contains(u"winshun:"),
+        u"settings have an action-only row and a user-facing description"_s);
+    int settingsOpened = 0;
+    const auto settingsConnection = QObject::connect(&launcher, &Launcher::settingsRequested, [&] { ++settingsOpened; });
+    auto* settingsField = visualNamed(window->contentItem(), u"panelSearchField"_s);
+    if (settingsField) settingsField->forceActiveFocus();
+    window->property("view").value<QObject*>()->setProperty("currentIndex", 0);
+    key(Qt::Key_Return);
+    check(settingsOpened == 1, u"Enter on the settings result dispatches the internal settings action"_s);
+    key(Qt::Key_Comma, Qt::ControlModifier);
+    key(Qt::Key_Comma, Qt::ControlModifier, {}, true);
+    check(settingsOpened == 2, u"Ctrl+, opens settings once, ignoring auto-repeat"_s);
+    check(launcher.menuItems(0).size() == 1, u"settings expose only their applicable Open action"_s);
+    settle(window, 3);
+    check(saveGrab(window, output.filePath(u"search-settings-entry.png"_s)), u"render the settings entry"_s);
+    QObject::disconnect(settingsConnection);
+    launcher.setSearchKinds(true, true);
+    launcher.setScope(previousScope);
+    launcher.setQuery(query);
+    settingsWait.restart();
+    while (launcher.searching() && settingsWait.elapsed() < 3000) pump(10);
     QFile report(output.filePath(u"search-navigation.json"_s));
     check(report.open(QIODevice::WriteOnly), u"write the regression report"_s);
     if (report.isOpen()) report.write(QJsonDocument(QJsonObject {{u"passed"_s, passed}, {u"checks"_s, checks}}).toJson());
     say(u"search navigation: %1 checks, production Main.qml/Launcher/ContextMenu, local Qt key and IME events, %2"_s
         .arg(checks.size()).arg(passed ? u"passed" : u"FAILED"));
+    if (!passed)
+        throw std::runtime_error("Production search navigation regression failed; see search-navigation.json");
 }
 
 void checkDialogSearchKeys(IndexService& index, QQmlEngine* engine, const QDir& output)
@@ -1654,6 +1730,17 @@ void checkDialogSearchKeys(IndexService& index, QQmlEngine* engine, const QDir& 
             QCoreApplication::sendEvent(window, &event);
         };
         const auto menuOpen = [&] { return window->property("menuOpen").toBool(); };
+        for (const auto [alias, arrow] : {std::pair{Qt::Key_J, Qt::Key_Down}, {Qt::Key_N, Qt::Key_Down},
+                 {Qt::Key_K, Qt::Key_Up}, {Qt::Key_P, Qt::Key_Up}, {Qt::Key_U, Qt::Key_PageUp}, {Qt::Key_D, Qt::Key_PageDown}}) {
+            list->setProperty("currentIndex", 2);
+            key(arrow);
+            const int expected = list->property("currentIndex").toInt();
+            list->setProperty("currentIndex", 2);
+            key(alias, Qt::ControlModifier);
+            check(list->property("currentIndex").toInt() == expected && bar.query() == query && field->hasActiveFocus(),
+                u"dialog Ctrl+%1 matches the existing navigation key"_s.arg(int(alias)));
+        }
+        list->setProperty("currentIndex", 2);
         key(Qt::Key_Right);
         auto* menu = qobject_cast<QQuickWindow*>(window->property("contextMenu").value<QObject*>());
         check(menu && menuOpen() && menu->property("row").toInt() == 2, u"Right opens the selected dialog result's menu"_s);
@@ -1846,16 +1933,16 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
             timeout.restart();
             while (launcher.searching() && timeout.elapsed() < 2000)
                 pump(10);
-            launcher.setPreviewHotkey(u"Ctrl+P"_s);
+            launcher.setPreviewHotkey(u"Ctrl+Shift+P"_s);
             key(Qt::Key_P, Qt::AltModifier);
             check(!filePreview.isOpen(), "old preview key remained active after reassignment");
-            key(Qt::Key_P, Qt::ControlModifier | Qt::ShiftModifier);
+            key(Qt::Key_P, Qt::ControlModifier | Qt::ShiftModifier | Qt::AltModifier);
             check(!filePreview.isOpen(), "preview accepted additional modifiers");
-            key(Qt::Key_P, Qt::ControlModifier);
+            key(Qt::Key_P, Qt::ControlModifier | Qt::ShiftModifier);
             check(filePreview.isOpen(), "custom preview chord did not open the preview");
-            key(Qt::Key_P, Qt::ControlModifier);
+            key(Qt::Key_P, Qt::ControlModifier | Qt::ShiftModifier);
             launcher.setPreviewHotkey({});
-            key(Qt::Key_P, Qt::ControlModifier);
+            key(Qt::Key_P, Qt::ControlModifier | Qt::ShiftModifier);
             check(!filePreview.isOpen(), "clearing the shortcut did not disable it");
             launcher.setPreviewHotkey(u"Alt+P"_s);
             say(u"preview hotkeys: production Main.qml + FilePreview; default, Space, IME preedit, repeat, Shift+Space, reassignment, modifiers, disabled"_s);

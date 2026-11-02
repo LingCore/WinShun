@@ -371,7 +371,7 @@ public:
     void setFolderTypingOnly(bool only);
     QString typingFolder() const;
     bool typingFolderOnly() const { return !m_typingPrefix.isEmpty() && m_typingOnly; }
-    // Ctrl+D, or the caption's or hint's link: this time only the folder
+    // Ctrl+Shift+D, or the caption's or hint's link: this time only the folder
     // typed in, or its rows first and then the rest (not the setting).
     // False when the box is not for a folder typed in (nothing to switch).
     Q_INVOKABLE bool switchTypingFolder();

@@ -21,6 +21,7 @@
 #include "Win32Util.h"
 #include "Wtf8.h"
 
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QElapsedTimer>
@@ -1610,6 +1611,21 @@ void SearchEngine::runNameSearch(const Job& job)
                 bool guessedSwitch = false; // a switch found by a guess (PlaceHit::weak)
             };
             std::vector<Ranked> ranked;
+            if (!request.settingsName.isEmpty()) {
+                using namespace Qt::StringLiterals;
+                PlaceInfo settings;
+                settings.name = request.settingsName;
+                settings.key = u"winshun/settings"_s;
+                settings.command = u"winshun:settings"_s;
+                settings.kind = AppKind::Tool;
+                settings.icon = QCoreApplication::applicationFilePath();
+                settings.ownKeywords = {u"设置"_s, u"配置"_s, u"WinShun"_s, u"WinShun settings"_s,
+                    u"WinShun config"_s, u"settings"_s, u"preferences"_s, u"config"_s};
+                settings.prepare();
+                const PlaceList builtins {settings};
+                if (const auto hits = searchPlaces(builtins, query, matcher, {}); !hits.empty())
+                    ranked.push_back({hits.front().score + 50, fromPlace(settings, false)});
+            }
             for (const AppHit& hit : request.apps ? searchApps(*apps, query, matcher, request.history, request.historyAffinity) : std::vector<AppHit> {}) {
                 ranked.push_back({hit.score, fromApp((*apps)[hit.index], false, hit.otherName)});
                 ranked.back().result.exact = hit.exact; // by name, another name or an abbreviation ("ps")

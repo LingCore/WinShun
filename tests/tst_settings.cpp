@@ -184,7 +184,7 @@ private slots:
         ws::Settings settings;
         settings.load();
         QCOMPARE(settings.previewHotkey, u"Alt+P"_s);
-        for (const QString& key : {u"Space"_s, u"Ctrl+P"_s, u"F8"_s, QString()}) {
+        for (const QString& key : {u"Space"_s, u"Ctrl+Shift+P"_s, u"F8"_s, QString()}) {
             settings.previewHotkey = key;
             settings.save();
             ws::Settings restored;
@@ -192,7 +192,7 @@ private slots:
             QCOMPARE(restored.previewHotkey, key);
         }
         QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
-        for (const QString& key : {u"P"_s, u"Enter"_s, u"Ctrl+C"_s, u"Alt+F4"_s, u"Shift+F10"_s}) {
+        for (const QString& key : {u"P"_s, u"Enter"_s, u"Ctrl+C"_s, u"Ctrl+P"_s, u"Ctrl+J"_s, u"Alt+F4"_s, u"Shift+F10"_s}) {
             ini.setValue(u"Results/PreviewHotkey"_s, key);
             ini.sync();
             settings.load();
@@ -217,6 +217,7 @@ private slots:
         QVERIFY(allowed(u"F8"_s));
         for (const QString& key : {u"Shift+Space"_s, u"Alt+Space"_s, u"P"_s, u"Shift+P"_s,
                  u"Ctrl+1"_s, u"Alt+1"_s, u"Ctrl+C"_s, u"Ctrl+Shift+C"_s, u"Ctrl+R"_s,
+                 u"Ctrl+J"_s, u"Ctrl+K"_s, u"Ctrl+N"_s, u"Ctrl+P"_s, u"Ctrl+U"_s, u"Ctrl+D"_s, u"Ctrl+,"_s,
                  u"Alt+F4"_s, u"Shift+F10"_s, u"Meta+P"_s, u"Ctrl+P, Ctrl+O"_s})
             QVERIFY2(!allowed(key), qPrintable(key));
         const QKeySequence space(u"Space"_s);

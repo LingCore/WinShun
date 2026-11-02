@@ -1,0 +1,134 @@
+[
+  {
+    "file": "src/core/History.cpp",
+    "workspace_sha256": "fd2a07219f21a007bd4981a3526f33374c721d600c4157b6d5f8f2ffe9605963",
+    "tested_sha256": "fd2a07219f21a007bd4981a3526f33374c721d600c4157b6d5f8f2ffe9605963",
+    "same_text": true
+  },
+  {
+    "file": "src/core/History.h",
+    "workspace_sha256": "c0aaffa0594619a47c4c49dea64c84bca1c5d78913c602bfbc33478e9d164b09",
+    "tested_sha256": "c0aaffa0594619a47c4c49dea64c84bca1c5d78913c602bfbc33478e9d164b09",
+    "same_text": true
+  },
+  {
+    "file": "src/core/SearchEngine.cpp",
+    "workspace_sha256": "94a712ebf0a42c7b52fc61a718e8afb6126d94999baad813386f5a8b50599673",
+    "tested_sha256": "94a712ebf0a42c7b52fc61a718e8afb6126d94999baad813386f5a8b50599673",
+    "same_text": true
+  },
+  {
+    "file": "src/core/SearchEngine.h",
+    "workspace_sha256": "65e7c7d1dd46d3be155396ceb0833e5d3ee90f966ea7dba69bb6d8fdc2c7f63e",
+    "tested_sha256": "65e7c7d1dd46d3be155396ceb0833e5d3ee90f966ea7dba69bb6d8fdc2c7f63e",
+    "same_text": true
+  },
+  {
+    "file": "src/core/SearchTypes.h",
+    "workspace_sha256": "9bed87f67937384aa37b999808a7a7911c94f1696980024eaed288c8c199bf7d",
+    "tested_sha256": "9bed87f67937384aa37b999808a7a7911c94f1696980024eaed288c8c199bf7d",
+    "same_text": true
+  },
+  {
+    "file": "src/app/Launcher.cpp",
+    "workspace_sha256": "16f44186154592488e11f7d401403f9563b258826f73c96ffaf15e7a316c79a9",
+    "tested_sha256": "16f44186154592488e11f7d401403f9563b258826f73c96ffaf15e7a316c79a9",
+    "same_text": true
+  },
+  {
+    "file": "src/app/Launcher.h",
+    "workspace_sha256": "12937f297baf255ce96e0b7125407f732133a5be5241b01de77014f959264812",
+    "tested_sha256": "12937f297baf255ce96e0b7125407f732133a5be5241b01de77014f959264812",
+    "same_text": true
+  },
+  {
+    "file": "src/app/Settings.h",
+    "workspace_sha256": "3871ea26239e3c6f2e6f7f6184f71ec3f5fa8ca2a36a47559ae1b830deb3cff0",
+    "tested_sha256": "3871ea26239e3c6f2e6f7f6184f71ec3f5fa8ca2a36a47559ae1b830deb3cff0",
+    "same_text": true
+  },
+  {
+    "file": "src/app/AiSettings.cpp",
+    "workspace_sha256": "5812a6d82b481857588e111141f7becfe09aaba99a015a937833097e573dcb97",
+    "tested_sha256": "5812a6d82b481857588e111141f7becfe09aaba99a015a937833097e573dcb97",
+    "same_text": true
+  },
+  {
+    "file": "src/app/ResultModel.cpp",
+    "workspace_sha256": "85ed9c0accaa569088bd1ffa4f06bed48220bf865e3729a6c573ae63c9a894ab",
+    "tested_sha256": "85ed9c0accaa569088bd1ffa4f06bed48220bf865e3729a6c573ae63c9a894ab",
+    "same_text": true
+  },
+  {
+    "file": "src/app/ResultModel.h",
+    "workspace_sha256": "43f2b8dfc6a4cf28aac338177ecdd01a6be376f4f7c6d4462d7b0a9745b96cf8",
+    "tested_sha256": "43f2b8dfc6a4cf28aac338177ecdd01a6be376f4f7c6d4462d7b0a9745b96cf8",
+    "same_text": true
+  },
+  {
+    "file": "src/app/PreviewShortcut.h",
+    "workspace_sha256": "c43e51dfb74aa88090a282c1a437060c75f28c8ab98cf6ce2ae1a055973302fe",
+    "tested_sha256": "c43e51dfb74aa88090a282c1a437060c75f28c8ab98cf6ce2ae1a055973302fe",
+    "same_text": true
+  },
+  {
+    "file": "src/app/qml/SearchKeys.qml",
+    "workspace_sha256": "f8e3e0856b0718601719f363d110e7dfa860eb044613e4b2c29f4f990bab6334",
+    "tested_sha256": "f8e3e0856b0718601719f363d110e7dfa860eb044613e4b2c29f4f990bab6334",
+    "same_text": true
+  },
+  {
+    "file": "src/app/qml/Main.qml",
+    "workspace_sha256": "bf84d99fedaf955f54af38d7ef0ef8073078e0cca9b015b293862eed76b55351",
+    "tested_sha256": "bf84d99fedaf955f54af38d7ef0ef8073078e0cca9b015b293862eed76b55351",
+    "same_text": true
+  },
+  {
+    "file": "src/app/qml/DialogBarWindow.qml",
+    "workspace_sha256": "692274ff221837bbc5afe7532a4e40cc009e9ab77ebc7eb3a7b644ec89051ed8",
+    "tested_sha256": "692274ff221837bbc5afe7532a4e40cc009e9ab77ebc7eb3a7b644ec89051ed8",
+    "same_text": true
+  },
+  {
+    "file": "src/app/qml/Footer.qml",
+    "workspace_sha256": "9e0f6812cd3eba925e99a8612686eeec5d589c5b3ad3e760e8289576d92ec3af",
+    "tested_sha256": "9e0f6812cd3eba925e99a8612686eeec5d589c5b3ad3e760e8289576d92ec3af",
+    "same_text": true
+  },
+  {
+    "file": "src/app/qml/ResultRow.qml",
+    "workspace_sha256": "72cb61060e645466cc73c21599e5a8b1f79c2db5da842dd6fc503eb9fd69165e",
+    "tested_sha256": "72cb61060e645466cc73c21599e5a8b1f79c2db5da842dd6fc503eb9fd69165e",
+    "same_text": true
+  },
+  {
+    "file": "src/app/qml/SettingsWindow.qml",
+    "workspace_sha256": "6d1b1fe2e0b90c07b38999ef96b3df9bbed83804e520ff1cb1217d890523ca80",
+    "tested_sha256": "6d1b1fe2e0b90c07b38999ef96b3df9bbed83804e520ff1cb1217d890523ca80",
+    "same_text": true
+  },
+  {
+    "file": "src/app/i18n/winshun_en.ts",
+    "workspace_sha256": "1205c9a1e02898cb4b0a3e2ef0141c222f171678d4b7dc32833c67d2ee215e3b",
+    "tested_sha256": "1205c9a1e02898cb4b0a3e2ef0141c222f171678d4b7dc32833c67d2ee215e3b",
+    "same_text": true
+  },
+  {
+    "file": "tests/tst_core.cpp",
+    "workspace_sha256": "29c6e956de611f2cb479302ba28b1875190bbe7d665ed2d92404a15479078588",
+    "tested_sha256": "29c6e956de611f2cb479302ba28b1875190bbe7d665ed2d92404a15479078588",
+    "same_text": true
+  },
+  {
+    "file": "tests/tst_settings.cpp",
+    "workspace_sha256": "4ef03903a9ab04d9fee581014e0fca2b5f3e6d348eede1cb83d15ad0ccbf93ad",
+    "tested_sha256": "4ef03903a9ab04d9fee581014e0fca2b5f3e6d348eede1cb83d15ad0ccbf93ad",
+    "same_text": true
+  },
+  {
+    "file": "tests/tst_aisettings.cpp",
+    "workspace_sha256": "3a41967b1cccc6cac6f32553d22d42bc7f54c6e47bfa344f1539e334ef072b6c",
+    "tested_sha256": "3a41967b1cccc6cac6f32553d22d42bc7f54c6e47bfa344f1539e334ef072b6c",
+    "same_text": true
+  }
+]

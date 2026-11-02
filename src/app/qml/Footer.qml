@@ -315,6 +315,9 @@ Item {
             ["Shift+Tab", qsTr("切换到上一个范围")],
             ["Ctrl+Tab", qsTr("在“文件”里切换类型，在“内容”里换个文件夹")],
             ["↑ ↓", qsTr("上下移动，PgUp PgDn 翻页")],
+            ["Ctrl+J / N · Ctrl+K / P", qsTr("向下 / 向上移动")],
+            ["Ctrl+U / D", qsTr("向上 / 向下翻页")],
+            ["Ctrl+,", qsTr("打开 Win顺 设置")],
             ["→ / Ctrl+O", qsTr("打开操作菜单；→ 需光标在末尾且未选中文字")],
             ["← / Esc", qsTr("关闭操作菜单，返回结果列表")],
             ["Shift+↑ ↓", qsTr("选中多行，也可 Ctrl+单击、Shift+单击")],
@@ -329,7 +332,7 @@ Item {
                  : [[footer.launcher.previewHotkey, qsTr("预览文件；再按一次关闭")]])
          .concat(footer.launcher.typingFolder.length === 0 // typed in a folder's window (GitHub #110): where
                  || footer.launcher.scope === Launcher.Content || footer.launcher.panel ? [] // switchTypingFolder takes it
-                 : [["Ctrl+D", qsTr("只搜当前文件夹，或也搜其他位置")]])
+                 : [["Ctrl+Shift+D", qsTr("只搜当前文件夹，或也搜其他位置")]])
          .concat(footer.launcher.numberKeys === "off" ? []
                  : [[modifier + "+1…9", qsTr("打开第几行（图标上标着快捷键）")]])
          .concat([

@@ -256,8 +256,9 @@
 
 #### 🎨 外观和设置
 
-- **外观**：浅色、深色跟随系统，Windows 11 云母（Mica）效果；圆角或直角（直角和 Windows 10 一样）；图标在 150% 缩放下也清晰。界面大小有紧凑、标准、宽松三档，托盘和任务栏的图标可以换成单色，搜索框边上探出来的 Logo 可以关掉（设置 › 外观 › 搜索框显示 Logo）。
-- **设置**：可以搜索（`Ctrl+F`，`kjj` 找到“快捷键”），改了立即生效。
+- **外观**：浅色、深色跟随系统，Windows 11 云母（Mica）效果；圆角或直角（直角和 Windows 10 一样）；图标在 150% 缩放下也清晰。界面大小有紧凑、标准、宽松三档，托盘和任务栏的图标可以换成单色；程序 Logo 统一显示在搜索栏内部，作为固定操作入口。
+- **搜索偏好**：打开一次即可在后续匹配搜索中靠前，中文、拼音、首字母共享同一应用或文件的使用记录；较久未使用的偏好会逐渐衰减。
+- **设置**：搜索框输入“设置”“配置”或 `settings`，回车打开，也可按 `Ctrl+,`。设置窗口内可以搜索（`Ctrl+F`，`kjj` 找到“快捷键”），改了立即生效。
 - **文件管理器**：打开文件夹、打开所在位置时用资源管理器、Total Commander、Directory Opus、XYplorer 或 Pulse（装了的才列出）；别的文件管理器也行，在设置 › 打开 Win顺 › 对话框里填它的命令。
 - **备份**：设置 → 高级里选一个文件夹（放在同步盘里就是云备份），设置、收藏、对话框的固定项、自己加的网页图标和插件会自动备份，保留最近 10 份，随时恢复。
 - **换电脑迁移设置**：设置 → 高级 → 备份，点“导出备份…”保存 ZIP；新电脑安装后点“从备份恢复…”，校验通过后自动重启。不用开启自动备份，当前配置会先备份到本机；插件密码需重新填写，收藏和自定义路径请检查是否还有效。
@@ -272,8 +273,10 @@
 | `Tab` / `Shift+Tab` | 切换范围：全部 / 文件 / 内容（往后 / 往前）；设置里可改为 Tab 进入选中的收藏文件夹 |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | 在 **文件** 里切换类型，在 **内容** 里切换文件夹 |
 | `Ctrl+S` | 最匹配 → 最新在前 → 最早在前（名称、类型、大小在底栏的“更多”里） |
+| `Ctrl+J` / `Ctrl+N`、`Ctrl+K` / `Ctrl+P` | 向下、向上移动；`Ctrl+U` / `Ctrl+D` 向上、向下翻页 |
+| `Ctrl+,` | 打开 Win顺 设置 |
 | `Ctrl+E` / `Ctrl+T` | 展开为搜索面板 / 钉住搜索框（点别处不收起） |
-| `Ctrl+D`（在文件夹窗口里打字打开时） | 只搜当前文件夹 / 也搜其他位置 |
+| `Ctrl+Shift+D`（在文件夹窗口里打字打开时） | 只搜当前文件夹 / 也搜其他位置 |
 | `Alt+P` / `Shift+右键` | 预览当前行 / Windows 自己的右键菜单 |
 | `Ctrl+G`（对话框里） | 转到文件管理器正在显示的文件夹 |
 | `Win+V` / `Win+S`（设置里打开后） | 剪贴板历史 / 任务栏上方的搜索框 |
@@ -370,11 +373,13 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
   - **Where**: all local drives, USB drives if you like (an unindexed one that is plugged in is offered at the end of the list), and **NAS / SMB network shares and WebDAV folders** (a NAS's WebDAV, cloud drives such as Jianguoyun), still searchable while their server is off and reconnected by themselves after it restarts; turn on “Search file contents” on a location's card to search inside its files. On a PC without administrator rights it indexes only the folders you choose (see Administrator rights below).
   - **Order**: your own files first, the date modified on each row, `Ctrl+S` for best match / newest / oldest, and More in the footer sorts by name, folder, type or size. Click a result once to select and twice to open, if you would rather not open one by mistake (a setting). Recent files are listed when the box is empty, or nothing if you like; the search can also start empty each time it opens.
   - **Programs first**: `curl` lists `curl.exe` before the folder `curl` and `curl.h`; which file types go first is yours to change (exe, bat, cmd, ps1 and msi to begin with, like Listary's preferred file types).
+  - **Learned order**: one opening improves later matching searches for the same app or file, across Chinese names, pinyin and initials. Old preferences decay. Type `settings` or `config`, or press `Ctrl+,`, to open WinShun settings.
+  - **Keyboard navigation**: `Ctrl+J` / `Ctrl+N` moves down; `Ctrl+K` / `Ctrl+P` moves up; `Ctrl+U` / `Ctrl+D` pages up / down. `Ctrl+Shift+D` switches current-folder filtering.
   - **Shortcuts**: `Ctrl+1`…`Ctrl+9` opens a visible result (or choose `Alt`). Numbers are visible by default in a separate column before the icons; choose hold-only or never in settings. Existing display choices are preserved. They follow the visible results after scrolling; unavailable shortcuts are dimmed and struck through.
   - **Search panel**: too many hits? The small button at the box's corner or `Ctrl+E` grows the same window into a panel, as Listary has it: filters down the left (scope, kind, date modified, size, folder), sortable columns on the right; right-click headers to choose name, path, type, size, modification and creation times, folder or source, and drag to reorder or resize them; the layout is saved; with nothing typed it browses the whole index by those filters (milliseconds over three million files). `size:>10mb` and `dm:7d` work in the box too. Press it again to collapse.
   - **Long names**: a name that does not fit is shortened in the middle, keeping its extension and end ("…v3 final.xlsx"); rest the pointer on the row to see the full name, location, size, modified and created times. Drag the left or right edge of the search box to widen it (the width is remembered; double-click an edge for the default).
   - **File sizes**: Settings › Result list › Display & preview can show sizes in the compact results, alongside modification dates or on their own. Off by default; sorting by size always shows sizes. Folders and unknown sizes stay blank.
-  - **Pin**: `Ctrl+T` or the pin at the box's corner keeps the search box up through clicks elsewhere and opened files; `Esc` closes it. Drag the window by the magnifier on the left; click it for the settings.
+  - **Logo controls**: the WinShun logo on the left opens settings with a left click, toggles pinning with a middle click (`Ctrl+T` also works), and centers the window in the current monitor's work area with a right click. Drag it to move the window. A pin badge shows when pinned: clicks elsewhere and opened files keep the box up; `Esc` closes it.
   - **Preview**: `Alt+P` on a result (or Preview in its menu) shows the file without leaving the launcher: pictures, text (UTF-8 or GBK, detected), Word, Excel, PowerPoint and PDF (through the same preview handlers as File Explorer's preview pane), what a folder holds; the arrows move it to the next row, `Alt+P` again (or the × on the preview) closes it; `Esc` closes the launcher and leaves the preview as it is, so it is back the next time the launcher opens. QuickLook or Seer, when running in the background, shows it instead. The result preview shortcut can be changed to Space, a function key, or an unused chord in Settings; Shift+Space still types a space.
   - **Thumbnails**: pictures, videos, PDFs and the like show their thumbnail instead of their type's icon, in the results and in the search bar beside Open / Save dialogs; Settings › Result list can turn them off.
   - **Context menu**: right-click a row for its location, Copy path, Add to favorites and more; `Shift`+right-click (or More options in that menu) brings up Windows' own full context menu, as in File Explorer, for one row or several; after copy, cut or delete the search box stays open.
@@ -423,7 +428,7 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
   - **Type to search in Directory Opus**: enable it separately in Settings → Open WinShun → Dialogs (off by default). Start with a letter or digit in the file list to search, the focused tab's folder first (as in File Explorer), including either pane of a dual display. `Esc` returns to Opus; opening a folder or locating a result with `Ctrl+Enter` uses the original pane. Renaming, address bars, menus and Opus find modes starting with symbols keep their usual behavior.
   - **By a shortcut**: when another program has the double click, or for Total Commander, XYplorer and Pulse, give the folder menu a shortcut in the settings and press it in any window: in File Explorer, on the desktop, in Directory Opus, Total Commander, XYplorer and Open / Save dialogs the folder picked opens in that window (in Pulse, where its “Folders opened from other apps” setting puts it: a new tab or a new window); anywhere else, in your file manager. Press it again to close the menu.
   - **“Search here with WinShun”** on the right-click menu of folders, a folder's blank space and drives (under “Show more options” on Windows 11): the search window opens with that folder typed. It can be turned off.
-  - **Type to search**: type anywhere in a File Explorer file list and WinShun searches for what you typed, like Listary: what is in that window's folder (and its subfolders) comes first, the rest of the PC follows under a thin "Elsewhere" line; "Only in …" or `Ctrl+D` keeps to that folder, and a setting can make that the default. A Chinese input method composes as usual, and `Esc` goes back to File Explorer. A folder you pick opens in the same tab, so typing again goes one level deeper; `Ctrl+Enter` on a file or folder also goes, in that tab, to the folder holding it and selects it (when the file manager set in Settings is File Explorer); and the keys of Explorer's `Shift`+right-click menu stay with the menu. Turn it on in the settings (it replaces Explorer's own jump to a file by its first letters, so it is off by default).
+  - **Type to search**: type anywhere in a File Explorer file list and WinShun searches for what you typed, like Listary: what is in that window's folder (and its subfolders) comes first, the rest of the PC follows under a thin "Elsewhere" line; "Only in …" or `Ctrl+Shift+D` keeps to that folder, and a setting can make that the default. A Chinese input method composes as usual, and `Esc` goes back to File Explorer. A folder you pick opens in the same tab, so typing again goes one level deeper; `Ctrl+Enter` on a file or folder also goes, in that tab, to the folder holding it and selects it (when the file manager set in Settings is File Explorer); and the keys of Explorer's `Shift`+right-click menu stay with the menu. Turn it on in the settings (it replaces Explorer's own jump to a file by its first letters, so it is off by default).
   - **Placement and selection (0.17.0)**: the search box prefers space outside the originating Explorer window, reducing overlap when space is limited without narrowing it or changing its remembered position. Browsing a direct child selects and reveals it in the original tab while the search field keeps keyboard focus; nested and elsewhere results do not navigate Explorer.
 - 📋 **Clipboard history (replaces Win+V)**
 
@@ -480,8 +485,10 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
 | `Tab` / `Shift+Tab` | Switch scope: All / Files / Content (forward / back) |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | In **Files**, step through the kinds; in **Content**, through the folders |
 | `Ctrl+S` | Best match → newest first → oldest first (name, type and size are under More in the footer) |
+| `Ctrl+J` / `Ctrl+N`, `Ctrl+K` / `Ctrl+P` | Move down / up; `Ctrl+U` / `Ctrl+D` pages up / down |
+| `Ctrl+,` | Open WinShun settings |
 | `Ctrl+E` / `Ctrl+T` | Expand to the search panel / pin the search box (stays up through clicks elsewhere) |
-| `Ctrl+D` (opened by typing in a folder window) | Only the current folder / elsewhere too |
+| `Ctrl+Shift+D` (opened by typing in a folder window) | Only the current folder / elsewhere too |
 | `Alt+P` / `Shift`+right-click | Preview the row / Windows' own context menu |
 | `Ctrl+G` (in a file dialog) | Go to the folder shown in your file manager |
 | `Win+V` / `Win+S` (once turned on) | Clipboard history / search above the taskbar |

@@ -181,7 +181,8 @@ Window {
         const ctrl = (event.modifiers & Qt.ControlModifier) !== 0
         const shift = (event.modifiers & Qt.ShiftModifier) !== 0
         const row = list.count > 0 ? list.currentIndex : -1
-        switch (event.key) {
+        const key = SearchKeys.navigationKey(event.key, event.modifiers, input.preeditText.length > 0)
+        switch (key) {
         case Qt.Key_Down: move(1); break
         case Qt.Key_Up: move(-1); break
         case Qt.Key_PageDown: move(Math.max(1, window.bar.rows)); break
