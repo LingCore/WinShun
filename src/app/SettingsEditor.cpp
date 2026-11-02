@@ -1275,12 +1275,14 @@ QString SettingsEditor::saveCaptureKeyword(const QString& keyword)
     return {};
 }
 
-void SettingsEditor::setScreenshotHistory(bool on)
+void SettingsEditor::setScreenshotPlugin(bool installed, bool on, const QStringList& hotkeys)
 {
-    if (m_screenshotHistory == on)
+    if (m_screenshotInstalled == installed && m_screenshotHistory == on && m_screenshotHotkeys == hotkeys)
         return;
+    m_screenshotInstalled = installed;
     m_screenshotHistory = on;
-    emit screenshotHistoryChanged();
+    m_screenshotHotkeys = hotkeys;
+    emit screenshotPluginChanged();
 }
 
 QString SettingsEditor::captureKeywordTaken(const QString& keyword) const

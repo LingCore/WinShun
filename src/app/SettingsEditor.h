@@ -99,8 +99,10 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString folderMenuHotkeyError READ folderMenuHotkeyError NOTIFY hotkeyErrorChanged FINAL)
     // The screenshot history's keyword (jt): set through saveCaptureKeyword.
     Q_PROPERTY(QString captureKeyword READ captureKeyword NOTIFY changed FINAL)
-    // Whether it works now: the screenshot plugin installed and on (App).
-    Q_PROPERTY(bool screenshotHistory READ screenshotHistory NOTIFY screenshotHistoryChanged FINAL)
+    // The screenshot plugin, as App reads it: installed, on (the history works), and the shortcuts it holds.
+    Q_PROPERTY(bool screenshotInstalled READ screenshotInstalled NOTIFY screenshotPluginChanged FINAL)
+    Q_PROPERTY(bool screenshotHistory READ screenshotHistory NOTIFY screenshotPluginChanged FINAL)
+    Q_PROPERTY(QStringList screenshotHotkeys READ screenshotHotkeys NOTIFY screenshotPluginChanged FINAL)
     // 粘贴为文件's card on the 插件 page ([PasteFile]): its switch, Ctrl+V in
     // Explorer and on the desktop, the right-click menu's verb.
     Q_PROPERTY(bool pasteFileEnabled READ pasteFileEnabled WRITE setPasteFileEnabled NOTIFY changed FINAL)
@@ -392,8 +394,10 @@ public:
     QString folderMenuHotkeyError() const { return m_folderMenuHotkeyError; }
     void setFolderMenuHotkeyError(const QString& error);
     QString captureKeyword() const { return m_settings.captureKeyword; }
+    bool screenshotInstalled() const { return m_screenshotInstalled; }
     bool screenshotHistory() const { return m_screenshotHistory; }
-    void setScreenshotHistory(bool on);
+    QStringList screenshotHotkeys() const { return m_screenshotHotkeys; }
+    void setScreenshotPlugin(bool installed, bool on, const QStringList& hotkeys);
     bool pasteFileEnabled() const { return m_settings.pasteFileEnabled; }
     void setPasteFileEnabled(bool on);
     bool pasteFileCtrlV() const { return m_settings.pasteFileCtrlV; }
@@ -865,7 +869,7 @@ public:
     FavoritesSettings* favorites() const { return m_favorites; }
 
 signals:
-    void screenshotHistoryChanged();
+    void screenshotPluginChanged();
     void diagnosticsChanged();
     void diagnosticsExportRequested();
     void historyCountChanged();
@@ -937,7 +941,9 @@ private:
     QString m_clipboardQuickPasteError;
     QString m_doubleCtrlClash;
     QString m_folderMenuHotkeyError;
+    bool m_screenshotInstalled = false;
     bool m_screenshotHistory = false;
+    QStringList m_screenshotHotkeys;
     QString m_opusFolderMenu = QStringLiteral("manual");
     QString m_opusFolderMenuTaken;
     QString m_opusFolderMenuProblem;

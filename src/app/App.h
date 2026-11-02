@@ -213,6 +213,7 @@ private:
     // asked for as the tray icon is pressed, so the menu waits for nothing),
     // 贴到屏幕 and 编辑 on pictures (`pictures`), a 设置 button on its card
     // (settingsWindow), Win顺's look (appearance).
+    void updateScreenshotPlugin();
     bool screenshotPluginOn() const; // installed, on and allowed: the screenshot history works
     // The plugin on and running that does `verb` ("pin", "edit") with
     // pictures; empty: none, and the entries are not offered.

@@ -19,12 +19,13 @@ import QtQuick
 // `intoField` (the clipboard pastes into a field of Win顺's) and `holdKey`
 // (the clipboard's hotkey, when it can be held to step). The settings show
 // every entry (`all`), and give the keys that open Win顺 (`openKeys`,
-// `clipboardHotkey`).
+// `clipboardHotkey`), and `captureKeys` (the screenshot plugin's).
 QtObject {
     readonly property var table: [
         // what opens them (the settings only)
         { where: "global", group: qsTr("打开"), keys: c => c.openKeys, text: qsTr("打开搜索框"), setting: { page: 0, tab: 0 } },
         { where: "global", group: qsTr("打开"), keys: c => c.clipboardHotkey, text: qsTr("打开剪贴板"), setting: { page: 6, tab: 1 } },
+        { where: "global", group: qsTr("打开"), keys: c => c.captureKeys, text: qsTr("截图"), setting: { page: 9, tab: 0 } },
         // the search box
         { where: "launcher", group: qsTr("移动"), brief: true, keys: "↑ ↓", text: qsTr("上下移动，PgUp PgDn 翻页") },
         { where: "launcher", group: qsTr("移动"), keys: "Ctrl+J / N · Ctrl+K / P", text: qsTr("向下 / 向上移动") },

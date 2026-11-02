@@ -74,6 +74,7 @@ Window {
             previewKey: window.editor.previewHotkey,
             numberModifier: window.editor.numberKeys === "alt" ? "Alt" : window.editor.numberKeys === "ctrl" ? "Ctrl" : "",
             holdKey: window.editor.clipboardHotkey,
+            captureKeys: window.editor.screenshotHotkeys.join(" / "),
             folderTyping: true,
             intoField: false
         }
@@ -466,7 +467,7 @@ Window {
         showPage(pluginsPage, 1)
     }
     property string revealAfterFrame
-    // The capture's card, unfolded at its hotkeys (常规's 截图的快捷键 row).
+    // The capture's card, unfolded at its hotkeys (常规's 截图的快捷键 row); its library entry when it is not installed.
     function showCaptureCard() {
         showPluginPage("winshun.capture")
     }
@@ -1291,15 +1292,18 @@ Window {
                 // The capture's own hotkey is recorded on its card (插件 › 截图);
                 // here so that whoever looks among the hotkeys finds it.
                 SettingRow {
+                    objectName: "captureHotkeyRow"
                     title: qsTr("截图的快捷键")
                     keywords: qsTr("截图;截屏;快捷键;热键;F1;PrtScn;PixPin;Snipaste;screenshot").split(";")
-                    values: [window.editor.captureHotkey]
-                    description: !window.editor.captureEnabled ? qsTr("截图功能还没打开：在“插件”的截图卡片上打开，再录一个快捷键，例如 F1")
-                               : window.editor.captureHotkey.length > 0 ? qsTr("现在是 %1，在“插件”的截图卡片上改；贴图等其他快捷键也在那里").arg(window.editor.captureHotkey)
+                    values: window.editor.screenshotHotkeys
+                    description: !window.editor.screenshotInstalled ? qsTr("截图是可选插件：在“插件”的插件库里安装，再录一个快捷键，例如 F1")
+                               : !window.editor.screenshotHistory ? qsTr("截图插件还没打开：在“插件”的截图卡片上打开，再录一个快捷键，例如 F1")
+                               : window.editor.screenshotHotkeys.length > 0 ? qsTr("现在是 %1，在“插件”的截图卡片上改；贴图等其他快捷键也在那里").arg(window.editor.screenshotHotkeys.join(" / "))
                                : qsTr("还没设，在“插件”的截图卡片上录一个，例如 F1；贴图等其他快捷键也在那里")
 
                     FlatButton {
-                        text: qsTr("去设置")
+                        objectName: "captureHotkeyButton"
+                        text: window.editor.screenshotInstalled ? qsTr("去设置") : qsTr("去插件库")
                         onClicked: window.showCaptureCard()
                     }
                 }

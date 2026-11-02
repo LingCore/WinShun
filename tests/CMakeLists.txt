@@ -69,6 +69,12 @@ add_test(NAME tst_settingsscroll COMMAND $<TARGET_FILE:WinShun>
 set_tests_properties(tst_settingsscroll PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# The screenshot hotkey row and its 按键一览 entry follow the capture plugin's state.
+add_test(NAME tst_settingscapturehotkey COMMAND $<TARGET_FILE:WinShun>
+    --preview-settings "${CMAKE_CURRENT_BINARY_DIR}/settings-capture-hotkey" --capture-hotkey --scale 1.5)
+set_tests_properties(tst_settingscapturehotkey PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # Clipboard sizing uses the production QML/native frame with temporary history.
 add_test(NAME tst_clipboardsizing COMMAND $<TARGET_FILE:WinShun>
     --preview-results "${CMAKE_CURRENT_BINARY_DIR}/clipboard-sizing" --clipboard-sizing --renderer d3d11)
