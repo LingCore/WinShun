@@ -1105,6 +1105,10 @@
         <source>未设置</source>
         <translation>Not set</translation>
     </message>
+    <message>
+        <source>点击设置快捷键</source>
+        <translation>Click to set hotkey</translation>
+    </message>
 </context>
 <context>
     <name>LongCapturePanel</name>

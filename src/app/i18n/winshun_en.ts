@@ -372,6 +372,22 @@
 <context>
     <name>AiSettings</name>
     <message>
+        <source>任务栏上的 Win顺</source>
+        <translation>WinShun on the taskbar</translation>
+    </message>
+    <message>
+        <source>触发位置与方式</source>
+        <translation>Trigger locations and methods</translation>
+    </message>
+    <message>
+        <source>菜单里列出的内容</source>
+        <translation>Items listed in the menu</translation>
+    </message>
+    <message>
+        <source>较早的日期也显示具体时间</source>
+        <translation>Show exact time for older dates</translation>
+    </message>
+    <message>
         <source>自动更新</source>
         <translation>Automatic updates</translation>
     </message>
@@ -2415,6 +2431,10 @@
 <context>
     <name>MovedPlugins</name>
     <message>
+        <source>网页搜索</source>
+        <translation>Web search</translation>
+    </message>
+    <message>
         <source>插件库里没有找到它</source>
         <translation>It is not in the plugin library</translation>
     </message>
@@ -3114,6 +3134,13 @@
     </message>
 </context>
 <context>
+    <name>PluginSettings</name>
+    <message>
+        <source>给 AI 用</source>
+        <translation>For AI</translation>
+    </message>
+</context>
+<context>
     <name>PluginsPreview</name>
     <message>
         <source>插件</source>
@@ -3510,6 +3537,10 @@
     <message>
         <source>已钉住</source>
         <translation>Pinned</translation>
+    </message>
+    <message>
+        <source>已钉住 · 点击取消</source>
+        <translation>Pinned · click to unpin</translation>
     </message>
     <message>
         <source>左键：设置 · 中键：%1
@@ -5147,8 +5178,8 @@ Right: center window · Drag: move window</translation>
         <translation>Preview files (Alt+P)</translation>
     </message>
     <message>
-        <source>扩展;脚本;PowerShell;Python;内置功能;模块;plugin;extension;module</source>
-        <translation>extension;script;PowerShell;Python;built-in features;module;plugin</translation>
+        <source>扩展;脚本;PowerShell;Python;内置功能;模块;网页搜索;搜索引擎;网址;web;plugin;extension;module</source>
+        <translation>extension;script;PowerShell;Python;built-in features;module;web search;search engine;URL;web;plugin</translation>
     </message>
     <message>
         <source>截图的快捷键</source>
