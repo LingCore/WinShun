@@ -17,4 +17,10 @@ bool processElevated();
 // that cannot be asked counts as higher (GitHub #21, docs/pitfalls.md).
 bool higherThanOurs(HWND window);
 
+// Whether `window` belongs to a process of lower integrity than Win顺's: the
+// desktop shell's while Win顺 is elevated, unless UAC is off (or this is the
+// built-in Administrator), where Explorer is elevated too. False when it
+// cannot be told.
+bool lowerThanOurs(HWND window);
+
 } // namespace ws::integrity
