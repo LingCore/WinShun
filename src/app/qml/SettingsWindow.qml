@@ -298,6 +298,16 @@ Window {
         row.flash()
     }
 
+    // Tab (or a click) to a control that is not all in view: the page follows it.
+    onActiveFocusItemChanged: {
+        for (let at = activeFocusItem; at; at = at.parent) {
+            if (at === page) {
+                revealRow(activeFocusItem)
+                return
+            }
+        }
+    }
+
     // Scrolls the page just enough for the row to be in view.
     function revealRow(row) {
         flick.stopScrolling()
@@ -307,8 +317,8 @@ Window {
             flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, top - 12))
             return
         }
-        if (top - 48 < flick.contentY)
-            flick.contentY = Math.max(0, top - 48) // with its page's name above it
+        if (top - 12 < flick.contentY) // the page's name and tabs are above the view (pageHeader), not in it
+            flick.contentY = Math.max(0, top - 12)
         else if (bottom + 24 > flick.contentY + flick.height)
             flick.contentY = Math.min(flick.contentHeight - flick.height, bottom + 24 - flick.height)
     }

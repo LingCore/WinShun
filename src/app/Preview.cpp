@@ -881,6 +881,102 @@ int runSettings(const QStringList& args)
         return finish(window, count > 0 && count <= budget);
     }
 
+    // #163: the page's name and tabs stay (pageHeader, above the scrolled
+    // page); another tab starts at the top; a row gone to by the search, by
+    // the page's scrolling to it or by Tab lands whole below the header.
+    if (args.contains(u"--page-scroll"_s)) {
+        bool ok = true;
+        const auto check = [&](bool condition, const QString& message) {
+            say((condition ? u"ok: "_s : u"FAILED: "_s) + message);
+            ok = condition && ok;
+        };
+        auto* flick = qobject_cast<QQuickItem*>(named(window, "flick"));
+        auto* header = qobject_cast<QQuickItem*>(named(window, "pageHeader"));
+        auto* page = qobject_cast<QQuickItem*>(named(window, "page"));
+        if (!flick || !header || !page)
+            return finish(window, false);
+        const auto top = [&](QQuickItem* item) { return item->mapToItem(window->contentItem(), QPointF()).y(); };
+        const auto contentY = [&] { return flick->property("contentY").toDouble(); };
+        const auto show = [&](int pageIndex, int tab) {
+            QMetaObject::invokeMethod(window, "showPage", Q_ARG(QVariant, pageIndex), Q_ARG(QVariant, tab));
+            settle(window);
+            pump(150);
+        };
+        const std::function<QQuickItem*(QQuickItem*, const QString&)> rowTitled = [&](QQuickItem* item, const QString& title) -> QQuickItem* {
+            if (item->isVisible() && item->property("title").toString() == title && item->property("stackControl").isValid())
+                return item;
+            for (QQuickItem* child : item->childItems()) {
+                if (QQuickItem* found = rowTitled(child, title))
+                    return found;
+            }
+            return nullptr;
+        };
+        // Whole in the view: under the header, over the window's bottom.
+        const auto inView = [&](QQuickItem* item) {
+            return top(item) >= top(header) + header->height() - 0.5 && top(item) + item->height() <= window->height() + 0.5;
+        };
+        const QString deepTitle = u"删除，Ctrl+Z 撤销"_s;
+
+        show(0, 4); // 按键一览: many rows
+        const double headerTop = top(header);
+        check(flick->property("contentHeight").toDouble() > window->height() + 400, u"the page is longer than the window"_s);
+        flick->setProperty("contentY", 900.0);
+        settle(window, 2);
+        check(contentY() > 800 && qFuzzyCompare(top(header), headerTop) && header->isVisible(), u"scrolled, the page's name and tabs stay"_s);
+        saveGrab(window, out.filePath(u"page-scrolled.png"_s));
+        QMetaObject::invokeMethod(window, "showTab", Q_ARG(QVariant, 3));
+        settle(window, 2);
+        check(contentY() == 0 && window->property("currentTab").toInt() == 3, u"another tab starts at the top"_s);
+
+        // The search: Enter goes to the row, in view whole below the header.
+        QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, 0), Q_ARG(QVariant, 4), Q_ARG(QVariant, deepTitle));
+        pump(500);
+        settle(window, 2);
+        QQuickItem* deep = rowTitled(page, deepTitle);
+        check(deep && contentY() > 0 && inView(deep), u"the search lands on a deep row, whole below the header"_s);
+        saveGrab(window, out.filePath(u"page-searched.png"_s));
+
+        // The page scrolled to a row (the plugin card, the capture's hotkeys).
+        flick->setProperty("contentY", 0.0);
+        settle(window, 2);
+        if (deep) {
+            QMetaObject::invokeMethod(window, "revealRow", Q_ARG(QVariant, QVariant::fromValue<QObject*>(deep)));
+            settle(window, 2);
+            check(inView(deep), u"revealRow brings a deep row in whole below the header"_s);
+            const double before = top(deep);
+            flick->setProperty("contentY", contentY() - 40); // a little too low
+            settle(window, 2);
+            QMetaObject::invokeMethod(window, "revealRow", Q_ARG(QVariant, QVariant::fromValue<QObject*>(deep)));
+            settle(window, 2);
+            check(inView(deep) && top(deep) >= top(header) + header->height() - 0.5 && before > 0, u"revealRow keeps a row from under the header"_s);
+        }
+
+        // Tab to controls out of view, below and then above.
+        show(6, 0); // 剪贴板 › 记录: switch after switch
+        QList<QQuickItem*> tabbable;
+        const std::function<void(QQuickItem*)> collect = [&](QQuickItem* item) {
+            if (item->isVisible() && item->activeFocusOnTab() && item->isEnabled())
+                tabbable.append(item);
+            for (QQuickItem* child : item->childItems())
+                collect(child);
+        };
+        collect(page);
+        check(tabbable.size() > 3 && top(tabbable.last()) > window->height(), u"the page has controls to Tab to, some below the view (%1)"_s.arg(tabbable.size()));
+        if (tabbable.size() > 3) {
+            flick->setProperty("contentY", 0.0);
+            settle(window, 2);
+            tabbable.last()->forceActiveFocus(Qt::TabFocusReason);
+            pump(150);
+            settle(window, 2);
+            check(contentY() > 0 && inView(tabbable.last()), u"Tab to a control below scrolls it whole into view"_s);
+            tabbable.first()->forceActiveFocus(Qt::TabFocusReason);
+            pump(150);
+            settle(window, 2);
+            check(inView(tabbable.first()), u"Tab to a control above scrolls it whole into view, below the header"_s);
+        }
+        return finish(window, ok);
+    }
+
     if (args.contains(u"--web-form"_s)) {
         if (args.contains(u"--compact"_s))
             window->resize(760, 420); // the supported minimum, also used on high-DPI screens

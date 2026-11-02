@@ -63,6 +63,12 @@ add_test(NAME tst_settingsscreen COMMAND $<TARGET_FILE:WinShun>
 set_tests_properties(tst_settingsscreen PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# #163: the settings page header stays; rows reached by search, scrolling or Tab land below it.
+add_test(NAME tst_settingsscroll COMMAND $<TARGET_FILE:WinShun>
+    --preview-settings "${CMAKE_CURRENT_BINARY_DIR}/settings-scroll" --page-scroll)
+set_tests_properties(tst_settingsscroll PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # Clipboard sizing uses the production QML/native frame with temporary history.
 add_test(NAME tst_clipboardsizing COMMAND $<TARGET_FILE:WinShun>
     --preview-results "${CMAKE_CURRENT_BINARY_DIR}/clipboard-sizing" --clipboard-sizing --renderer d3d11)
