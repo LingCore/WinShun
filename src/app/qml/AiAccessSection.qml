@@ -9,6 +9,8 @@ import WinShun
 SettingsSection {
     id: aiSection
 
+    title: qsTr("MCP 与命令行访问权限")
+    glyph: "\uE8D7"
     required property SettingsEditor editor
     // Rows on other tabs shown only while AI may connect (AiPrivacySection.lockedRows).
     property var lockedElsewhere: []
@@ -33,10 +35,12 @@ SettingsSection {
 
     SettingRow {
         id: openRow
+        sub: true
 
         title: qsTr("允许 AI 打开文件和文件夹")
         keywords: qsTr("打开;文件夹;显示;open;AI").split(";")
-        description: qsTr("只管通过 MCP 连接的 AI 客户端：用默认程序打开文件、在文件管理器里显示；以普通权限打开，客户端每次会先问你。命令行的 ws open 按你自己的权限打开，不受这个开关管")
+        description: qsTr("允许 AI 用默认程序打开文件、在文件管理器中定位显示")
+        tip: qsTr("只管通过 MCP 连接的 AI 客户端：用默认程序打开文件、在文件管理器里显示；以普通权限打开，客户端每次会先问你。命令行的 ws open 按你自己的权限打开，不受这个开关管")
         shown: aiSection.editor.mcp
 
         ToggleSwitch {
@@ -47,10 +51,12 @@ SettingsSection {
 
     SettingRow {
         id: clipboardRow
+        sub: true
 
         title: qsTr("允许 AI 读取剪贴板历史")
         keywords: qsTr("剪贴板;剪切板;隐私;clipboard;AI").split(";")
-        description: qsTr("AI 能看到复制过的文字、链接和文件名，图片只告诉它大小；Win顺 的截图还能拿到识别出的文字和图片（截图开着时）。密码管理器复制的本来就不记录")
+        description: qsTr("允许 AI 读取复制过的文本、链接与文件路径历史")
+        tip: qsTr("AI 能看到复制过的文字、链接和文件名，图片只告诉它大小；Win顺 的截图还能拿到识别出的文字和图片（截图开着时）。密码管理器复制的本来就不记录")
         shown: aiSection.editor.mcp
 
         ToggleSwitch {
@@ -61,10 +67,12 @@ SettingsSection {
 
     SettingRow { // take_screenshot (App::confirmScreenshot)
         id: screenshotRow
+        sub: true
 
         title: qsTr("允许 AI 请求截屏")
         keywords: qsTr("截图;截屏;屏幕;screenshot;AI").split(";")
-        description: qsTr("AI 每次要截屏，屏幕上都会弹出确认，写明是谁、截哪块屏幕；你点“允许”才截，拒绝或 30 秒不理就不截。截下的图不进剪贴板历史")
+        description: qsTr("允许 AI 请求截取指定屏幕区域并返回图像")
+        tip: qsTr("AI 每次要截屏，屏幕上都会弹出确认，写明是谁、截哪块屏幕；你点“允许”才截，拒绝或 30 秒不理就不截。截下的图不进剪贴板历史")
         shown: aiSection.editor.mcp
 
         ToggleSwitch {
@@ -75,6 +83,7 @@ SettingsSection {
 
     SettingRow { // get_settings / change_settings (App::confirmSettingsChange)
         id: settingsRow
+        sub: true
 
         readonly property var modes: ["ask", "auto", "off"]
 
@@ -101,10 +110,12 @@ SettingsSection {
 
     SettingRow { // the plugins' commands as tools (plugin::AiBridge)
         id: pluginsRow
+        sub: true
 
         title: qsTr("AI 可以使用插件")
         keywords: qsTr("插件;工具;plugin;tool;AI").split(";")
-        description: qsTr("标明可给 AI 用的插件，每个命令成为一个工具（plugin_插件_命令）：AI 只能查询，像你在搜索框里输入那样拿到结果；每个插件的卡片上还有一个开关")
+        description: qsTr("将支持 AI 的插件命令作为只读工具开放给 AI 查询")
+        tip: qsTr("标明可给 AI 用的插件，每个命令成为一个工具（plugin_插件_命令）：AI 只能查询，像你在搜索框里输入那样拿到结果；每个插件的卡片上还有一个开关")
         shown: aiSection.editor.mcp
         unlocks: [actionsRow]
 
@@ -116,10 +127,12 @@ SettingsSection {
 
     SettingRow {
         id: actionsRow
+        sub: true
 
         title: qsTr("允许 AI 执行插件动作")
         keywords: qsTr("插件;动作;执行;结束;plugin;action;AI").split(";")
-        description: qsTr("再多一个工具（plugin_插件_命令_run）做 Enter 做的事：结束进程、打开、复制这类会改动东西的操作；AI 客户端每次会先问你")
+        description: qsTr("允许 AI 执行结束进程、复制等具有实际副作用的插件动作")
+        tip: qsTr("再多一个工具（plugin_插件_命令_run）做 Enter 做的事：结束进程、打开、复制这类会改动东西的操作；AI 客户端每次会先问你")
         shown: aiSection.editor.mcp && aiSection.editor.mcpPlugins
 
         ToggleSwitch {

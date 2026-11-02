@@ -29,8 +29,11 @@ Rectangle {
     // Tabs shown but not to be chosen now (their indices), greyed: the
     // settings' choices that mean nothing at the moment.
     property var disabled: []
+    property bool multiSelect: false
+    property var checkedIndices: []
 
     signal activated(int scope)
+    signal toggled(int index, bool checked)
     signal pluginClicked()
 
     // Labels on whole device pixels (see SearchBar.onPixel): centred, at 150 %
@@ -64,16 +67,17 @@ Rectangle {
 
                 required property int index
                 required property string modelData
+                readonly property bool isChecked: tabs.multiSelect && tabs.checkedIndices.indexOf(index) >= 0
                 readonly property bool hasSub: index === tabs.subOf && tabs.subLabel.length > 0
                 readonly property bool subCurrent: hasSub && tabs.current === tabs.subValue
-                readonly property bool active: index === tabs.current || subCurrent
+                readonly property bool active: tabs.multiSelect ? isChecked : (index === tabs.current || subCurrent)
                 readonly property bool open: hasSub && active
                 // The plugin's chip: in the first tab, while it is current.
                 readonly property bool hasPlugin: index === 0 && tabs.pluginLabel.length > 0
                 readonly property bool pluginOpen: hasPlugin && tabs.current === 0
                 readonly property bool off: tabs.disabled.length > 0 && tabs.disabled.indexOf(index) >= 0
                 // Whole device pixels (at 150 % a whole logical one can still be half): a half one would leave the labels to its right blurred.
-                readonly property real labelWidth: Theme.snapUp(label.implicitWidth + 24, Screen.devicePixelRatio)
+                readonly property real labelWidth: Theme.snapUp(label.implicitWidth + (tabs.multiSelect ? 38 : 24), Screen.devicePixelRatio)
 
                 width: labelWidth + (open ? sub.fullWidth : 0) + (pluginOpen ? pluginSub.fullWidth : 0)
                 height: tabs.tabHeight
@@ -84,9 +88,18 @@ Rectangle {
                 border.color: Theme.chipBorder
                 Behavior on width { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
 
+                Glyph {
+                    visible: tabs.multiSelect
+                    x: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                    glyph: tab.isChecked ? "\uE73E" : "\uE739" // CheckMark / Checkbox
+                    size: 12
+                    color: tab.off ? Theme.faint : tab.isChecked ? Theme.accent : Theme.subtext
+                }
+
                 Text {
                     id: label
-                    x: 12
+                    x: tabs.multiSelect ? 26 : 12
                     y: tabs.onPixel((tab.height - height) / 2)
                     text: tab.modelData
                     // The smaller tab (or the plugin's chip) current: this one is the way back to the whole.
@@ -102,7 +115,7 @@ Rectangle {
                     enabled: !tab.off
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: tabs.activated(tab.index)
+                    onClicked: tabs.multiSelect ? tabs.toggled(tab.index, !tab.isChecked) : tabs.activated(tab.index)
                 }
 
                 // 文件 › 文件夹: a chevron, then the smaller tab.

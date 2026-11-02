@@ -16,7 +16,7 @@ Item {
     property bool busy: false
     property bool word: true // false: just the track (a label of its own beside it)
     property bool mixable: false // room for "自定义" too, so that the switch stays put whatever its state
-    property int wordAlign: Text.AlignLeft
+    property int wordAlign: Text.AlignRight
     property bool animated: true // false: the colours and the knob jump (a row taken for another switch)
     readonly property bool hovered: area.containsMouse
     signal toggled(bool on)

@@ -1412,7 +1412,7 @@ int runSettings(const QStringList& args)
         {QCoreApplication::translate("PasteFileCard", "粘贴为文件"), pluginsPage, 0}, // a built-in card
         // Shown as 内置功能 cards too, the rows of their own page first (open_settings searches them by title).
         {QCoreApplication::translate("SettingsWindow", "双击空白处弹出文件夹菜单"), 0, 2},
-        {QCoreApplication::translate("SettingsWindow", "菜单里列出收藏夹"), 0, 2},
+        {QCoreApplication::translate("SettingsWindow", "菜单里列出的内容"), 0, 2},
         {QCoreApplication::translate("SettingsWindow", "对话框旁的搜索框"), 0, 2},
         {QCoreApplication::translate("SettingsWindow", "在 Directory Opus 里直接打字搜索"), 0, 2},
         {u"AI"_s, aiPage, 0},

@@ -68,7 +68,7 @@ Rectangle {
     Accessible.onPressAction: recording ? stop() : forceActiveFocus()
     color: recording ? Theme.inputFocused : area.containsMouse ? Theme.controlHover : Theme.control
     border.width: 1
-    border.color: Theme.controlBorder
+    border.color: recording ? Theme.accent : area.containsMouse ? Theme.subtext : Theme.controlBorder
 
     onRecordingChanged: if (!recording) { partial = ""; partialIsHint = false }
     // Keeping the focus on another page, or in a window closed or left, it
@@ -139,13 +139,79 @@ Rectangle {
         anchors.centerIn: parent
         width: Math.min(implicitWidth, parent.width - 28)
         elide: Text.ElideRight
-        text: recorder.recording
-              ? (recorder.partial.length > 0 ? recorder.partial : qsTr("请按下组合键…"))
-              : (recorder.hotkey.length > 0 ? recorder.hotkey.split("+").join(" + ") : qsTr("未设置"))
-        color: recorder.recording && recorder.partialIsHint ? Theme.danger
-             : recorder.recording || recorder.hotkey.length > 0 ? Theme.text : Theme.faint
+        visible: recorder.recording
+        text: recorder.partial.length > 0 ? recorder.partial : qsTr("请按下组合键…")
+        color: recorder.partialIsHint ? Theme.danger : Theme.text
         font.pixelSize: Theme.fontBody
-        font.weight: !recorder.recording && recorder.hotkey.length > 0 ? Theme.fontStrong : Font.Normal
+        font.weight: Font.Normal
+    }
+
+    Row {
+        visible: !recorder.recording && recorder.hotkey.length === 0
+        x: Theme.snap((parent.width - width) / 2, Screen.devicePixelRatio)
+        y: Theme.snap((parent.height - height) / 2, Screen.devicePixelRatio)
+        spacing: 6
+
+        Glyph {
+            anchors.verticalCenter: parent.verticalCenter
+            glyph: "\uE765"
+            size: 14
+            color: area.containsMouse ? Theme.accent : Theme.subtext
+        }
+
+        Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: qsTr("点击设置快捷键")
+            color: area.containsMouse ? Theme.accent : Theme.subtext
+            font.pixelSize: Theme.fontCaption
+        }
+    }
+
+    Row {
+        visible: !recorder.recording && recorder.hotkey.length > 0
+        x: Theme.snap((parent.width - width) / 2, Screen.devicePixelRatio)
+        y: Theme.snap((parent.height - height) / 2, Screen.devicePixelRatio)
+        spacing: 4
+
+        Repeater {
+            model: recorder.hotkey.length > 0 ? recorder.hotkey.split("+") : []
+
+            delegate: Row {
+                required property int index
+                required property string modelData
+
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 4
+
+                Text {
+                    visible: index > 0
+                    width: Theme.snapUp(implicitWidth, Screen.devicePixelRatio)
+                    anchors.verticalCenter: parent.verticalCenter
+                    horizontalAlignment: Text.AlignHCenter
+                    text: "+"
+                    color: Theme.subtext
+                    font.pixelSize: Theme.fontCaption
+                }
+
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.max(24, Theme.snapUp(keyPartText.implicitWidth + 12, Screen.devicePixelRatio))
+                    height: 24
+                    radius: Theme.smallControlRadius
+                    color: Theme.keycap
+
+                    Text {
+                        id: keyPartText
+                        x: Theme.snap((parent.width - width) / 2, Screen.devicePixelRatio)
+                        y: Theme.snap((parent.height - height) / 2, Screen.devicePixelRatio)
+                        text: modelData
+                        color: Theme.text
+                        font.pixelSize: Theme.fontCaption
+                        font.weight: Theme.fontStrong
+                    }
+                }
+            }
+        }
     }
 
     MouseArea {

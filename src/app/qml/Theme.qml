@@ -51,7 +51,7 @@ QtObject {
     readonly property color divider: backdrop ? (dark ? Qt.rgba(1, 1, 1, 0.084) : Qt.rgba(0, 0, 0, 0.058))
                                               : dark ? "#2E2E2E" : "#EAEAEA"
     readonly property color text: dark ? "#F3F3F3" : "#1B1B1B"
-    readonly property color subtext: dark ? "#A7A7A7" : "#666666"
+    readonly property color subtext: dark ? "#B8B8B8" : "#666666"
     // Hints and placeholders: Windows 11's tertiary text, legible on a card (≥ 3:1).
     readonly property color faint: "#8A8A8A"
     readonly property color hover: backdrop ? (dark ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(0, 0, 0, 0.035))

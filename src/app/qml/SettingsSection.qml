@@ -12,6 +12,7 @@ Column {
     id: section
 
     property string title
+    property string glyph: ""
     property string note
     property int page: -1 // the index into the window's pages
     property int tab: 0 // the index into its page's tabs, on a page that has them
@@ -98,12 +99,31 @@ Column {
         }
     }
 
-    Text {
+    Item {
         visible: section.title.length > 0
-        text: section.title
-        color: Theme.text
-        font.pixelSize: Theme.fontTitle
-        font.weight: Theme.fontStrong
+        width: parent.width
+        height: 26
+
+        Row {
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 8
+
+            Glyph {
+                visible: section.glyph.length > 0
+                anchors.verticalCenter: parent.verticalCenter
+                glyph: section.glyph
+                size: 15
+                color: Theme.accent
+            }
+
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: section.title
+                color: Theme.text
+                font.pixelSize: Theme.fontBody
+                font.weight: Theme.fontStrong
+            }
+        }
     }
 
     Text {

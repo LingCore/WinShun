@@ -22,7 +22,6 @@ Window {
         { title: qsTr("搜索范围"), glyph: "" }, // Folder
         { title: qsTr("结果列表"), glyph: "\uE8FD" }, // BulletedList
         { title: qsTr("文件内容搜索"), glyph: "" }, // Document
-        { title: qsTr("网页搜索"), glyph: "\uE774" }, // Globe
         { title: qsTr("收藏夹"), glyph: "\uE734" }, // FavoriteStar
         { title: qsTr("剪贴板"), glyph: "\uE77F" }, // Paste
         { title: qsTr("高级"), glyph: "" }, // Settings
@@ -38,12 +37,11 @@ Window {
         qsTr("搜索位置;磁盘;scope"),
         qsTr("搜索结果;结果;列表;results"),
         qsTr("全文搜索;全文;文字;content"),
-        qsTr("搜索引擎;网址;书签;百度;谷歌;必应;web"),
         qsTr("快捷访问;常去;quick access"),
         qsTr("剪切板;粘贴板;复制;粘贴;clipboard"),
         qsTr("其他;更多;advanced"),
         qsTr("MCP;人工智能;大模型;Claude;Cursor;ai"),
-        qsTr("扩展;脚本;PowerShell;Python;内置功能;模块;plugin;extension;module"),
+        qsTr("扩展;脚本;PowerShell;Python;内置功能;模块;网页搜索;搜索引擎;网址;web;plugin;extension;module"),
         ""
     ]
     // The tabs of the pages too long for one screen, each a few sections
@@ -55,21 +53,38 @@ Window {
         [qsTr("排序"), qsTr("显示与预览"), qsTr("操作习惯"), qsTr("文件类型")],
         window.editor.contentSearch ? [qsTr("常规"), qsTr("大小上限")] : [], // 大小上限: nothing while off
         [],
-        [],
         [qsTr("记录"), qsTr("快捷键", "settings tab"), qsTr("保留")],
         [],
         window.editor.mcp ? [qsTr("权限"), qsTr("连接客户端"), qsTr("隐私与记录")] : [], // the others: nothing while off
         window.editor.plugins.developerMode ? [qsTr("已安装"), qsTr("插件库"), qsTr("开发者")] : [qsTr("已安装"), qsTr("插件库")], // 开发者: in developer mode only
         []
     ]
-    readonly property int gleaningPage: 11
-    readonly property int webPage: 5
-    readonly property int favoritesPage: 6 // 收藏夹 (FavoritesSection)
-    readonly property int clipboardPage: 7
-    readonly property int advancedPage: 8 // where the updates are
-    readonly property int aiPage: 9 // AI 助手: the MCP server and the command line (AiAccessSection, AiCommandLineSection, AiClientsSection, AiPrivacySection)
-    readonly property int pluginsPage: 10 // 插件: 已安装 (PluginsSection), 插件库 (PluginGallerySection), 开发者 (PluginDevSection)
+    readonly property int gleaningPage: 10
+    readonly property int webPage: pluginsPage // compatibility for preview clients
+    readonly property int favoritesPage: 5 // 收藏夹 (FavoritesSection)
+    readonly property int clipboardPage: 6
+    readonly property int advancedPage: 7 // where the updates are
+    readonly property int aiPage: 8 // AI 助手: the MCP server and the command line (AiAccessSection, AiCommandLineSection, AiClientsSection, AiPrivacySection)
+    readonly property int pluginsPage: 9 // 插件: 已安装 (PluginsSection), 插件库 (PluginGallerySection), 开发者 (PluginDevSection)
     readonly property string tapKey: editor.doubleTapKey === "alt" ? "Alt" : editor.doubleTapKey === "shift" ? "Shift" : "Ctrl" // the key tapped twice to open Win顺
+    property int webEditing: -2
+    property Item webReturnFocus: null
+    function editWebShortcut(index, button) {
+        webReturnFocus = button
+        webEditing = index
+    }
+    function closeWebForm() {
+        webEditing = -2
+        const card = pluginsSection.cardOf("winshun.web")
+        const button = webReturnFocus || card?.webOptions?.addButton
+        if (button && button.visible)
+            button.forceActiveFocus()
+        webReturnFocus = null
+    }
+    Connections {
+        target: window.editor.plugins
+        function onWebSettingsRequested() { window.showWebPage() }
+    }
     property int currentPage: 0
     property int currentTab: 0
     property var lastTabs: [] // by page: the tab it was left on, to come back to
@@ -252,6 +267,10 @@ Window {
         flick.stopScrolling()
         const top = row.mapToItem(flick.contentItem, 0, 0).y
         const bottom = top + row.height
+        if (row.height > flick.height - 72) {
+            flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, top - 12))
+            return
+        }
         if (top - 48 < flick.contentY)
             flick.contentY = Math.max(0, top - 48) // with its page's name above it
         else if (bottom + 24 > flick.contentY + flick.height)
@@ -339,7 +358,7 @@ Window {
 
     function showUpdateDialog() { updateDialog.show() } // App::showUpdate
     function showClipboardPage() { showPage(clipboardPage) } // App::showClipboardSettings
-    function showWebPage() { showPage(webPage) } // App::showWebSettings
+    function showWebPage() { showPluginPage("winshun.web") } // App::showWebSettings
     function showFileTypesPage() { goTo(fileTypesRow) } // App::showFileTypeSettings: the launcher strip's +
     // Win顺 restarted from here (App::restart, --settings-at): back where it
     // was, "page,tab"; after 索引方式 changed the rights it runs with, that row.
@@ -409,9 +428,13 @@ Window {
         enabled: window.revealAfterFrame.length > 0
         function onFrameSwapped() {
             const card = pluginsSection.cardOf(window.revealAfterFrame)
-            window.revealAfterFrame = ""
-            if (card)
+            if (card) {
                 window.revealRow(card)
+                if (card.detailsSettled)
+                    window.revealAfterFrame = ""
+            } else {
+                window.revealAfterFrame = ""
+            }
         }
     }
 
@@ -806,12 +829,68 @@ Window {
         editor: window.editor
     }
 
+    Item {
+        id: pageHeader
+        visible: !window.warm
+        anchors.left: nav.right
+        anchors.right: parent.right
+        anchors.top: titleBar.bottom
+        height: Theme.snap(pageHeaderColumn.implicitHeight + 16, Screen.devicePixelRatio)
+
+        Column {
+            id: pageHeaderColumn
+            x: 8
+            y: 8
+            width: parent.width - 36
+            spacing: 6
+
+            Row {
+                spacing: 12
+
+                Text {
+                    id: pageTitle
+                    text: window.searching ? qsTr("搜索结果") : window.pages[window.currentPage].title
+                    color: Theme.text
+                    font.pixelSize: Theme.fontDisplay
+                    font.weight: Theme.fontStrong
+                }
+                Text {
+                    visible: window.searching && settingsSearch.total > 0
+                    anchors.baseline: pageTitle.baseline
+                    text: qsTr("%n 项", "", settingsSearch.total)
+                    color: Theme.subtext
+                    font.pixelSize: Theme.fontBody
+                }
+            }
+
+            PageTabs { // while searching, the rows that fit are shown from all of them
+                visible: !window.searching && labels.length > 0
+                labels: window.pageTabs[window.currentPage] ?? []
+                current: window.currentTab
+                onActivated: (index) => {
+                    window.clearFocus()
+                    window.showTab(index)
+                }
+            }
+        }
+
+        Rectangle {
+            x: 8
+            width: parent.width - 36
+            anchors.bottom: parent.bottom
+            height: Theme.edge(Screen.devicePixelRatio)
+            color: Theme.divider
+            opacity: flick.contentY > 2 ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 120 } }
+        }
+    }
+
     Flickable {
         id: flick
         visible: !window.warm
         anchors.left: nav.right
         anchors.right: parent.right
-        anchors.top: titleBar.bottom
+        anchors.top: pageHeader.bottom
         anchors.bottom: parent.bottom
         contentWidth: width
         contentHeight: page.implicitHeight + 48
@@ -845,7 +924,7 @@ Window {
             function openPage(index, tab) { window.showPage(index, tab) }
             function holdInView(item, change) { window.holdInView(item, change) }
             x: 8
-            y: 8
+            y: 12
             width: flick.width - 36
             spacing: 20
             // Drawn on whole device pixels wherever it has scrolled to (see
@@ -859,40 +938,6 @@ Window {
                 viewY: flick.y
                 itemY: page.y
                 pixelBias: 0.02
-            }
-
-            Column {
-                width: parent.width
-                spacing: 6
-
-                Row {
-                    spacing: 12
-
-                    Text {
-                        id: pageTitle
-                        text: window.searching ? qsTr("搜索结果") : window.pages[window.currentPage].title
-                        color: Theme.text
-                        font.pixelSize: Theme.fontDisplay
-                        font.weight: Theme.fontStrong
-                    }
-                    Text {
-                        visible: window.searching && settingsSearch.total > 0
-                        anchors.baseline: pageTitle.baseline
-                        text: qsTr("%n 项", "", settingsSearch.total)
-                        color: Theme.subtext
-                        font.pixelSize: Theme.fontBody
-                    }
-                }
-
-                PageTabs { // while searching, the rows that fit are shown from all of them
-                    visible: !window.searching && labels.length > 0
-                    labels: window.pageTabs[window.currentPage] ?? []
-                    current: window.currentTab
-                    onActivated: (index) => {
-                        window.clearFocus()
-                        window.showTab(index)
-                    }
-                }
             }
 
             Column { // nothing fits the words typed
@@ -1019,16 +1064,19 @@ Window {
 
             SettingsSection {
                 page: 0
+                tab: 0
                 width: parent.width
+                title: qsTr("双击修饰键呼出")
+                glyph: "\uE765"
 
                 SettingRow {
                     title: qsTr("双击 Ctrl、Alt 或 Shift 打开")
                     keywords: qsTr("双击;连按;呼出;唤出;double ctrl;double alt;double shift").split(";")
                     unlocks: [doubleCtrlKeyRow, gamesRow, fullScreenRow, doubleCtrlAppsRow]
-                    description: window.tapKey === "Shift"
-                                 ? qsTr("连按两下 %1，打开或关闭搜索框。输入法用 %1 切换中英文时，双击会切换两次，最后回到原来的状态。管理员或部分输入法窗口中需要 Win顺 服务支持").arg(window.tapKey)
-                                 : qsTr("连按两下 %1，打开或关闭搜索框。管理员或部分输入法窗口中需要 Win顺 服务支持")
-                                 .arg(window.tapKey)
+                    description: qsTr("连按两下 %1，打开或关闭搜索框").arg(window.tapKey)
+                    tip: window.tapKey === "Shift"
+                         ? qsTr("输入法用 Shift 切换中英文时，双击会切换两次并回到原状态。管理员或部分输入法窗口中需要 Win顺 服务支持")
+                         : qsTr("管理员或部分输入法窗口中需要 Win顺 服务支持")
 
                     ScopeTabs {
                         labels: ["Ctrl", "Alt", "Shift", qsTr("关闭")]
@@ -1043,6 +1091,7 @@ Window {
 
                 SettingRow {
                     id: doubleCtrlKeyRow
+                    sub: true
                     shown: window.editor.doubleCtrl
                     title: qsTr("用哪个 %1").arg(window.tapKey)
                     keywords: qsTr("左 Ctrl;右 Ctrl;左 Alt;右 Alt;左 Shift;右 Shift;左边;右边;冲突;PowerToys;查找鼠标;left ctrl;right ctrl;left alt;right alt;left shift;right shift").split(";")
@@ -1083,6 +1132,7 @@ Window {
 
                 SettingRow {
                     id: gamesRow
+                    sub: true
                     shown: window.editor.doubleCtrl
                     title: qsTr("玩游戏时不响应双击 %1").arg(window.tapKey)
                     keywords: qsTr("游戏;蹲下;误触;game").split(";")
@@ -1097,6 +1147,7 @@ Window {
 
                 SettingRow {
                     id: fullScreenRow
+                    sub: true
                     shown: window.editor.doubleCtrl
                     title: qsTr("任何程序全屏时都不响应双击 %1").arg(window.tapKey)
                     keywords: qsTr("全屏;视频;幻灯片;误触;fullscreen").split(";")
@@ -1110,6 +1161,7 @@ Window {
 
                 SettingRow {
                     id: doubleCtrlAppsRow
+                    sub: true
                     shown: window.editor.doubleCtrl
                     title: qsTr("在这些程序里不响应双击 %1").arg(window.tapKey)
                     keywords: qsTr("排除;程序;游戏;exe").split(";")
@@ -1151,6 +1203,14 @@ Window {
                         }
                     ]
                 }
+            }
+
+            SettingsSection {
+                page: 0
+                tab: 0
+                width: parent.width
+                title: qsTr("全局组合键与连按行为")
+                glyph: "\uE92E"
 
                 SettingRow {
                     title: qsTr("快捷键")
@@ -1199,7 +1259,8 @@ Window {
                 SettingRow {
                     title: qsTr("再次按下快捷键时")
                     keywords: qsTr("再次;两次;再按;搜索面板;展开;Ctrl+E;面板;关闭;panel;again;expand").split(";")
-                    description: qsTr("搜索框已打开时再按一次快捷键（自己设的组合键，或双击 Ctrl、Alt、Shift）：关闭它，或展开成搜索面板，保留已输入的字；面板里再按一次才关闭")
+                    description: qsTr("搜索框已打开时再按一次呼出键的动作")
+                    tip: qsTr("包括自己设的组合键，或双击 Ctrl、Alt、Shift：可直接关闭，或展开为搜索面板并保留已输入的字；面板里再按一次才关闭")
 
                     ScopeTabs {
                         labels: [qsTr("关闭 Win顺"), qsTr("展开为搜索面板")]
@@ -1213,11 +1274,13 @@ Window {
                 page: 0
                 tab: 1
                 width: parent.width
-                title: qsTr("在任务栏使用 Win顺")
-                note: qsTr("任务栏搜索框可单独使用，也可与 Windows 搜索并存。下面的选项按需设置。")
+                title: qsTr("任务栏入口")
+                glyph: "\uE75B"
+                note: qsTr("任务栏搜索框可单独使用，也可与 Windows 搜索并存。")
 
                 SettingRow {
                     id: taskbarButtonRow
+                    unlocks: [taskbarStyleRow]
 
                     property bool missing: false // no WinShunSearch.exe next to Win顺
                     // The tab last clicked here, while Windows does not show it
@@ -1296,6 +1359,8 @@ Window {
                 }
 
                 SettingRow {
+                    id: taskbarStyleRow
+                    sub: true
                     // Under 搜索框 chosen above: how wide it may be, as
                     // Windows' own search has it (Settings › Taskbar ›
                     // Search). Narrower ones still where that does not fit.
@@ -1328,6 +1393,14 @@ Window {
                         onClicked: window.editor.openUrl("ms-settings:taskbar")
                     }
                 }
+            }
+
+            SettingsSection {
+                page: 0
+                tab: 1
+                width: parent.width
+                title: qsTr("系统搜索接管")
+                glyph: "\uE721"
 
                 SettingRow {
                     title: qsTr("用 Win+S 打开 Win顺")
@@ -1402,12 +1475,15 @@ Window {
                 page: 0
                 tab: 2
                 width: parent.width
+                title: qsTr("文件管理器整合")
+                glyph: "\uEC50"
 
                 SettingRow {
                     shown: window.editor.fileManagers.length > 1
                     title: qsTr("用哪个文件管理器打开文件夹")
                     keywords: qsTr("文件管理器;资源管理器;打开文件夹;打开所在位置;Total Commander;Directory Opus;TC;Opus;XYplorer;Pulse;OneCommander;自定义;其他;Tessoa;custom").split(";")
                     description: qsTr("打开文件夹、打开文件所在位置时用它；没装的不列")
+                    unlocks: [customManagerRow]
 
                     body: Flow { // keep full names inside the card, even with every manager installed
                         width: parent.width
@@ -1428,10 +1504,12 @@ Window {
 
                 SettingRow {
                     id: customManagerRow
+                    sub: true
                     shown: window.editor.fileManager === "custom"
                     title: qsTr("其他文件管理器的命令")
                     keywords: qsTr("文件管理器;自定义;命令;命令行;其他;Tessoa;custom;command").split(";")
-                    description: qsTr("命令里的 {path} 会换成文件夹或文件的完整路径，Win顺 自动加引号。这样的文件管理器 Win顺 读不到它正在显示的文件夹：对话框里的 Ctrl+G 和搜索框的建议只认资源管理器、Total Commander、Directory Opus、XYplorer、Pulse 和 OneCommander")
+                    description: qsTr("命令里的 {path} 会替换为完整路径（自动加引号）")
+                    tip: qsTr("自定义文件管理器不支持读取当前正在显示的文件夹：对话框 Ctrl+G 与搜索框建议仅支持资源管理器、Total Commander、Directory Opus、XYplorer、Pulse 和 OneCommander")
                     values: [window.editor.fileManagerOpenCommand, window.editor.fileManagerRevealCommand]
 
                     body: [
@@ -1519,7 +1597,8 @@ Window {
                     id: explorerTypingRow
                     title: qsTr("在资源管理器里直接打字搜索")
                     keywords: qsTr("打字;输入;直接搜索;当前文件夹;资源管理器;Listary;type to search;explorer").split(";")
-                    description: qsTr("文件列表有焦点时直接打字就用 Win顺 搜，和 Listary 一样；代替了资源管理器自己的“按首字母跳到文件”")
+                    description: qsTr("文件列表有焦点时直接打字即可用 Win顺 搜索")
+                    tip: qsTr("和 Listary 一样，代替资源管理器自带的“按首字母跳到文件”")
                     unlocks: [folderTypingRow]
 
                     ToggleSwitch {
@@ -1532,7 +1611,8 @@ Window {
                     id: opusTypingRow
                     title: qsTr("在 Directory Opus 里直接打字搜索")
                     keywords: qsTr("Opus;DOpus;直接打字;输入;当前文件夹;双栏;type to search").split(";")
-                    description: qsTr("文件列表有焦点时，从字母或数字开始输入，就用 Win顺 搜索当前标签的文件夹。符号键保留给 Opus，改名和地址栏不受影响。")
+                    description: qsTr("文件列表有焦点时，输入字母或数字即可搜索当前文件夹")
+                    tip: qsTr("符号键保留给 Opus，重命名和地址栏输入不受影响")
                     unlocks: [folderTypingRow]
 
                     ToggleSwitch {
@@ -1545,10 +1625,12 @@ Window {
 
                 SettingRow { // GitHub #110
                     id: folderTypingRow
+                    sub: true
                     shown: window.editor.explorerTyping || window.editor.opusTyping
                     title: qsTr("在文件夹里打字时")
-                    keywords: qsTr("打字;当前文件夹;优先;只搜;其他位置;子文件夹;Listary;Ctrl+D;current folder;type to search").split(";")
-                    description: qsTr("当前文件夹优先：先列这个文件夹和子文件夹里的，再列其他位置的，和 Listary 一样。搜索时按 Ctrl+D 临时切换")
+                    keywords: qsTr("打字;当前文件夹;优先;只搜;其他位置;子文件夹;Listary;Ctrl+Shift+D;current folder;type to search").split(";")
+                    description: qsTr("搜索时可按 Ctrl+Shift+D 临时切换范围")
+                    tip: qsTr("当前文件夹优先：先列出当前文件夹及子文件夹的结果，再列出其他位置的结果，与 Listary 一致")
 
                     ScopeTabs {
                         labels: [qsTr("当前文件夹优先"), qsTr("只搜当前文件夹")]
@@ -1556,12 +1638,22 @@ Window {
                         onActivated: (index) => window.editor.folderTyping = index === 1 ? "only" : "first"
                     }
                 }
+            }
+
+            SettingsSection {
+                page: 0
+                tab: 2
+                width: parent.width
+                title: qsTr("文件夹菜单与双击")
+                glyph: "\uE8B7"
 
                 SettingRow {
                     id: folderMenuRow
                     title: qsTr("双击空白处弹出文件夹菜单")
                     keywords: qsTr("双击;空白;空白处;收藏;收藏夹;最近;文件夹菜单;资源管理器;桌面;Listary;double-click;folder menu").split(";")
-                    description: qsTr("在资源管理器或桌面的空白处双击，列出收藏的、最近的和别的窗口里的文件夹，选一个就在这个窗口里打开；Listary 在运行时由它来弹")
+                    unlocks: [folderMenuWhereRow, folderMenuGroupsRow, opusMenuRow]
+                    description: qsTr("在空白处双击弹出常用文件夹菜单，选中后直接在当前窗口打开")
+                    tip: qsTr("Listary 正在运行时会自动交给 Listary 处理，避免弹出两个菜单")
 
                     ToggleSwitch {
                         checked: window.editor.folderMenu
@@ -1570,89 +1662,61 @@ Window {
                 }
 
                 SettingRow {
+                    id: folderMenuWhereRow
+                    sub: true
                     shown: window.editor.folderMenu
-                    title: qsTr("在资源管理器的空白处双击")
-                    keywords: qsTr("双击;空白;文件夹菜单;资源管理器").split(";")
+                    title: qsTr("触发位置与方式")
+                    description: qsTr("双击空白处或单击鼠标中键弹出")
+                    keywords: qsTr("双击;空白;文件夹菜单;资源管理器;桌面;中键;鼠标;滚轮;Listary").split(";")
 
-                    ToggleSwitch {
-                        checked: window.editor.folderMenuExplorer
-                        onToggled: (on) => window.editor.folderMenuExplorer = on
-                    }
-                }
-
-                SettingRow {
-                    shown: window.editor.folderMenu
-                    title: qsTr("在桌面的空白处双击")
-                    keywords: qsTr("双击;空白;文件夹菜单;桌面").split(";")
-
-                    ToggleSwitch {
-                        checked: window.editor.folderMenuDesktop
-                        onToggled: (on) => window.editor.folderMenuDesktop = on
-                    }
-                }
-
-                SettingRow {
-                    shown: window.editor.folderMenu
-                    title: qsTr("同时用中键打开文件夹菜单")
-                    keywords: qsTr("中键;鼠标;滚轮;文件夹菜单;Listary").split(";")
-                    description: qsTr("在上面选中的资源管理器或桌面空白处，单击鼠标中键也能打开")
-
-                    ToggleSwitch {
-                        checked: window.editor.folderMenuMiddle
-                        onToggled: (on) => window.editor.folderMenuMiddle = on
-                    }
-                }
-
-                // At least one group stays on (GitHub #51): the editor keeps
-                // the last one, and the switch lights up to say so.
-                SettingRow {
-                    shown: window.editor.folderMenu
-                    title: qsTr("菜单里列出收藏夹")
-                    description: qsTr("包含收藏的文件夹、文件、应用和自定义命令")
-                    keywords: qsTr("双击;文件夹菜单;收藏;收藏夹;自定义命令").split(";")
-
-                    ToggleSwitch {
-                        checked: window.editor.folderMenuFavorites
-                        onToggled: (on) => {
-                            window.editor.folderMenuFavorites = on
-                            if (checked !== on)
-                                pulse()
+                    ScopeTabs {
+                        multiSelect: true
+                        labels: [qsTr("资源管理器"), qsTr("桌面"), qsTr("鼠标中键")]
+                        checkedIndices: {
+                            const list = []
+                            if (window.editor.folderMenuExplorer) list.push(0)
+                            if (window.editor.folderMenuDesktop) list.push(1)
+                            if (window.editor.folderMenuMiddle) list.push(2)
+                            return list
+                        }
+                        onToggled: (index, on) => {
+                            if (index === 0) window.editor.folderMenuExplorer = on
+                            else if (index === 1) window.editor.folderMenuDesktop = on
+                            else if (index === 2) window.editor.folderMenuMiddle = on
                         }
                     }
                 }
 
                 SettingRow {
+                    id: folderMenuGroupsRow
+                    sub: true
                     shown: window.editor.folderMenu
-                    title: qsTr("菜单里列出最近的文件夹")
-                    keywords: qsTr("双击;文件夹菜单;最近;最近打开").split(";")
+                    title: qsTr("菜单里列出的内容")
+                    description: qsTr("至少保留一项")
+                    tip: qsTr("收藏夹中包含收藏的文件夹、文件、应用和自定义命令")
+                    keywords: qsTr("双击;文件夹菜单;收藏;收藏夹;自定义命令;最近;最近打开;其他窗口;别的窗口;已打开").split(";")
 
-                    ToggleSwitch {
-                        checked: window.editor.folderMenuRecent
-                        onToggled: (on) => {
-                            window.editor.folderMenuRecent = on
-                            if (checked !== on)
-                                pulse()
+                    ScopeTabs {
+                        multiSelect: true
+                        labels: [qsTr("收藏夹"), qsTr("最近文件夹"), qsTr("其他窗口")]
+                        checkedIndices: {
+                            const list = []
+                            if (window.editor.folderMenuFavorites) list.push(0)
+                            if (window.editor.folderMenuRecent) list.push(1)
+                            if (window.editor.folderMenuWindows) list.push(2)
+                            return list
                         }
-                    }
-                }
-
-                SettingRow {
-                    shown: window.editor.folderMenu
-                    title: qsTr("菜单里列出别的窗口里的文件夹")
-                    keywords: qsTr("双击;文件夹菜单;其他窗口;别的窗口;已打开").split(";")
-
-                    ToggleSwitch {
-                        checked: window.editor.folderMenuWindows
-                        onToggled: (on) => {
-                            window.editor.folderMenuWindows = on
-                            if (checked !== on)
-                                pulse()
+                        onToggled: (index, on) => {
+                            if (index === 0) window.editor.folderMenuFavorites = on
+                            else if (index === 1) window.editor.folderMenuRecent = on
+                            else if (index === 2) window.editor.folderMenuWindows = on
                         }
                     }
                 }
 
                 SettingRow {
                     id: opusMenuRow
+                    sub: true
                     // on | stale | off | taken | manual | busy (SettingsEditor::opusFolderMenu)
                     readonly property string setup: window.editor.opusFolderMenu
                     property bool copied: false
@@ -1778,7 +1842,8 @@ Window {
                     title: qsTr("用快捷键弹出文件夹菜单")
                     keywords: qsTr("快捷键;热键;组合键;文件夹菜单;收藏;最近;对话框;Directory Opus;Total Commander;XYplorer;Pulse;OneCommander;hotkey;folder menu").split(";")
                     values: [window.editor.folderMenuHotkey]
-                    description: qsTr("双击被别的程序占用时用：在资源管理器、桌面、Directory Opus、Total Commander、XYplorer、OneCommander 或“打开”“另存为”对话框里按它，选中的文件夹在那个窗口里打开，在 Pulse 里按就交给 Pulse，按它自己的设置开；在别的窗口里按，用文件管理器打开。再按一次关闭")
+                    description: qsTr("双击被占用时使用，在文件管理器或对话框中按下即可弹出菜单")
+                    tip: qsTr("支持资源管理器、桌面、Directory Opus、Total Commander、XYplorer、OneCommander 及“打开/另存为”对话框（在当前窗口跳转）；在 Pulse 中交给 Pulse 处理；在其他窗口中用默认文件管理器打开。再按一次关闭")
 
                     FlatButton {
                         visible: window.editor.folderMenuHotkey.length > 0 && !folderMenuHotkeyRecorder.recording
@@ -1801,6 +1866,14 @@ Window {
                         wrapMode: Text.Wrap
                     }
                 }
+            }
+
+            SettingsSection {
+                page: 0
+                tab: 2
+                width: parent.width
+                title: qsTr("对话框联动")
+                glyph: "\uE8E5"
 
                 SettingRow {
                     title: qsTr("Ctrl+G 转到文件管理器的文件夹")
@@ -1828,6 +1901,7 @@ Window {
 
                 SettingRow {
                     id: dialogBarPlaceRow
+                    sub: true
                     shown: window.editor.dialogBar
                     title: qsTr("搜索框的位置")
                     keywords: qsTr("位置;下方;左边;右边;对话框").split(";")
@@ -1854,6 +1928,7 @@ Window {
 
                 SettingRow {
                     id: dialogAutoJumpWhenRow
+                    sub: true
                     shown: window.editor.dialogAutoJump
                     title: qsTr("什么时候转")
                     keywords: qsTr("自动跳转;切回来;上次保存的位置;对话框").split(";")
@@ -1899,6 +1974,8 @@ Window {
                 page: 0
                 tab: 3
                 width: parent.width
+                title: qsTr("开机启动")
+                glyph: "\uE7E8"
 
                 SettingRow {
                     title: qsTr("开机时自动启动")
@@ -1910,6 +1987,14 @@ Window {
                         onToggled: (on) => window.editor.autostart = on
                     }
                 }
+            }
+
+            SettingsSection {
+                page: 0
+                tab: 3
+                width: parent.width
+                title: qsTr("使用记录")
+                glyph: "\uE81C"
 
                 SettingRow {
                     title: qsTr("记住打开过的项目")
@@ -1959,6 +2044,8 @@ Window {
             SettingsSection {
                 page: 1
                 width: parent.width
+                title: qsTr("主题与窗口质感")
+                glyph: "\uE790"
 
                 SettingRow {
                     title: qsTr("主题")
@@ -2025,6 +2112,13 @@ Window {
                         onActivated: (index) => window.editor.corners = corners[index]
                     }
                 }
+            }
+
+            SettingsSection {
+                page: 1
+                width: parent.width
+                title: qsTr("尺寸与布局")
+                glyph: "\uE740"
 
                 SettingRow {
                     title: qsTr("界面大小")
@@ -2044,7 +2138,8 @@ Window {
                 SettingRow {
                     title: qsTr("搜索框宽度")
                     keywords: qsTr("宽度;加宽;拉宽;调宽;变宽;窄;文件名太长;显示不全;width;wide").split(";")
-                    description: qsTr("拖动搜索框的左边或右边调宽，名字长也看得全；双击边缘恢复默认。名字仍放不下时，鼠标停在那一行上会显示完整的名字和位置")
+                    description: qsTr("可拖动搜索框左右边缘调宽，双击边缘恢复默认")
+                    tip: qsTr("文件名仍显示不全时，鼠标悬停在该行上会显示完整名称和路径")
 
                     FlatButton {
                         text: qsTr("恢复默认宽度")
@@ -2052,6 +2147,13 @@ Window {
                         onClicked: window.editor.resetLauncherWidth()
                     }
                 }
+            }
+
+            SettingsSection {
+                page: 1
+                width: parent.width
+                title: qsTr("图标与语言")
+                glyph: "\uE774"
 
                 SettingRow {
                     title: qsTr("任务栏图标")
@@ -2062,17 +2164,6 @@ Window {
                         labels: [qsTr("彩色"), qsTr("单色")]
                         current: window.editor.taskbarIcon === "mono" ? 1 : 0
                         onActivated: (index) => window.editor.taskbarIcon = index === 1 ? "mono" : "color"
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("搜索框显示 Logo")
-                    keywords: qsTr("Logo;图标;标志;隐藏;简洁;搜索框上面的图标;logo").split(";")
-                    description: qsTr("搜索框、剪贴板和对话框旁搜索框的边上探出来的 Logo。关掉后更简洁")
-
-                    ToggleSwitch {
-                        checked: window.editor.searchLogo
-                        onToggled: (on) => window.editor.searchLogo = on
                     }
                 }
 
@@ -2094,7 +2185,10 @@ Window {
 
             SettingsSection {
                 page: 2
+                tab: 0
                 width: parent.width
+                title: qsTr("索引范围与包含目录")
+                glyph: "\uE8B7"
                 note: qsTr("修改后在后台重新整理，不影响搜索。")
 
                 SettingRow {
@@ -2256,6 +2350,7 @@ Window {
 
                 SettingRow {
                     id: folderVerifyRow
+                    sub: true
 
                     readonly property var hours: [1, 4, 24, 0]
 
@@ -2278,8 +2373,17 @@ Window {
                         font.pixelSize: Theme.fontCaption
                     }
                 }
+            }
+
+            SettingsSection {
+                page: 2
+                tab: 0
+                width: parent.width
+                title: qsTr("排除目录")
+                glyph: "\uE8F8"
 
                 SettingRow {
+                    id: excludedFoldersRow
                     title: qsTr("不搜索的文件夹")
                     keywords: qsTr("排除;忽略;隐藏;黑名单;exclude").split(";")
                     values: window.editor.excludedPaths
@@ -2382,6 +2486,8 @@ Window {
                 page: 2
                 tab: 1
                 width: parent.width
+                title: qsTr("按名称与扩展名跳过")
+                glyph: "\uE71C"
                 note: qsTr("修改后在后台重新整理，不影响搜索。")
 
                 SettingRow {
@@ -2522,6 +2628,8 @@ Window {
                 page: 2
                 tab: 2
                 width: parent.width
+                title: qsTr("磁盘范围")
+                glyph: "\uEDA2"
                 note: qsTr("修改后在后台重新整理，不影响搜索。")
 
                 SettingRow {
@@ -2605,6 +2713,14 @@ Window {
                         onToggled: (on) => window.editor.rescanOnStartup = on
                     }
                 }
+            }
+
+            SettingsSection {
+                page: 2
+                tab: 2
+                width: parent.width
+                title: qsTr("索引引擎与服务")
+                glyph: "\uE950"
 
                 SettingRow {
                     id: indexAccessRow
@@ -2671,6 +2787,7 @@ Window {
 
                 SettingRow {
                     id: indexServiceRow
+                    sub: true
 
                     // A portable copy has no installer to register the service:
                     // done from here, as administrator (UAC asks once).
@@ -2952,7 +3069,10 @@ Window {
 
             SettingsSection {
                 page: 3
+                tab: 0
                 width: parent.width
+                title: qsTr("排序与类型优先级")
+                glyph: "\uE8CB"
 
                 SettingRow {
                     title: qsTr("文件和文件夹的顺序")
@@ -3021,6 +3141,8 @@ Window {
                 page: 3
                 tab: 1
                 width: parent.width
+                title: qsTr("附加搜索源与匹配模式")
+                glyph: "\uE721"
 
                 SettingRow {
                     title: qsTr("搜索应用")
@@ -3049,7 +3171,8 @@ Window {
                 SettingRow {
                     title: qsTr("正则模式（Ctrl+R）")
                     keywords: qsTr("正则;正则表达式;regex;Everything;Ctrl+R;匹配").split(";")
-                    description: qsTr("在“全部”和“文件”里，每个词都按正则表达式匹配名字，如 ^IMG_\\d{4}；ext:、!排除、“ | ”照常可用。在搜索框里按 Ctrl+R 开关，开着时搜索框旁显示 .*。不开时也可在单个词前加 regex:")
+                    description: qsTr("在“全部”和“文件”里，每个词都按正则表达式匹配名字")
+                    tip: qsTr("如 ^IMG_\\d{4}；ext:、!排除、“ | ”照常可用。在搜索框里按 Ctrl+R 开关，开着时搜索框旁显示 .*。不开时也可在单个词前加 regex:")
 
                     ToggleSwitch {
                         checked: window.editor.regexMode
@@ -3057,9 +3180,18 @@ Window {
                         onToggled: (on) => window.editor.regexMode = on
                     }
                 }
+            }
+
+            SettingsSection {
+                page: 3
+                tab: 1
+                width: parent.width
+                title: qsTr("未输入时的初始列表")
+                glyph: "\uE81C"
 
                 SettingRow {
                     title: qsTr("不输入时显示")
+                    unlocks: [recentItemsRow]
                     keywords: qsTr("最近;最近打开;最近修改;最近使用;历史;recent").split(";")
                     description: qsTr("打开搜索框还没输入时列出最近打开或最近修改的项目；底栏也能切换（Ctrl+S）。收藏由下面的开关单独控制")
 
@@ -3072,6 +3204,9 @@ Window {
                 }
 
                 SettingRow {
+                    id: recentItemsRow
+                    sub: true
+                    shown: window.editor.startList === "opened"
                     title: qsTr("最近打开的数量")
                     keywords: qsTr("最近;历史;数量;条数;上限;自定义;recent").split(";")
                     description: qsTr("可填 1–200 项，按最近打开的顺序显示；仅在上面选择“最近打开”时生效")
@@ -3103,59 +3238,39 @@ Window {
                         onToggled: (on) => window.editor.favoritesOnStart = on
                     }
                 }
+            }
 
-                SettingRow {
-                    title: qsTr("点击结果")
-                    keywords: qsTr("单击;双击;点击;鼠标;误触;打开;选中;click;double").split(";")
-                    description: qsTr("单击就打开；或者单击只选中（高亮），双击或按 Enter 才打开，结果多时不怕点错")
-
-                    ScopeTabs {
-                        labels: [qsTr("单击打开"), qsTr("双击打开")]
-                        current: window.editor.doubleClickToOpen ? 1 : 0
-                        onActivated: (index) => window.editor.doubleClickToOpen = index === 1
-                    }
-                }
-
-                SettingRow {
-                    objectName: "favoriteFolderTab"
-                    title: qsTr("选中收藏文件夹时按 Tab")
-                    keywords: qsTr("Tab;Shift+Tab;收藏;文件夹;范围;键盘;favorite;keyboard").split(";")
-                    description: qsTr("在“全部”范围中，默认切换搜索范围；也可进入选中的收藏文件夹继续搜索。Shift+Tab 仍反向切换范围。")
-
-                    ScopeTabs {
-                        objectName: "favoriteFolderTabChoice"
-                        labels: [qsTr("切换范围"), qsTr("进入文件夹")]
-                        current: window.editor.tabEntersFavoriteFolder ? 1 : 0
-                        onActivated: (index) => window.editor.tabEntersFavoriteFolder = index === 1
-                    }
-                }
+            SettingsSection {
+                page: 3
+                tab: 1
+                width: parent.width
+                title: qsTr("列表信息与交互")
+                glyph: "\uE8FD"
 
                 SettingRow {
                     title: qsTr("显示修改日期")
                     keywords: qsTr("修改时间;修改日期;日期;时间;date").split(";")
                     description: qsTr("在搜索结果右侧显示修改日期；可与文件大小同时显示")
+                    unlocks: [showModifiedTimeRow]
 
                     ToggleSwitch {
                         checked: window.editor.showModified
                         onToggled: (on) => window.editor.showModified = on
                     }
-                    body: [
-                        Row {
-                            spacing: 10
-                            ToggleSwitch {
-                                checked: window.editor.showModifiedTime
-                                enabled: window.editor.showModified
-                                Accessible.name: qsTr("较早的日期也显示时间")
-                                onToggled: (on) => window.editor.showModifiedTime = on
-                            }
-                            Text {
-                                text: qsTr("较早的日期也显示时间")
-                                color: window.editor.showModified ? Theme.text : Theme.faint
-                                font.pixelSize: Theme.fontBody
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-                        }
-                    ]
+                }
+
+                SettingRow {
+                    id: showModifiedTimeRow
+                    sub: true
+                    shown: window.editor.showModified
+                    title: qsTr("较早的日期也显示具体时间")
+                    keywords: qsTr("修改时间;修改日期;具体时间;时分;time").split(";")
+
+                    ToggleSwitch {
+                        checked: window.editor.showModifiedTime
+                        Accessible.name: qsTr("较早的日期也显示时间")
+                        onToggled: (on) => window.editor.showModifiedTime = on
+                    }
                 }
 
                 SettingRow {
@@ -3183,6 +3298,40 @@ Window {
                 }
 
                 SettingRow {
+                    title: qsTr("点击结果")
+                    keywords: qsTr("单击;双击;点击;鼠标;误触;打开;选中;click;double").split(";")
+                    description: qsTr("单击就打开；或者单击只选中（高亮），双击或按 Enter 才打开，结果多时不怕点错")
+
+                    ScopeTabs {
+                        labels: [qsTr("单击打开"), qsTr("双击打开")]
+                        current: window.editor.doubleClickToOpen ? 1 : 0
+                        onActivated: (index) => window.editor.doubleClickToOpen = index === 1
+                    }
+                }
+
+                SettingRow {
+                    objectName: "favoriteFolderTab"
+                    title: qsTr("选中收藏文件夹时按 Tab")
+                    keywords: qsTr("Tab;Shift+Tab;收藏;文件夹;范围;键盘;favorite;keyboard").split(";")
+                    description: qsTr("在“全部”范围中，默认切换搜索范围；也可进入选中的收藏文件夹继续搜索。Shift+Tab 仍反向切换范围。")
+
+                    ScopeTabs {
+                        objectName: "favoriteFolderTabChoice"
+                        labels: [qsTr("切换范围"), qsTr("进入文件夹")]
+                        current: window.editor.tabEntersFavoriteFolder ? 1 : 0
+                        onActivated: (index) => window.editor.tabEntersFavoriteFolder = index === 1
+                    }
+                }
+            }
+
+            SettingsSection {
+                page: 3
+                tab: 1
+                width: parent.width
+                title: qsTr("文件快速预览")
+                glyph: "\uE890"
+
+                SettingRow {
                     title: qsTr("预览文件")
                     keywords: qsTr("预览;快速查看;看一眼;QuickLook;Seer;空格;Alt+P;preview").split(";")
                     description: window.editor.previewWith === "builtin"
@@ -3198,26 +3347,23 @@ Window {
 
                 SettingRow {
                     title: qsTr("预览快捷键")
-                    stackControl: true
                     keywords: qsTr("预览;快捷键;空格;Space;Alt+P;QuickLook;preview;shortcut").split(";")
                     values: [window.editor.previewHotkey]
                     description: qsTr("仅在搜索结果中生效，再按一次关闭。可直接录制空格；用 Shift+空格继续输入空格。Backspace 清除，Esc 取消。")
 
-                    Row {
-                        spacing: 8
-                        HotkeyRecorder {
-                            id: previewHotkeyRecorder
-                            objectName: "previewHotkeyRecorder"
-                            hotkey: window.editor.previewHotkey
-                            previewShortcut: true
-                            onRecorded: (hotkey) => window.editor.previewHotkey = hotkey
-                        }
-                        FlatButton {
-                            text: qsTr("恢复默认")
-                            enabled: window.editor.previewHotkey !== "Alt+P"
-                            onClicked: window.editor.previewHotkey = "Alt+P"
-                        }
+                    FlatButton {
+                        text: qsTr("恢复默认")
+                        enabled: window.editor.previewHotkey !== "Alt+P"
+                        onClicked: window.editor.previewHotkey = "Alt+P"
                     }
+                    HotkeyRecorder {
+                        id: previewHotkeyRecorder
+                        objectName: "previewHotkeyRecorder"
+                        hotkey: window.editor.previewHotkey
+                        previewShortcut: true
+                        onRecorded: (hotkey) => window.editor.previewHotkey = hotkey
+                    }
+
                     bodyShown: window.editor.previewHotkeyError.length > 0
                     body: Text {
                         width: parent.width
@@ -3233,6 +3379,8 @@ Window {
                 page: 3
                 tab: 2
                 width: parent.width
+                title: qsTr("搜索框与数字快捷键")
+                glyph: "\uE765"
                 note: qsTr("在搜索框按 Tab、Shift+Tab 切换“全部”“文件”“内容”；Ctrl+Tab 在“文件”里切换文件类型，在“内容”里切换文件夹。")
 
                 SettingRow {
@@ -3271,6 +3419,7 @@ Window {
 
                 SettingRow {
                     id: resultNumberHintsRow
+                    sub: true
                     shown: window.editor.numberKeys !== "off"
                     title: qsTr("序号提示")
                     description: qsTr("启动器和剪贴板共用；隐藏提示不影响数字快捷键")
@@ -3293,7 +3442,10 @@ Window {
 
             SettingsSection {
                 page: 4
+                tab: 0
                 width: parent.width
+                title: qsTr("全文搜索与内容索引")
+                glyph: "\uE8A5"
                 note: qsTr("在搜索框按 Tab 切换到“内容”，可以查找文件里的文字。")
 
                 SettingRow {
@@ -3310,6 +3462,7 @@ Window {
 
                 SettingRow {
                     id: documentsRow
+                    sub: true
                     shown: window.editor.contentSearch
                     title: qsTr("搜索文档")
                     keywords: qsTr("Word;Excel;PowerPoint;PPT;PDF;WPS;docx;xlsx").split(";")
@@ -3324,6 +3477,7 @@ Window {
 
                 SettingRow {
                     id: extensionsRow
+                    sub: true
                     shown: window.editor.contentSearch
                     title: qsTr("搜索这些类型的文本文件")
                     keywords: qsTr("扩展名;后缀;文件类型;txt;md;extension").split(";")
@@ -3373,6 +3527,7 @@ Window {
 
                 SettingRow {
                     id: lowPriorityRow
+                    sub: true
                     shown: window.editor.contentSearch
                     title: qsTr("也搜索系统和程序文件夹")
                     keywords: qsTr("系统文件夹;Program Files;AppData;Windows;node_modules").split(";")
@@ -3386,6 +3541,7 @@ Window {
 
                 SettingRow {
                     id: contentIndexRow
+                    sub: true
                     shown: window.editor.contentSearch
                     title: qsTr("建立内容索引")
                     keywords: qsTr("索引;加速;index").split(";")
@@ -3403,6 +3559,8 @@ Window {
                 page: 4
                 tab: 1
                 width: parent.width
+                title: qsTr("单文件读取上限")
+                glyph: "\uE74C"
                 note: qsTr("比上限大的文件不查找内容。")
 
                 // A size limit for each kind of file (ContentSizeLimits::Kind:
@@ -3485,246 +3643,6 @@ Window {
                 }
             }
 
-            SettingsSection {
-                id: webSection
-
-                // One modal form for both adding and editing; -1: new, -2: closed.
-                property int editing: -2
-                property Item returnFocus: null
-                property string message // what came of an import or export
-
-                function edit(index, button) {
-                    returnFocus = button
-                    editing = index
-                }
-
-                function closeForm() {
-                    editing = -2
-                    const button = returnFocus || webAddButton // saving may rebuild the edited row
-                    button.forceActiveFocus()
-                    returnFocus = null
-                }
-
-                page: window.webPage
-                width: parent.width
-                note: qsTr("输入关键词按 Enter 打开网页；网址里有 %s 的，在关键词后加空格和文字就能搜索。")
-
-                onVisibleChanged: if (!visible) { editing = -2; returnFocus = null; message = "" }
-
-                SettingRow {
-                    title: qsTr("关键词")
-                    keywords: qsTr("网址;网页;搜索引擎;书签;添加;url").split(";")
-                    values: {
-                        const words = []
-                        for (const shortcut of window.editor.webShortcuts)
-                            words.push(shortcut.keyword, shortcut.name, shortcut.shownUrl)
-                        return words
-                    }
-                    description: qsTr("输入名称或拼音也能找到")
-
-                    FlatButton {
-                        flat: true
-                        text: qsTr("导入")
-                        glyph: "\uE8B5" // Import
-                        onClicked: {
-                            const message = window.editor.importWebShortcuts()
-                            if (message.length > 0)
-                                webSection.message = message
-                        }
-                    }
-                    FlatButton {
-                        flat: true
-                        text: qsTr("导出")
-                        glyph: "\uEDE1" // Export
-                        onClicked: {
-                            const message = window.editor.exportWebShortcuts()
-                            if (message.length > 0)
-                                webSection.message = message
-                        }
-                    }
-                    FlatButton {
-                        id: webAddButton
-                        text: qsTr("添加")
-                        glyph: "\uE710" // Add
-                        onClicked: webSection.edit(-1, webAddButton)
-                    }
-
-                    body: [Text {
-                        visible: webSection.message.length > 0
-                        width: parent.width
-                        bottomPadding: 8
-                        text: webSection.message
-                        textFormat: Text.PlainText
-                        color: Theme.subtext
-                        font.pixelSize: Theme.fontCaption
-                        wrapMode: Text.Wrap
-                    }, Rectangle {
-                        width: parent.width
-                        height: Math.max(webList.implicitHeight, 40)
-                        radius: Theme.controlRadius
-                        color: "transparent"
-                        border.width: 1
-                        border.color: Theme.cardBorder
-
-                        Text {
-                            visible: window.editor.webShortcuts.length === 0
-                            anchors.centerIn: parent
-                            text: qsTr("还没有网页搜索，点“添加”加一个")
-                            color: Theme.faint
-                            font.pixelSize: Theme.fontCaption
-                        }
-
-                        Column {
-                            id: webList
-                            width: parent.width
-
-                            Repeater {
-                                model: window.editor.webShortcuts
-
-                                delegate: Item {
-                                    id: webRow
-
-                                    required property int index
-                                    required property var modelData
-                                    width: webList.width
-                                    height: 58
-
-                                    Rectangle {
-                                        anchors.fill: parent
-                                        anchors.margins: 1
-                                        radius: Theme.smallControlRadius
-                                        color: webArea.containsMouse ? Theme.navHover : "transparent"
-                                    }
-                                    Rectangle {
-                                        visible: webRow.index > 0
-                                        x: 12
-                                        width: parent.width - 24
-                                        height: Theme.edge(Screen.devicePixelRatio)
-                                        color: Theme.divider
-                                    }
-                                    MouseArea {
-                                        id: webArea
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        acceptedButtons: Qt.NoButton
-                                    }
-
-                                    Item { // its site's icon, as its rows show it in the launcher
-                                        id: siteIcon
-                                        x: 12
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: 24
-                                        height: 24
-
-                                        Image {
-                                            readonly property real dpr: Screen.devicePixelRatio
-                                            readonly property int pixels: Math.round(siteIcon.width * dpr)
-
-                                            // Exactly its device pixels, unsmoothed (as in ResultRow).
-                                            x: 1 / 64
-                                            y: 1 / 64
-                                            width: pixels / dpr
-                                            height: pixels / dpr
-                                            sourceSize.width: pixels / dpr
-                                            sourceSize.height: pixels / dpr
-                                            smooth: false
-                                            asynchronous: true
-                                            // Asked again when an icon arrives (siteIconsArrived).
-                                            source: window.editor.siteIconsArrived >= 0
-                                                    ? window.editor.webIconUrl(webRow.modelData.iconRef, Theme.dark) : ""
-                                        }
-                                    }
-                                    Rectangle { // the keyword, as keys to press
-                                        id: keycap
-                                        anchors.left: siteIcon.right
-                                        anchors.leftMargin: 10
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: Math.max(44, keywordText.implicitWidth + 16)
-                                        height: 26
-                                        radius: Theme.controlRadius
-                                        color: Theme.keycap
-
-                                        Text {
-                                            id: keywordText
-                                            anchors.centerIn: parent
-                                            text: webRow.modelData.keyword
-                                            textFormat: Text.PlainText
-                                            color: Theme.text
-                                            font.pixelSize: Theme.fontCaption
-                                        }
-                                    }
-                                    Column {
-                                        anchors.left: keycap.right
-                                        anchors.leftMargin: 12
-                                        anchors.right: webButtons.left
-                                        anchors.rightMargin: 8
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        spacing: 2
-
-                                        Text {
-                                            width: parent.width
-                                            text: webRow.modelData.name
-                                            textFormat: Text.PlainText
-                                            color: Theme.text
-                                            font.pixelSize: Theme.fontBody
-                                            elide: Text.ElideRight
-                                        }
-                                        Text {
-                                            width: parent.width
-                                            text: webRow.modelData.searches ? webRow.modelData.shownUrl
-                                                  : qsTr("%1 · 只能打开，不能搜索").arg(webRow.modelData.shownUrl)
-                                            textFormat: Text.PlainText
-                                            color: Theme.subtext
-                                            font.pixelSize: Theme.fontCaption
-                                            elide: Text.ElideMiddle
-                                        }
-                                    }
-                                    Row {
-                                        id: webButtons
-                                        anchors.right: parent.right
-                                        anchors.rightMargin: 6
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        spacing: 2
-
-                                        FlatButton {
-                                            implicitHeight: 32
-                                            flat: true
-                                            text: qsTr("打开")
-                                            onClicked: window.editor.openWebShortcut(webRow.index)
-                                        }
-                                        FlatButton {
-                                            id: webEditButton
-                                            objectName: "webEditButton"
-                                            implicitHeight: 32
-                                            flat: true
-                                            text: qsTr("编辑")
-                                            onClicked: webSection.edit(webRow.index, webEditButton)
-                                        }
-                                        FlatButton {
-                                            implicitHeight: 32
-                                            flat: true
-                                            text: qsTr("移除")
-                                            onClicked: window.editor.removeWebShortcut(webRow.index)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }]
-                }
-
-                SettingRow {
-                    title: qsTr("网页搜索建议")
-                    keywords: qsTr("搜索建议;联想;补全;suggest;suggestion").split(";")
-                    description: qsTr("在网站关键词后输入文字时，列出这个网站的搜索建议。只有这时才会把输入的文字发给那个网站")
-
-                    ToggleSwitch {
-                        checked: window.editor.webSuggestions
-                        onToggled: (on) => window.editor.webSuggestions = on
-                    }
-                }
-            }
-
             FavoritesSection {
                 id: favoritesSection
                 page: window.favoritesPage
@@ -3735,7 +3653,10 @@ Window {
 
             SettingsSection {
                 page: window.clipboardPage
+                tab: 0
                 width: parent.width
+                title: qsTr("记录范围与图文识别")
+                glyph: "\uE77F"
                 note: qsTr("只存在这台电脑上，不会上传。按住 Ctrl 或 Shift 点击可以多选，合在一起粘贴。")
 
                 SettingRow {
@@ -3750,6 +3671,7 @@ Window {
                 }
 
                 SettingRow {
+                    sub: true
                     title: qsTr("记录图片")
                     keywords: qsTr("截图;图片;照片;image").split(";")
                     description: qsTr("截图和复制的图片也记下来")
@@ -3768,6 +3690,7 @@ Window {
                     // The screenshots the screenshot plugin (winshun.capture)
                     // put in the history, listed by a word in the search box
                     // (App::screenshotKeyword); while the plugin is on.
+                    sub: true
                     title: qsTr("截图历史关键词")
                     keywords: qsTr("截图;截图历史;截屏;关键词;screenshot").split(";")
                     values: [window.editor.captureKeyword]
@@ -3794,93 +3717,6 @@ Window {
                         color: Theme.danger
                         font.pixelSize: Theme.fontCaption
                         wrapMode: Text.Wrap
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("单击粘贴")
-                    keywords: qsTr("单击;点击;点一下;直接粘贴;双击;远程;手机;触屏").split(";")
-                    description: qsTr("点一下就粘贴，和 Windows 自带的剪贴板一样，手机远程操作时也方便。按住 Ctrl 或 Shift 点击仍是多选；关掉时单击选中、双击粘贴")
-
-                    ToggleSwitch {
-                        checked: window.editor.clipboardClickToPaste
-                        onToggled: (on) => window.editor.clipboardClickToPaste = on
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("粘贴后保持位置")
-                    keywords: qsTr("位置;顺序;排序;跳到最前;置顶;不动;固定顺序;粘贴后").split(";")
-                    description: qsTr("从列表里粘贴一条后，它留在原来的位置，不再跳到最前面。重新复制同样的内容，仍会排到最前。粘贴过的条目右下角带一个蓝色对勾，也不会因为“保留天数”到期而被删")
-
-                    ToggleSwitch {
-                        checked: window.editor.clipboardKeepPlace
-                        onToggled: (on) => window.editor.clipboardKeepPlace = on
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("大图片缩略图")
-                    keywords: qsTr("缩略图;图片;截图;放大;看清;细节").split(";")
-                    description: qsTr("图片的那一行更高，缩略图大到能看清细节，不用打开预览")
-
-                    ToggleSwitch {
-                        checked: window.editor.clipboardLargePictures
-                        onToggled: (on) => window.editor.clipboardLargePictures = on
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("全屏时不响应剪贴板快捷键")
-                    keywords: qsTr("全屏;游戏;快捷键;屏蔽;暂停;clipboard;fullscreen").split(";")
-                    description: qsTr("其他程序全屏时，快捷键不弹出剪贴板；仍然记录复制内容，也能从菜单手动打开")
-
-                    ToggleSwitch {
-                        checked: window.editor.clipboardPauseInFullScreen
-                        onToggled: (on) => window.editor.clipboardPauseInFullScreen = on
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("剪贴板打开位置")
-                    keywords: qsTr("位置;鼠标;指针;光标;跟随;弹出;输入框").split(";")
-                    description: qsTr("每次打开时放在所选位置旁边，空间不足时自动调整到屏幕内")
-
-                    ScopeTabs {
-                        labels: [qsTr("输入光标旁"), qsTr("鼠标指针旁")]
-                        current: window.editor.clipboardAtPointer ? 1 : 0
-                        onActivated: (index) => window.editor.clipboardAtPointer = index === 1
-                    }
-                }
-
-                SettingRow {
-                    // By the caret it opens under it, or over it where more
-                    // rows fit there (GitHub #38, Placement.above).
-                    title: qsTr("开在光标上方时翻转")
-                    keywords: qsTr("布局;上方;下方;翻转;颠倒;倒序;顺序").split(";")
-                    description: window.editor.clipboardSearchBoxSide === "far"
-                                 ? qsTr("最新的条目挨着光标，越往上越早")
-                                 : qsTr("搜索框和最新的条目都挨着光标，越往上越早")
-
-                    ToggleSwitch {
-                        checked: window.editor.clipboardFlipAbove
-                        onToggled: (on) => window.editor.clipboardFlipAbove = on
-                    }
-                }
-
-                SettingRow {
-                    title: qsTr("搜索框位置")
-                    keywords: qsTr("布局;上方;下方;搜索框;位置;输入框;顶部;底部").split(";")
-                    // Not flipped, the window over the caret is laid out as
-                    // under it, so "away" is then only "under the entries".
-                    description: window.editor.clipboardFlipAbove
-                                 ? qsTr("远离光标时，条目挨着光标，搜索框在窗口另一头")
-                                 : qsTr("远离光标时，搜索框放到条目下面")
-
-                    ScopeTabs {
-                        labels: [qsTr("靠近光标"), qsTr("远离光标")]
-                        current: window.editor.clipboardSearchBoxSide === "far" ? 1 : 0
-                        onActivated: (index) => window.editor.clipboardSearchBoxSide = ["near", "far"][index]
                     }
                 }
 
@@ -3929,8 +3765,116 @@ Window {
 
             SettingsSection {
                 page: window.clipboardPage
+                tab: 0
+                width: parent.width
+                title: qsTr("粘贴动作与列表显示")
+                glyph: "\uE8C8"
+
+                SettingRow {
+                    title: qsTr("单击粘贴")
+                    keywords: qsTr("单击;点击;点一下;直接粘贴;双击;远程;手机;触屏").split(";")
+                    description: qsTr("点一下就粘贴，和 Windows 自带的剪贴板一样，手机远程操作时也方便。按住 Ctrl 或 Shift 点击仍是多选；关掉时单击选中、双击粘贴")
+
+                    ToggleSwitch {
+                        checked: window.editor.clipboardClickToPaste
+                        onToggled: (on) => window.editor.clipboardClickToPaste = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("粘贴后保持位置")
+                    keywords: qsTr("位置;顺序;排序;跳到最前;置顶;不动;固定顺序;粘贴后").split(";")
+                    description: qsTr("从列表里粘贴一条后留在原来的位置，不跳到最前面")
+                    tip: qsTr("重新复制同样的内容仍会排到最前。粘贴过的条目右下角带蓝色对勾，也不会因“保留天数”到期而被删")
+
+                    ToggleSwitch {
+                        checked: window.editor.clipboardKeepPlace
+                        onToggled: (on) => window.editor.clipboardKeepPlace = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("大图片缩略图")
+                    keywords: qsTr("缩略图;图片;截图;放大;看清;细节").split(";")
+                    description: qsTr("图片的那一行更高，缩略图大到能看清细节，不用打开预览")
+
+                    ToggleSwitch {
+                        checked: window.editor.clipboardLargePictures
+                        onToggled: (on) => window.editor.clipboardLargePictures = on
+                    }
+                }
+            }
+
+            SettingsSection {
+                page: window.clipboardPage
+                tab: 0
+                width: parent.width
+                title: qsTr("弹出位置与窗口布局")
+                glyph: "\uE740"
+
+                SettingRow {
+                    title: qsTr("剪贴板打开位置")
+                    keywords: qsTr("位置;鼠标;指针;光标;跟随;弹出;输入框").split(";")
+                    description: qsTr("每次打开时放在所选位置旁边，空间不足时自动调整到屏幕内")
+
+                    ScopeTabs {
+                        labels: [qsTr("输入光标旁"), qsTr("鼠标指针旁")]
+                        current: window.editor.clipboardAtPointer ? 1 : 0
+                        onActivated: (index) => window.editor.clipboardAtPointer = index === 1
+                    }
+                }
+
+                SettingRow {
+                    // By the caret it opens under it, or over it where more
+                    // rows fit there (GitHub #38, Placement.above).
+                    sub: true
+                    title: qsTr("开在光标上方时翻转")
+                    keywords: qsTr("布局;上方;下方;翻转;颠倒;倒序;顺序").split(";")
+                    description: window.editor.clipboardSearchBoxSide === "far"
+                                 ? qsTr("最新的条目挨着光标，越往上越早")
+                                 : qsTr("搜索框和最新的条目都挨着光标，越往上越早")
+
+                    ToggleSwitch {
+                        checked: window.editor.clipboardFlipAbove
+                        onToggled: (on) => window.editor.clipboardFlipAbove = on
+                    }
+                }
+
+                SettingRow {
+                    // Not flipped, the window over the caret is laid out as
+                    // under it, so "away" is then only "under the entries".
+                    sub: true
+                    title: qsTr("搜索框位置")
+                    keywords: qsTr("布局;上方;下方;搜索框;位置;输入框;顶部;底部").split(";")
+                    description: window.editor.clipboardFlipAbove
+                                 ? qsTr("远离光标时，条目挨着光标，搜索框在窗口另一头")
+                                 : qsTr("远离光标时，搜索框放到条目下面")
+
+                    ScopeTabs {
+                        labels: [qsTr("靠近光标"), qsTr("远离光标")]
+                        current: window.editor.clipboardSearchBoxSide === "far" ? 1 : 0
+                        onActivated: (index) => window.editor.clipboardSearchBoxSide = ["near", "far"][index]
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("全屏时不响应剪贴板快捷键")
+                    keywords: qsTr("全屏;游戏;快捷键;屏蔽;暂停;clipboard;fullscreen").split(";")
+                    description: qsTr("其他程序全屏时，快捷键不弹出剪贴板；仍然记录复制内容，也能从菜单手动打开")
+
+                    ToggleSwitch {
+                        checked: window.editor.clipboardPauseInFullScreen
+                        onToggled: (on) => window.editor.clipboardPauseInFullScreen = on
+                    }
+                }
+            }
+
+            SettingsSection {
+                page: window.clipboardPage
                 tab: 1
                 width: parent.width
+                title: qsTr("呼出剪贴板")
+                glyph: "\uE765"
 
                 SettingRow {
                     title: qsTr("用 Win+V 打开，代替 Windows 自带的剪贴板")
@@ -4037,13 +3981,22 @@ Window {
                 SettingRow {
                     title: qsTr("按住连按快捷键，松开粘贴")
                     keywords: qsTr("快捷键;按住;连按;松开;选择;Ditto;hotkey").split(";")
-                    description: qsTr("按住快捷键里的 Ctrl、Alt、Shift 或 Win，每再按一下就往下选一条，松开就粘贴；按住约一秒再松开，粘贴第一条；按住时按 Esc 不粘贴。开着时，按住再按快捷键不再关闭窗口。")
+                    description: qsTr("按住修饰键每按一次往下选一条，松开粘贴")
+                    tip: qsTr("按住快捷键里的 Ctrl、Alt、Shift 或 Win，每再按一下就往下选一条，松开就粘贴；按住约一秒再松开，粘贴第一条；按住时按 Esc 不粘贴。开启后按住再按快捷键不再关闭窗口")
 
                     ToggleSwitch {
                         checked: window.editor.clipboardHoldToStep
                         onToggled: (on) => window.editor.clipboardHoldToStep = on
                     }
                 }
+            }
+
+            SettingsSection {
+                page: window.clipboardPage
+                tab: 1
+                width: parent.width
+                title: qsTr("数字键快速粘贴")
+                glyph: "\uE92E"
 
                 SettingRow {
                     title: qsTr("面板内数字键粘贴")
@@ -4067,8 +4020,10 @@ Window {
                         wrapMode: Text.Wrap
                     }
                 }
+
                 SettingRow {
                     id: clipNumberHintsRow
+                    sub: true
                     shown: window.editor.clipboardNumberKeys !== "off"
                     title: qsTr("序号提示")
                     description: qsTr("启动器和剪贴板共用；隐藏提示不影响数字快捷键")
@@ -4080,6 +4035,7 @@ Window {
                         onActivated: (index) => window.editor.numberHints = ["held", "always", "off"][index]
                     }
                 }
+
                 SettingRow {
                     title: qsTr("不打开面板直接粘贴")
                     keywords: qsTr("全局;快捷键;数字键;直接粘贴;无需面板;Ctrl+1;Alt+1;Ditto;QuickClipboard").split(";")
@@ -4106,6 +4062,8 @@ Window {
                 page: window.clipboardPage
                 tab: 2
                 width: parent.width
+                title: qsTr("保留容量与自动清理")
+                glyph: "\uE74D"
 
                 SettingRow {
                     id: clipMaxRow
@@ -4173,6 +4131,14 @@ Window {
                         onActivated: (index) => window.editor.clipboardMissingFiles = ["keep", "hide", "clean"][index]
                     }
                 }
+            }
+
+            SettingsSection {
+                page: window.clipboardPage
+                tab: 2
+                width: parent.width
+                title: qsTr("数据导入与清空")
+                glyph: "\uE8B5"
 
                 QtObject {
                     id: clipImport
@@ -4227,6 +4193,7 @@ Window {
                 }
 
                 SettingRow {
+                    sub: true
                     shown: clipImport.path.length > 0 && !window.editor.clipboardImporting
                     title: qsTr("拆分方式")
                     description: clipImport.path.split(/[\\/]/).pop()
@@ -4288,6 +4255,7 @@ Window {
                 page: window.advancedPage
                 width: parent.width
                 title: qsTr("更新")
+                glyph: "\uE895"
                 note: qsTr("检查 Win顺 更新访问 lcstp.com，只发送 Windows 版本和安装方式；检查插件更新从 GitHub 或镜像下载插件库列表。不发送个人信息。")
 
                 SettingRow {
@@ -4331,6 +4299,7 @@ Window {
                 page: window.advancedPage
                 width: parent.width
                 title: qsTr("备份")
+                glyph: "\uE8F1"
                 note: qsTr("备份设置、收藏夹和添加的插件，不含索引和历史记录。选同步盘里的文件夹（OneDrive、坚果云，或用 alist、RaiDrive 挂载的 WebDAV 盘），备份就跟着同步到云上。")
 
                 SettingRow {
@@ -4417,6 +4386,8 @@ Window {
             SettingsSection {
                 page: window.advancedPage
                 width: parent.width
+                title: qsTr("网络、存储与诊断")
+                glyph: "\uE713"
 
                 SettingRow {
                     id: proxyRow
@@ -4657,6 +4628,7 @@ Window {
 
             PluginsSection {
                 id: pluginsSection
+                onEditWebShortcut: (index, button) => window.editWebShortcut(index, button)
                 page: window.pluginsPage
                 width: parent.width
                 plugins: window.editor.plugins
@@ -4707,17 +4679,17 @@ Window {
         anchors.right: parent.right
         anchors.top: titleBar.bottom
         anchors.bottom: parent.bottom
-        active: webSection.editing >= -1
+        active: window.webEditing >= -1
         visible: active
         sourceComponent: WebShortcutForm {
             editor: window.editor
-            index: webSection.editing
+            index: window.webEditing
             // Copy the draft once. Saving rebuilds the list and its delegates.
             Component.onCompleted: {
                 if (index >= 0)
                     shortcut = window.editor.webShortcuts[index]
             }
-            onFinished: webSection.closeForm()
+            onFinished: window.closeWebForm()
         }
     }
 
