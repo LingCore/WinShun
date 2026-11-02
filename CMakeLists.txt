@@ -93,10 +93,19 @@ set(library_plugins_dir "${CMAKE_BINARY_DIR}/library-plugins")
 file(READ "${PROJECT_SOURCE_DIR}/src/web-plugin/package/plugin.json" web_plugin_manifest)
 string(JSON web_plugin_manifest SET "${web_plugin_manifest}" minWinShun "\"${PROJECT_VERSION}\"")
 file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/generated/web-plugin.json" CONTENT "${web_plugin_manifest}\n")
+# Content providers (commands[].contentSearch) are not in 0.17.0: like
+# winshun.web, the OCR plugin needs at least the version it is built with.
+set(ocr_plugin_source "${PROJECT_SOURCE_DIR}/src/ocr-search-plugin/package/plugin.json")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${ocr_plugin_source}")
+file(READ "${ocr_plugin_source}" ocr_plugin_manifest)
+string(JSON ocr_plugin_manifest SET "${ocr_plugin_manifest}" minWinShun "\"${PROJECT_VERSION}\"")
+set(OCR_PLUGIN_MANIFEST "${CMAKE_BINARY_DIR}/generated/ocr-search-plugin.json")
+file(GENERATE OUTPUT "${OCR_PLUGIN_MANIFEST}" CONTENT "${ocr_plugin_manifest}\n")
 add_custom_target(library_plugins ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/web-plugin/package" "${library_plugins_dir}/winshun.web"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_BINARY_DIR}/generated/web-plugin.json" "${library_plugins_dir}/winshun.web/plugin.json"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/ocr-search-plugin/package" "${library_plugins_dir}/winshun.ocr-search"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${OCR_PLUGIN_MANIFEST}" "${library_plugins_dir}/winshun.ocr-search/plugin.json"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunOcrSearch>" "${library_plugins_dir}/winshun.ocr-search/WinShunOcrSearch.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunOcrSearchApp>" "${library_plugins_dir}/winshun.ocr-search/WinShunOcrSearchApp.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/miniz/LICENSE" "${library_plugins_dir}/winshun.ocr-search/licenses/miniz.txt"
