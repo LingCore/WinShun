@@ -30,6 +30,7 @@
 #include "DropPieHelper.h"
 #include "Query.h"
 #include "Host.h"
+#include "platform/Integrity.h"
 #include "platform/SiteIcons.h"
 #include "platform/FileDialog.h"
 #include "platform/FileManagers.h"
@@ -2372,6 +2373,12 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
 
 void checkDropPieHelper(const QDir& output)
 {
+    // Elevated, the helper gets the desktop user's environment, not this run's
+    // PATH to Qt: from a build folder it cannot even load.
+    if (integrity::processElevated()) {
+        say(u"drop pie: skipped, elevated (run it with normal rights)"_s);
+        return;
+    }
     QTemporaryDir profile;
     Favorites favorites(profile.filePath(u"favorites.json"_s));
     favorites.load();
@@ -2382,41 +2389,65 @@ void checkDropPieHelper(const QDir& output)
     }
     QStringList notices;
     auto helper = std::make_unique<DropPieHelper>(&favorites,
-        [&](const QString& title, const QString& text) { notices.push_back(title + u": "_s + text); });
+        [&](const QString& title, const QString& text, auto&&) { notices.push_back(title + u": "_s + text); });
     Settings settings = Settings::defaults();
     helper->update(settings);
-    const auto waitForFolders = [&](int count) {
+    const auto waitFor = [&](const std::function<bool(const QJsonObject&)>& wanted, int ms = 6000) {
         QElapsedTimer waiting;
         waiting.start();
-        while (waiting.elapsed() < 6000) {
+        while (waiting.elapsed() < ms) {
             const auto state = helper->state();
-            if (state.value(u"ready"_s).toBool() && state.value(u"folders"_s).toInt() == count) return true;
+            if (state.value(u"ready"_s).toBool() && wanted(state)) return true;
             pump(20);
         }
         return false;
     };
-    bool passed = waitForFolders(2);
+    const auto folders = [](int count) { return [count](const QJsonObject& state) { return state.value(u"folders"_s).toInt() == count; }; };
+    bool passed = waitFor(folders(2));
     QJsonObject state = helper->state();
     passed = passed && !state.value(u"elevated"_s).toBool(true);
-    win32::UniqueHandle child(::OpenProcess(SYNCHRONIZE, FALSE, DWORD(state.value(u"pid"_s).toInteger())));
     const QString folder = profile.filePath(u"third-folder"_s);
     QDir().mkpath(folder);
     favorites.add({Favorite::Kind::Folder, folder, u"Third folder"_s});
-    passed = waitForFolders(3) && passed;
+    const bool updatedFavorites = waitFor(folders(3));
+    // The appearance reaches it too (its ini where Settings::useProfile has it).
     settings.uiSize = u"compact"_s;
     settings.theme = u"dark"_s;
     helper->update(settings);
-    passed = waitForFolders(3) && notices.isEmpty() && passed;
+    const bool updatedAppearance = waitFor([](const QJsonObject& state) {
+        return state.value(u"folders"_s).toInt() == 3 && state.value(u"theme"_s).toString() == u"dark";
+    });
+    // Ended from outside (or crashed): started again by itself (GitHub #172).
+    // Its two log lines (the exit, then running again) are expected here.
+    const int warnings = g_warnings;
+    const qint64 first = helper->state().value(u"pid"_s).toInteger();
+    QElapsedTimer restarting;
+    restarting.start();
+    if (win32::UniqueHandle killed(::OpenProcess(PROCESS_TERMINATE, FALSE, DWORD(first))); killed.valid())
+        ::TerminateProcess(killed.get(), 1);
+    const bool restarted = waitFor([first](const QJsonObject& state) {
+        return state.value(u"pid"_s).toInteger() != first && state.value(u"folders"_s).toInt() == 3;
+    }, 12000); // a second after it ended, then a start as slow as the first may be
+    const qint64 restartMs = restarting.elapsed();
+    g_warnings = warnings + std::max(0, g_warnings - warnings - 2);
+    state = helper->state();
+    win32::UniqueHandle child(::OpenProcess(SYNCHRONIZE, FALSE, DWORD(state.value(u"pid"_s).toInteger())));
+    QElapsedTimer stopping;
+    stopping.start();
     helper.reset();
-    const bool stopped = child.valid() && ::WaitForSingleObject(child.get(), 2000) == WAIT_OBJECT_0;
-    passed = passed && stopped;
-    state.insert(u"updatedFavorites"_s, passed);
+    const bool stopped = child.valid() && ::WaitForSingleObject(child.get(), 10'000) == WAIT_OBJECT_0;
+    state.insert(u"stop_ms"_s, stopping.elapsed());
+    passed = passed && updatedFavorites && updatedAppearance && restarted && stopped && notices.isEmpty();
+    state.insert(u"updatedFavorites"_s, updatedFavorites);
+    state.insert(u"updatedAppearance"_s, updatedAppearance);
+    state.insert(u"restarted"_s, restarted);
+    state.insert(u"restart_ms"_s, restartMs);
     state.insert(u"stopped"_s, stopped);
     state.insert(u"passed"_s, passed);
     QFile report(output.filePath(u"drop-pie-helper.json"_s));
     if (report.open(QIODevice::WriteOnly)) report.write(QJsonDocument(state).toJson());
     if (!passed) qWarning().noquote() << "Drop pie helper regression failed:" << notices << state;
-    else say(u"drop pie: real ordinary-user helper, OLE target registration, favorite refresh and shutdown checked"_s);
+    else say(u"drop pie: real ordinary-user helper, OLE target registration, favorite and appearance refresh, restart after it ends and shutdown checked"_s);
 }
 
 bool checkSwitchProvider(QQuickWindow* window, const QDir& output)

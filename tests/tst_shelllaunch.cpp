@@ -442,6 +442,32 @@ private slots:
         QVERIFY(!ws::shell::runUnelevatedCaptured(L"C:\\wstest\\nothing\\not-there.exe", {}, 1000).started);
     }
 
+    // What did not start says which step failed and Windows' error (GitHub
+    // #172: the drop pie's helper failed with nothing in the log).
+    void startUnelevatedSaysWhyNot()
+    {
+        const QTemporaryDir folder;
+        const std::wstring missing = QDir::toNativeSeparators(folder.filePath(u"not-there.exe"_s)).toStdWString();
+        ws::shell::StartFailure failure;
+        QVERIFY(!ws::shell::startUnelevated(missing, {}, {}, &failure).valid());
+        QVERIFY(failure.step);
+        QCOMPARE(QByteArray(failure.step),
+            ws::integrity::processElevated() ? QByteArray("CreateProcessWithTokenW") : QByteArray("CreateProcessW"));
+        QCOMPARE(failure.error, static_cast<unsigned long>(ERROR_FILE_NOT_FOUND));
+        failure = {};
+        QVERIFY(!ws::shell::startUnelevated(L"C:\\wstest\\a\"quote.exe", {}, {}, &failure).valid());
+        QCOMPARE(QByteArray(failure.step), QByteArray("quote in the path"));
+        // One that starts: with the user's rights, never elevated.
+        const std::wstring cmd = qEnvironmentVariable("ComSpec").toStdWString();
+        failure = {};
+        const ws::win32::UniqueHandle started = ws::shell::startUnelevated(cmd, L"/d /c exit 7", {}, &failure);
+        QVERIFY2(started.valid(), failure.step);
+        QCOMPARE(::WaitForSingleObject(started.get(), 15000), DWORD(WAIT_OBJECT_0));
+        DWORD code = 0;
+        QVERIFY(::GetExitCodeProcess(started.get(), &code));
+        QCOMPARE(code, 7ul);
+    }
+
     // The program gets the user's environment as the registry has it now, not the one this
     // process started with: a variable set (setx) after Win顺 started is seen by ws.
     void getsTheUsersEnvironmentAsTheRegistryHasIt()
