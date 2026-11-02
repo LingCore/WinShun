@@ -69,6 +69,10 @@ bool materialsEnabled();
 // while it still gets focus and draws as usual.
 void setCloaked(QWindow* window, bool cloaked);
 
+// No DWM fade as the window is shown or hidden: hidden, it is off the screen
+// in the next composition, not some 200 ms later (a capture must not catch it).
+void disableTransitions(QWindow* window);
+
 // Windows' Start menu, search, notification center or quick settings: they
 // stay above every other window while open.
 bool isShellFlyout(HWND window);

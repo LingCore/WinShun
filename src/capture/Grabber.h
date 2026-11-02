@@ -17,6 +17,7 @@ namespace ws::capture {
 //
 // A single SDR picture uses BitBlt, without a resident GPU capture engine.
 // HDR monitors use Windows.Graphics.Capture (WGC): BitBlt washes them out.
+// With the device warm for them, the SDR monitors beside them use it too.
 // Kept warm for HDR, WGC takes 11–12 ms per 2560x1600 monitor (stage 0).
 // Warm means the D3D11 device (120+ ms the first time in a process) and one capture
 // item per monitor (CreateForMonitor, 22–26 ms each) made ahead, when the

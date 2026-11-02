@@ -257,7 +257,10 @@ void Recorder::createPanel()
 void Recorder::updatePanelExclusion()
 {
     if (!m_panel) return;
-    const bool taking = m_stage == Starting || m_stage == Recording || m_stage == Paused;
+    // Until the recording child has ended (completed, or the GIF export after
+    // it): after 完成 it takes frames until it reads the stop, the panel
+    // saying 保存中 meanwhile.
+    const bool taking = m_control && !m_exporting;
     excludeFromCapture(reinterpret_cast<HWND>(m_panel->winId()), m_region, taking);
 }
 

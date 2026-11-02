@@ -112,10 +112,8 @@ public:
         for (HWND& strip : m_strips) {
             strip = ::CreateWindowExW(WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST,
                 kBorderClass, L"", WS_POPUP, 0, 0, 1, 1, nullptr, nullptr, ::GetModuleHandleW(nullptr), nullptr);
-            if (strip) {
-                // Outside the region, so in no frame the engine reads.
+            if (strip)
                 ::SetWindowLongPtrW(strip, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(owner));
-            }
         }
     }
 
@@ -154,6 +152,17 @@ public:
         for (HWND strip : m_strips)
             if (strip)
                 ::ShowWindow(strip, SW_HIDE);
+    }
+
+    // Outside the region, except where it meets the screen's edge: there
+    // longCaptureBorder keeps a strip on the screen, inside the selection,
+    // and it would be stitched in (a maximized window: a line down the
+    // picture). Such a strip is left out of the frames; it has no shadow.
+    void exclude(const QRect& region, bool running)
+    {
+        for (HWND strip : m_strips)
+            if (strip && (!running || ::IsWindowVisible(strip)))
+                excludeFromCapture(strip, region, running, 0);
     }
 
 private:
@@ -316,6 +325,7 @@ QQuickWindow* LongCapture::panel()
     releaseIdleGraphics(window);
     window->create();
     win::styleFramelessWindow(window, false);
+    win::disableTransitions(window); // no fade-out for the engine's last frames to catch
     // Left out of the frames only while it is in them (updateExclusion).
     const HWND hwnd = reinterpret_cast<HWND>(window->winId());
     ::SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ::GetWindowLongPtrW(hwnd, GWL_EXSTYLE) | WS_EX_NOACTIVATE);
@@ -332,21 +342,26 @@ QQuickWindow* LongCapture::panel()
         releaseIdleGraphics(m_previewWindow);
         m_previewWindow->create();
         win::styleFramelessWindow(m_previewWindow, false);
+        win::disableTransitions(m_previewWindow);
         const HWND preview = reinterpret_cast<HWND>(m_previewWindow->winId());
         ::SetWindowLongPtrW(preview, GWL_EXSTYLE, ::GetWindowLongPtrW(preview, GWL_EXSTYLE) | WS_EX_NOACTIVATE);
     }
     return window;
 }
 
-// The panel and the preview are left out of the frames while the capture runs
-// and they lie over its region; otherwise they show in a screenshot.
+// The panel, the preview and the border are left out of the frames while the
+// capture runs and they lie over its region; otherwise they show in a
+// screenshot. Running until ended(): after 完成 the engine still takes frames
+// (up to kMoveWaitMs), so a window hidden meanwhile keeps its setting until then.
 void LongCapture::updateExclusion()
 {
-    const bool running = m_run && !m_run->stop;
-    const QRect region = m_run ? m_run->region : QRect();
+    const bool running = m_run != nullptr;
+    const QRect region = running ? m_run->region : QRect();
     for (QQuickWindow* window : {m_panel.data(), m_previewWindow.data()})
-        if (window)
+        if (window && (!running || window->isVisible()))
             excludeFromCapture(reinterpret_cast<HWND>(window->winId()), region, running);
+    if (m_border)
+        m_border->exclude(region, running);
 }
 
 // Keep the controls by the original selection, as the capture toolbar was.
@@ -470,7 +485,6 @@ void LongCapture::finish()
         return;
     dumpPanel();
     m_run->stop = 1;
-    updateExclusion();
     // Gone at once; the engine ends its step and hands the picture over (ended()).
     hotkeys(false);
     m_border->hide();
@@ -492,7 +506,6 @@ void LongCapture::cancel()
         return;
     dumpPanel();
     m_run->stop = 2;
-    updateExclusion();
     hotkeys(false);
     m_border->hide();
     if (m_panel)
@@ -574,6 +587,7 @@ void LongCapture::ended(const QImage& picture, const QString& how)
     const QPoint origin = m_run->region.topLeft();
     wrapUp();
     m_run.reset();
+    updateExclusion(); // hidden by now
     qInfo().noquote() << u"Long screenshot: %1, %2x%3"_s.arg(how).arg(picture.width()).arg(picture.height());
     emit changed();
     if (!picture.isNull() && m_hooks.done)

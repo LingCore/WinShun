@@ -392,7 +392,9 @@ struct Grabber::Worker {
             shots[i].monitor = m.handle;
             shots[i].rect = m.rect;
             shots[i].hdr = m.color.hdr;
-            if (!m.color.hdr || !device || !m.item)
+            // Every monitor with an item while the device is up (an HDR
+            // monitor keeps it): all at once rather than BitBlt one by one.
+            if (!device || !m.item)
                 continue;
             auto p = std::make_unique<Pending>();
             try {

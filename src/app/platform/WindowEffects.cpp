@@ -307,6 +307,14 @@ void setCloaked(QWindow* window, bool cloaked)
     }
 }
 
+void disableTransitions(QWindow* window)
+{
+    if (const HWND hwnd = handleOf(window)) {
+        const BOOL value = TRUE;
+        ::DwmSetWindowAttribute(hwnd, DWMWA_TRANSITIONS_FORCEDISABLED, &value, sizeof value);
+    }
+}
+
 Front bringToFront(QWindow* window, ShellFlyout flyout)
 {
     const HWND hwnd = handleOf(window);

@@ -2,9 +2,10 @@
 // scale, edges and handles, nudges, where the toolbar goes, what a click
 // picks), the file names, the HDR tone mapping and HDR file, the PrtScn
 // value kept, and the session's state machine driven with physical pixels,
-// without windows.
+// without windows (but for the capture exclusion's, fully transparent).
 #include "AnnotationFormat.h"
 #include "CaptureDiagnostics.h"
+#include "CaptureExclusion.h"
 #include "CaptureHistory.h"
 #include "CaptureSession.h"
 #include "Geometry.h"
@@ -23,6 +24,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <vector>
@@ -129,9 +131,58 @@ private slots:
                     QVERIFY(!inner.intersects(strip));
                 }
                 const QRect corner(screen.topLeft(), QSize(600, 440));
-                for (const QRect& strip : longCaptureBorder(corner, screen, thickness))
+                const auto cornerStrips = longCaptureBorder(corner, screen, thickness);
+                for (const QRect& strip : cornerStrips)
                     QVERIFY(screen.contains(strip));
+                // On the screen's edge a strip lies inside the selection: the
+                // top and left here (left out of the frames, see below).
+                QVERIFY(corner.intersects(cornerStrips[0]));
+                QVERIFY(corner.contains(cornerStrips[2]));
+                QVERIFY(!corner.intersects(cornerStrips[1]));
+                QVERIFY(!corner.intersects(cornerStrips[3]));
             }
+        }
+    }
+
+    // The long screenshot's border strips (no shadow) are left out of the
+    // frames only when they lie in the region: a selection on the screen's
+    // left edge (a maximized window) has its left strip inside it.
+    void longCaptureBorderExclusion()
+    {
+        MONITORINFO info {sizeof info};
+        QVERIFY(::GetMonitorInfoW(::MonitorFromPoint({0, 0}, MONITOR_DEFAULTTOPRIMARY), &info));
+        const QRect screen(info.rcMonitor.left, info.rcMonitor.top, info.rcMonitor.right - info.rcMonitor.left,
+            info.rcMonitor.bottom - info.rcMonitor.top);
+        const QRect selection(screen.left(), screen.top() + 100, 600, 400);
+        const auto strips = longCaptureBorder(selection, screen, 3);
+        std::array<HWND, 4> windows {};
+        const auto destroy = qScopeGuard([&] {
+            for (HWND window : windows)
+                if (window)
+                    ::DestroyWindow(window);
+        });
+        const auto affinity = [](HWND window) {
+            DWORD value = 0xFFFF;
+            ::GetWindowDisplayAffinity(window, &value);
+            return value;
+        };
+        for (std::size_t i = 0; i < strips.size(); ++i) {
+            const QRect& r = strips[i];
+            windows[i] = ::CreateWindowExW(WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+                L"STATIC", L"", WS_POPUP, r.x(), r.y(), r.width(), r.height(), nullptr, nullptr, nullptr, nullptr);
+            QVERIFY(windows[i]);
+            ::SetLayeredWindowAttributes(windows[i], 0, 0, LWA_ALPHA); // nothing on the screen
+            ::ShowWindow(windows[i], SW_SHOWNOACTIVATE);
+            excludeFromCapture(windows[i], selection, true, 0);
+            QCOMPARE(affinity(windows[i]), DWORD(i == 2 ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE));
+        }
+        // With a window's shadow allowed for, the strip beside it would be too.
+        excludeFromCapture(windows[3], selection, true);
+        QCOMPARE(affinity(windows[3]), DWORD(WDA_EXCLUDEFROMCAPTURE));
+        // Not capturing: every strip shows in a screenshot.
+        for (HWND window : windows) {
+            excludeFromCapture(window, selection, false, 0);
+            QCOMPARE(affinity(window), DWORD(WDA_NONE));
         }
     }
 

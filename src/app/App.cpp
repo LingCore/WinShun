@@ -6139,8 +6139,7 @@ void App::screenshotAnswered(int how)
     // Gone after the signal that told it returned; its frame after it.
     if (ask->window) {
         // No fade-out: the grab below must not catch the dialog on its way out.
-        const BOOL noFade = TRUE;
-        ::DwmSetWindowAttribute(reinterpret_cast<HWND>(ask->window->winId()), DWMWA_TRANSITIONS_FORCEDISABLED, &noFade, sizeof noFade);
+        win::disableTransitions(ask->window);
         ask->window->hide();
         ask->window->deleteLater();
     }
