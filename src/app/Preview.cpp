@@ -3,10 +3,8 @@
 
 #include "Backup.h"
 #include "App.h"
-#include "platform/Foreground.h"
-#include "platform/WindowEffects.h"
-#include "ClipboardDisplay.h"
 #include "Clipboard.h"
+#include "ClipboardDisplay.h"
 #include "DialogBar.h"
 #include "AppCatalog.h"
 #include "History.h"
@@ -35,6 +33,9 @@
 #include "platform/SiteIcons.h"
 #include "platform/FileDialog.h"
 #include "platform/FileManagers.h"
+#include "platform/WindowEffects.h"
+#include "platform/Foreground.h"
+#include "platform/MessageWindow.h"
 #include "platform/OcrPackage.h"
 #include "miniz.h"
 
@@ -49,10 +50,9 @@
 #include <QFontMetricsF>
 #include <QGuiApplication>
 #include <QImage>
-#include <dwmapi.h>
-#include <QRegularExpression>
-#include <QProcess>
 #include <QPixmap>
+#include <QProcess>
+#include <QRegularExpression>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -95,6 +95,7 @@
 #include <ncrypt.h>
 #include <ole2.h>
 #include <shellapi.h>
+#include <dwmapi.h>
 #include <exdisp.h>
 #include <shlobj.h>
 #include <wrl/client.h>
@@ -5041,6 +5042,158 @@ bool probeClipboardShell(const QString& receiver, const QDir& out, QJsonObject& 
     return passed;
 }
 
+// Exercise the real App -> plugin host -> capture process path, with keyboard
+// input confined to an owned foreground fixture and the plugin's own overlay.
+bool probeCaptureHotkeys(App& app, const QStringList& args, const QDir& out, QJsonObject& report)
+{
+    QJsonObject checks;
+    bool passed = true;
+    const auto check = [&](bool ok, const QString& name) {
+        checks.insert(name, ok);
+        report.insert(u"capture_hotkey_checks"_s, checks);
+        if (!ok) { qWarning().noquote() << "capture hotkeys:" << name; passed = false; }
+        return ok;
+    };
+    const auto wait = [&](const auto& condition) {
+        QElapsedTimer timer; timer.start();
+        while (!condition() && timer.elapsed() < 8000) pump(20);
+        return condition();
+    };
+    app.showSettings();
+    pump(100);
+    SettingsEditor* editor = nullptr;
+    for (auto* window : QGuiApplication::allWindows()) {
+        if (auto* found = window->property("editor").value<SettingsEditor*>()) {
+            editor = found;
+            window->hide();
+            break;
+        }
+    }
+    if (!check(editor != nullptr, u"settings_model"_s)) return false;
+    editor->plugins()->setDeveloperMode(true);
+    const HWND previous = ::GetForegroundWindow();
+    const HWND fixture = ::CreateWindowExW(WS_EX_TOOLWINDOW, L"STATIC", L"WinShun issue 183 keyboard fixture",
+        WS_OVERLAPPEDWINDOW, 80, 80, 640, 400, nullptr, nullptr, ::GetModuleHandleW(nullptr), nullptr);
+    if (!check(fixture != nullptr, u"owned_foreground_fixture"_s)) return false;
+    ::ShowWindow(fixture, SW_SHOWMAXIMIZED);
+    const auto cleanup = qScopeGuard([&] {
+        ::DestroyWindow(fixture);
+        if (previous && ::IsWindow(previous)) ::SetForegroundWindow(previous);
+    });
+    const auto captureWindow = [&]() -> HWND {
+        HWND found = nullptr;
+        const QString root = QDir::toNativeSeparators(Settings::profile() + u"/plugins/winshun.capture/"_s);
+        while ((found = ::FindWindowExW(HWND_MESSAGE, found, L"WinShun.Capture.Messages", nullptr))) {
+            DWORD pid = 0; ::GetWindowThreadProcessId(found, &pid);
+            win32::UniqueHandle process(::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid));
+            wchar_t path[32768]; DWORD size = DWORD(std::size(path));
+            if (process.valid() && ::QueryFullProcessImageNameW(process.get(), 0, path, &size)
+                && QString::fromWCharArray(path, size).startsWith(root, Qt::CaseInsensitive)) return found;
+        }
+        return nullptr;
+    };
+    const auto windowOf = [&](bool settings) -> HWND {
+        DWORD pid = 0; ::GetWindowThreadProcessId(captureWindow(), &pid);
+        struct Find { DWORD pid; bool settings; HWND found = nullptr; } find {pid, settings};
+        ::EnumWindows([](HWND window, LPARAM data) -> BOOL {
+            auto& f = *reinterpret_cast<Find*>(data);
+            DWORD owner = 0; ::GetWindowThreadProcessId(window, &owner);
+            if (!f.pid || owner != f.pid || !::IsWindowVisible(window)) return TRUE;
+            wchar_t text[256]; ::GetWindowTextW(window, text, int(std::size(text)));
+            const QString title = QString::fromWCharArray(text);
+            const bool isSettings = title.contains(u"截图设置") || title.contains(u"Screenshot settings", Qt::CaseInsensitive);
+            if (f.settings ? isSettings : !isSettings && (title.startsWith(u"截图") || title.startsWith(u"Screenshot"))) {
+                f.found = window; return FALSE;
+            }
+            return TRUE;
+        }, reinterpret_cast<LPARAM>(&find));
+        return find.found;
+    };
+    const auto freeKey = [&](const QString& shortcut) {
+        UINT modifiers = 0, vk = 0;
+        if (!MessageWindow::parseHotkey(shortcut, &modifiers, &vk)) return false;
+        if (!::RegisterHotKey(nullptr, 0x7119, modifiers, vk)) return false;
+        ::UnregisterHotKey(nullptr, 0x7119);
+        return true;
+    };
+    const auto keyEvent = [](WORD vk, bool up) {
+        INPUT input {}; input.type = INPUT_KEYBOARD; input.ki.wVk = vk;
+        input.ki.dwFlags = up ? KEYEVENTF_KEYUP : 0;
+        return ::SendInput(1, &input, sizeof input) == 1;
+    };
+    const auto fire = [&](const QString& shortcut, const QString& name) {
+        ::SetForegroundWindow(fixture);
+        pump(100);
+        if (!check(::GetForegroundWindow() == fixture, name + u"_foreground")) return false;
+        UINT modifiers = 0, vk = 0;
+        MessageWindow::parseHotkey(shortcut, &modifiers, &vk);
+        const std::pair<UINT, WORD> modifierKeys[] {{MOD_CONTROL, VK_CONTROL}, {MOD_ALT, VK_MENU},
+            {MOD_SHIFT, VK_SHIFT}, {MOD_WIN, VK_LWIN}};
+        for (const auto& [flag, key] : modifierKeys) if (modifiers & flag) keyEvent(key, false);
+        const bool sent = keyEvent(WORD(vk), false);
+        pump(30);
+        keyEvent(WORD(vk), true);
+        for (auto it = std::rbegin(modifierKeys); it != std::rend(modifierKeys); ++it)
+            if (modifiers & it->first) keyEvent(it->second, true);
+        if (!check(sent && wait([&] { return windowOf(false) != nullptr; }), name + u"_overlay")) return false;
+        const HWND overlay = windowOf(false);
+        check(wait([&] { return ::GetForegroundWindow() == overlay; }), name + u"_focus");
+        if (::GetForegroundWindow() != overlay) return false;
+        if (name == u"after_settings")
+            // Capture windows exclude themselves from screen capture. This
+            // records the fixture behind it, not proof of the overlay's pixels.
+            QGuiApplication::primaryScreen()->grabWindow(WId(overlay)).save(out.filePath(u"foreground-fixture.png"_s));
+        keyEvent(VK_ESCAPE, false); keyEvent(VK_ESCAPE, true);
+        return check(wait([&] { return !windowOf(false); }), name + u"_cancel");
+    };
+    const QString original = valueAfter(args, u"--probe-hotkey", u"F1"_s);
+    if (!check(wait([&] { return captureWindow() && !freeKey(original); }), u"registered_at_startup"_s)) return false;
+    pump(500); // older plugins briefly expose an overlay while warming it
+    if (!check(wait([&] { return !windowOf(false); }), u"idle_overlay_hidden"_s)) return false;
+    const auto integrityOf = [](HANDLE process) -> DWORD {
+        HANDLE raw = nullptr;
+        if (!::OpenProcessToken(process, TOKEN_QUERY, &raw)) return 0;
+        win32::UniqueHandle token(raw);
+        alignas(TOKEN_MANDATORY_LABEL) BYTE buffer[128]; DWORD size = 0;
+        if (!::GetTokenInformation(token.get(), TokenIntegrityLevel, buffer, sizeof buffer, &size)) return 0;
+        const PSID sid = reinterpret_cast<TOKEN_MANDATORY_LABEL*>(buffer)->Label.Sid;
+        return *::GetSidSubAuthority(sid, *::GetSidSubAuthorityCount(sid) - 1);
+    };
+    DWORD pid = 0; ::GetWindowThreadProcessId(captureWindow(), &pid);
+    win32::UniqueHandle process(::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid));
+    report.insert(u"host_integrity_rid"_s, int(integrityOf(::GetCurrentProcess())));
+    report.insert(u"capture_integrity_rid"_s, int(integrityOf(process.get())));
+    if (!fire(original, u"before_settings"_s)) return false;
+    editor->plugins()->showSettings(u"winshun.capture"_s);
+    if (!check(wait([&] { return windowOf(true) != nullptr; }), u"open_capture_settings"_s)) return false;
+    ::PostMessageW(windowOf(true), WM_CLOSE, 0, 0);
+    check(wait([&] { return !windowOf(true); }), u"close_capture_settings"_s);
+    if (!fire(original, u"after_settings"_s)) return false;
+    editor->plugins()->setEnabled(u"winshun.capture"_s, false);
+    check(wait([&] { return freeKey(original); }), u"disable_releases_shortcut"_s);
+    check(wait([&] { return !captureWindow(); }), u"disabled_process_exits"_s);
+    const QString rebound = u"Ctrl+Alt+Shift+F23"_s;
+    if (!check(freeKey(rebound), u"rebound_shortcut_available"_s)) return false;
+    {
+        QSettings config(Settings::profile() + u"/plugins/winshun.capture.data/capture.ini"_s, QSettings::IniFormat);
+        config.setValue(u"Capture/Hotkey"_s, rebound); config.sync();
+    }
+    editor->plugins()->setEnabled(u"winshun.capture"_s, true);
+    check(wait([&] { return captureWindow() && !freeKey(rebound); }), u"reenable_registers_rebound"_s);
+    check(freeKey(original), u"old_shortcut_released"_s);
+    fire(rebound, u"rebound"_s);
+    editor->plugins()->setEnabled(u"winshun.capture"_s, false);
+    check(wait([&] { return freeKey(rebound); }), u"final_release"_s);
+    report.insert(u"capture_hotkey_checks"_s, checks);
+    report.insert(u"capture_hotkeys_passed"_s, passed);
+    QFile pluginLog(Settings::profile() + u"/plugins.log"_s);
+    if (pluginLog.open(QIODevice::ReadOnly)) {
+        QFile copy(out.filePath(u"capture-hotkey-plugins.log"_s));
+        if (copy.open(QIODevice::WriteOnly)) copy.write(pluginLog.readAll());
+    }
+    return passed;
+}
+
 int runRuntime(const QStringList& args)
 {
     const QDir out(valueAfter(args, kRuntimeFlag));
@@ -5239,6 +5392,11 @@ int runRuntime(const QStringList& args)
         since.start();
         if (!app.start({.background = true, .clipboardDisplayProbe = args.contains(u"--clipboard-display-probe"_s)}))
             return 4;
+        if (args.contains(u"--capture-hotkey-probe"_s) && !probeCaptureHotkeys(app, args, out, report)) {
+            QFile failed(out.filePath(u"capture-hotkey-failed.json"_s));
+            if (failed.open(QIODevice::WriteOnly)) failed.write(QJsonDocument(report).toJson());
+            return 4;
+        }
         report.insert(u"start_ms"_s, static_cast<double>(since.elapsed()));
         pump(std::clamp(valueAfter(args, u"--settle-ms", u"3000"_s).toInt(), 100, 60000));
         if (args.contains(u"--clipboard-shell-probe"_s)) {

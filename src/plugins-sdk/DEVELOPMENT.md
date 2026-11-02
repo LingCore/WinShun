@@ -39,3 +39,5 @@
 社区库只收支持的脚本、文本和图片，不收 exe 或 DLL。C++ 模板可在自己的仓库发布，用户通过 Win顺 导入插件包。PowerShell 脚本存成带 BOM 的 UTF-8，兼容 Windows PowerShell 5.1。
 
 插件安装后默认关闭，用户开启时才确认权限；开发者模式和模板创建不代替这个授权。
+
+常驻界面插件可在 `initialize.capabilities.hostHotkeys == true` 时通过 `winshun/tool` 调用 `register_hotkeys`，参数 `{keys: ["F1"]}`，返回 `{errors: {}}` 或逐键的 Windows 注册错误。宿主发 `hotkey` 通知 `{key: "F1"}`；插件只执行当前仍绑定的动作，录制期间忽略迟到通知。先发 `winshun/hotkeys` 保留相应键，录制时用空数组暂时释放，关闭或崩溃时由宿主清理。此工具使用已有 `ui` 权限，不提高插件权限；旧宿主无该能力时自行注册。完整协议见[插件文档](../../docs/plugins.md)。

@@ -1,0 +1,49 @@
+{
+    "capture_hotkey_checks": {
+        "after_settings_cancel": true,
+        "after_settings_focus": true,
+        "after_settings_foreground": true,
+        "after_settings_overlay": true,
+        "before_settings_cancel": true,
+        "before_settings_focus": true,
+        "before_settings_foreground": true,
+        "before_settings_overlay": true,
+        "close_capture_settings": true,
+        "disable_releases_shortcut": true,
+        "disabled_process_exits": true,
+        "final_release": true,
+        "old_shortcut_released": true,
+        "open_capture_settings": true,
+        "owned_foreground_fixture": true,
+        "rebound_cancel": true,
+        "rebound_focus": true,
+        "rebound_foreground": true,
+        "rebound_overlay": true,
+        "rebound_shortcut_available": true,
+        "reenable_registers_rebound": true,
+        "registered_at_startup": true,
+        "settings_model": true
+    },
+    "capture_hotkeys_passed": true,
+    "capture_integrity_rid": 8192,
+    "clipboard": false,
+    "host_integrity_rid": 8192,
+    "processes": [
+        {
+            "name": "WinShun.exe",
+            "pid": 48872,
+            "private_bytes": 307298304,
+            "working_set_bytes": 297099264
+        },
+        {
+            "name": "WinShunPluginHost.exe",
+            "pid": 48028,
+            "private_bytes": 1597440,
+            "working_set_bytes": 8347648
+        }
+    ],
+    "qt": "6.12.0",
+    "start_ms": 3831,
+    "total_private_bytes": 308895744,
+    "warnings": 0
+}

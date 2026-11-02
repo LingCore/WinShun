@@ -1,0 +1,13 @@
+
+Algorithm : SHA256
+Hash      : C90AF1A3E69C26DCA351CC9EA286A2E3DB158D8F40A2B9327207536367389CE9
+Path      : F:\电脑便捷工具\build\issue183\WinShun.exe
+
+Algorithm : SHA256
+Hash      : FAE705F79CE8CFF51AAA10E896A5063F9127970D21B85CF050436B0AF3545D47
+Path      : F:\电脑便捷工具\build\issue183\WinShunCaptureApp.dll
+
+Algorithm : SHA256
+Hash      : B031614E4A81E9D9FA50D8BB8ACDFFBD1F4D3032983040DBDA9CE779F84D9BB3
+Path      : F:\电脑便捷工具\build\release\WinShunCaptureApp.dll
+

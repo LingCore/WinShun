@@ -40,6 +40,7 @@ qt_add_executable(WinShun WIN32
     DropPieHelper.cpp DropPieHelper.h
     AiSettings.cpp AiSettings.h
     App.cpp App.h
+    platform/PluginHotkeys.cpp platform/PluginHotkeys.h
     ClipboardDisplay.cpp ClipboardDisplay.h ClipboardDisplayProtocol.h
     ClipboardDisplayReplica.cpp ClipboardDisplayReplica.h
     CommandLine.cpp CommandLine.h

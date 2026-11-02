@@ -3152,6 +3152,35 @@ private slots:
         f.host->shutdown();
     }
 
+    void hostHotkeyToolRequiresUiPermission()
+    {
+        Fixture f;
+        int calls = 0;
+        f.host->setAppTools({{u"register_hotkeys"_s, Permission::Ui,
+            [&](const QString&, const QString&, const QJsonObject&, std::function<void(mcp::ToolResult)> done) {
+                ++calls;
+                done({{{u"errors"_s, QJsonObject()}}});
+            }}});
+        Spec denied;
+        denied.id = u"test.hotkey-denied"_s;
+        denied.keywords = {u"hkd"_s};
+        denied.args = {u"--tool"_s, u"register_hotkeys"_s};
+        QVERIFY(!f.install(denied).isEmpty());
+        QVERIFY(f.host->query(u"hkd x"_s, Scope::All, 1));
+        QVERIFY(f.waitFinal(1));
+        QCOMPARE(calls, 0);
+        QCOMPARE(f.finalFor(1)->items[0].subtitle, u"tool error %1"_s.arg(kPermissionDenied));
+        Spec allowed = denied;
+        allowed.id = u"test.hotkey-allowed"_s;
+        allowed.keywords = {u"hka"_s};
+        allowed.permissions = {u"ui"_s};
+        QVERIFY(!f.install(allowed).isEmpty());
+        QVERIFY(f.host->query(u"hka x"_s, Scope::All, 2));
+        QVERIFY(f.waitFinal(2));
+        QCOMPARE(calls, 1);
+        QVERIFY(f.finalFor(2)->items[0].subtitle.startsWith(u"tool ok"));
+    }
+
     // ---- rerun, toasts, files (GitHub #113) ----------------------------------
 
     void manifestListenAndNotifications()

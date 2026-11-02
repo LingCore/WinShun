@@ -1,0 +1,10 @@
+********* Start testing of TestPlugin *********
+Config: Using QtTest library 6.12.0, Qt 6.12.0 (x86_64-little_endian-llp64 shared (dynamic) release build; by MSVC 2022), windows 11
+PASS   : TestPlugin::initTestCase()
+FAIL!  : TestPlugin::eagerReenabledWhileItsPreviousProcessIsExiting() 'QTest::qWaitFor([&] { return f.startedPids.size() == 2 && f.host->state(spec.id).status == Host::State::Status::Running; }, 5000)' returned FALSE. (2026-11-02 17:55:27.358 test.fake: ?? C:\Users\young\AppData\Local\Temp\tst_plugin-AkuxvE\plugins\test.fake\fake.exe
+2026-11-02 17:55:27.383 runner ??(pid 73564,???? 3)
+2026-11-02 17:55:27.474 test.fake: ??(?? 1))
+F:\电脑便捷工具\tests\tst_plugin.cpp(3534) : failure location
+PASS   : TestPlugin::cleanupTestCase()
+Totals: 2 passed, 1 failed, 0 skipped, 0 blacklisted, 5144ms
+********* Finished testing of TestPlugin *********

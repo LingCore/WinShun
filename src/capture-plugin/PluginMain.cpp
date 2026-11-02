@@ -170,7 +170,7 @@ extern "C" __declspec(dllexport) int winshunCaptureMain(const wchar_t* appDirNam
     ws::captureplugin::CaptureApp capture(protocol, appDir, dataDir);
     capture.engine().addImageProvider(u"winshunicon"_s, new AppIcon(QDir::toNativeSeparators(appDir + u"/WinShun.exe"_s)));
     protocol.respond(first->value(u"id"_s), QJsonObject {{u"protocolVersion"_s, u"1"_s}, {u"name"_s, u"winshun.capture"_s}});
-    capture.start(appearance);
+    capture.start(appearance, params.value(u"capabilities"_s).toObject().value(u"hostHotkeys"_s).toBool());
     return app.exec();
 }
 

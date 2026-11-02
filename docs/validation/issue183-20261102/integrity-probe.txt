@@ -1,0 +1,12 @@
+medium listener, medium foreground:
+registered:1,1
+
+hotkey:1
+
+hotkey:2
+
+low listener, medium foreground:
+registered:1,1
+
+hotkey:2
+

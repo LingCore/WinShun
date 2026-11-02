@@ -67,6 +67,7 @@
 #include "platform/Integrity.h"
 #include "platform/KeyListener.h"
 #include "platform/MessageWindow.h"
+#include "platform/PluginHotkeys.h"
 #include "platform/NetworkNotifier.h"
 #include "platform/NumberKeys.h"
 #include "platform/Paster.h"
@@ -2011,6 +2012,25 @@ QJsonObject App::pluginLook() const
 void App::setUpAppTools()
 {
     std::vector<plugin::Host::AppTool> tools;
+    tools.push_back({u"register_hotkeys"_s, plugin::Permission::Ui,
+        [this](const QString& owner, const QString&, const QJsonObject& arguments, std::function<void(mcp::ToolResult)> done) {
+            const QJsonValue value = arguments.value(u"keys"_s);
+            QStringList keys;
+            if (value.isArray()) {
+                for (const QJsonValue& key : value.toArray()) {
+                    if (!key.isString()) {
+                        done(toolError(u"keys must contain shortcut strings"_s));
+                        return;
+                    }
+                    keys.append(key.toString());
+                }
+            }
+            if (!value.isArray() || !PluginHotkeys::valid(keys)) {
+                done(toolError(u"keys must contain at most 32 valid global shortcuts"_s));
+                return;
+            }
+            done({{{u"errors"_s, m_pluginKeyRelay->replace(owner, keys)}}});
+        }});
     // A picture into the clipboard history: the plugin's file in its own
     // data folder (and the annotations beside it), read off the GUI thread
     // and deleted. `copy`: onto the clipboard too (else recorded only, as
@@ -6242,6 +6262,9 @@ void App::createPluginHost()
         return std::pair<bool, QStringList>(c && c->enabled, c ? c->confirmed : QStringList());
     });
     m_pluginHost = std::make_unique<plugin::Host>(options);
+    m_pluginKeyRelay = std::make_unique<PluginHotkeys>([this](const QString& owner, const QString& key) {
+        m_pluginHost->notify(owner, u"hotkey"_s, {{u"key"_s, key}}, true);
+    });
     {
         PluginUpdates::Options updateOptions;
         updateOptions.dataDir = dataDir;
@@ -6271,6 +6294,8 @@ void App::createPluginHost()
     }
     connect(&m_pluginHost->catalog(), &plugin::Catalog::changed, this, &App::pluginsChanged);
     connect(m_pluginHost.get(), &plugin::Host::stateChanged, this, [this](const QString& id) {
+        if (!m_pluginHost->catalog().enabled(id))
+            m_pluginKeyRelay->remove(id);
         // A deferred install completed later from the regular plugin page.
         if (!m_onboarding && id == u"winshun.capture" && m_settings.onboardingCapturePending
             && m_pluginHost->catalog().enabled(id)
@@ -6295,7 +6320,10 @@ void App::createPluginHost()
         applyTaskbarHotkeys();
         applyQuickPasteHotkeys();
     });
-    connect(m_pluginHost.get(), &plugin::Host::processExited, this, [this](const QString& id) { m_trayMenus.erase(id); });
+    connect(m_pluginHost.get(), &plugin::Host::processExited, this, [this](const QString& id) {
+        m_pluginKeyRelay->remove(id);
+        m_trayMenus.erase(id);
+    });
     connect(m_pluginHost.get(), &plugin::Host::disabledAfterCrashes, this, [this](const QString& id) {
         const plugin::Entry* e = m_pluginHost->catalog().find(id);
         const QString name = e && e->manifest ? e->manifest->name.pick(m_language) : id;

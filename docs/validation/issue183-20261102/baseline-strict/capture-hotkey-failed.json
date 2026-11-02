@@ -1,0 +1,12 @@
+{
+    "capture_hotkey_checks": {
+        "before_settings_focus": false,
+        "before_settings_foreground": true,
+        "before_settings_overlay": true,
+        "owned_foreground_fixture": true,
+        "registered_at_startup": true,
+        "settings_model": true
+    },
+    "capture_integrity_rid": 4096,
+    "host_integrity_rid": 8192
+}

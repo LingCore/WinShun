@@ -1,0 +1,7 @@
+Test project F:/电脑便捷工具/build/issue183
+    Start 112: tst_plugin
+1/1 Test #112: tst_plugin .......................   Passed   43.47 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =  43.47 sec

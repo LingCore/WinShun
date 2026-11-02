@@ -1,0 +1,13 @@
+preparing
+making the application
+loading the font
+saved docs/validation/issue183-20261102/drop-pie/always.png 800x540
+saved docs/validation/issue183-20261102/drop-pie/held-idle.png 800x540
+saved docs/validation/issue183-20261102/drop-pie/held-100ms.png 800x540
+saved docs/validation/issue183-20261102/drop-pie/held-300ms.png 800x540
+saved docs/validation/issue183-20261102/drop-pie/held-released.png 800x540
+saved docs/validation/issue183-20261102/drop-pie/quick-taps.png 800x540
+saved docs/validation/issue183-20261102/drop-pie/off.png 800x540
+drop pie: real ordinary-user helper, OLE target registration, favorite refresh and shutdown checked
+renderer D3D11, DPR 1; Qt events only, not a global double-Ctrl gesture
+0 warning(s)

@@ -1,0 +1,18 @@
+Test project F:/电脑便捷工具/build/issue183
+    Start   1: tst_pluginhotkeys
+1/4 Test   #1: tst_pluginhotkeys ................   Passed    0.06 sec
+    Start  23: tst_shelllaunch
+2/4 Test  #23: tst_shelllaunch ..................   Passed    7.14 sec
+    Start  43: tst_settings
+3/4 Test  #43: tst_settings .....................   Passed    1.25 sec
+    Start 112: tst_plugin
+4/4 Test #112: tst_plugin .......................***Failed   49.00 sec
+
+
+75% tests passed, 1 tests failed out of 4
+
+Total Test time (real) =  57.49 sec
+
+The following tests FAILED:
+	112 - tst_plugin (Failed)
+Errors while running CTest

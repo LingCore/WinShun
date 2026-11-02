@@ -49,7 +49,7 @@ public:
     ~CaptureApp() override;
 
     // Once initialize is answered: the settings applied, the hotkeys registered.
-    void start(const QJsonObject& appearance);
+    void start(const QJsonObject& appearance, bool hostHotkeys = false);
     QQmlEngine& engine() { return m_qml; }
 
 protected:
@@ -63,6 +63,7 @@ private:
     // ---- what App did ----
     void apply();
     void applyHotkeys();
+    void reportHotkeyProblems(const CaptureSettings::Problems& problems);
     void applyAppearance(const QJsonObject& appearance);
     capture::PinManager& pins();
     capture::CaptureEditor* editor();
@@ -118,6 +119,8 @@ private:
     QPointer<QQuickWindow> m_settingsWindow;
     std::unique_ptr<RawClicks> m_clicks; // while a recording shows the clicks
     QStringList m_reportedHotkeys; // what Win顺 was told it holds (applyHotkeys)
+    bool m_hostHotkeys = false;
+    quint64 m_hotkeyRevision = 0;
     std::jthread m_pinSaver;
     // The history pictures being edited: what Win顺 handed over for them.
     struct HistoryPicture {

@@ -256,8 +256,9 @@ CaptureApp::~CaptureApp()
         ::DestroyWindow(m_window);
 }
 
-void CaptureApp::start(const QJsonObject& appearance)
+void CaptureApp::start(const QJsonObject& appearance, bool hostHotkeys)
 {
+    m_hostHotkeys = hostHotkeys;
     applyAppearance(appearance);
     m_started = true;
     apply();
@@ -348,7 +349,19 @@ void CaptureApp::requested(const QJsonValue& id, const QString& method, const QJ
 
 void CaptureApp::notified(const QString& method, const QJsonObject& params)
 {
-    if (method == u"menu")
+    if (method == u"hotkey" && m_hostHotkeys && !m_settings.recordingHotkey()) {
+        const QString key = hotkeys::normalized(params.value(u"key"_s).toString());
+        const auto& o = m_settings.options();
+        const std::pair<int, QString> shortcuts[] {{CaptureKey, o.hotkey}, {PinsKey, o.pinsHotkey},
+            {PinsRestoreKey, o.pinsRestoreHotkey}, {LastPinKey, o.lastPinHotkey},
+            {PrintScreenKey, o.printScreen ? u"PrintScreen"_s : QString()}};
+        for (const auto& [id, shortcut] : shortcuts) {
+            if (!key.isEmpty() && key == hotkeys::normalized(shortcut)) {
+                hotkey(id);
+                break;
+            }
+        }
+    } else if (method == u"menu")
         menuChosen(params.value(u"id"_s).toString());
     else if (method == u"appearance")
         applyAppearance(params);
@@ -358,6 +371,9 @@ void CaptureApp::notified(const QString& method, const QJsonObject& params)
 // next start), the hotkeys and the pins go with the process.
 void CaptureApp::shutdown()
 {
+    ++m_hotkeyRevision;
+    if (m_hostHotkeys)
+        m_protocol.tool(u"register_hotkeys"_s, {{u"keys"_s, QJsonArray()}});
     for (int id = CaptureKey; id <= LastPinKey; ++id)
         ::UnregisterHotKey(m_window, id);
     const QString before = m_settings.options().printScreenBefore;
@@ -504,10 +520,14 @@ void CaptureApp::apply()
 
 void CaptureApp::applyHotkeys()
 {
+    const quint64 revision = ++m_hotkeyRevision;
     for (int id = CaptureKey; id <= LastPinKey; ++id)
         ::UnregisterHotKey(m_window, id);
-    if (m_settings.recordingHotkey())
+    if (m_settings.recordingHotkey()) {
+        if (m_hostHotkeys)
+            m_protocol.tool(u"register_hotkeys"_s, {{u"keys"_s, QJsonArray()}});
         return; // the keys being pressed must reach the settings window (Win顺 is told nothing: a moment)
+    }
     QStringList wanted;
     bool failed = false;
     CaptureSettings::Problems problems;
@@ -521,7 +541,7 @@ void CaptureApp::applyHotkeys()
             const bool valid = hotkeys::parse(hotkey, &modifiers, &vk);
             if (valid)
                 wanted.append(hotkey);
-            if (valid && ::RegisterHotKey(m_window, id, modifiers, vk))
+            if (valid && (m_hostHotkeys || ::RegisterHotKey(m_window, id, modifiers, vk)))
                 return {};
             failed = true;
             return hotkeyProblem(hotkey);
@@ -547,6 +567,33 @@ void CaptureApp::applyHotkeys()
             return;
         }
     }
+    if (m_hostHotkeys) {
+        m_protocol.tool(u"register_hotkeys"_s, {{u"keys"_s, QJsonArray::fromStringList(wanted)}},
+            [this, revision, problems](const QJsonValue& result, const QString& error) mutable {
+                if (revision != m_hotkeyRevision)
+                    return; // a recording, edit or shutdown overtook this reply
+                const auto errors = result.toObject().value(u"errors"_s).toObject();
+                const auto problem = [&](const QString& key) {
+                    const bool valid = !hotkeys::normalized(key).isEmpty();
+                    return key.isEmpty() || (valid && error.isEmpty() && !errors.contains(key)) ? QString() : hotkeyProblem(key);
+                };
+                const auto& o = m_settings.options();
+                problems.hotkey = problem(o.hotkey);
+                problems.pinsHotkey = problem(o.pinsHotkey);
+                problems.pinsRestoreHotkey = problem(o.pinsRestoreHotkey);
+                problems.lastPinHotkey = problem(o.lastPinHotkey);
+                if (o.printScreen && (!error.isEmpty() || errors.contains(u"PrintScreen"_s)))
+                    problems.note = hotkeyProblem(u"PrintScreen"_s);
+                m_settings.setProblems(problems);
+                reportHotkeyProblems(problems);
+            });
+        return;
+    }
+    reportHotkeyProblems(problems);
+}
+
+void CaptureApp::reportHotkeyProblems(const CaptureSettings::Problems& problems)
+{
     if (!m_capture)
         return;
     if (!(m_settingsWindow && m_settingsWindow->isVisible())) {

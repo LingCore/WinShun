@@ -79,6 +79,7 @@ enum class Front : std::uint8_t;
 }
 class Launcher;
 class MessageWindow;
+class PluginHotkeys;
 class MissingFiles;
 class NetworkNotifier;
 class Onboarding;
@@ -561,6 +562,7 @@ private:
     std::unique_ptr<mcp::McpServer> m_mcpServer;
     std::unique_ptr<plugin::AiBridge> m_aiBridge; // with the server: the plugins' commands among its tools
     std::unique_ptr<plugin::Tools> m_pluginTools; // before the host, whose bridge calls it
+    std::unique_ptr<PluginHotkeys> m_pluginKeyRelay; // outlives the host's exit notifications
     std::unique_ptr<plugin::Host> m_pluginHost; // before the launcher, which asks it
     std::unique_ptr<OcrPackage> m_ocrPackage;
     // The system switches' states (docs/design-system-switches.md); likewise.

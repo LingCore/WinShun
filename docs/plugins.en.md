@@ -256,8 +256,11 @@ plugin → {"jsonrpc":"2.0","method":"winshun/hotkeys","params":{"keys":["Win+Sh
 
 And tools for plugins, not for AI (called with `winshun/tool` as the others, held to the permissions):
 
+When `initialize.capabilities.hostHotkeys` is true, a resident plugin with `ui` permission can report its reserved keys with `winshun/hotkeys`, then call `register_hotkeys` with all its `keys` (up to 32; `[]` releases them). The response is `{errors: {shortcut: WindowsErrorCode}}`, omitting successful keys. A press arrives as `hotkey` with `{key}`, with foreground activation allowed. Release while recording a shortcut and register again afterwards; the host cleans up on disable, exit and crash. Older hosts retain the plugin's own registration path. Registration uses the host's existing integrity level while the plugin keeps its normal rights. An ordinary host still cannot override a higher-integrity foreground application with an unmodified function key.
+
 | Tool | Permission | Arguments | What it does |
 |---|---|---|---|
+| `register_hotkeys` | `ui` | `keys` | replaces this plugin's global shortcuts, accepting recorder-supported shortcuts and PrintScreen; returns per-key registration errors |
 | `clipboard_add_image` | `clipboard:write` | `file`, `project` (optional), `copy` (default true), `screenshot` | puts a picture in the plugin's data folder (and its annotation project) into the clipboard history; with `copy` false it is recorded but not put on the clipboard. Win顺 deletes both files once read. Answers `{kept}`: false while the clipboard history or its pictures are off or paused |
 | `clipboard_copy` | `clipboard:write` | `text` | text onto the clipboard (at most a million characters), into the history as any copy |
 | `clipboard_copy_entry` | `clipboard:write` | `id` | an entry of the clipboard history onto the clipboard again, moved to the top |
