@@ -573,11 +573,22 @@ void CaptureApp::applyHotkeys()
                 if (revision != m_hotkeyRevision)
                     return; // a recording, edit or shutdown overtook this reply
                 const auto errors = result.toObject().value(u"errors"_s).toObject();
-                const auto problem = [&](const QString& key) {
-                    const bool valid = !hotkeys::normalized(key).isEmpty();
-                    return key.isEmpty() || (valid && error.isEmpty() && !errors.contains(key)) ? QString() : hotkeyProblem(key);
-                };
                 const auto& o = m_settings.options();
+                // A key set twice: the later row is the one without it, as
+                // when the plugin registers them itself.
+                QStringList taken;
+                if (o.printScreen)
+                    taken.append(hotkeys::normalized(u"PrintScreen"_s));
+                const auto problem = [&](const QString& key) {
+                    const QString normal = hotkeys::normalized(key);
+                    const bool again = !normal.isEmpty() && taken.contains(normal);
+                    taken.append(normal);
+                    if (errors.value(key).toInt() == ERROR_INVALID_PARAMETER) // parses, but not a shortcut Win顺 takes
+                        return QCoreApplication::translate("ws::captureplugin::CaptureApp", "无法识别“%1”，请重新设置。").arg(key);
+                    return key.isEmpty() || (!normal.isEmpty() && !again && error.isEmpty() && !errors.contains(key))
+                        ? QString()
+                        : hotkeyProblem(key);
+                };
                 problems.hotkey = problem(o.hotkey);
                 problems.pinsHotkey = problem(o.pinsHotkey);
                 problems.pinsRestoreHotkey = problem(o.pinsRestoreHotkey);

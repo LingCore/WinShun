@@ -33,9 +33,12 @@ PluginHotkeys::~PluginHotkeys()
 
 bool PluginHotkeys::valid(const QStringList& keys)
 {
-    return keys.size() <= 32 && std::ranges::all_of(keys, [](const QString& key) {
-        return key.size() <= 64 && (hotkeys::allowed(key) || hotkeys::normalized(key) == u"printscreen");
-    });
+    return keys.size() <= 32 && std::ranges::all_of(keys, [](const QString& key) { return key.size() <= 64; });
+}
+
+bool PluginHotkeys::allowed(const QString& key)
+{
+    return hotkeys::allowed(key) || hotkeys::normalized(key) == u"printscreen";
 }
 
 QJsonObject PluginHotkeys::replace(const QString& owner, const QStringList& keys)
@@ -45,9 +48,11 @@ QJsonObject PluginHotkeys::replace(const QString& owner, const QStringList& keys
         errors.insert(u"invalid"_s, int(ERROR_INVALID_PARAMETER));
         return errors; // malformed requests do not release existing keys
     }
+    // One key the recorder would not take (capture.ini edited by hand:
+    // Shift+A) is that key's error; the others are registered all the same.
     QStringList wanted;
     for (const QString& key : keys)
-        wanted.append(hotkeys::normalized(key));
+        wanted.append(allowed(key) ? hotkeys::normalized(key) : QString());
     for (auto it = m_keys.begin(); it != m_keys.end();) {
         if (it->second.owner == owner && !wanted.contains(it->second.normalized)) {
             ::UnregisterHotKey(m_window, it->first);
@@ -58,8 +63,15 @@ QJsonObject PluginHotkeys::replace(const QString& owner, const QStringList& keys
     }
     QStringList seen;
     for (qsizetype i = 0; i < keys.size(); ++i) {
+        if (wanted[i].isEmpty()) {
+            errors.insert(keys[i], int(ERROR_INVALID_PARAMETER));
+            continue;
+        }
         if (seen.contains(wanted[i])) {
-            errors.insert(keys[i], int(ERROR_HOTKEY_ALREADY_REGISTERED));
+            // Spelled as the one that holds it, the key is this owner's; an
+            // error under that spelling would say the holder failed too.
+            if (!keys.first(i).contains(keys[i]))
+                errors.insert(keys[i], int(ERROR_HOTKEY_ALREADY_REGISTERED));
             continue;
         }
         seen.append(wanted[i]);

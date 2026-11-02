@@ -2047,9 +2047,10 @@ void App::setUpAppTools()
                 }
             }
             if (!value.isArray() || !PluginHotkeys::valid(keys)) {
-                done(toolError(u"keys must contain at most 32 valid global shortcuts"_s));
+                done(toolError(u"keys must contain at most 32 global shortcuts"_s));
                 return;
             }
+            // A key not allowed is reported in errors; the others still register.
             done({{{u"errors"_s, m_pluginKeyRelay->replace(owner, keys)}}});
         }});
     // A picture into the clipboard history: the plugin's file in its own

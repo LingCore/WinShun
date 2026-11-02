@@ -20,9 +20,15 @@ public:
     PluginHotkeys(const PluginHotkeys&) = delete;
     PluginHotkeys& operator=(const PluginHotkeys&) = delete;
 
+    // A well-formed request: at most 32 keys, none longer than 64 characters.
     static bool valid(const QStringList& keys);
+    // A key the shortcut recorder accepts, or PrintScreen.
+    static bool allowed(const QString& key);
     // Replaces this owner's registrations, retaining unchanged keys. Errors
-    // are Windows error codes keyed by the requested spelling. Empty releases.
+    // are Windows error codes keyed by the requested spelling: a key not
+    // allowed is ERROR_INVALID_PARAMETER, the rest are still registered; a
+    // key repeated in another spelling is ERROR_HOTKEY_ALREADY_REGISTERED.
+    // A malformed request (see valid) changes nothing. Empty releases.
     QJsonObject replace(const QString& owner, const QStringList& keys);
     void remove(const QString& owner);
 
