@@ -321,6 +321,7 @@ set_tests_properties(tst_numberhints PROPERTIES
 qt_add_executable(tst_aisettings tst_aisettings.cpp
     ${PROJECT_SOURCE_DIR}/src/app/AiSettings.cpp ${PROJECT_SOURCE_DIR}/src/app/Settings.cpp)
 target_include_directories(tst_aisettings PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_compile_definitions(tst_aisettings PRIVATE WINSHUN_QML_DIR="${PROJECT_SOURCE_DIR}/src/app/qml")
 target_link_libraries(tst_aisettings PRIVATE wscore Qt6::Gui Qt6::Test)
 set_target_properties(tst_aisettings PROPERTIES WIN32_EXECUTABLE FALSE)
 add_test(NAME tst_aisettings COMMAND tst_aisettings)

@@ -580,7 +580,6 @@ std::vector<Entry> buildCatalog()
         Entry e = base({"WebSearch/Shortcuts", QT_TRANSLATE_NOOP("AiSettings", "网页搜索关键词"), "web", -1,
                            "Keywords that open or search a web page from the search box: 'gh' opens GitHub, 'gh WinShun' searches it. Change with add ({keyword, name?, url, home?}; url is an http(s) address, %s where the searched words go) or remove (keywords). A keyword another shortcut or a favorite has is refused."},
             Type::WebShortcuts);
-        e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "关键词");
         e.access = Access::AlwaysAsk;
         e.field = &Settings::webShortcuts;
         add(std::move(e));
@@ -715,6 +714,18 @@ std::vector<Entry> buildCatalog()
             {{u"software"_s, u"drawn by the processor, less memory"_s, QT_TRANSLATE_NOOP("AiSettings", "处理器绘制")},
                 {u"d3d11"_s, u"drawn by the graphics card, smoother"_s, QT_TRANSLATE_NOOP("AiSettings", "显卡加速")}},
             Effect::AppRestart));
+    }
+
+    // Rows the settings window has merged: found by the merged row's title.
+    for (Entry& e : t) {
+        if (e.key == u"Taskbar/SearchBox")
+            e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "任务栏上的 Win顺");
+        else if (e.key == u"Launcher/FolderMenuExplorer" || e.key == u"Launcher/FolderMenuDesktop" || e.key == u"Launcher/FolderMenuMiddle")
+            e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "触发位置与方式");
+        else if (e.key == u"Launcher/FolderMenuFavorites" || e.key == u"Launcher/FolderMenuRecent" || e.key == u"Launcher/FolderMenuWindows")
+            e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "菜单里列出的内容");
+        else if (e.key == u"Results/ShowModifiedTime")
+            e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "较早的日期也显示具体时间");
     }
 
     // ---- never seen: paths and shares (what leaves the PC), AI's own switches, plugins, bookkeeping ----

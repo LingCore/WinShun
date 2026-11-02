@@ -6999,10 +6999,16 @@ mcp::ToolResult App::openAiSettings(const QString& key, const QString& section)
         if (!entry || !aisettings::visible(*entry))
             return {{}, true, u"Unknown setting '%1'; keys come from get_settings."_s.arg(key)};
         const aisettings::Section* of = aisettings::sectionOf(entry->section);
+        where = of ? u"%1 › %2"_s.arg(of->titleText(), entry->titleText()) : entry->titleText();
+        if (entry->section == u"web") { // the web plugin's card on the 插件 page, not a row the search finds
+            showWebSettings();
+            if (!m_settingsWindow)
+                return {{}, true, u"The settings window could not be opened."_s};
+            return {{{u"opened"_s, true}, {u"where"_s, where}}};
+        }
         page = of ? of->page : 0;
         tab = entry->tab;
         rowTitle = entry->rowTitleText();
-        where = of ? u"%1 › %2"_s.arg(of->titleText(), entry->titleText()) : entry->titleText();
     } else {
         const aisettings::Section* of = aisettings::sectionOf(section);
         if (!of) {

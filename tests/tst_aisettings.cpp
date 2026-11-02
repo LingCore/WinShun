@@ -6,6 +6,7 @@
 #include "AiSettings.h"
 #include "Settings.h"
 
+#include <QDirIterator>
 #include <QJsonDocument>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -135,6 +136,36 @@ private slots:
         // The settings window's pages are the sections'.
         for (const Section& s : sections())
             QVERIFY2(s.page >= 0 && s.page <= 10, qPrintable(s.id));
+    }
+
+    // open_settings finds a row by its title (SettingsWindow.showSetting): the
+    // title must still be one of the settings window's, or the window opens
+    // at the page and shows nothing.
+    void rowTitlesExistInTheSettingsWindow()
+    {
+        QString qml;
+        QDirIterator files(QStringLiteral(WINSHUN_QML_DIR), {u"*.qml"_s}, QDir::Files);
+        while (files.hasNext()) {
+            QFile file(files.next());
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            qml += QString::fromUtf8(file.readAll());
+        }
+        QVERIFY(!qml.isEmpty());
+        QStringList missing;
+        // Titles with the tapped key's name in them, or on tabs of one row: the
+        // search's nearest row is the one opened, not an exact title.
+        const QStringList nearest {u"Launcher/DoubleTapKey"_s, u"Launcher/DoubleCtrlKey"_s, u"Launcher/DoubleCtrlPauseInGames"_s,
+            u"Launcher/DoubleCtrlPauseInFullScreen"_s, u"Launcher/DoubleCtrlExcludedApps"_s, u"Launcher/FileManagerRevealCommand"_s,
+            u"Results/DoubleClickToOpen"_s, u"Results/TabEntersFavoriteFolder"_s, u"Capture/Keyword"_s};
+        for (const aisettings::Entry& e : catalog()) {
+            if (e.access == Access::Hidden || e.section == u"web" || e.section == u"paste_file" || nearest.contains(e.key))
+                continue;
+            const QString title = e.rowTitleText();
+            if (title.isEmpty())
+                continue;
+            if (!qml.contains(u"\"%1\""_s.arg(title))) missing << e.key + u": "_s + title;
+        }
+        QVERIFY2(missing.isEmpty(), qPrintable(missing.join(u'\n')));
     }
 
     // What AI must never write, whatever else changes: each is not writable
