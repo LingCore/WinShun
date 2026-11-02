@@ -54,7 +54,10 @@ namespace ws {
 // file opened; the grams are taken out here as from a file. Files written
 // lately, documents, and whatever the session will not give (compressed,
 // encrypted, reparse points, not readable by this user, not found) are read
-// the usual way instead; nothing is lost, only read differently.
+// the usual way instead; nothing is lost, only read differently. Files to
+// check (a journal was lost: every document of the volume is unsure) go the
+// same way when a volume has enough of them: the scan gives each file's size
+// and time, and only those that changed are read.
 class ContentIndexer {
 public:
     struct Options {
@@ -97,6 +100,7 @@ public:
         std::size_t notFound = 0; // the session found no record (the usual way)
         std::size_t denied = 0; // this user may not read it, said the service (the usual way: ACCESS_DENIED)
         std::size_t fallback = 0; // compressed, encrypted, reparse points...: the usual way
+        std::size_t confirmed = 0; // files to check that their records showed unchanged (not opened)
         std::size_t verified = 0; // WINSHUN_BULK_VERIFY: read the usual way too and compared
         std::size_t verifyMismatches = 0;
     };
@@ -308,7 +312,7 @@ private:
     std::atomic<std::size_t> m_copies {0};
     struct BulkCounters {
         std::atomic<std::size_t> sessions {0}, sessionsFailed {0}, files {0}, tooLarge {0}, recent {0}, noRecord {0},
-            notFound {0}, denied {0}, fallback {0}, verified {0}, verifyMismatches {0};
+            notFound {0}, denied {0}, fallback {0}, confirmed {0}, verified {0}, verifyMismatches {0};
         std::atomic<std::uint64_t> bytes {0};
     } m_bulk;
     // Files read lately, and when: one that keeps changing (a log being

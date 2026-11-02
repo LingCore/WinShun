@@ -10735,6 +10735,158 @@ private slots:
         QCOMPARE(content->stats().documents, std::size_t {0});
     }
 
+    // GitHub #36: after a lost journal every document is to be checked; with
+    // enough of them on a volume, its MFT scan answers for all (here a fake
+    // session that looks the files up itself), and only the changed ones are
+    // read. What the scan cannot tell, or was written lately, is checked by path.
+    void contentChecksFromRecords()
+    {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        const QString root = QDir::toNativeSeparators(tmp.path());
+        const auto write = [&](const QString& name, const QByteArray& bytes) {
+            QFile f(tmp.filePath(name));
+            return f.open(QIODevice::WriteOnly) && f.write(bytes) == bytes.size();
+        };
+        constexpr int kFiles = 2100; // above the bulk way's threshold
+        const auto nameOf = [](int i) { return u"f%1.txt"_s.arg(i, 4, 10, QChar(u'0')); };
+        for (int i = 0; i < kFiles; ++i)
+            QVERIFY(write(nameOf(i), "word " + QByteArray::number(i)));
+        QVERIFY(write(u"r.pdf"_s, "%PDF-1.4 not really"));
+
+        const std::string rootName = wtf8::fromUtf16(wtf8::view(root));
+        auto index = std::make_shared<FileIndex>();
+        std::vector<EntryId> files;
+        EntryId pdf = kNoEntry;
+        {
+            auto lock = index->writeLock();
+            const EntryId r = index->addRoot(rootName);
+            index->setFolderRecord(r, 5, r); // the root folder's record, as on NTFS
+            for (int i = 0; i < kFiles; ++i)
+                files.push_back(index->add(r, nameOf(i).toStdString(), 0));
+            pdf = index->add(r, "r.pdf", 0);
+            const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            index->setModified(files[3], static_cast<FileTime>(now)); // written lately: by path
+        }
+        // Read before (each with its file's stamp), then the journal lost.
+        auto content = std::make_shared<ContentIndex>(tmp.filePath(u"content"_s));
+        const auto stampOf = [&](const QString& name) {
+            return *ContentIndexer::stampOf(QDir::toNativeSeparators(tmp.filePath(name)).toStdWString());
+        };
+        for (int i = 0; i < kFiles; ++i)
+            QVERIFY(content->add(files[i], grams::ofPhrase(u"word"_s), false, stampOf(nameOf(i)), content->changeSequence(), {}, false));
+        QVERIFY(content->add(pdf, {}, true, stampOf(u"r.pdf"_s), content->changeSequence(), {}, false));
+        content->markUnsure([](EntryId) { return true; });
+        QVERIFY(write(nameOf(1), "changed text, longer than before")); // changed meanwhile
+        QVERIFY(QFile::remove(tmp.filePath(nameOf(2)))); // gone meanwhile
+
+        // The session: the files by their folder's record and name, as the volume would give them.
+        struct Scans {
+            std::atomic<int> scans {0};
+            std::atomic<int> fetched {0};
+        } scans;
+        class FakeBulk final : public ntfs::BulkSource {
+        public:
+            FakeBulk(QString root, Scans& scans) : m_root(std::move(root)), m_scans(scans) { }
+            bool valid() const noexcept override { return true; }
+            const std::wstring& error() const noexcept override { return m_error; }
+            bool want(std::span<const ntfs::BulkWant> wants) override
+            {
+                m_wants.insert(m_wants.end(), wants.begin(), wants.end());
+                return true;
+            }
+            bool scan(std::vector<ntfs::BulkFile>& out) override
+            {
+                ++m_scans.scans;
+                for (std::uint32_t t = 0; t < m_wants.size(); ++t) {
+                    WIN32_FILE_ATTRIBUTE_DATA data {};
+                    if (m_wants[t].parentRecord != 5
+                        || !::GetFileAttributesExW(pathOf(t).c_str(), GetFileExInfoStandard, &data)) {
+                        out.push_back({t, ntfs::BulkStatus::NotFound, ntfs::BulkSkip::NotFound, 0, 0});
+                        continue;
+                    }
+                    const std::uint64_t size = (std::uint64_t {data.nFileSizeHigh} << 32) | data.nFileSizeLow;
+                    const std::int64_t written = static_cast<std::int64_t>(
+                        (std::uint64_t {data.ftLastWriteTime.dwHighDateTime} << 32) | data.ftLastWriteTime.dwLowDateTime);
+                    out.push_back({t, size > m_wants[t].maxBytes ? ntfs::BulkStatus::TooLarge : ntfs::BulkStatus::Data,
+                        ntfs::BulkSkip::None, size, written});
+                }
+                return true;
+            }
+            bool fetch(std::span<const std::uint32_t> tickets,
+                const std::function<void(std::uint32_t, std::vector<std::byte>&&)>& sink) override
+            {
+                for (const std::uint32_t t : tickets) {
+                    QFile f(QString::fromStdWString(pathOf(t)));
+                    if (!f.open(QIODevice::ReadOnly))
+                        return false;
+                    const QByteArray bytes = f.readAll();
+                    std::vector<std::byte> out(static_cast<std::size_t>(bytes.size()));
+                    std::memcpy(out.data(), bytes.constData(), out.size());
+                    ++m_scans.fetched;
+                    sink(t, std::move(out));
+                }
+                return true;
+            }
+
+        private:
+            std::wstring pathOf(std::uint32_t ticket) const
+            {
+                return m_root.toStdWString() + L'\\' + std::wstring(m_wants[ticket].name.begin(), m_wants[ticket].name.end());
+            }
+            QString m_root;
+            Scans& m_scans;
+            std::vector<ntfs::BulkWant> m_wants;
+            std::wstring m_error;
+        };
+        class FakeAccess final : public ntfs::VolumeAccess {
+        public:
+            FakeAccess(QString root, Scans& scans) : m_root(std::move(root)), m_scans(scans) { }
+            Kind kind() const noexcept override { return Kind::Service; }
+            std::unique_ptr<ntfs::RecordSource> openMft(std::wstring_view, std::uint32_t, bool) override { return nullptr; }
+            std::optional<ntfs::JournalInfo> queryJournal(std::wstring_view, std::uint32_t) override { return std::nullopt; }
+            std::unique_ptr<ntfs::JournalSource> openJournal(std::wstring_view, std::uint32_t, std::uint64_t) override
+            {
+                return nullptr;
+            }
+            void closeVolume(std::wstring_view) override { }
+            std::unique_ptr<ntfs::BulkSource> openBulkRead(std::wstring_view, std::uint32_t, bool) override
+            {
+                return std::make_unique<FakeBulk>(m_root, m_scans);
+            }
+
+        private:
+            QString m_root;
+            Scans& m_scans;
+        };
+        const auto access = std::make_shared<FakeAccess>(root, scans);
+
+        ContentIndexer::Source source;
+        source.index = [&] { return index; };
+        source.volumes = [&] { return std::vector<ContentIndexer::Volume> {{rootName, false}}; };
+        source.ready = [] { return true; };
+        source.access = [&] { return access; };
+        ContentIndexer::Options options;
+        options.extensions = {u"txt"_s};
+        using namespace std::chrono_literals;
+        ContentIndexer indexer(content, source, options, {0ms, 0ms, 1h, 0ms});
+        const auto waitFor = [](const auto& done) {
+            for (int i = 0; i < 1000 && !done(); ++i)
+                std::this_thread::sleep_for(10ms);
+            return done();
+        };
+        QVERIFY(waitFor([&] { return content->stats().pending == 1 && !indexer.reading(); }));
+        QCOMPARE(scans.scans.load(), 1);
+        const ContentIndexer::BulkStats bulk = indexer.bulkStats();
+        QCOMPARE(bulk.confirmed, std::size_t {kFiles - 3 + 1}); // not the changed, gone or recent ones; the PDF too
+        QCOMPARE(bulk.files, std::size_t {1}); // the changed one, read off the volume
+        QCOMPARE(scans.fetched.load(), 1);
+        QCOMPARE(bulk.notFound, std::size_t {1}); // the gone one: by path, still to check
+        QCOMPARE(matchesOf(*content, u"changed"_s), std::vector<EntryId> {files[1]});
+        QVERIFY(content->knows(files[3]) && content->knows(pdf) && !content->knows(files[2]));
+    }
+
     // Folders that directly hold many candidates, nearly all of one
     // extension, are read last; nothing else is.
     void contentCrowdedFolders()

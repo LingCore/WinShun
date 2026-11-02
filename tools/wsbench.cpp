@@ -88,12 +88,19 @@
 //                      reads every document (through WinShunExtract.exe; copies
 //                      of one are not read again), then a content search for
 //                      each query, with places and snippets
-//   wsbench --service --content [--from D]
+//   wsbench --service --content [--from D] [--only P: ...] [--save-unsure D | --unsure]
 //                      (as administrator) as a first run: the index built, then
 //                      the content indexer reading every file a content search
 //                      looks in (the settings in WinShun.ini); how long it took;
 //                      --from: starting from a copy of an index folder D (the
-//                      first run after an upgrade); --box: the search box
+//                      first run after an upgrade); --only: those drives alone
+//                      (the others as excluded); --save-unsure D: then every
+//                      file to check, as after a lost journal, saved to D (a
+//                      --from D run starts with checking them); --unsure: then every file
+//                      checked again, as after a lost journal, and how long
+//                      that took (WINSHUN_BULK_CHECK=0: checked by path, not
+//                      from the MFT, to compare; WINSHUN_CHECK_SPINNING and
+//                      WINSHUN_CHECK_USER: as below, for that pass); --box: the search box
 //                      open from 20 s to 40 s into reading (nothing is read
 //                      then, nor 5 s after). WINSHUN_SPINNING=C:,D: counts
 //                      volumes as hard disks, WINSHUN_USER=present|away fixes
@@ -1075,6 +1082,16 @@ int runServiceContent(const QStringList& args)
     settings.load();
     ws::IndexService::Options options;
     options.rules = settings.crawlRules();
+    // --only P: Q: ...: the other drives excluded whole (a test volume alone).
+    if (const qsizetype at = args.indexOf(u"--only"_s); at >= 0) {
+        QStringList only;
+        for (qsizetype i = at + 1; i < args.size() && !args[i].startsWith(u"--"_s); ++i)
+            only.append(args[i].left(2).toUpper());
+        for (const ws::VolumeInfo& v : ws::listLocalVolumes(true)) {
+            if (!only.contains(QString::fromStdWString(v.root).toUpper()))
+                options.rules.excludedPaths.push_back(v.root);
+        }
+    }
     options.content.enabled = true;
     options.content.extensions = settings.contentExtensions;
     options.content.documents = settings.contentDocuments;
@@ -1112,13 +1129,14 @@ int runServiceContent(const QStringList& args)
         double documentsMs = 0, othersMs = 0, bulkMs = 0; // when each last rose
     } phases;
     QTimer poll;
-    poll.setInterval(500);
+    poll.setInterval(100);
     QObject::connect(&poll, &QTimer::timeout, [&] {
         if (readyMs == 0 && service.state() == ws::IndexService::State::Ready && !service.isRefreshing()) {
             readyMs = msSince(t);
             std::printf("  %6.1f s  file index ready: %zu items\n", readyMs / 1000, service.itemCount());
         }
-        const bool reading = service.readingContent();
+        // A pass over before a poll saw it reading (files checked from the MFT, say) still counts.
+        const bool reading = service.readingContent() || (startedMs == 0 && service.contentIndexer()->progress().total > 0);
         if (reading && startedMs == 0) {
             startedMs = msSince(t);
             cpuAtStart = cpuTimes();
@@ -1178,7 +1196,7 @@ int runServiceContent(const QStringList& args)
     poll.start();
     QCoreApplication::exec();
     poll.stop();
-    const double doneMs = msSince(t) - 1000; // two polls ago
+    const double doneMs = msSince(t) - 2 * poll.interval(); // two polls ago
     const CpuTimes cpuAtEnd = cpuTimes();
     const ws::ContentIndex::Stats stats = service.contentIndex()->stats();
     const double contentS = (doneMs - startedMs) / 1000;
@@ -1204,6 +1222,63 @@ int runServiceContent(const QStringList& args)
         bulk.noRecord, bulk.notFound, bulk.denied, bulk.fallback,
         bulk.verified > 0 ? qPrintable(u"; WINSHUN_BULK_VERIFY: %1 read both ways, %2 DIFFER"_s.arg(bulk.verified).arg(bulk.verifyMismatches))
                           : "");
+    std::printf("checks: %zu files unchanged by their MFT records\n", bulk.confirmed);
+    const auto content = std::const_pointer_cast<ws::ContentIndex>(service.contentIndex());
+    const auto markUnsure = [&] {
+        const auto index = service.index();
+        const auto lock = index->readLock();
+        content->markUnsure([](ws::EntryId) { return true; });
+    };
+    // --save-unsure D: every document to check, saved to D for a --from run
+    // (the check pass after a restart, the disk's cache cold if it is attached again).
+    if (const qsizetype at = args.indexOf(u"--save-unsure"_s); at >= 0 && at + 1 < args.size()) {
+        markUnsure();
+        service.shutdown();
+        const QDir to(args[at + 1]);
+        to.mkpath(u"content"_s);
+        QFile::copy(QDir(dir.path()).filePath(u"index.bin"_s), to.filePath(u"index.bin"_s));
+        for (const QFileInfo& f : QDir(QDir(dir.path()).filePath(u"content"_s)).entryInfoList(QDir::Files))
+            QFile::copy(f.absoluteFilePath(), to.filePath(u"content/"_s + f.fileName()));
+        std::printf("saved to %s with %zu files to check\n", qPrintable(to.path()), content->stats().pending);
+        return 0;
+    }
+    if (args.contains(u"--unsure"_s)) {
+        // As after a lost journal (IndexService::contentUnsureOf): every
+        // document to check, a pass at once. WINSHUN_CHECK_SPINNING and
+        // WINSHUN_CHECK_USER: WINSHUN_SPINNING and WINSHUN_USER for that pass
+        // alone (the build before it can go at full speed).
+        for (const auto& [from, to] : {std::pair {"WINSHUN_CHECK_SPINNING", L"WINSHUN_SPINNING"},
+                 std::pair {"WINSHUN_CHECK_USER", L"WINSHUN_USER"}}) {
+            if (qEnvironmentVariableIsSet(from)) // read with GetEnvironmentVariableW
+                ::SetEnvironmentVariableW(to, qEnvironmentVariable(from).toStdWString().c_str());
+        }
+        markUnsure();
+        const std::size_t unsure = content->stats().pending;
+        const ws::ContentIndexer::BulkStats before = service.contentIndexer()->bulkStats();
+        QElapsedTimer check;
+        check.start();
+        service.contentIndexer()->volumesChanged();
+        bool began = false;
+        while (check.elapsed() < 600000) {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+            const bool reading = service.readingContent();
+            began = began || reading;
+            if (!reading && (began || content->stats().pending == 0))
+                break;
+        }
+        const ws::ContentIndexer::Progress p = service.contentIndexer()->progress();
+        const ws::ContentIndexer::BulkStats after = service.contentIndexer()->bulkStats();
+        const std::size_t confirmed = after.confirmed - before.confirmed;
+        std::printf("check pass (%s): %zu files to check, %zu done in %.1f s; %zu unchanged by their MFT records, %zu "
+                    "checked by path; %zu still to check%s\n",
+            ws::win32::userAway() ? "nobody at the computer" : "someone at the computer", unsure, p.done,
+            static_cast<double>(check.elapsed()) / 1000, confirmed, p.done - std::min(p.done, confirmed),
+            content->stats().pending,
+            after.verified > before.verified
+                ? qPrintable(u"; WINSHUN_BULK_VERIFY: %1 checked by path too, %2 DIFFER"_s.arg(after.verified - before.verified)
+                                 .arg(after.verifyMismatches - before.verifyMismatches))
+                : "");
+    }
     service.shutdown(); // saves the snapshot
     qint64 snapshot = 0;
     for (const QFileInfo& f : QDir(dir.path()).entryInfoList({u"*.bin"_s}, QDir::Files))
