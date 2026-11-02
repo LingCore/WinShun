@@ -37,14 +37,6 @@ std::atomic<bool> g_round {true};
 std::mutex g_cornerMutex; // preview HWNDs are created on another thread
 constexpr COLORREF kColorDefault = 0xFFFFFFFF; // DWMWA_COLOR_DEFAULT
 constexpr int kBackdropMica = 2; // DWMSBT_MAINWINDOW
-constexpr UINT kUpdateCornerRegion = WM_APP + 0x3C4;
-
-struct CornerRegion {
-    int width = 0;
-    int height = 0;
-    int radius = -1;
-};
-
 LRESULT CALLBACK nativeFrameProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR)
 {
     switch (message) {
@@ -66,58 +58,16 @@ LRESULT CALLBACK nativeFrameProc(HWND window, UINT message, WPARAM wParam, LPARA
     return ::DefSubclassProc(window, message, wParam, lParam);
 }
 
-void updateCornerRegion(HWND window, CornerRegion& region)
-{
-    RECT rect {};
-    if (!::GetWindowRect(window, &rect))
-        return;
-    const int width = rect.right - rect.left, height = rect.bottom - rect.top;
-    const bool smallCorners = reinterpret_cast<INT_PTR>(::GetPropW(window, kCornerStyle)) == kCornerSmall;
-    const int radius = g_round.load() && !::IsZoomed(window)
-        ? ::MulDiv(smallCorners ? 4 : 8, static_cast<int>(::GetDpiForWindow(window)), 96)
-        : 0;
-    if (region.width == width && region.height == height && region.radius == radius)
-        return;
-    region = {width, height, radius}; // SetWindowRgn can reenter the window procedure.
-    const HRGN mask = radius ? ::CreateRoundRectRgn(0, 0, width + 1, height + 1, 2 * radius, 2 * radius) : nullptr;
-    if (!::SetWindowRgn(window, mask, TRUE) && mask)
-        ::DeleteObject(mask); // ownership transfers only on success
-}
-
-LRESULT CALLBACK cornerRegionProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR data)
-{
-    auto* region = reinterpret_cast<CornerRegion*>(data);
-    if (message == WM_NCDESTROY) {
-        ::RemoveWindowSubclass(window, cornerRegionProc, id);
-        delete region;
-    } else if (message == WM_SIZE || message == WM_DPICHANGED || message == kUpdateCornerRegion) {
-        updateCornerRegion(window, *region);
-    }
-    return ::DefSubclassProc(window, message, wParam, lParam);
-}
-
+// Windows 10 has no DWM corner preference, and drawn corners conflict with
+// DWM's frame there: a window region turns its shadow off, and its border
+// shows through the corners' transparent pixels (GitHub #165; QWindowKit and
+// Telegram Desktop came to the same). Square there, with DWM's frame and
+// shadow, as VS Code and Windows Terminal; the setting still rounds the
+// controls inside (Theme.qml).
 void applyWindowCorners(HWND window, int style)
 {
-    const bool round = g_round.load();
-    const int value = round ? style : kCornerSquare;
-    if (SUCCEEDED(::DwmSetWindowAttribute(window, kCornerPreference, &value, sizeof value)))
-        return;
-    if (::GetWindowThreadProcessId(window, nullptr) != ::GetCurrentThreadId()) {
-        ::PostMessageW(window, kUpdateCornerRegion, 0, 0);
-        return;
-    }
-    // Windows 10 has no DWM corner preference. Keep the same setting useful
-    // there, including after resizing or moving to a monitor with another DPI.
-    DWORD_PTR data = 0;
-    if (!::GetWindowSubclass(window, cornerRegionProc, 0, &data)) {
-        auto* region = new CornerRegion;
-        if (!::SetWindowSubclass(window, cornerRegionProc, 0, reinterpret_cast<DWORD_PTR>(region))) {
-            delete region;
-            return;
-        }
-        data = reinterpret_cast<DWORD_PTR>(region);
-    }
-    updateCornerRegion(window, *reinterpret_cast<CornerRegion*>(data));
+    const int value = g_round.load() && nativeWindowCorners() ? style : kCornerSquare;
+    ::DwmSetWindowAttribute(window, kCornerPreference, &value, sizeof value);
 }
 
 HWND handleOf(QWindow* window)
@@ -238,15 +188,6 @@ bool nativeWindowCorners()
 
 void useCompositedFramesForPreview() { g_compositedPreview = true; }
 
-void prepareFramelessWindow(QWindow* window)
-{
-    if (!window || nativeWindowCorners() || window->handle() || !window->inherits("QQuickWindow"))
-        return;
-    auto format = window->requestedFormat();
-    format.setAlphaBufferSize(8);
-    window->setFormat(format);
-}
-
 void styleFramelessWindow(QWindow* window, bool backdrop)
 {
     const HWND hwnd = handleOf(window);
@@ -260,7 +201,9 @@ void styleFramelessWindow(QWindow* window, bool backdrop)
             SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
     }
     setWindowCorners(hwnd);
-    ::DwmSetWindowAttribute(hwnd, kBorderColor, &kColorDefault, sizeof kColorDefault);
+    // Windows 10 draws no border here; the preview of it on Windows 11 neither.
+    constexpr COLORREF noBorder = 0xFFFFFFFE; // DWMWA_COLOR_NONE
+    ::DwmSetWindowAttribute(hwnd, kBorderColor, g_compositedPreview ? &noBorder : &kColorDefault, sizeof kColorDefault);
     // Extend a single pixel for DWM's shadow when the native frame/corner
     // style supports it, without exposing the system's caption buttons.
     const MARGINS margins {0, 0, 1, 0};
@@ -340,7 +283,7 @@ bool setRoundedCorners(bool on)
 bool backdropSupported()
 {
     static const bool supported = QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows11_22H2;
-    return supported;
+    return nativeWindowCorners() && supported;
 }
 
 bool materialsEnabled()

@@ -450,7 +450,6 @@ int runClipboardDisplay(const QStringList& args)
         {u"placement"_s, QVariant::fromValue(&placement)}, {u"frame"_s, QVariant::fromValue(&frame)}});
     std::unique_ptr<QQuickWindow> window(qobject_cast<QQuickWindow*>(root));
     if (!window) { delete root; qWarning().noquote() << component.errorString(); return 4; }
-    win::prepareFramelessWindow(window.get());
     window->create();
     placement.setWindow(window.get());
     placement.enableWindowSizing();

@@ -1,0 +1,31 @@
+Test project F:/电脑便捷工具/build/release
+      Start  1: tst_windowmask_software_1
+ 1/13 Test  #1: tst_windowmask_software_1 ........   Passed    0.74 sec
+      Start  2: tst_windowmask_software_1.25
+ 2/13 Test  #2: tst_windowmask_software_1.25 .....   Passed    0.78 sec
+      Start  3: tst_windowmask_software_1.5
+ 3/13 Test  #3: tst_windowmask_software_1.5 ......   Passed    0.76 sec
+      Start  4: tst_windowmask_software_2
+ 4/13 Test  #4: tst_windowmask_software_2 ........   Passed    0.75 sec
+      Start  5: tst_windowmask_d3d11_1
+ 5/13 Test  #5: tst_windowmask_d3d11_1 ...........   Passed    2.76 sec
+      Start  6: tst_windowmask_d3d11_1.25
+ 6/13 Test  #6: tst_windowmask_d3d11_1.25 ........   Passed    2.51 sec
+      Start  7: tst_windowmask_d3d11_1.5
+ 7/13 Test  #7: tst_windowmask_d3d11_1.5 .........   Passed    2.25 sec
+      Start  8: tst_windowmask_d3d11_2
+ 8/13 Test  #8: tst_windowmask_d3d11_2 ...........   Passed    2.31 sec
+      Start 33: tst_darkframe
+ 9/13 Test #33: tst_darkframe ....................   Passed    0.14 sec
+      Start 69: tst_appearance_1
+10/13 Test #69: tst_appearance_1 .................   Passed    0.76 sec
+      Start 70: tst_appearance_1.25
+11/13 Test #70: tst_appearance_1.25 ..............   Passed    0.76 sec
+      Start 71: tst_appearance_1.5
+12/13 Test #71: tst_appearance_1.5 ...............   Passed    0.66 sec
+      Start 72: tst_appearance_2
+13/13 Test #72: tst_appearance_2 .................   Passed    0.69 sec
+
+100% tests passed, 0 tests failed out of 13
+
+Total Test time (real) =  15.96 sec

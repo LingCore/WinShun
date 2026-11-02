@@ -1,0 +1,39 @@
+preparing
+making the application
+loading the font
+saved docs/validation/issue165-20261101/main-light/always.png 800x540
+saved docs/validation/issue165-20261101/main-light/held-idle.png 800x540
+saved docs/validation/issue165-20261101/main-light/held-100ms.png 800x540
+saved docs/validation/issue165-20261101/main-light/held-300ms.png 800x540
+saved docs/validation/issue165-20261101/main-light/held-released.png 800x540
+saved docs/validation/issue165-20261101/main-light/quick-taps.png 800x540
+saved docs/validation/issue165-20261101/main-light/off.png 800x540
+#116 Enter on \\192.0.2.1\share\报告.txt: 正在连接 shown as Enter returned, 0 ms; 连不上 after 8052 ms; checks started 1
+#116 right-click while waiting: 正在连接 shown, gone at once yes, 连不上 in the next 10 s no
+#116 Enter held, 30 presses over 992 ms: checks started 1, slowest press 0 ms, 正在连接 after the last yes, 连不上 8050 ms after the first
+#116 Ctrl+C on 2 selected rows there: 2 file(s) handed to the clipboard in 0 ms, checks started 0, footer "已复制 2 项，可在资源管理器中粘贴"
+launcher prefix, panel-sort and favorite Tab regressions: real controllers/engine over isolated fixtures
+plugin date/size/type filters and local sorting: real host, merge and launcher with isolated zero-code plugin
+saved docs/validation/issue165-20261101/main-light/panel-default.png 1222x706
+saved docs/validation/issue165-20261101/main-light/panel-scroll-resize.png 1222x706
+saved docs/validation/issue165-20261101/main-light/panel-plugin-metadata.png 1222x706
+panel column drag/resize/persistence and plugin metadata: production QML with isolated fixtures
+clipboard sizing: work 2560x1528, DPR 1; initial height 639; width drag -> 580x639, saved 580x0
+clipboard sizing: height drag -> 699, saved 699, expected 699
+saved docs/validation/issue165-20261101/main-light/clipboard-sizing-preview.png 1191x719
+saved docs/validation/issue165-20261101/main-light/clipboard-sizing-flipped.png 630x1146
+saved docs/validation/issue165-20261101/main-light/clipboard-sizing-default.png 480x639
+clipboard native edge/corner sizing, persistence, preview and temporary fitting: isolated production QML
+saved docs/validation/issue165-20261101/main-light/clipboard-resized.png 510x669
+saved docs/validation/issue165-20261101/main-light/clipboard-send-menu.png 273x350
+clipboard browse hotkey: production QML cycles and wraps without a release paste
+clipboard double-click preview and list resizing: real QML, temporary history; native clipboard untouched
+saved docs/validation/issue165-20261101/main-light/date-time.png 800x540
+saved docs/validation/issue165-20261101/main-light/size-and-date.png 800x540
+saved docs/validation/issue165-20261101/main-light/size-only.png 800x540
+saved docs/validation/issue165-20261101/main-light/size-order.png 800x540
+saved docs/validation/issue165-20261101/main-light/metadata-edges-640.png 640x540
+saved docs/validation/issue165-20261101/main-light/metadata-edges-760.png 760x540
+file metadata: real delegates/model, six display combinations at 640/760px, selected/idle, zero/unknown/folder/app/content checked
+renderer D3D11, DPR 1; Qt events only, not a global double-Ctrl gesture
+0 warning(s)

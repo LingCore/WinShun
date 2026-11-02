@@ -1,0 +1,21 @@
+Test project F:/电脑便捷工具/build/release
+    Start 1: tst_windowmask_software_1
+1/8 Test #1: tst_windowmask_software_1 ........   Passed    0.71 sec
+    Start 2: tst_windowmask_software_1.25
+2/8 Test #2: tst_windowmask_software_1.25 .....   Passed    0.61 sec
+    Start 3: tst_windowmask_software_1.5
+3/8 Test #3: tst_windowmask_software_1.5 ......   Passed    0.72 sec
+    Start 4: tst_windowmask_software_2
+4/8 Test #4: tst_windowmask_software_2 ........   Passed    0.77 sec
+    Start 5: tst_windowmask_d3d11_1
+5/8 Test #5: tst_windowmask_d3d11_1 ...........   Passed    2.37 sec
+    Start 6: tst_windowmask_d3d11_1.25
+6/8 Test #6: tst_windowmask_d3d11_1.25 ........   Passed    2.68 sec
+    Start 7: tst_windowmask_d3d11_1.5
+7/8 Test #7: tst_windowmask_d3d11_1.5 .........   Passed    2.81 sec
+    Start 8: tst_windowmask_d3d11_2
+8/8 Test #8: tst_windowmask_d3d11_2 ...........   Passed    2.51 sec
+
+100% tests passed, 0 tests failed out of 8
+
+Total Test time (real) =  13.22 sec

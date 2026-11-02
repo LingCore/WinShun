@@ -356,6 +356,15 @@
 - **为什么不改用系统边框那条路**：微软的说法（“Apply rounded corners in desktop apps”）是，带 `WS_THICKFRAME` 和 `WS_CAPTION`、或留出 1 像素非客户区边框的窗口，系统自动圆角并画好边框和阴影（VS Code、Windows Terminal 就是保留系统边框、只把标题栏区域划给自己）；没有边框的窗口用 `DWMWCP_ROUND` 申请圆角，这是我们的情况（Qt 的 `FramelessWindowHint` 是 `WS_POPUP`）。走系统边框那条路，启动器和剪贴板会多出可拖的缩放边、贴靠布局和打开关闭动画，Qt 算窗口位置的方式也要跟着改；现在自己画的边已经和系统的一样平滑，没有必要。Qt 6.9 起的 `Qt::ExpandedClientAreaHint` 在 Windows 上是给普通窗口自绘标题栏用的（Qt 自己画一条带图标和按钮的标题栏），也不合适。原先对话框旁的搜索框用强调色边框，太扎眼，也改成同一套；任务栏上 Win顺 的框打字时也一样（起初是 2 像素强调色，用户嫌蓝、嫌粗），只有高对比度下用系统的高亮色。
 - **怎么查**：边框颜色可以从别的进程设（`DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, …)`，提权的脚本对 Win顺 的窗口也行），不用重新编译就能把几种颜色和“不要边框”挨个截图对比；角上 24×24 像素放大 12 倍看。
 
+### Windows 10 圆角四角发黑、底边下多一条没阴影的缝（#165 后续，2026-11-02）
+- **最后定论（第四轮）：Windows 10 窗口只做直角**。下面三轮自绘圆角（Region + 遮罩 + 自绘阴影）修完一处又冒一处：圆角、直角来回切换后，四角还会出现蓝色或灰色的残留。Telegram Desktop（#16964）和 QWindowKit（#52）也碰到过，结论相同：Windows 10 没有圆角偏好，自画的圆角和 DWM 的框架打架。现在 Windows 10 和 Windows 11 走同一条原生路径，只是不申请圆角：窗口不带 alpha、不设 Region，阴影由 DWM 画，1 像素边由 `WindowEdge.qml` 画（直角）；“圆角”设置在 Windows 10 上只影响窗口里的控件（`Theme.windowRadius` 只在 `nativeWindowBorder` 时为 8）。VS Code、Windows Terminal 在 Windows 10 上也是直角。`WindowMask`、`FrameShadow_p.h`、`prepareFramelessWindow`、`tst_windowmask` 和遮罩着色器已删除。下面几段留作记录。
+- **现象**：#165 第一轮修完，Windows 10 上四个圆角外侧各有一道黑色细弧；底边和阴影之间隔着一条透出背景的缝（150% 下 2 像素）。
+- **原因**：一是启动器、剪贴板等窗口先 `create()`，之后 `styleFramelessWindow` 里的 `prepareFramelessWindow` 见句柄已有就跳过，窗口没有 alpha；Region 为抗锯齿向外留的 2 像素里，被遮罩清成透明的像素在桌面上显示成黑色。二是独立阴影整体下移 2×DPR，挖空也按下移后的形状算，底边下面那一段就被挖掉了。上一轮验证用的是提前设好 alpha 的测试窗口，又用 `grabWindow()` 看结果（它读窗口纹理，alpha 是对的），两处都没暴露。
+- **做法**：`create()` 之前拿 alpha（`prepareBackdrop` 在 Windows 10 合成路径下也设，其余窗口在 `create()` 前调 `prepareFramelessWindow`）；万一窗口还是没有 alpha，Region 不留羽化、`WindowMask` 不擦，宁可圆弧硬一点也不发黑。阴影的挖空只按窗口本身的形状算，下移只影响阴影浓淡。
+- **验证**：`tst_windowmask` 的 `desktopEdges` 用 `BitBlt` 抓真实桌面像素，检查四角最暗处和底边下第一行；撤掉修复时两种问题都能稳定复现（角上像素值 0，底边下是原背景色）。
+- **再一轮：描边外一圈发白**。遮罩原先画在描边之后、两条弧线重合：弧线上的像素先是“描边灰 + 窗口白底”的混色，再被擦成半透明，白底跟着露到描边外。现在遮罩放在描边下面（`WindowEdge.qml` 里 `z: -1`），擦除弧线往里收半个设备像素，描边自己的抗锯齿边缘落在已透明的地方。另外 D3D11 会把整个场景拉伸到像素缓冲（125% 下 170 高的窗口拉成 213 行，描边跟着拉），遮罩要按控件本身的尺寸算；只有软件渲染（不拉伸，画到 212.5 行）才按整设备像素对齐。测试把窗口内部涂成纯绿，描边外 0.5 像素内只要出现 G 比 B 高就是漏色：旧做法 48–69，现在 ≤15。
+- **再一轮：阴影太浓，直角改走原生**。参考 VS Code / Windows Terminal（Chromium 的做法）：Windows 10 上直角窗口不设 Region，打开 DWM 非客户区渲染并把框架向内扩 1 像素，阴影由系统画；`SetWindowRgn` 设了非矩形区域 DWM 就不画阴影，所以只有圆角才用自绘阴影。软件渲染带 alpha 的窗口是分层窗口，DWM 不给它画框架，直角也继续用自绘阴影。自绘阴影改为“形状的高斯模糊”（边缘处半强度，`erfc`）：峰值 52/255、σ 4、下移 1.5、外延 12 逻辑像素；150% 实测窗口边缘处变暗右 20%→9%、底 20%→13%、上 18%→7%，范围约 18→9 像素。参数是按观感估的，Windows 10 原生阴影的精确值没有公开资料。
+
 ### 日志里一直有 `Swapchain says surface has alpha but the window has no alphaBufferSize set`
 
 - **现象**：开启 Mica 后，启动器每打开一次，`WinShun.log` 里就多一行这个警告（两天里 195 行）。

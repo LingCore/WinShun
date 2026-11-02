@@ -5082,6 +5082,8 @@ void note(const QString& line)
 
 void prepare(const QStringList& args)
 {
+    if (args.contains(u"--composited-frame"_s))
+        win::useCompositedFramesForPreview();
     if (args.contains(kRuntimeFlag))
         qputenv("QT_D3D_NO_VBLANK_THREAD", "1"); // the production startup's renderer setting
     const bool resultsMode = args.contains(kResultsFlag);

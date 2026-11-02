@@ -23,7 +23,8 @@ QtObject {
     // The edge of our windows (WindowEdge.qml), rounded as DWM rounds them.
     // A light grey on the dark ones: over a dark program their shadow does
     // not show. The light ones stand apart by their shadow.
-    readonly property int windowRadius: SystemTheme.roundedCorners ? 8 : 0
+    // The window itself: DWM rounds it on Windows 11 only (win::styleFramelessWindow).
+    readonly property int windowRadius: SystemTheme.roundedCorners && SystemTheme.nativeWindowBorder ? 8 : 0
     readonly property int cardRadius: SystemTheme.roundedCorners ? 6 : 0
     readonly property int largeCardRadius: SystemTheme.roundedCorners ? 8 : 0
     readonly property int insetCardRadius: SystemTheme.roundedCorners ? 5 : 0

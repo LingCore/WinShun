@@ -1,0 +1,17 @@
+[1/203] Copying WinShun qml sources into build dir
+[2/203] Automatic MOC and UIC for target WinShun
+[3/202] Running AUTOMOC file extraction for target WinShun
+[4/9] Running rcc for resource WinShun_raw_qml_0
+[5/9] Generating .rcc/qmlcache/WinShun_qml_SettingsWindow_qml.cpp, .rcc/qmlcache/WinShun_qml_SettingsWindow_qml.cpp.aotstats
+[6/9] Building CXX object src\app\CMakeFiles\WinShun.dir\.qt\rcc\qrc_WinShun_raw_qml_0.cpp.obj
+[7/9] Building CXX object src\app\CMakeFiles\WinShun.dir\Preview.cpp.obj
+[8/9] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_SettingsWindow_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+[9/9] Linking CXX executable WinShun.exe

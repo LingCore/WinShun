@@ -13,16 +13,21 @@ namespace ws::win {
 
 // Windows 11 look for a frameless window: rounded corners and the standard
 // DWM shadow and system-managed border, in both square and rounded modes.
-// Windows 10 uses WindowEdge.qml as a fallback; Windows 11 outlines follow
-// the actual native corners, including desktop customization. With
-// `backdrop`, the Mica material fills the window behind its content (see
-// backdropSupported). The dark mode is separate, see setDarkFrame.
+// Windows 10 has square corners with the same DWM shadow, and WindowEdge.qml
+// draws the border. Windows 11 outlines follow the actual native corners,
+// including desktop customization. With `backdrop`, the Mica material fills
+// the window behind its content (see backdropSupported). The dark mode is
+// separate, see setDarkFrame.
 void styleFramelessWindow(QWindow* window, bool backdrop = false);
-void prepareFramelessWindow(QWindow* window);
+
+// Whether DWM rounds the corners (Windows 11), see styleFramelessWindow.
 bool nativeWindowCorners();
+// Developer preview only, before making any windows. Shows the Windows 10
+// frame without changing the user's OS or saved preferences.
 void useCompositedFramesForPreview();
 
-// The appearance preference: DWM on Windows 11, a window region on Windows 10.
+// The appearance preference. Windows 10 keeps the windows' own corners
+// square (see styleFramelessWindow); the controls inside still follow it.
 bool roundedCorners();
 
 // Returns whether the preference changed; also updates existing styled HWNDs.
