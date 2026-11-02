@@ -252,8 +252,6 @@ void Recorder::createPanel()
     connect(m_panel, &QWindow::heightChanged, this, &Recorder::keepPanelVisible, Qt::QueuedConnection);
 }
 
-void Recorder::keepPanelVisible()
-{
 void Recorder::updatePanelExclusion()
 {
     if (!m_panel) return;
@@ -261,6 +259,8 @@ void Recorder::updatePanelExclusion()
     excludeFromCapture(reinterpret_cast<HWND>(m_panel->winId()), m_region, taking);
 }
 
+void Recorder::keepPanelVisible()
+{
     if (!m_panel || !m_panel->isVisible()) return;
     const auto window = reinterpret_cast<HWND>(m_panel->winId());
     MONITORINFO monitor {sizeof monitor};

@@ -6110,6 +6110,9 @@ void App::screenshotAnswered(int how)
         return;
     // Gone after the signal that told it returned; its frame after it.
     if (ask->window) {
+        // No fade-out: the grab below must not catch the dialog on its way out.
+        const BOOL noFade = TRUE;
+        ::DwmSetWindowAttribute(reinterpret_cast<HWND>(ask->window->winId()), DWMWA_TRANSITIONS_FORCEDISABLED, &noFade, sizeof noFade);
         ask->window->hide();
         ask->window->deleteLater();
     }
@@ -6122,6 +6125,9 @@ void App::screenshotAnswered(int how)
     }
     const QString folder = QDir::tempPath() + u"/WinShun/mcp"_s;
     std::thread([monitor = ask->monitor, label = ask->label, done = std::move(ask->done), folder] {
+        // The hidden dialog is off the screen once the desktop has composed twice.
+        ::DwmFlush();
+        ::DwmFlush();
         capture::Grabber grabber;
         QString report;
         const std::vector<capture::Grabber::Shot> shots = grabber.grab(&report);
@@ -6138,9 +6144,6 @@ void App::screenshotAnswered(int how)
             return;
         }
         done({{}, path, shot->image.width(), shot->image.height(), label});
-        // No fade-out: the grab below must not catch the dialog on its way out.
-        const BOOL noFade = TRUE;
-        ::DwmSetWindowAttribute(reinterpret_cast<HWND>(ask->window->winId()), DWMWA_TRANSITIONS_FORCEDISABLED, &noFade, sizeof noFade);
     }).detach();
 }
 
@@ -6153,9 +6156,6 @@ void App::applyMcp()
         m_mcpHost.reset();
         m_mcpEngine.reset();
         m_mcpContentEngine.reset();
-        // The hidden dialog is off the screen once the desktop has composed twice.
-        ::DwmFlush();
-        ::DwmFlush();
         refreshMcpStatus();
         return;
     }

@@ -112,8 +112,8 @@ public:
             strip = ::CreateWindowExW(WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST,
                 kBorderClass, L"", WS_POPUP, 0, 0, 1, 1, nullptr, nullptr, ::GetModuleHandleW(nullptr), nullptr);
             if (strip) {
-                ::SetWindowLongPtrW(strip, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(owner));
                 // Outside the region, so in no frame the engine reads.
+                ::SetWindowLongPtrW(strip, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(owner));
             }
         }
     }
@@ -319,8 +319,6 @@ QQuickWindow* LongCapture::panel()
     ::SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ::GetWindowLongPtrW(hwnd, GWL_EXSTYLE) | WS_EX_NOACTIVATE);
     m_panel = window;
     m_previewWindow = window->findChild<QQuickWindow*>(u"longCapturePreview"_s);
-    if (m_previewWindow) {
-        m_previewWindow->create();
     for (QQuickWindow* shown : {m_panel.data(), m_previewWindow.data()}) {
         if (!shown)
             continue;
@@ -328,6 +326,8 @@ QQuickWindow* LongCapture::panel()
             connect(shown, changed, this, &LongCapture::updateExclusion);
         connect(shown, &QWindow::visibleChanged, this, &LongCapture::updateExclusion);
     }
+    if (m_previewWindow) {
+        m_previewWindow->create();
         win::styleFramelessWindow(m_previewWindow, false);
         const HWND preview = reinterpret_cast<HWND>(m_previewWindow->winId());
         ::SetWindowLongPtrW(preview, GWL_EXSTYLE, ::GetWindowLongPtrW(preview, GWL_EXSTYLE) | WS_EX_NOACTIVATE);
@@ -335,9 +335,6 @@ QQuickWindow* LongCapture::panel()
     return window;
 }
 
-// Keep the controls by the original selection, as the capture toolbar was.
-// The optional preview takes separate room beside it and never displaces
-// the actions. Both stay on the selected monitor's work area.
 // The panel and the preview are left out of the frames while the capture runs
 // and they lie over its region; otherwise they show in a screenshot.
 void LongCapture::updateExclusion()
@@ -349,6 +346,9 @@ void LongCapture::updateExclusion()
             excludeFromCapture(reinterpret_cast<HWND>(window->winId()), region, running);
 }
 
+// Keep the controls by the original selection, as the capture toolbar was.
+// The optional preview takes separate room beside it and never displaces
+// the actions. Both stay on the selected monitor's work area.
 void LongCapture::placePanel(const QRect& region, HMONITOR monitor)
 {
     MONITORINFO info {sizeof info};
@@ -437,10 +437,10 @@ void LongCapture::start(const QRect& wanted, HMONITOR monitor, double dpr)
     m_border->show(region, toRect(info.rcMonitor), dpr, window->property("edgeColor").value<QColor>());
     placePanel(region, monitor);
     window->show();
+    updateExclusion();
     // Explicitly raise the control strip without taking the target's focus.
     ::SetWindowPos(reinterpret_cast<HWND>(window->winId()), HWND_TOPMOST, 0, 0, 0, 0,
         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
-    updateExclusion();
     hotkeys(true);
     qInfo().noquote() << u"Long screenshot: %1x%2 at %3,%4, auto-scroll %5"_s.arg(region.width())
                              .arg(region.height())
@@ -467,10 +467,10 @@ void LongCapture::finish()
         return;
     dumpPanel();
     m_run->stop = 1;
+    updateExclusion();
     // Gone at once; the engine ends its step and hands the picture over (ended()).
     hotkeys(false);
     m_border->hide();
-    updateExclusion();
     if (m_panel)
         m_panel->hide();
 }
@@ -489,10 +489,10 @@ void LongCapture::cancel()
         return;
     dumpPanel();
     m_run->stop = 2;
+    updateExclusion();
     hotkeys(false);
     m_border->hide();
     if (m_panel)
-    updateExclusion();
         m_panel->hide();
 }
 
