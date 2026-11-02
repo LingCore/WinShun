@@ -1,0 +1,48 @@
+{
+  "base_head": "71c749b17576fdb9cfb2486462b043b91dd13134",
+  "task_files": [
+    "src/app/App.cpp",
+    "src/app/Preview.cpp",
+    "src/app/Preview.h",
+    "docs/使用说明.md"
+  ],
+  "protected_tracked_diff_files": 122,
+  "unexpected_changed_tracked_diffs": [],
+  "source_sha256": {
+    "src/app/App.cpp": "8f567ed9e8559e997b80fe0d288b8c7d1a618f926ac759c223ca87cb4f7f90ea",
+    "src/app/Preview.cpp": "de365c9c6aa95ab5cce81bd6e69c1cf7f7606968edfe80a7245cc7a31ebbd1ca",
+    "src/app/Preview.h": "5e890067ed6b81be06a328bfd8db98f43d46b9d4061f82a890756f4ec291ce39",
+    "docs/使用说明.md": "acec9965694913a59e74cad4e3b6769c103455597572cd6d3b369144733ddcc4"
+  },
+  "executable_sha256": "dc00583519fdfa3f9e6011be590439ba036ed3589041c846ab0a1948cfed24ff",
+  "user_processes_after": [
+    {
+      "Id": 11504,
+      "Path": null,
+      "StartTime": "2026-11-02T15:36:12.1243949+08:00"
+    },
+    {
+      "Id": 33996,
+      "Path": "C:\\Program Files\\WinShun\\WinShun.exe",
+      "StartTime": "2026-11-02T15:36:09.8964955+08:00"
+    }
+  ],
+  "regression_before_failed_checks": 1,
+  "regression_after": {
+    "light150": {
+      "checks": 17,
+      "failed": 0,
+      "warnings": 0
+    },
+    "dark200": {
+      "checks": 17,
+      "failed": 0,
+      "warnings": 0
+    }
+  },
+  "ctest": {
+    "passed": 5,
+    "failed": 0,
+    "seconds": 81.64
+  }
+}

@@ -685,8 +685,10 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     m_launcher->setFolderOpener([this](const QString& folder) { return openInTypingTab(folder); });
     m_launcher->setRevealer([this](const QString& path) { return revealInTypingTab(path); });
     m_typingSelectionTimer.setSingleShot(true);
-    m_typingSelectionTimer.setInterval(60);
+    m_typingSelectionTimer.setInterval(60ms);
     connect(m_launcher.get(), &Launcher::currentRowChanged, this, &App::followTypingSelection);
+    // Another query can replace the current file without changing its row or the result count (#182).
+    connect(m_launcher.get(), &Launcher::resultsReplaced, this, &App::followTypingSelection);
     connect(m_launcher->results(), &ResultModel::countChanged, this, &App::followTypingSelection);
     connect(&m_typingSelectionTimer, &QTimer::timeout, this, [this] {
         const auto* row = m_launcher->results()->at(m_launcher->currentRow());

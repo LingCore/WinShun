@@ -72,7 +72,8 @@
 //     including native hotkey readiness, with local packages and test data.
 //     --folder-typing opens a test-owned Explorer window over temporary files,
 //     exercises the real App/QML search, avoidance and focus-preserving selection,
-//     checks cancellation and nested results, and closes only that fixture.
+//     checks same-count result replacements, cancellation and nested results,
+//     and closes only that fixture.
 //     --file-dialog-window <HWND> --file-dialog-pid <PID>
 //     --file-dialog-sample <fixture.blend> --file-dialog-state <observer.json>
 //     Opt-in real dialog-bar search/selection test against an isolated Blender

@@ -3915,11 +3915,16 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
     }
     if (!window || !launcher) return false;
     const QString prefix = folder + u"\\ "_s;
-    launcher->setQuery(prefix + u"follow_"_s);
-    waiting.restart();
-    while ((launcher->searching() || launcher->results()->count() != 3) && waiting.elapsed() < 5000) pump(20);
-    check(launcher->results()->count() == 3, "production search found three real direct children");
-    if (launcher->results()->count() != 3) return false;
+    const auto search = [&](const QString& words, int count) {
+        launcher->setQuery(prefix + words);
+        waiting.restart();
+        while ((launcher->searching() || launcher->results()->count() != count) && waiting.elapsed() < 5000)
+            pump(20);
+        return !launcher->searching() && launcher->results()->count() == count;
+    };
+    const bool found = search(u"follow_"_s, 3);
+    check(found, "production search found three real direct children");
+    if (!found) return false;
     settle(window, 3);
     auto* field = window->property("searchBar").value<QObject*>();
     if (field) QMetaObject::invokeMethod(field, "focusAtEnd");
@@ -3935,11 +3940,13 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
         while (selected() != expected && waiting.elapsed() < 3000) pump(20);
         return selected() == expected;
     };
-    check(follows(), "initial result selected and focused in the real Shell view");
+    check(launcher->currentRow() == 0 && follows(), "initial result selected and focused in the real Shell view");
     key(Qt::Key_Down);
-    check(follows(), "Down follows the production QML current row");
-    key(Qt::Key_Down); key(Qt::Key_Up); key(Qt::Key_Up); key(Qt::Key_Down);
-    check(follows(), "rapid navigation selects the latest row");
+    check(launcher->currentRow() == 1 && follows(), "Down follows the production QML current row");
+    key(Qt::Key_Up);
+    check(launcher->currentRow() == 0 && follows(), "Up follows the production QML current row");
+    key(Qt::Key_Down); key(Qt::Key_Down); key(Qt::Key_Up); key(Qt::Key_Up); key(Qt::Key_Down);
+    check(launcher->currentRow() == 1 && follows(), "rapid navigation selects the latest row");
     check(::GetForegroundWindow() == reinterpret_cast<HWND>(window->winId()) && window->isActive(),
         "Explorer selection never took keyboard focus");
     RECT searchRect {}, sourceRect {};
@@ -3962,6 +3969,14 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
         check(desktop.copy(region(searchRect)).save(out.filePath(u"typing-search.png"_s)), "production search screenshot saved");
         check(desktop.copy(region(sourceRect)).save(out.filePath(u"typing-explorer.png"_s)), "Explorer selection screenshot saved");
     }
+    check(search(u"follow_1"_s, 1) && launcher->currentRow() == 0 && follows(),
+        "a unique result is selected in the source view");
+    check(search(u"follow_2"_s, 1) && launcher->currentRow() == 0 && follows(),
+        "replacing a unique result follows its new path without changing the row or count");
+    report.insert(u"same_size_replacement"_s, QJsonObject {
+        {u"row"_s, launcher->currentRow()},
+        {u"expected"_s, launcher->results()->pathAt(launcher->currentRow())},
+        {u"selected"_s, selected()}});
     const QString chosen = selected();
     check(!filemanager::selectInExplorer(tab, (folder + u"\\child"_s).toStdWString(), chosen.toStdWString(), [] { return true; }),
         "changed source folder rejected without navigation");

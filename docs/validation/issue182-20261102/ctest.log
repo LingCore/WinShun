@@ -1,0 +1,15 @@
+Test project F:/电脑便捷工具/build/release
+    Start   9: tst_launchernavigation
+1/5 Test   #9: tst_launchernavigation ...........   Passed    0.04 sec
+    Start  11: tst_searchnavigation
+2/5 Test  #11: tst_searchnavigation .............   Passed   13.35 sec
+    Start  19: tst_displaygeometry
+3/5 Test  #19: tst_displaygeometry ..............   Passed    0.60 sec
+    Start  94: tst_core
+4/5 Test  #94: tst_core .........................   Passed   67.59 sec
+    Start 103: tst_placement
+5/5 Test #103: tst_placement ....................   Passed    0.05 sec
+
+100% tests passed, 0 tests failed out of 5
+
+Total Test time (real) =  81.64 sec

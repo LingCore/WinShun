@@ -1,0 +1,102 @@
+{
+    "clipboard": false,
+    "folder_typing": [
+        {
+            "name": "own Explorer fixture opened in a new window",
+            "passed": true
+        },
+        {
+            "name": "production search found three real direct children",
+            "passed": true
+        },
+        {
+            "name": "initial result selected and focused in the real Shell view",
+            "passed": true
+        },
+        {
+            "name": "Down follows the production QML current row",
+            "passed": true
+        },
+        {
+            "name": "Up follows the production QML current row",
+            "passed": true
+        },
+        {
+            "name": "rapid navigation selects the latest row",
+            "passed": true
+        },
+        {
+            "name": "Explorer selection never took keyboard focus",
+            "passed": true
+        },
+        {
+            "name": "search keeps clear of the Explorer fixture",
+            "passed": true
+        },
+        {
+            "name": "production search screenshot saved",
+            "passed": true
+        },
+        {
+            "name": "Explorer selection screenshot saved",
+            "passed": true
+        },
+        {
+            "name": "a unique result is selected in the source view",
+            "passed": true
+        },
+        {
+            "name": "replacing a unique result follows its new path without changing the row or count",
+            "passed": true
+        },
+        {
+            "name": "changed source folder rejected without navigation",
+            "passed": true
+        },
+        {
+            "name": "nested result never navigates the original folder",
+            "passed": true
+        },
+        {
+            "name": "superseded work rejected after COM lookup",
+            "passed": true
+        },
+        {
+            "name": "browsing a nested result preserves the source directory and selection",
+            "passed": true
+        },
+        {
+            "name": "hiding cancels the pending selection",
+            "passed": true
+        }
+    ],
+    "processes": [
+        {
+            "name": "WinShun.exe",
+            "pid": 9624,
+            "private_bytes": 184700928,
+            "working_set_bytes": 178872320
+        }
+    ],
+    "qt": "6.12.0",
+    "same_size_replacement": {
+        "expected": "C:\\Users\\young\\AppData\\Local\\Temp\\WinShun-dialog-files-NQLiQh\\follow_2.txt",
+        "row": 0,
+        "selected": "C:\\Users\\young\\AppData\\Local\\Temp\\WinShun-dialog-files-NQLiQh\\follow_2.txt"
+    },
+    "search_bounds": [
+        879,
+        306,
+        1140,
+        497
+    ],
+    "source_bounds": [
+        8,
+        8,
+        853,
+        1512
+    ],
+    "start_ms": 485,
+    "total_private_bytes": 184700928,
+    "warnings": 0
+}

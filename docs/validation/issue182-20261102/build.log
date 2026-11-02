@@ -1,0 +1,8 @@
+[1/204] Automatic MOC and UIC for target WinShun
+[2/203] Running AUTOMOC file extraction for target WinShun
+[3/6] Building CXX object src\app\CMakeFiles\WinShun.dir\main.cpp.obj
+[4/6] Building CXX object src\app\CMakeFiles\WinShun.dir\Preview.cpp.obj
+[5/6] Building CXX object src\app\CMakeFiles\WinShun.dir\App.cpp.obj
+F:\电脑便捷工具\src\app\App.cpp(2296): warning C4456: “keys”的声明隐藏了上一个本地声明
+F:\电脑便捷工具\src\app\App.cpp(2290): note: 参见“keys”的声明
+[6/6] Linking CXX executable WinShun.exe
