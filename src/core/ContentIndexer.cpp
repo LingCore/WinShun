@@ -44,6 +44,14 @@ constexpr std::size_t kChunkBytes = ContentScanner::kChunkBytes;
 // kBulkBatchBytes, and no more than kBulkPendingBytes wait in memory for a
 // thread to take their grams.
 constexpr std::size_t kBulkThreshold = 2000;
+// Files to check (ContentIndex::Need::Check, after a journal was lost) go
+// the bulk way from this many on one volume: one scan of its MFT gives every
+// file's size and time, where a check by path costs a disk seek for each
+// file that is not cached. GitHub #36: on a user's hard disk the usual way
+// checked 380 thousand files in over 7 minutes, one at a time; scanning that
+// volume's MFT (2.6 million records) took 15-30 s. Documents are checked
+// this way too; those that changed are read the usual way.
+constexpr std::size_t kBulkCheckThreshold = 2000;
 constexpr FileTime kBulkRecent = 5 * 60; // seconds
 constexpr std::uint64_t kBulkBatchBytes = 64ull << 20;
 constexpr std::size_t kBulkPendingBytes = 256u << 20;
@@ -143,6 +151,17 @@ bool bulkVerify()
     static const bool on = [] {
         wchar_t value[8] {};
         return ::GetEnvironmentVariableW(L"WINSHUN_BULK_VERIFY", value, 8) > 0 && value[0] == L'1';
+    }();
+    return on;
+}
+
+// WINSHUN_BULK_CHECK=0: files to check are checked the usual way, by path
+// (for wsbench --service --content --unsure, to compare).
+bool bulkChecks()
+{
+    static const bool on = [] {
+        wchar_t value[8] {};
+        return !(::GetEnvironmentVariableW(L"WINSHUN_BULK_CHECK", value, 8) > 0 && value[0] == L'0');
     }();
     return on;
 }
@@ -467,7 +486,7 @@ ContentIndexer::BulkStats ContentIndexer::bulkStats() const noexcept
 {
     return {m_bulk.sessions.load(), m_bulk.sessionsFailed.load(), m_bulk.files.load(), m_bulk.bytes.load(),
         m_bulk.tooLarge.load(), m_bulk.recent.load(), m_bulk.noRecord.load(), m_bulk.notFound.load(), m_bulk.denied.load(),
-        m_bulk.fallback.load(), m_bulk.verified.load(), m_bulk.verifyMismatches.load()};
+        m_bulk.fallback.load(), m_bulk.confirmed.load(), m_bulk.verified.load(), m_bulk.verifyMismatches.load()};
 }
 
 void ContentIndexer::wake()
@@ -511,7 +530,8 @@ QJsonObject ContentIndexer::diagnosticStatus() const
         {u"fallback_no_record"_s, static_cast<qint64>(bulk.noRecord)},
         {u"fallback_not_found"_s, static_cast<qint64>(bulk.notFound)},
         {u"fallback_denied"_s, static_cast<qint64>(bulk.denied)},
-        {u"fallback_special_files"_s, static_cast<qint64>(bulk.fallback)}};
+        {u"fallback_special_files"_s, static_cast<qint64>(bulk.fallback)},
+        {u"bulk_confirmed"_s, static_cast<qint64>(bulk.confirmed)}};
 }
 
 void ContentIndexer::interrupt()
@@ -884,12 +904,16 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
 
     // The bulk way (ContentIndexer.h): the text files to read for the first
     // time, when there are enough of them and the volumes can be read by
-    // their records. Each goes to its volume's session instead of a queue;
-    // what a session does not give comes back to the usual way (`late`).
+    // their records, and the files to check on a volume with enough of them
+    // (kBulkCheckThreshold). Each goes to its volume's session instead of a
+    // queue; what a session does not give comes back to the usual way
+    // (`late`). One session at a time scans a hard disk (`scanning`): its
+    // heads would jump between the volumes' MFTs.
     struct BulkVolume {
         std::size_t volume;
         std::vector<const Work*> files;
         std::unordered_map<EntryId, std::uint32_t> folderRecord; // the index keeps the folders' MFT record numbers
+        std::shared_ptr<std::mutex> scanning; // the hard disk's, shared by its volumes; none on other disks
     };
     std::vector<BulkVolume> bulkVolumes;
     const std::shared_ptr<ntfs::VolumeAccess> access = m_source.access ? m_source.access() : nullptr;
@@ -904,32 +928,43 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
                     rootOf[v] = r;
             }
         }
-        std::vector<std::vector<const Work*>> perVolume(volumes.size());
+        std::vector<std::vector<const Work*>> reads(volumes.size());
+        std::vector<std::vector<const Work*>> checks(volumes.size());
         std::size_t candidates = 0;
         std::size_t recent = 0;
         for (const Work& w : work) {
-            if (w.checkOnly || w.again || w.document || volumes[w.volume].suspended || rootOf[w.volume] == kNoEntry)
+            if (w.again || (w.document && !w.checkOnly) || volumes[w.volume].suspended || rootOf[w.volume] == kNoEntry
+                || (w.checkOnly && !bulkChecks()))
                 continue;
             // Written lately (the time is the journal's, so it is current):
-            // what was written may not be on the disk yet.
+            // what was written may not be on the disk yet, its record neither.
             if (index->modified(w.entry) + kBulkRecent > now) {
                 ++recent;
                 continue;
             }
-            perVolume[w.volume].push_back(&w);
-            ++candidates;
+            (w.checkOnly ? checks : reads)[w.volume].push_back(&w);
+            candidates += w.checkOnly ? 0 : 1;
         }
-        if (candidates >= kBulkThreshold) {
-            m_bulk.recent += recent;
-            for (std::size_t v = 0; v < volumes.size(); ++v) {
-                if (perVolume[v].empty())
-                    continue;
-                BulkVolume bv {v, std::move(perVolume[v]), {}};
-                if (const RecordTable* table = index->folderRecords(rootOf[v]))
-                    table->forEach([&](std::uint32_t record, EntryId folder) { bv.folderRecord[folder] = record; });
-                bulkVolumes.push_back(std::move(bv));
+        const bool bulkReads = candidates >= kBulkThreshold;
+        std::unordered_map<const Queue*, std::shared_ptr<std::mutex>> diskScans;
+        for (std::size_t v = 0; v < volumes.size(); ++v) {
+            // One scan answers both: a volume scanned for either has the other done with it.
+            if (!(bulkReads && !reads[v].empty()) && checks[v].size() < kBulkCheckThreshold)
+                continue;
+            BulkVolume bv {v, std::move(reads[v]), {}, nullptr};
+            bv.files.insert(bv.files.end(), checks[v].begin(), checks[v].end());
+            if (const RecordTable* table = index->folderRecords(rootOf[v]))
+                table->forEach([&](std::uint32_t record, EntryId folder) { bv.folderRecord[folder] = record; });
+            if (const Queue* disk = hardDiskQueue[v]) {
+                std::shared_ptr<std::mutex>& scanning = diskScans[disk];
+                if (!scanning)
+                    scanning = std::make_shared<std::mutex>();
+                bv.scanning = scanning;
             }
+            bulkVolumes.push_back(std::move(bv));
         }
+        if (!bulkVolumes.empty())
+            m_bulk.recent += recent;
     }
     std::vector<bool> inBulk(work.size(), false);
     for (const BulkVolume& bv : bulkVolumes) {
@@ -1175,6 +1210,19 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
         m_bulk.bytes += r.bytes.size();
         return true;
     };
+    // WINSHUN_BULK_VERIFY: a file the bulk way found unchanged, checked by its attributes too.
+    const auto verifyCheck = [&](const Work& w) {
+        std::wstring path;
+        {
+            const auto lock = index->readLock();
+            path = index->wpath(w.entry);
+        }
+        ++m_bulk.verified;
+        if (const std::optional<FileStamp> file = statOf(path); file && file->stamp != w.stamp) {
+            ++m_bulk.verifyMismatches;
+            qWarning("WinShun: %ls is unchanged by its record, but not by its attributes", path.c_str());
+        }
+    };
     const auto worker = [&](int t) {
         const bool forDocuments = t < documentThreads;
         const std::vector<Queue*>& mine = forDocuments ? documentQueues : readerQueues;
@@ -1319,8 +1367,16 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
         giveBack(back);
         back.clear();
         std::vector<ntfs::BulkFile> files;
+        std::unique_lock<std::mutex> scanTurn;
+        if (bv.scanning) {
+            activity.stage("bulk-wait-for-disk");
+            scanTurn = std::unique_lock(*bv.scanning);
+        }
         activity.stage("bulk-scan-mft");
-        if (cancelled() || !session->want(wants) || !session->scan(files)) {
+        const bool scanned = !cancelled() && session->want(wants) && session->scan(files);
+        if (scanTurn)
+            scanTurn.unlock();
+        if (!scanned) {
             if (!cancelled()) {
                 qWarning("WinShun: the bulk read of %ls did not start: %ls", root.c_str(), session->error().c_str());
                 ++m_bulk.sessionsFailed;
@@ -1338,6 +1394,23 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
                 continue;
             byTicket[f.ticket] = &f;
             const Work* w = ticketWork[f.ticket];
+            // A file to check: unchanged by its record, or read as changed (a
+            // document the usual way, by the extractor); one the session will
+            // not tell about is checked the usual way.
+            if (w->checkOnly && (f.status == ntfs::BulkStatus::Data || f.status == ntfs::BulkStatus::TooLarge)) {
+                if (ContentIndex::stampOf(static_cast<std::int64_t>(f.size), f.modified) == w->stamp) {
+                    m_content->confirm(w->entry);
+                    ++m_bulk.confirmed;
+                    if (bulkVerify())
+                        verifyCheck(*w);
+                    doneWith(*w);
+                    continue;
+                }
+                if (w->document) {
+                    back.push_back(w);
+                    continue;
+                }
+            }
             switch (f.status) {
             case ntfs::BulkStatus::Data:
                 data.push_back(&f);
