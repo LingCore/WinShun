@@ -3963,7 +3963,9 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
     case RunAsAdmin:
         remember(r.path, m_shownText);
         // Opened by typing in Explorer, a folder goes to that tab (GitHub #39).
-        if (action != Open || !r.isDir || !m_folderOpener || !m_folderOpener(r.path))
+        if (action == Open && r.where == SearchResult::Where::Line && r.line > 0 && !r.isDir)
+            contentopen::open(r.path, r.line, reportFailure(r.name)); // at the matching line, in an editor that can
+        else if (action != Open || !r.isDir || !m_folderOpener || !m_folderOpener(r.path))
             shell::open(r.path, action == RunAsAdmin, reportFailure(r.name));
         emit dismissRequested();
         break;

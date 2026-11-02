@@ -275,6 +275,19 @@ bool checkContentPane(QQmlEngine* qml, const QDir& output)
         == std::optional(u"--goto \"%1:42\""_s.arg(text)));
     check(u"line_aware_notepadpp_args"_s, contentopen::arguments(u"notepad++.exe"_s, text, 42)
         == std::optional(u"-n42 \"%1\""_s.arg(text)));
+    const auto args = [&](const QString& program) { return contentopen::arguments(program, text, 42); };
+    check(u"line_aware_vscode_family"_s, args(u"C:\\VS Code\\Code - Insiders.exe"_s) == std::optional(u"--goto \"%1:42\""_s.arg(text))
+        && args(u"VSCodium.exe"_s) == args(u"Code.exe"_s) && args(u"Cursor.exe"_s) == args(u"Code.exe"_s) && args(u"Windsurf.exe"_s) == args(u"Code.exe"_s));
+    check(u"line_aware_sublime_zed"_s, args(u"sublime_text.exe"_s) == std::optional(u"\"%1:42\""_s.arg(text))
+        && args(u"subl.exe"_s) == args(u"sublime_text.exe"_s) && args(u"Zed.exe"_s) == args(u"subl.exe"_s));
+    check(u"line_aware_jetbrains"_s, args(u"idea64.exe"_s) == std::optional(u"--line 42 \"%1\""_s.arg(text))
+        && args(u"PyCharm64.exe"_s) == args(u"idea64.exe"_s) && args(u"rider64.exe"_s) == args(u"idea64.exe"_s));
+    check(u"line_aware_notepad_family"_s, args(u"Notepad4.exe"_s) == std::optional(u"/g 42 \"%1\""_s.arg(text))
+        && args(u"Notepad3.exe"_s) == args(u"Notepad4.exe"_s) && args(u"notepad2.exe"_s) == args(u"Notepad4.exe"_s));
+    check(u"line_aware_emeditor_gvim"_s, args(u"EmEditor.exe"_s) == std::optional(u"/l 42 \"%1\""_s.arg(text))
+        && args(u"gvim.exe"_s) == std::optional(u"+42 \"%1\""_s.arg(text)));
+    check(u"line_unaware_editors_keep_plain_open"_s, !args(u"notepad.exe"_s) && !contentopen::arguments(u"Code.exe"_s, text, 0)
+        && !contentopen::arguments(u"Code.exe"_s, u"C:\\a\"b.txt"_s, 42));
     check(u"clipboard_capture_off"_s, !watcher.running());
     pane->setActive(false);
     window->hide();
