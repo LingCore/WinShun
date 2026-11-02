@@ -1,0 +1,192 @@
+#pragma once
+// Measurement probe for #111, kept here only (not built). To use: add it to src/app,
+// include it in main.cpp and call ws::screenprobe::install() after QGuiApplication;
+// run with WINSHUN_SCREEN_PROBE=<json>.
+// Each visible QQuickWindow, 2.5 s after it shows: alternating rounds of a plain
+// update() and a same-DPI screen change (what QWindowsWindow::checkForScreenChanged
+// delivers synchronously from WM_MOVE: QWindow::screenChanged), timing the frame.
+
+#include <QElapsedTimer>
+#include <QEventLoop>
+#include <QFile>
+#include <QGuiApplication>
+#include <QHash>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QQmlContext>
+#include <QMap>
+#include <QQuickItem>
+#include <QQuickWindow>
+#include <QScreen>
+#include <QSet>
+#include <QTimer>
+
+#include <atomic>
+#include <chrono>
+
+namespace ws::screenprobe {
+using namespace Qt::StringLiterals;
+
+inline qint64 nowNs()
+{
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+struct Probe : QObject {
+    QString path;
+    QTimer poll;
+    QHash<QQuickWindow*, QElapsedTimer> seen;
+    QSet<QQuickWindow*> done;
+    QJsonArray results;
+    std::atomic<qint64> animating {0}, beforeSync {0}, afterSync {0}, swapped {0}, beforeRender {0};
+
+    explicit Probe(QString file) : path(std::move(file))
+    {
+        poll.setInterval(250);
+        connect(&poll, &QTimer::timeout, this, &Probe::tick);
+        poll.start();
+    }
+
+    void tick()
+    {
+        for (QWindow* w : QGuiApplication::topLevelWindows()) {
+            auto* q = qobject_cast<QQuickWindow*>(w);
+            if (!q || !q->isVisible() || !q->isExposed() || done.contains(q))
+                continue;
+            if (!seen.contains(q)) {
+                seen[q].start();
+                continue;
+            }
+            if (seen[q].elapsed() < 2500)
+                continue;
+            done.insert(q);
+            poll.stop();
+            run(q);
+            poll.start();
+            return;
+        }
+    }
+
+    std::atomic<qint64> updateRequest {0};
+    QList<QObject*> attached;
+
+    bool eventFilter(QObject* watched, QEvent* event) override
+    {
+        if (event->type() == QEvent::UpdateRequest && updateRequest.load() == 0)
+            updateRequest = nowNs();
+        return QObject::eventFilter(watched, event);
+    }
+
+    void count(QQuickItem* item, int& all, int& contents, int& visible, int& texts)
+    {
+        ++all;
+        if (item->flags() & QQuickItem::ItemHasContents)
+            ++contents;
+        if (item->isVisible())
+            ++visible;
+        if (item->inherits("QQuickText"))
+            ++texts;
+        for (QObject* child : item->children()) {
+            if (qstrcmp(child->metaObject()->className(), "QQuickScreenAttached") == 0)
+                attached.append(child);
+        }
+        for (QQuickItem* child : item->childItems())
+            count(child, all, contents, visible, texts);
+    }
+
+    static double ms(qint64 ns) { return ns / 1e6; }
+
+    QJsonObject byFile() const
+    {
+        QMap<QString, int> counts;
+        for (QObject* object : attached) {
+            const QQmlContext* context = qmlContext(object->parent());
+            ++counts[context ? context->baseUrl().fileName() : u"?"_s];
+        }
+        QJsonObject result;
+        for (auto it = counts.cbegin(); it != counts.cend(); ++it)
+            result.insert(it.key(), it.value());
+        return result;
+    }
+
+    void run(QQuickWindow* q)
+    {
+        int all = 0, contents = 0, visible = 0, texts = 0;
+        attached.clear();
+        count(q->contentItem(), all, contents, visible, texts);
+        q->installEventFilter(this);
+        const auto c1 = connect(q, &QQuickWindow::afterAnimating, this, [this] { animating = nowNs(); }, Qt::DirectConnection);
+        const auto c2 = connect(q, &QQuickWindow::beforeSynchronizing, this, [this] { beforeSync = nowNs(); }, Qt::DirectConnection);
+        const auto c3 = connect(q, &QQuickWindow::afterSynchronizing, this, [this] { afterSync = nowNs(); }, Qt::DirectConnection);
+        const auto c4 = connect(q, &QQuickWindow::beforeRendering, this, [this] { beforeRender = nowNs(); }, Qt::DirectConnection);
+        const auto c5 = connect(q, &QQuickWindow::frameSwapped, this, [this] { swapped = nowNs(); }, Qt::DirectConnection);
+        QJsonArray rounds;
+        for (int round = 0; round < 40; ++round) {
+            const bool screen = round % 2 == 1;
+            {
+                QEventLoop pause;
+                QTimer::singleShot(150, &pause, &QEventLoop::quit);
+                pause.exec();
+            }
+            animating = beforeSync = afterSync = swapped = beforeRender = updateRequest = 0;
+            const qint64 start = nowNs();
+            qint64 unwrapped = start, rewrapped = start;
+            if (screen) {
+                // A real move: each Screen attached object leaves the old QScreen
+                // (QObject::disconnect from it) and joins the new one. Leaving:
+                for (QObject* object : std::as_const(attached))
+                    QMetaObject::invokeMethod(object, "screenChanged", Qt::DirectConnection, Q_ARG(QScreen*, nullptr));
+                unwrapped = nowNs();
+                // Joining (connections + change signals; an upper bound: from no
+                // screen every property counts as changed, the DPR too):
+                for (QObject* object : std::as_const(attached))
+                    QMetaObject::invokeMethod(object, "screenChanged", Qt::DirectConnection, Q_ARG(QScreen*, q->screen()));
+                rewrapped = nowNs();
+                emit q->screenChanged(q->screen()); // QQuickWindow::handleScreenChanged (forcePolish) and the rest
+            } else {
+                q->contentItem()->childItems().value(0, q->contentItem())->update();
+            }
+            const qint64 emitted = nowNs();
+            QElapsedTimer wait;
+            wait.start();
+            while (swapped.load() == 0 && wait.elapsed() < 1500)
+                QCoreApplication::processEvents(QEventLoop::AllEvents, 5);
+            const qint64 u = updateRequest, a = animating, b = beforeSync, s = afterSync, r = beforeRender, f = swapped;
+            rounds.append(QJsonObject {
+                {u"kind"_s, screen ? u"screen"_s : u"update"_s},
+                {u"leave_ms"_s, ms(unwrapped - start)},
+                {u"join_ms"_s, ms(rewrapped - unwrapped)},
+                {u"signal_ms"_s, ms(emitted - rewrapped)},
+                {u"sync_part_ms"_s, ms(emitted - start)},
+                {u"polish_ms"_s, u && a ? ms(a - u) : -1},
+                {u"sync_ms"_s, a && s ? ms(s - a) : -1},
+                {u"gui_blocked_ms"_s, u && s ? ms(s - u) + ms(emitted - start) : -1},
+                {u"render_ms"_s, r && f ? ms(f - r) : -1},
+                {u"to_swap_ms"_s, f ? ms(f - start) : -1},
+            });
+        }
+        q->removeEventFilter(this);
+        disconnect(c1); disconnect(c2); disconnect(c3); disconnect(c4); disconnect(c5);
+        results.append(QJsonObject {
+            {u"window"_s, QString::fromLatin1(q->metaObject()->className())},
+            {u"title"_s, q->title()},
+            {u"size"_s, u"%1x%2@%3"_s.arg(q->width()).arg(q->height()).arg(q->devicePixelRatio())},
+            {u"items"_s, all}, {u"with_contents"_s, contents}, {u"visible"_s, visible}, {u"texts"_s, texts},
+            {u"screen_attached"_s, attached.size()},
+            {u"attached_by_file"_s, byFile()},
+            {u"rounds"_s, rounds},
+        });
+        QFile file(path);
+        if (file.open(QIODevice::WriteOnly))
+            file.write(QJsonDocument(results).toJson());
+    }};
+
+inline void install()
+{
+    const QString path = qEnvironmentVariable("WINSHUN_SCREEN_PROBE");
+    if (!path.isEmpty())
+        new Probe(path);
+}
+
+} // namespace ws::screenprobe

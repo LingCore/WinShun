@@ -13,6 +13,7 @@ Rectangle {
     readonly property bool recording: activeFocus
     property string partial // modifiers held so far, or a hint
     property bool partialIsHint: false
+    readonly property real dpr: Screen.devicePixelRatio // one Screen attached object for all its items (GitHub #111)
 
     signal recorded(string hotkey)
 
@@ -148,8 +149,8 @@ Rectangle {
 
     Row {
         visible: !recorder.recording && recorder.hotkey.length === 0
-        x: Theme.snap((parent.width - width) / 2, Screen.devicePixelRatio)
-        y: Theme.snap((parent.height - height) / 2, Screen.devicePixelRatio)
+        x: Theme.snap((parent.width - width) / 2, recorder.dpr)
+        y: Theme.snap((parent.height - height) / 2, recorder.dpr)
         spacing: 6
 
         Glyph {
@@ -169,8 +170,8 @@ Rectangle {
 
     Row {
         visible: !recorder.recording && recorder.hotkey.length > 0
-        x: Theme.snap((parent.width - width) / 2, Screen.devicePixelRatio)
-        y: Theme.snap((parent.height - height) / 2, Screen.devicePixelRatio)
+        x: Theme.snap((parent.width - width) / 2, recorder.dpr)
+        y: Theme.snap((parent.height - height) / 2, recorder.dpr)
         spacing: 4
 
         Repeater {
@@ -185,7 +186,7 @@ Rectangle {
 
                 Text {
                     visible: index > 0
-                    width: Theme.snapUp(implicitWidth, Screen.devicePixelRatio)
+                    width: Theme.snapUp(implicitWidth, recorder.dpr)
                     anchors.verticalCenter: parent.verticalCenter
                     horizontalAlignment: Text.AlignHCenter
                     text: "+"
@@ -195,15 +196,15 @@ Rectangle {
 
                 Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
-                    width: Math.max(24, Theme.snapUp(keyPartText.implicitWidth + 12, Screen.devicePixelRatio))
+                    width: Math.max(24, Theme.snapUp(keyPartText.implicitWidth + 12, recorder.dpr))
                     height: 24
                     radius: Theme.smallControlRadius
                     color: Theme.keycap
 
                     Text {
                         id: keyPartText
-                        x: Theme.snap((parent.width - width) / 2, Screen.devicePixelRatio)
-                        y: Theme.snap((parent.height - height) / 2, Screen.devicePixelRatio)
+                        x: Theme.snap((parent.width - width) / 2, recorder.dpr)
+                        y: Theme.snap((parent.height - height) / 2, recorder.dpr)
                         text: modelData
                         color: Theme.text
                         font.pixelSize: Theme.fontCaption
@@ -225,9 +226,9 @@ Rectangle {
     Rectangle {
         visible: recorder.recording
         anchors.bottom: parent.bottom
-        x: Theme.edge(Screen.devicePixelRatio) // inside the field's border
+        x: Theme.edge(recorder.dpr) // inside the field's border
         width: parent.width - 2 * x
-        height: Theme.snap(2, Screen.devicePixelRatio) // 2.5 device pixels at 125 %
+        height: Theme.snap(2, recorder.dpr) // 2.5 device pixels at 125 %
         radius: Theme.lineRadius
         color: Theme.accent
     }

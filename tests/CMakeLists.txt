@@ -56,6 +56,13 @@ add_test(NAME tst_contentpane COMMAND $<TARGET_FILE:WinShun>
 set_tests_properties(tst_contentpane PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# #111: the settings window keeps its Screen attached objects few; each one is
+# work on every move to another monitor (docs/pitfalls.md).
+add_test(NAME tst_settingsscreen COMMAND $<TARGET_FILE:WinShun>
+    --preview-settings "${CMAKE_CURRENT_BINARY_DIR}/settings-screen" --screen-objects)
+set_tests_properties(tst_settingsscreen PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # Clipboard sizing uses the production QML/native frame with temporary history.
 add_test(NAME tst_clipboardsizing COMMAND $<TARGET_FILE:WinShun>
     --preview-results "${CMAKE_CURRENT_BINARY_DIR}/clipboard-sizing" --clipboard-sizing --renderer d3d11)

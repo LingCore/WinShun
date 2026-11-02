@@ -17,6 +17,7 @@ Rectangle {
 
     property SettingsEditor editor: null
     required property bool webSearch
+    readonly property real dpr: Screen.devicePixelRatio // one Screen attached object for all its items (GitHub #111)
     readonly property Item webOptions: detailsLoader.item ? detailsLoader.item.webOptions : null
     readonly property bool detailsSettled: !expanded || (detailsLoader.item !== null
         && Math.abs(details.height - detailsLoader.item.implicitHeight) < 0.5)
@@ -70,7 +71,7 @@ Rectangle {
         pendingFocus = command
     }
 
-    function onPixel(v) { return Math.round(v * Screen.devicePixelRatio) / Screen.devicePixelRatio }
+    function onPixel(v) { return Math.round(v * card.dpr) / card.dpr }
 
     onExpandedChanged: if (expanded) loadedOnce = true
     Component.onCompleted: if (expanded) loadedOnce = true
@@ -119,7 +120,7 @@ Rectangle {
                 y: 2
 
                 Image { // whole device pixels, unsmoothed (see ResultRow)
-                    readonly property real dpr: Screen.devicePixelRatio
+                    readonly property real dpr: card.dpr
                     readonly property int pixels: Math.round(32 * dpr)
 
                     x: 1 / 64
@@ -342,7 +343,7 @@ Rectangle {
 
             Rectangle {
                 width: parent.width
-                height: Theme.edge(Screen.devicePixelRatio)
+                height: Theme.edge(card.dpr)
                 color: Theme.divider
             }
 
@@ -574,7 +575,7 @@ Rectangle {
 
                 Rectangle {
                     width: parent.width
-                    height: Theme.edge(Screen.devicePixelRatio)
+                    height: Theme.edge(card.dpr)
                     color: Theme.divider
                 }
 

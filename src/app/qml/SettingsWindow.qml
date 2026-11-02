@@ -12,6 +12,11 @@ Window {
     required property Updater updater
     required property Backup backup
 
+    // Read by the items, sections and rows here instead of a Screen attached
+    // object each: every one of those joins and leaves the QScreen on each move
+    // to another monitor, a hitch with thousands (GitHub #111; docs/pitfalls.md).
+    readonly property real dpr: Screen.devicePixelRatio
+
     readonly property var renderers: ["software", "d3d11"]
     readonly property var languages: ["system", "zh", "en"]
     readonly property var transparencies: ["off", "on"]
@@ -835,7 +840,7 @@ Window {
         anchors.left: nav.right
         anchors.right: parent.right
         anchors.top: titleBar.bottom
-        height: Theme.snap(pageHeaderColumn.implicitHeight + 16, Screen.devicePixelRatio)
+        height: Theme.snap(pageHeaderColumn.implicitHeight + 16, window.dpr)
 
         Column {
             id: pageHeaderColumn
@@ -878,7 +883,7 @@ Window {
             x: 8
             width: parent.width - 36
             anchors.bottom: parent.bottom
-            height: Theme.edge(Screen.devicePixelRatio)
+            height: Theme.edge(window.dpr)
             color: Theme.divider
             opacity: flick.contentY > 2 ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: 120 } }
@@ -917,6 +922,7 @@ Window {
 
             // What the sections and their rows read (SettingsSection.qml).
             readonly property SettingsSearch search: settingsSearch
+            readonly property real dpr: window.dpr
             readonly property int currentPage: window.currentPage
             readonly property int currentTab: window.currentTab
             readonly property var pages: window.pages
@@ -1001,9 +1007,9 @@ Window {
                                 }
                                 Rectangle {
                                     visible: windowsRow.index > 0
-                                    x: Theme.edge(Screen.devicePixelRatio) // inside the card's border
+                                    x: Theme.edge(window.dpr) // inside the card's border
                                     width: parent.width - 2 * x
-                                    height: Theme.edge(Screen.devicePixelRatio)
+                                    height: Theme.edge(window.dpr)
                                     color: Theme.cardBorder
                                 }
                                 Item {
@@ -1014,7 +1020,7 @@ Window {
                                     height: 24
 
                                     Image { // whole device pixels, unsmoothed (see ResultRow)
-                                        readonly property real dpr: Screen.devicePixelRatio
+                                        readonly property real dpr: window.dpr
                                         readonly property int pixels: Math.round(windowsIcon.width * dpr)
 
                                         x: 1 / 64
@@ -2437,7 +2443,7 @@ Window {
                                         visible: pathRow.index > 0
                                         x: 12
                                         width: parent.width - 24
-                                        height: Theme.edge(Screen.devicePixelRatio)
+                                        height: Theme.edge(window.dpr)
                                         color: Theme.divider
                                     }
                                     MouseArea {

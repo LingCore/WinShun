@@ -36,10 +36,15 @@ Rectangle {
     signal toggled(int index, bool checked)
     signal pluginClicked()
 
+    // Read by all the tabs: one Screen attached object, not one per item
+    // (GitHub #111; docs/pitfalls.md).
+    readonly property real dpr: Screen.devicePixelRatio
+
     // Labels on whole device pixels (see SearchBar.onPixel): centred, at 150 %
     // they sat on half ones, and came out a pixel taller on some frames while
     // the launcher slid in.
-    function onPixel(v) { return Math.round(v * Screen.devicePixelRatio) / Screen.devicePixelRatio }
+    function onPixel(v) { return Math.round(v * tabs.dpr) / tabs.dpr }
+
 
     // In the launcher: as large as 界面大小 says (Theme.tabHeight); in the
     // settings window, as the rest there.
@@ -77,7 +82,7 @@ Rectangle {
                 readonly property bool pluginOpen: hasPlugin && tabs.current === 0
                 readonly property bool off: tabs.disabled.length > 0 && tabs.disabled.indexOf(index) >= 0
                 // Whole device pixels (at 150 % a whole logical one can still be half): a half one would leave the labels to its right blurred.
-                readonly property real labelWidth: Theme.snapUp(label.implicitWidth + (tabs.multiSelect ? 38 : 24), Screen.devicePixelRatio)
+                readonly property real labelWidth: Theme.snapUp(label.implicitWidth + (tabs.multiSelect ? 38 : 24), tabs.dpr)
 
                 width: labelWidth + (open ? sub.fullWidth : 0) + (pluginOpen ? pluginSub.fullWidth : 0)
                 height: tabs.tabHeight
@@ -212,7 +217,7 @@ Rectangle {
                             height: 16
 
                             Image { // as a row's icon (ResultRow.qml): its own device pixels, unsmoothed
-                                readonly property real dpr: Screen.devicePixelRatio
+                                readonly property real dpr: tabs.dpr
                                 readonly property int pixels: Math.round(pluginIconSlot.width * dpr)
 
                                 x: 1 / 64

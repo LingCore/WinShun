@@ -38,8 +38,10 @@ QtObject {
     // Chips and scrollbars keep their existing proportions in rounded mode.
     function pillRadius(size: real): real { return SystemTheme.roundedCorners ? size / 2 : 0 }
     // Edges on whole device pixels (docs/pitfalls.md, "边框 1 px 在 150% 下一边粗一边细").
-    // dpr is the window's: Screen.devicePixelRatio from the item that asks, so
-    // a window moved to another screen asks again.
+    // dpr is the window's: Screen.devicePixelRatio, so a window moved to another
+    // screen asks again. Read it once at a component's root (or the window's)
+    // and pass it down: every item that reads Screen has an attached object of
+    // its own, work on each move to another monitor (GitHub #111).
     // edge(): a 1 px line or border, as many device pixels as Qt draws a border
     // of 1 px with (1.5 at 150 % becomes 2). A line of plain 1 is 1 or 2 pixels
     // by where it lies, and a child inset by 1 covers half of a border.

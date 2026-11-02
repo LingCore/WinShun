@@ -56,6 +56,12 @@
    - `--preview-settings … --tree` 会为每张页面图再写一份 `<图>.png.edges.txt`：列出边缘不在整设备像素上的矩形（设备像素坐标、边框、圆角、QML 里的位置），一眼看出是哪个组件。`.02` 的小数是设置页整页的 0.02 偏移（见“列表滚动时整行在抖”），算整像素；`.5` 才是问题。
    - 真窗口（启动器、剪贴板、截图覆盖层）要实测，预览只覆盖设置窗口。输入的安全规则见“界面实测（模拟真实输入）”：截图的热键换个不撞 PixPin 的（Ctrl+1 是用户的），测完把 `WinShun.ini` 原样放回去，不往剪贴板里放东西。
 
+### 窗口拖到另一台显示器时卡一下（2026-11-03，#111）
+
+- **现象**：双屏用户把设置窗口拖过两屏交界时卡一下；搜索框不明显。两屏缩放相同（都是 100%）也会卡。
+- **原因**：QML 里每个读 `Screen.xxx` 的项各有一个 `QQuickScreenAttached`，每个往共用的 `QScreen` 上接约 9 个连接。窗口换屏时（在 `WM_MOVE` 里同步处理），每个附加对象都先从旧 `QScreen` 断开（`QObject::disconnect` 要扫一遍这个屏幕上的全部连接），再接到新屏幕上，所以耗时随附加对象个数的平方增长。设置窗口所有页面一直都在，原来有约 1,550 个：本机模拟换屏一次 GUI 线程停约 135 ms，修改后约 300 个、约 7 ms。各窗口共用同一个 `QScreen`，设置窗口的连接多了，搜索框换屏也变慢（约 10 ms → 2 ms）。重新布局、`forcePolish` 都只占 1–3 ms。
+- **做法**：`Screen.devicePixelRatio` 在窗口或组件的根上读一次（`readonly property real dpr: Screen.devicePixelRatio`），子项用 `<根>.dpr`；设置窗口的分区和行读 `SettingsWindow.dpr`（`SettingsSection.dpr`、`SettingRow.dpr`），不要在每个子项里写 `Screen.devicePixelRatio`。`tst_settingsscreen`（`--preview-settings … --screen-objects`）数设置窗口里的附加对象，超过 500 就失败。单屏机器上的复现方法：对每个附加对象调用它的 `screenChanged(QScreen*)` 槽（先 `nullptr` 再原屏幕），再发 `QWindow::screenChanged`，量 GUI 线程耗时。
+
 ## 窗口：拖动、标题栏、最大化
 
 ### Qt 的原生事件过滤器收不到鼠标和移动消息

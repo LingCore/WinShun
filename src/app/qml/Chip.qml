@@ -7,9 +7,10 @@ Rectangle {
 
     property string text
     property bool marked: false // has the words the settings are searched for
+    readonly property real dpr: Screen.devicePixelRatio // one Screen attached object for all its items (GitHub #111)
     signal removeClicked()
 
-    implicitWidth: Theme.snapUp(label.implicitWidth + 40, Screen.devicePixelRatio) // whole device pixels: the next chip's edge in a Flow
+    implicitWidth: Theme.snapUp(label.implicitWidth + 40, chip.dpr) // whole device pixels: the next chip's edge in a Flow
     implicitHeight: 32
     radius: Theme.controlRadius
     color: marked ? Theme.selection : Theme.control
@@ -29,7 +30,7 @@ Rectangle {
     Rectangle {
         anchors.right: parent.right
         anchors.rightMargin: 4
-        y: Theme.snap((parent.height - height) / 2, Screen.devicePixelRatio)
+        y: Theme.snap((parent.height - height) / 2, chip.dpr)
         width: 22
         height: 22
         radius: Theme.smallControlRadius

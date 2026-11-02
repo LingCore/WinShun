@@ -860,6 +860,25 @@ int runSettings(const QStringList& args)
         return finish(window, false);
     }
 
+    // GitHub #111: an item that reads Screen.* has a Screen attached object of
+    // its own, and on every move to another monitor each of them leaves the
+    // old QScreen (a disconnect that walks all of that screen's connections)
+    // and joins the new one: the hitch grows with the square of their number.
+    // The settings window keeps them few (SettingsWindow.dpr).
+    if (args.contains(u"--screen-objects"_s)) {
+        constexpr int budget = 500; // 1,631 here before #111, 355 after
+        int count = 0;
+        const std::function<void(QQuickItem*)> walk = [&](QQuickItem* item) {
+            for (const QObject* child : item->children())
+                count += qstrcmp(child->metaObject()->className(), "QQuickScreenAttached") == 0;
+            for (QQuickItem* child : item->childItems())
+                walk(child);
+        };
+        walk(window->contentItem());
+        say(u"Screen attached objects: %1 (at most %2)"_s.arg(count).arg(budget));
+        return finish(window, count > 0 && count <= budget);
+    }
+
     if (args.contains(u"--web-form"_s)) {
         if (args.contains(u"--compact"_s))
             window->resize(760, 420); // the supported minimum, also used on high-DPI screens

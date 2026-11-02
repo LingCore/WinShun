@@ -27,6 +27,9 @@ Column {
     readonly property var pageKeywords: column && column.pageKeywords !== undefined
                                         ? (column.pageKeywords[page] ?? "").split(";").filter(word => word.length > 0)
                                         : []
+    // The window's device pixel ratio, for this section and its rows: one
+    // Screen attached object for all of them (GitHub #111; docs/pitfalls.md).
+    readonly property real dpr: column && column.dpr !== undefined ? column.dpr : Screen.devicePixelRatio
     // Its rows on show while searching.
     readonly property int found: searching && search.total >= 0 ? search.sectionCount(section) : 0
     // While searching: the first section of its page on show, which carries the page's name.
@@ -137,7 +140,7 @@ Column {
 
     Rectangle {
         width: parent.width
-        height: Theme.snap(card.implicitHeight, Screen.devicePixelRatio) // whole device pixels: the bottom edge as crisp as the top
+        height: Theme.snap(card.implicitHeight, section.dpr) // whole device pixels: the bottom edge as crisp as the top
         radius: Theme.cardRadius
         color: Theme.card
         border.width: 1

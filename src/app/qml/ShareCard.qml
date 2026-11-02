@@ -15,6 +15,7 @@ Rectangle {
     readonly property var blank: ({ path: "", name: "", tone: "idle", status: "", signIn: false, suspect: false, busy: false, verifiable: false,
                                     content: false, contentStatus: "" })
     property bool marked: false // what the settings search found
+    readonly property real dpr: Screen.devicePixelRatio // one Screen attached object for all its items (GitHub #111)
 
     signal verifyClicked()
     signal startClicked()
@@ -33,7 +34,7 @@ Rectangle {
 
     readonly property real headHeight: Math.max(texts.implicitHeight, buttons.implicitHeight)
     // Whole device pixels: the cards below it in the column, and its switch, stay sharp.
-    implicitHeight: Theme.snap(headHeight + 24 + (card.kind === "share" ? contents.height + scanSettings.height + 18 : 0), Screen.devicePixelRatio)
+    implicitHeight: Theme.snap(headHeight + 24 + (card.kind === "share" ? contents.height + scanSettings.height + 18 : 0), card.dpr)
     radius: Theme.controlRadius
     color: "transparent"
     border.width: 1
@@ -160,15 +161,15 @@ Rectangle {
         anchors.left: texts.left
         anchors.right: parent.right
         anchors.rightMargin: 20 // the switch's edge under 移除's text: the buttons' 8 and a FlatButton's 12 of padding
-        y: Theme.snap(12 + card.headHeight + 10, Screen.devicePixelRatio)
-        height: Theme.snapUp(Math.max(contentTexts.implicitHeight, contentSwitch.implicitHeight), Screen.devicePixelRatio)
+        y: Theme.snap(12 + card.headHeight + 10, card.dpr)
+        height: Theme.snapUp(Math.max(contentTexts.implicitHeight, contentSwitch.implicitHeight), card.dpr)
 
         Column {
             id: contentTexts
             anchors.left: parent.left
             anchors.right: contentSwitch.left
             anchors.rightMargin: 12
-            y: Theme.snap((parent.height - height) / 2, Screen.devicePixelRatio)
+            y: Theme.snap((parent.height - height) / 2, card.dpr)
             spacing: 2
 
             Text {
@@ -192,7 +193,7 @@ Rectangle {
         ToggleSwitch {
             id: contentSwitch
             anchors.right: parent.right
-            y: Theme.snap((parent.height - height) / 2, Screen.devicePixelRatio) // not verticalCenter: the track's edges on whole pixels
+            y: Theme.snap((parent.height - height) / 2, card.dpr) // not verticalCenter: the track's edges on whole pixels
             checked: card.share.content === true
             Accessible.name: qsTr("搜索文件内容")
             onToggled: (on) => card.contentToggled(on)
