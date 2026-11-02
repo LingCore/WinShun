@@ -612,6 +612,17 @@ add_test(NAME tst_movedplugins COMMAND tst_movedplugins)
 set_tests_properties(tst_movedplugins PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# The plugin updates' background service (src/app/PluginUpdates): the signed
+# list, what is installed, kept aside, told once.
+qt_add_executable(tst_pluginupdates tst_pluginupdates.cpp ${PROJECT_SOURCE_DIR}/src/app/PluginUpdates.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/Http.cpp)
+target_include_directories(tst_pluginupdates PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_pluginupdates PRIVATE wscore wsplugin miniz Qt6::Test winhttp ws2_32 bcrypt)
+set_target_properties(tst_pluginupdates PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_pluginupdates COMMAND tst_pluginupdates)
+set_tests_properties(tst_pluginupdates PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # The proxy setting (GitHub #84): the address check, and WinHTTP going where
 # the setting says, against two small servers of the test's own.
 qt_add_executable(tst_proxy tst_proxy.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/Http.cpp)

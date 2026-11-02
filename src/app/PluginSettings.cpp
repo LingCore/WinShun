@@ -4,6 +4,7 @@
 #include "Catalog.h"
 #include "FileIconProvider.h"
 #include "Host.h"
+#include "PluginUpdates.h"
 #include "Secrets.h"
 #include "Settings.h"
 #include "SettingsEditor.h"
@@ -22,6 +23,7 @@
 #include <QJsonDocument>
 #include <QLocale>
 #include <QRegularExpression>
+#include <QScopeGuard>
 #include <QStyleHints>
 #include <QUrl>
 
@@ -298,6 +300,20 @@ PluginSettings::~PluginSettings()
 {
     if (m_pendingInstall)
         plugin::install::discard(*m_pendingInstall);
+    releaseClaim();
+}
+
+void PluginSettings::setUpdates(PluginUpdates* updates)
+{
+    m_updates = updates;
+    m_gallery.setUpdates(updates);
+}
+
+void PluginSettings::releaseClaim()
+{
+    if (!m_installClaim.isEmpty() && m_updates)
+        m_updates->release(m_installClaim);
+    m_installClaim.clear();
 }
 
 void PluginSettings::setHost(plugin::Host* host)
@@ -940,6 +956,14 @@ void PluginSettings::installFrom(const QString& given, const QString& expectedId
         setMessage(tr("没有安装 %1：下载来的是另一个插件（%2）").arg(name.isEmpty() ? expectedId : name, id));
         return;
     }
+    if (m_updates) { // not while the background is changing it
+        if (!m_updates->claim(id)) {
+            plugin::install::discard(*candidate);
+            setMessage(tr("正在后台更新这个插件，稍后再试"));
+            return;
+        }
+        m_installClaim = id;
+    }
     if (const plugin::Entry* e = m_host->catalog().find(id); e && e->source == plugin::Entry::Source::User && e->manifest) {
         const int compared = plugin::compareVersions(candidate->manifest->version, e->manifest->version);
         QVariantMap info {{u"id"_s, id}, {u"name"_s, candidate->manifest->name.pick(m_locale)}, {u"installedVersion"_s, e->manifest->version},
@@ -963,6 +987,7 @@ void PluginSettings::confirmInstall()
 
 void PluginSettings::cancelInstall()
 {
+    releaseClaim();
     if (!m_pendingInstall)
         return;
     plugin::install::discard(*m_pendingInstall);
@@ -972,6 +997,7 @@ void PluginSettings::cancelInstall()
 
 void PluginSettings::finishInstall(plugin::install::Candidate candidate, bool enableAfterInstall)
 {
+    const auto releaseIt = qScopeGuard([this] { releaseClaim(); });
     if (!m_host)
         return;
     const QString id = candidate.manifest->id;
@@ -981,6 +1007,8 @@ void PluginSettings::finishInstall(plugin::install::Candidate candidate, bool en
         setMessage(tr("没有安装 %1：%2").arg(name, error));
         return;
     }
+    if (m_updates)
+        m_updates->forget(id); // what was kept for the old version
     m_host->catalog().scan();
     // Installed, and off until the user turns it on (the permissions are
     // shown then); a version put over one that is on and asking for more
@@ -1015,6 +1043,14 @@ void PluginSettings::confirmUninstall(const QString& id, bool withData)
     if (!e || e->source == plugin::Entry::Source::Bundled)
         return;
     const QString name = pluginName(id);
+    if (m_updates && !m_updates->claim(id)) {
+        setMessage(tr("正在后台更新这个插件，稍后再试"));
+        return;
+    }
+    const auto releaseIt = qScopeGuard([this, id] {
+        if (m_updates)
+            m_updates->release(id);
+    });
     m_host->stop(id);
     const QDeadlineTimer deadline(2500);
     while (!deadline.hasExpired()) {
@@ -1024,6 +1060,8 @@ void PluginSettings::confirmUninstall(const QString& id, bool withData)
         QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
     }
     const QString error = plugin::install::remove(m_userDir, m_dataRoot, id, withData);
+    if (m_updates && error.isEmpty())
+        m_updates->forget(id);
     // Its section and its passwords go with it, whatever became of the folder.
     plugin::secrets::removeAll(id);
     Settings& settings = m_editor->m_settings;

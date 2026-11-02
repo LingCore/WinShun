@@ -90,6 +90,7 @@ class SwitchPlugin;
 class TypeToSearch;
 class LauncherKeysWatch;
 class Updater;
+class PluginUpdates;
 class Backup;
 class VolumeNotifier;
 class WindowFrame;
@@ -355,6 +356,7 @@ private:
     void showWebSettings(); // ... on its 网页搜索 page (a web row's menu)
     void showFileTypeSettings(); // ... on its 结果列表 page, at the file types (the + of the launcher's strip)
     void showFavoriteSettings(const QString& path); // ... on its 收藏夹 page, at that favorite (a row's menu)
+    void showPluginUpdates(); // 设置 › 插件库, only the ones with a newer version
     void showPluginSettings(const QString& pluginId); // ... on that plugin's card ("winshun:settings")
     void applyHotkey();
     void applyDialogs(); // Ctrl+G, the bar and going by themselves in file dialogs
@@ -667,6 +669,7 @@ private:
     QString m_clipboardShortcut; // what opens the clipboard: "Win+V", another shortcut, or nothing
     std::unique_ptr<MessageWindow> m_messages;
     std::unique_ptr<Updater> m_updater;
+    std::unique_ptr<PluginUpdates> m_pluginUpdates; // after m_updater; goes before the plugin host
     std::unique_ptr<Backup> m_backup; // of the settings, into a folder chosen
     std::unique_ptr<VolumeNotifier> m_volumeNotifier; // after m_messages, whose window it uses
     std::unique_ptr<NetworkNotifier> m_network; // after m_index, whose shares it tells

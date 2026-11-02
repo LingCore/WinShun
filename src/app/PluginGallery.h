@@ -19,6 +19,7 @@
 #include <QElapsedTimer>
 #include <QHash>
 #include <QObject>
+#include <QPointer>
 #include <QStringList>
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
@@ -30,6 +31,7 @@
 namespace ws {
 
 class PluginSettings;
+class PluginUpdates;
 
 // The list's plugins, filtered by `shown` (the delegates stay while the
 // filter changes).
@@ -55,7 +57,8 @@ public:
         bool busy = false; // being downloaded
         double progress = 0; // 0–1
         QString problem; // why the last install from here did not happen
-        bool shown = true; // fits the filter
+        bool shown = true; // fits the filter (and, with updatesOnly, has a newer version to go to)
+        bool updatable = false; // the user's copy, not Win顺's own, with a newer version in the list
         QString words; // what the filter looks in: the id, the names, descriptions and keywords, lower-cased
         friend bool operator==(const Row&, const Row&) = default;
     };
@@ -102,6 +105,8 @@ class PluginGallery : public QObject {
     Q_PROPERTY(int count READ count NOTIFY listChanged FINAL)
     Q_PROPERTY(int shownCount READ shownCount NOTIFY listChanged FINAL) // those that fit the filter
     Q_PROPERTY(QString filter READ filter WRITE setFilter NOTIFY filterChanged FINAL)
+    // Only the plugins with a newer version (the tray line and the badge lead here).
+    Q_PROPERTY(bool updatesOnly READ updatesOnly WRITE setUpdatesOnly NOTIFY updatesOnlyChanged FINAL)
     // The tab is on show: the list is read from the copy kept, and fetched
     // when this run has not fetched it lately.
     Q_PROPERTY(bool active READ active WRITE setActive NOTIFY activeChanged FINAL)
@@ -121,6 +126,9 @@ public:
     int shownCount() const;
     QString filter() const { return m_filter; }
     void setFilter(const QString& filter);
+    bool updatesOnly() const { return m_updatesOnly; }
+    void setUpdatesOnly(bool on);
+    void setUpdates(PluginUpdates* updates); // the background updates hear each list fetched here
     bool active() const { return m_active; }
     void setActive(bool on);
     bool fetching() const { return m_fetching; }
@@ -144,6 +152,7 @@ public:
 signals:
     void listChanged();
     void filterChanged();
+    void updatesOnlyChanged();
     void activeChanged();
     void stateChanged();
 
@@ -171,6 +180,8 @@ private:
     QString m_problem;
     bool m_problemIsConnection = false;
     QString m_filter;
+    bool m_updatesOnly = false;
+    QPointer<PluginUpdates> m_updates;
     // The download: its plugin, what stops it, and its number (a result
     // from one cancelled meanwhile is let go of).
     QString m_downloadId;

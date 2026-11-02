@@ -4,6 +4,7 @@
 #include "FileIconProvider.h"
 #include "Host.h"
 #include "PluginSettings.h"
+#include "PluginUpdates.h"
 #include "Programs.h"
 #include "Settings.h"
 #include "platform/Http.h"
@@ -218,6 +219,20 @@ void PluginGallery::setFilter(const QString& filter)
     rebuild();
 }
 
+void PluginGallery::setUpdatesOnly(bool on)
+{
+    if (m_updatesOnly == on)
+        return;
+    m_updatesOnly = on;
+    emit updatesOnlyChanged();
+    rebuild();
+}
+
+void PluginGallery::setUpdates(PluginUpdates* updates)
+{
+    m_updates = updates;
+}
+
 void PluginGallery::setActive(bool on)
 {
     if (m_active == on)
@@ -308,6 +323,8 @@ void PluginGallery::finishFetch(const QString& from, const gallery::Fetched& fet
         if (!file.open(QIODevice::WriteOnly) || file.write(fetched.body) != fetched.body.size() || !file.commit())
             qWarning().noquote() << "Plugin library: the list could not be kept:" << file.errorString();
     }
+    if (m_updates)
+        m_updates->setList(fetched.body); // for the badge: hints, never installed from
     rebuild();
     emit stateChanged();
 }
@@ -334,6 +351,7 @@ void PluginGallery::rebuild()
             r.minWinShun = item.minWinShun;
             const gallery::Local local = host ? gallery::localOf(host->catalog(), bundledDir, item.id) : gallery::Local {};
             r.installedVersion = local.userVersion;
+            r.updatable = local.userCopy && !local.bundled && !item.bundled;
             switch (gallery::stateOf(item, local, appVersion)) {
             case gallery::State::Install: r.stage = u"install"_s; break;
             case gallery::State::Update: r.stage = u"update"_s; break;
@@ -341,6 +359,7 @@ void PluginGallery::rebuild()
             case gallery::State::Bundled: r.stage = u"bundled"_s; break;
             case gallery::State::NeedsNewerApp: r.stage = u"app"_s; break;
             }
+            r.updatable = r.updatable && (r.stage == u"update"_s || r.stage == u"app"_s);
             // The icon of the copy here, if any (the list has none).
             const PluginListModel::Card* card = m_settings->m_list.card(item.id);
             r.icon = card && !card->icon.isEmpty() ? card->icon : FileIconProvider::pluginIconUrl(item.id, u"glyph:U+EA86"_s, dark);
@@ -369,7 +388,7 @@ void PluginGallery::rebuild()
         }
     }
     for (PluginGalleryModel::Row& r : rows)
-        r.shown = fits(r.words, m_filter);
+        r.shown = fits(r.words, m_filter) && (!m_updatesOnly || r.updatable);
     m_list.setRows(std::move(rows));
     emit listChanged();
 }

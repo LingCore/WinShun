@@ -390,7 +390,13 @@ Window {
         revealAfterFrame = pluginId
     }
     function showPluginLibrary(pluginId) {
+        window.editor.plugins.gallery.updatesOnly = false
         window.editor.plugins.gallery.filter = pluginId
+        showPage(pluginsPage, 1)
+    }
+    function showPluginUpdates() {
+        window.editor.plugins.gallery.filter = ""
+        window.editor.plugins.gallery.updatesOnly = true
         showPage(pluginsPage, 1)
     }
     property string revealAfterFrame

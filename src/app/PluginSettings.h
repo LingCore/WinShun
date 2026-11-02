@@ -28,6 +28,7 @@
 namespace ws {
 
 class SettingsEditor;
+class PluginUpdates;
 
 namespace plugin {
 class Host;
@@ -175,6 +176,7 @@ public:
     ~PluginSettings() override;
 
     void setHost(plugin::Host* host); // the app's; null for none
+    void setUpdates(PluginUpdates* updates); // the background updates: told what is changed here, asked before a plugin is
     void setLocale(const QString& locale);
     // Without a host: five made-up plugins in every state, for the
     // offscreen preview of the page (main.cpp --preview-plugins).
@@ -276,12 +278,15 @@ private:
     void setMessage(const QString& message);
     void readMemory(); // the resident processes' working sets, into the status lines
     void finishInstall(plugin::install::Candidate candidate, bool enableAfterInstall = false);
+    void releaseClaim(); // the plugin an install here has been changing
     QString pluginName(const QString& id) const;
     QVariantList permissionRows(const QString& id) const; // [{name, text, enforced, note}]
     void applyPluginSettings(const QString& id); // the host hears the values (secrets included)
 
     SettingsEditor* m_editor;
     QPointer<plugin::Host> m_host;
+    QPointer<PluginUpdates> m_updates;
+    QString m_installClaim; // the plugin of m_pendingInstall, or being installed
     QString m_locale = QStringLiteral("zh");
     QString m_userDir;
     QString m_dataRoot;

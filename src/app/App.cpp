@@ -35,6 +35,7 @@
 #include "Pipe.h"
 #include "Placement.h"
 #include "PluginSettings.h"
+#include "PluginUpdates.h"
 #include "ProxyAddress.h"
 #include "SavedFile.h"
 #include "SearchEngine.h"
@@ -188,6 +189,7 @@ enum TrayCommand {
     ClipboardCommand,
     PauseClipboardCommand,
     KeepAwakeCommand, // 保持唤醒（到 16:42）: only while it is on; ends it
+    PluginUpdatesCommand, // N plugins have a newer version
     PluginMenuCommand = 1000 // and up: the entries of the plugins' submenus (trayMenu)
 };
 
@@ -1682,6 +1684,10 @@ void App::applySettings(bool initial)
     shellmenu::apply(m_settings.explorerMenu, tr("用 Win顺 搜索此处")); // after the language
     shellmenu::applyPasteFile(m_settings.pasteFileEnabled && m_settings.pasteFileMenu, tr("粘贴为文件"), m_language == u"en");
     m_updater->setAutomatic(m_settings.autoUpdate);
+    if (m_pluginUpdates) {
+        m_pluginUpdates->setAutomatic(m_settings.autoUpdate);
+        m_pluginUpdates->setPolicy(m_settings.pluginDeveloperMode, m_settings.plugins);
+    }
     m_backup->setFolder(m_settings.backupFolder);
     m_launcher->setRecordHistory(m_settings.recordHistory);
     m_launcher->setResultOptions(m_settings.foldersFirst ? KindOrder::FoldersFirst : KindOrder::FilesFirst,
@@ -3179,6 +3185,7 @@ void App::showSettings()
         });
         editor->plugins()->setLocale(m_language);
         editor->plugins()->setHost(m_pluginHost.get());
+        editor->plugins()->setUpdates(m_pluginUpdates.get());
         editor->plugins()->setRecoveryState(m_pluginRecoveryMessage, m_pluginRecoveryBusy);
         connect(editor->plugins(), &PluginSettings::recoveryRequested, this, &App::installMovedPlugins);
         editor->favorites()->setCatalogs(m_apps.get(), m_places.get());
@@ -3269,6 +3276,13 @@ void App::showPluginSettings(const QString& pluginId)
     showSettings();
     if (m_settingsWindow)
         QMetaObject::invokeMethod(m_settingsWindow, "showPluginPage", Q_ARG(QVariant, QVariant(pluginId)));
+}
+
+void App::showPluginUpdates()
+{
+    showSettings();
+    if (m_settingsWindow)
+        QMetaObject::invokeMethod(m_settingsWindow, "showPluginUpdates");
 }
 
 void App::showUpdate()
@@ -5406,6 +5420,8 @@ void App::showTrayMenu()
                  true},
                 shell::MenuItem::separator()});
     }
+    if (m_pluginUpdates && m_pluginUpdates->count() > 0) // under the line for Win顺's own update, if there is one
+        items.insert(items.begin(), {{PluginUpdatesCommand, tr("%n 个插件可更新…", "", m_pluginUpdates->count())}, shell::MenuItem::separator()});
     if (m_updater->available() && !m_updater->skipped()) // at the top, where it is seen
         items.insert(items.begin(),
             {{UpdateCommand, tr("Win顺 %1 可以更新了…").arg(m_updater->availableVersion())}, shell::MenuItem::separator()});
@@ -5425,7 +5441,7 @@ void App::showTrayMenu()
         case RebuildCommand: glyph = 0xE895; break;
         case AutostartCommand: glyph = 0xE7E8; break;
         case SettingsCommand: glyph = 0xE713; break;
-        case CheckUpdateCommand: case UpdateCommand: glyph = 0xE896; break;
+        case CheckUpdateCommand: case UpdateCommand: case PluginUpdatesCommand: glyph = 0xE896; break;
         case KeepAwakeCommand: glyph = 0xE823; break;
         case RestartCommand: glyph = 0xE72C; break;
         case QuitCommand: glyph = 0xE8BB; break;
@@ -5476,6 +5492,9 @@ void App::showTrayMenu()
         break;
     case UpdateCommand:
         showUpdate();
+        break;
+    case PluginUpdatesCommand:
+        showPluginUpdates();
         break;
     case CheckUpdateCommand:
         // A version already known is shown at once; otherwise the dialog says "checking".
@@ -6229,7 +6248,40 @@ void App::createPluginHost()
     options.theme = isDarkMode() ? u"dark"_s : u"light"_s;
     options.version = QStringLiteral(WINSHUN_VERSION);
     options.appearance = pluginLook();
+    // What an earlier run kept aside for a plugin that was running, and what an
+    // interrupted swap left: before the host can start anything.
+    PluginUpdates::prepare(dataDir, options.userPluginDir, QStringLiteral(WINSHUN_VERSION), [this](const QString& id) {
+        const PluginConfig* c = m_settings.plugin(id);
+        return std::pair<bool, QStringList>(c && c->enabled, c ? c->confirmed : QStringList());
+    });
     m_pluginHost = std::make_unique<plugin::Host>(options);
+    {
+        PluginUpdates::Options updateOptions;
+        updateOptions.dataDir = dataDir;
+        updateOptions.userDir = options.userPluginDir;
+        updateOptions.bundledDir = options.bundledPluginDir;
+        updateOptions.source = PluginUpdates::defaultSource();
+        m_pluginUpdates = std::make_unique<PluginUpdates>(m_pluginHost.get(), updateOptions);
+        m_pluginUpdates->setBusy([this] { return m_pluginRecoveryBusy || (m_updater && !m_updater->installStage().isEmpty()); });
+        m_pluginUpdates->setPolicy(m_settings.pluginDeveloperMode, m_settings.plugins);
+        m_pluginUpdates->setAutomatic(m_settings.autoUpdate);
+        // A newer version that asks for permissions the user has not agreed to,
+        // of a plugin that is on: told once per version, not over the settings
+        // window (it shows them there).
+        connect(m_pluginUpdates.get(), &PluginUpdates::consentNeeded, this, [this](const QStringList& ids) {
+            if (m_settingsWindow && m_settingsWindow->isVisible())
+                return;
+            QString title = tr("%n 个插件的新版本要你同意新权限", "", static_cast<int>(ids.size()));
+            if (ids.size() == 1) {
+                const plugin::Entry* e = m_pluginHost->catalog().find(ids.front());
+                title = tr("“%1” 的新版本要你同意新权限").arg(e && e->manifest ? e->manifest->name.pick(m_language) : ids.front());
+            }
+            m_messages->showNotification(title, tr("点这里查看并更新"), [self = QPointer(this)] {
+                if (self)
+                    self->showPluginUpdates();
+            });
+        });
+    }
     connect(&m_pluginHost->catalog(), &plugin::Catalog::changed, this, &App::pluginsChanged);
     connect(m_pluginHost.get(), &plugin::Host::stateChanged, this, [this](const QString& id) {
         // A deferred install completed later from the regular plugin page.
@@ -6371,8 +6423,21 @@ void App::installMovedPlugins()
         names.push_back(moved::name(id));
     setPluginRecoveryState(tr("正在从插件库恢复 %1。原来的设置和数据会保留。").arg(names.join(u"、"_s)), true);
     qInfo().noquote() << "Plugins moved to the library, installing:" << ids.join(u", "_s);
-    moved::install(ids, m_pluginHost->options().userPluginDir, m_language, [self = QPointer(this)](const QList<moved::Outcome>& outcomes) {
-        if (!self || !self->m_pluginHost)
+    QStringList claimed; // not changed from the background meanwhile
+    if (m_pluginUpdates) {
+        for (const QString& id : ids) {
+            if (m_pluginUpdates->claim(id))
+                claimed.push_back(id);
+        }
+    }
+    moved::install(ids, m_pluginHost->options().userPluginDir, m_language, [self = QPointer(this), claimed](const QList<moved::Outcome>& outcomes) {
+        if (!self)
+            return;
+        if (self->m_pluginUpdates) {
+            for (const QString& id : claimed)
+                self->m_pluginUpdates->release(id);
+        }
+        if (!self->m_pluginHost)
             return;
         QStringList installed;
         QStringList failed;
@@ -6456,6 +6521,8 @@ void App::applyPlugins()
     if (!m_pluginHost)
         return;
     m_pluginHost->setDeveloperMode(m_settings.pluginDeveloperMode);
+    if (m_pluginUpdates)
+        m_pluginUpdates->setPolicy(m_settings.pluginDeveloperMode, m_settings.plugins);
     if (m_pluginTools)
         m_pluginTools->setPolicy(mcpPolicy());
     plugin::Catalog& catalog = m_pluginHost->catalog();

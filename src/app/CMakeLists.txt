@@ -284,6 +284,7 @@ qt_add_qml_module(WinShun
         Placement.cpp Placement.h
         PluginGallery.cpp PluginGallery.h
         PluginSettings.cpp PluginSettings.h
+        PluginUpdates.cpp PluginUpdates.h # the installed plugins kept up to date in the background
         MovedPlugins.cpp MovedPlugins.h # the plugins that came with 0.16.0, from the library now (GitHub #138)
         platform/OcrPackage.cpp platform/OcrPackage.h
         ResultModel.cpp ResultModel.h

@@ -7166,6 +7166,28 @@
         <source>Win顺 %1 可以更新了…</source>
         <translation>WinShun %1 is available…</translation>
     </message>
+    <message numerus="yes">
+        <source>%n 个插件可更新…</source>
+        <translation>
+            <numerusform>%n plugin update available…</numerusform>
+            <numerusform>%n plugin updates available…</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>“%1” 的新版本要你同意新权限</source>
+        <translation>The new version of “%1” needs your permission</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n 个插件的新版本要你同意新权限</source>
+        <translation>
+            <numerusform>%n plugin update needs your permission</numerusform>
+            <numerusform>%n plugin updates need your permission</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>点这里查看并更新</source>
+        <translation>Click to review and update</translation>
+    </message>
     <message>
         <source>正在重建索引</source>
         <translation>Rebuilding the index</translation>
@@ -9640,6 +9662,10 @@
 </context>
 <context>
     <name>ws::PluginSettings</name>
+    <message>
+        <source>正在后台更新这个插件，稍后再试</source>
+        <translation>This plugin is being updated in the background; try again shortly</translation>
+    </message>
     <message>
         <source>新版本要更多权限：%1。打开开关、同意后才能用</source>
         <translation>The new version asks for more permissions: %1. Turn it on and allow them to use it</translation>
@@ -12235,6 +12261,21 @@ Content index: %5</translation>
     <message>
         <source>返回</source>
         <translation>Back</translation>
+    </message>
+</context>
+<context>
+    <name>ws::PluginUpdates</name>
+    <message>
+        <source>没有等着更新的版本</source>
+        <translation>No update is waiting</translation>
+    </message>
+    <message>
+        <source>这个插件已经不在了</source>
+        <translation>This plugin is gone</translation>
+    </message>
+    <message>
+        <source>正在更新这个插件，稍后再试</source>
+        <translation>This plugin is being updated; try again shortly</translation>
     </message>
 </context>
 </TS>
