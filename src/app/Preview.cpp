@@ -3,6 +3,9 @@
 
 #include "Backup.h"
 #include "App.h"
+#include "platform/Foreground.h"
+#include "platform/WindowEffects.h"
+#include "ClipboardDisplay.h"
 #include "Clipboard.h"
 #include "DialogBar.h"
 #include "AppCatalog.h"
@@ -46,6 +49,9 @@
 #include <QFontMetricsF>
 #include <QGuiApplication>
 #include <QImage>
+#include <dwmapi.h>
+#include <QRegularExpression>
+#include <QProcess>
 #include <QPixmap>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -4325,6 +4331,335 @@ bool probeOnboarding(const QStringList& args, const QDir& out, QJsonObject& repo
     return passed;
 }
 
+// Production clipboard entry points against a Shell-like receiver or native
+// Start. No clipboard data is copied or pasted by this probe.
+bool probeClipboardShell(const QString& receiver, const QDir& out, QJsonObject& report, bool splitDisplay = false,
+    bool requireUiAccess = false)
+{
+    QProcess child;
+    child.setProcessChannelMode(QProcess::MergedChannels);
+    const bool nativeShell = receiver == u"native";
+    if (!nativeShell)
+        child.start(receiver, {u"--shell-receiver"_s});
+    const auto cleanup = qScopeGuard([&] {
+        if (child.state() != QProcess::NotRunning) {
+            child.terminate();
+            if (!child.waitForFinished(2000)) {
+                child.kill(); // this probe's own temporary receiver only
+                child.waitForFinished(2000);
+            }
+        }
+    });
+    QByteArray output;
+    QElapsedTimer deadline;
+    deadline.start();
+    while (!nativeShell && !output.contains('\n') && deadline.elapsed() < 3000) {
+        child.waitForReadyRead(50);
+        output += child.readAll();
+        pump(10);
+    }
+    const auto match = QRegularExpression(u"window:(\\d+)"_s).match(QString::fromUtf8(output));
+    HWND target = match.hasMatch() ? reinterpret_cast<HWND>(quintptr(match.captured(1).toULongLong())) : nullptr;
+    if (nativeShell) {
+        // SC_TASKLIST opens Start without synthesizing a Windows-key shortcut.
+        ::PostMessageW(::GetShellWindow(), WM_SYSCOMMAND, SC_TASKLIST, 0);
+        pump(1000);
+        target = ::GetForegroundWindow();
+    }
+    const auto closeNativeMenu = qScopeGuard([&] {
+        if (nativeShell && win::isShellFlyout(target) && ::GetForegroundWindow() == target)
+            ::PostMessageW(::GetShellWindow(), WM_SYSCOMMAND, SC_TASKLIST, 0);
+    });
+    QJsonObject checks;
+    bool passed = true;
+    const auto check = [&](const QString& name, bool ok) {
+        checks.insert(name, ok);
+        passed &= ok;
+        if (!ok) qWarning().noquote() << "clipboard shell probe:" << name;
+    };
+    const auto saveChecks = qScopeGuard([&] {
+        report.insert(u"clipboard_shell"_s, checks);
+        report.insert(u"clipboard_shell_passed"_s, passed);
+    });
+    check(u"receiver_ready"_s, target && ::IsWindow(target));
+    if (!passed)
+        return false;
+    std::unique_ptr<QWindow> foreign;
+    if (!nativeShell) {
+        foreign.reset(QWindow::fromWinId(reinterpret_cast<WId>(target)));
+        win::bringToFront(foreign.get(), win::ShellFlyout::Preserve);
+    }
+    pump(100);
+    check(u"receiver_is_shell"_s, win::isShellFlyout(target));
+    check(u"receiver_in_front"_s, ::GetForegroundWindow() == target);
+    if (nativeShell) {
+        report.insert(u"qt_dpr"_s, QGuiApplication::primaryScreen()->devicePixelRatio());
+        report.insert(u"foreground_program"_s, foreground::programOf(target));
+        report.insert(u"foreground_class"_s, [&] { wchar_t name[128] {}; ::GetClassNameW(target, name, 128); return QString::fromWCharArray(name); }());
+    }
+    // Hit the same production WM_HOTKEY handler as Win+V and the custom key,
+    // without changing global key registration or sending the Windows key.
+    HWND messages = nullptr;
+    for (HWND candidate = nullptr; (candidate = ::FindWindowExW(nullptr, candidate, L"WinShun.MessageWindow", nullptr));) {
+        DWORD pid = 0;
+        ::GetWindowThreadProcessId(candidate, &pid);
+        if (pid == ::GetCurrentProcessId()) { messages = candidate; break; }
+    }
+    check(u"message_window"_s, messages != nullptr);
+    if (!passed)
+        return false;
+    ClipboardDisplay* display = nullptr;
+    if (splitDisplay) {
+        ::PostMessageW(messages, WM_HOTKEY, 3, 0);
+        QElapsedTimer warming;
+        warming.start();
+        while (warming.elapsed() < 5000) {
+            pump(25);
+            for (QWindow* window : QGuiApplication::topLevelWindows())
+                if (auto* peer = qobject_cast<ClipboardDisplay*>(window->property("displayController").value<QObject*>()))
+                    display = peer;
+            if (display && display->ready()) break;
+        }
+        check(u"display_ready"_s, display && display->ready());
+        check(requireUiAccess ? u"real_uiaccess"_s : u"probe_is_not_uiaccess"_s,
+            display && display->uiAccess() == requireUiAccess);
+        if (requireUiAccess && display && display->ready()) {
+            using GetBand = BOOL(WINAPI*)(HWND, DWORD*);
+            const auto getBand = reinterpret_cast<GetBand>(::GetProcAddress(::GetModuleHandleW(L"user32.dll"), "GetWindowBand"));
+            DWORD band = 0;
+            check(u"native_uiaccess_band"_s, getBand && getBand(display->handle(), &band) && band == 2);
+            report.insert(u"display_band"_s, int(band));
+            DWORD peerPid = 0; ::GetWindowThreadProcessId(display->handle(), &peerPid);
+            report.insert(u"display_pid"_s, int(peerPid));
+        }
+        if (display) report.insert(u"display_output"_s, display->probeOutput());
+        pump(500); // the first source frame must be revealed before its hotkey can close it
+        ::PostMessageW(messages, WM_HOTKEY, 3, 0);
+        pump(300);
+        for (QWindow* window : QGuiApplication::topLevelWindows())
+            if (window->property("displayController").value<QObject*>() == display)
+                check(u"warmup_closed"_s, !window->isVisible());
+        if (!passed) return false;
+    }
+    for (const auto& trigger : {QPair {3, u"winv"_s}, QPair {4, u"custom"_s}}) {
+        output.clear();
+        if (!nativeShell)
+            child.readAll();
+        ::PostMessageW(messages, WM_HOTKEY, WPARAM(trigger.first), 0);
+        pump(450);
+        QQuickWindow* clipboard = nullptr;
+        for (QWindow* window : QGuiApplication::topLevelWindows())
+            if (QByteArray(window->metaObject()->className()).startsWith("ClipboardWindow_"))
+                clipboard = qobject_cast<QQuickWindow*>(window);
+        check(trigger.second + u"_shown"_s, clipboard && clipboard->isVisible());
+        if (!clipboard)
+            break;
+        if (splitDisplay) {
+            check(trigger.second + u"_peer_active"_s, display->active());
+            if (!display->active()) { report.insert(u"display_output"_s, display->probeOutput()); break; }
+            RECT targetBounds {};
+            ::GetWindowRect(target, &targetBounds);
+            auto* placement = qobject_cast<Placement*>(clipboard->property("placement").value<QObject*>());
+            if (placement) placement->placeDisplay({targetBounds.left + 30, targetBounds.top + 100,
+                clipboard->width(), clipboard->height()}, 1000, false);
+            pump(150);
+        }
+        const HWND panel = splitDisplay ? display->handle() : reinterpret_cast<HWND>(clipboard->winId());
+        check(trigger.second + u"_native_visible"_s, ::IsWindowVisible(panel));
+        DWORD panelCloaked = 0;
+        ::DwmGetWindowAttribute(panel, DWMWA_CLOAKED, &panelCloaked, sizeof panelCloaked);
+        check(trigger.second + u"_uncloaked"_s, panelCloaked == 0);
+        RECT panelRect {}, targetRect {};
+        ::GetWindowRect(panel, &panelRect);
+        ::GetWindowRect(target, &targetRect);
+        if (nativeShell) {
+            const QRect all = win::shellFlyoutBounds(target);
+            check(trigger.second + u"_shell_bounds_valid"_s, !all.isEmpty()
+                && all.contains(QRect(targetRect.left, targetRect.top, targetRect.right - targetRect.left, targetRect.bottom - targetRect.top)));
+            targetRect = {all.x(), all.y(), all.x() + all.width(), all.y() + all.height()};
+        }
+        RECT overlap {};
+        if (splitDisplay)
+            check(trigger.second + u"_overlays_receiver"_s, ::IntersectRect(&overlap, &panelRect, &targetRect));
+        else
+            check(trigger.second + u"_not_covered"_s, !::IntersectRect(&overlap, &panelRect, &targetRect));
+        bool hitVisible = true;
+        QJsonArray blockers;
+        for (int x : {1, 2, 3})
+            for (int y : {1, 2, 3}) {
+                const POINT point {panelRect.left + (panelRect.right - panelRect.left) * x / 4,
+                    panelRect.top + (panelRect.bottom - panelRect.top) * y / 4};
+                const HWND hit = ::WindowFromPoint(point);
+                hitVisible &= hit && ::GetAncestor(hit, GA_ROOT) == panel;
+                if (hit && ::GetAncestor(hit, GA_ROOT) != panel) {
+                    const HWND root = ::GetAncestor(hit, GA_ROOT);
+                    RECT rect {};
+                    ::GetWindowRect(root, &rect);
+                    blockers.append(QJsonObject {{u"program"_s, foreground::programOf(root)},
+                        {u"rect"_s, QJsonArray {int(rect.left), int(rect.top), int(rect.right), int(rect.bottom)}}});
+                }
+            }
+        check(trigger.second + u"_hit_test_visible"_s, hitVisible);
+        if (!blockers.isEmpty()) checks.insert(trigger.second + u"_blockers"_s, blockers);
+        checks.insert(trigger.second + u"_panel_rect"_s, QJsonArray {int(panelRect.left), int(panelRect.top), int(panelRect.right), int(panelRect.bottom)});
+        checks.insert(trigger.second + u"_shell_rect"_s, QJsonArray {int(targetRect.left), int(targetRect.top), int(targetRect.right), int(targetRect.bottom)});
+        if (!nativeShell && !splitDisplay) {
+            // The initial stdout is cleared between triggers, so locate the
+            // fixture's deliberately separate sidebar by its fixed title.
+            const HWND side = ::FindWindowW(L"WinShun.KeyRouterTest", L"WinShun shell companion test");
+            RECT sideRect {};
+            check(trigger.second + u"_companion_avoided"_s,
+                side && ::GetWindowRect(side, &sideRect) && !::IntersectRect(&overlap, &panelRect, &sideRect));
+        }
+        check(trigger.second + u"_focus_kept"_s, ::GetForegroundWindow() == target);
+        check(trigger.second + u"_passive"_s, (::GetWindowLongPtrW(panel, GWL_EXSTYLE) & WS_EX_NOACTIVATE) != 0);
+        QObject* model = clipboard->property("clipboard").value<QObject*>();
+        check(trigger.second + u"_keys_routed"_s, model && model->property("keysRouted").toBool());
+        auto* controller = qobject_cast<Clipboard*>(model);
+        check(trigger.second + u"_paste_target"_s, controller && controller->target() == target);
+        check(trigger.second + u"_saved_width_kept"_s, model && model->property("listWidth").toInt() == 480);
+        if ((!nativeShell || requireUiAccess) && ::GetForegroundWindow() == target && model && model->property("keysRouted").toBool()) {
+            INPUT keys[2] {};
+            keys[0].type = keys[1].type = INPUT_KEYBOARD;
+            keys[0].ki.wVk = keys[1].ki.wVk = 'A';
+            keys[1].ki.dwFlags = KEYEVENTF_KEYUP;
+            check(trigger.second + u"_input_sent"_s, ::SendInput(2, keys, sizeof(INPUT)) == 2);
+            pump(150);
+            check(trigger.second + u"_search_works"_s, model && model->property("query").toString() == u"a");
+            if (splitDisplay) {
+                checks.insert(trigger.second + u"_query"_s, model->property("query").toString());
+                checks.insert(trigger.second + u"_routed_after_key"_s, model->property("keysRouted").toBool());
+                checks.insert(trigger.second + u"_foreground_after_key"_s, foreground::programOf(::GetForegroundWindow()));
+                DWORD foregroundPid = 0;
+                ::GetWindowThreadProcessId(::GetForegroundWindow(), &foregroundPid);
+                checks.insert(trigger.second + u"_foreground_pid_after_key"_s, int(foregroundPid));
+                checks.insert(trigger.second + u"_source_pid"_s, int(::GetCurrentProcessId()));
+                report.insert(u"display_output"_s, report.value(u"display_output"_s).toString() + display->probeOutput());
+            }
+        }
+        if (splitDisplay && (!nativeShell || requireUiAccess) && controller && display->active() && ::GetForegroundWindow() == target) {
+            const auto key = [&](WORD vk, WORD modifier = 0) {
+                if (::GetForegroundWindow() != target) return false;
+                for (const int held : {VK_SHIFT, VK_CONTROL, VK_MENU, VK_LWIN, VK_RWIN})
+                    if (::GetAsyncKeyState(held) & 0x8000) return false;
+                std::vector<INPUT> inputs;
+                const auto append = [&](WORD code, bool release) {
+                    INPUT input {}; input.type = INPUT_KEYBOARD; input.ki.wVk = code;
+                    input.ki.dwFlags = release ? KEYEVENTF_KEYUP : 0;
+                    inputs.push_back(input);
+                };
+                if (modifier) append(modifier, false);
+                append(vk, false); append(vk, true);
+                if (modifier) append(modifier, true);
+                const bool sent = ::SendInput(UINT(inputs.size()), inputs.data(), sizeof(INPUT)) == inputs.size();
+                pump(250);
+                return sent;
+            };
+            check(trigger.second + u"_clear_search_sent"_s, key('A', VK_CONTROL) && key(VK_BACK));
+            check(trigger.second + u"_search_cleared"_s, controller->query().isEmpty());
+            check(trigger.second + u"_select_all_sent"_s, key('A', VK_CONTROL));
+            check(trigger.second + u"_selected_all"_s, controller->items()->selectedCount() >= 2);
+            check(trigger.second + u"_clear_selection_sent"_s, key(VK_ESCAPE));
+            check(trigger.second + u"_selection_cleared"_s, controller->items()->selectedCount() == 0 && display->active());
+            const int before = controller->items()->count();
+            check(trigger.second + u"_remove_sent"_s, key(VK_DELETE));
+            check(trigger.second + u"_remove_applied"_s, controller->items()->count() == before - 1 && controller->canUndo());
+            check(trigger.second + u"_undo_sent"_s, key('Z', VK_CONTROL));
+            check(trigger.second + u"_undo_applied"_s, controller->items()->count() == before);
+            check(trigger.second + u"_preview_sent"_s, key('P', VK_MENU));
+            check(trigger.second + u"_preview_preference"_s, controller->previewOpen());
+            RECT preview {}; ::GetWindowRect(display->handle(), &preview);
+            check(trigger.second + u"_preview_widened"_s, preview.right - preview.left > panelRect.right - panelRect.left);
+            ::PostMessageW(messages, WM_HOTKEY, WPARAM(trigger.first), 0);
+            pump(300);
+            ::PostMessageW(messages, WM_HOTKEY, WPARAM(trigger.first), 0);
+            pump(450);
+            RECT reopened {}; ::GetWindowRect(display->handle(), &reopened);
+            check(trigger.second + u"_preview_restored_on_reopen"_s, display->active()
+                && controller->previewOpen() && reopened.right - reopened.left > panelRect.right - panelRect.left);
+            check(trigger.second + u"_preview_closed_sent"_s, key('P', VK_MENU));
+            pump(300);
+            RECT collapsed {}; ::GetWindowRect(display->handle(), &collapsed);
+            check(trigger.second + u"_preview_collapsed_stays"_s, !controller->previewOpen()
+                && collapsed.right - collapsed.left == panelRect.right - panelRect.left);
+            check(trigger.second + u"_menu_sent"_s, key(VK_APPS));
+            const auto peerMenu = [&] {
+                DWORD peerPid = 0; ::GetWindowThreadProcessId(display->handle(), &peerPid);
+                for (HWND candidate = nullptr; (candidate = ::FindWindowExW(nullptr, candidate, nullptr, nullptr));) {
+                    DWORD pid = 0; ::GetWindowThreadProcessId(candidate, &pid);
+                    if (pid == peerPid && candidate != display->handle() && ::IsWindowVisible(candidate)
+                        && (::GetWindowLongPtrW(candidate, GWL_STYLE) & WS_POPUP)
+                        && !(::GetWindowLongPtrW(candidate, GWL_EXSTYLE) & WS_EX_TRANSPARENT)) return candidate;
+                }
+                return HWND(nullptr);
+            };
+            const HWND menu = peerMenu();
+            check(trigger.second + u"_peer_menu_visible"_s, menu != nullptr);
+            if (requireUiAccess && menu) {
+                using GetBand = BOOL(WINAPI*)(HWND, DWORD*);
+                const auto getBand = reinterpret_cast<GetBand>(::GetProcAddress(::GetModuleHandleW(L"user32.dll"), "GetWindowBand"));
+                DWORD band = 0;
+                RECT rect {}; ::GetWindowRect(menu, &rect);
+                const POINT center {(rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2};
+                check(trigger.second + u"_menu_uiaccess_band"_s, getBand && getBand(menu, &band) && band == 2);
+                check(trigger.second + u"_menu_on_top"_s, ::GetAncestor(::WindowFromPoint(center), GA_ROOT) == menu);
+            }
+            check(trigger.second + u"_menu_closed_sent"_s, key(VK_ESCAPE));
+            check(trigger.second + u"_menu_closed_only"_s, peerMenu() == nullptr && display->active());
+            check(trigger.second + u"_interaction_focus_kept"_s, ::GetForegroundWindow() == target);
+            QGuiApplication::primaryScreen()->grabWindow(0, panelRect.left, panelRect.top,
+                panelRect.right - panelRect.left, panelRect.bottom - panelRect.top)
+                .save(out.filePath(u"peer-"_s + trigger.second + u".png"_s));
+        }
+        clipboard->grabWindow().save(out.filePath(u"clipboard-"_s + trigger.second + u".png"_s));
+        if (nativeShell) {
+            QGuiApplication::primaryScreen()->grabWindow(0)
+                .save(out.filePath(u"desktop-"_s + trigger.second + u".png"_s));
+        }
+        // The same hotkey closes the clipboard only, leaving the target up.
+        ::PostMessageW(messages, WM_HOTKEY, WPARAM(trigger.first), 0);
+        pump(200);
+        check(trigger.second + u"_closed"_s, !clipboard->isVisible());
+        if (splitDisplay) check(trigger.second + u"_peer_closed"_s, !::IsWindowVisible(display->handle()));
+        check(trigger.second + u"_target_kept"_s, ::IsWindowVisible(target) && ::GetForegroundWindow() == target);
+        if (!nativeShell) {
+            output += child.readAll();
+            if (splitDisplay) checks.insert(trigger.second + u"_receiver_output"_s, QString::fromUtf8(output));
+            check(trigger.second + u"_no_escape_or_activation"_s,
+                !output.contains("down:27") && !output.contains("deactivated"));
+        }
+    }
+    if (splitDisplay && !requireUiAccess && display && display->ready()) {
+        ::PostMessageW(messages, WM_HOTKEY, 3, 0);
+        pump(400);
+        check(u"peer_reopened"_s, display->active());
+        DWORD pid = 0;
+        ::GetWindowThreadProcessId(display->handle(), &pid);
+        // This exact peer is the medium-token process this probe created.
+        // Never terminate an installed UIAccess helper or the user's instance.
+        const HANDLE process = pid && !display->uiAccess() ? ::OpenProcess(PROCESS_TERMINATE, FALSE, pid) : nullptr;
+        check(u"probe_peer_terminated"_s, process && ::TerminateProcess(process, 0));
+        if (process) ::CloseHandle(process);
+        pump(500);
+        check(u"peer_loss_detected"_s, !display->ready() && !display->active());
+        for (QWindow* window : QGuiApplication::topLevelWindows()) {
+            auto* clipboard = qobject_cast<QQuickWindow*>(window);
+            if (!clipboard || clipboard->property("displayController").value<QObject*>() != display) continue;
+            DWORD cloaked = 0;
+            const HWND fallback = reinterpret_cast<HWND>(clipboard->winId());
+            ::DwmGetWindowAttribute(fallback, DWMWA_CLOAKED, &cloaked, sizeof cloaked);
+            check(u"ordinary_fallback_shown"_s, clipboard->isVisible() && ::IsWindowVisible(fallback) && !cloaked);
+            check(u"fallback_passive"_s, (::GetWindowLongPtrW(fallback, GWL_EXSTYLE) & WS_EX_NOACTIVATE) != 0);
+            const auto* model = qobject_cast<Clipboard*>(clipboard->property("clipboard").value<QObject*>());
+            check(u"fallback_target_and_routing_kept"_s, model && model->target() == target && model->keysRouted());
+        }
+        ::PostMessageW(messages, WM_HOTKEY, 3, 0);
+        pump(150);
+        report.insert(u"display_output"_s, report.value(u"display_output"_s).toString() + display->probeOutput());
+    }
+    return passed;
+}
+
 int runRuntime(const QStringList& args)
 {
     const QDir out(valueAfter(args, kRuntimeFlag));
@@ -4385,6 +4720,12 @@ int runRuntime(const QStringList& args)
     settings.proxyMode = u"none"_s; // loopback/file fixtures never use the user's proxy
     settings.mcp = false;
     settings.clipboard = args.contains(u"--with-clipboard"_s);
+    if (args.contains(u"--clipboard-shell-probe"_s)) {
+        settings.clipboard = true;
+        settings.clipboardImages = false;
+        settings.clipboardHoldToStep = false;
+    }
+
     settings.clipboardWinV = false;
     settings.clipboardHotkey.clear();
     settings.pluginConfig(u"winshun.switches"_s).enabled = false; // optional unless --runtime-plugins installs it
@@ -4451,6 +4792,18 @@ int runRuntime(const QStringList& args)
         }
     }
     settings.save(); // prepared profiles normally skip onboarding
+    if (args.contains(u"--clipboard-display-probe"_s) || args.contains(u"--clipboard-display-service-probe"_s)) {
+        ClipStore store(Settings::dataDir() + u"/clipboard"_s);
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (!store.open(now)) return 4;
+        for (const QString& text : {u"alpha clipboard display fixture"_s, u"beta clipboard display fixture"_s}) {
+            ClipCapture clip;
+            clip.text = text;
+            clip.source = u"Display probe"_s;
+            if (!store.add(clip, now)) return 4;
+        }
+        store.flush();
+    }
     if (onboardingAction == u"fresh")
         QFile::remove(Settings::filePath()); // only this probe's private profile
     if (onboardingAction == u"legacy") {
@@ -4473,7 +4826,7 @@ int runRuntime(const QStringList& args)
         bool passed = false;
         try {
             App app;
-            passed = app.start({.background = true}) && probeOnboarding(args, out, report);
+            passed = app.start({.background = true, .clipboardDisplayProbe = args.contains(u"--clipboard-display-probe"_s)}) && probeOnboarding(args, out, report);
         } catch (const std::exception& error) {
             report.insert(u"error"_s, QString::fromUtf8(error.what()));
             say(u"onboarding probe aborted: "_s + QString::fromUtf8(error.what()));
@@ -4503,10 +4856,18 @@ int runRuntime(const QStringList& args)
         App app;
         QElapsedTimer since;
         since.start();
-        if (!app.start({.background = true}))
+        if (!app.start({.background = true, .clipboardDisplayProbe = args.contains(u"--clipboard-display-probe"_s)}))
             return 4;
         report.insert(u"start_ms"_s, static_cast<double>(since.elapsed()));
         pump(std::clamp(valueAfter(args, u"--settle-ms", u"3000"_s).toInt(), 100, 60000));
+        if (args.contains(u"--clipboard-shell-probe"_s)) {
+            const bool ok = probeClipboardShell(valueAfter(args, u"--clipboard-shell-probe"_s), out, report,
+                args.contains(u"--clipboard-display-probe"_s) || args.contains(u"--clipboard-display-service-probe"_s),
+                args.contains(u"--clipboard-display-service-probe"_s));
+            QFile result(out.filePath(u"clipboard-shell.json"_s));
+            if (result.open(QIODevice::WriteOnly)) result.write(QJsonDocument(report).toJson());
+            return ok ? 0 : 4;
+        }
         if ((settings.dialogBar && !probeFileDialog(args, out, dialogSample, report))
             || (typingProbe && !probeFolderTyping(app, out, QDir::toNativeSeparators(settings.indexFolders.front()), report))) {
             QFile failed(out.filePath(u"runtime.json"_s));

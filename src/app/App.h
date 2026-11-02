@@ -54,6 +54,7 @@ class AppCatalog;
 class ClipImportJob;
 class ClipStore;
 class Clipboard;
+class ClipboardDisplay;
 class OcrPackage;
 class ComWorker;
 class DialogBar;
@@ -131,6 +132,7 @@ public:
         QString query;
         bool settings = false; // open the settings window
         QString settingsAt; // there (SettingsWindow.showPlace), after a restart from the settings
+        bool clipboardDisplayProbe = false; // isolated runtime QA only; never claims UIAccess
     };
 
     App();
@@ -247,6 +249,7 @@ private:
     // through KeyRouter: from its showing until it goes or takes the focus
     // after all (activateClipboard).
     bool startKeyRouting(HWND target);
+    void avoidClipboardShellFlyout(HWND foreground);
     void stopKeyRouting();
     void routedKey(const KeyRouter::Key& key);
     void routedForeground(HWND window);
@@ -686,6 +689,9 @@ private:
     std::unique_ptr<WindowFrame> m_frame; // the launcher's header and footer drag it
     std::unique_ptr<Placement> m_clipPlacement; // likewise for the clipboard window
     std::unique_ptr<WindowFrame> m_clipFrame;
+    std::unique_ptr<ClipboardDisplay> m_clipDisplay;
+    bool m_clipDisplayWanted = false;
+    bool m_clipDisplayProbe = false;
     std::unique_ptr<win::TextCaret> m_textCaret; // where another program's caret is: the clipboard opens there
     std::unique_ptr<KeyRouter> m_keyRouter; // while the clipboard is over a program that keeps the focus
     HWND m_keyRouterTarget = nullptr; // that program's window

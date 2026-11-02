@@ -13,6 +13,8 @@ bool canStartInputListener();
 // folder (svcloc::isWinShunBeside). Only it is told of the dialog navigator
 // (kCapabilityDialogNav) and given it; the key listener is for any client.
 bool requesterIsWinShun(DWORD pid);
+bool canStartClipboardDisplay(DWORD pid);
+void serveClipboardDisplay(Server& server, Connection& conn, std::span<const std::byte> payload);
 void serveInputListener(Server& server, Connection& conn, std::span<const std::byte> payload);
 // Navigates a higher-integrity file dialog to a folder for Win顺's UI (#104):
 // launches the same uiAccess helper, which drives the dialog with window

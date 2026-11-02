@@ -1,0 +1,117 @@
+{
+  "built_and_tested_utc": "2026-11-02T07:16:19.9409264Z",
+  "files": [
+    {
+      "path": "src/app/ClipboardDisplay.cpp",
+      "bytes": 17826,
+      "sha256": "36E96EAE5FC7A0F31626B68FC8EC82952AC8F3A1DE3198C866D91B0D6D9D7418"
+    },
+    {
+      "path": "src/app/ClipboardDisplay.h",
+      "bytes": 2584,
+      "sha256": "E3DD42A4A79962A83C87F1D39FC9C757D135CE5E8A67FF8F2FAE8D39C32904E0"
+    },
+    {
+      "path": "src/app/ClipboardDisplayReplica.cpp",
+      "bytes": 20957,
+      "sha256": "53851DFDA745B2CDF052FB9E314A15ACA62F45D562148A99FF800D2AAAA6D58B"
+    },
+    {
+      "path": "src/app/ClipboardDisplayReplica.h",
+      "bytes": 3888,
+      "sha256": "C158F335E38E77B7F33EFA82D578C42F9FA807573576C8A3EB36E752A6023CEC"
+    },
+    {
+      "path": "src/app/ClipboardDisplayProtocol.h",
+      "bytes": 1956,
+      "sha256": "CE7EF85B586883D7FDBA6C3EDABB10E004BBE50772CF687B332C907CAF999ABA"
+    },
+    {
+      "path": "src/app/App.cpp",
+      "bytes": 342341,
+      "sha256": "7A1317E3D465828621A57CD65CE96194C2EEDD812E065C5DD472503EFF24D87B"
+    },
+    {
+      "path": "src/app/App.h",
+      "bytes": 45653,
+      "sha256": "B17B09511B1F69878FCE2D512C5D6E7CF815FCE71B0FF1CD8B1F3D45E6DDA39A"
+    },
+    {
+      "path": "src/app/Placement.cpp",
+      "bytes": 48550,
+      "sha256": "2B0544831E25A6BC309FC221D10398D0E3B731949CC052621FBC56CBF193862A"
+    },
+    {
+      "path": "src/app/Placement.h",
+      "bytes": 16306,
+      "sha256": "79E57AAED0C063FF9EBE0D496A2B1AD59C5BDB446CDCFC41EF4C36CC14A4E47B"
+    },
+    {
+      "path": "src/app/main.cpp",
+      "bytes": 23011,
+      "sha256": "BC2B04528DE0E8185D9D10A4DF44FE5BE3BC81595B22A1F9B421CAED196910AC"
+    },
+    {
+      "path": "src/app/platform/KeyRouter.cpp",
+      "bytes": 23328,
+      "sha256": "18587462ABA8E341CE94A8B0561B2B0D52F735EF1FAF83F2E760FF146F5A05BD"
+    },
+    {
+      "path": "src/app/qml/ClipboardPage.qml",
+      "bytes": 57481,
+      "sha256": "77D515C5832E34322F5165FBA75D2B4A41EAD1380024AAAF03E702884E1FBB03"
+    },
+    {
+      "path": "src/app/qml/ClipboardWindow.qml",
+      "bytes": 7798,
+      "sha256": "49F5F4DF83476B506BCA4C81EBD136EDEE59D8B935CD68DE2D89C768522D3FC6"
+    },
+    {
+      "path": "src/app/qml/ClipTabs.qml",
+      "bytes": 9914,
+      "sha256": "E47A586D3AE5B614828AED0D5803D7FBE8B6FB26E09CA1DAD1163976005E3B45"
+    },
+    {
+      "path": "src/core/VolumeProtocol.h",
+      "bytes": 17248,
+      "sha256": "E737917DEEFC5E27DBC68586D53F448821894D9AF6CBC15DC0DE018DB6DB77EB"
+    },
+    {
+      "path": "src/service/InputListener.cpp",
+      "bytes": 29962,
+      "sha256": "C1F9B64F1C5B6D3B6B43280063B08CD5751CE6EFE8AA9B903CAD1156E6F12647"
+    },
+    {
+      "path": "src/service/Server.cpp",
+      "bytes": 17663,
+      "sha256": "5ADD2CCEEE566D1DAB825345A0A66056C595631742A8B588A03223D95C36FE15"
+    },
+    {
+      "path": "tests/tst_clipboarddisplay.cpp",
+      "bytes": 2621,
+      "sha256": "23331976279B23EE2E19843AA92A6D17FFA28F70F5537CCA62E71B1E3B5C1703"
+    },
+    {
+      "path": "tests/tst_service.cpp",
+      "bytes": 56773,
+      "sha256": "9017CF4BBB0957C5A43D7DAACF4B623C76552AEFC162F9F1824BEED01414DD7B"
+    },
+    {
+      "path": "tools/verify_clipboard_uiaccess.ps1",
+      "bytes": 8038,
+      "sha256": "8D47BDFB1B54AB0805A3021284AE1794ECFA2A7D411A7344479B16A133044BE0"
+    },
+    {
+      "path": "build/release/WinShun.exe",
+      "bytes": 24226304,
+      "sha256": "8E3FF1FE87516003ECF9D8058C1EC20B85E389F71A9D4182646F425D1B114E1B"
+    },
+    {
+      "path": "build/release/WinShunService.exe",
+      "bytes": 747520,
+      "sha256": "300BB7C4427C1515A7A0B25D59CFB6E96DB310B0A04EECF5DB319DC3B92A4D66"
+    }
+  ],
+  "native_candidate_matches_final_build": true,
+  "service_log_userprofile_redacted": true
+}

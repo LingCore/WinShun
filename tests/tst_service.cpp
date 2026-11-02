@@ -377,6 +377,31 @@ private slots:
         QCOMPARE(error.code, static_cast<std::uint32_t>(ERROR_ACCESS_DENIED));
     }
 
+    void clipboardDisplayRefusedForOthers()
+    {
+        for (const bool malformed : {false, true}) {
+            RawClient raw;
+            QVERIFY(raw.connect(m_pipe));
+            volproto::Type reply {};
+            std::vector<std::byte> payload;
+            QVERIFY(raw.hello(volproto::kMajor, reply, payload));
+            QCOMPARE(reply, volproto::Type::HelloOk);
+            volproto::HelloOk ok;
+            QVERIFY(decode(payload, ok));
+            QVERIFY(!(ok.capabilities & volproto::kCapabilityClipboardDisplay));
+            volproto::Writer writer;
+            writer.u64(0x1234); // resolved only by a helper in the interactive session
+            writer.string(malformed ? std::wstring(L"untrusted pipe")
+                : L"WinShun.Clipboard." + std::to_wstring(::GetCurrentProcessId()) + L".0123456789abcdef0123456789abcdef");
+            QVERIFY(raw.channel.write(writer.finish(volproto::Type::OpenClipboardDisplay), 5000));
+            QVERIFY(raw.channel.read(reply, payload, 5000));
+            QCOMPARE(reply, volproto::Type::Error);
+            volproto::Error error;
+            QVERIFY(decode(payload, error));
+            QCOMPARE(error.code, std::uint32_t(malformed ? ERROR_INVALID_PARAMETER : ERROR_ACCESS_DENIED));
+        }
+    }
+
     void keyListenerForAnyClient()
     {
         // The UIAccess double-tap listener, unlike dialog navigation, is for

@@ -1,0 +1,63 @@
+{
+    "clipboard_shell": {
+        "custom_closed": true,
+        "custom_focus_kept": true,
+        "custom_hit_test_visible": true,
+        "custom_keys_routed": true,
+        "custom_native_visible": true,
+        "custom_not_covered": true,
+        "custom_panel_rect": [
+            0,
+            306,
+            407,
+            1265
+        ],
+        "custom_passive": true,
+        "custom_paste_target": true,
+        "custom_saved_width_kept": true,
+        "custom_shell_bounds_valid": true,
+        "custom_shell_rect": [
+            425,
+            193,
+            2135,
+            1528
+        ],
+        "custom_shown": true,
+        "custom_target_kept": true,
+        "custom_uncloaked": true,
+        "message_window": true,
+        "receiver_in_front": true,
+        "receiver_is_shell": true,
+        "receiver_ready": true,
+        "winv_closed": true,
+        "winv_focus_kept": true,
+        "winv_hit_test_visible": true,
+        "winv_keys_routed": true,
+        "winv_native_visible": true,
+        "winv_not_covered": true,
+        "winv_panel_rect": [
+            0,
+            306,
+            407,
+            1265
+        ],
+        "winv_passive": true,
+        "winv_paste_target": true,
+        "winv_saved_width_kept": true,
+        "winv_shell_bounds_valid": true,
+        "winv_shell_rect": [
+            425,
+            193,
+            2135,
+            1528
+        ],
+        "winv_shown": true,
+        "winv_target_kept": true,
+        "winv_uncloaked": true
+    },
+    "clipboard_shell_passed": true,
+    "foreground_class": "Windows.UI.Core.CoreWindow",
+    "foreground_program": "SearchHost.exe",
+    "qt_dpr": 1.5,
+    "start_ms": 377
+}

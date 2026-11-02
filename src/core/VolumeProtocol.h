@@ -44,13 +44,16 @@ constexpr std::uint16_t kMajor = 1; // different on the two ends: they cannot ta
 // copy-and-paste fallback in place. A service that has the navigator but
 // keeps it for the WinShun.exe beside it tells any other client so
 // (kCapabilityDialogNavBesideOnly), for that copy's hint.
-constexpr std::uint16_t kMinor = 4;
+// Minor 5 adds a leased UIAccess clipboard renderer for the protected GUI
+// beside the service. Older/portable copies keep the ordinary-window path.
+constexpr std::uint16_t kMinor = 5;
 constexpr std::uint16_t kMinorSizes = 2;
 constexpr std::uint16_t kMinorCreated = 3;
 constexpr std::uint32_t kCapabilityBulkRead = 1; // HelloOk::capabilities
 constexpr std::uint32_t kCapabilityKeyListener = 2; // UIAccess listener, on the caller's desktop
 constexpr std::uint32_t kCapabilityDialogNav = 4; // minor 4: navigate an elevated file dialog (GitHub #104)
 constexpr std::uint32_t kCapabilityDialogNavBesideOnly = 8; // minor 4: has it, for the WinShun.exe beside it only
+constexpr std::uint32_t kCapabilityClipboardDisplay = 16; // minor 5: authenticated UIAccess display peer
 constexpr std::size_t kMaxBulkWants = 4u << 20; // files one bulk session may ask about
 constexpr wchar_t kPipeName[] = L"WinShun.Volumes"; // one service for the whole machine
 constexpr wchar_t kPipeEnvironment[] = L"WINSHUN_PIPE"; // another pipe's name, for tests (--console --pipe)
@@ -94,6 +97,9 @@ enum class Type : std::uint16_t {
     KeyListenerPing = 82, // empty request and reply, once a second
     OpenDialogNav = 83, // { u64 dialog HWND, string folder }: navigate a higher-integrity file dialog (#104)
     DialogNavDone = 84, // empty reply: the helper took the dialog to the folder (else Error)
+    OpenClipboardDisplay = 85, // { u64 caller HWND, string private pipe name }; own protected WinShun.exe only
+    ClipboardDisplayReady = 86, // u32 child PID; the connection leases the display process
+    ClipboardDisplayPing = 87, // empty request/reply
 };
 
 std::wstring fullPipePath(std::wstring_view name); // "\\.\pipe\" + name

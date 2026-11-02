@@ -18,13 +18,18 @@ import WinShun
 Window {
     id: window
 
-    required property Clipboard clipboard
+    required property var clipboard
+    property bool controllerEventsEnabled: true
     required property Placement placement
     required property WindowFrame frame
 
+    // A temporary limit beside native Start/Search; the saved list width stays.
+    property int shellWidth: 0
+    readonly property int minimumListWidth: shellWidth > 0 ? Math.min(360, shellWidth) : 360
     readonly property int previewExtent: page.previewOpen ? 1 + previewWidth : 0
-    readonly property int listWidth: Math.max(360, Math.min(placement.windowSizing ? width - previewExtent : clipboard.listWidth,
-                                                          maximumWidth - previewExtent))
+    readonly property int listWidth: Math.max(minimumListWidth,
+                                            Math.min(placement.windowSizing ? width - previewExtent : clipboard.listWidth,
+                                                     maximumWidth - previewExtent, shellWidth > 0 ? shellWidth : 1600))
     readonly property int defaultPreviewWidth: 560
     readonly property int minPreviewWidth: 280
     property int requestedPreviewWidth: defaultPreviewWidth // set as it opens, and as it is dragged
@@ -37,7 +42,7 @@ Window {
     readonly property int rows: Math.max(minRows, Math.min(maxRows,
                                          Math.floor((placement.room - page.chromeHeight) / page.rowHeight)))
 
-    minimumWidth: 360 + previewExtent
+    minimumWidth: minimumListWidth + previewExtent
     maximumWidth: Math.max(minimumWidth, Math.min(1600 + previewExtent, Screen.desktopAvailableWidth - 32))
     minimumHeight: page.chromeHeight + minRows * page.rowHeight
     maximumHeight: Math.max(minimumHeight, Screen.desktopAvailableHeight)
@@ -141,6 +146,7 @@ Window {
         height: window.height
         listWidth: window.listWidth
         clipboard: window.clipboard
+        controllerEventsEnabled: window.controllerEventsEnabled
         frame: window.frame
         rows: window.rows
         above: window.placement.above // over the caret or box: maybe upside down (clipboard.flipAbove)

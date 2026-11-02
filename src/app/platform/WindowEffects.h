@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QColor>
+#include <QRect>
 
 #include <windows.h>
 
@@ -17,6 +18,9 @@ namespace ws::win {
 // `backdrop`, the Mica material fills the window behind its content (see
 // backdropSupported). The dark mode is separate, see setDarkFrame.
 void styleFramelessWindow(QWindow* window, bool backdrop = false);
+void prepareFramelessWindow(QWindow* window);
+bool nativeWindowCorners();
+void useCompositedFramesForPreview();
 
 // The appearance preference: DWM on Windows 11, a window region on Windows 10.
 bool roundedCorners();
@@ -63,6 +67,7 @@ void setCloaked(QWindow* window, bool cloaked);
 // Windows' Start menu, search, notification center or quick settings: they
 // stay above every other window while open.
 bool isShellFlyout(HWND window);
+QRect shellFlyoutBounds(HWND window);
 
 // How bringToFront went: in front already; directly; after an input that
 // does nothing (Windows lets the process that sent the latest input set the
@@ -75,7 +80,8 @@ enum class Front : std::uint8_t { Already, Direct, Input, Refused };
 // background processes (focus stealing protection), but a hotkey press is
 // an explicit user request. Never waits for the program in front, however
 // busy it is, and knows at once whether it worked (GitHub #111).
-Front bringToFront(QWindow* window);
+enum class ShellFlyout { Dismiss, Preserve };
+Front bringToFront(QWindow* window, ShellFlyout flyout = ShellFlyout::Dismiss);
 
 // Makes native popup menus (tray, context menu) follow the dark theme.
 void setMenuTheme(bool dark);

@@ -137,6 +137,7 @@ private:
     const Qt::KeyboardModifier m_numberKeys;
     const Policy m_policy;
     const DWORD m_process;
+    DWORD m_windowProcess = 0;
     Callbacks m_callbacks;
     std::bitset<256> m_taken; // keys held whose press was taken; only touched on the router thread
     std::unordered_map<UINT, bool> m_hotkeys; // heldAsHotkey's answers by chord; router thread

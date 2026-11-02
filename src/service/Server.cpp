@@ -373,6 +373,8 @@ bool Server::handshake(Connection& conn)
     if (m_options.keyListener) {
         ok.capabilities |= kCapabilityKeyListener;
         ok.capabilities |= requesterIsWinShun(conn.pid) ? kCapabilityDialogNav : kCapabilityDialogNavBesideOnly;
+        if (canStartClipboardDisplay(conn.pid))
+            ok.capabilities |= kCapabilityClipboardDisplay;
     }
     encode(w, ok);
     return conn.channel.write(w.finish(Type::HelloOk), m_options.writeTimeoutMs);
@@ -405,6 +407,9 @@ void Server::serve(std::shared_ptr<Connection> conn)
                 break;
             case Type::OpenDialogNav:
                 serveDialogNav(*this, *conn, payload);
+                break;
+            case Type::OpenClipboardDisplay:
+                serveClipboardDisplay(*this, *conn, payload);
                 break;
             default:
                 log::write(L"pid %lu: unknown request %u", conn->pid, static_cast<unsigned>(type));

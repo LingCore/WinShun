@@ -23,7 +23,8 @@ import WinShun
 Item {
     id: page
 
-    required property Clipboard clipboard
+    required property var clipboard
+    property bool controllerEventsEnabled: true
     required property WindowFrame frame
     property int rows: 8 // the list shows this many (ClipboardWindow.qml: what fits below)
     property int listWidth: width // the list's part; the preview takes the rest
@@ -459,6 +460,7 @@ Item {
 
     Connections {
         target: page.clipboard
+        enabled: page.controllerEventsEnabled
         function onShown() {
             input.text = ""
             page.pinyinHint = false
@@ -550,6 +552,7 @@ Item {
 
             TextInput {
                 id: input
+                objectName: "clipboardSearchField"
                 anchors.left: icon.right
                 anchors.leftMargin: 14
                 anchors.right: pausedTag.visible ? pausedTag.left : eyeButton.left

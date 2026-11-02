@@ -10,6 +10,7 @@
 #include "ClipImportJob.h"
 #include "ClipStore.h"
 #include "Clipboard.h"
+#include "ClipboardDisplay.h"
 #include "DialogBar.h"
 #include "Diagnostics.h"
 #include "DisplayDiagnostics.h"
@@ -121,6 +122,7 @@
 
 #include <windows.h>
 
+#include <cmath>
 #include <thread>
 
 using namespace Qt::StringLiterals;
@@ -407,6 +409,7 @@ App::App()
 
 App::~App()
 {
+    m_clipDisplay.reset();
     delete m_onboardingWindow.data();
     m_onboardingQml.reset();
     m_onboarding.reset();
@@ -462,6 +465,7 @@ App::~App()
 
 bool App::start(const StartOptions& options)
 {
+    m_clipDisplayProbe = options.clipboardDisplayProbe;
     ocr::setComponentsRoot(Settings::dataDir() + u"/components"_s);
     const bool firstRun = !Settings::exists();
     // Updated from a version without the clipboard history: tell about it once.
@@ -1270,6 +1274,27 @@ bool App::createClipWindow()
     m_clipFrame->setWindow(window);
     m_clipFrame->setResizable(true);
     m_clipLogo = new WindowLogo(window);
+    m_clipDisplay = std::make_unique<ClipboardDisplay>(m_clipboard.get(), window, m_clipPlacement.get(), m_clipDisplayProbe);
+    window->setProperty("displayController", QVariant::fromValue<QObject*>(m_clipDisplay.get()));
+    connect(m_clipDisplay.get(), &ClipboardDisplay::geometryEdited, m_clipPlacement.get(), &Placement::adoptDisplayGeometry);
+    connect(m_clipDisplay.get(), &ClipboardDisplay::focusLost, this, [this] { hideClipboard(); });
+    connect(m_clipDisplay.get(), &ClipboardDisplay::lost, this, [this] {
+        if (!m_clipDisplayWanted || !m_clipWindow) return;
+        m_clipDisplayWanted = false;
+        m_clipWindow->setProperty("controllerEventsEnabled", true);
+        emit m_clipboard->queryChanged();
+        emit m_clipboard->placed();
+        const HWND target = m_clipboard->target();
+        stopKeyRouting();
+        if (!m_clipWindow->isVisible()) return;
+        if (win::isShellFlyout(target)) avoidClipboardShellFlyout(target);
+        const bool keepFocus = startKeyRouting(target) || win::isShellFlyout(target);
+        m_clipFrame->setNoActivate(keepFocus);
+        win::setCloaked(m_clipWindow, false);
+        ::SetWindowPos(reinterpret_cast<HWND>(m_clipWindow->winId()), HWND_TOPMOST, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    });
+    m_clipDisplay->start();
     connect(window, &QWindow::activeChanged, this, [this] {
         // Clicking elsewhere or switching apps hides it, like a menu. Not at
         // once: on the way to another window of ours (the field it goes back
@@ -2155,8 +2180,9 @@ void App::applyClipboard(bool initial)
             m_clipPrewarming = false;
             m_clipReveal.cancel();
             m_clipboard->setWindow(nullptr);
+            m_clipDisplay.reset();
+            m_clipDisplayWanted = false;
             delete m_clipWindow.data();
-            m_clipLogo = nullptr;
             updateCompanions();
             m_clipFrame.reset();
             m_clipPlacement.reset();
@@ -4149,7 +4175,8 @@ win::Front App::toFront(QWindow* window)
 {
     QElapsedTimer timer;
     timer.start();
-    const win::Front front = win::bringToFront(window);
+    const win::Front front = win::bringToFront(window,
+        window == m_clipWindow ? win::ShellFlyout::Preserve : win::ShellFlyout::Dismiss);
     if (m_triggers && m_triggers->open())
         m_triggers->front(front, static_cast<double>(timer.nsecsElapsed()) / 1e6);
     if (window == m_window && front == win::Front::Refused)
@@ -4341,6 +4368,9 @@ void App::showClipboard()
     const bool prewarming = m_clipPrewarming.exchange(false); // up already, cloaked
     bool keepFocus = false; // where it is, with the program it pastes into
     if (!m_clipWindow->isVisible() || prewarming) {
+        m_clipWindow->setProperty("controllerEventsEnabled", true);
+        m_clipWindow->setProperty("shellWidth", 0);
+        m_clipDisplayWanted = false;
         m_clipRevealedAt.reset(); // there to be seen from its first frame on, however it went last (seenBy)
         // It pastes into what had the keyboard before it: a text field of
         // Win顺's own (read before the window takes the focus from it), or
@@ -4368,16 +4398,17 @@ void App::showClipboard()
                 m_clipPlacement->attachNative(*caret);
             else
                 m_clipPlacement->attach(QRect(QCursor::pos(), QSize(1, 0)));
-            constexpr LONG reach = 1 << 20; // the logo stays off the line typed in, all along it
-            m_clipLogo->setAvoid(caret ? std::optional(RECT {caret->x() - reach, caret->y(), caret->x() + reach,
-                                             caret->y() + caret->height()})
-                                       : std::nullopt);
             // As Windows' own: that program stays in front, whatever closes
             // without the focus stays open there (VS Code's command palette,
             // a browser's suggestions), the caret stays where the paste goes.
-            // Not over the Start menu, search and the like, which stay above
-            // every window: bringToFront closes them.
-            keepFocus = target && !win::isShellFlyout(foreground) && startKeyRouting(target);
+            // Search/Start must keep their input field too (#179). They can
+            // cover ordinary topmost windows, so put the clipboard beside
+            // the flyout instead of dismissing it to get the foreground.
+            const bool shellFlyout = win::isShellFlyout(foreground);
+            m_clipDisplayWanted = shellFlyout && m_clipDisplay && m_clipDisplay->ready();
+            keepFocus = target && (startKeyRouting(target) || shellFlyout);
+            if (shellFlyout && !m_clipDisplayWanted)
+                avoidClipboardShellFlyout(foreground);
         }
         m_clipboard->handlePlaced(); // the preview, if left open: as wide as there is room for here
         // Cloaked until its first frame: Windows would first put up the
@@ -4391,8 +4422,13 @@ void App::showClipboard()
         m_clipWindow->setProperty("_q_showWithoutActivating", true);
         m_clipWindow->show();
         m_clipWindow->setProperty("_q_showWithoutActivating", QVariant());
+        const HWND panel = reinterpret_cast<HWND>(m_clipWindow->winId());
+        // STARTF_USESHOWWINDOW/SW_HIDE can override Qt's first show while
+        // Qt already reports visible. Recover without activating the target.
+        if (!::IsWindowVisible(panel))
+            ::ShowWindow(panel, SW_SHOWNOACTIVATE);
         // On top of the other topmost windows, as an activated one would be.
-        ::SetWindowPos(reinterpret_cast<HWND>(m_clipWindow->winId()), HWND_TOPMOST, 0, 0, 0, 0,
+        ::SetWindowPos(panel, HWND_TOPMOST, 0, 0, 0, 0,
                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         return;
     }
@@ -4404,7 +4440,27 @@ void App::showClipboard()
 bool App::clipboardInCharge() const
 {
     return m_clipWindow && m_clipWindow->isVisible() && !m_clipPrewarming.load()
-        && (m_clipWindow->isActive() || m_keyRouter);
+        && (m_clipWindow->isActive() || m_keyRouter || (m_clipDisplay && m_clipDisplay->active()
+            && ::GetForegroundWindow() == m_clipDisplay->handle()));
+}
+
+void App::avoidClipboardShellFlyout(HWND foreground)
+{
+    const QRect rect = win::shellFlyoutBounds(foreground);
+    if (rect.isEmpty())
+        return;
+    const HMONITOR monitor = ::MonitorFromWindow(foreground, MONITOR_DEFAULTTONEAREST);
+    QScreen* screen = screenOf(monitor);
+    MONITORINFO info {sizeof info};
+    if (screen && ::GetMonitorInfoW(monitor, &info)) {
+        const qreal scale = screen->devicePixelRatio();
+        const int vertical = std::max(rect.top() - info.rcWork.top, info.rcWork.bottom - rect.y() - rect.height());
+        if (vertical < m_clipWindow->minimumHeight() * scale + 12 * scale) {
+            const int beside = std::max(rect.left() - info.rcWork.left, info.rcWork.right - rect.x() - rect.width());
+            m_clipWindow->setProperty("shellWidth", std::max(240, int(std::floor(beside / scale)) - 12));
+        }
+    }
+    m_clipPlacement->avoidNative(rect, screen);
 }
 
 bool App::startKeyRouting(HWND target)
@@ -4439,11 +4495,12 @@ bool App::startKeyRouting(HWND target)
         : m_settings.clipboardNumberKeys == u"off"                                    ? Qt::NoModifier
                                                                                       : Qt::AltModifier;
     auto router = std::make_unique<KeyRouter>(
-        target, reinterpret_cast<HWND>(m_clipWindow->winId()), std::move(callbacks), numberKeys);
+        target, m_clipDisplayWanted ? m_clipDisplay->handle() : reinterpret_cast<HWND>(m_clipWindow->winId()),
+        std::move(callbacks), numberKeys);
     diagnostics::record(u"clipboard-key-routing-start"_s,
         {{u"session"_s, static_cast<qint64>(run)}, {u"router"_s, router->diagnosticStatus()}});
     if (!router->isActive()) {
-        qWarning() << "Clipboard: no keyboard hook; it takes the focus instead";
+        qWarning() << "Clipboard: keyboard routing is unavailable";
         return false;
     }
     m_keyRouter = std::move(router);
@@ -4494,6 +4551,10 @@ void App::routedKey(const KeyRouter::Key& key)
         m_clipboard->dismiss(); // closes it, not the program behind
         return;
     }
+    if (m_clipDisplay && m_clipDisplay->active()) {
+        m_clipDisplay->key(key);
+        return;
+    }
     QQuickItem* item = m_clipWindow->contentItem();
     while (item->isFocusScope() && item->scopedFocusItem() && item->scopedFocusItem()->isEnabled())
         item = item->scopedFocusItem();
@@ -4516,8 +4577,9 @@ void App::routedForeground(HWND window)
     // Activated after all: from now on as any window with the focus, which
     // goes when it loses it. Only if it still is: the event may be old.
     const HWND clip = m_clipWindow ? reinterpret_cast<HWND>(m_clipWindow->winId()) : nullptr;
-    if (clip && window == clip) {
-        if (::GetForegroundWindow() == clip)
+    const HWND display = m_clipDisplay && m_clipDisplay->active() ? m_clipDisplay->handle() : nullptr;
+    if ((clip && window == clip) || (display && window == display)) {
+        if (::GetForegroundWindow() == window)
             stopKeyRouting();
         return;
     }
@@ -4569,7 +4631,7 @@ void App::armClipboardHold(int hotkey, std::uint64_t pressedAt)
         diagnostics::record(u"clipboard-hold-skipped"_s, {{u"reason"_s, u"late"_s}, {u"ms"_s, static_cast<qint64>(late)}});
         return;
     }
-    if (!target || win::isShellFlyout(foreground) || integrity::higherThanOurs(target)) {
+    if (!target || integrity::higherThanOurs(target)) {
         m_browseHotkey = hotkey;
         m_browseModifiers = modifiers & hotkeysteps::kModifiers;
         m_browseVk = vk;
@@ -4745,11 +4807,15 @@ void App::activateClipboard()
 {
     if (!m_clipWindow || (!m_keyRouter && !m_clipboard->pinned()))
         return;
+    if (m_clipDisplay && m_clipDisplay->active()) {
+        m_clipDisplay->activate();
+        return; // routedForeground retires routing once the peer owns focus
+    }
     if (!m_keyRouter) // pinned, the keys elsewhere: it takes no focus until told
         m_clipFrame->setNoActivate(false);
     // Active first, then no longer drawn as active without being so: the
     // backdrop does not flicker. Keys pressed in between are its own already.
-    win::bringToFront(m_clipWindow);
+    win::bringToFront(m_clipWindow, win::ShellFlyout::Preserve);
     // Refused (bringToFront says so in the log; it knows at once, the window
     // is this thread's): the keys go on coming through the router. Stopped,
     // they would go back to the program, the window left neither routed nor
@@ -4762,9 +4828,11 @@ void App::activateClipboard()
 
 void App::releaseClipboard(bool giveFocus)
 {
-    const bool hadFocus = m_clipWindow->isActive();
+    const bool hadFocus = m_clipWindow->isActive() || (m_clipDisplay && m_clipDisplay->active()
+        && ::GetForegroundWindow() == m_clipDisplay->handle());
     stopKeyRouting();
     m_clipFrame->setNoActivate(true); // clicks paste into the program in front, which keeps the focus
+    if (m_clipDisplay && m_clipDisplay->active()) m_clipDisplay->passive();
     if (giveFocus && hadFocus) {
         if (const HWND target = paste::usableTarget(m_clipboard->target()))
             paste::activate(target);
@@ -4789,9 +4857,15 @@ void App::engageClipboard()
     // takes the focus, and pastes where it did last.
     const HWND foreground = ::GetForegroundWindow();
     if (const HWND target = paste::usableTarget(foreground)) {
+        m_clipWindow->setProperty("shellWidth", 0);
         m_clipboard->setTarget(target);
-        if (!win::isShellFlyout(foreground) && startKeyRouting(target)) {
+        const bool shellFlyout = win::isShellFlyout(foreground);
+        if (startKeyRouting(target) || shellFlyout) {
+            if (shellFlyout)
+                avoidClipboardShellFlyout(foreground);
             m_clipFrame->setNoActivate(true);
+            ::SetWindowPos(reinterpret_cast<HWND>(m_clipWindow->winId()), HWND_TOPMOST, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             return;
         }
     }
@@ -4814,10 +4888,25 @@ void App::uncloakClipboard()
 {
     if (!m_clipWindow)
         return;
+    if (m_clipDisplayWanted && m_clipDisplay && m_clipDisplay->ready()) {
+        m_clipWindow->setProperty("controllerEventsEnabled", false);
+        if (m_clipDisplay->show()) {
+            m_clipRevealedAt = ::GetTickCount64();
+            if (m_triggers) m_triggers->seen(TriggerWindow::Clipboard);
+            return; // the ordinary-process scene stays cloaked behind the peer
+        }
+    }
+    if (std::exchange(m_clipDisplayWanted, false)) {
+        m_clipWindow->setProperty("controllerEventsEnabled", true);
+        emit m_clipboard->queryChanged();
+        emit m_clipboard->placed();
+        const HWND target = m_clipboard->target();
+        stopKeyRouting();
+        if (win::isShellFlyout(target)) avoidClipboardShellFlyout(target);
+        const bool keepFocus = startKeyRouting(target) || win::isShellFlyout(target);
+        m_clipFrame->setNoActivate(keepFocus);
+    }
     win::setCloaked(m_clipWindow, false);
-    // The logo when it is on its own: under a box, that box's window has one.
-    if (m_clipWindow->isVisible() && !m_clipboard->field() && m_clipLogo)
-        m_clipLogo->reveal();
     if (m_clipWindow->isVisible() && !m_clipPrewarming.load()) {
         m_clipRevealedAt = ::GetTickCount64(); // there to be seen from now on (seenBy)
         if (m_triggers)
@@ -4840,6 +4929,8 @@ void App::hideClipboard(bool launcherToo)
         return;
     }
     const bool underLauncher = clipboardUnderLauncher();
+    if (m_clipDisplay) m_clipDisplay->hide();
+    m_clipDisplayWanted = false;
     m_clipWindow->hide();
     m_clipRevealedAt.reset(); // only here: pinned, it stays up when it lets go of the keys
     stopKeyRouting(); // hidden first: no inactive backdrop on the way out

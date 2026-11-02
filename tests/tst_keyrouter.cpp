@@ -49,7 +49,7 @@ LRESULT CALLBACK receiverProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
     return ::DefWindowProcW(hwnd, message, wParam, lParam);
 }
 
-int receiver()
+int receiver(bool shellCompanion = false)
 {
     const HINSTANCE instance = ::GetModuleHandleW(nullptr);
     WNDCLASSW type {};
@@ -62,10 +62,22 @@ int receiver()
         WS_OVERLAPPEDWINDOW, 100, 100, 520, 220, nullptr, nullptr, instance, nullptr);
     if (!window)
         return 2;
+    int shellLeft = 0, shellHeight = 0;
+    if (shellCompanion) {
+        shellLeft = ::GetSystemMetrics(SM_CXSCREEN) / 2 - 260;
+        shellHeight = ::GetSystemMetrics(SM_CYSCREEN) - 100;
+        ::SetWindowPos(window, nullptr, shellLeft, 50, 520, shellHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+    }
     ::ImmAssociateContextEx(window, nullptr, 0); // the fixture records raw letters, independent of the user's IME mode
     ::ShowWindow(window, SW_SHOWNORMAL);
     ::SetForegroundWindow(window);
     std::printf("window:%llu\n", static_cast<unsigned long long>(reinterpret_cast<UINT_PTR>(window)));
+    if (shellCompanion) {
+        const HWND companion = ::CreateWindowExW(WS_EX_TOOLWINDOW, type.lpszClassName, L"WinShun shell companion test",
+            WS_POPUP | WS_BORDER, shellLeft - 280, 50, 280, shellHeight, window, nullptr, instance, nullptr);
+        ::ShowWindow(companion, SW_SHOWNOACTIVATE);
+        std::printf("companion:%llu\n", static_cast<unsigned long long>(reinterpret_cast<UINT_PTR>(companion)));
+    }
     std::fflush(stdout);
     MSG message;
     while (::GetMessageW(&message, nullptr, 0, 0) > 0) {
@@ -309,6 +321,8 @@ int main(int argc, char** argv)
 {
     if (argc > 1 && qstrcmp(argv[1], "--key-receiver") == 0)
         return receiver();
+    if (argc > 1 && qstrcmp(argv[1], "--shell-receiver") == 0)
+        return receiver(true);
     QCoreApplication app(argc, argv);
     KeyRouterTest test;
     return QTest::qExec(&test, argc, argv);

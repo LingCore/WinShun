@@ -243,6 +243,7 @@ KeyRouter::KeyRouter(HWND target, HWND window, Callbacks callbacks, Qt::Keyboard
     , m_process(::GetCurrentProcessId())
     , m_callbacks(std::move(callbacks))
 {
+    ::GetWindowThreadProcessId(window, &m_windowProcess);
     std::latch ready(1);
     m_thread = std::jthread([this, &ready] {
         t_router = this;
@@ -563,7 +564,7 @@ void KeyRouter::handleMouse(WPARAM message, const MSLLHOOKSTRUCT& event)
     DWORD process = 0;
     if (hit)
         ::GetWindowThreadProcessId(hit, &process);
-    if (process != m_process && m_callbacks.clickedAway)
+    if (process != m_process && process != m_windowProcess && m_callbacks.clickedAway)
         m_callbacks.clickedAway(); // the click goes on where it was meant to
 }
 

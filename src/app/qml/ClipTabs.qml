@@ -10,7 +10,7 @@ import WinShun
 Item {
     id: tabs
 
-    required property Clipboard clipboard
+    required property var clipboard
     property bool naming: false
     property string nameText // what the field starts with
     property real parentLeft // where the parent's left is in the window: to draw on whole device pixels

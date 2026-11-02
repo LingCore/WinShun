@@ -14,7 +14,8 @@
 // holds no volume open between requests, and keeps nothing in memory.
 // It also owns a UIAccess key-listener child per requesting GUI process,
 // in that user's session, for double Ctrl over elevated / UIAccess windows.
-// Only the listener crosses that boundary; the GUI and plugins stay normal.
+// The file-dialog navigator and protected clipboard display can use the same
+// user-session UIAccess token. The main GUI, clipboard data and plugins stay normal.
 //
 //   WinShunService.exe                  as a service (the Service Control Manager starts it)
 //   WinShunService.exe --install        registers and starts it (the installer; administrator)

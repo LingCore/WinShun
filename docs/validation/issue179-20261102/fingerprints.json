@@ -1,0 +1,52 @@
+[
+  {
+    "path": "src/app/App.cpp",
+    "sha256": "22F7F93420E4F286AF299064937E3006AF0CC0BFF108EC321A37D8C6361EF13C",
+    "bytes": 338848
+  },
+  {
+    "path": "src/app/App.h",
+    "sha256": "88DA4BB39CD27D5B3F1B86A49FE6DBB28FDA7736B48E49890C64E565D9462F69",
+    "bytes": 45406
+  },
+  {
+    "path": "src/app/Preview.cpp",
+    "sha256": "9A872192C6D6F6603E7DE593EF10E4D01CF4D9A9F6B61AB3BD4F6B0631A4800B",
+    "bytes": 310961
+  },
+  {
+    "path": "src/app/Preview.h",
+    "sha256": "033B69C821E1FFA876055A4863EFF19B9F01570205610B16540AA8EE401105B0",
+    "bytes": 6830
+  },
+  {
+    "path": "src/app/platform/WindowEffects.cpp",
+    "sha256": "86E0DFB0BAD3AE50761736FC687FFB08FF54B0072236896C0C16FD547A8DB075",
+    "bytes": 22362
+  },
+  {
+    "path": "src/app/platform/WindowEffects.h",
+    "sha256": "8D35A295C1F0D489FD8C68CF446B83DD0DEE6AA4068CB6D3DD78144BFF1AEA6E",
+    "bytes": 5302
+  },
+  {
+    "path": "src/app/qml/ClipboardWindow.qml",
+    "sha256": "5CE75D93DB94571EC385948BC3683CE4DF07C84D0FDEDAE1E09F0425A02FB4CE",
+    "bytes": 7692
+  },
+  {
+    "path": "tests/tst_keyrouter.cpp",
+    "sha256": "BB1C281A5E84E1BCEAB8DBA23E85AACE60E3A76DCA8B2E88CF8580A45898CB95",
+    "bytes": 14808
+  },
+  {
+    "path": "tests/tst_placement.cpp",
+    "sha256": "266D236F43E40368981F69704615B7640462ED2460F674CCE67A0839C8B1709F",
+    "bytes": 11407
+  },
+  {
+    "path": "build/release/WinShun.exe",
+    "sha256": "B24FEC7F1509051CE930DFAD4618EB4DE849A33EA199F9E56EEBFD336A8B6547",
+    "bytes": 24220672
+  }
+]

@@ -412,6 +412,30 @@ void Placement::attach(const QRect& box, QScreen* screen)
     attachBy(box, screen, kBoxGap);
 }
 
+void Placement::placeDisplay(const QRect& geometry, int room, bool above)
+{
+    if (!m_window || geometry.isEmpty()) return;
+    m_glide.stop();
+    m_box.reset();
+    m_avoid.reset();
+    setTaskbar({});
+    m_dropped = true;
+    m_left = geometry.x();
+    setAbove(above);
+    setRoom(room);
+    m_place = geometry.topLeft();
+    m_window->setGeometry(geometry);
+}
+
+void Placement::adoptDisplayGeometry(const QRect& geometry)
+{
+    if (!m_window || geometry.isEmpty()) return;
+    m_moveStart = m_window->position();
+    m_window->setGeometry(geometry);
+    m_place = geometry.topLeft();
+    rememberSpot();
+}
+
 void Placement::attachBy(const QRect& box, QScreen* screen, int gap)
 {
     m_glide.stop();

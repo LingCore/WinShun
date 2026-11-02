@@ -995,3 +995,11 @@ add_test(NAME tst_pinclipboard COMMAND tst_pinclipboard -o -,txt)
 set_tests_properties(tst_pinclipboard PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=windows;QT_FORCE_STDERR_LOGGING=1"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# The cross-process clipboard view rejects malformed/unbounded UI frames.
+qt_add_executable(tst_clipboarddisplay tst_clipboarddisplay.cpp)
+target_include_directories(tst_clipboarddisplay PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_clipboarddisplay PRIVATE winshun_options Qt6::Core Qt6::Test)
+add_test(NAME tst_clipboarddisplay COMMAND tst_clipboarddisplay)
+set_tests_properties(tst_clipboarddisplay PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")

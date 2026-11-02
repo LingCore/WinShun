@@ -1,4 +1,5 @@
 #include "App.h"
+#include "ClipboardDisplay.h"
 #include "ContextMenuGuard.h"
 #include "Diagnostics.h"
 #include "FileIconProvider.h"
@@ -28,6 +29,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QProcess>
+#include <QTemporaryDir>
 
 #include <windows.h>
 #include <shellapi.h>
@@ -270,6 +272,13 @@ int main(int argc, char* argv[])
         }
         ::LocalFree(wide);
     }
+    const bool clipboardDisplay = ws::clipboardDisplayRequested(wideArgs);
+    std::unique_ptr<QTemporaryDir> displayProfile;
+    if (clipboardDisplay) {
+        displayProfile = std::make_unique<QTemporaryDir>(QDir::tempPath() + u"/WinShun-display-XXXXXX"_s);
+        if (!displayProfile->isValid()) return 4;
+        ws::Settings::useProfile(displayProfile->path());
+    }
     // A portable copy: everything in the "data" folder beside the program.
     bool portable = false;
     if (ws::Settings::profile().isEmpty()) {
@@ -296,7 +305,7 @@ int main(int argc, char* argv[])
     if (setPlatform)
         qputenv("QT_QPA_PLATFORM", ws::Settings::resolveRenderer(ws::Settings::storedRenderer()) == u"software"
                                        ? "windows:fontengine=gdi" : "windows:fontengine=freetype");
-    if (preview || pieHelper) {
+    if (preview || pieHelper || clipboardDisplay) {
         // A picture of a settings page, and nothing else: before the single
         // instance below, which would hand the arguments to the running copy.
         ws::preview::note(u"making the application"_s);
@@ -309,6 +318,7 @@ int main(int argc, char* argv[])
         applyUiFont();
         ws::phosphor::loadFonts();
         setWindowIcon();
+        if (clipboardDisplay) return ws::runClipboardDisplay(wideArgs);
         if (pieHelper) return ws::runDropPieHelper(wideArgs);
         return ws::preview::run(wideArgs);
     }

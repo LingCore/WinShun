@@ -116,6 +116,10 @@ public:
     void placeOn(QScreen* screen); // before showing the window there, at its spot
     // A temporary spot beside the file manager typed in; never saved as home.
     void avoidNative(const QRect& window, QScreen* screen);
+    // Geometry supplied by the ordinary-process peer to its UIAccess display.
+    void placeDisplay(const QRect& geometry, int room, bool above);
+    // A user move in the display peer; retain the usual temporary/home rules.
+    void adoptDisplayGeometry(const QRect& geometry);
     // Before showing it, by `box` (logical pixels, on `screen`; none: the
     // screen at the box's centre).
     void attach(const QRect& box, QScreen* screen = nullptr);

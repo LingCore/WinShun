@@ -85,6 +85,7 @@ public:
 std::mutex claimsMutex;
 std::set<DWORD> listeners;
 std::set<DWORD> navigators;
+std::set<DWORD> displays;
 struct Claim {
     Claim(std::set<DWORD>& registry, DWORD pid)
         : registry(registry)
@@ -135,7 +136,7 @@ bool sameName(std::wstring_view a, std::wstring_view b)
 // pointing where some program chose. __COMPAT_LAYER (compatibility layers
 // applied to the helper as it starts) is left out. Sorted by name, as
 // CreateProcess wants it. Empty on failure.
-std::vector<wchar_t> helperEnvironment(HANDLE token)
+std::vector<wchar_t> helperEnvironment(HANDLE token, bool display = false)
 {
     void* raw = nullptr;
     if (!::CreateEnvironmentBlock(&raw, token, FALSE))
@@ -144,6 +145,16 @@ std::vector<wchar_t> helperEnvironment(HANDLE token)
     for (const wchar_t* entry = static_cast<const wchar_t*>(raw); *entry; entry += std::wcslen(entry) + 1)
         entries.emplace_back(entry);
     ::DestroyEnvironmentBlock(raw);
+    if (display) {
+        // Qt can load native plugins and QML modules from environment paths.
+        // A UIAccess renderer must not inherit user-selected code loaders.
+        constexpr std::wstring_view allowed[] {L"USERPROFILE", L"APPDATA", L"LOCALAPPDATA", L"USERNAME",
+            L"USERDOMAIN", L"USERDOMAIN_ROAMINGPROFILE", L"HOMEDRIVE", L"HOMEPATH", L"SESSIONNAME"};
+        std::erase_if(entries, [&allowed](const std::wstring& entry) {
+            return !std::ranges::any_of(allowed, [&](auto name) { return sameName(nameOf(entry), name); });
+        });
+        entries.emplace_back(L"QML_DISABLE_DISK_CACHE=1");
+    }
 
     wchar_t windows[MAX_PATH] {};
     wchar_t system[MAX_PATH] {};
@@ -191,10 +202,12 @@ std::vector<wchar_t> helperEnvironment(HANDLE token)
 // uiAccess + high-integrity process in the requesting client's interactive
 // session (the only boundary the service crosses). Used for the double-Ctrl
 // input listener (--listen-keys) and the elevated file-dialog navigator
-// (--navigate-dialog, GitHub #104). The child runs on the user's own token:
+// (--navigate-dialog, GitHub #104), and the protected clipboard renderer.
+// The child runs on the user's own token:
 // not SYSTEM, not a linked administrator token, no volume/file privileges.
 bool launchSessionHelper(
-    Connection& conn, const std::wstring& argsSuffix, HANDLE job, UniqueHandle& child, DWORD& childPid, const wchar_t*& operation)
+    Connection& conn, const std::wstring& argsSuffix, HANDLE job, UniqueHandle& child, DWORD& childPid, const wchar_t*& operation,
+    bool display = false)
 {
     operation = L"validate listener session";
     DWORD session = 0;
@@ -255,12 +268,22 @@ bool launchSessionHelper(
     wchar_t system[MAX_PATH] {};
     if (!::GetSystemDirectoryW(system, MAX_PATH))
         return false;
-    std::wstring command = L"\"" + std::wstring(exe) + L"\" " + argsSuffix;
+    std::wstring executable(exe);
+    if (display) {
+        executable.resize(executable.find_last_of(L"\\/") + 1);
+        executable += L"WinShun.exe";
+        operation = L"validate protected clipboard display";
+        if (!svcloc::pathProtected(executable) || !requesterIsWinShun(conn.pid)) {
+            ::SetLastError(ERROR_ACCESS_DENIED);
+            return false;
+        }
+    }
+    std::wstring command = L"\"" + executable + L"\" " + argsSuffix;
     // The user's own environment with the system's variables fixed
     // (helperEnvironment), not the service's (LocalSystem's profile folders
     // and variables); never inherited.
     operation = L"CreateEnvironmentBlock";
-    std::vector<wchar_t> environment = helperEnvironment(token.get());
+    std::vector<wchar_t> environment = helperEnvironment(token.get(), display);
     if (environment.empty())
         return false;
     STARTUPINFOW startup {sizeof startup};
@@ -268,7 +291,7 @@ bool launchSessionHelper(
     startup.lpDesktop = desktop;
     PROCESS_INFORMATION process {};
     operation = L"CreateProcessAsUser";
-    if (!::CreateProcessAsUserW(token.get(), exe, command.data(), nullptr, nullptr, FALSE,
+    if (!::CreateProcessAsUserW(token.get(), executable.c_str(), command.data(), nullptr, nullptr, FALSE,
             CREATE_SUSPENDED | CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT, environment.data(), system, &startup,
             &process))
         return false;
@@ -307,6 +330,64 @@ bool requesterIsWinShun(DWORD pid)
     const DWORD n = ::GetModuleFileNameW(nullptr, ownPath, static_cast<DWORD>(std::size(ownPath)));
     return !client.empty() && n && n < std::size(ownPath)
         && svcloc::isWinShunBeside(client, std::wstring_view(ownPath, n));
+}
+
+bool canStartClipboardDisplay(DWORD pid)
+{
+    return requesterIsWinShun(pid) && svcloc::pathProtected(processImagePath(pid));
+}
+
+void serveClipboardDisplay(Server& server, Connection& conn, std::span<const std::byte> payload)
+{
+    using namespace volproto;
+    Reader r(payload);
+    std::uint64_t value = 0;
+    std::wstring pipe;
+    const std::wstring prefix = L"WinShun.Clipboard." + std::to_wstring(conn.pid) + L".";
+    if (!r.u64(value) || !r.string(pipe) || !r.done() || !value
+        || pipe.size() != prefix.size() + 32 || !pipe.starts_with(prefix)
+        || !std::all_of(pipe.begin() + prefix.size(), pipe.end(), [](wchar_t c) {
+            return (c >= L'0' && c <= L'9') || (c >= L'a' && c <= L'f');
+        })) {
+        replyError(conn, ERROR_INVALID_PARAMETER, L"invalid clipboard display request", 1000);
+        return;
+    }
+    if (!server.options().keyListener || !canStartClipboardDisplay(conn.pid)) {
+        replyError(conn, ERROR_ACCESS_DENIED, L"clipboard display requires the protected WinShun install", 1000);
+        return;
+    }
+    const Claim claim(displays, conn.pid);
+    if (!claim.held) {
+        replyError(conn, ERROR_BUSY, L"clipboard display already leased", 1000);
+        return;
+    }
+    const UniqueHandle job(::CreateJobObjectW(nullptr, nullptr));
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits {};
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    UniqueHandle child;
+    DWORD pid = 0;
+    const wchar_t* operation = L"create clipboard display job";
+    const std::wstring args = L"--clipboard-display --display-client " + std::to_wstring(conn.pid)
+        + L" --display-window " + std::to_wstring(value) + L" --display-pipe " + pipe;
+    // Session 0 cannot resolve interactive HWNDs. The display validates this
+    // HWND against the authenticated caller PID after entering that session.
+    if (!job.valid() || !::SetInformationJobObject(job.get(), JobObjectExtendedLimitInformation, &limits, sizeof limits)
+        || !launchSessionHelper(conn, args, job.get(), child, pid, operation, true)) {
+        replyError(conn, ::GetLastError(), operation, 1000);
+        return;
+    }
+    Writer w;
+    w.u32(pid);
+    if (!conn.channel.write(w.finish(Type::ClipboardDisplayReady), 1000))
+        return;
+    Type type {};
+    std::vector<std::byte> next;
+    while (conn.channel.read(type, next, keyproto::kLeaseMs, conn.abort)) {
+        if (type != Type::ClipboardDisplayPing || !next.empty()
+            || ::WaitForSingleObject(child.get(), 0) != WAIT_TIMEOUT
+            || !reply(conn, Type::ClipboardDisplayPing, 1000))
+            break;
+    }
 }
 
 bool canStartInputListener()

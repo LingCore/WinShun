@@ -40,6 +40,8 @@ qt_add_executable(WinShun WIN32
     DropPieHelper.cpp DropPieHelper.h
     AiSettings.cpp AiSettings.h
     App.cpp App.h
+    ClipboardDisplay.cpp ClipboardDisplay.h ClipboardDisplayProtocol.h
+    ClipboardDisplayReplica.cpp ClipboardDisplayReplica.h
     CommandLine.cpp CommandLine.h
     ColorText.cpp ColorText.h
     platform/ContentOpen.cpp platform/ContentOpen.h
@@ -353,7 +355,7 @@ target_include_directories(WinShun PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(WinShun PRIVATE
     wscore wsmcp wsplugin
     wscapture # the screen capture (src/capture)
-    Qt6::Gui Qt6::Qml Qt6::Quick
+    Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Network
     Qt6::Svg # SvgIcon: web shortcuts' SVG icons, drawn once into the PNG kept
     comctl32 d2d1 dwmapi dwrite dxgi imm32 oleacc oleaut32 shcore shell32 shlwapi ole32 user32 uxtheme version winhttp winmm
     credui iphlpapi mpr psapi userenv windowscodecs

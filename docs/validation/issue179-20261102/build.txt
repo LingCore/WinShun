@@ -1,0 +1,25 @@
+[1/220] Automatic MOC and UIC for target tst_windowvisibility
+[2/219] Automatic MOC and UIC for target WinShun
+[3/219] Running AUTOMOC file extraction for target WinShun
+[4/219] Running moc --collect-json for target WinShun
+[5/23] Building CXX object tests\CMakeFiles\tst_windowvisibility.dir\__\src\app\platform\WindowEffects.cpp.obj
+[6/23] Building CXX object tests\CMakeFiles\tst_windowvisibility.dir\tst_windowvisibility.cpp.obj
+[7/23] Building CXX object src\app\CMakeFiles\WinShun.dir\main.cpp.obj
+[8/23] Building CXX object src\app\CMakeFiles\WinShun.dir\DialogBarVisibility.cpp.obj
+[9/23] Building CXX object src\app\CMakeFiles\WinShun.dir\TriggerJournal.cpp.obj
+[10/23] Building CXX object src\app\CMakeFiles\WinShun.dir\WinShun_autogen\mocs_compilation.cpp.obj
+[11/23] Building CXX object src\app\CMakeFiles\WinShun.dir\TrayMenu.cpp.obj
+[12/23] Building CXX object src\app\CMakeFiles\WinShun.dir\platform\PreviewHost.cpp.obj
+[13/23] Building CXX object src\app\CMakeFiles\WinShun.dir\platform\WindowEffects.cpp.obj
+[14/23] Building CXX object src\app\CMakeFiles\WinShun.dir\App.cpp.obj
+F:\电脑便捷工具\src\app\App.cpp(2247): warning C4456: “keys”的声明隐藏了上一个本地声明
+F:\电脑便捷工具\src\app\App.cpp(2241): note: 参见“keys”的声明
+[15/23] Building CXX object src\app\CMakeFiles\WinShun.dir\Preview.cpp.obj
+[16/23] Building CXX object src\app\CMakeFiles\WinShun.dir\Clipboard.cpp.obj
+[17/23] Building CXX object src\app\CMakeFiles\WinShun.dir\FolderMenu.cpp.obj
+[18/23] Building CXX object src\app\CMakeFiles\WinShun.dir\DialogBar.cpp.obj
+[19/23] Linking CXX executable tst_windowvisibility.exe
+[20/23] Building CXX object src\app\CMakeFiles\WinShun.dir\SystemTheme.cpp.obj
+[21/23] Building CXX object src\app\CMakeFiles\WinShun.dir\WindowFrame.cpp.obj
+[22/23] Building CXX object src\app\CMakeFiles\WinShun.dir\Launcher.cpp.obj
+[23/23] Linking CXX executable WinShun.exe
