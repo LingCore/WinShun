@@ -19,8 +19,12 @@
 //
 //   WinShunService.exe                  as a service (the Service Control Manager starts it)
 //   WinShunService.exe --install        registers and starts it (the installer; administrator)
+//   WinShunService.exe --installed-from PATH
+//                                       as a service, as registered by an --install that had to copy it
+//                                       into a protected folder: PATH is that copy's WinShun.exe, which
+//                                       is given dialog navigation too (svcloc::servesDialogNav)
 //   WinShunService.exe --uninstall      stops and removes it
-//   WinShunService.exe --console [--pipe NAME] [--no-privileges] [--no-bulk]
+//   WinShunService.exe --console [--pipe NAME] [--no-privileges] [--no-bulk] [--installed-from PATH]
 //                                       the same server in this console (administrator), for
 //                                       tests: Win顺 and tst_service reach it with WINSHUN_PIPE=NAME;
 //                                       --no-privileges drops every privilege but
@@ -33,6 +37,7 @@
 // volume. Contents it filters: each file's by the caller's own rights.
 // docs/architecture.md says so.
 
+#include "DialogNav.h"
 #include "Log.h"
 #include "InputListener.h"
 #include "Server.h"
@@ -60,6 +65,7 @@ constexpr wchar_t kDescription[]
 SERVICE_STATUS_HANDLE g_statusHandle = nullptr;
 HANDLE g_stopEvent = nullptr;
 DeviceWatch* g_deviceWatch = nullptr;
+std::wstring g_installedFrom; // --installed-from: Server::Options::installedFrom
 
 bool dropPrivileges(bool inputListener);
 
@@ -112,6 +118,7 @@ DWORD serve(const std::wstring& pipeName, HANDLE stop, HANDLE recipient, DWORD r
     options.pipeName = pipeName;
     options.bulkReads = bulkReads;
     options.keyListener = ws::service::canStartInputListener();
+    options.installedFrom = g_installedFrom;
     Server server(options);
     DeviceWatch watch(recipient, recipientFlags, [&](const std::wstring& root) { server.closeVolume(root, 0, 2000); });
     g_deviceWatch = &watch;
@@ -305,9 +312,14 @@ std::wstring registeredImagePath()
 
 // Registers (or re-points and reconfigures, if it already exists) the service
 // to run `exePath`, and starts it. `exePath` is the final, protected location.
-int registerService(const std::wstring& exePath)
+// `installedFrom`, when the service was copied there, is the WinShun.exe of
+// the copy that installed it: kept on its command line (--installed-from),
+// which only administrators can change, so that copy keeps dialog navigation.
+int registerService(const std::wstring& exePath, const std::wstring& installedFrom = {})
 {
-    const std::wstring path = L"\"" + exePath + L"\"";
+    std::wstring path = L"\"" + exePath + L"\"";
+    if (!installedFrom.empty())
+        path += L" --installed-from " + ws::dialognav::quoteArgument(installedFrom);
     ScHandle manager {::OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CREATE_SERVICE | SC_MANAGER_CONNECT)};
     if (!manager.value)
         return fail(L"OpenSCManager");
@@ -399,7 +411,15 @@ int install()
         return static_cast<int>(ERROR_ACCESS_DENIED);
     }
     std::fwprintf(stdout, L"copied the service to %ls\n", placed.c_str());
-    return registerService(placed);
+    // Its own WinShun.exe stays where it is, not beside the service: named
+    // to it, so dialog navigation still serves that copy (GitHub #104). In
+    // its long form, as the service sees the running WinShun.exe's image
+    // (an 8.3 "D:\SOFTWA~1" start would never match).
+    std::wstring ui = own.substr(0, own.find_last_of(L'\\') + 1) + L"WinShun.exe";
+    wchar_t full[MAX_PATH * 2] {};
+    if (const DWORD n = ::GetLongPathNameW(ui.c_str(), full, static_cast<DWORD>(std::size(full))); n && n < std::size(full))
+        ui.assign(full, n);
+    return registerService(placed, ui);
 }
 
 int uninstall()
@@ -442,7 +462,7 @@ int usage()
         L"WinShunService.exe: the index service of Win顺 (WinShun) %hs\n"
         L"  --install              register and start the service (as administrator)\n"
         L"  --uninstall            stop and remove it\n"
-        L"  --console [--pipe NAME] [--no-privileges] [--no-bulk]\n"
+        L"  --console [--pipe NAME] [--no-privileges] [--no-bulk] [--installed-from PATH]\n"
         L"                         serve in this console instead (as administrator), for tests\n",
         WINSHUN_VERSION);
     return 1;
@@ -483,6 +503,8 @@ int wmain(int argc, wchar_t** argv)
             for (int i = 2; i < argc; ++i) {
                 if (std::wstring_view(argv[i]) == L"--pipe" && i + 1 < argc)
                     pipe = argv[++i];
+                else if (std::wstring_view(argv[i]) == L"--installed-from" && i + 1 < argc)
+                    g_installedFrom = argv[++i];
                 else if (std::wstring_view(argv[i]) == L"--no-privileges")
                     noPrivileges = true;
                 else if (std::wstring_view(argv[i]) == L"--no-bulk")
@@ -492,7 +514,9 @@ int wmain(int argc, wchar_t** argv)
             }
             return runConsole(pipe, noPrivileges, noBulk);
         }
-        return usage();
+        if (option != L"--installed-from" || argc != 3)
+            return usage();
+        g_installedFrom = argv[2]; // and on, as the service
     }
     SERVICE_TABLE_ENTRYW table[] {{const_cast<wchar_t*>(ws::volproto::kServiceName), serviceMain}, {nullptr, nullptr}};
     if (!::StartServiceCtrlDispatcherW(table)) {

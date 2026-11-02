@@ -74,9 +74,9 @@ class DialogBar : public QObject {
     Q_PROPERTY(bool canOpen READ canOpen NOTIFY dialogKindChanged FINAL) // an Open dialog: Ctrl+Enter
     Q_PROPERTY(bool copyOnly READ copyOnly NOTIFY dialogKindChanged FINAL)
     // Why an elevated dialog is copy-only, for the bar's hint: "service" (no
-    // service runs: installing it lets this copy jump), "installed" (only the
-    // installed Win顺 can: the service keeps the navigator from a portable or
-    // other copy), or "" (no reason worth telling, e.g. an older service).
+    // service runs: installing it lets this copy jump), "other" (the service
+    // was installed by another copy of Win顺 and keeps the navigator for it),
+    // or "" (no reason worth telling, e.g. an older service).
     Q_PROPERTY(QString copyOnlyHint READ copyOnlyHint NOTIFY dialogKindChanged FINAL)
     // An elevated dialog the index service's helper can navigate for us: it
     // jumps (to a folder), but never opens a file and never types a name.

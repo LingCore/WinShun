@@ -377,6 +377,57 @@ private slots:
         QCOMPARE(error.code, static_cast<std::uint32_t>(ERROR_ACCESS_DENIED));
     }
 
+    void dialogNavForTheCopyInstalledFrom()
+    {
+        // GitHub #104: a service --install had to copy into the protected
+        // folder (Win顺 installed to D:\Softwares, say) names that copy's
+        // WinShun.exe on its command line, and serves it as its own UI. Here
+        // this test program plays it: told of the navigator wherever the
+        // service can launch helpers, and never refused for who it is (an
+        // admin --console service cannot launch them: "not supported").
+        if (m_external)
+            QSKIP("needs a server of our own");
+        const QString pipe = m_pipe + u".from"_s;
+        QProcess server;
+        server.setProgram(m_exe);
+        server.setArguments({u"--console"_s, u"--pipe"_s, pipe, u"--installed-from"_s,
+            QDir::toNativeSeparators(QCoreApplication::applicationFilePath())});
+        server.start();
+        QVERIFY2(server.waitForStarted(5000), qPrintable(server.errorString()));
+        QByteArray out;
+        QElapsedTimer t;
+        t.start();
+        while (!out.contains("ready") && t.elapsed() < 10000 && server.state() == QProcess::Running) {
+            server.waitForReadyRead(200);
+            out += server.readAllStandardOutput();
+        }
+        QVERIFY2(out.contains("ready"), qPrintable(QString::fromUtf8(out)));
+        RawClient raw;
+        QVERIFY(raw.connect(pipe));
+        volproto::Type reply {};
+        std::vector<std::byte> payload;
+        QVERIFY(raw.hello(volproto::kMajor, reply, payload));
+        QCOMPARE(reply, volproto::Type::HelloOk);
+        volproto::HelloOk ok;
+        QVERIFY(decode(payload, ok));
+        const bool helpers = ok.capabilities & volproto::kCapabilityKeyListener;
+        QCOMPARE(bool(ok.capabilities & volproto::kCapabilityDialogNav), helpers);
+        QVERIFY(!(ok.capabilities & volproto::kCapabilityDialogNavBesideOnly));
+        if (!helpers) {
+            volproto::Writer w;
+            w.u64(0x1234);
+            w.string(std::wstring(L"C:\\"));
+            QVERIFY(raw.channel.write(w.finish(volproto::Type::OpenDialogNav), 5000));
+            QVERIFY(raw.channel.read(reply, payload, 5000));
+            QCOMPARE(reply, volproto::Type::Error);
+            volproto::Error error;
+            QVERIFY(decode(payload, error));
+            QCOMPARE(error.code, static_cast<std::uint32_t>(ERROR_NOT_SUPPORTED));
+        }
+        server.kill();
+        server.waitForFinished(5000);
+    }
+
     void clipboardDisplayRefusedForOthers()
     {
         for (const bool malformed : {false, true}) {

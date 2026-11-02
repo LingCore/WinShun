@@ -99,6 +99,7 @@ public:
         DWORD writeTimeoutMs = 10'000; // a client that does not read for this long is dropped
         bool bulkReads = true; // --console --no-bulk: as a service without them (tests)
         bool keyListener = false; // LocalSystem with the session-launch privileges
+        std::wstring installedFrom; // --installed-from: the WinShun.exe also given dialog navigation
     };
     explicit Server(Options options);
     ~Server();

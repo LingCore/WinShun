@@ -3841,15 +3841,13 @@ void App::applyDropPie()
 
 namespace {
 // The bar's word for an elevated dialog it can only copy for (#104). The
-// service navigates only for the WinShun.exe beside it; a portable copy never
-// is (its --install puts the service in Program Files), so installing the
-// service is no answer there either.
+// service navigates for the copy of Win顺 it was installed with or from
+// (installed, or a portable copy that installed it), so installing it helps
+// any copy without one; one installed by another copy keeps it for that one.
 QString copyOnlyHint(ServiceDialogNav::Reach reach)
 {
     using Reach = ServiceDialogNav::Reach;
-    if (reach == Reach::OtherCopy || (reach != Reach::Available && !Settings::portableFolder().isEmpty()))
-        return u"installed"_s;
-    return reach == Reach::NoService ? u"service"_s : QString();
+    return reach == Reach::OtherCopy ? u"other"_s : reach == Reach::NoService ? u"service"_s : QString();
 }
 } // namespace
 
