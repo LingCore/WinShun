@@ -392,10 +392,11 @@ void Placement::placeOn(QScreen* screen)
     avoidNative({}, screen);
 }
 
-void Placement::avoidNative(const QRect& window, QScreen* screen)
+void Placement::avoidNative(const QRect& window, QScreen* screen, bool inside)
 {
     m_glide.stop();
     m_avoid = window.isEmpty() ? std::nullopt : std::optional {window};
+    m_avoidInside = inside;
     m_box.reset();
     setAbove(false);
     setTaskbar({});
@@ -676,7 +677,8 @@ QPoint Placement::settleAvoiding(QScreen* screen)
         QPoint(up(m_avoid->x() + m_avoid->width(), native.origin.x()) - 1,
             up(m_avoid->y() + m_avoid->height(), native.origin.y()) - 1));
     const int height = std::max(m_roomNeeded, m_roomWanted > 0 ? m_roomWanted : m_window->height());
-    QPoint at = windowavoidance::place(screen->availableGeometry(), obstacle, {widthNow(), height}, home);
+    QPoint at = m_avoidInside ? windowavoidance::corner(screen->availableGeometry(), obstacle, {widthNow(), height})
+                              : windowavoidance::place(screen->availableGeometry(), obstacle, {widthNow(), height}, home);
     at.setX(native.keepInside(at.x(), widthNow(), native.work.x(), native.work.x() + native.work.width(), native.origin.x()));
     at.setY(native.keepInside(at.y(), std::min(height, screen->availableGeometry().height()),
         native.work.y(), native.work.y() + native.work.height(), native.origin.y()));

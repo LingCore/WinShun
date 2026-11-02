@@ -1130,6 +1130,14 @@ void SettingsEditor::setOpusTyping(bool on)
     commit();
 }
 
+void SettingsEditor::setOpusTypingScope(const QString& scope)
+{
+    if (m_settings.opusTypingScope == scope || (scope != u"folder" && scope != u"all"))
+        return;
+    m_settings.opusTypingScope = scope;
+    commit();
+}
+
 void SettingsEditor::setFolderTyping(const QString& how)
 {
     if (m_settings.folderTyping == how || (how != u"first" && how != u"only"))

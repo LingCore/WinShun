@@ -72,6 +72,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool explorerMenu READ explorerMenu WRITE setExplorerMenu NOTIFY changed FINAL)
     Q_PROPERTY(bool explorerTyping READ explorerTyping WRITE setExplorerTyping NOTIFY changed FINAL)
     Q_PROPERTY(bool opusTyping READ opusTyping WRITE setOpusTyping NOTIFY changed FINAL)
+    Q_PROPERTY(QString opusTypingScope READ opusTypingScope WRITE setOpusTypingScope NOTIFY changed FINAL) // folder | all (GitHub #82)
     Q_PROPERTY(QString folderTyping READ folderTyping WRITE setFolderTyping NOTIFY changed FINAL) // first | only (GitHub #110)
     // The folder menu on a double click (Settings::folderMenu: on unless "off").
     Q_PROPERTY(bool folderMenu READ folderMenu WRITE setFolderMenu NOTIFY changed FINAL)
@@ -365,6 +366,8 @@ public:
     void setExplorerTyping(bool on);
     bool opusTyping() const { return m_settings.opusTyping; }
     void setOpusTyping(bool on);
+    QString opusTypingScope() const { return m_settings.opusTypingScope; }
+    void setOpusTypingScope(const QString& scope);
     QString folderTyping() const { return m_settings.folderTyping; }
     void setFolderTyping(const QString& how);
     bool folderMenu() const { return m_settings.folderMenu != u"off"; }

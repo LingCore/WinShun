@@ -4386,8 +4386,57 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
     check(QString::fromStdWString(filemanager::explorerFolder(secondTab)) == folder + u"\\child"_s
             && QDir::fromNativeSeparators(selected()).compare(QDir::fromNativeSeparators(nestedFile), Qt::CaseInsensitive) == 0,
         "Ctrl+Enter took the second tab to the subfolder and selected the file");
-    // The tab is brought to the front as the launcher goes: the warnings about
-    // its losing the front that this makes are no fault.
+
+    // Typed in Directory Opus (GitHub #82), by a window of its class standing
+    // in for a lister (production needs the real one only to read its folder):
+    // the box in the bottom right corner of the file list, the folder before
+    // the words or, as set (--opus-everywhere), nothing.
+    WNDCLASSW listerClass {};
+    listerClass.lpfnWndProc = ::DefWindowProcW;
+    listerClass.hInstance = ::GetModuleHandleW(nullptr);
+    listerClass.lpszClassName = L"dopus.lister";
+    ::RegisterClassW(&listerClass);
+    const HWND lister = ::CreateWindowExW(0, L"dopus.lister", L"Opus stand-in", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+        area.left + 20, area.top + 20, std::min<int>(1600, area.right - area.left - 40), area.bottom - area.top - 40,
+        nullptr, nullptr, listerClass.hInstance, nullptr);
+    RECT client {};
+    if (lister)
+        ::GetClientRect(lister, &client);
+    const HWND list = lister ? ::CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE, 300, 120,
+                                    client.right - 320, client.bottom - 140, lister, nullptr, listerClass.hInstance, nullptr)
+                             : nullptr;
+    const auto closeLister = qScopeGuard([&] {
+        app.hideLauncher();
+        if (lister)
+            ::DestroyWindow(lister);
+        ::UnregisterClassW(L"dopus.lister", listerClass.hInstance);
+    });
+    check(list != nullptr, "a stand-in Opus lister opened");
+    if (!list)
+        return false;
+    pump(300);
+    app.showFolderSearch(lister, list, true, folder);
+    pump(600);
+    settle(window, 3);
+    RECT listRect {}, boxRect {};
+    ::GetWindowRect(list, &listRect);
+    ::GetWindowRect(reinterpret_cast<HWND>(window->winId()), &boxRect);
+    const qreal scale = window->screen() ? window->screen()->devicePixelRatio() : 1.0;
+    const int gap = qRound(12 * scale);
+    const bool everywhere = QCoreApplication::arguments().contains(u"--opus-everywhere"_s);
+    check(boxRect.left >= listRect.left && boxRect.top >= listRect.top && boxRect.right <= listRect.right
+            && boxRect.bottom <= listRect.bottom,
+        "the Opus box is inside the file list");
+    check(std::abs(listRect.right - boxRect.right - gap) <= 2, "the Opus box sits 12 px from the right edge of the list");
+    report.insert(u"opus_list"_s, QJsonArray {int(listRect.left), int(listRect.top), int(listRect.right - listRect.left),
+        int(listRect.bottom - listRect.top)});
+    report.insert(u"opus_box"_s, QJsonArray {int(boxRect.left), int(boxRect.top), int(boxRect.right - boxRect.left),
+        int(boxRect.bottom - boxRect.top)});
+    check(everywhere ? launcher->typingFolder().isEmpty()
+                     : launcher->query() == prefix && !launcher->typingFolder().isEmpty(),
+        everywhere ? "the whole PC: no folder before the words" : "the tab's folder before the words");
+    // The tab and the stand-in come to the front as the launcher goes: the
+    // warnings about its losing the front that this makes are no fault.
     pump(500);
     g_warnings = warned;
     return ok;
@@ -5523,6 +5572,8 @@ int runRuntime(const QStringList& args)
     }
     QDir().mkpath(settings.indexFolders.front());
     if (typingProbe) {
+        settings.opusTypingScope = args.contains(u"--opus-everywhere"_s) ? u"all"_s : u"folder"_s;
+        settings.save();
         const QDir files(settings.indexFolders.front());
         for (int i = 1; i <= 3; ++i) {
             QFile file(files.filePath(u"follow_%1.txt"_s.arg(i)));

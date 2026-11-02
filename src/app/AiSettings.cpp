@@ -267,6 +267,12 @@ std::vector<Entry> buildCatalog()
                     "Off by default and independent of Explorer typing. Punctuation, shortcuts, menus and edit fields "
                     "stay in Opus."},
         &Settings::opusTyping));
+    add(choice({"Launcher/OpusTypingScope", QT_TRANSLATE_NOOP("AiSettings", "Directory Opus 里打字搜索的范围"),
+                   "files_and_dialogs", 2,
+                   "What typing in a Directory Opus file display searches: that tab's folder (the words go after its path, the folder's results first), or the whole PC with nothing before the words."},
+        &Settings::opusTypingScope,
+        {{u"folder"_s, u"the tab's folder first"_s, QT_TRANSLATE_NOOP("AiSettings", "当前文件夹")},
+            {u"all"_s, u"the whole PC, no folder before the words"_s, QT_TRANSLATE_NOOP("AiSettings", "整个电脑")}}));
     add(choice({"Launcher/FolderTyping", QT_TRANSLATE_NOOP("AiSettings", "在文件夹里打字时"), "files_and_dialogs", 2,
                    "What typing in a File Explorer or Directory Opus folder window lists. The folder and its subfolders come first and the rest of the PC under them (like Listary), or only that folder. Ctrl+Shift+D switches between the two for one search."},
         &Settings::folderTyping,

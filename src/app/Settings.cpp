@@ -839,6 +839,9 @@ void Settings::load()
     explorerMenu = readOrDefault(s, u"Launcher/ExplorerMenu"_s, d.explorerMenu);
     explorerTyping = readOrDefault(s, u"Launcher/ExplorerTyping"_s, d.explorerTyping);
     opusTyping = readOrDefault(s, u"Launcher/OpusTyping"_s, d.opusTyping);
+    opusTypingScope = readOrDefault(s, u"Launcher/OpusTypingScope"_s, d.opusTypingScope).trimmed().toLower();
+    if (opusTypingScope != u"all")
+        opusTypingScope = d.opusTypingScope;
     folderTyping = readOrDefault(s, u"Launcher/FolderTyping"_s, d.folderTyping).trimmed().toLower();
     if (folderTyping != u"only")
         folderTyping = d.folderTyping; // the folder first (GitHub #110), for those who had nothing to set before too
@@ -1189,6 +1192,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/ExplorerMenu"_s, explorerMenu);
     s.setValue(u"Launcher/ExplorerTyping"_s, explorerTyping);
     s.setValue(u"Launcher/OpusTyping"_s, opusTyping);
+    s.setValue(u"Launcher/OpusTypingScope"_s, opusTypingScope);
     s.setValue(u"Launcher/FolderTyping"_s, folderTyping);
     s.setValue(u"Launcher/FolderMenu"_s, folderMenu);
     s.setValue(u"Launcher/FolderMenuExplorer"_s, folderMenuExplorer);

@@ -38,4 +38,16 @@ inline QPoint place(const QRect& area, const QRect& obstacle, QSize size, QPoint
     return chosen;
 }
 
+// The bottom right corner of `target`, `gap` in from its edges, as Listary
+// opens its box over a file list; kept inside the work area, and where the
+// window is larger than the target, still from its top left.
+inline QPoint corner(const QRect& area, const QRect& target, QSize size, int gap = 12)
+{
+    size = size.boundedTo(area.size());
+    const int x = std::max(target.x(), target.x() + target.width() - size.width() - gap);
+    const int y = std::max(target.y(), target.y() + target.height() - size.height() - gap);
+    return {std::clamp(x, area.x(), area.x() + area.width() - size.width()),
+        std::clamp(y, area.y(), area.y() + area.height() - size.height())};
+}
+
 } // namespace ws::windowavoidance

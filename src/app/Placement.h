@@ -115,7 +115,8 @@ public:
     void setContentSize(QSize size);
     void placeOn(QScreen* screen); // before showing the window there, at its spot
     // A temporary spot beside the file manager typed in; never saved as home.
-    void avoidNative(const QRect& window, QScreen* screen);
+    // `inside`: in its bottom right corner rather than beside it.
+    void avoidNative(const QRect& window, QScreen* screen, bool inside = false);
     // Geometry supplied by the ordinary-process peer to its UIAccess display.
     void placeDisplay(const QRect& geometry, int room, bool above);
     // A user move in the display peer; retain the usual temporary/home rules.
@@ -278,6 +279,7 @@ private:
     int m_anchorWidth = 0;
     std::optional<QRect> m_box; // attached to it
     std::optional<QRect> m_avoid; // native bounds of the file manager typed in
+    bool m_avoidInside = false; // the corner of m_avoid, not beside it
     int m_boxGap = 0; // ... this far off it, logical pixels
     std::optional<TaskbarBox> m_taskbar; // over it
     std::optional<taskbar::Spot> m_taskbarSpot; // ... as attachTaskbar was given it

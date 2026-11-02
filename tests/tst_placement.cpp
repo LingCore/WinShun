@@ -126,6 +126,25 @@ private slots:
         QVERIFY(covered(moved) < covered(QRect(home, capacity)));
     }
 
+    void cornerOfFileList()
+    {
+        const QSize box(760, 600);
+        for (const auto& work : {QRect(0, 0, 1920, 1032), QRect(-2560, -200, 2560, 1400)}) {
+            // A file list well inside the work area: the box in its bottom right, 12 px in.
+            const QRect list(work.topLeft() + QPoint(300, 100), QSize(1400, 800));
+            QCOMPARE(windowavoidance::corner(work, list, box), QPoint(list.right() + 1 - 760 - 12, list.bottom() + 1 - 600 - 12));
+            // A maximized one: the same corner, off the taskbar (the work area ends there).
+            QCOMPARE(windowavoidance::corner(work, work, box), QPoint(work.right() + 1 - 760 - 12, work.bottom() + 1 - 600 - 12));
+            // A list smaller than the box: from its top left, still inside the work area.
+            const QRect small(work.topLeft() + QPoint(40, 60), QSize(500, 400));
+            QCOMPARE(windowavoidance::corner(work, small, box), small.topLeft());
+            // A list partly off the work area: pulled back onto it.
+            const QRect off(work.right() - 300, work.bottom() - 200, 800, 500);
+            const QRect placed(windowavoidance::corner(work, off, box), box);
+            QVERIFY(work.contains(placed));
+        }
+    }
+
     void clipboardBesideShellPanel()
     {
         for (const auto& work : {QRect(0, 0, 1920, 1032), QRect(-1920, -200, 1920, 1032)}) {

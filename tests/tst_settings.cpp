@@ -413,6 +413,29 @@ private slots:
         QVERIFY(settings.explorerTyping);
     }
 
+    // GitHub #82: typed in Opus, that tab's folder (the default, for an older
+    // profile and a value nobody knows too) or the whole PC.
+    void opusTypingScope()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QCOMPARE(settings.opusTypingScope, u"folder"_s);
+        settings.opusTypingScope = u"all"_s;
+        settings.save();
+        ws::Settings read;
+        read.load();
+        QCOMPARE(read.opusTypingScope, u"all"_s);
+
+        QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+        ini.setValue(u"Launcher/OpusTypingScope"_s, u"elsewhere"_s);
+        ini.sync();
+        read.load();
+        QCOMPARE(read.opusTypingScope, u"folder"_s);
+    }
+
     // GitHub #110: typed in a folder's window, its rows first (the new
     // default, for a profile from before too) or that folder alone.
     void folderTyping()

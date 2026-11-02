@@ -1613,13 +1613,29 @@ Window {
                     keywords: qsTr("Opus;DOpus;直接打字;输入;当前文件夹;双栏;type to search").split(";")
                     description: qsTr("文件列表有焦点时，输入字母或数字即可搜索当前文件夹")
                     tip: qsTr("符号键保留给 Opus，重命名和地址栏输入不受影响")
-                    unlocks: [folderTypingRow]
+                    unlocks: [opusScopeRow, folderTypingRow]
 
                     ToggleSwitch {
                         objectName: "opusTypingToggle"
                         checked: window.editor.opusTyping
                         Accessible.name: qsTr("在 Directory Opus 里直接打字搜索")
                         onToggled: (on) => window.editor.opusTyping = on
+                    }
+                }
+
+                SettingRow { // GitHub #82
+                    id: opusScopeRow
+                    sub: true
+                    shown: window.editor.opusTyping
+                    title: qsTr("在 Directory Opus 里搜索的范围")
+                    keywords: qsTr("Opus;DOpus;打字;范围;整个电脑;全盘;当前文件夹;type to search;scope").split(";")
+                    description: qsTr("搜索框出现在文件列表的右下角")
+                    tip: qsTr("整个电脑：搜索框里不带当前路径，直接全盘搜索")
+
+                    ScopeTabs {
+                        labels: [qsTr("当前文件夹"), qsTr("整个电脑")]
+                        current: window.editor.opusTypingScope === "all" ? 1 : 0
+                        onActivated: (index) => window.editor.opusTypingScope = index === 1 ? "all" : "folder"
                     }
                 }
 

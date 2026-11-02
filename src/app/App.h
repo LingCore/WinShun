@@ -152,9 +152,10 @@ public:
     // `inBox`: over Win顺's box there, its field drawn in the box when the
     // box is wide enough for it.
     // `on`: the screen to open on (typed in an Explorer window there), else
-    // the one under the mouse.
+    // the one under the mouse. `avoid`: the window typed in, which it opens
+    // beside; `inside`: in its bottom right corner instead (Placement::avoidNative).
     void showLauncher(const QString& query = {}, const std::optional<taskbar::Spot>& spot = {}, bool inBox = false,
-        QScreen* on = nullptr, HWND avoid = nullptr);
+        QScreen* on = nullptr, HWND avoid = nullptr, bool inside = false);
     void showFolderSearch(HWND root, HWND tab, bool opus, const QString& folder);
     void hideLauncher();
     // The launcher as the search panel (Launcher::panel): the window sized

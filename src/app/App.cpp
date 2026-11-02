@@ -2759,8 +2759,11 @@ void App::typingFolderKnown(HWND root, HWND tab, bool opus, std::uint64_t reques
 
 void App::showFolderSearch(HWND root, HWND tab, bool opus, const QString& folder)
 {
-    const QString prefix = folder.endsWith(u'\\') ? folder + u' ' : folder + u"\\ "_s;
-    showLauncher(prefix, {}, false, screenOf(::MonitorFromWindow(root, MONITOR_DEFAULTTONEAREST)), root);
+    // Typed in Opus, the box sits in the corner of its file list (as Listary's
+    // does) rather than over it, and may search the whole PC (GitHub #82).
+    const bool everywhere = opus && m_settings.opusTypingScope == u"all";
+    const QString prefix = everywhere ? QString() : folder.endsWith(u'\\') ? folder + u' ' : folder + u"\\ "_s;
+    showLauncher(prefix, {}, false, screenOf(::MonitorFromWindow(root, MONITOR_DEFAULTTONEAREST)), opus ? tab : root, opus);
     m_typingOrigin = {root, tab, opus, folder}; // after showLauncher, which clears it
     // What is found in that folder first, then elsewhere (or there alone, as
     // set: Launcher::setFolderTypingOnly), as Listary lists it (GitHub #110).
@@ -4290,7 +4293,8 @@ const char* App::rawInputState() const
     return raw.registration->hwndTarget == m_keyListener->window() ? "ok" : "other";
 }
 
-void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>& spot, bool inBox, QScreen* on, HWND avoid)
+void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>& spot, bool inBox, QScreen* on, HWND avoid,
+    bool inside)
 {
     if (!m_window)
         return;
@@ -4365,7 +4369,7 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
         screen = screen ? screen : QGuiApplication::primaryScreen();
         RECT bounds {};
         if (avoid && ::GetWindowRect(avoid, &bounds))
-            m_placement->avoidNative(QRect(bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top), screen);
+            m_placement->avoidNative(QRect(bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top), screen, inside);
         else
             m_placement->placeOn(screen);
     }

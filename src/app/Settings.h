@@ -129,6 +129,9 @@ struct Settings {
     // letters: off unless asked for, so that an upgrade changes nothing.
     bool explorerTyping = false;
     bool opusTyping = false; // opt in per manager: typing in an Opus file display (GitHub #82)
+    // folder | all: typed in Opus, the launcher opens on that tab's folder, or
+    // with nothing before the words, to search the whole PC.
+    QString opusTypingScope = QStringLiteral("folder");
     // first | only: typed in such a window, what is found in its folder
     // first, then the rest of the index under a caption, as Listary lists it
     // (GitHub #110); or that folder alone, as it searched before. Ctrl+Shift+D
