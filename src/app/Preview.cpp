@@ -5381,7 +5381,6 @@ int runRuntime(const QStringList& args)
         settings.clipboardImages = false;
         settings.clipboardHoldToStep = false;
     }
-
     settings.clipboardWinV = false;
     settings.clipboardHotkey.clear();
     settings.pluginConfig(u"winshun.switches"_s).enabled = false; // optional unless --runtime-plugins installs it
@@ -5489,7 +5488,7 @@ int runRuntime(const QStringList& args)
         bool passed = false;
         try {
             App app;
-            passed = app.start({.background = true, .clipboardDisplayProbe = args.contains(u"--clipboard-display-probe"_s)}) && probeOnboarding(args, out, report);
+            passed = app.start({.background = true}) && probeOnboarding(args, out, report);
         } catch (const std::exception& error) {
             report.insert(u"error"_s, QString::fromUtf8(error.what()));
             say(u"onboarding probe aborted: "_s + QString::fromUtf8(error.what()));
@@ -5781,13 +5780,14 @@ void prepare(const QStringList& args)
         qunsetenv("QT_QUICK_BACKEND"); // the same native text path as the launcher
     else
         qputenv("QT_QUICK_BACKEND", "software"); // renders without a window on screen
-    qputenv("QT_QPA_PLATFORM", webForm && !nativeWeb ? "windows:fontengine=gdi" : "windows:fontengine=freetype");
+    qputenv("QT_QPA_PLATFORM", resultsMode || nativeWeb ? "windows:fontengine=freetype" : "windows:fontengine=gdi");
     // Nothing of the user's is read or written: a profile folder of its own.
     Settings::useProfile(QDir::temp().filePath(u"WinShun-preview-"_s + QUuid::createUuid().toString(QUuid::WithoutBraces).left(8)));
 }
 
 int run(const QStringList& args)
 {
+    QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
     const bool settingsMode = args.contains(kSettingsFlag);
     const bool resultsMode = args.contains(kResultsFlag);
     const bool cardsMode = args.contains(kAiCardsFlag);

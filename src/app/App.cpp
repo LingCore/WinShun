@@ -123,8 +123,8 @@
 #include <QWinEventNotifier>
 
 #include <windows.h>
-
 #include <dwmapi.h>
+
 #include <cmath>
 #include <thread>
 
