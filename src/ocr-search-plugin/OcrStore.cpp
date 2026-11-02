@@ -3,6 +3,7 @@
 #include "ContentIndex.h"
 #include "Query.h"
 
+#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
@@ -10,7 +11,7 @@
 #include <QJsonDocument>
 #include <QHash>
 #include <QRegularExpression>
-#include <QSet>
+#include <QScopeGuard>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QUuid>
@@ -52,6 +53,32 @@ QString indexTokens(const QString& text)
     for (auto key : keys)
         tokens.append(gramToken(key));
     return tokens.join(u' ');
+}
+
+// Contentless FTS5 deletes must name exactly the tokens once inserted, so the
+// index records which gram rules (src/core grams) made its tokens. Any change
+// to their output for this probe -- CJK pairs and singles, ASCII triples,
+// digits, punctuation, scripts that are not indexed -- rebuilds the tokens.
+QString termsRules()
+{
+    static const QString rules = [] {
+        const QString probe = u"报销规定 去年的 申 invoice 731905 abc-12.5 ab x документ λόγος カタカナ 한국어 ①② 𠀀𠀁"_s;
+        return u"1:"_s
+            + QString::fromLatin1(
+                QCryptographicHash::hash(indexTokens(probe).toUtf8(), QCryptographicHash::Sha256).toHex().left(16));
+    }();
+    return rules;
+}
+QString storedTermsRules(const QSqlDatabase& db)
+{
+    QSqlQuery q(db);
+    return q.exec(u"SELECT value FROM meta WHERE key='terms'"_s) && q.next() ? q.value(0).toString() : QString();
+}
+
+// A key under a folder's key (both pathKey()s).
+bool under(const QString& key, const QString& folder)
+{
+    return key == folder || key.startsWith(folder.endsWith(u'/') ? folder : folder + u'/');
 }
 } // namespace
 
@@ -110,9 +137,7 @@ QString pathKey(const QString& path)
 
 bool inside(const QString& path, const QString& folder)
 {
-    const QString p = pathKey(path);
-    const QString f = pathKey(folder);
-    return p == f || p.startsWith(f.endsWith(u'/') ? f : f + u'/');
+    return under(pathKey(path), pathKey(folder));
 }
 
 Store::Store(const QString& folder, int capacityMB)
@@ -140,7 +165,7 @@ Store::Store(const QString& folder, int capacityMB)
         if (schemaVersion > 2)
             throw std::runtime_error("This OCR index needs a newer plugin");
         if (capacityMB == 0) {
-            if (schemaVersion != 2)
+            if (schemaVersion != 2 || storedTermsRules(m_db) != termsRules())
                 throw std::runtime_error("The OCR index must be upgraded before searching");
             return;
         }
@@ -155,12 +180,11 @@ Store::Store(const QString& folder, int capacityMB)
             throw std::runtime_error("Cannot read the OCR index page size");
         const int bytesPerPage = pageSize.value(0).toInt();
         pageSize.finish();
-        exec(u"PRAGMA max_page_count=%1"_s.arg(qint64(std::clamp(capacityMB, 16, 4096)) * 1024 * 1024 / bytesPerPage));
-        if (schemaVersion < 2) {
-            if (!m_db.transaction())
-                throw std::runtime_error(m_db.lastError().text().toStdString());
-            m_transaction = true;
-        }
+        m_maxPages = qint64(std::clamp(capacityMB, 16, 4096)) * 1024 * 1024 / bytesPerPage;
+        exec(u"PRAGMA max_page_count=%1"_s.arg(m_maxPages));
+        // Version 1: all schema/data changes roll back together on failure.
+        if (schemaVersion < 2)
+            begin();
         exec(
             u"CREATE TABLE IF NOT EXISTS files(path TEXT PRIMARY KEY,display TEXT NOT NULL,size INTEGER,modified INTEGER,hash BLOB,engine TEXT,generation INTEGER,status TEXT,error TEXT)"_s);
         exec(u"CREATE INDEX IF NOT EXISTS file_hash ON files(hash,engine,status)"_s);
@@ -170,24 +194,16 @@ Store::Store(const QString& folder, int capacityMB)
             u"CREATE TABLE IF NOT EXISTS pages(file TEXT REFERENCES files(path) ON DELETE CASCADE,number INTEGER,asset INTEGER REFERENCES assets(id),label TEXT,source TEXT,PRIMARY KEY(file,number)) WITHOUT ROWID"_s);
         exec(u"CREATE INDEX IF NOT EXISTS page_asset ON pages(asset)"_s);
         exec(u"CREATE VIRTUAL TABLE IF NOT EXISTS asset_terms USING fts5(tokens,content='',detail=none,columnsize=0)"_s);
-        if (schemaVersion < 2) {
-            // Reuse stored recognition: migration never decodes source images
-            // or calls OCR. All schema/data changes roll back together on failure.
-            QSqlQuery assets(m_db), insert(m_db);
-            if (!assets.exec(u"SELECT id,text FROM assets ORDER BY id"_s))
-                throw std::runtime_error(assets.lastError().text().toStdString());
-            insert.prepare(u"INSERT INTO asset_terms(rowid,tokens) VALUES(?,?)"_s);
-            while (assets.next()) {
-                insert.bindValue(0, assets.value(0));
-                insert.bindValue(1, indexTokens(QString::fromUtf8(qUncompress(assets.value(1).toByteArray()))));
-                checked(insert);
-            }
-            assets.finish();
+        exec(u"CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY,value TEXT)"_s);
+        if (schemaVersion < 2 || storedTermsRules(m_db) != termsRules()) {
+            // Reuse stored recognition: rebuilding never decodes source images
+            // or calls OCR, and asset IDs and highlight boxes stay the same.
+            if (!m_transaction)
+                begin();
+            rebuildTerms();
             exec(u"DROP TABLE IF EXISTS grams"_s);
             exec(u"PRAGMA user_version=2"_s);
-            if (!m_db.commit())
-                throw std::runtime_error(m_db.lastError().text().toStdString());
-            m_transaction = false;
+            commit();
             reclaim();
         }
     } catch (...) {
@@ -217,6 +233,41 @@ void Store::exec(const QString& sql) const
         throw std::runtime_error(query.lastError().text().toStdString());
 }
 
+void Store::begin()
+{
+    if (!m_db.transaction())
+        throw std::runtime_error(m_db.lastError().text().toStdString());
+    m_transaction = true;
+}
+
+void Store::commit()
+{
+    if (!m_db.commit()) {
+        const QString error = m_db.lastError().text();
+        rollback();
+        throw std::runtime_error(error.toStdString());
+    }
+    m_transaction = false;
+}
+
+void Store::rebuildTerms()
+{
+    exec(u"INSERT INTO asset_terms(asset_terms) VALUES('delete-all')"_s);
+    QSqlQuery assets(m_db), insert(m_db);
+    if (!assets.exec(u"SELECT id,text FROM assets ORDER BY id"_s))
+        throw std::runtime_error(assets.lastError().text().toStdString());
+    insert.prepare(u"INSERT INTO asset_terms(rowid,tokens) VALUES(?,?)"_s);
+    while (assets.next()) {
+        insert.bindValue(0, assets.value(0));
+        insert.bindValue(1, indexTokens(QString::fromUtf8(qUncompress(assets.value(1).toByteArray()))));
+        checked(insert);
+    }
+    assets.finish();
+    insert.prepare(u"INSERT OR REPLACE INTO meta VALUES('terms',?)"_s);
+    insert.addBindValue(termsRules());
+    checked(insert);
+}
+
 void Store::reclaim()
 {
     // QSQLITE treats incremental_vacuum as a non-select (zero columns), so
@@ -238,35 +289,34 @@ void Store::reclaim()
     exec(u"PRAGMA wal_checkpoint(TRUNCATE)"_s);
 }
 
-bool Store::current(const QString& path, qint64 size, qint64 modified, const QString& engine) const
+QString Store::state(const QString& path, qint64 size, qint64 modified, const QString& engine) const
 {
     QSqlQuery q(m_db);
-    q.prepare(
-        u"SELECT 1 FROM files WHERE path=? AND size=? AND modified=? AND engine=? AND status IN ('ready','empty','partial','unsupported')"_s);
+    q.prepare(u"SELECT status FROM files WHERE path=? AND size=? AND modified=? AND engine=?"_s);
     q.addBindValue(pathKey(path));
     q.addBindValue(size);
     q.addBindValue(modified);
     q.addBindValue(engine);
     checked(q);
-    return q.next();
+    return q.next() ? q.value(0).toString() : QString();
 }
 
-void Store::touch(const QString& path, qint64 generation)
+bool settled(const QString& status)
 {
-    QSqlQuery q(m_db);
-    q.prepare(u"UPDATE files SET generation=? WHERE path=?"_s);
-    q.addBindValue(generation);
-    q.addBindValue(pathKey(path));
-    checked(q);
+    static const QStringList done {u"ready"_s, u"empty"_s, u"partial"_s, u"unsupported"_s, u"failed"_s};
+    return done.contains(status);
+}
+
+bool Store::current(const QString& path, qint64 size, qint64 modified, const QString& engine) const
+{
+    return settled(state(path, size, modified, engine));
 }
 
 void Store::beginFile(
     const QString& path, qint64 size, qint64 modified, const QByteArray& hash, const QString& engine, qint64 generation)
 {
     rollback();
-    if (!m_db.transaction())
-        throw std::runtime_error(m_db.lastError().text().toStdString());
-    m_transaction = true;
+    begin();
     m_file = pathKey(path);
     m_page = 0;
     QSqlQuery q(m_db);
@@ -362,11 +412,8 @@ void Store::finishFile(const QString& status, const QString& error)
     q.addBindValue(error.isNull() ? u""_s : error);
     q.addBindValue(m_file);
     checked(q);
-    if (!m_db.commit()) {
-        rollback();
-        throw std::runtime_error(m_db.lastError().text().toStdString());
-    }
-    m_transaction = false;
+    commit();
+    ++m_changes;
 }
 
 void Store::rollback()
@@ -383,59 +430,135 @@ void Store::status(const QString& path, qint64 size, qint64 modified, const QStr
     finishFile(state, error);
 }
 
-void Store::prune(const QString& root, qint64 generation)
+void Store::prune(const QString& root, const QSet<QString>& seen, const QStringList& unreadable)
 {
+    const QString rootKey = pathKey(root);
+    QStringList kept;
+    for (const QString& folder : unreadable)
+        kept.append(pathKey(folder));
     QSqlQuery q(m_db);
-    q.exec(u"SELECT path,generation FROM files"_s);
+    if (!q.exec(u"SELECT path FROM files"_s))
+        throw std::runtime_error(q.lastError().text().toStdString());
     QStringList stale;
     while (q.next()) {
-        if (inside(q.value(0).toString(), root) && q.value(1).toLongLong() != generation)
-            stale.append(q.value(0).toString());
+        const QString path = q.value(0).toString();
+        if (under(path, rootKey) && !seen.contains(path)
+            && std::none_of(kept.begin(), kept.end(), [&](const QString& folder) { return under(path, folder); }))
+            stale.append(path);
     }
-    q.prepare(u"DELETE FROM files WHERE path=?"_s);
-    for (const QString& path : stale) {
-        q.bindValue(0, path);
-        checked(q);
-    }
+    q.finish();
+    remove(stale);
 }
 
 void Store::retainFolders(const QStringList& roots)
 {
+    QStringList keys;
+    for (const QString& root : roots)
+        keys.append(pathKey(root));
     QSqlQuery q(m_db);
-    q.exec(u"SELECT path FROM files"_s);
+    if (!q.exec(u"SELECT path FROM files"_s))
+        throw std::runtime_error(q.lastError().text().toStdString());
     QStringList stale;
     while (q.next()) {
         const QString path = q.value(0).toString();
-        if (std::none_of(roots.begin(), roots.end(), [&](const QString& root) { return inside(path, root); }))
+        if (std::none_of(keys.begin(), keys.end(), [&](const QString& root) { return under(path, root); }))
             stale.append(path);
     }
-    q.prepare(u"DELETE FROM files WHERE path=?"_s);
-    for (const QString& path : stale) {
-        q.bindValue(0, path);
-        checked(q);
+    q.finish();
+    remove(stale);
+}
+
+void Store::uncap()
+{
+    exec(u"PRAGMA max_page_count=1073741823"_s);
+}
+
+void Store::recap() noexcept
+{
+    QSqlQuery(m_db).exec(u"PRAGMA max_page_count=%1"_s.arg(m_maxPages));
+}
+
+// Freeing space can itself need new pages (FTS5 records deletions as new
+// segment data, b-trees rebalance), so maintenance runs above the user's cap
+// and the cap applies again afterwards: a full index can still be emptied.
+void Store::remove(const QStringList& paths)
+{
+    if (paths.isEmpty())
+        return;
+    uncap();
+    const auto capped = qScopeGuard([this] { recap(); });
+    begin();
+    try {
+        QSqlQuery q(m_db);
+        q.prepare(u"DELETE FROM files WHERE path=?"_s);
+        for (const QString& path : paths) {
+            q.bindValue(0, path);
+            checked(q);
+        }
+        commit();
+    } catch (...) {
+        rollback();
+        throw;
     }
+    m_changes += paths.size();
 }
 
 void Store::compact()
 {
-    if (!m_db.transaction())
-        throw std::runtime_error(m_db.lastError().text().toStdString());
-    m_transaction = true;
-    QSqlQuery stale(m_db), remove(m_db);
-    if (!stale.exec(u"SELECT id,text FROM assets WHERE NOT EXISTS(SELECT 1 FROM pages WHERE pages.asset=assets.id)"_s))
-        throw std::runtime_error(stale.lastError().text().toStdString());
-    remove.prepare(u"INSERT INTO asset_terms(asset_terms,rowid,tokens) VALUES('delete',?,?)"_s);
-    while (stale.next()) {
-        remove.bindValue(0, stale.value(0));
-        remove.bindValue(1, indexTokens(QString::fromUtf8(qUncompress(stale.value(1).toByteArray()))));
-        checked(remove);
+    uncap();
+    const auto capped = qScopeGuard([this] { recap(); });
+    QSqlQuery count(m_db);
+    if (!count.exec(u"SELECT count(*),EXISTS(SELECT 1 FROM pages) FROM assets"_s) || !count.next())
+        throw std::runtime_error(count.lastError().text().toStdString());
+    const qint64 total = count.value(0).toLongLong();
+    const bool referenced = count.value(1).toBool();
+    count.finish();
+    qint64 removed = 0;
+    begin();
+    try {
+        if (!referenced) {
+            // Nothing refers to any recognition (the index was cleared): one
+            // command empties the inverted index instead of one per asset.
+            removed = total;
+            if (removed) {
+                exec(u"INSERT INTO asset_terms(asset_terms) VALUES('delete-all')"_s);
+                exec(u"DELETE FROM assets"_s);
+            }
+        } else {
+            QSqlQuery stale(m_db), remove(m_db);
+            if (!stale.exec(
+                    u"SELECT id,text FROM assets WHERE NOT EXISTS(SELECT 1 FROM pages WHERE pages.asset=assets.id)"_s))
+                throw std::runtime_error(stale.lastError().text().toStdString());
+            remove.prepare(u"INSERT INTO asset_terms(asset_terms,rowid,tokens) VALUES('delete',?,?)"_s);
+            while (stale.next()) {
+                remove.bindValue(0, stale.value(0));
+                remove.bindValue(1, indexTokens(QString::fromUtf8(qUncompress(stale.value(1).toByteArray()))));
+                checked(remove);
+                ++removed;
+            }
+            stale.finish();
+            if (removed)
+                exec(u"DELETE FROM assets WHERE NOT EXISTS(SELECT 1 FROM pages WHERE pages.asset=assets.id)"_s);
+        }
+        commit();
+    } catch (...) {
+        rollback();
+        throw;
     }
-    stale.finish();
-    exec(u"DELETE FROM assets WHERE NOT EXISTS(SELECT 1 FROM pages WHERE pages.asset=assets.id)"_s);
-    exec(u"INSERT INTO asset_terms(asset_terms) VALUES('optimize')"_s);
-    if (!m_db.commit())
-        throw std::runtime_error(m_db.lastError().text().toStdString());
-    m_transaction = false;
+    if (removed || m_changes) {
+        // Rewriting the whole inverted index pays off only after big deletes;
+        // otherwise a bounded merge. In its own transaction: when it finds no
+        // room, the deletions above stay done and a later round merges again.
+        try {
+            begin();
+            exec(removed && removed * 10 >= total ? u"INSERT INTO asset_terms(asset_terms) VALUES('optimize')"_s
+                                                  : u"INSERT INTO asset_terms(asset_terms,rank) VALUES('merge',500)"_s);
+            commit();
+        } catch (const std::exception&) {
+            rollback();
+        }
+    }
+    m_changes = 0;
     reclaim();
 }
 
@@ -489,14 +612,17 @@ QList<OcrPiece> piecesFromJson(const QJsonArray& array)
     return out;
 }
 
-QList<OcrPiece> Store::pieces(qint64 id) const
+QList<OcrPiece> Store::pieces(qint64 id, QSize* size) const
 {
     QSqlQuery q(m_db);
-    q.prepare(u"SELECT pieces FROM assets WHERE id=?"_s);
+    q.prepare(u"SELECT pieces,width,height FROM assets WHERE id=?"_s);
     q.addBindValue(id);
     checked(q);
-    return q.next() ? piecesFromJson(QJsonDocument::fromJson(qUncompress(q.value(0).toByteArray())).array())
-                    : QList<OcrPiece> {};
+    if (!q.next())
+        return {};
+    if (size)
+        *size = QSize(q.value(1).toInt(), q.value(2).toInt());
+    return piecesFromJson(QJsonDocument::fromJson(qUncompress(q.value(0).toByteArray())).array());
 }
 
 QList<Hit> Store::search(const QString& words, int limit, const QJsonObject& filters, const Cancel& cancel) const
@@ -516,20 +642,27 @@ QList<Hit> Store::search(const QString& words, int limit, const QJsonObject& fil
         if (!tokens.isEmpty())
             candidates.append(tokens.join(u" AND "_s));
     }
+    // Words without an indexed gram (one or two Latin letters or digits,
+    // Cyrillic, Greek, ...) cannot be looked up: no scan of every file.
+    if (candidates.isEmpty())
+        return {};
     const QDateTime from = QDateTime::fromString(filters.value(u"modifiedFrom"_s).toString(), Qt::ISODate);
     const QDateTime to = QDateTime::fromString(filters.value(u"modifiedTo"_s).toString(), Qt::ISODate);
     QList<QRegularExpression> excludedNames;
     for (const auto& value : filters.value(u"excludedFileNames"_s).toArray())
         excludedNames.append(QRegularExpression(QRegularExpression::wildcardToRegularExpression(value.toString()),
             QRegularExpression::CaseInsensitiveOption));
-    const auto accepted = [&](const QFileInfo& info) {
+    const QString folder = filters.value(u"folder"_s).toString();
+    const QString picked = filters.value(u"contentPick"_s).toString();
+    const auto extensions = filters.value(u"extensions"_s).toArray();
+    const auto excludedExtensions = filters.value(u"excludedExtensions"_s).toArray();
+    // From the path alone, before any text is read or the file is looked at.
+    const auto acceptedPath = [&](const QFileInfo& info) {
         const QString path = info.absoluteFilePath();
-        const QString folder = filters.value(u"folder"_s).toString();
         if (scope.folders.empty() && !folder.isEmpty() && !inside(path, folder))
             return false;
         if (!scope.folders.empty()) {
             bool matches = false;
-            const QString picked = filters.value(u"contentPick"_s).toString();
             for (const ContentFolderSpec& spec : scope.folders) {
                 if (!picked.isEmpty()) {
                     matches |= inside(path, picked);
@@ -550,17 +683,20 @@ QList<Hit> Store::search(const QString& words, int limit, const QJsonObject& fil
             if (!matches)
                 return false;
         }
-        const auto extensions = filters.value(u"extensions"_s).toArray();
         if (!extensions.isEmpty() && std::none_of(extensions.begin(), extensions.end(), [&](const auto& ext) {
                 return ext.toString().compare(info.suffix(), Qt::CaseInsensitive) == 0;
             }))
             return false;
-        for (const auto& ext : filters.value(u"excludedExtensions"_s).toArray())
+        for (const auto& ext : excludedExtensions)
             if (ext.toString().compare(info.suffix(), Qt::CaseInsensitive) == 0)
                 return false;
         for (const auto& pattern : excludedNames)
             if (pattern.match(info.fileName()).hasMatch())
                 return false;
+        return true;
+    };
+    // The file itself: only for rows whose text matched, at most `limit` of them.
+    const auto acceptedFile = [&](const QFileInfo& info) {
         const auto minimum = filters.value(u"minSize"_s), maximum = filters.value(u"maxSize"_s);
         if ((minimum.isDouble() && info.size() < minimum.toInteger())
             || (maximum.isDouble() && info.size() > maximum.toInteger()))
@@ -577,20 +713,19 @@ QList<Hit> Store::search(const QString& words, int limit, const QJsonObject& fil
     for (const QString& candidate : candidates)
         files.addBindValue(candidate);
     checked(files);
+    QSqlQuery pages(m_db);
+    pages.prepare(
+        u"SELECT a.id,a.text,p.label,p.source FROM pages p JOIN assets a ON a.id=p.asset WHERE p.file=? ORDER BY p.number"_s);
     QList<Hit> out;
     QHash<qint64, QString> cache;
     while (files.next()) {
         if (cancel && cancel())
             break;
         const QString path = files.value(0).toString();
-        const QFileInfo info(path);
-        if (!info.exists() || info.size() != files.value(1).toLongLong()
-            || info.lastModified().toMSecsSinceEpoch() != files.value(2).toLongLong() || !accepted(info))
+        QFileInfo info(path);
+        if (!acceptedPath(info))
             continue;
-        QSqlQuery pages(m_db);
-        pages.prepare(
-            u"SELECT a.id,a.text,p.label,p.source FROM pages p JOIN assets a ON a.id=p.asset WHERE p.file=? ORDER BY p.number"_s);
-        pages.addBindValue(files.value(3));
+        pages.bindValue(0, files.value(3));
         checked(pages);
         QList<bool> found(terms.size(), false);
         int remaining = int(terms.size()), bestCount = 0;
@@ -622,17 +757,23 @@ QList<Hit> Store::search(const QString& words, int limit, const QJsonObject& fil
             }
             if (count > bestCount) {
                 bestCount = count;
-                best = {path, {}, {}, asset, info.size(), info.lastModified().toSecsSinceEpoch(),
-                    QJsonDocument::fromJson(pages.value(3).toString().toUtf8()).object()};
+                best = {path, {}, {}, asset, 0, 0, QJsonDocument::fromJson(pages.value(3).toString().toUtf8()).object()};
                 best.location = locationText(best.source, pages.value(2).toString());
-                best.source.insert(u"fileModifiedMs"_s, info.lastModified().toMSecsSinceEpoch());
                 bestText = text;
             }
             if (!remaining)
                 break;
         }
+        pages.finish();
         if (remaining || !best.asset)
             continue;
+        // Still the file that was recognised: same size and modified time.
+        if (!info.exists() || info.size() != files.value(1).toLongLong()
+            || info.lastModified().toMSecsSinceEpoch() != files.value(2).toLongLong() || !acceptedFile(info))
+            continue;
+        best.size = info.size();
+        best.modified = info.lastModified().toSecsSinceEpoch();
+        best.source.insert(u"fileModifiedMs"_s, info.lastModified().toMSecsSinceEpoch());
         for (const auto& piece : pieces(best.asset)) {
             const QString text = normalized(piece.text);
             if (std::any_of(terms.begin(), terms.end(), [&](const QString& term) { return text.contains(term); })) {

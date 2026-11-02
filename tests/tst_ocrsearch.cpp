@@ -1,6 +1,7 @@
 #include "OcrSource.h"
 #include "OcrStore.h"
 #include "OcrWorker.h"
+#include "PictureFile.h"
 #include "Host.h"
 #include "Install.h"
 #include "ContentIndex.h"
@@ -15,6 +16,8 @@
 #include <QJsonArray>
 #include <QPainter>
 #include <QPdfWriter>
+#include <QProcess>
+#include <QScopeGuard>
 #include <QTemporaryDir>
 #include <QSettings>
 #include <QSqlQuery>
@@ -22,6 +25,7 @@
 #include <QTest>
 
 #include <miniz.h>
+#include <objbase.h>
 
 using namespace Qt::StringLiterals;
 using namespace ws::ocrsearch;
@@ -120,6 +124,8 @@ void pdf(const QString& path, const QByteArray& png)
     painter.setFont(QFont(u"Arial"_s, 24));
     painter.drawText(40, 80, u"This page has a native text layer"_s);
     painter.drawImage(QRect(30, 150, 700, 210), QImage::fromData(png));
+    writer.newPage();
+    painter.drawText(40, 80, u"Text only: nothing to recognise"_s);
     painter.end();
 }
 qint64 add(Store& store, const QString& path, const QString& text, qint64 generation = 1)
@@ -134,6 +140,56 @@ qint64 add(Store& store, const QString& path, const QString& text, qint64 genera
     store.addPage(id, u"test image"_s, {{u"kind"_s, u"image"_s}, {u"frame"_s, 0}});
     store.finishFile();
     return id;
+}
+QByteArray bigEndian(quint32 value)
+{
+    const char bytes[] {char(value >> 24), char(value >> 16), char(value >> 8), char(value)};
+    return QByteArray(bytes, 4);
+}
+QByteArray pngChunk(const char* type, const QByteArray& data)
+{
+    const QByteArray body = QByteArray(type, 4) + data;
+    return bigEndian(quint32(data.size())) + body
+        + bigEndian(quint32(mz_crc32(MZ_CRC32_INIT, reinterpret_cast<const unsigned char*>(body.constData()),
+            size_t(body.size()))));
+}
+// A small PNG file (a few kB) whose header says width x height: one bit per
+// pixel, all zero, compressed.
+QByteArray pngBomb(quint32 width, quint32 height)
+{
+    const QByteArray header = bigEndian(width) + bigEndian(height) + QByteArray("\x01\x00\x00\x00\x00", 5);
+    const QByteArray rows(qsizetype(1 + (width + 7) / 8) * height, '\0');
+    mz_ulong size = mz_compressBound(mz_ulong(rows.size()));
+    QByteArray packed(qsizetype(size), '\0');
+    if (mz_compress(reinterpret_cast<unsigned char*>(packed.data()), &size,
+            reinterpret_cast<const unsigned char*>(rows.constData()), mz_ulong(rows.size()))
+        != MZ_OK)
+        throw std::runtime_error("png compress");
+    packed.resize(qsizetype(size));
+    return QByteArray("\x89PNG\r\n\x1a\n", 8) + pngChunk("IHDR", header) + pngChunk("IDAT", packed)
+        + pngChunk("IEND", {});
+}
+int icacls(const QStringList& arguments)
+{
+    QProcess process;
+    process.setStandardOutputFile(QProcess::nullDevice());
+    process.start(u"icacls"_s, arguments);
+    return process.waitForFinished(30000) ? process.exitCode() : -1;
+}
+// Indexes `folders` in this process (no worker, no OCR needed for files that
+// fail to decode); returns the last progress message.
+QString scanHere(const QString& index, const QStringList& folders, bool retry = false)
+{
+    ScanOptions options;
+    options.folders = folders;
+    options.retry = retry;
+    QString message;
+    scan(QCoreApplication::applicationDirPath(), index, options, [] { return false; },
+        [&](const ScanProgress& p) {
+            if (!p.message.isEmpty())
+                message = p.message;
+        });
+    return message;
 }
 } // namespace
 
@@ -176,7 +232,7 @@ private slots:
         QCOMPARE(store.search(u"报销"_s, 20).size(), 2);
         QCOMPARE(store.statistics().value(u"assets"_s).toInt(), 1);
         QCOMPARE(store.pieces(asset).first().text, u"报销规定"_s);
-        store.prune(temp.path(), 2);
+        store.prune(temp.path(), {pathKey(b)});
         QCOMPARE(store.search(u"报销"_s, 20).size(), 1);
         QCOMPARE(store.search(u"报销"_s, 20).first().path, QDir::toNativeSeparators(b));
         store.retainFolders({});
@@ -293,9 +349,10 @@ private slots:
         QCOMPARE(store.search(u"INVOICE 申请编号 271"_s, 100).size(), 1);
         qInfo() << "Dense index selective query ms:" << timer.elapsed();
         QCOMPARE(store.pieces(store.search(u"INVOICE 申请编号 271"_s, 100).first().asset).size(), 40);
+        QSet<QString> seen;
         for (int i = 250; i < 500; ++i)
-            store.touch(temp.filePath(u"scan-%1.png"_s.arg(i)), 2);
-        store.prune(temp.path(), 2);
+            seen.insert(pathKey(temp.filePath(u"scan-%1.png"_s.arg(i))));
+        store.prune(temp.path(), seen);
         store.compact();
         QCOMPARE(store.statistics().value(u"assets"_s).toInt(), 250);
         QVERIFY(store.statistics().value(u"bytes"_s).toInteger() < bytes);
@@ -418,6 +475,35 @@ private slots:
         QSqlDatabase::removeDatabase(u"future-fixture"_s);
     }
 
+    void changedGramRulesRebuildFromStoredText()
+    {
+        QTemporaryDir temp;
+        const QString index = temp.filePath(u"index"_s), path = temp.filePath(u"scan.png"_s);
+        write(path, "fixture");
+        {
+            Store store(index);
+            add(store, path, u"报销规定 INVOICE 731905"_s);
+        }
+        // An index written under other gram rules: its postings are useless.
+        {
+            auto db = QSqlDatabase::addDatabase(u"QSQLITE"_s, u"rules-fixture"_s);
+            db.setDatabaseName(QDir(index).filePath(u"ocr-index.sqlite"_s));
+            QVERIFY(db.open());
+            QSqlQuery q(db);
+            QVERIFY(q.exec(u"INSERT INTO asset_terms(asset_terms) VALUES('delete-all')"_s));
+            QVERIFY(q.exec(u"UPDATE meta SET value='0:old' WHERE key='terms'"_s));
+            QCOMPARE(q.numRowsAffected(), 1);
+        }
+        QSqlDatabase::removeDatabase(u"rules-fixture"_s);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, (Store {index, 0}));
+        {
+            Store store(index); // rebuilds without the original file or OCR
+            QCOMPARE(store.search(u"报销 invoice"_s, 10).size(), 1);
+        }
+        Store reader(index, 0);
+        QCOMPARE(reader.search(u"731905"_s, 10).size(), 1);
+    }
+
     void migrationFailureRollsBackLegacySchema()
     {
         QTemporaryDir temp;
@@ -524,7 +610,7 @@ private slots:
             pages.append(page);
             QCOMPARE(previewImage(path, source).size(), image.size());
         });
-        QCOMPARE(result.images, 2);
+        QCOMPARE(result.images, 2); // page 3 has no picture: not rendered
         QCOMPARE(pages, QList<int>({1, 2}));
     }
     void externalImageIsNotRead()
@@ -559,6 +645,207 @@ private slots:
         QVERIFY_THROWS_EXCEPTION(std::runtime_error,
             extractImages(path, [](const QImage&, const QString&, const QJsonObject&) {}, [] { return true; }));
     }
+    void unreadableFolderOnlyKeepsItsOwnEntries()
+    {
+        QTemporaryDir temp;
+        const QString root = temp.filePath(u"root"_s), locked = temp.filePath(u"root/locked"_s);
+        const QString index = temp.filePath(u"index"_s);
+        QVERIFY(QDir().mkpath(locked));
+        QVERIFY(QDir().mkpath(temp.filePath(u"root/open"_s)));
+        // Undecodable pictures: recorded as failed without any OCR.
+        write(QDir(locked).filePath(u"x.png"_s), "broken");
+        write(temp.filePath(u"root/open/y.png"_s), "broken");
+        write(temp.filePath(u"root/m.png"_s), "broken");
+        scanHere(index, {root});
+        {
+            Store store(index, 0);
+            QCOMPARE(store.statistics().value(u"failed"_s).toInt(), 3);
+        }
+        // Listing `locked` is now refused (like System Volume Information).
+        const QString everyone = u"*S-1-1-0"_s;
+        QCOMPARE(icacls({QDir::toNativeSeparators(locked), u"/deny"_s, everyone + u":(RX)"_s}), 0);
+        const auto unlock = qScopeGuard([&] { icacls({QDir::toNativeSeparators(locked), u"/remove:d"_s, everyone}); });
+        QVERIFY(QDir(locked).entryList(QDir::Files).isEmpty());
+        write(temp.filePath(u"root/open/new.png"_s), "broken");
+        write(temp.filePath(u"root/z.png"_s), "broken");
+        QVERIFY(QFile::remove(temp.filePath(u"root/m.png"_s)));
+        const QString message = scanHere(index, {root});
+        QVERIFY2(message.contains(u"部分目录无法读取"), qPrintable(message));
+        Store store(index, 0);
+        const QString errors = store.errorText();
+        // The rest of the root was walked: new files indexed, a deleted one pruned,
+        // and the unreadable folder's entry kept.
+        QCOMPARE(store.statistics().value(u"failed"_s).toInt(), 4);
+        QVERIFY2(errors.contains(u"new.png"), qPrintable(errors));
+        QVERIFY2(errors.contains(u"z.png"), qPrintable(errors));
+        QVERIFY2(errors.contains(u"x.png"), qPrintable(errors));
+        QVERIFY2(!errors.contains(u"m.png"), qPrintable(errors));
+    }
+
+    void failedUnchangedFileIsNotRedone()
+    {
+        QTemporaryDir temp;
+        const QString root = temp.filePath(u"root"_s), index = temp.filePath(u"index"_s);
+        QVERIFY(QDir().mkpath(root));
+        const QString bad = QDir(root).filePath(u"bad.png"_s);
+        write(bad, "broken");
+        scanHere(index, {root});
+        QString first;
+        {
+            Store store(index, 0);
+            QCOMPARE(store.statistics().value(u"failed"_s).toInt(), 1);
+            first = store.errorText();
+        }
+        // A read now fails differently (sharing violation): a redo would show.
+        const HANDLE exclusive = ::CreateFileW(reinterpret_cast<LPCWSTR>(QDir::toNativeSeparators(bad).utf16()),
+            GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        QVERIFY(exclusive != INVALID_HANDLE_VALUE);
+        const auto close = qScopeGuard([exclusive] { ::CloseHandle(exclusive); });
+        scanHere(index, {root});
+        {
+            Store store(index, 0);
+            QCOMPARE(store.errorText(), first);
+        }
+        scanHere(index, {root}, true); // "recheck all files"
+        Store store(index, 0);
+        QVERIFY2(store.errorText() != first, qPrintable(store.errorText()));
+        QCOMPARE(store.statistics().value(u"failed"_s).toInt(), 1);
+    }
+
+    void workerTroubleIsNotBlamedOnTheFile()
+    {
+        QTemporaryDir temp;
+        const QString root = temp.filePath(u"root"_s), index = temp.filePath(u"index"_s);
+        QVERIFY(QDir().mkpath(root));
+        write(QDir(root).filePath(u"fine.png"_s), pngBomb(64, 32));
+        ScanOptions options;
+        options.folders = {root};
+        options.workerProgram = temp.filePath(u"missing-worker.exe"_s);
+        QString error;
+        try {
+            scan(QCoreApplication::applicationDirPath(), index, options, [] { return false; },
+                [](const ScanProgress&) {});
+        } catch (const ScanStopped& e) {
+            error = QString::fromUtf8(e.what());
+        }
+        QVERIFY2(error.contains(u"无法启动识别工作进程"), qPrintable(error));
+        // Nothing is kept as failed: the next round reads the file again.
+        Store store(index, 0);
+        QCOMPARE(store.statistics().value(u"failed"_s).toInt(), 0);
+        QCOMPARE(store.statistics().value(u"files"_s).toInt(), 0);
+    }
+
+    void fullIndexCanStillBeEmptied()
+    {
+        QTemporaryDir temp;
+        const QString index = temp.filePath(u"index"_s);
+        Store store(index, 16);
+        quint32 random = 7;
+        const auto addDense = [&](const QString& folder, int i) {
+            const QString path = QDir(temp.path()).filePath(folder + u"/scan-%1.png"_s.arg(i));
+            store.beginFile(path, 1, 1, QByteArray::number(i), u"test"_s, 1);
+            QList<ws::OcrPiece> pieces;
+            for (int line = 0; line < 40; ++line) {
+                ws::OcrPiece piece;
+                for (int c = 0; c < 24; ++c) {
+                    random = random * 1664525u + 1013904223u;
+                    piece.text += QChar(0x4e00 + (random >> 16) % 6000);
+                }
+                piece.quad = QPolygonF(QRectF(10, line * 20, 600, 18));
+                pieces.append(piece);
+            }
+            store.addPage(store.putAsset(folder.toUtf8() + QByteArray::number(i), QSize(800, 1000), pieces),
+                u"图片"_s, {{u"kind"_s, u"image"_s}});
+            store.finishFile();
+        };
+        bool full = false;
+        for (int i = 0; i < 20000 && !full; ++i) {
+            try {
+                addDense(i % 2 ? u"b"_s : u"a"_s, i);
+            } catch (const std::exception& e) {
+                store.rollback();
+                full = QString::fromUtf8(e.what()).contains(u"full", Qt::CaseInsensitive);
+                QVERIFY2(full, e.what());
+            }
+        }
+        QVERIFY(full);
+        const qint64 before = store.statistics().value(u"bytes"_s).toInteger();
+        const int assets = store.statistics().value(u"assets"_s).toInt();
+        // Removing a folder frees room although deleting needs new pages first.
+        store.prune(temp.filePath(u"a"_s), {});
+        store.compact();
+        QVERIFY(store.statistics().value(u"assets"_s).toInt() < assets);
+        QVERIFY(store.statistics().value(u"bytes"_s).toInteger() < before);
+        addDense(u"c"_s, 0); // room again under the cap
+        store.retainFolders({});
+        store.compact();
+        QCOMPARE(store.statistics().value(u"assets"_s).toInt(), 0);
+        QVERIFY(store.search(u"图片"_s, 10).isEmpty());
+        // The user's cap applies again after the maintenance that ran above it.
+        bool found = false;
+        for (const QString& name : QSqlDatabase::connectionNames()) {
+            auto db = QSqlDatabase::database(name);
+            if (db.databaseName() != QDir(index).filePath(u"ocr-index.sqlite"_s))
+                continue;
+            QSqlQuery q(db);
+            QVERIFY(q.exec(u"PRAGMA page_size"_s) && q.next());
+            const qint64 pageSize = q.value(0).toLongLong();
+            q.finish();
+            QVERIFY(q.exec(u"PRAGMA max_page_count"_s) && q.next());
+            QCOMPARE(q.value(0).toLongLong(), 16 * 1024 * 1024 / pageSize);
+            found = true;
+        }
+        QVERIFY(found);
+    }
+
+    void wordsWithoutGramsDoNotScanEverything()
+    {
+        QTemporaryDir temp;
+        Store store(temp.filePath(u"index"_s));
+        for (int i = 0; i < 2000; ++i) {
+            const QString path = temp.filePath(u"doc-%1.png"_s.arg(i));
+            write(path, "fixture");
+            add(store, path, u"报销 ab документ %1"_s.arg(i));
+        }
+        QElapsedTimer timer;
+        timer.start();
+        for (const QString& word : {u"ab"_s, u"a"_s, u"12"_s, u"док"_s, u"документ"_s})
+            QVERIFY2(store.search(word, 100).isEmpty(), qPrintable(word));
+        QVERIFY2(timer.elapsed() < 200, "A word without grams must not read every file");
+        // Words without grams still narrow a word that has some.
+        QCOMPARE(store.search(u"报销 ab"_s, 100).size(), 100);
+        QVERIFY(store.search(u"报销 xy"_s, 100).isEmpty());
+    }
+
+    void pictureBombIsRefusedFromItsHeader()
+    {
+        const QByteArray bomb = pngBomb(12000, 10000); // 120 megapixels
+        QVERIFY(bomb.size() < 1024 * 1024);
+        QTemporaryDir temp;
+        const QString path = temp.filePath(u"bomb.png"_s);
+        write(path, bomb);
+        {
+            const bool com = SUCCEEDED(::CoInitializeEx(nullptr, COINIT_MULTITHREADED));
+            const auto uninitialize = qScopeGuard([com] {
+                if (com)
+                    ::CoUninitialize();
+            });
+            QSize original;
+            QVERIFY(ws::decodePictureData(bomb, 4096, &original, 0, nullptr, 100'000'000).isNull());
+            QCOMPARE(original, QSize(12000, 10000));
+            // Other callers (no limit) still get the picture.
+            QVERIFY(!ws::decodePictureData(pngBomb(64, 32), 0, &original).isNull());
+            QCOMPARE(original, QSize(64, 32));
+        }
+        QString error;
+        try {
+            extractImages(path, [](const QImage&, const QString&, const QJsonObject&) { QFAIL("Must not decode"); });
+        } catch (const std::exception& e) {
+            error = QString::fromUtf8(e.what());
+        }
+        QVERIFY2(error.contains(u"1 亿像素"), qPrintable(error));
+    }
+
     void realOcrIndexSearchUpdateAndResume()
     {
         const QString appDir = QCoreApplication::applicationDirPath();
@@ -665,7 +952,7 @@ private slots:
         } catch (const std::exception& e) {
             error = QString::fromUtf8(e.what());
         }
-        QVERIFY2(error.contains(u"超过"), qPrintable(error));
+        QVERIFY2(error.contains(u"没有进展"), qPrintable(error));
     }
 
     void installedPluginRunsInRealHostAndOpensItsWindow()
@@ -724,7 +1011,7 @@ private slots:
         options.dataRoot = dataRoot;
         options.appDir = appDir;
         options.runnerExe = QDir(buildDir).filePath(u"WinShunPluginHost.exe"_s);
-        options.version = u"0.17.0"_s;
+        options.version = QStringLiteral(WINSHUN_VERSION);
         ws::plugin::Host host(options);
         host.setEnabled(id, true);
         ws::plugin::Items answer;

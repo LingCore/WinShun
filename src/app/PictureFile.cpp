@@ -21,8 +21,8 @@ namespace {
 // The first frame, decoded by Windows Imaging Component and turned upright
 // as the camera says (EXIF orientation); at most `largest` pixels on its
 // longer side. `original`: its size as stored.
-QImage decodeFrame(
-    IWICImagingFactory* wic, IWICBitmapDecoder* decoder, QSize* original, int largest, int number, int* frames)
+QImage decodeFrame(IWICImagingFactory* wic, IWICBitmapDecoder* decoder, QSize* original, int largest, int number,
+    int* frames, qint64 maxPixels = 0)
 {
     UINT count = 0;
     if (FAILED(decoder->GetFrameCount(&count)) || number < 0 || static_cast<UINT>(number) >= count || count > INT_MAX)
@@ -36,6 +36,12 @@ QImage decodeFrame(
     UINT height = 0;
     if (FAILED(frame->GetSize(&width, &height)) || width == 0 || height == 0)
         return {};
+    if (maxPixels > 0 && static_cast<qint64>(width) * height > maxPixels) {
+        if (original)
+            *original = QSize(static_cast<int>(std::min<UINT>(width, INT_MAX)),
+                static_cast<int>(std::min<UINT>(height, INT_MAX)));
+        return {};
+    }
     USHORT orientation = 1;
     ComPtr<IWICMetadataQueryReader> metadata;
     if (SUCCEEDED(frame->GetMetadataQueryReader(&metadata))) {
@@ -107,7 +113,8 @@ QImage decodePictureFile(const QString& path, int largest, QSize* original, int 
     return decodeFrame(wic.Get(), decoder.Get(), original, largest, number, frames);
 }
 
-QImage decodePictureData(const QByteArray& bytes, int largest, QSize* original, int number, int* frames)
+QImage decodePictureData(
+    const QByteArray& bytes, int largest, QSize* original, int number, int* frames, qint64 maxPixels)
 {
     if (bytes.isEmpty() || bytes.size() > UINT_MAX)
         return {};
@@ -122,7 +129,7 @@ QImage decodePictureData(const QByteArray& bytes, int largest, QSize* original, 
     ComPtr<IWICBitmapDecoder> decoder;
     if (FAILED(wic->CreateDecoderFromStream(stream.Get(), nullptr, WICDecodeMetadataCacheOnDemand, &decoder)))
         return {};
-    return decodeFrame(wic.Get(), decoder.Get(), original, largest, number, frames);
+    return decodeFrame(wic.Get(), decoder.Get(), original, largest, number, frames, maxPixels);
 }
 
 } // namespace ws

@@ -15,7 +15,9 @@ namespace ws {
 QImage decodePictureFile(
     const QString& path, int largest, QSize* original = nullptr, int frame = 0, int* frames = nullptr);
 // The same decoder for an embedded picture, with optional multi-frame access.
-QImage decodePictureData(
-    const QByteArray& bytes, int largest, QSize* original = nullptr, int frame = 0, int* frames = nullptr);
+// `maxPixels` > 0: a frame larger than that is refused from its header, before
+// any pixel is decoded (null image, `original` set to its stored size).
+QImage decodePictureData(const QByteArray& bytes, int largest, QSize* original = nullptr, int frame = 0,
+    int* frames = nullptr, qint64 maxPixels = 0);
 
 } // namespace ws

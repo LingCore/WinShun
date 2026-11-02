@@ -9,6 +9,7 @@
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
 
+#include <optional>
 #include <stop_token>
 #include <thread>
 
@@ -67,6 +68,8 @@ public:
     Q_INVOKABLE void showFolder(const QString& path);
     Q_INVOKABLE void copyText();
     void showHit(const Hit& hit, const QString& words);
+    void releasePreview();
+    void wake();
     void externalQuery(const QJsonObject& params, std::function<void(const QJsonObject&)> reply);
     void cancelQuery();
 signals:
@@ -77,13 +80,25 @@ signals:
     void refreshRequested();
 
 private:
+    struct PendingQuery {
+        QJsonObject params;
+        std::function<void(const QJsonObject&)> reply;
+    };
     void save();
     void refresh();
+    void open();
+    void maintain(std::function<void(Store&)> work, const QString& done);
+    void finished(const QString& status);
+    void runQuery(const QJsonObject& params, std::function<void(const QJsonObject&)> reply);
     QString m_appDir;
     QString m_dataDir;
     QSettings m_settings;
     ScanOptions m_options;
     QTimer m_timer;
+    QTimer m_firstScan;
+    QTimer m_components;
+    QTimer m_debounce;
+    PendingQuery m_pendingQuery;
     std::jthread m_scan;
     QThreadPool m_searches;
     QThreadPool m_previews;
@@ -92,7 +107,12 @@ private:
     QThreadPool m_queries;
     std::stop_source m_externalStop;
     PreviewImages* m_images = nullptr; // owned by QQmlEngine
-    bool m_busy = false;
+    bool m_busy = false; // opening, tidying or indexing on m_scan
+    bool m_opening = false;
+    bool m_indexing = false;
+    bool m_ready = false;
+    bool m_woken = false;
+    std::optional<bool> m_pendingStart; // start(retry) asked while busy opening or tidying
     bool m_searching = false;
     bool m_enabled = false;
     QString m_status;

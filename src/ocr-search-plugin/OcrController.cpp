@@ -71,13 +71,6 @@ Controller::Controller(QString appDir, QString dataDir, QObject* parent)
     m_options.capacityMB = std::clamp(m_settings.value(u"capacityMB"_s, 512).toInt(), 16, 4096);
     m_options.workerProgram = QCoreApplication::applicationFilePath();
     m_enabled = m_settings.value(u"autoUpdate"_s, false).toBool();
-    m_status = m_options.folders.isEmpty() ? tr("添加要搜索的文件夹") : tr("已暂停");
-    try {
-        Store store(m_dataDir, m_options.capacityMB);
-    } catch (const std::exception& e) {
-        m_status = QString::fromUtf8(e.what());
-    }
-    refresh();
     m_queries.setMaxThreadCount(2);
     m_searches.setMaxThreadCount(1);
     m_previews.setMaxThreadCount(1);
@@ -88,21 +81,39 @@ Controller::Controller(QString appDir, QString dataDir, QObject* parent)
             start();
     });
     m_timer.start();
-    if (setupNeeded()) {
-        auto* components = new QTimer(this);
-        components->setInterval(1000);
-        connect(components, &QTimer::timeout, this, [this, components] {
-            if (!setupNeeded()) {
-                components->stop();
-                emit changed();
-                if (m_enabled && !m_busy)
-                    start();
-            }
-        });
-        components->start();
-    }
-    if (m_enabled)
-        QTimer::singleShot(200, this, [this] { start(); });
+    // The first walk waits a minute after the plugin starts (with Windows),
+    // unless the user searches or opens the window first: wake().
+    m_firstScan.setSingleShot(true);
+    m_firstScan.setInterval(60 * 1000);
+    connect(&m_firstScan, &QTimer::timeout, this, [this] {
+        if (m_enabled)
+            start();
+    });
+    // Recognition parts missing: looked for again less and less often, and
+    // every second again while the user is installing them.
+    m_components.setSingleShot(true);
+    connect(&m_components, &QTimer::timeout, this, [this] {
+        if (setupNeeded()) {
+            m_components.start(std::min(m_components.interval() * 2, 60 * 1000));
+            return;
+        }
+        emit changed();
+        if (m_enabled && !m_busy)
+            start();
+    });
+    connect(this, &Controller::setupRequested, this, [this] {
+        if (setupNeeded())
+            m_components.start(1000);
+    });
+    if (setupNeeded())
+        m_components.start(1000);
+    m_debounce.setSingleShot(true);
+    connect(&m_debounce, &QTimer::timeout, this, [this] {
+        auto [params, reply] = std::exchange(m_pendingQuery, {});
+        if (reply)
+            runQuery(params, std::move(reply));
+    });
+    open();
 }
 
 Controller::~Controller()
@@ -151,6 +162,88 @@ void Controller::refresh()
     }
     emit changed();
 }
+
+// Opening the writable index may migrate it or rebuild its terms: never on
+// the thread that answers the host (it waits for `initialize`) or draws.
+void Controller::open()
+{
+    m_busy = true;
+    m_opening = true;
+    m_status = tr("正在打开索引…");
+    m_scan = std::jthread([this, capacity = m_options.capacityMB](std::stop_token) {
+        QString error;
+        try {
+            Store store(m_dataDir, capacity);
+        } catch (const std::exception& e) {
+            error = QString::fromUtf8(e.what());
+        }
+        QMetaObject::invokeMethod(
+            this,
+            [this, error] {
+                m_opening = false;
+                m_ready = error.isEmpty();
+                finished(!error.isEmpty()           ? error
+                        : m_options.folders.isEmpty() ? tr("添加要搜索的文件夹")
+                        : m_enabled                   ? tr("稍后自动更新索引")
+                                                      : tr("已暂停"));
+                if (m_ready && m_enabled && !m_busy) {
+                    if (m_woken)
+                        start();
+                    else
+                        m_firstScan.start();
+                }
+            },
+            Qt::QueuedConnection);
+    });
+}
+
+// Index upkeep the user asked for (removing a folder, clearing): in one
+// transaction each, on the background thread; the window stays responsive.
+void Controller::maintain(std::function<void(Store&)> work, const QString& done)
+{
+    m_busy = true;
+    m_status = tr("正在整理索引…");
+    emit changed();
+    if (m_scan.joinable())
+        m_scan.join();
+    m_scan = std::jthread([this, work = std::move(work), done, capacity = m_options.capacityMB](std::stop_token) {
+        QString status = done;
+        try {
+            Store store(m_dataDir, capacity);
+            work(store);
+            store.compact();
+        } catch (const std::exception& e) {
+            status = QString::fromUtf8(e.what());
+        }
+        QMetaObject::invokeMethod(this, [this, status] { finished(status); }, Qt::QueuedConnection);
+    });
+}
+
+// A background job is over: its outcome shows, then what was asked meanwhile.
+void Controller::finished(const QString& status)
+{
+    m_busy = false;
+    m_status = status;
+    refresh();
+    search(m_words);
+    emit refreshRequested();
+    if (m_pendingStart) {
+        const bool retry = *std::exchange(m_pendingStart, std::nullopt);
+        start(retry);
+    }
+}
+
+// The user is here (searching, or the window opened): the first walk need
+// not wait any longer.
+void Controller::wake()
+{
+    m_woken = true;
+    if (m_firstScan.isActive()) {
+        m_firstScan.stop();
+        start();
+    }
+}
+
 void Controller::setCapacityMB(int value)
 {
     if (m_busy)
@@ -169,18 +262,8 @@ void Controller::addPath(const QString& path, bool exclusion)
     paths.append(QDir::toNativeSeparators(QFileInfo(path).absoluteFilePath()));
     m_status = tr("目录已添加，点击开始更新");
     save();
-    if (exclusion) {
-        try {
-            Store store(m_dataDir, m_options.capacityMB);
-            store.prune(path, -1);
-            store.compact();
-        } catch (const std::exception& e) {
-            m_status = QString::fromUtf8(e.what());
-        }
-        refresh();
-        search(m_words);
-        emit refreshRequested();
-    }
+    if (exclusion)
+        maintain([path](Store& store) { store.prune(path, {}); }, m_status);
 }
 void Controller::addFolder(bool exclusion)
 {
@@ -199,27 +282,26 @@ void Controller::removeFolder(int index, bool exclusion)
         return;
     paths.removeAt(index);
     save();
-    try {
-        Store store(m_dataDir, m_options.capacityMB);
-        store.retainFolders(m_options.folders);
-        store.compact();
-    } catch (const std::exception& e) {
-        m_status = QString::fromUtf8(e.what());
-    }
-    refresh();
-    search(m_words);
-    emit refreshRequested();
+    maintain([folders = m_options.folders](Store& store) { store.retainFolders(folders); }, m_status);
 }
 void Controller::start(bool retry)
 {
-    if (m_busy || m_options.folders.isEmpty())
+    if (m_options.folders.isEmpty())
         return;
+    if (m_busy) {
+        // Asked while the index opens or is tidied: it runs right after.
+        if (!m_indexing)
+            m_pendingStart = retry || m_pendingStart.value_or(false);
+        return;
+    }
     if (setupNeeded()) {
         m_status = tr("请先安装增强识别组件");
         emit changed();
         return;
     }
+    m_firstScan.stop();
     m_busy = true;
+    m_indexing = true;
     m_enabled = true;
     m_status = tr("正在更新索引");
     m_progress.clear();
@@ -259,11 +341,10 @@ void Controller::start(bool retry)
         QMetaObject::invokeMethod(
             this,
             [this, message, token] {
-                m_busy = false;
-                m_status = token.stop_requested() ? tr("已暂停，下次从未完成的文件继续")
-                    : message.isEmpty()           ? tr("索引已更新，每 5 分钟检查文件变化")
-                                                  : message;
-                refresh();
+                m_indexing = false;
+                finished(token.stop_requested() ? tr("已暂停，下次从未完成的文件继续")
+                        : message.isEmpty()     ? tr("索引已更新，每 5 分钟检查文件变化")
+                                                : message);
                 const int unfinished = m_statistics.value(u"failed"_s).toInt()
                     + m_statistics.value(u"partial"_s).toInt() + m_statistics.value(u"unsupported"_s).toInt()
                     + m_statistics.value(u"offline"_s).toInt();
@@ -271,8 +352,6 @@ void Controller::start(bool retry)
                     m_status = tr("索引已更新，%1 个文件未完成，可查看原因").arg(unfinished);
                     emit changed();
                 }
-                search(m_words);
-                emit refreshRequested();
             },
             Qt::QueuedConnection);
     });
@@ -280,8 +359,10 @@ void Controller::start(bool retry)
 void Controller::pause()
 {
     m_enabled = false;
+    m_firstScan.stop();
+    m_pendingStart.reset();
     m_scan.request_stop();
-    m_status = m_busy ? tr("正在暂停，保留已完成的结果…") : tr("已暂停");
+    m_status = m_indexing ? tr("正在暂停，保留已完成的结果…") : tr("已暂停");
     save();
 }
 void Controller::setAutoUpdate(bool enabled)
@@ -295,19 +376,10 @@ void Controller::clearIndex()
 {
     if (m_busy)
         return;
-    try {
-        Store store(m_dataDir, m_options.capacityMB);
-        store.retainFolders({});
-        store.compact();
-        m_status = tr("索引已清空，原文件保持原样");
-    } catch (const std::exception& e) {
-        m_status = QString::fromUtf8(e.what());
-    }
     m_enabled = false;
+    m_firstScan.stop();
     save();
-    refresh();
-    search(m_words);
-    emit refreshRequested();
+    maintain([](Store& store) { store.retainFolders({}); }, tr("索引已清空，原文件保持原样"));
 }
 
 void Controller::search(const QString& words)
@@ -318,6 +390,8 @@ void Controller::search(const QString& words)
     m_searches.clear();
     const auto token = m_searchStop.get_token();
     m_searching = !words.trimmed().isEmpty();
+    if (m_searching)
+        wake();
     if (!m_searching) {
         m_previewStop.request_stop();
         m_previews.clear();
@@ -398,7 +472,11 @@ void Controller::showHit(const Hit& hit, const QString& words)
             Worker worker(m_options.workerProgram, m_appDir, m_dataDir, {}, 30000);
             image = worker.preview(hit.path, hit.source, [token] { return token.stop_requested(); });
             Store store(m_dataDir, 0);
-            const auto pieces = store.pieces(hit.asset);
+            QSize recognised;
+            const auto pieces = store.pieces(hit.asset, &recognised);
+            // Boxes are in the recognised image's pixels; the preview may be smaller.
+            if (recognised.isEmpty())
+                recognised = image.size();
             QStringList terms = contentTerms(splitContentQuery(words).words);
             for (auto& term : terms)
                 term = normalized(term);
@@ -409,8 +487,9 @@ void Controller::showHit(const Hit& hit, const QString& words)
                 if (std::any_of(terms.begin(), terms.end(),
                         [&](const QString& term) { return normalizedText.contains(term); })) {
                     const QRectF rect = piece.quad.boundingRect();
-                    boxes.append(QVariantMap {{u"x"_s, rect.x() / image.width()}, {u"y"_s, rect.y() / image.height()},
-                        {u"width"_s, rect.width() / image.width()}, {u"height"_s, rect.height() / image.height()}});
+                    boxes.append(QVariantMap {{u"x"_s, rect.x() / recognised.width()},
+                        {u"y"_s, rect.y() / recognised.height()}, {u"width"_s, rect.width() / recognised.width()},
+                        {u"height"_s, rect.height() / recognised.height()}});
                 }
             }
             text = lines.join(u'\n');
@@ -437,6 +516,16 @@ void Controller::showHit(const Hit& hit, const QString& words)
             Qt::QueuedConnection);
     });
 }
+void Controller::releasePreview()
+{
+    m_previewStop.request_stop();
+    m_previews.clear();
+    ++m_previewRevision;
+    if (m_images)
+        m_images->set({});
+    m_preview.clear();
+    emit previewChanged();
+}
 void Controller::openFile(const QString& path)
 {
     if (QFileInfo::exists(path))
@@ -454,23 +543,48 @@ void Controller::copyText()
 
 void Controller::cancelQuery()
 {
+    m_debounce.stop();
+    m_pendingQuery = {};
     m_externalStop.request_stop();
     m_queries.clear();
 }
 void Controller::externalQuery(const QJsonObject& params, std::function<void(const QJsonObject&)> reply)
 {
     cancelQuery();
-    m_externalStop = {};
-    const auto token = m_externalStop.get_token();
     const QString words = params.value(u"text"_s).toString().trimmed();
     const bool content = params.value(u"trigger"_s).toString() == u"content";
-    const bool configured = !m_options.folders.isEmpty();
     if (words.isEmpty()) {
         reply({{u"items"_s,
             QJsonArray {QJsonObject {{u"id"_s, u"manage"_s}, {u"title"_s, tr("管理图片文字搜索")},
                 {u"subtitle"_s, m_status}, {u"icon"_s, u"glyph:U+E721"_s}}}}});
         return;
     }
+    wake();
+    if (m_opening) {
+        // Not ready yet: asked again shortly.
+        reply({{u"items"_s,
+                  content ? QJsonArray {}
+                          : QJsonArray {QJsonObject {{u"id"_s, u"manage"_s}, {u"title"_s, m_status},
+                                {u"icon"_s, u"glyph:U+E721"_s}}}},
+            {u"rerun"_s, 2}});
+        return;
+    }
+    // Content queries come with every key typed in the launcher: only the
+    // last of a quick burst is looked up.
+    if (content) {
+        m_pendingQuery = {params, std::move(reply)};
+        m_debounce.start(150);
+        return;
+    }
+    runQuery(params, std::move(reply));
+}
+void Controller::runQuery(const QJsonObject& params, std::function<void(const QJsonObject&)> reply)
+{
+    m_externalStop = {};
+    const auto token = m_externalStop.get_token();
+    const QString words = params.value(u"text"_s).toString().trimmed();
+    const bool content = params.value(u"trigger"_s).toString() == u"content";
+    const bool configured = !m_options.folders.isEmpty();
     m_queries.start([this, params, words, content, configured, reply = std::move(reply), token] {
         QJsonArray items;
         QString error;
@@ -495,13 +609,17 @@ void Controller::externalQuery(const QJsonObject& params, std::function<void(con
         }
         QMetaObject::invokeMethod(
             this,
-            [reply, items, error, content, token] {
+            [this, reply, items, error, content, token] {
                 if (token.stop_requested())
                     return;
                 QJsonArray answer = items;
                 if (!error.isEmpty() && !content)
                     answer.append(QJsonObject {{u"id"_s, u"manage"_s}, {u"title"_s, error}});
-                reply({{u"items"_s, answer}, {u"rerun"_s, 5}});
+                QJsonObject result {{u"items"_s, answer}};
+                // Only while the index changes: an idle list is not asked again.
+                if (m_busy)
+                    result.insert(u"rerun"_s, 5);
+                reply(result);
             },
             Qt::QueuedConnection);
     });

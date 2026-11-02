@@ -102,6 +102,16 @@ extern "C" __declspec(dllexport) int winshunOcrSearchMain(const wchar_t* host, i
     QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
     QImageReader::setAllocationLimit(128);
     ws::SystemTheme::setBackdropAvailable(false);
+    if (!qEnvironmentVariable("WS_COMPONENTS_DIR").isEmpty())
+        ws::ocr::setComponentsRoot(qEnvironmentVariable("WS_COMPONENTS_DIR"));
+    if (worker) {
+        QTranslator workerTranslator;
+        if (qEnvironmentVariable("WS_LOCALE") == u"en" && workerTranslator.load(u":/i18n/ocr-search_en.qm"_s))
+            QCoreApplication::installTranslator(&workerTranslator);
+        ::SetPriorityClass(::GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
+        return workerMain(appDir);
+    }
+    // Fonts only for the window (some 8 MB): the worker draws no text.
     ws::phosphor::loadFonts();
     QFile font(QDir(appDir).filePath(u"fonts/AlibabaPuHuiTi-3-55-Regular.ttf"_s));
     if (font.open(QIODevice::ReadOnly)) {
@@ -112,15 +122,6 @@ extern "C" __declspec(dllexport) int winshunOcrSearchMain(const wchar_t* host, i
             f.setHintingPreference(QFont::PreferVerticalHinting);
             QGuiApplication::setFont(f);
         }
-    }
-    if (!qEnvironmentVariable("WS_COMPONENTS_DIR").isEmpty())
-        ws::ocr::setComponentsRoot(qEnvironmentVariable("WS_COMPONENTS_DIR"));
-    if (worker) {
-        QTranslator workerTranslator;
-        if (qEnvironmentVariable("WS_LOCALE") == u"en" && workerTranslator.load(u":/i18n/ocr-search_en.qm"_s))
-            QCoreApplication::installTranslator(&workerTranslator);
-        ::SetPriorityClass(::GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
-        return workerMain(appDir);
     }
     QString dataDir
         = preview ? option(u"--data-dir"_s) : params.value(u"dataDir"_s).toString(qEnvironmentVariable("WS_DATA_DIR"));
@@ -164,12 +165,16 @@ extern "C" __declspec(dllexport) int winshunOcrSearchMain(const wchar_t* host, i
                 return false;
             }
             frame.setWindow(window);
-            if (preview)
-                QObject::connect(window, &QQuickWindow::visibleChanged, &app, [&] {
-                    if (!window->isVisible())
-                        app.quit();
-                });
+            QObject::connect(window, &QQuickWindow::visibleChanged, &app, [&] {
+                if (window->isVisible())
+                    return;
+                if (preview)
+                    app.quit();
+                else
+                    editor.releasePreview(); // up to 64 MB of decoded picture
+            });
         }
+        editor.wake();
         window->show();
         window->raise();
         window->requestActivate();

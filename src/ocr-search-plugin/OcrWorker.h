@@ -7,7 +7,8 @@ namespace ws::ocrsearch {
 
 // One parser process per pass, reset after a crash, timeout or cancellation.
 // Index replies contain text and coordinates; preview replies contain a
-// bounded PNG. Neither is persisted as an image cache.
+// bounded JPEG (or PNG). Neither is persisted as an image cache. Throws
+// ScanStopped when the worker itself cannot run, not because of the file.
 class Worker {
 public:
     Worker(QString program, QString appDir, QString dataDir, QString engine, int timeoutMs = 60000);

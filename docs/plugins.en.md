@@ -314,7 +314,7 @@ The date interval includes its lower bound and excludes its upper bound. Both si
 
 ### Content-search providers
 
-Declare `"contentSearch": true` on a command; a `keyword` may coexist. A host built with this capability sends `query` with `trigger: "content"` only in Content or content-enabled All. File/folder searches and exclusive keyword lists do not dispatch providers. `text` contains the content query. Keyword queries keep their existing protocol and remain available in older hosts.
+Declare `"contentSearch": true` on a command; a `keyword` may coexist. A host built with this capability sends `query` with `trigger: "content"` only in Content or content-enabled All. File/folder searches and exclusive keyword lists do not dispatch providers. `text` contains the content query. Keyword queries keep their existing protocol and remain available in older hosts. Hosts up to 0.17.0 have no content providers; the official image text search plugin sets `minWinShun` to the host version it is built with.
 
 In addition to panel filters, `filters` includes `contentEnabled`, `contentWords`, `contentPick` (selected folder), `excludedExtensions` and `excludedFileNames` (wildcards). Verify terms across the entire file and return stable IDs, the original `open.path`, date/size metadata and a matching snippet. Up to 200 provider rows follow native results without consuming the ordinary 3/6 push quota; existing native file paths are deduplicated. Return an empty array for no matches, keeping setup hints out of content results. See the [image text search plugin](../src/ocr-search-plugin/package/README.md).
 

@@ -15,16 +15,18 @@
 #include <QImageReader>
 #include <QPainter>
 #include <QRegularExpression>
+#include <QScopeGuard>
 #include <QSet>
 #include <QXmlStreamReader>
 
+#include <fpdf_edit.h>
 #include <fpdfview.h>
 #include <objbase.h>
 
 #include <cmath>
-#include <filesystem>
 #include <mutex>
 #include <stdexcept>
+#include <string_view>
 
 using namespace Qt::StringLiterals;
 
@@ -33,6 +35,7 @@ namespace {
 constexpr qint64 kMaxFile = 100ll << 20;
 constexpr int kMaxImages = 500;
 constexpr int kRenderSide = 2600;
+constexpr qint64 kMaxPixels = 100'000'000;
 std::mutex pdfMutex;
 
 [[noreturn]] void fail(const QString& message)
@@ -84,12 +87,12 @@ QImage decode(QByteArray bytes, int frame = 0, int* frames = nullptr)
 {
     ComScope com;
     QSize original;
-    QImage native = decodePictureData(bytes, 4096, &original, frame, frames);
-    if (!native.isNull()) {
-        if (qint64(original.width()) * original.height() > 100'000'000)
-            fail(QObject::tr("图片尺寸无效或超过 1 亿像素"));
+    // Refused from the header: a picture bomb is never decoded or scaled.
+    QImage native = decodePictureData(bytes, 4096, &original, frame, frames, kMaxPixels);
+    if (qint64(original.width()) * original.height() > kMaxPixels)
+        fail(QObject::tr("图片尺寸无效或超过 1 亿像素"));
+    if (!native.isNull())
         return opaque(std::move(native));
-    }
     if (frame != 0)
         fail(QObject::tr("无法读取多页图片"));
     QBuffer buffer(&bytes);
@@ -97,7 +100,7 @@ QImage decode(QByteArray bytes, int frame = 0, int* frames = nullptr)
     QImageReader reader(&buffer);
     reader.setAutoTransform(true);
     const QSize size = reader.size();
-    if (!size.isValid() || qint64(size.width()) * size.height() > 100'000'000)
+    if (!size.isValid() || qint64(size.width()) * size.height() > kMaxPixels)
         fail(QObject::tr("图片尺寸无效或超过 1 亿像素"));
     if (size.width() > 4096 || size.height() > 4096)
         reader.setScaledSize(size.scaled(4096, 4096, Qt::KeepAspectRatio));
@@ -107,6 +110,21 @@ QImage decode(QByteArray bytes, int frame = 0, int* frames = nullptr)
     if (frames)
         *frames = std::max(1, reader.imageCount());
     return opaque(std::move(image));
+}
+
+// Whether a page object is, or a form object holds, a picture.
+bool holdsImage(FPDF_PAGEOBJECT object, int depth = 0)
+{
+    const int type = FPDFPageObj_GetType(object);
+    if (type == FPDF_PAGEOBJ_IMAGE)
+        return true;
+    if (type != FPDF_PAGEOBJ_FORM || depth > 8)
+        return false;
+    const int count = FPDFFormObj_CountObjects(object);
+    for (int i = 0; i < count; ++i)
+        if (holdsImage(FPDFFormObj_GetObject(object, static_cast<unsigned long>(i)), depth + 1))
+            return true;
+    return false;
 }
 
 struct Pdf {
@@ -136,12 +154,24 @@ struct Pdf {
         const std::lock_guard lock(pdfMutex);
         return FPDF_GetPageCount(document);
     }
-    QImage render(int number) const
+    // `picturesOnly`: a null image for a page without any picture, whose text
+    // is the document's own text layer and has nothing to recognise.
+    QImage render(int number, bool picturesOnly = false) const
     {
         const std::lock_guard lock(pdfMutex);
         FPDF_PAGE page = FPDF_LoadPage(document, number - 1);
         if (!page)
             fail(QObject::tr("无法读取 PDF 第 %1 页").arg(number));
+        if (picturesOnly) {
+            bool pictures = false;
+            const int count = FPDFPage_CountObjects(page);
+            for (int i = 0; i < count && !pictures; ++i)
+                pictures = holdsImage(FPDFPage_GetObject(page, i));
+            if (!pictures) {
+                FPDF_ClosePage(page);
+                return {};
+            }
+        }
         const double w = FPDF_GetPageWidthF(page), h = FPDF_GetPageHeightF(page);
         if (!(w > 0 && h > 0 && std::isfinite(w) && std::isfinite(h))) {
             FPDF_ClosePage(page);
@@ -323,27 +353,145 @@ QList<Embedded> embedded(extract::Zip& zip)
 }
 } // namespace
 
-bool supported(const QString& path)
+namespace {
+bool supportedSuffix(const QString& suffix)
 {
     static const QStringList types {u"png"_s, u"jpg"_s, u"jpeg"_s, u"bmp"_s, u"tif"_s, u"tiff"_s, u"webp"_s, u"pdf"_s,
         u"docx"_s, u"docm"_s, u"pptx"_s, u"pptm"_s, u"xlsx"_s, u"xlsm"_s};
-    return types.contains(QFileInfo(path).suffix().toLower());
+    return types.contains(suffix);
+}
+bool legacySuffix(const QString& suffix)
+{
+    static const QStringList types {u"doc"_s, u"xls"_s, u"ppt"_s, u"wps"_s, u"et"_s, u"dps"_s};
+    return types.contains(suffix);
+}
+// Offline, recall on open or on data access (cloud placeholders).
+bool offlineAttributes(DWORD attributes)
+{
+    return attributes & (FILE_ATTRIBUTE_OFFLINE | 0x00040000 | 0x00400000);
+}
+
+qint64 fileTimeMs(const FILETIME& time)
+{
+    // 100 ns ticks since 1601, to milliseconds since 1970 as QFileInfo gives them.
+    const qint64 ticks = qint64((quint64(time.dwHighDateTime) << 32) | time.dwLowDateTime) - 116444736000000000ll;
+    return ticks >= 0 ? ticks / 10000 : -((9999 - ticks) / 10000);
+}
+
+// FindFirstFileExW's pattern for a folder, with \\?\ for paths beyond MAX_PATH.
+std::wstring listPattern(const QString& folder)
+{
+    QString path = QDir::toNativeSeparators(folder);
+    if (!path.endsWith(u'\\'))
+        path += u'\\';
+    if (!path.startsWith(u"\\\\?\\"_s))
+        path = path.startsWith(u"\\\\"_s) ? u"\\\\?\\UNC\\"_s + path.mid(2) : u"\\\\?\\"_s + path;
+    return (path + u'*').toStdWString();
+}
+
+struct Listed {
+    QString path;
+    qint64 size = 0;
+    qint64 modified = 0;
+    DWORD attributes = 0;
+};
+
+// Lists the indexable files under `root` without following reparse points.
+// The type is known from the name before anything else is asked of a file. A
+// folder that cannot be listed (access denied, gone meanwhile) only marks its
+// own subtree in `unreadable`; the rest of the walk goes on.
+void walk(const QString& root, const std::function<bool(const QString&)>& enter,
+    const std::function<void(const Listed&)>& visit, const Cancel& cancel, QStringList* unreadable)
+{
+    QStringList folders {QDir::toNativeSeparators(root)};
+    while (!folders.isEmpty()) {
+        stopped(cancel);
+        const QString folder = folders.takeLast();
+        const QString prefix = folder.endsWith(u'\\') ? folder : folder + u'\\';
+        WIN32_FIND_DATAW data;
+        const HANDLE find = ::FindFirstFileExW(listPattern(folder).c_str(), FindExInfoBasic, &data,
+            FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH);
+        if (find == INVALID_HANDLE_VALUE) {
+            if (::GetLastError() != ERROR_FILE_NOT_FOUND) // an empty drive has no . and ..
+                unreadable->append(folder);
+            continue;
+        }
+        const auto close = qScopeGuard([find] { ::FindClose(find); });
+        do {
+            const std::wstring_view name(data.cFileName);
+            if (name == L"." || name == L"..")
+                continue;
+            if (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                if (data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
+                    continue;
+                const QString path = prefix + QString::fromWCharArray(name.data(), qsizetype(name.size()));
+                if (enter(path))
+                    folders.append(path);
+                continue;
+            }
+            // Symbolic links to files are skipped; cloud placeholders are files.
+            if ((data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) && data.dwReserved0 == IO_REPARSE_TAG_SYMLINK)
+                continue;
+            const auto dot = name.rfind(L'.');
+            if (dot == std::wstring_view::npos)
+                continue;
+            const QString suffix
+                = QString::fromWCharArray(name.data() + dot + 1, qsizetype(name.size() - dot - 1)).toLower();
+            if (!supportedSuffix(suffix) && !legacySuffix(suffix))
+                continue;
+            stopped(cancel);
+            visit({prefix + QString::fromWCharArray(name.data(), qsizetype(name.size())),
+                qint64((quint64(data.nFileSizeHigh) << 32) | data.nFileSizeLow), fileTimeMs(data.ftLastWriteTime),
+                data.dwFileAttributes});
+        } while (::FindNextFileW(find, &data));
+        if (::GetLastError() != ERROR_NO_MORE_FILES)
+            unreadable->append(folder);
+    }
+}
+
+// The user's work comes first: the walk and the reads of this thread run at
+// Windows' background priority (very low I/O), as the main app's quiet mode.
+// Not while this thread recognises pictures itself (tests): Qt's image
+// threads it starts then could not inherit the priority.
+struct BackgroundMode {
+    bool on;
+    explicit BackgroundMode(bool enable)
+        : on(enable && ::SetThreadPriority(::GetCurrentThread(), THREAD_MODE_BACKGROUND_BEGIN))
+    {
+    }
+    BackgroundMode(const BackgroundMode&) = delete;
+    BackgroundMode& operator=(const BackgroundMode&) = delete;
+    ~BackgroundMode()
+    {
+        if (on)
+            ::SetThreadPriority(::GetCurrentThread(), THREAD_MODE_BACKGROUND_END);
+    }
+};
+} // namespace
+
+bool supported(const QString& path)
+{
+    return supportedSuffix(QFileInfo(path).suffix().toLower());
 }
 bool legacyDocument(const QString& path)
 {
-    static const QStringList types {u"doc"_s, u"xls"_s, u"ppt"_s, u"wps"_s, u"et"_s, u"dps"_s};
-    return types.contains(QFileInfo(path).suffix().toLower());
+    return legacySuffix(QFileInfo(path).suffix().toLower());
 }
 bool onlineOnly(const QString& path)
 {
     const DWORD attributes = ::GetFileAttributesW(reinterpret_cast<LPCWSTR>(path.utf16()));
-    return attributes != INVALID_FILE_ATTRIBUTES && (attributes & (FILE_ATTRIBUTE_OFFLINE | 0x00040000 | 0x00400000));
+    return attributes != INVALID_FILE_ATTRIBUTES && offlineAttributes(attributes);
 }
 
-Extraction extractImages(const QString& path, const ImageSink& sink, const Cancel& cancel)
+Extraction extractImages(
+    const QString& path, const ImageSink& sink, const Cancel& cancel, const std::function<void()>& advanced)
 {
     Extraction result;
     QStringList issues;
+    const auto step = [&] {
+        if (advanced)
+            advanced();
+    };
     const QString suffix = QFileInfo(path).suffix().toLower();
     if (suffix == u"pdf") {
         Pdf pdf(path);
@@ -352,13 +500,17 @@ Extraction extractImages(const QString& path, const ImageSink& sink, const Cance
             stopped(cancel);
             QImage image;
             try {
-                image = pdf.render(page);
+                image = pdf.render(page, true);
             } catch (const std::exception& e) {
                 issues.append(QString::fromUtf8(e.what()));
+                step();
                 continue;
             }
-            sink(image, QObject::tr("第 %1 页").arg(page), {{u"kind"_s, u"pdf"_s}, {u"page"_s, page}});
-            ++result.images;
+            if (!image.isNull()) {
+                sink(image, QObject::tr("第 %1 页").arg(page), {{u"kind"_s, u"pdf"_s}, {u"page"_s, page}});
+                ++result.images;
+            }
+            step();
         }
         result.partial = count > kMaxImages;
     } else if (suffix == u"docx" || suffix == u"docm" || suffix == u"pptx" || suffix == u"pptm" || suffix == u"xlsx"
@@ -380,6 +532,7 @@ Extraction extractImages(const QString& path, const ImageSink& sink, const Cance
                 image = decode(partBytes(zip, item.part));
             } catch (const std::exception& e) {
                 issues.append(item.label + u"："_s + QString::fromUtf8(e.what()));
+                step();
                 continue;
             }
             QJsonObject imageSource = item.place;
@@ -387,6 +540,7 @@ Extraction extractImages(const QString& path, const ImageSink& sink, const Cance
             imageSource.insert(u"part"_s, QString::fromStdString(item.part));
             sink(image, item.label, imageSource);
             ++result.images;
+            step();
         }
     } else {
         const QByteArray bytes = readFile(path);
@@ -398,6 +552,7 @@ Extraction extractImages(const QString& path, const ImageSink& sink, const Cance
             sink(image, count > 1 ? QObject::tr("第 %1 页").arg(frame + 1) : QObject::tr("图片"),
                 {{u"kind"_s, u"image"_s}, {u"frame"_s, frame}, {u"frames"_s, count}});
             ++result.images;
+            step();
         }
         result.partial = count > kMaxImages;
     }
@@ -438,6 +593,7 @@ QByteArray imageHash(const QImage& image, const QString& engine)
 void scan(const QString& appDir, const QString& dataDir, const ScanOptions& options, const Cancel& cancel,
     const std::function<void(const ScanProgress&)>& progress)
 {
+    const BackgroundMode background(!options.workerProgram.isEmpty());
     Store store(dataDir, options.capacityMB);
     const QString engine = QString(ocr::kVersion) + u"/ocr-search-2"_s;
     const qint64 generation = QDateTime::currentMSecsSinceEpoch();
@@ -447,7 +603,109 @@ void scan(const QString& appDir, const QString& dataDir, const ScanOptions& opti
         worker = std::make_unique<Worker>(options.workerProgram, appDir, dataDir, engine, options.timeoutMs);
     ScanProgress state;
     store.retainFolders(options.folders);
+    // Every file seen this round (pathKey()s): what a complete walk did not
+    // see is pruned. Unchanged files cost no write at all.
     QSet<QString> visited;
+    const auto excluded = [&](const QString& path) {
+        return std::any_of(options.excluded.begin(), options.excluded.end(),
+            [&](const QString& folder) { return inside(path, folder); });
+    };
+    const auto index = [&](const Listed& file) {
+        const QString& path = file.path;
+        const QString key = pathKey(path);
+        if (visited.contains(key))
+            return;
+        visited.insert(key);
+        const qint64 size = file.size, modified = file.modified;
+        state.current = path;
+        ++state.checked;
+        state.message.clear();
+        progress(state);
+        const QString stored = options.retry ? QString() : store.state(path, size, modified, engine);
+        if (settled(stored))
+            return;
+        if (legacyDocument(path)) {
+            store.status(path, size, modified, engine, generation, u"unsupported"_s,
+                QObject::tr("旧版格式暂不支持图片识别，请转换为 DOCX、PPTX 或 XLSX"));
+            return;
+        }
+        if (offlineAttributes(file.attributes)) {
+            if (stored != u"offline")
+                store.status(path, size, modified, engine, generation, u"offline"_s,
+                    QObject::tr("文件仅在云端，下载到本机后再试"));
+            return;
+        }
+        try {
+            const QByteArray bytes = readFile(path);
+            const QByteArray digest = QCryptographicHash::hash(bytes, QCryptographicHash::Sha256);
+            if (store.reuse(path, size, modified, digest, engine, generation))
+                return;
+            store.beginFile(path, size, modified, digest, engine, generation);
+            Extraction result;
+            if (worker) {
+                const QJsonObject reply = worker->read(path, cancel);
+                for (const auto& value : reply.value(u"pages"_s).toArray()) {
+                    stopped(cancel);
+                    const QJsonObject page = value.toObject();
+                    const QByteArray hash = QByteArray::fromHex(page.value(u"hash"_s).toString().toLatin1());
+                    qint64 id = store.asset(hash);
+                    if (!id) {
+                        id = store.putAsset(hash, QSize(page.value(u"width"_s).toInt(), page.value(u"height"_s).toInt()),
+                            piecesFromJson(page.value(u"pieces"_s).toArray()));
+                        ++state.recognized;
+                        progress(state);
+                    }
+                    store.addPage(id, page.value(u"label"_s).toString(), page.value(u"source"_s).toObject());
+                }
+                result.images = reply.value(u"images"_s).toInt();
+                result.partial = reply.value(u"partial"_s).toBool();
+                result.message = reply.value(u"message"_s).toString();
+            } else
+                result = extractImages(
+                    path,
+                    [&](const QImage& image, const QString& label, const QJsonObject& source) {
+                        stopped(cancel);
+                        const QByteArray hash = imageHash(image, engine);
+                        qint64 id = store.asset(hash);
+                        if (!id) {
+                            if (!reader) {
+                                QString message;
+                                reader = PaddleOcr::load(appDir, 2, &message);
+                                if (!reader)
+                                    throw ScanStopped(QObject::tr("需要增强识别组件：%1").arg(message).toStdString());
+                            }
+                            QList<OcrPiece> pieces;
+                            QString message;
+                            if (!reader->readPieces(image, &pieces, &message))
+                                fail(message);
+                            stopped(cancel);
+                            id = store.putAsset(hash, image.size(), pieces);
+                            ++state.recognized;
+                            progress(state);
+                        }
+                        store.addPage(id, label, source);
+                    },
+                    cancel);
+            const QFileInfo after(path);
+            if (after.size() != size || after.lastModified().toMSecsSinceEpoch() != modified)
+                fail(QObject::tr("识别期间文件发生变化，下次更新时重试"));
+            store.finishFile(result.partial ? u"partial"_s
+                    : result.images         ? u"ready"_s
+                                            : u"empty"_s,
+                result.message);
+        } catch (const ScanStopped&) {
+            store.rollback();
+            throw;
+        } catch (const std::exception& exception) {
+            store.rollback();
+            stopped(cancel);
+            const QString message = QString::fromUtf8(exception.what());
+            if (message.contains(u"full", Qt::CaseInsensitive))
+                fail(QObject::tr("索引空间已满，请提高容量上限或移除部分目录"));
+            // Kept as failed until the file changes or "recheck all" is used.
+            store.status(path, size, modified, engine, generation, u"failed"_s, message);
+        }
+    };
     for (const QString& root : options.folders) {
         stopped(cancel);
         if (!QDir(root).exists()) {
@@ -455,131 +713,13 @@ void scan(const QString& appDir, const QString& dataDir, const ScanOptions& opti
             progress(state);
             continue;
         }
-        std::error_code error;
-        std::filesystem::recursive_directory_iterator it(std::filesystem::path(root.toStdWString()), error), end;
-        bool complete = !error;
-        for (; it != end; it.increment(error)) {
-            stopped(cancel);
-            if (error) {
-                complete = false;
-                error.clear();
-                continue;
-            }
-            const QString path = QString::fromStdWString(it->path().wstring());
-            const bool excluded = std::any_of(options.excluded.begin(), options.excluded.end(),
-                [&](const QString& folder) { return inside(path, folder); });
-            const DWORD attributes = ::GetFileAttributesW(it->path().c_str());
-            if (attributes == INVALID_FILE_ATTRIBUTES) {
-                complete = false;
-                continue;
-            }
-            if (attributes & FILE_ATTRIBUTE_DIRECTORY) {
-                if (excluded || attributes & FILE_ATTRIBUTE_REPARSE_POINT || inside(path, dataDir))
-                    it.disable_recursion_pending();
-                continue;
-            }
-            if (excluded || (!supported(path) && !legacyDocument(path)) || visited.contains(pathKey(path)))
-                continue;
-            std::error_code typeError;
-            if (std::filesystem::is_symlink(it->symlink_status(typeError)))
-                continue;
-            if (typeError) {
-                complete = false;
-                continue;
-            }
-            visited.insert(pathKey(path));
-            const QFileInfo info(path);
-            const qint64 size = info.size(), modified = info.lastModified().toMSecsSinceEpoch();
-            state.current = QDir::toNativeSeparators(path);
-            ++state.checked;
-            state.message.clear();
-            progress(state);
-            store.touch(path, generation);
-            if (!options.retry && store.current(path, size, modified, engine))
-                continue;
-            if (legacyDocument(path)) {
-                store.status(path, size, modified, engine, generation, u"unsupported"_s,
-                    QObject::tr("旧版格式暂不支持图片识别，请转换为 DOCX、PPTX 或 XLSX"));
-                continue;
-            }
-            if (onlineOnly(path)) {
-                store.status(path, size, modified, engine, generation, u"offline"_s,
-                    QObject::tr("文件仅在云端，下载到本机后再试"));
-                continue;
-            }
-            try {
-                const QByteArray bytes = readFile(path);
-                const QByteArray digest = QCryptographicHash::hash(bytes, QCryptographicHash::Sha256);
-                if (store.reuse(path, size, modified, digest, engine, generation))
-                    continue;
-                store.beginFile(path, size, modified, digest, engine, generation);
-                Extraction result;
-                if (worker) {
-                    const QJsonObject reply = worker->read(path, cancel);
-                    for (const auto& value : reply.value(u"pages"_s).toArray()) {
-                        stopped(cancel);
-                        const QJsonObject page = value.toObject();
-                        const QByteArray hash = QByteArray::fromHex(page.value(u"hash"_s).toString().toLatin1());
-                        qint64 id = store.asset(hash);
-                        if (!id) {
-                            id = store.putAsset(hash,
-                                QSize(page.value(u"width"_s).toInt(), page.value(u"height"_s).toInt()),
-                                piecesFromJson(page.value(u"pieces"_s).toArray()));
-                            ++state.recognized;
-                            progress(state);
-                        }
-                        store.addPage(id, page.value(u"label"_s).toString(), page.value(u"source"_s).toObject());
-                    }
-                    result.images = reply.value(u"images"_s).toInt();
-                    result.partial = reply.value(u"partial"_s).toBool();
-                    result.message = reply.value(u"message"_s).toString();
-                } else
-                    result = extractImages(
-                        path,
-                        [&](const QImage& image, const QString& label, const QJsonObject& source) {
-                            stopped(cancel);
-                            const QByteArray hash = imageHash(image, engine);
-                            qint64 id = store.asset(hash);
-                            if (!id) {
-                                if (!reader) {
-                                    QString message;
-                                    reader = PaddleOcr::load(appDir, 2, &message);
-                                    if (!reader)
-                                        fail(QObject::tr("需要增强识别组件：%1").arg(message));
-                                }
-                                QList<OcrPiece> pieces;
-                                QString message;
-                                if (!reader->readPieces(image, &pieces, &message))
-                                    fail(message);
-                                stopped(cancel);
-                                id = store.putAsset(hash, image.size(), pieces);
-                                ++state.recognized;
-                                progress(state);
-                            }
-                            store.addPage(id, label, source);
-                        },
-                        cancel);
-                const QFileInfo after(path);
-                if (after.size() != size || after.lastModified().toMSecsSinceEpoch() != modified)
-                    fail(QObject::tr("识别期间文件发生变化，下次更新时重试"));
-                store.finishFile(result.partial ? u"partial"_s
-                        : result.images         ? u"ready"_s
-                                                : u"empty"_s,
-                    result.message);
-            } catch (const std::exception& exception) {
-                store.rollback();
-                stopped(cancel);
-                const QString message = QString::fromUtf8(exception.what());
-                if (message.contains(u"full", Qt::CaseInsensitive))
-                    fail(QObject::tr("索引空间已满，请提高容量上限或移除部分目录"));
-                store.status(path, size, modified, engine, generation, u"failed"_s, message);
-            }
-        }
-        if (error)
-            complete = false;
-        if (complete)
-            store.prune(root, generation);
-        else {
+        QStringList unreadable;
+        if (!excluded(root))
+            walk(
+                root, [&](const QString& folder) { return !excluded(folder) && !inside(folder, dataDir); }, index,
+                cancel, &unreadable);
+        store.prune(root, visited, unreadable);
+        if (!unreadable.isEmpty()) {
             state.message = QObject::tr("部分目录无法读取，保留未检查文件的索引：%1").arg(root);
             progress(state);
         }
