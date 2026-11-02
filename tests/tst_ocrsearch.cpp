@@ -27,6 +27,12 @@ using namespace Qt::StringLiterals;
 using namespace ws::ocrsearch;
 
 namespace {
+// The Win顺 folder the worker stub takes Qt and the OCR files from (deployed by
+// the build: tests/CMakeLists.txt); the plugin's own files stay in the build folder.
+QString workerAppDir()
+{
+    return QString::fromUtf8(WINSHUN_OCR_APP_DIR);
+}
 void write(const QString& path, const QByteArray& bytes)
 {
     QFile file(path);
@@ -608,9 +614,11 @@ private slots:
 
     void workerDeadlineCancellationAndRecovery()
     {
-        const QString appDir = QCoreApplication::applicationDirPath();
+        const QString appDir = workerAppDir();
         if (!ws::PaddleOcr::installed(appDir))
             QSKIP("Enhanced OCR component is not installed in this test runtime");
+        QVERIFY2(QFileInfo::exists(QDir(appDir).filePath(u"Qt6Core.dll"_s)),
+            qPrintable(u"No deployed Win顺 folder for the worker: "_s + appDir));
         QTemporaryDir temp;
         const QString image = temp.filePath(u"invoice.png"_s), broken = temp.filePath(u"broken.pdf"_s);
         write(image, imageBytes());
@@ -619,28 +627,54 @@ private slots:
         {
             Store store(data);
         }
-        const QString program = QDir(appDir).filePath(u"WinShunOcrSearch.exe"_s);
+        const QString program = QDir(QCoreApplication::applicationDirPath()).filePath(u"WinShunOcrSearch.exe"_s);
         Worker worker(program, appDir, data, u"test"_s);
-        QVERIFY_THROWS_EXCEPTION(std::runtime_error, worker.read(broken, [] { return false; }));
-        const auto result = worker.read(image, [] { return false; });
+        const auto read = [&](const Cancel& cancel, QString* error) {
+            try {
+                return worker.read(image, cancel);
+            } catch (const std::exception& e) {
+                *error = QString::fromUtf8(e.what());
+                return QJsonObject {};
+            }
+        };
+        // The worker's own answer about the file, not a worker that never started.
+        QString brokenError;
+        try {
+            worker.read(broken, [] { return false; });
+        } catch (const std::exception& e) {
+            brokenError = QString::fromUtf8(e.what());
+        }
+        QVERIFY(!brokenError.isEmpty());
+        QVERIFY2(!brokenError.contains(u"工作进程"), qPrintable(brokenError));
+        QString error;
+        auto result = read([] { return false; }, &error);
+        QVERIFY2(error.isEmpty(), qPrintable(error));
         QCOMPARE(result.value(u"images"_s).toInt(), 1);
         QVERIFY(!result.value(u"pages"_s).toArray().first().toObject().value(u"pieces"_s).toArray().isEmpty());
-        QVERIFY_THROWS_EXCEPTION(std::runtime_error, worker.read(image, [] { return true; }));
+        read([] { return true; }, &error);
+        QVERIFY2(error.contains(u"暂停"), qPrintable(error));
+        // Cancelling killed the process; the next file starts a new one.
+        error.clear();
+        result = read([] { return false; }, &error);
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QCOMPARE(result.value(u"images"_s).toInt(), 1);
         Worker timed(program, appDir, data, u"test"_s, 50);
-        bool deadline = false;
+        error.clear();
         try {
             timed.read(image, [] { return false; });
         } catch (const std::exception& e) {
-            deadline = QString::fromUtf8(e.what()).contains(u"超过");
+            error = QString::fromUtf8(e.what());
         }
-        QVERIFY(deadline);
+        QVERIFY2(error.contains(u"超过"), qPrintable(error));
     }
 
     void installedPluginRunsInRealHostAndOpensItsWindow()
     {
-        const QString appDir = QCoreApplication::applicationDirPath();
+        const QString appDir = workerAppDir(), buildDir = QCoreApplication::applicationDirPath();
         if (!ws::PaddleOcr::installed(appDir))
             QSKIP("Enhanced OCR component is not installed in this test runtime");
+        QVERIFY2(QFileInfo::exists(QDir(appDir).filePath(u"Qt6Core.dll"_s)),
+            qPrintable(u"No deployed Win顺 folder for the plugin: "_s + appDir));
         QTemporaryDir temp;
         const QString sources = temp.filePath(u"sources"_s);
         QDir().mkpath(sources);
@@ -670,9 +704,9 @@ private slots:
         QCOMPARE(actions[0].toObject().value(u"id"_s).toString(), u"open"_s);
         QCOMPARE(actions[1].toObject().value(u"id"_s).toString(), u"preview"_s);
         QCOMPARE(actions[2].toObject().value(u"id"_s).toString(), u"folder"_s);
-        QFile exe(QDir(appDir).filePath(u"WinShunOcrSearch.exe"_s));
+        QFile exe(QDir(buildDir).filePath(u"WinShunOcrSearch.exe"_s));
         QVERIFY(exe.open(QIODevice::ReadOnly));
-        QFile dll(QDir(appDir).filePath(u"WinShunOcrSearchApp.dll"_s));
+        QFile dll(QDir(buildDir).filePath(u"WinShunOcrSearchApp.dll"_s));
         QVERIFY(dll.open(QIODevice::ReadOnly));
         const QString package = temp.filePath(u"ocr.wsplugin"_s);
         zip(package,
@@ -689,7 +723,7 @@ private slots:
         options.userPluginDir = plugins;
         options.dataRoot = dataRoot;
         options.appDir = appDir;
-        options.runnerExe = QDir(appDir).filePath(u"WinShunPluginHost.exe"_s);
+        options.runnerExe = QDir(buildDir).filePath(u"WinShunPluginHost.exe"_s);
         options.version = u"0.17.0"_s;
         ws::plugin::Host host(options);
         host.setEnabled(id, true);

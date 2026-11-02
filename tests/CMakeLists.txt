@@ -9,10 +9,34 @@ add_test(NAME tst_pluginhotkeys COMMAND tst_pluginhotkeys -o -,txt)
 set_tests_properties(tst_pluginhotkeys PROPERTIES RUN_SERIAL TRUE
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# The OCR worker stub loads Qt, its plugins and QML imports, ONNX Runtime and
+# the models from Win顺's folder alone (no PATH: ocr-search-plugin/stub), so
+# the tests that start it get a deployed Win顺 folder, not the build folder
+# (which has no Qt: the process could not start).
+set(ocr_app_dir "${CMAKE_CURRENT_BINARY_DIR}/ocr-app")
+set(ocr_app_stamp "${ocr_app_dir}/deployed.stamp")
+add_custom_command(OUTPUT "${ocr_app_stamp}"
+    COMMAND Qt6::windeployqt --dir "${ocr_app_dir}" --qmldir "${PROJECT_SOURCE_DIR}/src" --no-translations
+        --no-compiler-runtime --no-system-d3d-compiler --no-system-dxc-compiler --no-opengl-sw
+        --skip-plugin-types qmltooling,generic,networkinformation,tls,iconengines
+        --exclude-plugins qsqlibase,qsqlmimer,qsqloci,qsqlodbc,qsqlpsql
+        $<IF:$<CONFIG:Debug>,--debug,--release> "$<TARGET_FILE:WinShunOcrSearchApp>"
+    # WinShun.exe: the plugin window takes its icon from it.
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShun>" "${ORT_DIR}/lib/onnxruntime.dll"
+        "$<TARGET_FILE:pdfium>" "${ocr_app_dir}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${ocr_app_dir}/ocr"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${OCR_MODEL_FILES} "${ocr_app_dir}/ocr"
+    COMMAND ${CMAKE_COMMAND} -E touch "${ocr_app_stamp}"
+    DEPENDS WinShunOcrSearchApp WinShun ${OCR_MODEL_FILES}
+    COMMENT "Deploying a Win顺 folder for the OCR worker tests into ${ocr_app_dir}"
+    VERBATIM)
+add_custom_target(tst_ocrsearch_app DEPENDS "${ocr_app_stamp}")
+
 qt_add_executable(tst_ocrsearch tst_ocrsearch.cpp)
 target_link_libraries(tst_ocrsearch PRIVATE wsocrsearch wsplugin miniz Qt6::Test)
-target_compile_definitions(tst_ocrsearch PRIVATE WINSHUN_OCR_MANIFEST="${PROJECT_SOURCE_DIR}/src/ocr-search-plugin/package/plugin.json")
-add_dependencies(tst_ocrsearch WinShunOcrSearch WinShunOcrSearchApp WinShunPluginHost)
+target_compile_definitions(tst_ocrsearch PRIVATE WINSHUN_OCR_MANIFEST="${PROJECT_SOURCE_DIR}/src/ocr-search-plugin/package/plugin.json"
+    WINSHUN_OCR_APP_DIR="${ocr_app_dir}")
+add_dependencies(tst_ocrsearch WinShunOcrSearch WinShunOcrSearchApp WinShunPluginHost tst_ocrsearch_app)
 set_target_properties(tst_ocrsearch PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
 add_test(NAME tst_ocrsearch COMMAND tst_ocrsearch -o -,txt)
 set_tests_properties(tst_ocrsearch PROPERTIES TIMEOUT 180
