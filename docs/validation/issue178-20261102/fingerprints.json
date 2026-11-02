@@ -1,0 +1,9 @@
+{
+  "src/capture/Recorder.h": "20115601eda481e2551c730052ef91de1c6479426feb113c94bd117ef182651c",
+  "src/capture/Recorder.cpp": "50c3987b794023e0f94c9cc75da00ed06544d61d6e7b1c640867992703b168b5",
+  "src/capture-plugin/qml/RecordingPanel.qml": "41f39e590755bece44e864e02be19557315e999e3341c9256948a4163176e2d1",
+  "src/capture-plugin/CapturePreview.cpp": "4d1ccb2d1c755d9ad8d822ff13a566ee02cde203ba7e61b34b4c9b5a4855c6d6",
+  "src/capture-plugin/i18n/capture_en.ts": "feee8573e089af8e6985ca49fa57cf9d8ed97074f2b4707581424ead54f4bec3",
+  "build/issue166/WinShunCapture.exe": "5874e40ff5a5e1b1db435c7baed03e3cba81ec5b73f0eb198428d4b3db9b04aa",
+  "build/issue166/WinShunCaptureApp.dll": "1142f8a020ca7fe28889d7f98aea9759a34823ead25d42f4e4325e9cc668edc7"
+}

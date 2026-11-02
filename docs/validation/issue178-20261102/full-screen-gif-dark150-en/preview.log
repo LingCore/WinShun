@@ -1,0 +1,35 @@
+preparing
+loading the font
+Screen capture: prepared in 0 ms (1 monitor(s), WGC no, borderless no)
+Screen capture: overlay up 95 ms after the hotkey (grab 31 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 31 ms in all; 19 windows listed in 2 ms)
+Screen capture: UI Automation gave 0 controls in 102 ms
+saved docs/validation/issue178-20261102/full-screen-gif-dark150-en/ready.png 1133x84
+saved docs/validation/issue178-20261102/full-screen-gif-dark150-en/source.png 2561x1601
+compact ready: 755 x 56
+full-screen uses source monitor (physical 0,0 2560x1600): 1
+saved docs/validation/issue178-20261102/full-screen-gif-dark150-en/ready-full-screen.png 1133x84
+area choice restores original selection: 1
+keyboard selects full-screen; switching preserves recording preferences: 1
+options expanded beside screen edge stay in work area: 1
+saved docs/validation/issue178-20261102/full-screen-gif-dark150-en/keyboard-options.png 1133x278
+compact options with spacing on both sides of divider: 1 (755 x 185; native gaps 12/12 px)
+keyboard focus scrolls the final option into a short viewport: 1
+saved docs/validation/issue178-20261102/full-screen-gif-dark150-en/options-short-height.png 1133x228
+keyboard Space opens options, Escape closes only options: 1
+saved docs/validation/issue178-20261102/full-screen-gif-dark150-en/ready-gif.png 1133x84
+saved docs/validation/issue178-20261102/full-screen-gif-dark150-en/options.png 1133x278
+saved docs/validation/issue178-20261102/full-screen-gif-dark150-en/options-all-keys.png 1133x320
+recording range is locked after start: 1
+saved docs/validation/issue178-20261102/full-screen-gif-dark150-en/recording.png 710x84
+saved docs/validation/issue178-20261102/full-screen-gif-dark150-en/paused.png 710x84
+Recording finished: encoder NVIDIA H.264 Encoder MFT hardware true frames 47 elapsed ms 3105 stage finalize MP4
+WARNING: Recording worker: QFont::fromString: Invalid description '(empty)'
+saved docs/validation/issue178-20261102/full-screen-gif-dark150-en/completed.png 873x129
+recording: Recording saved; 00:03; 653.18 KiB;
+another take keeps recording mode and range: 1
+saved docs/validation/issue178-20261102/full-screen-gif-dark150-en/again.png 1133x84
+recording range is locked after start: 1
+Recording finished: encoder NVIDIA H.264 Encoder MFT hardware true frames 19 elapsed ms 1277 stage finalize MP4
+WARNING: Recording worker: QFont::fromString: Invalid description '(empty)'
+saved docs/validation/issue178-20261102/full-screen-gif-dark150-en/completed-second.png 873x129
+recording: Recording saved; 00:01; 391.66 KiB;

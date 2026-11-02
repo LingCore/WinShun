@@ -1,0 +1,22 @@
+preparing
+loading the font
+Screen capture: prepared in 0 ms (1 monitor(s), WGC no, borderless no)
+Screen capture: UI Automation skipped for a Chromium window (class Chrome_WidgetWin_1): its child windows only
+Screen capture: overlay up 99 ms after the hotkey (grab 33 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 33 ms in all; 19 windows listed in 1 ms)
+saved docs/validation/issue178-20261102/ui-compact-en/ready.png 624x56
+saved docs/validation/issue178-20261102/ui-compact-en/source.png 800x460
+compact ready: 624 x 56
+recording controls fit compact width 624 without overlap: 0
+full-screen uses source monitor (physical 0,0 2560x1600): 1
+saved docs/validation/issue178-20261102/ui-compact-en/ready-full-screen.png 624x56
+area choice restores original selection: 1
+keyboard selects full-screen; switching preserves recording preferences: 1
+options expanded beside screen edge stay in work area: 1
+saved docs/validation/issue178-20261102/ui-compact-en/keyboard-options.png 624x185
+compact options with spacing on both sides of divider: 1 (624 x 185; native gaps 8/8 px)
+keyboard focus scrolls the final option into a short viewport: 1
+saved docs/validation/issue178-20261102/ui-compact-en/options-short-height.png 624x152
+keyboard Space opens options, Escape closes only options: 1
+saved docs/validation/issue178-20261102/ui-compact-en/ready-gif.png 624x56
+saved docs/validation/issue178-20261102/ui-compact-en/options.png 624x185
+saved docs/validation/issue178-20261102/ui-compact-en/options-all-keys.png 624x213

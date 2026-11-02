@@ -18,7 +18,7 @@ Window {
 
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
     color: Theme.background
-    title: qsTr("区域录屏")
+    title: qsTr("录屏")
     width: Math.min(toolbar.implicitWidth + 2 * padding, Screen.desktopAvailableWidth - 16)
     height: body.implicitHeight + 2 * padding
     onVisibleChanged: if (!visible) optionsShown = false
@@ -73,6 +73,32 @@ Window {
                 visible: panel.ready
                 spacing: 2
                 RecordingButton {
+                    objectName: "recordingArea"
+                    text: qsTr("选区")
+                    checkable: true
+                    checked: !panel.recorder.fullScreen
+                    Accessible.role: Accessible.RadioButton
+                    autoExclusive: true
+                    tip: qsTr("录制原来选择的区域")
+                    tipsEnabled: panel.ready
+                    onClicked: panel.recorder.fullScreen = false
+                }
+                RecordingButton {
+                    objectName: "recordingFullScreen"
+                    text: qsTr("全屏")
+                    checkable: true
+                    checked: panel.recorder.fullScreen
+                    Accessible.role: Accessible.RadioButton
+                    autoExclusive: true
+                    tip: qsTr("录制选区所在的整个屏幕，包含任务栏")
+                    tipsEnabled: panel.ready
+                    onClicked: panel.recorder.fullScreen = true
+                }
+            }
+            Row {
+                visible: panel.ready
+                spacing: 2
+                RecordingButton {
                     objectName: "recordingMp4"
                     text: "MP4"
                     checkable: true
@@ -95,7 +121,7 @@ Window {
             }
             Item {
                 Layout.preferredWidth: panel.ready ? 168 : panel.recording || panel.completed ? 152 : 250
-                Layout.minimumWidth: 60
+                Layout.minimumWidth: panel.ready ? 24 : 60
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 Row {

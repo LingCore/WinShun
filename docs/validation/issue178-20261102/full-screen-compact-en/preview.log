@@ -1,0 +1,35 @@
+preparing
+loading the font
+Screen capture: prepared in 0 ms (1 monitor(s), WGC no, borderless no)
+Screen capture: overlay up 90 ms after the hotkey (grab 37 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 37 ms in all; 19 windows listed in 0 ms)
+Screen capture: UI Automation gave 0 controls in 87 ms
+saved docs/validation/issue178-20261102/full-screen-compact-en/ready.png 624x56
+saved docs/validation/issue178-20261102/full-screen-compact-en/source.png 2560x1600
+compact ready: 624 x 56
+recording controls fit compact width 624 without overlap: 1
+full-screen uses source monitor (physical 0,0 2560x1600): 1
+saved docs/validation/issue178-20261102/full-screen-compact-en/ready-full-screen.png 624x56
+area choice restores original selection: 1
+keyboard selects full-screen; switching preserves recording preferences: 1
+options expanded beside screen edge stay in work area: 1
+saved docs/validation/issue178-20261102/full-screen-compact-en/keyboard-options.png 624x185
+compact options with spacing on both sides of divider: 1 (624 x 185; native gaps 8/8 px)
+keyboard focus scrolls the final option into a short viewport: 1
+saved docs/validation/issue178-20261102/full-screen-compact-en/options-short-height.png 624x152
+keyboard Space opens options, Escape closes only options: 1
+saved docs/validation/issue178-20261102/full-screen-compact-en/ready-gif.png 624x56
+saved docs/validation/issue178-20261102/full-screen-compact-en/options.png 624x185
+saved docs/validation/issue178-20261102/full-screen-compact-en/options-all-keys.png 624x213
+saved docs/validation/issue178-20261102/full-screen-compact-en/counting.png 440x56
+recording range is locked after start: 1
+saved docs/validation/issue178-20261102/full-screen-compact-en/recording.png 473x56
+saved docs/validation/issue178-20261102/full-screen-compact-en/paused.png 473x56
+Recording finished: encoder NVIDIA H.264 Encoder MFT hardware true frames 94 elapsed ms 3134 stage finalize MP4
+saved docs/validation/issue178-20261102/full-screen-compact-en/completed.png 582x86
+recording: Recording saved; 00:03; 101.18 KiB;
+another take keeps recording mode and range: 1
+saved docs/validation/issue178-20261102/full-screen-compact-en/again.png 755x56
+recording range is locked after start: 1
+Recording finished: encoder NVIDIA H.264 Encoder MFT hardware true frames 22 elapsed ms 736 stage finalize MP4
+saved docs/validation/issue178-20261102/full-screen-compact-en/completed-second.png 582x86
+recording: Recording saved; 00:00; 42.84 KiB;

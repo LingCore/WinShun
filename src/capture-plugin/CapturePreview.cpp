@@ -804,14 +804,27 @@ int runRecording(const QStringList& args)
     )", QUrl(u"qrc:/recording-fixture.qml"_s));
     std::unique_ptr<QQuickWindow> fixture(qobject_cast<QQuickWindow*>(fixtureComponent.create()));
     if (!fixture) { say(fixtureComponent.errorString()); return 3; }
-    fixture->show();
+    const int screenIndex = valueAfter(args, u"--screen-index", u"0"_s).toInt();
+    const auto screens = QGuiApplication::screens();
+    if (screenIndex < 0 || screenIndex >= screens.size()) { say(u"recording test screen is unavailable"_s); return 3; }
+    fixture->setScreen(screens[screenIndex]);
+    fixture->setPosition(screens[screenIndex]->geometry().topLeft() + QPoint(80, 80));
+    const bool fullScreenRecording = args.contains(u"--full-screen"_s);
+    // A full-screen recording must contain only this test's generated content.
+    if (fullScreenRecording) {
+        fixture->setFlags(Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
+        fixture->showFullScreen();
+    } else fixture->show();
     settle(fixture.get());
     const HWND hwnd = reinterpret_cast<HWND>(fixture->winId());
     RECT client {};
     ::GetClientRect(hwnd, &client);
     POINT at {0, 0};
     ::ClientToScreen(hwnd, &at);
-    const QRect region(at.x, at.y, client.right, client.bottom);
+    const QRect fixtureRegion(at.x, at.y, client.right, client.bottom);
+    const QRect region = fullScreenRecording
+        ? QRect(fixtureRegion.topLeft() + QPoint(40, 40), QSize(std::min(800, int(client.right) - 80), std::min(460, int(client.bottom) - 80)))
+        : fixtureRegion;
     const auto quality = args.contains(u"--small-file"_s) ? Recorder::SmallFile
         : args.contains(u"--high-quality"_s) ? Recorder::HighQuality : Recorder::Standard;
     Recorder::Preferences preferences {out.absolutePath(), args.contains(u"--system-audio"_s), false, quality,
@@ -855,6 +868,11 @@ int runRecording(const QStringList& args)
             panel = qobject_cast<QQuickWindow*>(window);
     if (!recorder || !panel) { say(u"no recording panel"_s); return 3; }
     settle(panel);
+    const int compactWidth = valueAfter(args, u"--compact-width").toInt();
+    if (compactWidth > 0) {
+        panel->setWidth(compactWidth);
+        settle(panel);
+    }
     bool saved = saveGrab(panel, out.filePath(u"ready.png"_s)) && saveGrab(fixture.get(), out.filePath(u"source.png"_s));
     if (!args.contains(u"--auto"_s)) {
         QTimer::singleShot(10 * 60 * 1000, qApp, &QCoreApplication::quit);
@@ -914,6 +932,55 @@ int runRecording(const QStringList& args)
         QCoreApplication::sendEvent(panel, &release);
         pump(20);
     };
+    if (compactWidth > 0) {
+        qreal right = 0;
+        bool usable = true;
+        for (const auto* name : {"recordingArea", "recordingFullScreen", "recordingMp4", "recordingGif",
+                 "recordingSystemAudio", "recordingMicrophone", "recordingOptions", "recordingStart", "recordingClose"}) {
+            auto* item = panel->findChild<QQuickItem*>(QString::fromLatin1(name));
+            if (!item) { usable = false; break; }
+            const auto box = item->mapRectToScene(item->boundingRect());
+            usable = usable && box.left() >= right && box.right() <= panel->width() - 10 && box.width() >= 24;
+            right = box.right();
+        }
+        say(u"recording controls fit compact width %1 without overlap: %2"_s.arg(panel->width()).arg(usable));
+        saved = usable && saved;
+    }
+    MONITORINFO recordingMonitor {sizeof recordingMonitor};
+    const auto monitor = ::MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+    if (!::GetMonitorInfoW(monitor, &recordingMonitor)) return 3;
+    const QRect wholeScreen(recordingMonitor.rcMonitor.left, recordingMonitor.rcMonitor.top,
+        recordingMonitor.rcMonitor.right - recordingMonitor.rcMonitor.left, recordingMonitor.rcMonitor.bottom - recordingMonitor.rcMonitor.top);
+    const auto recordingChoicesMatch = [&](bool fullScreen) {
+        auto* area = panel->findChild<QQuickItem*>(u"recordingArea"_s);
+        auto* full = panel->findChild<QQuickItem*>(u"recordingFullScreen"_s);
+        return area && full && area->property("checked").toBool() == !fullScreen && full->property("checked").toBool() == fullScreen;
+    };
+    const auto initialFormat = recorder->format();
+    const auto initialQuality = recorder->quality();
+    const bool initialSystemAudio = recorder->systemAudio(), initialMicrophone = recorder->microphone();
+    click("recordingFullScreen");
+    click("recordingFullScreen"); // clicking the active choice keeps it selected
+    settle(panel);
+    bool areaPassed = recorder->fullScreen() && recorder->region() == wholeScreen && recordingChoicesMatch(true);
+    say(u"full-screen uses source monitor (physical %1,%2 %3x%4): %5"_s
+        .arg(wholeScreen.x()).arg(wholeScreen.y()).arg(wholeScreen.width()).arg(wholeScreen.height()).arg(areaPassed));
+    saved = areaPassed && saveGrab(panel, out.filePath(u"ready-full-screen.png"_s)) && saved;
+    click("recordingArea");
+    areaPassed = !recorder->fullScreen() && recorder->region() == region && recordingChoicesMatch(false);
+    say(u"area choice restores original selection: %1"_s.arg(areaPassed));
+    saved = areaPassed && saved;
+    auto* fullScreenButton = panel->findChild<QQuickItem*>(u"recordingFullScreen"_s);
+    if (!fullScreenButton) return 3;
+    fullScreenButton->forceActiveFocus(Qt::TabFocusReason);
+    key(Qt::Key_Space);
+    areaPassed = recorder->fullScreen() && recorder->region() == wholeScreen && recordingChoicesMatch(true);
+    saved = areaPassed && saved;
+    click("recordingArea");
+    areaPassed = areaPassed && recorder->region() == region && recorder->format() == initialFormat
+        && recorder->quality() == initialQuality && recorder->systemAudio() == initialSystemAudio && recorder->microphone() == initialMicrophone;
+    say(u"keyboard selects full-screen; switching preserves recording preferences: %1"_s.arg(areaPassed));
+    saved = areaPassed && saved;
     auto* optionsButton = panel->findChild<QQuickItem*>(u"recordingOptions"_s);
     if (optionsButton) {
         optionsButton->forceActiveFocus(Qt::TabFocusReason);
@@ -1052,14 +1119,19 @@ int runRecording(const QStringList& args)
         recorder->close();
         return saved ? 0 : 4;
     }
+    if (fullScreenRecording) click("recordingFullScreen");
     if (originalCountdown) {
         click("recordingStart");
         saved = recorder->stage() == Recorder::Counting && saved;
+        const QRect frozen = recorder->region();
+        recorder->setFullScreen(!recorder->fullScreen());
+        saved = recorder->region() == frozen && recorder->fullScreen() == fullScreenRecording && saved;
         settle(panel);
         saved = saveGrab(panel, out.filePath(u"counting.png"_s)) && saved;
         click("recordingClose");
         saved = !recorder->active() && !panel->isVisible() && saved;
         recorder->prepare(region, ::MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), fixture->devicePixelRatio());
+        if (fullScreenRecording) click("recordingFullScreen");
         settle(panel);
     }
     QEventLoop loop;
@@ -1071,6 +1143,12 @@ int runRecording(const QStringList& args)
     QObject::connect(recorder, &Recorder::changed, &loop, [&] {
         if (recorder->stage() == Recorder::Recording && !started) {
             started = true;
+            const QRect expectedRegion = fullScreenRecording ? wholeScreen : region;
+            const bool expectedMode = recorder->fullScreen();
+            recorder->setFullScreen(!expectedMode);
+            const bool frozen = recorder->region() == expectedRegion && recorder->fullScreen() == expectedMode;
+            say(u"recording range is locked after start: %1"_s.arg(frozen));
+            saved = frozen && saved;
             if (completed) {
                 QTimer::singleShot(700, &loop, [&] { click("recordingStart"); });
                 return;
@@ -1101,6 +1179,10 @@ int runRecording(const QStringList& args)
                     saved = recorder->stage() == Recorder::Ready && recorder->quality() == quality
                         && recorder->cursor() == originalCursor && recorder->countdown() == originalCountdown
                         && recorder->clickHighlights() == originalClicks && saved;
+                    const bool sameArea = recorder->fullScreen() == fullScreenRecording
+                        && recorder->region() == (fullScreenRecording ? wholeScreen : region) && recordingChoicesMatch(fullScreenRecording);
+                    say(u"another take keeps recording mode and range: %1"_s.arg(sameArea));
+                    saved = sameArea && saved;
                     settle(panel);
                     saved = saveGrab(panel, out.filePath(u"again.png"_s)) && saved;
                     if (recorder->countdown()) {

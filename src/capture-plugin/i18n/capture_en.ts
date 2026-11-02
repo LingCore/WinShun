@@ -1233,6 +1233,26 @@ The unfinished recording is kept at: %1</translation>
 <context>
     <name>RecordingPanel</name>
     <message>
+        <source>录屏</source>
+        <translation>Screen recording</translation>
+    </message>
+    <message>
+        <source>选区</source>
+        <translation>Area</translation>
+    </message>
+    <message>
+        <source>全屏</source>
+        <translation>Full screen</translation>
+    </message>
+    <message>
+        <source>录制原来选择的区域</source>
+        <translation>Record the originally selected area</translation>
+    </message>
+    <message>
+        <source>录制选区所在的整个屏幕，包含任务栏</source>
+        <translation>Record the entire screen containing the selection, including the taskbar</translation>
+    </message>
+    <message>
         <source>点击高亮：%1</source>
         <translation>Click highlight: %1</translation>
     </message>
@@ -1807,6 +1827,14 @@ click here to cancel</translation>
 </context>
 <context>
     <name>ws::capture::Recorder</name>
+    <message>
+        <source>录制屏幕不可用，请重新选择录屏区域。</source>
+        <translation>The recording screen is unavailable. Select a recording area again.</translation>
+    </message>
+    <message>
+        <source>屏幕布局已改变，请重新选择录屏区域。</source>
+        <translation>The screen layout has changed. Select a recording area again.</translation>
+    </message>
     <message>
         <source>无法启用点击高亮，请关闭该选项后重试。</source>
         <translation>Could not enable click highlights. Turn off this option and try again.</translation>

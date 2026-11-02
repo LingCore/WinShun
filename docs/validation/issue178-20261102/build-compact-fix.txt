@@ -1,0 +1,6 @@
+[1/6] Copying WinShunCaptureApp qml sources into build dir
+[2/6] Running rcc for resource WinShunCaptureApp_raw_qml_0
+[3/6] Generating .rcc/qmlcache/WinShunCaptureApp_qml_RecordingPanel_qml.cpp, .rcc/qmlcache/WinShunCaptureApp_qml_RecordingPanel_qml.cpp.aotstats
+[4/6] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.qt\rcc\qrc_WinShunCaptureApp_raw_qml_0.cpp.obj
+[5/6] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp_qml_RecordingPanel_qml.cpp.obj
+[6/6] Linking CXX shared library WinShunCaptureApp.dll

@@ -268,6 +268,8 @@ void Recorder::prepare(const QRect& region, HMONITOR monitor, double dpr)
     if (active()) return;
     if (m_worker.joinable()) m_worker.join();
     m_region = region;
+    m_selectedRegion = region;
+    m_fullScreen = false;
     m_monitor = monitor;
     m_dpr = dpr;
     m_preferences = m_hooks.preferences ? m_hooks.preferences() : Preferences {};
@@ -302,6 +304,29 @@ void Recorder::prepare(const QRect& region, HMONITOR monitor, double dpr)
     emit changed();
     m_panel->show();
     m_panel->requestActivate();
+}
+
+void Recorder::setFullScreen(bool on)
+{
+    if (m_stage != Ready) return;
+    MONITORINFO info {sizeof info};
+    if (!::GetMonitorInfoW(m_monitor, &info)) {
+        m_error = tr("录制屏幕不可用，请重新选择录屏区域。");
+        emit changed();
+        return;
+    }
+    const QRect screen(info.rcMonitor.left, info.rcMonitor.top,
+        info.rcMonitor.right - info.rcMonitor.left, info.rcMonitor.bottom - info.rcMonitor.top);
+    if (!on && !screen.contains(m_selectedRegion)) {
+        m_error = tr("屏幕布局已改变，请重新选择录屏区域。");
+        emit changed();
+        return;
+    }
+    m_region = on ? screen : m_selectedRegion;
+    m_fullScreen = on;
+    m_error.clear();
+    m_border = std::make_unique<Border>(m_region, m_dpr);
+    emit changed();
 }
 
 void Recorder::start()
@@ -490,6 +515,12 @@ void Recorder::chooseFolder()
 void Recorder::play() { if (!m_path.isEmpty()) shell::open(m_path); }
 void Recorder::copy() { if (!m_path.isEmpty()) shell::copyFiles({m_path}); }
 void Recorder::reveal() { if (!m_path.isEmpty()) shell::reveal(m_path); }
-void Recorder::again() { if (m_stage == Done || m_stage == Failed) prepare(m_region, m_monitor, m_dpr); }
+void Recorder::again()
+{
+    if (m_stage != Done && m_stage != Failed) return;
+    const bool fullScreen = m_fullScreen;
+    prepare(m_selectedRegion, m_monitor, m_dpr);
+    if (fullScreen) setFullScreen(true);
+}
 
 } // namespace ws::capture

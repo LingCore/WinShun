@@ -1,0 +1,64 @@
+[
+  {
+    "bytes": 104107,
+    "decodedFrames": 94,
+    "durationMs": 3133,
+    "file": "docs\\validation\\issue178-20261102\\full-screen-mp4\\WinShun_20261102_130117_620.mp4",
+    "fps": 30,
+    "hasAudio": false,
+    "height": 1600,
+    "imageSaved": true,
+    "lastFrameMs": 3100,
+    "width": 2560
+  },
+  {
+    "bytes": 44866,
+    "decodedFrames": 22,
+    "durationMs": 733,
+    "file": "docs\\validation\\issue178-20261102\\full-screen-mp4\\WinShun_20261102_130125_548.mp4",
+    "fps": 30,
+    "hasAudio": false,
+    "height": 1600,
+    "imageSaved": true,
+    "lastFrameMs": 700,
+    "width": 2560
+  },
+  {
+    "file": "docs\\validation\\issue178-20261102\\full-screen-gif-dark150-en\\WinShun_20261102_130234_085.gif",
+    "width": 1280,
+    "height": 800,
+    "decodedFrames": 47,
+    "durationMs": 3130
+  },
+  {
+    "file": "docs\\validation\\issue178-20261102\\full-screen-gif-dark150-en\\WinShun_20261102_130242_033.gif",
+    "width": 1280,
+    "height": 800,
+    "decodedFrames": 19,
+    "durationMs": 1270
+  },
+  {
+    "bytes": 103612,
+    "decodedFrames": 94,
+    "durationMs": 3133,
+    "file": "docs\\validation\\issue178-20261102\\full-screen-compact-en\\WinShun_20261102_130910_870.mp4",
+    "fps": 30,
+    "hasAudio": false,
+    "height": 1600,
+    "imageSaved": true,
+    "lastFrameMs": 3100,
+    "width": 2560
+  },
+  {
+    "bytes": 43873,
+    "decodedFrames": 22,
+    "durationMs": 733,
+    "file": "docs\\validation\\issue178-20261102\\full-screen-compact-en\\WinShun_20261102_130918_774.mp4",
+    "fps": 30,
+    "hasAudio": false,
+    "height": 1600,
+    "imageSaved": true,
+    "lastFrameMs": 700,
+    "width": 2560
+  }
+]

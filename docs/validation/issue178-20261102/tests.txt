@@ -1,0 +1,9 @@
+Test project F:/电脑便捷工具/build/issue166
+    Start 47: tst_recording
+1/2 Test #47: tst_recording ....................   Passed   16.04 sec
+    Start 51: tst_capturesettings
+2/2 Test #51: tst_capturesettings ..............   Passed    0.18 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Total Test time (real) =  16.26 sec

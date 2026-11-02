@@ -4,6 +4,10 @@ Win顺 0.17.0 或更新版本的官方可选插件。设置 → 插件 → 插�
 
 This official optional plugin requires WinShun 0.17.0 or later. Install and enable it from Settings → Plugins → Library, review its permissions, then use screenshots, annotations, scrolling capture, pins, OCR and MP4 / GIF recording. Type `cap` for capture commands; configure shortcuts in the capture settings.
 
+录屏浮条提供“选区 / 全屏”切换：全屏包含原选区所在显示器的任务栏，切回选区会恢复原范围；“再录一段”沿用当前录制范围。
+
+The recording controls switch between Area and Full screen. Full screen includes the taskbar of the monitor containing the original selection; Area restores that selection. Another take keeps the recording range.
+
 ## 权限 / Permissions
 
 - `ui`：显示截图、编辑、贴图及录屏窗口，注册快捷键。Display capture, editing, pin and recording windows and register shortcuts.

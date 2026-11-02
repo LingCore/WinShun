@@ -1,0 +1,34 @@
+preparing
+loading the font
+Screen capture: prepared in 0 ms (1 monitor(s), WGC no, borderless no)
+Screen capture: overlay up 134 ms after the hotkey (grab 34 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 34 ms in all; 19 windows listed in 1 ms)
+Screen capture: UI Automation gave 0 controls in 135 ms
+saved docs/validation/issue178-20261102/full-screen-mp4/ready.png 665x56
+saved docs/validation/issue178-20261102/full-screen-mp4/source.png 2560x1600
+compact ready: 665 x 56
+full-screen uses source monitor (physical 0,0 2560x1600): 1
+saved docs/validation/issue178-20261102/full-screen-mp4/ready-full-screen.png 665x56
+area choice restores original selection: 1
+keyboard selects full-screen; switching preserves recording preferences: 1
+options expanded beside screen edge stay in work area: 1
+saved docs/validation/issue178-20261102/full-screen-mp4/keyboard-options.png 665x185
+compact options with spacing on both sides of divider: 1 (665 x 185; native gaps 8/8 px)
+keyboard focus scrolls the final option into a short viewport: 1
+saved docs/validation/issue178-20261102/full-screen-mp4/options-short-height.png 665x152
+keyboard Space opens options, Escape closes only options: 1
+saved docs/validation/issue178-20261102/full-screen-mp4/ready-gif.png 665x56
+saved docs/validation/issue178-20261102/full-screen-mp4/options.png 665x185
+saved docs/validation/issue178-20261102/full-screen-mp4/options-all-keys.png 665x213
+saved docs/validation/issue178-20261102/full-screen-mp4/counting.png 432x56
+recording range is locked after start: 1
+saved docs/validation/issue178-20261102/full-screen-mp4/recording.png 405x56
+saved docs/validation/issue178-20261102/full-screen-mp4/paused.png 405x56
+Recording finished: encoder NVIDIA H.264 Encoder MFT hardware true frames 94 elapsed ms 3132 stage finalize MP4
+saved docs/validation/issue178-20261102/full-screen-mp4/completed.png 530x86
+recording: 录屏已保存; 00:03; 101.67 KiB;
+another take keeps recording mode and range: 1
+saved docs/validation/issue178-20261102/full-screen-mp4/again.png 665x56
+recording range is locked after start: 1
+Recording finished: encoder NVIDIA H.264 Encoder MFT hardware true frames 22 elapsed ms 739 stage finalize MP4
+saved docs/validation/issue178-20261102/full-screen-mp4/completed-second.png 530x86
+recording: 录屏已保存; 00:00; 43.81 KiB;
