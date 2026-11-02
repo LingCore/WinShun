@@ -127,8 +127,9 @@ Item {
         if (list.count > 0)
             selectTo(Math.max(0, Math.min(list.count - 1, list.currentIndex + delta)), false)
     }
-    // The number keys (Clipboard.numberKeys): Alt+1... pastes the first nine
-    // rows; showing their hints never changes which keys paste them.
+    // The number keys (Clipboard.numberKeys): Alt+1... pastes the rows shown,
+    // counted from the first one at least half in view (ShownRows); showing
+    // their hints never changes which keys paste them.
     readonly property int numberKey: clipboard.numberKeys === "alt" ? Qt.Key_Alt
                                    : clipboard.numberKeys === "ctrl" ? Qt.Key_Control : -1
     NumberHints {
@@ -138,8 +139,12 @@ Item {
         // Over another app the existing KeyRouter delivers modifier keys too.
         listening: page.visible && (page.Window.active || page.clipboard.keysRouted) && !page.menuOpen
     }
-    // A digit another program holds as a global hotkey is its (Clipboard.numberKeysLeft):
-    // the row still shows the chord, struck through (ClipRow.hintTaken).
+    ShownRows {
+        id: shownRows
+        view: list
+    }
+    // A chord that is one of Win顺's own shortcuts stays that (Clipboard.numberKeysLeft):
+    // the row still shows it, struck through (ClipRow.hintTaken).
     function numberUsable(number) {
         return (clipboard.numberKeysLeft & (1 << number)) === 0
     }
@@ -328,8 +333,11 @@ Item {
         }
         const others = (event.modifiers & ~(Qt.ShiftModifier | Qt.KeypadModifier)) !== numberModifier
         if (numberModifier >= 0 && !others && event.key >= Qt.Key_1 && event.key <= Qt.Key_9) {
-            if (numberUsable(event.key - Qt.Key_0))
-                clipboard.quickPaste(event.key - Qt.Key_0, shift)
+            const row = shownRows.rowOf(event.key - Qt.Key_0)
+            if (row >= 0 && numberUsable(event.key - Qt.Key_0)) {
+                list.currentIndex = row
+                clipboard.quickPaste(row, shift)
+            }
             event.accepted = true
             return
         }
@@ -779,7 +787,7 @@ Item {
                         objectName: "clipboardRow-" + index
                         width: list.width
                         height: clipRow.picture ? page.pictureRowHeight : page.rowHeight
-                        hint: page.numberKey >= 0 && index < 9 ? index + 1 : 0
+                        hint: page.numberKey >= 0 ? shownRows.numberOf(index) : 0
                         reserveHintSpace: page.numberKey >= 0 && page.clipboard.numberHints !== "off"
                         hintOpacity: numberHints.hintOpacity
                         hintModifier: page.numberKey === Qt.Key_Control ? "Ctrl" : "Alt"

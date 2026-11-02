@@ -138,11 +138,19 @@ public:
     // PointerWatch: whether Windows hid the pointer for typing (GameGuard).
     std::optional<std::uint32_t> keyDownAtOrBefore(std::uint32_t time) const;
 
+    // A key a low-level hook of this process let go on, while the keyboard's
+    // Raw Input is set aside for it (KeyboardRawInputAside): handed to the
+    // listener whose registration that is, as its Raw Input would have heard
+    // it (numberkeys::Hook, which lives as long as a window of Win顺's is in
+    // front). Nothing otherwise. On the hook's thread, at once.
+    static void hookedKey(const KBDLLHOOKSTRUCT& event);
+
 private:
     static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     static void CALLBACK onForeground(HWINEVENTHOOK hook, DWORD event, HWND hwnd, LONG object, LONG child,
         DWORD thread, DWORD time);
     void onInput(HRAWINPUT input);
+    void onKeyboard(const RAWKEYBOARD& key, bool device, std::uint32_t time);
     void onServiceTap(std::uint32_t key, std::uint32_t time, std::uint32_t span, bool sent);
     void holdBackup(Tap tap);
     void onBackupTimer();

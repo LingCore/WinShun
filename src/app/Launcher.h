@@ -115,8 +115,8 @@ class Launcher : public QObject {
     Q_PROPERTY(QString numberKeys READ numberKeys NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(QString numberHints READ numberHints NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(QString previewHotkey READ previewHotkey NOTIFY resultOptionsChanged FINAL)
-    // Bits 1 << n of the digits n left to another program's global hotkey
-    // (numberkeys::heldMask): their rows show the chord struck through.
+    // Bits 1 << n of the digits n left to one of Win顺's own shortcuts
+    // (App::ownNumberDigits): their rows show the chord struck through.
     Q_PROPERTY(int numberKeysLeft READ numberKeysLeft NOTIFY resultOptionsChanged FINAL)
     // Opened over Win顺's search box on the taskbar (taskbar::SearchBox):
     // what is typed shows there, its own field is out of sight (SearchBar.qml

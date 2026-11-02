@@ -983,12 +983,12 @@ void Clipboard::paste(int row, bool plainText)
     startPaste(std::move(write), Into::Program, std::move(touched), {});
 }
 
-void Clipboard::quickPaste(int number, bool plainText)
+void Clipboard::quickPaste(int row, bool plainText)
 {
-    if (number < 1 || number > m_model.count())
+    if (row < 0 || row >= m_model.count())
         return;
     m_model.clearSelection();
-    paste(number - 1, plainText);
+    paste(row, plainText);
 }
 
 void Clipboard::copy(int row)

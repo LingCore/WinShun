@@ -70,7 +70,6 @@
 #include "platform/MessageWindow.h"
 #include "platform/PluginHotkeys.h"
 #include "platform/NetworkNotifier.h"
-#include "platform/NumberKeys.h"
 #include "platform/Paster.h"
 #include "platform/PointerWatch.h"
 #include "platform/ServiceDialogNav.h"
@@ -431,6 +430,7 @@ App::~App()
     m_clipImport.reset(); // its thread joined before the history it fills goes
     siteicons::shutdown(); // an icon arriving now would be told to no one
     m_keyRouter.reset(); // no keys taken from here on
+    m_numberKeyHook.reset();
     m_drainingRouter.reset();
     m_holdWatch.reset();
     m_drainingWatch.reset();
@@ -830,6 +830,7 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
         [this](const QString& message) { m_messages->showNotification(tr("保存为文件"), message); });
     connect(m_clipboard.get(), &Clipboard::activeChanged, this, &App::applyQuickPasteHotkeys);
     connect(qApp, &QGuiApplication::focusWindowChanged, this, &App::applyQuickPasteHotkeys);
+    connect(qApp, &QGuiApplication::focusWindowChanged, this, &App::updateNumberKeyHook);
     // Pinned, it stays up through a paste or a file opened (hideClipboard);
     // Esc hands the focus back too.
     connect(m_clipboard.get(), &Clipboard::dismissRequested, this, [this] { hideClipboard(); });
@@ -2299,19 +2300,10 @@ void App::applyQuickPasteHotkeys()
     if (m_settings.clipboard && (keys == u"ctrl" || keys == u"alt")) {
         const QString modifier = keys == u"ctrl" ? u"Ctrl"_s : u"Alt"_s;
         const bool suspended = QGuiApplication::focusWindow() || m_clipboard->active();
-        QStringList reserved {m_settings.hotkey, m_settings.clipboardHotkey, m_settings.folderMenuHotkey};
-        for (const auto& [plugin, keys] : m_pluginHotkeys) // the screenshot's, say
-            reserved << keys;
+        const unsigned own = ownNumberDigits(keys);
         for (int n = 1; n <= 9; ++n) {
             const QString chord = modifier + u'+' + QString::number(n);
-            UINT modifiers = 0, vk = 0;
-            MessageWindow::parseHotkey(chord, &modifiers, &vk);
-            const bool own = std::ranges::any_of(reserved, [&](const QString& shortcut) {
-                UINT otherModifiers = 0, otherVk = 0;
-                return MessageWindow::parseHotkey(shortcut, &otherModifiers, &otherVk)
-                    && modifiers == otherModifiers && vk == otherVk;
-            });
-            if (own || !m_messages->registerHotkey(kQuickPasteHotkeyId + n, chord))
+            if ((own & (1u << n)) || !m_messages->registerHotkey(kQuickPasteHotkeyId + n, chord))
                 unavailable.append(chord);
             else if (suspended)
                 m_messages->unregisterHotkey(kQuickPasteHotkeyId + n);
@@ -4037,18 +4029,69 @@ bool App::createBarWindow()
 
 void App::updateNumberKeys()
 {
-    const bool launcherInFront = m_window && m_window->isActive();
-    const bool barInFront = m_barWindow && m_barWindow->isActive() && m_dialogBar;
-    if (m_settings.numberKeys == u"off" || (!launcherInFront && !barInFront))
-        return;
-    // Asked again each time, as programs start and end: digits another
-    // program holds as global hotkeys stay its (PixPin's Ctrl+1…), as do Win顺's own.
-    const unsigned left = numberkeys::heldMask(
-        m_settings.numberKeys == u"alt" ? numberkeys::Modifier::Alt : numberkeys::Modifier::Ctrl)
-        & ~(m_settings.numberKeys == m_settings.clipboardQuickPaste ? m_quickPasteKeys : 0u);
-    m_launcher->setNumberKeysLeft(left);
+    updateNumberKeyHook();
+    const unsigned own = ownNumberDigits(m_settings.numberKeys);
+    m_launcher->setNumberKeysLeft(own);
     if (m_dialogBar)
-        m_dialogBar->setNumberKeysLeft(left);
+        m_dialogBar->setNumberKeysLeft(own);
+}
+
+// The window in front decides: the launcher's and the bar's number keys, or
+// the clipboard's when it took the focus (over a program that keeps it, its
+// KeyRouter takes them). Asked again each time, as programs start and end:
+// no hook while no other program holds one of the digits.
+void App::updateNumberKeyHook()
+{
+    const QWindow* front = QGuiApplication::focusWindow();
+    const QString keys = !front ? QString()
+        : front == m_window || (front == m_barWindow && m_dialogBar) ? m_settings.numberKeys
+        : front == m_clipWindow && m_settings.clipboard        ? m_settings.clipboardNumberKeys
+                                                                : QString();
+    const auto modifier = keys == u"alt" ? numberkeys::Modifier::Alt : numberkeys::Modifier::Ctrl;
+    const unsigned digits
+        = keys == u"ctrl" || keys == u"alt" ? numberkeys::heldMask(modifier) & ~ownNumberDigits(keys) : 0u;
+    if (m_numberKeyHook && m_numberKeyHook->modifier() == modifier && m_numberKeyHook->digits() == digits)
+        return;
+    m_numberKeyHook.reset(); // the keyboard's Raw Input back first: a new one sets it aside again
+    if (!digits)
+        return;
+    m_numberKeyHook = std::make_unique<numberkeys::Hook>(modifier, digits, [this](const numberkeys::Hook::Key& key) {
+        QMetaObject::invokeMethod(this, [this, key] { numberKeyHooked(key); }, Qt::QueuedConnection);
+    });
+}
+
+// As the window's own key, to the item with the focus in it.
+void App::numberKeyHooked(const numberkeys::Hook::Key& key)
+{
+    QWindow* window = QGuiApplication::focusWindow();
+    if (!m_numberKeyHook || !window)
+        return;
+    QKeyEvent event(key.press ? QEvent::KeyPress : QEvent::KeyRelease, Qt::Key_0 + key.digit, key.modifiers,
+                    key.scanCode, key.vk, 0, QString(), key.autoRepeat);
+    QCoreApplication::sendEvent(window, &event);
+}
+
+unsigned App::ownNumberDigits(const QString& keys) const
+{
+    if (keys != u"ctrl" && keys != u"alt")
+        return 0;
+    QStringList own {m_settings.hotkey, m_settings.clipboardHotkey, m_settings.folderMenuHotkey};
+    for (const auto& [plugin, shortcuts] : m_pluginHotkeys) // the screenshot's, say
+        own << shortcuts;
+    const QString modifier = keys == u"ctrl" ? u"Ctrl"_s : u"Alt"_s;
+    unsigned digits = 0;
+    for (int n = 1; n <= 9; ++n) {
+        UINT modifiers = 0, vk = 0;
+        MessageWindow::parseHotkey(modifier + u'+' + QString::number(n), &modifiers, &vk);
+        const bool mine = std::ranges::any_of(own, [&](const QString& shortcut) {
+            UINT otherModifiers = 0, otherVk = 0;
+            return MessageWindow::parseHotkey(shortcut, &otherModifiers, &otherVk) && modifiers == otherModifiers
+                && vk == otherVk;
+        });
+        if (mine)
+            digits |= 1u << n;
+    }
+    return digits;
 }
 
 void App::updateCompanions()
@@ -4401,13 +4444,9 @@ void App::showClipboard()
     if (!m_clipWindow && !createClipWindow())
         return;
     m_idleTrim->used(); // it never takes the focus, which would tell IdleTrim
-    // Digits another program holds as global hotkeys stay its (KeyRouter
-    // passes them on): their rows carry no number.
-    if (m_settings.clipboardNumberKeys != u"off") {
-        m_clipboard->setNumberKeysLeft(numberkeys::heldMask(
-            m_settings.clipboardNumberKeys == u"ctrl" ? numberkeys::Modifier::Ctrl : numberkeys::Modifier::Alt)
-            & ~(m_settings.clipboardNumberKeys == m_settings.clipboardQuickPaste ? m_quickPasteKeys : 0u));
-    }
+    // Digits that are Win顺's own shortcuts stay so (KeyRouter passes them
+    // on): their rows show the chord struck through.
+    m_clipboard->setNumberKeysLeft(ownNumberDigits(m_settings.clipboardNumberKeys));
     if (m_keyRouter) // up already, over the program that keeps the focus
         return;
     if (m_clipboard->pinned() && m_clipWindow->isVisible() && !m_clipPrewarming.load()) {
@@ -4545,7 +4584,7 @@ bool App::startKeyRouting(HWND target)
                                                                                       : Qt::AltModifier;
     auto router = std::make_unique<KeyRouter>(
         target, m_clipDisplayWanted ? m_clipDisplay->handle() : reinterpret_cast<HWND>(m_clipWindow->winId()),
-        std::move(callbacks), numberKeys);
+        std::move(callbacks), numberKeys, ownNumberDigits(m_settings.clipboardNumberKeys));
     diagnostics::record(u"clipboard-key-routing-start"_s,
         {{u"session"_s, static_cast<qint64>(run)}, {u"router"_s, router->diagnosticStatus()}});
     if (!router->isActive()) {

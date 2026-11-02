@@ -83,8 +83,8 @@ class Clipboard : public QObject {
     // for none (Settings::clipboardNumberKeys).
     Q_PROPERTY(QString numberKeys READ numberKeys NOTIFY numberKeysChanged FINAL)
     Q_PROPERTY(QString numberHints READ numberHints NOTIFY numberKeysChanged FINAL)
-    // Bits 1 << n of the digits n left to another program's global hotkey
-    // (numberkeys::heldMask): their rows show the chord struck through.
+    // Bits 1 << n of the digits n left to one of Win顺's own shortcuts
+    // (App::ownNumberDigits): their rows show the chord struck through.
     Q_PROPERTY(int numberKeysLeft READ numberKeysLeft NOTIFY numberKeysChanged FINAL)
     // A click pastes the row, as Windows' own history does (forum #137: the
     // PC driven from a phone, where a double click is hard to hit); off, it
@@ -236,7 +236,7 @@ public:
 
     // On a row; on all of them, when it is one of several picked.
     Q_INVOKABLE void paste(int row, bool plainText);
-    Q_INVOKABLE void quickPaste(int number, bool plainText); // Alt+1 ... Alt+9: the nth row
+    Q_INVOKABLE void quickPaste(int row, bool plainText); // Alt+1 ... Alt+9: that row alone, as shown numbered (ShownRows.qml)
     Q_INVOKABLE void copy(int row);
     // Dragged out as files (clipfiles::plan): pictures as they were copied,
     // words made files, files and folders as they are. The entries stay.

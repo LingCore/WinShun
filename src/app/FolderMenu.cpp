@@ -669,7 +669,7 @@ void FolderMenu::startKeys(HWND target)
         }, Qt::QueuedConnection);
     };
     auto router = std::make_unique<KeyRouter>(target, reinterpret_cast<HWND>(m_window->winId()), std::move(callbacks),
-        Qt::NoModifier, KeyRouter::Policy::Menu);
+        Qt::NoModifier, 0, KeyRouter::Policy::Menu);
     if (!router->isActive()) {
         qWarning() << "Folder menu: no keyboard hook; the mouse only";
         return;

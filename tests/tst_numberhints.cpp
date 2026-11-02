@@ -1,4 +1,5 @@
 #include "Settings.h"
+#include "platform/NumberKeys.h"
 
 #include <QGuiApplication>
 #include <QElapsedTimer>
@@ -299,6 +300,118 @@ private slots:
         hints->setProperty("key", key == Qt::Key_Control ? Qt::Key_Alt : Qt::Key_Control);
         QTest::qWait(220);
         QVERIFY(!shown());
+    }
+
+    // The digits the hook takes before other programs' global hotkeys
+    // (GitHub #175): its modifier alone, Shift or not; never AltGr, Win or
+    // a bare digit (an input method's candidates).
+    void takenDigit()
+    {
+        using ws::numberkeys::Modifier;
+        using ws::numberkeys::takenDigit;
+        constexpr unsigned digits = 1u << 3 | 1u << 5;
+        static_assert(takenDigit('5', Qt::ControlModifier, Modifier::Ctrl, digits) == 5);
+        QCOMPARE(takenDigit('3', Qt::ControlModifier, Modifier::Ctrl, digits), 3);
+        QCOMPARE(takenDigit('3', Qt::ControlModifier | Qt::ShiftModifier, Modifier::Ctrl, digits), 0); // not probed
+        QCOMPARE(takenDigit('5', Qt::AltModifier, Modifier::Alt, digits), 5);
+        QCOMPARE(takenDigit('4', Qt::ControlModifier, Modifier::Ctrl, digits), 0); // nobody else holds it
+        QCOMPARE(takenDigit('5', Qt::AltModifier, Modifier::Ctrl, digits), 0); // the other modifier
+        QCOMPARE(takenDigit('5', Qt::ControlModifier | Qt::AltModifier, Modifier::Ctrl, digits), 0); // AltGr
+        QCOMPARE(takenDigit('5', Qt::ControlModifier | Qt::MetaModifier, Modifier::Ctrl, digits), 0); // Win
+        QCOMPARE(takenDigit('5', Qt::NoModifier, Modifier::Ctrl, digits), 0); // typed
+        QCOMPARE(takenDigit('5', Qt::ShiftModifier, Modifier::Ctrl, digits), 0);
+        QCOMPARE(takenDigit('0', Qt::ControlModifier, Modifier::Ctrl, ~0u), 0);
+        QCOMPARE(takenDigit('A', Qt::ControlModifier, Modifier::Ctrl, ~0u), 0);
+        QCOMPARE(takenDigit(VK_NUMPAD5, Qt::ControlModifier, Modifier::Ctrl, ~0u), 0);
+    }
+
+    // The clipboard's number keys follow the rows in view (GitHub #175), as
+    // the search list's do: mixed row heights, scrolled, upside down.
+    void shownRows()
+    {
+        QQmlEngine engine;
+        const auto make = [&](const char* direction) {
+            QQmlComponent component(&engine);
+            component.setData(QByteArray(R"(
+                import QtQuick
+                import "../src/app/qml"
+                ListView {
+                    id: list
+                    width: 200; height: 200
+                    topMargin: 4; bottomMargin: 4
+                    verticalLayoutDirection: ListView.)") + direction + R"(
+                    model: 30
+                    // Every fourth row is a picture row, three times as tall.
+                    delegate: Item { required property int index; width: 200; height: index % 4 === 3 ? 60 : 20 }
+                    property alias rows: rows
+                    ShownRows { id: rows; view: list }
+                }
+            )", QUrl::fromLocalFile(QStringLiteral(WINSHUN_TEST_SOURCE) + u"/rows.qml"_s));
+            std::unique_ptr<QObject> made(component.create());
+            if (!made)
+                qWarning().noquote() << component.errorString();
+            return made;
+        };
+        std::unique_ptr<QObject> root = make("TopToBottom");
+        QVERIFY(root);
+        QObject* rows = root->property("rows").value<QObject*>();
+        QVERIFY(rows);
+        const auto first = [&] { return rows->property("first").toInt(); };
+        const auto last = [&] { return rows->property("last").toInt(); };
+        const auto rowOf = [&](int number) {
+            int row = -2;
+            QMetaObject::invokeMethod(rows, "rowOf", Q_RETURN_ARG(int, row), Q_ARG(int, number));
+            return row;
+        };
+        const auto numberOf = [&](int index) {
+            int number = -2;
+            QMetaObject::invokeMethod(rows, "numberOf", Q_RETURN_ARG(int, number), Q_ARG(int, index));
+            return number;
+        };
+        // Rows 0-2 at 0-60, 3 at 60-120, 4-6 at 120-180, 7 at 180-240: at
+        // rest (contentY -4) 0…6 are in view, 7 is not half in view.
+        QTRY_COMPARE(first(), 0);
+        QCOMPARE(last(), 6);
+        QCOMPARE(rowOf(1), 0);
+        QCOMPARE(rowOf(7), 6);
+        QCOMPARE(rowOf(8), -1);
+        QCOMPARE(numberOf(3), 4);
+
+        // Scrolled by half a short row and a bit: row 0 is out, 1 is the first.
+        root->setProperty("contentY", 11);
+        QCOMPARE(first(), 1);
+        QCOMPARE(rowOf(1), 1);
+        QCOMPARE(numberOf(1), 1);
+        QCOMPARE(numberOf(0), 0);
+        QCOMPARE(last(), 7); // 180-240 against 11-211: 31 of 60 in view
+
+        // Into the tall row: less than half of it in view, the next one counts.
+        root->setProperty("contentY", 95);
+        QCOMPARE(first(), 4);
+        QCOMPARE(rowOf(1), 4);
+        // At most nine.
+        root->setProperty("contentY", 240);
+        QCOMPARE(first(), 8);
+        QVERIFY(last() - first() <= 8);
+        QCOMPARE(rowOf(last() - first() + 1), last());
+        QCOMPARE(rowOf(last() - first() + 2), -1);
+
+        // Upside down: the first row at the bottom, the numbers going up.
+        root = make("BottomToTop");
+        QVERIFY(root);
+        rows = root->property("rows").value<QObject*>();
+        QTRY_COMPARE(first(), 0);
+        QCOMPARE(last(), 6);
+        QVERIFY(root->property("contentY").toReal() < 0); // the rows go up from 0
+        root->setProperty("contentY", root->property("contentY").toReal() - 15); // with or without its margin, under half of row 0 left
+        QCOMPARE(first(), 1);
+        QCOMPARE(rowOf(1), 1);
+
+        // Nothing to number.
+        root->setProperty("model", 0);
+        QCOMPARE(first(), -1);
+        QCOMPARE(rowOf(1), -1);
+        QCOMPARE(numberOf(0), 0);
     }
 };
 

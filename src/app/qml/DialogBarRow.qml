@@ -29,7 +29,7 @@ Item {
     property bool showModified: true
     property int hint: 0 // the number keys' modifier held: this row's number, 0 for none
     property string hintModifier: "Ctrl" // ... that modifier
-    property bool hintTaken: false // another program holds that chord as a global hotkey: shown struck through
+    property bool hintTaken: false // one of Win顺's own shortcuts has that chord: shown struck through
     property NameTip nameTip: null // the window's tip for a name or folder cut short
 
     readonly property var results: ListView.view ? ListView.view.model : null // the bar's ResultModel

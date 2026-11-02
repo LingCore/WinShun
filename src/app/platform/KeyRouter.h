@@ -33,7 +33,10 @@ namespace ws {
 // keys of a text field and of the list; Ctrl+1…9 in their place when the
 // settings say so) and passes on the rest: Win
 // combinations, Alt+Tab, media keys, F keys, other programs' hotkeys. Keys
-// pressed before it started are left alone up to their release.
+// pressed before it started are left alone up to their release. The number
+// keys are the window's even when another program holds them as global
+// hotkeys (PixPin's Ctrl+1…, GitHub #175): Windows hands those over only
+// after the hooks. Win顺's own shortcuts among them stay what they are.
 //
 // Installed when the window shows, it is the newest hook, called before
 // those of a key remapper (AutoHotkey, PowerToys): a key it wants goes to
@@ -95,9 +98,10 @@ public:
     // Keys are taken while `target` (top level) is in front and `window` is
     // shown. The callbacks run on the router's thread: post to the GUI thread.
     // `numberKeys`: the modifier that pastes a row with a digit (Alt, Ctrl,
-    // or none: Settings::clipboardNumberKeys).
+    // or none: Settings::clipboardNumberKeys); `ownDigits`: 1 << n for each
+    // digit n whose chord with it is one of Win顺's own shortcuts.
     KeyRouter(HWND target, HWND window, Callbacks callbacks, Qt::KeyboardModifier numberKeys = Qt::AltModifier,
-        Policy policy = Policy::Clipboard);
+        unsigned ownDigits = 0, Policy policy = Policy::Clipboard);
     ~KeyRouter();
 
     KeyRouter(const KeyRouter&) = delete;
@@ -135,6 +139,7 @@ private:
     const HWND m_target;
     const HWND m_window;
     const Qt::KeyboardModifier m_numberKeys;
+    const unsigned m_ownDigits;
     const Policy m_policy;
     const DWORD m_process;
     DWORD m_windowProcess = 0;

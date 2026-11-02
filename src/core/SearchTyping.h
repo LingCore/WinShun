@@ -1106,6 +1106,12 @@ public:
         if (!m_back)
             m_back = registration;
     }
+    // Set aside now: the registration that goes back (its window's, to hand
+    // it the keys meanwhile), if any.
+    constexpr std::optional<Registration> away() const noexcept
+    {
+        return m_holders > 0 ? m_back : std::nullopt;
+    }
     // KeyListener registers its window: true when that goes to Windows now;
     // while set aside, it is what goes back (the newest).
     constexpr bool registers(Registration registration) noexcept
