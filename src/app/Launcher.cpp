@@ -3594,6 +3594,21 @@ void Launcher::togglePreview(int row)
     setPreviewWanted(true);
 }
 
+void Launcher::previewHover(int row)
+{
+    if (m_preview && m_preview->isOpen() && row >= 0 && row < m_results.count())
+        m_preview->follow(previewItem(m_results.at(row)));
+}
+
+bool Launcher::copyPreviewSelection()
+{
+    const QString text = m_preview && m_preview->isOpen() ? m_preview->selectedText() : QString();
+    if (text.isEmpty())
+        return false;
+    shell::copyText(text);
+    return true;
+}
+
 void Launcher::setPreviewWanted(bool on)
 {
     if (m_previewWanted == on)
@@ -3968,7 +3983,9 @@ void Launcher::perform(const SearchResult& result, Action action, bool fileCheck
     case RunAsAdmin:
         remember(r.path, m_shownText);
         // Opened by typing in Explorer, a folder goes to that tab (GitHub #39).
-        if (action != Open || !r.isDir || !m_folderOpener || !m_folderOpener(r.path))
+        if (action == Open && r.where == SearchResult::Where::Line && r.line > 0 && !r.isDir)
+            contentopen::open(r.path, r.line, reportFailure(r.name)); // at the matching line, in an editor that can
+        else if (action != Open || !r.isDir || !m_folderOpener || !m_folderOpener(r.path))
             shell::open(r.path, action == RunAsAdmin, reportFailure(r.name));
         emit dismissRequested();
         break;

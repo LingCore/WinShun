@@ -13,6 +13,8 @@ GridView {
     signal rowDoubleClicked(int index, int modifiers)
     signal rowMenuRequested(int index, point globalPos, int modifiers)
     signal rowDragRequested(int index)
+    signal rowPreviewRequested(int index)
+    signal rowHoverMoved(int index, point globalPos)
 
     clip: true
     model: visible ? launcher.results : null
@@ -84,5 +86,7 @@ GridView {
         onDoubleClicked: (index, modifiers) => gallery.rowDoubleClicked(index, modifiers)
         onMenuRequested: (index, globalPos, modifiers) => gallery.rowMenuRequested(index, globalPos, modifiers)
         onDragRequested: index => gallery.rowDragRequested(index)
+        onPreviewRequested: index => gallery.rowPreviewRequested(index)
+        onHoverMoved: (index, globalPos) => gallery.rowHoverMoved(index, globalPos)
     }
 }

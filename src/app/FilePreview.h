@@ -125,6 +125,11 @@ public:
     QStringListModel* lines() { return &m_lines; }
     int lineCount() const { return m_lineCount; }
     Q_INVOKABLE int lineNumberAt(int row) const { return row >= 0 && row < m_lineNumbers.size() ? m_lineNumbers[row] : 0; }
+    // The text picked with the mouse, from a position in a row to one in a
+    // later row (the window draws it); selectedText: as in the file, pieces
+    // of one long line joined again. Gone with the content.
+    Q_INVOKABLE void setSelection(int fromRow, int fromPos, int toRow, int toPos);
+    QString selectedText() const;
     QStringList facts() const { return m_facts; }
     QString message() const { return m_message; }
     bool slow() const { return m_slow; }
@@ -180,6 +185,7 @@ private:
     QSize m_imageSize;
     QStringListModel m_lines;
     QVector<int> m_lineNumbers;
+    int m_selFromRow = 0, m_selFromPos = 0, m_selToRow = 0, m_selToPos = 0; // empty when equal
     int m_lineCount = 0;
     int m_textRows = 0;
     int m_side = -1; // placeBeside: right, left, below, or over the middle; -1 not chosen yet

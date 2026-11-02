@@ -3365,7 +3365,7 @@ Window {
                     title: qsTr("预览快捷键")
                     keywords: qsTr("预览;快捷键;空格;Space;Alt+P;QuickLook;preview;shortcut").split(";")
                     values: [window.editor.previewHotkey]
-                    description: qsTr("仅在搜索结果中生效，再按一次关闭。可直接录制空格；用 Shift+空格继续输入空格。Backspace 清除，Esc 取消。")
+                    description: qsTr("仅在搜索结果中生效，再按一次关闭，鼠标中键点一行也行。可直接录制空格：刚输入完时空格照常输入，选过结果或打开预览后才开关预览；Shift+空格始终输入空格。Backspace 清除，Esc 取消。")
 
                     FlatButton {
                         text: qsTr("恢复默认")

@@ -317,6 +317,35 @@ void FilePreview::show(const Item& item)
     load(item);
 }
 
+void FilePreview::setSelection(int fromRow, int fromPos, int toRow, int toPos)
+{
+    m_selFromRow = fromRow;
+    m_selFromPos = fromPos;
+    m_selToRow = toRow;
+    m_selToPos = toPos;
+}
+
+QString FilePreview::selectedText() const
+{
+    if (m_selFromRow == m_selToRow && m_selFromPos == m_selToPos)
+        return {};
+    const QStringList rows = m_lines.stringList();
+    const bool forward = m_selFromRow < m_selToRow || (m_selFromRow == m_selToRow && m_selFromPos <= m_selToPos);
+    const int firstRow = forward ? m_selFromRow : m_selToRow;
+    const int firstPos = forward ? m_selFromPos : m_selToPos;
+    const int lastRow = forward ? m_selToRow : m_selFromRow;
+    const int lastPos = forward ? m_selToPos : m_selFromPos;
+    QString text;
+    for (int row = std::max(firstRow, 0); row <= lastRow && row < rows.size(); ++row) {
+        if (row > firstRow && lineNumberAt(row) > 0)
+            text += u'\n';
+        const int from = row == firstRow ? firstPos : 0;
+        const int to = row == lastRow ? lastPos : rows[row].size();
+        text += rows[row].mid(from, to - from);
+    }
+    return text;
+}
+
 void FilePreview::follow(const std::optional<Item>& item)
 {
     if (!m_open)
@@ -363,6 +392,7 @@ void FilePreview::close()
     m_item = {};
     m_lines.setStringList({});
     m_lineNumbers.clear();
+    setSelection(0, 0, 0, 0);
     m_images->set({}, {});
     m_imageUrl.clear();
     emit contentChanged();
@@ -577,6 +607,7 @@ void FilePreview::apply(quint64 generation, std::shared_ptr<Loaded> loaded)
     m_message = loaded->message;
     m_imageSize = loaded->imageSize;
     m_lineNumbers = loaded->numbers;
+    setSelection(0, 0, 0, 0);
     m_lineCount = loaded->lineCount;
     m_textRows = loaded->rows;
     m_lines.setStringList(loaded->lines);

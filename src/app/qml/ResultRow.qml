@@ -116,6 +116,8 @@ Item {
     signal actionRequested(int index, int action)
     signal switchClicked(int index) // its switch clicked
     signal dragRequested(int index) // its file or folder dragged out of the window
+    signal previewRequested(int index) // middle click: the preview of this row, the file stays shut
+    signal hoverMoved(int index, point globalPos) // the mouse moved over it (not pressed)
 
     // Text on whole device pixels. Qt rounds each corner of a glyph's quad to
     // the pixel grid on the GPU, in single precision: on a half pixel (where
@@ -424,7 +426,7 @@ Item {
 
         anchors.fill: parent
         hoverEnabled: true
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
         onPressed: (mouse) => {
             if (row.nameTip)
                 row.nameTip.dismiss()
@@ -443,6 +445,7 @@ Item {
         onPositionChanged: (mouse) => {
             if (!pressed) { // moved: a tip dismissed (a key, a scroll) may come again
                 row.offerTip()
+                row.hoverMoved(row.index, area.mapToGlobal(mouse.x, mouse.y))
                 return
             }
             if (!preventStealing || draggedOut || !(mouse.buttons & Qt.LeftButton))
@@ -457,12 +460,16 @@ Item {
                 return
             if (mouse.button === Qt.RightButton)
                 row.menuRequested(row.index, area.mapToGlobal(mouse.x, mouse.y), mouse.modifiers)
+            else if (mouse.button === Qt.MiddleButton)
+                row.previewRequested(row.index)
             else
                 row.clicked(row.index, mouse.modifiers)
         }
         onDoubleClicked: (mouse) => {
             if (mouse.button === Qt.LeftButton)
                 row.doubleClicked(row.index, mouse.modifiers)
+            else if (mouse.button === Qt.MiddleButton) // a second middle click, as quick: closes again
+                row.previewRequested(row.index)
         }
 
         // Inside the MouseArea so that hovering a button still hovers the row.
