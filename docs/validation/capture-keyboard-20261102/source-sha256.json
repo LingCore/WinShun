@@ -1,0 +1,19 @@
+{
+  "date": "2026-11-02",
+  "base_head": "79a0d67b63e015d22ec72396e83f130b6d57d915",
+  "sha256": {
+    "src/capture/CaptureSession.cpp": "a4ff80ade21eb9faca044aa21b2fc42e2ff4fc2bd7db9cb935a02631f7454e88",
+    "src/capture/CaptureSession.h": "470392315240304c746f279f0d6966b8ae01e0e87e3edd54053be6e53d806a2e",
+    "src/capture/Capture.cpp": "9e5b13b0817737b6ff249582f3a55a109ccf7a070e40ed42d8f09f4d0f88bc62",
+    "src/capture/Capture.h": "c51771597d7efcfab8648e3a941ab5b851b4db3458073d418e11aed851442285",
+    "src/capture-plugin/CapturePreview.cpp": "be42a1d42eedbf5d03ba5e797b9399c1cd8ce6acdf7f0f04e6e26c546754e2f1",
+    "src/capture-plugin/CapturePreview.h": "9e4078d0f287f62ace57d2c1124a204cdc712430b591a46ee6d821186f4de4db",
+    "src/capture-plugin/qml/CaptureOverlay.qml": "1f16589a80d2644dd5a7e5fcd5ea72c09363a0b1ff204696c1077aba61fc24d8",
+    "src/capture-plugin/qml/AnnotateToolbar.qml": "ed462fd33b6bda62226eb6414e2a2ae1a16cc11b9e194366e855fa384fd7cb2f",
+    "src/capture-plugin/i18n/capture_en.ts": "a999960a370d34b33d5f4481ebc0d1efb8825509c3253a94dc81df27575d19fb",
+    "tests/tst_capture.cpp": "4d5a42f32dcbe2945f91f89ee2a227d70d7a5afd6dc09e49edc3e74e7faee0b3",
+    "build/capture-keyboard-20261102/WinShunCapture.exe": "e990289e5fb2e08d3cfb9e4806033b8d6e668997f452fee95fc9429667b76507",
+    "build/capture-keyboard-20261102/WinShunCaptureApp.dll": "e5497d8931f91acdbe7e8ac27c0aa295a297774b759c4dd5b1774610e3c54839",
+    "build/capture-keyboard-20261102/tst_capture.exe": "d4911ea26818550219d368f7797096505ed403f93b4fb086e57053bcb0ee8a9d"
+  }
+}

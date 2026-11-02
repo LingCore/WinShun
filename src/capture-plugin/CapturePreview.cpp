@@ -668,8 +668,173 @@ int runToolbarDrag(const QStringList& args)
     return finish(window, ok);
 }
 
+int runSelectionKeys(const QStringList& args)
+{
+    using namespace capture;
+    const QDir out(valueAfter(args, kCaptureToolsFlag));
+    QDir().mkpath(out.path());
+    QTranslator translator;
+    if (args.contains(u"--english"_s) && translator.load(u":/i18n/capture_en.qm"_s))
+        QCoreApplication::installTranslator(&translator);
+    QQmlApplicationEngine engine;
+    QQmlComponent fixtureComponent(&engine);
+    fixtureComponent.setData(R"(
+        import QtQuick
+        Window {
+            property int generation: 0
+            color: generation % 2 ? "#e6ecff" : "#f4f6f8"
+            flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+            Text {
+                x: 80; y: 48
+                text: "截图精调验证 / Capture keyboard verification · " + generation
+                color: "#253047"; font.pixelSize: 24
+            }
+        }
+    )", QUrl(u"qrc:/selection-keys-fixture.qml"_s));
+    std::unique_ptr<QQuickWindow> fixture(qobject_cast<QQuickWindow*>(fixtureComponent.create()));
+    if (!fixture) { say(fixtureComponent.errorString()); return 3; }
+    fixture->showFullScreen();
+    settle(fixture.get());
+    QImage copied;
+    int copies = 0;
+    Capture::Callbacks callbacks;
+    callbacks.copy = [&](const QImage& image, const QByteArray&, const QString&) { copied = image; ++copies; };
+    Capture capture(&engine, std::move(callbacks));
+    QQuickWindow* overlay = nullptr;
+    CaptureSession* session = nullptr;
+    CaptureScreen* screen = nullptr;
+    bool ok = true;
+    const auto check = [&](bool passed, const char* what) {
+        say(u"%1: %2"_s.arg(passed ? u"PASS"_s : u"FAIL"_s, QString::fromUtf8(what)));
+        ok = passed && ok;
+    };
+    const auto waitFor = [&](const std::function<bool()>& ready) {
+        QElapsedTimer clock;
+        clock.start();
+        while (!ready() && clock.elapsed() < 8000)
+            pump(20);
+        return ready();
+    };
+    const auto begin = [&] {
+        capture.trigger();
+        return waitFor([&] {
+            for (QWindow* window : QGuiApplication::topLevelWindows()) {
+                auto* model = window->property("screenModel").value<CaptureScreen*>();
+                auto* state = window->property("session").value<CaptureSession*>();
+                if (model && state && model->hasImage() && state->active() && window->isVisible()
+                    && window->isActive() && window->screen() == fixture->screen()) {
+                    overlay = qobject_cast<QQuickWindow*>(window);
+                    session = state;
+                    screen = model;
+                    return overlay && overlay->activeFocusItem();
+                }
+            }
+            return false;
+        });
+    };
+    const auto key = [&](int code, Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
+        QKeyEvent press(QEvent::KeyPress, code, modifiers);
+        QCoreApplication::sendEvent(overlay, &press);
+        QKeyEvent release(QEvent::KeyRelease, code, modifiers);
+        QCoreApplication::sendEvent(overlay, &release);
+        pump(20);
+    };
+    const auto mouse = [&](QEvent::Type type, QPoint at, Qt::MouseButton button, Qt::MouseButtons buttons) {
+        const QPointF logical(at.x() / screen->dpr(), at.y() / screen->dpr());
+        QMouseEvent event(type, logical, overlay->mapToGlobal(logical.toPoint()), button, buttons, Qt::NoModifier);
+        QCoreApplication::sendEvent(overlay, &event);
+        pump(20);
+    };
+    // The production Capture controller freezes the real fixture with Grabber.
+    // Copy is intercepted here, so these runs never write the user's clipboard.
+    for (int i = 0; i < 12; ++i) {
+        fixture->setProperty("generation", i);
+        settle(fixture.get());
+        if (!begin()) { check(false, "real capture overlay appeared"); return 4; }
+        if (i == 0) {
+            key(Qt::Key_R);
+            check(!session->hasSelection() && !screen->notice().isEmpty(), "R with no history gives feedback");
+        }
+        const QRect area(180 + i * 4, 200, 320, 160);
+        mouse(QEvent::MouseButtonPress, area.topLeft(), Qt::LeftButton, Qt::LeftButton);
+        mouse(QEvent::MouseMove, area.bottomRight(), Qt::NoButton, Qt::LeftButton);
+        mouse(QEvent::MouseButtonRelease, area.bottomRight(), Qt::LeftButton, Qt::NoButton);
+        check(session->selectionRect() == area, "real QML mouse routing selected exact physical pixels");
+        const QImage expected = screen->image().copy(area);
+        key(Qt::Key_Return);
+        check(waitFor([&] { return !capture.busy(); }) && copies == i + 1 && copied == expected,
+            "Enter exported the frozen pixels through Capture");
+    }
+    const QRgb previousColor = copied.pixel(0, 0);
+    fixture->setProperty("generation", 12);
+    settle(fixture.get());
+    if (!begin()) { check(false, "capture reopened for region recall"); return 4; }
+    check(session->selectionHistoryCount() == 10, "only ten unique completed regions retained");
+    for (int i = 0; i < 10; ++i) {
+        key(Qt::Key_R);
+        check(session->selectionRect() == QRect(180 + (11 - i) * 4, 200, 320, 160), "R cycles regions newest first");
+    }
+    key(Qt::Key_R);
+    check(session->recalledSelection() == 0, "R wraps to the newest region");
+    key(Qt::Key_R, Qt::ShiftModifier);
+    check(session->recalledSelection() == 9, "Shift+R cycles in reverse");
+    key(Qt::Key_R);
+    const QRect recalled = session->selectionRect();
+    key(Qt::Key_A);
+    key(Qt::Key_W);
+    check(session->selectionRect() == recalled.translated(-1, -1), "WASD moved by one physical pixel");
+    key(Qt::Key_D, Qt::ShiftModifier);
+    key(Qt::Key_S, Qt::ShiftModifier);
+    const QRect adjusted(recalled.topLeft() - QPoint(1, 1), recalled.size() + QSize(1, 1));
+    check(session->selectionRect() == adjusted && session->annotation()->tool() < 0,
+        "Shift+WASD resized by one pixel without selecting a tool or starting a countdown");
+    const QImage expected = screen->image().copy(adjusted);
+    check(expected.pixel(0, 0) != previousColor, "R uses the newly frozen picture");
+    settle(overlay);
+    check(saveGrab(overlay, out.filePath(u"selection-keyboard.png"_s)), "saved actual overlay for visual inspection");
+    key(Qt::Key_Return);
+    check(waitFor([&] { return !capture.busy(); }) && copies == 13 && copied == expected,
+        "recalled and adjusted region exports exact current pixels");
+    check(copied.save(out.filePath(u"selection-export.png"_s)), "saved exported pixels");
+    if (!begin()) { check(false, "capture reopened for text input"); return 4; }
+    key(Qt::Key_R);
+    const QRect beforeText = session->selectionRect();
+    key(Qt::Key_1);
+    check(session->annotation()->tool() == 0, "1 still selects the rectangle tool");
+    key(Qt::Key_1);
+    key(Qt::Key_3);
+    check(session->annotation()->tool() == 2, "3 still selects the arrow tool");
+    key(Qt::Key_3);
+    key(Qt::Key_T);
+    mouse(QEvent::MouseButtonPress, beforeText.center(), Qt::LeftButton, Qt::LeftButton);
+    mouse(QEvent::MouseButtonRelease, beforeText.center(), Qt::LeftButton, Qt::NoButton);
+    check(session->annotation()->editingText(), "text annotation accepts keyboard focus");
+    for (const QChar letter : u"wasdr"_s) {
+        QKeyEvent press(QEvent::KeyPress, letter.toUpper().unicode(), Qt::NoModifier, QString(letter));
+        QCoreApplication::sendEvent(overlay, &press);
+        QKeyEvent release(QEvent::KeyRelease, letter.toUpper().unicode(), Qt::NoModifier);
+        QCoreApplication::sendEvent(overlay, &release);
+        pump(20);
+    }
+    check(session->annotation()->editing().value(u"text"_s).toString() == u"wasdr"
+        && session->selectionRect() == beforeText, "typing WASDR edits text without moving or restoring the area");
+    key(Qt::Key_Return, Qt::ControlModifier);
+    check(copies == 13 && session->hasAnnotations(), "Ctrl+Enter commits text without copying the screenshot");
+    key(Qt::Key_R);
+    check(session->hasAnnotations() && session->selectionRect() == beforeText, "R protects existing annotations");
+    capture.trigger();
+    check(waitFor([&] { return !capture.busy(); }), "cancel closes only the isolated capture");
+    fixture->hide();
+    say(u"selection keyboard checks: %1; %2 warning(s)"_s.arg(ok ? u"passed"_s : u"failed"_s).arg(g_warnings));
+    return ok && g_warnings == 0 ? 0 : 4;
+}
+
 int runCaptureTools(const QStringList& args)
 {
+    if (args.contains(u"--save-options"_s))
+        return runCaptureSave(args) + g_warnings;
+    if (args.contains(u"--selection-keys"_s))
+        return runSelectionKeys(args);
     if (args.contains(u"--toolbar-drag"_s) || args.contains(u"--brush"_s) || args.contains(u"--brush-performance"_s))
         return runToolbarDrag(args);
     using namespace capture;

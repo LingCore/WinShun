@@ -271,6 +271,8 @@ Window {
             dpr: overlay.dpr
             blockRect: toolbar.visibleRows
             opensDown: toolbar.side === "below"
+            onKeyForwarded: (event) => keys.handleKey(event)
+            onKeyReleased: (event) => keys.handleRelease(event)
             onMoveStarted: {
                 overlay.session.mouseLeft(overlay.screenModel.index)
                 toolbar.beginMove()
@@ -400,6 +402,43 @@ Window {
         }
     }
 
+    Rectangle {
+        id: selectionKeys
+        objectName: "captureSelectionKeys"
+
+        readonly property string regionKeys: overlay.session.recalledSelection < 0
+            ? qsTr("R 最近选区")
+            : qsTr("R 最近选区 %1/%2").arg(overlay.session.recalledSelection + 1).arg(overlay.session.selectionHistoryCount)
+
+        visible: overlay.session.active && (overlay.selectedHere || overlay.screenModel.cursorHere)
+                 && !overlay.screenModel.adjusting && !overlay.session.toolbarHidden
+                 && (!overlay.annotation || (overlay.annotation.tool < 0
+                     && overlay.annotation.editing.id === undefined && overlay.annotation.numberEdit.id === undefined))
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 12
+        width: Math.min(selectionKeysText.implicitWidth + 24, Math.max(0, overlay.width - 24))
+        height: selectionKeysText.implicitHeight + 12
+        radius: Theme.controlRadius
+        color: Theme.background
+        border.width: 1
+        border.color: Theme.windowEdge
+
+        Text {
+            id: selectionKeysText
+            x: 12
+            y: 6
+            width: Math.max(0, parent.width - 24)
+            text: overlay.selectedHere
+                  ? qsTr("WASD 移动 1 px · Shift+WASD 调整大小 · %1").arg(selectionKeys.regionKeys)
+                  : qsTr("WASD 微调光标 · %1").arg(selectionKeys.regionKeys)
+            wrapMode: Text.Wrap
+            horizontalAlignment: Text.AlignHCenter
+            color: Theme.subtext
+            font.pixelSize: Theme.fontCaption
+        }
+    }
+
     CapturePointer { // under the toolbar: its buttons take their own clicks
         anchors.fill: parent
         z: -1
@@ -428,7 +467,7 @@ Window {
     Item { // the keys; no input method here, so R, T, 1 reach the session even with Chinese input on
         id: keys
         focus: true
-        Keys.onPressed: (event) => {
+        function handleKey(event) {
             if (event.key === Qt.Key_Escape && bar.closeKeys()) { // the key list first
                 event.accepted = true
                 return
@@ -437,11 +476,13 @@ Window {
                 event.accepted = true
                 return
             }
-            event.accepted = overlay.session.keyPressed(event.key, event.modifiers)
+            event.accepted = overlay.session.keyPressed(event.key, event.modifiers, event.isAutoRepeat)
         }
-        Keys.onReleased: (event) => {
+        function handleRelease(event) {
             if (!event.isAutoRepeat)
                 overlay.session.keyReleased(event.key) // a Shift alone: the colour's next format
         }
+        Keys.onPressed: (event) => handleKey(event)
+        Keys.onReleased: (event) => handleRelease(event)
     }
 }

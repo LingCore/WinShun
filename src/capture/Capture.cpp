@@ -5,6 +5,7 @@
 #include "QrCode.h"
 #include "platform/Foreground.h"
 #include "platform/KeyRouter.h" // kOwnInput
+#include "platform/Shell.h"
 #include "platform/WindowEffects.h"
 
 #include <QCoreApplication>
@@ -91,7 +92,8 @@ QString outcomeName(CaptureSession::Action action)
     switch (action) {
     case CaptureSession::Action::Copy: return u"copied"_s;
     case CaptureSession::Action::CopyPin: return u"copied_pinned"_s;
-    case CaptureSession::Action::Save: return u"saved"_s;
+    case CaptureSession::Action::Save:
+    case CaptureSession::Action::SavePrevious: return u"saved"_s;
     case CaptureSession::Action::Pin: return u"pinned"_s;
     case CaptureSession::Action::Ocr:
     case CaptureSession::Action::OcrCopy:
@@ -303,6 +305,7 @@ void Capture::trigger()
     case State::Showing:
         m_session.act(static_cast<int>(CaptureSession::Action::Cancel));
         break;
+    case State::ChoosingSave:
     case State::Closing:
         break;
     }
@@ -602,6 +605,35 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
 {
     if (m_state != State::Showing && m_state != State::Waiting)
         return;
+    QString savePath;
+    if (action == CaptureSession::Action::Save) {
+        const auto selected = std::ranges::find(m_overlays, screen, [](const Overlay& o) { return o.model->index(); });
+        if (selected == m_overlays.end() || !selected->window)
+            return;
+        const State before = std::exchange(m_state, State::ChoosingSave);
+        // Show() disables its owner. Disable the other overlays too, so a
+        // second monitor cannot change the selection while the picker is open.
+        std::vector<HWND> disabled;
+        for (const Overlay& overlay : m_overlays) {
+            if (!overlay.window || overlay.window == selected->window)
+                continue;
+            const HWND hwnd = reinterpret_cast<HWND>(overlay.window->winId());
+            if (::IsWindowEnabled(hwnd)) {
+                ::EnableWindow(hwnd, FALSE);
+                disabled.push_back(hwnd);
+            }
+        }
+        savePath = chooseScreenshotSavePath(selected->window);
+        for (HWND hwnd : disabled)
+            if (::IsWindow(hwnd))
+                ::EnableWindow(hwnd, TRUE);
+        m_state = before;
+        if (savePath.isEmpty()) {
+            selected->window->requestActivate();
+            return;
+        }
+        m_session.rememberSelection(rect.translated(selected->model->origin()));
+    }
     m_flyoutWait.stop();
     m_flyout = nullptr;
     QImage picture;
@@ -620,7 +652,6 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
                 m_recordRegion = LongRegion {region, overlay.monitor, overlay.model->dpr()};
             else
                 m_longRegion = LongRegion {region, overlay.monitor, overlay.model->dpr()};
-            m_session.setLastSelection(region);
             // The window the region shows goes in front now, while the overlay has the
             // foreground: when the overlay goes, Windows gives it to the window before it,
             // which need not be this one, and the keys and the scrolling are for this one.
@@ -633,9 +664,9 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
                 picture = overlay.model->image().copy(rect);
                 origin = overlay.model->rect().topLeft() + rect.topLeft();
                 dpr = overlay.model->dpr();
-                m_session.setLastSelection(QRect(origin, rect.size())); // Shift+R brings it back
                 const auto shot = std::ranges::find(m_shots, overlay.monitor, &Grabber::Shot::monitor);
-                if (action == CaptureSession::Action::Save && m_historyAt < 0 && shot != m_shots.end() && shot->hdrPixels) {
+                if ((action == CaptureSession::Action::Save || action == CaptureSession::Action::SavePrevious)
+                    && m_historyAt < 0 && shot != m_shots.end() && shot->hdrPixels) {
                     if (HdrPixels region = shot->hdrPixels->copy(rect); !region.isNull())
                         hdr = std::make_shared<HdrPixels>(std::move(region));
                 }
@@ -743,7 +774,8 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
             m_callbacks.copy(picture, project, m_lastClipboardId);
         break;
     case CaptureSession::Action::Save:
-        save(picture, {}, std::move(hdr));
+    case CaptureSession::Action::SavePrevious:
+        save(picture, savePath, std::move(hdr));
         if (m_callbacks.record)
             m_callbacks.record(picture, project);
         break;
@@ -1173,6 +1205,12 @@ void Capture::save(const QImage& image, const QString& path, std::shared_ptr<con
 {
     saveImage(m_saver, this, image, path, m_callbacks.saved, m_callbacks.saveFolder ? m_callbacks.saveFolder() : QString(),
         std::move(hdr));
+}
+
+QString chooseScreenshotSavePath(QQuickWindow* owner)
+{
+    return shell::pickSaveFile(owner ? reinterpret_cast<HWND>(owner->winId()) : nullptr,
+        Capture::tr("保存截图"), screenshotFileName(QDateTime::currentDateTime(), {}), Capture::tr("PNG 图片"), u"png"_s);
 }
 
 void saveImage(std::jthread& thread, QObject* context, const QImage& image, const QString& path,

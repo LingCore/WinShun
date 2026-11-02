@@ -1,0 +1,93 @@
+{
+  "recordedAt": "2026-11-02T20:46:37.4788982+08:00",
+  "files": [
+    {
+      "path": "src/capture/Capture.cpp",
+      "sha256": "6BFC15DE8A6FA9FD9348D90B3C8E15540CCAFAEE5D1C44AA86978EF1877D757F"
+    },
+    {
+      "path": "src/capture/Capture.h",
+      "sha256": "6FBF5BC395799882F155C3C47DB0C7F5DDB60CE957973830C08CE827DA794EB1"
+    },
+    {
+      "path": "src/capture/CaptureSession.cpp",
+      "sha256": "79E5F1B2722E43F75BDB20E3A26AC92751C42E044FCB707C3B229DBBC54288C7"
+    },
+    {
+      "path": "src/capture/CaptureSession.h",
+      "sha256": "1C1FD68B50C290E8934F028EB31F762BB0E1A27FE6F8CA85DBFD0D93A76AA2F0"
+    },
+    {
+      "path": "src/capture/CaptureEditor.cpp",
+      "sha256": "67926D433A8F74E188C6D0B755B5AF4C1FE8E88B4B64B50137C988919B2B2F46"
+    },
+    {
+      "path": "src/capture/CaptureEditor.h",
+      "sha256": "49CF4473D1AA2DCE2CAD1AF9DF90A732FB921C7D9B843B3E8DEE3EB886BEC011"
+    },
+    {
+      "path": "src/capture-plugin/CaptureApp.cpp",
+      "sha256": "F5D1E9F11C7BDED438EF95F50C3D58B8306DE3A41409A36B98D62FF37C83009B"
+    },
+    {
+      "path": "src/capture-plugin/CapturePreview.cpp",
+      "sha256": "E9E66FB8BC448CA754C649A376E5394426E2B3BAB23646A547657E6D1D81FAC6"
+    },
+    {
+      "path": "src/capture-plugin/CapturePreview.h",
+      "sha256": "55FFCFBC4BA26C196A93ABE1AA594772FD21AB0FE5F3AF5D767E13CC8B5D15D5"
+    },
+    {
+      "path": "src/capture-plugin/CaptureSavePreview.cpp",
+      "sha256": "5F29CA4E84E2518C54A5AF79A13A52F5D61FE47077003EFC0978D72DF373A578"
+    },
+    {
+      "path": "src/capture-plugin/CMakeLists.txt",
+      "sha256": "3F75F4A2931BE226BCFF33318FC7747815A0F890E24CF59D42859F6450846190"
+    },
+    {
+      "path": "src/capture-plugin/qml/CaptureSaveButton.qml",
+      "sha256": "C7FB48E19002C1B968A0629D42962A32185BC5D8CFE77109C2FCF53643E4E5CC"
+    },
+    {
+      "path": "src/capture-plugin/qml/AnnotateToolbar.qml",
+      "sha256": "3FC2F22B594C90BA5C81DFA4DADF05CF0972F7A73F7BFD20C177586E59F9F807"
+    },
+    {
+      "path": "src/capture-plugin/qml/CaptureOverlay.qml",
+      "sha256": "C64846FB7AB08159E7B30F96C293F8B48D47B205CC114BC1F583B37E0E3C7717"
+    },
+    {
+      "path": "src/capture-plugin/qml/EditWindow.qml",
+      "sha256": "6BD67E303A7AA0106850FA89FEF082AFEE2672A623061EB281CDD720359DEE2C"
+    },
+    {
+      "path": "src/capture-plugin/i18n/capture_en.ts",
+      "sha256": "E80CF0FAAF5E4F960407A48B03CFB1EAAAD512BB6E54CEAEB49870FB8AC98EF7"
+    },
+    {
+      "path": "tests/tst_capture.cpp",
+      "sha256": "AD1EFB58E6A868FFD012579BD05BEB913281CFDEF3C43638351FE2E404DE3A4D"
+    },
+    {
+      "path": "tests/tst_editor.cpp",
+      "sha256": "B83894646F48F69A1559276DC422EDA1D176A03496F3B6B726C797ED4D997962"
+    },
+    {
+      "path": "build/capture-keyboard-20261102/WinShunCapture.exe",
+      "sha256": "E990289E5FB2E08D3CFB9E4806033B8D6E668997F452FEE95FC9429667B76507"
+    },
+    {
+      "path": "build/capture-keyboard-20261102/WinShunCaptureApp.dll",
+      "sha256": "2743DBB6031CF40A3E5C6E28439F15123DBC2CF748A929C898528EB381ADC69D"
+    },
+    {
+      "path": "build/capture-keyboard-20261102/tst_capture.exe",
+      "sha256": "0C438C4F5B2E586B3F3A838311B3D07B09145661B2A0135549B6011D3ABA1EE8"
+    },
+    {
+      "path": "build/capture-keyboard-20261102/tst_editor.exe",
+      "sha256": "27681F0D53463741471C6CB2E8967CA733AE2FCF11CE3DB41D1808708CBC7F15"
+    }
+  ]
+}

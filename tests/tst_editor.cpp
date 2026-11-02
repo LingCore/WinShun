@@ -6,6 +6,7 @@
 // offscreen QQuickWindow. The pin's PinWindow::setPicture is checked with a
 // real (briefly shown) pin.
 #include "CaptureEditor.h"
+#include "CaptureSession.h"
 
 #include "Annotation.h"
 #include "AnnotationFormat.h"
@@ -88,6 +89,8 @@ struct Calls {
     QList<QImage> recorded;
     QList<QByteArray> recordedProjects;
     QList<QImage> saved;
+    QList<QString> savedPaths;
+    int savePickers = 0;
     QList<QImage> pinned;
     QList<QPoint> pinnedAt;
     QList<QString> styles;
@@ -115,7 +118,11 @@ struct Rig {
             calls.recorded.append(image);
             calls.recordedProjects.append(p);
         };
-        hooks.save = [this](const QImage& image, const QString&) { calls.saved.append(image); };
+        hooks.save = [this](const QImage& image, const QString& path) {
+            calls.saved.append(image);
+            calls.savedPaths.append(path);
+        };
+        hooks.chooseSavePath = [this](QQuickWindow*) { ++calls.savePickers; return savePath; };
         hooks.pin = [this](const QImage& image, const QByteArray&, QPoint at) {
             calls.pinned.append(image);
             calls.pinnedAt.append(at);
@@ -127,6 +134,8 @@ struct Rig {
         // A window of 1000 x 700 at 150 %: Qt's real buffer scale is exactly 1.5 there.
         editor.setMetrics(QSize(1000, 700), 1.5);
     }
+
+    QString savePath = u"C:/chosen/capture.png"_s; // intercepted by the save hook; no file is written
 
     // The window position (logical) of a device pixel inside an image pixel: Qt's
     // logical positions are whole device pixels over the scale (1.5 here).
@@ -493,6 +502,8 @@ private slots:
         QVERIFY(rig.editor.openHistory(7));
         rig.editor.act(1); // 保存
         QCOMPARE(rig.calls.saved.size(), qsizetype(1));
+        QCOMPARE(rig.calls.savePickers, 1);
+        QCOMPARE(rig.calls.savedPaths[0], rig.savePath);
         QCOMPARE(rig.calls.recorded.size(), qsizetype(1)); // the history gets it too
         QCOMPARE(rig.calls.recordedProjects[0].isEmpty(), false);
         QVERIFY(!rig.editor.isOpen());
@@ -511,6 +522,32 @@ private slots:
         QVERIFY(!got.isNull());
         QVERIFY(rig.editor.isOpen());
         rig.editor.close();
+    }
+
+    void cancellingSaveKeepsTheEditorAndOldPathSkipsThePicker()
+    {
+        Rig rig;
+        QVERIFY(rig.editor.openHistory(7));
+        rig.savePath.clear();
+        rig.editor.act(1); // Cancel Save As.
+        QCOMPARE(rig.calls.savePickers, 1);
+        QVERIFY(rig.editor.isOpen());
+        QVERIFY(rig.calls.saved.isEmpty());
+        QVERIFY(rig.calls.recorded.isEmpty());
+        QCOMPARE(rig.calls.closed, 0);
+        QVERIFY(rig.editor.model()->hasItems());
+        // Try again, still cancelling: nothing is recorded or closed.
+        rig.editor.act(1);
+        QCOMPARE(rig.calls.savePickers, 2);
+        QVERIFY(rig.editor.isOpen());
+        QVERIFY(rig.calls.saved.isEmpty());
+        // The menu's action deliberately keeps the old automatic save contract.
+        rig.editor.act(static_cast<int>(ws::capture::CaptureSession::Action::SavePrevious));
+        QCOMPARE(rig.calls.savePickers, 2);
+        QCOMPARE(rig.calls.saved.size(), qsizetype(1));
+        QVERIFY(rig.calls.savedPaths[0].isEmpty());
+        QCOMPARE(rig.calls.recorded.size(), qsizetype(1));
+        QVERIFY(!rig.editor.isOpen());
     }
 
     void pinDone()

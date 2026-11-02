@@ -22,7 +22,7 @@ foreach(name IN LISTS shared_qml)
     list(APPEND capture_qml "${app_dir}/qml/${name}")
 endforeach()
 foreach(name IN ITEMS CaptureOverlay AnnotateToolbar AnnotateStylePanel AnnotateSmartHint AnnotateLayer AnnotateObjects
-                      EditWindow OcrPanel LongCapturePanel RecordingPanel RecordingButton RecordingOptions CaptureOptions CaptureSettingsWindow)
+                      EditWindow OcrPanel LongCapturePanel RecordingPanel RecordingButton RecordingOptions CaptureOptions CaptureSettingsWindow CaptureSaveButton)
     list(APPEND capture_qml "${CMAKE_CURRENT_SOURCE_DIR}/qml/${name}.qml")
 endforeach()
 set_source_files_properties("${app_dir}/qml/Theme.qml" PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
@@ -35,7 +35,7 @@ qt_add_library(WinShunCaptureApp SHARED
     PluginMain.cpp
     CaptureApp.cpp CaptureApp.h
     PinImage.cpp PinImage.h
-    CapturePreview.cpp CapturePreview.h LongCapturePreview.cpp
+    CapturePreview.cpp CapturePreview.h LongCapturePreview.cpp CaptureSavePreview.cpp
     RawClicks.cpp RawClicks.h
     Protocol.cpp Protocol.h
     PluginShell.cpp PluginShell.h

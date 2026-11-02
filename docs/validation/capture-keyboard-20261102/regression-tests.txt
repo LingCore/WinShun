@@ -1,0 +1,35 @@
+Test project F:/电脑便捷工具/build/capture-keyboard-20261102
+      Start 45: tst_capture
+ 1/15 Test #45: tst_capture ......................   Passed    0.17 sec
+      Start 46: tst_captureui_1
+ 2/15 Test #46: tst_captureui_1 ..................   Passed    0.45 sec
+      Start 47: tst_captureui_d3d11_1
+ 3/15 Test #47: tst_captureui_d3d11_1 ............   Passed    3.44 sec
+      Start 48: tst_captureui_1.25
+ 4/15 Test #48: tst_captureui_1.25 ...............   Passed    0.42 sec
+      Start 49: tst_captureui_d3d11_1.25
+ 5/15 Test #49: tst_captureui_d3d11_1.25 .........   Passed    3.48 sec
+      Start 50: tst_captureui_1.5
+ 6/15 Test #50: tst_captureui_1.5 ................   Passed    0.47 sec
+      Start 51: tst_captureui_d3d11_1.5
+ 7/15 Test #51: tst_captureui_d3d11_1.5 ..........   Passed    3.45 sec
+      Start 52: tst_captureui_1.75
+ 8/15 Test #52: tst_captureui_1.75 ...............   Passed    0.49 sec
+      Start 53: tst_captureui_d3d11_1.75
+ 9/15 Test #53: tst_captureui_d3d11_1.75 .........   Passed    3.53 sec
+      Start 54: tst_captureui_2
+10/15 Test #54: tst_captureui_2 ..................   Passed    0.47 sec
+      Start 55: tst_captureui_d3d11_2
+11/15 Test #55: tst_captureui_d3d11_2 ............   Passed    3.47 sec
+      Start 56: tst_captureui_idle_graphics
+12/15 Test #56: tst_captureui_idle_graphics ......   Passed    0.73 sec
+      Start 57: tst_annotate
+13/15 Test #57: tst_annotate .....................   Passed   15.35 sec
+      Start 59: tst_stage7
+14/15 Test #59: tst_stage7 .......................   Passed    0.10 sec
+      Start 62: tst_annotmodel
+15/15 Test #62: tst_annotmodel ...................   Passed    3.61 sec
+
+100% tests passed, 0 tests failed out of 15
+
+Total Test time (real) =  39.70 sec

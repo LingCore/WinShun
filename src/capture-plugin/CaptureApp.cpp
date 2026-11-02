@@ -836,6 +836,7 @@ capture::CaptureEditor* CaptureApp::editor()
         capture::saveImage(m_pinSaver, this, image, path,
             [this](const QString& saved, const QString& error) { notifySaved(saved, error); }, m_settings.options().saveFolder);
     };
+    hooks.chooseSavePath = capture::chooseScreenshotSavePath;
     hooks.pin = [this](const QImage& image, const QByteArray& project, QPoint origin) { pins().pin(image, origin, true, project); };
     hooks.ocr = [this](const QImage& image, double dpr, const QRect& where) { showCaptureOcr(image, dpr, where); };
     hooks.smart = smartHooks();

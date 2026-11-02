@@ -42,7 +42,7 @@ Rectangle {
 
     // The key list: the rows both have, then the overlay's or the editor's.
     readonly property var commonRows: [
-        qsTr("R E A L P M T N B 或 1–9"), qsTr("选工具：矩形、椭圆、箭头、直线、画笔、荧光笔、文字、序号、打码"),
+        editor ? qsTr("R E A L P M T N B 或 1–9") : qsTr("1 E 3 L P M T N B 或 1–9"), qsTr("选工具：矩形、椭圆、箭头、直线、画笔、荧光笔、文字、序号、打码"),
         qsTr("工具键再按一次"), qsTr("关掉工具"),
         "Ctrl+Z", qsTr("撤销"),
         "Ctrl+Y、Ctrl+Shift+Z", qsTr("重做"),
@@ -54,19 +54,21 @@ Rectangle {
         qsTr("双击"), qsTr("文字：改文字；序号：改号，序号旁的字：改字"),
         "Ctrl+Enter、Esc", qsTr("写完文字（Enter 换行；序号旁的字 Enter 就写完）"),
         "Ctrl+C、Enter", qsTr("复制"),
-        "Ctrl+S", qsTr("保存"),
+        "Ctrl+S", qsTr("另存为：选择保存位置"),
         "F3", qsTr("贴图")
     ]
     readonly property var overlayRows: [
+        "WASD", qsTr("每次移动选区 1 个物理像素；未框选时微调光标"),
+        "Shift+WASD", qsTr("调整选区宽高，每次 1 个物理像素"),
         qsTr("滚轮"), qsTr("有工具或选中对象时改粗细"),
         qsTr("方向键"), qsTr("挪动选中的对象，按住 Shift 一次 10 像素；没有选中时微调选区"),
         "H", qsTr("隐藏 / 显示工具条"),
         "C、Shift", qsTr("复制颜色并结束截图；单按 Shift 换颜色格式（HEX、RGB、HSL）"),
         "Shift+C", qsTr("识别选区里的文字并复制"),
-        "Shift+R", qsTr("还没选区时：用上一次的选区"),
+        "R / Shift+R", qsTr("恢复最近选区：向前 / 向后循环，最多 10 个；使用当前画面"),
         ",  .", qsTr("翻看之前截图时的画面（整屏、选区和标注），. 往回翻"),
         "Q",qsTr("识别选区里的二维码"),
-        "D", qsTr("延时截图：关掉这次，倒计时后再截"),
+        "Ctrl+Shift+D", qsTr("延时截图：关掉这次，倒计时后再截"),
         "Ctrl+L", qsTr("长截图：选区里的内容一边滚动一边截"),
         "Ctrl+R", qsTr("区域录屏：把选区里的操作录成 MP4 或 GIF"),
         qsTr("Esc、右键"), qsTr("退一步：写完文字、放弃标注、关闭截图")
@@ -119,6 +121,8 @@ Rectangle {
     signal action(int which)
     signal moveStarted()
     signal moveBy(real dx, real dy)
+    signal keyForwarded(var event)
+    signal keyReleased(var event)
 
     function act(which) {
         if (session)
@@ -246,7 +250,7 @@ Rectangle {
                         event.accepted = true
                         return
                     }
-                    event.accepted = bar.session ? bar.session.keyPressed(event.key, event.modifiers) : false
+                    event.accepted = bar.session ? bar.session.keyPressed(event.key, event.modifiers, event.isAutoRepeat) : false
                     return
                 }
                 const step = event.modifiers & Qt.ShiftModifier ? 10 : 1
@@ -314,7 +318,7 @@ Rectangle {
             glyph: String.fromCharCode(0xE916) // Stopwatch
             name: qsTr("延时")
             tipText: qsTr("延时：关掉这次截图，倒计时后重新截（秒数在设置里选）")
-            tipKeys: "D"
+            tipKeys: "Ctrl+Shift+D"
             onClicked: bar.act(CaptureSession.Delay)
         }
         ActionButton {
@@ -348,14 +352,13 @@ Rectangle {
             tipKeys: "F3"
             onClicked: bar.act(CaptureSession.Pin)
         }
-        ActionButton {
-            id: saveButton
+        CaptureSaveButton {
             visible: bar.shows("save")
-            glyph: String.fromCharCode(0xE74E) // Save
-            name: qsTr("保存")
-            tipText: qsTr("保存")
-            tipKeys: "Ctrl+S"
-            onClicked: bar.act(CaptureSession.Save)
+            tipsEnabled: !bar.keysOpen && !bar.dragging
+            onSaveRequested: bar.act(CaptureSession.Save)
+            onSavePreviousRequested: bar.act(CaptureSession.SavePrevious)
+            onKeyForwarded: (event) => bar.keyForwarded(event)
+            onKeyReleased: (event) => bar.keyReleased(event)
         }
 
         Separator {}
@@ -423,6 +426,8 @@ Rectangle {
             const tip = bar.tip
             if (tip && tip.tool >= 0 && a) {
                 const t = a.tools[tip.tool]
+                if (!bar.editor && (t.digit === 1 || t.digit === 3))
+                    return String(t.digit)
                 return t.letter + " / " + t.digit
             }
             return tip ? tip.item.tipKeys : ""

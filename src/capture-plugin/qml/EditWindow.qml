@@ -72,6 +72,8 @@ Window {
         blockRect: Qt.rect(x, y, width, height)
         opensDown: true
         onAction: (which) => window.editor.act(which)
+        onKeyForwarded: (event) => keys.handleKey(event)
+        onKeyReleased: (event) => keys.handleRelease(event)
     }
 
     // ---- the picture ----
@@ -379,7 +381,7 @@ Window {
     Item { // the keys; no input method, so R, T, 1 are tool keys even with Chinese input on
         id: keys
         focus: true
-        Keys.onPressed: (event) => {
+        function handleKey(event) {
             if (event.key === Qt.Key_Escape && bar.closeKeys()) { // the key list first
                 event.accepted = true
                 return
@@ -392,12 +394,14 @@ Window {
             }
             event.accepted = window.editor.keyPressed(event.key, event.modifiers)
         }
-        Keys.onReleased: (event) => {
+        function handleRelease(event) {
             if (event.key === Qt.Key_Space && !event.isAutoRepeat) {
                 window.editor.spaceHeld(false)
                 event.accepted = true
             }
         }
+        Keys.onPressed: (event) => handleKey(event)
+        Keys.onReleased: (event) => handleRelease(event)
     }
 
     WindowEdge {}

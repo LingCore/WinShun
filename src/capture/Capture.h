@@ -47,6 +47,9 @@ void saveImage(std::jthread& thread, QObject* context, const QImage& image, cons
     std::function<void(const QString& path, const QString& error)> done, const QString& folder = {},
     std::shared_ptr<const HdrPixels> hdr = {});
 
+// Native Save As, with an automatically named PNG. Empty means cancelled.
+QString chooseScreenshotSavePath(QQuickWindow* owner);
+
 // The screen capture (docs/design-capture.md; docs/architecture.md, 截图):
 // exists while it is turned on in the settings, and holds everything it
 // needs warm meanwhile, so a hotkey shows the frozen screens in a few
@@ -166,7 +169,7 @@ public:
     void save(const QImage& image, const QString& path = {}, std::shared_ptr<const HdrPixels> hdr = {});
 
 private:
-    enum class State { Idle, Waiting, Showing, Closing };
+    enum class State { Idle, Waiting, Showing, ChoosingSave, Closing };
     struct Overlay {
         QPointer<QScreen> screen;
         HMONITOR monitor = nullptr;
@@ -237,7 +240,7 @@ private:
     int m_uiaLogged = 0;
     std::set<quintptr> m_uiaChromiumSkipped; // windows already logged as skipped
     int m_delay = 5;
-    bool m_delayAfter = false; // D in the overlay: the countdown begins once it is gone
+    bool m_delayAfter = false; // Ctrl+Shift+D in the overlay: countdown once it is gone
     std::unique_ptr<CountdownWindow> m_countdown;
     QElapsedTimer m_countClock;
     QTimer m_countTimer;

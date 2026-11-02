@@ -1,0 +1,7 @@
+Test project F:/电脑便捷工具/build/capture-keyboard-20261102
+    Start 45: tst_capture
+1/1 Test #45: tst_capture ......................   Passed    0.15 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.19 sec
