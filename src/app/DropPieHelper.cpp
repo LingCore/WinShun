@@ -226,17 +226,24 @@ void DropPieHelper::poll()
 void DropPieHelper::failed(Failure kind, const QString& detail, unsigned long code)
 {
     ++m_failures;
+    // The log keeps a lasting failure to a few lines: a new cause, and the 1st, 2nd, 4th, 8th ... time.
+    if (detail != m_failure || (m_failures & (m_failures - 1)) == 0)
+        qWarning().noquote() << "Drop pie helper:" << detail << u"(%1 in a row)"_s.arg(m_failures);
     m_failure = detail;
-    qWarning().noquote() << "Drop pie helper:" << detail << u"(%1 in a row)"_s.arg(m_failures);
+    // As another account (an administrator's credentials at a UAC prompt) its
+    // temporary folder is that account's, out of the helper's reach: once
+    // told, tried again only at a settings change or a new Explorer.
+    const bool otherAccount = !shell::runsAsShellUser();
     // 1, 2, 4 … 60 s: never given up, never a busy loop.
-    m_retry.start(std::chrono::seconds(std::min(60, 1 << std::min(m_failures - 1, 6))));
+    if (!otherAccount || !m_reported)
+        m_retry.start(std::chrono::seconds(std::min(60, 1 << std::min(m_failures - 1, 6))));
     // Shown only when it keeps failing with Explorer up a while: at logon
     // it usually comes right by itself.
     if (m_reported || !m_notify || m_failures < 3 || QDateTime::currentMSecsSinceEpoch() - m_shellSince < 60'000)
         return;
     m_reported = true;
     const auto again = [this] { retry(); };
-    if (!shell::runsAsShellUser())
+    if (otherAccount)
         m_notify(tr("收藏圆盘未启动"), tr("Win顺 正以另一个账户的管理员身份运行，收藏圆盘无法使用。请用你自己的账户运行 Win顺。"), {});
     else if (kind == Failure::Start)
         m_notify(tr("收藏圆盘未启动"),

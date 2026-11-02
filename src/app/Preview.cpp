@@ -30,6 +30,7 @@
 #include "DropPieHelper.h"
 #include "Query.h"
 #include "Host.h"
+#include "platform/Integrity.h"
 #include "platform/SiteIcons.h"
 #include "platform/FileDialog.h"
 #include "platform/FileManagers.h"
@@ -2263,6 +2264,12 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
 
 void checkDropPieHelper(const QDir& output)
 {
+    // Elevated, the helper gets the desktop user's environment, not this run's
+    // PATH to Qt: from a build folder it cannot even load.
+    if (integrity::processElevated()) {
+        say(u"drop pie: skipped, elevated (run it with normal rights)"_s);
+        return;
+    }
     QTemporaryDir profile;
     Favorites favorites(profile.filePath(u"favorites.json"_s));
     favorites.load();
