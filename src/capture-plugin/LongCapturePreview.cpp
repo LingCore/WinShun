@@ -28,6 +28,8 @@
 
 #include <algorithm>
 #include <memory>
+#include <string_view>
+#include <vector>
 
 using namespace Qt::StringLiterals;
 
@@ -276,23 +278,34 @@ int runLongCapture(const QStringList& args)
     };
     const auto interfacePicture = [&] {
         // A developer-only photograph of this generated fixture and its real
-        // chrome. Temporarily include only our excluded windows; all lie
-        // outside the recorded region, so the stitched pixels stay unchanged.
+        // chrome. The border strips lie outside the recorded region and the
+        // panel is left out of the frames while it covers the region; clear
+        // that for the picture, so the stitched pixels stay unchanged.
         struct Chrome { HWND window; DWORD affinity; };
-        std::vector<Chrome> chrome;
+        struct Search { HWND fixture; std::vector<Chrome> found; } search {reinterpret_cast<HWND>(fixture->winId()), {}};
         ::EnumWindows([](HWND window, LPARAM data) -> BOOL {
-            DWORD pid = 0, affinity = 0;
+            auto* search = reinterpret_cast<Search*>(data);
+            DWORD pid = 0, affinity = WDA_NONE;
+            wchar_t name[64] {};
             ::GetWindowThreadProcessId(window, &pid);
-            if (pid == ::GetCurrentProcessId() && ::IsWindowVisible(window)
-                && ::GetWindowDisplayAffinity(window, &affinity) && affinity == WDA_EXCLUDEFROMCAPTURE)
-                reinterpret_cast<std::vector<Chrome>*>(data)->push_back({window, affinity});
+            if (pid != ::GetCurrentProcessId() || window == search->fixture || !::IsWindowVisible(window)
+                || !::GetClassNameW(window, name, 64))
+                return TRUE;
+            const std::wstring_view type(name);
+            if (type == L"WinShunLongCaptureEdge" || type.find(L"QWindow") != std::wstring_view::npos) {
+                ::GetWindowDisplayAffinity(window, &affinity);
+                search->found.push_back({window, affinity});
+            }
             return TRUE;
-        }, reinterpret_cast<LPARAM>(&chrome));
+        }, reinterpret_cast<LPARAM>(&search));
+        const std::vector<Chrome>& chrome = search.found;
         check(chrome.size() >= 5, "selection border and controls must be visible native windows");
-        for (const auto& entry : chrome) ::SetWindowDisplayAffinity(entry.window, WDA_NONE);
+        for (const auto& entry : chrome)
+            if (entry.affinity == WDA_EXCLUDEFROMCAPTURE) ::SetWindowDisplayAffinity(entry.window, WDA_NONE);
         ::DwmFlush();
         const QImage desktop = fixture->screen()->grabWindow(0).toImage();
-        for (const auto& entry : chrome) ::SetWindowDisplayAffinity(entry.window, entry.affinity);
+        for (const auto& entry : chrome)
+            if (entry.affinity == WDA_EXCLUDEFROMCAPTURE) ::SetWindowDisplayAffinity(entry.window, entry.affinity);
         const QRect picture(origin.x, origin.y, qRound(fixture->width() * dpr), qRound(fixture->height() * dpr));
         check(desktop.copy(picture).save(out.filePath(u"interface.png"_s)), "save actual selection and controls");
     };

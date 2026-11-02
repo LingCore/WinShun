@@ -4,8 +4,8 @@ import QtQuick
 import WinShun
 
 // take_screenshot (MCP, App::confirmScreenshot): an AI client asks for a
-// picture of a monitor. Shown in the middle of that monitor, above the rest,
-// and kept out of every capture (WDA_EXCLUDEFROMCAPTURE). Only a click on
+// picture of a monitor. Shown in the middle of that monitor, above the rest;
+// App::screenshotAnswered hides it before the grab. Only a click on
 // 允许 takes the picture; 拒绝, Esc or no answer in time refuse. Enter does
 // nothing: a key meant for another window must not say yes.
 Window {

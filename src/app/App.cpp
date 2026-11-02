@@ -123,6 +123,7 @@
 
 #include <windows.h>
 
+#include <dwmapi.h>
 #include <cmath>
 #include <thread>
 
@@ -6078,8 +6079,6 @@ void App::confirmScreenshot(const mcp::ScreenshotRequest& request, std::function
     styleWindow(window, SystemTheme::backdropAvailable());
     win::setDarkFrame(window, isDarkMode());
     ask->frame->setWindow(window);
-    // Never in a picture of the screen: not in this one, not in another's.
-    ::SetWindowDisplayAffinity(reinterpret_cast<HWND>(window->winId()), WDA_EXCLUDEFROMCAPTURE);
     const int signal = object->metaObject()->indexOfSignal("answered(int)");
     const int slot = metaObject()->indexOfMethod("screenshotAnswered(int)");
     if (signal >= 0 && slot >= 0)
@@ -6139,6 +6138,9 @@ void App::screenshotAnswered(int how)
             return;
         }
         done({{}, path, shot->image.width(), shot->image.height(), label});
+        // No fade-out: the grab below must not catch the dialog on its way out.
+        const BOOL noFade = TRUE;
+        ::DwmSetWindowAttribute(reinterpret_cast<HWND>(ask->window->winId()), DWMWA_TRANSITIONS_FORCEDISABLED, &noFade, sizeof noFade);
     }).detach();
 }
 
@@ -6151,6 +6153,9 @@ void App::applyMcp()
         m_mcpHost.reset();
         m_mcpEngine.reset();
         m_mcpContentEngine.reset();
+        // The hidden dialog is off the screen once the desktop has composed twice.
+        ::DwmFlush();
+        ::DwmFlush();
         refreshMcpStatus();
         return;
     }
@@ -6997,8 +7002,8 @@ static QScreen* screenWithMouse()
 }
 
 // SettingsConfirm.qml, made as ScreenshotConfirm is (frame, backdrop, style),
-// in the middle of the work area of the screen with the mouse, and kept out of
-// every capture. One at a time: a second request is told so at once.
+// in the middle of the work area of the screen with the mouse. One at a time:
+// a second request is told so at once.
 void App::confirmSettingsChange(const mcp::SettingsAsk& ask, std::function<void(mcp::SettingsAnswer answer, bool always)> done)
 {
     if (m_settingsAsk) {
@@ -7028,7 +7033,6 @@ void App::confirmSettingsChange(const mcp::SettingsAsk& ask, std::function<void(
     styleWindow(window, SystemTheme::backdropAvailable());
     win::setDarkFrame(window, isDarkMode());
     slot->frame->setWindow(window);
-    ::SetWindowDisplayAffinity(reinterpret_cast<HWND>(window->winId()), WDA_EXCLUDEFROMCAPTURE);
     const int signal = object->metaObject()->indexOfSignal("answered(int,bool)");
     const int answered = metaObject()->indexOfMethod("settingsAnswered(int,bool)");
     if (signal >= 0 && answered >= 0)

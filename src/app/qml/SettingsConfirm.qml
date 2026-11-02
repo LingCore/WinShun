@@ -5,7 +5,7 @@ import WinShun
 
 // change_settings (MCP, App::confirmSettingsChange): an AI client wants to
 // change Win顺's settings. Shown in the middle of the monitor the mouse is
-// on, above the rest, and kept out of every capture. Only a click on 允许
+// on, above the rest. Only a click on 允许
 // changes anything; 拒绝, Esc or no answer in time refuse. No key says yes:
 // 允许 is out of the Tab order and Space and Enter do nothing on it, and
 // for the first half second nothing but Esc and 拒绝 answers, so that keys

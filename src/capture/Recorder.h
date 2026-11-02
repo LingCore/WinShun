@@ -135,6 +135,7 @@ private:
     void remember();
     void createPanel();
     void keepPanelVisible();
+    void updatePanelExclusion();
     void releaseClicks();
     void releaseKeys();
 

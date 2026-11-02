@@ -31,8 +31,10 @@ class Grabber;
 // the focus, the wheel and the keyboard. Ours on the screen: a selection
 // border in Theme.accent, kept inside the monitor at its edges, and a
 // persistent action strip (LongCapturePanel.qml), with an optional preview
-// window beside it. These never take focus and are left out of every capture
-// (WDA_EXCLUDEFROMCAPTURE). Esc and
+// window beside it. These never take focus. The border lies outside the region
+// and stays in screenshots; the strip and the preview are left out of the
+// frames (WDA_EXCLUDEFROMCAPTURE) only while it runs and they cover the
+// region. Esc and
 // Enter are global hotkeys for as long as it runs (cancel, finish), always
 // given back; the capture hotkey finishes too (Capture::trigger).
 //
@@ -127,6 +129,7 @@ private:
     void dumpPanel();
     QQuickWindow* panel();
     void placePanel(const QRect& region, HMONITOR monitor);
+    void updateExclusion();
     void hotkeys(bool on);
 
     QQmlEngine* m_engine;

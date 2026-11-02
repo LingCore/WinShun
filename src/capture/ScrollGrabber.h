@@ -13,7 +13,8 @@
 // device and the monitor's capture item; a frame only when something on
 // that monitor changed, the newest kept), or where WGC cannot, BitBlt every
 // 16 ms. Both leave out windows set to WDA_EXCLUDEFROMCAPTURE (the long
-// screenshot's border and panel; stage 6 probe). One thread's.
+// screenshot's panel and preview, while they cover the region; stage 6
+// probe), and read nothing outside the region. One thread's.
 namespace ws::capture {
 
 class ScrollGrabber {

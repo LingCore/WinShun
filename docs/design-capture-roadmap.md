@@ -1281,7 +1281,7 @@ QList<RedactHit> findSensitive(const QList<RedactLine>&, const RedactRules&, con
 2. **换上长截图的界面**：遮罩全部隐藏（冻结画面用不上了）。
    - **边框**：一个原生分层窗口，在区域外面画一圈框：1 逻辑 px 中性灰，外侧再加 1 px 半透明白。这是对“边框 1 px 中性灰”的一处例外：这圈框是画在别人内容上的记号，不是我们窗口的边，只有灰线的话在灰色背景上看不见。面板窗口自己的边仍是 1 px 中性灰。窗口样式 `WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST`，鼠标穿透。
    - **面板**：一个 Qt Quick 窗口，第一次用长截图时建，之后隐藏复用；不抢焦点（`Qt::WindowDoesNotAcceptFocus`，即 `WS_EX_NOACTIVATE`）；按 placeBeside 的规则放在区域旁边。上面有实时缩略图、状态（等待 / 拼接中 / 往回滚了 / 跟丢了 / 到上限）、高度、自动滚动开关、完成、取消、复制诊断信息。
-   - 两个窗口都放在区域外面，并且都设 `WDA_EXCLUDEFROMCAPTURE`（探针确认对分层窗口有效），双保险。
+   - 两个窗口都放在区域外面，并且都设 `WDA_EXCLUDEFROMCAPTURE`（探针确认对分层窗口有效），双保险。**2026-11-02 改：** 边框在区域外面，不再排除；面板只在取帧并压在区域上时才排除。
    - 焦点留在目标程序上，滚轮和键盘照常。我们临时注册两个全局热键：Esc = 取消，Enter = 完成，结束就注销；截图热键这时也等于完成。
 3. **取帧**（ScrollGrabber）：
    - 复用常驻的 WGC 设备和那块屏的 capture item，开一个 `CreateFreeThreaded` 帧池；
@@ -1371,7 +1371,7 @@ struct ScrollResult { ScrollMethod method; int code = 0; };  // 0 = 成功；其
 | 16 | ShareX #8631 | 吸顶栏、浮动按钮把拼接搞乱 | 固定带排除、后帧覆盖、页眉页脚规则 |
 | 17 | ShareX #8503；ksnip #398；QuickShot #10 | 只能纵向；或者干脆没有长截图 | 阶段 6 做纵向；横向排在“看反馈” |
 | 18 | ShareX #8690、#8692 | 拼完不能裁剪；“滚动量”参数被当成总页数 | 结果进编辑窗口；不设这种参数，步长自己定 |
-| 19 | Snow Shot #1926 | 工具栏被拍进长截图 | 边框和面板放在区域外 + WDA_EXCLUDEFROMCAPTURE；验收时扫颜色 |
+| 19 | Snow Shot #1926 | 工具栏被拍进长截图 | 边框和面板放在区域外；面板只在取帧并压在区域上时设 WDA_EXCLUDEFROMCAPTURE（边框不设）；验收时扫颜色 |
 | 20 | Snow Shot #1929 | 连着复制两张图，粘到微信时第一张丢了 | 剪贴板放图片数据，不放文件；两次复制按顺序完成；验收：连着截两张复制，历史里两条都在、顺序对 |
 | 21 | Snow Shot #1946 | 鼠标贴着屏幕最右、最下边时开始不了框选 | 每块屏最后一行、最后一列起拖都要测，包括标注的起笔 |
 | 22 | Snow Shot #2039 | 很久不用后，第一次截图很慢 | 空闲 30 分钟后量一次“热键到遮罩”；超过 100 ms 再定预热办法，和空闲回收内存的规矩一起权衡 |

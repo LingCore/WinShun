@@ -1,6 +1,7 @@
 #include "Recorder.h"
 
 #include "Geometry.h"
+#include "CaptureExclusion.h"
 #include "GifExport.h"
 #include "KeyStream.h"
 #include "RecordingPointer.h"
@@ -63,7 +64,6 @@ public:
                 L"WinShunRecordingEdge", L"", WS_POPUP, r.x(), r.y(), r.width(), r.height(),
                 nullptr, nullptr, ::GetModuleHandleW(nullptr), nullptr);
             if (m_windows[i]) {
-                ::SetWindowDisplayAffinity(m_windows[i], WDA_EXCLUDEFROMCAPTURE);
                 ::ShowWindow(m_windows[i], SW_SHOWNOACTIVATE);
             }
         }
@@ -243,13 +243,24 @@ void Recorder::createPanel()
     }
     m_panel->create();
     win::styleFramelessWindow(m_panel, false);
-    ::SetWindowDisplayAffinity(reinterpret_cast<HWND>(m_panel->winId()), WDA_EXCLUDEFROMCAPTURE);
+    // Out of the frames only while it is in them: recording, over the region.
+    for (auto changed : {&QWindow::xChanged, &QWindow::yChanged, &QWindow::widthChanged, &QWindow::heightChanged})
+        connect(m_panel, changed, this, &Recorder::updatePanelExclusion);
+    connect(m_panel, &QWindow::visibleChanged, this, &Recorder::updatePanelExclusion);
+    connect(this, &Recorder::changed, this, &Recorder::updatePanelExclusion);
     connect(m_panel, &QWindow::widthChanged, this, &Recorder::keepPanelVisible, Qt::QueuedConnection);
     connect(m_panel, &QWindow::heightChanged, this, &Recorder::keepPanelVisible, Qt::QueuedConnection);
 }
 
 void Recorder::keepPanelVisible()
 {
+void Recorder::updatePanelExclusion()
+{
+    if (!m_panel) return;
+    const bool taking = m_stage == Starting || m_stage == Recording || m_stage == Paused;
+    excludeFromCapture(reinterpret_cast<HWND>(m_panel->winId()), m_region, taking);
+}
+
     if (!m_panel || !m_panel->isVisible()) return;
     const auto window = reinterpret_cast<HWND>(m_panel->winId());
     MONITORINFO monitor {sizeof monitor};
