@@ -97,6 +97,7 @@
 #include <shellapi.h>
 #include <dwmapi.h>
 #include <exdisp.h>
+#include <uiautomation.h>
 #include <shlobj.h>
 #include <wrl/client.h>
 
@@ -4123,7 +4124,7 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
             // Never close a pre-existing window, or user-added tabs.
             const QString shown = QString::fromStdWString(filemanager::explorerFolder(tab));
             if (tabs == 1 && (shown == folder || shown.startsWith(folder + u'\\'))) {
-                owned->Quit();
+                ::PostMessageW(root, WM_CLOSE, 0, 0); // Quit() leaves a Windows 11 tab window open
                 QElapsedTimer closing; closing.start();
                 while (::IsWindow(root) && closing.elapsed() < 2000) pump(20);
             }
@@ -4161,6 +4162,7 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
     ComPtr<IShellBrowser> browser;
     owned.As(&services);
     if (!services || FAILED(services->QueryService(SID_STopLevelBrowser, IID_PPV_ARGS(&browser)))) return false;
+    IShellBrowser* shown = browser.Get(); // whose selection is read: a tab of its own later
     const auto selected = [&] {
         ComPtr<IShellView> shellView;
         ComPtr<IFolderView2> view;
@@ -4168,7 +4170,7 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
         ComPtr<IShellItem> item;
         DWORD count = 0;
         int focused = -1;
-        if (FAILED(browser->QueryActiveShellView(&shellView)) || FAILED(shellView.As(&view))
+        if (FAILED(shown->QueryActiveShellView(&shellView)) || FAILED(shellView.As(&view))
             || FAILED(view->GetSelection(FALSE, &selection)) || !selection
             || FAILED(selection->GetCount(&count)) || count != 1
             || FAILED(view->GetFocusedItem(&focused)) || focused < 0
@@ -4271,6 +4273,123 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
     app.hideLauncher();
     pump(300);
     check(selected() == beforeHide, "hiding cancels the pending selection");
+
+    // The second tab of the window (GitHub #182): typed in there, the arrow
+    // keys follow in that tab; a result in a subfolder is reached by Ctrl+Enter,
+    // which says so in the footer, and takes that tab to it.
+    // Explorer's own buttons, by UI Automation: the tab strip's "+" and the
+    // "x" of its last tab (keys injected into it never opened a tab here).
+    const auto press = [&](const wchar_t* id, bool last) {
+        ComPtr<IUIAutomation> automation;
+        ComPtr<IUIAutomationElement> window;
+        ComPtr<IUIAutomationCondition> condition;
+        ComPtr<IUIAutomationElementArray> found;
+        ComPtr<IUIAutomationElement> button;
+        ComPtr<IUnknown> pattern;
+        ComPtr<IUIAutomationInvokePattern> invoke;
+        VARIANT name {};
+        name.vt = VT_BSTR;
+        name.bstrVal = ::SysAllocString(id);
+        const auto release = qScopeGuard([&] { ::VariantClear(&name); });
+        int count = 0;
+        return SUCCEEDED(::CoCreateInstance(__uuidof(CUIAutomation), nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&automation)))
+            && SUCCEEDED(automation->ElementFromHandle(root, &window))
+            && SUCCEEDED(automation->CreatePropertyCondition(UIA_AutomationIdPropertyId, name, &condition))
+            && SUCCEEDED(window->FindAll(TreeScope_Descendants, condition.Get(), &found))
+            && SUCCEEDED(found->get_Length(&count)) && count > 0
+            && SUCCEEDED(found->GetElement(last ? count - 1 : 0, &button))
+            && SUCCEEDED(button->GetCurrentPattern(UIA_InvokePatternId, &pattern)) && SUCCEEDED(pattern.As(&invoke))
+            && SUCCEEDED(invoke->Invoke());
+    };
+    const auto tabsOf = [&] {
+        std::vector<ComPtr<IShellBrowser>> found;
+        for (const auto& web : browsers()) {
+            SHANDLE_PTR hwnd = 0; web->get_HWND(&hwnd);
+            ComPtr<IServiceProvider> provider;
+            ComPtr<IShellBrowser> inTab;
+            if (reinterpret_cast<HWND>(hwnd) == root && SUCCEEDED(web.As(&provider))
+                && SUCCEEDED(provider->QueryService(SID_STopLevelBrowser, IID_PPV_ARGS(&inTab))))
+                found.push_back(inTab);
+        }
+        return found;
+    };
+    app.hideLauncher();
+    const auto firstTabs = tabsOf();
+    ComPtr<IShellBrowser> second;
+    if (press(L"AddButton", false)) {
+        waiting.restart();
+        while (!second && waiting.elapsed() < 5000) {
+            pump(50);
+            for (const auto& inTab : tabsOf()) {
+                HWND candidate = nullptr;
+                inTab->GetWindow(&candidate);
+                if (candidate != tab && std::ranges::none_of(firstTabs, [&](const auto& known) {
+                        HWND other = nullptr;
+                        known->GetWindow(&other);
+                        return other == candidate;
+                    }))
+                    second = inTab;
+            }
+        }
+    }
+    check(second != nullptr, "a second tab opened in the own Explorer window");
+    if (!second)
+        return false;
+    HWND secondTab = nullptr;
+    second->GetWindow(&secondTab);
+    filemanager::goTo(secondTab, folder.toStdWString());
+    waiting.restart();
+    while (QString::fromStdWString(filemanager::explorerFolder(secondTab)) != folder && waiting.elapsed() < 5000)
+        pump(50);
+    pump(500);
+    const auto closeSecond = qScopeGuard([&] {
+        app.hideLauncher();
+        if (::IsWindow(secondTab) && press(L"CloseButton", true)) {
+            QElapsedTimer closing; closing.start();
+            while (tabsOf().size() > 1 && closing.elapsed() < 3000) pump(50);
+        }
+    });
+    shown = second.Get();
+    ::SetForegroundWindow(root);
+    app.showFolderSearch(root, secondTab, false, folder);
+    const bool again = search(u"follow_"_s, 3);
+    check(again, "production search found the three children again for the second tab");
+    if (!again)
+        return false;
+    settle(window, 3);
+    if (field) QMetaObject::invokeMethod(field, "focusAtEnd");
+    check(launcher->currentRow() == 0 && follows(), "initial result selected in the second tab");
+    key(Qt::Key_Down);
+    check(launcher->currentRow() == 1 && follows(), "Down follows in the second tab");
+    key(Qt::Key_Down);
+    check(launcher->currentRow() == 2 && follows(), "Down follows to the last child in the second tab");
+    check(launcher->keyHints().value(u"second"_s).toString() == u"打开位置"_s,
+        "a child of the folder keeps the plain 打开位置 hint");
+    const QString nestedFile = QDir::toNativeSeparators(folder + u"\\child\\nested-only.txt"_s);
+    launcher->setQuery(prefix + u"nested-only"_s);
+    waiting.restart();
+    while ((launcher->searching() || launcher->results()->count() < 1) && waiting.elapsed() < 5000)
+        pump(20);
+    pump(300);
+    check(launcher->keyHints().value(u"second"_s).toString() == u"在原窗口定位"_s,
+        "a result in a subfolder says Ctrl+Enter locates it in the original window");
+    check(selected() != nestedFile && QString::fromStdWString(filemanager::explorerFolder(secondTab)) == folder,
+        "moving onto the subfolder result left the second tab where it was");
+    const int warned = g_warnings;
+    QKeyEvent reveal(QEvent::KeyPress, Qt::Key_Return, Qt::ControlModifier);
+    QCoreApplication::sendEvent(window, &reveal);
+    waiting.restart();
+    while ((QString::fromStdWString(filemanager::explorerFolder(secondTab)) != folder + u"\\child"_s
+               || QDir::fromNativeSeparators(selected()).compare(QDir::fromNativeSeparators(nestedFile), Qt::CaseInsensitive) != 0)
+        && waiting.elapsed() < 5000)
+        pump(50);
+    check(QString::fromStdWString(filemanager::explorerFolder(secondTab)) == folder + u"\\child"_s
+            && QDir::fromNativeSeparators(selected()).compare(QDir::fromNativeSeparators(nestedFile), Qt::CaseInsensitive) == 0,
+        "Ctrl+Enter took the second tab to the subfolder and selected the file");
+    // The tab is brought to the front as the launcher goes: the warnings about
+    // its losing the front that this makes are no fault.
+    pump(500);
+    g_warnings = warned;
     return ok;
 }
 

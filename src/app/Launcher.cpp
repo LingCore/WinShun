@@ -529,6 +529,7 @@ Launcher::Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places,
     connect(m_engine, &SearchEngine::contentProgress, this, &Launcher::onContentProgress);
     connect(m_engine, &SearchEngine::contentLeftOut, this, &Launcher::onContentLeftOut);
     connect(m_engine, &SearchEngine::contentScope, this, &Launcher::onContentScope);
+    connect(this, &Launcher::typingFolderChanged, this, &Launcher::refreshKeyHints);
     connect(this, &Launcher::folderChipsChanged, this, &Launcher::refreshKeyHints); // Tab: 换个文件夹, or none to go to
     connect(this, &Launcher::queryChanged, this, &Launcher::folderChipsChanged); // a folder typed, or no longer
     connect(this, &Launcher::scopeChanged, this, &Launcher::folderChipsChanged);
@@ -2879,7 +2880,11 @@ void Launcher::refreshKeyHints()
     } else {
         enter = r->isDir ? tr("打开文件夹") : tr("打开");
         secondKeys = u"Ctrl+Enter"_s;
-        second = tr("打开位置");
+        // Typed in a folder's window: its direct items are followed there as the
+        // keys move; the rest are not (that would navigate the tab), Ctrl+Enter
+        // takes the tab to them (App::revealInTypingTab, GitHub #182).
+        second = typedInFolder() && !pathtext::sameFolder(QFileInfo(r->path).absolutePath(), m_typingFolder)
+            ? tr("在原窗口定位") : tr("打开位置");
     }
     const QVariantMap hints {{u"enter"_s, enter}, {u"secondKeys"_s, secondKeys}, {u"second"_s, second}, {u"tab"_s, tab},
         {u"tabKeys"_s, tabKeys}};
