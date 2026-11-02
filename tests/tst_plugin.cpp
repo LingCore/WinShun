@@ -175,6 +175,18 @@ struct Fixture {
         QObject::connect(host.get(), &Host::logged, [this](const QString& line) { logs.push_back(line); });
     }
 
+    // The host goes first, and heard by no one: ~Host's shutdown() waits for
+    // the plugins in an event loop, where a plugin's exit is still logged and
+    // told. Left to the members' order, the lists declared after host were
+    // freed by then (logs.push_back on a freed list: the heap corruption),
+    // and a test's own lambdas write to its locals after f, gone before f.
+    ~Fixture()
+    {
+        if (host)
+            QObject::disconnect(host.get(), nullptr, nullptr, nullptr);
+        host.reset();
+    }
+
     // A plugin folder with plugin_fake.exe as fake.exe; enabled.
     QString install(const Spec& spec)
     {
