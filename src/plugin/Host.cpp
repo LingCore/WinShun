@@ -580,6 +580,10 @@ void Host::setEnabled(const QString& id, bool on)
         p.disabledByCrashes = false;
         p.crashTimes.clear();
         p.backoffStep = 0;
+        const Entry* e = entry(id);
+        if (p.phase == Plugin::Phase::ShuttingDown && e && e->manifest && e->manifest->resident()
+            && e->manifest->runtime->start == StartWhen::Eager)
+            p.restartWhenGone = true; // re-enabled before its old shutdown response arrived
     }
     m_catalog.setEnabled(id, on);
     emit stateChanged(id);

@@ -4168,6 +4168,19 @@ private slots:
         QVERIFY(QTest::qWaitFor([&] { return f.startedPids.size() == 2; }, 5000));
     }
 
+    void eagerReenabledWhileItsPreviousProcessIsExiting()
+    {
+        Fixture f;
+        Spec spec;
+        spec.runtimeExtra = {{u"start"_s, u"eager"_s}, {u"idleExitSec"_s, 0}};
+        QVERIFY(!f.install(spec).isEmpty());
+        QVERIFY(QTest::qWaitFor([&] { return f.host->state(spec.id).status == Host::State::Status::Running; }, 5000));
+        f.host->setEnabled(spec.id, false);
+        f.host->setEnabled(spec.id, true); // the shutdown response has not arrived yet
+        QVERIFY2(QTest::qWaitFor([&] { return f.startedPids.size() == 2
+            && f.host->state(spec.id).status == Host::State::Status::Running; }, 5000), qPrintable(f.logs.join(u'\n')));
+    }
+
     void eagerWaitsForConsentAndShutdownCancelsQueuedStart()
     {
         Fixture f;
