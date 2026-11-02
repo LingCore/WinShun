@@ -1,0 +1,52 @@
+{
+  "baseline": {
+    "pid": 56672,
+    "capture_timings": [
+      "Screen capture: overlay up 105 ms after the hotkey (grab 20 ms: 1 monitor(s), 1 by WGC (frames in 13 ms), the rest by BitBlt, 20 ms in all; 15 windows listed in 1 ms)",
+      "Screen capture: overlay up 51 ms after the hotkey (grab 21 ms: 1 monitor(s), 1 by WGC (frames in 15 ms), the rest by BitBlt, 21 ms in all; 15 windows listed in 2 ms)",
+      "Screen capture: overlay up 51 ms after the hotkey (grab 21 ms: 1 monitor(s), 1 by WGC (frames in 12 ms), the rest by BitBlt, 21 ms in all; 15 windows listed in 1 ms)"
+    ],
+    "dll_sha256": "cb8279b8671cd37e849fc8d19c668ba718ea9627506f7868f5fcfea5982f3b45"
+  },
+  "fixed": {
+    "pid": 81936,
+    "capture_timings": [
+      "Screen capture: overlay up 94 ms after the hotkey (grab 31 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 31 ms in all; 15 windows listed in 2 ms)",
+      "Screen capture: overlay up 57 ms after the hotkey (grab 31 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 31 ms in all; 15 windows listed in 1 ms)",
+      "Screen capture: overlay up 57 ms after the hotkey (grab 29 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 29 ms in all; 15 windows listed in 1 ms)"
+    ],
+    "dll_sha256": "8679572a0eef542fb82574045f06f123809302b2f1c73981b7e41100c6d5c134"
+  },
+  "qml_selftest": "{\"id\":2,\"jsonrpc\":\"2.0\",\"result\":{\"items\":[{\"id\":\"EditWindow\",\"subtitle\":\"Qt 6.12.0\",\"title\":\"ok  EditWindow\",\"valid\":false},{\"id\":\"OcrPanel\",\"subtitle\":\"Qt 6.12.0\",\"title\":\"ok  OcrPanel\",\"valid\":false},{\"id\":\"CaptureSettingsWindow\",\"subtitle\":\"Qt 6.12.0\",\"title\":\"ok  CaptureSettingsWindow\",\"valid\":false},{\"id\":\"LongCapturePanel\",\"subtitle\":\"Qt 6.12.0\",\"title\":\"ok  LongCapturePanel\",\"valid\":false},{\"id\":\"RecordingPanel\",\"subtitle\":\"Qt 6.12.0\",\"title\":\"ok  RecordingPanel\",\"valid\":false}]}}",
+  "fixed_qml_selftest": "{\"id\":2,\"jsonrpc\":\"2.0\",\"result\":{\"items\":[{\"id\":\"EditWindow\",\"subtitle\":\"Qt 6.12.0\",\"title\":\"ok  EditWindow\",\"valid\":false},{\"id\":\"OcrPanel\",\"subtitle\":\"Qt 6.12.0\",\"title\":\"ok  OcrPanel\",\"valid\":false},{\"id\":\"CaptureSettingsWindow\",\"subtitle\":\"Qt 6.12.0\",\"title\":\"ok  CaptureSettingsWindow\",\"valid\":false},{\"id\":\"LongCapturePanel\",\"subtitle\":\"Qt 6.12.0\",\"title\":\"ok  LongCapturePanel\",\"valid\":false},{\"id\":\"RecordingPanel\",\"subtitle\":\"Qt 6.12.0\",\"title\":\"ok  RecordingPanel\",\"valid\":false}]}}",
+  "recording": "preparing\nloading the font\nScreen capture: prepared in 0 ms (1 monitor(s), WGC no, borderless no)\nScreen capture: overlay up 104 ms after the hotkey (grab 31 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 31 ms in all; 16 windows listed in 0 ms)\nScreen capture: UI Automation gave 0 controls in 99 ms\nsaved F:/电脑便捷工具/build/capture-memory-fix-20261102/final-recording/ready.png 842x84\nsaved F:/电脑便捷工具/build/capture-memory-fix-20261102/final-recording/source.png 1200x690\ncompact ready: 561 x 56\noptions expanded beside screen edge stay in work area: 1\nsaved F:/电脑便捷工具/build/capture-memory-fix-20261102/final-recording/keyboard-options.png 842x278\ncompact options with spacing on both sides of divider: 1 (561 x 185; native gaps 12/12 px)\nkeyboard focus scrolls the final option into a short viewport: 1\nsaved F:/电脑便捷工具/build/capture-memory-fix-20261102/final-recording/options-short-height.png 842x228\nkeyboard Space opens options, Escape closes only options: 1\nsaved F:/电脑便捷工具/build/capture-memory-fix-20261102/final-recording/ready-gif.png 842x84\nsaved F:/电脑便捷工具/build/capture-memory-fix-20261102/final-recording/options.png 842x278\nsaved F:/电脑便捷工具/build/capture-memory-fix-20261102/final-recording/options-all-keys.png 842x320\nsaved F:/电脑便捷工具/build/capture-memory-fix-20261102/final-recording/recording.png 608x84\nsaved F:/电脑便捷工具/build/capture-memory-fix-20261102/final-recording/paused.png 608x84\nRecording finished: encoder NVIDIA H.264 Encoder MFT hardware true frames 110 elapsed ms 3675 stage finalize MP4\nsaved F:/电脑便捷工具/build/capture-memory-fix-20261102/final-recording/completed.png 795x129\nrecording: 录屏已保存; 00:03; 149.48 KiB; \nsaved F:/电脑便捷工具/build/capture-memory-fix-20261102/final-recording/again.png 842x84\nRecording finished: encoder NVIDIA H.264 Encoder MFT hardware true frames 36 elapsed ms 1215 stage finalize MP4\nsaved F:/电脑便捷工具/build/capture-memory-fix-20261102/final-recording/completed-second.png 795x129\nrecording: 录屏已保存; 00:01; 69.36 KiB; \n",
+  "long_capture_cancel": "preparing\r\nloading the font\r\nScreen capture: prepared in 0 ms (1 monitor(s), WGC no, borderless no)\r\nScreen capture: overlay up 114 ms after the hotkey (grab 31 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 31 ms in all; 16 windows listed in 1 ms)\r\nLong screenshot: 900x660 at 150,162, auto-scroll off\r\nLong screenshot: cancelled, 0x0\r\nlong capture: cancelled, 0 failures\r\n",
+  "long_capture_baseline_auto": "preparing\r\nloading the font\r\nScreen capture: prepared in 36 ms (1 monitor(s), WGC yes, borderless yes)\r\nScreen capture: overlay up 121 ms after the hotkey (grab 22 ms: 1 monitor(s), 1 by WGC (frames in 14 ms), the rest by BitBlt, 22 ms in all; 16 windows listed in 4 ms)\r\nScreen capture: UI Automation gave 0 controls in 149 ms\r\nLong screenshot: 900x660 at 150,162, auto-scroll off\r\nLong screenshot: Auto\r\nLong screenshot: at the end, 900x4440\r\nWARNING: long capture: WGC output must match the page geometry and both fixed bars within one colour level\r\nlong capture: maximum channel difference 2\r\nlong capture: 900 x 4440, expected 900 x 4440, 1 failures\r\n",
+  "long_capture_fixed_auto": "preparing\nloading the font\nScreen capture: prepared in 0 ms (1 monitor(s), WGC no, borderless no)\nScreen capture: overlay up 172 ms after the hotkey (grab 52 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 52 ms in all; 16 windows listed in 3 ms)\nScreen capture: UI Automation gave 0 controls in 152 ms (over the budget: this window's child windows only)\nLong screenshot: 900x660 at 150,162, auto-scroll off\nLong screenshot: Auto\nLong screenshot: at the end, 900x4440\nlong capture: maximum channel difference 1\nlong capture: 900 x 4440, expected 900 x 4440, 0 failures\n",
+  "earlier_long_capture_pixel_comparison": {
+    "width": 900,
+    "height": 4440,
+    "baseline_fixed_differing_pixels": 0,
+    "baseline_fixed_max_channel_delta": 0,
+    "vs_fixture_max_channel_delta": 2,
+    "vs_fixture_pixels_above_one_level": 17,
+    "strict_preview_threshold_passed": false,
+    "build": "Before the final GDI cleanup and removal of redundant releaseResources calls"
+  },
+  "earlier_recording": "preparing\r\nloading the font\r\nScreen capture: prepared in 0 ms (1 monitor(s), WGC no, borderless no)\r\nScreen capture: UI Automation skipped for a Chromium window (class Chrome_WidgetWin_1): its child windows only\r\nScreen capture: overlay up 107 ms after the hotkey (grab 32 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 32 ms in all; 16 windows listed in 2 ms)\r\nsaved F:/电脑便捷工具/build/capture-memory-fix-20261102/recording-host-imports/ready.png 842x84\r\nsaved F:/电脑便捷工具/build/capture-memory-fix-20261102/recording-host-imports/source.png 1200x690\r\ncompact ready: 561 x 56\r\noptions expanded beside screen edge stay in work area: 1\r\nsaved F:/电脑便捷工具/build/capture-memory-fix-20261102/recording-host-imports/keyboard-options.png 842x278\r\ncompact options with spacing on both sides of divider: 1 (561 x 185; native gaps 12/12 px)\r\nkeyboard focus scrolls the final option into a short viewport: 1\r\nsaved F:/电脑便捷工具/build/capture-memory-fix-20261102/recording-host-imports/options-short-height.png 842x228\r\nkeyboard Space opens options, Escape closes only options: 1\r\nsaved F:/电脑便捷工具/build/capture-memory-fix-20261102/recording-host-imports/ready-gif.png 842x84\r\nsaved F:/电脑便捷工具/build/capture-memory-fix-20261102/recording-host-imports/options.png 842x278\r\nsaved F:/电脑便捷工具/build/capture-memory-fix-20261102/recording-host-imports/options-all-keys.png 842x320\r\nsaved F:/电脑便捷工具/build/capture-memory-fix-20261102/recording-host-imports/recording.png 608x84\r\nsaved F:/电脑便捷工具/build/capture-memory-fix-20261102/recording-host-imports/paused.png 608x84\r\nRecording finished: encoder NVIDIA H.264 Encoder MFT hardware true frames 111 elapsed ms 3708 stage finalize MP4\r\nsaved F:/电脑便捷工具/build/capture-memory-fix-20261102/recording-host-imports/completed.png 795x129\r\nrecording: 录屏已保存; 00:03; 150.18 KiB; \r\nsaved F:/电脑便捷工具/build/capture-memory-fix-20261102/recording-host-imports/again.png 842x84\r\nRecording finished: encoder NVIDIA H.264 Encoder MFT hardware true frames 39 elapsed ms 1300 stage finalize MP4\r\nsaved F:/电脑便捷工具/build/capture-memory-fix-20261102/recording-host-imports/completed-second.png 795x129\r\nrecording: 录屏已保存; 00:01; 69.64 KiB; \r\n",
+  "earlier_long_capture_fixed_auto": "preparing\r\nloading the font\r\nScreen capture: prepared in 0 ms (1 monitor(s), WGC no, borderless no)\r\nScreen capture: overlay up 133 ms after the hotkey (grab 44 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 44 ms in all; 16 windows listed in 1 ms)\r\nScreen capture: UI Automation gave 0 controls in 156 ms (over the budget: this window's child windows only)\r\nLong screenshot: 900x660 at 150,162, auto-scroll off\r\nLong screenshot: Auto\r\nLong screenshot: at the end, 900x4440\r\nWARNING: long capture: WGC output must match the page geometry and both fixed bars within one colour level\r\nlong capture: maximum channel difference 2\r\nlong capture: 900 x 4440, expected 900 x 4440, 1 failures\r\n",
+  "final_long_capture_pixel_comparison": {
+    "width": 900,
+    "height": 4440,
+    "vs_earlier_baseline_max_channel_delta": 2,
+    "vs_earlier_baseline_differing_pixels": 247,
+    "vs_fixture_max_channel_delta": 1,
+    "vs_fixture_pixels_above_one_level": 0,
+    "strict_preview_threshold_passed": true
+  },
+  "final_workflow_exit_codes": {
+    "long_capture_auto": 0,
+    "recording": 0,
+    "reproduction_probe": 0
+  }
+}

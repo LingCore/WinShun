@@ -15,14 +15,15 @@ namespace ws::capture {
 
 // Pictures of every monitor, as they are on the screen (docs/design-capture.md, 4.1).
 //
-// Windows.Graphics.Capture (WGC) first: it gets HDR monitors right (BitBlt
-// returns them washed out) and, kept warm, is the faster path (stage 0:
-// 11–12 ms per 2560x1600 monitor against 30–33 ms for BitBlt). Warm means
-// the D3D11 device (120+ ms the first time in a process) and one capture
+// A single SDR picture uses BitBlt, without a resident GPU capture engine.
+// HDR monitors use Windows.Graphics.Capture (WGC): BitBlt washes them out.
+// Kept warm for HDR, WGC takes 11–12 ms per 2560x1600 monitor (stage 0).
+// Warm means the D3D11 device (120+ ms the first time in a process) and one capture
 // item per monitor (CreateForMonitor, 22–26 ms each) made ahead, when the
-// capture is turned on and again when the monitors change; each picture
-// then only needs a frame pool and a session. No yellow border: an
-// unpackaged program is allowed borderless capture
+// HDR capture is turned on and again when the monitors change; each picture
+// then only needs a frame pool and a session. Streams use WGC on demand and
+// release its device afterwards when no HDR monitor needs it.
+// No yellow border: an unpackaged program is allowed borderless capture
 // (GraphicsCaptureAccess::RequestAccessAsync(Borderless) answers Allowed),
 // then IsBorderRequired(false). BitBlt is the way out when WGC fails.
 //

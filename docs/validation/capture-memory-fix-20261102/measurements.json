@@ -1,0 +1,101 @@
+[
+  {
+    "phase": "baseline-loaded",
+    "time": 1793585810.4901748,
+    "pid": 51748,
+    "commit_mb": 139.36,
+    "working_mb": 105.35,
+    "private_working_mb": 47.37,
+    "threads": 77
+  },
+  {
+    "phase": "baseline-editor-visible",
+    "time": 1793585819.3910024,
+    "pid": 51748,
+    "commit_mb": 236.48,
+    "working_mb": 180.52,
+    "private_working_mb": 104.92,
+    "threads": 157
+  },
+  {
+    "phase": "baseline-editor-idle",
+    "time": 1793586106.239923,
+    "pid": 51748,
+    "commit_mb": 224.8,
+    "working_mb": 30.47,
+    "private_working_mb": 21.56,
+    "threads": 139
+  },
+  {
+    "phase": "fixed-loaded",
+    "time": 1793586133.3330412,
+    "pid": 26996,
+    "commit_mb": 125.26,
+    "working_mb": 94.27,
+    "private_working_mb": 41.58,
+    "threads": 56
+  },
+  {
+    "phase": "fixed-editor-visible",
+    "time": 1793586134.655985,
+    "pid": 26996,
+    "commit_mb": 220.63,
+    "working_mb": 170.45,
+    "private_working_mb": 96.41,
+    "threads": 136
+  },
+  {
+    "phase": "fixed-editor-idle",
+    "time": 1793586162.7784958,
+    "pid": 26996,
+    "commit_mb": 218.19,
+    "working_mb": 168.39,
+    "private_working_mb": 93.99,
+    "threads": 135
+  },
+  {
+    "phase": "fixed-editor-idle-later",
+    "time": 1793586177.841498,
+    "pid": 26996,
+    "commit_mb": 182.09,
+    "working_mb": 4.25,
+    "private_working_mb": 1.88,
+    "threads": 73
+  },
+  {
+    "phase": "fixed-after-three-screenshots",
+    "time": 1793586281.098826,
+    "pid": 26996,
+    "commit_mb": 211.17,
+    "working_mb": 97.25,
+    "private_working_mb": 57.89,
+    "threads": 83
+  },
+  {
+    "phase": "fixed-capture-idle",
+    "time": 1793586304.7661397,
+    "pid": 26996,
+    "commit_mb": 211.03,
+    "working_mb": 6.56,
+    "private_working_mb": 3.47,
+    "threads": 79
+  },
+  {
+    "phase": "baseline-capture-only-idle",
+    "time": 1793586752.7336855,
+    "pid": 56672,
+    "commit_mb": 193.18,
+    "working_mb": 8.15,
+    "private_working_mb": 3.83,
+    "threads": 106
+  },
+  {
+    "phase": "fixed-capture-only-idle",
+    "time": 1793586752.8590286,
+    "pid": 81936,
+    "commit_mb": 160.8,
+    "working_mb": 7.54,
+    "private_working_mb": 3.3,
+    "threads": 85
+  }
+]

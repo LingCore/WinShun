@@ -9,6 +9,7 @@
 #include "Geometry.h"
 #include "HotkeyText.h"
 #include "IdleTrim.h"
+#include "IdleGraphics.h"
 #include "ImageOrigin.h"
 #include "Keycaps.h"
 #include "PictureFile.h"
@@ -649,6 +650,7 @@ capture::SmartHooks CaptureApp::smartHooks()
 
 void CaptureApp::prepareWindow(QQuickWindow* window, bool backdrop)
 {
+    capture::releaseIdleGraphics(window);
     if (backdrop)
         prepareBackdrop(window);
     window->create();

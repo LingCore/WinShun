@@ -1,0 +1,24 @@
+before, private_commit=2.36, private_working=1.56, working=10.73, elapsed_ms=0
+prepared, private_commit=2.68, private_working=1.84, working=13.21, elapsed_ms=0
+round=0 valid=1 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 32 ms in all
+holding_frame, private_commit=18.37, private_working=17.47, working=44.63, elapsed_ms=32
+released_frame, private_commit=2.68, private_working=1.84, working=13.39, elapsed_ms=0
+round=1 valid=1 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 32 ms in all
+holding_frame, private_commit=18.38, private_working=17.47, working=44.65, elapsed_ms=32
+released_frame, private_commit=2.72, private_working=1.84, working=29.02, elapsed_ms=0
+round=2 valid=1 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 32 ms in all
+holding_frame, private_commit=18.38, private_working=17.47, working=44.66, elapsed_ms=32
+released_frame, private_commit=2.68, private_working=1.84, working=13.41, elapsed_ms=0
+round=3 valid=1 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 35 ms in all
+holding_frame, private_commit=18.38, private_working=17.47, working=44.66, elapsed_ms=35
+released_frame, private_commit=2.68, private_working=1.84, working=13.41, elapsed_ms=0
+round=4 valid=1 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 31 ms in all
+holding_frame, private_commit=18.38, private_working=17.47, working=44.67, elapsed_ms=31
+released_frame, private_commit=2.72, private_working=1.84, working=29.04, elapsed_ms=0
+round=5 valid=1 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 28 ms in all
+holding_frame, private_commit=18.38, private_working=17.47, working=44.67, elapsed_ms=28
+released_frame, private_commit=2.68, private_working=1.84, working=13.41, elapsed_ms=0
+stream_active, private_commit=51.07, private_working=10.99, working=45.71, elapsed_ms=0
+stream_ended, private_commit=18.92, private_working=5.51, working=30.71, elapsed_ms=0
+stream_active, private_commit=56.06, private_working=12.14, working=47.02, elapsed_ms=0
+stream_ended, private_commit=20.73, private_working=6.69, working=31.93, elapsed_ms=0

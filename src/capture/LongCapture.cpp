@@ -1,7 +1,8 @@
 #include "LongCapture.h"
+#include "IdleGraphics.h"
 
-#include "DiagnosticLog.h"
 #include "CaptureExclusion.h"
+#include "DiagnosticLog.h"
 #include "Geometry.h" // placeBeside
 #include "Grabber.h"
 #include "ScrollDiagnostics.h"
@@ -312,6 +313,7 @@ QQuickWindow* LongCapture::panel()
         delete object;
         return nullptr;
     }
+    releaseIdleGraphics(window);
     window->create();
     win::styleFramelessWindow(window, false);
     // Left out of the frames only while it is in them (updateExclusion).
@@ -327,6 +329,7 @@ QQuickWindow* LongCapture::panel()
         connect(shown, &QWindow::visibleChanged, this, &LongCapture::updateExclusion);
     }
     if (m_previewWindow) {
+        releaseIdleGraphics(m_previewWindow);
         m_previewWindow->create();
         win::styleFramelessWindow(m_previewWindow, false);
         const HWND preview = reinterpret_cast<HWND>(m_previewWindow->winId());
@@ -546,10 +549,7 @@ void LongCapture::wrapUp()
     m_copiedTimer.stop();
     m_preview = QImage();
     emit previewChanged();
-    if (m_panel)
-        m_panel->releaseResources(); // hidden: what it drew with goes (as the editing window's)
-    if (m_previewWindow)
-        m_previewWindow->releaseResources();
+    // Both windows release their scene graphs after the idle interval.
     if (!m_run)
         return;
     QString text;

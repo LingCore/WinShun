@@ -1,0 +1,20 @@
+before, private_commit=2.42, private_working=1.59, working=11.59, elapsed_ms=0
+prepared, private_commit=50.59, private_working=10.62, working=47.68, elapsed_ms=0
+round=0 valid_wgc=1 1 monitor(s), 1 by WGC (frames in 15 ms), the rest by BitBlt, 22 ms in all
+holding_frame, private_commit=66.13, private_working=26.12, working=63.84, elapsed_ms=25
+released_frame, private_commit=50.46, private_working=10.49, working=48.22, elapsed_ms=0
+round=1 valid_wgc=1 1 monitor(s), 1 by WGC (frames in 10 ms), the rest by BitBlt, 16 ms in all
+holding_frame, private_commit=81.83, private_working=41.79, working=79.52, elapsed_ms=17
+released_frame, private_commit=66.12, private_working=26.12, working=63.86, elapsed_ms=0
+round=2 valid_wgc=1 1 monitor(s), 1 by WGC (frames in 15 ms), the rest by BitBlt, 21 ms in all
+holding_frame, private_commit=81.83, private_working=41.79, working=79.52, elapsed_ms=22
+released_frame, private_commit=66.12, private_working=26.12, working=63.87, elapsed_ms=0
+round=3 valid_wgc=1 1 monitor(s), 1 by WGC (frames in 12 ms), the rest by BitBlt, 19 ms in all
+holding_frame, private_commit=81.91, private_working=41.89, working=79.64, elapsed_ms=20
+released_frame, private_commit=66.25, private_working=26.26, working=64.01, elapsed_ms=0
+round=4 valid_wgc=1 1 monitor(s), 1 by WGC (frames in 14 ms), the rest by BitBlt, 21 ms in all
+holding_frame, private_commit=81.83, private_working=41.80, working=79.55, elapsed_ms=22
+released_frame, private_commit=66.12, private_working=26.13, working=63.89, elapsed_ms=0
+round=5 valid_wgc=1 1 monitor(s), 1 by WGC (frames in 12 ms), the rest by BitBlt, 20 ms in all
+holding_frame, private_commit=82.02, private_working=41.99, working=79.75, elapsed_ms=21
+released_frame, private_commit=66.31, private_working=26.32, working=64.08, elapsed_ms=0

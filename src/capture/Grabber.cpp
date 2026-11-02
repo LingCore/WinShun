@@ -12,6 +12,7 @@
 
 #include <QDebug>
 #include <QElapsedTimer>
+#include <QScopeGuard>
 
 #include <windows.h>
 
@@ -21,6 +22,7 @@
 #include <Windows.Graphics.Capture.Interop.h>
 #include <windows.graphics.directx.direct3d11.interop.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -53,11 +55,26 @@ QRect toRect(const RECT& r)
 QImage bitblt(const QRect& r)
 {
     QImage image(r.width(), r.height(), QImage::Format_RGB32);
+    if (image.isNull())
+        return {};
     const HDC screen = ::GetDC(nullptr);
+    if (!screen)
+        return {};
+    const auto releaseScreen = qScopeGuard([screen] { ::ReleaseDC(nullptr, screen); });
     const HDC memory = ::CreateCompatibleDC(screen);
+    if (!memory)
+        return {};
+    const auto releaseMemory = qScopeGuard([memory] { ::DeleteDC(memory); });
     const HBITMAP bitmap = ::CreateCompatibleBitmap(screen, r.width(), r.height());
+    if (!bitmap)
+        return {};
+    const auto releaseBitmap = qScopeGuard([bitmap] { ::DeleteObject(bitmap); });
     const HGDIOBJ old = ::SelectObject(memory, bitmap);
+    if (!old || old == HGDI_ERROR)
+        return {};
     const bool ok = ::BitBlt(memory, 0, 0, r.width(), r.height(), screen, r.x(), r.y(), SRCCOPY | CAPTUREBLT);
+    // GetDIBits requires the bitmap to be deselected from every DC.
+    ::SelectObject(memory, old);
     BITMAPINFO info {};
     info.bmiHeader.biSize = sizeof info.bmiHeader;
     info.bmiHeader.biWidth = r.width();
@@ -66,10 +83,6 @@ QImage bitblt(const QRect& r)
     info.bmiHeader.biBitCount = 32;
     info.bmiHeader.biCompression = BI_RGB;
     const int lines = ok ? ::GetDIBits(memory, bitmap, 0, static_cast<UINT>(r.height()), image.bits(), &info, DIB_RGB_COLORS) : 0;
-    ::SelectObject(memory, old);
-    ::DeleteObject(bitmap);
-    ::DeleteDC(memory);
-    ::ReleaseDC(nullptr, screen);
     return lines == r.height() ? image : QImage();
 }
 
@@ -215,16 +228,43 @@ struct Grabber::Worker {
         winrt::uninit_apartment();
     }
 
-    // The device, borderless access, an item per monitor. Each part failing
-    // leaves its BitBlt fallback.
+    bool hasHdrMonitor() const
+    {
+        return std::ranges::any_of(monitors, [](const Monitor& m) { return m.color.hdr; });
+    }
+
+    void releaseDevice()
+    {
+        for (Monitor& m : monitors)
+            m.item = nullptr;
+        device = nullptr;
+        context = nullptr;
+        d3d = nullptr;
+    }
+
+    // A single SDR picture needs no resident GPU capture device. HDR keeps
+    // WGC warm for correct colours; streams create it on demand.
     void prepare()
     {
         QElapsedTimer clock;
         clock.start();
+        enumerate();
+        if (hasHdrMonitor())
+            ensureDevice();
+        else
+            releaseDevice();
+        qInfo().noquote() << u"Screen capture: prepared in %1 ms (%2 monitor(s), WGC %3, borderless %4)"_s
+                                 .arg(clock.elapsed())
+                                 .arg(monitors.size())
+                                 .arg(device ? u"yes"_s : u"no"_s, borderless ? u"yes"_s : u"no"_s);
+    }
+
+    bool ensureDevice()
+    {
         try {
             if (!wgc::GraphicsCaptureSession::IsSupported()) {
                 qWarning() << "Screen capture: Windows.Graphics.Capture is not supported here; BitBlt is used";
-                return;
+                return false;
             }
             if (!device) {
                 winrt::check_hresult(::D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr,
@@ -240,19 +280,14 @@ struct Grabber::Worker {
                 const auto access = wgc::GraphicsCaptureAccess::RequestAccessAsync(wgc::GraphicsCaptureAccessKind::Borderless).get();
                 borderless = access == winrt::Windows::Security::Authorization::AppCapabilityAccess::AppCapabilityAccessStatus::Allowed;
             }
+            createItems();
         } catch (const winrt::hresult_error& e) {
             qWarning().noquote() << u"Screen capture: Windows.Graphics.Capture not ready (0x%1 %2); BitBlt is used"_s
                                         .arg(static_cast<quint32>(e.code().value), 8, 16, QChar(u'0'))
                                         .arg(QString::fromWCharArray(e.message().c_str()));
-            device = nullptr;
-            context = nullptr;
-            d3d = nullptr;
+            releaseDevice();
         }
-        enumerate();
-        qInfo().noquote() << u"Screen capture: prepared in %1 ms (%2 monitor(s), WGC %3, borderless %4)"_s
-                                 .arg(clock.elapsed())
-                                 .arg(monitors.size())
-                                 .arg(device ? u"yes"_s : u"no"_s, borderless ? u"yes"_s : u"no"_s);
+        return device != nullptr;
     }
 
     void enumerate()
@@ -275,10 +310,14 @@ struct Grabber::Worker {
                 return TRUE;
             },
             reinterpret_cast<LPARAM>(this));
-        if (!device)
-            return;
+    }
+
+    void createItems()
+    {
         const auto interop = winrt::get_activation_factory<wgc::GraphicsCaptureItem, IGraphicsCaptureItemInterop>();
         for (Monitor& m : monitors) {
+            if (m.item)
+                continue;
             try {
                 winrt::check_hresult(interop->CreateForMonitor(m.handle, winrt::guid_of<wgc::GraphicsCaptureItem>(),
                     winrt::put_abi(m.item)));
@@ -353,7 +392,7 @@ struct Grabber::Worker {
             shots[i].monitor = m.handle;
             shots[i].rect = m.rect;
             shots[i].hdr = m.color.hdr;
-            if (!device || !m.item)
+            if (!m.color.hdr || !device || !m.item)
                 continue;
             auto p = std::make_unique<Pending>();
             try {
@@ -426,10 +465,8 @@ struct Grabber::Worker {
         }
         // Every monitor failing through WGC: the device may be lost (a driver
         // update, a GPU reset). Made again for the next time.
-        if (viaWgc == 0 && device && !monitors.empty()) {
-            device = nullptr;
-            context = nullptr;
-            d3d = nullptr;
+        if (viaWgc == 0 && device && hasHdrMonitor()) {
+            releaseDevice();
             post([this] { prepare(); });
         }
         return shots;
@@ -470,11 +507,17 @@ struct Grabber::Worker {
     // other jobs waiting behind it.
     void streamJob(const std::shared_ptr<StreamState>& s)
     {
+        // Release an SDR stream's capture engine after all of its frame and
+        // session objects. Keeping the worker and monitor geometry is cheap.
+        const auto releaseUnusedDevice = qScopeGuard([this] {
+            if (!hasHdrMonitor())
+                releaseDevice();
+        });
         const Monitor* m = nullptr;
         for (const Monitor& candidate : monitors)
             if (candidate.rect.contains(s->region))
                 m = &candidate;
-        if (!device || !m || !m->item || s->region.isEmpty()) {
+        if (!m || s->region.isEmpty() || !ensureDevice() || !m->item) {
             s->started.set_value(false);
             s->finished.set_value();
             return;
@@ -608,10 +651,7 @@ void Grabber::refresh()
 {
     Worker* worker = m_worker.get();
     worker->post([worker] {
-        if (worker->device)
-            worker->enumerate();
-        else
-            worker->prepare();
+        worker->prepare();
     });
 }
 

@@ -383,6 +383,12 @@ foreach(scale IN ITEMS 1 1.25 1.5 1.75 2)
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 endforeach()
 
+add_test(NAME tst_captureui_idle_graphics COMMAND tst_captureui
+    hiddenGraphicsAreReleasedAndTheWindowReopens -o -,txt)
+set_tests_properties(tst_captureui_idle_graphics PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=windows;QT_QUICK_BACKEND=;QSG_RHI_BACKEND=d3d11;QSG_RENDER_LOOP=threaded;QT_SCALE_FACTOR=1;QT_SCREEN_SCALE_FACTORS=1.5"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # Annotating a screenshot (src/capture/Annotation*): geometry, crisp strokes,
 # tiles equal to the whole picture, the command stack, numbers, redactions
 # that cannot be undone, the project format with its v1 sample, the overlay

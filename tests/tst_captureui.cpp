@@ -1,5 +1,6 @@
 #include "CaptureImage.h"
 #include "CapturePointer.h"
+#include "IdleGraphics.h"
 
 #include <QElapsedTimer>
 #include <QQmlComponent>
@@ -102,6 +103,49 @@ class TestCaptureUi : public QObject {
     Q_OBJECT
 
 private slots:
+    void hiddenGraphicsAreReleasedAndTheWindowReopens()
+    {
+        QQmlEngine engine;
+        auto window = makeWindow(engine);
+        QVERIFY(window);
+        auto* frozen = window->findChild<CaptureImage*>(u"frozen"_s);
+        QVERIFY(frozen);
+        frozen->setImage(pixels());
+        const WId handle = window->winId();
+        const QImage before = window->grabWindow();
+        QVERIFY(!before.isNull());
+        QSignalSpy invalidated(window.get(), &QQuickWindow::sceneGraphInvalidated);
+        releaseIdleGraphics(window.get(), std::chrono::milliseconds(80));
+
+        window->hide();
+        QTest::qWait(20);
+        QVERIFY(window->isPersistentGraphics());
+        window->show();
+        QTest::qWait(100);
+        QVERIFY(window->isPersistentGraphics());
+        QVERIFY(window->isPersistentSceneGraph());
+        QCOMPARE(invalidated.size(), 0); // quick reopening kept its scene graph
+
+        window->hide();
+        QTRY_VERIFY_WITH_TIMEOUT(!window->isPersistentGraphics(), 1500);
+        QVERIFY(!window->isPersistentSceneGraph());
+        const bool threadedD3d = window->rendererInterface()->graphicsApi() == QSGRendererInterface::Direct3D11
+            && qEnvironmentVariable("QSG_RENDER_LOOP") != u"basic";
+        if (threadedD3d)
+            QTRY_VERIFY_WITH_TIMEOUT(!invalidated.isEmpty(), 1500);
+
+        window->show();
+        if (QGuiApplication::platformName() != u"offscreen")
+            QVERIFY(QTest::qWaitForWindowExposed(window.get()));
+        QTRY_VERIFY_WITH_TIMEOUT(window->isPersistentGraphics(), 1500);
+        QVERIFY(window->isPersistentSceneGraph());
+        QCOMPARE(window->winId(), handle); // native frame/placement stay attached
+        const QImage after = window->grabWindow();
+        QCOMPARE(after.size(), before.size());
+        // The frozen image survives its texture and scene graph being recreated.
+        QCOMPARE(after.copy(2, 2, 100, 80), before.copy(2, 2, 100, 80));
+    }
+
     void initTestCase()
     {
         qmlRegisterType<CaptureImage>("CaptureUiTest", 1, 0, "CaptureImage");

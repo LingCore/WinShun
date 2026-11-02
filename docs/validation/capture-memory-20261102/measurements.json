@@ -1,0 +1,34 @@
+[
+  {
+    "phase": "fresh_idle_2s",
+    "pid": 84128,
+    "working_mb": 101.4,
+    "private_working_mb": 44.86,
+    "private_commit_mb": 136.75,
+    "threads": 77
+  },
+  {
+    "phase": "fresh_idle_8s",
+    "pid": 84128,
+    "working_mb": 101.4,
+    "private_working_mb": 44.86,
+    "private_commit_mb": 136.75,
+    "threads": 77
+  },
+  {
+    "phase": "fresh_idle_25s",
+    "pid": 84128,
+    "working_mb": 2.93,
+    "private_working_mb": 1.25,
+    "private_commit_mb": 136.77,
+    "threads": 77
+  },
+  {
+    "phase": "existing_user_instance",
+    "pid": 63640,
+    "working_mb": 20.0,
+    "private_working_mb": 11.63,
+    "private_commit_mb": 231.51,
+    "threads": 100
+  }
+]

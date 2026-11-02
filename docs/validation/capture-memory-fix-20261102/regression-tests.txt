@@ -1,0 +1,31 @@
+Test project F:/电脑便捷工具/build/dialog-logo-20261102
+      Start 47: tst_recording
+ 1/13 Test #47: tst_recording ....................   Passed   15.39 sec
+      Start 52: tst_capture
+ 2/13 Test #52: tst_capture ......................   Passed    0.15 sec
+      Start 53: tst_captureui_1
+ 3/13 Test #53: tst_captureui_1 ..................   Passed    0.38 sec
+      Start 54: tst_captureui_d3d11_1
+ 4/13 Test #54: tst_captureui_d3d11_1 ............   Passed    3.44 sec
+      Start 55: tst_captureui_1.25
+ 5/13 Test #55: tst_captureui_1.25 ...............   Passed    0.43 sec
+      Start 56: tst_captureui_d3d11_1.25
+ 6/13 Test #56: tst_captureui_d3d11_1.25 .........   Passed    3.41 sec
+      Start 57: tst_captureui_1.5
+ 7/13 Test #57: tst_captureui_1.5 ................   Passed    0.58 sec
+      Start 58: tst_captureui_d3d11_1.5
+ 8/13 Test #58: tst_captureui_d3d11_1.5 ..........   Passed    3.43 sec
+      Start 59: tst_captureui_1.75
+ 9/13 Test #59: tst_captureui_1.75 ...............   Passed    0.47 sec
+      Start 60: tst_captureui_d3d11_1.75
+10/13 Test #60: tst_captureui_d3d11_1.75 .........   Passed    3.47 sec
+      Start 61: tst_captureui_2
+11/13 Test #61: tst_captureui_2 ..................   Passed    0.46 sec
+      Start 62: tst_captureui_d3d11_2
+12/13 Test #62: tst_captureui_d3d11_2 ............   Passed    3.41 sec
+      Start 63: tst_captureui_idle_graphics
+13/13 Test #63: tst_captureui_idle_graphics ......   Passed    0.66 sec
+
+100% tests passed, 0 tests failed out of 13
+
+Total Test time (real) =  35.76 sec

@@ -1,0 +1,42 @@
+{
+  "baseline": {
+    "released_commit_mb": [
+      67.42,
+      67.44,
+      67.44,
+      67.44,
+      67.57,
+      67.57
+    ],
+    "capture_ms": [
+      19,
+      20,
+      16,
+      18,
+      18,
+      19
+    ],
+    "warm_median_ms": 18,
+    "last_commit_mb": 67.57
+  },
+  "trim": {
+    "released_commit_mb": [
+      50.46,
+      66.12,
+      66.12,
+      66.25,
+      66.12,
+      66.31
+    ],
+    "capture_ms": [
+      25,
+      17,
+      22,
+      20,
+      22,
+      21
+    ],
+    "warm_median_ms": 21,
+    "last_commit_mb": 66.31
+  }
+}

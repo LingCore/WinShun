@@ -1,7 +1,8 @@
 #include "Recorder.h"
+#include "IdleGraphics.h"
 
-#include "Geometry.h"
 #include "CaptureExclusion.h"
+#include "Geometry.h"
 #include "GifExport.h"
 #include "KeyStream.h"
 #include "RecordingPointer.h"
@@ -241,6 +242,7 @@ void Recorder::createPanel()
         delete object;
         return;
     }
+    releaseIdleGraphics(m_panel);
     m_panel->create();
     win::styleFramelessWindow(m_panel, false);
     // Out of the frames only while it is in them: recording, over the region.
@@ -512,7 +514,7 @@ void Recorder::close()
     m_timer.stop();
     m_border.reset();
     m_stage = Ready;
-    if (m_panel) { m_panel->hide(); m_panel->releaseResources(); }
+    if (m_panel) m_panel->hide(); // releaseIdleGraphics handles the idle interval
     emit changed();
 }
 
