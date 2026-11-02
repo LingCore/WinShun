@@ -115,6 +115,30 @@
         <source>再多一个工具（plugin_插件_命令_run）做 Enter 做的事：结束进程、打开、复制这类会改动东西的操作；AI 客户端每次会先问你</source>
         <translation>One more tool (plugin_&lt;plugin&gt;_&lt;command&gt;_run) does what Enter does: ending a process, opening, copying and other things that change something; the AI client asks you first each time</translation>
     </message>
+    <message>
+        <source>MCP 与命令行访问权限</source>
+        <translation>MCP and command-line permissions</translation>
+    </message>
+    <message>
+        <source>允许 AI 用默认程序打开文件、在文件管理器中定位显示</source>
+        <translation>Allow AI to open files with default apps and reveal them in the file manager</translation>
+    </message>
+    <message>
+        <source>允许 AI 读取复制过的文本、链接与文件路径历史</source>
+        <translation>Allow AI to read the history of copied text, links, and file paths</translation>
+    </message>
+    <message>
+        <source>允许 AI 请求截取指定屏幕区域并返回图像</source>
+        <translation>Allow AI to request captures of specific screen areas and return images</translation>
+    </message>
+    <message>
+        <source>将支持 AI 的插件命令作为只读工具开放给 AI 查询</source>
+        <translation>Expose AI-enabled plugin commands as read-only tools for AI queries</translation>
+    </message>
+    <message>
+        <source>允许 AI 执行结束进程、复制等具有实际副作用的插件动作</source>
+        <translation>Allow AI to run plugin actions with side effects, such as ending processes or copying</translation>
+    </message>
 </context>
 <context>
     <name>AiClientsSection</name>
@@ -1061,10 +1085,6 @@
     <message>
         <source>不打开面板直接粘贴</source>
         <translation>Paste without opening the panel</translation>
-    </message>
-    <message>
-        <source>搜索框显示 Logo</source>
-        <translation>Show the logo by the search box</translation>
     </message>
     <message>
         <source>预览文件</source>
@@ -2031,6 +2051,18 @@
         <source>关闭；选中了多行时先取消选择</source>
         <translation>Close; with several rows selected, unselect them first</translation>
     </message>
+    <message>
+        <source>向下 / 向上移动</source>
+        <translation>Move down / up</translation>
+    </message>
+    <message>
+        <source>向上 / 向下翻页</source>
+        <translation>Page up / down</translation>
+    </message>
+    <message>
+        <source>打开 Win顺 设置</source>
+        <translation>Open WinShun settings</translation>
+    </message>
 </context>
 <context>
     <name>Gleaning</name>
@@ -2184,6 +2216,10 @@
     <message>
         <source>这个快捷键与其他操作冲突</source>
         <translation>This shortcut conflicts with another action</translation>
+    </message>
+    <message>
+        <source>点击设置快捷键</source>
+        <translation>Click to set hotkey</translation>
     </message>
 </context>
 <context>
@@ -2910,6 +2946,10 @@
         <source>卸载</source>
         <translation>Uninstall</translation>
     </message>
+    <message>
+        <source>卸载网页搜索插件后，网站、关键词和图标会保留，重新安装后可继续使用。</source>
+        <translation>Your sites, keywords and icons will be kept when the web search plugin is uninstalled, ready to use after reinstalling.</translation>
+    </message>
 </context>
 <context>
     <name>PluginGalleryEntry</name>
@@ -3463,6 +3503,20 @@
 </context>
 <context>
     <name>SearchBar</name>
+    <message>
+        <source>Win顺：设置</source>
+        <translation>WinShun: Settings</translation>
+    </message>
+    <message>
+        <source>已钉住</source>
+        <translation>Pinned</translation>
+    </message>
+    <message>
+        <source>左键：设置 · 中键：%1
+右键：窗口居中 · 拖动：移动窗口</source>
+        <translation>Left: settings · Middle: %1
+Right: center window · Drag: move window</translation>
+    </message>
     <message>
         <source>设置</source>
         <translation>Settings</translation>
@@ -4737,12 +4791,12 @@
         <translation>When typing in a folder</translation>
     </message>
     <message>
-        <source>打字;当前文件夹;优先;只搜;其他位置;子文件夹;Listary;Ctrl+D;current folder;type to search</source>
-        <translation>typing;current folder;first;only;elsewhere;subfolders;Listary;Ctrl+D;current folder;type to search</translation>
+        <source>打字;当前文件夹;优先;只搜;其他位置;子文件夹;Listary;Ctrl+Shift+D;current folder;type to search</source>
+        <translation>typing;current folder;first;only;elsewhere;subfolders;Listary;Ctrl+Shift+D;current folder;type to search</translation>
     </message>
     <message>
-        <source>当前文件夹优先：先列这个文件夹和子文件夹里的，再列其他位置的，和 Listary 一样。搜索时按 Ctrl+D 临时切换</source>
-        <translation>Current folder first: what is in this folder and its subfolders, then what is elsewhere, as in Listary. Press Ctrl+D while searching to switch for that search</translation>
+        <source>当前文件夹优先：先列这个文件夹和子文件夹里的，再列其他位置的，和 Listary 一样。搜索时按 Ctrl+Shift+D 临时切换</source>
+        <translation>Current folder first: what is in this folder and its subfolders, then what is elsewhere, as in Listary. Press Ctrl+Shift+D while searching to switch for that search</translation>
     </message>
     <message>
         <source>当前文件夹优先</source>
@@ -5098,27 +5152,27 @@
     </message>
     <message>
         <source>截图的快捷键</source>
-        <translation type="unfinished"></translation>
+        <translation>Screenshot shortcut</translation>
     </message>
     <message>
         <source>截图;截屏;快捷键;热键;F1;PrtScn;PixPin;Snipaste;screenshot</source>
-        <translation type="unfinished"></translation>
+        <translation>screenshot;screen capture;hotkey;shortcut;F1;PrtScn;PixPin;Snipaste;screenshot</translation>
     </message>
     <message>
         <source>截图功能还没打开：在“插件”的截图卡片上打开，再录一个快捷键，例如 F1</source>
-        <translation type="unfinished"></translation>
+        <translation>Screenshot is not enabled yet: turn it on in the Plugins screenshot card and record a shortcut, e.g. F1</translation>
     </message>
     <message>
         <source>现在是 %1，在“插件”的截图卡片上改；贴图等其他快捷键也在那里</source>
-        <translation type="unfinished"></translation>
+        <translation>Currently %1; change it on the Plugins screenshot card; pin-to-screen and other shortcuts are also there</translation>
     </message>
     <message>
         <source>还没设，在“插件”的截图卡片上录一个，例如 F1；贴图等其他快捷键也在那里</source>
-        <translation type="unfinished"></translation>
+        <translation>Not set yet; record one on the Plugins screenshot card, e.g. F1; pin-to-screen and other shortcuts are also there</translation>
     </message>
     <message>
         <source>去设置</source>
-        <translation type="unfinished"></translation>
+        <translation>Go to settings</translation>
     </message>
     <message>
         <source>排除;忽略;扩展名;后缀;格式;exclude</source>
@@ -5162,7 +5216,7 @@
     </message>
     <message>
         <source>在“全部”和“文件”里，每个词都按正则表达式匹配名字，如 ^IMG_d{4}；ext:、!排除、“ | ”照常可用。在搜索框里按 Ctrl+R 开关，开着时搜索框旁显示 .*。不开时也可在单个词前加 regex:</source>
-        <translation type="unfinished"></translation>
+        <translation>In All and Files, match every term as a regular expression against names, e.g. ^IMG_\d{4}; ext:, !exclude, and " | " still work normally. Press Ctrl+R in the search box to toggle; shows .* beside the search box when on. You can also prefix a single term with regex:</translation>
     </message>
     <message>
         <source>正则模式</source>
@@ -6208,18 +6262,6 @@
         <translation>Disabled. Saved history stays on this PC; enable to see the entry count.</translation>
     </message>
     <message>
-        <source>搜索框显示 Logo</source>
-        <translation>Show the logo by the search box</translation>
-    </message>
-    <message>
-        <source>Logo;图标;标志;隐藏;简洁;搜索框上面的图标;logo</source>
-        <translation>logo;icon;hide;clean;simple;mascot;brand</translation>
-    </message>
-    <message>
-        <source>搜索框、剪贴板和对话框旁搜索框的边上探出来的 Logo。关掉后更简洁</source>
-        <translation>The logo peeking out from behind the search box, the clipboard and the bar by file dialogs. Off, it looks cleaner.</translation>
-    </message>
-    <message>
         <source>网络代理</source>
         <translation>Network proxy</translation>
     </message>
@@ -6358,6 +6400,322 @@
     <message>
         <source>双击;文件夹菜单;收藏;收藏夹;自定义命令</source>
         <translation>double click;folder menu;favorites;bookmark;custom command</translation>
+    </message>
+    <message>
+        <source>双击修饰键呼出</source>
+        <translation>Double-tap modifier to summon</translation>
+    </message>
+    <message>
+        <source>全局组合键与连按行为</source>
+        <translation>Global hotkeys and repeated press behavior</translation>
+    </message>
+    <message>
+        <source>任务栏入口</source>
+        <translation>Taskbar entry</translation>
+    </message>
+    <message>
+        <source>系统搜索接管</source>
+        <translation>Windows Search takeover</translation>
+    </message>
+    <message>
+        <source>文件管理器整合</source>
+        <translation>File manager integration</translation>
+    </message>
+    <message>
+        <source>文件夹菜单与双击</source>
+        <translation>Folder menu and double click</translation>
+    </message>
+    <message>
+        <source>对话框联动</source>
+        <translation>File dialog integration</translation>
+    </message>
+    <message>
+        <source>开机启动</source>
+        <translation>Startup</translation>
+    </message>
+    <message>
+        <source>使用记录</source>
+        <translation>Usage history</translation>
+    </message>
+    <message>
+        <source>主题与窗口质感</source>
+        <translation>Theme and window styling</translation>
+    </message>
+    <message>
+        <source>尺寸与布局</source>
+        <translation>Size and layout</translation>
+    </message>
+    <message>
+        <source>图标与语言</source>
+        <translation>Icons and language</translation>
+    </message>
+    <message>
+        <source>索引范围与包含目录</source>
+        <translation>Index scope and included folders</translation>
+    </message>
+    <message>
+        <source>排除目录</source>
+        <translation>Excluded folders</translation>
+    </message>
+    <message>
+        <source>按名称与扩展名跳过</source>
+        <translation>Skip by name and extension</translation>
+    </message>
+    <message>
+        <source>磁盘范围</source>
+        <translation>Drive scope</translation>
+    </message>
+    <message>
+        <source>索引引擎与服务</source>
+        <translation>Index engine and service</translation>
+    </message>
+    <message>
+        <source>排序与类型优先级</source>
+        <translation>Sorting and type priority</translation>
+    </message>
+    <message>
+        <source>附加搜索源与匹配模式</source>
+        <translation>Additional search sources and matching modes</translation>
+    </message>
+    <message>
+        <source>未输入时的初始列表</source>
+        <translation>Initial list when empty</translation>
+    </message>
+    <message>
+        <source>列表信息与交互</source>
+        <translation>List details and interaction</translation>
+    </message>
+    <message>
+        <source>文件快速预览</source>
+        <translation>Quick file preview</translation>
+    </message>
+    <message>
+        <source>搜索框与数字快捷键</source>
+        <translation>Search box and number shortcuts</translation>
+    </message>
+    <message>
+        <source>全文搜索与内容索引</source>
+        <translation>Full-text search and content indexing</translation>
+    </message>
+    <message>
+        <source>单文件读取上限</source>
+        <translation>Single file size limit</translation>
+    </message>
+    <message>
+        <source>记录范围与图文识别</source>
+        <translation>Recording scope and OCR</translation>
+    </message>
+    <message>
+        <source>粘贴动作与列表显示</source>
+        <translation>Paste actions and list display</translation>
+    </message>
+    <message>
+        <source>弹出位置与窗口布局</source>
+        <translation>Popup position and window layout</translation>
+    </message>
+    <message>
+        <source>呼出剪贴板</source>
+        <translation>Summon clipboard</translation>
+    </message>
+    <message>
+        <source>数字键快速粘贴</source>
+        <translation>Quick paste with number keys</translation>
+    </message>
+    <message>
+        <source>保留容量与自动清理</source>
+        <translation>Capacity and automatic cleanup</translation>
+    </message>
+    <message>
+        <source>数据导入与清空</source>
+        <translation>Data import and clearing</translation>
+    </message>
+    <message>
+        <source>网络、存储与诊断</source>
+        <translation>Network, storage and diagnostics</translation>
+    </message>
+    <message>
+        <source>连按两下 %1，打开或关闭搜索框</source>
+        <translation>Press %1 twice quickly to open or close the search box</translation>
+    </message>
+    <message>
+        <source>输入法用 Shift 切换中英文时，双击会切换两次并回到原状态。管理员或部分输入法窗口中需要 Win顺 服务支持</source>
+        <translation>When using Shift to switch IME language, double-pressing switches twice and returns to the initial state. Administrator windows or certain IMEs require the WinShun service.</translation>
+    </message>
+    <message>
+        <source>管理员或部分输入法窗口中需要 Win顺 服务支持</source>
+        <translation>Administrator windows or certain IMEs require the WinShun service</translation>
+    </message>
+    <message>
+        <source>搜索框已打开时再按一次呼出键的动作</source>
+        <translation>Action when pressing the summon key while the search box is open</translation>
+    </message>
+    <message>
+        <source>包括自己设的组合键，或双击 Ctrl、Alt、Shift：可直接关闭，或展开为搜索面板并保留已输入的字；面板里再按一次才关闭</source>
+        <translation>Applies to custom shortcuts or Ctrl, Alt or Shift twice: close it immediately, or expand into the search panel keeping typed text; press again in the panel to close</translation>
+    </message>
+    <message>
+        <source>任务栏搜索框可单独使用，也可与 Windows 搜索并存。</source>
+        <translation>The taskbar search box can be used standalone or alongside Windows Search.</translation>
+    </message>
+    <message>
+        <source>命令里的 {path} 会替换为完整路径（自动加引号）</source>
+        <translation>{path} in the command is replaced with the full path (automatically quoted)</translation>
+    </message>
+    <message>
+        <source>自定义文件管理器不支持读取当前正在显示的文件夹：对话框 Ctrl+G 与搜索框建议仅支持资源管理器、Total Commander、Directory Opus、XYplorer、Pulse 和 OneCommander</source>
+        <translation>Custom file managers cannot report the currently displayed folder: Ctrl+G in dialogs and search suggestions only support File Explorer, Total Commander, Directory Opus, XYplorer, Pulse and OneCommander</translation>
+    </message>
+    <message>
+        <source>文件列表有焦点时直接打字即可用 Win顺 搜索</source>
+        <translation>Type directly in the file list to search with WinShun</translation>
+    </message>
+    <message>
+        <source>和 Listary 一样，代替资源管理器自带的“按首字母跳到文件”</source>
+        <translation>Like Listary, replaces File Explorer's built-in "jump to file by first letter"</translation>
+    </message>
+    <message>
+        <source>文件列表有焦点时，输入字母或数字即可搜索当前文件夹</source>
+        <translation>When the file list has focus, typing letters or numbers searches the current folder</translation>
+    </message>
+    <message>
+        <source>符号键保留给 Opus，重命名和地址栏输入不受影响</source>
+        <translation>Symbol keys are reserved for Opus; renaming and address bar input are unaffected</translation>
+    </message>
+    <message>
+        <source>搜索时可按 Ctrl+Shift+D 临时切换范围</source>
+        <translation>Press Ctrl+Shift+D while searching to toggle scope temporarily</translation>
+    </message>
+    <message>
+        <source>当前文件夹优先：先列出当前文件夹及子文件夹的结果，再列出其他位置的结果，与 Listary 一致</source>
+        <translation>Current folder first: list results from current folder and subfolders first, then other locations, matching Listary</translation>
+    </message>
+    <message>
+        <source>在空白处双击弹出常用文件夹菜单，选中后直接在当前窗口打开</source>
+        <translation>Double-click empty space for common folders; select one to open it in the current window</translation>
+    </message>
+    <message>
+        <source>Listary 正在运行时会自动交给 Listary 处理，避免弹出两个菜单</source>
+        <translation>Automatically left to Listary while it runs to avoid showing two menus</translation>
+    </message>
+    <message>
+        <source>触发位置与方式</source>
+        <translation>Trigger locations and methods</translation>
+    </message>
+    <message>
+        <source>选择双击空白处生效的位置，或允许单击鼠标中键弹出</source>
+        <translation>Choose where double-clicking empty space takes effect, or allow middle-clicking to open</translation>
+    </message>
+    <message>
+        <source>双击;空白;文件夹菜单;资源管理器;桌面;中键;鼠标;滚轮;Listary</source>
+        <translation>double click;blank;empty space;folder menu;File Explorer;desktop;middle click;mouse;wheel;Listary</translation>
+    </message>
+    <message>
+        <source>资源管理器空白处</source>
+        <translation>File Explorer empty space</translation>
+    </message>
+    <message>
+        <source>桌面空白处</source>
+        <translation>Desktop empty space</translation>
+    </message>
+    <message>
+        <source>鼠标中键单击</source>
+        <translation>Mouse middle click</translation>
+    </message>
+    <message>
+        <source>菜单里列出的内容</source>
+        <translation>Items listed in the menu</translation>
+    </message>
+    <message>
+        <source>包含收藏夹、最近访问及其他已打开窗口的文件夹（至少保留一项）</source>
+        <translation>Include favorites, recent folders, and folders from other open windows (keep at least one)</translation>
+    </message>
+    <message>
+        <source>收藏夹中包含收藏的文件夹、文件、应用和自定义命令</source>
+        <translation>Favorites includes pinned folders, files, apps and custom commands</translation>
+    </message>
+    <message>
+        <source>双击;文件夹菜单;收藏;收藏夹;自定义命令;最近;最近打开;其他窗口;别的窗口;已打开</source>
+        <translation>double click;folder menu;favorites;custom commands;recent;recent folders;other windows;open windows</translation>
+    </message>
+    <message>
+        <source>最近的文件夹</source>
+        <translation>Recent folders</translation>
+    </message>
+    <message>
+        <source>别的窗口里的文件夹</source>
+        <translation>Folders from other windows</translation>
+    </message>
+    <message>
+        <source>双击被占用时使用，在文件管理器或对话框中按下即可弹出菜单</source>
+        <translation>Use when double click is occupied; press in a file manager or dialog to open the menu</translation>
+    </message>
+    <message>
+        <source>支持资源管理器、桌面、Directory Opus、Total Commander、XYplorer、OneCommander 及“打开/另存为”对话框（在当前窗口跳转）；在 Pulse 中交给 Pulse 处理；在其他窗口中用默认文件管理器打开。再按一次关闭</source>
+        <translation>Supports File Explorer, desktop, Directory Opus, Total Commander, XYplorer, OneCommander and Open/Save dialogs (navigating within that window); handed over to Pulse inside Pulse; opens in the default file manager from other windows. Press again to close</translation>
+    </message>
+    <message>
+        <source>可拖动搜索框左右边缘调宽，双击边缘恢复默认</source>
+        <translation>Drag the left or right edge of the search box to widen it; double-click the edge to restore defaults</translation>
+    </message>
+    <message>
+        <source>文件名仍显示不全时，鼠标悬停在该行上会显示完整名称和路径</source>
+        <translation>When file names still do not fit, hovering the mouse over the row shows the full name and path</translation>
+    </message>
+    <message>
+        <source>在“全部”和“文件”里，每个词都按正则表达式匹配名字</source>
+        <translation>In All and Files, match every term as a regular expression against names</translation>
+    </message>
+    <message>
+        <source>如 ^IMG_\d{4}；ext:、!排除、“ | ”照常可用。在搜索框里按 Ctrl+R 开关，开着时搜索框旁显示 .*。不开时也可在单个词前加 regex:</source>
+        <translation>e.g. ^IMG_\d{4}; ext:, !exclude, and " | " still work normally. Press Ctrl+R in the search box to toggle; shows .* beside the search box when on. You can also prefix a single term with regex:</translation>
+    </message>
+    <message>
+        <source>较早的日期也显示具体时间</source>
+        <translation>Show exact time for older dates</translation>
+    </message>
+    <message>
+        <source>修改时间;修改日期;具体时间;时分;time</source>
+        <translation>modified time;modification date;exact time;hour minute;time</translation>
+    </message>
+    <message>
+        <source>从列表里粘贴一条后留在原来的位置，不跳到最前面</source>
+        <translation>Keep the pasted item in its place instead of jumping to the top</translation>
+    </message>
+    <message>
+        <source>重新复制同样的内容仍会排到最前。粘贴过的条目右下角带蓝色对勾，也不会因“保留天数”到期而被删</source>
+        <translation>Recopying the same content will still bring it to the top. Pasted items show a blue checkmark in the bottom-right corner and will not be deleted when retention days expire</translation>
+    </message>
+    <message>
+        <source>按住修饰键每按一次往下选一条，松开粘贴</source>
+        <translation>Hold modifier key and press hotkey to step through items, release to paste</translation>
+    </message>
+    <message>
+        <source>按住快捷键里的 Ctrl、Alt、Shift 或 Win，每再按一下就往下选一条，松开就粘贴；按住约一秒再松开，粘贴第一条；按住时按 Esc 不粘贴。开启后按住再按快捷键不再关闭窗口</source>
+        <translation>Hold Ctrl, Alt, Shift or Win in the hotkey: each press moves down one item, and releasing pastes; holding for about 1 second then releasing pastes the first item; pressing Esc while held cancels. When enabled, holding and pressing the hotkey no longer closes the window</translation>
+    </message>
+    <message>
+        <source>桌面</source>
+        <translation>Desktop</translation>
+    </message>
+    <message>
+        <source>鼠标中键</source>
+        <translation>Middle click</translation>
+    </message>
+    <message>
+        <source>其他窗口</source>
+        <translation>Other windows</translation>
+    </message>
+    <message>
+        <source>双击空白处或单击鼠标中键弹出</source>
+        <translation>Double-click empty space or middle-click to open</translation>
+    </message>
+    <message>
+        <source>至少保留一项</source>
+        <translation>Keep at least one</translation>
+    </message>
+    <message>
+        <source>最近文件夹</source>
+        <translation>Recent folders</translation>
     </message>
 </context>
 <context>
@@ -7454,6 +7812,18 @@
     <message>
         <source>部分功能尚未恢复</source>
         <translation>Some features have not been restored</translation>
+    </message>
+    <message>
+        <source>网页搜索插件未启用</source>
+        <translation>Web search plugin is not enabled</translation>
+    </message>
+    <message>
+        <source>请在设置 → 插件中安装并启用网页搜索，并添加要搜索的网站。</source>
+        <translation>Install and enable Web search in Settings → Plugins, then add a site to search.</translation>
+    </message>
+    <message>
+        <source>网页搜索插件未启用或没有可用的网站，请在设置 → 插件中安装并启用网页搜索</source>
+        <translation>Web search is disabled or has no sites. Install and enable Web search in Settings → Plugins.</translation>
     </message>
 </context>
 <context>
@@ -9539,6 +9909,10 @@
         <source>设置…</source>
         <translation>Settings…</translation>
     </message>
+    <message>
+        <source>Win顺 设置</source>
+        <translation>WinShun Settings</translation>
+    </message>
 </context>
 <context>
     <name>ws::PanelColumns</name>
@@ -10382,6 +10756,10 @@
     <message>
         <source>自定义命令 · %1</source>
         <translation>Custom command · %1</translation>
+    </message>
+    <message>
+        <source>外观、快捷键与插件</source>
+        <translation>Appearance, shortcuts and plugins</translation>
     </message>
 </context>
 <context>
