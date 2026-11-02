@@ -1,0 +1,24 @@
+preparing
+making the application
+loading the font
+saved F:/电脑便捷工具/build/dialog-logo-ui-20261102/light-100-zh/always.png 800x540
+saved F:/电脑便捷工具/build/dialog-logo-ui-20261102/light-100-zh/held-idle.png 800x540
+saved F:/电脑便捷工具/build/dialog-logo-ui-20261102/light-100-zh/held-100ms.png 800x540
+saved F:/电脑便捷工具/build/dialog-logo-ui-20261102/light-100-zh/held-300ms.png 800x540
+saved F:/电脑便捷工具/build/dialog-logo-ui-20261102/light-100-zh/held-released.png 800x540
+saved F:/电脑便捷工具/build/dialog-logo-ui-20261102/light-100-zh/quick-taps.png 800x540
+saved F:/电脑便捷工具/build/dialog-logo-ui-20261102/light-100-zh/off.png 800x540
+saved F:/电脑便捷工具/build/dialog-logo-ui-20261102/light-100-zh/search-menu-box.png 276x314
+saved F:/电脑便捷工具/build/dialog-logo-ui-20261102/light-100-zh/search-menu-panel.png 276x314
+saved F:/电脑便捷工具/build/dialog-logo-ui-20261102/light-100-zh/search-settings-entry.png 1200x680
+search navigation: 118 checks, production Main.qml/Launcher/ContextMenu, local Qt key and IME events, passed
+saved F:/电脑便捷工具/build/dialog-logo-ui-20261102/light-100-zh/dialog-search-logo.png 760x44
+saved F:/电脑便捷工具/build/dialog-logo-ui-20261102/light-100-zh/search-menu-dialog.png 245x161
+dialog search navigation: 26 checks, production DialogBarWindow/DialogBar, local Qt input, passed
+saved F:/电脑便捷工具/build/dialog-logo-ui-20261102/light-100-zh/files-large-icons.png 1200x680
+saved F:/电脑便捷工具/build/dialog-logo-ui-20261102/light-100-zh/preview-space.png 664x452
+preview hotkeys: production Main.qml + FilePreview; default, Space, IME preedit, repeat, Shift+Space, reassignment, modifiers, disabled
+saved F:/电脑便捷工具/build/dialog-logo-ui-20261102/light-100-zh/files-large-icons-compact.png 640x480
+saved F:/电脑便捷工具/build/dialog-logo-ui-20261102/light-100-zh/files-large-icons-empty.png 640x480
+large icons: production QML/model, real temporary PNGs, Alt+wheel, viewport retention, minimum width
+0 warning(s)

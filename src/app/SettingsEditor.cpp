@@ -841,14 +841,6 @@ void SettingsEditor::setTaskbarIcon(const QString& style)
     commit();
 }
 
-void SettingsEditor::setSearchLogo(bool on)
-{
-    if (m_settings.searchLogo == on)
-        return;
-    m_settings.searchLogo = on;
-    commit();
-}
-
 void SettingsEditor::setUiSize(const QString& size)
 {
     if (m_settings.uiSize == size || (size != u"compact" && size != u"standard" && size != u"roomy"))

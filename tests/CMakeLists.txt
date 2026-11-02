@@ -51,6 +51,11 @@ add_test(NAME tst_launchernavigation COMMAND tst_launchernavigation)
 set_tests_properties(tst_launchernavigation PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+add_test(NAME tst_searchlogo COMMAND $<TARGET_FILE:WinShun>
+    --preview-results "${CMAKE_CURRENT_BINARY_DIR}/search-logo" --search-logo --renderer d3d11)
+set_tests_properties(tst_searchlogo PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # Real QML windows, real name searches, temporary files, process-local input.
 add_test(NAME tst_searchnavigation COMMAND $<TARGET_FILE:WinShun>
     --preview-results "${CMAKE_CURRENT_BINARY_DIR}/search-navigation" --search-navigation --renderer d3d11)
@@ -226,7 +231,7 @@ set_tests_properties(tst_darkframe PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 # The real passive window lifecycle: render/GUI ordering, stale frames,
-# native visibility, and hiding the separate logo when Qt closes the bar.
+# native visibility, and native window identity across Qt close/hide.
 qt_add_executable(tst_dialogbarvisibility tst_dialogbarvisibility.cpp
     ${PROJECT_SOURCE_DIR}/src/app/DialogBarVisibility.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/WindowEffects.cpp

@@ -11,7 +11,6 @@
 #include "platform/ComWorker.h"
 #include "platform/FileDialog.h"
 #include "platform/FileManagers.h"
-#include "platform/PeekingLogo.h"
 
 #include <QObject>
 #include <QPointer>
@@ -52,9 +51,8 @@ class SearchEngine;
 // bar has the focus, below it, or above where there is more room. As a dialog
 // first shows with no room on its side for both, it is made smaller (moved
 // where that is not enough; restored first, if it is maximised with no button
-// to restore it): the list need not cover it. Its border is in
-// the accent colour and the logo peeks out from behind it (PeekingLogo): it
-// is Win顺's, not one of the dialog's own boxes.
+// to restore it): the list need not cover it. Its accent border and inline
+// app logo distinguish it from the dialog's own boxes.
 class DialogBar : public QObject {
     Q_OBJECT
     QML_ELEMENT
@@ -256,7 +254,6 @@ private:
     static inline DialogBar* s_instance = nullptr; // the one there is, to place again
     void showWindow();
     void hideWindow();
-    void showLogo(); // where place() put it
     void follow(); // shown under the dialog, or hidden while it is not to be seen
     void makeRoom(); // by the dialog, as it first shows: for the bar and the list
     void place();
@@ -336,12 +333,6 @@ private:
     DialogBarVisibility m_visibility;
     // Peeking out from behind the bar, off the dialog. Where place() put the
     // bar (physical pixels): its window, its box, the work area, the dialog.
-    win::PeekingLogo m_logo;
-    RECT m_logoHost {};
-    RECT m_logoRow {};
-    RECT m_logoWork {};
-    RECT m_logoAvoid {};
-    qreal m_logoScale = 1;
     // Last: done with their tasks before the members above go. Two: a folder
     // that is slow to list (on a network) holds up no look around.
     ComWorker m_worker;

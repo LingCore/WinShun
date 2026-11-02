@@ -1,0 +1,30 @@
+{
+  "passed": true,
+  "checks": [
+    {
+      "size": 16,
+      "matching_program_identity": true,
+      "pixel_sha256": "281cd81b8d018d50f5213bff8e59b2d5a3affcd9259387427f2432636decaf53"
+    },
+    {
+      "size": 20,
+      "matching_program_identity": true,
+      "pixel_sha256": "b4992a2e67dcbca922dfc7d05272f9a58aa55351c7e9f911fac96dae4fe751b5"
+    },
+    {
+      "size": 24,
+      "matching_program_identity": true,
+      "pixel_sha256": "dfb29c96c4f73828d8ea9726d2144f386279e8f6fed416db568f68e9f91292f9"
+    },
+    {
+      "size": 32,
+      "matching_program_identity": true,
+      "pixel_sha256": "348f1f708f0c5e4e86f27460131945c68973d319aa92617d4f92c354766b580e"
+    },
+    {
+      "size": 48,
+      "matching_program_identity": true,
+      "pixel_sha256": "eaaca0219fbd5326449035127c2c8fca2b4f1150880597b52e545ccbc1b6acf1"
+    }
+  ]
+}

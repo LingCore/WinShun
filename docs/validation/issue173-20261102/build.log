@@ -1,0 +1,42 @@
+[1/223] Copying WinShun qml sources into build dir
+[2/223] Automatic MOC and UIC for target WinShun
+[3/223] Running AUTOMOC file extraction for target WinShun
+[4/223] Running rcc for resource WinShun_raw_qml_0
+[5/223] Running moc --collect-json for target WinShun
+[6/32] Generating .rcc/qmlcache/WinShun_qml_AppearancePreview_qml.cpp, .rcc/qmlcache/WinShun_qml_AppearancePreview_qml.cpp.aotstats
+[7/32] Generating .rcc/qmlcache/WinShun_qml_DialogBarWindow_qml.cpp, .rcc/qmlcache/WinShun_qml_DialogBarWindow_qml.cpp.aotstats
+[8/32] Building CXX object src\app\CMakeFiles\WinShun.dir\Migration.cpp.obj
+[9/32] Building CXX object src\app\CMakeFiles\WinShun.dir\Onboarding.cpp.obj
+[10/32] Building CXX object src\app\CMakeFiles\WinShun.dir\main.cpp.obj
+[11/32] Building RC object src\app\CMakeFiles\WinShun.dir\__\__\resources\app.rc.res
+[12/32] Building CXX object src\app\CMakeFiles\WinShun.dir\DropPieHelper.cpp.obj
+[13/32] Building CXX object src\app\CMakeFiles\WinShun.dir\AiSettings.cpp.obj
+[14/32] Building CXX object src\app\CMakeFiles\WinShun.dir\platform\TaskbarSearchBox.cpp.obj
+[15/32] Building CXX object src\app\CMakeFiles\WinShun.dir\CliSetup.cpp.obj
+[16/32] Building CXX object src\app\CMakeFiles\WinShun.dir\Settings.cpp.obj
+[17/32] Building CXX object src\app\CMakeFiles\WinShun.dir\WinShun_autogen\mocs_compilation.cpp.obj
+[18/32] Building CXX object src\app\CMakeFiles\WinShun.dir\FavoritesSettings.cpp.obj
+[19/32] Building CXX object src\app\CMakeFiles\WinShun.dir\winshun_qmltyperegistrations.cpp.obj
+[20/32] Building CXX object src\app\CMakeFiles\WinShun.dir\Preview.cpp.obj
+[21/32] Building CXX object src\app\CMakeFiles\WinShun.dir\PluginGallery.cpp.obj
+[22/32] Building CXX object src\app\CMakeFiles\WinShun.dir\App.cpp.obj
+F:\电脑便捷工具\src\app\App.cpp(2258): warning C4456: “keys”的声明隐藏了上一个本地声明
+F:\电脑便捷工具\src\app\App.cpp(2252): note: 参见“keys”的声明
+[23/32] Building CXX object src\app\CMakeFiles\WinShun.dir\MovedPlugins.cpp.obj
+[24/32] Building CXX object src\app\CMakeFiles\WinShun.dir\.qt\rcc\qrc_WinShun_raw_qml_0.cpp.obj
+[25/32] Building CXX object src\app\CMakeFiles\WinShun.dir\Launcher.cpp.obj
+[26/32] Building CXX object src\app\CMakeFiles\WinShun.dir\Updater.cpp.obj
+[27/32] Building CXX object src\app\CMakeFiles\WinShun.dir\PluginSettings.cpp.obj
+[28/32] Building CXX object src\app\CMakeFiles\WinShun.dir\Backup.cpp.obj
+[29/32] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_AppearancePreview_qml.cpp.obj
+[30/32] Building CXX object src\app\CMakeFiles\WinShun.dir\SettingsEditor.cpp.obj
+[31/32] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_DialogBarWindow_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+[32/32] Linking CXX executable WinShun.exe

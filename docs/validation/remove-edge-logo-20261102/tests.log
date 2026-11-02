@@ -1,0 +1,13 @@
+Test project F:/电脑便捷工具/build/remove-edge-logo-20261102
+    Start 35: tst_dialogbarvisibility_gpu
+1/4 Test #35: tst_dialogbarvisibility_gpu ........   Passed    2.51 sec
+    Start 36: tst_dialogbarvisibility_software
+2/4 Test #36: tst_dialogbarvisibility_software ...   Passed    1.46 sec
+    Start 46: tst_aisettings
+3/4 Test #46: tst_aisettings .....................   Passed    5.62 sec
+    Start 50: tst_settings
+4/4 Test #50: tst_settings .......................   Passed    2.72 sec
+
+100% tests passed, 0 tests failed out of 4
+
+Total Test time (real) =  12.42 sec

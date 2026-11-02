@@ -94,7 +94,6 @@ class PluginUpdates;
 class Backup;
 class VolumeNotifier;
 class WindowFrame;
-class WindowLogo;
 namespace win {
 class TextCaret;
 }
@@ -758,9 +757,7 @@ private:
     // history (jt, Enter) is pasted.
     HWND m_launcherTarget = nullptr;
     QPointer<QQuickWindow> m_window;
-    WindowLogo* m_launcherLogo = nullptr; // m_window's
     QPointer<QQuickWindow> m_clipWindow; // the clipboard's; created a moment after the start
-    WindowLogo* m_clipLogo = nullptr; // m_clipWindow's
     QPointer<QQuickWindow> m_settingsWindow; // created on demand, deleted when closed
     QPointer<QQuickWindow> m_barWindow; // the dialog bar's; created with the first file dialog
     QPointer<SettingsEditor> m_settingsEditor; // owned by m_settingsWindow

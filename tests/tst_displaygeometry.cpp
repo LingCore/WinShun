@@ -11,11 +11,58 @@
 
 #include <windows.h>
 
+#include <cmath>
+
 using namespace Qt::StringLiterals;
 
 class DisplayGeometryTest : public QObject {
     Q_OBJECT
 private slots:
+    void centeringKeepsSizeAndSavesEachMode()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QString statePath = temporary.filePath(u"state.ini"_s);
+        for (QScreen* screen : QGuiApplication::screens()) {
+            QWindow window;
+            window.setFlags(Qt::FramelessWindowHint);
+            window.setScreen(screen);
+            window.resize(640, 300);
+            window.create();
+            ws::Placement placement(statePath, u"Launcher"_s);
+            placement.setWindow(&window);
+            placement.setRoomNeeded(240);
+            placement.placeOn(screen);
+            const QRect area = screen->availableGeometry();
+            for (const bool panel : {false, true}) {
+                if (panel) placement.enterPanel(screen);
+                else placement.attach(QRect(area.topLeft() + QPoint(40, 20), QSize(200, 40)), screen);
+                const QSize size = window.size();
+                placement.centerOnScreen();
+                const QPoint target(area.x() + (area.width() - size.width()) / 2,
+                    area.y() + (area.height() - size.height()) / 2);
+                QVERIFY((window.position() - target).manhattanLength() <= 2);
+                QCOMPARE(window.size(), size);
+                QVERIFY(!placement.atTaskbar());
+                QVERIFY(!placement.above());
+                const QPoint centered = window.position();
+                if (panel) {
+                    placement.leavePanel();
+                    placement.enterPanel(screen);
+                } else {
+                    window.setPosition(area.topLeft());
+                    placement.placeOn(screen);
+                }
+                QVERIFY((window.position() - centered).manhattanLength() <= 2);
+                QSettings state(statePath, QSettings::IniFormat);
+                // Native pixel alignment can move a half-pixel centre by one pixel.
+                QVERIFY(std::abs(state.value(panel ? u"Panel/CenterX"_s : u"Launcher/CenterX"_s).toReal() - 0.5)
+                    * area.width() <= 1);
+                QVERIFY(state.value(panel ? u"Panel/Top"_s : u"Launcher/Top"_s).toReal() > 0);
+            }
+        }
+    }
+
     void fileManagerAvoidanceIsTemporary()
     {
         QTemporaryDir temporary;

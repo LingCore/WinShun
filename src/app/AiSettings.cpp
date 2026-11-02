@@ -372,9 +372,6 @@ std::vector<Entry> buildCatalog()
         &Settings::taskbarIcon,
         {{u"color"_s, u"in colour"_s, QT_TRANSLATE_NOOP("AiSettings", "彩色")},
             {u"mono"_s, u"one colour, black or white as the taskbar is"_s, QT_TRANSLATE_NOOP("AiSettings", "单色")}}));
-    add(boolean({"Appearance/SearchLogo", QT_TRANSLATE_NOOP("AiSettings", "搜索框显示 Logo"), "appearance", -1,
-        "The logo peeking out from behind the search box, the clipboard window and the bar by file dialogs."},
-        &Settings::searchLogo));
     add(choice({"Appearance/Language", QT_TRANSLATE_NOOP("AiSettings", "语言"), "appearance", -1, "The language Win顺 is shown in."},
         &Settings::language,
         {{u"system"_s, u"the language Windows is shown in"_s, QT_TRANSLATE_NOOP("AiSettings", "跟随系统")},

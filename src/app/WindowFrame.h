@@ -64,7 +64,7 @@ public:
     Q_INVOKABLE void addPopup(QQuickItem* item);
     // Inside a drag area, dragged it moves the window as the rest does;
     // clicked (let go before the system's drag distance) it emits
-    // handleClicked() (the launcher's search icon: the settings). Not a
+    // handleClicked(button) (the launcher's logo). Not a
     // control: QML hears of the pointer over it from `pointer` alone.
     Q_INVOKABLE void addHandle(QQuickItem* item);
     // With ownFrame: hit-tested as the maximise button (Snap Layouts).
@@ -106,7 +106,7 @@ signals:
     void pointerChanged();
     void maximizeButtonChanged();
     void doubleClicked(); // on a drag area
-    void handleClicked(); // see addHandle
+    void handleClicked(Qt::MouseButton button); // see addHandle
     void frameShown(); // see afterNextFrame
     void sideGrabbed(bool left); // see setSideSizing
     void sideDoubleClicked();
@@ -139,6 +139,8 @@ private:
     bool m_noActivate = false;
     bool m_resizable = false;
     bool m_sideSizing = false;
+    Qt::MouseButton m_handleButton = Qt::NoButton;
+    QPoint m_handlePress;
     // afterNextFrame, set on the render thread: armed, then synchronised.
     std::atomic<bool> m_frameArmed = false;
     std::atomic<bool> m_frameSynced = false;

@@ -263,12 +263,7 @@ DialogBar::~DialogBar()
 void DialogBar::setWindow(QQuickWindow* window)
 {
     m_window = window;
-    m_visibility.setWindow(window, [this](bool shown) {
-        if (shown)
-            showLogo();
-        else
-            m_logo.hide();
-    });
+    m_visibility.setWindow(window);
     // The list opens while the bar has the focus: what is offered, as of now.
     connect(window, &QWindow::activeChanged, this, [this] {
         if (!m_window)
@@ -1116,12 +1111,6 @@ void DialogBar::hideWindow()
     m_visibility.hide();
 }
 
-void DialogBar::showLogo()
-{
-    m_logo.setOwner(reinterpret_cast<HWND>(m_window->winId()));
-    m_logo.show(m_logoHost, m_logoRow, m_logoWork, &m_logoAvoid, m_logoScale);
-}
-
 // By the dialog's visible frame (physical pixels), on the side sideFor()
 // picks. Under it: as wide as the dialog; above it when there is no room
 // below, else over its top edge. Beside it: level with its top, or higher
@@ -1209,19 +1198,8 @@ void DialogBar::place()
         geometry.translate(0, -1);
     for (int i = 0; i < 2 && start(origin.y(), geometry.y()) < work.top; ++i)
         geometry.translate(0, 1);
-    // For the logo: the window as Qt will put it, and the box in it.
-    const int left = start(origin.x(), geometry.x());
-    const int boxTop = start(origin.y(), geometry.y() + (above ? list : 0));
-    m_logoHost = {left, start(origin.y(), geometry.y()), end(origin.x(), geometry.x(), geometry.width()),
-        end(origin.y(), geometry.y(), geometry.height())};
-    m_logoRow = {left, boxTop, m_logoHost.right, boxTop + physical(s_metrics.barHeight)};
-    m_logoWork = work;
-    m_logoAvoid = frame;
-    m_logoScale = scale;
     if (m_window->geometry() != geometry)
         m_window->setGeometry(geometry);
-    if (m_visibility.isRevealed())
-        showLogo(); // else once its first frame is up
 }
 
 } // namespace ws

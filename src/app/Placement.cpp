@@ -160,7 +160,6 @@ Placement::Placement(QString stateFile, QString group, QObject* parent)
 
     connect(&m_slide, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) { stepSlide(value.toInt()); });
     connect(&m_slide, &QVariantAnimation::finished, this, [this] {
-        emit slideStepped();
         if (const std::function<void()> done = std::exchange(m_slideDone, {}))
             done();
     });
@@ -801,6 +800,41 @@ void Placement::moveHome()
     glideTo(settleOn(screen));
 }
 
+void Placement::centerOnScreen()
+{
+    if (!m_window || m_moving || m_sizing || m_windowSizing)
+        return;
+    QScreen* screen = m_window->screen();
+    if (!screen)
+        return;
+    const QRect area = screen->availableGeometry();
+    if (area.isEmpty())
+        return;
+    m_glide.stop();
+    settleSlide();
+    m_box.reset();
+    m_avoid.reset();
+    setTaskbar({});
+    m_taskbarSpot.reset();
+    m_taskbarScreen.clear();
+    m_dropped = false;
+    setAbove(false);
+    const QSize size = m_window->size();
+    QPoint target(area.x() + std::max(0, (area.width() - size.width()) / 2),
+        area.y() + std::max(0, (area.height() - size.height()) / 2));
+    const NativeArea native = nativeArea(screen);
+    target.setX(native.keepInside(target.x(), size.width(), native.work.left(), native.work.x() + native.work.width(), native.origin.x()));
+    target.setY(native.keepInside(target.y(), size.height(), native.work.top(), native.work.y() + native.work.height(), native.origin.y()));
+    moveWindow(target);
+    if (m_panel) {
+        savePanel();
+    } else {
+        m_anchor = {0.5, qreal(target.y() - area.y()) / area.height()};
+        save();
+        setRoom(area.y() + area.height() - target.y());
+    }
+}
+
 void Placement::setMoving(bool moving)
 {
     if (m_moving == moving)
@@ -1095,7 +1129,6 @@ void Placement::stepSlide(int elapsed)
         m_contentShift = shift;
         emit contentShiftChanged();
     }
-    emit slideStepped();
 }
 
 void Placement::rememberWidth(int defaultWidth, int minimumWidth)

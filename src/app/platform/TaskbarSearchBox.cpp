@@ -714,8 +714,8 @@ struct SearchBox::Impl {
     ComPtr<ID2D1Bitmap> icon;
     UINT iconDpi = 0;
     std::optional<COLORREF> iconInk; // one colour (monoIcon): this one; else its own colours
-    ComPtr<ID2D1Bitmap> searchIcon; // the magnifier, for the icon alone (the pinned button's, search.ico)
-    int searchIconPx = 0; // its size (buttonGlyph)
+    ComPtr<ID2D1Bitmap> buttonIcon; // the program logo at the icon-only button's size
+    int buttonIconPx = 0; // its size (buttonGlyph)
     HDC memory = nullptr;
     HBITMAP bitmap = nullptr;
     HGDIOBJ oldBitmap = nullptr;
@@ -1622,7 +1622,7 @@ struct SearchBox::Impl {
     {
         renderTarget.Reset();
         icon.Reset();
-        searchIcon.Reset();
+        buttonIcon.Reset();
         if (memory) {
             ::SelectObject(memory, oldBitmap);
             ::DeleteDC(std::exchange(memory, nullptr));
@@ -1686,39 +1686,40 @@ struct SearchBox::Impl {
         return highContrast ? ::GetSysColor(COLOR_WINDOWTEXT) : dark ? RGB(0xFF, 0xFF, 0xFF) : RGB(0x1B, 0x1B, 0x1B);
     }
 
-    // Win顺's icon at its exact size (the .ico has 16 to 48 in steps), or
-    // drawn in one colour; the magnifier the same, in one colour its own
-    // shape filled with the ink (its glass stays faint, as Windows' is).
+    // The same program identity in every form, at each form's exact size.
     void ensureIcon()
     {
         const std::optional<COLORREF> ink = wantedInk();
         const int glyph = buttonGlyph();
-        if (icon && searchIcon && iconDpi == dpi && iconInk == ink && searchIconPx == glyph)
+        if (icon && buttonIcon && iconDpi == dpi && iconInk == ink && buttonIconPx == glyph)
             return;
         icon.Reset();
-        searchIcon.Reset();
+        buttonIcon.Reset();
         iconDpi = dpi;
         iconInk = ink;
-        const int px = static_cast<int>(std::lround(kIconSize * dpi / 96.0));
-        if (ink) {
-            const QImage image = monologo::image(px, QColor(GetRValue(*ink), GetGValue(*ink), GetBValue(*ink)));
-            renderTarget->CreateBitmap(D2D1::SizeU(px, px), image.constBits(), static_cast<UINT32>(image.bytesPerLine()),
-                D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED)),
-                &icon);
-        } else {
-            icon = iconBitmap(L"IDI_ICON1", px, std::nullopt);
-        }
-        searchIconPx = glyph;
-        searchIcon = iconBitmap(L"IDI_SEARCH", glyph, ink);
+        icon = logoBitmap(static_cast<int>(std::lround(kIconSize * dpi / 96.0)), ink);
+        buttonIconPx = glyph;
+        buttonIcon = logoBitmap(glyph, ink);
     }
 
-    // An icon of the exe's at px (Windows picks the nearest size it has and
-    // scales it), premultiplied; with an ink, its alpha in that colour.
-    ComPtr<ID2D1Bitmap> iconBitmap(const wchar_t* name, int px, std::optional<COLORREF> ink)
+    ComPtr<ID2D1Bitmap> logoBitmap(int px, std::optional<COLORREF> ink)
+    {
+        if (!ink)
+            return iconBitmap(px);
+        ComPtr<ID2D1Bitmap> result;
+        const QImage image = monologo::image(px, QColor(GetRValue(*ink), GetGValue(*ink), GetBValue(*ink)));
+        renderTarget->CreateBitmap(D2D1::SizeU(px, px), image.constBits(), static_cast<UINT32>(image.bytesPerLine()),
+            D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED)),
+            &result);
+        return result;
+    }
+
+    // The program's colour icon at px, converted to premultiplied alpha.
+    ComPtr<ID2D1Bitmap> iconBitmap(int px)
     {
         ComPtr<ID2D1Bitmap> result;
         const auto handle
-            = static_cast<HICON>(::LoadImageW(::GetModuleHandleW(nullptr), name, IMAGE_ICON, px, px, LR_DEFAULTCOLOR));
+            = static_cast<HICON>(::LoadImageW(::GetModuleHandleW(nullptr), L"IDI_ICON1", IMAGE_ICON, px, px, LR_DEFAULTCOLOR));
         if (!handle)
             return result;
         ICONINFO info {};
@@ -1732,8 +1733,7 @@ struct SearchBox::Impl {
             if (read) {
                 for (std::uint32_t& p : pixels) { // straight alpha to premultiplied
                     const std::uint32_t a = p >> 24;
-                    const std::uint32_t c = ink ? (GetRValue(*ink) << 16) | (GetGValue(*ink) << 8) | GetBValue(*ink) : p;
-                    const auto channel = [&](int shift) { return (((c >> shift) & 0xFF) * a + 127) / 255 << shift; };
+                    const auto channel = [&](int shift) { return (((p >> shift) & 0xFF) * a + 127) / 255 << shift; };
                     p = (a << 24) | channel(16) | channel(8) | channel(0);
                 }
                 renderTarget->CreateBitmap(D2D1::SizeU(px, px), pixels.data(), px * 4,
@@ -1847,10 +1847,10 @@ struct SearchBox::Impl {
         }
 
         renderTarget->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-        const float iconSize = button ? static_cast<float>(searchIconPx) : std::round(static_cast<float>(kIconSize) * s);
+        const float iconSize = button ? static_cast<float>(buttonIconPx) : std::round(static_cast<float>(kIconSize) * s);
         const float iconX = button ? std::round((w - iconSize) / 2)
                                    : std::min(std::round(static_cast<float>(kPadding) * s), std::round((w - iconSize) / 2)); // narrow: centred
-        if (const ComPtr<ID2D1Bitmap>& glyph = button ? searchIcon : icon) {
+        if (const ComPtr<ID2D1Bitmap>& glyph = button ? buttonIcon : icon) {
             const float y = std::round((h - iconSize) / 2);
             const float k = 1 - 0.14f * std::max(0.0f, press);
             renderTarget->SetTransform(

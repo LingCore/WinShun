@@ -128,7 +128,7 @@ try {
         Copy-Item "$root\third_party\ppocr\LICENSE" "$dist\licenses\paddleocr.txt"
         Copy-Item "$root\resources\fonts\LICENSE.txt" "$dist\licenses\alibaba-font.txt"
         # Only what the app uses: no shader compilers (software renderer), no
-        # QML debugger, network, TLS or SVG plugins, and of the database
+        # QML debugger, network, TLS or SVG icon engines, and of the database
         # drivers only SQLite (the clipboard history).
         # The library plugins share the host's Qt, including their QML imports.
         & "$QtDir\bin\windeployqt.exe" --qmldir "$root\src" --no-translations --no-system-d3d-compiler `
@@ -137,11 +137,11 @@ try {
             --exclude-plugins qsqlibase,qsqlmimer,qsqloci,qsqlodbc,qsqlpsql `
             "--$preset" "$dist\WinShun.exe"
         if ($LASTEXITCODE) { throw 'windeployqt failed' }
-        # Only the clipboard's selected codecs; PNG and BMP are built into QtGui.
+        # Clipboard codecs and the inline vector logo; PNG/BMP are built into QtGui.
         $imageFormats = Join-Path $dist 'imageformats'
         New-Item -ItemType Directory -Force $imageFormats | Out-Null
         $codecSuffix = if ($Config -eq 'Debug') { 'd' } else { '' }
-        foreach ($codec in @('qgif', 'qjpeg')) {
+        foreach ($codec in @('qgif', 'qjpeg', 'qsvg')) {
             Copy-Item -LiteralPath "$QtDir\plugins\imageformats\$codec$codecSuffix.dll" -Destination $imageFormats
         }
         # App-local C++ runtime, so users need no VC++ redistributable installed

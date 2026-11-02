@@ -1,0 +1,18 @@
+preparing
+making the application
+loading the font
+saved build/issue162-deployment-ui/always.png 800x540
+saved build/issue162-deployment-ui/held-idle.png 800x540
+saved build/issue162-deployment-ui/held-100ms.png 800x540
+saved build/issue162-deployment-ui/held-300ms.png 800x540
+saved build/issue162-deployment-ui/held-released.png 800x540
+saved build/issue162-deployment-ui/quick-taps.png 800x540
+saved build/issue162-deployment-ui/off.png 800x540
+saved build/issue162-deployment-ui/logo-box-pinned.png 760x187
+saved build/issue162-deployment-ui/logo-box.png 760x187
+saved build/issue162-deployment-ui/logo-box-hint.png 760x187
+saved build/issue162-deployment-ui/logo-panel-pinned.png 1100x700
+saved build/issue162-deployment-ui/logo-panel.png 1100x700
+saved build/issue162-deployment-ui/logo-panel-hint.png 1100x700
+search logo: 38 checks, native WindowFrame and production Main, passed
+0 warning(s)

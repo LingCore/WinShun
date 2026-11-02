@@ -1,0 +1,38 @@
+Test project F:/电脑便捷工具/build/search-improvements-20261101/bin
+    Start  9: tst_searchlogo
+1/4 Test  #9: tst_searchlogo ...................***Failed   15.55 sec
+preparing
+making the application
+loading the font
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-logo/always.png 800x540
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-logo/held-idle.png 800x540
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-logo/held-100ms.png 800x540
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-logo/held-300ms.png 800x540
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-logo/held-released.png 800x540
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-logo/quick-taps.png 800x540
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-logo/off.png 800x540
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-logo/logo-box-pinned.png 760x187
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-logo/logo-box.png 760x187
+WARNING: search logo regression: box: native hover displays every logo action
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-logo/logo-box-hint.png 760x187
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-logo/logo-panel-pinned.png 1100x700
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-logo/logo-panel.png 1100x700
+WARNING: search logo regression: panel: native hover displays every logo action
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-logo/logo-panel-hint.png 1100x700
+search logo: 38 checks, native WindowFrame and production Main, FAILED
+2 warning(s)
+
+    Start 10: tst_searchnavigation
+2/4 Test #10: tst_searchnavigation .............   Passed   22.97 sec
+    Start 18: tst_displaygeometry
+3/4 Test #18: tst_displaygeometry ..............   Passed    1.13 sec
+    Start 38: tst_aisettings
+4/4 Test #38: tst_aisettings ...................   Passed    9.00 sec
+
+75% tests passed, 1 tests failed out of 4
+
+Total Test time (real) =  48.77 sec
+
+The following tests FAILED:
+	  9 - tst_searchlogo (Failed)
+Errors while running CTest

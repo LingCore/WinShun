@@ -1,0 +1,6 @@
+{
+  "src/app/Preview.cpp": "467a4b01e710eb5c89f70b60a2bf87c9cd949ac15f12dad7c912dcb800a304d0",
+  "src/app/WindowFrame.cpp": "3fe0ebc3d77a8feac7a6e1f0bdc9ec0f5fd6571aa50c78ba22c6848a422dcaeb",
+  "src/app/qml/SearchBar.qml": "e276f279c8ff13279486bb0b2845da66cceb7a0530bb53ac8fa3d52e184dc937",
+  "build/issue166/WinShun.exe": "b741e321cfb9f0dacd3e11096569f48ca4a9e5f95c2bde756ad464a7204485e2"
+}

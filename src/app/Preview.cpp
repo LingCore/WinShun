@@ -1716,6 +1716,22 @@ void checkDialogSearchKeys(IndexService& index, QQmlEngine* engine, const QDir& 
     auto* field = visualNamed(window->contentItem(), u"dialogSearchField"_s);
     auto* list = visualNamed(window->contentItem(), u"dialogResults"_s);
     check(field && list, u"production dialog field and result list"_s);
+    settle(window);
+    auto* logo = visualNamed(window->contentItem(), u"dialogSearchLogo"_s);
+    check(logo && logo->isVisible() && logo->property("status").toInt() == 1,
+        u"the dialog search bar loads its inline program logo"_s);
+    check(logo && field && logo->x() + logo->width() + 8 <= field->x() && field->x() == 40,
+        u"the program logo keeps the original input alignment and spacing"_s);
+    const QString originalQuery = bar.query();
+    const int originalHeight = window->height();
+    bar.setQuery({});
+    window->setHeight(bar.barHeight());
+    settle(window);
+    check(saveGrab(window, output.filePath(u"dialog-search-logo.png"_s)), u"render the dialog logo with the empty search field"_s);
+    window->setHeight(originalHeight);
+    bar.setQuery(originalQuery);
+    timeout.restart();
+    while (bar.results()->count() != 18 && timeout.elapsed() < 2000) pump(10);
     if (field && list) {
         // Native dialog placement/activation is outside this key test. Show
         // its real view offscreen without changing the desktop's focus.
@@ -1789,6 +1805,236 @@ void checkDialogSearchKeys(IndexService& index, QQmlEngine* engine, const QDir& 
     if (report.isOpen()) report.write(QJsonDocument(QJsonObject {{u"passed"_s, passed}, {u"checks"_s, checks}}).toJson());
     say(u"dialog search navigation: %1 checks, production DialogBarWindow/DialogBar, local Qt input, %2"_s
         .arg(checks.size()).arg(passed ? u"passed" : u"FAILED"));
+    if (!passed)
+        throw std::runtime_error("Production dialog search navigation regression failed; see dialog-navigation.json");
+}
+
+// #162: actual native hit testing/messages and production QML, isolated from
+// the user's profile. No global mouse or keyboard input is injected.
+bool checkSearchLogo(QQmlEngine* engine, const QDir& output)
+{
+    QTemporaryDir temporary;
+    IndexService index(temporary.path(), IndexService::Options{});
+    AppCatalog apps;
+    SystemCatalog places;
+    apps.setApps(std::make_shared<const AppList>());
+    places.setPlaces(std::make_shared<const PlaceList>());
+    History history(temporary.filePath(u"history.tsv"_s));
+    SearchEngine search(&index, &apps, &places);
+    Launcher launcher(&index, &apps, &places, &search, &history);
+    ClipStore store(temporary.filePath(u"clipboard"_s));
+    store.open(QDateTime::currentMSecsSinceEpoch());
+    ClipboardWatcher watcher({}, {});
+    Clipboard clipboard(&store, &watcher);
+    Placement placement(temporary.filePath(u"state.ini"_s), u"Launcher"_s);
+    WindowFrame frame(false);
+    QQmlComponent component(engine, u"WinShun"_s, u"Main"_s);
+    std::unique_ptr<QObject> object(component.createWithInitialProperties({
+        {u"launcher"_s, QVariant::fromValue(&launcher)}, {u"clipboard"_s, QVariant::fromValue(&clipboard)},
+        {u"frame"_s, QVariant::fromValue(&frame)}, {u"placement"_s, QVariant::fromValue(&placement)}}));
+    auto* window = qobject_cast<QQuickWindow*>(object.get());
+    if (!window) {
+        qWarning().noquote() << "search logo:" << component.errorString();
+        return false;
+    }
+    window->create();
+    launcher.setWindow(window);
+    frame.setWindow(window);
+    frame.setSideSizing(true);
+    placement.setWindow(window);
+    placement.rememberWidth(760, 640);
+    showOffScreen(window);
+    launcher.setQuery(u"Logo 测试"_s);
+    launcher.results()->assign({SearchResult{.name = u"Example.txt"_s, .path = u"T:\\Example.txt"_s}}, {});
+    int settingsRequests = 0;
+    QObject::connect(&launcher, &Launcher::settingsRequested, window, [&] { ++settingsRequests; });
+    QJsonArray checks;
+    bool passed = true;
+    const auto check = [&](bool okay, const QString& name) {
+        checks.append(QJsonObject {{u"name"_s, name}, {u"passed"_s, okay}});
+        passed = okay && passed;
+        if (!okay) qWarning("search logo regression: %s", qUtf8Printable(name));
+    };
+    const HWND hwnd = reinterpret_cast<HWND>(window->winId());
+    for (const bool panel : {false, true}) {
+        launcher.setPanel(panel);
+        if (panel) placement.enterPanel(window->screen());
+        else placement.placeOn(window->screen());
+        settle(window);
+        const QString mode = panel ? u"panel: "_s : u"box: "_s;
+        auto* logo = visualNamed(window->contentItem(), panel ? u"panelSearchLogo"_s : u"searchLogo"_s);
+        auto* field = visualNamed(window->contentItem(), panel ? u"panelSearchField"_s : u"searchField"_s);
+        check(logo && field && logo->isVisible(), mode + u"production logo and field are visible"_s);
+        if (!logo || !field) continue;
+        auto* image = visualNamed(logo, u"searchLogoImage"_s);
+        auto* badge = visualNamed(logo, u"searchLogoPinBadge"_s);
+        check(image && image->property("status").toInt() == 1 && !image->property("source").toUrl().isEmpty(),
+            mode + u"application logo loads at the requested display size"_s);
+        check(logo->property("help").toString().contains(u'\n'), mode + u"all pointer actions have a multiline hint"_s);
+        const auto point = [&] {
+            const QPointF local = logo->mapToScene({logo->width() / 2, logo->height() / 2});
+            POINT native {qRound(local.x() * window->devicePixelRatio()), qRound(local.y() * window->devicePixelRatio())};
+            ::ClientToScreen(hwnd, &native);
+            return MAKELPARAM(native.x, native.y);
+        };
+        const auto click = [&](UINT down, UINT up) {
+            const LPARAM at = point();
+            ::SendMessageW(hwnd, down, HTCAPTION, at);
+            ::SendMessageW(hwnd, up, HTCAPTION, at);
+            settle(window);
+        };
+        field->forceActiveFocus();
+        const QString query = launcher.query();
+        // #173: cover the whole visible handle, rather than only its centre.
+        // Measure the native client extent independently of Qt's reported DPR.
+        const QString previousUiSize = SystemTheme::uiSize();
+        for (const QString& size : {u"compact"_s, u"standard"_s, u"roomy"_s}) {
+            SystemTheme::setUiSize(size);
+            settle(window);
+            RECT client {};
+            ::GetClientRect(hwnd, &client);
+            const qreal scaleX = qreal(client.right) / window->width();
+            const qreal scaleY = qreal(client.bottom) / window->height();
+            const auto nativePoint = [&](QPointF local) {
+                const QPointF scene = logo->mapToScene(local);
+                POINT native {qRound(scene.x() * scaleX), qRound(scene.y() * scaleY)};
+                ::ClientToScreen(hwnd, &native);
+                return MAKELPARAM(native.x, native.y);
+            };
+            for (const qreal x : {0.1, 0.5, 0.9}) {
+                for (const qreal y : {0.1, 0.5, 0.9}) {
+                    const LPARAM at = nativePoint({logo->width() * x, logo->height() * y});
+                    const LRESULT hit = ::SendMessageW(hwnd, WM_NCHITTEST, 0, at);
+                    ::SendMessageW(hwnd, WM_NCMOUSEMOVE, hit, at);
+                    const bool hovered = logo->property("pointed").toBool();
+                    const bool wasPinned = launcher.pinned();
+                    ::SendMessageW(hwnd, WM_NCMBUTTONDOWN, hit, at);
+                    ::SendMessageW(hwnd, WM_NCMBUTTONUP, hit, at);
+                    pump(1); // the queued native handle action
+                    check(hit == HTCAPTION && hovered && launcher.pinned() != wasPinned,
+                        mode + u"%1 logo hover and action cover (%2,%3)"_s.arg(size).arg(x).arg(y));
+                    launcher.setPinned(wasPinned);
+                }
+            }
+            for (const QPointF& outside : {QPointF(-2, logo->height() / 2), QPointF(logo->width() + 2, logo->height() / 2),
+                     QPointF(logo->width() / 2, -2), QPointF(logo->width() / 2, logo->height() + 2)}) {
+                const LPARAM at = nativePoint(outside);
+                const LRESULT hit = ::SendMessageW(hwnd, WM_NCHITTEST, 0, at);
+                ::SendMessageW(hwnd, WM_NCMOUSEMOVE, hit, at);
+                const bool hovered = logo->property("pointed").toBool();
+                const bool wasPinned = launcher.pinned();
+                ::SendMessageW(hwnd, WM_NCMBUTTONDOWN, hit, at);
+                ::SendMessageW(hwnd, WM_NCMBUTTONUP, hit, at);
+                pump(1);
+                check(!hovered && launcher.pinned() == wasPinned,
+                    mode + u"%1 does not activate outside the logo at (%2,%3)"_s.arg(size).arg(outside.x()).arg(outside.y()));
+            }
+        }
+        SystemTheme::setUiSize(previousUiSize);
+        settle(window);
+        check(::SendMessageW(hwnd, WM_NCHITTEST, 0, point()) == HTCAPTION, mode + u"logo retains the system drag region"_s);
+        click(WM_NCMBUTTONDOWN, WM_NCMBUTTONUP);
+        check(launcher.pinned() && badge && badge->isVisible() && logo->property("checked").toBool(),
+            mode + u"native middle click pins and reveals the badge"_s);
+        check(launcher.query() == query && field->hasActiveFocus(), mode + u"pinning keeps query and input focus"_s);
+        check(saveGrab(window, output.filePath(panel ? u"logo-panel-pinned.png"_s : u"logo-box-pinned.png"_s)),
+            mode + u"pinned state screenshot"_s);
+        QKeyEvent pinKey(QEvent::KeyPress, Qt::Key_T, Qt::ControlModifier);
+        QCoreApplication::sendEvent(window, &pinKey);
+        settle(window);
+        check(!launcher.pinned() && badge && !badge->isVisible(), mode + u"Ctrl+T clears the same visible pin state"_s);
+        click(WM_NCMBUTTONDBLCLK, WM_NCMBUTTONUP);
+        click(WM_NCMBUTTONDOWN, WM_NCMBUTTONUP);
+        check(!launcher.pinned(), mode + u"repeated middle clicks toggle independently"_s);
+        ::SendMessageW(hwnd, WM_NCMBUTTONUP, HTCAPTION, point());
+        settle(window);
+        check(!launcher.pinned(), mode + u"release without a logo press does nothing"_s);
+        ::SendMessageW(hwnd, WM_NCMBUTTONDOWN, HTCAPTION, point());
+        ::SendMessageW(hwnd, WM_MBUTTONUP, 0, 0);
+        ::SendMessageW(hwnd, WM_NCMBUTTONUP, HTCAPTION, point());
+        settle(window);
+        check(!launcher.pinned(), mode + u"releasing outside cancels the logo action"_s);
+        const LPARAM start = point();
+        const LPARAM moved = MAKELPARAM(short(LOWORD(start)) + ::GetSystemMetricsForDpi(SM_CXDRAG, ::GetDpiForWindow(hwnd)),
+            short(HIWORD(start)));
+        ::SendMessageW(hwnd, WM_NCMBUTTONDOWN, HTCAPTION, start);
+        ::SendMessageW(hwnd, WM_NCMOUSEMOVE, HTCAPTION, moved);
+        ::SendMessageW(hwnd, WM_NCMBUTTONUP, HTCAPTION, start);
+        settle(window);
+        check(!launcher.pinned(), mode + u"moving beyond the drag threshold cancels even after returning to the logo"_s);
+        // DragDetect consumes the queued release without global input.
+        const int before = settingsRequests;
+        ::PostMessageW(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, point());
+        ::PostMessageW(hwnd, WM_LBUTTONUP, 0, 0);
+        pump(100);
+        check(settingsRequests == before + 1, mode + u"native left click requests settings exactly once"_s);
+        logo->forceActiveFocus();
+        QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, {});
+        QCoreApplication::sendEvent(window, &enter);
+        check(settingsRequests == before + 2, mode + u"keyboard activation opens settings"_s);
+        field->forceActiveFocus();
+        const QRect area = window->screen()->availableGeometry();
+        window->setPosition(area.topLeft() + QPoint(24, 36));
+        settle(window);
+        const QSize size = window->size();
+        click(WM_NCRBUTTONDOWN, WM_NCRBUTTONUP);
+        const QPoint wanted(area.x() + (area.width() - size.width()) / 2,
+            area.y() + (area.height() - size.height()) / 2);
+        check((window->position() - wanted).manhattanLength() <= 2,
+            mode + u"native right click centers on the current monitor work area"_s);
+        check(window->size() == size && launcher.query() == query && !launcher.pinned() && settingsRequests == before + 2,
+            mode + u"centering retains size, query and pin state without opening settings"_s);
+        check(saveGrab(window, output.filePath(panel ? u"logo-panel.png"_s : u"logo-box.png"_s)), mode + u"unpinned state screenshot"_s);
+        ::SendMessageW(hwnd, WM_NCMOUSEMOVE, HTCAPTION, point());
+        // Keep the user's real cursor where it is: the synthetic hover owns
+        // its leave message too, instead of TrackMouseEvent's real cursor check.
+        TRACKMOUSEEVENT tracking {sizeof tracking, TME_NONCLIENT | TME_LEAVE | TME_CANCEL, hwnd, HOVER_DEFAULT};
+        ::TrackMouseEvent(&tracking);
+        MSG leave {};
+        while (::PeekMessageW(&leave, hwnd, WM_NCMOUSELEAVE, WM_NCMOUSELEAVE, PM_REMOVE)) {}
+        pump(400);
+        settle(window);
+        auto* hint = visualNamed(window->contentItem(), panel ? u"panelSearchLogoHint"_s : u"searchLogoHint"_s);
+        check(hint && hint->isVisible() && hint->property("shownText").toString() == logo->property("help").toString(),
+            mode + u"native hover displays every logo action"_s);
+        if (!hint || !hint->isVisible())
+            say(u"logo hover: pointer (%1,%2), pointed %3, hint %4"_s.arg(frame.pointer().x()).arg(frame.pointer().y())
+                .arg(logo->property("pointed").toBool()).arg(hint ? hint->property("shown").toBool() : false));
+        check(saveGrab(window, output.filePath(panel ? u"logo-panel-hint.png"_s : u"logo-box-hint.png"_s)), mode + u"hint screenshot"_s);
+        ::SendMessageW(hwnd, WM_NCMOUSELEAVE, 0, 0);
+    }
+    window->hide();
+    QQuickWindow appearance;
+    QQmlComponent sample(engine, u"WinShun"_s, u"AppearancePreview"_s);
+    std::unique_ptr<QObject> sampleObject(sample.create());
+    auto* sampleRoot = qobject_cast<QQuickItem*>(sampleObject.get());
+    check(sampleRoot != nullptr, u"appearance settings load the production size preview"_s);
+    if (sampleRoot) {
+        sampleRoot->setParentItem(appearance.contentItem());
+        const QString previousSize = SystemTheme::uiSize();
+        showOffScreen(&appearance);
+        for (const QString& size : {u"compact"_s, u"standard"_s, u"roomy"_s}) {
+            SystemTheme::setUiSize(size);
+            sampleRoot->setSize({760, sampleRoot->implicitHeight()});
+            appearance.resize(760, qRound(sampleRoot->height()));
+            settle(&appearance);
+            auto* logo = visualNamed(sampleRoot, u"appearanceSearchLogo"_s);
+            check(logo && logo->isVisible() && logo->property("status").toInt() == 1,
+                u"appearance preview shows the program logo at %1 size"_s.arg(size));
+            check(saveGrab(&appearance, output.filePath(u"appearance-logo-%1.png"_s.arg(size))),
+                u"appearance preview screenshot at %1 size"_s.arg(size));
+        }
+        SystemTheme::setUiSize(previousSize);
+        appearance.hide();
+    }
+    QFile report(output.filePath(u"search-logo.json"_s));
+    if (!report.open(QIODevice::WriteOnly)) {
+        qWarning("Cannot write search logo report");
+        return false;
+    }
+    report.write(QJsonDocument(QJsonObject {{u"passed"_s, passed}, {u"checks"_s, checks}}).toJson());
+    say(u"search logo: %1 checks, native WindowFrame and production Main, %2"_s.arg(checks.size()).arg(passed ? u"passed" : u"FAILED"));
+    return passed;
 }
 
 // The production window, real temporary images, and local Qt input events;
@@ -2924,6 +3170,31 @@ bool checkClipboardInteractions(QQmlEngine* engine, const QDir& output, const QS
     auto* row = visualNamed(window->contentItem(), u"clipboardRow-0"_s);
     auto* page = visualNamed(window->contentItem(), u"clipboardPage"_s);
     if (!row || !page) { check(false, "production clipboard row missing"); return false; }
+    auto* logo = visualNamed(window->contentItem(), u"clipboardSearchLogo"_s);
+    auto* searchField = visualNamed(window->contentItem(), u"clipboardSearchField"_s);
+    check(logo && logo->isVisible() && logo->property("status").toInt() == 1
+            && logo->property("source").toUrl() == QUrl(u"qrc:/branding/logo.svg"_s),
+        "clipboard search must load the shared program logo");
+    if (logo && searchField) {
+        for (const bool searchAtBottom : {false, true}) {
+            clipboard.setLayoutOptions(true, searchAtBottom);
+            settle(window);
+            const QRectF mark(logo->mapToScene(QPointF()), logo->size());
+            const QRectF field(searchField->mapToScene(QPointF()), searchField->size());
+            check(qAbs(field.left() - mark.right() - 14) < 0.01
+                    && qAbs(field.center().y() - mark.center().y()) <= 1 && field.width() > 0,
+                "clipboard logo must preserve the search field spacing in either header position");
+            check(QMetaObject::invokeMethod(page, "focusSearch") && searchField->hasFocus(),
+                "clipboard search must retain its logical input focus");
+            check(saveGrab(window, output.filePath(searchAtBottom ? u"clipboard-search-bottom.png"_s : u"clipboard-search-top.png"_s)),
+                "clipboard search logo must render in either header position");
+        }
+        clipboard.setLayoutOptions(true, false);
+        settle(window);
+        say(u"clipboard search logo: shared SVG loaded; spacing, focus and both header positions checked"_s);
+    } else {
+        check(false, "clipboard search logo and field must be present");
+    }
     if (sizingOnly) {
         const bool passed = checkClipboardSizing(window, clipboard, placement, store, page, output);
         check(!watcher.running(), "sizing probe must never capture or write the native clipboard");
@@ -3571,6 +3842,9 @@ int runResults(const QStringList& args)
         return finish(window, checkNumberColumn(&engine, out, valueAfter(args, u"--width", u"760"_s).toInt()) && saved);
     if (args.contains(u"--clipboard-send"_s))
         return finish(window, checkClipboardInteractions(&engine, out, {}) && saved);
+    if (args.contains(u"--search-logo"_s)) {
+        return finish(window, checkSearchLogo(&engine, out) && saved);
+    }
     if (args.contains(u"--preview-hotkeys"_s) || args.contains(u"--search-navigation"_s)) {
         checkLauncherFilters(window, &engine, out, true, true);
         return finish(window, saved);

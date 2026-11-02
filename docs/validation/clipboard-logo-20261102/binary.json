@@ -1,0 +1,10 @@
+{
+  "Path": "F:\\电脑便捷工具\\build\\remove-edge-logo-20261102\\WinShun.exe",
+  "SHA256": "C4A5F894CCBD1D3E398F97488CA8CAA15E980D03735E69CC3CF78267D788CC32",
+  "Length": 24193536,
+  "Qt": "6.12.0",
+  "Configuration": "MSVC 2022 x64 Release",
+  "Renderer": "D3D11",
+  "LightExitCode": 0,
+  "DarkExitCode": 0
+}

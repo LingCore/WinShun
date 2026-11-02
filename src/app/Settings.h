@@ -248,7 +248,6 @@ struct Settings {
     QString language = QStringLiteral("system"); // system | zh | en
     QString transparency; // off | on: Mica behind the windows, where Windows 11 has it; defaults() picks by memory
     QString taskbarIcon = QStringLiteral("color"); // color | mono: the tray's and the taskbar box's icon (monologo)
-    bool searchLogo = true; // the logo peeking out behind the launcher, the clipboard and the dialog bar (GitHub #109)
     QString uiSize = QStringLiteral("standard"); // compact | standard | roomy: type and row heights (uisize::)
     QString corners; // round | square: defaults() picks by Windows version
 

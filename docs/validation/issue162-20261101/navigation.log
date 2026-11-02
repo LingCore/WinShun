@@ -1,0 +1,23 @@
+preparing
+making the application
+loading the font
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-navigation/always.png 800x540
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-navigation/held-idle.png 800x540
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-navigation/held-100ms.png 800x540
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-navigation/held-300ms.png 800x540
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-navigation/held-released.png 800x540
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-navigation/quick-taps.png 800x540
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-navigation/off.png 800x540
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-navigation/search-menu-box.png 276x314
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-navigation/search-menu-panel.png 276x314
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-navigation/search-settings-entry.png 1200x680
+search navigation: 118 checks, production Main.qml/Launcher/ContextMenu, local Qt key and IME events, passed
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-navigation/search-menu-dialog.png 245x161
+dialog search navigation: 23 checks, production DialogBarWindow/DialogBar, local Qt input, passed
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-navigation/files-large-icons.png 1200x680
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-navigation/preview-space.png 432x816
+preview hotkeys: production Main.qml + FilePreview; default, Space, IME preedit, repeat, Shift+Space, reassignment, modifiers, disabled
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-navigation/files-large-icons-compact.png 640x480
+saved F:/电脑便捷工具/build/search-improvements-20261101/bin/tests/search-navigation/files-large-icons-empty.png 640x480
+large icons: production QML/model, real temporary PNGs, Alt+wheel, viewport retention, minimum width
+0 warning(s)

@@ -146,11 +146,6 @@ public:
     void slideOut(std::function<void()> done);
     bool sliding() const { return m_slide.state() == QAbstractAnimation::Running; }
     QPointF contentShift() const { return m_contentShift; }
-    // For what goes with the window (WindowLogo), after each step of a slide
-    // (slideStepped): how far it is off its place (physical pixels), and how
-    // faded.
-    QPoint slideOffset() const { return m_offset; }
-    qreal slideOpacity() const { return m_opacity; }
     static bool animationsOn(); // the system's "animation effects"
 
     // The search panel (Launcher::panel): the window as large as its user
@@ -169,6 +164,9 @@ public:
 
     // Glides back to the home spot and stays there from now on.
     Q_INVOKABLE void moveHome();
+    // Centre on the current monitor's work area, preserving size and content.
+    // Also detaches temporary taskbar/file-manager placement; saved per mode.
+    Q_INVOKABLE void centerOnScreen();
     // Its rows and type changed size (界面大小): a window up now (the
     // clipboard, pinned) is fitted on its screen again.
     void resized();
@@ -202,7 +200,6 @@ signals:
     void aboveChanged();
     void anchorWidthChanged();
     void contentShiftChanged();
-    void slideStepped();
     void boxWidthChanged();
     void sizingChanged();
     void widthReset(); // resetWidth() changed it

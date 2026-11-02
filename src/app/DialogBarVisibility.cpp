@@ -8,14 +8,11 @@
 
 #include <dwmapi.h>
 
-#include <utility>
-
 namespace ws {
 
-void DialogBarVisibility::setWindow(QQuickWindow* window, std::function<void(bool)> showLogo)
+void DialogBarVisibility::setWindow(QQuickWindow* window)
 {
     m_window = window;
-    m_showLogo = std::move(showLogo);
     window->installEventFilter(this);
     m_timeout.setSingleShot(true);
     m_timeout.setInterval(300);
@@ -30,8 +27,7 @@ void DialogBarVisibility::setWindow(QQuickWindow* window, std::function<void(boo
         m_synchronized = m_pending.load();
     }, Qt::DirectConnection);
     connect(window, &QQuickWindow::frameSwapped, this, [this] {
-        // place() runs on the GUI thread. Until that thread really removes
-        // the cloak, it must not see the bar as ready and show only the logo.
+        // Only the GUI thread reveals the opening represented by this frame.
         if (const quint64 generation = m_synchronized.exchange(0))
             QMetaObject::invokeMethod(this, [this, generation] { reveal(generation); }, Qt::QueuedConnection);
     }, Qt::DirectConnection);
@@ -59,7 +55,6 @@ void DialogBarVisibility::show(HWND dialog, bool elevated)
     win::followDialog(hwnd, dialog, elevated);
     if (m_pending.load() || isRevealed())
         return;
-    m_showLogo(false);
     win::setCloaked(m_window, true);
     m_pending = ++m_generation;
     m_timeout.start();
@@ -78,7 +73,7 @@ void DialogBarVisibility::show(HWND dialog, bool elevated)
 
 void DialogBarVisibility::hide()
 {
-    cancel(); // also when Qt already hid it: no orphan logo or pending callback
+    cancel(); // also when Qt already hid it: cancel any pending reveal
     if (m_window) {
         m_window->hide();
         win::setCloaked(m_window, false);
@@ -89,8 +84,6 @@ void DialogBarVisibility::cancel()
 {
     m_pending = 0;
     m_timeout.stop();
-    if (m_showLogo)
-        m_showLogo(false);
 }
 
 void DialogBarVisibility::reveal(quint64 generation)
@@ -106,8 +99,6 @@ void DialogBarVisibility::reveal(quint64 generation)
     win::setCloaked(m_window, false);
     m_pending = 0;
     m_window->update(); // the timeout path may not have painted a frame yet
-    if (isRevealed())
-        m_showLogo(true);
 }
 
 bool DialogBarVisibility::isRevealed() const

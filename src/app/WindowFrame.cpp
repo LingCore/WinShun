@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace ws {
 
@@ -29,6 +30,13 @@ constexpr qreal kSideEdge = 6;
 int resizeEdge(UINT dpi)
 {
     return ::GetSystemMetricsForDpi(SM_CXSIZEFRAME, dpi) + ::GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
+}
+
+bool withinDragDistance(HWND hwnd, QPoint from, QPoint to)
+{
+    const UINT dpi = ::GetDpiForWindow(hwnd);
+    return std::abs(to.x() - from.x()) < ::GetSystemMetricsForDpi(SM_CXDRAG, dpi)
+        && std::abs(to.y() - from.y()) < ::GetSystemMetricsForDpi(SM_CYDRAG, dpi);
 }
 
 bool covers(const QPointer<QQuickItem>& item, QPointF pos)
@@ -103,6 +111,9 @@ struct WindowFrame::Hook {
         // Over drag areas and the maximise button the mouse messages are
         // non-client ones: QML hears of them from here.
         case WM_NCMOUSEMOVE:
+            if (self->m_handleButton != Qt::NoButton
+                && !withinDragDistance(hwnd, self->m_handlePress, {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)}))
+                self->m_handleButton = Qt::NoButton;
             if (wParam == HTCAPTION || wParam == HTMAXBUTTON)
                 self->trackLeave();
             self->setPointer(wParam == HTCAPTION ? self->toWindow(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)) : QPointF(-1, -1));
@@ -114,6 +125,7 @@ struct WindowFrame::Hook {
             self->setMaximizeState(false, false);
             break;
         case WM_MOUSEMOVE: // into the client area
+            self->m_handleButton = Qt::NoButton;
             self->setPointer({-1, -1});
             self->setMaximizeState(false, false);
             break;
@@ -153,7 +165,7 @@ struct WindowFrame::Hook {
                     break; // the move loop, as for any press on the drag area
                 }
                 if (!(::GetAsyncKeyState(VK_ESCAPE) & 0x8000)) // Esc ends it too: no click then
-                    QMetaObject::invokeMethod(self, &WindowFrame::handleClicked, Qt::QueuedConnection);
+                    QMetaObject::invokeMethod(self, [self] { emit self->handleClicked(Qt::LeftButton); }, Qt::QueuedConnection);
                 return 0;
             }
             break;
@@ -184,15 +196,42 @@ struct WindowFrame::Hook {
             }
             self->setMaximizeState(wParam == HTMAXBUTTON, false);
             break;
+        case WM_NCRBUTTONDOWN:
+        case WM_NCRBUTTONDBLCLK:
+        case WM_NCMBUTTONDOWN:
+        case WM_NCMBUTTONDBLCLK:
+            self->m_handleButton = Qt::NoButton;
+            if (wParam == HTCAPTION && self->onHandle(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam))) {
+                self->m_handleButton = message == WM_NCRBUTTONDOWN || message == WM_NCRBUTTONDBLCLK
+                    ? Qt::RightButton : Qt::MiddleButton;
+                self->m_handlePress = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+                return 0;
+            }
+            break;
         case WM_NCRBUTTONUP:
+        case WM_NCMBUTTONUP: {
+            const auto button = message == WM_NCRBUTTONUP ? Qt::RightButton : Qt::MiddleButton;
+            const auto pressed = std::exchange(self->m_handleButton, Qt::NoButton);
+            const QPoint point(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+            if (pressed == button && wParam == HTCAPTION && self->onHandle(point.x(), point.y())
+                && withinDragDistance(hwnd, self->m_handlePress, point)) {
+                QMetaObject::invokeMethod(self, [self, button] { emit self->handleClicked(button); }, Qt::QueuedConnection);
+                return 0;
+            }
             // The window menu with our own frame, nothing otherwise. Not to Qt:
             // it would take the context menu message that follows for one inside
             // the window, which all of it is.
             if (wParam == HTCAPTION) {
-                if (self->m_ownFrame)
+                if (button == Qt::RightButton && self->m_ownFrame)
                     showWindowMenu(hwnd, {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)});
                 return 0;
             }
+            break;
+        }
+        case WM_RBUTTONUP:
+        case WM_MBUTTONUP:
+        case WM_CANCELMODE:
+            self->m_handleButton = Qt::NoButton;
             break;
         case WM_NCDESTROY:
             ::RemoveWindowSubclass(hwnd, &Hook::proc, 0);
@@ -228,6 +267,7 @@ void WindowFrame::setWindow(QWindow* window)
     win::keepDarkFrameOnShow(window);
     connect(window, &QWindow::visibleChanged, this, [this](bool visible) {
         if (!visible) { // no leave message comes then
+            m_handleButton = Qt::NoButton;
             m_trackingLeave = false;
             setPointer({-1, -1});
             setMaximizeState(false, false);

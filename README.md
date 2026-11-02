@@ -116,7 +116,7 @@
 - **大图浏览**：搜索面板右下角可切换“列表 / 大图”，图片、视频和 PDF 使用异步缩略图；拖动滑块或按住 `Alt` 滚动滚轮调整大小，保留浏览位置，记住视图和尺寸。多选、右键菜单和拖出文件继续可用。
 - **搜索面板**：结果太多时，点搜索框右上角的小按钮或按 `Ctrl+E`，同一个窗口展开成面板（像 Listary）：左边按范围、类型、修改时间、大小、位置筛选，右边按列显示结果，点列头排序；右键列头可选名称、路径、类型、大小、修改时间、创建时间、文件夹和来源，拖动调整顺序和宽度，自动保存布局；什么都不输入也能按条件浏览整个索引（三百万个文件也是毫秒级）。`size:>10mb`、`dm:7d` 这类写法直接打在搜索框里也行。再按一次就缩回搜索框。
 - **长文件名**：名字放不下时在中间缩短，扩展名和结尾留着（“…第二版.xlsx”）；鼠标停在这一行上，显示完整的名字、位置、大小、修改和创建时间。拖动搜索框的左边或右边可以调宽（记住宽度，双击边缘恢复默认）。
-- **钉住**：按 `Ctrl+T` 或点搜索框右上角的图钉，点别处、打开文件后搜索框都不收起，`Esc` 关闭；按住左边的放大镜拖动窗口，单击它打开设置。
+- **Logo 操作**：搜索栏左侧的 Win顺 Logo 集中三个操作：左键打开设置，中键钉住 / 取消钉住（也可按 `Ctrl+T`），右键把窗口移回当前显示器可用区域的正中央；拖动 Logo 仍能移动窗口。钉住时显示图钉标记，点别处、打开文件后搜索框都不收起，`Esc` 关闭。
 - **预览**：在结果上按 `Alt+P`（或右键“预览”）看一眼文件，启动器不关：图片、文本（自动认 UTF-8 / GBK）、Word / Excel / PowerPoint / PDF（用资源管理器预览窗格的同一套预览程序）、文件夹里有什么；上下键换一行就换一个文件，再按 `Alt+P`（或点预览窗口的叉）关掉；`Esc` 关的是启动器，预览开着时下次打开还在。后台开着 QuickLook 或 Seer 时交给它们。 搜索结果的预览键可在设置中改为空格、功能键或未占用的组合键；空格模式下用 `Shift+空格` 继续输入空格。
 - **缩略图**：图片、视频、PDF 等在结果里直接显示缩略图，代替类型图标，“打开”“另存为”对话框旁的搜索框里也一样；设置 › 结果列表里可以关。
 - **右键菜单**：右键一行有打开位置、复制路径、加入收藏等；按住 `Shift` 右键（或菜单里的“更多选项”），出现 Windows 自己的完整右键菜单，和资源管理器里一样，选中几行也行；复制、剪切、删除之后搜索框不关。
@@ -469,7 +469,7 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
   - **Setting up**: tell the AI to “set up WinShun for me”; it asks a few questions and changes several settings in one go. A window asks you first, a notice at the bottom right says what changed and offers Undo for a few seconds; security-related settings always ask.
   - **Command line `ws`**: search from a terminal, like Everything's `es`: `ws report` (names), `ws grep invoice` (contents), `ws text plan.docx` (a document's text), `ws recent --days 7`. AI agents that run commands (Claude Code, Codex) need less context with it than with MCP; `ws skill --install claude` installs its instructions. It shares MCP's switch and safety settings.
 - 🎨 **Looks and settings**
-  - **Looks**: light and dark themes following Windows, Windows 11 Mica, rounded or square corners, including application-drawn rounded corners on Windows 10, sharp icons at any scaling; compact, standard or roomy sizes, and a monochrome tray and taskbar icon if you like; the logo peeking out beside the search box can be turned off (Settings › Appearance › Show the logo by the search box).
+  - **Looks**: light and dark themes following Windows, Windows 11 Mica, rounded or square corners, including application-drawn rounded corners on Windows 10, sharp icons at any scaling; compact, standard or roomy sizes, and a monochrome tray and taskbar icon if you like; the app logo stays inside the search bar as its persistent action control.
   - **Settings**: searchable (`Ctrl+F`); changes apply at once.
   - **File manager**: folders and file locations open in File Explorer, Total Commander, Directory Opus, XYplorer or Pulse (those installed are listed), or in any other file manager whose commands you enter under Settings › Open WinShun › Dialogs.
   - **Backup**: choose a folder under Settings → Advanced (a synced folder makes it a cloud backup); settings, favorites, dialog pins, your own web icons and plugins are backed up as they change, the last 10 kept, ready to restore.

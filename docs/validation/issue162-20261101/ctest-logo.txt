@@ -1,0 +1,7 @@
+Test project F:/电脑便捷工具/build/search-improvements-20261101/bin
+    Start 9: tst_searchlogo
+1/1 Test #9: tst_searchlogo ...................   Passed   16.83 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =  16.90 sec

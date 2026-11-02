@@ -1,0 +1,18 @@
+preparing
+making the application
+loading the font
+saved build/issue162-ui-150-en/always.png 1200x810
+saved build/issue162-ui-150-en/held-idle.png 1200x810
+saved build/issue162-ui-150-en/held-100ms.png 1200x810
+saved build/issue162-ui-150-en/held-300ms.png 1200x810
+saved build/issue162-ui-150-en/held-released.png 1200x810
+saved build/issue162-ui-150-en/quick-taps.png 1200x810
+saved build/issue162-ui-150-en/off.png 1200x810
+saved build/issue162-ui-150-en/logo-box-pinned.png 1140x281
+saved build/issue162-ui-150-en/logo-box.png 1140x281
+saved build/issue162-ui-150-en/logo-box-hint.png 1140x281
+saved build/issue162-ui-150-en/logo-panel-pinned.png 1650x1050
+saved build/issue162-ui-150-en/logo-panel.png 1650x1050
+saved build/issue162-ui-150-en/logo-panel-hint.png 1650x1050
+search logo: 38 checks, native WindowFrame and production Main, passed
+0 warning(s)

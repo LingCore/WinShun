@@ -1,0 +1,28 @@
+{
+  "sha256": "f20b4c23eab1735f8738ce5d4b81a42090cacc5a74cd01fe5076836c68b30445",
+  "qt": "6.12.0",
+  "build": "Release/MSVC 2022",
+  "old_settings_row_absent": true,
+  "exterior_logo_native_class_absent": true,
+  "old_sources_absent_from_build": true,
+  "unit_test_totals": [
+    39,
+    154,
+    19,
+    19
+  ],
+  "production_preview_checks": {
+    "search-logo.json": {
+      "passed": true,
+      "count": 123
+    },
+    "dialog-navigation.json": {
+      "passed": true,
+      "count": 26
+    },
+    "search-navigation.json": {
+      "passed": true,
+      "count": 118
+    }
+  }
+}

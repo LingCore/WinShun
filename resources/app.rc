@@ -4,9 +4,6 @@
 // The exe icon. Qt gives its windows the icon named IDI_ICON1; MessageWindow
 // loads it for the tray icon.
 IDI_ICON1 ICON "app.ico"
-// The magnifier the search box on the taskbar shows as a button of its
-// own (TaskbarSearchBox.cpp), as the pinned one has it (WinShunSearch.rc).
-IDI_SEARCH ICON "search.ico"
 
 VS_VERSION_INFO VERSIONINFO
  FILEVERSION WINSHUN_VERSION_MAJOR,WINSHUN_VERSION_MINOR,WINSHUN_VERSION_PATCH,0

@@ -974,7 +974,14 @@ Window {
     Connections {
         target: window.frame
         function onDoubleClicked() { window.placement.moveHome() } // on the header or footer
-        function onHandleClicked() { window.launcher.openSettings() } // the search icon (SearchBar.qml)
+        function onHandleClicked(button) {
+            if (button === Qt.MiddleButton)
+                window.launcher.togglePin()
+            else if (button === Qt.RightButton)
+                window.placement.centerOnScreen()
+            else if (button === Qt.LeftButton)
+                window.launcher.openSettings()
+        }
     }
     Connections {
         target: window.placement

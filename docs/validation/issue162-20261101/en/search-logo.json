@@ -1,0 +1,157 @@
+{
+    "checks": [
+        {
+            "name": "box: production logo and field are visible",
+            "passed": true
+        },
+        {
+            "name": "box: application logo loads at the requested display size",
+            "passed": true
+        },
+        {
+            "name": "box: all pointer actions have a multiline hint",
+            "passed": true
+        },
+        {
+            "name": "box: logo retains the system drag region",
+            "passed": true
+        },
+        {
+            "name": "box: native middle click pins and reveals the badge",
+            "passed": true
+        },
+        {
+            "name": "box: pinning keeps query and input focus",
+            "passed": true
+        },
+        {
+            "name": "box: pinned state screenshot",
+            "passed": true
+        },
+        {
+            "name": "box: Ctrl+T clears the same visible pin state",
+            "passed": true
+        },
+        {
+            "name": "box: repeated middle clicks toggle independently",
+            "passed": true
+        },
+        {
+            "name": "box: release without a logo press does nothing",
+            "passed": true
+        },
+        {
+            "name": "box: releasing outside cancels the logo action",
+            "passed": true
+        },
+        {
+            "name": "box: moving beyond the drag threshold cancels even after returning to the logo",
+            "passed": true
+        },
+        {
+            "name": "box: native left click requests settings exactly once",
+            "passed": true
+        },
+        {
+            "name": "box: keyboard activation opens settings",
+            "passed": true
+        },
+        {
+            "name": "box: native right click centers on the current monitor work area",
+            "passed": true
+        },
+        {
+            "name": "box: centering retains size, query and pin state without opening settings",
+            "passed": true
+        },
+        {
+            "name": "box: unpinned state screenshot",
+            "passed": true
+        },
+        {
+            "name": "box: native hover displays every logo action",
+            "passed": true
+        },
+        {
+            "name": "box: hint screenshot",
+            "passed": true
+        },
+        {
+            "name": "panel: production logo and field are visible",
+            "passed": true
+        },
+        {
+            "name": "panel: application logo loads at the requested display size",
+            "passed": true
+        },
+        {
+            "name": "panel: all pointer actions have a multiline hint",
+            "passed": true
+        },
+        {
+            "name": "panel: logo retains the system drag region",
+            "passed": true
+        },
+        {
+            "name": "panel: native middle click pins and reveals the badge",
+            "passed": true
+        },
+        {
+            "name": "panel: pinning keeps query and input focus",
+            "passed": true
+        },
+        {
+            "name": "panel: pinned state screenshot",
+            "passed": true
+        },
+        {
+            "name": "panel: Ctrl+T clears the same visible pin state",
+            "passed": true
+        },
+        {
+            "name": "panel: repeated middle clicks toggle independently",
+            "passed": true
+        },
+        {
+            "name": "panel: release without a logo press does nothing",
+            "passed": true
+        },
+        {
+            "name": "panel: releasing outside cancels the logo action",
+            "passed": true
+        },
+        {
+            "name": "panel: moving beyond the drag threshold cancels even after returning to the logo",
+            "passed": true
+        },
+        {
+            "name": "panel: native left click requests settings exactly once",
+            "passed": true
+        },
+        {
+            "name": "panel: keyboard activation opens settings",
+            "passed": true
+        },
+        {
+            "name": "panel: native right click centers on the current monitor work area",
+            "passed": true
+        },
+        {
+            "name": "panel: centering retains size, query and pin state without opening settings",
+            "passed": true
+        },
+        {
+            "name": "panel: unpinned state screenshot",
+            "passed": true
+        },
+        {
+            "name": "panel: native hover displays every logo action",
+            "passed": true
+        },
+        {
+            "name": "panel: hint screenshot",
+            "passed": true
+        }
+    ],
+    "passed": true
+}

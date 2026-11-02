@@ -55,7 +55,6 @@
 #include "Updater.h"
 #include "WebDav.h"
 #include "WindowFrame.h"
-#include "WindowLogo.h"
 #include "platform/ClipboardWatcher.h"
 #include "platform/ComWorker.h"
 #include "platform/Credentials.h"
@@ -1195,8 +1194,6 @@ bool App::createWindow()
     };
     connect(m_placement.get(), &Placement::boxWidthChanged, this, tellSettings);
     connect(m_placement.get(), &Placement::widthReset, this, tellSettings);
-    m_launcherLogo = new WindowLogo(m_window);
-    m_launcherLogo->follow(m_placement.get());
     m_searchField = m_window->findChild<QQuickItem*>(u"searchField"_s);
     if (m_searchField)
         m_searchField->installEventFilter(this); // the input method's questions, while it is in the box
@@ -1278,7 +1275,6 @@ bool App::createClipWindow()
     m_clipPlacement->enableWindowSizing();
     m_clipFrame->setWindow(window);
     m_clipFrame->setResizable(true);
-    m_clipLogo = new WindowLogo(window);
     m_clipDisplay = std::make_unique<ClipboardDisplay>(m_clipboard.get(), window, m_clipPlacement.get(), m_clipDisplayProbe);
     window->setProperty("displayController", QVariant::fromValue<QObject*>(m_clipDisplay.get()));
     connect(m_clipDisplay.get(), &ClipboardDisplay::geometryEdited, m_clipPlacement.get(), &Placement::adoptDisplayGeometry);
@@ -1384,7 +1380,7 @@ bool App::eventFilter(QObject* watched, QEvent* event)
     }
     if (event->type() == QEvent::Close && (watched == m_window || watched == m_clipWindow)) {
         // These windows are kept between openings. QWindow::close would
-        // destroy the HWND and detach Placement, WindowFrame and WindowLogo.
+        // destroy the HWND and detach Placement and WindowFrame.
         event->ignore();
         if (watched == m_window)
             hideLauncher();
@@ -1491,18 +1487,6 @@ void App::guardDarkFrames()
 // Theme and language take effect at once, in every window, without a restart.
 void App::applyAppearance()
 {
-    // 搜索框显示 Logo (GitHub #109): one switch for the launcher's, the clipboard's and
-    // the dialog bar's. Off, one still on screen goes at once; on, each comes back
-    // with its window's next show.
-    if (win::PeekingLogo::enabled() != m_settings.searchLogo) {
-        win::PeekingLogo::setEnabled(m_settings.searchLogo);
-        if (!m_settings.searchLogo) {
-            for (WindowLogo* logo : {m_launcherLogo, m_clipLogo}) {
-                if (logo)
-                    logo->conceal();
-            }
-        }
-    }
     SystemTheme::setRoundedCorners(m_settings.corners == u"round");
     updateSearchBoxLook(); // the native child redraws on its own thread
     // 界面大小: QML follows SystemTheme; the bar by file dialogs is placed by its heights.
@@ -4344,10 +4328,7 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
     const bool prewarming = m_prewarming.exchange(false); // up already, cloaked
     if (wasClosing) {
         // Back from where it got to on its way out.
-        m_placement->slideIn([this] {
-            if (m_launcherLogo && launcherShown())
-                m_launcherLogo->reveal();
-        });
+        m_placement->slideIn();
     } else if (!m_window->isVisible() || prewarming) {
         // Shown cloaked: Windows would first put up the window as it looked
         // when it was hidden (old selection, old rows), then our repaint.
@@ -5032,13 +5013,10 @@ void App::revealLauncher()
 {
     if (!m_window)
         return;
-    // In from off its place first, then seen, the logo with it: not if this
-    // was the launcher hiding before its first frame.
+    // Slide in before revealing, unless it was hidden before its first frame.
     if (m_window->isVisible())
         m_placement->slideIn();
     win::setCloaked(m_window, false);
-    if (m_launcherLogo && launcherShown())
-        m_launcherLogo->reveal();
     if (launcherShown()) {
         m_launcherRevealedAt = ::GetTickCount64(); // there to be seen from now on (seenBy)
         if (m_triggers)
@@ -5227,7 +5205,7 @@ void App::hideLauncher()
         m_searchBox->setText({}); // the placeholder again
         updateSearchBoxLook();
     }
-    m_placement->slideOut([this] { // the logo goes along (WindowLogo)
+    m_placement->slideOut([this] {
         if (m_launcherClosing)
             finishHidingLauncher();
     });

@@ -266,20 +266,26 @@ Window {
         width: window.width
         height: window.bar.barHeight
 
-        Glyph {
+        Image {
             id: searchIcon
+            objectName: "dialogSearchLogo"
             anchors.left: parent.left
-            anchors.leftMargin: 14
+            anchors.leftMargin: 12
             anchors.verticalCenter: parent.verticalCenter
-            glyph: "" // Search
-            size: 16
+            width: 20
+            height: width
+            source: "qrc:/branding/logo.svg"
+            sourceSize.width: width
+            sourceSize.height: height
+            smooth: false
+            Accessible.ignored: true
         }
 
         TextInput {
             id: input
             objectName: "dialogSearchField"
             anchors.left: searchIcon.right
-            anchors.leftMargin: 10
+            anchors.leftMargin: 8
             anchors.right: trailing.left
             anchors.rightMargin: 10
             anchors.verticalCenter: parent.verticalCenter

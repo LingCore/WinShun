@@ -26,6 +26,33 @@ class SettingsTest : public QObject {
     Q_OBJECT
 
 private slots:
+    void retiredExteriorLogoSetting_data()
+    {
+        QTest::addColumn<bool>("oldValue");
+        QTest::newRow("previously-shown") << true;
+        QTest::newRow("previously-hidden") << false;
+    }
+
+    void retiredExteriorLogoSetting()
+    {
+        QFETCH(bool, oldValue);
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        {
+            QSettings old(ws::Settings::filePath(), QSettings::IniFormat);
+            old.setValue(u"Appearance/SearchLogo"_s, oldValue);
+            old.setValue(u"Appearance/TaskbarIcon"_s, u"mono"_s);
+        }
+        ws::Settings settings;
+        settings.load();
+        QCOMPARE(settings.taskbarIcon, u"mono"_s);
+        QVERIFY(settings.saveChecked());
+        QSettings saved(ws::Settings::filePath(), QSettings::IniFormat);
+        QVERIFY(!saved.contains(u"Appearance/SearchLogo"_s));
+        QCOMPARE(saved.value(u"Appearance/TaskbarIcon"_s).toString(), u"mono"_s);
+    }
+
     void onboardingLifecycle()
     {
         QTemporaryDir profile;

@@ -18,12 +18,17 @@ Rectangle {
         width: parent.width - 32
         height: Theme.headerHeight
 
-        Glyph {
+        Image {
             id: searchIcon
+            objectName: "appearanceSearchLogo"
             anchors.verticalCenter: parent.verticalCenter
-            glyph: "\uE721"
-            size: Theme.searchIconSize
-            color: Theme.subtext
+            width: Theme.searchIconSize
+            height: width
+            source: "qrc:/branding/logo.svg"
+            sourceSize.width: width
+            sourceSize.height: height
+            smooth: false
+            Accessible.ignored: true
         }
         Text {
             anchors.left: searchIcon.right

@@ -1,0 +1,123 @@
+[
+  {
+    "file": "src/app/Placement.h",
+    "current": "e16957672efeb075926a363cfde39a2dd508ba598ddb9b6b05796d35350df5e3",
+    "tested": "e16957672efeb075926a363cfde39a2dd508ba598ddb9b6b05796d35350df5e3",
+    "equal": true
+  },
+  {
+    "file": "src/app/Placement.cpp",
+    "current": "fa38df62fc689f9b54702cfd58e795a30e1305736fbc1dc281a311c5f11e8253",
+    "tested": "fa38df62fc689f9b54702cfd58e795a30e1305736fbc1dc281a311c5f11e8253",
+    "equal": true
+  },
+  {
+    "file": "src/app/WindowFrame.h",
+    "current": "75378918232b11594b290d04b70345a4bf18fe29687708710ca1f91f2c06c838",
+    "tested": "75378918232b11594b290d04b70345a4bf18fe29687708710ca1f91f2c06c838",
+    "equal": true
+  },
+  {
+    "file": "src/app/qml/SearchBar.qml",
+    "current": "e276f279c8ff13279486bb0b2845da66cceb7a0530bb53ac8fa3d52e184dc937",
+    "tested": "e276f279c8ff13279486bb0b2845da66cceb7a0530bb53ac8fa3d52e184dc937",
+    "equal": true
+  },
+  {
+    "file": "tests/tst_displaygeometry.cpp",
+    "current": "f014affdef05a771cf1cf49a2ea247100f4df2ae071bfb35769c78b5fdc5a288",
+    "tested": "f014affdef05a771cf1cf49a2ea247100f4df2ae071bfb35769c78b5fdc5a288",
+    "equal": true
+  },
+  {
+    "file": "resources/logo.svg",
+    "current": "c1bd5f0e43acd32d92cc0ec2d2195fbaa5c38d115b2c9ea29450e20ed308caed",
+    "tested": "c1bd5f0e43acd32d92cc0ec2d2195fbaa5c38d115b2c9ea29450e20ed308caed",
+    "equal": true
+  },
+  {
+    "file": "src/app/WindowFrame.cpp",
+    "normalization": "Exclude parallel prepareFramelessWindow call; normalize line endings",
+    "current": "33ca4cb19dc6ae82c3d3338db4591e2341fd6fc9e2e3741b237f3d2090fbb117",
+    "tested": "33ca4cb19dc6ae82c3d3338db4591e2341fd6fc9e2e3741b237f3d2090fbb117",
+    "equal": true
+  },
+  {
+    "file": "src/app/Preview.cpp",
+    "scope": "Feature implementation block",
+    "current": "6370237799ebda85489097fe04fcf5e46f8c446574000cae2338da4f0a556864",
+    "tested": "6370237799ebda85489097fe04fcf5e46f8c446574000cae2338da4f0a556864",
+    "equal": true
+  },
+  {
+    "file": "src/app/qml/Main.qml",
+    "scope": "Feature implementation block",
+    "current": "2fabf51a4987b772d9519db1c1942c8a3745319cf84a120f94d4fce0813574ca",
+    "tested": "2fabf51a4987b772d9519db1c1942c8a3745319cf84a120f94d4fce0813574ca",
+    "equal": true
+  },
+  {
+    "file": "scripts/build.ps1",
+    "current": "f67ca5e9881e050b8180ec8887774b2c418cc0d2467f75a068374b59c73990b4",
+    "tested": "f7067296bba694b4d7d0f3ae2dbc0259bcf94186d89315190addfe59d6810358",
+    "scope": "Shared files contain parallel changes; see README"
+  },
+  {
+    "file": "src/app/App.cpp",
+    "current": "7fd097520b234d6e26cbf9d8504a27a311a396c0ac2b1edcbdb926ae1b57a8d3",
+    "tested": "dcee355a82c63fe467e789306325b135275e52b83016695631dc53748a490688",
+    "scope": "Shared files contain parallel changes; see README"
+  },
+  {
+    "file": "src/app/App.h",
+    "current": "9bb9a3460292125e16088758cb1014bec154eab29e53c4cb07c6027c13dabb19",
+    "tested": "92889094e89f7e977b02fc2b0b9ef7f500ae76aed77b4f8aaaf54d5297a321b2",
+    "scope": "Shared files contain parallel changes; see README"
+  },
+  {
+    "file": "src/app/AiSettings.cpp",
+    "current": "6806729175e00fdad7ec63cd11729ce18c155a1a863955f2f05df0356e409d9e",
+    "tested": "900808d775f4c36d90040afec112fbba1472303a871f9ae095335b3fd1c2b627",
+    "scope": "Shared files contain parallel changes; see README"
+  },
+  {
+    "file": "src/app/qml/SettingsWindow.qml",
+    "current": "9a1faf0e9c6debbefda0471b9112bb1739bf4ed815957be3697682b82e4ba2aa",
+    "tested": "8ef51536972b59d4c1d02722cf1a138d314f42f48ab647af42af06e08208f3e2",
+    "scope": "Shared files contain parallel changes; see README"
+  },
+  {
+    "file": "src/app/i18n/winshun_en.ts",
+    "current": "625da2d8823734488c6f94491bf3441ed628ceafe26644d6343e65fdce3ce476",
+    "tested": "fd94e5e68f8ceeca71a4a9514d8c18ba0fcaff16084208f02702aeee21d3118d",
+    "scope": "Shared files contain parallel changes; see README"
+  },
+  {
+    "file": "src/app/CMakeLists.txt",
+    "current": "6110488569c5a99f03c6a0927cb372b542f549782b3975c8eb3c6ba45a76c0ff",
+    "tested": "ede8c56349151bd44f66934ed93418642853046bb21e68ec59513cec88b6e09a",
+    "scope": "Shared files contain parallel changes; see README"
+  },
+  {
+    "file": "tests/CMakeLists.txt",
+    "current": "ee12ce096e3990cc6d3e1cfea9a8bca0446c21f11574919e7da682ba73af42d3",
+    "tested": "8f818456f947bd2ae17eca11a6e7b52dbe10bada972eb91b7395425c82caadd6",
+    "scope": "Shared files contain parallel changes; see README"
+  },
+  {
+    "file": "build/search-improvements-20261101/bin/WinShun.exe",
+    "sha256": "64d5d1fed0071ce5a9c6cc81654e2e3a6de3e1c3962c0bf2f08efa4e7836bbbe"
+  },
+  {
+    "file": "build/issue162-deployment/WinShun.exe",
+    "sha256": "64d5d1fed0071ce5a9c6cc81654e2e3a6de3e1c3962c0bf2f08efa4e7836bbbe"
+  },
+  {
+    "file": "build/issue162-deployment/imageformats/qsvg.dll",
+    "sha256": "e8f2c80df916b363738d6f6dc112ac4555a42278347e78c0b609a55d1adf70cb"
+  },
+  {
+    "file": "build/issue162-deployment/Qt6Svg.dll",
+    "sha256": "cce84059f1857ff1859db7c4fe10334e603d9ca81eb4d5f0a22ca0ac515b340c"
+  }
+]

@@ -633,7 +633,7 @@ public:
     bool regexMode() const { return m_regexMode; }
     void setRegexMode(bool on);
     Q_INVOKABLE void toggleRegexMode(); // Ctrl+R: says so in the footer
-    // The search icon clicked (not dragged, WindowFrame::handleClicked):
+    // The search logo left-clicked (not dragged, WindowFrame::handleClicked):
     // the settings window (settingsRequested).
     Q_INVOKABLE void openSettings() { emit settingsRequested(); }
     int dateChoice() const { return m_dateChoice; }

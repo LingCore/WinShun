@@ -1,0 +1,24 @@
+preparing
+making the application
+loading the font
+saved F:/电脑便捷工具/build/clipboard-logo-20261102/light/always.png 800x540
+saved F:/电脑便捷工具/build/clipboard-logo-20261102/light/held-idle.png 800x540
+saved F:/电脑便捷工具/build/clipboard-logo-20261102/light/held-100ms.png 800x540
+saved F:/电脑便捷工具/build/clipboard-logo-20261102/light/held-300ms.png 800x540
+saved F:/电脑便捷工具/build/clipboard-logo-20261102/light/held-released.png 800x540
+saved F:/电脑便捷工具/build/clipboard-logo-20261102/light/quick-taps.png 800x540
+saved F:/电脑便捷工具/build/clipboard-logo-20261102/light/off.png 800x540
+saved F:/电脑便捷工具/build/clipboard-logo-20261102/light/clipboard-search-top.png 480x639
+saved F:/电脑便捷工具/build/clipboard-logo-20261102/light/clipboard-search-bottom.png 480x639
+clipboard search logo: shared SVG loaded; spacing, focus and both header positions checked
+clipboard sizing: work 2560x1528, DPR 1; initial height 639; width drag -> 580x639, saved 580x0
+clipboard sizing: height drag -> 699, saved 699, expected 699
+saved F:/电脑便捷工具/build/clipboard-logo-20261102/light/clipboard-sizing-preview.png 1191x719
+saved F:/电脑便捷工具/build/clipboard-logo-20261102/light/clipboard-sizing-flipped.png 630x1146
+saved F:/电脑便捷工具/build/clipboard-logo-20261102/light/clipboard-sizing-default.png 480x639
+clipboard native edge/corner sizing, persistence, preview and temporary fitting: isolated production QML
+saved F:/电脑便捷工具/build/clipboard-logo-20261102/light/clipboard-resized.png 510x669
+saved F:/电脑便捷工具/build/clipboard-logo-20261102/light/clipboard-send-menu.png 273x350
+clipboard browse hotkey: production QML cycles and wraps without a release paste
+clipboard double-click preview and list resizing: real QML, temporary history; native clipboard untouched
+0 warning(s)

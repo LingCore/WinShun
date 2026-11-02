@@ -70,7 +70,6 @@ qt_add_executable(WinShun WIN32
     TriggerJournal.cpp TriggerJournal.h
     TrayMenu.cpp TrayMenu.h
     WebSuggester.cpp WebSuggester.h
-    WindowLogo.cpp WindowLogo.h
     platform/ClipboardWatcher.cpp platform/ClipboardWatcher.h
     platform/ComWorker.cpp platform/ComWorker.h
     platform/Credentials.cpp platform/Credentials.h
@@ -96,7 +95,6 @@ qt_add_executable(WinShun WIN32
     platform/NetworkNotifier.cpp platform/NetworkNotifier.h
     platform/NumberKeys.cpp platform/NumberKeys.h
     platform/Paster.cpp platform/Paster.h
-    platform/PeekingLogo.cpp platform/PeekingLogo.h
     platform/PointerWatch.cpp platform/PointerWatch.h
     platform/PreviewHost.cpp platform/PreviewHost.h
     platform/Shell.cpp platform/Shell.h platform/ShellDialogs.cpp
@@ -346,6 +344,10 @@ set_source_files_properties("${PROJECT_SOURCE_DIR}/resources/ocr/package.json" P
 qt_add_resources(WinShun "ocr_component"
     PREFIX /components
     FILES "${PROJECT_SOURCE_DIR}/resources/ocr/package.json")
+qt_add_resources(WinShun "branding"
+    PREFIX /branding
+    BASE "${PROJECT_SOURCE_DIR}/resources"
+    FILES "${PROJECT_SOURCE_DIR}/resources/logo.svg")
 # The icons: Phosphor Icons 2.1.2 (MIT), Regular and Fill (see Phosphor.h).
 qt_add_resources(WinShun "phosphor"
     PREFIX /fonts

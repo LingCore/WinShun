@@ -1,0 +1,23 @@
+********* Start testing of DialogBarVisibilityTest *********
+Config: Using QtTest library 6.12.0, Qt 6.12.0 (x86_64-little_endian-llp64 shared (dynamic) release build; by MSVC 2022), windows 11
+PASS   : DialogBarVisibilityTest::initTestCase()
+PASS   : DialogBarVisibilityTest::placementUsesAvailableRowsAndHysteresis()
+PASS   : DialogBarVisibilityTest::fixedBelowKeepsTheBarWhileItFits()
+PASS   : DialogBarVisibilityTest::companionTakesOnlyItsDialogsBand()
+PASS   : DialogBarVisibilityTest::foreignThreadDialogNeverOwnsTheBar()
+PASS   : DialogBarVisibilityTest::shownCompanionStaysAboveDialogAndPinnedOwner()
+PASS   : DialogBarVisibilityTest::companionStacksDirectlyAboveItsDialog()
+PASS   : DialogBarVisibilityTest::shownCompanionComesUpOverWindowsBehind()
+PASS   : DialogBarVisibilityTest::menuStaysAboveTheBar(bar by a normal dialog)
+PASS   : DialogBarVisibilityTest::menuStaysAboveTheBar(bar by a pinned dialog)
+PASS   : DialogBarVisibilityTest::elevatedDialogKeepsCompanionOnTop()
+PASS   : DialogBarVisibilityTest::frameWaitsForGuiReveal()
+PASS   : DialogBarVisibilityTest::previousFrameCannotRevealNewOpening()
+PASS   : DialogBarVisibilityTest::frameInFlightCannotRevealNewOpening()
+PASS   : DialogBarVisibilityTest::externalHideKeepsNativeWindow(Qt hide)
+PASS   : DialogBarVisibilityTest::externalHideKeepsNativeWindow(Qt close)
+PASS   : DialogBarVisibilityTest::nativeHiddenWindowRecoversWithoutActivation()
+PASS   : DialogBarVisibilityTest::timeoutShowsWindowWithoutFrameSignal()
+PASS   : DialogBarVisibilityTest::cleanupTestCase()
+Totals: 19 passed, 0 failed, 0 skipped, 0 blacklisted, 1588ms
+********* Finished testing of DialogBarVisibilityTest *********

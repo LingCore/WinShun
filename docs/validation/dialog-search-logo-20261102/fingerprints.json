@@ -1,0 +1,70 @@
+{
+  "checks": {
+    "light-100-zh/dialog-navigation.json": {
+      "passed": true,
+      "checks": 26
+    },
+    "light-100-zh/search-navigation.json": {
+      "passed": true,
+      "checks": 118
+    },
+    "light-100-zh/search-logo.json": {
+      "passed": true,
+      "checks": 45
+    },
+    "dark-150-en/dialog-navigation.json": {
+      "passed": true,
+      "checks": 26
+    },
+    "dark-150-en/search-navigation.json": {
+      "passed": true,
+      "checks": 118
+    },
+    "dark-150-en/search-logo.json": {
+      "passed": true,
+      "checks": 45
+    }
+  },
+  "files": {
+    "src/app/qml/DialogBarWindow.qml": {
+      "sha256": "e5acd0cabe0a48745d8b886a3c453164cc329e617bcb3b21ec6cc39105ec095f",
+      "size": 24716
+    },
+    "src/app/qml/AppearancePreview.qml": {
+      "sha256": "be220ac2c48f91f89296d884ff0e10d8d1c81fd91f53eb10c07a03404bdf1476",
+      "size": 2232
+    },
+    "src/app/platform/TaskbarSearchBox.cpp": {
+      "sha256": "568034e1572bcf05945473d2be4d3c7df07264c1e74a67477a62c1318677d7ed",
+      "size": 97039
+    },
+    "src/app/Preview.cpp": {
+      "sha256": "7c6f8e6375c966cf97d59a5e92b270c6e6c5e859dd499e51956e8582d764d021",
+      "size": 296087
+    },
+    "resources/logo.svg": {
+      "sha256": "c1bd5f0e43acd32d92cc0ec2d2195fbaa5c38d115b2c9ea29450e20ed308caed",
+      "size": 3984
+    },
+    "resources/app.rc": {
+      "sha256": "15f0ae849faf70bea28d83f6269fb87d2df15f0025deae9486cab5b5e1632a57",
+      "size": 1023
+    },
+    "resources/WinShunSearch.rc": {
+      "sha256": "0457607a01ce77e511828ec3a72a90c67745eb8f597fcc9c1ea72b3f239db7a4",
+      "size": 1013
+    },
+    "build/dialog-logo-20261102/WinShun.exe": {
+      "sha256": "98ca8ff5a35da29ce835dae0f4b1ac12c6c8056ebcedfdcd3c0c78aa5d4a6971",
+      "size": 24186368
+    },
+    "build/dialog-logo-20261102/WinShunSearch.exe": {
+      "sha256": "c9907f83a9b434c341ade6f8c155daadc5cd2353205a5ffacc58c9caf9461485",
+      "size": 296960
+    },
+    "build/dialog-logo-20261102/imageformats/qsvg.dll": {
+      "sha256": "e8f2c80df916b363738d6f6dc112ac4555a42278347e78c0b609a55d1adf70cb",
+      "size": 40248
+    }
+  }
+}

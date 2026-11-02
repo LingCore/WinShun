@@ -541,13 +541,19 @@ Item {
                 page.frame.addControl(eyeButton)
             }
 
-            Glyph {
+            Image {
                 id: icon
+                objectName: "clipboardSearchLogo"
                 anchors.left: parent.left
                 anchors.leftMargin: 20
                 anchors.verticalCenter: parent.verticalCenter
-                glyph: "" // Paste
-                size: Theme.searchIconSize
+                width: Theme.searchIconSize
+                height: width
+                source: "qrc:/branding/logo.svg"
+                sourceSize.width: width
+                sourceSize.height: height
+                smooth: false
+                Accessible.ignored: true
             }
 
             TextInput {

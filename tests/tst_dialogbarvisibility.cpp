@@ -72,7 +72,7 @@ void prepare(QQuickWindow& window)
 }
 
 // Deliver a frame from a render thread while the GUI is busy placing the
-// bar. Its queued reveal must not yet let place() show the separate logo.
+// bar. A queued reveal must not mark another opening as ready.
 void swapFrame(QQuickWindow& window)
 {
     std::thread render([&window] {
@@ -368,7 +368,7 @@ private slots:
         ::ShowWindow(pinned, SW_SHOWNOACTIVATE);
         ::ShowWindow(owner, SW_SHOWNOACTIVATE);
         ws::DialogBarVisibility visibility;
-        visibility.setWindow(&companion, [](bool) {});
+        visibility.setWindow(&companion);
         const HWND foreground = ::GetForegroundWindow();
         visibility.show(owner);
         QTRY_VERIFY(visibility.isRevealed());
@@ -460,7 +460,7 @@ private slots:
         ::SetWindowPos(owner, HWND_TOP, 0, 0, 0, 0, kZOrderOnly);
         ::SetWindowPos(bar, HWND_BOTTOM, 0, 0, 0, 0, kZOrderOnly);
         ws::DialogBarVisibility visibility;
-        visibility.setWindow(&companion, [](bool) {});
+        visibility.setWindow(&companion);
         const HWND foreground = ::GetForegroundWindow();
         visibility.show(owner);
         QTRY_VERIFY(visibility.isRevealed());
@@ -588,27 +588,23 @@ private slots:
     {
         QQuickWindow window;
         prepare(window);
-        bool logo = false;
         ws::DialogBarVisibility visibility;
-        visibility.setWindow(&window, [&](bool shown) { logo = shown; });
+        visibility.setWindow(&window);
         visibility.show();
         QVERIFY(window.isVisible());
         QVERIFY(cloaked(window) != 0);
         swapFrame(window);
         QVERIFY(!visibility.isRevealed());
-        QVERIFY(!logo);
         QTRY_VERIFY(visibility.isRevealed());
         QCOMPARE(cloaked(window), DWORD(0));
-        QVERIFY(logo);
     }
 
     void previousFrameCannotRevealNewOpening()
     {
         QQuickWindow window;
         prepare(window);
-        bool logo = false;
         ws::DialogBarVisibility visibility;
-        visibility.setWindow(&window, [&](bool shown) { logo = shown; });
+        visibility.setWindow(&window);
         visibility.show();
         swapFrame(window);
         visibility.hide();
@@ -616,10 +612,8 @@ private slots:
         // Deliver only the old posted frame, without drawing a new one.
         QCoreApplication::sendPostedEvents(nullptr, QEvent::MetaCall);
         QVERIFY(!visibility.isRevealed());
-        QVERIFY(!logo);
         QVERIFY(cloaked(window) != 0);
         QTRY_VERIFY(visibility.isRevealed());
-        QVERIFY(logo);
         QCOMPARE(cloaked(window), DWORD(0));
     }
 
@@ -627,9 +621,8 @@ private slots:
     {
         QQuickWindow window;
         prepare(window);
-        bool logo = false;
         ws::DialogBarVisibility visibility;
-        visibility.setWindow(&window, [&](bool shown) { logo = shown; });
+        visibility.setWindow(&window);
         visibility.show();
         std::thread synchronize([&window] { emit window.afterSynchronizing(); });
         synchronize.join();
@@ -639,41 +632,38 @@ private slots:
         present.join();
         QCoreApplication::sendPostedEvents(nullptr, QEvent::MetaCall);
         QVERIFY(!visibility.isRevealed());
-        QVERIFY(!logo);
         QVERIFY(cloaked(window) != 0);
         QTRY_VERIFY(visibility.isRevealed());
-        QVERIFY(logo);
     }
 
-    void externalHideHidesLogo_data()
+    void externalHideKeepsNativeWindow_data()
     {
         QTest::addColumn<bool>("close");
         QTest::newRow("Qt hide") << false;
         QTest::newRow("Qt close") << true;
     }
 
-    void externalHideHidesLogo()
+    void externalHideKeepsNativeWindow()
     {
         QFETCH(bool, close);
         QQuickWindow window;
         prepare(window);
-        bool logo = false;
         ws::DialogBarVisibility visibility;
-        visibility.setWindow(&window, [&](bool shown) { logo = shown; });
+        visibility.setWindow(&window);
         visibility.show();
-        QTRY_VERIFY(logo);
+        QTRY_VERIFY(visibility.isRevealed());
         const HWND beforeClose = handle(window);
         if (close)
             window.close(); // close/Alt+F4, outside DialogBar::hideWindow
         else
             window.hide();
         QVERIFY(!window.isVisible());
-        QVERIFY(!logo);
+        QVERIFY(!visibility.isRevealed());
         visibility.hide(); // cleanup must also work after Qt already hid it
-        QVERIFY(!logo);
+        QVERIFY(!visibility.isRevealed());
         QVERIFY(::IsWindow(beforeClose));
         visibility.show();
-        QTRY_VERIFY(logo);
+        QTRY_VERIFY(visibility.isRevealed());
         QCOMPARE(handle(window), beforeClose); // DialogJump's companion HWND stays valid
     }
 
@@ -681,11 +671,10 @@ private slots:
     {
         QQuickWindow window;
         prepare(window);
-        bool logo = false;
         ws::DialogBarVisibility visibility;
-        visibility.setWindow(&window, [&](bool shown) { logo = shown; });
+        visibility.setWindow(&window);
         visibility.show();
-        QTRY_VERIFY(logo);
+        QTRY_VERIFY(visibility.isRevealed());
         ::ShowWindow(handle(window), SW_HIDE);
         QVERIFY(window.isVisible());
         QVERIFY(!::IsWindowVisible(handle(window)));
@@ -693,24 +682,23 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(::IsWindowVisible(handle(window)), 1500);
         QTRY_VERIFY(visibility.isRevealed());
         QVERIFY(::GetForegroundWindow() != handle(window));
-        QVERIFY(logo);
+        QVERIFY(visibility.isRevealed());
     }
 
     void timeoutShowsWindowWithoutFrameSignal()
     {
         QQuickWindow window;
         prepare(window);
-        bool logo = false;
         ws::DialogBarVisibility visibility;
-        visibility.setWindow(&window, [&](bool shown) { logo = shown; });
+        visibility.setWindow(&window);
         const QSignalBlocker noFrameSignal(&window);
         visibility.show();
-        QTRY_VERIFY_WITH_TIMEOUT(logo, 1500);
+        QTRY_VERIFY_WITH_TIMEOUT(visibility.isRevealed(), 1500);
         QVERIFY(visibility.isRevealed());
         QVERIFY(::IsWindowVisible(handle(window)));
         QCOMPARE(cloaked(window), DWORD(0));
         visibility.hide();
-        QVERIFY(!logo);
+        QVERIFY(!visibility.isRevealed());
         QVERIFY(!window.isVisible());
     }
 };
