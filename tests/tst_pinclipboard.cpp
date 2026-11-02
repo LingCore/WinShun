@@ -9,6 +9,7 @@
 #include <QFile>
 #include <QGuiApplication>
 #include <QImageReader>
+#include <QJsonDocument>
 #include <QMimeData>
 #include <QProcess>
 #include <QProcessEnvironment>
@@ -19,11 +20,53 @@
 #include <atomic>
 #include <cstring>
 #include <future>
+#include <thread>
+#include <vector>
 
 using namespace Qt::StringLiterals;
 using namespace std::chrono_literals;
 using namespace ws;
 namespace pin = ws::captureplugin::pinimage;
+
+namespace {
+QByteArray unicodeBytes(const QString& text)
+{
+    return QByteArray(reinterpret_cast<const char*>(text.utf16()), (text.size() + 1) * sizeof(char16_t));
+}
+
+struct DelayedText {
+    QByteArray bytes;
+    int rendered = 0;
+    int unexpectedRenders = 0;
+
+    static LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
+    {
+        if (message == WM_NCCREATE)
+            ::SetWindowLongPtrW(window, GWLP_USERDATA,
+                reinterpret_cast<LONG_PTR>(reinterpret_cast<CREATESTRUCTW*>(lParam)->lpCreateParams));
+        auto* offer = reinterpret_cast<DelayedText*>(::GetWindowLongPtrW(window, GWLP_USERDATA));
+        if (message == WM_RENDERFORMAT && wParam != CF_UNICODETEXT && offer) {
+            ++offer->unexpectedRenders;
+            return 0;
+        }
+        if (message == WM_RENDERFORMAT && wParam == CF_UNICODETEXT && offer) {
+            ++offer->rendered;
+            const HGLOBAL memory = ::GlobalAlloc(GMEM_MOVEABLE, static_cast<SIZE_T>(offer->bytes.size()));
+            if (memory) {
+                if (void* data = ::GlobalLock(memory)) {
+                    std::memcpy(data, offer->bytes.constData(), static_cast<std::size_t>(offer->bytes.size()));
+                    ::GlobalUnlock(memory);
+                    if (::SetClipboardData(CF_UNICODETEXT, memory))
+                        return 0;
+                }
+                ::GlobalFree(memory);
+            }
+            return 0;
+        }
+        return ::DefWindowProcW(window, message, wParam, lParam);
+    }
+};
+} // namespace
 
 class TestPinClipboard : public QObject {
     Q_OBJECT
@@ -44,7 +87,7 @@ class TestPinClipboard : public QObject {
         return std::async(std::launch::async, [this, last] { return pin::readClipboard(last, m_placement); }).get();
     }
 
-    void writeFormats(std::initializer_list<std::pair<UINT, QByteArray>> formats)
+    void writeFormats(const std::vector<std::pair<UINT, QByteArray>>& formats)
     {
         const HWND window = ::CreateWindowExW(0, L"STATIC", L"", 0, 0, 0, 0, 0,
             HWND_MESSAGE, nullptr, ::GetModuleHandleW(nullptr), nullptr);
@@ -103,6 +146,200 @@ class TestPinClipboard : public QObject {
 
 private slots:
     void initTestCase() { m_image.fill(QColor(220, 60, 30)); }
+
+    void watcherDiagnosticsContainMetadataWithoutPayloads()
+    {
+        const QString text = u"隐私测试：2026年11月2日 / PRIVATE_CLIPBOARD_CONTENT"_s;
+        std::promise<ClipCapture> promise;
+        auto captured = promise.get_future();
+        ClipboardWatcher watcher({}, {.captured = [&](ClipCapture capture) { promise.set_value(std::move(capture)); }});
+        watcher.setOptions({true, false});
+        QTRY_VERIFY_WITH_TIMEOUT(watcher.listening(), 2000);
+        QVERIFY(watcher.diagnosticStatus()[u"recent_reads"_s].toArray().isEmpty());
+        const UINT privateFormat = ::RegisterClipboardFormatW(L"PRIVATE_FORMAT_NAME_DO_NOT_EXPORT");
+        writeFormats({{CF_UNICODETEXT, unicodeBytes(text)}, {privateFormat, QByteArray("PRIVATE_FORMAT_PAYLOAD")}});
+        const DWORD sequence = ::GetClipboardSequenceNumber();
+        QTRY_VERIFY_WITH_TIMEOUT(captured.wait_for(0ms) == std::future_status::ready, 3000);
+        const ClipCapture capture = captured.get();
+        QCOMPARE(capture.text, text);
+        QTRY_COMPARE_WITH_TIMEOUT(watcher.diagnosticStatus()[u"read_attempts"_s].toInteger(), 1, 3000);
+        const auto status = watcher.diagnosticStatus();
+        const auto event = status[u"recent_reads"_s].toArray().last().toObject();
+        QCOMPARE(event[u"outcome"_s].toString(), u"captured"_s);
+        QCOMPARE(event[u"sequence_before"_s].toInteger(), sequence);
+        QCOMPARE(event[u"sequence_opened"_s].toInteger(), sequence);
+        QCOMPARE(event[u"sequence_after"_s].toInteger(), sequence);
+        QCOMPARE(event[u"owner_pid_read"_s].toInteger(), 0);
+        QVERIFY(event[u"foreground_fallback"_s].toBool()); // writeFormats destroys its owner window
+        const auto unicode = event[u"unicode_text"_s].toObject();
+        QCOMPARE(unicode[u"utf16_units"_s].toInteger(), text.size());
+        QVERIFY(unicode[u"bytes"_s].toInteger() >= unicodeBytes(text).size());
+        QVERIFY(unicode[u"terminated"_s].toBool());
+        QVERIFY(!unicode[u"odd_bytes"_s].toBool());
+        bool sawUnicode = false, sawPrivate = false;
+        for (const auto format : event[u"formats"_s].toArray()) {
+            const auto item = format.toObject();
+            if (item[u"id"_s].toInt() == CF_UNICODETEXT)
+                sawUnicode = item[u"name"_s].toString() == u"CF_UNICODETEXT"_s;
+            if (item[u"id"_s].toInt() == static_cast<int>(privateFormat)) {
+                sawPrivate = true;
+                QVERIFY(!item.contains(u"name"_s));
+            }
+        }
+        QVERIFY(sawUnicode && sawPrivate);
+        const QByteArray json = QJsonDocument(status).toJson();
+        QVERIFY(!json.contains(text.toUtf8()));
+        QVERIFY(!json.contains("PRIVATE_"));
+        QVERIFY(!json.contains(capture.hash.toHex()));
+        QVERIFY(!json.contains(capture.hash.toBase64()));
+        QVERIFY(!json.contains("hash"));
+        QVERIFY(!json.contains(QCoreApplication::applicationDirPath().toUtf8()));
+    }
+
+    void watcherDiagnosticsRespectPrivacyFlags_data()
+    {
+        QTest::addColumn<QString>("format");
+        QTest::addColumn<QString>("outcome");
+        QTest::newRow("excluded-monitoring") << u"ExcludeClipboardContentFromMonitorProcessing"_s << u"monitoring-excluded"_s;
+        QTest::newRow("viewer-ignore") << u"Clipboard Viewer Ignore"_s << u"monitoring-excluded"_s;
+        QTest::newRow("excluded-history") << u"CanIncludeInClipboardHistory"_s << u"history-excluded"_s;
+    }
+
+    void watcherDiagnosticsRespectPrivacyFlags()
+    {
+        QFETCH(QString, format);
+        QFETCH(QString, outcome);
+        std::atomic<int> captures = 0;
+        ClipboardWatcher watcher({}, {.captured = [&](ClipCapture) { ++captures; }});
+        watcher.setOptions({true, false});
+        QTRY_VERIFY_WITH_TIMEOUT(watcher.listening(), 2000);
+        writeFormats({{CF_UNICODETEXT, unicodeBytes(u"PRIVATE_PASSWORD_DO_NOT_READ"_s)},
+            {::RegisterClipboardFormatW(qUtf16Printable(format)), QByteArray(sizeof(DWORD), '\0')}});
+        QTRY_COMPARE_WITH_TIMEOUT(watcher.diagnosticStatus()[u"read_attempts"_s].toInteger(), 1, 3000);
+        const auto event = watcher.diagnosticStatus()[u"recent_reads"_s].toArray().last().toObject();
+        QCOMPARE(event[u"outcome"_s].toString(), outcome);
+        QVERIFY(!event.contains(u"unicode_text"_s));
+        QVERIFY(!event.contains(u"formats"_s));
+        QVERIFY(!event.contains(u"source_exe"_s));
+        QCOMPARE(captures.load(), 0);
+    }
+
+    void watcherDiagnosticsBoundRecordsAndFormatsDuringConcurrentSnapshots()
+    {
+        ClipboardWatcher watcher({}, {});
+        watcher.setOptions({true, false});
+        QTRY_VERIFY_WITH_TIMEOUT(watcher.listening(), 2000);
+        std::atomic<bool> valid = true;
+        std::jthread snapshots([&](std::stop_token stop) {
+            while (!stop.stop_requested()) {
+                const auto status = watcher.diagnosticStatus();
+                const auto recent = status[u"recent_reads"_s].toArray();
+                if (recent.size() > status[u"max_read_records"_s].toInt())
+                    valid = false;
+                for (const auto event : recent) {
+                    if (event.toObject()[u"formats"_s].toArray().size() > status[u"max_formats_per_read"_s].toInt())
+                        valid = false;
+                }
+                std::this_thread::sleep_for(1ms);
+            }
+        });
+        const int limit = watcher.diagnosticStatus()[u"max_read_records"_s].toInt();
+        for (int i = 1; i <= limit + 3; ++i) {
+            writeFormats({{CF_UNICODETEXT, unicodeBytes(QString::number(i))}});
+            QTRY_COMPARE_WITH_TIMEOUT(watcher.diagnosticStatus()[u"read_attempts"_s].toInteger(), i, 3000);
+        }
+        QCOMPARE(watcher.diagnosticStatus()[u"recent_reads"_s].toArray().size(), limit);
+        std::vector<std::pair<UINT, QByteArray>> offers;
+        const int formatLimit = watcher.diagnosticStatus()[u"max_formats_per_read"_s].toInt();
+        for (int i = 0; i < formatLimit + 4; ++i) {
+            const QString name = u"PRIVATE_FORMAT_%1"_s.arg(i);
+            offers.emplace_back(::RegisterClipboardFormatW(qUtf16Printable(name)), QByteArray("private"));
+        }
+        writeFormats(offers);
+        QTRY_COMPARE_WITH_TIMEOUT(watcher.diagnosticStatus()[u"read_attempts"_s].toInteger(), limit + 4, 3000);
+        const auto status = watcher.diagnosticStatus();
+        const auto recent = status[u"recent_reads"_s].toArray();
+        QCOMPARE(recent.size(), limit);
+        QCOMPARE(recent.last().toObject()[u"formats"_s].toArray().size(), formatLimit);
+        QVERIFY(recent.last().toObject()[u"formats_truncated"_s].toBool());
+        QVERIFY(!QJsonDocument(status).toJson().contains("PRIVATE_FORMAT"));
+        snapshots.request_stop();
+        snapshots.join();
+        QVERIFY(valid.load());
+    }
+
+    void watcherDiagnosticsReportBusyClipboardAndRecover()
+    {
+        ClipboardWatcher watcher({}, {});
+        watcher.setOptions({true, false});
+        QTRY_VERIFY_WITH_TIMEOUT(watcher.listening(), 2000);
+        writeFormats({{CF_UNICODETEXT, unicodeBytes(u"recover after lock"_s)}});
+        const HWND window = ::CreateWindowExW(0, L"STATIC", L"", 0, 0, 0, 0, 0,
+            HWND_MESSAGE, nullptr, ::GetModuleHandleW(nullptr), nullptr);
+        QVERIFY(window);
+        const auto destroy = qScopeGuard([window] { ::DestroyWindow(window); });
+        QVERIFY(::OpenClipboard(window));
+        bool open = true;
+        const auto close = qScopeGuard([&] {
+            if (open)
+                ::CloseClipboard();
+        });
+        QTRY_VERIFY_WITH_TIMEOUT(!watcher.diagnosticStatus()[u"recent_reads"_s].toArray().isEmpty(), 3000);
+        const auto failed = watcher.diagnosticStatus()[u"recent_reads"_s].toArray().last().toObject();
+        QCOMPARE(failed[u"outcome"_s].toString(), u"open-failed"_s);
+        QCOMPARE(failed[u"open_attempts"_s].toInt(), 10);
+        QVERIFY(failed[u"last_open_error"_s].toInteger() != ERROR_SUCCESS);
+        QCOMPARE(failed[u"blocker_pid"_s].toInteger(), ::GetCurrentProcessId());
+        QCOMPARE(failed[u"blocker_exe"_s].toString(), QFileInfo(QCoreApplication::applicationFilePath()).fileName());
+        QVERIFY(!failed.contains(u"unicode_text"_s));
+        ::CloseClipboard();
+        open = false;
+        QTRY_COMPARE_WITH_TIMEOUT(watcher.diagnosticStatus()[u"recent_reads"_s].toArray().last().toObject()[u"outcome"_s].toString(), u"captured"_s, 3000);
+        QVERIFY(watcher.diagnosticStatus()[u"recent_reads"_s].toArray().last().toObject()[u"retry"_s].toInt() >= 1);
+    }
+
+    void watcherCapturesDelayedUnicodeWithoutExtraRendering()
+    {
+        DelayedText offer {unicodeBytes(u"延迟渲染：2026年11月2日"_s)};
+        const HINSTANCE instance = ::GetModuleHandleW(nullptr);
+        WNDCLASSW type {};
+        type.lpfnWndProc = &DelayedText::windowProc;
+        type.hInstance = instance;
+        type.lpszClassName = L"WinShun.TestDelayedText";
+        QVERIFY(::RegisterClassW(&type));
+        const auto unregister = qScopeGuard([&] { ::UnregisterClassW(type.lpszClassName, instance); });
+        const HWND window = ::CreateWindowExW(0, type.lpszClassName, L"", 0, 0, 0, 0, 0,
+            HWND_MESSAGE, nullptr, instance, &offer);
+        QVERIFY(window);
+        const auto destroy = qScopeGuard([window] { ::DestroyWindow(window); });
+        std::promise<ClipCapture> promise;
+        auto captured = promise.get_future();
+        std::atomic<bool> fulfilled = false;
+        ClipboardWatcher watcher({}, {.captured = [&](ClipCapture capture) {
+            if (!fulfilled.exchange(true))
+                promise.set_value(std::move(capture));
+        }});
+        watcher.setOptions({true, false});
+        QTRY_VERIFY_WITH_TIMEOUT(watcher.listening(), 2000);
+        QVERIFY(::OpenClipboard(window));
+        QVERIFY(::EmptyClipboard());
+        ::SetClipboardData(CF_UNICODETEXT, nullptr);
+        ::SetClipboardData(::RegisterClipboardFormatW(L"PRIVATE_DELAYED_FORMAT_DO_NOT_READ"), nullptr);
+        ::CloseClipboard();
+        QTRY_VERIFY_WITH_TIMEOUT(captured.wait_for(0ms) == std::future_status::ready, 3000);
+        QCOMPARE(captured.get().text, u"延迟渲染：2026年11月2日"_s);
+        QCOMPARE(offer.rendered, 1);
+        QCOMPARE(offer.unexpectedRenders, 0);
+        QTRY_VERIFY_WITH_TIMEOUT(watcher.diagnosticStatus()[u"read_attempts"_s].toInteger() >= 1, 3000);
+        const auto event = watcher.diagnosticStatus()[u"recent_reads"_s].toArray().first().toObject();
+        QCOMPARE(event[u"outcome"_s].toString(), u"captured"_s);
+        // Windows does not guarantee a sequence change for every rendering.
+        // Record the observed values without imposing a discard policy.
+        QVERIFY(event[u"sequence_opened"_s].toInteger() > 0);
+        QVERIFY(event[u"sequence_after"_s].toInteger() > 0);
+        QCOMPARE(event[u"owner_pid_read"_s].toInteger(), ::GetCurrentProcessId());
+        QVERIFY(!event[u"foreground_fallback"_s].toBool());
+    }
 
     void bitmapBeforeAnyCapture()
     {

@@ -3151,6 +3151,8 @@ void App::showSettings()
             }
             context[u"chosen_folders"_s] = chosen;
             context[u"display"_s] = diagnostics::display(m_renderer, SystemTheme::backdropAvailable()); // fonts: this thread's
+            if (m_clipWatcher)
+                context[u"clipboard"_s] = m_clipWatcher->diagnosticStatus();
             const QString dataFolder = Settings::dataDir();
             const QString serviceFolder = QDir(QString::fromStdWString(win32::expandEnvironment(L"%ProgramData%")))
                                               .filePath(u"WinShun"_s);

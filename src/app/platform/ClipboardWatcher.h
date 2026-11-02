@@ -4,6 +4,8 @@
 #include "ClipStore.h"
 
 #include <QImage>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QString>
 #include <QStringList>
 
@@ -85,6 +87,9 @@ public:
     void setOptions(Options options); // any thread
     bool running() const noexcept { return m_running.load(); }
     bool listening() const noexcept { return m_listening.load(); }
+    // Bounded in-memory metadata, copied into an explicitly exported diagnostic
+    // bundle. No clipboard payload, content hash, paths or arbitrary format names.
+    QJsonObject diagnosticStatus() const; // any thread, never opens the clipboard
     // Puts `data` on the clipboard, on the watcher's thread; `done` runs
     // there with whether that worked.
     void write(ClipWrite data, std::function<void(bool)> done);
@@ -94,7 +99,7 @@ private:
     static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     void read();
     bool writeNow(const ClipWrite& data);
-    bool openClipboard();
+    bool openClipboard(DWORD* lastError = nullptr, int* attempts = nullptr);
     void startWorker(bool captureInitial); // m_lifecycleMutex held
     void configureWatching(HWND window); // on the worker
     bool recordingEnabled();
@@ -103,6 +108,9 @@ private:
     Callbacks m_callbacks;
     std::mutex m_mutex;
     Options m_options; // guarded by m_mutex
+    mutable std::mutex m_diagnosticsMutex;
+    QJsonArray m_recentReads; // guarded by m_diagnosticsMutex
+    qint64 m_readAttempts = 0; // guarded by m_diagnosticsMutex
     std::mutex m_lifecycleMutex; // starting, posting writes, and retiring an idle writer
     std::atomic<HWND> m_window {nullptr};
     std::atomic<bool> m_running {false};

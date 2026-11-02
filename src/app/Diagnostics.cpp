@@ -66,7 +66,7 @@ Exported exportArchive(Log& log, const QString& dataFolder, const QString& servi
     context[u"environment"_s] = environment();
     context[u"unavailable_logs"_s] = unavailable;
     context[u"privacy"_s]
-        = u"Runtime logs may contain file paths. No settings file, credentials, clipboard, search history or document text is included."_s;
+        = u"Runtime logs may contain file paths. Clipboard diagnostics contain bounded read metadata only, without payloads or content hashes. No settings file, credentials, clipboard content, search history or document text is included."_s;
     files.push_back({u"summary.json"_s, QJsonDocument(context).toJson(QJsonDocument::Indented)});
 
     mz_zip_archive zip {};

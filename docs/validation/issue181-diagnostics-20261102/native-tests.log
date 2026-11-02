@@ -1,0 +1,76 @@
+Start testing: Nov 02 21:09 ??????
+----------------------------------------------------------
+68/120 Testing: tst_diagnostics
+68/120 Test: tst_diagnostics
+Command: "F:/电脑便捷工具/build/release/tst_diagnostics.exe"
+Directory: F:/电脑便捷工具/build/release/tests
+"tst_diagnostics" start time: Nov 02 21:09 ??????
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   6.40 sec
+----------------------------------------------------------
+Test Passed.
+"tst_diagnostics" end time: Nov 02 21:09 ??????
+"tst_diagnostics" time elapsed: 00:00:06
+----------------------------------------------------------
+
+70/120 Testing: tst_cliplifecycle
+70/120 Test: tst_cliplifecycle
+Command: "F:/电脑便捷工具/build/release/tst_cliplifecycle.exe" "-o" "-,txt"
+Directory: F:/电脑便捷工具/build/release/tests
+"tst_cliplifecycle" start time: Nov 02 21:09 ??????
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   5.35 sec
+----------------------------------------------------------
+Test Passed.
+"tst_cliplifecycle" end time: Nov 02 21:09 ??????
+"tst_cliplifecycle" time elapsed: 00:00:05
+----------------------------------------------------------
+
+119/120 Testing: tst_pinclipboard
+119/120 Test: tst_pinclipboard
+Command: "F:/电脑便捷工具/build/release/tst_pinclipboard.exe" "-o" "-,txt"
+Directory: F:/电脑便捷工具/build/release/tests
+"tst_pinclipboard" start time: Nov 02 21:09 ??????
+Output:
+----------------------------------------------------------
+********* Start testing of TestPinClipboard *********
+Config: Using QtTest library 6.12.0, Qt 6.12.0 (x86_64-little_endian-llp64 shared (dynamic) release build; by MSVC 2022), windows 11
+PASS   : TestPinClipboard::initTestCase()
+PASS   : TestPinClipboard::watcherDiagnosticsContainMetadataWithoutPayloads()
+PASS   : TestPinClipboard::watcherDiagnosticsRespectPrivacyFlags(excluded-monitoring)
+PASS   : TestPinClipboard::watcherDiagnosticsRespectPrivacyFlags(viewer-ignore)
+PASS   : TestPinClipboard::watcherDiagnosticsRespectPrivacyFlags(excluded-history)
+PASS   : TestPinClipboard::watcherDiagnosticsBoundRecordsAndFormatsDuringConcurrentSnapshots()
+PASS   : TestPinClipboard::watcherDiagnosticsReportBusyClipboardAndRecover()
+PASS   : TestPinClipboard::watcherCapturesDelayedUnicodeWithoutExtraRendering()
+PASS   : TestPinClipboard::bitmapBeforeAnyCapture()
+PASS   : TestPinClipboard::nativeBitmaps(CF_DIB)
+PASS   : TestPinClipboard::nativeBitmaps(CF_DIBV5)
+PASS   : TestPinClipboard::damagedV5FallsBackToDib()
+PASS   : TestPinClipboard::asynchronousOwnCopyRetainsTheCapture()
+PASS   : TestPinClipboard::externalCopyReplacesOwnImage()
+PASS   : TestPinClipboard::qtFallbackCarriesTheSameOrigin()
+PASS   : TestPinClipboard::copiedFilesUseTheProductionWicDecoder()
+PASS   : TestPinClipboard::malformedPictureDoesNotPretendToBeAnEmptyClipboard()
+PASS   : TestPinClipboard::busyClipboardIsReported()
+PASS   : TestPinClipboard::placement(1)
+PASS   : TestPinClipboard::placement(1.25)
+PASS   : TestPinClipboard::placement(1.5)
+PASS   : TestPinClipboard::placement(1.75)
+PASS   : TestPinClipboard::placement(2)
+PASS   : TestPinClipboard::cleanupTestCase()
+Totals: 24 passed, 0 failed, 0 skipped, 0 blacklisted, 3407ms
+********* Finished testing of TestPinClipboard *********
+<end of output>
+Test time =   3.53 sec
+----------------------------------------------------------
+Test Passed.
+"tst_pinclipboard" end time: Nov 02 21:09 ??????
+"tst_pinclipboard" time elapsed: 00:00:03
+----------------------------------------------------------
+
+End testing: Nov 02 21:09 ??????

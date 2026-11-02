@@ -172,7 +172,9 @@ private slots:
         for (const QString& name : {u"WinShun.ini"_s, u"clipboard/clipboard.db"_s, u"history.txt"_s, u"mcp.log"_s,
                  u"plugins.log"_s, u"content/document.texts"_s})
             write(data + u'/' + name, "PRIVATE_DATA_DO_NOT_EXPORT");
-        const auto first = diagnostics::exportArchive(log, data, service, {{u"run"_s, 1}});
+        const QJsonObject clipboard {{u"max_read_records"_s, 16},
+            {u"recent_reads"_s, QJsonArray {QJsonObject {{u"outcome"_s, u"captured"_s}, {u"sequence_after"_s, 42}}}}};
+        const auto first = diagnostics::exportArchive(log, data, service, {{u"run"_s, 1}, {u"clipboard"_s, clipboard}});
         QVERIFY2(first.error.isEmpty(), qPrintable(first.error));
         auto files = unpack(first.path);
         QCOMPARE(files.size(), 4);
@@ -180,6 +182,9 @@ private slots:
         QVERIFY(files.contains(u"events.jsonl"_s));
         QVERIFY(files.contains(u"app/WinShun.log"_s));
         QVERIFY(files.contains(u"service/service.log"_s));
+        const auto summary = QJsonDocument::fromJson(files[u"summary.json"_s]).object();
+        QCOMPARE(summary[u"clipboard"_s].toObject(), clipboard);
+        QVERIFY(summary[u"privacy"_s].toString().contains(u"without payloads or content hashes"));
         for (const auto& bytes : files)
             QVERIFY(!bytes.contains("PRIVATE_DATA_DO_NOT_EXPORT"));
         const auto second = diagnostics::exportArchive(log, data, service, {{u"run"_s, 2}});

@@ -4,6 +4,7 @@
 #include "ClipImage.h"
 
 #include <QDebug>
+#include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
 #include <QImage>
@@ -36,6 +37,8 @@ constexpr qsizetype kFormattedUpTo = 1024 * 1024; // characters: longer text kee
 constexpr SIZE_T kMaxFormatBytes = 16 * 1024 * 1024;
 constexpr qsizetype kMaxObjectBytes = 32 * 1024 * 1024; // an equation's or an object's formats all together
 constexpr SIZE_T kMaxImageBytes = 256 * 1024 * 1024;
+constexpr qsizetype kMaxReadRecords = 16;
+constexpr qsizetype kMaxDiagnosticFormats = 64;
 
 struct Formats {
     UINT html = ::RegisterClipboardFormatW(L"HTML Format");
@@ -59,6 +62,56 @@ const Formats& formats()
 {
     static const Formats f;
     return f;
+}
+
+DWORD windowProcess(HWND window)
+{
+    DWORD pid = 0;
+    if (window)
+        ::GetWindowThreadProcessId(window, &pid);
+    return pid;
+}
+
+QString executableName(const std::wstring& path)
+{
+    return QFileInfo(QString::fromStdWString(path)).fileName().left(260);
+}
+
+// Enumerating formats does not request delayed rendering. Arbitrary registered
+// names can carry private data, so only names from this fixed list are exported.
+QJsonArray diagnosticFormats(const Formats& f, bool& truncated, DWORD& error)
+{
+    const std::pair<UINT, const char*> known[] {
+        {CF_TEXT, "CF_TEXT"}, {CF_OEMTEXT, "CF_OEMTEXT"}, {CF_UNICODETEXT, "CF_UNICODETEXT"},
+        {CF_LOCALE, "CF_LOCALE"}, {CF_HDROP, "CF_HDROP"}, {CF_BITMAP, "CF_BITMAP"},
+        {CF_DIB, "CF_DIB"}, {CF_DIBV5, "CF_DIBV5"}, {CF_ENHMETAFILE, "CF_ENHMETAFILE"},
+        {f.html, "HTML Format"}, {f.rtf, "Rich Text Format"}, {f.png, "PNG"}, {f.pngMime, "image/png"},
+        {f.dropEffect, "Preferred DropEffect"}, {f.mathMl, "MathML"}, {f.objectDescriptor, "Object Descriptor"},
+        {f.embeddedObject, "Embedded Object"}, {f.embedSource, "Embed Source"},
+        {f.excludeMonitoring, "ExcludeClipboardContentFromMonitorProcessing"},
+        {f.canIncludeInHistory, "CanIncludeInClipboardHistory"}, {f.viewerIgnore, "Clipboard Viewer Ignore"},
+        {f.ours, "WinShun.ClipboardEntry"},
+    };
+    QJsonArray result;
+    UINT format = 0;
+    for (;;) {
+        ::SetLastError(ERROR_SUCCESS);
+        format = ::EnumClipboardFormats(format);
+        if (!format) {
+            error = ::GetLastError();
+            break;
+        }
+        if (result.size() == kMaxDiagnosticFormats) {
+            truncated = true;
+            break;
+        }
+        QJsonObject item {{u"id"_s, static_cast<int>(format)}};
+        const auto name = std::ranges::find(known, format, &std::pair<UINT, const char*>::first);
+        if (name != std::end(known))
+            item[u"name"_s] = QString::fromLatin1(name->second);
+        result.append(item);
+    }
+    return result;
 }
 
 class ClipboardLock {
@@ -105,16 +158,29 @@ QByteArray withoutTrailingNuls(QByteArray bytes)
     return bytes;
 }
 
-QString readText(qint64* tooBig)
+QString readText(qint64* tooBig, QJsonObject& metadata)
 {
+    ::SetLastError(ERROR_SUCCESS);
     const HANDLE handle = ::GetClipboardData(CF_UNICODETEXT);
-    if (!handle)
+    if (!handle) {
+        metadata[u"data_error"_s] = static_cast<qint64>(::GetLastError());
         return {};
+    }
+    ::SetLastError(ERROR_SUCCESS);
     const SIZE_T size = ::GlobalSize(handle);
+    metadata[u"bytes"_s] = static_cast<qint64>(size);
+    if (!size)
+        metadata[u"size_error"_s] = static_cast<qint64>(::GetLastError());
+    ::SetLastError(ERROR_SUCCESS);
     const auto* data = static_cast<const wchar_t*>(::GlobalLock(handle));
-    if (!data)
+    if (!data) {
+        metadata[u"lock_error"_s] = static_cast<qint64>(::GetLastError());
         return {};
+    }
     const std::size_t length = ::wcsnlen(data, size / sizeof(wchar_t));
+    metadata[u"utf16_units"_s] = static_cast<qint64>(length);
+    metadata[u"terminated"_s] = length < size / sizeof(wchar_t);
+    metadata[u"odd_bytes"_s] = size % sizeof(wchar_t) != 0;
     QString text;
     if (static_cast<qsizetype>(length) > kMaxText)
         *tooBig = static_cast<qint64>(length * sizeof(wchar_t));
@@ -481,13 +547,25 @@ LRESULT CALLBACK ClipboardWatcher::wndProc(HWND hwnd, UINT msg, WPARAM wParam, L
     }
 }
 
-bool ClipboardWatcher::openClipboard()
+QJsonObject ClipboardWatcher::diagnosticStatus() const
+{
+    const std::lock_guard lock(m_diagnosticsMutex);
+    return {{u"running"_s, running()}, {u"listening"_s, listening()},
+        {u"read_attempts"_s, m_readAttempts}, {u"max_read_records"_s, kMaxReadRecords},
+        {u"max_formats_per_read"_s, kMaxDiagnosticFormats}, {u"recent_reads"_s, m_recentReads}};
+}
+
+bool ClipboardWatcher::openClipboard(DWORD* lastError, int* attempts)
 {
     // Another program may hold it for a moment (it is writing it, or reading
     // it too, like us).
     for (int attempt = 0; attempt < 10; ++attempt) {
+        if (attempts)
+            *attempts = attempt + 1;
         if (::OpenClipboard(m_window.load()))
             return true;
+        if (lastError)
+            *lastError = ::GetLastError();
         ::Sleep(attempt < 3 ? 10 : 30);
     }
     return false;
@@ -531,6 +609,20 @@ void ClipboardWatcher::read()
     const DWORD sequence = ::GetClipboardSequenceNumber();
     if (sequence == m_lastSequence)
         return;
+    QJsonObject diagnostic {{u"at"_s, QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
+        {u"sequence_before"_s, static_cast<qint64>(sequence)}, {u"retry"_s, m_readRetries},
+        {u"outcome"_s, u"empty-or-unreadable"_s}};
+    // Publish even on an early return. Snapshots take only this small mutex;
+    // exporting never waits for clipboard rendering or image decoding.
+    const auto publish = qScopeGuard([&] {
+        if (!diagnostic.contains(u"sequence_after"_s))
+            diagnostic[u"sequence_after"_s] = static_cast<qint64>(::GetClipboardSequenceNumber());
+        const std::lock_guard lock(m_diagnosticsMutex);
+        ++m_readAttempts;
+        if (m_recentReads.size() == kMaxReadRecords)
+            m_recentReads.removeFirst();
+        m_recentReads.append(std::move(diagnostic));
+    });
     Options options;
     {
         const std::lock_guard lock(m_mutex);
@@ -546,9 +638,20 @@ void ClipboardWatcher::read()
         && (!options.record || ::IsClipboardFormatAvailable(f.excludeMonitoring)
             || ::IsClipboardFormatAvailable(f.viewerIgnore))) {
         m_lastSequence = sequence;
+        diagnostic[u"outcome"_s] = options.record ? u"monitoring-excluded"_s : u"disabled"_s;
         return;
     }
-    if (!openClipboard()) { // held by another program for long: try again in a moment
+    diagnostic[u"owner_pid_before"_s] = static_cast<qint64>(windowProcess(::GetClipboardOwner()));
+    DWORD openError = ERROR_SUCCESS;
+    int openAttempts = 0;
+    const bool opened = openClipboard(&openError, &openAttempts);
+    diagnostic[u"open_attempts"_s] = openAttempts;
+    diagnostic[u"last_open_error"_s] = static_cast<qint64>(openError);
+    if (!opened) { // held by another program for long: try again in a moment
+        diagnostic[u"outcome"_s] = u"open-failed"_s;
+        const DWORD blocker = windowProcess(::GetOpenClipboardWindow());
+        diagnostic[u"blocker_pid"_s] = static_cast<qint64>(blocker);
+        diagnostic[u"blocker_exe"_s] = executableName(processPath(blocker));
         if (++m_readRetries <= 10)
             ::SetTimer(m_window.load(), kReadTimer, 200, nullptr);
         return;
@@ -557,8 +660,22 @@ void ClipboardWatcher::read()
     m_lastSequence = sequence;
     const bool initial = sequence == m_startSequence;
     ClipboardLock lock(true);
+    diagnostic[u"sequence_opened"_s] = static_cast<qint64>(::GetClipboardSequenceNumber());
+    diagnostic[u"initial"_s] = initial;
+    // Take the end sample before closing: later image conversion and callbacks
+    // must not be mistaken for changes *during* a clipboard read. A changed
+    // sequence can also be legitimate delayed rendering; do not discard it.
+    const auto finishReading = [&] {
+        if (!diagnostic.contains(u"sequence_after"_s)) {
+            diagnostic[u"sequence_after"_s] = static_cast<qint64>(::GetClipboardSequenceNumber());
+            diagnostic[u"owner_pid_after"_s] = static_cast<qint64>(windowProcess(::GetClipboardOwner()));
+        }
+    };
+    const auto finished = qScopeGuard(finishReading);
     if (ours) {
         const QByteArray id = readBytes(f.ours, 64);
+        diagnostic[u"outcome"_s] = u"own-write"_s;
+        finishReading();
         lock.close();
         qint64 value = 0;
         if (id.size() >= static_cast<qsizetype>(sizeof value))
@@ -572,25 +689,39 @@ void ClipboardWatcher::read()
         DWORD value = 1;
         if (flag.size() >= static_cast<qsizetype>(sizeof value))
             std::memcpy(&value, flag.constData(), sizeof value);
-        if (value == 0)
+        if (value == 0) {
+            diagnostic[u"outcome"_s] = u"history-excluded"_s;
             return;
+        }
     }
+
+    bool formatsTruncated = false;
+    DWORD formatsError = ERROR_SUCCESS;
+    diagnostic[u"formats"_s] = diagnosticFormats(f, formatsTruncated, formatsError);
+    diagnostic[u"formats_truncated"_s] = formatsTruncated;
+    diagnostic[u"formats_error"_s] = static_cast<qint64>(formatsError);
 
     // Where it came from: the clipboard's owner, else the program in front.
     DWORD pid = 0;
     if (const HWND owner = ::GetClipboardOwner())
         ::GetWindowThreadProcessId(owner, &pid);
+    diagnostic[u"owner_pid_read"_s] = static_cast<qint64>(pid);
+    diagnostic[u"foreground_fallback"_s] = pid == 0;
     if (pid == 0) {
         if (const HWND foreground = ::GetForegroundWindow())
             ::GetWindowThreadProcessId(foreground, &pid);
     }
     const std::wstring path = processPath(pid);
+    diagnostic[u"source_pid"_s] = static_cast<qint64>(pid);
+    diagnostic[u"source_exe"_s] = executableName(path);
     if (!path.empty() && !options.excludedApps.isEmpty()) {
         QString exe = QFileInfo(QString::fromStdWString(path)).fileName().toLower();
         if (exe.endsWith(u".exe"))
             exe.chop(4);
-        if (options.excludedApps.contains(exe))
+        if (options.excludedApps.contains(exe)) {
+            diagnostic[u"outcome"_s] = u"app-excluded"_s;
             return;
+        }
     }
 
     ClipCapture capture;
@@ -605,7 +736,9 @@ void ClipboardWatcher::read()
         }
     }
     if (capture.text.isEmpty() && ::IsClipboardFormatAvailable(CF_UNICODETEXT)) {
-        QString text = readText(&tooBig);
+        QJsonObject metadata;
+        QString text = readText(&tooBig, metadata);
+        diagnostic[u"unicode_text"_s] = metadata;
         if (!text.trimmed().isEmpty()) {
             capture.kind = kindOfText(text);
             capture.text = std::move(text);
@@ -643,6 +776,7 @@ void ClipboardWatcher::read()
         if (dib.isEmpty() && ::IsClipboardFormatAvailable(CF_DIB))
             dib = readBytes(CF_DIB, remaining, &imageTooBig);
     }
+    finishReading();
     lock.close(); // the slow part (pictures) without holding the clipboard
 
     DecodedClipImage picture;
@@ -678,6 +812,7 @@ void ClipboardWatcher::read()
         }
     }
     if (tooBig > 0 || (picture.firstFrame.isNull() && (imageTooBig || picture.tooBig))) {
+        diagnostic[u"outcome"_s] = u"too-big"_s;
         if (m_callbacks.skippedTooBig)
             m_callbacks.skippedTooBig(tooBig);
         return;
@@ -698,6 +833,7 @@ void ClipboardWatcher::read()
     capture.sourcePath = QString::fromStdWString(path);
     capture.source = programName(path);
     capture.initial = initial;
+    diagnostic[u"outcome"_s] = u"captured"_s;
     if (m_callbacks.captured)
         m_callbacks.captured(std::move(capture));
 }
