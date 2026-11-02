@@ -224,6 +224,34 @@ private slots:
         QCOMPARE(captures.load(), 0);
     }
 
+    void watcherDiagnosticsKeepOnlyTheOutcomeForExcludedApps()
+    {
+        // The writer's window is gone by the time it is read: the source is the program in front.
+        DWORD pid = 0;
+        if (const HWND foreground = ::GetForegroundWindow())
+            ::GetWindowThreadProcessId(foreground, &pid);
+        wchar_t path[MAX_PATH] = {};
+        DWORD size = MAX_PATH;
+        const HANDLE process = pid ? ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid) : nullptr;
+        const bool known = process && ::QueryFullProcessImageNameW(process, 0, path, &size);
+        if (process)
+            ::CloseHandle(process);
+        if (!known)
+            QSKIP("no program in front to exclude");
+        std::atomic<int> captures = 0;
+        ClipboardWatcher watcher({}, {.captured = [&](ClipCapture) { ++captures; }});
+        watcher.setOptions({true, false, {QFileInfo(QString::fromWCharArray(path)).fileName()}});
+        QTRY_VERIFY_WITH_TIMEOUT(watcher.listening(), 2000);
+        writeFormats({{CF_UNICODETEXT, unicodeBytes(u"EXCLUDED_APP_TEXT"_s)}});
+        QTRY_COMPARE_WITH_TIMEOUT(watcher.diagnosticStatus()[u"read_attempts"_s].toInteger(), 1, 3000);
+        const auto event = watcher.diagnosticStatus()[u"recent_reads"_s].toArray().last().toObject();
+        QCOMPARE(event[u"outcome"_s].toString(), u"app-excluded"_s);
+        QVERIFY(!event.contains(u"formats"_s));
+        QVERIFY(!event.contains(u"source_exe"_s));
+        QVERIFY(!event.contains(u"source_pid"_s));
+        QCOMPARE(captures.load(), 0);
+    }
+
     void watcherDiagnosticsBoundRecordsAndFormatsDuringConcurrentSnapshots()
     {
         ClipboardWatcher watcher({}, {});
@@ -292,6 +320,12 @@ private slots:
         QCOMPARE(failed[u"blocker_pid"_s].toInteger(), ::GetCurrentProcessId());
         QCOMPARE(failed[u"blocker_exe"_s].toString(), QFileInfo(QCoreApplication::applicationFilePath()).fileName());
         QVERIFY(!failed.contains(u"unicode_text"_s));
+        // The retries of the one held clipboard stay one record.
+        QTRY_VERIFY_WITH_TIMEOUT(watcher.diagnosticStatus()[u"recent_reads"_s].toArray().last().toObject()[u"read_tries"_s].toInt() >= 2, 3000);
+        int failedRecords = 0;
+        for (const auto record : watcher.diagnosticStatus()[u"recent_reads"_s].toArray())
+            failedRecords += record.toObject()[u"outcome"_s].toString() == u"open-failed"_s;
+        QCOMPARE(failedRecords, 1);
         ::CloseClipboard();
         open = false;
         QTRY_COMPARE_WITH_TIMEOUT(watcher.diagnosticStatus()[u"recent_reads"_s].toArray().last().toObject()[u"outcome"_s].toString(), u"captured"_s, 3000);

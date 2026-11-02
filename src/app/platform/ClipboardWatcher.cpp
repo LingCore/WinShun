@@ -619,6 +619,16 @@ void ClipboardWatcher::read()
             diagnostic[u"sequence_after"_s] = static_cast<qint64>(::GetClipboardSequenceNumber());
         const std::lock_guard lock(m_diagnosticsMutex);
         ++m_readAttempts;
+        // The retries of one held clipboard are one record, counted, so they
+        // do not push the other reads out of the ring.
+        if (!m_recentReads.isEmpty() && diagnostic.value(u"outcome"_s) == u"open-failed"_s) {
+            const QJsonObject last = m_recentReads.last().toObject();
+            if (last.value(u"outcome"_s) == u"open-failed"_s
+                && last.value(u"sequence_before"_s) == diagnostic.value(u"sequence_before"_s)) {
+                diagnostic[u"read_tries"_s] = last.value(u"read_tries"_s).toInt(1) + 1;
+                m_recentReads.removeLast();
+            }
+        }
         if (m_recentReads.size() == kMaxReadRecords)
             m_recentReads.removeFirst();
         m_recentReads.append(std::move(diagnostic));
@@ -712,17 +722,19 @@ void ClipboardWatcher::read()
             ::GetWindowThreadProcessId(foreground, &pid);
     }
     const std::wstring path = processPath(pid);
-    diagnostic[u"source_pid"_s] = static_cast<qint64>(pid);
-    diagnostic[u"source_exe"_s] = executableName(path);
     if (!path.empty() && !options.excludedApps.isEmpty()) {
         QString exe = QFileInfo(QString::fromStdWString(path)).fileName().toLower();
         if (exe.endsWith(u".exe"))
             exe.chop(4);
-        if (options.excludedApps.contains(exe)) {
+        if (options.excludedApps.contains(exe)) { // the outcome only: not what or whose it was
+            for (const QString key : {u"formats"_s, u"formats_truncated"_s, u"formats_error"_s, u"owner_pid_read"_s, u"foreground_fallback"_s})
+                diagnostic.remove(key);
             diagnostic[u"outcome"_s] = u"app-excluded"_s;
             return;
         }
     }
+    diagnostic[u"source_pid"_s] = static_cast<qint64>(pid);
+    diagnostic[u"source_exe"_s] = executableName(path);
 
     ClipCapture capture;
     QList<QByteArray> encodedImages;
