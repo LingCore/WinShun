@@ -1,0 +1,6 @@
+Warning: src/app/qml/DropMenu.qml:101:50: Member "naturalWidth" not found on type "QQuickItem" [missing-property]
+                            w = Math.max(w, item.naturalWidth)
+                                                 ^^^^^^^^^^^^
+Warning: src/app/qml/ListWheelScroll.qml:286:51: Member "visible" not found on type "QObject" [missing-property]
+        function onVisibleChanged() { if (!target.visible) scroll.cancel() }
+                                                  ^^^^^^^

@@ -1,0 +1,61 @@
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR) 
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR) 
+-- Configuring done (2.5s)
+-- Generating done (2.7s)
+-- Build files have been written to: F:/电脑便捷工具/build/release
+[0/1] Re-running CMake...
+[1/59] Automatic MOC and UIC for target wsocrsearch
+[2/57] Running AUTOMOC file extraction for target wsocrsearch
+[3/56] Automatic MOC and UIC for target WinShunOcrSearchApp
+[4/56] Running rcc for resource ocr_search_windowmask
+[5/56] Generating .rcc/qmlcache/WinShunOcrSearchApp_qmlcache_loader.cpp
+[6/56] Running AUTOMOC file extraction for target WinShunOcrSearchApp
+[7/56] Running moc --collect-json for target WinShunOcrSearchApp
+[8/56] Automatic QML type registration for target WinShunOcrSearchApp
+[9/56] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_WindowEdge_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_WindowEdge_qml.cpp.aotstats
+[10/56] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_HoverTip_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_HoverTip_qml.cpp.aotstats
+[11/56] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_Theme_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_Theme_qml.cpp.aotstats
+[12/56] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_DropMenu_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_DropMenu_qml.cpp.aotstats
+[13/56] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_Glyph_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_Glyph_qml.cpp.aotstats
+[14/56] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_TitleBar_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_TitleBar_qml.cpp.aotstats
+[15/56] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_FlatButton_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_FlatButton_qml.cpp.aotstats
+[16/56] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_ToggleSwitch_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_ToggleSwitch_qml.cpp.aotstats
+[17/56] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_InputBox_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_InputBox_qml.cpp.aotstats
+[18/56] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_ListScrollBar_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_ListScrollBar_qml.cpp.aotstats
+[19/56] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_ListWheelScroll_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_ListWheelScroll_qml.cpp.aotstats
+[20/56] Generating .rcc/qmlcache/WinShunOcrSearchApp__app_qml_ScrollPixelAlignment_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp__app_qml_ScrollPixelAlignment_qml.cpp.aotstats
+[21/56] Generating .rcc/qmlcache/WinShunOcrSearchApp_qml_OcrSearchWindow_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp_qml_OcrSearchWindow_qml.cpp.aotstats
+[22/56] Generating .rcc/qmlcache/WinShunOcrSearchApp_qml_OcrLibraryPane_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp_qml_OcrLibraryPane_qml.cpp.aotstats
+[23/56] Generating .rcc/qmlcache/WinShunOcrSearchApp_qml_OcrFolderRow_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp_qml_OcrFolderRow_qml.cpp.aotstats
+[24/56] Generating .rcc/qmlcache/WinShunOcrSearchApp_qml_OcrIssuesPopup_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp_qml_OcrIssuesPopup_qml.cpp.aotstats
+[25/56] Generating .rcc/qmlcache/WinShunOcrSearchApp_qml_OcrResultRow_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp_qml_OcrResultRow_qml.cpp.aotstats
+[26/56] Generating .rcc/qmlcache/WinShunOcrSearchApp_qml_OcrSearchPane_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp_qml_OcrSearchPane_qml.cpp.aotstats
+[27/56] Generating .rcc/qmlcache/WinShunOcrSearchApp_qml_OcrPreviewPane_qml.cpp, .rcc/qmlcache/WinShunOcrSearchApp_qml_OcrPreviewPane_qml.cpp.aotstats
+[28/56] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp_qmlcache_loader.cpp.obj
+[29/56] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\__\app\WindowMask.cpp.obj
+[30/56] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\winshunocrsearchapp_qmltyperegistrations.cpp.obj
+[31/56] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\WinShunOcrSearchApp_autogen\mocs_compilation.cpp.obj
+[32/56] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_Theme_qml.cpp.obj
+[33/56] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_WindowEdge_qml.cpp.obj
+[34/56] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_HoverTip_qml.cpp.obj
+[35/56] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_DropMenu_qml.cpp.obj
+[36/56] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_Glyph_qml.cpp.obj
+[37/56] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_TitleBar_qml.cpp.obj
+[38/56] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_ToggleSwitch_qml.cpp.obj
+[39/56] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_FlatButton_qml.cpp.obj
+[40/56] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_InputBox_qml.cpp.obj
+[41/56] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_ListScrollBar_qml.cpp.obj
+[42/56] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_ListWheelScroll_qml.cpp.obj
+[43/56] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp__app_qml_ScrollPixelAlignment_qml.cpp.obj
+[44/56] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp_qml_OcrSearchWindow_qml.cpp.obj
+[45/56] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp_qml_OcrLibraryPane_qml.cpp.obj
+[46/56] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp_qml_OcrFolderRow_qml.cpp.obj
+[47/56] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp_qml_OcrIssuesPopup_qml.cpp.obj
+[48/56] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.qt\rcc\qrc_ocr_search_windowmask.cpp.obj
+[49/56] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp_qml_OcrSearchPane_qml.cpp.obj
+[50/56] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp_qml_OcrResultRow_qml.cpp.obj
+[51/56] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp_qml_OcrPreviewPane_qml.cpp.obj
+[52/56] Linking CXX shared library WinShunOcrSearchApp.dll
+[53/56] Automatic MOC and UIC for target tst_ocrsearch
+[54/55] Building CXX object tests\CMakeFiles\tst_ocrsearch.dir\tst_ocrsearch.cpp.obj
+[55/55] Linking CXX executable tst_ocrsearch.exe

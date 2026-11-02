@@ -1,0 +1,26 @@
+********* Start testing of TestShellLaunch *********
+Config: Using QtTest library 6.12.0, Qt 6.12.0 (x86_64-little_endian-llp64 shared (dynamic) release build; by MSVC 2022), windows 11
+PASS   : TestShellLaunch::initTestCase()
+PASS   : TestShellLaunch::nativePickerNavigation()
+PASS   : TestShellLaunch::oneCommanderLookalike()
+PASS   : TestShellLaunch::oneCommanderSessionTabs()
+SKIP   : TestShellLaunch::oneCommanderOpenTabs() Set WINSHUN_ONECOMMANDER_TABS_ROOT to an isolated prepared tab fixture
+F:\电脑便捷工具\tests\tst_shelllaunch.cpp(197) : failure location
+SKIP   : TestShellLaunch::oneCommanderNavigation(production-STA) Set WINSHUN_ONECOMMANDER_TEST_WINDOW to an isolated OneCommander main window
+F:\电脑便捷工具\tests\tst_shelllaunch.cpp(224) : failure location
+SKIP   : TestShellLaunch::oneCommanderNavigation(MTA) Set WINSHUN_ONECOMMANDER_TEST_WINDOW to an isolated OneCommander main window
+F:\电脑便捷工具\tests\tst_shelllaunch.cpp(224) : failure location
+SKIP   : TestShellLaunch::opusTypingNavigation() Set WINSHUN_OPUS_TEST_FOLDER to an isolated folder and focus its Opus file display
+F:\电脑便捷工具\tests\tst_shelllaunch.cpp(288) : failure location
+FAIL!  : TestShellLaunch::customCommand(program, via Explorer) 'QFile::copy(qtBin.filePath(dll), temporary.filePath(dll))' returned FALSE. ()
+F:\电脑便捷工具\tests\tst_shelllaunch.cpp(354) : failure location
+FAIL!  : TestShellLaunch::customCommand(console program, not via Explorer) 'QFile::copy(qtBin.filePath(dll), temporary.filePath(dll))' returned FALSE. ()
+F:\电脑便捷工具\tests\tst_shelllaunch.cpp(354) : failure location
+PASS   : TestShellLaunch::appsFolderConsole(explicit working directory)
+PASS   : TestShellLaunch::appsFolderConsole(default target directory)
+PASS   : TestShellLaunch::capturesWhatAProgramWrites()
+PASS   : TestShellLaunch::getsTheUsersEnvironmentAsTheRegistryHasIt()
+PASS   : TestShellLaunch::endsAProgramThatTakesTooLong()
+PASS   : TestShellLaunch::cleanupTestCase()
+Totals: 10 passed, 2 failed, 4 skipped, 0 blacklisted, 5362ms
+********* Finished testing of TestShellLaunch *********

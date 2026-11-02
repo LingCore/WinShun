@@ -1,0 +1,12 @@
+{
+  "package": "winshun.ocr-search-1.0.0.wsplugin",
+  "bytes": 882012,
+  "sha256": "6affdcab677fc6984308fd5cdc2b2230358de228aa737affc13457beb23e59d3",
+  "files": {
+    "licenses/miniz.txt": "6f20fa7672b00e2e975c291df737cf227addf3ad32e36fef3fe0f416e4664d3d",
+    "plugin.json": "2425c68195b5b50052a9e1a9238d3c552d053ab253ddd400c79a2a12ae4ba8fb",
+    "README.md": "73706a351fd84c0abb7ad8b8e0884edfef35ed90a1cd79badb69f32aef484a10",
+    "WinShunOcrSearch.exe": "c6a15dc37fd1eca2fd854c1ba47d678d2a361f6cfcad4aac11659bfd6a5bb28e",
+    "WinShunOcrSearchApp.dll": "37fd8cba412b3209359e9dc5d7a2ded733197354f7a802deac2ddc193ae4d247"
+  }
+}

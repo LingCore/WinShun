@@ -1,0 +1,34 @@
+Test project F:/电脑便捷工具/build/release
+      Start  21: tst_shelllaunch
+ 1/12 Test  #21: tst_shelllaunch ..................***Failed    5.32 sec
+
+      Start  38: tst_recording
+ 2/12 Test  #38: tst_recording ....................   Passed   15.70 sec
+      Start  39: tst_keycaps
+ 3/12 Test  #39: tst_keycaps ......................   Passed    0.08 sec
+      Start  44: tst_captureui_1
+ 4/12 Test  #44: tst_captureui_1 ..................   Passed    0.13 sec
+      Start  46: tst_captureui_1.25
+ 5/12 Test  #46: tst_captureui_1.25 ...............   Passed    0.17 sec
+      Start  48: tst_captureui_1.5
+ 6/12 Test  #48: tst_captureui_1.5 ................   Passed    0.20 sec
+      Start  50: tst_captureui_1.75
+ 7/12 Test  #50: tst_captureui_1.75 ...............   Passed    0.20 sec
+      Start  52: tst_captureui_2
+ 8/12 Test  #52: tst_captureui_2 ..................   Passed    0.21 sec
+      Start  58: tst_editor
+ 9/12 Test  #58: tst_editor .......................   Passed    0.50 sec
+      Start  59: tst_annotmodel
+10/12 Test  #59: tst_annotmodel ...................   Passed    3.45 sec
+      Start  66: tst_clipimage
+11/12 Test  #66: tst_clipimage ....................   Passed    1.05 sec
+      Start 109: tst_plugin
+12/12 Test #109: tst_plugin .......................   Passed   43.11 sec
+
+92% tests passed, 1 tests failed out of 12
+
+Total Test time (real) =  70.11 sec
+
+The following tests FAILED:
+	 21 - tst_shelllaunch (Failed)
+Errors while running CTest

@@ -57,6 +57,7 @@ add_subdirectory(src/bookmarks-plugin)
 add_subdirectory(src/translate-plugin)
 add_subdirectory(src/capture)
 add_subdirectory(src/capture-plugin)
+add_subdirectory(src/ocr-search-plugin)
 add_subdirectory(src/app)
 add_subdirectory(src/stub)
 add_subdirectory(src/service)
@@ -90,6 +91,10 @@ install(DIRECTORY "${bundled_plugins_dir}/" DESTINATION plugins)
 # <id>-<version>.wsplugin for the library, wsbench --semantic reads them there.
 set(library_plugins_dir "${CMAKE_BINARY_DIR}/library-plugins")
 add_custom_target(library_plugins ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/ocr-search-plugin/package" "${library_plugins_dir}/winshun.ocr-search"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunOcrSearch>" "${library_plugins_dir}/winshun.ocr-search/WinShunOcrSearch.exe"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunOcrSearchApp>" "${library_plugins_dir}/winshun.ocr-search/WinShunOcrSearchApp.dll"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/miniz/LICENSE" "${library_plugins_dir}/winshun.ocr-search/licenses/miniz.txt"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/semantic-plugin/package" "${library_plugins_dir}/winshun.semantic"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunSemantic>" "${library_plugins_dir}/winshun.semantic/WinShunSemantic.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/localsend-plugin/package" "${library_plugins_dir}/winshun.localsend"
@@ -106,7 +111,7 @@ add_custom_target(library_plugins ALL
     # What is compiled into WinShunCaptureApp.dll; Qt, ONNX Runtime and the OCR models are Win顺's.
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/zxing-cpp/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/zxing-cpp.txt"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/miniz/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/miniz.txt"
-    DEPENDS WinShunSemantic WinShunLocalSend WinShunBreak WinShunBookmarks WinShunTranslate WinShunCapture WinShunCaptureApp
+    DEPENDS WinShunSemantic WinShunLocalSend WinShunBreak WinShunBookmarks WinShunTranslate WinShunCapture WinShunCaptureApp WinShunOcrSearch WinShunOcrSearchApp
     COMMENT "Staging the library plugins into ${library_plugins_dir}"
     VERBATIM)
 

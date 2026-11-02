@@ -400,6 +400,11 @@ Command readCommand(const QJsonValue& value, int index, bool hasRuntime, Check& 
     c.description = textOr(o.value(u"description"_s), where + u".description"_s, check);
     c.hint = textOr(o.value(u"hint"_s), where + u".hint"_s, check);
     c.icon = stringField(o, u"icon"_s, where, check);
+    if (o.contains(u"contentSearch"_s) && !o.value(u"contentSearch"_s).isBool())
+        check.fail(where + u".contentSearch 要是布尔值"_s);
+    c.contentSearch = o.value(u"contentSearch"_s).toBool();
+    if (c.contentSearch && !hasRuntime)
+        check.fail(where + u".contentSearch 需要插件进程"_s);
     if (c.icon.endsWith(u".svg"_s, Qt::CaseInsensitive))
         check.fail(where + u".icon 是 SVG：Win顺 不带 SVG 支持，请用 PNG"_s);
     if (o.contains(u"keyword"_s)) {

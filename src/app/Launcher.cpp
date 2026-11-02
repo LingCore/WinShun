@@ -2237,6 +2237,23 @@ void Launcher::onContentResults(quint64 id, const SearchResults& results)
     }
     SearchResults fresh;
     for (const SearchResult& r : results) {
+        bool provided = false;
+        if (m_plugins) {
+            for (int i = 0; i < m_results.count(); ++i) {
+                const auto* existing = m_results.at(i);
+                if (!existing->isPlugin() || existing->plugin->openTarget.compare(r.path, Qt::CaseInsensitive) != 0)
+                    continue;
+                const auto* entry = m_plugins->catalog().find(existing->plugin->pluginId);
+                const auto* command
+                    = entry && entry->manifest ? entry->manifest->command(existing->plugin->commandId) : nullptr;
+                if (command && command->contentSearch) {
+                    provided = true;
+                    break;
+                }
+            }
+        }
+        if (provided)
+            continue;
         const int row = m_results.indexOf(r.path);
         if (row < 0)
             fresh.append(r);
@@ -2541,12 +2558,20 @@ QString Launcher::panelKey() const
 
 QJsonObject Launcher::pluginFilters() const
 {
+    QJsonObject content {{u"contentEnabled"_s, m_scope == Content || (m_contentEnabled && !contentNeedle().isEmpty())},
+        {u"contentWords"_s, m_scope == Content ? searchText() : contentNeedle()},
+        {u"excludedExtensions"_s, QJsonArray::fromStringList(m_excludedTypes)},
+        {u"excludedFileNames"_s, QJsonArray::fromStringList(m_excludedFileNames)}};
+    if (m_scope == Content) {
+        content.insert(u"folder"_s, m_contentFolder.isEmpty() ? m_folderFilter : m_contentFolder);
+        content.insert(u"contentPick"_s, m_contentPick.folder);
+    }
     if (!m_panel)
-        return {};
+        return content;
     const EntryFilter filter = panelFilter();
     const auto time = [](FileTime value) -> QJsonValue {
         return value == 0 ? QJsonValue(QJsonValue::Null)
-            : QJsonValue(QDateTime::fromSecsSinceEpoch(value, QTimeZone::UTC).toString(Qt::ISODate));
+                          : QJsonValue(QDateTime::fromSecsSinceEpoch(value, QTimeZone::UTC).toString(Qt::ISODate));
     };
     QJsonArray kinds;
     if (m_fileType >= 0 && m_fileType < m_fileTypes.size()) {
@@ -2558,11 +2583,14 @@ QJsonObject Launcher::pluginFilters() const
         kinds.append(u"files"_s);
     else if (m_scope == Content)
         kinds.append(u"content"_s);
-    return {{u"modifiedFrom"_s, time(filter.after)}, {u"modifiedTo"_s, time(filter.before)},
+    QJsonObject result {{u"modifiedFrom"_s, time(filter.after)}, {u"modifiedTo"_s, time(filter.before)},
         {u"minSize"_s, filter.minSize == 0 ? QJsonValue(QJsonValue::Null) : QJsonValue(qint64(unpackSize(filter.minSize)))},
         {u"maxSize"_s, filter.maxSize == kUnknownSize ? QJsonValue(QJsonValue::Null) : QJsonValue(qint64(unpackSize(filter.maxSize)))},
         {u"kinds"_s, kinds}, {u"extensions"_s, QJsonArray::fromStringList(fileExtensions())},
         {u"folder"_s, m_folderFilter}};
+    for (auto it = content.begin(); it != content.end(); ++it)
+        result.insert(it.key(), it.value());
+    return result;
 }
 
 void Launcher::sortShownPanel(const QString& currentPath)
@@ -5331,7 +5359,8 @@ void Launcher::startPluginQuery(const QString& text, std::optional<KeywordMode> 
     const auto scope = keyword && m_panel ? ws::Scope::All : static_cast<ws::Scope>(m_scope);
     const std::uint64_t id = ++m_pluginQueryId;
     m_keyword = std::move(keyword);
-    m_merge->begin(id, text, m_keyword ? m_keyword->pluginId : QString(), m_keyword ? m_keyword->commandId : QString());
+    m_merge->begin(id, text, m_keyword ? m_keyword->pluginId : QString(), m_keyword ? m_keyword->commandId : QString(),
+        m_scope == Content);
     m_pluginTimer.start();
     m_plugins->query(text, scope, id, pluginFilters()); // zero-code ones answer within
     if (!m_pluginPending.isEmpty())

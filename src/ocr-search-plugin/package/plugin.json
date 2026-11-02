@@ -1,0 +1,27 @@
+{
+  "manifest": 1,
+  "id": "winshun.ocr-search",
+  "name": {"zh": "图片文字搜索", "en": "Image text search"},
+  "version": "1.0.0",
+  "description": {"zh": "离线搜索图片、扫描与混排 PDF、Word / PPT / Excel 内嵌图片中的文字。选择目录，后台增量识别，预览高亮命中位置。", "en": "Offline search in images, scanned and mixed PDFs, and images embedded in Word, PowerPoint and Excel. Incremental indexing with highlighted previews."},
+  "author": "LingCore",
+  "homepage": "https://github.com/LingCore/WinShun",
+  "license": "MIT",
+  "minWinShun": "0.17.0",
+  "runtime": {"mode": "resident", "program": "WinShunOcrSearch.exe", "start": "eager", "idleExitSec": 0, "sandbox": "strict", "timeoutMs": 5000, "memoryMB": 768},
+  "permissions": ["ui", "processes", "clipboard:write", {"files:read": ["用户在插件设置中选择的目录 / Folders selected in the plugin settings"]}],
+  "settingsWindow": true,
+  "commands": [{
+    "id": "find",
+    "keyword": "ocr",
+    "contentSearch": true,
+    "title": {"zh": "图片文字搜索", "en": "Image text search"},
+    "hint": {"zh": "图片或文档图片中的关键词", "en": "words in an image or a document image"},
+    "icon": "glyph:U+E721",
+    "actions": [
+      {"id": "open", "title": {"zh": "打开文件", "en": "Open file"}, "key": "Enter"},
+      {"id": "preview", "title": {"zh": "查看原图和命中位置", "en": "Preview and highlight"}, "key": "Ctrl+Enter"},
+      {"id": "folder", "title": {"zh": "打开所在文件夹", "en": "Show in folder"}, "key": "Shift+Enter"}
+    ]
+  }]
+}

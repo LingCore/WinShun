@@ -9,6 +9,15 @@ add_test(NAME tst_pluginhotkeys COMMAND tst_pluginhotkeys -o -,txt)
 set_tests_properties(tst_pluginhotkeys PROPERTIES RUN_SERIAL TRUE
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+qt_add_executable(tst_ocrsearch tst_ocrsearch.cpp)
+target_link_libraries(tst_ocrsearch PRIVATE wsocrsearch wsplugin miniz Qt6::Test)
+target_compile_definitions(tst_ocrsearch PRIVATE WINSHUN_OCR_MANIFEST="${PROJECT_SOURCE_DIR}/src/ocr-search-plugin/package/plugin.json")
+add_dependencies(tst_ocrsearch WinShunOcrSearch WinShunOcrSearchApp WinShunPluginHost)
+set_target_properties(tst_ocrsearch PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+add_test(NAME tst_ocrsearch COMMAND tst_ocrsearch -o -,txt)
+set_tests_properties(tst_ocrsearch PROPERTIES TIMEOUT 180
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 qt_add_executable(tst_contentdetails tst_contentdetails.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/ContentReportPrint.cpp)
 target_include_directories(tst_contentdetails PRIVATE ${PROJECT_SOURCE_DIR}/src/app)

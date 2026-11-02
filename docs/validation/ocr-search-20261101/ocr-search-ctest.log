@@ -1,0 +1,262 @@
+Test project F:/电脑便捷工具/build/release
+        Start   1: tst_ocrsearch
+        Start 115: tst_pinclipboard
+        Start 108: tst_cli
+        Start   2: tst_contentdetails
+  1/115 Test #115: tst_pinclipboard ...................   Passed    1.30 sec
+        Start  54: tst_annotate
+  2/115 Test   #2: tst_contentdetails .................   Passed    5.85 sec
+        Start  87: tst_localsend
+  3/115 Test  #87: tst_localsend ......................   Passed    7.97 sec
+        Start  40: tst_remotecontent
+  4/115 Test  #54: tst_annotate .......................   Passed   13.35 sec
+        Start  38: tst_recording
+  5/115 Test   #1: tst_ocrsearch ......................   Passed   20.13 sec
+        Start  84: tst_switchplugin
+  6/115 Test  #84: tst_switchplugin ...................   Passed    2.01 sec
+        Start  73: tst_proxy
+  7/115 Test #108: tst_cli ............................   Passed   25.65 sec
+        Start  78: tst_ocrpackage
+  8/115 Test  #40: tst_remotecontent ..................   Passed   11.89 sec
+        Start  47: tst_captureui_d3d11_1.25
+  9/115 Test  #73: tst_proxy ..........................   Passed    4.74 sec
+        Start  32: tst_scrollalignment_1.25
+ 10/115 Test  #47: tst_captureui_d3d11_1.25 ...........   Passed    3.50 sec
+        Start  33: tst_scrollalignment_1.5
+ 11/115 Test  #78: tst_ocrpackage .....................   Passed    4.60 sec
+        Start  35: tst_scrollalignment_2
+ 12/115 Test  #38: tst_recording ......................Exit code 0xc0000409***Exception:  25.84 sec
+
+        Start  31: tst_scrollalignment_1
+ 13/115 Test  #32: tst_scrollalignment_1.25 ...........   Passed   18.61 sec
+        Start  34: tst_scrollalignment_1.75
+ 14/115 Test  #33: tst_scrollalignment_1.5 ............   Passed   18.40 sec
+        Start  59: tst_annotmodel
+ 15/115 Test  #35: tst_scrollalignment_2 ..............   Passed   18.46 sec
+        Start 109: tst_plugin
+ 16/115 Test  #59: tst_annotmodel .....................Exit code 0xc0000409***Exception:   4.97 sec
+
+        Start  51: tst_captureui_d3d11_1.75
+ 17/115 Test  #51: tst_captureui_d3d11_1.75 ...........   Passed    3.47 sec
+        Start  49: tst_captureui_d3d11_1.5
+ 18/115 Test  #31: tst_scrollalignment_1 ..............   Passed   18.53 sec
+        Start  45: tst_captureui_d3d11_1
+ 19/115 Test  #49: tst_captureui_d3d11_1.5 ............   Passed    3.46 sec
+        Start  53: tst_captureui_d3d11_2
+ 20/115 Test  #45: tst_captureui_d3d11_1 ..............   Passed    3.44 sec
+        Start  91: tst_core
+ 21/115 Test  #53: tst_captureui_d3d11_2 ..............   Passed    3.43 sec
+        Start  21: tst_shelllaunch
+ 22/115 Test  #34: tst_scrollalignment_1.75 ...........   Passed   18.45 sec
+        Start  96: tst_commandlaunch
+ 23/115 Test  #96: tst_commandlaunch ..................   Passed    1.28 sec
+        Start  20: tst_dialognav
+ 24/115 Test #109: tst_plugin .........................Exit code 0xc0000374***Exception:  18.89 sec
+
+        Start  36: tst_numberhints
+ 25/115 Test  #20: tst_dialognav ......................   Passed    2.72 sec
+        Start  37: tst_aisettings
+ 26/115 Test  #21: tst_shelllaunch ....................***Failed    6.68 sec
+
+        Start  66: tst_clipimage
+ 27/115 Test  #36: tst_numberhints ....................   Passed    4.91 sec
+        Start 107: tst_mcp
+ 28/115 Test  #37: tst_aisettings .....................   Passed    6.85 sec
+        Start  65: tst_diagnostics
+ 29/115 Test  #66: tst_clipimage ......................***Failed    6.16 sec
+
+        Start  83: tst_switches
+ 30/115 Test  #83: tst_switches .......................   Passed    5.13 sec
+        Start  18: tst_filedialog
+ 31/115 Test  #65: tst_diagnostics ....................   Passed    6.34 sec
+        Start  75: tst_textcheck
+ 32/115 Test  #75: tst_textcheck ......................   Passed    1.96 sec
+        Start  90: tst_translate
+ 33/115 Test  #90: tst_translate ......................   Passed    0.92 sec
+        Start  77: tst_textcheck_gdi
+ 34/115 Test  #18: tst_filedialog .....................   Passed    3.86 sec
+        Start  80: tst_uifont_gdi
+ 35/115 Test  #77: tst_textcheck_gdi ..................   Passed    1.99 sec
+        Start  79: tst_uifont_freetype
+ 36/115 Test  #80: tst_uifont_gdi .....................   Passed    1.54 sec
+        Start  58: tst_editor
+ 37/115 Test  #79: tst_uifont_freetype ................   Passed    0.86 sec
+        Start  93: tst_keylistener
+ 38/115 Test #107: tst_mcp ............................   Passed   16.90 sec
+        Start  76: tst_textcheck_freetype
+ 39/115 Test  #93: tst_keylistener ....................   Passed    3.27 sec
+        Start 104: tst_ocr
+ 40/115 Test  #76: tst_textcheck_freetype .............   Passed    0.89 sec
+        Start  57: tst_stitch
+ 41/115 Test  #57: tst_stitch .........................   Passed    1.21 sec
+        Start  95: tst_favorites
+ 42/115 Test #104: tst_ocr ............................   Passed    3.36 sec
+        Start 114: tst_updater
+ 43/115 Test #114: tst_updater ........................   Passed    0.34 sec
+        Start  23: tst_commandline
+ 44/115 Test  #23: tst_commandline ....................   Passed    0.32 sec
+        Start  42: tst_capturesettings
+ 45/115 Test  #42: tst_capturesettings ................   Passed    0.21 sec
+        Start  46: tst_captureui_1.25
+ 46/115 Test  #58: tst_editor .........................Exit code 0xc0000409***Exception:   8.48 sec
+
+        Start  24: tst_windowvisibility
+ 47/115 Test  #24: tst_windowvisibility ...............   Passed    1.16 sec
+        Start  41: tst_settings
+ 48/115 Test  #95: tst_favorites ......................   Passed    4.46 sec
+        Start  74: tst_commandicons
+ 49/115 Test  #74: tst_commandicons ...................   Passed    0.39 sec
+        Start 110: tst_clipimport
+ 50/115 Test #110: tst_clipimport .....................   Passed    0.56 sec
+        Start  50: tst_captureui_1.75
+ 51/115 Test  #41: tst_settings .......................   Passed    2.25 sec
+        Start  17: tst_displaygeometry
+ 52/115 Test  #17: tst_displaygeometry ................   Passed    0.52 sec
+        Start  52: tst_captureui_2
+ 53/115 Test  #46: tst_captureui_1.25 .................Exit code 0xc0000409***Exception:   6.04 sec
+
+        Start  48: tst_captureui_1.5
+ 54/115 Test  #50: tst_captureui_1.75 .................Exit code 0xc0000409***Exception:   5.45 sec
+
+        Start 113: tst_clipselect
+ 55/115 Test #113: tst_clipselect .....................   Passed    0.64 sec
+        Start  19: tst_filedialog_other_program
+ 56/115 Test  #19: tst_filedialog_other_program .......   Passed    0.16 sec
+        Start  70: tst_pielabels
+ 57/115 Test  #70: tst_pielabels ......................   Passed    0.57 sec
+        Start  98: tst_elide
+ 58/115 Test  #98: tst_elide ..........................   Passed    0.55 sec
+        Start  61: tst_appearance_1
+ 59/115 Test  #61: tst_appearance_1 ...................   Passed    0.78 sec
+        Start 112: tst_clipfiles
+ 60/115 Test #112: tst_clipfiles ......................   Passed    0.26 sec
+        Start  16: tst_wsl
+ 61/115 Test  #48: tst_captureui_1.5 ..................Exit code 0xc0000409***Exception:   5.21 sec
+
+        Start  64: tst_appearance_2
+ 62/115 Test  #16: tst_wsl ............................   Passed    0.31 sec
+        Start  63: tst_appearance_1.5
+ 63/115 Test  #64: tst_appearance_2 ...................   Passed    0.76 sec
+        Start  62: tst_appearance_1.25
+ 64/115 Test  #63: tst_appearance_1.5 .................   Passed    0.78 sec
+        Start  44: tst_captureui_1
+ 65/115 Test  #62: tst_appearance_1.25 ................   Passed    0.70 sec
+        Start  56: tst_stage7
+ 66/115 Test  #56: tst_stage7 .........................   Passed    0.12 sec
+        Start  72: tst_movedplugins
+ 67/115 Test  #52: tst_captureui_2 ....................Exit code 0xc0000409***Exception:   8.46 sec
+
+        Start  25: tst_darkframe
+ 68/115 Test  #25: tst_darkframe ......................   Passed    0.11 sec
+        Start 103: tst_backup
+ 69/115 Test  #72: tst_movedplugins ...................   Passed    0.20 sec
+        Start  82: tst_download_cmake
+ 70/115 Test  #82: tst_download_cmake .................   Passed    0.09 sec
+        Start  89: tst_bookmarks
+ 71/115 Test  #89: tst_bookmarks ......................   Passed    0.07 sec
+        Start  81: tst_download
+ 72/115 Test  #81: tst_download .......................   Passed    0.06 sec
+        Start  30: tst_contextmenuguard
+ 73/115 Test  #30: tst_contextmenuguard ...............   Passed    0.06 sec
+        Start  39: tst_keycaps
+ 74/115 Test #103: tst_backup .........................   Passed    0.54 sec
+        Start  43: tst_capture
+ 75/115 Test  #43: tst_capture ........................   Passed    0.14 sec
+        Start  88: tst_break
+ 76/115 Test  #88: tst_break ..........................   Passed    0.05 sec
+        Start  86: tst_winkeys
+ 77/115 Test  #86: tst_winkeys ........................   Passed    0.05 sec
+        Start  94: tst_clipboard
+ 78/115 Test  #94: tst_clipboard ......................   Passed    0.68 sec
+        Start  15: tst_notificationturns
+ 79/115 Test  #15: tst_notificationturns ..............   Passed    0.05 sec
+        Start  99: tst_savedfile
+ 80/115 Test  #99: tst_savedfile ......................   Passed    0.05 sec
+        Start   6: tst_panelcolumns
+ 81/115 Test   #6: tst_panelcolumns ...................   Passed    0.19 sec
+        Start   7: tst_opusfocus
+ 82/115 Test   #7: tst_opusfocus ......................   Passed    0.07 sec
+        Start 106: tst_semantic
+ 83/115 Test #106: tst_semantic .......................   Passed    0.35 sec
+        Start 111: tst_filepaste
+ 84/115 Test #111: tst_filepaste ......................   Passed    0.06 sec
+        Start  71: tst_pastefile
+ 85/115 Test  #71: tst_pastefile ......................   Passed    0.06 sec
+        Start  55: tst_smartredact
+ 86/115 Test  #55: tst_smartredact ....................   Passed    0.06 sec
+        Start   5: tst_querysyntax
+ 87/115 Test   #5: tst_querysyntax ....................   Passed    0.06 sec
+        Start   8: tst_launchernavigation
+ 88/115 Test   #8: tst_launchernavigation .............   Passed    0.08 sec
+        Start  92: tst_service
+ 89/115 Test  #92: tst_service ........................   Passed    0.15 sec
+        Start  97: tst_color
+ 90/115 Test  #97: tst_color ..........................   Passed    0.06 sec
+        Start 102: tst_siteicon
+ 91/115 Test #102: tst_siteicon .......................   Passed    0.17 sec
+        Start 100: tst_placement
+ 92/115 Test #100: tst_placement ......................   Passed    0.07 sec
+        Start 101: tst_dragout
+ 93/115 Test #101: tst_dragout ........................   Passed    0.14 sec
+        Start  69: tst_piegeometry
+ 94/115 Test  #69: tst_piegeometry ....................   Passed    0.06 sec
+        Start 105: tst_tools
+ 95/115 Test #105: tst_tools ..........................   Passed    0.07 sec
+        Start  60: tst_traymenu
+ 96/115 Test  #60: tst_traymenu .......................   Passed    0.10 sec
+ 97/115 Test  #44: tst_captureui_1 ....................Exit code 0xc0000409***Exception:   6.23 sec
+
+ 98/115 Test  #39: tst_keycaps ........................Exit code 0xc0000409***Exception:   9.17 sec
+
+ 99/115 Test  #91: tst_core ...........................   Passed   67.86 sec
+        Start  85: tst_switchprovider_ui
+100/115 Test  #85: tst_switchprovider_ui ..............   Passed    5.15 sec
+        Start   9: tst_searchnavigation
+101/115 Test   #9: tst_searchnavigation ...............   Passed   11.71 sec
+        Start   3: tst_contentpane
+102/115 Test   #3: tst_contentpane ....................   Passed    4.05 sec
+        Start  10: tst_searchworkload
+103/115 Test  #10: tst_searchworkload .................   Passed    6.67 sec
+        Start  12: tst_onboarding_later
+104/115 Test  #12: tst_onboarding_later ...............   Passed    8.03 sec
+        Start  11: tst_onboarding_fresh
+105/115 Test  #11: tst_onboarding_fresh ...............   Passed    8.63 sec
+        Start  13: tst_onboarding_apply
+106/115 Test  #13: tst_onboarding_apply ...............   Passed    7.63 sec
+        Start  67: tst_cliplifecycle
+107/115 Test  #67: tst_cliplifecycle ..................   Passed    5.42 sec
+        Start  22: tst_foldermenu
+108/115 Test  #22: tst_foldermenu .....................   Passed    6.90 sec
+        Start  26: tst_dialogbarvisibility_gpu
+109/115 Test  #26: tst_dialogbarvisibility_gpu ........   Passed    2.84 sec
+        Start  14: tst_onboarding_legacy
+110/115 Test  #14: tst_onboarding_legacy ..............   Passed    0.89 sec
+        Start  27: tst_dialogbarvisibility_software
+111/115 Test  #27: tst_dialogbarvisibility_software ...   Passed    1.51 sec
+        Start  28: tst_framereveal_gpu
+112/115 Test  #28: tst_framereveal_gpu ................   Passed    0.50 sec
+        Start  29: tst_framereveal_software
+113/115 Test  #29: tst_framereveal_software ...........   Passed    0.47 sec
+        Start  68: tst_keyrouter
+114/115 Test  #68: tst_keyrouter ......................   Passed    0.11 sec
+        Start   4: tst_clipboardsizing
+115/115 Test   #4: tst_clipboardsizing ................   Passed   20.62 sec
+
+90% tests passed, 12 tests failed out of 115
+
+Total Test time (real) = 221.63 sec
+
+The following tests FAILED:
+	 21 - tst_shelllaunch (Failed)
+	 38 - tst_recording (Exit code 0xc0000409)
+	 39 - tst_keycaps (Exit code 0xc0000409)
+	 44 - tst_captureui_1 (Exit code 0xc0000409)
+	 46 - tst_captureui_1.25 (Exit code 0xc0000409)
+	 48 - tst_captureui_1.5 (Exit code 0xc0000409)
+	 50 - tst_captureui_1.75 (Exit code 0xc0000409)
+	 52 - tst_captureui_2 (Exit code 0xc0000409)
+	 58 - tst_editor (Exit code 0xc0000409)
+	 59 - tst_annotmodel (Exit code 0xc0000409)
+	 66 - tst_clipimage (Failed)
+	109 - tst_plugin (Exit code 0xc0000374)
+Errors while running CTest

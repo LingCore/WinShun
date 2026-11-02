@@ -165,6 +165,7 @@ effects 的辅助：Python `winshun.hide() / keep() / notify(text) / copy(text) 
 | `keyword` | 字符串或数组。输入**关键字 + 空格**进入关键字模式；单独输入关键字时列表第一行是这条命令的提示行（Enter 或 Tab 进入，↓ 到名字结果）；输入两个字以上、是关键字开头的（`uu` 对 `uuid`），也在应用之后、文件之前多一行（光标不动，按 Tab 就补全成 `uuid `；最多两行，候选太多就不出）；用户可以在设置里改 |
 | `triggers` | 关键字以外的触发方式：`{"regex": "…", "minLength": 1, "maxLength": 64}`（整个输入匹配时，结果推进"全部"；`match` 是捕获组）、`{"push": {"minLength": 2, "maxItems": 3}}`（每键都发，常驻 + eager 才合适）、`{"files": {"kind": "any", "max": 1000, "extensions": ["jpg"], "title": {"zh": "用局域网发送…", "en": "Send over LAN…"}}}`（文件、文件夹结果的右键菜单里多一项 `title`，多选时对整个选择；`kind` 是 `file` / `folder` / `any`，`max` 默认 20、最多 1000，`extensions` 只管文件。选了它：一次 `action`，`trigger` 是 `files`、`action` 是 `files`、`files` 是这些完整路径，没有 item） |
 | `mode` | `list`（默认）或 `instant`（单独输入关键字就执行，不列结果） |
+| `contentSearch` | `true`：作为内容检索提供者，必须有 `runtime`；收到 `trigger: "content"`，见下面“内容检索提供者” |
 | `actions` | `[{"id": "kill", "title": "结束", "key": "Enter"}, …]`：顺序决定 Enter / Ctrl+Enter / Shift+Enter；右键菜单列全部；不写就只有一个 `default` |
 | `run` | 零代码专用：`url`（`%s` 是输入的文字，按网址规则编码；`home` 是单独输入关键字时开的）、`program`（`%VAR%` 会展开；`args` 里 `%s`）、`folder`、`search`（`{"query": "ext:pdf %s", "scope": "all | files | folders | content"}`）、`items`（item 数组，`open.path` 里的 `%VAR%` 会展开） |
 | `cache` | `{"seconds": 60}`：同一命令同一文字的结果缓存多久 |
@@ -392,3 +393,7 @@ wsbench --mcp-host --plugins D:\plugins                                 # 把插
 - **图标不显示。** 只认 PNG / JPG / ICO，路径要在插件文件夹里；SVG 不支持。
 - **关键字被占。** 和设置里"网页搜索"的关键字或别的插件撞了，用户设的赢，卡片上写明；改一个或让用户改。
 - **插件目录能被改吗。** `normal` 插件就是以你的身份运行，你能改的它都能改——这是开发者模式"改了脚本自动重载"的前提。要防插件改自己，用 `strict`。
+
+### 网页搜索宿主能力
+
+`webSearch: true` 为官方 `winshun.web` 保留：不声明 `runtime`，`commands` 为空，网站来自插件设置。宿主提供通用网址解析、结果渲染和懒加载编辑器；停用或缺少插件时不提供结果、不占用关键词、不请求建议。旧版官方零代码清单在内存中兼容为这一能力，不重写用户文件。插件包构建时将 `minWinShun` 设为当前主程序版本。

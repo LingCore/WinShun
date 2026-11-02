@@ -50,7 +50,7 @@ struct KeywordConflict {
 
 // One command triggered by a query.
 struct Match {
-    enum class Kind { Keyword, Regex, Push };
+    enum class Kind { Keyword, Regex, Push, Content };
     const Entry* entry = nullptr;
     const Command* command = nullptr;
     Kind kind = Kind::Keyword;
@@ -119,6 +119,7 @@ public:
     // command's counts alone too. Leading spaces are ignored, trailing ones
     // are not: give it the text as typed.
     std::vector<Match> match(const QString& text) const;
+    std::vector<Match> contentMatches(const QString& text) const;
     // The list command whose keyword `text` is, with nothing after it: the
     // launcher offers it as a row ("kill — 结束进程（按空格进入）"). Nothing
     // when no enabled command has that keyword in use.

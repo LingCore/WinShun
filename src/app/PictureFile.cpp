@@ -8,6 +8,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <climits>
 #include <string>
 
 using namespace Qt::StringLiterals;
@@ -20,16 +21,16 @@ namespace {
 // The first frame, decoded by Windows Imaging Component and turned upright
 // as the camera says (EXIF orientation); at most `largest` pixels on its
 // longer side. `original`: its size as stored.
-QImage decodePicture(const std::wstring& path, QSize* original, int largest)
+QImage decodeFrame(
+    IWICImagingFactory* wic, IWICBitmapDecoder* decoder, QSize* original, int largest, int number, int* frames)
 {
-    ComPtr<IWICImagingFactory> wic;
-    if (FAILED(::CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic))))
+    UINT count = 0;
+    if (FAILED(decoder->GetFrameCount(&count)) || number < 0 || static_cast<UINT>(number) >= count || count > INT_MAX)
         return {};
-    ComPtr<IWICBitmapDecoder> decoder;
-    if (FAILED(wic->CreateDecoderFromFilename(path.c_str(), nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand, &decoder)))
-        return {};
+    if (frames)
+        *frames = static_cast<int>(count);
     ComPtr<IWICBitmapFrameDecode> frame;
-    if (FAILED(decoder->GetFrame(0, &frame)))
+    if (FAILED(decoder->GetFrame(static_cast<UINT>(number), &frame)))
         return {};
     UINT width = 0;
     UINT height = 0;
@@ -60,35 +61,68 @@ QImage decodePicture(const std::wstring& path, QSize* original, int largest)
     }
     ComPtr<IWICFormatConverter> converter;
     if (FAILED(wic->CreateFormatConverter(&converter))
-        || FAILED(converter->Initialize(source.Get(), GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, nullptr, 0,
-            WICBitmapPaletteTypeMedianCut)))
+        || FAILED(converter->Initialize(source.Get(), GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, nullptr,
+            0, WICBitmapPaletteTypeMedianCut)))
         return {};
     QImage image(static_cast<int>(w), static_cast<int>(h), QImage::Format_ARGB32_Premultiplied);
     if (image.isNull()
-        || FAILED(converter->CopyPixels(nullptr, static_cast<UINT>(image.bytesPerLine()), static_cast<UINT>(image.sizeInBytes()),
-            image.bits())))
+        || FAILED(converter->CopyPixels(
+            nullptr, static_cast<UINT>(image.bytesPerLine()), static_cast<UINT>(image.sizeInBytes()), image.bits())))
         return {};
     if (original)
         *original = QSize(static_cast<int>(width), static_cast<int>(height));
     switch (orientation) {
-    case 2: return image.flipped(Qt::Horizontal);
-    case 3: return image.flipped(Qt::Horizontal | Qt::Vertical);
-    case 4: return image.flipped(Qt::Vertical);
-    case 5: return image.transformed(QTransform().rotate(90)).flipped(Qt::Horizontal);
-    case 6: return image.transformed(QTransform().rotate(90));
-    case 7: return image.transformed(QTransform().rotate(90)).flipped(Qt::Vertical);
-    case 8: return image.transformed(QTransform().rotate(270));
-    default: return image;
+    case 2:
+        return image.flipped(Qt::Horizontal);
+    case 3:
+        return image.flipped(Qt::Horizontal | Qt::Vertical);
+    case 4:
+        return image.flipped(Qt::Vertical);
+    case 5:
+        return image.transformed(QTransform().rotate(90)).flipped(Qt::Horizontal);
+    case 6:
+        return image.transformed(QTransform().rotate(90));
+    case 7:
+        return image.transformed(QTransform().rotate(90)).flipped(Qt::Vertical);
+    case 8:
+        return image.transformed(QTransform().rotate(270));
+    default:
+        return image;
     }
 }
 
 } // namespace
 
-QImage decodePictureFile(const QString& path, int largest, QSize* original)
+QImage decodePictureFile(const QString& path, int largest, QSize* original, int number, int* frames)
 {
     QString native = path;
     native.replace(u'/', u'\\');
-    return decodePicture(native.toStdWString(), original, largest);
+    ComPtr<IWICImagingFactory> wic;
+    if (FAILED(::CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic))))
+        return {};
+    ComPtr<IWICBitmapDecoder> decoder;
+    if (FAILED(wic->CreateDecoderFromFilename(
+            native.toStdWString().c_str(), nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand, &decoder)))
+        return {};
+    return decodeFrame(wic.Get(), decoder.Get(), original, largest, number, frames);
+}
+
+QImage decodePictureData(const QByteArray& bytes, int largest, QSize* original, int number, int* frames)
+{
+    if (bytes.isEmpty() || bytes.size() > UINT_MAX)
+        return {};
+    ComPtr<IWICImagingFactory> wic;
+    if (FAILED(::CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic))))
+        return {};
+    ComPtr<IWICStream> stream;
+    if (FAILED(wic->CreateStream(&stream))
+        || FAILED(stream->InitializeFromMemory(
+            reinterpret_cast<BYTE*>(const_cast<char*>(bytes.constData())), static_cast<DWORD>(bytes.size()))))
+        return {};
+    ComPtr<IWICBitmapDecoder> decoder;
+    if (FAILED(wic->CreateDecoderFromStream(stream.Get(), nullptr, WICDecodeMetadataCacheOnDemand, &decoder)))
+        return {};
+    return decodeFrame(wic.Get(), decoder.Get(), original, largest, number, frames);
 }
 
 } // namespace ws

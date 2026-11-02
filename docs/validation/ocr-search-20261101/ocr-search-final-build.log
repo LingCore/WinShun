@@ -1,0 +1,14 @@
+[1/58] Automatic MOC and UIC for target wsocrsearch
+[2/57] Running AUTOMOC file extraction for target wsocrsearch
+[3/16] Staging the bundled plugins into F:/电脑便捷工具/build/release/plugins
+[4/16] Automatic MOC and UIC for target tst_plugin
+[5/15] Linking CXX executable WinShun.exe
+[6/15] Building CXX object src\ocr-search-plugin\CMakeFiles\wsocrsearch.dir\OcrSource.cpp.obj
+[7/15] Linking CXX static library src\ocr-search-plugin\wsocrsearch.lib
+[8/15] Linking CXX shared library WinShunOcrSearchApp.dll
+[9/15] Automatic MOC and UIC for target tst_ocrsearch
+[10/14] Staging the library plugins into F:/电脑便捷工具/build/release/library-plugins
+[11/14] Building CXX object tests\CMakeFiles\tst_plugin.dir\tst_plugin.cpp.obj
+[12/14] Linking CXX executable tst_plugin.exe
+[13/14] Building CXX object tests\CMakeFiles\tst_ocrsearch.dir\tst_ocrsearch.cpp.obj
+[14/14] Linking CXX executable tst_ocrsearch.exe

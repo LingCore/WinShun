@@ -134,6 +134,7 @@ struct Command {
     QList<Action> actions;
     Run run; // Kind::None: the plugin's process answers
     int cacheSeconds = 0;
+    bool contentSearch = false; // optional provider of indexed content results
     QJsonObject ai;
     bool zeroCode() const noexcept { return run.kind != Run::Kind::None; }
     friend bool operator==(const Command&, const Command&) = default;

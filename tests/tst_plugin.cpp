@@ -486,6 +486,65 @@ class TestPlugin : public QObject {
     Q_OBJECT
 
 private slots:
+    void contentProvidersAreScopedAndNotPushLimited()
+    {
+        Fixture f;
+        Spec provider;
+        provider.id = u"test.ocr"_s;
+        provider.commandExtra = {{u"contentSearch"_s, true}};
+        Spec malformed = provider;
+        malformed.commandExtra.insert(u"contentSearch"_s, u"true"_s);
+        QVERIFY(!Manifest::parse(manifestFor(malformed), nullptr));
+        malformed = provider;
+        malformed.mode.clear();
+        malformed.commandExtra.insert(u"run"_s, QJsonObject {{u"folder"_s, u"C:\\"_s}});
+        QVERIFY(!Manifest::parse(manifestFor(malformed), nullptr));
+        QVERIFY(!f.install(provider).isEmpty());
+        auto& catalog = f.host->catalog();
+        QCOMPARE(catalog.contentMatches(u"报销"_s).size(), 1u);
+        QVERIFY(catalog.contentMatches(u"  "_s).empty());
+        QVERIFY(!f.host->query(u"报销"_s, Scope::Files, 1));
+        QVERIFY(!f.host->query(u"报销"_s, Scope::Folders, 1));
+        QVERIFY(!f.host->query(u"报销"_s, Scope::All, 2));
+        QVERIFY(f.host->query(u"报销"_s, Scope::Content, 3));
+        QVERIFY(f.waitFinal(3));
+        QVERIFY(f.results.back().items.first().subtitle.contains(u"/content"));
+        QVERIFY(f.host->query(u"报销"_s, Scope::All, 4, {{u"contentEnabled"_s, true}}));
+        QVERIFY(f.waitFinal(4));
+
+        ListSink sink;
+        Merge merge(sink, catalog);
+        merge.begin(5, u"报销"_s, {}, {}, true);
+        Items items;
+        for (int i = 0; i < 12; ++i) {
+            Item item;
+            item.id = QString::number(i);
+            item.title = u"file%1.png"_s.arg(i);
+            item.open.kind = Open::Kind::Path;
+            item.open.target = u"C:\\test\\file%1.png"_s.arg(i);
+            items.append(item);
+        }
+        // Use the manifest's actual command id rather than a hard-coded convention.
+        const QString command = catalog.find(provider.id)->manifest->commands.first().id;
+        merge.results(5, provider.id, command, items, false, true);
+        QCOMPARE(sink.count(), 0);
+        merge.namesShown();
+        QCOMPARE(sink.count(), 12);
+        merge.results(4, provider.id, command, {}, false, true);
+        QCOMPARE(sink.count(), 12);
+        merge.results(5, provider.id, command, {items.first()}, false, true);
+        QCOMPARE(sink.count(), 1);
+        auto native = fileRow(u"file0.png"_s);
+        native.path = items.first().open.target;
+        sink.assign({native});
+        merge.begin(6, u"报销"_s, {}, {}, true);
+        merge.namesShown();
+        merge.results(6, provider.id, command, items, false, true);
+        QCOMPARE(sink.count(), 12);
+        QVERIFY(!sink.row(0).isPlugin());
+        catalog.setEnabled(provider.id, false);
+        QVERIFY(catalog.contentMatches(u"报销"_s).empty());
+    }
     // ---- manifest ------------------------------------------------------------
     void manifestComplete()
     {

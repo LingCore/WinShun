@@ -1,0 +1,22 @@
+********* Start testing of TestOcrSearch *********
+Config: Using QtTest library 6.12.0, Qt 6.12.0 (x86_64-little_endian-llp64 shared (dynamic) release build; by MSVC 2022), windows 11
+PASS   : TestOcrSearch::initTestCase()
+PASS   : TestOcrSearch::normalizationAndPathBoundaries()
+PASS   : TestOcrSearch::shortChineseAndExactVerification()
+PASS   : TestOcrSearch::dedupCopyMoveAndPrune()
+PASS   : TestOcrSearch::interruptedFileRollsBackAndChangedFilesDisappear()
+PASS   : TestOcrSearch::termsMayMatchDifferentPagesOfOneFile()
+QINFO  : TestOcrSearch::warmQueriesOnTenThousandSyntheticEntries() Synthetic 10000-entry index (not OCR throughput), bytes: 13828096 warm query P95 ms: 33 max ms: 34
+PASS   : TestOcrSearch::warmQueriesOnTenThousandSyntheticEntries()
+PASS   : TestOcrSearch::filtersAndCancellation()
+PASS   : TestOcrSearch::sourceImagesAndOfficeLocations()
+PASS   : TestOcrSearch::scannedAndMixedPdfBothRender()
+PASS   : TestOcrSearch::externalImageIsNotRead()
+PASS   : TestOcrSearch::damagedSourcesAndCancellation()
+QINFO  : TestOcrSearch::realOcrIndexSearchUpdateAndResume() Real OCR indexing, ms: 1436 new images: 3
+PASS   : TestOcrSearch::realOcrIndexSearchUpdateAndResume()
+PASS   : TestOcrSearch::workerDeadlineCancellationAndRecovery()
+PASS   : TestOcrSearch::installedPluginRunsInRealHostAndOpensItsWindow()
+PASS   : TestOcrSearch::cleanupTestCase()
+Totals: 16 passed, 0 failed, 0 skipped, 0 blacklisted, 17062ms
+********* Finished testing of TestOcrSearch *********

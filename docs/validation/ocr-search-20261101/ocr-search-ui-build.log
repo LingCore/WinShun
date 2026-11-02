@@ -1,0 +1,5 @@
+[1/5] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp_qml_OcrSearchWindow_qml.cpp.obj
+[2/5] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp_qml_OcrIssuesPopup_qml.cpp.obj
+[3/5] Building CXX object src\ocr-search-plugin\CMakeFiles\WinShunOcrSearchApp.dir\.rcc\qmlcache\WinShunOcrSearchApp_qml_OcrLibraryPane_qml.cpp.obj
+[4/5] Linking CXX shared library WinShunOcrSearchApp.dll
+[5/5] Staging the library plugins into F:/电脑便捷工具/build/release/library-plugins

@@ -83,7 +83,7 @@ public:
     // A query begins: earlier answers are dropped. With `keywordPlugin`
     // and `keywordCommand`, keyword mode for that command. `text` as typed
     // (a trailing space tells a keyword from a name, Catalog::match).
-    void begin(std::uint64_t queryId, const QString& text, const QString& keywordPlugin = {}, const QString& keywordCommand = {});
+    void begin(std::uint64_t queryId, const QString& text, const QString& keywordPlugin = {}, const QString& keywordCommand = {}, bool contentOnly = false);
     std::uint64_t queryId() const noexcept { return m_queryId; }
     bool keywordMode() const noexcept { return !m_keywordPlugin.isEmpty(); }
     // Push mode: the name search's rows are in the sink now; what was held
@@ -126,6 +126,7 @@ private:
     QString m_keywordPlugin;
     QString m_keywordCommand;
     bool m_namesReady = false;
+    bool m_contentOnly = false;
     bool m_assigned = false; // keyword mode: an answer has replaced the rows
     int m_keywordItemIndex = 0; // anonymous ids span every appended batch
     std::map<QString, Batch> m_held; // "<plugin>/<command>" -> its answer so far

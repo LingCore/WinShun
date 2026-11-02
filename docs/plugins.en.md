@@ -161,6 +161,7 @@ Top level:
 | `keyword` | a string or an array. **Keyword + space** enters keyword mode; the keyword alone puts the command's hint row first (Enter or Tab enters, ↓ reaches the names found); two or more characters a keyword begins with (`uu` for `uuid`) add a row after the apps, before the files (the keyboard stays where it is; Tab completes to `uuid ` from any row; two rows at most, none when too many keywords qualify); the user may change it |
 | `triggers` | beyond the keyword: `{"regex": "…", "minLength": 1, "maxLength": 64}` (the whole input matches: rows are pushed into 全部; `match` carries the groups), `{"push": {"minLength": 2, "maxItems": 3}}` (every key; resident + eager only), `{"files": {"kind": "any", "max": 1000, "extensions": ["jpg"], "title": {"zh": "用局域网发送…", "en": "Send over LAN…"}}}` (an entry `title` in the menu of file and folder rows, for the whole selection when several are selected; `kind` is `file` / `folder` / `any`, `max` 20 by default and 1000 at most, `extensions` apply to files only. Chosen: one `action` with `trigger` `files`, `action` `files` and `files` the full paths, no item) |
 | `mode` | `list` (default) or `instant` (the keyword alone runs it) |
+| `contentSearch` | `true`: a content-search provider; requires `runtime` and receives `trigger: "content"`. See “Content-search providers” below. |
 | `actions` | `[{"id": "kill", "title": "Kill", "key": "Enter"}, …]`: the order gives Enter / Ctrl+Enter / Shift+Enter; the menu lists all; none means one `default` |
 | `run` | zero-code only: `url` (`%s` is the text, URL-encoded; `home` for the keyword alone), `program` (`%VAR%` expanded; `%s` in `args`), `folder`, `search` (`{"query": "ext:pdf %s", "scope": "all | files | folders | content"}`), `items` (item objects; `%VAR%` in `open.path` expanded) |
 | `cache` | `{"seconds": 60}`: how long the same text's answer is reused |
@@ -386,3 +387,7 @@ wsbench --mcp-host --plugins D:\plugins                                 # serve 
 - **Icons missing.** PNG / JPG / ICO inside the plugin folder only; no SVG.
 - **Keyword taken.** It clashed with a Web search keyword or another plugin's; the user's own wins and the card says so. Pick another.
 - **Can the plugin folder be changed?** A `normal` plugin runs as you and can change what you can — that is what developer mode's reload relies on. Use `strict` to keep a plugin from changing itself.
+
+### Web search host capability
+
+`webSearch: true` is reserved for official `winshun.web`: no `runtime`, an empty `commands` array, and sites from plugin settings. The host supplies URL handling, result rendering and a lazily loaded editor. An absent or disabled provider contributes no results or keywords and requests no suggestions. Legacy official URL manifests are adapted in memory without rewriting user files. Packaging sets `minWinShun` to the current host version.

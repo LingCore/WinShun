@@ -398,6 +398,28 @@ std::vector<Match> Catalog::match(const QString& typed) const
     return out;
 }
 
+std::vector<Match> Catalog::contentMatches(const QString& text) const
+{
+    std::vector<Match> out;
+    if (text.trimmed().isEmpty())
+        return out;
+    for (const Entry& entry : m_entries) {
+        if (!entry.manifest || !enabled(entry.id))
+            continue;
+        for (const Command& command : entry.manifest->commands) {
+            if (!command.contentSearch)
+                continue;
+            Match match;
+            match.entry = &entry;
+            match.command = &command;
+            match.kind = Match::Kind::Content;
+            match.text = text.trimmed();
+            out.push_back(std::move(match));
+        }
+    }
+    return out;
+}
+
 std::optional<Match> Catalog::hint(const QString& typed) const
 {
     const QString word = typed.trimmed();

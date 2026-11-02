@@ -43,6 +43,7 @@ const char* kindName(Match::Kind kind)
     case Match::Kind::Keyword: return "keyword";
     case Match::Kind::Regex: return "regex";
     case Match::Kind::Push: return "push";
+    case Match::Kind::Content: return "content";
     }
     return "keyword";
 }
@@ -808,9 +809,15 @@ void Host::onRunnerExited()
 bool Host::query(const QString& text, Scope scope, std::uint64_t queryId, const QJsonObject& filters)
 {
     cancelAll();
-    if (scope != Scope::All)
+    if (scope != Scope::All && scope != Scope::Content)
         return false;
-    const std::vector<Match> matches = m_catalog.match(text);
+    std::vector<Match> matches = scope == Scope::All ? m_catalog.match(text) : std::vector<Match> {};
+    const bool keyword = std::any_of(
+        matches.begin(), matches.end(), [](const Match& match) { return match.kind == Match::Kind::Keyword; });
+    if (!keyword && (scope == Scope::Content || filters.value(u"contentEnabled"_s).toBool())) {
+        auto providers = m_catalog.contentMatches(filters.value(u"contentWords"_s).toString(text));
+        matches.insert(matches.end(), providers.begin(), providers.end());
+    }
     bool any = false;
     QSet<QString> dispatched;
     for (const Match& m : matches) {

@@ -1,0 +1,164 @@
+{
+    "controls": {
+        "ocrPreviewImage": {
+            "height": 202.8,
+            "width": 507,
+            "x": 557,
+            "y": 282.1
+        },
+        "ocrSearchInput": {
+            "height": 36,
+            "width": 712,
+            "x": 287,
+            "y": 64
+        },
+        "startOcrIndex": {
+            "height": 36,
+            "width": 238,
+            "x": 16,
+            "y": 630
+        }
+    },
+    "devicePixelRatio": 1.5,
+    "errors": "F:\\电脑便捷工具\\build\\release\\ocr-search-verification-final\\fixtures\\07-broken.pdf\nPDF 已损坏或无法读取\n\nF:\\电脑便捷工具\\build\\release\\ocr-search-verification-final\\fixtures\\08-legacy.doc\n旧版格式暂不支持图片识别，请转换为 DOCX、PPTX 或 XLSX",
+    "height": 720,
+    "preview": {
+        "boxes": [
+            {
+                "height": 0.15416666666666667,
+                "width": 0.29333333333333333,
+                "x": 0.04,
+                "y": 0.10416666666666667
+            }
+        ],
+        "error": "",
+        "height": 480,
+        "loading": false,
+        "location": "图片",
+        "path": "F:\\电脑便捷工具\\build\\release\\ocr-search-verification-final\\fixtures\\01-invoice.png",
+        "text": "年度报销规定\nINVOICE 731905\n差旅费用 123.45 元",
+        "url": "image://ocrpreview/current?3",
+        "width": 1200
+    },
+    "results": [
+        {
+            "asset": 4,
+            "location": "图片",
+            "modified": 1793532671,
+            "name": "01-invoice.png",
+            "path": "F:\\电脑便捷工具\\build\\release\\ocr-search-verification-final\\fixtures\\01-invoice.png",
+            "size": 31910,
+            "snippet": "年度报销规定",
+            "source": {
+                "fileModifiedMs": 1793532671609,
+                "frame": 0,
+                "frames": 1,
+                "kind": "image"
+            }
+        },
+        {
+            "asset": 4,
+            "location": "图片",
+            "modified": 1793532671,
+            "name": "02-copy.png",
+            "path": "F:\\电脑便捷工具\\build\\release\\ocr-search-verification-final\\fixtures\\02-copy.png",
+            "size": 31910,
+            "snippet": "年度报销规定",
+            "source": {
+                "fileModifiedMs": 1793532671620,
+                "frame": 0,
+                "frames": 1,
+                "kind": "image"
+            }
+        },
+        {
+            "asset": 4,
+            "location": "正文第 3 段 · 图片 1",
+            "modified": 1793532671,
+            "name": "03-expenses.docx",
+            "path": "F:\\电脑便捷工具\\build\\release\\ocr-search-verification-final\\fixtures\\03-expenses.docx",
+            "size": 65250,
+            "snippet": "年度报销规定",
+            "source": {
+                "fileModifiedMs": 1793532671689,
+                "imageNumber": 1,
+                "kind": "office",
+                "paragraph": 3,
+                "part": "word/media/image1.png"
+            }
+        },
+        {
+            "asset": 4,
+            "location": "第 12 张幻灯片 · 图片 1",
+            "modified": 1793532671,
+            "name": "04-expenses.pptx",
+            "path": "F:\\电脑便捷工具\\build\\release\\ocr-search-verification-final\\fixtures\\04-expenses.pptx",
+            "size": 63241,
+            "snippet": "年度报销规定",
+            "source": {
+                "fileModifiedMs": 1793532671705,
+                "imageNumber": 1,
+                "kind": "office",
+                "part": "ppt/media/image1.png",
+                "slide": 12
+            }
+        },
+        {
+            "asset": 4,
+            "location": "工作表「差旅费用」· 图片 1",
+            "modified": 1793532671,
+            "name": "05-expenses.xlsx",
+            "path": "F:\\电脑便捷工具\\build\\release\\ocr-search-verification-final\\fixtures\\05-expenses.xlsx",
+            "size": 33115,
+            "snippet": "年度报销规定",
+            "source": {
+                "fileModifiedMs": 1793532671713,
+                "imageNumber": 1,
+                "kind": "office",
+                "part": "xl/media/image1.png",
+                "sheet": "差旅费用"
+            }
+        },
+        {
+            "asset": 5,
+            "location": "第 1 页",
+            "modified": 1793532671,
+            "name": "06-scanned-and-mixed.pdf",
+            "path": "F:\\电脑便捷工具\\build\\release\\ocr-search-verification-final\\fixtures\\06-scanned-and-mixed.pdf",
+            "size": 31506,
+            "snippet": "年度报销规定",
+            "source": {
+                "fileModifiedMs": 1793532671729,
+                "kind": "pdf",
+                "page": 1
+            }
+        },
+        {
+            "asset": 4,
+            "location": "第 1 页",
+            "modified": 1793532671,
+            "name": "09-multipage.tiff",
+            "path": "F:\\电脑便捷工具\\build\\release\\ocr-search-verification-final\\fixtures\\09-multipage.tiff",
+            "size": 3456288,
+            "snippet": "年度报销规定",
+            "source": {
+                "fileModifiedMs": 1793532671669,
+                "frame": 0,
+                "frames": 2,
+                "kind": "image"
+            }
+        }
+    ],
+    "screenshot": true,
+    "statistics": {
+        "assets": 3,
+        "bytes": 40960,
+        "failed": 1,
+        "files": 9,
+        "pages": 10,
+        "ready": 7,
+        "unsupported": 1
+    },
+    "status": "索引已更新，2 个文件未完成，可查看原因",
+    "width": 1080
+}
