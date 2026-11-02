@@ -1422,6 +1422,7 @@ void Launcher::setSort(Sort sort)
             rows.append(*m_results.at(row));
         const RankBy by = rankBy();
         std::ranges::stable_sort(rows, [by](const SearchResult& a, const SearchResult& b) { return rankedBefore(a, b, by); });
+        std::ranges::stable_partition(rows, [](const SearchResult& r) { return !r.isPlugin(); }); // the providers' last
         m_replacePending = true; // new rows: the first is selected
         showRows(std::move(rows), {});
         refreshStatus();
@@ -1773,13 +1774,22 @@ void Launcher::search(bool more)
             emit resultsReplaced();
         } else if (m_refresh) {
             // Asked again, the rows not found again go (not those a one-off
-            // brought: this scan does not read those files); for a page more,
-            // what is listed stays (the new scan finds those first).
+            // brought: this scan does not read those files, nor the content
+            // providers': their new answer rewrites them, plugin::Merge); for
+            // a page more, what is listed stays (the new scan finds those first).
             if (!m_loadingMore) {
                 for (int row = 0; row < m_results.count(); ++row) {
-                    if (!m_leftOutFound.contains(m_results.at(row)->path))
-                        m_unconfirmed.insert(m_results.at(row)->path);
+                    const SearchResult* r = m_results.at(row);
+                    if (!r->isPlugin() && !m_leftOutFound.contains(r->path))
+                        m_unconfirmed.insert(r->path);
                 }
+            }
+            // The rows are this query's already: the providers' answers go in
+            // as they come (showRows, which says so otherwise, is not called).
+            if (m_merge && !m_merge->keywordMode()) {
+                m_merge->namesShown();
+                if (m_merge->takeBetterFirstRow())
+                    emit betterFirstRow();
             }
             startContentSearch(); // at once: nobody is typing
         } else if (m_contentAtOnce) {
@@ -2238,18 +2248,11 @@ void Launcher::onContentResults(quint64 id, const SearchResults& results)
     SearchResults fresh;
     for (const SearchResult& r : results) {
         bool provided = false;
-        if (m_plugins) {
-            for (int i = 0; i < m_results.count(); ++i) {
+        if (m_merge) {
+            for (int i = 0; i < m_results.count() && !provided; ++i) {
                 const auto* existing = m_results.at(i);
-                if (!existing->isPlugin() || existing->plugin->openTarget.compare(r.path, Qt::CaseInsensitive) != 0)
-                    continue;
-                const auto* entry = m_plugins->catalog().find(existing->plugin->pluginId);
-                const auto* command
-                    = entry && entry->manifest ? entry->manifest->command(existing->plugin->commandId) : nullptr;
-                if (command && command->contentSearch) {
-                    provided = true;
-                    break;
-                }
+                provided = existing->isPlugin() && existing->plugin->openTarget.compare(r.path, Qt::CaseInsensitive) == 0
+                    && m_merge->contentRow(*existing);
             }
         }
         if (provided)
@@ -2268,21 +2271,30 @@ void Launcher::onContentResults(quint64 id, const SearchResults& results)
             m_leftOutFound.insert(r.path);
         m_hintHits += static_cast<int>(fresh.size());
     }
-    if (m_loadingMore) { // a page more: after the rows, as they come (loadMore)
-        m_results.append(fresh);
+    if (m_loadingMore) { // a page more: after the rows, as they come (loadMore); before the providers' (contentEnd)
+        int row = m_merge ? m_merge->contentEnd() : m_results.count();
+        if (row <= m_currentRow || row == m_results.count()) { // the keyboard among those: they stay where they are seen
+            m_results.append(fresh);
+            return;
+        }
+        for (const SearchResult& r : fresh)
+            m_results.insert(row++, r);
         return;
     }
     // Each among the content rows by how well it matches (they come best
     // first, a tie after those already there); by time, among the files
     // (timePlace). Never above the row the keyboard is on, nor the rows
     // above it: they stay where they are seen; on the first row, a better
-    // match takes its place.
+    // match takes its place. Above the content providers' rows, which come
+    // after the native matches, unless the keyboard is among those.
     const int current = m_currentRow;
     const int floor = current > 0 ? current + 1 : 0;
     const RankBy by = rankBy();
     bool aboveFirst = false;
     for (const SearchResult& r : fresh) {
-        int row = m_results.count();
+        int row = m_merge ? m_merge->contentEnd() : m_results.count();
+        if (row < floor)
+            row = m_results.count();
         if (by != RankBy::Match) {
             row = timePlace(
                 row, [&](int i) -> const SearchResult& { return *m_results.at(i); }, r, floor, by, m_kindOrder);
@@ -5420,6 +5432,15 @@ void Launcher::onPluginResults(std::uint64_t queryId, const QString& pluginId, c
         });
     }
     m_merge->results(queryId, pluginId, commandId, filtered, partial, replace);
+    // 内容: the providers' rows do not wait for the native scan (with no
+    // content index it reads file after file); they take the place of the
+    // last query's rows, and its matches go in above them as they come.
+    if (m_merge->contentOnly() && !m_merge->namesReady() && m_merge->answerHeld()) {
+        if (m_replacePending)
+            showRows({}, {}); // namesShown
+        else
+            m_merge->namesShown();
+    }
     if (m_merge->takeBetterFirstRow())
         emit betterFirstRow();
     sortShownPanel(currentPath);

@@ -91,6 +91,18 @@ public:
     // keywords it begins among the rows (placeHint).
     void namesShown();
     bool namesReady() const noexcept { return m_namesReady; }
+    bool contentOnly() const noexcept { return m_contentOnly; }
+    // Content only (内容): no name search to wait for, only for the list to
+    // be this query's. True when a provider's answer with a file is held
+    // for that: the launcher clears the last query's rows (or, asked again,
+    // has its own) and calls namesShown at once, not when the native scan
+    // shows a row.
+    bool answerHeld() const;
+    // A content provider's row (commands[].contentSearch).
+    bool contentRow(const SearchResult& row) const;
+    // Where the native content matches end: the first of the content
+    // providers' rows after them, which stay last (count() with none).
+    int contentEnd() const;
 
     // What Host::results said (dropped unless for the current query).
     void results(std::uint64_t queryId, const QString& pluginId, const QString& commandId, const Items& items, bool partial,

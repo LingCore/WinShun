@@ -583,6 +583,77 @@ private slots:
         catalog.setEnabled(provider.id, false);
         QVERIFY(catalog.contentMatches(u"报销"_s).empty());
     }
+
+    // 内容 as the launcher drives it: a provider's rows show before the
+    // native scan has any (Launcher::onPluginResults), its matches go in
+    // above them (contentEnd), and asked again with the same text
+    // (handleShown) the new answer rewrites them where they are.
+    void contentProviderRowsBeforeAndBelowNative()
+    {
+        Fixture f;
+        Spec provider;
+        provider.id = u"test.ocr"_s;
+        provider.commandExtra = {{u"contentSearch"_s, true}};
+        QVERIFY(!f.install(provider).isEmpty());
+        const Catalog& catalog = f.host->catalog();
+        const QString command = catalog.find(provider.id)->manifest->commands.first().id;
+        Items items;
+        for (int i = 0; i < 3; ++i) {
+            Item item;
+            item.id = QString::number(i);
+            item.title = u"shot%1.png"_s.arg(i);
+            item.open.kind = Open::Kind::Path;
+            item.open.target = u"C:\\pics\\shot%1.png"_s.arg(i);
+            items.append(item);
+        }
+        const auto native = [](const QString& name) {
+            SearchResult r = fileRow(name);
+            r.line = 1;
+            return r;
+        };
+
+        ListSink sink;
+        sink.rows = {native(u"last-query.txt"_s)};
+        Merge merge(sink, catalog);
+        merge.begin(1, u"报销"_s, {}, {}, true);
+        QVERIFY(merge.contentOnly() && !merge.namesReady());
+        merge.results(1, provider.id, command, {items.first()}, true, true);
+        QVERIFY(!merge.answerHeld()); // a partial batch waits for the rest
+        merge.results(1, provider.id, command, items.mid(1), false, false);
+        QVERIFY(merge.answerHeld());
+        QCOMPARE(sink.count(), 1); // held: the last query's row is still the list
+        sink.rows.clear(); // showRows({})
+        merge.namesShown();
+        QCOMPARE(sink.names(), (QStringList {u"shot0.png"_s, u"shot1.png"_s, u"shot2.png"_s}));
+        QVERIFY(sink.row(0).isPlugin() && merge.contentRow(sink.row(0)));
+        QCOMPARE(merge.contentEnd(), 0);
+        sink.insert(merge.contentEnd(), native(u"a.txt"_s));
+        sink.insert(merge.contentEnd(), native(u"b.txt"_s));
+        QCOMPARE(merge.contentEnd(), 2);
+        QVERIFY(!merge.contentRow(sink.row(1)));
+        QCOMPARE(sink.names(), (QStringList {u"a.txt"_s, u"b.txt"_s, u"shot0.png"_s, u"shot1.png"_s, u"shot2.png"_s}));
+
+        // Asked again: the list is this query's, so the answer goes in at
+        // once; shot1 is gone, shot0 renamed in place.
+        merge.begin(2, u"报销"_s, {}, {}, true);
+        merge.namesShown();
+        Items again = {items[0], items[2]};
+        again[0].title = u"shot0 (2).png"_s;
+        merge.results(2, provider.id, command, again, false, true);
+        QVERIFY(!merge.answerHeld());
+        QCOMPARE(sink.names(), (QStringList {u"a.txt"_s, u"b.txt"_s, u"shot0 (2).png"_s, u"shot2.png"_s}));
+        QCOMPARE(merge.contentEnd(), 2);
+
+        // An answer with no file to open holds nothing to show the list for.
+        merge.begin(3, u"报销x"_s, {}, {}, true);
+        merge.results(3, provider.id, command, {}, false, true);
+        QVERIFY(!merge.answerHeld());
+        Item text;
+        text.id = u"t"_s;
+        text.title = u"no file"_s;
+        merge.results(3, provider.id, command, {text}, false, true);
+        QVERIFY(!merge.answerHeld());
+    }
     // ---- manifest ------------------------------------------------------------
     void manifestComplete()
     {

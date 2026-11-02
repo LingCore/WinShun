@@ -164,6 +164,38 @@ void Merge::namesShown()
     }
 }
 
+// A content provider's complete answer with a row apply() keeps: one that
+// opens a file (it may still turn out a file already listed).
+bool Merge::answerHeld() const
+{
+    return std::ranges::any_of(m_held, [this](const auto& held) {
+        const Batch& batch = held.second;
+        if (!batch.complete)
+            return false;
+        const Entry* entry = m_catalog.find(batch.pluginId);
+        const Command* command = entry && entry->manifest ? entry->manifest->command(batch.commandId) : nullptr;
+        return command && command->contentSearch
+            && std::ranges::any_of(batch.items, [](const Item& item) { return item.open.kind == Open::Kind::Path; });
+    });
+}
+
+bool Merge::contentRow(const SearchResult& row) const
+{
+    if (!row.isPlugin())
+        return false;
+    const Entry* entry = m_catalog.find(row.plugin->pluginId);
+    const Command* command = entry && entry->manifest ? entry->manifest->command(row.plugin->commandId) : nullptr;
+    return command && command->contentSearch;
+}
+
+int Merge::contentEnd() const
+{
+    int end = m_sink.count();
+    while (end > 0 && contentRow(m_sink.row(end - 1)))
+        --end;
+    return end;
+}
+
 // A list command's keyword typed alone: a row offering it, first and
 // current (its words say Enter and Tab open the command, so they must;
 // the names found for the word, the recent ones too, are a ↓ away). A
@@ -335,13 +367,8 @@ void Merge::apply(const Batch& batch)
         const SearchResult& r = m_sink.row(i);
         if (!r.isPlugin() || isHintRow(r))
             continue; // the hint row is nobody's answer: outside the quota
-        if (!content) {
-            const auto* otherEntry = m_catalog.find(r.plugin->pluginId);
-            const auto* otherCommand
-                = otherEntry && otherEntry->manifest ? otherEntry->manifest->command(r.plugin->commandId) : nullptr;
-            if (otherCommand && otherCommand->contentSearch)
-                continue;
-        }
+        if (!content && contentRow(r))
+            continue;
         if (r.plugin->pluginId != batch.pluginId)
             ++others;
         else if (r.plugin->commandId != batch.commandId)
