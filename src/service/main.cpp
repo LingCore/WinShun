@@ -412,8 +412,14 @@ int install()
     }
     std::fwprintf(stdout, L"copied the service to %ls\n", placed.c_str());
     // Its own WinShun.exe stays where it is, not beside the service: named
-    // to it, so dialog navigation still serves that copy (GitHub #104).
-    return registerService(placed, own.substr(0, own.find_last_of(L'\\') + 1) + L"WinShun.exe");
+    // to it, so dialog navigation still serves that copy (GitHub #104). In
+    // its long form, as the service sees the running WinShun.exe's image
+    // (an 8.3 "D:\SOFTWA~1" start would never match).
+    std::wstring ui = own.substr(0, own.find_last_of(L'\\') + 1) + L"WinShun.exe";
+    wchar_t full[MAX_PATH * 2] {};
+    if (const DWORD n = ::GetLongPathNameW(ui.c_str(), full, static_cast<DWORD>(std::size(full))); n && n < std::size(full))
+        ui.assign(full, n);
+    return registerService(placed, ui);
 }
 
 int uninstall()

@@ -2669,6 +2669,12 @@
 - **顺带（日志目录也是坑）**：`%ProgramData%\WinShun` 默认允许普通用户在 ProgramData 下新建文件夹，用户能抢先建好 `WinShun\` 并占为己有，再在 `service.log` 上放个联接点，把 SYSTEM 的写变成任意文件写 / 删。做法：建目录时设成只有管理员 / SYSTEM 可写（`svcloc::createProtectedDir`，普通用户进程——如 `tst_diagnostics`——写自己的临时目录时退回普通目录，不是提权边界）、开日志文件带 `FILE_FLAG_OPEN_REPARSE_POINT`（联接点不跟随）、安装和服务启动时各把已存在的弱目录收紧一次（`svcloc::secureLogFolder`，SYSTEM 是属主时凭 WRITE_DAC 就能改，降权后也行）。
 - **测**：`tst_core` 的 `protectedLocationJudgment` 用 SDDL 构造安全 / 不安全的安全描述符逐一验 `writableByNonAdmin`（Users 可写、Authenticated Users 可改、所有者是普通用户、CREATOR OWNER、只读、拒绝 ACE、仅继承 ACE、`C:\` 式默认按上级安全 / 按对象和父目录不安全、ProgramData 式按上级安全 / 按父目录不安全、父目录 Users 可新建文件、NULL DACL），外加真实路径（`System32\cmd.exe` 和 `System32` 安全、用户临时文件和目录不安全）；`tst_service` 的 `placingInAProtectedFolder`（仅提权跑）在 Program Files 下一个一次性目录上真跑 `ensureProtectedDir` + `copyExeInto` 并复验，再给这个目录单加一条“Users 可新建文件”，验证复制好的 exe 因所在文件夹变成不受保护（`why` 指向目录）、目录被拒，**不碰真服务、不注册真名**，测完删净。
 
+### 装到自选文件夹的安装版，界面不在服务旁边
+
+- **现象**：GitHub #104 复报：安装版在向日葵安装程序的“浏览文件夹”旁只能复制路径，提示“安装版才能直接跳转”，Ctrl+G 也不管用；以管理员运行 Win顺 才能跳。
+- **原因**：上一节的保护对安装程序同样生效：为所有用户装到普通用户能改的文件夹（`D:\Softwares` 一类）时，`[Run] --install` 把服务复制进 `%ProgramFiles%\WinShun Service`，WinShun.exe 留在原处。凡是“只认服务旁边的 WinShun.exe”的判断（`svcloc::isWinShunBeside`）都会把这份安装版当成别的副本。
+- **做法**：`--install` 复制服务时把装它的 WinShun.exe 写进 ImagePath（`--installed-from`），给界面用的能力按 `svcloc::servesDialogNav` 认它。只有要以 uiAccess 启动“服务旁边那个 WinShun.exe”的能力（受保护的剪贴板显示）才继续只认同目录。以后新加“只给自己界面”的服务能力时，两种安装位置都要想到。
+
 ## 双击空白处的文件夹菜单（GitHub #22）
 
 ### 鼠标的 Raw Input 一个进程只能登记一份
