@@ -1,0 +1,33 @@
+name: 功能建议 / Feature request
+description: 提出明确的功能或改进需求 / Suggest a feature or improvement.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢建议！请先搜索 [已有 Issues](https://github.com/LingCore/WinShun/issues)，避免同一个需求分散在多个条目中。
+        明确的功能需求可以直接在这里提交；使用问答、经验和插件分享请到 [Discussions](https://github.com/LingCore/WinShun/discussions)。
+
+        Please search existing issues first. Concrete feature requests belong here; usage questions, tips and plugin sharing belong in Discussions.
+  - type: textarea
+    id: problem
+    attributes:
+      label: 使用场景与困难 / Use case and problem
+      description: 你在做什么？当前哪里不方便？ / What are you trying to do, and what gets in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 期望的效果 / Desired outcome
+      description: 描述希望怎样操作、得到什么结果，无需设计具体的技术实现。 / Describe the interaction and result you want; implementation details are not required.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: 替代办法与参考（选填） / Alternatives and references (optional)
+      description: 可补充目前的处理办法、相关插件、截图或参考链接。 / Add workarounds, related plugins, screenshots or reference links.
+    validations:
+      required: false

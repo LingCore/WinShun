@@ -324,7 +324,9 @@ Listary、PowerToys 的“查找鼠标”默认也用双击 Ctrl，关掉其中�
 
 ### 反馈
 
-遇到问题或有建议，欢迎在 [Issues](https://github.com/LingCore/WinShun/issues) 里提出。
+- **故障与需求**：通过 [故障反馈](https://github.com/LingCore/WinShun/issues/new?template=1-bug-report.yml) 或 [功能建议](https://github.com/LingCore/WinShun/issues/new?template=2-feature-request.yml) 提交，便于跟踪处理。提交前请先搜索 [已有 Issues](https://github.com/LingCore/WinShun/issues)。
+- **使用问题**：到 [使用问答](https://github.com/LingCore/WinShun/discussions/categories/q-a) 提问。
+- **交流与分享**：在 [交流区](https://github.com/LingCore/WinShun/discussions/categories/general) 分享经验，在 [插件与作品分享区](https://github.com/LingCore/WinShun/discussions/categories/show-and-tell) 展示插件、配置和作品。
 
 ### 从源码编译
 
@@ -532,7 +534,9 @@ Free and MIT-licensed. It goes online only to check lcstp.com for new versions (
 
 ### Feedback
 
-Bug reports and suggestions are welcome in [Issues](https://github.com/LingCore/WinShun/issues).
+- **Bugs and feature requests**: use the [bug report](https://github.com/LingCore/WinShun/issues/new?template=1-bug-report.yml) or [feature request](https://github.com/LingCore/WinShun/issues/new?template=2-feature-request.yml) form so they can be tracked. Please search [existing issues](https://github.com/LingCore/WinShun/issues) first.
+- **Usage questions**: ask in [Q&A](https://github.com/LingCore/WinShun/discussions/categories/q-a).
+- **Discussion and sharing**: exchange tips in [General](https://github.com/LingCore/WinShun/discussions/categories/general), or share plugins, configurations and projects in [Show and tell](https://github.com/LingCore/WinShun/discussions/categories/show-and-tell).
 
 ### Build from source
 
