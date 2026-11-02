@@ -424,6 +424,35 @@ private slots:
         QCOMPARE(ws::svcloc::isWinShunBeside(client.toStdWString(), service.toStdWString()), accepted);
     }
 
+    void requesterInstalledFrom_data()
+    {
+        QTest::addColumn<QString>("client");
+        QTest::addColumn<QString>("installedFrom");
+        QTest::addColumn<bool>("accepted");
+        // An all-users install to a folder ordinary users may change: its
+        // --install put the service into the protected folder (GitHub #104).
+        const QString from = QStringLiteral("D:\\Softwares\\WinShun\\WinShun.exe");
+        QTest::newRow("installed from") << from << from << true;
+        QTest::newRow("case") << QStringLiteral("d:\\softwares\\winshun\\WINSHUN.exe") << from << true;
+        QTest::newRow("beside still") << QStringLiteral("C:\\Program Files\\WinShun Service\\WinShun.exe") << from << true;
+        QTest::newRow("other copy") << QStringLiteral("D:\\tools\\WinShun\\WinShun.exe") << from << false;
+        QTest::newRow("other program there") << QStringLiteral("D:\\Softwares\\WinShun\\WinShunMcp.exe") << from << false;
+        QTest::newRow("folder prefix") << QStringLiteral("D:\\Softwares\\WinShun2\\WinShun.exe") << from << false;
+        QTest::newRow("none recorded") << from << QString() << false;
+        QTest::newRow("empty client") << QString() << QString() << false;
+    }
+
+    void requesterInstalledFrom()
+    {
+        // Dialog navigation also serves the copy the service was installed
+        // from, as its command line (--installed-from) names it.
+        QFETCH(QString, client);
+        QFETCH(QString, installedFrom);
+        QFETCH(bool, accepted);
+        const std::wstring service = L"C:\\Program Files\\WinShun Service\\WinShunService.exe";
+        QCOMPARE(ws::svcloc::servesDialogNav(client.toStdWString(), service, installedFrom.toStdWString()), accepted);
+    }
+
     void localizedNamesAsTheShell()
     {
         // The helper's folder-tree names, read without the shell namespace,

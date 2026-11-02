@@ -28,7 +28,7 @@ public:
     enum class Reach {
         NoService, // none running (or of another major version)
         NoNavigator, // one runs but cannot navigate (older, or cannot start helpers)
-        OtherCopy, // it can, but for the WinShun.exe beside it only: this is a portable or other copy
+        OtherCopy, // it can, but for the copy of Win顺 that installed it (svcloc::servesDialogNav): not this one
         Available,
     };
     using ReachChanged = std::function<void(Reach reach)>;

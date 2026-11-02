@@ -42,8 +42,9 @@ constexpr std::uint16_t kMajor = 1; // different on the two ends: they cannot ta
 // Minor 4 adds the dialog-navigation capability (kCapabilityDialogNav) and the
 // OpenDialogNav request; an older service without the bit leaves the UI's
 // copy-and-paste fallback in place. A service that has the navigator but
-// keeps it for the WinShun.exe beside it tells any other client so
-// (kCapabilityDialogNavBesideOnly), for that copy's hint.
+// keeps it for Win顺's own UI (the WinShun.exe beside it, or the one it was
+// installed from) tells any other client so (kCapabilityDialogNavBesideOnly),
+// for that copy's hint.
 // Minor 5 adds a leased UIAccess clipboard renderer for the protected GUI
 // beside the service. Older/portable copies keep the ordinary-window path.
 constexpr std::uint16_t kMinor = 5;
@@ -52,7 +53,7 @@ constexpr std::uint16_t kMinorCreated = 3;
 constexpr std::uint32_t kCapabilityBulkRead = 1; // HelloOk::capabilities
 constexpr std::uint32_t kCapabilityKeyListener = 2; // UIAccess listener, on the caller's desktop
 constexpr std::uint32_t kCapabilityDialogNav = 4; // minor 4: navigate an elevated file dialog (GitHub #104)
-constexpr std::uint32_t kCapabilityDialogNavBesideOnly = 8; // minor 4: has it, for the WinShun.exe beside it only
+constexpr std::uint32_t kCapabilityDialogNavBesideOnly = 8; // minor 4: has it, for Win顺's own UI only
 constexpr std::uint32_t kCapabilityClipboardDisplay = 16; // minor 5: authenticated UIAccess display peer
 constexpr std::size_t kMaxBulkWants = 4u << 20; // files one bulk session may ask about
 constexpr wchar_t kPipeName[] = L"WinShun.Volumes"; // one service for the whole machine

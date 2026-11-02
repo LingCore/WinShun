@@ -317,19 +317,30 @@ std::wstring processImagePath(DWORD pid)
     DWORD size = static_cast<DWORD>(std::size(path));
     return ::QueryFullProcessImageNameW(process.get(), 0, path, &size) ? std::wstring(path, size) : std::wstring();
 }
+
+std::wstring ownImagePath()
+{
+    wchar_t path[MAX_PATH * 2] {};
+    const DWORD n = ::GetModuleFileNameW(nullptr, path, static_cast<DWORD>(std::size(path)));
+    return n && n < std::size(path) ? std::wstring(path, n) : std::wstring();
+}
 } // namespace
 
-// The dialog navigator of GitHub #104 is for Win顺's own UI only: the client
-// must be WinShun.exe sitting next to this service executable. (The double-tap
-// listener is not kept so; Server::handshake says why.) The pipe's ACL
+// The session helpers that matter are for Win顺's own UI only (the double-tap
+// listener is not kept so; Server::handshake says why). The pipe's ACL
 // already keeps out AppContainer and low-integrity callers.
 bool requesterIsWinShun(DWORD pid)
 {
     const std::wstring client = processImagePath(pid);
-    wchar_t ownPath[MAX_PATH * 2] {};
-    const DWORD n = ::GetModuleFileNameW(nullptr, ownPath, static_cast<DWORD>(std::size(ownPath)));
-    return !client.empty() && n && n < std::size(ownPath)
-        && svcloc::isWinShunBeside(client, std::wstring_view(ownPath, n));
+    const std::wstring own = ownImagePath();
+    return !client.empty() && !own.empty() && svcloc::isWinShunBeside(client, own);
+}
+
+bool mayNavigateDialogs(const Server& server, DWORD pid)
+{
+    const std::wstring client = processImagePath(pid);
+    const std::wstring own = ownImagePath();
+    return !client.empty() && !own.empty() && svcloc::servesDialogNav(client, own, server.options().installedFrom);
 }
 
 bool canStartClipboardDisplay(DWORD pid)
@@ -526,7 +537,7 @@ void serveDialogNav(Server& server, Connection& conn, std::span<const std::byte>
     // The requester must be an interactive session, and Win顺's own UI.
     DWORD session = 0;
     if (!::GetNamedPipeClientSessionId(conn.channel.handle(), &session) || session == 0
-        || !requesterIsWinShun(conn.pid)) {
+        || !mayNavigateDialogs(server, conn.pid)) {
         replyError(conn, ERROR_ACCESS_DENIED, L"not authorised for dialog navigation", 1000);
         return;
     }

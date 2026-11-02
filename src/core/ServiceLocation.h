@@ -116,11 +116,20 @@ bool parentIs(const std::wstring& path, const std::wstring& dir);
 
 // True when `clientImage` is a WinShun.exe in the very folder of
 // `serviceImage`: both full paths as QueryFullProcessImageNameW and
-// GetModuleFileNameW give them, compared without regard to case. The service
-// offers its session helpers (the UIAccess double-tap listener, the elevated
-// file-dialog navigator of GitHub #104) only to such a client, Win顺's own UI
-// from the same install; a portable or development copy elsewhere is refused
-// them. Pure: no file is opened.
+// GetModuleFileNameW give them, compared without regard to case. The
+// protected clipboard display starts that very WinShun.exe with UIAccess, so
+// only such a client gets it. Pure: no file is opened.
 bool isWinShunBeside(std::wstring_view clientImage, std::wstring_view serviceImage) noexcept;
+
+// Whether the service navigates elevated file dialogs (GitHub #104) for
+// `clientImage`: Win顺's own UI, the WinShun.exe beside the service, or the
+// one `installedFrom` names. That is the copy whose --install (run by an
+// administrator: the installer, or a portable copy's settings) had to put
+// the service in protectedServiceDir because its own folder is not protected
+// (an all-users install to D:\Softwares, a portable copy); --install records
+// it on the service's command line, which only administrators can change.
+// Empty `installedFrom`: beside only. Compared as full paths, without regard
+// to case. Pure.
+bool servesDialogNav(std::wstring_view clientImage, std::wstring_view serviceImage, std::wstring_view installedFrom) noexcept;
 
 } // namespace ws::svcloc

@@ -9,10 +9,14 @@ namespace ws::service {
 class Server;
 struct Connection;
 bool canStartInputListener();
-// The pipe client `pid` is Win顺's own UI: WinShun.exe in this executable's
-// folder (svcloc::isWinShunBeside). Only it is told of the dialog navigator
-// (kCapabilityDialogNav) and given it; the key listener is for any client.
+// The pipe client `pid` is WinShun.exe in this executable's folder
+// (svcloc::isWinShunBeside): the protected clipboard display is for it alone.
 bool requesterIsWinShun(DWORD pid);
+// The pipe client `pid` is Win顺's own UI (svcloc::servesDialogNav: beside
+// this executable, or the copy it was installed from). Only it is told of the
+// dialog navigator (kCapabilityDialogNav) and given it; the key listener is
+// for any client.
+bool mayNavigateDialogs(const Server& server, DWORD pid);
 bool canStartClipboardDisplay(DWORD pid);
 void serveClipboardDisplay(Server& server, Connection& conn, std::span<const std::byte> payload);
 void serveInputListener(Server& server, Connection& conn, std::span<const std::byte> payload);

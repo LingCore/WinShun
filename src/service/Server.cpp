@@ -367,12 +367,13 @@ bool Server::handshake(Connection& conn)
     // key listener only reports double taps of Ctrl, Alt or Shift, so any
     // client the pipe lets in gets it in its own session, as before #104 (a
     // portable copy keeps double taps over admin windows). The navigator acts
-    // on another program's elevated window with uiAccess rights, so only the
-    // WinShun.exe beside this service gets it; another copy is told it is kept
-    // from it, to say so instead of suggesting to install the service.
+    // on another program's elevated window with uiAccess rights, so only
+    // Win顺's own UI gets it (the WinShun.exe beside this service, or the one
+    // it was installed from: mayNavigateDialogs); another copy is told it is
+    // kept from it, to say so instead of suggesting to install the service.
     if (m_options.keyListener) {
         ok.capabilities |= kCapabilityKeyListener;
-        ok.capabilities |= requesterIsWinShun(conn.pid) ? kCapabilityDialogNav : kCapabilityDialogNavBesideOnly;
+        ok.capabilities |= mayNavigateDialogs(*this, conn.pid) ? kCapabilityDialogNav : kCapabilityDialogNavBesideOnly;
         if (canStartClipboardDisplay(conn.pid))
             ok.capabilities |= kCapabilityClipboardDisplay;
     }
