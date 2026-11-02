@@ -1978,8 +1978,18 @@ void App::pluginPicturesChanged()
         m_launcher->setPictureVerbs(pin, edit);
     if (m_clipboard)
         m_clipboard->setPictureVerbs(pin, edit);
-    if (m_settingsEditor) // the screenshot history's keyword (剪贴板 page)
-        m_settingsEditor->setScreenshotHistory(screenshotPluginOn());
+    updateScreenshotPlugin();
+}
+
+// What the settings say of the screenshot plugin: the history's keyword (剪贴板
+// page) and the hotkey row (常规 page).
+void App::updateScreenshotPlugin()
+{
+    if (!m_settingsEditor || !m_pluginHost)
+        return;
+    const auto keys = m_pluginHotkeys.find(kScreenshotPlugin.toString());
+    m_settingsEditor->setScreenshotPlugin(m_pluginHost->catalog().find(kScreenshotPlugin) != nullptr,
+                                          screenshotPluginOn(), keys == m_pluginHotkeys.end() ? QStringList() : keys->second);
 }
 
 // 贴到屏幕 and 编辑 go to the plugin that does them (`picture`), with the
@@ -3234,7 +3244,7 @@ void App::showSettings()
         editor->favorites()->setStore(m_favorites.get());
         m_settingsWindow = window;
         m_settingsEditor = editor;
-        editor->setScreenshotHistory(screenshotPluginOn());
+        updateScreenshotPlugin();
         applyHotkey(); // shows whether the current hotkey works
         applyClipboardHotkeys(); // ... and where Win+V stands
         applyTaskbarHotkeys(); // ... and Win+S
@@ -6402,6 +6412,7 @@ void App::createPluginHost()
             m_pluginHotkeys.erase(id);
         else
             m_pluginHotkeys[id] = keys;
+        updateScreenshotPlugin();
         applyTaskbarHotkeys();
         applyQuickPasteHotkeys();
     });

@@ -1035,6 +1035,52 @@ int runSettings(const QStringList& args)
         return finish(window, ok);
     }
 
+    // 常规's 截图的快捷键 row and the 按键一览 entry follow the capture plugin: not installed, off, on without
+    // and with shortcuts (App::updateScreenshotPlugin hands them over).
+    if (args.contains(u"--capture-hotkey"_s)) {
+        bool ok = true;
+        auto* row = window->findChild<QQuickItem*>(u"captureHotkeyRow"_s);
+        auto* button = window->findChild<QQuickItem*>(u"captureHotkeyButton"_s);
+        if (!row || !button)
+            return finish(window, false);
+        window->resize(args.contains(u"--compact"_s) ? QSize(760, 420) : QSize(920, 720));
+        QMetaObject::invokeMethod(window, "goTo", Q_ARG(QVariant, QVariant::fromValue(row)));
+        const auto overview = [&] { // the keys of the 截图 entry among the shortcuts
+            for (const QVariant& section : window->property("shortcutSections").toList()) {
+                for (const QVariant& entry : section.toMap().value(u"rows"_s).toList()) {
+                    if (entry.toMap().value(u"text"_s).toString() == u"截图"_s)
+                        return entry.toMap().value(u"keys"_s).toString();
+                }
+            }
+            return u"(no entry)"_s;
+        };
+        struct Case {
+            const char* name;
+            bool installed, on;
+            QStringList keys;
+            QString description, button, keys0;
+        };
+        const Case cases[] = {
+            {"not-installed", false, false, {}, u"可选插件"_s, u"去插件库"_s, {}},
+            {"off", true, false, {}, u"插件还没打开"_s, u"去设置"_s, {}},
+            {"no-key", true, true, {}, u"还没设"_s, u"去设置"_s, {}},
+            {"key", true, true, {u"F1"_s, u"Ctrl+Alt+F2"_s}, u"现在是 F1 / Ctrl+Alt+F2"_s, u"去设置"_s, u"F1 / Ctrl+Alt+F2"_s},
+        };
+        for (const Case& c : cases) {
+            editor->setScreenshotPlugin(c.installed, c.on, c.keys);
+            settle(window, 3);
+            const QString description = row->property("description").toString();
+            const QString text = button->property("text").toString();
+            const QString keys = overview();
+            const bool good = description.contains(c.description) && text == c.button && keys == c.keys0
+                && row->property("values").toStringList() == c.keys;
+            say(u"capture-hotkey %1: \"%2\" / button \"%3\" / overview \"%4\"%5"_s.arg(QString::fromLatin1(c.name), description, text, keys,
+                good ? QString() : u" -- WRONG"_s));
+            ok = good && saveGrab(window, out.filePath(u"capture-hotkey-%1.png"_s.arg(QString::fromLatin1(c.name)))) && ok;
+        }
+        return finish(window, ok);
+    }
+
     if (args.contains(u"--backup-settings"_s)) {
         bool ok = true;
         const auto check = [&](bool condition, const char* message) {
