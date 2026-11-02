@@ -1492,6 +1492,15 @@ void SettingsEditor::setClipboardKeepPlace(bool on)
     commit();
 }
 
+void SettingsEditor::setClipboardUiSize(const QString& size)
+{
+    if (m_settings.clipboardUiSize == size
+        || (size != u"follow" && size != u"dense" && size != u"compact" && size != u"standard" && size != u"roomy"))
+        return;
+    m_settings.clipboardUiSize = size;
+    commit();
+}
+
 void SettingsEditor::setClipboardLargePictures(bool on)
 {
     if (m_settings.clipboardLargePictures == on)

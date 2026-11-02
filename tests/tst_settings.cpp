@@ -313,6 +313,31 @@ private slots:
         }
     }
 
+    // 剪贴板大小: its own step, kept as written; unknown names fall back to following 界面大小.
+    void clipboardUiSize()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QCOMPARE(settings.clipboardUiSize, u"follow"_s);
+        for (const QString size : {u"dense"_s, u"compact"_s, u"standard"_s, u"roomy"_s, u"follow"_s}) {
+            settings.clipboardUiSize = size;
+            settings.save();
+            ws::Settings restored;
+            restored.load();
+            QCOMPARE(restored.clipboardUiSize, size);
+        }
+        {
+            QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+            ini.setValue(u"Clipboard/UiSize"_s, u"huge"_s);
+        }
+        ws::Settings invalid;
+        invalid.load();
+        QCOMPARE(invalid.clipboardUiSize, u"follow"_s);
+    }
+
     void previewHotkey()
     {
         QTemporaryDir profile;

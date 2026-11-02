@@ -3257,7 +3257,7 @@ bool checkClipboardInteractions(QQmlEngine* engine, const QDir& output, const QS
         .text = QDir::toNativeSeparators(temporary.filePath(u"不存在的演示文件.txt"_s))}, QDateTime::currentMSecsSinceEpoch());
     ClipboardWatcher watcher({}, {});
     Clipboard clipboard(&store, &watcher);
-    clipboard.setRowOptions(false, false);
+    clipboard.setRowOptions(false, false, SystemTheme::uiSize());
     clipboard.setPreviewOpen(false);
     clipboard.setActive(true);
     clipboard.handleShown();

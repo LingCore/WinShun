@@ -604,6 +604,14 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Clipboard/KeepPlace", QT_TRANSLATE_NOOP("AiSettings", "粘贴后保持位置"), "clipboard", 0,
                     "Pasting an entry from the history leaves it where it is in the list; off: it moves to the top."},
         &Settings::clipboardKeepPlace));
+    add(choice({"Clipboard/UiSize", QT_TRANSLATE_NOOP("AiSettings", "剪贴板大小"), "clipboard", 0,
+                   "Type and row heights of the clipboard window alone: follows the interface size, or its own (dense: one line per entry)."},
+        &Settings::clipboardUiSize,
+        {{u"follow"_s, u"the same as the interface size"_s, QT_TRANSLATE_NOOP("AiSettings", "跟随界面大小")},
+            {u"dense"_s, u"one small line per entry"_s, QT_TRANSLATE_NOOP("AiSettings", "密集")},
+            {u"compact"_s, u"smaller type and rows"_s, QT_TRANSLATE_NOOP("AiSettings", "紧凑")},
+            {u"standard"_s, u"the usual size"_s, QT_TRANSLATE_NOOP("AiSettings", "标准")},
+            {u"roomy"_s, u"larger type and rows"_s, QT_TRANSLATE_NOOP("AiSettings", "宽松")}}));
     add(boolean({"Clipboard/LargePictures", QT_TRANSLATE_NOOP("AiSettings", "大图片缩略图"), "clipboard", 0,
                     "Pictures on taller rows, thumbnails large enough to make out."},
         &Settings::clipboardLargePictures));

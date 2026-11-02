@@ -2145,7 +2145,7 @@ Window {
                 SettingRow {
                     title: qsTr("界面大小")
                     keywords: qsTr("缩放;大小;字号;字体大小;行高;紧凑;宽松;scale;size;zoom;font").split(";")
-                    description: qsTr("搜索框、剪贴板和对话框旁搜索框的文字和行高；设置窗口不变")
+                    description: qsTr("搜索框、剪贴板和对话框旁搜索框的文字和行高；设置窗口不变。剪贴板可在“剪贴板”页单独设置")
 
                     ScopeTabs {
                         readonly property var sizes: ["compact", "standard", "roomy"]
@@ -3812,6 +3812,19 @@ Window {
                     ToggleSwitch {
                         checked: window.editor.clipboardKeepPlace
                         onToggled: (on) => window.editor.clipboardKeepPlace = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("剪贴板大小")
+                    keywords: qsTr("字体;字号;文字大小;行高;密集;紧凑;宽松;ditto;font size;dense").split(";")
+                    description: qsTr("剪贴板文字和行高，可以和搜索框不同；密集是每条一行的小字")
+
+                    ScopeTabs {
+                        readonly property var sizes: ["follow", "dense", "compact", "standard", "roomy"]
+                        labels: [qsTr("跟随界面大小"), qsTr("密集"), qsTr("紧凑"), qsTr("标准"), qsTr("宽松")]
+                        current: Math.max(0, sizes.indexOf(window.editor.clipboardUiSize))
+                        onActivated: (index) => window.editor.clipboardUiSize = sizes[index]
                     }
                 }
 

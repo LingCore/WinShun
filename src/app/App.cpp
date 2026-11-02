@@ -1725,7 +1725,11 @@ void App::applySettings(bool initial)
     m_launcher->setNumberHints(m_settings.numberHints);
     tellLauncherFolders();
     m_clipboard->setNumberHints(m_settings.numberHints);
-    m_clipboard->setRowOptions(m_settings.clipboardClickToPaste, m_settings.clipboardLargePictures);
+    const QString clipboardSize = m_settings.clipboardUiSize == u"follow" ? m_settings.uiSize : m_settings.clipboardUiSize;
+    const bool clipboardResized = clipboardSize != m_clipboard->uiSize();
+    m_clipboard->setRowOptions(m_settings.clipboardClickToPaste, m_settings.clipboardLargePictures, clipboardSize);
+    if (clipboardResized && m_clipPlacement)
+        m_clipPlacement->resized(); // the rows have another height
     m_clipboard->setLayoutOptions(m_settings.clipboardFlipAbove, m_settings.clipboardSearchBoxSide == u"far");
     m_clipboard->setHoldToStep(m_settings.clipboardHoldToStep);
     if (!m_settings.clipboardHoldToStep && (m_hold || m_browseHotkey))

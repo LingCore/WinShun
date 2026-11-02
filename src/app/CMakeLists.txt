@@ -123,6 +123,7 @@ set(qml_files
     qml/Main.qml
     qml/SearchKeys.qml
     qml/Theme.qml
+    qml/UiScale.qml
     qml/WindowEdge.qml
     qml/SearchBar.qml
     qml/ScopeTabs.qml

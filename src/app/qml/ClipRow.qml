@@ -36,8 +36,10 @@ Item {
     property string pasteTip: qsTr("粘贴") // where the paste button pastes ("粘贴到搜索框")
     property bool clickToPaste: false // a click pastes (Clipboard::clickToPaste)
     property bool largePictures: false // a picture's thumbnail larger (Clipboard::largePictures)
+    property UiScale metrics: Theme.metrics
 
     // Thumbnail layout is independent of the clipboard kind (and its paste/drag actions).
+    readonly property int iconSize: metrics.dense ? 24 : 32 // 密集: one line, a smaller icon
     readonly property bool picture: kind === 4 || image.length > 0
     readonly property bool current: ListView.isCurrentItem
     readonly property int selectedCount: ListView.view ? ListView.view.model.selectedCount : 0
@@ -104,8 +106,8 @@ Item {
         // Pictures larger, on a taller row (ClipboardPage.pictureRowHeight):
         // what is in them shows (GitHub #9); 108 x 68 holds a 16:10 screen whole,
         // 208 x 130 (largePictures) its details too (forum #137).
-        width: !row.picture ? 32 : row.largePictures ? 208 : 108
-        height: !row.picture ? 32 : row.largePictures ? 130 : 68
+        width: !row.picture ? row.iconSize : row.largePictures ? 208 : 108
+        height: !row.picture ? row.iconSize : row.largePictures ? 130 : 68
 
         Rectangle { // text and links: a sign on a soft tile
             anchors.fill: parent
@@ -137,7 +139,7 @@ Item {
             objectName: "clipboardFileIcon"
 
             readonly property real dpr: Screen.devicePixelRatio
-            readonly property int pixels: Math.round(32 * dpr)
+            readonly property int pixels: Math.round(row.iconSize * dpr)
 
             visible: (row.kind === 2 || row.kind === 3) && !thumbnail.ready
             x: Math.round((parent.width - width) / 2 * dpr) / dpr + 1 / 64
@@ -252,17 +254,18 @@ Item {
             elide: Text.ElideRight
             maximumLineCount: 1
             color: row.missing ? Theme.subtext : Theme.text
-            font.pixelSize: Theme.uiTitle
+            font.pixelSize: row.metrics.uiTitle
         }
 
         Text {
+            visible: !row.metrics.dense
             width: parent.width
             text: row.detail
             textFormat: Text.PlainText
             elide: Text.ElideRight
             maximumLineCount: 1
             color: Theme.subtext
-            font.pixelSize: Theme.uiCaption
+            font.pixelSize: row.metrics.uiCaption
         }
     }
 
@@ -273,7 +276,7 @@ Item {
         anchors.rightMargin: 16
         anchors.verticalCenter: parent.verticalCenter
         width: badgeRow.implicitWidth + 16
-        height: Theme.badgeHeight
+        height: row.metrics.badgeHeight
         radius: Theme.pillRadius(height)
         color: Theme.badge
 
@@ -296,7 +299,7 @@ Item {
                 elide: Text.ElideRight
                 width: Math.min(implicitWidth, 96)
                 color: row.groupName.length > 0 ? Theme.accent : Theme.subtext
-                font.pixelSize: Theme.uiCaption
+                font.pixelSize: row.metrics.uiCaption
             }
         }
     }
@@ -313,7 +316,7 @@ Item {
         CenteredNumber {
             objectName: "clipboardNumber"
             text: row.hint > 0 ? String(row.hint) : ""
-            font.pixelSize: Theme.uiTitle
+            font.pixelSize: row.metrics.uiTitle
             font.weight: Font.Medium
             font.strikeout: row.hintTaken
             color: row.hintTaken ? Theme.faint : row.current ? Theme.accent : Theme.subtext
@@ -376,6 +379,7 @@ Item {
 
             RowAction { // dragged up or down: to another place in its group
                 id: moveAction
+                small: row.metrics.dense
                 visible: row.movable
                 draggable: true
                 glyph: "" // GripperBarHorizontal
@@ -399,6 +403,7 @@ Item {
             }
             RowAction { // a click pastes already (clickToPaste): the preview here instead
                 id: pasteAction
+                small: row.metrics.dense
                 glyph: row.clickToPaste ? "" : "" // View, Paste
                 tip: row.clickToPaste ? qsTr("预览") : row.pasteTip
                 tipShortcut: row.clickToPaste ? "Alt+P" : "Enter"
@@ -406,6 +411,7 @@ Item {
             }
             RowAction {
                 id: pinAction
+                small: row.metrics.dense
                 glyph: row.pinned ? "" : "" // Unpin, Pin
                 tip: row.pinned ? qsTr("取消固定") : qsTr("固定（不会过期）")
                 tipShortcut: "Ctrl+P"
@@ -413,6 +419,7 @@ Item {
             }
             RowAction {
                 id: removeAction
+                small: row.metrics.dense
                 glyph: "" // Delete
                 tip: qsTr("删除")
                 tipShortcut: "Delete"

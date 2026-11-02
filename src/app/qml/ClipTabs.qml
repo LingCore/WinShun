@@ -29,7 +29,9 @@ Item {
     }
     function stopNaming() { naming = false }
 
-    implicitHeight: Theme.tabsHeight
+    property UiScale metrics: Theme.metrics
+
+    implicitHeight: tabs.metrics.tabsHeight
 
     Flickable {
         id: flick
@@ -68,7 +70,7 @@ Item {
                     readonly property bool active: index === tabs.clipboard.category
 
                     width: content.implicitWidth + 24
-                    height: Theme.chipHeight + 2
+                    height: tabs.metrics.chipHeight + 2
                     radius: Theme.pillRadius(height)
                     color: active ? Theme.chipActive : area.containsMouse ? Theme.chipHover : Theme.track
                     border.width: active ? 1 : 0
@@ -92,7 +94,7 @@ Item {
                             text: chip.modelData.title
                             textFormat: Text.PlainText
                             color: chip.active ? Theme.text : Theme.subtext
-                            font.pixelSize: Theme.uiTab
+                            font.pixelSize: tabs.metrics.uiTab
                             font.weight: chip.active ? Theme.fontStrong : Font.Normal
                         }
                     }
@@ -116,7 +118,7 @@ Item {
             Rectangle { // naming a group
                 visible: tabs.naming
                 width: Math.max(120, field.contentWidth + 28)
-                height: Theme.chipHeight + 2
+                height: tabs.metrics.chipHeight + 2
                 radius: Theme.pillRadius(height)
                 color: Theme.inputFocused
                 border.width: 1
@@ -130,7 +132,7 @@ Item {
                     verticalAlignment: TextInput.AlignVCenter
                     clip: true
                     color: Theme.text
-                    font.pixelSize: Theme.uiTab
+                    font.pixelSize: tabs.metrics.uiTab
                     selectByMouse: true
                     selectionColor: Theme.textSelection
                     selectedTextColor: Theme.text
@@ -165,7 +167,7 @@ Item {
                 id: addChip
                 visible: !tabs.naming
                 width: height
-                height: Theme.chipHeight + 2
+                height: tabs.metrics.chipHeight + 2
                 radius: Theme.pillRadius(height)
                 color: addArea.containsMouse ? Theme.chipHover : "transparent"
 
@@ -173,7 +175,7 @@ Item {
                     x: Theme.snap((parent.width - width) / 2, Screen.devicePixelRatio) // on whole device pixels
                     y: Theme.snap((parent.height - height) / 2, Screen.devicePixelRatio)
                     glyph: "" // Add
-                    size: 64 / 3 // as the header's pin button (RowAction): 32 device pixels at 150%
+                    size: tabs.metrics.dense ? 16 : 64 / 3 // as the header's pin button (RowAction): 32 device pixels at 150%
                     color: addArea.containsMouse ? Theme.text : Theme.subtext
                 }
 
@@ -196,7 +198,7 @@ Item {
         anchors.rightMargin: 14
         anchors.verticalCenter: parent.verticalCenter
         width: height
-        height: Theme.chipHeight + 2
+        height: tabs.metrics.chipHeight + 2
         radius: Theme.pillRadius(height)
         color: tabs.clipboard.pinnedFirst ? Theme.chipActive : orderArea.containsMouse ? Theme.chipHover : "transparent"
         border.width: tabs.clipboard.pinnedFirst ? 1 : 0
@@ -206,7 +208,7 @@ Item {
             x: Theme.snap((parent.width - width) / 2, Screen.devicePixelRatio) // on whole device pixels
             y: Theme.snap((parent.height - height) / 2, Screen.devicePixelRatio)
             glyph: "" // Sort
-            size: 64 / 3 // as the header's pin button (RowAction): 32 device pixels at 150%
+            size: tabs.metrics.dense ? 16 : 64 / 3 // as the header's pin button (RowAction): 32 device pixels at 150%
             color: tabs.clipboard.pinnedFirst ? Theme.accent : orderArea.containsMouse ? Theme.text : Theme.subtext
         }
 

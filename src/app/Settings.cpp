@@ -1034,6 +1034,9 @@ void Settings::load()
         clipboardMissingFiles = d.clipboardMissingFiles;
     clipboardImages = readOrDefault(s, u"Clipboard/Images"_s, d.clipboardImages);
     clipboardClickToPaste = readOrDefault(s, u"Clipboard/ClickToPaste"_s, d.clipboardClickToPaste);
+    clipboardUiSize = readOrDefault(s, u"Clipboard/UiSize"_s, d.clipboardUiSize).trimmed().toLower();
+    if (clipboardUiSize != u"dense" && clipboardUiSize != u"compact" && clipboardUiSize != u"standard" && clipboardUiSize != u"roomy")
+        clipboardUiSize = d.clipboardUiSize;
     clipboardLargePictures = readOrDefault(s, u"Clipboard/LargePictures"_s, d.clipboardLargePictures);
     clipboardKeepPlace = readOrDefault(s, u"Clipboard/KeepPlace"_s, d.clipboardKeepPlace);
     clipboardAtPointer = readOrDefault(s, u"Clipboard/AtPointer"_s, d.clipboardAtPointer);
@@ -1272,6 +1275,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Clipboard/MissingFiles"_s, clipboardMissingFiles);
     s.setValue(u"Clipboard/Images"_s, clipboardImages);
     s.setValue(u"Clipboard/ClickToPaste"_s, clipboardClickToPaste);
+    s.setValue(u"Clipboard/UiSize"_s, clipboardUiSize);
     s.setValue(u"Clipboard/LargePictures"_s, clipboardLargePictures);
     s.setValue(u"Clipboard/KeepPlace"_s, clipboardKeepPlace);
     s.setValue(u"Clipboard/AtPointer"_s, clipboardAtPointer);

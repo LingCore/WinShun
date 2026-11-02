@@ -7,6 +7,7 @@ Row {
 
     property string keys
     property string label
+    property UiScale metrics: Theme.metrics
     // Its width when shown, also while hidden (a hidden Row lays out nothing).
     readonly property real fullWidth: label.length > 0 ? keyText.implicitWidth + 10 + spacing + labelText.implicitWidth : 0
 
@@ -18,7 +19,7 @@ Row {
         id: cap
         anchors.verticalCenter: parent.verticalCenter
         width: keyText.implicitWidth + 10
-        height: Theme.keycapHeight
+        height: hint.metrics.keycapHeight
         radius: Theme.controlRadius
         color: Theme.keycap
 
@@ -28,7 +29,7 @@ Row {
             y: hint.onPixel((cap.height - height) / 2)
             text: hint.keys
             color: Theme.subtext
-            font.pixelSize: Theme.uiCaption
+            font.pixelSize: hint.metrics.uiCaption
         }
     }
 
@@ -37,6 +38,6 @@ Row {
         anchors.verticalCenter: parent.verticalCenter
         text: hint.label
         color: Theme.faint
-        font.pixelSize: Theme.uiBody
+        font.pixelSize: hint.metrics.uiBody
     }
 }

@@ -120,34 +120,32 @@ QtObject {
     readonly property int fontBody: 16 // most text
     readonly property int fontCaption: 14 // descriptions, key caps, hints
 
-    // 界面大小 (Settings uiSize): the launcher, the clipboard and the bar by
-    // file dialogs in smaller or larger type, on lower or taller rows; the
-    // settings window keeps the scale above. Whole pixels in every step, even
-    // where they can be (whole device pixels at 150 %); 标准 is the scale
-    // above. Widths, icons (32: one of Windows' own icon sizes at every
-    // scaling) and 1-pixel lines stay. C++ has the heights it places windows
-    // by in UiSize.h.
+    // 界面大小 (Settings uiSize): the launcher and the bar by file dialogs
+    // in smaller or larger type, on lower or taller rows (the clipboard has
+    // a step of its own, see UiScale); the settings window keeps the scale
+    // above. 标准 is the scale above.
+    readonly property UiScale metrics: UiScale { size: SystemTheme.uiSize }
     readonly property int step: SystemTheme.uiSize === "compact" ? 0 : SystemTheme.uiSize === "roomy" ? 2 : 1
-    readonly property int uiSearch: [20, 24, 28][step]
-    readonly property int uiTitle: [16, 18, 20][step]
-    readonly property int uiBody: [14, 16, 18][step] // compact: Windows 11's own body text
-    readonly property int uiCaption: [12, 14, 16][step]
-    readonly property int uiTab: [14, 15, 16][step] // the clipboard's category chips
-    readonly property int uiSmall: [12, 12, 14][step] // the Ctrl+G key on the dialog bar
+    readonly property int uiSearch: metrics.uiSearch
+    readonly property int uiTitle: metrics.uiTitle
+    readonly property int uiBody: metrics.uiBody
+    readonly property int uiCaption: metrics.uiCaption
+    readonly property int uiTab: metrics.uiTab
+    readonly property int uiSmall: metrics.uiSmall
     readonly property int headerHeight: SystemTheme.headerHeight // the search field's row: 56, 64, 72
-    readonly property int rowHeight: [52, 60, 68][step] // a result or clipboard entry
-    readonly property int footerHeight: [36, 42, 48][step]
-    readonly property int tabHeight: [28, 32, 36][step] // the launcher's scope tabs
-    readonly property int chipHeight: [24, 28, 32][step] // type chips, footer switches, the clipboard's categories (+2)
-    readonly property int stripHeight: [36, 40, 44][step] // the type strip
-    readonly property int tabsHeight: [40, 44, 48][step] // the clipboard's row of categories
-    readonly property int keycapHeight: [20, 22, 24][step]
-    readonly property int badgeHeight: [22, 24, 26][step] // "应用", a group's name
-    readonly property int labelRowHeight: [24, 28, 32][step] // headings between the rows
-    readonly property int hintRowHeight: [32, 36, 40][step]
-    readonly property int fileRowHeight: [36, 40, 44][step] // the clipboard preview's list of files
-    readonly property int panelRowHeight: [36, 42, 48][step] // the search panel's rows, one line each
-    readonly property int searchIconSize: [20, 22, 24][step]
+    readonly property int rowHeight: metrics.rowHeight
+    readonly property int footerHeight: metrics.footerHeight
+    readonly property int tabHeight: metrics.tabHeight
+    readonly property int chipHeight: metrics.chipHeight
+    readonly property int stripHeight: metrics.stripHeight
+    readonly property int tabsHeight: metrics.tabsHeight
+    readonly property int keycapHeight: metrics.keycapHeight
+    readonly property int badgeHeight: metrics.badgeHeight
+    readonly property int labelRowHeight: metrics.labelRowHeight
+    readonly property int hintRowHeight: metrics.hintRowHeight
+    readonly property int fileRowHeight: metrics.fileRowHeight
+    readonly property int panelRowHeight: metrics.panelRowHeight
+    readonly property int searchIconSize: metrics.searchIconSize
 
     readonly property string iconFont: SystemTheme.iconFont
 }

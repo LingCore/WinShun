@@ -90,6 +90,9 @@ class Clipboard : public QObject {
     // PC driven from a phone, where a double click is hard to hit); off, it
     // picks the row and a double click pastes (Settings::clipboardClickToPaste).
     Q_PROPERTY(bool clickToPaste READ clickToPaste NOTIFY rowOptionsChanged FINAL)
+    // The type and row heights the window is drawn in: dense | compact |
+    // standard | roomy (Settings::clipboardUiSize, else the interface size).
+    Q_PROPERTY(QString uiSize READ uiSize NOTIFY rowOptionsChanged FINAL)
     // Pictures on taller rows, their thumbnails large enough to make out
     // (Settings::clipboardLargePictures).
     Q_PROPERTY(bool largePictures READ largePictures NOTIFY rowOptionsChanged FINAL)
@@ -169,7 +172,8 @@ public:
     void setNumberKeysLeft(unsigned digits);
     bool clickToPaste() const { return m_clickToPaste; }
     bool largePictures() const { return m_largePictures; }
-    void setRowOptions(bool clickToPaste, bool largePictures);
+    QString uiSize() const { return m_uiSize; }
+    void setRowOptions(bool clickToPaste, bool largePictures, const QString& uiSize);
     bool flipAbove() const { return m_flipAbove; }
     bool searchFar() const { return m_searchFar; }
     void setLayoutOptions(bool flipAbove, bool searchFar);
@@ -436,6 +440,7 @@ private:
     unsigned m_numberKeysLeft = 0;
     bool m_clickToPaste = false;
     bool m_largePictures = false;
+    QString m_uiSize = QStringLiteral("standard");
     bool m_flipAbove = true;
     bool m_searchFar = false;
     bool m_holdToStep = false;

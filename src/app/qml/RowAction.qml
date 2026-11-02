@@ -23,13 +23,14 @@ Rectangle {
     // A handle to drag (a clipboard row in its group's order): held, every
     // move of the mouse is told, in this button's coordinates.
     property bool draggable: false
+    property bool small: false // a smaller box and icon (the clipboard's 密集 rows)
     readonly property bool held: area.pressed
 
     signal clicked()
     signal dragMoved(point position)
 
-    implicitWidth: text.length > 0 ? content.implicitWidth + 20 : 32
-    implicitHeight: 32
+    implicitWidth: text.length > 0 ? content.implicitWidth + 20 : small ? 24 : 32
+    implicitHeight: small ? 24 : 32
     radius: Theme.controlRadius
     color: danger
            ? (area.pressed ? Qt.darker(Theme.dangerFill, 1.15) : area.containsMouse ? Qt.lighter(Theme.dangerFill, 1.08) : Theme.dangerFill)
@@ -44,7 +45,7 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             glyph: button.glyph
             overlay: button.glyphOverlay
-            size: 64 / 3 // 32 device pixels at 150%
+            size: button.small ? 16 : 64 / 3 // 32 device pixels at 150%
             color: button.foreground
         }
         Text {
