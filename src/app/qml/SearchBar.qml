@@ -70,6 +70,7 @@ Item {
         frame.addControl(tabs)
         frame.addControl(expand)
         frame.addControl(regexChip)
+        frame.addControl(boxPin)
         frame.addHandle(handle)
     }
 
@@ -310,6 +311,47 @@ Item {
             target: regexArea.containsMouse ? regexChip : null
             text: qsTr("正则模式：每个词都按正则表达式匹配名字 · 点击关闭")
             shortcut: "Ctrl+R"
+        }
+    }
+
+    // The logo, and the pin badge on it, are not there over the taskbar box:
+    // a pinned window shows this chip left of the expand button, a click
+    // unpins. Nothing while it is not pinned.
+    Rectangle {
+        id: boxPin
+
+        visible: bar.inBox && bar.launcher.pinned
+        anchors.right: expand.left
+        anchors.rightMargin: 6
+        y: bar.onPixel((bar.height - height) / 2)
+        width: height
+        height: tabs.height
+        radius: Theme.controlRadius
+        color: pinArea.pressed ? Theme.controlPressed : pinArea.containsMouse ? Theme.chipHover : Theme.chipActive
+        border.width: 1
+        border.color: Theme.chipBorder
+        Accessible.role: Accessible.Button
+        Accessible.name: qsTr("取消钉住")
+        Accessible.description: qsTr("已钉住")
+
+        Glyph {
+            anchors.centerIn: parent
+            glyph: "" // PinnedFill
+            overlay: ""
+            size: 12
+            color: Theme.accent
+        }
+        MouseArea {
+            id: pinArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: bar.launcher.togglePin()
+        }
+        HoverTip {
+            target: pinArea.containsMouse ? boxPin : null
+            text: qsTr("已钉住 · 点击取消")
+            shortcut: "Ctrl+T"
         }
     }
 
