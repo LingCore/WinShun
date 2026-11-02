@@ -59,6 +59,10 @@
 //   src/capture-plugin/CapturePreview.h).
 //
 //   WinShun.exe --probe-runtime <folder> [--with-clipboard]
+//     --clipboard-shell-probe <SearchHost.exe|native> checks both clipboard
+//     hotkey handlers, foreground preservation and flyout avoidance. The fixture
+//     is tst_keyrouter.exe renamed SearchHost.exe; native uses the real Start
+//     menu. Neither mode writes the system clipboard or changes global hotkeys.
 //     [--runtime-plugins <folder>] [--settle-ms 3000] [--renderer d3d11]
 //     A separate production startup probe: real App::start, temporary profile,
 //     process-local HKCU redirection, no global shortcuts/service/shell setup.

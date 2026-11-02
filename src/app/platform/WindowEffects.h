@@ -72,6 +72,9 @@ void setCloaked(QWindow* window, bool cloaked);
 // Windows' Start menu, search, notification center or quick settings: they
 // stay above every other window while open.
 bool isShellFlyout(HWND window);
+// Includes visible companion windows, even from another Shell host (Start's
+// Phone Link sidebar). Uses window regions for full-monitor transparent hosts.
+// Physical screen pixels; empty for non-flyouts.
 QRect shellFlyoutBounds(HWND window);
 
 // How bringToFront went: in front already; directly; after an input that
@@ -79,13 +82,16 @@ QRect shellFlyoutBounds(HWND window);
 // foreground); or refused (an administrator's window or a hung one's ghost
 // in front, their input out of reach, UIPI).
 enum class Front : std::uint8_t { Already, Direct, Input, Refused };
+enum class ShellFlyout { Dismiss, Preserve };
 
 // Shows or restores a requested window, then brings it to the foreground
 // even when another app owns the focus. Windows normally refuses this to
 // background processes (focus stealing protection), but a hotkey press is
 // an explicit user request. Never waits for the program in front, however
 // busy it is, and knows at once whether it worked (GitHub #111).
-enum class ShellFlyout { Dismiss, Preserve };
+// Preserve suppresses the synthetic Escape used for Shell flyouts. Callers
+// that must keep the old field open should normally show without activation;
+// an explicit foreground activation may still dismiss a system popup itself.
 Front bringToFront(QWindow* window, ShellFlyout flyout = ShellFlyout::Dismiss);
 
 // Makes native popup menus (tray, context menu) follow the dark theme.

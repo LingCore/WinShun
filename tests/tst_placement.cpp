@@ -126,6 +126,22 @@ private slots:
         QVERIFY(covered(moved) < covered(QRect(home, capacity)));
     }
 
+    void clipboardBesideShellPanel()
+    {
+        for (const auto& work : {QRect(0, 0, 1920, 1032), QRect(-1920, -200, 1920, 1032)}) {
+            const QSize clipboard(360, 480);
+            // Both centered Start/Search panels and left-anchored Windows 10
+            // panels must leave a fully usable clipboard when space exists.
+            for (const QRect panel : {QRect(work.topLeft() + QPoint(600, 200), QSize(720, 800)),
+                     QRect(work.topLeft() + QPoint(0, 200), QSize(720, 800))}) {
+                const QPoint anchor = panel.topLeft() + QPoint(20, 40);
+                const QRect placed(windowavoidance::place(work, panel, clipboard, anchor), clipboard);
+                QVERIFY(work.contains(placed));
+                QVERIFY(!placed.intersects(panel));
+            }
+        }
+    }
+
     // GitHub #38: low on the screen the clipboard stayed under the caret with
     // three rows while all eight fit over it. Under it while all of it fits
     // there (b up to 389); else on the side with more whole rows.
