@@ -641,6 +641,7 @@ public:
     // The search logo left-clicked (not dragged, WindowFrame::handleClicked):
     // the settings window (settingsRequested).
     Q_INVOKABLE void openSettings() { emit settingsRequested(); }
+    Q_INVOKABLE void openShortcutSettings() { emit shortcutSettingsRequested(); } // the shortcut panel's last row
     int dateChoice() const { return m_dateChoice; }
     QString dateFrom() const { return m_dateFrom; }
     QString dateTo() const { return m_dateTo; }
@@ -723,6 +724,7 @@ signals:
     void panelToggleRequested();
     void pinnedChanged();
     void settingsRequested();
+    void shortcutSettingsRequested(); // the settings' overview of all shortcuts
     void folderSettingsRequested(); // the settings' page of the chosen folders
     void shareSettingsRequested(); // the settings' section of network and WSL folders (GitHub #114)
     void folderAddRequested(const QString& path); // a folder not indexed, to be (the app adds it as the settings do)

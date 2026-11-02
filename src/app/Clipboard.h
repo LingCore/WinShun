@@ -300,6 +300,7 @@ public:
     Q_INVOKABLE void dismiss(); // Esc, Win+V again: back to the field it came from, or closed (pinned: the keys given back)
     Q_INVOKABLE void wantKeys() { emit keysWanted(); } // the search field clicked: acquire or refresh routing
     Q_INVOKABLE void turnOn(); // the history, from the window's button
+    Q_INVOKABLE void openShortcutSettings() { emit shortcutSettingsRequested(); } // the shortcut panel's last row
 
     // The preview of a row: {kind, text, more, files, thumbnail, image,
     // width, height, swatch, colors, source, sourceIcon, time, size,
@@ -317,6 +318,7 @@ public:
 signals:
     void lanSendRequested(const QString& text, const QStringList& files);
     void lanSendSetupRequested(bool update);
+    void shortcutSettingsRequested(); // the settings' overview of all shortcuts
     void quickPasteFailed(const QString& message); // no panel to show a failure in: App's notification
     void saveProblem(const QString& message); // saveAsFiles, the panel gone: App's notification
     void numberKeysChanged();

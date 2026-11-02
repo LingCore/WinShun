@@ -52,7 +52,7 @@ Window {
     // The tabs of the pages too long for one screen, each a few sections
     // (SettingsSection.tab); [] for a page without tabs.
     readonly property var pageTabs: [
-        [qsTr("快捷键", "settings tab"), qsTr("任务栏"), qsTr("对话框"), qsTr("启动与历史")],
+        [qsTr("快捷键", "settings tab"), qsTr("任务栏"), qsTr("对话框"), qsTr("启动与历史"), qsTr("按键一览")],
         [],
         [qsTr("文件夹"), qsTr("名称和类型"), qsTr("磁盘"), qsTr("网络与 WSL")],
         [qsTr("排序"), qsTr("显示与预览"), qsTr("操作习惯"), qsTr("文件类型")],
@@ -64,6 +64,37 @@ Window {
         window.editor.plugins.developerMode ? [qsTr("已安装"), qsTr("插件库"), qsTr("开发者")] : [qsTr("已安装"), qsTr("插件库")], // 开发者: in developer mode only
         []
     ]
+    // 按键一览: every shortcut of the search box and the clipboard (Shortcuts),
+    // in sections [{title, note, rows: [{keys, text, setting}]}].
+    readonly property var shortcutSections: {
+        const context = {
+            all: true,
+            openKeys: [window.editor.doubleCtrl ? qsTr("双击 %1").arg(window.tapKey) : "", window.editor.hotkey].filter(keys => keys.length > 0).join(" / "),
+            clipboardHotkey: window.editor.clipboardHotkey,
+            previewKey: window.editor.previewHotkey,
+            numberModifier: window.editor.numberKeys === "alt" ? "Alt" : window.editor.numberKeys === "ctrl" ? "Ctrl" : "",
+            holdKey: window.editor.clipboardHotkey,
+            folderTyping: true,
+            intoField: false
+        }
+        const sections = []
+        for (const where of ["global", "launcher", "clipboard"]) {
+            const clipboard = where === "clipboard"
+            if (clipboard)
+                context.numberModifier = window.editor.clipboardNumberKeys === "alt" ? "Alt" : window.editor.clipboardNumberKeys === "ctrl" ? "Ctrl" : ""
+            for (const entry of Shortcuts.entries(where, context, false)) {
+                const title = where === "global" ? qsTr("打开 Win顺")
+                              : clipboard ? qsTr("剪贴板 · %1").arg(entry.group) : qsTr("搜索框 · %1").arg(entry.group)
+                let section = sections.find(candidate => candidate.title === title)
+                if (!section) {
+                    section = { title: title, rows: [] }
+                    sections.push(section)
+                }
+                section.rows.push(entry)
+            }
+        }
+        return sections
+    }
     readonly property int gleaningPage: 10
     readonly property int webPage: pluginsPage // compatibility for preview clients
     readonly property int favoritesPage: 5 // 收藏夹 (FavoritesSection)
@@ -364,6 +395,7 @@ Window {
     function showUpdateDialog() { updateDialog.show() } // App::showUpdate
     function showClipboardPage() { showPage(clipboardPage) } // App::showClipboardSettings
     function showWebPage() { showPluginPage("winshun.web") } // App::showWebSettings
+    function showShortcutsPage() { showPage(0, 4) } // App::showShortcutSettings: the shortcut panels' last row
     function showFileTypesPage() { goTo(fileTypesRow) } // App::showFileTypeSettings: the launcher strip's +
     // Win顺 restarted from here (App::restart, --settings-at): back where it
     // was, "page,tab"; after 索引方式 changed the rights it runs with, that row.
@@ -2007,6 +2039,67 @@ Window {
                     ToggleSwitch {
                         checked: window.editor.autostart
                         onToggled: (on) => window.editor.autostart = on
+                    }
+                }
+            }
+
+            Repeater { // 按键一览: the shortcuts, a section for each group of them
+                model: window.shortcutSections
+
+                delegate: SettingsSection {
+                    id: shortcutSection
+
+                    required property var modelData
+                    required property int index
+
+                    page: 0
+                    tab: 4
+                    width: parent.width
+                    title: modelData?.title ?? ""
+                    note: index === 0 ? qsTr("所有快捷键都在这里；带“去设置”的可以自己改。") : ""
+
+                    Repeater {
+                        model: shortcutSection.modelData.rows
+
+                        delegate: SettingRow {
+                            id: shortcutRow
+
+                            required property var modelData
+
+                            title: modelData?.text ?? ""
+                            keywords: [modelData?.keys ?? ""]
+                            values: [modelData?.keys ?? ""]
+
+                            Rectangle { // the keys, as a key cap
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: (shortcutRow.modelData?.keys.length ?? 0) > 0
+                                implicitWidth: capText.implicitWidth + 14
+                                implicitHeight: Theme.keycapHeight + 4
+                                radius: Theme.controlRadius
+                                color: Theme.keycap
+
+                                Text {
+                                    id: capText
+                                    anchors.centerIn: parent
+                                    text: shortcutRow.modelData?.keys ?? ""
+                                    color: Theme.subtext
+                                    font.pixelSize: Theme.fontCaption
+                                }
+                            }
+                            Text { // nothing to press: off, or not set yet
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: shortcutRow.modelData?.keys.length === 0
+                                text: qsTr("未设置")
+                                color: Theme.faint
+                                font.pixelSize: Theme.fontCaption
+                            }
+                            FlatButton {
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: (shortcutRow.modelData?.setting ?? null) !== null
+                                text: qsTr("去设置")
+                                onClicked: window.showSetting(shortcutRow.modelData.setting.page, shortcutRow.modelData.setting.tab)
+                            }
+                        }
                     }
                 }
             }

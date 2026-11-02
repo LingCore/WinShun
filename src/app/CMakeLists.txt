@@ -161,6 +161,7 @@ set(qml_files
     qml/PreviewWindow.qml
     qml/HoverTip.qml
     qml/ShortcutTip.qml
+    qml/Shortcuts.qml
     qml/NameTip.qml
     qml/DropMenu.qml
     qml/Footer.qml
@@ -220,7 +221,7 @@ set(qml_files
     qml/SettingsConfirm.qml
     qml/SettingsNotice.qml
 )
-set_source_files_properties(qml/Theme.qml qml/Gleaning.qml qml/WarmPalette.qml qml/AuthorClock.qml qml/SearchKeys.qml
+set_source_files_properties(qml/Theme.qml qml/Gleaning.qml qml/WarmPalette.qml qml/AuthorClock.qml qml/SearchKeys.qml qml/Shortcuts.qml
     PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 # Serve every QML file from the module root (":/qt/qml/WinShun/Main.qml").
 foreach(file IN LISTS qml_files)

@@ -1831,6 +1831,187 @@ void checkDialogSearchKeys(IndexService& index, QQmlEngine* engine, const QDir& 
         throw std::runtime_error("Production dialog search navigation regression failed; see dialog-navigation.json");
 }
 
+// The first item of that name that is shown (the launcher has a footer in its
+// box and another in its panel).
+QQuickItem* shownNamed(QQuickItem* root, const QString& name)
+{
+    if (root->objectName() == name && root->isVisible())
+        return root;
+    for (QQuickItem* child : root->childItems()) {
+        if (QQuickItem* found = shownNamed(child, name))
+            return found;
+    }
+    return nullptr;
+}
+
+// #185 and #174: the shortcut panels (one click opens them, a click elsewhere
+// or on the button closes them, the last row asks for the settings) and the
+// clipboard's own sizes. Production QML; the clicks go to the window as
+// events, nothing is injected globally.
+bool checkShortcutPanels(QQmlEngine* engine, const QDir& output)
+{
+    QTemporaryDir temporary;
+    IndexService index(temporary.path(), IndexService::Options{});
+    AppCatalog apps;
+    SystemCatalog places;
+    apps.setApps(std::make_shared<const AppList>());
+    places.setPlaces(std::make_shared<const PlaceList>());
+    History history(temporary.filePath(u"history.tsv"_s));
+    SearchEngine search(&index, &apps, &places);
+    Launcher launcher(&index, &apps, &places, &search, &history);
+    ClipStore store(temporary.filePath(u"clipboard"_s));
+    store.open(QDateTime::currentMSecsSinceEpoch());
+    for (int i = 0; i < 12; ++i)
+        store.add(ClipCapture {.kind = ClipKind::Text, .text = u"Clipboard entry number %1 with some text to read"_s.arg(i)},
+            QDateTime::currentMSecsSinceEpoch() + i);
+    ClipboardWatcher watcher({}, {});
+    Clipboard clipboard(&store, &watcher);
+    clipboard.setRowOptions(false, false, SystemTheme::uiSize());
+    Placement placement(temporary.filePath(u"state.ini"_s), u"Launcher"_s);
+    Placement clipPlacement(temporary.filePath(u"clipboard.ini"_s), u"Clipboard"_s);
+    WindowFrame frame(false);
+    WindowFrame clipFrame(false);
+    int launcherAsked = 0, clipboardAsked = 0; // the last row's requests for the settings
+    QObject::connect(&launcher, &Launcher::shortcutSettingsRequested, [&] { ++launcherAsked; });
+    QObject::connect(&clipboard, &Clipboard::shortcutSettingsRequested, [&] { ++clipboardAsked; });
+    QJsonArray checks;
+    bool passed = true;
+    const auto check = [&](bool okay, const QString& name) {
+        checks.append(QJsonObject {{u"name"_s, name}, {u"passed"_s, okay}});
+        passed = okay && passed;
+        if (!okay) qWarning("shortcut panel regression: %s", qUtf8Printable(name));
+    };
+    const auto click = [](QQuickWindow* window, QQuickItem* item) {
+        const QPointF at = item->mapToScene({item->width() / 2, item->height() / 2});
+        QMouseEvent press(QEvent::MouseButtonPress, at, window->mapToGlobal(at), Qt::LeftButton, Qt::LeftButton, {});
+        QCoreApplication::sendEvent(window, &press);
+        QMouseEvent release(QEvent::MouseButtonRelease, at, window->mapToGlobal(at), Qt::LeftButton, {}, {});
+        QCoreApplication::sendEvent(window, &release);
+        pump(120);
+    };
+    const auto tipWindow = [] {
+        for (QWindow* window : QGuiApplication::allWindows()) {
+            if (window->objectName() == u"shortcutTip" && window->isVisible())
+                return qobject_cast<QQuickWindow*>(window);
+        }
+        return static_cast<QQuickWindow*>(nullptr);
+    };
+    // The panel of one window: opens on a click and not on hovering, shows
+    // its keys in groups, closes on a click elsewhere and on the button,
+    // and its last row asks for the settings.
+    const auto panel = [&](QQuickWindow* window, int& asked, const QString& name,
+                           const QStringList& expected, const QStringList& absent, QQuickItem* elsewhere) {
+        QQuickItem* button = shownNamed(window->contentItem(), u"shortcutsButton"_s);
+        check(button && button->isVisible(), name + u": the info button shows"_s);
+        if (!button) return;
+        const QPointF at = button->mapToScene({button->width() / 2, button->height() / 2});
+        QMouseEvent hover(QEvent::MouseMove, at, window->mapToGlobal(at), Qt::NoButton, {}, {});
+        QCoreApplication::sendEvent(window, &hover);
+        pump(500);
+        check(!tipWindow(), name + u": hovering opens nothing"_s);
+        click(window, button);
+        QQuickWindow* tip = tipWindow();
+        check(tip && button->property("open").toBool(), name + u": a click opens the panel"_s);
+        if (!tip) return;
+        const QVariantList rows = tip->property("rows").toList();
+        QStringList keys, groups;
+        for (const QVariant& row : rows) {
+            keys << row.toMap().value(u"keys"_s).toString();
+            const QString group = row.toMap().value(u"group"_s).toString();
+            if (!groups.contains(group)) groups << group;
+        }
+        check(groups.size() >= 2 && rows.size() < 20, name + u": compact and grouped (%1 keys in %2 groups)"_s.arg(rows.size()).arg(groups.size()));
+        for (const QString& key : expected)
+            check(keys.contains(key), name + u": lists " + key);
+        for (const QString& key : absent)
+            check(!keys.contains(key), name + u": leaves out " + key);
+        check(visualNamed(tip->contentItem(), u"shortcutLink"_s) != nullptr, name + u": the last row leads to all shortcuts"_s);
+        settle(tip, 2);
+        saveGrab(tip, output.filePath(u"shortcut-panel-%1.png"_s.arg(name)));
+        click(window, elsewhere);
+        check(!tipWindow() && !button->property("open").toBool(), name + u": a click elsewhere closes it"_s);
+        click(window, button);
+        check(tipWindow() != nullptr, name + u": opens again"_s);
+        click(window, button);
+        check(!tipWindow(), name + u": the button closes it"_s);
+        click(window, button);
+        tip = tipWindow();
+        QQuickItem* link = tip ? visualNamed(tip->contentItem(), u"shortcutLink"_s) : nullptr;
+        if (link) click(tip, link);
+        check(asked == 1 && !tipWindow(), name + u": the last row asks for the settings and closes the panel"_s);
+    };
+
+    {
+        QQmlComponent component(engine, u"WinShun"_s, u"Main"_s);
+        std::unique_ptr<QObject> object(component.createWithInitialProperties({
+            {u"launcher"_s, QVariant::fromValue(&launcher)}, {u"clipboard"_s, QVariant::fromValue(&clipboard)},
+            {u"frame"_s, QVariant::fromValue(&frame)}, {u"placement"_s, QVariant::fromValue(&placement)}}));
+        auto* window = qobject_cast<QQuickWindow*>(object.get());
+        if (!window) {
+            qWarning().noquote() << "shortcut panel:" << component.errorString();
+            return false;
+        }
+        window->create();
+        launcher.setWindow(window);
+        frame.setWindow(window);
+        placement.setWindow(window);
+        placement.rememberWidth(760, 640);
+        showOffScreen(window);
+        launcher.setQuery(u"panel"_s);
+        launcher.results()->assign({SearchResult{.name = u"Example.txt"_s, .path = u"T:\\Example.txt"_s}}, {});
+        placement.placeOn(window->screen());
+        settle(window);
+        QQuickItem* field = visualNamed(window->contentItem(), u"searchField"_s);
+        saveGrab(window, output.filePath(u"launcher.png"_s));
+        check(field != nullptr, u"launcher: the search field shows"_s);
+        if (field)
+            panel(window, launcherAsked, u"launcher"_s,
+                  {u"Shift+Tab"_s, u"Ctrl+Tab"_s, u"Ctrl+S"_s, u"Ctrl+T"_s}, {u"Ctrl+C"_s, u"Ctrl+Shift+Enter"_s, u"Ctrl+J / N · Ctrl+K / P"_s}, field);
+        window->hide();
+    }
+    {
+        QQmlComponent component(engine, u"WinShun"_s, u"ClipboardWindow"_s);
+        std::unique_ptr<QObject> object(component.createWithInitialProperties({{u"clipboard"_s, QVariant::fromValue(&clipboard)},
+            {u"placement"_s, QVariant::fromValue(&clipPlacement)}, {u"frame"_s, QVariant::fromValue(&clipFrame)}}));
+        auto* window = qobject_cast<QQuickWindow*>(object.get());
+        if (!window) {
+            qWarning().noquote() << "shortcut panel:" << component.errorString();
+            return false;
+        }
+        window->create();
+        clipFrame.setWindow(window);
+        clipPlacement.setWindow(window);
+        clipboard.setActive(true);
+        clipboard.handleShown();
+        showOffScreen(window);
+        settle(window);
+        QQuickItem* field = visualNamed(window->contentItem(), u"clipboardSearchField"_s);
+        check(field != nullptr, u"clipboard: the search field shows"_s);
+        if (field)
+            panel(window, clipboardAsked, u"clipboard"_s,
+                  {u"Shift+Tab"_s, u"Ctrl+P"_s, u"Delete"_s}, {u"Ctrl+C"_s, u"Esc"_s}, field);
+        // 剪贴板大小: every step's own type and row height, one line a row in 密集.
+        struct Step { const char* size; int row; };
+        const Step steps[] = {{"dense", 32}, {"compact", 52}, {"standard", 60}, {"roomy", 68}};
+        for (const Step& step : steps) {
+            const QString name = QString::fromLatin1(step.size);
+            clipboard.setRowOptions(false, false, name);
+            settle(window);
+            pump(200);
+            QQuickItem* row = visualNamed(window->contentItem(), u"clipboardRow-0"_s);
+            check(row && qRound(row->height()) == step.row, name + u": a row is %1 px high"_s.arg(step.row));
+            check(clipboard.uiSize() == name, name + u": the window follows the clipboard's size"_s);
+            saveGrab(window, output.filePath(u"clipboard-%1.png"_s.arg(name)));
+        }
+        clipboard.setActive(false);
+        window->hide();
+    }
+    QFile report(output.filePath(u"shortcut-panel.json"_s));
+    if (report.open(QIODevice::WriteOnly)) report.write(QJsonDocument(QJsonObject {{u"passed"_s, passed}, {u"checks"_s, checks}}).toJson());
+    say(u"shortcut panels and clipboard sizes: %1 checks, production QML, %2"_s.arg(checks.size()).arg(passed ? u"passed" : u"FAILED"));
+    return passed;
+}
+
 // #162: actual native hit testing/messages and production QML, isolated from
 // the user's profile. No global mouse or keyboard input is injected.
 bool checkSearchLogo(QQmlEngine* engine, const QDir& output)
@@ -3952,6 +4133,8 @@ int runResults(const QStringList& args)
         return finish(window, checkNumberColumn(&engine, out, valueAfter(args, u"--width", u"760"_s).toInt()) && saved);
     if (args.contains(u"--clipboard-send"_s))
         return finish(window, checkClipboardInteractions(&engine, out, {}) && saved);
+    if (args.contains(u"--shortcut-panel"_s))
+        return finish(window, checkShortcutPanels(&engine, out) && saved);
     if (args.contains(u"--search-logo"_s)) {
         return finish(window, checkSearchLogo(&engine, out) && saved);
     }

@@ -714,6 +714,7 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     connect(m_launcher.get(), &Launcher::pinRequested, this,
         [this](const QString& path, bool screenshot) { pictureAction(u"pin"_s, 0, path, screenshot); });
     connect(m_launcher.get(), &Launcher::settingsRequested, this, [this] { showSettings(); });
+    connect(m_launcher.get(), &Launcher::shortcutSettingsRequested, this, &App::showShortcutSettings);
     // Only the chosen folders are indexed (GitHub #52): the notes under the results.
     connect(m_launcher.get(), &Launcher::folderSettingsRequested, this, [this] { showSettingsFor(u"Index/Folders"_s); });
     // Not a setting the AI settings know of: the section, by its row's title (SettingsWindow.qml).
@@ -834,6 +835,10 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     // Pinned, it stays up through a paste or a file opened (hideClipboard);
     // Esc hands the focus back too.
     connect(m_clipboard.get(), &Clipboard::dismissRequested, this, [this] { hideClipboard(); });
+    connect(m_clipboard.get(), &Clipboard::shortcutSettingsRequested, this, [this] {
+        hideClipboard(false);
+        showShortcutSettings();
+    });
     connect(m_clipboard.get(), &Clipboard::pinRequested, this, [this](qint64 id) { pictureAction(u"pin"_s, id, {}, false); });
     connect(m_clipboard.get(), &Clipboard::editRequested, this, [this](qint64 id) { pictureAction(u"edit"_s, id, {}, false); });
     connect(m_clipboard.get(), &Clipboard::lanSendSetupRequested, this, [this](bool update) {
@@ -3283,6 +3288,13 @@ void App::showClipboardSettings()
     showSettings();
     if (m_settingsWindow)
         QMetaObject::invokeMethod(m_settingsWindow, "showClipboardPage");
+}
+
+void App::showShortcutSettings()
+{
+    showSettings();
+    if (m_settingsWindow)
+        QMetaObject::invokeMethod(m_settingsWindow, "showShortcutsPage");
 }
 
 void App::showWebSettings()

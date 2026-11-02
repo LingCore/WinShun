@@ -1159,9 +1159,10 @@ Item {
                 KeyHint { id: holdEscHint; metrics: page.metrics; keys: "Esc"; label: qsTr("取消"); visible: holdNote.escFits }
             }
 
-            // The other keys, while the mouse rests on it.
+            // The other keys, when it is clicked.
             ShortcutsButton {
                 id: infoButton
+                objectName: "shortcutsButton"
 
                 readonly property string modifier: page.numberKey === Qt.Key_Alt ? "Alt" : "Ctrl"
 
@@ -1170,24 +1171,12 @@ Item {
                 anchors.right: parent.right
                 anchors.rightMargin: 6
                 anchors.verticalCenter: parent.verticalCenter
-                shortcuts: (page.numberKey < 0 ? [] : [[modifier + "+1…9", qsTr("粘贴第几条")]]) // the numbers in the rows' left column
-                    .concat(page.intoField ? [] : [["Shift+Enter", qsTr("粘贴为纯文本")]])
-                    .concat(page.numberKey < 0 ? []
-                            : [[modifier + "+Shift+1…9", qsTr("第几条粘贴为纯文本")]])
-                    // Only where it works: a hotkey with something to hold (a lone F9 has not), over another program.
-                    .concat(!page.clipboard.holdToStep || page.intoField || !page.clipboard.shortcut.includes("+") ? []
-                            : [[page.clipboard.shortcut, qsTr("按住连按往下选，松开粘贴")]])
-                    .concat([
-                        ["→  Alt+P", qsTr("打开或关闭预览")],
-                        ["Shift+Tab", qsTr("上一个分类")],
-                        ["↑ ↓", qsTr("上下移动，PgUp PgDn 翻页")],
-                        ["Shift+↑ ↓", qsTr("选中多条，也可 Ctrl+单击、Shift+单击；按选的顺序一起粘贴")],
-                        ["Ctrl+C", qsTr("复制；预览里选中了图中的字时，复制那一段")],
-                        ["Ctrl+P", qsTr("固定或取消固定")],
-                        ["Delete", qsTr("删除，Ctrl+Z 撤销")],
-                        ["Shift+F10", qsTr("右键菜单")],
-                        ["Esc", qsTr("关闭；选中了多条时先取消选择")]
-                    ])
+                where: "clipboard"
+                context: ({
+                    numberModifier: page.numberKey < 0 ? "" : modifier, // the numbers in the rows' left column
+                    intoField: page.intoField,
+                    holdKey: page.clipboard.holdToStep ? page.clipboard.shortcut : ""
+                })
             }
         }
     }

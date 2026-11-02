@@ -3,27 +3,30 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import WinShun
 
-// The shortcuts a footer has no room for, shown while the mouse rests on its
-// info button (ShortcutsButton): the keys, and beside them what they do.
-// A window of its own (as ContextMenu), so it is not cut off by a launcher
-// that is short (nothing typed: just the search box and the footer). It
-// never takes the focus, nor the mouse. `host` is the launcher or the
+// The shortcuts a footer has no room for, grouped, shown when its info button
+// (ShortcutsButton) is clicked: the keys, and beside them what they do, and
+// a last row that opens the settings' list of all of them. A window of its
+// own (as ContextMenu), so it is not cut off by a launcher that is short
+// (nothing typed: just the search box and the footer). It never takes the
+// focus; the mouse works on its last row. `host` is the launcher or the
 // clipboard: the screen area and the native styling of the window (rounded,
 // shadowed).
 Window {
     id: tip
 
+    objectName: "shortcutTip"
     required property QtObject host
-    // [[keys, what they do], …]
+    // [{group, keys, text}, …] in their groups' order (Shortcuts.entries)
     property var rows: []
 
     readonly property int padding: 12
 
+    signal settingsRequested()
+
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus
-           | Qt.WindowTransparentForInput
     color: Theme.menuBackground
-    width: Math.ceil(grid.implicitWidth) + 2 * padding
-    height: Math.ceil(grid.implicitHeight) + 2 * padding
+    width: Math.ceil(Math.max(grid.implicitWidth, link.implicitWidth)) + 2 * padding
+    height: Math.ceil(content.implicitHeight) + 2 * padding
 
     property Item button: null
 
@@ -34,6 +37,7 @@ Window {
     function popup(button) {
         tip.button = button
         grid.forceLayout() // its size now, not after the next frame: placed by it
+        content.forceLayout()
         place()
         host.prepareMenuWindow(tip)
         show()
@@ -60,63 +64,132 @@ Window {
     onWidthChanged: if (visible) place()
     onHeightChanged: if (visible) place()
 
-    Grid {
-        id: grid
+    Column {
+        id: content
         x: tip.padding
         y: tip.padding
-        columns: 2
-        columnSpacing: 14
-        rowSpacing: 8
-        verticalItemAlignment: Grid.AlignVCenter
+        spacing: 8
 
-        Repeater {
-            // Keys, what they do, keys… (`rows` arrives as a list of lists,
-            // which has no flat()).
-            model: {
-                const cells = []
-                for (let i = 0; i < tip.rows.length; ++i)
-                    cells.push(tip.rows[i][0], tip.rows[i][1])
-                return cells
-            }
+        Grid {
+            id: grid
+            columns: 2
+            columnSpacing: 14
+            rowSpacing: 6
+            verticalItemAlignment: Grid.AlignVCenter
 
-            delegate: Loader {
-                id: cell
+            Repeater {
+                // Per row: its keys and what they do; a heading before the
+                // first of each group (its cell beside it has no width, so
+                // the heading runs over it).
+                model: {
+                    const cells = []
+                    let group = ""
+                    for (const row of tip.rows) {
+                        if (row.group !== group) {
+                            group = row.group
+                            cells.push({ kind: "heading", text: group }, { kind: "none", text: "" })
+                        }
+                        cells.push({ kind: "keys", text: row.keys }, { kind: "label", text: row.text })
+                    }
+                    return cells
+                }
 
-                required property int index
-                required property string modelData
+                delegate: Loader {
+                    id: cell
 
-                sourceComponent: index % 2 === 0 ? keysCell : labelCell
+                    required property var modelData
 
-                Component {
-                    id: keysCell
+                    sourceComponent: cell.modelData.kind === "keys" ? keysCell
+                                   : cell.modelData.kind === "label" ? labelCell
+                                   : cell.modelData.kind === "heading" ? headingCell : spacerCell
 
-                    Rectangle { // a key cap, as the footer's (KeyHint)
-                        id: cap
-                        width: keyText.implicitWidth + 10
-                        height: Theme.keycapHeight
-                        radius: Theme.controlRadius
-                        color: Theme.keycap
+                    Component {
+                        id: keysCell
+
+                        Rectangle { // a key cap, as the footer's (KeyHint)
+                            id: cap
+                            width: keyText.implicitWidth + 10
+                            height: Theme.keycapHeight
+                            radius: Theme.controlRadius
+                            color: Theme.keycap
+
+                            Text {
+                                id: keyText
+                                x: tip.onPixel((cap.width - width) / 2)
+                                y: tip.onPixel((cap.height - height) / 2)
+                                text: cell.modelData.text
+                                color: Theme.subtext
+                                font.pixelSize: Theme.uiCaption
+                            }
+                        }
+                    }
+
+                    Component {
+                        id: labelCell
 
                         Text {
-                            id: keyText
-                            x: tip.onPixel((cap.width - width) / 2)
-                            y: tip.onPixel((cap.height - height) / 2)
-                            text: cell.modelData
-                            color: Theme.subtext
-                            font.pixelSize: Theme.uiCaption
+                            text: cell.modelData.text
+                            color: Theme.text
+                            font.pixelSize: Theme.fontCaption
+                        }
+                    }
+
+                    Component {
+                        id: spacerCell
+
+                        Item { width: 1; height: 1 } // the cell beside a heading
+                    }
+
+                    Component {
+                        id: headingCell
+
+                        Item {
+                            width: 1 // (a cell of no width is not placed at all)
+                            height: heading.implicitHeight + 6
+
+                            Text {
+                                id: heading
+                                anchors.bottom: parent.bottom
+                                anchors.bottomMargin: 2
+                                text: cell.modelData.text
+                                color: Theme.subtext
+                                font.pixelSize: Theme.fontCaption
+                                font.weight: Theme.fontStrong
+                            }
                         }
                     }
                 }
+            }
+        }
 
-                Component {
-                    id: labelCell
+        Rectangle {
+            width: grid.width
+            height: Theme.edge(Screen.devicePixelRatio)
+            color: Theme.divider
+        }
 
-                    Text {
-                        text: cell.modelData
-                        color: Theme.text
-                        font.pixelSize: Theme.fontCaption
-                    }
-                }
+        Item { // all of them, in the settings
+            id: link
+            width: grid.width
+            implicitWidth: linkText.implicitWidth
+            height: linkText.implicitHeight + 8
+
+            Text {
+                id: linkText
+                objectName: "shortcutLink"
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("全部快捷键…") + "  ›"
+                color: linkArea.pressed ? Theme.subtext : Theme.accent
+                font.pixelSize: Theme.fontCaption
+                font.underline: linkArea.containsMouse
+            }
+
+            MouseArea {
+                id: linkArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: tip.settingsRequested()
             }
         }
     }
