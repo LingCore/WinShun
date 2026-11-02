@@ -39,8 +39,6 @@ namespace ws {
 
 namespace {
 
-constexpr auto kConfirmedNone = u"none"; // Confirmed= of a plugin that asks for no permission
-
 bool darkMode()
 {
     return QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
@@ -453,14 +451,16 @@ QString PluginSettings::permissionsNote() const
 // (the plugin design, §3.3). The first row is what every plugin gets.
 QVariantList PluginSettings::permissionRows(const QString& id) const
 {
+    const plugin::Entry* e = m_host ? m_host->catalog().find(id) : nullptr;
+    return e && e->manifest ? permissionRows(*e->manifest) : QVariantList();
+}
+
+QVariantList PluginSettings::permissionRows(const plugin::Manifest& m) const
+{
     QVariantList rows;
     const auto row = [&](const QString& name, const QString& text, bool enforced, const QString& note = {}) {
         rows.push_back(QVariantMap {{u"name"_s, name}, {u"text"_s, text}, {u"enforced"_s, enforced}, {u"note"_s, note}});
     };
-    const plugin::Entry* e = m_host ? m_host->catalog().find(id) : nullptr;
-    if (!e || !e->manifest)
-        return rows;
-    const plugin::Manifest& m = *e->manifest;
     const bool strict = m.runtime && m.runtime->sandbox == plugin::SandboxLevel::Strict;
     // What every plugin gets, as it is: a zero-code one runs no program of
     // its own (Win顺 does what its manifest says, as the user); a strict
@@ -820,9 +820,7 @@ void PluginSettings::confirmEnable(const QString& id)
         return;
     PluginConfig& config = m_editor->m_settings.pluginConfig(id);
     config.enabled = true;
-    config.confirmed = e->manifest->permissions.names();
-    if (config.confirmed.isEmpty())
-        config.confirmed = {QString(kConfirmedNone)};
+    config.confirmed = plugin::updates::confirmedFor(*e->manifest);
     m_editor->commit();
 }
 
@@ -968,6 +966,19 @@ void PluginSettings::installFrom(const QString& given, const QString& expectedId
         const int compared = plugin::compareVersions(candidate->manifest->version, e->manifest->version);
         QVariantMap info {{u"id"_s, id}, {u"name"_s, candidate->manifest->name.pick(m_locale)}, {u"installedVersion"_s, e->manifest->version},
             {u"newVersion"_s, candidate->manifest->version}, {u"downgrade"_s, compared < 0}, {u"same"_s, compared == 0}};
+        // On, and the new version wants a yes to more: one question, 更新并允许 (the old version runs on if it is declined).
+        const PluginConfig* config = m_editor->m_settings.plugin(id);
+        const QStringList more = compared > 0
+            ? plugin::updates::permissionsToAllow(*candidate->manifest, config && config->enabled, config ? config->confirmed : QStringList())
+            : QStringList();
+        if (!more.isEmpty()) {
+            info.insert(u"allow"_s, true);
+            info.insert(u"more"_s, true);
+            info.insert(u"newNames"_s, more);
+            info.insert(u"permissions"_s, permissionRows(*candidate->manifest));
+        }
+        m_pendingAllow = !more.isEmpty();
+        m_pendingFromLibrary = !expectedId.isEmpty();
         m_pendingInstall = std::move(candidate);
         m_pendingEnable = enableAfterInstall;
         emit installQuestion(info);
@@ -982,7 +993,15 @@ void PluginSettings::confirmInstall()
         return;
     plugin::install::Candidate candidate = std::move(*m_pendingInstall);
     m_pendingInstall.reset();
-    finishInstall(std::move(candidate), std::exchange(m_pendingEnable, false));
+    finishInstall(std::move(candidate), std::exchange(m_pendingEnable, false), std::exchange(m_pendingAllow, false));
+}
+
+void PluginSettings::declineInstall()
+{
+    // The dialog's no to 更新并允许: the old version was never stopped; this version stops being counted and told of.
+    if (m_pendingInstall && m_pendingAllow && m_pendingFromLibrary && m_updates)
+        m_updates->dismiss(m_pendingInstall->manifest->id, m_pendingInstall->manifest->version);
+    cancelInstall();
 }
 
 void PluginSettings::cancelInstall()
@@ -993,9 +1012,11 @@ void PluginSettings::cancelInstall()
     plugin::install::discard(*m_pendingInstall);
     m_pendingInstall.reset();
     m_pendingEnable = false;
+    m_pendingAllow = false;
+    m_pendingFromLibrary = false;
 }
 
-void PluginSettings::finishInstall(plugin::install::Candidate candidate, bool enableAfterInstall)
+void PluginSettings::finishInstall(plugin::install::Candidate candidate, bool enableAfterInstall, bool allow)
 {
     const auto releaseIt = qScopeGuard([this] { releaseClaim(); });
     if (!m_host)
@@ -1007,9 +1028,15 @@ void PluginSettings::finishInstall(plugin::install::Candidate candidate, bool en
         setMessage(tr("没有安装 %1：%2").arg(name, error));
         return;
     }
-    if (m_updates)
-        m_updates->forget(id); // what was kept for the old version
     m_host->catalog().scan();
+    if (m_updates)
+        m_updates->forget(id); // what was kept for the old version (after the scan: the new one is what is judged)
+    if (allow) { // the yes was given with the question: on as before, and allowed what the new version names
+        confirmEnable(id);
+        setMessage(tr("已安装 %1 %2").arg(name, candidate.manifest->version));
+        rebuild();
+        return;
+    }
     // Installed, and off until the user turns it on (the permissions are
     // shown then); a version put over one that is on and asking for more
     // waits for the user's OK (Catalog::setConfirmed), its switch asking.
@@ -1022,6 +1049,52 @@ void PluginSettings::finishInstall(plugin::install::Candidate candidate, bool en
     rebuild();
     if (enableAfterInstall)
         setEnabled(id, true); // the normal permission dialog still applies
+}
+
+QString PluginSettings::installUpdate(const QString& path, const QString& id, const QString& version)
+{
+    if (!m_host)
+        return tr("这个插件已经不在了");
+    std::optional<plugin::install::Candidate> candidate = plugin::install::inspect(path);
+    if (!candidate)
+        return tr("找不到下载的文件");
+    if (!candidate->manifest) {
+        const QString why = candidate->error;
+        plugin::install::discard(*candidate);
+        return why;
+    }
+    const plugin::Entry* e = m_host->catalog().find(id);
+    if (!e || e->source != plugin::Entry::Source::User || !e->manifest) {
+        plugin::install::discard(*candidate);
+        return tr("这个插件已经不在了");
+    }
+    if (m_updates && !m_updates->claim(id)) {
+        plugin::install::discard(*candidate);
+        return tr("正在后台更新这个插件，稍后再试");
+    }
+    const auto releaseIt = qScopeGuard([this, id] {
+        if (m_updates)
+            m_updates->release(id);
+    });
+    // Nothing is asked here: what asks for more than the user agreed to is not put in place.
+    const PluginConfig* config = m_editor->m_settings.plugin(id);
+    const QStringList confirmed = config ? config->confirmed : QStringList();
+    const bool enabled = config && config->enabled;
+    QString error = plugin::updates::review(*e->manifest, *candidate->manifest, id, version, QStringLiteral(WINSHUN_VERSION), confirmed, enabled);
+    if (!error.isEmpty()) { // the reason is for the log; the user is told in words
+        qWarning().noquote() << "Plugin updates: not put over" << id << "-" << error;
+        const bool wider = !plugin::updates::widening(*e->manifest, *candidate->manifest, confirmed, enabled).isEmpty();
+        plugin::install::discard(*candidate);
+        return wider ? tr("新版本要更多权限，请单独更新") : tr("这个版本现在装不了");
+    }
+    error = plugin::updates::replace(*m_host, *candidate, m_userDir);
+    if (!error.isEmpty())
+        return error;
+    m_host->catalog().scan();
+    if (m_updates)
+        m_updates->forget(id);
+    rebuild();
+    return {};
 }
 
 void PluginSettings::uninstall(const QString& id)

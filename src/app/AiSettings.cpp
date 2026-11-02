@@ -708,8 +708,8 @@ std::vector<Entry> buildCatalog()
     }
 
     // ---- 高级 ----
-    add(boolean({"Update/Automatic", QT_TRANSLATE_NOOP("AiSettings", "自动检查更新"), "advanced", -1,
-                    "Looks for new versions of Win顺 on GitHub now and then."},
+    add(boolean({"Update/Automatic", QT_TRANSLATE_NOOP("AiSettings", "自动更新"), "advanced", -1,
+                    "Checks for new versions of Win顺 now and then, and installs plugin updates that ask for no new permissions."},
         &Settings::autoUpdate));
     {
         add(choice({"Launcher/Renderer", QT_TRANSLATE_NOOP("AiSettings", "界面绘制方式"), "advanced", -1,

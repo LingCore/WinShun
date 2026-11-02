@@ -294,6 +294,11 @@ void PluginUpdates::recordUpdated(const QString& id, const QString& version, con
     evaluate(false);
 }
 
+void PluginUpdates::rescan()
+{
+    catalog().scan();
+}
+
 void PluginUpdates::tick()
 {
     applyStaged();

@@ -348,6 +348,10 @@
 <context>
     <name>AiSettings</name>
     <message>
+        <source>自动更新</source>
+        <translation>Automatic updates</translation>
+    </message>
+    <message>
         <source>在 Directory Opus 里直接打字搜索</source>
         <translation>Type to search in Directory Opus</translation>
     </message>
@@ -2823,6 +2827,14 @@
 <context>
     <name>PluginDialog</name>
     <message>
+        <source>已装的是 %1，要装的是 %2。新版本还要下面标出的权限；不同意的话，已装的版本照常用。</source>
+        <translation>Installed: %1. New: %2. The new version also needs the permissions marked below; if you decline, the installed version keeps working.</translation>
+    </message>
+    <message>
+        <source>更新并允许</source>
+        <translation>Update and allow</translation>
+    </message>
+    <message>
         <source>“%1” 的新版本要更多权限</source>
         <translation>The new version of “%1” asks for more permissions</translation>
     </message>
@@ -2902,6 +2914,18 @@
 <context>
     <name>PluginGalleryEntry</name>
     <message>
+        <source>重启 Win顺 后更新到 %1</source>
+        <translation>Updates to %1 when WinShun restarts</translation>
+    </message>
+    <message>
+        <source>立即更新</source>
+        <translation>Update now</translation>
+    </message>
+    <message>
+        <source>新版本要更多权限：%1，更新时会问你</source>
+        <translation>The new version needs more permissions: %1. You will be asked when updating</translation>
+    </message>
+    <message>
         <source>%1（这台电脑还没装）</source>
         <translation>%1 (not installed on this PC)</translation>
     </message>
@@ -2960,6 +2984,18 @@
 </context>
 <context>
     <name>PluginGallerySection</name>
+    <message>
+        <source>全部更新</source>
+        <translation>Update all</translation>
+    </message>
+    <message>
+        <source>只看可更新</source>
+        <translation>Updates only</translation>
+    </message>
+    <message>
+        <source>插件都是最新的</source>
+        <translation>All plugins are up to date</translation>
+    </message>
     <message>
         <source>Win顺 插件库里的插件，下载后先核对文件再安装。装好的插件默认关着，打开时会先列出它要的权限。</source>
         <translation>Plugins from the WinShun plugin library. Each download is checked before it is installed. A new plugin starts out off, and turning it on first shows the permissions it asks for.</translation>
@@ -3586,6 +3622,29 @@
 </context>
 <context>
     <name>SettingsWindow</name>
+    <message numerus="yes">
+        <source>%n 个插件可更新</source>
+        <translation>
+            <numerusform>%n plugin update available</numerusform>
+            <numerusform>%n plugin updates available</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>自动更新</source>
+        <translation>Automatic updates</translation>
+    </message>
+    <message>
+        <source>升级;新版本;插件;update;plugin</source>
+        <translation>upgrade;new version;plugin;update</translation>
+    </message>
+    <message>
+        <source>启动后和每隔 12 小时检查 Win顺 新版本，在托盘提示；插件每天检查一次，不要新权限的更新自动安装</source>
+        <translation>Checks for new versions of WinShun at startup and every 12 hours and shows them in the tray; checks plugins daily and installs updates that need no new permissions</translation>
+    </message>
+    <message>
+        <source>检查 Win顺 更新访问 lcstp.com，只发送 Windows 版本和安装方式；检查插件更新从 GitHub 或镜像下载插件库列表。不发送个人信息。</source>
+        <translation>Checking for WinShun updates contacts lcstp.com and sends only the Windows version and the kind of install; checking plugins downloads the plugin library list from GitHub or a mirror. Nothing personal is sent.</translation>
+    </message>
     <message>
         <source>在 Directory Opus 里直接打字搜索</source>
         <translation>Type to search in Directory Opus</translation>
@@ -9518,6 +9577,37 @@
 </context>
 <context>
     <name>ws::PluginGallery</name>
+    <message>
+        <source>正在更新 %1/%2…</source>
+        <translation>Updating %1 of %2…</translation>
+    </message>
+    <message numerus="yes">
+        <source>已更新 %n 个插件</source>
+        <translation>
+            <numerusform>Updated %n plugin</numerusform>
+            <numerusform>Updated %n plugins</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>%1 没有更新：%2</source>
+        <translation>%1 was not updated: %2</translation>
+    </message>
+    <message>
+        <source>待办</source>
+        <translation>To-do</translation>
+    </message>
+    <message>
+        <source>dbn 事项：记一件事，到点提醒</source>
+        <translation>dbn item: note a task and be reminded when it is due</translation>
+    </message>
+    <message>
+        <source>世界时钟</source>
+        <translation>World clock</translation>
+    </message>
+    <message>
+        <source>sj 城市：几个城市现在几点</source>
+        <translation>sj city: the time in several cities</translation>
+    </message>
     <message numerus="yes">
         <source>%n 个插件；正在获取最新的列表…</source>
         <translation>
@@ -9662,6 +9752,22 @@
 </context>
 <context>
     <name>ws::PluginSettings</name>
+    <message>
+        <source>新版本要更多权限，请单独更新</source>
+        <translation>The new version needs more permissions; update it on its own</translation>
+    </message>
+    <message>
+        <source>这个版本现在装不了</source>
+        <translation>This version cannot be installed now</translation>
+    </message>
+    <message>
+        <source>这个插件已经不在了</source>
+        <translation>This plugin is no longer installed</translation>
+    </message>
+    <message>
+        <source>找不到下载的文件</source>
+        <translation>The downloaded file could not be found</translation>
+    </message>
     <message>
         <source>正在后台更新这个插件，稍后再试</source>
         <translation>This plugin is being updated in the background; try again shortly</translation>

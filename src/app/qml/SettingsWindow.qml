@@ -537,6 +537,8 @@ Window {
             // While searching: its options on show.
             readonly property int found: window.searching ? settingsSearch.counts[index] ?? 0 : -1
             readonly property bool gleaning: modelData.gleaning === true
+            // 插件: how many plugins have a newer version waiting (not while searching, which shows the counts)
+            readonly property int updates: index === window.pluginsPage && !window.searching ? window.editor.plugins.gallery.updateCount : 0
             readonly property color foreground: window.warm ? (selected ? "white" : WarmPalette.ink)
                                               : navArea.pressed ? Theme.subtext : Theme.text
 
@@ -601,7 +603,7 @@ Window {
             }
             Text {
                 x: 48
-                width: parent.width - x - 12 - (count.visible ? count.width + 8 : 0)
+                width: parent.width - x - 12 - (count.visible ? count.width + 8 : badge.visible ? badge.width + 8 : 0)
                 anchors.verticalCenter: parent.verticalCenter
                 text: navItem.modelData.title
                 color: navItem.foreground
@@ -635,6 +637,36 @@ Window {
                 onClicked: {
                     window.clearFocus()
                     window.showPage(navItem.index)
+                }
+            }
+
+            Rectangle { // 插件: the updates waiting; a click leads to them
+                id: badge
+                visible: navItem.updates > 0
+                anchors.right: parent.right
+                anchors.rightMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.max(height, badgeText.implicitWidth + 10)
+                height: 18
+                radius: Theme.pillRadius(height)
+                color: Theme.accentFill
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTr("%n 个插件可更新", "", navItem.updates)
+
+                Text {
+                    id: badgeText
+                    anchors.centerIn: parent
+                    text: navItem.updates
+                    color: Theme.accentText
+                    font.pixelSize: Theme.fontCaption
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        window.clearFocus()
+                        window.showPluginUpdates()
+                    }
                 }
             }
         }
@@ -4256,7 +4288,7 @@ Window {
                 page: window.advancedPage
                 width: parent.width
                 title: qsTr("更新")
-                note: qsTr("检查更新访问 lcstp.com，只发送 Windows 版本和安装方式，不发送个人信息。")
+                note: qsTr("检查 Win顺 更新访问 lcstp.com，只发送 Windows 版本和安装方式；检查插件更新从 GitHub 或镜像下载插件库列表。不发送个人信息。")
 
                 SettingRow {
                     title: qsTr("版本 %1").arg(window.updater.currentVersion)
@@ -4284,9 +4316,9 @@ Window {
                 }
 
                 SettingRow {
-                    title: qsTr("自动检查更新")
-                    keywords: qsTr("升级;新版本;update").split(";")
-                    description: qsTr("启动时和每隔 12 小时检查一次，有新版本时在托盘提示")
+                    title: qsTr("自动更新")
+                    keywords: qsTr("升级;新版本;插件;update;plugin").split(";")
+                    description: qsTr("启动后和每隔 12 小时检查 Win顺 新版本，在托盘提示；插件每天检查一次，不要新权限的更新自动安装")
 
                     ToggleSwitch {
                         checked: window.editor.autoUpdate

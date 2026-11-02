@@ -209,6 +209,9 @@ public:
     // install(), for a package downloaded from the 插件库: it must be
     // `expectedId`, and is called `name` in what is said of it.
     void installFrom(const QString& path, const QString& expectedId, const QString& name, bool enableAfterInstall = false);
+    // 全部更新's: the package at `path` put over the installed `id` without a question, when the list's `version` is not
+    // wider than what the user allowed (plugin::updates::review). Empty on success, else why not.
+    QString installUpdate(const QString& path, const QString& id, const QString& version);
 
     // The switch: turning on asks first (confirmationNeeded) when the plugin
     // was never confirmed or asks for more permissions than it did.
@@ -227,6 +230,7 @@ public:
     Q_INVOKABLE void install(const QString& path); // installQuestion() when the id is installed already
     Q_INVOKABLE void confirmInstall();
     Q_INVOKABLE void cancelInstall();
+    Q_INVOKABLE void declineInstall(); // the answer no to 更新并允许: the installed version stays, and this one stops being counted
     // Removing: uninstallQuestion() first (whether to take its data too).
     Q_INVOKABLE void uninstall(const QString& id);
     Q_INVOKABLE void confirmUninstall(const QString& id, bool withData);
@@ -277,10 +281,11 @@ private:
     PluginListModel::Card cardFor(const QString& id) const;
     void setMessage(const QString& message);
     void readMemory(); // the resident processes' working sets, into the status lines
-    void finishInstall(plugin::install::Candidate candidate, bool enableAfterInstall = false);
+    void finishInstall(plugin::install::Candidate candidate, bool enableAfterInstall = false, bool allow = false);
     void releaseClaim(); // the plugin an install here has been changing
     QString pluginName(const QString& id) const;
     QVariantList permissionRows(const QString& id) const; // [{name, text, enforced, note}]
+    QVariantList permissionRows(const plugin::Manifest& manifest) const;
     void applyPluginSettings(const QString& id); // the host hears the values (secrets included)
 
     SettingsEditor* m_editor;
@@ -302,6 +307,8 @@ private:
     bool m_recordingHotkey = false;
     std::optional<plugin::install::Candidate> m_pendingInstall; // waiting for the user's answer
     bool m_pendingEnable = false;
+    bool m_pendingAllow = false; // ... and the question is 更新并允许 (a yes also confirms the new permissions)
+    bool m_pendingFromLibrary = false; // ... for a package the 插件库 downloaded: a no also stops that version being counted
     std::unique_ptr<Preview> m_preview; // loadPreview(): no host
     PluginGallery m_gallery {this};
 };

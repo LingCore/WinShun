@@ -41,6 +41,14 @@ SettingsSection {
         bodyShown: gallerySection.gallery.count > 0 || gallerySection.gallery.problem.length > 0
 
         FlatButton {
+            objectName: "updateAllPlugins"
+            visible: gallerySection.gallery.updatableCount > 0 || gallerySection.gallery.updatingAll
+            highlighted: true
+            text: qsTr("全部更新")
+            enabled: !gallerySection.gallery.downloading && !gallerySection.gallery.updatingAll
+            onClicked: gallerySection.gallery.updateAll()
+        }
+        FlatButton {
             text: qsTr("刷新")
             glyph: "" // Refresh
             enabled: !gallerySection.gallery.fetching
@@ -63,14 +71,36 @@ SettingsSection {
                 text: qsTr("设置网络代理…")
                 onClicked: gallerySection.showProxySettings()
             },
-            InputBox {
-                id: filterBox
+            Text { // 全部更新: how far it is, then what came of it
+                visible: gallerySection.gallery.updateStatus.length > 0
+                width: parent.width
+                height: Theme.snapUp(implicitHeight, Screen.devicePixelRatio)
+                text: gallerySection.gallery.updateStatus
+                textFormat: Text.PlainText
+                color: gallerySection.gallery.updateFailed ? Theme.danger : Theme.subtext
+                font.pixelSize: Theme.fontCaption
+                wrapMode: Text.Wrap
+            },
+            Row {
                 visible: gallerySection.gallery.count > 0
-                width: Math.min(parent.width, 320)
-                implicitHeight: 32
-                placeholder: qsTr("筛选：名称、关键字、说明")
-                text: gallerySection.gallery.filter
-                onTextChanged: gallerySection.gallery.filter = text
+                width: parent.width
+                height: 32
+                spacing: 8
+
+                InputBox {
+                    id: filterBox
+                    width: Math.min(parent.width - (updatesChip.visible ? updatesChip.width + parent.spacing : 0), 320)
+                    implicitHeight: 32
+                    placeholder: qsTr("筛选：名称、关键字、说明")
+                    text: gallerySection.gallery.filter
+                    onTextChanged: gallerySection.gallery.filter = text
+                }
+                Chip {
+                    id: updatesChip
+                    visible: gallerySection.gallery.updatesOnly
+                    text: qsTr("只看可更新")
+                    onRemoveClicked: gallerySection.gallery.updatesOnly = false
+                }
             },
             Column {
                 width: parent.width
@@ -89,7 +119,8 @@ SettingsSection {
             Text {
                 visible: gallerySection.gallery.count > 0 && gallerySection.gallery.shownCount === 0
                 width: parent.width
-                text: qsTr("没有找到“%1”").arg(filterBox.text.trim())
+                text: gallerySection.gallery.updatesOnly && filterBox.text.trim().length === 0 ? qsTr("插件都是最新的")
+                    : qsTr("没有找到“%1”").arg(filterBox.text.trim())
                 textFormat: Text.PlainText
                 color: Theme.subtext
                 font.pixelSize: Theme.fontCaption

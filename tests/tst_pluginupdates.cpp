@@ -5,6 +5,7 @@
 
 #include "PluginUpdates.h"
 
+#include "Install.h"
 #include "Manifest.h"
 #include "Settings.h"
 
@@ -194,6 +195,26 @@ class Tst : public QObject {
         }
         QVariant stateValue(const QString& key) const { return QSettings(data + u"/update.ini"_s, QSettings::IniFormat).value(key); }
         bool settle() { return QTest::qWaitFor([this] { return svc->idle(); }, 10000); }
+    };
+
+    struct CaptureLike {
+        Fixture f;
+        PluginConfig config;
+        const QString id = u"test.cap"_s;
+        const QString before = u"\"permissions\":[\"clipboard:write\",\"ui\"],"_s;
+        const QString after = u"\"permissions\":[\"clipboard:write\",\"ui\",\"processes\"],"_s;
+        bool setUp(const TestKey& key)
+        {
+            if (!writeFile(f.user + u"/test.cap/plugin.json"_s, manifestOf(id, u"1.0.0"_s, before)) || !writeFile(f.user + u"/test.cap/old.txt"_s, "o"))
+                return false;
+            config.id = id;
+            config.enabled = true;
+            config.confirmed = {u"clipboard:write"_s, u"ui"_s};
+            f.configs.push_back(config);
+            f.publish({{id, u"1.0.1"_s, after, {u"clipboard:write"_s, u"ui"_s, u"processes"_s}}}, &key);
+            f.startSigned(key);
+            return true;
+        }
     };
 
 private slots:
@@ -484,6 +505,90 @@ private slots:
         f.svc->checkNow();
         QVERIFY(f.settle());
         QCOMPARE(f.versionOf(u"test.a"_s), u"1.1.0"_s);
+    }
+
+    // The reason the feature exists: a plugin that is on (capture), a newer version that names one permission more
+    // (processes). It is never put in place by itself; the user is told once; the one question (更新并允许) is
+    // answered through the same steps PluginSettings takes (installFrom -> permissionsToAllow, finishInstall -> replace,
+    // scan, confirmEnable -> confirmedFor).
+    void captureUpdateAddingProcessesIsAllowedInOneQuestion()
+    {
+        CaptureLike c;
+        QVERIFY(c.setUp(m_key));
+        PluginUpdates& svc = *c.f.svc;
+        QSignalSpy told(&svc, &PluginUpdates::consentNeeded);
+        svc.checkNow();
+        QVERIFY(c.f.settle());
+        QCOMPARE(c.f.versionOf(c.id), u"1.0.0"_s); // not installed by itself
+        QCOMPARE(svc.count(), 1);
+        QCOMPARE(svc.more(c.id), QStringList {u"processes"_s});
+        QCOMPARE(told.size(), 1);
+        svc.checkNow(); // a second check says nothing
+        QVERIFY(c.f.settle());
+        QCOMPARE(told.size(), 1);
+
+        // The 插件库 gives the package to the page's install: the question is the combined one.
+        std::optional<plugin::install::Candidate> candidate = plugin::install::inspect(c.f.list + u"/test.cap-1.0.1.wsplugin"_s);
+        QVERIFY(candidate && candidate->manifest);
+        QCOMPARE(plugin::updates::permissionsToAllow(*candidate->manifest, c.config.enabled, c.config.confirmed), QStringList {u"processes"_s});
+        // ... a plugin that is off, or a never-confirmed one, is not asked here (turning it on asks)
+        QVERIFY(plugin::updates::permissionsToAllow(*candidate->manifest, false, c.config.confirmed).isEmpty());
+        QVERIFY(plugin::updates::permissionsToAllow(*candidate->manifest, true, {}).isEmpty());
+
+        // The yes: claim, replace, forget, scan; then confirm what the new manifest names, still on.
+        QVERIFY(svc.claim(c.id));
+        QString error;
+        QVERIFY(!plugin::install::place(*candidate, c.f.user, &error).isEmpty());
+        plugin::install::discard(*candidate);
+        PluginConfig confirmed = c.config;
+        confirmed.confirmed = plugin::updates::confirmedFor(*candidate->manifest);
+        c.f.configs = {confirmed};
+        svc.rescan(); // as finishInstall: the scan first, then what was kept for the old version goes
+        svc.forget(c.id);
+        svc.release(c.id);
+        svc.setPolicy(false, c.f.configs);
+        QCOMPARE(c.f.versionOf(c.id), u"1.0.1"_s);
+        QVERIFY(QFileInfo::exists(c.f.user + u"/test.cap/new.txt"_s));
+        QVERIFY(c.f.configs.at(0).enabled);
+        QVERIFY(c.f.configs.at(0).confirmed.contains(u"processes"_s));
+        QCOMPARE(svc.count(), 0);
+        QCOMPARE(told.size(), 1);
+    }
+
+    void captureUpdateDeclinedKeepsTheOldVersionAndIsNotCountedAgain()
+    {
+        CaptureLike c;
+        QVERIFY(c.setUp(m_key));
+        PluginUpdates& svc = *c.f.svc;
+        QSignalSpy told(&svc, &PluginUpdates::consentNeeded);
+        svc.checkNow();
+        QVERIFY(c.f.settle());
+        QCOMPARE(svc.count(), 1);
+        QCOMPARE(told.size(), 1);
+
+        std::optional<plugin::install::Candidate> candidate = plugin::install::inspect(c.f.list + u"/test.cap-1.0.1.wsplugin"_s);
+        QVERIFY(candidate && candidate->manifest);
+        QVERIFY(!plugin::updates::permissionsToAllow(*candidate->manifest, c.config.enabled, c.config.confirmed).isEmpty());
+        // The no (PluginSettings::declineInstall): this version stops being counted; nothing was touched.
+        svc.dismiss(c.id, candidate->manifest->version);
+        plugin::install::discard(*candidate);
+        QCOMPARE(c.f.versionOf(c.id), u"1.0.0"_s);
+        QVERIFY(QFileInfo::exists(c.f.user + u"/test.cap/old.txt"_s));
+        QVERIFY(!QFileInfo::exists(c.f.user + u"/test.cap/new.txt"_s));
+        QVERIFY(c.f.configs.at(0).enabled);
+        QCOMPARE(c.f.configs.at(0).confirmed, (QStringList {u"clipboard:write"_s, u"ui"_s}));
+        QCOMPARE(svc.count(), 0);
+        svc.checkNow(); // checked again: still counted out, still not told
+        QVERIFY(c.f.settle());
+        QCOMPARE(svc.count(), 0);
+        QCOMPARE(told.size(), 1);
+        QCOMPARE(c.f.versionOf(c.id), u"1.0.0"_s);
+        // A newer version is a new question.
+        c.f.publish({{c.id, u"1.0.2"_s, c.after, {u"clipboard:write"_s, u"ui"_s, u"processes"_s}}}, &m_key);
+        svc.checkNow();
+        QVERIFY(c.f.settle());
+        QCOMPARE(svc.count(), 1);
+        QCOMPARE(told.size(), 2);
     }
 };
 

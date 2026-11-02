@@ -171,6 +171,21 @@ Decision decide(const gallery::Item& item, const Installed& installed, const Pol
     return d;
 }
 
+QStringList permissionsToAllow(const Manifest& candidate, bool enabled, const QStringList& confirmed)
+{
+    if (!enabled || confirmed.isEmpty())
+        return {};
+    return install::unconfirmed(candidate, confirmed);
+}
+
+QStringList confirmedFor(const Manifest& manifest)
+{
+    QStringList names = manifest.permissions.names();
+    if (names.isEmpty())
+        names = {QStringLiteral("none")};
+    return names;
+}
+
 QString widening(const Manifest& installed, const Manifest& candidate, const QStringList& confirmed, bool enabled)
 {
     const Permissions& was = installed.permissions;

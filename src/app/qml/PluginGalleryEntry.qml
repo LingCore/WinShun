@@ -32,9 +32,12 @@ Rectangle {
     required property real progress
     required property string problem
     required property bool shown
+    required property string staged // a newer version kept aside for the next start
+    required property string morePermissions // what the list's version asks for besides, named
 
     readonly property real dpr: Screen.devicePixelRatio
     readonly property bool installable: stage === "install" || stage === "update"
+    readonly property bool waiting: stage === "update" && staged.length > 0 && !busy // put in place at the next start, or now
 
     signal showInstalled() // 查看
 
@@ -181,7 +184,8 @@ Rectangle {
                 Text {
                     y: Theme.snap((32 - height) / 2, entry.dpr) // across from the button, there or not
                     visible: text.length > 0
-                    text: entry.busy ? "" : entry.stage === "installed" ? qsTr("已安装 %1").arg(entry.installedVersion)
+                    text: entry.busy ? "" : entry.waiting ? qsTr("重启 Win顺 后更新到 %1").arg(entry.staged)
+                                        : entry.stage === "installed" ? qsTr("已安装 %1").arg(entry.installedVersion)
                                         : entry.stage === "bundled" ? qsTr("随 Win顺 自带")
                                         : entry.stage === "update" ? qsTr("已装 %1").arg(entry.installedVersion)
                                         : ""
@@ -194,16 +198,19 @@ Rectangle {
                     visible: entry.busy || entry.stage !== "bundled" // nothing to do with one that comes with Win顺
                     implicitHeight: 32
                     text: entry.busy ? qsTr("取消")
+                        : entry.waiting ? qsTr("立即更新")
                         : entry.stage === "install" ? qsTr("安装并启用")
                         : entry.stage === "update" ? qsTr("更新到 %1").arg(entry.version)
                         : entry.stage === "app" ? qsTr("需要更新 Win顺")
                         : qsTr("查看")
-                    highlighted: entry.installable && !entry.busy
+                    highlighted: entry.installable && !entry.busy && !entry.waiting
                     // One download at a time; a newer Win顺 first.
                     enabled: entry.busy || (entry.installable ? !entry.gallery.downloading : entry.stage !== "app")
                     onClicked: {
                         if (entry.busy)
                             entry.gallery.cancel(entry.pluginId)
+                        else if (entry.waiting)
+                            entry.gallery.applyNow(entry.pluginId)
                         else if (entry.stage === "install")
                             entry.gallery.installAndEnable(entry.pluginId)
                         else if (entry.installable)
@@ -297,6 +304,7 @@ Rectangle {
             width: parent.width
             text: entry.problem.length > 0 ? entry.problem
                 : entry.stage === "app" ? qsTr("要 Win顺 %1 或更新的版本，可以在“高级”里检查更新").arg(entry.minWinShun)
+                : entry.stage === "update" && entry.morePermissions.length > 0 ? qsTr("新版本要更多权限：%1，更新时会问你").arg(entry.morePermissions)
                 : ""
             textFormat: Text.PlainText
             color: entry.problem.length > 0 ? Theme.danger : Theme.caution

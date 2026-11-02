@@ -81,6 +81,7 @@ public:
     void dismiss(const QString& id, const QString& version); // the user said no to this version
     QString applyNow(const QString& id); // a staged version, now: its program is stopped. Empty or why not
     void checkNow(); // fetches the list (whatever the clock says)
+    void rescan(); // the plugins folder was changed by someone else (tests; the app's Host scans itself)
     void tick(); // the hourly beat: staged versions of plugins that stopped; the daily check when due
 
 signals:

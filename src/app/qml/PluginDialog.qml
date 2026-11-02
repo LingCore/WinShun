@@ -15,6 +15,9 @@ Item {
     property bool open: false
     property bool animated: true // false: shown at once (the offscreen preview, which renders no frames between)
     property bool fitToWindow: false // the first-run window can be shorter than the permissions list
+    // 更新并允许: an upgrade of a plugin that is on, whose new version asks for more (the permissions shown, the new ones marked).
+    readonly property bool allowing: kind === "install" && info.allow === true
+    readonly property bool listsPermissions: kind === "permissions" || allowing
 
     function ask(what, details) {
         kind = what
@@ -39,7 +42,7 @@ Item {
         if (kind === "permissions")
             plugins.declineEnable(info.id)
         else if (kind === "install")
-            plugins.cancelInstall()
+            plugins.declineInstall()
         close()
     }
 
@@ -116,6 +119,7 @@ Item {
                     width: parent.width
                     text: dialog.kind === "permissions"
                           ? (dialog.info.more ? qsTr("“%1” 的新版本要更多权限").arg(dialog.info.name) : qsTr("打开“%1”？").arg(dialog.info.name))
+                        : dialog.allowing ? qsTr("“%1” 的新版本要更多权限").arg(dialog.info.name)
                         : dialog.kind === "install"
                           ? (dialog.info.same ? qsTr("重新安装“%1”？").arg(dialog.info.name)
                            : dialog.info.downgrade ? qsTr("把“%1”换成旧版本？").arg(dialog.info.name)
@@ -144,7 +148,10 @@ Item {
                 Text {
                     visible: dialog.kind === "install"
                     width: parent.width
-                    text: qsTr("已装的是 %1，要装的是 %2。它的设置和关键字保留；装好后如果它要的权限变多，打开时会再问一次。")
+                    text: dialog.allowing
+                          ? qsTr("已装的是 %1，要装的是 %2。新版本还要下面标出的权限；不同意的话，已装的版本照常用。")
+                              .arg(dialog.info.installedVersion ?? "").arg(dialog.info.newVersion ?? "")
+                          : qsTr("已装的是 %1，要装的是 %2。它的设置和关键字保留；装好后如果它要的权限变多，打开时会再问一次。")
                           .arg(dialog.info.installedVersion ?? "").arg(dialog.info.newVersion ?? "")
                     color: Theme.subtext
                     font.pixelSize: Theme.fontCaption
@@ -165,7 +172,7 @@ Item {
                 }
 
                 Rectangle { // the permissions, one per line
-                    visible: dialog.kind === "permissions"
+                    visible: dialog.listsPermissions
                     width: parent.width
                     height: permissionList.implicitHeight + 16
                     radius: Theme.cardRadius
@@ -181,7 +188,7 @@ Item {
                         spacing: 4
 
                         Repeater {
-                            model: dialog.kind === "permissions" ? (dialog.info.permissions ?? []) : []
+                            model: dialog.listsPermissions ? (dialog.info.permissions ?? []) : []
 
                             delegate: Item {
                                 id: permissionRow
@@ -244,7 +251,7 @@ Item {
                 }
 
                 Text { // the plugin design, §3.3: what is enforced and what is only said
-                    visible: dialog.kind === "permissions"
+                    visible: dialog.listsPermissions
                     width: parent.width
                     text: dialog.plugins.permissionsNote()
                     color: Theme.subtext
@@ -278,6 +285,7 @@ Item {
                             objectName: "pluginDialogAccept"
                             highlighted: true
                             text: dialog.kind === "permissions" ? qsTr("打开")
+                                : dialog.allowing ? qsTr("更新并允许")
                                 : dialog.kind === "install" ? qsTr("安装")
                                 : dialog.info.hasData === true ? qsTr("连数据一起删") : qsTr("卸载")
                             onClicked: dialog.accept(true)

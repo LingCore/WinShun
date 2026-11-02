@@ -78,6 +78,13 @@ QString widening(const Manifest& installed, const Manifest& candidate, const QSt
 QString review(const Manifest& installed, const Manifest& candidate, QStringView id, QStringView version, QStringView appVersion,
     const QStringList& confirmed, bool enabled);
 
+// A newer version of a plugin that is on, naming permissions the user has not
+// said yes to: those names (empty: nothing to ask, the plugin is off, or it
+// was never confirmed -- turning it on asks then). The 更新并允许 question.
+QStringList permissionsToAllow(const Manifest& candidate, bool enabled, const QStringList& confirmed);
+// Confirmed= once the user said yes to `manifest`: its permission names ("none" for no permission at all).
+QStringList confirmedFor(const Manifest& manifest);
+
 // A copy under development: a link, or a folder with a repository in it.
 bool developerCopy(const QString& pluginDir);
 

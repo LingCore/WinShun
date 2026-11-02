@@ -59,6 +59,9 @@ public:
         QString problem; // why the last install from here did not happen
         bool shown = true; // fits the filter (and, with updatesOnly, has a newer version to go to)
         bool updatable = false; // the user's copy, not Win顺's own, with a newer version in the list
+        bool allUpdate = false; // ... and 全部更新 may do it: nothing staged, no new permissions, not a copy in development
+        QString staged; // a newer version kept aside for the next start (empty: none)
+        QString morePermissions; // the permissions the list's version adds to the installed one, named; empty: none
         QString words; // what the filter looks in: the id, the names, descriptions and keywords, lower-cased
         friend bool operator==(const Row&, const Row&) = default;
     };
@@ -80,6 +83,8 @@ public:
         ProgressRole,
         ProblemRole,
         ShownRole,
+        StagedRole,
+        MorePermissionsRole,
     };
 
     using QAbstractListModel::QAbstractListModel;
@@ -116,6 +121,12 @@ class PluginGallery : public QObject {
     // ... and it is that GitHub could not be reached: the page offers the proxy setting (GitHub #84).
     Q_PROPERTY(bool problemIsConnection READ problemIsConnection NOTIFY stateChanged FINAL)
     Q_PROPERTY(bool downloading READ downloading NOTIFY stateChanged FINAL) // a package is on its way (one at a time)
+    // The nav badge: updates waiting for the user (the background service's count; in the preview, the rows with a newer version).
+    Q_PROPERTY(int updateCount READ updateCount NOTIFY updateCountChanged FINAL)
+    Q_PROPERTY(int updatableCount READ updatableCount NOTIFY listChanged FINAL) // those 全部更新 would do
+    Q_PROPERTY(bool updatingAll READ updatingAll NOTIFY stateChanged FINAL)
+    Q_PROPERTY(QString updateStatus READ updateStatus NOTIFY stateChanged FINAL) // 全部更新: how far it is, then what came of it
+    Q_PROPERTY(bool updateFailed READ updateFailed NOTIFY stateChanged FINAL) // ... and some were not updated
 
 public:
     explicit PluginGallery(PluginSettings* settings);
@@ -136,11 +147,18 @@ public:
     QString problem() const { return m_problem; }
     bool problemIsConnection() const { return m_problemIsConnection; }
     bool downloading() const { return !m_downloadId.isEmpty(); }
+    int updateCount() const;
+    int updatableCount() const;
+    bool updatingAll() const { return m_updatingAll; }
+    QString updateStatus() const { return m_updateStatus; }
+    bool updateFailed() const { return !m_updateFailures.isEmpty(); }
 
     Q_INVOKABLE void refresh(); // 刷新
     Q_INVOKABLE void install(const QString& id); // 安装, 更新到
     Q_INVOKABLE void installAndEnable(const QString& id); // the library's explicit install-and-enable action
     Q_INVOKABLE void cancel(const QString& id); // the download
+    Q_INVOKABLE void updateAll(); // 全部更新: the ones that need no new permission, one after the other
+    Q_INVOKABLE void applyNow(const QString& id); // 立即更新: a version kept aside for the next start, now
     Q_INVOKABLE void openRepository(); // 看看怎么投稿
 
     // The rows again: the list, or what is installed (the catalog), or the
@@ -155,10 +173,13 @@ signals:
     void updatesOnlyChanged();
     void activeChanged();
     void stateChanged();
+    void updateCountChanged();
 
 private:
     struct Download;
-    void beginInstall(const QString& id, bool enableAfterInstall);
+    void beginInstall(const QString& id, bool enableAfterInstall, bool bulk = false);
+    void nextUpdate(); // 全部更新's next plugin, or its summary
+    void noteUpdate(const QString& id, const QString& problem); // one of them done; empty: updated
     QString source() const; // the list's address or file
     bool keeping() const; // the list is the published one: its copy is kept
     QString cachePath() const;
@@ -181,6 +202,12 @@ private:
     bool m_problemIsConnection = false;
     QString m_filter;
     bool m_updatesOnly = false;
+    bool m_updatingAll = false;
+    QStringList m_updateQueue;
+    int m_updateTotal = 0;
+    int m_updateDone = 0; // updated
+    QStringList m_updateFailures; // "<name> was not updated: why", for the summary
+    QString m_updateStatus;
     QPointer<PluginUpdates> m_updates;
     // The download: its plugin, what stops it, and its number (a result
     // from one cancelled meanwhile is let go of).
