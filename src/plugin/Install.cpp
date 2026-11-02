@@ -157,14 +157,34 @@ QString copyTree(const QString& from, const QString& to)
     return {};
 }
 
-QString tempDir()
+// A new folder name under `parent` (the system's temporary folder when empty).
+QString tempDir(const QString& parent)
 {
-    return QDir::temp().filePath(u"WinShun-plugin-"_s + QUuid::createUuid().toString(QUuid::WithoutBraces).left(8));
+    const QDir base = parent.isEmpty() ? QDir::temp() : QDir(parent);
+    return base.filePath(u"WinShun-plugin-"_s + QUuid::createUuid().toString(QUuid::WithoutBraces).left(8));
+}
+
+// Reads the manifest of the plugin in `c.dir`; on failure `error` says why
+// and the candidate's temporary folder goes.
+void readManifest(Candidate& c)
+{
+    const QString manifestPath = c.dir + u"/plugin.json"_s;
+    if (!QFileInfo::exists(manifestPath)) {
+        c.error = u"这个文件夹里没有 plugin.json"_s;
+        discard(c);
+        return;
+    }
+    QString error;
+    c.manifest = Manifest::load(manifestPath, &error);
+    if (!c.manifest) {
+        c.error = error;
+        discard(c);
+    }
 }
 
 } // namespace
 
-std::optional<Candidate> inspect(const QString& path)
+std::optional<Candidate> inspect(const QString& path, const QString& unpackParent)
 {
     const QFileInfo info(path);
     if (!info.exists())
@@ -175,7 +195,7 @@ std::optional<Candidate> inspect(const QString& path)
         c.dir = info.absoluteFilePath();
     } else if (isArchive(path)) {
         c.archive = true;
-        c.dir = tempDir();
+        c.dir = tempDir(unpackParent);
         c.error = unpack(info.absoluteFilePath(), c.dir);
         if (!c.error.isEmpty()) {
             discard(c);
@@ -185,18 +205,20 @@ std::optional<Candidate> inspect(const QString& path)
         c.error = u"要的是插件文件夹，或 .zip / .wsplugin 压缩包"_s;
         return c;
     }
-    const QString manifestPath = c.dir + u"/plugin.json"_s;
-    if (!QFileInfo::exists(manifestPath)) {
-        c.error = u"这个文件夹里没有 plugin.json"_s;
-        discard(c);
-        return c;
-    }
-    QString error;
-    c.manifest = Manifest::load(manifestPath, &error);
-    if (!c.manifest) {
-        c.error = error;
-        discard(c);
-    }
+    readManifest(c);
+    return c;
+}
+
+std::optional<Candidate> adopt(const QString& dir)
+{
+    const QFileInfo info(dir);
+    if (!info.isDir())
+        return std::nullopt;
+    Candidate c;
+    c.source = QDir::toNativeSeparators(info.absoluteFilePath());
+    c.dir = info.absoluteFilePath();
+    c.archive = true; // ours to move in and to remove
+    readManifest(c);
     return c;
 }
 
@@ -215,6 +237,10 @@ QString place(const Candidate& candidate, const QString& userDir, QString* error
     const QString sourceDir = QDir::cleanPath(candidate.dir);
     if (QDir::cleanPath(target).compare(sourceDir, Qt::CaseInsensitive) == 0)
         return QDir::toNativeSeparators(target); // installing what is installed: nothing to move
+    // A link is a plugin in development: the old folder's removal after the
+    // swap must never reach what the link points to (the source code).
+    if (const QFileInfo targetInfo(target); targetInfo.isJunction() || targetInfo.isSymLink())
+        return fail(u"%1 是链接（开发中的插件？），没有替换；要更新先删掉这个链接"_s.arg(QDir::toNativeSeparators(target)));
     if (QFileInfo::exists(target) && !QFileInfo::exists(target + u"/plugin.json"_s))
         return fail(u"%1 不是已安装的插件文件夹，为保留其中的数据，没有覆盖"_s.arg(QDir::toNativeSeparators(target)));
     // What is there goes aside first, and comes back if the new one cannot

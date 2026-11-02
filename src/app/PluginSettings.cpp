@@ -7,6 +7,7 @@
 #include "Secrets.h"
 #include "Settings.h"
 #include "SettingsEditor.h"
+#include "Updates.h"
 #include "platform/Shell.h"
 
 #include <QCoreApplication>
@@ -975,19 +976,8 @@ void PluginSettings::finishInstall(plugin::install::Candidate candidate, bool en
         return;
     const QString id = candidate.manifest->id;
     const QString name = candidate.manifest->name.pick(m_locale);
-    m_host->stop(id); // its program, if running, lets go of its folder
-    // A moment for the process to leave (shutdown is asked for, then the job ends it).
-    const QDeadlineTimer deadline(2500);
-    while (!deadline.hasExpired()) {
-        const plugin::Host::State::Status s = m_host->state(id).status;
-        if (s != plugin::Host::State::Status::Running && s != plugin::Host::State::Status::Starting)
-            break;
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
-    }
-    QString error;
-    const QString placed = plugin::install::place(candidate, m_userDir, &error);
-    plugin::install::discard(candidate);
-    if (placed.isEmpty()) {
+    const QString error = plugin::updates::replace(*m_host, candidate, m_userDir);
+    if (!error.isEmpty()) {
         setMessage(tr("没有安装 %1：%2").arg(name, error));
         return;
     }

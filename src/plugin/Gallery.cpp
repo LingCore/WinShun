@@ -154,6 +154,7 @@ std::optional<Index> parse(const QByteArray& json, const QString& source, QStrin
         }
         item.program = programOf(o.value(u"runtime"_s));
         item.minWinShun = o.value(u"minWinShun"_s).toString();
+        item.bundled = o.value(u"bundled"_s).toBool();
         index.items.push_back(std::move(item));
     }
     return index;

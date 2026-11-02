@@ -27,9 +27,17 @@ struct Candidate {
 
 // Reads `path` (a folder, or a .zip / .wsplugin). The candidate's `error`
 // says why it is no plugin; nothing at all when `path` is not there.
-std::optional<Candidate> inspect(const QString& path);
+// An archive is unpacked into a new folder under `unpackParent` (empty: the
+// system's temporary folder).
+std::optional<Candidate> inspect(const QString& path, const QString& unpackParent = {});
+// A folder Win顺 unpacked itself earlier (a staged update): read like
+// inspect() does, but `archive` is set, so place() moves it in and
+// discard() removes it. Nothing when `dir` is no folder.
+std::optional<Candidate> adopt(const QString& dir);
 // Puts the candidate into `<userDir>\<id>`, replacing what is there (the
 // caller has asked the user). The folder it went to, or empty with `error`.
+// A target that is a link (junction, symlink: a plugin in development) is
+// not replaced.
 QString place(const Candidate& candidate, const QString& userDir, QString* error);
 void discard(Candidate& candidate); // the temporary folder of an archive, if any
 

@@ -9,6 +9,7 @@
 #include "Gallery.h"
 #include "Host.h"
 #include "IndexService.h"
+#include "IndexSignature.h"
 #include "Install.h"
 #include "Items.h"
 #include "Manifest.h"
@@ -22,6 +23,7 @@
 #include "Session.h"
 #include "ToastPolicy.h"
 #include "Tools.h"
+#include "Updates.h"
 #include "WebShortcut.h"
 #include "ZeroCode.h"
 
@@ -33,7 +35,10 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QElapsedTimer>
+#include <QProcess>
+#include <QSettings>
 #include <QTemporaryDir>
+#include <QTimeZone>
 #include <QTest>
 #include <QtEndian>
 
@@ -356,6 +361,33 @@ QByteArray zeroManifest(const QString& id, const QString& version, const QString
     return (u"{\"manifest\":1,\"id\":\"%1\",\"name\":\"Zero\",\"version\":\"%2\",%3\"commands\":[{\"id\":\"go\",\"keyword\":\"go\",\"run\":{\"folder\":\"C:\\\\\"}}]}"_s
         .arg(id, version, extra))
         .toUtf8();
+}
+
+const QByteArray kVectorKey = "40d7b4ad0b2b90650f8b2570cb6dd97d233320c047c7464706c2e96bb1c5e14f50daccce7d2cb6d225f429626de52301ddc72823df66a72ab24d0f76fa8d4914";
+// Python (cryptography) signed {"schema":1,"plugins":[]} + LF with the key above: ECDSA P-256, SHA-256, DER turned into r||s.
+const QByteArray kVectorSignature = "uK3sTYHTOpLyssRKFTm6NXqhRqIBNCe8VCvTrdEkJclWtiqp52E/ZBvtOUkFo+2cH5nr1v42kFLyUdyrb33Wow==";
+
+// An index.json.sig with these (key id, Base64 signature) entries.
+QByteArray sigFileOf(const QList<std::pair<QString, QByteArray>>& entries)
+{
+    QJsonArray signatures;
+    for (const auto& [key, signature] : entries)
+        signatures.push_back(QJsonObject {{u"key"_s, key}, {u"algorithm"_s, u"ecdsa-p256-sha256"_s}, {u"signature"_s, QString::fromLatin1(signature)}});
+    return toJson(QJsonObject {{u"schema"_s, 1}, {u"file"_s, u"index.json"_s}, {u"signatures"_s, signatures}});
+}
+
+// A junction at `link` to `target` (a plugin folder in development, as mklink /J makes it).
+bool makeJunction(const QString& link, const QString& target)
+{
+    QDir().mkpath(QFileInfo(link).path());
+    return QProcess::execute(u"cmd"_s, {u"/c"_s, u"mklink"_s, u"/J"_s, QDir::toNativeSeparators(link), QDir::toNativeSeparators(target)}) == 0;
+}
+
+QString versionAt(const QString& pluginDir)
+{
+    QString error;
+    const std::optional<Manifest> m = Manifest::load(pluginDir + u"/plugin.json"_s, &error);
+    return m ? m->version : QString();
 }
 
 // Removes the secrets of a test plugin however the test ends.
@@ -2069,6 +2101,587 @@ private slots:
         QCOMPARE(candidate->manifest->id, u"test.lib"_s);
         install::discard(*candidate);
         QVERIFY(QFile::remove(saved));
+    }
+
+    // ---- the plugin list's signature, updates (IndexSignature.h, Updates.h) -------
+    void indexSignatureInterop()
+    {
+        // Signed in Python (cryptography: ECDSA P-256 / SHA-256, DER turned into r||s).
+        const QByteArray message = "{\"schema\":1,\"plugins\":[]}\n";
+        const QByteArray key = QByteArray::fromHex(kVectorKey);
+        const QByteArray sig = QByteArray::fromBase64(kVectorSignature);
+        QCOMPARE(sig.size(), 64);
+        QVERIFY(signing::verifyP256(message, sig, key));
+        QByteArray changed = message;
+        changed[3] = static_cast<char>(changed[3] ^ 1);
+        QVERIFY(!signing::verifyP256(changed, sig, key));
+        QByteArray badSig = sig;
+        badSig[40] = static_cast<char>(badSig[40] ^ 0x80);
+        QVERIFY(!signing::verifyP256(message, badSig, key));
+        QVERIFY(!signing::verifyP256(message, sig, signing::indexKeys().first().xy)); // another key
+        QVERIFY(!signing::verifyP256(message, sig.left(63), key));
+        QVERIFY(!signing::verifyP256(message, sig + "x", key));
+        QVERIFY(!signing::verifyP256(message, QByteArray(64, '\0'), key));
+        QVERIFY(!signing::verifyP256(message, sig, key.left(63)));
+        QVERIFY(!signing::verifyP256({}, sig, key));
+        // The whole file, as the repository writes it.
+        const QList<signing::PublicKey> keys {{u"test-key"_s, key}};
+        QVERIFY(signing::verify(message, sigFileOf({{u"test-key"_s, kVectorSignature}}), keys).ok);
+        QCOMPARE(signing::verify(message, sigFileOf({{u"test-key"_s, kVectorSignature}}), keys).key, u"test-key"_s);
+        QVERIFY(!signing::verify(changed, sigFileOf({{u"test-key"_s, kVectorSignature}}), keys).ok);
+        QVERIFY(!signing::verify(message, sigFileOf({{u"test-key"_s, kVectorSignature}}), signing::indexKeys()).ok);
+    }
+
+    void indexSignatureFile()
+    {
+        const QByteArray good = kVectorSignature;
+        QString error;
+        std::optional<QList<signing::Signature>> list = signing::parseFile(sigFileOf({{u"k-1"_s, good}}), &error);
+        QVERIFY2(list.has_value(), qPrintable(error));
+        QCOMPARE(list->size(), 1);
+        QCOMPARE(list->first().key, u"k-1"_s);
+        QCOMPARE(list->first().rs.size(), 64);
+        // Another algorithm is passed over, unknown fields are ignored.
+        const QByteArray mixed = QByteArray("{\"schema\":1,\"file\":\"index.json\",\"extra\":true,\"signatures\":["
+                                             "{\"key\":\"k-0\",\"algorithm\":\"ed25519\",\"signature\":\"AAAA\"},"
+                                             "{\"key\":\"k-1\",\"algorithm\":\"ecdsa-p256-sha256\",\"signature\":\"SIG\",\"more\":1}]}");
+        list = signing::parseFile(QByteArray(mixed).replace("SIG", good), &error);
+        QVERIFY2(list.has_value(), qPrintable(error));
+        QCOMPARE(list->size(), 1);
+        QCOMPARE(list->first().key, u"k-1"_s);
+        // Nothing usable left: no file.
+        QVERIFY(!signing::parseFile("{\"schema\":1,\"signatures\":[{\"key\":\"k\",\"algorithm\":\"ed25519\",\"signature\":\"AAAA\"}]}", &error));
+        QVERIFY(!signing::parseFile(sigFileOf({{u"k-1"_s, "!!!!not base64!!!!"}}), &error)); // bad Base64
+        QVERIFY(!signing::parseFile(sigFileOf({{u"k-1"_s, QByteArray(32, 'A').toBase64()}}), &error)); // 32 bytes
+        QVERIFY(!signing::parseFile(sigFileOf({{u"k-1"_s, QByteArray(65, 'A').toBase64()}}), &error)); // 65 bytes
+        QVERIFY(!signing::parseFile(sigFileOf({{u"Bad Key"_s, good}}), &error)); // key id
+        // One bad entry beside a good one: the good one counts.
+        list = signing::parseFile(sigFileOf({{u"k-1"_s, "!!!!"}, {u"k-2"_s, good}}), &error);
+        QVERIFY2(list.has_value(), qPrintable(error));
+        QCOMPARE(list->size(), 1);
+        QCOMPARE(list->first().key, u"k-2"_s);
+        // The file itself.
+        QVERIFY(!signing::parseFile("not json", &error));
+        QVERIFY(!signing::parseFile("[]", &error));
+        QVERIFY(!signing::parseFile("{\"schema\":2,\"signatures\":[]}", &error));
+        QVERIFY(!signing::parseFile("{\"schema\":1,\"signatures\":[]}", &error));
+        QVERIFY(signing::parseFile(sigFileOf({{u"k"_s, good}, {u"k"_s, good}, {u"k"_s, good}, {u"k"_s, good}}), &error)); // four
+        QVERIFY(!signing::parseFile(sigFileOf({{u"k"_s, good}, {u"k"_s, good}, {u"k"_s, good}, {u"k"_s, good}, {u"k"_s, good}}), &error)); // more than four
+        QVERIFY(!signing::parseFile(sigFileOf({{u"k-1"_s, good}}) + QByteArray(signing::kMaxSignatureBytes, ' '), &error)); // too big
+        // Several signatures, one of them by a key we have and that checks.
+        const QByteArray message = "{\"schema\":1,\"plugins\":[]}\n";
+        const QList<signing::PublicKey> keys {{u"k-2"_s, QByteArray::fromHex(kVectorKey)}};
+        const QByteArray other = QByteArray(64, 'Z').toBase64();
+        QVERIFY(signing::verify(message, sigFileOf({{u"k-1"_s, other}, {u"k-2"_s, good}}), keys).ok);
+        QVERIFY(!signing::verify(message, sigFileOf({{u"k-1"_s, good}}), keys).ok); // a key we do not know
+        QVERIFY(!signing::verify(message, sigFileOf({{u"k-2"_s, other}}), keys).ok); // ours, and wrong
+        QVERIFY(!signing::verify(message, "garbage", keys).ok);
+    }
+
+    void embeddedIndexKeysAreValid()
+    {
+        const QList<signing::PublicKey>& keys = signing::indexKeys();
+        QVERIFY(!keys.isEmpty());
+        for (const signing::PublicKey& k : keys) {
+            QVERIFY2(!k.id.isEmpty(), "key id");
+            QCOMPARE(k.xy.size(), 64);
+            QVERIFY2(signing::importable(k.xy), qPrintable(k.id));
+        }
+        QVERIFY(signing::importable(QByteArray::fromHex(kVectorKey)));
+        QVERIFY(!signing::importable(QByteArray(64, '\x01'))); // not a point on the curve
+        QVERIFY(!signing::importable(QByteArray(63, '\x01')));
+    }
+
+    void galleryReadsBundled()
+    {
+        const auto entry = [](const QString& id, const QJsonValue& bundled) {
+            QJsonObject o {{u"id"_s, id}, {u"version"_s, u"1.0"_s}, {u"url"_s, u"https://example.com/a.wsplugin"_s},
+                {u"sha256"_s, QString(64, u'a')}, {u"size"_s, 5}};
+            if (!bundled.isUndefined())
+                o.insert(u"bundled"_s, bundled);
+            return o;
+        };
+        const QByteArray json = toJson(QJsonObject {{u"schema"_s, 1},
+            {u"plugins"_s, QJsonArray {entry(u"test.t"_s, true), entry(u"test.f"_s, false), entry(u"test.n"_s, QJsonValue(QJsonValue::Undefined))}}});
+        QString error;
+        const std::optional<gallery::Index> index = gallery::parse(json, u"https://example.com/index.json"_s, &error);
+        QVERIFY2(index.has_value(), qPrintable(error));
+        QCOMPARE(index->items.size(), 3u);
+        QVERIFY(index->find(u"test.t"_s)->bundled);
+        QVERIFY(!index->find(u"test.f"_s)->bundled);
+        QVERIFY(!index->find(u"test.n"_s)->bundled);
+    }
+
+    void updateDecisions()
+    {
+        namespace up = ws::plugin::updates;
+        const QDateTime now(QDate(2026, 11, 2), QTime(12, 0), QTimeZone::UTC);
+        // Capture's real case: 1.0.0 -> 1.0.1 adds `processes`.
+        const auto manifestOf = [](const QString& version, const QString& permissions) {
+            QString error;
+            const std::optional<Manifest> m = Manifest::parse(zeroManifest(u"test.up"_s, version, u"\"permissions\":%1,"_s.arg(permissions)), &error);
+            return m ? *m : Manifest();
+        };
+        const Manifest installed = manifestOf(u"1.0.0"_s, u"[\"ui\",\"clipboard:write\"]"_s);
+        QCOMPARE(installed.id, u"test.up"_s);
+        QCOMPARE(installed.permissions.names(), (QStringList {u"clipboard:write"_s, u"ui"_s}));
+        gallery::Item item;
+        item.id = u"test.up"_s;
+        item.version = u"1.0.1"_s;
+        item.permissions = {u"ui"_s, u"clipboard:write"_s};
+        up::Installed have;
+        have.local.userCopy = true;
+        have.local.userVersion = u"1.0.0"_s;
+        have.manifest = &installed;
+        have.enabled = true;
+        have.confirmed = {u"ui"_s, u"clipboard:write"_s};
+        up::Policy policy;
+        policy.automatic = true;
+        policy.trusted = true;
+        policy.appVersion = u"0.12.0"_s;
+        up::History history;
+        const auto action = [&] { return up::decide(item, have, policy, history, now).action; };
+
+        QVERIFY(action() == up::Action::Install); // 11
+        have.local.userCopy = false; // 1
+        QVERIFY(action() == up::Action::None);
+        have.local.userCopy = true;
+        item.bundled = true; // 2
+        QVERIFY(action() == up::Action::None);
+        item.bundled = false;
+        have.local.bundled = true;
+        QVERIFY(action() == up::Action::None);
+        have.local.bundled = false;
+        have.manifest = nullptr; // 3
+        QVERIFY(action() == up::Action::Ask);
+        have.manifest = &installed;
+        item.version = u"1.0.0"_s; // 4
+        QVERIFY(action() == up::Action::None);
+        item.version = u"0.9"_s; // never down
+        QVERIFY(action() == up::Action::None);
+        item.version = u"1.0.1"_s;
+        item.minWinShun = u"9.0"_s; // 5
+        QVERIFY(action() == up::Action::NeedsNewerApp);
+        item.minWinShun.clear();
+
+        // 6: the real one.
+        item.permissions.push_back(u"processes"_s);
+        up::Decision d = up::decide(item, have, policy, history, now);
+        QVERIFY(d.action == up::Action::Ask);
+        QCOMPARE(d.more, (QStringList {u"processes"_s}));
+        QVERIFY(d.needsConsent);
+        have.enabled = false;
+        d = up::decide(item, have, policy, history, now);
+        QVERIFY(d.action == up::Action::Ask && !d.needsConsent); // off: only the count
+        have.enabled = true;
+        have.confirmed.push_back(u"processes"_s); // said yes already (an older version had it)
+        d = up::decide(item, have, policy, history, now);
+        QVERIFY(d.action == up::Action::Ask && !d.needsConsent);
+        have.confirmed = {u"ui"_s, u"clipboard:write"_s};
+        item.permissions = {u"ui"_s}; // fewer: fine
+        QVERIFY(action() == up::Action::Install);
+        item.permissions = {u"UI"_s, u"Clipboard:Write"_s}; // the case does not matter
+        QVERIFY(action() == up::Action::Install);
+
+        policy.automatic = false; // 7
+        QVERIFY(action() == up::Action::Ask);
+        policy.automatic = true;
+        policy.developerMode = true;
+        QVERIFY(action() == up::Action::Ask);
+        policy.developerMode = false;
+        have.developerCopy = true;
+        QVERIFY(action() == up::Action::Ask);
+        have.developerCopy = false;
+        policy.trusted = false; // 9
+        QVERIFY(action() == up::Action::Ask);
+        policy.trusted = true;
+
+        history.widened = u"1.0.1"_s; // 10
+        QVERIFY(action() == up::Action::Ask);
+        history.widened = u"1.0.0"_s; // an older one: no matter
+        QVERIFY(action() == up::Action::Install);
+        history = {};
+        history.failedVersion = u"1.0.1"_s;
+        history.failedAt = now.addSecs(-3600);
+        QVERIFY(action() == up::Action::Ask);
+        history.failedAt = now.addSecs(-25 * 3600); // a day on: once more
+        QVERIFY(action() == up::Action::Install);
+        history.failedAt = now.addSecs(-3600);
+        history.failedVersion = u"1.0.0"_s; // another version failed: no matter
+        QVERIFY(action() == up::Action::Install);
+    }
+
+    void updateWidening()
+    {
+        namespace up = ws::plugin::updates;
+        const auto manifestOf = [](const QString& permissions, const QString& sandbox = {}, bool runtime = true) {
+            QString error;
+            QJsonObject m {{u"manifest"_s, 1}, {u"id"_s, u"test.up"_s}, {u"name"_s, u"U"_s}, {u"version"_s, u"1.0.0"_s},
+                {u"commands"_s, QJsonArray {QJsonObject {{u"id"_s, u"c"_s}, {u"keyword"_s, u"up"_s}, {u"title"_s, u"U"_s}}}}};
+            m.insert(u"permissions"_s, QJsonDocument::fromJson(permissions.toUtf8()).array());
+            if (runtime) {
+                QJsonObject r {{u"mode"_s, u"once"_s}, {u"program"_s, u"fake.exe"_s}};
+                if (!sandbox.isEmpty())
+                    r.insert(u"sandbox"_s, sandbox);
+                m.insert(u"runtime"_s, r);
+            }
+            const std::optional<Manifest> parsed = Manifest::parse(toJson(m), &error);
+            if (!parsed)
+                qWarning() << error;
+            return parsed ? *parsed : Manifest();
+        };
+        const Manifest base = manifestOf(u"[\"ui\",{\"files:read\":[\"C:\\\\a\"]},\"network:listen\"]"_s);
+        QCOMPARE(base.id, u"test.up"_s);
+        const QStringList said = {u"ui"_s, u"files:read"_s, u"network:listen"_s};
+        QVERIFY(up::widening(base, base, said, true).isEmpty());
+        QVERIFY(up::widening(base, manifestOf(u"[\"ui\"]"_s), said, true).isEmpty()); // less
+        QVERIFY(!up::widening(base, manifestOf(u"[\"ui\",{\"files:read\":[\"C:\\\\a\"]},\"network:listen\",\"processes\"]"_s), said, true).isEmpty()); // a flag more
+        QVERIFY(!up::widening(base, manifestOf(u"[\"ui\",{\"files:read\":[\"C:\\\\a\"]},\"network:listen\",\"processes\"]"_s), said, false).isEmpty()); // off or on
+        QVERIFY(up::widening(base, manifestOf(u"[\"ui\",{\"files:read\":[\"c:\\\\A\"]},\"network:listen\"]"_s), said, true).isEmpty()); // case of a path
+        QVERIFY(!up::widening(base, manifestOf(u"[\"ui\",{\"files:read\":[\"C:\\\\a\",\"D:\\\\b\"]},\"network:listen\"]"_s), said, true).isEmpty()); // a path more
+        QVERIFY(!up::widening(base, manifestOf(u"[\"ui\",{\"files:read\":[\"D:\\\\b\"]},\"network:listen\"]"_s), said, true).isEmpty()); // another path
+        // Ports: the declaration is a list of strings.
+        QString error;
+        const std::optional<Manifest> ports1 = Manifest::parse(
+            R"({"manifest":1,"id":"test.up","name":"U","version":"1.0.0","runtime":{"mode":"once","program":"fake.exe"},"permissions":[{"network:listen":["TCP 1-2"]}],"commands":[{"id":"c","keyword":"up","title":"U"}]})", &error);
+        const std::optional<Manifest> ports2 = Manifest::parse(
+            R"({"manifest":1,"id":"test.up","name":"U","version":"1.1.0","runtime":{"mode":"once","program":"fake.exe"},"permissions":[{"network:listen":["TCP 1-2","UDP 3"]}],"commands":[{"id":"c","keyword":"up","title":"U"}]})", &error);
+        QVERIFY2(ports1 && ports2, qPrintable(error));
+        QVERIFY(up::widening(*ports1, *ports1, {u"network:listen"_s}, true).isEmpty());
+        QVERIFY(!up::widening(*ports1, *ports2, {u"network:listen"_s}, true).isEmpty());
+        // The sandbox: strict -> normal is loosening, the other way is fine; a program where there was none is more.
+        const Manifest strict = manifestOf(u"[]"_s, u"strict"_s);
+        const Manifest normal = manifestOf(u"[]"_s, u"normal"_s);
+        QVERIFY(!up::widening(strict, normal, {}, true).isEmpty());
+        QVERIFY(up::widening(normal, strict, {}, true).isEmpty());
+        QVERIFY(up::widening(strict, strict, {}, true).isEmpty());
+        QVERIFY(!up::widening(manifestOf(u"[]"_s, {}, false), normal, {}, true).isEmpty());
+        QVERIFY(up::widening(normal, manifestOf(u"[]"_s, {}, false), {}, true).isEmpty());
+        // review(): the package is what the list named.
+        const Manifest next = [&] {
+            Manifest m = base;
+            m.version = u"1.1.0"_s;
+            return m;
+        }();
+        QVERIFY(up::review(base, next, u"test.up"_s, u"1.1.0"_s, u"0.12.0"_s, said, true).isEmpty());
+        QVERIFY(!up::review(base, next, u"test.other"_s, u"1.1.0"_s, u"0.12.0"_s, said, true).isEmpty()); // another plugin
+        QVERIFY(!up::review(base, next, u"test.up"_s, u"1.2.0"_s, u"0.12.0"_s, said, true).isEmpty()); // another version
+        QVERIFY(!up::review(next, base, u"test.up"_s, u"1.0.0"_s, u"0.12.0"_s, said, true).isEmpty()); // down
+        QVERIFY(!up::review(base, base, u"test.up"_s, u"1.0.0"_s, u"0.12.0"_s, said, true).isEmpty()); // the same
+        Manifest needsNewer = next;
+        needsNewer.minWinShun = u"9.0"_s;
+        QVERIFY(!up::review(base, needsNewer, u"test.up"_s, u"1.1.0"_s, u"0.12.0"_s, said, true).isEmpty());
+        // On, and the installed version asked for less than the user said yes to, while the new asks for what they did not.
+        Manifest wider = next;
+        wider.permissions.flags |= static_cast<std::uint32_t>(Permission::Processes);
+        QVERIFY(!up::review(base, wider, u"test.up"_s, u"1.1.0"_s, u"0.12.0"_s, said, true).isEmpty());
+    }
+
+    void developerCopyDetected()
+    {
+        namespace up = ws::plugin::updates;
+        QTemporaryDir dir;
+        const QString plain = dir.path() + u"/plain"_s;
+        QVERIFY(writeFile(plain + u"/plugin.json"_s, zeroManifest(u"test.dev"_s, u"1.0.0"_s)));
+        QVERIFY(!up::developerCopy(plain));
+        QVERIFY(writeFile(dir.path() + u"/repo/plugin.json"_s, zeroManifest(u"test.dev"_s, u"1.0.0"_s)));
+        QVERIFY(QDir().mkpath(dir.path() + u"/repo/.git"_s));
+        QVERIFY(up::developerCopy(dir.path() + u"/repo"_s));
+        QVERIFY(writeFile(dir.path() + u"/worktree/.git"_s, "gitdir: elsewhere")); // a worktree: .git is a file
+        QVERIFY(up::developerCopy(dir.path() + u"/worktree"_s));
+        const QString link = dir.path() + u"/linked"_s;
+        QVERIFY2(makeJunction(link, plain), "mklink /J");
+        QVERIFY(up::developerCopy(link));
+    }
+
+    void placeRefusesLinks()
+    {
+        QTemporaryDir dir;
+        const QString userDir = dir.path() + u"/plugins"_s;
+        const QString source = dir.path() + u"/devsrc"_s; // the plugin under development
+        QVERIFY(writeFile(source + u"/plugin.json"_s, zeroManifest(u"test.link"_s, u"1.0.0"_s)));
+        QVERIFY(writeFile(source + u"/code.py"_s, "print(1)"));
+        QVERIFY(QDir().mkpath(userDir));
+        QVERIFY2(makeJunction(userDir + u"/test.link"_s, source), "mklink /J");
+        const QString update = dir.path() + u"/update.wsplugin"_s;
+        QVERIFY(writeZip(update, {{u"plugin.json"_s, zeroManifest(u"test.link"_s, u"1.1.0"_s)}}));
+        std::optional<install::Candidate> c = install::inspect(update);
+        QVERIFY(c.has_value() && c->manifest.has_value());
+        QString error;
+        QVERIFY(install::place(*c, userDir, &error).isEmpty());
+        QVERIFY2(error.contains(u"链接"_s), qPrintable(error));
+        install::discard(*c);
+        // The link and what it points to are as they were.
+        QVERIFY(QFileInfo(userDir + u"/test.link"_s).isJunction());
+        QVERIFY(QFileInfo::exists(source + u"/code.py"_s));
+        QCOMPARE(versionAt(source), u"1.0.0"_s);
+        QVERIFY(QDir(userDir).entryList(QDir::Dirs | QDir::Hidden | QDir::NoDotAndDotDot).size() == 1); // no half-made folders
+    }
+
+    void inspectUnpacksUnder()
+    {
+        QTemporaryDir dir;
+        const QString zip = dir.path() + u"/p.wsplugin"_s;
+        QVERIFY(writeZip(zip, {{u"plugin.json"_s, zeroManifest(u"test.under"_s, u"1.0.0"_s)}, {u"a.txt"_s, "a"}}));
+        const QString parent = dir.path() + u"/staging/test.under"_s;
+        std::optional<install::Candidate> c = install::inspect(zip, parent);
+        QVERIFY(c.has_value() && c->manifest.has_value());
+        QVERIFY(c->archive);
+        QVERIFY(QDir::cleanPath(c->dir).startsWith(QDir::cleanPath(parent) + u'/'));
+        QVERIFY(QFileInfo::exists(c->dir + u"/a.txt"_s));
+        // A folder unpacked earlier is taken up again.
+        const QString kept = c->dir;
+        c->archive = false; // keep it past discard
+        std::optional<install::Candidate> again = install::adopt(kept);
+        QVERIFY(again.has_value() && again->manifest.has_value());
+        QVERIFY(again->archive);
+        QCOMPARE(again->manifest->version, u"1.0.0"_s);
+        install::discard(*again);
+        QVERIFY(!QFileInfo::exists(kept));
+        QVERIFY(!install::adopt(kept).has_value());
+        // One with no manifest: its reason, and it goes.
+        QVERIFY(writeFile(parent + u"/junk/readme.txt"_s, "x"));
+        again = install::adopt(parent + u"/junk"_s);
+        QVERIFY(again.has_value() && !again->manifest.has_value());
+        QVERIFY(!QFileInfo::exists(parent + u"/junk"_s));
+    }
+
+    void replaceSwapsFolder()
+    {
+        Fixture f;
+        const QString userDir = f.dir.path() + u"/plugins"_s;
+        QVERIFY(writeFile(userDir + u"/test.rep/plugin.json"_s, zeroManifest(u"test.rep"_s, u"1.0.0"_s)));
+        QVERIFY(writeFile(userDir + u"/test.rep/old.txt"_s, "o"));
+        f.host->catalog().scan();
+        const QString zip = f.dir.path() + u"/new.wsplugin"_s;
+        QVERIFY(writeZip(zip, {{u"plugin.json"_s, zeroManifest(u"test.rep"_s, u"1.1.0"_s)}, {u"new.txt"_s, "n"}}));
+        std::optional<install::Candidate> c = install::inspect(zip);
+        QVERIFY(c.has_value() && c->manifest.has_value());
+        const QString error = updates::replace(*f.host, *c, userDir);
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QVERIFY(QFileInfo::exists(userDir + u"/test.rep/new.txt"_s));
+        QVERIFY(!QFileInfo::exists(userDir + u"/test.rep/old.txt"_s));
+        QVERIFY(c->dir.isEmpty()); // discarded
+        // Nothing to put: its reason.
+        install::Candidate none;
+        none.error = u"坏的"_s;
+        QCOMPARE(updates::replace(*f.host, none, userDir), u"坏的"_s);
+    }
+
+    void prepareStaged()
+    {
+        QTemporaryDir dir;
+        const QString userDir = dir.path() + u"/plugins"_s;
+        const QString staging = dir.path() + u"/plugin-updates"_s;
+        QSettings state(dir.path() + u"/update.ini"_s, QSettings::IniFormat);
+        const QString app = u"0.12.0"_s;
+        const auto switches = [](bool on, QStringList said) {
+            return [on, said](const QString&) { return std::pair<bool, QStringList>(on, said); };
+        };
+        const auto installOld = [&](const QString& id, const QString& version) {
+            return writeFile(userDir + u'/' + id + u"/plugin.json"_s, zeroManifest(id, version))
+                && writeFile(userDir + u'/' + id + u"/old.txt"_s, "o");
+        };
+        const auto stageNew = [&](const QString& id, const QString& version, const QString& from, const QString& extra = {}) {
+            const QString zip = dir.path() + u'/' + id + u'-' + version + u".wsplugin"_s;
+            if (!writeZip(zip, {{u"plugin.json"_s, zeroManifest(id, version, extra)}, {u"new.txt"_s, "n"}}))
+                return false;
+            std::optional<install::Candidate> c = install::inspect(zip, staging + u'/' + id);
+            if (!c || !c->manifest)
+                return false;
+            return updates::stage(*c, from, state).isEmpty() && c->dir.isEmpty();
+        };
+
+        // Applied.
+        QVERIFY(installOld(u"test.a"_s, u"1.0.0"_s));
+        QVERIFY(stageNew(u"test.a"_s, u"1.1.0"_s, u"1.0.0"_s));
+        QCOMPARE(state.value(u"PluginUpdates/Staged/test.a"_s).toString(), u"1.1.0"_s);
+        QCOMPARE(state.value(u"PluginUpdates/StagedFrom/test.a"_s).toString(), u"1.0.0"_s);
+        QVERIFY(QFileInfo::exists(state.value(u"PluginUpdates/StagedDir/test.a"_s).toString() + u"/new.txt"_s));
+        // A second stage of the same plugin takes the first one's place.
+        const QString firstDir = state.value(u"PluginUpdates/StagedDir/test.a"_s).toString();
+        QVERIFY(stageNew(u"test.a"_s, u"1.2.0"_s, u"1.0.0"_s));
+        QVERIFY(!QFileInfo::exists(firstDir));
+        // Not applied: the installed version is not the one it was made for.
+        QVERIFY(installOld(u"test.b"_s, u"1.5.0"_s));
+        QVERIFY(stageNew(u"test.b"_s, u"1.6.0"_s, u"1.4.0"_s));
+        // Not applied: it asks for more than the installed one (not on, so nothing said yes).
+        QVERIFY(installOld(u"test.c"_s, u"1.0.0"_s));
+        QVERIFY(stageNew(u"test.c"_s, u"1.1.0"_s, u"1.0.0"_s, u"\"permissions\":[\"processes\"],"_s));
+        // Not applied: it was uninstalled; and needs a newer Win顺.
+        QVERIFY(stageNew(u"test.gone"_s, u"1.1.0"_s, u"1.0.0"_s));
+        QVERIFY(installOld(u"test.d"_s, u"1.0.0"_s));
+        QVERIFY(stageNew(u"test.d"_s, u"1.1.0"_s, u"1.0.0"_s, u"\"minWinShun\":\"9.0\","_s));
+        // Something nothing records.
+        QVERIFY(writeFile(staging + u"/test.stray/WinShun-plugin-deadbeef/plugin.json"_s, "{}"));
+        QVERIFY(writeFile(staging + u"/test.a/loose.txt"_s, "x"));
+
+        const QList<updates::Applied> applied = updates::prepare(staging, userDir, state, app, switches(false, {}));
+        QCOMPARE(applied.size(), 5);
+        QHash<QString, updates::Applied> byId;
+        for (const updates::Applied& a : applied)
+            byId.insert(a.id, a);
+        QVERIFY2(!byId[u"test.a"_s].dropped && byId[u"test.a"_s].error.isEmpty(), qPrintable(byId[u"test.a"_s].error));
+        QCOMPARE(byId[u"test.a"_s].version, u"1.2.0"_s);
+        QVERIFY(QFileInfo::exists(userDir + u"/test.a/new.txt"_s));
+        QVERIFY(!QFileInfo::exists(userDir + u"/test.a/old.txt"_s));
+        QCOMPARE(versionAt(userDir + u"/test.a"_s), u"1.2.0"_s);
+        QCOMPARE(state.value(u"PluginUpdates/Updated/test.a"_s).toString(), u"1.2.0"_s);
+        QCOMPARE(state.value(u"PluginUpdates/UpdatedFrom/test.a"_s).toString(), u"1.0.0"_s);
+        QVERIFY(!state.contains(u"PluginUpdates/Staged/test.a"_s));
+        for (const QString id : {u"test.b"_s, u"test.c"_s, u"test.gone"_s, u"test.d"_s}) {
+            QVERIFY2(byId[id].dropped, qPrintable(id));
+            QVERIFY(!state.contains(u"PluginUpdates/Staged/"_s + id));
+        }
+        QVERIFY(QFileInfo::exists(userDir + u"/test.b/old.txt"_s)); // untouched
+        QVERIFY(QFileInfo::exists(userDir + u"/test.c/old.txt"_s));
+        QVERIFY(!QFileInfo::exists(userDir + u"/test.gone"_s));
+        // Nothing is left in the staging folder.
+        QVERIFY(QDir(staging).entryList(QDir::AllEntries | QDir::NoDotAndDotDot).isEmpty());
+
+        // On: a plain update is applied, one that asks for more is dropped.
+        QVERIFY(stageNew(u"test.c"_s, u"1.1.0"_s, u"1.0.0"_s, u"\"permissions\":[\"processes\"],"_s));
+        QCOMPARE(updates::prepare(staging, userDir, state, app, switches(true, {})).first().dropped, true);
+        QVERIFY(installOld(u"test.e"_s, u"1.0.0"_s));
+        QVERIFY(stageNew(u"test.e"_s, u"1.1.0"_s, u"1.0.0"_s));
+        QCOMPARE(updates::prepare(staging, userDir, state, app, switches(true, {})).first().dropped, false);
+        QCOMPARE(versionAt(userDir + u"/test.e"_s), u"1.1.0"_s);
+
+        // Locked: kept once, dropped the second time.
+        QVERIFY(installOld(u"test.lock"_s, u"1.0.0"_s));
+        QVERIFY(stageNew(u"test.lock"_s, u"1.1.0"_s, u"1.0.0"_s));
+        const HANDLE held = ::CreateFileW(reinterpret_cast<const wchar_t*>(QDir::toNativeSeparators(userDir + u"/test.lock/old.txt"_s).utf16()),
+            GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        QVERIFY(held != INVALID_HANDLE_VALUE);
+        QList<updates::Applied> locked = updates::prepare(staging, userDir, state, app, switches(false, {}));
+        QCOMPARE(locked.size(), 1);
+        QVERIFY(!locked[0].dropped && !locked[0].error.isEmpty());
+        QCOMPARE(state.value(u"PluginUpdates/Staged/test.lock"_s).toString(), u"1.1.0"_s);
+        QCOMPARE(versionAt(userDir + u"/test.lock"_s), u"1.0.0"_s); // as it was
+        QVERIFY(QDir(userDir).entryList({u".winshun-update-*"_s}, QDir::Dirs | QDir::Hidden | QDir::NoDotAndDotDot).isEmpty());
+        locked = updates::prepare(staging, userDir, state, app, switches(false, {}));
+        QVERIFY(locked[0].dropped);
+        QVERIFY(!state.contains(u"PluginUpdates/Staged/test.lock"_s));
+        QVERIFY(QDir(staging).entryList(QDir::AllEntries | QDir::NoDotAndDotDot).isEmpty());
+        // Once released, a new stage goes in.
+        ::CloseHandle(held);
+        QVERIFY(stageNew(u"test.lock"_s, u"1.1.0"_s, u"1.0.0"_s));
+        QVERIFY(!updates::prepare(staging, userDir, state, app, switches(false, {})).first().dropped);
+        QCOMPARE(versionAt(userDir + u"/test.lock"_s), u"1.1.0"_s);
+    }
+
+    void prepareRepairsInterruptedSwap()
+    {
+        QTemporaryDir dir;
+        const QString userDir = dir.path() + u"/plugins"_s;
+        QSettings state(dir.path() + u"/update.ini"_s, QSettings::IniFormat);
+        const auto prepare = [&] { updates::prepare(dir.path() + u"/plugin-updates"_s, userDir, state, u"0.12.0"_s, [](const QString&) { return std::pair<bool, QStringList>(); }); };
+        // The old version was put aside and the new one never came: it goes back.
+        QVERIFY(writeFile(userDir + u"/.winshun-update-AbCdEf/plugin/plugin.json"_s, zeroManifest(u"test.cut"_s, u"1.0.0"_s)));
+        QVERIFY(writeFile(userDir + u"/.winshun-update-AbCdEf/plugin/old.txt"_s, "o"));
+        prepare();
+        QVERIFY(QFileInfo::exists(userDir + u"/test.cut/old.txt"_s));
+        QVERIFY(!QFileInfo::exists(userDir + u"/.winshun-update-AbCdEf"_s));
+        // Half of the new one is there: it goes, the old one comes back.
+        QVERIFY(writeFile(userDir + u"/.winshun-update-GhIjKl/plugin/plugin.json"_s, zeroManifest(u"test.half"_s, u"1.0.0"_s)));
+        QVERIFY(writeFile(userDir + u"/test.half/partial.txt"_s, "p"));
+        prepare();
+        QVERIFY(QFileInfo::exists(userDir + u"/test.half/plugin.json"_s));
+        QVERIFY(!QFileInfo::exists(userDir + u"/test.half/partial.txt"_s));
+        // The new one is whole: the aside copy is only a leftover.
+        QVERIFY(writeFile(userDir + u"/test.done/plugin.json"_s, zeroManifest(u"test.done"_s, u"1.1.0"_s)));
+        QVERIFY(writeFile(userDir + u"/.winshun-update-MnOpQr/plugin/plugin.json"_s, zeroManifest(u"test.done"_s, u"1.0.0"_s)));
+        prepare();
+        QCOMPARE(versionAt(userDir + u"/test.done"_s), u"1.1.0"_s);
+        QVERIFY(!QFileInfo::exists(userDir + u"/.winshun-update-MnOpQr"_s));
+        // A link aside is not touched.
+        const QString src = dir.path() + u"/devsrc"_s;
+        QVERIFY(writeFile(src + u"/plugin.json"_s, zeroManifest(u"test.dev"_s, u"1.0.0"_s)));
+        QVERIFY(QDir().mkpath(userDir + u"/.winshun-update-StUvWx"_s));
+        QVERIFY2(makeJunction(userDir + u"/.winshun-update-StUvWx/plugin"_s, src), "mklink /J");
+        prepare();
+        QVERIFY(QFileInfo::exists(src + u"/plugin.json"_s));
+        QVERIFY(!QFileInfo::exists(userDir + u"/test.dev"_s));
+    }
+
+    void fetchSignedFallsBackToOrigin()
+    {
+        namespace up = ws::plugin::updates;
+        const QString source = u"https://github.com/LingCore/WinShun-plugins/releases/download/index/index.json"_s;
+        const QByteArray good = "{\"schema\":1,\"plugins\":[]}\n";
+        const QByteArray other = "{\"schema\":1,\"plugins\":[],\"generated\":\"2026-01-01T00:00:00Z\"}\n";
+        const QByteArray sigFile = sigFileOf({{u"test-key"_s, kVectorSignature}});
+        const QList<signing::PublicKey> keys {{u"test-key"_s, QByteArray::fromHex(kVectorKey)}};
+
+        struct Web {
+            QByteArray mirrorList, mirrorSig, originList, originSig;
+            int mirrorCalls = 0, originCalls = 0;
+            gallery::Fetcher fetcher()
+            {
+                return [this](const QString& url, qint64, const gallery::Progress&) {
+                    const bool origin = url.startsWith(u"https://github.com/"_s);
+                    (origin ? originCalls : mirrorCalls)++;
+                    const bool sig = url.endsWith(u".sig"_s);
+                    const QByteArray& body = origin ? (sig ? originSig : originList) : (sig ? mirrorSig : mirrorList);
+                    return body.isEmpty() ? gallery::Fetched {404, {}, 0} : gallery::Fetched {200, body, 0};
+                };
+            }
+        };
+        // Mirrors agree with the signature: the origin is not asked.
+        Web web {good, sigFile, {}, {}};
+        up::SignedList got = up::fetchSigned(source, web.fetcher(), keys);
+        QVERIFY2(got.trusted, qPrintable(got.why));
+        QCOMPARE(got.key, u"test-key"_s);
+        QCOMPARE(got.list.body, good);
+        QCOMPARE(web.originCalls, 0);
+        // A mirror's list is not the one that was signed; the origin has the pair.
+        web = Web {other, sigFile, good, sigFile};
+        got = up::fetchSigned(source, web.fetcher(), keys);
+        QVERIFY2(got.trusted, qPrintable(got.why));
+        QCOMPARE(got.list.body, good); // the origin's
+        QVERIFY(web.originCalls >= 2);
+        // Nothing checks anywhere: not trusted, the list still comes (for the hints).
+        web = Web {other, sigFile, other, sigFile};
+        got = up::fetchSigned(source, web.fetcher(), keys);
+        QVERIFY(!got.trusted);
+        QVERIFY(!got.why.isEmpty());
+        QCOMPARE(got.list.body, other);
+        // No signature file at all.
+        web = Web {good, {}, good, {}};
+        got = up::fetchSigned(source, web.fetcher(), keys);
+        QVERIFY(!got.trusted);
+        QCOMPARE(got.list.body, good);
+        // The list itself is not to be had.
+        web = Web {};
+        got = up::fetchSigned(source, web.fetcher(), keys);
+        QVERIFY(!got.trusted);
+        QVERIFY(got.list.body.isEmpty());
+        // A signature by a key we do not have.
+        web = Web {good, sigFile, good, sigFile};
+        got = up::fetchSigned(source, web.fetcher(), {});
+        QVERIFY(!got.trusted);
+
+        // A local file: with no .sig it is trusted (development); with one, it must check.
+        QTemporaryDir dir;
+        const QString path = dir.path() + u"/index.json"_s;
+        QVERIFY(writeFile(path, good));
+        got = up::fetchSigned(path, {}, keys);
+        QVERIFY(got.trusted);
+        QCOMPARE(got.key, u"local"_s);
+        QCOMPARE(got.list.body, good);
+        QVERIFY(writeFile(path + u".sig"_s, sigFile));
+        got = up::fetchSigned(path, {}, keys);
+        QVERIFY2(got.trusted, qPrintable(got.why));
+        QCOMPARE(got.key, u"test-key"_s);
+        QVERIFY(writeFile(path, other)); // not what was signed
+        got = up::fetchSigned(path, {}, keys);
+        QVERIFY(!got.trusted);
+        QVERIFY(writeFile(path + u".sig"_s, "not a signature file"));
+        got = up::fetchSigned(path, {}, keys);
+        QVERIFY(!got.trusted);
+        QVERIFY(!got.list.body.isEmpty());
+        got = up::fetchSigned(dir.path() + u"/missing.json"_s, {}, keys);
+        QVERIFY(!got.trusted && got.list.body.isEmpty());
     }
 
     void uninstallRemovesEverything()

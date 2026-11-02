@@ -46,6 +46,7 @@ struct Item {
     QString url; // the package: an https address (a file when the list is one)
     QString sha256; // lower-case hex
     qint64 size = 0;
+    bool bundled = false; // comes with Win顺 and is updated with it
 };
 
 struct Index {
