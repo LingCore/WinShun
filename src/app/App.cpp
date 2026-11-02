@@ -966,6 +966,8 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
         applyTaskbarHotkeys();
         if (m_searchBox)
             m_searchBox->reattach(); // onto the new taskbar
+        if (m_dropPieHelper)
+            m_dropPieHelper->retry(); // the user's token to start it with is there now
         QTimer::singleShot(3s, this, [this] { // once it has registered its own keys
             applyClipboardHotkeys();
             applyTaskbarHotkeys();
@@ -3789,8 +3791,8 @@ void App::applyDropPie()
 {
     if (m_settings.dropPie && integrity::processElevated()) {
         if (!m_dropPieHelper) {
-            auto notify = [this](const QString& title, const QString& text) {
-                if (m_messages) m_messages->showNotification(title, text);
+            auto notify = [this](const QString& title, const QString& text, std::function<void()> retry) {
+                if (m_messages) m_messages->showNotification(title, text, std::move(retry));
             };
             m_dropPieHelper = std::make_unique<DropPieHelper>(m_favorites.get(), std::move(notify));
         }

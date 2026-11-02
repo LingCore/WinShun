@@ -648,6 +648,12 @@ foreach(test IN ITEMS tst_piegeometry tst_pielabels tst_pastefile)
     set_tests_properties(${test} PROPERTIES
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 endforeach()
+# Its helper process for an elevated Win顺 (DropPieHelper), for real: started,
+# favorites and appearance passed on, started again after it is ended, stopped.
+add_test(NAME tst_droppiehelper COMMAND $<TARGET_FILE:WinShun>
+    --preview-results "${CMAKE_CURRENT_BINARY_DIR}/drop-pie-helper" --drop-pie-check --renderer d3d11)
+set_tests_properties(tst_droppiehelper PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 # The favorites: their file, the store, and the search's list with nothing typed.
 qt_add_executable(tst_favorites tst_favorites.cpp)
