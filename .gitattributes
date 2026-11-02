@@ -3,3 +3,4 @@
 *.png binary
 *.ico binary
 *.mp3 binary
+/tests/data/signed-index/* -text

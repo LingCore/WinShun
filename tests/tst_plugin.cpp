@@ -4414,6 +4414,25 @@ private slots:
         QCOMPARE(int(ruling.gate), gate);
     }
 
+    // The real index and the signature GitHub Actions produced for it (saved
+    // from the live WinShun-plugins repository): the embedded production key
+    // checks them, and a single changed byte does not.
+    void realSignedIndexVerifies()
+    {
+        const QString dir = QStringLiteral(WINSHUN_TEST_DATA) + u"/signed-index/"_s;
+        QFile fi(dir + u"index.json"_s), fs(dir + u"index.json.sig"_s);
+        QVERIFY(fi.open(QIODevice::ReadOnly));
+        QVERIFY(fs.open(QIODevice::ReadOnly));
+        QByteArray index = fi.readAll();
+        const QByteArray sig = fs.readAll();
+        QVERIFY(!index.isEmpty());
+        const auto v = signing::verify(index, sig, signing::indexKeys());
+        QVERIFY2(v.ok, qPrintable(v.why));
+        QCOMPARE(v.key, u"ws-index-2026a"_s);
+        index[index.size() / 2] = char(index[index.size() / 2] ^ 0x01);
+        QVERIFY(!signing::verify(index, sig, signing::indexKeys()).ok);
+    }
+
     // A None open is always allowed (nothing is carried out), whatever the probe.
     void openPolicyNone()
     {

@@ -1,0 +1,498 @@
+{
+  "schema": 1,
+  "generated": "2026-11-02T10:04:39Z",
+  "plugins": [
+    {
+      "id": "crazy-zxx.yigengming",
+      "name": {
+        "zh": "易更名",
+        "en": "易更名"
+      },
+      "version": "1.3.0",
+      "description": "带窗口界面的批量文件/文件夹创建与重命名，支持组合规则、实时预览、冲突检查和撤销。",
+      "author": "Xiangxin (@crazy-zxx)",
+      "homepage": "https://github.com/crazy-zxx/WinShun-plugins/tree/main/plugins/crazy-zxx.yigengming",
+      "license": "MIT",
+      "keywords": [
+        "br",
+        "rename",
+        "易更名",
+        "批量重命名",
+        "bc",
+        "批量创建"
+      ],
+      "permissions": [
+        "files:write",
+        "processes",
+        "clipboard:read",
+        "clipboard:write",
+        "ui",
+        "files:read"
+      ],
+      "runtime": {
+        "mode": "resident",
+        "program": "powershell"
+      },
+      "minWinShun": "",
+      "bundled": false,
+      "file": "crazy-zxx.yigengming-1.3.0.wsplugin",
+      "url": "https://github.com/LingCore/WinShun-plugins/releases/download/crazy-zxx.yigengming-v1.3.0/crazy-zxx.yigengming-1.3.0.wsplugin",
+      "sha256": "c59fcd6c9e1c9ea2488c284f9c1787532fde3a11b1c0164ffcafff956af0dab5",
+      "size": 661931,
+      "repo": "LingCore/WinShun-plugins",
+      "source": "https://github.com/LingCore/WinShun-plugins/tree/main/legacy/crazy-zxx.yigengming",
+      "releaseDate": "2026-10-26T12:23:39Z",
+      "dateAdded": "2026-10-26T12:23:39Z"
+    },
+    {
+      "id": "day.ocr",
+      "name": {
+        "zh": "OCR Studio",
+        "en": "OCR Studio"
+      },
+      "version": "1.0.4",
+      "description": "输入 ocr 打开截图与图片文字识别窗口，支持 OpenAI 兼容的视觉模型。",
+      "author": "Day (askd126)",
+      "homepage": "",
+      "license": "MIT",
+      "keywords": [
+        "ocr"
+      ],
+      "permissions": [
+        "clipboard:read",
+        "clipboard:write",
+        "ui",
+        "network",
+        "files:read"
+      ],
+      "runtime": {
+        "mode": "resident",
+        "program": "python"
+      },
+      "minWinShun": "",
+      "bundled": false,
+      "file": "day.ocr-1.0.4.wsplugin",
+      "url": "https://github.com/LingCore/WinShun-plugins/releases/download/day.ocr-v1.0.4/day.ocr-1.0.4.wsplugin",
+      "sha256": "9ae9d3166a1f087890c816d565ab97a23b22d44ed2c01267c7fe36e9754a096a",
+      "size": 62991,
+      "repo": "LingCore/WinShun-plugins",
+      "source": "https://github.com/LingCore/WinShun-plugins/tree/main/legacy/day.ocr",
+      "releaseDate": "2026-10-26T12:19:16Z",
+      "dateAdded": "2026-10-26T12:19:16Z"
+    },
+    {
+      "id": "day.rename",
+      "name": {
+        "zh": "批量重命名",
+        "en": "Batch Rename"
+      },
+      "version": "1.0.2",
+      "description": "查找替换、插入内容、自动编号、手动编辑与可选 AI 命名；先预览再执行，支持撤销。",
+      "author": "Day (askd126)",
+      "homepage": "",
+      "license": "MIT",
+      "keywords": [
+        "pl",
+        "cmm"
+      ],
+      "permissions": [
+        "files:write",
+        "clipboard:read",
+        "ui",
+        "network",
+        "files:read"
+      ],
+      "runtime": {
+        "mode": "resident",
+        "program": "python"
+      },
+      "minWinShun": "",
+      "bundled": false,
+      "file": "day.rename-1.0.2.wsplugin",
+      "url": "https://github.com/LingCore/WinShun-plugins/releases/download/day.rename-v1.0.2/day.rename-1.0.2.wsplugin",
+      "sha256": "c179904781f885164d9f9d94280761558c9351e955605d093781fa9fcb956cc2",
+      "size": 111397,
+      "repo": "LingCore/WinShun-plugins",
+      "source": "https://github.com/LingCore/WinShun-plugins/tree/main/legacy/day.rename",
+      "releaseDate": "2026-10-26T12:19:19Z",
+      "dateAdded": "2026-10-26T12:19:19Z"
+    },
+    {
+      "id": "harafuhub.outlook",
+      "name": {
+        "zh": "Outlook 邮件",
+        "en": "Outlook mail"
+      },
+      "version": "1.4.2",
+      "description": {
+        "zh": "ol 关键词：通过 Windows 搜索索引查找经典 Outlook 的邮件和附件（PDF、Word、Excel 的内容），Enter 打开",
+        "en": "ol <words>: finds classic Outlook mail and its PDF, Word and Excel attachments by content through the Windows Search index; Enter opens"
+      },
+      "author": "harafuhub",
+      "homepage": "",
+      "license": "MIT",
+      "keywords": [
+        "ol",
+        "mail"
+      ],
+      "permissions": [
+        "processes"
+      ],
+      "runtime": {
+        "mode": "resident",
+        "program": "powershell"
+      },
+      "minWinShun": "",
+      "bundled": false,
+      "file": "harafuhub.outlook-1.4.2.wsplugin",
+      "url": "https://github.com/harafuhub/winshun-outlook/releases/download/v1.4.2/harafuhub.outlook-1.4.2.wsplugin",
+      "sha256": "a9d88933219796ac16637efca75f7d6c438ef9e16ad7e6800799fc5f3a401da2",
+      "size": 62128,
+      "repo": "harafuhub/winshun-outlook",
+      "source": "https://github.com/harafuhub/winshun-outlook",
+      "releaseDate": "2026-10-28T05:10:01Z",
+      "dateAdded": "2026-10-28T03:21:23Z"
+    },
+    {
+      "id": "winshun.bookmarks",
+      "name": {
+        "zh": "浏览器书签",
+        "en": "Browser bookmarks"
+      },
+      "version": "2.0.0",
+      "description": {
+        "zh": "bm 词：搜 Chrome 和 Edge 的书签，Enter 打开",
+        "en": "bm words: searches Chrome and Edge bookmarks; Enter opens"
+      },
+      "author": "LingCore",
+      "homepage": "https://github.com/LingCore/WinShun",
+      "license": "MIT",
+      "keywords": [
+        "bm",
+        "sq"
+      ],
+      "permissions": [
+        "files:read"
+      ],
+      "runtime": {
+        "mode": "once",
+        "program": "WinShunBookmarks.exe"
+      },
+      "minWinShun": "0.17.0",
+      "bundled": false,
+      "file": "winshun.bookmarks-2.0.0.wsplugin",
+      "url": "https://github.com/LingCore/WinShun-plugins/releases/download/winshun.bookmarks-v2.0.0/winshun.bookmarks-2.0.0.wsplugin",
+      "sha256": "5af96ea3d45a1fd7f819a626ab7edbe2f034529cb1fd92dfeacf7d990c74507c",
+      "size": 166316,
+      "repo": "LingCore/WinShun-plugins",
+      "source": "https://github.com/LingCore/WinShun/tree/main/src/bookmarks-plugin",
+      "releaseDate": "2026-11-01T09:09:49Z",
+      "dateAdded": "2026-10-23T09:12:34Z"
+    },
+    {
+      "id": "winshun.break",
+      "name": {
+        "zh": "休息提醒",
+        "en": "Break reminder"
+      },
+      "version": "1.0.0",
+      "description": {
+        "zh": "定时提醒休息：小休看看远处，大休起来走走，可以设成必须休完",
+        "en": "Reminds you to take breaks: look away for a short one, get up for a long one; can be made strict"
+      },
+      "author": "LingCore",
+      "homepage": "https://github.com/LingCore/WinShun",
+      "license": "MIT",
+      "keywords": [
+        "休息",
+        "break"
+      ],
+      "permissions": [
+        "ui"
+      ],
+      "runtime": {
+        "mode": "resident",
+        "program": "WinShunBreak.exe"
+      },
+      "minWinShun": "0.17.0",
+      "bundled": false,
+      "file": "winshun.break-1.0.0.wsplugin",
+      "url": "https://github.com/LingCore/WinShun-plugins/releases/download/winshun.break-v1.0.0/winshun.break-1.0.0.wsplugin",
+      "sha256": "4c17bd98dff14bb5e93851985f8020d3f11dc11d174a8e356f8260e6e501d5d2",
+      "size": 237848,
+      "repo": "LingCore/WinShun-plugins",
+      "source": "https://github.com/LingCore/WinShun/tree/main/src/break-plugin",
+      "releaseDate": "2026-11-01T09:09:56Z",
+      "dateAdded": "2026-11-01T08:10:28Z"
+    },
+    {
+      "id": "winshun.capture",
+      "name": {
+        "zh": "截图与录屏",
+        "en": "Screenshot and recording"
+      },
+      "version": "1.0.1",
+      "description": {
+        "zh": "截图、标注、贴图、长截图、识别文字和录屏",
+        "en": "Screenshots, annotations, pins, long screenshots, text recognition and screen recording"
+      },
+      "author": "LingCore",
+      "homepage": "https://github.com/LingCore/WinShun",
+      "license": "MIT",
+      "keywords": [
+        "cap"
+      ],
+      "permissions": [
+        "files:write",
+        "processes",
+        "clipboard:read",
+        "clipboard:write",
+        "ui",
+        "winshun:open",
+        "notifications"
+      ],
+      "runtime": {
+        "mode": "resident",
+        "program": "WinShunCapture.exe"
+      },
+      "minWinShun": "0.17.0",
+      "bundled": false,
+      "file": "winshun.capture-1.0.1.wsplugin",
+      "url": "https://github.com/LingCore/WinShun-plugins/releases/download/winshun.capture-v1.0.1/winshun.capture-1.0.1.wsplugin",
+      "sha256": "71e205910bf194656d8fc8f35fe3a15371bd43d8fcedcb55d84c607184d1bab9",
+      "size": 2195974,
+      "repo": "LingCore/WinShun-plugins",
+      "source": "https://github.com/LingCore/WinShun/tree/main/src/capture-plugin",
+      "releaseDate": "2026-11-02T08:20:10Z",
+      "dateAdded": "2026-11-01T08:10:30Z"
+    },
+    {
+      "id": "winshun.go",
+      "name": {
+        "zh": "快捷跳转",
+        "en": "Go to"
+      },
+      "version": "1.1.0",
+      "description": {
+        "zh": "零代码示例：code 用 VS Code 打开、dl 下载文件夹、pdf 找 PDF、go 常用位置",
+        "en": "Zero-code sample: code opens in VS Code, dl Downloads, pdf finds PDFs, go common places"
+      },
+      "author": "LingCore",
+      "homepage": "https://github.com/LingCore/WinShun",
+      "license": "MIT",
+      "keywords": [
+        "code",
+        "np",
+        "dl",
+        "desk",
+        "pdf",
+        "img",
+        "go"
+      ],
+      "permissions": [
+        "processes"
+      ],
+      "runtime": {
+        "mode": "zero-code",
+        "program": null
+      },
+      "minWinShun": "",
+      "bundled": true,
+      "file": "winshun.go-1.1.0.wsplugin",
+      "url": "https://github.com/LingCore/WinShun-plugins/releases/download/winshun.go-v1.1.0/winshun.go-1.1.0.wsplugin",
+      "sha256": "bcfb209b4a7404d84efd9861531e5892eb545cb17c847bd07383a73039599936",
+      "size": 5069,
+      "repo": "LingCore/WinShun-plugins",
+      "source": "https://github.com/LingCore/WinShun/tree/main/plugins/winshun.go",
+      "releaseDate": "2026-10-29T05:01:20Z",
+      "dateAdded": "2026-10-23T09:12:38Z"
+    },
+    {
+      "id": "winshun.kill",
+      "name": {
+        "zh": "结束进程",
+        "en": "Kill process"
+      },
+      "version": "1.0.0",
+      "description": {
+        "zh": "kill 进程名或 PID：列出进程，Enter 结束，Ctrl+Enter 连同子进程",
+        "en": "kill <name or PID>: lists processes; Enter ends one, Ctrl+Enter with its children"
+      },
+      "author": "LingCore",
+      "homepage": "https://github.com/LingCore/WinShun",
+      "license": "MIT",
+      "keywords": [
+        "kill",
+        "jc"
+      ],
+      "permissions": [
+        "processes"
+      ],
+      "runtime": {
+        "mode": "resident",
+        "program": "powershell"
+      },
+      "minWinShun": "",
+      "bundled": true,
+      "file": "winshun.kill-1.0.0.wsplugin",
+      "url": "https://github.com/LingCore/WinShun-plugins/releases/download/winshun.kill-v1.0.0/winshun.kill-1.0.0.wsplugin",
+      "sha256": "734f9f05bd114f871f7a86d665f9b181731d247750c4e4f80ac6780c354a833f",
+      "size": 23410,
+      "repo": "LingCore/WinShun-plugins",
+      "source": "https://github.com/LingCore/WinShun/tree/main/plugins/winshun.kill",
+      "releaseDate": "2026-10-23T09:12:40Z",
+      "dateAdded": "2026-10-23T09:12:40Z"
+    },
+    {
+      "id": "winshun.localsend",
+      "name": {
+        "zh": "局域网传输",
+        "en": "LAN transfer"
+      },
+      "version": "1.0.2",
+      "description": {
+        "zh": "兼容 LocalSend，手机电脑互传文件",
+        "en": "Works with LocalSend: send files between phones and computers"
+      },
+      "author": "LingCore",
+      "homepage": "https://github.com/LingCore/WinShun",
+      "license": "MIT",
+      "keywords": [
+        "传",
+        "ls"
+      ],
+      "permissions": [
+        "files:write",
+        "clipboard:read",
+        "network",
+        "notifications",
+        "network:listen"
+      ],
+      "runtime": {
+        "mode": "resident",
+        "program": "WinShunLocalSend.exe"
+      },
+      "minWinShun": "0.17.0",
+      "bundled": false,
+      "file": "winshun.localsend-1.0.2.wsplugin",
+      "url": "https://github.com/LingCore/WinShun-plugins/releases/download/winshun.localsend-v1.0.2/winshun.localsend-1.0.2.wsplugin",
+      "sha256": "0ee44f3913e4bd0d26ed1db0805d6c970b34ba4a9b0de48664ed2fc24dd1dad8",
+      "size": 449875,
+      "repo": "LingCore/WinShun-plugins",
+      "source": "https://github.com/LingCore/WinShun/tree/main/src/localsend-plugin",
+      "releaseDate": "2026-11-01T09:43:04Z",
+      "dateAdded": "2026-11-01T08:10:31Z"
+    },
+    {
+      "id": "winshun.semantic",
+      "name": {
+        "zh": "按意思找",
+        "en": "Search by meaning"
+      },
+      "version": "1.0.1",
+      "description": {
+        "zh": "? 一句话：按文档讲的是什么来找，不用记得原词。用你选的模型（本机的 Ollama，或云服务的密钥）",
+        "en": "? a sentence: finds documents by what they are about, not by their words. Uses the model you pick (Ollama on this PC, or a cloud service's key)"
+      },
+      "author": "LingCore",
+      "homepage": "https://github.com/LingCore/WinShun",
+      "license": "MIT",
+      "keywords": [
+        "?",
+        "？"
+      ],
+      "permissions": [
+        "network",
+        "winshun:content"
+      ],
+      "runtime": {
+        "mode": "resident",
+        "program": "WinShunSemantic.exe"
+      },
+      "minWinShun": "0.17.0",
+      "bundled": false,
+      "file": "winshun.semantic-1.0.1.wsplugin",
+      "url": "https://github.com/LingCore/WinShun-plugins/releases/download/winshun.semantic-v1.0.1/winshun.semantic-1.0.1.wsplugin",
+      "sha256": "194a18f77fbd947a9d57a8ded161c24bcb17505bca3e7654bdc2a6d00dd28eb7",
+      "size": 286983,
+      "repo": "LingCore/WinShun-plugins",
+      "source": "https://github.com/LingCore/WinShun/tree/main/src/semantic-plugin",
+      "releaseDate": "2026-11-01T09:42:56Z",
+      "dateAdded": "2026-11-01T08:10:33Z"
+    },
+    {
+      "id": "winshun.translate",
+      "name": {
+        "zh": "翻译",
+        "en": "Translate"
+      },
+      "version": "2.0.0",
+      "description": {
+        "zh": "tr 句子：中英互译，用你自己的 DeepL 或 OpenAI 兼容接口（在设置里填密钥；不填不联网）",
+        "en": "tr sentence: translates with your own DeepL or OpenAI-compatible API (key in the settings; nothing is sent without one)"
+      },
+      "author": "LingCore",
+      "homepage": "https://github.com/LingCore/WinShun",
+      "license": "MIT",
+      "keywords": [
+        "tr",
+        "fy"
+      ],
+      "permissions": [
+        "network"
+      ],
+      "runtime": {
+        "mode": "resident",
+        "program": "WinShunTranslate.exe"
+      },
+      "minWinShun": "0.17.0",
+      "bundled": false,
+      "file": "winshun.translate-2.0.0.wsplugin",
+      "url": "https://github.com/LingCore/WinShun-plugins/releases/download/winshun.translate-v2.0.0/winshun.translate-2.0.0.wsplugin",
+      "sha256": "5434f70373228e616ef16392931e8343e932712b4b2d91685a38469e6f1d16f8",
+      "size": 177124,
+      "repo": "LingCore/WinShun-plugins",
+      "source": "https://github.com/LingCore/WinShun/tree/main/src/translate-plugin",
+      "releaseDate": "2026-11-01T09:10:24Z",
+      "dateAdded": "2026-10-23T09:12:43Z"
+    },
+    {
+      "id": "winshun.web",
+      "name": {
+        "zh": "网页快捷搜索",
+        "en": "Web shortcuts"
+      },
+      "version": "1.0.0",
+      "description": {
+        "zh": "零代码示例：bd 百度、gh GitHub、yt YouTube、wiki 维基百科、bing 必应、bili 哔哩哔哩",
+        "en": "Zero-code sample: bd Baidu, gh GitHub, yt YouTube, wiki Wikipedia, bing, bili"
+      },
+      "author": "LingCore",
+      "homepage": "https://github.com/LingCore/WinShun",
+      "license": "MIT",
+      "keywords": [
+        "bd",
+        "gh",
+        "yt",
+        "wiki",
+        "bing",
+        "bili"
+      ],
+      "permissions": [],
+      "runtime": {
+        "mode": "zero-code",
+        "program": null
+      },
+      "minWinShun": "",
+      "bundled": true,
+      "file": "winshun.web-1.0.0.wsplugin",
+      "url": "https://github.com/LingCore/WinShun-plugins/releases/download/winshun.web-v1.0.0/winshun.web-1.0.0.wsplugin",
+      "sha256": "822bdda5a2655981342127aa6ebea1b2ba23fce2d284a7ec4429e40ccd55a454",
+      "size": 3483,
+      "repo": "LingCore/WinShun-plugins",
+      "source": "https://github.com/LingCore/WinShun/tree/main/plugins/winshun.web",
+      "releaseDate": "2026-10-23T09:12:46Z",
+      "dateAdded": "2026-10-23T09:12:46Z"
+    }
+  ]
+}
