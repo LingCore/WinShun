@@ -322,9 +322,15 @@ item 可选提供 `modified`、`created`（带时区的 ISO 8601 字符串或 Un
  "minSize":1048576,"maxSize":null,"kinds":["documents"],"extensions":["pdf","docx"],"folder":"C:\\Docs"}
 ```
 
-时间下界包含、上界不包含，大小上下界都包含；`null`、空数组、空文件夹表示没有该项限制。普通搜索的 filters 是 `{}`。插件可按这些条件查询自己的数据源；Win顺 也会按返回的已知日期、大小、扩展名和本地打开路径筛选。Python 的 `item(..., modified=..., created=..., size=...)`、PowerShell 的 `New-WinShunItem -Modified ... -Created ... -Size ...`、C++ 的 `withModified / withCreated / withSize` 均可输出元数据。
+时间下界包含、上界不包含，大小上下界都包含；`null`、空数组、空文件夹表示没有该项限制。普通搜索也可能附带内容检索及排除条件；忽略不认识的键。插件可按这些条件查询自己的数据源；Win顺 也会按返回的已知日期、大小、扩展名和本地打开路径筛选。Python 的 `item(..., modified=..., created=..., size=...)`、PowerShell 的 `New-WinShunItem -Modified ... -Created ... -Size ...`、C++ 的 `withModified / withCreated / withSize` 均可输出元数据。
 
 `kinds` 可以包含多个类型，例如 `["pictures","videos"]`；对应的 `extensions` 是这些类型扩展名的并集。类型之间是 OR，仍与日期、大小、文件夹等条件同时生效；插件不要只读取数组第一项。
+
+### 内容检索提供者
+
+在命令中声明 `"contentSearch": true`，可同时保留 `keyword`。宿主只在“内容”，或已开启内容检索的“全部”中派发 `query`，此时 `trigger` 为 `content`，`text` 为内容关键词；文件／文件夹搜索和独占的关键词列表不派发。关键词查询仍按原协议执行。此接口需要包含该能力的新宿主构建；旧宿主仍可使用命令关键词。
+
+`filters` 除面板条件外，还包含 `contentEnabled`、`contentWords`、`contentPick`（选定目录）、`excludedExtensions`、`excludedFileNames`（通配符）。提供者应按整个文件验证关键词，返回稳定 id、原文件的 `open.path`、日期／大小及命中摘要。内容结果在原生结果之后合并，每个提供者最多 200 行，不占普通推送的 3／6 行配额；已有原生文件结果会去重。空结果返回空数组，避免把设置提示混进内容列表。可参考 [图片文字搜索插件](../src/ocr-search-plugin/package/README.md)。
 
 ### 图标
 

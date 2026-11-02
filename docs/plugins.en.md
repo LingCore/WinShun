@@ -306,9 +306,15 @@ Resident queries receive `params.filters`; once queries receive JSON in `WS_FILT
  "minSize":1048576,"maxSize":null,"kinds":["documents"],"extensions":["pdf","docx"],"folder":"C:\\Docs"}
 ```
 
-The date interval includes its lower bound and excludes its upper bound. Both size bounds are inclusive. Null bounds, empty arrays and an empty folder mean no restriction; ordinary searches send `{}`. Plugins can apply these conditions to their data source. WinShun also filters known returned metadata, extensions and local open paths. Output metadata with Python `item(..., modified=..., created=..., size=...)`, PowerShell `New-WinShunItem -Modified ... -Created ... -Size ...`, or C++ `withModified / withCreated / withSize`.
+The date interval includes its lower bound and excludes its upper bound. Both size bounds are inclusive. Null bounds, empty arrays and an empty folder mean no restriction. Ordinary searches may also include content and exclusion settings; ignore unknown keys. Plugins can apply these conditions to their data source. WinShun also filters known returned metadata, extensions and local open paths. Output metadata with Python `item(..., modified=..., created=..., size=...)`, PowerShell `New-WinShunItem -Modified ... -Created ... -Size ...`, or C++ `withModified / withCreated / withSize`.
 
 `kinds` may contain several categories, such as `["pictures","videos"]`. `extensions` is their combined extension list. Categories use OR, while date, size and folder conditions still apply together. Plugins should read the entire array.
+
+### Content-search providers
+
+Declare `"contentSearch": true` on a command; a `keyword` may coexist. A host built with this capability sends `query` with `trigger: "content"` only in Content or content-enabled All. File/folder searches and exclusive keyword lists do not dispatch providers. `text` contains the content query. Keyword queries keep their existing protocol and remain available in older hosts.
+
+In addition to panel filters, `filters` includes `contentEnabled`, `contentWords`, `contentPick` (selected folder), `excludedExtensions` and `excludedFileNames` (wildcards). Verify terms across the entire file and return stable IDs, the original `open.path`, date/size metadata and a matching snippet. Up to 200 provider rows follow native results without consuming the ordinary 3/6 push quota; existing native file paths are deduplicated. Return an empty array for no matches, keeping setup hints out of content results. See the [image text search plugin](../src/ocr-search-plugin/package/README.md).
 
 ### System switch providers
 
