@@ -418,7 +418,7 @@ bool previewWebForms(QQuickWindow* window, SettingsEditor* editor, const QDir& o
 {
     QMetaObject::invokeMethod(window, "showWebPage");
     settle(window);
-    QObject* add = named(window, "webAddButton");
+    QObject* add = visualNamed(window->contentItem(), u"webAddButton"_s);
     QObject* loader = named(window, "webDialog");
     QObject* pageFlick = named(window, "flick");
     if (!add || !loader || !pageFlick)
@@ -4713,6 +4713,128 @@ bool probeOnboarding(const QStringList& args, const QDir& out, QJsonObject& repo
     return passed;
 }
 
+// Production App, launcher, settings model and plugin installation on the
+// runtime probe's isolated profile. Opens no browser and uses no user data.
+bool probeWebPlugin(App& app, const QStringList& args, const QDir& out, QJsonObject& report)
+{
+    QJsonObject checks;
+    bool passed = true;
+    const auto check = [&](bool ok, const QString& key) {
+        checks.insert(key, ok);
+        if (!ok) { qWarning().noquote() << "web plugin:" << key; passed = false; }
+        return ok;
+    };
+    app.showSettings();
+    pump(100);
+    QQuickWindow* settingsWindow = nullptr;
+    SettingsEditor* editor = nullptr;
+    for (auto* candidate : QGuiApplication::allWindows()) {
+        if (auto* found = candidate->property("editor").value<SettingsEditor*>()) {
+            editor = found;
+            settingsWindow = qobject_cast<QQuickWindow*>(candidate);
+            break;
+        }
+    }
+    if (!check(settingsWindow && editor, u"production_settings"_s)) return false;
+    QMetaObject::invokeMethod(settingsWindow, "showWebPage");
+    settle(settingsWindow, 3);
+    const auto* addButton = visualNamed(settingsWindow->contentItem(), u"webAddButton"_s);
+    check(addButton && addButton->isVisible()
+        && QRectF(QPointF(), settingsWindow->size()).contains(addButton->mapRectToItem(settingsWindow->contentItem(), addButton->boundingRect())),
+        u"plugin_settings_reveals_editor"_s);
+    check(editor->saveWebShortcut(-1, u"zzwebfixture"_s, u"迁移验证站点"_s,
+        u"https://fixture.invalid/?q=%s"_s, u"http://127.0.0.1:9/"_s).isEmpty(), u"production_editor_saves_site"_s);
+    auto* searchBox = named(settingsWindow, "searchBox");
+    auto* settingsSearch = named(settingsWindow, "settingsSearch");
+    QMetaObject::invokeMethod(searchBox, "setText", Q_ARG(QVariant, QVariant(u"zzwebfixture"_s)));
+    settle(settingsWindow, 3);
+    check(settingsSearch && settingsSearch->property("current").value<QObject*>() != nullptr
+        && settingsWindow->property("currentPage") == settingsWindow->property("pluginsPage"), u"settings_search_finds_edited_site"_s);
+    QMetaObject::invokeMethod(searchBox, "setText", Q_ARG(QVariant, QVariant(QString())));
+    QMetaObject::invokeMethod(settingsWindow, "showWebPage");
+    settle(settingsWindow, 3);
+    check(saveGrab(settingsWindow, out.filePath(u"web-plugin-settings.png"_s)), u"settings_screenshot"_s);
+    const auto pages = settingsWindow->property("pages").value<QJSValue>().toVariant().toList();
+    check(std::none_of(pages.cbegin(), pages.cend(), [](const QVariant& page) {
+        return page.toMap().value(u"title"_s).toString() == QCoreApplication::translate("SettingsWindow", "网页搜索");
+    }), u"no_duplicate_sidebar_page"_s);
+    app.showLauncher(u"wsweb 中文 & spaces"_s);
+    pump(100);
+    Launcher* launcher = nullptr;
+    QQuickWindow* searchWindow = nullptr;
+    for (auto* candidate : QGuiApplication::allWindows()) {
+        if (auto* found = candidate->property("launcher").value<Launcher*>()) {
+            launcher = found;
+            searchWindow = qobject_cast<QQuickWindow*>(candidate);
+            break;
+        }
+    }
+    if (!check(launcher && searchWindow, u"production_launcher"_s)) return false;
+    const auto webRows = [&] {
+        int count = 0;
+        for (int i = 0; i < launcher->results()->count(); ++i)
+            count += launcher->results()->at(i)->isWeb();
+        return count;
+    };
+    const auto wait = [&](const auto& predicate) {
+        QElapsedTimer timer; timer.start();
+        do { pump(20); if (predicate()) return true; } while (timer.elapsed() < 5000);
+        return false;
+    };
+    check(wait([&] { return webRows() >= 1; }), u"enabled_keyword_search"_s);
+    check(launcher->results()->at(0) && launcher->results()->at(0)->isWeb(), u"keyword_ranks_first"_s);
+    if (!valueAfter(args, u"--web-suggest-url").isEmpty())
+        check(wait([&] { return webRows() >= 3; }), u"live_suggestions"_s);
+    settle(searchWindow, 3); // Let the popup resize after asynchronous suggestions.
+    check(saveGrab(searchWindow, out.filePath(u"web-plugin-search.png"_s)), u"search_screenshot"_s);
+    app.showLauncher(u"网页测试"_s);
+    check(wait([&] { return webRows() >= 1; }), u"site_name_search"_s);
+    app.showLauncher(u"wycs"_s);
+    check(wait([&] { return webRows() >= 1; }), u"site_pinyin_search"_s);
+    const QString favoritePath = QDir::toNativeSeparators(Settings::profile() + u"/fixture/startup-probe.txt"_s);
+    editor->favorites()->addPaths({QVariant(favoritePath)});
+    const int favorite = editor->favorites()->indexOf(favoritePath);
+    check(favorite >= 0, u"favorite_keyword_fixture"_s);
+    check(favorite >= 0 && !editor->favorites()->save(favorite, u"Keyword fixture"_s, u"wsweb"_s).isEmpty(),
+        u"enabled_reserves_keyword"_s);
+    editor->plugins()->setEnabled(u"winshun.web"_s, false);
+    check(favorite >= 0 && editor->favorites()->save(favorite, u"Keyword fixture"_s, u"wsweb"_s).isEmpty(),
+        u"disabled_releases_keyword"_s);
+    if (favorite >= 0)
+        editor->favorites()->remove(favorite);
+    app.showLauncher(u"wsweb disabled"_s);
+    check(wait([&] { return webRows() == 0; }), u"disabled_removes_rows"_s);
+    editor->plugins()->confirmEnable(u"winshun.web"_s);
+    app.showLauncher(u"wsweb restored"_s);
+    check(wait([&] { return webRows() >= 1; }), u"reenable_restores_rows"_s);
+    const auto before = editor->webShortcuts();
+    editor->plugins()->confirmUninstall(u"winshun.web"_s, false);
+    app.showLauncher(u"wsweb uninstalled"_s);
+    check(wait([&] { return webRows() == 0; }), u"uninstall_removes_rows"_s);
+    check(editor->webShortcuts() == before, u"uninstall_keeps_configuration"_s);
+    Settings saved; saved.load();
+    check(!saved.plugin(u"winshun.web")->enabled && !saved.webShortcuts.isEmpty(), u"uninstall_persists_disabled_data"_s);
+    QString error;
+    const QString archive = valueAfter(args, u"--web-plugin-archive");
+    auto package = plugin::install::inspect(archive.isEmpty()
+        ? QDir(valueAfter(args, u"--runtime-plugins")).filePath(u"winshun.web"_s) : archive);
+    check(package && package->manifest && package->manifest->webSearch, u"reinstall_package_valid"_s);
+    if (!archive.isEmpty())
+        check(package && package->archive, u"reinstall_from_archive"_s);
+    if (package && package->manifest) {
+        check(!plugin::install::place(*package, Settings::profile() + u"/plugins"_s, &error).isEmpty(), u"reinstall_package"_s);
+        plugin::install::discard(*package);
+        check(wait([&] { return editor->plugins()->list()->card(u"winshun.web"_s) != nullptr; }), u"reinstall_discovered"_s);
+        editor->plugins()->confirmEnable(u"winshun.web"_s);
+        app.showLauncher(u"wsweb reinstalled"_s);
+        check(wait([&] { return webRows() >= 1; }), u"reinstall_restores_search"_s);
+        check(editor->webShortcuts() == before, u"reinstall_keeps_configuration"_s);
+    }
+    report.insert(u"web_plugin"_s, checks);
+    report.insert(u"web_plugin_passed"_s, passed);
+    return passed;
+}
+
 // Production clipboard entry points against a Shell-like receiver or native
 // Start. No clipboard data is copied or pasted by this probe.
 bool probeClipboardShell(const QString& receiver, const QDir& out, QJsonObject& report, bool splitDisplay = false,
@@ -5325,6 +5447,13 @@ int runRuntime(const QStringList& args)
             }
         }
     }
+    if (args.contains(u"--web-plugin-check"_s)) {
+        settings.theme = args.contains(u"--dark"_s) ? u"dark"_s : u"light"_s;
+        settings.transparency = u"off"_s; // A grabWindow image cannot capture the desktop's Mica material.
+        settings.webShortcuts = {{u"wsweb"_s, u"网页测试"_s, u"https://example.invalid/search?q=%s"_s, u"http://127.0.0.1:9/"_s}};
+        settings.webShortcuts[0].suggest = valueAfter(args, u"--web-suggest-url");
+        settings.webSuggestions = !settings.webShortcuts[0].suggest.isEmpty();
+    }
     settings.save(); // prepared profiles normally skip onboarding
     if (args.contains(u"--clipboard-display-probe"_s) || args.contains(u"--clipboard-display-service-probe"_s)) {
         ClipStore store(Settings::dataDir() + u"/clipboard"_s);
@@ -5394,6 +5523,11 @@ int runRuntime(const QStringList& args)
             return 4;
         if (args.contains(u"--capture-hotkey-probe"_s) && !probeCaptureHotkeys(app, args, out, report)) {
             QFile failed(out.filePath(u"capture-hotkey-failed.json"_s));
+            if (failed.open(QIODevice::WriteOnly)) failed.write(QJsonDocument(report).toJson());
+            return 4;
+        }
+        if (args.contains(u"--web-plugin-check"_s) && !probeWebPlugin(app, args, out, report)) {
+            QFile failed(out.filePath(u"web-plugin-failed.json"_s));
             if (failed.open(QIODevice::WriteOnly)) failed.write(QJsonDocument(report).toJson());
             return 4;
         }

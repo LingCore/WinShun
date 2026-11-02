@@ -15,6 +15,12 @@ import WinShun
 Rectangle {
     id: card
 
+    property SettingsEditor editor: null
+    required property bool webSearch
+    readonly property Item webOptions: detailsLoader.item ? detailsLoader.item.webOptions : null
+    readonly property bool detailsSettled: !expanded || (detailsLoader.item !== null
+        && Math.abs(details.height - detailsLoader.item.implicitHeight) < 0.5)
+    signal editWebShortcut(int index, Item button)
     required property PluginSettings plugins
     required property string pluginId
     required property string name
@@ -47,7 +53,7 @@ Rectangle {
     property string pendingFocus // the command whose keyword box takes the focus once made
 
     // Anything to unfold: a plugin that cannot be used has none.
-    readonly property bool hasDetails: keywords.length > 0 || aiExpose || permissions.length > 0 || settings.length > 0
+    readonly property bool hasDetails: webSearch || keywords.length > 0 || aiExpose || permissions.length > 0 || settings.length > 0
     readonly property color toneColor: tone === "ok" ? Theme.success
                                      : tone === "busy" ? Theme.accent
                                      : tone === "warn" ? Theme.caution
@@ -330,6 +336,7 @@ Rectangle {
         id: detailsComponent
 
         Column {
+            property alias webOptions: webOptionsLoader.item
             width: detailsLoader.width
             spacing: 12
 
@@ -337,6 +344,16 @@ Rectangle {
                 width: parent.width
                 height: Theme.edge(Screen.devicePixelRatio)
                 color: Theme.divider
+            }
+
+            Loader {
+                id: webOptionsLoader
+                width: parent.width
+                active: card.webSearch && card.expanded && card.pluginEnabled && card.editor !== null
+                sourceComponent: WebSearchOptions {
+                    editor: card.editor
+                    onEditRequested: (index, button) => card.editWebShortcut(index, button)
+                }
             }
 
             Column { // the keywords: two to a line where they fit

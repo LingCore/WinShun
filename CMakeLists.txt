@@ -90,7 +90,12 @@ install(DIRECTORY "${bundled_plugins_dir}/" DESTINATION plugins)
 # its program -- in library-plugins/<id>; release.ps1 zips each folder into
 # <id>-<version>.wsplugin for the library, wsbench --semantic reads them there.
 set(library_plugins_dir "${CMAKE_BINARY_DIR}/library-plugins")
+file(READ "${PROJECT_SOURCE_DIR}/src/web-plugin/package/plugin.json" web_plugin_manifest)
+string(JSON web_plugin_manifest SET "${web_plugin_manifest}" minWinShun "\"${PROJECT_VERSION}\"")
+file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/generated/web-plugin.json" CONTENT "${web_plugin_manifest}\n")
 add_custom_target(library_plugins ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/web-plugin/package" "${library_plugins_dir}/winshun.web"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_BINARY_DIR}/generated/web-plugin.json" "${library_plugins_dir}/winshun.web/plugin.json"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/ocr-search-plugin/package" "${library_plugins_dir}/winshun.ocr-search"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunOcrSearch>" "${library_plugins_dir}/winshun.ocr-search/WinShunOcrSearch.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunOcrSearchApp>" "${library_plugins_dir}/winshun.ocr-search/WinShunOcrSearchApp.dll"

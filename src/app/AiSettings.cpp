@@ -671,7 +671,7 @@ std::vector<Entry> buildCatalog()
                 return u"The keyword must not have spaces or quotes."_s;
             if (const QString problem = textProblem(value, kMaxNameChars, u"The keyword"_s); !problem.isEmpty())
                 return problem;
-            const KeywordClaim claim = keywordClaim(value, s.settings.webShortcuts, -1, {}, env.keywordOwner);
+            const KeywordClaim claim = keywordClaim(value, s.settings.webShortcutsInUse(), -1, {}, env.keywordOwner);
             if (claim.by == KeywordClaim::By::WebShortcut)
                 return u"The keyword '%1' is already the web search '%2'."_s.arg(value, claim.owner);
             if (claim.by == KeywordClaim::By::Favorite)
@@ -1384,11 +1384,11 @@ const std::vector<Section>& sections()
         {u"scope"_s, QT_TRANSLATE_NOOP("AiSettings", "搜索范围"), 2},
         {u"results"_s, QT_TRANSLATE_NOOP("AiSettings", "结果列表"), 3},
         {u"content"_s, QT_TRANSLATE_NOOP("AiSettings", "文件内容搜索"), 4},
-        {u"web"_s, QT_TRANSLATE_NOOP("AiSettings", "网页搜索"), 5},
-        {u"favorites"_s, QT_TRANSLATE_NOOP("AiSettings", "收藏夹"), 6},
-        {u"clipboard"_s, QT_TRANSLATE_NOOP("AiSettings", "剪贴板"), 7},
-        {u"advanced"_s, QT_TRANSLATE_NOOP("AiSettings", "高级"), 8},
-        {u"paste_file"_s, QT_TRANSLATE_NOOP("AiSettings", "粘贴为文件"), 10},
+        {u"web"_s, QT_TRANSLATE_NOOP("AiSettings", "网页搜索"), 9},
+        {u"favorites"_s, QT_TRANSLATE_NOOP("AiSettings", "收藏夹"), 5},
+        {u"clipboard"_s, QT_TRANSLATE_NOOP("AiSettings", "剪贴板"), 6},
+        {u"advanced"_s, QT_TRANSLATE_NOOP("AiSettings", "高级"), 7},
+        {u"paste_file"_s, QT_TRANSLATE_NOOP("AiSettings", "粘贴为文件"), 9},
     };
     return all;
 }

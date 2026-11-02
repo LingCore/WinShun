@@ -1,0 +1,4 @@
+[1/202] Automatic MOC and UIC for target WinShun
+[2/201] Running AUTOMOC file extraction for target WinShun
+[3/4] Building CXX object src\app\CMakeFiles\WinShun.dir\Preview.cpp.obj
+[4/4] Linking CXX executable WinShun.exe

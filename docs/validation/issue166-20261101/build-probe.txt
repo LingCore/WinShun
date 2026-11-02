@@ -1,0 +1,294 @@
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR) 
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR) 
+-- Configuring done (2.1s)
+-- Generating done (2.5s)
+-- Build files have been written to: F:/电脑便捷工具/build/release
+[0/1] Re-running CMake...
+[1/262] Automatic MOC and UIC for target miniz
+[2/261] Copying WinShun qml resources into build dir
+[3/261] Copying WinShun qml sources into build dir
+[4/261] Automatic MOC and UIC for target wsmcp_proto
+[5/260] Linking CXX static library third_party\zxing-cpp\core\ZXing.lib
+[6/260] Populating .qmlls.build.ini file at F:/电脑便捷工具/build/release/.qt/.qmlls.build.ini
+[7/260] Running AUTOMOC file extraction for target wsmcp_proto
+[8/260] Linking CXX static library src\extract\miniz.lib
+[9/260] Running moc --collect-json for target wsmcp_proto
+[10/260] Automatic MOC and UIC for target wscapture
+[11/259] Linking CXX static library src\mcp\wsmcp_proto.lib
+[12/259] Automatic MOC and UIC for target wscore
+[13/258] Running rcc for resource places
+[14/258] Linking CXX static library src\capture\wscapture.lib
+[15/258] Running AUTOMOC file extraction for target wscore
+[16/258] Running rcc for resource apps
+[17/258] Running moc --collect-json for target wscore
+[18/258] Building CXX object src\core\CMakeFiles\wscore.dir\.qt\rcc\qrc_places.cpp.obj
+[19/258] Building CXX object src\core\CMakeFiles\wscore.dir\.qt\rcc\qrc_apps.cpp.obj
+[20/258] Linking CXX static library src\core\wscore.lib
+[21/258] Automatic MOC and UIC for target wsmcp
+[22/257] Running AUTOMOC file extraction for target wsmcp
+[23/257] Running moc --collect-json for target wsmcp
+[24/257] Linking CXX static library src\mcp\wsmcp.lib
+[25/257] Automatic MOC and UIC for target wsplugin
+[26/256] Running AUTOMOC file extraction for target wsplugin
+[27/256] Running moc --collect-json for target wsplugin
+[28/256] Linking CXX static library src\plugin\wsplugin.lib
+[29/256] Automatic MOC and UIC for target WinShun
+[30/255] Running rcc for resource qmake_WinShun
+[31/255] Generating .rcc/qmlcache/WinShun_qmlcache_loader.cpp
+[32/255] Running rcc for resource WinShun_raw_qml_0
+[33/255] Running rcc for resource WinShun_raw_res_0
+[34/255] Running rcc for resource window_mask
+[35/255] Running rcc for resource plugins_sdk
+[36/255] Running rcc for resource ocr_component
+[37/255] Running rcc for resource branding
+[38/255] Automatic MOC and UIC for target tst_plugin
+[39/255] Generating winshun_en.qm
+[40/255] Running AUTOMOC file extraction for target WinShun
+[41/255] Running rcc for resource phosphor
+[42/255] Building CXX object tests\CMakeFiles\tst_plugin.dir\tst_plugin_autogen\mocs_compilation.cpp.obj
+[43/255] Running moc --collect-json for target WinShun
+[44/255] Running rcc for resource translations
+[45/255] Automatic QML type registration for target WinShun
+[46/255] Generating .rcc/qmlcache/WinShun_qml_SearchKeys_qml.cpp, .rcc/qmlcache/WinShun_qml_SearchKeys_qml.cpp.aotstats
+[47/255] Generating .rcc/qmlcache/WinShun_qml_Theme_qml.cpp, .rcc/qmlcache/WinShun_qml_Theme_qml.cpp.aotstats
+[48/255] Generating .rcc/qmlcache/WinShun_qml_WindowEdge_qml.cpp, .rcc/qmlcache/WinShun_qml_WindowEdge_qml.cpp.aotstats
+[49/255] Generating .rcc/qmlcache/WinShun_qml_SearchBar_qml.cpp, .rcc/qmlcache/WinShun_qml_SearchBar_qml.cpp.aotstats
+[50/255] Generating .rcc/qmlcache/WinShun_qml_ScopeTabs_qml.cpp, .rcc/qmlcache/WinShun_qml_ScopeTabs_qml.cpp.aotstats
+[51/255] Generating .rcc/qmlcache/WinShun_qml_TypeStrip_qml.cpp, .rcc/qmlcache/WinShun_qml_TypeStrip_qml.cpp.aotstats
+[52/255] Generating .rcc/qmlcache/WinShun_qml_ResultRow_qml.cpp, .rcc/qmlcache/WinShun_qml_ResultRow_qml.cpp.aotstats
+[53/255] Generating .rcc/qmlcache/WinShun_qml_ElsewhereCaption_qml.cpp, .rcc/qmlcache/WinShun_qml_ElsewhereCaption_qml.cpp.aotstats
+[54/255] Generating .rcc/qmlcache/WinShun_qml_ContentChip_qml.cpp, .rcc/qmlcache/WinShun_qml_ContentChip_qml.cpp.aotstats
+[55/255] Generating .rcc/qmlcache/WinShun_qml_ContentLinesView_qml.cpp, .rcc/qmlcache/WinShun_qml_ContentLinesView_qml.cpp.aotstats
+[56/255] Generating .rcc/qmlcache/WinShun_qml_ContentSummaryView_qml.cpp, .rcc/qmlcache/WinShun_qml_ContentSummaryView_qml.cpp.aotstats
+[57/255] Generating .rcc/qmlcache/WinShun_qml_ContentPreviewView_qml.cpp, .rcc/qmlcache/WinShun_qml_ContentPreviewView_qml.cpp.aotstats
+[58/255] Generating .rcc/qmlcache/WinShun_qml_PanelRow_qml.cpp, .rcc/qmlcache/WinShun_qml_PanelRow_qml.cpp.aotstats
+[59/255] Generating .rcc/qmlcache/WinShun_qml_Gallery_qml.cpp, .rcc/qmlcache/WinShun_qml_Gallery_qml.cpp.aotstats
+[60/255] Generating .rcc/qmlcache/WinShun_qml_ResultTile_qml.cpp, .rcc/qmlcache/WinShun_qml_ResultTile_qml.cpp.aotstats
+[61/255] Generating .rcc/qmlcache/WinShun_qml_FileViewSwitch_qml.cpp, .rcc/qmlcache/WinShun_qml_FileViewSwitch_qml.cpp.aotstats
+[62/255] Generating .rcc/qmlcache/WinShun_qml_FileThumbnail_qml.cpp, .rcc/qmlcache/WinShun_qml_FileThumbnail_qml.cpp.aotstats
+[63/255] Generating .rcc/qmlcache/WinShun_qml_ClipTabs_qml.cpp, .rcc/qmlcache/WinShun_qml_ClipTabs_qml.cpp.aotstats
+[64/255] Generating .rcc/qmlcache/WinShun_qml_RowAction_qml.cpp, .rcc/qmlcache/WinShun_qml_RowAction_qml.cpp.aotstats
+[65/255] Generating .rcc/qmlcache/WinShun_qml_ListScrollBar_qml.cpp, .rcc/qmlcache/WinShun_qml_ListScrollBar_qml.cpp.aotstats
+[66/255] Generating .rcc/qmlcache/WinShun_qml_ScrollPixelAlignment_qml.cpp, .rcc/qmlcache/WinShun_qml_ScrollPixelAlignment_qml.cpp.aotstats
+[67/255] Generating .rcc/qmlcache/WinShun_qml_ListWheelScroll_qml.cpp, .rcc/qmlcache/WinShun_qml_ListWheelScroll_qml.cpp.aotstats
+[68/255] Generating .rcc/qmlcache/WinShun_qml_ContextMenu_qml.cpp, .rcc/qmlcache/WinShun_qml_ContextMenu_qml.cpp.aotstats
+[69/255] Generating .rcc/qmlcache/WinShun_qml_DialogBarRow_qml.cpp, .rcc/qmlcache/WinShun_qml_DialogBarRow_qml.cpp.aotstats
+[70/255] Generating .rcc/qmlcache/WinShun_qml_DropPieWindow_qml.cpp, .rcc/qmlcache/WinShun_qml_DropPieWindow_qml.cpp.aotstats
+[71/255] Generating .rcc/qmlcache/WinShun_qml_SoftShadow_qml.cpp, .rcc/qmlcache/WinShun_qml_SoftShadow_qml.cpp.aotstats
+[72/255] Generating .rcc/qmlcache/WinShun_qml_HoverTip_qml.cpp, .rcc/qmlcache/WinShun_qml_HoverTip_qml.cpp.aotstats
+[73/255] Generating .rcc/qmlcache/WinShun_qml_ContentMatchesView_qml.cpp, .rcc/qmlcache/WinShun_qml_ContentMatchesView_qml.cpp.aotstats
+[74/255] Generating .rcc/qmlcache/WinShun_qml_ContentReportView_qml.cpp, .rcc/qmlcache/WinShun_qml_ContentReportView_qml.cpp.aotstats
+[75/255] Generating .rcc/qmlcache/WinShun_qml_ContentPaneView_qml.cpp, .rcc/qmlcache/WinShun_qml_ContentPaneView_qml.cpp.aotstats
+[76/255] Generating .rcc/qmlcache/WinShun_qml_ClipPreview_qml.cpp, .rcc/qmlcache/WinShun_qml_ClipPreview_qml.cpp.aotstats
+[77/255] Generating .rcc/qmlcache/WinShun_qml_ClipRow_qml.cpp, .rcc/qmlcache/WinShun_qml_ClipRow_qml.cpp.aotstats
+[78/255] Generating .rcc/qmlcache/WinShun_qml_ClipboardWindow_qml.cpp, .rcc/qmlcache/WinShun_qml_ClipboardWindow_qml.cpp.aotstats
+[79/255] Generating .rcc/qmlcache/WinShun_qml_PreviewWindow_qml.cpp, .rcc/qmlcache/WinShun_qml_PreviewWindow_qml.cpp.aotstats
+[80/255] Generating .rcc/qmlcache/WinShun_qml_ShortcutTip_qml.cpp, .rcc/qmlcache/WinShun_qml_ShortcutTip_qml.cpp.aotstats
+[81/255] Generating .rcc/qmlcache/WinShun_qml_NameTip_qml.cpp, .rcc/qmlcache/WinShun_qml_NameTip_qml.cpp.aotstats
+[82/255] Generating .rcc/qmlcache/WinShun_qml_DropMenu_qml.cpp, .rcc/qmlcache/WinShun_qml_DropMenu_qml.cpp.aotstats
+[83/255] Generating .rcc/qmlcache/WinShun_qml_KeyHint_qml.cpp, .rcc/qmlcache/WinShun_qml_KeyHint_qml.cpp.aotstats
+[84/255] Generating .rcc/qmlcache/WinShun_qml_DialogBarWindow_qml.cpp, .rcc/qmlcache/WinShun_qml_DialogBarWindow_qml.cpp.aotstats
+[85/255] Generating .rcc/qmlcache/WinShun_qml_FolderMenuWindow_qml.cpp, .rcc/qmlcache/WinShun_qml_FolderMenuWindow_qml.cpp.aotstats
+[86/255] Generating .rcc/qmlcache/WinShun_qml_Glyph_qml.cpp, .rcc/qmlcache/WinShun_qml_Glyph_qml.cpp.aotstats
+[87/255] Generating .rcc/qmlcache/WinShun_qml_ClipboardPage_qml.cpp, .rcc/qmlcache/WinShun_qml_ClipboardPage_qml.cpp.aotstats
+[88/255] Generating .rcc/qmlcache/WinShun_qml_SettingsSection_qml.cpp, .rcc/qmlcache/WinShun_qml_SettingsSection_qml.cpp.aotstats
+[89/255] Generating .rcc/qmlcache/WinShun_qml_TitleBar_qml.cpp, .rcc/qmlcache/WinShun_qml_TitleBar_qml.cpp.aotstats
+[90/255] Generating .rcc/qmlcache/WinShun_qml_SettingsSearchBox_qml.cpp, .rcc/qmlcache/WinShun_qml_SettingsSearchBox_qml.cpp.aotstats
+[91/255] Generating .rcc/qmlcache/WinShun_qml_Panel_qml.cpp, .rcc/qmlcache/WinShun_qml_Panel_qml.cpp.aotstats
+[92/255] Generating .rcc/qmlcache/WinShun_qml_Footer_qml.cpp, .rcc/qmlcache/WinShun_qml_Footer_qml.cpp.aotstats
+[93/255] Generating .rcc/qmlcache/WinShun_qml_Main_qml.cpp, .rcc/qmlcache/WinShun_qml_Main_qml.cpp.aotstats
+[94/255] Generating .rcc/qmlcache/WinShun_qml_PageTabs_qml.cpp, .rcc/qmlcache/WinShun_qml_PageTabs_qml.cpp.aotstats
+[95/255] Generating .rcc/qmlcache/WinShun_qml_ThemeCard_qml.cpp, .rcc/qmlcache/WinShun_qml_ThemeCard_qml.cpp.aotstats
+[96/255] Generating .rcc/qmlcache/WinShun_qml_SwitchLevel_qml.cpp, .rcc/qmlcache/WinShun_qml_SwitchLevel_qml.cpp.aotstats
+[97/255] Generating .rcc/qmlcache/WinShun_qml_ToggleSwitch_qml.cpp, .rcc/qmlcache/WinShun_qml_ToggleSwitch_qml.cpp.aotstats
+[98/255] Generating .rcc/qmlcache/WinShun_qml_InputBox_qml.cpp, .rcc/qmlcache/WinShun_qml_InputBox_qml.cpp.aotstats
+[99/255] Generating .rcc/qmlcache/WinShun_qml_AppearancePreview_qml.cpp, .rcc/qmlcache/WinShun_qml_AppearancePreview_qml.cpp.aotstats
+[100/255] Generating .rcc/qmlcache/WinShun_qml_SettingRow_qml.cpp, .rcc/qmlcache/WinShun_qml_SettingRow_qml.cpp.aotstats
+[101/255] Generating .rcc/qmlcache/WinShun_qml_FlatButton_qml.cpp, .rcc/qmlcache/WinShun_qml_FlatButton_qml.cpp.aotstats
+[102/255] Generating .rcc/qmlcache/WinShun_qml_OnboardingWindow_qml.cpp, .rcc/qmlcache/WinShun_qml_OnboardingWindow_qml.cpp.aotstats
+[103/255] Generating .rcc/qmlcache/WinShun_qml_FileTypesSection_qml.cpp, .rcc/qmlcache/WinShun_qml_FileTypesSection_qml.cpp.aotstats
+[104/255] Generating .rcc/qmlcache/WinShun_qml_UpdateDialog_qml.cpp, .rcc/qmlcache/WinShun_qml_UpdateDialog_qml.cpp.aotstats
+[105/255] Generating .rcc/qmlcache/WinShun_qml_WebSearchOptions_qml.cpp, .rcc/qmlcache/WinShun_qml_WebSearchOptions_qml.cpp.aotstats
+[106/255] Generating .rcc/qmlcache/WinShun_qml_FavoriteForm_qml.cpp, .rcc/qmlcache/WinShun_qml_FavoriteForm_qml.cpp.aotstats
+[107/255] Generating .rcc/qmlcache/WinShun_qml_NumberHints_qml.cpp, .rcc/qmlcache/WinShun_qml_NumberHints_qml.cpp.aotstats
+[108/255] Generating .rcc/qmlcache/WinShun_qml_ShareScanControls_qml.cpp, .rcc/qmlcache/WinShun_qml_ShareScanControls_qml.cpp.aotstats
+[109/255] Generating .rcc/qmlcache/WinShun_qml_WebShortcutForm_qml.cpp, .rcc/qmlcache/WinShun_qml_WebShortcutForm_qml.cpp.aotstats
+[110/255] Generating .rcc/qmlcache/WinShun_qml_CenteredNumber_qml.cpp, .rcc/qmlcache/WinShun_qml_CenteredNumber_qml.cpp.aotstats
+[111/255] Generating .rcc/qmlcache/WinShun_qml_ShareCard_qml.cpp, .rcc/qmlcache/WinShun_qml_ShareCard_qml.cpp.aotstats
+[112/255] Generating .rcc/qmlcache/WinShun_qml_IconNumber_qml.cpp, .rcc/qmlcache/WinShun_qml_IconNumber_qml.cpp.aotstats
+[113/255] Generating .rcc/qmlcache/WinShun_qml_ShortcutsButton_qml.cpp, .rcc/qmlcache/WinShun_qml_ShortcutsButton_qml.cpp.aotstats
+[114/255] Generating .rcc/qmlcache/WinShun_qml_FavoritesSection_qml.cpp, .rcc/qmlcache/WinShun_qml_FavoritesSection_qml.cpp.aotstats
+[115/255] Generating .rcc/qmlcache/WinShun_qml_Chip_qml.cpp, .rcc/qmlcache/WinShun_qml_Chip_qml.cpp.aotstats
+[116/255] Generating .rcc/qmlcache/WinShun_qml_KeyCap_qml.cpp, .rcc/qmlcache/WinShun_qml_KeyCap_qml.cpp.aotstats
+[117/255] Generating .rcc/qmlcache/WinShun_qml_Gleaning_qml.cpp, .rcc/qmlcache/WinShun_qml_Gleaning_qml.cpp.aotstats
+[118/255] Generating .rcc/qmlcache/WinShun_qml_AuthorClock_qml.cpp, .rcc/qmlcache/WinShun_qml_AuthorClock_qml.cpp.aotstats
+[119/255] Generating .rcc/qmlcache/WinShun_qml_WarmPalette_qml.cpp, .rcc/qmlcache/WinShun_qml_WarmPalette_qml.cpp.aotstats
+[120/255] Generating .rcc/qmlcache/WinShun_qml_HotkeyRecorder_qml.cpp, .rcc/qmlcache/WinShun_qml_HotkeyRecorder_qml.cpp.aotstats
+[121/255] Generating .rcc/qmlcache/WinShun_qml_AuthorAvatar_qml.cpp, .rcc/qmlcache/WinShun_qml_AuthorAvatar_qml.cpp.aotstats
+[122/255] Generating .rcc/qmlcache/WinShun_qml_GleaningBackdrop_qml.cpp, .rcc/qmlcache/WinShun_qml_GleaningBackdrop_qml.cpp.aotstats
+[123/255] Generating .rcc/qmlcache/WinShun_qml_AiAccessSection_qml.cpp, .rcc/qmlcache/WinShun_qml_AiAccessSection_qml.cpp.aotstats
+[124/255] Generating .rcc/qmlcache/WinShun_qml_AiClientsSection_qml.cpp, .rcc/qmlcache/WinShun_qml_AiClientsSection_qml.cpp.aotstats
+[125/255] Generating .rcc/qmlcache/WinShun_qml_AiCommandLineSection_qml.cpp, .rcc/qmlcache/WinShun_qml_AiCommandLineSection_qml.cpp.aotstats
+[126/255] Generating .rcc/qmlcache/WinShun_qml_GleaningPage_qml.cpp, .rcc/qmlcache/WinShun_qml_GleaningPage_qml.cpp.aotstats
+[127/255] Generating .rcc/qmlcache/WinShun_qml_AiPrivacySection_qml.cpp, .rcc/qmlcache/WinShun_qml_AiPrivacySection_qml.cpp.aotstats
+[128/255] Generating .rcc/qmlcache/WinShun_qml_Tag_qml.cpp, .rcc/qmlcache/WinShun_qml_Tag_qml.cpp.aotstats
+[129/255] Generating .rcc/qmlcache/WinShun_qml_OcrPackageRow_qml.cpp, .rcc/qmlcache/WinShun_qml_OcrPackageRow_qml.cpp.aotstats
+[130/255] Generating .rcc/qmlcache/WinShun_qml_PluginDialog_qml.cpp, .rcc/qmlcache/WinShun_qml_PluginDialog_qml.cpp.aotstats
+[131/255] Generating .rcc/qmlcache/WinShun_qml_PluginGallerySection_qml.cpp, .rcc/qmlcache/WinShun_qml_PluginGallerySection_qml.cpp.aotstats
+[132/255] Generating .rcc/qmlcache/WinShun_qml_PluginGalleryEntry_qml.cpp, .rcc/qmlcache/WinShun_qml_PluginGalleryEntry_qml.cpp.aotstats
+[133/255] Generating .rcc/qmlcache/WinShun_qml_PluginDevSection_qml.cpp, .rcc/qmlcache/WinShun_qml_PluginDevSection_qml.cpp.aotstats
+[134/255] Generating .rcc/qmlcache/WinShun_qml_BuiltinCard_qml.cpp, .rcc/qmlcache/WinShun_qml_BuiltinCard_qml.cpp.aotstats
+[135/255] Generating .rcc/qmlcache/WinShun_qml_PasteFileCard_qml.cpp, .rcc/qmlcache/WinShun_qml_PasteFileCard_qml.cpp.aotstats
+[136/255] Generating .rcc/qmlcache/WinShun_qml_SettingsNotice_qml.cpp, .rcc/qmlcache/WinShun_qml_SettingsNotice_qml.cpp.aotstats
+[137/255] Generating .rcc/qmlcache/WinShun_qml_PluginCard_qml.cpp, .rcc/qmlcache/WinShun_qml_PluginCard_qml.cpp.aotstats
+[138/255] Generating .rcc/qmlcache/WinShun_qml_ScreenshotConfirm_qml.cpp, .rcc/qmlcache/WinShun_qml_ScreenshotConfirm_qml.cpp.aotstats
+[139/255] Generating .rcc/qmlcache/WinShun_qml_PluginsSection_qml.cpp, .rcc/qmlcache/WinShun_qml_PluginsSection_qml.cpp.aotstats
+[140/255] Generating .rcc/qmlcache/WinShun_qml_SettingsConfirm_qml.cpp, .rcc/qmlcache/WinShun_qml_SettingsConfirm_qml.cpp.aotstats
+[141/255] Generating .rcc/qmlcache/WinShun_qml_PluginsPreview_qml.cpp, .rcc/qmlcache/WinShun_qml_PluginsPreview_qml.cpp.aotstats
+[142/255] Generating .rcc/qmlcache/WinShun_qml_SettingsWindow_qml.cpp, .rcc/qmlcache/WinShun_qml_SettingsWindow_qml.cpp.aotstats
+[143/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.qt\rcc\qrc_qmake_WinShun.cpp.obj
+[144/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_SearchKeys_qml.cpp.obj
+[145/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_WindowEdge_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+[146/255] Building CXX object tests\CMakeFiles\tst_plugin.dir\tst_plugin.cpp.obj
+FAILED: tests/CMakeFiles/tst_plugin.dir/tst_plugin.cpp.obj 
+C:\PROGRA~1\MIB055~1\2022\COMMUN~1\VC\Tools\MSVC\1444~1.352\bin\Hostx64\x64\cl.exe  /nologo /TP -DMINIZ_NO_STDIO -DMINIZ_NO_TIME -DMINIZ_NO_ZLIB_COMPATIBLE_NAMES -DNOMINMAX -DQT_CORE_LIB -DQT_NO_CAST_FROM_ASCII -DQT_NO_DEBUG -DQT_NO_URL_CAST_FROM_STRING -DQT_SQL_LIB -DQT_TESTCASE_BUILDDIR=\"F:/电脑便捷工具/build/release/tests\" -DQT_TESTCASE_SOURCEDIR=\"F:/电脑便捷工具/tests\" -DQT_TESTLIB_LIB -DUNICODE -DWIN32 -DWIN32_LEAN_AND_MEAN -DWIN64 -DWINSHUN_PLUGIN_FAKE=\"F:/电脑便捷工具/build/release/plugin_fake.exe\" -DWINSHUN_PLUGIN_HOST=\"F:/电脑便捷工具/build/release/WinShunPluginHost.exe\" -DWINSHUN_TEST_PLUGINS=\"F:/电脑便捷工具/tests/plugins\" -DWINSHUN_VERSION=\"0.17.0\" -DWINSHUN_VERSION_MAJOR=0 -DWINSHUN_VERSION_MINOR=17 -DWINSHUN_VERSION_PATCH=0 -DWINVER=0x0A00 -D_ENABLE_EXTENDED_ALIGNED_STORAGE -D_UNICODE -D_WIN32_WINNT=0x0A00 -D_WIN64 -IF:\电脑便捷工具\build\release\tests\tst_plugin_autogen\include -IF:\电脑便捷工具\src\app -IF:\电脑便捷工具\src\plugin -IF:\电脑便捷工具\src\plugin\runner -IF:\电脑便捷工具\src\core -IF:\电脑便捷工具\src\extract -IF:\电脑便捷工具\src\mcp -IF:\电脑便捷工具\third_party\miniz -external:IC:\Qt\6.12.0\msvc2022_64\include\QtCore -external:IC:\Qt\6.12.0\msvc2022_64\include -external:IC:\Qt\6.12.0\msvc2022_64\mkspecs\win32-msvc -external:IC:\Qt\6.12.0\msvc2022_64\include\QtSql -external:IC:\Qt\6.12.0\msvc2022_64\include\QtTest -external:W0 /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++20 -MD -Zc:__cplusplus -permissive- -utf-8 /utf-8 /W4 /permissive- /Zc:__cplusplus /showIncludes /Fotests\CMakeFiles\tst_plugin.dir\tst_plugin.cpp.obj /Fdtests\CMakeFiles\tst_plugin.dir\ /FS -c F:\电脑便捷工具\tests\tst_plugin.cpp
+F:\电脑便捷工具\tests\tst_plugin.cpp(477): error C2660: “ws::plugin::Manifest::parse”: 函数不接受 1 个参数
+F:\电脑便捷工具\src\plugin\Manifest.h(187): note: 参见“ws::plugin::Manifest::parse”的声明
+F:\电脑便捷工具\tests\tst_plugin.cpp(477): note: 尝试匹配参数列表“(QByteArray)”时
+F:\电脑便捷工具\tests\tst_plugin.cpp(477): error C2088: 内置运算符“!”无法应用于类型为“_T”的操作数
+        with
+        [
+            _T=std::optional<ws::plugin::Manifest>
+        ]
+F:\电脑便捷工具\tests\tst_plugin.cpp(480): error C2660: “ws::plugin::Manifest::parse”: 函数不接受 1 个参数
+F:\电脑便捷工具\src\plugin\Manifest.h(187): note: 参见“ws::plugin::Manifest::parse”的声明
+F:\电脑便捷工具\tests\tst_plugin.cpp(480): note: 尝试匹配参数列表“(QByteArray)”时
+F:\电脑便捷工具\tests\tst_plugin.cpp(480): error C2088: 内置运算符“!”无法应用于类型为“_T”的操作数
+        with
+        [
+            _T=std::optional<ws::plugin::Manifest>
+        ]
+[147/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_Gallery_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+[148/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_ContentChip_qml.cpp.obj
+[149/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_FileThumbnail_qml.cpp.obj
+[150/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qmlcache_loader.cpp.obj
+[151/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_SearchBar_qml.cpp.obj
+[152/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_ContentPreviewView_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+[153/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_RowAction_qml.cpp.obj
+[154/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_FileViewSwitch_qml.cpp.obj
+[155/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_ElsewhereCaption_qml.cpp.obj
+[156/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_ContentPaneView_qml.cpp.obj
+[157/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_Theme_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+[158/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_ClipboardWindow_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+[159/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_ContentSummaryView_qml.cpp.obj
+[160/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_ContentMatchesView_qml.cpp.obj
+[161/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_ListScrollBar_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+[162/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_ContentLinesView_qml.cpp.obj
+[163/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_ScopeTabs_qml.cpp.obj
+[164/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_PanelRow_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+[165/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_ClipTabs_qml.cpp.obj
+[166/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_ContentReportView_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+[167/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_ResultTile_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+[168/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_TypeStrip_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+[169/255] Building CXX object src\app\CMakeFiles\WinShun.dir\main.cpp.obj
+[170/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_ScrollPixelAlignment_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+[171/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_ClipPreview_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+[172/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_ClipRow_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+[173/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_ResultRow_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+[174/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_ListWheelScroll_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+[175/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_ClipboardPage_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+[176/255] Building CXX object src\app\CMakeFiles\WinShun.dir\winshun_qmltyperegistrations.cpp.obj
+[177/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_Main_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+[178/255] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_Panel_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+[179/255] Building CXX object src\app\CMakeFiles\WinShun.dir\Preview.cpp.obj
+ninja: build stopped: subcommand failed.

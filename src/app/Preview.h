@@ -67,6 +67,9 @@
 //     checks first-run gating and choices in the real guide. Capture cases use
 //     WINSHUN_PLUGIN_INDEX local fixtures; approval still uses PluginDialog.
 //     runtime.json exports resource and lifecycle checks. Plugin fixtures are
+//     --web-plugin-check checks the real optional web provider's keyword/name/
+//     pinyin search, disable/enable and uninstall/reinstall on this profile;
+//     --web-suggest-url <loopback URL with %s> adds a live suggestion fixture.
 //     copied to the profile, enabled there, and stopped on exit. The reusable
 //     tools/verify-plugin-recovery.ps1 drives recovery and permission cases,
 //     including native hotkey readiness, with local packages and test data.

@@ -198,6 +198,7 @@ Type: filesandordirs; Name: "{app}\plugins\winshun.localsend"
 Type: filesandordirs; Name: "{app}\plugins\winshun.semantic"
 Type: filesandordirs; Name: "{app}\plugins\winshun.translate"
 Type: filesandordirs; Name: "{app}\plugins\winshun.bookmarks"
+Type: filesandordirs; Name: "{app}\plugins\winshun.web"
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"

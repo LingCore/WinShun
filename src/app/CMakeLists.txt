@@ -180,6 +180,7 @@ set(qml_files
     qml/SwitchLevel.qml
     qml/FlatButton.qml
     qml/InputBox.qml
+    qml/WebSearchOptions.qml
     qml/WebShortcutForm.qml
     qml/FavoritesSection.qml
     qml/FavoriteForm.qml

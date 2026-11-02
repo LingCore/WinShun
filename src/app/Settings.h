@@ -393,7 +393,9 @@ struct Settings {
     bool pasteFileCtrlV = true;
     bool pasteFileMenu = true; // "粘贴为文件" in the right-click menu of a folder's empty space (shellmenu::)
 
-    // [WebSearch]: keywords the user gives web pages ("gh" opens GitHub, "gh
+    // The web plugin's editable data, kept in [Plugin.winshun.web] Setting.*.
+    // Loaded regardless of enabled/installed state, so disabling loses no data.
+    // Keywords the user gives web pages ("gh" opens GitHub, "gh
     // WinShun" searches it; see WebShortcut). At first just one, "winshun".
     // Written as an array: size=, 1\Keyword=, 1\Name=, 1\Url=, 1\Home=,
     // 1\Icon=, 1\Suggest= (written even empty: an entry without it is one
@@ -446,6 +448,7 @@ struct Settings {
     QList<PluginConfig> plugins;
     const PluginConfig* plugin(QStringView id) const; // nothing when the user set nothing for it
     PluginConfig& pluginConfig(const QString& id); // the section, made when there is none
+    const WebShortcuts& webShortcutsInUse() const; // Disabled plugin data reserves no keywords.
 
     static Settings defaults();
     static bool exists(); // false on the very first run

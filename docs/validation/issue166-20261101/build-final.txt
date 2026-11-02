@@ -1,0 +1,104 @@
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR) 
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR) 
+-- Configuring done (2.2s)
+-- Generating done (2.4s)
+-- Build files have been written to: F:/电脑便捷工具/build/issue166
+[0/1] Re-running CMake...
+[1/270] Copying WinShun qml sources into build dir
+[2/270] Automatic MOC and UIC for target wscore
+[3/270] Running AUTOMOC file extraction for target wscore
+[4/270] Running moc --collect-json for target wscore
+[5/270] Building CXX object src\core\CMakeFiles\wscore.dir\WebShortcut.cpp.obj
+[6/270] Building CXX object src\core\CMakeFiles\wscore.dir\Favorites.cpp.obj
+[7/270] Building CXX object src\core\CMakeFiles\wscore.dir\wscore_autogen\mocs_compilation.cpp.obj
+[8/270] Building CXX object src\core\CMakeFiles\wscore.dir\SearchEngine.cpp.obj
+[9/270] Linking CXX static library src\core\wscore.lib
+[10/270] Automatic MOC and UIC for target tst_aisettings
+[11/269] Automatic MOC and UIC for target tst_settings
+[12/268] Automatic MOC and UIC for target tst_appearance
+[13/267] Automatic MOC and UIC for target tst_core
+[14/266] Building CXX object tests\CMakeFiles\tst_aisettings.dir\tst_aisettings.cpp.obj
+[15/266] Building CXX object src\mcp\CMakeFiles\wsmcp.dir\McpTools.cpp.obj
+[16/266] Linking CXX static library src\mcp\wsmcp.lib
+[17/266] Building CXX object tests\CMakeFiles\tst_aisettings.dir\__\src\app\AiSettings.cpp.obj
+[18/266] Building CXX object tests\CMakeFiles\tst_aisettings.dir\__\src\app\Settings.cpp.obj
+[19/266] Building CXX object src\plugin\CMakeFiles\wsplugin.dir\Tools.cpp.obj
+[20/266] Building CXX object src\plugin\CMakeFiles\wsplugin.dir\Manifest.cpp.obj
+[21/266] Linking CXX executable tst_aisettings.exe
+[22/266] Building CXX object src\plugin\CMakeFiles\wsplugin.dir\ZeroCode.cpp.obj
+[23/266] Linking CXX static library src\plugin\wsplugin.lib
+[24/266] Building CXX object tests\CMakeFiles\tst_settings.dir\tst_settings.cpp.obj
+[25/266] Automatic MOC and UIC for target WinShun
+[26/266] Running rcc for resource WinShun_raw_qml_0
+[27/266] Running AUTOMOC file extraction for target WinShun
+[28/266] Running moc --collect-json for target WinShun
+[29/77] Generating .rcc/qmlcache/WinShun_qml_SettingsWindow_qml.cpp, .rcc/qmlcache/WinShun_qml_SettingsWindow_qml.cpp.aotstats
+[30/77] Generating .rcc/qmlcache/WinShun_qml_PluginsSection_qml.cpp, .rcc/qmlcache/WinShun_qml_PluginsSection_qml.cpp.aotstats
+[31/77] Generating .rcc/qmlcache/WinShun_qml_PluginCard_qml.cpp, .rcc/qmlcache/WinShun_qml_PluginCard_qml.cpp.aotstats
+[32/77] Building CXX object tests\CMakeFiles\tst_appearance.dir\tst_appearance.cpp.obj
+[33/77] Building CXX object tests\CMakeFiles\tst_settings.dir\__\src\app\Settings.cpp.obj
+[34/77] Building CXX object tests\CMakeFiles\tst_appearance.dir\__\src\app\Settings.cpp.obj
+[35/77] Building CXX object src\app\CMakeFiles\WinShun.dir\main.cpp.obj
+[36/77] Building CXX object src\app\CMakeFiles\WinShun.dir\DropPieHelper.cpp.obj
+[37/77] Building CXX object src\app\CMakeFiles\WinShun.dir\WinShun_autogen\mocs_compilation.cpp.obj
+[38/77] Building CXX object src\app\CMakeFiles\WinShun.dir\AiSettings.cpp.obj
+[39/77] Building CXX object src\app\CMakeFiles\WinShun.dir\FileIconProvider.cpp.obj
+[40/77] Building CXX object src\app\CMakeFiles\WinShun.dir\Migration.cpp.obj
+[41/77] Building CXX object src\app\CMakeFiles\WinShun.dir\Onboarding.cpp.obj
+[42/77] Building CXX object src\app\CMakeFiles\WinShun.dir\ContentPaneProbe.cpp.obj
+[43/77] Building CXX object src\app\CMakeFiles\WinShun.dir\App.cpp.obj
+F:\电脑便捷工具\src\app\App.cpp(2258): warning C4456: “keys”的声明隐藏了上一个本地声明
+F:\电脑便捷工具\src\app\App.cpp(2252): note: 参见“keys”的声明
+[44/77] Building CXX object src\app\CMakeFiles\WinShun.dir\platform\SiteIcons.cpp.obj
+[45/77] Building CXX object src\app\CMakeFiles\WinShun.dir\Settings.cpp.obj
+[46/77] Building CXX object src\app\CMakeFiles\WinShun.dir\Preview.cpp.obj
+[47/77] Building CXX object src\app\CMakeFiles\WinShun.dir\CliSetup.cpp.obj
+[48/77] Building CXX object src\app\CMakeFiles\WinShun.dir\winshun_qmltyperegistrations.cpp.obj
+[49/77] Building CXX object src\app\CMakeFiles\WinShun.dir\DialogBar.cpp.obj
+[50/77] Building CXX object src\app\CMakeFiles\WinShun.dir\FavoritesSettings.cpp.obj
+[51/77] Building CXX object src\app\CMakeFiles\WinShun.dir\ContentPane.cpp.obj
+[52/77] Building CXX object src\app\CMakeFiles\WinShun.dir\PluginGallery.cpp.obj
+[53/77] Building CXX object src\app\CMakeFiles\WinShun.dir\Launcher.cpp.obj
+[54/77] Building CXX object src\app\CMakeFiles\WinShun.dir\MovedPlugins.cpp.obj
+[55/77] Building CXX object src\app\CMakeFiles\WinShun.dir\PluginSettings.cpp.obj
+[56/77] Building CXX object src\app\CMakeFiles\WinShun.dir\ResultModel.cpp.obj
+[57/77] Building CXX object src\app\CMakeFiles\WinShun.dir\Backup.cpp.obj
+[58/77] Building CXX object src\app\CMakeFiles\WinShun.dir\Updater.cpp.obj
+[59/77] Building CXX object src\app\CMakeFiles\WinShun.dir\SettingsEditor.cpp.obj
+[60/77] Building CXX object src\app\CMakeFiles\WinShun.dir\.qt\rcc\qrc_WinShun_raw_qml_0.cpp.obj
+[61/77] Linking CXX executable tst_settings.exe
+[62/77] Linking CXX executable tst_appearance.exe
+[63/77] Automatic MOC and UIC for target tst_movedplugins
+[64/76] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_PluginsSection_qml.cpp.obj
+[65/76] Automatic MOC and UIC for target tst_plugin
+[66/75] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_PluginCard_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+[67/75] Building CXX object tests\CMakeFiles\tst_movedplugins.dir\tst_movedplugins.cpp.obj
+[68/75] Building CXX object tests\CMakeFiles\tst_movedplugins.dir\__\src\app\MovedPlugins.cpp.obj
+[69/75] Linking CXX executable tst_movedplugins.exe
+[70/75] Building CXX object tests\CMakeFiles\tst_plugin.dir\tst_plugin.cpp.obj
+[71/75] Linking CXX executable tst_plugin.exe
+[72/75] Building CXX object tests\CMakeFiles\tst_core.dir\tst_core.cpp.obj
+F:\电脑便捷工具\tests\tst_core.cpp(1654): warning C4129: “A：: 不可识别的字符转义序列
+F:\电脑便捷工具\tests\tst_core.cpp(1654): warning C4129: “W：: 不可识别的字符转义序列
+F:\电脑便捷工具\tests\tst_core.cpp(14455): warning C4129: “P：: 不可识别的字符转义序列
+F:\电脑便捷工具\tests\tst_core.cpp(14455): warning C4129: “W：: 不可识别的字符转义序列
+F:\电脑便捷工具\tests\tst_core.cpp(14463): warning C4129: “w：: 不可识别的字符转义序列
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qstringalgorithms.h(144) : warning C4702: 无法访问的代码
+[73/75] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_SettingsWindow_qml.cpp.obj
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qmetatype.h(514) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(792) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtCore\qvariant.h(797) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+C:\Qt\6.12.0\msvc2022_64\include\QtQml\qjsengine.h(112) : warning C4702: 无法访问的代码
+[74/75] Linking CXX executable tst_core.exe
+[75/75] Linking CXX executable WinShun.exe

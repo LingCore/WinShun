@@ -1,0 +1,24 @@
+Test project F:/电脑便捷工具/build/release
+    Start 45: tst_aisettings
+1/7 Test #45: tst_aisettings ...................   Passed    4.09 sec
+    Start 49: tst_settings
+2/7 Test #49: tst_settings .....................   Passed    2.46 sec
+    Start 69: tst_appearance_1
+3/7 Test #69: tst_appearance_1 .................   Passed    0.74 sec
+    Start 70: tst_appearance_1.25
+4/7 Test #70: tst_appearance_1.25 ..............   Passed    0.58 sec
+    Start 71: tst_appearance_1.5
+5/7 Test #71: tst_appearance_1.5 ...............   Passed    0.58 sec
+    Start 72: tst_appearance_2
+6/7 Test #72: tst_appearance_2 .................   Passed    0.54 sec
+    Start 80: tst_movedplugins
+7/7 Test #80: tst_movedplugins .................***Failed    0.14 sec
+
+
+86% tests passed, 1 tests failed out of 7
+
+Total Test time (real) =   9.25 sec
+
+The following tests FAILED:
+	 80 - tst_movedplugins (Failed)
+Errors while running CTest

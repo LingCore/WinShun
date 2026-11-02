@@ -28,7 +28,7 @@ namespace {
 // Came with Win顺, in the library since (GitHub #138): 局域网传输 and 按意思找
 // with 0.16.0, the screenshot as part of WinShun.exe, 翻译 and 浏览器书签 (in
 // Python then, C++ now) since 0.7.0.
-constexpr std::array<QStringView, 5> kMoved {u"winshun.localsend", u"winshun.semantic", kCapture, u"winshun.translate", u"winshun.bookmarks"};
+constexpr std::array<QStringView, 6> kMoved {u"winshun.localsend", u"winshun.semantic", kCapture, u"winshun.translate", u"winshun.bookmarks", u"winshun.web"};
 
 constexpr int kListTimeoutMs = 15000; // as the 插件库 tab's
 constexpr int kPackageTimeoutMs = 30000;
@@ -118,6 +118,8 @@ QStringList missing(const plugin::Catalog& catalog, const QList<PluginConfig>& p
 
 QString name(QStringView id)
 {
+    if (id == u"winshun.web")
+        return QCoreApplication::translate("MovedPlugins", "网页搜索");
     if (id == kCapture)
         return QCoreApplication::translate("MovedPlugins", "截图与录屏");
     if (id == u"winshun.localsend")

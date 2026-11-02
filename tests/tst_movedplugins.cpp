@@ -235,11 +235,12 @@ private slots:
             return c;
         };
         const QList<ws::PluginConfig> plugins {on(u"winshun.translate"_s, true), on(u"winshun.bookmarks"_s, true),
-            on(u"winshun.localsend"_s, false), on(u"winshun.semantic"_s, true), on(u"winshun.break"_s, true), on(u"winshun.tools"_s, true)};
-        QCOMPARE(ws::moved::missing(catalog, plugins), (QStringList {u"winshun.semantic"_s, u"winshun.translate"_s}));
+            on(u"winshun.localsend"_s, false), on(u"winshun.semantic"_s, true), on(u"winshun.break"_s, true), on(u"winshun.tools"_s, true),
+            on(u"winshun.web"_s, true)};
+        QCOMPARE(ws::moved::missing(catalog, plugins), (QStringList {u"winshun.semantic"_s, u"winshun.translate"_s, u"winshun.web"_s}));
         QFile::remove(bundledDir + u"/winshun.bookmarks/plugin.json"_s); // the setup took it out
         catalog.scan();
-        QCOMPARE(ws::moved::missing(catalog, plugins), (QStringList {u"winshun.semantic"_s, u"winshun.translate"_s, u"winshun.bookmarks"_s}));
+        QCOMPARE(ws::moved::missing(catalog, plugins), (QStringList {u"winshun.semantic"_s, u"winshun.translate"_s, u"winshun.bookmarks"_s, u"winshun.web"_s}));
     }
 };
 

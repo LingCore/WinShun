@@ -1,0 +1,43 @@
+Test project F:/电脑便捷工具/build/issue166
+    Start  46: tst_aisettings
+1/9 Test  #46: tst_aisettings ...................   Passed    5.88 sec
+    Start  50: tst_settings
+2/9 Test  #50: tst_settings .....................   Passed    2.28 sec
+    Start  70: tst_appearance_1
+3/9 Test  #70: tst_appearance_1 .................   Passed    0.89 sec
+    Start  71: tst_appearance_1.25
+4/9 Test  #71: tst_appearance_1.25 ..............   Passed    0.72 sec
+    Start  72: tst_appearance_1.5
+5/9 Test  #72: tst_appearance_1.5 ...............   Passed    0.80 sec
+    Start  73: tst_appearance_2
+6/9 Test  #73: tst_appearance_2 .................   Passed    0.80 sec
+    Start  81: tst_movedplugins
+7/9 Test  #81: tst_movedplugins .................***Failed    0.14 sec
+********* Start testing of MovedPluginsTest *********
+Config: Using QtTest library 6.12.0, Qt 6.12.0 (x86_64-little_endian-llp64 shared (dynamic) release build; by MSVC 2022), windows 11
+PASS   : MovedPluginsTest::initTestCase()
+PASS   : MovedPluginsTest::captureSettingsMove()
+PASS   : MovedPluginsTest::captureOffIsLeftAlone()
+FAIL!  : MovedPluginsTest::capturePermissionsAreTheManifests() Compared lists have different sizes.
+   Actual   (ws::moved::capturePermissions()) size: 6
+   Expected (names) size: 7
+F:\电脑便捷工具\tests\tst_movedplugins.cpp(104) : failure location
+PASS   : MovedPluginsTest::failedCopyKeepsOldSettings()
+PASS   : MovedPluginsTest::failedRecoveryCanRetryWithoutLosingData()
+PASS   : MovedPluginsTest::missingAreTheOnesTurnedOn()
+PASS   : MovedPluginsTest::cleanupTestCase()
+Totals: 7 passed, 1 failed, 0 skipped, 0 blacklisted, 90ms
+********* Finished testing of MovedPluginsTest *********
+
+    Start 100: tst_core
+8/9 Test #100: tst_core .........................   Passed   67.38 sec
+    Start 118: tst_plugin
+9/9 Test #118: tst_plugin .......................   Passed   43.81 sec
+
+89% tests passed, 1 tests failed out of 9
+
+Total Test time (real) = 122.93 sec
+
+The following tests FAILED:
+	 81 - tst_movedplugins (Failed)
+Errors while running CTest

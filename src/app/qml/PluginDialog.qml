@@ -162,7 +162,9 @@ Item {
                 Text {
                     visible: dialog.kind === "uninstall"
                     width: parent.width
-                    text: dialog.info.hasData
+                    text: dialog.info.keepSettings === true
+                          ? qsTr("卸载网页搜索插件后，网站、关键词和图标会保留，重新安装后可继续使用。")
+                          : dialog.info.hasData
                           ? qsTr("它的文件夹、设置和保存的密码会删掉。它自己的数据（%1.data）也一起删吗？").arg(dialog.info.id ?? "")
                           : qsTr("它的文件夹、设置和保存的密码会删掉。")
                     color: Theme.subtext
@@ -265,7 +267,7 @@ Item {
                     height: primary.implicitHeight
 
                     FlatButton { // uninstall: the plugin alone, its data kept
-                        visible: dialog.kind === "uninstall" && dialog.info.hasData === true
+                        visible: dialog.kind === "uninstall" && dialog.info.hasData === true && dialog.info.keepSettings !== true
                         anchors.left: parent.left
                         flat: true
                         text: qsTr("只删插件，留下数据")
@@ -287,8 +289,8 @@ Item {
                             text: dialog.kind === "permissions" ? qsTr("打开")
                                 : dialog.allowing ? qsTr("更新并允许")
                                 : dialog.kind === "install" ? qsTr("安装")
-                                : dialog.info.hasData === true ? qsTr("连数据一起删") : qsTr("卸载")
-                            onClicked: dialog.accept(true)
+                                : dialog.info.hasData === true && dialog.info.keepSettings !== true ? qsTr("连数据一起删") : qsTr("卸载")
+                            onClicked: dialog.accept(dialog.info.keepSettings !== true)
                         }
                     }
                 }

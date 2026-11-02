@@ -75,8 +75,8 @@ WebShortcuts defaultWebShortcuts()
     // site's icon comes from (the search's own host is often another one).
     // Keywords are whole words: one of two letters typed alone ("bd") would
     // put a site above the files looked for; the name finds it by pinyin
-    // anyway ("bd" for 百度, "jd" for 京东). None is one of the winshun.web
-    // plugin's (bd, gh, yt, wiki, bing, bili), whose keyword mode would win.
+    // anyway ("bd" for 百度, "jd" for 京东). The old plugin's short aliases
+    // are preserved by migration; there is now just one provider.
     WebShortcuts shortcuts {
         {u"baidu"_s, u"百度"_s, u"https://www.baidu.com/s?wd=%s"_s, u"https://www.baidu.com/"_s},
         {u"biying"_s, u"必应"_s, u"https://www.bing.com/search?q=%s"_s, u"https://www.bing.com/"_s},
@@ -89,6 +89,9 @@ WebShortcuts defaultWebShortcuts()
         {u"jingdong"_s, u"京东"_s, u"https://search.jd.com/Search?keyword=%s&enc=utf-8"_s, u"https://www.jd.com/"_s},
         {u"fanyi"_s, u"百度翻译"_s, u"https://fanyi.baidu.com/mtpe-individual/multimodal?query=%s"_s, u"https://fanyi.baidu.com/"_s},
         {u"winshun"_s, u"WinShun"_s, u"https://github.com/LingCore/WinShun"_s, {}},
+        {u"gh"_s, u"GitHub"_s, u"https://github.com/search?q=%s"_s, u"https://github.com/"_s},
+        {u"yt"_s, u"YouTube"_s, u"https://www.youtube.com/results?search_query=%s"_s, u"https://www.youtube.com/"_s},
+        {u"wiki"_s, u"维基百科"_s, u"https://zh.wikipedia.org/w/index.php?search=%s"_s, u"https://zh.wikipedia.org/"_s},
     };
     for (WebShortcut& s : shortcuts)
         s.suggest = knownSuggestUrl(s.url);
@@ -114,7 +117,7 @@ WebShortcuts withNewDefaults(WebShortcuts shortcuts, const WebShortcuts& default
         const QString site = siteIconKey(d.homeUrl());
         const bool taken = std::any_of(before.begin(), before.end(), [&](const WebShortcut& s) {
             return s.keyword.compare(d.keyword, Qt::CaseInsensitive) == 0
-                || (!site.isEmpty() && siteIconKey(s.homeUrl()) == site);
+                || (!site.isEmpty() && s.searches() == d.searches() && siteIconKey(s.homeUrl()) == site);
         });
         if (!taken)
             shortcuts.append(d);

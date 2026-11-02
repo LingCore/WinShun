@@ -1,0 +1,45 @@
+{
+    "clipboard": false,
+    "processes": [
+        {
+            "name": "WinShun.exe",
+            "pid": 19644,
+            "private_bytes": 333172736,
+            "working_set_bytes": 320245760
+        }
+    ],
+    "qt": "6.12.0",
+    "start_ms": 3736,
+    "total_private_bytes": 333172736,
+    "warnings": 0,
+    "web_plugin": {
+        "disabled_releases_keyword": true,
+        "disabled_removes_rows": true,
+        "enabled_keyword_search": true,
+        "enabled_reserves_keyword": true,
+        "favorite_keyword_fixture": true,
+        "keyword_ranks_first": true,
+        "live_suggestions": true,
+        "no_duplicate_sidebar_page": true,
+        "plugin_settings_reveals_editor": true,
+        "production_editor_saves_site": true,
+        "production_launcher": true,
+        "production_settings": true,
+        "reenable_restores_rows": true,
+        "reinstall_discovered": true,
+        "reinstall_from_archive": true,
+        "reinstall_keeps_configuration": true,
+        "reinstall_package": true,
+        "reinstall_package_valid": true,
+        "reinstall_restores_search": true,
+        "search_screenshot": true,
+        "settings_screenshot": true,
+        "settings_search_finds_edited_site": true,
+        "site_name_search": true,
+        "site_pinyin_search": true,
+        "uninstall_keeps_configuration": true,
+        "uninstall_persists_disabled_data": true,
+        "uninstall_removes_rows": true
+    },
+    "web_plugin_passed": true
+}

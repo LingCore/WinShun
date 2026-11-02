@@ -12,13 +12,15 @@ Win顺 的插件给搜索框加关键字命令、把结果混进列表。界面�
 | **一次性脚本**（`once`） | 任何语言；查询从环境变量进，结果打印到 stdout | 几十行的小工具，偶尔用 |
 | **常驻**（`resident`） | 任何语言；stdio 上一行一条 JSON-RPC | 每键都查的、要缓存的、PowerShell（它冷启动慢） |
 
-随 Win顺 装好的插件在 `<安装目录>\plugins\`（默认全部关着，设置 → 插件 里打开）：`winshun.tools`（计算器、单位换算、颜色、时间戳、UUID、Base64、哈希；C++）、`winshun.kill`（结束进程；PowerShell）、`winshun.web` 和 `winshun.go`（零代码）。
+随 Win顺 装好的插件在 `<安装目录>\plugins\`（默认全部关着，设置 → 插件 里打开）：`winshun.tools`（计算器、单位换算、颜色、时间戳、UUID、Base64、哈希；C++）、`winshun.kill`（结束进程；PowerShell）、`winshun.go`（零代码）。
 
 升级后原来开着的功能如果没能恢复，“已安装”页会保留原因，提供“重试恢复”和本地包安装，原来的设置和数据保留。
 
 Win顺 自己的另外几个插件不随安装包，在插件库里，要用时装上（设置 → 插件 → 插件库；源码在 `src\<名字>-plugin\`，清单和 README 在其中的 `package\`）：`winshun.capture`（截图与录屏；C++，用 Win顺 自己的 Qt，见下面“有自己窗口的常驻插件”）、`winshun.semantic`（按意思找：`? 一句话` 按文档讲的内容找文件，用你选的嵌入模型——本机的 Ollama 或云服务的密钥；C++ 常驻，用 `winshun:content` 拿 Win顺 已经读出的文字）、`winshun.localsend`（局域网传输：同一网络里的手机、电脑互传文件和文字，兼容 LocalSend；`传` 或 `ls`，或文件右键菜单的"用局域网发送…"；C++ 常驻、eager，用到 `network:listen`、`notifications` 和 `files` 触发）、`winshun.break`（休息提醒：每 20 分钟小休、隔一次大休，提前一个小条，到点调暗所有显示器显示倒计时；`休息` 或 `break`；C++ 常驻、eager，只要 `ui`，自己画窗口、休息时用键盘钩子拦按键）、`winshun.translate`（翻译：`tr 句子`，用你自己的 DeepL 或 OpenAI 兼容接口，要自己填 API 密钥；C++ 常驻，`debounceMs` 300，先推一行"翻译中…"）、`winshun.bookmarks`（浏览器书签：`bm 词` 搜 Chrome 和 Edge 的书签；C++ 一次性）。以前随安装包、你又开着的，升级后 Win顺 自动从插件库装上，设置照旧。每个都是一份能跑的示例，有 README。
 
 别人写的插件、以及分享你自己的插件：[WinShun-plugins](https://github.com/LingCore/WinShun-plugins)（设置 → 插件 → 插件库 里直接安装和更新：下载后先核对大小和 sha256，再走和压缩包一样的安装；也可以自己下载 `.wsplugin`，在“已安装”里从压缩包安装；投稿见那里的 CONTRIBUTING）。插件库在打开这一页（十分钟内不重复取）、点“刷新”或安装时联网；开着“自动更新”、又装了插件库里的插件时，每天还会在后台检查一次更新。上次的列表存在数据文件夹的 `plugin-index.json`。
+
+**网页搜索**现在统一为插件库中的 `winshun.web` 2.0（源码和清单在 `src/web-plugin/package`）。它使用声明式宿主能力，不运行额外进程；展开插件卡片管理网站和搜索建议。旧内置网页搜索与已启用零代码示例的配置一次性合并，卸载保留配置。新用户默认不启用，旧用户通过现有插件恢复流程安装，离线时保留数据并可重试。
 
 English version: [plugins.en.md](plugins.en.md).
 

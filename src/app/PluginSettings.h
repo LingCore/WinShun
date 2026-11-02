@@ -60,6 +60,7 @@ public:
         QVariantList settings; // [{key, type, title, hint, value, options, optionIndex}]
         bool hasReadme = false;
         bool settingsWindow = false; // the plugin draws its own settings window (manifest settingsWindow): 设置 on the card
+        bool webSearch = false;
         bool hasData = false;
         bool aiExpose = false; // the manifest offers its commands to the AI (ai.expose): the card shows the switch
         bool aiEnabled = true; // the switch: [Plugin.<id>] Ai=
@@ -90,6 +91,7 @@ public:
         AiExposeRole,
         AiEnabledRole,
         AiNoteRole,
+        WebSearchRole,
     };
 
     using QAbstractListModel::QAbstractListModel;
@@ -184,6 +186,7 @@ public:
 
     PluginListModel* list() { return &m_list; }
     int count() const { return m_list.rowCount(); }
+    Q_INVOKABLE QStringList searchTerms(int row) const;
     PluginLogModel* log() { return &m_log; }
     QVariantList logPlugins() const;
     QString logFilter() const { return m_log.filter(); }
@@ -257,6 +260,7 @@ public:
     Q_INVOKABLE QString permissionsNote() const;
 
 signals:
+    void webSettingsRequested();
     void listChanged();
     void logPluginsChanged();
     void logFilterChanged();

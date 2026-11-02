@@ -283,7 +283,7 @@ QString FavoritesSettings::validateKeyword(int index, const QString& word) const
             if (i != index && other.keyword.compare(word, Qt::CaseInsensitive) == 0)
                 return tr("关键词“%1”已经给了“%2”").arg(other.keyword, other.name);
         }
-        for (const WebShortcut& web : m_editor->m_settings.webShortcuts) {
+        for (const WebShortcut& web : m_editor->m_settings.webShortcutsInUse()) {
             if (web.keyword.compare(word, Qt::CaseInsensitive) == 0)
                 return tr("关键词“%1”已经给了网页搜索“%2”").arg(web.keyword, web.name);
         }
@@ -552,7 +552,7 @@ void FavoritesSettings::importFile()
     FavoriteList favorites = read->favorites;
     int keywordsTaken = 0;
     for (Favorite& f : favorites) {
-        for (const WebShortcut& web : m_editor->m_settings.webShortcuts) {
+        for (const WebShortcut& web : m_editor->m_settings.webShortcutsInUse()) {
             if (!f.keyword.isEmpty() && web.keyword.compare(f.keyword, Qt::CaseInsensitive) == 0) {
                 f.keyword.clear();
                 ++keywordsTaken;

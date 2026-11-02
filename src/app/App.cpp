@@ -1,4 +1,5 @@
 #include "App.h"
+#include "WebSearchProvider.h"
 #include "platform/OcrFiles.h"
 #include "platform/OcrPackage.h"
 
@@ -1343,15 +1344,37 @@ QQuickWindow* App::createPreviewWindow()
 
 // The first search of the web shortcuts is the default (defaultWebSearchUrl).
 // WINSHUN_WEB_DRYRUN (tests): said in the log (WINSHUN_LOG_INFO), not opened.
-void App::openWebSearch(const QString& query)
+const WebShortcuts& App::activeWebShortcuts() const
 {
-    const QString url = defaultWebSearchUrl(m_settings.webShortcuts, query);
-    if (url.isEmpty())
+    static const WebShortcuts empty;
+    return m_pluginHost && webplugin::available(m_pluginHost->catalog()) ? m_settings.webShortcuts : empty;
+}
+
+void App::applyWebSearch()
+{
+    if (!m_pluginHost || !m_launcher)
         return;
+    const auto& shortcuts = activeWebShortcuts();
+    QList<std::pair<QString, QString>> keywords;
+    for (const auto& shortcut : shortcuts)
+        keywords.append({shortcut.keyword, shortcut.name});
+    m_pluginHost->setWebKeywords(keywords);
+    m_launcher->setWebShortcuts(shortcuts);
+    m_launcher->setWebSuggestions(!shortcuts.isEmpty() && m_settings.webSuggestions);
+}
+
+bool App::openWebSearch(const QString& query)
+{
+    if (activeWebShortcuts().isEmpty())
+        return false;
+    const QString url = defaultWebSearchUrl(activeWebShortcuts(), query);
+    if (url.isEmpty())
+        return false;
     static const bool dryRun = qEnvironmentVariableIsSet("WINSHUN_WEB_DRYRUN");
     qInfo().noquote() << (dryRun ? u"Web: would open %1 (the words read from a picture)"_s : u"Web: open %1 (the words read from a picture)"_s).arg(url);
     if (!dryRun)
         shell::openUrl(url);
+    return true;
 }
 
 bool App::eventFilter(QObject* watched, QEvent* event)
@@ -1714,8 +1737,6 @@ void App::applySettings(bool initial)
     m_launcher->setContentOptions(m_settings.contentSearch, m_settings.contentExtensions,
         m_settings.contentSizeLimits(), m_settings.contentInLowPriority, m_settings.contentDocuments);
     m_launcher->setContentIndex(m_settings.contentIndex);
-    m_launcher->setWebShortcuts(m_settings.webShortcuts);
-    m_launcher->setWebSuggestions(m_settings.webSuggestions);
     m_launcher->setFileTypes(m_settings.namedFileTypes()); // after applyAppearance: the built-in ones' names
     applyPlugins();
     if (!initial) {
@@ -1803,7 +1824,7 @@ QString App::screenshotKeyword() const
         return {};
     // They keep theirs (the settings refuse the word; WinShun.ini may be
     // edited by hand).
-    for (const WebShortcut& w : m_settings.webShortcuts) {
+    for (const WebShortcut& w : activeWebShortcuts()) {
         if (w.keyword.compare(word, Qt::CaseInsensitive) == 0)
             return {};
     }
@@ -2115,8 +2136,13 @@ void App::setUpAppTools()
                 done(toolError(u"text is empty"_s));
                 return;
             }
-            openWebSearch(text);
-            done({});
+            if (!openWebSearch(text)) {
+                if (m_messages)
+                    m_messages->showNotification(tr("网页搜索插件未启用"),
+                        tr("请在设置 → 插件中安装并启用网页搜索，并添加要搜索的网站。"), [this] { showWebSettings(); });
+                done(toolError(tr("网页搜索插件未启用或没有可用的网站，请在设置 → 插件中安装并启用网页搜索")));
+            } else
+                done({});
         }});
     tools.push_back({u"show_ocr_setup"_s, plugin::Permission::Ui,
         [this](const QString&, const QString&, const QJsonObject&, std::function<void(mcp::ToolResult)> done) {
@@ -6518,6 +6544,7 @@ void App::applySwitches()
 void App::pluginsChanged()
 {
     applySwitches();
+    applyWebSearch();
     QHash<QString, QString> folders;
     for (const plugin::Entry& e : m_pluginHost->catalog().entries())
         folders.insert(e.id, e.dir);
@@ -6569,10 +6596,7 @@ void App::applyPlugins()
     }
     catalog.setEnabled(enabled); // the ones not installed yet count too
     m_pluginHost->setKeywordOverrides(overrides);
-    QList<std::pair<QString, QString>> web;
-    for (const WebShortcut& w : m_settings.webShortcuts)
-        web.append({w.keyword, w.name});
-    m_pluginHost->setWebKeywords(web); // [WebSearch] keeps its keywords: a plugin's alike is set aside
+    applyWebSearch();
     m_pluginHost->setFavoriteKeywords(favoriteKeywords(*m_favorites)); // so do the favorites
     applyScreenshots(); // and the screenshot history's (Win顺's own)
     // Each plugin's settings: the INI's values by the manifest's types, the

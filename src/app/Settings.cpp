@@ -1,4 +1,5 @@
 #include "Settings.h"
+#include "WebSearchConfig.h"
 #include "PreviewShortcut.h"
 #include "platform/HotkeyText.h"
 #include "PathText.h"
@@ -13,6 +14,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QFile>
 #include <QOperatingSystemVersion>
 #include <QRegularExpression>
 #include <QSet>
@@ -445,6 +447,13 @@ const PluginConfig* Settings::plugin(QStringView id) const
 {
     const auto it = std::find_if(plugins.cbegin(), plugins.cend(), [&](const PluginConfig& p) { return p.id == id; });
     return it == plugins.cend() ? nullptr : &*it;
+}
+
+const WebShortcuts& Settings::webShortcutsInUse() const
+{
+    static const WebShortcuts empty;
+    const auto* config = plugin(webplugin::kId);
+    return config && config->enabled ? webShortcuts : empty;
 }
 
 PluginConfig& Settings::pluginConfig(const QString& id)
@@ -1061,8 +1070,6 @@ void Settings::load()
         pasteFileCtrlV = pasteFileMenu = true;
 
     // Before the list: writing it (defaults new to the file) rewrites the whole group.
-    webSuggestions = readOrDefault(s, u"WebSearch/Suggestions"_s, d.webSuggestions);
-    webShortcuts = readWebShortcuts(s, d.webShortcuts, webSuggestions);
     fileTypes = readFileTypes(s, d.fileTypes);
     QSet<QString> typeKeywords{folderKeyword};
     for (FileType& type : fileTypes) {
@@ -1093,6 +1100,41 @@ void Settings::load()
 
     pluginDeveloperMode = readOrDefault(s, u"Plugins/DeveloperMode"_s, d.pluginDeveloperMode);
     plugins = readPlugins(s);
+    // The former built-in and the old URL sample become one optional plugin.
+    // Keep the old section for rollback, but read it only during this migration.
+    if (!s.value(u"Plugins/WebSearchMigrated"_s, false).toBool()) {
+        PluginConfig& config = pluginConfig(webplugin::kId.toString());
+        if (!webplugin::value(config, u"shortcuts")) {
+            const bool legacy = s.contains(u"WebSearch/size"_s);
+            webSuggestions = legacy ? s.value(u"WebSearch/Suggestions"_s, true).toBool() : true;
+            auto defaults = d.webShortcuts;
+            if (!firstRun) {
+                // These three belonged only to the old sample. Its overrides
+                // (including a removed keyword) must decide their migration.
+                defaults.removeIf([](const WebShortcut& shortcut) {
+                    return shortcut.keyword == u"gh" || shortcut.keyword == u"yt" || shortcut.keyword == u"wiki";
+                });
+            }
+            webShortcuts = legacy ? readWebShortcuts(s, defaults, webSuggestions) : defaults;
+            QJsonArray legacyCommands;
+            QFile userManifest(QDir(dataDir()).filePath(u"plugins/winshun.web/plugin.json"_s));
+            if (userManifest.open(QIODevice::ReadOnly) && userManifest.size() <= (1 << 20)) {
+                const auto object = QJsonDocument::fromJson(userManifest.readAll()).object();
+                if (!object.contains(u"runtime"_s) && object.value(u"id"_s).toString() == webplugin::kId)
+                    legacyCommands = object.value(u"commands"_s).toArray();
+            }
+            webplugin::mergeLegacyCommands(webShortcuts, config, legacyCommands);
+            webplugin::store(config, webShortcuts, webSuggestions);
+            config.enabled = !firstRun || legacy || config.enabled;
+            if (config.enabled && config.confirmed.isEmpty())
+                config.confirmed = {u"none"_s}; // URL-only; the migration adds no permission.
+        }
+        writePlugins(s, plugins);
+        s.setValue(u"Plugins/WebSearchMigrated"_s, true);
+        s.sync();
+    }
+    webShortcuts = webplugin::shortcuts(plugin(webplugin::kId));
+    webSuggestions = webplugin::suggestions(plugin(webplugin::kId));
     // System switches used to be unconditional native backends. Preserve
     // existing users' system-search choice once; a fresh profile starts off.
     // Persist the marker even when off, so the second load is not an upgrade.
@@ -1248,7 +1290,6 @@ bool Settings::saveChecked() const
     s.setValue(u"PasteFile/Enabled"_s, pasteFileEnabled);
     s.setValue(u"PasteFile/CtrlV"_s, pasteFileCtrlV);
     s.setValue(u"PasteFile/Menu"_s, pasteFileMenu);
-    writeWebShortcuts(s, webShortcuts, webSuggestions);
     writeFileTypes(s, fileTypes);
     writeShares(s, shares);
     s.setValue(u"Network/VerifyHours"_s, networkVerifyHours);
@@ -1265,7 +1306,17 @@ bool Settings::saveChecked() const
     s.setValue(u"Mcp/PluginActions"_s, mcpPluginActions);
     s.setValue(u"Mcp/Settings"_s, mcpSettings);
     s.setValue(u"Plugins/DeveloperMode"_s, pluginDeveloperMode);
-    writePlugins(s, plugins);
+    auto pluginConfigs = plugins;
+    auto web = std::find_if(pluginConfigs.begin(), pluginConfigs.end(), [](const PluginConfig& c) { return c.id == webplugin::kId; });
+    if (web == pluginConfigs.end()) {
+        PluginConfig config;
+        config.id = webplugin::kId.toString();
+        pluginConfigs.append(config);
+        web = std::prev(pluginConfigs.end());
+    }
+    webplugin::store(*web, webShortcuts, webSuggestions);
+    writePlugins(s, pluginConfigs);
+    s.setValue(u"Plugins/WebSearchMigrated"_s, true);
     s.sync();
     return s.status() == QSettings::NoError;
 }

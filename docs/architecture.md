@@ -167,7 +167,7 @@ StartMenuTyping=false    ; 在开始菜单里打字也用 Win顺 搜索（开始
 SearchBox=false          ; Win顺 自己的搜索框放在任务栏上（Windows 11）：图标居中时在最左端，靠左时在托盘左边；放不下时不显示。0.11 及以前的 StartGap 读到就删
 SearchBoxStyle=box       ; box | label | icon：搜索框最宽是哪种样子（整个框 / 图标和“搜索” / 仅图标），和 Windows 搜索的三种一样；放不下时照样变窄
 
-[WebSearch]              ; 网页搜索：“全部”里输入关键词打开网页，带 %s 的网址还能搜（gh WinShun）；设置里增删改、导入导出；Icon= 是用户自选图标的文件名
+[WebSearch]              ; 旧版网页搜索（迁移后只读保留，新配置见 [Plugin.winshun.web]）：“全部”里输入关键词打开网页，带 %s 的网址还能搜（gh WinShun）；设置里增删改、导入导出；Icon= 是用户自选图标的文件名
 size=11                  ; 几个；第一次运行时写入 10 个常用网站（baidu biying bilibili zhihu weibo douyin xhs taobao jingdong fanyi）和 winshun
 1\Keyword=baidu          ; 关键词：一个词，不分大小写
 1\Name=百度              ; 空 = 用关键词
@@ -442,7 +442,7 @@ src/tools-plugin/    WinShunTools.exe：随包的 winshun.tools 插件（无 Qt�
 src/break-plugin/    WinShunBreak.exe：插件库里的 winshun.break 插件（休息提醒，WinShun-plugins #7；无 Qt，静态 C 运行库，常驻 eager，只要 ui）；Schedule（纯时钟，tests/tst_break.cpp 再编一遍）、Sense（空闲、锁屏、全屏、勿扰）、Ui（Direct2D 分层窗口，自己的线程）
 src/translate-plugin/ WinShunTranslate.exe：插件库里的 winshun.translate 插件（翻译；0.7–0.17 是随包的 Python 插件；无 Qt，静态 C 运行库，常驻，debounceMs 300）；DeepL 或 OpenAI 兼容接口（WinHTTP，系统代理，整次请求一个时限），纯逻辑由 tests/tst_translate.cpp 再编一遍
 src/bookmarks-plugin/ WinShunBookmarks.exe：插件库里的 winshun.bookmarks 插件（浏览器书签；0.7–0.17 是随包的 Python 插件；无 Qt，静态 C 运行库，一次性）；读 Chrome、Edge 每个配置文件的 Bookmarks 和设置里指定的文件，纯逻辑由 tests/tst_bookmarks.cpp 再编一遍
-plugins/             随安装包的插件（docs/plugins.md）：winshun.web、winshun.go（零代码）、winshun.kill（PowerShell 常驻）、winshun.tools（C++）；构建时和 SDK、WinShunTools.exe 一起整理到 build\<preset>\plugins，build.ps1 -Deploy 放进 dist\WinShun\plugins，安装到 <安装目录>\plugins，默认全部停用。Win顺 自己的其余插件（截图、按意思找、局域网传输、休息提醒、翻译、浏览器书签）在 src\<名字>-plugin\package，构建时整理到 build\<preset>\library-plugins\<id>，release.ps1 打成 <id>-<版本>.wsplugin 给插件库；以前随包的由 MovedPlugins 在升级后自动装上
+plugins/             随安装包的插件（docs/plugins.md）：winshun.go（零代码）、winshun.kill（PowerShell 常驻）、winshun.tools（C++）；构建时和 SDK、WinShunTools.exe 一起整理到 build\<preset>\plugins，build.ps1 -Deploy 放进 dist\WinShun\plugins，安装到 <安装目录>\plugins，默认全部停用。Win顺 自己的其余插件（截图、按意思找、局域网传输、休息提醒、翻译、浏览器书签、网页搜索）在 src\<名字>-plugin\package，构建时整理到 build\<preset>\library-plugins\<id>，release.ps1 打成 <id>-<版本>.wsplugin 给插件库；以前随包的由 MovedPlugins 在升级后自动装上
 tests/               单元测试（Qt Test）；tests/plugin_fake.cpp 是 tst_plugin、tst_mcp 和 wsbench --plugin 用的假插件（--once / --serve / --probe），tests/plugins/ 是 wsbench 用的 PowerShell、Python、exe 示例
 tools/wsbench.cpp    在真实索引上测内存和搜索耗时（--switches 只读地列出每个系统开关的状态和读取耗时；--stats 看各部分怎么构成，--check 把每个查询的结果和逐项匹配比对）；--mft 读各盘的 MFT 并与遍历比对，--mft-time 比较读 MFT 的几种做法，--service 照首次运行建一遍索引（--service --content 连内容索引一起，量要多久），--content-index 建一遍内容索引并核对（报出每个文件读和交给索引各花多久；--no-add 不交给索引，--grams-only 只量切片段，--merge-threads 定合并用几个线程，--merge-times 再用 16 / 8 / 4 / 1 个线程各合并一次），--service --documents 只建文档的那部分（报出几个副本没再读），--service --content --from 文件夹 从已有的索引文件开始（升级后的那次重建），--content-search 用程序自己的内容索引看一次内容搜索要读哪些文件，--extract 读一遍所有文档，--share 路径 读一个网络共享（--indexer 走一遍 ShareIndexer，--watch 秒 再看变更通知），--plugin 文件夹 --query 文字 按程序的方式跑一个插件（校验 manifest、经 runner 起进程、打印结果 JSON 和冷启动 / 首次往返 / 稳态往返的耗时）
 tools/plugin-probe.cpp 插件系统阶段 0 的探针（无 Qt，静态 C 运行库）：`--parent` 把自己当子进程按每条路起一遍（资源管理器令牌 + CreateProcessWithTokenW、自己的令牌降权、链接令牌、普通 CreateProcessW、不提权的 runner），报出子进程的令牌、作业、缓解策略、stdio、环境和起进程的耗时（提权和不提权各跑一次；结论见 pitfalls 的“插件系统”）
@@ -534,7 +534,7 @@ tools/plugin-probe.cpp 插件系统阶段 0 的探针（无 Qt，静态 C 运行
   - 要搜的文字按 UTF-8 百分号编码（空格是 `%20`，`/`、`&` 也编码），原样放进 `%s`，引号也不动，网站自己认 `"整个短语"`。主页不填时取搜索网址的 `https://网站/`；应用自己的链接（`obsidian://search?query=%s`）则是去掉 `%s` 的那条链接。
   - 设置里填网址时：没写 `https://` 的补上；只有 `%25s` 没有 `%s` 的换回 `%s`，所以“在网站上搜 `%s`，再复制地址栏”就能得到搜索网址。不接受 `file:`：要搜的文字落进文件路径里，可能打开一个程序。
   - 打开和别的一样交给资源管理器，以普通权限运行。搜过什么不记进最近使用。
-  - 自带 10 个中文网站常用的（百度、必应、哔哩哔哩、知乎、微博、抖音、小红书、淘宝、京东、百度翻译）。关键词用整词（`baidu`、`jingdong`），不用两个字母：两个字母常是文件名的开头，打 `bd` 找文件时不该先冒出一个网站；按名称和拼音首字母（`bd`、`jd`）照样找得到它们，只是不置顶。也避开随包插件 winshun.web 的关键词（bd gh yt wiki bing bili）。
+  - 自带 10 个中文网站常用的（百度、必应、哔哩哔哩、知乎、微博、抖音、小红书、淘宝、京东、百度翻译）。关键词用整词（`baidu`、`jingdong`），不用两个字母：两个字母常是文件名的开头，打 `bd` 找文件时不该先冒出一个网站；按名称和拼音首字母（`bd`、`jd`）照样找得到它们，只是不置顶。网页搜索已统一到可选 `winshun.web` 插件；新配置增加 GitHub、YouTube 和维基百科，旧插件短关键词在迁移时保留。
 - **网页搜索的行显示网站自己的图标**（浏览器地址栏左边那个），第一次显示时从网上取一次，存在 `%LOCALAPPDATA%\WinShun\icons\web\<主机名>.png`，30 天后再取；没取到之前和取不到时用默认浏览器的图标（`AssocQueryString(ASSOCF_IS_PROTOCOL, ASSOCSTR_EXECUTABLE)`）。按主页的主机名存（`fanyi.baidu.com` 和 `www.baidu.com` 各一个）。用户也可以给某个网站换一张自己的图（设置里“选择图片…”，PNG、ICO 或 SVG，和网站图标一样只用 Qt 自己的解码器读；或“粘贴 SVG”，从剪贴板取 SVG 代码）：整理成至多 256 像素的方形 PNG，按内容的 SHA-1 前 16 位命名存进 `icons\web\custom\`，`[WebSearch]` 里只记文件名（读设置时只认这种名字，不认路径）；行的图标地址是 `custom:<名字>`（`WebShortcut::iconRef`），没人用的图在保存、移除、导入后删掉。导入导出是一个 JSON 文件（`format: winshun-web-shortcuts`），自选图标以 `data:image/png;base64` 写在里面；导入时按关键词合并，已有的原位替换（文件里没有图标就保留原来的图），新的排在后面，用不了的条目跳过并报个数。
   - 只在行或设置里的那一项要显示时才取，不在启动时把所有网站取一遍：用户没用过的网站不去连。取不到的这次运行里不再试。一条后台线程依次取（WinHTTP，走系统代理，10 秒超时），取到后行的图标地址从 `web/https` 换成 `site/<主机>/<主题>`，列表只刷新那几行。
   - 取哪个：读主页（前 2 MB），按 `<link rel="icon">` 里标了 64 px 以上的、其他 icon、`/favicon.ico` 的顺序，取到 64 px 就停，最多问 5 个地址；都只有 16 px 或没有时才用 apple-touch-icon（给手机桌面的，清楚但常是另一张图：B 站的带“WEB”字样）。实测 11 个网站都是浏览器那张：百度 64、淘宝 64、京东 96，其余 32（2026-10）。主页被重定向到登录或验证页时，也试原网站的 `/favicon.ico`。
@@ -1203,3 +1203,11 @@ Blender 通过 `integrations/blender/winshun_file_dialog` 的可选扩展发布�
 `Panel` 的列边界有可见标记、悬停强调和 16 逻辑像素命中区；右侧滚动条按 `WindowFrame::resizeMargin()` 留出系统缩放边缘，两个区域的原生命中分别为 `HTCLIENT` 和 `HTRIGHT`。圆盘注册 OLE 目标失败时不缓存成功状态，下一次召唤重新尝试并给出失败反馈。
 
 构建、自动回归、真实录制及未覆盖环境见 [#149–#151 验证记录](issue149-151-validation.md)。
+
+## 网页搜索插件迁移（#166）
+
+网页搜索是插件库中的 `winshun.web` 2.0，以 `webSearch: true` 声明官方零代码宿主能力；没有 `runtime`，没有重复的静态命令。宿主保留通用网址、名称匹配、结果展示、搜索建议和编辑控件，只有已安装且启用的提供者才接入 Launcher / SearchEngine。设置编辑器按需挂在插件卡片内，主侧栏移除旧页面。普通本地搜索不因此启动插件进程。
+
+持久化唯一入口是 `[Plugin.winshun.web]` 的 `Setting.shortcuts`（JSON 数组，保留本地图标引用）和 `Setting.suggestions`。`Settings.webShortcuts/webSuggestions` 是同一数据的内存编辑视图。首次迁移通过 `Plugins/WebSearchMigrated` 标记：保留原 `[WebSearch]` 作为迁移前的回退副本，以后不再读写它；已启用 v1 示例的关键词覆盖（含清空）、网址和主页合并到列表，原内置关键词优先，原顺序保持。用户目录中的旧零代码清单不被覆盖，清单解析器在内存中将它适配为新能力。新配置默认关闭；旧配置保留原有功能，通过 MovedPlugins 恢复缺少的包，失败可重试。
+
+App::applyWebSearch 同时更新有效网站、关键词占用和建议开关；停用或卸载即时移除结果并取消建议，配置和图标保留。截图插件 `web_search` 工具走相同有效提供者，缺少插件时返回错误并给出可打开插件设置的通知。备份仍包含 INI 和 `icons/web/custom`，导入导出继续使用原便携 JSON 格式。

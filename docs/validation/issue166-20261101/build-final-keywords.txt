@@ -1,0 +1,34 @@
+[1/229] Automatic MOC and UIC for target tst_aisettings
+[2/228] Automatic MOC and UIC for target tst_settings
+[3/227] Automatic MOC and UIC for target WinShun
+[4/227] Running AUTOMOC file extraction for target WinShun
+[5/227] Running moc --collect-json for target WinShun
+[6/32] Building CXX object tests\CMakeFiles\tst_aisettings.dir\tst_aisettings.cpp.obj
+[7/32] Building CXX object tests\CMakeFiles\tst_aisettings.dir\__\src\app\AiSettings.cpp.obj
+[8/32] Building CXX object tests\CMakeFiles\tst_aisettings.dir\__\src\app\Settings.cpp.obj
+[9/32] Building CXX object src\app\CMakeFiles\WinShun.dir\main.cpp.obj
+[10/32] Building CXX object src\app\CMakeFiles\WinShun.dir\WinShun_autogen\mocs_compilation.cpp.obj
+[11/32] Building CXX object src\app\CMakeFiles\WinShun.dir\DropPieHelper.cpp.obj
+[12/32] Building CXX object src\app\CMakeFiles\WinShun.dir\Migration.cpp.obj
+[13/32] Building CXX object src\app\CMakeFiles\WinShun.dir\AiSettings.cpp.obj
+[14/32] Building CXX object src\app\CMakeFiles\WinShun.dir\Onboarding.cpp.obj
+[15/32] Building CXX object src\app\CMakeFiles\WinShun.dir\Settings.cpp.obj
+[16/32] Building CXX object src\app\CMakeFiles\WinShun.dir\App.cpp.obj
+F:\电脑便捷工具\src\app\App.cpp(2258): warning C4456: “keys”的声明隐藏了上一个本地声明
+F:\电脑便捷工具\src\app\App.cpp(2252): note: 参见“keys”的声明
+[17/32] Building CXX object src\app\CMakeFiles\WinShun.dir\winshun_qmltyperegistrations.cpp.obj
+[18/32] Building CXX object src\app\CMakeFiles\WinShun.dir\CliSetup.cpp.obj
+[19/32] Building CXX object src\app\CMakeFiles\WinShun.dir\Preview.cpp.obj
+[20/32] Building CXX object src\app\CMakeFiles\WinShun.dir\FavoritesSettings.cpp.obj
+[21/32] Building CXX object src\app\CMakeFiles\WinShun.dir\PluginGallery.cpp.obj
+[22/32] Building CXX object src\app\CMakeFiles\WinShun.dir\MovedPlugins.cpp.obj
+[23/32] Building CXX object src\app\CMakeFiles\WinShun.dir\Launcher.cpp.obj
+[24/32] Building CXX object src\app\CMakeFiles\WinShun.dir\PluginSettings.cpp.obj
+[25/32] Linking CXX executable tst_aisettings.exe
+[26/32] Building CXX object src\app\CMakeFiles\WinShun.dir\Backup.cpp.obj
+[27/32] Building CXX object src\app\CMakeFiles\WinShun.dir\Updater.cpp.obj
+[28/32] Building CXX object src\app\CMakeFiles\WinShun.dir\SettingsEditor.cpp.obj
+[29/32] Building CXX object tests\CMakeFiles\tst_settings.dir\tst_settings.cpp.obj
+[30/32] Linking CXX executable WinShun.exe
+[31/32] Building CXX object tests\CMakeFiles\tst_settings.dir\__\src\app\Settings.cpp.obj
+[32/32] Linking CXX executable tst_settings.exe

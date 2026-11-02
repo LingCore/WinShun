@@ -939,6 +939,7 @@ add_executable(plugin_fake plugin_fake.cpp)
 target_link_libraries(plugin_fake PRIVATE wsplugin_lite)
 set_target_properties(plugin_fake PROPERTIES AUTOMOC OFF MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 qt_add_executable(tst_plugin tst_plugin.cpp)
+target_include_directories(tst_plugin PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_plugin PRIVATE wsplugin miniz Qt6::Test) # miniz: the test writes zips to install
 target_compile_definitions(tst_plugin PRIVATE
     WINSHUN_PLUGIN_HOST="$<TARGET_FILE:WinShunPluginHost>"

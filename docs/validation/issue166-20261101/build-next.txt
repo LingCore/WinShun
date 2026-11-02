@@ -1,0 +1,29 @@
+[1/220] Automatic MOC and UIC for target tst_aisettings
+[2/219] Automatic MOC and UIC for target WinShun
+[3/219] Automatic MOC and UIC for target tst_plugin
+[4/218] Running AUTOMOC file extraction for target WinShun
+[5/218] Automatic MOC and UIC for target tst_settings
+[6/217] Running moc --collect-json for target WinShun
+[7/25] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_SettingsNotice_qml.cpp.obj
+[8/25] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_SettingsConfirm_qml.cpp.obj
+[9/25] Building CXX object src\app\CMakeFiles\WinShun.dir\Onboarding.cpp.obj
+[10/25] Building CXX object src\app\CMakeFiles\WinShun.dir\PluginGallery.cpp.obj
+[11/25] Building CXX object tests\CMakeFiles\tst_settings.dir\tst_settings.cpp.obj
+[12/25] Building CXX object tests\CMakeFiles\tst_aisettings.dir\__\src\app\Settings.cpp.obj
+[13/25] Linking CXX executable tst_aisettings.exe
+[14/25] Building CXX object tests\CMakeFiles\tst_settings.dir\__\src\app\Settings.cpp.obj
+[15/25] Building CXX object src\app\CMakeFiles\WinShun.dir\PluginSettings.cpp.obj
+[16/25] Linking CXX executable tst_settings.exe
+[17/25] Building CXX object src\app\CMakeFiles\WinShun.dir\winshun_qmltyperegistrations.cpp.obj
+[18/25] Building CXX object src\app\CMakeFiles\WinShun.dir\SettingsEditor.cpp.obj
+[19/25] Building CXX object src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_SettingsWindow_qml.cpp.obj
+FAILED: src/app/CMakeFiles/WinShun.dir/.rcc/qmlcache/WinShun_qml_SettingsWindow_qml.cpp.obj 
+C:\PROGRA~1\MIB055~1\2022\COMMUN~1\VC\Tools\MSVC\1444~1.352\bin\Hostx64\x64\cl.exe  /nologo /TP -DMINIZ_NO_STDIO -DMINIZ_NO_TIME -DMINIZ_NO_ZLIB_COMPATIBLE_NAMES -DNOMINMAX -DQT_CORE_LIB -DQT_GUI_LIB -DQT_NETWORK_LIB -DQT_NO_CAST_FROM_ASCII -DQT_NO_DEBUG -DQT_NO_URL_CAST_FROM_STRING -DQT_OPENGL_LIB -DQT_QMLINTEGRATION_LIB -DQT_QML_LIB -DQT_QUICK_LIB -DQT_SQL_LIB -DQT_SVG_LIB -DUNICODE -DWIN32 -DWIN32_LEAN_AND_MEAN -DWIN64 -DWINSHUN_VERSION=\"0.17.0\" -DWINSHUN_VERSION_MAJOR=0 -DWINSHUN_VERSION_MINOR=17 -DWINSHUN_VERSION_PATCH=0 -DWINVER=0x0A00 -D_ENABLE_EXTENDED_ALIGNED_STORAGE -D_UNICODE -D_WIN32_WINNT=0x0A00 -D_WIN64 -IF:\电脑便捷工具\build\release\src\app\WinShun_autogen\include -IF:\电脑便捷工具\src\app -IF:\电脑便捷工具\src\core -IF:\电脑便捷工具\src\extract -IF:\电脑便捷工具\src\mcp -IF:\电脑便捷工具\src\plugin -IF:\电脑便捷工具\src\plugin\runner -IF:\电脑便捷工具\src\capture -IF:\电脑便捷工具\third_party\miniz -external:IC:\Qt\6.12.0\msvc2022_64\include\QtQml -external:IC:\Qt\6.12.0\msvc2022_64\include -external:IC:\Qt\6.12.0\msvc2022_64\include\QtCore -external:IC:\Qt\6.12.0\msvc2022_64\mkspecs\win32-msvc -external:IC:\Qt\6.12.0\msvc2022_64\include\QtQmlIntegration -external:IC:\Qt\6.12.0\msvc2022_64\include\QtNetwork -external:IC:\Qt\6.12.0\msvc2022_64\include\QtSql -external:IC:\Qt\6.12.0\msvc2022_64\include\QtGui -external:IC:\Qt\6.12.0\msvc2022_64\include\QtQuick -external:IC:\Qt\6.12.0\msvc2022_64\include\QtOpenGL -external:IC:\Qt\6.12.0\msvc2022_64\include\QtSvg -external:IF:\电脑便捷工具\build\release\_deps\onnxruntime-win-x64-1.30.0\include -external:W0 /DWIN32 /D_WINDOWS /EHsc /O2 /Ob2 /DNDEBUG -std:c++20 -MD -Zc:__cplusplus -permissive- -utf-8 /utf-8 /W4 /permissive- /Zc:__cplusplus /showIncludes /Fosrc\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_SettingsWindow_qml.cpp.obj /Fdsrc\app\CMakeFiles\WinShun.dir\ /FS -c F:\电脑便捷工具\build\release\src\app\.rcc\qmlcache\WinShun_qml_SettingsWindow_qml.cpp
+F:\电脑便捷工具\build\release\src\app\.rcc\qmlcache\WinShun_qml_SettingsWindow_qml.cpp : fatal error C1083: 无法打开编译器生成的文件: “F:\电脑便捷工具\build\release\src\app\CMakeFiles\WinShun.dir\.rcc\qmlcache\WinShun_qml_SettingsWindow_qml.cpp.obj”: Permission denied
+[20/25] Building CXX object tests\CMakeFiles\tst_plugin.dir\tst_plugin.cpp.obj
+[21/25] Building CXX object src\app\CMakeFiles\WinShun.dir\WinShun_autogen\mocs_compilation.cpp.obj
+[22/25] Building CXX object src\app\CMakeFiles\WinShun.dir\Preview.cpp.obj
+[23/25] Building CXX object src\app\CMakeFiles\WinShun.dir\App.cpp.obj
+F:\电脑便捷工具\src\app\App.cpp(2255): warning C4456: “keys”的声明隐藏了上一个本地声明
+F:\电脑便捷工具\src\app\App.cpp(2249): note: 参见“keys”的声明
+ninja: build stopped: subcommand failed.

@@ -1,0 +1,11 @@
+[1/14] Automatic MOC and UIC for target tst_movedplugins
+[2/13] Automatic MOC and UIC for target tst_plugin
+[3/12] Automatic MOC and UIC for target tst_appearance
+[4/11] Building CXX object tests\CMakeFiles\tst_movedplugins.dir\__\src\app\MovedPlugins.cpp.obj
+[5/11] Building CXX object tests\CMakeFiles\tst_movedplugins.dir\tst_movedplugins.cpp.obj
+[6/11] Linking CXX executable tst_movedplugins.exe
+[7/11] Building CXX object tests\CMakeFiles\tst_appearance.dir\tst_appearance.cpp.obj
+[8/11] Building CXX object tests\CMakeFiles\tst_plugin.dir\tst_plugin.cpp.obj
+[9/11] Linking CXX executable tst_plugin.exe
+[10/11] Building CXX object tests\CMakeFiles\tst_appearance.dir\__\src\app\Settings.cpp.obj
+[11/11] Linking CXX executable tst_appearance.exe

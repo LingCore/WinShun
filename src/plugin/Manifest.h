@@ -176,6 +176,7 @@ struct Manifest {
     QStringList pictures;
     bool settingsWindow = false;
     bool systemSwitches = false; // provider of the search UI's existing switch rows
+    bool webSearch = false; // declarative URL provider; no process or static keyword commands
 
     const Command* command(QStringView commandId) const;
     bool resident() const noexcept { return runtime && runtime->mode == RunMode::Resident; }

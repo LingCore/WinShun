@@ -1,4 +1,5 @@
 #include "Settings.h"
+#include "WebSearchConfig.h"
 #include "PreviewShortcut.h"
 #include "Query.h"
 #include "SettingsCommand.h"
@@ -8,6 +9,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QFile>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -51,6 +53,114 @@ private slots:
         QSettings saved(ws::Settings::filePath(), QSettings::IniFormat);
         QVERIFY(!saved.contains(u"Appearance/SearchLogo"_s));
         QCOMPARE(saved.value(u"Appearance/TaskbarIcon"_s).toString(), u"mono"_s);
+    }
+
+    void webPluginMigration()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        {
+            QSettings old(ws::Settings::filePath(), QSettings::IniFormat);
+            old.setValue(u"WebSearch/Defaults"_s, ws::kWebDefaultsVersion);
+            old.setValue(u"WebSearch/Suggestions"_s, false);
+            old.beginWriteArray(u"WebSearch"_s, 1);
+            old.setArrayIndex(0);
+            old.setValue(u"Keyword"_s, u"my"_s);
+            old.setValue(u"Name"_s, u"我的网站"_s);
+            old.setValue(u"Url"_s, u"https://example.test/?q=%s"_s);
+            old.setValue(u"Home"_s, u"https://example.test/home"_s);
+            old.setValue(u"Icon"_s, u"0123456789abcdef.png"_s);
+            old.setValue(u"Suggest"_s, QString());
+            old.endArray();
+            old.setValue(u"Plugin.winshun.web/Enabled"_s, true);
+            old.setValue(u"Plugin.winshun.web/Keyword.gh"_s, u"code"_s);
+            old.setValue(u"Plugin.winshun.web/Keyword.yt"_s, QString());
+            old.setValue(u"Plugin.winshun.web/Keyword.bd"_s, u"MY"_s); // The built-in retains this word.
+            old.sync();
+        }
+        ws::Settings migrated;
+        migrated.load();
+        QVERIFY(migrated.plugin(ws::webplugin::kId)->enabled);
+        QCOMPARE(migrated.webShortcuts.first().keyword, u"my"_s);
+        QCOMPARE(migrated.webShortcuts.first().icon, u"0123456789abcdef.png"_s);
+        QCOMPARE(migrated.webShortcuts.first().home, u"https://example.test/home"_s);
+        QVERIFY(migrated.webShortcuts.first().suggest.isEmpty());
+        QVERIFY(!migrated.webSuggestions);
+        QVERIFY(ws::typedKeyword(migrated.webShortcuts, u"code WinShun").has_value());
+        QVERIFY(!ws::typedKeyword(migrated.webShortcuts, u"gh WinShun").has_value());
+        QVERIFY(!ws::typedKeyword(migrated.webShortcuts, u"yt WinShun").has_value());
+        QCOMPARE(std::count_if(migrated.webShortcuts.cbegin(), migrated.webShortcuts.cend(), [](const auto& s) {
+            return s.keyword.compare(u"my", Qt::CaseInsensitive) == 0;
+        }), 1);
+        QVERIFY(migrated.saveChecked());
+        ws::Settings again;
+        again.load();
+        QCOMPARE(again.webShortcuts, migrated.webShortcuts);
+        QVERIFY(!again.webSuggestions);
+        // Disabling and deleting every website are both intentional, persistent choices.
+        again.pluginConfig(ws::webplugin::kId.toString()).enabled = false;
+        again.webShortcuts.clear();
+        QVERIFY(again.saveChecked());
+        ws::Settings disabled;
+        disabled.load();
+        QVERIFY(!disabled.plugin(ws::webplugin::kId)->enabled);
+        QVERIFY(disabled.webShortcuts.isEmpty());
+        QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+        QVERIFY(ini.contains(u"WebSearch/size"_s)); // Rollback source was not destroyed or re-imported.
+        QVERIFY(ini.value(u"Plugins/WebSearchMigrated"_s).toBool());
+    }
+
+    void webPluginFreshProfile()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings fresh;
+        fresh.load();
+        QVERIFY(!fresh.plugin(ws::webplugin::kId)->enabled);
+        QVERIFY(fresh.webShortcutsInUse().isEmpty());
+        QVERIFY(!fresh.webShortcuts.isEmpty()); // Ready when installed/enabled.
+        QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+        QVERIFY(!ini.contains(u"WebSearch/size"_s));
+        ws::Settings reopened;
+        reopened.load();
+        QVERIFY(!reopened.plugin(ws::webplugin::kId)->enabled);
+        reopened.pluginConfig(ws::webplugin::kId.toString()).enabled = true;
+        QCOMPARE(reopened.webShortcutsInUse(), reopened.webShortcuts);
+        reopened.pluginConfig(ws::webplugin::kId.toString()).enabled = false;
+        QVERIFY(reopened.webShortcutsInUse().isEmpty());
+    }
+
+    void webPluginCustomManifestMigration()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        const QString folder = profile.filePath(u"plugins/winshun.web"_s);
+        QVERIFY(QDir().mkpath(folder));
+        QFile manifest(folder + u"/plugin.json"_s);
+        QVERIFY(manifest.open(QIODevice::WriteOnly));
+        const auto command = QJsonObject {{u"id"_s, u"gh"_s}, {u"keyword"_s, u"old"_s}, {u"title"_s, u"自定义站点"_s},
+            {u"run"_s, QJsonObject {{u"url"_s, u"https://private.test/search?q=%s"_s}, {u"home"_s, u"https://private.test/start"_s}}}};
+        const QByteArray original = QJsonDocument(QJsonObject {{u"id"_s, u"winshun.web"_s}, {u"commands"_s, QJsonArray {command}}}).toJson();
+        manifest.write(original);
+        manifest.close();
+        QSettings old(ws::Settings::filePath(), QSettings::IniFormat);
+        old.setValue(u"Plugin.winshun.web/Enabled"_s, true);
+        old.setValue(u"Plugin.winshun.web/Keyword.gh"_s, u"custom"_s);
+        old.sync();
+        ws::Settings migrated;
+        migrated.load();
+        const auto match = ws::typedKeyword(migrated.webShortcuts, u"custom 汉字");
+        QVERIFY(match);
+        const auto& shortcut = migrated.webShortcuts[match->index];
+        QCOMPARE(shortcut.url, u"https://private.test/search?q=%s"_s);
+        QCOMPARE(shortcut.home, u"https://private.test/start"_s);
+        QCOMPARE(shortcut.name, u"自定义站点"_s);
+        QVERIFY(!ws::typedKeyword(migrated.webShortcuts, u"gh 汉字"));
+        QVERIFY(manifest.open(QIODevice::ReadOnly));
+        QCOMPARE(manifest.readAll(), original);
     }
 
     void onboardingLifecycle()

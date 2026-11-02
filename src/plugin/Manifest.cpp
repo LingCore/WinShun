@@ -592,8 +592,15 @@ std::optional<Manifest> Manifest::parse(const QByteArray& json, QString* error)
     m.runtime = readRuntime(o.value(u"runtime"_s), check);
     m.permissions = readPermissions(o.value(u"permissions"_s), check);
 
+    if (o.contains(u"webSearch"_s) && !o.value(u"webSearch"_s).isBool())
+        check.fail(u"webSearch 要是布尔值"_s);
+    m.webSearch = o.value(u"webSearch"_s).toBool();
+    if (m.webSearch && m.id != u"winshun.web")
+        check.fail(u"webSearch 是官方网页搜索插件的宿主能力"_s);
+    if (m.webSearch && m.runtime)
+        check.fail(u"webSearch 是零代码网址功能，不能声明 runtime"_s);
     const QJsonValue commands = o.value(u"commands"_s);
-    if (!commands.isArray() || commands.toArray().isEmpty())
+    if (!commands.isArray() || (commands.toArray().isEmpty() && !m.webSearch))
         check.fail(u"commands 要至少有一个命令"_s);
     else {
         int i = 0;
@@ -608,6 +615,16 @@ std::optional<Manifest> Manifest::parse(const QByteArray& json, QString* error)
             }
         }
     }
+    // Older user-installed copies of the official URL sample can stay on
+    // disk. Their keyword/URL data is migrated, and the host supplies the
+    // new provider without also indexing the old static commands.
+    if (m.id == u"winshun.web" && !m.runtime && !m.webSearch && !m.commands.isEmpty()
+        && std::all_of(m.commands.cbegin(), m.commands.cend(), [](const Command& command) { return command.run.kind == Run::Kind::Url; })) {
+        m.webSearch = true;
+        m.commands.clear();
+    }
+    if (m.webSearch && !m.commands.isEmpty())
+        check.fail(u"webSearch 的网站由插件设置管理，commands 应为空"_s);
     if (o.contains(u"settings"_s)) {
         const QJsonValue settings = o.value(u"settings"_s);
         if (!settings.isArray())

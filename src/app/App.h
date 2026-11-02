@@ -202,7 +202,9 @@ private:
     bool createWindow();
     bool createClipWindow();
     QQuickWindow* createPreviewWindow(); // FilePreview's, the first time it is wanted
-    void openWebSearch(const QString& query); // the default web search (defaultWebSearchUrl)
+    bool openWebSearch(const QString& query); // false when the optional provider is unavailable
+    const WebShortcuts& activeWebShortcuts() const;
+    void applyWebSearch();
     // The screenshot and recording are a plugin of the plugin library
     // (winshun.capture, GitHub #138). What such a plugin, with windows of
     // its own, does with Win顺's: a submenu of the tray menu (trayMenu,

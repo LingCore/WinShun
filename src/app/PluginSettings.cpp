@@ -1,4 +1,5 @@
 #include "PluginSettings.h"
+#include "WebSearchConfig.h"
 
 #include "AiBridge.h"
 #include "Catalog.h"
@@ -126,6 +127,7 @@ QVariant PluginListModel::data(const QModelIndex& index, int role) const
     case SettingsRole: return c.settings;
     case HasReadmeRole: return c.hasReadme;
     case SettingsWindowRole: return c.settingsWindow;
+    case WebSearchRole: return c.webSearch;
     case HasDataRole: return c.hasData;
     case AiExposeRole: return c.aiExpose;
     case AiEnabledRole: return c.aiEnabled;
@@ -140,7 +142,7 @@ QHash<int, QByteArray> PluginListModel::roleNames() const
         {DescriptionRole, "description"}, {BundledRole, "bundled"}, {IconRole, "icon"}, {EnabledRole, "pluginEnabled"}, {UsableRole, "usable"},
         {StatusRole, "status"}, {ToneRole, "tone"}, {ErrorRole, "error"}, {ResidentRole, "resident"}, {KeywordsRole, "keywords"},
         {PermissionsRole, "permissions"}, {SettingsRole, "settings"}, {HasReadmeRole, "hasReadme"}, {SettingsWindowRole, "settingsWindow"}, {HasDataRole, "hasData"},
-        {AiExposeRole, "aiExpose"}, {AiEnabledRole, "aiEnabled"}, {AiNoteRole, "aiNote"}};
+        {AiExposeRole, "aiExpose"}, {AiEnabledRole, "aiEnabled"}, {AiNoteRole, "aiNote"}, {WebSearchRole, "webSearch"}};
 }
 
 bool PluginListModel::setCards(std::vector<Card> cards)
@@ -583,13 +585,14 @@ PluginListModel::Card PluginSettings::cardFor(const QString& id) const
     }
     c.description = m.description.pick(m_locale);
     c.resident = m.resident();
-    c.settingsWindow = m.settingsWindow;
+    c.settingsWindow = m.settingsWindow || m.webSearch;
+    c.webSearch = m.webSearch;
     // The manifest's icon, else its first command's (as the rows and the
     // chip in the scope tabs fall back), else the puzzle piece.
     QString icon = m.icon;
     if (icon.isEmpty() && !m.commands.isEmpty())
         icon = m.commands.first().icon;
-    c.icon = FileIconProvider::pluginIconUrl(id, icon.isEmpty() ? u"glyph:U+EA86"_s : icon, dark);
+    c.icon = FileIconProvider::pluginIconUrl(id, icon.isEmpty() ? (m.webSearch ? u"glyph:U+E774"_s : u"glyph:U+EA86"_s) : icon, dark);
 
     using Status = plugin::Host::State::Status;
     QString memory;
@@ -761,6 +764,31 @@ void PluginSettings::readMemory()
         running = running || m_host->state(e.id).status == plugin::Host::State::Status::Running;
     if (running)
         rebuild();
+}
+
+QStringList PluginSettings::searchTerms(int row) const
+{
+    const auto* card = m_list.card(m_list.data(m_list.index(row, 0), PluginListModel::IdRole).toString());
+    if (!card)
+        return {};
+    QStringList terms {card->name};
+    for (const auto& value : card->keywords) {
+        const auto keyword = value.toMap();
+        terms << keyword.value(u"title"_s).toString() << keyword.value(u"keyword"_s).toString();
+    }
+    for (const auto& value : card->settings)
+        terms << value.toMap().value(u"title"_s).toString();
+    if (card->aiExpose)
+        terms << tr("给 AI 用");
+    if (card->webSearch && m_editor) {
+        terms << QCoreApplication::translate("SettingsWindow", "关键词")
+              << QCoreApplication::translate("SettingsWindow", "网页搜索建议");
+        for (const auto& shortcut : m_editor->m_settings.webShortcuts)
+            terms << shortcut.name << shortcut.keyword << displayWebUrl(shortcut.url);
+    }
+    terms.removeAll(QString());
+    terms.removeDuplicates();
+    return terms;
 }
 
 // ---- the switch, keywords, settings ----------------------------------------------
@@ -1105,6 +1133,7 @@ void PluginSettings::uninstall(const QString& id)
     if (!e || e->source == plugin::Entry::Source::Bundled)
         return;
     emit uninstallQuestion(QVariantMap {{u"id"_s, id}, {u"name"_s, pluginName(id)},
+        {u"keepSettings"_s, id == webplugin::kId},
         {u"hasData"_s, QFileInfo::exists(QDir(m_dataRoot).filePath(id + u".data"_s))}});
 }
 
@@ -1139,9 +1168,12 @@ void PluginSettings::confirmUninstall(const QString& id, bool withData)
     plugin::secrets::removeAll(id);
     Settings& settings = m_editor->m_settings;
     const qsizetype had = settings.plugins.size();
-    settings.plugins.removeIf([&](const PluginConfig& c) { return c.id == id; });
+    if (id == webplugin::kId)
+        settings.pluginConfig(id).enabled = false; // Retain websites/icons when the package is removed.
+    else
+        settings.plugins.removeIf([&](const PluginConfig& c) { return c.id == id; });
     m_host->catalog().scan();
-    if (settings.plugins.size() != had)
+    if (settings.plugins.size() != had || id == webplugin::kId)
         m_editor->commit();
     setMessage(error.isEmpty() ? tr("已卸载 %1").arg(name) : tr("卸载 %1：%2").arg(name, error));
     rebuild();
@@ -1166,6 +1198,11 @@ void PluginSettings::showSettings(const QString& id)
 {
     if (!m_host)
         return;
+    const auto* entry = m_host->catalog().find(id);
+    if (entry && entry->manifest && entry->manifest->webSearch) {
+        emit webSettingsRequested();
+        return;
+    }
     if (!m_host->request(id, u"showSettings"_s, {}, {}, true))
         setMessage(tr("插件还没准备好，请稍后再试"));
 }
@@ -1496,17 +1533,17 @@ void PluginSettings::loadPreview()
     }
     {
         PluginListModel::Card c;
-        c.id = u"someone.web"_s;
-        c.name = tr("网页快捷方式");
+        c.id = u"winshun.web"_s;
+        c.name = QCoreApplication::translate("SettingsWindow", "网页搜索");
         c.version = u"2.0.0"_s;
         c.author = u"someone"_s;
-        c.description = tr("零代码：gh 搜 GitHub，bd 搜百度");
+        c.description = QCoreApplication::translate("SettingsWindow", "输入名称或拼音也能找到");
+        c.webSearch = true;
+        c.settingsWindow = true;
         c.icon = glyph(u"U+E774"_s);
         c.enabled = true;
         c.status = tr("就绪");
         c.tone = u"ok"_s;
-        c.keywords = {keyword(u"gh"_s, u"GitHub"_s, u"gh"_s, u"gh"_s, tr("关键字 %1 已被%2占用，改一个").arg(u"gh"_s, tr("网页搜索“%1”").arg(u"GitHub"_s)), false),
-            keyword(u"bd"_s, tr("百度"), u"baidu"_s, u"bd"_s, {}, true)};
         c.permissions = {zeroCode};
         cards.push_back(c);
     }

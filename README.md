@@ -160,7 +160,7 @@
 
 #### 🌐 网页搜索 · ⭐ 收藏夹 · 🧩 插件
 
-- **网页搜索**：`baidu 天气`、`zhihu 显卡`、`jingdong 键盘`，关键词加空格就在那个网站上搜。
+- **网页搜索（可选插件）**：在插件库安装并启用“网页搜索”，`baidu 天气`、`zhihu 显卡`、`jingdong 键盘`，关键词加空格就在那个网站上搜。网站、关键词、图标和搜索建议统一在插件卡片中管理，升级保留原配置。
   - 自带百度、必应、B 站、知乎、微博、抖音、小红书、淘宝、京东、翻译。
   - 可以用 `%s` 网址添加自己的网站，图标、列表都能导入导出。
   - 搜索建议：`baidu 显卡` 下面直接列出百度的联想词，Enter 搜它、Tab 填进框里；自己的网站也能填建议接口。图标可以选 SVG 文件，或直接粘贴 iconfont 的 SVG 代码。
@@ -324,7 +324,7 @@ Listary、PowerToys 的“查找鼠标”默认也用双击 Ctrl，关掉其中�
 到 **设置 › 高级 › 诊断日志** 点“导出诊断日志”，把打开的文件夹里的 `WinShun-diagnostics.zip` 发到 GitHub Issues 或论坛。诊断包记的是版本、系统、磁盘、索引进度和错误，以及界面显示、字体和剪贴板按键转发的状态（字显示不对时先导出再重启），不含设置、剪贴板内容、搜索历史和文档正文。剪贴板搜索失效时，关闭面板后尽快导出即可；转发记录只含次数、放行原因和错误码，不记录具体按键或搜索词。
 
 **收费吗？会上传数据吗？**
-完全免费，MIT 开源。只在这些时候联网：检查新版本时连接 lcstp.com（可以关掉；只发送系统版本和安装方式，不带个人信息），你点“下载并安装”后经第三方镜像或 GitHub 下载安装包，并用 SHA-256 校验；第一次显示某个网页搜索或书签时取一次那个网站的图标；打开设置里的“插件库”这一页、点“刷新”或安装插件时，到插件库取列表和插件（以前开着、现在不再随 Win顺 自带的截图与录屏、局域网传输、按意思找、翻译、浏览器书签，升级后也从插件库取一次）；在网站关键词后打字时，把这些字发给那个网站取搜索建议（不打关键词时一个字也不发，可以在设置里关掉）；你自己打开“按意思找”插件并选了云服务时，把文档的文字发给你选的服务商；用“翻译”插件时，把要翻译的句子发给你填的翻译服务。索引和历史只存在本机（`%LOCALAPPDATA%\WinShun`）。
+完全免费，MIT 开源。只在这些时候联网：检查新版本时连接 lcstp.com（可以关掉；只发送系统版本和安装方式，不带个人信息），你点“下载并安装”后经第三方镜像或 GitHub 下载安装包，并用 SHA-256 校验；第一次显示某个网页搜索或书签时取一次那个网站的图标；打开设置里的“插件库”这一页、点“刷新”或安装插件时，到插件库取列表和插件（以前开着、现在不再随 Win顺 自带的截图与录屏、局域网传输、按意思找、翻译、浏览器书签和网页搜索，升级后也从插件库取一次）；在网站关键词后打字时，把这些字发给那个网站取搜索建议（不打关键词时一个字也不发，可以在设置里关掉）；你自己打开“按意思找”插件并选了云服务时，把文档的文字发给你选的服务商；用“翻译”插件时，把要翻译的句子发给你填的翻译服务。索引和历史只存在本机（`%LOCALAPPDATA%\WinShun`）。
 
 ### 反馈
 
@@ -403,7 +403,7 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
   - **Settings**: about 1,200 Windows settings pages and Control Panel items (`ncpa.cpl`, “network adapter”), plus Group Policy, Disk Management, hosts, AppData and more.
   - Searching for files only? Turn off app and settings results in the settings, and All lists files and content alone.
   - **System switches plugin**: enable it in Settings → Plugins. Off for fresh profiles; upgrades preserve the previous system-search choice. Dark mode, hidden files, file extensions, Bluetooth, WLAN, volume and mute, keep awake, each with its live state at the end of its row; `Enter` flips it in place and the box stays open, `Ctrl+Enter` opens its settings page. `bluetooth off`, `mute` and `volume 30` act in one step; `awake 1h` keeps the PC awake for an hour.
-- 🌐 **Web search**: `zhihu 显卡`, `baidu 天气`: a keyword and a space search that site. Ten Chinese sites are built in; add your own with `%s` in the URL, and import or export the list and icons. The site's search suggestions show below as you type (Enter searches one, Tab puts it in the box), and a site's icon can be an SVG file or pasted SVG code.
+- 🌐 **Web search (optional plugin)**: install and enable Web search from the plugin library. `zhihu 显卡`, `baidu 天气`: a keyword and a space search that site. Manage sites, keywords, icons and suggestions on its plugin card; existing settings migrate on upgrade. Presets include Chinese sites, GitHub, YouTube and Wikipedia; add your own with `%s` in the URL, and import or export the list and icons. The site's search suggestions show below as you type (Enter searches one, Tab puts it in the box), and a site's icon can be an SVG file or pasted SVG code.
 - ⭐ **Favorites**
   - Right-click → Add to favorites. They come first when the box is empty; give one a keyword to open it. Right-click a folder → Search in this folder to browse it in WinShun. Tab switches scopes by default; optionally choose to browse favorite folders with Tab in Settings → Result list → Display and preview.
   - **Your own commands**: Settings › Favorites › Add command. Give it a keyword and put `{query}` in the command; what you type after the keyword goes there. With the keyword `code` and the command `"C:\Tools\Code.exe" {query}`, typing `code D:\my-project` and Enter hands that folder to the editor. No command prompt is involved, and searching or importing never runs a command. Each command can also be set to run silently (console programs, `.bat` and `.ps1` files open no black window) and to run as administrator.
@@ -537,7 +537,7 @@ With “Direct (administrator)” chosen, WinShun runs as administrator, and Win
 Under **Settings › Advanced › Diagnostic logs**, click “Export diagnostic logs” and attach the `WinShun-diagnostics.zip` from the folder that opens to a GitHub issue. It holds the version, system, disks, indexing progress and errors, not your settings, clipboard, search history or document text.
 
 **Is it free? Does it collect data?**
-Free and MIT-licensed. It goes online only to check lcstp.com for new versions (you can turn that off; only the Windows version and the kind of install are sent, nothing personal) and, when you click “Download and install”, to download the package through third-party mirrors or GitHub, checked against its SHA-256, to fetch a web shortcut's or bookmark's site icon once, to fetch the plugin list and plugins when you open the Plugin library page in the settings, press Refresh or install one (and once after an update, for Screenshot and recording, LAN transfer, Search by meaning, Translate or Browser bookmarks if you had them on: they no longer come with WinShun), to ask a site for search suggestions while you type after its keyword (nothing is sent without a site keyword; you can turn this off), and, if you turn on the “Search by meaning” plugin with a cloud service, to send document text to the service you chose, and, when you use the Translate plugin, to send the sentence to the translation service you entered. The index and history stay on your PC (`%LOCALAPPDATA%\WinShun`).
+Free and MIT-licensed. It goes online only to check lcstp.com for new versions (you can turn that off; only the Windows version and the kind of install are sent, nothing personal) and, when you click “Download and install”, to download the package through third-party mirrors or GitHub, checked against its SHA-256, to fetch a web shortcut's or bookmark's site icon once, to fetch the plugin list and plugins when you open the Plugin library page in the settings, press Refresh or install one (and once after an update, for Screenshot and recording, LAN transfer, Search by meaning, Translate, Browser bookmarks or Web search if you had them on: they no longer come with WinShun), to ask a site for search suggestions while you type after its keyword (nothing is sent without a site keyword; you can turn this off), and, if you turn on the “Search by meaning” plugin with a cloud service, to send document text to the service you chose, and, when you use the Translate plugin, to send the sentence to the translation service you entered. The index and history stay on your PC (`%LOCALAPPDATA%\WinShun`).
 
 ### Feedback
 

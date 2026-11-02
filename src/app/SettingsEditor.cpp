@@ -1253,7 +1253,7 @@ QString SettingsEditor::saveCaptureKeyword(const QString& keyword)
         return tr("请填写关键词");
     if (!isValidWebKeyword(word))
         return tr("关键词里不能有空格或引号");
-    const KeywordClaim claim = keywordClaim(word, m_settings.webShortcuts, -1, {},
+    const KeywordClaim claim = keywordClaim(word, m_settings.webShortcutsInUse(), -1, {},
         [this](const QString& keyword) { return m_favorites->keywordOwner(keyword); });
     if (claim.by == KeywordClaim::By::WebShortcut)
         return tr("关键词“%1”已经给了网页搜索“%2”").arg(word, claim.owner);

@@ -130,6 +130,7 @@ SettingsSection {
     // 内置功能 asks for one of the settings of a feature drawn here whose
     // options are on another page: SettingsWindow goes to that row.
     signal settingRequested(string which)
+    signal editWebShortcut(int index, Item button)
 
     // What comes with Win顺 and stays out of the way until wanted, each a
     // card: 粘贴为文件, and features of other pages
@@ -295,27 +296,18 @@ SettingsSection {
         keywords: qsTr("插件;扩展;关键字;命令;安装;plugin;extension").split(";")
         // What the cards hold, to be found by: the names, the commands and
         // their keywords, the titles of the plugins' settings, 给 AI 用.
-        // Read from the model's roles (PluginListModel::Role: NameRole is
-        // UserRole + 2, KeywordsRole + 15, SettingsRole + 17, AiExposeRole + 20).
         values: {
             pluginsSection.listRevision // read again as the cards change
-            const list = pluginsSection.plugins.list
+            if (pluginsSection.editor)
+                pluginsSection.editor.webShortcuts // C++ search terms include the editable sites.
             const found = []
             const add = (value) => {
                 if (value && value.length > 0 && found.indexOf(value) < 0)
                     found.push(value)
             }
             for (let i = 0; i < pluginsSection.plugins.count; ++i) {
-                const index = list.index(i, 0)
-                add(list.data(index, Qt.UserRole + 2))
-                for (const k of list.data(index, Qt.UserRole + 15) ?? []) {
-                    add(k.title)
-                    add(k.keyword)
-                }
-                for (const s of list.data(index, Qt.UserRole + 17) ?? [])
-                    add(s.title)
-                if (list.data(index, Qt.UserRole + 20))
-                    add(qsTr("给 AI 用"))
+                for (const term of pluginsSection.plugins.searchTerms(i))
+                    add(term)
             }
             return found
         }
@@ -370,9 +362,13 @@ SettingsSection {
                         readonly property bool foundInside: listRow.searching
                             && (keywords.some(k => listRow.valueFound(k.title) || listRow.valueFound(k.keyword))
                                 || settings.some(s => listRow.valueFound(s.title))
+                                || (webSearch && pluginsSection.editor && pluginsSection.editor.webShortcuts.some(
+                                    site => listRow.valueFound(site.name) || listRow.valueFound(site.keyword) || listRow.valueFound(site.shownUrl)))
                                 || (aiExpose && listRow.valueFound(qsTr("给 AI 用"))))
 
                         width: cards.width
+                        editor: pluginsSection.editor
+                        onEditWebShortcut: (index, button) => pluginsSection.editWebShortcut(index, button)
                         plugins: pluginsSection.plugins
                         animated: !pluginsSection.plugins.preview
                         expanded: pluginsSection.expandedIds.indexOf(pluginId) >= 0 || foundInside

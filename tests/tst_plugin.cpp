@@ -25,6 +25,7 @@
 #include "Tools.h"
 #include "Updates.h"
 #include "WebShortcut.h"
+#include "WebSearchProvider.h"
 #include "ZeroCode.h"
 
 #include <QCryptographicHash>
@@ -486,6 +487,43 @@ class TestPlugin : public QObject {
     Q_OBJECT
 
 private slots:
+    void optionalWebProvider()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString folder = dir.filePath(u"plugins/winshun.web"_s);
+        QJsonObject manifest {{u"manifest"_s, 1}, {u"id"_s, u"winshun.web"_s}, {u"name"_s, u"Web"_s},
+            {u"version"_s, u"2.0.0"_s}, {u"webSearch"_s, true}, {u"commands"_s, QJsonArray {}}};
+        QVERIFY(writeFile(folder + u"/plugin.json"_s, toJson(manifest)));
+        Catalog catalog(dir.filePath(u"plugins"_s), {});
+        catalog.scan();
+        QVERIFY(catalog.find(u"winshun.web"));
+        QVERIFY(catalog.find(u"winshun.web")->manifest->webSearch);
+        QVERIFY(!catalog.find(u"winshun.web")->manifest->runtime);
+        QVERIFY(!webplugin::available(catalog));
+        catalog.setEnabled(u"winshun.web"_s, true);
+        QVERIFY(webplugin::available(catalog));
+        QVERIFY(catalog.match(u"baidu weather"_s).empty()); // No competing static sample commands.
+        catalog.setEnabled(u"winshun.web"_s, false);
+        QVERIFY(!webplugin::available(catalog));
+        catalog.setEnabled(u"winshun.web"_s, true);
+        QVERIFY(QFile::remove(folder + u"/plugin.json"_s));
+        catalog.scan();
+        QVERIFY(!webplugin::available(catalog)); // Enabled configuration cannot resurrect an absent provider.
+        manifest.insert(u"webSearch"_s, u"true"_s);
+        QVERIFY(!Manifest::parse(toJson(manifest), nullptr));
+        manifest.insert(u"webSearch"_s, true);
+        manifest.insert(u"runtime"_s, QJsonObject {{u"mode"_s, u"resident"_s}, {u"program"_s, u"fake.exe"_s}});
+        QVERIFY(!Manifest::parse(toJson(manifest), nullptr)); // Declarative capability starts no executable.
+        manifest.remove(u"runtime"_s);
+        manifest.remove(u"webSearch"_s);
+        manifest.insert(u"version"_s, u"1.0.0"_s);
+        manifest.insert(u"commands"_s, QJsonArray {QJsonObject {{u"id"_s, u"gh"_s}, {u"keyword"_s, u"gh"_s},
+            {u"run"_s, QJsonObject {{u"url"_s, u"https://example.test/?q=%s"_s}}}}});
+        const auto legacy = Manifest::parse(toJson(manifest), nullptr);
+        QVERIFY(legacy && legacy->webSearch && legacy->commands.isEmpty()); // A user-installed v1 file needs no destructive replacement.
+    }
+
     void contentProvidersAreScopedAndNotPushLimited()
     {
         Fixture f;

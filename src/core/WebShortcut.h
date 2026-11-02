@@ -52,7 +52,7 @@ struct WebShortcut {
 
 using WebShortcuts = QList<WebShortcut>;
 
-// What Win顺 comes with: the sites most used on the Chinese web ("baidu 天气"
+// Presets of the optional web plugin: common Chinese sites ("baidu 天气"
 // searches 百度), and "winshun" for its page on GitHub. The rest are the
 // user's own.
 WebShortcuts defaultWebShortcuts();
@@ -60,7 +60,8 @@ WebShortcuts defaultWebShortcuts();
 // once (Settings, WebSearch/Defaults), those its user removed stay removed.
 constexpr int kWebDefaultsVersion = 2;
 // `shortcuts` with the defaults it lacks after them: those whose keyword is
-// not taken, nor their site (a user's own "bd" for 百度 keeps 百度 once).
+// not taken, nor their site with the same search capability (a user's own
+// "bd" for 百度 keeps 百度 once; a fixed repository page cannot replace search).
 WebShortcuts withNewDefaults(WebShortcuts shortcuts, const WebShortcuts& defaults);
 
 // The address a web search for `words` opens when no keyword was typed (the
