@@ -121,8 +121,8 @@ Window {
         showNumbers = false
     }
     readonly property string numberModifier: numberKey === Qt.Key_Alt ? "Alt" : "Ctrl"
-    // As the launcher's (Main.qml): a digit another program holds is its,
-    // its row's chord struck through.
+    // As the launcher's (Main.qml): a chord that is one of Win顺's own
+    // shortcuts stays that, its row's chord struck through.
     function numberUsable(number) {
         return number >= 1 && (bar.numberKeysLeft & (1 << number)) === 0
     }

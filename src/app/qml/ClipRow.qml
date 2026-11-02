@@ -31,7 +31,7 @@ Item {
     property int hint: 0 // the number that pastes this row (Alt+1...); 0 for none
     property bool reserveHintSpace: false // keep icons aligned when hints fade or a row has no number
     property string hintModifier: "Alt" // ... with this held
-    property bool hintTaken: false // another program holds that chord as a global hotkey: shown struck through
+    property bool hintTaken: false // one of Win顺's own shortcuts has that chord: shown struck through
     property real hintOpacity: 1
     property string pasteTip: qsTr("粘贴") // where the paste button pastes ("粘贴到搜索框")
     property bool clickToPaste: false // a click pastes (Clipboard::clickToPaste)
@@ -429,7 +429,7 @@ Item {
         target: hovered ? hovered : onKeys ? numberSlot : onMark ? pastedMark : null
         text: hovered ? hovered.tip
             : onMark ? qsTr("已粘贴过")
-            : onKeys ? qsTr("%1 被别的程序占用了，在这里按也会交给那个程序。可在设置里改用 %2")
+            : onKeys ? qsTr("%1 是你给 Win顺 设的快捷键，在这里按也是那个快捷键。可在设置里改用 %2")
                        .arg(row.hintModifier + "+" + row.hint).arg(row.hintModifier === "Alt" ? "Ctrl" : "Alt")
             : ""
         shortcut: hovered ? hovered.tipShortcut : ""

@@ -12924,11 +12924,14 @@ private slots:
         const RawInputAside::Registration newer {.window = 0x20, .flags = 0x100};
         {
             RawInputAside aside;
+            QVERIFY(!aside.away());
             QVERIFY(aside.take()); // the first takes it away
             aside.taken(listener);
             QVERIFY(aside.aside());
+            QVERIFY(aside.away() == listener); // a hook hands its keys to that window meanwhile
             QVERIFY(aside.give() == listener);
             QVERIFY(!aside.aside());
+            QVERIFY(!aside.away());
             QVERIFY(!aside.give()); // one too many: nothing
         }
         {
@@ -12971,6 +12974,7 @@ private slots:
             RawInputAside aside;
             QVERIFY(aside.take());
             aside.taken(std::nullopt);
+            QVERIFY(!aside.away()); // nobody to hand keys to
             QVERIFY(!aside.give());
         }
         {

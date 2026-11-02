@@ -149,6 +149,16 @@ bool wantedByMenu(const KeyRouter::Key& key)
     }
 }
 
+// The digit 1…9 of a number key: `numberKeys` with it, Shift or not, and
+// nothing else; else 0.
+int numberDigit(const KeyRouter::Key& key, Qt::KeyboardModifier numberKeys)
+{
+    if (numberKeys == Qt::NoModifier || key.vk < '1' || key.vk > '9'
+        || (key.modifiers & ~Qt::ShiftModifier) != Qt::KeyboardModifiers(numberKeys))
+        return 0;
+    return static_cast<int>(key.vk - '0');
+}
+
 bool wanted(const KeyRouter::Key& key, Qt::KeyboardModifier numberKeys)
 {
     const UINT vk = key.vk;
@@ -235,10 +245,12 @@ void sendMask(ULONG_PTR mark = kOwnInput)
 
 } // namespace
 
-KeyRouter::KeyRouter(HWND target, HWND window, Callbacks callbacks, Qt::KeyboardModifier numberKeys, Policy policy)
+KeyRouter::KeyRouter(
+    HWND target, HWND window, Callbacks callbacks, Qt::KeyboardModifier numberKeys, unsigned ownDigits, Policy policy)
     : m_target(target)
     , m_window(window)
     , m_numberKeys(numberKeys)
+    , m_ownDigits(ownDigits)
     , m_policy(policy)
     , m_process(::GetCurrentProcessId())
     , m_callbacks(std::move(callbacks))
@@ -489,11 +501,14 @@ LRESULT KeyRouter::handleKey(int code, WPARAM message, LPARAM lParam)
 }
 
 // A chord with Ctrl or Alt that another program holds as a global hotkey
-// (RegisterHotKey refuses it; or one of Win顺's own) is that program's:
-// PixPin's Ctrl+1 and up, with the clipboard's number keys set to Ctrl.
-// Asked once per chord while the window is up: a few microseconds.
+// (RegisterHotKey refuses it; or one of Win顺's own) is that program's,
+// except the number keys (GitHub #175): those are the window's, unless one
+// of Win顺's own shortcuts. Asked once per chord while the window is up: a
+// few microseconds.
 bool KeyRouter::heldAsHotkey(const Key& key)
 {
+    if (const int digit = numberDigit(key, m_numberKeys))
+        return (m_ownDigits & (1u << digit)) != 0;
     UINT modifiers = 0;
     if (key.modifiers.testFlag(Qt::ControlModifier))
         modifiers |= MOD_CONTROL;

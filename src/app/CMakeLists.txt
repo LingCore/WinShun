@@ -189,6 +189,7 @@ set(qml_files
     qml/CenteredNumber.qml
     qml/IconNumber.qml
     qml/NumberHints.qml
+    qml/ShownRows.qml
     qml/ShortcutsButton.qml
     qml/KeyCap.qml
     qml/Chip.qml

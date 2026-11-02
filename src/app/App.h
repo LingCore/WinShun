@@ -9,6 +9,7 @@
 #include "platform/HoldWatch.h"
 #include "platform/KeyListener.h"
 #include "platform/KeyRouter.h"
+#include "platform/NumberKeys.h"
 #include "platform/TaskbarSearch.h"
 #include "platform/TaskbarSearchBox.h"
 
@@ -289,9 +290,18 @@ private:
     QQuickItem* focusedField() const; // a text field of Win顺's own with the keyboard
     void returnToField(QQuickItem* field); // from the clipboard (Clipboard::fieldRequested)
     void updateCompanions(); // our windows that go with a file dialog (DialogJump)
-    // Ctrl+1… on the launcher and the dialog bar: as one of them comes to
-    // the front, which digits other programs hold (numberkeys::heldMask).
+    // Ctrl+1… on the launcher, the dialog bar and the clipboard: which
+    // digits are Win顺's own shortcuts (ownNumberDigits), and as one of them
+    // comes to the front, the hook that takes the digits other programs hold
+    // (numberkeys::Hook, GitHub #175).
     void updateNumberKeys();
+    void updateNumberKeyHook();
+    void numberKeyHooked(const numberkeys::Hook::Key& key);
+    // 1 << n for each digit n whose chord with the number keys `keys`
+    // ("ctrl", "alt") is one of Win顺's own shortcuts: the launcher's, the
+    // clipboard's, the folder menu's, a plugin's. They stay shortcuts in
+    // Win顺's windows too, and those rows show the chord struck through.
+    unsigned ownNumberDigits(const QString& keys) const;
     void applySettings(bool initial);
     void applyKeyListener(bool force = false);
     ClipboardWatcher::Options clipboardOptions() const;
@@ -700,6 +710,7 @@ private:
     bool m_clipDisplayProbe = false;
     std::unique_ptr<win::TextCaret> m_textCaret; // where another program's caret is: the clipboard opens there
     std::unique_ptr<KeyRouter> m_keyRouter; // while the clipboard is over a program that keeps the focus
+    std::unique_ptr<numberkeys::Hook> m_numberKeyHook; // while a window of Win顺's with number keys is in front
     HWND m_keyRouterTarget = nullptr; // that program's window
     std::uint64_t m_keyRouterRun = 0; // which routing its posted keys belong to
     std::unique_ptr<KeyRouter> m_drainingRouter; // done, until the keys it took are let go (KeyRouter::drain)

@@ -86,7 +86,7 @@ Item {
     property int hint: 0 // its number for the number keys (Ctrl+1…); 0 for none
     property bool reserveHintSpace: false // all rows align, including unnumbered and temporarily hidden hints
     property string hintModifier: "Ctrl" // ... with this held
-    property bool hintTaken: false // another program holds that chord as a global hotkey: shown struck through
+    property bool hintTaken: false // one of Win顺's own shortcuts has that chord: shown struck through
     property real hintOpacity: 1
     // The window's tip for a name or folder cut short (one for all its rows).
     property NameTip nameTip: null
@@ -594,7 +594,7 @@ Item {
                                       && row.hintTaken && under(numberSlot)
         target: hovered ? hovered : onDate ? date : onKeys ? numberSlot : null
         text: hovered ? hovered.tip : onDate ? row.modifiedFull
-            : onKeys ? qsTr("%1 被别的程序占用了，在这里按也会交给那个程序。可在设置的“结果列表”里改用 %2")
+            : onKeys ? qsTr("%1 是你给 Win顺 设的快捷键，在这里按也是那个快捷键。可在设置的“结果列表”里改用 %2")
                        .arg(row.hintModifier + "+" + row.hint).arg(row.hintModifier === "Alt" ? "Ctrl" : "Alt")
             : ""
         shortcut: hovered ? hovered.tipShortcut : ""

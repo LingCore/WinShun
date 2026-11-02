@@ -435,9 +435,10 @@ void SettingsEditor::setClipboardQuickPasteError(const QString& error)
 namespace {
 
 // What the user should know of the number keys `keys` ("ctrl", "alt"):
-// those another program holds as global hotkeys, and those that are one of
-// Win顺's own shortcuts. Win顺 leaves both alone (numberkeys::heldMask,
-// KeyRouter::heldAsHotkey), and their rows show the chord struck through.
+// those another program holds as global hotkeys, which are Win顺's while its
+// window is in front (numberkeys::Hook, KeyRouter), and those that are one
+// of Win顺's own shortcuts, which stay that (their rows show the chord
+// struck through).
 QString describeNumberKeys(const QString& keys, const Settings& settings)
 {
     if (keys != u"ctrl" && keys != u"alt")
@@ -460,7 +461,7 @@ QString describeNumberKeys(const QString& keys, const Settings& settings)
     }
     QStringList parts;
     if (!others.isEmpty())
-        parts.append(SettingsEditor::tr("%1 是别的程序的快捷键，留给它用，对应的行不标序号。")
+        parts.append(SettingsEditor::tr("%1 也是别的程序的快捷键：Win顺 的窗口在前面时按它选这里的行，其余时候仍归那个程序。")
                          .arg(others.join(SettingsEditor::tr("、"))));
     if (!own.isEmpty())
         parts.append(SettingsEditor::tr("%1 是你给 Win顺 设的快捷键，按它仍是打开或关闭窗口，对应的行不标序号。")

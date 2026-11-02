@@ -504,8 +504,8 @@ Window {
 
     // Ctrl+1… (or Alt+1…, Launcher.numberKeys) opens the nth row shown,
     // counted from the first one at least half in view. The keys come here as
-    // the window's own (no hook: GitHub #10); a digit another program holds
-    // as a global hotkey stays its (numberkeys::heldMask).
+    // the window's own, also a digit another program holds as a global hotkey
+    // (numberkeys::Hook, GitHub #175).
     readonly property int numberKey: launcher.numberKeys === "ctrl" ? Qt.Key_Control
                                    : launcher.numberKeys === "alt" ? Qt.Key_Alt : -1
     readonly property int firstShownRow: Math.max(0, rowAtY(view.contentY + viewRowHeight / 2, true) * gridColumns)
@@ -523,8 +523,8 @@ Window {
         function onKeyReleased(event) { numberHints.release(event) }
     }
     onActiveFocusItemChanged: numberHints.reset()
-    // A digit another program holds as a global hotkey is its (Launcher.numberKeysLeft):
-    // the row still shows the chord, struck through (ResultRow.hintTaken).
+    // A chord that is one of Win顺's own shortcuts stays that (Launcher.numberKeysLeft):
+    // the row still shows it, struck through (ResultRow.hintTaken).
     function numberUsable(number) {
         return number >= 1 && (launcher.numberKeysLeft & (1 << number)) === 0
     }

@@ -45,6 +45,9 @@ constexpr int kStartDragTicks = 15;
 // millisecond or so of this one's, unless it is late.
 constexpr UINT_PTR kBackupTimer = 3;
 constexpr UINT kBackupMs = 120;
+// A key from a hook while the Raw Input is set aside (hookedKey): the key's
+// vk, scan code, flags and time in wParam, its extra information in lParam.
+constexpr UINT kHookedKey = WM_APP + 73;
 // GetLastInputInfo's time for the tap's own last release: the same tick, or the next.
 constexpr std::int32_t kSameInputMs = 32;
 
@@ -324,6 +327,26 @@ LRESULT CALLBACK KeyListener::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
         if (self)
             self->onInput(reinterpret_cast<HRAWINPUT>(lParam));
         return ::DefWindowProcW(hwnd, msg, wParam, lParam); // lets Windows free the input
+    case kHookedKey:
+        if (self) {
+            // As Raw Input names it: Shift, Ctrl and Alt without their side
+            // (sidedKey finds it again), an extended key by its E0 prefix.
+            const auto flags = static_cast<UINT>(wParam >> 24 & 0xFF);
+            UINT vk = static_cast<UINT>(wParam & 0xFF);
+            if (vk == VK_LSHIFT || vk == VK_RSHIFT)
+                vk = VK_SHIFT;
+            else if (vk == VK_LCONTROL || vk == VK_RCONTROL)
+                vk = VK_CONTROL;
+            else if (vk == VK_LMENU || vk == VK_RMENU)
+                vk = VK_MENU;
+            RAWKEYBOARD key {};
+            key.MakeCode = static_cast<USHORT>(wParam >> 8 & 0xFFFF);
+            key.Flags = static_cast<USHORT>(((flags & LLKHF_UP) ? RI_KEY_BREAK : 0) | ((flags & LLKHF_EXTENDED) ? RI_KEY_E0 : 0));
+            key.VKey = static_cast<USHORT>(vk);
+            key.ExtraInformation = static_cast<ULONG>(lParam);
+            self->onKeyboard(key, !(flags & LLKHF_INJECTED), static_cast<std::uint32_t>(wParam >> 32));
+        }
+        return 0;
     case WM_TIMER:
         if (wParam == kBackupTimer && self)
             self->onBackupTimer();
@@ -385,18 +408,21 @@ void KeyListener::onInput(HRAWINPUT input)
     }
     if (raw.header.dwType != RIM_TYPEKEYBOARD)
         return;
-    const RAWKEYBOARD& key = raw.data.keyboard;
+    // A program's has no device. When it was pressed, not when we got to it.
+    onKeyboard(raw.data.keyboard, raw.header.hDevice != nullptr, static_cast<std::uint32_t>(::GetMessageTime()));
+}
+
+void KeyListener::onKeyboard(const RAWKEYBOARD& key, bool device, std::uint32_t time)
+{
     if (m_callbacks.dragMenu)
         onDragKey(key);
     if (!m_callbacks.doubleCtrl)
         return;
     const bool up = key.Flags & RI_KEY_BREAK;
     const std::uint32_t vk = sidedKey(key);
-    // A program's has no device. Not Win顺's own: the Alt KeyRouter lets go
-    // after its mask was pressed by a finger.
-    const bool device = raw.header.hDevice != nullptr;
+    // Not Win顺's own: the Alt KeyRouter lets go after its mask was pressed
+    // by a finger.
     const bool sent = !device && !isOwnInput(key.ExtraInformation);
-    const auto time = static_cast<std::uint32_t>(::GetMessageTime()); // when it was pressed, not when we got to it
     // 0xFF: the extra part of an escaped key sequence, not a key. kOwnMask:
     // KeyRouter's mask just before it lets a Shift or Alt pressed alone go
     // on to the program: no key in between, the Alt was alone.
@@ -1112,6 +1138,21 @@ void KeyListener::removeKeyboard(HWND window)
     }
     if (!line.empty())
         log(line);
+}
+
+void KeyListener::hookedKey(const KBDLLHOOKSTRUCT& event)
+{
+    HWND window = nullptr;
+    {
+        const std::scoped_lock lock(g_asideMutex);
+        if (const std::optional<Registration> away = g_aside.away())
+            window = reinterpret_cast<HWND>(away->window);
+    }
+    if (!window)
+        return;
+    const WPARAM packed = (event.vkCode & 0xFF) | (WPARAM {event.scanCode & 0xFFFF} << 8)
+        | (WPARAM {event.flags & 0xFF} << 24) | (WPARAM {event.time} << 32);
+    ::PostMessageW(window, kHookedKey, packed, static_cast<LPARAM>(event.dwExtraInfo));
 }
 
 KeyboardRawInput keyboardRawInput()
