@@ -1,0 +1,12 @@
+{
+  "capture_dll_sha256": "689c0189f1596fc9c586edd43540246729c829dec27bd8db0e15c685c85ad69c",
+  "qt": "6.12.0",
+  "compiler": "MSVC 2022",
+  "native_menu_dpi": 144,
+  "isolated_plugin_pid": 65252,
+  "isolated_plugin_exit": 0,
+  "regressions": {
+    "default_font_backend": 19,
+    "production_freetype_appearance": 11
+  }
+}

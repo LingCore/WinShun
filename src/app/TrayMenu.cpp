@@ -26,7 +26,7 @@ using namespace Qt::StringLiterals;
 namespace ws::traymenu {
 namespace {
 
-// The tray is a compact desktop menu; other QML menus keep their own density.
+// Shared density for native tray and capture menus; QML menus have their own layout.
 constexpr int kRowHeight = 28;
 constexpr int kInfoHeight = 26;
 constexpr int kSeparatorHeight = 7;

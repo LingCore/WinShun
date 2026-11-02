@@ -1,4 +1,5 @@
 #include "TrayMenu.h"
+#include "PinManager.h"
 #include "Phosphor.h"
 #include "SystemTheme.h"
 #include "platform/WindowEffects.h"
@@ -18,6 +19,8 @@
 #include <dwmapi.h>
 #include <oleacc.h>
 #include <wrl/client.h>
+
+#include <string_view>
 
 using namespace ws;
 using namespace Qt::StringLiterals;
@@ -213,6 +216,97 @@ private slots:
         QVERIFY(!timedOut);
         QVERIFY(observed);
         QCOMPARE(chosen, 0);
+    }
+
+    void pinMenu_data()
+    {
+        QTest::addColumn<bool>("dark");
+        QTest::addColumn<bool>("collapsed");
+        QTest::newRow("pin-light") << false << false;
+        QTest::newRow("pin-dark") << true << false;
+        QTest::newRow("pin-collapsed") << true << true;
+    }
+
+    void pinMenu()
+    {
+        if (qEnvironmentVariableIntValue("WINSHUN_TRAYMENU_LIVE") != 1)
+            QSKIP("Opt in with WINSHUN_TRAYMENU_LIVE=1");
+        QFETCH(bool, dark);
+        QFETCH(bool, collapsed);
+        QGuiApplication::styleHints()->setColorScheme(dark ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
+        win::setMenuTheme(dark);
+        SystemTheme::setRoundedCorners(true);
+        QQmlEngine engine;
+        QObject* theme = engine.singletonInstance<QObject*>(u"WinShun"_s, u"Theme"_s);
+        QVERIFY(theme);
+        QImage fixture(160, 100, QImage::Format_RGB32);
+        fixture.fill(QColor("#e7edf5"));
+        QImage copied;
+        bool observed = false, styled = false, timedOut = false;
+        capture::PinManager::Callbacks callbacks;
+        callbacks.copy = [&](const QImage& image, bool) { copied = image; };
+        callbacks.dark = [dark] { return dark; };
+        callbacks.ocrAvailable = [] { return false; };
+        QObject lifetime;
+        callbacks.popupMenu = [&](HWND owner, const std::vector<shell::MenuItem>& items, POINT at) {
+            const auto iconsPresent = [](const auto& self, const auto& rows) -> bool {
+                for (const auto& row : rows) {
+                    if (row.text.isEmpty())
+                        continue;
+                    if (!phosphor::forSegoe(row.glyph) || !self(self, row.children))
+                        return false;
+                }
+                return true;
+            };
+            styled = iconsPresent(iconsPresent, items);
+            QTimer watchdog;
+            connect(&watchdog, &QTimer::timeout, &lifetime, [&] {
+                timedOut = true;
+                ::EndMenu();
+            });
+            watchdog.start(4000);
+            return traymenu::popup(owner, items, at, theme, [&](HWND window, HMENU menu) {
+                QTimer::singleShot(120, &lifetime, [&, window, menu, owner] {
+                    observed = true;
+                    RECT row {};
+                    if (!::GetMenuItemRect(nullptr, menu, 1, &row)
+                        || row.bottom - row.top != qRound(28 * ::GetDpiForWindow(window) / 96.0))
+                        styled = false;
+                    const QString folder = qEnvironmentVariable("WINSHUN_TRAY_EVIDENCE");
+                    if (!folder.isEmpty()) {
+                        const QImage image
+                            = QGuiApplication::primaryScreen()->grabWindow(reinterpret_cast<WId>(window)).toImage();
+                        const QString file = QDir(folder).filePath(QString::fromLatin1(QTest::currentDataTag()) + u".png"_s);
+                        if (image.isNull() || !image.save(file))
+                            styled = false;
+                    }
+                    ::PostMessageW(owner, WM_KEYDOWN, VK_DOWN, 0);
+                    QTimer::singleShot(70, &lifetime, [owner] { ::PostMessageW(owner, WM_KEYDOWN, VK_RETURN, 0); });
+                });
+            });
+        };
+        capture::PinManager pins(std::move(callbacks));
+        pins.pin(fixture, QPoint(650, 200));
+        QCOMPARE(pins.count(), 1);
+        HWND pin = nullptr;
+        ::EnumThreadWindows(::GetCurrentThreadId(), [](HWND window, LPARAM data) -> BOOL {
+            wchar_t name[64] {};
+            ::GetClassNameW(window, name, 64);
+            if (std::wstring_view(name) == L"WinShun.Pin") {
+                *reinterpret_cast<HWND*>(data) = window;
+                return FALSE;
+            }
+            return TRUE;
+        }, reinterpret_cast<LPARAM>(&pin));
+        QVERIFY(pin);
+        if (collapsed)
+            ::SendMessageW(pin, WM_KEYDOWN, VK_SPACE, 0);
+        ::SendMessageW(pin, WM_CONTEXTMENU, reinterpret_cast<WPARAM>(pin), MAKELPARAM(700, 300));
+        QVERIFY(!timedOut);
+        QVERIFY(observed);
+        QVERIFY(styled);
+        QCOMPARE(copied, fixture); // a real menu choice reaches the pin's copy callback
+        QCOMPARE(pins.count(), 1);
     }
 
     void keyboard_data()

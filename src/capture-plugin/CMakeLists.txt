@@ -40,6 +40,7 @@ qt_add_library(WinShunCaptureApp SHARED
     Protocol.cpp Protocol.h
     PluginShell.cpp PluginShell.h
     ${app_dir}/Phosphor.cpp ${app_dir}/Phosphor.h
+    ${app_dir}/TrayMenu.cpp ${app_dir}/TrayMenu.h
     ${app_dir}/PictureFile.cpp ${app_dir}/PictureFile.h
     ${app_dir}/ClipImage.cpp ${app_dir}/ClipImage.h
     ${app_dir}/platform/DragOut.cpp ${app_dir}/platform/DragOut.h

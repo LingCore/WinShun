@@ -462,6 +462,10 @@ set_tests_properties(tst_annotmodel PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
 qt_add_executable(tst_traymenu tst_traymenu.cpp
+    ${PROJECT_SOURCE_DIR}/src/capture/PinManager.cpp
+    ${PROJECT_SOURCE_DIR}/src/capture/PinWindow.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/ShellDialogs.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/DragOut.cpp
     ${PROJECT_SOURCE_DIR}/src/app/TrayMenu.cpp
     ${PROJECT_SOURCE_DIR}/src/app/SystemTheme.cpp
     ${PROJECT_SOURCE_DIR}/src/app/Phosphor.cpp
@@ -474,7 +478,7 @@ qt_add_resources(tst_traymenu "phosphor"
     BASE "${PROJECT_SOURCE_DIR}/third_party/phosphor"
     FILES "${PROJECT_SOURCE_DIR}/third_party/phosphor/Phosphor.ttf"
           "${PROJECT_SOURCE_DIR}/third_party/phosphor/Phosphor-Fill.ttf")
-target_link_libraries(tst_traymenu PRIVATE wscore Qt6::Test Qt6::Quick comctl32 dwmapi gdi32 ole32 oleacc oleaut32 shcore user32)
+target_link_libraries(tst_traymenu PRIVATE wscore wscapture Qt6::Test Qt6::Quick comctl32 dwmapi gdi32 imm32 ole32 oleacc oleaut32 shcore shell32 user32)
 set_target_properties(tst_traymenu PROPERTIES QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
 add_test(NAME tst_traymenu COMMAND tst_traymenu)
 set_tests_properties(tst_traymenu PROPERTIES

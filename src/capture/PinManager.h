@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PinWindow.h"
+#include "platform/Shell.h"
 
 #include <QColor>
 #include <QImage>
@@ -38,6 +39,8 @@ public:
         // The lines of a picture (CaptureOcr::scan), for picking text.
         std::function<void(const QImage&, double dpr, std::function<void(QList<RedactLine>)> done)> readLines;
         std::function<bool()> ocrAvailable; // checked again after an on-demand installation
+        // The host supplies its themed native menu; standalone previews can use the system menu.
+        std::function<int(HWND, const std::vector<shell::MenuItem>&, POINT)> popupMenu;
     };
 
     explicit PinManager(Callbacks callbacks, QObject* parent = nullptr);

@@ -21,6 +21,7 @@
 #include "RecordingPointer.h"
 #include "SavedFile.h"
 #include "SystemTheme.h"
+#include "TrayMenu.h"
 #include "WindowFrame.h"
 #include "platform/WindowEffects.h"
 #include "platform/Foreground.h"
@@ -800,6 +801,10 @@ capture::PinManager& CaptureApp::pins()
         callbacks.closed = [this] { m_idleTrim->poke(); }; // its pixels can go back to Windows
         callbacks.dark = [] { return isDarkMode(); };
         callbacks.accent = [] { return SystemTheme::accentColor(); };
+        callbacks.popupMenu = [this](HWND owner, const std::vector<shell::MenuItem>& items, POINT at) {
+            QObject* theme = m_qml.singletonInstance<QObject*>(u"WinShun"_s, u"Theme"_s);
+            return traymenu::popup(owner, items, at, theme);
+        };
         callbacks.copyText = [this](const QString& text) {
             if (!text.isEmpty())
                 copyText(text);
