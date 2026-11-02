@@ -1,5 +1,12 @@
 # 踩坑记录
 
+## 图形插件的进程隔离也要覆盖输入法与内部工作进程（2026-11-01，#164）
+
+- **根因与证据**：截图插件未声明 `processes`，实际宿主给它的作业 `ActiveProcessLimit=1`，真实子进程探针返回 1816（`ERROR_NOT_ENOUGH_QUOTA`），与录屏启动报错一致。启动器还统一设置了 `EXTENSION_POINT_DISABLE_ALWAYS_ON`；[微软文档](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-updateprocthreadattribute) 明确该策略阻止传统输入法扩展。直接启动的 QML 预览不经过这个边界。
+- **规则与边界**：需要内部录屏/编码进程的插件必须声明相应权限，升级沿用新增权限确认流程；不能为修复功能绕过整个作业隔离。明确有 `ui` 权限的插件保留传统输入法扩展支持；runner 自身及无 UI 插件仍禁用扩展点，远程/低完整性映像限制、内存与进程树生命周期限制继续保留。
+- **验证**：`tst_plugin::uiPluginKeepsInputMethodExtensions` 和 `captureManifestAllowsRecordingWorker` 走真实 Host/runner，并读取实际截图清单。修改前两项均失败、子进程错误码为 1816；修改后通过。它们证明启动策略和创建子进程边界，不能代替用户具体输入法的中文组字验证，也不代表已验证整段录屏编码输出。
+- **2026-11-02 补证**：报告者已提供三种输入法版本及诊断包。本地以同一截图插件、同一图片编辑文字框和微信输入法 1.4.2.12 比较旧/修复 runner：旧策略按 `n` 直出英文，修复策略物理 `n`、`i`、空格能弹出候选并提交“你”；读取实际插件进程的策略值分别为禁用/允许扩展点。见 [真实输入法对照记录](validation/issue164-20261102/README.md)。此补证覆盖一个真实输入法及生产文字框，仍不代表报告者全部版本或完整截图、贴图入口都已验过。
+
 ## 插件拆分也要检查后台契约与结果列表结构（2026-10-31）
 
 - **根因**：提供者只经已就绪的 `Host::request` 通信，合法的 lazy 清单却不会被拉起；有闲置退出期限的 eager 插件也会在退出后失效。保持唤醒请求更不能被闲置淘汰。另一个边界是异步状态变更：`dataChanged` 只能改行数据，不能撤掉查询阶段插入的状态行。

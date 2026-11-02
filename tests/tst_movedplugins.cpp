@@ -92,16 +92,53 @@ private slots:
         QCOMPARE(QSettings(ini, QSettings::IniFormat).value(u"Capture/Hotkey"_s).toString(), u"Ctrl+Alt+A"_s);
     }
 
-    // The permissions said yes to for it are the plugin's own (package/plugin.json).
-    void capturePermissionsAreTheManifests()
+    // Migrating the old built-in switch is not approval of permissions added
+    // by a later plugin version. Exercise the persisted migration with the
+    // current production manifest and the catalog's actual consent gate.
+    void captureMigrationRequiresNewPermissionConsent()
     {
-        QFile manifest(QStringLiteral(WINSHUN_SOURCE_DIR) + u"/src/capture-plugin/package/plugin.json"_s);
-        QVERIFY(manifest.open(QIODevice::ReadOnly));
-        const QJsonArray permissions = QJsonDocument::fromJson(manifest.readAll()).object().value(u"permissions"_s).toArray();
-        QStringList names;
-        for (const QJsonValue& p : permissions)
-            names.push_back(p.toString());
-        QCOMPARE(ws::moved::capturePermissions(), names);
+        const QStringList original {u"ui"_s, u"clipboard:read"_s, u"clipboard:write"_s,
+            u"files:write"_s, u"notifications"_s, u"winshun:open"_s};
+        QCOMPARE(ws::moved::capturePermissions(), original);
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString ini = dir.filePath(u"WinShun.ini"_s);
+        const QString userDir = dir.filePath(u"plugins"_s);
+        {
+            QSettings settings(ini, QSettings::IniFormat);
+            settings.setValue(u"Capture/Enabled"_s, true);
+        }
+        QVERIFY(ws::moved::moveCaptureSettings(ini, userDir));
+        const QStringList confirmed = QSettings(ini, QSettings::IniFormat)
+                                          .value(u"Plugin.winshun.capture/Confirmed"_s).toStringList();
+        QCOMPARE(confirmed, original);
+        const QString folder = userDir + u"/winshun.capture"_s;
+        QVERIFY(QDir().mkpath(folder));
+        QVERIFY(QFile::copy(QStringLiteral(WINSHUN_SOURCE_DIR) + u"/src/capture-plugin/package/plugin.json"_s,
+            folder + u"/plugin.json"_s));
+        ws::plugin::Catalog catalog(userDir, {});
+        catalog.scan();
+        const auto* entry = catalog.find(ws::moved::kCapture);
+        QVERIFY(entry);
+        QVERIFY2(entry->usable(), qPrintable(entry->error));
+        QVERIFY(entry->manifest->permissions.has(ws::plugin::Permission::Processes));
+        catalog.setConfirmed({{ws::moved::kCapture.toString(), confirmed}});
+        catalog.setEnabled(ws::moved::kCapture.toString(), true);
+        QVERIFY(catalog.switchedOn(ws::moved::kCapture));
+        QVERIFY(!catalog.enabled(ws::moved::kCapture));
+        QCOMPARE(catalog.awaitingConsent(ws::moved::kCapture), QStringList {u"processes"_s});
+        QVERIFY(catalog.match(u"cap x"_s).empty());
+
+        // Explicitly approving the current list makes it usable again.
+        QCOMPARE(catalog.setConfirmed({{ws::moved::kCapture.toString(), entry->manifest->permissions.names()}}),
+            QStringList {ws::moved::kCapture.toString()});
+        QVERIFY(catalog.enabled(ws::moved::kCapture));
+        QVERIFY(catalog.awaitingConsent(ws::moved::kCapture).isEmpty());
+        QCOMPARE(catalog.match(u"cap x"_s).size(), 1u);
+
+        // Another start must not change what was confirmed during migration.
+        QVERIFY(!ws::moved::moveCaptureSettings(ini, userDir));
+        QCOMPARE(QSettings(ini, QSettings::IniFormat).value(u"Plugin.winshun.capture/Confirmed"_s).toStringList(), original);
     }
 
     void failedCopyKeepsOldSettings()

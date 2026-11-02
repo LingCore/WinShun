@@ -1,0 +1,17 @@
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR) 
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR) 
+-- Configuring done (2.7s)
+-- Generating done (4.0s)
+-- Build files have been written to: F:/电脑便捷工具/build/issue166
+[0/1] Re-running CMake...
+[1/13] Automatic MOC and UIC for target wscapture
+[2/12] Automatic MOC and UIC for target tst_plugin
+[3/11] Building CXX object src\capture\CMakeFiles\wscapture.dir\ScrollGrabber.cpp.obj
+[4/11] Building CXX object src\capture\CMakeFiles\wscapture.dir\Grabber.cpp.obj
+[5/11] Linking CXX static library src\capture\wscapture.lib
+[6/11] Automatic MOC and UIC for target tst_recording
+[7/11] Building CXX object tests\CMakeFiles\tst_recording.dir\tst_recording_autogen\mocs_compilation.cpp.obj
+[8/11] Building CXX object tests\CMakeFiles\tst_plugin.dir\tst_plugin.cpp.obj
+[9/11] Linking CXX executable tst_plugin.exe
+[10/11] Building CXX object tests\CMakeFiles\tst_recording.dir\tst_recording.cpp.obj
+[11/11] Linking CXX executable tst_recording.exe

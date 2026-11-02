@@ -1,0 +1,45 @@
+Window: "编辑图片", App: WinShunCapture.exe.
+	0 窗口 (settable, string) 编辑图片 Secondary Actions: Raise ID: QGuiApplication.EditWindow_QMLTYPE_55
+		1 按钮 (settable, string) 矩形 ID: QGuiApplication.EditWindow_QMLTYPE_55.ToolButton
+		2 按钮 (settable, string) 椭圆 ID: QGuiApplication.EditWindow_QMLTYPE_55.ToolButton
+		3 按钮 (settable, string) 箭头 ID: QGuiApplication.EditWindow_QMLTYPE_55.ToolButton
+		4 按钮 (settable, string) 直线 ID: QGuiApplication.EditWindow_QMLTYPE_55.ToolButton
+		5 按钮 (settable, string) 画笔 ID: QGuiApplication.EditWindow_QMLTYPE_55.ToolButton
+		6 按钮 (settable, string) 荧光笔 ID: QGuiApplication.EditWindow_QMLTYPE_55.ToolButton
+		7 按钮 (settable, string) 文字 ID: QGuiApplication.EditWindow_QMLTYPE_55.ToolButton
+		8 按钮 (settable, string) 序号 ID: QGuiApplication.EditWindow_QMLTYPE_55.ToolButton
+		9 按钮 (settable, string) 打码 ID: QGuiApplication.EditWindow_QMLTYPE_55.ToolButton
+		10 按钮 (disabled, settable, string) 撤销 ID: QGuiApplication.EditWindow_QMLTYPE_55.ActionButton
+		11 按钮 (disabled, settable, string) 重做 ID: QGuiApplication.EditWindow_QMLTYPE_55.ActionButton
+		12 按钮 (settable, string) 识别文字 ID: QGuiApplication.EditWindow_QMLTYPE_55.ActionButton
+		13 按钮 (settable, string) 贴图 ID: QGuiApplication.EditWindow_QMLTYPE_55.ActionButton
+		14 按钮 (settable, string) 保存 ID: QGuiApplication.EditWindow_QMLTYPE_55.ActionButton
+		15 按钮 (settable, string) 全部按键 ID: QGuiApplication.EditWindow_QMLTYPE_55.QQuickRectangle_QML_14
+		16 按钮 (settable, string) 取消 ID: QGuiApplication.EditWindow_QMLTYPE_55.ActionButton
+		17 按钮 (settable, string) 复制 ID: QGuiApplication.EditWindow_QMLTYPE_55.ActionButton
+		39 编辑 (settable, string) Value: 你 ID: QGuiApplication.EditWindow_QMLTYPE_55.QQuickTextEdit
+		19 按钮 (settable, string) #E53935 ID: QGuiApplication.EditWindow_QMLTYPE_55.PanelButton_QML_27
+		20 按钮 (settable, string) #FB8C00 ID: QGuiApplication.EditWindow_QMLTYPE_55.PanelButton_QML_27
+		21 按钮 (settable, string) #FDD835 ID: QGuiApplication.EditWindow_QMLTYPE_55.PanelButton_QML_27
+		22 按钮 (settable, string) #43A047 ID: QGuiApplication.EditWindow_QMLTYPE_55.PanelButton_QML_27
+		23 按钮 (settable, string) #1E88E5 ID: QGuiApplication.EditWindow_QMLTYPE_55.PanelButton_QML_27
+		24 按钮 (settable, string) #8E24AA ID: QGuiApplication.EditWindow_QMLTYPE_55.PanelButton_QML_27
+		25 按钮 (settable, string) #212121 ID: QGuiApplication.EditWindow_QMLTYPE_55.PanelButton_QML_27
+		26 按钮 (settable, string) #FFFFFF ID: QGuiApplication.EditWindow_QMLTYPE_55.PanelButton_QML_27
+		27 按钮 (settable, string) 吸管：点图上的一点，取它的颜色 ID: QGuiApplication.EditWindow_QMLTYPE_55.PanelButton
+		28 按钮 (settable, string) 14 ID: QGuiApplication.EditWindow_QMLTYPE_55.WordButton_QML_30
+		29 按钮 (settable, string) 18 ID: QGuiApplication.EditWindow_QMLTYPE_55.WordButton_QML_30
+		30 按钮 (settable, string) 24 ID: QGuiApplication.EditWindow_QMLTYPE_55.WordButton_QML_30
+		31 按钮 (settable, string) 32 ID: QGuiApplication.EditWindow_QMLTYPE_55.WordButton_QML_30
+		32 按钮 (settable, string) 粗体 ID: QGuiApplication.EditWindow_QMLTYPE_55.PanelButton
+		33 按钮 (settable, string) 底框 ID: QGuiApplication.EditWindow_QMLTYPE_55.PanelButton
+		34 按钮 (settable, string) 无边 ID: QGuiApplication.EditWindow_QMLTYPE_55.WordButton_QML_31
+		35 按钮 (settable, string) 细 ID: QGuiApplication.EditWindow_QMLTYPE_55.WordButton_QML_31
+		36 按钮 (settable, string) 中 ID: QGuiApplication.EditWindow_QMLTYPE_55.WordButton_QML_31
+		37 按钮 (settable, string) 粗 ID: QGuiApplication.EditWindow_QMLTYPE_55.WordButton_QML_31
+		38 按钮 (settable, string) 恢复默认样式 ID: QGuiApplication.EditWindow_QMLTYPE_55.PanelButton
+		18 按钮 (settable, string) 缩放 ID: QGuiApplication.EditWindow_QMLTYPE_55.QQuickRectangle
+
+Document text: ```
+你
+```

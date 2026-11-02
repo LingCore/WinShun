@@ -1,0 +1,17 @@
+{
+  "policies": {
+    "baseline_extension_points_disabled": true,
+    "query_ok": true,
+    "fixed_extension_points_disabled": false,
+    "fixed_query_ok": true
+  },
+  "verified_comment": "https://github.com/LingCore/WinShun/issues/164#issuecomment-6566868284",
+  "comment_body_matches": true,
+  "issue_state": "open",
+  "proof_files": {
+    "baseline-english.jpg": "3b2047b2334aaa4fc53acabff5b1d5c01d33d6094a79ca94346045c5a4e03348",
+    "baseline-focus.txt": "8d03830727963c9a93135e0782d5ccfb33c0d915149a9722cfae0425a6fcdd53",
+    "fixed-chinese.jpg": "e2d8cd30109d2fa111804c1feb62198dcc08eb8d61993d9cc20f3d4ac0265381",
+    "fixed-focus.txt": "a35d0ebd6dd37102a8aa10aacda58c50d6878b89e27473933852fd464f8a2452"
+  }
+}

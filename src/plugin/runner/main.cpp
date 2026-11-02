@@ -427,10 +427,14 @@ void start(const json::Value& m)
     DWORD64 mitigations[2] = {PROCESS_CREATION_MITIGATION_POLICY_HEAP_TERMINATE_ALWAYS_ON
             | PROCESS_CREATION_MITIGATION_POLICY_BOTTOM_UP_ASLR_ALWAYS_ON
             | PROCESS_CREATION_MITIGATION_POLICY_HIGH_ENTROPY_ASLR_ALWAYS_ON
-            | PROCESS_CREATION_MITIGATION_POLICY_EXTENSION_POINT_DISABLE_ALWAYS_ON
             | PROCESS_CREATION_MITIGATION_POLICY_IMAGE_LOAD_NO_REMOTE_ALWAYS_ON
             | PROCESS_CREATION_MITIGATION_POLICY_IMAGE_LOAD_NO_LOW_LABEL_ALWAYS_ON,
         0};
+    // UI plugins accept text through the user's input method. Disabling
+    // extension points also blocks legacy IMEs; keep that policy for the
+    // runner and headless plugins, not for an explicitly permitted UI.
+    if (!limits.ui)
+        mitigations[0] |= PROCESS_CREATION_MITIGATION_POLICY_EXTENSION_POINT_DISABLE_ALWAYS_ON;
     if (!::UpdateProcThreadAttribute(list, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inherited, sizeof inherited, nullptr, nullptr)
         || !::UpdateProcThreadAttribute(list, 0, PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY, mitigations, sizeof mitigations, nullptr, nullptr)) {
         fail("UpdateProcThreadAttribute", ::GetLastError());

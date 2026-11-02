@@ -1,0 +1,10 @@
+********* Start testing of TestPlugin *********
+Config: Using QtTest library 6.12.0, Qt 6.12.0 (x86_64-little_endian-llp64 shared (dynamic) release build; by MSVC 2022), windows 11
+PASS   : TestPlugin::initTestCase()
+FAIL!  : TestPlugin::uiPluginKeepsInputMethodExtensions() '!facts.value(u"extensionPointsDisabled"_s).toBool()' returned FALSE. (UI plugins must allow legacy input methods)
+F:\电脑便捷工具\build\search-improvements-20261101\source\tests\tst_plugin.cpp(3755) : failure location
+FAIL!  : TestPlugin::captureManifestAllowsRecordingWorker() 'facts.value(u"spawnOk"_s).toBool()' returned FALSE. ({"admins":"deny-only","aslrBottomUp":true,"aslrHighEntropy":true,"authId":"00000000:0004bd5c","clipError":0,"clipFormats":7,"clipRead":true,"consoleWindow":false,"dynamicCodeProhibited":false,"elevated":false,"envCount":70,"extensionPointsDisabled":true,"inJob":true,"integrity":8192,"jobActiveProcessLimit":1,"jobKillOnClose":true,"jobLimitFlags":9480,"jobMemoryMB":2048,"jobUiRestrictions":0,"noLowLabelImages":true,"noRemoteImages":true,"parentEnvLeaked":false,"pid":8084,"privileges":5,"session":1,"spawnError":1816,"spawnOk":false,"spawnedInJob":null,"stdinType":2,"stdoutType":3,"user":"BOFU\\young","username":"young","userprofile":"C:\\Users\\young","writes":[{"dir":"C:\\Users\\young\\AppData\\Local\\Temp\\tst_plugin-AwazxE\\data\\test.fake.data","error":0,"ok":true},{"dir":"C:\\Users\\young","error":0,"ok":true}],"wsEnv":["WS_APP_DIR","WS_COMMAND","WS_COMPONENTS_DIR","WS_DATA_DIR","WS_FILTERS","WS_KEYWORD","WS_LOCALE","WS_MATCH","WS_PLUGIN_DIR","WS_QUERY","WS_SETTINGS","WS_TEXT","WS_THEME","WS_TRIGGER","WS_VERSION"]})
+F:\电脑便捷工具\build\search-improvements-20261101\source\tests\tst_plugin.cpp(3782) : failure location
+PASS   : TestPlugin::cleanupTestCase()
+Totals: 2 passed, 2 failed, 0 skipped, 0 blacklisted, 329ms
+********* Finished testing of TestPlugin *********

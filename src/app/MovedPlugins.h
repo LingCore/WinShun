@@ -36,6 +36,8 @@ QString name(QStringView id); // the familiar feature name, including before the
 inline constexpr QStringView kCapture = u"winshun.capture";
 // What the built-in screenshot did, as the plugin's permissions: said yes
 // to already by who had it on ([Plugin.winshun.capture] Confirmed=).
+// This is the migration's original scope, not the latest manifest's list;
+// later additions still go through Catalog's permission confirmation.
 QStringList capturePermissions();
 // For who had the screenshot on: [Capture] of `settingsFile` into the
 // plugin's capture.ini under `dataRoot` (not over one there; PrintScreenBefore

@@ -1,0 +1,15 @@
+{
+  "source": "https://github.com/LingCore/WinShun-plugins/releases/download/winshun.capture-v1.0.0/winshun.capture-1.0.0.wsplugin",
+  "version": "1.0.0",
+  "sha256": "1c4fad9b1213e304768b8cb9410712f0270eb87e031b857c6605740c6322d8f2",
+  "size": 2177651,
+  "permissions": [
+    "ui",
+    "clipboard:read",
+    "clipboard:write",
+    "files:write",
+    "notifications",
+    "winshun:open"
+  ],
+  "has_processes": false
+}

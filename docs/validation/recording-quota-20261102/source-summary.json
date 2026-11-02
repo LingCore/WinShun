@@ -1,0 +1,45 @@
+{
+  "source_sha256": "a417025b6bb1ca740495addeaeb122c2aeaf1caee6b22beec7c36b302e8b7fdc",
+  "generated_at": "2026-11-02T02:56:15.075Z",
+  "environment": {
+    "administrator": true,
+    "architecture": "x86_64",
+    "kernel": "10.0.26200",
+    "logical_processors": 16,
+    "memory_mb": 28416,
+    "os": "Windows 11 Version 25H2",
+    "version": "0.17.0"
+  },
+  "adapters": [
+    {
+      "driver": "32.0.32015.7029",
+      "name": "AMD Radeon(TM) 780M"
+    }
+  ],
+  "screens": [
+    {
+      "dpi": 96,
+      "hz": 60,
+      "primary": true,
+      "scale": 1,
+      "size": "2560x1440"
+    },
+    {
+      "dpi": 96,
+      "hz": 120,
+      "primary": false,
+      "scale": 1.25,
+      "size": "2048x1280"
+    }
+  ],
+  "archive_files": [
+    "events.1.jsonl",
+    "events.jsonl",
+    "app/WinShun.log",
+    "service/service.log",
+    "summary.json"
+  ],
+  "capture_events": 80,
+  "recording_events": 0,
+  "reported_error": "无法启动录屏工作进程：process failed to start 配额不足，无法处理此命令"
+}

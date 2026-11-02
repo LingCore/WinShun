@@ -1,0 +1,27 @@
+********* Start testing of TestRecording *********
+Config: Using QtTest library 6.12.0, Qt 6.12.0 (x86_64-little_endian-llp64 shared (dynamic) release build; by MSVC 2022), windows 11
+PASS   : TestRecording::initTestCase()
+QWARN  : TestRecording::isolatedEncoding() Recording worker: QFontDatabase: Cannot find font directory F:/??????/build/issue166/lib/fonts.?
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+QINFO  : TestRecording::isolatedEncoding() Recording finished: encoder NVIDIA H.264 Encoder MFT hardware true frames 18 elapsed ms 602 stage finalize MP4
+QWARN  : TestRecording::isolatedEncoding() Recording worker: QFont::fromString: Invalid description '(empty)'
+QWARN  : TestRecording::isolatedEncoding() Recording worker: QFontDatabase: Cannot find font directory F:/??????/build/issue166/lib/fonts.?
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+QINFO  : TestRecording::isolatedEncoding() Recording finished: encoder Media Foundation / software hardware false frames 18 elapsed ms 614 stage finalize MP4
+QWARN  : TestRecording::isolatedEncoding() Recording worker: QFont::fromString: Invalid description '(empty)'
+PASS   : TestRecording::isolatedEncoding()
+QWARN  : TestRecording::isolatedHardwareFailureFallsBack() Recording: worker exited (7) encoder:  frames: 0
+QWARN  : TestRecording::isolatedHardwareFailureFallsBack() Recording: retrying with software encoding after ??????????????(worker exited (7))????;??????
+QWARN  : TestRecording::isolatedHardwareFailureFallsBack() Recording worker: QFontDatabase: Cannot find font directory F:/??????/build/issue166/lib/fonts.?
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+QINFO  : TestRecording::isolatedHardwareFailureFallsBack() Recording finished: encoder Media Foundation / software hardware false frames 12 elapsed ms 411 stage finalize MP4
+PASS   : TestRecording::isolatedHardwareFailureFallsBack()
+QWARN  : TestRecording::isolatedStallIsBoundedAndCancellable() Recording: timeout at  encoder:  frames: 0
+QINFO  : TestRecording::isolatedStallIsBoundedAndCancellable() Recording finished: encoder  hardware false frames 0 elapsed ms 0 stage 
+QWARN  : TestRecording::isolatedStallIsBoundedAndCancellable() ??????????????(timeout at )????;??????
+QWARN  : TestRecording::isolatedStallIsBoundedAndCancellable() Recording: timeout at  encoder:  frames: 0
+QINFO  : TestRecording::isolatedStallIsBoundedAndCancellable() Recording finished: encoder  hardware false frames 0 elapsed ms 0 stage 
+PASS   : TestRecording::isolatedStallIsBoundedAndCancellable()
+PASS   : TestRecording::cleanupTestCase()
+Totals: 5 passed, 0 failed, 0 skipped, 0 blacklisted, 3686ms
+********* Finished testing of TestRecording *********

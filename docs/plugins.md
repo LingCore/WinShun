@@ -335,7 +335,7 @@ manifest 的 `permissions` 是数组：`["processes", "clipboard:read", {"files:
 | （总是）不是管理员 | 插件永远以你的普通权限运行 | **是** | 令牌去掉 Administrators 组和特权；`normal` 中完整性，`strict` 低完整性；内存上限、作业对象，Win顺 退出时一起结束 |
 | `processes` | 起子进程，或让 Win顺 打开程序 / 非网页链接 | **是** | 没有它：作业 `ActiveProcessLimit = 1`，`CreateProcess` 报 1816；且 Win顺 不替它执行开程序、脚本、非网页 URL 或带 args/cwd 的 `open`（item 和 open 效果、`open_item` 都一样，只能开文件夹、普通文件和 http/https/mailto，拦下时底栏提示）。有它：子进程在作业里，`open` 不受限 |
 | `clipboard:read` / `clipboard:write` | 直接读写剪贴板 | **是** | 作业的 UI 限制；没有时 `GetClipboardData` 返回空（读到空或抛异常） |
-| `ui` | 开自己的窗口、找别的窗口 | 部分 | 没有时作业限制桌面和 USER 句柄 |
+| `ui` | 开自己的窗口、找别的窗口 | 部分 | 没有时作业限制桌面和 USER 句柄，并禁用传统扩展点；有此权限的插件保留传统输入法扩展点，仍受其他进程缓解策略和作业限制 |
 | `system:settings` | 修改 Windows 用户设置（主题、资源管理器、无线电、音量、保持唤醒） | **否** | 普通用户权限，仅声明；用于系统开关提供者，不授予管理员权限 |
 | `winshun:search` / `winshun:open` / `winshun:history` | 调 Win顺 的工具 | **是** | `winshun/tool` 按权限放行 |
 | `winshun:content` | 读 Win顺 从文档和文本文件里取出的文字（`list_documents`、`read_file_text`） | **是** | `winshun/tool` 按权限放行；不用自己解析 Word、PDF，也不用再读一遍硬盘 |

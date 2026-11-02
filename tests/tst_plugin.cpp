@@ -4295,6 +4295,53 @@ private slots:
         QVERIFY(runner.value(u"inJob"_s).toBool());
     }
 
+    // #164: run through the production host/runner, not preview-only QML.
+    void uiPluginKeepsInputMethodExtensions()
+    {
+        Fixture f;
+        Spec ui;
+        ui.mode = u"once"_s;
+        ui.role = u"--probe"_s;
+        ui.permissions = {u"ui"_s};
+        ui.runtimeExtra = {{u"debounceMs"_s, 0}};
+        QVERIFY(!f.install(ui).isEmpty());
+        QVERIFY(f.host->query(u"fk x"_s, Scope::All, 1));
+        QVERIFY2(f.waitFinal(1), qPrintable(f.logs.join(u'\n')));
+        const QJsonObject facts = f.finalFor(1)->items[0].data.toObject();
+        QVERIFY2(!facts.value(u"extensionPointsDisabled"_s).toBool(), "UI plugins must allow legacy input methods");
+        QVERIFY(facts.value(u"noRemoteImages"_s).toBool());
+        QVERIFY(facts.value(u"noLowLabelImages"_s).toBool());
+        QCOMPARE(facts.value(u"jobActiveProcessLimit"_s).toInt(), 1);
+        QCOMPARE(facts.value(u"spawnError"_s).toInt(), 1816); // UI alone does not grant child processes
+        QVERIFY(f.host->runnerFacts().value(u"extensionPointsDisabled"_s).toBool());
+    }
+
+    void captureManifestAllowsRecordingWorker()
+    {
+        QFile file(QDir(QString::fromUtf8(WINSHUN_TEST_PLUGINS)).filePath(u"../../src/capture-plugin/package/plugin.json"_s));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const QJsonObject manifest = parseObject(file.readAll());
+        QCOMPARE(manifest.value(u"id"_s).toString(), u"winshun.capture"_s);
+        Fixture f;
+        Spec capture;
+        capture.mode = u"once"_s;
+        capture.role = u"--probe"_s;
+        for (const QJsonValue& permission : manifest.value(u"permissions"_s).toArray())
+            capture.permissions.append(permission.toString());
+        const auto runtime = manifest.value(u"runtime"_s).toObject();
+        capture.runtimeExtra = {{u"debounceMs"_s, 0}, {u"memoryMB"_s, runtime.value(u"memoryMB"_s)},
+            {u"sandbox"_s, runtime.value(u"sandbox"_s)}};
+        QVERIFY(!f.install(capture).isEmpty());
+        QVERIFY(f.host->query(u"fk x"_s, Scope::All, 1));
+        QVERIFY2(f.waitFinal(1), qPrintable(f.logs.join(u'\n')));
+        const QJsonObject facts = f.finalFor(1)->items[0].data.toObject();
+        QVERIFY2(facts.value(u"spawnOk"_s).toBool(), QJsonDocument(facts).toJson(QJsonDocument::Compact).constData());
+        QVERIFY(facts.value(u"spawnedInJob"_s).toBool());
+        QVERIFY(facts.value(u"jobKillOnClose"_s).toBool());
+        QCOMPARE(facts.value(u"jobActiveProcessLimit"_s).toInt(), 0);
+        QCOMPARE(facts.value(u"jobMemoryMB"_s).toInt(), runtime.value(u"memoryMB"_s).toInt());
+    }
+
     // A strict plugin's data folder on a second disk: Windows' default root
     // ACL there gives Authenticated Users Modify, which lacks WRITE_OWNER, so
     // an unelevated copy (a portable one, a --profile) could not label the

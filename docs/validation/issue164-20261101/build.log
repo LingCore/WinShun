@@ -1,0 +1,5 @@
+[1/6] Building CXX object src\plugin\CMakeFiles\WinShunPluginHost.dir\runner\main.cpp.obj
+[2/6] Linking CXX executable WinShunPluginHost.exe
+[3/6] Automatic MOC and UIC for target tst_plugin
+[4/5] Building CXX object tests\CMakeFiles\tst_plugin.dir\tst_plugin.cpp.obj
+[5/5] Linking CXX executable tst_plugin.exe
