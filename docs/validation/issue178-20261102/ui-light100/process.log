@@ -1,0 +1,24 @@
+preparing
+loading the font
+Screen capture: prepared in 0 ms (1 monitor(s), WGC no, borderless no)
+Screen capture: prepared in 0 ms (1 monitor(s), WGC no, borderless no)
+Screen capture: UI Automation skipped for a Chromium window (class Chrome_WidgetWin_1): its child windows only
+Screen capture: UI Automation skipped for a Chromium window (class Chrome_WidgetWin_1): its child windows only
+Screen capture: overlay up 111 ms after the hotkey (grab 34 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 34 ms in all; 19 windows listed in 3 ms)
+Screen capture: overlay up 111 ms after the hotkey (grab 34 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 34 ms in all; 19 windows listed in 3 ms)
+saved docs/validation/issue178-20261102/ui-light100/ready.png 665x56
+saved docs/validation/issue178-20261102/ui-light100/source.png 800x460
+compact ready: 665 x 56
+full-screen uses source monitor (physical 0,0 2560x1600): 1
+saved docs/validation/issue178-20261102/ui-light100/ready-full-screen.png 665x56
+area choice restores original selection: 1
+keyboard selects full-screen; switching preserves recording preferences: 1
+options expanded beside screen edge stay in work area: 1
+saved docs/validation/issue178-20261102/ui-light100/keyboard-options.png 665x185
+compact options with spacing on both sides of divider: 1 (665 x 185; native gaps 8/8 px)
+keyboard focus scrolls the final option into a short viewport: 1
+saved docs/validation/issue178-20261102/ui-light100/options-short-height.png 665x152
+keyboard Space opens options, Escape closes only options: 1
+saved docs/validation/issue178-20261102/ui-light100/ready-gif.png 665x56
+saved docs/validation/issue178-20261102/ui-light100/options.png 665x185
+saved docs/validation/issue178-20261102/ui-light100/options-all-keys.png 665x213

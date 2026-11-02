@@ -1,0 +1,98 @@
+preparing
+loading the font
+Screen capture: prepared in 0 ms (1 monitor(s), WGC no, borderless no)
+FAIL: R with no history gives feedback
+Screen capture: overlay up 204 ms after the hotkey (grab 86 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 86 ms in all; 14 windows listed in 1 ms)
+Screen capture: UI Automation gave 0 controls in 82 ms
+Screen capture: UI Automation gave 0 controls in 18 ms
+PASS: real QML mouse routing selected exact physical pixels
+PASS: Enter exported the frozen pixels through Capture
+Screen capture: overlay up 54 ms after the hotkey (grab 33 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 32 ms in all; 15 windows listed in 0 ms)
+Screen capture: UI Automation gave 0 controls in 44 ms
+PASS: real QML mouse routing selected exact physical pixels
+PASS: Enter exported the frozen pixels through Capture
+Screen capture: overlay up 49 ms after the hotkey (grab 31 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 31 ms in all; 15 windows listed in 1 ms)
+Screen capture: UI Automation gave 0 controls in 24 ms
+PASS: real QML mouse routing selected exact physical pixels
+PASS: Enter exported the frozen pixels through Capture
+Screen capture: overlay up 56 ms after the hotkey (grab 29 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 29 ms in all; 15 windows listed in 3 ms)
+Screen capture: UI Automation gave 0 controls in 25 ms
+Screen capture: UI Automation gave 0 controls in 26 ms
+PASS: real QML mouse routing selected exact physical pixels
+PASS: Enter exported the frozen pixels through Capture
+Screen capture: overlay up 46 ms after the hotkey (grab 29 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 29 ms in all; 15 windows listed in 2 ms)
+Screen capture: UI Automation gave 0 controls in 22 ms
+Screen capture: UI Automation gave 0 controls in 20 ms
+PASS: real QML mouse routing selected exact physical pixels
+PASS: Enter exported the frozen pixels through Capture
+Screen capture: overlay up 50 ms after the hotkey (grab 26 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 26 ms in all; 15 windows listed in 1 ms)
+Screen capture: UI Automation gave 0 controls in 23 ms
+Screen capture: UI Automation gave 0 controls in 20 ms
+PASS: real QML mouse routing selected exact physical pixels
+PASS: Enter exported the frozen pixels through Capture
+Screen capture: overlay up 53 ms after the hotkey (grab 31 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 31 ms in all; 15 windows listed in 1 ms)
+Screen capture: UI Automation gave 0 controls in 25 ms
+Screen capture: UI Automation gave 0 controls in 21 ms
+PASS: real QML mouse routing selected exact physical pixels
+PASS: Enter exported the frozen pixels through Capture
+Screen capture: overlay up 46 ms after the hotkey (grab 28 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 28 ms in all; 14 windows listed in 0 ms)
+Screen capture: UI Automation gave 0 controls in 34 ms
+Screen capture: UI Automation gave 0 controls in 15 ms
+PASS: real QML mouse routing selected exact physical pixels
+PASS: Enter exported the frozen pixels through Capture
+Screen capture: overlay up 55 ms after the hotkey (grab 31 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 31 ms in all; 14 windows listed in 0 ms)
+Screen capture: UI Automation gave 0 controls in 24 ms
+Screen capture: UI Automation gave 0 controls in 17 ms
+PASS: real QML mouse routing selected exact physical pixels
+PASS: Enter exported the frozen pixels through Capture
+Screen capture: overlay up 49 ms after the hotkey (grab 28 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 28 ms in all; 15 windows listed in 1 ms)
+Screen capture: UI Automation gave 0 controls in 25 ms
+PASS: real QML mouse routing selected exact physical pixels
+PASS: Enter exported the frozen pixels through Capture
+Screen capture: overlay up 56 ms after the hotkey (grab 26 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 26 ms in all; 15 windows listed in 0 ms)
+Screen capture: UI Automation gave 0 controls in 28 ms
+Screen capture: UI Automation gave 0 controls in 17 ms
+PASS: real QML mouse routing selected exact physical pixels
+PASS: Enter exported the frozen pixels through Capture
+Screen capture: overlay up 58 ms after the hotkey (grab 30 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 30 ms in all; 15 windows listed in 1 ms)
+Screen capture: UI Automation gave 0 controls in 29 ms
+Screen capture: UI Automation gave 0 controls in 23 ms
+PASS: real QML mouse routing selected exact physical pixels
+PASS: Enter exported the frozen pixels through Capture
+PASS: only ten unique completed regions retained
+Screen capture: overlay up 54 ms after the hotkey (grab 27 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 27 ms in all; 15 windows listed in 2 ms)
+FAIL: R cycles regions newest first
+Screen capture: UI Automation gave 0 controls in 25 ms
+FAIL: R cycles regions newest first
+FAIL: R cycles regions newest first
+FAIL: R cycles regions newest first
+FAIL: R cycles regions newest first
+FAIL: R cycles regions newest first
+FAIL: R cycles regions newest first
+FAIL: R cycles regions newest first
+FAIL: R cycles regions newest first
+FAIL: R cycles regions newest first
+FAIL: R wraps to the newest region
+FAIL: Shift+R cycles in reverse
+PASS: WASD moved by one physical pixel
+PASS: Shift+WASD resized by one pixel without selecting a tool or starting a countdown
+PASS: R uses the newly frozen picture
+saved F:/电脑便捷工具/docs/validation/capture-keyboard-20261102/native-zh-150/selection-keyboard.png 2561x1601
+PASS: saved actual overlay for visual inspection
+PASS: recalled and adjusted region exports exact current pixels
+PASS: saved exported pixels
+Screen capture: overlay up 47 ms after the hotkey (grab 27 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 27 ms in all; 15 windows listed in 1 ms)
+Screen capture: UI Automation gave 0 controls in 17 ms
+FAIL: 1 still selects the rectangle tool
+FAIL: 3 still selects the arrow tool
+Screen capture: UI Automation gave 0 controls in 18 ms
+FAIL: text annotation accepts keyboard focus
+FAIL: typing WASDR edits text without moving or restoring the area
+FAIL: Ctrl+Enter commits text without copying the screenshot
+FAIL: R protects existing annotations
+Screen capture: overlay up 53 ms after the hotkey (grab 32 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 32 ms in all; 15 windows listed in 1 ms)
+Screen capture: UI Automation gave 0 controls in 28 ms
+Screen capture: UI Automation gave 0 controls in 24 ms
+Screen capture: UI Automation gave 0 controls in 27 ms
+FAIL: cancel closes only the isolated capture
+selection keyboard checks: failed; 0 warning(s)

@@ -1,0 +1,13 @@
+[1/75] Automatic MOC and UIC for target WinShunCaptureApp
+[2/74] Running AUTOMOC file extraction for target WinShunCaptureApp
+[3/13] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\app\TrayMenu.cpp.obj
+[4/13] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\PluginMain.cpp.obj
+[5/13] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\CaptureApp.cpp.obj
+[6/13] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\app\platform\WindowEffects.cpp.obj
+[7/13] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\CapturePreview.cpp.obj
+[8/13] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\app\SystemTheme.cpp.obj
+[9/13] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\app\WindowFrame.cpp.obj
+[10/13] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\capture\LongCapture.cpp.obj
+[11/13] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\capture\Recorder.cpp.obj
+[12/13] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\capture\Capture.cpp.obj
+[13/13] Linking CXX shared library WinShunCaptureApp.dll

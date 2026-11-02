@@ -1,0 +1,13 @@
+preparing
+making the application
+loading the font
+saved build/issue172-probe/always.png 800x540
+saved build/issue172-probe/held-idle.png 800x540
+saved build/issue172-probe/held-100ms.png 800x540
+saved build/issue172-probe/held-300ms.png 800x540
+saved build/issue172-probe/held-released.png 800x540
+saved build/issue172-probe/quick-taps.png 800x540
+saved build/issue172-probe/off.png 800x540
+WARNING: Drop pie helper regression failed: QList(收藏圆盘未启动: 无法创建圆盘的临时配置，请检查临时文件夹。) QJsonObject({"elevated":false,"folders":2,"passed":false,"pid":34108,"ready":true,"running":true,"stopped":true,"updatedFavorites":false})
+renderer D3D11, DPR 1; Qt events only, not a global double-Ctrl gesture
+1 warning(s)

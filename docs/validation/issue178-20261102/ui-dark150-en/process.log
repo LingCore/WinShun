@@ -1,0 +1,24 @@
+preparing
+loading the font
+Screen capture: prepared in 0 ms (1 monitor(s), WGC no, borderless no)
+Screen capture: prepared in 0 ms (1 monitor(s), WGC no, borderless no)
+Screen capture: UI Automation skipped for a Chromium window (class Chrome_WidgetWin_1): its child windows only
+Screen capture: UI Automation skipped for a Chromium window (class Chrome_WidgetWin_1): its child windows only
+Screen capture: overlay up 94 ms after the hotkey (grab 29 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 29 ms in all; 19 windows listed in 1 ms)
+Screen capture: overlay up 94 ms after the hotkey (grab 29 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 29 ms in all; 19 windows listed in 1 ms)
+saved docs/validation/issue178-20261102/ui-dark150-en/ready.png 1133x84
+saved docs/validation/issue178-20261102/ui-dark150-en/source.png 1200x690
+compact ready: 755 x 56
+full-screen uses source monitor (physical 0,0 2560x1600): 1
+saved docs/validation/issue178-20261102/ui-dark150-en/ready-full-screen.png 1133x84
+area choice restores original selection: 1
+keyboard selects full-screen; switching preserves recording preferences: 1
+options expanded beside screen edge stay in work area: 1
+saved docs/validation/issue178-20261102/ui-dark150-en/keyboard-options.png 1133x278
+compact options with spacing on both sides of divider: 1 (755 x 185; native gaps 12/12 px)
+keyboard focus scrolls the final option into a short viewport: 1
+saved docs/validation/issue178-20261102/ui-dark150-en/options-short-height.png 1133x228
+keyboard Space opens options, Escape closes only options: 1
+saved docs/validation/issue178-20261102/ui-dark150-en/ready-gif.png 1133x84
+saved docs/validation/issue178-20261102/ui-dark150-en/options.png 1133x278
+saved docs/validation/issue178-20261102/ui-dark150-en/options-all-keys.png 1133x320

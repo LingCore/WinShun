@@ -1,0 +1,13 @@
+Test project F:/电脑便捷工具/build/capture-keyboard-20261102
+    Start 44: tst_capture
+1/4 Test #44: tst_capture ......................   Passed    0.19 sec
+    Start 56: tst_annotate
+2/4 Test #56: tst_annotate .....................   Passed   18.02 sec
+    Start 58: tst_stage7
+3/4 Test #58: tst_stage7 .......................   Passed    0.29 sec
+    Start 61: tst_annotmodel
+4/4 Test #61: tst_annotmodel ...................   Passed    4.65 sec
+
+100% tests passed, 0 tests failed out of 4
+
+Total Test time (real) =  23.27 sec

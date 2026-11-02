@@ -1,0 +1,134 @@
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR) 
+-- Could NOT find WrapVulkanHeaders (missing: Vulkan_INCLUDE_DIR) 
+-- Configuring done (12.9s)
+-- Generating done (3.3s)
+-- Build files have been written to: F:/电脑便捷工具/build/capture-keyboard-20261102
+[0/1] Re-running CMake...
+[1/129] Copying WinShunCaptureApp qml sources into build dir
+[2/129] Copying WinShunCaptureApp qml resources into build dir
+[3/129] Automatic UIC for target WinShunCapture
+[4/129] Automatic MOC and UIC for target tst_capture
+[5/128] Populating .qmlls.build.ini file at F:/电脑便捷工具/build/capture-keyboard-20261102/.qt/.qmlls.build.ini
+[6/128] Automatic MOC and UIC for target tst_captureui
+[7/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCapture.dir\stub\main.cpp.obj
+[8/128] Linking CXX executable WinShunCapture.exe
+[9/128] Automatic MOC and UIC for target WinShunCaptureApp
+[10/128] Running rcc for resource qmake_WinShun
+[11/128] Generating .rcc/qmlcache/WinShunCaptureApp_qmlcache_loader.cpp
+[12/128] Running rcc for resource WinShunCaptureApp_raw_qml_0
+[13/128] Running rcc for resource capture_phosphor
+[14/128] Generating capture_en.qm
+[15/128] Running rcc for resource capture_translations
+[16/128] Running AUTOMOC file extraction for target WinShunCaptureApp
+[17/128] Running moc --collect-json for target WinShunCaptureApp
+[18/128] Automatic QML type registration for target WinShunCaptureApp
+[19/128] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_Theme_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_Theme_qml.cpp.aotstats
+[20/128] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_WindowEdge_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_WindowEdge_qml.cpp.aotstats
+[21/128] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_HoverTip_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_HoverTip_qml.cpp.aotstats
+[22/128] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_DropMenu_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_DropMenu_qml.cpp.aotstats
+[23/128] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_Glyph_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_Glyph_qml.cpp.aotstats
+[24/128] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_TitleBar_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_TitleBar_qml.cpp.aotstats
+[25/128] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_ToggleSwitch_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_ToggleSwitch_qml.cpp.aotstats
+[26/128] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_FlatButton_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_FlatButton_qml.cpp.aotstats
+[27/128] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_InputBox_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_InputBox_qml.cpp.aotstats
+[28/128] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_CenteredNumber_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_CenteredNumber_qml.cpp.aotstats
+[29/128] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_KeyCap_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_KeyCap_qml.cpp.aotstats
+[30/128] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_HotkeyRecorder_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_HotkeyRecorder_qml.cpp.aotstats
+[31/128] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_ListScrollBar_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_ListScrollBar_qml.cpp.aotstats
+[32/128] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_ListWheelScroll_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_ListWheelScroll_qml.cpp.aotstats
+[33/128] Generating .rcc/qmlcache/WinShunCaptureApp__app_qml_ScrollPixelAlignment_qml.cpp, .rcc/qmlcache/WinShunCaptureApp__app_qml_ScrollPixelAlignment_qml.cpp.aotstats
+[34/128] Generating .rcc/qmlcache/WinShunCaptureApp_qml_CaptureOverlay_qml.cpp, .rcc/qmlcache/WinShunCaptureApp_qml_CaptureOverlay_qml.cpp.aotstats
+[35/128] Building CXX object tests\CMakeFiles\tst_capture.dir\__\src\capture\CaptureSession.cpp.obj
+[36/128] Generating .rcc/qmlcache/WinShunCaptureApp_qml_AnnotateToolbar_qml.cpp, .rcc/qmlcache/WinShunCaptureApp_qml_AnnotateToolbar_qml.cpp.aotstats
+[37/128] Building CXX object tests\CMakeFiles\tst_captureui.dir\tst_captureui_autogen\mocs_compilation.cpp.obj
+[38/128] Generating .rcc/qmlcache/WinShunCaptureApp_qml_AnnotateSmartHint_qml.cpp, .rcc/qmlcache/WinShunCaptureApp_qml_AnnotateSmartHint_qml.cpp.aotstats
+[39/128] Generating .rcc/qmlcache/WinShunCaptureApp_qml_AnnotateStylePanel_qml.cpp, .rcc/qmlcache/WinShunCaptureApp_qml_AnnotateStylePanel_qml.cpp.aotstats
+[40/128] Generating .rcc/qmlcache/WinShunCaptureApp_qml_AnnotateLayer_qml.cpp, .rcc/qmlcache/WinShunCaptureApp_qml_AnnotateLayer_qml.cpp.aotstats
+[41/128] Generating .rcc/qmlcache/WinShunCaptureApp_qml_AnnotateObjects_qml.cpp, .rcc/qmlcache/WinShunCaptureApp_qml_AnnotateObjects_qml.cpp.aotstats
+[42/128] Generating .rcc/qmlcache/WinShunCaptureApp_qml_EditWindow_qml.cpp, .rcc/qmlcache/WinShunCaptureApp_qml_EditWindow_qml.cpp.aotstats
+[43/128] Generating .rcc/qmlcache/WinShunCaptureApp_qml_OcrPanel_qml.cpp, .rcc/qmlcache/WinShunCaptureApp_qml_OcrPanel_qml.cpp.aotstats
+[44/128] Building CXX object tests\CMakeFiles\tst_captureui.dir\__\src\capture\CaptureImage.cpp.obj
+[45/128] Generating .rcc/qmlcache/WinShunCaptureApp_qml_LongCapturePanel_qml.cpp, .rcc/qmlcache/WinShunCaptureApp_qml_LongCapturePanel_qml.cpp.aotstats
+[46/128] Generating .rcc/qmlcache/WinShunCaptureApp_qml_RecordingPanel_qml.cpp, .rcc/qmlcache/WinShunCaptureApp_qml_RecordingPanel_qml.cpp.aotstats
+[47/128] Generating .rcc/qmlcache/WinShunCaptureApp_qml_RecordingButton_qml.cpp, .rcc/qmlcache/WinShunCaptureApp_qml_RecordingButton_qml.cpp.aotstats
+[48/128] Generating .rcc/qmlcache/WinShunCaptureApp_qml_RecordingOptions_qml.cpp, .rcc/qmlcache/WinShunCaptureApp_qml_RecordingOptions_qml.cpp.aotstats
+[49/128] Building CXX object tests\CMakeFiles\tst_captureui.dir\__\src\capture\CapturePointer.cpp.obj
+[50/128] Generating .rcc/qmlcache/WinShunCaptureApp_qml_CaptureOptions_qml.cpp, .rcc/qmlcache/WinShunCaptureApp_qml_CaptureOptions_qml.cpp.aotstats
+[51/128] Generating .rcc/qmlcache/WinShunCaptureApp_qml_CaptureSettingsWindow_qml.cpp, .rcc/qmlcache/WinShunCaptureApp_qml_CaptureSettingsWindow_qml.cpp.aotstats
+[52/128] Linking CXX executable tst_capture.exe
+[53/128] Building CXX object tests\CMakeFiles\tst_captureui.dir\tst_captureui.cpp.obj
+[54/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\PinImage.cpp.obj
+[55/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\PluginMain.cpp.obj
+[56/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\RawClicks.cpp.obj
+[57/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\WinShunCaptureApp_autogen\mocs_compilation.cpp.obj
+[58/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\CaptureApp.cpp.obj
+[59/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\CapturePreview.cpp.obj
+[60/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\Protocol.cpp.obj
+[61/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\LongCapturePreview.cpp.obj
+[62/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\PluginShell.cpp.obj
+[63/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\app\PictureFile.cpp.obj
+[64/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\app\Phosphor.cpp.obj
+[65/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\app\platform\Integrity.cpp.obj
+[66/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\app\TrayMenu.cpp.obj
+[67/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\app\ClipImage.cpp.obj
+[68/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\app\platform\DragOut.cpp.obj
+[69/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\app\platform\Foreground.cpp.obj
+[70/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\app\platform\IdleTrim.cpp.obj
+[71/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\core\Win32Util.cpp.obj
+[72/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\app\platform\OcrFiles.cpp.obj
+[73/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.qt\rcc\qrc_qmake_WinShun.cpp.obj
+[74/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\app\platform\WindowEffects.cpp.obj
+[75/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\core\DiagnosticLog.cpp.obj
+[76/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\app\platform\ShellDialogs.cpp.obj
+[77/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\app\platform\PaddleOcr.cpp.obj
+[78/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\CaptureSettings.cpp.obj
+[79/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\app\SystemTheme.cpp.obj
+[80/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\winshuncaptureapp_qmltyperegistrations.cpp.obj
+[81/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\capture\CaptureImage.cpp.obj
+[82/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\app\WindowFrame.cpp.obj
+[83/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\capture\CapturePointer.cpp.obj
+[84/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\capture\Capture.cpp.obj
+[85/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\capture\CaptureSession.cpp.obj
+[86/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\capture\AnnotationCanvas.cpp.obj
+[87/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\capture\AnnotationModel.cpp.obj
+[88/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\capture\CaptureEditor.cpp.obj
+[89/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\capture\CaptureOcr.cpp.obj
+[90/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\capture\PinManager.cpp.obj
+[91/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\capture\PinWindow.cpp.obj
+[92/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp_qmlcache_loader.cpp.obj
+[93/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_Theme_qml.cpp.obj
+[94/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\capture\Recorder.cpp.obj
+[95/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\__\capture\LongCapture.cpp.obj
+[96/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_WindowEdge_qml.cpp.obj
+[97/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_HoverTip_qml.cpp.obj
+[98/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_DropMenu_qml.cpp.obj
+[99/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_Glyph_qml.cpp.obj
+[100/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_ToggleSwitch_qml.cpp.obj
+[101/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_TitleBar_qml.cpp.obj
+[102/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_FlatButton_qml.cpp.obj
+[103/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_InputBox_qml.cpp.obj
+[104/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_CenteredNumber_qml.cpp.obj
+[105/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_KeyCap_qml.cpp.obj
+[106/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_ListScrollBar_qml.cpp.obj
+[107/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_HotkeyRecorder_qml.cpp.obj
+[108/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_ListWheelScroll_qml.cpp.obj
+[109/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp__app_qml_ScrollPixelAlignment_qml.cpp.obj
+[110/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp_qml_CaptureOverlay_qml.cpp.obj
+[111/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp_qml_AnnotateToolbar_qml.cpp.obj
+[112/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp_qml_AnnotateSmartHint_qml.cpp.obj
+[113/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp_qml_AnnotateStylePanel_qml.cpp.obj
+[114/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp_qml_AnnotateLayer_qml.cpp.obj
+[115/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp_qml_AnnotateObjects_qml.cpp.obj
+[116/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp_qml_EditWindow_qml.cpp.obj
+[117/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp_qml_OcrPanel_qml.cpp.obj
+[118/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp_qml_LongCapturePanel_qml.cpp.obj
+[119/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp_qml_RecordingPanel_qml.cpp.obj
+[120/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.qt\rcc\qrc_capture_translations.cpp.obj
+[121/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.qt\rcc\qrc_WinShunCaptureApp_raw_qml_0.cpp.obj
+[122/128] Linking CXX executable tst_captureui.exe
+[123/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.qt\rcc\qrc_capture_phosphor.cpp.obj
+[124/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp_qml_RecordingButton_qml.cpp.obj
+[125/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp_qml_RecordingOptions_qml.cpp.obj
+[126/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp_qml_CaptureOptions_qml.cpp.obj
+[127/128] Building CXX object src\capture-plugin\CMakeFiles\WinShunCaptureApp.dir\.rcc\qmlcache\WinShunCaptureApp_qml_CaptureSettingsWindow_qml.cpp.obj
+[128/128] Linking CXX shared library WinShunCaptureApp.dll

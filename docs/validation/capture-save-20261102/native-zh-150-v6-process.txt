@@ -1,0 +1,41 @@
+preparing
+loading the font
+Screen capture: prepared in 0 ms (1 monitor(s), WGC no, borderless no)
+Screen capture: overlay up 140 ms after the hotkey (grab 38 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 38 ms in all; 17 windows listed in 2 ms)
+Screen capture: UI Automation gave 0 controls in 234 ms (over the budget: this window's child windows only)
+Screen capture: UI Automation gave 0 controls in 72 ms
+PASS: save includes an actual annotation
+native dialog: 保存截图; hwnd=65673146; owner=104990836; yes=0; ok=83761274
+PASS: native picker belongs to the capture overlay
+PASS: repeated save/hotkey does not close the capture or open another picker
+PASS: Ctrl+S opens native Save As; Cancel keeps selection and annotations without recording or saving
+native dialog: 保存截图; hwnd=40436376; owner=104990836; yes=0; ok=105058800
+PASS: native picker belongs to the capture overlay
+PASS: repeated save/hotkey does not close the capture or open another picker
+native filename field located and set
+PASS: asynchronous PNG save succeeded
+PASS: save button opens Save As and completes
+PASS: chosen Unicode PNG contains exact annotated pixels
+PASS: Save As leaves the configured old folder unchanged
+Screen capture: overlay up 97 ms after the hotkey (grab 49 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 49 ms in all; 17 windows listed in 0 ms)
+native dialog: 保存截图; hwnd=131470216; owner=104990836; yes=0; ok=113909282
+PASS: native picker belongs to the capture overlay
+PASS: repeated save/hotkey does not close the capture or open another picker
+native filename field located and set
+native dialog: 确认另存为; hwnd=280827076; owner=131470216; yes=0; ok=0
+PASS: asynchronous PNG save succeeded
+PASS: native overwrite confirmation saves new pixels to the chosen file
+Screen capture: overlay up 98 ms after the hotkey (grab 40 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 40 ms in all; 17 windows listed in 1 ms)
+PASS: arrow opens the menu
+Screen capture: UI Automation gave 0 controls in 214 ms (over the budget: this window's child windows only)
+PASS: saved actual dropdown screenshot
+Screen capture: UI Automation gave 0 controls in 157 ms (over the budget: this window's child windows only)
+FAIL: second arrow click closes the menu
+PASS: Escape closes only the menu
+PASS: WASD still works after closing the menu
+FAIL: outside click dismisses the menu without activating Copy
+PASS: asynchronous PNG save succeeded
+PASS: Save to previous folder saves directly without a picker
+PASS: old-folder PNG contains the exact selected pixels
+PASS: only confirmed saves enter history; clipboard remains untouched
+capture save checks: failed

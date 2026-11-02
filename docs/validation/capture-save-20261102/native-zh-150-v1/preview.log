@@ -1,0 +1,18 @@
+preparing
+loading the font
+Screen capture: prepared in 0 ms (1 monitor(s), WGC no, borderless no)
+Screen capture: overlay up 182 ms after the hotkey (grab 36 ms: 1 monitor(s), 0 by WGC (frames in 0 ms), the rest by BitBlt, 36 ms in all; 15 windows listed in 2 ms)
+Screen capture: UI Automation gave 0 controls in 225 ms (over the budget: this window's child windows only)
+Screen capture: UI Automation gave 0 controls in 65 ms
+PASS: save includes an actual annotation
+PASS: native picker belongs to the capture overlay
+PASS: repeated save/hotkey does not close the capture or open another picker
+PASS: Ctrl+S opens native Save As; Cancel keeps selection and annotations without recording or saving
+PASS: native picker belongs to the capture overlay
+PASS: repeated save/hotkey does not close the capture or open another picker
+FAIL: native dialog automation timed out
+FAIL: save button opens Save As and completes
+FAIL: chosen Unicode PNG contains exact annotated pixels
+PASS: Save As leaves the configured old folder unchanged
+Screen capture: annotations kept as a draft at 160,220 (420x240)
+FAIL: capture reopens for overwrite

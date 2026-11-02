@@ -1,0 +1,3 @@
+[1/4] Automatic MOC and UIC for target tst_capture
+[2/3] Building CXX object tests\CMakeFiles\tst_capture.dir\tst_capture.cpp.obj
+[3/3] Linking CXX executable tst_capture.exe
