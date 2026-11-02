@@ -285,6 +285,8 @@ int runPlugins(const QStringList& args)
     const bool dark = args.contains(u"--dark"_s);
     const bool dialog = args.contains(u"--dialog"_s);
     const bool aiPage = valueAfter(args, u"--page") == u"ai"; // the AI 助手 page instead (its plugin switches)
+    const bool allow = args.contains(u"--dialog-allow"_s); // the 更新并允许 question instead
+    const bool updatesOnly = args.contains(u"--updates"_s); // the 插件库 tab as the badge leads to it
 
     say(u"starting (dark %1, dialog %2)"_s.arg(dark).arg(dialog));
     QQmlApplicationEngine engine;
@@ -297,6 +299,8 @@ int runPlugins(const QStringList& args)
     auto* editor = new SettingsEditor(settings, u"software"_s, &engine);
     editor->plugins()->setLocale(u"zh"_s);
     editor->plugins()->loadPreview();
+    if (updatesOnly)
+        editor->plugins()->gallery()->setUpdatesOnly(true);
     if (aiPage)
         editor->setMcpStatus(u"已连接：Claude Desktop（12 次调用）"_s);
     say(u"loading the page"_s);
@@ -306,6 +310,7 @@ int runPlugins(const QStringList& args)
         {u"plugins"_s, QVariant::fromValue(editor->plugins())},
         {u"editor"_s, QVariant::fromValue(editor)},
         {u"dialogShown"_s, dialog},
+        {u"allowShown"_s, allow},
         {u"aiPage"_s, aiPage},
     });
     auto* window = qobject_cast<QQuickWindow*>(object);
@@ -5129,7 +5134,7 @@ int run(const QStringList& args)
             QDir(profile).removeRecursively();
     });
     if (valueAfter(args, runtimeMode ? kRuntimeFlag : resultsMode ? kResultsFlag : cardsMode ? kAiCardsFlag : settingsMode ? kSettingsFlag : kFlag).isEmpty()) {
-        std::fprintf(stderr, "usage: WinShun --preview-plugins <file.png> [--dark] [--scale 1.5] [--dialog] [--page ai]\n"
+        std::fprintf(stderr, "usage: WinShun --preview-plugins <file.png> [--dark] [--scale 1.5] [--dialog | --dialog-allow] [--updates] [--page ai]\n"
                              "       WinShun --preview-settings <folder> [--dark] [--scale 1.5] [--tree] [--edges] [--renderer d3d11]\n");
         return 2;
     }
