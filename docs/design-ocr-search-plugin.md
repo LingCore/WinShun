@@ -30,7 +30,7 @@ SQLite WAL，每个调用线程独立连接，查询使用只读连接。文件�
 
 ## 宿主协议
 
-`commands[].contentSearch: true` 声明一个内容提供者。0.17.0 没有这一接口，插件包的 `minWinShun` 与 `winshun.web` 一样，构建时设为当前主程序版本。关键词查询保持原协议；内容查询的 `trigger` 为 `content`。只在 Content 或显式开启内容检索的 All 中派发；Files / Folders 不派发。关键词独占列表时不调用其他内容提供者。提供者在原生结果之后合并，最多 200 行，不占普通推送的 3／6 行配额；同一文件已有原生结果时去重。
+`commands[].contentSearch: true` 声明一个内容提供者。0.17.0 没有这一接口，插件包的 `minWinShun` 与 `winshun.web` 一样，构建时设为当前主程序版本。关键词查询保持原协议；内容查询的 `trigger` 为 `content`。只在 Content 或显式开启内容检索的 All 中派发；Files / Folders 不派发。关键词独占列表时不调用其他内容提供者。提供者在原生结果之后合并（Content）；在 All 里前 3 行排在前 5 个名称结果之后，其余在最后。最多 200 行，不占普通推送的 3／6 行配额；同一文件已有原生结果时去重。
 
 `filters` 保留原有日期、大小、扩展名及目录条件，并提供 `contentEnabled`、`contentWords`、`contentPick`、`excludedExtensions`、`excludedFileNames`。关键词、目录选择、排除文件类型／名称和异步过期结果分别有测试或生产路径验证。
 

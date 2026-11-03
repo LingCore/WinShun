@@ -36,8 +36,8 @@
     </message>
     <message>
         <location filename="../qml/OcrLibraryPane.qml" line="32"/>
-        <source>搜索图片、PDF 和 Office 图片中的文字。选择目录后，在后台识别一次。</source>
-        <translation>Search text in images, PDFs and Office pictures. Choose folders to recognize their contents in the background.</translation>
+        <source>搜索图片、PDF 和 Office 图片中的文字。选择目录后，在后台识别一次。索引建好后，在搜索框直接输入图片里的文字就能搜到；输入 ocr 关键词只看图片和扫描件结果。</source>
+        <translation>Search text in images, PDFs and Office pictures. Choose folders to recognize their contents in the background. Once the index is built, type the words from a picture straight into the search box; ocr followed by words lists only picture and scan results.</translation>
     </message>
     <message>
         <location filename="../qml/OcrLibraryPane.qml" line="40"/>
@@ -200,9 +200,9 @@
     <message>
         <location filename="../qml/OcrSearchPane.qml" line="72"/>
         <source>输入关键词即可搜索
-也可以在启动器输入 ocr 关键词</source>
+在启动器里直接输入图片里的文字也能搜到；输入 ocr 关键词只看图片结果</source>
         <translation>Type words to search
-Or type ocr followed by words in the launcher</translation>
+In the launcher, type the words from a picture directly; ocr followed by words lists only picture results</translation>
     </message>
     <message>
         <location filename="../qml/OcrSearchPane.qml" line="72"/>

@@ -8,9 +8,9 @@
 2. 添加工作文档、截图或扫描件所在的文件夹，按需要排除子目录。没有默认全盘扫描。
 3. 如果提示缺少增强识别组件，点击安装入口，在 Win顺 设置中安装共享 OCR 组件（约 12 MB）。截图、剪贴板和本插件共用这一套模型。安装完成后插件中的更新按钮自动可用。
 4. 点击“开始更新”。可随时暂停；已完成的结果保留。开启后每 5 分钟检查变化，可用底部“自动更新”开关停止；暂停也会停止自动更新，下次启动仍保持暂停。
-5. 在启动器输入 `ocr 关键词`，Enter 打开原文件，Ctrl+Enter 查看原图和高亮，Shift+Enter 打开所在文件夹。也可在插件窗口搜索、缩放预览、拖动放大后的图片，以及复制所选图片／页的识别文字。
+5. 索引建好后，直接在搜索框输入图片里的文字就能搜到；输入 `ocr 关键词` 只看图片和扫描件结果。Enter 打开原文件，Ctrl+Enter 查看原图和高亮，Shift+Enter 打开所在文件夹。也可在插件窗口搜索、缩放预览、拖动放大后的图片，以及复制所选图片／页的识别文字。
 
-包含新内容提供者接口的宿主，还会在“内容”以及开启内容搜索的“全部”中查询插件索引；无需输入 `ocr`。普通文件搜索不触发 OCR 查询。插件需要带内容提供者接口的 Win顺 0.18.0 或更新版本，插件包的最低版本即构建它的主程序版本。
+包含新内容提供者接口的宿主，还会在“内容”以及开启内容搜索的“全部”中查询插件索引；无需输入 `ocr`。在“全部”里，前 3 条图片结果排在前 5 个名称结果之后，其余在最后。普通文件搜索不触发 OCR 查询。插件需要带内容提供者接口的 Win顺 0.18.0 或更新版本，插件包的最低版本即构建它的主程序版本。
 
 ## 文件覆盖与边界
 
@@ -42,7 +42,7 @@
 
 ---
 
-An optional native C++ plugin. Add selected folders, install the shared enhanced OCR component if needed, and choose **Update index**. Nothing is uploaded and original files are read-only. Type `ocr words` in WinShun; Enter opens the original, Ctrl+Enter opens a highlighted preview, and Shift+Enter reveals its folder. It needs WinShun 0.18.0 or later with content providers, which merges results into Content and content-enabled All searches. Install it from the plugin library, or download the .wsplugin package and install from archive.
+An optional native C++ plugin. Add selected folders, install the shared enhanced OCR component if needed, and choose **Update index**. Nothing is uploaded and original files are read-only. Once the index is built, type the words from a picture straight into the search box; `ocr words` lists only picture and scan results. Enter opens the original, Ctrl+Enter opens a highlighted preview, and Shift+Enter reveals its folder. It needs WinShun 0.18.0 or later with content providers, which merges results into Content and content-enabled All searches. Install it from the plugin library, or download the .wsplugin package and install from archive.
 
 Supports PNG/JPEG/BMP, multi-page TIFF, scanned and mixed PDFs, and ordinary embedded bitmap relationships in modern Word, PowerPoint and Excel documents. WebP depends on Windows codecs. Legacy Office/WPS formats, encryption, unsupported encodings and failures are reported. Office previews show the embedded original image, without reproducing the Office page layout. PDF pages without pictures are skipped. Limits: 100 MB and 500 pages/images per file, 256 MB archive expansion, 100 megapixels per picture, 60 seconds without progress per file, 30 seconds per preview. Failed files are retried only after they change or with Recheck all files. Multiple words may match different pages of one file; one matching location is shown per file.
 
