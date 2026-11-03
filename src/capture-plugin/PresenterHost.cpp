@@ -13,6 +13,8 @@
 #include <QSurfaceFormat>
 #include <QTimer>
 
+#include <optional>
+
 #include <windows.h>
 
 using namespace Qt::StringLiterals;
@@ -34,15 +36,24 @@ HWND handleOf(QWindow* window)
     return window ? reinterpret_cast<HWND>(window->winId()) : nullptr;
 }
 
-// A monitor's size in physical pixels (the screen's logical size times its
-// scale can be a pixel off at 125 % and 175 %).
-QSize pixelsOf(QScreen* screen)
+// A monitor in physical pixels (the screen's logical size times its scale
+// can be a pixel off: 1707 x 1.5 is 2560.5).
+std::optional<QRect> monitorRect(QScreen* screen)
 {
     if (const auto* native = screen->nativeInterface<QNativeInterface::QWindowsScreen>()) {
         MONITORINFO info {sizeof info};
-        if (::GetMonitorInfoW(native->handle(), &info))
-            return {int(info.rcMonitor.right - info.rcMonitor.left), int(info.rcMonitor.bottom - info.rcMonitor.top)};
+        if (::GetMonitorInfoW(native->handle(), &info)) {
+            const RECT& r = info.rcMonitor;
+            return QRect(int(r.left), int(r.top), int(r.right - r.left), int(r.bottom - r.top));
+        }
     }
+    return std::nullopt;
+}
+
+QSize pixelsOf(QScreen* screen)
+{
+    if (const std::optional<QRect> r = monitorRect(screen))
+        return r->size();
     return (QSizeF(screen->geometry().size()) * screen->devicePixelRatio()).toSize();
 }
 
@@ -146,6 +157,9 @@ void PresenterHost::makeWindows()
         window->setScreen(screen);
         window->setGeometry(screen->geometry());
         window->create();
+        if (const std::optional<QRect> r = monitorRect(screen)) // exactly the monitor, not a pixel past it
+            ::SetWindowPos(handleOf(window), nullptr, r->x(), r->y(), r->width(), r->height(),
+                SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
         win::disableTransitions(window);
         capture::releaseIdleGraphics(window);
         m_inks.emplace_back(window);

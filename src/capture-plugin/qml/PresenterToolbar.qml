@@ -56,6 +56,7 @@ Window {
     readonly property int midUpTo: 28
 
     function snap(v) { return Math.round(v * dpr) / dpr }
+    function centre(outer, inner) { return snap((outer - inner) / 2) } // on whole pixels
     function hover(on, text, keys) {
         if (on) {
             tipText = text
@@ -101,11 +102,11 @@ Window {
 
         Rectangle {
             id: bar
-            width: row.width + 2 * window.pad
-            height: window.buttonHeight + 2 * window.pad
+            width: Theme.snapUp(row.width + 2 * window.pad, window.dpr)
+            height: Theme.snapUp(window.buttonHeight + 2 * window.pad, window.dpr)
             radius: Theme.controlRadius
             color: Theme.background
-            border.width: 1
+            border.width: Theme.edge(window.dpr)
             border.color: Theme.windowEdge
 
             MouseArea { // presses between the buttons stay here
@@ -136,10 +137,24 @@ Window {
 
                     MouseArea {
                         id: gripArea
+                        // Moved here, not by the system's move: that makes the toolbar the
+                        // active window, and the keys (H, W, Esc...) no longer reach the ink.
+                        property point pressedAt
+                        property point startedAt
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.SizeAllCursor
-                        onPressed: window.startSystemMove()
+                        onPressed: (mouse) => {
+                            pressedAt = mapToGlobal(mouse.x, mouse.y)
+                            startedAt = Qt.point(window.x, window.y)
+                        }
+                        onPositionChanged: (mouse) => {
+                            if (!pressed)
+                                return
+                            const at = mapToGlobal(mouse.x, mouse.y)
+                            window.x = Math.round(startedAt.x + at.x - pressedAt.x)
+                            window.y = Math.round(startedAt.y + at.y - pressedAt.y)
+                        }
                         onContainsMouseChanged: window.hover(containsMouse, qsTr("按住拖动工具条"), "")
                     }
                 }
@@ -180,17 +195,19 @@ Window {
                     }
 
                     Rectangle {
-                        anchors.centerIn: parent
+                        x: window.centre(parent.width, width)
+                        y: window.centre(parent.height, height)
                         width: window.laserDot + 6
                         height: width
                         radius: width / 2
                         color: "transparent"
-                        border.width: 1.5
+                        border.width: window.snap(1.5)
                         border.color: laserButton.foreground
                         opacity: 0.6
                     }
                     Rectangle {
-                        anchors.centerIn: parent
+                        x: window.centre(parent.width, width)
+                        y: window.centre(parent.height, height)
                         width: window.laserDot
                         height: width
                         radius: width / 2
@@ -208,12 +225,13 @@ Window {
                     onClicked: window.colorsOpen = !window.colorsOpen
 
                     Rectangle {
-                        anchors.centerIn: parent
+                        x: window.centre(parent.width, width)
+                        y: window.centre(parent.height, height)
                         width: window.dotSize
                         height: width
                         radius: width / 2
                         color: window.annot && window.annot.panel.color !== undefined ? window.annot.panel.color : Theme.subtext
-                        border.width: 1
+                        border.width: Theme.edge(window.dpr)
                         border.color: colorButton.checked ? Theme.accentText : Theme.windowEdge
                     }
                 }
@@ -256,12 +274,13 @@ Window {
                     onClicked: window.presenter.toggleBoard(1)
 
                     Rectangle {
-                        anchors.centerIn: parent
+                        x: window.centre(parent.width, width)
+                        y: window.centre(parent.height, height)
                         width: window.boardSize
                         height: window.boardSize
                         radius: Theme.smallControlRadius
                         color: "#FFFFFF"
-                        border.width: 1
+                        border.width: Theme.edge(window.dpr)
                         border.color: whiteButton.checked ? Theme.accentText : Theme.controlBorder
                     }
                 }
@@ -274,12 +293,13 @@ Window {
                     onClicked: window.presenter.toggleBoard(2)
 
                     Rectangle {
-                        anchors.centerIn: parent
+                        x: window.centre(parent.width, width)
+                        y: window.centre(parent.height, height)
                         width: window.boardSize
                         height: window.boardSize
                         radius: Theme.smallControlRadius
                         color: "#1E2124"
-                        border.width: 1
+                        border.width: Theme.edge(window.dpr)
                         border.color: blackButton.checked ? Theme.accentText : Theme.controlBorder
                     }
                 }
@@ -321,11 +341,11 @@ Window {
 
         Rectangle { // a name and key, or the hint
             visible: window.lineText.length > 0
-            width: lineRow.width + 2 * window.linePadX
-            height: window.lineHeight
+            width: Theme.snapUp(lineRow.width + 2 * window.linePadX, window.dpr)
+            height: Theme.snapUp(window.lineHeight, window.dpr)
             radius: Theme.controlRadius
             color: Theme.background
-            border.width: 1
+            border.width: Theme.edge(window.dpr)
             border.color: Theme.windowEdge
 
             MouseArea { // a click puts the hint away
