@@ -22,7 +22,8 @@ foreach(name IN LISTS shared_qml)
     list(APPEND capture_qml "${app_dir}/qml/${name}")
 endforeach()
 foreach(name IN ITEMS CaptureOverlay AnnotateToolbar AnnotateStylePanel AnnotateSmartHint AnnotateLayer AnnotateObjects
-                      EditWindow OcrPanel LongCapturePanel RecordingPanel RecordingButton RecordingOptions CaptureOptions CaptureSettingsWindow CaptureSaveButton)
+                      EditWindow OcrPanel LongCapturePanel RecordingPanel RecordingButton RecordingOptions CaptureOptions CaptureSettingsWindow CaptureSaveButton
+                      PresenterOverlay PresenterToolbar)
     list(APPEND capture_qml "${CMAKE_CURRENT_SOURCE_DIR}/qml/${name}.qml")
 endforeach()
 set_source_files_properties("${app_dir}/qml/Theme.qml" PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
@@ -39,6 +40,7 @@ qt_add_library(WinShunCaptureApp SHARED
     RawClicks.cpp RawClicks.h
     Protocol.cpp Protocol.h
     PluginShell.cpp PluginShell.h
+    PresenterHost.cpp PresenterHost.h
     ${app_dir}/Phosphor.cpp ${app_dir}/Phosphor.h
     ${app_dir}/TrayMenu.cpp ${app_dir}/TrayMenu.h
     ${app_dir}/PictureFile.cpp ${app_dir}/PictureFile.h
@@ -84,6 +86,8 @@ qt_add_qml_module(WinShunCaptureApp
         ../capture/Recorder.cpp ../capture/Recorder.h
         ../capture/PinManager.cpp ../capture/PinManager.h
         ../capture/PinWindow.cpp ../capture/PinWindow.h
+        ../capture/Presenter.cpp ../capture/Presenter.h
+        ../capture/LaserTrailItem.cpp ../capture/LaserTrailItem.h
 )
 # Bytecode only, no QML compiled to C++: that C++ calls QML's private
 # interfaces, which change between Qt versions, and the plugin has to run on

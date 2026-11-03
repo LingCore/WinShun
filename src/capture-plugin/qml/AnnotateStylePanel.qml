@@ -15,6 +15,9 @@ Rectangle {
     property real dpr: 1
     // Which way it opens: +1 below the toolbar, -1 above (the slide's direction).
     property int direction: 1
+    // The eyedropper and the colour it took: not on the presenter's live
+    // desktop, where there is no picture to take a colour from (#189).
+    property bool picker: true
 
     // ---- geometry, logical px ----
     readonly property int pad: 4 // card edge to the controls
@@ -224,7 +227,7 @@ Rectangle {
         }
 
         Row { // a colour taken with the eyedropper is not among the eight: shown, ticked, after them
-            visible: panel.showColors && !panel.inPalette && !panel.strokeColors
+            visible: panel.picker && panel.showColors && !panel.inPalette && !panel.strokeColors
             PanelButton {
                 id: customSwatch
                 tip: panel.p.color !== undefined ? panel.p.color : ""
@@ -251,7 +254,7 @@ Rectangle {
         }
         PanelButton { // the eyedropper (I): the next click on the picture takes its colour
             id: pickerButton
-            visible: panel.showColors && !panel.strokeColors
+            visible: panel.picker && panel.showColors && !panel.strokeColors
             checked: panel.annot !== null && panel.annot.picking
             tip: qsTr("吸管：点图上的一点，取它的颜色")
             tipKeys: "I"
