@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Release.h"
+#include "ScoopInstall.h"
 #include "UpdatePackage.h"
 
 #include <QDateTime>
@@ -35,7 +36,11 @@ namespace ws {
 // - portable: the zip is unpacked beside the program and checked, then
 //   WinShunUpdate.exe (src/updater), run from the Updates folder, waits for
 //   Win顺 to quit, swaps the files (never "data"), starts the new version,
-//   and rolls back when anything fails.
+//   and rolls back when anything fails;
+// - Scoop: Scoop owns the files, so nothing is swapped. A visible PowerShell
+//   window waits for Win顺 to quit, runs `scoop update winshun` and starts
+//   the new version from "current" (a global install, which needs
+//   administrator rights, is shown the command to copy instead).
 // The next start compares its version with the one asked for and says how
 // it went (notice()). GUI thread only.
 class Updater : public QObject {
@@ -53,6 +58,9 @@ class Updater : public QObject {
     Q_PROPERTY(QString problem READ problem NOTIFY changed FINAL) // why the last manual check failed
     Q_PROPERTY(QDateTime lastChecked READ lastChecked NOTIFY changed FINAL)
     Q_PROPERTY(bool portable READ portable CONSTANT FINAL) // "download and update" rather than "install"
+    Q_PROPERTY(bool scoop READ scoop CONSTANT FINAL) // installed by Scoop: updated with `scoop update`
+    Q_PROPERTY(bool scoopRuns READ scoopRuns CONSTANT FINAL) // ... and Win顺 can run it (not global, scoop found)
+    Q_PROPERTY(QString scoopCommand READ scoopCommand CONSTANT FINAL) // "scoop update winshun"
     // "", "downloading", "verifying", "installing" (Setup runs, or Win顺 is about to quit)
     Q_PROPERTY(QString installStage READ installStage NOTIFY installChanged FINAL)
     Q_PROPERTY(double installProgress READ installProgress NOTIFY installChanged FINAL) // 0..1 while downloading
@@ -74,6 +82,9 @@ public:
     QString problem() const { return m_problem; }
     QDateTime lastChecked() const { return m_lastChecked; }
     bool portable() const { return m_kind == update::Kind::Portable; }
+    bool scoop() const { return m_kind == update::Kind::Scoop; }
+    bool scoopRuns() const;
+    QString scoopCommand() const { return m_scoop ? scoop::updateCommand(*m_scoop) : QString(); }
     QString installStage() const;
     double installProgress() const;
     double downloadedMB() const { return m_received / 1048576.0; }
@@ -93,6 +104,7 @@ public:
     Q_INVOKABLE void skip(); // no more reminders for this version; manual checks still show it
     Q_INVOKABLE void install(); // download, check and install the newer version
     Q_INVOKABLE void cancelInstall(); // while downloading
+    Q_INVOKABLE void copyScoopCommand(); // for a Scoop copy that cannot run it itself
 
 signals:
     void changed();
@@ -115,6 +127,7 @@ private:
     void verified(const std::shared_ptr<Job>& job, const QString& why);
     void runSetup(const std::shared_ptr<Job>& job);
     void runPortableSwap(const std::shared_ptr<Job>& job);
+    void updateWithScoop();
     void setupEnded(unsigned long exitCode);
     void reportLastUpdate(); // at start
     void cleanUp(); // what earlier updates left
@@ -122,6 +135,7 @@ private:
 
     std::optional<release::Info> m_release; // newer than this one
     update::Kind m_kind = update::Kind::None;
+    std::optional<scoop::Install> m_scoop; // when m_kind is Scoop
     bool m_checking = false;
     bool m_checkedThisRun = false;
     bool m_chinese = true;

@@ -135,6 +135,8 @@ Updater::Updater(QObject* parent)
 {
     m_lastChecked = state().value(u"LastChecked"_s).toDateTime();
     m_kind = update::installKind(appDir(), !Settings::portableFolder().isEmpty());
+    if (m_kind == update::Kind::Scoop)
+        m_scoop = scoop::detect(appDir());
     m_timer.setInterval(1h);
     connect(&m_timer, &QTimer::timeout, this, &Updater::checkIfDue);
     m_progressTimer.setInterval(200);
@@ -246,7 +248,8 @@ void Updater::check(bool manual)
         m_problem.clear();
     emit changed();
 
-    const QString url = feedUrl(m_kind == update::Kind::Portable);
+    // Scoop installs the portable zip.
+    const QString url = feedUrl(m_kind == update::Kind::Portable || m_kind == update::Kind::Scoop);
     QThreadPool::globalInstance()->start([self = QPointer(this), url, manual] {
         const http::Response response = http::get(url, {}, 20000, 1 << 20);
         QMetaObject::invokeMethod(qApp, [self, response, manual] {
@@ -363,6 +366,10 @@ void Updater::install()
     if (!m_release || m_stage != Stage::Idle)
         return;
     m_installProblem.clear();
+    if (m_kind == update::Kind::Scoop) {
+        updateWithScoop();
+        return;
+    }
     // A copy that cannot put an update in place itself: the downloads page,
     // never administrator rights for a portable copy.
     if (m_kind == update::Kind::None) {
@@ -632,6 +639,105 @@ void Updater::runPortableSwap(const std::shared_ptr<Job>& job)
                 give_up(tr("更新助手没有响应，旧版本照常可用。请重试。"));
         }, Qt::QueuedConnection);
     });
+}
+
+bool Updater::scoopRuns() const
+{
+    return m_scoop && !m_scoop->global
+        && (QFileInfo::exists(m_scoop->root + u"\\shims\\scoop.ps1"_s)
+            || QFileInfo::exists(m_scoop->root + u"\\apps\\scoop\\current\\bin\\scoop.ps1"_s));
+}
+
+void Updater::copyScoopCommand()
+{
+    shell::copyText(scoopCommand());
+}
+
+namespace {
+
+// A PowerShell string literal.
+QString psQuote(const QString& text)
+{
+    QString escaped = text;
+    escaped.replace(u'\'', u"''"_s);
+    return u'\'' + escaped + u'\'';
+}
+
+} // namespace
+
+// `scoop update winshun` in a window the user can see: Win顺 has quit first
+// (Scoop refuses to update while a process of the app runs, and says so
+// without failing), and the new version is started from "current". The
+// script waits for this process and for everything else that runs from the
+// app's folder (the plugin host, an AI tool's relay). It is judged by the
+// version in current\scoop-manifest.json: Scoop's exit code does not tell
+// "updated" from "already the latest" or "skipped". A plain `scoop update`
+// goes first, as `scoop update <app>` reads the buckets as they were synced.
+void Updater::updateWithScoop()
+{
+    if (!scoopRuns() || !m_release) {
+        m_installProblem = tr("这份 Win顺 要用 Scoop 更新，请在 PowerShell 里运行下面的命令。");
+        emit installChanged();
+        return;
+    }
+    const scoop::Install& install = *m_scoop;
+    const QString exe = install.current() + u"\\WinShun.exe"_s;
+    const QString command = scoop::updateCommand(install);
+    const QString script = uR"PS($ErrorActionPreference = 'Continue'
+$Host.UI.RawUI.WindowTitle = 'Win顺 - Scoop'
+$id = %1; $root = %2; $app = %3; $exe = %4; $before = %5
+$appDir = Join-Path $root "apps\$app"
+$env:SCOOP = $root
+$scoop = Join-Path $root 'shims\scoop.ps1'
+if (-not (Test-Path $scoop)) { $scoop = Join-Path $root 'apps\scoop\current\bin\scoop.ps1' }
+function Installed {
+  foreach ($n in 'scoop-manifest.json', 'manifest.json') {
+    $f = Join-Path $appDir "current\$n"
+    if (Test-Path $f) { try { return (Get-Content $f -Raw | ConvertFrom-Json).version } catch {} }
+  }
+}
+function Left { @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$appDir\*" }) }
+Write-Host %6
+try { Wait-Process -Id $id -Timeout 60 -ErrorAction Stop } catch {}
+for ($i = 0; $i -lt 60 -and (Left).Count -gt 0; $i++) { Start-Sleep -Milliseconds 500 }
+$ok = $false
+if ((Left).Count -gt 0) {
+  Write-Host %7 -ForegroundColor Red
+  Left | ForEach-Object { Write-Host ("  " + $_.Name + " (" + $_.Id + ")") }
+} else {
+  Write-Host %8
+  & $scoop update
+  & $scoop update $app
+  $now = Installed
+  $ok = $now -and ($now -ne $before)
+}
+if ($ok) { Write-Host %9 -ForegroundColor Green; Start-Process $exe; Start-Sleep -Seconds 2; exit 0 }
+Write-Host ''
+Write-Host %10 -ForegroundColor Red
+if (Test-Path $exe) { Start-Process $exe }
+Read-Host %11 | Out-Null
+)PS"_s
+        .arg(QString::number(::GetCurrentProcessId()), psQuote(install.root), psQuote(install.name), psQuote(exe),
+            psQuote(currentVersion()), psQuote(tr("正在等 Win顺 退出…")),
+            psQuote(tr("还有这些程序在 Win顺 的文件夹里运行，Scoop 没法更新（比如 AI 工具启动的 WinShunMcp.exe），请先关掉它们：")),
+            psQuote(tr("正在用 Scoop 更新 Win顺…")))
+        .arg(psQuote(tr("更新完成，正在重新打开 Win顺。")),
+            psQuote(tr("没有更新成功：看上面 Scoop 的提示，或者软件源里还没有新版本。稍后可以在 PowerShell 里运行：%1。原来的 Win顺 会重新打开。").arg(command)),
+            psQuote(tr("按 Enter 关闭这个窗口")));
+    const QByteArray encoded = QByteArray(reinterpret_cast<const char*>(script.utf16()), script.size() * 2).toBase64();
+    wchar_t system[MAX_PATH] {};
+    ::GetSystemDirectoryW(system, MAX_PATH);
+    const std::wstring powershell = std::wstring(system) + L"\\WindowsPowerShell\\v1.0\\powershell.exe";
+    const std::wstring args = L"-NoProfile -ExecutionPolicy Bypass -EncodedCommand " + QString::fromLatin1(encoded).toStdWString();
+    if (!shell::startUnelevated(powershell, args, install.root.toStdWString()).valid()) {
+        m_installProblem = tr("没能打开 PowerShell。请自己运行：%1").arg(command);
+        emit installChanged();
+        return;
+    }
+    // The next start tells how it went (reportLastUpdate), as for the others.
+    setPending(m_release->version);
+    setStage(Stage::Installing);
+    QMetaObject::invokeMethod(qApp, [] { QCoreApplication::exit(0); }, Qt::QueuedConnection); // as App::handleCommand("quit")
 }
 
 // How the update asked for last time went: this version is the one it

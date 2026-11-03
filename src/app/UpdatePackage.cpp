@@ -1,5 +1,6 @@
 #include "UpdatePackage.h"
 #include "Download.h"
+#include "ScoopInstall.h"
 
 #include "platform/Http.h"
 
@@ -74,6 +75,8 @@ bool reservedName(const QString& part)
 
 Kind installKind(const QString& appDir, bool portable)
 {
+    if (scoop::detect(appDir)) // before "portable": it has a data folder too
+        return Kind::Scoop;
     if (portable)
         return Kind::Portable;
     if (sameFolder(installLocation(HKEY_LOCAL_MACHINE, RRF_SUBKEY_WOW6464KEY), appDir)
@@ -82,6 +85,16 @@ Kind installKind(const QString& appDir, bool portable)
     if (sameFolder(installLocation(HKEY_CURRENT_USER, 0), appDir))
         return Kind::CurrentUser;
     return Kind::None;
+}
+
+bool setupInstalled()
+{
+    for (const QString& folder : {installLocation(HKEY_LOCAL_MACHINE, RRF_SUBKEY_WOW6464KEY),
+             installLocation(HKEY_LOCAL_MACHINE, RRF_SUBKEY_WOW6432KEY), installLocation(HKEY_CURRENT_USER, 0)}) {
+        if (!folder.isEmpty() && QFileInfo::exists(folder))
+            return true;
+    }
+    return false;
 }
 
 bool folderWritable(const QString& folder)

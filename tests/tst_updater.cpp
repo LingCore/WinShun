@@ -379,6 +379,23 @@ private slots:
         QVERIFY(QFile::remove(path));
     }
 
+    // A Scoop copy has a data folder too (persist), but is updated by Scoop, not by a swap.
+    void scoopCopyIsNotPortable()
+    {
+        QTemporaryDir root;
+        const QString version = root.path() + u"/scoop/apps/winshun/0.18.0"_s;
+        QDir().mkpath(version + u"/data"_s);
+        for (const QString& name : {u"scoop-manifest.json"_s, u"scoop-install.json"_s}) {
+            QFile file(version + u'/' + name);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write("{}");
+        }
+        QCOMPARE(update::installKind(version, true), update::Kind::Scoop);
+        const QString plain = root.path() + u"/portable"_s;
+        QDir().mkpath(plain + u"/data"_s);
+        QCOMPARE(update::installKind(plain, true), update::Kind::Portable);
+    }
+
     void unpacksPortableZip()
     {
         QTemporaryDir dir;
