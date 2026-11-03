@@ -136,4 +136,27 @@ if ($Publish) {
     gh release create $tag $setup $portable $offlineSetup $ocrPackage $sums --repo LingCore/WinShun --title "Win顺 $version" --notes-file $notes --target main
     if ($LASTEXITCODE) { throw 'gh release create failed' }
     Write-Host "Published $tag"
+
+    # The Scoop bucket (bucket\winshun.json, `scoop bucket add winshun
+    # https://github.com/LingCore/WinShun`): the new version, the portable
+    # zip's URL and the SHA-256 computed above, only once the release is out
+    # (a manifest ahead of its zip would break `scoop update`). Only the three
+    # values change, in place (no JSON round trip: formatting and encoding stay).
+    $manifestPath = Join-Path $root 'bucket\winshun.json'
+    $manifest = [IO.File]::ReadAllText($manifestPath)
+    $zipHash = (Get-FileHash $portable -Algorithm SHA256).Hash.ToLower()
+    $zipUrl = "https://github.com/LingCore/WinShun/releases/download/$tag/$(Split-Path $portable -Leaf)"
+    $manifest = [regex]::Replace($manifest, '(?m)^(    "version": ")[^"]*(",)', { param($m) $m.Groups[1].Value + $version + $m.Groups[2].Value })
+    $manifest = [regex]::Replace($manifest, '(?m)^(    "url": ")[^"]*(",)', { param($m) $m.Groups[1].Value + $zipUrl + $m.Groups[2].Value })
+    $manifest = [regex]::Replace($manifest, '(?m)^(    "hash": ")[0-9a-f]{64}(",)', { param($m) $m.Groups[1].Value + $zipHash + $m.Groups[2].Value })
+    [IO.File]::WriteAllText($manifestPath, $manifest, (New-Object Text.UTF8Encoding($false)))
+    $parsed = $manifest | ConvertFrom-Json
+    if ($parsed.version -ne $version -or $parsed.url -ne $zipUrl -or $parsed.hash -ne $zipHash) { throw 'bucket\winshun.json was not updated as expected' }
+    # Only that file: the working tree may hold other changes.
+    git -C $root add -- bucket/winshun.json
+    git -C $root commit --only -m "Scoop: winshun $version" -- bucket/winshun.json
+    if ($LASTEXITCODE) { throw 'committing the Scoop manifest failed' }
+    git -C $root push
+    if ($LASTEXITCODE) { throw "pushing the Scoop manifest failed: run git push, the release $tag is out" }
+    Write-Host "Scoop manifest: $version"
 }
