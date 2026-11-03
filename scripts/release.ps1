@@ -152,11 +152,14 @@ if ($Publish) {
     [IO.File]::WriteAllText($manifestPath, $manifest, (New-Object Text.UTF8Encoding($false)))
     $parsed = $manifest | ConvertFrom-Json
     if ($parsed.version -ne $version -or $parsed.url -ne $zipUrl -or $parsed.hash -ne $zipHash) { throw 'bucket\winshun.json was not updated as expected' }
+    # The bucket is main's: never commit it onto, or push, another branch.
+    $branch = (git -C $root rev-parse --abbrev-ref HEAD).Trim()
+    if ($branch -ne 'main') { throw "The Scoop manifest is committed on main; this is $branch. The release $tag is out: update bucket\winshun.json by hand." }
     # Only that file: the working tree may hold other changes.
     git -C $root add -- bucket/winshun.json
     git -C $root commit --only -m "Scoop: winshun $version" -- bucket/winshun.json
     if ($LASTEXITCODE) { throw 'committing the Scoop manifest failed' }
-    git -C $root push
-    if ($LASTEXITCODE) { throw "pushing the Scoop manifest failed: run git push, the release $tag is out" }
+    git -C $root push origin HEAD:main
+    if ($LASTEXITCODE) { throw "pushing the Scoop manifest failed: run git push origin HEAD:main, the release $tag is out" }
     Write-Host "Scoop manifest: $version"
 }
