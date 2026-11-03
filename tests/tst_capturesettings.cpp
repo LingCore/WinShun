@@ -117,6 +117,28 @@ private slots:
         QCOMPARE(odd.recordingFormat, 0);
     }
 
+    // The key hints in a corner of the capture: on by default, the switch
+    // (and the panel's 不再显示, through the same setter) saved at once.
+    void keyHints()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString file = dir.filePath(u"capture.ini"_s);
+        QVERIFY(CaptureOptions::load(file).keyHints);
+        ws::captureplugin::CaptureSettings settings(file);
+        QVERIFY(settings.captureKeyHints());
+        QSignalSpy changed(&settings, &ws::captureplugin::CaptureSettings::changed);
+        settings.setCaptureKeyHints(false);
+        QCOMPARE(changed.count(), 1);
+        QVERIFY(!CaptureOptions::load(file).keyHints);
+        settings.setCaptureKeyHints(false);
+        QCOMPARE(changed.count(), 1); // the same again: nothing
+        settings.setCaptureKeyHints(true);
+        QVERIFY(CaptureOptions::load(file).keyHints);
+        writeByHand(file, "KeyHints", "false");
+        QVERIFY(!CaptureOptions::load(file).keyHints);
+    }
+
     // The mouse buttons (#46): the old behaviour by default, kept across a
     // save, and a name not known (or "back" on a button that cannot step
     // back) falls to the default.

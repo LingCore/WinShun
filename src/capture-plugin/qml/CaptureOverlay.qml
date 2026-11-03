@@ -170,6 +170,34 @@ Window {
         blockRect: toolbar.visibleRows
         toolbarSide: toolbar.side
         toolbarShown: toolbar.visible
+        keyHintsShowing: keyHints.showing
+    }
+
+    CaptureKeyHints { // the keys for now, in a bottom corner (under the toolbar and the magnifier)
+        id: keyHints
+        anchors.fill: parent
+        session: overlay.session
+        annot: overlay.annotation
+        keyTarget: keys
+        dpr: overlay.dpr
+        // With a selection, on its monitor; before one, where the pointer is.
+        here: overlay.session.hasSelection ? overlay.selectedHere : overlay.screenModel.cursorHere
+        suppressed: bar.keysOpen
+        blockers: overlay.selectedHere
+            ? [Qt.rect(overlay.px(overlay.selection.x), overlay.py(overlay.selection.y),
+                       overlay.px(overlay.selection.width), overlay.py(overlay.selection.height)),
+               toolbar.visible && smartHint.visible
+                   ? Qt.rect(toolbar.x + smartHint.x, toolbar.y + smartHint.y, smartHint.width, smartHint.height)
+                   : Qt.rect(0, 0, 0, 0),
+               sizeLabel.visible ? Qt.rect(sizeLabel.x, sizeLabel.y, sizeLabel.width, sizeLabel.height) : Qt.rect(0, 0, 0, 0)
+              ].concat(toolbar.visible ? toolbar.visibleRects : [])
+            : []
+        overlaps: magnifier.visible ? [Qt.rect(magnifier.x, magnifier.y, magnifier.width, magnifier.height)] : []
+        area: Qt.rect(overlay.px(overlay.screenModel.workArea.x), overlay.py(overlay.screenModel.workArea.y),
+                      overlay.px(overlay.screenModel.workArea.width), overlay.py(overlay.screenModel.workArea.height))
+        pointer: overlay.screenModel.cursorHere
+                 ? Qt.point(overlay.px(overlay.screenModel.cursor.x), overlay.py(overlay.screenModel.cursor.y))
+                 : Qt.point(-100000, -100000)
     }
 
     Rectangle { // the size of what is picked, in screen pixels
@@ -227,6 +255,16 @@ Window {
                       Math.max(bar.x + bar.width, panel.x + panel.width) - Math.min(bar.x, panel.x),
                       Math.max(bar.y + bar.height, panel.y + panel.height) - Math.min(bar.y, panel.y))
             : Qt.rect(x + bar.x, y + bar.y, bar.width, bar.height)
+        // The same as separate rects (the toolbar's two cards, the panel), so the
+        // key hints avoid the cards and not the empty corner beside the shorter one.
+        readonly property var visibleRects: {
+            const list = []
+            for (const r of bar.rowRects)
+                list.push(Qt.rect(x + bar.x + r.x, y + bar.y + r.y, r.width, r.height))
+            if (panel.visible)
+                list.push(Qt.rect(x + panel.x, y + panel.y, panel.width, panel.height))
+            return list
+        }
 
         function meets(a, b) {
             return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
@@ -281,6 +319,7 @@ Window {
         }
 
         AnnotateSmartHint { // 智能打码's offer, in the style panel's place while no tool is on
+            id: smartHint
             annot: overlay.annotation
             dpr: overlay.dpr
             visible: !toolbar.panelShown && found > 0
@@ -402,38 +441,28 @@ Window {
         }
     }
 
-    Rectangle {
-        id: selectionKeys
-        objectName: "captureSelectionKeys"
+    Rectangle { // which remembered region R brought back, while the key hints do not say it
+        id: recallIndex
+        objectName: "captureRecallIndex"
 
-        readonly property string regionKeys: overlay.session.recalledSelection < 0
-            ? qsTr("R 最近选区")
-            : qsTr("R 最近选区 %1/%2").arg(overlay.session.recalledSelection + 1).arg(overlay.session.selectionHistoryCount)
+        readonly property real edge: Theme.edge(overlay.dpr)
 
-        visible: overlay.session.active && (overlay.selectedHere || overlay.screenModel.cursorHere)
-                 && !overlay.screenModel.adjusting && !overlay.session.toolbarHidden
-                 && (!overlay.annotation || (overlay.annotation.tool < 0
-                     && overlay.annotation.editing.id === undefined && overlay.annotation.numberEdit.id === undefined))
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 12
-        width: Math.min(selectionKeysText.implicitWidth + 24, Math.max(0, overlay.width - 24))
-        height: selectionKeysText.implicitHeight + 12
+        visible: overlay.session.active && overlay.selectedHere && overlay.session.recalledSelection >= 0
+                 && overlay.session.keyHints.length > 0 && !keyHints.showsRecalled
+        x: Theme.snap((overlay.width - width) / 2, overlay.dpr)
+        y: Theme.snap(overlay.height - 12 - height, overlay.dpr)
+        width: Theme.snapUp(recallText.implicitWidth + 24, overlay.dpr)
+        height: Theme.snapUp(recallText.implicitHeight + 12, overlay.dpr)
         radius: Theme.controlRadius
         color: Theme.background
-        border.width: 1
+        border.width: edge
         border.color: Theme.windowEdge
 
         Text {
-            id: selectionKeysText
-            x: 12
-            y: 6
-            width: Math.max(0, parent.width - 24)
-            text: overlay.selectedHere
-                  ? qsTr("WASD 移动 1 px · Shift+WASD 调整大小 · %1").arg(selectionKeys.regionKeys)
-                  : qsTr("WASD 微调光标 · %1").arg(selectionKeys.regionKeys)
-            wrapMode: Text.Wrap
-            horizontalAlignment: Text.AlignHCenter
+            id: recallText
+            x: Theme.snap((recallIndex.width - width) / 2, overlay.dpr)
+            y: Theme.snap((recallIndex.height - height) / 2, overlay.dpr)
+            text: qsTr("最近选区 %1/%2 · R / Shift+R").arg(overlay.session.recalledSelection + 1).arg(overlay.session.selectionHistoryCount)
             color: Theme.subtext
             font.pixelSize: Theme.fontCaption
         }

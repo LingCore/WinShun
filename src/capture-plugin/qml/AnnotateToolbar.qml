@@ -2,15 +2,17 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import WinShun
 
-// The capture toolbar's first row (docs/design-capture-roadmap.md, 3.5): the
-// nine annotation tools in AnnotationModel.tools' order, undo and redo, then
-// the capture's own actions as icons (long, delay, QR, OCR; pin, save), a "?"
-// that lists every key, and at the right end cancel and copy (the check mark,
-// the primary one). A card of its own: CaptureOverlay
-// places it and the style panel (AnnotateStylePanel) beside it. The editing
-// window (EditWindow) uses it too, without a session: its buttons then say
-// what they want through action(), and the key list has the editor's keys.
-Rectangle {
+// The capture toolbar (docs/design-capture-roadmap.md, 3.5). In the capture
+// overlay it is two cards, left edges together, each as wide as its buttons:
+// the common row (grip, rectangle, ellipse, arrow, pen, text, number, mosaic;
+// undo, redo; pin, save; and at the right end cancel and copy, the check mark,
+// the primary one) lies next to the selection; the other row (line, highlighter;
+// OCR, QR; long, record, delay; the "?" that lists every key) on its far side.
+// The editing window (EditWindow) has one row with all of them, and no
+// session: its buttons then say what they want through action(), and the key
+// list has the editor's keys. CaptureOverlay places the whole box and the
+// style panel (AnnotateStylePanel) beside it.
+Item {
     id: bar
 
     // The capture's; none in the editing window, which answers action().
@@ -25,8 +27,10 @@ Rectangle {
     // editing window shows them all): their keys work all the same.
     readonly property var hidden: session ? session.hiddenButtons : []
     readonly property bool historyShown: shows("undo") || shows("redo")
-    // The groups after the tools: undo and redo; long, delay, QR, OCR; pin and save; cancel and copy.
-    readonly property bool toolsShown: shows("ocr") || (!editor && (shows("long") || shows("record") || shows("qr") || shows("delay")))
+    // The groups after the tools: undo and redo; pin and save; cancel and copy;
+    // and in the second row OCR with QR, then long, record and delay.
+    readonly property bool recognizeShown: shows("ocr") || shows("qr")
+    readonly property bool modesShown: shows("long") || shows("record") || shows("delay")
     readonly property bool outputShown: shows("save") || (pinnable && shows("pin"))
     readonly property bool finishShown: shows("copy") || shows("cancel")
     // What the last button, the check mark, says in its tip (the editing
@@ -58,11 +62,12 @@ Rectangle {
         "F3", qsTr("贴图")
     ]
     readonly property var overlayRows: [
-        "WASD", qsTr("每次移动选区 1 个物理像素；未框选时微调光标"),
-        "Shift+WASD", qsTr("调整选区宽高，每次 1 个物理像素"),
+        "WASD", qsTr("微调鼠标光标，每次 1 个物理像素；按住左键拖选区、拖手柄或画标注时也有效"),
+        "Shift+WASD", qsTr("微调鼠标光标，每次 10 个物理像素"),
         qsTr("滚轮"), qsTr("有工具或选中对象时改粗细"),
-        qsTr("方向键"), qsTr("挪动选中的对象，按住 Shift 一次 10 像素；没有选中时微调选区"),
+        qsTr("方向键"), qsTr("挪动选中的对象；否则移动选区 1 个物理像素，Shift 调整选区大小；未框选时微调光标"),
         "H", qsTr("隐藏 / 显示工具条"),
+        "?、F1", qsTr("显示 / 隐藏屏幕角落的快捷键提示（只管这次截图）"),
         "C、Shift", qsTr("复制颜色并结束截图；单按 Shift 换颜色格式（HEX、RGB、HSL）"),
         "Shift+C", qsTr("识别选区里的文字并复制"),
         "R / Shift+R", qsTr("恢复最近选区：向前 / 向后循环，最多 10 个；使用当前画面"),
@@ -95,6 +100,7 @@ Rectangle {
     readonly property int iconSize: 16 // drawn tool icons and glyphs
     readonly property int separatorWidth: 8 // a 1 device px line in the middle
     readonly property int separatorHeight: 20
+    readonly property int rowGap: 4 // between the two cards
     readonly property int popupGap: 4 // the key list off the toolbar
     readonly property int popupMargin: 4 // the key list off the screen's edge
     readonly property int popupPadX: 16
@@ -163,27 +169,26 @@ Rectangle {
         }
     }
 
-    implicitWidth: row.width + 2 * pad
-    implicitHeight: buttonHeight + 2 * pad
-    radius: Theme.controlRadius
-    color: Theme.background
-    border.width: 1
-    border.color: Theme.windowEdge
+    // Two cards in the overlay, one in the editor. The first is the row next
+    // to the selection (opensDown: the toolbar lies below it, so it is on top).
+    readonly property bool twoRows: !editor
+    readonly property bool flipped: twoRows && !opensDown
+    // The cards as rects in this item, the first row first.
+    readonly property var rowRects: twoRows ? [Qt.rect(first.x, first.y, first.width, first.height),
+                                               Qt.rect(second.x, second.y, second.width, second.height)]
+                                            : [Qt.rect(first.x, first.y, first.width, first.height)]
+
+    implicitWidth: twoRows ? Math.max(first.width, second.width) : first.width
+    implicitHeight: twoRows ? first.height + rowGap + second.height : first.height
     onVisibleChanged: if (!visible) keysOpen = false
 
-    MouseArea { // presses between the buttons stay here, not on the picture beneath
-        anchors.fill: parent
-        hoverEnabled: true
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
-        cursorShape: Qt.ArrowCursor
-        onWheel: (wheel) => { wheel.accepted = true }
-    }
+    // The line and the highlighter (Kind::Line, Kind::Marker) are in the second row.
+    function inSecondRow(kind) { return twoRows && (kind === 3 || kind === 5) }
 
-    Row {
-        id: row
-        x: bar.pad
-        y: bar.pad
-        spacing: bar.spacing
+    Card {
+        id: first
+        objectName: "captureToolbarRow1"
+        y: bar.flipped ? second.height + bar.rowGap : 0
 
         Rectangle {
             id: grip
@@ -266,7 +271,7 @@ Rectangle {
 
         Repeater {
             model: bar.annot ? bar.annot.tools : []
-            delegate: ToolButton {}
+            delegate: ToolButton { visible: !bar.inSecondRow(modelData.kind) }
         }
 
         Separator { visible: bar.historyShown }
@@ -292,54 +297,8 @@ Rectangle {
             onClicked: bar.annot.redo()
         }
 
-        Separator { visible: bar.toolsShown }
-
-        ActionButton {
-            id: longButton
-            visible: !bar.editor && bar.shows("long")
-            glyph: String.fromCharCode(0xEC8F)
-            name: qsTr("长截图")
-            tipText: qsTr("长截图：滚动着截下选区里更长的内容")
-            tipKeys: "Ctrl+L"
-            onClicked: bar.act(CaptureSession.Long)
-        }
-        ActionButton {
-            id: recordButton
-            visible: !bar.editor && bar.shows("record")
-            glyph: String.fromCharCode(0xE714)
-            name: qsTr("录屏")
-            tipText: qsTr("区域录屏：录制选区里的操作，保存为 MP4 或 GIF")
-            tipKeys: "Ctrl+R"
-            onClicked: bar.act(CaptureSession.Record)
-        }
-        ActionButton {
-            id: delayButton
-            visible: !bar.editor && bar.shows("delay")
-            glyph: String.fromCharCode(0xE916) // Stopwatch
-            name: qsTr("延时")
-            tipText: qsTr("延时：关掉这次截图，倒计时后重新截（秒数在设置里选）")
-            tipKeys: "Ctrl+Shift+D"
-            onClicked: bar.act(CaptureSession.Delay)
-        }
-        ActionButton {
-            id: qrButton
-            visible: !bar.editor && bar.shows("qr")
-            glyph: String.fromCharCode(0xED14) // QRCode
-            name: qsTr("二维码")
-            tipText: qsTr("二维码：识别选区里的二维码，可复制文字或打开链接")
-            tipKeys: "Q"
-            onClicked: bar.act(CaptureSession.Qr)
-        }
-        ActionButton {
-            id: ocrButton
-            visible: bar.shows("ocr")
-            // Without the models it still says why, in its tip and the OCR window.
-            glyph: String.fromCharCode(0xE8D2) // Font
-            name: qsTr("识别文字")
-            tipText: bar.ocrAvailable ? qsTr("识别文字：识别图里的文字，可复制或拿去搜索")
-                                      : qsTr("识别文字：安装增强文字识别后继续，安装后可离线使用")
-            onClicked: bar.act(CaptureSession.Ocr)
-        }
+        Separator { visible: bar.editor && bar.shows("ocr") }
+        OcrButton { visible: bar.editor && bar.shows("ocr") }
 
         Separator { visible: bar.outputShown }
 
@@ -361,39 +320,8 @@ Rectangle {
             onKeyReleased: (event) => bar.keyReleased(event)
         }
 
-        Separator { visible: bar.shows("help") }
-
-        Rectangle { // "?": every key, in a list by the toolbar
-            id: helpButton
-            objectName: "captureToolbarHelp"
-            visible: bar.shows("help")
-            onVisibleChanged: if (!visible) {
-                bar.keysOpen = false
-                bar.hover(helpButton, false, -1)
-            }
-            property string tipText: qsTr("全部按键")
-            property string tipKeys: ""
-            width: bar.helpWidth
-            height: bar.buttonHeight
-            radius: Theme.controlRadius
-            color: helpArea.pressed ? Theme.controlPressed : helpArea.containsMouse || bar.keysOpen ? Theme.controlHover : "transparent"
-            Accessible.role: Accessible.Button
-            Accessible.name: qsTr("全部按键")
-
-            Text {
-                anchors.centerIn: parent
-                text: "?"
-                color: helpArea.containsMouse || bar.keysOpen ? Theme.text : Theme.subtext
-                font.pixelSize: Theme.fontBody
-            }
-            MouseArea {
-                id: helpArea
-                anchors.fill: parent
-                hoverEnabled: true
-                onClicked: bar.keysOpen = !bar.keysOpen
-                onContainsMouseChanged: bar.hover(helpButton, containsMouse, -1)
-            }
-        }
+        Separator { visible: bar.editor }
+        HelpButton { visible: bar.editor }
 
         Separator { visible: bar.finishShown }
 
@@ -416,6 +344,65 @@ Rectangle {
             tipKeys: "Enter"
             onClicked: bar.act(CaptureSession.Copy)
         }
+    }
+
+    Card {
+        id: second
+        objectName: "captureToolbarRow2"
+        visible: bar.twoRows
+        y: bar.flipped ? 0 : first.height + bar.rowGap
+
+        Repeater {
+            model: bar.annot ? bar.annot.tools : []
+            delegate: ToolButton { visible: bar.inSecondRow(modelData.kind) }
+        }
+
+        Separator { visible: bar.recognizeShown }
+
+        OcrButton { visible: bar.shows("ocr") }
+        ActionButton {
+            id: qrButton
+            visible: bar.shows("qr")
+            glyph: String.fromCharCode(0xED14) // QRCode
+            name: qsTr("二维码")
+            tipText: qsTr("二维码：识别选区里的二维码，可复制文字或打开链接")
+            tipKeys: "Q"
+            onClicked: bar.act(CaptureSession.Qr)
+        }
+
+        Separator { visible: bar.modesShown }
+
+        ActionButton {
+            id: longButton
+            visible: bar.shows("long")
+            glyph: String.fromCharCode(0xEC8F)
+            name: qsTr("长截图")
+            tipText: qsTr("长截图：滚动着截下选区里更长的内容")
+            tipKeys: "Ctrl+L"
+            onClicked: bar.act(CaptureSession.Long)
+        }
+        ActionButton {
+            id: recordButton
+            visible: bar.shows("record")
+            glyph: String.fromCharCode(0xE714)
+            name: qsTr("录屏")
+            tipText: qsTr("区域录屏：录制选区里的操作，保存为 MP4 或 GIF")
+            tipKeys: "Ctrl+R"
+            onClicked: bar.act(CaptureSession.Record)
+        }
+        ActionButton {
+            id: delayButton
+            visible: bar.shows("delay")
+            glyph: String.fromCharCode(0xE916) // Stopwatch
+            name: qsTr("延时")
+            tipText: qsTr("延时：关掉这次截图，倒计时后重新截（秒数在设置里选）")
+            tipKeys: "Ctrl+Shift+D"
+            onClicked: bar.act(CaptureSession.Delay)
+        }
+
+        Separator { visible: bar.shows("help") }
+
+        HelpButton { objectName: "captureToolbarHelp" }
     }
 
     HoverTip {
@@ -530,6 +517,77 @@ Rectangle {
             width: Math.max(1, Math.round(bar.dpr)) / bar.dpr
             height: bar.separatorHeight
             color: Theme.controlBorder
+        }
+    }
+
+    // One card of the toolbar: its buttons go into the row inside.
+    component Card: Rectangle {
+        default property alias content: cardRow.data
+
+        implicitWidth: cardRow.width + 2 * bar.pad
+        implicitHeight: bar.buttonHeight + 2 * bar.pad
+        radius: Theme.controlRadius
+        color: Theme.background
+        border.width: 1
+        border.color: Theme.windowEdge
+
+        MouseArea { // presses between the buttons stay here, not on the picture beneath
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            cursorShape: Qt.ArrowCursor
+            onWheel: (wheel) => { wheel.accepted = true }
+        }
+
+        Row {
+            id: cardRow
+            x: bar.pad
+            y: bar.pad
+            spacing: bar.spacing
+        }
+    }
+
+    // OCR: without the models it still says why, in its tip and the OCR window.
+    component OcrButton: ActionButton {
+        glyph: String.fromCharCode(0xE8D2) // Font
+        name: qsTr("识别文字")
+        tipText: bar.ocrAvailable ? qsTr("识别文字：识别图里的文字，可复制或拿去搜索")
+                                  : qsTr("识别文字：安装增强文字识别后继续，安装后可离线使用")
+        onClicked: bar.act(CaptureSession.Ocr)
+    }
+
+    // "?": every key, in a list by the toolbar.
+    component HelpButton: Rectangle {
+        id: help
+
+        property string tipText: qsTr("全部按键")
+        property string tipKeys: ""
+
+        visible: bar.shows("help")
+        onVisibleChanged: if (!visible) {
+            bar.keysOpen = false
+            bar.hover(help, false, -1)
+        }
+
+        width: bar.helpWidth
+        height: bar.buttonHeight
+        radius: Theme.controlRadius
+        color: helpArea.pressed ? Theme.controlPressed : helpArea.containsMouse || bar.keysOpen ? Theme.controlHover : "transparent"
+        Accessible.role: Accessible.Button
+        Accessible.name: qsTr("全部按键")
+
+        Text {
+            anchors.centerIn: parent
+            text: "?"
+            color: helpArea.containsMouse || bar.keysOpen ? Theme.text : Theme.subtext
+            font.pixelSize: Theme.fontBody
+        }
+        MouseArea {
+            id: helpArea
+            anchors.fill: parent
+            hoverEnabled: true
+            onClicked: bar.keysOpen = !bar.keysOpen
+            onContainsMouseChanged: bar.hover(help, containsMouse, -1)
         }
     }
 

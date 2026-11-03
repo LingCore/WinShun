@@ -102,6 +102,8 @@ public:
         std::function<void(const QStringList&, const QRect& where)> qr;
         // The colour format C copies in (hex, rgb, hsl), when Shift alone changes it.
         std::function<void(const QString&)> colorFormatChanged;
+        // The key hints' 不再显示 (false) or 一直显示 (true): [Capture] KeyHints.
+        std::function<void(bool)> keyHintsKept;
         // A fill that carries white words (the countdown's).
         std::function<QColor()> accent;
         // An overlay window was made (named "capture-overlay-<i>"), before it
@@ -121,6 +123,8 @@ public:
     void setPinOnCopy(bool on) { m_session.setPinOnCopy(on); }
     void setMouseActions(const CaptureSession::MouseActions& actions) { m_session.setMouseActions(actions); }
     void setHiddenButtons(const QStringList& ids) { m_session.setHiddenButtons(ids); }
+    // The shortcut hints in a corner of the capture ([Capture] KeyHints).
+    void setKeyHints(bool on) { m_session.setKeyHints(on); }
     // The mouse cursor drawn into the frozen picture ([Capture] IncludeCursor).
     void setIncludeCursor(bool on) { m_includeCursor = on; }
     // On an HDR monitor, saving writes an HDR file (.jxr) beside the PNG too
@@ -242,6 +246,7 @@ private:
     int m_delay = 5;
     bool m_delayAfter = false; // Ctrl+Shift+D in the overlay: countdown once it is gone
     std::unique_ptr<CountdownWindow> m_countdown;
+    bool m_quietStart = false; // start() by the countdown: no key hints by themselves
     QElapsedTimer m_countClock;
     QTimer m_countTimer;
     int m_countTotal = 0;

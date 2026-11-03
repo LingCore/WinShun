@@ -20,6 +20,7 @@ struct CaptureOptions {
     QString printScreenBefore; // what PrtScn did before, put back when no longer taken
     bool copyOnSelect = false;
     bool magnifier = true;
+    bool keyHints = true; // the shortcut hints in a corner of the capture (CaptureKeyHints.qml)
     bool pinOnCopy = false;
     QString mouseDoubleLeft = QStringLiteral("copy");
     QString mouseRight = QStringLiteral("back");
@@ -77,6 +78,7 @@ class CaptureSettings : public QObject {
     Q_PROPERTY(bool capturePauseInFullScreen READ capturePauseInFullScreen WRITE setCapturePauseInFullScreen NOTIFY changed FINAL)
     Q_PROPERTY(bool captureCopyOnSelect READ captureCopyOnSelect WRITE setCaptureCopyOnSelect NOTIFY changed FINAL)
     Q_PROPERTY(bool captureMagnifier READ captureMagnifier WRITE setCaptureMagnifier NOTIFY changed FINAL)
+    Q_PROPERTY(bool captureKeyHints READ captureKeyHints WRITE setCaptureKeyHints NOTIFY changed FINAL)
     Q_PROPERTY(bool capturePinOnCopy READ capturePinOnCopy WRITE setCapturePinOnCopy NOTIFY changed FINAL)
     Q_PROPERTY(QString captureMouseDoubleLeft READ captureMouseDoubleLeft WRITE setCaptureMouseDoubleLeft NOTIFY changed FINAL)
     Q_PROPERTY(QString captureMouseRight READ captureMouseRight WRITE setCaptureMouseRight NOTIFY changed FINAL)
@@ -126,6 +128,8 @@ public:
     void setCaptureCopyOnSelect(bool v) { change(m_options.copyOnSelect, v); }
     bool captureMagnifier() const { return m_options.magnifier; }
     void setCaptureMagnifier(bool v) { change(m_options.magnifier, v); }
+    bool captureKeyHints() const { return m_options.keyHints; }
+    void setCaptureKeyHints(bool v) { change(m_options.keyHints, v); }
     bool capturePinOnCopy() const { return m_options.pinOnCopy; }
     void setCapturePinOnCopy(bool v) { change(m_options.pinOnCopy, v); }
     QString captureMouseDoubleLeft() const { return m_options.mouseDoubleLeft; }

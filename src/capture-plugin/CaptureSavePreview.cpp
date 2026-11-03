@@ -303,9 +303,15 @@ int runCaptureSave(const QStringList& args)
     key(Qt::Key_Escape);
     check(!menu->property("visible").toBool() && session->hasSelection(), "Escape closes only the menu");
     const QRect beforeNudge = session->selectionRect();
+    key(Qt::Key_Up);
+    check(session->selectionRect() == beforeNudge.translated(0, -1), "arrow keys still work after closing the menu");
+    key(Qt::Key_Down);
+    int pointerRequests = 0;
+    const QMetaObject::Connection pointerWatch = QObject::connect(session, &CaptureSession::cursorMoveRequested, session,
+        [&](const QPoint&) { ++pointerRequests; });
     key(Qt::Key_W);
-    check(session->selectionRect() == beforeNudge.translated(0, -1), "WASD still works after closing the menu");
-    key(Qt::Key_S);
+    QObject::disconnect(pointerWatch);
+    check(pointerRequests == 1 && session->selectionRect() == beforeNudge, "WASD still requests a pointer move after closing the menu");
     click(arrow);
     QQuickItem* copyButton = nullptr;
     for (QQuickItem* item : overlay->findChildren<QQuickItem*>())

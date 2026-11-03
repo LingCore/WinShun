@@ -28,6 +28,8 @@ Item {
     property rect blockRect
     property string toolbarSide: "below"
     property bool toolbarShown: false
+    // The key hints (CaptureKeyHints) are in view: they say what the first tool's hint would.
+    property bool keyHintsShowing: false
 
     // ---- geometry, logical px unless named image px ----
     readonly property int hintGap: 8 // a word bar off the toolbar or the selection
@@ -72,7 +74,7 @@ Item {
 
         readonly property bool leftRoom: over.barRect.x - over.hintGap - width >= over.margin
 
-        allowed: over.here && over.toolbarShown
+        allowed: over.here && over.toolbarShown && !over.keyHintsShowing
         words: qsTr("再按一次关掉 · [ ] 改粗细 · H 隐藏工具条")
         x: over.snap(leftRoom ? over.barRect.x - over.hintGap - width
                                : over.clampX(over.barRect.x + over.barRect.width - width, width))

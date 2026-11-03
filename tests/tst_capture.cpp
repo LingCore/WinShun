@@ -1271,6 +1271,246 @@ private slots:
         QCOMPARE(hidden.count(), 2);
     }
 
+    // The key hints' rows (CaptureKeyHints.qml words them): what can be done
+    // before a selection, after one, with a tool on; none while busy.
+    void keyHintRowsFollowWhatCanBeDoneNow()
+    {
+        Rig rig;
+        CaptureSession& s = rig.session;
+        QVERIFY(s.keyHints().isEmpty()); // not begun
+        rig.begin();
+        rig.session.pointerMove(0, {500, 400});
+        QCOMPARE(s.keyHints(), (QStringList {u"wheel"_s, u"wasd"_s, u"quit"_s}));
+        // R, , and ., Shift+C only when they have something to do.
+        QSignalSpy told(&s, &CaptureSession::keyHintsChanged);
+        s.rememberSelection(QRect(10, 10, 100, 100));
+        s.setHistoryAvailable(true);
+        s.setOcrAvailable(true);
+        QCOMPARE(s.keyHints(), (QStringList {u"wheel"_s, u"wasd"_s, u"recall"_s, u"history"_s, u"ocr"_s, u"quit"_s}));
+        QCOMPARE(told.count(), 3);
+        rig.session.pointerMove(0, {520, 410});
+        QCOMPARE(told.count(), 3); // a move that changes nothing tells nothing
+
+        // A press is not yet a drag: the rows stay; the drag hides them.
+        s.pointerPress(0, {100, 100}, Qt::LeftButton);
+        QCOMPARE(s.keyHints().first(), u"wheel"_s);
+        s.pointerMove(0, {300, 300});
+        QVERIFY(s.keyHints().isEmpty());
+        s.pointerRelease(0, {300, 300}, Qt::LeftButton);
+        QCOMPARE(s.keyHints(),
+            (QStringList {u"copy"_s, u"save"_s, u"pin"_s, u"arrows"_s, u"ocr"_s, u"long"_s}));
+
+        // A tool on (as the toolbar sets it, on the model): its rows; a stroke under way: none.
+        AnnotationModel* annot = s.annotation();
+        annot->setTool(0);
+        QCOMPARE(s.keyHints(),
+            (QStringList {u"shift"_s, u"width"_s, u"undo"_s, u"delete"_s, u"toolOff"_s, u"hide"_s}));
+        s.pointerPress(0, {150, 150}, Qt::LeftButton);
+        s.pointerMove(0, {200, 200});
+        QVERIFY(s.keyHints().isEmpty());
+        s.pointerRelease(0, {200, 200}, Qt::LeftButton);
+        QCOMPARE(s.keyHints().first(), u"shift"_s);
+        // (A text being typed hides them too: fonts, so CapturePreview --key-hints checks it.)
+        annot->setTool(-1);
+        QCOMPARE(s.keyHints().first(), u"copy"_s);
+
+        // Esc (the selection and its rectangle put down), R: the recalled region says which.
+        QVERIFY(s.key(Qt::Key_Escape, Qt::NoModifier));
+        QVERIFY(!s.hasSelection());
+        QVERIFY(s.key(Qt::Key_R, Qt::NoModifier));
+        QVERIFY(s.hasSelection());
+        QCOMPARE(s.keyHints().last(), u"recalled"_s);
+        s.end();
+        QVERIFY(s.keyHints().isEmpty());
+    }
+
+    // When they show by themselves (KeyHintPolicy's rules), on its own clock.
+    void keyHintPolicyRules()
+    {
+        using ws::capture::KeyHintPolicy;
+        using Stage = KeyHintPolicy::Stage;
+        constexpr qint64 start = KeyHintPolicy::kStartMs, idle = KeyHintPolicy::kIdleMs;
+        KeyHintPolicy p;
+        QVERIFY(!p.shown());
+        QCOMPARE(p.nextDeadline(), -1); // not capturing
+
+        // 1. None at first; after kStartMs with no button pressed; moves, the wheel, keys leave that be.
+        p.begin(1000);
+        p.setStage(Stage::Choosing, 1000);
+        QCOMPARE(p.nextDeadline(), 1000 + start);
+        p.input(1100);
+        p.tick(1000 + start - 1);
+        QVERIFY(!p.shown());
+        p.tick(1000 + start);
+        QVERIFY(p.shown());
+        QCOMPARE(p.nextDeadline(), -1);
+        p.input(1500);
+        QVERIFY(p.shown());
+        // 2. A button: gone; busy (a drag, no rows): still gone.
+        p.press();
+        QVERIFY(!p.shown());
+        p.setStage(Stage::None, 1600);
+        p.tick(9000);
+        QVERIFY(!p.shown());
+        // 3. A selection: none, then once after kIdleMs without input; input takes them away.
+        p.setStage(Stage::Selected, 2000);
+        QCOMPARE(p.nextDeadline(), 2000 + idle);
+        p.input(3000); // the wait starts over
+        QCOMPARE(p.nextDeadline(), 3000 + idle);
+        p.tick(2000 + idle);
+        QVERIFY(!p.shown());
+        p.tick(3000 + idle);
+        QVERIFY(p.shown());
+        p.input(6000);
+        QVERIFY(!p.shown());
+        p.tick(60000);
+        QVERIFY(!p.shown()); // once per capture
+        QCOMPARE(p.nextDeadline(), -1);
+
+        // A button before kStartMs: rule 1 is done, not just put off.
+        p.begin(0);
+        p.setStage(Stage::Choosing, 0);
+        p.press();
+        p.tick(start * 10);
+        QVERIFY(!p.shown());
+        // ... a selection made then still has its idle show.
+        p.setStage(Stage::Selected, 100);
+        p.tick(100 + idle);
+        QVERIFY(p.shown());
+        // A tool chosen (busy for a moment, back to the selection): no second show.
+        p.setStage(Stage::None, 3000);
+        p.setStage(Stage::Selected, 3001);
+        p.tick(3001 + idle);
+        QVERIFY(!p.shown());
+
+        // 5. ? / F1: shown with no timer until a button (or ? again); hidden: nothing by itself.
+        p.begin(0);
+        p.setStage(Stage::Choosing, 0);
+        p.toggle();
+        QVERIFY(p.shown());
+        p.input(10);
+        p.setStage(Stage::Selected, 20);
+        QVERIFY(p.shown()); // a manual show outlasts a stage
+        p.press();
+        QVERIFY(!p.shown());
+        p.begin(0);
+        p.setStage(Stage::Choosing, 0);
+        p.tick(start);
+        QVERIFY(p.shown());
+        p.toggle();
+        QVERIFY(!p.shown());
+        p.setStage(Stage::Selected, 100);
+        p.tick(100 + idle);
+        QVERIFY(!p.shown()); // hidden by hand: no idle show this capture
+        p.toggle();
+        QVERIFY(p.shown());
+
+        // 6. 不再显示: never by themselves (kept across captures); ? still; 一直显示 back on.
+        p.keep(false);
+        QVERIFY(!p.shown() && !p.enabled());
+        p.begin(0);
+        p.setStage(Stage::Choosing, 0);
+        QCOMPARE(p.nextDeadline(), -1);
+        p.tick(start);
+        QVERIFY(!p.shown());
+        p.toggle();
+        QVERIFY(p.shown());
+        p.keep(true);
+        QVERIFY(p.shown() && p.enabled());
+        p.press();
+        p.begin(0);
+        p.setStage(Stage::Choosing, 0);
+        p.tick(start);
+        QVERIFY(p.shown());
+
+        // 7. Begun by the delay's countdown: nothing by itself; ? still.
+        p.begin(0);
+        p.setQuiet();
+        p.setStage(Stage::Choosing, 0);
+        p.tick(start);
+        p.setStage(Stage::Selected, 100);
+        p.tick(100 + idle);
+        QVERIFY(!p.shown());
+        p.toggle();
+        QVERIFY(p.shown());
+        // 8. Afresh: the next capture is not quiet, and the end takes them away.
+        p.end();
+        QVERIFY(!p.shown());
+        p.begin(0);
+        p.setStage(Stage::Choosing, 0);
+        p.tick(start);
+        QVERIFY(p.shown());
+    }
+
+    // The session feeds the policy: a press takes them away; ? (with Shift
+    // or not, the / key) and F1 flip them; the button writes the setting.
+    void keyHintsShowHideAndKeep()
+    {
+        Rig rig;
+        CaptureSession& s = rig.session;
+        rig.begin();
+        s.pointerMove(0, {500, 400}); // the monitor a notice goes to
+        QVERIFY(s.keyHintsEnabled() && !s.keyHintsShown()); // not at once
+        s.pointerMove(0, {520, 410}); // moves leave the wait be
+        QTRY_VERIFY_WITH_TIMEOUT(s.keyHintsShown(), 3000);
+        s.wheelAngle(0, {520, 410}, 120, 0);
+        QVERIFY(s.keyHintsShown());
+        s.pointerPress(0, {100, 100}, Qt::RightButton); // any button
+        QVERIFY(!s.keyHintsShown());
+
+        rig.begin(); // afresh: none, then again by themselves
+        s.pointerMove(0, {500, 400});
+        QVERIFY(!s.keyHintsShown());
+        QTRY_VERIFY_WITH_TIMEOUT(s.keyHintsShown(), 3000);
+        QVERIFY(s.key(Qt::Key_Question, Qt::ShiftModifier));
+        QVERIFY(!s.keyHintsShown());
+        QVERIFY(s.key(Qt::Key_Slash, Qt::NoModifier));
+        QVERIFY(s.keyHintsShown());
+        QVERIFY(s.key(Qt::Key_F1, Qt::NoModifier));
+        QVERIFY(!s.keyHintsShown());
+        QVERIFY(!s.key(Qt::Key_Slash, Qt::ControlModifier)); // not with Ctrl
+        QVERIFY(s.keyHintsEnabled()); // the setting is not the key's
+        QVERIFY(s.key(Qt::Key_F1, Qt::NoModifier));
+        QVERIFY(s.keyHintsShown());
+        // A left press takes even a manual show away; the selection made: none yet.
+        s.pointerPress(0, {100, 100}, Qt::LeftButton);
+        QVERIFY(!s.keyHintsShown());
+        s.pointerMove(0, {300, 300});
+        s.pointerRelease(0, {300, 300}, Qt::LeftButton);
+        QVERIFY(s.hasSelection() && !s.keyHintsShown());
+        // Begun by the countdown: nothing by itself.
+        rig.begin();
+        s.quietKeyHints();
+        s.pointerMove(0, {500, 400});
+        QTest::qWait(static_cast<int>(ws::capture::KeyHintPolicy::kStartMs) + 200);
+        QVERIFY(!s.keyHintsShown());
+
+        // Off in the settings; ? shows them; 一直显示 turns the setting on and they stay.
+        rig.begin();
+        s.pointerMove(0, {500, 400});
+        QSignalSpy kept(&s, &CaptureSession::keyHintsKept);
+        s.setKeyHints(false);
+        QVERIFY(!s.keyHintsShown());
+        QVERIFY(s.key(Qt::Key_Question, Qt::ShiftModifier));
+        QVERIFY(s.keyHintsShown());
+        s.keepKeyHints(true);
+        QVERIFY(s.keyHintsEnabled() && s.keyHintsShown());
+        QCOMPARE(kept.count(), 1);
+        QCOMPARE(kept.at(0).at(0).toBool(), true);
+        // 不再显示: off for this capture too, with a word on how to have them back.
+        s.keepKeyHints(false);
+        QVERIFY(!s.keyHintsEnabled() && !s.keyHintsShown());
+        QCOMPARE(kept.count(), 2);
+        QCOMPARE(kept.at(1).at(0).toBool(), false);
+        QVERIFY(!rig.screen.notice().isEmpty());
+        QVERIFY(s.key(Qt::Key_F1, Qt::NoModifier));
+        QVERIFY(s.keyHintsShown());
+        rig.begin(); // and not by themselves in the next capture
+        s.pointerMove(0, {500, 400});
+        QTest::qWait(static_cast<int>(ws::capture::KeyHintPolicy::kStartMs) + 200);
+        QVERIFY(!s.keyHintsShown());
+    }
+
     void aNewCaptureStartsClean()
     {
         Rig rig;
@@ -1495,7 +1735,7 @@ private slots:
         QCOMPARE(rig.session.selectionHistoryCount(), 1);
     }
 
-    void wasdMovesAndResizesInPhysicalPixels_data()
+    void wasdMovesThePointerInPhysicalPixels_data()
     {
         QTest::addColumn<qreal>("dpr");
         QTest::addColumn<int>("key");
@@ -1508,7 +1748,7 @@ private slots:
         }
     }
 
-    void wasdMovesAndResizesInPhysicalPixels()
+    void wasdMovesThePointerInPhysicalPixels()
     {
         QFETCH(qreal, dpr);
         QFETCH(int, key);
@@ -1518,45 +1758,105 @@ private slots:
         rig.drag({100, 100}, {299, 199});
         const QRect original = rig.session.selectionRect();
         QSignalSpy changed(&rig.session, &CaptureSession::selectionChanged);
+        QSignalSpy cursor(&rig.session, &CaptureSession::cursorMoveRequested);
         QSignalSpy finished(&rig.session, &CaptureSession::finished);
         QVERIFY(rig.session.key(key, Qt::NoModifier));
-        QCOMPARE(rig.session.selectionRect(), original.translated(delta));
-        QCOMPARE(rig.screen.selection(), rig.session.selectionRect());
-        QCOMPARE(changed.count(), 1);
-        const QRect moved = rig.session.selectionRect();
+        QCOMPARE(cursor.count(), 1);
+        QCOMPARE(cursor.last()[0].toPoint(), QPoint(299, 199) + delta);
         QVERIFY(rig.session.key(key, Qt::ShiftModifier));
-        QCOMPARE(rig.session.selectionRect(), QRect(moved.topLeft(), moved.size() + QSize(delta.x(), delta.y())));
+        QCOMPARE(cursor.last()[0].toPoint(), QPoint(299, 199) + delta * 10);
+        QCOMPARE(rig.session.selectionRect(), original); // the selection belongs to the arrow keys
+        QCOMPARE(changed.count(), 0);
         QCOMPARE(rig.session.annotation()->tool(), -1); // A must not select the arrow tool.
         QCOMPARE(finished.count(), 0); // D must not trigger a delayed screenshot.
+        // The arrow keys still move the selection and Shift+arrows resize it.
+        const int arrow = key == Qt::Key_W ? Qt::Key_Up : key == Qt::Key_A ? Qt::Key_Left
+            : key == Qt::Key_S ? Qt::Key_Down : Qt::Key_Right;
+        QVERIFY(rig.session.key(arrow, Qt::NoModifier));
+        QCOMPARE(rig.session.selectionRect(), original.translated(delta));
+        const QRect moved = rig.session.selectionRect();
+        QVERIFY(rig.session.key(arrow, Qt::ShiftModifier));
+        QCOMPARE(rig.session.selectionRect(), QRect(moved.topLeft(), moved.size() + QSize(delta.x(), delta.y())));
+        QCOMPARE(cursor.count(), 2);
     }
 
-    void wasdRespectsBoundsModifiersAndMouseGestures()
+    void wasdMovesThePointerInEveryPhaseAndStaysOnScreen()
     {
         Rig rig(1.5);
         rig.begin();
         rig.session.pointerMove(0, {10, 10});
         QSignalSpy cursor(&rig.session, &CaptureSession::cursorMoveRequested);
+        // Hover: a pixel, Shift ten, clamped to the screen.
         QVERIFY(rig.session.key(Qt::Key_W, Qt::NoModifier));
         QCOMPARE(cursor.last()[0].toPoint(), QPoint(10, 9));
+        QVERIFY(rig.session.key(Qt::Key_A, Qt::ShiftModifier));
+        QCOMPARE(cursor.last()[0].toPoint(), QPoint(0, 10));
         QVERIFY(!rig.session.hasSelection());
         QVERIFY(!rig.session.key(Qt::Key_W, Qt::AltModifier));
         QVERIFY(!rig.session.key(Qt::Key_A, Qt::MetaModifier));
-        QCOMPARE(cursor.count(), 1);
-        rig.session.pointerPress(0, {0, 0}, Qt::LeftButton);
-        rig.session.pointerMove(0, {999, 799});
-        const QRect dragging = rig.session.selectionRect();
-        for (int key : {Qt::Key_W, Qt::Key_A, Qt::Key_S, Qt::Key_D, Qt::Key_R}) {
-            QVERIFY(rig.session.key(key, Qt::NoModifier));
-            QCOMPARE(rig.session.selectionRect(), dragging);
+        QCOMPARE(cursor.count(), 2);
+        // Pressed: the pointer moves; the system's move then drags out the area.
+        rig.session.pointerMove(0, {100, 100});
+        rig.session.pointerPress(0, {100, 100}, Qt::LeftButton);
+        QVERIFY(rig.session.key(Qt::Key_D, Qt::ShiftModifier));
+        QCOMPARE(cursor.last()[0].toPoint(), QPoint(110, 100));
+        rig.session.pointerMove(0, cursor.last()[0].toPoint());
+        QCOMPARE(rig.session.selectionRect(), QRect(100, 100, 11, 1));
+        // Dragging: the dragged corner follows each step.
+        QVERIFY(rig.session.key(Qt::Key_S, Qt::NoModifier));
+        QCOMPARE(cursor.last()[0].toPoint(), QPoint(110, 101));
+        rig.session.pointerMove(0, cursor.last()[0].toPoint());
+        QCOMPARE(rig.session.selectionRect(), QRect(100, 100, 11, 2));
+        QVERIFY(rig.session.key(Qt::Key_D, Qt::NoModifier));
+        rig.session.pointerMove(0, cursor.last()[0].toPoint());
+        QCOMPARE(rig.session.selectionRect(), QRect(100, 100, 12, 2));
+        for (int i = 0; i < 100; ++i) { // far beyond the right and bottom edges
+            rig.session.key(Qt::Key_D, Qt::ShiftModifier);
+            rig.session.pointerMove(0, cursor.last()[0].toPoint());
+            rig.session.key(Qt::Key_S, Qt::ShiftModifier);
+            rig.session.pointerMove(0, cursor.last()[0].toPoint());
         }
+        QCOMPARE(cursor.last()[0].toPoint(), QPoint(999, 799));
+        QCOMPARE(rig.session.selectionRect(), QRect(100, 100, 900, 700));
+        // R in a busy phase still does nothing.
+        const QRect dragging = rig.session.selectionRect();
+        QVERIFY(rig.session.key(Qt::Key_R, Qt::NoModifier));
+        QCOMPARE(rig.session.selectionRect(), dragging);
         rig.session.pointerRelease(0, {999, 799}, Qt::LeftButton);
+        // Selected: no button, the pointer just moves and the area stays.
+        const int before = cursor.count();
         for (int key : {Qt::Key_W, Qt::Key_A, Qt::Key_S, Qt::Key_D})
             QVERIFY(rig.session.key(key, Qt::NoModifier));
-        QCOMPARE(rig.session.selectionRect(), QRect(0, 0, 1000, 800));
-        rig.session.replaceShot({}, 0, QRect(999, 799, 1, 1), std::nullopt);
-        for (int key : {Qt::Key_W, Qt::Key_A, Qt::Key_S, Qt::Key_D})
-            QVERIFY(rig.session.key(key, Qt::ShiftModifier));
-        QCOMPARE(rig.session.selectionRect(), QRect(999, 799, 1, 1));
+        QCOMPARE(cursor.count(), before + 4);
+        QCOMPARE(rig.session.selectionRect(), dragging);
+        // The arrow keys keep moving the area.
+        rig.session.replaceShot({}, 0, QRect(500, 300, 100, 50), std::nullopt);
+        QVERIFY(rig.session.key(Qt::Key_Left, Qt::NoModifier));
+        QCOMPARE(rig.session.selectionRect(), QRect(499, 300, 100, 50));
+        // Adjusting: a handle drag follows the pointer.
+        rig.session.pointerMove(0, {599, 349});
+        rig.session.pointerPress(0, {599, 349}, Qt::LeftButton);
+        rig.session.pointerMove(0, {609, 359});
+        QVERIFY(rig.session.key(Qt::Key_D, Qt::ShiftModifier));
+        QCOMPARE(cursor.last()[0].toPoint(), QPoint(619, 359));
+        const QRect adjusted = rig.session.selectionRect();
+        rig.session.pointerMove(0, cursor.last()[0].toPoint());
+        QCOMPARE(rig.session.selectionRect().width(), adjusted.width() + 10);
+        rig.session.pointerRelease(0, {619, 359}, Qt::LeftButton);
+        // Annotating: a shape being drawn follows too.
+        rig.session.replaceShot({}, 0, QRect(100, 100, 400, 300), std::nullopt);
+        QVERIFY(rig.session.key(Qt::Key_1, Qt::NoModifier));
+        rig.session.pointerMove(0, {150, 150});
+        rig.session.pointerPress(0, {150, 150}, Qt::LeftButton);
+        rig.session.pointerMove(0, {200, 200});
+        QVERIFY(rig.session.annotation()->gestureActive());
+        QVERIFY(rig.session.key(Qt::Key_W, Qt::ShiftModifier));
+        QCOMPARE(cursor.last()[0].toPoint(), QPoint(200, 190));
+        QVERIFY(rig.session.annotation()->gestureActive());
+        rig.session.pointerMove(0, cursor.last()[0].toPoint());
+        rig.session.pointerRelease(0, {200, 190}, Qt::LeftButton);
+        QCOMPARE(rig.session.annotation()->itemCount(), 1);
+        QCOMPARE(rig.session.selectionRect(), QRect(100, 100, 400, 300));
     }
 
     void recentRegionsKeepTenUniqueCompletedSelectionsAndCycle()
@@ -1627,6 +1927,19 @@ private slots:
         rig.session.key(Qt::Key_R, Qt::NoModifier);
         QCOMPARE(rig.session.selectionRect(), QRect(100, 100, 200, 100));
         QVERIFY(!rig.session.hasAnnotations());
+    }
+
+    void workAreaLeavesOutTheTaskbar()
+    {
+        CaptureScreen screen {0};
+        screen.setGeometry(QRect(1000, 0, 1000, 800), 1.0, QSize(1000, 800));
+        QCOMPARE(screen.workArea(), QRect(0, 0, 1000, 800)); // unknown: the whole monitor
+        screen.setWorkArea(QRect(1000, 0, 1000, 752)); // a taskbar along the bottom
+        QCOMPARE(screen.workArea(), QRect(0, 0, 1000, 752));
+        screen.setWorkArea(QRect(1048, 0, 952, 800)); // ... on the left
+        QCOMPARE(screen.workArea(), QRect(48, 0, 952, 800));
+        screen.setWorkArea(QRect(0, 0, 1000, 800)); // another monitor's: none of this one
+        QCOMPARE(screen.workArea(), QRect(0, 0, 1000, 800));
     }
 
     void rBringsBackTheLastSelectionOnItsMonitor()

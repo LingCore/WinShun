@@ -438,6 +438,7 @@ void CaptureApp::apply()
             if (name != m_settings.options().colorFormat)
                 m_settings.update([&](CaptureOptions& next) { next.colorFormat = name; });
         };
+        callbacks.keyHintsKept = [this](bool on) { m_settings.setCaptureKeyHints(on); }; // the panel's 不再显示 / 一直显示
         callbacks.recording.preferences = [this] {
             const CaptureOptions& p = m_settings.options();
             return capture::Recorder::Preferences {p.recordingFolder, p.recordingSystemAudio, p.recordingMicrophone,
@@ -487,6 +488,7 @@ void CaptureApp::apply()
     }
     m_capture->setCopyOnSelect(o.copyOnSelect);
     m_capture->setMagnifier(o.magnifier);
+    m_capture->setKeyHints(o.keyHints);
     m_capture->setPinOnCopy(o.pinOnCopy);
     m_capture->setMouseActions({o.mouseDoubleLeft, o.mouseRight, o.mouseMiddle, o.mouseBack, o.mouseForward});
     m_capture->setHiddenButtons(o.toolbarHidden.split(u',', Qt::SkipEmptyParts));
