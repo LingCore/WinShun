@@ -11,9 +11,12 @@ add_library(wsplugin_lite STATIC
     runner/Json.cpp runner/Json.h
     runner/Lite.h
     runner/Sandbox.cpp runner/Sandbox.h
+    # Plain Win32 (no Qt), shared with the service and wscore: the elevated
+    # environment keeps only the PATH folders ordinary users cannot write to.
+    ${PROJECT_SOURCE_DIR}/src/core/ServiceLocation.cpp ${PROJECT_SOURCE_DIR}/src/core/ServiceLocation.h
 )
-target_include_directories(wsplugin_lite PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/runner)
-target_link_libraries(wsplugin_lite PUBLIC winshun_options advapi32 userenv user32)
+target_include_directories(wsplugin_lite PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/runner PRIVATE ${PROJECT_SOURCE_DIR}/src/core)
+target_link_libraries(wsplugin_lite PUBLIC winshun_options advapi32 userenv user32 shell32 ole32)
 set_target_properties(wsplugin_lite PROPERTIES AUTOMOC OFF MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 # WinShunPluginHost.exe: the runner (runner/main.cpp). The linker's default
@@ -29,6 +32,7 @@ install(TARGETS WinShunPluginHost RUNTIME DESTINATION .)
 qt_add_library(wsplugin STATIC
     AiBridge.cpp AiBridge.h
     Catalog.cpp Catalog.h
+    Elevation.cpp Elevation.h
     Gallery.cpp Gallery.h
     Host.cpp Host.h
     IndexSignature.cpp IndexSignature.h
@@ -52,4 +56,4 @@ target_include_directories(wsplugin PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_C
 # their passwords (Secrets.cpp).
 # bcrypt: the plugin list's signature (IndexSignature.cpp).
 # shlwapi: AssocIsDangerous, for the open policy (OpenPolicy.cpp).
-target_link_libraries(wsplugin PUBLIC wscore wsmcp wsmcp_proto PRIVATE miniz advapi32 bcrypt userenv user32 shlwapi)
+target_link_libraries(wsplugin PUBLIC wscore wsmcp wsmcp_proto PRIVATE miniz advapi32 bcrypt userenv user32 shlwapi shell32 ole32)

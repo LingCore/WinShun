@@ -25,6 +25,11 @@ struct Candidate {
     QString error;
 };
 
+// Unpacks a .zip / .wsplugin held in memory into `dir` (made here): the
+// plugin.json at its root or in its one folder, the files landing in `dir`
+// either way; nothing outside it. Empty on success, else why.
+QString unpackArchive(const QByteArray& bytes, const QString& dir);
+
 // Reads `path` (a folder, or a .zip / .wsplugin). The candidate's `error`
 // says why it is no plugin; nothing at all when `path` is not there.
 // An archive is unpacked into a new folder under `unpackParent` (empty: the

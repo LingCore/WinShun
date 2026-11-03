@@ -41,6 +41,7 @@ constexpr Named kPermissions[] = {
     {Permission::Notifications, u"notifications"},
     {Permission::NetworkListen, u"network:listen"},
     {Permission::SystemSettings, u"system:settings"},
+    {Permission::Elevated, u"elevated"},
 };
 
 // Collects the first error; every check after it is skipped.
@@ -591,6 +592,17 @@ std::optional<Manifest> Manifest::parse(const QByteArray& json, QString* error)
         check.fail(u"minWinShun 要像 0.7.0 这样"_s);
     m.runtime = readRuntime(o.value(u"runtime"_s), check);
     m.permissions = readPermissions(o.value(u"permissions"_s), check);
+
+    // `elevated`: the plugin's own program, as administrator when Win顺 is.
+    // An interpreter could come from a folder the user can write to (a
+    // per-user Python, node, pwsh; Windows PowerShell's modules from
+    // Documents), and a strict sandbox is the opposite of what it asks.
+    if (m.permissions.has(Permission::Elevated)) {
+        if (!m.runtime || m.runtime->program != Program::Exe)
+            check.fail(u"elevated 权限只给自带程序的插件（runtime.program 为 exe）"_s);
+        else if (m.runtime->sandbox == SandboxLevel::Strict)
+            check.fail(u"elevated 权限不能和 runtime.sandbox strict 一起用"_s);
+    }
 
     if (o.contains(u"webSearch"_s) && !o.value(u"webSearch"_s).isBool())
         check.fail(u"webSearch 要是布尔值"_s);

@@ -42,6 +42,26 @@ lite::Handle makeJob(bool limited, const JobLimits& limits, DWORD* error);
 // same name), as the block CreateProcess wants.
 std::vector<wchar_t> environmentFor(HANDLE token, const std::vector<std::pair<std::wstring, std::wstring>>& extra);
 
+// For a process running as administrator (an `elevated` plugin, started by
+// the elevated runner): never the user's variables (HKCU\Environment and
+// this process's are the user's to change, and a variable can make a
+// program load code: COR_PROFILER_PATH, DOTNET_STARTUP_HOOKS, NODE_OPTIONS,
+// PATH...). The system's variables only (CreateEnvironmentBlock without a
+// token: HKLM), less any that loads code, with the system PATH (only its
+// folders ordinary users cannot write to: protectedPath); the user's folders
+// (USERPROFILE, APPDATA, LOCALAPPDATA, HOMEDRIVE, HOMEPATH, USERNAME) from
+// the known folders; then `extra`.
+std::vector<wchar_t> elevatedEnvironment(const std::vector<std::pair<std::wstring, std::wstring>>& extra);
+// A variable that makes a program load code (the names elevatedEnvironment leaves out).
+bool loadsCode(std::wstring_view name);
+// The folders of a PATH (`;`-separated) that only administrators can add to,
+// down from the volume root (svcloc::folderProtected), in order. An installer
+// often puts a folder in the user's profile into the system PATH (Python,
+// VS Code, WindowsApps): a program by that name planted there would run as
+// administrator. Entries that are not absolute local paths, are missing, or
+// cannot be judged are left out.
+std::wstring protectedPath(std::wstring_view path);
+
 // `exe` and `args` as one command line, quoted the way the C runtime (and
 // CommandLineToArgvW) splits it.
 std::wstring commandLine(const std::wstring& exe, const std::vector<std::wstring>& args);
