@@ -305,7 +305,7 @@ qt_add_qml_module(WinShun
         SoundClip.cpp SoundClip.h
         SystemTheme.cpp SystemTheme.h
         UiSize.h
-        Updater.cpp Updater.h UpdatePackage.cpp UpdatePackage.h
+        Updater.cpp Updater.h UpdatePackage.cpp UpdatePackage.h UninstallCleanup.cpp UninstallCleanup.h
         Backup.cpp Backup.h BackupFiles.cpp BackupFiles.h
         WindowFrame.cpp WindowFrame.h
 )
