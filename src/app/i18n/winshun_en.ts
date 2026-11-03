@@ -3441,6 +3441,33 @@
         <translation>Plugins cannot see the network places you signed in to in File Explorer</translation>
     </message>
     <message>
+        <source>需要新权限的更新，会先请你确认。</source>
+        <translation>Updates that need new permissions ask you first.</translation>
+    </message>
+    <message>
+        <source>自动更新已关，新版本等你点更新。</source>
+        <translation>Automatic updates are off; click to update when you are ready.</translation>
+    </message>
+    <message>
+        <source>正在更新插件…</source>
+        <translation>Updating plugins…</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n 个插件有新版本</source>
+        <translation>
+            <numerusform>%n plugin has a newer version</numerusform>
+            <numerusform>%n plugins have newer versions</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>查看</source>
+        <translation>View</translation>
+    </message>
+    <message>
+        <source>全部更新</source>
+        <translation>Update all</translation>
+    </message>
+    <message>
         <source>网络;共享;NAS;登录;令牌;plugin;network</source>
         <translation>network;share;NAS;sign in;token;plugin</translation>
     </message>
@@ -3982,18 +4009,6 @@ Right: center window · Drag: move window</translation>
             <numerusform>%n plugin has a newer version, click to view</numerusform>
             <numerusform>%n plugins have newer versions, click to view</numerusform>
         </translation>
-    </message>
-    <message>
-        <source>正在更新插件…</source>
-        <translation>Updating plugins…</translation>
-    </message>
-    <message>
-        <source>自动更新已关，新版本等你点更新。</source>
-        <translation>Automatic updates are off; click to update when you are ready.</translation>
-    </message>
-    <message>
-        <source>需要新权限的更新，会先请你确认。</source>
-        <translation>Updates that need new permissions ask you first.</translation>
     </message>
     <message>
         <source>自动更新</source>
@@ -7546,10 +7561,6 @@ Right: center window · Drag: move window</translation>
         <source>双击 Ctrl 打开搜索。Win顺 按文件夹遍历建立索引，首次运行需要一点时间。</source>
         <translation>Press Ctrl twice to search. WinShun builds its index by walking the folders, which takes a little while the first time.</translation>
     </message>
-    <message>
-        <source>用 Win顺 搜索此处</source>
-        <translation>Search here with WinShun</translation>
-    </message>
     <message numerus="yes">
         <source>已收录 %Ln 个文件，占用 %1 磁盘空间</source>
         <translation>
@@ -7714,10 +7725,6 @@ Right: center window · Drag: move window</translation>
     <message>
         <source>正在等索引服务启动…</source>
         <translation>Waiting for the index service to start…</translation>
-    </message>
-    <message>
-        <source>粘贴为文件</source>
-        <translation>Paste as file</translation>
     </message>
     <message>
         <source>贴到屏幕</source>
