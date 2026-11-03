@@ -4885,3 +4885,21 @@
 - **现象**：设了 `QT_QPA_PLATFORM=offscreen` 跑 `tst_ocr`，27 项里 22 项失败，画出来的字一个也认不出；不设就全过。
 - **原因**：没细查，很可能是 offscreen 平台没带字体目录（`tst_clipimage` 用 offscreen 时另设了 `QT_QPA_FONTDIR`），画字的测试画出了空图。
 - **做法**：照 ctest 的注册直接跑，不设 offscreen。
+
+### 装好的插件读不了任何 PDF：“缺少 PDF 读取组件，请更新 Win顺”
+
+- **现象**：从插件库或压缩包装好图片文字搜索后，所有 PDF 都进未完成项，原因“缺少 PDF 读取组件，请更新 Win顺”；图片照常识别。单元测试、wsbench 和整套识别对比都正常，直到 2026-11-04 用装好的插件实测才发现，已发布的 1.0.0 也是这样。
+- **原因**：`extract::loadPdfium()` 用 `LoadLibraryExW(L"pdfium.dll", nullptr, LOAD_LIBRARY_SEARCH_APPLICATION_DIR)`，只找程序自己的文件夹。Win顺 和 WinShunExtract 就在 `pdfium.dll` 旁边；插件程序却装在用户的插件文件夹，小启动器用 `AddDllDirectory` 加了 Win顺 的文件夹，这个标志不搜它。测试和基准都从 build 文件夹运行工作进程，`pdfium.dll` 正好在旁边，测不出来。
+- **做法**：改成 `LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_USER_DIRS`（仍不找 PATH 和当前目录）。插件里加载宿主自带的 DLL，标志里都要有 `USER_DIRS`（或用默认目录）。验证插件要用装好的布局：程序和 DLL 复制到单独的文件夹，宿主的 DLL 只在 app 目录，`tst_ocrsearch` 的 `installedWorkerReadsPdfPages` 就这样测。已经因此失败的文件不会自己重试，升级迁移按两种语言的这条报错把它们留给下次遍历重读。
+
+### 测试：`--profile` 的插件装在 `<profile>\plugins`，不是 `<profile>\WinShun\plugins`
+
+- **现象**：实测插件时把插件和它的旧索引放进 `<profile>\WinShun\plugins\`，测试副本启动后插件根本没运行，插件列表里也没有它。
+- **原因**：`--profile` 下数据目录（`Settings::dataDir()`）就是 profile 文件夹本身，插件、索引、日志都在那里；只有设置文件多一层：`<profile>\WinShun\WinShun.ini`（`QSettings::setPath` 的 UserScope 会再加组织名）。
+- **做法**：用户插件放 `<profile>\plugins\<id>`，插件数据放 `<profile>\plugins\<id>.data`，设置写 `<profile>\WinShun\WinShun.ini` 的 `[Plugin.<id>]`（`Enabled=true` 和 `Confirmed=` 插件的权限）。启动后看 `<profile>\plugins.log` 有没有“<id>: 启动”。
+
+### 识别进度里的长路径在“C:”后断开，看不到文件名
+
+- **现象**：插件窗口识别时，进度下面的当前文件只显示“C:”和下一行半截路径，没有省略号，文件名看不到。
+- **原因**：计数和路径放在同一个 `Text` 里，`wrapMode: Text.Wrap` 加 `maximumLineCount: 3` 和 `elide: Text.ElideMiddle`。Qt 只有 `ElideRight` 能和换行一起用，`ElideMiddle`／`ElideLeft` 只对单行有效（“多行文字粘贴进搜索框，灰色的字铺满整个窗口”一条也提到过），多出的行直接截掉。
+- **做法**：会很长的路径单独放一行不换行的 `Text`，用 `ElideMiddle`；要换行的说明另放一个 `Text`（`Controller::progressFile`）。
