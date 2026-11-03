@@ -332,7 +332,7 @@ item 可选提供 `modified`、`created`（带时区的 ISO 8601 字符串或 Un
 
 在命令中声明 `"contentSearch": true`，可同时保留 `keyword`。宿主只在“内容”，或已开启内容检索的“全部”中派发 `query`，此时 `trigger` 为 `content`，`text` 为内容关键词；文件／文件夹搜索和独占的关键词列表不派发。关键词查询仍按原协议执行。此接口在 0.17.0 之后的版本才有；旧宿主不派发内容查询，只能用命令关键词。官方图片文字搜索插件打包时把 `minWinShun` 设为构建它的主程序版本。
 
-`filters` 除面板条件外，还包含 `contentEnabled`、`contentWords`、`contentPick`（选定目录）、`excludedExtensions`、`excludedFileNames`（通配符）。提供者应按整个文件验证关键词，返回稳定 id、原文件的 `open.path`、日期／大小及命中摘要。内容结果在原生结果之后合并，每个提供者最多 200 行，不占普通推送的 3／6 行配额；已有原生文件结果会去重。空结果返回空数组，避免把设置提示混进内容列表。可参考 [图片文字搜索插件](../src/ocr-search-plugin/package/README.md)。
+`filters` 除面板条件外，还包含 `contentEnabled`、`contentWords`、`contentPick`（选定目录）、`excludedExtensions`、`excludedFileNames`（通配符）。提供者应按整个文件验证关键词，返回稳定 id、原文件的 `open.path`、日期／大小及命中摘要。内容结果在“内容”里排在原生结果之后；在“全部”里，所有提供者的前 3 行排在前 5 个名称结果之后（最近、收藏和与输入完全同名的应用之后），其余仍在最后；重复应答或名称列表增长时，已有行的位置不变。每个提供者最多 200 行，不占普通推送的 3／6 行配额；已有原生文件结果会去重。空结果返回空数组，避免把设置提示混进内容列表。可参考 [图片文字搜索插件](../src/ocr-search-plugin/package/README.md)。
 
 ### 图标
 
