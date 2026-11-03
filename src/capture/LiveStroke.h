@@ -45,8 +45,15 @@ inline constexpr int kCurveSteps = 3; // straight parts per curve
 
 // The pieces of a stroke through `count` points.
 constexpr qsizetype pieceCount(qsizetype count) { return count < 2 ? 0 : count - 1; }
-// The pieces no later point changes: all but the last (the straight end becomes a curve).
-constexpr qsizetype settledPieces(qsizetype count) { return count < 3 ? 0 : count - 2; }
+// The pieces no later point changes: all but the last (the straight end
+// becomes a curve), with a margin of two more.
+inline constexpr qsizetype kSettledMargin = 4;
+constexpr qsizetype settledPieces(qsizetype count) { return count <= kSettledMargin ? 0 : count - kSettledMargin; }
+
+// Of the pieces settled from `before`, those that still hold for `now`: the
+// settled pieces of the points both share from the start (Shift straightens
+// a stroke into fewer points; a point may move).
+qsizetype keptPieces(const QList<QPointF>& before, const QList<QPointF>& now);
 
 // The centreline of pieces [from, to), flattened (image px).
 QList<QPointF> centreline(const QList<QPointF>& points, qsizetype from, qsizetype to);

@@ -62,6 +62,21 @@ void flatten(QList<QPointF>& out, QPointF start, QPointF control, QPointF end)
 
 } // namespace
 
+qsizetype keptPieces(const QList<QPointF>& before, const QList<QPointF>& now)
+{
+    const qsizetype settled = std::min(settledPieces(before.size()), settledPieces(now.size()));
+    if (settled == 0)
+        return 0;
+    if (before.constData() == now.constData())
+        return settled; // the same list (the stroke grew in place or not at all)
+    // Only as far as the settled pieces reach: piece j is made from points up to j + kSettledMargin.
+    const qsizetype reach = settled + kSettledMargin;
+    qsizetype same = 0;
+    while (same < reach && before[same] == now[same])
+        ++same;
+    return std::min(settled, settledPieces(same));
+}
+
 QList<QPointF> centreline(const QList<QPointF>& points, qsizetype from, qsizetype to)
 {
     QList<QPointF> line;

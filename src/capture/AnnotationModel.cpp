@@ -570,6 +570,16 @@ std::optional<quint32> AnnotationModel::draft() const
     return add->items[0].id;
 }
 
+std::optional<quint32> AnnotationModel::drawing() const
+{
+    if (m_gesture != Gesture::Draw || !d->command || !d->applied)
+        return std::nullopt;
+    const auto* add = static_cast<const annot::AddItems*>(d->command.get());
+    if (add->items.isEmpty())
+        return std::nullopt;
+    return add->items[0].id;
+}
+
 std::optional<quint32> AnnotationModel::unworded() const
 {
     if (m_editing && m_editing->words)

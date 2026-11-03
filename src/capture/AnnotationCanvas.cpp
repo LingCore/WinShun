@@ -239,18 +239,22 @@ void AnnotationCanvas::updatePolish()
     const QQuickWindow* win = window();
     const bool software = win && win->rendererInterface()
         && win->rendererInterface()->graphicsApi() == QSGRendererInterface::Software;
-    if (m_live && !software && model->gestureActive() && !model->pathActive() && !doc.items.isEmpty()) {
-        const annot::Item& last = doc.items.last();
-        if (last.kind == annot::Kind::Pen && last.id + 1 == doc.nextId && !last.points.isEmpty())
-            liveNow = last.id;
-    }
     const auto itemOf = [&doc](quint32 id) -> const annot::Item* {
-        for (const annot::Item& item : doc.items) {
-            if (id != 0 && item.id == id)
-                return &item;
+        for (qsizetype i = doc.items.size() - 1; id != 0 && i >= 0; --i) { // the newest are the likely ones
+            if (doc.items[i].id == id)
+                return &doc.items[i];
         }
         return nullptr;
     };
+    // Only the stroke the drawing under way put in: from the press to the
+    // first move there is none (the last stroke is not live again).
+    if (m_live && !software && !model->pathActive()) {
+        if (const std::optional<quint32> id = model->drawing()) {
+            const annot::Item* item = itemOf(*id);
+            if (item && item->kind == annot::Kind::Pen && !item->points.isEmpty())
+                liveNow = *id;
+        }
+    }
     const auto areaOf = [&doc](const annot::Item& item) {
         return annot::bounds(item, doc.dpr, 1, annot::formatOf(doc, item.series)).toAlignedRect().adjusted(-2, -2, 2, 2);
     };
@@ -547,6 +551,7 @@ void AnnotationCanvas::forgetLive()
     m_liveRoot = nullptr;
     m_liveChunks.clear();
     m_liveSettled.clear();
+    m_liveMadeFrom.clear();
     m_liveShown = 0;
 }
 
@@ -583,6 +588,21 @@ void AnnotationCanvas::updateLive(QSGNode* root)
     const qsizetype count = m_livePoints.size();
     const qsizetype chunks = std::max<qsizetype>(1, (live::pieceCount(count) + live::kChunk - 1) / live::kChunk);
     const qsizetype settled = live::settledPieces(count);
+    // A chunk made once holds while its points do: Shift straightens the
+    // stroke (fewer points), and the chunks beyond the new end go.
+    const qsizetype kept = live::keptPieces(m_liveMadeFrom, m_livePoints);
+    for (std::size_t c = 0; c < m_liveSettled.size(); ++c) {
+        if (m_liveSettled[c] && qsizetype(c + 1) * live::kChunk > kept)
+            m_liveSettled[c] = false;
+    }
+    while (qsizetype(m_liveChunks.size()) > chunks) {
+        QSGGeometryNode* node = m_liveChunks.back();
+        m_liveRoot->removeChildNode(node);
+        delete node;
+        m_liveChunks.pop_back();
+        m_liveSettled.pop_back();
+    }
+    m_liveMadeFrom = m_livePoints;
     live::Mesh mesh;
     for (qsizetype c = 0; c < chunks; ++c) {
         if (std::size_t(c) < m_liveChunks.size() && m_liveSettled[std::size_t(c)])

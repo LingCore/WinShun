@@ -149,6 +149,9 @@ public:
     std::optional<quint32> unworded() const;
     // The brush redaction under the mouse (not yet let go): drawn as a mosaic meanwhile.
     std::optional<quint32> draft() const;
+    // What the drawing under way has put in the document (a pen's stroke as
+    // it grows): none from the press to the first move, nor for a move or a resize.
+    std::optional<quint32> drawing() const;
     // The styles as they are now (the tools' remembered ones, including this
     // capture's changes); `stylesChanged()` tells whether any changed.
     const annot::StyleMemory& styles() const { return m_styles; }

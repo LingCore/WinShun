@@ -163,6 +163,7 @@ private:
     QSGNode* m_liveRoot = nullptr;
     std::vector<QSGGeometryNode*> m_liveChunks;
     std::vector<bool> m_liveSettled;
+    QList<QPointF> m_liveMadeFrom; // the points the chunks were made from
     quint32 m_liveShown = 0;
     int m_liveShownWidth = 0;
     QRgb m_liveShownColor = 0;
