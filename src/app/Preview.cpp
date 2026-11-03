@@ -2711,8 +2711,12 @@ void checkDropPieHelper(const QDir& output)
         favorites.add({Favorite::Kind::Folder, folder, u"Folder %1"_s.arg(i)});
     }
     QStringList notices;
+    std::function<void()> clickRetry; // the last notification's 重试
     auto helper = std::make_unique<DropPieHelper>(&favorites,
-        [&](const QString& title, const QString& text, auto&&) { notices.push_back(title + u": "_s + text); });
+        [&](const QString& title, const QString& text, std::function<void()> retry) {
+            notices.push_back(title + u": "_s + text);
+            clickRetry = std::move(retry);
+        });
     Settings settings = Settings::defaults();
     helper->update(settings);
     const auto waitFor = [&](const std::function<bool(const QJsonObject&)>& wanted, int ms = 6000) {
@@ -2752,7 +2756,32 @@ void checkDropPieHelper(const QDir& output)
         return state.value(u"pid"_s).toInteger() != first && state.value(u"folders"_s).toInt() == 3;
     }, 12000); // a second after it ended, then a start as slow as the first may be
     const qint64 restartMs = restarting.elapsed();
-    g_warnings = warnings + std::max(0, g_warnings - warnings - 2);
+    // Ended twice more, the third time in a row: told, with 重试 to click.
+    // The notification outlives the helper (turned off, Win顺 no longer
+    // elevated): clicked then, it does nothing. Three more log lines. Told
+    // only with the desktop shell up a minute: not checked right after it started.
+    const bool noticeChecked = [] {
+        DWORD pid = 0;
+        ::GetWindowThreadProcessId(::GetShellWindow(), &pid);
+        const win32::UniqueHandle shell(pid ? ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid) : nullptr);
+        FILETIME created {}, exited {}, kernel {}, user {}, now {};
+        if (!shell.valid() || !::GetProcessTimes(shell.get(), &created, &exited, &kernel, &user))
+            return false;
+        ::GetSystemTimeAsFileTime(&now);
+        const auto ticks = [](const FILETIME& time) { return (quint64(time.dwHighDateTime) << 32) | time.dwLowDateTime; };
+        return ticks(now) - ticks(created) > 65 * 10'000'000ull; // 100 ns ticks
+    }();
+    bool toldOnce = true;
+    for (int failures = 2; failures <= 3; ++failures) {
+        const qint64 pid = helper->state().value(u"pid"_s).toInteger();
+        if (win32::UniqueHandle killed(::OpenProcess(PROCESS_TERMINATE, FALSE, DWORD(pid))); killed.valid())
+            ::TerminateProcess(killed.get(), 1);
+        toldOnce = waitFor([pid](const QJsonObject& state) {
+            return state.value(u"pid"_s).toInteger() != pid && state.value(u"folders"_s).toInt() == 3;
+        }, 15000) && toldOnce && (!noticeChecked || notices.size() == failures - 2);
+    }
+    toldOnce = toldOnce && (!noticeChecked || (notices.size() == 1 && clickRetry));
+    g_warnings = warnings + std::max(0, g_warnings - warnings - 5);
     state = helper->state();
     win32::UniqueHandle child(::OpenProcess(SYNCHRONIZE, FALSE, DWORD(state.value(u"pid"_s).toInteger())));
     QElapsedTimer stopping;
@@ -2760,17 +2789,21 @@ void checkDropPieHelper(const QDir& output)
     helper.reset();
     const bool stopped = child.valid() && ::WaitForSingleObject(child.get(), 10'000) == WAIT_OBJECT_0;
     state.insert(u"stop_ms"_s, stopping.elapsed());
-    passed = passed && updatedFavorites && updatedAppearance && restarted && stopped && notices.isEmpty();
+    if (clickRetry)
+        clickRetry(); // the helper gone: nothing (it once was a use after free)
+    passed = passed && updatedFavorites && updatedAppearance && restarted && toldOnce && stopped;
     state.insert(u"updatedFavorites"_s, updatedFavorites);
     state.insert(u"updatedAppearance"_s, updatedAppearance);
     state.insert(u"restarted"_s, restarted);
     state.insert(u"restart_ms"_s, restartMs);
+    state.insert(u"toldOnce"_s, toldOnce);
+    state.insert(u"notice_checked"_s, noticeChecked);
     state.insert(u"stopped"_s, stopped);
     state.insert(u"passed"_s, passed);
     QFile report(output.filePath(u"drop-pie-helper.json"_s));
     if (report.open(QIODevice::WriteOnly)) report.write(QJsonDocument(state).toJson());
     if (!passed) qWarning().noquote() << "Drop pie helper regression failed:" << notices << state;
-    else say(u"drop pie: real ordinary-user helper, OLE target registration, favorite and appearance refresh, restart after it ends and shutdown checked"_s);
+    else say(u"drop pie: real ordinary-user helper, OLE target registration, favorite and appearance refresh, restart after it ends, the notice after three failures (its retry harmless once the helper is gone) and shutdown checked"_s);
 }
 
 bool checkSwitchProvider(QQuickWindow* window, const QDir& output)

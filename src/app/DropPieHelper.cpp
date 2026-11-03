@@ -14,6 +14,7 @@
 #include <QDir>
 #include <QDebug>
 #include <QLocale>
+#include <QPointer>
 #include <QFile>
 #include <QFileInfo>
 #include <QFileSystemWatcher>
@@ -242,7 +243,11 @@ void DropPieHelper::failed(Failure kind, const QString& detail, unsigned long co
     if (m_reported || !m_notify || m_failures < 3 || QDateTime::currentMSecsSinceEpoch() - m_shellSince < 60'000)
         return;
     m_reported = true;
-    const auto again = [this] { retry(); };
+    // Kept by the notification, which outlives this helper (turned off, or Win顺 no longer elevated).
+    const auto again = [self = QPointer(this)] {
+        if (self)
+            self->retry();
+    };
     if (otherAccount)
         m_notify(tr("收藏圆盘未启动"), tr("Win顺 正以另一个账户的管理员身份运行，收藏圆盘无法使用。请用你自己的账户运行 Win顺。"), {});
     else if (kind == Failure::Start)
