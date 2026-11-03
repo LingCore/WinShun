@@ -24,6 +24,8 @@ namespace {
 
 // Shapes are split at every kGrid-th pixel line of their own anchor.
 constexpr int kGrid = 256;
+// A marker on a transparent compositor (the presenter's live desktop).
+constexpr qreal kLiveMarkerOpacity = 0.4;
 
 bool same(QPointF a, QPointF b)
 {
@@ -1134,11 +1136,15 @@ void Compositor::render(const Document& doc, const QImage& base, const QRect& sa
 {
     if (!target || area.isEmpty())
         return;
-    if (target->size() != area.size() || target->format() != QImage::Format_RGB32)
-        *target = QImage(area.size(), QImage::Format_RGB32);
+    const QImage::Format format = m_transparent ? QImage::Format_ARGB32_Premultiplied : QImage::Format_RGB32;
+    if (target->size() != area.size() || target->format() != format)
+        *target = QImage(area.size(), format);
     if (target->isNull())
         return;
-    copyBase(base, area, *target);
+    if (m_transparent)
+        target->fill(Qt::transparent);
+    else
+        copyBase(base, area, *target);
 
     QPainter painter(target);
     const QTransform toTarget = QTransform::fromTranslate(-area.x(), -area.y());
@@ -1175,7 +1181,12 @@ void Compositor::render(const Document& doc, const QImage& base, const QRect& sa
         for (const Op& op : recipe->ops) {
             // Each op sets all the state it draws with: an op that does not
             // reach one area must not change how the next op draws there.
-            painter.setCompositionMode(op.mode);
+            if (m_transparent && op.type == Op::Patch)
+                continue; // nothing beneath to sample
+            // A marker over the live desktop: translucent, as close to multiplying a light page as it gets.
+            const bool overlay = m_transparent && op.mode == QPainter::CompositionMode_Multiply;
+            painter.setCompositionMode(overlay ? QPainter::CompositionMode_SourceOver : op.mode);
+            painter.setOpacity(overlay ? kLiveMarkerOpacity : 1.0);
             painter.setRenderHint(QPainter::Antialiasing, op.type != Op::Rects);
             switch (op.type) {
             case Op::Rects:

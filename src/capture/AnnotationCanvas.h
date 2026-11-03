@@ -13,6 +13,7 @@
 
 #include <vector>
 
+class QSGGeometryNode;
 class QSGImageNode;
 
 namespace ws::capture {
@@ -47,6 +48,11 @@ class AnnotationCanvas : public QQuickItem {
     // Smoothed (linear) when the picture is shown smaller than it is; sharp
     // (nearest) at 100 % and larger, where it must be pixel for pixel.
     Q_PROPERTY(bool linear READ linear WRITE setLinear NOTIFY linearChanged FINAL)
+    // The presenter's (GitHub #189): the pen stroke under the mouse is left
+    // out of the tiles and drawn by the GPU (LiveStroke.h) until it is let
+    // go of, so a long stroke costs no more at each move than a short one.
+    // Not on the software scene graph, which draws no triangles.
+    Q_PROPERTY(bool live READ live WRITE setLive NOTIFY liveChanged FINAL)
 
 public:
     static constexpr int kTile = 256;
@@ -68,6 +74,12 @@ public:
     void setViewport(const QRectF& viewport);
     bool linear() const { return m_linear; }
     void setLinear(bool linear);
+    bool live() const { return m_live; }
+    void setLive(bool live);
+    // The item the GPU draws now (0: none), for the tests.
+    quint32 liveItem() const { return m_liveId; }
+    // The stroke let go of whose tiles are still being drawn (0: none).
+    quint32 handoverItem() const { return m_handoverId; }
     // The tiles that have a picture now (what the tests see of sparse mode).
     int tilesShown() const;
     // The most tiles a limited canvas keeps (the nearest to the middle of the view).
@@ -76,6 +88,8 @@ public:
     static constexpr int kPolishBudgetMs = 8;
     // The textures a limited canvas makes in one frame; the rest follow in the next ones.
     static constexpr int kUploadsPerFrame = 8;
+    // A live stroke let go of: what drawing its tiles back may take in one frame.
+    static constexpr int kHandoverBudgetMs = 3;
 
 signals:
     void modelChanged();
@@ -84,6 +98,7 @@ signals:
     void limitedChanged();
     void viewportChanged();
     void linearChanged();
+    void liveChanged();
 
 protected:
     void updatePolish() override;
@@ -130,6 +145,29 @@ private:
     int m_mostWanted = 0;
     bool m_dropNodes = false; // the tiles were let go of: so are their nodes, at the next sync
     bool m_rectsStale = true; // the scale changed: every node's rectangle
+    // The compositor draws on nothing (the presenter's live desktop): the
+    // tiles' textures have alpha. Read on the GUI thread (updatePolish).
+    bool m_transparent = false;
+    // The live stroke (`live`): its item, and what polish copied of it for
+    // the render thread (read in updatePaintNode, the GUI thread waiting).
+    bool m_live = false;
+    quint32 m_liveId = 0;
+    // Let go of: the stroke the tiles are taking back, a few each frame, and where it is (image px).
+    quint32 m_handoverId = 0;
+    QRect m_handoverArea;
+    QList<QPointF> m_livePoints;
+    int m_liveWidth = 1;
+    QRgb m_liveColor = 0;
+    // The render thread's: the node holding the chunks' triangles, each
+    // chunk's node and whether no later point changes it.
+    QSGNode* m_liveRoot = nullptr;
+    std::vector<QSGGeometryNode*> m_liveChunks;
+    std::vector<bool> m_liveSettled;
+    quint32 m_liveShown = 0;
+    int m_liveShownWidth = 0;
+    QRgb m_liveShownColor = 0;
+    void updateLive(QSGNode* root);
+    void forgetLive(); // the nodes went with the root
 
     // What a gesture cost here, logged when it ends (info): each polish's
     // tiles and drawing time (GUI thread), each sync's textures and time

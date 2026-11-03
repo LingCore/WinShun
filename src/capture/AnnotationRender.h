@@ -57,6 +57,14 @@ public:
     // redactions' union changed.
     void invalidate(const Change& change);
     void clear();
+    // The presenter's (docs/design-presenter.md, 4.3): no picture beneath,
+    // the live desktop instead. render() then makes premultiplied ARGB areas
+    // cleared to transparent, never reads the base, leaves out redactions
+    // (they would sample pixels that are not there) and lays a marker over
+    // with its own alpha (multiplying needs pixels beneath). exportImage()
+    // follows it; nothing in the presenter exports.
+    void setTransparent(bool transparent) { m_transparent = transparent; }
+    bool transparent() const { return m_transparent; }
     // The bytes the caches hold now.
     qint64 cacheBytes() const;
     // Redaction patches made so far (the cache missed), for the log.
@@ -65,6 +73,7 @@ public:
 private:
     struct Private;
     std::unique_ptr<Private> d;
+    bool m_transparent = false;
 };
 
 // U of 3.10 over `sampleBounds`: 255 where any redaction's box is, 0

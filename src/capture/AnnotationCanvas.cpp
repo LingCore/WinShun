@@ -1,15 +1,19 @@
 #include "AnnotationCanvas.h"
 
 #include "EditView.h"
+#include "LiveStroke.h"
 
 #include <QDebug>
 #include <QElapsedTimer>
 #include <QQuickWindow>
+#include <QSGGeometryNode>
 #include <QSGImageNode>
+#include <QSGVertexColorMaterial>
 #include <QSGNode>
 #include <QSGTexture>
 
 #include <algorithm>
+#include <cstring>
 #include <numeric>
 
 using namespace Qt::StringLiterals;
@@ -113,6 +117,15 @@ void AnnotationCanvas::setLinear(bool linear)
     emit linearChanged();
 }
 
+void AnnotationCanvas::setLive(bool live)
+{
+    if (live == m_live)
+        return;
+    m_live = live;
+    polish();
+    emit liveChanged();
+}
+
 int AnnotationCanvas::tilesShown() const
 {
     return int(std::count_if(m_tiles.cbegin(), m_tiles.cend(), [](const Tile& t) { return t.shown; }));
@@ -213,8 +226,65 @@ void AnnotationCanvas::updatePolish()
         for (Tile& tile : m_tiles)
             tile.dirty = true;
     }
+    if (model->compositor().transparent() != m_transparent) {
+        m_transparent = model->compositor().transparent();
+        for (Tile& tile : m_tiles)
+            tile.dirty = true; // drawn again in the other format, their textures made again
+    }
     const annot::Document& doc = model->document();
-    const std::optional<quint32> skip = model->skipped();
+    // The pen stroke under the mouse: the GPU's while it is drawn (`live`).
+    quint32 liveNow = 0;
+    const QQuickWindow* win = window();
+    const bool software = win && win->rendererInterface()
+        && win->rendererInterface()->graphicsApi() == QSGRendererInterface::Software;
+    if (m_live && !software && model->gestureActive() && !model->pathActive() && !doc.items.isEmpty()) {
+        const annot::Item& last = doc.items.last();
+        if (last.kind == annot::Kind::Pen && last.id + 1 == doc.nextId && !last.points.isEmpty())
+            liveNow = last.id;
+    }
+    const auto itemOf = [&doc](quint32 id) -> const annot::Item* {
+        for (const annot::Item& item : doc.items) {
+            if (id != 0 && item.id == id)
+                return &item;
+        }
+        return nullptr;
+    };
+    const auto areaOf = [&doc](const annot::Item& item) {
+        return annot::bounds(item, doc.dpr, 1, annot::formatOf(doc, item.series)).toAlignedRect().adjusted(-2, -2, 2, 2);
+    };
+    if (liveNow != m_liveId) {
+        // Let go of: the tiles take it back, a few at each frame (all at
+        // once took 40-90 ms on a long stroke), the GPU showing it meanwhile.
+        if (m_liveId && !liveNow) {
+            if (const annot::Item* item = itemOf(m_liveId)) {
+                m_handoverId = m_liveId;
+                m_handoverArea = areaOf(*item);
+                markTiles(m_handoverArea);
+            }
+        }
+        if (liveNow) {
+            m_handoverId = 0; // a new stroke: the last one's tiles all now
+            if (const annot::Item* item = itemOf(liveNow))
+                markTiles(areaOf(*item)); // drawn without it
+        }
+        m_liveId = liveNow;
+        update();
+    }
+    if (const annot::Item* item = itemOf(m_liveId ? m_liveId : m_handoverId)) {
+        m_livePoints = item->points;
+        m_liveWidth = std::max(1, item->style.width);
+        m_liveColor = item->style.color;
+        update();
+    } else {
+        m_handoverId = 0;
+        if (!m_livePoints.isEmpty()) {
+            m_livePoints.clear();
+            update();
+        }
+    }
+    std::optional<quint32> skip = model->skipped();
+    if (m_liveId && !skip)
+        skip = m_liveId;
     const std::optional<quint32> unworded = model->unworded();
     const std::optional<quint32> draft = model->draft();
     // Sparse: where the objects reach, measured once for all the tiles. The
@@ -270,6 +340,10 @@ void AnnotationCanvas::updatePolish()
             pending = true; // the rest at the next frame
             break;
         }
+        if (m_handoverId && drawn > 0 && clock.elapsed() >= kHandoverBudgetMs && tileRect(i).intersects(m_handoverArea)) {
+            pending = true; // the GPU shows the stroke there one frame more
+            continue;
+        }
         tile.dirty = false;
         const QRect area = tileRect(i);
         const bool needed = !m_sparse
@@ -294,6 +368,11 @@ void AnnotationCanvas::updatePolish()
         tile.shown = true;
         tile.upload = true;
         any = true;
+    }
+    if (m_handoverId && !pending) {
+        m_handoverId = 0; // the tiles have it all: the GPU's goes at this sync
+        m_livePoints.clear();
+        update();
     }
     if (pending)
         polish();
@@ -363,6 +442,7 @@ QSGNode* AnnotationCanvas::updatePaintNode(QSGNode* old, UpdatePaintNodeData*)
         // window): what m_nodes points at is gone, every picture needs its
         // texture again.
         m_nodes.clear();
+        forgetLive();
         for (Tile& tile : m_tiles)
             tile.upload = tile.upload || tile.shown;
     }
@@ -371,11 +451,13 @@ QSGNode* AnnotationCanvas::updatePaintNode(QSGNode* old, UpdatePaintNodeData*)
         delete old; // its children, and their textures, with it
         old = nullptr;
         m_nodes.clear();
+        forgetLive();
     }
     QQuickWindow* win = window();
     if (m_tiles.empty() || !win) {
         delete old;
         m_nodes.clear();
+        forgetLive();
         return nullptr;
     }
     QSGNode* root = old ? old : new QSGNode;
@@ -414,7 +496,8 @@ QSGNode* AnnotationCanvas::updatePaintNode(QSGNode* old, UpdatePaintNodeData*)
                 node->setOwnsTexture(true);
                 node->setFiltering(m_linear ? QSGTexture::Linear : QSGTexture::Nearest);
                 node->setMipmapFiltering(QSGTexture::None);
-                node->setTexture(win->createTextureFromImage(tile.image, QQuickWindow::TextureIsOpaque));
+                node->setTexture(win->createTextureFromImage(tile.image,
+                    m_transparent ? QQuickWindow::CreateTextureOptions() : QQuickWindow::TextureIsOpaque));
                 if (m_meter.on)
                     ++m_meter.textures;
                 node->setSourceRect(QRectF(QPointF(0, 0), tile.image.size()));
@@ -448,7 +531,80 @@ QSGNode* AnnotationCanvas::updatePaintNode(QSGNode* old, UpdatePaintNodeData*)
         QMetaObject::invokeMethod(this, [this] { update(); }, Qt::QueuedConnection);
     m_rectsStale = false;
     m_filterStale = false;
+    updateLive(root);
     return root;
+}
+
+void AnnotationCanvas::forgetLive()
+{
+    m_liveRoot = nullptr;
+    m_liveChunks.clear();
+    m_liveSettled.clear();
+    m_liveShown = 0;
+}
+
+// The live stroke's triangles (LiveStroke.h): the chunks no new point
+// changes are made once, the newest again at each frame; above the tiles.
+void AnnotationCanvas::updateLive(QSGNode* root)
+{
+    const quint32 shown = m_liveId ? m_liveId : m_handoverId;
+    if (!shown || m_livePoints.isEmpty()) {
+        if (m_liveRoot) {
+            root->removeChildNode(m_liveRoot);
+            delete m_liveRoot;
+        }
+        forgetLive();
+        return;
+    }
+    if (m_liveShown != shown || m_liveShownWidth != m_liveWidth || m_liveShownColor != m_liveColor) {
+        if (m_liveRoot) {
+            root->removeChildNode(m_liveRoot);
+            delete m_liveRoot;
+        }
+        forgetLive();
+        m_liveShown = shown;
+        m_liveShownWidth = m_liveWidth;
+        m_liveShownColor = m_liveColor;
+    }
+    if (!m_liveRoot)
+        m_liveRoot = new QSGNode;
+    if (root->lastChild() != m_liveRoot) { // tiles made since go beneath it
+        if (m_liveRoot->parent())
+            root->removeChildNode(m_liveRoot);
+        root->appendChildNode(m_liveRoot);
+    }
+    const qsizetype count = m_livePoints.size();
+    const qsizetype chunks = std::max<qsizetype>(1, (live::pieceCount(count) + live::kChunk - 1) / live::kChunk);
+    const qsizetype settled = live::settledPieces(count);
+    live::Mesh mesh;
+    for (qsizetype c = 0; c < chunks; ++c) {
+        if (std::size_t(c) < m_liveChunks.size() && m_liveSettled[std::size_t(c)])
+            continue;
+        if (std::size_t(c) >= m_liveChunks.size()) {
+            auto* node = new QSGGeometryNode;
+            auto* geometry = new QSGGeometry(QSGGeometry::defaultAttributes_ColoredPoint2D(), 0, 0, QSGGeometry::UnsignedIntType);
+            geometry->setDrawingMode(QSGGeometry::DrawTriangles);
+            node->setGeometry(geometry);
+            node->setFlag(QSGNode::OwnsGeometry);
+            node->setMaterial(new QSGVertexColorMaterial);
+            node->setFlag(QSGNode::OwnsMaterial);
+            m_liveRoot->appendChildNode(node);
+            m_liveChunks.push_back(node);
+            m_liveSettled.push_back(false);
+        }
+        mesh.clear();
+        live::appendChunk(mesh, m_livePoints, c, m_liveWidth, 1.0, m_liveColor, m_scaleX, m_scaleY);
+        QSGGeometryNode* node = m_liveChunks[std::size_t(c)];
+        QSGGeometry* geometry = node->geometry();
+        geometry->allocate(int(mesh.vertices.size()), int(mesh.indices.size()));
+        static_assert(sizeof(live::Vertex) == sizeof(QSGGeometry::ColoredPoint2D));
+        if (!mesh.vertices.empty())
+            std::memcpy(geometry->vertexData(), mesh.vertices.data(), mesh.vertices.size() * sizeof(live::Vertex));
+        if (!mesh.indices.empty())
+            std::memcpy(geometry->indexDataAsUInt(), mesh.indices.data(), mesh.indices.size() * sizeof(quint32));
+        node->markDirty(QSGNode::DirtyGeometry);
+        m_liveSettled[std::size_t(c)] = (c + 1) * live::kChunk <= settled;
+    }
 }
 
 // The item leaves its window (or the window its scene graph): the nodes go
