@@ -14,12 +14,14 @@
 // start.
 namespace ws::shellmenu {
 
-// Sets the verbs with this title, pointing at the WinShunSearch.exe beside
-// this program (`on`), or removes the ones this copy set (`!on`; another
-// copy's stay). Writes only what differs; Explorer is told when anything did.
-void apply(bool on, const QString& title);
+// Sets the verbs, titled in the language Windows is shown in (not Win顺's own:
+// they stand among Explorer's, core/ExplorerLanguage.h), pointing at the
+// WinShunSearch.exe beside this program (`on`), or removes the ones this copy
+// set (`!on`; another copy's stay). Writes only what differs; Explorer is told
+// when anything did.
+void apply(bool on);
 
-// The same for 粘贴为文件; `english`: what the stub says, as the title is.
-void applyPasteFile(bool on, const QString& title, bool english);
+// The same for 粘贴为文件.
+void applyPasteFile(bool on);
 
 } // namespace ws::shellmenu

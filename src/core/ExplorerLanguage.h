@@ -1,0 +1,38 @@
+#pragma once
+
+#include <windows.h>
+
+#include <string_view>
+
+// The words Win顺 puts into Explorer itself (the right-click verbs of
+// platform/ShellMenu.cpp and what the stub says when one runs, src/stub): they
+// stand among Explorer's own, so they follow the language Windows is shown
+// in, not the one Win顺 is set to (GitHub #190). Chinese Windows: Chinese;
+// any other: English. Pure C++ and Win32, no Qt: the stub uses it too.
+namespace ws::explorerlang {
+
+// Whether `language` (a LANGID: GetUserDefaultUILanguage) is shown in English
+// for our words: everything but Chinese.
+constexpr bool isEnglish(LANGID language) noexcept
+{
+    return PRIMARYLANGID(language) != LANG_CHINESE;
+}
+
+// As Settings::resolveLanguage does for "system": the language Windows itself
+// is shown in, not the first of the preferred languages.
+inline bool windowsIsEnglish() noexcept
+{
+    return isEnglish(::GetUserDefaultUILanguage());
+}
+
+constexpr std::wstring_view searchHereTitle(bool english) noexcept
+{
+    return english ? L"Search here with WinShun" : L"用 Win顺 搜索此处";
+}
+
+constexpr std::wstring_view pasteFileTitle(bool english) noexcept
+{
+    return english ? L"Paste as file" : L"粘贴为文件";
+}
+
+} // namespace ws::explorerlang

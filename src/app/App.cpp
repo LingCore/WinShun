@@ -1703,8 +1703,8 @@ void App::applySettings(bool initial)
 
     if (!initial)
         applyAppearance();
-    shellmenu::apply(m_settings.explorerMenu, tr("用 Win顺 搜索此处")); // after the language
-    shellmenu::applyPasteFile(m_settings.pasteFileEnabled && m_settings.pasteFileMenu, tr("粘贴为文件"), m_language == u"en");
+    shellmenu::apply(m_settings.explorerMenu); // in Windows' language, not Win顺's (GitHub #190)
+    shellmenu::applyPasteFile(m_settings.pasteFileEnabled && m_settings.pasteFileMenu);
     m_updater->setAutomatic(m_settings.autoUpdate);
     if (m_pluginUpdates) {
         m_pluginUpdates->setAutomatic(m_settings.autoUpdate);
@@ -2404,9 +2404,8 @@ void App::pasteAsFile(HWND view)
 {
     const std::wstring stub =
         QDir::toNativeSeparators(QCoreApplication::applicationDirPath() + u"/WinShunSearch.exe"_s).toStdWString();
-    // What it says, as Win顺 does; the window as a number (main.cpp's --paste-file-in).
-    const std::wstring args = (m_language == u"en" ? L"--paste-file-in --en " : L"--paste-file-in ")
-        + std::to_wstring(reinterpret_cast<std::uintptr_t>(view));
+    // The window as a number (main.cpp's --paste-file-in); what it says, it takes from Windows.
+    const std::wstring args = L"--paste-file-in " + std::to_wstring(reinterpret_cast<std::uintptr_t>(view));
     if (!shell::startUnelevated(stub, args).valid())
         qWarning() << "Paste as file: WinShunSearch.exe did not start, error" << ::GetLastError();
 }

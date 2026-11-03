@@ -1,6 +1,7 @@
 // 粘贴为文件 (core/PasteFile): which formats Ctrl+V takes from Explorer, what
 // the clipboard's words or picture make, the CSV of spreadsheet cells, the
 // names and how the text is written. The clipboard itself is never touched.
+#include "ExplorerLanguage.h"
 #include "PasteFile.h"
 
 #include <QtTest>
@@ -8,6 +9,7 @@
 #include <string>
 
 using namespace ws::pastefile;
+using namespace Qt::StringLiterals;
 
 namespace {
 
@@ -33,6 +35,7 @@ private slots:
     void titles();
     void fits();
     void utf8Bytes();
+    void explorerLanguage();
 };
 
 void TestPasteFile::ctrlV()
@@ -218,6 +221,24 @@ void TestPasteFile::utf8Bytes()
 {
     QCOMPARE(QByteArray::fromStdString(utf8(L"aé你\U0001F600")), QByteArray("a\xC3\xA9\xE4\xBD\xA0\xF0\x9F\x98\x80"));
     QCOMPARE(QByteArray::fromStdString(utf8(std::wstring(1, wchar_t(0xD800)) + L"x")), QByteArray("\xEF\xBF\xBDx"));
+}
+
+// What Explorer's verbs and the stub say follows Windows' language (GitHub #190).
+void TestPasteFile::explorerLanguage()
+{
+    namespace el = ws::explorerlang;
+    QVERIFY(!el::isEnglish(MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED)));
+    QVERIFY(!el::isEnglish(MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_TRADITIONAL)));
+    QVERIFY(!el::isEnglish(0x0804)); // zh-CN
+    QVERIFY(el::isEnglish(0x0409)); // en-US
+    QVERIFY(el::isEnglish(0x0809)); // en-GB
+    QVERIFY(el::isEnglish(0x0411)); // ja-JP
+    QVERIFY(el::isEnglish(0x0407)); // de-DE
+    QVERIFY(el::isEnglish(0));
+    QCOMPARE(q(std::wstring(el::searchHereTitle(true))), u"Search here with WinShun"_s);
+    QCOMPARE(q(std::wstring(el::searchHereTitle(false))), u"用 Win顺 搜索此处"_s);
+    QCOMPARE(q(std::wstring(el::pasteFileTitle(true))), u"Paste as file"_s);
+    QCOMPARE(q(std::wstring(el::pasteFileTitle(false))), u"粘贴为文件"_s);
 }
 
 QTEST_APPLESS_MAIN(TestPasteFile)

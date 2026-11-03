@@ -1,6 +1,7 @@
 #include "ShellMenu.h"
 
 #include "AutostartRun.h" // runCommandProgram, runCommandStarts: the program a command line starts
+#include "ExplorerLanguage.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -67,7 +68,7 @@ struct Stub {
 
 // Sets the verb at `keys` to run `arguments` with the stub (`on`), or takes
 // away the verbs there that start this copy's stub or one that is gone.
-void setVerbs(std::span<const wchar_t* const> keys, bool on, const QString& title, std::wstring_view arguments)
+void setVerbs(std::span<const wchar_t* const> keys, bool on, std::wstring_view title, std::wstring_view arguments)
 {
     const Stub stub;
     if (on && ::GetFileAttributesW(stub.path.c_str()) == INVALID_FILE_ATTRIBUTES)
@@ -88,7 +89,7 @@ void setVerbs(std::span<const wchar_t* const> keys, bool on, const QString& titl
                 changed |= ::RegDeleteTreeW(HKEY_CURRENT_USER, key) == ERROR_SUCCESS;
             continue;
         }
-        changed |= writeString(key, L"MUIVerb", title.toStdWString());
+        changed |= writeString(key, L"MUIVerb", std::wstring(title));
         changed |= writeString(key, L"Icon", stub.folder + L"\\WinShun.exe,0");
         // Empty space has nothing selected, so "Single" hides the verb there
         // (0.8.0 wrote it everywhere; take it back off).
@@ -104,14 +105,21 @@ void setVerbs(std::span<const wchar_t* const> keys, bool on, const QString& titl
 
 } // namespace
 
-void apply(bool on, const QString& title)
+// The titles are plain text in the language Windows is shown in (no @exe,-id
+// indirection: Explorer's MUI cache would keep the old words after an update),
+// written again whenever it differs, so a changed Windows language follows.
+void apply(bool on)
 {
-    setVerbs(kSearchHereKeys, on, title, L"--search-here \"%V\"");
+    setVerbs(kSearchHereKeys, on, explorerlang::searchHereTitle(explorerlang::windowsIsEnglish()),
+        L"--search-here \"%V\"");
 }
 
-void applyPasteFile(bool on, const QString& title, bool english)
+void applyPasteFile(bool on)
 {
-    setVerbs(kPasteFileKeys, on, title, english ? L"--paste-file --en \"%V\"" : L"--paste-file \"%V\"");
+    // No --en any more: the stub reads the language of Windows itself. An older
+    // verb that has it differs, so it is written again without.
+    setVerbs(kPasteFileKeys, on, explorerlang::pasteFileTitle(explorerlang::windowsIsEnglish()),
+        L"--paste-file \"%V\"");
 }
 
 } // namespace ws::shellmenu
