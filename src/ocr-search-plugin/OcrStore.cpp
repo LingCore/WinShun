@@ -39,8 +39,11 @@ constexpr auto kRecognizer = u"/ocr-search-2";
 constexpr double kPoorScore = 0.75;
 // The files (as f) where nothing was found to read: no pictures in them, or
 // none with words. An empty text is stored as qCompress's 4-byte header.
-constexpr auto kTextless = "(f.status='empty' OR (f.status='ready' AND NOT EXISTS(SELECT 1 FROM pages "
-                           "JOIN assets ON assets.id=pages.asset WHERE pages.file=f.path AND length(assets.text)>4)))";
+// Only files this pipeline settled (bind pipelineEngine()): one an upgrade
+// marked waits to be read again, and may well have words then.
+constexpr auto kTextless = "(f.engine=? AND (f.status='empty' OR (f.status='ready' AND NOT EXISTS(SELECT 1 FROM "
+                           "pages JOIN assets ON assets.id=pages.asset WHERE pages.file=f.path "
+                           "AND length(assets.text)>4))))";
 
 void checked(QSqlQuery& query)
 {
@@ -846,8 +849,9 @@ QJsonObject Store::statistics() const
     q.exec(u"SELECT count(*) FROM files WHERE status NOT IN ('ready','empty')"_s);
     if (q.next())
         out.insert(u"unfinished"_s, q.value(0).toInt());
-    q.exec(u"SELECT count(*) FROM files f WHERE "_s + QLatin1StringView(kTextless));
-    if (q.next())
+    q.prepare(u"SELECT count(*) FROM files f WHERE "_s + QLatin1StringView(kTextless));
+    q.addBindValue(pipelineEngine());
+    if (q.exec() && q.next())
         out.insert(u"textless"_s, q.value(0).toInt());
     out.insert(u"recheck"_s, recheckRemaining());
     out.insert(u"bytes"_s, QFileInfo(m_path).size() + QFileInfo(m_path + u"-wal"_s).size()
@@ -871,10 +875,12 @@ QString Store::textlessText() const
     // counted after them, or they would bury the documents.
     QSqlQuery q(m_db);
     q.setForwardOnly(true);
-    q.exec(u"SELECT display,status,lower(path) LIKE '%.pdf',"
-           u"(SELECT json_extract(source,'$.kind') FROM pages WHERE pages.file=f.path LIMIT 1) "
-           u"FROM files f WHERE "_s
+    q.prepare(u"SELECT display,status,lower(path) LIKE '%.pdf',"
+              u"(SELECT json_extract(source,'$.kind') FROM pages WHERE pages.file=f.path LIMIT 1) "
+              u"FROM files f WHERE "_s
         + QLatin1StringView(kTextless) + u" ORDER BY display"_s);
+    q.addBindValue(pipelineEngine());
+    q.exec();
     QStringList lines;
     int more = 0;
     int pictures = 0;

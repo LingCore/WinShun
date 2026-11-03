@@ -717,6 +717,12 @@ private slots:
             QCOMPARE(upgraded.statistics().value(u"recheck"_s).toInt(), again);
             // Until it is read again, the poorly read picture still answers searches.
             QCOMPARE(upgraded.search(u"turned"_s, 10).size(), 1);
+            // Nor is a file to be read again called one without words: the
+            // drawn PDF may well have them then; the memo stays listed.
+            const QString textless = upgraded.textlessText();
+            QVERIFY2(!textless.contains(u"drawn.pdf"_s), qPrintable(textless));
+            QVERIFY2(textless.contains(u"memo.docx"_s), qPrintable(textless));
+            QCOMPARE(upgraded.statistics().value(u"textless"_s).toInt(), 1);
         }
         {
             Store reopened(index); // upgraded once: nothing more is marked
