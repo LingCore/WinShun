@@ -37,11 +37,15 @@
 
 完整在线检查的 14 个条目及 3 个老插件为零错误，有两条对称的关键字占用提示。“图片文字搜索”和社区 “OCR Studio” 都使用 `ocr`，同时安装需要在插件卡片更改其中一个关键字，使用说明及插件库 README 已注明。
 
+八个公开 Release 附件的大小及 GitHub SHA256 digest 均与本地归档一致，标签均指向插件仓库 `03937c8`，其说明链接主仓库源码 `8aaac9f`。条目提交为 `d3299a8`，发布工作流 [41570754263](https://github.com/LingCore/WinShun-plugins/actions/runs/41570754263) 成功。重新下载公开 `index.json` 与 `index.json.sig` 后，`ws-index-2026a` 签名验证通过，14 项的 280 个字段与本地候选全部一致。
+
 ## 包及截图
 
 标准安装包、便携 ZIP、完整离线安装包及增强 OCR ZIP 已生成，SHA256 见同版 `SHA256SUMS.txt`。便携 ZIP 的数据文件仅有 `data/README.txt`。OCR ZIP 按固定清单核对六个文件。独立输出目录与临时演示配置均不覆盖现有用户数据。
 
 使用 `tools/screenshots/release018.py` 和真实部署程序补拍受影响界面。沿用原方形品牌项目，保留 Logo、LingCore 署名、标题、副标题、背景和底部文字，导出为 1440×1440 JPEG、质量 96、无色度抽样。设置页映射按新版分组核对，较长页面裁取顶部可读区域。新增图片文字搜索与快捷键总览两张海报，README 保持 `width="49%"` 双列。未变化的功能沿用已核验的海报。
+
+15 张海报的 JPEG 尺寸及无色度抽样已逐一检查，图片提交为 `0f574d2485c1c99c583daaa9f9b5084f9bebd868`，README 使用该提交的不可变 raw 地址。推送后在实际 GitHub 页面核对双列排列，新图片加载为 1440×1440 原图。
 
 本次本地证据位于 `F:\wsrelease018\`，包括 `build-release-final.log`、`protocol-check.json`、`packages.json`、`media-check.json`、`shots/capture.json`、`shots/poster-sources.json`、真实原图和无损海报。
 
