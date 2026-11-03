@@ -3,19 +3,25 @@
 // --console service on WINSHUN_KEY_TEST_PIPE, without installing/replacing it.
 #include "KeyListener.h"
 #include "KeyListenerProtocol.h"
+#include "NumberKeys.h"
+#include "OwnInput.h"
 #include "ServiceKeyListener.h"
 #include "VolumeProtocol.h"
 #include "Win32Util.h"
 
 #include <QElapsedTimer>
 #include <QProcess>
+#include <QScopeGuard>
 #include <QTest>
 #include <QUuid>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
+#include <latch>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace ws;
@@ -334,6 +340,122 @@ private slots:
         QTest::qWait(250);
         QCOMPARE(count.load(), 3);
         qunsetenv("WINSHUN_PIPE");
+    }
+
+    // The number keys' hook sets the keyboard's Raw Input aside while it
+    // lives; drained with no digit down, it goes at once and gives it back
+    // before it is destroyed (App then drops it).
+    void numberKeyHookDrainsAtOnce()
+    {
+        KeyListener listener({.doubleCtrl = [](const KeyListener::Tap&) {}});
+        QVERIFY(listener.isActive());
+        QTRY_VERIFY(keyboardRawInput().registration.has_value());
+        std::atomic<int> keys {0};
+        std::atomic<int> drained {0};
+        numberkeys::Hook hook(numberkeys::Modifier::Alt, 1u << 5, [&](const auto&) { ++keys; }, [&] { ++drained; });
+        QVERIFY(hook.isActive());
+        QVERIFY(!keyboardRawInput().registration.has_value());
+        hook.drain();
+        QTRY_COMPARE_WITH_TIMEOUT(drained.load(), 1, 2000);
+        QVERIFY(keyboardRawInput().registration.has_value());
+        QCOMPARE(keys.load(), 0);
+    }
+
+    // A digit the hook took, still down when it is done (Ctrl+1 opened a row
+    // and hid the launcher): its repeats and release stay its own, never the
+    // other program's hotkey; then it goes. Opt-in (WINSHUN_NUMBERKEYS_LIVE=1):
+    // injects Alt+5 into this test's own window, in front, only.
+    void numberKeyHookDrainsAHeldDigit()
+    {
+        if (qEnvironmentVariableIntValue("WINSHUN_NUMBERKEYS_LIVE") != 1)
+            QSKIP("Opt-in desktop test: injects Alt+5 into its own window only.");
+        // The other program: Alt+5 held as a hotkey, on a thread of its own
+        // (Qt's event loop here would take its WM_HOTKEY first).
+        std::atomic<int> hotkeys {0};
+        std::atomic<DWORD> hotkeyThread {0};
+        std::latch registered(1);
+        bool held = false;
+        std::jthread other([&] {
+            MSG msg;
+            ::PeekMessageW(&msg, nullptr, WM_USER, WM_USER, PM_NOREMOVE);
+            hotkeyThread = ::GetCurrentThreadId();
+            held = ::RegisterHotKey(nullptr, 1, MOD_ALT, '5');
+            registered.count_down();
+            if (!held)
+                return;
+            while (::GetMessageW(&msg, nullptr, 0, 0) > 0)
+                hotkeys += msg.message == WM_HOTKEY;
+            ::UnregisterHotKey(nullptr, 1);
+        });
+        registered.wait();
+        const auto stop = qScopeGuard([&] { ::PostThreadMessageW(hotkeyThread.load(), WM_QUIT, 0, 0); });
+        if (!held)
+            QSKIP("Alt+5 is another program's hotkey here.");
+        struct TestWindow {
+            HWND hwnd = ::CreateWindowExW(0, L"STATIC", L"WinShun number keys drain test (temporary)", WS_OVERLAPPEDWINDOW,
+                100, 100, 420, 100, nullptr, nullptr, ::GetModuleHandleW(nullptr), nullptr);
+            ~TestWindow() { if (hwnd) ::DestroyWindow(hwnd); }
+        } window;
+        QVERIFY(window.hwnd);
+        ::ShowWindow(window.hwnd, SW_SHOWNORMAL);
+        // A key of our own first (the unassigned masking key): Windows lets the
+        // process that sent the last input take the foreground.
+        std::array<INPUT, 2> mask {};
+        for (INPUT& key : mask) {
+            key.type = INPUT_KEYBOARD;
+            key.ki.wVk = kMaskKey;
+            key.ki.dwExtraInfo = kOwnInput;
+        }
+        mask[1].ki.dwFlags = KEYEVENTF_KEYUP;
+        ::SendInput(UINT(mask.size()), mask.data(), sizeof(INPUT));
+        ::SetForegroundWindow(window.hwnd);
+        QTRY_COMPARE_WITH_TIMEOUT(::GetForegroundWindow(), window.hwnd, 2000);
+        for (const int modifier : {VK_SHIFT, VK_CONTROL, VK_MENU, VK_LWIN, VK_RWIN})
+            QVERIFY((::GetAsyncKeyState(modifier) & 0x8000) == 0);
+        bool altDown = false, fiveDown = false;
+        const auto send = [&](WORD vk, bool up, bool own = false) {
+            if (!own && ::GetForegroundWindow() != window.hwnd)
+                return false; // never into another window
+            INPUT input {};
+            input.type = INPUT_KEYBOARD;
+            input.ki.wVk = vk;
+            input.ki.wScan = static_cast<WORD>(::MapVirtualKeyW(vk, MAPVK_VK_TO_VSC));
+            input.ki.dwFlags = up ? KEYEVENTF_KEYUP : 0;
+            input.ki.dwExtraInfo = own ? kOwnInput : 0;
+            if (::SendInput(1, &input, sizeof input) != 1)
+                return false;
+            (vk == VK_MENU ? altDown : fiveDown) = !up;
+            return true;
+        };
+        const auto release = qScopeGuard([&] { // past any hook, whatever failed
+            if (fiveDown)
+                send('5', true, true);
+            if (altDown)
+                send(VK_MENU, true, true);
+        });
+        std::atomic<int> presses {0};
+        std::atomic<int> drained {0};
+        auto hook = std::make_unique<numberkeys::Hook>(numberkeys::Modifier::Alt, 1u << 5,
+            [&](const numberkeys::Hook::Key& key) { presses += key.press; }, [&] { ++drained; });
+        QVERIFY(hook->isActive());
+        QVERIFY(send(VK_MENU, false) && send('5', false));
+        QTRY_COMPARE_WITH_TIMEOUT(presses.load(), 1, 2000); // taken: no hotkey
+        hook->drain();
+        for (int repeat = 0; repeat < 3; ++repeat) {
+            QVERIFY(send('5', false)); // auto-repeat, the launcher gone
+            QTest::qWait(30);
+        }
+        QCOMPARE(drained.load(), 0);
+        QVERIFY(send('5', true));
+        QTRY_COMPARE_WITH_TIMEOUT(drained.load(), 1, 2000);
+        QVERIFY(send(VK_MENU, true));
+        QTest::qWait(100);
+        QCOMPARE(presses.load(), 1); // nothing told after drain()
+        QCOMPARE(hotkeys.load(), 0);
+        // Drained, the hook takes nothing: Alt+5 is the hotkey again.
+        QVERIFY(send(VK_MENU, false) && send('5', false) && send('5', true) && send(VK_MENU, true));
+        QTRY_COMPARE_WITH_TIMEOUT(hotkeys.load(), 1, 2000);
+        hook.reset();
     }
 };
 

@@ -59,6 +59,12 @@ constexpr int takenDigit(unsigned vk, Qt::KeyboardModifiers held, Modifier modif
 // (docs/pitfalls.md): KeyListener's is set aside for as long as the hook
 // lives, and the keys it would have heard are handed to it from here
 // (KeyListener::hookedKey), so that a double Ctrl still closes the launcher.
+//
+// Done (drain), it takes no more digits, but a digit it took that is still
+// down stays taken: its auto-repeat and release would otherwise reach
+// Windows as a new press, the other program's hotkey, as soon as the window
+// in front went (Ctrl+1 opens a row and hides the launcher). Once none is
+// down, the hook goes and the Raw Input comes back, then `drained`.
 class Hook {
 public:
     struct Key {
@@ -70,8 +76,9 @@ public:
         quint32 scanCode = 0;
     };
 
-    // `onKey` runs on the hook's thread: post to the GUI thread from it.
-    Hook(Modifier modifier, unsigned digits, std::function<void(const Key&)> onKey);
+    // `onKey` and `drained` run on the hook's thread: post to the GUI thread from them.
+    Hook(Modifier modifier, unsigned digits, std::function<void(const Key&)> onKey,
+        std::function<void()> drained = {});
     ~Hook();
 
     Hook(const Hook&) = delete;
@@ -80,6 +87,7 @@ public:
     bool isActive() const noexcept { return m_active.load(); }
     Modifier modifier() const noexcept { return m_modifier; }
     unsigned digits() const noexcept { return m_digits; }
+    void drain(); // no more digits taken, no more `onKey`; `drained` once the taken ones are let go
 
 private:
     static LRESULT CALLBACK keyboardProc(int code, WPARAM wParam, LPARAM lParam);
@@ -89,9 +97,11 @@ private:
     const unsigned m_digits;
     const DWORD m_process;
     std::function<void(const Key&)> m_onKey;
+    std::function<void()> m_drained;
     std::bitset<256> m_taken; // digits held whose press was taken; hook thread only
     std::atomic<DWORD> m_threadId {0};
     std::atomic<bool> m_active {false};
+    std::atomic<bool> m_draining {false}; // takes effect at once, from the GUI thread
     std::jthread m_thread;
 };
 

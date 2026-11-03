@@ -431,6 +431,7 @@ App::~App()
     siteicons::shutdown(); // an icon arriving now would be told to no one
     m_keyRouter.reset(); // no keys taken from here on
     m_numberKeyHook.reset();
+    m_drainingNumberKeyHook.reset();
     m_drainingRouter.reset();
     m_holdWatch.reset();
     m_drainingWatch.reset();
@@ -4082,12 +4083,32 @@ void App::updateNumberKeyHook()
     if (m_numberKeyHook && m_numberKeyHook->isActive() && m_numberKeyHook->modifier() == modifier
         && m_numberKeyHook->digits() == digits)
         return;
-    m_numberKeyHook.reset(); // the keyboard's Raw Input back first: a new one sets it aside again
+    if (m_numberKeyHook && m_numberKeyHook->isActive()) {
+        // A digit it took still down (Ctrl+1 opened a row and hid the
+        // launcher) stays its own until let go: alone, its repeats would be
+        // the other program's hotkey. One still draining before it: gone.
+        m_numberKeyHook->drain();
+        m_drainingNumberKeyHook = std::move(m_numberKeyHook);
+        m_drainingNumberKeyRun = m_numberKeyRun;
+        QTimer::singleShot(2s, this, [this, run = m_drainingNumberKeyRun] {
+            if (m_drainingNumberKeyRun == run)
+                m_drainingNumberKeyHook.reset(); // a key held that long is the program's again
+        });
+    }
+    m_numberKeyHook.reset(); // one Windows refused
     if (!digits)
         return;
-    m_numberKeyHook = std::make_unique<numberkeys::Hook>(modifier, digits, [this](const numberkeys::Hook::Key& key) {
-        QMetaObject::invokeMethod(this, [this, key] { numberKeyHooked(key); }, Qt::QueuedConnection);
-    });
+    const std::uint64_t run = ++m_numberKeyRun;
+    m_numberKeyHook = std::make_unique<numberkeys::Hook>(modifier, digits,
+        [this](const numberkeys::Hook::Key& key) {
+            QMetaObject::invokeMethod(this, [this, key] { numberKeyHooked(key); }, Qt::QueuedConnection);
+        },
+        [this, run] {
+            QMetaObject::invokeMethod(this, [this, run] {
+                if (m_drainingNumberKeyRun == run)
+                    m_drainingNumberKeyHook.reset();
+            }, Qt::QueuedConnection);
+        });
 }
 
 // As the window's own key, to the item with the focus in it.

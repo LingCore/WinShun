@@ -10,12 +10,14 @@
 #include <latch>
 #include <optional>
 #include <string>
+#include <utility>
 
 namespace ws::numberkeys {
 
 namespace {
 
 thread_local Hook* t_hook = nullptr; // a low-level hook is called on the thread that set it
+constexpr UINT kDrainMessage = WM_APP; // to the hook's thread: drain, or the last digit taken let go
 
 bool held(int vk)
 {
@@ -91,11 +93,12 @@ unsigned heldMask(Modifier modifier)
     return mask;
 }
 
-Hook::Hook(Modifier modifier, unsigned digits, std::function<void(const Key&)> onKey)
+Hook::Hook(Modifier modifier, unsigned digits, std::function<void(const Key&)> onKey, std::function<void()> drained)
     : m_modifier(modifier)
     , m_digits(digits)
     , m_process(::GetCurrentProcessId())
     , m_onKey(std::move(onKey))
+    , m_drained(std::move(drained))
 {
     std::latch ready(1);
     m_thread = std::jthread([this, &ready] {
@@ -108,7 +111,7 @@ Hook::Hook(Modifier modifier, unsigned digits, std::function<void(const Key&)> o
         // Set aside before the hook comes and until after it went (see the
         // header); shared with a hold of TypeToSearch's still on.
         std::optional<KeyboardRawInputAside> rawInputAside(std::in_place, &logRawInput);
-        const HHOOK hook = ::SetWindowsHookExW(WH_KEYBOARD_LL, &Hook::keyboardProc, ::GetModuleHandleW(nullptr), 0);
+        HHOOK hook = ::SetWindowsHookExW(WH_KEYBOARD_LL, &Hook::keyboardProc, ::GetModuleHandleW(nullptr), 0);
         m_active = hook != nullptr;
         if (!hook)
             qWarning("Number keys: no keyboard hook (error %lu)", ::GetLastError());
@@ -116,8 +119,17 @@ Hook::Hook(Modifier modifier, unsigned digits, std::function<void(const Key&)> o
         if (hook) {
             // The hook is called from inside GetMessage; there is nothing to dispatch.
             while (::GetMessageW(&msg, nullptr, 0, 0) > 0) {
+                // Drained: the hook goes, then the Raw Input comes back. The
+                // thread stays for WM_QUIT (its id is not used up for another).
+                if (msg.hwnd == nullptr && msg.message == kDrainMessage && hook && m_draining && m_taken.none()) {
+                    ::UnhookWindowsHookEx(std::exchange(hook, nullptr));
+                    rawInputAside.reset();
+                    if (m_drained)
+                        m_drained();
+                }
             }
-            ::UnhookWindowsHookEx(hook);
+            if (hook)
+                ::UnhookWindowsHookEx(hook);
         }
         rawInputAside.reset();
     });
@@ -129,6 +141,12 @@ Hook::~Hook()
     ::PostThreadMessageW(m_threadId.load(), WM_QUIT, 0, 0); // ends the message loop
     if (m_thread.joinable())
         m_thread.join();
+}
+
+void Hook::drain()
+{
+    m_draining = true;
+    ::PostThreadMessageW(m_threadId.load(), kDrainMessage, 0, 0); // nothing down now: done at once
 }
 
 LRESULT CALLBACK Hook::keyboardProc(int code, WPARAM wParam, LPARAM lParam)
@@ -153,14 +171,18 @@ LRESULT Hook::handle(int code, WPARAM message, LPARAM lParam)
         return next();
     const bool press = message == WM_KEYDOWN || message == WM_SYSKEYDOWN;
     if (m_taken.test(vk)) {
-        // Its release and repeats are taken too, wherever the focus went; the
-        // hooks after this one saw its press, and see these as well.
+        // Its release and repeats are taken too, wherever the focus went, and
+        // after drain() (alone, they would be the other program's hotkey);
+        // the hooks after this one saw its press, and see these as well.
         ::CallNextHookEx(nullptr, code, message, lParam);
         m_taken.set(vk, press);
-        m_onKey({static_cast<int>(vk - '0'), heldModifiers() & ~Qt::MetaModifier, press, press, vk, event.scanCode});
+        if (!m_draining)
+            m_onKey({static_cast<int>(vk - '0'), heldModifiers() & ~Qt::MetaModifier, press, press, vk, event.scanCode});
+        else if (m_taken.none())
+            ::PostThreadMessageW(::GetCurrentThreadId(), kDrainMessage, 0, 0); // gone once this call is over
         return 1;
     }
-    if (!press || held(static_cast<int>(vk))) // down since before: its repeats go where its press went
+    if (m_draining || !press || held(static_cast<int>(vk))) // down since before: its repeats go where its press went
         return next();
     const Qt::KeyboardModifiers modifiers = heldModifiers();
     const int digit = takenDigit(vk, modifiers, m_modifier, m_digits);

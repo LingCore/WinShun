@@ -714,6 +714,9 @@ private:
     std::unique_ptr<win::TextCaret> m_textCaret; // where another program's caret is: the clipboard opens there
     std::unique_ptr<KeyRouter> m_keyRouter; // while the clipboard is over a program that keeps the focus
     std::unique_ptr<numberkeys::Hook> m_numberKeyHook; // while a window of Win顺's with number keys is in front
+    std::uint64_t m_numberKeyRun = 0; // which hook a drained note belongs to
+    std::unique_ptr<numberkeys::Hook> m_drainingNumberKeyHook; // done, until the digits it took are let go (Hook::drain)
+    std::uint64_t m_drainingNumberKeyRun = 0;
     HWND m_keyRouterTarget = nullptr; // that program's window
     std::uint64_t m_keyRouterRun = 0; // which routing its posted keys belong to
     std::unique_ptr<KeyRouter> m_drainingRouter; // done, until the keys it took are let go (KeyRouter::drain)

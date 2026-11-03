@@ -639,6 +639,7 @@ add_dependencies(tst_service WinShunService)
 
 qt_add_executable(tst_keylistener tst_keylistener.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/KeyListener.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/platform/NumberKeys.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/ServiceKeyListener.cpp)
 target_include_directories(tst_keylistener PRIVATE ${PROJECT_SOURCE_DIR}/src/app/platform)
 target_link_libraries(tst_keylistener PRIVATE wscore Qt6::Test user32 advapi32 shcore)
