@@ -49,6 +49,8 @@ void AnnotationCanvas::setModel(AnnotationModel* model)
         connect(model, &QObject::destroyed, this, &AnnotationCanvas::markAll);
         // A gesture's cost is logged when it ends; the next one starts afresh.
         connect(model, &AnnotationModel::gestureChanged, this, [this] {
+            if (m_live)
+                polish(); // a stroke let go of: the tiles take it from the GPU
             if (m_meter.on && m_model && !m_model->gestureActive())
                 reportMeter(m_model->compositor().patchesMade());
         });
@@ -263,7 +265,12 @@ void AnnotationCanvas::updatePolish()
             }
         }
         if (liveNow) {
-            m_handoverId = 0; // a new stroke: the last one's tiles all now
+            // A new stroke: the last one's tiles all now. It may still have
+            // been live, when no frame came between letting go of it and the
+            // next press: the GPU's goes to the new one, the tiles take it.
+            if (const annot::Item* last = itemOf(m_liveId ? m_liveId : m_handoverId))
+                markTiles(areaOf(*last));
+            m_handoverId = 0;
             if (const annot::Item* item = itemOf(liveNow))
                 markTiles(areaOf(*item)); // drawn without it
         }

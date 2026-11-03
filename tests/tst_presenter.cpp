@@ -542,6 +542,52 @@ private slots:
         }
     }
 
+    // A second stroke drawn live (the GPU's) while the first is still the
+    // GPU's: no frame came between letting go of the first and pressing for
+    // the second (found in the live test: the first stroke went from the
+    // screen when the next began). Both end in the tiles, as a canvas made
+    // afresh draws them.
+    void earlierInkStays()
+    {
+        Host host;
+        host.monitors = {{QSize(2560, 1600), 1.5}};
+        Presenter p;
+        p.setHooks(host.hooks());
+        p.open();
+        PresenterScreen* s = p.screen(0);
+        Canvas canvas;
+        canvas.setModel(s->desk());
+        canvas.setSparse(true);
+        canvas.setLive(true);
+        canvas.updatePolish();
+        const auto stroke = [&](QPointF from, QPointF to) {
+            s->mousePressed(from.x(), from.y(), Qt::LeftButton, 0);
+            canvas.updatePolish();
+            for (int i = 1; i <= 40; ++i) {
+                const QPointF at = from + (to - from) * (i / 40.0);
+                s->mouseMoved(at.x(), at.y(), 0);
+                canvas.updatePolish();
+            }
+            s->mouseReleased(to.x(), to.y(), Qt::LeftButton); // no polish: the next press comes first
+        };
+        stroke({330, 400}, {870, 505});
+        const quint32 first = s->desk()->document().items.last().id;
+        QCOMPARE(canvas.liveItem(), first);
+        stroke({300, 600}, {1130, 660});
+        for (int frames = 0; frames < 100 && canvas.handoverItem() == 0 && canvas.liveItem() != 0; ++frames)
+            canvas.updatePolish();
+        for (int frames = 0; frames < 100; ++frames)
+            canvas.updatePolish();
+        QCOMPARE(canvas.liveItem(), 0u);
+        QCOMPARE(canvas.handoverItem(), 0u);
+        Canvas fresh;
+        fresh.setModel(s->desk());
+        fresh.setSparse(true);
+        fresh.updatePolish();
+        QVERIFY(fresh.tilesShown() > 0);
+        QCOMPARE(canvas.tilesShown(), fresh.tilesShown());
+    }
+
     // The GPU's triangles cover what the compositor fills for the same
     // stroke (the centreline, the width, the round ends), but for the
     // antialiased edge.
