@@ -484,8 +484,13 @@ void PluginGallery::beginInstall(const QString& id, bool enableAfterInstall, boo
     emit stateChanged();
     // An elevated Win顺 updating a plugin it runs as administrator: the
     // checked bytes become its confirmed copy too (plugin::elevation).
+    // This tab's list is not checked against a signature (and its kept copy
+    // is the user's to change): only when the signed list has the very same
+    // package does it become the confirmed copy.
     const plugin::Host* host = m_settings->m_host;
-    const bool elevated = host && host->hostElevated();
+    const std::optional<plugin::gallery::Item> signedItem = m_updates ? m_updates->signedItem(id) : std::nullopt;
+    const bool elevated = host && host->hostElevated() && signedItem && signedItem->version == found->version
+        && signedItem->sha256 == found->sha256 && signedItem->size == found->size;
     const plugin::elevation::Store store = host ? host->elevationStore() : plugin::elevation::Store {};
     const QString pluginDir = QDir::toNativeSeparators(QDir(m_settings->m_userDir).filePath(found->id));
     QThreadPool::globalInstance()->start([self = QPointer(this), item = *found, cancel, generation, enableAfterInstall, bulk, elevated, store,

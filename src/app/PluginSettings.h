@@ -16,6 +16,7 @@
 #include <QAbstractListModel>
 #include <QObject>
 #include <QPointer>
+#include <QSet>
 #include <QTimer>
 #include <QVariantList>
 #include <QVariantMap>
@@ -231,8 +232,11 @@ public:
     Q_INVOKABLE void confirmEnable(const QString& id); // the dialog's yes
     Q_INVOKABLE void declineEnable(const QString& id); // its no: one waiting for the OK goes off
     Q_INVOKABLE void setAiEnabled(const QString& id, bool on); // the card's "给 AI 用" switch
-    // The card's 确认 (an elevated Win顺, a plugin with `elevated`): its files
-    // as they are now are the ones to run as administrator (Host::confirmElevation).
+    // The card's 确认 (an elevated Win顺, a plugin with `elevated`): the copy
+    // to run as administrator, made off the GUI thread (the card says so
+    // meanwhile): a plugin of the library from its package checked against
+    // the signed list, which must be what is installed; any other from its
+    // folder as it is now.
     Q_INVOKABLE void confirmElevation(const QString& id);
     Q_INVOKABLE void setKeyword(const QString& id, const QString& command, const QString& keyword); // the user's; empty: none
     Q_INVOKABLE void resetKeyword(const QString& id, const QString& command); // back to the manifest's
@@ -307,6 +311,8 @@ private:
     SettingsEditor* m_editor;
     QPointer<plugin::Host> m_host;
     QPointer<PluginUpdates> m_updates;
+    QSet<QString> m_confirming; // confirmElevation's copies being made
+    void finishConfirm(const QString& id, bool ok, const QString& error);
     QString m_installClaim; // the plugin of m_pendingInstall, or being installed
     QString m_locale = QStringLiteral("zh");
     QString m_userDir;

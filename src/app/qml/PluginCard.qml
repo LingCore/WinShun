@@ -48,7 +48,7 @@ Rectangle {
     required property string aiNote
     // `elevated` while Win顺 runs as administrator (PluginSettings' Card):
     // "elevated" a shield by the name; "unconfirmed" / "changed" a line with
-    // 确认; "unavailable" the line alone.
+    // 确认; "unavailable" and "confirming" (the copy being made) the line alone.
     required property string elevation
     required property string elevationNote
     property bool marked: false // what the settings search found
@@ -284,6 +284,7 @@ Rectangle {
                 }
                 Item { // `elevated` waits for the user (or cannot be): why, and the one click
                     visible: card.elevation === "unconfirmed" || card.elevation === "changed" || card.elevation === "unavailable"
+                             || card.elevation === "confirming"
                     width: parent.width
                     height: visible ? Math.max(confirmButton.visible ? confirmButton.height : 0, elevationText.implicitHeight) : 0
 

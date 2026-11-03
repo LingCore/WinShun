@@ -11417,14 +11417,6 @@ Content index: %5</translation>
         <translation>Confirm once to let it run as administrator. Until then it runs with normal rights</translation>
     </message>
     <message>
-        <source>更新到了 %1，确认后才以管理员身份运行。现在用普通权限运行</source>
-        <translation>Updated to %1: confirm to run it as administrator. For now it runs with normal rights</translation>
-    </message>
-    <message>
-        <source>插件的文件和你确认时不一样了，现在用普通权限运行。确定是你自己改的，再点确认</source>
-        <translation>The plugin's files changed since you confirmed them, so it runs with normal rights. Confirm only if you changed them yourself</translation>
-    </message>
-    <message>
         <source>不能以管理员身份运行：%1</source>
         <translation>Cannot run as administrator: %1</translation>
     </message>
@@ -11435,6 +11427,22 @@ Content index: %5</translation>
     <message>
         <source>已确认，%1 以后以管理员身份运行</source>
         <translation>Confirmed: %1 runs as administrator from now on</translation>
+    </message>
+    <message>
+        <source>插件的文件被改过，和你确认时不一样，现在用普通权限运行。不确定是谁改的就别确认</source>
+        <translation>The plugin's files were changed since you confirmed them, so it runs with normal rights. If you don't know who changed them, don't confirm</translation>
+    </message>
+    <message>
+        <source>正在确认，复制插件的文件……</source>
+        <translation>Confirming: copying the plugin's files…</translation>
+    </message>
+    <message>
+        <source>插件库里现在是 %1 版，先把它更新到这一版，再确认</source>
+        <translation>The library has version %1 now: update to it first, then confirm</translation>
+    </message>
+    <message>
+        <source>从插件库下载没成功，联网后再试</source>
+        <translation>Could not download it from the library. Try again when you are online</translation>
     </message>
 </context>
 <context>

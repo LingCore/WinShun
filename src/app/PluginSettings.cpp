@@ -25,7 +25,9 @@
 #include <QLocale>
 #include <QRegularExpression>
 #include <QScopeGuard>
+#include <QPointer>
 #include <QStyleHints>
+#include <QThreadPool>
 #include <QUrl>
 
 #include <windows.h>
@@ -718,9 +720,9 @@ PluginListModel::Card PluginSettings::cardFor(const QString& id) const
             c.elevationNote = tr("要以管理员身份运行，需要你确认一次。确认前用普通权限运行");
             break;
         case V::Changed:
-            c.elevationNote = !elevation.version.isEmpty() && elevation.version != m.version
-                ? tr("更新到了 %1，确认后才以管理员身份运行。现在用普通权限运行").arg(m.version)
-                : tr("插件的文件和你确认时不一样了，现在用普通权限运行。确定是你自己改的，再点确认");
+            // Plain words, nothing taken from the files (their version is
+            // anyone's to write): who changed them is not known.
+            c.elevationNote = tr("插件的文件被改过，和你确认时不一样，现在用普通权限运行。不确定是谁改的就别确认");
             break;
         case V::Unavailable:
             c.elevationNote = tr("不能以管理员身份运行：%1").arg(elevation.detail);
@@ -728,6 +730,10 @@ PluginListModel::Card PluginSettings::cardFor(const QString& id) const
         case V::NotAsked:
         case V::HostNotElevated:
             break;
+        }
+        if (m_confirming.contains(id)) {
+            c.elevation = u"confirming"_s;
+            c.elevationNote = tr("正在确认，复制插件的文件……");
         }
     }
 
@@ -884,30 +890,65 @@ void PluginSettings::confirmEnable(const QString& id)
     const plugin::Entry* e = m_host->catalog().find(id);
     if (!e || !e->manifest)
         return;
-    // Said yes to in an elevated Win顺, `elevated` among what was asked:
-    // the files as they are now are the ones to run as administrator.
-    if (e->manifest->permissions.has(plugin::Permission::Elevated) && m_host->hostElevated()) {
-        QString error;
-        if (!m_host->confirmElevation(id, &error))
-            setMessage(tr("没能确认以管理员身份运行：%1").arg(error));
-        e = m_host->catalog().find(id);
-        if (!e || !e->manifest)
-            return;
-    }
+    const bool elevated = e->manifest->permissions.has(plugin::Permission::Elevated) && m_host->hostElevated();
     PluginConfig& config = m_editor->m_settings.pluginConfig(id);
     config.enabled = true;
     config.confirmed = plugin::updates::confirmedFor(*e->manifest);
     m_editor->commit();
+    // Said yes to in an elevated Win顺, `elevated` among what was asked: the
+    // copy to run as administrator is made now (meanwhile it runs with
+    // normal rights).
+    if (elevated)
+        confirmElevation(id);
 }
 
 void PluginSettings::confirmElevation(const QString& id)
 {
-    if (!m_host)
+    if (!m_host || m_confirming.contains(id))
         return;
-    QString error;
-    if (m_host->confirmElevation(id, &error))
+    const plugin::Entry* e = m_host->catalog().find(id);
+    if (!e || !e->manifest || !e->manifest->permissions.has(plugin::Permission::Elevated) || !m_host->hostElevated())
+        return;
+    // A plugin of the library (the signed list has it): confirmed from its
+    // package, whose files must be the ones installed; never from a folder
+    // that may have been changed since. Others (installed by hand, in
+    // development): their folder as it is now.
+    const std::optional<plugin::gallery::Item> item = m_updates ? m_updates->signedItem(id) : std::nullopt;
+    if (item && item->version != e->manifest->version) {
+        setMessage(tr("插件库里现在是 %1 版，先把它更新到这一版，再确认").arg(item->version));
+        return;
+    }
+    m_confirming.insert(id);
+    rebuild();
+    const plugin::elevation::Store store = m_host->elevationStore();
+    const QString dir = e->dir;
+    const plugin::gallery::Fetcher web = m_updates ? m_updates->web() : plugin::gallery::Fetcher {};
+    QThreadPool::globalInstance()->start([self = QPointer(this), id, store, dir, item, web] {
+        QString error;
+        bool ok = false;
+        if (item) {
+            const plugin::gallery::Fetched f = plugin::gallery::fetch(item->url, item->size + 1, web, {},
+                [&](const QByteArray& b) { return plugin::gallery::check(*item, b) == plugin::gallery::Problem::None; });
+            if (f.status != 200 || f.error != 0 || plugin::gallery::check(*item, f.body) != plugin::gallery::Problem::None)
+                error = tr("从插件库下载没成功，联网后再试");
+            else
+                ok = plugin::elevation::confirmPackage(store, id, dir, f.body, &error);
+        } else
+            ok = plugin::elevation::confirmFolder(store, id, dir, &error);
+        QMetaObject::invokeMethod(qApp, [self, id, ok, error] {
+            if (self)
+                self->finishConfirm(id, ok, error);
+        }, Qt::QueuedConnection);
+    });
+}
+
+void PluginSettings::finishConfirm(const QString& id, bool ok, const QString& error)
+{
+    m_confirming.remove(id);
+    if (ok && m_host) {
+        m_host->elevationConfirmed(id);
         setMessage(tr("已确认，%1 以后以管理员身份运行").arg(pluginName(id)));
-    else
+    } else
         setMessage(tr("没能确认以管理员身份运行：%1").arg(error));
     rebuild();
 }
