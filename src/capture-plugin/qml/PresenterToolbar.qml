@@ -25,6 +25,11 @@ Window {
     property string tipText: ""
     property string tipKeys: ""
     readonly property string lineText: tipText.length > 0 ? tipText : presenter.hint
+    // What shows, in window logical px: the window takes clicks only there
+    // (PresenterHost sets it as the window's mask), so beside the shorter
+    // line the clicks reach the program beneath.
+    readonly property var inputRects: [bar, stylePanel, line].filter(item => item.visible)
+        .map(item => Qt.rect(column.x + item.x, item.y, item.width, item.height))
 
     // ---- geometry, logical px: the capture toolbar's ----
     readonly property int pad: 4
@@ -333,6 +338,7 @@ Window {
         }
 
         AnnotateStylePanel {
+            id: stylePanel
             visible: window.colorsOpen && !window.folded && !window.presenter.laser && window.annot !== null && window.annot.panelVisible
             annot: window.annot
             dpr: window.dpr
@@ -340,6 +346,7 @@ Window {
         }
 
         Rectangle { // a name and key, or the hint
+            id: line
             visible: window.lineText.length > 0
             width: Theme.snapUp(lineRow.width + 2 * window.linePadX, window.dpr)
             height: Theme.snapUp(window.lineHeight, window.dpr)

@@ -8,6 +8,7 @@
 #include <QGuiApplication>
 #include <QQmlComponent>
 #include <QQmlEngine>
+#include <QRegion>
 #include <QScreen>
 #include <QSettings>
 #include <QSurfaceFormat>
@@ -16,6 +17,7 @@
 #include <optional>
 
 #include <windows.h>
+#include <dwmapi.h>
 
 using namespace Qt::StringLiterals;
 
@@ -29,6 +31,13 @@ void CALLBACK foregroundChanged(HWINEVENTHOOK, DWORD, HWND, LONG, LONG, DWORD, D
 {
     if (g_host)
         g_host->raiseAll();
+}
+
+// The top-level windows' order changed: the desktop's children reordered.
+void CALLBACK orderChanged(HWINEVENTHOOK, DWORD, HWND window, LONG object, LONG, DWORD, DWORD)
+{
+    if (g_host && object == OBJID_CLIENT && window == ::GetDesktopWindow())
+        g_host->reordered();
 }
 
 HWND handleOf(QWindow* window)
@@ -58,6 +67,13 @@ QSize pixelsOf(QScreen* screen)
 }
 
 constexpr int kToolbarTop = 12; // the toolbar's first place: this far below the monitor's top, logical px
+// Raising again when another program's topmost window went above the ink:
+// a little later (its own moves come in bursts), and given up for a while
+// when a program fights back (it raises itself again each time).
+constexpr int kReorderDelayMs = 40;
+constexpr int kFightRaises = 8; // this many in kFightWindowMs: a fight
+constexpr qint64 kFightWindowMs = 2000;
+constexpr qint64 kFightPauseMs = 5000;
 
 } // namespace
 
@@ -97,6 +113,10 @@ PresenterHost::PresenterHost(QQmlEngine& engine, QString stateFile, QObject* par
         s.setValue(u"Presenter/"_s + key, value);
     };
     m_presenter.setHooks(std::move(hooks));
+    m_reorderTimer = new QTimer(this);
+    m_reorderTimer->setSingleShot(true);
+    m_reorderTimer->setInterval(kReorderDelayMs);
+    connect(m_reorderTimer, &QTimer::timeout, this, &PresenterHost::raiseIfCovered);
     connect(&m_presenter, &capture::Presenter::modeChanged, this, &PresenterHost::modeChanged);
 
     // A monitor added, gone, resized or rescaled: the windows are made again (the ink goes).
@@ -178,6 +198,13 @@ void PresenterHost::makeWindows()
     m_toolbar->create();
     win::disableTransitions(m_toolbar);
     capture::releaseIdleGraphics(m_toolbar);
+    // Clicks only where the toolbar shows (QML inputRects): its mask follows it.
+    const QMetaObject* meta = m_toolbar->metaObject();
+    if (const int index = meta->indexOfProperty("inputRects"); index >= 0) {
+        connect(m_toolbar, meta->property(index).notifySignal(), this,
+            metaObject()->method(metaObject()->indexOfSlot("updateToolbarMask()")));
+    }
+    updateToolbarMask();
     m_shownOnce = false;
 }
 
@@ -271,6 +298,57 @@ void PresenterHost::raiseAll()
         ::SetWindowPos(handleOf(m_toolbar), HWND_TOPMOST, 0, 0, 0, 0, flags); // above the ink
 }
 
+void PresenterHost::reordered()
+{
+    if (m_presenter.isOpen() && !m_reorderTimer->isActive())
+        m_reorderTimer->start();
+}
+
+// Another program's topmost window above the ink, where it would hide it.
+bool PresenterHost::covered() const
+{
+    const DWORD self = ::GetCurrentProcessId();
+    for (const QPointer<QQuickWindow>& window : m_inks) {
+        if (!window || !window->isVisible())
+            continue;
+        const HWND ink = handleOf(window);
+        RECT inkRect {};
+        ::GetWindowRect(ink, &inkRect);
+        for (HWND above = ::GetWindow(ink, GW_HWNDPREV); above; above = ::GetWindow(above, GW_HWNDPREV)) {
+            if (!::IsWindowVisible(above) || !(::GetWindowLongW(above, GWL_EXSTYLE) & WS_EX_TOPMOST))
+                continue;
+            DWORD process = 0;
+            ::GetWindowThreadProcessId(above, &process);
+            if (process == self)
+                continue;
+            BOOL cloaked = FALSE;
+            ::DwmGetWindowAttribute(above, DWMWA_CLOAKED, &cloaked, sizeof cloaked);
+            RECT r {};
+            RECT overlap {};
+            if (!cloaked && ::GetWindowRect(above, &r) && ::IntersectRect(&overlap, &r, &inkRect))
+                return true;
+        }
+    }
+    return false;
+}
+
+void PresenterHost::raiseIfCovered()
+{
+    const qint64 now = qint64(::GetTickCount64());
+    if (!m_presenter.isOpen() || now < m_quietUntil || !covered())
+        return;
+    std::erase_if(m_raises, [now](qint64 at) { return now - at > kFightWindowMs; });
+    if (int(m_raises.size()) >= kFightRaises) {
+        // It raises itself each time: let it be for a while (coming to the front still raises ours).
+        qWarning() << "Presenter: another window keeps going above the ink; not raising for" << kFightPauseMs << "ms";
+        m_quietUntil = now + kFightPauseMs;
+        m_raises.clear();
+        return;
+    }
+    m_raises.push_back(now);
+    raiseAll();
+}
+
 void PresenterHost::watchForeground(bool on)
 {
     if (on == (m_hook != nullptr))
@@ -281,9 +359,20 @@ void PresenterHost::watchForeground(bool on)
             WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
         if (!m_hook)
             qWarning() << "Presenter: no foreground hook:" << ::GetLastError();
+        // Our own raises are another process's events to nobody but us: skipped here.
+        m_reorderHook = ::SetWinEventHook(EVENT_OBJECT_REORDER, EVENT_OBJECT_REORDER, nullptr, orderChanged, 0, 0,
+            WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+        if (!m_reorderHook)
+            qWarning() << "Presenter: no reorder hook:" << ::GetLastError();
     } else {
         ::UnhookWinEvent(static_cast<HWINEVENTHOOK>(m_hook));
+        if (m_reorderHook)
+            ::UnhookWinEvent(static_cast<HWINEVENTHOOK>(m_reorderHook));
         m_hook = nullptr;
+        m_reorderHook = nullptr;
+        m_reorderTimer->stop();
+        m_raises.clear();
+        m_quietUntil = 0;
         if (g_host == this)
             g_host = nullptr;
     }
@@ -305,6 +394,16 @@ void PresenterHost::placeToolbar()
         at = saved;
     m_toolbar->setScreen(screen);
     m_toolbar->setPosition(at);
+}
+
+void PresenterHost::updateToolbarMask()
+{
+    if (!m_toolbar)
+        return;
+    QRegion region;
+    for (const QVariant& rect : m_toolbar->property("inputRects").toList())
+        region += rect.toRectF().toAlignedRect();
+    m_toolbar->setMask(region);
 }
 
 void PresenterHost::rememberToolbar()

@@ -7,6 +7,7 @@
 #include <QPointer>
 #include <QQuickWindow>
 #include <QString>
+#include <QTimer>
 
 #include <memory>
 #include <vector>
@@ -38,6 +39,9 @@ public:
 
     // The hook's: a program came to the front; ours go above it again.
     void raiseAll();
+    // The other hook's: windows changed places (a program made its window
+    // topmost without coming to the front); ours go above it again, a moment later.
+    void reordered();
 
 private:
     void modeChanged();
@@ -47,6 +51,9 @@ private:
     void placeToolbar();
     void rememberToolbar();
     void watchForeground(bool on);
+    bool covered() const;
+    void raiseIfCovered();
+    Q_SLOT void updateToolbarMask();
     QString screenKey(int index) const;
 
     QQmlEngine& m_engine;
@@ -55,7 +62,11 @@ private:
     std::vector<QPointer<QQuickWindow>> m_inks; // one per presenter screen, in its order
     QPointer<QQuickWindow> m_toolbar;
     bool m_shownOnce = false;
-    void* m_hook = nullptr; // HWINEVENTHOOK
+    void* m_hook = nullptr; // HWINEVENTHOOK: the foreground
+    void* m_reorderHook = nullptr; // HWINEVENTHOOK: the windows' order
+    QTimer* m_reorderTimer = nullptr;
+    std::vector<qint64> m_raises; // when reordered() last raised ours (ms): a fight is given up
+    qint64 m_quietUntil = 0;
 };
 
 } // namespace ws
