@@ -19,7 +19,9 @@
 #include <QSet>
 #include <QXmlStreamReader>
 
+#include <fpdf_annot.h>
 #include <fpdf_edit.h>
+#include <fpdf_text.h>
 #include <fpdfview.h>
 #include <objbase.h>
 
@@ -127,6 +129,72 @@ bool holdsImage(FPDF_PAGEOBJECT object, int depth = 0)
     return false;
 }
 
+// Whether a page object is, or a form object holds, vector drawing: paths
+// (lettering turned into outlines, CAD exports, pattern fills) or shadings.
+bool drawsVectors(FPDF_PAGEOBJECT object, int depth = 0)
+{
+    switch (FPDFPageObj_GetType(object)) {
+    case FPDF_PAGEOBJ_PATH:
+        return FPDFPath_CountSegments(object) > 0;
+    case FPDF_PAGEOBJ_SHADING:
+        return true;
+    case FPDF_PAGEOBJ_FORM:
+        if (depth > 8)
+            return false;
+        for (int i = 0, count = FPDFFormObj_CountObjects(object); i < count; ++i)
+            if (drawsVectors(FPDFFormObj_GetObject(object, static_cast<unsigned long>(i)), depth + 1))
+                return true;
+        return false;
+    default:
+        return false;
+    }
+}
+
+// A page with fewer real characters than this has no text layer to speak of.
+constexpr int kFewCharacters = 16;
+
+// Whether a page without pictures shows words that its text layer does not
+// hold, so that only reading the rendered page finds them: lettering drawn
+// as outlines (design and CAD exports), annotation appearances (stamps,
+// pictures in them), pictures painted by a pattern, characters without
+// Unicode. A page whose words are its text layer (almost every page of an
+// ordinary PDF) is the content index's, not recognition's.
+bool showsWordsBeyondText(FPDF_PAGE page)
+{
+    int characters = 0; // drawn as text, spaces and PDFium's own left out
+    int readable = 0; // of those, with a proper Unicode value
+    if (FPDF_TEXTPAGE text = FPDFText_LoadPage(page)) {
+        for (int i = 0, count = FPDFText_CountChars(text); i < count; ++i) {
+            if (FPDFText_IsGenerated(text, i) == 1)
+                continue;
+            const unsigned int unicode = FPDFText_GetUnicode(text, i);
+            if (unicode <= 0x10FFFF && unicode != 0 && QChar::isSpace(char32_t(unicode)))
+                continue;
+            ++characters;
+            const bool privateUse = (unicode >= 0xE000 && unicode <= 0xF8FF) || unicode == 0xFFFD;
+            if (unicode != 0 && !privateUse && FPDFText_HasUnicodeMapError(text, i) != 1)
+                ++readable;
+        }
+        FPDFText_ClosePage(text);
+    }
+    if (readable >= kFewCharacters && 2 * readable >= characters)
+        return false;
+    if (characters > readable)
+        return true; // glyphs that do not map: their words are only in the picture
+    for (int i = 0, count = FPDFPage_CountObjects(page); i < count; ++i)
+        if (drawsVectors(FPDFPage_GetObject(page, i)))
+            return true;
+    for (int i = 0, count = FPDFPage_GetAnnotCount(page); i < count; ++i) {
+        FPDF_ANNOTATION annotation = FPDFPage_GetAnnot(page, i);
+        const FPDF_ANNOTATION_SUBTYPE subtype = annotation ? FPDFAnnot_GetSubtype(annotation) : FPDF_ANNOT_UNKNOWN;
+        if (annotation)
+            FPDFPage_CloseAnnot(annotation);
+        if (subtype != FPDF_ANNOT_UNKNOWN && subtype != FPDF_ANNOT_LINK && subtype != FPDF_ANNOT_POPUP)
+            return true; // drawn by its appearance, not the page's text
+    }
+    return false;
+}
+
 struct Pdf {
     QByteArray bytes;
     FPDF_DOCUMENT document = nullptr;
@@ -154,8 +222,9 @@ struct Pdf {
         const std::lock_guard lock(pdfMutex);
         return FPDF_GetPageCount(document);
     }
-    // `picturesOnly`: a null image for a page without any picture, whose text
-    // is the document's own text layer and has nothing to recognise.
+    // `picturesOnly`: a null image for a page whose words are all in the
+    // document's own text layer (no picture, nothing drawn beyond its text),
+    // as the content index reads them; nothing to recognise.
     QImage render(int number, bool picturesOnly = false) const
     {
         const std::lock_guard lock(pdfMutex);
@@ -167,7 +236,7 @@ struct Pdf {
             const int count = FPDFPage_CountObjects(page);
             for (int i = 0; i < count && !pictures; ++i)
                 pictures = holdsImage(FPDFPage_GetObject(page, i));
-            if (!pictures) {
+            if (!pictures && !showsWordsBeyondText(page)) {
                 FPDF_ClosePage(page);
                 return {};
             }

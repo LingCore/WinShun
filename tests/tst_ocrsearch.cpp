@@ -15,6 +15,7 @@
 #include <QGuiApplication>
 #include <QJsonArray>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPdfWriter>
 #include <QProcess>
 #include <QScopeGuard>
@@ -612,6 +613,46 @@ private slots:
         });
         QCOMPARE(result.images, 2); // page 3 has no picture: not rendered
         QCOMPARE(pages, QList<int>({1, 2}));
+    }
+    // Without pictures, a page is read only when it shows words its text layer
+    // does not hold; an ordinary text page is left to the content index.
+    void pagesWithWordsBeyondTheirTextLayer()
+    {
+        QTemporaryDir temp;
+        const QString path = temp.filePath(u"rule.pdf"_s);
+        {
+            QPdfWriter writer(path);
+            writer.setResolution(100);
+            QPainter painter(&writer);
+            const QFont font(u"Arial"_s, 24);
+            painter.setFont(font);
+            // 1: an ordinary text page, a rule under its heading.
+            painter.drawText(40, 80, u"An ordinary page keeps its words as text"_s);
+            painter.drawLine(40, 100, 700, 100);
+            writer.newPage();
+            // 2: lettering turned into outlines, as design and CAD exports do.
+            QPainterPath outlined;
+            outlined.addText(40, 80, font, u"OUTLINED 731905"_s);
+            painter.fillPath(outlined, Qt::black);
+            writer.newPage();
+            // 3: a drawing with a short caption as real text.
+            painter.drawText(40, 80, u"Fig 3"_s);
+            painter.drawRect(40, 120, 400, 200);
+            writer.newPage();
+            // 4: a short line of text and nothing else.
+            painter.drawText(40, 80, u"Notes"_s);
+            writer.newPage();
+            // 5: blank.
+            painter.end();
+        }
+        QList<int> pages;
+        const auto result = extractImages(path, [&](const QImage& image, const QString&, const QJsonObject& source) {
+            QVERIFY(std::max(image.width(), image.height()) <= 2600);
+            pages.append(source.value(u"page"_s).toInt());
+        });
+        QCOMPARE(pages, QList<int>({2, 3}));
+        QCOMPARE(result.images, 2);
+        QVERIFY(!result.partial);
     }
     void externalImageIsNotRead()
     {
