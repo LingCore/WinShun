@@ -2,7 +2,7 @@
   "manifest": 1,
   "id": "winshun.capture",
   "name": {"zh": "截图与录屏", "en": "Screenshot and recording"},
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": {"zh": "截图、标注、贴图、长截图、识别文字和录屏", "en": "Screenshots, annotations, pins, long screenshots, text recognition and screen recording"},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",
