@@ -500,8 +500,8 @@ void Presenter::through()
     if (m_previous && m_hooks.setForeground)
         m_hooks.setForeground(m_previous);
     showHint(kThroughHintKey,
-        m_hotkeyText.isEmpty() ? tr("现在可以操作下面的程序，笔迹还在；点工具条上的“画”回来接着画")
-                               : tr("现在可以操作下面的程序，笔迹还在；按 %1 或点工具条上的“画”回来接着画").arg(m_hotkeyText));
+        m_hotkeyText.isEmpty() ? tr("现在可以操作下面的程序，笔迹还在；点工具条上的“回到画笔”接着画")
+                               : tr("现在可以操作下面的程序，笔迹还在；按 %1 或点工具条上的“回到画笔”接着画").arg(m_hotkeyText));
 }
 
 void Presenter::toggleThrough()
