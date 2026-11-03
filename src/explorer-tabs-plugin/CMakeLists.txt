@@ -2,12 +2,15 @@
 # library (package/, "资源管理器标签页"; not in the setup), a resident C++
 # plugin on the single-header SDK (src/plugins-sdk/winshun.h): new File
 # Explorer folder windows become tabs of a window already open. No Qt, the
-# C runtime linked in. The rules (Rules) are plain C++ that
+# C runtime linked in. The rules (Rules), the hidden windows and their
+# journal (Hider) and the closing of spare tabs (Closer) are plain C++ that
 # tests/tst_explorertabs.cpp builds in again.
 add_executable(WinShunExplorerTabs
     main.cpp
     Engine.cpp Engine.h
     Rules.cpp Rules.h
+    Hider.cpp Hider.h
+    Closer.cpp Closer.h
     ${PROJECT_SOURCE_DIR}/resources/WinShunExplorerTabs.rc
 )
 target_include_directories(WinShunExplorerTabs PRIVATE ${PROJECT_SOURCE_DIR}/src/plugins-sdk)

@@ -24,6 +24,7 @@
       {"value": "recent", "title": {"zh": "最近用过的", "en": "The one used last"}},
       {"value": "first", "title": {"zh": "最早打开的", "en": "The one opened first"}}
     ], "default": "recent"},
-    {"key": "reuse", "type": "bool", "title": {"zh": "文件夹已经开着就切过去", "en": "Go to a tab already showing the folder"}, "hint": {"zh": "不再多开一个一样的标签页", "en": "No second tab for the same folder"}, "default": true}
+    {"key": "reuse", "type": "bool", "title": {"zh": "文件夹已经开着就切过去", "en": "Go to a tab already showing the folder"}, "hint": {"zh": "不再多开一个一样的标签页", "en": "No second tab for the same folder"}, "default": true},
+    {"key": "windowsFor", "type": "text", "title": {"zh": "这些程序打开的仍是新窗口", "en": "Programs that still get a window"}, "hint": {"zh": "程序名用分号隔开，例如 WindowsTerminal.exe;cmd.exe。在资源管理器里按 Ctrl+N、选“在新窗口中打开”、拖出标签页，本来就是新窗口", "en": "Program names separated by semicolons, e.g. WindowsTerminal.exe;cmd.exe. Ctrl+N, “Open in new window” and dragging a tab out of File Explorer always give a window"}, "default": ""}
   ]
 }

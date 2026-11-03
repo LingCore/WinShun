@@ -118,9 +118,73 @@ bool tabsCannotHost(std::wstring_view place)
     return std::ranges::any_of(kWindowsOnly, [&](std::wstring_view guid) { return containsNoCase(place, guid); });
 }
 
+std::vector<std::wstring> programList(std::wstring_view text)
+{
+    std::vector<std::wstring> out;
+    std::wstring item;
+    const auto flush = [&] {
+        while (!item.empty() && (item.back() == L' ' || item.back() == L'\t' || item.back() == L'"'))
+            item.pop_back();
+        std::size_t start = 0;
+        while (start < item.size() && (item[start] == L' ' || item[start] == L'\t' || item[start] == L'"'))
+            ++start;
+        item.erase(0, start);
+        // a path is fine too: its file name counts
+        if (const std::size_t slash = item.find_last_of(L"\\/"); slash != std::wstring::npos)
+            item.erase(0, slash + 1);
+        if (!item.empty()) {
+            if (item.find(L'.') == std::wstring::npos)
+                item += L".exe";
+            ::CharLowerBuffW(item.data(), static_cast<DWORD>(item.size()));
+            if (std::ranges::find(out, item) == out.end())
+                out.push_back(item);
+        }
+        item.clear();
+    };
+    for (const wchar_t c : text) {
+        if (c == L';' || c == L',' || c == L'\n' || c == L'\r')
+            flush();
+        else
+            item.push_back(c);
+    }
+    flush();
+    return out;
+}
+
+bool openerWantsWindow(const Opener& o, const Settings& s, const Restriction& r)
+{
+    if (!o.exe.empty()) {
+        std::wstring exe = o.exe;
+        if (const std::size_t slash = exe.find_last_of(L"\\/"); slash != std::wstring::npos)
+            exe.erase(0, slash + 1);
+        if (std::ranges::any_of(s.windowsFor, [&](const std::wstring& p) { return equalNoCase(p, exe); }))
+            return true;
+    }
+    if (o.windowClass != L"CabinetWClass" || o.broughtByUs)
+        return false;
+    return !r.active() || o.testWindow;
+}
+
+std::uintptr_t guessTarget(const Settings& s, const std::vector<Window>& candidates)
+{
+    const Window* best = nullptr;
+    for (const Window& w : candidates) {
+        if (!w.usable || w.aboveUs)
+            continue;
+        if (!best || (s.target == Target::First ? w.openOrder < best->openOrder : w.zOrder < best->zOrder))
+            best = &w;
+    }
+    return best ? best->id : 0;
+}
+
+bool confirmsGuess(const Decision& d, std::uintptr_t guessed)
+{
+    return guessed && d.verdict == Verdict::NewTab && d.window == guessed;
+}
+
 bool hideEarly(const Settings& s, bool paused, const Restriction& r, const Candidate& b, int otherWindows, bool namedForTest)
 {
-    if (!s.merge || paused || b.bypass || b.dragging || b.movedTab || b.aboveUs || b.tabs != 1 || otherWindows < 1)
+    if (!s.merge || paused || b.bypass || b.requested || b.movedTab || b.aboveUs || b.tabs != 1 || otherWindows < 1)
         return false;
     return !r.active() || namedForTest;
 }
@@ -149,8 +213,8 @@ Decision decide(const Settings& s, bool paused, const Restriction& r, const Cand
         return keep(Why::Paused);
     if (b.bypass)
         return keep(Why::Bypass);
-    if (b.dragging)
-        return keep(Why::Dragging);
+    if (b.requested)
+        return keep(Why::Requested);
     if (b.movedTab)
         return keep(Why::MovedTab);
     if (b.aboveUs)
@@ -196,7 +260,7 @@ const char* whyName(Why why)
     case Why::Off: return "off";
     case Why::Paused: return "paused";
     case Why::Bypass: return "ctrl+shift";
-    case Why::Dragging: return "dragging";
+    case Why::Requested: return "window asked for";
     case Why::MovedTab: return "moved tab";
     case Why::DraggedOut: return "dragged out";
     case Why::AboveUs: return "above our integrity";

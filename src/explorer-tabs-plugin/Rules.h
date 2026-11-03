@@ -5,9 +5,11 @@
 //
 // A new File Explorer window (B) becomes a tab of a window that is already
 // open (A) -- or, when A already shows B's folder in a tab, that tab comes
-// to the front -- unless the user wants a window: Ctrl+Shift held, a tab
-// dragged out of a window, a folder tabs cannot host (Control Panel), a
-// window above the plugin's integrity level, or no other window to go to.
+// to the front -- unless the user wants a window: Ctrl+Shift held, opened
+// from File Explorer itself (Ctrl+N, "open in new window", a tab dragged
+// out) or from a program listed in the settings, a folder tabs cannot host
+// (Control Panel), a window above the plugin's integrity level, or no other
+// window to go to.
 #pragma once
 
 #include <cstdint>
@@ -26,7 +28,14 @@ struct Settings {
     bool merge = true; // new folder windows become tabs
     Target target = Target::Recent;
     bool reuse = true; // a folder already open in a tab: that tab, no second one
+    // Programs (exe names, lower case) whose folder windows stay windows:
+    // scripts and terminals that ask for one (`explorer /n`).
+    std::vector<std::wstring> windowsFor;
 };
+
+// "a.exe; B.EXE, c" -> {"a.exe", "b.exe", "c.exe"}: separated by ; , or
+// line breaks, trimmed, lower case, ".exe" added when there is no dot.
+std::vector<std::wstring> programList(std::wstring_view text);
 
 // A dev-only restriction (runtime.env of a test copy of the manifest): act
 // only on folders under `root`. Nothing else is hidden, merged or used as A.
@@ -40,7 +49,7 @@ struct Candidate {
     std::wstring place; // parsing name: C:\a\b, \\server\share, ::{GUID}…; empty: not known
     int tabs = 1;
     bool bypass = false; // Ctrl+Shift held when it opened
-    bool dragging = false; // the left button held when it opened: a tab dragged out
+    bool requested = false; // a window was asked for (openerWantsWindow)
     bool movedTab = false; // its tab was a tab of another window before
     bool aboveUs = false; // its process runs above the plugin's integrity level
 };
@@ -75,7 +84,7 @@ enum class Why {
     Off,
     Paused,
     Bypass,
-    Dragging,
+    Requested, // opened from File Explorer (Ctrl+N, "open in new window", a tab dragged out) or a listed program
     MovedTab,
     DraggedOut,
     AboveUs,
@@ -115,5 +124,30 @@ Decision decide(const Settings& s, bool paused, const Restriction& r, const Cand
     const std::vector<Closed>& closed, std::int64_t nowMs);
 
 const char* whyName(Why why);
+
+// The window in front when B opened (the last one in front that is neither
+// B nor a window the plugin hid): who asked for B.
+struct Opener {
+    std::wstring windowClass; // "" none
+    std::wstring exe; // its program's file name (or path), any case
+    bool broughtByUs = false; // put in front by the plugin, no input from the user since
+    bool testWindow = false; // (restricted) its title names the test folder
+};
+
+// File Explorer itself asked for a window (Ctrl+N, "open in new window", a
+// tab dragged out: the window in front is an Explorer window the user is
+// working in), or a program listed in windowsFor did. The desktop, Win顺,
+// the Start menu and other programs: B may become a tab. Restricted, an
+// Explorer window counts only when it is a test window.
+bool openerWantsWindow(const Opener& o, const Settings& s, const Restriction& r);
+
+// Where a tab for a window not decided yet would most likely go (decide's
+// order without B's folder): the `id` of the first usable candidate not
+// above us, 0 if none. Each Window's `tabs` are not looked at.
+std::uintptr_t guessTarget(const Settings& s, const std::vector<Window>& candidates);
+
+// The tab opened on a guess is kept (and navigated) only when the decision
+// is a new tab in that very window; else it is closed again.
+bool confirmsGuess(const Decision& d, std::uintptr_t guessed);
 
 } // namespace tabs

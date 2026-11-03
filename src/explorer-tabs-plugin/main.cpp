@@ -34,13 +34,6 @@ constexpr const char* kIcon = "glyph:U+E838"; // FolderOpen
 constexpr const char* kPauseIcon = "glyph:U+E769"; // Pause
 constexpr const char* kPlayIcon = "glyph:U+E768"; // Play
 
-std::wstring g_journal; // for the crash filter
-LONG WINAPI onCrash(EXCEPTION_POINTERS*)
-{
-    // Whatever this process hid is shown again before it goes.
-    tabs::Engine::restoreJournal(g_journal);
-    return EXCEPTION_CONTINUE_SEARCH;
-}
 
 tabs::Settings settingsFrom(const Json& s)
 {
@@ -50,6 +43,7 @@ tabs::Settings settingsFrom(const Json& s)
     if (s["reuse"].isBool())
         out.reuse = s["reuse"].toBool();
     out.target = s["target"].toString() == "first" ? tabs::Target::First : tabs::Target::Recent;
+    out.windowsFor = tabs::programList(winshun::wide(s["windowsFor"].toString()));
     return out;
 }
 
@@ -69,13 +63,15 @@ protected:
         if (!dataDir().empty()) {
             ::CreateDirectoryW(winshun::wide(dataDir()).c_str(), nullptr);
             o.journal = winshun::wide(dataDir()) + L"\\hidden.txt";
+            m_pauseFile = winshun::wide(dataDir()) + L"\\paused";
         }
         o.log = [this](const std::string& text) { log("info", text); };
         if (o.restriction.active())
             log("info", "restricted to " + winshun::utf8(o.restriction.root));
-        g_journal = o.journal;
-        ::SetUnhandledExceptionFilter(onCrash);
         m_engine = std::make_unique<tabs::Engine>(std::move(o));
+        // Paused stays paused (a file in the data folder) until resumed.
+        if (!m_pauseFile.empty() && ::GetFileAttributesW(m_pauseFile.c_str()) != INVALID_FILE_ATTRIBUTES)
+            m_engine->setPaused(true);
         m_engine->start();
     }
 
@@ -112,8 +108,8 @@ protected:
         } else {
             status.title = zh ? "新开的文件夹窗口会并成标签页" : "New folder windows become tabs";
             const std::string count = std::to_string(merged);
-            status.subtitle = zh ? "这次已并入 " + count + " 个 · 按住 Ctrl+Shift 打开就是新窗口 · Enter 暂停"
-                                 : count + " merged so far · hold Ctrl+Shift for a window · Enter to pause";
+            status.subtitle = zh ? "Win顺 启动后已并入 " + count + " 个 · 按住 Ctrl+Shift 打开就是新窗口 · Enter 暂停"
+                                 : count + " merged since WinShun started · hold Ctrl+Shift for a window · Enter to pause";
             status.icon = kPauseIcon;
         }
         items.push_back(status);
@@ -127,9 +123,17 @@ protected:
             const bool zh = chinese();
             const bool pause = !m_engine->paused();
             m_engine->setPaused(pause);
+            if (!m_pauseFile.empty()) {
+                if (pause) {
+                    if (const HANDLE f = ::CreateFileW(m_pauseFile.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+                        f != INVALID_HANDLE_VALUE)
+                        ::CloseHandle(f);
+                } else
+                    ::DeleteFileW(m_pauseFile.c_str());
+            }
             if (pause)
-                effects.push_back(winshun::effect::notify(zh ? "已暂停：新开的文件夹窗口照常是窗口，到 Win顺 重启为止"
-                                                             : "Paused: folder windows stay windows until Win顺 restarts"));
+                effects.push_back(winshun::effect::notify(zh ? "已暂停：新开的文件夹窗口照常是窗口，直到你恢复"
+                                                             : "Paused: folder windows stay windows until you resume"));
             else
                 effects.push_back(winshun::effect::notify(zh ? "已恢复：新开的文件夹窗口会并成标签页" : "Resumed: new folder windows become tabs"));
         }
@@ -139,6 +143,7 @@ protected:
 
 private:
     std::unique_ptr<tabs::Engine> m_engine;
+    std::wstring m_pauseFile; // <dataDir>\paused: there while paused (survives a restart)
 };
 
 } // namespace
