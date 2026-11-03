@@ -15,12 +15,13 @@ release017.SOURCES = {
     if name not in ("onboarding", "foldermenu")
 }
 release017.SOURCES.update({
-    "cover": ("L-search", "numbers/number-column-main.png", None),
-    "search": ("L-search", "numbers/number-column-main.png", None),
+    "appearance": ("L-appearance", "settings/p01-t0.png", 1440),
+    "droppie": ("L-droppie", "settings/p05-t0.png", None),
+    "backup": ("L-backup", "settings/p07-t0.png", 1440),
     "web": ("L-web", "web/web-plugin-settings.png", None),
-    "plugin-library": ("L-plugin-library", "plugin-library.png", None),
+    "plugin-library": ("L-plugin-library", "settings/p09-t1.png", 1600),
     "ocr-search": ("L-ocr-search", "ocr/window.png", None),
-    "shortcuts": ("L-shortcuts", "shortcuts/shortcut-panel-main.png", None),
+    "shortcuts": ("L-shortcuts", "shortcuts/shortcut-panel-launcher.png", None),
 })
 shots.PAGES = tuple(
     (file, "L-web" if file == "07-web" else source, *rest)
