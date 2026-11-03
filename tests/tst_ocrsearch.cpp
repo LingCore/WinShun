@@ -730,6 +730,95 @@ private slots:
         QCOMPARE(result.images, 2);
         QVERIFY(!result.partial);
     }
+    // A long picture keeps its width, up to the pixels the reader takes; a
+    // photo is read at 4096 on its longer side as before. The size as stored
+    // goes with it, to tell later which pictures were made smaller.
+    void longPicturesKeepTheirWidth()
+    {
+        QTemporaryDir temp;
+        const auto read = [&](const QString& name, QSize size, QSize* stored) {
+            QImage picture(size, QImage::Format_RGB32);
+            picture.fill(Qt::white);
+            QPainter painter(&picture);
+            painter.drawText(20, 40, u"LONG 731905"_s);
+            painter.end();
+            const QString path = temp.filePath(name);
+            if (!picture.save(path))
+                return QSize();
+            QSize read;
+            extractImages(path, [&](const QImage& image, const QString&, const QJsonObject& source) {
+                read = image.size();
+                const QJsonArray size = source.value(u"size"_s).toArray();
+                *stored = QSize(size.at(0).toInt(), size.at(1).toInt());
+            });
+            return read;
+        };
+        QSize stored;
+        QCOMPARE(read(u"chat.png"_s, QSize(800, 12000), &stored), QSize(800, 12000));
+        QCOMPARE(stored, QSize(800, 12000));
+        QCOMPARE(read(u"photo.png"_s, QSize(6000, 4000), &stored), QSize(4096, 2731));
+        QCOMPARE(stored, QSize(6000, 4000));
+        const QSize huge = read(u"scroll.png"_s, QSize(3000, 15000), &stored); // 45 million pixels
+        QCOMPARE(stored, QSize(3000, 15000));
+        const qint64 pixels = qint64(huge.width()) * huge.height();
+        QVERIFY2(pixels <= ws::PaddleOcr::kMaxPixels && pixels > ws::PaddleOcr::kMaxPixels * 99 / 100,
+            qPrintable(u"%1x%2"_s.arg(huge.width()).arg(huge.height())));
+        QVERIFY(std::abs(huge.height() - 5 * huge.width()) <= 5);
+    }
+    // A big page renders as finely as the picture placed on it, up to 200 dpi
+    // and the pixels the reader takes; other pages render as before.
+    void bigPdfPagesKeepTheirPicturesDetail()
+    {
+        QTemporaryDir temp;
+        const QString path = temp.filePath(u"big.pdf"_s);
+        const auto scan = [](QSize size) {
+            QImage picture(size, QImage::Format_RGB32);
+            picture.fill(Qt::white);
+            QPainter painter(&picture);
+            painter.drawRect(10, 10, size.width() / 2, size.height() / 2);
+            return picture;
+        };
+        {
+            QPdfWriter writer(path);
+            writer.setResolution(72); // in points
+            writer.setPageMargins({});
+            writer.setPageSize(QPageSize(QPageSize::A3));
+            QPainter painter(&writer);
+            painter.drawImage(QRectF(0, 0, 842, 1191), scan({2339, 3308})); // 1: scanned at 200 dpi
+            writer.newPage();
+            painter.drawImage(QRectF(0, 0, 842, 1191), scan({600, 848})); // 2: at 51 dpi
+            writer.setPageSize(QPageSize(QPageSize::A0));
+            writer.newPage();
+            painter.drawImage(QRectF(100, 100, 100, 100), scan({278, 278})); // 3: a fine picture on A0
+            writer.setPageSize(QPageSize(QPageSize::A4));
+            writer.newPage();
+            painter.drawImage(QRectF(0, 0, 595, 842), scan({2480, 3508})); // 4: A4 scanned at 300 dpi
+            painter.end();
+        }
+        QList<QSize> sizes;
+        QList<QJsonObject> sources;
+        const auto result = extractImages(path, [&](const QImage& image, const QString&, const QJsonObject& source) {
+            sizes.append(image.size());
+            sources.append(source);
+        });
+        QCOMPARE(result.images, 4);
+        // A page's size in points need not be whole: a pixel either way.
+        const auto roughly = [](QSize size, QSize expected) {
+            return std::abs(size.width() - expected.width()) <= 1 && std::abs(size.height() - expected.height()) <= 1;
+        };
+        const auto text = [](QSize size) { return u"%1x%2"_s.arg(size.width()).arg(size.height()).toUtf8(); };
+        QVERIFY2(roughly(sizes[0], {2339, 3308}), text(sizes[0]).constData());
+        QVERIFY2(roughly(sizes[1], {1839, 2600}), text(sizes[1]).constData()); // as before
+        const qint64 pixels = qint64(sizes[2].width()) * sizes[2].height();
+        QVERIFY2(pixels <= ws::PaddleOcr::kMaxPixels && pixels > ws::PaddleOcr::kMaxPixels * 99 / 100,
+            text(sizes[2]).constData());
+        QVERIFY2(roughly(sizes[3], {1653, 2339}), text(sizes[3]).constData()); // 200 dpi, as before
+        const QJsonArray points = sources[0].value(u"points"_s).toArray();
+        QCOMPARE(QSize(points.at(0).toInt(), points.at(1).toInt()), QSize(842, 1191));
+        QCOMPARE(sources[0].value(u"pictureDpi"_s).toInt(), 200);
+        const QImage preview = previewImage(path, sources[0]);
+        QVERIFY2(roughly(preview.size(), sizes[1]), text(preview.size()).constData()); // the preview as before
+    }
     void externalImageIsNotRead()
     {
         QTemporaryDir temp;

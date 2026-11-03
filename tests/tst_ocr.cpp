@@ -154,6 +154,33 @@ private slots:
         QCOMPARE(error, u"stopped by the watchdog"_s);
     }
 
+    // A 24-bit picture (how OCR search hands over its pictures, to hold a big
+    // one once) reads exactly as the same picture in 32 bits, made smaller
+    // to look for lines (wider than 2000) or not.
+    void twentyFourBitPictureReadsTheSame()
+    {
+        QString error;
+        const std::unique_ptr<ws::PaddleOcr> ocr
+            = ws::PaddleOcr::load(QCoreApplication::applicationDirPath(), 2, &error);
+        QVERIFY2(ocr, qPrintable(error));
+        QStringList lines;
+        for (int i = 0; i < 12; ++i)
+            lines.append(u"第%1行 文字识别 invoice 731905"_s.arg(i));
+        for (const int px : {14, 120}) {
+            const QImage image = drawn(lines, px, Qt::black, Qt::white);
+            QList<ws::OcrPiece> rgb32, rgb888;
+            QVERIFY2(ocr->readPieces(image, &rgb32, &error), qPrintable(error));
+            QVERIFY2(ocr->readPieces(image.convertToFormat(QImage::Format_RGB888), &rgb888, &error), qPrintable(error));
+            QVERIFY(rgb32.size() >= 12);
+            QCOMPARE(rgb888.size(), rgb32.size());
+            for (qsizetype i = 0; i < rgb32.size(); ++i) {
+                QCOMPARE(rgb888[i].text, rgb32[i].text);
+                QCOMPARE(rgb888[i].score, rgb32[i].score);
+                QCOMPARE(rgb888[i].quad, rgb32[i].quad);
+            }
+        }
+    }
+
     // OCR search reads a page that came in upside down (a scan fed the wrong
     // way round); an upright page reads the same with or without the retry.
     void upsideDownPageIsReadAgainTurned()

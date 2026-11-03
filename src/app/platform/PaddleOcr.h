@@ -52,6 +52,10 @@ struct OcrOptions {
 
 class PaddleOcr {
 public:
+    // A larger picture is made smaller all over before it is read; OCR search
+    // decodes long pictures and renders PDF pages up to this, not beyond.
+    static constexpr qint64 kMaxPixels = 40'000'000;
+
     // The files are there (cheap: what to use, decided before loading).
     static bool installed(const QString& programFolder);
     // Null when something is missing or will not load; why in `error`.

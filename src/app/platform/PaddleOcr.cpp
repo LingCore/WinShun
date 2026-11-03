@@ -33,7 +33,6 @@ namespace {
 // strips rather than shrunk, and lines are cut from the picture as it is.
 constexpr int kMaxWidth = 2000; // wider: made smaller to find the text in it
 constexpr int kMinSide = 30; // narrower: made larger
-constexpr qint64 kMaxPixels = 40'000'000; // larger: made smaller all over
 constexpr int kStrip = 2000; // the height looked at in one go…
 constexpr int kOverlap = 160; // … overlapping, so a line is whole in one of them
 constexpr float kPixelThreshold = 0.3f; // a pixel is text
@@ -517,7 +516,11 @@ std::unique_ptr<PaddleOcr> PaddleOcr::load(const QString& programFolder, int thr
         Ort::SessionOptions options;
         options.DisablePerSessionThreads()
             .SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL)
-            .DisableCpuMemArena(); // memory back after each picture
+            .DisableCpuMemArena() // memory back after each picture
+            // A planned block per input size is ~135 MB more than the
+            // detection's own peak when a tall picture's strips repeat a size
+            // (measured on 2000x4000..3200x12500), and no faster.
+            .DisableMemPattern();
         const auto open = [&](const wchar_t* name) {
             const QString file = filePath(resolvedFolder, name, true);
             return Ort::Session(impl->env, reinterpret_cast<const wchar_t*>(file.utf16()), options);
@@ -673,9 +676,12 @@ bool PaddleOcr::find(
     if (image.isNull())
         return true;
     // See-through parts white: black text there would be read as black on black.
-    QImage picture(image.size(), QImage::Format_RGB888);
-    picture.fill(Qt::white);
-    {
+    // A 24-bit picture has none and is read as it is, not copied: OCR search
+    // hands over its long pictures and big pages that way to save memory.
+    QImage picture = image;
+    if (image.format() != QImage::Format_RGB888) {
+        picture = QImage(image.size(), QImage::Format_RGB888);
+        picture.fill(Qt::white);
         QPainter painter(&picture);
         painter.drawImage(0, 0, image);
     }

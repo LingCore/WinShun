@@ -85,16 +85,44 @@ QImage opaque(QImage image)
     return result;
 }
 
-QImage decode(QByteArray bytes, int frame = 0, int* frames = nullptr)
+// What a picture is decoded for: to be read, or to be shown in the preview,
+// which is never larger than 2048 and places the highlights by fractions.
+enum class Use { Reading, Preview };
+
+constexpr int kPhotoSide = 4096;
+
+// The longest side a picture of `stored` size is decoded at (0: as stored).
+// Photos and the like at most 4096, as their words are large enough. A long
+// picture (a chat or a web page saved whole, a scroll of receipts: more than
+// 3 times as long as wide) keeps its width, or its words would be too small
+// to read, up to as many pixels as the reader takes.
+int longestSide(QSize stored, Use use)
+{
+    const qint64 w = stored.width(), h = stored.height();
+    if (use == Use::Preview || w <= 0 || h <= 0 || std::max(w, h) <= 3 * std::min(w, h))
+        return kPhotoSide;
+    if (w * h <= PaddleOcr::kMaxPixels)
+        return 0;
+    return int(double(std::max(w, h)) * std::sqrt(double(PaddleOcr::kMaxPixels) / double(w * h)));
+}
+
+// `stored`: the picture's own size, before it was made smaller to be read.
+QImage decode(QByteArray bytes, Use use, int frame = 0, int* frames = nullptr, QSize* stored = nullptr)
 {
     ComScope com;
     QSize original;
+    // Its size first, from the header alone: a frame larger than one pixel is
+    // refused before any pixel is decoded (decodePictureData's maxPixels).
+    decodePictureData(bytes, 0, &original, frame, nullptr, 1);
     // Refused from the header: a picture bomb is never decoded or scaled.
-    QImage native = decodePictureData(bytes, 4096, &original, frame, frames, kMaxPixels);
+    QImage native = decodePictureData(bytes, longestSide(original, use), &original, frame, frames, kMaxPixels);
     if (qint64(original.width()) * original.height() > kMaxPixels)
         fail(QObject::tr("图片尺寸无效或超过 1 亿像素"));
-    if (!native.isNull())
+    if (!native.isNull()) {
+        if (stored)
+            *stored = original;
         return opaque(std::move(native));
+    }
     if (frame != 0)
         fail(QObject::tr("无法读取多页图片"));
     QBuffer buffer(&bytes);
@@ -104,29 +132,48 @@ QImage decode(QByteArray bytes, int frame = 0, int* frames = nullptr)
     const QSize size = reader.size();
     if (!size.isValid() || qint64(size.width()) * size.height() > kMaxPixels)
         fail(QObject::tr("图片尺寸无效或超过 1 亿像素"));
-    if (size.width() > 4096 || size.height() > 4096)
-        reader.setScaledSize(size.scaled(4096, 4096, Qt::KeepAspectRatio));
+    if (const int longest = longestSide(size, use); longest > 0 && std::max(size.width(), size.height()) > longest)
+        reader.setScaledSize(size.scaled(longest, longest, Qt::KeepAspectRatio));
     QImage image = reader.read();
     if (image.isNull())
         fail(reader.errorString());
     if (frames)
         *frames = std::max(1, reader.imageCount());
+    if (stored)
+        *stored = size;
     return opaque(std::move(image));
 }
 
-// Whether a page object is, or a form object holds, a picture.
-bool holdsImage(FPDF_PAGEOBJECT object, int depth = 0)
+// The pictures on a page: whether there are any, and how many pixels per
+// point the one placed largest has (a scan's own resolution, say).
+struct Pictures {
+    bool any = false;
+    double area = 0; // the largest one's, in square points
+    double scale = 0;
+};
+// Bounds inside a form are in the form's own space: rough, but enough to tell
+// a page-sized scan from an icon.
+void findPictures(FPDF_PAGEOBJECT object, Pictures* found, int depth = 0)
 {
     const int type = FPDFPageObj_GetType(object);
-    if (type == FPDF_PAGEOBJ_IMAGE)
-        return true;
-    if (type != FPDF_PAGEOBJ_FORM || depth > 8)
-        return false;
-    const int count = FPDFFormObj_CountObjects(object);
-    for (int i = 0; i < count; ++i)
-        if (holdsImage(FPDFFormObj_GetObject(object, static_cast<unsigned long>(i)), depth + 1))
-            return true;
-    return false;
+    if (type == FPDF_PAGEOBJ_FORM && depth <= 8) {
+        for (int i = 0, count = FPDFFormObj_CountObjects(object); i < count; ++i)
+            findPictures(FPDFFormObj_GetObject(object, static_cast<unsigned long>(i)), found, depth + 1);
+        return;
+    }
+    if (type != FPDF_PAGEOBJ_IMAGE)
+        return;
+    found->any = true;
+    unsigned int pw = 0, ph = 0;
+    float left = 0, bottom = 0, right = 0, top = 0;
+    if (!FPDFImageObj_GetImagePixelSize(object, &pw, &ph)
+        || !FPDFPageObj_GetBounds(object, &left, &bottom, &right, &top))
+        return;
+    const double w = double(right) - left, h = double(top) - bottom;
+    if (w > 0 && h > 0 && w * h > found->area) {
+        found->area = w * h;
+        found->scale = std::max(pw, ph) / std::max(w, h);
+    }
 }
 
 // Whether a page object is, or a form object holds, vector drawing: paths
@@ -222,21 +269,21 @@ struct Pdf {
         const std::lock_guard lock(pdfMutex);
         return FPDF_GetPageCount(document);
     }
-    // `picturesOnly`: a null image for a page whose words are all in the
+    // To be read: a null image for a page whose words are all in the
     // document's own text layer (no picture, nothing drawn beyond its text),
-    // as the content index reads them; nothing to recognise.
-    QImage render(int number, bool picturesOnly = false) const
+    // as the content index reads them; nothing to recognise. `info` gets the
+    // page's size in points and the resolution of its largest picture.
+    QImage render(int number, Use use, QJsonObject* info = nullptr) const
     {
         const std::lock_guard lock(pdfMutex);
         FPDF_PAGE page = FPDF_LoadPage(document, number - 1);
         if (!page)
             fail(QObject::tr("无法读取 PDF 第 %1 页").arg(number));
-        if (picturesOnly) {
-            bool pictures = false;
-            const int count = FPDFPage_CountObjects(page);
-            for (int i = 0; i < count && !pictures; ++i)
-                pictures = holdsImage(FPDFPage_GetObject(page, i));
-            if (!pictures && !showsWordsBeyondText(page)) {
+        Pictures pictures;
+        if (use == Use::Reading) {
+            for (int i = 0, count = FPDFPage_CountObjects(page); i < count; ++i)
+                findPictures(FPDFPage_GetObject(page, i), &pictures);
+            if (!pictures.any && !showsWordsBeyondText(page)) {
                 FPDF_ClosePage(page);
                 return {};
             }
@@ -246,7 +293,20 @@ struct Pdf {
             FPDF_ClosePage(page);
             fail(QObject::tr("PDF 页面尺寸无效"));
         }
-        const double scale = std::min(200.0 / 72.0, kRenderSide / std::max(w, h));
+        double scale = std::min(200.0 / 72.0, kRenderSide / std::max(w, h));
+        if (use == Use::Reading) {
+            // A big page (A3, A1 drawings and scans) is not made smaller than
+            // the picture placed on it was made, up to 200 dpi, within the
+            // pixels the reader takes (a hair under: each side is rounded up);
+            // other pages render as before.
+            scale = std::max(scale, std::min(pictures.scale, 200.0 / 72.0));
+            scale = std::min(scale, 0.999 * std::sqrt(double(PaddleOcr::kMaxPixels) / (w * h)));
+            if (info) {
+                info->insert(u"points"_s, QJsonArray {std::round(w), std::round(h)});
+                if (pictures.scale > 0)
+                    info->insert(u"pictureDpi"_s, std::round(pictures.scale * 72));
+            }
+        }
         QImage image(
             std::max(1, int(std::ceil(w * scale))), std::max(1, int(std::ceil(h * scale))), QImage::Format_RGB32);
         if (image.isNull()) {
@@ -568,15 +628,16 @@ Extraction extractImages(
         for (int page = 1; page <= std::min(count, kMaxImages); ++page) {
             stopped(cancel);
             QImage image;
+            QJsonObject source {{u"kind"_s, u"pdf"_s}, {u"page"_s, page}};
             try {
-                image = pdf.render(page, true);
+                image = pdf.render(page, Use::Reading, &source);
             } catch (const std::exception& e) {
                 issues.append(QString::fromUtf8(e.what()));
                 step();
                 continue;
             }
             if (!image.isNull()) {
-                sink(image, QObject::tr("第 %1 页").arg(page), {{u"kind"_s, u"pdf"_s}, {u"page"_s, page}});
+                sink(std::move(image), QObject::tr("第 %1 页").arg(page), source);
                 ++result.images;
             }
             step();
@@ -597,8 +658,9 @@ Extraction extractImages(
                 break;
             }
             QImage image;
+            QSize stored;
             try {
-                image = decode(partBytes(zip, item.part));
+                image = decode(partBytes(zip, item.part), Use::Reading, 0, nullptr, &stored);
             } catch (const std::exception& e) {
                 issues.append(item.label + u"："_s + QString::fromUtf8(e.what()));
                 step();
@@ -607,19 +669,23 @@ Extraction extractImages(
             QJsonObject imageSource = item.place;
             imageSource.insert(u"kind"_s, u"office"_s);
             imageSource.insert(u"part"_s, QString::fromStdString(item.part));
-            sink(image, item.label, imageSource);
+            imageSource.insert(u"size"_s, QJsonArray {stored.width(), stored.height()});
+            sink(std::move(image), item.label, imageSource);
             ++result.images;
             step();
         }
     } else {
         const QByteArray bytes = readFile(path);
         int count = 1;
-        QImage first = decode(bytes, 0, &count);
+        QSize stored;
+        QImage first = decode(bytes, Use::Reading, 0, &count, &stored);
         for (int frame = 0; frame < std::min(count, kMaxImages); ++frame) {
             stopped(cancel);
-            const QImage image = frame == 0 ? first : decode(bytes, frame);
-            sink(image, count > 1 ? QObject::tr("第 %1 页").arg(frame + 1) : QObject::tr("图片"),
-                {{u"kind"_s, u"image"_s}, {u"frame"_s, frame}, {u"frames"_s, count}});
+            QImage image = frame == 0 ? std::move(first) : decode(bytes, Use::Reading, frame, nullptr, &stored);
+            // The size as stored too: which pictures were made smaller to be read.
+            sink(std::move(image), count > 1 ? QObject::tr("第 %1 页").arg(frame + 1) : QObject::tr("图片"),
+                {{u"kind"_s, u"image"_s}, {u"frame"_s, frame}, {u"frames"_s, count},
+                    {u"size"_s, QJsonArray {stored.width(), stored.height()}}});
             ++result.images;
             step();
         }
@@ -639,14 +705,14 @@ QImage previewImage(const QString& path, const QJsonObject& source)
 {
     const QString kind = source.value(u"kind"_s).toString();
     if (kind == u"pdf")
-        return Pdf(path).render(source.value(u"page"_s).toInt());
+        return Pdf(path).render(source.value(u"page"_s).toInt(), Use::Preview);
     if (kind == u"office") {
         const QByteArray bytes = readFile(path);
         extract::MemorySource input(std::string_view(bytes.constData(), bytes.size()));
         extract::Zip zip(input, 256ull << 20);
-        return decode(partBytes(zip, source.value(u"part"_s).toString().toStdString()));
+        return decode(partBytes(zip, source.value(u"part"_s).toString().toStdString()), Use::Preview);
     }
-    return decode(readFile(path), source.value(u"frame"_s).toInt());
+    return decode(readFile(path), Use::Preview, source.value(u"frame"_s).toInt());
 }
 
 QByteArray imageHash(const QImage& image, const QString& engine)
@@ -732,7 +798,7 @@ void scan(const QString& appDir, const QString& dataDir, const ScanOptions& opti
             } else
                 result = extractImages(
                     path,
-                    [&](const QImage& image, const QString& label, const QJsonObject& source) {
+                    [&](QImage image, const QString& label, const QJsonObject& source) {
                         stopped(cancel);
                         const QByteArray hash = imageHash(image, engine);
                         qint64 id = store.asset(hash);
@@ -747,10 +813,12 @@ void scan(const QString& appDir, const QString& dataDir, const ScanOptions& opti
                             QString message;
                             OcrOptions options; // as the worker reads
                             options.retryUpsideDown = true;
+                            const QSize size = image.size();
+                            image.convertTo(QImage::Format_RGB888); // held once, as the worker does
                             if (!reader->readPieces(image, &pieces, &message, options))
                                 fail(message);
                             stopped(cancel);
-                            id = store.putAsset(hash, image.size(), pieces);
+                            id = store.putAsset(hash, size, pieces);
                             ++state.recognized;
                             progress(state);
                         }

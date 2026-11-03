@@ -217,7 +217,7 @@ int workerMain(const QString& appDir)
                 options.retryUpsideDown = true; // scans and photos come any way round
                 const auto result = extractImages(
                     request.value(u"path"_s).toString(),
-                    [&](const QImage& image, const QString& label, const QJsonObject& source) {
+                    [&](QImage image, const QString& label, const QJsonObject& source) {
                         // Rendering a big scanned page is a long step of its own.
                         beat();
                         const QByteArray hash = imageHash(image, engine);
@@ -233,6 +233,11 @@ int workerMain(const QString& appDir)
                                 if (!reader)
                                     throw ScanStopped(error.toStdString());
                                 QList<OcrPiece> pieces;
+                                // Read as 24-bit and without the 32-bit copy
+                                // (hashed above): a long picture or a big page
+                                // is held once while it is read, which keeps
+                                // the worker in its memory limit.
+                                image.convertTo(QImage::Format_RGB888);
                                 if (!reader->readPieces(image, &pieces, &error, options))
                                     fail(error);
                                 data.insert(u"pieces"_s, piecesToJson(pieces));
