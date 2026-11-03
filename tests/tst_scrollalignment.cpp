@@ -612,6 +612,72 @@ private slots:
         QVERIFY(qAbs(contentY() - destination(120.4, -15)) < 0.001);
     }
 
+    // Rows of mixed heights stopped on (snapRows, as the clipboard's): turned
+    // up, the goal runs past the rows made (a ListView makes none past the
+    // view while it moves) and is a plain distance until they are. Resting
+    // on an edge by it then must never move back against the wheel; it
+    // went a whole row back when the goal sat on an edge itself.
+    void snappedBurstNeverBouncesBack_data()
+    {
+        QTest::addColumn<bool>("bottomUp");
+        QTest::addColumn<int>("notches");
+        for (const bool bottomUp : {false, true}) {
+            for (int notches = 1; notches <= 8; ++notches)
+                QTest::addRow("%s-%d", bottomUp ? "bottom-up" : "top-down", notches) << bottomUp << notches;
+        }
+    }
+
+    void snappedBurstNeverBouncesBack()
+    {
+        QFETCH(bool, bottomUp);
+        QFETCH(int, notches);
+        view->setProperty("cacheBuffer", 0);
+        view->setProperty("mixedRows", true);
+        view->setProperty("bottomUp", bottomUp);
+        wheelScroll->setProperty("snapRows", true);
+        wheelScroll->setProperty("logicalPixelSteps", true);
+        QMetaObject::invokeMethod(view, "forceLayout");
+        QCoreApplication::processEvents();
+        const qreal margin = view->property("topMargin").toReal();
+        const auto rowAt = [&](qreal y) {
+            int index = -1;
+            QMetaObject::invokeMethod(view, "indexAt", Q_RETURN_ARG(int, index), Q_ARG(qreal, 1), Q_ARG(qreal, y));
+            QQuickItem* row = nullptr;
+            QMetaObject::invokeMethod(view, "itemAtIndex", Q_RETURN_ARG(QQuickItem*, row), Q_ARG(int, index));
+            return row;
+        };
+        const auto onEdge = [&] {
+            const QQuickItem* row = rowAt(contentY() + margin);
+            return row && qAbs(row->y() - (contentY() + margin)) < 0.001;
+        };
+        // Well inside the list, a row's top on the view's top edge.
+        scrollTo(bottomUp ? bottom() - 2200 : top() + 2200);
+        QTest::qWait(30);
+        const QQuickItem* start = rowAt(contentY() + margin + 1);
+        QVERIFY(start);
+        scrollTo(start->y() - margin);
+        QTest::qWait(30);
+        QVERIFY(onEdge());
+        qreal previous = contentY();
+        const auto noneBack = [&](int waitMs) {
+            for (int waited = 0; waited < waitMs; waited += 2) {
+                QTest::qWait(2);
+                const qreal now = contentY();
+                if (now > previous + 0.001)
+                    return false;
+                previous = now;
+            }
+            return true;
+        };
+        for (int notch = 0; notch < notches; ++notch) {
+            wheel(120);
+            QVERIFY2(noneBack(40), "moved back against the wheel during the burst");
+        }
+        QVERIFY2(noneBack(500), "moved back against the wheel after the burst");
+        QVERIFY(!wheelScroll->property("running").toBool());
+        QVERIFY2(onEdge(), "came to rest between two row edges");
+    }
+
     // A heading between the rows (the launcher's caption over the rows found
     // elsewhere, GitHub #110) goes with the row under it: a notch rests on
     // its top, the next one on that row's bottom, never between the two

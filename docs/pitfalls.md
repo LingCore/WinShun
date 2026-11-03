@@ -318,6 +318,13 @@
 - **注意**：Windows 上 Qt 的滚轮事件 `pixelDelta` 永远是 0，精密触摸板也一样（`qwindowspointerhandler.cpp` 里传的是 `QPoint()`），不能靠它区分触摸板和鼠标滚轮。
 - **其他办法**：`Text.QtRendering` 或 `Text.CurveRendering` 不走 `textmask.vert` 的取整，但会失去 FreeType 的垂直 hinting，中文小字会变软。`QT_SCALE_FACTOR_ROUNDING_POLICY=Round` 会把 150% 变成 100% 或 200%。都没采用。
 
+### 往上滚轮每格回跳一帧
+
+- **现象**：搜索列表和剪贴板列表用滚轮往上滚时，每一格停下前会回跳一帧，最多约 4 逻辑像素，往下滚没有。
+- **原因**：`ListView` 在滚动中不会创建视野之外的行，往上滚时滚轮的目标位置只是一个单纯的距离，目标那一屏的行还不存在。旧的 `settleOnEdge` 在“停下的位置附近”选最近的行边，有时选到了身后那一条，于是滑行时倒着往上回滑。
+- **做法**：`settleOnEdge`（`ListWheelScroll.qml`）从目标出发，目标处的行一出现（滑行期间也算）就对齐到那一行的边，永远不逆着滚轮方向。测试 `tst_scrollalignment` 的 `snappedBurstNeverBouncesBack`：旧代码 16 次里失败 12 次。
+- **试过、没采用**：让滑行在速度上连续（Hermite 曲线）。抖动减半，但跟手的延迟翻倍（34–64 ms 变成 88–122 ms），手感不够利落，放弃。
+
 ## 窗口材质（Mica）
 
 设置窗口和搜索面板在 Windows 11 22H2 及以上、用“显卡加速”绘制时，背后是 Mica（`DWMWA_SYSTEMBACKDROP_TYPE` = `DWMSBT_MAINWINDOW`），窗口自己的背景色设成透明。“外观”里可选关 / 开，默认按内存定：超过 16 GB 开，否则关（`Settings::lowMemory`；旧版存的 auto 读取时也这样换掉）；Windows 10 没有这个效果，那一行也不显示。

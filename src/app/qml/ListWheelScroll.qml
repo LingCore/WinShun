@@ -116,6 +116,7 @@ Item {
                     break
                 writePosition(settled)
             }
+            settleOnEdge() // its rows are made now
             return
         }
         glide.from = view.contentY
@@ -183,20 +184,30 @@ Item {
         return y
     }
 
-    // The glide has come to a goal that is a distance (rows it could not read
-    // were not made): now they are, so rest on the nearest edge.
+    // The goal had to be a distance: its rows were not made (a ListView
+    // makes none past the view while it moves, so rows above it are missing
+    // on the way up). As soon as they are, while the glide comes in or once
+    // it is there, rest on an edge by the goal instead: the nearer one, or
+    // the one after the goal when the rows have gone past the nearer one
+    // already. Never back against the wheel (that bounced: a whole row back
+    // when the goal was on an edge itself, read as the one before it).
     function settleOnEdge() {
-        if (!snapRows || !unsnapped || Math.abs(view.contentY - glide.to) > 0.000001)
+        if (!snapRows || !unsnapped || !isFinite(requestedY))
+            return
+        const goal = requestedY
+        // The edge at or before the goal and the one after it (one, on an edge).
+        const before = rowEdge(goal + 0.5, -1)
+        const after = Math.abs(before - goal) < 0.5 ? before : rowEdge(goal - 0.5, 1)
+        if (isNaN(before) || isNaN(after))
             return
         unsnapped = false
-        const y = view.contentY
-        const up = rowEdge(y, -1)
-        const down = rowEdge(y, 1)
-        if (isNaN(up) || isNaN(down))
-            return
-        const edge = y - up <= down - y ? up : down
-        if (Math.abs(edge - y) > 0.000001) {
-            requestedY = endGoal(edge, Math.sign(edge - y))
+        const way = direction !== 0 ? direction : Math.sign(goal - view.contentY)
+        const ahead = edge => (edge - view.contentY) * way >= 0
+        const nearer = goal - before <= after - goal ? before : after
+        const other = nearer === before ? after : before
+        const edge = ahead(nearer) || !ahead(other) ? nearer : other
+        if (Math.abs(edge - goal) > 0.000001) {
+            requestedY = endGoal(edge, way)
             moveTo(requestedY)
         }
     }
@@ -214,7 +225,12 @@ Item {
             boundsChanged()
         }
     }
-    onPositionChanged: if (glide.running) writePosition(position)
+    onPositionChanged: {
+        if (!glide.running)
+            return
+        writePosition(position)
+        settleOnEdge() // the rows by a distance goal may just have been made
+    }
     // A resized view can move the endpoint while a wheel glide is running.
     // Retarget that glide now, never correct the position after it finishes.
     function boundsChanged() {
