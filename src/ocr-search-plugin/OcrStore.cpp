@@ -420,7 +420,8 @@ void Store::commit()
 // The pipeline before (ocr-search-2) left out PDF pages whose words are drawn
 // rather than in the text layer, made long pictures and big pages smaller,
 // read upside-down pages as they came, and gave up on dense pages it heard
-// nothing from for a minute. Only the files where that can matter are walked
+// nothing from for a minute; installed, it found no pdfium.dll, so every PDF
+// failed (extract::loadPdfium). Only the files where that can matter are walked
 // again: their rows keep the older engine, so that the next scan visits them;
 // every other row is marked as made by this pipeline. Nothing is decoded or
 // read here, and a picture whose pixels come out the same finds its
@@ -452,7 +453,7 @@ void Store::recheckOlderPipeline()
     QSqlQuery q(m_db);
     q.prepare(uR"(UPDATE files SET engine=? WHERE engine=? AND NOT (
             (status='empty' AND lower(path) LIKE '%.pdf')
-            OR (status='failed' AND (error LIKE ? OR error LIKE ?))
+            OR (status='failed' AND (error LIKE ? OR error LIKE ? OR error LIKE ? OR error LIKE ?))
             OR EXISTS(SELECT 1 FROM pages JOIN assets ON assets.id=pages.asset WHERE pages.file=files.path AND (
                 length(assets.hash)<>32
                 OR (json_extract(pages.source,'$.kind')='pdf' AND max(assets.width,assets.height)>=2600)
@@ -460,9 +461,12 @@ void Store::recheckOlderPipeline()
                     AND max(assets.width,assets.height)>3*min(assets.width,assets.height))))))"_s);
     q.addBindValue(pipelineEngine());
     q.addBindValue(older);
-    // The worker's deadline, as worded in either language when it was stored.
+    // The worker's deadline and the missing PDF reader, as worded in either
+    // language when they were stored.
     q.addBindValue(u"%秒没有进展%"_s);
     q.addBindValue(u"No progress on the file for %"_s);
+    q.addBindValue(u"缺少 PDF 读取组件%"_s);
+    q.addBindValue(u"PDF component is missing%"_s);
     checked(q);
     QSqlQuery note(m_db);
     note.prepare(u"INSERT OR REPLACE INTO meta VALUES('recheck',?)"_s);

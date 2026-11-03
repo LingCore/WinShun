@@ -656,6 +656,11 @@ private slots:
                 u"No progress on the file for 60 seconds; skipped. Use “Recheck all files” to try again"_s, {}, {}, {},
                 true},
             {u"damaged.png"_s, u"failed"_s, u"文件读取不完整"_s, {}, {}, {}, false},
+            // 1.0.0, installed, found no PDF reader: those PDFs are read now;
+            // one that failed for itself is not.
+            {u"scan.pdf"_s, u"failed"_s, u"缺少 PDF 读取组件，请更新 Win顺"_s, {}, {}, {}, true},
+            {u"scan-en.pdf"_s, u"failed"_s, u"PDF component is missing; update WinShun"_s, {}, {}, {}, true},
+            {u"locked.pdf"_s, u"failed"_s, u"PDF 已加密，解密后再试"_s, {}, {}, {}, false},
             // Read poorly, maybe upside down; one poor line is not enough to tell.
             {u"turned.png"_s, u"ready"_s, {}, u"image"_s, {1000, 700}, {0.52f, 0.61f, 0.58f}, true},
             {u"one-line.png"_s, u"ready"_s, {}, u"image"_s, {1000, 700}, {0.41f}, false},
