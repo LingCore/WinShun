@@ -229,7 +229,7 @@ CaptureApp::CaptureApp(Protocol& protocol, QString appDir, QString dataDir, QObj
     // go of while a key box records, and compared by name first).
     m_settings.setHotkeyProbe([this](unsigned modifiers, unsigned vk) {
         if (!::RegisterHotKey(m_window, ProbeKey, modifiers | MOD_NOREPEAT, vk))
-            return false;
+            return ::GetLastError() != ERROR_HOTKEY_ALREADY_REGISTERED; // only a key held is refused
         ::UnregisterHotKey(m_window, ProbeKey);
         return true;
     });

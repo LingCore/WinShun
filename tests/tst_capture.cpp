@@ -1803,6 +1803,10 @@ private slots:
         QCOMPARE(finishedBy(Qt::Key_F4, Qt::NoModifier), CaptureSession::Action::Pin);
         QCOMPARE(finishedBy(Qt::Key_S, Qt::ControlModifier), std::nullopt);
         QCOMPARE(finishedBy(Qt::Key_F3, Qt::NoModifier), std::nullopt);
+        // An Alt chord on a tool's letter pins; the tool keys never take Alt.
+        keys.set(KeyAction::Pin, QKeyCombination(Qt::AltModifier, Qt::Key_P));
+        QCOMPARE(finishedBy(Qt::Key_P, Qt::AltModifier), CaptureSession::Action::Pin);
+        keys.set(KeyAction::Pin, QKeyCombination(Qt::Key_F4));
 
         Rig rig;
         rig.session.setKeys(keys);
