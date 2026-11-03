@@ -654,6 +654,100 @@ private slots:
         merge.results(3, provider.id, command, {text}, false, true);
         QVERIFY(!merge.answerHeld());
     }
+
+    // 全部: a provider's first three rows are on the first screen, after the
+    // first five name rows; the others stay last, below the native content.
+    void contentProviderFirstRowsOnFirstScreen()
+    {
+        Fixture f;
+        Spec provider;
+        provider.id = u"test.ocr"_s;
+        provider.commandExtra = {{u"contentSearch"_s, true}};
+        QVERIFY(!f.install(provider).isEmpty());
+        const Catalog& catalog = f.host->catalog();
+        const QString command = catalog.find(provider.id)->manifest->commands.first().id;
+        Items items;
+        for (int i = 0; i < 5; ++i) {
+            Item item;
+            item.id = QString::number(i);
+            item.title = u"pic%1.png"_s.arg(i);
+            item.open.kind = Open::Kind::Path;
+            item.open.target = u"C:\\pics\\pic%1.png"_s.arg(i);
+            items.append(item);
+        }
+        const auto names = [](int n) {
+            SearchResults rows;
+            for (int i = 0; i < n; ++i)
+                rows.append(fileRow(u"name%1.txt"_s.arg(i)));
+            return rows;
+        };
+
+        // 10 names: pictures 0-2 at 5-7, pictures 3-4 last.
+        {
+            ListSink sink;
+            sink.rows = names(10);
+            Merge merge(sink, catalog);
+            merge.begin(1, u"报销"_s);
+            merge.namesShown();
+            merge.results(1, provider.id, command, items, false, true);
+            QCOMPARE(sink.count(), 15);
+            QCOMPARE(sink.row(4).name, u"name4.txt"_s);
+            QCOMPARE(sink.row(5).name, u"pic0.png"_s);
+            QCOMPARE(sink.row(6).name, u"pic1.png"_s);
+            QCOMPARE(sink.row(7).name, u"pic2.png"_s);
+            QCOMPARE(sink.row(8).name, u"name5.txt"_s);
+            QCOMPARE(sink.row(13).name, u"pic3.png"_s);
+            QCOMPARE(sink.row(14).name, u"pic4.png"_s);
+            QCOMPARE(merge.contentEnd(), 13);
+
+            // A native content match goes above the last two, after the names.
+            SearchResult hit = fileRow(u"note.txt"_s);
+            hit.line = 3;
+            sink.insert(merge.contentEnd(), hit);
+            QCOMPARE(sink.row(13).name, u"note.txt"_s);
+            QCOMPARE(sink.row(14).name, u"pic3.png"_s);
+
+            // Answered again with the names grown: nothing doubled or lost.
+            merge.results(1, provider.id, command, items, false, true);
+            QCOMPARE(sink.count(), 16);
+            QCOMPARE(sink.row(5).name, u"pic0.png"_s);
+            QCOMPARE(sink.row(7).name, u"pic2.png"_s);
+            sink.insert(10, fileRow(u"later.txt"_s)); // a name row found later
+            merge.results(1, provider.id, command, items, false, true);
+            QCOMPARE(sink.count(), 17);
+            QCOMPARE(std::ranges::count_if(sink.rows, [&](const SearchResult& r) { return merge.contentRow(r); }), 5);
+        }
+
+        // Fewer than five names: the rows follow them at once.
+        {
+            ListSink sink;
+            sink.rows = names(2);
+            Merge merge(sink, catalog);
+            merge.begin(2, u"报销"_s);
+            merge.namesShown();
+            merge.results(2, provider.id, command, items, false, true);
+            QCOMPARE(sink.names(), (QStringList {u"name0.txt"_s, u"name1.txt"_s, u"pic0.png"_s, u"pic1.png"_s, u"pic2.png"_s,
+                                        u"pic3.png"_s, u"pic4.png"_s}));
+        }
+
+        // Past the recent rows and the first five names; and an answer that
+        // came before the names waits for them.
+        {
+            ListSink sink;
+            Merge merge(sink, catalog);
+            merge.begin(3, u"报销"_s);
+            merge.results(3, provider.id, command, items, false, true);
+            QCOMPARE(sink.count(), 0);
+            sink.rows = names(8);
+            sink.rows[0].recent = true;
+            sink.rows[1].recent = true;
+            merge.namesShown();
+            QCOMPARE(sink.row(6).name, u"name6.txt"_s); // names 2-6 are the five after the recent two
+            QCOMPARE(sink.row(7).name, u"pic0.png"_s);
+            QCOMPARE(sink.row(9).name, u"pic2.png"_s);
+            QCOMPARE(sink.row(10).name, u"name7.txt"_s);
+        }
+    }
     // ---- manifest ------------------------------------------------------------
     void manifestComplete()
     {
