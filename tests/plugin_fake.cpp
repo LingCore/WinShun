@@ -117,7 +117,8 @@ int onceMain()
         std::snprintf(title, sizeof title, "elevated=%s integrity=%s (0x%lx)", elevated ? "yes" : "no", level, rid);
         json::Value::Object one = item("whoami", title, lite::utf8(lite::ownPath()));
         one["data"] = json::Value(json::Value::Object {{"elevated", elevated}, {"integrity", static_cast<unsigned long>(rid)},
-            {"self", lite::utf8(lite::ownPath())}, {"pluginDir", env(L"WS_PLUGIN_DIR")}});
+            {"self", lite::utf8(lite::ownPath())}, {"pluginDir", env(L"WS_PLUGIN_DIR")}, {"temp", env(L"TEMP")},
+            {"path", env(L"PATH")}, {"hkcuProbe", env(L"WS_HKCU_PROBE")}, {"components", env(L"WS_COMPONENTS_DIR")}});
         out(json::write(json::Value(json::Value::Object {{"items", json::Value::Array {json::Value(std::move(one))}}})));
         return 0;
     }
@@ -170,7 +171,7 @@ int onceMain()
         data["self"] = lite::utf8(lite::ownPath());
         for (const wchar_t* name : {L"WS_QUERY", L"WS_TEXT", L"WS_COMMAND", L"WS_TRIGGER", L"WS_KEYWORD", L"WS_MATCH", L"WS_PLUGIN_DIR",
                  L"WS_DATA_DIR", L"WS_SETTINGS", L"WS_FILTERS", L"WS_LOCALE", L"WS_THEME", L"WS_VERSION", L"PYTHONIOENCODING", L"FAKE_EXTRA",
-                 L"__PYVENV_LAUNCHER__"})
+                 L"__PYVENV_LAUNCHER__", L"TEMP", L"WS_COMPONENTS_DIR"})
             data[lite::utf8(name)] = env(name);
         json::Value::Object one = item("env", "env", "");
         one["data"] = json::Value(std::move(data));

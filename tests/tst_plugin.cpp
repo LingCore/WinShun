@@ -37,6 +37,7 @@
 #include <QJsonDocument>
 #include <QElapsedTimer>
 #include <QProcess>
+#include <QScopeGuard>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTimeZone>
@@ -852,7 +853,8 @@ private slots:
         QVERIFY(elevation::verdictName(Verdict::HostNotElevated).isEmpty());
         // The real store: per user, under ProgramData, never the environment's.
         const elevation::Store real = elevation::defaultStore();
-        QVERIFY2(real.root.contains(u"\\WinShun\\elevated-plugins\\S-1-"_s), qPrintable(real.root));
+        QVERIFY2(real.root.contains(u"\\WinShun Elevated Plugins\\S-1-"_s), qPrintable(real.root));
+        QVERIFY2(real.root.startsWith(QString::fromLocal8Bit(qgetenv("ProgramFiles")), Qt::CaseInsensitive), qPrintable(real.root));
         QVERIFY(real.requireProtected);
     }
 
@@ -945,9 +947,180 @@ private slots:
         // Never confirmed: an update confirms nothing.
         QVERIFY(elevation::keepConfirmed(store, u"a.b"_s, other, package, &error));
         QVERIFY(!elevation::hasRecord(store, u"a.b"_s, other));
+        // An older package (an old list served again) is not kept.
+        const QString oldZip = temp.path() + u"/a.b-1.0.5.wsplugin"_s;
+        QVERIFY(writeZip(oldZip, {{u"plugin.json"_s, R"({"manifest":1,"id":"a.b","name":"X","version":"1.0.5"})"}, {u"tool.exe"_s, "MZ old"}}));
+        QFile oldFile(oldZip);
+        QVERIFY(oldFile.open(QIODevice::ReadOnly));
+        QVERIFY(!elevation::keepConfirmed(store, u"a.b"_s, folder, oldFile.readAll(), &error));
+        QVERIFY2(error.contains(u"旧"_s), qPrintable(error));
+        // A package confirms a plugin of the library only when it is what is installed.
+        QVERIFY2(elevation::confirmPackage(store, u"a.b"_s, folder, package, &error), qPrintable(error));
+        QVERIFY(writeFile(folder + u"\\tool.exe"_s, "MZ the program 1.X"));
+        QVERIFY(!elevation::confirmPackage(store, u"a.b"_s, folder, package, &error));
+        QVERIFY2(error.contains(u"插件库"_s), qPrintable(error));
+        QVERIFY(writeFile(folder + u"\\tool.exe"_s, "MZ the program 1.1"));
+        QVERIFY(laterTime(folder + u"\\tool.exe"_s, 180));
         // Uninstalled: the record and copies go.
         elevation::forget(store, u"a.b"_s, folder);
         QCOMPARE(elevation::check(store, u"a.b"_s, folder).check, elevation::Check::NoRecord);
+        // ... and, uninstalled while Win顺 was not elevated, the next sweep.
+        QVERIFY2(elevation::confirmFolder(store, u"a.b"_s, folder, &error), qPrintable(error));
+        QCOMPARE(elevation::sweep(store, [](const QString&, const QString&) { return true; }), 0);
+        QCOMPARE(elevation::check(store, u"a.b"_s, folder).check, elevation::Check::Match);
+        QCOMPARE(elevation::sweep(store, [](const QString& id, const QString&) { return id != u"a.b"_s; }), 1);
+        QCOMPARE(elevation::check(store, u"a.b"_s, folder).check, elevation::Check::NoRecord);
+    }
+
+    // A size and time kept as they were (SetFileTime) fool the hash cache:
+    // the confirmed copy runs then, never the changed file.
+    void elevationForgedTimeRunsConfirmedBytes()
+    {
+        QTemporaryDir temp;
+        const elevation::Store store {temp.path() + u"/store"_s, false};
+        const QString folder = QDir::toNativeSeparators(temp.path() + u"/plugins/a.b"_s);
+        QVERIFY(writeFile(folder + u"\\plugin.json"_s, R"({"manifest":1,"id":"a.b","name":"X","version":"1.0.0"})"));
+        QVERIFY(writeFile(folder + u"\\tool.exe"_s, "MZ the program"));
+        QString error;
+        QVERIFY2(elevation::confirmFolder(store, u"a.b"_s, folder, &error), qPrintable(error));
+        QCOMPARE(elevation::check(store, u"a.b"_s, folder).check, elevation::Check::Match);
+        // The same size, written, and its time put back to the 100 ns.
+        const std::wstring exe = (folder + u"\\tool.exe"_s).toStdWString();
+        FILETIME written {};
+        {
+            const HANDLE h = ::CreateFileW(exe.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+            QVERIFY(h != INVALID_HANDLE_VALUE);
+            QVERIFY(::GetFileTime(h, nullptr, nullptr, &written));
+            ::CloseHandle(h);
+        }
+        QVERIFY(writeFile(folder + u"\\tool.exe"_s, "MZ the EVILgrm"));
+        {
+            const HANDLE h = ::CreateFileW(exe.c_str(), FILE_WRITE_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+            QVERIFY(h != INVALID_HANDLE_VALUE);
+            QVERIFY(::SetFileTime(h, nullptr, nullptr, &written));
+            ::CloseHandle(h);
+        }
+        const elevation::Result r = elevation::check(store, u"a.b"_s, folder);
+        QCOMPARE(r.check, elevation::Check::Match); // the cache was taken in ...
+        QFile copy(r.dir + u"\\tool.exe"_s); // ... and what runs is still the confirmed bytes
+        QVERIFY(copy.open(QIODevice::ReadOnly));
+        QCOMPARE(copy.readAll(), QByteArray("MZ the program"));
+        // Confirming again reads every file afresh (no cache): the change is seen.
+        QVERIFY2(elevation::confirmFolder(store, u"a.b"_s, folder, &error), qPrintable(error));
+        QFile again(elevation::check(store, u"a.b"_s, folder).dir + u"\\tool.exe"_s);
+        QVERIFY(again.open(QIODevice::ReadOnly));
+        QCOMPARE(again.readAll(), QByteArray("MZ the EVILgrm"));
+    }
+
+    // The store's folders: a link at any of them is refused (never followed,
+    // never repaired), and a held copy cannot be renamed away.
+    void elevationStoreRefusesLinks()
+    {
+        QTemporaryDir temp;
+        const elevation::Store store {QDir::toNativeSeparators(temp.path() + u"/store"_s), false};
+        const QString folder = QDir::toNativeSeparators(temp.path() + u"/plugins/a.b"_s);
+        QVERIFY(writeFile(folder + u"\\plugin.json"_s, R"({"manifest":1,"id":"a.b","name":"X","version":"1.0.0"})"));
+        QVERIFY(writeFile(folder + u"\\tool.exe"_s, "MZ the program"));
+        QString error;
+        QVERIFY2(elevation::confirmFolder(store, u"a.b"_s, folder, &error), qPrintable(error));
+        elevation::Result r = elevation::check(store, u"a.b"_s, folder);
+        QCOMPARE(r.check, elevation::Check::Match);
+        const QString tree = r.dir;
+        const QString key = QFileInfo(tree).path();
+        const auto junction = [](const QString& link, const QString& target) {
+            QProcess mklink;
+            mklink.start(u"cmd.exe"_s, {u"/c"_s, u"mklink"_s, u"/J"_s, QDir::toNativeSeparators(link), QDir::toNativeSeparators(target)});
+            return mklink.waitForFinished(10000) && QFileInfo(link).exists();
+        };
+        // Each level in turn moved aside and a junction to it put in its place.
+        for (const QString& level : {QDir::toNativeSeparators(store.root), QDir::toNativeSeparators(key), QDir::toNativeSeparators(tree)}) {
+            const QString aside = level + u".real"_s;
+            QVERIFY2(QDir().rename(level, aside), qPrintable(level));
+            QVERIFY2(junction(level, aside), qPrintable(level));
+            r = elevation::check(store, u"a.b"_s, folder);
+            QVERIFY2(r.check == elevation::Check::Unavailable, qPrintable(level + u": "_s + r.detail));
+            QVERIFY2(r.detail.contains(u"链接"_s), qPrintable(r.detail));
+            QVERIFY(!elevation::confirmFolder(store, u"a.b"_s, folder, &error));
+            QVERIFY(QDir().rmdir(level)); // the junction
+            QVERIFY(QDir().rename(aside, level));
+            QCOMPARE(elevation::check(store, u"a.b"_s, folder).check, elevation::Check::Match);
+        }
+        // Held (a start under way): the copy and the folders above it stay put.
+        r = elevation::check(store, u"a.b"_s, folder, true);
+        QVERIFY(r.hold);
+        QVERIFY(!QDir().rename(tree, tree + u".moved"_s));
+        QVERIFY(!QDir().rename(key, key + u".moved"_s));
+        QVERIFY(!QDir().rename(store.root, store.root + u".moved"_s));
+        r.hold.reset();
+        QVERIFY(QDir().rename(tree, tree + u".moved"_s));
+        QVERIFY(QDir().rename(tree + u".moved"_s, tree));
+
+        // The plugin's folder itself a link, or a hard link in it: not copied.
+        const QString linked = QDir::toNativeSeparators(temp.path() + u"/plugins/c.d"_s);
+        QVERIFY(junction(linked, folder));
+        QVERIFY(!elevation::confirmFolder(store, u"c.d"_s, linked, &error));
+        QVERIFY2(error.contains(u"链接"_s), qPrintable(error));
+        QVERIFY(QDir().rmdir(linked));
+        const QString secret = QDir::toNativeSeparators(temp.path() + u"/secret.txt"_s);
+        QVERIFY(writeFile(secret, "only for administrators"));
+        QVERIFY(::CreateHardLinkW(reinterpret_cast<const wchar_t*>((folder + u"\\data.txt"_s).utf16()),
+            reinterpret_cast<const wchar_t*>(secret.utf16()), nullptr));
+        QVERIFY(!elevation::confirmFolder(store, u"a.b"_s, folder, &error));
+        QVERIFY2(error.contains(u"硬链接"_s), qPrintable(error));
+        QVERIFY(QFile::remove(folder + u"\\data.txt"_s));
+    }
+
+    // The elevated runner's block: none of the user's variables (HKCU's, the
+    // parent's), none that load code; the system's PATH; the user's folders.
+    void elevatedEnvironmentIsClean()
+    {
+        const QString name = u"WS_HKCU_PROBE_%1"_s.arg(QCoreApplication::applicationPid());
+        QSettings user(u"HKEY_CURRENT_USER\\Environment"_s, QSettings::NativeFormat);
+        user.setValue(name, u"from-hkcu"_s);
+        user.sync();
+        const auto removeIt = qScopeGuard([&] {
+            user.remove(name);
+            user.sync();
+        });
+        qputenv("COR_ENABLE_PROFILER", "1");
+        qputenv("NODE_OPTIONS", "--require evil.js");
+        qputenv("WS_PARENT_ONLY", "1");
+        const auto unset = qScopeGuard([] {
+            qunsetenv("COR_ENABLE_PROFILER");
+            qunsetenv("NODE_OPTIONS");
+            qunsetenv("WS_PARENT_ONLY");
+        });
+        const auto parse = [](const std::vector<wchar_t>& block) {
+            QHash<QString, QString> vars;
+            for (const wchar_t* p = block.data(); *p; p += std::wcslen(p) + 1) {
+                const QString entry = QString::fromWCharArray(p);
+                const qsizetype eq = entry.indexOf(u'=', 1);
+                vars.insert(entry.left(eq).toUpper(), entry.mid(eq + 1));
+            }
+            return vars;
+        };
+        // The user's block (the normal runner's) does have the HKCU variable: the probe works.
+        HANDLE raw = nullptr;
+        QVERIFY(::OpenProcessToken(::GetCurrentProcess(), TOKEN_QUERY | TOKEN_DUPLICATE, &raw));
+        const QHash<QString, QString> normal = parse(sandbox::environmentFor(raw, {}));
+        ::CloseHandle(raw);
+        QCOMPARE(normal.value(name.toUpper()), u"from-hkcu"_s);
+
+        const QHash<QString, QString> clean = parse(sandbox::elevatedEnvironment({{L"WS_EXTRA", L"x"}, {L"TEMP", L"C:\\store\\temp"}}));
+        QVERIFY(!clean.contains(name.toUpper()));
+        QVERIFY(!clean.contains(u"COR_ENABLE_PROFILER"_s));
+        QVERIFY(!clean.contains(u"NODE_OPTIONS"_s));
+        QVERIFY(!clean.contains(u"WS_PARENT_ONLY"_s));
+        QCOMPARE(clean.value(u"WS_EXTRA"_s), u"x"_s);
+        QCOMPARE(clean.value(u"TEMP"_s), u"C:\\store\\temp"_s);
+        QVERIFY(clean.value(u"PATH"_s).contains(u"\\system32"_s, Qt::CaseInsensitive));
+        QVERIFY(!clean.value(u"PATH"_s).contains(u"%"_s));
+        QVERIFY(!clean.value(u"USERPROFILE"_s).isEmpty());
+        QVERIFY(!clean.value(u"LOCALAPPDATA"_s).isEmpty());
+        QVERIFY(clean.contains(u"SYSTEMROOT"_s));
+        QVERIFY(sandbox::loadsCode(L"DOTNET_STARTUP_HOOKS"));
+        QVERIFY(sandbox::loadsCode(L"cor_profiler_path"));
+        QVERIFY(!sandbox::loadsCode(L"SystemRoot"));
     }
 
     // The whole path with a host that plays an elevated Win顺 (its token is
@@ -970,7 +1143,7 @@ private slots:
         spec.role = u"--once"_s;
         spec.args = {u"--echo-env"_s};
         spec.permissions = {u"elevated"_s};
-        spec.runtimeExtra = {{u"debounceMs"_s, 0}};
+        spec.runtimeExtra = {{u"debounceMs"_s, 0}, {u"env"_s, QJsonObject {{u"FAKE_EXTRA"_s, u"aaaa"_s}}}};
         const QString folder = f.install(spec);
         QVERIFY(!folder.isEmpty());
         QVERIFY(f.host->runsElevated(spec.id));
@@ -993,6 +1166,42 @@ private slots:
         QVERIFY2(copy.startsWith(QDir::toNativeSeparators(store.path())), qPrintable(copy));
         QVERIFY(data.value(u"self"_s).toString().startsWith(copy));
         QVERIFY2(QTest::qWaitFor([&] { return f.logs.join(u'\n').contains(u"管理员 runner 就绪"_s); }, 5000), qPrintable(f.logs.join(u'\n')));
+        QCOMPARE(data.value(u"FAKE_EXTRA"_s).toString(), u"aaaa"_s);
+        QVERIFY2(data.value(u"TEMP"_s).toString().startsWith(QDir::toNativeSeparators(store.path())), qPrintable(data.value(u"TEMP"_s).toString()));
+        QVERIFY(data.value(u"WS_COMPONENTS_DIR"_s).toString().isEmpty()); // the user's shared folder: not for it
+
+        // The manifest in its folder changed (runtime.env), the size and the
+        // time kept as they were: the hash cache is fooled, the catalog is
+        // not, and the copy's manifest is no longer the catalog's: with
+        // normal rights from its folder, never the changed env elevated.
+        {
+            const std::wstring path = (folder + u"\\plugin.json"_s).toStdWString();
+            FILETIME written {};
+            HANDLE h = ::CreateFileW(path.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+            QVERIFY(h != INVALID_HANDLE_VALUE);
+            QVERIFY(::GetFileTime(h, nullptr, nullptr, &written));
+            ::CloseHandle(h);
+            QFile manifest(folder + u"\\plugin.json"_s);
+            QVERIFY(manifest.open(QIODevice::ReadOnly));
+            QByteArray text = manifest.readAll();
+            manifest.close();
+            const qsizetype size = text.size();
+            text.replace("\"aaaa\"", "\"evil\"");
+            QCOMPARE(text.size(), size);
+            QVERIFY(writeFile(folder + u"\\plugin.json"_s, text));
+            h = ::CreateFileW(path.c_str(), FILE_WRITE_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+            QVERIFY(h != INVALID_HANDLE_VALUE);
+            QVERIFY(::SetFileTime(h, nullptr, nullptr, &written));
+            ::CloseHandle(h);
+        }
+        f.host->catalog().scan();
+        QCOMPARE(f.host->elevationState(spec.id).verdict, elevation::Verdict::Changed);
+        QVERIFY(f.host->query(u"fk tampered"_s, Scope::All, 20));
+        QVERIFY2(f.waitFinal(20), qPrintable(f.logs.join(u'\n')));
+        data = f.finalFor(20)->items[0].data.toObject();
+        QCOMPARE(data.value(u"FAKE_EXTRA"_s).toString(), u"evil"_s);
+        QCOMPARE(data.value(u"WS_PLUGIN_DIR"_s).toString(), folder);
+        QVERIFY(f.logs.join(u'\n').contains(u"插件的清单和确认时的不一样"_s));
 
         // Its exe changed in its folder: from the folder, with normal rights.
         {
@@ -1019,6 +1228,34 @@ private slots:
         QVERIFY(f.host->query(u"rs y"_s, Scope::All, 5));
         QVERIFY2(f.waitFinal(5), qPrintable(f.logs.join(u'\n')));
         QCOMPARE(f.host->state(resident.id).status, Host::State::Status::Running);
+
+        // The runner with the user's normal rights cannot speak for the
+        // elevated runner's plugins: its lines and exits for their instance
+        // numbers are dropped.
+        // (The first made: the elevated one comes at the first elevated start.)
+        const QList<Runner*> runners = f.host->findChildren<Runner*>(Qt::FindDirectChildrenOnly);
+        QCOMPARE(runners.size(), 2);
+        Runner* normal = runners.first();
+        for (std::uint64_t i = Host::kElevatedInstances; i < Host::kElevatedInstances + 16; ++i) {
+            emit normal->line(i, R"({"jsonrpc":"2.0","method":"winshun/notify","params":{"title":"forged","text":"forged"}})");
+            emit normal->instanceExited(i, 0, {}, false);
+        }
+        QTest::qWait(200);
+        QVERIFY(f.host->state(resident.id).elevated);
+        QCOMPARE(f.host->state(resident.id).status, Host::State::Status::Running);
+        QVERIFY(!f.notices.join(u'\n').contains(u"forged"_s));
+        QVERIFY(f.logs.join(u'\n').contains(u"不属于它的实例"_s));
+
+        // Not for the AI or the command line while it runs as administrator.
+        bool replied = false;
+        QString refused;
+        f.host->callCommand(resident.id, u"main"_s, u"x"_s, 5, [&](bool ok, const Items&, const QString& error) {
+            replied = !ok;
+            refused = error;
+        });
+        QVERIFY(QTest::qWaitFor([&] { return replied; }, 2000));
+        QVERIFY2(refused.contains(u"管理员"_s), qPrintable(refused));
+
         // Stopped through the elevated runner (the instance number routes it).
         f.host->setEnabled(resident.id, false);
         QVERIFY(QTest::qWaitFor([&] { return f.host->state(resident.id).status == Host::State::Status::Off; }, 8000));
