@@ -1099,6 +1099,38 @@ private slots:
         QCOMPARE(store.statistics().value(u"files"_s).toInt(), 0);
     }
 
+    // Installed, the plugin lives in the user's plugins folder, not beside
+    // pdfium.dll in Win顺's: its worker must still read PDFs (the other tests
+    // run it from the build folder, where pdfium.dll is next to it).
+    void installedWorkerReadsPdfPages()
+    {
+        const QString appDir = workerAppDir();
+        if (!ws::PaddleOcr::installed(appDir))
+            QSKIP("Enhanced OCR component is not installed in this test runtime");
+        QVERIFY2(QFileInfo::exists(QDir(appDir).filePath(u"pdfium.dll"_s)), qPrintable(appDir));
+        QTemporaryDir temp;
+        const QDir installed(temp.filePath(u"plugins/winshun.ocr-search"_s));
+        QVERIFY(installed.mkpath(u"."_s));
+        const QDir build(QCoreApplication::applicationDirPath());
+        for (const QString& name : {u"WinShunOcrSearch.exe"_s, u"WinShunOcrSearchApp.dll"_s})
+            QVERIFY(QFile::copy(build.filePath(name), installed.filePath(name)));
+        QVERIFY(!installed.exists(u"pdfium.dll"_s));
+        const QString path = temp.filePath(u"mixed.pdf"_s), data = temp.filePath(u"data"_s);
+        pdf(path, imageBytes());
+        {
+            Store store(data);
+        }
+        Worker worker(installed.filePath(u"WinShunOcrSearch.exe"_s), appDir, data, u"test"_s);
+        QJsonObject result;
+        try {
+            result = worker.read(path, [] { return false; });
+        } catch (const std::exception& e) {
+            QFAIL(e.what());
+        }
+        QCOMPARE(result.value(u"images"_s).toInt(), 2); // the third page is text only
+        QVERIFY(!result.value(u"pages"_s).toArray().first().toObject().value(u"pieces"_s).toArray().isEmpty());
+    }
+
     void fullIndexCanStillBeEmptied()
     {
         QTemporaryDir temp;
