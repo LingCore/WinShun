@@ -624,7 +624,8 @@ target_include_directories(tst_cliplifecycle PRIVATE ${PROJECT_SOURCE_DIR}/src/a
 target_link_libraries(tst_cliplifecycle PRIVATE winshun_options wscore wscapture Qt6::Gui Qt6::Test
     onnxruntime_headers windowsapp user32 gdi32 shell32 ole32 version)
 set_target_properties(tst_cliplifecycle PROPERTIES WIN32_EXECUTABLE FALSE)
-add_test(NAME tst_cliplifecycle COMMAND tst_cliplifecycle -o -,txt)
+add_test(NAME tst_cliplifecycle COMMAND tst_cliplifecycle -o -,txt
+    -o "${CMAKE_CURRENT_BINARY_DIR}/cliplifecycle.txt,txt")
 set_tests_properties(tst_cliplifecycle PROPERTIES RUN_SERIAL TRUE
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
