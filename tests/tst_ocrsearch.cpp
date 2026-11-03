@@ -5,8 +5,10 @@
 #include "Host.h"
 #include "Install.h"
 #include "ContentIndex.h"
+#include "platform/OcrFiles.h"
 
 #include <QBuffer>
+#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
 #include <QElapsedTimer>
@@ -14,6 +16,7 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPdfWriter>
@@ -619,6 +622,113 @@ private slots:
         QSqlDatabase::removeDatabase(u"check-legacy"_s);
     }
 
+    // Opening an index of the pipeline before (ocr-search-2) marks to be read
+    // again only the files where what it left out can matter; the rest keeps
+    // its rows and is not read again. Nothing is decoded or read here.
+    void upgradeMarksOnlyWhatTheOldPipelineLeftOut()
+    {
+        QTemporaryDir temp;
+        const QString index = temp.filePath(u"index"_s);
+        const QString older = QString(ws::ocr::kVersion) + u"/ocr-search-2"_s;
+        struct Row {
+            QString name, status, error, kind;
+            QSize size;
+            QList<float> scores;
+            bool again;
+        };
+        const QList<Row> rows {
+            // Made smaller to be read: a photo stays as read; a long picture
+            // and a page rendered at the old size are read again.
+            {u"photo.jpg"_s, u"ready"_s, {}, u"image"_s, {4096, 3072}, {0.98f, 0.97f}, false},
+            {u"chat.png"_s, u"ready"_s, {}, u"image"_s, {1100, 4096}, {0.96f, 0.95f}, true},
+            {u"slides.pptx"_s, u"ready"_s, {}, u"office"_s, {4096, 1200}, {0.97f, 0.98f}, true},
+            {u"poster.pdf"_s, u"ready"_s, {}, u"pdf"_s, {1839, 2600}, {0.99f, 0.98f}, true},
+            {u"letter.pdf"_s, u"ready"_s, {}, u"pdf"_s, {1240, 1754}, {0.99f, 0.99f}, false},
+            {u"plain.png"_s, u"ready"_s, {}, u"image"_s, {1200, 800}, {0.99f, 0.99f}, false},
+            // A PDF without pictures may draw its words; an Office file
+            // without pictures has nothing to read.
+            {u"drawn.pdf"_s, u"empty"_s, {}, {}, {}, {}, true},
+            {u"memo.docx"_s, u"empty"_s, {}, {}, {}, {}, false},
+            // Given up for want of progress, in either language; a damaged file is not tried again.
+            {u"dense.png"_s, u"failed"_s, u"文件处理 60 秒没有进展，已跳过；可用“重新检查所有文件”重试"_s, {}, {}, {},
+                true},
+            {u"dense-en.png"_s, u"failed"_s,
+                u"No progress on the file for 60 seconds; skipped. Use “Recheck all files” to try again"_s, {}, {}, {},
+                true},
+            {u"damaged.png"_s, u"failed"_s, u"文件读取不完整"_s, {}, {}, {}, false},
+            // Read poorly, maybe upside down; one poor line is not enough to tell.
+            {u"turned.png"_s, u"ready"_s, {}, u"image"_s, {1000, 700}, {0.52f, 0.61f, 0.58f}, true},
+            {u"one-line.png"_s, u"ready"_s, {}, u"image"_s, {1000, 700}, {0.41f}, false},
+        };
+        const auto hashOf
+            = [](const QString& text) { return QCryptographicHash::hash(text.toUtf8(), QCryptographicHash::Sha256); };
+        // Real files: a search only answers for a file as it was read.
+        const auto sizeOf = [&](const QString& name) { return QFileInfo(temp.filePath(name)).size(); };
+        const auto modifiedOf
+            = [&](const QString& name) { return QFileInfo(temp.filePath(name)).lastModified().toMSecsSinceEpoch(); };
+        int again = 0;
+        {
+            Store store(index);
+            QCOMPARE(store.recheckRemaining(), 0);
+            for (const Row& row : rows) {
+                const QString path = temp.filePath(row.name);
+                write(path, row.name.toUtf8());
+                again += row.again;
+                if (row.status == u"failed") {
+                    store.status(path, sizeOf(row.name), modifiedOf(row.name), older, 1, row.status, row.error);
+                    continue;
+                }
+                store.beginFile(path, sizeOf(row.name), modifiedOf(row.name), hashOf(path), older, 1);
+                if (!row.kind.isEmpty()) {
+                    QList<ws::OcrPiece> pieces;
+                    for (const float score : row.scores) {
+                        ws::OcrPiece piece;
+                        piece.text = QFileInfo(row.name).completeBaseName() + u" 731905"_s;
+                        piece.score = score;
+                        piece.quad = QPolygonF(QRectF(10, 20 + 40 * pieces.size(), 300, 30));
+                        pieces.append(piece);
+                    }
+                    store.addPage(
+                        store.putAsset(hashOf(row.name), row.size, pieces), u"page"_s, {{u"kind"_s, row.kind}});
+                }
+                store.finishFile(row.status);
+            }
+        }
+        {
+            auto db = QSqlDatabase::addDatabase(u"QSQLITE"_s, u"pipeline-2"_s);
+            db.setDatabaseName(QDir(index).filePath(u"ocr-index.sqlite"_s));
+            QVERIFY(db.open());
+            QSqlQuery q(db);
+            QVERIFY(q.exec(u"PRAGMA user_version=2"_s));
+        }
+        QSqlDatabase::removeDatabase(u"pipeline-2"_s);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, (Store {index, 0})); // searching waits for the upgrade
+        {
+            Store upgraded(index);
+            for (const Row& row : rows) {
+                const QString state
+                    = upgraded.state(temp.filePath(row.name), sizeOf(row.name), modifiedOf(row.name), pipelineEngine());
+                QVERIFY2(state == (row.again ? QString() : row.status), qPrintable(row.name + u": "_s + state));
+                if (!row.kind.isEmpty())
+                    QVERIFY2(
+                        (upgraded.asset(hashOf(row.name)) == 0) == (row.name == u"turned.png"), qPrintable(row.name));
+            }
+            QCOMPARE(upgraded.recheckRemaining(), again);
+            QCOMPARE(upgraded.statistics().value(u"recheck"_s).toInt(), again);
+            // Until it is read again, the poorly read picture still answers searches.
+            QCOMPARE(upgraded.search(u"turned"_s, 10).size(), 1);
+        }
+        {
+            Store reopened(index); // upgraded once: nothing more is marked
+            QCOMPARE(reopened.recheckRemaining(), again);
+            QVERIFY(reopened.asset(hashOf(u"one-line.png"_s)));
+            reopened.recheckDone();
+            QCOMPARE(reopened.statistics().value(u"recheck"_s).toInt(), 0);
+        }
+        Store reader(index, 0);
+        QCOMPARE(reader.search(u"731905"_s, 20).size(), 8);
+    }
+
     void filtersAndCancellation()
     {
         QTemporaryDir temp;
@@ -1146,6 +1256,93 @@ private slots:
             Store store(index, 0);
             QVERIFY(store.search(u"864201"_s, 20).isEmpty());
         }
+    }
+
+    // An index of the pipeline before reads again what that one left out
+    // (drawn words in a PDF, a picture read upside down; a text-only PDF is
+    // looked at once more) and nothing else: the other pictures keep their
+    // stored recognition and are not read with OCR again.
+    void upgradeReadsAgainOnlyWhatWasLeftOut()
+    {
+        const QString appDir = QCoreApplication::applicationDirPath();
+        if (!ws::PaddleOcr::installed(appDir))
+            QSKIP("Enhanced OCR component is not installed in this test runtime");
+        QTemporaryDir temp;
+        const QString source = temp.filePath(u"sources"_s), index = temp.filePath(u"index"_s);
+        QDir().mkpath(source);
+        write(QDir(source).filePath(u"upright.png"_s), imageBytes());
+        QVERIFY(QImage::fromData(imageBytes(u"TURNED 864201"_s))
+                .transformed(QTransform().rotate(180))
+                .save(QDir(source).filePath(u"turned.png"_s)));
+        {
+            QPdfWriter writer(QDir(source).filePath(u"drawn.pdf"_s));
+            writer.setResolution(100);
+            QPainter painter(&writer);
+            QPainterPath outlined;
+            outlined.addText(40, 80, QFont(u"Arial"_s, 24), u"OUTLINED 552210"_s);
+            painter.fillPath(outlined, Qt::black);
+        }
+        {
+            QPdfWriter writer(QDir(source).filePath(u"text.pdf"_s));
+            writer.setResolution(100);
+            QPainter painter(&writer);
+            painter.setFont(QFont(u"Arial"_s, 24));
+            painter.drawText(40, 80, u"Words in the text layer"_s);
+        }
+        ScanOptions options;
+        options.folders = {source};
+        int recognized = 0;
+        scan(appDir, index, options, [] { return false; }, [&](const ScanProgress& p) { recognized = p.recognized; });
+        QCOMPARE(recognized, 3);
+        // What ocr-search-2 stored: no page of the drawn PDF, the turned
+        // picture read as it came (poorly), every row by that pipeline.
+        {
+            auto db = QSqlDatabase::addDatabase(u"QSQLITE"_s, u"left-out"_s);
+            db.setDatabaseName(QDir(index).filePath(u"ocr-index.sqlite"_s));
+            QVERIFY(db.open());
+            QSqlQuery q(db);
+            QVERIFY(q.exec(u"UPDATE files SET engine='%1'"_s.arg(QString(ws::ocr::kVersion) + u"/ocr-search-2"_s)));
+            QVERIFY(q.exec(u"UPDATE assets SET hash=hash||x'00' WHERE id IN "
+                           u"(SELECT asset FROM pages WHERE file LIKE '%drawn.pdf')"_s));
+            QVERIFY(q.exec(u"DELETE FROM pages WHERE file LIKE '%drawn.pdf'"_s));
+            QVERIFY(q.exec(u"UPDATE files SET status='empty' WHERE path LIKE '%drawn.pdf'"_s));
+            QList<ws::OcrPiece> poor;
+            for (int i = 0; i < 3; ++i) {
+                ws::OcrPiece piece;
+                piece.text = u"10Z98t"_s;
+                piece.score = 0.55f;
+                piece.quad = QPolygonF(QRectF(10, 20 + 40 * i, 300, 30));
+                poor.append(piece);
+            }
+            q.prepare(u"UPDATE assets SET pieces=? WHERE id=(SELECT asset FROM pages WHERE file LIKE '%turned.png')"_s);
+            q.addBindValue(qCompress(QJsonDocument(piecesToJson(poor)).toJson(QJsonDocument::Compact), 6));
+            QVERIFY(q.exec());
+            QCOMPARE(q.numRowsAffected(), 1);
+            QVERIFY(q.exec(u"PRAGMA user_version=2"_s));
+        }
+        QSqlDatabase::removeDatabase(u"left-out"_s);
+        recognized = -1;
+        int recheck = 0;
+        scan(
+            appDir, index, options, [] { return false; },
+            [&](const ScanProgress& p) {
+                recognized = p.recognized;
+                recheck = std::max(recheck, p.recheck);
+            });
+        QCOMPARE(recheck, 3); // the drawn and the text-only PDF, the turned picture
+        QCOMPARE(recognized, 2); // the drawn page and the turned picture, not the upright one
+        Store store(index, 0);
+        const QJsonObject statistics = store.statistics();
+        QCOMPARE(statistics.value(u"recheck"_s).toInt(), 0);
+        QCOMPARE(statistics.value(u"empty"_s).toInt(), 1); // the text-only PDF
+        QCOMPARE(store.search(u"552210"_s, 10).size(), 1);
+        const auto turned = store.search(u"864201"_s, 10);
+        QCOMPARE(turned.size(), 1);
+        double scores = 0;
+        const auto pieces = store.pieces(turned.first().asset);
+        for (const auto& piece : pieces)
+            scores += piece.score;
+        QVERIFY2(!pieces.isEmpty() && scores / pieces.size() > 0.75, qPrintable(QString::number(scores)));
     }
 
     void workerDeadlineCancellationAndRecovery()

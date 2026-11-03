@@ -44,6 +44,8 @@ struct ScanOptions {
 struct ScanProgress {
     int checked = 0;
     int recognized = 0;
+    // Files an upgrade marked to be read again and not yet visited.
+    int recheck = 0;
     QString current;
     QString message;
 };

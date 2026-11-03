@@ -2,6 +2,7 @@
 
 #include "ContentIndex.h"
 #include "Query.h"
+#include "platform/OcrFiles.h"
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -26,6 +27,17 @@ using namespace Qt::StringLiterals;
 
 namespace ws::ocrsearch {
 namespace {
+// 3: the pipeline below reads files with what 2 left out (recheckOlderPipeline()).
+constexpr int kSchema = 3;
+constexpr auto kPipeline = u"/ocr-search-3";
+constexpr auto kOlderPipeline = u"/ocr-search-2";
+// Unchanged while one picture is read the same: the recognition stored for
+// it before is found again by the same imageHash().
+constexpr auto kRecognizer = u"/ocr-search-2";
+// A picture whose lines read at less than this on average was maybe upside
+// down (measured: 11 to 18 lines kept at 0.57; upright text reads above 0.9).
+constexpr double kPoorScore = 0.75;
+
 void checked(QSqlQuery& query)
 {
     if (!query.exec())
@@ -304,10 +316,10 @@ Store::Store(const QString& folder, int capacityMB)
             throw std::runtime_error("Cannot read the OCR index version");
         const int schemaVersion = version.value(0).toInt();
         version.finish();
-        if (schemaVersion > 2)
+        if (schemaVersion > kSchema)
             throw std::runtime_error("This OCR index needs a newer plugin");
         if (capacityMB == 0) {
-            if (schemaVersion != 2 || storedTermsRules(m_db) != termsRules())
+            if (schemaVersion != kSchema || storedTermsRules(m_db) != termsRules())
                 throw std::runtime_error("The OCR index must be upgraded before searching");
             return;
         }
@@ -337,16 +349,22 @@ Store::Store(const QString& folder, int capacityMB)
         exec(u"CREATE INDEX IF NOT EXISTS page_asset ON pages(asset)"_s);
         exec(u"CREATE VIRTUAL TABLE IF NOT EXISTS asset_terms USING fts5(tokens,content='',detail=none,columnsize=0)"_s);
         exec(u"CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY,value TEXT)"_s);
-        if (schemaVersion < 2 || storedTermsRules(m_db) != termsRules()) {
+        const bool rules = schemaVersion < 2 || storedTermsRules(m_db) != termsRules();
+        if (rules || schemaVersion < kSchema) {
             // Reuse stored recognition: rebuilding never decodes source images
             // or calls OCR, and asset IDs and highlight boxes stay the same.
             if (!m_transaction)
                 begin();
-            rebuildTerms();
-            exec(u"DROP TABLE IF EXISTS grams"_s);
-            exec(u"PRAGMA user_version=2"_s);
+            if (rules) {
+                rebuildTerms();
+                exec(u"DROP TABLE IF EXISTS grams"_s);
+            }
+            if (schemaVersion < kSchema)
+                recheckOlderPipeline();
+            exec(u"PRAGMA user_version=%1"_s.arg(kSchema));
             commit();
-            reclaim();
+            if (rules)
+                reclaim();
         }
     } catch (...) {
         rollback();
@@ -390,6 +408,72 @@ void Store::commit()
         throw std::runtime_error(error.toStdString());
     }
     m_transaction = false;
+}
+
+// The pipeline before (ocr-search-2) left out PDF pages whose words are drawn
+// rather than in the text layer, made long pictures and big pages smaller,
+// read upside-down pages as they came, and gave up on dense pages it heard
+// nothing from for a minute. Only the files where that can matter are walked
+// again: their rows keep the older engine, so that the next scan visits them;
+// every other row is marked as made by this pipeline. Nothing is decoded or
+// read here, and a picture whose pixels come out the same finds its
+// recognition again (imageHash()).
+void Store::recheckOlderPipeline()
+{
+    const QString older = QString(ocr::kVersion) + QStringView(kOlderPipeline);
+    {
+        // Read poorly, maybe upside down: one more byte on the key makes the
+        // next look-up miss, so the picture is read again (turned round, if
+        // that reads clearly better). Until then the row serves searches.
+        QSqlQuery poor(m_db), mark(m_db);
+        poor.setForwardOnly(true);
+        if (!poor.exec(u"SELECT id,hash,pieces FROM assets WHERE length(hash)=32"_s))
+            throw std::runtime_error(poor.lastError().text().toStdString());
+        mark.prepare(u"UPDATE assets SET hash=? WHERE id=?"_s);
+        while (poor.next()) {
+            const QJsonArray pieces = QJsonDocument::fromJson(qUncompress(poor.value(2).toByteArray())).array();
+            double scores = 0;
+            for (const auto& piece : pieces)
+                scores += piece.toObject().value(u"score"_s).toDouble();
+            if (pieces.size() < 2 || scores >= kPoorScore * pieces.size())
+                continue;
+            mark.bindValue(0, poor.value(1).toByteArray() + '\0');
+            mark.bindValue(1, poor.value(0));
+            checked(mark);
+        }
+    }
+    QSqlQuery q(m_db);
+    q.prepare(uR"(UPDATE files SET engine=? WHERE engine=? AND NOT (
+            (status='empty' AND lower(path) LIKE '%.pdf')
+            OR (status='failed' AND (error LIKE ? OR error LIKE ?))
+            OR EXISTS(SELECT 1 FROM pages JOIN assets ON assets.id=pages.asset WHERE pages.file=files.path AND (
+                length(assets.hash)<>32
+                OR (json_extract(pages.source,'$.kind')='pdf' AND max(assets.width,assets.height)>=2600)
+                OR (json_extract(pages.source,'$.kind') IN ('image','office') AND max(assets.width,assets.height)=4096
+                    AND max(assets.width,assets.height)>3*min(assets.width,assets.height))))))"_s);
+    q.addBindValue(pipelineEngine());
+    q.addBindValue(older);
+    // The worker's deadline, as worded in either language when it was stored.
+    q.addBindValue(u"%秒没有进展%"_s);
+    q.addBindValue(u"No progress on the file for %"_s);
+    checked(q);
+    QSqlQuery note(m_db);
+    note.prepare(u"INSERT OR REPLACE INTO meta VALUES('recheck',?)"_s);
+    note.addBindValue(older);
+    checked(note);
+}
+
+int Store::recheckRemaining() const
+{
+    QSqlQuery q(m_db);
+    if (!q.exec(u"SELECT count(*) FROM files WHERE engine=(SELECT value FROM meta WHERE key='recheck')"_s) || !q.next())
+        return 0;
+    return q.value(0).toInt();
+}
+
+void Store::recheckDone()
+{
+    exec(u"DELETE FROM meta WHERE key='recheck'"_s);
 }
 
 void Store::rebuildTerms()
@@ -468,6 +552,16 @@ QString Store::state(const QString& path, qint64 size, qint64 modified, const QS
     q.addBindValue(engine);
     checked(q);
     return q.next() ? q.value(0).toString() : QString();
+}
+
+QString pipelineEngine()
+{
+    return QString(ocr::kVersion) + QStringView(kPipeline);
+}
+
+QString recognizerEngine()
+{
+    return QString(ocr::kVersion) + QStringView(kRecognizer);
 }
 
 bool settled(const QString& status)
@@ -745,6 +839,7 @@ QJsonObject Store::statistics() const
     q.exec(u"SELECT count(*) FROM assets"_s);
     if (q.next())
         out.insert(u"assets"_s, q.value(0).toInt());
+    out.insert(u"recheck"_s, recheckRemaining());
     out.insert(u"bytes"_s, QFileInfo(m_path).size() + QFileInfo(m_path + u"-wal"_s).size()
         + QFileInfo(m_path + u"-shm"_s).size());
     return out;

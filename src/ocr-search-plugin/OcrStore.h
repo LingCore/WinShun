@@ -30,6 +30,14 @@ QList<OcrPiece> piecesFromJson(const QJsonArray& array);
 // A stored file status with nothing left to do while the file is unchanged:
 // done, or failed (only a manual "recheck all" redoes those).
 bool settled(const QString& status);
+// What a file's rows were made by: the reader's version and OCR search's own
+// way of finding, decoding and rendering the pictures in it. A file made by
+// another is read again.
+QString pipelineEngine();
+// The key of a picture's stored recognition (with its pixels, imageHash()):
+// the reader's version and how it reads one picture. While these stay, a new
+// pipeline that gives the same pixels reads nothing again.
+QString recognizerEngine();
 
 struct Hit {
     QString path;
@@ -77,6 +85,10 @@ public:
     // The recognised pieces; `size`: the recognised image's size, their coordinate space.
     QList<OcrPiece> pieces(qint64 asset, QSize* size = nullptr) const;
     QString errorText() const;
+    // Files the last upgrade marked to be read again (statistics()'s
+    // "recheck"), until a round over all folders has been completed.
+    int recheckRemaining() const;
+    void recheckDone();
 
 private:
     void exec(const QString& sql) const;
@@ -86,6 +98,7 @@ private:
     void uncap();
     void recap() noexcept;
     void rebuildTerms();
+    void recheckOlderPipeline();
     void reclaim();
     QSqlDatabase m_db;
     QString m_connection;

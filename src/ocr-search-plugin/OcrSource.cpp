@@ -758,13 +758,15 @@ void scan(const QString& appDir, const QString& dataDir, const ScanOptions& opti
 {
     const BackgroundMode background(!options.workerProgram.isEmpty());
     Store store(dataDir, options.capacityMB);
-    const QString engine = QString(ocr::kVersion) + u"/ocr-search-2"_s;
+    const QString engine = pipelineEngine();
+    const QString recognizer = recognizerEngine();
     const qint64 generation = QDateTime::currentMSecsSinceEpoch();
     std::unique_ptr<PaddleOcr> reader;
     std::unique_ptr<Worker> worker;
     if (!options.workerProgram.isEmpty())
-        worker = std::make_unique<Worker>(options.workerProgram, appDir, dataDir, engine, options.timeoutMs);
+        worker = std::make_unique<Worker>(options.workerProgram, appDir, dataDir, recognizer, options.timeoutMs);
     ScanProgress state;
+    state.recheck = store.recheckRemaining();
     store.retainFolders(options.folders);
     // Every file seen this round (pathKey()s): what a complete walk did not
     // see is pruned. Unchanged files cost no write at all.
@@ -787,6 +789,11 @@ void scan(const QString& appDir, const QString& dataDir, const ScanOptions& opti
         const QString stored = options.retry ? QString() : store.state(path, size, modified, engine);
         if (settled(stored))
             return;
+        // Shown with the next file: how many an upgrade still asks to read again.
+        const auto counted = qScopeGuard([&] {
+            if (state.recheck)
+                state.recheck = store.recheckRemaining();
+        });
         if (legacyDocument(path)) {
             store.status(path, size, modified, engine, generation, u"unsupported"_s,
                 QObject::tr("旧版格式暂不支持图片识别，请转换为 DOCX、PPTX 或 XLSX"));
@@ -828,7 +835,7 @@ void scan(const QString& appDir, const QString& dataDir, const ScanOptions& opti
                     path,
                     [&](QImage image, const QString& label, const QJsonObject& source) {
                         stopped(cancel);
-                        const QByteArray hash = imageHash(image, engine);
+                        const QByteArray hash = imageHash(image, recognizer);
                         qint64 id = store.asset(hash);
                         if (!id) {
                             if (!reader) {
@@ -891,6 +898,9 @@ void scan(const QString& appDir, const QString& dataDir, const ScanOptions& opti
             progress(state);
         }
     }
+    // A whole round is done: what an upgrade marked and could not be visited
+    // (a folder away) is still read when it is back, without the notice.
+    store.recheckDone();
     store.compact();
 }
 
