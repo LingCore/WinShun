@@ -300,8 +300,9 @@ void CaptureApp::requested(const QJsonValue& id, const QString& method, const QJ
             m_protocol.respond(id, QJsonObject {{u"items"_s, items}});
             return;
         }
-        const auto add = [&](const QString& itemId, const QString& title, const QString& subtitle, const QString& glyph) {
-            if (!text.isEmpty() && !title.contains(text, Qt::CaseInsensitive))
+        // aliases: other words that find the item (the title still does), space separated, either language.
+        const auto add = [&](const QString& itemId, const QString& title, const QString& subtitle, const QString& glyph, const QString& aliases = {}) {
+            if (!text.isEmpty() && !title.contains(text, Qt::CaseInsensitive) && !aliases.contains(text, Qt::CaseInsensitive))
                 return;
             items.append(QJsonObject {{u"id"_s, itemId}, {u"title"_s, title}, {u"subtitle"_s, subtitle},
                 {u"icon"_s, u"glyph:U+"_s + glyph}});
@@ -309,13 +310,14 @@ void CaptureApp::requested(const QJsonValue& id, const QString& method, const QJ
         const QString key = !m_settings.options().hotkey.isEmpty() ? m_settings.options().hotkey
             : m_settings.options().printScreen                         ? u"PrtScn"_s
                                                                        : QString();
-        add(u"start"_s, tr("开始截图"), key.isEmpty() ? tr("框选窗口或区域") : tr("快捷键 %1").arg(key), u"E722"_s);
-        add(u"delay"_s, tr("%1 秒后截图").arg(m_settings.options().delay), tr("先打开要截的菜单或提示"), u"E916"_s);
-        add(u"last"_s, tr("贴图"), tr("优先剪贴板图片，否则贴回最近截图并保留标注"), u"E718"_s);
+        add(u"start"_s, tr("开始截图"), key.isEmpty() ? tr("框选窗口或区域") : tr("快捷键 %1").arg(key), u"E722"_s,
+            u"截图 截屏 截取 screenshot capture shot snip"_s);
+        add(u"delay"_s, tr("%1 秒后截图").arg(m_settings.options().delay), tr("先打开要截的菜单或提示"), u"E916"_s, u"延时 延迟 定时 delay timer later"_s);
+        add(u"last"_s, tr("贴图"), tr("优先剪贴板图片，否则贴回最近截图并保留标注"), u"E718"_s, u"贴 钉 贴图 pin paste sticker"_s);
         add(u"present"_s, presenterOpen() ? tr("结束演示") : tr("演示 / 白板"),
             m_settings.options().presentHotkey.isEmpty() ? tr("在屏幕上画、激光笔、白板黑板") : tr("快捷键 %1").arg(m_settings.options().presentHotkey),
-            u"E70F"_s);
-        add(u"settings"_s, tr("截图设置"), tr("快捷键、鼠标、贴图、打码和工具条"), u"E713"_s);
+            u"E70F"_s, u"演示 白板 黑板 激光笔 画笔 present presenter whiteboard blackboard draw pen laser"_s);
+        add(u"settings"_s, tr("截图设置"), tr("快捷键、鼠标、贴图、打码和工具条"), u"E713"_s, u"设置 选项 配置 快捷键 settings options preferences config hotkey"_s);
         m_protocol.respond(id, QJsonObject {{u"items"_s, items}});
     } else if (method == u"action") {
         const QString item = params.value(u"item"_s).toObject().value(u"id"_s).toString();
