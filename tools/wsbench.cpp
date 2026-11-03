@@ -180,7 +180,11 @@
 //                      gives the plugin a declared setting's value (what the
 //                      settings page would); --action runs that action on
 //                      the first item of the first answer and prints the
-//                      effects
+//                      effects. A plugin with `elevated`: what its start
+//                      comes to is printed (wsbench run as administrator
+//                      plays an elevated Win顺); --confirm-elevated first
+//                      confirms its files as the card's 确认 does
+//                      (%ProgramData%\WinShun\elevated-plugins)
 //   wsbench --plugin-index [URL-OR-FILE]
 //                      the 插件库's list (src/plugin/Gallery.h), from the
 //                      address or file given, else WINSHUN_PLUGIN_INDEX,
@@ -4489,6 +4493,7 @@ int runPlugin(QStringList args)
         appDir = QDir(args[at + 1]).absolutePath();
         args.remove(at, 2);
     }
+    const bool confirmElevated = args.removeAll(u"--confirm-elevated"_s) > 0;
     int lingerMs = 0; // --linger MS: keep the plugin running that long after the action (what a resident one shows)
     if (const qsizetype at = args.indexOf(u"--linger"_s); at >= 0 && at + 1 < args.size()) {
         lingerMs = std::max(0, args[at + 1].toInt());
@@ -4532,6 +4537,18 @@ int runPlugin(QStringList args)
     if (!pluginSettings.isEmpty())
         host.setPluginSettings(manifest->id, pluginSettings);
     QObject::connect(&host, &ws::plugin::Host::logged, [](const QString& line) { std::printf("  log: %s\n", qUtf8Printable(line)); });
+    if (manifest->permissions.has(ws::plugin::Permission::Elevated)) {
+        std::printf("elevated: Win顺 here %s\n", host.hostElevated() ? "is elevated" : "is not elevated");
+        if (confirmElevated) {
+            QString why;
+            const bool confirmed = host.confirmElevation(manifest->id, &why);
+            std::printf("elevated: confirm %s %s\n", confirmed ? "ok" : "failed:", qUtf8Printable(why));
+        }
+        const ws::plugin::Host::ElevationState state = host.elevationState(manifest->id);
+        const QString verdict = ws::plugin::elevation::verdictName(state.verdict);
+        std::printf("elevated: verdict %s%s%s\n", verdict.isEmpty() ? "not-elevated-host" : qUtf8Printable(verdict),
+            state.detail.isEmpty() ? "" : " - ", qUtf8Printable(state.detail));
+    }
     QObject::connect(&host, &ws::plugin::Host::queryFailed, [](std::uint64_t id, const QString&, const QString& why) {
         std::printf("  query %llu failed: %s\n", static_cast<unsigned long long>(id), qUtf8Printable(why));
     });

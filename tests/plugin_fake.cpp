@@ -45,6 +45,7 @@
 #include <vector>
 
 using namespace ws::plugin;
+using lite::Handle;
 
 namespace {
 
@@ -104,6 +105,22 @@ json::Value facts()
 
 int onceMain()
 {
+    if (has(L"--whoami")) { // its own token, said in the row (the elevated plugins' live check)
+        HANDLE raw = nullptr;
+        ::OpenProcessToken(::GetCurrentProcess(), TOKEN_QUERY, &raw);
+        const Handle token(raw);
+        const DWORD rid = sandbox::integrityRid(token.get());
+        const bool elevated = sandbox::tokenElevated(token.get());
+        const char* level = rid >= SECURITY_MANDATORY_SYSTEM_RID ? "System" : rid >= SECURITY_MANDATORY_HIGH_RID ? "High"
+            : rid >= SECURITY_MANDATORY_MEDIUM_RID ? "Medium" : "Low";
+        char title[160];
+        std::snprintf(title, sizeof title, "elevated=%s integrity=%s (0x%lx)", elevated ? "yes" : "no", level, rid);
+        json::Value::Object one = item("whoami", title, lite::utf8(lite::ownPath()));
+        one["data"] = json::Value(json::Value::Object {{"elevated", elevated}, {"integrity", static_cast<unsigned long>(rid)},
+            {"self", lite::utf8(lite::ownPath())}, {"pluginDir", env(L"WS_PLUGIN_DIR")}});
+        out(json::write(json::Value(json::Value::Object {{"items", json::Value::Array {json::Value(std::move(one))}}})));
+        return 0;
+    }
     if (has(L"--many-lines")) {
         const int count = _wtoi(value(L"--many-lines").c_str());
         const std::string line(4096, 'x');

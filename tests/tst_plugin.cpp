@@ -50,6 +50,7 @@
 #include <sddl.h>
 
 #include <algorithm>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -146,7 +147,8 @@ struct Fixture {
     std::vector<Action> actions;
     QStringList logs;
 
-    Fixture()
+    // `tweak`: options of the test's own (an elevated Win顺 played, …).
+    explicit Fixture(const std::function<void(Host::Options&)>& tweak = {})
     {
         Host::Options options;
         options.userPluginDir = dir.path() + u"/plugins"_s;
@@ -154,6 +156,8 @@ struct Fixture {
         options.logPath = dir.path() + u"/plugins.log"_s;
         options.runnerExe = kRunner;
         options.version = u"0.0-test"_s;
+        if (tweak)
+            tweak(options);
         host = std::make_unique<Host>(options);
         host->setBackoffScale(0.01); // 1, 5, 30 s -> 10, 50, 300 ms
         QObject::connect(host.get(), &Host::results,
@@ -348,6 +352,13 @@ bool writeFile(const QString& path, const QByteArray& bytes)
     QDir().mkpath(QFileInfo(path).path());
     QFile file(path);
     return file.open(QIODevice::WriteOnly | QIODevice::Truncate) && file.write(bytes) == bytes.size();
+}
+
+// The file's last-write time moved `seconds` past now.
+bool laterTime(const QString& path, int seconds)
+{
+    QFile file(path);
+    return file.open(QIODevice::ReadWrite) && file.setFileTime(QDateTime::currentDateTime().addSecs(seconds), QFileDevice::FileModificationTime);
 }
 
 // A zip of the given entries (name -> bytes), written to `path`.
@@ -801,6 +812,242 @@ private slots:
         QVERIFY2(ok.has_value(), qPrintable(error));
         QCOMPARE(ok->runtime->program, Program::Exe);
         QCOMPARE(ok->runtime->programPath, u"bin\\tool.exe"_s);
+    }
+
+    // `elevated` (Elevation.h): only a plugin's own exe, never with the strict
+    // sandbox, never zero-code; known by its name.
+    void manifestElevated()
+    {
+        QString error;
+        const auto ok = Manifest::parse(R"({"manifest":1,"id":"a.b","name":"X","version":"1","permissions":["elevated","ui"],"runtime":{"mode":"resident","program":"bin\\tool.exe"},"commands":[{"id":"c"}]})", &error);
+        QVERIFY2(ok.has_value(), qPrintable(error));
+        QVERIFY(ok->permissions.has(Permission::Elevated));
+        QCOMPARE(permissionName(Permission::Elevated), u"elevated"_s);
+        QVERIFY(ok->permissions.names().contains(u"elevated"_s));
+        QVERIFY(!Manifest::parse(R"({"manifest":1,"id":"a.b","name":"X","version":"1","permissions":["elevated"],"runtime":{"mode":"once","program":"tool.exe","sandbox":"strict"},"commands":[{"id":"c"}]})", &error));
+        QVERIFY2(error.contains(u"strict"_s), qPrintable(error));
+        for (const char* program : {"python", "pwsh", "powershell", "node"}) {
+            const QByteArray json = toJson({{u"manifest"_s, 1}, {u"id"_s, u"a.b"_s}, {u"name"_s, u"X"_s}, {u"version"_s, u"1"_s},
+                {u"permissions"_s, QJsonArray {u"elevated"_s}},
+                {u"runtime"_s, QJsonObject {{u"mode"_s, u"once"_s}, {u"program"_s, QString::fromLatin1(program)}, {u"script"_s, u"main.x"_s}}},
+                {u"commands"_s, QJsonArray {QJsonObject {{u"id"_s, u"c"_s}}}}});
+            QVERIFY2(!Manifest::parse(json, &error), program);
+            QVERIFY2(error.contains(u"exe"_s), qPrintable(error));
+        }
+        QVERIFY(!Manifest::parse(R"({"manifest":1,"id":"a.b","name":"X","version":"1","permissions":["elevated"],"commands":[{"id":"c","run":{"folder":"C:\\"}}]})", &error));
+        QVERIFY2(error.contains(u"elevated"_s), qPrintable(error));
+    }
+
+    void elevationDecide()
+    {
+        using elevation::Check;
+        using elevation::Verdict;
+        QCOMPARE(elevation::decide(false, true, Check::Match), Verdict::NotAsked);
+        QCOMPARE(elevation::decide(true, false, Check::Match), Verdict::HostNotElevated);
+        QCOMPARE(elevation::decide(true, true, Check::Match), Verdict::Elevated);
+        QCOMPARE(elevation::decide(true, true, Check::NoRecord), Verdict::Unconfirmed);
+        QCOMPARE(elevation::decide(true, true, Check::Changed), Verdict::Changed);
+        QCOMPARE(elevation::decide(true, true, Check::Unavailable), Verdict::Unavailable);
+        QCOMPARE(elevation::verdictName(Verdict::Elevated), u"elevated"_s);
+        QVERIFY(elevation::verdictName(Verdict::HostNotElevated).isEmpty());
+        // The real store: per user, under ProgramData, never the environment's.
+        const elevation::Store real = elevation::defaultStore();
+        QVERIFY2(real.root.contains(u"\\WinShun\\elevated-plugins\\S-1-"_s), qPrintable(real.root));
+        QVERIFY(real.requireProtected);
+    }
+
+    // The record: what the folder held when confirmed, the protected copy
+    // made of the very bytes read, and any change (a byte, a file more, a
+    // link) is no longer what was confirmed.
+    void elevationRecord()
+    {
+        QTemporaryDir temp;
+        const elevation::Store store {temp.path() + u"/store"_s, false};
+        const QString folder = QDir::toNativeSeparators(temp.path() + u"/plugins/a.b"_s);
+        QVERIFY(writeFile(folder + u"\\plugin.json"_s, R"({"manifest":1,"id":"a.b","name":"X","version":"1.0.0"})"));
+        QVERIFY(writeFile(folder + u"\\tool.exe"_s, "MZ the program"));
+        QVERIFY(writeFile(folder + u"\\lib\\helper.dll"_s, "MZ a library"));
+
+        QCOMPARE(elevation::check(store, u"a.b"_s, folder).check, elevation::Check::NoRecord);
+        QVERIFY(!elevation::hasRecord(store, u"a.b"_s, folder));
+        QString error;
+        QVERIFY2(elevation::confirmFolder(store, u"a.b"_s, folder, &error), qPrintable(error));
+        QVERIFY(elevation::hasRecord(store, u"a.b"_s, folder));
+        elevation::Result r = elevation::check(store, u"a.b"_s, folder);
+        QCOMPARE(r.check, elevation::Check::Match);
+        QCOMPARE(r.version, u"1.0.0"_s);
+        QVERIFY(r.dir.startsWith(QDir::toNativeSeparators(store.root)));
+        // The copy is the folder's files, byte for byte.
+        const QList<elevation::File> files = elevation::listFiles(folder, &error);
+        QCOMPARE(files.size(), 3);
+        QCOMPARE(elevation::listFiles(r.dir, &error), files);
+        QCOMPARE(files[1].path, u"plugin.json"_s); // sorted, '/' separated
+        QCOMPARE(files[0].path, u"lib/helper.dll"_s);
+        QCOMPARE(files[2].sha256, QCryptographicHash::hash("MZ the program", QCryptographicHash::Sha256).toHex());
+
+        // Tampered: the exe changed (same size too), then a file put beside it.
+        const QString confirmedDir = r.dir;
+        // (A change keeping both the size and the time is taken for none: the
+        // confirmed copy runs then, which is what was confirmed. The times
+        // here are moved on, as a write a moment later would have them.)
+        QVERIFY(writeFile(folder + u"\\tool.exe"_s, "MZ the PROGRAM"));
+        QVERIFY(laterTime(folder + u"\\tool.exe"_s, 60));
+        QCOMPARE(elevation::check(store, u"a.b"_s, folder).check, elevation::Check::Changed);
+        QVERIFY(writeFile(folder + u"\\tool.exe"_s, "MZ the program"));
+        QVERIFY(laterTime(folder + u"\\tool.exe"_s, 120));
+        QCOMPARE(elevation::check(store, u"a.b"_s, folder).check, elevation::Check::Match);
+        QVERIFY(writeFile(folder + u"\\version.dll"_s, "MZ planted"));
+        r = elevation::check(store, u"a.b"_s, folder);
+        QCOMPARE(r.check, elevation::Check::Changed);
+        QCOMPARE(r.version, u"1.0.0"_s);
+        QVERIFY(!QFileInfo::exists(confirmedDir + u"\\version.dll"_s)); // never reaches the copy
+        QVERIFY(QFile::remove(folder + u"\\version.dll"_s));
+        QCOMPARE(elevation::check(store, u"a.b"_s, folder).check, elevation::Check::Match);
+
+        // A link inside the folder: never confirmed, never matched.
+        const QString target = QDir::toNativeSeparators(temp.path() + u"/elsewhere"_s);
+        QVERIFY(QDir().mkpath(target));
+        QProcess mklink;
+        mklink.start(u"cmd.exe"_s, {u"/c"_s, u"mklink"_s, u"/J"_s, folder + u"\\linked"_s, target});
+        QVERIFY(mklink.waitForFinished(10000));
+        QVERIFY2(QFileInfo(folder + u"\\linked"_s).exists(), mklink.readAllStandardOutput().constData());
+        QVERIFY(!elevation::confirmFolder(store, u"a.b"_s, folder, &error));
+        QVERIFY2(error.contains(u"linked"_s), qPrintable(error));
+        QCOMPARE(elevation::check(store, u"a.b"_s, folder).check, elevation::Check::Changed);
+        QVERIFY(QDir().rmdir(folder + u"\\linked"_s)); // the junction itself, not what it points to
+        QVERIFY(QFileInfo::exists(target));
+
+        // Another folder of the same id (another profile, a developer's
+        // copy) has a record of its own.
+        const QString other = QDir::toNativeSeparators(temp.path() + u"/dev/a.b"_s);
+        QVERIFY(writeFile(other + u"\\tool.exe"_s, "MZ the program"));
+        QCOMPARE(elevation::check(store, u"a.b"_s, other).check, elevation::Check::NoRecord);
+
+        // An update from the signed list keeps a confirmed plugin confirmed:
+        // its package's files are the new copy, the old one counts until the
+        // update is put in place.
+        const QString zip = temp.path() + u"/a.b-1.1.0.wsplugin"_s;
+        QVERIFY(writeZip(zip, {{u"plugin.json"_s, R"({"manifest":1,"id":"a.b","name":"X","version":"1.1.0"})"},
+                                  {u"tool.exe"_s, "MZ the program 1.1"}}));
+        QFile zipFile(zip);
+        QVERIFY(zipFile.open(QIODevice::ReadOnly));
+        const QByteArray package = zipFile.readAll();
+        QVERIFY2(elevation::keepConfirmed(store, u"a.b"_s, folder, package, &error), qPrintable(error));
+        QCOMPARE(elevation::check(store, u"a.b"_s, folder).check, elevation::Check::Match); // the old version still
+        QVERIFY(QFile::remove(folder + u"\\lib\\helper.dll"_s));
+        QVERIFY(QDir().rmdir(folder + u"\\lib"_s));
+        QVERIFY(writeFile(folder + u"\\plugin.json"_s, R"({"manifest":1,"id":"a.b","name":"X","version":"1.1.0"})"));
+        QVERIFY(writeFile(folder + u"\\tool.exe"_s, "MZ the program 1.1"));
+        r = elevation::check(store, u"a.b"_s, folder);
+        QCOMPARE(r.check, elevation::Check::Match);
+        QCOMPARE(r.version, u"1.1.0"_s);
+        QVERIFY(r.dir != confirmedDir);
+        // Never confirmed: an update confirms nothing.
+        QVERIFY(elevation::keepConfirmed(store, u"a.b"_s, other, package, &error));
+        QVERIFY(!elevation::hasRecord(store, u"a.b"_s, other));
+        // Uninstalled: the record and copies go.
+        elevation::forget(store, u"a.b"_s, folder);
+        QCOMPARE(elevation::check(store, u"a.b"_s, folder).check, elevation::Check::NoRecord);
+    }
+
+    // The whole path with a host that plays an elevated Win顺 (its token is
+    // not: the second runner then has the user's token, but every step is
+    // the real one): unconfirmed runs from its own folder on the first
+    // runner; confirmed, from the copy on the elevated runner (instance
+    // numbers past 2^48, there and back through the JSON); changed, from its
+    // own folder again. A resident one moves to the elevated runner on 确认.
+    void elevatedPluginsFollowTheHost()
+    {
+        QTemporaryDir store;
+        Fixture f([&](Host::Options& o) {
+            o.elevatedHost = true;
+            o.elevationRoot = store.path();
+            o.elevationProtected = false;
+        });
+        QVERIFY(f.host->hostElevated());
+        Spec spec;
+        spec.mode = u"once"_s;
+        spec.role = u"--once"_s;
+        spec.args = {u"--echo-env"_s};
+        spec.permissions = {u"elevated"_s};
+        spec.runtimeExtra = {{u"debounceMs"_s, 0}};
+        const QString folder = f.install(spec);
+        QVERIFY(!folder.isEmpty());
+        QVERIFY(f.host->runsElevated(spec.id));
+        QCOMPARE(f.host->elevationState(spec.id).verdict, elevation::Verdict::Unconfirmed);
+
+        QVERIFY(f.host->query(u"fk a"_s, Scope::All, 1));
+        QVERIFY2(f.waitFinal(1), qPrintable(f.logs.join(u'\n')));
+        QJsonObject data = f.finalFor(1)->items[0].data.toObject();
+        QCOMPARE(data.value(u"WS_PLUGIN_DIR"_s).toString(), folder);
+        QVERIFY(f.logs.join(u'\n').contains(u"以普通权限运行（unconfirmed）"_s));
+        QVERIFY(!f.logs.join(u'\n').contains(u"管理员 runner 就绪"_s));
+
+        QString error;
+        QVERIFY2(f.host->confirmElevation(spec.id, &error), qPrintable(error));
+        QCOMPARE(f.host->elevationState(spec.id).verdict, elevation::Verdict::Elevated);
+        QVERIFY(f.host->query(u"fk b"_s, Scope::All, 2));
+        QVERIFY2(f.waitFinal(2), qPrintable(f.logs.join(u'\n')));
+        data = f.finalFor(2)->items[0].data.toObject();
+        const QString copy = data.value(u"WS_PLUGIN_DIR"_s).toString();
+        QVERIFY2(copy.startsWith(QDir::toNativeSeparators(store.path())), qPrintable(copy));
+        QVERIFY(data.value(u"self"_s).toString().startsWith(copy));
+        QVERIFY2(QTest::qWaitFor([&] { return f.logs.join(u'\n').contains(u"管理员 runner 就绪"_s); }, 5000), qPrintable(f.logs.join(u'\n')));
+
+        // Its exe changed in its folder: from the folder, with normal rights.
+        {
+            QFile exe(folder + u"\\fake.exe"_s);
+            QVERIFY(exe.open(QIODevice::Append));
+            exe.write("tampered");
+        }
+        QVERIFY(f.host->query(u"fk c"_s, Scope::All, 3));
+        QVERIFY2(f.waitFinal(3), qPrintable(f.logs.join(u'\n')));
+        QCOMPARE(f.finalFor(3)->items[0].data.toObject().value(u"WS_PLUGIN_DIR"_s).toString(), folder);
+        QCOMPARE(f.host->elevationState(spec.id).verdict, elevation::Verdict::Changed);
+
+        // A resident one: unconfirmed on the first runner, confirmed on the elevated one.
+        Spec resident;
+        resident.id = u"test.resident"_s;
+        resident.keywords = {u"rs"_s};
+        resident.permissions = {u"elevated"_s};
+        f.install(resident);
+        QVERIFY(f.host->query(u"rs x"_s, Scope::All, 4));
+        QVERIFY2(f.waitFinal(4), qPrintable(f.logs.join(u'\n')));
+        QVERIFY(!f.host->state(resident.id).elevated);
+        QVERIFY2(f.host->confirmElevation(resident.id, &error), qPrintable(error));
+        QVERIFY(QTest::qWaitFor([&] { return f.host->state(resident.id).elevated; }, 8000));
+        QVERIFY(f.host->query(u"rs y"_s, Scope::All, 5));
+        QVERIFY2(f.waitFinal(5), qPrintable(f.logs.join(u'\n')));
+        QCOMPARE(f.host->state(resident.id).status, Host::State::Status::Running);
+        // Stopped through the elevated runner (the instance number routes it).
+        f.host->setEnabled(resident.id, false);
+        QVERIFY(QTest::qWaitFor([&] { return f.host->state(resident.id).status == Host::State::Status::Off; }, 8000));
+    }
+
+    // Win顺 not elevated: a plugin with `elevated` runs as every plugin does.
+    void elevatedPluginWithoutElevatedHost()
+    {
+        QTemporaryDir store;
+        Fixture f([&](Host::Options& o) {
+            o.elevatedHost = false;
+            o.elevationRoot = store.path();
+            o.elevationProtected = false;
+        });
+        Spec spec;
+        spec.mode = u"once"_s;
+        spec.role = u"--once"_s;
+        spec.args = {u"--echo-env"_s};
+        spec.permissions = {u"elevated"_s};
+        spec.runtimeExtra = {{u"debounceMs"_s, 0}};
+        const QString folder = f.install(spec);
+        QVERIFY(!f.host->runsElevated(spec.id));
+        QCOMPARE(f.host->elevationState(spec.id).verdict, elevation::Verdict::HostNotElevated);
+        QString error;
+        QVERIFY(!f.host->confirmElevation(spec.id, &error));
+        QVERIFY(f.host->query(u"fk a"_s, Scope::All, 1));
+        QVERIFY2(f.waitFinal(1), qPrintable(f.logs.join(u'\n')));
+        QCOMPARE(f.finalFor(1)->items[0].data.toObject().value(u"WS_PLUGIN_DIR"_s).toString(), folder);
+        QVERIFY(!f.logs.join(u'\n').contains(u"管理员 runner"_s));
     }
 
     void textPick()
