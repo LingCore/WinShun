@@ -37,6 +37,10 @@ constexpr auto kRecognizer = u"/ocr-search-2";
 // A picture whose lines read at less than this on average was maybe upside
 // down (measured: 11 to 18 lines kept at 0.57; upright text reads above 0.9).
 constexpr double kPoorScore = 0.75;
+// The files (as f) where nothing was found to read: no pictures in them, or
+// none with words. An empty text is stored as qCompress's 4-byte header.
+constexpr auto kTextless = "(f.status='empty' OR (f.status='ready' AND NOT EXISTS(SELECT 1 FROM pages "
+                           "JOIN assets ON assets.id=pages.asset WHERE pages.file=f.path AND length(assets.text)>4)))";
 
 void checked(QSqlQuery& query)
 {
@@ -839,6 +843,12 @@ QJsonObject Store::statistics() const
     q.exec(u"SELECT count(*) FROM assets"_s);
     if (q.next())
         out.insert(u"assets"_s, q.value(0).toInt());
+    q.exec(u"SELECT count(*) FROM files WHERE status NOT IN ('ready','empty')"_s);
+    if (q.next())
+        out.insert(u"unfinished"_s, q.value(0).toInt());
+    q.exec(u"SELECT count(*) FROM files f WHERE "_s + QLatin1StringView(kTextless));
+    if (q.next())
+        out.insert(u"textless"_s, q.value(0).toInt());
     out.insert(u"recheck"_s, recheckRemaining());
     out.insert(u"bytes"_s, QFileInfo(m_path).size() + QFileInfo(m_path + u"-wal"_s).size()
         + QFileInfo(m_path + u"-shm"_s).size());
@@ -852,6 +862,42 @@ QString Store::errorText() const
     QStringList lines;
     while (q.next())
         lines.append(q.value(0).toString() + u"\n"_s + q.value(1).toString());
+    return lines.join(u"\n\n"_s);
+}
+
+QString Store::textlessText() const
+{
+    // Documents by name; pictures without words (photos, mostly) only
+    // counted after them, or they would bury the documents.
+    QSqlQuery q(m_db);
+    q.setForwardOnly(true);
+    q.exec(u"SELECT display,status,lower(path) LIKE '%.pdf',"
+           u"(SELECT json_extract(source,'$.kind') FROM pages WHERE pages.file=f.path LIMIT 1) "
+           u"FROM files f WHERE "_s
+        + QLatin1StringView(kTextless) + u" ORDER BY display"_s);
+    QStringList lines;
+    int more = 0;
+    int pictures = 0;
+    while (q.next()) {
+        QString why;
+        if (q.value(1).toString() == u"empty")
+            why = q.value(2).toBool() ? QObject::tr("没有要识别的页面：字都在 PDF 的文字层里")
+                                      : QObject::tr("文档里没有图片");
+        else if (q.value(3).toString() == u"image")
+            ++pictures;
+        else
+            why = QObject::tr("识别过了，没有认出文字");
+        if (why.isEmpty())
+            continue;
+        if (lines.size() < 200)
+            lines.append(q.value(0).toString() + u"\n"_s + why);
+        else
+            ++more;
+    }
+    if (more)
+        lines.append(QObject::tr("另有 %n 个文件", nullptr, more));
+    if (pictures)
+        lines.append(QObject::tr("另有 %n 张图片识别过了，没有认出文字", nullptr, pictures));
     return lines.join(u"\n\n"_s);
 }
 

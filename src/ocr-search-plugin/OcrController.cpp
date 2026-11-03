@@ -157,6 +157,7 @@ void Controller::refresh()
         Store store(m_dataDir, 0);
         m_statistics = store.statistics().toVariantMap();
         m_errors = store.errorText();
+        m_textless = store.textlessText();
     } catch (const std::exception& e) {
         m_errors = QString::fromUtf8(e.what());
     }
@@ -329,6 +330,8 @@ void Controller::start(bool retry)
                             m_progress
                                 = tr("已检查 %1 个文件 · 新识别 %2 页／张").arg(state.checked).arg(state.recognized)
                                 + u"\n"_s + state.current;
+                            // The upgrade notice counts down while the files are read again.
+                            m_statistics.insert(u"recheck"_s, state.recheck);
                             if (!state.message.isEmpty())
                                 m_status = state.message;
                             emit changed();

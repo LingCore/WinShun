@@ -729,6 +729,48 @@ private slots:
         QCOMPARE(reader.search(u"731905"_s, 20).size(), 8);
     }
 
+    // The files where nothing was found to read, each with why: documents by
+    // name, pictures without words only counted.
+    void filesWithoutWordsAreListedWithWhy()
+    {
+        QTemporaryDir temp;
+        Store store(temp.filePath(u"index"_s));
+        const auto file = [&](const QString& name, const QString& status, const QString& kind, const QString& text) {
+            const QString path = temp.filePath(name);
+            store.beginFile(
+                path, 100, 1, QCryptographicHash::hash(path.toUtf8(), QCryptographicHash::Sha256), pipelineEngine(), 1);
+            if (!kind.isEmpty()) {
+                QList<ws::OcrPiece> pieces;
+                if (!text.isEmpty()) {
+                    ws::OcrPiece piece;
+                    piece.text = text;
+                    piece.score = 0.98f;
+                    piece.quad = QPolygonF(QRectF(10, 20, 300, 40));
+                    pieces.append(piece);
+                }
+                const QByteArray hash = QCryptographicHash::hash(name.toUtf8(), QCryptographicHash::Sha256);
+                store.addPage(store.putAsset(hash, QSize(800, 600), pieces), u"page"_s, {{u"kind"_s, kind}});
+            }
+            store.finishFile(status);
+        };
+        file(u"drawn.pdf"_s, u"empty"_s, {}, {});
+        file(u"memo.docx"_s, u"empty"_s, {}, {});
+        file(u"blank-scan.pdf"_s, u"ready"_s, u"pdf"_s, {});
+        file(u"holiday.jpg"_s, u"ready"_s, u"image"_s, {});
+        file(u"invoice.png"_s, u"ready"_s, u"image"_s, u"INVOICE 731905"_s);
+        store.status(temp.filePath(u"broken.png"_s), 10, 1, pipelineEngine(), 1, u"failed"_s, u"文件读取不完整"_s);
+        const QJsonObject statistics = store.statistics();
+        QCOMPARE(statistics.value(u"textless"_s).toInt(), 4);
+        QCOMPARE(statistics.value(u"unfinished"_s).toInt(), 1);
+        const QString text = store.textlessText();
+        QVERIFY2(text.contains(u"drawn.pdf\n没有要识别的页面：字都在 PDF 的文字层里"_s), qPrintable(text));
+        QVERIFY2(text.contains(u"memo.docx\n文档里没有图片"_s), qPrintable(text));
+        QVERIFY2(text.contains(u"blank-scan.pdf\n识别过了，没有认出文字"_s), qPrintable(text));
+        QVERIFY2(text.endsWith(u"另有 1 张图片识别过了，没有认出文字"_s), qPrintable(text));
+        for (const QString& name : {u"holiday.jpg"_s, u"invoice.png"_s, u"broken.png"_s})
+            QVERIFY2(!text.contains(name), qPrintable(name));
+    }
+
     void filtersAndCancellation()
     {
         QTemporaryDir temp;

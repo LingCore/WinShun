@@ -85,6 +85,8 @@ public:
     // The recognised pieces; `size`: the recognised image's size, their coordinate space.
     QList<OcrPiece> pieces(qint64 asset, QSize* size = nullptr) const;
     QString errorText() const;
+    // The files where nothing was found to read, each with why.
+    QString textlessText() const;
     // Files the last upgrade marked to be read again (statistics()'s
     // "recheck"), until a round over all folders has been completed.
     int recheckRemaining() const;
