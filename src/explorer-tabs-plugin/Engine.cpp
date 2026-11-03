@@ -46,6 +46,7 @@ constexpr UINT_PTR kTimerRetry = 3;
 constexpr UINT_PTR kTimerCloseB = 4; // B's selection read once its view is there, then B closes
 constexpr UINT_PTR kTimerSettle = 5; // the tab shows the folder: selection, timings, done
 constexpr UINT_PTR kTimerLeftHidden = 6; // a window hidden at SHOW that never registered
+constexpr UINT_PTR kTimerLateTab = 7; // closing a spare tab (closeSpare)
 
 constexpr std::int64_t kOpDeadlineMs = 6000;
 constexpr std::int64_t kNoRegistrationMs = 3000;
@@ -301,6 +302,7 @@ public:
     // leaves a line too many, which the next start checks before acting.
     bool hide(HWND w)
     {
+        const std::lock_guard ops(m_ops); // a show of the same window waits for this
         const LONG_PTR style = ::GetWindowLongPtrW(w, GWL_EXSTYLE);
         const bool added = !(style & WS_EX_LAYERED);
         {
@@ -317,6 +319,7 @@ public:
 
     void show(HWND w)
     {
+        const std::lock_guard ops(m_ops);
         bool added = false;
         {
             const std::lock_guard lock(m_mutex);
@@ -340,6 +343,7 @@ public:
 
     void showAll()
     {
+        const std::lock_guard ops(m_ops);
         std::map<HWND, bool> windows;
         {
             const std::lock_guard lock(m_mutex);
@@ -378,6 +382,9 @@ private:
 
     std::wstring m_journal;
     mutable std::mutex m_mutex;
+    // hide and show one after the other: a show while a hide still waits on
+    // Explorer's thread would otherwise be undone by that hide.
+    std::mutex m_ops;
     std::map<HWND, bool> m_windows; // window -> WS_EX_LAYERED was added by us
 };
 
@@ -624,6 +631,14 @@ struct Engine::Impl {
         Place place;
         HWND spareTab = nullptr;
         ComPtr<IWebBrowser2> spareWeb;
+        HWND newTab = nullptr; // the tab window seen after 0xA21B (before it registers)
+        // Opened before B's folder was known (B hidden, a tab is likely):
+        // the tab loads Home meanwhile. Until decided it is not navigated
+        // and the target not brought forward; if B is not merged there, the
+        // tab is closed again.
+        bool speculative = false;
+        bool decided = true;
+        bool fronted = false;
         int navigations = 0;
         bool navigated = false; // Navigate2 accepted
         bool shown = false; // the tab shows the folder
@@ -687,6 +702,17 @@ struct Engine::Impl {
     std::vector<Closed> closedTabs;
     std::map<HWND, std::wstring> lastPlaces; // tab -> where it was when we last looked (for "dragged out")
     std::deque<Op> queue; // queue.front() is the one running
+    int wastedTabs = 0; // speculative tabs closed again
+    struct Closing {
+        HWND top = nullptr;
+        std::vector<HWND> before; // its tabs before the spare one (to find it while not known)
+        HWND tab = nullptr;
+        std::int64_t until = 0;
+        HWND thenSelect = nullptr;
+        bool front = false;
+        bool sent = false; // a close is on its way, unanswered
+        bool active = false;
+    } closing; // a spare tab being closed (closeSpare)
     UINT taskbarCreated = 0;
 
     void publishKnown()
@@ -793,8 +819,10 @@ struct Engine::Impl {
                 const std::lock_guard lock(mutex);
                 known = knownTops.contains(top);
             }
-            if (!known)
+            if (!known) {
                 hideOnRegistration(top);
+                speculate(top);
+            }
         }
         std::vector<Entry> fresh = takeNew();
         for (Entry& e : fresh) {
@@ -808,6 +836,7 @@ struct Engine::Impl {
             }
             if (newWindow && isExplorerTop(e.top)) {
                 hideOnRegistration(e.top);
+                speculate(e.top);
                 arrived(e, at);
             }
         }
@@ -899,6 +928,7 @@ struct Engine::Impl {
         const Settings s = currentSettings();
         std::vector<Window> others;
         std::map<std::uintptr_t, std::vector<HWND>> tabHandles;
+        const Op* speculation = !queue.empty() && queue.front().speculative && !queue.front().decided && queue.front().b == b ? &queue.front() : nullptr;
         const std::vector<HWND> z = explorerWindows();
         for (std::size_t zi = 0; zi < z.size(); ++zi) {
             const HWND top = z[zi];
@@ -912,13 +942,18 @@ struct Engine::Impl {
             w.aboveUs = aboveUs(top);
             bool any = false;
             for (HWND tab : tabsOf(top)) {
+                if (speculation && top == speculation->target && std::ranges::find(speculation->tabsBefore, tab) == speculation->tabsBefore.end())
+                    continue; // the tab opened for B itself
                 const auto it = std::ranges::find_if(cache, [&](const Entry& c) { return c.tab == tab; });
                 std::wstring tabPlace;
                 if (it != cache.end()) {
                     any = true;
                     w.openOrder = std::min(w.openOrder, it->openOrder);
                     const std::wstring title = textOf(tab);
-                    if (options.restriction.active() || (s.reuse && (title == bTitle || (!bDisplay.empty() && title == bDisplay))))
+                    // (restricted: a tab not named as a test folder is not one;
+                    // left unknown, which rules its window out)
+                    if (options.restriction.active() ? title.find(options.testMark) != std::wstring::npos
+                                                     : s.reuse && (title == bTitle || (!bDisplay.empty() && title == bDisplay)))
                         tabPlace = placeName(it->web.Get(), tab);
                 }
                 w.tabs.push_back(std::move(tabPlace));
@@ -935,6 +970,29 @@ struct Engine::Impl {
             early.erase(b);
             undecided.erase(b);
         }
+        if (speculation) {
+            Op& op = queue.front();
+            if (d.verdict == Verdict::NewTab && reinterpret_cast<HWND>(d.window) == op.target) {
+                // As guessed: the tab is there (or coming); it goes to B's folder.
+                op.decided = true;
+                op.bWeb = entry.web;
+                op.place = std::move(place);
+                op.tShow = e.shownAt;
+                op.tHidden = e.hiddenAt > 0 ? e.hiddenAt : decided;
+                op.tRegistered = at;
+                op.tDecided = decided;
+                hideB(b);
+                // the time allowed counts from here, as for any other merge
+                op.deadline = tickMs() + kOpDeadlineMs;
+                ::SetTimer(shellWindow, kTimerDeadline, static_cast<UINT>(kOpDeadlineMs), nullptr);
+                if (op.spareWeb)
+                    tryNavigate();
+                return;
+            }
+            char ids[64];
+            std::snprintf(ids, sizeof ids, " guessed=%p decided=%p", static_cast<void*>(op.target), reinterpret_cast<void*>(d.window));
+            dropSpeculation((std::string(whyName(d.why)) + ids).c_str());
+        }
         if (d.verdict == Verdict::Keep) {
             showAgain(b);
             trace("keep why=" + std::string(whyName(d.why)) + " place=" + utf8(candidate.place) + timing("show", e.shownAt)
@@ -945,8 +1003,18 @@ struct Engine::Impl {
         const HWND target = reinterpret_cast<HWND>(d.window);
         if (d.verdict == Verdict::SwitchTab) {
             const std::vector<HWND>& handles = tabHandles[d.window];
-            const bool switched = d.tab >= 0 && d.tab < static_cast<int>(handles.size()) && selectTab(target, handles[d.tab]);
-            const bool front = toFront(target);
+            const HWND wanted = d.tab >= 0 && d.tab < static_cast<int>(handles.size()) ? handles[d.tab] : nullptr;
+            bool switched = false, front = false;
+            if (closing.active && closing.top == target) {
+                // the guessed tab is still being closed there (it must be the
+                // active one for that): the switch follows its closing
+                closing.thenSelect = wanted;
+                closing.front = true;
+                switched = front = true;
+            } else {
+                switched = wanted && selectTab(target, wanted);
+                front = toFront(target);
+            }
             closeB(entry.web.Get(), b);
             ++mergedCount;
             trace("switch place=" + utf8(candidate.place) + " switched=" + std::to_string(switched) + " front=" + std::to_string(front)
@@ -1051,6 +1119,120 @@ struct Engine::Impl {
         return std::wstring_view(name) == L"Progman" || std::wstring_view(name) == L"WorkerW" || std::wstring_view(name) == L"Shell_TrayWnd";
     }
 
+    // Where a merged window would go now (decide's order, without B's
+    // folder): only windows known with all their tabs, usable, not above us.
+    HWND guessTarget(HWND b)
+    {
+        const Settings s = currentSettings();
+        HWND best = nullptr;
+        int bestOrder = INT_MAX;
+        const std::vector<HWND> z = explorerWindows();
+        for (std::size_t zi = 0; zi < z.size(); ++zi) {
+            const HWND top = z[zi];
+            if (top == b || !usable(top) || aboveUs(top))
+                continue;
+            int openOrder = INT_MAX;
+            for (const Entry& c : cache) {
+                if (c.top == top)
+                    openOrder = std::min(openOrder, c.openOrder);
+            }
+            if (openOrder == INT_MAX)
+                continue; // not a window the cache knows
+            if (options.restriction.active()) {
+                const std::vector<HWND> tabs = tabsOf(top);
+                if (tabs.empty() || !std::ranges::all_of(tabs, [&](HWND t) { return textOf(t).find(options.testMark) != std::wstring::npos; }))
+                    continue;
+            }
+            const int order = s.target == Target::First ? openOrder : static_cast<int>(zi);
+            if (order < bestOrder) {
+                best = top;
+                bestOrder = order;
+            }
+        }
+        return best;
+    }
+
+    // B was just hidden (so it is likely to be merged): the tab is opened
+    // now, while B's folder is still being found out, so that its loading
+    // of Home overlaps that.
+    void speculate(HWND b)
+    {
+        if (!queue.empty() || closing.active || !::IsWindow(b) || !hider.hidden(b))
+            return;
+        const HWND target = guessTarget(b);
+        if (!target)
+            return;
+        Op op;
+        op.b = b;
+        op.target = target;
+        op.speculative = true;
+        op.decided = false;
+        queue.push_back(std::move(op));
+        begin();
+    }
+
+    // Closing the tab opened for B. 0xA021 (like the tab's own Quit) closes
+    // the window's ACTIVE tab, and a tab still being made can ignore it. So:
+    // only while it is the active one, one close at a time (sent with a
+    // callback, never a second one still queued behind it), again until it
+    // is gone; then, if asked, the tab B is switched to is selected and the
+    // window brought forward. 3 s at most; the shell thread never waits.
+    void closeSpare(HWND top, const std::vector<HWND>& before, HWND tab, HWND thenSelect, bool front)
+    {
+        closing = {top, before, tab, tickMs() + 3000, thenSelect, front, false, true};
+        ::SetTimer(shellWindow, kTimerLateTab, 50, nullptr);
+        closingTick();
+    }
+
+    static void CALLBACK closeAnswered(HWND, UINT, ULONG_PTR self, LRESULT)
+    {
+        reinterpret_cast<Impl*>(self)->closing.sent = false;
+    }
+
+    void closingTick()
+    {
+        Closing& c = closing;
+        if (!c.active || c.sent)
+            return;
+        if (!c.tab) {
+            for (HWND t : tabsOf(c.top)) {
+                if (std::ranges::find(c.before, t) == c.before.end()) {
+                    c.tab = t;
+                    break;
+                }
+            }
+        }
+        const bool gone = c.tab && !::IsWindow(c.tab);
+        if (!gone && tickMs() < c.until && ::IsWindow(c.top)) {
+            if (c.tab && activeTab(c.top) == c.tab
+                && ::SendMessageCallbackW(c.tab, WM_COMMAND, kCloseTab, 1, closeAnswered, reinterpret_cast<ULONG_PTR>(this)))
+                c.sent = true;
+            return; // (not active: someone chose another tab; it is left alone until it is again)
+        }
+        ::KillTimer(shellWindow, kTimerLateTab);
+        c.active = false;
+        trace(std::string("spec tab ") + (gone ? "closed" : "LEFT"));
+        if (c.thenSelect && ::IsWindow(c.thenSelect))
+            selectTab(c.top, c.thenSelect);
+        if (c.front && ::IsWindow(c.top))
+            toFront(c.top);
+    }
+
+    // The guess was wrong (B stays a window, goes elsewhere or to a tab
+    // already there): the tab opened for it is closed, not brought forward.
+    void dropSpeculation(const char* why)
+    {
+        for (UINT_PTR t : {kTimerTabSeen, kTimerDeadline, kTimerRetry, kTimerCloseB, kTimerSettle})
+            ::KillTimer(shellWindow, t);
+        Op& op = queue.front();
+        ++wastedTabs;
+        trace(std::string("spec dropped why=") + why);
+        closeSpare(op.target, op.tabsBefore, op.spareTab ? op.spareTab : op.newTab, nullptr, false);
+        queue.pop_front();
+        if (!queue.empty())
+            begin();
+    }
+
     void begin()
     {
         if (queue.empty())
@@ -1079,8 +1261,7 @@ struct Engine::Impl {
             if (std::ranges::find(op.tabsBefore, t) == op.tabsBefore.end()) {
                 ::KillTimer(shellWindow, kTimerTabSeen);
                 op.tTabSeen = nowMs();
-                op.front = toFront(op.target);
-                op.tFront = nowMs();
+                op.newTab = t;
                 return;
             }
         }
@@ -1092,7 +1273,8 @@ struct Engine::Impl {
         op.spareTab = e.tab;
         op.spareWeb = e.web;
         op.tSpare = at;
-        tryNavigate();
+        if (op.decided)
+            tryNavigate();
     }
 
     void tryNavigate()
@@ -1103,6 +1285,13 @@ struct Engine::Impl {
         const HRESULT hr = options.failNavigation ? E_FAIL : op.place.pidl ? navigate(op.spareWeb.Get(), op.place.pidl.get()) : E_INVALIDARG;
         if (SUCCEEDED(hr)) {
             op.navigated = true;
+            // Forward only now: it waits on Explorer's thread (busy making
+            // the tab), which would hold up the navigation behind it.
+            if (!op.fronted) {
+                op.fronted = true;
+                op.front = toFront(op.target);
+                op.tFront = nowMs();
+            }
             ::SetTimer(shellWindow, kTimerCloseB, 1, nullptr);
             ::SetTimer(shellWindow, kTimerSettle, 30, nullptr);
             return;
@@ -1200,7 +1389,7 @@ struct Engine::Impl {
         ::KillTimer(shellWindow, kTimerDeadline);
         ::KillTimer(shellWindow, kTimerTabSeen);
         Op& op = queue.front();
-        trace("tab place=" + utf8(op.place.name) + " front=" + std::to_string(op.front) + " selected=" + std::to_string(op.selection.size())
+        trace("tab place=" + utf8(op.place.name) + " spec=" + std::to_string(op.speculative) + " front=" + std::to_string(op.front) + " selected=" + std::to_string(op.selection.size())
             + " navigations=" + std::to_string(op.navigations) + timing("show", op.tShow) + timing("hidden", op.tHidden)
             + timing("reg", op.tRegistered) + timing("decided", op.tDecided) + timing("posted", op.tPosted) + timing("tab", op.tTabSeen)
             + timing("front", op.tFront) + timing("spare", op.tSpare) + timing("navigate", op.tNavigate)
@@ -1222,8 +1411,8 @@ struct Engine::Impl {
             // B went already: the tab stays, it is where the folder is.
         } else {
             showAgain(op.b);
-            if (op.spareTab && ::IsWindow(op.spareTab))
-                ::PostMessageW(op.spareTab, WM_COMMAND, kCloseTab, 1); // the tab that was opened for it
+            if (::IsWindow(op.target)) // the tab that was opened for it
+                closeSpare(op.target, op.tabsBefore, op.spareTab ? op.spareTab : op.newTab, nullptr, false);
             if (::IsWindow(op.b))
                 toFront(op.b);
         }
@@ -1278,8 +1467,17 @@ struct Engine::Impl {
         }
         switch (message) {
         case kShown:
-            if (hider.hidden(reinterpret_cast<HWND>(lParam)) && taskbar)
-                taskbar->DeleteTab(reinterpret_cast<HWND>(lParam));
+            if (const HWND shown = reinterpret_cast<HWND>(lParam); hider.hidden(shown)) {
+                if (taskbar)
+                    taskbar->DeleteTab(shown);
+                bool known = false;
+                {
+                    const std::lock_guard lock(mutex);
+                    known = knownTops.contains(shown) && !undecided.contains(shown);
+                }
+                if (!known)
+                    speculate(shown);
+            }
             ::SetTimer(w, kTimerLeftHidden, 250, nullptr);
             return 0;
         case kReconnect:
@@ -1295,6 +1493,10 @@ struct Engine::Impl {
         case WM_TIMER:
             if (wParam == kTimerLeftHidden) {
                 leftHiddenTick();
+                return 0;
+            }
+            if (wParam == kTimerLateTab) {
+                closingTick();
                 return 0;
             }
             if (queue.empty()) {
