@@ -7,6 +7,8 @@
 #include "Http.h"
 
 #include <QElapsedTimer>
+#include <QProcess>
+#include <QTemporaryDir>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTest>
@@ -58,6 +60,137 @@ class TestTranslate : public QObject {
     Q_OBJECT
 
 private slots:
+    void protocolKeepsReadingWhileTranslationIsPending()
+    {
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+        bool oldReceived = false;
+        QObject::connect(&server, &QTcpServer::newConnection, &server, [&] {
+            while (auto* socket = server.nextPendingConnection()) {
+                auto input = std::make_shared<QByteArray>();
+                QObject::connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+                QObject::connect(socket, &QTcpSocket::readyRead, socket, [&, socket, input, sent = false]() mutable {
+                    input->append(socket->readAll());
+                    if (sent || !input->contains("\r\n\r\n") || !input->endsWith('}'))
+                        return;
+                    sent = true;
+                    const bool old = input->contains("old query");
+                    oldReceived |= old;
+                    const auto respond = [socket] {
+                        const QByteArray body = R"({"choices":[{"message":{"content":"new answer"}}]})";
+                        socket->write("HTTP/1.1 200 OK\r\nContent-Length: " + QByteArray::number(body.size()) + "\r\n\r\n" + body);
+                    };
+                    if (old)
+                        QTimer::singleShot(2500, socket, respond);
+                    else
+                        respond();
+                });
+            }
+        });
+        QTemporaryDir data;
+        QVERIFY(data.isValid());
+        QProcess process;
+        QByteArray output;
+        std::map<long long, Json> replies;
+        QObject::connect(&process, &QProcess::readyReadStandardOutput, &process, [&] {
+            output += process.readAllStandardOutput();
+            while (output.contains('\n')) {
+                const auto end = output.indexOf('\n');
+                const auto message = Json::parse(output.first(end).toStdString());
+                output.remove(0, end + 1);
+                if (message && (*message)["id"].isNumber())
+                    replies[(*message)["id"].toInt()] = *message;
+            }
+        });
+        process.start(QCoreApplication::applicationDirPath() + QStringLiteral("/WinShunTranslate.exe"));
+        QVERIFY(process.waitForStarted());
+        const auto send = [&](const char* method, Json params, int id = 0) {
+            Json message(Json::Object {{"jsonrpc", "2.0"}, {"method", method}, {"params", std::move(params)}});
+            if (id)
+                message.set("id", id);
+            process.write(QByteArray::fromStdString(message.dump()) + '\n');
+        };
+        send("initialize", Json::Object {{"locale", "en"}, {"dataDir", data.path().toStdString()},
+            {"settings", Json::Object {{"provider", "openai"}, {"apiKey", "fixture"},
+                {"endpoint", "http://127.0.0.1:" + std::to_string(server.serverPort())}}}}, 1);
+        QVERIFY(QTest::qWaitFor([&] { return replies.contains(1); }));
+        send("query", Json::Object {{"queryId", 1}, {"command", "tr"}, {"text", "old query"}}, 2);
+        QVERIFY(QTest::qWaitFor([&] { return oldReceived; }));
+        QElapsedTimer elapsed;
+        elapsed.start();
+        send("cancel", Json::Object {{"queryId", 1}});
+        send("query", Json::Object {{"queryId", 2}, {"command", "tr"}, {"text", "new query"}}, 3);
+        QVERIFY(QTest::qWaitFor([&] { return replies.contains(3); }, 1500));
+        QVERIFY(elapsed.elapsed() < 1200);
+        QCOMPARE(replies[3]["result"]["items"].toArray()[0]["title"].toString(), std::string("new answer"));
+        QCOMPARE(replies[3]["result"]["cache"].toInt(), 300LL);
+        send("shutdown", Json::Object {}, 4);
+        QVERIFY(QTest::qWaitFor([&] { return process.state() == QProcess::NotRunning; }));
+        QCOMPARE(process.exitCode(), 0);
+    }
+
+    void providerPresetsAndMicrosoftRequest()
+    {
+        auto s = tr::settingsFrom(Json::Object {{"provider", "deepseek"}, {"apiKey", "fixture"}});
+        QCOMPARE(s.endpoint, std::string("https://api.deepseek.com"));
+        QCOMPARE(s.model, std::string("deepseek-flash"));
+        s = tr::settingsFrom(Json::Object {{"provider", "doubao"}, {"model", "ep-fixture"}});
+        QCOMPARE(s.endpoint, std::string("https://ark.cn-beijing.volces.com/api/v3"));
+        QCOMPARE(s.model, std::string("ep-fixture"));
+        s = tr::settingsFrom(Json::Object {{"provider", "hunyuan"}, {"endpoint", "https://custom.example/v1"}});
+        QCOMPARE(s.endpoint, std::string("https://custom.example/v1"));
+        QCOMPARE(s.model, std::string("hunyuan-turbos-latest"));
+
+        s = tr::settingsFrom(Json::Object {{"provider", "microsoft"}, {"apiKey", "fixture"}, {"region", "eastasia"}});
+        const auto request = tr::buildRequest(s, "hello", "zh");
+        QCOMPARE(request.url, std::string("https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&to=zh-Hans"));
+        QCOMPARE(request.headers.at("Ocp-Apim-Subscription-Key"), std::string("fixture"));
+        QCOMPARE(request.headers.at("Ocp-Apim-Subscription-Region"), std::string("eastasia"));
+        QCOMPARE(parse(request.body).toArray()[0]["Text"].toString(), std::string("hello"));
+        const auto answer = tr::parseAnswer(s, R"([{"detectedLanguage":{"language":"en"},"translations":[{"text":"你好","to":"zh-Hans"}]}])", true);
+        QVERIFY(answer.ok);
+        QCOMPARE(answer.text, std::string("你好"));
+        QVERIFY(!tr::parseAnswer(s, "[]", true).ok);
+    }
+
+    void dictionaryRequestAndRows()
+    {
+        const auto request = tr::buildRequest(openai(), "hello", "zh", true);
+        QVERIFY(parse(request.body)["messages"].toArray()[0]["content"].toString().find("bilingual dictionary") != std::string::npos);
+        const std::string body = R"({"term":"hello","phonetic":"/həˈləʊ/","definitions":[{"partOfSpeech":"interjection","meaning":"你好"}],"examples":[{"text":"Hello, world!","translation":"你好，世界！"}]})";
+        const auto rows = tr::dictionaryRows("hello", "```json\n" + body + "\n```", true);
+        QCOMPARE(rows.size(), std::size_t(3));
+        QCOMPARE(rows[0].id, std::string("word"));
+        QCOMPARE(rows[0].copy, std::string("hello"));
+        QCOMPARE(rows[1].title, std::string("你好"));
+        QCOMPARE(rows[2].copy, std::string("Hello, world!"));
+        QVERIFY(!tr::dictionaryRows("unknown", "{\"definitions\":[]}", false)[0].valid);
+        QVERIFY(!tr::dictionaryRows("unknown", "not json", false)[0].valid);
+        QVERIFY(!tr::dictionaryRows("unknown", "{\"definitions\":[{}]}", false)[0].valid);
+    }
+
+    void httpCancellationDoesNotWaitForOldRequests()
+    {
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+        std::atomic_bool canceled = false;
+        QObject::connect(&server, &QTcpServer::newConnection, &server, [&] {
+            QTcpSocket* socket = server.nextPendingConnection();
+            QObject::connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+            QObject::connect(socket, &QTcpSocket::readyRead, socket, [&, socket] {
+                socket->readAll();
+                canceled = true;
+            });
+        });
+        const std::string url = "http://127.0.0.1:" + std::to_string(server.serverPort()) + "/translate";
+        QElapsedTimer elapsed;
+        elapsed.start();
+        auto result = std::async(std::launch::async, [&] { return tr::post(url, "{}", {}, 9000, &canceled); });
+        QVERIFY(QTest::qWaitFor([&] { return result.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready; }, 1500));
+        QCOMPARE(result.get().error, DWORD(ERROR_CANCELLED));
+        QVERIFY(elapsed.elapsed() < 1000);
+    }
+
     void httpTimeoutAndRecovery()
     {
         QTcpServer server;
@@ -91,7 +224,8 @@ private slots:
             mode = pass % 3;
             QElapsedTimer elapsed;
             elapsed.start();
-            auto result = std::async(std::launch::async, [&] { return tr::post(url, "{}", {}, mode == 2 ? 2000 : 120); });
+            auto result = std::async(std::launch::async, [&] { return tr::post(url, "{}", {}, mode == 2 ? 2000 : 120,
+                nullptr, {{"X-Test-Region", "eastasia"}}); });
             QVERIFY(QTest::qWaitFor([&] { return result.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready; }, 3000));
             const tr::Response response = result.get();
             QCOMPARE(response.error, mode == 2 ? DWORD(0) : DWORD(ERROR_WINHTTP_TIMEOUT));
@@ -101,6 +235,7 @@ private slots:
                 QCOMPARE(response.body, std::string("{}"));
             }
             QVERIFY(received.startsWith("POST /translate?key=kept HTTP/1.1\r\n"));
+            QVERIFY(received.contains("X-Test-Region: eastasia\r\n"));
         }
     }
 

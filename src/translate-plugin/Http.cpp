@@ -29,6 +29,8 @@ HINTERNET session()
 // Buffers and callback state live until HANDLE_CLOSING, including on timeout.
 class Request {
 public:
+    explicit Request(const std::atomic_bool* canceled) : m_canceled(canceled) {}
+
     ~Request()
     {
         if (handle) {
@@ -93,8 +95,15 @@ public:
         if (std::chrono::steady_clock::now() >= deadline)
             return ERROR_WINHTTP_TIMEOUT;
         std::unique_lock lock(m_mutex);
-        if (!m_cv.wait_until(lock, deadline, [this, expected] { return m_error || m_completed == expected; }))
-            return ERROR_WINHTTP_TIMEOUT;
+        while (!m_error && m_completed != expected) {
+            if (m_canceled && m_canceled->load())
+                return ERROR_CANCELLED;
+            const auto now = std::chrono::steady_clock::now();
+            if (now >= deadline)
+                return ERROR_WINHTTP_TIMEOUT;
+            const auto wake = m_canceled ? std::min(deadline, now + std::chrono::milliseconds(25)) : deadline;
+            m_cv.wait_until(lock, wake);
+        }
         return m_error;
     }
 
@@ -105,6 +114,7 @@ public:
     std::array<char, 64 * 1024> buffer;
 
 private:
+    const std::atomic_bool* m_canceled = nullptr;
     std::mutex m_mutex;
     std::condition_variable m_cv;
     DWORD m_completed = 0;
@@ -114,7 +124,8 @@ private:
 
 } // namespace
 
-Response post(const std::string& url, const std::string& body, const std::string& authorization, int budgetMs)
+Response post(const std::string& url, const std::string& body, const std::string& authorization, int budgetMs,
+    const std::atomic_bool* canceled, const std::map<std::string, std::string>& extraHeaders)
 {
     Response r;
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(std::max(0, budgetMs));
@@ -142,7 +153,9 @@ Response post(const std::string& url, const std::string& body, const std::string
     };
     if (budgetMs <= 0)
         return failed(ERROR_WINHTTP_TIMEOUT);
-    Request request;
+    if (canceled && canceled->load())
+        return failed(ERROR_CANCELLED);
+    Request request(canceled);
     request.connection = ::WinHttpConnect(session(), hostName.c_str(), parts.nPort, 0);
     if (!request.connection)
         return failed(::GetLastError());
@@ -166,6 +179,11 @@ Response post(const std::string& url, const std::string& body, const std::string
     std::wstring headers = L"Content-Type: application/json\r\n";
     if (!authorization.empty())
         headers += L"Authorization: " + winshun::wide(authorization) + L"\r\n";
+    for (const auto& [name, value] : extraHeaders) {
+        if (name.find_first_of("\r\n:") != std::string::npos || value.find_first_of("\r\n") != std::string::npos)
+            return failed(ERROR_INVALID_PARAMETER);
+        headers += winshun::wide(name) + L": " + winshun::wide(value) + L"\r\n";
+    }
     DWORD error = request.wait(::WinHttpSendRequest(request.handle, headers.c_str(), static_cast<DWORD>(headers.size()),
         const_cast<char*>(body.data()), static_cast<DWORD>(body.size()), static_cast<DWORD>(body.size()), context),
         WINHTTP_CALLBACK_STATUS_SENDREQUEST_COMPLETE, deadline);

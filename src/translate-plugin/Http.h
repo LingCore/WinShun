@@ -5,6 +5,8 @@
 #include <windows.h>
 
 #include <string>
+#include <atomic>
+#include <map>
 
 namespace tr {
 
@@ -21,7 +23,8 @@ struct Response {
 // the calling thread cancels the request and waits for callback teardown;
 // no thread closes a handle while another is calling a WinHTTP API on it.
 // Timeout is reported as ERROR_WINHTTP_TIMEOUT.
-Response post(const std::string& url, const std::string& body, const std::string& authorization, int budgetMs);
+Response post(const std::string& url, const std::string& body, const std::string& authorization, int budgetMs,
+    const std::atomic_bool* canceled = nullptr, const std::map<std::string, std::string>& extraHeaders = {});
 
 // A readable reason for a failed request.
 std::string networkError(const Response& response, bool chinese);

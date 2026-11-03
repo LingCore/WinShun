@@ -16,6 +16,7 @@ struct Settings {
     std::string key;
     std::string endpoint; // OpenAI-compatible base, e.g. https://api.openai.com/v1
     std::string model;
+    std::string region; // Microsoft Translator's resource region, when required
     std::string target = "auto"; // auto | zh | en | ja (or any code the service knows)
 };
 
@@ -39,8 +40,9 @@ struct Request {
     std::string url;
     std::string body;
     std::string authorization;
+    std::map<std::string, std::string> headers;
 };
-Request buildRequest(const Settings& settings, const std::string& text, const std::string& target);
+Request buildRequest(const Settings& settings, const std::string& text, const std::string& target, bool dictionary = false);
 
 // What the service said, read.
 struct Answer {
@@ -69,5 +71,6 @@ winshun::Item failedRow(const std::string& reason, bool chinese); // no answer, 
 winshun::Item emptyRow(const std::string& text, bool chinese);
 winshun::Items resultRows(const std::string& text, const std::string& translated, const std::string& target,
     const std::string& detected, bool chinese);
+winshun::Items dictionaryRows(const std::string& text, const std::string& body, bool chinese);
 
 } // namespace tr

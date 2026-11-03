@@ -399,3 +399,7 @@ wsbench --mcp-host --plugins D:\plugins                                 # serve 
 ### Web search host capability
 
 `webSearch: true` is reserved for official `winshun.web`: no `runtime`, an empty `commands` array, and sites from plugin settings. The host supplies URL handling, result rendering and a lazily loaded editor. An absent or disabled provider contributes no results or keywords and requests no suggestions. Legacy official URL manifests are adapted in memory without rewriting user files. Packaging sets `minWinShun` to the current host version.
+
+## Asynchronous C++ queries
+
+The C++ SDK supports `queryAsync(const Query&, std::function<void(Json)>)`. Its default calls `queryResult` synchronously. An asynchronous implementation snapshots settings and locale on the protocol thread, replies exactly once, handles `cancel(queryId)`, and joins workers in `shuttingDown()` and the derived destructor. A worker can send `partial()` results while the request is pending. The wire protocol is unchanged.

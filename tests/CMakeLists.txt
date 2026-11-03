@@ -980,6 +980,7 @@ set_tests_properties(tst_bookmarks PROPERTIES
 # path against local servers that stall before headers or in the body.
 qt_add_executable(tst_translate tst_translate.cpp ${PROJECT_SOURCE_DIR}/src/translate-plugin/Translate.cpp
     ${PROJECT_SOURCE_DIR}/src/translate-plugin/Http.cpp)
+add_dependencies(tst_translate WinShunTranslate)
 target_include_directories(tst_translate PRIVATE ${PROJECT_SOURCE_DIR}/src/translate-plugin ${PROJECT_SOURCE_DIR}/src/plugins-sdk)
 target_link_libraries(tst_translate PRIVATE winshun_options Qt6::Test Qt6::Network winhttp)
 set_target_properties(tst_translate PROPERTIES WIN32_EXECUTABLE FALSE)

@@ -28,6 +28,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -939,6 +940,10 @@ protected:
     // A query's whole answer, when `rerun` (seconds) or `cache` (seconds)
     // are wanted too: override queryResult instead of query.
     virtual Json queryResult(const Query& q) { return Json::Object {{"items", itemsJson(query(q))}}; }
+    // Override for a slow query that must keep reading cancel and newer queries.
+    // Snapshot settings/locale on this thread. Reply once, from any thread, and
+    // join outstanding work in shuttingDown() and the derived destructor.
+    virtual void queryAsync(const Query& q, std::function<void(Json)> reply) { reply(queryResult(q)); }
 
 private:
     void send(const Json& message)
@@ -1021,7 +1026,8 @@ private:
             q.limit = static_cast<int>(params["limit"].toInt(200));
             for (const Json& group : params["match"].toArray())
                 q.match.push_back(group.toString());
-            answer(queryResult(q));
+            queryAsync(q, [this, id](Json result) { respond(id, std::move(result)); });
+            answered = true;
         } else if (method == "action") {
             ActionRequest a;
             a.command = params["command"].toString();

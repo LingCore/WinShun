@@ -89,6 +89,21 @@ Settings settingsFrom(const Json& json)
     s.key = winshun::trim(json["apiKey"].toString());
     s.endpoint = winshun::trim(json["endpoint"].toString());
     s.model = winshun::trim(json["model"].toString());
+    s.region = winshun::trim(json["region"].toString());
+    if (s.provider == "deepseek") {
+        if (s.endpoint.empty())
+            s.endpoint = "https://api.deepseek.com";
+        if (s.model.empty())
+            s.model = "deepseek-flash";
+    } else if (s.provider == "doubao") {
+        if (s.endpoint.empty())
+            s.endpoint = "https://ark.cn-beijing.volces.com/api/v3";
+    } else if (s.provider == "hunyuan") {
+        if (s.endpoint.empty())
+            s.endpoint = "https://api.hunyuan.cloud.tencent.com/v1";
+        if (s.model.empty())
+            s.model = "hunyuan-turbos-latest";
+    }
     const std::string target = lower(winshun::trim(json["target"].toString()));
     if (!target.empty())
         s.target = target;
@@ -128,9 +143,20 @@ std::string languageName(const std::string& target, bool chinese)
     return target;
 }
 
-Request buildRequest(const Settings& settings, const std::string& text, const std::string& target)
+Request buildRequest(const Settings& settings, const std::string& text, const std::string& target, bool dictionary)
 {
     Request r;
+    if (settings.provider == "microsoft") {
+        std::string base = settings.endpoint.empty() ? "https://api.cognitive.microsofttranslator.com" : settings.endpoint;
+        while (!base.empty() && base.back() == '/')
+            base.pop_back();
+        r.url = base + "/translate?api-version=3.0&to=" + (target == "zh" ? "zh-Hans" : target);
+        r.headers["Ocp-Apim-Subscription-Key"] = settings.key;
+        if (!settings.region.empty())
+            r.headers["Ocp-Apim-Subscription-Region"] = settings.region;
+        r.body = Json(Json::Array {Json::Object {{"Text", text}}}).dump();
+        return r;
+    }
     if (isDeepl(settings)) {
         // The free plan's keys end in ":fx" and live on their own host.
         const bool free = settings.key.size() >= 3 && settings.key.compare(settings.key.size() - 3, 3, ":fx") == 0;
@@ -144,8 +170,14 @@ Request buildRequest(const Settings& settings, const std::string& text, const st
         base.pop_back();
     r.url = base + "/chat/completions";
     // The language is named in English: the prompt is English whatever the UI says.
-    const std::string prompt = "Translate the following text into " + englishName(target)
-        + ". Reply with the translation only, no explanations.";
+    const std::string prompt = dictionary
+        ? "Act as a bilingual dictionary. Explain the user's word in " + englishName(target)
+            + ". Return only a JSON object with term (string), phonetic (string, optional), "
+              "definitions (up to 4 objects with partOfSpeech and meaning strings), "
+              "examples (up to 2 objects with text and translation strings). "
+              "For an unknown word return empty definitions. Do not invent a meaning."
+        : "Translate the following text into " + englishName(target)
+            + ". Reply with the translation only, no explanations.";
     r.body = Json(Json::Object {
                       {"model", settings.model.empty() ? "gpt-4o-mini" : settings.model},
                       {"temperature", 0},
@@ -163,11 +195,19 @@ Answer parseAnswer(const Settings& settings, const std::string& body, bool chine
     Answer a;
     std::string problem;
     const auto json = Json::parse(body, &problem);
-    if (!json || !json->isObject()) {
+    if (!json || (!json->isObject() && !(settings.provider == "microsoft" && json->isArray()))) {
         a.error = chinese ? "服务的回答看不懂（不是 JSON）" : "The service's answer is not readable (not JSON)";
         return a;
     }
-    if (isDeepl(settings)) {
+    if (settings.provider == "microsoft") {
+        const auto& results = json->toArray();
+        if (results.empty() || results[0]["translations"].toArray().empty()) {
+            a.error = chinese ? "回答里没有译文" : "No translation in the answer";
+            return a;
+        }
+        a.text = winshun::trim(results[0]["translations"].toArray()[0]["text"].toString());
+        a.detected = results[0]["detectedLanguage"]["language"].toString();
+    } else if (isDeepl(settings)) {
         const Json::Array& translations = (*json)["translations"].toArray();
         if (translations.empty()) {
             a.error = chinese ? "回答里没有译文" : "No translation in the answer";
@@ -255,6 +295,47 @@ winshun::Item failedRow(const std::string& reason, bool chinese)
 winshun::Item emptyRow(const std::string& text, bool chinese)
 {
     return Item("empty", chinese ? "没有译文" : "No translation came back", text).withIcon(kIcon).invalid();
+}
+
+winshun::Items dictionaryRows(const std::string& text, const std::string& body, bool chinese)
+{
+    std::string content = winshun::trim(body);
+    if (content.starts_with("```")) {
+        const auto begin = content.find('\n');
+        const auto end = content.rfind("```");
+        if (begin != std::string::npos && end > begin)
+            content = content.substr(begin + 1, end - begin - 1);
+    }
+    const auto json = Json::parse(content);
+    if (!json || !json->isObject() || (*json)["definitions"].toArray().empty())
+        return {failedRow(chinese ? "没有可用的词典释义" : "No usable dictionary definition", chinese)};
+    std::string term = (*json)["term"].toString();
+    if (term.empty())
+        term = text;
+    const std::string phonetic = (*json)["phonetic"].toString();
+    winshun::Items rows {Item("word", cut(term + (phonetic.empty() ? "" : "  " + phonetic)),
+        chinese ? "AI 词典 · Enter 复制单词" : "AI dictionary · Enter copies the word").withIcon(kIcon).withCopy(term)};
+    for (const auto& definition : (*json)["definitions"].toArray()) {
+        const std::string meaning = winshun::trim(definition["meaning"].toString());
+        if (!meaning.empty())
+            rows.push_back(Item("definition" + std::to_string(rows.size()), cut(meaning), cut(definition["partOfSpeech"].toString()))
+                .withIcon(kIcon).withCopy(meaning));
+        if (rows.size() >= 5)
+            break;
+    }
+    if (rows.size() == 1)
+        return {failedRow(chinese ? "没有可用的词典释义" : "No usable dictionary definition", chinese)};
+    int examples = 0;
+    for (const auto& example : (*json)["examples"].toArray()) {
+        const std::string sentence = winshun::trim(example["text"].toString());
+        if (!sentence.empty()) {
+            rows.push_back(Item("example" + std::to_string(++examples), cut(sentence), cut(example["translation"].toString()))
+                .withIcon(kIcon).withCopy(sentence));
+            if (examples == 2)
+                break;
+        }
+    }
+    return rows;
 }
 
 winshun::Items resultRows(const std::string& text, const std::string& translated, const std::string& target,

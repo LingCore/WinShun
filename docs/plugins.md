@@ -405,3 +405,7 @@ wsbench --mcp-host --plugins D:\plugins                                 # 把插
 ### 网页搜索宿主能力
 
 `webSearch: true` 为官方 `winshun.web` 保留：不声明 `runtime`，`commands` 为空，网站来自插件设置。宿主提供通用网址解析、结果渲染和懒加载编辑器；停用或缺少插件时不提供结果、不占用关键词、不请求建议。旧版官方零代码清单在内存中兼容为这一能力，不重写用户文件。插件包构建时将 `minWinShun` 设为当前主程序版本。
+
+## C++ 异步查询
+
+C++ SDK 提供 `queryAsync(const Query&, std::function<void(Json)>)`，默认同步调用 `queryResult`。异步实现应在协议线程快照设置和语言，每个请求恰好回复一次，并处理 `cancel(queryId)`。在 `shuttingDown()` 和派生类析构函数中取消并等待工作线程退出。请求尚未结束时，工作线程可用 `partial()` 推送结果。线上协议保持兼容。
