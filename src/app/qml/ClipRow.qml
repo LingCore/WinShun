@@ -174,17 +174,19 @@ Item {
 
                 // Scaled once, when loaded, to fit the slot (sourceSize: both
                 // set, the aspect kept), then drawn pixel for pixel, on whole
-                // pixels: sharp.
+                // pixels: sharp. Kept scaled (ClipThumbnailProvider), so a row
+                // scrolled back to shows its picture at once.
                 x: Math.round((parent.width - width) / 2 * dpr) / dpr
                 y: Math.round((parent.height - height) / 2 * dpr) / dpr
-                width: ready ? implicitWidth / dpr : parent.width
-                height: ready ? implicitHeight / dpr : parent.height
+                width: ready ? implicitWidth : parent.width
+                height: ready ? implicitHeight : parent.height
                 visible: ready
                 source: row.image
-                cache: false // keep pixels only while this delegate needs them
-                // An image file: sourceSize is in the image's own pixels.
-                sourceSize.width: Math.round(parent.width * dpr)
-                sourceSize.height: Math.round(parent.height * dpr)
+                // An image provider: sourceSize in logical pixels (Qt asks
+                // for it times the device pixel ratio); the implicit size is
+                // its pixels over the ratio.
+                sourceSize.width: parent.width
+                sourceSize.height: parent.height
                 asynchronous: true
                 autoTransform: true
                 smooth: false

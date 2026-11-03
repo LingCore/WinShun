@@ -1,14 +1,16 @@
 #include "ClipModel.h"
+#include "ClipThumbnailProvider.h"
 #include "FileIconProvider.h"
 #include "HotkeySteps.h"
 
 #include <QElapsedTimer>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
-#include <QUrl>
+#include <QTimeZone>
 
 using namespace ws;
 using namespace Qt::StringLiterals;
@@ -117,7 +119,7 @@ private slots:
         model.setRows(store.find({}), {});
         const QModelIndex index = model.index(0);
         const QString image = model.data(index, ClipModel::ImageRole).toString();
-        QCOMPARE(image, thumbnail ? QUrl::fromLocalFile(path).toString() : QString());
+        QCOMPARE(image, thumbnail ? ClipThumbnailProvider::url(path, QFileInfo(path).lastModified(QTimeZone::UTC).toMSecsSinceEpoch()) : QString());
         QCOMPARE(model.data(index, ClipModel::KindRole).toInt(), static_cast<int>(kind));
         QCOMPARE(store.payload(id).text, path);
         if (thumbnail) {

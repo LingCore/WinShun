@@ -68,6 +68,7 @@ qt_add_executable(WinShun WIN32
     SwitchPlugin.cpp SwitchPlugin.h
     TextField.cpp TextField.h
     ThumbnailProvider.cpp ThumbnailProvider.h
+    ClipThumbnailProvider.cpp ClipThumbnailProvider.h
     TriggerJournal.cpp TriggerJournal.h
     TrayMenu.cpp TrayMenu.h
     WebSuggester.cpp WebSuggester.h

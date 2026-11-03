@@ -1,5 +1,6 @@
 #include "ClipFiles.h"
 #include "ClipImage.h"
+#include "ClipThumbnailProvider.h"
 #include "ColorSwatch.h"
 #include "SystemTheme.h"
 #include "platform/ClipboardWatcher.h"
@@ -13,7 +14,9 @@
 #include <QProcessEnvironment>
 #include <QQmlComponent>
 #include <QQmlEngine>
+#include <QQuickImageProvider>
 #include <QQuickItem>
+#include <QQuickTextureFactory>
 #include <QQuickWindow>
 #include <QRegularExpression>
 #include <QScopeGuard>
@@ -256,6 +259,68 @@ private slots:
         QVERIFY(!decodeClipImage(clipboardBytes(L"image/png")).firstFrame.isNull());
     }
 
+    // The rows' thumbnails: the size and pixels Qt itself makes of a file
+    // for a sourceSize, kept for the next request, errors as Qt reports them.
+    void clipThumbnailsMatchQtAndAreKept()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.filePath(u"截图 #1 100%.png"_s);
+        QImage picture(1380, 1080, QImage::Format_RGB32);
+        for (int y = 0; y < picture.height(); ++y) {
+            for (int x = 0; x < picture.width(); ++x)
+                picture.setPixel(x, y, qRgb(x % 256, y % 256, (x * y) % 256));
+        }
+        QVERIFY(picture.save(path, "PNG"));
+        QImage small(40, 30, QImage::Format_RGB32);
+        small.fill(Qt::red);
+        const QString smallPath = dir.filePath(u"small.png"_s);
+        QVERIFY(small.save(smallPath));
+        const QString broken = dir.filePath(u"broken.png"_s);
+        QFile file(broken);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("not an image");
+        file.close();
+
+        QQmlEngine engine;
+        engine.addImageProvider(u"clipthumb"_s, new ClipThumbnailProvider);
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\nImage { asynchronous: true; sourceSize.width: 162; sourceSize.height: 102 }", QUrl());
+        const auto shown = [&](const QString& source) {
+            auto* image = qobject_cast<QQuickItem*>(component.create());
+            image->setProperty("source", source);
+            return std::unique_ptr<QQuickItem>(image);
+        };
+        // As QQuickPixmap reads the file itself for that sourceSize.
+        QImageReader reader(path);
+        reader.setAutoTransform(true);
+        reader.setScaledSize(QSize(130, 102)); // fits 102 high, the aspect kept
+        const QImage expected = reader.read();
+        const QString url = ClipThumbnailProvider::url(path, 7);
+        auto first = shown(url);
+        QTRY_COMPARE(first->property("status").toInt(), 1); // Image.Ready
+        QCOMPARE(QSizeF(first->implicitWidth(), first->implicitHeight()), QSizeF(130, 102));
+        // Kept: asked again (a row scrolled back to), it is there at once,
+        // before the request returns, the pixels Qt would have made.
+        ClipThumbnailProvider provider;
+        std::unique_ptr<QQuickImageResponse> again(
+            provider.requestImageResponse(url.mid(QStringLiteral("image://clipthumb/").size()), QSize(162, 102)));
+        std::unique_ptr<QQuickTextureFactory> factory(again->textureFactory());
+        QVERIFY(factory);
+        QCOMPARE(factory->image().convertToFormat(QImage::Format_RGB32), expected.convertToFormat(QImage::Format_RGB32));
+        // Smaller than the slot: as it is, never enlarged.
+        auto smallImage = shown(ClipThumbnailProvider::url(smallPath));
+        QTRY_COMPARE(smallImage->property("status").toInt(), 1);
+        QCOMPARE(QSizeF(smallImage->implicitWidth(), smallImage->implicitHeight()), QSizeF(40, 30));
+        // Not a picture: an error naming the file, as Qt's own.
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression(u".*Error decoding: .*broken\\.png.*"_s));
+        auto none = shown(ClipThumbnailProvider::url(broken));
+        QTRY_COMPARE(none->property("status").toInt(), 3); // Image.Error
+        // The address: any path, and a file written again gets another one.
+        QVERIFY(ClipThumbnailProvider::url(path, 1) != ClipThumbnailProvider::url(path, 2));
+        QVERIFY(!url.contains(u'#') && !url.contains(u'%'));
+    }
+
     void imageFileRowLoadsAtBothSizesAndReusesItsDelegate()
     {
         QTest::failOnWarning(QRegularExpression(u"TypeError|ReferenceError|Cannot assign|Binding loop"_s));
@@ -267,13 +332,14 @@ private slots:
         QVERIFY(phone.save(path, "JPEG"));
         const QUrl folder = QUrl::fromLocalFile(QStringLiteral(WINSHUN_QML_DIR "/"));
         QQmlEngine engine;
+        engine.addImageProvider(u"clipthumb"_s, new ClipThumbnailProvider);
         QQmlComponent component(&engine, folder.resolved(QUrl(u"ClipRow.qml"_s)));
         QVERIFY2(component.isReady(), qPrintable(component.errorString()));
         std::unique_ptr<QObject> object(component.createWithInitialProperties({
             {u"index"_s, 0}, {u"clipId"_s, 1}, {u"kind"_s, 3},
             {u"title"_s, u"手机截图 #+ 100%.JPG"_s}, {u"detail"_s, u"Weixin · 刚刚"_s},
             {u"icon"_s, QUrl::fromLocalFile(path).toString()},
-            {u"image"_s, QUrl::fromLocalFile(path).toString()}, {u"swatch"_s, QString()},
+            {u"image"_s, ClipThumbnailProvider::url(path)}, {u"swatch"_s, QString()},
             {u"order"_s, 0}, {u"groupName"_s, QString()}, {u"pinned"_s, false},
             {u"missing"_s, false}, {u"movable"_s, false}, {u"afterPinned"_s, false}, {u"screenshot"_s, false}, {u"pasted"_s, false},
         }));
@@ -319,7 +385,7 @@ private slots:
         file.write("not an image");
         file.close();
         QTest::ignoreMessage(QtWarningMsg, QRegularExpression(u".*Error decoding:.*"_s));
-        row->setProperty("image", QUrl::fromLocalFile(broken).toString());
+        row->setProperty("image", ClipThumbnailProvider::url(broken));
         QTRY_COMPARE(thumbnail->property("status").toInt(), 3); // Image.Error
         QTRY_COMPARE(icon->property("status").toInt(), 1);
         QVERIFY(icon->isVisible());

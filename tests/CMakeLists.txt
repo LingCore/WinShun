@@ -603,6 +603,7 @@ target_link_libraries(tst_clipboard PRIVATE wscore Qt6::Test)
 # window station, and the production QML preview (offscreen).
 qt_add_executable(tst_clipimage tst_clipimage.cpp
     ${PROJECT_SOURCE_DIR}/src/app/ClipImage.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/ClipThumbnailProvider.cpp
     ${PROJECT_SOURCE_DIR}/src/app/ClipFiles.cpp
     ${PROJECT_SOURCE_DIR}/src/app/ColorSwatch.cpp
     ${PROJECT_SOURCE_DIR}/src/app/SystemTheme.cpp
@@ -1066,7 +1067,7 @@ set_tests_properties(tst_clipfiles PROPERTIES
 
 # Picking the whole clipboard list (Ctrl+A, delete all): ClipModel with a real store.
 qt_add_executable(tst_clipselect tst_clipselect.cpp ${PROJECT_SOURCE_DIR}/src/app/ClipModel.cpp
-    ${PROJECT_SOURCE_DIR}/src/app/ColorText.cpp)
+    ${PROJECT_SOURCE_DIR}/src/app/ClipThumbnailProvider.cpp ${PROJECT_SOURCE_DIR}/src/app/ColorText.cpp)
 target_include_directories(tst_clipselect PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_clipselect PRIVATE wscore Qt6::Quick Qt6::Test)
 set_target_properties(tst_clipselect PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)

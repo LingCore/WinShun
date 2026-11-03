@@ -1,5 +1,6 @@
 #include "ClipModel.h"
 
+#include "ClipThumbnailProvider.h"
 #include "ColorText.h"
 #include "FileIconProvider.h"
 
@@ -8,7 +9,7 @@
 #include <QLocale>
 #include <QMimeDatabase>
 #include <QSet>
-#include <QUrl>
+#include <QTimeZone>
 
 #include <algorithm>
 
@@ -147,8 +148,12 @@ QVariant ClipModel::data(const QModelIndex& index, int role) const
         return FileIconProvider::iconUrl(first, dir);
     }
     case ImageRole: {
-        if (c->kind == ClipKind::Image) // none until its file is written (pictureSaved)
-            return m_store->imagePending(c->id) ? QString() : QUrl::fromLocalFile(m_store->imagePath(c->id)).toString();
+        // Thumbnails decoded off the GUI thread and kept (ClipThumbnailProvider).
+        // None until its file is written (pictureSaved). Never rewritten, but
+        // an entry restored from a backup can bring the same id back with
+        // another picture: its copy time tells them apart.
+        if (c->kind == ClipKind::Image)
+            return m_store->imagePending(c->id) ? QString() : ClipThumbnailProvider::url(m_store->imagePath(c->id), c->created);
         if (c->kind != ClipKind::Files && c->kind != ClipKind::Path)
             return QString();
         const QStringList files = c->files();
@@ -156,12 +161,16 @@ QVariant ClipModel::data(const QModelIndex& index, int role) const
             return QString();
         const QString& path = files.constFirst();
         // Presentation only: WeChat can copy a picture as a file. Keep its
-        // original kind and paste formats; Qt decodes the thumbnail asynchronously.
-        // MatchExtension never reads the file's contents on the GUI thread.
-        if (!QMimeDatabase().mimeTypeForFile(path, QMimeDatabase::MatchExtension).name().startsWith(u"image/")
-            || fileMissing(*c) || !QFileInfo(path).isFile())
+        // original kind and paste formats. MatchExtension never reads the
+        // file's contents on the GUI thread.
+        static const QMimeDatabase mimes;
+        if (!mimes.mimeTypeForFile(path, QMimeDatabase::MatchExtension).name().startsWith(u"image/") || fileMissing(*c))
             return QString();
-        return QUrl::fromLocalFile(path).toString();
+        const QFileInfo file(path);
+        if (!file.isFile())
+            return QString();
+        // Written again since (the same name, another picture): another address.
+        return ClipThumbnailProvider::url(path, file.lastModified(QTimeZone::UTC).toMSecsSinceEpoch());
     }
     case ColorRole:
         return colorOf(*c);

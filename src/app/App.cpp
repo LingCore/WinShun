@@ -20,6 +20,7 @@
 #include "FileIconProvider.h"
 #include "FilePreview.h"
 #include "ThumbnailProvider.h"
+#include "ClipThumbnailProvider.h"
 #include "DropPie.h"
 #include "DropPieHelper.h"
 #include "FolderMenu.h"
@@ -1154,6 +1155,7 @@ bool App::createWindow()
     m_qml = std::make_unique<QQmlApplicationEngine>();
     m_qml->addImageProvider(u"fileicon"_s, new FileIconProvider); // engine takes ownership
     m_qml->addImageProvider(u"thumbnail"_s, new ThumbnailProvider); // result rows' pictures, videos, PDFs
+    m_qml->addImageProvider(u"clipthumb"_s, new ClipThumbnailProvider); // clipboard rows' pictures
     m_qml->addImageProvider(u"preview"_s, m_preview->imageProvider()); // the picture in the preview (Alt+P)
     m_placement = std::make_unique<Placement>(Settings::dataDir() + u"\\state.ini"_s, u"Launcher"_s);
     m_frame = std::make_unique<WindowFrame>(false);

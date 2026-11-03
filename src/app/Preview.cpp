@@ -17,6 +17,7 @@
 #include "CommandLine.h"
 #include "FavoritesSettings.h"
 #include "FileIconProvider.h"
+#include "ClipThumbnailProvider.h"
 #include "FilePreview.h"
 #include "PluginSettings.h"
 #include "ResultModel.h"
@@ -4371,6 +4372,7 @@ int runResults(const QStringList& args)
     QGuiApplication::setFont(font);
     QQmlApplicationEngine engine;
     engine.addImageProvider(u"fileicon"_s, new FileIconProvider);
+    engine.addImageProvider(u"clipthumb"_s, new ClipThumbnailProvider); // the clipboard rows' pictures
     if (args.contains(u"--clipboard-sizing"_s))
         return checkClipboardInteractions(&engine, out, {}, true) ? std::min(g_warnings, 100) : 4;
     if (args.contains(u"--content-pane"_s)) {

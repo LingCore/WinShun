@@ -1,6 +1,7 @@
 #include "ClipboardDisplayReplica.h"
 
 #include "Clipboard.h"
+#include "ClipThumbnailProvider.h"
 #include "Placement.h"
 #include "WindowFrame.h"
 #include "SystemTheme.h"
@@ -442,6 +443,7 @@ int runClipboardDisplay(const QStringList& args)
     DisplayReplica replica(&engine);
     if (!replica.connectTo(pipe, parent)) return ERROR_ACCESS_DENIED;
     engine.addImageProvider(u"fileicon"_s, new DisplayImages(&replica));
+    engine.addImageProvider(u"clipthumb"_s, new ClipThumbnailProvider); // the pictures' own files, as before
     QTemporaryDir profile;
     Placement placement(profile.filePath(u"state.ini"_s), u"Clipboard"_s);
     WindowFrame frame(false);
