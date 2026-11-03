@@ -1,8 +1,8 @@
 """Capture 0.18 with the existing isolated previews and square poster template.
 
 Run --capture-only first. Add web/web-plugin-settings.png with
-tools/verify_web_plugin.py, plugin-library.png with
---preview-plugins, and ocr/window.png with the OCR plugin's isolated preview.
+tools/verify_web_plugin.py and ocr/window.png with the OCR plugin's isolated
+preview. The gallery uses the captured settings/p09-t1.png.
 Capture shortcuts/ with --preview-results --shortcut-panel.
 Inspect the raw renders, then use --export-only with the same --work.
 """
