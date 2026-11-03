@@ -93,6 +93,9 @@ class AnnotationModel : public QObject {
     // What the gesture is changing (image px, set 16 logical px wider): the
     // toolbar steps aside when it reaches it (3.5). Null when no gesture.
     Q_PROPERTY(QRectF gestureBounds READ gestureBounds NOTIFY gestureChanged FINAL)
+    // The pin and save keys as tips and key lists show them ("F3"); empty: none (#187).
+    Q_PROPERTY(QString pinKeyText READ pinKeyText NOTIFY keysChanged FINAL)
+    Q_PROPERTY(QString saveKeyText READ saveKeyText NOTIFY keysChanged FINAL)
 
 public:
     explicit AnnotationModel(QObject* parent = nullptr);
@@ -275,8 +278,16 @@ public:
     bool key(int key, Qt::KeyboardModifiers modifiers);
     // The keys whose owner decides (the pin and save keys, #187): the text
     // box hands them over instead of typing them. The defaults until the owner sets them.
-    void setKeys(const CaptureKeys& keys) { m_keys = keys; }
+    void setKeys(const CaptureKeys& keys)
+    {
+        if (keys == m_keys)
+            return;
+        m_keys = keys;
+        emit keysChanged();
+    }
     const CaptureKeys& keys() const { return m_keys; }
+    QString pinKeyText() const { return m_keys.text(KeyAction::Pin); }
+    QString saveKeyText() const { return m_keys.text(KeyAction::Save); }
     Q_INVOKABLE bool isFinishKey(int key, int modifiers) const
     {
         const auto mods = Qt::KeyboardModifiers(modifiers);
@@ -343,6 +354,7 @@ signals:
     void marqueeChanged();
     void pickingChanged();
     void smartChanged();
+    void keysChanged();
     // A word for the user (the overlay shows it by the selection).
     void notice(const QString& text);
 

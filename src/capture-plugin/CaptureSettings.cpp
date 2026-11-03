@@ -1,7 +1,9 @@
 #include "CaptureSettings.h"
 
+#include "platform/HotkeyText.h"
 #include "platform/Shell.h"
 
+#include <QCoreApplication>
 #include <QRegularExpression>
 #include <QSettings>
 #include <QWindow>
@@ -42,6 +44,20 @@ QString listOrText(QSettings& s, const QString& key, const QString& fallback)
     if (raw.metaType().id() == QMetaType::QStringList)
         return raw.toStringList().join(u',');
     return raw.isValid() ? raw.toString() : fallback;
+}
+
+QString keySetting(const capture::keys::ActionInfo& a)
+{
+    return u"Capture/Keys/"_s + QLatin1StringView(a.id);
+}
+
+const capture::keys::ActionInfo* actionById(const QString& id)
+{
+    for (const capture::keys::ActionInfo& a : capture::keys::kActions) {
+        if (id == QLatin1StringView(a.id))
+            return &a;
+    }
+    return nullptr;
 }
 
 } // namespace
@@ -138,6 +154,21 @@ CaptureOptions CaptureOptions::load(const QString& file)
     o.recordingMouseButtons = readOrDefault(s, u"Capture/RecordingMouseButtons"_s, d.recordingMouseButtons);
     const QString action = readOrDefault(s, u"Capture/PinDoubleClick"_s, d.pinDoubleClick).trimmed().toLower();
     o.pinDoubleClick = action == u"close" || action == u"collapse" || action == u"none" ? action : u"reset"_s;
+    // The keys (#187): missing or unreadable, the default; empty, none. One
+    // written by hand that the settings window would refuse (a key the capture
+    // uses, one an action before it has): the default, or none when that is
+    // taken too. Each is checked against those before it only.
+    for (const capture::keys::ActionInfo& a : capture::keys::kActions)
+        o.keys.set(a.action, {});
+    for (const capture::keys::ActionInfo& a : capture::keys::kActions) {
+        const QString name = keySetting(a);
+        QKeyCombination key = a.key;
+        if (s.contains(name))
+            key = capture::CaptureKeys::parse(listOrText(s, name, {})).value_or(a.key);
+        if (o.keys.problem(a.action, key))
+            key = o.keys.problem(a.action, a.key) ? QKeyCombination() : a.key;
+        o.keys.set(a.action, key);
+    }
     return o;
 }
 
@@ -185,6 +216,13 @@ void CaptureOptions::save(const QString& file) const
     s.setValue(u"Capture/RecordingKeys"_s, recordingKeys);
     s.setValue(u"Capture/RecordingMouseButtons"_s, recordingMouseButtons);
     s.setValue(u"Capture/PinDoubleClick"_s, pinDoubleClick);
+    // Only the keys changed: a default changed later reaches whoever never set one.
+    for (const capture::keys::ActionInfo& a : capture::keys::kActions) {
+        if (keys.key(a.action) == a.key)
+            s.remove(keySetting(a));
+        else
+            s.setValue(keySetting(a), keys.portable(a.action));
+    }
 }
 
 CaptureSettings::CaptureSettings(QString file, QObject* parent)
@@ -248,6 +286,97 @@ void CaptureSettings::setRecordingHotkey(bool on)
         return;
     m_recordingHotkey = on;
     emit recordingHotkeyChanged();
+}
+
+QVariantMap CaptureSettings::captureKeys() const
+{
+    const capture::CaptureKeys& keys = m_options.keys;
+    const capture::CaptureKeys defaults;
+    QVariantMap map;
+    for (const capture::keys::ActionInfo& a : capture::keys::kActions) {
+        map.insert(QString::fromLatin1(a.id), QVariantMap {
+            {u"text"_s, keys.text(a.action)},
+            {u"changed"_s, keys.key(a.action) != a.key},
+            {u"defaultText"_s, defaults.text(a.action)},
+            {u"conflict"_s, keys.has(a.action) ? hotkeyConflict(keys.key(a.action), false) : QString()},
+        });
+    }
+    return map;
+}
+
+QString CaptureSettings::setCaptureKey(const QString& id, int key, int modifiers, int scanCode)
+{
+    const capture::keys::ActionInfo* a = actionById(id);
+    if (!a || key == 0 || key == Qt::Key_unknown || capture::keys::isModifierKey(key))
+        return {};
+    const auto mods = Qt::KeyboardModifiers(modifiers)
+        & (Qt::ControlModifier | Qt::ShiftModifier | Qt::AltModifier | Qt::MetaModifier | Qt::KeypadModifier);
+    QKeyCombination candidate(mods, Qt::Key(key));
+    // The pin window hears keys (PinWindow: virtual keys), so Shift+1 is Shift
+    // and 1 there, not "!": the key under the finger, found by its scan code.
+    if (a->context == capture::KeyContext::PinWindow && !capture::keys::pinCanHear(key) && scanCode > 0) {
+        const UINT vk = ::MapVirtualKeyW(UINT(scanCode) & 0xFF, MAPVK_VSC_TO_VK);
+        const QKeyCombination heard = capture::CaptureKeys::fromVirtualKey(vk, mods.testFlag(Qt::ControlModifier),
+            mods.testFlag(Qt::ShiftModifier), mods.testFlag(Qt::AltModifier));
+        if (heard.key() != Qt::Key_unknown)
+            candidate = QKeyCombination(heard.keyboardModifiers() | (mods & Qt::MetaModifier), heard.key());
+    }
+    if (const auto why = m_options.keys.problem(a->action, candidate))
+        return *why;
+    if (const QString why = hotkeyConflict(candidate, true); !why.isEmpty())
+        return why;
+    setKey(id, [&](capture::KeyAction) { return candidate; });
+    return {};
+}
+
+void CaptureSettings::clearCaptureKey(const QString& id)
+{
+    setKey(id, [](capture::KeyAction) { return QKeyCombination(); });
+}
+
+void CaptureSettings::resetCaptureKey(const QString& id)
+{
+    // The default, unless another action has taken it meanwhile: then none.
+    setKey(id, [this](capture::KeyAction action) {
+        const QKeyCombination fallback = capture::keys::info(action).key;
+        return m_options.keys.problem(action, fallback) ? QKeyCombination() : fallback;
+    });
+}
+
+void CaptureSettings::setKey(const QString& id, const std::function<QKeyCombination(capture::KeyAction)>& key)
+{
+    const capture::keys::ActionInfo* a = actionById(id);
+    if (!a)
+        return;
+    capture::CaptureKeys keys = m_options.keys;
+    keys.set(a->action, key(a->action));
+    change(m_options.keys, keys);
+}
+
+QString CaptureSettings::hotkeyConflict(QKeyCombination key, bool askSystem) const
+{
+    const auto tr = [](const char* text) { return QCoreApplication::translate("ws::captureplugin::CaptureSettings", text); };
+    const QString normal = hotkeys::normalized(QKeySequence(key).toString(QKeySequence::PortableText));
+    if (!normal.isEmpty()) {
+        const CaptureOptions& o = m_options;
+        const std::pair<QString, const char*> own[] {
+            {o.hotkey, QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "开始截图")},
+            {o.printScreen ? u"PrintScreen"_s : QString(), QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "用 PrtScn 键截图")},
+            {o.lastPinHotkey, QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "贴图")},
+            {o.pinsHotkey, QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "隐藏 / 显示全部贴图")},
+            {o.pinsRestoreHotkey, QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "找回穿透贴图")},
+            {o.presentHotkey, QT_TRANSLATE_NOOP("ws::captureplugin::CaptureSettings", "演示 / 白板")},
+        };
+        for (const auto& [hotkey, name] : own) {
+            if (!hotkey.isEmpty() && hotkeys::normalized(hotkey) == normal)
+                return tr("和“%1”的快捷键相同，按下时会先被它用掉").arg(tr(name));
+        }
+    }
+    if (askSystem && m_probe) {
+        if (const auto vk = capture::CaptureKeys::toVirtualKey(key); vk && !m_probe(vk->modifiers, vk->vk))
+            return tr("其他程序或 Win顺 已把它设为全局快捷键，按下时这里收不到");
+    }
+    return {};
 }
 
 QString CaptureSettings::pickFolder(const QString& title)

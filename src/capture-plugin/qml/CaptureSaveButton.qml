@@ -7,6 +7,7 @@ Row {
     id: split
 
     property bool tipsEnabled: true
+    property string keyText: "Ctrl+S" // the save key; empty: none (#187)
     signal saveRequested()
     signal savePreviousRequested()
     signal keyForwarded(var event)
@@ -19,7 +20,7 @@ Row {
         objectName: "captureSaveButton"
         implicitWidth: 32
         glyph: "\uE74E"
-        tip: qsTr("另存为…（Ctrl+S）")
+        tip: split.keyText.length > 0 ? qsTr("另存为…（%1）").arg(split.keyText) : qsTr("另存为…")
         tipsEnabled: split.tipsEnabled && !saveMenu.visible
         onClicked: split.saveRequested()
         Keys.onPressed: (event) => {

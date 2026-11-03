@@ -21,6 +21,7 @@ Column {
     readonly property int currentTab: currentGroup
     readonly property var groups: [
         { title: qsTr("快捷键") },
+        { title: qsTr("按键") },
         { title: qsTr("截图") },
         { title: qsTr("鼠标") },
         { title: qsTr("贴图") },
@@ -32,6 +33,10 @@ Column {
 
     // The hotkey box records: the plugin lets go of its hotkeys meanwhile (CaptureApp).
     readonly property bool recordingHotkey: hotkeyRecorder.recording || pinsHotkeyRow.recording || restoreHotkeyRow.recording || lastPinHotkeyRow.recording || presentHotkeyRow.recording
+                                            || keyRecording !== null
+    // The key box (KeyRow) recording now: the plugin's hotkeys are let go of
+    // then too, so that one of them pressed there is refused, not acted on.
+    property Item keyRecording: null
     Binding {
         target: card.editor
         property: "recordingHotkey"
@@ -135,6 +140,75 @@ Column {
         }
     }
 
+    // A key inside the capture or a pin (#187; CaptureSettings.captureKeys):
+    // any key, Esc and Space too; one refused says why underneath and the box
+    // goes on listening. 恢复默认 shows while it is not the default, 清除 while
+    // the pointer is on the row (or the keyboard in the box).
+    component KeyRow: SettingRow {
+        id: keyRow
+
+        required property string keyId
+        property bool capture: false // the capture's: Esc stops recording there (it is never one of them)
+        readonly property var info: card.editor.captureKeys[keyId]
+        property string error
+
+        // A click takes no focus: the box goes on recording until it is done here.
+        FlatButton {
+            visible: keyRow.info.text.length > 0 && (keyRow.hovered || keyRecorder.recording || activeFocus)
+            flat: true
+            text: qsTr("清除")
+            onClicked: {
+                keyRecorder.stop()
+                keyRow.error = ""
+                card.editor.clearCaptureKey(keyRow.keyId)
+            }
+        }
+        FlatButton {
+            visible: keyRow.info.changed
+            flat: true
+            text: qsTr("恢复默认")
+            onClicked: {
+                keyRecorder.stop()
+                keyRow.error = ""
+                card.editor.resetCaptureKey(keyRow.keyId)
+            }
+        }
+        HotkeyRecorder {
+            id: keyRecorder
+            objectName: "captureKey" + keyRow.keyId
+            keyMode: true
+            hotkey: keyRow.info.text
+            prompt: qsTr("请按下按键…")
+            placeholder: qsTr("未设置")
+            onKeyPressed: (key, modifiers, scanCode) => {
+                if (keyRow.capture && key === Qt.Key_Escape && modifiers === Qt.NoModifier) {
+                    stop()
+                    return
+                }
+                keyRow.error = card.editor.setCaptureKey(keyRow.keyId, key, modifiers, scanCode)
+                if (keyRow.error.length === 0)
+                    stop()
+            }
+            onRecordingChanged: {
+                if (recording) {
+                    keyRow.error = ""
+                    card.keyRecording = keyRow
+                } else if (card.keyRecording === keyRow) {
+                    card.keyRecording = null
+                }
+            }
+        }
+
+        bodyShown: keyRow.error.length > 0 || keyRow.info.conflict.length > 0
+        body: Text {
+            width: parent.width
+            text: keyRow.error.length > 0 ? keyRow.error : keyRow.info.conflict
+            color: Theme.danger
+            font.pixelSize: Theme.fontCaption
+            wrapMode: Text.Wrap
+        }
+    }
+
     // ---- 快捷键 ----
 
     SettingsSection {
@@ -212,11 +286,62 @@ Column {
         }
     }
 
+    // ---- 按键 ----
+
+    SettingsSection { // the keys inside the capture and the editing window (#187)
+        page: 0
+        tab: 1
+        width: parent.width
+        title: qsTr("截图时")
+        glyph: "" // Keyboard
+        note: qsTr("截图和编辑图片时按。清除后仍可点工具条上的按钮")
+
+        KeyRow {
+            keyId: "Pin"
+            capture: true
+            title: qsTranslate("ws::capture::CaptureKeys", "贴到屏幕")
+        }
+        KeyRow {
+            keyId: "Save"
+            capture: true
+            title: qsTranslate("ws::capture::CaptureKeys", "保存")
+        }
+    }
+
+    SettingsSection { // the keys of a pin window
+        page: 0
+        tab: 1
+        width: parent.width
+        title: qsTr("贴图窗口")
+        glyph: "" // Pin
+        note: qsTr("点一下贴图再按。清除后仍可从贴图的右键菜单操作")
+
+        Repeater {
+            model: [
+                { id: "PinClose", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "关闭贴图") },
+                { id: "PinCopy", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "复制") },
+                { id: "PinSave", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "保存") },
+                { id: "PinCollapse", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "收起/展开") },
+                { id: "PinTextPick", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "选取文字") },
+                { id: "PinRotateRight", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "向右转") },
+                { id: "PinRotateLeft", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "向左转") },
+                { id: "PinFlipHorizontal", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "左右翻转") },
+                { id: "PinFlipVertical", name: QT_TRANSLATE_NOOP("ws::capture::CaptureKeys", "上下翻转") }
+            ]
+
+            delegate: KeyRow {
+                required property var modelData
+                keyId: modelData.id
+                title: qsTranslate("ws::capture::CaptureKeys", modelData.name)
+            }
+        }
+    }
+
     // ---- 截图 ----
 
     SettingsSection {
         page: 0
-        tab: 1
+        tab: 2
         width: parent.width
         title: qsTr("框选")
         glyph: "" // TouchPointer
@@ -235,7 +360,7 @@ Column {
 
     SettingsSection {
         page: 0
-        tab: 1
+        tab: 2
         width: parent.width
         title: qsTr("复制与保存")
         glyph: "" // Copy
@@ -243,7 +368,7 @@ Column {
         ToggleRow {
             key: "captureCopyOnSelect"
             title: qsTr("选好就复制")
-            description: qsTr("松开鼠标或点选窗口后立即复制，跳过标注和调整。关闭时可继续编辑，再按 Enter 复制或 Ctrl+S 保存。鼠标动作在“鼠标”分类设置。")
+            description: qsTr("松开鼠标或点选窗口后立即复制，跳过标注和调整。关闭时可继续编辑，再按 Enter 复制，或按保存键保存。鼠标动作在“鼠标”分类设置。")
         }
         ToggleRow {
             key: "capturePinOnCopy"
@@ -281,7 +406,7 @@ Column {
 
     SettingsSection {
         page: 0
-        tab: 1
+        tab: 2
         width: parent.width
         title: qsTr("延时与回看")
         glyph: "" // History
@@ -316,7 +441,7 @@ Column {
 
     SettingsSection { // what the mouse buttons do after a selection (issue #46)
         page: 0
-        tab: 2
+        tab: 3
         width: parent.width
         title: qsTr("框选后的鼠标操作")
         glyph: "" // Mouse
@@ -369,14 +494,14 @@ Column {
 
     SettingsSection {
         page: 0
-        tab: 3
+        tab: 4
         width: parent.width
         title: qsTr("贴图操作")
         glyph: "" // Pin
 
         SettingRow { // what a double click on a pin does
             title: qsTr("双击贴图")
-            description: qsTr("复位：回到原来的大小；关闭：贴图不要了；收起：缩成小方块，点一下再展开。按 Esc 总是关闭")
+            description: qsTr("复位：回到原来的大小；关闭：贴图不要了；收起：缩成小方块，点一下再展开。贴图里的按键在“按键”分类设置")
 
             ScopeTabs {
                 objectName: "capturePinClickTabs"
@@ -390,7 +515,7 @@ Column {
 
     SettingsSection {
         page: 0
-        tab: 3
+        tab: 4
         width: parent.width
         title: qsTr("快捷键")
         glyph: "" // Keyboard
@@ -435,7 +560,7 @@ Column {
 
     SettingsSection { // smart redaction (4.1)
         page: 0
-        tab: 4
+        tab: 5
         width: parent.width
         title: qsTr("智能打码")
         glyph: "" // Admin (shield)
@@ -479,7 +604,7 @@ Column {
 
     SettingsSection { // which action buttons the toolbar shows (#57)
         page: 0
-        tab: 5
+        tab: 6
         width: parent.width
         title: qsTr("工具条上的按钮")
         glyph: "" // ViewAll

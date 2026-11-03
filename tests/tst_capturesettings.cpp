@@ -139,6 +139,138 @@ private slots:
         QVERIFY(!CaptureOptions::load(file).keyHints);
     }
 
+    // The capture's and the pins' keys (#187), Capture/Keys/<id>: missing is
+    // the default, empty is none, garbage (or a key the rules refuse) is the
+    // default; only the keys changed are written, and a reset removes one.
+    void keysStorage()
+    {
+        using ws::capture::KeyAction;
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString file = dir.filePath(u"capture.ini"_s);
+        const auto keyIn = [&](const QString& id) { return QSettings(file, QSettings::IniFormat).value(u"Capture/Keys/"_s + id); };
+        const auto has = [&](const QString& id) { return QSettings(file, QSettings::IniFormat).contains(u"Capture/Keys/"_s + id); };
+
+        CaptureOptions options = CaptureOptions::load(file);
+        QCOMPARE(options.keys, ws::capture::CaptureKeys::defaults());
+        options.save(file);
+        QVERIFY(!has(u"Pin"_s)); // defaults are not written
+
+        options.keys.set(KeyAction::Pin, QKeyCombination(Qt::Key_F4));
+        options.keys.set(KeyAction::Save, QKeyCombination(Qt::ControlModifier, Qt::Key_Comma)); // a comma in the INI
+        options.keys.set(KeyAction::PinRotateLeft, QKeyCombination());
+        options.keys.set(KeyAction::PinClose, QKeyCombination(Qt::ShiftModifier, Qt::Key_R)); // freed from 向左转 above
+        options.save(file);
+        QCOMPARE(keyIn(u"Pin"_s).toString(), u"F4"_s);
+        QCOMPARE(keyIn(u"PinRotateLeft"_s).toString(), QString());
+        QVERIFY(has(u"PinRotateLeft"_s));
+        QVERIFY(!has(u"PinCopy"_s));
+        const CaptureOptions back = CaptureOptions::load(file);
+        QCOMPARE(back.keys.key(KeyAction::Pin), QKeyCombination(Qt::Key_F4));
+        QCOMPARE(back.keys.key(KeyAction::Save), QKeyCombination(Qt::ControlModifier, Qt::Key_Comma));
+        QCOMPARE(back.keys.key(KeyAction::PinClose), QKeyCombination(Qt::ShiftModifier, Qt::Key_R));
+        QVERIFY(!back.keys.has(KeyAction::PinRotateLeft));
+        QCOMPARE(back.keys, options.keys);
+
+        // By hand: unquoted Ctrl+, (a list to QSettings), garbage, a key the capture uses, two on one key.
+        {
+            QSettings s(file, QSettings::IniFormat);
+            s.setValue(u"Capture/Keys/PinCopy"_s, u"Ctrl+Shift+Alt+Nonsense"_s);
+            s.setValue(u"Capture/Keys/PinSave"_s, u"Up"_s); // the pin's own (moves it)
+            s.setValue(u"Capture/Keys/PinTextPick"_s, u"F4"_s);
+            s.setValue(u"Capture/Keys/PinFlipVertical"_s, u"F4"_s); // twice: the first keeps it
+        }
+        writeByHand(file, "Keys\\Save", "Ctrl+,");
+        const CaptureOptions hand = CaptureOptions::load(file);
+        QCOMPARE(hand.keys.key(KeyAction::Save), QKeyCombination(Qt::ControlModifier, Qt::Key_Comma));
+        QCOMPARE(hand.keys.key(KeyAction::PinCopy), QKeyCombination(Qt::ControlModifier, Qt::Key_C));
+        QCOMPARE(hand.keys.key(KeyAction::PinSave), QKeyCombination(Qt::ControlModifier, Qt::Key_S));
+        QCOMPARE(hand.keys.key(KeyAction::PinTextPick), QKeyCombination(Qt::Key_F4));
+        QCOMPARE(hand.keys.key(KeyAction::PinFlipVertical), QKeyCombination(Qt::Key_V));
+    }
+
+    // The settings window's side: a key box's key taken or refused (and then
+    // not stored), cleared, reset; each change told once. The plugin's own
+    // hotkeys and (through the probe) other programs' are refused too.
+    void keysFromTheSettingsWindow()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString file = dir.filePath(u"capture.ini"_s);
+        ws::captureplugin::CaptureSettings settings(file);
+        QSignalSpy changed(&settings, &ws::captureplugin::CaptureSettings::changed);
+        const auto text = [&](const char* id) { return settings.captureKeys().value(QLatin1StringView(id)).toMap().value(u"text"_s).toString(); };
+        const auto entry = [&](const char* id) { return settings.captureKeys().value(QLatin1StringView(id)).toMap(); };
+        QCOMPARE(settings.captureKeys().size(), qsizetype(ws::capture::keys::kCount));
+        QCOMPARE(text("Pin"), u"F3"_s);
+        QVERIFY(!entry("Pin").value(u"changed"_s).toBool());
+
+        // Refused: a bare letter while capturing, an arrow in a pin, a key another action has.
+        QVERIFY(!settings.setCaptureKey(u"Save"_s, Qt::Key_P, 0).isEmpty());
+        QVERIFY(!settings.setCaptureKey(u"PinCopy"_s, Qt::Key_Left, 0).isEmpty());
+        QVERIFY(settings.setCaptureKey(u"PinCopy"_s, Qt::Key_T, 0).contains(u"选取文字"_s));
+        QCOMPARE(changed.count(), 0);
+        QCOMPARE(text("Save"), u"Ctrl+S"_s);
+
+        // Taken: stored at once, told once.
+        QVERIFY(settings.setCaptureKey(u"Save"_s, Qt::Key_S, int(Qt::ControlModifier | Qt::ShiftModifier)).isEmpty());
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(text("Save"), u"Ctrl+Shift+S"_s);
+        QVERIFY(entry("Save").value(u"changed"_s).toBool());
+        QCOMPARE(entry("Save").value(u"defaultText"_s).toString(), u"Ctrl+S"_s);
+        QCOMPARE(CaptureOptions::load(file).keys.key(ws::capture::KeyAction::Save),
+            QKeyCombination(Qt::ControlModifier | Qt::ShiftModifier, Qt::Key_S));
+
+        // A modifier alone is no key; an unknown id nothing.
+        QVERIFY(settings.setCaptureKey(u"Save"_s, Qt::Key_Control, int(Qt::ControlModifier)).isEmpty());
+        QVERIFY(settings.setCaptureKey(u"Nothing"_s, Qt::Key_F5, 0).isEmpty());
+        QCOMPARE(changed.count(), 1);
+
+        // Cleared, then reset: none, then the default again (removed from the file).
+        settings.clearCaptureKey(u"Pin"_s);
+        QCOMPARE(changed.count(), 2);
+        QCOMPARE(text("Pin"), QString());
+        QVERIFY(!CaptureOptions::load(file).keys.has(ws::capture::KeyAction::Pin));
+        settings.clearCaptureKey(u"Pin"_s);
+        QCOMPARE(changed.count(), 2); // the same again: nothing
+        settings.resetCaptureKey(u"Pin"_s);
+        QCOMPARE(text("Pin"), u"F3"_s);
+        QVERIFY(!QSettings(file, QSettings::IniFormat).contains(u"Capture/Keys/Pin"_s));
+        // A default another action took meanwhile: reset to none.
+        QVERIFY(settings.setCaptureKey(u"PinTextPick"_s, Qt::Key_C, int(Qt::ControlModifier)).contains(u"复制"_s));
+        settings.clearCaptureKey(u"PinCopy"_s);
+        QVERIFY(settings.setCaptureKey(u"PinTextPick"_s, Qt::Key_C, int(Qt::ControlModifier)).isEmpty());
+        settings.resetCaptureKey(u"PinCopy"_s);
+        QCOMPARE(text("PinCopy"), QString());
+
+        // The plugin's own hotkeys: refused by name, and shown as a conflict once one is set later.
+        settings.setCaptureHotkey(u"Ctrl+Alt+A"_s);
+        QVERIFY(settings.setCaptureKey(u"Pin"_s, Qt::Key_A, int(Qt::ControlModifier | Qt::AltModifier)).contains(u"开始截图"_s));
+        QVERIFY(settings.setCaptureKey(u"Pin"_s, Qt::Key_F6, 0).isEmpty());
+        QVERIFY(entry("Pin").value(u"conflict"_s).toString().isEmpty());
+        settings.setCapturePresentHotkey(u"F6"_s);
+        QVERIFY(entry("Pin").value(u"conflict"_s).toString().contains(u"演示"_s));
+
+        // Other programs' (the probe): asked with RegisterHotKey's modifiers and key.
+        unsigned askedModifiers = 0;
+        unsigned askedKey = 0;
+        settings.setHotkeyProbe([&](unsigned modifiers, unsigned vk) {
+            askedModifiers = modifiers;
+            askedKey = vk;
+            return vk != 0x77; // F8 is held
+        });
+        QVERIFY(!settings.setCaptureKey(u"PinCollapse"_s, Qt::Key_F8, 0).isEmpty());
+        QCOMPARE(askedKey, 0x77u);
+        QVERIFY(settings.setCaptureKey(u"PinCollapse"_s, Qt::Key_K, int(Qt::ControlModifier | Qt::ShiftModifier)).isEmpty());
+        QCOMPARE(askedModifiers, 2u | 4u); // MOD_CONTROL | MOD_SHIFT
+        QCOMPARE(askedKey, unsigned('K'));
+        QCOMPARE(text("PinCollapse"), u"Ctrl+Shift+K"_s);
+
+        // A pin hears keys, not characters: Shift+1 typed as "!" is Shift+1 there (the scan code says which key).
+        QVERIFY(settings.setCaptureKey(u"PinFlipVertical"_s, Qt::Key_Exclam, int(Qt::ShiftModifier), 0x02).isEmpty());
+        QCOMPARE(text("PinFlipVertical"), u"Shift+1"_s);
+    }
+
     // The mouse buttons (#46): the old behaviour by default, kept across a
     // save, and a name not known (or "back" on a button that cannot step
     // back) falls to the default.

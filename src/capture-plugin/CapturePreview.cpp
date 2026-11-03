@@ -292,7 +292,7 @@ int runSettings(const QStringList& args)
         QObject* options = window->findChild<QObject*>(u"captureOptions"_s);
         const int previousGroup = options ? options->property("currentGroup").toInt() : 0;
         if (options)
-            options->setProperty("currentGroup", 5);
+            options->setProperty("currentGroup", 6);
         const QString before = editor.captureToolbarHidden();
         QMetaObject::invokeMethod(tabs, "toggled", Q_ARG(int, 0), Q_ARG(bool, false));
         settle(window);
@@ -313,9 +313,65 @@ int runSettings(const QStringList& args)
     if (!choices)
         qWarning("capture settings: a segmented choice did not update the editor and isolated file");
     ok = ok && choices;
+    // 按键 (#187): keys pressed in the key boxes. A bare letter for 保存 is
+    // refused, with why under the row, and nothing stored; Ctrl+Shift+S is
+    // taken and stored; an arrow for 关闭贴图 is refused. Pictured so (the
+    // 恢复默认 and the words), then put back.
+    {
+        using capture::KeyAction;
+        QObject* options = window->findChild<QObject*>(u"captureOptions"_s);
+        QQuickItem* save = visual(window->contentItem(), u"captureKeySave"_s);
+        QQuickItem* close = visual(window->contentItem(), u"captureKeyPinClose"_s);
+        const auto rowOf = [](QQuickItem* item) {
+            while (item && item->metaObject()->indexOfProperty("keyId") < 0)
+                item = item->parentItem();
+            return item;
+        };
+        const auto press = [&](QQuickItem* box, int key, Qt::KeyboardModifiers mods) {
+            QMetaObject::invokeMethod(box, "keyPressed", Q_ARG(int, key), Q_ARG(int, int(mods)), Q_ARG(int, 0));
+            settle(window);
+            return rowOf(box)->property("error").toString();
+        };
+        const auto stored = [&](KeyAction action) {
+            return CaptureOptions::load(temporary.filePath(u"capture.ini"_s)).keys.key(action);
+        };
+        bool keys = options && save && close && rowOf(save) && rowOf(close);
+        if (keys) {
+            const int previousGroup = options->property("currentGroup").toInt();
+            options->setProperty("currentGroup", 1);
+            settle(window);
+            const QString refused = press(save, Qt::Key_P, Qt::NoModifier);
+            keys = !refused.isEmpty() && stored(KeyAction::Save) == QKeyCombination(Qt::ControlModifier, Qt::Key_S);
+            const QString taken = press(save, Qt::Key_S, Qt::ControlModifier | Qt::ShiftModifier);
+            keys = keys && taken.isEmpty() && stored(KeyAction::Save) == QKeyCombination(Qt::ControlModifier | Qt::ShiftModifier, Qt::Key_S)
+                && editor.options().keys.text(KeyAction::Save) == u"Ctrl+Shift+S"_s;
+            const QString arrow = press(close, Qt::Key_Left, Qt::NoModifier);
+            keys = keys && !arrow.isEmpty() && stored(KeyAction::PinClose) == QKeyCombination(Qt::Key_Escape);
+            say(u"key boxes: refused \"%1\", \"%2\"; taken: %3"_s.arg(refused, arrow).arg(keys ? u"ok"_s : u"WRONG"_s));
+            const int width = (std::max)(560, window->minimumWidth());
+            auto* flick = window->findChild<QQuickItem*>(u"captureSettingsFlick"_s);
+            window->resize(width, 640);
+            settle(window);
+            if (flick)
+                window->resize(width, static_cast<int>(std::ceil(window->height() - flick->height() + flick->property("contentHeight").toReal())));
+            settle(window);
+            keys = saveGrab(window, out.filePath(u"capture-keys-states.png"_s)) && keys;
+            editor.resetCaptureKey(u"Save"_s);
+            press(close, Qt::Key_Escape, Qt::NoModifier);
+            settle(window);
+            keys = keys && stored(KeyAction::Save) == QKeyCombination(Qt::ControlModifier, Qt::Key_S)
+                && rowOf(close)->property("error").toString().isEmpty();
+            options->setProperty("currentGroup", previousGroup);
+            window->resize(560, 640);
+            settle(window);
+        }
+        if (!keys)
+            qWarning("capture settings: the key boxes did not take, refuse or store keys as they should");
+        ok = ok && keys;
+    }
     if (args.contains(u"--pin-image"_s)) {
         if (QObject* options = window->findChild<QObject*>(u"captureOptions"_s))
-            options->setProperty("currentGroup", 3);
+            options->setProperty("currentGroup", 4);
         settle(window);
         auto* row = window->findChild<QQuickItem*>(u"capturePinImageHotkey"_s);
         ok = ok && row;

@@ -220,7 +220,12 @@ QStringList CaptureSession::keyHintRows() const
             rows.append(u"shift"_s);
         rows.append({u"width"_s, u"undo"_s, u"delete"_s, u"toolOff"_s, u"hide"_s});
     } else {
-        rows = {u"copy"_s, u"save"_s, u"pin"_s, u"arrows"_s};
+        rows = {u"copy"_s};
+        if (m_annot.keys().has(KeyAction::Save)) // none when the user cleared it (#187)
+            rows.append(u"save"_s);
+        if (m_annot.keys().has(KeyAction::Pin))
+            rows.append(u"pin"_s);
+        rows.append(u"arrows"_s);
         if (m_ocrAvailable)
             rows.append(u"ocr"_s);
         rows.append(u"long"_s);
@@ -255,6 +260,12 @@ void CaptureSession::refreshKeyHints()
 void CaptureSession::hintInput()
 {
     m_hintPolicy.input(hintNow());
+    refreshKeyHints();
+}
+
+void CaptureSession::setKeys(const CaptureKeys& keys)
+{
+    m_annot.setKeys(keys);
     refreshKeyHints();
 }
 
@@ -1051,6 +1062,16 @@ bool CaptureSession::key(int key, Qt::KeyboardModifiers modifiers)
         publish();
         return true;
     }
+    // The pin and save keys, as the user set them (#187; Ctrl+S, F3 by
+    // default). CaptureKeys::problem keeps them off every key below and off
+    // the plain letters above, so plain S still moves the pointer.
+    if (const auto action = m_annot.keys().triggered(KeyContext::Capture, key, modifiers)) {
+        if (*action == KeyAction::Save && busy)
+            return false;
+        if (!busy)
+            finish(*action == KeyAction::Pin ? Action::Pin : Action::Save);
+        return true;
+    }
     switch (key) {
     case Qt::Key_Escape:
         back();
@@ -1059,16 +1080,6 @@ bool CaptureSession::key(int key, Qt::KeyboardModifiers modifiers)
     case Qt::Key_Enter:
         if (!busy)
             finish(Action::Copy);
-        return true;
-    case Qt::Key_S:
-        if (ctrl && !busy) {
-            finish(Action::Save);
-            return true;
-        }
-        return false;
-    case Qt::Key_F3:
-        if (!busy)
-            finish(Action::Pin);
         return true;
     case Qt::Key_L:
         if (!ctrl)

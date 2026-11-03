@@ -103,8 +103,10 @@ qt_add_lupdate(WinShunCaptureApp LUPDATE_TARGET capture_lupdate
     SOURCES ${PROJECT_SOURCE_DIR}/src/capture/AnnotationCommands.cpp
             ${PROJECT_SOURCE_DIR}/src/capture/AnnotationFormat.cpp
             ${PROJECT_SOURCE_DIR}/src/capture/AnnotationStyles.cpp
+            ${PROJECT_SOURCE_DIR}/src/capture/CaptureKeys.h
             ${PROJECT_SOURCE_DIR}/src/capture/CountdownWindow.cpp
             ${PROJECT_SOURCE_DIR}/src/capture/Recording.cpp
+            ${PROJECT_SOURCE_DIR}/src/capture/RecordingWorker.cpp
     OPTIONS -source-language zh_CN -no-obsolete -locations none)
 set(qm_file "${CMAKE_CURRENT_BINARY_DIR}/capture_en.qm")
 file(RELATIVE_PATH qm_relative "${CMAKE_CURRENT_SOURCE_DIR}" "${qm_file}")

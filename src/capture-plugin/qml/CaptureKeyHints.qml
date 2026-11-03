@@ -85,8 +85,8 @@ Item {
         case "ocr": return { keys: ["Shift+C"], text: qsTr("识别文字并复制") }
         case "quit": return { keys: ["Esc"], text: qsTr("退出截图") }
         case "copy": return { keys: ["Enter", "Ctrl+C"], text: qsTr("复制") }
-        case "save": return { keys: ["Ctrl+S"], text: qsTr("另存为") }
-        case "pin": return { keys: ["F3"], text: qsTr("贴到屏幕上") }
+        case "save": return { keys: [annot ? annot.saveKeyText : ""], text: qsTr("另存为") } // as the user set them (#187)
+        case "pin": return { keys: [annot ? annot.pinKeyText : ""], text: qsTr("贴到屏幕上") }
         case "arrows": return { keys: ["← ↑ ↓ →"], text: qsTr("移动选区，加 Shift 改大小") }
         case "long": return { keys: ["Ctrl+L", "Ctrl+R"], text: qsTr("长截图 / 录屏") }
         case "recalled": return { keys: ["R", "Shift+R"],

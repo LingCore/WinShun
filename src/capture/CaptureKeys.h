@@ -94,7 +94,7 @@ inline constexpr unsigned kVkBack = 0x08, kVkTab = 0x09, kVkReturn = 0x0D, kVkEs
                           kVkPrior = 0x21, kVkNext = 0x22, kVkEnd = 0x23, kVkHome = 0x24, kVkLeft = 0x25,
                           kVkUp = 0x26, kVkRight = 0x27, kVkDown = 0x28, kVkInsert = 0x2D, kVkDelete = 0x2E,
                           kVkNumpad0 = 0x60, kVkNumpad9 = 0x69, kVkAdd = 0x6B, kVkSubtract = 0x6D, kVkF1 = 0x70,
-                          kVkF24 = 0x87, kVkOemPlus = 0xBB, kVkOemMinus = 0xBD;
+                          kVkF24 = 0x87, kVkOemPlus = 0xBB, kVkOemMinus = 0xBD, kVkSnapshot = 0x2C;
 
 // The keys a pin window can be told about (fromVirtualKey makes exactly these).
 constexpr bool pinCanHear(int key)
@@ -179,14 +179,16 @@ public:
         }
         const Qt::KeyboardModifiers mods = candidate.keyboardModifiers();
         const bool ctrl = mods & Qt::ControlModifier;
-        const bool shift = mods & Qt::ShiftModifier;
         const bool alt = mods & Qt::AltModifier;
         const bool meta = mods & Qt::MetaModifier;
         if (context == KeyContext::Capture) {
+            // Win chords are the system's; PrtScn is the Snipping Tool's or the capture hotkey's.
+            if (meta || k == Qt::Key_Print)
+                return tr("截图时不支持这个键");
             // Letters and digits choose a tool or type into a text; Ctrl or Alt keeps them clear.
             if (keys::isPrintable(k) && !ctrl && !alt)
                 return tr("截图时字母、数字会用来选工具或打字，请带上 Ctrl 或 Alt，或用功能键");
-            if (captureReserved(k, ctrl, shift, alt))
+            if (captureReserved(k, ctrl, alt))
                 return tr("截图时这个键已经有用处");
             return std::nullopt;
         }
@@ -248,6 +250,60 @@ public:
         return QKeyCombination(mods, Qt::Key(key));
     }
 
+    // The other way, as RegisterHotKey takes it (MOD_ALT 1, MOD_CONTROL 2,
+    // MOD_SHIFT 4, MOD_WIN 8): to ask whether a global hotkey holds the key.
+    // Nothing for a key with no virtual-key code of its own here.
+    struct VirtualKey {
+        unsigned modifiers = 0;
+        unsigned vk = 0;
+        bool operator==(const VirtualKey&) const = default;
+    };
+    static std::optional<VirtualKey> toVirtualKey(QKeyCombination combination)
+    {
+        const int key = keys::normalKey(combination.key());
+        unsigned vk = 0;
+        if (key >= Qt::Key_A && key <= Qt::Key_Z)
+            vk = 'A' + unsigned(key - Qt::Key_A);
+        else if (key >= Qt::Key_0 && key <= Qt::Key_9)
+            vk = '0' + unsigned(key - Qt::Key_0);
+        else if (key >= Qt::Key_F1 && key <= Qt::Key_F24)
+            vk = keys::kVkF1 + unsigned(key - Qt::Key_F1);
+        else {
+            switch (key) {
+            case Qt::Key_Space: vk = keys::kVkSpace; break;
+            case Qt::Key_Escape: vk = keys::kVkEscape; break;
+            case Qt::Key_Return: vk = keys::kVkReturn; break;
+            case Qt::Key_Tab: vk = keys::kVkTab; break;
+            case Qt::Key_Backspace: vk = keys::kVkBack; break;
+            case Qt::Key_Delete: vk = keys::kVkDelete; break;
+            case Qt::Key_Insert: vk = keys::kVkInsert; break;
+            case Qt::Key_Home: vk = keys::kVkHome; break;
+            case Qt::Key_End: vk = keys::kVkEnd; break;
+            case Qt::Key_PageUp: vk = keys::kVkPrior; break;
+            case Qt::Key_PageDown: vk = keys::kVkNext; break;
+            case Qt::Key_Left: vk = keys::kVkLeft; break;
+            case Qt::Key_Right: vk = keys::kVkRight; break;
+            case Qt::Key_Up: vk = keys::kVkUp; break;
+            case Qt::Key_Down: vk = keys::kVkDown; break;
+            case Qt::Key_Plus: vk = keys::kVkOemPlus; break;
+            case Qt::Key_Minus: vk = keys::kVkOemMinus; break;
+            case Qt::Key_Print: vk = keys::kVkSnapshot; break;
+            default: return std::nullopt;
+            }
+        }
+        const Qt::KeyboardModifiers mods = combination.keyboardModifiers();
+        VirtualKey result {0, vk};
+        if (mods & Qt::AltModifier)
+            result.modifiers |= 1;
+        if (mods & Qt::ControlModifier)
+            result.modifiers |= 2;
+        if (mods & Qt::ShiftModifier)
+            result.modifiers |= 4;
+        if (mods & Qt::MetaModifier)
+            result.modifiers |= 8;
+        return result;
+    }
+
 private:
     static QString tr(const char* text) { return QCoreApplication::translate("ws::capture::CaptureKeys", text); }
 
@@ -260,7 +316,7 @@ private:
 
     // What the overlay and the editing window keep for themselves (AnnotationModel::key,
     // CaptureEditor::keyPressed, CaptureSession::key): the fixed keys and Ctrl chords.
-    static bool captureReserved(int k, bool ctrl, bool shift, bool alt)
+    static bool captureReserved(int k, bool ctrl, bool alt)
     {
         if (keys::isModifierKey(k) || keys::isArrow(k))
             return true;
@@ -273,7 +329,7 @@ private:
         case Qt::Key_Delete:
             return true;
         case Qt::Key_F1:
-            return !ctrl && !shift && !alt;
+            return !ctrl && !alt; // the hints, with Shift too (CaptureSession::key)
         case Qt::Key_F4:
             return alt; // closes the editing window
         default:

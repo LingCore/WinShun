@@ -149,6 +149,7 @@ Item {
     }
 
     HoverHandler { id: rowHover }
+    readonly property bool hovered: rowHover.hovered // for controls shown only then
 
     Rectangle {
         visible: rowHover.hovered && !(row.searching && row.search.current === row)

@@ -57,10 +57,9 @@ Item {
         qsTr("画的时候按住 Shift"), qsTr("正方形、正圆；线吸附 15°；画笔、荧光笔画直线"),
         qsTr("双击"), qsTr("文字：改文字；序号：改号，序号旁的字：改字"),
         "Ctrl+Enter、Esc", qsTr("写完文字（Enter 换行；序号旁的字 Enter 就写完）"),
-        "Ctrl+C、Enter", qsTr("复制"),
-        "Ctrl+S", qsTr("另存为：选择保存位置"),
-        "F3", qsTr("贴图")
-    ]
+        "Ctrl+C、Enter", qsTr("复制")
+    ].concat(annot && annot.saveKeyText.length > 0 ? [annot.saveKeyText, qsTr("另存为：选择保存位置")] : [],
+             annot && annot.pinKeyText.length > 0 ? [annot.pinKeyText, qsTr("贴图")] : []) // as the user set them (#187)
     readonly property var overlayRows: [
         "WASD", qsTr("微调鼠标光标，每次 1 个物理像素；按住左键拖选区、拖手柄或画标注时也有效"),
         "Shift+WASD", qsTr("微调鼠标光标，每次 10 个物理像素"),
@@ -308,11 +307,12 @@ Item {
             glyph: String.fromCharCode(0xE718) // Pin
             name: qsTr("贴图")
             tipText: qsTr("贴图：留在屏幕上，可拖动、缩放")
-            tipKeys: "F3"
+            tipKeys: bar.annot ? bar.annot.pinKeyText : ""
             onClicked: bar.act(CaptureSession.Pin)
         }
         CaptureSaveButton {
             visible: bar.shows("save")
+            keyText: bar.annot ? bar.annot.saveKeyText : ""
             tipsEnabled: !bar.keysOpen && !bar.dragging
             onSaveRequested: bar.act(CaptureSession.Save)
             onSavePreviousRequested: bar.act(CaptureSession.SavePrevious)

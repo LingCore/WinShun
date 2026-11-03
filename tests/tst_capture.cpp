@@ -1780,6 +1780,50 @@ private slots:
         QCOMPARE(cursor.count(), 2);
     }
 
+    // The pin and save keys as the user set them (#187): the old ones do
+    // nothing then, plain S still moves the pointer, a cleared key leaves no
+    // hint row, and the text box hands the new ones over.
+    void remappedPinAndSaveKeys()
+    {
+        CaptureKeys keys;
+        keys.set(KeyAction::Save, QKeyCombination(Qt::ControlModifier | Qt::ShiftModifier, Qt::Key_S));
+        keys.set(KeyAction::Pin, QKeyCombination(Qt::Key_F4));
+        const auto finishedBy = [&](int key, Qt::KeyboardModifiers modifiers) -> std::optional<CaptureSession::Action> {
+            Rig rig;
+            rig.session.setKeys(keys);
+            rig.begin();
+            rig.drag({100, 100}, {299, 199});
+            QSignalSpy finished(&rig.session, &CaptureSession::finished);
+            rig.session.key(key, modifiers);
+            if (finished.isEmpty())
+                return std::nullopt;
+            return finished[0][0].value<CaptureSession::Action>();
+        };
+        QCOMPARE(finishedBy(Qt::Key_S, Qt::ControlModifier | Qt::ShiftModifier), CaptureSession::Action::Save);
+        QCOMPARE(finishedBy(Qt::Key_F4, Qt::NoModifier), CaptureSession::Action::Pin);
+        QCOMPARE(finishedBy(Qt::Key_S, Qt::ControlModifier), std::nullopt);
+        QCOMPARE(finishedBy(Qt::Key_F3, Qt::NoModifier), std::nullopt);
+
+        Rig rig;
+        rig.session.setKeys(keys);
+        rig.begin();
+        rig.session.pointerMove(0, {10, 10});
+        QSignalSpy cursor(&rig.session, &CaptureSession::cursorMoveRequested);
+        QVERIFY(rig.session.key(Qt::Key_S, Qt::NoModifier));
+        QCOMPARE(cursor.last()[0].toPoint(), QPoint(10, 11));
+        rig.drag({100, 100}, {299, 199});
+        QVERIFY(rig.session.keyHints().contains(u"save"_s));
+        QVERIFY(rig.session.keyHints().contains(u"pin"_s));
+        QVERIFY(rig.session.annotation()->isFinishKey(Qt::Key_F4, Qt::NoModifier));
+        QVERIFY(!rig.session.annotation()->isFinishKey(Qt::Key_F3, Qt::NoModifier));
+        QCOMPARE(rig.session.annotation()->pinKeyText(), u"F4"_s);
+        keys.set(KeyAction::Pin, QKeyCombination());
+        rig.session.setKeys(keys);
+        QVERIFY(!rig.session.keyHints().contains(u"pin"_s));
+        QVERIFY(rig.session.keyHints().contains(u"save"_s));
+        QCOMPARE(rig.session.annotation()->pinKeyText(), QString());
+    }
+
     void wasdMovesThePointerInEveryPhaseAndStaysOnScreen()
     {
         Rig rig(1.5);

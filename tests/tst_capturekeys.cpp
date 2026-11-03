@@ -156,7 +156,7 @@ private slots:
         row("shift only", Qt::ShiftModifier, Qt::Key_Shift, false);
         row("f2", {}, Qt::Key_F2, true);
         row("f3", {}, Qt::Key_F3, true);
-        row("shift f1", Qt::ShiftModifier, Qt::Key_F1, true);
+        row("shift f1", Qt::ShiftModifier, Qt::Key_F1, false); // the hints too (CaptureSession::key)
         row("ctrl f2", Qt::ControlModifier, Qt::Key_F2, true);
         row("ctrl t", Qt::ControlModifier, Qt::Key_T, true);
         row("alt p", Qt::AltModifier, Qt::Key_P, true);
@@ -245,6 +245,21 @@ private slots:
         // Not known: none, whatever the modifiers.
         QCOMPARE(K::fromVirtualKey(0x10, false, true, false).key(), Qt::Key_unknown); // VK_SHIFT
         QCOMPARE(K::fromVirtualKey(0xBA, true, false, false).key(), Qt::Key_unknown); // VK_OEM_1
+        // Back to RegisterHotKey's terms (the global-hotkey probe): every key the
+        // pin hears goes there and back, modifiers as MOD_ALT 1, MOD_CONTROL 2, MOD_SHIFT 4, MOD_WIN 8.
+        for (unsigned vk = 0; vk < 0x100; ++vk) {
+            const QKeyCombination key = K::fromVirtualKey(vk, true, false, true);
+            if (key.key() == Qt::Key_unknown)
+                continue;
+            const auto back = K::toVirtualKey(key);
+            QVERIFY2(back.has_value(), qPrintable(QString::number(vk, 16)));
+            QCOMPARE(back->modifiers, 2u | 1u);
+            QCOMPARE(K::fromVirtualKey(back->vk, true, false, true), key); // numpad digits and OEM keys: their main key
+        }
+        QVERIFY(K::toVirtualKey(combo(Qt::ShiftModifier | Qt::MetaModifier, Qt::Key_F3)) == (K::VirtualKey {4u | 8u, 0x72}));
+        QVERIFY(K::toVirtualKey(combo(Qt::KeypadModifier, Qt::Key_Enter)) == (K::VirtualKey {0, 0x0D}));
+        QVERIFY(K::toVirtualKey(combo({}, Qt::Key_Print)) == (K::VirtualKey {0, 0x2C}));
+        QVERIFY(!K::toVirtualKey(combo(Qt::ControlModifier, Qt::Key_Comma)).has_value());
         // Every default pin key is one the window can hear and the validator lets through.
         for (const keys::ActionInfo& a : keys::kActions) {
             if (a.context == KeyContext::PinWindow)

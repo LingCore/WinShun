@@ -57,7 +57,7 @@ namespace ws::captureplugin {
 namespace {
 
 constexpr wchar_t kWindowClass[] = L"WinShun.Capture.Messages";
-enum Hotkey : int { CaptureKey = 1, PrintScreenKey, PinsKey, PinsRestoreKey, LastPinKey, PresentKey };
+enum Hotkey : int { CaptureKey = 1, PrintScreenKey, PinsKey, PinsRestoreKey, LastPinKey, PresentKey, ProbeKey = 0x0BFF };
 
 bool isDarkMode()
 {
@@ -224,6 +224,15 @@ CaptureApp::CaptureApp(Protocol& protocol, QString appDir, QString dataDir, QObj
     connect(&m_applyLater, &QTimer::timeout, this, &CaptureApp::apply);
     connect(&m_settings, &CaptureSettings::changed, &m_applyLater, qOverload<>(&QTimer::start));
     connect(&m_settings, &CaptureSettings::recordingHotkeyChanged, this, &CaptureApp::applyHotkeys);
+    // A key for the capture or a pin that a global hotkey holds would never
+    // reach them: asked by taking it for a moment (the plugin's own are let
+    // go of while a key box records, and compared by name first).
+    m_settings.setHotkeyProbe([this](unsigned modifiers, unsigned vk) {
+        if (!::RegisterHotKey(m_window, ProbeKey, modifiers | MOD_NOREPEAT, vk))
+            return false;
+        ::UnregisterHotKey(m_window, ProbeKey);
+        return true;
+    });
     connect(&m_protocol, &Protocol::requested, this, &CaptureApp::requested);
     connect(&m_protocol, &Protocol::notified, this, &CaptureApp::notified);
     connect(&m_protocol, &Protocol::closed, this, [this] {
@@ -498,8 +507,14 @@ void CaptureApp::apply()
     m_capture->setDelay(o.delay);
     m_capture->setHistory(QDir(m_dataDir).filePath(u"capture-history"_s), o.historyCount);
     m_capture->setColorFormat(capture::colorFormatFromName(o.colorFormat));
-    if (m_pins)
+    // The pin and save keys and the pin window's (#187): open pins and an open editor too.
+    m_capture->setKeys(o.keys);
+    if (m_pins) {
         m_pins->setDoubleClick(capture::pinDoubleClickFromName(o.pinDoubleClick));
+        m_pins->setKeys(o.keys);
+    }
+    if (m_editor)
+        m_editor->setKeys(o.keys);
 
     // PrtScn: taken from the Snipping Tool while it is wanted, the value
     // found then kept in PrintScreenBefore and put back after.
@@ -891,6 +906,7 @@ capture::PinManager& CaptureApp::pins()
         };
         m_pins = std::make_unique<capture::PinManager>(std::move(callbacks));
         m_pins->setDoubleClick(capture::pinDoubleClickFromName(m_settings.options().pinDoubleClick));
+        m_pins->setKeys(m_settings.options().keys);
     }
     return *m_pins;
 }
@@ -985,6 +1001,7 @@ capture::CaptureEditor* CaptureApp::editor()
     m_editFrame->setWindow(window);
     editor->attach(window);
     m_editWindow = window;
+    editor->setKeys(m_settings.options().keys);
     m_editor = std::move(editor);
     return m_editor.get();
 }

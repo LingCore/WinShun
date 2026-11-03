@@ -320,6 +320,9 @@ public:
     bool keyHintsEnabled() const { return m_hintPolicy.enabled(); }
     bool keyHintsShown() const { return m_hintsShown; }
     void setKeyHints(bool on); // the setting
+    // The pin and save keys the user chose (#187), for the text box too.
+    void setKeys(const CaptureKeys& keys);
+    const CaptureKeys& keys() const { return m_annot.keys(); }
     // This capture was begun by the delay's countdown: no hints by themselves (after begin()).
     void quietKeyHints();
     // , and . have captures to bring back (Capture's history, at the start).

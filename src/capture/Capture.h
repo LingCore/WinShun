@@ -125,6 +125,7 @@ public:
     void setHiddenButtons(const QStringList& ids) { m_session.setHiddenButtons(ids); }
     // The shortcut hints in a corner of the capture ([Capture] KeyHints).
     void setKeyHints(bool on) { m_session.setKeyHints(on); }
+    void setKeys(const CaptureKeys& keys) { m_session.setKeys(keys); } // the pin and save keys (#187)
     // The mouse cursor drawn into the frozen picture ([Capture] IncludeCursor).
     void setIncludeCursor(bool on) { m_includeCursor = on; }
     // On an HDR monitor, saving writes an HDR file (.jxr) beside the PNG too

@@ -5,17 +5,26 @@ import WinShun
 // While it records, the keys come straight from the keyboard (SettingsEditor
 // starts a ShortcutCapture), so that Alt+Space, Win+… and combinations other
 // programs registered arrive here too.
+//
+// keyMode: a key inside a window (the screen capture's, #187), not a global
+// hotkey. Every key but the modifiers and Tab (the focus's) is handed over
+// as it is, Esc and Backspace too, through keyPressed; whoever takes it
+// decides and calls stop(). A second click cancels.
 Rectangle {
     id: recorder
 
     property string hotkey
     property bool previewShortcut: false
+    property bool keyMode: false
+    property string prompt: qsTr("请按下组合键…")
+    property string placeholder: qsTr("点击设置快捷键")
     readonly property bool recording: activeFocus
     property string partial // modifiers held so far, or a hint
     property bool partialIsHint: false
     readonly property real dpr: Screen.devicePixelRatio // one Screen attached object for all its items (GitHub #111)
 
     signal recorded(string hotkey)
+    signal keyPressed(int key, int modifiers, int scanCode)
 
     function modifierNames(modifiers) {
         const names = [] // in Windows' own order: Win + Ctrl + Alt + Shift
@@ -58,7 +67,8 @@ Rectangle {
         font.weight: Theme.fontStrong
         text: qsTr("请同时按住 Ctrl、Alt 或 Win")
     }
-    implicitWidth: Math.max(150, widest.width, widest2.width) + 28
+    // keyMode: as narrow as a key's box can be, wider only for a long chord.
+    implicitWidth: keyMode ? Math.max(140, keycaps.implicitWidth + 24) : Math.max(150, widest.width, widest2.width) + 28
     implicitHeight: 36
     radius: Theme.controlRadius
     activeFocusOnTab: true
@@ -97,6 +107,15 @@ Rectangle {
             partial = mods.join(" + ") + " + …"
             partialIsHint = false
             return
+        }
+        if (keyMode) {
+            if ((event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) && mods.length === 0)
+                event.accepted = false // keep Tab for moving the focus
+            else
+                keyPressed(event.key, event.modifiers, event.nativeScanCode)
+            return
+        }
+        switch (event.key) {
         case Qt.Key_Escape:
             stop()
             return
@@ -141,7 +160,7 @@ Rectangle {
         width: Math.min(implicitWidth, parent.width - 28)
         elide: Text.ElideRight
         visible: recorder.recording
-        text: recorder.partial.length > 0 ? recorder.partial : qsTr("请按下组合键…")
+        text: recorder.partial.length > 0 ? recorder.partial : recorder.prompt
         color: recorder.partialIsHint ? Theme.danger : Theme.text
         font.pixelSize: Theme.fontBody
         font.weight: Font.Normal
@@ -162,13 +181,14 @@ Rectangle {
 
         Text {
             anchors.verticalCenter: parent.verticalCenter
-            text: qsTr("点击设置快捷键")
+            text: recorder.placeholder
             color: area.containsMouse ? Theme.accent : Theme.subtext
             font.pixelSize: Theme.fontCaption
         }
     }
 
     Row {
+        id: keycaps
         visible: !recorder.recording && recorder.hotkey.length > 0
         x: Theme.snap((parent.width - width) / 2, recorder.dpr)
         y: Theme.snap((parent.height - height) / 2, recorder.dpr)
