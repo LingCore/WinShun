@@ -143,6 +143,7 @@ Item {
     ShownRows {
         id: shownRows
         view: list
+        tracking: numberHints.hintOpacity > 0 // not per frame of a scroll while no number shows
     }
     // A chord that is one of Win顺's own shortcuts stays that (Clipboard.numberKeysLeft):
     // the row still shows it, struck through (ClipRow.hintTaken).

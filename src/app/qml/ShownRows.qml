@@ -11,8 +11,14 @@ QtObject {
     id: rows
 
     required property ListView view
+    // Follow the list while the numbers show (`first`, `last`, numberOf).
+    // Hidden (held hints not held), nothing is worked out per frame of a
+    // scroll: a key asks at its press (rowOf).
+    property bool tracking: true
     // -1 for none
     readonly property int first: {
+        if (!tracking)
+            return -1
         // The rows are asked directly (indexAt, itemAtIndex), which tells
         // nothing when they move: these do, the rows' own box too (laid out
         // after a change of the model, which may leave the rest as it was).
@@ -24,10 +30,7 @@ QtObject {
         if (first < 0)
             return -1
         view.contentY; view.height; view.contentHeight; view.originY; view.count; view.contentItem.childrenRect
-        let row = first
-        while (row + 1 < view.count && row + 1 <= first + 8 && halfShown(row + 1))
-            ++row
-        return row
+        return lastShown(first)
     }
 
     // The number that row shows (1…9), else 0.
@@ -36,8 +39,10 @@ QtObject {
     }
     // The row that number picks, else -1.
     function rowOf(number: int): int {
-        const row = first + number - 1
-        return first >= 0 && number >= 1 && row <= last ? row : -1
+        const from = tracking ? first : firstShown()
+        const to = tracking ? last : from >= 0 ? lastShown(from) : -1
+        const row = from + number - 1
+        return from >= 0 && number >= 1 && row <= to ? row : -1
     }
 
     function halfShown(row: int): bool {
@@ -64,5 +69,11 @@ QtObject {
         while (row < view.count - 1 && !halfShown(row))
             ++row
         return halfShown(row) ? row : -1
+    }
+    function lastShown(from: int): int {
+        let row = from
+        while (row + 1 < view.count && row + 1 <= from + 8 && halfShown(row + 1))
+            ++row
+        return row
     }
 }

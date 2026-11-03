@@ -407,6 +407,23 @@ private slots:
         QCOMPARE(first(), 1);
         QCOMPARE(rowOf(1), 1);
 
+        // Not followed while no number shows (ShownRows.tracking): nothing is
+        // worked out as the list scrolls, and a key still picks the row that
+        // number would show.
+        QList<int> tracked;
+        for (int number = 1; number <= 10; ++number)
+            tracked.append(rowOf(number));
+        rows->setProperty("tracking", false);
+        QCOMPARE(first(), -1);
+        QCOMPARE(numberOf(1), 0);
+        for (int number = 1; number <= 10; ++number)
+            QCOMPARE(rowOf(number), tracked[number - 1]);
+        root->setProperty("contentY", root->property("contentY").toReal() - 20); // scrolled meanwhile
+        QCOMPARE(first(), -1);
+        const int firstNow = rowOf(1);
+        rows->setProperty("tracking", true);
+        QCOMPARE(first(), firstNow);
+
         // Nothing to number.
         root->setProperty("model", 0);
         QCOMPARE(first(), -1);
