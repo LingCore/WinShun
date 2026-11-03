@@ -1527,7 +1527,7 @@ QString PluginSettings::createFromTemplate(const QString& kind, const QString& g
 
 // ---- the preview (no host) ---------------------------------------------------------
 
-void PluginSettings::loadPreview()
+void PluginSettings::loadPreview(bool elevated)
 {
     m_preview = std::make_unique<Preview>();
     m_userDir = u"C:\\Users\\me\\AppData\\Local\\WinShun\\plugins"_s;
@@ -1658,6 +1658,18 @@ void PluginSettings::loadPreview()
         c.tone = u"error"_s;
         c.icon = glyph(u"U+EA86"_s);
         cards.push_back(c);
+    }
+    if (elevated) { // `elevated` while Win顺 runs as administrator: one confirmed (the shield), one not yet
+        const QVariantMap elevatedAdmin = permission({}, tr("以普通用户权限运行；Win顺 以管理员身份运行时例外（见下）；内存上限 %1 MB").arg(256), true);
+        const QVariantMap elevatedRow = permission(u"elevated"_s, tr("跟随 Win顺 的管理员权限"), true,
+            tr("Win顺 以管理员身份运行时，这个插件也以管理员身份运行，能操作以管理员身份打开的窗口"));
+        for (std::size_t i = 0; i < 2 && i < cards.size(); ++i) {
+            PluginListModel::Card& c = cards[i];
+            c.permissions[0] = elevatedAdmin;
+            c.permissions.insert(1, elevatedRow);
+            c.elevation = i == 0 ? u"elevated"_s : u"unconfirmed"_s;
+            c.elevationNote = i == 0 ? tr("以管理员身份运行") : tr("要以管理员身份运行，需要你确认一次。确认前用普通权限运行");
+        }
     }
     m_preview->cards = std::move(cards);
     m_editor->m_settings.pluginDeveloperMode = true; // the log pane and the templates on show

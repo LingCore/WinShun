@@ -304,7 +304,7 @@ int runPlugins(const QStringList& args)
     }
     auto* editor = new SettingsEditor(settings, u"software"_s, &engine);
     editor->plugins()->setLocale(u"zh"_s);
-    editor->plugins()->loadPreview();
+    editor->plugins()->loadPreview(args.contains(u"--elevated"_s)); // the `elevated` shield and 确认 note
     if (updatesOnly)
         editor->plugins()->gallery()->setUpdatesOnly(true);
     if (aiPage)
@@ -6638,7 +6638,7 @@ int run(const QStringList& args)
             QDir(profile).removeRecursively();
     });
     if (valueAfter(args, runtimeMode ? kRuntimeFlag : resultsMode ? kResultsFlag : cardsMode ? kAiCardsFlag : settingsMode ? kSettingsFlag : kFlag).isEmpty()) {
-        std::fprintf(stderr, "usage: WinShun --preview-plugins <file.png> [--dark] [--scale 1.5] [--dialog | --dialog-allow] [--updates] [--page ai]\n"
+        std::fprintf(stderr, "usage: WinShun --preview-plugins <file.png> [--dark] [--scale 1.5] [--dialog | --dialog-allow] [--updates] [--page ai] [--elevated]\n"
                              "       WinShun --preview-settings <folder> [--dark] [--scale 1.5] [--tree] [--edges] [--renderer d3d11]\n");
         return 2;
     }

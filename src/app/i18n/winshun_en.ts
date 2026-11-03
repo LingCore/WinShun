@@ -3608,8 +3608,8 @@
         <translation>Install a local plugin package…</translation>
     </message>
     <message>
-        <source>插件给搜索框加关键字命令，结果混进列表。它们只用你的普通权限；启用前会先列出权限，由你决定是否开启。</source>
-        <translation>Plugins add keyword commands to the search box and mix their results into the list. They run with your normal rights; review the permissions and choose which ones to enable.</translation>
+        <source>插件给搜索框加关键字命令，结果混进列表。它们用你的普通权限（要跟随 Win顺 管理员权限的，权限里会写明）；启用前会先列出权限，由你决定是否开启。</source>
+        <translation>Plugins add keyword commands to the search box and mix their results into the list. They run with your normal rights (one that follows Win顺's administrator rights says so in its permissions); review the permissions and choose which ones to enable.</translation>
     </message>
 </context>
 <context>

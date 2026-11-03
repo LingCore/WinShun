@@ -189,8 +189,9 @@ public:
     void setUpdates(PluginUpdates* updates); // the background updates: told what is changed here, asked before a plugin is
     void setLocale(const QString& locale);
     // Without a host: five made-up plugins in every state, for the
-    // offscreen preview of the page (main.cpp --preview-plugins).
-    void loadPreview();
+    // offscreen preview of the page (main.cpp --preview-plugins). `elevated`:
+    // as if Win顺 ran as administrator, the first two asking for `elevated`.
+    void loadPreview(bool elevated = false);
 
     PluginListModel* list() { return &m_list; }
     int count() const { return m_list.rowCount(); }
