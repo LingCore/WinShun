@@ -3,7 +3,10 @@
 ## 以管理员身份运行插件：先校验再按路径启动是不够的（2026-11-03）
 
 - **原因**：插件文件夹是用户能写的。“比对哈希，一样就 `CreateProcess` 插件文件夹里的 exe”中间有空子：校验后、启动前可以换文件；就算一直拿着句柄不让改，插件运行中还会按需加载 DLL，往文件夹里**加**一个 `version.dll` 是挡不住的。开机自启的管理员 Win顺 就成了一个不用 UAC 的提权入口。
-- **做法**：以管理员身份运行的永远是 `%ProgramData%\WinShun\elevated-plugins\<SID>\…` 里的副本（exe、cwd、`WS_PLUGIN_DIR` 都指向它），三级文件夹用 `svcloc::secureLogFolder` 建、每次启动前用 `svcloc::folderProtected` 查整条路径，查不过就以普通权限跑。副本只在提权的 Win顺 里、用户点“确认”或从插件库下载（内存里已核对 SHA-256 的字节）时做；普通权限装的东西不能自动当真。比对插件文件夹只用来判断副本是否还是现在的样子，不关安全。
+- **做法**：以管理员身份运行的永远是 `%ProgramFiles%\WinShun Elevated Plugins\<SID>\…` 里的副本（exe、cwd、`WS_PLUGIN_DIR`、清单都来自它，清单还要和目录里的一样）。放 Program Files 而不是 ProgramData：ProgramData 下普通用户能抢先建文件夹、占为己有、留着带 WRITE_DAC 的句柄，逐级收紧也收不回来。每一级只在不存在时由提权的 Win顺 建（属主 Administrators、普通用户连读都不能），已存在的只查不修：按句柄查（`FILE_FLAG_OPEN_REPARSE_POINT`，不是链接，最终路径一致，属主和 DACL），从检查到进程起来一直开着（不共享删除）。副本只在提权的 Win顺 里、用户点“确认”（插件库的插件从签名列表核对过的包）或从签名列表更新时做；普通权限装的东西不能自动当真。比对插件文件夹只用来判断副本是否还是现在的样子，不关安全。
+- **环境变量也是输入**：`CreateEnvironmentBlock(令牌)` 会读 `HKCU\Environment`，普通权限能改；`COR_PROFILER_PATH`、`DOTNET_STARTUP_HOOKS`、`NODE_OPTIONS`、`PATH` 都能让管理员进程加载别人的代码。管理员 runner 用 `sandbox::elevatedEnvironment`：系统变量、去掉加载代码的、系统 PATH、`TEMP` 在副本旁边。
+- **两个 runner 的信号要分开**：都连到同一个 `onLine`/`onInstanceExited` 时，普通权限的 runner 能替 2^48 以上的实例说话；`connectRunner` 按 `runnerFor(instance)` 只认自己的。
+- **插件库页面的列表不验签名**（缓存还在用户目录里），能把它的包当确认副本的只有带签名的列表（`PluginUpdates::signedItem`，开发用的本地无签名文件也不算）。
 - **别的坑**：管理员 runner 的实例号从 2^48 起，runner 的 JSON 要原样写小于 1e15 的整数，否则按实例号分 runner 会错；管理员 runner 的管道只给 SYSTEM 和 Administrators、标签“高”，普通权限的进程连打开都不行。单测里“同样大小重写文件”可能和原来修改时间相同，哈希缓存（按大小和修改时间）会看不出变化：测试里把时间往后拨（`laterTime`）。生产里这只影响“副本是不是最新”，不影响安全。
 - **验证**：`tst_plugin::elevationRecord`、`elevatedPluginsFollowTheHost`；真机用提权的 `wsbench --plugin <文件夹> --query … [--confirm-elevated]` 起 `plugin_fake --once --whoami`：未确认 Medium，确认后 High 且路径在副本里，普通权限的进程改 exe 后回到 Medium（判定 changed），改回去又是 High。
 
