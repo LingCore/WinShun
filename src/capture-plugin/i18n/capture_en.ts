@@ -673,6 +673,10 @@
 <context>
     <name>CaptureOptions</name>
     <message>
+        <source>全部按键</source>
+        <translation>All keys</translation>
+    </message>
+    <message>
         <source>快捷键</source>
         <translation>Shortcut</translation>
     </message>

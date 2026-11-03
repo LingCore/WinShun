@@ -171,20 +171,20 @@ private slots:
         const CaptureOptions fresh = CaptureOptions::load(file);
         QVERIFY(fresh.toolbarHidden.isEmpty()); // all shown
         QCOMPARE(CaptureOptions::toolbarButtonIds(),
-            (QStringList {u"undo"_s, u"redo"_s, u"copy"_s, u"save"_s, u"pin"_s, u"ocr"_s, u"long"_s, u"record"_s, u"qr"_s, u"delay"_s, u"cancel"_s}));
+            (QStringList {u"undo"_s, u"redo"_s, u"copy"_s, u"save"_s, u"pin"_s, u"ocr"_s, u"long"_s, u"record"_s, u"qr"_s, u"delay"_s, u"cancel"_s, u"help"_s}));
 
         CaptureOptions o = fresh;
         o.mouseDoubleLeft = u"ocrcopy"_s;
         o.mouseMiddle = u"ocrsearch"_s;
         o.mouseBack = u"ocrweb"_s;
-        o.toolbarHidden = u"pin,redo"_s;
+        o.toolbarHidden = u"pin,redo,help"_s;
         o.save(file);
-        QCOMPARE(QSettings(file, QSettings::IniFormat).value(u"Capture/ToolbarHidden"_s).toString(), u"pin,redo"_s);
+        QCOMPARE(QSettings(file, QSettings::IniFormat).value(u"Capture/ToolbarHidden"_s).toString(), u"pin,redo,help"_s);
         const CaptureOptions back = CaptureOptions::load(file);
         QCOMPARE(back.mouseDoubleLeft, u"ocrcopy"_s);
         QCOMPARE(back.mouseMiddle, u"ocrsearch"_s);
         QCOMPARE(back.mouseBack, u"ocrweb"_s);
-        QCOMPARE(back.toolbarHidden, u"redo,pin"_s); // the toolbar's order
+        QCOMPARE(back.toolbarHidden, u"redo,pin,help"_s); // the toolbar's order
 
         // Unknown ids, repeats, case and blanks are cleaned on the way in.
         QCOMPARE(CaptureOptions::normalizedToolbarHidden(u" Cancel, OCR ,nonsense,cancel,,undo "_s), u"undo,ocr,cancel"_s);

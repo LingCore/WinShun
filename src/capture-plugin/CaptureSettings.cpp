@@ -48,7 +48,7 @@ QString listOrText(QSettings& s, const QString& key, const QString& fallback)
 
 QStringList CaptureOptions::toolbarButtonIds()
 {
-    return {u"undo"_s, u"redo"_s, u"copy"_s, u"save"_s, u"pin"_s, u"ocr"_s, u"long"_s, u"record"_s, u"qr"_s, u"delay"_s, u"cancel"_s};
+    return {u"undo"_s, u"redo"_s, u"copy"_s, u"save"_s, u"pin"_s, u"ocr"_s, u"long"_s, u"record"_s, u"qr"_s, u"delay"_s, u"cancel"_s, u"help"_s};
 }
 
 QString CaptureOptions::normalizedToolbarHidden(const QString& text)

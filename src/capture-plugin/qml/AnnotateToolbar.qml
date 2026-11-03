@@ -361,10 +361,16 @@ Rectangle {
             onKeyReleased: (event) => bar.keyReleased(event)
         }
 
-        Separator {}
+        Separator { visible: bar.shows("help") }
 
         Rectangle { // "?": every key, in a list by the toolbar
             id: helpButton
+            objectName: "captureToolbarHelp"
+            visible: bar.shows("help")
+            onVisibleChanged: if (!visible) {
+                bar.keysOpen = false
+                bar.hover(helpButton, false, -1)
+            }
             property string tipText: qsTr("全部按键")
             property string tipKeys: ""
             width: bar.helpWidth

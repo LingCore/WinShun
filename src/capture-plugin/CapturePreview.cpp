@@ -496,6 +496,23 @@ int runToolbarDrag(const QStringList& args)
         session.annotation()->setPanel({{u"color"_s, u"#8E24AA"_s}, {u"width"_s, 4}});
     }
     grab(u"toolbar-before");
+    auto* help = window->findChild<QQuickItem*>(u"captureToolbarHelp"_s);
+    check(help && help->isVisible(), "the screenshot toolbar help button is missing");
+    if (help) {
+        QQuickItem* helpRow = help->parentItem();
+        const qreal before = helpRow->width();
+        bar->setProperty("keysOpen", true);
+        settle(window);
+        check(bar->property("keysOpen").toBool(), "the full key list did not open");
+        session.setHiddenButtons({u"help"_s});
+        settle(window);
+        check(!help->isVisible() && !bar->property("keysOpen").toBool(), "hiding help left its button or list visible");
+        check(helpRow->width() < before, "hiding help kept its separator or space");
+        grab(u"toolbar-help-hidden");
+        session.setHiddenButtons({});
+        settle(window);
+        check(help->isVisible() && std::abs(helpRow->width() - before) < 1 / dpr, "restoring help did not restore the toolbar width");
+    }
     if (args.contains(u"--interactive"_s)) {
         struct PointerTrace : QObject {
             std::function<void(QMouseEvent*)> report;

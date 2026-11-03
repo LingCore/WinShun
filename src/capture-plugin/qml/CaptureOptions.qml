@@ -69,7 +69,8 @@ Item {
         { id: "pin", text: qsTr("贴图") },
         { id: "save", text: qsTr("保存") },
         { id: "cancel", text: qsTr("取消") },
-        { id: "copy", text: qsTr("复制") }
+        { id: "copy", text: qsTr("复制") },
+        { id: "help", text: qsTr("全部按键") }
     ]
     function setButtonShown(id, shown) {
         const left = hiddenButtons.filter(h => h.length > 0 && h !== id)
