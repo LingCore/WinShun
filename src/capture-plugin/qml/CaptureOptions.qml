@@ -26,7 +26,7 @@ Item {
         groupButtons.itemAt(currentGroup).forceActiveFocus(Qt.TabFocusReason)
     }
     // The hotkey box records: the plugin lets go of its hotkeys meanwhile (CaptureApp).
-    readonly property bool recordingHotkey: hotkeyRecorder.recording || pinsHotkeyRow.recording || restoreHotkeyRow.recording || lastPinHotkeyRow.recording
+    readonly property bool recordingHotkey: hotkeyRecorder.recording || pinsHotkeyRow.recording || restoreHotkeyRow.recording || lastPinHotkeyRow.recording || presentHotkeyRow.recording
     Binding {
         target: card.editor
         property: "recordingHotkey"
@@ -327,6 +327,16 @@ Item {
                         checked: card.editor.capturePrintScreen
                         onToggled: (on) => card.editor.capturePrintScreen = on
                     }
+                }
+
+                HotkeyRow { // the presenter (#189)
+                    id: presentHotkeyRow
+                    objectName: "capturePresentHotkey"
+                    title: qsTr("演示 / 白板的快捷键")
+                    words: qsTr("在屏幕上直接画、用激光笔指，W/K 切白板黑板，Esc 让鼠标去操作下面的程序；画的时候再按一次结束。录屏或共享时请选显示器采集或共享整个屏幕")
+                    hotkey: card.editor.capturePresentHotkey
+                    error: card.editor.capturePresentHotkeyError
+                    onRecorded: (hotkey) => card.editor.capturePresentHotkey = hotkey
                 }
             }
 

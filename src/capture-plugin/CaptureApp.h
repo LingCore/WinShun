@@ -21,6 +21,7 @@ class QQuickWindow;
 
 namespace ws {
 class IdleTrim;
+class PresenterHost;
 class WindowFrame;
 namespace capture {
 class Capture;
@@ -67,6 +68,9 @@ private:
     void applyAppearance(const QJsonObject& appearance);
     capture::PinManager& pins();
     capture::CaptureEditor* editor();
+    PresenterHost& presenter();
+    bool presenterOpen() const;
+    void togglePresenter();
     capture::CaptureOcr& captureOcr();
     capture::SmartHooks smartHooks();
     void showCaptureOcr(const QImage& image, double dpr, const QRect& where, const QStringList* texts = nullptr);
@@ -107,6 +111,7 @@ private:
     std::unique_ptr<capture::Capture> m_capture;
     std::unique_ptr<capture::PinManager> m_pins;
     std::unique_ptr<capture::CaptureEditor> m_editor;
+    std::unique_ptr<PresenterHost> m_presenter;
     std::unique_ptr<WindowFrame> m_editFrame;
     QPointer<QQuickWindow> m_editWindow;
     std::unique_ptr<capture::CaptureOcr> m_captureOcr;

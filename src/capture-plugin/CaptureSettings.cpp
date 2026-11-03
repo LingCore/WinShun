@@ -116,6 +116,7 @@ CaptureOptions CaptureOptions::load(const QString& file)
     o.pinsHotkey = readOrDefault(s, u"Capture/PinsHotkey"_s, d.pinsHotkey).trimmed();
     o.pinsRestoreHotkey = readOrDefault(s, u"Capture/PinsRestoreHotkey"_s, d.pinsRestoreHotkey).trimmed();
     o.lastPinHotkey = readOrDefault(s, u"Capture/LastPinHotkey"_s, d.lastPinHotkey).trimmed();
+    o.presentHotkey = readOrDefault(s, u"Capture/PresentHotkey"_s, d.presentHotkey).trimmed();
     o.saveFolder = readOrDefault(s, u"Capture/SaveFolder"_s, d.saveFolder).trimmed();
     o.recordingFolder = readOrDefault(s, u"Capture/RecordingFolder"_s, d.recordingFolder).trimmed();
     o.recordingSystemAudio = readOrDefault(s, u"Capture/RecordingSystemAudio"_s, d.recordingSystemAudio);
@@ -169,6 +170,7 @@ void CaptureOptions::save(const QString& file) const
     s.setValue(u"Capture/PinsHotkey"_s, pinsHotkey);
     s.setValue(u"Capture/PinsRestoreHotkey"_s, pinsRestoreHotkey);
     s.setValue(u"Capture/LastPinHotkey"_s, lastPinHotkey);
+    s.setValue(u"Capture/PresentHotkey"_s, presentHotkey);
     s.setValue(u"Capture/SaveFolder"_s, saveFolder);
     s.setValue(u"Capture/RecordingFolder"_s, recordingFolder);
     s.setValue(u"Capture/RecordingSystemAudio"_s, recordingSystemAudio);
@@ -227,12 +229,13 @@ void CaptureSettings::setCapturePinDoubleClick(const QString& action)
 void CaptureSettings::setProblems(const Problems& p)
 {
     if (p.hotkey == m_hotkeyError && p.pinsHotkey == m_pinsHotkeyError && p.pinsRestoreHotkey == m_pinsRestoreHotkeyError
-        && p.lastPinHotkey == m_lastPinHotkeyError && p.note == m_note)
+        && p.lastPinHotkey == m_lastPinHotkeyError && p.presentHotkey == m_presentHotkeyError && p.note == m_note)
         return;
     m_hotkeyError = p.hotkey;
     m_pinsHotkeyError = p.pinsHotkey;
     m_pinsRestoreHotkeyError = p.pinsRestoreHotkey;
     m_lastPinHotkeyError = p.lastPinHotkey;
+    m_presentHotkeyError = p.presentHotkey;
     m_note = p.note;
     emit problemsChanged();
 }
