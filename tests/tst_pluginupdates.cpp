@@ -442,6 +442,27 @@ private slots:
         QCOMPARE(f.svc->count(), 1);
     }
 
+    void countsDevelopmentCopiesNotAndAutomaticOffYes()
+    {
+        Fixture f;
+        f.install(u"test.dev"_s, u"1.0.0"_s);
+        f.install(u"test.plain"_s, u"1.0.0"_s);
+        QVERIFY(writeFile(f.user + u"/test.dev/.git/HEAD"_s, "ref"));
+        f.publish({{u"test.dev"_s, u"1.1.0"_s, {}, {}}, {u"test.plain"_s, u"1.1.0"_s, {}, {}}}, &m_key);
+        f.startSigned(m_key);
+        f.svc->setAutomatic(false);
+        f.svc->checkNow();
+        QVERIFY(f.settle());
+        QCOMPARE(f.svc->count(), 1); // the plain one waits for the user; the copy in development does not count
+        QCOMPARE(f.versionOf(u"test.plain"_s), u"1.0.0"_s);
+        f.svc->setAutomatic(true); // now the plain one is put in place by itself
+        f.svc->checkNow();
+        QVERIFY(f.settle());
+        QCOMPARE(f.versionOf(u"test.plain"_s), u"1.1.0"_s);
+        QCOMPARE(f.versionOf(u"test.dev"_s), u"1.0.0"_s);
+        QCOMPARE(f.svc->count(), 0);
+    }
+
     void consentIsToldOncePerVersion()
     {
         Fixture f;

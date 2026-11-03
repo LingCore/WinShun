@@ -411,7 +411,8 @@ void PluginUpdates::evaluate(bool installs)
         const QString& id = it.key();
         const Verdict& v = it.value();
         const bool dismissed = s.value(key("Dismissed", id)).toString() == v.version;
-        if (v.decision.action == updates::Action::Ask && !dismissed && s.value(key("Staged", id)).toString() != v.version) {
+        // A copy in development (a link, or a .git folder) is the author's to move; no badge for it.
+        if (v.decision.action == updates::Action::Ask && !dismissed && !v.developerCopy && s.value(key("Staged", id)).toString() != v.version) {
             ++count;
             signature.push_back(id + u'=' + v.version);
         }
