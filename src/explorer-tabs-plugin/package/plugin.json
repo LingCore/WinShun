@@ -1,0 +1,29 @@
+{
+  "manifest": 1,
+  "id": "winshun.explorer-tabs",
+  "name": {"zh": "资源管理器标签页", "en": "Explorer tabs"},
+  "version": "1.0.0",
+  "description": {"zh": "新开的文件夹窗口并到已经开着的资源管理器里，成为一个标签页", "en": "A folder that opens in a new File Explorer window becomes a tab of the window already open"},
+  "author": "LingCore",
+  "homepage": "https://github.com/LingCore/WinShun",
+  "license": "MIT",
+  "minWinShun": "0.18.0",
+  "runtime": {"mode": "resident", "program": "WinShunExplorerTabs.exe", "start": "eager", "sandbox": "normal", "timeoutMs": 1500, "idleExitSec": 0, "memoryMB": 64},
+  "permissions": ["ui"],
+  "commands": [{
+    "id": "tabs",
+    "keyword": ["标签页", "tabs"],
+    "title": {"zh": "资源管理器标签页", "en": "Explorer tabs"},
+    "description": {"zh": "新开的文件夹窗口是否并成标签页；暂停、恢复", "en": "Whether new folder windows become tabs; pause, resume"},
+    "icon": "glyph:U+E838",
+    "hint": {"zh": "Enter 暂停或恢复", "en": "Enter to pause or resume"}
+  }],
+  "settings": [
+    {"key": "merge", "type": "bool", "title": {"zh": "新开的文件夹窗口并成标签页", "en": "New folder windows become tabs"}, "hint": {"zh": "按住 Ctrl+Shift 打开就是新窗口", "en": "Hold Ctrl+Shift while opening to get a window"}, "default": true},
+    {"key": "target", "type": "choice", "title": {"zh": "并到哪个窗口", "en": "Into which window"}, "options": [
+      {"value": "recent", "title": {"zh": "最近用过的", "en": "The one used last"}},
+      {"value": "first", "title": {"zh": "最早打开的", "en": "The one opened first"}}
+    ], "default": "recent"},
+    {"key": "reuse", "type": "bool", "title": {"zh": "文件夹已经开着就切过去", "en": "Go to a tab already showing the folder"}, "hint": {"zh": "不再多开一个一样的标签页", "en": "No second tab for the same folder"}, "default": true}
+  ]
+}
