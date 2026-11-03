@@ -401,6 +401,12 @@ constexpr QStringView kShotPlugin = u"winshun.capture";
 constexpr QStringView kShotCommand = u"history";
 constexpr QStringView kShotIcon = u"glyph:U+E722"; // Camera
 constexpr int kShotRows = 500;
+// The screenshot plugin is winshun.capture too (its own "cap" keyword, command "capture"): the history
+// is told from it by its command, or "cap 白板" would list pictures and never ask the plugin.
+bool isShotHistory(const QString& pluginId, const QString& commandId)
+{
+    return pluginId == kShotPlugin && commandId == kShotCommand;
+}
 
 // 贴到屏幕 on a file's row: the pictures Windows Imaging Component reads
 // (WebP with Windows' codec; a GIF's first frame).
@@ -1767,7 +1773,7 @@ void Launcher::search(bool more)
         m_pending = false;
         m_contentRunning = false;
         refreshStatus();
-        if (m_keyword->pluginId == kShotPlugin) // the screenshots: in memory, at once
+        if (isShotHistory(m_keyword->pluginId, m_keyword->commandId)) // the screenshots: in memory, at once
             showPluginRows(screenshotRows(m_keyword->words));
         return;
     }
@@ -5193,7 +5199,7 @@ void Launcher::setScreenshots(const QString& keyword, ScreenshotHooks hooks)
 
 bool Launcher::screenshotMode() const
 {
-    return m_keyword && m_keyword->pluginId == kShotPlugin;
+    return m_keyword && isShotHistory(m_keyword->pluginId, m_keyword->commandId);
 }
 
 void Launcher::refreshScreenshots()
@@ -5385,7 +5391,7 @@ void Launcher::startPluginQuery(const QString& text, std::optional<KeywordMode> 
             emit pluginChanged();
         return;
     }
-    if (keyword && keyword->pluginId == kShotPlugin) {
+    if (keyword && isShotHistory(keyword->pluginId, keyword->commandId)) {
         // Win顺's own list: no plugin is asked, and whatever they were
         // asked before is moot (their answers come for an older id).
         const std::uint64_t id = ++m_pluginQueryId;
