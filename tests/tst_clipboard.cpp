@@ -1,3 +1,4 @@
+#include "ClipMisread.h"
 #include "ClipStore.h"
 
 #include <QDir>
@@ -1257,6 +1258,29 @@ private slots:
         b = bundle(onlyImage, whole, u"\n");
         QVERIFY(b.text.isEmpty() && b.files.isEmpty());
         QCOMPARE(b.skippedImages, 1);
+    }
+
+    // A remote-desktop sync (UU Remote, GitHub #181) turns the ANSI bytes of a
+    // copy into UTF-16. Tested with GBK whatever the machine's code page is.
+    void ansiMisread()
+    {
+        const QString date = u"2026年11月2日"_s;
+        const QString garbled = QString::fromUtf16(u"〲㘲\uEAC4ㄱ싔젲"); // the last byte dropped
+        QVERIFY(isAnsiMisread(garbled, date, 936));
+        QVERIFY(isAnsiMisread(garbled + QChar(0xD5), date, 936)); // ... or kept as a character
+        QVERIFY(isAnsiMisread(garbled + QChar(0), date, 936)); // trailing NULs are no part of it
+        QVERIFY(!isAnsiMisread(garbled + QChar(0xD6), date, 936));
+        QVERIFY(!isAnsiMisread(garbled.left(5), date, 936));
+        // ASCII is garbled the same way.
+        QVERIFY(isAnsiMisread(QString(QChar(0x6261)), u"ab"_s, 936));
+        QVERIFY(isAnsiMisread(QString(QChar(0x6261)) + QChar(0x63), u"abc"_s, 936));
+        QVERIFY(!isAnsiMisread(QString(QChar(0x6261)), u"ac"_s, 936));
+        // Not a match, nothing to compare with, the same text.
+        QVERIFY(!isAnsiMisread(u"另一段文字"_s, date, 936));
+        QVERIFY(!isAnsiMisread(garbled, QString(), 936));
+        QVERIFY(!isAnsiMisread(QString(), date, 936));
+        QVERIFY(!isAnsiMisread(date, date, 936));
+        QVERIFY(!isAnsiMisread(QString(QChar(0)), u"ab"_s, 936));
     }
 };
 

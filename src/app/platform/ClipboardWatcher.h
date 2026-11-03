@@ -12,6 +12,7 @@
 #include <windows.h>
 
 #include <atomic>
+#include <chrono>
 #include <functional>
 #include <mutex>
 #include <thread>
@@ -56,8 +57,9 @@ struct ClipWrite {
 // Skipped: what password managers and Windows mark as not for clipboard
 // history or monitoring (ExcludeClipboardContentFromMonitorProcessing,
 // CanIncludeInClipboardHistory = 0, Clipboard Viewer Ignore), copies from
-// the excluded programs, and what this class wrote itself (see
-// ClipWrite::id).
+// the excluded programs, what this class wrote itself (see
+// ClipWrite::id), and text a remote-desktop sync garbled into the ANSI bytes
+// read as UTF-16 right after a copy (ClipMisread.h, GitHub #181).
 //
 // An equation (Word offers MathML for one copied alone) or an embedded
 // object (Equation 3.0, MathType, WPS's 公式编辑器) is recorded as a
@@ -121,6 +123,8 @@ private:
     DWORD m_lastSequence = 0;
     DWORD m_startSequence = 0; // the clipboard's when watching began: what was there already
     int m_readRetries = 0;
+    QString m_lastText; // the last text seen or written (empty if long), to tell a garbled copy of it
+    std::chrono::steady_clock::time_point m_lastTextAt;
     std::unordered_map<std::wstring, QString> m_programNames;
 };
 

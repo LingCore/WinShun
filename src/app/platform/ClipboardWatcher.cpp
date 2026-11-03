@@ -2,6 +2,7 @@
 #include "ImageOrigin.h"
 
 #include "ClipImage.h"
+#include "ClipMisread.h"
 
 #include <QDebug>
 #include <QDateTime>
@@ -14,6 +15,7 @@
 #include <shlobj.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cwchar>
 #include <latch>
 #include <memory>
@@ -38,6 +40,8 @@ constexpr SIZE_T kMaxFormatBytes = 16 * 1024 * 1024;
 constexpr qsizetype kMaxObjectBytes = 32 * 1024 * 1024; // an equation's or an object's formats all together
 constexpr SIZE_T kMaxImageBytes = 256 * 1024 * 1024;
 constexpr qsizetype kMaxReadRecords = 16;
+constexpr qsizetype kMaxMisreadChars = 64 * 1024; // longer text is not kept to compare with
+constexpr std::chrono::seconds kMisreadWindow {5};
 constexpr qsizetype kMaxDiagnosticFormats = 64;
 
 struct Formats {
@@ -840,6 +844,20 @@ void ClipboardWatcher::read()
     }
     if (capture.text.isEmpty() && capture.imageData.isEmpty())
         return;
+    const bool plainText = capture.imageData.isEmpty() && capture.kind != ClipKind::Image && capture.kind != ClipKind::Files;
+    // A remote-desktop clipboard sync (NetEase UU Remote, GitHub #181) puts
+    // the text back a moment after a copy, garbled: the ANSI bytes read as
+    // UTF-16. The clipboard is left as it is (rewriting it would fight the
+    // sync); the garbled copy is just not recorded.
+    if (plainText && !m_lastText.isEmpty() && std::chrono::steady_clock::now() - m_lastTextAt <= kMisreadWindow
+        && isAnsiMisread(capture.text, m_lastText)) {
+        diagnostic[u"outcome"_s] = u"ansi-misread-skipped"_s;
+        return;
+    }
+    if (plainText) {
+        m_lastText = capture.text.size() <= kMaxMisreadChars ? capture.text : QString();
+        m_lastTextAt = std::chrono::steady_clock::now();
+    }
     if (capture.hash.isEmpty()) // here, not on the GUI thread: megabytes of text take a while
         capture.hash = clipHash(capture.kind, capture.text);
     capture.sourcePath = QString::fromStdWString(path);
@@ -994,6 +1012,11 @@ bool ClipboardWatcher::writeNow(const ClipWrite& data)
         }
     }
     ::CloseClipboard();
+    if (ok && !data.text.isEmpty() && data.files.isEmpty() && data.imagePath.isEmpty() && data.imageData.isEmpty()) {
+        // A sync garbles a paste from the history too (GitHub #181).
+        m_lastText = data.text.size() <= kMaxMisreadChars ? data.text : QString();
+        m_lastTextAt = std::chrono::steady_clock::now();
+    }
     // Known without reading it back: opening the clipboard for that would
     // get in the way of the paste that follows (the target opens it then).
     m_lastSequence = ::GetClipboardSequenceNumber();
