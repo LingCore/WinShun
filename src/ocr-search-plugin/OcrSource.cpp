@@ -111,7 +111,9 @@ int longestSide(QSize stored, Use use)
 }
 
 // `stored`: the picture's own size, before it was made smaller to be read.
-QImage decode(QByteArray bytes, Use use, int frame = 0, int* frames = nullptr, QSize* stored = nullptr)
+// `unreadable`: what to say when neither Windows nor Qt can read it at all.
+QImage decode(QByteArray bytes, Use use, int frame = 0, int* frames = nullptr, QSize* stored = nullptr,
+    const QString& unreadable = {})
 {
     ComScope com;
     QSize original;
@@ -134,6 +136,8 @@ QImage decode(QByteArray bytes, Use use, int frame = 0, int* frames = nullptr, Q
     QImageReader reader(&buffer);
     reader.setAutoTransform(true);
     const QSize size = reader.size();
+    if (!size.isValid() && !unreadable.isEmpty())
+        fail(unreadable);
     if (!size.isValid() || qint64(size.width()) * size.height() > kMaxPixels)
         fail(QObject::tr("图片尺寸无效或超过 1 亿像素"));
     if (const int longest = longestSide(size, use); longest > 0 && std::max(size.width(), size.height()) > longest)
@@ -487,11 +491,27 @@ QList<Embedded> embedded(extract::Zip& zip)
 } // namespace
 
 namespace {
+// Pictures are decoded by Windows (WIC): WebP, HEIC/HEIF and AVIF only with
+// the codecs from the Microsoft Store (most PCs have them); without them the
+// file is listed as not done, saying which extension it may need.
 bool supportedSuffix(const QString& suffix)
 {
-    static const QStringList types {u"png"_s, u"jpg"_s, u"jpeg"_s, u"bmp"_s, u"tif"_s, u"tiff"_s, u"webp"_s, u"pdf"_s,
-        u"docx"_s, u"docm"_s, u"pptx"_s, u"pptm"_s, u"xlsx"_s, u"xlsm"_s};
+    static const QStringList types {u"png"_s, u"jpg"_s, u"jpeg"_s, u"jpe"_s, u"jfif"_s, u"bmp"_s, u"gif"_s, u"tif"_s,
+        u"tiff"_s, u"webp"_s, u"heic"_s, u"heif"_s, u"avif"_s, u"pdf"_s, u"docx"_s, u"docm"_s, u"pptx"_s, u"pptm"_s,
+        u"xlsx"_s, u"xlsm"_s};
     return types.contains(suffix);
+}
+// Why a picture of this type may be unreadable: a missing Store extension
+// and a damaged file look the same to both readers, hence "may".
+QString missingCodec(const QString& suffix)
+{
+    if (suffix == u"heic" || suffix == u"heif")
+        return QObject::tr("读不出这张图片，可能需要在 Microsoft Store 安装“HEIF 图像扩展”和“HEVC 视频扩展”");
+    if (suffix == u"avif")
+        return QObject::tr("读不出这张图片，可能需要在 Microsoft Store 安装“AV1 视频扩展”");
+    if (suffix == u"webp")
+        return QObject::tr("读不出这张图片，可能需要在 Microsoft Store 安装“WebP 图像扩展”");
+    return {};
 }
 bool legacySuffix(const QString& suffix)
 {
@@ -682,7 +702,11 @@ Extraction extractImages(
         const QByteArray bytes = readFile(path);
         int count = 1;
         QSize stored;
-        QImage first = decode(bytes, Use::Reading, 0, &count, &stored);
+        QImage first = decode(bytes, Use::Reading, 0, &count, &stored, missingCodec(suffix));
+        // An animation's later frames are drawn over its first, not pages of
+        // their own: a GIF is read by its first frame.
+        if (suffix == u"gif")
+            count = 1;
         for (int frame = 0; frame < std::min(count, kMaxImages); ++frame) {
             stopped(cancel);
             QImage image = frame == 0 ? std::move(first) : decode(bytes, Use::Reading, frame, nullptr, &stored);

@@ -1057,6 +1057,44 @@ private slots:
         QVERIFY2(error.contains(u"1 亿像素"), qPrintable(error));
     }
 
+    // JFIF/JPE, GIF, HEIC/HEIF and AVIF are read too; an animation by its
+    // first frame. A picture neither Windows nor Qt can read says which
+    // Store extension it may need: a damaged file looks the same to both.
+    void morePictureTypesAndWhatTheyMayNeed()
+    {
+        for (const QString& name : {u"a.jpe"_s, u"a.JFIF"_s, u"a.gif"_s, u"a.heic"_s, u"a.heif"_s, u"a.avif"_s})
+            QVERIFY2(supported(name), qPrintable(name));
+        QVERIFY(!supported(u"a.svg"_s));
+        QTemporaryDir temp;
+        const QString gif = temp.filePath(u"moving.gif"_s);
+        QVERIFY(QFile::copy(QStringLiteral(WINSHUN_TEST_DATA "/clipboard-animated.gif"), gif));
+        QList<QJsonObject> sources;
+        const auto result = extractImages(gif, [&](const QImage& image, const QString&, const QJsonObject& source) {
+            QVERIFY(!image.isNull());
+            sources.append(source);
+        });
+        QCOMPARE(result.images, 1);
+        QCOMPARE(sources.size(), 1);
+        QCOMPARE(sources.first().value(u"frames"_s).toInt(), 1);
+        const auto errorOf = [&](const QString& name) {
+            const QString path = temp.filePath(name);
+            write(path, QByteArray(4096, 'x'));
+            try {
+                extractImages(path, [](const QImage&, const QString&, const QJsonObject&) { });
+            } catch (const std::exception& e) {
+                return QString::fromUtf8(e.what());
+            }
+            return QString();
+        };
+        const QString heic = errorOf(u"photo.heic"_s);
+        QVERIFY2(heic.contains(u"“HEIF 图像扩展”和“HEVC 视频扩展”"_s), qPrintable(heic));
+        QVERIFY(errorOf(u"photo.heif"_s).contains(u"HEIF 图像扩展"_s));
+        QVERIFY(errorOf(u"photo.avif"_s).contains(u"“AV1 视频扩展”"_s));
+        QVERIFY(errorOf(u"photo.webp"_s).contains(u"“WebP 图像扩展”"_s));
+        const QString png = errorOf(u"photo.png"_s);
+        QVERIFY2(!png.isEmpty() && !png.contains(u"Microsoft Store"_s), qPrintable(png));
+    }
+
     void realOcrIndexSearchUpdateAndResume()
     {
         const QString appDir = QCoreApplication::applicationDirPath();
