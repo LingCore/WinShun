@@ -2,6 +2,7 @@
 #include "ClipImage.h"
 #include "ClipThumbnailProvider.h"
 #include "ColorSwatch.h"
+#include "PhosphorGlyph.h"
 #include "SystemTheme.h"
 #include "platform/ClipboardWatcher.h"
 
@@ -83,6 +84,7 @@ private slots:
             "WinShun", 1, 0, "SystemTheme", [](QQmlEngine*, QJSEngine*) -> QObject* { return new SystemTheme; });
         qmlRegisterSingletonType(folder.resolved(QUrl(u"Theme.qml"_s)), "WinShun", 1, 0, "Theme");
         qmlRegisterType<ColorSwatch>("WinShun", 1, 0, "ColorSwatch");
+        qmlRegisterType<PhosphorGlyph>("WinShun", 1, 0, "PhosphorGlyph");
     }
 
     void codecsAndOriginals_data()

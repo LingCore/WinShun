@@ -1,5 +1,6 @@
 #include "Phosphor.h"
 #include "Settings.h"
+#include "PhosphorGlyph.h"
 #include "SystemTheme.h"
 #include "WindowFrame.h"
 #include "platform/WindowEffects.h"
@@ -38,6 +39,7 @@ QUrl qmlFolder()
         phosphor::loadFonts();
         qmlRegisterSingletonType<SystemTheme>("WinShun", 1, 0, "SystemTheme",
             [](QQmlEngine*, QJSEngine*) -> QObject* { return new SystemTheme; });
+        qmlRegisterType<PhosphorGlyph>("WinShun", 1, 0, "PhosphorGlyph");
         const QUrl url = QUrl::fromLocalFile(QStringLiteral(WINSHUN_QML_DIR) + u'/');
         qmlRegisterSingletonType(url.resolved(QUrl(u"Theme.qml"_s)), "WinShun", 1, 0, "Theme");
         return url;
@@ -388,14 +390,15 @@ private slots:
         QCOMPARE(eye->property("shown").toString(), phosphor::forSegoe(view)->text);
         QCOMPARE(eye->property("implicitWidth").toReal(), 20.0);
         QCOMPARE(eye->property("implicitHeight").toReal(), 20.0);
-        const QList<QQuickItem*> texts = eye->findChildren<QQuickItem*>();
         int drawn = 0;
-        for (const QQuickItem* text : texts) {
-            if (!text->isVisible() || text->property("text").toString().isEmpty())
+        for (const QQuickItem* item : eye->findChildren<QQuickItem*>()) {
+            if (!item->isVisible() || item->property("text").toString().isEmpty())
                 continue;
             ++drawn;
-            QCOMPARE(text->property("font").value<QFont>().family(), regular.familyName());
-            QVERIFY(qAbs(text->implicitHeight() - 20 * phosphor::kScale) <= 1);
+            const auto* outline = qobject_cast<const PhosphorGlyph*>(item); // not text: see PhosphorGlyph.h
+            QVERIFY2(outline, item->metaObject()->className());
+            QCOMPARE(outline->family(), regular.familyName());
+            QVERIFY(qAbs(outline->em() - 20 * phosphor::kScale) <= 1);
         }
         QCOMPARE(drawn, 1);
         // A caption button keeps Windows' own close glyph.
@@ -438,6 +441,74 @@ private slots:
         const int pinned = ink(0, half);
         const int outline = ink(half, pixels.width());
         QVERIFY2(outline > 0 && pinned > outline * 3 / 2, qPrintable(u"pinned %1, outline %2"_s.arg(pinned).arg(outline)));
+    }
+
+    // A symmetric icon is drawn symmetric in pixels at this scale (the
+    // ctest runs 1, 1.25, 1.5 and 2; the em, 18 px, is 22.5 device pixels at
+    // 1.25): the cancel x and the plus mirror onto themselves about their
+    // diagonal, and their middle is as far right as it is down, within half
+    // a device pixel of the box's; those and the save button's chevron
+    // mirror left to right about a pixel centre or edge. Native text put the
+    // x a fraction of a pixel lower than across and its axis between pixels
+    // ("warped" at 150 %).
+    void phosphorAxesAlike()
+    {
+        const QUrl folder = qmlFolder();
+        QQmlEngine engine;
+        QQmlComponent scene(&engine);
+        scene.setData(R"(
+            import QtQuick
+            Rectangle {
+                width: 120; height: 40; color: "white"
+                Glyph { x: 8; y: 8; glyph: String.fromCharCode(0xE711); size: 16; color: "black" } // Cancel: x
+                Glyph { x: 48; y: 8; glyph: String.fromCharCode(0xE710); size: 16; color: "black" } // Add: plus
+                Glyph { x: 88; y: 8; glyph: String.fromCharCode(0xE70D); size: 16; color: "black" } // ChevronDown
+            }
+        )", folder);
+        std::unique_ptr<QObject> root(scene.create());
+        QVERIFY2(root, qPrintable(scene.errorString()));
+        QQuickWindow window;
+        window.setFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowDoesNotAcceptFocus);
+        window.resize(120, 40);
+        window.setColor(Qt::white);
+        qobject_cast<QQuickItem*>(root.get())->setParentItem(window.contentItem());
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        const QImage pixels = window.grabWindow();
+        QVERIFY(!pixels.isNull());
+        const qreal dpr = window.effectiveDevicePixelRatio();
+        for (const int left : {8, 48, 88}) {
+            const int from = qRound(left * dpr) - 4, top = qRound(8 * dpr) - 4, side = qRound(16 * dpr) + 8;
+            const auto at = [&](int x, int y) {
+                return x < 0 || x >= side ? 0.0 : 1 - qGray(pixels.pixel(from + x, top + y)) / 255.0;
+            };
+            double ink = 0, across = 0, down = 0, unlike = 0;
+            for (int y = 0; y < side; ++y) {
+                for (int x = 0; x < side; ++x) {
+                    const double a = at(x, y);
+                    ink += a;
+                    across += a * (x + 0.5);
+                    down += a * (y + 0.5);
+                    unlike += std::abs(a - at(y, x));
+                }
+            }
+            QVERIFY(ink > 0);
+            // Left to right about the ink's own middle: on a pixel centre or edge.
+            const int axis = qRound(2 * across / ink); // twice the middle
+            double sideways = 0;
+            for (int y = 0; y < side; ++y)
+                for (int x = 0; x < side; ++x)
+                    sideways += std::abs(at(x, y) - at(axis - 1 - x, y));
+            const double middleX = across / ink - side / 2.0, middleY = down / ink - side / 2.0;
+            const QString what = u"at %1: diagonal %2, sideways %3, middle %4, %5"_s.arg(left).arg(unlike / ink)
+                                     .arg(sideways / ink).arg(middleX).arg(middleY);
+            QVERIFY2(sideways / ink < 0.05, qPrintable(what));
+            if (left == 88)
+                continue; // the chevron: no diagonal, its ink not in the em's middle
+            QVERIFY2(unlike / ink < 0.05, qPrintable(what));
+            QVERIFY2(std::abs(middleX - middleY) < 0.05, qPrintable(what));
+            QVERIFY2(std::abs(middleX) <= 0.55, qPrintable(what));
+        }
     }
 };
 

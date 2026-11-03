@@ -39,10 +39,27 @@ Item {
     implicitWidth: drawn || phosphor || missing ? size : label.implicitWidth
     implicitHeight: drawn || phosphor || missing ? size : label.implicitHeight
 
+    // A Phosphor icon: drawn by PhosphorGlyph, the em's centre on a pixel
+    // centre or edge, the same across and down. As text it came out warped:
+    // native text puts the baseline on a whole pixel, 15/16 em below the
+    // em's top, so an x or a chevron sat a fraction of a pixel lower than
+    // across, its axis between pixels.
+    PhosphorGlyph {
+        readonly property bool used: !icon.drawn && !!icon.phosphor
+        visible: used
+        text: used ? icon.phosphor.text : ""
+        family: used ? icon.phosphor.family : ""
+        color: icon.color
+        em: label.fontInfo.pixelSize // the font's own rounding of the size, as before
+        box: Qt.size(icon.width, icon.height)
+    }
+
+    // The system icon font's glyphs, and the font metrics for the others
+    // (its text stays: fontInfo is resolved only by laying some out).
     Text {
         id: label
         anchors.centerIn: parent
-        visible: !icon.drawn
+        visible: !icon.drawn && !icon.phosphor
         text: icon.drawn ? icon.phosphor.text : icon.shown
         font.family: icon.phosphor ? icon.phosphor.family : Theme.iconFont
         // In points: font.pixelSize is a whole number of logical pixels, which
@@ -53,20 +70,29 @@ Item {
         verticalAlignment: Text.AlignVCenter
     }
 
-    Text {
-        anchors.centerIn: parent
-        visible: !icon.drawn && !icon.phosphor && icon.overlay.length > 0 && SystemTheme.hasGlyph(icon.overlay)
-        text: icon.overlay
-        font: label.font
-        color: icon.color
-        horizontalAlignment: Text.AlignHCenter
-        verticalAlignment: Text.AlignVCenter
-    }
-
+    // Made only where wanted (a settings window has over a thousand icons,
+    // nearly all one Phosphor glyph): the overlay, or the drawn icon.
+    readonly property bool overlaid: !drawn && !phosphor && overlay.length > 0 && SystemTheme.hasGlyph(overlay)
     Loader {
         anchors.centerIn: parent
-        active: icon.drawn
-        sourceComponent: Shape {
+        active: icon.drawn || icon.overlaid
+        sourceComponent: icon.drawn ? drawnIcon : overlayGlyph
+    }
+
+    Component {
+        id: overlayGlyph
+        Text {
+            text: icon.overlay
+            font: label.font
+            color: icon.color
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+    }
+
+    Component {
+        id: drawnIcon
+        Shape {
             width: 256
             height: 256
             // Match the font's resolved em, including Windows' font DPI.

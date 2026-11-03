@@ -26,6 +26,7 @@ set_source_files_properties("${app_dir}/qml/Theme.qml" PROPERTIES QT_QML_SINGLET
 qt_add_library(WinShunOcrSearchApp SHARED OcrMain.cpp OcrController.cpp OcrController.h
     ${PROJECT_SOURCE_DIR}/src/capture-plugin/Protocol.cpp
     ${app_dir}/SystemTheme.cpp ${app_dir}/SystemTheme.h
+    ${app_dir}/PhosphorGlyph.cpp ${app_dir}/PhosphorGlyph.h
     ${app_dir}/WindowFrame.cpp ${app_dir}/WindowFrame.h
     ${app_dir}/Phosphor.cpp ${app_dir}/platform/WindowEffects.cpp ${app_dir}/platform/ShellDialogs.cpp
     ${app_dir}/platform/Foreground.cpp ${app_dir}/platform/DragOut.cpp)

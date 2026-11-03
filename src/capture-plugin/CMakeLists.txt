@@ -72,6 +72,7 @@ qt_add_qml_module(WinShunCaptureApp
     SOURCES
         CaptureSettings.cpp CaptureSettings.h
         ${app_dir}/SystemTheme.cpp ${app_dir}/SystemTheme.h
+        ${app_dir}/PhosphorGlyph.cpp ${app_dir}/PhosphorGlyph.h
         ${app_dir}/WindowFrame.cpp ${app_dir}/WindowFrame.h
         ${app_dir}/HotkeyRule.h
         ../capture/Capture.cpp ../capture/Capture.h

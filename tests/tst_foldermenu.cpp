@@ -4,6 +4,7 @@
 #include "Favorites.h"
 #include "FileIconProvider.h"
 #include "Phosphor.h"
+#include "PhosphorGlyph.h"
 #include "SystemTheme.h"
 #include "platform/WindowEffects.h"
 
@@ -100,6 +101,7 @@ private slots:
         qmlRegisterUncreatableType<FolderMenu>("WinShun", 1, 0, "FolderMenu", u"Provided by the application"_s);
         qmlRegisterSingletonType<SystemTheme>(
             "WinShun", 1, 0, "SystemTheme", [](QQmlEngine*, QJSEngine*) -> QObject* { return new SystemTheme; });
+        qmlRegisterType<PhosphorGlyph>("WinShun", 1, 0, "PhosphorGlyph");
         const QUrl folder = QUrl::fromLocalFile(QStringLiteral(WINSHUN_QML_DIR) + u'/');
         qmlRegisterSingletonType(folder.resolved(QUrl(u"Theme.qml"_s)), "WinShun", 1, 0, "Theme");
         const int font = QFontDatabase::addApplicationFont(

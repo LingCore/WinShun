@@ -304,6 +304,7 @@ qt_add_qml_module(WinShun
         SettingsSearch.cpp SettingsSearch.h
         SoundClip.cpp SoundClip.h
         SystemTheme.cpp SystemTheme.h
+        PhosphorGlyph.cpp PhosphorGlyph.h
         UiSize.h
         Updater.cpp Updater.h UpdatePackage.cpp UpdatePackage.h
         Backup.cpp Backup.h BackupFiles.cpp BackupFiles.h
