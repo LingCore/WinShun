@@ -58,7 +58,8 @@ public:
         double progress = 0; // 0–1
         QString problem; // why the last install from here did not happen
         bool shown = true; // fits the filter (and, with updatesOnly, has a newer version to go to)
-        bool updatable = false; // the user's copy, not Win顺's own, with a newer version in the list
+        bool updatable = false; // the user's copy, not Win顺's own and not a copy in development, with a newer version in the list
+        bool needsYou = false; // ... and the background service counts it (badge, 插件 page notice): what 只看可更新 shows
         bool allUpdate = false; // ... and 全部更新 may do it: nothing staged, no new permissions, not a copy in development
         QString staged; // a newer version kept aside for the next start (empty: none)
         QString morePermissions; // the permissions the list's version adds to the installed one, named; empty: none

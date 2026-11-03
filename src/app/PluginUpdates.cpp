@@ -404,6 +404,7 @@ void PluginUpdates::evaluate(bool installs)
         }
     }
     int count = 0;
+    QSet<QString> waiting;
     QStringList consent;
     QStringList signature;
     QSettings s = state();
@@ -414,6 +415,7 @@ void PluginUpdates::evaluate(bool installs)
         // A copy in development (a link, or a .git folder) is the author's to move; no badge for it.
         if (v.decision.action == updates::Action::Ask && !dismissed && !v.developerCopy && s.value(key("Staged", id)).toString() != v.version) {
             ++count;
+            waiting.insert(id);
             signature.push_back(id + u'=' + v.version);
         }
         if (m_trusted && v.decision.action == updates::Action::Ask && v.decision.needsConsent && !dismissed && !v.developerCopy
@@ -425,6 +427,7 @@ void PluginUpdates::evaluate(bool installs)
     const bool differs = joined != m_signature || count != m_count;
     m_signature = joined;
     m_count = count;
+    m_waiting = std::move(waiting);
     if (!consent.isEmpty()) {
         consent.sort();
         for (const QString& id : std::as_const(consent))

@@ -70,6 +70,7 @@ public:
     void setList(const QByteArray& bytes); // the 插件库 tab's list: hints only, never installed from
 
     int count() const; // badge and tray line
+    bool waiting(const QString& id) const { return m_waiting.contains(id); } // one of those counted (what 只看可更新 shows)
     bool idle() const { return !m_checking && !m_working && m_queue.isEmpty(); } // no check or download under way
     QString stagedVersion(const QString& id) const;
     QString problem(const QString& id) const;
@@ -131,6 +132,7 @@ private:
     QHash<QString, QString> m_problems; // id -> why its last try failed (this run)
     QString m_signature; // of the verdicts shown, to tell when they changed
     int m_count = 0;
+    QSet<QString> m_waiting; // the ids behind m_count
     QSet<QString> m_claims;
     QStringList m_queue;
     bool m_checking = false;

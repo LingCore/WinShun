@@ -299,12 +299,15 @@ void PluginGallery::readCache()
     QFile file(cachePath());
     if (!file.open(QIODevice::ReadOnly))
         return;
-    std::optional<gallery::Index> index = gallery::parse(file.read(gallery::kMaxIndexBytes), source(), nullptr);
+    const QByteArray body = file.read(gallery::kMaxIndexBytes);
+    std::optional<gallery::Index> index = gallery::parse(body, source(), nullptr);
     if (!index)
         return;
     m_index = std::move(*index);
     m_hasIndex = true;
     m_listTime = QFileInfo(file).lastModified();
+    if (m_updates)
+        m_updates->setList(body); // hints, as after a fetch: 只看可更新 and the badge then agree
     rebuild();
     emit stateChanged();
 }
@@ -391,10 +394,12 @@ void PluginGallery::rebuild()
             case gallery::State::NeedsNewerApp: r.stage = u"app"_s; break;
             }
             r.updatable = r.updatable && (r.stage == u"update"_s || r.stage == u"app"_s);
+            const plugin::Entry* installed = host ? host->catalog().find(item.id) : nullptr;
+            if (installed && plugin::updates::developerCopy(installed->dir)) // the author's to move (as the badge leaves it out)
+                r.updatable = false;
             if (r.updatable && r.stage == u"update"_s) {
                 if (m_updates)
                     r.staged = m_updates->stagedVersion(item.id);
-                const plugin::Entry* installed = host->catalog().find(item.id);
                 const QStringList have = installed && installed->manifest ? installed->manifest->permissions.names() : QStringList();
                 QStringList added;
                 for (const QString& name : item.permissions) {
@@ -404,7 +409,9 @@ void PluginGallery::rebuild()
                     }
                 }
                 r.morePermissions = added.join(u"、"_s);
-                r.allUpdate = r.staged.isEmpty() && added.isEmpty() && !(installed && plugin::updates::developerCopy(installed->dir));
+                r.allUpdate = r.staged.isEmpty() && added.isEmpty();
+                // The same set as the badge's number: asked of the service, which also knows what was refused.
+                r.needsYou = m_updates ? m_updates->waiting(item.id) : r.staged.isEmpty();
             }
             // The icon of the copy here, if any (the list has none).
             const PluginListModel::Card* card = m_settings->m_list.card(item.id);
@@ -434,7 +441,7 @@ void PluginGallery::rebuild()
         }
     }
     for (PluginGalleryModel::Row& r : rows)
-        r.shown = fits(r.words, m_filter) && (!m_updatesOnly || r.updatable);
+        r.shown = fits(r.words, m_filter) && (!m_updatesOnly || (m_preview ? r.updatable : r.needsYou));
     m_list.setRows(std::move(rows));
     emit listChanged();
     emit updateCountChanged();
