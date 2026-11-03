@@ -29,7 +29,7 @@ Item {
             Text { text: qsTr("识别范围"); color: Theme.text; font.pixelSize: Theme.fontTitle; font.weight: Theme.fontStrong }
             Text {
                 Layout.fillWidth: true
-                text: qsTr("搜索图片、PDF 和 Office 图片中的文字。选择目录后，在后台识别一次。")
+                text: qsTr("搜索图片、PDF 和 Office 图片中的文字。选择目录后，在后台识别一次。索引建好后，在搜索框直接输入图片里的文字就能搜到；输入 ocr 关键词只看图片和扫描件结果。")
                 wrapMode: Text.Wrap
                 color: Theme.subtext
                 font.pixelSize: Theme.fontCaption
