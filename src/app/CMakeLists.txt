@@ -59,6 +59,7 @@ qt_add_executable(WinShun WIN32
     PieLabels.cpp PieLabels.h
     Phosphor.cpp Phosphor.h
     Preview.cpp Preview.h
+    ClipScrollBench.cpp ClipScrollBench.h
     ContentPaneProbe.cpp ContentPaneProbe.h
     RecentFolders.cpp RecentFolders.h
     Settings.cpp Settings.h

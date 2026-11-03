@@ -1,4 +1,5 @@
 #include "Preview.h"
+#include "ClipScrollBench.h"
 #include "ContentPaneProbe.h"
 
 #include "Backup.h"
@@ -4370,6 +4371,8 @@ int runResults(const QStringList& args)
     QFont font = QGuiApplication::font();
     font.setStyleStrategy(QFont::NoSubpixelAntialias);
     QGuiApplication::setFont(font);
+    if (args.contains(u"--clipboard-scroll"_s)) // its own engine: --qml-debug comes before one exists
+        return runClipScrollBench(out, args);
     QQmlApplicationEngine engine;
     engine.addImageProvider(u"fileicon"_s, new FileIconProvider);
     engine.addImageProvider(u"clipthumb"_s, new ClipThumbnailProvider); // the clipboard rows' pictures
