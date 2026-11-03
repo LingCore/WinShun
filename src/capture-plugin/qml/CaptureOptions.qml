@@ -177,6 +177,8 @@ Column {
             id: keyRecorder
             objectName: "captureKey" + keyRow.keyId
             keyMode: true
+            // Ctrl+Shift+F12 and the like fit (about 170): the boxes line up; only three modifiers grow one.
+            keyMinimumWidth: 180
             hotkey: keyRow.info.text
             prompt: qsTr("请按下按键…")
             placeholder: qsTr("未设置")

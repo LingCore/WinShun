@@ -16,6 +16,7 @@ Rectangle {
     property string hotkey
     property bool previewShortcut: false
     property bool keyMode: false
+    property int keyMinimumWidth: 140 // keyMode: the narrowest the box gets (a page lines its boxes up with it)
     property string prompt: qsTr("请按下组合键…")
     property string placeholder: qsTr("点击设置快捷键")
     readonly property bool recording: activeFocus
@@ -68,7 +69,7 @@ Rectangle {
         text: qsTr("请同时按住 Ctrl、Alt 或 Win")
     }
     // keyMode: as narrow as a key's box can be, wider only for a long chord.
-    implicitWidth: keyMode ? Math.max(140, keycaps.implicitWidth + 24) : Math.max(150, widest.width, widest2.width) + 28
+    implicitWidth: keyMode ? Math.max(keyMinimumWidth, keycaps.implicitWidth + 24) : Math.max(150, widest.width, widest2.width) + 28
     implicitHeight: 36
     radius: Theme.controlRadius
     activeFocusOnTab: true
