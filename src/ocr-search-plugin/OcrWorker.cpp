@@ -57,6 +57,25 @@ QByteArray encoded(const QImage& image, const char* format, int quality)
     buffer.open(QIODevice::WriteOnly);
     return image.save(&buffer, format, quality) ? bytes : QByteArray();
 }
+// Background mode lowers CPU, I/O and memory priority, and Windows also caps
+// the working set at a hard 32 MB with it. Under that cap the reader's
+// hundreds of MB page against each other, and the Store HEIF/AV1 decoders
+// fail (E_OUTOFMEMORY) once the process holds some 16 MB more. The limits
+// from before are put back; the low memory priority still gives these pages
+// up first when other programs need memory.
+bool enterBackground()
+{
+    const HANDLE process = ::GetCurrentProcess();
+    SIZE_T minimum = 0;
+    SIZE_T maximum = 0;
+    DWORD flags = 0;
+    const bool known = ::GetProcessWorkingSetSizeEx(process, &minimum, &maximum, &flags);
+    if (!::SetPriorityClass(process, PROCESS_MODE_BACKGROUND_BEGIN))
+        return false;
+    if (!known || !::SetProcessWorkingSetSizeEx(process, minimum, maximum, flags))
+        qWarning("Cannot lift the background working-set cap: %lu", ::GetLastError());
+    return true;
+}
 } // namespace
 
 Worker::Worker(QString program, QString appDir, QString dataDir, QString engine, int timeoutMs)
@@ -198,7 +217,7 @@ int workerMain(const QString& appDir)
                 // Indexing comes after the user's work: background CPU, I/O
                 // and memory priority (a preview worker is its own process).
                 if (!background)
-                    background = ::SetPriorityClass(::GetCurrentProcess(), PROCESS_MODE_BACKGROUND_BEGIN);
+                    background = enterBackground();
                 Store store(request.value(u"dataDir"_s).toString(), 0);
                 QJsonArray pages;
                 QHash<QByteArray, QJsonObject> recognized;

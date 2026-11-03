@@ -1166,6 +1166,44 @@ private slots:
         QVERIFY2(error.contains(u"没有进展"), qPrintable(error));
     }
 
+    // Pictures Windows reads with the Microsoft Store's extensions, read by
+    // the worker as indexing runs it (background mode: those decoders fail
+    // under its working-set cap). Skipped where this PC has no extension.
+    void workerReadsPicturesOfStoreExtensions()
+    {
+        const QString appDir = workerAppDir();
+        if (!ws::PaddleOcr::installed(appDir))
+            QSKIP("Enhanced OCR component is not installed in this test runtime");
+        QTemporaryDir temp;
+        const QString data = temp.filePath(u"data"_s);
+        {
+            Store store(data);
+        }
+        const QString program = QDir(QCoreApplication::applicationDirPath()).filePath(u"WinShunOcrSearch.exe"_s);
+        Worker worker(program, appDir, data, u"test"_s);
+        int read = 0;
+        for (const QString& name : {u"ocr-sample.heic"_s, u"ocr-sample.avif"_s}) {
+            const QString path = QStringLiteral(WINSHUN_TEST_DATA "/") + name;
+            QFile file(path);
+            QVERIFY2(file.open(QIODevice::ReadOnly), qPrintable(path));
+            if (ws::decodePictureData(file.readAll(), 0).isNull()) {
+                qInfo() << "Windows cannot decode" << name << "on this PC";
+                continue;
+            }
+            QJsonObject result;
+            try {
+                result = worker.read(path, [] { return false; });
+            } catch (const std::exception& e) {
+                QFAIL(qPrintable(name + u": "_s + QString::fromUtf8(e.what())));
+            }
+            QCOMPARE(result.value(u"images"_s).toInt(), 1);
+            QVERIFY(!result.value(u"pages"_s).toArray().first().toObject().value(u"pieces"_s).toArray().isEmpty());
+            ++read;
+        }
+        if (!read)
+            QSKIP("Windows has neither the HEIF nor the AV1 extension on this PC");
+    }
+
     void installedPluginRunsInRealHostAndOpensItsWindow()
     {
         const QString appDir = workerAppDir(), buildDir = QCoreApplication::applicationDirPath();
