@@ -53,6 +53,7 @@ public:
         bool oem = false; // its stdout is in the OEM code page
         bool stdinOpen = true; // false: its stdin is NUL (once plugins)
         bool elevated = false; // Host's: start it on the elevated runner (not sent)
+        std::shared_ptr<void> hold; // Host's: kept until the process has started (elevation::Hold; not sent)
     };
 
     // `elevated`: the second runner, started with Win顺's own token as it is

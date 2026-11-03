@@ -199,8 +199,14 @@ public:
     const elevation::Store& elevationStore() const noexcept { return m_store; }
     // The user's 确认 in an elevated Win顺: its files as they are now are the
     // ones to run as administrator; a resident process running starts again
-    // (on the elevated runner). False with `error`.
+    // (on the elevated runner). False with `error`. Blocking (the files are
+    // hashed and copied): the settings page does the copy off the GUI thread
+    // itself (elevation::confirmFolder / confirmPackage) and then calls
+    // elevationConfirmed.
     bool confirmElevation(const QString& id, QString* error = nullptr);
+    void elevationConfirmed(const QString& id); // what changes once a copy is confirmed
+    // The copies of plugins no longer installed, gone (elevated only).
+    void sweepElevation();
     // The plugin's AI tools are not offered while it would run elevated: the
     // AI's requests come from programs with the user's normal rights.
     bool runsElevated(const QString& id) const;
@@ -341,10 +347,15 @@ private:
     struct ElevationSeen {
         ElevationState state;
         QString dir; // Elevated: the confirmed copy
+        std::optional<Manifest> manifest; // Elevated: the copy's own (the same as the catalog's)
+        std::shared_ptr<elevation::Hold> hold; // Elevated, for a start: the store's folders held open
         QDeadlineTimer fresh;
     };
-    ElevationSeen lookElevation(const Entry& e); // and remembered for elevationState
+    // And remembered (without the hold) for elevationState. `hold`: for a
+    // start, the folders kept from being swapped until the process runs.
+    ElevationSeen lookElevation(const Entry& e, bool hold = false);
     QHash<QString, ElevationSeen> m_elevation;
+    std::unordered_map<std::uint64_t, std::shared_ptr<elevation::Hold>> m_holds; // by instance, until it has started (or failed)
     int m_runnerRestarts = 0;
     QTimer m_runnerBackoff;
     QTimer m_preload; // coalesces catalog/configuration changes before starting eager plugins
