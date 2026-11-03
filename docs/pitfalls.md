@@ -1,5 +1,12 @@
 # 踩坑记录
 
+## 以管理员身份运行插件：先校验再按路径启动是不够的（2026-11-03）
+
+- **原因**：插件文件夹是用户能写的。“比对哈希，一样就 `CreateProcess` 插件文件夹里的 exe”中间有空子：校验后、启动前可以换文件；就算一直拿着句柄不让改，插件运行中还会按需加载 DLL，往文件夹里**加**一个 `version.dll` 是挡不住的。开机自启的管理员 Win顺 就成了一个不用 UAC 的提权入口。
+- **做法**：以管理员身份运行的永远是 `%ProgramData%\WinShun\elevated-plugins\<SID>\…` 里的副本（exe、cwd、`WS_PLUGIN_DIR` 都指向它），三级文件夹用 `svcloc::secureLogFolder` 建、每次启动前用 `svcloc::folderProtected` 查整条路径，查不过就以普通权限跑。副本只在提权的 Win顺 里、用户点“确认”或从插件库下载（内存里已核对 SHA-256 的字节）时做；普通权限装的东西不能自动当真。比对插件文件夹只用来判断副本是否还是现在的样子，不关安全。
+- **别的坑**：管理员 runner 的实例号从 2^48 起，runner 的 JSON 要原样写小于 1e15 的整数，否则按实例号分 runner 会错；管理员 runner 的管道只给 SYSTEM 和 Administrators、标签“高”，普通权限的进程连打开都不行。单测里“同样大小重写文件”可能和原来修改时间相同，哈希缓存（按大小和修改时间）会看不出变化：测试里把时间往后拨（`laterTime`）。生产里这只影响“副本是不是最新”，不影响安全。
+- **验证**：`tst_plugin::elevationRecord`、`elevatedPluginsFollowTheHost`；真机用提权的 `wsbench --plugin <文件夹> --query … [--confirm-elevated]` 起 `plugin_fake --once --whoami`：未确认 Medium，确认后 High 且路径在副本里，普通权限的进程改 exe 后回到 Medium（判定 changed），改回去又是 High。
+
 ## 图形插件的进程隔离也要覆盖输入法与内部工作进程（2026-11-01，#164）
 
 - **根因与证据**：截图插件未声明 `processes`，实际宿主给它的作业 `ActiveProcessLimit=1`，真实子进程探针返回 1816（`ERROR_NOT_ENOUGH_QUOTA`），与录屏启动报错一致。启动器还统一设置了 `EXTENSION_POINT_DISABLE_ALWAYS_ON`；[微软文档](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-updateprocthreadattribute) 明确该策略阻止传统输入法扩展。直接启动的 QML 预览不经过这个边界。
