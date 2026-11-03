@@ -30,6 +30,8 @@ Rectangle {
             (tipLoader.item as ShortcutTip).visible = false
     }
 
+    onVisibleChanged: if (!visible) close()
+
     Glyph {
         anchors.centerIn: parent
         glyph: "" // Info

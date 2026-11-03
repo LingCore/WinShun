@@ -3941,6 +3941,34 @@ Right: center window · Drag: move window</translation>
 </context>
 <context>
     <name>SettingsWindow</name>
+    <message>
+        <source>键盘提示</source>
+        <translation>Keyboard hints</translation>
+    </message>
+    <message>
+        <source>显示快捷键帮助按钮</source>
+        <translation>Show shortcut help button</translation>
+    </message>
+    <message>
+        <source>在搜索框右下角显示入口，点击查看常用快捷键</source>
+        <translation>Show a button at the bottom right of the search window. Click it to see common shortcuts.</translation>
+    </message>
+    <message>
+        <source>快捷键;帮助;提示;隐藏;极简</source>
+        <translation>shortcuts;help;hints;hide;minimal</translation>
+    </message>
+    <message>
+        <source>显示底栏按键提示</source>
+        <translation>Show footer key hints</translation>
+    </message>
+    <message>
+        <source>显示 Enter、Ctrl+Enter、Tab 等操作提示；未输入时隐藏 Tab 切换范围提示</source>
+        <translation>Show key hints such as Enter, Ctrl+Enter and Tab. The Tab scope hint appears once you type a query.</translation>
+    </message>
+    <message>
+        <source>快捷键;底栏;提示;隐藏;Tab;极简</source>
+        <translation>shortcuts;footer;hints;hide;Tab;minimal</translation>
+    </message>
     <message numerus="yes">
         <source>%n 个插件可更新</source>
         <translation>

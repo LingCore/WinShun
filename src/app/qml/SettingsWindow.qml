@@ -3373,6 +3373,39 @@ Window {
                 page: 3
                 tab: 1
                 width: parent.width
+                title: qsTr("键盘提示")
+
+                SettingRow {
+                    title: qsTr("显示快捷键帮助按钮")
+                    description: qsTr("在搜索框右下角显示入口，点击查看常用快捷键")
+                    keywords: qsTr("快捷键;帮助;提示;隐藏;极简").split(";")
+
+                    ToggleSwitch {
+                        objectName: "shortcutHelpToggle"
+                        checked: window.editor.shortcutHelp
+                        Accessible.name: qsTr("显示快捷键帮助按钮")
+                        onToggled: (on) => window.editor.shortcutHelp = on
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("显示底栏按键提示")
+                    description: qsTr("显示 Enter、Ctrl+Enter、Tab 等操作提示；未输入时隐藏 Tab 切换范围提示")
+                    keywords: qsTr("快捷键;底栏;提示;隐藏;Tab;极简").split(";")
+
+                    ToggleSwitch {
+                        objectName: "footerHintsToggle"
+                        checked: window.editor.footerHints
+                        Accessible.name: qsTr("显示底栏按键提示")
+                        onToggled: (on) => window.editor.footerHints = on
+                    }
+                }
+            }
+
+            SettingsSection {
+                page: 3
+                tab: 1
+                width: parent.width
                 title: qsTr("列表信息与交互")
                 glyph: "\uE8FD"
 

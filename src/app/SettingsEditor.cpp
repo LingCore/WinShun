@@ -375,6 +375,22 @@ void SettingsEditor::setNumberHints(const QString& hints)
     commit();
 }
 
+void SettingsEditor::setShortcutHelp(bool on)
+{
+    if (m_settings.shortcutHelp == on)
+        return;
+    m_settings.shortcutHelp = on;
+    commit();
+}
+
+void SettingsEditor::setFooterHints(bool on)
+{
+    if (m_settings.footerHints == on)
+        return;
+    m_settings.footerHints = on;
+    commit();
+}
+
 void SettingsEditor::setPreviewWith(const QString& with)
 {
     if (m_settings.previewWith == with || (with != u"auto" && with != u"builtin"))

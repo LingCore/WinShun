@@ -1382,6 +1382,15 @@ void Launcher::setNumberHints(const QString& hints)
     emit resultOptionsChanged();
 }
 
+void Launcher::setKeyboardHints(bool help, bool footer)
+{
+    if (m_shortcutHelp == help && m_footerHints == footer)
+        return;
+    m_shortcutHelp = help;
+    m_footerHints = footer;
+    emit resultOptionsChanged();
+}
+
 void Launcher::setPreviewHotkey(const QString& shortcut)
 {
     const QString value = shortcut.isEmpty() ? QString() : previewkeys::normalized(shortcut);
@@ -2836,13 +2845,16 @@ void Launcher::refreshKeyHints()
     switch (tabAction(m_currentRow)) {
     case navigation::TabAction::BrowseFolder: tab = tr("进入文件夹"); break;
     case navigation::TabAction::Complete: tab = tr("补全"); break;
-    case navigation::TabAction::SwitchScope: tab = tr("切换范围"); break;
+    case navigation::TabAction::SwitchScope:
+        if (!m_query.trimmed().isEmpty())
+            tab = tr("切换范围");
+        break;
     case navigation::TabAction::None: break;
     }
     QString tabKeys = u"Tab"_s; // the volume's row: its place is Alt+←→'s (Tab still does the same)
     const SearchResult* r = m_results.at(m_currentRow);
     if (!r) {
-        // No row, nothing to open: only Tab (it still switches the scope) is offered.
+        // Without a row, a nonblank query can still offer scope switching.
     } else if (r->isPlugin()) {
         const PluginRow& p = *r->plugin;
         if (p.valid) {
@@ -4847,7 +4859,7 @@ QVariantList Launcher::menuItems(int row) const
     }
     if (r->isApp()) {
         items.append(entry(Open, tr("打开"), u"Enter"_s, u"\uE8A7"_s)); // OpenInNewWindow
-        if (r->elevatable)
+        if (r->elevatable && !r->missing && !r->offline)
             items.append(entry(RunAsAdmin, tr("以管理员身份运行"), u"Ctrl+Shift+Enter"_s, u"\uE7EF"_s));
         if (!r->target.isEmpty())
             items.append(entry(Reveal, r->isPackagedApp() ? tr("打开安装文件夹") : tr("打开所在位置"), u"Ctrl+Enter"_s,
@@ -4876,7 +4888,7 @@ QVariantList Launcher::menuItems(int row) const
     items.append(entry(OpenTerminal, tr("在终端中打开"), QString(), u"\uE756"_s)); // CommandPrompt
     if (r->isDir && m_contentEnabled && !r->path.startsWith(u"\\\\"_s)) // shares: contents are not read there
         items.append(entry(SearchInFolder, tr("在此文件夹中搜内容"), QString(), u"\uE721"_s)); // Search
-    if (!r->isDir && shell::canRunAsAdministrator(r->path))
+    if (!r->isDir && !r->missing && !r->offline && shell::canRunAsAdministrator(r->path))
         items.append(entry(RunAsAdmin, tr("以管理员身份运行"), u"Ctrl+Shift+Enter"_s, u"\uE7EF"_s));
     fileCommandItems(items);
     items.append(separator);

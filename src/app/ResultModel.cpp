@@ -16,6 +16,7 @@
 #include "WebShortcut.h"
 #include "Wtf8.h"
 #include "platform/SiteIcons.h"
+#include "platform/Shell.h"
 #include "KeepAwakeText.h"
 
 #include <QGuiApplication>
@@ -422,7 +423,8 @@ QVariant ResultModel::data(const QModelIndex& index, int role) const
     case PackagedAppRole:
         return r->isPackagedApp();
     case ElevatableRole:
-        return r->elevatable;
+        return !r->missing && !r->offline && (r->isApp() ? r->elevatable
+            : !r->isDir && shell::canRunAsAdministrator(r->path));
     case RevealableRole:
         return !r->isApp() || (!r->isPlace() && !r->target.isEmpty());
     case CopyableRole:

@@ -114,6 +114,8 @@ class Launcher : public QObject {
     // or "" for none (Settings::numberKeys).
     Q_PROPERTY(QString numberKeys READ numberKeys NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(QString numberHints READ numberHints NOTIFY resultOptionsChanged FINAL)
+    Q_PROPERTY(bool shortcutHelp READ shortcutHelp NOTIFY resultOptionsChanged FINAL)
+    Q_PROPERTY(bool footerHints READ footerHints NOTIFY resultOptionsChanged FINAL)
     Q_PROPERTY(QString previewHotkey READ previewHotkey NOTIFY resultOptionsChanged FINAL)
     // Bits 1 << n of the digits n left to one of Win顺's own shortcuts
     // (App::ownNumberDigits): their rows show the chord struck through.
@@ -446,6 +448,9 @@ public:
     void setPreviewHotkey(const QString& shortcut);
     Q_INVOKABLE bool isPreviewKey(int key, int modifiers) const;
     void setNumberHints(const QString& hints);
+    bool shortcutHelp() const { return m_shortcutHelp; }
+    bool footerHints() const { return m_footerHints; }
+    void setKeyboardHints(bool help, bool footer);
     int numberKeysLeft() const { return static_cast<int>(m_numberKeysLeft); }
     void setNumberKeysLeft(unsigned digits);
     bool inTaskbarBox() const { return m_inTaskbarBox; }
@@ -1092,6 +1097,8 @@ private:
     bool m_tabEntersFavoriteFolder = false;
     QString m_numberKeys = QStringLiteral("ctrl");
     QString m_numberHints = QStringLiteral("always");
+    bool m_shortcutHelp = true;
+    bool m_footerHints = true;
     QString m_previewHotkey = QStringLiteral("Alt+P");
     QKeySequence m_previewSequence {QStringLiteral("Alt+P")};
     unsigned m_numberKeysLeft = 0;

@@ -1337,6 +1337,23 @@ int runSettings(const QStringList& args)
             QKeyEvent event(QEvent::KeyPress, code, modifiers, text);
             QCoreApplication::sendEvent(recorder, &event);
         };
+        for (const QString& name : {u"shortcutHelpToggle"_s, u"footerHintsToggle"_s}) {
+            QObject* toggle = window->findChild<QObject*>(name);
+            check(toggle != nullptr, "keyboard hint toggle is missing");
+            if (!toggle)
+                continue;
+            const bool help = name == u"shortcutHelpToggle";
+            for (const bool on : {false, true}) {
+                QMetaObject::invokeMethod(toggle, "toggled", Q_ARG(bool, on));
+                settle(window);
+                Settings restored;
+                restored.load();
+                check((help ? editor->shortcutHelp() : editor->footerHints()) == on
+                    && (help ? restored.shortcutHelp : restored.footerHints) == on
+                    && toggle->property("checked").toBool() == on,
+                    "keyboard hint toggle did not apply and persist");
+            }
+        }
         key(Qt::Key_Space, {}, u" "_s);
         check(editor->previewHotkey() == u"Space", "recording Space did not apply");
         Settings restored;
@@ -2110,6 +2127,89 @@ bool checkShortcutPanels(QQmlEngine* engine, const QDir& output)
         if (field)
             panel(window, launcherAsked, u"launcher"_s,
                   {u"Shift+Tab"_s, u"Ctrl+Tab"_s, u"Ctrl+S"_s, u"Ctrl+T"_s}, {u"Ctrl+C"_s, u"Ctrl+Shift+Enter"_s, u"Ctrl+J / N · Ctrl+K / P"_s}, field);
+
+        Settings settings;
+        SettingsEditor editor(settings, u"software"_s);
+        QObject::connect(&editor, &SettingsEditor::edited, &launcher, [&launcher](const Settings& changed) {
+            launcher.setKeyboardHints(changed.shortcutHelp, changed.footerHints);
+        });
+        QQuickItem* help = shownNamed(window->contentItem(), u"shortcutsButton"_s);
+        QQuickItem* hints = shownNamed(window->contentItem(), u"footerKeyHints"_s);
+        check(help && hints, u"launcher: help and footer controls exist"_s);
+        if (help && hints) {
+            const qreal withHelp = hints->mapToScene({hints->width(), 0}).x();
+            click(window, help);
+            editor.setShortcutHelp(false);
+            settle(window);
+            check(!tipWindow() && !help->isVisible(), u"launcher: disabling help closes its open panel"_s);
+            check(hints->mapToScene({hints->width(), 0}).x() > withHelp,
+                u"launcher: hiding help releases the button's space"_s);
+            for (const bool showHelp : {false, true}) {
+                for (const bool showFooter : {false, true}) {
+                    editor.setShortcutHelp(showHelp);
+                    editor.setFooterHints(showFooter);
+                    settle(window);
+                    check(help->isVisible() == showHelp && hints->isVisible() == showFooter,
+                        u"launcher: help=%1 and footer=%2 apply independently"_s.arg(showHelp).arg(showFooter));
+                    check(showFooter || hints->width() == 0, u"launcher: hidden hints release their width"_s);
+                    Settings restored;
+                    restored.load();
+                    check(restored.shortcutHelp == showHelp && restored.footerHints == showFooter,
+                        u"launcher: both hint options persist"_s);
+                    saveGrab(window, output.filePath(u"hints-%1-%2.png"_s.arg(showHelp).arg(showFooter)));
+                }
+            }
+        }
+        for (const QString& query : {QString(), u"   "_s, u"no-matching-file"_s}) {
+            launcher.setQuery(query);
+            pump(200);
+            launcher.results()->assign({}, {});
+            launcher.setCurrentRow(-1);
+            settle(window);
+            QQuickItem* tab = hints ? visualNamed(hints, u"footerTabHint"_s) : nullptr;
+            check(tab && tab->isVisible() == !query.trimmed().isEmpty(),
+                u"launcher: scope hint follows nonblank input, including no results"_s);
+        }
+        struct AdminCase {
+            QString name;
+            bool expected;
+            bool directory = false;
+            bool missing = false;
+            bool offline = false;
+            AppKind app = AppKind::None;
+        };
+        const AdminCase adminCases[] {
+            {u"Portable.ExE"_s, true}, {u"Setup.msi"_s, true}, {u"Script.cmd"_s, true}, {u"Notes.txt"_s, false},
+            {.name = u"Folder.exe"_s, .expected = false, .directory = true},
+            {.name = u"Missing.exe"_s, .expected = false, .missing = true},
+            {.name = u"Offline.exe"_s, .expected = false, .offline = true},
+            {.name = u"Installed.exe"_s, .expected = true, .app = AppKind::Desktop},
+            {.name = u"StoreApp.exe"_s, .expected = false, .app = AppKind::Store},
+        };
+        for (const AdminCase& test : adminCases) {
+            SearchResult result;
+            result.name = test.name;
+            result.path = temporary.filePath(test.name);
+            result.isDir = test.directory;
+            result.missing = test.missing;
+            result.offline = test.offline;
+            result.app = test.app;
+            result.elevatable = test.app == AppKind::Desktop;
+            launcher.results()->assign({result}, {});
+            launcher.setCurrentRow(0);
+            settle(window);
+            check(launcher.results()->data(launcher.results()->index(0), ResultModel::ElevatableRole).toBool() == test.expected,
+                u"launcher: elevation capability for "_s + test.name);
+            QQuickItem* row = visualNamed(window->contentItem(), u"resultRow-0"_s);
+            QQuickItem* shield = row ? visualNamed(row, u"adminAction"_s) : nullptr;
+            check(shield && shield->isVisible() == test.expected, u"launcher: shield visibility for "_s + test.name);
+            bool menuAdmin = false;
+            for (const QVariant& item : launcher.menuItems(0))
+                menuAdmin = menuAdmin || item.toMap().value(u"action"_s).toInt() == Launcher::RunAsAdmin;
+            check(menuAdmin == test.expected, u"launcher: shield agrees with the menu for "_s + test.name);
+            if (test.name == u"Portable.ExE")
+                saveGrab(window, output.filePath(u"portable-admin.png"_s));
+        }
         window->hide();
     }
     {
@@ -3021,7 +3121,6 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
         launcher.setCurrentRow(0);
     };
     const auto tabHint = [&] { return launcher.keyHints().value(u"tab"_s).toString(); };
-    const QString scopeHint = QCoreApplication::translate("ws::Launcher", "切换范围");
     const QString folderHint = QCoreApplication::translate("ws::Launcher", "进入文件夹");
     const auto hasBrowseAction = [&] {
         const QVariantList menu = launcher.menuItems(0);
@@ -3031,7 +3130,7 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
         });
     };
     showRow(folder);
-    check(tabHint() == scopeHint && !launcher.autocomplete(0) && launcher.query().isEmpty(),
+    check(tabHint().isEmpty() && !launcher.autocomplete(0) && launcher.query().isEmpty(),
         "favorite folder stole Tab with the default setting");
     launcher.cycleScope(1);
     check(launcher.scope() == Launcher::Files, "Tab did not advance the scope on a favorite folder");
@@ -3045,7 +3144,7 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
     folder.favorite = false;
     folder.path = ordinaryPath;
     showRow(folder);
-    check(tabHint() == scopeHint && !launcher.autocomplete(0) && hasBrowseAction(),
+    check(tabHint().isEmpty() && !launcher.autocomplete(0) && hasBrowseAction(),
         "an ordinary folder stole Tab or lost its independent browse action");
     launcher.setScope(Launcher::Folders);
     query({});
@@ -3064,7 +3163,7 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
     folder.missing = false;
     showRow(folder);
     launcher.setTabEntersFavoriteFolder(false);
-    check(tabHint() == scopeHint && !launcher.autocomplete(0), "turning the Tab setting off left stale behavior or hints");
+    check(tabHint().isEmpty() && !launcher.autocomplete(0), "turning the Tab setting off left stale behavior or hints");
     SearchResult suggestion {.name = u"Search suggestion"_s, .app = AppKind::Web,
         .keyword = u"example"_s, .words = u"report"_s, .suggestion = true};
     showRow(suggestion);

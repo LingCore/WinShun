@@ -523,7 +523,8 @@ Item {
 
             RowAction {
                 id: adminAction
-                visible: row.isApp && row.elevatable && !row.switchReady
+                objectName: "adminAction"
+                visible: row.elevatable && !row.switchReady
                 glyph: "" // Admin (shield)
                 tip: qsTr("以管理员身份运行")
                 tipShortcut: "Ctrl+Shift+Enter"

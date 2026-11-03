@@ -1731,6 +1731,7 @@ void App::applySettings(bool initial)
     m_preview->setTextExtensions(m_settings.contentExtensions);
     m_clipboard->setNumberKeys(m_settings.clipboardNumberKeys);
     m_launcher->setNumberHints(m_settings.numberHints);
+    m_launcher->setKeyboardHints(m_settings.shortcutHelp, m_settings.footerHints);
     tellLauncherFolders();
     m_clipboard->setNumberHints(m_settings.numberHints);
     const QString clipboardSize = m_settings.clipboardUiSize == u"follow" ? m_settings.uiSize : m_settings.clipboardUiSize;

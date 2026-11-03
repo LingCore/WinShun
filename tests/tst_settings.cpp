@@ -28,6 +28,28 @@ class SettingsTest : public QObject {
     Q_OBJECT
 
 private slots:
+    void keyboardHints()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QVERIFY(settings.shortcutHelp);
+        QVERIFY(settings.footerHints);
+        for (const bool help : {false, true}) {
+            for (const bool footer : {false, true}) {
+                settings.shortcutHelp = help;
+                settings.footerHints = footer;
+                settings.save();
+                ws::Settings restored;
+                restored.load();
+                QCOMPARE(restored.shortcutHelp, help);
+                QCOMPARE(restored.footerHints, footer);
+            }
+        }
+    }
+
     void retiredExteriorLogoSetting_data()
     {
         QTest::addColumn<bool>("oldValue");

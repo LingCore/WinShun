@@ -208,6 +208,8 @@ struct Settings {
     QString numberKeys = QStringLiteral("ctrl");
     // held | always | off: shared by the launcher's and clipboard's row hints.
     QString numberHints = QStringLiteral("always");
+    bool shortcutHelp = true;
+    bool footerHints = true;
     // auto | builtin: what Alt+P on a row shows the file with. auto: QuickLook
     // or Seer when one is running in the background (FilePreview), else
     // Win顺's own preview window; builtin: always that.

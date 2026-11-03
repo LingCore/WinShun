@@ -899,6 +899,8 @@ void Settings::load()
     numberHints = readOrDefault(s, u"Results/NumberHints"_s, d.numberHints).trimmed().toLower();
     if (numberHints != u"held" && numberHints != u"always" && numberHints != u"off")
         numberHints = d.numberHints;
+    shortcutHelp = readOrDefault(s, u"Results/ShortcutHelp"_s, d.shortcutHelp);
+    footerHints = readOrDefault(s, u"Results/FooterHints"_s, d.footerHints);
     previewWith = readOrDefault(s, u"Results/PreviewWith"_s, d.previewWith).trimmed().toLower();
     if (previewWith != u"builtin")
         previewWith = d.previewWith;
@@ -1229,6 +1231,8 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/ClearOnOpen"_s, clearOnOpen);
     s.setValue(u"Results/NumberKeys"_s, numberKeys);
     s.setValue(u"Results/NumberHints"_s, numberHints);
+    s.setValue(u"Results/ShortcutHelp"_s, shortcutHelp);
+    s.setValue(u"Results/FooterHints"_s, footerHints);
     s.setValue(u"Results/PreviewWith"_s, previewWith);
     s.setValue(u"Results/PreviewHotkey"_s, previewHotkey);
     s.setValue(u"Appearance/Theme"_s, theme);

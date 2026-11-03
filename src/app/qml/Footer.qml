@@ -20,6 +20,9 @@ Item {
 
     signal galleryRequested(bool gallery) // the panel's view switch
 
+    readonly property real hintsRight: info.visible ? info.x - 8
+        : clearHistory.visible ? clearHistory.x - 8 : viewSwitch.visible ? viewSwitch.x - 10 : width - 18
+
     implicitHeight: Theme.footerHeight // 界面大小
 
     // The divider shows work only once it has lasted a moment, so brief
@@ -270,8 +273,11 @@ Item {
 
     Row {
         id: hints
-        anchors.right: info.left
-        anchors.rightMargin: 8
+        objectName: "footerKeyHints"
+        visible: footer.launcher.footerHints
+        width: visible ? implicitWidth : 0
+        anchors.right: parent.right
+        anchors.rightMargin: footer.width - footer.hintsRight
         anchors.verticalCenter: parent.verticalCenter
         spacing: 14
 
@@ -287,7 +293,7 @@ Item {
         // and all show. Worked out from the full widths, not the laid-out
         // ones, which depend on it.
         readonly property real statusNeeds: Math.ceil(statusMetrics.advanceWidth)
-        readonly property real statusRoom: info.x - 8 - (order.visible ? 16 + order.width + 14 : 18) - 12
+        readonly property real statusRoom: footer.hintsRight - (order.visible ? 16 + order.width + 14 : 18) - 12
         function roomWith(shown) { // the status's, with these hints shown
             const widths = shown.map(h => h.fullWidth).filter(w => w > 0)
             return statusRoom - widths.reduce((a, b) => a + b, 0) - hints.spacing * Math.max(0, widths.length - 1)
@@ -303,13 +309,14 @@ Item {
 
         KeyHint { id: enterHint; visible: hints.given < 1 && label.length > 0; keys: "Enter"; label: hints.keyHints.enter ?? "" }
         KeyHint { id: secondHint; visible: hints.given < 2 && label.length > 0; keys: hints.keyHints.secondKeys ?? ""; label: hints.keyHints.second ?? "" }
-        KeyHint { id: tabHint; visible: label.length > 0; keys: hints.keyHints.tabKeys || "Tab"; label: hints.keyHints.tab ?? "" }
+        KeyHint { id: tabHint; objectName: "footerTabHint"; visible: label.length > 0; keys: hints.keyHints.tabKeys || "Tab"; label: hints.keyHints.tab ?? "" }
     }
 
     // The launcher's other shortcuts, when it is clicked.
     ShortcutsButton {
         id: info
         objectName: "shortcutsButton"
+        visible: footer.launcher.shortcutHelp
 
         readonly property string modifier: footer.launcher.numberKeys === "alt" ? "Alt" : "Ctrl"
         where: "launcher"

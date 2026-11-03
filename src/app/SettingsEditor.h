@@ -183,6 +183,8 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool clearOnOpen READ clearOnOpen WRITE setClearOnOpen NOTIFY changed FINAL)
     Q_PROPERTY(QString numberKeys READ numberKeys WRITE setNumberKeys NOTIFY changed FINAL) // ctrl | alt | off
     Q_PROPERTY(QString numberHints READ numberHints WRITE setNumberHints NOTIFY changed FINAL) // held | always | off
+    Q_PROPERTY(bool shortcutHelp READ shortcutHelp WRITE setShortcutHelp NOTIFY changed FINAL)
+    Q_PROPERTY(bool footerHints READ footerHints WRITE setFooterHints NOTIFY changed FINAL)
     Q_PROPERTY(QString previewWith READ previewWith WRITE setPreviewWith NOTIFY changed FINAL) // auto | builtin
     Q_PROPERTY(QString previewHotkey READ previewHotkey WRITE setPreviewHotkey NOTIFY changed FINAL)
     Q_PROPERTY(QString previewHotkeyError READ previewHotkeyError NOTIFY changed FINAL)
@@ -652,6 +654,10 @@ public:
     void setNumberKeys(const QString& keys);
     QString numberHints() const { return m_settings.numberHints; }
     void setNumberHints(const QString& hints);
+    bool shortcutHelp() const { return m_settings.shortcutHelp; }
+    void setShortcutHelp(bool on);
+    bool footerHints() const { return m_settings.footerHints; }
+    void setFooterHints(bool on);
     QString numberKeysNote() const { return m_numberKeysNote; }
     QString previewWith() const { return m_settings.previewWith; }
     void setPreviewWith(const QString& with);
