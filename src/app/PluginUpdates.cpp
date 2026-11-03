@@ -161,7 +161,10 @@ void PluginUpdates::setAutomatic(bool on)
 {
     if (m_automatic == on && (m_hourly.isActive() == on))
         return;
+    const bool switched = m_automatic != on;
     m_automatic = on;
+    if (switched)
+        emit automaticChanged();
     if (on) {
         m_hourly.start();
         m_first.start(kFirstCheckMs);

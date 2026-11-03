@@ -3984,6 +3984,14 @@ Right: center window · Drag: move window</translation>
         </translation>
     </message>
     <message>
+        <source>正在更新插件…</source>
+        <translation>Updating plugins…</translation>
+    </message>
+    <message>
+        <source>自动更新已关，新版本等你点更新。</source>
+        <translation>Automatic updates are off; click to update when you are ready.</translation>
+    </message>
+    <message>
         <source>需要新权限的更新，会先请你确认。</source>
         <translation>Updates that need new permissions ask you first.</translation>
     </message>

@@ -125,6 +125,7 @@ class PluginGallery : public QObject {
     // The nav badge: updates waiting for the user (the background service's count; in the preview, the rows with a newer version).
     Q_PROPERTY(int updateCount READ updateCount NOTIFY updateCountChanged FINAL)
     Q_PROPERTY(int updatableCount READ updatableCount NOTIFY listChanged FINAL) // those 全部更新 would do
+    Q_PROPERTY(bool automaticUpdates READ automaticUpdates NOTIFY stateChanged FINAL) // the 自动更新 switch: with it off every update waits for the user
     Q_PROPERTY(bool updatingAll READ updatingAll NOTIFY stateChanged FINAL)
     Q_PROPERTY(QString updateStatus READ updateStatus NOTIFY stateChanged FINAL) // 全部更新: how far it is, then what came of it
     Q_PROPERTY(bool updateFailed READ updateFailed NOTIFY stateChanged FINAL) // ... and some were not updated
@@ -150,6 +151,7 @@ public:
     bool downloading() const { return !m_downloadId.isEmpty(); }
     int updateCount() const;
     int updatableCount() const;
+    bool automaticUpdates() const;
     bool updatingAll() const { return m_updatingAll; }
     QString updateStatus() const { return m_updateStatus; }
     bool updateFailed() const { return !m_updateFailures.isEmpty(); }
@@ -204,6 +206,7 @@ private:
     bool m_problemIsConnection = false;
     QString m_filter;
     bool m_updatesOnly = false;
+    int m_announcedCount = -1; // updateCount() as last announced
     bool m_updatingAll = false;
     QStringList m_updateQueue;
     int m_updateTotal = 0;

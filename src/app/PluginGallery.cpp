@@ -243,6 +243,7 @@ void PluginGallery::setUpdates(PluginUpdates* updates)
         connect(updates, &PluginUpdates::changed, this, [this] { // staged versions, the badge
             rebuild();
         });
+        connect(updates, &PluginUpdates::automaticChanged, this, &PluginGallery::stateChanged);
     }
     rebuild(); // (also announces updateCount)
 }
@@ -252,6 +253,11 @@ int PluginGallery::updateCount() const
     if (m_preview)
         return static_cast<int>(std::ranges::count_if(m_list.rows(), [](const PluginGalleryModel::Row& r) { return r.updatable && r.stage == u"update"_s; }));
     return m_updates ? m_updates->count() : 0;
+}
+
+bool PluginGallery::automaticUpdates() const
+{
+    return m_updates && m_updates->automatic();
 }
 
 int PluginGallery::updatableCount() const
@@ -444,7 +450,10 @@ void PluginGallery::rebuild()
         r.shown = fits(r.words, m_filter) && (!m_updatesOnly || (m_preview ? r.updatable : r.needsYou));
     m_list.setRows(std::move(rows));
     emit listChanged();
-    emit updateCountChanged();
+    if (const int count = updateCount(); count != m_announcedCount) {
+        m_announcedCount = count;
+        emit updateCountChanged();
+    }
 }
 
 void PluginGallery::setRowProgress(const QString& id, double progress)

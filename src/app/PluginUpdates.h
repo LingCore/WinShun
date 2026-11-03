@@ -63,6 +63,7 @@ public:
     static QList<plugin::updates::Applied> prepare(const QString& dataDir, const QString& userDir, QStringView appVersion,
         const std::function<std::pair<bool, QStringList>(const QString&)>& switchOf);
 
+    bool automatic() const { return m_automatic; }
     void setAutomatic(bool on); // the 自动更新 switch: the timer, and whether installs are allowed
     void setPolicy(bool developerMode, const QList<PluginConfig>& plugins); // which are on, and what they were allowed
     void setBusy(std::function<bool()> busy); // true: not now (recovery running, Win顺 updating itself)
@@ -87,6 +88,7 @@ public:
 
 signals:
     void changed(); // count() or what the rows show
+    void automaticChanged(); // the 自动更新 switch
     void consentNeeded(const QStringList& ids); // enabled plugins whose newer version asks for permissions, once per version
 
 private:

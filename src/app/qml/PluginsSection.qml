@@ -76,9 +76,14 @@ SettingsSection {
 
     SettingRow { // what the number beside 插件 in the list on the left counts: newer versions waiting for a yes
         objectName: "pluginUpdatesRow"
-        title: qsTr("%n 个插件有新版本", "", pluginsSection.plugins.gallery.updateCount)
-        description: pluginsSection.plugins.gallery.updatingAll || pluginsSection.plugins.gallery.updateStatus.length > 0 ? pluginsSection.plugins.gallery.updateStatus
-            : qsTr("需要新权限的更新，会先请你确认。")
+        // While 全部更新 runs the count drops one by one (down to 0 before the last one is done): no number then.
+        readonly property bool updating: pluginsSection.plugins.gallery.updatingAll
+        readonly property string explanation: updating || pluginsSection.plugins.gallery.updateStatus.length > 0
+            ? pluginsSection.plugins.gallery.updateStatus
+            : pluginsSection.plugins.gallery.automaticUpdates ? qsTr("需要新权限的更新，会先请你确认。")
+                                                              : qsTr("自动更新已关，新版本等你点更新。")
+        title: updating ? qsTr("正在更新插件…") : qsTr("%n 个插件有新版本", "", pluginsSection.plugins.gallery.updateCount)
+        description: explanation
         shown: pluginsSection.plugins.gallery.updateCount > 0 || pluginsSection.plugins.gallery.updatingAll
         onShownChanged: if (shown) pluginsSection.plugins.gallery.readList()
         Component.onCompleted: if (shown) pluginsSection.plugins.gallery.readList()

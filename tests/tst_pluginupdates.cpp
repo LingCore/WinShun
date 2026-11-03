@@ -467,6 +467,21 @@ private slots:
         QVERIFY(!f.svc->waiting(u"test.plain"_s));
     }
 
+    void automaticSwitchIsReadAndAnnounced()
+    {
+        Fixture f;
+        f.install(u"test.a"_s, u"1.0.0"_s);
+        f.publish({{u"test.a"_s, u"1.1.0"_s, {}, {}}}, &m_key);
+        f.startSigned(m_key);
+        QVERIFY(f.svc->automatic());
+        QSignalSpy spy(f.svc.get(), &PluginUpdates::automaticChanged);
+        f.svc->setAutomatic(true); // no change: no signal
+        QCOMPARE(spy.count(), 0);
+        f.svc->setAutomatic(false);
+        QVERIFY(!f.svc->automatic());
+        QCOMPARE(spy.count(), 1);
+    }
+
     void consentIsToldOncePerVersion()
     {
         Fixture f;
