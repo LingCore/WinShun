@@ -203,8 +203,7 @@ Item {
                         sourceSize.height: Math.max(1, Math.round(picture.height * Screen.devicePixelRatio))
                         fillMode: Image.PreserveAspectFit
                         autoTransform: true
-                        asynchronous: true
-                        cache: false
+                        asynchronous: true // kept decoded: hovering back to a picture shows it at once
                     }
                 }
 
