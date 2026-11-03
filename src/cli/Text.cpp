@@ -1,5 +1,7 @@
 #include "Text.h"
 
+#include "ExplorerLanguage.h" // windowsIsChinese
+
 #include <windows.h>
 
 #include <atomic>
@@ -42,7 +44,7 @@ Lang languageNamed(std::wstring_view name) noexcept
         return Lang::En;
     // As Win顺 does (Settings::resolveLanguage): the language Windows itself
     // is shown in, not the first of the preferred languages.
-    return PRIMARYLANGID(::GetUserDefaultUILanguage()) == LANG_CHINESE ? Lang::Zh : Lang::En;
+    return explorerlang::windowsIsChinese() ? Lang::Zh : Lang::En;
 }
 
 std::wstring_view tr(const Text& text) noexcept

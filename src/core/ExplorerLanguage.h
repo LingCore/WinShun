@@ -11,18 +11,29 @@
 // any other: English. Pure C++ and Win32, no Qt: the stub uses it too.
 namespace ws::explorerlang {
 
-// Whether `language` (a LANGID: GetUserDefaultUILanguage) is shown in English
-// for our words: everything but Chinese.
-constexpr bool isEnglish(LANGID language) noexcept
+// Whether `language` (a LANGID: GetUserDefaultUILanguage) is Chinese; our words
+// and Win顺's "system" language are Chinese then, English for any other.
+constexpr bool isChinese(LANGID language) noexcept
 {
-    return PRIMARYLANGID(language) != LANG_CHINESE;
+    return PRIMARYLANGID(language) == LANG_CHINESE;
 }
 
-// As Settings::resolveLanguage does for "system": the language Windows itself
-// is shown in, not the first of the preferred languages.
+constexpr bool isEnglish(LANGID language) noexcept
+{
+    return !isChinese(language);
+}
+
+// The language Windows itself is shown in, not the first of the preferred
+// languages (not QLocale::uiLanguages(): that can put English first on a
+// Chinese Windows).
+inline bool windowsIsChinese() noexcept
+{
+    return isChinese(::GetUserDefaultUILanguage());
+}
+
 inline bool windowsIsEnglish() noexcept
 {
-    return isEnglish(::GetUserDefaultUILanguage());
+    return !windowsIsChinese();
 }
 
 constexpr std::wstring_view searchHereTitle(bool english) noexcept

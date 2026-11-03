@@ -9,7 +9,6 @@
 #include <string>
 
 using namespace ws::pastefile;
-using namespace Qt::StringLiterals;
 
 namespace {
 
@@ -226,6 +225,7 @@ void TestPasteFile::utf8Bytes()
 // What Explorer's verbs and the stub say follows Windows' language (GitHub #190).
 void TestPasteFile::explorerLanguage()
 {
+    using namespace Qt::StringLiterals;
     namespace el = ws::explorerlang;
     QVERIFY(!el::isEnglish(MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED)));
     QVERIFY(!el::isEnglish(MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_TRADITIONAL)));
@@ -235,6 +235,7 @@ void TestPasteFile::explorerLanguage()
     QVERIFY(el::isEnglish(0x0411)); // ja-JP
     QVERIFY(el::isEnglish(0x0407)); // de-DE
     QVERIFY(el::isEnglish(0));
+    QVERIFY(el::isChinese(0x0804) && !el::isChinese(0x0409));
     QCOMPARE(q(std::wstring(el::searchHereTitle(true))), u"Search here with WinShun"_s);
     QCOMPARE(q(std::wstring(el::searchHereTitle(false))), u"用 Win顺 搜索此处"_s);
     QCOMPARE(q(std::wstring(el::pasteFileTitle(true))), u"Paste as file"_s);

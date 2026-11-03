@@ -10,6 +10,7 @@
 #include "Unc.h"
 #include "WebDav.h"
 #include "Win32Util.h"
+#include "ExplorerLanguage.h" // windowsIsChinese
 
 #include <QCoreApplication>
 #include <QDir>
@@ -639,10 +640,8 @@ QString Settings::resolveLanguage(const QString& language)
 {
     if (language == u"zh" || language == u"en")
         return language;
-    // The language Windows itself is shown in. Not QLocale::uiLanguages(): that
-    // follows the preferred-languages list, which can put English first on a
-    // Chinese Windows.
-    return PRIMARYLANGID(::GetUserDefaultUILanguage()) == LANG_CHINESE ? u"zh"_s : u"en"_s;
+    // The language Windows itself is shown in (core/ExplorerLanguage.h).
+    return explorerlang::windowsIsChinese() ? u"zh"_s : u"en"_s;
 }
 
 FileTypes Settings::defaultFileTypes()
