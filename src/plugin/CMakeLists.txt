@@ -29,6 +29,7 @@ install(TARGETS WinShunPluginHost RUNTIME DESTINATION .)
 qt_add_library(wsplugin STATIC
     AiBridge.cpp AiBridge.h
     Catalog.cpp Catalog.h
+    Elevation.cpp Elevation.h
     Gallery.cpp Gallery.h
     Host.cpp Host.h
     IndexSignature.cpp IndexSignature.h

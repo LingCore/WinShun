@@ -47,6 +47,10 @@ enum class Permission : std::uint32_t {
     Notifications = 1u << 11, // winshun/notify with "toast": a system notification (Host gates it)
     NetworkListen = 1u << 12, // it opens ports for devices nearby (a declaration)
     SystemSettings = 1u << 13, // change Windows settings; switch-provider integration
+    // Runs as administrator when Win顺 itself does (never a UAC prompt of its
+    // own): only runtime.program exe, not with sandbox strict, and only from
+    // the copy the user confirmed (Elevation.h).
+    Elevated = 1u << 14,
 };
 
 struct Permissions {

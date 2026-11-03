@@ -1,5 +1,7 @@
 #include "Host.h"
 
+#include "Elevation.h"
+
 #include "OpenPolicy.h"
 #include "Programs.h"
 #include "Session.h"
@@ -297,6 +299,7 @@ struct Host::Plugin {
     QTimer toastGap;
     QElapsedTimer lastToast; // monotonic: a clock set back must not hold toasts back
     bool toastRefusedLogged = false;
+    bool elevated = false; // the resident process is the elevated runner's
 };
 
 Host::Host(Options options, QObject* parent)
@@ -308,6 +311,9 @@ Host::Host(Options options, QObject* parent)
     qRegisterMetaType<Effects>();
     if (m_options.dataRoot.isEmpty())
         m_options.dataRoot = m_options.userPluginDir;
+    m_hostElevated = m_options.elevatedHost.value_or(elevation::processElevated());
+    m_store = m_options.elevationRoot.isEmpty() ? elevation::defaultStore()
+                                                : elevation::Store {m_options.elevationRoot, m_options.elevationProtected};
     m_preload.setSingleShot(true);
     connect(&m_preload, &QTimer::timeout, this, &Host::preload);
     m_runnerBackoff.setSingleShot(true);
@@ -321,6 +327,7 @@ Host::Host(Options options, QObject* parent)
     });
     connect(&m_catalog, &Catalog::changed, this, [this] {
         m_cache.clear(); // manifests, commands, permissions or enabled state changed
+        m_elevation.clear();
         // A plugin that changed or went: its process is stale.
         for (auto& [id, p] : m_plugins) {
             const Entry* e = m_catalog.find(id);
@@ -391,8 +398,7 @@ void Host::stop(const QString& id)
                 emit queryFailed(run->queryId, id, u"插件已停止"_s);
             else
                 emit actionDone(run->requestId, id, {}, false, u"插件已停止"_s);
-            if (m_runner)
-                m_runner->stop(instance);
+            stopInstance(instance);
         }
     }
     stopResident(p, false);
@@ -767,18 +773,7 @@ bool Host::ensureRunner()
             }
         });
         connect(m_runner.get(), &Runner::exited, this, &Host::onRunnerExited);
-        connect(m_runner.get(), &Runner::started, this, &Host::onStarted);
-        connect(m_runner.get(), &Runner::failed, this, &Host::onFailed);
-        connect(m_runner.get(), &Runner::line, this, &Host::onLine);
-        connect(m_runner.get(), &Runner::stderrLine, this, [this](std::uint64_t instance, const QString& text) {
-            const auto it = m_owners.find(instance);
-            const QString id = it == m_owners.end() ? u"?"_s : it->second;
-            log(u"%1 stderr: %2"_s.arg(id, text));
-            if (m_developerMode && it != m_owners.end())
-                emit traced(id, u"stderr"_s, redact(id, text.left(60)), redact(id, text), -1);
-        });
-        connect(m_runner.get(), &Runner::instanceExited, this, &Host::onInstanceExited);
-        connect(m_runner.get(), &Runner::logged, this, [this](const QString& text) { log(u"runner: "_s + text); });
+        connectRunner(m_runner.get());
     }
     QString error;
     if (!m_runner->start(&error)) {
@@ -788,6 +783,72 @@ bool Host::ensureRunner()
         return false;
     }
     return true;
+}
+
+void Host::connectRunner(Runner* runner)
+{
+    connect(runner, &Runner::started, this, &Host::onStarted);
+    connect(runner, &Runner::failed, this, &Host::onFailed);
+    connect(runner, &Runner::line, this, &Host::onLine);
+    connect(runner, &Runner::stderrLine, this, [this](std::uint64_t instance, const QString& text) {
+        const auto it = m_owners.find(instance);
+        const QString id = it == m_owners.end() ? u"?"_s : it->second;
+        log(u"%1 stderr: %2"_s.arg(id, text));
+        if (m_developerMode && it != m_owners.end())
+            emit traced(id, u"stderr"_s, redact(id, text.left(60)), redact(id, text), -1);
+    });
+    connect(runner, &Runner::instanceExited, this, &Host::onInstanceExited);
+    connect(runner, &Runner::logged, this, [this](const QString& text) { log(u"runner: "_s + text); });
+}
+
+// The second runner (Elevation.h): Win顺's own token, for the plugins that
+// follow it as administrator. Made at the first such start; its requests
+// wait in it until it has said hello. Not started: the caller runs the
+// plugin on the first runner, with the user's normal rights.
+bool Host::ensureElevatedRunner()
+{
+    if (m_elevatedRunner && m_elevatedRunner->running())
+        return true;
+    if (!m_elevatedRunner) {
+        m_elevatedRunner = std::make_unique<Runner>(m_options.runnerExe, true, kElevatedInstances, this);
+        connect(m_elevatedRunner.get(), &Runner::ready, this, [this] {
+            log(u"管理员 runner 就绪（pid %1，令牌来源 %2）"_s.arg(m_elevatedRunner->pid()).arg(static_cast<int>(m_elevatedRunner->tokenSource())));
+        });
+        connect(m_elevatedRunner.get(), &Runner::exited, this, &Host::onElevatedRunnerExited);
+        connectRunner(m_elevatedRunner.get());
+    }
+    QString error;
+    if (!m_elevatedRunner->start(&error)) {
+        log(u"管理员 runner 启动失败：%1"_s.arg(error));
+        return false;
+    }
+    return true;
+}
+
+Runner* Host::runnerFor(std::uint64_t instance) const
+{
+    return instance >= kElevatedInstances ? m_elevatedRunner.get() : m_runner.get();
+}
+
+void Host::stopInstance(std::uint64_t instance)
+{
+    if (Runner* runner = runnerFor(instance))
+        runner->stop(instance);
+}
+
+void Host::sendInstance(std::uint64_t instance, const QByteArray& line)
+{
+    if (Runner* runner = runnerFor(instance))
+        runner->send(instance, line);
+}
+
+std::uint64_t Host::launchSpec(const Runner::Spec& spec)
+{
+    if (spec.elevated && ensureElevatedRunner())
+        return m_elevatedRunner->launch(spec);
+    // Not elevated, or the elevated runner would not start: the protected
+    // copy (users may read it) with the user's normal rights.
+    return m_runner->launch(spec);
 }
 
 void Host::onRunnerExited()
@@ -800,12 +861,94 @@ void Host::onRunnerExited()
     // runner backoff first so callbacks cannot restart it during cleanup.
     const int delay = backoffDelayMs(m_runnerRestarts++);
     m_runnerBackoff.start(static_cast<int>(delay * m_backoffScale));
+    runnerGone(false);
+}
+
+void Host::onElevatedRunnerExited()
+{
+    if (m_shuttingDown)
+        return;
+    // Its plugins exit as crashed ones do: each restarts after its own
+    // backoff, which starts this runner again.
+    log(u"管理员 runner 退出了"_s);
+    runnerGone(true);
+}
+
+void Host::runnerGone(bool elevated)
+{
     std::vector<std::uint64_t> instances;
-    for (const auto& [instance, id] : m_owners)
-        instances.push_back(instance);
+    for (const auto& [instance, id] : m_owners) {
+        if ((instance >= kElevatedInstances) == elevated)
+            instances.push_back(instance);
+    }
     for (const std::uint64_t instance : instances)
         onInstanceExited(instance, ERROR_BROKEN_PIPE, {}, false);
-    failCommandCalls({}, u"插件进程退出了"_s);
+    if (!elevated)
+        failCommandCalls({}, u"插件进程退出了"_s);
+}
+
+// ---- elevated plugins (Elevation.h) -------------------------------------------
+
+Host::ElevationSeen Host::lookElevation(const Entry& e)
+{
+    ElevationSeen seen;
+    const bool declares = e.manifest && e.manifest->permissions.has(Permission::Elevated);
+    elevation::Result result;
+    if (declares && m_hostElevated)
+        result = elevation::check(m_store, e.id, e.dir);
+    seen.state.verdict = elevation::decide(declares, m_hostElevated, result.check);
+    seen.state.version = result.version;
+    seen.state.detail = result.detail;
+    if (seen.state.verdict == elevation::Verdict::Elevated)
+        seen.dir = result.dir;
+    seen.fresh.setRemainingTime(3000);
+    m_elevation.insert(e.id, seen);
+    return seen;
+}
+
+Host::ElevationState Host::elevationState(const QString& id)
+{
+    const auto it = m_elevation.constFind(id);
+    if (it != m_elevation.cend() && !it->fresh.hasExpired())
+        return it->state;
+    const Entry* e = entry(id);
+    return e ? lookElevation(*e).state : ElevationState {};
+}
+
+bool Host::runsElevated(const QString& id) const
+{
+    const Entry* e = m_catalog.find(id);
+    return m_hostElevated && e && e->manifest && e->manifest->permissions.has(Permission::Elevated);
+}
+
+bool Host::confirmElevation(const QString& id, QString* error)
+{
+    const Entry* e = entry(id);
+    if (!e || !e->manifest || !e->manifest->permissions.has(Permission::Elevated)) {
+        if (error)
+            *error = u"这个插件不要管理员权限"_s;
+        return false;
+    }
+    if (!m_hostElevated) {
+        if (error)
+            *error = u"Win顺 不是以管理员身份运行"_s;
+        return false;
+    }
+    QString why;
+    if (!elevation::confirmFolder(m_store, id, e->dir, &why)) {
+        log(u"%1: 确认管理员副本失败：%2"_s.arg(id, why));
+        if (error)
+            *error = why;
+        return false;
+    }
+    log(u"%1: 已确认，以后从受保护的副本以管理员身份运行"_s.arg(id));
+    m_elevation.remove(id);
+    // A process running with normal rights starts again, elevated now.
+    const auto it = m_plugins.find(id);
+    if (it != m_plugins.end() && (it->second->phase == Plugin::Phase::Starting || it->second->phase == Plugin::Phase::Ready))
+        reload(id);
+    emit stateChanged(id);
+    return true;
 }
 
 // ---- queries ------------------------------------------------------------------
@@ -939,8 +1082,7 @@ void Host::cancel(std::uint64_t queryId)
             if (run->kind == RunKind::Query && run->queryId == queryId && !run->discarded && !run->commandCall) {
                 run->discarded = true;
                 run->timer.stop();
-                if (m_runner)
-                    m_runner->stop(instance);
+                stopInstance(instance);
             }
         }
     }
@@ -960,8 +1102,7 @@ void Host::cancelAll()
             if (run->kind == RunKind::Query && !run->discarded && !run->commandCall) {
                 run->discarded = true;
                 run->timer.stop();
-                if (m_runner)
-                    m_runner->stop(instance);
+                stopInstance(instance);
             }
         }
     }
@@ -973,7 +1114,17 @@ Runner::Spec Host::specFor(Plugin& p, const Entry& e, RunKind kind, const Pendin
 {
     Runner::Spec spec;
     const Runtime& runtime = *e.manifest->runtime;
-    const std::optional<programs::Launch> launch = programs::launchFor(runtime, e.dir, error);
+    // `elevated` (Elevation.h), with Win顺 elevated: from the copy the user
+    // confirmed, looked at afresh now, on the elevated runner; else from its
+    // own folder with the user's normal rights.
+    QString dir = e.dir;
+    const ElevationSeen elevation = lookElevation(e);
+    if (elevation.state.verdict == elevation::Verdict::Elevated) {
+        dir = elevation.dir;
+        spec.elevated = true;
+    } else if (elevation.state.verdict != elevation::Verdict::NotAsked && elevation.state.verdict != elevation::Verdict::HostNotElevated)
+        log(u"%1: 以普通权限运行（%2）%3"_s.arg(e.id, elevation::verdictName(elevation.state.verdict), elevation.state.detail));
+    const std::optional<programs::Launch> launch = programs::launchFor(runtime, dir, error);
     if (!launch)
         return spec;
     spec.exe = launch->exe;
@@ -981,7 +1132,7 @@ Runner::Spec Host::specFor(Plugin& p, const Entry& e, RunKind kind, const Pendin
     spec.cwd = launch->cwd;
     spec.env = launch->env;
     spec.env += runtime.env;
-    spec.env.push_back({u"WS_PLUGIN_DIR"_s, e.dir});
+    spec.env.push_back({u"WS_PLUGIN_DIR"_s, dir});
     spec.env.push_back({u"WS_DATA_DIR"_s, dataDirFor(e)});
     spec.env.push_back({u"WS_COMPONENTS_DIR"_s, QDir::toNativeSeparators(QDir(m_options.dataRoot).absoluteFilePath(u"../components"_s))});
     spec.env.push_back({u"WS_APP_DIR"_s, QDir::toNativeSeparators(m_options.appDir.isEmpty() ? QFileInfo(m_options.runnerExe).absolutePath() : m_options.appDir)});
@@ -1064,7 +1215,8 @@ void Host::startResident(Plugin& p)
         return;
     }
     evictIfCrowded(p.id);
-    p.instance = m_runner->launch(spec);
+    p.instance = launchSpec(spec);
+    p.elevated = p.instance >= kElevatedInstances;
     p.phase = Plugin::Phase::Starting;
     p.restartAfterStop = false;
     p.timeouts = 0;
@@ -1099,8 +1251,7 @@ void Host::onStarted(std::uint64_t instance, quint32 pid)
     p.session = std::make_unique<Session>([this, instance, pluginId](const QByteArray& line) {
         if (m_developerMode)
             trace(plugin(pluginId), u"→"_s, line);
-        if (m_runner)
-            m_runner->send(instance, line);
+        sendInstance(instance, line);
     });
     Session::Handlers handlers;
     const QString id = p.id;
@@ -1298,15 +1449,14 @@ void Host::stopResident(Plugin& p, bool restartAfter)
     emit stateChanged(p.id);
     if (p.session && !restartAfter) {
         p.session->request(u"shutdown"_s, {}, [this, instance](const jsonrpc::Message&) {
-            if (m_runner)
-                m_runner->stop(instance);
+            stopInstance(instance);
         });
         QTimer::singleShot(kShutdownGraceMs, this, [this, instance] {
-            if (m_runner && m_owners.count(instance))
-                m_runner->stop(instance);
+            if (m_owners.count(instance))
+                stopInstance(instance);
         });
-    } else if (m_runner)
-        m_runner->stop(instance);
+    } else
+        stopInstance(instance);
 }
 
 void Host::crashed(Plugin& p, const QString& why)
@@ -1380,8 +1530,7 @@ void Host::onLine(std::uint64_t instance, const QByteArray& line)
             once.discarded = true;
             once.timer.stop();
             once.output.clear();
-            if (m_runner)
-                m_runner->stop(instance);
+            stopInstance(instance);
             const QString why = u"输出总量超过 16 MB"_s;
             log(u"%1: %2"_s.arg(p.id, why));
             if (once.commandCall)
@@ -1574,7 +1723,7 @@ void Host::launchOnce(Plugin& p, const Pending& q)
         return;
     }
     touch(p);
-    const std::uint64_t instance = m_runner->launch(spec);
+    const std::uint64_t instance = launchSpec(spec);
     traceEvent(p.id, u"起进程：%1 %2"_s.arg(spec.exe, spec.args.join(u' ')));
     auto run = std::make_unique<OnceRun>();
     run->kind = kind;
@@ -1601,8 +1750,7 @@ void Host::launchOnce(Plugin& p, const Pending& q)
             emit queryFailed(it->second->queryId, id, u"没有响应"_s);
         else
             emit actionDone(it->second->requestId, id, {}, false, u"没有响应"_s);
-        if (m_runner)
-            m_runner->stop(instance);
+        stopInstance(instance);
     });
     run->timer.start(e->manifest->runtime->timeoutMs);
     p.runs[instance] = std::move(run);
@@ -1897,8 +2045,7 @@ std::uint64_t Host::callCommand(const QString& pluginId, const QString& commandI
             if (run->commandCall == id && !run->discarded) {
                 run->discarded = true;
                 run->timer.stop();
-                if (m_runner)
-                    m_runner->stop(instance);
+                stopInstance(instance);
             }
         }
         finishCommand(id, false, {}, u"没有响应"_s);
@@ -2013,8 +2160,7 @@ void Host::cancelCommand(std::uint64_t callId)
         if (run->commandCall == callId && !run->discarded) {
             run->discarded = true;
             run->timer.stop();
-            if (m_runner)
-                m_runner->stop(instance);
+            stopInstance(instance);
         }
     }
 }
@@ -2041,7 +2187,7 @@ void Host::shutdown(bool grace)
     m_shuttingDown = true;
     m_preload.stop();
     m_runnerBackoff.stop();
-    if (m_runner && m_runner->running()) {
+    if ((m_runner && m_runner->running()) || (m_elevatedRunner && m_elevatedRunner->running())) {
         // Resident plugins get their shutdown request and a moment to go.
         int waiting = 0;
         for (auto& [id, p] : m_plugins) {
@@ -2060,9 +2206,14 @@ void Host::shutdown(bool grace)
             while (waiting > 0 && !deadline.hasExpired())
                 QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
         }
-        m_runner->shutdown(); // ends the runner's job: every plugin with it
+        // Each runner's shutdown ends its job: every plugin with it.
+        if (m_runner)
+            m_runner->shutdown();
+        if (m_elevatedRunner)
+            m_elevatedRunner->shutdown();
     }
     m_runner.reset();
+    m_elevatedRunner.reset();
     for (auto& [id, p] : m_plugins) {
         p->phase = Plugin::Phase::Stopped;
         p->session.reset();
@@ -2093,6 +2244,7 @@ Host::State Host::state(const QString& id) const
     s.pid = p.pid;
     s.error = p.error;
     s.timeouts = p.timeouts;
+    s.elevated = p.elevated && (p.phase == Plugin::Phase::Starting || p.phase == Plugin::Phase::Ready);
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     s.crashes = static_cast<int>(std::count_if(p.crashTimes.begin(), p.crashTimes.end(), [now](qint64 t) { return now - t <= kCrashWindowMs; }));
     if (p.disabledByCrashes)

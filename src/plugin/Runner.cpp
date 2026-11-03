@@ -10,6 +10,7 @@
 #include <QJsonDocument>
 #include <QRandomGenerator>
 
+#include <sddl.h>
 #include <tlhelp32.h>
 
 using namespace Qt::StringLiterals;
@@ -89,9 +90,16 @@ bool ownTokenElevated()
 } // namespace
 
 Runner::Runner(QString runnerExe, QObject* parent)
+    : Runner(std::move(runnerExe), false, 1, parent)
+{
+}
+
+Runner::Runner(QString runnerExe, bool elevated, std::uint64_t firstInstance, QObject* parent)
     : QObject(parent)
     , m_exe(std::move(runnerExe))
     , m_stopEvent(::CreateEventW(nullptr, TRUE, FALSE, nullptr))
+    , m_elevated(elevated)
+    , m_nextInstance(firstInstance)
 {
 }
 
@@ -117,11 +125,20 @@ bool Runner::start(QString* error)
 
     // The pipe: one instance, the user's own (Pipe.h's descriptor: the
     // runner runs as the user at medium integrity), a name of ours alone.
+    // The elevated runner's: administrators and SYSTEM alone, high
+    // integrity, so nothing with the user's normal rights can even open it
+    // (it would be the other end of an administrator's process). In a test
+    // that only plays an elevated Win顺 (our token is not), the user's.
+    const bool reallyElevated = m_elevated && ownTokenElevated();
     static unsigned counter = 0;
     m_pipeName = L"WinShun.Plugin." + pipe::userSid() + L"." + std::to_wstring(::GetCurrentProcessId()) + L"."
         + std::to_wstring(counter++) + L"." + std::to_wstring(QRandomGenerator::system()->generate64());
     m_key = QString::number(QRandomGenerator::system()->generate64(), 16);
-    PSECURITY_DESCRIPTOR descriptor = pipe::createSecurityDescriptor();
+    PSECURITY_DESCRIPTOR descriptor = nullptr;
+    if (reallyElevated)
+        ::ConvertStringSecurityDescriptorToSecurityDescriptorW(L"D:P(A;;GA;;;SY)(A;;GA;;;BA)S:(ML;;NW;;;HI)", SDDL_REVISION_1, &descriptor, nullptr);
+    else
+        descriptor = pipe::createSecurityDescriptor();
     if (!descriptor)
         return fail(u"无法生成管道的安全描述符"_s);
     SECURITY_ATTRIBUTES attributes {sizeof attributes, descriptor, FALSE};
@@ -142,7 +159,15 @@ bool Runner::start(QString* error)
     BOOL created = FALSE;
     DWORD createError = 0;
     QString how;
-    if (ownTokenElevated()) {
+    if (m_elevated) {
+        // Our own token, administrator's when we are: this runner is only
+        // asked for the plugins allowed to follow Win顺 (Host, Elevation.h).
+        created = ::CreateProcessW(exe.c_str(), commandLine.data(), nullptr, nullptr, FALSE, flags, nullptr, folder.c_str(),
+            &startup, &info);
+        createError = ::GetLastError();
+        m_tokenSource = reallyElevated ? TokenSource::Elevated : TokenSource::Plain;
+        how = u"CreateProcessW"_s;
+    } else if (ownTokenElevated()) {
         DWORD tokenError = 0;
         Handle token = explorerToken(&tokenError);
         if (token.valid() && usableForPlugins(token.get())) {
