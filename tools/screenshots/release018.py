@@ -3,6 +3,7 @@
 Run --capture-only first. Add web/web-plugin-settings.png with
 tools/verify_web_plugin.py, plugin-library.png with
 --preview-plugins, and ocr/window.png with the OCR plugin's isolated preview.
+Capture shortcuts/ with --preview-results --shortcut-panel.
 Inspect the raw renders, then use --export-only with the same --work.
 """
 import release017
@@ -14,15 +15,21 @@ release017.SOURCES = {
     if name not in ("onboarding", "foldermenu")
 }
 release017.SOURCES.update({
+    "cover": ("L-search", "numbers/number-column-main.png", None),
+    "search": ("L-search", "numbers/number-column-main.png", None),
     "web": ("L-web", "web/web-plugin-settings.png", None),
     "plugin-library": ("L-plugin-library", "plugin-library.png", None),
     "ocr-search": ("L-ocr-search", "ocr/window.png", None),
+    "shortcuts": ("L-shortcuts", "shortcuts/shortcut-panel-main.png", None),
 })
 shots.PAGES = tuple(
     (file, "L-web" if file == "07-web" else source, *rest)
     for file, source, *rest in shots.PAGES
 )
-shots.README_ONLY += (("ocr-search", "L-ocr-search", "图片文字搜索，[离线识别]", "图片、扫描 PDF 和文档图片 · 增量索引 · 高亮预览"),)
+shots.README_ONLY += (
+    ("ocr-search", "L-ocr-search", "图片文字搜索，[离线识别]", "图片、扫描 PDF 和文档图片 · 增量索引 · 高亮预览"),
+    ("shortcuts", "L-shortcuts", "快捷键[总览]", "搜索窗口查看当前操作 · 设置中查看全部快捷键"),
+)
 
 
 if __name__ == "__main__":
