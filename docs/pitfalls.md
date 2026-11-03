@@ -657,6 +657,7 @@
   - 环境变量用 `CreateEnvironmentBlock` 按注册表现在的值重建，不继承 Win顺 自己的：Win顺 启动后才加的 PATH 也在，`QT_D3D_NO_VBLANK_THREAD` 这类 Win顺 自己的变量不会带过去。系统 PATH 和用户 PATH 里的目录都在，重复项被 Windows 去掉。提权时用桌面外壳的令牌（`startWithShellToken` 现在也显式传这个环境）。
   - GUI 程序照旧经资源管理器启动：Foxit 那类程序会查调用者（#64）。
 - **rundll32 不认正斜杠**：`ShellExec_RunDLL "C:/a/b.exe"` 什么都不启动，退出码却是 0；资源管理器的 ShellExecute 认正斜杠。交给 rundll32 前先把 `/` 换成 `\`。`tst_shelllaunch` 的 `customCommand` 用同一个探针跑两遍：原样跑（GUI，父进程应是 explorer.exe），再跑一份把 PE 子系统改成控制台的副本（父进程不应是 explorer.exe，参数和工作目录原样）。正斜杠的问题就是这个测试抓到的。
+- **rundll32 带不了 `CREATE_NO_WINDOW`（2026-11-03）**：提权运行、二次登录服务又关着时，`startWithShellToken` 改用“以 explorer.exe 为父进程”直接创建，隐藏运行的自定义命令（#112）也走了这条路，父进程又成了 explorer.exe，#139 回来了。不能照搬上面的 rundll32 中转：它启动的程序一定会有控制台窗口。现在 `CREATE_NO_WINDOW` 的启动改由 Win顺 自己的 `--run-hidden` 中转（父进程是 WinShun.exe），中转进程等最多 5 秒，非 0 退出码算启动失败。`tst_shelllaunch` 的 `silentConsoleWithoutSecondaryLogon` 要提权跑：修之前报 `C:\Windows\explorer.exe`。
 - **对比环境时别拿资源管理器当标准**：这台机器的 explorer.exe 曾从 VS Code 的终端里重启过，它的环境里带着 `CLAUDE_*`、`VSCODE_*` 变量，经它启动的程序都会继承。
 - **旧限制，2026-10-30 已补修（尚未发布）**：原来开始菜单的 `shell:AppsFolder\…` 没有经过控制台判断。现在从 `IShellItem2` 读取 `PKEY_Link_TargetParsingPath` 和快捷方式参数，只对确实指向控制台程序的条目走控制台启动路径；商店应用和普通 GUI 保留原路径。`tst_shelllaunch::appsFolderConsole` 用系统 PowerShell 的真实 AppsFolder 条目检查父进程和工作目录。此证据覆盖系统控制台入口，不能代替用户原版 Surge 的最终复测。
 
@@ -959,6 +960,7 @@
 - **现象**：剪贴板不激活时按 `Enter` 粘贴、按 `Esc` 关闭，测试窗口在粘贴之后又收到一个单独的 `Enter` 抬起（`Esc` 同理）。
 - **原因**：按下被钩子拿走，窗口随即收起、钩子卸掉，按键松开时已经没人拦，就落到前台程序里。多数程序不理没有按下的抬起，但不能指望。
 - **做法**：收起时钩子先不卸，只是不再拿新按键，等它拿走过的键都松开再卸，最多 2 秒（`KeyRouter::drain`）。改后测试窗口不再收到这些抬起。
+- **接管别人的数字键时更要紧（GitHub #175，2026-11-03）**：`numberkeys::Hook` 替 Win顺 拿走别的程序用 `RegisterHotKey` 占着的 Ctrl/Alt+数字。`Ctrl+数字` 打开一行后窗口立刻收起，要是这时就卸钩子，手还按着，自动重复的按下会当成一次新的组合键送进系统，对方的快捷键（比如 PixPin）就被触发。做法同上：`Hook::drain()` 不再拿新键，已拿走的键连重复带抬起都继续拦，全松开才卸钩子、再把键盘 Raw Input 还回去，最多 2 秒。`tst_keylistener` 的 `numberKeyHookDrainsAHeldDigit`（`WINSHUN_NUMBERKEYS_LIVE=1`）：旧做法对方收到 3 次，改后 0 次。
 
 ### 多行文字粘贴进搜索框，灰色的字铺满整个窗口
 
