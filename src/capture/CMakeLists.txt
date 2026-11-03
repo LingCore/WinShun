@@ -65,7 +65,9 @@ add_library(wscapture STATIC
     UiaProbe.cpp UiaProbe.h
     CountdownWindow.cpp CountdownWindow.h
     CaptureDiagnostics.cpp CaptureDiagnostics.h
+    LaserTrail.cpp LaserTrail.h
     LiveStroke.cpp LiveStroke.h
+    PresenterState.h
 )
 target_include_directories(wscapture PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 # miniz: the projects' zip (AnnotationFormat). ole32: UI Automation (ScrollInput).

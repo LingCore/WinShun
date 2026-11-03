@@ -536,6 +536,29 @@ set_tests_properties(tst_annotmodel PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# The presenter (GitHub #189, docs/design-presenter.md): its rules
+# (PresenterState), the session with no window (Presenter: boards, back,
+# through, undo across screens, styles), the transparent compositor, and how
+# long a pen move takes on a 4K canvas (the long stroke's cost).
+qt_add_executable(tst_presenter tst_presenter.cpp
+    ${PROJECT_SOURCE_DIR}/src/capture/Presenter.cpp
+    ${PROJECT_SOURCE_DIR}/src/capture/AnnotationModel.cpp
+    ${PROJECT_SOURCE_DIR}/src/capture/AnnotationCanvas.cpp)
+target_link_libraries(tst_presenter PRIVATE wscapture Qt6::Qml Qt6::Quick Qt6::Test)
+set_target_properties(tst_presenter PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+add_test(NAME tst_presenter COMMAND tst_presenter)
+set_tests_properties(tst_presenter PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# The laser pointer's trail (LaserTrail): its taper, its life, its outline.
+qt_add_executable(tst_lasertrail tst_lasertrail.cpp)
+target_link_libraries(tst_lasertrail PRIVATE wscapture Qt6::Test)
+set_target_properties(tst_lasertrail PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_lasertrail COMMAND tst_lasertrail)
+set_tests_properties(tst_lasertrail PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 qt_add_executable(tst_traymenu tst_traymenu.cpp
     ${PROJECT_SOURCE_DIR}/src/capture/PinManager.cpp
     ${PROJECT_SOURCE_DIR}/src/capture/PinWindow.cpp
