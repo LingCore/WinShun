@@ -13,7 +13,7 @@ add_library(wsplugin_lite STATIC
     runner/Sandbox.cpp runner/Sandbox.h
 )
 target_include_directories(wsplugin_lite PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/runner)
-target_link_libraries(wsplugin_lite PUBLIC winshun_options advapi32 userenv user32)
+target_link_libraries(wsplugin_lite PUBLIC winshun_options advapi32 userenv user32 shell32 ole32)
 set_target_properties(wsplugin_lite PROPERTIES AUTOMOC OFF MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 # WinShunPluginHost.exe: the runner (runner/main.cpp). The linker's default
@@ -53,4 +53,4 @@ target_include_directories(wsplugin PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_C
 # their passwords (Secrets.cpp).
 # bcrypt: the plugin list's signature (IndexSignature.cpp).
 # shlwapi: AssocIsDangerous, for the open policy (OpenPolicy.cpp).
-target_link_libraries(wsplugin PUBLIC wscore wsmcp wsmcp_proto PRIVATE miniz advapi32 bcrypt userenv user32 shlwapi)
+target_link_libraries(wsplugin PUBLIC wscore wsmcp wsmcp_proto PRIVATE miniz advapi32 bcrypt userenv user32 shlwapi shell32 ole32)

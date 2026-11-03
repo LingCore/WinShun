@@ -42,6 +42,18 @@ lite::Handle makeJob(bool limited, const JobLimits& limits, DWORD* error);
 // same name), as the block CreateProcess wants.
 std::vector<wchar_t> environmentFor(HANDLE token, const std::vector<std::pair<std::wstring, std::wstring>>& extra);
 
+// For a process running as administrator (an `elevated` plugin, started by
+// the elevated runner): never the user's variables (HKCU\Environment and
+// this process's are the user's to change, and a variable can make a
+// program load code: COR_PROFILER_PATH, DOTNET_STARTUP_HOOKS, NODE_OPTIONS,
+// PATH...). The system's variables only (CreateEnvironmentBlock without a
+// token: HKLM), less any that loads code, with the system PATH; the user's
+// folders (USERPROFILE, APPDATA, LOCALAPPDATA, HOMEDRIVE, HOMEPATH, USERNAME)
+// from the known folders; then `extra`.
+std::vector<wchar_t> elevatedEnvironment(const std::vector<std::pair<std::wstring, std::wstring>>& extra);
+// A variable that makes a program load code (the names elevatedEnvironment leaves out).
+bool loadsCode(std::wstring_view name);
+
 // `exe` and `args` as one command line, quoted the way the C runtime (and
 // CommandLineToArgvW) splits it.
 std::wstring commandLine(const std::wstring& exe, const std::vector<std::wstring>& args);

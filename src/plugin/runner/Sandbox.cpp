@@ -1,14 +1,19 @@
 #include "Sandbox.h"
 
+#include <shlobj.h>
 #include <userenv.h>
 
 #include <algorithm>
 #include <cstring>
 #include <cwchar>
+#include <string_view>
 
 namespace ws::plugin::sandbox {
 
 using lite::Handle;
+
+// `entries` with `extra` put in (replacing any of the same name), sorted, as one block.
+std::vector<wchar_t> withExtra(std::vector<std::wstring> entries, const std::vector<std::pair<std::wstring, std::wstring>>& extra);
 
 namespace {
 
@@ -260,6 +265,138 @@ std::vector<wchar_t> environmentFor(HANDLE token, const std::vector<std::pair<st
             entries.emplace_back(p);
         ::FreeEnvironmentStringsW(env);
     }
+    return withExtra(std::move(entries), extra);
+}
+
+bool loadsCode(std::wstring_view name)
+{
+    // Whole names, then prefixes: the CLR's and .NET's hooks and profilers,
+    // node's, Python's, Perl's, Ruby's, Java's, Qt's plugin paths, the
+    // debugger's symbol servers (dbghelp loads symsrv.dll from them).
+    static constexpr std::wstring_view kNames[] = {L"PATH", L"NODE_OPTIONS", L"NODE_PATH", L"JAVA_TOOL_OPTIONS",
+        L"_JAVA_OPTIONS", L"JDK_JAVA_OPTIONS", L"PERL5LIB", L"PERL5OPT", L"PERLLIB", L"RUBYOPT", L"RUBYLIB",
+        L"PSModulePath", L"QT_PLUGIN_PATH", L"QML2_IMPORT_PATH", L"QML_IMPORT_PATH", L"QT_QPA_PLATFORM_PLUGIN_PATH",
+        L"_NT_SYMBOL_PATH", L"_NT_ALT_SYMBOL_PATH", L"_NT_SYMCACHE_PATH", L"LUA_PATH", L"LUA_CPATH", L"GIT_EXEC_PATH",
+        L"TEMP", L"TMP"};
+    static constexpr std::wstring_view kPrefixes[] = {L"COR_", L"CORECLR_", L"COMPLUS_", L"DOTNET_", L"PYTHON",
+        L"NODE_", L"MONO_", L"QT_", L"__COMPAT_LAYER", L"LD_"};
+    const auto same = [](std::wstring_view a, std::wstring_view b) {
+        return a.size() == b.size() && _wcsnicmp(a.data(), b.data(), a.size()) == 0;
+    };
+    for (const std::wstring_view n : kNames) {
+        if (same(name, n))
+            return true;
+    }
+    for (const std::wstring_view p : kPrefixes) {
+        if (name.size() >= p.size() && same(name.substr(0, p.size()), p))
+            return true;
+    }
+    return false;
+}
+
+namespace {
+
+std::wstring knownFolder(REFKNOWNFOLDERID id)
+{
+    PWSTR path = nullptr;
+    std::wstring out;
+    if (SUCCEEDED(::SHGetKnownFolderPath(id, KF_FLAG_DONT_VERIFY, nullptr, &path)) && path)
+        out = path;
+    if (path)
+        ::CoTaskMemFree(path);
+    return out;
+}
+
+// The system's own PATH (HKLM, its %vars% expanded against the system block).
+std::wstring systemPath(const std::vector<std::wstring>& system)
+{
+    std::wstring raw;
+    HKEY key = nullptr;
+    if (::RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment", 0, KEY_QUERY_VALUE, &key)
+        == ERROR_SUCCESS) {
+        DWORD type = 0;
+        DWORD bytes = 0;
+        if (::RegQueryValueExW(key, L"Path", nullptr, &type, nullptr, &bytes) == ERROR_SUCCESS && bytes > 0 && bytes < (1u << 20)) {
+            raw.resize(bytes / sizeof(wchar_t) + 1);
+            if (::RegQueryValueExW(key, L"Path", nullptr, &type, reinterpret_cast<BYTE*>(raw.data()), &bytes) != ERROR_SUCCESS)
+                raw.clear();
+            raw.resize(std::wcslen(raw.c_str()));
+        }
+        ::RegCloseKey(key);
+    }
+    // %SystemRoot% and the like, from the system block (not this process's).
+    std::wstring out;
+    for (std::size_t i = 0; i < raw.size();) {
+        const std::size_t open = raw.find(L'%', i);
+        const std::size_t close = open == std::wstring::npos ? std::wstring::npos : raw.find(L'%', open + 1);
+        if (close == std::wstring::npos) {
+            out += raw.substr(i);
+            break;
+        }
+        out += raw.substr(i, open - i);
+        const std::wstring name = raw.substr(open + 1, close - open - 1) + L'=';
+        bool found = false;
+        for (const std::wstring& e : system) {
+            if (e.size() >= name.size() && _wcsnicmp(e.c_str(), name.c_str(), name.size()) == 0) {
+                out += e.substr(name.size());
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+            out += raw.substr(open, close - open + 1);
+        i = close + 1;
+    }
+    if (out.empty()) {
+        const std::wstring windows = knownFolder(FOLDERID_Windows);
+        out = windows + L"\\system32;" + windows + L";" + windows + L"\\System32\\Wbem";
+    }
+    return out;
+}
+
+} // namespace
+
+std::vector<wchar_t> elevatedEnvironment(const std::vector<std::pair<std::wstring, std::wstring>>& extra)
+{
+    std::vector<std::wstring> system;
+    void* block = nullptr;
+    if (::CreateEnvironmentBlock(&block, nullptr, FALSE)) { // no token: the system's variables only
+        for (const wchar_t* p = static_cast<wchar_t*>(block); *p; p += std::wcslen(p) + 1)
+            system.emplace_back(p);
+        ::DestroyEnvironmentBlock(block);
+    }
+    std::vector<std::wstring> entries;
+    for (const std::wstring& e : system) {
+        const std::size_t eq = e.find(L'=', 1);
+        if (eq != std::wstring::npos && !loadsCode(std::wstring_view(e).substr(0, eq)))
+            entries.push_back(e);
+    }
+    entries.push_back(L"Path=" + systemPath(system));
+    const std::wstring profile = knownFolder(FOLDERID_Profile);
+    const auto add = [&](const wchar_t* name, const std::wstring& value) {
+        if (!value.empty())
+            entries.push_back(std::wstring(name) + L'=' + value);
+    };
+    add(L"USERPROFILE", profile);
+    add(L"APPDATA", knownFolder(FOLDERID_RoamingAppData));
+    add(L"LOCALAPPDATA", knownFolder(FOLDERID_LocalAppData));
+    if (profile.size() > 2 && profile[1] == L':') {
+        add(L"HOMEDRIVE", profile.substr(0, 2));
+        add(L"HOMEPATH", profile.substr(2));
+    }
+    wchar_t user[257] {};
+    DWORD size = static_cast<DWORD>(std::size(user));
+    if (::GetUserNameW(user, &size))
+        add(L"USERNAME", user);
+    // TEMP and TMP: not the user's (code unpacked there and loaded could be
+    // put there first); Host gives the plugin a protected one in `extra`.
+    add(L"TEMP", knownFolder(FOLDERID_Windows) + L"\\Temp");
+    add(L"TMP", knownFolder(FOLDERID_Windows) + L"\\Temp");
+    return withExtra(std::move(entries), extra);
+}
+
+std::vector<wchar_t> withExtra(std::vector<std::wstring> entries, const std::vector<std::pair<std::wstring, std::wstring>>& extra)
+{
     for (const auto& [name, value] : extra) {
         const std::wstring prefix = name + L'=';
         std::erase_if(entries, [&](const std::wstring& e) {
