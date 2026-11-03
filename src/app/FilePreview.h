@@ -17,6 +17,7 @@
 #include <QtQml/qqmlregistration.h>
 
 #include "PictureFile.h"
+#include "PreviewPlacement.h"
 
 #include <atomic>
 #include <functional>
@@ -188,7 +189,7 @@ private:
     int m_selFromRow = 0, m_selFromPos = 0, m_selToRow = 0, m_selToPos = 0; // empty when equal
     int m_lineCount = 0;
     int m_textRows = 0;
-    int m_side = -1; // placeBeside: right, left, below, or over the middle; -1 not chosen yet
+    PreviewSide m_side = PreviewSide::None; // placeBeside's side; None: not chosen yet
     QRect m_sideFor; // the launcher's place when it was chosen
     bool m_overLauncher = false; // no room beside it: in front of it
     QStringList m_facts;

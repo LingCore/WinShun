@@ -377,7 +377,7 @@ void FilePreview::close()
     if (!m_open)
         return;
     m_open = false;
-    m_side = -1;
+    m_side = PreviewSide::None;
     ++m_generation;
     m_slowTimer.stop();
     m_externalCheck.stop();
@@ -649,7 +649,7 @@ void FilePreview::showWindow(QSize wanted)
         m_window->setProperty("_q_showWithoutActivating", QVariant());
     }
     // Beside the launcher: just under it, both on top of other windows.
-    // Over it (no room beside it): in front of it.
+    // Over its far side (no room beside it): in front of it.
     if (m_overLauncher)
         ::SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
     else if (m_launcher && m_launcher->isVisible())
@@ -661,7 +661,7 @@ void FilePreview::showWindow(QSize wanted)
 // The window's place on the launcher's screen, all in logical pixels: beside
 // the launcher where there is the most room for `wanted` (right, left or
 // below; the work area, not the taskbar), as large as fits there; with no
-// room beside it worth the name, over the middle of the screen, under it.
+// room beside it, in front of its far side (placePreview).
 QRect FilePreview::placeBeside(QSize wanted)
 {
     QScreen* screen = m_launcher ? m_launcher->screen() : QGuiApplication::primaryScreen();
@@ -669,7 +669,7 @@ QRect FilePreview::placeBeside(QSize wanted)
         return {};
     const QRect area = screen->availableGeometry();
     const QRect launcher = m_launcher && m_launcher->isVisible() ? m_launcher->geometry() : QRect();
-    constexpr int kGap = 8;
+    using previewplacement::kGap;
     constexpr int kHeader = 64; // the header row and a margin, about
     constexpr int kPad = 32;
     const int tallest = area.height() - 2 * kGap;
@@ -708,62 +708,23 @@ QRect FilePreview::placeBeside(QSize wanted)
             .boundedTo(bounded);
     };
 
-    QList<QRect> rooms;
-    if (launcher.isValid()) {
-        const int top = std::max(area.top() + kGap, launcher.top());
-        rooms << QRect(QPoint(launcher.right() + 1 + kGap, top), QPoint(area.right() - kGap, area.bottom() - kGap))
-              << QRect(QPoint(area.left() + kGap, top), QPoint(launcher.left() - 1 - kGap, area.bottom() - kGap))
-              << QRect(QPoint(std::max(area.left() + kGap, launcher.left()), launcher.bottom() + 1 + kGap),
-                     QPoint(area.right() - kGap, area.bottom() - kGap));
-    }
     // The side: the one chosen when the preview opened, while the launcher
     // is where it was (the window jumping from side to side as the arrows
     // go through small and large files is hard to follow); else the one
     // with the most room for a document (not for this file, which may be
-    // a small picture before a long text).
-    const auto usable = [](const QRect& room) { return room.width() >= 360 && room.height() >= 280; };
+    // a small picture before a long text). GitHub #186: never over the
+    // list while there is room beside it.
     // (Its height is not where it is: it changes with the number of rows.)
     const bool moved = m_sideFor.topLeft() != launcher.topLeft() || m_sideFor.width() != launcher.width();
-    if (m_side < 0 || moved || (m_side < rooms.size() && !usable(rooms[m_side]))) {
-        const QSize document = QSize(820, tallest * 85 / 100).boundedTo(QSize(area.width() - 2 * kGap, tallest));
-        qint64 bestArea = 0;
-        m_side = static_cast<int>(rooms.size()); // none: over the middle
-        // Right or left before below: the rows grow downwards as one types.
-        for (int i = 0; i < rooms.size(); ++i) {
-            if (!usable(rooms[i]) || (i == 2 && m_side < rooms.size()))
-                continue;
-            const QSize fits = document.boundedTo(rooms[i].size());
-            const qint64 a = static_cast<qint64>(fits.width()) * fits.height();
-            if (a > bestArea && a * 2 >= static_cast<qint64>(document.width()) * document.height()) {
-                bestArea = a;
-                m_side = i;
-            }
-        }
+    if (moved) {
+        m_side = PreviewSide::None;
         m_sideFor = launcher;
     }
-    m_overLauncher = m_side >= rooms.size();
-    if (m_overLauncher) {
-        // Too little room beside it (the search panel, a launcher in the
-        // middle of a small screen): over the launcher's right part, in
-        // front of it, so that the names on the left stay in sight.
-        // At most 60 % of its width: the names stay in sight.
-        QRect over(QPoint(), fit(launcher.isValid() ? QSize(std::max(560, launcher.width() * 6 / 10), want.height()) : want));
-        if (launcher.isValid()) {
-            over.moveRight(std::min(launcher.right() - 24, area.right() - kGap));
-            over.moveTop(std::clamp(launcher.center().y() - want.height() / 2, area.top() + kGap, area.bottom() - kGap - want.height()));
-            if (over.left() < area.left() + kGap)
-                over.moveLeft(area.left() + kGap);
-        } else {
-            over.moveCenter(area.center());
-        }
-        return over;
-    }
-    const QRect& room = rooms[m_side];
-    QRect best(room.topLeft(), fit(room.size()));
-    // Up against the launcher: from its right edge rightwards, from its left edge leftwards.
-    if (room.right() < launcher.left())
-        best.moveRight(room.right());
-    return best;
+    const QSize document = QSize(820, tallest * 85 / 100).boundedTo(QSize(area.width() - 2 * kGap, tallest));
+    const PreviewPlacement place = placePreview(area, launcher, m_side, document, fit);
+    m_side = place.side;
+    m_overLauncher = place.side == PreviewSide::Over;
+    return place.rect;
 }
 
 bool FilePreview::screenRect(QQuickItem* item, int* left, int* top, int* right, int* bottom) const

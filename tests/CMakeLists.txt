@@ -104,6 +104,14 @@ add_test(NAME tst_opusfocus COMMAND tst_opusfocus)
 set_tests_properties(tst_opusfocus PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+qt_add_executable(tst_previewplacement tst_previewplacement.cpp)
+target_include_directories(tst_previewplacement PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_previewplacement PRIVATE Qt6::Core Qt6::Test)
+set_target_properties(tst_previewplacement PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_previewplacement COMMAND tst_previewplacement -o -,txt)
+set_tests_properties(tst_previewplacement PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 qt_add_executable(tst_launchernavigation tst_launchernavigation.cpp)
 target_include_directories(tst_launchernavigation PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_launchernavigation PRIVATE wscore Qt6::Test)

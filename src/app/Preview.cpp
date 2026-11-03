@@ -1648,6 +1648,70 @@ int runSettings(const QStringList& args)
     return finish(window, saved);
 }
 
+// GitHub #186: the preview window by the real launcher on the real screen
+// (GetWindowRect, physical): beside it while there is room (a launcher in
+// the middle of the screen), and with no room, never over the names.
+void checkPreviewPlacement(Launcher& launcher, QQuickWindow* window, FilePreview& preview)
+{
+    const auto check = [](bool okay, const QString& name) {
+        if (!okay) qWarning("preview placement regression: %s", qUtf8Printable(name));
+    };
+    QScreen* screen = window->screen();
+    if (!screen || launcher.results()->count() == 0) {
+        check(false, u"no screen or no rows"_s);
+        return;
+    }
+    const QRect area = screen->availableGeometry();
+    const QRect before = window->geometry();
+    const auto physical = [](QWindow* w) {
+        RECT r {};
+        ::GetWindowRect(reinterpret_cast<HWND>(w->winId()), &r);
+        return QRect(QPoint(r.left, r.top), QPoint(r.right - 1, r.bottom - 1));
+    };
+    const QString path = launcher.results()->pathAt(0);
+    const FilePreview::Item item {path, QFileInfo(path).fileName()};
+    for (const bool roomy : {true, false}) {
+        // Room beside: the default width in the middle, low (the sides go
+        // above its top). No room: nearly as wide and tall as the screen.
+        const QSize size = roomy ? QSize(760, 480) : area.size() - QSize(160, 200);
+        window->setGeometry(area.left() + (area.width() - size.width()) / 2,
+            roomy ? area.top() + area.height() * 2 / 5 : area.top() + 40, size.width(), size.height());
+        settle(window);
+        preview.show(item);
+        QElapsedTimer loaded;
+        loaded.start();
+        while ((preview.kind() == FilePreview::Loading || !preview.window() || !preview.window()->isVisible())
+            && loaded.elapsed() < 3000)
+            pump(10);
+        pump(50);
+        QWindow* shown = preview.window();
+        check(shown && shown->isVisible(), u"preview window shown"_s);
+        if (shown) {
+            const QRect launcherRect = physical(window), previewRect = physical(shown);
+            say(u"preview placement (%1): launcher %2,%3 %4x%5, preview %6,%7 %8x%9 (physical)"_s
+                    .arg(roomy ? u"room beside"_s : u"no room"_s)
+                    .arg(launcherRect.x()).arg(launcherRect.y()).arg(launcherRect.width()).arg(launcherRect.height())
+                    .arg(previewRect.x()).arg(previewRect.y()).arg(previewRect.width()).arg(previewRect.height()));
+            if (roomy) {
+                check(!previewRect.intersects(launcherRect), u"room beside: the preview covered the launcher"_s);
+            } else {
+                const int names = launcherRect.left() + launcherRect.width() * 40 / 100;
+                check(previewRect.left() >= names || previewRect.right() <= launcherRect.right() - launcherRect.width() * 40 / 100,
+                    u"no room: the preview covered the names"_s);
+            }
+            MONITORINFO monitor {.cbSize = sizeof(MONITORINFO)};
+            ::GetMonitorInfoW(::MonitorFromWindow(reinterpret_cast<HWND>(window->winId()), MONITOR_DEFAULTTONEAREST), &monitor);
+            const RECT& work = monitor.rcWork;
+            check(QRect(QPoint(work.left, work.top), QPoint(work.right - 1, work.bottom - 1)).contains(previewRect),
+                u"the preview stays in the work area"_s);
+        }
+        preview.close();
+        pump(50);
+    }
+    window->setGeometry(before);
+    settle(window);
+}
+
 void checkSearchMenuKeys(Launcher& launcher, QQuickWindow* window, FilePreview& preview, const QDir& output)
 {
     QJsonArray checks;
@@ -2564,6 +2628,7 @@ void checkFileGallery(Launcher& launcher, IndexService& index, QQmlEngine* engin
         "real image search did not produce the gallery rows");
     if (auto* field = visualNamed(window->contentItem(), u"panelSearchField"_s))
         field->setProperty("text", u"测试照片"_s);
+    checkPreviewPlacement(launcher, window, filePreview);
     checkSearchMenuKeys(launcher, window, filePreview, output);
     checkDialogSearchKeys(index, engine, output);
     launcher.setGallery(true);
