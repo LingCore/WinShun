@@ -477,15 +477,13 @@ void Controller::showHit(const Hit& hit, const QString& words)
             // Boxes are in the recognised image's pixels; the preview may be smaller.
             if (recognised.isEmpty())
                 recognised = image.size();
-            QStringList terms = contentTerms(splitContentQuery(words).words);
-            for (auto& term : terms)
-                term = normalized(term);
+            const QStringList terms = searchTerms(splitContentQuery(words).words);
             QStringList lines;
             for (const auto& piece : pieces) {
                 lines.append(piece.text);
                 const QString normalizedText = normalized(piece.text);
                 if (std::any_of(terms.begin(), terms.end(),
-                        [&](const QString& term) { return normalizedText.contains(term); })) {
+                        [&](const QString& term) { return containsTerm(normalizedText, term); })) {
                     const QRectF rect = piece.quad.boundingRect();
                     boxes.append(QVariantMap {{u"x"_s, rect.x() / recognised.width()},
                         {u"y"_s, rect.y() / recognised.height()}, {u"width"_s, rect.width() / recognised.width()},

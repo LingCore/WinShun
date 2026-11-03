@@ -13,7 +13,15 @@
 namespace ws::ocrsearch {
 
 using Cancel = std::function<bool()>;
+// Text as stored and as searched for: compatibility forms and case folded,
+// traditional Chinese characters folded to simplified ones, and the spaces
+// OCR puts between Chinese or Japanese characters dropped.
 QString normalized(QString text);
+// The normalized words of a content search's words (splitContentQuery().words).
+QStringList searchTerms(const QString& words);
+// Whether normalized `text` holds the normalized `term`: anywhere, or as a
+// whole word when the term is one or two Latin letters or digits ("a4", "12").
+bool containsTerm(QStringView text, QStringView term);
 QString pathKey(const QString& path);
 bool inside(const QString& path, const QString& folder);
 QString locationText(const QJsonObject& source, const QString& fallback);

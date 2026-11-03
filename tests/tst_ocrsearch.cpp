@@ -199,9 +199,60 @@ class TestOcrSearch : public QObject {
 private slots:
     void normalizationAndPathBoundaries()
     {
-        QCOMPARE(normalized(u"报 销 规定 ＡＢＣ １２３.４５"_s), u"报销规定 abc 123.45"_s);
+        // Spaces next to Chinese or Japanese characters go, put there by OCR or
+        // typed; spaces between other words stay, and Korean keeps its own.
+        QCOMPARE(normalized(u"报 销 规定 ＡＢＣ １２３.４５"_s), u"报销规定abc 123.45"_s);
+        QCOMPARE(normalized(u"第 3 頁 A4 紙"_s), u"第3页a4纸"_s);
+        QCOMPARE(normalized(u"Win顺  插件\n说明"_s), u"win顺插件说明"_s);
+        QCOMPARE(normalized(u"カタカナ テスト"_s), u"カタカナテスト"_s);
+        QCOMPARE(normalized(u"Invoice  No. 12"_s), u"invoice no. 12"_s);
+        QCOMPARE(normalized(u"한국어 문서 abc"_s), u"한국어문서 abc"_s);
+        QCOMPARE(normalized(u"𠀀 abc"_s), u"𠀀abc"_s); // beyond the BMP
+        // Traditional characters fold to simplified ones, through a chain too.
+        QCOMPARE(normalized(u"報銷發票"_s), u"报销发票"_s);
+        QCOMPARE(normalized(u"薴"_s), u"苎"_s);
+        QCOMPARE(normalized(u"苧"_s), u"苎"_s);
+        // One or two letters or digits are whole words; longer terms match anywhere.
+        QVERIFY(containsTerm(u"a4纸第3页"_s, u"a4"_s));
+        QVERIFY(containsTerm(u"a4纸第3页"_s, u"3"_s));
+        QVERIFY(containsTerm(u"单价12.5元"_s, u"12"_s));
+        QVERIFY(!containsTerm(u"ba4 123"_s, u"a4"_s));
+        QVERIFY(!containsTerm(u"ba4 123"_s, u"12"_s));
+        QVERIFY(containsTerm(u"ba4 123"_s, u"a4 1"_s));
+        QVERIFY(containsTerm(u"invoice"_s, u"voi"_s));
         QVERIFY(inside(u"C:/Work/a.pdf"_s, u"c:/work"_s));
         QVERIFY(!inside(u"C:/Work-other/a.pdf"_s, u"C:/Work"_s));
+    }
+    void shortWordsAndTraditionalCharacters()
+    {
+        QTemporaryDir temp;
+        const QString a = temp.filePath(u"a.png"_s), b = temp.filePath(u"b.png"_s);
+        write(a, "a");
+        write(b, "b");
+        Store store(temp.filePath(u"index"_s));
+        add(store, a, u"A4 紙 第 3 頁 Q3 報銷"_s);
+        add(store, b, u"BA4 123 Q35 报销"_s);
+        const auto found = [&](const QString& words) {
+            QStringList names;
+            for (const Hit& hit : store.search(words, 20))
+                names.append(QFileInfo(hit.path).fileName());
+            names.sort();
+            return names.join(u',');
+        };
+        QCOMPARE(found(u"A4"_s), u"a.png"_s);
+        QCOMPARE(found(u"a4纸"_s), u"a.png"_s);
+        QCOMPARE(found(u"3"_s), u"a.png"_s);
+        QCOMPARE(found(u"q3"_s), u"a.png"_s);
+        QCOMPARE(found(u"12"_s), QString());
+        QCOMPARE(found(u"123"_s), u"b.png"_s);
+        QCOMPARE(found(u"报销"_s), u"a.png,b.png"_s);
+        QCOMPARE(found(u"報銷"_s), u"a.png,b.png"_s);
+        QCOMPARE(found(u"第3頁"_s), u"a.png"_s);
+        QCOMPARE(found(u"\"第 3 页\""_s), u"a.png"_s);
+        QCOMPARE(found(u"q3 报销"_s), u"a.png"_s);
+        QCOMPARE(store.search(u"q3"_s, 20).first().snippet, u"A4 紙 第 3 頁 Q3 報銷"_s);
+        Store reader(temp.filePath(u"index"_s), 0);
+        QCOMPARE(reader.search(u"A4"_s, 20).size(), 1);
     }
     void shortChineseAndExactVerification()
     {
@@ -476,33 +527,58 @@ private slots:
         QSqlDatabase::removeDatabase(u"future-fixture"_s);
     }
 
-    void changedGramRulesRebuildFromStoredText()
+    void changedRulesRebuildFromStoredLines()
     {
         QTemporaryDir temp;
         const QString index = temp.filePath(u"index"_s), path = temp.filePath(u"scan.png"_s);
+        const QString line = u"報銷規定 INVOICE 731905 A4 紙"_s;
         write(path, "fixture");
+        qint64 asset = 0;
         {
             Store store(index);
-            add(store, path, u"报销规定 INVOICE 731905"_s);
+            asset = add(store, path, line);
         }
-        // An index written under other gram rules: its postings are useless.
+        // An index written under other rules: its postings are useless, and its
+        // text normalized the old way (traditional characters, spaces kept).
+        const auto storedText = [&](const QString& connection) {
+            auto db = QSqlDatabase::addDatabase(u"QSQLITE"_s, connection);
+            db.setDatabaseName(QDir(index).filePath(u"ocr-index.sqlite"_s));
+            if (!db.open())
+                return QString();
+            QSqlQuery q(db);
+            q.prepare(u"SELECT text FROM assets WHERE id=?"_s);
+            q.addBindValue(asset);
+            return q.exec() && q.next() ? QString::fromUtf8(qUncompress(q.value(0).toByteArray())) : QString();
+        };
         {
             auto db = QSqlDatabase::addDatabase(u"QSQLITE"_s, u"rules-fixture"_s);
             db.setDatabaseName(QDir(index).filePath(u"ocr-index.sqlite"_s));
             QVERIFY(db.open());
             QSqlQuery q(db);
             QVERIFY(q.exec(u"INSERT INTO asset_terms(asset_terms) VALUES('delete-all')"_s));
-            QVERIFY(q.exec(u"UPDATE meta SET value='0:old' WHERE key='terms'"_s));
+            QVERIFY(q.exec(u"UPDATE meta SET value='1:old' WHERE key='terms'"_s));
             QCOMPARE(q.numRowsAffected(), 1);
+            q.prepare(u"UPDATE assets SET text=? WHERE id=?"_s);
+            q.addBindValue(qCompress(u"報銷規定 invoice 731905 a4 紙"_s.toUtf8(), 6));
+            q.addBindValue(asset);
+            QVERIFY(q.exec());
         }
         QSqlDatabase::removeDatabase(u"rules-fixture"_s);
         QVERIFY_THROWS_EXCEPTION(std::runtime_error, (Store {index, 0}));
+        const QString away = temp.filePath(u"offline.png"_s);
+        QVERIFY(QFile::rename(path, away));
         {
             Store store(index); // rebuilds without the original file or OCR
-            QCOMPARE(store.search(u"报销 invoice"_s, 10).size(), 1);
+            QCOMPARE(store.pieces(asset).first().text, line);
         }
+        QCOMPARE(storedText(u"rules-text"_s), normalized(line));
+        QSqlDatabase::removeDatabase(u"rules-text"_s);
+        QVERIFY(QFile::rename(away, path)); // a hit is shown only for the file still there
         Store reader(index, 0);
+        QCOMPARE(reader.search(u"报销 invoice"_s, 10).size(), 1);
         QCOMPARE(reader.search(u"731905"_s, 10).size(), 1);
+        QCOMPARE(reader.search(u"A4"_s, 10).size(), 1);
+        QCOMPARE(reader.search(u"规定invoice"_s, 10).size(), 1);
     }
 
     void migrationFailureRollsBackLegacySchema()
@@ -839,7 +915,9 @@ private slots:
         QVERIFY(found);
     }
 
-    void wordsWithoutGramsDoNotScanEverything()
+    // One or two letters or digits are looked up as whole words; a word with
+    // nothing to look up (Cyrillic, ...) must not read every file.
+    void shortWordsAndWordsWithoutGrams()
     {
         QTemporaryDir temp;
         Store store(temp.filePath(u"index"_s));
@@ -850,12 +928,15 @@ private slots:
         }
         QElapsedTimer timer;
         timer.start();
-        for (const QString& word : {u"ab"_s, u"a"_s, u"12"_s, u"док"_s, u"документ"_s})
+        QCOMPARE(store.search(u"ab"_s, 100).size(), 100);
+        QCOMPARE(store.search(u"12"_s, 100).size(), 1); // not 120 or 1200
+        for (const QString& word : {u"a"_s, u"b"_s, u"док"_s, u"документ"_s})
             QVERIFY2(store.search(word, 100).isEmpty(), qPrintable(word));
-        QVERIFY2(timer.elapsed() < 200, "A word without grams must not read every file");
-        // Words without grams still narrow a word that has some.
+        QVERIFY2(timer.elapsed() < 200, "A short word must be looked up, not read from every file");
+        // Short words narrow a word that has grams, as whole words too.
         QCOMPARE(store.search(u"报销 ab"_s, 100).size(), 100);
         QVERIFY(store.search(u"报销 xy"_s, 100).isEmpty());
+        QCOMPARE(store.search(u"报销 7"_s, 100).size(), 1);
     }
 
     void pictureBombIsRefusedFromItsHeader()

@@ -4,6 +4,13 @@ qt_add_library(wsocrsearch STATIC OcrStore.cpp OcrStore.h OcrSource.cpp OcrSourc
     ${app_dir}/platform/PaddleOcr.cpp ${app_dir}/platform/OcrFiles.cpp ${app_dir}/PictureFile.cpp)
 target_include_directories(wsocrsearch PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${app_dir})
 target_link_libraries(wsocrsearch PUBLIC wscore Qt6::Gui Qt6::Sql PRIVATE wsextract pdfium onnxruntime_headers windowscodecs)
+# Traditional to simplified Chinese characters for search: OpenCC's
+# data/dictionary/TSCharacters.txt (Apache-2.0) as published at commit
+# 5c764a5a886f46eb365656ed91a0410d7162fac6, unchanged (SHA-256
+# 9ff46a7d30e5765375eb13d33f2b03a34d298913caf2b120380679f33ae1642d).
+# Its license goes into the package (licenses/opencc.txt).
+qt_add_resources(wsocrsearch "ocr_search_opencc" PREFIX /ocr-search BASE "${PROJECT_SOURCE_DIR}/third_party/opencc"
+    FILES "${PROJECT_SOURCE_DIR}/third_party/opencc/TSCharacters.txt")
 
 add_executable(WinShunOcrSearch WIN32 stub/main.cpp)
 target_link_libraries(WinShunOcrSearch PRIVATE winshun_options)
