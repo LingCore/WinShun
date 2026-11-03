@@ -1,0 +1,67 @@
+name: 故障反馈 / Bug report
+description: 报告崩溃、功能异常等问题 / Report something that is not working.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！提交前请先搜索 [已有 Issues](https://github.com/LingCore/WinShun/issues)，有相同问题时可直接补充信息。
+        使用方法等问题请到 [使用问答 / Q&A](https://github.com/LingCore/WinShun/discussions/categories/q-a)。
+
+        Please search existing issues first and add details to a matching report when possible. For usage questions, visit Q&A.
+  - type: input
+    id: version
+    attributes:
+      label: Win顺版本 / WinShun version
+      description: 请填写实际版本号，不要只写“最新版”。 / Enter the exact version, rather than “latest”.
+      placeholder: 例如 / e.g. 0.17.0
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows 版本 / Windows version
+      description: 可按 Win+R 输入 winver 查看。 / Press Win+R and run winver to check.
+      placeholder: 例如 / e.g. Windows 11 25H2 (26200.x)
+    validations:
+      required: true
+  - type: input
+    id: plugin
+    attributes:
+      label: 相关插件及版本（如有） / Plugin and version, if applicable
+      description: 插件问题请填写插件名称和版本；与插件无关可留空。 / For plugin issues, include its name and version.
+    validations:
+      required: false
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤 / Steps to reproduce
+      description: 写明在哪个窗口、如何操作，以及问题每次出现还是偶尔出现。 / Include the window, actions and how often it happens.
+      placeholder: |
+        1. 打开…… / Open …
+        2. 点击或按下…… / Click or press …
+        3. 出现问题 / The problem occurs
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: 实际与预期表现 / Actual and expected behavior
+      placeholder: |
+        实际表现 / Actual:
+
+        期望表现 / Expected:
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 截图、日志及补充信息（选填） / Screenshots, logs and context (optional)
+      description: |
+        可拖入截图、录屏或诊断包。诊断包可在「设置 › 高级 › 诊断日志」中导出。
+        如涉及显示或兼容性，请补充缩放比例、显示器、输入法、相关软件，以及是否以管理员身份运行。
+        Attach screenshots, recordings or diagnostic logs exported from Settings › Advanced › Diagnostic logs.
+        For display or compatibility issues, include scaling, monitors, input method, related apps and whether WinShun runs as administrator.
+    validations:
+      required: false

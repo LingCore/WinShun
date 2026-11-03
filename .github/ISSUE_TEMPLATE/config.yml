@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 使用问答 / Q&A
+    url: https://github.com/LingCore/WinShun/discussions/categories/q-a
+    about: 询问使用方法、设置和常见问题 / Ask about usage, settings and common questions.
+  - name: 交流与经验 / General discussion
+    url: https://github.com/LingCore/WinShun/discussions/categories/general
+    about: 交流使用体验、技巧和开放话题 / Share experiences, tips and open-ended discussions.
+  - name: 插件与作品分享 / Plugins and showcase
+    url: https://github.com/LingCore/WinShun/discussions/categories/show-and-tell
+    about: 分享自己制作的插件、配置和作品 / Share plugins, configurations and projects you have made.
