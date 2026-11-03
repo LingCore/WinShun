@@ -4835,6 +4835,23 @@
 - **现象**：遮罩的不透明度是 240，休息画面上的字后面还隐约看得到下层文档里的字，像一道删除线。
 - **做法**：字的后面加一块径向渐变（`Graphics::glow`），中间 62% 用不透明的遮罩色，往外渐渐变透明。量像素：字附近原来 21–35 有起伏，改后是一片 21；渐变的边缘看不出圈。
 
+## Scoop 安装（2026-11-03）
+
+### Scoop 建不出带汉字的开始菜单快捷方式
+- **现象**：`scoop install winshun` 报“无法保存快捷方式 …\Win?.lnk”，快捷方式没有建成（安装本身继续，只是开始菜单里没有）。
+- **原因**：Scoop 用 `WScript.Shell` 建快捷方式，它按系统代码页（ACP）转换文件名；系统区域不是中文的电脑（ACP 1252）上，“顺”变成 `?`，保存失败。
+- **做法**：清单里的快捷方式名用 ASCII 的 `WinShun`。
+
+### `scoop update winshun` 看不到新版本，卸载钩子在更新时也会运行
+- **现象**：发布后马上 `scoop update winshun`，Scoop 说已是最新；以为卸载钩子只在 `scoop uninstall` 时运行，结果更新时也把自启、右键菜单清掉了。
+- **原因**：`scoop update <应用>` 只读本地已同步的 bucket，同步要靠不带参数的 `scoop update`（它还要求有 `main` bucket 的 git 仓库）。更新流程会先运行旧版本清单的 `pre_uninstall`，钩子里的变量 `$cmd` 是 Scoop 子命令名（`update` 或 `uninstall`）。更新时若有应用目录里的进程在运行，Scoop 只提示“skip updating”，退出码仍是 0。
+- **做法**：应用内的更新窗口先运行 `scoop update` 再运行 `scoop update winshun`，用 `current\scoop-manifest.json` 的版本是否变化判断成败；钩子只在 `$cmd -eq 'uninstall'` 时清理，并且只对带这个开关的版本运行（版本号比 0.18.0 新）。
+
+### 登记的路径要用 `current`，不能用版本文件夹
+- **现象**：`scoop update` 并 `scoop cleanup` 之后，开机自启、资源管理器右键菜单指向已被删除的版本文件夹。
+- **原因**：版本文件夹随更新改变，只有联接 `current` 一直有效；从 `current` 启动时 Qt 和 `GetModuleFileNameW` 报告的就是 `current` 路径，从版本文件夹启动则是版本路径（实测）。
+- **做法**：所有写进系统的路径过 `scoop::stablePath()`，比较两个路径用 `scoop::sameCopy()`。
+
 ### Blender 等桌面程序的工厂启动不等于测试隔离（2026-10-30）
 
 - **根因**：`--factory-startup` 只重置启动内容，仍可能读取用户最近目录；不存在的 `BLENDER_USER_*` 路径会导致隔离配置不生效。正常退出还可能向全局临时目录写入恢复文件。
