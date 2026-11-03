@@ -750,27 +750,60 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
         }
         return 0;
     }
+    case WM_SYSKEYDOWN: // Alt chords and F10 come here; what is not ours goes to Windows (Alt+F4)
     case WM_KEYDOWN: {
         const bool ctrl = ::GetKeyState(VK_CONTROL) < 0;
         const bool shift = ::GetKeyState(VK_SHIFT) < 0;
-        if (wParam == VK_ESCAPE) {
-            if (m_text != Text::Off)
-                endTextPick();
-            else
-                close();
+        const bool alt = ::GetKeyState(VK_MENU) < 0;
+        const QKeyCombination pressed = CaptureKeys::fromVirtualKey(static_cast<unsigned>(wParam), ctrl, shift, alt);
+        const auto action = m_keys.triggered(KeyContext::PinWindow, pressed.key(), pressed.keyboardModifiers());
+        if (action) {
+            switch (*action) {
+            case KeyAction::PinClose:
+                if (m_text != Text::Off)
+                    endTextPick();
+                else
+                    close();
+                break;
+            case KeyAction::PinCopy:
+                if (m_text == Text::Ready && !m_picked.isEmpty() && m_host.copyText)
+                    m_host.copyText(pickedText());
+                else if (m_host.copy)
+                    m_host.copy(this);
+                break;
+            case KeyAction::PinSave:
+                if (m_host.save)
+                    m_host.save(this);
+                break;
+            case KeyAction::PinRotateRight: rotate(true); break;
+            case KeyAction::PinRotateLeft: rotate(false); break;
+            case KeyAction::PinFlipHorizontal: flip(true); break;
+            case KeyAction::PinFlipVertical: flip(false); break;
+            case KeyAction::PinTextPick:
+                if (m_text == Text::Off)
+                    beginTextPick();
+                else
+                    endTextPick();
+                break;
+            case KeyAction::PinCollapse:
+                if (m_form == PinForm::Full)
+                    collapse(PinForm::Tile);
+                else
+                    expand();
+                break;
+            default:
+                break;
+            }
             return 0;
         }
-        if (ctrl && wParam == 'C') {
-            if (m_text == Text::Ready && !m_picked.isEmpty() && m_host.copyText)
-                m_host.copyText(pickedText());
-            else if (m_host.copy)
-                m_host.copy(this);
+        // Esc is the way out of picking text whatever key closes the pin (unless
+        // the user gave Esc to another action above).
+        if (wParam == VK_ESCAPE && !ctrl && !shift && !alt && m_text != Text::Off) {
+            endTextPick();
             return 0;
         }
-        if (ctrl && wParam == 'S' && m_host.save) {
-            m_host.save(this);
-            return 0;
-        }
+        if (message == WM_SYSKEYDOWN)
+            break;
         if (ctrl)
             break;
         const int step = shift ? 10 : 1;
@@ -796,27 +829,6 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
         case VK_SUBTRACT:
             if (m_form == PinForm::Full)
                 setZoom(nextZoom(m_zoom, -1, maxZoom(fullSize(), kZoomBudget)), pictureRect().center());
-            return 0;
-        case 'R':
-            rotate(!shift);
-            return 0;
-        case 'H':
-            flip(true);
-            return 0;
-        case 'V':
-            flip(false);
-            return 0;
-        case 'T':
-            if (m_text == Text::Off)
-                beginTextPick();
-            else
-                endTextPick();
-            return 0;
-        case VK_SPACE:
-            if (m_form == PinForm::Full)
-                collapse(PinForm::Tile);
-            else
-                expand();
             return 0;
         default:
             break;

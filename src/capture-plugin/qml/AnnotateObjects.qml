@@ -27,7 +27,7 @@ Item {
     property real unitX: sx
     property real unitY: sy
 
-    // Ctrl+S and F3 pressed in the text box, for whoever owns the keys.
+    // The save or pin key (Ctrl+S, F3 by default) pressed in the text box, for whoever owns the keys.
     signal keyForwarded(int key, int modifiers)
 
     // ---- geometry, logical px unless named image px ----
@@ -222,7 +222,7 @@ Item {
             selectedTextColor: color
 
             // The model reads the words from here when the session commits
-            // them (a press outside, another tool, Ctrl+S, F3, the hotkey).
+            // them (a press outside, another tool, the save or pin key, the hotkey).
             onTextChanged: if (textBox.active && over.annot) over.annot.setEditingText(text)
 
             Keys.onPressed: (event) => {
@@ -240,7 +240,7 @@ Item {
                         return // the input method's: it drops the pinyin
                     over.annot.commitText(edit.text)
                     event.accepted = true
-                } else if ((ctrl && event.key === Qt.Key_S) || event.key === Qt.Key_F3) {
+                } else if (over.annot.isFinishKey(event.key, event.modifiers)) {
                     const key = event.key
                     const modifiers = event.modifiers
                     over.annot.commitText(edit.text)

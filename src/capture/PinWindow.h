@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CaptureKeys.h"
 #include "Geometry.h"
 #include "PinTools.h"
 #include "SmartRedact.h"
@@ -39,7 +40,7 @@ namespace ws::capture {
 // zoomSteps() (no larger than kZoomBudget pixels of window); a corner dragged
 // zooms freely, the aspect ratio kept; Ctrl+wheel changes the opacity; a
 // double click goes back to 100%; the arrow keys move it a pixel (Shift: ten).
-// R and Shift+R turn it, H and V flip it. T picks text out of it (the words
+// R and Shift+R turn it, H and V flip it (these keys are the user's to change). T picks text out of it (the words
 // are read once, then a drag takes the lines it touches and copies them).
 // Space, or the middle button, collapses it to a small tile; the menu also
 // collapses it to a tab on the top edge of its monitor's work area. While
@@ -111,6 +112,8 @@ public:
     void setClickThrough(bool on);
     // What a double click does while it is in full and no text is picked.
     void setDoubleClick(PinDoubleClick action) { m_doubleClick = action; }
+    // The keys the window answers to (#187); the arrows and + / - stay fixed.
+    void setKeys(const CaptureKeys& keys) { m_keys = keys; }
     // The owner's watcher calls this while any pin is click-through: a pin
     // set to click through takes the mouse while `ctrlDown` with `cursor`
     // (physical) over its picture, and lets it go again after (not while it
@@ -193,6 +196,7 @@ private:
     // Collapsed: its form, the thumbnail, where it was in full, the encode.
     PinForm m_form = PinForm::Full;
     PinDoubleClick m_doubleClick = PinDoubleClick::Reset;
+    CaptureKeys m_keys;
     bool m_clickOpened = false; // this click opened a tile or tab: its double click does nothing more
     bool m_swallowUp = false; // a double click collapsed it: its button up must not open it again
     QImage m_thumb;

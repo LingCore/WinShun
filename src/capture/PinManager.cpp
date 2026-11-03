@@ -102,6 +102,7 @@ void PinManager::pin(const QImage& image, QPoint origin, bool screenshot, QByteA
     pin->setScreenshot(screenshot);
     pin->setProject(std::move(project));
     pin->setDoubleClick(m_doubleClick);
+    pin->setKeys(m_keys);
     if (pin->hwnd())
         m_pins.push_back(std::move(pin));
 }
@@ -195,6 +196,13 @@ void PinManager::setDoubleClick(PinDoubleClick action)
         p->setDoubleClick(action);
 }
 
+void PinManager::setKeys(const CaptureKeys& keys)
+{
+    m_keys = keys;
+    for (const auto& p : m_pins)
+        p->setKeys(keys);
+}
+
 void PinManager::closed(PinWindow* pin)
 {
     // Called from inside its window procedure: deleted once that returns.
@@ -216,16 +224,18 @@ void PinManager::showMenu(PinWindow* pin, POINT at)
     const bool ocrAvailable = m_callbacks.ocrAvailable && m_callbacks.ocrAvailable();
     const QString ocr = ocrAvailable ? tr("识别文字") : tr("识别文字（安装增强识别…）");
     const bool full = pin->form() == PinForm::Full;
+    // The key after a tab; nothing when the action has none.
+    const auto hint = [this](KeyAction action) { return m_keys.has(action) ? u"\t"_s + m_keys.text(action) : QString(); };
     auto turn = command(0, tr("旋转与翻转"), 0xE777);
     turn.children = {
-        command(RotateRightCommand, tr("向右转 90°") + u"\tR"_s, 0xE72C),
-        command(RotateLeftCommand, tr("向左转 90°") + u"\tShift+R"_s, 0xE777),
-        command(FlipHorizontalCommand, tr("左右翻转") + u"\tH"_s, 0xE8DE),
-        command(FlipVerticalCommand, tr("上下翻转") + u"\tV"_s, 0xE8CB),
+        command(RotateRightCommand, tr("向右转 90°") + hint(KeyAction::PinRotateRight), 0xE72C),
+        command(RotateLeftCommand, tr("向左转 90°") + hint(KeyAction::PinRotateLeft), 0xE777),
+        command(FlipHorizontalCommand, tr("左右翻转") + hint(KeyAction::PinFlipHorizontal), 0xE8DE),
+        command(FlipVerticalCommand, tr("上下翻转") + hint(KeyAction::PinFlipVertical), 0xE8CB),
     };
     auto collapse = command(0, tr("收起"), 0xE73F);
     collapse.children = {
-        command(CollapseTileCommand, tr("收成小块") + u"\tSpace"_s, 0xE73F),
+        command(CollapseTileCommand, tr("收成小块") + hint(KeyAction::PinCollapse), 0xE73F),
         command(CollapseEdgeCommand, tr("收到屏幕顶边"), 0xE74A),
     };
     auto all = command(0, tr("全部贴图"), 0xE8A9);
@@ -235,15 +245,15 @@ void PinManager::showMenu(PinWindow* pin, POINT at)
         command(CloseAllCommand, tr("关闭全部贴图"), 0xE8BB),
     };
     std::vector<shell::MenuItem> items {
-        command(CopyCommand, tr("复制") + u"\tCtrl+C"_s, 0xE8C8),
-        command(SaveCommand, tr("保存到“屏幕截图”") + u"\tCtrl+S"_s, 0xE74E),
+        command(CopyCommand, tr("复制") + hint(KeyAction::PinCopy), 0xE8C8),
+        command(SaveCommand, tr("保存到“屏幕截图”") + hint(KeyAction::PinSave), 0xE74E),
         command(SaveAsCommand, tr("另存为…"), 0xE74E),
         shell::MenuItem::separator(),
     };
     if (full) {
         items.push_back(command(EditCommand, tr("编辑"), 0xE70F));
         items.push_back(command(OcrCommand, ocr, 0xE8A5));
-        items.push_back(command(PickTextCommand, tr("选择文字") + u"\tT"_s, 0xE8D2,
+        items.push_back(command(PickTextCommand, tr("选择文字") + hint(KeyAction::PinTextPick), 0xE8D2,
             pin->textMode(), ocrAvailable && pin->canPickText()));
         items.push_back(shell::MenuItem::separator());
         items.push_back(std::move(turn));
@@ -257,7 +267,7 @@ void PinManager::showMenu(PinWindow* pin, POINT at)
         items.push_back(command(TopmostCommand, tr("置顶"), 0xE718, pin->topmost()));
     }
     items.push_back(shell::MenuItem::separator());
-    items.push_back(command(CloseCommand, tr("关闭") + u"\tEsc"_s, 0xE8BB));
+    items.push_back(command(CloseCommand, tr("关闭") + hint(KeyAction::PinClose), 0xE8BB));
     items.push_back(command(CloseOthersCommand, tr("关闭其他"), 0xE8BB));
     items.push_back(std::move(all));
     const HWND hwnd = pin->hwnd();

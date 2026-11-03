@@ -1141,3 +1141,13 @@ target_link_libraries(tst_clipboarddisplay PRIVATE winshun_options Qt6::Core Qt6
 add_test(NAME tst_clipboarddisplay COMMAND tst_clipboarddisplay)
 set_tests_properties(tst_clipboarddisplay PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# The capture's key map (src/capture/CaptureKeys.h): defaults, the settings text,
+# matching, and which keys a user may give to which action (#187).
+qt_add_executable(tst_capturekeys tst_capturekeys.cpp)
+target_include_directories(tst_capturekeys PRIVATE ${PROJECT_SOURCE_DIR}/src/capture)
+target_link_libraries(tst_capturekeys PRIVATE Qt6::Gui Qt6::Test)
+set_target_properties(tst_capturekeys PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_capturekeys COMMAND tst_capturekeys -o -,txt)
+set_tests_properties(tst_capturekeys PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")

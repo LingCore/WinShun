@@ -5,6 +5,7 @@
 #include "AnnotationFormat.h"
 #include "AnnotationRender.h"
 #include "AnnotationStyles.h"
+#include "CaptureKeys.h"
 #include "SmartRedact.h"
 
 #include <QImage>
@@ -272,6 +273,15 @@ public:
     // [ and ], Ctrl+[ and Ctrl+], Ctrl+A (all objects), Ctrl+D (a copy of
     // the selected ones, a little aside), I (the eyedropper). True when taken.
     bool key(int key, Qt::KeyboardModifiers modifiers);
+    // The keys whose owner decides (the pin and save keys, #187): the text
+    // box hands them over instead of typing them. The defaults until the owner sets them.
+    void setKeys(const CaptureKeys& keys) { m_keys = keys; }
+    const CaptureKeys& keys() const { return m_keys; }
+    Q_INVOKABLE bool isFinishKey(int key, int modifiers) const
+    {
+        const auto mods = Qt::KeyboardModifiers(modifiers);
+        return m_keys.matches(KeyAction::Pin, key, mods) || m_keys.matches(KeyAction::Save, key, mods);
+    }
     // Esc, steps 2 and 3 of 3.6: commit the text under way, or cancel the
     // gesture under way; before either, close a number's edit box. True
     // when it did one of them.
@@ -430,6 +440,7 @@ private:
     Gesture m_gesture = Gesture::None;
     QList<quint32> m_picked; // the selected objects, in the order they were picked
     std::optional<Editing> m_editing;
+    CaptureKeys m_keys;
     std::optional<quint32> m_numberEdit;
     std::unique_ptr<Private> d;
 };

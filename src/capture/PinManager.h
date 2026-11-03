@@ -67,6 +67,9 @@ public:
     void setAllTopmost(bool on);
     // [Capture] PinDoubleClick: for every pin, and those made later.
     void setDoubleClick(PinDoubleClick action);
+    // The keys inside the pins (and in their menus), for every pin, and those made later.
+    void setKeys(const CaptureKeys& keys);
+    const CaptureKeys& keys() const { return m_keys; }
     // True while the Ctrl watcher runs (some pin is click-through), else no timer at all.
     bool watching() const { return m_watch.isActive(); }
 
@@ -81,6 +84,7 @@ private:
     QTimer m_watch; // a click-through pin under the cursor with Ctrl held takes the mouse (#59)
     bool m_hidden = false; // 隐藏全部贴图
     PinDoubleClick m_doubleClick = PinDoubleClick::Reset;
+    CaptureKeys m_keys;
     const PinWindow* m_menuPin = nullptr; // the pin whose menu is up
     std::vector<std::unique_ptr<PinWindow>> m_closing; // windows gone, deleted once their procedure returned
 };

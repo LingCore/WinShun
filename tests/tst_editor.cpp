@@ -15,6 +15,7 @@
 #include "AnnotationStyles.h"
 #include "EditView.h"
 #include "Geometry.h"
+#include "CaptureKeys.h"
 #include "PinWindow.h"
 
 #include <QGuiApplication>
@@ -25,6 +26,7 @@
 #include <QTest>
 
 #include <cmath>
+#include <memory>
 #include <optional>
 
 using namespace ws::capture;
@@ -181,6 +183,42 @@ struct Rig {
 };
 
 } // namespace
+
+// A pin on a hidden window that is sent keys the way Windows does.
+struct PinRig {
+    std::unique_ptr<PinWindow> pin;
+    int copies = 0, saves = 0, closes = 0;
+    PinRig()
+    {
+        PinWindow::Host host;
+        host.closed = [this](PinWindow*) { ++closes; };
+        host.menu = [](PinWindow*, POINT) {};
+        host.copy = [this](PinWindow*) { ++copies; };
+        host.save = [this](PinWindow*) { ++saves; };
+        host.dark = [] { return false; };
+        pin = std::make_unique<PinWindow>(noise(QSize(200, 100), 3), QPoint(300, 300), host);
+        if (pin->hwnd())
+            pin->setShown(false); // sent messages reach it all the same
+    }
+    ~PinRig()
+    {
+        if (pin->hwnd())
+            pin->close();
+    }
+    LRESULT key(WPARAM vk, UINT message = WM_KEYDOWN) { return ::SendMessageW(pin->hwnd(), message, vk, 0); }
+    // The thread's keyboard table is what GetKeyState reads while a message is sent from it.
+    bool setModifiers(bool ctrl, bool shift, bool alt)
+    {
+        BYTE state[256] {};
+        ::GetKeyboardState(state);
+        state[VK_CONTROL] = ctrl ? 0x80 : 0;
+        state[VK_SHIFT] = shift ? 0x80 : 0;
+        state[VK_MENU] = alt ? 0x80 : 0;
+        ::SetKeyboardState(state);
+        return (::GetKeyState(VK_CONTROL) < 0) == ctrl && (::GetKeyState(VK_SHIFT) < 0) == shift
+            && (::GetKeyState(VK_MENU) < 0) == alt;
+    }
+};
 
 class TestEditor : public QObject {
     Q_OBJECT
@@ -735,6 +773,89 @@ private slots:
         pin.setShown(true);
         QVERIFY(::IsWindowVisible(pin.hwnd()));
         pin.close();
+    }
+
+    // ---- the keys inside a pin (#187) ----
+    void pinKeysDefault()
+    {
+        PinRig rig;
+        if (!rig.pin->hwnd())
+            QSKIP("no window station to make a pin on");
+        // R turns it (200x100 becomes 100x200), H and V keep the size, T needs the text reader.
+        QCOMPARE(rig.pin->pictureRect().size(), QSize(200, 100));
+        rig.key('R');
+        QCOMPARE(rig.pin->pictureRect().size(), QSize(100, 200));
+        rig.key('H');
+        rig.key('V');
+        QCOMPARE(rig.pin->pictureRect().size(), QSize(100, 200));
+        // Ctrl+C, Ctrl+S.
+        if (!rig.setModifiers(true, false, false))
+            QSKIP("the keyboard state cannot be set on this thread");
+        rig.key('C');
+        rig.key('S');
+        rig.setModifiers(false, false, false);
+        QCOMPARE(rig.copies, 1);
+        QCOMPARE(rig.saves, 1);
+        // Shift+R turns it back.
+        rig.setModifiers(false, true, false);
+        rig.key('R');
+        rig.setModifiers(false, false, false);
+        QCOMPARE(rig.pin->pictureRect().size(), QSize(200, 100));
+        // Alt chords come as WM_SYSKEYDOWN: none is ours, so Alt+F4 stays Windows'.
+        rig.setModifiers(false, false, true);
+        QCOMPARE(rig.key(VK_F4, WM_SYSKEYDOWN), LRESULT(0)); // DefWindowProc answers 0 here too
+        rig.setModifiers(false, false, false);
+        QCOMPARE(rig.closes, 0);
+        // Esc closes.
+        rig.key(VK_ESCAPE);
+        QCOMPARE(rig.closes, 1);
+    }
+
+    void textBoxHandsOverTheFinishKeys()
+    {
+        AnnotationModel model;
+        // Today's keys until the owner sets others.
+        QVERIFY(model.isFinishKey(Qt::Key_S, Qt::ControlModifier));
+        QVERIFY(model.isFinishKey(Qt::Key_F3, 0));
+        QVERIFY(!model.isFinishKey(Qt::Key_S, 0));
+        CaptureKeys keys;
+        keys.set(KeyAction::Pin, QKeyCombination(Qt::AltModifier, Qt::Key_P));
+        model.setKeys(keys);
+        QVERIFY(model.isFinishKey(Qt::Key_P, Qt::AltModifier));
+        QVERIFY(!model.isFinishKey(Qt::Key_F3, 0));
+    }
+
+    void pinKeysRemapped()
+    {
+        PinRig rig;
+        if (!rig.pin->hwnd())
+            QSKIP("no window station to make a pin on");
+        CaptureKeys keys;
+        keys.set(KeyAction::PinClose, QKeyCombination(Qt::Key_Q));
+        keys.set(KeyAction::PinCopy, QKeyCombination(Qt::ControlModifier | Qt::ShiftModifier, Qt::Key_C));
+        keys.set(KeyAction::PinTextPick, QKeyCombination());
+        keys.set(KeyAction::PinRotateRight, QKeyCombination(Qt::Key_F6));
+        rig.pin->setKeys(keys);
+        // The old keys are free now.
+        rig.key('R');
+        QCOMPARE(rig.pin->pictureRect().size(), QSize(200, 100));
+        rig.key(VK_ESCAPE);
+        QCOMPARE(rig.closes, 0);
+        // The new ones work.
+        rig.key(VK_F6);
+        QCOMPARE(rig.pin->pictureRect().size(), QSize(100, 200));
+        if (rig.setModifiers(true, true, false)) {
+            rig.key('C');
+            QCOMPARE(rig.copies, 1);
+            rig.setModifiers(true, false, false);
+            rig.key('C'); // plain Ctrl+C is not the copy key any more
+            QCOMPARE(rig.copies, 1);
+            rig.setModifiers(false, false, false);
+        }
+        rig.key('T'); // cleared: nothing starts
+        QVERIFY(!rig.pin->textMode());
+        rig.key('Q');
+        QCOMPARE(rig.closes, 1);
     }
 };
 
