@@ -57,6 +57,7 @@ constexpr UINT_PTR kTimerBGone = 8; // a merged B closing: struck from the journ
 // A merge (B hidden, a tab opened and navigated, B closed) gets this long,
 // counted from when B was hidden; then B is shown again as a window.
 constexpr std::int64_t kOpDeadlineMs = 8000;
+constexpr std::int64_t kOpMinMs = 5000; // at least this from its own start (one that waited behind others)
 constexpr std::int64_t kNoRegistrationMs = 3000;
 constexpr std::size_t kMaxQueue = 8; // more windows waiting than this stay windows
 constexpr std::int64_t kBCloseNudgeMs = 1500; // a merged B still there: WM_CLOSE once more
@@ -507,8 +508,12 @@ struct Engine::Impl {
             fronted = frontedByUs;
             frontedAt = frontedTick;
         }
-        if (const HWND now = ::GetForegroundWindow(); now && (recent.empty() || recent.front() != now))
-            recent.insert(recent.begin(), now);
+        if (HWND now = ::GetForegroundWindow()) {
+            if (const HWND root = ::GetAncestor(now, GA_ROOT))
+                now = root;
+            if (recent.empty() || recent.front() != now)
+                recent.insert(recent.begin(), now);
+        }
         Opener o;
         if (name)
             name->clear();
@@ -522,7 +527,7 @@ struct Engine::Impl {
                 if (!knownTops.contains(w) || undecided.contains(w) || early.contains(w))
                     continue;
             }
-            o.windowClass = className(::GetAncestor(w, GA_ROOT));
+            o.windowClass = className(w);
             o.exe = exeOf(w);
             if (w == fronted) {
                 LASTINPUTINFO input {sizeof input};
@@ -541,8 +546,18 @@ struct Engine::Impl {
             }
             break;
         }
-        if (name)
+        if (name) {
             *name = utf8(o.windowClass) + ":" + utf8(o.exe) + (o.broughtByUs ? ":ours" : "") + (o.testWindow ? ":test" : "") + *name;
+            if (!options.trace.empty()) { // (dev) what was in front lately, the newest first
+                *name += "[";
+                for (HWND w : recent) {
+                    char id[32];
+                    std::snprintf(id, sizeof id, "%p", static_cast<void*>(w));
+                    *name += std::string(id) + "=" + utf8(className(w)) + (w == b ? "(B)" : "") + (w == fronted ? "(fronted)" : "") + ",";
+                }
+                *name += "]";
+            }
+        }
         return o;
     }
 
@@ -597,6 +612,10 @@ struct Engine::Impl {
     void watched(DWORD event, HWND w)
     {
         if (event == EVENT_SYSTEM_FOREGROUND) {
+            // (Explorer reports a tab, ShellTabWindowClass, as the one in front: its window counts)
+            if (w)
+                if (const HWND root = ::GetAncestor(w, GA_ROOT))
+                    w = root;
             const std::lock_guard lock(mutex);
             if (w && (foregrounds.empty() || foregrounds.back() != w)) {
                 foregrounds.push_back(w);
@@ -711,6 +730,7 @@ struct Engine::Impl {
         bool fronted = false;
         bool started = false; // its tab was asked for (begin())
         std::int64_t hiddenTick = 0; // when B was hidden: the deadline counts from here
+        std::int64_t startTick = 0; // when its tab was asked for
         int navigations = 0;
         bool navigated = false; // Navigate2 accepted
         bool shown = false; // the tab shows the folder
@@ -1144,9 +1164,12 @@ struct Engine::Impl {
             begin();
     }
 
+    // The time a merge gets: from when B was hidden, but a window that
+    // waited behind others still gets kOpMinMs of its own.
     void armDeadline(const Op& op)
     {
-        const std::int64_t left = std::max<std::int64_t>(1500, op.hiddenTick + kOpDeadlineMs - tickMs());
+        const std::int64_t until = std::max(op.hiddenTick + kOpDeadlineMs, op.startTick + kOpMinMs);
+        const std::int64_t left = std::max<std::int64_t>(1500, until - tickMs());
         ::SetTimer(shellWindow, kTimerDeadline, static_cast<UINT>(left), nullptr);
     }
 
@@ -1385,6 +1408,7 @@ struct Engine::Impl {
         if (closer.pending(op.target))
             return; // after the tab still being closed there (closerTick)
         op.started = true;
+        op.startTick = tickMs();
         op.tabsBefore = tabsOf(op.target);
         op.tPosted = nowMs();
         ::PostMessageW(activeTab(op.target), WM_COMMAND, kNewTab, 0);
