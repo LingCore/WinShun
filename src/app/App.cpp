@@ -4078,7 +4078,9 @@ void App::updateNumberKeyHook()
     const auto modifier = keys == u"alt" ? numberkeys::Modifier::Alt : numberkeys::Modifier::Ctrl;
     const unsigned digits
         = keys == u"ctrl" || keys == u"alt" ? numberkeys::heldMask(modifier) & ~ownNumberDigits(keys) : 0u;
-    if (m_numberKeyHook && m_numberKeyHook->modifier() == modifier && m_numberKeyHook->digits() == digits)
+    // One Windows refused (no hook) is tried again.
+    if (m_numberKeyHook && m_numberKeyHook->isActive() && m_numberKeyHook->modifier() == modifier
+        && m_numberKeyHook->digits() == digits)
         return;
     m_numberKeyHook.reset(); // the keyboard's Raw Input back first: a new one sets it aside again
     if (!digits)
