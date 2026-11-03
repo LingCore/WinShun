@@ -588,6 +588,12 @@ void PluginGallery::finishDownload(const QString& id, const Download& d)
     QFile::remove(d.path);
 }
 
+void PluginGallery::readList()
+{
+    if (!m_preview && !m_cacheRead)
+        readCache();
+}
+
 void PluginGallery::updateAll()
 {
     if (m_preview || m_updatingAll || !m_downloadId.isEmpty() || !m_settings->m_host)

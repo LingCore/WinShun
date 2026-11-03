@@ -157,6 +157,7 @@ public:
     Q_INVOKABLE void install(const QString& id); // 安装, 更新到
     Q_INVOKABLE void installAndEnable(const QString& id); // the library's explicit install-and-enable action
     Q_INVOKABLE void cancel(const QString& id); // the download
+    Q_INVOKABLE void readList(); // the list kept from the last fetch, if not read yet (the 插件 page's notice counts from it)
     Q_INVOKABLE void updateAll(); // 全部更新: the ones that need no new permission, one after the other
     Q_INVOKABLE void applyNow(const QString& id); // 立即更新: a version kept aside for the next start, now
     Q_INVOKABLE void openRepository(); // 看看怎么投稿

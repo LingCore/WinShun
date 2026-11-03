@@ -74,6 +74,34 @@ SettingsSection {
 
     note: qsTr("插件给搜索框加关键字命令，结果混进列表。它们只用你的普通权限；启用前会先列出权限，由你决定是否开启。")
 
+    SettingRow { // what the number beside 插件 in the list on the left counts: newer versions waiting for a yes
+        objectName: "pluginUpdatesRow"
+        title: qsTr("%n 个插件有新版本", "", pluginsSection.plugins.gallery.updateCount)
+        description: pluginsSection.plugins.gallery.updatingAll || pluginsSection.plugins.gallery.updateStatus.length > 0 ? pluginsSection.plugins.gallery.updateStatus
+            : qsTr("需要新权限的更新，会先请你确认。")
+        shown: pluginsSection.plugins.gallery.updateCount > 0 || pluginsSection.plugins.gallery.updatingAll
+        onShownChanged: if (shown) pluginsSection.plugins.gallery.readList()
+        Component.onCompleted: if (shown) pluginsSection.plugins.gallery.readList()
+
+        FlatButton {
+            objectName: "viewPluginUpdates"
+            text: qsTr("查看")
+            onClicked: {
+                pluginsSection.plugins.gallery.filter = ""
+                pluginsSection.plugins.gallery.updatesOnly = true
+                pluginsSection.column.openPage(pluginsSection.page, 1) // 插件库
+            }
+        }
+        FlatButton {
+            objectName: "updateAllFromNotice"
+            visible: pluginsSection.plugins.gallery.updatableCount > 0 || pluginsSection.plugins.gallery.updatingAll
+            highlighted: true
+            text: qsTr("全部更新")
+            enabled: !pluginsSection.plugins.gallery.downloading && !pluginsSection.plugins.gallery.updatingAll
+            onClicked: pluginsSection.plugins.gallery.updateAll()
+        }
+    }
+
     SettingRow {
         objectName: "pluginRecoveryRow"
         title: qsTr("恢复升级前的功能")

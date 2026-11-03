@@ -5545,7 +5545,7 @@ void App::showTrayMenu()
                 shell::MenuItem::separator()});
     }
     if (m_pluginUpdates && m_pluginUpdates->count() > 0) // under the line for Win顺's own update, if there is one
-        items.insert(items.begin(), {{PluginUpdatesCommand, tr("%n 个插件可更新…", "", m_pluginUpdates->count())}, shell::MenuItem::separator()});
+        items.insert(items.begin(), {{PluginUpdatesCommand, tr("%n 个插件有新版本…", "", m_pluginUpdates->count())}, shell::MenuItem::separator()});
     if (m_updater->available() && !m_updater->skipped()) // at the top, where it is seen
         items.insert(items.begin(),
             {{UpdateCommand, tr("Win顺 %1 可以更新了…").arg(m_updater->availableVersion())}, shell::MenuItem::separator()});

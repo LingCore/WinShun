@@ -3970,11 +3970,22 @@ Right: center window · Drag: move window</translation>
         <translation>shortcuts;footer;hints;hide;Tab;minimal</translation>
     </message>
     <message numerus="yes">
-        <source>%n 个插件可更新</source>
+        <source>%n 个插件有新版本</source>
         <translation>
-            <numerusform>%n plugin update available</numerusform>
-            <numerusform>%n plugin updates available</numerusform>
+            <numerusform>%n plugin has a newer version</numerusform>
+            <numerusform>%n plugins have newer versions</numerusform>
         </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n 个插件有新版本，点击查看</source>
+        <translation>
+            <numerusform>%n plugin has a newer version, click to view</numerusform>
+            <numerusform>%n plugins have newer versions, click to view</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>需要新权限的更新，会先请你确认。</source>
+        <translation>Updates that need new permissions ask you first.</translation>
     </message>
     <message>
         <source>自动更新</source>
@@ -7941,10 +7952,10 @@ Right: center window · Drag: move window</translation>
         <translation>WinShun %1 is available…</translation>
     </message>
     <message numerus="yes">
-        <source>%n 个插件可更新…</source>
+        <source>%n 个插件有新版本…</source>
         <translation>
-            <numerusform>%n plugin update available…</numerusform>
-            <numerusform>%n plugin updates available…</numerusform>
+            <numerusform>%n plugin has a newer version…</numerusform>
+            <numerusform>%n plugins have newer versions…</numerusform>
         </translation>
     </message>
     <message>

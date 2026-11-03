@@ -711,6 +711,11 @@ Window {
                 }
             }
 
+            HoverTip { // 插件: what the number is
+                target: navItem.updates > 0 && navArea.containsMouse ? navItem : null
+                text: qsTr("%n 个插件有新版本，点击查看", "", navItem.updates)
+            }
+
             Rectangle { // 插件: the updates waiting; a click leads to them
                 id: badge
                 visible: navItem.updates > 0
@@ -722,7 +727,7 @@ Window {
                 radius: Theme.pillRadius(height)
                 color: Theme.accentFill
                 Accessible.role: Accessible.Button
-                Accessible.name: qsTr("%n 个插件可更新", "", navItem.updates)
+                Accessible.name: qsTr("%n 个插件有新版本", "", navItem.updates)
 
                 Text {
                     id: badgeText
