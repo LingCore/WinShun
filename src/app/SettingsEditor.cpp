@@ -5,6 +5,7 @@
 
 #include "ClipImport.h"
 #include "CliSetup.h"
+#include "ScoopInstall.h"
 #include "CommandLine.h"
 #include "FavoritesSettings.h"
 #include "FileIconProvider.h"
@@ -975,7 +976,7 @@ QString SettingsEditor::opusFolderMenuCommand() const
     // {sourcepath$}: the folder shown, and nothing run for a non-folder
     // (a collection, an FTP site); |noterm: "D:" for a drive, not "D:\",
     // whose \" would read as a quote.
-    const QString stub = QDir::toNativeSeparators(QCoreApplication::applicationDirPath() + u"/WinShunSearch.exe"_s);
+    const QString stub = scoop::stablePath(QCoreApplication::applicationDirPath() + u"/WinShunSearch.exe"_s); // Scoop: via "current"
     return u"\"%1\" --folder-menu \"{sourcepath$|noterm}\""_s.arg(stub);
 }
 
