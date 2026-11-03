@@ -1,11 +1,14 @@
 #include "Sandbox.h"
 
+#include "ServiceLocation.h"
+
 #include <shlobj.h>
 #include <userenv.h>
 
 #include <algorithm>
 #include <cstring>
 #include <cwchar>
+#include <cwctype>
 #include <string_view>
 
 namespace ws::plugin::sandbox {
@@ -371,7 +374,7 @@ std::vector<wchar_t> elevatedEnvironment(const std::vector<std::pair<std::wstrin
         if (eq != std::wstring::npos && !loadsCode(std::wstring_view(e).substr(0, eq)))
             entries.push_back(e);
     }
-    entries.push_back(L"Path=" + systemPath(system));
+    entries.push_back(L"Path=" + protectedPath(systemPath(system)));
     const std::wstring profile = knownFolder(FOLDERID_Profile);
     const auto add = [&](const wchar_t* name, const std::wstring& value) {
         if (!value.empty())
@@ -393,6 +396,38 @@ std::vector<wchar_t> elevatedEnvironment(const std::vector<std::pair<std::wstrin
     add(L"TEMP", knownFolder(FOLDERID_Windows) + L"\\Temp");
     add(L"TMP", knownFolder(FOLDERID_Windows) + L"\\Temp");
     return withExtra(std::move(entries), extra);
+}
+
+std::wstring protectedPath(std::wstring_view path)
+{
+    std::wstring out;
+    std::vector<std::wstring> kept;
+    for (std::size_t i = 0; i <= path.size();) {
+        std::size_t end = path.find(L';', i);
+        if (end == std::wstring_view::npos)
+            end = path.size();
+        std::wstring dir(path.substr(i, end - i));
+        i = end + 1;
+        while (dir.size() > 3 && (dir.back() == L'\\' || dir.back() == L'/'))
+            dir.pop_back();
+        // "C:\..." only: no relative folder, no share, no %var% left unexpanded.
+        const bool local = dir.size() >= 3 && std::iswalpha(dir[0]) && dir[1] == L':' && dir[2] == L'\\'
+            && dir.find(L'%') == std::wstring::npos;
+        if (!local)
+            continue;
+        if (std::any_of(kept.begin(), kept.end(), [&](const std::wstring& k) { return _wcsicmp(k.c_str(), dir.c_str()) == 0; }))
+            continue;
+        const DWORD attributes = ::GetFileAttributesW(dir.c_str());
+        if (attributes == INVALID_FILE_ATTRIBUTES || !(attributes & FILE_ATTRIBUTE_DIRECTORY))
+            continue;
+        if (!svcloc::folderProtected(dir))
+            continue;
+        if (!out.empty())
+            out += L';';
+        out += dir;
+        kept.push_back(std::move(dir));
+    }
+    return out;
 }
 
 std::vector<wchar_t> withExtra(std::vector<std::wstring> entries, const std::vector<std::pair<std::wstring, std::wstring>>& extra)

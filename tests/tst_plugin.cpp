@@ -1121,6 +1121,18 @@ private slots:
         QVERIFY(sandbox::loadsCode(L"DOTNET_STARTUP_HOOKS"));
         QVERIFY(sandbox::loadsCode(L"cor_profiler_path"));
         QVERIFY(!sandbox::loadsCode(L"SystemRoot"));
+
+        // The PATH keeps only folders ordinary users cannot add to: a folder
+        // of the user's own (where a planted git.exe would run as admin),
+        // a missing one, a relative one and an unexpanded one are left out.
+        QTemporaryDir mine;
+        const std::wstring windows = QDir::toNativeSeparators(QDir(qEnvironmentVariable("SystemRoot")).absolutePath()).toStdWString();
+        const std::wstring system32 = windows + L"\\System32";
+        const std::wstring list = system32 + L";" + QDir::toNativeSeparators(mine.path()).toStdWString() + L"\\;"
+            + windows + L"\\no-such-folder;bin;%USERPROFILE%\\x;" + windows + L"\\;" + system32 + L"\\";
+        QCOMPARE(QString::fromStdWString(sandbox::protectedPath(list)), QString::fromStdWString(system32 + L";" + windows));
+        for (const QString& dir : clean.value(u"PATH"_s).split(u';'))
+            QVERIFY2(!dir.startsWith(QDir::toNativeSeparators(QDir::homePath()), Qt::CaseInsensitive), qPrintable(dir));
     }
 
     // The whole path with a host that plays an elevated Win顺 (its token is

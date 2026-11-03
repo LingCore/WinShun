@@ -11,8 +11,11 @@ add_library(wsplugin_lite STATIC
     runner/Json.cpp runner/Json.h
     runner/Lite.h
     runner/Sandbox.cpp runner/Sandbox.h
+    # Plain Win32 (no Qt), shared with the service and wscore: the elevated
+    # environment keeps only the PATH folders ordinary users cannot write to.
+    ${PROJECT_SOURCE_DIR}/src/core/ServiceLocation.cpp ${PROJECT_SOURCE_DIR}/src/core/ServiceLocation.h
 )
-target_include_directories(wsplugin_lite PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+target_include_directories(wsplugin_lite PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/runner PRIVATE ${PROJECT_SOURCE_DIR}/src/core)
 target_link_libraries(wsplugin_lite PUBLIC winshun_options advapi32 userenv user32 shell32 ole32)
 set_target_properties(wsplugin_lite PROPERTIES AUTOMOC OFF MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
