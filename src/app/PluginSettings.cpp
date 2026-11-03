@@ -132,6 +132,8 @@ QVariant PluginListModel::data(const QModelIndex& index, int role) const
     case AiExposeRole: return c.aiExpose;
     case AiEnabledRole: return c.aiEnabled;
     case AiNoteRole: return c.aiNote;
+    case ElevationRole: return c.elevation;
+    case ElevationNoteRole: return c.elevationNote;
     }
     return {};
 }
@@ -142,7 +144,8 @@ QHash<int, QByteArray> PluginListModel::roleNames() const
         {DescriptionRole, "description"}, {BundledRole, "bundled"}, {IconRole, "icon"}, {EnabledRole, "pluginEnabled"}, {UsableRole, "usable"},
         {StatusRole, "status"}, {ToneRole, "tone"}, {ErrorRole, "error"}, {ResidentRole, "resident"}, {KeywordsRole, "keywords"},
         {PermissionsRole, "permissions"}, {SettingsRole, "settings"}, {HasReadmeRole, "hasReadme"}, {SettingsWindowRole, "settingsWindow"}, {HasDataRole, "hasData"},
-        {AiExposeRole, "aiExpose"}, {AiEnabledRole, "aiEnabled"}, {AiNoteRole, "aiNote"}, {WebSearchRole, "webSearch"}};
+        {AiExposeRole, "aiExpose"}, {AiEnabledRole, "aiEnabled"}, {AiNoteRole, "aiNote"}, {WebSearchRole, "webSearch"},
+        {ElevationRole, "elevation"}, {ElevationNoteRole, "elevationNote"}};
 }
 
 bool PluginListModel::setCards(std::vector<Card> cards)
@@ -472,9 +475,16 @@ QVariantList PluginSettings::permissionRows(const plugin::Manifest& m) const
         row(QString(), tr("不运行自己的程序：Win顺 按它的清单打开网址、程序或文件夹，用你的普通权限，不是管理员"), true);
     else if (strict)
         row(QString(), tr("在严格沙箱里运行：低完整性，不是管理员，写不了你的文件（只能写它自己的数据文件夹）；内存上限 %1 MB").arg(m.runtime->memoryMB), true);
+    else if (m.permissions.has(plugin::Permission::Elevated))
+        row(QString(), tr("以普通用户权限运行；Win顺 以管理员身份运行时例外（见下）；内存上限 %1 MB").arg(m.runtime->memoryMB), true);
     else
         row(QString(), tr("以普通用户权限运行，不是管理员；内存上限 %1 MB").arg(m.runtime->memoryMB), true);
     using P = plugin::Permission;
+    // First: what matters most. Only from the copy the user confirmed while
+    // Win顺 was elevated (plugin::elevation), never with a UAC prompt.
+    if (m.permissions.has(P::Elevated))
+        row(u"elevated"_s, permissionText(P::Elevated), true,
+            tr("Win顺 以管理员身份运行时，这个插件也以管理员身份运行，能操作以管理员身份打开的窗口"));
     if (m.permissions.has(P::Processes))
         row(u"processes"_s, permissionText(P::Processes), true);
     if (m.permissions.has(P::ClipboardRead))
@@ -526,6 +536,7 @@ QString PluginSettings::permissionText(plugin::Permission p)
     case P::NetworkListen: return tr("在局域网上开端口，让别的设备连进来");
     case P::Notifications: return tr("弹出系统通知");
     case P::SystemSettings: return tr("更改 Windows 系统设置（主题、无线电、音量、资源管理器、保持唤醒）");
+    case P::Elevated: return tr("跟随 Win顺 的管理员权限");
     }
     return plugin::permissionName(p);
 }
@@ -693,6 +704,33 @@ PluginListModel::Card PluginSettings::cardFor(const QString& id) const
     }
     c.permissions = permissionRows(id);
 
+    // `elevated`, while Win顺 runs as administrator and the plugin is on:
+    // whether it runs so, or why not and what one click does about it.
+    if (m.permissions.has(plugin::Permission::Elevated) && c.enabled && c.usable && m_host->hostElevated()) {
+        using V = plugin::elevation::Verdict;
+        const plugin::Host::ElevationState elevation = m_host->elevationState(id);
+        c.elevation = plugin::elevation::verdictName(elevation.verdict);
+        switch (elevation.verdict) {
+        case V::Elevated:
+            c.elevationNote = tr("以管理员身份运行");
+            break;
+        case V::Unconfirmed:
+            c.elevationNote = tr("要以管理员身份运行，需要你确认一次。确认前用普通权限运行");
+            break;
+        case V::Changed:
+            c.elevationNote = !elevation.version.isEmpty() && elevation.version != m.version
+                ? tr("更新到了 %1，确认后才以管理员身份运行。现在用普通权限运行").arg(m.version)
+                : tr("插件的文件和你确认时不一样了，现在用普通权限运行。确定是你自己改的，再点确认");
+            break;
+        case V::Unavailable:
+            c.elevationNote = tr("不能以管理员身份运行：%1").arg(elevation.detail);
+            break;
+        case V::NotAsked:
+        case V::HostNotElevated:
+            break;
+        }
+    }
+
     // The declared settings and their values (a password's: whether one is kept).
     const QJsonObject values = m_host->pluginSettings(id);
     for (const plugin::Setting& s : m.settings) {
@@ -846,10 +884,32 @@ void PluginSettings::confirmEnable(const QString& id)
     const plugin::Entry* e = m_host->catalog().find(id);
     if (!e || !e->manifest)
         return;
+    // Said yes to in an elevated Win顺, `elevated` among what was asked:
+    // the files as they are now are the ones to run as administrator.
+    if (e->manifest->permissions.has(plugin::Permission::Elevated) && m_host->hostElevated()) {
+        QString error;
+        if (!m_host->confirmElevation(id, &error))
+            setMessage(tr("没能确认以管理员身份运行：%1").arg(error));
+        e = m_host->catalog().find(id);
+        if (!e || !e->manifest)
+            return;
+    }
     PluginConfig& config = m_editor->m_settings.pluginConfig(id);
     config.enabled = true;
     config.confirmed = plugin::updates::confirmedFor(*e->manifest);
     m_editor->commit();
+}
+
+void PluginSettings::confirmElevation(const QString& id)
+{
+    if (!m_host)
+        return;
+    QString error;
+    if (m_host->confirmElevation(id, &error))
+        setMessage(tr("已确认，%1 以后以管理员身份运行").arg(pluginName(id)));
+    else
+        setMessage(tr("没能确认以管理员身份运行：%1").arg(error));
+    rebuild();
 }
 
 void PluginSettings::setAiEnabled(const QString& id, bool on)
@@ -1144,6 +1204,7 @@ void PluginSettings::confirmUninstall(const QString& id, bool withData)
     const plugin::Entry* e = m_host->catalog().find(id);
     if (!e || e->source == plugin::Entry::Source::Bundled)
         return;
+    const QString pluginDir = e->dir;
     const QString name = pluginName(id);
     if (m_updates && !m_updates->claim(id)) {
         setMessage(tr("正在后台更新这个插件，稍后再试"));
@@ -1164,6 +1225,8 @@ void PluginSettings::confirmUninstall(const QString& id, bool withData)
     const QString error = plugin::install::remove(m_userDir, m_dataRoot, id, withData);
     if (m_updates && error.isEmpty())
         m_updates->forget(id);
+    if (error.isEmpty()) // its confirmed copy goes too (when Win顺 may: elevated)
+        plugin::elevation::forget(m_host->elevationStore(), id, pluginDir);
     // Its section and its passwords go with it, whatever became of the folder.
     plugin::secrets::removeAll(id);
     Settings& settings = m_editor->m_settings;

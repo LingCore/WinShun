@@ -3047,6 +3047,10 @@
         <source>卸载</source>
         <translation>Uninstall</translation>
     </message>
+    <message>
+        <source>确认</source>
+        <translation>Confirm</translation>
+    </message>
 </context>
 <context>
     <name>PluginDevSection</name>
@@ -11391,6 +11395,46 @@ Content index: %5</translation>
     <message>
         <source>以普通用户权限更改；Win顺 不能阻止它直接改系统设置</source>
         <translation>Uses normal user rights; WinShun cannot stop it changing system settings directly</translation>
+    </message>
+    <message>
+        <source>以普通用户权限运行；Win顺 以管理员身份运行时例外（见下）；内存上限 %1 MB</source>
+        <translation>Runs with your normal rights, except while Win顺 runs as administrator (see below); memory limit %1 MB</translation>
+    </message>
+    <message>
+        <source>Win顺 以管理员身份运行时，这个插件也以管理员身份运行，能操作以管理员身份打开的窗口</source>
+        <translation>While Win顺 runs as administrator, this plugin does too and can work with windows opened as administrator</translation>
+    </message>
+    <message>
+        <source>跟随 Win顺 的管理员权限</source>
+        <translation>Follow Win顺's administrator rights</translation>
+    </message>
+    <message>
+        <source>以管理员身份运行</source>
+        <translation>Runs as administrator</translation>
+    </message>
+    <message>
+        <source>要以管理员身份运行，需要你确认一次。确认前用普通权限运行</source>
+        <translation>Confirm once to let it run as administrator. Until then it runs with normal rights</translation>
+    </message>
+    <message>
+        <source>更新到了 %1，确认后才以管理员身份运行。现在用普通权限运行</source>
+        <translation>Updated to %1: confirm to run it as administrator. For now it runs with normal rights</translation>
+    </message>
+    <message>
+        <source>插件的文件和你确认时不一样了，现在用普通权限运行。确定是你自己改的，再点确认</source>
+        <translation>The plugin's files changed since you confirmed them, so it runs with normal rights. Confirm only if you changed them yourself</translation>
+    </message>
+    <message>
+        <source>不能以管理员身份运行：%1</source>
+        <translation>Cannot run as administrator: %1</translation>
+    </message>
+    <message>
+        <source>没能确认以管理员身份运行：%1</source>
+        <translation>Could not confirm running as administrator: %1</translation>
+    </message>
+    <message>
+        <source>已确认，%1 以后以管理员身份运行</source>
+        <translation>Confirmed: %1 runs as administrator from now on</translation>
     </message>
 </context>
 <context>

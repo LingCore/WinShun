@@ -65,6 +65,12 @@ public:
         bool aiExpose = false; // the manifest offers its commands to the AI (ai.expose): the card shows the switch
         bool aiEnabled = true; // the switch: [Plugin.<id>] Ai=
         QString aiNote; // under the switch: the tool names, or why they are not on offer yet
+        // The `elevated` permission while Win顺 runs as administrator
+        // (plugin::elevation::verdictName): "elevated" (a shield by the name,
+        // the note its tooltip), "unconfirmed" or "changed" (the note and
+        // 确认), "unavailable" (the note); empty otherwise.
+        QString elevation;
+        QString elevationNote;
         friend bool operator==(const Card&, const Card&) = default;
     };
     enum Role {
@@ -92,6 +98,8 @@ public:
         AiEnabledRole,
         AiNoteRole,
         WebSearchRole,
+        ElevationRole,
+        ElevationNoteRole,
     };
 
     using QAbstractListModel::QAbstractListModel;
@@ -222,6 +230,9 @@ public:
     Q_INVOKABLE void confirmEnable(const QString& id); // the dialog's yes
     Q_INVOKABLE void declineEnable(const QString& id); // its no: one waiting for the OK goes off
     Q_INVOKABLE void setAiEnabled(const QString& id, bool on); // the card's "给 AI 用" switch
+    // The card's 确认 (an elevated Win顺, a plugin with `elevated`): its files
+    // as they are now are the ones to run as administrator (Host::confirmElevation).
+    Q_INVOKABLE void confirmElevation(const QString& id);
     Q_INVOKABLE void setKeyword(const QString& id, const QString& command, const QString& keyword); // the user's; empty: none
     Q_INVOKABLE void resetKeyword(const QString& id, const QString& command); // back to the manifest's
     Q_INVOKABLE void setSettingValue(const QString& id, const QString& key, const QVariant& value);
