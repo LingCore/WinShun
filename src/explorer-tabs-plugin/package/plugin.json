@@ -7,9 +7,9 @@
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",
   "license": "MIT",
-  "minWinShun": "0.18.0",
+  "minWinShun": "0.19.0",
   "runtime": {"mode": "resident", "program": "WinShunExplorerTabs.exe", "start": "eager", "sandbox": "normal", "timeoutMs": 1500, "idleExitSec": 0, "memoryMB": 64},
-  "permissions": ["ui"],
+  "permissions": ["elevated", "ui"],
   "commands": [{
     "id": "tabs",
     "keyword": ["标签页", "tabs"],

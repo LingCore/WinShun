@@ -102,6 +102,15 @@ file(READ "${ocr_plugin_source}" ocr_plugin_manifest)
 string(JSON ocr_plugin_manifest SET "${ocr_plugin_manifest}" minWinShun "\"${PROJECT_VERSION}\"")
 set(OCR_PLUGIN_MANIFEST "${CMAKE_BINARY_DIR}/generated/ocr-search-plugin.json")
 file(GENERATE OUTPUT "${OCR_PLUGIN_MANIFEST}" CONTENT "${ocr_plugin_manifest}\n")
+# The permission `elevated` is not in 0.18.0 (a host that does not know it
+# turns the whole plugin down): Explorer tabs, too, needs at least the version
+# it is built with; the release bumps that version before building it.
+set(tabs_plugin_source "${PROJECT_SOURCE_DIR}/src/explorer-tabs-plugin/package/plugin.json")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${tabs_plugin_source}")
+file(READ "${tabs_plugin_source}" tabs_plugin_manifest)
+string(JSON tabs_plugin_manifest SET "${tabs_plugin_manifest}" minWinShun "\"${PROJECT_VERSION}\"")
+set(TABS_PLUGIN_MANIFEST "${CMAKE_BINARY_DIR}/generated/explorer-tabs-plugin.json")
+file(GENERATE OUTPUT "${TABS_PLUGIN_MANIFEST}" CONTENT "${tabs_plugin_manifest}\n")
 add_custom_target(library_plugins ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/web-plugin/package" "${library_plugins_dir}/winshun.web"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_BINARY_DIR}/generated/web-plugin.json" "${library_plugins_dir}/winshun.web/plugin.json"
@@ -117,6 +126,7 @@ add_custom_target(library_plugins ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/break-plugin/package" "${library_plugins_dir}/winshun.break"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunBreak>" "${library_plugins_dir}/winshun.break/WinShunBreak.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/explorer-tabs-plugin/package" "${library_plugins_dir}/winshun.explorer-tabs"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${TABS_PLUGIN_MANIFEST}" "${library_plugins_dir}/winshun.explorer-tabs/plugin.json"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunExplorerTabs>" "${library_plugins_dir}/winshun.explorer-tabs/WinShunExplorerTabs.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/bookmarks-plugin/package" "${library_plugins_dir}/winshun.bookmarks"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunBookmarks>" "${library_plugins_dir}/winshun.bookmarks/WinShunBookmarks.exe"
