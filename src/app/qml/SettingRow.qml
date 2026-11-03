@@ -298,8 +298,10 @@ Item {
 
             Row {
                 id: trailingRow
-                anchors.left: row.stackControl ? parent.left : undefined
-                anchors.right: row.stackControl ? undefined : parent.right
+                // Placed by x, not by switching anchors: for a moment both
+                // anchors would hold, which sets the Row's width for good
+                // (then wider than its controls, squeezing the texts).
+                x: row.stackControl ? 0 : parent.width - width
                 y: row.stackControl ? texts.implicitHeight + 12 : Theme.snap((parent.height - height) / 2, row.dpr)
                 spacing: 8
             }

@@ -264,12 +264,12 @@
         <translation>1 E 3 L P M T N B or 1–9</translation>
     </message>
     <message>
-        <source>每次移动选区 1 个物理像素；未框选时微调光标</source>
-        <translation>Move the area by 1 physical pixel; without a selection, fine-tune the pointer</translation>
+        <source>微调鼠标光标，每次 1 个物理像素；按住左键拖选区、拖手柄或画标注时也有效</source>
+        <translation>Fine-tune the mouse pointer by 1 physical pixel; it also works while the left button is held to drag out an area, drag a handle or draw an annotation</translation>
     </message>
     <message>
-        <source>调整选区宽高，每次 1 个物理像素</source>
-        <translation>Resize the area by 1 physical pixel</translation>
+        <source>微调鼠标光标，每次 10 个物理像素</source>
+        <translation>Fine-tune the mouse pointer by 10 physical pixels</translation>
     </message>
     <message>
         <source>恢复最近选区：向前 / 向后循环，最多 10 个；使用当前画面</source>
@@ -392,8 +392,8 @@
         <translation>Arrow keys</translation>
     </message>
     <message>
-        <source>挪动选中的对象，按住 Shift 一次 10 像素；没有选中时微调选区</source>
-        <translation>Move the selected object, 10 pixels at a time with Shift; with none selected they nudge the selection</translation>
+        <source>挪动选中的对象；否则移动选区 1 个物理像素，Shift 调整选区大小；未框选时微调光标</source>
+        <translation>Move the selected object; otherwise move the area by 1 physical pixel, with Shift resize it; with no area, nudge the pointer</translation>
     </message>
     <message>
         <source>粗细、字号、格子小一档 / 大一档</source>
@@ -434,6 +434,10 @@
     <message>
         <source>隐藏 / 显示工具条</source>
         <translation>Hide / show the toolbar</translation>
+    </message>
+    <message>
+        <source>显示 / 隐藏屏幕角落的快捷键提示（只管这次截图）</source>
+        <translation>Show / hide the shortcut hints in the screen corner (this capture only)</translation>
     </message>
     <message>
         <source>翻看之前截图时的画面（整屏、选区和标注），. 往回翻</source>
@@ -650,6 +654,10 @@
         <translation>All keys</translation>
     </message>
     <message>
+        <source>帮助</source>
+        <translation>Help</translation>
+    </message>
+    <message>
         <source>快捷键</source>
         <translation>Shortcut</translation>
     </message>
@@ -748,10 +756,6 @@
     <message>
         <source>清除</source>
         <translation>Clear</translation>
-    </message>
-    <message>
-        <source>截图设置分类</source>
-        <translation>Screenshot settings categories</translation>
     </message>
     <message>
         <source>按它开始截图，截图时再按一次取消</source>
@@ -987,8 +991,8 @@
         <translation>Toolbar buttons</translation>
     </message>
     <message>
-        <source>亮起的按钮会显示，点一下切换。隐藏后快捷键仍可使用；标注工具始终显示。识别文字没有快捷键，隐藏后可在“鼠标”分类设置动作。</source>
-        <translation>Highlighted buttons are visible; click to toggle. Shortcuts still work when buttons are hidden. Annotation tools always stay visible. Text recognition has no shortcut; assign a mouse action if you hide its button.</translation>
+        <source>勾选的按钮会显示，点一下切换。隐藏后快捷键仍可使用；标注工具始终显示。识别文字没有快捷键，隐藏后可在“鼠标”分类设置动作。</source>
+        <translation>Checked buttons are visible; click to toggle. Shortcuts still work when buttons are hidden. Annotation tools always stay visible. Text recognition has no shortcut; assign a mouse action if you hide its button.</translation>
     </message>
     <message>
         <source>全屏时不响应截图快捷键</source>
@@ -999,27 +1003,166 @@
         <translation>While another app is full screen, the screenshot hotkey and PrtScn do not start a capture. You can still start one from the menu.</translation>
     </message>
     <message>
+        <source>截图时显示快捷键提示</source>
+        <translation>Show shortcut hints while capturing</translation>
+    </message>
+    <message>
+        <source>停下来时在屏幕左下角列出此刻能用的按键，一按鼠标就消失，挡路时自动让开。关闭后截图时按 ? 仍可临时显示</source>
+        <translation>When you pause, lists the keys that work right now in the bottom-left corner; goes the moment you press a mouse button and moves out of the way. When off, press ? while capturing to show it for a moment</translation>
+    </message>
+    <message>
         <source>优先贴剪贴板里的图片；没有新图片时，把最近截图贴回原位置并保留标注。不设时仍可从托盘菜单操作</source>
         <translation>Pin a clipboard image first; otherwise restore the last screenshot at its original position with annotations. Also available from the tray menu.</translation>
+    </message>
+    <message>
+        <source>开始截图</source>
+        <translation>Start a screenshot</translation>
+    </message>
+    <message>
+        <source>框选</source>
+        <translation>Selecting</translation>
+    </message>
+    <message>
+        <source>复制与保存</source>
+        <translation>Copy and save</translation>
+    </message>
+    <message>
+        <source>延时与回看</source>
+        <translation>Delay and history</translation>
+    </message>
+    <message>
+        <source>贴图操作</source>
+        <translation>Pin actions</translation>
+    </message>
+    <message>
+        <source>编辑</source>
+        <translation>Editing</translation>
+    </message>
+    <message>
+        <source>截图方式</source>
+        <translation>Capture modes</translation>
+    </message>
+    <message>
+        <source>识别</source>
+        <translation>Recognition</translation>
+    </message>
+    <message>
+        <source>结束截图</source>
+        <translation>Finish</translation>
+    </message>
+</context>
+<context>
+    <name>CaptureKeyHints</name>
+    <message>
+        <source>滚轮</source>
+        <translation>Wheel</translation>
+    </message>
+    <message>
+        <source>扩大 / 缩小框选范围</source>
+        <translation>Pick a larger / smaller area</translation>
+    </message>
+    <message>
+        <source>微调光标 1 像素，加 Shift 10 像素</source>
+        <translation>Nudge the pointer 1 px, with Shift 10 px</translation>
+    </message>
+    <message>
+        <source>恢复最近选区</source>
+        <translation>Bring back a recent area</translation>
+    </message>
+    <message>
+        <source>翻看之前的截图</source>
+        <translation>Step through past captures</translation>
+    </message>
+    <message>
+        <source>识别文字并复制</source>
+        <translation>Recognize the text and copy it</translation>
+    </message>
+    <message>
+        <source>退出截图</source>
+        <translation>Leave the capture</translation>
+    </message>
+    <message>
+        <source>复制</source>
+        <translation>Copy</translation>
+    </message>
+    <message>
+        <source>另存为</source>
+        <translation>Save as</translation>
+    </message>
+    <message>
+        <source>贴到屏幕上</source>
+        <translation>Pin to the screen</translation>
+    </message>
+    <message>
+        <source>移动选区，加 Shift 改大小</source>
+        <translation>Move the area, with Shift resize it</translation>
+    </message>
+    <message>
+        <source>长截图 / 录屏</source>
+        <translation>Long screenshot / record</translation>
+    </message>
+    <message>
+        <source>最近选区 %1/%2</source>
+        <translation>Recent area %1/%2</translation>
+    </message>
+    <message>
+        <source>按住画正方形、正圆</source>
+        <translation>Hold for squares and circles</translation>
+    </message>
+    <message>
+        <source>按住让线吸附 15°</source>
+        <translation>Hold to snap lines to 15°</translation>
+    </message>
+    <message>
+        <source>按住画直线</source>
+        <translation>Hold for straight strokes</translation>
+    </message>
+    <message>
+        <source>细一档 / 粗一档</source>
+        <translation>Thinner / thicker</translation>
+    </message>
+    <message>
+        <source>字号小一档 / 大一档</source>
+        <translation>Smaller / larger text</translation>
+    </message>
+    <message>
+        <source>格子小一档 / 大一档</source>
+        <translation>Smaller / larger cells</translation>
+    </message>
+    <message>
+        <source>撤销 / 重做</source>
+        <translation>Undo / redo</translation>
+    </message>
+    <message>
+        <source>删除选中的对象</source>
+        <translation>Delete the selected object</translation>
+    </message>
+    <message>
+        <source>关掉“%1”</source>
+        <translation>Turn off “%1”</translation>
+    </message>
+    <message>
+        <source>隐藏工具条</source>
+        <translation>Hide the toolbar</translation>
+    </message>
+    <message>
+        <source>隐藏提示</source>
+        <translation>Hide hints</translation>
+    </message>
+    <message>
+        <source>不再显示</source>
+        <translation>Don't show again</translation>
+    </message>
+    <message>
+        <source>一直显示</source>
+        <translation>Always show</translation>
     </message>
 </context>
 <context>
     <name>CaptureOverlay</name>
     <message>
-        <source>R 最近选区</source>
-        <translation>R recent areas</translation>
-    </message>
-    <message>
-        <source>R 最近选区 %1/%2</source>
-        <translation>R recent area %1/%2</translation>
-    </message>
-    <message>
-        <source>WASD 移动 1 px · Shift+WASD 调整大小 · %1</source>
-        <translation>WASD move 1 px · Shift+WASD resize · %1</translation>
-    </message>
-    <message>
-        <source>WASD 微调光标 · %1</source>
-        <translation>WASD fine-tune pointer · %1</translation>
+        <source>最近选区 %1/%2 · R / Shift+R</source>
+        <translation>Recent area %1/%2 · R / Shift+R</translation>
     </message>
     <message>
         <source>C 复制 · Shift 换格式</source>
@@ -1062,6 +1205,10 @@
     <message>
         <source>截图</source>
         <translation>Screenshot</translation>
+    </message>
+    <message>
+        <source>截图设置分类</source>
+        <translation>Screenshot settings categories</translation>
     </message>
 </context>
 <context>
@@ -1757,6 +1904,10 @@ The unfinished recording is kept at: %1</translation>
     <message>
         <source>选区太小，不能录屏</source>
         <translation>The selection is too small for recording</translation>
+    </message>
+    <message>
+        <source>已关闭快捷键提示 · 按 ? 临时显示，截图设置里可重新打开</source>
+        <translation>Shortcut hints off · Press ? to show them for a moment, or turn them back on in the screenshot settings</translation>
     </message>
 </context>
 <context>

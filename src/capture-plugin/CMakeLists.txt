@@ -16,14 +16,14 @@ set(app_dir ${PROJECT_SOURCE_DIR}/src/app)
 set(shared_qml
     Theme.qml UiScale.qml WindowEdge.qml HoverTip.qml DropMenu.qml Glyph.qml TitleBar.qml ToggleSwitch.qml FlatButton.qml
     InputBox.qml CenteredNumber.qml KeyCap.qml HotkeyRecorder.qml ListScrollBar.qml ListWheelScroll.qml
-    ScrollPixelAlignment.qml)
+    ScrollPixelAlignment.qml SettingsSection.qml SettingRow.qml PageTabs.qml ScopeTabs.qml)
 set(capture_qml)
 foreach(name IN LISTS shared_qml)
     list(APPEND capture_qml "${app_dir}/qml/${name}")
 endforeach()
 foreach(name IN ITEMS CaptureOverlay AnnotateToolbar AnnotateStylePanel AnnotateSmartHint AnnotateLayer AnnotateObjects
                       EditWindow OcrPanel LongCapturePanel RecordingPanel RecordingButton RecordingOptions CaptureOptions CaptureSettingsWindow CaptureSaveButton
-                      CaptureKeyHints PresenterOverlay PresenterToolbar)
+                      SettingsSearch CaptureKeyHints PresenterOverlay PresenterToolbar)
     list(APPEND capture_qml "${CMAKE_CURRENT_SOURCE_DIR}/qml/${name}.qml")
 endforeach()
 set_source_files_properties("${app_dir}/qml/Theme.qml" PROPERTIES QT_QML_SINGLETON_TYPE TRUE)

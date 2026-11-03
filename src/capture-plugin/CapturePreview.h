@@ -16,8 +16,10 @@
 //     actual presentation intervals, process CPU and memory. --busy seeds
 //     50 rectangles and five cached mosaic redactions before the stroke.
 //     --selection-keys: native Grabber -> overlay mouse/keyboard events -> Capture export;
-//     WASD, ten completed regions, R/Shift+R, current pixels and an isolated copy callback.
+//     WASD pointer moves, arrow-key nudges, ten completed regions, R/Shift+R, current pixels and an isolated copy callback.
 //     --save-options: real native Save As, cancellation, overwrite, split menu and old-folder save.
+//     --key-hints: the shortcut hints in the real overlay over a made-up desktop (keyhints-*.png):
+//     the rows per state, see-through near the pointer, 不再显示 / 一直显示 / ?, moving and hiding.
 //   --preview-capture-settings <folder> [--english] [--dark] [--scale 1.5]
 //     Real settings QML at minimum width; checks the full-screen toggle,
 //     binding and persistence in a temporary profile. Registers no hotkeys.
