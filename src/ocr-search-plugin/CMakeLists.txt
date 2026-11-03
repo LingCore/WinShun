@@ -5,7 +5,7 @@ qt_add_library(wsocrsearch STATIC OcrStore.cpp OcrStore.h OcrSource.cpp OcrSourc
 target_include_directories(wsocrsearch PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${app_dir})
 target_link_libraries(wsocrsearch PUBLIC wscore Qt6::Gui Qt6::Sql PRIVATE wsextract pdfium onnxruntime_headers windowscodecs)
 
-add_executable(WinShunOcrSearch WIN32 stub/main.cpp)
+add_executable(WinShunOcrSearch WIN32 stub/main.cpp ${PROJECT_SOURCE_DIR}/resources/WinShunOcrSearch.rc)
 target_link_libraries(WinShunOcrSearch PRIVATE winshun_options)
 target_link_options(WinShunOcrSearch PRIVATE /ENTRY:wmainCRTStartup)
 set_target_properties(WinShunOcrSearch PROPERTIES AUTOMOC OFF MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")

@@ -1,0 +1,36 @@
+#pragma code_page(65001)
+#include <winver.h>
+
+// WinShunCapture.exe (src/capture-plugin): the winshun.capture plugin that
+// is in the plugin library -- the screenshot and screen recording (截图与录屏).
+// Qt gives the windows of WinShunCaptureApp.dll the exe's IDI_ICON1: the
+// taskbar shows Win顺's icon, not the generic one.
+IDI_ICON1 ICON "app.ico"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION WINSHUN_VERSION_MAJOR,WINSHUN_VERSION_MINOR,WINSHUN_VERSION_PATCH,0
+ PRODUCTVERSION WINSHUN_VERSION_MAJOR,WINSHUN_VERSION_MINOR,WINSHUN_VERSION_PATCH,0
+ FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+ FILEFLAGS 0x0L
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+ FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "080404b0"
+        BEGIN
+            VALUE "CompanyName", "WinShun"
+            VALUE "FileDescription", "Win顺 截图与录屏"
+            VALUE "FileVersion", WINSHUN_VERSION
+            VALUE "InternalName", "WinShunCapture"
+            VALUE "OriginalFilename", "WinShunCapture.exe"
+            VALUE "ProductName", "Win顺 · WinShun"
+            VALUE "ProductVersion", WINSHUN_VERSION
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x804, 1200
+    END
+END

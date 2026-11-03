@@ -5,7 +5,7 @@
 # the plugin itself, built on that Qt. The build stages both, with the
 # package's files, into library-plugins/winshun.capture (top CMakeLists.txt).
 
-add_executable(WinShunCapture stub/main.cpp)
+add_executable(WinShunCapture stub/main.cpp ${PROJECT_SOURCE_DIR}/resources/WinShunCapture.rc)
 target_link_libraries(WinShunCapture PRIVATE winshun_options)
 set_target_properties(WinShunCapture PROPERTIES AUTOMOC OFF MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
