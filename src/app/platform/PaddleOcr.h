@@ -43,6 +43,11 @@ struct OcrOptions {
     // still moving, for a watchdog that gives up on reads that stopped. It
     // may throw to abandon the read; the read then fails with its message.
     std::function<void()> progress;
+    // Lines that read poorly are read once more turned half round, and that
+    // reading is kept when it says clearly more: pages scanned or photographed
+    // upside down, and those turned a quarter the other way than lines that
+    // stand up are turned to be read. Costs a second reading of poor pages.
+    bool retryUpsideDown = false;
 };
 
 class PaddleOcr {

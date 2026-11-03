@@ -214,6 +214,7 @@ int workerMain(const QString& appDir)
                 // deadline only ends a read that really stopped moving.
                 OcrOptions options;
                 options.progress = beat;
+                options.retryUpsideDown = true; // scans and photos come any way round
                 const auto result = extractImages(
                     request.value(u"path"_s).toString(),
                     [&](const QImage& image, const QString& label, const QJsonObject& source) {

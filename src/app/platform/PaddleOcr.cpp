@@ -44,6 +44,12 @@ constexpr int kLineHeight = 48; // what the reading model takes
 constexpr double kMinRatio = 320.0 / 48.0;
 constexpr int kBatch = 6;
 constexpr float kTextThreshold = 0.5f; // a line read with less confidence is dropped
+// A reading that may be upside down (OcrOptions::retryUpsideDown): fewer than
+// this share of its lines kept, or their mean score below this. Measured on
+// stored readings: upright pages 0.89 and up, pages turned half round 0.57.
+constexpr double kPoorlyKept = 0.6;
+constexpr double kPoorScore = 0.75;
+constexpr double kClearlyMore = 1.3; // what the turned reading must say, times the first
 
 using Quad = std::array<QPointF, 4>; // top left, top right, bottom right, bottom left
 
@@ -432,6 +438,31 @@ QStringList linesOf(std::vector<Piece> pieces)
     return out;
 }
 
+using Reading = std::vector<std::pair<QString, float>>;
+
+// Most lines dropped, or those read unsurely: perhaps upside down.
+bool readsPoorly(const Reading& read)
+{
+    int kept = 0;
+    double sum = 0;
+    for (const auto& [text, score] : read) {
+        kept += score >= kTextThreshold && !text.trimmed().isEmpty() ? 1 : 0;
+        sum += score;
+    }
+    return kept < kPoorlyKept * static_cast<double>(read.size())
+        || sum < kPoorScore * static_cast<double>(read.size());
+}
+
+// What a reading says: the characters of the lines kept, by how sure each is.
+double saidBy(const Reading& read)
+{
+    double said = 0;
+    for (const auto& [text, score] : read)
+        if (score >= kTextThreshold)
+            said += static_cast<double>(text.trimmed().size()) * score;
+    return said;
+}
+
 } // namespace
 
 struct PaddleOcr::Impl {
@@ -711,9 +742,25 @@ bool PaddleOcr::find(
             cuts.push_back(std::move(line));
             quads.push_back(quad);
         }
-        std::vector<std::pair<QString, float>> read;
+        Reading read;
         std::vector<QList<QPair<int, float>>> places;
         d->recognize(cuts, &read, chars ? &places : nullptr, options.progress);
+        if (options.retryUpsideDown && cuts.size() >= 2 && readsPoorly(read)) {
+            std::vector<QImage> turned;
+            turned.reserve(cuts.size());
+            for (const QImage& line : cuts)
+                turned.push_back(line.flipped(Qt::Horizontal | Qt::Vertical));
+            Reading other;
+            std::vector<QList<QPair<int, float>>> otherPlaces;
+            d->recognize(turned, &other, chars ? &otherPlaces : nullptr, options.progress);
+            if (saidBy(other) > kClearlyMore * saidBy(read)) {
+                read = std::move(other);
+                places = std::move(otherPlaces);
+                for (auto& line : places) // along the line the other way round
+                    for (auto& place : line)
+                        place.second = 1.f - place.second;
+            }
+        }
         // Back to the picture that came in, if it was made smaller.
         const double back = static_cast<double>(image.width()) / picture.width();
         for (std::size_t i = 0; i < quads.size(); ++i) {

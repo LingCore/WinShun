@@ -154,6 +154,47 @@ private slots:
         QCOMPARE(error, u"stopped by the watchdog"_s);
     }
 
+    // OCR search reads a page that came in upside down (a scan fed the wrong
+    // way round); an upright page reads the same with or without the retry.
+    void upsideDownPageIsReadAgainTurned()
+    {
+        QStringList lines;
+        for (int i = 0; i < 12; ++i)
+            lines.append(u"报销单第%1行 金额 %2 元"_s.arg(i).arg(1200 + i * 37));
+        const QImage upright = drawn(lines, 22, Qt::black, Qt::white);
+        const QImage turned = upright.flipped(Qt::Horizontal | Qt::Vertical);
+        QString error;
+        const std::unique_ptr<ws::PaddleOcr> ocr
+            = ws::PaddleOcr::load(QCoreApplication::applicationDirPath(), 2, &error);
+        QVERIFY2(ocr, qPrintable(error));
+        const auto words = [&](const QImage& image, bool retry) {
+            ws::OcrOptions options;
+            options.retryUpsideDown = retry;
+            QList<ws::OcrPiece> pieces;
+            if (!ocr->readPieces(image, &pieces, &error, options))
+                return QString();
+            QStringList texts;
+            for (const ws::OcrPiece& piece : std::as_const(pieces))
+                texts.append(piece.text);
+            texts.sort();
+            return texts.join(u'\n');
+        };
+        const QString plain = words(upright, false);
+        int found = 0;
+        for (int i = 0; i < 12; ++i)
+            found += plain.contains(u"第%1行"_s.arg(i)) ? 1 : 0;
+        QCOMPARE(found, 12);
+        QCOMPARE(words(upright, true), plain);
+        const QString without = words(turned, false), with = words(turned, true);
+        int before = 0, after = 0;
+        for (int i = 0; i < 12; ++i) {
+            before += without.contains(u"第%1行"_s.arg(i)) ? 1 : 0;
+            after += with.contains(u"第%1行"_s.arg(i)) ? 1 : 0;
+        }
+        QVERIFY2(before <= 2, qPrintable(without));
+        QVERIFY2(after >= 11, qPrintable(with));
+    }
+
     // ---- smart redaction: where the characters are (docs/design-capture-roadmap.md, 2.3, item 2) ----
 
     // The columns with any ink in `image`: first and last.

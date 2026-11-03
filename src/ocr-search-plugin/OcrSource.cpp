@@ -745,7 +745,9 @@ void scan(const QString& appDir, const QString& dataDir, const ScanOptions& opti
                             }
                             QList<OcrPiece> pieces;
                             QString message;
-                            if (!reader->readPieces(image, &pieces, &message))
+                            OcrOptions options; // as the worker reads
+                            options.retryUpsideDown = true;
+                            if (!reader->readPieces(image, &pieces, &message, options))
                                 fail(message);
                             stopped(cancel);
                             id = store.putAsset(hash, image.size(), pieces);
