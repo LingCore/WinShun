@@ -23,7 +23,7 @@ enum class Phase {
     HeadsUp, // the notice is showing; the break starts at dueAt
     Pending, // due; waiting for a pause in typing
     OnBreak, // the break screen is up until breakEnd
-    Paused, // no breaks until pausedUntil (wall clock)
+    Paused, // no breaks until pausedUntil (wall clock), or a manual resume
 };
 
 struct Config {
@@ -56,7 +56,7 @@ struct State {
     std::int64_t breakLeftMs = 0; // OnBreak
     std::int64_t breakLengthMs = 0; // OnBreak
     std::int64_t workedMs = 0; // since the last break
-    std::int64_t pausedUntil = 0; // Paused: wall clock
+    std::int64_t pausedUntil = 0; // Paused: wall clock, or Schedule::kManualPause
     bool strict = false; // OnBreak (or about to be): no skip, no postpone
     bool canPostpone = false;
     bool waiting = false; // due, but held back by `quiet`
@@ -64,6 +64,7 @@ struct State {
 
 class Schedule {
 public:
+    static constexpr std::int64_t kManualPause = -1;
     static constexpr std::int64_t kPresentMs = 30'000; // input within this: at the PC
     static constexpr std::int64_t kTypingPauseMs = 1'500;
     static constexpr std::int64_t kPendingMaxMs = 15'000;
@@ -78,7 +79,7 @@ public:
     bool postpone(std::int64_t now); // false when not allowed (once per break, never strict)
     bool skip(std::int64_t now, bool emergency = false); // emergency: the long Esc in strict mode
     void breakNow(Kind kind, std::int64_t now); // not while paused
-    void pause(std::int64_t untilWall);
+    void pause(std::int64_t untilWall = kManualPause);
     void resume(std::int64_t now);
     void restart(std::int64_t now); // a new cycle from now; a pause goes on (locked or asleep through it)
 

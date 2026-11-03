@@ -168,7 +168,10 @@ protected:
         status.icon = kStatusIcon;
         switch (st.phase) {
         case brk::Phase::Paused:
-            status.title = zh ? "休息提醒已暂停，" + clockTime(st.pausedUntil) + " 恢复" : "Paused until " + clockTime(st.pausedUntil);
+            if (st.pausedUntil == brk::Schedule::kManualPause)
+                status.title = zh ? "休息提醒已暂停" : "Break reminders paused";
+            else
+                status.title = zh ? "休息提醒已暂停，" + clockTime(st.pausedUntil) + " 恢复" : "Paused until " + clockTime(st.pausedUntil);
             status.subtitle = zh ? "Enter 现在恢复" : "Enter to resume now";
             break;
         case brk::Phase::OnBreak:
@@ -209,6 +212,7 @@ protected:
             add("long", zh ? "现在大休 " + longLength : "Long break now (" + longLength + ")",
                 zh ? "起来走走，之后重新算" : "Get up and walk; the count starts over after it", kWalkIcon);
         }
+        add("pause", zh ? "暂停休息提醒" : "Pause break reminders", zh ? "直到手动恢复，重启后仍保持暂停" : "Until you resume, including after a restart", kPauseIcon);
         add("pause1", zh ? "暂停 1 小时" : "Pause for 1 hour", zh ? "开会、看电影时用" : "For a meeting or a film", kPauseIcon);
         add("pause3", zh ? "暂停 3 小时" : "Pause for 3 hours", "", kPauseIcon);
         add("restart", zh ? "重新计时" : "Start the count again",
@@ -237,7 +241,11 @@ protected:
                 s.breakNow(brk::Kind::Short, now);
             else if (id == "long")
                 s.breakNow(brk::Kind::Long, now);
-            else if (id == "pause1" || id == "pause3") {
+            else if (id == "pause") {
+                s.pause();
+                said = zh ? "休息提醒已暂停，输入「休息」可恢复" : "Break reminders paused; type break to resume";
+                pauseChanged = true;
+            } else if (id == "pause1" || id == "pause3") {
                 const std::int64_t hours = id == "pause1" ? 1 : 3;
                 s.pause(wall + hours * 3'600'000);
                 said = zh ? "休息提醒暂停到 " + clockTime(wall + hours * 3'600'000) : "Paused until " + clockTime(wall + hours * 3'600'000);
@@ -271,7 +279,7 @@ private:
     }
 
     // A pause outlives a restart of Win顺 (and of the PC): it is kept in the
-    // plugin's data folder as the wall-clock time it ends.
+    // plugin's data folder as the wall-clock time it ends, or kManualPause.
     std::wstring pauseFile() const { return winshun::wide(dataDir()) + L"\\pause.txt"; }
 
     void loadPause()
@@ -284,7 +292,7 @@ private:
         long long until = 0;
         const int got = fscanf_s(f, "%lld", &until);
         std::fclose(f);
-        if (got == 1 && until > brk::Core::wall()) {
+        if (got == 1 && (until == brk::Schedule::kManualPause || until > brk::Core::wall())) {
             const std::lock_guard lock(m_core.mutex);
             m_core.schedule.pause(until);
         }

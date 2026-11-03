@@ -18,7 +18,7 @@ void Schedule::configure(const Config& config, std::int64_t now)
 void Schedule::tick(const Sense& s)
 {
     if (m_phase == Phase::Paused) {
-        if (s.wall < m_pausedUntil)
+        if (m_pausedUntil == kManualPause || s.wall < m_pausedUntil)
             return;
         startWork(s.now, m_config.intervalMs);
     }

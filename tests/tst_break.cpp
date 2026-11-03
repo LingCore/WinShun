@@ -317,6 +317,27 @@ private slots:
         QCOMPARE(r.s.phase(), Phase::Working);
     }
 
+    void manualPauseWaitsForResume()
+    {
+        Run r;
+        r.s.pause();
+        QCOMPARE(r.state().pausedUntil, Schedule::kManualPause);
+        r.s.tick({10 * kMin, 9'000'000'000'000, 0, false, false, false});
+        QCOMPARE(r.s.phase(), Phase::Paused);
+        r.s.restart(r.now);
+        r.s.breakNow(Kind::Short, r.now);
+        r.s.configure(config(), r.now);
+        QCOMPARE(r.s.phase(), Phase::Paused);
+
+        Run restarted;
+        restarted.s.pause(r.state().pausedUntil);
+        restarted.step(24 * 60 * kMin);
+        QCOMPARE(restarted.s.phase(), Phase::Paused);
+        restarted.s.resume(restarted.now);
+        QCOMPARE(restarted.s.phase(), Phase::Working);
+        QCOMPARE(restarted.state().untilDueMs, 20 * kMin);
+    }
+
     void breakNowAndRestart()
     {
         Run r;
