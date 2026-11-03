@@ -306,6 +306,7 @@ void Controller::start(bool retry)
     m_enabled = true;
     m_status = tr("正在更新索引");
     m_progress.clear();
+    m_progressFile.clear();
     save();
     if (m_scan.joinable())
         m_scan.join();
@@ -328,8 +329,8 @@ void Controller::start(bool retry)
                         this,
                         [this, state] {
                             m_progress
-                                = tr("已检查 %1 个文件 · 新识别 %2 页／张").arg(state.checked).arg(state.recognized)
-                                + u"\n"_s + state.current;
+                                = tr("已检查 %1 个文件 · 新识别 %2 页／张").arg(state.checked).arg(state.recognized);
+                            m_progressFile = state.current;
                             // The upgrade notice counts down while the files are read again.
                             m_statistics.insert(u"recheck"_s, state.recheck);
                             if (!state.message.isEmpty())

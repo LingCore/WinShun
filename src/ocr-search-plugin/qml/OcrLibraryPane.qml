@@ -189,9 +189,15 @@ Item {
             text: pane.editor.progressText
             color: Theme.subtext
             font.pixelSize: Theme.fontCaption
-            maximumLineCount: 3
-            elide: Text.ElideMiddle
             wrapMode: Text.Wrap
+        }
+        Text {
+            Layout.fillWidth: true
+            visible: pane.editor.busy
+            text: pane.editor.progressFile
+            color: Theme.subtext
+            font.pixelSize: Theme.fontCaption
+            elide: Text.ElideMiddle
         }
         FlatButton {
             objectName: "startOcrIndex"
