@@ -671,7 +671,10 @@ QString psQuote(const QString& text)
 // script waits for this process and for everything else that runs from the
 // app's folder (the plugin host, an AI tool's relay). It is judged by the
 // version in current\scoop-manifest.json: Scoop's exit code does not tell
-// "updated" from "already the latest" or "skipped". A plain `scoop update`
+// "updated" from "already the latest" or "skipped". PSModulePath is the
+// machine's and user's own: one inherited from a PowerShell 7 terminal puts its
+// Microsoft.PowerShell.Utility first, and Windows PowerShell then lacks
+// Get-FileHash (Scoop's hash check fails). A plain `scoop update`
 // goes first, as `scoop update <app>` reads the buckets as they were synced.
 void Updater::updateWithScoop()
 {
@@ -688,6 +691,7 @@ $Host.UI.RawUI.WindowTitle = 'Win顺 - Scoop'
 $id = %1; $root = %2; $app = %3; $exe = %4; $before = %5
 $appDir = Join-Path $root "apps\$app"
 $env:SCOOP = $root
+$env:PSModulePath = (('Machine', 'User') | ForEach-Object { [Environment]::GetEnvironmentVariable('PSModulePath', $_) } | Where-Object { $_ }) -join ';'
 $scoop = Join-Path $root 'shims\scoop.ps1'
 if (-not (Test-Path $scoop)) { $scoop = Join-Path $root 'apps\scoop\current\bin\scoop.ps1' }
 function Installed {
