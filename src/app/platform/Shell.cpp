@@ -259,6 +259,19 @@ win32::UniqueHandle startWithShellToken(std::wstring command, const std::wstring
     // It needs the Secondary Logon service, which tuning tools turn off (error
     // 1058): the shell as the parent instead, whose token the program then
     // gets (as winv::restartExplorer does).
+    if (flags & CREATE_NO_WINDOW) {
+        // A console program with explorer.exe as its parent takes it for a
+        // double-click in a folder window (startsConsole, GitHub #139), and
+        // rundll32 would give it a console to see: Win顺's own helper in
+        // between (hiddenHelper), which creates it with no window, as the
+        // usual way would. The handle is the helper's.
+        wchar_t exe[MAX_PATH] = {};
+        const DWORD n = ::GetModuleFileNameW(nullptr, exe, MAX_PATH);
+        if (n == 0 || n >= MAX_PATH)
+            return failed("CreateProcessWithTokenW", error);
+        command = L'"' + std::wstring(exe, n) + L"\" "
+            + reinterpret_cast<const wchar_t*>(commandlaunch::kHiddenSwitch) + L' ' + command;
+    }
     const win32::UniqueHandle parent(::OpenProcess(PROCESS_CREATE_PROCESS, FALSE, pid));
     SIZE_T size = 0;
     ::InitializeProcThreadAttributeList(nullptr, 1, 0, &size);
@@ -278,7 +291,13 @@ win32::UniqueHandle startWithShellToken(std::wstring command, const std::wstring
     if (!ok)
         return failed("CreateProcessWithTokenW", error); // the first one's: what keeps it from the usual way
     ::CloseHandle(started.hThread);
-    return win32::UniqueHandle(started.hProcess);
+    win32::UniqueHandle created(started.hProcess);
+    // The helper ends as soon as it created the program, 1 when it could not.
+    DWORD code = 0;
+    if ((flags & CREATE_NO_WINDOW) && ::WaitForSingleObject(created.get(), 5000) == WAIT_OBJECT_0
+        && ::GetExitCodeProcess(created.get(), &code) && code != 0)
+        return failed("CreateProcessW (helper)", code);
+    return created;
 }
 
 // A folder, shell location or URI ("shell:AppsFolder\<id>", "::{CLSID}",

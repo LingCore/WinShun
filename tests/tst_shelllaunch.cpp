@@ -100,6 +100,32 @@ QString parentProgram()
 
 class TestShellLaunch : public QObject {
     Q_OBJECT
+
+    // A copy of this test as `exe` in `folder`, with its Qt DLLs beside it:
+    // Explorer and the desktop shell's token have their own PATH, not
+    // CTest's Qt PATH. `console`: its PE subsystem word made the console's.
+    static void stage(const QTemporaryDir& folder, const QString& exe, bool console)
+    {
+        QVERIFY(QFile::copy(QCoreApplication::applicationFilePath(), exe));
+        if (console) {
+            QFile file(exe);
+            QVERIFY(file.open(QIODevice::ReadWrite) && file.seek(0x3c));
+            quint32 header = 0;
+            QCOMPARE(file.read(reinterpret_cast<char*>(&header), 4), 4);
+            const quint16 subsystem = IMAGE_SUBSYSTEM_WINDOWS_CUI; // after "PE\0\0" and the file header, 68 bytes in
+            QVERIFY(file.seek(header + 4 + 20 + 68));
+            QCOMPARE(file.write(reinterpret_cast<const char*>(&subsystem), 2), 2);
+        }
+        QCOMPARE(ws::commandlaunch::kindOf(exe), console ? ws::commandlaunch::Kind::Console : ws::commandlaunch::Kind::Gui);
+        const QDir qtBin(QLibraryInfo::path(QLibraryInfo::BinariesPath));
+        for (const auto* module : {"Core", "Gui", "Sql", "Test"}) {
+            const QString dll = u"Qt6"_s + QString::fromLatin1(module)
+                + (QLibraryInfo::isDebugBuild() ? u"d.dll"_s : u".dll"_s);
+            if (!QFile::exists(folder.filePath(dll)))
+                QVERIFY(QFile::copy(qtBin.filePath(dll), folder.filePath(dll)));
+        }
+    }
+
 private slots:
     void nativePickerNavigation()
     {
@@ -333,26 +359,10 @@ private slots:
             QSKIP("No desktop shell in this test session");
         QTemporaryDir temporary(QDir::tempPath() + u"/WinShun launch-XXXXXX"_s);
         QVERIFY(temporary.isValid());
-        // Explorer uses its own PATH, not CTest's Qt PATH. Stage only this
-        // helper and its Qt DLLs so the test also works on a clean build.
         const QString helper = temporary.filePath(u"launch-probe.exe"_s);
-        QVERIFY(QFile::copy(QCoreApplication::applicationFilePath(), helper));
-        if (console) {
-            QFile exe(helper);
-            QVERIFY(exe.open(QIODevice::ReadWrite) && exe.seek(0x3c));
-            quint32 header = 0;
-            QCOMPARE(exe.read(reinterpret_cast<char*>(&header), 4), 4);
-            const quint16 subsystem = IMAGE_SUBSYSTEM_WINDOWS_CUI; // after "PE\0\0" and the file header, 68 bytes in
-            QVERIFY(exe.seek(header + 4 + 20 + 68));
-            QCOMPARE(exe.write(reinterpret_cast<const char*>(&subsystem), 2), 2);
-        }
-        QCOMPARE(ws::commandlaunch::kindOf(helper), console ? ws::commandlaunch::Kind::Console : ws::commandlaunch::Kind::Gui);
-        const QDir qtBin(QLibraryInfo::path(QLibraryInfo::BinariesPath));
-        for (const auto* module : {"Core", "Gui", "Sql", "Test"}) {
-            const QString dll = u"Qt6"_s + QString::fromLatin1(module)
-                + (QLibraryInfo::isDebugBuild() ? u"d.dll"_s : u".dll"_s);
-            QVERIFY(QFile::copy(qtBin.filePath(dll), temporary.filePath(dll)));
-        }
+        stage(temporary, helper, console);
+        if (QTest::currentTestFailed())
+            return;
         const QString working = temporary.filePath(u"工作 folder"_s);
         QVERIFY(QDir().mkpath(working));
         const QString output = temporary.filePath(u"result.json"_s);
@@ -374,6 +384,47 @@ private slots:
         QCOMPARE(QDir::cleanPath(result.value(u"cwd"_s).toString()), QDir::cleanPath(working));
         QCOMPARE(result.value(u"arguments"_s).toArray().last().toString(), query);
         qInfo() << "Launched by" << result.value(u"parent"_s).toString() << "with the requested arguments and folder";
+    }
+
+    // Elevated, with Secondary Logon off (WINSHUN_TEST_NO_SECLOGON), a silent
+    // custom command is created with the desktop shell as the parent: a
+    // console program must still not see explorer.exe there (#139), and
+    // gets no console. The staged runner (this test) asks for it, and is the
+    // helper in between (hiddenHelper), as WinShun.exe is.
+    void silentConsoleWithoutSecondaryLogon()
+    {
+        if (!ws::integrity::processElevated())
+            QSKIP("Only an elevated Win顺 starts with the desktop shell's token: run this test elevated.");
+        if (!::GetShellWindow())
+            QSKIP("No desktop shell in this test session");
+        QTemporaryDir temporary(QDir::tempPath() + u"/WinShun launch-XXXXXX"_s);
+        QVERIFY(temporary.isValid());
+        const QString runner = temporary.filePath(u"runner.exe"_s);
+        const QString probe = temporary.filePath(u"launch-probe.exe"_s);
+        stage(temporary, runner, false);
+        stage(temporary, probe, true);
+        if (QTest::currentTestFailed())
+            return;
+        const QString output = temporary.filePath(u"result.json"_s);
+        QProcess child;
+        QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+        environment.insert(u"WINSHUN_TEST_NO_SECLOGON"_s, u"1"_s);
+        child.setProcessEnvironment(environment);
+        const QString command = u'"' + probe + u"\" --probe \""_s + output + u"\" silent"_s;
+        child.start(runner, {u"--run-silent"_s, command, temporary.path()});
+        QVERIFY(child.waitForFinished(15000));
+        QCOMPARE(child.exitCode(), 0);
+        QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(output), 10000);
+        QFile file(output);
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const QJsonObject result = QJsonDocument::fromJson(file.readAll()).object();
+        // The helper has often quit already: no parent to name, but never Explorer.
+        const QString parent = result.value(u"parent"_s).toString();
+        QVERIFY2(!parent.endsWith(u"\\explorer.exe"_s, Qt::CaseInsensitive), qPrintable(parent));
+        QVERIFY(!result.value(u"elevated"_s).toBool());
+        QVERIFY(!result.value(u"console"_s).toBool()); // CREATE_NO_WINDOW: none made
+        QCOMPARE(QDir::cleanPath(result.value(u"cwd"_s).toString()), QDir::cleanPath(temporary.path()));
+        qInfo() << "Launched by" << parent;
     }
 
     // The application catalog supplies an AppsFolder ID, not an .exe path.
@@ -511,14 +562,24 @@ private slots:
 
 int main(int argc, char** argv)
 {
+    // "--run-hidden <command line>": the helper in between, as in WinShun.exe.
+    if (const int hidden = ws::shell::hiddenHelper(); hidden >= 0)
+        return hidden;
     QCoreApplication app(argc, argv);
     const QStringList args = app.arguments();
     if (args.contains(u"--picker-probe"_s))
         return pickerProbe();
+    if (args.size() >= 4 && args[1] == u"--run-silent") { // a silent custom command, then its answer
+        std::atomic<int> done {-1};
+        ws::shell::runCustom(args[2], args[3], {}, [&done](bool ok) { done = ok ? 1 : 0; }, {.silent = true});
+        for (int waited = 0; done < 0 && waited < 10000; waited += 20)
+            ::Sleep(20);
+        return done == 1 ? 0 : 1;
+    }
     if (args.size() >= 4 && args[1] == u"--probe") {
         const QJsonObject result {
             {u"parent"_s, parentProgram()}, {u"cwd"_s, QDir::currentPath()},
-            {u"elevated"_s, ws::integrity::processElevated()},
+            {u"elevated"_s, ws::integrity::processElevated()}, {u"console"_s, ::GetConsoleWindow() != nullptr},
             {u"arguments"_s, QJsonArray::fromStringList(args)},
         };
         QFile file(args[2]);
