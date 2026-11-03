@@ -182,7 +182,7 @@
   - **浏览器书签**（在插件库里，要用时装上）：`bm 词` 搜 Chrome 和 Edge 所有配置文件里的书签，Enter 打开；
   - **插件库**：设置 › 插件 › 插件库 里装 Win顺 自己的截图与录屏、局域网传输、按意思找、休息提醒、资源管理器标签页、翻译、浏览器书签，也看别人写的插件（来自 [WinShun-plugins](https://github.com/LingCore/WinShun-plugins)），新插件点“安装并启用”，核对大小和校验值、同意权限后即可使用；更新保留原来的开关。升级后未恢复的功能可在“已安装”里重试或从本地插件包恢复；插件库在打开页面、刷新或安装时联网，签名索引的后台更新检查由“自动更新”设置控制；连不上 GitHub 时在 设置 › 高级 › 网络代理 里选“手动”填代理地址；
   - 自己写插件：零代码的 `plugin.json`、任意语言的脚本或常驻进程都行，附 Python / PowerShell / C++ SDK；
-  - 插件以普通权限、限内存运行。见 [docs/plugins.md](docs/plugins.md)。
+  - 插件限内存运行，一般用普通权限；只有 Win顺 以管理员身份运行、且你在插件卡片上确认过的“管理员”插件，才以管理员身份运行。见 [docs/plugins.md](docs/plugins.md)。
 
 #### 📂 “打开”“另存为”对话框
 
@@ -421,7 +421,7 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
   - **Translate** (in the plugin library, to install when you want it): `tr sentence` turns Chinese into English and anything else into Chinese, using your own key for DeepL, Microsoft Translator or an OpenAI-compatible service, with presets for DeepSeek, Doubao / Volcengine Ark and Tencent Hunyuan. `dict word` shows model-generated definitions and examples. Nothing is sent without a key. Superseded requests are canceled, and Enter copies the selected item.
   - **Browser bookmarks** (in the plugin library, to install when you want it): `bm words` searches the bookmarks of every Chrome and Edge profile; Enter opens one.
   - **Plugin library**: Settings › Plugins › Plugin library has WinShun's own Screenshot and recording, LAN transfer, Search by meaning, Break reminder, Explorer tabs, Translate and Browser bookmarks, and plugins other people wrote (from [WinShun-plugins](https://github.com/LingCore/WinShun-plugins)); Choose Install and enable for a new plugin and review its permissions after the package is checked. Updates keep its enabled state. Features awaiting recovery after an upgrade can be retried or installed from a local package on the Installed tab. It fetches the library when that page is opened, on Refresh, or to install. Signed background update checks follow the Automatic updates setting. If GitHub cannot be reached, Settings › Advanced › Network proxy takes a proxy address by hand.
-  - **Your own**: zero-code `plugin.json`, scripts in any language, or resident processes, with SDKs for Python, PowerShell and C++. Plugins run with normal rights under a memory limit. See [docs/plugins.en.md](docs/plugins.en.md).
+  - **Your own**: zero-code `plugin.json`, scripts in any language, or resident processes, with SDKs for Python, PowerShell and C++. Plugins run under a memory limit with normal rights; only a plugin that asks for administrator rights runs as administrator, and only while WinShun itself does and after you confirm it once on its card. See [docs/plugins.en.md](docs/plugins.en.md).
 - 📂 **Open / Save dialogs**
   - **Search bar**: a search bar under every file dialog; type a name (pinyin too), press Enter, and the dialog goes there; web page uploads, WPS dialogs and the "Browse For Folder" box of VBA macros too. The "Browse for folder" window of installers made with Inno Setup has it as well: a pick only fills in the path, and you press the installer's OK yourself (the Start Menu folder picker is left alone).
   - **`Ctrl+G`**: jumps to the folder open in File Explorer, Total Commander, Directory Opus, XYplorer, Pulse or OneCommander, like Listary. OneCommander uses its active pane's folder, with no extra setup; dialog suggestions can also list its other open tabs, falling back to the active folder while tab state is out of sync.

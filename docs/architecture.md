@@ -428,7 +428,7 @@ src/plugin/          插件系统（见下文“插件系统”）
   Tools              插件自己的 winshun/tool 工具主机（自己的 SearchEngine + mcp::ToolHost，不看 [Mcp] 的开关；该不该调由 manifest 的权限说）
   Items / ZeroCode   插件回的 item（JSON、纯文本行）和动作的 effects；零代码命令（url / program / folder / search / items）在进程内直接出结果
   Programs           找 python / pwsh / powershell / node（python 一律找 python.exe 本身，不用 py.exe：它再起子进程，作业不许）；每种解释器的命令行和环境变量
-  Runner             Win顺 这一端的 runner：以用户的普通权限起 WinShunPluginHost.exe 一次，管道上按实例号复用所有插件进程
+  Runner             Win顺 这一端的 runner：以用户的普通权限起 WinShunPluginHost.exe 一次（带 `elevated` 且用户确认过的插件，在 Win顺 以管理员身份运行时由第二个 runner 以管理员身份起，见下文），管道上按实例号复用所有插件进程
   Session            常驻插件的 JSON-RPC 会话：在途请求表、通知和插件发来的 winshun/* 请求
   Host               GUI 线程的门面：query(文字, 范围, queryId) → 结果信号；防抖、超时、按 queryId 丢旧结果、崩溃退避和停用、空闲退出、常驻数上限、winshun/tool 的权限门控；stop / reload、开发者模式（traced 信号：每条消息，密码打码；脚本改了重启）；callCommand() 是 AI 工具调用走的那条路（不取消启动器的查询，自己的计时器，没起的插件起了等 initialize）
   AiBridge           插件命令 → AI 的工具（plugin_<id>_<command>；动作开关开着再加 _run）：按目录和设置重建，交给 mcp::ToolHost 的外部工具表；停用的插件保留工具但“关着”，提示文字写明是哪个插件

@@ -1,6 +1,6 @@
 # Writing plugins for Win顺 (WinShun)
 
-Plugins add keyword commands to the search box and mix their rows into the list. The interface and plugins run with normal user rights; a separate service reads the NTFS index. A slow or crashing plugin never holds the launcher up. Three ways to write one, a single protocol:
+Plugins add keyword commands to the search box and mix their rows into the list. The interface and plugins run with normal user rights (only a plugin with `elevated` runs as administrator, and only while Win顺 does and after you confirm it; see Permissions); a separate service reads the NTFS index. A slow or crashing plugin never holds the launcher up. Three ways to write one, a single protocol:
 
 For a new plugin in the Library, choose **Install and enable** and review its permissions. Declining keeps it installed and off. Updates preserve the existing switch; installing a local archive does not automatically enable it. If an upgrade cannot restore a previously enabled feature, the Installed tab keeps the reason and offers Retry and local package installation without discarding its settings or data.
 

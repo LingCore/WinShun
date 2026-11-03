@@ -286,14 +286,13 @@ Rectangle {
                     visible: card.elevation === "unconfirmed" || card.elevation === "changed" || card.elevation === "unavailable"
                              || card.elevation === "confirming"
                     width: parent.width
-                    height: visible ? Math.max(confirmButton.visible ? confirmButton.height : 0, elevationText.implicitHeight) : 0
+                    height: visible ? elevationText.implicitHeight + (confirmButton.visible ? 6 + confirmButton.height : 0) : 0
 
                     Text {
                         id: elevationText
                         anchors.left: parent.left
-                        anchors.right: confirmButton.visible ? confirmButton.left : parent.right
-                        anchors.rightMargin: confirmButton.visible ? 8 : 0
-                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.right: parent.right
+                        anchors.top: parent.top
                         text: card.elevationNote
                         textFormat: Text.PlainText
                         color: Theme.caution
@@ -305,7 +304,7 @@ Rectangle {
                         id: confirmButton
                         visible: card.elevation === "unconfirmed" || card.elevation === "changed"
                         anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.bottom: parent.bottom
                         implicitHeight: 28
                         text: qsTr("确认")
                         onClicked: card.plugins.confirmElevation(card.pluginId)
