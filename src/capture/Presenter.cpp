@@ -550,6 +550,10 @@ void Presenter::activate(PresenterScreen* s)
         emit currentChanged();
         emit boardsChanged();
         emit historyChanged();
+    } else {
+        // The same screen: its model has the newest styles (the toolbar's
+        // panel changes them there), never put back to the ones before.
+        collectStyles(s->model());
     }
     adoptStyles(s->model());
     applyTool(s->model());

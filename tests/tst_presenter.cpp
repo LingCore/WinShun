@@ -367,6 +367,29 @@ private slots:
         QCOMPARE(annot::StyleMemory::fromJson(host.store.value(u"Styles"_s).toString()).tool(Kind::Pen).color, blue);
     }
 
+    // The toolbar's panel changes the current model's styles: the next
+    // stroke has them (a press put the styles before back: found live), and
+    // the other screen takes them when it is drawn on.
+    void panelStylesAreKept()
+    {
+        Host host;
+        Presenter p;
+        p.setHooks(host.hooks());
+        p.open();
+        p.setTool(int(Kind::Pen));
+        PresenterScreen* s = p.screen(0);
+        s->desk()->setPanel({{u"color"_s, u"#1E88E5"_s}, {u"width"_s, 7}});
+        QCOMPARE(s->desk()->styles().tool(Kind::Pen).color, qRgb(0x1E, 0x88, 0xE5));
+        drag(s, {100, 100}, {300, 120});
+        const annot::Item& item = s->desk()->document().items.last();
+        QCOMPARE(item.kind, Kind::Pen);
+        QCOMPARE(item.style.color, qRgb(0x1E, 0x88, 0xE5));
+        QCOMPARE(s->desk()->styles().tool(Kind::Pen).width, 7);
+        drag(p.screen(1), {100, 100}, {300, 120});
+        QCOMPARE(p.screen(1)->desk()->document().items.last().style.color, qRgb(0x1E, 0x88, 0xE5));
+        QCOMPARE(p.screen(1)->desk()->styles().tool(Kind::Pen).width, 7);
+    }
+
     void keys()
     {
         Host host;
