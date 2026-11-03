@@ -445,8 +445,9 @@ struct PaddleOcr::Impl {
     std::vector<Quad> detect(const QImage& strip);
     // `places`, when given, gets for each line the (index in the text, middle
     // along the line as a fraction of its width) of every character.
+    // `progress`, when set, is called after each batch of lines.
     void recognize(const std::vector<QImage>& lines, std::vector<std::pair<QString, float>>* read,
-        std::vector<QList<QPair<int, float>>>* places = nullptr);
+        std::vector<QList<QPair<int, float>>>* places, const std::function<void()>& progress);
 };
 
 PaddleOcr::PaddleOcr()
@@ -532,7 +533,7 @@ std::vector<Quad> PaddleOcr::Impl::detect(const QImage& strip)
 }
 
 void PaddleOcr::Impl::recognize(const std::vector<QImage>& lines, std::vector<std::pair<QString, float>>* read,
-    std::vector<QList<QPair<int, float>>>* places)
+    std::vector<QList<QPair<int, float>>>* places, const std::function<void()>& progress)
 {
     read->assign(lines.size(), {});
     if (places)
@@ -609,6 +610,8 @@ void PaddleOcr::Impl::recognize(const std::vector<QImage>& lines, std::vector<st
             if (places)
                 (*places)[order[first + i]] = where;
         }
+        if (progress)
+            progress();
     }
 }
 
@@ -616,7 +619,7 @@ bool PaddleOcr::read(const QImage& image, QStringList* lines, QString* error)
 {
     lines->clear();
     QList<OcrPiece> found;
-    if (!find(image, &found, false, error))
+    if (!find(image, &found, false, error, {}))
         return false;
     std::vector<Piece> pieces;
     for (const OcrPiece& p : std::as_const(found)) {
@@ -627,13 +630,14 @@ bool PaddleOcr::read(const QImage& image, QStringList* lines, QString* error)
     return true;
 }
 
-bool PaddleOcr::readPieces(const QImage& image, QList<OcrPiece>* pieces, QString* error)
+bool PaddleOcr::readPieces(const QImage& image, QList<OcrPiece>* pieces, QString* error, const OcrOptions& options)
 {
     pieces->clear();
-    return find(image, pieces, true, error);
+    return find(image, pieces, true, error, options);
 }
 
-bool PaddleOcr::find(const QImage& image, QList<OcrPiece>* found, bool chars, QString* error)
+bool PaddleOcr::find(
+    const QImage& image, QList<OcrPiece>* found, bool chars, QString* error, const OcrOptions& options)
 {
     if (image.isNull())
         return true;
@@ -688,6 +692,8 @@ bool PaddleOcr::find(const QImage& image, QList<OcrPiece>* found, bool chars, QS
                         std::clamp((p.y() + top - padding) / scale, 0.0, static_cast<double>(picture.height())));
                 boxes.push_back(quad);
             }
+            if (options.progress)
+                options.progress();
             if (last)
                 break;
             top += strip - kOverlap;
@@ -707,7 +713,7 @@ bool PaddleOcr::find(const QImage& image, QList<OcrPiece>* found, bool chars, QS
         }
         std::vector<std::pair<QString, float>> read;
         std::vector<QList<QPair<int, float>>> places;
-        d->recognize(cuts, &read, chars ? &places : nullptr);
+        d->recognize(cuts, &read, chars ? &places : nullptr, options.progress);
         // Back to the picture that came in, if it was made smaller.
         const double back = static_cast<double>(image.width()) / picture.width();
         for (std::size_t i = 0; i < quads.size(); ++i) {

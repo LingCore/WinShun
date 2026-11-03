@@ -14,6 +14,7 @@
 #include <QThread>
 
 #include <cmath>
+#include <stdexcept>
 
 using namespace Qt::StringLiterals;
 
@@ -115,6 +116,42 @@ private slots:
         const QString words = read(drawn(lines, 14, Qt::black, Qt::white));
         for (int i : {0, 59, 60, 61, 119})
             QVERIFY2(words.count(u"第%1行"_s.arg(i)) == 1, qPrintable(u"line %1"_s.arg(i)));
+    }
+
+    // OCR search's watchdog hears from a long read after each strip looked
+    // at and each batch of lines read; the reading itself is the same, and a
+    // progress callback that throws abandons the read with its message.
+    void progressDuringOneRead()
+    {
+        QStringList lines;
+        for (int i = 0; i < 120; ++i)
+            lines.append(u"第%1行 文字识别"_s.arg(i));
+        const QImage tall = drawn(lines, 14, Qt::black, Qt::white);
+        QCOMPARE(tall.width(), 336); // not made smaller: strips of 2000 rows overlapping by 160
+        QVERIFY(tall.height() > 2000 && tall.height() <= 2000 + 1840);
+        QString error;
+        const std::unique_ptr<ws::PaddleOcr> ocr = ws::PaddleOcr::load(QCoreApplication::applicationDirPath(), 2, &error);
+        QVERIFY2(ocr, qPrintable(error));
+        QList<ws::OcrPiece> plain, watched;
+        QVERIFY2(ocr->readPieces(tall, &plain, &error), qPrintable(error));
+        int calls = 0;
+        ws::OcrOptions options;
+        options.progress = [&] { ++calls; };
+        QVERIFY2(ocr->readPieces(tall, &watched, &error, options), qPrintable(error));
+        QCOMPARE(watched.size(), plain.size());
+        for (qsizetype i = 0; i < plain.size(); ++i)
+            QCOMPARE(watched[i].text, plain[i].text);
+        // Two strips, then at least one call per 6 lines read (some boxes
+        // read too poorly are dropped after reading, so not fewer calls).
+        QVERIFY2(calls >= 2 + (plain.size() + 5) / 6, qPrintable(u"%1 calls"_s.arg(calls)));
+        int left = 3;
+        options.progress = [&] {
+            if (--left == 0)
+                throw std::runtime_error("stopped by the watchdog");
+        };
+        QList<ws::OcrPiece> abandoned;
+        QVERIFY(!ocr->readPieces(tall, &abandoned, &error, options));
+        QCOMPARE(error, u"stopped by the watchdog"_s);
     }
 
     // ---- smart redaction: where the characters are (docs/design-capture-roadmap.md, 2.3, item 2) ----

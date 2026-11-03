@@ -110,7 +110,8 @@ QJsonObject Worker::request(const QJsonObject& parameters, const Cancel& cancel)
         stop(QObject::tr("无法提交识别任务"));
     }
     // The deadline is for silence: the worker reports each page or picture it
-    // is done with, so a long document that keeps going is never cut short.
+    // is done with and each part of a page it has read, so a long document or
+    // a dense page that keeps going is never cut short.
     QElapsedTimer silence;
     silence.start();
     QByteArray buffer, diagnostics;
@@ -204,9 +205,20 @@ int workerMain(const QString& appDir)
                 const QString engine = request.value(u"engine"_s).toString();
                 qsizetype bytes = 0;
                 int done = 0;
+                const auto beat = [&] {
+                    if (!writeLine(output, "{\"progress\":" + QByteArray::number(done) + "}\n"))
+                        fail(u"The plugin stopped listening"_s);
+                };
+                // A dense page can take minutes at background priority: the
+                // reader reports each part it finished, so the plugin's
+                // deadline only ends a read that really stopped moving.
+                OcrOptions options;
+                options.progress = beat;
                 const auto result = extractImages(
                     request.value(u"path"_s).toString(),
                     [&](const QImage& image, const QString& label, const QJsonObject& source) {
+                        // Rendering a big scanned page is a long step of its own.
+                        beat();
                         const QByteArray hash = imageHash(image, engine);
                         QJsonObject data = recognized.value(hash);
                         if (data.isEmpty()) {
@@ -220,7 +232,7 @@ int workerMain(const QString& appDir)
                                 if (!reader)
                                     throw ScanStopped(error.toStdString());
                                 QList<OcrPiece> pieces;
-                                if (!reader->readPieces(image, &pieces, &error))
+                                if (!reader->readPieces(image, &pieces, &error, options))
                                     fail(error);
                                 data.insert(u"pieces"_s, piecesToJson(pieces));
                             }
@@ -235,8 +247,8 @@ int workerMain(const QString& appDir)
                     },
                     {},
                     [&] {
-                        if (!writeLine(output, "{\"progress\":" + QByteArray::number(++done) + "}\n"))
-                            fail(u"The plugin stopped listening"_s);
+                        ++done;
+                        beat();
                     });
                 response = {{u"pages"_s, pages}, {u"partial"_s, result.partial}, {u"message"_s, result.message},
                     {u"images"_s, result.images}};
