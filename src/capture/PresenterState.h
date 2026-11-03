@@ -1,5 +1,8 @@
 #pragma once
 
+#include "Annotation.h"
+
+#include <QRgb>
 #include <Qt>
 
 namespace ws::capture::presenter {
@@ -20,6 +23,13 @@ enum class Board {
     White,
     Black,
 };
+
+// The boards' colours (the ink window's board, the toolbar's buttons).
+inline constexpr QRgb kWhiteBoard = 0xFFFFFFFF;
+inline constexpr QRgb kBlackBoard = 0xFF1E2124;
+// The laser pointer: its colour and its trail's width (logical px).
+inline constexpr QRgb kLaserColor = 0xFFFF2D2D;
+inline constexpr int kLaserWidth = 10;
 
 // The presenter's hotkey: what opens it closes it, and from Through it
 // opens the drawing again (the drawing is what was closed there).
@@ -91,9 +101,33 @@ constexpr Command command(int key, Qt::KeyboardModifiers modifiers, bool selecte
     }
 }
 
+// A key held down acts again only where that means more of the same:
+// Ctrl's (Ctrl+Z and Ctrl+Y step on), the arrows (nudge) and [ ] (size).
+// The rest are switches or one-shot steps: W, K, X, H, a tool's letter,
+// Esc, Delete (once the selection is gone it would clear the screen).
+constexpr bool repeats(int key, Qt::KeyboardModifiers modifiers)
+{
+    const Qt::KeyboardModifiers mods = modifiers & ~Qt::KeypadModifier;
+    if (mods & (Qt::AltModifier | Qt::MetaModifier))
+        return false;
+    if (mods & Qt::ControlModifier)
+        return true;
+    switch (key) {
+    case Qt::Key_Left:
+    case Qt::Key_Right:
+    case Qt::Key_Up:
+    case Qt::Key_Down:
+    case Qt::Key_BracketLeft:
+    case Qt::Key_BracketRight:
+        return true;
+    default:
+        return false;
+    }
+}
+
 // The tools offered: every annotation tool but redaction (annot::Kind::Redact,
 // the last of AnnotationStyles' table).
-inline constexpr int kRedactTool = 8;
+inline constexpr int kRedactTool = int(annot::Kind::Redact);
 constexpr bool toolOffered(int tool) { return tool >= -1 && tool < kRedactTool; }
 
 // The board W or K leads to from `now`: the same key again closes it.

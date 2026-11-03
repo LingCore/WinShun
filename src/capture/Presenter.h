@@ -17,11 +17,41 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace ws::capture {
 
+// presenter::Mode and presenter::Board for QML: PresenterState.Mode.Draw,
+// PresenterState.Board.Black... (PresenterState.h is the wscapture library's,
+// whose types the plugin's QML module does not see: their values here).
+namespace presenterQml {
+Q_NAMESPACE
+QML_NAMED_ELEMENT(PresenterState)
+enum class Mode {
+    Closed = int(presenter::Mode::Closed),
+    Draw = int(presenter::Mode::Draw),
+    Through = int(presenter::Mode::Through),
+};
+Q_ENUM_NS(Mode)
+enum class Board {
+    None = int(presenter::Board::None),
+    White = int(presenter::Board::White),
+    Black = int(presenter::Board::Black),
+};
+Q_ENUM_NS(Board)
+} // namespace presenterQml
+
 class Presenter;
+
+// What the ink window's cursor shows: made again only when this changes.
+struct CursorLook {
+    enum class Kind { Shape, Dot } kind = Kind::Shape;
+    int shape = Qt::ArrowCursor; // Shape: a Qt::CursorShape
+    QRgb color = 0; // Dot: its colour (with alpha) and width, logical px
+    int width = 0;
+    bool operator==(const CursorLook&) const = default;
+};
 
 // One monitor of the presenter (GitHub #189, docs/design-presenter.md 4.2):
 // its ink on the live desktop (`desk`) and, made the first time W or K is
@@ -67,7 +97,8 @@ public:
     Q_INVOKABLE void mouseReleased(qreal x, qreal y, int button);
     Q_INVOKABLE void mouseDoubleClicked(qreal x, qreal y);
     Q_INVOKABLE void wheeled(int angleDelta);
-    Q_INVOKABLE bool keyPressed(int key, int modifiers);
+    // A key held down repeats: the presenter's own keys (W, K, X, H, Delete, Esc) act once.
+    Q_INVOKABLE bool keyPressed(int key, int modifiers, bool autoRepeat = false);
 
 signals:
     void boardChanged();
@@ -93,7 +124,7 @@ private:
     presenter::Board m_boardKind = presenter::Board::None;
     QPointer<QQuickItem> m_cursorItem;
     bool m_pressed = false;
-    QString m_cursorKey; // what the cursor shows now, so it is made again only when that changes
+    std::optional<CursorLook> m_cursorLook; // what the cursor shows now
 };
 
 // The presenter (GitHub #189, docs/design-presenter.md): drawing on the live
@@ -126,8 +157,11 @@ class Presenter : public QObject {
     Q_PROPERTY(bool toolbarShown READ toolbarShown NOTIFY toolbarShownChanged FINAL)
     // A line once at the toolbar's edge (the recording hint, the through hint); empty: none.
     Q_PROPERTY(QString hint READ hint NOTIFY hintChanged FINAL)
-    // The pen's colour and the laser's, for the toolbar's colour dot.
+    // The laser's colour and trail width (logical px), the boards' colours.
     Q_PROPERTY(QColor laserColor READ laserColor CONSTANT FINAL)
+    Q_PROPERTY(int laserWidth READ laserWidth CONSTANT FINAL)
+    Q_PROPERTY(QColor whiteBoardColor READ whiteBoardColor CONSTANT FINAL)
+    Q_PROPERTY(QColor blackBoardColor READ blackBoardColor CONSTANT FINAL)
 
 public:
     struct Monitor {
@@ -142,7 +176,11 @@ public:
         std::function<int()> screenAtPointer;
         // The foreground window (0: one of ours or none), and giving it back.
         std::function<quintptr()> foreground;
-        std::function<void(quintptr)> setForeground;
+        std::function<bool(quintptr)> setForeground; // false: that window is gone or hidden
+        // The top window under the pointer that is not ours (0: none): Through
+        // gives it the foreground when none was remembered or it is gone (the
+        // presenter was opened from one of ours, such as the capture settings).
+        std::function<quintptr()> beneathPointer;
         // Small remembered things ([Presenter] in presenter.ini): the tools'
         // styles (JSON), the tool, which hints were seen.
         std::function<QVariant(const QString& key)> load;
@@ -206,7 +244,10 @@ public:
     bool canClear() const;
     bool toolbarShown() const { return m_toolbarShown; }
     QString hint() const { return m_hint; }
-    QColor laserColor() const { return QColor(0xFF, 0x2D, 0x2D); }
+    QColor laserColor() const { return QColor::fromRgba(presenter::kLaserColor); }
+    int laserWidth() const { return presenter::kLaserWidth; }
+    QColor whiteBoardColor() const { return QColor::fromRgba(presenter::kWhiteBoard); }
+    QColor blackBoardColor() const { return QColor::fromRgba(presenter::kBlackBoard); }
     const std::vector<std::unique_ptr<PresenterScreen>>& screens() const { return m_screens; }
     PresenterScreen* screen(int index) const;
     // The window that had the foreground before drawing: Through gives it back.
@@ -215,7 +256,8 @@ public:
 
     // The cursor for a screen at an image point: a dot of the pen's colour
     // and width (pen, marker, laser), else the model's shape.
-    QCursor cursorFor(PresenterScreen* screen, QPoint image, QString* key) const;
+    CursorLook cursorLookAt(PresenterScreen* screen, QPoint image) const;
+    static QCursor cursorOf(const CursorLook& look, qreal dpr);
 
 signals:
     void modeChanged();
@@ -245,7 +287,9 @@ private:
     void touched(AnnotationModel* model);
     void showHint(const char* key, const QString& text);
     void saveState();
-    bool commandKey(PresenterScreen* screen, int key, Qt::KeyboardModifiers modifiers);
+    bool commandKey(PresenterScreen* screen, int key, Qt::KeyboardModifiers modifiers, bool autoRepeat);
+    // What is under way on a model is finished: a path, a text, a drag (cancelled).
+    static void settle(AnnotationModel* model);
 
     Hooks m_hooks;
     presenter::Mode m_mode = presenter::Mode::Closed;

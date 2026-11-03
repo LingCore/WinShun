@@ -21,9 +21,11 @@ Window {
     readonly property bool through: presenter.through
     readonly property bool folded: !presenter.toolbarShown
     property bool colorsOpen: false
-    // The button the mouse rests on: its name and key, in the line below.
-    property string tipText: ""
-    property string tipKeys: ""
+    // The button the mouse rests on (its name and keys change with what it
+    // does: fold, through), in the line below.
+    property var tipItem: null
+    readonly property string tipText: tipItem ? tipItem.name : ""
+    readonly property string tipKeys: tipItem ? tipItem.keys : ""
     readonly property string lineText: tipText.length > 0 ? tipText : presenter.hint
     // What shows, in window logical px: the window takes clicks only there
     // (PresenterHost sets it as the window's mask), so beside the shorter
@@ -62,14 +64,11 @@ Window {
 
     function snap(v) { return Math.round(v * dpr) / dpr }
     function centre(outer, inner) { return snap((outer - inner) / 2) } // on whole pixels
-    function hover(on, text, keys) {
-        if (on) {
-            tipText = text
-            tipKeys = keys
-        } else if (tipText === text) {
-            tipText = ""
-            tipKeys = ""
-        }
+    function hover(on, item) {
+        if (on)
+            tipItem = item
+        else if (tipItem === item)
+            tipItem = null
     }
 
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus
@@ -81,7 +80,7 @@ Window {
     onVisibleChanged: {
         if (!visible) {
             colorsOpen = false
-            tipText = ""
+            tipItem = null
             return
         }
         showing.restart()
@@ -126,12 +125,15 @@ Window {
                 spacing: window.spacing
 
                 Rectangle { // the grip: drags the toolbar
+                    id: grip
+                    readonly property string name: qsTr("按住拖动工具条")
+                    readonly property string keys: ""
                     width: window.gripWidth
                     height: window.buttonHeight
                     radius: Theme.controlRadius
                     color: gripArea.pressed ? Theme.controlPressed : gripArea.containsMouse ? Theme.controlHover : "transparent"
                     Accessible.role: Accessible.Grip
-                    Accessible.name: qsTr("拖动工具条")
+                    Accessible.name: grip.name
 
                     Glyph {
                         anchors.centerIn: parent
@@ -160,7 +162,7 @@ Window {
                             window.x = Math.round(startedAt.x + at.x - pressedAt.x)
                             window.y = Math.round(startedAt.y + at.y - pressedAt.y)
                         }
-                        onContainsMouseChanged: window.hover(containsMouse, qsTr("按住拖动工具条"), "")
+                        onContainsMouseChanged: window.hover(containsMouse, grip)
                     }
                 }
 
@@ -273,10 +275,10 @@ Window {
                 BarButton { // the white board
                     id: whiteButton
                     visible: !window.folded
-                    checked: window.presenter.board === 1
+                    checked: window.presenter.board === PresenterState.Board.White
                     name: qsTr("白板")
                     keys: "W"
-                    onClicked: window.presenter.toggleBoard(1)
+                    onClicked: window.presenter.toggleBoard(PresenterState.Board.White)
 
                     Rectangle {
                         x: window.centre(parent.width, width)
@@ -284,7 +286,7 @@ Window {
                         width: window.boardSize
                         height: window.boardSize
                         radius: Theme.smallControlRadius
-                        color: "#FFFFFF"
+                        color: window.presenter.whiteBoardColor
                         border.width: Theme.edge(window.dpr)
                         border.color: whiteButton.checked ? Theme.accentText : Theme.controlBorder
                     }
@@ -292,10 +294,10 @@ Window {
                 BarButton { // the black board
                     id: blackButton
                     visible: !window.folded
-                    checked: window.presenter.board === 2
+                    checked: window.presenter.board === PresenterState.Board.Black
                     name: qsTr("黑板")
                     keys: "K"
-                    onClicked: window.presenter.toggleBoard(2)
+                    onClicked: window.presenter.toggleBoard(PresenterState.Board.Black)
 
                     Rectangle {
                         x: window.centre(parent.width, width)
@@ -303,7 +305,7 @@ Window {
                         width: window.boardSize
                         height: window.boardSize
                         radius: Theme.smallControlRadius
-                        color: "#1E2124"
+                        color: window.presenter.blackBoardColor
                         border.width: Theme.edge(window.dpr)
                         border.color: blackButton.checked ? Theme.accentText : Theme.controlBorder
                     }
@@ -431,7 +433,7 @@ Window {
             anchors.fill: parent
             hoverEnabled: true
             onClicked: if (button.enabled) button.clicked()
-            onContainsMouseChanged: window.hover(containsMouse, button.name, button.keys)
+            onContainsMouseChanged: window.hover(containsMouse, button)
         }
     }
 

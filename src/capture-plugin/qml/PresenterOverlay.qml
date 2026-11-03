@@ -18,7 +18,8 @@ Window {
     readonly property AnnotationModel annot: screenModel.model
     readonly property real dpr: screenModel.dpr
     readonly property real unit: 1 / dpr // image px to logical px
-    readonly property bool onBoard: screenModel.board !== 0
+    readonly property int boardKind: screenModel.board
+    readonly property bool onBoard: boardKind !== PresenterState.Board.None
     readonly property int boardFadeMs: 120
 
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
@@ -26,6 +27,7 @@ Window {
     title: qsTr("演示")
 
     onActiveChanged: if (active) ink.forceActiveFocus()
+    onBoardKindChanged: if (onBoard) board.kind = boardKind
 
     Item {
         id: ink
@@ -34,7 +36,9 @@ Window {
         focus: true
         Component.onCompleted: window.screenModel.cursorItem = ink
 
-        Keys.onPressed: (event) => { event.accepted = window.screenModel.keyPressed(event.key, event.modifiers) }
+        Keys.onPressed: (event) => {
+            event.accepted = window.screenModel.keyPressed(event.key, event.modifiers, event.isAutoRepeat)
+        }
 
         AnnotationCanvas { // the ink on the desktop
             anchors.fill: parent
@@ -46,11 +50,14 @@ Window {
         }
 
         Rectangle { // the board
+            id: board
+            // The last board shown: it fades out in its own colour.
+            property int kind: PresenterState.Board.White
             anchors.fill: parent
-            color: window.screenModel.board === 2 ? "#1E2124" : "#FFFFFF"
+            color: kind === PresenterState.Board.Black ? window.presenter.blackBoardColor : window.presenter.whiteBoardColor
             opacity: window.onBoard ? 1 : 0
-            visible: opacity > 0
-            Behavior on opacity { OpacityAnimator { duration: window.boardFadeMs; easing.type: Easing.OutCubic } }
+            visible: opacity > 0 // the opacity itself animates (an animator would leave it at its end)
+            Behavior on opacity { NumberAnimation { duration: window.boardFadeMs; easing.type: Easing.OutCubic } }
         }
 
         AnnotationCanvas { // the ink on the board
@@ -104,14 +111,14 @@ Window {
         LaserTrail {
             id: laser
             color: window.presenter.laserColor
-            lineWidth: 10
+            lineWidth: window.presenter.laserWidth
         }
     }
 
     Connections {
         target: window.presenter
         function onModeChanged() {
-            if (window.presenter.mode !== 1)
+            if (window.presenter.mode !== PresenterState.Mode.Draw)
                 laser.clear()
         }
     }

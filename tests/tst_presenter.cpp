@@ -36,6 +36,8 @@ struct Host {
     QList<Presenter::Monitor> monitors {{QSize(2560, 1600), 1.5}, {QSize(1920, 1080), 1.0}};
     int pointer = 0;
     quintptr foreground = 0x111;
+    quintptr beneath = 0; // the window under the pointer
+    QList<quintptr> gone; // windows closed since
     QList<quintptr> givenBack;
     QVariantMap store;
 
@@ -45,7 +47,13 @@ struct Host {
         h.monitors = [this] { return monitors; };
         h.screenAtPointer = [this] { return pointer; };
         h.foreground = [this] { return foreground; };
-        h.setForeground = [this](quintptr w) { givenBack.append(w); };
+        h.setForeground = [this](quintptr w) {
+            if (gone.contains(w))
+                return false;
+            givenBack.append(w);
+            return true;
+        };
+        h.beneathPointer = [this] { return beneath; };
         h.load = [this](const QString& key) { return store.value(key); };
         h.save = [this](const QString& key, const QVariant& value) { store.insert(key, value); };
         return h;
@@ -191,6 +199,31 @@ private slots:
         QCOMPARE(p.mode(), Mode::Draw);
     }
 
+    // Opened from one of ours (no foreground remembered) or the program
+    // closed since: Through gives the foreground to the window beneath the
+    // pointer, or to none.
+    void throughFallsBackToTheWindowBeneath()
+    {
+        Host host;
+        host.foreground = 0; // opened from the capture settings
+        host.beneath = 0x333;
+        Presenter p;
+        p.setHooks(host.hooks());
+        p.open();
+        p.through();
+        QCOMPARE(host.givenBack, QList<quintptr> {0x333});
+        host.foreground = 0x444;
+        p.draw();
+        host.gone = {0x444}; // closed meanwhile
+        p.through();
+        QCOMPARE(host.givenBack, (QList<quintptr> {0x333, 0x333}));
+        p.draw();
+        host.beneath = 0; // nothing of anyone's there
+        p.through();
+        QCOMPARE(host.givenBack.size(), 2);
+        QCOMPARE(p.mode(), Mode::Through);
+    }
+
     void escapeStepsBack()
     {
         Host host;
@@ -246,6 +279,25 @@ private slots:
         QVERIFY(p.canThrough());
         // The other monitor stays on the desktop.
         QCOMPARE(p.screen(1)->board(), Board::None);
+    }
+
+    // W or K from Through: the board opens on the screen under the pointer
+    // (draw() makes it the current one), not on the one drawn on before.
+    void boardOpensUnderThePointer()
+    {
+        Host host;
+        Presenter p;
+        p.setHooks(host.hooks());
+        p.open();
+        QCOMPARE(p.current(), p.screen(0));
+        p.through();
+        host.pointer = 1;
+        p.toggleBoard(int(Board::White));
+        QCOMPARE(p.mode(), Mode::Draw);
+        QCOMPARE(p.current(), p.screen(1));
+        QCOMPARE(p.screen(1)->board(), Board::White);
+        QCOMPARE(p.screen(0)->board(), Board::None);
+        QCOMPARE(p.board(), int(Board::White));
     }
 
     void clearIsOneUndoStep()
@@ -340,6 +392,52 @@ private slots:
         QVERIFY(!p.toolbarShown());
         QVERIFY(s->keyPressed(Qt::Key_H, 0));
         QVERIFY(p.toolbarShown());
+    }
+
+    // A key held down: the switches act once (W does not flicker the board,
+    // Delete does not go on to clear the screen); Ctrl+Z goes on undoing.
+    void heldKeysActOnce()
+    {
+        QVERIFY(!repeats(Qt::Key_W, Qt::NoModifier));
+        QVERIFY(!repeats(Qt::Key_Delete, Qt::NoModifier));
+        QVERIFY(!repeats(Qt::Key_Escape, Qt::NoModifier));
+        QVERIFY(!repeats(Qt::Key_P, Qt::NoModifier));
+        QVERIFY(repeats(Qt::Key_Z, Qt::ControlModifier));
+        QVERIFY(repeats(Qt::Key_Left, Qt::NoModifier));
+        QVERIFY(repeats(Qt::Key_BracketRight, Qt::NoModifier));
+
+        Host host;
+        Presenter p;
+        p.setHooks(host.hooks());
+        p.open();
+        PresenterScreen* s = p.screen(0);
+        QVERIFY(s->keyPressed(Qt::Key_W, 0));
+        for (int i = 0; i < 5; ++i)
+            QVERIFY(s->keyPressed(Qt::Key_W, 0, true));
+        QCOMPARE(s->board(), Board::White);
+        QVERIFY(s->keyPressed(Qt::Key_W, 0));
+        QCOMPARE(s->board(), Board::None);
+        QVERIFY(s->keyPressed(Qt::Key_X, 0));
+        QVERIFY(s->keyPressed(Qt::Key_X, 0, true));
+        QVERIFY(p.laser());
+        QVERIFY(s->keyPressed(Qt::Key_P, 0));
+        QVERIFY(s->keyPressed(Qt::Key_P, 0, true)); // not the same letter again (no tool)
+        QCOMPARE(p.tool(), int(Kind::Pen));
+        for (int i = 0; i < 3; ++i)
+            drag(s, {100, 100.0 + 50 * i}, {300, 100.0 + 50 * i});
+        QCOMPARE(s->desk()->itemCount(), 3);
+        p.setTool(-1);
+        click(s, {200, 100});
+        QCOMPARE(s->desk()->selectedCount(), 1);
+        QVERIFY(s->keyPressed(Qt::Key_Delete, 0)); // the selected stroke
+        QVERIFY(s->keyPressed(Qt::Key_Delete, 0, true)); // held: not the rest of the screen
+        QCOMPARE(s->desk()->itemCount(), 2);
+        QVERIFY(s->keyPressed(Qt::Key_Escape, 0, true));
+        QCOMPARE(p.mode(), Mode::Draw);
+        QVERIFY(s->keyPressed(Qt::Key_Z, int(Qt::ControlModifier)));
+        QVERIFY(s->keyPressed(Qt::Key_Z, int(Qt::ControlModifier), true));
+        QCOMPARE(s->desk()->itemCount(), 2); // two steps back: the delete, the third stroke
+        QVERIFY(s->desk()->canRedo());
     }
 
     void hintsOnce()
@@ -586,6 +684,76 @@ private slots:
         fresh.updatePolish();
         QVERIFY(fresh.tilesShown() > 0);
         QCOMPARE(canvas.tilesShown(), fresh.tilesShown());
+    }
+
+    // From the press to the first move nothing is live: the stroke before,
+    // in the tiles already, is not taken out of them again.
+    void pressAloneIsNotLive()
+    {
+        Host host;
+        host.monitors = {{QSize(2560, 1600), 1.5}};
+        Presenter p;
+        p.setHooks(host.hooks());
+        p.open();
+        PresenterScreen* s = p.screen(0);
+        Canvas canvas;
+        canvas.setModel(s->desk());
+        canvas.setSparse(true);
+        canvas.setLive(true);
+        canvas.updatePolish();
+        drag(s, {330, 400}, {870, 505}, 40);
+        for (int frames = 0; frames < 200; ++frames)
+            canvas.updatePolish();
+        QCOMPARE(canvas.handoverItem(), 0u);
+        QVERIFY(canvas.tilesShown() > 0);
+        const int shown = canvas.tilesShown();
+        s->mousePressed(300, 700, Qt::LeftButton, 0);
+        canvas.updatePolish();
+        QCOMPARE(canvas.liveItem(), 0u);
+        QCOMPARE(canvas.tilesShown(), shown);
+        s->mouseMoved(320, 710, 0);
+        canvas.updatePolish();
+        QCOMPARE(canvas.liveItem(), s->desk()->document().items.last().id);
+        s->mouseReleased(320, 710, Qt::LeftButton);
+    }
+
+    // Shift straightens a long stroke into fewer points: the chunks made
+    // from the old points no longer hold, nor do those that a moved point reaches.
+    void straightenedStrokeIsMadeAgain()
+    {
+        QList<QPointF> curve;
+        for (int i = 0; i < 300; ++i)
+            curve.append(QPointF(i * 3.0, 200 + 80 * std::sin(i * 0.05)));
+        QCOMPARE(live::keptPieces(curve, curve), live::settledPieces(300));
+        QList<QPointF> grown = curve;
+        grown.append(QPointF(901, 200));
+        QCOMPARE(live::keptPieces(curve, grown), live::settledPieces(300)); // a point more: all still hold
+        const QList<QPointF> straight {curve.first(), curve.last()};
+        QCOMPARE(live::keptPieces(curve, straight), 0);
+        QList<QPointF> moved = curve;
+        moved[200] += QPointF(0, 5);
+        QVERIFY(live::keptPieces(curve, moved) <= 200 - 3); // piece j uses points up to j + 2
+        QVERIFY(live::keptPieces(curve, moved) >= live::kChunk); // the first chunk holds
+        const QList<QPointF> shorter = curve.mid(0, 150);
+        QCOMPARE(live::keptPieces(curve, shorter), live::settledPieces(150));
+
+        // The model: Shift on a long pen stroke straightens it into fewer points.
+        Host host;
+        host.monitors = {{QSize(2560, 1600), 1.5}};
+        Presenter p;
+        p.setHooks(host.hooks());
+        p.open();
+        PresenterScreen* s = p.screen(0);
+        s->mousePressed(100, 300, Qt::LeftButton, 0);
+        for (int i = 1; i <= 300; ++i)
+            s->mouseMoved(100 + i * 3.0, 300 + 80 * std::sin(i * 0.05), 0);
+        const QList<QPointF> before = s->desk()->document().items.last().points;
+        QVERIFY(before.size() > live::kChunk + live::kSettledMargin);
+        s->mouseMoved(1000, 300, int(Qt::ShiftModifier));
+        const QList<QPointF> after = s->desk()->document().items.last().points;
+        QVERIFY(after.size() < before.size());
+        QVERIFY(live::keptPieces(before, after) < live::kChunk); // no chunk kept: the old curve would stay
+        s->mouseReleased(1000, 300, Qt::LeftButton);
     }
 
     // The GPU's triangles cover what the compositor fills for the same

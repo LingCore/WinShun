@@ -111,7 +111,7 @@ void PresenterScreen::setCursorItem(QQuickItem* item)
     if (item == m_cursorItem)
         return;
     m_cursorItem = item;
-    m_cursorKey.clear();
+    m_cursorLook.reset();
     emit cursorItemChanged();
 }
 
@@ -164,12 +164,11 @@ void PresenterScreen::showCursor(QPoint image)
 {
     if (!m_cursorItem)
         return;
-    QString key;
-    const QCursor cursor = m_presenter->cursorFor(this, image, &key);
-    if (key == m_cursorKey)
+    const CursorLook look = m_presenter->cursorLookAt(this, image);
+    if (look == m_cursorLook)
         return;
-    m_cursorKey = key;
-    m_cursorItem->setCursor(cursor);
+    m_cursorLook = look;
+    m_cursorItem->setCursor(Presenter::cursorOf(look, m_dpr));
 }
 
 void PresenterScreen::mousePressed(qreal x, qreal y, int button, int modifiers)
@@ -239,11 +238,11 @@ void PresenterScreen::wheeled(int angleDelta)
     model()->wheel(angleDelta, m_presenter->m_clock.elapsed());
 }
 
-bool PresenterScreen::keyPressed(int key, int modifiers)
+bool PresenterScreen::keyPressed(int key, int modifiers, bool autoRepeat)
 {
     if (m_presenter->mode() != Mode::Draw)
         return false;
-    return m_presenter->commandKey(this, key, Qt::KeyboardModifiers(modifiers));
+    return m_presenter->commandKey(this, key, Qt::KeyboardModifiers(modifiers), autoRepeat);
 }
 
 // ---- Presenter ---------------------------------------------------------------------------
@@ -489,16 +488,16 @@ void Presenter::through()
         return;
     // Whatever is under way is finished first: a text typed, a path, a drag.
     for (const auto& s : m_screens) {
-        AnnotationModel* m = s->model();
-        m->finishPath();
-        if (m->gestureActive())
-            m->cancelGesture();
-        m->commitPending();
+        settle(s->model());
         s->m_pressed = false;
     }
     setMode(Mode::Through);
-    if (m_previous && m_hooks.setForeground)
-        m_hooks.setForeground(m_previous);
+    // The program that had the foreground, else (opened from one of ours)
+    // the one beneath the pointer, else none: the keys go where the user looks.
+    if (m_hooks.setForeground && !(m_previous && m_hooks.setForeground(m_previous))) {
+        if (const quintptr beneath = m_hooks.beneathPointer ? m_hooks.beneathPointer() : 0)
+            m_hooks.setForeground(beneath);
+    }
     showHint(kThroughHintKey,
         m_hotkeyText.isEmpty() ? tr("现在可以操作下面的程序，笔迹还在；点工具条上的“回到画笔”接着画")
                                : tr("现在可以操作下面的程序，笔迹还在；按 %1 或点工具条上的“回到画笔”接着画").arg(m_hotkeyText));
@@ -623,8 +622,7 @@ void Presenter::setLaser(bool on)
     if (on) {
         if (AnnotationModel* m = model()) {
             QScopedValueRollback guard(m_syncing, true);
-            m->finishPath();
-            m->commitPending();
+            settle(m);
             deselect(m);
         }
     }
@@ -684,30 +682,26 @@ void Presenter::clear()
     if (!isOpen() || !m || !m->hasItems())
         return;
     // All of this screen's layer in one step Ctrl+Z takes back.
-    m->finishPath();
-    if (m->gestureActive())
-        m->cancelGesture();
-    m->commitPending();
+    settle(m);
     m->selectAll();
     m->deleteSelection();
 }
 
 void Presenter::toggleBoard(int value)
 {
-    PresenterScreen* s = current();
-    if (!s || !isOpen() || value < int(Board::White) || value > int(Board::Black))
+    if (!isOpen() || value < int(Board::White) || value > int(Board::Black))
         return;
     if (m_mode == Mode::Through)
-        draw();
+        draw(); // makes the screen under the pointer the current one
+    PresenterScreen* s = current();
+    if (!s)
+        return;
     const Board next = presenter::toggledBoard(s->board(), Board(value));
     AnnotationModel* m = s->model();
     collectStyles(m);
     {
         QScopedValueRollback guard(m_syncing, true);
-        m->finishPath();
-        if (m->gestureActive())
-            m->cancelGesture();
-        m->commitPending();
+        settle(m);
         deselect(m);
         s->setBoard(next, m_styles, m_laser ? -1 : m_tool);
     }
@@ -751,10 +745,24 @@ void Presenter::saveState()
     m_hooks.save(QString::fromLatin1(kToolKey), m_laser ? QVariant(u"laser"_s) : QVariant(m_tool));
 }
 
-bool Presenter::commandKey(PresenterScreen* s, int key, Qt::KeyboardModifiers modifiers)
+void Presenter::settle(AnnotationModel* m)
+{
+    if (!m)
+        return;
+    m->finishPath();
+    if (m->gestureActive())
+        m->cancelGesture();
+    m->commitPending();
+}
+
+bool Presenter::commandKey(PresenterScreen* s, int key, Qt::KeyboardModifiers modifiers, bool autoRepeat)
 {
     activate(s);
     const Qt::KeyboardModifiers mods = modifiers & ~Qt::KeypadModifier;
+    // A key held down: a switch (W, K, X, H, a tool's letter) would flicker,
+    // Delete would go on to clear the screen, Esc would step back to Through.
+    if (autoRepeat && !presenter::repeats(key, mods))
+        return true;
     AnnotationModel* m = s->model();
     const bool ctrl = mods & Qt::ControlModifier;
     const bool shift = mods & Qt::ShiftModifier;
@@ -796,14 +804,10 @@ bool Presenter::commandKey(PresenterScreen* s, int key, Qt::KeyboardModifiers mo
     return m->key(key, mods);
 }
 
-QCursor Presenter::cursorFor(PresenterScreen* s, QPoint image, QString* key) const
+CursorLook Presenter::cursorLookAt(PresenterScreen* s, QPoint image) const
 {
-    const qreal dpr = s->dpr();
-    if (m_laser) {
-        if (key)
-            *key = u"laser"_s;
-        return dotCursor(laserColor(), 10, dpr);
-    }
+    if (m_laser)
+        return {CursorLook::Kind::Dot, 0, presenter::kLaserColor, presenter::kLaserWidth};
     AnnotationModel* m = s->model();
     const int shape = m->cursorAt(image);
     const int tool = m->tool();
@@ -812,14 +816,16 @@ QCursor Presenter::cursorFor(PresenterScreen* s, QPoint image, QString* key) con
         QColor color = QColor::fromRgb(t.color);
         if (tool == int(Kind::Marker))
             color.setAlphaF(0.5);
-        if (key)
-            *key = u"dot %1 %2 %3"_s.arg(tool).arg(t.color).arg(t.width);
-        return dotCursor(color, t.width, dpr);
+        return {CursorLook::Kind::Dot, 0, color.rgba(), t.width};
     }
-    const int cursor = shape >= 0 ? shape : int(Qt::ArrowCursor);
-    if (key)
-        *key = u"shape %1"_s.arg(cursor);
-    return QCursor(Qt::CursorShape(cursor));
+    return {CursorLook::Kind::Shape, shape >= 0 ? shape : int(Qt::ArrowCursor), 0, 0};
+}
+
+QCursor Presenter::cursorOf(const CursorLook& look, qreal dpr)
+{
+    if (look.kind == CursorLook::Kind::Dot)
+        return dotCursor(QColor::fromRgba(look.color), look.width, dpr);
+    return QCursor(Qt::CursorShape(look.shape));
 }
 
 } // namespace ws::capture

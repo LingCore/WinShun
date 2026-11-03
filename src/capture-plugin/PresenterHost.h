@@ -61,7 +61,6 @@ private:
     capture::Presenter m_presenter;
     std::vector<QPointer<QQuickWindow>> m_inks; // one per presenter screen, in its order
     QPointer<QQuickWindow> m_toolbar;
-    bool m_shownOnce = false;
     void* m_hook = nullptr; // HWINEVENTHOOK: the foreground
     void* m_reorderHook = nullptr; // HWINEVENTHOOK: the windows' order
     QTimer* m_reorderTimer = nullptr;

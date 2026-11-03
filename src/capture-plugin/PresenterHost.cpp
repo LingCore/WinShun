@@ -66,6 +66,36 @@ QSize pixelsOf(QScreen* screen)
     return (QSizeF(screen->geometry().size()) * screen->devicePixelRatio()).toSize();
 }
 
+// The top window under the pointer that is not ours: the windows from the
+// top down, as the click would find them (WindowFromPoint would stop at
+// our toolbar, which is where the pointer is when its button is clicked).
+HWND windowBeneathPointer()
+{
+    POINT point {};
+    if (!::GetCursorPos(&point))
+        return nullptr;
+    const DWORD self = ::GetCurrentProcessId();
+    for (HWND window = ::GetTopWindow(nullptr); window; window = ::GetWindow(window, GW_HWNDNEXT)) {
+        if (!::IsWindowVisible(window) || ::IsIconic(window))
+            continue;
+        if (::GetWindowLongW(window, GWL_EXSTYLE) & WS_EX_TRANSPARENT)
+            continue; // lets clicks through: not what is clicked
+        RECT r {};
+        if (!::GetWindowRect(window, &r) || !::PtInRect(&r, point))
+            continue;
+        BOOL cloaked = FALSE;
+        ::DwmGetWindowAttribute(window, DWMWA_CLOAKED, &cloaked, sizeof cloaked);
+        if (cloaked)
+            continue;
+        DWORD process = 0;
+        ::GetWindowThreadProcessId(window, &process);
+        if (process == self)
+            continue;
+        return ::GetAncestor(window, GA_ROOT);
+    }
+    return nullptr;
+}
+
 constexpr int kToolbarTop = 12; // the toolbar's first place: this far below the monitor's top, logical px
 // Raising again when another program's topmost window went above the ink:
 // a little later (its own moves come in bursts), and given up for a while
@@ -101,9 +131,13 @@ PresenterHost::PresenterHost(QQmlEngine& engine, QString stateFile, QObject* par
     };
     hooks.setForeground = [](quintptr window) {
         const HWND hwnd = reinterpret_cast<HWND>(window);
-        if (::IsWindow(hwnd))
-            ::SetForegroundWindow(hwnd);
+        // Gone, or hidden since (the launcher the presenter was opened from).
+        if (!::IsWindow(hwnd) || !::IsWindowVisible(hwnd))
+            return false;
+        ::SetForegroundWindow(hwnd);
+        return true;
     };
+    hooks.beneathPointer = [] { return quintptr(windowBeneathPointer()); };
     hooks.load = [this](const QString& key) {
         QSettings s(m_stateFile, QSettings::IniFormat);
         return s.value(u"Presenter/"_s + key);
@@ -205,7 +239,6 @@ void PresenterHost::makeWindows()
             metaObject()->method(metaObject()->indexOfSlot("updateToolbarMask()")));
     }
     updateToolbarMask();
-    m_shownOnce = false;
 }
 
 void PresenterHost::dropWindows()
