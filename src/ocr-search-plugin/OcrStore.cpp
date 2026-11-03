@@ -850,8 +850,9 @@ QJsonObject Store::statistics() const
     q.exec(u"SELECT count(*) FROM assets"_s);
     if (q.next())
         out.insert(u"assets"_s, q.value(0).toInt());
-    q.exec(u"SELECT count(*) FROM files WHERE status NOT IN ('ready','empty')"_s);
-    if (q.next())
+    q.prepare(u"SELECT count(*) FROM files WHERE status NOT IN ('ready','empty') AND engine=?"_s); // as errorText()
+    q.addBindValue(pipelineEngine());
+    if (q.exec() && q.next())
         out.insert(u"unfinished"_s, q.value(0).toInt());
     q.prepare(u"SELECT count(*) FROM files f WHERE "_s + QLatin1StringView(kTextless));
     q.addBindValue(pipelineEngine());
@@ -865,8 +866,14 @@ QJsonObject Store::statistics() const
 
 QString Store::errorText() const
 {
+    // Only files this pipeline settled: one an upgrade marked to read again
+    // keeps its old reason until then (1.0.0's missing PDF reader, a timeout),
+    // and listing it would say the update had not helped.
     QSqlQuery q(m_db);
-    q.exec(u"SELECT display,error FROM files WHERE status NOT IN ('ready','empty') ORDER BY display LIMIT 200"_s);
+    q.prepare(u"SELECT display,error FROM files WHERE status NOT IN ('ready','empty') AND engine=? "
+              u"ORDER BY display LIMIT 200"_s);
+    q.addBindValue(pipelineEngine());
+    q.exec();
     QStringList lines;
     while (q.next())
         lines.append(q.value(0).toString() + u"\n"_s + q.value(1).toString());

@@ -349,9 +349,8 @@ void Controller::start(bool retry)
                 finished(token.stop_requested() ? tr("已暂停，下次从未完成的文件继续")
                         : message.isEmpty()     ? tr("索引已更新，每 5 分钟检查文件变化")
                                                 : message);
-                const int unfinished = m_statistics.value(u"failed"_s).toInt()
-                    + m_statistics.value(u"partial"_s).toInt() + m_statistics.value(u"unsupported"_s).toInt()
-                    + m_statistics.value(u"offline"_s).toInt();
+                // As many as the unfinished list holds (Store::errorText()).
+                const int unfinished = m_statistics.value(u"unfinished"_s).toInt();
                 if (!token.stop_requested() && message.isEmpty() && unfinished) {
                     m_status = tr("索引已更新，%1 个文件未完成，可查看原因").arg(unfinished);
                     emit changed();

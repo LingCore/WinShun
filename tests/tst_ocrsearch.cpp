@@ -728,6 +728,14 @@ private slots:
             QVERIFY2(!textless.contains(u"drawn.pdf"_s), qPrintable(textless));
             QVERIFY2(textless.contains(u"memo.docx"_s), qPrintable(textless));
             QCOMPARE(upgraded.statistics().value(u"textless"_s).toInt(), 1);
+            // Nor listed as unfinished for its old reason ("update Win顺" right
+            // after an update); one that failed for itself still is.
+            const QString unfinished = upgraded.errorText();
+            QVERIFY2(!unfinished.contains(u"scan.pdf"_s), qPrintable(unfinished));
+            QVERIFY2(!unfinished.contains(u"dense.png"_s), qPrintable(unfinished));
+            QVERIFY2(unfinished.contains(u"locked.pdf"_s), qPrintable(unfinished));
+            QVERIFY2(unfinished.contains(u"damaged.png"_s), qPrintable(unfinished));
+            QCOMPARE(upgraded.statistics().value(u"unfinished"_s).toInt(), 2);
         }
         {
             Store reopened(index); // upgraded once: nothing more is marked
