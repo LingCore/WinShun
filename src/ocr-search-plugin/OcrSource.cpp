@@ -57,10 +57,14 @@ QByteArray readFile(const QString& path)
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly))
         fail(file.errorString());
-    if (file.size() > kMaxFile)
+    const qint64 size = file.size();
+    if (size > kMaxFile)
         fail(QObject::tr("超过单文件 100 MB 的识别上限"));
-    const QByteArray bytes = file.read(kMaxFile + 1);
-    if (bytes.size() != file.size() || file.error() != QFile::NoError)
+    // Exactly its size: what read() is asked for stays allocated (128 MB for
+    // any picture when asked for the limit), counted against the worker's
+    // memory limit while the file is read.
+    const QByteArray bytes = file.read(size);
+    if (bytes.size() != size || file.size() != size || file.error() != QFile::NoError)
         fail(QObject::tr("文件读取不完整"));
     return bytes;
 }
