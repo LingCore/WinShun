@@ -6,6 +6,7 @@
 // permissions a plugin process gets.
 
 #include "Catalog.h"
+#include "Details.h"
 #include "Gallery.h"
 #include "Host.h"
 #include "IndexService.h"
@@ -5356,6 +5357,231 @@ private slots:
         QCOMPARE(ruleOpen(url(u"https://example.com/"_s), false, probe).gate, OpenGate::None);
         QCOMPARE(ruleOpen(path(u"C:\\Windows"_s), false, probe).gate, OpenGate::None);
         QCOMPARE(ruleOpen(path(u"C:\\Users\\Public\\Documents\\readme.txt"_s), false, probe).gate, OpenGate::None);
+    }
+
+    // GitHub #202: which `open.path` the content pane and the preview take as
+    // a plain file, by its text alone.
+    void detailsPlainFilePath_data()
+    {
+        QTest::addColumn<QString>("path");
+        QTest::addColumn<bool>("plain");
+        QTest::newRow("drive") << u"C:\\Docs\\a.txt"_s << true;
+        QTest::newRow("slashes") << u"D:/Mail/x.msg"_s << true;
+        QTest::newRow("share") << u"\\\\nas\\docs\\a.pdf"_s << true;
+        QTest::newRow("chinese") << u"E:\\资料\\报告.docx"_s << true;
+        QTest::newRow("relative") << u"docs\\a.txt"_s << false;
+        QTest::newRow("drive relative") << u"C:a.txt"_s << false;
+        QTest::newRow("rooted") << u"\\Docs\\a.txt"_s << false;
+        QTest::newRow("folder slash") << u"C:\\Docs\\"_s << false;
+        QTest::newRow("root") << u"C:\\"_s << false;
+        QTest::newRow("dot dot") << u"C:\\Docs\\..\\Windows\\win.ini"_s << false;
+        QTest::newRow("dot") << u"C:\\Docs\\.\\a.txt"_s << false;
+        QTest::newRow("trailing dot") << u"C:\\Docs\\a.txt."_s << false;
+        QTest::newRow("double backslash") << u"C:\\Docs\\\\a.txt"_s << false;
+        QTest::newRow("stream") << u"C:\\Docs\\a.txt:secret"_s << false;
+        QTest::newRow("long prefix") << u"\\\\?\\C:\\Docs\\a.txt"_s << false;
+        QTest::newRow("device") << u"\\\\.\\PhysicalDrive0"_s << false;
+        QTest::newRow("device under share") << u"\\\\.\\pipe\\x"_s << false;
+        QTest::newRow("share only") << u"\\\\nas\\docs"_s << false;
+        QTest::newRow("reserved") << u"C:\\Docs\\CON"_s << false;
+        QTest::newRow("reserved ext") << u"C:\\Docs\\nul.txt"_s << false;
+        QTest::newRow("reserved com") << u"C:\\Docs\\COM1.log"_s << false;
+        QTest::newRow("not reserved") << u"C:\\Docs\\COM10.log"_s << true;
+        QTest::newRow("wildcard") << u"C:\\Docs\\*.txt"_s << false;
+        QTest::newRow("variable") << u"%USERPROFILE%\\a.txt"_s << false;
+        QTest::newRow("url") << u"https://example.com/a.txt"_s << false;
+        QTest::newRow("plugin path") << u"winshun-plugin:a.b/main/x"_s << false;
+    }
+    void detailsPlainFilePath()
+    {
+        QFETCH(QString, path);
+        QFETCH(bool, plain);
+        QCOMPARE(plainFilePath(path), plain);
+    }
+
+    // A row's file: only a plain open.path with no arguments or working folder.
+    void detailsRowFile()
+    {
+        PluginRow row;
+        QVERIFY(rowFile(row).isEmpty()); // opens nothing
+        row.openKind = PluginRow::OpenKind::Path;
+        row.openTarget = u"C:/Mail/a.msg"_s;
+        QCOMPARE(rowFile(row), u"C:\\Mail\\a.msg"_s);
+        row.openArgs = u"-x"_s;
+        QVERIFY(rowFile(row).isEmpty()); // a program started with arguments
+        row.openArgs.clear();
+        row.openCwd = u"C:\\Mail"_s;
+        QVERIFY(rowFile(row).isEmpty());
+        row.openCwd.clear();
+        row.openKind = PluginRow::OpenKind::Url;
+        QVERIFY(rowFile(row).isEmpty());
+    }
+
+    // "details": true goes back with the item, and only a resident plugin's
+    // row asks (a zero-code one has no process to ask).
+    void detailsItemAndRow()
+    {
+        const Item item = parseItem(parseObject(R"({"id": "m1", "title": "Invoice", "details": true})"));
+        QVERIFY(item.details);
+        QCOMPARE(itemToJson(item).value(u"details"_s), QJsonValue(true));
+        QVERIFY(!itemToJson(parseItem(parseObject(R"({"title": "x"})"))).contains(u"details"_s));
+        Fixture f;
+        Spec resident;
+        QVERIFY(!f.install(resident).isEmpty());
+        const plugin::Entry* entry = f.host->catalog().find(resident.id);
+        QVERIFY(entry && entry->manifest);
+        QVERIFY(asksDetails(*toRow(*entry, entry->manifest->commands.first(), item, 0, u"zh"_s).plugin));
+        Spec zero;
+        zero.id = u"test.zero"_s;
+        zero.mode.clear();
+        zero.keywords = {u"zz"_s};
+        zero.commandExtra = {{u"run"_s, QJsonObject {{u"items"_s, QJsonArray {QJsonObject {{u"title"_s, u"x"_s}, {u"details"_s, true}}}}}}};
+        QVERIFY(!f.install(zero).isEmpty());
+        entry = f.host->catalog().find(zero.id);
+        QVERIFY(entry && entry->manifest);
+        QVERIFY(!asksDetails(*toRow(*entry, entry->manifest->commands.first(), item, 0, u"zh"_s).plugin));
+    }
+
+    // The request and its answers for real: text (initialize said the host
+    // knows `details`), a file of the data folder, one outside it, none in time.
+    void detailsRoundTrip()
+    {
+        const auto ask = [](Fixture& f, const QString& id, QJsonValue* result) {
+            int replies = 0;
+            bool ok = false;
+            const QJsonObject params {{u"item"_s, QJsonObject {{u"id"_s, u"m1"_s}, {u"title"_s, u"Invoice 发票"_s}}}, {u"text"_s, u"invoice"_s}};
+            if (!f.host->request(id, u"details"_s, params, [&](bool done, const QJsonValue& value) { ++replies; ok = done; *result = value; }))
+                return false;
+            return QTest::qWaitFor([&] { return replies == 1; }, 5000) && ok;
+        };
+        {
+            Fixture f;
+            Spec spec;
+            QVERIFY(!f.install(spec).isEmpty());
+            QJsonValue result;
+            QVERIFY(!f.host->request(spec.id, u"details"_s, {}, {})); // not running: not asked
+            QVERIFY(f.host->query(u"fk x"_s, Scope::All, 1));
+            QVERIFY(f.waitFinal(1));
+            QVERIFY(ask(f, spec.id, &result));
+            const DetailsAnswer answer = parseDetails(result, f.host->dataDir(spec.id));
+            QCOMPARE(answer.kind, DetailsAnswer::Kind::Text);
+            QCOMPARE(answer.text, u"From: fake\nSubject: Invoice 发票\n\ninvoice\nhost knows details"_s);
+        }
+        {
+            Fixture f;
+            Spec spec;
+            spec.args = {u"--details-file"_s, u"mail.msg"_s};
+            QVERIFY(!f.install(spec).isEmpty());
+            QVERIFY(f.host->query(u"fk x"_s, Scope::All, 1));
+            QVERIFY(f.waitFinal(1));
+            const QString dataDir = f.host->dataDir(spec.id);
+            QJsonValue result;
+            QVERIFY(ask(f, spec.id, &result));
+            QCOMPARE(parseDetails(result, dataDir).kind, DetailsAnswer::Kind::None); // not there yet
+            QVERIFY(QDir().mkpath(dataDir));
+            QFile mail(dataDir + u"\\mail.msg"_s);
+            QVERIFY(mail.open(QIODevice::WriteOnly));
+            mail.write("Subject: x\n");
+            mail.close();
+            QVERIFY(ask(f, spec.id, &result));
+            const DetailsAnswer answer = parseDetails(result, dataDir);
+            QCOMPARE(answer.kind, DetailsAnswer::Kind::File);
+            QCOMPARE(QFileInfo(answer.file).canonicalFilePath(), QFileInfo(mail).canonicalFilePath());
+        }
+        {
+            Fixture f;
+            Spec spec;
+            const QString outside = QDir::toNativeSeparators(f.dir.filePath(u"secret.txt"_s));
+            QFile secret(outside);
+            QVERIFY(secret.open(QIODevice::WriteOnly));
+            secret.close();
+            spec.args = {u"--details-file"_s, outside, u"--details-outside"_s};
+            QVERIFY(!f.install(spec).isEmpty());
+            QVERIFY(f.host->query(u"fk x"_s, Scope::All, 1));
+            QVERIFY(f.waitFinal(1));
+            QJsonValue result;
+            QVERIFY(ask(f, spec.id, &result));
+            QCOMPARE(result.toObject().value(u"file"_s).toString(), outside);
+            QCOMPARE(parseDetails(result, f.host->dataDir(spec.id)).kind, DetailsAnswer::Kind::None);
+        }
+        {
+            Fixture f;
+            Spec spec;
+            spec.args = {u"--hang-details"_s};
+            spec.runtimeExtra = {{u"timeoutMs"_s, 200}};
+            QVERIFY(!f.install(spec).isEmpty());
+            QVERIFY(f.host->query(u"fk x"_s, Scope::All, 1));
+            QVERIFY(f.waitFinal(1));
+            QElapsedTimer timer;
+            timer.start();
+            QJsonValue result;
+            QVERIFY(!ask(f, spec.id, &result)); // its timeoutMs, then failed
+            QVERIFY(timer.elapsed() < 3000);
+        }
+    }
+
+    // Where a details file may be: in the plugin's own data folder, for real,
+    // not through a junction or a hard link to a file elsewhere.
+    void detailsFileInFolder()
+    {
+        QTemporaryDir temp;
+        const QString root = QDir::toNativeSeparators(temp.path());
+        const QString data = root + u"\\p.data"_s;
+        const QString elsewhere = root + u"\\elsewhere"_s;
+        QVERIFY(QDir().mkpath(data + u"\\details"_s));
+        QVERIFY(QDir().mkpath(elsewhere));
+        const auto write = [](const QString& path) {
+            QFile file(path);
+            return file.open(QIODevice::WriteOnly) && file.write("x") == 1;
+        };
+        QVERIFY(write(data + u"\\details\\mail.msg"_s));
+        QVERIFY(write(elsewhere + u"\\secret.txt"_s));
+        const QString inside = fileInFolder(data + u"\\details\\mail.msg"_s, data);
+        QVERIFY(!inside.isEmpty());
+        QVERIFY(inside.endsWith(u"\\p.data\\details\\mail.msg"_s, Qt::CaseInsensitive));
+        QVERIFY(!fileInFolder(data + u"/details/mail.msg"_s, data).isEmpty()); // "/" as "\\"
+        QVERIFY(fileInFolder(elsewhere + u"\\secret.txt"_s, data).isEmpty());
+        QVERIFY(fileInFolder(data + u"\\..\\elsewhere\\secret.txt"_s, data).isEmpty());
+        QVERIFY(fileInFolder(data + u"\\details"_s, data).isEmpty()); // a folder
+        QVERIFY(fileInFolder(data + u"\\details\\none.msg"_s, data).isEmpty());
+        QVERIFY(fileInFolder(u"details\\mail.msg"_s, data).isEmpty()); // relative
+        QVERIFY(fileInFolder(root + u"\\p.data-other\\x"_s, data).isEmpty()); // a name that begins as the folder's
+        // A hard link in the folder to a file elsewhere.
+        QVERIFY(::CreateHardLinkW(reinterpret_cast<LPCWSTR>((data + u"\\link.txt"_s).utf16()),
+            reinterpret_cast<LPCWSTR>((elsewhere + u"\\secret.txt"_s).utf16()), nullptr));
+        QVERIFY(fileInFolder(data + u"\\link.txt"_s, data).isEmpty());
+        // A junction in the folder to a folder elsewhere (no administrator needed).
+        QProcess mklink;
+        mklink.start(u"cmd.exe"_s, {u"/c"_s, u"mklink"_s, u"/J"_s, data + u"\\out"_s, elsewhere});
+        QVERIFY(mklink.waitForFinished(10000) && mklink.exitCode() == 0);
+        QVERIFY(QFileInfo::exists(data + u"\\out\\secret.txt"_s));
+        QVERIFY(fileInFolder(data + u"\\out\\secret.txt"_s, data).isEmpty());
+        // The data folder itself reached through a junction: still its own.
+        mklink.start(u"cmd.exe"_s, {u"/c"_s, u"mklink"_s, u"/J"_s, root + u"\\moved"_s, data});
+        QVERIFY(mklink.waitForFinished(10000) && mklink.exitCode() == 0);
+        QVERIFY(!fileInFolder(data + u"\\details\\mail.msg"_s, root + u"\\moved"_s).isEmpty());
+        QVERIFY(::RemoveDirectoryW(reinterpret_cast<LPCWSTR>((data + u"\\out"_s).utf16())));
+        QVERIFY(::RemoveDirectoryW(reinterpret_cast<LPCWSTR>((root + u"\\moved"_s).utf16())));
+    }
+
+    // Text: cut to kMaxDetailsText, never half a character; "file" first when good.
+    void detailsAnswerText()
+    {
+        QString text(kMaxDetailsText - 1, u'a');
+        text += QString::fromUcs4(U"\U0001F600"); // its high half the last that fits
+        text += u"bc"_s;
+        DetailsAnswer answer = parseDetails(QJsonObject {{u"text"_s, text}}, {});
+        QCOMPARE(answer.kind, DetailsAnswer::Kind::Text);
+        QVERIFY(answer.cut);
+        QCOMPARE(answer.text.size(), kMaxDetailsText - 1);
+        answer = parseDetails(QJsonObject {{u"text"_s, u"short"_s}}, {});
+        QVERIFY(!answer.cut);
+        QCOMPARE(answer.text, u"short"_s);
+        // A file not to be had: its text instead; neither: nothing.
+        answer = parseDetails(QJsonObject {{u"file"_s, u"C:\\Windows\\win.ini"_s}, {u"text"_s, u"t"_s}}, u"C:\\nowhere.data"_s);
+        QCOMPARE(answer.kind, DetailsAnswer::Kind::Text);
+        QCOMPARE(parseDetails(QJsonObject {{u"title"_s, u"x"_s}}, {}).kind, DetailsAnswer::Kind::None);
+        QCOMPARE(parseDetails(QJsonValue(u"text"_s), {}).kind, DetailsAnswer::Kind::None);
     }
 };
 

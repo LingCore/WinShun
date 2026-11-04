@@ -119,6 +119,9 @@ public:
     using Reply = std::function<void(bool ok, const QJsonValue& result)>;
     bool request(const QString& id, const QString& method, const QJsonObject& params, Reply reply, bool foreground = false);
     bool notify(const QString& id, const QString& method, const QJsonObject& params, bool foreground = false);
+    // A plugin's data folder (<id>.data, WS_DATA_DIR), as it is told to it;
+    // not made here.
+    QString dataDir(const QString& id) const;
 
     // From the settings (stage 2 wires the INI): which plugins are on,
     // keywords the user changed, the [WebSearch] keywords, each plugin's

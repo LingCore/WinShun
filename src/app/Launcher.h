@@ -7,12 +7,15 @@
 #include "ResultModel.h"
 #include "PanelColumns.h"
 #include "ContentPane.h"
+#include "FilePreview.h"
 #include "SearchEngine.h"
 #include "SearchTypes.h"
 #include "WebShortcut.h"
 #include "WebSuggester.h"
 
+#include <QCache>
 #include <QElapsedTimer>
+#include <QJsonObject>
 #include <QObject>
 #include <QKeySequence>
 #include <QPointer>
@@ -40,6 +43,7 @@ class SystemCatalog;
 namespace plugin {
 class Host;
 class Merge;
+struct DetailsAnswer;
 struct Effect;
 struct Item;
 struct Open;
@@ -918,6 +922,37 @@ private:
     void refreshStatus();
     void refreshFrequentApps();
     void followPreview(); // the current row's file into the open preview
+    // What a row shows in the preview (none: nothing to); `ask`: a plugin's
+    // details are asked for if not known (GitHub #202).
+    std::optional<FilePreview::Item> previewItem(const SearchResult* r, bool ask = true);
+
+    // GitHub #202: a plugin's details of a row of its that is no file
+    // ("details": true): asked as the content pane or the preview shows the
+    // row, one request at a time (the newest row wanted goes next), answers
+    // kept by plugin, item and words; one that failed is not asked again
+    // until another row is, or new rows come.
+    struct RowDetails {
+        QString file; // a file of the plugin's data folder (plugin::fileInFolder)
+        std::shared_ptr<const QString> text;
+        bool cut = false;
+        QString message; // none to show: why (still asked for: `waiting`)
+        bool waiting = false;
+    };
+    std::optional<RowDetails> pluginDetails(const SearchResult& row, bool ask); // none: not such a row
+    QString detailsKey(const SearchResult& row) const;
+    void askDetails();
+    void detailsAnswered(const QString& key, bool ok, const plugin::DetailsAnswer& answer);
+    struct DetailsWant {
+        QString key;
+        QString pluginId;
+        QJsonObject item;
+        QString text;
+    };
+    QCache<QString, RowDetails> m_details {16384}; // KiB of answers
+    DetailsWant m_detailsWant; // the newest row to ask about
+    QString m_detailsAsking; // the key of the request on its way
+    QString m_detailsFailed, m_detailsFailedWhy;
+    QTimer m_detailsTimer; // a pause in the keys before asking
 
     struct FrequentApp {
         QString name;

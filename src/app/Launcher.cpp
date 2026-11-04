@@ -6,6 +6,7 @@
 #include "Wsl.h"
 
 #include "AppCatalog.h"
+#include "Details.h"
 #include "FileIconProvider.h"
 #include "FilePreview.h"
 #include "History.h"
@@ -483,11 +484,37 @@ Launcher::Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places,
     connect(this, &Launcher::scopeChanged, this, syncPane);
     connect(this, &Launcher::folderChipsChanged, this, syncPane);
     connect(&m_results, &ResultModel::selectionChanged, this, syncPane);
-    connect(m_contentPane.get(), &ContentPane::openRequested, this, [this](const QString& path, int line) {
+    connect(m_contentPane.get(), &ContentPane::openRequested, this, [this](const QString& key, const QString& path, int line) {
+        // A plugin's row (GitHub #202): its file, only as its own Enter
+        // would open it (held to the plugin's permissions, OpenPolicy).
+        if (plugin::isPluginPath(key)) {
+            const int row = m_results.indexOf(key);
+            const SearchResult* r = m_results.at(row);
+            if (r && r->isPlugin() && plugin::asksDetails(*r->plugin)) {
+                trigger(row, Open); // no file of its own: what its Enter does
+                return;
+            }
+            if (!r || !r->isPlugin() || plugin::rowFile(*r->plugin).compare(path, Qt::CaseInsensitive) != 0
+                || !pluginOpenAllowed(r->plugin->pluginId, plugin::Open {plugin::Open::Kind::Path, path, {}, {}}))
+                return;
+        }
         remember(path, m_query);
         contentopen::open(path, line, reportFailure(QFileInfo(path).fileName()));
     });
     m_results.setFolderIndex([index] { return index ? index->index() : nullptr; });
+    // A plugin's details row on show when the pane comes to its matches,
+    // text or preview: asked for now.
+    const auto paneShown = [this] {
+        const SearchResult* r = m_results.at(m_currentRow);
+        if (r && r->isPlugin() && plugin::asksDetails(*r->plugin))
+            syncContentPane();
+    };
+    connect(m_contentPane.get(), &ContentPane::preferencesChanged, this, paneShown);
+    connect(m_contentPane.get(), &ContentPane::activeChanged, this, paneShown);
+    m_detailsTimer.setSingleShot(true);
+    m_detailsTimer.setInterval(120ms); // as a once plugin's queries: not for each row the keys pass
+    connect(&m_detailsTimer, &QTimer::timeout, this, &Launcher::askDetails);
+    connect(this, &Launcher::resultsReplaced, this, [this] { m_detailsFailed.clear(); });
     m_pluginWait.setSingleShot(true);
     m_pluginWait.setInterval(150ms); // a plugin that answers within it shows nothing of the wait
     connect(&m_pluginWait, &QTimer::timeout, this, [this] {
@@ -2117,6 +2144,40 @@ SearchEngine::Request Launcher::contentRequest() const
     return request;
 }
 
+namespace {
+
+// What the content pane counts as files: the files' rows, and a plugin's row
+// that opens a plain file (a content provider's; GitHub #202) as that file's
+// row, unless the file is listed already.
+SearchResults paneFiles(const SearchResults& rows)
+{
+    SearchResults files;
+    files.reserve(rows.size());
+    QSet<QString> listed;
+    for (const SearchResult& row : rows) {
+        if (!row.isDir && row.app == AppKind::None) {
+            files.append(row);
+            listed.insert(row.path.toCaseFolded());
+        }
+    }
+    for (const SearchResult& row : rows) {
+        const QString file = row.isPlugin() && !plugin::asksDetails(*row.plugin) ? plugin::rowFile(*row.plugin) : QString();
+        if (file.isEmpty() || listed.contains(file.toCaseFolded()))
+            continue;
+        listed.insert(file.toCaseFolded());
+        SearchResult copy = row;
+        copy.path = file;
+        copy.app = AppKind::None;
+        copy.plugin = {};
+        copy.clipId = 0;
+        copy.target.clear();
+        files.append(std::move(copy));
+    }
+    return files;
+}
+
+} // namespace
+
 void Launcher::syncContentPane()
 {
     if (!m_contentPane) return;
@@ -2126,19 +2187,35 @@ void Launcher::syncContentPane()
         return;
     }
     SearchResults rows;
-    if (m_scope == Content && !stale()) {
-        rows.reserve(m_results.count());
+    ContentPane::Subject current;
+    int pluginRows = 0; // no file's: the summary says how many
+    if (!stale()) {
+        SearchResults all;
+        all.reserve(m_results.count());
         for (int i = 0; i < m_results.count(); ++i) {
-            const auto* row = m_results.at(i);
-            if (row && !row->isDir && row->app == AppKind::None) rows.append(*row);
+            if (const auto* row = m_results.at(i))
+                all.append(*row);
+        }
+        rows = paneFiles(all);
+        for (const SearchResult& row : all)
+            pluginRows += row.isPlugin() && !plugin::isHintRow(row);
+        pluginRows -= static_cast<int>(rows.size() - std::ranges::count_if(all, [](const SearchResult& row) {
+            return !row.isDir && row.app == AppKind::None;
+        }));
+        if (const SearchResult* row = m_results.at(m_currentRow)) {
+            if (!row->isPlugin())
+                current = {row->path, row->path};
+            else if (const auto details = pluginDetails(*row, m_contentPane->showsDetails()))
+                current = {row->path, details->file, row->name, details->text, details->cut, details->message, details->waiting};
+            else if (const QString file = plugin::rowFile(*row->plugin); !file.isEmpty())
+                current = {row->path, file};
         }
     }
-    const QString current = m_scope == Content && !stale() ? m_results.pathAt(m_currentRow) : QString();
     const QString words = m_contentScope.words.isEmpty() ? splitContentQuery(searchText()).words : m_contentScope.words;
     m_contentPane->setContentIndexEnabled(m_contentIndex);
     m_contentPane->update(contentRequest(), words, searchText() + u'\n' + panelKey() + u'\n' + pickKey(m_contentPick)
-            + u'\n' + m_contentFolder, std::move(rows), stale() ? SearchResults{} : m_results.selection(), current,
-        m_contentScanned, m_contentTotal, m_scanComplete && !m_moreContent, searching(), m_leftOut);
+            + u'\n' + m_contentFolder, std::move(rows), stale() ? SearchResults{} : paneFiles(m_results.selection()), current,
+        m_contentScanned, m_contentTotal, m_scanComplete && !m_moreContent, searching(), m_leftOut, pluginRows);
 }
 
 void Launcher::startContentSearch()
@@ -3572,20 +3649,96 @@ void Launcher::dismiss()
     emit dismissRequested();
 }
 
-namespace {
-
 // What a row shows in the preview: a file or folder of its own (not an app,
-// a place, a web page or a plugin's row; not one gone or out of reach).
-std::optional<FilePreview::Item> previewItem(const SearchResult* r)
+// a place or a web page; not one gone or out of reach); a plugin's row, the
+// plain file it opens, or what the plugin tells of it (GitHub #202).
+std::optional<FilePreview::Item> Launcher::previewItem(const SearchResult* r, bool ask)
 {
     if (r && r->clipId > 0 && !r->target.isEmpty()) // a screenshot: its picture
         return FilePreview::Item {r->target, r->name, false};
+    if (r && r->isPlugin()) {
+        if (const auto details = pluginDetails(*r, ask)) {
+            if (!details->file.isEmpty())
+                return FilePreview::Item {details->file, r->name, false};
+            return FilePreview::Item {r->path, r->name, false, details->text, details->message};
+        }
+        const QString file = plugin::rowFile(*r->plugin);
+        if (file.isEmpty())
+            return std::nullopt;
+        return FilePreview::Item {file, file.mid(file.lastIndexOf(u'\\') + 1), false};
+    }
     if (!r || r->isApp() || r->missing || r->offline || r->path.isEmpty())
         return std::nullopt;
     return FilePreview::Item {r->path, r->name, r->isDir};
 }
 
-} // namespace
+QString Launcher::detailsKey(const SearchResult& row) const
+{
+    const QString words = m_keyword ? m_keyword->words : searchText(); // as an action's
+    return row.plugin->pluginId + u'\n' + QString::fromUtf8(QJsonDocument(row.plugin->item).toJson(QJsonDocument::Compact))
+        + u'\n' + words;
+}
+
+std::optional<Launcher::RowDetails> Launcher::pluginDetails(const SearchResult& row, bool ask)
+{
+    if (!row.isPlugin() || !plugin::asksDetails(*row.plugin))
+        return std::nullopt;
+    const QString key = detailsKey(row);
+    if (const RowDetails* known = m_details.object(key))
+        return *known;
+    if (key == m_detailsFailed)
+        return RowDetails {{}, {}, false, m_detailsFailedWhy, false};
+    if (ask) {
+        m_detailsFailed.clear(); // another row: the failed one is asked again when it comes back
+        if (m_detailsWant.key != key && m_detailsAsking != key) {
+            m_detailsWant = {key, row.plugin->pluginId, row.plugin->item, m_keyword ? m_keyword->words : searchText()};
+            if (m_detailsAsking.isEmpty())
+                m_detailsTimer.start();
+        }
+    }
+    return RowDetails {{}, {}, false, tr("正在向插件获取详情…"), true};
+}
+
+void Launcher::askDetails()
+{
+    if (m_detailsWant.key.isEmpty() || !m_detailsAsking.isEmpty())
+        return;
+    const DetailsWant want = std::exchange(m_detailsWant, {});
+    // Off, or waiting for the user's word on more permissions: not asked.
+    if (!m_plugins || !m_plugins->catalog().enabled(want.pluginId)) {
+        detailsAnswered(want.key, false, {});
+        return;
+    }
+    m_detailsAsking = want.key;
+    // Its timeoutMs at most; not running (or a once plugin's): failed at once.
+    m_plugins->request(want.pluginId, u"details"_s, {{u"item"_s, want.item}, {u"text"_s, want.text}},
+        [self = QPointer<Launcher>(this), key = want.key, dataDir = m_plugins->dataDir(want.pluginId)](bool ok, const QJsonValue& result) {
+            if (self)
+                self->detailsAnswered(key, ok, ok ? plugin::parseDetails(result, dataDir) : plugin::DetailsAnswer {});
+        });
+}
+
+void Launcher::detailsAnswered(const QString& key, bool ok, const plugin::DetailsAnswer& answer)
+{
+    if (m_detailsAsking == key)
+        m_detailsAsking.clear();
+    if (answer.kind == plugin::DetailsAnswer::Kind::None) {
+        m_detailsFailed = key;
+        m_detailsFailedWhy = ok ? tr("插件没有给出可显示的详情") : tr("无法获取详情：插件没有回答");
+    } else {
+        auto* kept = new RowDetails;
+        kept->file = answer.file;
+        if (answer.kind == plugin::DetailsAnswer::Kind::Text)
+            kept->text = std::make_shared<const QString>(answer.text);
+        kept->cut = answer.cut;
+        m_details.insert(key, kept, static_cast<int>(answer.text.size() / 512 + 1));
+    }
+    // What shows it (the row may be another by now: then that one's turn).
+    syncContentPane();
+    followPreview();
+    if (!m_detailsWant.key.isEmpty())
+        m_detailsTimer.start();
+}
 
 void Launcher::setPreview(FilePreview* preview)
 {
@@ -3600,7 +3753,9 @@ void Launcher::setPreview(FilePreview* preview)
     connect(preview, &FilePreview::openRequested, this, [this](const QString& path) {
         for (int row = 0; row < m_results.count(); ++row) {
             const SearchResult* r = m_results.at(row);
-            if (r && !r->isApp() && r->path.compare(path, Qt::CaseInsensitive) == 0) {
+            const std::optional<FilePreview::Item> shown
+                = r && (!r->isApp() || (r->isPlugin() && r->clipId == 0)) ? previewItem(r, false) : std::nullopt;
+            if (shown && shown->path.compare(path, Qt::CaseInsensitive) == 0) {
                 trigger(row, Open);
                 return;
             }
