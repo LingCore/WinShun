@@ -236,6 +236,8 @@ private slots:
                 continue;
             for (int variant = 0; variant < 2; ++variant) {
                 State state = defaultState();
+                if (e.key == u"Launcher/FolderMenuDouble") // the last way to open it cannot go off (GitHub #196)
+                    state.settings.folderMenuMiddle = true;
                 const QJsonValue value = sampleFor(e, state, variant);
                 QVERIFY2(!value.isNull() && !value.isUndefined(), qPrintable(e.key));
                 const Plan plan = makePlan(state, one(e.key, value), {});
@@ -260,6 +262,20 @@ private slots:
             }
         }
         QVERIFY(checked > 60);
+    }
+
+    // The menu keeps one way and one place on (GitHub #196), as its settings do.
+    void folderMenuKeepsOne()
+    {
+        State state = defaultState();
+        QVERIFY(!makePlan(state, one(u"Launcher/FolderMenuDouble"_s, false), {}).problems.isEmpty());
+        QVERIFY(makePlan(state, one(u"Launcher/FolderMenuMiddle"_s, true), {}).problems.isEmpty());
+        state.settings.folderMenuDesktop = false;
+        QVERIFY(!makePlan(state, one(u"Launcher/FolderMenuExplorer"_s, false), {}).problems.isEmpty());
+        QJsonArray both;
+        both.append(QJsonObject {{u"key"_s, u"Launcher/FolderMenuDesktop"_s}, {u"value"_s, true}});
+        both.append(QJsonObject {{u"key"_s, u"Launcher/FolderMenuExplorer"_s}, {u"value"_s, false}});
+        QVERIFY2(makePlan(state, both, {}).problems.isEmpty(), "one off, the other on in the same call is fine");
     }
 
     void webShortcutsRoundTrip()
