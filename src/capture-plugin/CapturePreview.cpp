@@ -11,6 +11,7 @@
 #include "WindowFrame.h"
 #include "platform/OcrFiles.h"
 #include "RawClicks.h"
+#include "Presenter.h"
 #include "Recorder.h"
 #include "RecordingPointer.h"
 #include "SystemTheme.h"
@@ -35,6 +36,7 @@
 #include <QQuickWindow>
 #include <QScreen>
 #include <QStyleHints>
+#include <QSurfaceFormat>
 #include <QTimer>
 #include <QTemporaryDir>
 #include <QTranslator>
@@ -61,6 +63,7 @@ constexpr auto kSettingsFlag = u"--preview-capture-settings";
 constexpr auto kRecordingFlag = u"--preview-recording";
 constexpr auto kLongCaptureFlag = u"--preview-long-capture";
 constexpr auto kOcrFlag = u"--preview-ocr";
+constexpr auto kPresenterFlag = u"--preview-presenter";
 
 int g_warnings = 0;
 bool g_edges = false; // --edges (or --tree): every grab also writes <png>.edges.txt
@@ -1863,11 +1866,169 @@ int runRecording(const QStringList& args)
     return saved && passed ? 0 : 4;
 }
 
+// --preview-presenter [--laser]: the presenter's white board (GitHub #189)
+// for the README, with no desktop in it: the production Presenter, ink window
+// (PresenterOverlay.qml) and toolbar (PresenterToolbar.qml) off the screen,
+// with made-up hooks in place of PresenterHost's (one monitor 1000 x 625
+// logical px, no foreground, nothing remembered on disk). The ink comes through
+// the ink window's own mouse routing; the toolbar is drawn over the board
+// where PresenterHost first puts it; presenter-board.png. --laser: the
+// laser pointer held at the end, its trail drawn.
+int runPresenter(const QStringList& args)
+{
+    using namespace capture;
+    const QDir out(valueAfter(args, kPresenterFlag));
+    QDir().mkpath(out.path());
+    QTranslator translator;
+    if (args.contains(u"--english"_s) && translator.load(u":/i18n/capture_en.qm"_s))
+        QCoreApplication::installTranslator(&translator);
+    const qreal dpr = QGuiApplication::primaryScreen()->devicePixelRatio();
+    const QSize logical(1000, 625);
+    constexpr int toolbarTop = 12; // PresenterHost's kToolbarTop
+    QVariantMap store {{QString::fromLatin1(Presenter::kRecordHintKey), true}, {QString::fromLatin1(Presenter::kThroughHintKey), true}};
+    Presenter presenter;
+    Presenter::Hooks hooks;
+    hooks.monitors = [&] { return QList<Presenter::Monitor> {{QSize(qRound(logical.width() * dpr), qRound(logical.height() * dpr)), dpr}}; };
+    hooks.screenAtPointer = [] { return 0; };
+    hooks.foreground = [] { return quintptr(0); };
+    hooks.setForeground = [](quintptr) { return false; };
+    hooks.beneathPointer = [] { return quintptr(0); };
+    hooks.load = [&](const QString& key) { return store.value(key); };
+    hooks.save = [&](const QString& key, const QVariant& value) { store.insert(key, value); };
+    presenter.setHooks(std::move(hooks));
+    presenter.open();
+    presenter.toggleBoard(int(presenter::Board::White));
+    PresenterScreen* screen = presenter.screen(0);
+    if (!screen) { say(u"FAIL: no presenter screen"_s); return 4; }
+
+    QQmlApplicationEngine engine;
+    const auto make = [&](const char* type, const QVariantMap& properties) {
+        QQmlComponent component(&engine, u"WinShun"_s, QString::fromLatin1(type));
+        auto* window = qobject_cast<QQuickWindow*>(component.createWithInitialProperties(properties));
+        if (!window) {
+            say(component.errorString());
+            return window;
+        }
+        QSurfaceFormat format = window->format();
+        format.setAlphaBufferSize(8); // as PresenterHost: drawn on nothing
+        window->setFormat(format);
+        return window;
+    };
+    QQuickWindow* ink = make("PresenterOverlay", {{u"presenter"_s, QVariant::fromValue(&presenter)}, {u"screenModel"_s, QVariant::fromValue(screen)}});
+    QQuickWindow* toolbar = make("PresenterToolbar", {{u"presenter"_s, QVariant::fromValue(&presenter)}});
+    if (!ink || !toolbar) return 3;
+    ink->resize(logical);
+    showOffScreen(ink);
+    showOffScreen(toolbar);
+    settle(ink);
+
+    const auto send = [&](QEvent::Type type, QPointF at, Qt::MouseButton button, Qt::MouseButtons buttons) {
+        QMouseEvent event(type, at, ink->mapToGlobal(at.toPoint()), button, buttons, Qt::NoModifier);
+        QCoreApplication::sendEvent(ink, &event);
+        QCoreApplication::processEvents();
+    };
+    // `stepMs` between the moves: the laser's trail fades with time (kLifeMs).
+    const auto stroke = [&](const QList<QPointF>& points, bool release = true, int stepMs = 0) {
+        send(QEvent::MouseButtonPress, points.first(), Qt::LeftButton, Qt::LeftButton);
+        for (qsizetype i = 1; i < points.size(); ++i) {
+            const QPointF from = points[i - 1], to = points[i];
+            for (int step = 1; step <= 6; ++step) {
+                send(QEvent::MouseMove, from + (to - from) * (step / 6.0), Qt::NoButton, Qt::LeftButton);
+                if (stepMs)
+                    pump(stepMs);
+            }
+        }
+        if (release)
+            send(QEvent::MouseButtonRelease, points.last(), Qt::LeftButton, Qt::NoButton);
+    };
+    const auto tool = [&](annot::Kind kind, const QVariantMap& panel) {
+        presenter.setTool(int(kind));
+        presenter.model()->setPanel(panel);
+    };
+    // The text and number boxes ask for the keys (requestActivate): a
+    // warning each, as the windows here never take the focus.
+    const auto text = [&](QPointF at, const QString& words) {
+        stroke({at});
+        presenter.model()->commitText(words);
+    };
+    const auto number = [&](QPointF at) {
+        stroke({at});
+        if (presenter.model()->editingText())
+            presenter.model()->commitText({});
+        if (presenter.model()->editingNumber())
+            presenter.model()->closeNumberEdit();
+    };
+
+    // A plan on the board: a title, three boxes with arrows and numbers,
+    // the last one ringed and ticked, a highlighted line.
+    tool(annot::Kind::Text, {{u"color"_s, u"#212121"_s}, {u"size"_s, 32}, {u"bold"_s, true}});
+    text({80, 96}, u"新版上线计划"_s);
+    tool(annot::Kind::Rect, {{u"color"_s, u"#1E88E5"_s}, {u"width"_s, 4}});
+    const QList<qreal> lefts {90, 395, 700};
+    for (const qreal x : lefts)
+        stroke({{x, 220}, {x + 210, 340}});
+    tool(annot::Kind::Text, {{u"color"_s, u"#212121"_s}, {u"size"_s, 24}, {u"bold"_s, false}});
+    const QStringList words {u"整理需求"_s, u"开发测试"_s, u"发布上线"_s};
+    for (qsizetype i = 0; i < lefts.size(); ++i)
+        text({lefts[i] + 57, 262}, words[i]);
+    tool(annot::Kind::Arrow, {{u"color"_s, u"#FB8C00"_s}, {u"width"_s, 4}});
+    stroke({{308, 280}, {387, 280}});
+    stroke({{613, 280}, {692, 280}});
+    tool(annot::Kind::Number, {{u"color"_s, u"#E53935"_s}, {u"size"_s, 18}});
+    for (const qreal x : lefts)
+        number({x, 220});
+    tool(annot::Kind::Ellipse, {{u"color"_s, u"#E53935"_s}, {u"width"_s, 4}});
+    stroke({{672, 196}, {938, 366}});
+    tool(annot::Kind::Marker, {{u"color"_s, u"#FDD835"_s}, {u"width"_s, 20}});
+    stroke({{100, 452}, {404, 452}});
+    tool(annot::Kind::Text, {{u"color"_s, u"#212121"_s}, {u"size"_s, 24}, {u"bold"_s, false}});
+    text({96, 436}, u"周五前完成测试，下周一发布"_s);
+    tool(annot::Kind::Pen, {{u"color"_s, u"#43A047"_s}, {u"width"_s, 6}});
+    stroke({{820, 410}, {846, 440}, {900, 384}});
+    const bool laser = args.contains(u"--laser"_s); // the laser held, its trail after it
+    presenter.setLaser(laser);
+    settle(ink);
+    settle(toolbar);
+    if (laser)
+        stroke({{600, 560}, {680, 520}, {760, 545}, {840, 505}}, false, 12); // held: the trail shows
+
+    bool ok = true;
+    const auto check = [&](bool passed, const QString& what) {
+        say(u"%1: %2"_s.arg(passed ? u"PASS"_s : u"FAIL"_s, what));
+        ok = passed && ok;
+    };
+    check(presenter.board() == int(presenter::Board::White) && screen->boardModel(), u"the white board is open"_s);
+    check(screen->boardModel() && screen->boardModel()->itemCount() >= 14 && screen->desk()->itemCount() == 0,
+          u"the ink is on the board, not the desktop: %1 item(s)"_s.arg(screen->boardModel() ? screen->boardModel()->itemCount() : 0));
+    const QImage board = ink->grabWindow();
+    QImage bar = toolbar->grabWindow();
+    check(!board.isNull() && !bar.isNull(), u"both windows drawn"_s);
+    say(u"toolbar %1x%2 logical"_s.arg(toolbar->width()).arg(toolbar->height()));
+    QImage picture = board.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    {
+        QPainter painter(&picture);
+        bar = bar.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+        // Both grabs are at the windows' scale: logical px here.
+        painter.drawImage(QPoint((logical.width() - toolbar->width()) / 2, toolbarTop), bar);
+    }
+    const QString file = out.filePath(u"presenter-board.png"_s);
+    const bool saved = picture.save(file, "PNG");
+    say(u"%1 %2 %3x%4"_s.arg(saved ? u"saved"_s : u"NOT saved"_s, file).arg(picture.width()).arg(picture.height()));
+    if (laser)
+        send(QEvent::MouseButtonRelease, {840, 505}, Qt::LeftButton, Qt::NoButton);
+    presenter.close();
+    toolbar->hide();
+    delete toolbar;
+    say(u"presenter checks: %1"_s.arg(ok ? u"passed"_s : u"failed"_s));
+    return finish(ink, ok && saved);
+}
+
 } // namespace
 
 bool wanted(const QStringList& args)
 {
-    return args.contains(kCaptureToolsFlag) || args.contains(kRecordingFlag) || args.contains(kLongCaptureFlag) || args.contains(kOcrFlag) || args.contains(kSettingsFlag);
+    return args.contains(kCaptureToolsFlag) || args.contains(kRecordingFlag) || args.contains(kLongCaptureFlag) || args.contains(kOcrFlag) || args.contains(kSettingsFlag)
+        || args.contains(kPresenterFlag);
 }
 
 void note(const QString& line)
@@ -1877,7 +2038,7 @@ void note(const QString& line)
 
 void prepare(const QStringList& args)
 {
-    const QString folder = valueAfter(args, args.contains(kSettingsFlag) ? kSettingsFlag : args.contains(kOcrFlag) ? kOcrFlag : args.contains(kLongCaptureFlag) ? kLongCaptureFlag
+    const QString folder = valueAfter(args, args.contains(kPresenterFlag) ? kPresenterFlag : args.contains(kSettingsFlag) ? kSettingsFlag : args.contains(kOcrFlag) ? kOcrFlag : args.contains(kLongCaptureFlag) ? kLongCaptureFlag
                                            : args.contains(kRecordingFlag) ? kRecordingFlag : kCaptureToolsFlag);
     if (!folder.isEmpty()) {
         QDir().mkpath(folder);
@@ -1904,10 +2065,12 @@ int run(const QStringList& args)
     const bool longCaptureMode = args.contains(kLongCaptureFlag);
     const bool ocrMode = args.contains(kOcrFlag);
     const bool settingsMode = args.contains(kSettingsFlag);
-    if (valueAfter(args, settingsMode ? kSettingsFlag : ocrMode ? kOcrFlag : longCaptureMode ? kLongCaptureFlag : recordingMode ? kRecordingFlag : kCaptureToolsFlag).isEmpty()) {
+    const bool presenterMode = args.contains(kPresenterFlag);
+    if (valueAfter(args, presenterMode ? kPresenterFlag : settingsMode ? kSettingsFlag : ocrMode ? kOcrFlag : longCaptureMode ? kLongCaptureFlag : recordingMode ? kRecordingFlag : kCaptureToolsFlag).isEmpty()) {
         std::fprintf(stderr, "usage: WinShunCapture --preview-capture-tools <folder> [--toolbar-drag] [--scale 1.5] [--dark] [--renderer d3d11]\n"
                              "       WinShunCapture --preview-recording <folder> --renderer d3d11 --auto [--gif] [--clicks]\n"
                              "       WinShunCapture --preview-long-capture <folder> --renderer d3d11 [--auto]\n"
+                             "       WinShunCapture --preview-presenter <folder> [--laser] [--scale 2] [--renderer d3d11]\n"
                              "       (with --app-dir <Win顺's folder>, or WS_APP_DIR)\n");
         return 2;
     }
@@ -1915,6 +2078,8 @@ int run(const QStringList& args)
     g_edges = args.contains(u"--edges"_s);
     QGuiApplication::styleHints()->setColorScheme(args.contains(u"--dark"_s) ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
     SystemTheme::setBackdropAvailable(false); // plain colours, as a window without Mica
+    if (presenterMode)
+        return runPresenter(args);
     if (settingsMode)
         return runSettings(args);
     if (ocrMode)
