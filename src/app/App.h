@@ -326,6 +326,10 @@ private:
     void applyClipboard(bool initial = false); // the [Clipboard] settings
     void applyClipboardHotkeys(); // Win+V and the other shortcut; where Win+V stands, for the settings
     void applyQuickPasteHotkeys(); // global digits, suspended while Win顺 has the keys
+    // Whether Win顺 has the keys: the clipboard up, or a window of its own in
+    // front. Qt's focus window alone is not that (a refused activation leaves
+    // one active in the background, the browser in front: #195).
+    bool quickPasteSuspended() const;
     void clipCaptured(const ClipCapture& capture);
     void applyTaskbar(bool initial = false); // the [Taskbar] settings: Win+S, typing in the Start menu
     void applyTaskbarHotkeys(); // Win+S and Win+Shift+S; where Win+S stands, for the settings
@@ -805,6 +809,7 @@ private:
     // kept as they are from one applyQuickPasteHotkeys to the next, and one
     // still held kept until it is let go (#195).
     unsigned m_quickPasteRegistered = 0;
+    bool m_quickPasteSuspended = false; // as last applied
     QString m_quickPasteChord;
     QElapsedTimer m_quickPasteHeldSince; // a digit to let go of still held, since
     bool m_quickPasteRetrying = false; // a look again at a held digit on its way

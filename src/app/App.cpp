@@ -954,7 +954,7 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
             const int number = id - kQuickPasteHotkeyId;
             // A message already queued before the keys were suspended must
             // not paste into the program behind our newly opened panel.
-            if ((m_quickPasteKeys & (1u << number)) && !QGuiApplication::focusWindow() && !m_clipboard->active())
+            if ((m_quickPasteKeys & (1u << number)) && !quickPasteSuspended())
                 m_clipboard->pasteDirect(m_clipStore->quickPasteEntry(number, m_clipboard->pinnedFirst()),
                     ::GetForegroundWindow());
         } else if (id == kWinVHotkeyId || id == kClipboardHotkeyId) {
@@ -2350,7 +2350,8 @@ void App::applyQuickPasteHotkeys()
     const bool recording = m_settingsEditor && m_settingsEditor->recordingHotkey();
     const bool wanted = !recording && m_settings.clipboard && (keys == u"ctrl" || keys == u"alt");
     const QString modifier = keys == u"ctrl" ? u"Ctrl"_s : u"Alt"_s;
-    const bool suspended = QGuiApplication::focusWindow() || m_clipboard->active();
+    const bool suspended = quickPasteSuspended();
+    m_quickPasteSuspended = suspended;
     const unsigned own = wanted ? ownNumberDigits(keys) : 0;
     const bool sameChord = m_quickPasteChord == keys;
     const auto down = [](int vk) { return (::GetAsyncKeyState(vk) & 0x8000) != 0; };
@@ -2404,8 +2405,9 @@ void App::applyQuickPasteHotkeys()
             applyQuickPasteHotkeys();
         });
     }
-    // For a report (GitHub #195): the digits not there, and Win顺 not in
-    // front to take them; a digit held on to. Written as it begins and ends.
+    // For a report (GitHub #195): a window of ours active with another
+    // program in front (no longer suspending), the clipboard active with its
+    // window hidden, a digit held on to. Written as it begins and ends.
     const QWindow* focus = QGuiApplication::focusWindow();
     DWORD pid = 0;
     ::GetWindowThreadProcessId(::GetForegroundWindow(), &pid);
@@ -2431,6 +2433,17 @@ void App::applyQuickPasteHotkeys()
         if (QGuiApplication::focusWindow())
             m_settingsEditor->refreshNumberKeys();
     }
+}
+
+bool App::quickPasteSuspended() const
+{
+    if (m_clipboard->active())
+        return true; // over the program in front too: its rows have the digits (KeyRouter)
+    if (!QGuiApplication::focusWindow())
+        return false;
+    DWORD pid = 0;
+    ::GetWindowThreadProcessId(::GetForegroundWindow(), &pid);
+    return pid == ::GetCurrentProcessId();
 }
 
 void App::applyTaskbar(bool initial)
@@ -5438,6 +5451,10 @@ void CALLBACK App::foregroundChanged(HWINEVENTHOOK, DWORD, HWND window, LONG, LO
         App* app = g_launcherApp;
         if (app)
             app->adminTapFront(window);
+        // Another program's window in front while Qt still has one of ours
+        // active (no focusWindowChanged comes): the digits are its again.
+        if (app && app->quickPasteSuspended() != app->m_quickPasteSuspended)
+            app->applyQuickPasteHotkeys();
         if (!app || !app->m_window || !app->m_window->isVisible() || !app->m_window->isActive())
             return;
         DWORD pid = 0;
