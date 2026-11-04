@@ -5411,8 +5411,9 @@ void Launcher::startPluginQuery(const QString& text, std::optional<KeywordMode> 
     const auto scope = keyword && m_panel ? ws::Scope::All : static_cast<ws::Scope>(m_scope);
     const std::uint64_t id = ++m_pluginQueryId;
     m_keyword = std::move(keyword);
+    // The keywords offered as rows are 全部's (matchKeyword): in 文件 and 文件夹 they could not be run.
     m_merge->begin(id, text, m_keyword ? m_keyword->pluginId : QString(), m_keyword ? m_keyword->commandId : QString(),
-        m_scope == Content);
+        m_scope == Content, m_scope == All || m_panel);
     m_pluginTimer.start();
     m_plugins->query(text, scope, id, pluginFilters()); // zero-code ones answer within
     if (!m_pluginPending.isEmpty())

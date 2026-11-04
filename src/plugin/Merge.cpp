@@ -136,11 +136,12 @@ Merge::Merge(RowSink& sink, const Catalog& catalog)
 {
 }
 
-void Merge::begin(std::uint64_t queryId, const QString& text, const QString& keywordPlugin, const QString& keywordCommand, bool contentOnly)
+void Merge::begin(std::uint64_t queryId, const QString& text, const QString& keywordPlugin, const QString& keywordCommand, bool contentOnly, bool hints)
 {
     m_queryId = queryId;
     m_text = text;
     m_contentOnly = contentOnly;
+    m_hints = hints;
     m_keywordPlugin = keywordPlugin;
     m_keywordCommand = keywordCommand;
     m_namesReady = keywordMode(); // no name search to wait for
@@ -153,7 +154,7 @@ void Merge::begin(std::uint64_t queryId, const QString& text, const QString& key
 void Merge::namesShown()
 {
     m_namesReady = true;
-    if (!keywordMode() && !m_contentOnly)
+    if (!keywordMode() && !m_contentOnly && m_hints)
         placeHint();
     for (auto it = m_held.begin(); it != m_held.end();) {
         if (it->second.complete) {
