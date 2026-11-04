@@ -1623,9 +1623,10 @@ void App::applyKeyListener(bool force)
     if (m_keyListenerMode < 0) return;
     // Double clicks: for File Explorer and the desktop; Directory Opus says
     // so itself. Not when the menu is there for its hotkey alone.
-    const bool doubleClicks = m_folderMenu && m_settings.folderMenu != u"off"
+    const bool clickMenu = m_folderMenu && m_settings.folderMenu != u"off"
         && (m_settings.folderMenuExplorer || m_settings.folderMenuDesktop);
-    const bool middleClicks = doubleClicks && m_settings.folderMenuMiddle;
+    const bool doubleClicks = clickMenu && m_settings.folderMenuDouble;
+    const bool middleClicks = clickMenu && m_settings.folderMenuMiddle;
     const int listenTo = (m_settings.doubleCtrl ? 1 : 0) | (doubleClicks ? 2 : 0) | (m_dropPie ? 4 : 0) | (middleClicks ? 8 : 0);
     if (force || listenTo != m_keyListenerMode) {
         m_serviceKeyListener.reset();

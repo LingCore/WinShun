@@ -852,6 +852,7 @@ void Settings::load()
         folderMenu = folderMenuBefore;
     folderMenuExplorer = readOrDefault(s, u"Launcher/FolderMenuExplorer"_s, d.folderMenuExplorer);
     folderMenuDesktop = readOrDefault(s, u"Launcher/FolderMenuDesktop"_s, d.folderMenuDesktop);
+    folderMenuDouble = readOrDefault(s, u"Launcher/FolderMenuDouble"_s, d.folderMenuDouble);
     folderMenuMiddle = readOrDefault(s, u"Launcher/FolderMenuMiddle"_s, d.folderMenuMiddle);
     folderMenuFavorites = readOrDefault(s, u"Launcher/FolderMenuFavorites"_s, d.folderMenuFavorites);
     folderMenuRecent = readOrDefault(s, u"Launcher/FolderMenuRecent"_s, d.folderMenuRecent);
@@ -1203,6 +1204,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/FolderMenu"_s, folderMenu);
     s.setValue(u"Launcher/FolderMenuExplorer"_s, folderMenuExplorer);
     s.setValue(u"Launcher/FolderMenuDesktop"_s, folderMenuDesktop);
+    s.setValue(u"Launcher/FolderMenuDouble"_s, folderMenuDouble);
     s.setValue(u"Launcher/FolderMenuMiddle"_s, folderMenuMiddle);
     s.setValue(u"Launcher/FolderMenuFavorites"_s, folderMenuFavorites);
     s.setValue(u"Launcher/FolderMenuRecent"_s, folderMenuRecent);

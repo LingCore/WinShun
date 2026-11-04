@@ -1186,6 +1186,14 @@ void SettingsEditor::setFolderMenuExplorer(bool on)
     commit();
 }
 
+void SettingsEditor::setFolderMenuDouble(bool on)
+{
+    if (m_settings.folderMenuDouble == on)
+        return;
+    m_settings.folderMenuDouble = on;
+    commit();
+}
+
 void SettingsEditor::setFolderMenuMiddle(bool on)
 {
     if (m_settings.folderMenuMiddle == on)

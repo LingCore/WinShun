@@ -376,8 +376,16 @@
         <translation>WinShun on the taskbar</translation>
     </message>
     <message>
-        <source>触发位置与方式</source>
-        <translation>Trigger locations and methods</translation>
+        <source>触发位置</source>
+        <translation>Trigger location</translation>
+    </message>
+    <message>
+        <source>在资源管理器或桌面弹出文件夹快捷菜单</source>
+        <translation>Folder quick menu in File Explorer or on the desktop</translation>
+    </message>
+    <message>
+        <source>触发方式</source>
+        <translation>Trigger method</translation>
     </message>
     <message>
         <source>菜单里列出的内容</source>
@@ -1121,6 +1129,10 @@
     <message>
         <source>预览快捷键</source>
         <translation>Preview shortcut</translation>
+    </message>
+    <message>
+        <source>用鼠标左键双击打开文件夹菜单</source>
+        <translation>Open the folder menu with a left double click</translation>
     </message>
     <message>
         <source>同时用中键打开文件夹菜单</source>
@@ -4355,12 +4367,12 @@ Right: center window · Drag: move window</translation>
         <translation>Right-click a folder, a folder’s empty space or a drive to search only in it; on Windows 11 it is under “Show more options”</translation>
     </message>
     <message>
-        <source>双击空白处弹出文件夹菜单</source>
-        <translation>Folder menu on a double click</translation>
+        <source>在资源管理器或桌面弹出文件夹快捷菜单</source>
+        <translation>Folder quick menu in File Explorer or on the desktop</translation>
     </message>
     <message>
-        <source>双击;空白;空白处;收藏;收藏夹;最近;文件夹菜单;资源管理器;桌面;Listary;double-click;folder menu</source>
-        <translation>double click;blank;empty space;favorites;recent;folder menu;File Explorer;desktop;Listary</translation>
+        <source>双击;空白;空白处;收藏;收藏夹;最近;文件夹菜单;文件夹快捷菜单;资源管理器;桌面;Listary;double-click;folder menu</source>
+        <translation>double click;blank;empty space;favorites;recent;folder menu;folder quick menu;File Explorer;desktop;Listary</translation>
     </message>
     <message>
         <source>已在 Opus 的设置里加好</source>
@@ -6669,8 +6681,8 @@ Right: center window · Drag: move window</translation>
         <translation>File manager integration</translation>
     </message>
     <message>
-        <source>文件夹菜单与双击</source>
-        <translation>Folder menu and double click</translation>
+        <source>文件夹快捷菜单</source>
+        <translation>Folder quick menu</translation>
     </message>
     <message>
         <source>对话框联动</source>
@@ -6837,20 +6849,40 @@ Right: center window · Drag: move window</translation>
         <translation>Current folder first: list results from current folder and subfolders first, then other locations, matching Listary</translation>
     </message>
     <message>
-        <source>在空白处双击弹出常用文件夹菜单，选中后直接在当前窗口打开</source>
-        <translation>Double-click empty space for common folders; select one to open it in the current window</translation>
+        <source>在空白处双击或按中键弹出常用文件夹菜单，选中后直接在当前窗口打开</source>
+        <translation>Double-click or middle-click blank space to show a menu of your usual folders; picking one opens it in the current window</translation>
     </message>
     <message>
         <source>Listary 正在运行时会自动交给 Listary 处理，避免弹出两个菜单</source>
         <translation>Automatically left to Listary while it runs to avoid showing two menus</translation>
     </message>
     <message>
-        <source>触发位置与方式</source>
-        <translation>Trigger locations and methods</translation>
+        <source>触发方式</source>
+        <translation>Trigger method</translation>
     </message>
     <message>
-        <source>双击;空白;文件夹菜单;资源管理器;桌面;中键;鼠标;滚轮;Listary</source>
-        <translation>double click;blank;empty space;folder menu;File Explorer;desktop;middle click;mouse;wheel;Listary</translation>
+        <source>在文件夹或桌面的空白处</source>
+        <translation>On blank space in a folder or on the desktop</translation>
+    </message>
+    <message>
+        <source>双击;左键;中键;鼠标;滚轮;空白;文件夹菜单;Listary;double-click;middle</source>
+        <translation>double click;left;middle click;mouse;wheel;blank;folder menu;Listary</translation>
+    </message>
+    <message>
+        <source>双击鼠标左键</source>
+        <translation>Left double click</translation>
+    </message>
+    <message>
+        <source>触发位置</source>
+        <translation>Trigger location</translation>
+    </message>
+    <message>
+        <source>菜单在这些地方弹出</source>
+        <translation>Where the menu appears</translation>
+    </message>
+    <message>
+        <source>空白;文件夹菜单;资源管理器;桌面;位置;Listary</source>
+        <translation>blank;folder menu;File Explorer;desktop;location;Listary</translation>
     </message>
     <message>
         <source>菜单里列出的内容</source>

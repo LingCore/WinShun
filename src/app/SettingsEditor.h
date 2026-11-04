@@ -76,6 +76,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString folderTyping READ folderTyping WRITE setFolderTyping NOTIFY changed FINAL) // first | only (GitHub #110)
     // The folder menu on a double click (Settings::folderMenu: on unless "off").
     Q_PROPERTY(bool folderMenu READ folderMenu WRITE setFolderMenu NOTIFY changed FINAL)
+    Q_PROPERTY(bool folderMenuDouble READ folderMenuDouble WRITE setFolderMenuDouble NOTIFY changed FINAL)
     Q_PROPERTY(bool folderMenuMiddle READ folderMenuMiddle WRITE setFolderMenuMiddle NOTIFY changed FINAL)
     Q_PROPERTY(bool folderMenuExplorer READ folderMenuExplorer WRITE setFolderMenuExplorer NOTIFY changed FINAL)
     // The groups it lists (GitHub #51); the last one on cannot be switched off.
@@ -378,6 +379,8 @@ public:
     bool folderMenu() const { return m_settings.folderMenu != u"off"; }
     void setFolderMenu(bool on);
     bool folderMenuExplorer() const { return m_settings.folderMenuExplorer; }
+    bool folderMenuDouble() const { return m_settings.folderMenuDouble; }
+    void setFolderMenuDouble(bool on);
     bool folderMenuMiddle() const { return m_settings.folderMenuMiddle; }
     void setFolderMenuMiddle(bool on);
     void setFolderMenuExplorer(bool on);

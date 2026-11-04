@@ -774,6 +774,25 @@ private slots:
         QVERIFY(none.folderMenuFavorites && none.folderMenuRecent && none.folderMenuWindows);
     }
 
+    // The double click is a choice of its own (GitHub #196): on as it always
+    // was, and off stays off with the middle button on.
+    void folderMenuTriggers()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings fresh;
+        fresh.load();
+        QVERIFY(fresh.folderMenuDouble && !fresh.folderMenuMiddle);
+
+        fresh.folderMenuDouble = false;
+        fresh.folderMenuMiddle = true;
+        fresh.save();
+        ws::Settings again;
+        again.load();
+        QVERIFY(!again.folderMenuDouble && again.folderMenuMiddle);
+    }
+
     // What a new install leaves off until wanted: the folder menu, the dialog
     // bar, 粘贴为文件. A file from before without their keys keeps the first
     // two on, as they were; a choice written stays.

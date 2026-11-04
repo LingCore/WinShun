@@ -2005,15 +2005,15 @@ Window {
                 page: 0
                 tab: 2
                 width: parent.width
-                title: qsTr("文件夹菜单与双击")
+                title: qsTr("文件夹快捷菜单")
                 glyph: "\uE8B7"
 
                 SettingRow {
                     id: folderMenuRow
-                    title: qsTr("双击空白处弹出文件夹菜单")
-                    keywords: qsTr("双击;空白;空白处;收藏;收藏夹;最近;文件夹菜单;资源管理器;桌面;Listary;double-click;folder menu").split(";")
-                    unlocks: [folderMenuWhereRow, folderMenuGroupsRow, opusMenuRow]
-                    description: qsTr("在空白处双击弹出常用文件夹菜单，选中后直接在当前窗口打开")
+                    title: qsTr("在资源管理器或桌面弹出文件夹快捷菜单")
+                    keywords: qsTr("双击;空白;空白处;收藏;收藏夹;最近;文件夹菜单;文件夹快捷菜单;资源管理器;桌面;Listary;double-click;folder menu").split(";")
+                    unlocks: [opusMenuRow]
+                    description: qsTr("在空白处双击或按中键弹出常用文件夹菜单，选中后直接在当前窗口打开")
                     tip: qsTr("Listary 正在运行时会自动交给 Listary 处理，避免弹出两个菜单")
 
                     ToggleSwitch {
@@ -2023,27 +2023,49 @@ Window {
                 }
 
                 SettingRow {
-                    id: folderMenuWhereRow
+                    id: folderMenuHowRow
                     sub: true
-                    shown: window.editor.folderMenu
-                    title: qsTr("触发位置与方式")
-                    description: qsTr("双击空白处或单击鼠标中键弹出")
-                    keywords: qsTr("双击;空白;文件夹菜单;资源管理器;桌面;中键;鼠标;滚轮;Listary").split(";")
+                    title: qsTr("触发方式")
+                    description: qsTr("在文件夹或桌面的空白处")
+                    keywords: qsTr("双击;左键;中键;鼠标;滚轮;空白;文件夹菜单;Listary;double-click;middle").split(";")
 
                     ScopeTabs {
                         multiSelect: true
-                        labels: [qsTr("资源管理器"), qsTr("桌面"), qsTr("鼠标中键")]
+                        disabled: window.editor.folderMenu ? [] : [0, 1]
+                        labels: [qsTr("双击鼠标左键"), qsTr("鼠标中键")]
+                        checkedIndices: {
+                            const list = []
+                            if (window.editor.folderMenuDouble) list.push(0)
+                            if (window.editor.folderMenuMiddle) list.push(1)
+                            return list
+                        }
+                        onToggled: (index, on) => {
+                            if (index === 0) window.editor.folderMenuDouble = on
+                            else if (index === 1) window.editor.folderMenuMiddle = on
+                        }
+                    }
+                }
+
+                SettingRow {
+                    id: folderMenuWhereRow
+                    sub: true
+                    title: qsTr("触发位置")
+                    description: qsTr("菜单在这些地方弹出")
+                    keywords: qsTr("空白;文件夹菜单;资源管理器;桌面;位置;Listary").split(";")
+
+                    ScopeTabs {
+                        multiSelect: true
+                        disabled: window.editor.folderMenu ? [] : [0, 1]
+                        labels: [qsTr("资源管理器"), qsTr("桌面")]
                         checkedIndices: {
                             const list = []
                             if (window.editor.folderMenuExplorer) list.push(0)
                             if (window.editor.folderMenuDesktop) list.push(1)
-                            if (window.editor.folderMenuMiddle) list.push(2)
                             return list
                         }
                         onToggled: (index, on) => {
                             if (index === 0) window.editor.folderMenuExplorer = on
                             else if (index === 1) window.editor.folderMenuDesktop = on
-                            else if (index === 2) window.editor.folderMenuMiddle = on
                         }
                     }
                 }
@@ -2051,7 +2073,6 @@ Window {
                 SettingRow {
                     id: folderMenuGroupsRow
                     sub: true
-                    shown: window.editor.folderMenu
                     title: qsTr("菜单里列出的内容")
                     description: qsTr("至少保留一项")
                     tip: qsTr("收藏夹中包含收藏的文件夹、文件、应用和自定义命令")
@@ -2059,6 +2080,7 @@ Window {
 
                     ScopeTabs {
                         multiSelect: true
+                        disabled: window.editor.folderMenu ? [] : [0, 1, 2]
                         labels: [qsTr("收藏夹"), qsTr("最近文件夹"), qsTr("其他窗口")]
                         checkedIndices: {
                             const list = []

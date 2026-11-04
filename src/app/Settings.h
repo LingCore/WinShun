@@ -146,6 +146,7 @@ struct Settings {
     // does the same. Off for new installs, like dialogBar; turned on, auto.
     // An ini from before without the key has auto.
     QString folderMenu = QStringLiteral("off");
+    bool folderMenuDouble = true; // open it with a double click of the left button on blank space (#196; before, always)
     bool folderMenuMiddle = false; // also open it with the middle button on blank space (#137)
     bool folderMenuExplorer = true; // in File Explorer's folders
     bool folderMenuDesktop = true; // on the desktop

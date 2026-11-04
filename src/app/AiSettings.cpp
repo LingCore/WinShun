@@ -293,6 +293,9 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Launcher/FolderMenuDesktop", QT_TRANSLATE_NOOP("AiSettings", "在桌面的空白处双击"), "files_and_dialogs", 2,
                     "The folder menu comes up on a double click on the desktop."},
         &Settings::folderMenuDesktop));
+    add(boolean({"Launcher/FolderMenuDouble", QT_TRANSLATE_NOOP("AiSettings", "用鼠标左键双击打开文件夹菜单"), "files_and_dialogs", 2,
+                    "Open the enabled blank-space folder menu with a double click of the left mouse button. On by default; with it off the menu can still come from the middle button or the hotkey."},
+        &Settings::folderMenuDouble));
     add(boolean({"Launcher/FolderMenuMiddle", QT_TRANSLATE_NOOP("AiSettings", "同时用中键打开文件夹菜单"), "files_and_dialogs", 2,
                     "Also open the enabled blank-space folder menu with the middle mouse button. Off by default."},
         &Settings::folderMenuMiddle));
@@ -737,8 +740,12 @@ std::vector<Entry> buildCatalog()
     for (Entry& e : t) {
         if (e.key == u"Taskbar/SearchBox")
             e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "任务栏上的 Win顺");
-        else if (e.key == u"Launcher/FolderMenuExplorer" || e.key == u"Launcher/FolderMenuDesktop" || e.key == u"Launcher/FolderMenuMiddle")
-            e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "触发位置与方式");
+        else if (e.key == u"Launcher/FolderMenu")
+            e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "在资源管理器或桌面弹出文件夹快捷菜单");
+        else if (e.key == u"Launcher/FolderMenuDouble" || e.key == u"Launcher/FolderMenuMiddle")
+            e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "触发方式");
+        else if (e.key == u"Launcher/FolderMenuExplorer" || e.key == u"Launcher/FolderMenuDesktop")
+            e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "触发位置");
         else if (e.key == u"Launcher/FolderMenuFavorites" || e.key == u"Launcher/FolderMenuRecent" || e.key == u"Launcher/FolderMenuWindows")
             e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "菜单里列出的内容");
         else if (e.key == u"Results/ShowModifiedTime")
