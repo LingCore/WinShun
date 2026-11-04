@@ -2072,6 +2072,14 @@ private slots:
         merge.namesShown();
         QCOMPARE(sink.names(), (QStringList {u"kill — 结束进程"_s, u"kil.log"_s}));
         QVERIFY(!merge.takeBetterFirstRow());
+        // 文件 and 文件夹 list files and folders only (GitHub #193): no keyword row, exact or partial.
+        for (const QString& typed : {u"kill"_s, u"kil"_s, u"em"_s}) {
+            merge.begin(3, typed, {}, {}, false, false);
+            sink.assign({fileRow(typed + u".log"_s)});
+            merge.namesShown();
+            QCOMPARE(sink.names(), (QStringList {typed + u".log"_s}));
+            QVERIFY(!merge.takeBetterFirstRow());
+        }
         merge.begin(3, u"em"_s); // an instant command's keyword works alone: no space
         sink.assign({});
         merge.namesShown();

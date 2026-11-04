@@ -164,7 +164,7 @@ effects 的辅助：Python `winshun.hide() / keep() / notify(text) / copy(text) 
 | `id` | 命令 id，插件内唯一；设置项的键和 AI 工具名用它 |
 | `title`、`description`、`hint` | 显示名、一句话、关键字模式下输入框的占位文字（都是文字） |
 | `icon` | 见"图标" |
-| `keyword` | 字符串或数组。输入**关键字 + 空格**进入关键字模式；单独输入关键字时列表第一行是这条命令的提示行（Enter 或 Tab 进入，↓ 到名字结果）；输入两个字以上、是关键字开头的（`uu` 对 `uuid`），也在应用之后、文件之前多一行（光标不动，按 Tab 就补全成 `uuid `；最多两行，候选太多就不出）；用户可以在设置里改 |
+| `keyword` | 字符串或数组。输入**关键字 + 空格**进入关键字模式；单独输入关键字时列表第一行是这条命令的提示行（Enter 或 Tab 进入，↓ 到名字结果）；输入两个字以上、是关键字开头的（`uu` 对 `uuid`），也在应用之后、文件之前多一行（光标不动，按 Tab 就补全成 `uuid `；最多两行，候选太多就不出）；提示行只在“全部”范围出，“文件”“文件夹”里只有文件和文件夹；用户可以在设置里改 |
 | `triggers` | 关键字以外的触发方式：`{"regex": "…", "minLength": 1, "maxLength": 64}`（整个输入匹配时，结果推进"全部"；`match` 是捕获组）、`{"push": {"minLength": 2, "maxItems": 3}}`（每键都发，常驻 + eager 才合适）、`{"files": {"kind": "any", "max": 1000, "extensions": ["jpg"], "title": {"zh": "用局域网发送…", "en": "Send over LAN…"}}}`（文件、文件夹结果的右键菜单里多一项 `title`，多选时对整个选择；`kind` 是 `file` / `folder` / `any`，`max` 默认 20、最多 1000，`extensions` 只管文件。选了它：一次 `action`，`trigger` 是 `files`、`action` 是 `files`、`files` 是这些完整路径，没有 item） |
 | `mode` | `list`（默认）或 `instant`（单独输入关键字就执行，不列结果） |
 | `contentSearch` | `true`：作为内容检索提供者，必须有 `runtime`；收到 `trigger: "content"`，见下面“内容检索提供者” |
