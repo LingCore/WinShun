@@ -977,6 +977,80 @@ private slots:
         QCOMPARE(finished[0][2].toRect(), QRect(100, 100, 100, 100));
     }
 
+    // 识别屏幕文字 (#198): a drag let go of or a click on a window reads its
+    // words at once (copy-on-select or not); Esc and the right button end
+    // it; the keys that take, save, pin or bring back a picture do nothing;
+    // the corner hints are only the pointer's; end() leaves a normal capture.
+    void ocrOnlyCapture()
+    {
+        using Action = CaptureSession::Action;
+        const auto actionOf = [](const QList<QVariant>& call) { return call[0].value<Action>(); };
+        {
+            Rig rig;
+            rig.session.setCopyOnSelect(true);
+            rig.session.setOcrOnly(true);
+            rig.begin();
+            QVERIFY(rig.session.ocrOnly());
+            QCOMPARE(rig.session.keyHintRows(), (QStringList {u"wheel"_s, u"wasd"_s, u"quit"_s}));
+            QSignalSpy finished(&rig.session, &CaptureSession::finished);
+            rig.drag({100, 100}, {199, 149});
+            QCOMPARE(finished.count(), 1);
+            QCOMPARE(actionOf(finished[0]), Action::OcrCopy);
+            QCOMPARE(finished[0][2].toRect(), QRect(100, 100, 100, 50));
+            rig.session.end();
+            QVERIFY(!rig.session.ocrOnly());
+        }
+        {
+            Rig rig;
+            rig.tops = {QRect(50, 50, 400, 300)};
+            rig.session.setOcrOnly(true);
+            rig.begin();
+            QSignalSpy finished(&rig.session, &CaptureSession::finished);
+            rig.click({60, 60}); // the window under it
+            QCOMPARE(finished.count(), 1);
+            QCOMPARE(actionOf(finished[0]), Action::OcrCopy);
+            QCOMPARE(finished[0][2].toRect(), QRect(50, 50, 400, 300));
+        }
+        {
+            Rig rig;
+            rig.session.setOcrOnly(true);
+            rig.begin();
+            QSignalSpy finished(&rig.session, &CaptureSession::finished);
+            rig.session.pointerMove(0, {300, 300});
+            for (const auto& [key, mods] : std::initializer_list<std::pair<int, Qt::KeyboardModifiers>> {
+                     {Qt::Key_F3, {}}, {Qt::Key_S, Qt::ControlModifier}, {Qt::Key_C, Qt::ControlModifier}, {Qt::Key_Comma, {}},
+                     {Qt::Key_R, {}}, {Qt::Key_L, Qt::ControlModifier}, {Qt::Key_Q, {}}, {Qt::Key_H, {}}, {Qt::Key_1, {}},
+                     {Qt::Key_D, Qt::ControlModifier | Qt::ShiftModifier}, {Qt::Key_R, Qt::ControlModifier}})
+                rig.session.key(key, mods);
+            QCOMPARE(finished.count(), 0);
+            QVERIFY(!rig.session.hasSelection());
+            // A press, then the right button while dragging: the capture ends, not just the drag.
+            rig.session.pointerPress(0, {300, 300}, Qt::LeftButton);
+            rig.session.pointerMove(0, {400, 400});
+            rig.session.pointerPress(0, {400, 400}, Qt::RightButton);
+            QCOMPARE(finished.count(), 1);
+            QCOMPARE(actionOf(finished[0]), Action::Cancel);
+        }
+        {
+            Rig rig;
+            rig.session.setOcrOnly(true);
+            rig.begin();
+            QSignalSpy finished(&rig.session, &CaptureSession::finished);
+            rig.session.pointerMove(0, {300, 300});
+            rig.session.key(Qt::Key_Escape, Qt::NoModifier);
+            QCOMPARE(finished.count(), 1);
+            QCOMPARE(actionOf(finished[0]), Action::Cancel);
+            rig.session.end();
+            // The next capture is a normal one: a drag leaves a selection to work on.
+            rig.begin();
+            QVERIFY(!rig.session.ocrOnly());
+            QSignalSpy next(&rig.session, &CaptureSession::finished);
+            rig.drag({100, 100}, {199, 199});
+            QCOMPARE(next.count(), 0);
+            QVERIFY(rig.session.hasSelection());
+        }
+    }
+
     void logicalInputAtFractionalScale()
     {
         // 150 %: Qt's logical position × 1.5 is the physical pixel again.

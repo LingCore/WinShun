@@ -204,6 +204,8 @@ QStringList CaptureSession::keyHintRows() const
             || m_annot.editingNumber() || m_annot.picking()))
         return {};
     QStringList rows;
+    if (m_ocrOnly) // 识别屏幕文字: picking a region is all there is
+        return {u"wheel"_s, u"wasd"_s, u"quit"_s};
     if (m_selection.screen < 0) { // a press not yet a drag too: what it was over
         rows = {u"wheel"_s, u"wasd"_s};
         if (!m_selectionHistory.empty())
@@ -278,6 +280,14 @@ void CaptureSession::setKeyHints(bool on)
 void CaptureSession::quietKeyHints()
 {
     m_hintPolicy.setQuiet();
+    refreshKeyHints();
+}
+
+void CaptureSession::setOcrOnly(bool on)
+{
+    if (std::exchange(m_ocrOnly, on) == on)
+        return;
+    emit ocrOnlyChanged();
     refreshKeyHints();
 }
 
@@ -515,6 +525,8 @@ void CaptureSession::end()
     m_selection = {};
     m_previous = {};
     m_phase = Phase::Hover;
+    if (std::exchange(m_ocrOnly, false))
+        emit ocrOnlyChanged();
     if (std::exchange(m_active, false))
         emit activeChanged();
     emit selectionChanged();
@@ -815,13 +827,17 @@ void CaptureSession::pointerRelease(int screen, QPoint p, Qt::MouseButton button
         m_selection = hovered(); // a click picks the window or control under it
         m_phase = Phase::Selected;
         emit selectionChanged();
-        if (m_copyOnSelect) {
-            finish(Action::Copy);
+        if (m_ocrOnly || m_copyOnSelect) {
+            finish(m_ocrOnly ? Action::OcrCopy : Action::Copy);
             return;
         }
         break;
     case Phase::Dragging:
         m_phase = Phase::Selected;
+        if (m_ocrOnly) {
+            finish(Action::OcrCopy);
+            return;
+        }
         if (m_copyOnSelect) {
             finish(Action::Copy);
             return;
@@ -1037,6 +1053,56 @@ bool CaptureSession::key(int key, Qt::KeyboardModifiers modifiers)
     if (key != Qt::Key_Shift && key != Qt::Key_Control && key != Qt::Key_Alt && key != Qt::Key_Meta)
         hintInput();
     const bool wasd = key == Qt::Key_W || key == Qt::Key_A || key == Qt::Key_S || key == Qt::Key_D;
+    if (m_ocrOnly) {
+        // 识别屏幕文字 (#198): the pointer (WASD, the arrows), Enter for what is
+        // under it, Shift+C as Enter, C for the colour the magnifier shows, Esc.
+        // Nothing else: no picture is taken, saved, pinned or brought back
+        // here, and R would leave a selection nothing finishes.
+        const int step = shift ? 10 : 1;
+        switch (key) {
+        case Qt::Key_Escape:
+            back();
+            return true;
+        case Qt::Key_Return:
+        case Qt::Key_Enter:
+            if (!busy && plain)
+                finish(Action::OcrCopy);
+            return true;
+        case Qt::Key_W:
+        case Qt::Key_A:
+        case Qt::Key_S:
+        case Qt::Key_D:
+            if (plain)
+                movePointer((key == Qt::Key_A ? -1 : key == Qt::Key_D ? 1 : 0) * step,
+                    (key == Qt::Key_W ? -1 : key == Qt::Key_S ? 1 : 0) * step);
+            return true;
+        case Qt::Key_Left:
+        case Qt::Key_Right:
+        case Qt::Key_Up:
+        case Qt::Key_Down:
+            if (!busy && plain && m_selection.screen < 0)
+                nudgeSelection(key == Qt::Key_Left ? -1 : key == Qt::Key_Right ? 1 : 0,
+                    key == Qt::Key_Up ? -1 : key == Qt::Key_Down ? 1 : 0, false);
+            return true;
+        case Qt::Key_C:
+            if (busy || !plain)
+                return true;
+            if (shift) {
+                finish(Action::OcrCopy);
+            } else if (CaptureScreen* s = screenAt(m_cursorScreen); s && s->magnifierShown() && !s->colorText().isEmpty()) {
+                emit colorCopied(s->colorText());
+                finish(Action::Cancel);
+            }
+            return true;
+        case Qt::Key_Shift:
+        case Qt::Key_Control:
+        case Qt::Key_Alt:
+        case Qt::Key_Meta:
+            return false;
+        default:
+            return true;
+        }
+    }
     // Crop keys take precedence over the tools' letters in the overlay.
     // The editor keeps its own tool keys; 1 and 3 still select rectangle/arrow here.
     if (plain && (wasd || key == Qt::Key_R)) {
@@ -1245,6 +1311,10 @@ void CaptureSession::recallSelection(bool previous)
 
 void CaptureSession::back()
 {
+    if (m_ocrOnly) { // 识别屏幕文字: nothing to step back to
+        finish(Action::Cancel);
+        return;
+    }
     // Esc, in steps (3.6): a text under way is kept and closed, a gesture
     // under way is dropped; only then the selection and its annotations.
     if (m_annot.active() && (m_phase == Phase::Selected || m_phase == Phase::Annotating) && m_annot.escape()) {
