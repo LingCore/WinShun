@@ -21,14 +21,22 @@ private slots:
         QVERIFY(!watcher.running());
         QVERIFY(!watcher.listening());
         for (int cycle = 0; cycle != 3; ++cycle) {
+            const DWORD sequence = ::GetClipboardSequenceNumber();
+            const unsigned before = captured.load();
             // Enabling does not backfill anything copied while disabled.
             watcher.setOptions({true});
             QTRY_VERIFY_WITH_TIMEOUT(watcher.running() && watcher.listening(), 2000);
             watcher.setOptions({false});
             QTRY_VERIFY_WITH_TIMEOUT(!watcher.listening(), 2000);
             QTRY_VERIFY_WITH_TIMEOUT(!watcher.running(), 3000);
+            // A user or another program may copy while the listener is on.
+            // Such a capture is legitimate. Check backfill only while the
+            // observed clipboard generation stayed the same.
+            if (::GetClipboardSequenceNumber() == sequence)
+                QCOMPARE(captured.load(), before);
+            else
+                qInfo("Clipboard changed during this cycle; worker lifecycle was checked");
         }
-        QCOMPARE(captured.load(), 0u);
         // No test writes or replaces the user's actual clipboard contents.
     }
 

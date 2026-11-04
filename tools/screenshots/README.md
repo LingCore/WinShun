@@ -134,4 +134,4 @@ tools\screenshots\run.ps1 -Exe <要拍的 WinShun.exe，发布版，带拖放圆
 
 ## 0.18.0 补拍
 
-`release018.py` 沿用 `release017.py` 的隔离预览与方形品牌模板，更新搜索面板、剪贴板、设置、截图及录屏，并接入真实网页插件和图片文字搜索窗口。先运行 `--capture-only`。网页图由 `tools/verify_web_plugin.py` 生成到同一工作目录的 `web/`，插件库图使用 `--preview-plugins` 的插件库入口，图片文字搜索用插件的 `--preview-ocr-search` 和独立 `--data-dir` 导出到 `ocr/`。检查原图后再运行 `--export-only`。完整命令、源码与产物校验见本版发布验证记录。
+`release018.py` 沿用 `release017.py` 的隔离预览与方形品牌模板，更新搜索面板、剪贴板、设置、截图及录屏，并接入真实网页插件和图片文字搜索窗口。先运行 `--capture-only`。网页图由 `tools/verify_web_plugin.py` 生成到同一工作目录的 `web/`，插件库图取新版设置预览的 `settings/p09-t1.png`，收藏夹为 `p05-t0.png`，备份位于高级页 `p07-t0.png`。图片文字搜索用插件的 `--preview-ocr-search` 和独立 `--data-dir` 导出到 `ocr/`，先在该目录的 `ocr-search.ini` 写入样例文件夹配置，再传 `--index --query 西南`。快捷键使用 `--preview-results <work>/shortcuts --shortcut-panel`，来源文件为 `shortcut-panel-launcher.png`。检查原图后再运行 `--export-only`。源码与产物校验见本版发布验证记录。
