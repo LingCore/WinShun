@@ -62,6 +62,9 @@ private slots:
         QVERIFY(path.contains(QPointF(50, 0))); // the band of the first stroke
         QVERIFY(!path.contains(QPointF(50, 50))); // nothing between the strokes
         QVERIFY(path.contains(QPointF(0, 100)));
+        // Where a point's dot lies over one band only: filled, not cancelled out.
+        QVERIFY(path.contains(QPointF(2, 0)));
+        QVERIFY(path.contains(QPointF(98, 1)));
     }
 
     void boundsCoverTheOutline()
