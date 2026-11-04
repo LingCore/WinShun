@@ -315,10 +315,6 @@ private slots:
         // What it sets, and when it is still the user's untouched state.
         using ws::win::InputMode;
         const InputMode chinese {.open = true, .conversion = IME_CMODE_NATIVE | IME_CMODE_SYMBOL, .sentence = 8};
-        QVERIFY(!ws::win::typesLetters(chinese));
-        QVERIFY(!ws::win::typesLetters({.open = true, .conversion = IME_CMODE_FULLSHAPE}));
-        QVERIFY(ws::win::typesLetters({.open = false, .conversion = IME_CMODE_NATIVE}));
-        QVERIFY(ws::win::typesLetters({.open = true, .conversion = IME_CMODE_SYMBOL}));
         const InputMode letters = ws::win::lettersMode(chinese);
         QVERIFY(!letters.open);
         QCOMPARE(letters.conversion, DWORD {IME_CMODE_SYMBOL});
@@ -326,6 +322,24 @@ private slots:
         QVERIFY(ws::win::sameLetters(letters, {.open = false, .conversion = IME_CMODE_ROMAN, .sentence = 0}));
         QVERIFY(!ws::win::sameLetters(letters, {.open = true, .conversion = IME_CMODE_SYMBOL, .sentence = 8}));
         QVERIFY(!ws::win::sameLetters(letters, {.open = false, .conversion = IME_CMODE_NATIVE, .sentence = 8}));
+        QVERIFY(!ws::win::lettersMode({.open = true, .conversion = IME_CMODE_FULLSHAPE}).open);
+        QCOMPARE(ws::win::lettersMode({.open = true, .conversion = IME_CMODE_FULLSHAPE}).conversion, DWORD {0});
+
+        // WeChat's input method, as read in the box (the native bit does not
+        // follow Shift): every opening switches, whatever it reads.
+        const auto opening = [](const InputMode& before) {
+            const InputMode after = ws::win::lettersMode(before); // what switchToLetters sets
+            return std::pair {after, !ws::win::sameLetters(after, before)};
+        };
+        const auto [first, firstChanged] = opening({.open = true, .conversion = IME_CMODE_NATIVE});
+        QVERIFY(firstChanged);
+        QCOMPARE(first, (InputMode {.open = false, .conversion = 0}));
+        const InputMode shifted {.open = true, .conversion = 0}; // Chinese again by Shift in the box
+        QVERIFY(!ws::win::sameLetters(shifted, first)); // the user's: not put back on closing
+        const auto [second, secondChanged] = opening(shifted); // the next opening
+        QVERIFY(secondChanged);
+        QCOMPARE(second, (InputMode {.open = false, .conversion = 0}));
+        QVERIFY(!opening({.open = false, .conversion = 0}).second); // English already: nothing to put back
     }
 
     void startListOptions()

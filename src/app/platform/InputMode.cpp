@@ -25,16 +25,15 @@ LettersSwitch switchToLetters(HWND window)
         return done; // none: Qt has not given it one (or the field takes no input method)
     if (const std::optional<InputMode> before = readMode(context)) {
         done.context = context;
-        done.before = done.after = *before;
-        if (!typesLetters(*before)) {
-            // The conversion mode first: an input method that keeps the two
-            // in step closes itself as the native bit goes.
-            const InputMode letters = lettersMode(*before);
-            ::ImmSetConversionStatus(context, letters.conversion, letters.sentence);
-            ::ImmSetOpenStatus(context, letters.open);
-            done.after = readMode(context).value_or(letters);
-            done.changed = !sameLetters(done.after, done.before);
-        }
+        done.before = *before;
+        // Always (lettersMode): the conversion mode first, as an input
+        // method that keeps the two in step closes itself as the native bit
+        // goes.
+        const InputMode letters = lettersMode(*before);
+        ::ImmSetConversionStatus(context, letters.conversion, letters.sentence);
+        ::ImmSetOpenStatus(context, letters.open);
+        done.after = readMode(context).value_or(letters);
+        done.changed = !sameLetters(done.after, done.before);
     }
     ::ImmReleaseContext(window, context);
     return done;
