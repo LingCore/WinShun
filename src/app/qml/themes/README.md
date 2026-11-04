@@ -27,26 +27,28 @@ themes/
 
 - 根对象是任意 `QtObject` 派生，文件名固定 `Look.qml`。只有 Look.qml 可以 `import WinShun`（读 `SystemTheme.dark`、`SystemTheme.roundedCorners`、
   `SystemTheme.accent` 等）。
-- token 的全集以 `fluent/Look.qml` 为准。建议：
+- token 的全集以 `fluent/Look.qml` 为准。brand、tactile 都是这样写的（独立的 `QtObject`，不继承 fluent 的 Look；
+  fluent 的 `name` 是 readonly，继承后改不了名）：
 
   ```qml
   import QtQuick
   import WinShun
-  import "../fluent" as Fluent
 
-  Fluent.Look {
+  QtObject {
       id: root
-      name: "brand"
-      frame: "own"
-      windowRadius: r(18)
-      backdrop: false
-      accent: dark ? "#EDA591" : "#A8402C"
-      // ……只覆盖不同的 token
-      keySurface: Component { KeySurface { look: root } }   // 本目录的部件
+      readonly property string name: "brand"
+      readonly property bool dark: SystemTheme.dark
+      readonly property string frame: "own"
+      readonly property real windowRadius: r(18)
+      readonly property bool backdrop: false
+      readonly property color accent: dark ? "#EDA591" : "#A8402C"
+      // ……只写和 fluent 不同的 token
+      readonly property Component keySurface: Component { KeySurface { look: root } }   // 本目录的部件
   }
   ```
 
-  不继承 Fluent.Look 时必须给全所有 token 和钩子（少一个，组件读到 undefined）。
+  没写的 token 和钩子由 `Theme.pick()` 退回 fluent 的（`Theme.base`），所以只写不同的就行；
+  只有某些风格才有的 token（fluent 里也没有）用 `Theme.tok("名字", 默认值)` 读。
 - **圆角**：用户“圆角/直角”设置选直角时所有圆角必须是 0（窗口的 18 也是）。所有圆角 token 写成 `r(v)`（继承时直接用 `r(...)`），胶囊用 `pill(h)`。
   部件里不要硬编码圆角，从 `look` 取。
 - **透明**：`backdrop` 为 true 时窗口下面是 Mica，层是半透明的（fluent 的那套 rgba）。`frame: "own"` 的风格没有 Mica（DWM 的背景跟着 DWM 的形状走，自画圆角后是方的），
