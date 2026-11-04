@@ -39,19 +39,12 @@ QString entryName(const mz_zip_archive_file_stat& stat)
     return n > 0 ? QString::fromWCharArray(wide.data(), n) : QString::fromLatin1(stat.m_filename, static_cast<qsizetype>(length));
 }
 
-// Unpacks the archive at `path` into `dir` (made here). The plugin.json may
-// sit at the root or in one folder (as a zipped folder has it): the files
-// land in `dir` either way. Empty on success, else why.
-QString unpack(const QString& path, const QString& dir)
-{
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly))
-        return u"打不开 %1"_s.arg(QDir::toNativeSeparators(path));
-    if (file.size() > kMaxArchiveBytes)
-        return u"压缩包超过 %1 MB"_s.arg(kMaxArchiveBytes >> 20);
-    const QByteArray bytes = file.readAll();
-    file.close();
+} // namespace
 
+QString unpackArchive(const QByteArray& bytes, const QString& dir)
+{
+    if (bytes.size() > kMaxArchiveBytes)
+        return u"压缩包超过 %1 MB"_s.arg(kMaxArchiveBytes >> 20);
     mz_zip_archive zip {};
     if (!mz_zip_reader_init_mem(&zip, bytes.constData(), static_cast<size_t>(bytes.size()), 0))
         return u"不是有效的 zip 压缩包"_s;
@@ -132,6 +125,24 @@ QString unpack(const QString& path, const QString& dir)
             return u"写不了 %1"_s.arg(QDir::toNativeSeparators(target));
     }
     return {};
+}
+
+
+namespace {
+
+// Unpacks the archive at `path` into `dir` (made here). The plugin.json may
+// sit at the root or in one folder (as a zipped folder has it): the files
+// land in `dir` either way. Empty on success, else why.
+QString unpack(const QString& path, const QString& dir)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return u"打不开 %1"_s.arg(QDir::toNativeSeparators(path));
+    if (file.size() > kMaxArchiveBytes)
+        return u"压缩包超过 %1 MB"_s.arg(kMaxArchiveBytes >> 20);
+    const QByteArray bytes = file.readAll();
+    file.close();
+    return unpackArchive(bytes, dir);
 }
 
 // Copies a folder's files into `to` (made here). Empty on success.

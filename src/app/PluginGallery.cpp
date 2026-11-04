@@ -53,11 +53,11 @@ bool darkMode()
 }
 
 // What a plugin may do that matters most: go online, take connections from
-// the network, write files, start programs.
+// the network, write files, start programs, run as administrator.
 bool risky(plugin::Permission p)
 {
     return p == plugin::Permission::Network || p == plugin::Permission::NetworkListen || p == plugin::Permission::FilesWrite
-        || p == plugin::Permission::Processes;
+        || p == plugin::Permission::Processes || p == plugin::Permission::Elevated;
 }
 
 // Every word typed is somewhere in the row.
@@ -498,7 +498,19 @@ void PluginGallery::beginInstall(const QString& id, bool enableAfterInstall, boo
     const quint64 generation = ++m_generation;
     rebuild();
     emit stateChanged();
-    QThreadPool::globalInstance()->start([self = QPointer(this), item = *found, cancel, generation, enableAfterInstall, bulk] {
+    // An elevated Win顺 updating a plugin it runs as administrator: the
+    // checked bytes become its confirmed copy too (plugin::elevation).
+    // This tab's list is not checked against a signature (and its kept copy
+    // is the user's to change): only when the signed list has the very same
+    // package does it become the confirmed copy.
+    const plugin::Host* host = m_settings->m_host;
+    const std::optional<plugin::gallery::Item> signedItem = m_updates ? m_updates->signedItem(id) : std::nullopt;
+    const bool elevated = host && host->hostElevated() && signedItem && signedItem->version == found->version
+        && signedItem->sha256 == found->sha256 && signedItem->size == found->size;
+    const plugin::elevation::Store store = host ? host->elevationStore() : plugin::elevation::Store {};
+    const QString pluginDir = QDir::toNativeSeparators(QDir(m_settings->m_userDir).filePath(found->id));
+    QThreadPool::globalInstance()->start([self = QPointer(this), item = *found, cancel, generation, enableAfterInstall, bulk, elevated, store,
+                                             pluginDir] {
         // The progress told now and then: a piece of the body each time would flood the page.
         QElapsedTimer sinceTold;
         sinceTold.start();
@@ -525,8 +537,11 @@ void PluginGallery::beginInstall(const QString& id, bool enableAfterInstall, boo
         d.error = fetched.error;
         if (fetched.status == 200 && !cancel->load()) {
             d.check = gallery::check(item, fetched.body);
-            if (d.check == gallery::Problem::None)
+            if (d.check == gallery::Problem::None) {
+                if (QString why; elevated && !plugin::elevation::keepConfirmed(store, item.id, pluginDir, fetched.body, &why))
+                    qWarning().noquote() << "Plugin library:" << item.id << "confirmed copy not kept:" << why;
                 d.path = gallery::saveTemporary(item, fetched.body, &d.saveError);
+            }
         }
         QMetaObject::invokeMethod(qApp, [self, d, id = item.id, generation, cancel] {
             if (!self || cancel->load() || self->m_generation != generation) {

@@ -3047,6 +3047,10 @@
         <source>卸载</source>
         <translation>Uninstall</translation>
     </message>
+    <message>
+        <source>确认</source>
+        <translation>Confirm</translation>
+    </message>
 </context>
 <context>
     <name>PluginDevSection</name>
@@ -3631,8 +3635,8 @@
         <translation>Install a local plugin package…</translation>
     </message>
     <message>
-        <source>插件给搜索框加关键字命令，结果混进列表。它们只用你的普通权限；启用前会先列出权限，由你决定是否开启。</source>
-        <translation>Plugins add keyword commands to the search box and mix their results into the list. They run with your normal rights; review the permissions and choose which ones to enable.</translation>
+        <source>插件给搜索框加关键字命令，结果混进列表。它们用你的普通权限（要跟随 Win顺 管理员权限的，权限里会写明）；启用前会先列出权限，由你决定是否开启。</source>
+        <translation>Plugins add keyword commands to the search box and mix their results into the list. They run with your normal rights (one that follows Win顺's administrator rights says so in its permissions); review the permissions and choose which ones to enable.</translation>
     </message>
 </context>
 <context>
@@ -11417,6 +11421,54 @@ Content index: %5</translation>
     <message>
         <source>以普通用户权限更改；Win顺 不能阻止它直接改系统设置</source>
         <translation>Uses normal user rights; WinShun cannot stop it changing system settings directly</translation>
+    </message>
+    <message>
+        <source>以普通用户权限运行；Win顺 以管理员身份运行时例外（见下）；内存上限 %1 MB</source>
+        <translation>Runs with your normal rights, except while Win顺 runs as administrator (see below); memory limit %1 MB</translation>
+    </message>
+    <message>
+        <source>Win顺 以管理员身份运行时，这个插件也以管理员身份运行，能操作以管理员身份打开的窗口</source>
+        <translation>While Win顺 runs as administrator, this plugin does too and can work with windows opened as administrator</translation>
+    </message>
+    <message>
+        <source>跟随 Win顺 的管理员权限</source>
+        <translation>Follow Win顺's administrator rights</translation>
+    </message>
+    <message>
+        <source>以管理员身份运行</source>
+        <translation>Runs as administrator</translation>
+    </message>
+    <message>
+        <source>要以管理员身份运行，需要你确认一次。确认前用普通权限运行</source>
+        <translation>Confirm once to let it run as administrator. Until then it runs with normal rights</translation>
+    </message>
+    <message>
+        <source>不能以管理员身份运行：%1</source>
+        <translation>Cannot run as administrator: %1</translation>
+    </message>
+    <message>
+        <source>没能确认以管理员身份运行：%1</source>
+        <translation>Could not confirm running as administrator: %1</translation>
+    </message>
+    <message>
+        <source>已确认，%1 以后以管理员身份运行</source>
+        <translation>Confirmed: %1 runs as administrator from now on</translation>
+    </message>
+    <message>
+        <source>插件的文件被改过，和你确认时不一样，现在用普通权限运行。不确定是谁改的就别确认</source>
+        <translation>The plugin's files were changed since you confirmed them, so it runs with normal rights. If you don't know who changed them, don't confirm</translation>
+    </message>
+    <message>
+        <source>正在确认，复制插件的文件……</source>
+        <translation>Confirming: copying the plugin's files…</translation>
+    </message>
+    <message>
+        <source>插件库里现在是 %1 版，先把它更新到这一版，再确认</source>
+        <translation>The library has version %1 now: update to it first, then confirm</translation>
+    </message>
+    <message>
+        <source>从插件库下载没成功，联网后再试</source>
+        <translation>Could not download it from the library. Try again when you are online</translation>
     </message>
 </context>
 <context>

@@ -85,6 +85,12 @@ public:
     void checkNow(); // fetches the list (whatever the clock says)
     void rescan(); // the plugins folder was changed by someone else (tests; the app's Host scans itself)
     void tick(); // the hourly beat: staged versions of plugins that stopped; the daily check when due
+    // The plugin's entry in the list now held, when that list's signature
+    // checked against a published key (not the unsigned local file a
+    // development variable may name): what may become a copy run as
+    // administrator (plugin::elevation). Nothing otherwise.
+    std::optional<plugin::gallery::Item> signedItem(const QString& id) const;
+    const plugin::gallery::Fetcher& web() const { return m_options.web; }
 
 signals:
     void changed(); // count() or what the rows show
@@ -130,6 +136,7 @@ private:
     plugin::gallery::Index m_index;
     bool m_hasIndex = false;
     bool m_trusted = false; // the list now held checked against a key
+    bool m_signed = false; // ... and that by a signature (not "local")
     QHash<QString, Verdict> m_verdicts;
     QHash<QString, QString> m_problems; // id -> why its last try failed (this run)
     QString m_signature; // of the verdicts shown, to tell when they changed

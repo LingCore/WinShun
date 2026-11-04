@@ -366,8 +366,17 @@ void PluginUpdates::finishCheck(const updates::SignedList& fetched)
             qWarning().noquote() << "Plugin updates: the list could not be kept:" << file.errorString();
     }
     m_trusted = false; // setIndex() says
+    m_signed = fetched.trusted && !fetched.key.isEmpty() && fetched.key != u"local"_s;
     setIndex(std::move(*index), fetched.trusted);
     startNext();
+}
+
+std::optional<gallery::Item> PluginUpdates::signedItem(const QString& id) const
+{
+    if (!m_trusted || !m_signed)
+        return std::nullopt;
+    const gallery::Item* item = m_index.find(id);
+    return item ? std::optional<gallery::Item>(*item) : std::nullopt;
 }
 
 void PluginUpdates::setIndex(gallery::Index index, bool trusted)
@@ -375,6 +384,8 @@ void PluginUpdates::setIndex(gallery::Index index, bool trusted)
     m_index = std::move(index);
     m_hasIndex = true;
     m_trusted = trusted;
+    if (!trusted)
+        m_signed = false;
     evaluate(trusted);
 }
 
@@ -458,7 +469,15 @@ void PluginUpdates::startNext()
         }
         m_working = true;
         const QString root = stagingRoot();
-        QThreadPool::globalInstance()->start([self = QPointer(this), cancel = m_cancel, item = *found, web = m_options.web, root] {
+        // An elevated Win顺 updating a plugin it runs as administrator: the
+        // checked bytes become its confirmed copy too (plugin::elevation).
+        // Only from a list whose signature checked (installs need a trusted
+        // one; the unsigned local file of development does not count).
+        const bool elevated = m_host && m_host->hostElevated() && m_trusted && m_signed;
+        const plugin::elevation::Store store = m_host ? m_host->elevationStore() : plugin::elevation::Store {};
+        const QString pluginDir = QDir::toNativeSeparators(QDir(m_options.userDir).filePath(found->id));
+        QThreadPool::globalInstance()->start([self = QPointer(this), cancel = m_cancel, item = *found, web = m_options.web, root, elevated,
+                                                 store, pluginDir] {
             auto d = std::make_shared<Downloaded>();
             d->item = item;
             const gallery::Fetched f = gallery::fetch(
@@ -471,6 +490,8 @@ void PluginUpdates::startNext()
             else if (gallery::check(item, f.body) != gallery::Problem::None)
                 d->error = u"the package does not match the list (size or SHA-256)"_s;
             else {
+                if (QString why; elevated && !plugin::elevation::keepConfirmed(store, item.id, pluginDir, f.body, &why))
+                    qWarning().noquote() << "Plugin updates:" << item.id << "confirmed copy not kept:" << why;
                 QString saveError;
                 const QString path = gallery::saveTemporary(item, f.body, &saveError);
                 if (path.isEmpty())

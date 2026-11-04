@@ -84,7 +84,7 @@ SettingsSection {
         function onDataChanged() { pluginsSection.listRevision++ }
     }
 
-    note: qsTr("插件给搜索框加关键字命令，结果混进列表。它们只用你的普通权限；启用前会先列出权限，由你决定是否开启。")
+    note: qsTr("插件给搜索框加关键字命令，结果混进列表。它们用你的普通权限（要跟随 Win顺 管理员权限的，权限里会写明）；启用前会先列出权限，由你决定是否开启。")
 
     SettingRow { // what the number beside 插件 in the list on the left counts: newer versions waiting for a yes
         objectName: "pluginUpdatesRow"

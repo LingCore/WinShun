@@ -146,13 +146,20 @@ void AiBridge::rebuild()
         for (const Entry& e : m_host->catalog().entries()) {
             if (!e.manifest || !e.manifest->aiExpose || m_options.excluded.contains(e.id))
                 continue;
-            const bool offered = m_host->catalog().enabled(e.id);
+            // A plugin that runs as administrator with Win顺 (`elevated`,
+            // Elevation.h) is not the AI's: its requests come through the
+            // pipe from programs with the user's normal rights, which must
+            // not drive an administrator's process.
+            const bool elevated = m_host->runsElevated(e.id);
+            const bool offered = m_host->catalog().enabled(e.id) && !elevated;
             // Off, or a newer version waiting for the user's OK on more
             // permissions (Catalog::setConfirmed): the words say which.
             const QStringList awaiting = m_host->catalog().awaitingConsent(e.id);
             const QString name = e.manifest->name.pick(u"en"_s);
             QString offReason;
-            if (!offered && awaiting.isEmpty())
+            if (elevated)
+                offReason = u"The plugin '%1' runs as administrator while Win顺 does, and is not offered to AI assistants or the command line then."_s.arg(name);
+            else if (!offered && awaiting.isEmpty())
                 offReason = u"The plugin '%1' is turned off in Win顺's settings (设置 → 插件). Ask the user to turn it on there, then call this again."_s.arg(name);
             else if (!offered)
                 offReason = u"The plugin '%1' waits for the user to allow permissions its installed version asks for (%2). Ask the user to allow them in Win顺's settings (设置 → 插件: turn its switch on), then call this again."_s.arg(

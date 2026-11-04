@@ -52,6 +52,7 @@ add_subdirectory(src/tools-plugin)
 add_subdirectory(src/semantic-plugin)
 add_subdirectory(src/localsend-plugin)
 add_subdirectory(src/break-plugin)
+add_subdirectory(src/explorer-tabs-plugin)
 add_subdirectory(src/switches-plugin)
 add_subdirectory(src/bookmarks-plugin)
 add_subdirectory(src/translate-plugin)
@@ -101,6 +102,15 @@ file(READ "${ocr_plugin_source}" ocr_plugin_manifest)
 string(JSON ocr_plugin_manifest SET "${ocr_plugin_manifest}" minWinShun "\"${PROJECT_VERSION}\"")
 set(OCR_PLUGIN_MANIFEST "${CMAKE_BINARY_DIR}/generated/ocr-search-plugin.json")
 file(GENERATE OUTPUT "${OCR_PLUGIN_MANIFEST}" CONTENT "${ocr_plugin_manifest}\n")
+# The permission `elevated` is not in 0.18.0 (a host that does not know it
+# turns the whole plugin down): Explorer tabs, too, needs at least the version
+# it is built with; the release bumps that version before building it.
+set(tabs_plugin_source "${PROJECT_SOURCE_DIR}/src/explorer-tabs-plugin/package/plugin.json")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${tabs_plugin_source}")
+file(READ "${tabs_plugin_source}" tabs_plugin_manifest)
+string(JSON tabs_plugin_manifest SET "${tabs_plugin_manifest}" minWinShun "\"${PROJECT_VERSION}\"")
+set(TABS_PLUGIN_MANIFEST "${CMAKE_BINARY_DIR}/generated/explorer-tabs-plugin.json")
+file(GENERATE OUTPUT "${TABS_PLUGIN_MANIFEST}" CONTENT "${tabs_plugin_manifest}\n")
 add_custom_target(library_plugins ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/web-plugin/package" "${library_plugins_dir}/winshun.web"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_BINARY_DIR}/generated/web-plugin.json" "${library_plugins_dir}/winshun.web/plugin.json"
@@ -115,6 +125,9 @@ add_custom_target(library_plugins ALL
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunLocalSend>" "${library_plugins_dir}/winshun.localsend/WinShunLocalSend.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/break-plugin/package" "${library_plugins_dir}/winshun.break"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunBreak>" "${library_plugins_dir}/winshun.break/WinShunBreak.exe"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/explorer-tabs-plugin/package" "${library_plugins_dir}/winshun.explorer-tabs"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${TABS_PLUGIN_MANIFEST}" "${library_plugins_dir}/winshun.explorer-tabs/plugin.json"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunExplorerTabs>" "${library_plugins_dir}/winshun.explorer-tabs/WinShunExplorerTabs.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/bookmarks-plugin/package" "${library_plugins_dir}/winshun.bookmarks"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:WinShunBookmarks>" "${library_plugins_dir}/winshun.bookmarks/WinShunBookmarks.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/src/translate-plugin/package" "${library_plugins_dir}/winshun.translate"
@@ -125,7 +138,7 @@ add_custom_target(library_plugins ALL
     # What is compiled into WinShunCaptureApp.dll; Qt, ONNX Runtime and the OCR models are Win顺's.
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/zxing-cpp/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/zxing-cpp.txt"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/third_party/miniz/LICENSE" "${library_plugins_dir}/winshun.capture/licenses/miniz.txt"
-    DEPENDS WinShunSemantic WinShunLocalSend WinShunBreak WinShunBookmarks WinShunTranslate WinShunCapture WinShunCaptureApp WinShunOcrSearch WinShunOcrSearchApp
+    DEPENDS WinShunSemantic WinShunLocalSend WinShunBreak WinShunExplorerTabs WinShunBookmarks WinShunTranslate WinShunCapture WinShunCaptureApp WinShunOcrSearch WinShunOcrSearchApp
     COMMENT "Staging the library plugins into ${library_plugins_dir}"
     VERBATIM)
 

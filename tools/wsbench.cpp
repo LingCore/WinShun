@@ -180,7 +180,11 @@
 //                      gives the plugin a declared setting's value (what the
 //                      settings page would); --action runs that action on
 //                      the first item of the first answer and prints the
-//                      effects
+//                      effects. A plugin with `elevated`: what its start
+//                      comes to is printed (wsbench run as administrator
+//                      plays an elevated Win顺); --confirm-elevated first
+//                      confirms its files as the card's 确认 does
+//                      (%ProgramData%\WinShun\elevated-plugins)
 //   wsbench --plugin-index [URL-OR-FILE]
 //                      the 插件库's list (src/plugin/Gallery.h), from the
 //                      address or file given, else WINSHUN_PLUGIN_INDEX,
@@ -4489,6 +4493,7 @@ int runPlugin(QStringList args)
         appDir = QDir(args[at + 1]).absolutePath();
         args.remove(at, 2);
     }
+    const bool confirmElevated = args.removeAll(u"--confirm-elevated"_s) > 0;
     int lingerMs = 0; // --linger MS: keep the plugin running that long after the action (what a resident one shows)
     if (const qsizetype at = args.indexOf(u"--linger"_s); at >= 0 && at + 1 < args.size()) {
         lingerMs = std::max(0, args[at + 1].toInt());
@@ -4532,6 +4537,18 @@ int runPlugin(QStringList args)
     if (!pluginSettings.isEmpty())
         host.setPluginSettings(manifest->id, pluginSettings);
     QObject::connect(&host, &ws::plugin::Host::logged, [](const QString& line) { std::printf("  log: %s\n", qUtf8Printable(line)); });
+    if (manifest->permissions.has(ws::plugin::Permission::Elevated)) {
+        std::printf("elevated: Win顺 here %s\n", host.hostElevated() ? "is elevated" : "is not elevated");
+        if (confirmElevated) {
+            QString why;
+            const bool confirmed = host.confirmElevation(manifest->id, &why);
+            std::printf("elevated: confirm %s %s\n", confirmed ? "ok" : "failed:", qUtf8Printable(why));
+        }
+        const ws::plugin::Host::ElevationState state = host.elevationState(manifest->id);
+        const QString verdict = ws::plugin::elevation::verdictName(state.verdict);
+        std::printf("elevated: verdict %s%s%s\n", verdict.isEmpty() ? "not-elevated-host" : qUtf8Printable(verdict),
+            state.detail.isEmpty() ? "" : " - ", qUtf8Printable(state.detail));
+    }
     QObject::connect(&host, &ws::plugin::Host::queryFailed, [](std::uint64_t id, const QString&, const QString& why) {
         std::printf("  query %llu failed: %s\n", static_cast<unsigned long long>(id), qUtf8Printable(why));
     });
@@ -4741,6 +4758,24 @@ int runLauncherSim(QStringList args)
         keyMs = std::max(0, args[at + 1].toInt());
         args.remove(at, 2);
     }
+    // HARNESS (ocr-in-search investigation): --ocr-data DIR = a copy of a plugin data folder
+    // (put in as winshun.ocr-search.data), --walk DIR = index only this folder (repeatable),
+    // --content on|off = filters.contentEnabled as the launcher sends it (default on).
+    QString ocrData;
+    QStringList walk;
+    bool contentFilter = true;
+    if (const qsizetype at = args.indexOf(u"--ocr-data"_s); at >= 0 && at + 1 < args.size()) {
+        ocrData = args[at + 1];
+        args.remove(at, 2);
+    }
+    for (qsizetype at = args.indexOf(u"--walk"_s); at >= 0 && at + 1 < args.size(); at = args.indexOf(u"--walk"_s)) {
+        walk.append(QDir::toNativeSeparators(args[at + 1]));
+        args.remove(at, 2);
+    }
+    if (const qsizetype at = args.indexOf(u"--content"_s); at >= 0 && at + 1 < args.size()) {
+        contentFilter = args[at + 1] == u"on"_s;
+        args.remove(at, 2);
+    }
     ws::Settings settings;
     settings.load();
     // --web KEYWORD: a [WebSearch] entry for this run (the user's file is not
@@ -4802,6 +4837,12 @@ int runLauncherSim(QStringList args)
     options.logPath = temp.path() + u"/plugins.log"_s;
     options.runnerExe = QCoreApplication::applicationDirPath() + u"/WinShunPluginHost.exe"_s;
     options.version = QStringLiteral(WINSHUN_VERSION "-bench");
+    if (!ocrData.isEmpty()) {
+        const QString to = options.dataRoot + u"/winshun.ocr-search.data"_s;
+        QDir().mkpath(to);
+        for (const QFileInfo& file : QDir(ocrData).entryInfoList(QDir::Files))
+            QFile::copy(file.filePath(), to + u'/' + file.fileName());
+    }
     ws::plugin::Host host(options);
     for (const QString& id : ids)
         host.setEnabled(id, true);
@@ -4819,8 +4860,18 @@ int runLauncherSim(QStringList args)
     // The index and the catalogs, as the app has them.
     ws::IndexService::Options indexOptions;
     indexOptions.rules = settings.crawlRules();
-    indexOptions.rescanOnStartup = false;
+    indexOptions.rescanOnStartup = !walk.isEmpty();
     indexOptions.content.enabled = false;
+    if (!walk.isEmpty()) {
+        std::vector<std::wstring> folders;
+        for (const QString& w : walk)
+            folders.push_back(w.toStdWString());
+        indexOptions.folders = folders;
+        indexOptions.volumeAccess = std::make_shared<ws::ntfs::NoVolumeAccess>();
+        indexOptions.rules = {}; // the user's rules skip AppData, where the fixtures are
+        indexOptions.rescanDelayMs = 0;
+        indexOptions.folderVerifyCheckMs = 200;
+    }
     ws::IndexService service(indexFolder, indexOptions);
     ws::AppCatalog apps;
     ws::SystemCatalog places;
@@ -4834,7 +4885,8 @@ int runLauncherSim(QStringList args)
     bool placesIn = false;
     QObject::connect(&apps, &ws::AppCatalog::changed, [&] { appsIn = true; });
     QObject::connect(&places, &ws::SystemCatalog::changed, [&] { placesIn = true; });
-    while ((service.state() != ws::IndexService::State::Ready || !appsIn || !placesIn) && ready.elapsed() < 60'000)
+    while ((service.state() != ws::IndexService::State::Ready || !appsIn || !placesIn || (!walk.isEmpty() && service.itemCount() < 40))
+        && ready.elapsed() < 60'000)
         QCoreApplication::processEvents(QEventLoop::AllEvents | QEventLoop::WaitForMoreEvents, 50);
     std::printf("index %s (%zu items), apps %s, places %s, after %.0f ms\n\n",
         service.state() == ws::IndexService::State::Ready ? "ready" : "NOT READY", service.itemCount(), appsIn ? "in" : "NOT IN",
@@ -4923,9 +4975,14 @@ int runLauncherSim(QStringList args)
             requestId = 0;
             namesIn = true;
         }
-        if (withPlugins)
-            host.query(text, ws::Scope::All, queryId);
-        else
+        if (withPlugins) {
+            QJsonObject filters;
+            if (contentFilter) { // what Launcher::pluginFilters sends in 全部 with the content switch on
+                filters.insert(u"contentEnabled"_s, !trimmed.isEmpty());
+                filters.insert(u"contentWords"_s, text);
+            }
+            host.query(text, ws::Scope::All, queryId, filters);
+        } else
             host.cancelAll();
         return !keywordPlugin.isEmpty();
     };

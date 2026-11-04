@@ -315,6 +315,35 @@ void Merge::replace(const QString& pluginId, const QString& commandId, const Ite
     m_keywordItemIndex = static_cast<int>(items.size());
 }
 
+// The first row a pushed row may take: after the last row that is recent, a
+// favorite, or an app named just what was typed, and below the keyboard's row
+// unless that is the first.
+int Merge::floorRow() const
+{
+    const int current = m_sink.currentRow();
+    int floor = current > 0 ? current + 1 : 0;
+    for (int i = 0; i < m_sink.count(); ++i) {
+        const SearchResult& r = m_sink.row(i);
+        if (r.recent || r.favorite || (r.exact && r.isApp()))
+            floor = std::max(floor, i + 1);
+    }
+    return std::min(floor, m_sink.count());
+}
+
+// Where a content provider's first rows go (kFirstScreenRows): past the rows
+// placeFor() keeps clear and the first kFirstScreenNames name rows, and past
+// the provider rows already there, so they stay in the provider's order.
+int Merge::firstScreenRow() const
+{
+    const int count = m_sink.count();
+    int at = floorRow();
+    for (int names = 0; at < count && names < kFirstScreenNames; ++at)
+        names += !m_sink.row(at).isPlugin();
+    while (at < count && contentRow(m_sink.row(at)))
+        ++at;
+    return at;
+}
+
 // Where a pushed row of `score` goes: after the last row that is recent
 // (an app or a file opened lately), a favorite, or an app named just what was typed,
 // below the keyboard's row unless that is the first, then past the apps
@@ -325,14 +354,7 @@ void Merge::replace(const QString& pluginId, const QString& commandId, const Ite
 int Merge::placeFor(int score) const
 {
     const int count = m_sink.count();
-    const int current = m_sink.currentRow();
-    int floor = current > 0 ? current + 1 : 0;
-    for (int i = 0; i < count; ++i) {
-        const SearchResult& r = m_sink.row(i);
-        if (r.recent || r.favorite || (r.exact && r.isApp()))
-            floor = std::max(floor, i + 1);
-    }
-    int at = std::min(floor, count);
+    int at = floorRow();
     while (at < count && m_sink.row(at).isApp() && m_sink.row(at).score >= score)
         ++at;
     return at;
@@ -408,10 +430,21 @@ void Merge::apply(const Batch& batch)
     std::sort(gone.rbegin(), gone.rend());
     for (const int index : gone)
         m_sink.remove(index);
+    // A content provider's first rows are on the first screen (they would
+    // be out of sight past the names, up to a page of them); the rest
+    // follow the native matches (contentEnd). Content only has no names.
+    int onList = 0;
+    if (content) {
+        for (int i = 0; i < m_sink.count(); ++i)
+            onList += contentRow(m_sink.row(i));
+    }
     for (const SearchResult& r : rows) {
         if (kept.contains(r.path))
             continue;
-        const int at = content ? m_sink.count() : placeFor(r.score);
+        const int at = !content ? placeFor(r.score)
+            : onList < kFirstScreenRows && !m_contentOnly ? firstScreenRow()
+                                                          : m_sink.count();
+        ++onList;
         m_betterFirstRow = m_betterFirstRow || (at == 0 && m_sink.currentRow() == 0);
         m_sink.insert(at, r);
     }

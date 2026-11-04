@@ -46,6 +46,11 @@ Rectangle {
     required property bool aiExpose // the manifest offers its commands to the AI: the switch below shows
     required property bool aiEnabled
     required property string aiNote
+    // `elevated` while Win顺 runs as administrator (PluginSettings' Card):
+    // "elevated" a shield by the name; "unconfirmed" / "changed" a line with
+    // 确认; "unavailable" and "confirming" (the copy being made) the line alone.
+    required property string elevation
+    required property string elevationNote
     property bool marked: false // what the settings search found
     property bool expanded: false
     property bool animated: true // not in the offscreen preview: it draws no frames to run them
@@ -157,7 +162,30 @@ Rectangle {
                         font.weight: Theme.fontStrong
                         elide: Text.ElideRight
                         width: Math.min(implicitWidth, parent.width - (bundledTag.visible ? bundledTag.width + 8 : 0)
-                                                        - (aiTag.visible ? aiTag.width + 8 : 0))
+                                                        - (aiTag.visible ? aiTag.width + 8 : 0)
+                                                        - (shield.visible ? shield.width + 8 : 0))
+                    }
+                    Glyph { // it runs as administrator, as Win顺 does
+                        id: shield
+                        visible: card.elevation === "elevated"
+                        anchors.verticalCenter: nameText.verticalCenter
+                        width: 16
+                        height: 16
+                        glyph: String.fromCharCode(0xE7EF) // Admin: Phosphor's shield-check
+                        size: 14
+                        color: Theme.subtext
+                        Accessible.role: Accessible.Graphic
+                        Accessible.name: card.elevationNote
+
+                        MouseArea {
+                            id: shieldArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                        }
+                        HoverTip {
+                            target: shieldArea.containsMouse ? shield : null
+                            text: card.elevationNote
+                        }
                     }
                     Tag { // 随包: it came with Win顺
                         id: bundledTag
@@ -252,6 +280,34 @@ Rectangle {
                                 onClicked: card.focusKeyword(keycap.modelData.command)
                             }
                         }
+                    }
+                }
+                Item { // `elevated` waits for the user (or cannot be): why, and the one click
+                    visible: card.elevation === "unconfirmed" || card.elevation === "changed" || card.elevation === "unavailable"
+                             || card.elevation === "confirming"
+                    width: parent.width
+                    height: visible ? elevationText.implicitHeight + (confirmButton.visible ? 6 + confirmButton.height : 0) : 0
+
+                    Text {
+                        id: elevationText
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        text: card.elevationNote
+                        textFormat: Text.PlainText
+                        color: Theme.caution
+                        font.pixelSize: Theme.fontCaption
+                        wrapMode: Text.Wrap
+                        lineHeight: 1.15
+                    }
+                    FlatButton {
+                        id: confirmButton
+                        visible: card.elevation === "unconfirmed" || card.elevation === "changed"
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        implicitHeight: 28
+                        text: qsTr("确认")
+                        onClicked: card.plugins.confirmElevation(card.pluginId)
                     }
                 }
             }

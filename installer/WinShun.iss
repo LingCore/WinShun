@@ -244,6 +244,12 @@ Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=
 ; in (power cut), or that an AI tool still ran as administrator (GitHub #97):
 ; without this {app} would stay behind with that one file.
 Type: files; Name: "{app}\WinShunMcp.exe.old"
+; The copies plugins with the permission `elevated` run from when Win顺 runs
+; as administrator (src/plugin/Elevation: %ProgramFiles%\WinShun Elevated
+; Plugins\<SID>, only administrators may open it). After CloseWinShun, so no
+; plugin runs from there any more. Every user's, a portable copy's too: those
+; plugins then run with normal rights until confirmed again.
+Type: filesandordirs; Name: "{commonpf}\WinShun Elevated Plugins"; Check: IsAdminInstallMode
 
 [Code]
 const

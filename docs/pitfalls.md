@@ -1,5 +1,15 @@
 # 踩坑记录
 
+## 以管理员身份运行插件：先校验再按路径启动是不够的（2026-11-03）
+
+- **原因**：插件文件夹是用户能写的。“比对哈希，一样就 `CreateProcess` 插件文件夹里的 exe”中间有空子：校验后、启动前可以换文件；就算一直拿着句柄不让改，插件运行中还会按需加载 DLL，往文件夹里**加**一个 `version.dll` 是挡不住的。开机自启的管理员 Win顺 就成了一个不用 UAC 的提权入口。
+- **做法**：以管理员身份运行的永远是 `%ProgramFiles%\WinShun Elevated Plugins\<SID>\…` 里的副本（exe、cwd、`WS_PLUGIN_DIR`、清单都来自它，清单还要和目录里的一样）。放 Program Files 而不是 ProgramData：ProgramData 下普通用户能抢先建文件夹、占为己有、留着带 WRITE_DAC 的句柄，逐级收紧也收不回来。每一级只在不存在时由提权的 Win顺 建（属主 Administrators、普通用户连读都不能），已存在的只查不修：按句柄查（`FILE_FLAG_OPEN_REPARSE_POINT`，不是链接，最终路径一致，属主和 DACL），从检查到进程起来一直开着（不共享删除）。副本只在提权的 Win顺 里、用户点“确认”（插件库的插件从签名列表核对过的包）或从签名列表更新时做；普通权限装的东西不能自动当真。比对插件文件夹只用来判断副本是否还是现在的样子，不关安全。
+- **环境变量也是输入**：`CreateEnvironmentBlock(令牌)` 会读 `HKCU\Environment`，普通权限能改；`COR_PROFILER_PATH`、`DOTNET_STARTUP_HOOKS`、`NODE_OPTIONS`、`PATH` 都能让管理员进程加载别人的代码。管理员 runner 用 `sandbox::elevatedEnvironment`：系统变量、去掉加载代码的、系统 PATH（只留普通权限加不了文件的文件夹：系统 PATH 里常有用户文件夹下的 Python、VS Code，放个同名程序进去就会以管理员身份运行）、`TEMP` 在副本旁边。
+- **两个 runner 的信号要分开**：都连到同一个 `onLine`/`onInstanceExited` 时，普通权限的 runner 能替 2^48 以上的实例说话；`connectRunner` 按 `runnerFor(instance)` 只认自己的。
+- **插件库页面的列表不验签名**（缓存还在用户目录里），能把它的包当确认副本的只有带签名的列表（`PluginUpdates::signedItem`，开发用的本地无签名文件也不算）。
+- **别的坑**：管理员 runner 的实例号从 2^48 起，runner 的 JSON 要原样写小于 1e15 的整数，否则按实例号分 runner 会错；管理员 runner 的管道只给 SYSTEM 和 Administrators、标签“高”，普通权限的进程连打开都不行。单测里“同样大小重写文件”可能和原来修改时间相同，哈希缓存（按大小和修改时间）会看不出变化：测试里把时间往后拨（`laterTime`）。生产里这只影响“副本是不是最新”，不影响安全。
+- **验证**：`tst_plugin::elevationRecord`、`elevatedPluginsFollowTheHost`；真机用提权的 `wsbench --plugin <文件夹> --query … [--confirm-elevated]` 起 `plugin_fake --once --whoami`：未确认 Medium，确认后 High 且路径在副本里，普通权限的进程改 exe 后回到 Medium（判定 changed），改回去又是 High。
+
 ## 图形插件的进程隔离也要覆盖输入法与内部工作进程（2026-11-01，#164）
 
 - **根因与证据**：截图插件未声明 `processes`，实际宿主给它的作业 `ActiveProcessLimit=1`，真实子进程探针返回 1816（`ERROR_NOT_ENOUGH_QUOTA`），与录屏启动报错一致。启动器还统一设置了 `EXTENSION_POINT_DISABLE_ALWAYS_ON`；[微软文档](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-updateprocthreadattribute) 明确该策略阻止传统输入法扩展。直接启动的 QML 预览不经过这个边界。
@@ -4845,3 +4855,71 @@
 - **根因**：`--factory-startup` 只重置启动内容，仍可能读取用户最近目录；不存在的 `BLENDER_USER_*` 路径会导致隔离配置不生效。正常退出还可能向全局临时目录写入恢复文件。
 - **规则和边界**：启动前创建私有配置、脚本、扩展、数据和临时目录，并只给测试子进程设置环境；保留正在运行的用户实例。只对自建工厂场景夹具使用无恢复文件的退出方式，不能套到用户工作实例。
 - **验证**：`tools/verify-blender-dialog.ps1` 固定匹配自建实例 PID、观察器及窗口令牌。底层适配通过后，还要使用真实 `App`/`DialogBar` 搜索，独立观察 Blender 的目录和文件名，并检查搜索栏截图。原生消息模拟窗口的通过只证明协议覆盖，不能宣称未安装的 AutoCAD 已实机修复。
+
+## 资源管理器标签页插件（winshun.explorer-tabs，2026-11-03）
+
+### 资源管理器没有“在新标签页打开”的接口
+- **现象**：`Navigate2` 带 `navOpenInNewTab`（0x800）或 `navOpenInBackgroundTab`（0x1000）照样在原标签页打开；`IShellBrowser::BrowseObject` 带 `SBSP_NEWBROWSER` 开的是新窗口；`SBSP_SAMEBROWSER` 要阻塞 300–470 ms，也不更快。
+- **原因**：Windows 11 的标签页没有公开接口。能用的只有命令 ID：发给 `ShellTabWindowClass` 的 `WM_COMMAND 0xA21B` 开一个新标签页（Ctrl+T 的那个），发给顶层窗口的 `0xA221`（lParam 是从 1 数的位置）切标签页，发给标签页的 `0xA021`（lParam 1）关它。
+- **做法**：`0xA21B` 开标签页，等它在 ShellWindows 里登记，拿到它的 `IWebBrowser2`，用 ID 列表（`VT_ARRAY|VT_UI1` 的 SAFEARRAY）`Navigate2` 过去，路径里有 `#`、`::{GUID}` 也不出错。新标签页先加载“主文件夹”，这一段 700–900 ms 是下限，插件省不掉。
+- **注意**：`FindWindowEx` 找 `ShellTabWindowClass` 按 Z 序返回，当前标签页排第一。
+
+### 藏别的进程的窗口
+- **现象**：`DwmSetWindowAttribute(DWMWA_CLOAK)` 对资源管理器的窗口返回拒绝；在 SHOW 事件里 `SetWindowLong` 加 `WS_EX_LAYERED` 要阻塞 80–360 ms，窗口在这段时间里照样画出来。
+- **原因**：跨进程不能 cloak。改扩展样式会同步给窗口的线程发 `WM_STYLECHANGING`，SHOW 时资源管理器的线程正忙着建窗口，要等它。窗口登记（`WindowRegistered`）时同一调用只要 1–7 ms。
+- **做法**：`WS_EX_LAYERED` + `SetLayeredWindowAttributes` 透明度 0，任务栏按钮用 `ITaskbarList::DeleteTab` 拿掉，失败时 `AddTab` 还回去。每藏一个先写进 `<数据文件夹>\hidden.txt`，插件启动时、崩溃过滤器和 `std::terminate` 里都按它还原（只还原仍是 `CabinetWClass`、分层、透明度 0 的窗口；还原失败的行留着下次再试）。
+- **现状**（2026-11-03，限定在测试文件夹，经真实 runner，28 次）：先登记后显示的窗口（资源管理器预启动的）显示前就藏好，10 次一次也没露出来。先显示的窗口在 SHOW 时才能藏，18 次都露出来一下，中位约 220 ms、最长约 310 ms（1 ms 一次读窗口可见、不透明）。正式运行时 SHOW 就藏、不等标题，但 `SetWindowLong` 本身要等资源管理器的线程，估计差不多。
+- **试过、省不掉**（2026-11-03，`hideprobe` 实验：自己的一个线程 1.5 s 不处理消息的窗口）：`SetWindowLong`+透明度、`SetWindowRgn` 空区域、`SetWindowPos` 带 `SWP_NOSENDCHANGING` 挪到屏幕外，调用都要阻塞约 1.45 s；`SetWindowPos` 带 `SWP_ASYNCWINDOWPOS`（藏或挪走）和 `ShowWindowAsync` 立刻返回，但窗口照样在屏幕上留到那个线程处理消息为止（同样约 1.45 s）；`DWMWA_CLOAK` 返回 0x80070005。所以先显示的窗口那一下闪动由资源管理器的线程决定，插件缩短不了。
+- **藏和还原要排队**：藏的 `SetWindowLong` 可能正在等资源管理器，期间很快就决定了“不并”，还原先做完，晚到的藏又把窗口藏回去，B 就一直看不见。藏、还原、全部还原用同一把锁串行（`Hider::m_serial`）。
+
+### SHOW 时还不知道是哪个文件夹
+- **现象**：先显示的新窗口，SHOW 时标题是通用的“文件资源管理器”或“主文件夹”，过 100–250 ms 才改成文件夹名。`EVENT_OBJECT_CREATE` 比 SHOW 还晚，不能当早一点的信号。
+- **做法**：正式运行时，只要还有别的资源管理器窗口、没按 Ctrl+Shift、不是从资源管理器窗口要的新窗口（见下“谁要的新窗口”）、不是比我们权限高的窗口，就在 SHOW 时先藏；登记后知道了文件夹再决定，不并就马上还原。测试时限定在测试文件夹（`WINSHUN_TABS_TEST_ROOT`）下，标题里没有测试标记的窗口不能先藏，所以测试里先显示的窗口要等标题改名（`EVENT_OBJECT_NAMECHANGE`，只挂 Shell 那个 explorer 进程）或登记才藏，看到的闪动比正式运行长。
+
+### 窗口登记的事件里不能干活
+- **现象**：在 `DShellWindowsEvents::WindowRegistered` 的 `Invoke` 里直接读新窗口的文件夹、开标签页时，约 45 次里有 2 次打开文件夹的那一方（`ShellExecute`、`IShellDispatch2::ShellExecute`）卡了 40 秒才返回。
+- **原因**：资源管理器的线程同步地把事件发给每个订阅者，等它返回；新窗口和打开它的程序都在等。在里面再跨进程调用资源管理器，就可能互相等到超时。
+- **做法**：`Invoke` 只 `PostMessage` 给插件自己的窗口，事后再处理。改后 70 多次没再卡。代价是新窗口不再被事件“冻住”：读 ShellWindows 列表、查它的文件夹都要等它忙着的线程，要几百毫秒，先登记后显示的窗口在这期间会显示出来。所以处理登记时第一步不做跨进程调用，只按类名列出还不认识的 `CabinetWClass` 顶层窗口，按 SHOW 的同一条件先藏（`hideOnRegistration`）；已登记、还没决定的窗口（`undecided`）在 SHOW 时也照样能藏。改后先登记的窗口一次也没露出来。
+
+### 新标签页提前开（猜目标窗口）
+- **现象**：新窗口登记后要 300–600 ms 才知道它的文件夹、决定并到哪里，之后新标签页加载“主文件夹”又要 700–900 ms，两段串着走。
+- **做法**：新窗口一藏起来（登记或 SHOW 时），按决定时的同一规则先猜目标窗口，马上发 `0xA21B` 开标签页；决定下来如果正是这个窗口，标签页多半已登记，直接 `Navigate2`，导航成功以后才把目标窗口提到前面。猜错（窗口不并、并到别处、切到已开着的标签页）就把开出来的标签页关掉，不提到前面。决定的超时从确认时算起，不从猜的时候算。
+- **关标签页**：`0xA021` 和标签页自己的 `IWebBrowser2::Quit` 关的都是窗口的**当前**标签页，不是收到消息的那个（`quitprobe` 实测：备用标签页不在前面时，`Quit` 关掉的是原来的标签页）。所以只在它是当前标签页时发、一次只发一个（`SendMessageCallback`，有回复才发下一个），关掉以后才切到要切的标签页；最多 3 秒，shell 线程不等。
+- **效果**（2026-11-03，同一台机器、基线与新版交替跑，只算 CPU 低于 60% 的组）：从打开到标签页成为当前，基线 n=50 中位 1807 ms、p90 2640 ms，新版 n=52 中位 1649 ms、p90 2453 ms；另一轮较空闲时 1722/2407 → 1354/1833 ms。CPU 满载时两者都 2.4–6 s，差别量不出来。先显示的窗口的闪动不变（中位约 130–150 ms）。
+
+### 启动时不能等资源管理器
+- **现象**（2026-11-03 实测）：资源管理器忙、窗口分在好几个 explorer 进程里时，插件启动读一遍已开的窗口要好几秒，`initialized()` 迟迟不返回，wsbench 的查询超时（1500 ms），没有可执行的行就退出了，插件跟着被关掉，之后的测试全没生效。
+- **做法**：`Engine::start` 只等隐藏的消息窗口建好就返回；`connect()` 在 shell 线程里接着读。读完以前（`connected` 为假）WinEvent 里一个窗口也不当成新开的，免得把已开着的窗口藏起来。
+
+### 资源管理器自己的“已经开着”
+- **现象**：文件夹已经在某个窗口的非当前标签页里开着，再普通地打开它（`ShellExecute` 文件夹、`SHOpenFolderAndSelectItems`），资源管理器不开新窗口，只把那个窗口放到前面，标签页不切。
+- **原因**：资源管理器先在 ShellWindows 里找已开着的同一个文件夹，找到就激活那个顶层窗口。没有新窗口，插件看不到这次打开。
+- **现状**：插件的“文件夹已经开着就切过去”只在资源管理器确实开了新窗口时起作用（`explorer.exe /n,路径`、别的程序强制新窗口等），实测这条能切过去。
+
+### 插件拿不到 Win顺 的环境变量
+- **现象**：测试时给 WinShun.exe 或 wsbench 设的 `WINSHUN_TABS_*` 环境变量，插件进程里读不到。
+- **原因**：插件运行器用 `CreateEnvironmentBlock(受限令牌)` 给插件建环境，是用户的默认环境，不继承宿主的。
+- **做法**：测试开关写在测试用清单副本的 `runtime.env` 里。
+
+### wsbench --plugin 只打关键词不触发
+- **现象**：`wsbench --plugin <文件夹> --query "tabs"` 不调用插件。
+- **原因**：关键词命令要关键词后面有空格和文字才算触发。
+- **做法**：`--query "tabs x"`。另外 `--action noop` 也会送到插件的 `action()`，插件要按 `a.action == "default"` 判断，不能见到动作就切换暂停。
+### 还原要先显示、后删记录，还要还回任务栏按钮
+- **现象**：插件在合并中途被结束或崩溃后，重启的插件和崩溃处理都把窗口改回不透明，可窗口在任务栏上没有按钮（任务栏 UIA 名“文件资源管理器 - N 个运行窗口”的 N 不变）；另有一种顺序是先把 `hidden.txt` 改写掉再显示，正好在这中间退出，窗口就永远藏着。
+- **原因**：藏的时候用 `ITaskbarList::DeleteTab` 拿掉了按钮，只改透明度不会让任务栏重新加上。记录先删、窗口后显示，中间一断就没人知道它藏着。
+- **做法**：每条还原路径（决定不并、失败、`stop()`、启动时读记录、崩溃过滤器、`std::terminate`）都先去掉分层、透明度回 255，窗口可见就 `AddTab`（在调用线程上 `CoInitializeEx` 再建 `ITaskbarList`），成功后才改写记录。`stop()` 在 join 线程**之前**就全部显示一遍（`Hider::close()` 之后不再藏新的），join 卡住也不会留下藏着的窗口。实测结束插件 5 次，5 次窗口都回来且任务栏数 +1；旧版 5 次都没有按钮。
+- **注意**：MSVC 的 `std::set_terminate` 只管调用它的那个线程，每个自己起的线程（shell、WinEvent）开头都要再设一次。
+
+### 谁要的新窗口（Ctrl+N、“在新窗口中打开”不能并）
+- **现象**：从资源管理器窗口里按 Ctrl+N（开着“文件夹已经开着就切过去”时还被当成“已开着”切走）、右键“在新窗口中打开”、`explorer /n` 都被并成了标签页；原来靠“鼠标左键按着”判断拖出标签页，在桌面上双击文件夹时左键也可能还按着，误判成拖。
+- **做法**：WinEvent 线程挂 `EVENT_SYSTEM_FOREGROUND`，记最近几个前台窗口。新窗口出现时，往回找第一个“不是它自己、还活着、不是我们藏着的；若是资源管理器窗口，得是早就认识、已决定的”窗口：是资源管理器窗口、且不是插件自己刚提到前面的（之后没有键鼠输入，`GetLastInputInfo`），就保留新窗口；桌面、Win顺、别的程序照常并。设置“这些程序打开的仍是新窗口”按 exe 名加例外。不再看左键。
+- **坑**：前台事件报的常是标签页 `ShellTabWindowClass` 这个子窗口，要 `GetAncestor(GA_ROOT)`；同一批里刚开、还没决定的新窗口不能算“要的人”，不然连开 3 个时后两个都被当成“要窗口”。用户在插件工作时动鼠标键盘，“插件提到前面的”就不再算插件的，这时可能误判成“要窗口”（少并一次，不会丢）。
+
+### 关备用标签页要按窗口排队
+- **现象**：猜错的备用标签页还没关掉，同一个窗口又开了下一个标签页，关的命令落到了别的标签页上。
+- **做法**：`SpareCloser` 按窗口记“正在关的”；有关的在等，就不在这个窗口 `begin()` 新的合并，也不提前开备用标签页；关完（或 3 秒放弃）再接着来。决定时，正在关的标签页和这次合并自己开的标签页不算窗口原有的。
+
+### shell 线程的消息会重入
+- **现象**：处理一个消息时做跨进程 COM 调用（读 ShellWindows、`Navigate2`），STA 的消息循环会在里面又分发别的消息（新窗口登记、计时器），状态在半路被改，拿着的指针失效。
+- **做法**：`handle()` 记深度：深度大于 0 时计时器丢掉（下次还会来），登记、撤销、显示、重连这些先存起来，最外层处理完再依次处理；处理中只拿 HWND 和下标，COM 调用之后重新查，不拿容器元素的指针或迭代器。

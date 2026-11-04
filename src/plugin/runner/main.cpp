@@ -411,7 +411,10 @@ void start(const json::Value& m)
     HANDLE own = nullptr;
     ::OpenProcessToken(::GetCurrentProcess(), TOKEN_QUERY | TOKEN_DUPLICATE, &own);
     const Handle ownToken(own);
-    std::vector<wchar_t> environment = sandbox::environmentFor(ownToken.get(), extra);
+    // The elevated runner (an `elevated` plugin, Win顺 itself elevated): a
+    // clean block, nothing of the user's that could make it load code.
+    std::vector<wchar_t> environment = sandbox::tokenElevated(ownToken.get()) ? sandbox::elevatedEnvironment(extra)
+                                                                             : sandbox::environmentFor(ownToken.get(), extra);
 
     // Only the three standard handles are inherited; mitigations without
     // PROHIBIT_DYNAMIC_CODE (interpreters generate code).

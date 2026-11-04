@@ -69,7 +69,7 @@ ColumnLayout {
                 anchors.centerIn: parent
                 width: parent.width - 40
                 horizontalAlignment: Text.AlignHCenter
-                text: query.text.length === 0 ? qsTr("输入关键词即可搜索\n也可以在启动器输入 ocr 关键词") : qsTr("没有找到匹配的文字\n可检查识别范围和未完成项")
+                text: query.text.length === 0 ? qsTr("输入关键词即可搜索\n在启动器里直接输入图片里的文字也能搜到；输入 ocr 关键词只看图片结果") : qsTr("没有找到匹配的文字\n可检查识别范围和未完成项")
                 visible: pane.editor.results.length === 0 && !pane.editor.searching
                 wrapMode: Text.Wrap
                 color: Theme.subtext
