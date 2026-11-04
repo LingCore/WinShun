@@ -2829,6 +2829,8 @@ void App::endHandoff()
         {u"textMs"_s, ms(seen.text)},
         {u"drawnMs"_s, ms(seen.drawn)},
     };
+    if (!m_handoff.placed.isEmpty())
+        details.insert(u"placed"_s, m_handoff.placed);
     m_handoff = {};
     diagnostics::record(u"typing-handoff"_s, details);
 }
@@ -2920,8 +2922,39 @@ void App::showFolderSearch(HWND root, HWND tab, bool opus, const QString& folder
     const bool everywhere = opus && m_settings.opusTypingScope == u"all";
     const QString prefix = everywhere ? QString() : folder.endsWith(u'\\') ? folder + u' ' : folder + u"\\ "_s;
     // On the monitor of the list typed in (a lister over two may have the other on the other).
-    showLauncher(prefix, {}, false, screenOf(::MonitorFromWindow(opus ? tab : root, MONITOR_DEFAULTTONEAREST)), opus ? tab : root, opus);
+    // Typed in Explorer, beside its window, as long as all of the box keeps
+    // clear of it there (GitHub #141); else, as in Opus, in the bottom right
+    // corner of its file list, never in a corner of the screen (GitHub #203).
+    const RECT list = opus ? RECT {} : folderview::explorerFileList(root, tab);
+    // Pinned and up, or the panel: where it is (showLauncher).
+    const QString kept = m_launcher->pinned() && launcherShown() ? u"pinned"_s : m_launcher->panel() ? u"panel"_s : QString();
+    showLauncher(prefix, {}, false, screenOf(::MonitorFromWindow(opus ? tab : root, MONITOR_DEFAULTTONEAREST)), opus ? tab : root, opus,
+        list);
     m_typingOrigin = {root, tab, opus, folder}; // after showLauncher, which clears it
+    // For the journal's typing-handoff: how it was placed, the window typed
+    // in, its file list and the work area (screen pixels), the box where Qt
+    // put it (its pixels on that screen). No titles, no folders.
+    const auto rectOf = [](const RECT& r) {
+        return QJsonArray {int(r.left), int(r.top), int(r.right - r.left), int(r.bottom - r.top)};
+    };
+    QJsonObject placed {{u"by"_s, !kept.isEmpty()   ? kept
+                                 : !m_placement->avoiding() ? u"home"_s
+                                 : m_placement->avoidingInside() ? u"list"_s
+                                                                 : u"beside"_s}};
+    RECT bounds {};
+    if (::GetWindowRect(root, &bounds))
+        placed.insert(u"window"_s, rectOf(bounds));
+    if (!opus)
+        placed.insert(u"list"_s, rectOf(list));
+    MONITORINFO monitor {sizeof monitor};
+    if (::GetMonitorInfoW(::MonitorFromWindow(root, MONITOR_DEFAULTTONEAREST), &monitor))
+        placed.insert(u"work"_s, rectOf(monitor.rcWork));
+    if (m_window) {
+        const QRect box = m_window->geometry();
+        placed.insert(u"box"_s, QJsonArray {box.x(), box.y(), box.width(), box.height()});
+        placed.insert(u"scale"_s, m_window->devicePixelRatio());
+    }
+    m_handoff.placed = placed;
     // What is found in that folder first, then elsewhere (or there alone, as
     // set: Launcher::setFolderTypingOnly), as Listary lists it (GitHub #110).
     // After showLauncher too, which forgets the folder typed in before.
@@ -4668,7 +4701,7 @@ const char* App::rawInputState() const
 }
 
 void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>& spot, bool inBox, QScreen* on, HWND avoid,
-    bool inside)
+    bool inside, const RECT& orInto)
 {
     if (!m_window)
         return;
@@ -4750,13 +4783,15 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
         if (avoid && ::GetWindowRect(avoid, &bounds)) {
             // Over an Opus file list: its lister's other lists and client
             // area are where it may reach when the list is too small for it.
-            const HWND root = inside ? ::GetAncestor(avoid, GA_ROOT) : nullptr;
+            // Into Explorer's (orInto): within its window's client area.
+            const bool orIntoList = !inside && !::IsRectEmpty(&orInto);
+            const HWND root = inside || orIntoList ? ::GetAncestor(avoid, GA_ROOT) : nullptr;
             RECT client {};
             const bool framed = root && ::GetClientRect(root, &client)
                 && ::ClientToScreen(root, reinterpret_cast<POINT*>(&client.left))
                 && ::ClientToScreen(root, reinterpret_cast<POINT*>(&client.right));
-            m_placement->avoidNative(native(bounds), screen, inside, root ? native(folderview::opusFileLists(root)) : QRect(),
-                framed ? native(client) : QRect());
+            m_placement->avoidNative(native(bounds), screen, inside, inside ? native(folderview::opusFileLists(root)) : QRect(),
+                framed ? native(client) : QRect(), orIntoList ? native(orInto) : QRect());
         } else
             m_placement->placeOn(screen);
     }

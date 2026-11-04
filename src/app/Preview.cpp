@@ -37,6 +37,7 @@
 #include "platform/SiteIcons.h"
 #include "platform/FileDialog.h"
 #include "platform/FileManagers.h"
+#include "platform/FolderViewHit.h"
 #include "platform/WindowEffects.h"
 #include "platform/Foreground.h"
 #include "platform/MessageWindow.h"
@@ -5441,6 +5442,38 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
     check(QString::fromStdWString(filemanager::explorerFolder(secondTab)) == folder + u"\\child"_s
             && QDir::fromNativeSeparators(selected()).compare(QDir::fromNativeSeparators(nestedFile), Qt::CaseInsensitive) == 0,
         "Ctrl+Enter took the second tab to the subfolder and selected the file");
+
+    // A window too large to keep clear of, centred (GitHub #203: the box went
+    // to the top left of the screen): in the bottom right corner of the file
+    // list of the tab typed in, within the window.
+    app.hideLauncher();
+    pump(300);
+    ::SetWindowPos(root, nullptr, area.left + (area.right - area.left) / 8, area.top + (area.bottom - area.top) / 8,
+        (area.right - area.left) * 3 / 4, (area.bottom - area.top) * 3 / 4, SWP_NOZORDER | SWP_NOACTIVATE);
+    pump(500);
+    ::SetForegroundWindow(root);
+    app.showFolderSearch(root, secondTab, false, QString::fromStdWString(filemanager::explorerFolder(secondTab)));
+    pump(600);
+    settle(window, 3);
+    {
+        const RECT list = folderview::explorerFileList(root, secondTab);
+        RECT box {}, client {};
+        ::GetWindowRect(reinterpret_cast<HWND>(window->winId()), &box);
+        ::GetClientRect(root, &client);
+        ::MapWindowPoints(root, nullptr, reinterpret_cast<POINT*>(&client), 2);
+        const int gap = qRound(12 * (window->screen() ? window->screen()->devicePixelRatio() : 1.0));
+        check(box.left >= client.left && box.top >= client.top && box.right <= client.right && box.bottom <= client.bottom,
+            "too large to keep clear of: the box is inside the Explorer window");
+        check(std::abs(list.right - box.right - gap) <= 2 && box.bottom <= list.bottom - gap + 2,
+            "too large to keep clear of: 12 px in from the right of its file list, the rows ending above its bottom");
+        check(box.left != area.left || box.top != area.top, "too large to keep clear of: not at the top left of the screen");
+        report.insert(u"centred_explorer_list"_s, QJsonArray {int(list.left), int(list.top), int(list.right - list.left),
+            int(list.bottom - list.top)});
+        report.insert(u"centred_explorer_box"_s, QJsonArray {int(box.left), int(box.top), int(box.right - box.left),
+            int(box.bottom - box.top)});
+    }
+    app.hideLauncher();
+    pump(300);
 
     // Typed in Directory Opus (GitHub #82), by a window of its class standing
     // in for a lister (production needs the real one only to read its folder):

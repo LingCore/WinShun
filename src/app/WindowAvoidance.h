@@ -38,6 +38,17 @@ inline QPoint place(const QRect& area, const QRect& obstacle, QSize size, QPoint
     return chosen;
 }
 
+// Whether `place` finds the window a spot clear of `obstacle`, not over any
+// of it. Typed in File Explorer, the box goes there only then (GitHub #141);
+// else into its file list (inList). Least overlap alone took a window too
+// large to keep clear of, centred, to a corner of the work area: the first
+// of four alike, its top left (GitHub #203, "at the top left of the screen").
+inline bool clearOf(const QRect& area, const QRect& obstacle, QSize size, QPoint preferred, int gap = 12)
+{
+    size = size.boundedTo(area.size());
+    return !QRect(place(area, obstacle, size, preferred, gap), size).intersects(obstacle);
+}
+
 // Over the file list typed in (Directory Opus, GitHub #82), as Listary opens
 // its box: in the list's bottom right corner, `gap` in from its edges; as wide
 // and as tall (the room for rows) as the list leaves, between `least` and

@@ -168,8 +168,11 @@ public:
     // `on`: the screen to open on (typed in an Explorer window there), else
     // the one under the mouse. `avoid`: the window typed in, which it opens
     // beside; `inside`: in its bottom right corner instead (Placement::avoidNative).
+    // `orInto` (screen pixels): where it goes instead when it cannot keep
+    // clear of `avoid`, in that corner within `avoid`'s client area: File
+    // Explorer's file list (folderview::explorerFileList, GitHub #203).
     void showLauncher(const QString& query = {}, const std::optional<taskbar::Spot>& spot = {}, bool inBox = false,
-        QScreen* on = nullptr, HWND avoid = nullptr, bool inside = false);
+        QScreen* on = nullptr, HWND avoid = nullptr, bool inside = false, const RECT& orInto = {});
     void showFolderSearch(HWND root, HWND tab, bool opus, const QString& folder);
     void hideLauncher();
     // The launcher as the search panel (Launcher::panel): the window sized
@@ -723,6 +726,9 @@ private:
         QString missing; // what was not ready when they went (cap)
         bool inFront = false; // the launcher was the window in front when they went
         quint32 layout = 0; // the keyboard layout (HKL) then
+        // Typed in a folder: where the box went by that window (GitHub #203:
+        // "at the top left of the screen"). Rectangles only.
+        QJsonObject placed;
     };
     TypingHandoff m_handoff;
     std::unique_ptr<LauncherKeysWatch> m_keysWatch; // the launcher's window, a moment after the keys went

@@ -118,8 +118,17 @@ public:
     // `inside`: in its bottom right corner rather than beside it, as wide as it
     // leaves (not below the least width; not remembered); larger than it, over
     // `lists` (the lister's file lists together) before the rest of `frame`.
+    // `orInto` (File Explorer's file list, GitHub #203): beside `window` only
+    // where all of the box keeps clear of it; else inside, in that list's
+    // corner within `frame`. Decided here, once: its rows coming and going
+    // later do not move it between the two.
     void avoidNative(const QRect& window, QScreen* screen, bool inside = false, const QRect& lists = {},
-        const QRect& frame = {});
+        const QRect& frame = {}, const QRect& orInto = {});
+    // Where avoidNative put it, for the diagnostics journal (GitHub #203):
+    // by the file manager typed in at all; in its file list's corner, else
+    // beside it.
+    bool avoiding() const { return m_avoid.has_value(); }
+    bool avoidingInside() const { return m_avoid.has_value() && m_avoidInside; }
     // Geometry supplied by the ordinary-process peer to its UIAccess display.
     void placeDisplay(const QRect& geometry, int room, bool above);
     // A user move in the display peer; retain the usual temporary/home rules.
