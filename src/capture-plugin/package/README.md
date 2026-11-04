@@ -1,12 +1,20 @@
 # 截图与录屏 / Screenshot and recording
 
-Win顺 0.17.0 或更新版本的官方可选插件。设置 → 插件 → 插件库中安装并启用，确认权限后使用截图、延时截图、标注、长截图、贴图、文字识别及 MP4 / GIF 录屏。输入 `cap` 可找到截图命令；快捷键在截图设置中配置。
+Win顺 0.18.0 或更新版本的官方可选插件。设置 → 插件 → 插件库中安装并启用，确认权限后使用截图、延时截图、标注、长截图、贴图、文字识别及 MP4 / GIF 录屏。输入 `cap` 可找到截图命令；快捷键在截图设置中配置。
 
-This official optional plugin requires WinShun 0.17.0 or later. Install and enable it from Settings → Plugins → Library, review its permissions, then use screenshots, annotations, scrolling capture, pins, OCR and MP4 / GIF recording. Type `cap` for capture commands; configure shortcuts in the capture settings.
+This official optional plugin requires WinShun 0.18.0 or later. Install and enable it from Settings → Plugins → Library, review its permissions, then use screenshots, annotations, scrolling capture, pins, OCR and MP4 / GIF recording. Type `cap` for capture commands; configure shortcuts in the capture settings.
 
 录屏浮条提供“选区 / 全屏”切换：全屏包含原选区所在显示器的任务栏，切回选区会恢复原范围；“再录一段”沿用当前录制范围。
 
 The recording controls switch between Area and Full screen. Full screen includes the taskbar of the monitor containing the original selection; Area restores that selection. Another take keeps the recording range.
+
+演示和白板（1.1.0）：托盘菜单“截图 › 演示 / 白板”或 `cap 白板`，也可在截图设置的“快捷键”里录一个快捷键（默认不设）。直接在正在使用的桌面上画，`X` 是激光笔，`Esc` 或右键让鼠标和键盘回到下面的程序，`W` 白板、`K` 黑板。
+
+Presenter and whiteboard (1.1.0): Screenshot › Presenter / whiteboard in the tray menu or `cap whiteboard`; record a hotkey for it under Shortcuts in the capture settings (none by default). It draws on the live desktop; `X` is a laser pointer, `Esc` or a right click hands the mouse and keyboard back to the programs below, `W` is a whiteboard and `K` a blackboard.
+
+1.1.0 的其他变化：贴图、保存、贴图窗口的按键可以在截图设置的“按键”里改；`WASD` 挪指针；截图时左下角有快捷键提示；工具条分两行；设置页改成卡片；共用的 PaddleOCR 文字识别读取部分有改动。
+
+Other changes in 1.1.0: the keys for pin, save and the pin window can be changed under Keys in the capture settings; `WASD` moves the pointer; shortcut hints at the bottom left while capturing; a two-row toolbar; the settings as cards; the shared PaddleOCR text reader changed.
 
 ## 权限 / Permissions
 

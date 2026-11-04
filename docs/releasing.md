@@ -45,7 +45,7 @@
 
 ## 推送与发布
 
-六个官方可选原生插件也要随宿主协议变动核对：`library-plugins/` 中的包先用插件库工具检查真实归档，确认 `minWinShun`、入口文件、权限、许可证和 README，再以新的插件版本发布到 `LingCore/WinShun-plugins`。记录主仓库源码提交，联网生成条目并核对 index 的公开结果后，才发布依赖它们的宿主版本。旧插件版本已经发布时必须核对原附件，不可用本次重新编译的文件覆盖；内容变化就升插件版本。官方原生包的受限白名单不适用于社区插件。
+官方可选插件（以 `CMakeLists.txt` 里 `library_plugins` 列的为准，不固定个数）也要随宿主协议变动核对：构建目录 `<BuildDir>/library-plugins` 中的包（`release.ps1` 另外导出 `.wsplugin` 到 `<OutputDir>/library-plugins`）先用插件库工具检查真实归档，确认 `minWinShun`、入口文件、权限、许可证和 README，再以新的插件版本发布到 `LingCore/WinShun-plugins`。记录主仓库源码提交，联网生成条目并核对 index 的公开结果后，才发布依赖它们的宿主版本。旧插件版本已经发布时必须核对原附件，不可用本次重新编译的文件覆盖；内容变化就升插件版本。官方原生包的受限白名单不适用于社区插件。
 
 提交所有本次必要改动并推送。保存已验证的提交 SHA，再次检查远端有无同版本 Release。
 
