@@ -31,15 +31,34 @@ using annot::Kind;
 
 // What [ and ] and a notch of the wheel step through, logical px (3.5): the
 // next of these above or below the value now, whatever the panel's presets.
-constexpr std::array kWidthSteps {1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24, 28, 32, 40};
-constexpr std::array kSizeSteps {10, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 64};
-constexpr std::array kCellSteps {4, 6, 8, 10, 12, 16, 18, 24, 32};
+// Every value in the small range, then every 2nd or 4th (#164: the wheel is
+// meant to feel continuous, not a few presets).
+struct Band {
+    int from;
+    int step;
+};
+std::vector<int> ladder(std::initializer_list<Band> bands, int last)
+{
+    std::vector<int> values;
+    for (auto it = bands.begin(); it != bands.end(); ++it) {
+        const int to = std::next(it) == bands.end() ? last : std::next(it)->from;
+        for (int v = it->from; v < to; v += it->step)
+            values.push_back(v);
+    }
+    values.push_back(last);
+    return values;
+}
+const std::vector<int> kWidthSteps = ladder({{1, 1}, {16, 2}, {32, 4}}, 64);
+const std::vector<int> kSizeSteps = ladder({{10, 1}, {40, 2}, {80, 4}}, 120);
+const std::vector<int> kCellSteps = ladder({{3, 1}, {16, 2}, {32, 4}}, 64);
 constexpr int kMaxLogical = 500; // as StyleMemory keeps them
 constexpr int kMaxNumber = 99999;
 // A touchpad sends the wheel in small pieces: a notch is 120 of them, and
-// one notch in 200 ms at most, or a flick runs through every size (3.5).
+// one notch in 60 ms at most, or a flick runs through every size (3.5). A
+// mouse wheel sends whole notches, each of them a step at once.
 constexpr int kNotch = 120;
-constexpr qint64 kNotchMs = 200;
+constexpr qint64 kNotchMs = 60;
+constexpr int kMaxNotches = 8; // steps one event may take (a free-spinning wheel)
 
 bool usesWidth(Kind kind)
 {
@@ -57,8 +76,7 @@ bool usesSize(Kind kind)
     return kind == Kind::Text || kind == Kind::Number;
 }
 
-template <std::size_t N>
-int stepped(const std::array<int, N>& steps, int value, int direction)
+int stepped(const std::vector<int>& steps, int value, int direction)
 {
     if (direction > 0) {
         for (int step : steps) {
@@ -71,6 +89,13 @@ int stepped(const std::array<int, N>& steps, int value, int direction)
         if (*it < value)
             return *it;
     }
+    return value;
+}
+
+int steppedBy(const std::vector<int>& steps, int value, int direction, int count)
+{
+    for (; count > 0; --count)
+        value = stepped(steps, value, direction);
     return value;
 }
 
@@ -1946,12 +1971,16 @@ bool AnnotationModel::wheel(int angleDelta, qint64 nowMs)
     if (std::abs(d->wheelSum) < kNotch)
         return true;
     const int direction = d->wheelSum > 0 ? 1 : -1;
+    // Whole notches (a mouse): a step each, no waiting. Pieces that add up to
+    // one (a touchpad): one step, and not again within kNotchMs.
+    const bool whole = angleDelta % kNotch == 0;
+    const int count = whole ? std::min(std::abs(d->wheelSum) / kNotch, kMaxNotches) : 1;
     d->wheelSum = 0;
-    if (d->notched && nowMs - d->lastNotch < kNotchMs)
+    if (!whole && d->notched && nowMs - d->lastNotch < kNotchMs)
         return true;
     d->notched = true;
     d->lastNotch = nowMs;
-    stepSize(direction);
+    stepSize(direction, count);
     return true;
 }
 
@@ -2370,7 +2399,7 @@ void AnnotationModel::setPanel(const QVariantMap& change)
 
 // [ and ], a notch of the wheel: the target's width, size or cell one step
 // on, as a panel change, so an object and the tool's memory both take it.
-void AnnotationModel::stepSize(int direction)
+void AnnotationModel::stepSize(int direction, int count)
 {
     const std::optional<Target> target = styleTarget();
     if (!target)
@@ -2386,19 +2415,19 @@ void AnnotationModel::stepSize(int direction)
     if (usesWidth(kind)) {
         field = u"width"_s;
         value = remembered ? memory.width : annot::toLogicalPx(style.width, dpr);
-        next = stepped(kWidthSteps, value, direction);
+        next = steppedBy(kWidthSteps, value, direction, count);
     } else if (usesSize(kind)) {
         field = u"size"_s;
         value = remembered ? memory.size : annot::toLogicalPx(style.fontPx, dpr);
-        next = stepped(kSizeSteps, value, direction);
+        next = steppedBy(kSizeSteps, value, direction, count);
     } else if (kind == Kind::Redact && (remembered ? memory.shape : style.shape) == annot::RedactShape::Brush) {
         field = u"width"_s;
         value = remembered ? memory.width : annot::toLogicalPx(style.width, dpr);
-        next = stepped(kWidthSteps, value, direction);
+        next = steppedBy(kWidthSteps, value, direction, count);
     } else if (kind == Kind::Redact) {
         field = u"cell"_s;
         value = remembered ? memory.cell : annot::toLogicalPx(style.cell, dpr);
-        next = stepped(kCellSteps, value, direction);
+        next = steppedBy(kCellSteps, value, direction, count);
     }
     if (field.isEmpty() || next == value)
         return;

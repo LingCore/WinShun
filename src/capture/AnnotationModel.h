@@ -272,8 +272,8 @@ public:
     // tool, where the session copies.
     bool doubleClick(QPoint p);
     // Wheel with a tool or a selected object: size steps; `angleDelta` is
-    // the wheel's, summed until 120 makes a notch, one notch per 200 ms at
-    // most (touchpads). True when the wheel is the model's (tool or selection).
+    // the wheel's, summed until 120 makes a notch: a mouse's notches step at
+    // once, a touchpad's pieces one step per 60 ms at most. True when the wheel is the model's (tool or selection).
     bool wheel(int angleDelta, qint64 nowMs);
     // The tool keys, undo and redo, Delete, arrows on a selected object,
     // [ and ], Ctrl+[ and Ctrl+], Ctrl+A (all objects), Ctrl+D (a copy of
@@ -432,7 +432,7 @@ private:
     bool onWords(const annot::Item& item, QPoint p) const;
     annot::NumberGeometry geometryOf(const annot::Item& item) const;
     void commitWords(const QString& text);
-    void stepSize(int direction);
+    void stepSize(int direction, int count = 1);
     void nudge(QPoint delta);
     void reorder(int direction, bool toEnd);
     bool canReorder(int direction) const;
