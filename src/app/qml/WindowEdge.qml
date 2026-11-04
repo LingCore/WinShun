@@ -23,6 +23,9 @@ Item {
 
     anchors.fill: parent
     z: 1000
+    // Nothing to draw under DWM's frame on Windows 11, nor maximized (the body
+    // Hook below is the window's child, not this one's).
+    visible: Theme.ownFrame || (!SystemTheme.nativeWindowBorder && !maximized)
 
     // See-through under an own frame: the body is the part's.
     Binding {
