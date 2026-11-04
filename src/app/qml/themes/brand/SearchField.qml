@@ -5,10 +5,10 @@ import QtQuick.Effects
 // searchField: a search box. Unfocused: a white field with a 1 px neutral
 // edge. Focused: one continuous 2 px ring in the Logo's colours, never broken
 // or faded along the way (stops placed by perimeter length, Look.ringStops).
-// flat: the launcher's search row — the Hook fills the whole row and the
-// field sits `inset` (Look.fieldInset, 10) inside it on every side, radius 8,
-// concentric with the window's 18; a faint glow of the ring's colours shows
-// below it while focused. Not flat (settings, clipboard, plugins): the field
+// flat: the launcher's search row — the host already sets the Hook `fieldInset`
+// (10) inside the row on every side (themes/README.md 3.3), so the field fills
+// it, radius 8, concentric with the window's 18; a faint glow of the ring's
+// colours shows below it while focused. Not flat (settings, clipboard, plugins): the field
 // fills the Hook, ring without glow. Radius: Look.fieldRadius (8).
 Item {
     id: field
@@ -19,8 +19,7 @@ Item {
     property bool hovered: false
     property real dpr: 1
 
-    // For the host: where the field is in the Hook, its corner, and its colours.
-    readonly property real inset: look ? (flat ? look.fieldInset : 0) : 0
+    // For the host: its corner and its colours.
     readonly property real radius: look ? look.fieldRadius : 0
     readonly property color caretColor: look ? look.caret : "transparent"
     readonly property color ink: look ? look.ink : "transparent"
@@ -40,7 +39,6 @@ Item {
     Item {
         id: box
         anchors.fill: parent
-        anchors.margins: field.inset
 
         // ---- glow (flat only): the ring's colours, blurred, peeking out below the field ----
         Shape {
