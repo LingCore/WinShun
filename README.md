@@ -102,6 +102,8 @@
 
 ### 功能
 
+**0.20.0 更新**　以修复和体验为主。截图在设置里选了保存目录后，保存按钮和 `Ctrl+S` 直接存进去，不再弹窗，点一下“已保存”的通知就在文件夹里选中这张图（截图插件 1.1.1）。文件夹快捷菜单的设置重新整理：触发方式（双击鼠标左键、鼠标中键）和触发位置（资源管理器、桌面）分开选，菜单末尾的“在此搜索”“命令提示符”等也可以分别关掉。修复：“文件”“文件夹”范围里多出的插件提示行、搜索栏 Logo 下半部分点不到、剪贴板数字键直接粘贴漏给前台程序，以及“按住连按，松开粘贴”要整个组合一直按着的问题。详见[发布说明](docs/release-notes/v0.20.0.md)。
+
 **0.19.0 更新**　截图插件新增演示和白板，可以直接在桌面上画、用激光笔指；截图的按键可以自己改，`WASD` 能挪指针，设置页和工具条重新整理。新增资源管理器标签页插件，插件可以跟随 Win顺 的管理员权限（点一次确认），也可以用 Scoop 安装。图片文字搜索在“全部”里不用打 `ocr` 就出结果，认得出画出来的 PDF 文字、颠倒的页面和长图，也读 JFIF、GIF、HEIC、AVIF，跨空格、繁简和短词也能搜到。设置窗口打开更快。详见[发布说明](docs/release-notes/v0.19.0.md)。
 
 #### 🔍 文件搜索
@@ -199,7 +201,7 @@
 
 #### 🗂️ 资源管理器里：双击空白处、右键搜索此处
 
-- **双击空白处**：在资源管理器或桌面的空白处双击，按“收藏夹 / 最近的文件夹 / 已打开的文件夹”进入二级页面。收藏夹包含文件夹、文件、应用、系统位置和自定义命令，显示名称与图标，悬停查看完整路径或命令；选文件夹就在原窗口里转过去（桌面上开新窗口）。自定义命令点击即可执行，`{query}` 接收当前目录，命令里设置的工作目录优先。三类入口可在设置里分别开关。
+- **双击空白处**：在资源管理器或桌面的空白处双击，按“收藏夹 / 最近的文件夹 / 已打开的文件夹”进入二级页面。收藏夹包含文件夹、文件、应用、系统位置和自定义命令，显示名称与图标，悬停查看完整路径或命令；选文件夹就在原窗口里转过去（桌面上开新窗口）。自定义命令点击即可执行，`{query}` 接收当前目录，命令里设置的工作目录优先。三类入口可在设置里分别开关；触发方式（双击鼠标左键、鼠标中键）和位置（资源管理器、桌面）也分开选，菜单末尾的“在此搜索”“命令提示符”“PowerShell”“收藏这个文件夹”“Win顺 设置”可以分别关掉。
 - 菜单不抢焦点，支持方向键、回车、首字母和滚动；右方向键进入，左方向键、退格或 `Esc` 返回，首页 `Esc` 关闭。点别处或再双击就关。Listary 在运行时让给它。
 - **Directory Opus 里也能双击**：Win顺 可以替你在 Opus 的设置里加好这条命令（Opus 会重启一下），关掉或卸载时换回原来的。
 - **Directory Opus 里直接打字搜索**：在设置 → 打开 Win顺 → 对话框中单独开启，默认关闭。在文件列表里从字母或数字开始输入，就用 Win顺 搜，当前标签的文件夹里的排在最前（和资源管理器一样），双栏也跟随正在操作的一栏；`Esc` 回到 Opus，打开文件夹或 `Ctrl+Enter` 定位结果也回到原来的一栏。改名、地址栏、菜单和以符号开头的 Opus 查找模式仍按原来的方式操作。
@@ -383,6 +385,8 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
 
 ### Features
 
+**New in 0.20.0**　Mostly fixes and polish. With a save folder chosen in the capture settings, Save and `Ctrl+S` write straight into it without a dialog, and clicking the “saved” notice selects the picture in the folder (capture plugin 1.1.1). The folder menu settings are tidier: how it opens (double left click, middle click) and where (File Explorer, desktop) are chosen separately, and the actions at the end of the menu, such as Search here and Command Prompt, can each be turned off. Fixed: stray plugin hint rows in Files and Folders, the lower half of the search logo not being clickable, direct clipboard paste taking keys meant for the program in front, and “hold and press again, release to paste” needing the whole combination held. See the [release notes](docs/release-notes/v0.20.0.md).
+
 **New in 0.19.0**　The screenshot plugin gains a presenter and whiteboard to draw on the live desktop and point with a laser. Its keys can be changed, `WASD` moves the pointer, and the settings and toolbar are rearranged. A new Explorer tabs plugin; plugins can follow WinShun's administrator rights (one click to confirm); install with Scoop. Image text search now answers in All without `ocr`, reads drawn PDF text, upside-down pages and long pictures, also reads JFIF, GIF, HEIC and AVIF, and matches across spaces, traditional characters and short words. The settings window opens faster. See the [release notes](docs/release-notes/v0.19.0.md).
 
 - **WSL file search**: add a Linux project or home folder under Settings › Search scope › Network & WSL. Installed distributions appear automatically. Search file and folder names alongside local files, including pinyin; indexed results remain available while WSL is stopped and update automatically when it runs again.
@@ -445,7 +449,7 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
   - **Suggestions**: open folders, a path you just copied, favorites and recent folders.
   - **Going there by itself**: optional, as the dialog opens, or only when you come back to it from the file manager.
 - 🗂️ **In File Explorer: a double click, a right-click**
-  - **Folder menu**: double-click empty space in File Explorer or on the desktop, then choose Favorites, Recent folders or Open folders. Favorites include folders, files, apps, system places and custom commands, with names and icons; hover for the full path or command. Choose a folder to navigate the same window (the desktop opens a new one), or click a command to run it; `{query}` receives the current folder and an explicit working directory takes priority. Right enters a page; Left, Backspace or Esc returns; Esc on the home page closes it. Long lists scroll and the menu keeps the source window's focus. Each group can be switched off in settings.
+  - **Folder menu**: double-click empty space in File Explorer or on the desktop, then choose Favorites, Recent folders or Open folders. Favorites include folders, files, apps, system places and custom commands, with names and icons; hover for the full path or command. Choose a folder to navigate the same window (the desktop opens a new one), or click a command to run it; `{query}` receives the current folder and an explicit working directory takes priority. Right enters a page; Left, Backspace or Esc returns; Esc on the home page closes it. Long lists scroll and the menu keeps the source window's focus. Each group can be switched off in settings, as can how it opens (double left click, middle click), where (File Explorer, desktop) and each action at the end of the menu (Search here, Command Prompt, PowerShell, Add this folder to favorites, WinShun settings).
   - It never takes the focus: arrows, Enter, Esc and first letters work; a click elsewhere or another double click closes it. It stays out of the way while Listary runs.
   - **In Directory Opus too**: WinShun can add its command to Opus's settings for you (Opus restarts once), and puts the old one back when turned off or uninstalled.
   - **Type to search in Directory Opus**: enable it separately in Settings → Open WinShun → Dialogs (off by default). Start with a letter or digit in the file list to search, the focused tab's folder first (as in File Explorer), including either pane of a dual display. `Esc` returns to Opus; opening a folder or locating a result with `Ctrl+Enter` uses the original pane. Renaming, address bars, menus and Opus find modes starting with symbols keep their usual behavior.
