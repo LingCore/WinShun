@@ -87,7 +87,7 @@ private:
     void startOcr();
     void readScreenText(const QImage& image, double dpr, const QRect& where);
     void showOcrBubble(const QString& phase, const QString& words, const QString& detail);
-    void closeOcrBubble();
+    bool closeOcrBubble(); // whether it was up
     // `window` (logical size) beside `where` (physical, virtual desktop) on its monitor.
     void placeNear(QQuickWindow* window, const QRect& where);
     void notifySaved(const QString& path, const QString& error);

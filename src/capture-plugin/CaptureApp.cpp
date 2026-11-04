@@ -45,6 +45,7 @@
 #include <QStyleHints>
 #include <QTranslator>
 
+#include <dwmapi.h>
 #include <objbase.h>
 
 #include <algorithm>
@@ -441,7 +442,12 @@ void CaptureApp::apply()
                 then == Action::OcrCopy ? OcrThen::Copy : then == Action::OcrSearch ? OcrThen::Search : OcrThen::Web);
         };
         callbacks.readText = [this](const QImage& image, double dpr, const QRect& where) { readScreenText(image, dpr, where); };
-        callbacks.starting = [this] { closeOcrBubble(); }; // not in the frozen picture
+        // Not in the frozen picture: hidden, and one composition waited for, so
+        // the grab right after does not still find it on the screen.
+        callbacks.starting = [this] {
+            if (closeOcrBubble())
+                ::DwmFlush();
+        };
         callbacks.pins = [this] { return &pins(); };
         callbacks.smart = smartHooks();
         // 长截图: straight into the editing window (Enter copies, Ctrl+S saves, F3 pins).
@@ -951,6 +957,14 @@ void CaptureApp::showOcrBubble(const QString& phase, const QString& words, const
         m_bubbleFrame->setWindow(window);
         m_bubbleFrame->setNoActivate(true);
         m_bubbleWindow = window;
+        // Its size follows the words a frame later (the Column lays out on
+        // polish): placed again then, so it stays on the work area and off the region.
+        const auto place = [this, window] {
+            if (window->isVisible())
+                placeNear(window, m_quickOcrWhere);
+        };
+        connect(window, &QWindow::heightChanged, window, place);
+        connect(window, &QWindow::widthChanged, window, place);
     }
     QQuickWindow* window = m_bubbleWindow;
     QMetaObject::invokeMethod(window, "present", Q_ARG(QVariant, phase), Q_ARG(QVariant, words), Q_ARG(QVariant, detail));
@@ -961,10 +975,12 @@ void CaptureApp::showOcrBubble(const QString& phase, const QString& words, const
     ::SetWindowPos(reinterpret_cast<HWND>(window->winId()), HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 }
 
-void CaptureApp::closeOcrBubble()
+bool CaptureApp::closeOcrBubble()
 {
-    if (m_bubbleWindow && m_bubbleWindow->isVisible())
-        QMetaObject::invokeMethod(m_bubbleWindow.data(), "dismiss");
+    if (!m_bubbleWindow || !m_bubbleWindow->isVisible())
+        return false;
+    QMetaObject::invokeMethod(m_bubbleWindow.data(), "dismiss");
+    return true;
 }
 
 void CaptureApp::editOcrText(const QString& text)
