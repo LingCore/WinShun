@@ -443,9 +443,11 @@ App::~App()
     m_clipImport.reset(); // its thread joined before the history it fills goes
     siteicons::shutdown(); // an icon arriving now would be told to no one
     m_keyRouter.reset(); // no keys taken from here on
+    m_launcherRouting.router.reset();
     m_numberKeyHook.reset();
     m_drainingNumberKeyHook.reset();
     m_drainingRouter.reset();
+    m_launcherRouting.draining.reset();
     m_holdWatch.reset();
     m_drainingWatch.reset();
     m_keyListenerMode = -1; // recorder teardown must not recreate input listeners
@@ -1232,6 +1234,8 @@ bool App::createWindow()
         if (m_window && !m_window->isActive()) {
             launcherLostFront();
         } else if (m_window && m_window->isActive()) {
+            if (::GetForegroundWindow() == reinterpret_cast<HWND>(m_window->winId()))
+                stopLauncherRouting(); // in front after all (a click on it): its keys are its own
             m_launcher->systemCommandDone();
             m_boxPressGrace.stop();
             lettersOnOpen();
@@ -2501,7 +2505,17 @@ void App::applyTypeToSearch()
     callbacks.pastedInto = [this](HWND view) {
         QMetaObject::invokeMethod(this, [this, view] { pasteAsFile(view); }, Qt::QueuedConnection);
     };
+    // The keys held for a launcher whose keys are routed to it (GitHub
+    // #203): into it as the router's would go, ahead of those, which come
+    // after them from the router's thread. Gone meanwhile: to no one.
+    callbacks.handedOver = [this](std::vector<KeyRouter::Key> keys) {
+        QMetaObject::invokeMethod(this, [this, keys = std::move(keys)] {
+            for (const KeyRouter::Key& key : keys)
+                launcherRoutedKey(key);
+        }, Qt::QueuedConnection);
+    };
     m_typing = std::make_unique<TypeToSearch>(wanted, std::move(callbacks));
+    m_typing->setLauncherRouted(launcherRouted());
 }
 
 void App::pasteAsFile(HWND view)
@@ -2740,6 +2754,7 @@ void App::deliverTyping()
         .fieldFocused = focus && (focus == m_searchField || focus->objectName() == u"panelSearchField"),
         .revealed = m_window->isVisible() && !m_launcherReveal.pending() && !m_prewarming.load() && !isCloaked(window),
         .preparing = m_launcherOpening,
+        .routed = launcherRouted(),
     };
     const auto note = [now](Clock::time_point& at, bool came) {
         if (came && at == Clock::time_point {})
@@ -2748,15 +2763,18 @@ void App::deliverTyping()
     note(m_handoff.active, state.active);
     note(m_handoff.focused, state.active && state.fieldFocused);
     note(m_handoff.revealed, state.revealed);
-    const bool wasActive = m_handoff.active != Clock::time_point {};
+    note(m_handoff.routed, state.routed);
+    // Since it took typing: active, or (refused the front) its keys routed to it.
+    const Clock::time_point took = state.routed ? m_handoff.routed : m_handoff.active;
+    const bool wasActive = took != Clock::time_point {};
     std::optional<unsigned> sinceActive;
     if (wasActive)
-        sinceActive = static_cast<unsigned>(std::chrono::duration_cast<milliseconds>(now - m_handoff.active).count());
+        sinceActive = static_cast<unsigned>(std::chrono::duration_cast<milliseconds>(now - took).count());
     const searchtyping::Handoff handoff = searchtyping::handoff(state, sinceActive);
     if (handoff == searchtyping::Handoff::Wait) {
         // Never active: the hook's hold has dropped the keys by then.
         const Clock::time_point until
-            = wasActive ? m_handoff.active + milliseconds(searchtyping::kHandoffCapMs)
+            = wasActive ? took + milliseconds(searchtyping::kHandoffCapMs)
                         : m_handoff.asked + milliseconds(searchtyping::kWaitForLauncherMs);
         if (!wasActive && now >= until) {
             m_deliverTyping = false;
@@ -2770,7 +2788,7 @@ void App::deliverTyping()
     m_typingCap.stop();
     m_deliverTyping = false;
     m_handoff.delivered = now;
-    m_handoff.outcome = handoff == searchtyping::Handoff::Deliver ? u"ready"_s : u"cap"_s;
+    m_handoff.outcome = state.routed ? u"routed"_s : handoff == searchtyping::Handoff::Deliver ? u"ready"_s : u"cap"_s;
     QStringList missing;
     if (!state.active)
         missing << u"active"_s;
@@ -2780,9 +2798,18 @@ void App::deliverTyping()
         missing << u"revealed"_s;
     m_handoff.missing = missing.join(u',');
     m_handoff.inFront = ::GetForegroundWindow() == window;
-    m_handoff.layout = static_cast<quint32>(reinterpret_cast<quintptr>(::GetKeyboardLayout(0)));
-    lettersOnOpen(); // ahead of the keys, which go through the input method (at the cap, maybe not focused yet)
-    m_typing->deliver();
+    // Routed, the keys go as the layout of the window in front types them.
+    m_handoff.layout = static_cast<quint32>(reinterpret_cast<quintptr>(::GetKeyboardLayout(
+        state.routed ? ::GetWindowThreadProcessId(::GetForegroundWindow(), nullptr) : 0)));
+    if (state.routed) {
+        // Refused the front, its keys come through its router: the keys held
+        // go to it as they are, never typed again (refused too, GitHub #203).
+        // No input method composes them, nor the ones after (KeyRouter).
+        m_typing->handOver();
+    } else {
+        lettersOnOpen(); // ahead of the keys, which go through the input method (at the cap, maybe not focused yet)
+        m_typing->deliver();
+    }
     m_keysWatch->start(window);
     m_handoffWatch.start();
 }
@@ -2818,6 +2845,7 @@ void App::endHandoff()
         {u"activeMs"_s, ms(m_handoff.active)},
         {u"focusedMs"_s, ms(m_handoff.focused)},
         {u"revealedMs"_s, ms(m_handoff.revealed)},
+        {u"routedMs"_s, ms(m_handoff.routed)},
         {u"deliveredMs"_s, ms(m_handoff.delivered)},
         {u"sentMs"_s, ms(sameHold ? timing.sent : Clock::time_point {})},
         {u"keyMs"_s, ms(seen.key)},
@@ -4501,7 +4529,8 @@ void App::toggleLauncher(bool byShortcut, std::optional<std::uint64_t> pressedAt
     case ShortcutAction::Raise:
         // Coming, or up already: to the front as it is, neither placed again nor closed.
         toFront(m_window);
-        m_window->requestActivate();
+        if (refuseFrontForTest() == RefuseFront::No)
+            m_window->requestActivate();
         decided("raise");
         break;
     case ShortcutAction::Show:
@@ -4574,15 +4603,42 @@ win::Front App::toFront(QWindow* window)
 {
     QElapsedTimer timer;
     timer.start();
-    const win::Front front = win::bringToFront(window,
-        window == m_clipWindow ? win::ShellFlyout::Preserve : win::ShellFlyout::Dismiss);
+    win::Front front = win::Front::Refused;
+    if (const RefuseFront refuse = window == m_window ? refuseFrontForTest() : RefuseFront::No; refuse == RefuseFront::No) {
+        front = win::bringToFront(window, window == m_clipWindow ? win::ShellFlyout::Preserve : win::ShellFlyout::Dismiss);
+    } else if (const HWND hwnd = reinterpret_cast<HWND>(window->winId()); ::GetForegroundWindow() == hwnd) {
+        front = win::Front::Already; // clicked into meanwhile: Windows let it
+    } else {
+        // Shown, not in front; with "active", the active window of this
+        // thread all the same, as a refused SetForegroundWindow leaves it.
+        if (!::IsWindowVisible(hwnd))
+            ::ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        if (refuse == RefuseFront::ActiveHere)
+            ::SetActiveWindow(hwnd);
+        qWarning() << "Could not bring the window to the front (WINSHUN_TEST_REFUSE_FRONT)";
+    }
     if (m_triggers && m_triggers->open())
         m_triggers->front(front, static_cast<double>(timer.nsecsElapsed()) / 1e6);
     if (front == win::Front::Refused)
         recordFrontRefused(window);
-    if (window == m_window && front == win::Front::Refused)
+    if (window == m_window && front == win::Front::Refused) {
         watchStrandedLauncher();
+        startLauncherRouting(); // GitHub #203: its keys through a hook of its own meanwhile
+    } else if (window == m_window) {
+        stopLauncherRouting(); // in front: its keys are its own again
+    }
     return front;
+}
+
+App::RefuseFront App::refuseFrontForTest()
+{
+    static const RefuseFront refuse = [] {
+        const QByteArray value = qgetenv("WINSHUN_TEST_REFUSE_FRONT");
+        return value.isEmpty() || value == "0" ? RefuseFront::No
+            : value == "active"                ? RefuseFront::ActiveHere
+                                               : RefuseFront::Never;
+    }();
+    return refuse;
 }
 
 // GitHub #203 (Windows 10, Explorer in front): the hotkey's grant, the empty
@@ -4680,6 +4736,7 @@ void App::checkStrandedLauncher()
         return;
     m_strandedWatch.stop();
     qWarning().noquote() << "Launcher: not in front (Windows refused), a press elsewhere: as if it lost the focus";
+    stopLauncherRouting(); // its router tells of the press too, unless Windows dropped its hook
     launcherLostFront();
     updateNumberKeys();
 }
@@ -4743,7 +4800,8 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
         if (!query.isEmpty())
             m_launcher->setQuery(query);
         toFront(m_window);
-        m_window->requestActivate();
+        if (refuseFrontForTest() == RefuseFront::No)
+            m_window->requestActivate();
         m_launcher->handleShown(); // refreshed (something was opened meanwhile), all typed selected
         if (!query.isEmpty())
             emit m_launcher->caretRequested(static_cast<int>(query.size()), false);
@@ -4812,7 +4870,8 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
     m_window->show();
     toFront(m_window);
     m_launcherFrontTick = ::GetTickCount(); // input after this is not its own empty one (logLauncherLostFront)
-    m_window->requestActivate();
+    if (refuseFrontForTest() == RefuseFront::No)
+        m_window->requestActivate();
     m_launcher->handleShown(); // selects all that is typed
     if (!query.isEmpty()) // typed for the user (a folder, --query): words go after it
         emit m_launcher->caretRequested(static_cast<int>(query.size()), false);
@@ -5054,6 +5113,149 @@ void App::routedForeground(HWND window)
         return;
     }
     hideClipboard(); // another program in front: as a menu
+}
+
+bool App::startLauncherRouting()
+{
+    const HWND front = ::GetForegroundWindow();
+    const HWND target = front ? ::GetAncestor(front, GA_ROOT) : nullptr;
+    if (launcherRouted() && m_launcherRouting.target == target)
+        return true; // there already (asked for again)
+    stopLauncherRouting();
+    DWORD pid = 0;
+    if (target)
+        ::GetWindowThreadProcessId(target, &pid);
+    // Nothing in front, or a window of Win顺's: nothing to route from. The
+    // taskbar (a press on Win顺's box: it comes back with that press), the
+    // Start menu (its keys wait for the launcher, which it gives way to) and
+    // the shell's other flyouts keep their own ways.
+    if (!m_window || !target || pid == ::GetCurrentProcessId() || taskbar::isTaskbar(target) || win::isShellFlyout(target))
+        return false;
+    // An elevated program while Win顺 is not: Windows keeps the keys typed
+    // there from the hook (UIPI).
+    if (integrity::higherThanOurs(target)) {
+        diagnostics::record(u"launcher-key-routing-skipped"_s, {{u"reason"_s, u"higher-integrity"_s}});
+        return false;
+    }
+    const std::uint64_t run = ++m_launcherRouting.run;
+    // From the router's thread, in order; a key still on its way when the
+    // routing has ended goes nowhere.
+    const auto post = [this, run](auto call) {
+        QMetaObject::invokeMethod(this, [this, run, call = std::move(call)] {
+            if (m_launcherRouting.router && m_launcherRouting.run == run)
+                call();
+        }, Qt::QueuedConnection);
+    };
+    KeyRouter::Callbacks callbacks;
+    callbacks.key = [this, post](const KeyRouter::Key& key) { post([this, key] { launcherRoutedKey(key); }); };
+    callbacks.clickedAway = [this, post] { post([this] { launcherClickedAway(); }); };
+    callbacks.foregroundChanged = [this, post](HWND) { post([this] { launcherRoutedForeground(); }); };
+    callbacks.drained = [this, run] {
+        QMetaObject::invokeMethod(this, [this, run] {
+            if (m_launcherRouting.drainingRun == run)
+                m_launcherRouting.draining.reset();
+        }, Qt::QueuedConnection);
+    };
+    const Qt::KeyboardModifier numberKeys = m_settings.numberKeys == u"ctrl" ? Qt::ControlModifier
+        : m_settings.numberKeys == u"alt"                                     ? Qt::AltModifier
+                                                                              : Qt::NoModifier;
+    auto router = std::make_unique<KeyRouter>(target, reinterpret_cast<HWND>(m_window->winId()), std::move(callbacks),
+        numberKeys, ownNumberDigits(m_settings.numberKeys));
+    const QString program = foreground::programOf(target);
+    diagnostics::record(u"launcher-key-routing-start"_s,
+        {{u"session"_s, static_cast<qint64>(run)}, {u"front_program"_s, program},
+            {u"router"_s, router->diagnosticStatus()}});
+    if (!router->isActive()) {
+        qWarning() << "Launcher: keyboard routing is unavailable";
+        return false;
+    }
+    m_launcherRouting.router = std::move(router);
+    m_launcherRouting.target = target;
+    if (m_typing)
+        m_typing->setLauncherRouted(true);
+    m_launcher->setKeysRouted(true);
+    qWarning().noquote() << "Launcher: refused the front, its keys routed to it while" << program << "keeps the focus";
+    return true;
+}
+
+void App::stopLauncherRouting()
+{
+    if (m_typing)
+        m_typing->setLauncherRouted(false);
+    m_launcherRouting.target = nullptr;
+    if (!m_launcherRouting.router)
+        return;
+    // No key is taken any more; the releases of those it took still are its
+    // own, for a moment.
+    m_launcherRouting.router->drain();
+    diagnostics::record(u"launcher-key-routing-stop"_s,
+        {{u"session"_s, static_cast<qint64>(m_launcherRouting.run)},
+            {u"router"_s, m_launcherRouting.router->diagnosticStatus()}});
+    m_launcherRouting.draining = std::move(m_launcherRouting.router);
+    m_launcherRouting.drainingRun = m_launcherRouting.run;
+    QTimer::singleShot(2s, this, [this, run = m_launcherRouting.drainingRun] {
+        if (m_launcherRouting.drainingRun == run)
+            m_launcherRouting.draining.reset(); // a key held that long is the program's again
+    });
+    m_launcher->setKeysRouted(false);
+}
+
+// A key routed to the launcher, or held for it and handed over: as the
+// clipboard's (routedKey), to the item that has the focus in it (the window
+// has no active focus, or only in this thread), then up its parents until
+// one takes it.
+void App::launcherRoutedKey(const KeyRouter::Key& key)
+{
+    if (!m_window || !m_window->isVisible() || m_launcherClosing)
+        return;
+    if (key.press && key.vk == VK_F4 && key.modifiers.testFlag(Qt::AltModifier)) {
+        hideLauncher(); // closes it, not the program behind
+        return;
+    }
+    if (key.press && (key.vk == VK_APPS || (key.vk == VK_F10 && key.modifiers == Qt::ShiftModifier))) {
+        // As the window's ContextMenu event (eventFilter): Shift+Menu asks for the shell's menu.
+        if (!m_launcher->systemMenuBusy())
+            emit m_launcher->contextMenuKeyPressed(key.vk == VK_APPS && key.modifiers.testFlag(Qt::ShiftModifier));
+        return;
+    }
+    QQuickItem* item = m_window->contentItem();
+    while (item->isFocusScope() && item->scopedFocusItem() && item->scopedFocusItem()->isEnabled())
+        item = item->scopedFocusItem();
+    QKeyEvent event(key.press ? QEvent::KeyPress : QEvent::KeyRelease, key.key, key.modifiers, key.scanCode, key.vk, 0,
+                    key.text, key.autoRepeat);
+    if (key.press && event.matches(QKeySequence::Paste) && textfield::pasteOneLine(item))
+        return; // as eventFilter does for the window's own keys
+    for (; item; item = item->parentItem()) {
+        event.setAccepted(true);
+        QCoreApplication::sendEvent(item, &event);
+        if (event.isAccepted())
+            break;
+    }
+}
+
+// Another window came to the front while the launcher's keys were routed to
+// it (its router's event; looked at as of now, the event may be old).
+void App::launcherRoutedForeground()
+{
+    const HWND front = ::GetForegroundWindow();
+    const HWND root = front ? ::GetAncestor(front, GA_ROOT) : nullptr;
+    if (!root || root == m_launcherRouting.target)
+        return; // that window still (told again after the refusal), or none for a moment
+    stopLauncherRouting();
+    // In front itself after all (a click on it): as any window with the
+    // focus from now on. Anything else: as when it loses the focus.
+    if (m_window && root != reinterpret_cast<HWND>(m_window->winId()))
+        launcherLostFront();
+}
+
+// A button pressed outside Win顺's windows while the launcher's keys were
+// routed to it: the window it went to had the front all along, no change of
+// the front tells of it. As when the launcher loses the focus: it goes,
+// unless pinned (it stays, the keys that window's again).
+void App::launcherClickedAway()
+{
+    stopLauncherRouting();
+    launcherLostFront();
 }
 
 namespace {
@@ -5547,6 +5749,12 @@ void App::launcherLostFront()
     // after it opened.
     if (!m_window || !m_window->isVisible() || clipboardUnderLauncher())
         return;
+    // Its keys routed to it, the window it was refused over still in front
+    // (GitHub #203): nothing was lost. Qt can say so all the same (active
+    // only in Win顺), and Windows 10 tells of that window coming to the front
+    // again after the refusal. A press elsewhere is the router's to tell.
+    if (launcherRouted() && ::GetAncestor(::GetForegroundWindow(), GA_ROOT) == m_launcherRouting.target)
+        return;
     if (m_launcher->contentPane()->modalOperation() || m_launcher->contentPane()->ownsForeground())
         return;
     // The preview (Alt+P) took the focus for a moment: a handler's
@@ -5616,6 +5824,8 @@ void CALLBACK App::foregroundChanged(HWINEVENTHOOK, DWORD, HWND window, LONG, LO
         const HWND front = ::GetForegroundWindow();
         if (!front || (::GetWindowThreadProcessId(front, &pid), pid == ::GetCurrentProcessId()))
             return;
+        if (app->launcherRouted() && ::GetAncestor(front, GA_ROOT) == app->m_launcherRouting.target)
+            return; // the window it was refused over, its keys routed to it (GitHub #203): nothing lost
         if (!app->m_launcher->pinned())
             qWarning().noquote() << "Launcher: active only in Win顺, another program's window in front: as if it lost the focus";
         app->launcherLostFront();
@@ -5801,6 +6011,7 @@ void App::hideLauncher()
 {
     cancelTypingSelection();
     m_typingOrigin = {}; // whatever opened it, that opening is over
+    stopLauncherRouting(); // the keys are the window's in front again
     if (!m_window || !m_window->isVisible() || m_launcherClosing)
         return;
     if (m_launcher->systemMenuOpen())

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "KeyListener.h" // KeyboardRawInputAside
+#include "KeyRouter.h" // KeyRouter::Key
 #include "SearchTyping.h"
 
 #include <windows.h>
@@ -63,6 +64,13 @@ namespace ws {
 // when it is wanted. An elevated Explorer is left alone: Windows would show
 // the hook none of its keys, nor take them back (UIPI).
 //
+// Windows can refuse the launcher the front over the window typed in, and
+// SendInput the keys typed again (GitHub #203, one Windows 10: every time).
+// The launcher then takes its keys from a KeyRouter of its own while that
+// window keeps the focus (App's launcher routing): the keys held are handed
+// over to it instead (handOver, handedOver), and meanwhile no key starts a
+// hold, nor is Ctrl+V pasted as a file (setLauncherRouted): they are its.
+//
 // 粘贴为文件 (a third setting, off by default) takes Ctrl+V from the files
 // and folders of an Explorer folder window or the desktop's icons when the
 // clipboard holds words or a picture and no files (pastefile::takesCtrlV:
@@ -93,6 +101,9 @@ public:
         // Ctrl+V was taken in `view`: the Explorer tab, or the desktop's
         // window (Progman or WorkerW). On the hook's thread.
         std::function<void(HWND view)> pastedInto;
+        // The keys held for the launcher, handed over (handOver): as
+        // KeyRouter routes keys, in order. On the hook's thread.
+        std::function<void(std::vector<KeyRouter::Key> keys)> handedOver;
     };
 
     TypeToSearch(Surfaces surfaces, Callbacks callbacks);
@@ -111,6 +122,13 @@ public:
     // The launcher is not coming (no folder there): the keys held back go on
     // to the window they were typed in. Any thread.
     void giveBack(RequestId request = 0);
+    // The launcher is up, refused the front, its keys routed to it (App):
+    // the keys held back go to it as they are (handedOver), and the hold
+    // ends. Any thread.
+    void handOver();
+    // While its keys are routed to it, the launcher's are all keys typed:
+    // none starts a hold, no Ctrl+V is pasted as a file. Any thread.
+    void setLauncherRouted(bool routed) noexcept { m_launcherRouted = routed; }
     // A delayed folder query belongs only to the hold that asked for it,
     // even after a timeout or a settings change made a new hook instance.
     bool pending(RequestId request) const noexcept { return request && m_pendingRequest.load() == request; }
@@ -145,6 +163,7 @@ private:
     void setHooked(bool hooked);
     searchtyping::Hold::Front front() const;
     void apply(searchtyping::Hold::Step step);
+    void handOverHeld(); // handOver, on the hook's thread
     void restartTimer(UINT ms);
     void endHolding();
 
@@ -152,6 +171,7 @@ private:
     Callbacks m_callbacks;
     std::atomic<DWORD> m_threadId = 0;
     std::atomic<RequestId> m_pendingRequest = 0;
+    std::atomic<bool> m_launcherRouted = false;
     // timing(): steady_clock ticks, written on the hook's thread.
     std::atomic<std::chrono::steady_clock::rep> m_firstKeyAt = 0;
     std::atomic<std::chrono::steady_clock::rep> m_sentAt = 0;

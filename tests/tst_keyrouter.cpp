@@ -1,5 +1,6 @@
 #include "platform/HoldWatch.h"
 #include "platform/KeyRouter.h"
+#include "platform/QtKeys.h"
 #include "Diagnostics.h"
 
 #include <QCoreApplication>
@@ -118,6 +119,24 @@ class KeyRouterTest : public QObject {
     Q_OBJECT
 
 private slots:
+    // The names of the keys routed, and of those TypeToSearch hands over to
+    // the launcher (GitHub #203): Qt's, as its own key events have them.
+    void qtKeyNames()
+    {
+        QCOMPARE(qtKeyOf('A', false, false), int(Qt::Key_A));
+        QCOMPARE(qtKeyOf('7', false, true), int(Qt::Key_7));
+        QCOMPARE(qtKeyOf(VK_NUMPAD3, false, false), int(Qt::Key_3));
+        QCOMPARE(qtKeyOf(VK_TAB, false, false), int(Qt::Key_Tab));
+        QCOMPARE(qtKeyOf(VK_TAB, false, true), int(Qt::Key_Backtab));
+        QCOMPARE(qtKeyOf(VK_RETURN, false, false), int(Qt::Key_Return));
+        QCOMPARE(qtKeyOf(VK_RETURN, true, false), int(Qt::Key_Enter)); // the number pad's
+        QCOMPARE(qtKeyOf(VK_BACK, false, false), int(Qt::Key_Backspace));
+        QCOMPARE(qtKeyOf(VK_ESCAPE, false, false), int(Qt::Key_Escape));
+        QCOMPARE(qtKeyOf(VK_F12, false, false), int(Qt::Key_F12));
+        QCOMPARE(qtKeyOf(VK_OEM_1, false, false), 0); // named after its character
+        QCOMPARE(qtKeyOf(0xE7, false, false), 0); // VK_PACKET: a character, likewise
+    }
+
     void refreshDoesNotActivateOrResumeDrainedRouting()
     {
         PassiveWindow passive;

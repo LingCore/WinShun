@@ -2786,6 +2786,12 @@
 - **原因**：资源管理器打字一直按 #141 的规则放：`windowavoidance::place` 在工作区里挑和原窗口重叠最少、其次离常用位置最近的点。窗口大到哪边都放不下整个搜索框、又大致居中时，工作区四个角重叠一样多，左上角和右上角离常用位置（居中、往下五分之一）又一样远，候选里先试的 x = 工作区左边，于是落在左上角（`tst_placement` 的 `explorerTypedIn` 复现：1920×1032，窗口 (260,116,1400,800)，框 760×600，结果 (0,0)）。和 Windows 10 无关，Windows 11 同样的窗口也一样；探针 `--folder-typing` 把窗口放在左三分之一，放得下，所以没测出来。
 - **做法**：只在整个搜索框都能不挡原窗口时放旁边（`windowavoidance::clearOf`）；否则和 Opus 一样进文件列表右下角（`folderview::explorerFileList`：所在标签页里看得见的 `SHELLDLL_DefView`，最大的那个；没有就用标签页，再没有用窗口客户区，有原生窗口单测），限制在窗口客户区里。在 `Placement::avoidNative` 里打开时定一次，之后行数变化不来回跳。只有资源管理器的入口传文件列表，剪贴板避开开始菜单等仍按原规则。`typing-handoff` 记录里加了 `placed`（旁边/列表/常用位置，窗口、列表、工作区和框的矩形）。
 
+### 资源管理器打字搜索：Windows 不让启动器到前台，打的字全丢（GitHub #203）
+
+- **现象**：同一位 Windows 10 22H2 用户（没装改资源管理器的软件）：框弹出来但打不进字，点一下文件夹框就没了、再打字没反应；切走再切回来，框出来了，字要点一下输入框才进；快捷键呼出的启动器也打不进，一打字它就消失，换成文件夹的框。日志里每次都是 `Could not bring the window to the front over CabinetWClass (explorer.exe)`，约 150 ms 后 `active only in Win顺 … as if it lost the focus` 和 `lost the front … it goes`，3 秒后 `TypeToSearch: 0 of N keys typed again went in`。
+- **原因**：那台机器上 Windows 每次都拒绝把 Win顺 的窗口放到前台（热键给的前台权、空鼠标输入都没用），`SendInput` 也一个都送不进（返回 0，资源管理器不是管理员权限，钩子照样收得到它的键，所以不是 UIPI）。被拒的 `SetForegroundWindow` 让启动器在 Win顺 线程里“激活”（Qt 以为它活动），前台却还是资源管理器；随后 Windows 10 又为资源管理器报一次前台事件，App 把它当成“点了别处”收起启动器。打字搜索按住的键要等启动器真到前台才重打，等不到，3 秒后送回文件夹又被 `SendInput` 拒，于是全丢；快捷键那次启动器不在前台，键还在资源管理器里，开始一轮新的打字搜索。为什么被拒，日志看不出来（怀疑安全软件拦截模拟输入/抢前台）：新加的 `front-refused` 记录（双方权限级别、前台锁、空输入是否被拒）下次能说明。Windows 11 上前台 2–7 ms 就拿到，从没走到这条路。
+- **做法**：被拒时不再依赖前台和 `SendInput`：启动器像剪贴板一样用自己的 `KeyRouter` 收键（`App::startLauncherRouting`），资源管理器保留焦点；打字搜索按住的键原样交给它（`Hold::handOver` 给出按下的键和各自的 Shift，`TypeToSearch::handOverHeld` 按资源管理器的键盘布局转成字符，有单测），不再重打；路由期间不开新一轮打字搜索、Ctrl+V 不“粘贴为文件”（`setLauncherRouted`）。路由期间资源管理器还在前台不算丢焦点；点别处（路由的鼠标钩子或原来的“点了别处”检查）、换到别的窗口照旧收起，点启动器本身它就真的到前台、路由结束。限制：这时键不经输入法，拼音直接当字母搜（拼音搜索仍能找到中文名）；只收剪贴板那套键（打字、方向键、Enter、Esc、Tab、Ctrl+A/C/V/X/Z、Ctrl+数字等），Ctrl+S 之类留给资源管理器；`SendInput` 被拒的机器上 Shift、Alt 的掩码也送不出，资源管理器的输入法可能因单按 Shift 切中英文。Windows 11 上验证用开发开关 `WINSHUN_TEST_REFUSE_FRONT=1`（永不激活）或 `=active`（只在 Win顺 线程里激活，和那台 Windows 10 一样），只影响启动器。
+
 ### 用快捷键弹出（GitHub #25）：想看菜单做了什么，日志里没有
 
 - **现象**：实测快捷键时想从 `WinShun.log` 读“菜单是关了还是丢了这一次”，文件里一行都没有：`qInfo` 只进调试输出，日志文件只记警告和错误。

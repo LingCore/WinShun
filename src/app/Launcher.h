@@ -128,6 +128,10 @@ class Launcher : public QObject {
     // what is typed shows there, its own field is out of sight (SearchBar.qml
     // reports the field, the app draws it in the box).
     Q_PROPERTY(bool inTaskbarBox READ inTaskbarBox NOTIFY inTaskbarBoxChanged FINAL)
+    // Windows refused it the front, its keys come through a hook while the
+    // window in front keeps the focus (App's launcher routing, GitHub #203):
+    // typed into without the focus, its field shows the caret all the same.
+    Q_PROPERTY(bool keysRouted READ keysRouted NOTIFY keysRoutedChanged FINAL)
     // The row the keyboard is on (Main.qml's), -1 for none: content matches
     // coming in are placed by how well they match, but only below it.
     Q_PROPERTY(int currentRow READ currentRow WRITE setCurrentRow NOTIFY currentRowChanged FINAL)
@@ -467,6 +471,8 @@ public:
     void setNumberKeysLeft(unsigned digits);
     bool inTaskbarBox() const { return m_inTaskbarBox; }
     void setInTaskbarBox(bool on);
+    bool keysRouted() const { return m_keysRouted; }
+    void setKeysRouted(bool routed);
     // The search field changed (text, caret, selection, composition): fieldReported.
     Q_INVOKABLE void reportField(
         const QString& text, int cursor, int selectionStart, int selectionEnd, const QString& composition);
@@ -720,6 +726,7 @@ signals:
     void regexModeChanged();
     void resultOptionsChanged();
     void inTaskbarBoxChanged();
+    void keysRoutedChanged();
     void fieldReported(const QString& text, int cursor, int selectionStart, int selectionEnd, const QString& composition);
     // Pressed in the box on the taskbar: the field's caret goes there, or
     // its word is selected; dragged there, the text from `anchor` is selected.
@@ -1148,6 +1155,7 @@ private:
     QKeySequence m_previewSequence {QStringLiteral("Alt+P")};
     unsigned m_numberKeysLeft = 0;
     bool m_inTaskbarBox = false;
+    bool m_keysRouted = false;
     bool m_systemMenuOpen = false; // the shell's menu is up (its loop runs inside runSystemMenu)
     bool m_systemCommand = false; // see systemCommandRunning
     QElapsedTimer m_systemMenuAsked; // since showSystemMenu was last called

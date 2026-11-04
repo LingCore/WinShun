@@ -205,6 +205,9 @@ Item {
         anchors.rightMargin: regexChip.visible ? 8 : 12
         y: bar.onPixel((bar.height - height) / 2)
         focus: true
+        // Typed into without the focus (keysRouted, GitHub #203): the caret
+        // shows where, steady (it blinks only with the focus).
+        cursorVisible: activeFocus || bar.launcher.keysRouted
         clip: true
         color: Theme.text
         font.pixelSize: Theme.uiSearch

@@ -284,6 +284,28 @@ private:
     void stopKeyRouting();
     void routedKey(const KeyRouter::Key& key);
     void routedForeground(HWND window);
+    // Windows refused the launcher the front over another program's window
+    // (GitHub #203: every time over Explorer, on one Windows 10), and the
+    // keys typed again too: that window keeps the focus, the launcher takes
+    // its keys through a KeyRouter of its own, as the clipboard does, from
+    // the refusal until it goes, comes to the front after all (a click on
+    // it) or another window does; a press elsewhere is as when it loses the
+    // focus. The keys TypeToSearch held for it are handed over to it
+    // (deliverTyping). Not over the taskbar, the Start menu or another
+    // flyout of the shell (they keep their own ways), nor over a program of
+    // higher rights (its keys never reach the hook).
+    bool startLauncherRouting();
+    void stopLauncherRouting();
+    bool launcherRouted() const noexcept { return m_launcherRouting.router != nullptr; }
+    void launcherRoutedKey(const KeyRouter::Key& key);
+    void launcherRoutedForeground();
+    void launcherClickedAway();
+    // A developer's switch (WINSHUN_TEST_REFUSE_FRONT): the launcher refused
+    // the front as on that Windows 10, to try the above where Windows lets
+    // it there. "1": never active; "active": the active window of its thread
+    // in the background, as a refused SetForegroundWindow leaves it.
+    enum class RefuseFront { No, Never, ActiveHere };
+    static RefuseFront refuseFrontForTest();
     // The clipboard's hotkey held after it opened the window (GitHub #107,
     // Settings::clipboardHoldToStep, hotkeysteps): its key again moves to an
     // older row, letting go pastes it. Watched (HoldWatch) from the opening
@@ -721,8 +743,9 @@ private:
     // part came, from App's side; the hook's and the window's are added then.
     struct TypingHandoff {
         QString surface; // "start", "explorer", "opus"; empty: none
-        std::chrono::steady_clock::time_point asked, active, focused, revealed, delivered;
-        QString outcome; // ready, cap, hidden, hidden-before-active, never-active, replaced
+        // routed: its keys routed to it, refused the front (GitHub #203)
+        std::chrono::steady_clock::time_point asked, active, focused, revealed, delivered, routed;
+        QString outcome; // ready, cap, routed, hidden, hidden-before-active, never-active, replaced
         QString missing; // what was not ready when they went (cap)
         bool inFront = false; // the launcher was the window in front when they went
         quint32 layout = 0; // the keyboard layout (HKL) then
@@ -772,6 +795,17 @@ private:
     std::uint64_t m_keyRouterRun = 0; // which routing its posted keys belong to
     std::unique_ptr<KeyRouter> m_drainingRouter; // done, until the keys it took are let go (KeyRouter::drain)
     std::uint64_t m_drainingRun = 0;
+    // The launcher's (startLauncherRouting): its router, the window that
+    // keeps the focus, which routing posted keys belong to; one done, until
+    // the keys it took are let go.
+    struct LauncherRouting {
+        std::unique_ptr<KeyRouter> router;
+        HWND target = nullptr;
+        std::uint64_t run = 0;
+        std::unique_ptr<KeyRouter> draining;
+        std::uint64_t drainingRun = 0;
+    };
+    LauncherRouting m_launcherRouting;
     // The clipboard's hotkey held (armClipboardHold): the watch, what its
     // notes came to, which hotkey (its id) and keys.
     std::unique_ptr<HoldWatch> m_holdWatch;

@@ -1586,6 +1586,14 @@ void Launcher::setInTaskbarBox(bool on)
     emit inTaskbarBoxChanged();
 }
 
+void Launcher::setKeysRouted(bool routed)
+{
+    if (routed == m_keysRouted)
+        return;
+    m_keysRouted = routed;
+    emit keysRoutedChanged();
+}
+
 void Launcher::reportField(
     const QString& text, int cursor, int selectionStart, int selectionEnd, const QString& composition)
 {
