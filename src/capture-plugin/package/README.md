@@ -16,6 +16,10 @@ Presenter and whiteboard (1.1.0): Screenshot › Presenter / whiteboard in the t
 
 Other changes in 1.1.0: the keys for pin, save and the pin window can be changed under Keys in the capture settings; `WASD` moves the pointer; shortcut hints at the bottom left while capturing; a two-row toolbar; the settings as cards; the shared PaddleOCR text reader changed.
 
+1.1.2：截图设置第一次打开时不再卡住、显示“无响应”，电脑很忙时也能马上打开。权限不变。
+
+Version 1.1.2: the capture settings no longer freeze with “Not responding” the first time they open; they open promptly even on a busy computer. Permissions are unchanged.
+
 ## 权限 / Permissions
 
 - `ui`：显示截图、编辑、贴图及录屏窗口，注册快捷键。Display capture, editing, pin and recording windows and register shortcuts.
