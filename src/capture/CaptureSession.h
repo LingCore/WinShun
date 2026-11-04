@@ -192,6 +192,9 @@ class CaptureSession : public QObject {
     Q_PROPERTY(bool keyHintsEnabled READ keyHintsEnabled NOTIFY keyHintsChanged FINAL)
     Q_PROPERTY(bool keyHintsShown READ keyHintsShown NOTIFY keyHintsChanged FINAL)
     Q_PROPERTY(QStringList keyHints READ keyHints NOTIFY keyHintsChanged FINAL)
+    // 识别屏幕文字 (#198): this capture only picks a region for its words; no
+    // toolbar, no annotations, no size label.
+    Q_PROPERTY(bool ocrOnly READ ocrOnly NOTIFY ocrOnlyChanged FINAL)
 
 public:
     // Pin: left on the screen where it was (PinWindow); Ocr: its words read (CaptureOcr);
@@ -283,6 +286,12 @@ public:
     void setCopyOnSelect(bool on) { m_copyOnSelect = on; } // a drag or a click on a window copies at once
     void setMagnifier(bool on) { m_magnifier = on; } // takes effect with the next publish()
     void setPinOnCopy(bool on) { m_pinOnCopy = on; }
+    // 识别屏幕文字 (#198), set before begin() and gone with end(): a drag let go
+    // of, or a click on a window or control, finishes as OcrCopy at once; Esc
+    // and the right button end the capture; the keys that would take,
+    // save, pin, annotate or bring back a picture do nothing.
+    void setOcrOnly(bool on);
+    bool ocrOnly() const { return m_ocrOnly; }
 
     // What the mouse buttons do once a selection is there (issue #46), as
     // Settings keeps them: none | copy | save | pin | ocr | ocrcopy | ocrsearch |
@@ -377,6 +386,7 @@ signals:
     void selectionHistoryChanged();
     void keyHintsChanged();
     void keyHintsKept(bool on); // the panel's button: [Capture] KeyHints
+    void ocrOnlyChanged();
 
 private:
     // Annotating: a drawing, moving or reshaping gesture of the model's is
@@ -425,6 +435,7 @@ private:
     bool m_copyOnSelect = false;
     bool m_magnifier = true; // off: no magnifier, so no colour picking either
     bool m_pinOnCopy = false;
+    bool m_ocrOnly = false;
     MouseAct m_actDoubleLeft = MouseAct::Copy;
     MouseAct m_actRight = MouseAct::Back;
     MouseAct m_actMiddle = MouseAct::None;

@@ -22,7 +22,7 @@ foreach(name IN LISTS shared_qml)
     list(APPEND capture_qml "${app_dir}/qml/${name}")
 endforeach()
 foreach(name IN ITEMS CaptureOverlay AnnotateToolbar AnnotateStylePanel AnnotateSmartHint AnnotateLayer AnnotateObjects
-                      EditWindow OcrPanel LongCapturePanel RecordingPanel RecordingButton RecordingOptions CaptureOptions CaptureSettingsWindow CaptureSaveButton
+                      EditWindow OcrPanel OcrBubble LongCapturePanel RecordingPanel RecordingButton RecordingOptions CaptureOptions CaptureSettingsWindow CaptureSaveButton
                       SettingsSearch CaptureKeyHints PresenterOverlay PresenterToolbar)
     list(APPEND capture_qml "${CMAKE_CURRENT_SOURCE_DIR}/qml/${name}.qml")
 endforeach()

@@ -270,7 +270,7 @@ Column {
         group: 0
         content: Component {
             GroupPage {
-                recordingHotkey: hotkeyRecorder.recording
+                recordingHotkey: hotkeyRecorder.recording || ocrHotkeyRow.recording
 
                 SettingsSection {
                     page: 0
@@ -344,6 +344,24 @@ Column {
                             checked: card.editor.captureKeyHints
                             onToggled: (on) => card.editor.captureKeyHints = on
                         }
+                    }
+                }
+
+                SettingsSection { // 识别屏幕文字 (#198): a key of its own, apart from the screenshot's
+                    page: 0
+                    tab: 0
+                    width: parent.width
+                    title: qsTr("识别屏幕文字")
+                    glyph: String.fromCharCode(0xE8D2) // Font
+
+                    HotkeyRow {
+                        id: ocrHotkeyRow
+                        objectName: "captureOcrHotkey"
+                        title: qsTr("快捷键")
+                        description: qsTr("按下后直接拖选区域或单击窗口，松开鼠标就识别文字并复制，没有截图工具条，也不留截图。Esc 或右键取消。不设时可从托盘菜单或搜索“识别屏幕文字”使用")
+                        hotkey: card.editor.captureOcrHotkey
+                        error: card.editor.captureOcrHotkeyError
+                        onRecorded: (hotkey) => card.editor.captureOcrHotkey = hotkey
                     }
                 }
 

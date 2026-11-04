@@ -326,16 +326,31 @@ void Capture::trigger()
     }
 }
 
-void Capture::start()
+void Capture::triggerOcr()
+{
+    if ((m_recorder && m_recorder->active()) || m_countdown || (m_long && m_long->running()))
+        return;
+    if (m_state == State::Idle)
+        start(true);
+    else if (m_ocrOnly && (m_state == State::Waiting || m_state == State::Showing))
+        m_session.act(static_cast<int>(CaptureSession::Action::Cancel)); // what the key opened, it closes
+}
+
+void Capture::start(bool ocrOnly)
 {
     const bool quiet = std::exchange(m_quietStart, false);
     if (m_overlays.empty())
         return;
+    if (m_callbacks.starting)
+        m_callbacks.starting();
+    m_ocrOnly = ocrOnly;
     m_clock.start();
     m_reported = false;
     m_flyoutMs = -1;
-    m_draft.reset(); // a new capture ends the draft's time
-    m_draftTimer.stop();
+    if (!ocrOnly) { // reading words takes no picture: the draft keeps its time
+        m_draft.reset(); // a new capture ends the draft's time
+        m_draftTimer.stop();
+    }
     m_session.setStyles(annot::StyleMemory::fromJson(m_callbacks.annotateStyles ? m_callbacks.annotateStyles() : QString()));
     // Read before anything of ours shows: the Start menu, search or a shell
     // flyout in front stays in the picture (wanted), and is closed after.
@@ -408,6 +423,7 @@ void Capture::start()
     }
     forgetHistory();
     m_liveWindows = windows;
+    m_session.setOcrOnly(ocrOnly);
     m_session.begin(byIndex, std::move(windows));
     if (quiet)
         m_session.quietKeyHints(); // a delayed capture is for a passing moment (KeyHintPolicy rule 7)
@@ -465,13 +481,15 @@ void Capture::show()
     }
     if (underIndex >= 0)
         m_session.pointerMove(underIndex, underAt); // the hover and the magnifier before the mouse moves
+    if (m_ocrOnly) // where the pointer is, at the top: what this capture is for
+        m_session.notify(tr("识别文字：拖选区域，或单击窗口 · Esc 取消"));
     startWatch();
-    // The capture before, read meanwhile: , shows it at once.
-    if (m_history.enabled()) {
+    // The capture before, read meanwhile: , shows it at once (not for reading words).
+    if (m_history.enabled() && !m_ocrOnly) {
         m_historyIds = m_history.ids();
         prefetchHistory(0);
     }
-    m_session.setHistoryAvailable(m_history.enabled() && !m_historyIds.isEmpty()); // the key hints' , .
+    m_session.setHistoryAvailable(m_history.enabled() && !m_ocrOnly && !m_historyIds.isEmpty()); // the key hints' , .
 }
 
 void Capture::startWatch()
@@ -625,6 +643,7 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
 {
     if (m_state != State::Showing && m_state != State::Waiting)
         return;
+    const bool ocrOnly = std::exchange(m_ocrOnly, false); // triggerOcr's: only OcrCopy or Cancel come here
     QString savePath;
     if (action == CaptureSession::Action::Save) {
         const auto selected = std::ranges::find(m_overlays, screen, [](const Overlay& o) { return o.model->index(); });
@@ -729,7 +748,7 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
     }
     // Taken: into the history, as the overlays show it (a capture brought
     // back and taken again replaces itself there).
-    if (!picture.isNull() && m_history.enabled()) {
+    if (!picture.isNull() && m_history.enabled() && !ocrOnly) {
         HistoryShot shot;
         shot.id = QString::number(QDateTime::currentMSecsSinceEpoch());
         for (const Overlay& overlay : m_overlays) {
@@ -779,6 +798,12 @@ void Capture::finish(CaptureSession::Action action, int screen, const QRect& rec
 
     if (picture.isNull())
         return;
+    if (ocrOnly) {
+        // Its words only: not the last capture (贴图 pins that), no copy of the picture.
+        if (m_callbacks.readText)
+            m_callbacks.readText(picture, dpr, QRect(origin, picture.size()));
+        return;
+    }
     m_last = picture;
     m_lastOrigin = origin;
     m_lastProject = project;

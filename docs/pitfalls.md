@@ -2432,6 +2432,12 @@
 - **原因**：`QFontDatabase::addApplicationFont(路径)` 在 FreeType 字体引擎（`fontengine=freetype`，显卡加速渲染时用）下把路径交给 FreeType 用 C 运行库打开，ANSI 代码页（本机 1252）放不下的字符就打不开，静静地返回 -1，`applyUiFont()` 什么也没设，Qt 退回系统字体。GDI 引擎（省内存渲染）按文件名走的是 Windows 的宽字符 API，应该不受影响（未验证：预览固定用 freetype）。装到 `D:\软件\WinShun` 这样路径的用户都会中招；修好后在这种路径下界面字体会从雅黑变成普惠体，每行高几个像素。
 - **做法**：`main.cpp` 的 `applyUiFont()`：路径不全是 ASCII 时读出文件用 `addApplicationFontFromData` 装（两个字体文件约 17 MB 留在内存里；ASCII 路径照旧按文件名装，字体留在磁盘上按需读）；一个都没装上时 `qWarning` 一句（进 WinShun.log，预览里算一条警告）。预览日志固定打印平台插件路径和实际用的字体，两处跑出的行高不一样时先看这一行。
 
+### 截图插件的离屏预览 `--app-dir` 指到中文路径就报 `QtQuick.Shapes` 没装
+
+- **现象**：在 build 目录跑 `WinShunCapture.exe --preview-ocr <目录> --bubble --app-dir "F:\电脑便捷工具\dist\WinShun"`，退出码 3，日志是 `module "QtQuick.Shapes" is not installed`；那个目录里明明有 `qml\QtQuick\Shapes`。同一个 exe 换成 `--app-dir "C:\Program Files\WinShun"` 就 0 个警告出图（#198 的识别卡片预览）。
+- **原因**：没有查到底。两处的 QML 模块一样，差别只在路径带中文；推断和上面的字体、ninja（ANSI 代码页 1252）是同一类问题，某一步按 ANSI 处理了路径。
+- **做法**：预览的 `--app-dir` 用全 ASCII 路径的安装目录（`C:\Program Files\WinShun`，或 ASCII 的 staging 目录）。用 `Start-Process -ArgumentList` 传时带空格的路径要自己加引号（`'"C:\Program Files\WinShun"'`），否则被拆成两个参数，报 `no Qt6Core.dll in WS_APP_DIR`。
+
 ### 五个模板标签挤不进“新建插件…”那一行
 
 - **现象**：模板从三种加到五种，`ScopeTabs` 和名字输入框、“创建”按钮同在一个 `Row` 里，离屏预览里“创建”被挤出右边界只剩半个字。

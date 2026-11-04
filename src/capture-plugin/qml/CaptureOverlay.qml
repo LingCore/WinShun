@@ -205,7 +205,7 @@ Window {
 
         readonly property point place: overlay.screenModel.placeSizeLabel(overlay.shown, width, height)
 
-        visible: overlay.selectedHere || overlay.hoverHere
+        visible: (overlay.selectedHere || overlay.hoverHere) && !overlay.session.ocrOnly // 识别屏幕文字: only the shade
         x: Math.round(place.x * overlay.dpr) / overlay.dpr
         y: Math.round(place.y * overlay.dpr) / overlay.dpr
         width: sizeText.implicitWidth + 12
@@ -288,7 +288,7 @@ Window {
             function onGeometryChanged() { toolbar.manuallyPlaced = false }
         }
 
-        visible: overlay.selectedHere && !overlay.screenModel.adjusting && !overlay.session.toolbarHidden
+        visible: overlay.selectedHere && !overlay.screenModel.adjusting && !overlay.session.toolbarHidden && !overlay.session.ocrOnly
         x: manuallyPlaced ? bounded(manualPosition.x, overlay.width, width) : Math.round(place.x * overlay.dpr) / overlay.dpr
         y: manuallyPlaced ? bounded(manualPosition.y, overlay.height, height) : Math.round(place.y * overlay.dpr) / overlay.dpr
         width: bar.width
