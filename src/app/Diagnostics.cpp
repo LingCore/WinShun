@@ -31,10 +31,49 @@ QJsonObject environment()
 {
     MEMORYSTATUSEX memory {sizeof memory};
     ::GlobalMemoryStatusEx(&memory);
+    // "administrator" is the account's; "rights" what this copy runs with
+    // (GitHub #203: not elevated, or Explorer's keys would not reach it).
     return {{u"version"_s, QStringLiteral(WINSHUN_VERSION)}, {u"os"_s, QSysInfo::prettyProductName()},
         {u"kernel"_s, QSysInfo::kernelVersion()}, {u"architecture"_s, QSysInfo::currentCpuArchitecture()},
         {u"logical_processors"_s, static_cast<int>(std::thread::hardware_concurrency())},
-        {u"memory_mb"_s, static_cast<qint64>(memory.ullTotalPhys >> 20)}, {u"administrator"_s, userIsAdministrator()}};
+        {u"memory_mb"_s, static_cast<qint64>(memory.ullTotalPhys >> 20)}, {u"administrator"_s, userIsAdministrator()},
+        {u"rights"_s, rightsOf(0)}};
+}
+
+QJsonObject rightsOf(unsigned long pid)
+{
+    QJsonObject rights {{u"integrity"_s, u"unknown"_s}};
+    const HANDLE process = pid ? ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid) : ::GetCurrentProcess();
+    if (!process)
+        return rights;
+    HANDLE token = nullptr;
+    const bool opened = ::OpenProcessToken(process, TOKEN_QUERY, &token);
+    if (pid)
+        ::CloseHandle(process);
+    if (!opened)
+        return rights;
+    alignas(TOKEN_MANDATORY_LABEL) BYTE label[64];
+    DWORD size = 0;
+    if (::GetTokenInformation(token, TokenIntegrityLevel, label, sizeof label, &size)) {
+        const PSID sid = reinterpret_cast<const TOKEN_MANDATORY_LABEL*>(label)->Label.Sid;
+        if (const UCHAR count = *::GetSidSubAuthorityCount(sid)) {
+            const DWORD level = *::GetSidSubAuthority(sid, count - 1);
+            rights[u"integrity"_s] = level >= SECURITY_MANDATORY_SYSTEM_RID ? u"system"_s
+                : level >= SECURITY_MANDATORY_HIGH_RID                      ? u"high"_s
+                : level >= SECURITY_MANDATORY_MEDIUM_PLUS_RID               ? u"medium-plus"_s
+                : level >= SECURITY_MANDATORY_MEDIUM_RID                    ? u"medium"_s
+                : level >= SECURITY_MANDATORY_LOW_RID                       ? u"low"_s
+                                                                            : u"untrusted"_s;
+        }
+    }
+    TOKEN_ELEVATION elevation {};
+    if (::GetTokenInformation(token, TokenElevation, &elevation, sizeof elevation, &size))
+        rights[u"elevated"_s] = elevation.TokenIsElevated != 0;
+    DWORD uiAccess = 0;
+    if (::GetTokenInformation(token, TokenUIAccess, &uiAccess, sizeof uiAccess, &size))
+        rights[u"ui_access"_s] = uiAccess != 0;
+    ::CloseHandle(token);
+    return rights;
 }
 
 Exported exportArchive(Log& log, const QString& dataFolder, const QString& serviceFolder, QJsonObject context)

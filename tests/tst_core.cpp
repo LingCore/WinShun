@@ -925,6 +925,15 @@ public:
         apply(hold.stop());
         run();
     }
+    // The launcher takes the keys held as they are, its keys routed to it
+    // (Windows refused it the front, GitHub #203): those keys.
+    std::vector<searchtyping::HeldKey> handOver()
+    {
+        Hold::HandOver handed = hold.handOver();
+        apply(std::move(handed.step));
+        run();
+        return handed.keys;
+    }
     // The timer comes when due.
     void fire()
     {
@@ -13258,6 +13267,89 @@ private slots:
         }
     }
 
+    // Windows refused the launcher the front, and SendInput every key typed
+    // again (GitHub #203): the launcher takes its keys from a hook, and the
+    // keys held are handed over to it as they are, never typed again. The
+    // window typed in gets only what changes the keyboard's state (releases,
+    // Caps Lock, Shift as the user holds it), the hold ends, and keys after
+    // that go on (in Win顺, to the launcher's router).
+    void typingHandOver()
+    {
+        using namespace searchtyping;
+        const Shifts none;
+        const Shifts left {.left = true};
+        const auto vks = [](const std::vector<HeldKey>& keys) {
+            QString text;
+            for (const HeldKey& key : keys)
+                text += key.vk == kVkPacket ? u"char("_s + QChar(static_cast<char16_t>(key.scanCode)) + u')'
+                    : key.vk == kVkCapital  ? u"<Caps>"_s
+                                            : QString(QChar(static_cast<char16_t>(key.vk))) + (key.shift ? u"^"_s : u""_s);
+            return text;
+        };
+        // "aB", Caps Lock, "c" in a folder, the launcher not in front: each
+        // press with its Shift (^), Caps Lock where it was pressed (the
+        // platform flips the case of what follows); no typing reaches the
+        // window, Shift ends as the user holds it, no tap made, none stuck.
+        {
+            HoldRun run;
+            run.front = {.ours = false, .sourceFocused = true};
+            run.start('A', true);
+            run.release('A');
+            run.press(kVkLShift);
+            run.tap('B');
+            run.release(kVkLShift);
+            run.tap(kVkCapital);
+            run.tap('C');
+            run.run();
+            run.deliver(); // in front it never is: they wait
+            QVERIFY(!run.ended);
+            const std::vector<HeldKey> keys = run.handOver();
+            QCOMPARE(vks(keys), u"AB^<Caps>C"_s);
+            QVERIFY(run.ended && !run.hold.holding());
+            QCOMPARE(run.typed(), QString());
+            QVERIFY(run.windowShift() == none && run.taps() == 0 && run.stuck().isEmpty());
+            run.letters("x"); // after the hold: goes on, Caps Lock on as the user pressed it
+            run.run();
+            QCOMPARE(run.typed(), u"X"_s);
+        }
+        // Shift still held as they go: left down for the user, whose release
+        // comes after; their capitals keep it.
+        {
+            HoldRun run;
+            run.front = {.ours = false, .sourceFocused = true};
+            run.before(kVkLShift, true);
+            run.start('M', true, left);
+            run.release('M');
+            run.tap('S');
+            run.run();
+            QCOMPARE(vks(run.handOver()), u"M^S^"_s);
+            QVERIFY(run.ended && run.windowShift() == left);
+            run.release(kVkLShift);
+            run.run();
+            QVERIFY(run.windowShift() == none && run.taps() == 0 && run.stuck().isEmpty());
+        }
+        // A character typed with AltGr goes as that character.
+        {
+            HoldRun run;
+            run.front = {.ours = false, .sourceFocused = true};
+            run.altGr = [](unsigned vk) { return vk == 'Z' ? std::u16string(u"ż") : std::u16string(); };
+            run.start('A', true);
+            run.release('A');
+            run.altGrKey(true);
+            run.tap('Z');
+            run.altGrKey(false);
+            run.run();
+            QCOMPARE(vks(run.handOver()), u"Achar(ż)"_s);
+            QVERIFY(run.ended && run.stuck().isEmpty() && run.windowShift() == none);
+        }
+        // Nothing held: nothing handed over, nothing ends.
+        {
+            Hold hold;
+            const Hold::HandOver handed = hold.handOver();
+            QVERIFY(handed.keys.empty() && handed.step.send.empty() && !handed.step.ended);
+        }
+    }
+
     // The keys held for the launcher go once it takes typing as it would a
     // user's (GitHub #103), or kHandoffCapMs after it first became active all
     // the same.
@@ -13298,6 +13390,20 @@ private slots:
         QCOMPARE(handoff(inactive, 30u), Handoff::Wait);
         QCOMPARE(handoff(inactive, kHandoffCapMs), Handoff::DeliverLate);
         QCOMPARE(handoff(LauncherState {}, kHandoffCapMs + 1), Handoff::DeliverLate);
+        // Refused the front, its keys routed to it (GitHub #203): never
+        // active nor focused for that, its first frame is all it waits for,
+        // the cap counted from the routing (App passes that); still not
+        // while showLauncher prepares it.
+        const LauncherState routed {.revealed = true, .routed = true};
+        QCOMPARE(handoff(routed, std::nullopt), Handoff::Deliver);
+        QCOMPARE(handoff(routed, 0u), Handoff::Deliver);
+        LauncherState routedCloaked = routed;
+        routedCloaked.revealed = false;
+        QCOMPARE(handoff(routedCloaked, 0u), Handoff::Wait);
+        QCOMPARE(handoff(routedCloaked, kHandoffCapMs), Handoff::DeliverLate);
+        LauncherState routedPreparing = routed;
+        routedPreparing.preparing = true;
+        QCOMPARE(handoff(routedPreparing, kHandoffCapMs + 1), Handoff::Wait);
     }
 
     // The folder menu's hotkey (GitHub #25): a press opens, closes or

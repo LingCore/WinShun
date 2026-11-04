@@ -65,6 +65,13 @@ bool isOpusFileDisplay(HWND root, HWND focus);
 // The bounds of the lister's file displays shown, together (both sides of a
 // dual display); empty for none. Screen pixels (GitHub #82).
 RECT opusFileLists(HWND root);
+// The file list of the File Explorer tab `tab` (a Hit's) in its window
+// `root`: its folder view shown (SHELLDLL_DefView: the items, without the
+// navigation, details and preview panes; the largest, should two be there);
+// none, that tab; nor that, the window's client area. Screen pixels; empty
+// only for no window at all. Windows 10's one tab and the tabs of Windows 11
+// alike, the hidden ones never (GitHub #203). Class names only: any thread.
+RECT explorerFileList(HWND root, HWND tab);
 
 // What isBlank went by, for the diagnostics journal (GitHub #45): class
 // names, roles and results only, never an item's name.

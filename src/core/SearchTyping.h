@@ -283,11 +283,17 @@ inline constexpr unsigned kPassTimeoutMs = 1000;
 // that does come is never cut short, and still under what a typist notices.
 // `msSinceActive`: since the launcher was first active for these keys; none
 // while it has not been (the hook's hold gives up on them in time).
+// Refused the front, the launcher takes its keys from a hook while the
+// window typed in keeps the focus (`routed`: App's launcher routing, GitHub
+// #203): it never becomes active nor its field the focus object for that, so
+// only its first frame is waited for, and the cap runs from when the routing
+// began (`msSinceActive` then).
 struct LauncherState {
     bool active = false; // Qt says the window is active
     bool fieldFocused = false; // its search field is Qt's focus object
     bool revealed = false; // shown, no reveal pending and not cloaked: its first frame is on the screen
     bool preparing = false; // showLauncher still resets the query, focus or selection (#140)
+    bool routed = false;
 };
 enum class Handoff {
     Wait, // not ready yet: look again when something changes
@@ -300,7 +306,7 @@ inline constexpr Handoff handoff(LauncherState launcher, std::optional<unsigned>
 {
     if (launcher.preparing)
         return Handoff::Wait;
-    if (launcher.active && launcher.fieldFocused && launcher.revealed)
+    if (launcher.revealed && (launcher.routed || (launcher.active && launcher.fieldFocused)))
         return Handoff::Deliver;
     return msSinceActive && *msSinceActive >= kHandoffCapMs ? Handoff::DeliverLate : Handoff::Wait;
 }
@@ -836,6 +842,30 @@ public:
         Step step = end();
         step.send = std::move(strokes);
         return step;
+    }
+    // The launcher could not get the front (Windows refused it, GitHub #203)
+    // and takes its keys from a hook of its own while the window typed in
+    // keeps the focus (App's launcher routing): the keys held go to it as
+    // they are, never typed again (SendInput was refused there too), and the
+    // hold ends as stop() ends it: what changes the keyboard's state goes on
+    // to the window, Shift as the user holds it. The keys: the presses held,
+    // in order, each with its Shift; a program's characters (kVkPacket, AltGr
+    // ones among them); Caps Lock's presses, which change the letters after
+    // them (the platform makes the text of each). No releases, no Shift.
+    struct HandOver {
+        std::vector<HeldKey> keys;
+        Step step;
+    };
+    HandOver handOver()
+    {
+        if (m_phase == Phase::Idle)
+            return {};
+        std::vector<HeldKey> keys;
+        for (const HeldKey& key : m_held) {
+            if (!key.release && !isShift(key.vk) && key.vk != kMaskKey)
+                keys.push_back(key);
+        }
+        return {std::move(keys), stop()};
     }
 
 private:

@@ -115,6 +115,17 @@ NativeArea nativeArea(QScreen* screen)
     return native;
 }
 
+// Native bounds in Qt's pixels on that screen, outwards; empty: empty.
+QRect logicalOf(const NativeArea& native, const QRect& r)
+{
+    if (r.isEmpty())
+        return {};
+    const auto down = [&](int value, int origin) { return origin + int(std::floor((value - origin) / native.scale)); };
+    const auto up = [&](int value, int origin) { return origin + int(std::ceil((value - origin) / native.scale)); };
+    return QRect(QPoint(down(r.x(), native.origin.x()), down(r.y(), native.origin.y())),
+        QPoint(up(r.x() + r.width(), native.origin.x()) - 1, up(r.y() + r.height(), native.origin.y()) - 1));
+}
+
 } // namespace
 
 Placement::Placement(QString stateFile, QString group, QObject* parent)
@@ -397,7 +408,8 @@ void Placement::placeOn(QScreen* screen)
     avoidNative({}, screen);
 }
 
-void Placement::avoidNative(const QRect& window, QScreen* screen, bool inside, const QRect& lists, const QRect& frame)
+void Placement::avoidNative(const QRect& window, QScreen* screen, bool inside, const QRect& lists, const QRect& frame,
+    const QRect& orInto)
 {
     m_glide.stop();
     m_avoid = window.isEmpty() ? std::nullopt : std::optional {window};
@@ -410,6 +422,17 @@ void Placement::avoidNative(const QRect& window, QScreen* screen, bool inside, c
     m_dropped = false;
     if (m_window && screen) {
         fitWidth(screen);
+        if (m_avoid && !inside && !orInto.isEmpty()) {
+            // As tall as settleAvoiding has it, from home as there.
+            const NativeArea native = nativeArea(screen);
+            const int height = std::max(m_roomNeeded, m_roomWanted > 0 ? m_roomWanted : m_window->height());
+            if (!windowavoidance::clearOf(screen->availableGeometry(), logicalOf(native, window), {widthNow(), height},
+                    settleOn(screen, false))) {
+                m_avoid = orInto;
+                m_avoidInside = true;
+                m_avoidLists = {};
+            }
+        }
         moveWindow(m_avoid ? settleAvoiding(screen, true) : settleOn(screen));
     }
 }
@@ -678,14 +701,7 @@ QPoint Placement::settleAvoiding(QScreen* screen, bool fitList)
 {
     const QPoint home = settleOn(screen, false);
     const NativeArea native = nativeArea(screen);
-    const auto down = [&](int value, int origin) { return origin + int(std::floor((value - origin) / native.scale)); };
-    const auto up = [&](int value, int origin) { return origin + int(std::ceil((value - origin) / native.scale)); };
-    // Native bounds in Qt's pixels on this screen, outwards.
-    const auto logical = [&](const QRect& r) {
-        return r.isEmpty() ? QRect()
-                           : QRect(QPoint(down(r.x(), native.origin.x()), down(r.y(), native.origin.y())),
-                                 QPoint(up(r.x() + r.width(), native.origin.x()) - 1, up(r.y() + r.height(), native.origin.y()) - 1));
-    };
+    const auto logical = [&](const QRect& r) { return logicalOf(native, r); };
     const QRect obstacle = logical(*m_avoid);
     const QRect area = screen->availableGeometry();
     int height = std::max(m_roomNeeded, m_roomWanted > 0 ? m_roomWanted : m_window->height());

@@ -126,6 +126,50 @@ private slots:
         QVERIFY(covered(moved) < covered(QRect(home, capacity)));
     }
 
+    // Typed in File Explorer (GitHub #203): beside its window only when all
+    // of the box keeps clear of it there (GitHub #141), else into its file
+    // list's bottom right corner (inList), as in Opus.
+    void explorerTypedIn()
+    {
+        const QRect work(0, 0, 1920, 1032);
+        const QSize box(760, 600), least(640, 250);
+        const QPoint home(580, 206); // centred, a fifth of the way down
+        // A window too large to keep clear of, centred: least overlap ties at
+        // the four corners of the work area (500 x 484 each), two of them as
+        // far from home, and the first tried, its top left, won. That is
+        // where #203's box was.
+        const QRect centred(260, 116, 1400, 800);
+        QCOMPARE(windowavoidance::place(work, centred, box, home), work.topLeft());
+        QVERIFY(!windowavoidance::clearOf(work, centred, box, home));
+        // Into its file list instead (right of the navigation pane, above the
+        // status bar), within its client area.
+        const QRect client(centred.x() + 8, centred.y() + 31, centred.width() - 16, centred.height() - 39);
+        const QRect list(client.x() + 240, client.y() + 90, client.width() - 240, client.height() - 120);
+        const QRect into = windowavoidance::inList(work, list, {}, client, box, least);
+        QCOMPARE(into, QRect(list.right() + 1 - 12 - 760, list.bottom() + 1 - 12 - 600, 760, 600));
+        QVERIFY(client.contains(into));
+        // The --folder-typing probe's window, the left third of the screen:
+        // beside it, as before.
+        const QRect leftThird(8, 8, 640, 1016);
+        QVERIFY(windowavoidance::clearOf(work, leftThird, box, home));
+        QVERIFY(!QRect(windowavoidance::place(work, leftThird, box, home), box).intersects(leftThird));
+        // Maximized: into its list's corner, not at home over its middle.
+        QVERIFY(!windowavoidance::clearOf(work, work, box, home));
+        const QRect maxList(240, 120, 1680, 880);
+        QCOMPARE(windowavoidance::inList(work, maxList, {}, work, box, least),
+            QRect(maxList.right() + 1 - 12 - 760, maxList.bottom() + 1 - 12 - 600, 760, 600));
+        // A list narrower than the box (a narrow window, its navigation pane
+        // wide): as narrow as it gets, kept within the window, then the screen.
+        const QRect narrowClient(1000, 100, 700, 800);
+        const QRect narrowList(1200, 160, 500, 700);
+        const QRect squeezed = windowavoidance::inList(work, narrowList, {}, narrowClient, box, least);
+        QCOMPARE(squeezed.width(), least.width());
+        QVERIFY(work.contains(squeezed));
+        QCOMPARE(squeezed.right(), narrowList.right() - 12);
+        // Nothing found but the window: its corner, still within it.
+        QVERIFY(client.contains(windowavoidance::inList(work, client, {}, client, box, least)));
+    }
+
     void cornerOfFileList()
     {
         // The launcher's width (its user's, at most) and least width; the room

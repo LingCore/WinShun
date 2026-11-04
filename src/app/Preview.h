@@ -80,7 +80,8 @@
 //     --folder-typing opens a test-owned Explorer window over temporary files,
 //     exercises the real App/QML search, avoidance and focus-preserving selection,
 //     checks same-count result replacements, cancellation and nested results,
-//     and closes only that fixture.
+//     the box in the file list's corner once that window is too large to keep
+//     clear of (GitHub #203), and closes only that fixture.
 //     --file-dialog-window <HWND> --file-dialog-pid <PID>
 //     --file-dialog-sample <fixture.blend> --file-dialog-state <observer.json>
 //     Opt-in real dialog-bar search/selection test against an isolated Blender
