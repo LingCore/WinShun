@@ -29,6 +29,7 @@ QtObject {
     function pill(size: real): real { return SystemTheme.roundedCorners ? size / 2 : 0 }
     // Never translucent: an 18 px window has no Mica under it.
     readonly property bool backdrop: false
+    readonly property bool backdropCapable: false // 透明效果 has nothing to do here
     // The window: our own 18 px frame (WindowBody draws its body and edge,
     // C++ the windowShadow under it); square (直角) is DWM's plain frame.
     readonly property string frame: SystemTheme.roundedCorners ? "own" : "dwm"

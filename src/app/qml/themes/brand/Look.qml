@@ -13,6 +13,7 @@ QtObject {
     readonly property string name: "brand"
     readonly property bool dark: SystemTheme.dark
     readonly property bool backdrop: false // opaque: an 18 px window has no Mica
+    readonly property bool backdropCapable: false // 透明效果 has nothing to do here
     readonly property bool rounded: SystemTheme.roundedCorners
 
     // ---- Pixel helpers (same rules as Theme: docs/pitfalls.md) ----

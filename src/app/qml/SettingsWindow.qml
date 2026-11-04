@@ -2636,14 +2636,16 @@ Window {
                     shown: SystemTheme.backdropSystem // not on Windows 10
                     title: qsTr("透明效果")
                     keywords: qsTr("云母;Mica;毛玻璃;亚克力;半透明;壁纸;transparency").split(";")
-                    description: !SystemTheme.backdropAvailable
+                    description: !Theme.backdropCapable
+                                 ? qsTr("当前界面风格的窗口不透明；“精修原生”风格才有透明效果")
+                                 : !SystemTheme.backdropAvailable
                                  ? qsTr("需要把“高级”里的界面绘制方式设为“显卡加速”")
                                  : !SystemTheme.materials
                                  ? qsTr("要先打开 Windows 设置里的“透明效果”")
                                  : qsTr("窗口背景透出桌面壁纸的颜色（云母效果）")
 
                     ScopeTabs {
-                        enabled: SystemTheme.backdropAvailable
+                        enabled: SystemTheme.backdropAvailable && Theme.backdropCapable
                         opacity: enabled ? 1 : 0.4
                         labels: [qsTr("关"), qsTr("开")]
                         current: Math.max(0, window.transparencies.indexOf(window.editor.transparency))
