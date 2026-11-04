@@ -157,7 +157,7 @@ Item {
             FlatButton {
                 text: root.textView ? qsTr("复制文本") : qsTr("复制匹配")
                 Layout.preferredHeight: 30
-                enabled: !root.pane.busy && root.pane.path.length > 0
+                enabled: !root.pane.busy && root.pane.title.length > 0
                 onClicked: root.pane.copyText(!root.textView)
                 Accessible.role: Accessible.Button; Accessible.name: text
             }

@@ -38,6 +38,20 @@ QString versionOf(const QString& path)
         .arg(info.nFileIndexLow).arg(info.nFileSizeHigh).arg(info.nFileSizeLow)
         .arg(info.ftLastWriteTime.dwHighDateTime).arg(info.ftLastWriteTime.dwLowDateTime);
 }
+// A plugin's details text (GitHub #202) as the documents' text is: UTF-8,
+// every line ending with '\n'.
+doctext::DocText plainText(const QString& text, bool cut)
+{
+    doctext::DocText plain;
+    QString lines = text;
+    lines.replace(u"\r\n"_s, u"\n"_s);
+    lines.replace(u'\r', u'\n');
+    if (!lines.isEmpty() && !lines.endsWith(u'\n'))
+        lines += u'\n';
+    plain.text = lines.toUtf8().toStdString();
+    plain.truncated = cut;
+    return plain;
+}
 QString readError(filetext::Status status)
 {
     switch (status) {
@@ -282,18 +296,18 @@ void ContentPane::setActive(bool value)
 }
 void ContentPane::update(SearchEngine::Request request, const QString& words, const QString& key,
     SearchResults files, SearchResults selected, const Subject& current,
-    int scanned, int total, bool complete, bool searching, const ContentLeftOut& leftOut)
+    int scanned, int total, bool complete, bool searching, const ContentLeftOut& leftOut, int pluginRows)
 {
     const QStringList terms = contentTerms(words);
     const bool queryChanged = key != m_key || terms != m_terms;
-    const bool fileChanged = current.file != m_path || current.key != m_subjectKey;
+    const bool fileChanged = current != m_subject;
     m_request = std::move(request);
     m_files = std::move(files);
     m_selected = std::move(selected);
     if (queryChanged || fileChanged) {
         m_key = key;
         m_path = current.file;
-        m_subjectKey = current.key;
+        m_subject = current;
         m_terms = terms;
         if (queryChanged) {
             m_countGroups.clear();
@@ -309,7 +323,7 @@ void ContentPane::update(SearchEngine::Request request, const QString& words, co
         m_matches.reset();
         m_rows = {};
         m_current = -1;
-        m_message.clear();
+        m_message = current.message;
         showRows();
         closePreview();
         schedule();
@@ -326,6 +340,8 @@ void ContentPane::update(SearchEngine::Request request, const QString& words, co
     if (leftOut.unreadable) m_summary += u'\n' + tr("读取失败：%1").arg(leftOut.unreadable);
     if (leftOut.truncated) m_summary += u'\n' + tr("仅有部分提取文本：%1").arg(leftOut.truncated);
     if (leftOut.indexExcluded) m_summary += u'\n' + tr("由内容索引排除：%1").arg(leftOut.indexExcluded);
+    // Plugins' rows that are no file (GitHub #202): shown in the list, not counted above nor in a report.
+    if (pluginRows) m_summary += u'\n' + tr("插件结果（不是文件，不计入报告）：%1").arg(pluginRows);
     if (leftOut.elapsedMs) m_summary += u'\n' + tr("搜索耗时：%1 ms").arg(leftOut.elapsedMs);
     m_summary += u'\n' + tr("全部匹配次数按需统计；结果受上限或读取限制时会标明。");
     QMap<QString, int> types;
@@ -351,8 +367,9 @@ void ContentPane::schedule()
 {
     ++m_detailState->generation;
     m_debounce.stop();
-    m_busy = m_active && m_opened && (m_tab == 1 || m_tab == 2) && !m_path.isEmpty() && !m_terms.isEmpty();
-    if (m_busy) m_debounce.start();
+    const bool readable = !m_path.isEmpty() || m_subject.text;
+    m_busy = m_active && m_opened && (m_tab == 1 || m_tab == 2) && (readable || m_subject.waiting) && !m_terms.isEmpty();
+    if (m_busy && readable) m_debounce.start(); // waiting: update() comes again with the answer
     emit changed();
 }
 void ContentPane::load()
@@ -361,6 +378,8 @@ void ContentPane::load()
     const quint64 ticket = state->generation.load();
     const filetext::Sources sources {m_index ? m_index->index() : nullptr, m_index ? m_index->contentIndex() : nullptr};
     const QString path = m_path;
+    const auto text = m_subject.text;
+    const bool cut = m_subject.cut;
     const auto terms = m_terms;
     const auto enabled = m_enabled;
     const auto filter = m_filter;
@@ -368,10 +387,12 @@ void ContentPane::load()
     const auto sheet = m_sheet;
     const auto limit = m_request.contentSizeLimits.of(path.toStdWString());
     if (!m_detailWorker) m_detailWorker = std::make_unique<ComWorker>();
-    m_detailWorker->post([this, state, ticket, sources, path, terms, enabled, filter, context, sheet, limit] {
+    m_detailWorker->post([this, state, ticket, sources, path, text, cut, terms, enabled, filter, context, sheet, limit] {
         const auto cancel = [&] { return state->generation.load() != ticket; };
         if (cancel()) return;
-        const auto read = state->read(path, sources, limit, ticket);
+        // A plugin's text (GitHub #202): lines as a text file's.
+        const auto read = text ? Worker::Read {contentdetails::document(plainText(*text, cut), cancel), {}, false}
+                               : state->read(path, sources, limit, ticket);
         auto matches = std::make_shared<contentdetails::Matches>(contentdetails::find(read.document, terms, cancel));
         auto rows = contentdetails::filter(*matches, enabled, filter, context, sheet, cancel);
         if (cancel()) return;
@@ -408,8 +429,15 @@ void ContentPane::showRows()
         emit positionRequested(m_hits.indexOf(line), m_text.indexOf(line));
     }
 }
+QString ContentPane::title() const
+{
+    if (!m_subject.title.isEmpty())
+        return m_subject.title;
+    return m_path.mid(std::max(m_path.lastIndexOf(u'\\'), m_path.lastIndexOf(u'/')) + 1);
+}
 QString ContentPane::matchStatus() const
 {
+    if (m_busy && m_subject.waiting) return tr("正在向插件获取详情…");
     if (m_busy) return tr("正在读取与匹配…");
     if (!m_matches || !m_matches->document) return tr("选择文件查看匹配和文本");
     return tr("显示 %1 / %2 处匹配 · 当前 %3").arg(m_rows.matches.size()).arg(m_matches->items.size())
@@ -473,7 +501,7 @@ void ContentPane::activateLine(int row, bool textView)
     const int line = (textView ? m_text : m_hits).sourceLineAt(row);
     if (line < 0 || !m_matches || !m_matches->document) return;
     const auto& at = m_matches->document->lines[line];
-    emit openRequested(m_subjectKey, m_path, at.kind == doctext::PlaceKind::None ? static_cast<int>(at.number) : 0);
+    emit openRequested(m_subject.key, m_path, at.kind == doctext::PlaceKind::None ? static_cast<int>(at.number) : 0);
 }
 void ContentPane::selectLine(int row, bool textView)
 {
@@ -491,11 +519,11 @@ void ContentPane::selectLine(int row, bool textView)
 }
 void ContentPane::openCurrent()
 {
-    if (m_busy || m_path.isEmpty()) return;
+    if (m_busy || m_subject.key.isEmpty()) return;
     if (m_current >= 0 && m_matches && m_current < std::ssize(m_rows.matches)) {
         const auto& at = m_matches->document->lines[m_matches->items[m_rows.matches[m_current]].line];
-        emit openRequested(m_subjectKey, m_path, at.kind == doctext::PlaceKind::None ? static_cast<int>(at.number) : 0);
-    } else emit openRequested(m_subjectKey, m_path, 0);
+        emit openRequested(m_subject.key, m_path, at.kind == doctext::PlaceKind::None ? static_cast<int>(at.number) : 0);
+    } else emit openRequested(m_subject.key, m_path, 0);
 }
 void ContentPane::refresh()
 {
@@ -803,7 +831,16 @@ void ContentPane::setPreviewArea(QQuickItem* area, bool dark)
 void ContentPane::startPreview()
 {
     if (!m_active || !m_opened || m_tab != 3 || !m_previewArea || !m_previewArea->isVisible()
-        || !m_previewArea->window() || !m_previewArea->window()->isVisible() || m_path.isEmpty()) return;
+        || !m_previewArea->window() || !m_previewArea->window()->isVisible()) return;
+    if (m_path.isEmpty()) {
+        const QString message = m_subject.text ? tr("插件提供的是文字，可在“文本”页查看")
+            : !m_subject.message.isEmpty() ? m_subject.message : QString();
+        if (!message.isEmpty() && message != m_previewMessage) {
+            m_previewMessage = message;
+            emit previewChanged();
+        }
+        return;
+    }
     if (m_previewPath == m_path) { movePreview(); return; }
     const auto handler = PreviewHost::handlerFor(m_path);
     m_previewMessage = handler ? tr("正在加载文件预览…") : tr("此文件没有可用的预览处理程序，可查看文本或打开文件");

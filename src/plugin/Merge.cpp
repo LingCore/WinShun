@@ -117,6 +117,10 @@ SearchResult toRow(const Entry& entry, const Command& command, const Item& item,
     p->valid = item.valid;
     p->score = item.score;
     p->item = itemToJson(item);
+    // "details" (GitHub #202, asksDetails): only a resident plugin is there
+    // to be asked (a once plugin's process has ended, a zero-code one has none).
+    if (!entry.manifest || !entry.manifest->resident())
+        p->item.remove(u"details"_s);
 
     SearchResult r;
     r.name = item.title;

@@ -9037,6 +9037,14 @@ Right: center window · Drag: move window</translation>
         <translation>The preview handler is unavailable. View the text or open the file.</translation>
     </message>
     <message>
+        <source>正在向插件获取详情…</source>
+        <translation>Asking the plugin for details…</translation>
+    </message>
+    <message>
+        <source>插件结果（不是文件，不计入报告）：%1</source>
+        <translation>Plugin results (not files, not in the report): %1</translation>
+    </message>
+    <message>
         <source>当前命中文件：%1
 已处理候选：%2 / %3（含索引排除）
 状态：%4
@@ -9305,6 +9313,10 @@ Content index: %5</translation>
     <message>
         <source>打印失败，请检查打印机后重试</source>
         <translation>Printing failed. Check the printer and try again.</translation>
+    </message>
+    <message>
+        <source>插件提供的是文字，可在“文本”页查看</source>
+        <translation>The plugin gave text; see it on the Text tab</translation>
     </message>
     <message>
         <source>正在加载文件预览…</source>
@@ -9690,6 +9702,18 @@ Content index: %5</translation>
     <message>
         <source>这一行没有可预览的文件</source>
         <translation>Nothing to preview on this row</translation>
+    </message>
+    <message>
+        <source>插件没有提供内容</source>
+        <translation>The plugin gave no content</translation>
+    </message>
+    <message>
+        <source>插件提供的文字 · 前 %1 行</source>
+        <translation>Text from the plugin · first %1 lines</translation>
+    </message>
+    <message>
+        <source>插件提供的文字 · %1 行</source>
+        <translation>Text from the plugin · %1 lines</translation>
     </message>
     <message>
         <source>找不到这个文件，可能已被移动或删除</source>
@@ -10166,6 +10190,18 @@ Content index: %5</translation>
     <message>
         <source>在原窗口定位</source>
         <translation>Locate in the original window</translation>
+    </message>
+    <message>
+        <source>正在向插件获取详情…</source>
+        <translation>Asking the plugin for details…</translation>
+    </message>
+    <message>
+        <source>插件没有给出可显示的详情</source>
+        <translation>The plugin gave no details to show</translation>
+    </message>
+    <message>
+        <source>无法获取详情：插件没有回答</source>
+        <translation>Could not get details: the plugin did not answer</translation>
     </message>
     <message>
         <source>“%1”没有“启动程序”权限，没能打开 %2</source>

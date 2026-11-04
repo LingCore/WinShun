@@ -289,6 +289,36 @@ bool checkContentPane(QQmlEngine* qml, const QDir& output)
     check(u"line_unaware_editors_keep_plain_open"_s, !args(u"notepad.exe"_s) && !contentopen::arguments(u"Code.exe"_s, text, 0)
         && !contentopen::arguments(u"Code.exe"_s, u"C:\\a\"b.txt"_s, 42));
     check(u"clipboard_capture_off"_s, !watcher.running());
+    {
+        // GitHub #202: a plugin's row that is no file, its details asked for,
+        // then given as text, then not to be had.
+        ContentPane details(&index);
+        details.loadPreferences(temp.filePath(u"details-pane.ini"_s));
+        details.setOpened(true);
+        details.setTab(1);
+        details.setActive(true);
+        SearchEngine::Request request;
+        request.text = u"needle"_s;
+        ContentPane::Subject subject {u"winshun-plugin:test.mail/main/m1"_s, {}, u"发票邮件"_s, {}, false,
+            ContentPane::tr("正在向插件获取详情…"), true};
+        const auto show = [&] { details.update(request, u"needle"_s, u"needle"_s, {}, {}, subject, 0, 0, true, false, {}, 2); };
+        show();
+        check(u"plugin_details_waiting"_s, details.busy() && details.title() == u"发票邮件"_s
+            && details.matchStatus() == ContentPane::tr("正在向插件获取详情…"));
+        check(u"plugin_rows_in_summary"_s, details.summary().contains(ContentPane::tr("插件结果（不是文件，不计入报告）：%1").arg(2)));
+        subject.message.clear();
+        subject.waiting = false;
+        subject.text = std::make_shared<const QString>(u"From: a\r\nSubject: needle\r\n\r\nneedle and NEEDLE\r\n"_s);
+        show();
+        const auto count = [&] { return details.terms().isEmpty() ? -1 : details.terms()[0].toMap().value(u"count"_s).toInt(); };
+        check(u"plugin_details_text"_s, until([&] { return !details.busy() && count() == 3; })
+            && details.textLines()->rowCount() >= 3 && details.path().isEmpty() && details.title() == u"发票邮件"_s);
+        subject.text.reset();
+        subject.message = u"无法获取详情：插件没有回答"_s;
+        show();
+        check(u"plugin_details_failed"_s, !details.busy() && details.message() == subject.message && details.hits()->rowCount() == 0);
+        details.setActive(false);
+    }
     pane->setActive(false);
     window->hide();
     QFile log(output.filePath(u"content-pane.json"_s));

@@ -58,6 +58,9 @@ struct Item {
     QString previewText;
     QList<Action> actions; // overriding the command's
     bool valid = true;
+    // GitHub #202: no file of its own to show, but the plugin tells what it
+    // is when asked (`details`): the content pane and the preview ask.
+    bool details = false;
     QJsonValue data; // opaque; goes back with the action
     // Zero-code: what the row does instead of opening something.
     QString searchQuery; // run a search in the launcher

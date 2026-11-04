@@ -1,5 +1,13 @@
 #include "Details.h"
 
+#include "Win32Util.h"
+
+#include <QJsonObject>
+
+#include <string>
+
+#include <windows.h>
+
 using namespace Qt::StringLiterals;
 
 namespace ws::plugin {
@@ -74,6 +82,93 @@ QString rowFile(const PluginRow& row)
         || !plainFilePath(row.openTarget))
         return {};
     return QString(row.openTarget).replace(u'/', u'\\');
+}
+
+namespace {
+
+// The path a handle's file or folder really has ("C:\…", without "\\?\").
+QString finalPath(HANDLE handle)
+{
+    std::wstring buffer(512, L'\0');
+    for (;;) {
+        const DWORD n = ::GetFinalPathNameByHandleW(handle, buffer.data(), static_cast<DWORD>(buffer.size()),
+            FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+        if (n == 0)
+            return {};
+        if (n < buffer.size()) {
+            buffer.resize(n);
+            break;
+        }
+        buffer.resize(n + 1);
+    }
+    QString path = QString::fromStdWString(buffer);
+    if (path.startsWith(u"\\\\?\\UNC\\"_s))
+        return {}; // on a share: not the plugin's own folder
+    if (path.startsWith(u"\\\\?\\"_s))
+        path.remove(0, 4);
+    return path;
+}
+
+} // namespace
+
+QString fileInFolder(const QString& path, const QString& folder)
+{
+    const QString native = QString(path).replace(u'/', u'\\');
+    if (!plainFilePath(native) || native.startsWith(u"\\\\"_s) || folder.isEmpty())
+        return {};
+    // The folder: followed to where it leads (a data folder moved by a
+    // junction is still the plugin's own).
+    const win32::UniqueHandle dir(::CreateFileW(QString(folder).replace(u'/', u'\\').toStdWString().c_str(),
+        FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS, nullptr));
+    if (!dir.valid())
+        return {};
+    QString root = finalPath(dir.get());
+    if (root.isEmpty())
+        return {};
+    if (!root.endsWith(u'\\'))
+        root += u'\\';
+    // The file itself is not followed: a link in the folder to a file
+    // elsewhere is refused, not read.
+    const win32::UniqueHandle file(::CreateFileW(native.toStdWString().c_str(), FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
+    BY_HANDLE_FILE_INFORMATION info {};
+    if (!file.valid() || !::GetFileInformationByHandle(file.get(), &info)
+        || (info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DEVICE))
+        || info.nNumberOfLinks != 1 || ::GetFileType(file.get()) != FILE_TYPE_DISK)
+        return {};
+    // Where it really is (the folders on the way followed): in the folder.
+    const QString real = finalPath(file.get());
+    if (real.size() <= root.size() || !real.startsWith(root, Qt::CaseInsensitive))
+        return {};
+    return real;
+}
+
+DetailsAnswer parseDetails(const QJsonValue& result, const QString& dataDir)
+{
+    DetailsAnswer answer;
+    const QJsonObject o = result.toObject();
+    if (const QJsonValue file = o.value(u"file"_s); file.isString()) {
+        const QString real = fileInFolder(file.toString(), dataDir);
+        if (!real.isEmpty()) {
+            answer.kind = DetailsAnswer::Kind::File;
+            answer.file = real;
+            return answer;
+        }
+    }
+    if (const QJsonValue text = o.value(u"text"_s); text.isString()) {
+        answer.kind = DetailsAnswer::Kind::Text;
+        answer.text = text.toString();
+        if (answer.text.size() > kMaxDetailsText) {
+            qsizetype n = kMaxDetailsText;
+            if (answer.text[n - 1].isHighSurrogate())
+                --n; // never half a character
+            answer.text.truncate(n);
+            answer.cut = true;
+        }
+    }
+    return answer;
 }
 
 } // namespace ws::plugin
