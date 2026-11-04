@@ -25,14 +25,23 @@ inline bool typesLetters(const InputMode& mode)
     return !mode.open || (mode.conversion & (IME_CMODE_NATIVE | IME_CMODE_FULLSHAPE)) == 0;
 }
 
-// Its English mode, the rest of the conversion mode kept. Both said: some
-// input methods take a lone Shift as open/close (WeChat's, built like
-// Microsoft's sample), others as the native bit (Microsoft Pinyin).
+// Its English mode, the rest of the conversion mode kept. Both said: on
+// this machine a lone Shift flips WeChat's open status (1 -> 0); Microsoft
+// Pinyin is said to flip the native bit instead.
 inline InputMode lettersMode(InputMode mode)
 {
     mode.conversion &= ~static_cast<DWORD>(IME_CMODE_NATIVE | IME_CMODE_FULLSHAPE);
     mode.open = false;
     return mode;
+}
+
+// Still as the switch left it, as far as letters go: input methods change
+// other bits on their own (symbols, roman, the sentence mode), which say
+// nothing of the user having switched back.
+inline bool sameLetters(const InputMode& a, const InputMode& b)
+{
+    constexpr DWORD kBits = IME_CMODE_NATIVE | IME_CMODE_FULLSHAPE;
+    return a.open == b.open && (a.conversion & kBits) == (b.conversion & kBits);
 }
 
 struct LettersSwitch {

@@ -2856,8 +2856,8 @@ void App::lettersOnOpen()
     m_lettersSwitch = done;
     m_lettersSwitch.before = before;
     qInfo().noquote() << u"Input method to English on opening: open %1 -> %2, conversion 0x%3 -> 0x%4"_s
-                             .arg(done.before.open)
-                             .arg(done.after.open)
+                             .arg(int(done.before.open))
+                             .arg(int(done.after.open))
                              .arg(done.before.conversion, 0, 16)
                              .arg(done.after.conversion, 0, 16);
 }
