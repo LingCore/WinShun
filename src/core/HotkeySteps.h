@@ -11,8 +11,10 @@ namespace ws::hotkeysteps {
 // selection on open hot key" (GitHub #107, Settings::clipboardHoldToStep):
 // its key pressed again while its modifiers stay down moves the selection one
 // row older; letting go of the whole hotkey pastes that row, as Enter would.
-// Held a second (kHoldMs) without a step, the first row. Esc while held:
-// nothing pasted. A press and a quick release opens the window as ever.
+// Its modifiers held a second (kHoldMs) without a step, the first row: the
+// key itself may go up at once, as the settings say it (按住 Win 约一秒再松开,
+// GitHub #199). Esc while held: nothing pasted. A press and a quick release
+// opens the window as ever.
 //
 // Two halves, both pure: Watch decides on the hook's thread, key by key and
 // at once (HoldWatch), and tells the GUI thread what it saw (Note); Hold
@@ -35,8 +37,9 @@ inline constexpr unsigned kModifiers = kAlt | kCtrl | kShift | kWin;
 // keys stayed down in between is not known (GetAsyncKeyState cannot tell a
 // key let go and pressed again), so no hold.
 inline constexpr std::uint64_t kArmWithinMs = 50;
-// The whole hotkey held this long from the opening press with no step:
-// letting go pastes the first row (Ditto waits 20 ticks of 50 ms).
+// The hotkey's modifiers held this long from the opening press with no step
+// (its key let go or not): letting go pastes the first row (Ditto waits 20
+// ticks of 50 ms).
 inline constexpr std::uint64_t kHoldMs = 1000;
 // All the keys up, as GetAsyncKeyState has it, and no word from the hook
 // for this long: Windows dropped the hook (timed out, the secure desktop).
@@ -145,7 +148,7 @@ enum class Note : std::uint8_t {
     None,
     Step, // the hotkey's key pressed again, its modifiers down since the opening press
     Fresh, // ... pressed again after one of them was let go
-    Lifted, // the whole hotkey no longer down: its key or one of its modifiers let go (once)
+    Lifted, // one of its modifiers let go (once): the second's count stops there
     AllUp, // the key and its modifiers all up (once): the hold is over
     Escape, // Esc pressed while it was held (taken from the program)
     Other, // another key pressed: the hold means nothing any more (once)
@@ -174,9 +177,10 @@ public:
 
     // Whether it is a hold at all: the modifiers all still down as it began.
     bool holding() const noexcept { return m_mask != 0 && (m_sides.held() & m_mask) == m_mask; }
-    // As it begins: Lifted if the key was let go already (a quick press),
-    // which is then the whole hotkey no longer down.
-    Note start() noexcept { return m_keyDown ? Note::None : lift(); }
+    // As it begins: nothing to tell, the modifiers being down (holding). The
+    // key let go already (a quick tap of it) changes nothing: the modifiers
+    // are what is held (#199).
+    Note start() noexcept { return Note::None; }
     // Nothing more to tell: the GUI thread is done with the hold. The
     // release of an Esc taken is still taken.
     void stop() noexcept { m_done = true; }
@@ -221,12 +225,8 @@ public:
         if (vk == m_vk) {
             if (!down) {
                 m_keyDown = false;
-                if (!m_done) {
-                    answer.note = lift();
-                    answer.then = finish();
-                    if (answer.note == Note::None)
-                        std::swap(answer.note, answer.then);
-                }
+                if (!m_done)
+                    answer.note = finish(); // the modifiers let go first: all of it up now
                 return answer;
             }
             const bool repeat = m_keyDown && time - m_keyAt < kRepeatWithinMs;
@@ -343,11 +343,11 @@ public:
     enum class Held {
         None,
         Part,
-        Whole, // its key and all its modifiers
+        Whole, // all its modifiers (its key down or not)
     };
     enum class Poll {
         None,
-        Hint, // held a second, no step: letting go pastes the first entry (once)
+        Hint, // the modifiers held a second, no step: letting go pastes the first entry (once)
         Silent, // all of it up kSilentMs, no word from the hook: Windows dropped it (timed out, the secure desktop)
     };
     Poll poll(Held held, std::uint64_t now) noexcept
@@ -367,11 +367,11 @@ public:
         return Poll::None;
     }
 
-    // Letting go would paste: a step made, or held a second.
+    // Letting go would paste: a step made, or the modifiers held a second.
     bool hint(std::uint64_t now) const noexcept { return !m_over && !m_cancelled && pending(now); }
     bool cancelled() const noexcept { return m_cancelled; }
     int steps() const noexcept { return m_steps; }
-    // How long the whole hotkey was down from the opening press, by `now`.
+    // How long its modifiers were all down from the opening press, by `now`.
     std::uint64_t heldFor(std::uint64_t now) const noexcept
     {
         const std::uint64_t until = m_liftedAt.value_or(now);
