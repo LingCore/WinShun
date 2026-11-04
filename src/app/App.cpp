@@ -2295,11 +2295,11 @@ void App::applyClipboard(bool initial)
 
 void App::applyClipboardHotkeys()
 {
-    m_quickPasteKeys = 0;
-    for (int n = 1; n <= 9; ++n)
-        m_messages->unregisterHotkey(kQuickPasteHotkeyId + n);
     m_messages->unregisterHotkey(kWinVHotkeyId);
     m_messages->unregisterHotkey(kClipboardHotkeyId);
+    // The digits first: one that is the clipboard's hotkey now is let go of
+    // before that is registered (and all of them while one is recorded).
+    applyQuickPasteHotkeys();
     if (m_settingsEditor && m_settingsEditor->recordingHotkey())
         return; // the keys being pressed must reach the settings window
     const bool winV = m_settings.clipboardWinV && m_messages->registerHotkey(kWinVHotkeyId, u"Win+V"_s);
@@ -2335,33 +2335,92 @@ void App::applyClipboardHotkeys()
     if (!settingsShown() && !hotkeyError.isEmpty() && !m_aiApplying) {
         m_messages->showNotification(tr("快捷键不可用"), hotkeyError);
     }
-    applyQuickPasteHotkeys();
 }
 
 void App::applyQuickPasteHotkeys()
 {
     if (!m_messages)
         return;
-    m_quickPasteKeys = 0;
-    for (int n = 1; n <= 9; ++n)
-        m_messages->unregisterHotkey(kQuickPasteHotkeyId + n);
-    if (m_settingsEditor && m_settingsEditor->recordingHotkey())
-        return;
+    // Only what changes is let go of or registered: one unregistered for a
+    // moment, even to be registered again at once, lets that chord through
+    // to the program in front (a browser's Ctrl+4 goes to its fourth tab,
+    // GitHub #195). One still held is let go of only once it is up (at most
+    // kDrainCapMs): its auto-repeats would be a fresh press there (#175).
     const QString& keys = m_settings.clipboardQuickPaste;
-    QStringList unavailable;
-    if (m_settings.clipboard && (keys == u"ctrl" || keys == u"alt")) {
-        const QString modifier = keys == u"ctrl" ? u"Ctrl"_s : u"Alt"_s;
-        const bool suspended = QGuiApplication::focusWindow() || m_clipboard->active();
-        const unsigned own = ownNumberDigits(keys);
-        for (int n = 1; n <= 9; ++n) {
-            const QString chord = modifier + u'+' + QString::number(n);
-            if ((own & (1u << n)) || !m_messages->registerHotkey(kQuickPasteHotkeyId + n, chord))
-                unavailable.append(chord);
-            else if (suspended)
-                m_messages->unregisterHotkey(kQuickPasteHotkeyId + n);
-            else
-                m_quickPasteKeys |= 1u << n;
+    const bool recording = m_settingsEditor && m_settingsEditor->recordingHotkey();
+    const bool wanted = !recording && m_settings.clipboard && (keys == u"ctrl" || keys == u"alt");
+    const QString modifier = keys == u"ctrl" ? u"Ctrl"_s : u"Alt"_s;
+    const bool suspended = QGuiApplication::focusWindow() || m_clipboard->active();
+    const unsigned own = wanted ? ownNumberDigits(keys) : 0;
+    const bool sameChord = m_quickPasteChord == keys;
+    const auto down = [](int vk) { return (::GetAsyncKeyState(vk) & 0x8000) != 0; };
+    const int heldModifier = m_quickPasteChord == u"alt" ? VK_MENU : VK_CONTROL;
+    const bool waitedEnough = m_quickPasteHeldSince.isValid()
+        && m_quickPasteHeldSince.elapsed() >= static_cast<qint64>(hotkeysteps::kDrainCapMs);
+    // Those registered: kept, held on to, or let go of.
+    unsigned held = 0;
+    m_quickPasteKeys = 0;
+    for (int n = 1; n <= 9; ++n) {
+        const unsigned bit = 1u << n;
+        if (!(m_quickPasteRegistered & bit))
+            continue;
+        if (wanted && !(own & bit) && sameChord && !suspended) { // as it is
+            m_quickPasteKeys |= bit;
+        } else if (!waitedEnough && down(heldModifier) && down('0' + n)) {
+            held |= bit; // pastes nothing, until let go
+        } else {
+            m_messages->unregisterHotkey(kQuickPasteHotkeyId + n);
+            m_quickPasteRegistered &= ~bit;
         }
+    }
+    // The rest: registered, or found taken. Another chord only once the old
+    // one's digits are all let go of.
+    QStringList unavailable;
+    for (int n = 1; wanted && (sameChord || !held) && n <= 9; ++n) {
+        const unsigned bit = 1u << n;
+        if (m_quickPasteRegistered & bit)
+            continue;
+        const QString chord = modifier + u'+' + QString::number(n);
+        if ((own & bit) || !m_messages->registerHotkey(kQuickPasteHotkeyId + n, chord)) {
+            unavailable.append(chord);
+        } else if (suspended) {
+            m_messages->unregisterHotkey(kQuickPasteHotkeyId + n); // free: the window in front has them
+        } else {
+            m_quickPasteRegistered |= bit;
+            m_quickPasteKeys |= bit;
+        }
+    }
+    if (!m_quickPasteRegistered)
+        m_quickPasteChord.clear();
+    else if (sameChord || !held)
+        m_quickPasteChord = keys;
+    if (!held) {
+        m_quickPasteHeldSince.invalidate();
+    } else if (!std::exchange(m_quickPasteRetrying, true)) {
+        if (!m_quickPasteHeldSince.isValid())
+            m_quickPasteHeldSince.start();
+        QTimer::singleShot(std::chrono::milliseconds(hotkeysteps::kPollMs), this, [this] {
+            m_quickPasteRetrying = false;
+            applyQuickPasteHotkeys();
+        });
+    }
+    // For a report (GitHub #195): the digits not there, and Win顺 not in
+    // front to take them; a digit held on to. Written as it begins and ends.
+    const QWindow* focus = QGuiApplication::focusWindow();
+    DWORD pid = 0;
+    ::GetWindowThreadProcessId(::GetForegroundWindow(), &pid);
+    const bool foregroundOurs = pid == ::GetCurrentProcessId();
+    const bool staleActive = m_clipboard->active() && !(m_clipWindow && m_clipWindow->isVisible());
+    const bool odd = held || (focus && !foregroundOurs) || staleActive;
+    const QString state = u"%1 %2 %3 %4"_s.arg(m_quickPasteKeys).arg(held).arg(suspended).arg(odd);
+    if ((odd || m_quickPasteOdd) && state != std::exchange(m_quickPasteLogged, state)) {
+        m_quickPasteOdd = odd;
+        diagnostics::record(u"clipboard-quick-paste-keys"_s,
+            {{u"keys"_s, static_cast<qint64>(m_quickPasteKeys)}, {u"held"_s, static_cast<qint64>(held)},
+             {u"suspended"_s, suspended}, {u"chord"_s, keys}, {u"recording"_s, recording},
+             {u"focus"_s, focus ? QString::fromLatin1(focus->metaObject()->className()) + u' ' + focus->objectName() : QString()},
+             {u"clipboardActive"_s, m_clipboard->active()}, {u"clipboardShown"_s, !staleActive},
+             {u"foregroundOurs"_s, foregroundOurs}});
     }
     const QString error = unavailable.isEmpty() ? QString()
         : tr("%1 已被其他快捷键占用，这几条无法直接粘贴；其余数字仍可用。可更换组合键，或调整冲突的快捷键。")

@@ -800,7 +800,16 @@ private:
     QHash<QString, QString> m_applyProblems; // noteApplyProblem
     bool m_aiApplying = false; // an AI's change is being applied: what goes wrong is in its answer, not in a balloon
     QString m_winVState; // as applyClipboardHotkeys last found it: off, on, waiting, releasing, failed, blocked
-    unsigned m_quickPasteKeys = 0; // successfully registered digits, 1 << n
+    unsigned m_quickPasteKeys = 0; // registered digits that paste now, 1 << n
+    // Registered as hotkeys (1 << n), for m_quickPasteChord ("ctrl", "alt"):
+    // kept as they are from one applyQuickPasteHotkeys to the next, and one
+    // still held kept until it is let go (#195).
+    unsigned m_quickPasteRegistered = 0;
+    QString m_quickPasteChord;
+    QElapsedTimer m_quickPasteHeldSince; // a digit to let go of still held, since
+    bool m_quickPasteRetrying = false; // a look again at a held digit on its way
+    bool m_quickPasteOdd = false; // as last written to the diagnostics
+    QString m_quickPasteLogged; // likewise, in short
     QString m_winSState; // likewise for Win+S
     // In front when the launcher last opened: where a screenshot of the
     // history (jt, Enter) is pasted.
