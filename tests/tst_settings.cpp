@@ -874,15 +874,16 @@ private slots:
         ws::Settings::useProfile(profile.path());
         ws::Settings fresh;
         fresh.load();
-        QVERIFY(fresh.folderMenuItemSearch && fresh.folderMenuItemCmd && fresh.folderMenuItemPowerShell
+        QVERIFY(fresh.folderMenuItemSearch && fresh.folderMenuItemCopyPath && fresh.folderMenuItemCmd && fresh.folderMenuItemPowerShell
             && fresh.folderMenuItemFavorite && fresh.folderMenuItemSettings);
 
+        fresh.folderMenuItemCopyPath = false;
         fresh.folderMenuItemCmd = false;
         fresh.folderMenuItemSettings = false;
         fresh.save();
         ws::Settings again;
         again.load();
-        QVERIFY(again.folderMenuItemSearch && !again.folderMenuItemCmd && again.folderMenuItemPowerShell
+        QVERIFY(again.folderMenuItemSearch && !again.folderMenuItemCopyPath && !again.folderMenuItemCmd && again.folderMenuItemPowerShell
             && again.folderMenuItemFavorite && !again.folderMenuItemSettings);
     }
 

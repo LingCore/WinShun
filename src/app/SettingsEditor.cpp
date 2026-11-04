@@ -1260,6 +1260,14 @@ void SettingsEditor::setFolderMenuItemSearch(bool on)
     commit();
 }
 
+void SettingsEditor::setFolderMenuItemCopyPath(bool on)
+{
+    if (m_settings.folderMenuItemCopyPath == on)
+        return;
+    m_settings.folderMenuItemCopyPath = on;
+    commit();
+}
+
 void SettingsEditor::setFolderMenuItemCmd(bool on)
 {
     if (m_settings.folderMenuItemCmd == on)

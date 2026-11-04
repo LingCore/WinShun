@@ -161,6 +161,7 @@ struct Settings {
     // Which actions the menu offers under the lists (GitHub #200): all on is
     // what it always did. Favorite covers both adding and removing.
     bool folderMenuItemSearch = true;
+    bool folderMenuItemCopyPath = true; // the folder's full path as text (#137)
     bool folderMenuItemCmd = true;
     bool folderMenuItemPowerShell = true;
     bool folderMenuItemFavorite = true;

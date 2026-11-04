@@ -312,6 +312,9 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Launcher/FolderMenuItemSearch", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“在此搜索”"), "files_and_dialogs", 2,
                     "The folder menu offers this action under its lists. On by default."},
         &Settings::folderMenuItemSearch));
+    add(boolean({"Launcher/FolderMenuItemCopyPath", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“复制路径”"), "files_and_dialogs", 2,
+                    "The folder menu offers Copy path under its lists: puts the folder's full path on the clipboard as plain text. Not shown where there is no folder path (This PC). On by default."},
+        &Settings::folderMenuItemCopyPath));
     add(boolean({"Launcher/FolderMenuItemCmd", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“在此打开命令提示符”"), "files_and_dialogs", 2,
                     "The folder menu offers this action under its lists. On by default."},
         &Settings::folderMenuItemCmd));

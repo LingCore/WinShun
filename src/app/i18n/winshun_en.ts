@@ -1151,6 +1151,10 @@
         <translation>The folder menu has “Search here”</translation>
     </message>
     <message>
+        <source>文件夹菜单里有“复制路径”</source>
+        <translation>The folder menu has “Copy path”</translation>
+    </message>
+    <message>
         <source>文件夹菜单里有“在此打开命令提示符”</source>
         <translation>The folder menu has “Open Command Prompt here”</translation>
     </message>
@@ -6933,16 +6937,20 @@ Right: center window · Drag: move window</translation>
         <translation>Actions in the menu</translation>
     </message>
     <message>
-        <source>菜单末尾的“在此搜索”“收藏这个文件夹”等；没勾选的不再出现</source>
-        <translation>The actions under the lists, such as “Search here” and “Add this folder to favorites”; unticked ones no longer appear</translation>
+        <source>菜单末尾的“在此搜索”“复制路径”“收藏这个文件夹”等；没勾选的不再出现</source>
+        <translation>The actions under the lists, such as “Search here”, “Copy path” and “Add this folder to favorites”; unticked ones no longer appear</translation>
     </message>
     <message>
-        <source>文件夹菜单;搜索;命令提示符;cmd;PowerShell;收藏;设置;隐藏;search;command prompt;favorites;settings</source>
-        <translation>folder menu;search;command prompt;cmd;PowerShell;favorites;settings;hide</translation>
+        <source>文件夹菜单;搜索;复制路径;复制地址;命令提示符;cmd;PowerShell;收藏;设置;隐藏;search;command prompt;favorites;settings</source>
+        <translation>folder menu;search;copy path;copy address;command prompt;cmd;PowerShell;favorites;settings;hide</translation>
     </message>
     <message>
         <source>搜索</source>
         <translation>Search</translation>
+    </message>
+    <message>
+        <source>复制路径</source>
+        <translation>Copy path</translation>
     </message>
     <message>
         <source>命令提示符</source>
@@ -9839,6 +9847,10 @@ Content index: %5</translation>
     <message>
         <source>收藏这个文件夹</source>
         <translation>Add this folder to favorites</translation>
+    </message>
+    <message>
+        <source>复制路径</source>
+        <translation>Copy path</translation>
     </message>
     <message>
         <source>在此打开命令提示符</source>

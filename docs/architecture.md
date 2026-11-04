@@ -113,6 +113,7 @@ FolderMenuFavorites=true ; 菜单里列出收藏的文件夹（GitHub #51）；�
 FolderMenuRecent=true    ; 列出最近的文件夹
 FolderMenuWindows=true   ; 列出别的窗口里的文件夹
 FolderMenuItemSearch=true ; 菜单里的操作（GitHub #200）：在此搜索
+FolderMenuItemCopyPath=true ; 复制路径：当前文件夹的完整路径，纯文字（GitHub #137）
 FolderMenuItemCmd=true    ; 在此打开命令提示符
 FolderMenuItemPowerShell=true ; 在此打开 PowerShell
 FolderMenuItemFavorite=true ; 收藏 / 移除收藏这个文件夹

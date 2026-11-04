@@ -84,7 +84,7 @@ public:
     // Which groups it lists (GitHub #51); one left out is not even gathered.
     void setGroups(bool favorites, bool recent, bool windows);
     // Which actions it offers under the lists (GitHub #200).
-    void setItems(bool search, bool cmd, bool powerShell, bool favorite, bool settings);
+    void setItems(bool search, bool copyPath, bool cmd, bool powerShell, bool favorite, bool settings);
     // Whether something else has the keys now (the clipboard over File
     // Explorer): the menu does not come, the double click only closes that.
     void setBlocked(std::function<bool()> blocked) { m_blocked = std::move(blocked); }
@@ -127,7 +127,7 @@ signals:
     void openChanged(bool open);
 
 private:
-    enum class Kind { Folder, Search, AddFavorite, RemoveFavorite, Terminal, PowerShell, Favorite, Settings };
+    enum class Kind { Folder, Search, AddFavorite, RemoveFavorite, Terminal, PowerShell, Favorite, Settings, CopyPath };
     struct Entry {
         Kind kind = Kind::Folder;
         QString path;
@@ -164,6 +164,7 @@ private:
     std::atomic<bool> m_listRecent {true};
     std::atomic<bool> m_listWindows {true};
     std::atomic<bool> m_itemSearch {true};
+    std::atomic<bool> m_itemCopyPath {true};
     std::atomic<bool> m_itemCmd {true};
     std::atomic<bool> m_itemPowerShell {true};
     std::atomic<bool> m_itemFavorite {true};

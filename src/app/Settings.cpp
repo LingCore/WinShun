@@ -864,6 +864,7 @@ void Settings::load()
     if (!folderMenuFavorites && !folderMenuRecent && !folderMenuWindows) // a menu of nothing: back to all (#51)
         folderMenuFavorites = folderMenuRecent = folderMenuWindows = true;
     folderMenuItemSearch = readOrDefault(s, u"Launcher/FolderMenuItemSearch"_s, d.folderMenuItemSearch);
+    folderMenuItemCopyPath = readOrDefault(s, u"Launcher/FolderMenuItemCopyPath"_s, d.folderMenuItemCopyPath);
     folderMenuItemCmd = readOrDefault(s, u"Launcher/FolderMenuItemCmd"_s, d.folderMenuItemCmd);
     folderMenuItemPowerShell = readOrDefault(s, u"Launcher/FolderMenuItemPowerShell"_s, d.folderMenuItemPowerShell);
     folderMenuItemFavorite = readOrDefault(s, u"Launcher/FolderMenuItemFavorite"_s, d.folderMenuItemFavorite);
@@ -1220,6 +1221,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/FolderMenuRecent"_s, folderMenuRecent);
     s.setValue(u"Launcher/FolderMenuWindows"_s, folderMenuWindows);
     s.setValue(u"Launcher/FolderMenuItemSearch"_s, folderMenuItemSearch);
+    s.setValue(u"Launcher/FolderMenuItemCopyPath"_s, folderMenuItemCopyPath);
     s.setValue(u"Launcher/FolderMenuItemCmd"_s, folderMenuItemCmd);
     s.setValue(u"Launcher/FolderMenuItemPowerShell"_s, folderMenuItemPowerShell);
     s.setValue(u"Launcher/FolderMenuItemFavorite"_s, folderMenuItemFavorite);

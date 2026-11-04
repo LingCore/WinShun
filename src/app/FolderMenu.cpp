@@ -18,6 +18,7 @@
 #include <QDebug>
 #include <QDir>
 #include <QElapsedTimer>
+#include <QClipboard>
 #include <QGuiApplication>
 #include <QJsonObject>
 #include <QScreen>
@@ -224,9 +225,10 @@ void FolderMenu::setGroups(bool favorites, bool recent, bool windows)
     m_listWindows = windows;
 }
 
-void FolderMenu::setItems(bool search, bool cmd, bool powerShell, bool favorite, bool settings)
+void FolderMenu::setItems(bool search, bool copyPath, bool cmd, bool powerShell, bool favorite, bool settings)
 {
     m_itemSearch = search;
+    m_itemCopyPath = copyPath;
     m_itemCmd = cmd;
     m_itemPowerShell = powerShell;
     m_itemFavorite = favorite;
@@ -619,6 +621,8 @@ void FolderMenu::show(const folderview::Hit& hit, const Found& found)
         separator();
         if (m_itemSearch)
             m_entries.append(action(Kind::Search, m_folder, tr("在“%1”里搜索").arg(nameOf(m_folder)), {}, u"\uE721"_s));
+        if (m_itemCopyPath) // plain text, no quotes (#137); not offered where there is no folder path
+            m_entries.append(action(Kind::CopyPath, m_folder, tr("复制路径"), {}, u"\uE8C8"_s));
         if (m_itemCmd)
             m_entries.append(action(Kind::Terminal, m_folder, tr("在此打开命令提示符"), {}, u"\uE756"_s));
         if (m_itemPowerShell)
@@ -788,6 +792,9 @@ void FolderMenu::trigger(int index)
         }
         break;
     }
+    case Kind::CopyPath:
+        QGuiApplication::clipboard()->setText(QDir::toNativeSeparators(entry.path));
+        break;
     case Kind::Settings:
         emit settingsRequested();
         break;

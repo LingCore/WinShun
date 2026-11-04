@@ -85,6 +85,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool folderMenuWindows READ folderMenuWindows WRITE setFolderMenuWindows NOTIFY changed FINAL)
     // The actions under the lists (GitHub #200).
     Q_PROPERTY(bool folderMenuItemSearch READ folderMenuItemSearch WRITE setFolderMenuItemSearch NOTIFY changed FINAL)
+    Q_PROPERTY(bool folderMenuItemCopyPath READ folderMenuItemCopyPath WRITE setFolderMenuItemCopyPath NOTIFY changed FINAL)
     Q_PROPERTY(bool folderMenuItemCmd READ folderMenuItemCmd WRITE setFolderMenuItemCmd NOTIFY changed FINAL)
     Q_PROPERTY(bool folderMenuItemPowerShell READ folderMenuItemPowerShell WRITE setFolderMenuItemPowerShell NOTIFY changed FINAL)
     Q_PROPERTY(bool folderMenuItemFavorite READ folderMenuItemFavorite WRITE setFolderMenuItemFavorite NOTIFY changed FINAL)
@@ -401,6 +402,8 @@ public:
     void setFolderMenuWindows(bool on);
     bool folderMenuItemSearch() const { return m_settings.folderMenuItemSearch; }
     void setFolderMenuItemSearch(bool on);
+    bool folderMenuItemCopyPath() const { return m_settings.folderMenuItemCopyPath; }
+    void setFolderMenuItemCopyPath(bool on);
     bool folderMenuItemCmd() const { return m_settings.folderMenuItemCmd; }
     void setFolderMenuItemCmd(bool on);
     bool folderMenuItemPowerShell() const { return m_settings.folderMenuItemPowerShell; }
