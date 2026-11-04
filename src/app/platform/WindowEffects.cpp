@@ -1217,6 +1217,19 @@ void updateOwnFrame(HWND window)
         state->sync();
 }
 
+void setOwnFrameOpacity(HWND window, qreal opacity)
+{
+    OwnFrameState* state = ownFrameOf(window);
+    if (!state || !state->on || !state->shadow || !state->shown)
+        return;
+    const BYTE now = BYTE(std::lround(std::clamp(opacity, qreal(0), qreal(1)) * 255));
+    if (now == state->alpha)
+        return;
+    BLENDFUNCTION blend {AC_SRC_OVER, 0, now, AC_SRC_ALPHA};
+    if (::UpdateLayeredWindow(state->shadow, nullptr, nullptr, nullptr, nullptr, nullptr, 0, &blend, ULW_ALPHA))
+        state->alpha = now;
+}
+
 Front bringToFront(QWindow* window, ShellFlyout flyout)
 {
     const HWND hwnd = handleOf(window);

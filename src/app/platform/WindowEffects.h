@@ -90,6 +90,10 @@ bool hasOwnFrame(HWND window);
 // After a change Windows tells the window nothing about, its display affinity
 // (capture::excludeFromCapture): the shadow follows it too.
 void updateOwnFrame(HWND window);
+// Before the window's opacity changes (QWindow::setOpacity): its shadow, as
+// see-through, first (then both change in the same composition; after it, the
+// shadow comes a frame late).
+void setOwnFrameOpacity(HWND window, qreal opacity);
 // The class of that shadow's window, right below its own in the Z order
 // (DialogOwner: right above a window, the shadow between them aside).
 inline constexpr wchar_t kFrameShadowClass[] = L"WinShun.FrameShadow";
