@@ -791,6 +791,18 @@ private slots:
         ws::Settings again;
         again.load();
         QVERIFY(!again.folderMenuDouble && again.folderMenuMiddle);
+
+        // A hand-edited file with no trigger or no place gets them back.
+        {
+            QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+            ini.setValue(u"Launcher/FolderMenuDouble"_s, false);
+            ini.setValue(u"Launcher/FolderMenuMiddle"_s, false);
+            ini.setValue(u"Launcher/FolderMenuExplorer"_s, false);
+            ini.setValue(u"Launcher/FolderMenuDesktop"_s, false);
+        }
+        ws::Settings none;
+        none.load();
+        QVERIFY(none.folderMenuDouble && none.folderMenuExplorer && none.folderMenuDesktop);
     }
 
     // The actions under the menu's lists (GitHub #200): all on as before, each

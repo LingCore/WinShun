@@ -1180,32 +1180,32 @@ void SettingsEditor::setFolderMenu(bool on)
 
 void SettingsEditor::setFolderMenuExplorer(bool on)
 {
-    if (m_settings.folderMenuExplorer == on)
-        return;
+    if (m_settings.folderMenuExplorer == on || (!on && !m_settings.folderMenuDesktop))
+        return; // the last one on stays on (#196)
     m_settings.folderMenuExplorer = on;
     commit();
 }
 
 void SettingsEditor::setFolderMenuDouble(bool on)
 {
-    if (m_settings.folderMenuDouble == on)
-        return;
+    if (m_settings.folderMenuDouble == on || (!on && !m_settings.folderMenuMiddle))
+        return; // the last one on stays on (#196)
     m_settings.folderMenuDouble = on;
     commit();
 }
 
 void SettingsEditor::setFolderMenuMiddle(bool on)
 {
-    if (m_settings.folderMenuMiddle == on)
-        return;
+    if (m_settings.folderMenuMiddle == on || (!on && !m_settings.folderMenuDouble))
+        return; // the last one on stays on (#196)
     m_settings.folderMenuMiddle = on;
     commit();
 }
 
 void SettingsEditor::setFolderMenuDesktop(bool on)
 {
-    if (m_settings.folderMenuDesktop == on)
-        return;
+    if (m_settings.folderMenuDesktop == on || (!on && !m_settings.folderMenuExplorer))
+        return; // the last one on stays on (#196)
     m_settings.folderMenuDesktop = on;
     commit();
 }

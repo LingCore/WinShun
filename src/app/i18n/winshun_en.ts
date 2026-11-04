@@ -6885,10 +6885,6 @@ Right: center window · Drag: move window</translation>
         <translation>Trigger method</translation>
     </message>
     <message>
-        <source>在文件夹或桌面的空白处</source>
-        <translation>On blank space in a folder or on the desktop</translation>
-    </message>
-    <message>
         <source>双击;左键;中键;鼠标;滚轮;空白;文件夹菜单;Listary;double-click;middle</source>
         <translation>double click;left;middle click;mouse;wheel;blank;folder menu;Listary</translation>
     </message>
@@ -6899,10 +6895,6 @@ Right: center window · Drag: move window</translation>
     <message>
         <source>触发位置</source>
         <translation>Trigger location</translation>
-    </message>
-    <message>
-        <source>菜单在这些地方弹出</source>
-        <translation>Where the menu appears</translation>
     </message>
     <message>
         <source>空白;文件夹菜单;资源管理器;桌面;位置;Listary</source>

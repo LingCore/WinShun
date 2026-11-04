@@ -2026,7 +2026,7 @@ Window {
                     id: folderMenuHowRow
                     sub: true
                     title: qsTr("触发方式")
-                    description: qsTr("在文件夹或桌面的空白处")
+                    description: qsTr("至少保留一项")
                     keywords: qsTr("双击;左键;中键;鼠标;滚轮;空白;文件夹菜单;Listary;double-click;middle").split(";")
 
                     ScopeTabs {
@@ -2050,7 +2050,7 @@ Window {
                     id: folderMenuWhereRow
                     sub: true
                     title: qsTr("触发位置")
-                    description: qsTr("菜单在这些地方弹出")
+                    description: qsTr("至少保留一项")
                     keywords: qsTr("空白;文件夹菜单;资源管理器;桌面;位置;Listary").split(";")
 
                     ScopeTabs {

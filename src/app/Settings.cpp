@@ -854,6 +854,10 @@ void Settings::load()
     folderMenuDesktop = readOrDefault(s, u"Launcher/FolderMenuDesktop"_s, d.folderMenuDesktop);
     folderMenuDouble = readOrDefault(s, u"Launcher/FolderMenuDouble"_s, d.folderMenuDouble);
     folderMenuMiddle = readOrDefault(s, u"Launcher/FolderMenuMiddle"_s, d.folderMenuMiddle);
+    if (!folderMenuDouble && !folderMenuMiddle) // no way left to open it: the double click back (#196)
+        folderMenuDouble = true;
+    if (!folderMenuExplorer && !folderMenuDesktop) // nowhere left: both back
+        folderMenuExplorer = folderMenuDesktop = true;
     folderMenuFavorites = readOrDefault(s, u"Launcher/FolderMenuFavorites"_s, d.folderMenuFavorites);
     folderMenuRecent = readOrDefault(s, u"Launcher/FolderMenuRecent"_s, d.folderMenuRecent);
     folderMenuWindows = readOrDefault(s, u"Launcher/FolderMenuWindows"_s, d.folderMenuWindows);
