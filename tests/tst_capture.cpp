@@ -394,20 +394,31 @@ private slots:
         QCOMPARE(nextZoom(1.05, -1), 1.0); // between steps (a corner drag): the next one that way
         QCOMPARE(nextZoom(1.05, 1), 1.1);
         QCOMPARE(nextZoom(1.0, 10), 2.0);
-        QCOMPARE(nextZoom(2.0, 1), 3.0); // past 200% the whole multiples
+        QCOMPARE(nextZoom(2.0, 1), 2.1); // #164: no jump to 300% after 200%
+        QCOMPARE(nextZoom(1.0, 20), 3.0);
         QCOMPARE(nextZoom(1.0, 100), 8.0);
         QCOMPARE(nextZoom(1.0, -100), 0.1);
         QCOMPARE(nextZoom(8.0, 1), 8.0);
         QCOMPARE(nextZoom(0.1, -1), 0.1);
-        QCOMPARE(nextZoom(1.0, 30, 2.5), 2.0); // the window budget stops it
-        QCOMPARE(nextZoom(2.0, 1, 2.5), 2.0);
-        // Every 10% from 10% to 200%, then crisp whole multiples.
+        QCOMPARE(nextZoom(1.0, 30, 2.55), 2.5); // the window budget stops it
+        QCOMPARE(nextZoom(2.5, 1, 2.55), 2.5);
+        // Smooth: sorted, no step more than 10% of the picture beyond 60% (the
+        // few under that are 5% of 100%), the crisp whole multiples and 100%
+        // among them, going up and down returns to the same step.
         const std::vector<double>& steps = zoomSteps();
-        for (int tenth = 1; tenth <= 20; ++tenth)
-            QCOMPARE(steps[std::size_t(tenth - 1)], tenth / 10.0);
-        for (double z : steps)
-            QVERIFY(z <= 2.0 || z == std::floor(z));
         QVERIFY(std::ranges::is_sorted(steps));
+        QCOMPARE(steps.front(), 0.1);
+        QCOMPARE(steps.back(), 8.0);
+        for (std::size_t i = 1; i < steps.size(); ++i) {
+            QVERIFY(steps[i] > steps[i - 1]);
+            if (steps[i - 1] >= 0.6)
+                QVERIFY2(steps[i] / steps[i - 1] <= 1.17, qPrintable(QString::number(steps[i - 1])));
+            QCOMPARE(nextZoom(steps[i - 1], 1), steps[i]);
+            QCOMPARE(nextZoom(steps[i], -1), steps[i - 1]);
+        }
+        for (const double whole : {1.0, 3.0, 4.0, 5.0, 6.0, 8.0})
+            QVERIFY(std::ranges::find(steps, whole) != steps.end());
+        QCOMPARE(nextZoom(nextZoom(1.0, 37), -37), 1.0); // up and down: exactly 100% again
     }
 
     void maxZoomKeepsTheWindowInBudget()

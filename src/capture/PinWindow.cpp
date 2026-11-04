@@ -2,6 +2,7 @@
 
 #include <QBuffer>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDebug>
 #include <QFont>
 #include <QGuiApplication>
@@ -21,6 +22,9 @@ namespace {
 
 const wchar_t* const kClassName = L"WinShun.Pin";
 constexpr UINT kEncoded = WM_APP + 1; // the PNG bytes of a collapsed pin are made (lParam: the job)
+constexpr UINT_PTR kHintTimer = 1;
+constexpr qint64 kHintHoldMs = 900; // the zoom stays this long after the last notch ...
+constexpr qint64 kHintFadeMs = 240; // ... then fades out in this
 
 void registerClass()
 {
@@ -241,7 +245,59 @@ void PinWindow::render()
     }
     if (m_text != Text::Off)
         drawTextLayer(canvas, picture);
+    if (m_hintAlpha > 0 && m_form == PinForm::Full)
+        drawHint(canvas, picture);
     paintBorder();
+}
+
+void PinWindow::drawHint(QImage& canvas, const QRect& picture)
+{
+    QFont font = QGuiApplication::font();
+    font.setPixelSize(static_cast<int>(std::lround(13 * dpr())));
+    const QFontMetrics metrics(font);
+    const int padX = static_cast<int>(std::lround(10 * dpr()));
+    const int padY = static_cast<int>(std::lround(4 * dpr()));
+    const int gap = static_cast<int>(std::lround(8 * dpr()));
+    const QSize size(metrics.horizontalAdvance(m_hint) + 2 * padX, metrics.height() + 2 * padY);
+    if (picture.width() < size.width() + 2 * gap || picture.height() < size.height() + 2 * gap)
+        return; // a pin smaller than its own label: none
+    // Upper left: the lower left is the text pick's.
+    const QRect pill(picture.left() + gap, picture.top() + gap, size.width(), size.height());
+    QPainter painter(&canvas);
+    painter.setOpacity(m_hintAlpha / 255.0);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(m_host.accent ? m_host.accent() : QColor(0x0F, 0x6C, 0xBD));
+    painter.drawRoundedRect(pill, 4 * dpr(), 4 * dpr());
+    painter.setFont(font);
+    painter.setPen(Qt::white);
+    painter.drawText(pill, Qt::AlignCenter, m_hint);
+}
+
+void PinWindow::showHint(const QString& text)
+{
+    if (!m_hwnd)
+        return;
+    m_hint = text;
+    m_hintSince = QDateTime::currentMSecsSinceEpoch();
+    m_hintAlpha = 255;
+    ::SetTimer(m_hwnd, kHintTimer, 40, nullptr); // restarts the count while it runs
+}
+
+void PinWindow::hintTick()
+{
+    const qint64 age = QDateTime::currentMSecsSinceEpoch() - m_hintSince;
+    if (age < kHintHoldMs)
+        return;
+    const int alpha = age >= kHintHoldMs + kHintFadeMs
+        ? 0
+        : static_cast<int>(255 * (kHintHoldMs + kHintFadeMs - age) / kHintFadeMs);
+    if (alpha <= 0)
+        ::KillTimer(m_hwnd, kHintTimer);
+    if (alpha != m_hintAlpha) {
+        m_hintAlpha = std::max(0, alpha);
+        render(); // at 0 the picture is as it was: at 100% its own pixels
+    }
 }
 
 void PinWindow::drawTextLayer(QImage& canvas, const QRect& picture)
@@ -328,10 +384,12 @@ void PinWindow::setZoom(double zoom, QPoint cursor)
     if (m_form != PinForm::Full)
         return;
     zoom = std::clamp(zoom, zoomSteps().front(), maxZoom(fullSize(), kZoomBudget));
-    if (std::abs(zoom - m_zoom) < 1e-9)
-        return;
-    m_origin = zoomAbout(m_origin, cursor, m_zoom, zoom);
-    m_zoom = zoom;
+    // The percent shows at the ends too, where the notch changes nothing.
+    showHint(QString::number(static_cast<int>(std::lround(zoom * 100))) + u'%');
+    if (std::abs(zoom - m_zoom) >= 1e-9) {
+        m_origin = zoomAbout(m_origin, cursor, m_zoom, zoom);
+        m_zoom = zoom;
+    }
     render();
 }
 
@@ -735,6 +793,10 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
         case PinDoubleClick::None: break;
         }
         return 0;
+    case WM_TIMER:
+        if (wParam == kHintTimer)
+            hintTick();
+        return 0;
     case WM_MOUSEWHEEL: {
         m_wheel += GET_WHEEL_DELTA_WPARAM(wParam);
         const int steps = m_wheel / WHEEL_DELTA;
@@ -743,7 +805,13 @@ LRESULT PinWindow::handle(UINT message, WPARAM wParam, LPARAM lParam)
             return 0;
         if (GET_KEYSTATE_WPARAM(wParam) & MK_CONTROL) {
             m_opacity = nextOpacity(m_opacity, steps);
-            present();
+            if (m_form == PinForm::Full) {
+                showHint(QCoreApplication::translate("ws::capture::PinWindow", "透明度 %1%")
+                             .arg(static_cast<int>(std::lround(m_opacity * 100))));
+                render();
+            } else {
+                present();
+            }
         } else if (m_form == PinForm::Full) {
             const QPoint cursor(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)); // screen, physical
             setZoom(nextZoom(m_zoom, steps, maxZoom(fullSize(), kZoomBudget)), cursor);

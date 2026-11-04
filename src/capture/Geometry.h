@@ -92,7 +92,9 @@ QString colorHex(QRgb color);
 // ---- pins (PinWindow): a picture left on the screen ---------------------------
 
 // The zoom steps the wheel and +/- go through (1.0 among them, so 100% is
-// always reached exactly): every 10% from 10% to 200%, then 3x to 8x.
+// always reached exactly): 5% apart up to 60%, 10% to 300%, 20% to 600%, 50%
+// to 800% - a notch never changes the size by much over a tenth, and every
+// whole multiple (3x, 4x, 5x, 6x, 8x) is a step.
 const std::vector<double>& zoomSteps();
 // The step `steps` notches from `zoom` (positive: larger), no further than
 // `maxZoom`. A zoom between two steps goes to the next one in that direction.

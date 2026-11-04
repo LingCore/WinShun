@@ -166,6 +166,9 @@ private:
     double shownZoom() const { return m_form == PinForm::Full ? m_zoom : 1.0; }
     QRect workArea() const; // of the monitor nearest to the picture
     void drawTextLayer(QImage& canvas, const QRect& picture);
+    void drawHint(QImage& canvas, const QRect& picture); // the zoom or opacity, a moment after it changes
+    void showHint(const QString& text); // (re)starts the moment
+    void hintTick(); // the moment's timer: fades the hint out
     void updatePicked(QPoint cursor);
     void finishEncode(const EncodeJob* job);
     QPoint toImage(QPoint screen) const; // a screen point in the picture's pixels
@@ -190,6 +193,10 @@ private:
     bool m_dragging = false;
     QPoint m_grab; // the cursor less m_origin at the press
     int m_wheel = 0; // wheel delta not yet a whole notch (touchpads)
+    // "150%" in a pill on the picture for a moment after a zoom (#164).
+    QString m_hint;
+    qint64 m_hintSince = 0; // steady clock, ms
+    int m_hintAlpha = 0; // 0: not drawn
     // Dragging a corner: which, and the picture as it was at the press.
     Corner m_corner = Corner::None;
     QRect m_resizeStart;

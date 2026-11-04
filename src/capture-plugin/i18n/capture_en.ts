@@ -2235,6 +2235,10 @@ click here to cancel</translation>
         <source>识别文字中…</source>
         <translation>Reading text…</translation>
     </message>
+    <message>
+        <source>透明度 %1%</source>
+        <translation>Opacity %1%</translation>
+    </message>
 </context>
 <context>
     <name>ws::capture::Presenter</name>
