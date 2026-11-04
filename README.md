@@ -340,7 +340,8 @@ Listary、PowerToys 的“查找鼠标”默认也用双击 Ctrl，关掉其中�
 需要 Visual Studio 2022（“使用 C++ 的桌面开发”）、Qt 6.8 或更新版本（推荐 6.12，MSVC 2022 64 位套件）、CMake 3.25+ 和 Ninja。
 
 ```powershell
-./scripts/build.ps1                                # 编译 + 运行单元测试
+./scripts/build.ps1                                # 编译（不跑测试）
+./scripts/build.ps1 -Tests 'tst_capture'           # 编译 + 只跑指定的单元测试
 ./scripts/build.ps1 -QtDir C:\Qt\6.12.0\msvc2022_64 # 指定 Qt（默认用 QTDIR 或 C:\Qt 下最新的版本）
 ./scripts/build.ps1 -Deploy                        # 生成可分发的文件夹 dist\WinShun
 ./scripts/release.ps1                              # 打包安装程序和 SHA256SUMS.txt（需要 Inno Setup 6.5+）；加 -Publish 发布到 GitHub
@@ -556,7 +557,8 @@ Free and MIT-licensed. It goes online only to check lcstp.com for new versions (
 Needs Visual Studio 2022 (Desktop development with C++), Qt 6.8 or later (6.12 recommended, MSVC 2022 64-bit kit), CMake 3.25+ and Ninja.
 
 ```powershell
-./scripts/build.ps1                                # build and run the unit tests
+./scripts/build.ps1                                # build (no tests)
+./scripts/build.ps1 -Tests 'tst_capture'           # build and run only the named unit tests
 ./scripts/build.ps1 -QtDir C:\Qt\6.12.0\msvc2022_64 # pick a Qt kit (default: QTDIR or the newest under C:\Qt)
 ./scripts/build.ps1 -Deploy                        # make the distributable folder dist\WinShun
 ./scripts/release.ps1                              # package the installer and SHA256SUMS.txt (needs Inno Setup 6.5+); -Publish makes the GitHub release

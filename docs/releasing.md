@@ -31,7 +31,9 @@
 
 构建目录中的程序也在运行时，可以同时指定 `-BuildDir 'F:\电脑便捷工具\build\release-isolated'`。构建、CTest、部署、可选插件与 OCR 打包都使用该目录，默认的 `build/release` 不受影响。`scripts/build.ps1` 同样支持 `-BuildDir`；部署前拒绝覆盖源码、构建目录、含 `data` 的目录和运行中的 Win顺。
 
-脚本构建并运行 CTest，再生成标准安装包、便携包、完整离线安装包、独立增强 OCR 组件 ZIP 及 `SHA256SUMS.txt`。输出目录内运行着 Win顺，或部署目录含 `data` 时应换一个新目录。不要删除用户数据以绕过保护。
+测试只按需跑：不跑全部 CTest，发布也一样。用 `-Tests` 传本次改动涉及的测试（ctest `-R` 正则，例如 `-Tests 'tst_capture|tst_clipimage'`）；不传就不跑测试。新功能和修复照常做实际验证。
+
+脚本构建（传了 `-Tests` 就跑这几个测试），再生成标准安装包、便携包、完整离线安装包、独立增强 OCR 组件 ZIP 及 `SHA256SUMS.txt`。输出目录内运行着 Win顺，或部署目录含 `data` 时应换一个新目录。不要删除用户数据以绕过保护。
 
 构建依赖与应用内公开 GitHub 文件的默认镜像统一维护在 `resources/downloads/github-mirrors.txt`；修改后重新配置并构建。`cmake/Download.cmake` 优先镜像、再原站，每个响应都按固定 SHA256 检查，失败不使用半个文件；下载回归包含本地故障注入，公网验证需显式开启 `WINSHUN_UPDATE_LIVE=1`，不会运行安装程序。见 [镜像审计记录](download-mirrors-audit.md)。
 

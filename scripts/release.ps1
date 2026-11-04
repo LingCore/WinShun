@@ -23,7 +23,8 @@ param(
     [string] $QtDir = $env:QTDIR,
     [string] $Iscc = $env:ISCC, # Inno Setup's compiler; found under the usual places otherwise
     [string] $OutputDir, # optional isolated deployment and package directory
-    [string] $BuildDir # optional isolated CMake binary directory
+    [string] $BuildDir, # optional isolated CMake binary directory
+    [string] $Tests # ctest -R regex of the tests this release's changes touch; none run otherwise
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -58,6 +59,7 @@ if (-not $Iscc -or -not (Test-Path $Iscc)) { throw 'Inno Setup 6.5 or later is n
 
 $buildArgs = @{ DeployDir = $deployment }
 if ($BuildDir) { $buildArgs.BuildDir = $binary }
+if ($Tests) { $buildArgs.Tests = $Tests }
 if ($PSBoundParameters.ContainsKey('QtDir')) { $buildArgs.QtDir = $QtDir } # else build.ps1 looks at QTDIR itself
 & (Join-Path $PSScriptRoot 'build.ps1') @buildArgs
 

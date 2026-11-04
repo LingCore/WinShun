@@ -3,7 +3,8 @@
     Configure, build, test and (optionally) package WinShun.
 
 .EXAMPLE
-    ./scripts/build.ps1                      # Release build + tests
+    ./scripts/build.ps1                      # Release build, no tests
+    ./scripts/build.ps1 -Tests 'tst_capture' # and the tests this change touches
     ./scripts/build.ps1 -Config Debug
     ./scripts/build.ps1 -Deploy              # also produce dist/WinShun with all Qt DLLs
     ./scripts/build.ps1 -DeployDir F:\wsstage\WinShun   # the same, into that folder (dist\WinShun untouched)
@@ -18,7 +19,9 @@ param(
     # copy to compare with, or test from, while the deployed one is running.
     [string] $DeployDir,
     [string] $BuildDir, # optional isolated CMake binary directory; defaults to build/<config>
-    [switch] $SkipTests,
+    # Only the tests a change touches, as a ctest -R regex ('tst_capture|tst_clipimage');
+    # none run without it, a release included.
+    [string] $Tests,
     [switch] $IncludeOcr # full offline deployment; the standard package downloads enhanced OCR on demand
 )
 $ErrorActionPreference = 'Stop'
@@ -78,8 +81,8 @@ try {
     if ($LASTEXITCODE) { throw 'configure failed' }
     cmake --build $binary --config $Config
     if ($LASTEXITCODE) { throw 'build failed' }
-    if (-not $SkipTests) {
-        ctest --test-dir $binary -C $Config --output-on-failure
+    if ($Tests) {
+        ctest --test-dir $binary -C $Config --output-on-failure -R $Tests
         if ($LASTEXITCODE) { throw 'tests failed' }
     }
     if ($Deploy) {
