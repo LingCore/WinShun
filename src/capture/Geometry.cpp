@@ -295,14 +295,18 @@ QString colorHex(QRgb color)
 
 const std::vector<double>& zoomSteps()
 {
-    // Tenths from 10% to 200% (a notch is 10%), then the whole multiples
-    // (3x … 8x: each pixel a crisp square).
+    // A notch never grows or shrinks the picture by much more than a tenth
+    // (#164: 200% to 300% in one notch felt like a jump). In percent: 5 up to
+    // 60, 10 up to 300, 20 up to 600, 50 up to 800 - every whole multiple
+    // (3x … 8x: each pixel a crisp square) and 100% are on the way. Built
+    // from whole percents, so 100% is exactly 1.0.
     static const std::vector<double> steps = [] {
         std::vector<double> all;
-        for (int tenth = 1; tenth <= 20; ++tenth)
-            all.push_back(tenth / 10.0);
-        for (const double whole : {3.0, 4.0, 5.0, 6.0, 8.0})
-            all.push_back(whole);
+        int percent = 10;
+        while (percent <= 800) {
+            all.push_back(percent / 100.0);
+            percent += percent < 60 ? 5 : percent < 300 ? 10 : percent < 600 ? 20 : 50;
+        }
         return all;
     }();
     return steps;
