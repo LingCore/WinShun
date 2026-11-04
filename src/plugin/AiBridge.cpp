@@ -325,6 +325,7 @@ void AiBridge::onActionDone(std::uint64_t requestId, const QString& pluginId, co
             break;
         case Effect::Kind::Copy: kinds.push_back(u"copy: "_s + e.text); break;
         case Effect::Kind::Open: kinds.push_back(u"open: "_s + e.open.target); break;
+        case Effect::Kind::Reveal: kinds.push_back(u"reveal: "_s + e.open.target); break;
         case Effect::Kind::Replace: kinds.push_back(u"replace: %1 rows"_s.arg(e.items.size())); break;
         }
     }

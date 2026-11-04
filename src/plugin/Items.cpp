@@ -270,6 +270,12 @@ Effects parseEffects(const QJsonValue& value)
             effect.open = parseOpen(o);
             if (effect.open.kind == Open::Kind::None)
                 continue;
+        } else if (type == u"reveal") {
+            effect.kind = Effect::Kind::Reveal;
+            effect.open.kind = Open::Kind::Path;
+            effect.open.target = o.value(u"path"_s).toString();
+            if (effect.open.target.isEmpty())
+                continue;
         } else if (type == u"replace") {
             effect.kind = Effect::Kind::Replace;
             effect.items = parseResult(o.value(u"items"_s)).items;

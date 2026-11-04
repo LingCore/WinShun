@@ -4407,6 +4407,27 @@ private slots:
         QVERIFY(toastClick(asked, {}, false).size() == 1); // no keyword check: no setQuery
     }
 
+    // #194: reveal selects a local file; with it first, the open after it (the
+    // stand-in for older hosts) is dropped, a click going to one place.
+    void toastClickReveals()
+    {
+        const Effects parsed = parseEffects(QJsonDocument::fromJson(
+            R"([{"type":"reveal","path":"C:/shots/a.png"},{"type":"open","path":"C:/shots"},{"type":"reveal"}])").array());
+        QCOMPARE(parsed.size(), 2);
+        QCOMPARE(parsed[0].kind, Effect::Kind::Reveal);
+        QCOMPARE(parsed[0].open.target, u"C:/shots/a.png"_s);
+        Effects kept = toastClick(parsed, {}, false);
+        QCOMPARE(kept.size(), 1);
+        QCOMPARE(kept[0].kind, Effect::Kind::Reveal);
+        Effect share;
+        share.kind = Effect::Kind::Reveal;
+        share.open.kind = Open::Kind::Path;
+        share.open.target = u"\\\\nas\\d\\a.png"_s;
+        kept = toastClick({share, parsed[1]}, {}, false);
+        QCOMPARE(kept.size(), 1); // not a share: the open stays
+        QCOMPARE(kept[0].kind, Effect::Kind::Open);
+    }
+
     void toastsNeedThePermission()
     {
         Fixture f;
