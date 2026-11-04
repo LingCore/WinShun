@@ -21,7 +21,9 @@
 #include <atomic>
 #include <climits>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <mutex>
 #include <utility>
 #include <vector>
@@ -62,6 +64,8 @@ constexpr wchar_t kOwnFrameProp[] = L"WinShun.OwnFrame";
 constexpr UINT_PTR kOwnFrameSubclass = 0x4F46;
 constexpr UINT_PTR kShadowTimer = 1;
 constexpr UINT_PTR kPictureTimer = 2; // the shadow's picture let go
+// setCornersClickThrough's wish: 0 none, else 1 + its side edge in 64ths of a logical px.
+constexpr wchar_t kCornersProp[] = L"WinShun.CornersClickThrough";
 // The most a style's shadow gets (logical px, layers): a typo must not make
 // a picture of hundreds of MB, drawn again at every resize.
 constexpr double kMaxShadowReach = 64;
@@ -121,6 +125,11 @@ struct OwnFrameState {
     int pictureStride = 0; // px
     int pictureRows = 0;
     int cleanRight = 0, cleanBottom = 0; // composeShadow's: the inside that is 0
+    // The window region it has from us (setCornersClickThrough), and its size.
+    bool hasRegion = false;
+    bool settingRegion = false;
+    int regionWidth = 0, regionHeight = 0, regionSide = 0;
+    double regionRadius = 0; // physical px
     POINT placed {LONG_MIN, LONG_MIN};
     bool shown = false;
     // The window's opacity (QWindow::opacity, the launcher's fade): the
@@ -147,6 +156,7 @@ struct OwnFrameState {
     bool draw(int width, int height, double dpr, POINT at);
     bool makePicture(int width, int height);
     void freePicture();
+    void syncRegion();
     void destroyShadow();
     void forgetShadow(); // none now: made again when it is to show
     BYTE windowAlpha() const
@@ -691,6 +701,53 @@ int shadowMargin(const std::vector<ShadowLayer>& physical)
     return int(std::ceil(reach)) + 2;
 }
 
+// A window's rounded shape as a region (window px), and strips `side` px
+// wide along its left and right edges. A pixel is in it when the shape grown
+// by 1 px (its antialiased edge, whatever draws it) reaches into it: the
+// region clips nothing that shows.
+HRGN frameRegion(int width, int height, double radius, int side)
+{
+    const double grown = radius + 1;
+    const int cornerRows = std::min(int(std::ceil(radius)), height / 2);
+    // The first pixel in, in a corner's row: k rows from the top (or bottom).
+    const auto inset = [&](int k) {
+        const double dy = std::max(0.0, radius - (k + 1));
+        const double reach = std::sqrt(std::max(0.0, grown * grown - dy * dy));
+        return std::clamp(int(std::floor(radius - 1 - reach)) + 1, 0, width / 2);
+    };
+    std::vector<RECT> rects;
+    const auto band = [&](int top, int bottom, int in) {
+        if (in <= side) {
+            rects.push_back({0, top, width, bottom});
+            return;
+        }
+        if (side > 0)
+            rects.push_back({0, top, side, bottom});
+        if (in < width - in)
+            rects.push_back({in, top, width - in, bottom});
+        if (side > 0)
+            rects.push_back({width - side, top, width, bottom});
+    };
+    // Rows with the same inset as one band, top to bottom.
+    const auto rowInset = [&](int y) {
+        return y < cornerRows ? inset(y) : y >= height - cornerRows ? inset(height - 1 - y) : 0;
+    };
+    for (int y = 0; y < height;) {
+        const int in = rowInset(y);
+        int end = y + 1;
+        while (end < height && rowInset(end) == in)
+            ++end;
+        band(y, end, in);
+        y = end;
+    }
+    std::vector<std::byte> data(sizeof(RGNDATAHEADER) + rects.size() * sizeof(RECT));
+    auto* region = reinterpret_cast<RGNDATA*>(data.data());
+    region->rdh = {sizeof(RGNDATAHEADER), RDH_RECTANGLES, DWORD(rects.size()), DWORD(rects.size() * sizeof(RECT)),
+        {0, 0, width, height}};
+    std::memcpy(region->Buffer, rects.data(), rects.size() * sizeof(RECT));
+    return ::ExtCreateRegion(nullptr, DWORD(data.size()), region);
+}
+
 bool isCloaked(HWND window)
 {
     DWORD cloaked = 0;
@@ -813,6 +870,7 @@ LRESULT CALLBACK ownFrameProc(HWND window, UINT message, WPARAM wParam, LPARAM l
     if (message == WM_NCDESTROY) {
         ::RemoveWindowSubclass(window, ownFrameProc, id);
         ::RemovePropW(window, kOwnFrameProp);
+        ::RemovePropW(window, kCornersProp);
         state->destroyShadow();
         state->on = false;
         state->gone = true;
@@ -854,11 +912,14 @@ LRESULT CALLBACK ownFrameProc(HWND window, UINT message, WPARAM wParam, LPARAM l
         break;
     case WM_WINDOWPOSCHANGED:
         // Before Qt's handling (a resize renders): with the window as DWM moves it.
+        if (!(reinterpret_cast<const WINDOWPOS*>(lParam)->flags & SWP_NOSIZE))
+            state->syncRegion();
         state->sync(reinterpret_cast<const WINDOWPOS*>(lParam));
         break;
     case WM_DPICHANGED: {
         const LRESULT result = ::DefSubclassProc(window, message, wParam, lParam); // Qt's new scale, and size
         state->stale = true;
+        state->syncRegion();
         state->sync();
         return result;
     }
@@ -904,6 +965,7 @@ void OwnFrameState::turnOn()
 void OwnFrameState::turnOff()
 {
     on = false; // first: applyWindowCorners applies again
+    syncRegion(); // none
     destroyShadow();
     ::DwmSetWindowAttribute(window, kNcRenderingPolicy, &kNcUseWindowStyle, sizeof kNcUseWindowStyle);
     // As styleFramelessWindow left it, or as Windows made it (OwnFrame in a
@@ -1151,6 +1213,45 @@ void OwnFrameState::freePicture()
     cleanRight = cleanBottom = 0;
 }
 
+void OwnFrameState::syncRegion()
+{
+    // SetWindowRgn moves the window (WM_WINDOWPOSCHANGED, here again).
+    if (settingRegion || ::IsIconic(window))
+        return; // iconic: as it was, back with its size
+    settingRegion = true;
+    const auto done = qScopeGuard([this] { settingRegion = false; });
+    const auto wish = reinterpret_cast<INT_PTR>(::GetPropW(window, kCornersProp));
+    RECT rect {};
+    const bool wanted = on && !gone && wish > 0 && radius > 0 && !::IsZoomed(window) && ::GetWindowRect(window, &rect)
+        && !fillsMonitor(window, rect);
+    if (!wanted) {
+        if (hasRegion && ::SetWindowRgn(window, nullptr, FALSE))
+            hasRegion = false;
+        return;
+    }
+    const int width = rect.right - rect.left;
+    const int height = rect.bottom - rect.top;
+    const double dpr = qwindow ? qwindow->devicePixelRatio() : ::GetDpiForWindow(window) / 96.0;
+    const double shape = std::clamp(radius * dpr, 0.0, std::min(width, height) / 2.0);
+    const double sideEdge = (wish - 1) / 64.0;
+    // As WindowFrame's hit testing has it (kSideEdge).
+    const int side = sideEdge > 0 ? std::max(2, int(std::lround(sideEdge * dpr))) : 0;
+    if (hasRegion && width == regionWidth && height == regionHeight && shape == regionRadius && side == regionSide)
+        return;
+    const HRGN region = frameRegion(width, height, shape, side);
+    if (!region)
+        return;
+    if (!::SetWindowRgn(window, region, FALSE)) { // the system's from here on, once set
+        ::DeleteObject(region);
+        return;
+    }
+    hasRegion = true;
+    regionWidth = width;
+    regionHeight = height;
+    regionRadius = shape;
+    regionSide = side;
+}
+
 } // namespace
 
 bool setOwnFrame(QWindow* window, bool on, qreal radius, const QVariantList& shadow)
@@ -1202,6 +1303,7 @@ bool setOwnFrame(QWindow* window, bool on, qreal radius, const QVariantList& sha
     state->stale = true;
     if (!state->on)
         state->turnOn();
+    state->syncRegion();
     state->sync();
     return true;
 }
@@ -1217,6 +1319,19 @@ void updateOwnFrame(HWND window)
         state->sync();
 }
 
+void setCornersClickThrough(HWND window, bool on, qreal sideEdge)
+{
+    if (!window)
+        return;
+    if (on)
+        ::SetPropW(window, kCornersProp,
+            reinterpret_cast<HANDLE>(INT_PTR(1 + std::lround(std::clamp(sideEdge, qreal(0), qreal(1000)) * 64))));
+    else
+        ::RemovePropW(window, kCornersProp);
+    if (OwnFrameState* state = ownFrameOf(window))
+        state->syncRegion();
+}
+
 void setOwnFrameOpacity(HWND window, qreal opacity)
 {
     OwnFrameState* state = ownFrameOf(window);
@@ -1228,6 +1343,22 @@ void setOwnFrameOpacity(HWND window, qreal opacity)
     BLENDFUNCTION blend {AC_SRC_OVER, 0, now, AC_SRC_ALPHA};
     if (::UpdateLayeredWindow(state->shadow, nullptr, nullptr, nullptr, nullptr, nullptr, 0, &blend, ULW_ALPHA))
         state->alpha = now;
+}
+
+bool outsideOwnFrame(HWND window, int x, int y)
+{
+    const OwnFrameState* state = ownFrameOf(window);
+    RECT rect {};
+    if (!state || !state->on || ::IsZoomed(window) || !::GetWindowRect(window, &rect))
+        return false;
+    const int width = rect.right - rect.left;
+    const int height = rect.bottom - rect.top;
+    const double dpr = state->qwindow ? state->qwindow->devicePixelRatio() : ::GetDpiForWindow(window) / 96.0;
+    const double radius = std::clamp(state->radius * dpr, 0.0, std::min(width, height) / 2.0);
+    // The pixel's centre, past the corner's centre on both sides.
+    const double qx = std::max(radius - (x + 0.5), (x + 0.5) - (width - radius));
+    const double qy = std::max(radius - (y + 0.5), (y + 0.5) - (height - radius));
+    return qx > 0 && qy > 0 && std::hypot(qx, qy) > radius;
 }
 
 Front bringToFront(QWindow* window, ShellFlyout flyout)

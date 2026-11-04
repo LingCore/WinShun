@@ -176,7 +176,7 @@ public:
     // sideDoubleClicked. No sizing frame (WS_THICKFRAME): with one, Windows
     // would snap the window when it is dragged by its header to a screen's
     // edge. Not while it is resizable (the panel's edges are the system's).
-    void setSideSizing(bool on) { m_sideSizing = on; }
+    void setSideSizing(bool on);
 
     QPointF pointer() const { return m_pointer; }
     bool maximizeHovered() const { return m_maximizeHovered; }
@@ -204,6 +204,7 @@ private:
     int hitTest(int screenX, int screenY) const; // HT* code
     bool sidesOnly() const { return m_sideSizing && !m_resizable && !m_ownFrame; } // see setSideSizing
     bool onHandle(int screenX, int screenY) const; // a handle under that point (see addHandle)
+    void updateCorners(); // win::setCornersClickThrough as it resizes now
     QPointF toWindow(int screenX, int screenY) const; // logical pixels
     void setPointer(QPointF pointer);
     void setMaximizeState(bool hovered, bool pressed);
