@@ -358,6 +358,7 @@ item 可选提供 `modified`、`created`（带时区的 ISO 8601 字符串或 Un
 - 两个都给时先用 `file`，`file` 不合格再用 `text`。都没有、回答出错（包括 SDK 回的“方法不存在”）或超过 `timeoutMs` 没回答时，窗格写“无法获取详情”，界面不等它；再选中这一行、或列表换了新结果时重问。
 - 节奏：键盘停下 120 毫秒才问；一次只有一个请求在路上，答完再问最新选中的那一行，过时的回答不会顶掉当前行（它留着备用）。回答按插件、item 和文字记在内存里（合计约 16 MB）。插件没在运行时不会为此启动它，直接显示“无法获取详情”。
 - 只认常驻插件；一次性和零代码插件的 `details` 忽略。同时有 `open.path` 和 `"details": true` 的行，以 `details` 为准。窗格里点“打开”或双击匹配行，等于在这一行按 Enter。摘要另外写“插件结果（不是文件，不计入报告）：N”。
+- 内容检索提供者（`contentSearch`）的结果原本只保留有 `open.path` 的行；声明了 `"details": true` 的行在“内容”里也保留（排序、去重照旧），别的没有文件的行（设置提示之类）仍不显示。
 - 不要新权限：Win顺 只读插件自己数据文件夹里的文件，显示给用户，不交给别的程序。
 - 兼容：宿主会发 `details` 时，`initialize` 的 `capabilities.details` 是 true。旧版 Win顺 不认识 `details` 字段，照常显示这一行，不会来问，不用为它写 `minWinShun`。
 - SDK：Python `item(..., details=True)`，`serve(on_query, on_details=…)`，`on_details(item, text, plugin)` 返回 `{"text": …}`、`{"file": …}` 或一个字符串（就是文字）；PowerShell `New-WinShunItem -Details`，`Start-WinShunPlugin -OnDetails { param($d, $plugin) … }`（`$d.item`、`$d.text`），返回值同上。

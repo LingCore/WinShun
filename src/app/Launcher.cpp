@@ -2211,7 +2211,10 @@ void Launcher::syncContentPane()
                 current = {row->path, file};
         }
     }
-    const QString words = m_contentScope.words.isEmpty() ? splitContentQuery(searchText()).words : m_contentScope.words;
+    // A plugin's keyword list: its words (as its details request has them,
+    // GitHub #202), not those of the content search before it.
+    const QString words = m_keyword ? m_keyword->words
+        : m_contentScope.words.isEmpty() ? splitContentQuery(searchText()).words : m_contentScope.words;
     m_contentPane->setContentIndexEnabled(m_contentIndex);
     m_contentPane->update(contentRequest(), words, searchText() + u'\n' + panelKey() + u'\n' + pickKey(m_contentPick)
             + u'\n' + m_contentFolder, std::move(rows), stale() ? SearchResults{} : paneFiles(m_results.selection()), current,

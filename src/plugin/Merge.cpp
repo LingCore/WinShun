@@ -1,5 +1,7 @@
 #include "Merge.h"
 
+#include "Details.h"
+
 #include <QSet>
 
 #include <algorithm>
@@ -170,7 +172,8 @@ void Merge::namesShown()
 }
 
 // A content provider's complete answer with a row apply() keeps: one that
-// opens a file (it may still turn out a file already listed).
+// opens a file (it may still turn out a file already listed), or a resident
+// plugin's that tells what it is ("details", GitHub #202).
 bool Merge::answerHeld() const
 {
     return std::ranges::any_of(m_held, [this](const auto& held) {
@@ -179,8 +182,10 @@ bool Merge::answerHeld() const
             return false;
         const Entry* entry = m_catalog.find(batch.pluginId);
         const Command* command = entry && entry->manifest ? entry->manifest->command(batch.commandId) : nullptr;
-        return command && command->contentSearch
-            && std::ranges::any_of(batch.items, [](const Item& item) { return item.open.kind == Open::Kind::Path; });
+        const bool resident = entry && entry->manifest && entry->manifest->resident();
+        return command && command->contentSearch && std::ranges::any_of(batch.items, [resident](const Item& item) {
+            return item.open.kind == Open::Kind::Path || (item.details && resident);
+        });
     });
 }
 
@@ -375,8 +380,12 @@ void Merge::apply(const Batch& batch)
     const bool content = command->contentSearch;
     if (content) {
         rows.removeIf([&](const SearchResult& row) {
-            if (!row.plugin || row.plugin->openKind != PluginRow::OpenKind::Path)
+            if (!row.plugin)
                 return true;
+            // A row that is no file stays when the plugin tells what it is
+            // (a mail: "details", GitHub #202); other such rows (setup hints) go.
+            if (row.plugin->openKind != PluginRow::OpenKind::Path)
+                return !asksDetails(*row.plugin);
             for (int i = 0; i < m_sink.count(); ++i) {
                 const SearchResult& other = m_sink.row(i);
                 if (!other.isPlugin() && other.path.compare(row.plugin->openTarget, Qt::CaseInsensitive) == 0)

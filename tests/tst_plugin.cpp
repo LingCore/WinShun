@@ -668,6 +668,60 @@ private slots:
         QVERIFY(!merge.answerHeld());
     }
 
+    // GitHub #202: in 内容, a provider's row with no file stays when it says
+    // "details" (a mail), and holds the answer as a file's row does; one
+    // with neither still goes. A once plugin's "details" counts for nothing.
+    void contentProviderKeepsDetailsRows()
+    {
+        Fixture f;
+        Spec provider;
+        provider.id = u"test.mail"_s;
+        provider.commandExtra = {{u"contentSearch"_s, true}};
+        QVERIFY(!f.install(provider).isEmpty());
+        Spec once = provider;
+        once.id = u"test.oncemail"_s;
+        once.mode = u"once"_s;
+        once.role = u"--once"_s;
+        once.keywords = {u"om"_s};
+        QVERIFY(!f.install(once).isEmpty());
+        const Catalog& catalog = f.host->catalog();
+        const QString command = catalog.find(provider.id)->manifest->commands.first().id;
+        Item mail;
+        mail.id = u"m1"_s;
+        mail.title = u"Invoice 发票"_s;
+        mail.details = true;
+        Item hint;
+        hint.id = u"h"_s;
+        hint.title = u"setup hint"_s;
+        Item file;
+        file.id = u"f"_s;
+        file.title = u"a.png"_s;
+        file.open.kind = Open::Kind::Path;
+        file.open.target = u"C:\\pics\\a.png"_s;
+
+        ListSink sink;
+        Merge merge(sink, catalog);
+        merge.begin(1, u"invoice"_s, {}, {}, true);
+        merge.results(1, provider.id, command, {mail, hint}, false, true);
+        QVERIFY(merge.answerHeld()); // the mail is something to show
+        merge.namesShown();
+        QCOMPARE(sink.names(), (QStringList {u"Invoice 发票"_s}));
+        QVERIFY(asksDetails(*sink.row(0).plugin));
+        QVERIFY(merge.contentRow(sink.row(0)));
+        merge.begin(2, u"invoice"_s, {}, {}, true);
+        merge.namesShown();
+        merge.results(2, provider.id, command, {file, mail, hint}, false, true);
+        QCOMPARE(sink.names(), (QStringList {u"Invoice 发票"_s, u"a.png"_s})); // the mail stays where it was
+
+        ListSink onceSink;
+        Merge onceMerge(onceSink, catalog);
+        onceMerge.begin(3, u"invoice"_s, {}, {}, true);
+        onceMerge.results(3, once.id, catalog.find(once.id)->manifest->commands.first().id, {mail}, false, true);
+        QVERIFY(!onceMerge.answerHeld());
+        onceMerge.namesShown();
+        QCOMPARE(onceSink.count(), 0);
+    }
+
     // 全部: a provider's first three rows are on the first screen, after the
     // first five name rows; the others stay last, below the native content.
     void contentProviderFirstRowsOnFirstScreen()
