@@ -122,6 +122,17 @@ extern "C" __declspec(dllexport) int winshunCaptureMain(const wchar_t* appDirNam
     const QString appDir = QString::fromWCharArray(appDirName);
     _setmaxstdio(8192); // FreeType's font faces, one C runtime stream each (main.cpp, raiseStreamLimit)
     ::SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
+    // High QoS, as TypeToSearch's hook thread: what the plugin does is asked
+    // for there and then (a hotkey, the tray menu), but with no window of its
+    // own in front Windows puts its threads at Low QoS. On a busy computer
+    // the settings window's first opening (0.85 s of the GUI thread) then
+    // waited 5 s ready to run, 4.7 s of it at Low QoS, showing 无响应
+    // (traced 2026-11-04). With every core kept busy it showed after 9–11 s,
+    // already 无响应; at High QoS after 1.2–2.8 s, answering. Idle, the
+    // plugin uses no CPU to speak of.
+    PROCESS_POWER_THROTTLING_STATE throttling {PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+        PROCESS_POWER_THROTTLING_EXECUTION_SPEED, 0};
+    ::SetProcessInformation(::GetCurrentProcess(), ProcessPowerThrottling, &throttling, sizeof throttling);
 
     // The host's initialize first: how Win顺 draws (its renderer, its look).
     QByteArray rest;
