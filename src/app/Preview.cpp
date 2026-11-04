@@ -25,6 +25,7 @@
 #include "ThumbnailProvider.h"
 #include "ClipThumbnailProvider.h"
 #include "Settings.h"
+#include "SettingsCommand.h"
 #include "SettingsEditor.h"
 #include "SystemTheme.h"
 #include "Switches.h"
@@ -5040,9 +5041,15 @@ int runResults(const QStringList& args)
         QCoreApplication::sendEvent(field, &event);
     };
     hints->setProperty("mode", u"always"_s);
+    const bool picked = args.contains(u"--picked"_s);
+    if (picked) { // rows 2 and 5 picked (Ctrl+click): the style's highlight on rows that are not current
+        const QString folder = u"F:\\项目资料\\2026\\客户项目\\工程设计与交付文档\\机械设备\\最终确认版本\\"_s;
+        results.setSelection({folder + u"图纸"_s, folder + u"资料"_s});
+        pump(600); // past any fade
+    }
     pump(150);
     grab(u"always"_s);
-    if (!baseline.isEmpty())
+    if (!baseline.isEmpty() || picked)
         return finish(window, saved);
     hints->setProperty("mode", u"held"_s);
     pump(100);
@@ -7174,6 +7181,84 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
     return passed;
 }
 
+// --probe-runtime <folder> --live: the production App on the real desktop, at
+// the screen's own scale, beside the Win顺 that runs (this one never took the
+// instance mutex), until <folder>\stop appears. Lines in <folder>\cmd.txt
+// (taken and deleted as they come) open its windows for a look at them:
+//   show [text] | hide | clip | settings [place] | style <fluent|brand|tactile>
+//   | theme <light|dark|system> | windows (their places into windows.json)
+// Each batch done is counted in <folder>\ack.txt.
+int runLive(App& app, const QDir& out)
+{
+    // A second start of the user's own copy (Explorer's verbs, --query) finds
+    // the first message window in z order: never this one.
+    for (HWND candidate = nullptr; (candidate = ::FindWindowExW(nullptr, candidate, L"WinShun.MessageWindow", nullptr));) {
+        DWORD pid = 0;
+        ::GetWindowThreadProcessId(candidate, &pid);
+        if (pid == ::GetCurrentProcessId())
+            ::SetWindowPos(candidate, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
+    const auto editor = [&app]() -> SettingsEditor* {
+        for (QWindow* window : QGuiApplication::allWindows()) {
+            if (auto* found = window->property("editor").value<SettingsEditor*>())
+                return found;
+        }
+        app.handleCommand(settingscommand::make({})); // made once, then kept
+        pump(300);
+        for (QWindow* window : QGuiApplication::allWindows()) {
+            if (auto* found = window->property("editor").value<SettingsEditor*>())
+                return found;
+        }
+        return nullptr;
+    };
+    int batches = 0;
+    while (!QFile::exists(out.filePath(u"stop"_s))) {
+        pump(100);
+        QFile commands(out.filePath(u"cmd.txt"_s));
+        if (!commands.exists() || !commands.open(QIODevice::ReadOnly))
+            continue;
+        const QStringList lines = QString::fromUtf8(commands.readAll()).split(u'\n', Qt::SkipEmptyParts);
+        commands.close();
+        commands.remove();
+        for (const QString& raw : lines) {
+            const QString line = raw.trimmed();
+            const QString verb = line.section(u' ', 0, 0);
+            const QString rest = line.section(u' ', 1);
+            if (verb == u"show")
+                app.showLauncher(rest);
+            else if (verb == u"hide")
+                app.hideLauncher();
+            else if (verb == u"clip")
+                app.showClipboard();
+            else if (verb == u"settings")
+                app.handleCommand(settingscommand::make(rest));
+            else if (verb == u"style" || verb == u"theme") {
+                if (SettingsEditor* found = editor())
+                    found->setProperty(verb == u"style" ? "uiStyle" : "theme", rest);
+            } else if (verb == u"windows") {
+                QJsonArray list;
+                for (QWindow* window : QGuiApplication::topLevelWindows()) {
+                    if (!window->isVisible())
+                        continue;
+                    const QRect r = window->geometry();
+                    list.append(QJsonObject {{u"title"_s, window->title()}, {u"object"_s, window->objectName()},
+                        {u"class"_s, QString::fromLatin1(window->metaObject()->className())},
+                        {u"hwnd"_s, QString::number(window->winId())}, {u"dpr"_s, window->devicePixelRatio()},
+                        {u"x"_s, r.x()}, {u"y"_s, r.y()}, {u"w"_s, r.width()}, {u"h"_s, r.height()}});
+                }
+                QFile json(out.filePath(u"windows.json"_s));
+                if (json.open(QIODevice::WriteOnly))
+                    json.write(QJsonDocument(list).toJson());
+            }
+            pump(50);
+        }
+        QFile ack(out.filePath(u"ack.txt"_s));
+        if (ack.open(QIODevice::WriteOnly))
+            ack.write(QByteArray::number(++batches));
+    }
+    return 0;
+}
+
 int runRuntime(const QStringList& args)
 {
     const QDir out(valueAfter(args, kRuntimeFlag));
@@ -7314,12 +7399,19 @@ int runRuntime(const QStringList& args)
         settings.webShortcuts[0].suggest = valueAfter(args, u"--web-suggest-url");
         settings.webSuggestions = !settings.webShortcuts[0].suggest.isEmpty();
     }
+    const bool live = args.contains(u"--live"_s);
+    if (live)
+        settings.clipboard = true; // its window to look at; the history below, nothing of the user's shown
     settings.save(); // prepared profiles normally skip onboarding
-    if (args.contains(u"--clipboard-display-probe"_s) || args.contains(u"--clipboard-display-service-probe"_s)) {
+    if (args.contains(u"--clipboard-display-probe"_s) || args.contains(u"--clipboard-display-service-probe"_s) || live) {
         ClipStore store(Settings::dataDir() + u"/clipboard"_s);
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
         if (!store.open(now)) return 4;
-        for (const QString& text : {u"alpha clipboard display fixture"_s, u"beta clipboard display fixture"_s}) {
+        const QStringList texts = live
+            ? QStringList {u"会议纪要：下周三前提交验收报告"_s, u"https://example.com/docs/winshun"_s, u"F:\\项目资料\\2026\\验收报告.pdf"_s,
+                  u"SELECT name, size FROM files WHERE size > 1048576;"_s, u"alpha clipboard display fixture"_s, u"beta clipboard display fixture"_s}
+            : QStringList {u"alpha clipboard display fixture"_s, u"beta clipboard display fixture"_s};
+        for (const QString& text : texts) {
             ClipCapture clip;
             clip.text = text;
             clip.source = u"Display probe"_s;
@@ -7382,6 +7474,11 @@ int runRuntime(const QStringList& args)
         if (!app.start({.background = true, .clipboardDisplayProbe = args.contains(u"--clipboard-display-probe"_s),
                 .settingsProbe = args.contains(u"--settings-reopen-check"_s)}))
             return 4;
+        if (args.contains(u"--live"_s)) {
+            const int code = runLive(app, out);
+            QDir(Settings::profile()).removeRecursively();
+            return code;
+        }
         if (args.contains(u"--capture-hotkey-probe"_s) && !probeCaptureHotkeys(app, args, out, report)) {
             QFile failed(out.filePath(u"capture-hotkey-failed.json"_s));
             if (failed.open(QIODevice::WriteOnly)) failed.write(QJsonDocument(report).toJson());
@@ -7632,9 +7729,12 @@ void prepare(const QStringList& args)
     }
     QFile::remove(g_logPath);
     say(u"preparing"_s);
-    // The scale asked for, exactly: not on top of the screen's own.
-    qputenv("QT_ENABLE_HIGHDPI_SCALING", "0");
-    qputenv("QT_SCALE_FACTOR", valueAfter(args, u"--scale", u"1"_s).toLatin1());
+    // The scale asked for, exactly: not on top of the screen's own. A live
+    // runtime probe without --scale keeps the screen's, as the app does.
+    if (!(args.contains(kRuntimeFlag) && args.contains(u"--live"_s) && !args.contains(u"--scale"_s))) {
+        qputenv("QT_ENABLE_HIGHDPI_SCALING", "0");
+        qputenv("QT_SCALE_FACTOR", valueAfter(args, u"--scale", u"1"_s).toLatin1());
+    }
     const bool webForm = args.contains(u"--web-form"_s);
     // --renderer d3d11: the window as the desktop shows it (for counting edge pixels), not the software renderer's.
     const bool nativeWeb = (webForm || args.contains(QString(kSettingsFlag)) || args.contains(kAiCardsFlag) || args.contains(kRuntimeFlag))
