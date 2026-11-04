@@ -600,6 +600,7 @@ struct Item {
     Json open; // {"path": …} or {"url": …}
     std::vector<Action> actions;
     bool valid = true;
+    bool details = false; // no file to show: the content pane and the preview ask details() (GitHub #202)
     Json data;
     Json modified; // ISO 8601 with time zone or Unix seconds; optional
     Json created;
@@ -624,6 +625,7 @@ struct Item {
     Item& withSize(long long bytes) { size = bytes; return *this; }
     Item& withActions(std::vector<Action> a) { actions = std::move(a); return *this; }
     Item& invalid() { valid = false; return *this; }
+    Item& withDetails() { details = true; return *this; }
 
     Json toJson() const
     {
@@ -657,6 +659,8 @@ struct Item {
         }
         if (!valid)
             o["valid"] = false;
+        if (details)
+            o["details"] = true;
         if (!data.isNull())
             o["data"] = data;
         return Json(std::move(o));
@@ -933,6 +937,16 @@ protected:
         return {effect::copy(text), effect::notify(chinese() ? "已复制" : "Copied"), effect::hide()};
     }
     virtual void settingsChanged(const Json& settings) { (void)settings; }
+    // An item made withDetails() shown in the content pane or the preview
+    // (GitHub #202): Json::Object {{"text", …}} or {{"file", a file in
+    // dataDir()}}. Without it (nullopt): "method not found", and the pane
+    // says the details could not be had.
+    virtual std::optional<Json> details(const Json& item, const std::string& text)
+    {
+        (void)item;
+        (void)text;
+        return std::nullopt;
+    }
     // Win顺's language or look changed ("ui" permission): locale(), theme()
     // and appearance() already say the new one.
     virtual void appearanceChanged() {}
@@ -1051,6 +1065,13 @@ private:
             for (const Json& e : action(a))
                 effects.push_back(e);
             answer(Json::Object {{"effects", Json(std::move(effects))}});
+        } else if (method == "details") {
+            if (std::optional<Json> result = details(params["item"], params["text"].toString())) {
+                answer(std::move(*result));
+            } else {
+                fail(id, -32601, "Method not found: details");
+                answered = true;
+            }
         } else if (method == "cancel") {
             cancel(params["queryId"].toInt());
         } else if (method == "settingsChanged") {

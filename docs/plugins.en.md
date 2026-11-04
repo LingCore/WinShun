@@ -108,7 +108,7 @@ Three files in `src/plugins-sdk/`; "New plugin…" copies the right one into the
 |---|---|---|
 | `winshun.py` | `query()`, `settings()`, `item(...)`, `reply(items)`, `is_action()` / `action_request()` / `effects(...)` | `serve(on_query, on_action=None, on_settings=None, on_details=None)`; handlers get `(q, plugin)` with `plugin.partial()`, `plugin.log()`, `plugin.notify_user()`, `plugin.toast()`, `plugin.progress()`, `plugin.refresh()`, `plugin.tool(name, **args)`, `plugin.settings` |
 | `WinShun.psm1` | `Get-WinShunQuery`, `Get-WinShunSettings`, `New-WinShunItem`, `Send-WinShunReply`, `Send-WinShunEffects` | `Start-WinShunPlugin -OnQuery {…} -OnAction {…} -OnDetails {…}`, `Send-WinShunPartial`, `Write-WinShunLog`, `Send-WinShunNotify`, `Send-WinShunToast`, `Send-WinShunProgress`, `Invoke-WinShunTool` |
-| `winshun.h` | `winshun::onceQuery()`, `onceSettings()`, `once(items)`, `onceAction()` / `onceEffects()` | derive from `winshun::Plugin`, override `query()` (and `queryResult()`, `action()`, `settingsChanged()`, `initialized()`, `shuttingDown()`, `appearanceChanged()`), call `serve()`; members `partial()`, `log()`, `notifyUser()`, `toast()`, `progress()`, `refresh()`, `tool()`, `settings()`, which other threads may call too (sending is locked) |
+| `winshun.h` | `winshun::onceQuery()`, `onceSettings()`, `once(items)`, `onceAction()` / `onceEffects()` | derive from `winshun::Plugin`, override `query()` (and `queryResult()`, `action()`, `settingsChanged()`, `initialized()`, `shuttingDown()`, `appearanceChanged()`, `details()`), call `serve()`; members `partial()`, `log()`, `notifyUser()`, `toast()`, `progress()`, `refresh()`, `tool()`, `settings()`, which other threads may call too (sending is locked) |
 
 Effect helpers: Python `winshun.hide() / keep() / notify(text) / copy(text) / set_query(text) / open_path(path) / open_url(url) / replace(items)`; PowerShell `New-WinShunEffect -Hide / -Keep / -Notify / -Copy / -SetQuery / -OpenPath / -OpenUrl / -Replace`; C++ `winshun::effect::hide()` and the rest.
 
@@ -347,7 +347,7 @@ The content details pane of the Content panel (Summary, Hits, Text, Preview, Rep
 - A content-search provider's rows used to be kept only with an `open.path`; a row with `"details": true` now stays in Content too (ordered and deduplicated as before), while other rows with no file (setup hints and the like) still do not show.
 - No new permission: Win顺 only reads files from the plugin's own data folder, to show them to the user.
 - Compatibility: `initialize.capabilities.details` is true when the host sends `details`. Older hosts ignore the `details` field and show the row as before, never asking; no `minWinShun` needed for it.
-- SDKs: Python `item(..., details=True)`, `serve(on_query, on_details=…)` with `on_details(item, text, plugin)` returning `{"text": …}`, `{"file": …}` or a string (the text); PowerShell `New-WinShunItem -Details` and `Start-WinShunPlugin -OnDetails { param($d, $plugin) … }` (`$d.item`, `$d.text`), returning the same.
+- SDKs: Python `item(..., details=True)`, `serve(on_query, on_details=…)` with `on_details(item, text, plugin)` returning `{"text": …}`, `{"file": …}` or a string (the text); PowerShell `New-WinShunItem -Details` and `Start-WinShunPlugin -OnDetails { param($d, $plugin) … }` (`$d.item`, `$d.text`), returning the same; C++ `Item(...).withDetails()` and an override of `std::optional<Json> details(const Json& item, const std::string& text)`.
 
 ### System switch providers
 

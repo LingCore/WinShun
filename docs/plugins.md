@@ -112,7 +112,7 @@ Start-WinShunPlugin -Name 'me.ps' -OnQuery {
 |---|---|---|
 | `winshun.py` | `query()`、`settings()`、`item(...)`、`reply(items)`、`is_action()` / `action_request()` / `effects(...)` | `serve(on_query, on_action=None, on_settings=None, on_details=None)`；处理函数收到 `(q, plugin)`，`plugin.partial()`、`plugin.log()`、`plugin.notify_user()`、`plugin.toast()`、`plugin.progress()`、`plugin.refresh()`、`plugin.tool(name, **args)`、`plugin.settings` |
 | `WinShun.psm1` | `Get-WinShunQuery`、`Get-WinShunSettings`、`New-WinShunItem`、`Send-WinShunReply`、`Send-WinShunEffects` | `Start-WinShunPlugin -OnQuery {…} -OnAction {…} -OnDetails {…}`、`Send-WinShunPartial`、`Write-WinShunLog`、`Send-WinShunNotify`、`Send-WinShunToast`、`Send-WinShunProgress`、`Invoke-WinShunTool` |
-| `winshun.h` | `winshun::onceQuery()`、`onceSettings()`、`once(items)`、`onceAction()` / `onceEffects()` | 派生 `winshun::Plugin`，重写 `query()`（和 `queryResult()`、`action()`、`settingsChanged()`、`initialized()`、`shuttingDown()`、`appearanceChanged()`），`serve()`；成员 `partial()`、`log()`、`notifyUser()`、`toast()`、`progress()`、`refresh()`、`tool()`、`settings()`；这些成员可以在别的线程里调（发送有锁） |
+| `winshun.h` | `winshun::onceQuery()`、`onceSettings()`、`once(items)`、`onceAction()` / `onceEffects()` | 派生 `winshun::Plugin`，重写 `query()`（和 `queryResult()`、`action()`、`settingsChanged()`、`initialized()`、`shuttingDown()`、`appearanceChanged()`、`details()`），`serve()`；成员 `partial()`、`log()`、`notifyUser()`、`toast()`、`progress()`、`refresh()`、`tool()`、`settings()`；这些成员可以在别的线程里调（发送有锁） |
 
 effects 的辅助：Python `winshun.hide() / keep() / notify(text) / copy(text) / set_query(text) / open_path(path) / open_url(url) / replace(items)`；PowerShell `New-WinShunEffect -Hide / -Keep / -Notify / -Copy / -SetQuery / -OpenPath / -OpenUrl / -Replace`；C++ `winshun::effect::hide()` 等。
 
@@ -363,7 +363,7 @@ item 可选提供 `modified`、`created`（带时区的 ISO 8601 字符串或 Un
 - 内容检索提供者（`contentSearch`）的结果原本只保留有 `open.path` 的行；声明了 `"details": true` 的行在“内容”里也保留（排序、去重照旧），别的没有文件的行（设置提示之类）仍不显示。
 - 不要新权限：Win顺 只读插件自己数据文件夹里的文件，显示给用户，不交给别的程序。
 - 兼容：宿主会发 `details` 时，`initialize` 的 `capabilities.details` 是 true。旧版 Win顺 不认识 `details` 字段，照常显示这一行，不会来问，不用为它写 `minWinShun`。
-- SDK：Python `item(..., details=True)`，`serve(on_query, on_details=…)`，`on_details(item, text, plugin)` 返回 `{"text": …}`、`{"file": …}` 或一个字符串（就是文字）；PowerShell `New-WinShunItem -Details`，`Start-WinShunPlugin -OnDetails { param($d, $plugin) … }`（`$d.item`、`$d.text`），返回值同上。
+- SDK：Python `item(..., details=True)`，`serve(on_query, on_details=…)`，`on_details(item, text, plugin)` 返回 `{"text": …}`、`{"file": …}` 或一个字符串（就是文字）；PowerShell `New-WinShunItem -Details`，`Start-WinShunPlugin -OnDetails { param($d, $plugin) … }`（`$d.item`、`$d.text`），返回值同上；C++ `Item(...).withDetails()`，重写 `std::optional<Json> details(const Json& item, const std::string& text)`。
 
 ### 图标
 
