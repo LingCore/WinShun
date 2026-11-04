@@ -365,7 +365,10 @@ Window {
         shadow: Theme.tok("menuWindowShadow", Theme.frameShadow)
     }
     Hook {
-        anchors.fill: parent
+        // The window's size, not its content item's (sized by a later resize
+        // event): a body from the first frame (as ContextMenu).
+        width: menu.width
+        height: menu.height
         z: -1
         visible: Theme.ownFrame
         part: Theme.ownFrame ? Theme.menuFrame : null
