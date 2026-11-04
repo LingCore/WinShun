@@ -17,6 +17,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QElapsedTimer>
+#include <QEventLoop>
 #include <QFile>
 #include <QGuiApplication>
 #include <QImage>
@@ -33,6 +34,7 @@
 #include <QQuickWindow>
 #include <QRandomGenerator>
 #include <QScreen>
+#include <QSet>
 #include <QSurfaceFormat>
 #include <QTemporaryDir>
 #include <QTimer>
@@ -62,13 +64,13 @@ void report(const QString& line)
     std::fflush(stderr);
 }
 
+// The event loop for a while, the GUI thread asleep when it has nothing to
+// do (as in the app): its CPU time per frame is then the frame's own work.
 void pumpFor(int ms)
 {
-    QElapsedTimer timer;
-    timer.start();
-    do
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 5);
-    while (timer.elapsed() < ms);
+    QEventLoop loop;
+    QTimer::singleShot(ms, Qt::PreciseTimer, &loop, &QEventLoop::quit);
+    loop.exec();
 }
 
 QQuickItem* findNamed(QQuickItem* item, const QString& name)
@@ -169,7 +171,15 @@ struct Sample {
     int blankIcons = 0; // file rows in view without their icon
     int anchor = -1; // the first row in view: its index and where it is drawn
     double anchorY = 0;
+    quint64 guiCycles = 0; // the GUI thread's CPU cycles so far (QueryThreadCycleTime): not counting time other programs had the core
 };
+
+quint64 threadCycles()
+{
+    ULONG64 cycles = 0;
+    QueryThreadCycleTime(GetCurrentThread(), &cycles);
+    return cycles;
+}
 
 } // namespace
 
@@ -400,10 +410,51 @@ int runClipScrollBench(const QDir& output, const QStringList& args)
     clock.start();
     QMutex mutex;
     std::vector<qint64> swaps;
+    // Each frame's stages, as the threaded render loop runs them: the GUI
+    // thread animates (afterAnimating), polishes (the list lays out, rows are
+    // made or reused), then waits while the render thread synchronizes;
+    // the render thread then renders and swaps.
+    std::vector<qint64> syncStarts, syncEnds, renderEnds;
+    std::vector<quint64> renderCycles; // the render thread's CPU cycles at each afterRendering
+    // Cycles per ms of this thread's CPU time, from a busy wait.
+    double cyclesPerMs = 0;
+    {
+        QElapsedTimer spin;
+        const quint64 c0 = threadCycles();
+        spin.start();
+        while (spin.nsecsElapsed() < 100'000'000) {
+        }
+        cyclesPerMs = double(threadCycles() - c0) / (spin.nsecsElapsed() / 1e6);
+    }
     std::vector<Sample> samples;
     std::map<QQuickItem*, qint64> waiting; // a picture row in view since, without its thumbnail
     std::vector<double> latencies; // ms from a picture row in view to its thumbnail shown
     bool recording = false;
+    // Where the mouse rests (over the list, as when a wheel is turned): the
+    // row under it changes as the rows move (a hover flip), and rows made
+    // while scrolling (the reuse pool ran dry) are counted, each with when.
+    const QPointF over = list->mapToScene(QPointF(list->width() * 0.6, list->height() / 2));
+    QQuickItem* underMouse = nullptr;
+    std::vector<qint64> flips, made, reused;
+    QSet<QQuickItem*> seenRows;
+    QHash<QQuickItem*, QString> rowNames; // a pooled row reused for another entry gets that one's name
+    QObject::connect(window, &QQuickWindow::beforeSynchronizing, window, [&] {
+        QMutexLocker lock(&mutex);
+        if (recording)
+            syncStarts.push_back(clock.nsecsElapsed());
+    }, Qt::DirectConnection);
+    QObject::connect(window, &QQuickWindow::afterSynchronizing, window, [&] {
+        QMutexLocker lock(&mutex);
+        if (recording)
+            syncEnds.push_back(clock.nsecsElapsed());
+    }, Qt::DirectConnection);
+    QObject::connect(window, &QQuickWindow::afterRendering, window, [&] {
+        QMutexLocker lock(&mutex);
+        if (recording) {
+            renderEnds.push_back(clock.nsecsElapsed());
+            renderCycles.push_back(threadCycles());
+        }
+    }, Qt::DirectConnection);
     QObject::connect(window, &QQuickWindow::frameSwapped, window, [&] {
         QMutexLocker lock(&mutex);
         if (recording)
@@ -411,14 +462,30 @@ int runClipScrollBench(const QDir& output, const QStringList& args)
     }, Qt::DirectConnection);
     QQuickItem* content = list->property("contentItem").value<QQuickItem*>();
     QObject::connect(window, &QQuickWindow::afterAnimating, window, [&] {
+        for (QQuickItem* row : content->childItems()) {
+            if (!row->objectName().startsWith(u"clipboardRow-"))
+                continue;
+            if (!seenRows.contains(row)) {
+                seenRows.insert(row);
+                if (recording)
+                    made.push_back(clock.nsecsElapsed());
+            } else if (rowNames.value(row) != row->objectName() && recording) {
+                reused.push_back(clock.nsecsElapsed());
+            }
+            rowNames.insert(row, row->objectName());
+        }
         if (!recording)
             return;
         Sample sample {clock.nsecsElapsed(), list->property("contentY").toDouble()};
+        sample.guiCycles = threadCycles();
         const QRectF view = list->mapRectToScene(QRectF(0, 0, list->width(), list->height()));
+        QQuickItem* hit = nullptr;
         for (QQuickItem* row : content->childItems()) {
             if (!row->isVisible() || !row->objectName().startsWith(u"clipboardRow-"))
                 continue;
             const QRectF where = row->mapRectToScene(QRectF(0, 0, row->width(), row->height()));
+            if (where.contains(over))
+                hit = row;
             if (!where.intersects(view))
                 continue;
             const int index = row->objectName().mid(13).toInt();
@@ -450,12 +517,15 @@ int runClipScrollBench(const QDir& output, const QStringList& args)
                 }
             }
         }
+        if (hit != underMouse) {
+            underMouse = hit;
+            flips.push_back(sample.ns);
+        }
         samples.push_back(sample);
     }, Qt::DirectConnection);
 
-    // The mouse rests over the list, as when a wheel is turned.
-    const QPointF over = list->mapToScene(QPointF(list->width() * 0.6, list->height() / 2));
-    {
+    // --no-hover: the mouse never comes over the window (the rows' hover off).
+    if (!args.contains(u"--no-hover"_s)) {
         QMouseEvent move(QEvent::MouseMove, over, window->mapToGlobal(over), Qt::NoButton, Qt::NoButton, {});
         QCoreApplication::sendEvent(window, &move);
     }
@@ -607,7 +677,31 @@ int runClipScrollBench(const QDir& output, const QStringList& args)
         }
         pumpFor(1500);
         window->grabWindow().save(output.filePath(u"grab-%1-back.png"_s.arg(label)));
-        report(u"bench: grabs saved"_s);
+        // The mouse on the hovered row's first button: its tip shows.
+        QQuickItem* button = nullptr;
+        for (QQuickItem* row : content->childItems()) {
+            if (!row->isVisible() || !row->objectName().startsWith(u"clipboardRow-")
+                || !row->mapRectToScene(QRectF(0, 0, row->width(), row->height())).contains(over))
+                continue;
+            const std::function<QQuickItem*(QQuickItem*)> find = [&](QQuickItem* item) -> QQuickItem* {
+                if (item->isVisible() && QByteArray(item->metaObject()->className()).startsWith("RowAction"))
+                    return item;
+                for (QQuickItem* child : item->childItems()) {
+                    if (QQuickItem* found = find(child))
+                        return found;
+                }
+                return nullptr;
+            };
+            button = find(row);
+        }
+        if (button) {
+            const QPointF at = button->mapToScene(QPointF(button->width() / 2, button->height() / 2));
+            QMouseEvent move(QEvent::MouseMove, at, window->mapToGlobal(at), Qt::NoButton, Qt::NoButton, {});
+            QCoreApplication::sendEvent(window, &move);
+            pumpFor(1500);
+            window->grabWindow().save(output.filePath(u"grab-%1-tip.png"_s.arg(label)));
+        }
+        report(u"bench: grabs saved"_s + (button ? u""_s : u" (no button for the tip)"_s));
         return 0;
     }
 
@@ -637,10 +731,17 @@ int runClipScrollBench(const QDir& output, const QStringList& args)
         {
             QMutexLocker lock(&mutex);
             swaps.clear();
+            syncStarts.clear();
+            syncEnds.clear();
+            renderEnds.clear();
+            renderCycles.clear();
         }
         samples.clear();
         latencies.clear();
         waiting.clear();
+        flips.clear();
+        made.clear();
+        reused.clear();
         recording = true;
         const qint64 phaseStart = clock.nsecsElapsed();
         const qint64 privateBefore = privateBytes();
@@ -648,15 +749,30 @@ int runClipScrollBench(const QDir& output, const QStringList& args)
         std::vector<qint64> notchAt; // when each notch was sent
         QElapsedTimer timer;
         timer.start();
-        while (sent < phase.notches) {
-            if (timer.elapsed() >= qint64(sent) * phase.intervalMs) {
-                if (phase.delta != 0) {
-                    notchAt.push_back(clock.nsecsElapsed());
-                    wheel(phase.delta);
+        {
+            // Each notch when its time comes, checked every millisecond
+            // (not spinning: see pumpFor).
+            QEventLoop loop;
+            QTimer tick;
+            tick.setTimerType(Qt::PreciseTimer);
+            tick.setInterval(1);
+            const auto due = [&] {
+                while (sent < phase.notches && timer.elapsed() >= qint64(sent) * phase.intervalMs) {
+                    if (phase.delta != 0) {
+                        notchAt.push_back(clock.nsecsElapsed());
+                        wheel(phase.delta);
+                    }
+                    ++sent;
                 }
-                ++sent;
+                if (sent >= phase.notches)
+                    loop.quit();
+            };
+            QObject::connect(&tick, &QTimer::timeout, &loop, due);
+            due();
+            if (sent < phase.notches) {
+                tick.start();
+                loop.exec();
             }
-            QCoreApplication::processEvents(QEventLoop::AllEvents, 1);
         }
         if (phase.delta == 0)
             pumpFor(phase.intervalMs);
@@ -675,6 +791,13 @@ int runClipScrollBench(const QDir& output, const QStringList& args)
             if (samples[i].contentY != samples[i - 1].contentY)
                 movingUntil = samples[i].ns;
         }
+        // A missed frame "near" an event: the event came in it or the one before
+        // (from a vsync before the previous swap to this swap; "near" is a Windows macro).
+        const auto within = [&](const std::vector<qint64>& events, qint64 from, qint64 to) {
+            const auto it = std::lower_bound(events.begin(), events.end(), from);
+            return it != events.end() && *it <= to;
+        };
+        int missedNearFlip = 0, missedNearMade = 0, missedNearReuse = 0, framesNearFlip = 0;
         int missed = 0, long33 = 0;
         std::vector<double> moving;
         {
@@ -684,8 +807,16 @@ int runClipScrollBench(const QDir& output, const QStringList& args)
                     break;
                 const double ms = (swaps[i] - swaps[i - 1]) / 1e6;
                 moving.push_back(ms);
-                if (ms > vsyncMs * 1.5)
-                    missed += static_cast<int>(std::lround(ms / vsyncMs)) - 1;
+                const qint64 from = swaps[i - 1] - qint64(vsyncMs * 1e6);
+                const bool flipped = within(flips, from, swaps[i]);
+                framesNearFlip += flipped ? 1 : 0;
+                if (ms > vsyncMs * 1.5) {
+                    const int lost = static_cast<int>(std::lround(ms / vsyncMs)) - 1;
+                    missed += lost;
+                    missedNearFlip += flipped ? lost : 0;
+                    missedNearMade += within(made, from, swaps[i]) ? lost : 0;
+                    missedNearReuse += within(reused, from, swaps[i]) ? lost : 0;
+                }
                 if (ms > 33)
                     ++long33;
             }
@@ -787,7 +918,72 @@ int runClipScrollBench(const QDir& output, const QStringList& args)
         int late = 0;
         for (const double l : latencies)
             late += l > vsyncMs * 1.5 ? 1 : 0;
+        // The stages of each frame while moving, in ms: polish (GUI thread,
+        // from its animation step to the render thread's sync), sync (GUI
+        // blocked) and render (render thread, up to the present call).
+        std::vector<double> polishMs, syncMs, renderMs, guiMs;
+        {
+            QMutexLocker lock(&mutex);
+            for (const qint64 start : syncStarts) {
+                if (start > movingUntil)
+                    break;
+                const auto anim = std::upper_bound(samples.begin(), samples.end(), start,
+                    [](qint64 t, const Sample& s) { return t < s.ns; });
+                const auto end = std::lower_bound(syncEnds.begin(), syncEnds.end(), start);
+                if (anim == samples.begin() || end == syncEnds.end())
+                    continue;
+                const double polish = (start - std::prev(anim)->ns) / 1e6;
+                const double sync = (*end - start) / 1e6;
+                if (polish > 50)
+                    continue; // not this frame's animation step (an idle gap)
+                polishMs.push_back(polish);
+                syncMs.push_back(sync);
+                guiMs.push_back(polish + sync);
+                const auto rendered = std::lower_bound(renderEnds.begin(), renderEnds.end(), *end);
+                if (rendered != renderEnds.end())
+                    renderMs.push_back((*rendered - *end) / 1e6);
+            }
+        }
+        const auto meanOf = [](const std::vector<double>& v) {
+            double sum = 0;
+            for (const double x : v)
+                sum += x;
+            return v.empty() ? 0.0 : sum / double(v.size());
+        };
+        // CPU time per frame, ms: the GUI thread's from one animation step to
+        // the next (input, hover, animation, polish), the render thread's
+        // from one render to the next (sync, render). Robust to other load.
+        std::vector<double> guiCpu, renderCpu;
+        for (std::size_t i = 1; i < samples.size(); ++i) {
+            if (samples[i].ns > movingUntil)
+                break;
+            guiCpu.push_back(double(samples[i].guiCycles - samples[i - 1].guiCycles) / cyclesPerMs);
+        }
+        {
+            QMutexLocker lock(&mutex);
+            for (std::size_t i = 1; i < renderCycles.size() && i < renderEnds.size(); ++i) {
+                if (renderEnds[i] > movingUntil)
+                    break;
+                renderCpu.push_back(double(renderCycles[i] - renderCycles[i - 1]) / cyclesPerMs);
+            }
+        }
+        const auto countOver = [](const std::vector<double>& v, double ms) {
+            return int(std::count_if(v.begin(), v.end(), [ms](double x) { return x > ms; }));
+        };
+        const QJsonObject stages {
+            {u"gui_cpu_ms_mean"_s, meanOf(guiCpu)}, {u"gui_cpu_ms_p95"_s, percentile(guiCpu, 0.95)},
+            {u"gui_cpu_ms_p99"_s, percentile(guiCpu, 0.99)}, {u"gui_cpu_ms_max"_s, percentile(guiCpu, 1)},
+            {u"gui_cpu_frames_over_1ms"_s, countOver(guiCpu, 1)}, {u"gui_cpu_frames_over_2ms"_s, countOver(guiCpu, 2)},
+            {u"render_cpu_ms_mean"_s, meanOf(renderCpu)}, {u"render_cpu_ms_p95"_s, percentile(renderCpu, 0.95)},
+            {u"render_cpu_ms_p99"_s, percentile(renderCpu, 0.99)}, {u"render_cpu_frames_over_2ms"_s, countOver(renderCpu, 2)},
+            {u"cycles_per_ms"_s, cyclesPerMs},
+            {u"polish_ms_mean"_s, meanOf(polishMs)}, {u"polish_ms_p95"_s, percentile(polishMs, 0.95)}, {u"polish_ms_p99"_s, percentile(polishMs, 0.99)},
+            {u"sync_ms_mean"_s, meanOf(syncMs)}, {u"sync_ms_p95"_s, percentile(syncMs, 0.95)}, {u"sync_ms_p99"_s, percentile(syncMs, 0.99)},
+            {u"gui_ms_mean"_s, meanOf(guiMs)}, {u"gui_ms_p95"_s, percentile(guiMs, 0.95)}, {u"gui_ms_p99"_s, percentile(guiMs, 0.99)},
+            {u"render_ms_mean"_s, meanOf(renderMs)}, {u"render_ms_p95"_s, percentile(renderMs, 0.95)}, {u"render_ms_p99"_s, percentile(renderMs, 0.99)},
+        };
         const QJsonObject phaseResult {
+            {u"stages"_s, stages},
             {u"phase"_s, phase.name},
             {u"frames_moving"_s, int(moving.size())},
             {u"moving_ms"_s, (movingUntil - phaseStart) / 1e6},
@@ -818,6 +1014,13 @@ int runClipScrollBench(const QDir& output, const QStringList& args)
             {u"backward_contentY_frames"_s, backwardContentY},
             {u"backward_px_max"_s, backwardMost},
             {u"lag_ms"_s, lagMs},
+            {u"hover_flips"_s, int(flips.size())},
+            {u"frames_near_flip"_s, framesNearFlip},
+            {u"missed_near_flip"_s, missedNearFlip},
+            {u"rows_made"_s, int(made.size())},
+            {u"missed_near_made"_s, missedNearMade},
+            {u"rows_reused"_s, int(reused.size())},
+            {u"missed_near_reuse"_s, missedNearReuse},
             {u"trajectory"_s, trajectory},
         };
         phaseResults.append(phaseResult);
