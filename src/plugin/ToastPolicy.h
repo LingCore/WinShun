@@ -55,8 +55,10 @@ bool plainLocalPath(QStringView path);
 // What a click on a plugin's notification may do, of what it asked, in its
 // order, one of each kind at most: setQuery when `ownQuery` says the text
 // opens one of this plugin's commands; open of a plainLocalPath() with no
-// arguments or working folder; copy with `mayCopy` (clipboard:write).
-// Everything else is dropped (web links, notify, hide, keep, replace).
+// arguments or working folder, or reveal of one (a click goes to one place:
+// the first of the two); copy with `mayCopy` (clipboard:write). Everything
+// else is dropped (web links, notify, hide, keep, replace). A plugin asks
+// for [reveal, open of its folder]: a host without reveal opens the folder.
 Effects toastClick(const Effects& asked, const std::function<bool(const QString& query)>& ownQuery, bool mayCopy);
 
 } // namespace ws::plugin

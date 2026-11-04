@@ -1303,6 +1303,12 @@ void CaptureSession::finish(Action action)
 {
     if (action == Action::Copy && m_pinOnCopy)
         action = Action::CopyPin;
+    // A save folder chosen: Save (button, key, mouse) goes straight into it,
+    // as before 0.18; 另存为… asks. Past here Save means the picker (#194).
+    if (action == Action::Save && saveDirect())
+        action = Action::SavePrevious;
+    else if (action == Action::SaveAs)
+        action = Action::Save;
     if (m_annot.active())
         m_annot.commitPending(); // the words typed so far are part of the picture
     Pick pick;
@@ -1383,7 +1389,7 @@ void CaptureSession::keyReleased(int key)
 
 void CaptureSession::act(int action)
 {
-    if (!m_active || action < static_cast<int>(Action::Copy) || action > static_cast<int>(Action::SavePrevious))
+    if (!m_active || action < static_cast<int>(Action::Copy) || action > static_cast<int>(Action::SaveAs))
         return;
     if (action == static_cast<int>(Action::Long) || action == static_cast<int>(Action::Record)) {
         // Its picture is the screen's, scrolled: annotations would be lost.

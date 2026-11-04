@@ -58,7 +58,7 @@ Item {
         qsTr("双击"), qsTr("文字：改文字；序号：改号，序号旁的字：改字"),
         "Ctrl+Enter、Esc", qsTr("写完文字（Enter 换行；序号旁的字 Enter 就写完）"),
         "Ctrl+C、Enter", qsTr("复制")
-    ].concat(annot && annot.saveKeyText.length > 0 ? [annot.saveKeyText, qsTr("另存为：选择保存位置")] : [],
+    ].concat(annot && annot.saveKeyText.length > 0 ? [annot.saveKeyText, annot.saveDirect ? qsTr("保存到设置的保存位置") : qsTr("另存为：选择保存位置")] : [],
              annot && annot.pinKeyText.length > 0 ? [annot.pinKeyText, qsTr("贴图")] : []) // as the user set them (#187)
     readonly property var overlayRows: [
         "WASD", qsTr("微调鼠标光标，每次 1 个物理像素；按住左键拖选区、拖手柄或画标注时也有效"),
@@ -313,9 +313,11 @@ Item {
         CaptureSaveButton {
             visible: bar.shows("save")
             keyText: bar.annot ? bar.annot.saveKeyText : ""
+            direct: bar.annot ? bar.annot.saveDirect : false
             tipsEnabled: !bar.keysOpen && !bar.dragging
             onSaveRequested: bar.act(CaptureSession.Save)
             onSavePreviousRequested: bar.act(CaptureSession.SavePrevious)
+            onSaveAsRequested: bar.act(CaptureSession.SaveAs)
             onKeyForwarded: (event) => bar.keyForwarded(event)
             onKeyReleased: (event) => bar.keyReleased(event)
         }

@@ -103,7 +103,8 @@ QString outcomeName(CaptureSession::Action action)
     case CaptureSession::Action::Copy: return u"copied"_s;
     case CaptureSession::Action::CopyPin: return u"copied_pinned"_s;
     case CaptureSession::Action::Save:
-    case CaptureSession::Action::SavePrevious: return u"saved"_s;
+    case CaptureSession::Action::SavePrevious:
+    case CaptureSession::Action::SaveAs: return u"saved"_s;
     case CaptureSession::Action::Pin: return u"pinned"_s;
     case CaptureSession::Action::Ocr:
     case CaptureSession::Action::OcrCopy:

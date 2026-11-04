@@ -21,6 +21,7 @@
 #include "SwitchBackend.h"
 #include "Switches.h"
 #include "SystemCatalog.h"
+#include "ToastPolicy.h"
 #include "Unc.h"
 #include "WebDav.h"
 #include "platform/DragOut.h"
@@ -5773,7 +5774,7 @@ bool Launcher::pluginOpenAllowed(const QString& pluginId, const plugin::Open& op
 }
 
 // What a plugin asked for after an action, in its order: hide (the default),
-// keep, setQuery, notify, copy, open, replace (its items as the list).
+// keep, setQuery, notify, copy, open, replace (its items as the list), reveal.
 // `pluginId`: whose action it was (onPluginActionDone), for the open policy.
 void Launcher::applyEffects(const QString& pluginId, const QList<ws::plugin::Effect>& effects)
 {
@@ -5821,6 +5822,18 @@ void Launcher::applyEffects(const QString& pluginId, const QList<ws::plugin::Eff
                     followCurrentRow(before, currentPath);
             }
             break;
+        case plugin::Effect::Kind::Reveal: {
+            // Only selects (as show_in_folder): no program starts, no processes
+            // permission. Gone by now: its folder, if that is still there (#194).
+            if ((m_plugins && !m_plugins->catalog().enabled(pluginId)) || !plugin::plainLocalPath(e.open.target))
+                break;
+            const QFileInfo item(e.open.target);
+            if (item.exists())
+                shell::reveal(QDir::toNativeSeparators(item.absoluteFilePath()));
+            else if (QFileInfo(item.absolutePath()).isDir())
+                shell::open(QDir::toNativeSeparators(item.absolutePath()), false);
+            break;
+        }
         }
     }
     if (hide)

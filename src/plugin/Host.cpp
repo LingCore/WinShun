@@ -1956,7 +1956,10 @@ void Host::showToast(Plugin& p)
     const QString id = p.id;
     const Effects click = toastClick(asked, [this, &id](const QString& query) { return opensOwnList(id, query); },
         e->manifest->permissions.has(Permission::ClipboardWrite));
-    if (click.size() < asked.size() && !(asked.size() == 1 && asked.first().kind == Effect::Kind::Hide))
+    // An open beside a reveal is its stand-in for older hosts: not refused.
+    const bool revealed = std::ranges::any_of(click, [](const Effect& c) { return c.kind == Effect::Kind::Reveal; });
+    const qsizetype standIns = revealed ? std::ranges::count_if(asked, [](const Effect& c) { return c.kind == Effect::Kind::Open; }) : 0;
+    if (click.size() + standIns < asked.size() && !(asked.size() == 1 && asked.first().kind == Effect::Kind::Hide))
         log(u"%1: 系统通知的点击只留下打开自己的列表、本机文件或文件夹、复制（要 clipboard:write），每样一个"_s.arg(p.id));
     constexpr bool oneLine = false; // the text keeps its line breaks
     const QString heading = toastWords(toast.title);

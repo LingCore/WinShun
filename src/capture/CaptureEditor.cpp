@@ -870,9 +870,13 @@ void CaptureEditor::act(int action)
         done();
         break;
     case Action::Save:
-    case Action::SavePrevious: {
+    case Action::SavePrevious:
+    case Action::SaveAs: {
+        // A save folder chosen: Save goes straight into it, 另存为… asks (#194).
+        const bool pick = static_cast<Action>(action) == Action::SaveAs
+            || (static_cast<Action>(action) == Action::Save && !m_model.saveDirect());
         QString path;
-        if (static_cast<Action>(action) == Action::Save) {
+        if (pick) {
             if (!m_hooks.chooseSavePath)
                 break;
             m_choosingSave = true;

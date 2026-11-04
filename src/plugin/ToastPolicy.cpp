@@ -120,6 +120,12 @@ Effects toastClick(const Effects& asked, const std::function<bool(const QString&
                 open = true;
             }
             break;
+        case Effect::Kind::Reveal:
+            if (!open && plainLocalPath(e.open.target)) {
+                allowed.push_back(e);
+                open = true;
+            }
+            break;
         case Effect::Kind::Copy:
             if (!copy && mayCopy && !e.text.isEmpty()) {
                 allowed.push_back(e);

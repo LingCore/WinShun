@@ -96,6 +96,9 @@ class AnnotationModel : public QObject {
     // The pin and save keys as tips and key lists show them ("F3"); empty: none (#187).
     Q_PROPERTY(QString pinKeyText READ pinKeyText NOTIFY keysChanged FINAL)
     Q_PROPERTY(QString saveKeyText READ saveKeyText NOTIFY keysChanged FINAL)
+    // A save folder was chosen: Save and its key go straight into it, and the
+    // menu offers 另存为… instead of 保存到旧路径 (#194).
+    Q_PROPERTY(bool saveDirect READ saveDirect NOTIFY keysChanged FINAL)
 
 public:
     explicit AnnotationModel(QObject* parent = nullptr);
@@ -288,6 +291,14 @@ public:
     const CaptureKeys& keys() const { return m_keys; }
     QString pinKeyText() const { return m_keys.text(KeyAction::Pin); }
     QString saveKeyText() const { return m_keys.text(KeyAction::Save); }
+    void setSaveDirect(bool on)
+    {
+        if (on == m_saveDirect)
+            return;
+        m_saveDirect = on;
+        emit keysChanged();
+    }
+    bool saveDirect() const { return m_saveDirect; }
     Q_INVOKABLE bool isFinishKey(int key, int modifiers) const
     {
         const auto mods = Qt::KeyboardModifiers(modifiers);
@@ -453,6 +464,7 @@ private:
     QList<quint32> m_picked; // the selected objects, in the order they were picked
     std::optional<Editing> m_editing;
     CaptureKeys m_keys;
+    bool m_saveDirect = false;
     std::optional<quint32> m_numberEdit;
     std::unique_ptr<Private> d;
 };

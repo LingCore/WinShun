@@ -588,6 +588,24 @@ private slots:
         QVERIFY(!rig.editor.isOpen());
     }
 
+    // #194: a save folder chosen: Save goes straight into it, 另存为… asks.
+    void aChosenSaveFolderSkipsThePicker()
+    {
+        Rig rig;
+        rig.editor.setSaveDirect(true);
+        QVERIFY(rig.editor.model()->saveDirect());
+        QVERIFY(rig.editor.openHistory(7));
+        rig.savePath.clear();
+        rig.editor.act(static_cast<int>(ws::capture::CaptureSession::Action::SaveAs)); // cancelled
+        QCOMPARE(rig.calls.savePickers, 1);
+        QVERIFY(rig.editor.isOpen());
+        rig.editor.act(static_cast<int>(ws::capture::CaptureSession::Action::Save));
+        QCOMPARE(rig.calls.savePickers, 1);
+        QCOMPARE(rig.calls.saved.size(), qsizetype(1));
+        QVERIFY(rig.calls.savedPaths[0].isEmpty()); // the folder's automatic name
+        QVERIFY(!rig.editor.isOpen());
+    }
+
     void pinDone()
     {
         const QImage picture = noise(QSize(300, 200), 9);
