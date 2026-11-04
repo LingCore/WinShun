@@ -118,6 +118,11 @@ bool tabsCannotHost(std::wstring_view place)
     return std::ranges::any_of(kWindowsOnly, [&](std::wstring_view guid) { return containsNoCase(place, guid); });
 }
 
+bool explorerHasTabs(unsigned buildNumber)
+{
+    return buildNumber == 0 || buildNumber >= kFirstBuildWithTabs;
+}
+
 std::vector<std::wstring> programList(std::wstring_view text)
 {
     std::vector<std::wstring> out;

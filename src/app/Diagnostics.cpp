@@ -21,6 +21,10 @@ using namespace Qt::StringLiterals;
 namespace ws::diagnostics {
 namespace {
 constexpr qint64 kMaxSourceBytes = 1 << 20;
+// plugins.log holds what plugins say about themselves (a plugin may write a
+// path or a typed word into its log lines): only its newest part, enough for
+// the last starts, crashes and stderr tails.
+constexpr qint64 kMaxPluginLogBytes = 256 << 10;
 QString tr(const char* text)
 {
     return QCoreApplication::translate("ws::diagnostics", text);
@@ -81,8 +85,9 @@ Exported exportArchive(Log& log, const QString& dataFolder, const QString& servi
     std::vector<Log::File> files = log.snapshot();
     QJsonArray unavailable;
     // Deliberately whitelist runtime logs. Settings, clipboard, search
-    // history, MCP/plugin conversations and document data are not packed.
-    const auto add = [&](const QString& folder, const QString& name, const QString& packedName) {
+    // history, MCP/plugin conversations and document data are not packed
+    // (plugins.log is the host's log about plugins, not their conversations).
+    const auto add = [&](const QString& folder, const QString& name, const QString& packedName, qint64 limit = kMaxSourceBytes) {
         if (folder.isEmpty())
             return;
         QFile file(QDir(folder).filePath(name));
@@ -92,12 +97,13 @@ Exported exportArchive(Log& log, const QString& dataFolder, const QString& servi
             unavailable.append(packedName);
             return;
         }
-        if (file.size() > kMaxSourceBytes)
-            file.seek(file.size() - kMaxSourceBytes); // recent errors, bounded even for an old giant log
-        files.push_back({packedName, file.read(kMaxSourceBytes)});
+        if (file.size() > limit)
+            file.seek(file.size() - limit); // recent errors, bounded even for an old giant log
+        files.push_back({packedName, file.read(limit)});
     };
     add(dataFolder, u"WinShun.log"_s, u"app/WinShun.log"_s);
     add(dataFolder, u"WinShun.old.log"_s, u"app/WinShun.old.log"_s);
+    add(dataFolder, u"plugins.log"_s, u"app/plugins.log"_s, kMaxPluginLogBytes);
     add(serviceFolder, u"service.log"_s, u"service/service.log"_s);
     add(serviceFolder, u"service.old.log"_s, u"service/service.old.log"_s);
     context[u"schema_version"_s] = 1;
@@ -105,7 +111,7 @@ Exported exportArchive(Log& log, const QString& dataFolder, const QString& servi
     context[u"environment"_s] = environment();
     context[u"unavailable_logs"_s] = unavailable;
     context[u"privacy"_s]
-        = u"Runtime logs may contain file paths. Clipboard diagnostics contain bounded read metadata only, without payloads or content hashes. No settings file, credentials, clipboard content, search history or document text is included."_s;
+        = u"Runtime logs (the plugin log is cut to its newest 256 KB) may contain file paths. Clipboard diagnostics contain bounded read metadata only, without payloads or content hashes. No settings file, credentials, clipboard content, search history or document text is included."_s;
     files.push_back({u"summary.json"_s, QJsonDocument(context).toJson(QJsonDocument::Indented)});
 
     mz_zip_archive zip {};
