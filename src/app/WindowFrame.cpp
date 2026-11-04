@@ -39,10 +39,20 @@ bool withinDragDistance(HWND hwnd, QPoint from, QPoint to)
         && std::abs(to.y() - from.y()) < ::GetSystemMetricsForDpi(SM_CYDRAG, dpi);
 }
 
+// Only where it is on the screen: an ancestor that clips cuts it, as it does
+// the picture. The type strip, closed, is 0 high and its chips and + rest above
+// it, over the search bar's lower half (#162, #173): counted whole, they made
+// that half of the logo a control's, not the handle's.
 bool covers(const QPointer<QQuickItem>& item, QPointF pos)
 {
-    return item && item->isVisible()
-        && item->mapRectToScene(QRectF(0, 0, item->width(), item->height())).contains(pos);
+    if (!item || !item->isVisible())
+        return false;
+    QRectF area = item->mapRectToScene(QRectF(0, 0, item->width(), item->height()));
+    for (const QQuickItem* above = item->parentItem(); above && area.contains(pos); above = above->parentItem()) {
+        if (above->clip())
+            area &= above->mapRectToScene(QRectF(0, 0, above->width(), above->height()));
+    }
+    return area.contains(pos);
 }
 
 bool anyCovers(const QList<QPointer<QQuickItem>>& items, QPointF pos)

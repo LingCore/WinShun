@@ -2776,6 +2776,16 @@ bool checkSearchLogo(QQmlEngine* engine, const QDir& output)
         for (const QString& size : {u"compact"_s, u"standard"_s, u"roomy"_s}) {
             SystemTheme::setUiSize(size);
             settle(window);
+            // #162: the type strip shown once (文件) and closed again keeps
+            // its chips and + laid out over the header's lower half, clipped
+            // away but still registered as controls. Not 内容: its scan's
+            // stop warns.
+            if (!panel) {
+                for (const Launcher::Scope scope : {Launcher::Files, Launcher::All}) {
+                    launcher.setScope(scope);
+                    settle(window);
+                }
+            }
             RECT client {};
             ::GetClientRect(hwnd, &client);
             const qreal scaleX = qreal(client.right) / window->width();
@@ -2816,6 +2826,7 @@ bool checkSearchLogo(QQmlEngine* engine, const QDir& output)
             }
         }
         SystemTheme::setUiSize(previousUiSize);
+        launcher.results()->assign({SearchResult{.name = u"Example.txt"_s, .path = u"T:\\Example.txt"_s}}, {}); // the scopes searched again
         settle(window);
         check(::SendMessageW(hwnd, WM_NCHITTEST, 0, point()) == HTCAPTION, mode + u"logo retains the system drag region"_s);
         click(WM_NCMBUTTONDOWN, WM_NCMBUTTONUP);
