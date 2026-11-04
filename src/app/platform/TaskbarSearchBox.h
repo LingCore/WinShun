@@ -2,6 +2,7 @@
 
 #include <windows.h>
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -99,6 +100,12 @@ public:
         std::wstring placeholder;
         std::wstring label; // short, where the box is narrow: "搜索"
         COLORREF accent = RGB(0x00, 0x67, 0xC0); // under selected text
+        // The 界面风格's (SystemTheme::nativeLook), 0xAARRGGBB; alpha 0: the
+        // box's own. selection: under selected text, as in the launcher's
+        // field (textSelection), else the accent above; caret: the style's
+        // caret colour, else the text's.
+        std::uint32_t selection = 0;
+        std::uint32_t caret = 0;
         bool monoIcon = false; // Win顺's icon in the taskbar's text colour (monologo), not its own colours
         bool roundedCorners = true;
         Style style = Style::Box;

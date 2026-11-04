@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QColor>
+#include <QImage>
 #include <QRect>
 
 #include <windows.h>
@@ -17,8 +18,9 @@ namespace ws::capture {
 class CountdownWindow {
 public:
     // `work`: the monitor's work area (physical, virtual desktop); `fill`:
-    // the accent fill (white words stay readable on it).
-    CountdownWindow(const QRect& work, const QColor& fill, std::function<void()> clicked);
+    // the accent fill (white words stay readable on it); `radius`: its
+    // corner, logical px.
+    CountdownWindow(const QRect& work, const QColor& fill, qreal radius, std::function<void()> clicked);
     ~CountdownWindow();
     CountdownWindow(const CountdownWindow&) = delete;
     CountdownWindow& operator=(const CountdownWindow&) = delete;
@@ -26,14 +28,18 @@ public:
     HWND hwnd() const { return m_hwnd; }
     void setSeconds(int seconds);
     QRect rect() const { return m_rect; } // physical, virtual desktop
+    // What it shows, off screen (tests, previews); `dpr` device px per logical.
+    static QImage picture(int seconds, const QColor& fill, qreal radius, double dpr);
 
 private:
     static LRESULT CALLBACK proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
+    static void paint(QImage& canvas, int seconds, const QColor& fill, qreal radius, double dpr);
     void draw();
 
     HWND m_hwnd = nullptr;
     std::function<void()> m_clicked;
     QColor m_fill;
+    qreal m_radius = 8;
     QRect m_work;
     QRect m_rect;
     double m_dpr = 1.0;

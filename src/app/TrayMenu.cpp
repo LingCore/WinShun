@@ -37,13 +37,35 @@ constexpr int kTextRight = 12;
 constexpr int kShortcutGap = 20;
 constexpr int kVerticalPadding = 6;
 
+// WCAG contrast of two opaque colours, and `over` laid on `under`.
+double luminance(const QColor& c)
+{
+    const auto channel = [](double v) { return v <= 0.03928 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4); };
+    return 0.2126 * channel(c.redF()) + 0.7152 * channel(c.greenF()) + 0.0722 * channel(c.blueF());
+}
+
+double contrast(const QColor& a, const QColor& b)
+{
+    const double la = luminance(a), lb = luminance(b);
+    return (std::max(la, lb) + 0.05) / (std::min(la, lb) + 0.05);
+}
+
+QColor composite(const QColor& over, const QColor& under)
+{
+    const double t = over.alphaF();
+    return QColor::fromRgbF(float(over.redF() * t + under.redF() * (1 - t)), float(over.greenF() * t + under.greenF() * (1 - t)),
+        float(over.blueF() * t + under.blueF() * (1 - t)));
+}
+
 struct Appearance {
     QFont body = QGuiApplication::font();
     QFont caption = body;
     QColor background, hover, text, selectedText, secondary, disabled, divider, accent;
+    QColor hoverEdge; // invalid: none
     bool highContrast = false;
     qreal scale = 1;
     qreal radius = 0;
+    qreal inset = 4; // the hover from the menu's sides
     int maxWidth = 360;
 
     Appearance(QObject* theme, POINT at)
@@ -62,7 +84,14 @@ struct Appearance {
         selectedText = text;
         body.setPixelSize(theme ? theme->property("fontCaption").toInt() : 14);
         caption.setPixelSize(std::max(11, body.pixelSize() - 2));
-        radius = theme ? theme->property("controlRadius").toReal() : 0;
+        // The 界面风格's menu items (Theme reads its Look): their radius and
+        // inset; the frame round them is Windows' (DWM's corners and edge).
+        radius = theme ? theme->property("menuItemRadius").toReal() : 0;
+        inset = theme ? std::clamp(theme->property("menuPadding").toReal(), 0.0, 12.0) : 4;
+        // A hover that hardly differs from the menu (a style whose item rises
+        // as a key face on a near-white menu): outlined, as the key's rim.
+        if (contrast(composite(hover, background), background) < 1.06)
+            hoverEdge = color("controlBorder", divider);
         UINT dpiX = 96, dpiY = 96;
         const HMONITOR monitor = ::MonitorFromPoint(at, MONITOR_DEFAULTTONEAREST);
         if (SUCCEEDED(::GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &dpiX, &dpiY)))
@@ -84,6 +113,7 @@ struct Appearance {
             selectedText = system(COLOR_HIGHLIGHTTEXT);
             disabled = divider = system(COLOR_GRAYTEXT);
             accent = text;
+            hoverEdge = QColor();
         }
     }
 };
@@ -271,9 +301,17 @@ struct Menu {
         } else {
             const bool selected = (request.itemState & ODS_SELECTED) && row.item->enabled;
             if (selected) {
+                const QRectF face(a.inset, 0, width - 2 * a.inset, height);
                 painter.setPen(Qt::NoPen);
                 painter.setBrush(a.hover);
-                painter.drawRoundedRect(QRectF(4, 0, width - 8, height), a.radius, a.radius);
+                painter.drawRoundedRect(face, a.radius, a.radius);
+                if (a.hoverEdge.isValid()) { // one device pixel, inside
+                    const qreal hair = 1 / a.scale;
+                    painter.setPen(QPen(a.hoverEdge, hair));
+                    painter.setBrush(Qt::NoBrush);
+                    const QRectF rim = face.adjusted(hair / 2, hair / 2, -hair / 2, -hair / 2);
+                    painter.drawRoundedRect(rim, std::max(0.0, a.radius - hair / 2), std::max(0.0, a.radius - hair / 2));
+                }
             }
             const QColor ink = selected ? a.selectedText
                 : row.item->secondary   ? a.secondary
@@ -475,6 +513,65 @@ int popup(HWND owner, const std::vector<shell::MenuItem>& items, POINT screenPos
         menu.root, TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON, screenPos.x, screenPos.y, owner, nullptr));
     ::PostMessageW(owner, WM_NULL, 0, 0);
     return chosen;
+}
+
+QImage render(const std::vector<shell::MenuItem>& items, QObject* theme, qreal scale, int highlighted)
+{
+    Menu menu(theme, POINT {0, 0});
+    menu.appearance.scale = scale;
+    menu.root = menu.build(items);
+    if (!menu.root)
+        return {};
+    // The root's rows in order (build() adds a submenu's rows among them).
+    std::vector<std::pair<ULONG_PTR, SIZE>> rows;
+    LONG width = 0, height = 0;
+    for (int i = 0; i < ::GetMenuItemCount(menu.root); ++i) {
+        MENUITEMINFOW entry {sizeof entry};
+        entry.fMask = MIIM_DATA;
+        if (!::GetMenuItemInfoW(menu.root, i, TRUE, &entry) || !menu.findRow(entry.dwItemData))
+            continue;
+        MEASUREITEMSTRUCT request {ODT_MENU};
+        request.itemData = entry.dwItemData;
+        menu.measure(request);
+        rows.push_back({entry.dwItemData, {static_cast<LONG>(request.itemWidth), static_cast<LONG>(request.itemHeight)}});
+        width = std::max(width, static_cast<LONG>(request.itemWidth));
+        height += static_cast<LONG>(request.itemHeight);
+    }
+    if (width <= 0 || height <= 0)
+        return {};
+    BITMAPINFO info {};
+    info.bmiHeader = {sizeof(BITMAPINFOHEADER), width, -height, 1, 32, BI_RGB};
+    void* bits = nullptr;
+    const HDC dc = ::CreateCompatibleDC(nullptr);
+    const HBITMAP bitmap = dc ? ::CreateDIBSection(dc, &info, DIB_RGB_COLORS, &bits, nullptr, 0) : nullptr;
+    const auto cleanup = qScopeGuard([&] {
+        if (bitmap)
+            ::DeleteObject(bitmap);
+        if (dc)
+            ::DeleteDC(dc);
+    });
+    if (!bitmap)
+        return {};
+    const HGDIOBJ old = ::SelectObject(dc, bitmap);
+    LONG top = 0;
+    int item = -1; // the index into `items`: the first and last rows are padding
+    for (const auto& [data, size] : rows) {
+        const Row* row = menu.findRow(data);
+        if (!row->padding)
+            ++item;
+        DRAWITEMSTRUCT request {};
+        request.CtlType = ODT_MENU;
+        request.itemState = ODS_NOACCEL | (item == highlighted && !row->padding ? ODS_SELECTED : 0);
+        request.hDC = dc;
+        request.rcItem = {0, top, width, top + size.cy};
+        request.itemData = data;
+        menu.draw(request);
+        top += size.cy;
+    }
+    ::GdiFlush();
+    QImage image = QImage(static_cast<const uchar*>(bits), width, height, width * 4, QImage::Format_RGB32).copy();
+    ::SelectObject(dc, old);
+    return image;
 }
 
 } // namespace ws::traymenu

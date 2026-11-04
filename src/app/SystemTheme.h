@@ -3,11 +3,14 @@
 #include <QAbstractNativeEventFilter>
 #include <QColor>
 #include <QHash>
+#include <QJsonObject>
 #include <QObject>
 #include <QPointer>
 #include <QRawFont>
 #include <QVariant>
 #include <QtQml/qqmlregistration.h>
+
+#include <functional>
 
 namespace ws {
 
@@ -94,6 +97,23 @@ public:
     static QString uiStyle() { return s_uiStyle; }
     static void setUiStyle(const QString& style); // unknown names are fluent
 
+    // The look in effect for what C++ draws itself (the tray menu, the
+    // taskbar box, pins, the countdown) and for plugins without QML: a few
+    // of the Look's tokens, as Theme.qml works them out (its nativeLook),
+    // written by it whenever the style, light/dark, accent or corners
+    // change. Colours are QColor, radii logical px (0 in the 直角 setting).
+    // Empty until a Theme is made: readers keep their own defaults then.
+    // The process's, shared by every QML engine in it; GUI thread.
+    Q_INVOKABLE void setNativeLook(const QVariantMap& look);
+    static QVariantMap nativeLook() { return s_nativeLook; }
+    static QColor nativeColor(const char* name, const QColor& fallback);
+    static qreal nativeReal(const char* name, qreal fallback);
+    // Whenever nativeLook() changes: once after a style change has settled
+    // (the many tokens of one change arrive one by one), on the event loop.
+    static QMetaObject::Connection onNativeLookChanged(QObject* context, std::function<void()> slot);
+    // nativeLook() as JSON for plugins: colours as "#AARRGGBB".
+    static QJsonObject nativeLookJson();
+
 signals:
     void changed();
     void uiSizeChanged(); // not changed(): the colours stay
@@ -108,6 +128,7 @@ private:
     static inline bool s_ownFrameAvailable = false;
     static inline QString s_uiSize = QStringLiteral("standard");
     static inline QString s_uiStyle = QStringLiteral("fluent");
+    static inline QVariantMap s_nativeLook;
     static inline QPointer<SystemTheme> s_instance; // the QML singleton
     QString m_iconFont;
     mutable QRawFont m_iconRaw; // made the first time hasGlyph asks

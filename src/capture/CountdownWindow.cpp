@@ -29,9 +29,10 @@ void registerClass()
 
 } // namespace
 
-CountdownWindow::CountdownWindow(const QRect& work, const QColor& fill, std::function<void()> clicked)
+CountdownWindow::CountdownWindow(const QRect& work, const QColor& fill, qreal radius, std::function<void()> clicked)
     : m_clicked(std::move(clicked))
     , m_fill(fill.isValid() ? fill : QColor(0x0F, 0x6C, 0xBD))
+    , m_radius(std::max(0.0, radius))
     , m_work(work)
 {
     registerClass();
@@ -66,6 +67,36 @@ void CountdownWindow::setSeconds(int seconds)
     draw();
 }
 
+void CountdownWindow::paint(QImage& canvas, int seconds, const QColor& fill, qreal radius, double dpr)
+{
+    const int w = canvas.width(), h = canvas.height();
+    canvas.fill(Qt::transparent);
+    QPainter painter(&canvas);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(fill);
+    painter.drawRoundedRect(QRectF(0, 0, w, h), radius * dpr, radius * dpr);
+    painter.setPen(Qt::white);
+    QFont big = QGuiApplication::font();
+    big.setPixelSize(static_cast<int>(std::lround(34 * dpr)));
+    big.setWeight(QFont::Bold);
+    painter.setFont(big);
+    painter.drawText(QRectF(0, 0, 64 * dpr, h), Qt::AlignCenter, QString::number(std::max(0, seconds)));
+    QFont small = QGuiApplication::font();
+    small.setPixelSize(static_cast<int>(std::lround(14 * dpr)));
+    painter.setFont(small);
+    painter.drawText(QRectF(64 * dpr, 0, w - 72 * dpr, h), Qt::AlignVCenter | Qt::AlignLeft,
+        QCoreApplication::translate("ws::capture::CountdownWindow", "秒后截图\n点这里取消"));
+}
+
+QImage CountdownWindow::picture(int seconds, const QColor& fill, qreal radius, double dpr)
+{
+    QImage canvas(static_cast<int>(std::lround(172 * dpr)), static_cast<int>(std::lround(64 * dpr)),
+        QImage::Format_ARGB32_Premultiplied);
+    paint(canvas, seconds, fill, std::max(0.0, radius), dpr);
+    return canvas;
+}
+
 void CountdownWindow::draw()
 {
     const int w = static_cast<int>(std::lround(172 * m_dpr));
@@ -88,24 +119,7 @@ void CountdownWindow::draw()
     HGDIOBJ old = ::SelectObject(dc, dib);
     {
         QImage canvas(static_cast<uchar*>(bits), w, h, w * 4, QImage::Format_ARGB32_Premultiplied);
-        canvas.fill(Qt::transparent);
-        QPainter painter(&canvas);
-        painter.setRenderHint(QPainter::Antialiasing);
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(m_fill);
-        const double radius = 8 * m_dpr;
-        painter.drawRoundedRect(QRectF(0, 0, w, h), radius, radius);
-        painter.setPen(Qt::white);
-        QFont big = QGuiApplication::font();
-        big.setPixelSize(static_cast<int>(std::lround(34 * m_dpr)));
-        big.setWeight(QFont::Bold);
-        painter.setFont(big);
-        painter.drawText(QRectF(0, 0, 64 * m_dpr, h), Qt::AlignCenter, QString::number(std::max(0, m_seconds)));
-        QFont small = QGuiApplication::font();
-        small.setPixelSize(static_cast<int>(std::lround(14 * m_dpr)));
-        painter.setFont(small);
-        painter.drawText(QRectF(64 * m_dpr, 0, w - 72 * m_dpr, h), Qt::AlignVCenter | Qt::AlignLeft,
-            QCoreApplication::translate("ws::capture::CountdownWindow", "秒后截图\n点这里取消"));
+        paint(canvas, m_seconds, m_fill, m_radius, m_dpr);
     }
     POINT to {m_rect.x(), m_rect.y()};
     SIZE size {w, h};

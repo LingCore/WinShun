@@ -248,6 +248,9 @@ struct Host::Plugin {
     std::uint64_t instance = 0; // the resident process
     quint32 pid = 0;
     std::unique_ptr<Session> session;
+    // The look its initialize carried, until it is answered (setAppearance).
+    QJsonObject initAppearance;
+    QString initTheme;
     bool restartAfterStop = false; // a shutdown we asked for, to start again (hung)
     QString error;
     // The resident query in flight, and the one waiting for the process.
@@ -1383,6 +1386,8 @@ void Host::onStarted(std::uint64_t instance, quint32 pid)
         {u"capabilities"_s, QJsonObject {{u"hostHotkeys"_s, hostHotkeys}}},
         {u"pluginDir"_s, e->dir}, {u"dataDir"_s, dataDirFor(*e)}, {u"locale"_s, m_options.locale}, {u"theme"_s, m_options.theme},
         {u"appearance"_s, m_options.appearance}, {u"settings"_s, pluginSettings(p.id)}};
+    p.initAppearance = m_options.appearance;
+    p.initTheme = m_options.theme;
     p.session->request(u"initialize"_s, params, [this, id, instance](const jsonrpc::Message& response) {
         Plugin& q = plugin(id);
         if (q.instance != instance || q.phase != Plugin::Phase::Starting)
@@ -1399,6 +1404,18 @@ void Host::onStarted(std::uint64_t instance, quint32 pid)
         q.phase = Plugin::Phase::Ready;
         q.error.clear();
         touch(q);
+        // The look changed while it started (setAppearance tells only the
+        // ready ones): the one in effect now.
+        if ((q.initAppearance != m_options.appearance || q.initTheme != m_options.theme) && q.session) {
+            const Entry* started = entry(id);
+            if (started && started->manifest->permissions.has(Permission::Ui)) {
+                QJsonObject sent = m_options.appearance;
+                sent.insert(u"theme"_s, m_options.theme);
+                q.session->notify(u"appearance"_s, sent);
+            }
+        }
+        q.initAppearance = {};
+        q.initTheme.clear();
         emit stateChanged(id);
         if (q.pending) {
             const Pending pending = *q.pending;

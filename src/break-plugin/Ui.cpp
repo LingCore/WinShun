@@ -57,6 +57,14 @@ D2D1_COLOR_F rgba(UINT32 rgb, float a = 1.f)
     return D2D1::ColorF(rgb, a);
 }
 
+// Look's 0xAARRGGBB, its alpha times `strength` (at most 1); `fallback` for 0.
+D2D1_COLOR_F argb(std::uint32_t value, D2D1_COLOR_F fallback, float strength = 1.f)
+{
+    if (!value)
+        return fallback;
+    return D2D1::ColorF(value & 0xFFFFFF, std::min(1.f, static_cast<float>(value >> 24) / 255.f * strength));
+}
+
 std::wstring duration(std::int64_t ms, bool zh)
 {
     const std::int64_t s = (ms + 999) / 1000;
@@ -204,7 +212,8 @@ public:
         ID2D1SolidColorBrush* brush = nullptr;
         if (SUCCEEDED(rt->CreateSolidColorBrush(color, &brush))) {
             const float h = width / 2;
-            rt->DrawRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(r.left + h, r.top + h, r.right - h, r.bottom - h), radius - h, radius - h), brush, width);
+            const float inner = std::max(0.f, radius - h); // square corners stay square
+            rt->DrawRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(r.left + h, r.top + h, r.right - h, r.bottom - h), inner, inner), brush, width);
             brush->Release();
         }
     }
@@ -403,6 +412,7 @@ private:
             m_config = m_core.schedule.config();
             m_zh = m_core.chinese;
             m_light = m_core.light;
+            m_look = m_core.look;
         }
         m_graphics.m_zh = m_zh;
         m_state = st;
@@ -483,7 +493,9 @@ private:
             m_pillKey.clear();
             m_pillShown = false;
         }
-        std::wstring key = text + L'|' + std::to_wstring(m_pillHover) + L'|' + std::to_wstring(m_light);
+        std::wstring key = text + L'|' + std::to_wstring(m_pillHover) + L'|' + std::to_wstring(m_light) + L'|'
+            + std::to_wstring(m_look.rounded) + L'|' + std::to_wstring(m_look.background) + L'|' + std::to_wstring(m_look.edge) + L'|'
+            + std::to_wstring(m_look.ink) + L'|' + std::to_wstring(m_look.button);
         for (const auto& [id, label] : buttons)
             key += L'|' + label;
         if (key == m_pillKey)
@@ -496,11 +508,17 @@ private:
     {
         const float s = m_pillDpi / 96.f;
         const auto px = [s](float logical) { return std::round(logical * s); };
-        const UINT32 background = m_light ? 0xF9F9F9 : 0x202020;
-        const UINT32 edgeColor = m_light ? 0xB4B4B4 : 0x6A6A6A;
-        const UINT32 ink = m_light ? 0x1B1B1B : 0xF3F3F3;
+        // Win顺's 界面风格 (Look): its window's background, edge and text,
+        // the buttons on its tagFill, stronger hovered; else fluent's own.
+        const Look& look = m_look;
+        const D2D1_COLOR_F background = argb(look.background, rgba(m_light ? 0xF9F9F9 : 0x202020));
+        const D2D1_COLOR_F edgeColor = argb(look.edge, rgba(m_light ? 0xB4B4B4 : 0x6A6A6A));
+        const D2D1_COLOR_F ink = argb(look.ink, rgba(m_light ? 0x1B1B1B : 0xF3F3F3));
         const float buttonAlpha = m_light ? 0.05f : 0.07f;
         const float hoverAlpha = m_light ? 0.10f : 0.13f;
+        const D2D1_COLOR_F buttonFill = argb(look.button, rgba(m_light ? 0x000000 : 0xFFFFFF, buttonAlpha));
+        const D2D1_COLOR_F buttonHot = argb(look.button, rgba(m_light ? 0x000000 : 0xFFFFFF, hoverAlpha), hoverAlpha / buttonAlpha);
+        const auto corner = [&look](float pill) { return look.rounded ? pill : 0.f; };
 
         IDWriteTextLayout* label = m_graphics.layout(text, m_graphics.text(DWRITE_FONT_WEIGHT_NORMAL, px(15)), 4000.f);
         if (!label)
@@ -536,26 +554,26 @@ private:
         if (m_pillSurface.ensure(w, h)) {
             if (ID2D1RenderTarget* rt = m_graphics.begin(m_pillSurface)) {
                 const D2D1_RECT_F body = D2D1::RectF(margin, margin, margin + width, margin + height);
-                const float radius = height / 2;
+                const float radius = corner(height / 2);
                 for (int i = 8; i >= 1; --i) { // a soft shadow, a little below
                     const float grow = i * s * 1.5f;
                     const D2D1_RECT_F r = D2D1::RectF(body.left - grow, body.top - grow + px(2), body.right + grow, body.bottom + grow + px(2));
                     m_graphics.fill(rt, r, radius + grow, rgba(0x000000, m_light ? 0.016f : 0.04f));
                 }
-                m_graphics.fill(rt, body, radius, rgba(background));
-                m_graphics.stroke(rt, body, radius, std::max(1.f, std::floor(s)), rgba(edgeColor));
-                m_graphics.draw(rt, label, body.left + padLeft, std::round(body.top + (height - lm.height) / 2), rgba(ink));
+                m_graphics.fill(rt, body, radius, background);
+                m_graphics.stroke(rt, body, radius, std::max(1.f, std::floor(s)), edgeColor);
+                m_graphics.draw(rt, label, body.left + padLeft, std::round(body.top + (height - lm.height) / 2), ink);
                 float x = body.left + padLeft + std::ceil(lm.widthIncludingTrailingWhitespace) + px(16);
                 const float bh = px(32);
                 const float by = body.top + std::round((height - bh) / 2);
                 for (std::size_t i = 0; i < buttons.size(); ++i) {
                     const D2D1_RECT_F r = D2D1::RectF(x, by, x + widths[i], by + bh);
                     const bool hot = m_pillHover == buttons[i].first;
-                    m_graphics.fill(rt, r, bh / 2, rgba(m_light ? 0x000000 : 0xFFFFFF, hot ? hoverAlpha : buttonAlpha));
+                    m_graphics.fill(rt, r, corner(bh / 2), hot ? buttonHot : buttonFill);
                     DWRITE_TEXT_METRICS m {};
                     if (layouts[i])
                         layouts[i]->GetMetrics(&m);
-                    m_graphics.draw(rt, layouts[i], x + buttonPad, std::round(by + (bh - m.height) / 2), rgba(ink));
+                    m_graphics.draw(rt, layouts[i], x + buttonPad, std::round(by + (bh - m.height) / 2), ink);
                     m_pillHits.push_back({buttons[i].first, {static_cast<LONG>(r.left), static_cast<LONG>(r.top), static_cast<LONG>(r.right), static_cast<LONG>(r.bottom)}});
                     x += widths[i] + gap;
                 }
@@ -720,7 +738,7 @@ private:
             ? static_cast<int>(std::clamp<std::int64_t>(Core::now() - m_escSince, 0, kEscHoldMs) * 100 / kEscHoldMs)
             : -1;
         std::wstring key = std::to_wstring(secondsLeft) + L'|' + std::to_wstring(held) + L'|' + std::to_wstring(screen.hover) + L'|'
-            + std::to_wstring(alpha) + L'|' + title + L'|' + hint;
+            + std::to_wstring(alpha) + L'|' + std::to_wstring(m_look.rounded) + L'|' + title + L'|' + hint;
         for (const auto& [id, label] : buttons)
             key += L'|' + label;
         if (key == screen.drawn)
@@ -748,12 +766,13 @@ private:
                 // How much of the break is over: a thin track under the time.
                 const float barWidth = px(240);
                 const float barHeight = std::max(1.f, px(2));
+                const float barRadius = m_look.rounded ? barHeight / 2 : 0.f; // the 直角 setting: square
                 const float barLeft = std::round((width - barWidth) / 2);
                 const float barTop = px(250);
                 const double done = st.breakLengthMs > 0 ? 1.0 - static_cast<double>(secondsLeft * 1000) / st.breakLengthMs : 1.0;
-                m_graphics.fill(rt, D2D1::RectF(barLeft, barTop, barLeft + barWidth, barTop + barHeight), barHeight / 2, rgba(0xFFFFFF, 0.18f));
+                m_graphics.fill(rt, D2D1::RectF(barLeft, barTop, barLeft + barWidth, barTop + barHeight), barRadius, rgba(0xFFFFFF, 0.18f));
                 m_graphics.fill(rt, D2D1::RectF(barLeft, barTop, barLeft + std::round(barWidth * static_cast<float>(std::clamp(done, 0.0, 1.0))), barTop + barHeight),
-                    barHeight / 2, rgba(0xFFFFFF, 0.7f));
+                    barRadius, rgba(0xFFFFFF, 0.7f));
 
                 float hintTop = px(288);
                 if (!buttons.empty()) {
@@ -777,7 +796,7 @@ private:
                     for (std::size_t i = 0; i < buttons.size(); ++i) {
                         const D2D1_RECT_F r = D2D1::RectF(x, top, x + widths[i], top + bh);
                         const bool hot = screen.hover == buttons[i].first;
-                        m_graphics.fill(rt, r, bh / 2, rgba(0xFFFFFF, hot ? 0.24f : 0.14f));
+                        m_graphics.fill(rt, r, m_look.rounded ? bh / 2 : 0.f, rgba(0xFFFFFF, hot ? 0.24f : 0.14f));
                         DWRITE_TEXT_METRICS m {};
                         if (layouts[i])
                             layouts[i]->GetMetrics(&m);
@@ -795,8 +814,8 @@ private:
                     const float holdWidth = px(160);
                     const float holdLeft = std::round((width - holdWidth) / 2);
                     const float holdTop = hintTop + px(28);
-                    m_graphics.fill(rt, D2D1::RectF(holdLeft, holdTop, holdLeft + holdWidth, holdTop + barHeight), barHeight / 2, rgba(0xFFFFFF, 0.18f));
-                    m_graphics.fill(rt, D2D1::RectF(holdLeft, holdTop, holdLeft + std::round(holdWidth * held), holdTop + barHeight), barHeight / 2, rgba(0xFFFFFF, 0.8f));
+                    m_graphics.fill(rt, D2D1::RectF(holdLeft, holdTop, holdLeft + holdWidth, holdTop + barHeight), barRadius, rgba(0xFFFFFF, 0.18f));
+                    m_graphics.fill(rt, D2D1::RectF(holdLeft, holdTop, holdLeft + std::round(holdWidth * held), holdTop + barHeight), barRadius, rgba(0xFFFFFF, 0.8f));
                 }
                 m_graphics.end();
             }
@@ -1089,6 +1108,7 @@ private:
     Config m_config;
     bool m_zh = true;
     bool m_light = true;
+    Look m_look; // m_core.look, copied at each tick
     bool m_quiet = false;
     std::int64_t m_quietAt = -kQuietEveryMs;
     bool m_locked = false;

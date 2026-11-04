@@ -286,7 +286,8 @@ void PinWindow::drawTextLayer(QImage& canvas, const QRect& picture)
     const QRect pill(picture.left() + gap, picture.bottom() + 1 - gap - size.height(), size.width(), size.height());
     painter.setPen(Qt::NoPen);
     painter.setBrush(accent);
-    painter.drawRoundedRect(pill, 4 * dpr(), 4 * dpr());
+    const qreal radius = std::max(0.0, m_host.pillRadius ? m_host.pillRadius() : 4.0) * dpr();
+    painter.drawRoundedRect(pill, radius, radius);
     painter.setPen(Qt::white);
     painter.drawText(pill, Qt::AlignCenter, text);
 }
@@ -300,7 +301,10 @@ void PinWindow::paintBorder()
     // Theme.windowEdge whether active or not: Win顺's edges are one grey,
     // never the accent (docs/colors.md); the shadow tells the pin apart.
     // Firmer while a click-through pin is held reachable by Ctrl (#59).
+    // The firmer grey has no token: the same in every 界面风格.
+    const QColor edge = m_host.edge ? m_host.edge() : QColor();
     const QColor color = m_reachable ? (dark ? QColor(0xA8, 0xA8, 0xA8) : QColor(0x70, 0x70, 0x70))
+        : edge.isValid()             ? QColor(edge.red(), edge.green(), edge.blue()) // opaque: Source composition
                                      : (dark ? QColor(0x6A, 0x6A, 0x6A) : QColor(0xB4, 0xB4, 0xB4));
     const int s = m_frame.shadow;
     QPainter painter(&canvas);
@@ -362,6 +366,14 @@ void PinWindow::setShown(bool shown)
 {
     m_shown = shown;
     applyVisibility();
+}
+
+void PinWindow::restyle()
+{
+    if (m_text != Text::Off)
+        render(); // the text pill too
+    else
+        paintBorder();
 }
 
 void PinWindow::setAllHidden(bool hidden)

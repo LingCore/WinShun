@@ -35,6 +35,8 @@ public:
         std::function<void()> closed; // a pin closed: its memory can go back to Windows
         std::function<bool()> dark;
         std::function<QColor()> accent; // a fill that carries white words
+        std::function<QColor()> edge; // PinWindow::Host::edge
+        std::function<qreal()> pillRadius; // PinWindow::Host::pillRadius
         std::function<void(const QString&)> copyText; // the text picked on a pin
         // The lines of a picture (CaptureOcr::scan), for picking text.
         std::function<void(const QImage&, double dpr, std::function<void(QList<RedactLine>)> done)> readLines;
@@ -62,6 +64,8 @@ public:
     // while they are hidden shows them again.
     bool allHidden() const { return m_hidden; }
     void setAllHidden(bool hidden);
+    // Light or dark, or the 界面风格, changed: the pins' borders again.
+    void restyle();
     // 全部置顶: every pin on top of other windows, or none.
     bool allTopmost() const;
     void setAllTopmost(bool on);

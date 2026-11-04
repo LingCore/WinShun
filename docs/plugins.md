@@ -241,7 +241,7 @@ C++ SDK 的 `initialized()` 在回答完 `initialize` 后调一次：`eager` 插
 截图插件 `winshun.capture` 就是这样一个插件：它自己开窗口、自己注册快捷键，Win顺 只在几个地方把事情交给它。下面这些都要常驻（`runtime.mode` 是 `resident`）并要 `ui` 权限，否则 manifest 校验不过。
 
 ```
-{"jsonrpc":"2.0","method":"appearance","params":{"locale":"zh","theme":"dark","themeSetting":"system","corners":"round","uiSize":"standard","transparency":"on","renderer":"d3d11"}}
+{"jsonrpc":"2.0","method":"appearance","params":{"locale":"zh","theme":"dark","themeSetting":"system","corners":"round","uiStyle":"brand","uiSize":"standard","transparency":"on","renderer":"d3d11","nativeLook":{"style":"brand","dark":true,"rounded":true,"menuRadius":10,"background":"#ff1d1d20","text":"#fff2f2f5","accentFill":"#ffa8402c","…":"…"}}}
 {"jsonrpc":"2.0","id":6,"method":"trayMenu","params":{}}
 ← {"jsonrpc":"2.0","id":6,"result":{"items":[{"id":"capture","title":"开始截图\tCtrl+Alt+A"},{"title":"延时截图","children":[{"id":"delay3","title":"3 秒","checked":true}]},{},{"id":"closePins","title":"关闭全部贴图","enabled":false}]}}
 {"jsonrpc":"2.0","method":"menu","params":{"id":"capture"}}
@@ -255,6 +255,7 @@ C++ SDK 的 `initialized()` 在回答完 `initialize` 后调一次：`eager` 插
 增强 OCR 由主程序按需安装，剪贴板与截图插件共用。宿主提供 `WS_COMPONENTS_DIR`，指向当前用户或便携配置的 `components`；不要往该目录写插件私有数据。`show_ocr_setup` 应用工具需要已有的 `ui` 权限，只打开设置中的安装入口，不替插件联网或自动下载。截图仍兼容程序旁边的旧版 / 离线版识别文件。
 
 - **外观**：`initialize` 的 `appearance` 和之后的 `appearance` 通知，是 Win顺 的界面语言和"外观"设置（主题设置、圆角、界面大小、透明效果、渲染方式）。插件的窗口照着画，就和 Win顺 一个样子；变了才发，只发给有 `ui` 权限的插件。通知里还有 `theme`，是正在用的主题（`light` / `dark`）：主题设成“跟随系统”时，Windows 换了深浅色设置没变，也会发。`winshun.h` 收到后 `locale()`、`theme()`、`appearance()` 就是新的，再调 `appearanceChanged()`。
+  - `uiStyle` 是界面风格（`fluent` / `brand` / `tactile`）。`nativeLook` 是这个风格算好的颜色和圆角，给不用 Win顺 QML 自己画界面的插件照着画（休息提醒就是这样）；旧版 Win顺 没有这一项，Win顺 刚启动、界面还没建好的那一下也可能没有，没有就按自己原来的样子画。颜色是 `#AARRGGBB` 字符串；圆角是逻辑像素，已经按"圆角/直角"设置算过（直角时都是 0）；`rounded` 是圆角设置本身，插件自己算的胶囊形（高度的一半）直角时也要变成 0；`dark` 是这套颜色对应的深浅色。字段：`style` `dark` `rounded`；圆角 `windowRadius`（自绘框风格的窗口圆角，否则 0）`cardRadius` `controlRadius` `largeControlRadius` `smallControlRadius` `menuRadius` `menuItemRadius` `menuPadding`；颜色 `background` `layer` `page` `windowEdge` `divider` `text` `subtext` `faint` `hover` `pressed` `tagFill` `control` `controlHover` `controlBorder` `inputFocused` `menuBackground` `menuHover` `menuEdge` `accent`（字、图标、线）`accentFill`（白字底）`accentLine` `accentText`（彩色底上的字）`textSelection` `caret`（风格自己的光标色，没有时透明）`danger` `dangerFill`。开着透明效果时 `layer`、`hover` 等可能是半透明的，画在不透明的底上要先叠到 `background` 上。以后可能加字段，不认识的忽略。
 - **托盘子菜单**（`trayMenu`）：右键按下托盘图标时，Win顺 发 `trayMenu`，松开时菜单弹出，所以要马上回答（几毫秒）；赶不上的，下次弹菜单时用。子菜单在剪贴板那几项下面，标题是 manifest 的 `trayMenu`。`items` 每项 `{id, title, checked, enabled, children}`，`{}` 是分隔线，最多两层；`title` 里 `\t` 后面的字靠右显示（快捷键）；没有项就不出这个子菜单。用户选了一项，Win顺 发 `menu` 通知，`id` 是那一项的。
 - **图片**（`pictures`）：用户在剪贴板历史的图片上、结果里的图片文件上选"贴到屏幕"（`pin`）或"编辑"（`edit`），Win顺 发 `picture`。`file` 是图片文件；来自剪贴板历史时还有 `clipId`，有标注工程时有 `project`，`screenshot` 表示它是截的图。这些文件是 Win顺 的：读，不要改、不要删。几个插件都声明同一项时，交给第一个开着的。
 - **设置窗口**（`settingsWindow`）：卡片上的"设置"按钮发 `showSettings`；插件没在运行时按钮提示稍后再试。

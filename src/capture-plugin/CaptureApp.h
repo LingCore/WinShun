@@ -66,6 +66,9 @@ private:
     void applyHotkeys();
     void reportHotkeyProblems(const CaptureSettings::Problems& problems);
     void applyAppearance(const QJsonObject& appearance);
+    // The Theme made, the first time C++ draws by its look (the pins, the
+    // countdown, the tray menu): it writes SystemTheme::nativeLook.
+    void ensureTheme();
     capture::PinManager& pins();
     capture::CaptureEditor* editor();
     PresenterHost& presenter();
@@ -139,6 +142,7 @@ private:
     QTimer m_applyLater;
     bool m_started = false;
     bool m_pinPending = false;
+    bool m_themeMade = false; // ensureTheme
 };
 
 } // namespace ws::captureplugin

@@ -195,6 +195,15 @@ D2D1_COLOR_F colorOf(COLORREF color, float alpha = 1)
     return D2D1::ColorF(GetRValue(color) / 255.0f, GetGValue(color) / 255.0f, GetBValue(color) / 255.0f, alpha);
 }
 
+// 0xAARRGGBB; none for alpha 0 (Look::selection, caret: the box's own then).
+std::optional<D2D1_COLOR_F> argbOf(std::uint32_t argb)
+{
+    if ((argb >> 24) == 0)
+        return std::nullopt;
+    const auto channel = [argb](int shift) { return static_cast<float>((argb >> shift) & 0xFF) / 255.0f; };
+    return D2D1::ColorF(channel(16), channel(8), channel(0), channel(24));
+}
+
 D2D1_COLOR_F mix(const D2D1_COLOR_F& a, const D2D1_COLOR_F& b, float t)
 {
     return D2D1::ColorF(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t);
@@ -1591,16 +1600,23 @@ struct SearchBox::Impl {
             return {window, window, window, window, ink, highlight, ink, colorOf(::GetSysColor(COLOR_GRAYTEXT)),
                 highlight, ink, gray(0, 0), gray(0, 0), gray(0, 0)};
         }
+        // On the taskbar, the taskbar's light or dark (not Win顺's), its
+        // translucent fills, as Windows' own search box. What stands for the
+        // launcher's field while typing follows the 界面风格 where it has a
+        // colour of its own: the selection and the caret (Look::selection, caret).
         D2D1_COLOR_F selection = accent;
-        if (dark) {
-            selection.a = 0.45f;
-            return {gray(1, 0.06f), gray(1, 0.11f), gray(1, 0.03f), gray(0.11f, 0.94f), gray(1, 0.09f),
-                gray(0x6A / 255.0f, 1), gray(1, 1), gray(1, 0.66f), selection, gray(1, 1), gray(1, 0.058f), gray(1, 0.039f),
-                gray(1, 0.045f)};
-        }
-        selection.a = 0.32f;
-        return {gray(1, 0.6f), gray(1, 0.82f), gray(1, 0.42f), gray(1, 0.98f), gray(0, 0.08f), gray(0xB4 / 255.0f, 1),
-            gray(0, 0.9f), gray(0, 0.6f), selection, gray(0, 0.9f), gray(0, 0.037f), gray(0, 0.024f), gray(0, 0)};
+        selection.a = dark ? 0.45f : 0.32f;
+        if (const std::optional<D2D1_COLOR_F> styled = argbOf(drawnLook.selection))
+            selection = *styled;
+        Palette p = dark
+            ? Palette {gray(1, 0.06f), gray(1, 0.11f), gray(1, 0.03f), gray(0.11f, 0.94f), gray(1, 0.09f),
+                  gray(0x6A / 255.0f, 1), gray(1, 1), gray(1, 0.66f), selection, gray(1, 1), gray(1, 0.058f), gray(1, 0.039f),
+                  gray(1, 0.045f)}
+            : Palette {gray(1, 0.6f), gray(1, 0.82f), gray(1, 0.42f), gray(1, 0.98f), gray(0, 0.08f), gray(0xB4 / 255.0f, 1),
+                  gray(0, 0.9f), gray(0, 0.6f), selection, gray(0, 0.9f), gray(0, 0.037f), gray(0, 0.024f), gray(0, 0)};
+        if (const std::optional<D2D1_COLOR_F> caret = argbOf(drawnLook.caret))
+            p.caret = *caret;
+        return p;
     }
 
     // The words in the box: the placeholder (or what to search, while typing

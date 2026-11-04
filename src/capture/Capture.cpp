@@ -1177,7 +1177,7 @@ void Capture::startDelayed(int seconds)
         return;
     const QRect work(info.rcWork.left, info.rcWork.top, info.rcWork.right - info.rcWork.left, info.rcWork.bottom - info.rcWork.top);
     m_countdown = std::make_unique<CountdownWindow>(work, m_callbacks.accent ? m_callbacks.accent() : QColor(),
-        [this] { QMetaObject::invokeMethod(this, [this] { cancelCountdown(); }, Qt::QueuedConnection); });
+        m_callbacks.panelRadius ? m_callbacks.panelRadius() : 8.0, [this] { QMetaObject::invokeMethod(this, [this] { cancelCountdown(); }, Qt::QueuedConnection); });
     if (!m_countdown->hwnd()) {
         m_countdown.reset();
         return;

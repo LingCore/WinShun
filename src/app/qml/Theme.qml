@@ -222,4 +222,52 @@ QtObject {
     readonly property Component cardPart: pick("card")
     readonly property Component tray: look.tray ?? null
     readonly property Component actionCapsule: look.actionCapsule ?? null
+
+    // ---- for what C++ draws itself (SystemTheme.nativeLook): the tray menu,
+    // the taskbar box, pins, the countdown, and plugins without QML (sent
+    // with the plugins' appearance). Only tokens from above: one source.
+    // Radii already squared by the 直角 setting; `rounded` for the pills
+    // C++ works out itself (h / 2). `caret`: transparent where the style
+    // has no caret colour of its own (the host keeps its own then).
+    readonly property var nativeLook: ({
+        style: theme.style,
+        dark: theme.dark,
+        rounded: SystemTheme.roundedCorners,
+        windowRadius: theme.frameRadius,
+        cardRadius: theme.cardRadius,
+        controlRadius: theme.controlRadius,
+        largeControlRadius: theme.largeControlRadius,
+        smallControlRadius: theme.smallControlRadius,
+        menuRadius: theme.menuRadius,
+        menuItemRadius: theme.menuItemRadius,
+        menuPadding: theme.menuPadding,
+        background: theme.background,
+        layer: theme.layer,
+        page: theme.page,
+        windowEdge: theme.windowEdge,
+        divider: theme.divider,
+        text: theme.text,
+        subtext: theme.subtext,
+        faint: theme.faint,
+        hover: theme.hover,
+        pressed: theme.pressed,
+        tagFill: theme.tagFill,
+        control: theme.control,
+        controlHover: theme.controlHover,
+        controlBorder: theme.controlBorder,
+        inputFocused: theme.inputFocused,
+        menuBackground: theme.menuBackground,
+        menuHover: theme.menuHover,
+        menuEdge: theme.menuEdge,
+        accent: theme.accent,
+        accentFill: theme.accentFill,
+        accentLine: theme.accentLine,
+        accentText: theme.accentText,
+        textSelection: theme.textSelection,
+        caret: theme.tok("caret", Qt.rgba(0, 0, 0, 0)),
+        danger: theme.danger,
+        dangerFill: theme.dangerFill
+    })
+    onNativeLookChanged: SystemTheme.setNativeLook(nativeLook)
+    Component.onCompleted: SystemTheme.setNativeLook(nativeLook)
 }
