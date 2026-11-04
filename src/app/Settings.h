@@ -156,6 +156,13 @@ struct Settings {
     bool folderMenuFavorites = true;
     bool folderMenuRecent = true;
     bool folderMenuWindows = true; // folders open in other windows
+    // Which actions the menu offers under the lists (GitHub #200): all on is
+    // what it always did. Favorite covers both adding and removing.
+    bool folderMenuItemSearch = true;
+    bool folderMenuItemCmd = true;
+    bool folderMenuItemPowerShell = true;
+    bool folderMenuItemFavorite = true;
+    bool folderMenuItemSettings = true;
     // A hotkey that brings the menu up in whatever window is in front, for
     // when another program has the double click (GitHub #25); e.g.
     // "Ctrl+Alt+D", empty = none. Works with folderMenu off too.

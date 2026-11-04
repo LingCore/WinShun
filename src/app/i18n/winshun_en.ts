@@ -1139,6 +1139,30 @@
         <translation>Also open the folder menu with a middle click</translation>
     </message>
     <message>
+        <source>文件夹菜单里有“在此搜索”</source>
+        <translation>The folder menu has “Search here”</translation>
+    </message>
+    <message>
+        <source>文件夹菜单里有“在此打开命令提示符”</source>
+        <translation>The folder menu has “Open Command Prompt here”</translation>
+    </message>
+    <message>
+        <source>文件夹菜单里有“在此打开 PowerShell”</source>
+        <translation>The folder menu has “Open PowerShell here”</translation>
+    </message>
+    <message>
+        <source>文件夹菜单里有“收藏这个文件夹”</source>
+        <translation>The folder menu has “Add this folder to favorites”</translation>
+    </message>
+    <message>
+        <source>文件夹菜单里有“Win顺 设置”</source>
+        <translation>The folder menu has “WinShun Settings”</translation>
+    </message>
+    <message>
+        <source>菜单里的操作</source>
+        <translation>Actions in the menu</translation>
+    </message>
+    <message>
         <source>剪贴板打开位置</source>
         <translation>Clipboard position</translation>
     </message>
@@ -6887,6 +6911,34 @@ Right: center window · Drag: move window</translation>
     <message>
         <source>菜单里列出的内容</source>
         <translation>Items listed in the menu</translation>
+    </message>
+    <message>
+        <source>菜单里的操作</source>
+        <translation>Actions in the menu</translation>
+    </message>
+    <message>
+        <source>菜单末尾的“在此搜索”“收藏这个文件夹”等；没勾选的不再出现</source>
+        <translation>The actions under the lists, such as “Search here” and “Add this folder to favorites”; unticked ones no longer appear</translation>
+    </message>
+    <message>
+        <source>文件夹菜单;搜索;命令提示符;cmd;PowerShell;收藏;设置;隐藏;search;command prompt;favorites;settings</source>
+        <translation>folder menu;search;command prompt;cmd;PowerShell;favorites;settings;hide</translation>
+    </message>
+    <message>
+        <source>搜索</source>
+        <translation>Search</translation>
+    </message>
+    <message>
+        <source>命令提示符</source>
+        <translation>Command Prompt</translation>
+    </message>
+    <message>
+        <source>PowerShell</source>
+        <translation>PowerShell</translation>
+    </message>
+    <message>
+        <source>收藏</source>
+        <translation>Favorite</translation>
     </message>
     <message>
         <source>收藏夹中包含收藏的文件夹、文件、应用和自定义命令</source>

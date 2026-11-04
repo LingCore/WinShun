@@ -793,6 +793,27 @@ private slots:
         QVERIFY(!again.folderMenuDouble && again.folderMenuMiddle);
     }
 
+    // The actions under the menu's lists (GitHub #200): all on as before, each
+    // kept on its own.
+    void folderMenuItems()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings fresh;
+        fresh.load();
+        QVERIFY(fresh.folderMenuItemSearch && fresh.folderMenuItemCmd && fresh.folderMenuItemPowerShell
+            && fresh.folderMenuItemFavorite && fresh.folderMenuItemSettings);
+
+        fresh.folderMenuItemCmd = false;
+        fresh.folderMenuItemSettings = false;
+        fresh.save();
+        ws::Settings again;
+        again.load();
+        QVERIFY(again.folderMenuItemSearch && !again.folderMenuItemCmd && again.folderMenuItemPowerShell
+            && again.folderMenuItemFavorite && !again.folderMenuItemSettings);
+    }
+
     // What a new install leaves off until wanted: the folder menu, the dialog
     // bar, 粘贴为文件. A file from before without their keys keeps the first
     // two on, as they were; a choice written stays.

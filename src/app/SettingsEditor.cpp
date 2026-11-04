@@ -1244,6 +1244,46 @@ void SettingsEditor::setFolderMenuWindows(bool on)
     commit();
 }
 
+void SettingsEditor::setFolderMenuItemSearch(bool on)
+{
+    if (m_settings.folderMenuItemSearch == on)
+        return;
+    m_settings.folderMenuItemSearch = on;
+    commit();
+}
+
+void SettingsEditor::setFolderMenuItemCmd(bool on)
+{
+    if (m_settings.folderMenuItemCmd == on)
+        return;
+    m_settings.folderMenuItemCmd = on;
+    commit();
+}
+
+void SettingsEditor::setFolderMenuItemPowerShell(bool on)
+{
+    if (m_settings.folderMenuItemPowerShell == on)
+        return;
+    m_settings.folderMenuItemPowerShell = on;
+    commit();
+}
+
+void SettingsEditor::setFolderMenuItemFavorite(bool on)
+{
+    if (m_settings.folderMenuItemFavorite == on)
+        return;
+    m_settings.folderMenuItemFavorite = on;
+    commit();
+}
+
+void SettingsEditor::setFolderMenuItemSettings(bool on)
+{
+    if (m_settings.folderMenuItemSettings == on)
+        return;
+    m_settings.folderMenuItemSettings = on;
+    commit();
+}
+
 void SettingsEditor::setFolderMenuHotkey(const QString& hotkey)
 {
     const QString value = hotkey.trimmed();

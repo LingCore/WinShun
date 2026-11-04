@@ -224,6 +224,15 @@ void FolderMenu::setGroups(bool favorites, bool recent, bool windows)
     m_listWindows = windows;
 }
 
+void FolderMenu::setItems(bool search, bool cmd, bool powerShell, bool favorite, bool settings)
+{
+    m_itemSearch = search;
+    m_itemCmd = cmd;
+    m_itemPowerShell = powerShell;
+    m_itemFavorite = favorite;
+    m_itemSettings = settings;
+}
+
 void FolderMenu::doubleClicked(HWND window, POINT pt)
 {
     // On the listener thread: class names only, nothing that waits.
@@ -608,16 +617,25 @@ void FolderMenu::show(const folderview::Hit& hit, const Found& found)
         addList(tr("已打开的文件夹"), found.windows, kMaxWindows, u"\uE8A7"_s);
     if (!m_folder.isEmpty()) {
         separator();
-        m_entries.append(action(Kind::Search, m_folder, tr("在“%1”里搜索").arg(nameOf(m_folder)), {}, u"\uE721"_s));
-        m_entries.append(action(Kind::Terminal, m_folder, tr("在此打开命令提示符"), {}, u"\uE756"_s));
-        m_entries.append(action(Kind::PowerShell, m_folder, tr("在此打开 PowerShell"), {}, u"\uE756"_s));
-        if (m_favorites && m_favorites->contains(m_folder))
-            m_entries.append(action(Kind::RemoveFavorite, m_folder, tr("从收藏夹移除这个文件夹"), {}, u"\uE8D9"_s));
-        else
-            m_entries.append(action(Kind::AddFavorite, m_folder, tr("收藏这个文件夹"), {}, u"\uE734"_s));
+        if (m_itemSearch)
+            m_entries.append(action(Kind::Search, m_folder, tr("在“%1”里搜索").arg(nameOf(m_folder)), {}, u"\uE721"_s));
+        if (m_itemCmd)
+            m_entries.append(action(Kind::Terminal, m_folder, tr("在此打开命令提示符"), {}, u"\uE756"_s));
+        if (m_itemPowerShell)
+            m_entries.append(action(Kind::PowerShell, m_folder, tr("在此打开 PowerShell"), {}, u"\uE756"_s));
+        if (m_itemFavorite) {
+            if (m_favorites && m_favorites->contains(m_folder))
+                m_entries.append(action(Kind::RemoveFavorite, m_folder, tr("从收藏夹移除这个文件夹"), {}, u"\uE8D9"_s));
+            else
+                m_entries.append(action(Kind::AddFavorite, m_folder, tr("收藏这个文件夹"), {}, u"\uE734"_s));
+        }
     }
-    separator();
-    m_entries.append(action(Kind::Settings, {}, tr("Win顺 设置…"), {}, u"\uE713"_s));
+    if (m_itemSettings) {
+        separator();
+        m_entries.append(action(Kind::Settings, {}, tr("Win顺 设置…"), {}, u"\uE713"_s));
+    } else if (!m_entries.isEmpty() && m_entries.last().toMap().value(u"separator"_s).toBool()) {
+        m_entries.removeLast(); // no action left to stand under it
+    }
     emit entriesChanged();
 
     // Where the second press was (or the hotkey's anchor): its top-left

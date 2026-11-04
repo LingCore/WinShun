@@ -2097,6 +2097,36 @@ Window {
                     }
                 }
 
+                SettingRow { // GitHub #200
+                    id: folderMenuActionsRow
+                    sub: true
+                    title: qsTr("菜单里的操作")
+                    description: qsTr("菜单末尾的“在此搜索”“收藏这个文件夹”等；没勾选的不再出现")
+                    keywords: qsTr("文件夹菜单;搜索;命令提示符;cmd;PowerShell;收藏;设置;隐藏;search;command prompt;favorites;settings").split(";")
+
+                    ScopeTabs {
+                        multiSelect: true
+                        disabled: window.editor.folderMenu ? [] : [0, 1, 2, 3, 4]
+                        labels: [qsTr("搜索"), qsTr("命令提示符"), qsTr("PowerShell"), qsTr("收藏"), qsTr("设置")]
+                        checkedIndices: {
+                            const list = []
+                            if (window.editor.folderMenuItemSearch) list.push(0)
+                            if (window.editor.folderMenuItemCmd) list.push(1)
+                            if (window.editor.folderMenuItemPowerShell) list.push(2)
+                            if (window.editor.folderMenuItemFavorite) list.push(3)
+                            if (window.editor.folderMenuItemSettings) list.push(4)
+                            return list
+                        }
+                        onToggled: (index, on) => {
+                            if (index === 0) window.editor.folderMenuItemSearch = on
+                            else if (index === 1) window.editor.folderMenuItemCmd = on
+                            else if (index === 2) window.editor.folderMenuItemPowerShell = on
+                            else if (index === 3) window.editor.folderMenuItemFavorite = on
+                            else if (index === 4) window.editor.folderMenuItemSettings = on
+                        }
+                    }
+                }
+
                 SettingRow {
                     id: opusMenuRow
                     sub: true
