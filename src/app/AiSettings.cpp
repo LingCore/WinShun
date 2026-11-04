@@ -293,6 +293,9 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Launcher/FolderMenuDesktop", QT_TRANSLATE_NOOP("AiSettings", "在桌面的空白处双击"), "files_and_dialogs", 2,
                     "The folder menu comes up on a double click on the desktop."},
         &Settings::folderMenuDesktop));
+    add(boolean({"Launcher/FolderMenuDouble", QT_TRANSLATE_NOOP("AiSettings", "用鼠标左键双击打开文件夹菜单"), "files_and_dialogs", 2,
+                    "Open the enabled blank-space folder menu with a double click of the left mouse button. On by default; with it off the menu can still come from the middle button or the hotkey."},
+        &Settings::folderMenuDouble));
     add(boolean({"Launcher/FolderMenuMiddle", QT_TRANSLATE_NOOP("AiSettings", "同时用中键打开文件夹菜单"), "files_and_dialogs", 2,
                     "Also open the enabled blank-space folder menu with the middle mouse button. Off by default."},
         &Settings::folderMenuMiddle));
@@ -305,6 +308,21 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Launcher/FolderMenuWindows", QT_TRANSLATE_NOOP("AiSettings", "菜单里列出别的窗口里的文件夹"), "files_and_dialogs", 2,
                     "The folder menu lists the folders open in other file manager windows. At least one of the three groups stays on."},
         &Settings::folderMenuWindows));
+    add(boolean({"Launcher/FolderMenuItemSearch", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“在此搜索”"), "files_and_dialogs", 2,
+                    "The folder menu offers this action under its lists. On by default."},
+        &Settings::folderMenuItemSearch));
+    add(boolean({"Launcher/FolderMenuItemCmd", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“在此打开命令提示符”"), "files_and_dialogs", 2,
+                    "The folder menu offers this action under its lists. On by default."},
+        &Settings::folderMenuItemCmd));
+    add(boolean({"Launcher/FolderMenuItemPowerShell", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“在此打开 PowerShell”"), "files_and_dialogs", 2,
+                    "The folder menu offers this action under its lists. On by default."},
+        &Settings::folderMenuItemPowerShell));
+    add(boolean({"Launcher/FolderMenuItemFavorite", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“收藏这个文件夹”"), "files_and_dialogs", 2,
+                    "The folder menu offers this action under its lists. On by default."},
+        &Settings::folderMenuItemFavorite));
+    add(boolean({"Launcher/FolderMenuItemSettings", QT_TRANSLATE_NOOP("AiSettings", "文件夹菜单里有“在菜单末尾显示 Win顺 设置”"), "files_and_dialogs", 2,
+                    "The folder menu offers this action under its lists. On by default."},
+        &Settings::folderMenuItemSettings));
     add(boolean({"Favorites/DropPie", QT_TRANSLATE_NOOP("AiSettings", "拖文件时按 ` 键，弹出收藏圆盘"), "favorites", -1,
                     "While dragging files or folders (File Explorer, the desktop, file managers), pressing the key left of 1 (` and ~ on most keyboards, · in a Chinese input method; it is the key's place that counts, not what is printed on it) with them held (no need to move) brings up the first eight favorite folders round the pointer. Moving toward one and letting go drops the files there: moved within a drive, copied to another, Ctrl copies and Shift moves. Does nothing while Win顺 runs as administrator."},
         &Settings::dropPie));
@@ -737,8 +755,14 @@ std::vector<Entry> buildCatalog()
     for (Entry& e : t) {
         if (e.key == u"Taskbar/SearchBox")
             e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "任务栏上的 Win顺");
-        else if (e.key == u"Launcher/FolderMenuExplorer" || e.key == u"Launcher/FolderMenuDesktop" || e.key == u"Launcher/FolderMenuMiddle")
-            e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "触发位置与方式");
+        else if (e.key == u"Launcher/FolderMenu")
+            e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "在资源管理器或桌面弹出文件夹快捷菜单");
+        else if (e.key == u"Launcher/FolderMenuDouble" || e.key == u"Launcher/FolderMenuMiddle")
+            e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "触发方式");
+        else if (e.key == u"Launcher/FolderMenuExplorer" || e.key == u"Launcher/FolderMenuDesktop")
+            e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "触发位置");
+        else if (e.key.startsWith(u"Launcher/FolderMenuItem"))
+            e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "菜单里的操作");
         else if (e.key == u"Launcher/FolderMenuFavorites" || e.key == u"Launcher/FolderMenuRecent" || e.key == u"Launcher/FolderMenuWindows")
             e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "菜单里列出的内容");
         else if (e.key == u"Results/ShowModifiedTime")

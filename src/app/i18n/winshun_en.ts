@@ -376,8 +376,16 @@
         <translation>WinShun on the taskbar</translation>
     </message>
     <message>
-        <source>触发位置与方式</source>
-        <translation>Trigger locations and methods</translation>
+        <source>触发位置</source>
+        <translation>Trigger location</translation>
+    </message>
+    <message>
+        <source>在资源管理器或桌面弹出文件夹快捷菜单</source>
+        <translation>Folder quick menu in File Explorer or on the desktop</translation>
+    </message>
+    <message>
+        <source>触发方式</source>
+        <translation>Trigger method</translation>
     </message>
     <message>
         <source>菜单里列出的内容</source>
@@ -1123,8 +1131,36 @@
         <translation>Preview shortcut</translation>
     </message>
     <message>
+        <source>用鼠标左键双击打开文件夹菜单</source>
+        <translation>Open the folder menu with a left double click</translation>
+    </message>
+    <message>
         <source>同时用中键打开文件夹菜单</source>
         <translation>Also open the folder menu with a middle click</translation>
+    </message>
+    <message>
+        <source>文件夹菜单里有“在此搜索”</source>
+        <translation>The folder menu has “Search here”</translation>
+    </message>
+    <message>
+        <source>文件夹菜单里有“在此打开命令提示符”</source>
+        <translation>The folder menu has “Open Command Prompt here”</translation>
+    </message>
+    <message>
+        <source>文件夹菜单里有“在此打开 PowerShell”</source>
+        <translation>The folder menu has “Open PowerShell here”</translation>
+    </message>
+    <message>
+        <source>文件夹菜单里有“收藏这个文件夹”</source>
+        <translation>The folder menu has “Add this folder to favorites”</translation>
+    </message>
+    <message>
+        <source>文件夹菜单里有“Win顺 设置”</source>
+        <translation>The folder menu has “WinShun Settings”</translation>
+    </message>
+    <message>
+        <source>菜单里的操作</source>
+        <translation>Actions in the menu</translation>
     </message>
     <message>
         <source>剪贴板打开位置</source>
@@ -4355,12 +4391,12 @@ Right: center window · Drag: move window</translation>
         <translation>Right-click a folder, a folder’s empty space or a drive to search only in it; on Windows 11 it is under “Show more options”</translation>
     </message>
     <message>
-        <source>双击空白处弹出文件夹菜单</source>
-        <translation>Folder menu on a double click</translation>
+        <source>在资源管理器或桌面弹出文件夹快捷菜单</source>
+        <translation>Folder quick menu in File Explorer or on the desktop</translation>
     </message>
     <message>
-        <source>双击;空白;空白处;收藏;收藏夹;最近;文件夹菜单;资源管理器;桌面;Listary;double-click;folder menu</source>
-        <translation>double click;blank;empty space;favorites;recent;folder menu;File Explorer;desktop;Listary</translation>
+        <source>双击;空白;空白处;收藏;收藏夹;最近;文件夹菜单;文件夹快捷菜单;资源管理器;桌面;Listary;double-click;folder menu</source>
+        <translation>double click;blank;empty space;favorites;recent;folder menu;folder quick menu;File Explorer;desktop;Listary</translation>
     </message>
     <message>
         <source>已在 Opus 的设置里加好</source>
@@ -6669,8 +6705,8 @@ Right: center window · Drag: move window</translation>
         <translation>File manager integration</translation>
     </message>
     <message>
-        <source>文件夹菜单与双击</source>
-        <translation>Folder menu and double click</translation>
+        <source>文件夹快捷菜单</source>
+        <translation>Folder quick menu</translation>
     </message>
     <message>
         <source>对话框联动</source>
@@ -6837,24 +6873,64 @@ Right: center window · Drag: move window</translation>
         <translation>Current folder first: list results from current folder and subfolders first, then other locations, matching Listary</translation>
     </message>
     <message>
-        <source>在空白处双击弹出常用文件夹菜单，选中后直接在当前窗口打开</source>
-        <translation>Double-click empty space for common folders; select one to open it in the current window</translation>
+        <source>在空白处双击或按中键弹出常用文件夹菜单，选中后直接在当前窗口打开</source>
+        <translation>Double-click or middle-click blank space to show a menu of your usual folders; picking one opens it in the current window</translation>
     </message>
     <message>
         <source>Listary 正在运行时会自动交给 Listary 处理，避免弹出两个菜单</source>
         <translation>Automatically left to Listary while it runs to avoid showing two menus</translation>
     </message>
     <message>
-        <source>触发位置与方式</source>
-        <translation>Trigger locations and methods</translation>
+        <source>触发方式</source>
+        <translation>Trigger method</translation>
     </message>
     <message>
-        <source>双击;空白;文件夹菜单;资源管理器;桌面;中键;鼠标;滚轮;Listary</source>
-        <translation>double click;blank;empty space;folder menu;File Explorer;desktop;middle click;mouse;wheel;Listary</translation>
+        <source>双击;左键;中键;鼠标;滚轮;空白;文件夹菜单;Listary;double-click;middle</source>
+        <translation>double click;left;middle click;mouse;wheel;blank;folder menu;Listary</translation>
+    </message>
+    <message>
+        <source>双击鼠标左键</source>
+        <translation>Left double click</translation>
+    </message>
+    <message>
+        <source>触发位置</source>
+        <translation>Trigger location</translation>
+    </message>
+    <message>
+        <source>空白;文件夹菜单;资源管理器;桌面;位置;Listary</source>
+        <translation>blank;folder menu;File Explorer;desktop;location;Listary</translation>
     </message>
     <message>
         <source>菜单里列出的内容</source>
         <translation>Items listed in the menu</translation>
+    </message>
+    <message>
+        <source>菜单里的操作</source>
+        <translation>Actions in the menu</translation>
+    </message>
+    <message>
+        <source>菜单末尾的“在此搜索”“收藏这个文件夹”等；没勾选的不再出现</source>
+        <translation>The actions under the lists, such as “Search here” and “Add this folder to favorites”; unticked ones no longer appear</translation>
+    </message>
+    <message>
+        <source>文件夹菜单;搜索;命令提示符;cmd;PowerShell;收藏;设置;隐藏;search;command prompt;favorites;settings</source>
+        <translation>folder menu;search;command prompt;cmd;PowerShell;favorites;settings;hide</translation>
+    </message>
+    <message>
+        <source>搜索</source>
+        <translation>Search</translation>
+    </message>
+    <message>
+        <source>命令提示符</source>
+        <translation>Command Prompt</translation>
+    </message>
+    <message>
+        <source>PowerShell</source>
+        <translation>PowerShell</translation>
+    </message>
+    <message>
+        <source>收藏</source>
+        <translation>Favorite</translation>
     </message>
     <message>
         <source>收藏夹中包含收藏的文件夹、文件、应用和自定义命令</source>

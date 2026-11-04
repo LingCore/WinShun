@@ -852,12 +852,22 @@ void Settings::load()
         folderMenu = folderMenuBefore;
     folderMenuExplorer = readOrDefault(s, u"Launcher/FolderMenuExplorer"_s, d.folderMenuExplorer);
     folderMenuDesktop = readOrDefault(s, u"Launcher/FolderMenuDesktop"_s, d.folderMenuDesktop);
+    folderMenuDouble = readOrDefault(s, u"Launcher/FolderMenuDouble"_s, d.folderMenuDouble);
     folderMenuMiddle = readOrDefault(s, u"Launcher/FolderMenuMiddle"_s, d.folderMenuMiddle);
+    if (!folderMenuDouble && !folderMenuMiddle) // no way left to open it: the double click back (#196)
+        folderMenuDouble = true;
+    if (!folderMenuExplorer && !folderMenuDesktop) // nowhere left: both back
+        folderMenuExplorer = folderMenuDesktop = true;
     folderMenuFavorites = readOrDefault(s, u"Launcher/FolderMenuFavorites"_s, d.folderMenuFavorites);
     folderMenuRecent = readOrDefault(s, u"Launcher/FolderMenuRecent"_s, d.folderMenuRecent);
     folderMenuWindows = readOrDefault(s, u"Launcher/FolderMenuWindows"_s, d.folderMenuWindows);
     if (!folderMenuFavorites && !folderMenuRecent && !folderMenuWindows) // a menu of nothing: back to all (#51)
         folderMenuFavorites = folderMenuRecent = folderMenuWindows = true;
+    folderMenuItemSearch = readOrDefault(s, u"Launcher/FolderMenuItemSearch"_s, d.folderMenuItemSearch);
+    folderMenuItemCmd = readOrDefault(s, u"Launcher/FolderMenuItemCmd"_s, d.folderMenuItemCmd);
+    folderMenuItemPowerShell = readOrDefault(s, u"Launcher/FolderMenuItemPowerShell"_s, d.folderMenuItemPowerShell);
+    folderMenuItemFavorite = readOrDefault(s, u"Launcher/FolderMenuItemFavorite"_s, d.folderMenuItemFavorite);
+    folderMenuItemSettings = readOrDefault(s, u"Launcher/FolderMenuItemSettings"_s, d.folderMenuItemSettings);
     folderMenuHotkey = readOrDefault(s, u"Launcher/FolderMenuHotkey"_s, d.folderMenuHotkey).trimmed();
     folderMenuOpusBefore = readOrDefault(s, u"Launcher/FolderMenuOpusBefore"_s, d.folderMenuOpusBefore);
     dropPie = readOrDefault(s, u"Favorites/DropPie"_s, d.dropPie);
@@ -1203,10 +1213,16 @@ bool Settings::saveChecked() const
     s.setValue(u"Launcher/FolderMenu"_s, folderMenu);
     s.setValue(u"Launcher/FolderMenuExplorer"_s, folderMenuExplorer);
     s.setValue(u"Launcher/FolderMenuDesktop"_s, folderMenuDesktop);
+    s.setValue(u"Launcher/FolderMenuDouble"_s, folderMenuDouble);
     s.setValue(u"Launcher/FolderMenuMiddle"_s, folderMenuMiddle);
     s.setValue(u"Launcher/FolderMenuFavorites"_s, folderMenuFavorites);
     s.setValue(u"Launcher/FolderMenuRecent"_s, folderMenuRecent);
     s.setValue(u"Launcher/FolderMenuWindows"_s, folderMenuWindows);
+    s.setValue(u"Launcher/FolderMenuItemSearch"_s, folderMenuItemSearch);
+    s.setValue(u"Launcher/FolderMenuItemCmd"_s, folderMenuItemCmd);
+    s.setValue(u"Launcher/FolderMenuItemPowerShell"_s, folderMenuItemPowerShell);
+    s.setValue(u"Launcher/FolderMenuItemFavorite"_s, folderMenuItemFavorite);
+    s.setValue(u"Launcher/FolderMenuItemSettings"_s, folderMenuItemSettings);
     s.setValue(u"Launcher/FolderMenuHotkey"_s, folderMenuHotkey);
     s.setValue(u"Launcher/FolderMenuOpusBefore"_s, folderMenuOpusBefore);
     s.setValue(u"Favorites/DropPie"_s, dropPie);

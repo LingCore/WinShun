@@ -774,6 +774,58 @@ private slots:
         QVERIFY(none.folderMenuFavorites && none.folderMenuRecent && none.folderMenuWindows);
     }
 
+    // The double click is a choice of its own (GitHub #196): on as it always
+    // was, and off stays off with the middle button on.
+    void folderMenuTriggers()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings fresh;
+        fresh.load();
+        QVERIFY(fresh.folderMenuDouble && !fresh.folderMenuMiddle);
+
+        fresh.folderMenuDouble = false;
+        fresh.folderMenuMiddle = true;
+        fresh.save();
+        ws::Settings again;
+        again.load();
+        QVERIFY(!again.folderMenuDouble && again.folderMenuMiddle);
+
+        // A hand-edited file with no trigger or no place gets them back.
+        {
+            QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+            ini.setValue(u"Launcher/FolderMenuDouble"_s, false);
+            ini.setValue(u"Launcher/FolderMenuMiddle"_s, false);
+            ini.setValue(u"Launcher/FolderMenuExplorer"_s, false);
+            ini.setValue(u"Launcher/FolderMenuDesktop"_s, false);
+        }
+        ws::Settings none;
+        none.load();
+        QVERIFY(none.folderMenuDouble && none.folderMenuExplorer && none.folderMenuDesktop);
+    }
+
+    // The actions under the menu's lists (GitHub #200): all on as before, each
+    // kept on its own.
+    void folderMenuItems()
+    {
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings fresh;
+        fresh.load();
+        QVERIFY(fresh.folderMenuItemSearch && fresh.folderMenuItemCmd && fresh.folderMenuItemPowerShell
+            && fresh.folderMenuItemFavorite && fresh.folderMenuItemSettings);
+
+        fresh.folderMenuItemCmd = false;
+        fresh.folderMenuItemSettings = false;
+        fresh.save();
+        ws::Settings again;
+        again.load();
+        QVERIFY(again.folderMenuItemSearch && !again.folderMenuItemCmd && again.folderMenuItemPowerShell
+            && again.folderMenuItemFavorite && !again.folderMenuItemSettings);
+    }
+
     // What a new install leaves off until wanted: the folder menu, the dialog
     // bar, 粘贴为文件. A file from before without their keys keeps the first
     // two on, as they were; a choice written stays.

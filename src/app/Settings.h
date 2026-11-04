@@ -146,6 +146,7 @@ struct Settings {
     // does the same. Off for new installs, like dialogBar; turned on, auto.
     // An ini from before without the key has auto.
     QString folderMenu = QStringLiteral("off");
+    bool folderMenuDouble = true; // open it with a double click of the left button on blank space (#196; before, always)
     bool folderMenuMiddle = false; // also open it with the middle button on blank space (#137)
     bool folderMenuExplorer = true; // in File Explorer's folders
     bool folderMenuDesktop = true; // on the desktop
@@ -155,6 +156,13 @@ struct Settings {
     bool folderMenuFavorites = true;
     bool folderMenuRecent = true;
     bool folderMenuWindows = true; // folders open in other windows
+    // Which actions the menu offers under the lists (GitHub #200): all on is
+    // what it always did. Favorite covers both adding and removing.
+    bool folderMenuItemSearch = true;
+    bool folderMenuItemCmd = true;
+    bool folderMenuItemPowerShell = true;
+    bool folderMenuItemFavorite = true;
+    bool folderMenuItemSettings = true;
     // A hotkey that brings the menu up in whatever window is in front, for
     // when another program has the double click (GitHub #25); e.g.
     // "Ctrl+Alt+D", empty = none. Works with folderMenu off too.

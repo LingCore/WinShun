@@ -76,12 +76,19 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(QString folderTyping READ folderTyping WRITE setFolderTyping NOTIFY changed FINAL) // first | only (GitHub #110)
     // The folder menu on a double click (Settings::folderMenu: on unless "off").
     Q_PROPERTY(bool folderMenu READ folderMenu WRITE setFolderMenu NOTIFY changed FINAL)
+    Q_PROPERTY(bool folderMenuDouble READ folderMenuDouble WRITE setFolderMenuDouble NOTIFY changed FINAL)
     Q_PROPERTY(bool folderMenuMiddle READ folderMenuMiddle WRITE setFolderMenuMiddle NOTIFY changed FINAL)
     Q_PROPERTY(bool folderMenuExplorer READ folderMenuExplorer WRITE setFolderMenuExplorer NOTIFY changed FINAL)
     // The groups it lists (GitHub #51); the last one on cannot be switched off.
     Q_PROPERTY(bool folderMenuFavorites READ folderMenuFavorites WRITE setFolderMenuFavorites NOTIFY changed FINAL)
     Q_PROPERTY(bool folderMenuRecent READ folderMenuRecent WRITE setFolderMenuRecent NOTIFY changed FINAL)
     Q_PROPERTY(bool folderMenuWindows READ folderMenuWindows WRITE setFolderMenuWindows NOTIFY changed FINAL)
+    // The actions under the lists (GitHub #200).
+    Q_PROPERTY(bool folderMenuItemSearch READ folderMenuItemSearch WRITE setFolderMenuItemSearch NOTIFY changed FINAL)
+    Q_PROPERTY(bool folderMenuItemCmd READ folderMenuItemCmd WRITE setFolderMenuItemCmd NOTIFY changed FINAL)
+    Q_PROPERTY(bool folderMenuItemPowerShell READ folderMenuItemPowerShell WRITE setFolderMenuItemPowerShell NOTIFY changed FINAL)
+    Q_PROPERTY(bool folderMenuItemFavorite READ folderMenuItemFavorite WRITE setFolderMenuItemFavorite NOTIFY changed FINAL)
+    Q_PROPERTY(bool folderMenuItemSettings READ folderMenuItemSettings WRITE setFolderMenuItemSettings NOTIFY changed FINAL)
     // The folder menu in Directory Opus, which runs a command of its settings
     // on a double click on blank space (refreshOpusFolderMenu): on | stale
     // (another copy's WinShunSearch.exe) | off | taken (a command of the
@@ -378,6 +385,8 @@ public:
     bool folderMenu() const { return m_settings.folderMenu != u"off"; }
     void setFolderMenu(bool on);
     bool folderMenuExplorer() const { return m_settings.folderMenuExplorer; }
+    bool folderMenuDouble() const { return m_settings.folderMenuDouble; }
+    void setFolderMenuDouble(bool on);
     bool folderMenuMiddle() const { return m_settings.folderMenuMiddle; }
     void setFolderMenuMiddle(bool on);
     void setFolderMenuExplorer(bool on);
@@ -389,6 +398,16 @@ public:
     void setFolderMenuRecent(bool on);
     bool folderMenuWindows() const { return m_settings.folderMenuWindows; }
     void setFolderMenuWindows(bool on);
+    bool folderMenuItemSearch() const { return m_settings.folderMenuItemSearch; }
+    void setFolderMenuItemSearch(bool on);
+    bool folderMenuItemCmd() const { return m_settings.folderMenuItemCmd; }
+    void setFolderMenuItemCmd(bool on);
+    bool folderMenuItemPowerShell() const { return m_settings.folderMenuItemPowerShell; }
+    void setFolderMenuItemPowerShell(bool on);
+    bool folderMenuItemFavorite() const { return m_settings.folderMenuItemFavorite; }
+    void setFolderMenuItemFavorite(bool on);
+    bool folderMenuItemSettings() const { return m_settings.folderMenuItemSettings; }
+    void setFolderMenuItemSettings(bool on);
     QString folderMenuHotkey() const { return m_settings.folderMenuHotkey; }
     bool dropPie() const { return m_settings.dropPie; }
     void setDropPie(bool on);

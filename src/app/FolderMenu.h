@@ -83,6 +83,8 @@ public:
     void setOptions(bool yieldToListary, bool explorer, bool desktop);
     // Which groups it lists (GitHub #51); one left out is not even gathered.
     void setGroups(bool favorites, bool recent, bool windows);
+    // Which actions it offers under the lists (GitHub #200).
+    void setItems(bool search, bool cmd, bool powerShell, bool favorite, bool settings);
     // Whether something else has the keys now (the clipboard over File
     // Explorer): the menu does not come, the double click only closes that.
     void setBlocked(std::function<bool()> blocked) { m_blocked = std::move(blocked); }
@@ -161,6 +163,11 @@ private:
     std::atomic<bool> m_listFavorites {true};
     std::atomic<bool> m_listRecent {true};
     std::atomic<bool> m_listWindows {true};
+    std::atomic<bool> m_itemSearch {true};
+    std::atomic<bool> m_itemCmd {true};
+    std::atomic<bool> m_itemPowerShell {true};
+    std::atomic<bool> m_itemFavorite {true};
+    std::atomic<bool> m_itemSettings {true};
     std::atomic<bool> m_open {false};
     std::atomic<int> m_asks {0}; // the latest double click's number: older answers are dropped
     folderview::Hit m_hit; // where the menu is up
