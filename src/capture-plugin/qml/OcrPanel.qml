@@ -74,17 +74,19 @@ Window {
             onClicked: window.ocr.close()
             Component.onCompleted: window.frame.addControl(closeButton)
         }
-        Rectangle {
+        Hook { // the style's separator
             anchors.bottom: parent.bottom
             width: parent.width
-            height: Theme.edge(Screen.devicePixelRatio)
-            color: Theme.divider
+            height: Theme.edge(window.dpr)
+            part: Theme.separator
+            orientation: Qt.Horizontal
+            dpr: window.dpr
         }
     }
 
     // ---- the text ---------------------------------------------------------------------
 
-    Rectangle {
+    Item {
         id: field
         anchors.top: header.bottom
         anchors.topMargin: 12
@@ -93,10 +95,16 @@ Window {
         anchors.right: parent.right
         anchors.rightMargin: window.padding
         anchors.bottom: footer.top
-        radius: Theme.controlRadius
-        color: words.activeFocus ? Theme.inputFocused : Theme.control
-        border.width: 1
-        border.color: Theme.controlBorder
+
+        Hook { // the style's input field (Theme.inputField)
+            id: fieldPart
+            anchors.fill: parent
+            part: Theme.inputField
+            focused: words.activeFocus
+            hovered: fieldHover.hovered
+            dpr: window.dpr
+        }
+        HoverHandler { id: fieldHover }
 
         Flickable {
             id: flick
@@ -124,7 +132,7 @@ Window {
                 wrapMode: TextEdit.Wrap
                 selectByMouse: true
                 persistentSelection: true
-                color: Theme.text
+                color: fieldPart.out("textColor", Theme.text)
                 selectionColor: Theme.textSelection
                 selectedTextColor: Theme.text
                 font.pixelSize: Theme.uiBody
@@ -209,5 +217,8 @@ Window {
         }
     }
 
-    WindowEdge {}
+    WindowEdge {
+        id: windowEdge
+        fill: Theme.background
+    }
 }

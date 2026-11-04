@@ -125,7 +125,7 @@ Window {
             }
         }
     }
-    WindowEdge {}
+    WindowEdge { fill: Theme.background }
 
     Window {
         id: previewWindow
@@ -163,6 +163,6 @@ Window {
                 text: qsTr("等第一帧…"); color: Theme.subtext; font.pixelSize: Theme.fontCaption
             }
         }
-        WindowEdge {}
+        WindowEdge { fill: Theme.background }
     }
 }

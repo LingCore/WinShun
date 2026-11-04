@@ -441,7 +441,7 @@ Window {
         }
     }
 
-    Rectangle { // which remembered region R brought back, while the key hints do not say it
+    Item { // which remembered region R brought back, while the key hints do not say it
         id: recallIndex
         objectName: "captureRecallIndex"
 
@@ -453,10 +453,12 @@ Window {
         y: Theme.snap(overlay.height - 12 - height, overlay.dpr)
         width: Theme.snapUp(recallText.implicitWidth + 24, overlay.dpr)
         height: Theme.snapUp(recallText.implicitHeight + 12, overlay.dpr)
-        radius: Theme.controlRadius
-        color: Theme.background
-        border.width: edge
-        border.color: Theme.windowEdge
+
+        Hook { // the style's floating panel (Theme.menuFrame)
+            anchors.fill: parent
+            part: Theme.menuFrame
+            dpr: overlay.dpr
+        }
 
         Text {
             id: recallText

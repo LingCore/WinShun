@@ -69,7 +69,7 @@ Window {
                 HoverHandler { cursorShape: Qt.SizeAllCursor }
                 Accessible.ignored: true
             }
-            Row {
+            ChoiceGroup {
                 visible: panel.ready
                 spacing: 2
                 RecordingButton {
@@ -95,7 +95,7 @@ Window {
                     onClicked: panel.recorder.fullScreen = true
                 }
             }
-            Row {
+            ChoiceGroup {
                 visible: panel.ready
                 spacing: 2
                 RecordingButton {
@@ -293,12 +293,14 @@ Window {
                                                                 top + item.height - optionsViewport.height)
                     }
                 }
-                Rectangle {
+                Hook { // the style's separator
                     objectName: "recordingOptionsDivider"
                     y: optionsViewport.sectionGap
                     width: parent.width
                     height: optionsViewport.separatorHeight
-                    color: Theme.divider
+                    part: Theme.separator
+                    orientation: Qt.Horizontal
+                    dpr: Screen.devicePixelRatio
                 }
                 RecordingOptions {
                     id: options
@@ -350,5 +352,52 @@ Window {
             }
         }
     }
-    WindowEdge {}
+    // A few choices side by side, one of them on (radio buttons): the style's
+    // segmented part is drawn behind them, the buttons (RecordingButton, checkable,
+    // autoExclusive) only draw their words. As in RecordingOptions.
+    component ChoiceGroup: Item {
+        id: choices
+
+        default property alias content: strip.data
+        property alias spacing: strip.spacing
+        readonly property bool isChoiceGroup: true
+        readonly property Item hook: track
+        // The buttons that take room now, in order.
+        readonly property var items: {
+            const list = []
+            const kids = strip.children
+            for (let i = 0; i < kids.length; ++i) {
+                if (kids[i].visible && kids[i].width > 0)
+                    list.push(kids[i])
+            }
+            return list
+        }
+
+        function indexOf(item: Item): int { return items.indexOf(item) }
+
+        implicitWidth: strip.implicitWidth
+        implicitHeight: strip.implicitHeight
+
+        Hook {
+            id: track
+            anchors.fill: parent
+            part: Theme.segmented
+            count: choices.items.length
+            currentIndex: choices.items.findIndex(item => item.checked)
+            hoveredIndex: choices.items.findIndex(item => item.hovered)
+            pressedIndex: choices.items.findIndex(item => item.down)
+            segments: choices.items.map(item => ({ x: item.x, width: item.width }))
+            role: "switch"
+            dpr: Screen.devicePixelRatio
+        }
+        Row {
+            id: strip
+            spacing: 2
+        }
+    }
+
+    WindowEdge {
+        id: windowEdge
+        fill: Theme.background
+    }
 }

@@ -2078,6 +2078,7 @@ int run(const QStringList& args)
     g_edges = args.contains(u"--edges"_s);
     QGuiApplication::styleHints()->setColorScheme(args.contains(u"--dark"_s) ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
     SystemTheme::setBackdropAvailable(false); // plain colours, as a window without Mica
+    SystemTheme::setUiStyle(valueAfter(args, u"--style", u"fluent"_s)); // --style fluent|brand|tactile
     if (presenterMode)
         return runPresenter(args);
     if (settingsMode)
