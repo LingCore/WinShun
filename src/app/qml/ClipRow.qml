@@ -383,6 +383,7 @@ Item {
             spacing: 2
 
             RowAction { // dragged up or down: to another place in its group
+                dpr: row.dpr
                 id: moveAction
                 small: row.metrics.dense
                 visible: row.movable
@@ -407,6 +408,7 @@ Item {
                 }
             }
             RowAction { // a click pastes already (clickToPaste): the preview here instead
+                dpr: row.dpr
                 id: pasteAction
                 small: row.metrics.dense
                 glyph: row.clickToPaste ? "" : "" // View, Paste

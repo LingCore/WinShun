@@ -11,7 +11,10 @@ Item {
 
     property string keys
     property bool taken: false
-    property real dpr: Screen.devicePixelRatio // the window's, passed by a host that has it (GitHub #111)
+    property real dpr: 0 // the window's, passed by a host that has it (GitHub #111)
+    // Screen.* only when no host passed it: a default binding to it would make a
+    // Screen object even where the host's value replaces it.
+    readonly property real pixelRatio: dpr > 0 ? dpr : Screen.devicePixelRatio
 
     width: Math.max(height, Math.ceil(label.implicitWidth) + 12)
     height: Theme.keycapHeight + 4
@@ -20,7 +23,7 @@ Item {
         id: capPart
         anchors.fill: parent
         part: Theme.keyHint
-        dpr: cap.dpr
+        dpr: cap.pixelRatio
     }
 
     CenteredNumber {

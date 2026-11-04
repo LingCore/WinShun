@@ -246,6 +246,7 @@ SettingsSection {
                 }
 
                 ListScrollBar {
+                    dpr: devSection.dpr
                     flickable: logList
                     anchors.top: logList.top
                     anchors.bottom: logList.bottom

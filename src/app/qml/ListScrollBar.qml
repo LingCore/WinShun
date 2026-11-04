@@ -14,7 +14,11 @@ Item {
     readonly property real position: maxY > minY ? Math.max(0, Math.min(1, (flickable.contentY - minY) / (maxY - minY))) : 0
 
     // A size in logical pixels as whole device pixels (3 is 4.5 at 150 %).
-    function pixels(v) { return Math.max(1, Math.round(v * Screen.devicePixelRatio)) / Screen.devicePixelRatio }
+    property real dpr: 0 // the window's, passed by a host that has it (GitHub #111)
+    // Screen.* only when no host passed it: a default binding to it would make a
+    // Screen object even where the host's value replaces it.
+    readonly property real pixelRatio: dpr > 0 ? dpr : Screen.devicePixelRatio
+    function pixels(v) { return Math.max(1, Math.round(v * bar.pixelRatio)) / bar.pixelRatio }
 
     function scrollTo(fraction) {
         flickable.cancelFlick()
@@ -49,7 +53,7 @@ Item {
         pressed: area.pressed
         position: thumb.y - track.y
         extent: thumb.height
-        dpr: Screen.devicePixelRatio
+        dpr: bar.pixelRatio
 
         Behavior on width { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
     }

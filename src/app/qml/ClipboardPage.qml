@@ -912,6 +912,7 @@ Item {
                 }
 
                 ListScrollBar {
+                    dpr: page.dpr
                     objectName: "clipboardListScrollBar"
                     flickable: list
                     anchors.right: parent.right
@@ -1179,9 +1180,9 @@ Item {
                 readonly property bool previewFits: page.selectedCount === 0
                     && (tabFits ? spacing + tabHint.fullWidth : 0) + spacing + previewHint.fullWidth <= free
 
-                KeyHint { id: enterHint; metrics: page.metrics; keys: "Enter"; label: page.pasteLabel }
-                KeyHint { id: backHint; metrics: page.metrics; keys: "Esc"; label: qsTr("返回"); visible: page.intoField && hints.roomy }
-                KeyHint { id: tabHint; metrics: page.metrics; keys: "Tab"; label: qsTr("分类"); visible: hints.tabFits }
+                KeyHint { dpr: page.dpr; id: enterHint; metrics: page.metrics; keys: "Enter"; label: page.pasteLabel }
+                KeyHint { dpr: page.dpr; id: backHint; metrics: page.metrics; keys: "Esc"; label: qsTr("返回"); visible: page.intoField && hints.roomy }
+                KeyHint { dpr: page.dpr; id: tabHint; metrics: page.metrics; keys: "Tab"; label: qsTr("分类"); visible: hints.tabFits }
                 KeyHint {
                     dpr: page.dpr
                     id: previewHint
@@ -1230,8 +1231,8 @@ Item {
                 visible: opacity > 0
                 Behavior on opacity { enabled: SystemTheme.animations; NumberAnimation { id: holdFade; duration: 150 } }
 
-                KeyHint { id: holdReleaseHint; metrics: page.metrics; keys: page.clipboard.holdKeys; label: qsTr("松开粘贴") }
-                KeyHint { id: holdEscHint; metrics: page.metrics; keys: "Esc"; label: qsTr("取消"); visible: holdNote.escFits }
+                KeyHint { dpr: page.dpr; id: holdReleaseHint; metrics: page.metrics; keys: page.clipboard.holdKeys; label: qsTr("松开粘贴") }
+                KeyHint { dpr: page.dpr; id: holdEscHint; metrics: page.metrics; keys: "Esc"; label: qsTr("取消"); visible: holdNote.escFits }
             }
 
             // The other keys, when it is clicked.

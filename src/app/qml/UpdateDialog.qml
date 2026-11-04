@@ -303,6 +303,7 @@ Item {
                 height: primary.implicitHeight
 
                 FlatButton { // not reminded of this version again; still shown when asked
+                    dpr: dialog.dpr
                     visible: card.newer && !dialog.updater.skipped && card.stage === ""
                     anchors.left: parent.left
                     role: "dialog"

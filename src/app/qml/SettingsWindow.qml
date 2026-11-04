@@ -2210,6 +2210,7 @@ Window {
                         }
                     }
                     FlatButton { // one button on the right: after a failed try it goes under the steps
+                        dpr: window.dpr
                         visible: opusMenuRow.setup === "manual"
                         flat: true
                         text: qsTr("打开 Opus 设置")
@@ -2889,6 +2890,7 @@ Window {
                                     model: window.editor.commonFolders
 
                                     delegate: FlatButton {
+                                        dpr: window.dpr
                                         required property var modelData
                                         glyph: "" // Add
                                         // Redirected to a server, as companies do: 网络共享's.
@@ -3562,6 +3564,7 @@ Window {
                                     model: sharesRow.listedShares
 
                                     delegate: FlatButton {
+                                        dpr: window.dpr
                                         required property string modelData
                                         readonly property string path: "\\\\" + sharesRow.listedServer + "\\" + modelData
                                         readonly property bool added: window.editor.shares.some(
@@ -3594,6 +3597,7 @@ Window {
                                     model: window.editor.wslFolders
 
                                     delegate: FlatButton {
+                                        dpr: window.dpr
                                         required property var modelData
                                         glyph: "\uE710"
                                         text: modelData.name
@@ -3620,6 +3624,7 @@ Window {
                                     model: window.editor.knownShares
 
                                     delegate: FlatButton {
+                                        dpr: window.dpr
                                         required property var modelData
                                         glyph: "" // Add
                                         text: modelData.drive.length > 0 ? modelData.path + " (" + modelData.drive + ")" : modelData.path
@@ -5170,6 +5175,7 @@ Window {
                                  : qsTr("“省内存”少占约 50 MB，但文字偏模糊")
 
                     FlatButton { // sized like one of the tabs next to it
+                        dpr: window.dpr
                         anchors.verticalCenter: parent.verticalCenter
                         implicitHeight: 32
                         radius: Theme.largeControlRadius

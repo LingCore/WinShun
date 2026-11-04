@@ -1546,6 +1546,7 @@ Window {
             }
 
             ListScrollBar {
+                dpr: window.dpr
                 id: boxScrollBar
                 flickable: boxList
                 anchors.right: parent.right

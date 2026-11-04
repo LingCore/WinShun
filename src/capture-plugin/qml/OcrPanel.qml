@@ -148,6 +148,7 @@ Window {
         }
 
         ListScrollBar {
+            dpr: window.dpr
             flickable: flick
             visible: flick.visible && flick.contentHeight > flick.height
             anchors.right: parent.right
@@ -197,6 +198,7 @@ Window {
             onClicked: window.ocr.search(words.selectedText.length > 0 ? words.selectedText : words.text)
         }
         FlatButton { // a QR code that holds a web address: opened only by this click
+            dpr: window.dpr
             visible: window.ocr.link.length > 0
             highlighted: true
             text: qsTr("打开链接")

@@ -661,6 +661,7 @@ Window {
     }
 
     ListScrollBar {
+        dpr: window.dpr
         visible: window.bar.rows > 0
         flickable: list
         x: window.width - width

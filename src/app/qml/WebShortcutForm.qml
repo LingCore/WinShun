@@ -11,6 +11,7 @@ import WinShun
 // leaving validation and actions visible on short screens.
 FocusScope {
     id: form
+    property real dpr: Screen.devicePixelRatio // the window's, passed by a host that has it (GitHub #111)
 
     required property SettingsEditor editor
     property int index: -1 // the one being changed; -1: a new one
@@ -244,7 +245,7 @@ FocusScope {
         Hook { // the style's floating box (Theme.menuFrame)
             anchors.fill: parent
             part: Theme.menuFrame
-            dpr: Screen.devicePixelRatio
+            dpr: form.dpr
         }
 
         Text {
@@ -387,6 +388,7 @@ FocusScope {
                         }
                     }
                     FlatButton {
+                        dpr: form.dpr
                         id: pickIconButton
                         anchors.verticalCenter: parent.verticalCenter
                         text: qsTr("选择图片")
@@ -398,6 +400,7 @@ FocusScope {
                         }
                     }
                     FlatButton {
+                        dpr: form.dpr
                         id: siteIconButton
                         objectName: "webFormSiteIcon"
                         visible: form.icon.length > 0
@@ -443,6 +446,7 @@ FocusScope {
         }
 
         ListScrollBar {
+            dpr: form.dpr
             flickable: viewport
             anchors.top: viewport.top
             anchors.bottom: viewport.bottom
@@ -474,11 +478,13 @@ FocusScope {
                 spacing: 8
 
                 FlatButton {
+                    dpr: form.dpr
                     objectName: "webFormCancel"
                     text: qsTr("取消")
                     onClicked: form.close()
                 }
                 FlatButton {
+                    dpr: form.dpr
                     id: saveButton
                     objectName: "webFormSave"
                     highlighted: true

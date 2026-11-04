@@ -446,6 +446,7 @@ Item {
     }
 
     ListScrollBar {
+        dpr: preview.dpr
         objectName: "clipboardPreviewScrollBar"
         flickable: flick
         anchors.right: parent.right

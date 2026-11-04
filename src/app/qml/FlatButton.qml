@@ -15,7 +15,10 @@ Rectangle {
     property bool keyboardActivation: true
     property real corner: -1 // a radius of the host's (-1: the style's)
     property string role // where it stands (Hook.role: "footer", "toolbar", "dialog" …)
-    property real dpr: Screen.devicePixelRatio // the window's, passed by a host that has it (GitHub #111)
+    property real dpr: 0 // the window's, passed by a host that has it (GitHub #111)
+    // Screen.* only when no host passed it: a default binding to it would make a
+    // Screen object even where the host's value replaces it.
+    readonly property real pixelRatio: dpr > 0 ? dpr : Screen.devicePixelRatio
     readonly property color foreground: surface.out("foreground", highlighted ? Theme.accentText : Theme.text)
 
     signal clicked()
@@ -37,7 +40,7 @@ Rectangle {
         flat: button.flat
         corner: button.corner
         role: button.role
-        dpr: button.dpr
+        dpr: button.pixelRatio
     }
 
     Keys.onSpacePressed: if (keyboardActivation) button.clicked()

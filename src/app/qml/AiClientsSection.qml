@@ -79,6 +79,7 @@ SettingsSection {
                 onClicked: clientsSection.editor.connectMcpClient(clientRow.modelData.id)
             }
             FlatButton { // no icon, like 复制 JSON: three buttons with icons leave the text beside them a column at the window's narrowest
+                dpr: clientsSection.dpr
                 visible: clientRow.isClaudeCode
                 text: clientRow.modelData.skillInstalled ? qsTr("重装 Skill") : qsTr("装 Skill")
                 enabled: clientsSection.cliFound && !clientsSection.editor.mcpSkillBusy // one ws at a time

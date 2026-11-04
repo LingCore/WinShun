@@ -288,6 +288,7 @@ Window {
                         }
                     }
                     ListScrollBar {
+                        dpr: window.dpr
                         id: scrollBar
                         flickable: list
                         anchors.right: parent.right

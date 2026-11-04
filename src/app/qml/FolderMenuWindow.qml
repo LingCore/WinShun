@@ -342,6 +342,7 @@ Window {
         text: menu.hoveredText
     }
     ListScrollBar {
+        dpr: menu.dpr
         visible: flick.contentHeight > flick.height
         flickable: flick
         x: menu.width - width

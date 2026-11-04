@@ -536,6 +536,7 @@ Item {
         }
 
         ListScrollBar {
+            dpr: panel.dpr
             flickable: filters
             anchors.right: parent.right
             anchors.top: parent.top
@@ -873,6 +874,7 @@ Item {
     }
 
     ListScrollBar {
+        dpr: panel.dpr
         id: listScrollBar
         objectName: "panelResultScrollBar"
         flickable: panel.view

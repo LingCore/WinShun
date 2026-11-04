@@ -343,6 +343,7 @@ Rectangle {
                 spacing: 8
 
                 FlatButton { // the plugin's own window, while it runs
+                    dpr: card.dpr
                     anchors.verticalCenter: parent.verticalCenter
                     visible: card.settingsWindow && card.usable && card.pluginEnabled
                     implicitHeight: 32
@@ -356,6 +357,7 @@ Rectangle {
                     onToggled: (on) => card.plugins.setEnabled(card.pluginId, on)
                 }
                 FlatButton { // the menu: 说明, 打开文件夹, 重新加载, 查看日志, 卸载
+                    dpr: card.dpr
                     id: menuButton
                     anchors.verticalCenter: parent.verticalCenter
                     implicitHeight: 32
@@ -511,6 +513,7 @@ Rectangle {
                                     }
                                 }
                                 FlatButton { // the keyword was changed: back to the plugin's
+                                    dpr: card.dpr
                                     id: resetButton
                                     visible: keywordCell.modelData.user
                                     anchors.right: parent.right

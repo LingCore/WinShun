@@ -270,6 +270,7 @@ Item {
                     height: primary.implicitHeight
 
                     FlatButton { // uninstall: the plugin alone, its data kept
+                        dpr: dialog.dpr
                         visible: dialog.kind === "uninstall" && dialog.info.hasData === true && dialog.info.keepSettings !== true
                         anchors.left: parent.left
                         role: "dialog"
@@ -305,6 +306,7 @@ Item {
             }
         }
         ListScrollBar {
+            dpr: dialog.dpr
             visible: dialog.fitToWindow && dialogScroll.contentHeight > dialogScroll.height
             x: parent.width - width - 3
             y: 24

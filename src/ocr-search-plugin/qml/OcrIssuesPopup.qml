@@ -40,7 +40,7 @@ FocusScope {
                     color: Theme.text
                     font.pixelSize: Theme.fontTitle
                 }
-                FlatButton { id: closeButton; role: "dialog"; text: qsTr("关闭"); onClicked: popup.open = false }
+                FlatButton { dpr: popup.dpr; id: closeButton; role: "dialog"; text: qsTr("关闭"); onClicked: popup.open = false }
             }
             Item {
                 Layout.fillWidth: true
@@ -97,7 +97,7 @@ FocusScope {
                 }
                 ListWheelScroll { view: scroll; animate: SystemTheme.animations }
             }
-            ListScrollBar { anchors.top: scroll.top; anchors.bottom: scroll.bottom; anchors.right: scroll.right; flickable: scroll }
+            ListScrollBar { dpr: popup.dpr; anchors.top: scroll.top; anchors.bottom: scroll.bottom; anchors.right: scroll.right; flickable: scroll }
             }
         }
     }

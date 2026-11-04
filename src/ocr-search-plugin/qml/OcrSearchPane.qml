@@ -139,7 +139,7 @@ ColumnLayout {
                 }
                 ListWheelScroll { view: list; animate: SystemTheme.animations }
             }
-            ListScrollBar { anchors.top: list.top; anchors.bottom: list.bottom; anchors.right: list.right; flickable: list; z: 2 }
+            ListScrollBar { dpr: pane.dpr; anchors.top: list.top; anchors.bottom: list.bottom; anchors.right: list.right; flickable: list; z: 2 }
             Text {
                 anchors.centerIn: parent
                 width: parent.width - 40

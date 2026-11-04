@@ -8,13 +8,16 @@ Row {
     property string keys
     property string label
     property UiScale metrics: Theme.metrics
-    property real dpr: Screen.devicePixelRatio // the window's, passed by a host that has it (GitHub #111)
+    property real dpr: 0 // the window's, passed by a host that has it (GitHub #111)
+    // Screen.* only when no host passed it: a default binding to it would make a
+    // Screen object even where the host's value replaces it.
+    readonly property real pixelRatio: dpr > 0 ? dpr : Screen.devicePixelRatio
     // Its width when shown, also while hidden (a hidden Row lays out nothing).
     readonly property real fullWidth: label.length > 0 ? keyText.implicitWidth + 10 + spacing + labelText.implicitWidth : 0
 
     spacing: 5
 
-    function onPixel(v) { return Math.round(v * hint.dpr) / hint.dpr }
+    function onPixel(v) { return Math.round(v * hint.pixelRatio) / hint.pixelRatio }
 
     Item {
         id: cap
@@ -26,7 +29,7 @@ Row {
             id: capPart
             anchors.fill: parent
             part: Theme.keyHint
-            dpr: hint.dpr
+            dpr: hint.pixelRatio
         }
 
         Text {

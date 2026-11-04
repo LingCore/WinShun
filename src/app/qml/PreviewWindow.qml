@@ -358,6 +358,7 @@ Window {
             }
         }
         ListScrollBar {
+            dpr: window.dpr
             visible: lines.shown
             flickable: lines
             anchors.right: parent.right

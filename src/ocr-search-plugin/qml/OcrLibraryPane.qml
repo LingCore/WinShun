@@ -164,7 +164,7 @@ Item {
             }
         }
     }
-    ListScrollBar { anchors.top: scroll.top; anchors.bottom: scroll.bottom; anchors.right: scroll.right; flickable: scroll; z: 2 }
+    ListScrollBar { dpr: pane.dpr; anchors.top: scroll.top; anchors.bottom: scroll.bottom; anchors.right: scroll.right; flickable: scroll; z: 2 }
     ColumnLayout {
         id: indexActions
         anchors.left: parent.left

@@ -70,6 +70,7 @@ SettingsSection {
                 wrapMode: Text.Wrap
             },
             FlatButton { // GitHub could not be reached: the way round it (GitHub #84)
+                dpr: gallerySection.dpr
                 visible: gallerySection.gallery.problemIsConnection
                 text: qsTr("设置网络代理…")
                 onClicked: gallerySection.showProxySettings()

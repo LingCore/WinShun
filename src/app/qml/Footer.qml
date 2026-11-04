@@ -354,9 +354,9 @@ Item {
             text: footer.launcher.statusText
         }
 
-        KeyHint { id: enterHint; visible: hints.given < 1 && label.length > 0; keys: "Enter"; label: hints.keyHints.enter ?? "" }
-        KeyHint { id: secondHint; visible: hints.given < 2 && label.length > 0; keys: hints.keyHints.secondKeys ?? ""; label: hints.keyHints.second ?? "" }
-        KeyHint { id: tabHint; objectName: "footerTabHint"; visible: label.length > 0; keys: hints.keyHints.tabKeys || "Tab"; label: hints.keyHints.tab ?? "" }
+        KeyHint { dpr: footer.dpr; id: enterHint; visible: hints.given < 1 && label.length > 0; keys: "Enter"; label: hints.keyHints.enter ?? "" }
+        KeyHint { dpr: footer.dpr; id: secondHint; visible: hints.given < 2 && label.length > 0; keys: hints.keyHints.secondKeys ?? ""; label: hints.keyHints.second ?? "" }
+        KeyHint { dpr: footer.dpr; id: tabHint; objectName: "footerTabHint"; visible: label.length > 0; keys: hints.keyHints.tabKeys || "Tab"; label: hints.keyHints.tab ?? "" }
     }
 
     // The launcher's other shortcuts, when it is clicked.
