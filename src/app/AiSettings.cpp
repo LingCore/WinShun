@@ -1717,6 +1717,20 @@ void checkHotkeysDiffer(Plan& plan)
     }
 }
 
+// The folder menu keeps one way to open it and one place to open it in, as the
+// settings window does (GitHub #196): a batch that turns the last off is refused.
+void checkFolderMenuOneLeft(Plan& plan)
+{
+    const auto changed = [&plan](const QString& key) {
+        return std::any_of(plan.items.begin(), plan.items.end(), [&key](const Item& item) { return item.changed && item.entry->key == key; });
+    };
+    const Settings& s = plan.result.settings;
+    if (!s.folderMenuDouble && !s.folderMenuMiddle && (changed(u"Launcher/FolderMenuDouble"_s) || changed(u"Launcher/FolderMenuMiddle"_s)))
+        plan.problems.push_back(u"Launcher/FolderMenuDouble, Launcher/FolderMenuMiddle: at least one of them stays on."_s);
+    if (!s.folderMenuExplorer && !s.folderMenuDesktop && (changed(u"Launcher/FolderMenuExplorer"_s) || changed(u"Launcher/FolderMenuDesktop"_s)))
+        plan.problems.push_back(u"Launcher/FolderMenuExplorer, Launcher/FolderMenuDesktop: at least one of them stays on."_s);
+}
+
 } // namespace
 
 Plan makePlan(const State& current, const QJsonArray& changes, const Env& env)
@@ -1770,6 +1784,7 @@ Plan makePlan(const State& current, const QJsonArray& changes, const Env& env)
         plan.items.push_back(std::move(item));
     }
     checkHotkeysDiffer(plan);
+    checkFolderMenuOneLeft(plan);
     return plan;
 }
 
