@@ -392,18 +392,20 @@ void Placement::placeOn(QScreen* screen)
     avoidNative({}, screen);
 }
 
-void Placement::avoidNative(const QRect& window, QScreen* screen, bool inside)
+void Placement::avoidNative(const QRect& window, QScreen* screen, bool inside, const QRect& lists, const QRect& frame)
 {
     m_glide.stop();
     m_avoid = window.isEmpty() ? std::nullopt : std::optional {window};
     m_avoidInside = inside;
+    m_avoidLists = lists;
+    m_avoidFrame = frame;
     m_box.reset();
     setAbove(false);
     setTaskbar({});
     m_dropped = false;
     if (m_window && screen) {
         fitWidth(screen);
-        moveWindow(m_avoid ? settleAvoiding(screen) : settleOn(screen));
+        moveWindow(m_avoid ? settleAvoiding(screen, true) : settleOn(screen));
     }
 }
 
@@ -667,22 +669,45 @@ QPoint Placement::settleOn(QScreen* screen, bool updateRoom)
 }
 
 // The same monitor and the same width, without persisting an automatic move.
-QPoint Placement::settleAvoiding(QScreen* screen)
+QPoint Placement::settleAvoiding(QScreen* screen, bool fitList)
 {
     const QPoint home = settleOn(screen, false);
     const NativeArea native = nativeArea(screen);
     const auto down = [&](int value, int origin) { return origin + int(std::floor((value - origin) / native.scale)); };
     const auto up = [&](int value, int origin) { return origin + int(std::ceil((value - origin) / native.scale)); };
-    const QRect obstacle(QPoint(down(m_avoid->x(), native.origin.x()), down(m_avoid->y(), native.origin.y())),
-        QPoint(up(m_avoid->x() + m_avoid->width(), native.origin.x()) - 1,
-            up(m_avoid->y() + m_avoid->height(), native.origin.y()) - 1));
-    const int height = std::max(m_roomNeeded, m_roomWanted > 0 ? m_roomWanted : m_window->height());
-    QPoint at = m_avoidInside ? windowavoidance::corner(screen->availableGeometry(), obstacle, {widthNow(), height})
-                              : windowavoidance::place(screen->availableGeometry(), obstacle, {widthNow(), height}, home);
+    // Native bounds in Qt's pixels on this screen, outwards.
+    const auto logical = [&](const QRect& r) {
+        return r.isEmpty() ? QRect()
+                           : QRect(QPoint(down(r.x(), native.origin.x()), down(r.y(), native.origin.y())),
+                                 QPoint(up(r.x() + r.width(), native.origin.x()) - 1, up(r.y() + r.height(), native.origin.y()) - 1));
+    };
+    const QRect obstacle = logical(*m_avoid);
+    const QRect area = screen->availableGeometry();
+    int height = std::max(m_roomNeeded, m_roomWanted > 0 ? m_roomWanted : m_window->height());
+    QPoint at;
+    if (m_avoidInside) {
+        // Over the list (GitHub #82). As it opens, as narrow as the list is
+        // (the user's width the most, the least width the launcher has the
+        // least: Main.qml sizes the window by boxWidth); later, as it is then.
+        const bool narrow = fitList && m_defaultWidth > 0 && !m_panel;
+        const int width = widthNow();
+        const QRect spot = windowavoidance::inList(area, obstacle, logical(m_avoidLists), logical(m_avoidFrame),
+            {width, height}, {narrow ? std::min(m_minWidth, width) : width, m_roomNeeded});
+        if (narrow && spot.width() != m_boxWidth) {
+            m_boxWidth = spot.width();
+            emit boxWidthChanged();
+        }
+        at = spot.topLeft();
+        height = spot.height();
+    } else {
+        at = windowavoidance::place(area, obstacle, {widthNow(), height}, home);
+    }
     at.setX(native.keepInside(at.x(), widthNow(), native.work.x(), native.work.x() + native.work.width(), native.origin.x()));
-    at.setY(native.keepInside(at.y(), std::min(height, screen->availableGeometry().height()),
-        native.work.y(), native.work.y() + native.work.height(), native.origin.y()));
-    setRoom(int(std::floor((native.work.y() + native.work.height() - native.toNative(at.y(), native.origin.y())) / native.scale)));
+    at.setY(native.keepInside(at.y(), std::min(height, area.height()), native.work.y(), native.work.y() + native.work.height(),
+        native.origin.y()));
+    const int room = int(std::floor((native.work.y() + native.work.height() - native.toNative(at.y(), native.origin.y())) / native.scale));
+    // Over a list, its rows end above the list's bottom edge, not the work area's.
+    setRoom(m_avoidInside ? std::min(room, height) : room);
     return at;
 }
 

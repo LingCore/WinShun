@@ -62,6 +62,9 @@ Hit classifyWindow(HWND root);
 // field nested under it. Class queries only: safe on the keyboard hook.
 bool isOpusLister(HWND root);
 bool isOpusFileDisplay(HWND root, HWND focus);
+// The bounds of the lister's file displays shown, together (both sides of a
+// dual display); empty for none. Screen pixels (GitHub #82).
+RECT opusFileLists(HWND root);
 
 // What isBlank went by, for the diagnostics journal (GitHub #45): class
 // names, roles and results only, never an item's name.

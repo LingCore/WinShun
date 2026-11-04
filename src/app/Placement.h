@@ -115,8 +115,11 @@ public:
     void setContentSize(QSize size);
     void placeOn(QScreen* screen); // before showing the window there, at its spot
     // A temporary spot beside the file manager typed in; never saved as home.
-    // `inside`: in its bottom right corner rather than beside it.
-    void avoidNative(const QRect& window, QScreen* screen, bool inside = false);
+    // `inside`: in its bottom right corner rather than beside it, as wide as it
+    // leaves (not below the least width; not remembered); larger than it, over
+    // `lists` (the lister's file lists together) before the rest of `frame`.
+    void avoidNative(const QRect& window, QScreen* screen, bool inside = false, const QRect& lists = {},
+        const QRect& frame = {});
     // Geometry supplied by the ordinary-process peer to its UIAccess display.
     void placeDisplay(const QRect& geometry, int room, bool above);
     // A user move in the display peer; retain the usual temporary/home rules.
@@ -241,7 +244,7 @@ private:
     void applyWidth(int width, qreal centre);
     void keepWidth(); // as it is now: remembered, and m_left (dropped) where it went
     QPoint settleOn(QScreen* screen, bool updateRoom = true); // where the window goes there; sets room
-    QPoint settleAvoiding(QScreen* screen);
+    QPoint settleAvoiding(QScreen* screen, bool fitList = false); // fitList: inside, narrowed to the list
     void attachBy(const QRect& box, QScreen* screen, int gap); // attach, this far off the box
     QPoint settleBy(QScreen* screen); // ... by the box; sets room, and with it the height (QML)
     QPoint settleByTaskbar(QScreen* screen); // ... over the taskbar; likewise
@@ -280,6 +283,8 @@ private:
     std::optional<QRect> m_box; // attached to it
     std::optional<QRect> m_avoid; // native bounds of the file manager typed in
     bool m_avoidInside = false; // the corner of m_avoid, not beside it
+    QRect m_avoidLists; // ... native: the lister's file lists together; empty: not known
+    QRect m_avoidFrame; // ... native: the lister's client area; empty: not known
     int m_boxGap = 0; // ... this far off it, logical pixels
     std::optional<TaskbarBox> m_taskbar; // over it
     std::optional<taskbar::Spot> m_taskbarSpot; // ... as attachTaskbar was given it

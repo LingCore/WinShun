@@ -2879,7 +2879,8 @@ void App::showFolderSearch(HWND root, HWND tab, bool opus, const QString& folder
     // does) rather than over it, and may search the whole PC (GitHub #82).
     const bool everywhere = opus && m_settings.opusTypingScope == u"all";
     const QString prefix = everywhere ? QString() : folder.endsWith(u'\\') ? folder + u' ' : folder + u"\\ "_s;
-    showLauncher(prefix, {}, false, screenOf(::MonitorFromWindow(root, MONITOR_DEFAULTTONEAREST)), opus ? tab : root, opus);
+    // On the monitor of the list typed in (a lister over two may have the other on the other).
+    showLauncher(prefix, {}, false, screenOf(::MonitorFromWindow(opus ? tab : root, MONITOR_DEFAULTTONEAREST)), opus ? tab : root, opus);
     m_typingOrigin = {root, tab, opus, folder}; // after showLauncher, which clears it
     // What is found in that folder first, then elsewhere (or there alone, as
     // set: Launcher::setFolderTypingOnly), as Listary lists it (GitHub #110).
@@ -4639,9 +4640,18 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
         QScreen* screen = on ? on : QGuiApplication::screenAt(QCursor::pos());
         screen = screen ? screen : QGuiApplication::primaryScreen();
         RECT bounds {};
-        if (avoid && ::GetWindowRect(avoid, &bounds))
-            m_placement->avoidNative(QRect(bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top), screen, inside);
-        else
+        const auto native = [](const RECT& r) { return QRect(r.left, r.top, r.right - r.left, r.bottom - r.top); };
+        if (avoid && ::GetWindowRect(avoid, &bounds)) {
+            // Over an Opus file list: its lister's other lists and client
+            // area are where it may reach when the list is too small for it.
+            const HWND root = inside ? ::GetAncestor(avoid, GA_ROOT) : nullptr;
+            RECT client {};
+            const bool framed = root && ::GetClientRect(root, &client)
+                && ::ClientToScreen(root, reinterpret_cast<POINT*>(&client.left))
+                && ::ClientToScreen(root, reinterpret_cast<POINT*>(&client.right));
+            m_placement->avoidNative(native(bounds), screen, inside, root ? native(folderview::opusFileLists(root)) : QRect(),
+                framed ? native(client) : QRect());
+        } else
             m_placement->placeOn(screen);
     }
     if (!query.isEmpty())

@@ -2768,6 +2768,12 @@
 - **不要给 `dopusrt /info` 传文档以外的类型**：手册只列了 `paths`、`list`、`listsel`、`open`、`select`。2026-10-14 研究时传了一个 `selected`，`dopus.exe` 当场崩溃（0xC0000005，线程 `dopus.worker`），之后的 `/info` 每次都卡 30 秒，直到 Opus 重启。
 - **替用户写 `prefs.oxc`**（用户：“能不能不让用户设置？我们帮用户做好”）。实测 Opus 13.25（2026-10-14）：运行中的 Opus **不重读**外面改过的 `prefs.oxc`（改完双击空白处没反应）；`dopusrt /cmd Close PROGRAM` 退出时**不重写**它（修改时间不变，改动还在）；再启动就生效（菜单 213–245 ms），原来开着的 lister 和文件夹都会恢复；`<dblclk>` 里没有 `<bg_commands>` 时，插一段 `<bg_commands><event …/></bg_commands>` 到 `<mouse_hook_delay>` 前面也认。但在 Opus 的首选项里点“确定”会把内存里的整份设置写回去，所以**不能趁 Opus 运行时改文件**：`filemanager::editOpusPrefs` 先关 Opus（等进程退出，15 秒不退就放弃，比如有复制任务在问），再改，再启动。只换 `<dblclk>` 里 `id="0"` 的那个 `<event>`，别的字节原样（`pathtext::withOpusBlankClick`，有单测）；原来那条存在 `[Launcher] FolderMenuOpusBefore`，“取消设置”原样放回（实测还原后整个文件哈希一致）；第一次改之前把整份文件备份到 `%LOCALAPPDATA%\WinShun\opus-prefs.oxc.bak`。用户自己启用了别的命令时不自动换，设置页显示那条命令，用户点“换成 Win顺 的菜单”才换，取消时换回。设置窗口每次到前台都重读一次状态（用户可能在 Opus 里改了）。卸载时 `WinShunSearch.exe --opus-menu-off` 把指向本副本的那条改成 `enable="no"`，免得卸载后双击空白处 Opus 报找不到程序（2026-10-14 用 ISCC 编的测试包真装真卸过：只变了这一行，重启 Opus 后双击空白处什么也不发生）。只在托盘里跑、没开窗口的 Opus，重新启动时会开出默认 lister，`dopus.exe` 没有不开窗口的命令行开关（只有它首选项里的“启动时不打开 lister”）：原来没窗口的，等新窗口出来就 `WM_CLOSE` 掉（实测约 0.5 秒后关掉，仍在托盘）。Opus 15 秒不退就放弃；之后用户才在 Opus 的提问里点“退出”的话，Opus 会关掉且不会再被启动。
 
+### Directory Opus 打字搜索：搜索框比激活的那栏文件列表宽（GitHub #82）
+
+- **现象**：2026-11-03 用户截图：左右双栏 + 右边查看栏，在右栏打字，搜索框左缘对齐右栏左缘，右边伸进查看栏，几乎贴到 Opus 右缘；框底也远在列表底部之上。
+- **原因**：0.18.0 的 `windowavoidance::corner` 取的矩形没错（焦点 `dopus.filedisplay`，就是正在打字的那一栏），但 150 % 下一栏只有约 537 逻辑像素，启动器是用户宽度 760（最窄 640），放不下时退回“从列表左上角起”，多出的全部往右伸。纵向按 8 行的预留高度（`roomWanted`）往上推，可行数又按工作区底部算：结果少时框浮在列表中间，列表比预留高度矮时框从列表顶起、往下长出列表。
+- **做法**：`windowavoidance::inList`（有单测）：宽、高都按这一栏收窄，宽不低于启动器最窄的 640（只在打开时收窄，`m_boxWidth` 临时值，不写进记住的宽度；用户拖宽后照拖的来），可行数截到列表底部上方 12 px；还放不下时仍从这一栏的右下角起，依次限制在 lister 所有可见的 `dopus.filedisplay` 合起来的范围（`folderview::opusFileLists`）、lister 客户区、工作区里，所以先盖另一栏文件列表，不先伸进目录树、查看栏。屏幕按焦点列表（不是 lister）所在的显示器取。启动器本身 640 以下没有窄版布局（底部提示一行约需 580），再窄要另做。
+
 ### 用快捷键弹出（GitHub #25）：想看菜单做了什么，日志里没有
 
 - **现象**：实测快捷键时想从 `WinShun.log` 读“菜单是关了还是丢了这一次”，文件里一行都没有：`qInfo` 只进调试输出，日志文件只记警告和错误。
