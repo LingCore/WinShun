@@ -6,6 +6,7 @@
 // permissions a plugin process gets.
 
 #include "Catalog.h"
+#include "Details.h"
 #include "Gallery.h"
 #include "Host.h"
 #include "IndexService.h"
@@ -5356,6 +5357,64 @@ private slots:
         QCOMPARE(ruleOpen(url(u"https://example.com/"_s), false, probe).gate, OpenGate::None);
         QCOMPARE(ruleOpen(path(u"C:\\Windows"_s), false, probe).gate, OpenGate::None);
         QCOMPARE(ruleOpen(path(u"C:\\Users\\Public\\Documents\\readme.txt"_s), false, probe).gate, OpenGate::None);
+    }
+
+    // GitHub #202: which `open.path` the content pane and the preview take as
+    // a plain file, by its text alone.
+    void detailsPlainFilePath_data()
+    {
+        QTest::addColumn<QString>("path");
+        QTest::addColumn<bool>("plain");
+        QTest::newRow("drive") << u"C:\\Docs\\a.txt"_s << true;
+        QTest::newRow("slashes") << u"D:/Mail/x.msg"_s << true;
+        QTest::newRow("share") << u"\\\\nas\\docs\\a.pdf"_s << true;
+        QTest::newRow("chinese") << u"E:\\资料\\报告.docx"_s << true;
+        QTest::newRow("relative") << u"docs\\a.txt"_s << false;
+        QTest::newRow("drive relative") << u"C:a.txt"_s << false;
+        QTest::newRow("rooted") << u"\\Docs\\a.txt"_s << false;
+        QTest::newRow("folder slash") << u"C:\\Docs\\"_s << false;
+        QTest::newRow("root") << u"C:\\"_s << false;
+        QTest::newRow("dot dot") << u"C:\\Docs\\..\\Windows\\win.ini"_s << false;
+        QTest::newRow("dot") << u"C:\\Docs\\.\\a.txt"_s << false;
+        QTest::newRow("trailing dot") << u"C:\\Docs\\a.txt."_s << false;
+        QTest::newRow("double backslash") << u"C:\\Docs\\\\a.txt"_s << false;
+        QTest::newRow("stream") << u"C:\\Docs\\a.txt:secret"_s << false;
+        QTest::newRow("long prefix") << u"\\\\?\\C:\\Docs\\a.txt"_s << false;
+        QTest::newRow("device") << u"\\\\.\\PhysicalDrive0"_s << false;
+        QTest::newRow("device under share") << u"\\\\.\\pipe\\x"_s << false;
+        QTest::newRow("share only") << u"\\\\nas\\docs"_s << false;
+        QTest::newRow("reserved") << u"C:\\Docs\\CON"_s << false;
+        QTest::newRow("reserved ext") << u"C:\\Docs\\nul.txt"_s << false;
+        QTest::newRow("reserved com") << u"C:\\Docs\\COM1.log"_s << false;
+        QTest::newRow("not reserved") << u"C:\\Docs\\COM10.log"_s << true;
+        QTest::newRow("wildcard") << u"C:\\Docs\\*.txt"_s << false;
+        QTest::newRow("variable") << u"%USERPROFILE%\\a.txt"_s << false;
+        QTest::newRow("url") << u"https://example.com/a.txt"_s << false;
+        QTest::newRow("plugin path") << u"winshun-plugin:a.b/main/x"_s << false;
+    }
+    void detailsPlainFilePath()
+    {
+        QFETCH(QString, path);
+        QFETCH(bool, plain);
+        QCOMPARE(plainFilePath(path), plain);
+    }
+
+    // A row's file: only a plain open.path with no arguments or working folder.
+    void detailsRowFile()
+    {
+        PluginRow row;
+        QVERIFY(rowFile(row).isEmpty()); // opens nothing
+        row.openKind = PluginRow::OpenKind::Path;
+        row.openTarget = u"C:/Mail/a.msg"_s;
+        QCOMPARE(rowFile(row), u"C:\\Mail\\a.msg"_s);
+        row.openArgs = u"-x"_s;
+        QVERIFY(rowFile(row).isEmpty()); // a program started with arguments
+        row.openArgs.clear();
+        row.openCwd = u"C:\\Mail"_s;
+        QVERIFY(rowFile(row).isEmpty());
+        row.openCwd.clear();
+        row.openKind = PluginRow::OpenKind::Url;
+        QVERIFY(rowFile(row).isEmpty());
     }
 };
 

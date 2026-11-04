@@ -6,6 +6,7 @@
 #include "Wsl.h"
 
 #include "AppCatalog.h"
+#include "Details.h"
 #include "FileIconProvider.h"
 #include "FilePreview.h"
 #include "History.h"
@@ -481,7 +482,15 @@ Launcher::Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places,
     connect(this, &Launcher::scopeChanged, this, syncPane);
     connect(this, &Launcher::folderChipsChanged, this, syncPane);
     connect(&m_results, &ResultModel::selectionChanged, this, syncPane);
-    connect(m_contentPane.get(), &ContentPane::openRequested, this, [this](const QString& path, int line) {
+    connect(m_contentPane.get(), &ContentPane::openRequested, this, [this](const QString& key, const QString& path, int line) {
+        // A plugin's row (GitHub #202): its file, only as its own Enter
+        // would open it (held to the plugin's permissions, OpenPolicy).
+        if (plugin::isPluginPath(key)) {
+            const SearchResult* r = m_results.at(m_results.indexOf(key));
+            if (!r || !r->isPlugin() || plugin::rowFile(*r->plugin).compare(path, Qt::CaseInsensitive) != 0
+                || !pluginOpenAllowed(r->plugin->pluginId, plugin::Open {plugin::Open::Kind::Path, path, {}, {}}))
+                return;
+        }
         remember(path, m_query);
         contentopen::open(path, line, reportFailure(QFileInfo(path).fileName()));
     });
@@ -2095,6 +2104,40 @@ SearchEngine::Request Launcher::contentRequest() const
     return request;
 }
 
+namespace {
+
+// What the content pane counts as files: the files' rows, and a plugin's row
+// that opens a plain file (a content provider's; GitHub #202) as that file's
+// row, unless the file is listed already.
+SearchResults paneFiles(const SearchResults& rows)
+{
+    SearchResults files;
+    files.reserve(rows.size());
+    QSet<QString> listed;
+    for (const SearchResult& row : rows) {
+        if (!row.isDir && row.app == AppKind::None) {
+            files.append(row);
+            listed.insert(row.path.toCaseFolded());
+        }
+    }
+    for (const SearchResult& row : rows) {
+        const QString file = row.isPlugin() ? plugin::rowFile(*row.plugin) : QString();
+        if (file.isEmpty() || listed.contains(file.toCaseFolded()))
+            continue;
+        listed.insert(file.toCaseFolded());
+        SearchResult copy = row;
+        copy.path = file;
+        copy.app = AppKind::None;
+        copy.plugin = {};
+        copy.clipId = 0;
+        copy.target.clear();
+        files.append(std::move(copy));
+    }
+    return files;
+}
+
+} // namespace
+
 void Launcher::syncContentPane()
 {
     if (!m_contentPane) return;
@@ -2104,18 +2147,26 @@ void Launcher::syncContentPane()
         return;
     }
     SearchResults rows;
-    if (m_scope == Content && !stale()) {
-        rows.reserve(m_results.count());
+    ContentPane::Subject current;
+    if (!stale()) {
+        SearchResults all;
+        all.reserve(m_results.count());
         for (int i = 0; i < m_results.count(); ++i) {
-            const auto* row = m_results.at(i);
-            if (row && !row->isDir && row->app == AppKind::None) rows.append(*row);
+            if (const auto* row = m_results.at(i))
+                all.append(*row);
+        }
+        rows = paneFiles(all);
+        if (const SearchResult* row = m_results.at(m_currentRow)) {
+            if (!row->isPlugin())
+                current = {row->path, row->path};
+            else if (const QString file = plugin::rowFile(*row->plugin); !file.isEmpty())
+                current = {row->path, file};
         }
     }
-    const QString current = m_scope == Content && !stale() ? m_results.pathAt(m_currentRow) : QString();
     const QString words = m_contentScope.words.isEmpty() ? splitContentQuery(searchText()).words : m_contentScope.words;
     m_contentPane->setContentIndexEnabled(m_contentIndex);
     m_contentPane->update(contentRequest(), words, searchText() + u'\n' + panelKey() + u'\n' + pickKey(m_contentPick)
-            + u'\n' + m_contentFolder, std::move(rows), stale() ? SearchResults{} : m_results.selection(), current,
+            + u'\n' + m_contentFolder, std::move(rows), stale() ? SearchResults{} : paneFiles(m_results.selection()), current,
         m_contentScanned, m_contentTotal, m_scanComplete && !m_moreContent, searching(), m_leftOut);
 }
 
@@ -3553,11 +3604,18 @@ void Launcher::dismiss()
 namespace {
 
 // What a row shows in the preview: a file or folder of its own (not an app,
-// a place, a web page or a plugin's row; not one gone or out of reach).
+// a place or a web page; not one gone or out of reach); a plugin's row, the
+// plain file it opens (GitHub #202).
 std::optional<FilePreview::Item> previewItem(const SearchResult* r)
 {
     if (r && r->clipId > 0 && !r->target.isEmpty()) // a screenshot: its picture
         return FilePreview::Item {r->target, r->name, false};
+    if (r && r->isPlugin()) {
+        const QString file = plugin::rowFile(*r->plugin);
+        if (file.isEmpty())
+            return std::nullopt;
+        return FilePreview::Item {file, file.mid(file.lastIndexOf(u'\\') + 1), false};
+    }
     if (!r || r->isApp() || r->missing || r->offline || r->path.isEmpty())
         return std::nullopt;
     return FilePreview::Item {r->path, r->name, r->isDir};
@@ -3578,7 +3636,8 @@ void Launcher::setPreview(FilePreview* preview)
     connect(preview, &FilePreview::openRequested, this, [this](const QString& path) {
         for (int row = 0; row < m_results.count(); ++row) {
             const SearchResult* r = m_results.at(row);
-            if (r && !r->isApp() && r->path.compare(path, Qt::CaseInsensitive) == 0) {
+            const std::optional<FilePreview::Item> shown = r && (!r->isApp() || (r->isPlugin() && r->clipId == 0)) ? previewItem(r) : std::nullopt;
+            if (shown && shown->path.compare(path, Qt::CaseInsensitive) == 0) {
                 trigger(row, Open);
                 return;
             }

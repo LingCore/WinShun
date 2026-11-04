@@ -281,18 +281,19 @@ void ContentPane::setActive(bool value)
     startPreview();
 }
 void ContentPane::update(SearchEngine::Request request, const QString& words, const QString& key,
-    SearchResults files, SearchResults selected, const QString& current,
+    SearchResults files, SearchResults selected, const Subject& current,
     int scanned, int total, bool complete, bool searching, const ContentLeftOut& leftOut)
 {
     const QStringList terms = contentTerms(words);
     const bool queryChanged = key != m_key || terms != m_terms;
-    const bool fileChanged = current != m_path;
+    const bool fileChanged = current.file != m_path || current.key != m_subjectKey;
     m_request = std::move(request);
     m_files = std::move(files);
     m_selected = std::move(selected);
     if (queryChanged || fileChanged) {
         m_key = key;
-        m_path = current;
+        m_path = current.file;
+        m_subjectKey = current.key;
         m_terms = terms;
         if (queryChanged) {
             m_countGroups.clear();
@@ -472,7 +473,7 @@ void ContentPane::activateLine(int row, bool textView)
     const int line = (textView ? m_text : m_hits).sourceLineAt(row);
     if (line < 0 || !m_matches || !m_matches->document) return;
     const auto& at = m_matches->document->lines[line];
-    emit openRequested(m_path, at.kind == doctext::PlaceKind::None ? static_cast<int>(at.number) : 0);
+    emit openRequested(m_subjectKey, m_path, at.kind == doctext::PlaceKind::None ? static_cast<int>(at.number) : 0);
 }
 void ContentPane::selectLine(int row, bool textView)
 {
@@ -493,8 +494,8 @@ void ContentPane::openCurrent()
     if (m_busy || m_path.isEmpty()) return;
     if (m_current >= 0 && m_matches && m_current < std::ssize(m_rows.matches)) {
         const auto& at = m_matches->document->lines[m_matches->items[m_rows.matches[m_current]].line];
-        emit openRequested(m_path, at.kind == doctext::PlaceKind::None ? static_cast<int>(at.number) : 0);
-    } else emit openRequested(m_path, 0);
+        emit openRequested(m_subjectKey, m_path, at.kind == doctext::PlaceKind::None ? static_cast<int>(at.number) : 0);
+    } else emit openRequested(m_subjectKey, m_path, 0);
 }
 void ContentPane::refresh()
 {
