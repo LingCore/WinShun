@@ -90,6 +90,20 @@ bool hasOwnFrame(HWND window);
 // After a change Windows tells the window nothing about, its display affinity
 // (capture::excludeFromCapture): the shadow follows it too.
 void updateOwnFrame(HWND window);
+// With an own frame, the see-through corners outside its rounded shape (as
+// Windows 11's own rounded corners): a window that resizes at its corners
+// gets the presses there (its hit testing, WindowFrame's), any other lets
+// them through to what is below it (a window region of its shape), but for
+// strips `sideEdge` logical px wide along its left and right edges (where
+// it is widened; 0 for none). Kept for the window, its frame own or not.
+void setCornersClickThrough(HWND window, bool on, qreal sideEdge = 0);
+// Before the window's opacity changes (QWindow::setOpacity): its shadow, as
+// see-through, first (then both change in the same composition; after it, the
+// shadow comes a frame late).
+void setOwnFrameOpacity(HWND window, qreal opacity);
+// Whether a point (window px, from its top left) is outside the rounded shape
+// of the window's own frame, in a corner; false without one, or maximised.
+bool outsideOwnFrame(HWND window, int x, int y);
 // The class of that shadow's window, right below its own in the Z order
 // (DialogOwner: right above a window, the shadow between them aside).
 inline constexpr wchar_t kFrameShadowClass[] = L"WinShun.FrameShadow";

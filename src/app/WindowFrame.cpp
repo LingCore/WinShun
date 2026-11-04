@@ -305,6 +305,7 @@ void WindowFrame::setWindow(QWindow* window)
             QMetaObject::invokeMethod(this, &WindowFrame::frameShown, Qt::QueuedConnection);
         }, Qt::DirectConnection);
     }
+    updateCorners();
     if (!m_ownFrame)
         return;
     // For Windows a normal window (snapping, the animations, the window menu);
@@ -424,8 +425,13 @@ int WindowFrame::hitTest(int screenX, int screenY) const
         return HTMAXBUTTON;
     if (onControl)
         return HTCLIENT;
-    if (anyCovers(m_dragAreas, pos))
-        return HTCAPTION;
+    if (anyCovers(m_dragAreas, pos)) {
+        // Not from outside its rounded shape (the antialiased edge the
+        // corners' region keeps, win::setCornersClickThrough).
+        POINT point {screenX, screenY};
+        ::ScreenToClient(hwnd, &point);
+        return win::outsideOwnFrame(hwnd, point.x, point.y) ? HTCLIENT : HTCAPTION;
+    }
     return HTCLIENT;
 }
 
@@ -449,6 +455,21 @@ void WindowFrame::setResizable(bool on)
     ::SetWindowLongPtrW(hwnd, GWL_STYLE, on ? style | WS_THICKFRAME : style & ~WS_THICKFRAME);
     ::SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
         SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
+    updateCorners();
+}
+
+void WindowFrame::setSideSizing(bool on)
+{
+    m_sideSizing = on;
+    updateCorners();
+}
+
+void WindowFrame::updateCorners()
+{
+    // Resized at its corners (hitTest): the presses there are its own. Else
+    // they go through, but for the sides it is widened at.
+    if (m_hwnd)
+        win::setCornersClickThrough(reinterpret_cast<HWND>(m_hwnd), !m_ownFrame && !m_resizable, sidesOnly() ? kSideEdge : 0);
 }
 
 void WindowFrame::setPointer(QPointF pointer)

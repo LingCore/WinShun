@@ -115,8 +115,10 @@ QtObject {
 
     // window shadow, drawn by C++ from this token: near and light, two layers
     // (CSS 0 10 28 / 0 1 3). `color` is the shadow ink (warm brown on light).
+    // Dark: black, and over a light background no darker than light's (a
+    // dark window often stands on a light page; over a dark one either is faint).
     readonly property var windowShadow: dark
-        ? [{ alpha: 0.34, blur: 30, dy: 12, color: "#000000" }, { alpha: 0.22, blur: 3, dy: 1, color: "#000000" }]
+        ? [{ alpha: 0.075, blur: 28, dy: 10, color: "#000000" }, { alpha: 0.04, blur: 3, dy: 1, color: "#000000" }]
         : [{ alpha: 0.11, blur: 28, dy: 10, color: "#46301A" }, { alpha: 0.06, blur: 3, dy: 1, color: "#46301A" }]
 
     // recessed things: the search groove, switch grooves, the results tray

@@ -118,7 +118,9 @@ QtObject {
     // ---- Shadows ----
     // Window (drawn by C++): CSS 0 1px 2px + 0 6px 16px; thin, light, close.
     // blur as in CSS box-shadow (px); the far one in light is a warm grey.
-    readonly property var windowShadow: dark ? [{ alpha: 0.30, blur: 2, dy: 1 }, { alpha: 0.32, blur: 16, dy: 6 }]
+    // Dark: black, and over a light background no darker than light's (a
+    // dark window often stands on a light page; over a dark one either is faint).
+    readonly property var windowShadow: dark ? [{ alpha: 0.06, blur: 2, dy: 1 }, { alpha: 0.08, blur: 16, dy: 6 }]
                                              : [{ alpha: 0.06, blur: 2, dy: 1 }, { alpha: 0.10, blur: 16, dy: 6, color: "#281414" }]
     readonly property int windowShadowMargin: 24 // room the shadow needs round the window (blur + dy)
     // Menus (RectangularShadow; blur = 1.2 × the CSS blur).

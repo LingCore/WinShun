@@ -4,6 +4,7 @@
 #include "DragBounds.h"
 #include "SystemTheme.h"
 #include "WindowAvoidance.h"
+#include "platform/WindowEffects.h"
 
 #include <QEasingCurve>
 #include <QEvent>
@@ -1117,8 +1118,10 @@ void Placement::stepSlide(int elapsed)
     const qreal opacity = s.opacityFrom + (s.opacityTo - s.opacityFrom) * fade;
     if (opacity != m_opacity) {
         m_opacity = opacity;
-        if (m_window && layered())
+        if (m_window && layered()) {
+            win::setOwnFrameOpacity(reinterpret_cast<HWND>(m_hwnd), opacity); // in the same frame as the window
             m_window->setOpacity(opacity);
+        }
     }
     // On whole device pixels, as the window moves. Between them text and the
     // unsmoothed icons round to the grid each their own way: as the shift
