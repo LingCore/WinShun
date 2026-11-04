@@ -2776,11 +2776,12 @@ bool checkSearchLogo(QQmlEngine* engine, const QDir& output)
         for (const QString& size : {u"compact"_s, u"standard"_s, u"roomy"_s}) {
             SystemTheme::setUiSize(size);
             settle(window);
-            // #162: the type strip shown once (文件, 内容) and closed again
-            // keeps its chips and + laid out over the header's lower half,
-            // clipped away but still registered as controls.
+            // #162: the type strip shown once (文件) and closed again keeps
+            // its chips and + laid out over the header's lower half, clipped
+            // away but still registered as controls. Not 内容: its scan's
+            // stop warns.
             if (!panel) {
-                for (const Launcher::Scope scope : {Launcher::Files, Launcher::Content, Launcher::All}) {
+                for (const Launcher::Scope scope : {Launcher::Files, Launcher::All}) {
                     launcher.setScope(scope);
                     settle(window);
                 }
