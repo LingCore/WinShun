@@ -381,7 +381,12 @@ void Placement::restoreDisplayGeometry()
         m_window->setGeometry(panelRect(screen));
         return;
     }
-    fitWidth(screen);
+    // Over an Opus file list (it comes here as it is shown too): narrowed to
+    // the list again, not back to the user's width (GitHub #82).
+    if (m_avoid && m_avoidInside)
+        settleAvoiding(screen, true);
+    else
+        fitWidth(screen);
     if (!m_contentSize.isEmpty())
         m_window->resize(m_contentSize);
     refit();
@@ -690,7 +695,7 @@ QPoint Placement::settleAvoiding(QScreen* screen, bool fitList)
         // (the user's width the most, the least width the launcher has the
         // least: Main.qml sizes the window by boxWidth); later, as it is then.
         const bool narrow = fitList && m_defaultWidth > 0 && !m_panel;
-        const int width = widthNow();
+        const int width = narrow ? widthOn(screen) : widthNow();
         const QRect spot = windowavoidance::inList(area, obstacle, logical(m_avoidLists), logical(m_avoidFrame),
             {width, height}, {narrow ? std::min(m_minWidth, width) : width, m_roomNeeded});
         if (narrow && spot.width() != m_boxWidth) {
