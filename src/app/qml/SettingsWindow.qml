@@ -2567,6 +2567,40 @@ Window {
                 }
 
                 SettingRow {
+                    title: qsTr("界面风格")
+                    keywords: qsTr("风格;外观;样式;皮肤;精修原生;品牌色彩;轻拟物;拟物;质感;Fluent;style;skin;look").split(";")
+                    description: qsTr("所有窗口的样子；浅色、深色仍按上面的主题")
+
+                    body: Row {
+                        id: styleCards
+
+                        readonly property var styles: ["fluent", "brand", "tactile"]
+                        readonly property var labels: [qsTr("精修原生"), qsTr("品牌色彩"), qsTr("轻拟物质感")]
+
+                        width: parent.width
+                        spacing: 14
+
+                        Repeater {
+                            id: styleRepeater
+                            model: styleCards.styles
+
+                            delegate: ThemeCard {
+                                required property int index
+                                required property string modelData
+
+                                width: Math.min(196, (styleCards.width - styleCards.spacing * 2) / 3)
+                                look: Theme.lookFor(modelData)
+                                label: styleCards.labels[index]
+                                selected: window.editor.uiStyle === modelData
+                                onActivated: if (!selected) window.changeAppearance(() => window.editor.uiStyle = modelData)
+                                Keys.onLeftPressed: styleRepeater.itemAt(Math.max(0, index - 1)).forceActiveFocus()
+                                Keys.onRightPressed: styleRepeater.itemAt(Math.min(2, index + 1)).forceActiveFocus()
+                            }
+                        }
+                    }
+                }
+
+                SettingRow {
                     shown: SystemTheme.backdropSystem // not on Windows 10
                     title: qsTr("透明效果")
                     keywords: qsTr("云母;Mica;毛玻璃;亚克力;半透明;壁纸;transparency").split(";")

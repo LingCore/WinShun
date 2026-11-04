@@ -24,6 +24,7 @@
 #include "ToastPolicy.h"
 #include "Unc.h"
 #include "WebDav.h"
+#include "WindowFrame.h"
 #include "platform/DragOut.h"
 #include "platform/Shell.h"
 #include "platform/ShellContextMenu.h"
@@ -5852,6 +5853,7 @@ void Launcher::prepareMenuWindow(QWindow* menu) const
 {
     if (!menu)
         return;
+    prepareWindowAlpha(menu); // before its first show makes it
     // Showing it must not take the focus from the launcher: losing it
     // dismisses the launcher, and the search box keeps handling the keys.
     menu->setProperty("_q_showWithoutActivating", true);

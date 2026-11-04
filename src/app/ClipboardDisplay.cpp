@@ -362,7 +362,7 @@ void ClipboardDisplay::synchronize()
         {u"room"_s, m_placement->room()}, {u"above"_s, m_placement->above()},
         {u"dark"_s, QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark},
         {u"uiSize"_s, SystemTheme::uiSize()}, {u"language"_s, QLocale().name()},
-        {u"rounded"_s, win::roundedCorners()}, {u"backdrop"_s, SystemTheme::backdrop()}});
+        {u"rounded"_s, win::roundedCorners()}, {u"uiStyle"_s, SystemTheme::uiStyle()}, {u"backdrop"_s, SystemTheme::backdrop()}});
     ClipModel* model = m_clipboard->items();
     const auto roles = model->roleNames();
     std::vector<QJsonObject> rows;

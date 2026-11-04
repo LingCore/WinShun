@@ -1046,6 +1046,7 @@ int runSettings(const QStringList& args)
     if (corners == u"round" || corners == u"square")
         settings.corners = corners;
     SystemTheme::setRoundedCorners(settings.corners == u"round");
+    settings.uiStyle = SystemTheme::uiStyle();
     settings.uiSize = valueAfter(args, u"--size", settings.uiSize);
     SystemTheme::setUiSize(settings.uiSize);
     settings.mcp = true;
@@ -1069,6 +1070,7 @@ int runSettings(const QStringList& args)
     auto* editor = new SettingsEditor(settings, Settings::resolveRenderer(settings.renderer), &engine);
     QObject::connect(editor, &SettingsEditor::changed, editor, [editor] {
         SystemTheme::setRoundedCorners(editor->corners() == u"round");
+        SystemTheme::setUiStyle(editor->uiStyle());
         SystemTheme::setUiSize(editor->uiSize());
     });
     auto* frame = new WindowFrame(true, editor);
@@ -7460,6 +7462,8 @@ int run(const QStringList& args)
     const bool resultsMode = args.contains(kResultsFlag);
     const bool cardsMode = args.contains(kAiCardsFlag);
     const bool runtimeMode = args.contains(kRuntimeFlag);
+    // --style fluent|brand|tactile: every preview in that 界面风格.
+    SystemTheme::setUiStyle(valueAfter(args, u"--style", u"fluent"_s));
     // QML singletons may still watch components/ after the window and its
     // controller are gone. Clean up only after the preview's engine unwinds.
     const QString profile = Settings::profile();

@@ -6,6 +6,7 @@
 #include "Phosphor.h"
 #include "PhosphorGlyph.h"
 #include "SystemTheme.h"
+#include "WindowFrame.h"
 #include "platform/WindowEffects.h"
 
 #include <QDir>
@@ -102,6 +103,7 @@ private slots:
         qmlRegisterSingletonType<SystemTheme>(
             "WinShun", 1, 0, "SystemTheme", [](QQmlEngine*, QJSEngine*) -> QObject* { return new SystemTheme; });
         qmlRegisterType<PhosphorGlyph>("WinShun", 1, 0, "PhosphorGlyph");
+        qmlRegisterType<OwnFrame>("WinShun", 1, 0, "OwnFrame"); // in WindowEdge.qml
         const QUrl folder = QUrl::fromLocalFile(QStringLiteral(WINSHUN_QML_DIR) + u'/');
         qmlRegisterSingletonType(folder.resolved(QUrl(u"Theme.qml"_s)), "WinShun", 1, 0, "Theme");
         const int font = QFontDatabase::addApplicationFont(

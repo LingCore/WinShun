@@ -31,6 +31,11 @@ class SystemTheme : public QObject, public QAbstractNativeEventFilter {
     Q_PROPERTY(bool backdropAvailable READ backdropAvailable CONSTANT FINAL)
     // Windows has Mica (11 22H2 or later), whatever the renderer.
     Q_PROPERTY(bool backdropSystem READ backdropSystem CONSTANT FINAL)
+    // Whether a 界面风格 can round our windows itself (win::setOwnFrame): the
+    // GPU renderer, whose windows get an alpha channel for it from their
+    // creation (prepareWindowAlpha); the software one's would be layered
+    // windows. Decided at startup, before the first window.
+    Q_PROPERTY(bool ownFrameAvailable READ ownFrameAvailable NOTIFY changed FINAL)
     // They do (the 透明效果 setting): their surfaces are translucent then.
     Q_PROPERTY(bool backdrop READ backdrop NOTIFY changed FINAL)
     // Transparency effects on and no high contrast: otherwise Windows draws
@@ -43,6 +48,8 @@ class SystemTheme : public QObject, public QAbstractNativeEventFilter {
     // standard, roomy; see uisize::), and its header's height, as C++ places by.
     Q_PROPERTY(QString uiSize READ uiSize NOTIFY uiSizeChanged FINAL)
     Q_PROPERTY(int headerHeight READ headerHeight NOTIFY uiSizeChanged FINAL)
+    // 界面风格: fluent | brand | tactile (Theme.style; Settings::uiStyle).
+    Q_PROPERTY(QString uiStyle READ uiStyle NOTIFY changed FINAL)
     // How long the mouse rests before a tip shows (SPI_GETMOUSEHOVERTIME, ms).
     Q_PROPERTY(int hoverTime READ hoverTime NOTIFY changed FINAL)
 
@@ -79,9 +86,13 @@ public:
     static void setBackdropAvailable(bool on) { s_backdropAvailable = on; } // before the first window
     static bool backdrop() { return s_backdropAvailable && s_backdropOn; }
     static void setBackdropOn(bool on);
+    static bool ownFrameAvailable() { return s_ownFrameAvailable; }
+    static void setOwnFrameAvailable(bool on); // before the first window
     static QString uiSize() { return s_uiSize; }
     static int headerHeight();
     static void setUiSize(const QString& size);
+    static QString uiStyle() { return s_uiStyle; }
+    static void setUiStyle(const QString& style); // unknown names are fluent
 
 signals:
     void changed();
@@ -94,7 +105,9 @@ protected:
 private:
     static inline bool s_backdropAvailable = false;
     static inline bool s_backdropOn = true;
+    static inline bool s_ownFrameAvailable = false;
     static inline QString s_uiSize = QStringLiteral("standard");
+    static inline QString s_uiStyle = QStringLiteral("fluent");
     static inline QPointer<SystemTheme> s_instance; // the QML singleton
     QString m_iconFont;
     mutable QRawFont m_iconRaw; // made the first time hasGlyph asks

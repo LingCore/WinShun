@@ -150,6 +150,7 @@ void DropPieHelper::update(const Settings& settings)
         config.setValue(u"Appearance/Language"_s, settings.language);
         config.setValue(u"Appearance/UiSize"_s, settings.uiSize);
         config.setValue(u"Appearance/Corners"_s, settings.corners);
+        config.setValue(u"Appearance/UiStyle"_s, settings.uiStyle);
         config.setValue(u"Launcher/Renderer"_s, Settings::resolveRenderer(settings.renderer));
         config.sync();
     }
@@ -299,6 +300,7 @@ int runDropPieHelper(const QStringList& arguments)
             : settings.theme == u"light" ? Qt::ColorScheme::Light : Qt::ColorScheme::Unknown);
         SystemTheme::setUiSize(settings.uiSize);
         SystemTheme::setRoundedCorners(settings.corners != u"square");
+        SystemTheme::setUiStyle(settings.uiStyle);
     };
     appearance();
     Favorites favorites(profile + u"/favorites.json"_s);

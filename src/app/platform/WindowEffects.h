@@ -2,6 +2,7 @@
 
 #include <QColor>
 #include <QRect>
+#include <QVariantList>
 
 #include <windows.h>
 
@@ -64,6 +65,34 @@ bool backdropSupported();
 // Whether Windows draws materials at all: transparency effects on (Settings >
 // Personalization > Colors) and no high contrast theme.
 bool materialsEnabled();
+
+// The frame of a 界面风格 that rounds its windows itself (OwnFrame in
+// WindowFrame.h): DWM neither rounds, edges nor shadows the window and puts
+// no Mica behind it; the window draws its rounded body and edge, see-through
+// around them (an alpha channel from its creation, see prepareWindowAlpha),
+// `radius` logical pixels round (0 or less is off), and a click-through
+// layered window right below it draws the shadow: `shadow`'s layers, nearest
+// first, maps of alpha, blur and dy in logical pixels (blur and dy up to 64,
+// 8 layers; one with a number that is not one is left out) and an optional
+// color (black). The shadow follows the window as it
+// moves, resizes, shows, hides, changes DPI or comes to the front, and is
+// hidden while it is minimised, maximised, full screen or cloaked. Off, the
+// window is as styleFramelessWindow left it, or as Windows made it. Nothing
+// for a window without an alpha channel or a layered one (the software
+// renderer's). Only once the window is made; cheap when nothing changed.
+// Returns whether the window has it now.
+bool setOwnFrame(QWindow* window, bool on, qreal radius, const QVariantList& shadow);
+// Whether the window has one now. Then nothing may hand it WM_NCACTIVATE's
+// default handling (DefWindowProc): without DWM's frame Windows draws its
+// themed one there, whatever lParam says, and it shows in the see-through
+// corners.
+bool hasOwnFrame(HWND window);
+// After a change Windows tells the window nothing about, its display affinity
+// (capture::excludeFromCapture): the shadow follows it too.
+void updateOwnFrame(HWND window);
+// The class of that shadow's window, right below its own in the Z order
+// (DialogOwner: right above a window, the shadow between them aside).
+inline constexpr wchar_t kFrameShadowClass[] = L"WinShun.FrameShadow";
 
 // Cloaking keeps a shown window off the screen (DWM does not compose it)
 // while it still gets focus and draws as usual.

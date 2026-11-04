@@ -164,6 +164,7 @@ extern "C" __declspec(dllexport) int winshunCaptureMain(const wchar_t* appDirNam
     QQuickWindow::setGraphicsApi(software ? QSGRendererInterface::Software : QSGRendererInterface::Direct3D11);
     QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
     ws::SystemTheme::setBackdropAvailable(!software && ws::win::backdropSupported());
+    ws::SystemTheme::setOwnFrameAvailable(!software); // a 界面风格's own frame (see prepareWindowAlpha)
     applyUiFont(appDir);
     if (ws::SystemTheme::backdropAvailable()) { // grey-scale text over Mica (App::start, GitHub #12)
         QFont font = QGuiApplication::font();

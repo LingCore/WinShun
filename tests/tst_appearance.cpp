@@ -40,6 +40,7 @@ QUrl qmlFolder()
         qmlRegisterSingletonType<SystemTheme>("WinShun", 1, 0, "SystemTheme",
             [](QQmlEngine*, QJSEngine*) -> QObject* { return new SystemTheme; });
         qmlRegisterType<PhosphorGlyph>("WinShun", 1, 0, "PhosphorGlyph");
+        qmlRegisterType<OwnFrame>("WinShun", 1, 0, "OwnFrame"); // in WindowEdge.qml
         const QUrl url = QUrl::fromLocalFile(QStringLiteral(WINSHUN_QML_DIR) + u'/');
         qmlRegisterSingletonType(url.resolved(QUrl(u"Theme.qml"_s)), "WinShun", 1, 0, "Theme");
         return url;

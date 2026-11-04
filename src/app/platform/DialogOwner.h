@@ -1,12 +1,25 @@
 #pragma once
 
+#include "WindowEffects.h"
+
 #include <windows.h>
+
+#include <cwchar>
 
 namespace ws::win {
 
 namespace detail {
 
 constexpr UINT kZOrderOnly = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE;
+
+// `below` is the shadow of hwnd's own frame (setOwnFrame), which follows
+// right below its window.
+inline bool isShadowOf(HWND below, HWND hwnd)
+{
+    wchar_t name[32] {};
+    return ::GetWindow(below, GW_HWNDPREV) == hwnd && ::GetClassNameW(below, name, 32) > 0
+        && std::wcscmp(name, kFrameShadowClass) == 0;
+}
 
 inline bool isTopmost(HWND hwnd)
 {
@@ -37,7 +50,7 @@ inline void setTopmost(HWND hwnd, bool topmost, UINT flags)
 inline void stackAbove(HWND hwnd, HWND target, UINT flags)
 {
     const HWND above = ::GetWindow(target, GW_HWNDPREV);
-    if (above == hwnd)
+    if (above == hwnd || (above && isShadowOf(above, hwnd)))
         return;
     // First in its band: the top of that band is right above it.
     const HWND after = above && isTopmost(above) == isTopmost(hwnd) ? above : HWND_TOP;
@@ -46,6 +59,14 @@ inline void stackAbove(HWND hwnd, HWND target, UINT flags)
 }
 
 } // namespace detail
+
+// Whether `hwnd` is right above `target`, the shadow of its own frame between
+// them aside (setOwnFrame).
+inline bool rightAbove(HWND hwnd, HWND target)
+{
+    const HWND above = ::GetWindow(target, GW_HWNDPREV);
+    return above == hwnd || (above && detail::isShadowOf(above, hwnd));
+}
 
 // The bar by another program's dialog: right above it, topmost only when the
 // dialog is, and never owned by it. An owner on another thread joins the two

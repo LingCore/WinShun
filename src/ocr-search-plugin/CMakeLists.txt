@@ -18,7 +18,7 @@ target_link_options(WinShunOcrSearch PRIVATE /ENTRY:wmainCRTStartup)
 set_target_properties(WinShunOcrSearch PROPERTIES AUTOMOC OFF MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 set(ocr_qml)
-foreach(name IN ITEMS Theme UiScale WindowEdge HoverTip DropMenu Glyph TitleBar ToggleSwitch FlatButton InputBox
+foreach(name IN ITEMS Theme Hook UiScale WindowEdge HoverTip DropMenu Glyph TitleBar ToggleSwitch FlatButton InputBox
     ListScrollBar ListWheelScroll ScrollPixelAlignment)
     list(APPEND ocr_qml "${app_dir}/qml/${name}.qml")
 endforeach()
@@ -30,6 +30,18 @@ foreach(file IN LISTS ocr_qml)
     set_source_files_properties("${file}" PROPERTIES QT_RESOURCE_ALIAS "${name}")
 endforeach()
 set_source_files_properties("${app_dir}/qml/Theme.qml" PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+# The 界面风格, as WinShun's own module has them (src/app/CMakeLists.txt).
+file(GLOB theme_qml CONFIGURE_DEPENDS "${app_dir}/qml/themes/*/*.qml")
+foreach(file IN LISTS theme_qml)
+    file(RELATIVE_PATH alias "${app_dir}/qml" "${file}")
+    set_source_files_properties("${file}" PROPERTIES QT_RESOURCE_ALIAS "${alias}" QT_QML_SKIP_QMLDIR_ENTRY TRUE)
+endforeach()
+list(APPEND ocr_qml ${theme_qml})
+file(GLOB theme_images CONFIGURE_DEPENDS "${app_dir}/qml/themes/*/*.png")
+foreach(file IN LISTS theme_images)
+    file(RELATIVE_PATH alias "${app_dir}/qml" "${file}")
+    set_source_files_properties("${file}" PROPERTIES QT_RESOURCE_ALIAS "${alias}")
+endforeach()
 qt_add_library(WinShunOcrSearchApp SHARED OcrMain.cpp OcrController.cpp OcrController.h
     ${PROJECT_SOURCE_DIR}/src/capture-plugin/Protocol.cpp
     ${app_dir}/SystemTheme.cpp ${app_dir}/SystemTheme.h
@@ -37,8 +49,8 @@ qt_add_library(WinShunOcrSearchApp SHARED OcrMain.cpp OcrController.cpp OcrContr
     ${app_dir}/WindowFrame.cpp ${app_dir}/WindowFrame.h
     ${app_dir}/Phosphor.cpp ${app_dir}/platform/WindowEffects.cpp ${app_dir}/platform/ShellDialogs.cpp
     ${app_dir}/platform/Foreground.cpp ${app_dir}/platform/DragOut.cpp)
-qt_add_qml_module(WinShunOcrSearchApp URI WinShun VERSION 1.0 NO_PLUGIN NO_IMPORT_SCAN
-    OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/WinShun" QML_FILES ${ocr_qml})
+qt_add_qml_module(WinShunOcrSearchApp URI WinShun VERSION 1.0 NO_PLUGIN NO_IMPORT_SCAN NO_GENERATE_EXTRA_QMLDIRS
+    OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/WinShun" QML_FILES ${ocr_qml} RESOURCES ${theme_images})
 set_target_properties(WinShunOcrSearchApp PROPERTIES QT_QMLCACHEGEN_ARGUMENTS "--only-bytecode")
 target_include_directories(WinShunOcrSearchApp PRIVATE ${app_dir})
 target_link_libraries(WinShunOcrSearchApp PRIVATE wsocrsearch Qt6::Qml Qt6::Quick

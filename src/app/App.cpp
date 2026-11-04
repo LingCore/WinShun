@@ -338,23 +338,11 @@ bool isDarkMode()
 }
 
 // Before create(): see-through where the window's background is (Theme.qml),
-// for the Mica behind it. And it stays so: the window's color turns opaque
-// while it is inactive, QQuickWindow::setColor() then takes the alpha out of
-// the format, though the swap chain made with it keeps its alpha, and Qt's
-// D3D11 backend logged a warning about that on every resize after.
+// for the Mica behind it or a 界面风格 that rounds the window itself; for
+// good (see prepareWindowAlpha).
 void prepareBackdrop(QQuickWindow* window)
 {
-    if (!SystemTheme::backdropAvailable()) // the setting can turn it on later
-        return;
-    const auto keepAlpha = [window] {
-        QSurfaceFormat format = window->requestedFormat();
-        if (format.alphaBufferSize() < 8) {
-            format.setAlphaBufferSize(8);
-            window->setFormat(format);
-        }
-    };
-    keepAlpha();
-    QObject::connect(window, &QQuickWindow::colorChanged, window, keepAlpha);
+    prepareWindowAlpha(window, true);
 }
 
 // What is remembered between runs that is not a setting: the windows'
@@ -502,6 +490,8 @@ bool App::start(const StartOptions& options)
     // The software renderer draws a window with an alpha channel as a layered
     // window, which DWM puts no backdrop behind.
     SystemTheme::setBackdropAvailable(m_renderer == u"d3d11" && win::backdropSupported());
+    // Likewise a window see-through around corners of its own (win::setOwnFrame).
+    SystemTheme::setOwnFrameAvailable(m_renderer == u"d3d11");
     if (SystemTheme::backdropAvailable()) {
         // Grey-scale text, not ClearType: a window see-through to Mica has
         // alpha 0 under its text, and subpixel glyphs blended there come out
@@ -539,6 +529,7 @@ bool App::showOnboarding(const StartOptions& options)
         return false;
     m_onboardingWindow = window;
     window->setObjectName(u"onboardingWindow"_s);
+    prepareBackdrop(window); // before setWindow makes it
     m_onboardingFrame->setWindow(window);
     m_onboardingFrame->setResizable(true);
     m_onboarding->setWindow(window);
@@ -1541,6 +1532,7 @@ void App::guardDarkFrames()
 void App::applyAppearance()
 {
     SystemTheme::setRoundedCorners(m_settings.corners == u"round");
+    SystemTheme::setUiStyle(m_settings.uiStyle);
     updateSearchBoxLook(); // the native child redraws on its own thread
     // 界面大小: QML follows SystemTheme; the bar by file dialogs is placed by its heights.
     if (SystemTheme::uiSize() != m_settings.uiSize) {
@@ -2080,7 +2072,7 @@ void App::prefetchTrayMenus()
 QJsonObject App::pluginLook() const
 {
     return {{u"locale"_s, m_language}, {u"themeSetting"_s, m_settings.theme}, {u"corners"_s, m_settings.corners},
-        {u"uiSize"_s, m_settings.uiSize}, {u"transparency"_s, m_settings.transparency}, {u"renderer"_s, m_settings.renderer}};
+        {u"uiStyle"_s, m_settings.uiStyle}, {u"uiSize"_s, m_settings.uiSize}, {u"transparency"_s, m_settings.transparency}, {u"renderer"_s, m_settings.renderer}};
 }
 
 void App::setUpAppTools()
@@ -4210,6 +4202,7 @@ bool App::createBarWindow()
         delete object;
         return false;
     }
+    prepareWindowAlpha(window); // a 界面风格's own frame; no Mica here
     window->create();
     styleWindow(window);
     win::setDarkFrame(window, isDarkMode());

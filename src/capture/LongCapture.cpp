@@ -10,6 +10,7 @@
 #include "ScrollInput.h"
 #include "ScrollStitcher.h"
 #include "CaptureSession.h" // kLongMinimum
+#include "WindowFrame.h"
 #include "platform/Integrity.h"
 #include "platform/WindowEffects.h"
 
@@ -323,6 +324,7 @@ QQuickWindow* LongCapture::panel()
         return nullptr;
     }
     releaseIdleGraphics(window);
+    prepareWindowAlpha(window); // a 界面风格's own frame
     window->create();
     win::styleFramelessWindow(window, false);
     win::disableTransitions(window); // no fade-out for the engine's last frames to catch
@@ -340,6 +342,7 @@ QQuickWindow* LongCapture::panel()
     }
     if (m_previewWindow) {
         releaseIdleGraphics(m_previewWindow);
+        prepareWindowAlpha(m_previewWindow);
         m_previewWindow->create();
         win::styleFramelessWindow(m_previewWindow, false);
         win::disableTransitions(m_previewWindow);
@@ -357,9 +360,13 @@ void LongCapture::updateExclusion()
 {
     const bool running = m_run != nullptr;
     const QRect region = running ? m_run->region : QRect();
-    for (QQuickWindow* window : {m_panel.data(), m_previewWindow.data()})
-        if (window && (!running || window->isVisible()))
-            excludeFromCapture(reinterpret_cast<HWND>(window->winId()), region, running);
+    for (QQuickWindow* window : {m_panel.data(), m_previewWindow.data()}) {
+        if (window && (!running || window->isVisible())) {
+            const HWND hwnd = reinterpret_cast<HWND>(window->winId());
+            excludeFromCapture(hwnd, region, running);
+            win::updateOwnFrame(hwnd); // its shadow likewise
+        }
+    }
     if (m_border)
         m_border->exclude(region, running);
 }

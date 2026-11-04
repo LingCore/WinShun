@@ -102,6 +102,7 @@ extern "C" __declspec(dllexport) int winshunOcrSearchMain(const wchar_t* host, i
     QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
     QImageReader::setAllocationLimit(128);
     ws::SystemTheme::setBackdropAvailable(false);
+    ws::SystemTheme::setOwnFrameAvailable(!software); // a 界面风格's own frame (see prepareWindowAlpha)
     if (!qEnvironmentVariable("WS_COMPONENTS_DIR").isEmpty())
         ws::ocr::setComponentsRoot(qEnvironmentVariable("WS_COMPONENTS_DIR"));
     if (worker) {
@@ -156,6 +157,7 @@ extern "C" __declspec(dllexport) int winshunOcrSearchMain(const wchar_t* host, i
                                                                        : Qt::ColorScheme::Unknown);
         ws::SystemTheme::setRoundedCorners(look.value(u"corners"_s).toString(u"round"_s) == u"round");
         ws::SystemTheme::setUiSize(look.value(u"uiSize"_s).toString(u"standard"_s));
+        ws::SystemTheme::setUiStyle(look.value(u"uiStyle"_s).toString());
         QCoreApplication::removeTranslator(&translator);
         if (look.value(u"locale"_s).toString() == u"en" && translator.load(u":/i18n/ocr-search_en.qm"_s))
             QCoreApplication::installTranslator(&translator);
@@ -175,6 +177,7 @@ extern "C" __declspec(dllexport) int winshunOcrSearchMain(const wchar_t* host, i
                 delete object;
                 return false;
             }
+            ws::prepareWindowAlpha(window); // before setWindow makes it
             frame.setWindow(window);
             QObject::connect(window, &QQuickWindow::visibleChanged, &app, [&] {
                 if (window->isVisible())

@@ -6,7 +6,10 @@
 #include <QDebug>
 #include <QGuiApplication>
 #include <QOperatingSystemVersion>
+#include <QPointer>
+#include <QScopeGuard>
 #include <QStyleHints>
+#include <QVariantMap>
 #include <QWindow>
 
 #include <dwmapi.h>
@@ -14,8 +17,14 @@
 #include <windows.h>
 #include <msctf.h>
 
+#include <algorithm>
 #include <atomic>
+#include <climits>
+#include <cmath>
+#include <cstdint>
 #include <mutex>
+#include <utility>
+#include <vector>
 
 using namespace Qt::StringLiterals;
 
@@ -36,7 +45,88 @@ bool g_compositedPreview = false;
 std::atomic<bool> g_round {true};
 std::mutex g_cornerMutex; // preview HWNDs are created on another thread
 constexpr COLORREF kColorDefault = 0xFFFFFFFF; // DWMWA_COLOR_DEFAULT
+constexpr COLORREF kColorNone = 0xFFFFFFFE; // DWMWA_COLOR_NONE
 constexpr int kBackdropMica = 2; // DWMSBT_MAINWINDOW
+
+// Own frames (setOwnFrame).
+constexpr DWORD kNcRenderingPolicy = 2; // DWMWA_NCRENDERING_POLICY
+constexpr int kNcUseWindowStyle = 0; // DWMNCRP_USEWINDOWSTYLE
+constexpr int kNcDisabled = 1; // DWMNCRP_DISABLED: no DWM frame, shadow included
+constexpr int kCornerDefault = 0; // DWMWCP_DEFAULT
+constexpr int kBackdropNone = 1; // DWMSBT_NONE
+// Undocumented: the visual styles' own caption and frame, drawn without
+// DWM's (Chromium and Firefox stop them too for frames of their own).
+constexpr UINT kNcUahDrawCaption = 0x00AE; // WM_NCUAHDRAWCAPTION
+constexpr UINT kNcUahDrawFrame = 0x00AF; // WM_NCUAHDRAWFRAME
+constexpr wchar_t kOwnFrameProp[] = L"WinShun.OwnFrame";
+constexpr UINT_PTR kOwnFrameSubclass = 0x4F46;
+constexpr UINT_PTR kShadowTimer = 1;
+// The most a style's shadow gets (logical px, layers): a typo must not make
+// a picture of hundreds of MB, drawn again at every resize.
+constexpr double kMaxShadowReach = 64;
+constexpr std::size_t kMaxShadowLayers = 8;
+
+// One layer of an own frame's shadow, as setOwnFrame gets it.
+struct ShadowLayer {
+    double alpha = 0; // the colour's own alpha included
+    double blur = 0; // logical px
+    double dy = 0; // logical px, down
+    double red = 0, green = 0, blue = 0; // 0..1
+    bool operator==(const ShadowLayer&) const = default;
+};
+
+// A window with an own frame (setOwnFrame), and the layered window below it
+// that draws its shadow. Made the first time it is turned on; kept, on or
+// off, until the window is destroyed (its WM_NCDESTROY), and found from its
+// window property (other threads too: setRoundedCorners) or the subclass.
+struct OwnFrameState {
+    HWND window = nullptr;
+    QPointer<QWindow> qwindow; // its devicePixelRatio: the layers' logical px
+    HWND shadow = nullptr;
+    bool on = false;
+    double radius = 0; // logical px
+    std::vector<ShadowLayer> layers;
+    int backdrop = 0; // DWMWA_SYSTEMBACKDROP_TYPE to bring back when off
+    // The shadow's picture (physical px) and where the shadow is.
+    int drawnWidth = 0;
+    int drawnHeight = 0;
+    double drawnDpr = 0;
+    int drawnMargin = 0; // how far it reaches past the window
+    bool stale = true;
+    POINT placed {LONG_MIN, LONG_MIN};
+    bool shown = false;
+    // Shown again, the shadow waits for the window's first frame (WM_PAINT,
+    // or the timer) or DWM's animation back from the taskbar or from
+    // maximised (the timer).
+    bool holding = false;
+    bool holdForPaint = false;
+    bool restoring = false;
+    int depth = 0; // ownFrameProc calls under way
+    bool gone = false; // the window destroyed: deleted by the last of them
+
+    void turnOn();
+    void turnOff();
+    void sync(const WINDOWPOS* pos = nullptr);
+    void hold(UINT ms, bool forPaint);
+    void release();
+    void hide();
+    void place(const RECT& rect);
+    bool draw(int width, int height, double dpr, POINT at);
+    void destroyShadow();
+    void forgetShadow(); // none now: made again when it is to show
+};
+
+OwnFrameState* ownFrameOf(HWND window)
+{
+    return window ? static_cast<OwnFrameState*>(::GetPropW(window, kOwnFrameProp)) : nullptr;
+}
+
+bool ownFrameOn(HWND window)
+{
+    const OwnFrameState* state = ownFrameOf(window);
+    return state && state->on;
+}
+
 LRESULT CALLBACK nativeFrameProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR)
 {
     switch (message) {
@@ -66,6 +156,8 @@ LRESULT CALLBACK nativeFrameProc(HWND window, UINT message, WPARAM wParam, LPARA
 // controls inside (Theme.qml).
 void applyWindowCorners(HWND window, int style)
 {
+    if (ownFrameOn(window))
+        return; // square for DWM: the window rounds itself (setOwnFrame)
     const int value = g_round.load() && nativeWindowCorners() ? style : kCornerSquare;
     ::DwmSetWindowAttribute(window, kCornerPreference, &value, sizeof value);
 }
@@ -200,10 +292,15 @@ void styleFramelessWindow(QWindow* window, bool backdrop)
         ::SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
             SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
     }
-    setWindowCorners(hwnd);
+    setWindowCorners(hwnd); // kept for later, not applied, with an own frame
+    if (OwnFrameState* own = ownFrameOf(hwnd); own && own->on) {
+        // Its frame stays its own (setOwnFrame); Mica comes when it goes.
+        if (backdrop && backdropSupported())
+            own->backdrop = kBackdropMica;
+        return;
+    }
     // Windows 10 draws no border here; the preview of it on Windows 11 neither.
-    constexpr COLORREF noBorder = 0xFFFFFFFE; // DWMWA_COLOR_NONE
-    ::DwmSetWindowAttribute(hwnd, kBorderColor, g_compositedPreview ? &noBorder : &kColorDefault, sizeof kColorDefault);
+    ::DwmSetWindowAttribute(hwnd, kBorderColor, g_compositedPreview ? &kColorNone : &kColorDefault, sizeof kColorDefault);
     // Extend a single pixel for DWM's shadow when the native frame/corner
     // style supports it, without exposing the system's caption buttons.
     const MARGINS margins {0, 0, 1, 0};
@@ -304,6 +401,8 @@ void setCloaked(QWindow* window, bool cloaked)
     if (const HWND hwnd = handleOf(window)) {
         const BOOL value = cloaked;
         ::DwmSetWindowAttribute(hwnd, DWMWA_CLOAK, &value, sizeof value);
+        // In the same composition as the window (the cloak event comes later).
+        updateOwnFrame(hwnd);
     }
 }
 
@@ -313,6 +412,614 @@ void disableTransitions(QWindow* window)
         const BOOL value = TRUE;
         ::DwmSetWindowAttribute(hwnd, DWMWA_TRANSITIONS_FORCEDISABLED, &value, sizeof value);
     }
+}
+
+namespace {
+
+// ---- own frames ---------------------------------------------------------------
+
+// Signed distance from a point to a rounded rectangle (centre, half sizes,
+// corner radius): negative inside.
+double roundedRectDistance(double x, double y, double cx, double cy, double halfWidth, double halfHeight, double radius)
+{
+    const double qx = std::abs(x - cx) - (halfWidth - radius);
+    const double qy = std::abs(y - cy) - (halfHeight - radius);
+    const double ox = std::max(qx, 0.0);
+    const double oy = std::max(qy, 0.0);
+    return std::sqrt(ox * ox + oy * oy) + std::min(std::max(qx, qy), 0.0) - radius;
+}
+
+// The window in the shadow's picture, and the layers in its pixels.
+struct ShadowShape {
+    double cx = 0, cy = 0, halfWidth = 0, halfHeight = 0, radius = 0;
+    std::vector<ShadowLayer> layers; // blur and dy in physical px
+};
+
+// One premultiplied BGRA pixel at the pixel centre (x, y). Each layer is the
+// window's shape moved down by dy, fading out over blur (smoothstep); they
+// are laid nearest first, over one another. Nothing under the window's
+// opaque body: the shadow fades in across its antialiased edge.
+std::uint32_t shadowPixel(const ShadowShape& shape, double x, double y)
+{
+    const double inside = roundedRectDistance(x, y, shape.cx, shape.cy, shape.halfWidth, shape.halfHeight, shape.radius);
+    if (inside <= -1.0)
+        return 0;
+    double keep = 1; // what shows through all of them
+    double red = 0, green = 0, blue = 0;
+    for (const ShadowLayer& layer : shape.layers) {
+        const double d = roundedRectDistance(x, y, shape.cx, shape.cy + layer.dy, shape.halfWidth, shape.halfHeight, shape.radius);
+        double t = d <= 0 ? 1.0 : std::max(0.0, 1.0 - d / layer.blur);
+        t = t * t * (3 - 2 * t);
+        const double a = layer.alpha * t;
+        red += keep * a * layer.red;
+        green += keep * a * layer.green;
+        blue += keep * a * layer.blue;
+        keep *= 1 - a;
+    }
+    const double fade = std::min(1.0, inside + 1.0);
+    const auto byte = [fade](double v) { return std::uint32_t(std::lround(std::clamp(v * fade, 0.0, 1.0) * 255)); };
+    return byte(1 - keep) << 24 | byte(red) << 16 | byte(green) << 8 | byte(blue);
+}
+
+// The whole picture (width × height, every pixel written). Pixel by pixel
+// only where the corners are: in the rows where every layer's sides are
+// straight a pixel depends on its column alone (one row, copied), and in the
+// columns where the top and the bottom are straight on its row alone (one
+// value). The window's inside is 0.
+void drawShadow(std::uint32_t* bits, int width, int height, const ShadowShape& shape)
+{
+    double up = 0, down = 0; // the layers' offsets, and the window's own (0)
+    for (const ShadowLayer& layer : shape.layers) {
+        up = std::min(up, layer.dy);
+        down = std::max(down, layer.dy);
+    }
+    // 2 px further in than the corners, for the antialiased edge.
+    const double straight = shape.radius + 2;
+    const double left = shape.cx - shape.halfWidth, right = shape.cx + shape.halfWidth;
+    const double top = shape.cy - shape.halfHeight, bottom = shape.cy + shape.halfHeight;
+    const int x0 = std::clamp(int(std::ceil(left + straight - 0.5)), 0, width);
+    const int x1 = std::clamp(int(std::floor(right - straight - 0.5)) + 1, x0, width);
+    const int y0 = std::clamp(int(std::ceil(top + down + straight - 0.5)), 0, height);
+    const int y1 = std::clamp(int(std::floor(bottom + up - straight - 0.5)) + 1, y0, height);
+    const auto drawRow = [&](int y, bool sidesOnly) {
+        std::uint32_t* row = bits + std::size_t(y) * width;
+        const double cy = y + 0.5;
+        for (int x = 0; x < x0; ++x)
+            row[x] = shadowPixel(shape, x + 0.5, cy);
+        for (int x = x1; x < width; ++x)
+            row[x] = shadowPixel(shape, x + 0.5, cy);
+        if (x0 < x1)
+            std::fill(row + x0, row + x1, sidesOnly ? 0u : shadowPixel(shape, x0 + 0.5, cy));
+    };
+    for (int y = 0; y < y0; ++y)
+        drawRow(y, false);
+    for (int y = y1; y < height; ++y)
+        drawRow(y, false);
+    if (y0 < y1) {
+        drawRow(y0, true); // its middle is inside the window
+        const std::uint32_t* first = bits + std::size_t(y0) * width;
+        for (int y = y0 + 1; y < y1; ++y)
+            std::copy(first, first + width, bits + std::size_t(y) * width);
+    }
+}
+
+// The layers from QML ({alpha, blur, dy, color?}); empty or invisible ones
+// left out, and any with a number that is not one (NaN, infinite). Blur and
+// dy go up to kMaxShadowReach, the layers to kMaxShadowLayers.
+std::vector<ShadowLayer> shadowLayers(const QVariantList& list)
+{
+    std::vector<ShadowLayer> layers;
+    bool cut = false;
+    for (const QVariant& item : list) {
+        const QVariantMap map = item.toMap();
+        QColor color(Qt::black);
+        if (const QVariant value = map.value(u"color"_s); value.isValid() && !value.isNull()) {
+            color = value.metaType() == QMetaType::fromType<QColor>() ? value.value<QColor>() : QColor::fromString(value.toString());
+            if (!color.isValid())
+                color = Qt::black;
+        }
+        const double alpha = map.value(u"alpha"_s).toDouble();
+        const double blur = map.value(u"blur"_s).toDouble();
+        const double dy = map.value(u"dy"_s).toDouble();
+        if (!std::isfinite(alpha) || !std::isfinite(blur) || !std::isfinite(dy)) {
+            cut = true;
+            continue;
+        }
+        ShadowLayer layer;
+        layer.alpha = std::clamp(alpha, 0.0, 1.0) * color.alphaF();
+        layer.blur = std::clamp(blur, 0.0, kMaxShadowReach);
+        layer.dy = std::clamp(dy, -kMaxShadowReach, kMaxShadowReach);
+        layer.red = color.redF();
+        layer.green = color.greenF();
+        layer.blue = color.blueF();
+        cut = cut || layer.blur != blur || layer.dy != dy;
+        if (layer.alpha <= 0)
+            continue;
+        if (layers.size() == kMaxShadowLayers) {
+            cut = true;
+            break;
+        }
+        layers.push_back(layer);
+    }
+    if (cut)
+        qWarning("Own frame: shadow layers past %g px or %d layers, or not numbers, were cut",
+            kMaxShadowReach, int(kMaxShadowLayers));
+    return layers;
+}
+
+// The layers in physical px; a blur of less than half a pixel is an
+// antialiased edge.
+std::vector<ShadowLayer> physicalLayers(const std::vector<ShadowLayer>& layers, double dpr)
+{
+    std::vector<ShadowLayer> scaled = layers;
+    for (ShadowLayer& layer : scaled) {
+        layer.blur = std::max(0.5, layer.blur * dpr);
+        layer.dy *= dpr;
+    }
+    return scaled;
+}
+
+// How far the shadow reaches past the window, physical px.
+int shadowMargin(const std::vector<ShadowLayer>& physical)
+{
+    double reach = 0;
+    for (const ShadowLayer& layer : physical)
+        reach = std::max(reach, layer.blur + std::abs(layer.dy));
+    return int(std::ceil(reach)) + 2;
+}
+
+bool isCloaked(HWND window)
+{
+    DWORD cloaked = 0;
+    return SUCCEEDED(::DwmGetWindowAttribute(window, DWMWA_CLOAKED, &cloaked, sizeof cloaked)) && cloaked;
+}
+
+// Full screen: all of its monitor.
+bool fillsMonitor(HWND window, const RECT& rect)
+{
+    MONITORINFO monitor {sizeof monitor};
+    return ::GetMonitorInfoW(::MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &monitor)
+        && ::EqualRect(&rect, &monitor.rcMonitor);
+}
+
+// Windows animates a window back from the taskbar (and to it).
+bool restoreAnimates()
+{
+    ANIMATIONINFO info {sizeof info, 0};
+    return ::SystemParametersInfoW(SPI_GETANIMATION, sizeof info, &info, 0) && info.iMinAnimate;
+}
+
+HINSTANCE thisModule()
+{
+    static const int anchor = 0;
+    HMODULE module = nullptr;
+    ::GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+        reinterpret_cast<LPCWSTR>(&anchor), &module);
+    return module;
+}
+
+LRESULT CALLBACK shadowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    switch (message) {
+    case WM_CLOSE:
+        // Destroyed with its window, not at a request to close the program's
+        // windows (taskkill without /f): DefWindowProc would destroy it.
+        return 0;
+    case WM_NCDESTROY:
+        // By someone else all the same (our own destroyShadow forgets it first).
+        if (auto* state = reinterpret_cast<OwnFrameState*>(::GetWindowLongPtrW(hwnd, GWLP_USERDATA))) {
+            ::SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+            state->forgetShadow();
+        }
+        break;
+    case WM_TIMER:
+        if (wParam == kShadowTimer) {
+            ::KillTimer(hwnd, kShadowTimer);
+            if (auto* state = reinterpret_cast<OwnFrameState*>(::GetWindowLongPtrW(hwnd, GWLP_USERDATA))) {
+                state->release();
+                state->sync();
+            }
+            return 0;
+        }
+        break;
+    case WM_NCHITTEST:
+        return HTTRANSPARENT;
+    case WM_MOUSEACTIVATE:
+        return MA_NOACTIVATE;
+    default:
+        break;
+    }
+    return ::DefWindowProcW(hwnd, message, wParam, lParam);
+}
+
+// Click-through, never active, in no taskbar or Alt+Tab, shown and hidden
+// at once (no DWM fade of its own).
+HWND createShadow(OwnFrameState* state)
+{
+    static bool registered = false; // tried again next time if it failed
+    if (!registered) {
+        WNDCLASSEXW windowClass {sizeof windowClass};
+        windowClass.lpfnWndProc = shadowProc;
+        windowClass.hInstance = thisModule();
+        windowClass.lpszClassName = kFrameShadowClass;
+        registered = ::RegisterClassExW(&windowClass) != 0 || ::GetLastError() == ERROR_CLASS_ALREADY_EXISTS;
+        if (!registered)
+            return nullptr;
+    }
+    // Topmost from the start as its window is: a UIAccess process (the
+    // clipboard's display) puts it in its window's band then.
+    const DWORD topmost = ::GetWindowLongPtrW(state->window, GWL_EXSTYLE) & WS_EX_TOPMOST;
+    const HWND shadow = ::CreateWindowExW(WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | topmost,
+        kFrameShadowClass, L"", WS_POPUP, 0, 0, 0, 0, nullptr, nullptr, thisModule(), nullptr);
+    if (!shadow)
+        return nullptr;
+    ::SetWindowLongPtrW(shadow, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(state));
+    const BOOL off = TRUE;
+    ::DwmSetWindowAttribute(shadow, DWMWA_TRANSITIONS_FORCEDISABLED, &off, sizeof off);
+    return shadow;
+}
+
+// Cloaked by Windows (another virtual desktop) or by us: the shadow goes too.
+// Told through this thread's message loop.
+void CALLBACK cloakChanged(HWINEVENTHOOK, DWORD, HWND window, LONG object, LONG child, DWORD, DWORD)
+{
+    if (object != OBJID_WINDOW || child != CHILDID_SELF)
+        return;
+    if (OwnFrameState* state = ownFrameOf(window))
+        state->sync();
+}
+
+void watchCloaking()
+{
+    static HWINEVENTHOOK hook = nullptr;
+    if (!hook)
+        hook = ::SetWinEventHook(EVENT_OBJECT_CLOAKED, EVENT_OBJECT_UNCLOAKED, nullptr, cloakChanged,
+            ::GetCurrentProcessId(), 0, WINEVENT_OUTOFCONTEXT);
+}
+
+LRESULT CALLBACK ownFrameProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR data)
+{
+    auto* state = reinterpret_cast<OwnFrameState*>(data);
+    if (message == WM_NCDESTROY) {
+        ::RemoveWindowSubclass(window, ownFrameProc, id);
+        ::RemovePropW(window, kOwnFrameProp);
+        state->destroyShadow();
+        state->on = false;
+        state->gone = true;
+        const LRESULT result = ::DefSubclassProc(window, message, wParam, lParam);
+        if (state->depth == 0)
+            delete state;
+        return result;
+    }
+    if (!state->on || state->gone)
+        return ::DefSubclassProc(window, message, wParam, lParam);
+    ++state->depth;
+    const auto leave = qScopeGuard([state] {
+        if (--state->depth == 0 && state->gone)
+            delete state;
+    });
+    switch (message) {
+    case WM_NCPAINT:
+    case kNcUahDrawCaption:
+    case kNcUahDrawFrame:
+        return 0; // no frame of the system's, not its classic one either (in the see-through corners)
+    case WM_NCACTIVATE:
+        return ::DefSubclassProc(window, message, wParam, -1); // likewise: no caption repainted
+    case WM_SETICON:
+    case WM_SETTEXT: {
+        // The default handling repaints the caption for these, themed and
+        // whatever WM_NCPAINT does: not while the window is marked hidden
+        // (no change on the screen; Chromium's redraw lock).
+        const LONG_PTR style = ::GetWindowLongPtrW(window, GWL_STYLE);
+        if (!(style & WS_VISIBLE))
+            break;
+        ::SetWindowLongPtrW(window, GWL_STYLE, style & ~WS_VISIBLE);
+        const LRESULT result = ::DefSubclassProc(window, message, wParam, lParam);
+        ::SetWindowLongPtrW(window, GWL_STYLE, ::GetWindowLongPtrW(window, GWL_STYLE) | WS_VISIBLE);
+        return result;
+    }
+    case WM_SHOWWINDOW:
+        if (!wParam)
+            state->hide();
+        break;
+    case WM_WINDOWPOSCHANGED:
+        // Before Qt's handling (a resize renders): with the window as DWM moves it.
+        state->sync(reinterpret_cast<const WINDOWPOS*>(lParam));
+        break;
+    case WM_DPICHANGED: {
+        const LRESULT result = ::DefSubclassProc(window, message, wParam, lParam); // Qt's new scale, and size
+        state->stale = true;
+        state->sync();
+        return result;
+    }
+    case WM_PAINT: {
+        // Qt renders the frame a window shows with at its first paint, and
+        // returns once it is presented: its shadow with it.
+        const LRESULT result = ::DefSubclassProc(window, message, wParam, lParam);
+        if (state->holding && state->holdForPaint && !state->gone) {
+            state->release();
+            state->sync();
+        }
+        return result;
+    }
+    default:
+        break;
+    }
+    return ::DefSubclassProc(window, message, wParam, lParam);
+}
+
+void OwnFrameState::turnOn()
+{
+    // What to bring back: Mica, if the window stood on it.
+    int current = 0;
+    if (FAILED(::DwmGetWindowAttribute(window, kSystemBackdropType, &current, sizeof current)) || current == kBackdropNone)
+        current = 0;
+    backdrop = current;
+    on = true;
+    ::DwmSetWindowAttribute(window, kCornerPreference, &kCornerSquare, sizeof kCornerSquare);
+    ::DwmSetWindowAttribute(window, kBorderColor, &kColorNone, sizeof kColorNone);
+    // Not extended: an extended frame gets its (square) shadow back.
+    const MARGINS none {0, 0, 0, 0};
+    ::DwmExtendFrameIntoClientArea(window, &none);
+    // DWM's backdrop follows DWM's square shape.
+    ::DwmSetWindowAttribute(window, kSystemBackdropType, &kBackdropNone, sizeof kBackdropNone);
+    ::DwmSetWindowAttribute(window, kNcRenderingPolicy, &kNcDisabled, sizeof kNcDisabled);
+    ::SetWindowPos(window, nullptr, 0, 0, 0, 0,
+        SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
+    if (!shadow)
+        shadow = createShadow(this);
+    stale = true;
+}
+
+void OwnFrameState::turnOff()
+{
+    on = false; // first: applyWindowCorners applies again
+    destroyShadow();
+    ::DwmSetWindowAttribute(window, kNcRenderingPolicy, &kNcUseWindowStyle, sizeof kNcUseWindowStyle);
+    // As styleFramelessWindow left it, or as Windows made it (OwnFrame in a
+    // window with a title bar of the system's own).
+    DWORD_PTR unused = 0;
+    const bool styled = ::GetWindowSubclass(window, nativeFrameProc, 0, &unused);
+    {
+        std::lock_guard lock(g_cornerMutex);
+        const auto style = reinterpret_cast<INT_PTR>(::GetPropW(window, kCornerStyle));
+        if (style == kCornerRound || style == kCornerSmall)
+            applyWindowCorners(window, static_cast<int>(style));
+        else
+            ::DwmSetWindowAttribute(window, kCornerPreference, &kCornerDefault, sizeof kCornerDefault);
+    }
+    ::DwmSetWindowAttribute(window, kBorderColor, styled && g_compositedPreview ? &kColorNone : &kColorDefault, sizeof kColorDefault);
+    const MARGINS margins {0, 0, styled ? 1 : 0, 0};
+    ::DwmExtendFrameIntoClientArea(window, &margins);
+    ::DwmSetWindowAttribute(window, kSystemBackdropType, &backdrop, sizeof backdrop);
+    ::SetWindowPos(window, nullptr, 0, 0, 0, 0,
+        SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
+    // DWM's frame active or not as the window is (WindowFrame's handling,
+    // left out meanwhile, see hasOwnFrame): Mica's tint depends on it.
+    ::SendMessageW(window, WM_NCACTIVATE, ::GetForegroundWindow() == window, -1);
+}
+
+void OwnFrameState::destroyShadow()
+{
+    if (shadow) {
+        ::KillTimer(shadow, kShadowTimer);
+        ::SetWindowLongPtrW(shadow, GWLP_USERDATA, 0);
+        ::DestroyWindow(shadow);
+    }
+    forgetShadow();
+}
+
+void OwnFrameState::forgetShadow()
+{
+    shadow = nullptr;
+    shown = holding = holdForPaint = false;
+    placed = {LONG_MIN, LONG_MIN};
+    drawnWidth = drawnHeight = 0;
+    stale = true;
+}
+
+void OwnFrameState::hold(UINT ms, bool forPaint)
+{
+    // Without the timer nothing might end it: no wait then.
+    if (!shadow || !::SetTimer(shadow, kShadowTimer, ms, nullptr))
+        return;
+    holding = true;
+    holdForPaint = forPaint;
+}
+
+void OwnFrameState::release()
+{
+    holding = holdForPaint = false;
+    if (shadow)
+        ::KillTimer(shadow, kShadowTimer);
+}
+
+void OwnFrameState::hide()
+{
+    release();
+    if (shown && shadow)
+        ::SetWindowPos(shadow, nullptr, 0, 0, 0, 0, SWP_HIDEWINDOW | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    shown = false;
+}
+
+void OwnFrameState::sync(const WINDOWPOS* pos)
+{
+    if (!on || gone)
+        return;
+    const bool iconic = ::IsIconic(window);
+    const bool zoomed = ::IsZoomed(window);
+    RECT rect {};
+    const bool wanted = !layers.empty() && ::IsWindowVisible(window) && !iconic && !zoomed
+        && !isCloaked(window) && ::GetWindowRect(window, &rect) && !fillsMonitor(window, rect);
+    if (!wanted) {
+        hide();
+        restoring = restoring || iconic || zoomed;
+        return;
+    }
+    if (!shadow && !(shadow = createShadow(this)))
+        return; // not made at turnOn, or destroyed since: tried again at the next change
+    if (!shown && !holding) {
+        if (pos && (pos->flags & SWP_SHOWWINDOW)) {
+            // Shown: with its first frame (WM_PAINT), not around nothing.
+            restoring = false;
+            hold(100, true);
+        } else if (std::exchange(restoring, false) && restoreAnimates()) {
+            hold(250, false); // DWM animates it to its place meanwhile
+        }
+    }
+    if (!holding)
+        place(rect);
+}
+
+void OwnFrameState::place(const RECT& rect)
+{
+    const int width = rect.right - rect.left;
+    const int height = rect.bottom - rect.top;
+    const double dpr = qwindow ? qwindow->devicePixelRatio() : ::GetDpiForWindow(window) / 96.0;
+    if (stale || width != drawnWidth || height != drawnHeight || dpr != drawnDpr) {
+        const int margin = shadowMargin(physicalLayers(layers, dpr));
+        if (!draw(width, height, dpr, {rect.left - margin, rect.top - margin})) {
+            hide();
+            return;
+        }
+        drawnMargin = margin;
+        placed = {rect.left - margin, rect.top - margin}; // UpdateLayeredWindow moved it
+    }
+    const POINT at {rect.left - drawnMargin, rect.top - drawnMargin};
+    // Left out of screen pictures as the window is (capture::excludeFromCapture).
+    DWORD affinity = WDA_NONE, own = WDA_NONE;
+    if (::GetWindowDisplayAffinity(window, &affinity) && ::GetWindowDisplayAffinity(shadow, &own) && affinity != own)
+        ::SetWindowDisplayAffinity(shadow, affinity);
+    // Topmost as the window is, so that nothing comes between them; right
+    // below it, and shown.
+    const bool topmost = ::GetWindowLongPtrW(window, GWL_EXSTYLE) & WS_EX_TOPMOST;
+    if (topmost != bool(::GetWindowLongPtrW(shadow, GWL_EXSTYLE) & WS_EX_TOPMOST))
+        ::SetWindowPos(shadow, topmost ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+    UINT flags = SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER;
+    if (::GetWindow(window, GW_HWNDNEXT) == shadow)
+        flags |= SWP_NOZORDER;
+    if (placed.x == at.x && placed.y == at.y)
+        flags |= SWP_NOMOVE;
+    if (shown && (flags & SWP_NOZORDER) && (flags & SWP_NOMOVE))
+        return;
+    if (shown && (flags & SWP_NOZORDER)) {
+        // Only moved: a tenth of SetWindowPos's time (0.2 ms against 2 ms
+        // here), which every move of the window waits for.
+        POINT to = at;
+        if (::UpdateLayeredWindow(shadow, nullptr, &to, nullptr, nullptr, nullptr, 0, nullptr, 0)) {
+            placed = at;
+            return;
+        }
+    }
+    if (!shown)
+        flags |= SWP_SHOWWINDOW;
+    if (::SetWindowPos(shadow, window, at.x, at.y, 0, 0, flags)) { // or again at the next change
+        placed = at;
+        shown = true;
+    }
+}
+
+bool OwnFrameState::draw(int width, int height, double dpr, POINT at)
+{
+    std::vector<ShadowLayer> physical = physicalLayers(layers, dpr);
+    const int margin = shadowMargin(physical);
+    const int pictureWidth = width + 2 * margin;
+    const int pictureHeight = height + 2 * margin;
+    BITMAPINFO info {};
+    info.bmiHeader = {sizeof(BITMAPINFOHEADER), pictureWidth, -pictureHeight, 1, 32, BI_RGB};
+    void* bits = nullptr;
+    const HDC screen = ::GetDC(nullptr);
+    const HDC dc = ::CreateCompatibleDC(screen);
+    const HBITMAP bitmap = dc ? ::CreateDIBSection(dc, &info, DIB_RGB_COLORS, &bits, nullptr, 0) : nullptr;
+    bool done = false;
+    if (bitmap && bits) {
+        const HGDIOBJ old = ::SelectObject(dc, bitmap);
+        ShadowShape shape;
+        shape.cx = margin + width / 2.0;
+        shape.cy = margin + height / 2.0;
+        shape.halfWidth = width / 2.0;
+        shape.halfHeight = height / 2.0;
+        shape.radius = std::clamp(radius * dpr, 0.0, std::min(shape.halfWidth, shape.halfHeight));
+        shape.layers = std::move(physical);
+        drawShadow(static_cast<std::uint32_t*>(bits), pictureWidth, pictureHeight, shape);
+        POINT origin {0, 0};
+        SIZE size {pictureWidth, pictureHeight};
+        BLENDFUNCTION blend {AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
+        POINT to = at;
+        done = ::UpdateLayeredWindow(shadow, screen, &to, &size, dc, &origin, 0, &blend, ULW_ALPHA);
+        ::SelectObject(dc, old);
+    }
+    if (bitmap)
+        ::DeleteObject(bitmap);
+    if (dc)
+        ::DeleteDC(dc);
+    ::ReleaseDC(nullptr, screen);
+    if (done) {
+        drawnWidth = width;
+        drawnHeight = height;
+        drawnDpr = dpr;
+        stale = false;
+    }
+    return done;
+}
+
+} // namespace
+
+bool setOwnFrame(QWindow* window, bool on, qreal radius, const QVariantList& shadow)
+{
+    if (!window || !window->handle())
+        return false; // not made yet: the frame is set once it is (OwnFrame)
+    const HWND hwnd = reinterpret_cast<HWND>(window->winId());
+    OwnFrameState* state = ownFrameOf(hwnd);
+    // See-through corners need an alpha channel from the GPU renderer: the
+    // software one draws such a window as a layered window of its own
+    // (UpdateLayeredWindow), with no DWM frame. Qt marks the GPU's layered
+    // too (WS_EX_LAYERED, constant alpha 255), which changes nothing here.
+    const bool possible = window->format().alphaBufferSize() > 0 && window->surfaceType() != QSurface::RasterSurface;
+    if (!on || !possible || !(radius > 0) || !std::isfinite(radius)) {
+        if (state && state->on)
+            state->turnOff();
+        return false;
+    }
+    std::vector<ShadowLayer> layers = shadowLayers(shadow);
+    if (!state) {
+        // Found by its property (ownFrameOf), or never: a second one would
+        // take the subclass's place and leave this one's shadow behind.
+        state = new OwnFrameState;
+        state->window = hwnd;
+        if (!::SetPropW(hwnd, kOwnFrameProp, state)) {
+            delete state;
+            return false;
+        }
+        if (!::SetWindowSubclass(hwnd, ownFrameProc, kOwnFrameSubclass, reinterpret_cast<DWORD_PTR>(state))) {
+            ::RemovePropW(hwnd, kOwnFrameProp);
+            delete state;
+            return false;
+        }
+        watchCloaking();
+    }
+    state->qwindow = window;
+    if (state->on && state->radius == radius && state->layers == layers)
+        return true;
+    state->radius = radius;
+    state->layers = std::move(layers);
+    state->stale = true;
+    if (!state->on)
+        state->turnOn();
+    state->sync();
+    return true;
+}
+
+bool hasOwnFrame(HWND window)
+{
+    return ownFrameOn(window);
+}
+
+void updateOwnFrame(HWND window)
+{
+    if (OwnFrameState* state = ownFrameOf(window))
+        state->sync();
 }
 
 Front bringToFront(QWindow* window, ShellFlyout flyout)

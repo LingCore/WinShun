@@ -939,6 +939,9 @@ void Settings::load()
     corners = readOrDefault(s, u"Appearance/Corners"_s, d.corners).trimmed().toLower();
     if (corners != u"round" && corners != u"square")
         corners = d.corners;
+    uiStyle = readOrDefault(s, u"Appearance/UiStyle"_s, d.uiStyle).trimmed().toLower();
+    if (uiStyle != u"brand" && uiStyle != u"tactile")
+        uiStyle = d.uiStyle;
     if (transparency == u"false" || transparency == u"true") {
         transparency = transparency == u"false" ? u"off"_s : d.transparency;
         s.setValue(u"Appearance/Transparency"_s, transparency);
@@ -1259,6 +1262,7 @@ bool Settings::saveChecked() const
     s.remove(u"Appearance/SearchLogo"_s); // retired exterior decoration; inline logos are always present
     s.setValue(u"Appearance/UiSize"_s, uiSize);
     s.setValue(u"Appearance/Corners"_s, corners);
+    s.setValue(u"Appearance/UiStyle"_s, uiStyle);
     s.setValue(u"Update/Automatic"_s, autoUpdate);
     s.setValue(u"Backup/Folder"_s, backupFolder);
     s.setValue(u"Index/ExcludedPaths"_s, excludedPaths);

@@ -114,9 +114,28 @@ void SystemTheme::setBackdropOn(bool on)
         emit s_instance->changed();
 }
 
+void SystemTheme::setOwnFrameAvailable(bool on)
+{
+    if (s_ownFrameAvailable == on)
+        return;
+    s_ownFrameAvailable = on;
+    if (s_instance)
+        emit s_instance->changed();
+}
+
 int SystemTheme::headerHeight()
 {
     return uisize::metrics(s_uiSize).header;
+}
+
+void SystemTheme::setUiStyle(const QString& style)
+{
+    const QString known = style == u"brand" || style == u"tactile" ? style : QStringLiteral("fluent");
+    if (s_uiStyle == known)
+        return;
+    s_uiStyle = known;
+    if (s_instance)
+        emit s_instance->changed();
 }
 
 void SystemTheme::setUiSize(const QString& size)

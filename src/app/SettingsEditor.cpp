@@ -881,6 +881,14 @@ void SettingsEditor::setCorners(const QString& corners)
     commit();
 }
 
+void SettingsEditor::setUiStyle(const QString& style)
+{
+    if (m_settings.uiStyle == style || (style != u"fluent" && style != u"brand" && style != u"tactile"))
+        return;
+    m_settings.uiStyle = style;
+    commit();
+}
+
 void SettingsEditor::setRecordHistory(bool on)
 {
     if (m_settings.recordHistory == on)

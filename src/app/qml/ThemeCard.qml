@@ -4,12 +4,15 @@ import WinShun
 
 // One choice of the theme picker: a small picture of the launcher in that
 // theme and its name under it. "system" shows light and dark side by side.
+// With `look` (a 界面风格's Look, Theme.lookFor), a choice of the style
+// picker: the launcher in that style's colours, in the theme in effect.
 Item {
     id: card
 
     property string mode: "light" // light | dark | system
     property string label
     property bool selected: false
+    property QtObject look: null
 
     signal activated()
 
@@ -27,21 +30,22 @@ Item {
         id: preview
 
         property bool dark: false
-        readonly property color accent: dark ? Qt.lighter(SystemTheme.accent, 1.55) : SystemTheme.accent
+        property QtObject look: null
+        readonly property color accent: look ? look.accentLine : dark ? Qt.lighter(SystemTheme.accent, 1.55) : SystemTheme.accent
         readonly property color ink: dark ? "#5A5A5A" : "#CFCFCF"
         readonly property color faintInk: dark ? "#3A3A3A" : "#E3E3E3"
 
-        color: dark ? "#202020" : "#F9F9F9"
+        color: look ? look.background : dark ? "#202020" : "#F9F9F9"
 
         Rectangle { // search box
             x: parent.width * 0.08
             y: parent.height * 0.1
             width: parent.width * 0.84
             height: parent.height * 0.17
-            radius: Theme.pillRadius(height)
-            color: preview.dark ? "#2B2B2B" : "#FFFFFF"
+            radius: preview.look ? Math.min(height / 2, preview.look.controlRadius) : Theme.pillRadius(height)
+            color: preview.look ? preview.look.control : preview.dark ? "#2B2B2B" : "#FFFFFF"
             border.width: 1
-            border.color: preview.dark ? "#3A3A3A" : "#E2E2E2"
+            border.color: preview.look ? preview.look.controlBorder : preview.dark ? "#3A3A3A" : "#E2E2E2"
 
             Rectangle { // caret
                 x: parent.height * 0.6
@@ -74,7 +78,7 @@ Item {
                     width: parent.width
                     height: preview.height * 0.15
                     radius: Theme.smallControlRadius
-                    color: index === 0 ? (preview.dark ? "#2F2F2F" : "#EAEAEA") : "transparent"
+                    color: index !== 0 ? "transparent" : preview.look ? preview.look.accentTint : preview.dark ? "#2F2F2F" : "#EAEAEA"
 
                     Rectangle { // selection mark
                         visible: result.index === 0
@@ -148,10 +152,11 @@ Item {
                 width: pictures.width
                 height: pictures.height
                 radius: Theme.insetCardRadius
-                dark: card.mode === "dark"
+                dark: card.look ? Theme.dark : card.mode === "dark"
+                look: card.look
             }
             Item { // "system": the right half dark
-                visible: card.mode === "system"
+                visible: card.mode === "system" && !card.look
                 x: pictures.width / 2
                 width: pictures.width / 2
                 height: pictures.height

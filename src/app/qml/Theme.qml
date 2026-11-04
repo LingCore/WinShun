@@ -3,40 +3,82 @@ import QtQuick
 import WinShun
 
 // All colours and metrics of the UI. Follows the Windows light/dark setting
-// and accent colour (see SystemTheme in C++).
+// and accent colour (see SystemTheme in C++), and the 界面风格 (Theme.style):
+// a style's colours, radii and parts live in its Look (themes/<style>/Look.qml,
+// see themes/README.md); the names below stay the ones every component uses,
+// each read from the Look in effect. Type sizes and row heights are the
+// styles' common ones (UiScale).
 QtObject {
+    id: theme
+
     readonly property bool dark: SystemTheme.dark
+    // fluent | brand | tactile
+    readonly property string style: SystemTheme.uiStyle
+
+    // Each style's Look, made the first time it is the one in effect. One
+    // that cannot be made (a broken file) falls back to fluent, which must.
+    property var looks: ({})
+    function lookFor(name: string): QtObject {
+        if (looks[name])
+            return looks[name]
+        const component = Qt.createComponent("themes/" + name + "/Look.qml")
+        const made = component.status === Component.Ready ? component.createObject(theme) : null
+        if (!made) {
+            console.warn("Theme: style", name, "could not be loaded:", component.errorString())
+            return name === "fluent" ? null : lookFor("fluent")
+        }
+        looks[name] = made
+        return made
+    }
+    readonly property QtObject look: lookFor(style)
+    // fluent's Look holds every token; a style's Look that leaves one out
+    // gets fluent's.
+    readonly property QtObject base: lookFor("fluent")
+    function pick(name: string): var {
+        const value = look[name]
+        return value === undefined ? base[name] : value
+    }
+    // A token only some styles have, with the host's value for the others.
+    function tok(name: string, fallback: var): var {
+        const value = look[name]
+        return value === undefined ? fallback : value
+    }
+
     // Our windows can stand on Mica (see SystemTheme.backdrop): the layers on
     // them are translucent then, with the fill colours WinUI uses there; over
-    // a plain background they keep their solid colours.
-    readonly property bool backdrop: SystemTheme.backdrop
-    // For text, glyphs and lines: lightened on dark to read there.
-    readonly property color accent: dark ? Qt.lighter(SystemTheme.accent, 1.55) : SystemTheme.accent
-    // For fills under white words or marks (accentText): deep enough for
+    // a plain background they keep their solid colours. A style that rounds
+    // its windows itself has none.
+    readonly property bool backdrop: pick("backdrop") // For text, glyphs and lines: lightened on dark to read there.
+    readonly property color accent: pick("accent") // For fills under white words or marks (accentText): deep enough for
     // white to read, whatever the accent (SystemTheme.accentFill).
-    readonly property color accentFill: SystemTheme.accentFill
-    // FreeType synthesizes a missing heavy face only from Bold (700).
+    readonly property color accentFill: pick("accentFill")
+    readonly property color accentLine: pick("accentLine")
+    readonly property color accentTint: pick("accentTint") // FreeType synthesizes a missing heavy face only from Bold (700).
     // Keep the UI hierarchy when shipping the complete regular font alone.
     readonly property int fontStrong: Font.Bold
-
-    readonly property color background: dark ? "#202020" : "#F9F9F9"
-    // The edge of our windows (WindowEdge.qml), rounded as DWM rounds them.
-    // A light grey on the dark ones: over a dark program their shadow does
-    // not show. The light ones stand apart by their shadow.
-    // The window itself: DWM rounds it on Windows 11 only (win::styleFramelessWindow).
-    readonly property int windowRadius: SystemTheme.roundedCorners && SystemTheme.nativeWindowBorder ? 8 : 0
-    readonly property int cardRadius: SystemTheme.roundedCorners ? 6 : 0
-    readonly property int largeCardRadius: SystemTheme.roundedCorners ? 8 : 0
-    readonly property int insetCardRadius: SystemTheme.roundedCorners ? 5 : 0
-    readonly property int controlRadius: SystemTheme.roundedCorners ? 4 : 0
-    readonly property int largeControlRadius: SystemTheme.roundedCorners ? 6 : 0
-    readonly property int smallControlRadius: SystemTheme.roundedCorners ? 3 : 0
-    readonly property real smallRadius: SystemTheme.roundedCorners ? 1.5 : 0
-    readonly property int lineRadius: SystemTheme.roundedCorners ? 1 : 0
-    readonly property int progressRadius: SystemTheme.roundedCorners ? 2 : 0
-    readonly property int cardFocusRadius: SystemTheme.roundedCorners ? 11 : 0
-    // Chips and scrollbars keep their existing proportions in rounded mode.
-    function pillRadius(size: real): real { return SystemTheme.roundedCorners ? size / 2 : 0 }
+    // Matched characters (StyledText): their colour and weight, nothing under them.
+    readonly property color matchColor: pick("matchColor")
+    readonly property int matchWeight: pick("matchWeight")
+    readonly property color background: pick("background")
+    readonly property color layer: pick("layer")
+    readonly property color layerEdge: pick("layerEdge") // The window itself: DWM rounds it on Windows 11 (win::styleFramelessWindow),
+    // or the style does (look.frame "own", see WindowEdge).
+    readonly property real windowRadius: pick("windowRadius")
+    readonly property bool ownFrame: SystemTheme.ownFrameAvailable && pick("frame") === "own" && pick("windowRadius") > 0
+    readonly property real cardRadius: pick("cardRadius")
+    readonly property real largeCardRadius: pick("largeCardRadius")
+    readonly property real insetCardRadius: pick("insetCardRadius")
+    readonly property real controlRadius: pick("controlRadius")
+    readonly property real largeControlRadius: pick("largeControlRadius")
+    readonly property real smallControlRadius: pick("smallControlRadius")
+    readonly property real smallRadius: pick("smallRadius")
+    readonly property real lineRadius: pick("lineRadius")
+    readonly property real progressRadius: pick("progressRadius")
+    readonly property real cardFocusRadius: pick("cardFocusRadius")
+    readonly property real menuRadius: pick("menuRadius")
+    readonly property real menuItemRadius: pick("menuItemRadius")
+    readonly property real rowRadius: pick("rowRadius") // Chips and scrollbars keep their existing proportions in rounded mode.
+    function pillRadius(size: real): real { return look.pill ? look.pill(size) : base.pill(size) }
     // Edges on whole device pixels (docs/pitfalls.md, "边框 1 px 在 150% 下一边粗一边细").
     // dpr is the window's: Screen.devicePixelRatio, so a window moved to another
     // screen asks again. Read it once at a component's root (or the window's)
@@ -49,71 +91,59 @@ QtObject {
     // snap(): the nearest device pixel; snapUp(): the next one up (a size that must not shrink).
     function snap(v: real, dpr: real): real { return Math.round(v * dpr) / dpr }
     function snapUp(v: real, dpr: real): real { return Math.ceil(v * dpr - 1e-6) / dpr }
-    readonly property color windowEdge: dark ? "#6A6A6A" : "#B4B4B4"
-    readonly property color divider: backdrop ? (dark ? Qt.rgba(1, 1, 1, 0.084) : Qt.rgba(0, 0, 0, 0.058))
-                                              : dark ? "#2E2E2E" : "#EAEAEA"
-    readonly property color text: dark ? "#F3F3F3" : "#1B1B1B"
-    readonly property color subtext: dark ? "#B8B8B8" : "#666666"
-    // Hints and placeholders: Windows 11's tertiary text, legible on a card (≥ 3:1).
-    readonly property color faint: "#8A8A8A"
-    readonly property color hover: backdrop ? (dark ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(0, 0, 0, 0.035))
-                                            : dark ? "#292929" : "#F1F1F1"
-    readonly property color selection: backdrop ? (dark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.06))
-                                                : dark ? "#2F2F2F" : "#EAEAEA"
-    readonly property color textSelection: Qt.rgba(accent.r, accent.g, accent.b, 0.35)
-    readonly property color badge: Qt.rgba(accent.r, accent.g, accent.b, dark ? 0.16 : 0.10) // "应用" tag on app rows
+    readonly property color windowEdge: pick("windowEdge")
+    readonly property color divider: pick("divider")
+    readonly property color text: pick("text")
+    readonly property color subtext: pick("subtext") // Hints and placeholders: Windows 11's tertiary text, legible on a card (≥ 3:1).
+    readonly property color faint: pick("faint")
+    readonly property color hover: pick("hover")
+    readonly property color pressed: pick("pressed")
+    readonly property color selection: pick("selection")
+    readonly property color textSelection: pick("textSelection")
+    readonly property color badge: pick("badge") // "应用" tag on app rows
+    readonly property color tagFill: pick("tagFill") // 收藏 / 最近 beside a row's date
 
-    readonly property color track: backdrop ? (dark ? Qt.rgba(1, 1, 1, 0.045) : Qt.rgba(0, 0, 0, 0.05))
-                                            : dark ? "#2A2A2A" : "#EDEDED"
-    readonly property color chipActive: dark ? "#3A3A3A" : "#FFFFFF"
-    readonly property color chipHover: dark ? "#333333" : "#E4E4E4"
-    readonly property color chipBorder: dark ? "#454545" : "#DCDCDC"
-    // The drop pie (DropPieWindow): its middle with the pointer in it (let go
+    readonly property color track: pick("track")
+    readonly property color chipActive: pick("chipActive")
+    readonly property color chipHover: pick("chipHover")
+    readonly property color chipBorder: pick("chipBorder")
+    readonly property color chipRest: pick("chipRest") // The drop pie (DropPieWindow): its middle with the pointer in it (let go
     // there and nothing happens), and a chip under the pointer that cannot be
     // taken; a step off the menu background.
-    readonly property color pieHover: dark ? "#404040" : "#E3E3E3"
-    // The soft shadow round its chips, at their edge (SoftShadow).
-    readonly property color pieShadow: dark ? Qt.rgba(0, 0, 0, 0.36) : Qt.rgba(0, 0, 0, 0.12)
-    // A key cap is a plain light-grey fill with no border (a border would be a
-    // second edge to keep on whole pixels); translucent so it reads on a card,
-    // on Mica and on the plain footer alike. Subtext on it stays above 4.5:1.
-    readonly property color keycap: dark ? Qt.rgba(1, 1, 1, 0.07) : Qt.rgba(0, 0, 0, 0.06)
-    // The checkerboard under a translucent colour: light in both themes, as in
+    readonly property color pieHover: pick("pieHover") // The soft shadow round its chips, at their edge (SoftShadow).
+    readonly property color pieShadow: pick("pieShadow") // A key cap's fill (KeyCap, a row's chord) and a key hint's outline (KeyHint).
+    readonly property color keycap: pick("keycap")
+    readonly property color keyEdge: pick("keyEdge") // The checkerboard under a translucent colour: light in both themes, as in
     // design tools, so that dark and light translucent colours both show.
-    readonly property color checker: dark ? "#D0D0D0" : "#FFFFFF"
-    readonly property color checkerAlt: dark ? "#A0A0A0" : "#D6D6D6"
-
-    // Settings window (Windows 11 settings look)
-    readonly property color page: dark ? "#202020" : "#F3F3F3"
-    readonly property color card: backdrop ? (dark ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(1, 1, 1, 0.7))
-                                           : dark ? "#2B2B2B" : "#FBFBFB"
-    readonly property color cardBorder: backdrop ? (dark ? Qt.rgba(0, 0, 0, 0.1) : Qt.rgba(0, 0, 0, 0.06))
-                                                 : dark ? "#1D1D1D" : "#E5E5E5"
-    readonly property color navHover: backdrop ? (dark ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(0, 0, 0, 0.035))
-                                               : dark ? "#292929" : "#EDEDED"
-    readonly property color navSelected: backdrop ? (dark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.055))
-                                                  : dark ? "#2D2D2D" : "#EAEAEA"
-    readonly property color control: dark ? "#373737" : "#FFFFFF"
-    readonly property color controlHover: dark ? "#3C3C3C" : "#F6F6F6"
-    readonly property color controlPressed: dark ? "#323232" : "#F0F0F0"
-    readonly property color controlBorder: dark ? "#444444" : "#D5D5D5"
-    readonly property color inputFocused: dark ? "#1F1F1F" : "#FFFFFF"
-    // Words and marks on accentFill and dangerFill: white in both themes,
+    readonly property color checker: pick("checker")
+    readonly property color checkerAlt: pick("checkerAlt") // Settings window (Windows 11 settings look)
+    readonly property color page: pick("page")
+    readonly property color card: pick("cardFill")
+    readonly property color cardBorder: pick("cardBorder")
+    readonly property color navHover: pick("navHover")
+    readonly property color navSelected: pick("navSelected")
+    readonly property color control: pick("control")
+    readonly property color controlHover: pick("controlHover")
+    readonly property color controlPressed: pick("controlPressed")
+    readonly property color controlBorder: pick("controlBorder")
+    readonly property color inputFocused: pick("inputFocused") // Words and marks on accentFill and dangerFill: white in both themes,
     // never Windows 11's black on a light accent (see docs/colors.md).
     // Not "onAccent": a name of on + capital letter reads as a signal handler,
     // and such a property was never re-evaluated when the theme changed.
-    readonly property color accentText: "#FFFFFF"
-    readonly property color menuBackground: dark ? "#2C2C2C" : "#F9F9F9"
-    readonly property color menuHover: dark ? "#3A3A3A" : "#ECECEC"
-    readonly property int menuItemHeight: 36
-    readonly property color danger: dark ? "#FF99A4" : "#C42B1C" // words and glyphs
-    readonly property color dangerFill: "#C42B1C" // under white words (an armed delete button)
-    readonly property color success: dark ? "#6CCB5F" : "#0F7B0F" // Windows 11's status colours
-    readonly property color caution: dark ? "#FCE100" : "#9D5D00"
-    readonly property color closeHover: "#C42B1C" // title bar close button, as in Windows 11
-    readonly property color closePressed: Qt.rgba(0.769, 0.169, 0.110, 0.9)
-
-    // Type scale in pixels. Even sizes land on whole device pixels at 150 %.
+    readonly property color accentText: pick("accentText")
+    readonly property color menuBackground: pick("menuBackground")
+    readonly property color menuHover: pick("menuHover")
+    readonly property color menuEdge: pick("menuEdge")
+    readonly property color menuShadow: pick("menuShadow")
+    readonly property int menuShadowSpread: pick("menuShadowSpread")
+    readonly property int menuItemHeight: pick("menuItemHeight")
+    readonly property real menuPadding: pick("menuPadding")
+    readonly property color danger: pick("danger") // words and glyphs
+    readonly property color dangerFill: pick("dangerFill") // under white words (an armed delete button)
+    readonly property color success: pick("success") // Windows 11's status colours
+    readonly property color caution: pick("caution")
+    readonly property color closeHover: pick("closeHover") // title bar close button, as in Windows 11
+    readonly property color closePressed: pick("closePressed") // Type scale in pixels. Even sizes land on whole device pixels at 150 %.
     readonly property int fontDisplay: 28 // settings window title
     readonly property int fontSearch: 24 // search box
     readonly property int fontTitle: 18 // result names, section titles, empty state
@@ -148,4 +178,48 @@ QtObject {
     readonly property int searchIconSize: metrics.searchIconSize
 
     readonly property string iconFont: SystemTheme.iconFont
+
+    // The window frame for C++ (OwnFrame in WindowEdge): radius and shadow of
+    // an "own" frame; 0 is DWM's.
+    readonly property real frameRadius: ownFrame ? pick("windowRadius") : 0
+    readonly property var frameShadow: pick("windowShadow")
+
+    // Geometry the hosts lay out by (themes/README.md, "宿主读的几何").
+    readonly property real fieldInset: pick("fieldInset")
+    readonly property real fieldRadius: pick("fieldRadius")
+    function fieldKeyInsetAt(dpr: real): real { return (look.fieldKeyInsetAt ?? base.fieldKeyInsetAt)(dpr) }
+    readonly property real rowInset: pick("rowInset")
+    readonly property real iconInset: pick("iconInset")
+    readonly property real textStart: pick("textStart")
+    readonly property real actionsInset: pick("actionsInset")
+    readonly property int rowSlide: pick("rowSlide")
+    readonly property real capsuleRadius: pick("capsuleRadius")
+    readonly property real capsulePadding: pick("capsulePadding")
+    readonly property real capsuleKeyRadius: pick("capsuleKeyRadius")
+    readonly property color capsuleFill: pick("capsuleFill")
+    readonly property real typeChipHeight: pick("typeChipHeight") > 0 ? pick("typeChipHeight") : chipHeight
+    readonly property int animFast: pick("animFast")
+    readonly property int animMove: pick("animMove")
+    // hair(): one device pixel, for lines inside a style's parts.
+    function hair(dpr: real): real { return 1 / Math.max(1, dpr) }
+
+    // The parts (hooks) of the style in effect, for Hook.part; one a Look
+    // leaves out is fluent's. typeIcon, tray and actionCapsule may be null
+    // (nothing drawn: system icons, no tray, no capsule).
+    readonly property Component windowFrame: pick("windowFrame")
+    readonly property Component searchField: pick("searchField")
+    readonly property Component inputField: pick("inputField")
+    readonly property Component keySurface: pick("keySurface")
+    readonly property Component segmented: pick("segmented")
+    readonly property Component chipSurface: pick("chipSurface")
+    readonly property Component rowHighlight: pick("rowHighlight")
+    readonly property Component typeIcon: look.typeIcon ?? null
+    readonly property Component menuFrame: pick("menuFrame")
+    readonly property Component toggle: pick("toggle")
+    readonly property Component keyHint: pick("keyHint")
+    readonly property Component separator: pick("separator")
+    readonly property Component scrollBar: pick("scrollBar")
+    readonly property Component cardPart: pick("card")
+    readonly property Component tray: look.tray ?? null
+    readonly property Component actionCapsule: look.actionCapsule ?? null
 }

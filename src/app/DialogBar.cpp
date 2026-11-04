@@ -4,6 +4,7 @@
 #include "Query.h"
 #include "RecentFolders.h"
 #include "SearchEngine.h"
+#include "WindowFrame.h"
 #include "platform/Integrity.h"
 #include "platform/DialogOwner.h"
 #include "platform/WindowEffects.h"
@@ -399,7 +400,7 @@ void DialogBar::dialogRestacked()
     const auto topmost = [](HWND hwnd) { return (::GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0; };
     const HWND bar = m_window ? reinterpret_cast<HWND>(m_window->winId()) : nullptr;
     if (m_inFront && bar && m_visibility.isRevealed() && !m_dragged && !m_movingTo
-        && ::GetWindow(m_dialog, GW_HWNDPREV) == bar && topmost(bar) == (m_elevated || topmost(m_dialog)))
+        && win::rightAbove(bar, m_dialog) && topmost(bar) == (m_elevated || topmost(m_dialog)))
         return;
     dialogMoved();
 }
@@ -1089,6 +1090,7 @@ void DialogBar::prepareMenuWindow(QWindow* menu) const
 {
     if (!menu)
         return;
+    prepareWindowAlpha(menu); // before winId() below makes it
     // Showing it must not take the focus from the bar, which keeps handling the keys.
     menu->setProperty("_q_showWithoutActivating", true);
     menu->setTransientParent(nullptr);
