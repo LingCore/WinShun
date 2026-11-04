@@ -152,7 +152,7 @@ Hook {
 - 每个窗口：`color: <底色>` 不变，加 `WindowEdge { id: windowEdge; fill: <同一个底色> }`；自绘框时 WindowEdge 把窗口设成透明，
   在最底层用 `paint: "back"` 画底、最上层画边，并放 `OwnFrame` 让 C++ 画阴影。贴角的满宽表面用 `windowEdge.cornerRadius`（最大化时 0）。
 - 最大化时 `maximized: true`：不画圆角和边。
-- 窗口里贴边的大块表面（底栏、标题栏、侧栏底色）在 own 时要自己按 `Theme.windowRadius` 处理靠近窗口角的两个角，否则会盖住圆角。
+- 窗口里贴边的大块表面（底栏、标题栏、侧栏底色）要自己按 `windowEdge.cornerRadius` 处理靠近窗口角的两个角（不要直接读 `Theme.windowRadius`：不是自绘框或最大化时它不是 0），否则会盖住圆角。
 
 ## 5. 预览
 
