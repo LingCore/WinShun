@@ -987,8 +987,10 @@ void OwnFrameState::turnOff()
     ::SetWindowPos(window, nullptr, 0, 0, 0, 0,
         SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
     // DWM's frame active or not as the window is (WindowFrame's handling,
-    // left out meanwhile, see hasOwnFrame): Mica's tint depends on it.
-    ::SendMessageW(window, WM_NCACTIVATE, ::GetForegroundWindow() == window, -1);
+    // left out meanwhile, see hasOwnFrame): Mica's tint depends on it. Posted:
+    // handled at once, before DWM draws its frame again, DefWindowProc paints
+    // Windows' themed title bar into the window, in its see-through pixels.
+    ::PostMessageW(window, WM_NCACTIVATE, ::GetForegroundWindow() == window, -1);
 }
 
 void OwnFrameState::destroyShadow()
