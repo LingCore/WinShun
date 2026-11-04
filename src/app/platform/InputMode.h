@@ -18,16 +18,11 @@ struct InputMode {
     bool operator==(const InputMode&) const = default;
 };
 
-// Letters typed as they are: the input method closed, or open with neither
-// its native (Chinese) nor full-width mode.
-inline bool typesLetters(const InputMode& mode)
-{
-    return !mode.open || (mode.conversion & (IME_CMODE_NATIVE | IME_CMODE_FULLSHAPE)) == 0;
-}
-
 // Its English mode, the rest of the conversion mode kept. Both said: on
 // this machine a lone Shift flips WeChat's open status (1 -> 0); Microsoft
-// Pinyin is said to flip the native bit instead.
+// Pinyin is said to flip the native bit instead. Set every time, never
+// judged from the state first: WeChat's native bit says nothing (switched
+// back to Chinese by Shift, it reads open with no native bit).
 inline InputMode lettersMode(InputMode mode)
 {
     mode.conversion &= ~static_cast<DWORD>(IME_CMODE_NATIVE | IME_CMODE_FULLSHAPE);
@@ -46,14 +41,14 @@ inline bool sameLetters(const InputMode& a, const InputMode& b)
 
 struct LettersSwitch {
     HIMC context = nullptr; // the window's (the thread's default); none: nothing could be said
-    bool changed = false; // it typed other than letters, and was set to
+    bool changed = false; // setting it changed what it was (else nothing to put back)
     InputMode before;
     InputMode after; // read back after setting: what the input method made of it
 };
 
-// Puts the window's input method into its English mode, unless it types
-// letters already. Only this window's context, on this thread: never the
-// keyboard layout (that would reorder the user's language list), nor
+// Puts the window's input method into its English mode (as it may be
+// already: setting it again changes nothing). Only this window's context,
+// on this thread: never the keyboard layout (that would reorder the user's language list), nor
 // another program's input method.
 LettersSwitch switchToLetters(HWND window);
 

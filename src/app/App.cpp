@@ -2835,8 +2835,8 @@ void App::endHandoff()
 
 // Once an opening, when its field (the box's or the panel's) has the focus:
 // Qt has given the window its input method context by then. The user
-// switching back to Chinese in the box is not undone; nor is it switched
-// when it typed letters already. Only Win顺's own context (this thread's):
+// switching back to Chinese in the box is not undone. Set however it reads
+// (WeChat's Chinese can read as letters). Only Win顺's own context (this thread's):
 // the program it came from keeps its input method as it was.
 void App::lettersOnOpen()
 {
