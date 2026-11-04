@@ -88,7 +88,7 @@
 
 <a id="中文"></a>
 
-> **0.19.0 发布验证 / Release validation**　本版验证范围、产物校验和系统环境边界见[发布验证记录](docs/release-validation-v0.19.0.md)。See the same record for verification scope, artifact checks and environment limits.
+> **0.20.0 发布验证 / Release validation**　本版验证范围、产物校验和系统环境边界见[发布验证记录](docs/release-validation-v0.20.0.md)。See the same record for verification scope, artifact checks and environment limits.
 
 ## 中文
 
