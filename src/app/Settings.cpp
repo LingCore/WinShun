@@ -903,6 +903,7 @@ void Settings::load()
     if (startList != u"modified" && startList != u"none")
         startList = d.startList;
     clearOnOpen = readOrDefault(s, u"Launcher/ClearOnOpen"_s, d.clearOnOpen);
+    englishOnOpen = readOrDefault(s, u"Launcher/EnglishOnOpen"_s, d.englishOnOpen);
     numberKeys = readOrDefault(s, u"Results/NumberKeys"_s, d.numberKeys).trimmed().toLower();
     if (numberKeys != u"alt" && numberKeys != u"off")
         numberKeys = d.numberKeys;
@@ -1246,6 +1247,7 @@ bool Settings::saveChecked() const
     s.setValue(u"Results/RecentItems"_s, recentItems);
     s.setValue(u"Results/FavoritesOnStart"_s, favoritesOnStart);
     s.setValue(u"Launcher/ClearOnOpen"_s, clearOnOpen);
+    s.setValue(u"Launcher/EnglishOnOpen"_s, englishOnOpen);
     s.setValue(u"Results/NumberKeys"_s, numberKeys);
     s.setValue(u"Results/NumberHints"_s, numberHints);
     s.setValue(u"Results/ShortcutHelp"_s, shortcutHelp);

@@ -844,6 +844,10 @@
         <translation>Clear the search each time it opens</translation>
     </message>
     <message>
+        <source>打开时切换为英文输入</source>
+        <translation>Switch the input method to English on opening</translation>
+    </message>
+    <message>
         <source>用数字键直接打开</source>
         <translation>Open with number keys</translation>
     </message>
@@ -5424,6 +5428,18 @@ Right: center window · Drag: move window</translation>
     <message>
         <source>打开时搜索框是空的，回到“全部”；关掉时保留上次的文字并选中，直接输入就会替换</source>
         <translation>Opens with an empty box, back in All; when off, the last words stay, selected, so typing replaces them</translation>
+    </message>
+    <message>
+        <source>打开时切换为英文输入</source>
+        <translation>Switch the input method to English on opening</translation>
+    </message>
+    <message>
+        <source>输入法;英文;字母;中文;拼音首字母;IME;English</source>
+        <translation>input method;IME;English;letters;Chinese;pinyin;initials</translation>
+    </message>
+    <message>
+        <source>中文输入法在搜索框里先用英文，直接打字母和拼音首字母；在框里切回中文照常可用，关掉后恢复原样</source>
+        <translation>A Chinese input method starts in English in the search box, so letters and pinyin initials go straight in; switching back to Chinese in the box still works, and it is put back on closing</translation>
     </message>
     <message>
         <source>扩展;脚本;PowerShell;Python;内置功能;模块;网页搜索;搜索引擎;网址;web;plugin;extension;module</source>

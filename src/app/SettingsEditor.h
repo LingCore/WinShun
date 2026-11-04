@@ -188,6 +188,7 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(int recentItems READ recentItems WRITE setRecentItems NOTIFY changed FINAL)
     Q_PROPERTY(bool favoritesOnStart READ favoritesOnStart WRITE setFavoritesOnStart NOTIFY changed FINAL)
     Q_PROPERTY(bool clearOnOpen READ clearOnOpen WRITE setClearOnOpen NOTIFY changed FINAL)
+    Q_PROPERTY(bool englishOnOpen READ englishOnOpen WRITE setEnglishOnOpen NOTIFY changed FINAL)
     Q_PROPERTY(QString numberKeys READ numberKeys WRITE setNumberKeys NOTIFY changed FINAL) // ctrl | alt | off
     Q_PROPERTY(QString numberHints READ numberHints WRITE setNumberHints NOTIFY changed FINAL) // held | always | off
     Q_PROPERTY(bool shortcutHelp READ shortcutHelp WRITE setShortcutHelp NOTIFY changed FINAL)
@@ -669,6 +670,8 @@ public:
     void setFavoritesOnStart(bool on);
     bool clearOnOpen() const { return m_settings.clearOnOpen; }
     void setClearOnOpen(bool on);
+    bool englishOnOpen() const { return m_settings.englishOnOpen; }
+    void setEnglishOnOpen(bool on);
     QString numberKeys() const { return m_settings.numberKeys; }
     void setNumberKeys(const QString& keys);
     QString numberHints() const { return m_settings.numberHints; }

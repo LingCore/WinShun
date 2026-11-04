@@ -5,6 +5,7 @@
 #include "SettingsCommand.h"
 
 #include "ServiceVolumeAccess.h"
+#include "platform/InputMode.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -288,6 +289,43 @@ private slots:
             QVERIFY(settings.plugin(id));
             QVERIFY(!settings.plugin(id)->enabled);
         }
+    }
+
+    void englishOnOpen()
+    {
+        // Off unless set: the input method as the user left it (GitHub #201).
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QVERIFY(!settings.englishOnOpen);
+        settings.englishOnOpen = true;
+        settings.save();
+        QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+        QCOMPARE(ini.value(u"Launcher/EnglishOnOpen"_s).toBool(), true);
+        ws::Settings restored;
+        restored.load();
+        QVERIFY(restored.englishOnOpen);
+        ini.setValue(u"Launcher/EnglishOnOpen"_s, false);
+        ini.sync();
+        restored.load();
+        QVERIFY(!restored.englishOnOpen);
+
+        // What it sets, and when it is still the user's untouched state.
+        using ws::win::InputMode;
+        const InputMode chinese {.open = true, .conversion = IME_CMODE_NATIVE | IME_CMODE_SYMBOL, .sentence = 8};
+        QVERIFY(!ws::win::typesLetters(chinese));
+        QVERIFY(!ws::win::typesLetters({.open = true, .conversion = IME_CMODE_FULLSHAPE}));
+        QVERIFY(ws::win::typesLetters({.open = false, .conversion = IME_CMODE_NATIVE}));
+        QVERIFY(ws::win::typesLetters({.open = true, .conversion = IME_CMODE_SYMBOL}));
+        const InputMode letters = ws::win::lettersMode(chinese);
+        QVERIFY(!letters.open);
+        QCOMPARE(letters.conversion, DWORD {IME_CMODE_SYMBOL});
+        QCOMPARE(letters.sentence, DWORD {8});
+        QVERIFY(ws::win::sameLetters(letters, {.open = false, .conversion = IME_CMODE_ROMAN, .sentence = 0}));
+        QVERIFY(!ws::win::sameLetters(letters, {.open = true, .conversion = IME_CMODE_SYMBOL, .sentence = 8}));
+        QVERIFY(!ws::win::sameLetters(letters, {.open = false, .conversion = IME_CMODE_NATIVE, .sentence = 8}));
     }
 
     void startListOptions()
