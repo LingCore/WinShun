@@ -34,6 +34,17 @@ constexpr const char* kIcon = "glyph:U+E838"; // FolderOpen
 constexpr const char* kPauseIcon = "glyph:U+E769"; // Pause
 constexpr const char* kPlayIcon = "glyph:U+E768"; // Play
 
+// The Windows build (RtlGetVersion does not lie to a program without a
+// manifest), 0 when it cannot be read.
+unsigned windowsBuild()
+{
+    using Fn = LONG(WINAPI*)(OSVERSIONINFOW*);
+    const HMODULE ntdll = ::GetModuleHandleW(L"ntdll.dll");
+    const auto get = ntdll ? reinterpret_cast<Fn>(reinterpret_cast<void*>(::GetProcAddress(ntdll, "RtlGetVersion"))) : nullptr;
+    OSVERSIONINFOW v {sizeof v};
+    return get && get(&v) == 0 ? v.dwBuildNumber : 0;
+}
+
 
 tabs::Settings settingsFrom(const Json& s)
 {
@@ -53,6 +64,16 @@ protected:
 
     void initialized() override
     {
+        // Explorer has no tabs before Windows 11 22H2: the new-tab command does
+        // nothing there, and waiting for a tab would only keep every new
+        // window hidden for seconds. Touch nothing, as if not installed.
+        const unsigned build = windowsBuild();
+        if (!tabs::explorerHasTabs(build)) {
+            m_unsupported = true;
+            log("info", "File Explorer has no tabs on this Windows (build " + std::to_string(build)
+                    + ", tabs need 22621 = Windows 11 22H2); not touching any window");
+            return;
+        }
         tabs::Options o;
         o.settings = settingsFrom(settings());
         o.restriction.root = winshun::wide(winshun::env("WINSHUN_TABS_TEST_ROOT"));
@@ -96,7 +117,12 @@ protected:
         const int merged = m_engine ? m_engine->merged() : 0;
         Items items;
         Item status("status", "");
-        if (!on) {
+        if (m_unsupported) {
+            status.title = zh ? "资源管理器标签页需要 Windows 11 22H2 或更新" : "Explorer tabs need Windows 11 22H2 or newer";
+            status.subtitle = zh ? "这台电脑上不会生效，新开的文件夹窗口照常是窗口" : "Not active on this computer: folder windows stay windows";
+            status.icon = kIcon;
+            status.valid = false;
+        } else if (!on) {
             status.title = zh ? "新开的文件夹窗口不并成标签页" : "New folder windows stay windows";
             status.subtitle = zh ? "在设置 → 插件 → 资源管理器标签页里打开" : "Turn it on in Settings → Plugins → Explorer tabs";
             status.icon = kIcon;
@@ -143,6 +169,7 @@ protected:
 
 private:
     std::unique_ptr<tabs::Engine> m_engine;
+    bool m_unsupported = false; // Explorer here has no tabs (before Windows 11 22H2)
     std::wstring m_pauseFile; // <dataDir>\paused: there while paused (survives a restart)
 };
 

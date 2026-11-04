@@ -341,6 +341,16 @@ private slots:
         QVERIFY(programList(L" ; ,\r\n").empty());
     }
 
+    void explorerTabsNeedWindows11_22H2()
+    {
+        QVERIFY(!explorerHasTabs(19045)); // Windows 10 22H2
+        QVERIFY(!explorerHasTabs(22000)); // Windows 11 21H2
+        QVERIFY(!explorerHasTabs(22620));
+        QVERIFY(explorerHasTabs(22621)); // Windows 11 22H2
+        QVERIFY(explorerHasTabs(26100));
+        QVERIFY(explorerHasTabs(0)); // unknown: as before
+    }
+
     void guessing()
     {
         std::vector<Window> candidates {window(1, 2, 0, {}), window(2, 0, 2, {}), window(3, 1, 1, {})};

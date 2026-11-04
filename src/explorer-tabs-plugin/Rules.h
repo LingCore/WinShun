@@ -37,6 +37,13 @@ struct Settings {
 // line breaks, trimmed, lower case, ".exe" added when there is no dot.
 std::vector<std::wstring> programList(std::wstring_view text);
 
+// File Explorer has tabs from Windows 11 22H2 (build 22621). Before that (Windows
+// 10, Windows 11 21H2) every window is one ShellTabWindowClass and the new-tab
+// command does nothing, so the plugin must not hide a window to wait for a tab.
+// 0 (build unknown): assume yes.
+constexpr unsigned kFirstBuildWithTabs = 22621;
+bool explorerHasTabs(unsigned buildNumber);
+
 // A dev-only restriction (runtime.env of a test copy of the manifest): act
 // only on folders under `root`. Nothing else is hidden, merged or used as A.
 struct Restriction {
