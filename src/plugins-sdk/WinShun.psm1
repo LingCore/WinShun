@@ -72,7 +72,8 @@ function New-WinShunItem {
         $Modified,
         $Created,
         [long] $Size = -1,
-        [string] $AwaySubtitle # subtitleAway: the second line while the keyboard is on another row (named so that -Sub… is still -Subtitle)
+        [string] $AwaySubtitle, # subtitleAway: the second line while the keyboard is on another row (named so that -Sub… is still -Subtitle)
+        [switch] $Details # no file to show: the content pane and the preview ask OnDetails (resident plugins)
     )
     $row = [ordered]@{ id = $Id; title = $Title }
     if ($Subtitle) { $row.subtitle = $Subtitle }
@@ -90,6 +91,7 @@ function New-WinShunItem {
     if ($null -ne $Modified) { $row.modified = $Modified }
     if ($null -ne $Created) { $row.created = $Created }
     if ($Size -ge 0) { $row.size = $Size }
+    if ($Details) { $row.details = $true }
     $row
 }
 
@@ -260,13 +262,16 @@ function Start-WinShunPlugin {
     the item's copy text (else its title). -OnSettings { param($settings,
     $plugin) } hears the user's changes; -OnCancel { param($queryId,
     $plugin) } a query Win顺 no longer wants. $plugin has .settings, .locale,
-    .theme, .pluginDir, .dataDir.
+    .theme, .pluginDir, .dataDir. -OnDetails { param($d, $plugin) } answers
+    for an item made with -Details ($d.item, $d.text): @{ text = '...' }, or
+    @{ file = 'a file in $plugin.dataDir' }, or a string (the text).
     #>
     param(
         [Parameter(Mandatory = $true)] [scriptblock] $OnQuery,
         [scriptblock] $OnAction,
         [scriptblock] $OnSettings,
         [scriptblock] $OnCancel,
+        [scriptblock] $OnDetails,
         [string] $Name = 'plugin'
     )
     $plugin = [pscustomobject]@{ settings = @{}; locale = 'zh'; theme = 'light'; pluginDir = $PSScriptRoot; dataDir = '' }
@@ -330,6 +335,21 @@ function Start-WinShunPlugin {
                     if ($effects.Count -eq 0) { $effects = @((New-WinShunEffect -Hide)) }
                 }
                 Send-WinShunLine @{ jsonrpc = '2.0'; id = $m.id; result = @{ effects = @($effects) } }
+            }
+            'details' {
+                if ($null -eq $OnDetails) {
+                    Send-WinShunLine @{ jsonrpc = '2.0'; id = $m.id; error = @{ code = -32601; message = 'Method not found: details' } }
+                    continue
+                }
+                $d = [pscustomobject]@{ item = $params.item; text = [string]$params.text }
+                try {
+                    $result = & $OnDetails $d $plugin
+                } catch {
+                    Send-WinShunLine @{ jsonrpc = '2.0'; id = $m.id; error = @{ code = -32000; message = [string]$_.Exception.Message } }
+                    continue
+                }
+                if ($result -is [string]) { $result = @{ text = $result } }
+                Send-WinShunLine @{ jsonrpc = '2.0'; id = $m.id; result = $result }
             }
             'cancel' { if ($OnCancel) { & $OnCancel $params.queryId $plugin } }
             'settingsChanged' {
