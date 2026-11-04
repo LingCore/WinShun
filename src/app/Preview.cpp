@@ -5490,6 +5490,37 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
     check(everywhere ? launcher->typingFolder().isEmpty()
                      : launcher->query() == prefix && !launcher->typingFolder().isEmpty(),
         everywhere ? "the whole PC: no folder before the words" : "the tab's folder before the words");
+
+    // One side of a dual display at 150 % is narrower than the launcher
+    // (the screenshot in GitHub #82): as narrow as it gets (640), its right
+    // edge and its rows' end 12 px inside the list, reaching left over the
+    // rest of the lister; the next opening elsewhere has the user's width.
+    const int userWidth = window->width();
+    app.hideLauncher();
+    pump(300);
+    ::MoveWindow(list, 700, 120, qRound(540 * scale), client.bottom - 140, TRUE);
+    app.showFolderSearch(lister, list, true, folder);
+    pump(600);
+    settle(window, 3);
+    ::GetWindowRect(list, &listRect);
+    ::GetWindowRect(reinterpret_cast<HWND>(window->winId()), &boxRect);
+    RECT clientOnScreen = client;
+    ::MapWindowPoints(lister, nullptr, reinterpret_cast<POINT*>(&clientOnScreen), 2);
+    check(std::abs(int(boxRect.right - boxRect.left) - qRound(640 * scale)) <= 2, "over a narrow list the Opus box is 640 px wide");
+    check(std::abs(listRect.right - boxRect.right - gap) <= 2 && boxRect.bottom <= listRect.bottom - gap + 2
+            && boxRect.left < listRect.left && boxRect.left >= clientOnScreen.left,
+        "over a narrow list: 12 px in from its right, rows ending above its bottom, over the lister to its left");
+    report.insert(u"opus_narrow_list"_s, QJsonArray {int(listRect.left), int(listRect.top), int(listRect.right - listRect.left),
+        int(listRect.bottom - listRect.top)});
+    report.insert(u"opus_narrow_box"_s, QJsonArray {int(boxRect.left), int(boxRect.top), int(boxRect.right - boxRect.left),
+        int(boxRect.bottom - boxRect.top)});
+    app.hideLauncher();
+    pump(300);
+    app.showLauncher();
+    pump(600);
+    settle(window, 3);
+    check(std::abs(window->width() - userWidth) <= 1, "opened elsewhere afterwards: the user's width again");
+    app.hideLauncher();
     // The tab and the stand-in come to the front as the launcher goes: the
     // warnings about its losing the front that this makes are no fault.
     pump(500);

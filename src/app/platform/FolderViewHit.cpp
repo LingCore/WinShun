@@ -369,6 +369,26 @@ bool isOpusFileDisplay(HWND root, HWND focus)
         && hasClass(::GetParent(focus), L"dopus.filedisplaycontainer");
 }
 
+RECT opusFileLists(HWND root)
+{
+    // dopus.lister > dopus.filedisplaycontainer > dopus.filedisplay, one per
+    // side of a dual display (each tab its own; the hidden ones left out).
+    RECT all {};
+    if (!isOpusLister(root))
+        return all;
+    const auto add = [](HWND window, LPARAM param) -> BOOL {
+        RECT bounds {};
+        if (hasClass(window, L"dopus.filedisplay") && hasClass(::GetParent(window), L"dopus.filedisplaycontainer")
+            && ::IsWindowVisible(window) && ::GetWindowRect(window, &bounds)) {
+            RECT& all = *reinterpret_cast<RECT*>(param);
+            ::UnionRect(&all, &all, &bounds);
+        }
+        return TRUE;
+    };
+    ::EnumChildWindows(root, add, reinterpret_cast<LPARAM>(&all));
+    return all;
+}
+
 bool isBlank(const Hit& hit, BlankTrace* trace)
 {
     if (hit.surface == Surface::None || !::IsWindow(hit.view) || ::IsHungAppWindow(hit.root))
