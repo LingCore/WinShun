@@ -1214,15 +1214,26 @@ Runner::Spec Host::specFor(Plugin& p, const Entry& e, RunKind kind, const Pendin
     spec.env = launch->env;
     spec.env += runtime.env;
     spec.env.push_back({u"WS_PLUGIN_DIR"_s, dir});
-    spec.env.push_back({u"WS_DATA_DIR"_s, dataDirFor(e)});
+    const QString dataDir = dataDirFor(e);
+    spec.env.push_back({u"WS_DATA_DIR"_s, dataDir});
     if (spec.elevated) {
         // Its own TEMP in the store (the runner leaves out the user's).
         if (const QString temp = elevation::tempDir(m_store, e.id, e.dir); !temp.isEmpty()) {
             spec.env.push_back({u"TEMP"_s, temp});
             spec.env.push_back({u"TMP"_s, temp});
         }
-    } else // shared components the user may change: not for a process running as administrator
+    } else {
+        // Low integrity cannot write the user's TEMP (nor C:\Windows\TEMP
+        // when Win顺 is elevated): a folder inside the low labelled data folder.
+        if (runtime.sandbox == SandboxLevel::Strict) {
+            if (const QString temp = QDir::toNativeSeparators(QDir(dataDir).filePath(u"tmp"_s)); QDir().mkpath(temp)) {
+                spec.env.push_back({u"TEMP"_s, temp});
+                spec.env.push_back({u"TMP"_s, temp});
+            }
+        }
+        // shared components the user may change: not for a process running as administrator
         spec.env.push_back({u"WS_COMPONENTS_DIR"_s, QDir::toNativeSeparators(QDir(m_options.dataRoot).absoluteFilePath(u"../components"_s))});
+    }
     spec.env.push_back({u"WS_APP_DIR"_s, QDir::toNativeSeparators(m_options.appDir.isEmpty() ? QFileInfo(m_options.runnerExe).absolutePath() : m_options.appDir)});
     spec.env.push_back({u"WS_LOCALE"_s, m_options.locale});
     spec.env.push_back({u"WS_THEME"_s, m_options.theme});

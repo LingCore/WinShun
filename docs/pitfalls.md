@@ -5004,7 +5004,7 @@
 
 - **现象**：用 1.0.0／1.0.1 建过索引（文件多于约 100～300 个）的用户升到 1.0.2 及以后，插件窗口报“unable to open database file Unable to fetch row”，开始更新、重建索引都报这句，索引显示 0 个文件，搜不到结果。新建的索引和单元测试都正常。
 - **原因**：插件是 `sandbox: strict`，以低完整性运行，环境变量却是用户自己的，`%TEMP%`（`AppData\Local\Temp`）没有低标签，写不进去。升级事务里 `recheckOlderPipeline` 的 `UPDATE files … WHERE … NOT(EXISTS …)` 改动整张表，SQLite 的语句日志超过 64 KiB 就落到 `%TEMP%` 的临时文件，建不出来就是 SQLITE_CANTOPEN。升级整体回滚，每个要写库的入口都重跑升级、再失败；只读入口看到旧 schema 抛“must be upgraded”，统计为空。清空大索引、大表排序（`GROUP BY`、`ORDER BY`）也会撞上。
-- **做法**：插件窗口进程拿到数据目录后建 `<数据目录>\tmp`（继承低标签），用 `SetEnvironmentVariableW` 把 `TMP`／`TEMP` 指过去（SQLite 用 `GetTempPathW` 读；路径可能有中文，不用 `qputenv`），之后启动的工作进程继承。卡住的索引下次打开就升级完，结果不丢。strict 插件要写临时文件都得这样；用 SQLite 的插件测试要在低完整性受限令牌下、用够大的旧索引跑一次。
+- **做法**：插件窗口进程拿到数据目录后建 `<数据目录>\tmp`（继承低标签），用 `SetEnvironmentVariableW` 把 `TMP`／`TEMP` 指过去（SQLite 用 `GetTempPathW` 读；路径可能有中文，不用 `qputenv`），之后启动的工作进程继承。卡住的索引下次打开就升级完，结果不丢。宿主从 0.21 起也给所有 strict 插件设好 `TEMP`／`TMP`（`Host::specFor`，`<id>.data\tmp`；管理员插件本来就用副本里的临时文件夹），`tst_plugin` 的 `jobsAndPermissions` 检查低完整性插件能在 `TEMP` 建文件；用 SQLite 的插件测试要在低完整性受限令牌下、用够大的旧索引跑一次。
 
 ### 测试：`--profile` 的插件装在 `<profile>\plugins`，不是 `<profile>\WinShun\plugins`
 

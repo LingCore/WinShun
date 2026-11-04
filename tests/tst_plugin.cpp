@@ -5051,9 +5051,10 @@ private slots:
         if (facts.value(u"clipFormats"_s).toInt() > 0)
             QCOMPARE(facts.value(u"clipError"_s).toInt(), 5); // ERROR_ACCESS_DENIED from GetClipboardData
         QJsonArray writes = facts.value(u"writes"_s).toArray();
-        QCOMPARE(writes.size(), 2);
+        QCOMPARE(writes.size(), 3);
         QVERIFY(writes[0].toObject().value(u"ok"_s).toBool()); // its data folder
         QVERIFY(writes[1].toObject().value(u"ok"_s).toBool()); // the user's profile: medium integrity may
+        QVERIFY(writes[2].toObject().value(u"ok"_s).toBool()); // TEMP
 
         // With processes and the clipboard allowed.
         Spec allowed = plain;
@@ -5088,10 +5089,13 @@ private slots:
         QCOMPARE(facts.value(u"authId"_s).toString(), explorerSession);
         QVERIFY(facts.value(u"extensionPointsDisabled"_s).toBool());
         writes = facts.value(u"writes"_s).toArray();
-        QCOMPARE(writes.size(), 2);
+        QCOMPARE(writes.size(), 3);
         QVERIFY2(writes[0].toObject().value(u"ok"_s).toBool(), "the low-labelled data folder");
         QCOMPARE(writes[1].toObject().value(u"ok"_s).toBool(true), false);
         QCOMPARE(writes[1].toObject().value(u"error"_s).toInt(), 5);
+        // TEMP: the user's would refuse low integrity (the OCR index upgrade
+        // failed with "unable to open database file"); its own in the data folder.
+        QVERIFY2(writes[2].toObject().value(u"ok"_s).toBool(), qPrintable(writes[2].toObject().value(u"dir"_s).toString()));
         f.host->shutdown();
     }
 

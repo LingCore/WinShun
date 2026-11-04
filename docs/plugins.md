@@ -411,7 +411,7 @@ wsbench --mcp-host --plugins D:\plugins                                 # 把插
 - **超时 / 没有响应。** 一次查询的预算是 `timeoutMs`（常驻 1500、一次性 3000，最大 10000）；慢的工作先发 `query/partial` 或 `winshun/progress`，大头放后台线程。起进程本身约 15 ms（Defender 的开销），Python 几十毫秒，PowerShell 几百毫秒——所以 PowerShell 用常驻。
 - **常驻插件 print 了没反应。** 管道上 stdout 默认是块缓冲：每行后 flush（SDK 都做了；Python 还加了 `-u`）。
 - **Enter 什么都不做。** 行有 `"valid": false`，或者命令没有 `actions` 而插件的 `action` 没回。有 `open` 的行由 Win顺 自己打开，不发 `action`。
-- **想写文件。** 写 `WS_DATA_DIR`（`<id>.data`，卸载时问用户要不要一起删）；`strict` 沙箱的插件只能写那里。
+- **想写文件。** 写 `WS_DATA_DIR`（`<id>.data`，卸载时问用户要不要一起删）；`strict` 沙箱的插件只能写那里；它的 `TEMP`／`TMP` 指向 `<id>.data\tmp`（0.21 起；用户自己的临时文件夹低完整性写不了，SQLite 这类要临时文件的库会报 “unable to open database file”）。
 - **图标不显示。** 只认 PNG / JPG / ICO，路径要在插件文件夹里；SVG 不支持。
 - **关键字被占。** 和设置里"网页搜索"的关键字或别的插件撞了，用户设的赢，卡片上写明；改一个或让用户改。
 - **插件目录能被改吗。** `normal` 插件就是以你的身份运行，你能改的它都能改——这是开发者模式"改了脚本自动重载"的前提。要防插件改自己，用 `strict`。

@@ -100,6 +100,9 @@ json::Value facts()
     const std::wstring profile = lite::environmentVariable(L"USERPROFILE");
     if (!profile.empty())
         options.writeDirs.push_back(profile);
+    const std::wstring temp = lite::environmentVariable(L"TEMP"); // SQLite and others spill here
+    if (!temp.empty())
+        options.writeDirs.push_back(temp);
     return sandbox::collectFacts(options);
 }
 
