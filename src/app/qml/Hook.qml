@@ -110,7 +110,17 @@ Item {
         }
         if (!part || (lazy && !visible))
             return
-        const made = part.createObject(hook)
+        // The state as it is now, given while the part is being made: its
+        // Behaviors animate only changes after it is complete. A part made
+        // late (lazy, or a reused row's) shows at once as it should be,
+        // instead of fading in from its defaults; later changes still
+        // animate. Names the part does not declare are ignored.
+        const now = {}
+        for (const name of names)
+            now[name] = hook[name]
+        for (const name in extra)
+            now[name] = extra[name]
+        const made = part.createObject(hook, now)
         if (!made) {
             console.warn("Hook: the part could not be made:", part.errorString())
             return
