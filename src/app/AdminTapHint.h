@@ -105,10 +105,12 @@ inline Verdict decide(const Facts& f)
 }
 
 // What would make the double tap work there too, besides a hotkey: the
-// service installed, or installed again over an old one (the 索引方式 row's
-// button does both). Only for an account that may (canInstall: an
-// administrator's, with WinShunService.exe beside Win顺); none for a
-// service that is there and stopped, disabled or still connecting.
+// service installed, or installed again over an old one (the button of the
+// row under 索引方式, 便携版的索引服务, does both). Only where that button
+// is (canInstall: a portable copy, Scoop's too, on an administrator's
+// account, with WinShunService.exe beside it; an installed copy has no such
+// button: Setup brings the service, for all users); none for a service that
+// is there and stopped, disabled or still connecting.
 enum class Fix : std::uint8_t { None, Install, Update };
 
 inline Fix fixFor(Listener listener, bool canInstall)

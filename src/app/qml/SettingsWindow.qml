@@ -208,6 +208,7 @@ Window {
         heldTimer.stop()
         heldItem = null
         revealAfterFrame = ""
+        scrollAfterFrame = null
         fadeOut.stop()
         snapshot.source = ""
         navFlick.contentY = 0
@@ -518,13 +519,17 @@ Window {
         row.revealRequested()
         showPage(row.section.page, row.section.tab)
         layoutNow()
-        // From the top of the page while the row shows there whole; else
-        // with the row near the top.
+        scrollToRow(row)
+        row.focusControl() // a switch; else the box keeps the keyboard, for the next search
+        row.flash()
+    }
+
+    // From the top of the page while the row shows there whole; else with
+    // the row near the top.
+    function scrollToRow(row) {
         const top = row.mapToItem(flick.contentItem, 0, 0).y
         flick.contentY = top + row.height + 24 <= flick.height
                          ? 0 : Math.max(0, Math.min(flick.contentHeight - flick.height, top - 24))
-        row.focusControl() // a switch; else the box keeps the keyboard, for the next search
-        row.flash()
     }
 
     // Tab (or a click) to a control that is not all in view: the page follows it.
@@ -644,6 +649,15 @@ Window {
             goTo(part(2, "indexAccessRow"))
             return
         }
+        if (where === "indexService") { // the portable copy's install button (App::adminTapCheck)
+            const service = part(2, "indexServiceRow")
+            const row = service && service.shown ? service : part(2, "indexAccessRow")
+            goTo(row)
+            // Opened just now, the page is not laid out to its full height
+            // yet: scrolled there once more after a frame.
+            scrollAfterFrame = row
+            return
+        }
         const at = String(where).split(",").map(Number)
         if (at.length === 2 && at.every(Number.isInteger) && at[0] >= 0 && at[0] < pageTabs.length)
             showPage(at[0], at[1])
@@ -697,6 +711,16 @@ Window {
         showPage(pluginsPage, 1)
     }
     property string revealAfterFrame
+    property Item scrollAfterFrame: null // showPlace
+    Connections {
+        target: window
+        enabled: window.scrollAfterFrame !== null
+        function onFrameSwapped() {
+            const row = window.scrollAfterFrame
+            window.scrollAfterFrame = null
+            window.scrollToRow(row)
+        }
+    }
     // The capture's card, unfolded at its hotkeys (常规's 截图的快捷键 row); its library entry when it is not installed.
     function showCaptureCard() {
         showPluginPage("winshun.capture")
@@ -2600,7 +2624,7 @@ Window {
                 index: 2
                 content: Component { SettingsPage {
                     host: settingsContext
-                    parts: ({ foldersRow: foldersRow, sharesRow: sharesRow, indexAccessRow: indexAccessRow, nameInput: nameInput })
+                    parts: ({ foldersRow: foldersRow, sharesRow: sharesRow, indexAccessRow: indexAccessRow, indexServiceRow: indexServiceRow, nameInput: nameInput })
                     onResetForReopen: {
                         for (const field of [nameInput, typeInput, fileNameInput, shareInput])
                             field.clear()

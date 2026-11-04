@@ -5484,7 +5484,9 @@ void App::adminTapCheck()
     f.shownThisRun = m_adminTapShownThisRun;
     f.shown = m_settings.adminTapHinted;
     const Verdict verdict = decide(f);
-    const bool canInstall = userIsAdministrator()
+    // Only a portable copy's settings install the service (the row under
+    // 索引方式); an installed one's have no button for it.
+    const bool canInstall = userIsAdministrator() && !Settings::portableFolder().isEmpty()
         && QFile::exists(QCoreApplication::applicationDirPath() + u"/WinShunService.exe"_s);
     const Advice advice = advise(m_hotkeyOverAdmin, fixFor(f.listener, canInstall));
     // Each program and verdict once a run, in the log and the journal.
@@ -5528,8 +5530,15 @@ void App::adminTapCheck()
             : tr("它在最前面时，Win顺 收不到%1。点这里设一个快捷键（比如 Alt+Space），在它前面也能用。").arg(tap);
     }
     std::function<void()> onClick;
-    if (advice.click == Click::Service)
-        onClick = [this] { showSettingsFor(u"Index/Access"_s); };
+    if (advice.click == Click::Service) {
+        // The row with the install button, under 索引方式.
+        onClick = [this] {
+            showSettings([this](QQuickWindow* window) {
+                refreshIndexAccess(); // a window made just now knows nothing yet of this copy (portable: that row shown)
+                QMetaObject::invokeMethod(window, "showPlace", Q_ARG(QVariant, QVariant(u"indexService"_s)));
+            });
+        };
+    }
     else if (advice.click == Click::Hotkey)
         onClick = [this] { showSettingsFor(u"Launcher/Hotkey"_s); };
     QString who = programTitle(front);
