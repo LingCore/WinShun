@@ -106,7 +106,7 @@ class Clipboard : public QObject {
     // Its hotkey held after it opened the window (GitHub #107, App,
     // Settings::clipboardHoldToStep): the key pressed again moves to the next
     // older row (stepped), letting go of the hotkey pastes that row as Enter
-    // would. holdHint: letting go pastes now (a step made, or held a second),
+    // would. holdHint: letting go pastes now (a step made, or its modifiers held a second),
     // and the footer says so; holdKeys: what to let go of ("Ctrl").
     Q_PROPERTY(bool holdToStep READ holdToStep NOTIFY holdChanged FINAL)
     Q_PROPERTY(bool holdHint READ holdHint NOTIFY holdChanged FINAL)

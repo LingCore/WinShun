@@ -13293,14 +13293,14 @@ private slots:
             QVERIFY(w.holding());
             QCOMPARE(w.start(), N::None);
             QVERIFY(noted(w.key(kBackquote, true, 1500), N::None, N::None, true)); // its own repeat
-            QVERIFY(noted(w.key(kBackquote, false, 1600), N::Lifted));
+            QVERIFY(noted(w.key(kBackquote, false, 1600), N::None)); // the key let go: Ctrl still held (#199)
             QVERIFY(noted(w.key(kBackquote, true, 1700), N::Step)); // goes on: the WM_HOTKEY comes
             QVERIFY(noted(w.key(kBackquote, true, 1750), N::None, N::None, true));
-            QVERIFY(noted(w.key(kBackquote, false, 1800), N::None)); // lifted once
+            QVERIFY(noted(w.key(kBackquote, false, 1800), N::None));
             QVERIFY(noted(w.key(kBackquote, true, 1900), N::Step));
             QVERIFY(noted(w.key(kBackquote, false, 1950), N::None));
             QVERIFY(noted(w.key(kLCtrl, true, 1990), N::None)); // Ctrl's own repeat
-            QVERIFY(noted(w.key(kLCtrl, false, 2000), N::AllUp));
+            QVERIFY(noted(w.key(kLCtrl, false, 2000), N::Lifted, N::AllUp));
             QVERIFY(noted(w.key(kBackquote, true, 2100), N::None)); // over: as ever
             QVERIFY(noted(w.key(kVkEscape, true, 2200), N::None)); // Esc too
         }
@@ -13309,42 +13309,42 @@ private slots:
             QVERIFY(noted(w.key(kLCtrl, false, 1100), N::Lifted));
             QVERIFY(noted(w.key(kBackquote, false, 1200), N::AllUp));
         }
-        { // ... both at once (the last event): Lifted, then AllUp.
+        { // ... the key up before the hook went in (a quick tap): nothing yet;
+          // Ctrl let go then: Lifted, then AllUp, in one.
             Watch w(kCtrl, kBackquote, sides({kLCtrl}), false, 1000);
-            QCOMPARE(w.start(), N::Lifted); // a quick press: the key up before the hook went in
             QCOMPARE(w.start(), N::None);
-            QVERIFY(noted(w.key(kLCtrl, false, 1100), N::AllUp));
+            QVERIFY(noted(w.key(kLCtrl, false, 1100), N::Lifted, N::AllUp));
         }
         { // Let go of one side, the other still down: held.
             Watch w(kCtrl, kBackquote, sides({kLCtrl, kRCtrl}), true, 1000);
-            QVERIFY(noted(w.key(kBackquote, false, 1100), N::Lifted));
+            QVERIFY(noted(w.key(kBackquote, false, 1100), N::None));
             QVERIFY(noted(w.key(kLCtrl, false, 1200), N::None));
             QVERIFY(noted(w.key(kBackquote, true, 1300), N::Step));
             QVERIFY(noted(w.key(kBackquote, false, 1350), N::None));
-            QVERIFY(noted(w.key(kRCtrl, false, 1400), N::AllUp));
+            QVERIFY(noted(w.key(kRCtrl, false, 1400), N::Lifted, N::AllUp));
         }
         { // Another modifier with it: another chord, no step and no break.
             Watch w(kCtrl, kBackquote, sides({kLCtrl}), false, 1000);
-            QCOMPARE(w.start(), N::Lifted);
+            QCOMPARE(w.start(), N::None);
             QVERIFY(noted(w.key(kLShift, true, 1100), N::None));
             QVERIFY(noted(w.key(kBackquote, true, 1200), N::None));
             QVERIFY(noted(w.key(kBackquote, false, 1250), N::None));
-            QVERIFY(noted(w.key(kLShift, false, 1300), N::None));
+            QVERIFY(noted(w.key(kLShift, false, 1300), N::None)); // not the hotkey's
             QVERIFY(noted(w.key(kBackquote, true, 1400), N::Step));
             QVERIFY(noted(w.key(kBackquote, false, 1450), N::None));
-            QVERIFY(noted(w.key(kLCtrl, false, 1500), N::AllUp)); // not over before
+            QVERIFY(noted(w.key(kLCtrl, false, 1500), N::Lifted, N::AllUp)); // not over before
         }
         { // Ctrl+Shift+F9, Shift let go and pressed again: a fresh press, not a step.
             Watch w(kCtrl | kShift, kF9, sides({kLCtrl, kLShift}), true, 1000);
-            QVERIFY(noted(w.key(kF9, false, 1100), N::Lifted));
-            QVERIFY(noted(w.key(kLShift, false, 1200), N::None)); // Ctrl still down
+            QVERIFY(noted(w.key(kF9, false, 1100), N::None));
+            QVERIFY(noted(w.key(kLShift, false, 1200), N::Lifted)); // one of its modifiers: the second's count stops
             QVERIFY(noted(w.key(kLShift, true, 1300), N::None));
             QVERIFY(noted(w.key(kF9, true, 1400), N::Fresh));
         }
         { // Win+V; the modifiers not all down as it began: no hold.
             Watch w(kWin, kV, sides({kLWin}), true, 1000);
             QVERIFY(w.holding());
-            QVERIFY(noted(w.key(kV, false, 1100), N::Lifted));
+            QVERIFY(noted(w.key(kV, false, 1100), N::None)); // V tapped, Win held on
             QVERIFY(noted(w.key(kV, true, 1200), N::Step));
             QVERIFY(!Watch(kCtrl | kShift, kF9, sides({kLCtrl}), true, 1000).holding());
             QVERIFY(!Watch(0, kF9, sides({}), true, 1000).holding()); // a lone F9: nothing to hold
@@ -13422,7 +13422,30 @@ private slots:
             QCOMPARE(h.note(N::AllUp, 11'300), Hold::Outcome::Paste);
             QCOMPARE(h.heldFor(12'000), 1'100u);
         }
-        { // ... only the whole of it: the key let go early, Ctrl held on.
+        { // Win+V, V tapped, Win held on a second and let go (#199): the first row.
+            Watch w(kWin, kV, sides({kLWin}), true, 10'000);
+            QCOMPARE(w.start(), N::None);
+            QVERIFY(noted(w.key(kV, true, 10'500), N::None, N::None, true)); // V's repeat: taken, no step
+            QVERIFY(noted(w.key(kV, false, 10'550), N::None)); // V up, Win held: the count goes on
+            QVERIFY(noted(w.key(kLWin, true, 10'800), N::None)); // Win's own repeat
+            Hold h(10'000);
+            QCOMPARE(h.poll(Hold::Held::Whole, 10'600), Hold::Poll::None);
+            QCOMPARE(h.poll(Hold::Held::Whole, 10'000 + kHoldMs), Hold::Poll::Hint); // Win alone is Whole
+            const Watch::Answer up = w.key(kLWin, false, 11'200);
+            QVERIFY(noted(up, N::Lifted, N::AllUp));
+            QCOMPARE(h.note(up.note, 11'200), Hold::Outcome::None);
+            QCOMPARE(h.note(up.then, 11'200), Hold::Outcome::Paste);
+            QCOMPARE(h.steps(), 0);
+        }
+        { // ... Win let go sooner: the window stays, nothing pasted.
+            Watch w(kWin, kV, sides({kLWin}), false, 10'000);
+            const Watch::Answer up = w.key(kLWin, false, 10'400);
+            QVERIFY(noted(up, N::Lifted, N::AllUp));
+            Hold h(10'000);
+            QCOMPARE(h.note(up.note, 10'400), Hold::Outcome::None);
+            QCOMPARE(h.note(up.then, 10'400), Hold::Outcome::End);
+        }
+        { // ... only the modifiers held: one let go early, the rest up later.
             Hold h(10'000);
             QCOMPARE(h.note(N::Lifted, 10'300), Hold::Outcome::None);
             QVERIFY(!h.hint(11'500));
@@ -13468,7 +13491,7 @@ private slots:
           // hotkey is held a second, once.
             Hold h(10'000);
             QCOMPARE(h.poll(Hold::Held::Whole, 10'000 + kHoldMs - 1), Hold::Poll::None);
-            QCOMPARE(h.poll(Hold::Held::Part, 10'000 + kHoldMs), Hold::Poll::None); // the key let go, Ctrl held on
+            QCOMPARE(h.poll(Hold::Held::Part, 10'000 + kHoldMs), Hold::Poll::None); // Shift of Ctrl+Shift+F9 up
             QCOMPARE(h.poll(Hold::Held::Whole, 10'000 + kHoldMs + kPollMs), Hold::Poll::Hint);
             QCOMPARE(h.poll(Hold::Held::Whole, 10'000 + kHoldMs + 2 * kPollMs), Hold::Poll::None);
             QCOMPARE(h.note(N::AllUp, 11'200), Hold::Outcome::Paste);

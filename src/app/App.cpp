@@ -4984,9 +4984,10 @@ void App::checkClipboardHold()
     }
     using Held = hotkeysteps::Hold::Held;
     using Poll = hotkeysteps::Hold::Poll;
-    switch (m_hold->poll(keyDown && modifiers == m_holdModifiers ? Held::Whole
-                         : keyDown || modifiers                 ? Held::Part
-                                                                : Held::None,
+    // Whole: the modifiers, its key tapped or held (#199: Win held, V let go).
+    switch (m_hold->poll(modifiers == m_holdModifiers ? Held::Whole
+                         : keyDown || modifiers      ? Held::Part
+                                                     : Held::None,
         ::GetTickCount64())) {
     case Poll::None:
         return;
