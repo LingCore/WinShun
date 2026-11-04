@@ -2253,10 +2253,15 @@ void checkSearchMenuKeys(Launcher& launcher, QQuickWindow* window, FilePreview& 
             const bool only = launcher.typingFolderOnly();
             key(Qt::Key_D, Qt::ControlModifier);
             check(launcher.typingFolderOnly() == only, mode + u"Ctrl+D pages without changing the folder filter"_s);
+            const bool level = launcher.typingFolderLevel();
             key(Qt::Key_D, Qt::ControlModifier | Qt::ShiftModifier);
-            check(launcher.typingFolderOnly() != only, mode + u"Ctrl+Shift+D switches the current folder filter"_s);
+            const bool onlyThen = launcher.typingFolderOnly();
+            const bool levelThen = launcher.typingFolderLevel();
+            check(onlyThen != only || levelThen != level, mode + u"Ctrl+Shift+D switches the current folder filter"_s);
             key(Qt::Key_D, Qt::ControlModifier | Qt::ShiftModifier);
-            check(launcher.typingFolderOnly() == only, mode + u"Ctrl+Shift+D switches it back"_s);
+            key(Qt::Key_D, Qt::ControlModifier | Qt::ShiftModifier);
+            check(launcher.typingFolderOnly() == only && launcher.typingFolderLevel() == level,
+                mode + u"Ctrl+Shift+D comes round to the start again (everywhere, folder, this level)"_s);
             launcher.setTypingFolder({});
             launcher.setQuery(query);
             timeout.restart();

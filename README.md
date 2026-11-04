@@ -207,7 +207,7 @@
 - **Directory Opus 里直接打字搜索**：在设置 → 打开 Win顺 → 对话框中单独开启，默认关闭。在文件列表里从字母或数字开始输入，就用 Win顺 搜，当前标签的文件夹里的排在最前（和资源管理器一样），双栏也跟随正在操作的一栏；`Esc` 回到 Opus，打开文件夹或 `Ctrl+Enter` 定位结果也回到原来的一栏。改名、地址栏、菜单和以符号开头的 Opus 查找模式仍按原来的方式操作。
 - **用快捷键弹出**：双击被别的程序占了，或者想在 Total Commander、XYplorer、Pulse 里用，就在设置里给文件夹菜单设一个快捷键，在任何窗口里按：资源管理器、桌面、Directory Opus、Total Commander、XYplorer、“打开”“另存为”对话框里选中的文件夹在那个窗口里打开（Pulse 里交给 Pulse，按它的“从其他程序打开的文件夹”设置开新标签或新窗口），别的窗口里用文件管理器打开；再按一次关闭。
 - **右键“用 Win顺 搜索此处”**：文件夹、文件夹的空白处和磁盘的右键菜单里都有（Windows 11 在“显示更多选项”里），搜索框带着这个文件夹打开，接着打字就在里面找。设置里可以关。
-- **直接打字搜索**：在资源管理器的文件列表里随意打字，Win顺 就带着打的字搜，和 Listary 一样：这个窗口的文件夹（含子文件夹）里的排在最前，一条细线“其他位置”下面是别处的；点“只搜 …”或按 `Ctrl+Shift+D` 就只搜这个文件夹，设置里也能设成每次都只搜它。中文输入法照常组拼音，`Esc` 回到资源管理器。选中的文件夹在同一个标签页里打开，接着打字就再往里一层；选中一个文件或文件夹按 `Ctrl+Enter`，也在这个标签页里转到它所在的文件夹并选中它（设置里选的文件管理器是资源管理器时）；资源管理器的 `Shift` 右键菜单也不会被抢走按键。设置里打开（它代替了资源管理器自己的按首字母跳到文件，所以默认关）。
+- **直接打字搜索**：在资源管理器的文件列表里随意打字，Win顺 就带着打的字搜，和 Listary 一样：这个窗口的文件夹（含子文件夹）里的排在最前，一条细线“其他位置”下面是别处的；点“只搜 …”或按 `Ctrl+Shift+D` 就只搜这个文件夹，再按一次只搜这一层（不含子文件夹），设置里也能设成每次都只搜它或只搜这一层。中文输入法照常组拼音，`Esc` 回到资源管理器。选中的文件夹在同一个标签页里打开，接着打字就再往里一层；选中一个文件或文件夹按 `Ctrl+Enter`，也在这个标签页里转到它所在的文件夹并选中它（设置里选的文件管理器是资源管理器时）；资源管理器的 `Shift` 右键菜单也不会被抢走按键。设置里打开（它代替了资源管理器自己的按首字母跳到文件，所以默认关）。
 
 - **窗口避让与同步选中**：从资源管理器打字打开时，搜索框优先放到原窗口外，空间不足时减少重叠，并保留原来的宽度和常用位置。浏览原目录的直接子项时，原标签页同步选中并显示对应项目，键盘焦点仍在搜索框；子目录和其他位置的结果不会自动带走原目录。
 
@@ -286,7 +286,7 @@
 | `Ctrl+J` / `Ctrl+N`、`Ctrl+K` / `Ctrl+P` | 向下、向上移动；`Ctrl+U` / `Ctrl+D` 向上、向下翻页 |
 | `Ctrl+,` | 打开 Win顺 设置 |
 | `Ctrl+E` / `Ctrl+T` | 展开为搜索面板 / 钉住搜索框（点别处不收起） |
-| `Ctrl+Shift+D`（在文件夹窗口里打字打开时） | 只搜当前文件夹 / 也搜其他位置 |
+| `Ctrl+Shift+D`（在文件夹窗口里打字打开时） | 当前文件夹优先 → 只搜当前文件夹 → 只搜这一层（不含子文件夹），轮流换 |
 | `Alt+P` / `Shift+右键` | 预览当前行 / Windows 自己的右键菜单 |
 | `Ctrl+G`（对话框里） | 转到文件管理器正在显示的文件夹 |
 | `Win+V` / `Win+S`（设置里打开后） | 剪贴板历史 / 任务栏上方的搜索框 |
@@ -455,7 +455,7 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
   - **Type to search in Directory Opus**: enable it separately in Settings → Open WinShun → Dialogs (off by default). Start with a letter or digit in the file list to search, the focused tab's folder first (as in File Explorer), including either pane of a dual display. `Esc` returns to Opus; opening a folder or locating a result with `Ctrl+Enter` uses the original pane. Renaming, address bars, menus and Opus find modes starting with symbols keep their usual behavior.
   - **By a shortcut**: when another program has the double click, or for Total Commander, XYplorer and Pulse, give the folder menu a shortcut in the settings and press it in any window: in File Explorer, on the desktop, in Directory Opus, Total Commander, XYplorer and Open / Save dialogs the folder picked opens in that window (in Pulse, where its “Folders opened from other apps” setting puts it: a new tab or a new window); anywhere else, in your file manager. Press it again to close the menu.
   - **“Search here with WinShun”** on the right-click menu of folders, a folder's blank space and drives (under “Show more options” on Windows 11): the search window opens with that folder typed. It can be turned off.
-  - **Type to search**: type anywhere in a File Explorer file list and WinShun searches for what you typed, like Listary: what is in that window's folder (and its subfolders) comes first, the rest of the PC follows under a thin "Elsewhere" line; "Only in …" or `Ctrl+Shift+D` keeps to that folder, and a setting can make that the default. A Chinese input method composes as usual, and `Esc` goes back to File Explorer. A folder you pick opens in the same tab, so typing again goes one level deeper; `Ctrl+Enter` on a file or folder also goes, in that tab, to the folder holding it and selects it (when the file manager set in Settings is File Explorer); and the keys of Explorer's `Shift`+right-click menu stay with the menu. Turn it on in the settings (it replaces Explorer's own jump to a file by its first letters, so it is off by default).
+  - **Type to search**: type anywhere in a File Explorer file list and WinShun searches for what you typed, like Listary: what is in that window's folder (and its subfolders) comes first, the rest of the PC follows under a thin "Elsewhere" line; "Only in …" or `Ctrl+Shift+D` keeps to that folder, pressing it again keeps to this level alone (no subfolders), and a setting can make either the default. A Chinese input method composes as usual, and `Esc` goes back to File Explorer. A folder you pick opens in the same tab, so typing again goes one level deeper; `Ctrl+Enter` on a file or folder also goes, in that tab, to the folder holding it and selects it (when the file manager set in Settings is File Explorer); and the keys of Explorer's `Shift`+right-click menu stay with the menu. Turn it on in the settings (it replaces Explorer's own jump to a file by its first letters, so it is off by default).
   - **Placement and selection (0.17.0)**: the search box prefers space outside the originating Explorer window, reducing overlap when space is limited without narrowing it or changing its remembered position. Browsing a direct child selects and reveals it in the original tab while the search field keeps keyboard focus; nested and elsewhere results do not navigate Explorer.
 - 📋 **Clipboard history (replaces Win+V)**
 
@@ -517,7 +517,7 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
 | `Ctrl+J` / `Ctrl+N`, `Ctrl+K` / `Ctrl+P` | Move down / up; `Ctrl+U` / `Ctrl+D` pages up / down |
 | `Ctrl+,` | Open WinShun settings |
 | `Ctrl+E` / `Ctrl+T` | Expand to the search panel / pin the search box (stays up through clicks elsewhere) |
-| `Ctrl+Shift+D` (opened by typing in a folder window) | Only the current folder / elsewhere too |
+| `Ctrl+Shift+D` (opened by typing in a folder window) | Cycles: current folder first, only the current folder, only this level (no subfolders) |
 | `Alt+P` / `Shift`+right-click | Preview the row / Windows' own context menu |
 | `Ctrl+G` (in a file dialog) | Go to the folder shown in your file manager |
 | `Win+V` / `Win+S` (once turned on) | Clipboard history / search above the taskbar |

@@ -225,6 +225,8 @@ class Launcher : public QObject {
     // then the rest, under a caption (ResultModel::elsewhereRow).
     Q_PROPERTY(QString typingFolder READ typingFolder NOTIFY typingFolderChanged FINAL)
     Q_PROPERTY(bool typingFolderOnly READ typingFolderOnly NOTIFY typingFolderChanged FINAL)
+    // With typingFolderOnly: not its subfolders either (GitHub #182).
+    Q_PROPERTY(bool typingFolderLevel READ typingFolderLevel NOTIFY typingFolderChanged FINAL)
 
 public:
     // As ws::Scope. 文件夹 is shown within 文件, as a chip of its strip
@@ -369,14 +371,20 @@ public:
     // Edited, it is a path typed: only that folder, as ever. Empty: none
     // (the window opened for anything else).
     void setTypingFolder(const QString& prefix);
-    // FolderTyping: "only" set (only the folder), else its rows first.
-    void setFolderTypingOnly(bool only);
+    // FolderTyping: "only" (only the folder and below), "level" (only what
+    // lies directly in it), else its rows first and then the rest.
+    void setFolderTyping(const QString& how);
     QString typingFolder() const;
     bool typingFolderOnly() const { return !m_typingPrefix.isEmpty() && m_typingOnly; }
-    // Ctrl+Shift+D, or the caption's or hint's link: this time only the folder
-    // typed in, or its rows first and then the rest (not the setting).
-    // False when the box is not for a folder typed in (nothing to switch).
+    bool typingFolderLevel() const { return typingFolderOnly() && m_typingLevel; }
+    // Ctrl+Shift+D: this time the next of: its rows first and then the rest,
+    // only the folder typed in (and below), only its own level (not the
+    // setting). False when the box is not for a folder typed in (nothing to
+    // switch).
     Q_INVOKABLE bool switchTypingFolder();
+    // The caption's and the hints' links: straight to one of them.
+    enum class TypingScope : std::uint8_t { Everywhere, Folder, Level };
+    bool setTypingScope(TypingScope scope);
     // How long the name search behind the rows shown took (--dump, for tests).
     qint64 elapsedUs() const noexcept { return m_elapsedUs; }
     // More results for the query are on the way. Not while quietly
@@ -1011,7 +1019,9 @@ private:
     QString m_typingPrefix;
     QString m_typingFolder;
     bool m_typingOnly = false;
+    bool m_typingLevel = false; // with m_typingOnly: not the subfolders either
     bool m_typingOnlyDefault = false;
+    bool m_typingLevelDefault = false;
     QString m_shownTyping; // typingKey() of the rows on screen, as m_shownText
     // The box is for the folder typed in: it still starts with it, and the
     // list is the names' (not 内容, which takes the folder as a path typed;

@@ -416,6 +416,10 @@
         <translation>Current folder only</translation>
     </message>
     <message>
+        <source>只搜这一层</source>
+        <translation>This level only</translation>
+    </message>
+    <message>
         <source>Tab 进入收藏文件夹</source>
         <translation>Browse favorite folders with Tab</translation>
     </message>
@@ -5094,6 +5098,10 @@ Right: center window · Drag: move window</translation>
         <translation>Current folder only</translation>
     </message>
     <message>
+        <source>只搜这一层</source>
+        <translation>This level only</translation>
+    </message>
+    <message>
         <source>在 Directory Opus 的空白处双击</source>
         <translation>Double-click blank space in Directory Opus</translation>
     </message>
@@ -6869,8 +6877,8 @@ Right: center window · Drag: move window</translation>
         <translation>Press Ctrl+Shift+D while searching to toggle scope temporarily</translation>
     </message>
     <message>
-        <source>当前文件夹优先：先列出当前文件夹及子文件夹的结果，再列出其他位置的结果，与 Listary 一致</source>
-        <translation>Current folder first: list results from current folder and subfolders first, then other locations, matching Listary</translation>
+        <source>当前文件夹优先：先列出当前文件夹及子文件夹的结果，再列出其他位置的结果，与 Listary 一致。只搜这一层：只列当前文件夹里直接放着的，不含子文件夹</source>
+        <translation>Current folder first: list results from current folder and subfolders first, then other locations, matching Listary. This level only: list only what sits directly in the current folder, no subfolders</translation>
     </message>
     <message>
         <source>在空白处双击或按中键弹出常用文件夹菜单，选中后直接在当前窗口打开</source>
@@ -7165,8 +7173,8 @@ Right: center window · Drag: move window</translation>
         <translation>Regular expressions: every word is matched against names as a regular expression; press again to turn off</translation>
     </message>
     <message>
-        <source>只搜当前文件夹，或也搜其他位置</source>
-        <translation>Only the current folder, or elsewhere too</translation>
+        <source>当前文件夹优先 → 只搜它 → 只搜这一层，轮换</source>
+        <translation>Cycles: current folder first, only it, only this level</translation>
     </message>
     <message>
         <source>打开与操作</source>
@@ -10055,6 +10063,26 @@ Content index: %5</translation>
     <message>
         <source>也搜其他位置</source>
         <translation>Search elsewhere too</translation>
+    </message>
+    <message>
+        <source>只在 %1 这一层搜，不含子文件夹</source>
+        <translation>Searching only this level of %1, no subfolders</translation>
+    </message>
+    <message>
+        <source>没有搜子文件夹里的</source>
+        <translation>Subfolders are not searched</translation>
+    </message>
+    <message>
+        <source>包含子文件夹里的</source>
+        <translation>Subfolders are included</translation>
+    </message>
+    <message>
+        <source>含子文件夹</source>
+        <translation>Include subfolders</translation>
+    </message>
+    <message>
+        <source>只搜这一层</source>
+        <translation>This level only</translation>
     </message>
     <message>
         <source>这个文件夹不在索引范围内</source>

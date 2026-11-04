@@ -100,6 +100,8 @@ constexpr QLatin1StringView kFoldersDismissHint("folders-dismiss");
 // Typed in a folder's window with only that folder searched (GitHub #110):
 // the rest of the index after its rows, this time (switchTypingFolder).
 constexpr QLatin1StringView kEverywhereHint("everywhere");
+// ... and whether its subfolders are in it (GitHub #182): the other way, this time.
+constexpr QLatin1StringView kLevelHint("level");
 
 // What a hint that walks the disk walks: a drive's root, or a folder.
 QString walkedPath(const QString& kind)
@@ -806,15 +808,17 @@ void Launcher::setTypingFolder(const QString& prefix)
     m_typingPrefix = prefix;
     m_typingFolder = folder;
     m_typingOnly = m_typingOnlyDefault; // as set, each time; switched, for this time only
+    m_typingLevel = m_typingOnly && m_typingLevelDefault;
     emit typingFolderChanged();
     // The words after it, if any are typed already, are looked for anew.
     if (!typingWords().isEmpty() && m_window && m_window->isVisible())
         search();
 }
 
-void Launcher::setFolderTypingOnly(bool only)
+void Launcher::setFolderTyping(const QString& how)
 {
-    m_typingOnlyDefault = only;
+    m_typingLevelDefault = how == u"level";
+    m_typingOnlyDefault = m_typingLevelDefault || how == u"only";
 }
 
 QString Launcher::typingFolder() const
@@ -843,14 +847,22 @@ QString Launcher::typingKey() const
 {
     if (typingWords().isEmpty())
         return {};
-    return (m_typingOnly ? u"only:"_s : u"first:"_s) + m_typingFolder;
+    return (m_typingLevel ? u"level:"_s : m_typingOnly ? u"only:"_s : u"first:"_s) + m_typingFolder;
 }
 
 bool Launcher::switchTypingFolder()
 {
+    // Its rows first, then only the folder and below, then only its own level.
+    return setTypingScope(m_typingLevel ? TypingScope::Everywhere
+                                        : m_typingOnly ? TypingScope::Level : TypingScope::Folder);
+}
+
+bool Launcher::setTypingScope(TypingScope scope)
+{
     if (!typedInFolder())
         return false;
-    m_typingOnly = !m_typingOnly;
+    m_typingOnly = scope != TypingScope::Everywhere;
+    m_typingLevel = scope == TypingScope::Level;
     emit typingFolderChanged();
     if (!typingWords().isEmpty())
         search(); // a list of its own (typingKey): the first row is current again
@@ -935,8 +947,13 @@ QVariantList Launcher::leftOutHints() const
     // first, the rest of the index after its rows; under no rows at all, the
     // way out of 没有找到. Not drives then: only that folder was asked for.
     const bool onlyTypingFolder = m_typingOnly && !typingWords().isEmpty();
-    if (onlyTypingFolder)
-        add(kEverywhereHint, tr("只在 %1 里搜").arg(typingFolder()), tr("也搜其他位置"));
+    if (onlyTypingFolder) {
+        add(kEverywhereHint,
+            m_typingLevel ? tr("只在 %1 这一层搜，不含子文件夹").arg(typingFolder()) : tr("只在 %1 里搜").arg(typingFolder()),
+            tr("也搜其他位置"));
+        add(kLevelHint, m_typingLevel ? tr("没有搜子文件夹里的") : tr("包含子文件夹里的"),
+            m_typingLevel ? tr("含子文件夹") : tr("只搜这一层"));
+    }
     if (m_scope == All && m_scanComplete && !m_moreContent && m_leftOut.deferred > 0)
         add(kDeferredHint, tr("还有 %Ln 个文件未搜索内容", nullptr, m_leftOut.deferred), tr("搜索内容"));
     // The counts are of files not read, whatever was typed: offered under
@@ -1052,7 +1069,11 @@ void Launcher::searchLeftOut(const QString& kind)
         return;
     }
     if (kind == kEverywhereHint) { // a list of its own, the folder's rows first (GitHub #110)
-        switchTypingFolder();
+        setTypingScope(TypingScope::Everywhere);
+        return;
+    }
+    if (kind == kLevelHint) { // the folder's own level, or with its subfolders
+        setTypingScope(m_typingLevel ? TypingScope::Folder : TypingScope::Level);
         return;
     }
     if (m_pending || m_contentRunning) {
@@ -1825,6 +1846,7 @@ void Launcher::search(bool more)
     if (!typingWords().isEmpty()) {
         request.currentFolder = m_typingFolder;
         request.currentFolderOnly = m_typingOnly;
+        request.currentFolderLevel = m_typingOnly && m_typingLevel;
     }
     request.scope = static_cast<ws::Scope>(m_scope);
     request.extensions = fileExtensions();
