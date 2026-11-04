@@ -18,6 +18,10 @@ Groove {
     readonly property color iconColor: look ? look.ink2 : "transparent"
     readonly property color caretColor: look ? look.caret : "transparent"
     readonly property real leftInset: look ? look.grooveTextInset : 0
+    // Where the words start, from the groove's left edge: the 22 px magnifier
+    // at grooveTextInset, then 12 (04-tactile.html .q).
+    readonly property real leadingInset: look ? look.grooveTextInset + 22 + 12 : 0
+    readonly property real iconInset: look ? look.grooveTextInset : 0 // the icon's left edge, from the groove's
     readonly property real keyInset: look ? look.grooveKeyInsetAt(dpr) : 0
     readonly property real keyRadius: look ? look.grooveKeyRadius : 0
 

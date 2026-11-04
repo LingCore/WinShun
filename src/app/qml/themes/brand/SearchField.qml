@@ -31,6 +31,7 @@ Item {
     readonly property color placeholderColor: placeholderInk
     readonly property color iconColor: iconInk
     readonly property real leadingInset: 60
+    readonly property real iconInset: 13 // the icon's left edge, from the field's
     readonly property real contentOffsetY: -2 // the 24 px query's optical centre
 
     property real lit: focused ? 1 : 0

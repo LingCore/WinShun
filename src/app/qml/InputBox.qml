@@ -72,6 +72,12 @@ Rectangle {
         selectByMouse: true
         selectionColor: Theme.textSelection
         selectedTextColor: Theme.text
+        // The style's caret colour, where it has one (Qt's own caret otherwise).
+        cursorDelegate: field.out("caretColor", "transparent").a > 0 ? caretPart : null
+        Component {
+            id: caretPart
+            Caret { color: field.out("caretColor", Theme.text); dpr: box.pixelRatio }
+        }
         onAccepted: box.accepted()
         onEditingFinished: box.editingFinished()
 

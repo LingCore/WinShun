@@ -611,6 +611,12 @@ Item {
                 selectByMouse: true
                 selectionColor: Theme.textSelection
                 selectedTextColor: Theme.text
+                // The style's caret colour, where it has one (Qt's own caret otherwise).
+                cursorDelegate: fieldPart.out("caretColor", "transparent").a > 0 ? caretPart : null
+                Component {
+                    id: caretPart
+                    Caret { color: fieldPart.out("caretColor", Theme.text); dpr: page.dpr }
+                }
                 onTextChanged: page.clipboard.query = text
                 Keys.onPressed: (event) => page.handleKey(event)
                 Keys.onReleased: (event) => {

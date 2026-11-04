@@ -15,7 +15,7 @@ set_target_properties(WinShunCapture PROPERTIES AUTOMOC OFF MSVC_RUNTIME_LIBRARY
 set(app_dir ${PROJECT_SOURCE_DIR}/src/app)
 set(shared_qml
     Theme.qml Hook.qml UiScale.qml WindowEdge.qml HoverTip.qml DropMenu.qml Glyph.qml TitleBar.qml ToggleSwitch.qml FlatButton.qml
-    InputBox.qml CenteredNumber.qml KeyCap.qml HotkeyRecorder.qml ListScrollBar.qml ListWheelScroll.qml
+    InputBox.qml Caret.qml CenteredNumber.qml KeyCap.qml HotkeyRecorder.qml ListScrollBar.qml ListWheelScroll.qml
     ScrollPixelAlignment.qml SettingsSection.qml SettingRow.qml PageTabs.qml ScopeTabs.qml)
 set(capture_qml)
 foreach(name IN LISTS shared_qml)

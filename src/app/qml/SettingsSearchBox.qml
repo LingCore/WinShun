@@ -79,6 +79,12 @@ Rectangle {
         selectByMouse: true
         selectionColor: Theme.textSelection
         selectedTextColor: box.warm ? WarmPalette.ink : Theme.text
+        // The style's caret colour, where it has one (Qt's own caret otherwise).
+        cursorDelegate: !box.warm && fieldPart.out("caretColor", "transparent").a > 0 ? caretPart : null
+        Component {
+            id: caretPart
+            Caret { color: fieldPart.out("caretColor", Theme.text); dpr: box.dpr }
+        }
         maximumLength: 100
 
         Accessible.role: Accessible.EditableText
