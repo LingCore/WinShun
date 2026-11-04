@@ -81,6 +81,7 @@ Window {
             spacing: 4
 
             FlatButton {
+                dpr: window.dpr
                 id: openButton
                 visible: window.preview.path.length > 0
                 flat: true
@@ -91,6 +92,7 @@ Window {
                 Component.onCompleted: window.frame.addControl(openButton)
             }
             FlatButton {
+                dpr: window.dpr
                 id: closeButton
                 flat: true
                 width: 32

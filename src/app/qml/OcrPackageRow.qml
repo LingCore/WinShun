@@ -14,6 +14,7 @@ SettingRow {
     bodyShown: !ocrPackage.available
 
     FlatButton {
+        dpr: row.dpr
         objectName: "downloadEnhancedOcr"
         visible: !row.ocrPackage.available
         text: row.ocrPackage.busy ? qsTr("取消") : qsTr("下载并安装")
@@ -35,6 +36,7 @@ SettingRow {
             }
         },
         FlatButton {
+            dpr: row.dpr
             objectName: "installLocalEnhancedOcr"
             text: qsTr("从本地安装增强识别包…")
             enabled: !row.ocrPackage.busy

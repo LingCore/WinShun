@@ -79,6 +79,7 @@ SettingsSection {
             color: Theme.accent
         }
         FlatButton {
+            dpr: cliSection.dpr
             objectName: "enableCliButton"
             visible: cliSection.needsAction
             enabled: cliSection.checked && !cliSection.cli.busy
@@ -88,6 +89,7 @@ SettingsSection {
             onClicked: cliSection.holdPlace(() => cliSection.cli.enable())
         }
         FlatButton {
+            dpr: cliSection.dpr
             visible: cliSection.cliState.removable === true
             enabled: !cliSection.cli.busy
             text: qsTr("从 PATH 移除")
@@ -103,6 +105,7 @@ SettingsSection {
                      + "\n" + cliSection.cli.example
 
         FlatButton {
+            dpr: cliSection.dpr
             text: qsTr("复制命令")
             glyph: "" // Copy
             onClicked: cliSection.editor.copyText(cliSection.cli.example)
@@ -115,6 +118,7 @@ SettingsSection {
         shown: cliSection.cli.message.length > 0
 
         FlatButton {
+            dpr: cliSection.dpr
             text: qsTr("知道了")
             flat: true
             onClicked: cliSection.cli.clearMessage()

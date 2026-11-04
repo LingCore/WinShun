@@ -11,6 +11,7 @@ Item {
 
     property string keys
     property bool taken: false
+    property real dpr: Screen.devicePixelRatio // the window's, passed by a host that has it (GitHub #111)
 
     width: Math.max(height, Math.ceil(label.implicitWidth) + 12)
     height: Theme.keycapHeight + 4
@@ -19,7 +20,7 @@ Item {
         id: capPart
         anchors.fill: parent
         part: Theme.keyHint
-        dpr: Screen.devicePixelRatio
+        dpr: cap.dpr
     }
 
     CenteredNumber {

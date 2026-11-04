@@ -235,6 +235,7 @@ Window {
                 spacing: 8
 
                 FlatButton {
+                    dpr: notice.dpr
                     role: "dialog"
                     visible: notice.needsRestart
                     text: qsTr("重启资源管理器")
@@ -244,6 +245,7 @@ Window {
                     }
                 }
                 FlatButton {
+                    dpr: notice.dpr
                     role: "dialog"
                     visible: notice.outcome.length === 0
                     text: qsTr("打开设置")
@@ -253,6 +255,7 @@ Window {
                     }
                 }
                 FlatButton {
+                    dpr: notice.dpr
                     role: "dialog"
                     visible: notice.outcome.length === 0
                     text: qsTr("撤销")

@@ -546,6 +546,7 @@ Item {
             spacing: 2
 
             RowAction {
+                dpr: row.dpr
                 id: switchPageAction
                 visible: row.switchReady
                 glyph: "" // Settings (gear)
@@ -555,6 +556,7 @@ Item {
             }
 
             RowAction {
+                dpr: row.dpr
                 id: adminAction
                 objectName: "adminAction"
                 visible: row.elevatable && !row.switchReady
@@ -564,6 +566,7 @@ Item {
                 onClicked: row.actionRequested(row.index, Launcher.RunAsAdmin)
             }
             RowAction {
+                dpr: row.dpr
                 id: revealAction
                 visible: !row.switchReady && (!row.isApp || row.revealable)
                 glyph: "" // OpenFolder
@@ -572,6 +575,7 @@ Item {
                 onClicked: row.actionRequested(row.index, Launcher.Reveal)
             }
             RowAction {
+                dpr: row.dpr
                 id: terminalAction
                 visible: !row.isApp // a file's or folder's: its folder in cmd
                 glyph: "" // CommandPrompt
@@ -579,6 +583,7 @@ Item {
                 onClicked: row.actionRequested(row.index, Launcher.OpenTerminal)
             }
             RowAction {
+                dpr: row.dpr
                 id: copyAction
                 visible: row.copyable && !row.switchReady // a desktop app copies its program; a packaged one has none
                 glyph: "" // Copy
@@ -587,6 +592,7 @@ Item {
                 onClicked: row.actionRequested(row.index, Launcher.CopyItem)
             }
             RowAction {
+                dpr: row.dpr
                 id: copyPathAction
                 visible: !row.settingsAction && !row.switchReady && (!row.plugin || row.pluginCopies)
                 glyph: row.plugin ? "" : "copyPath" // Copy; else drawn by Glyph: a box holding "\\.."
@@ -595,6 +601,7 @@ Item {
                 onClicked: row.actionRequested(row.index, Launcher.CopyPath)
             }
             RowAction {
+                dpr: row.dpr
                 id: deleteAction
                 visible: !row.isApp // uninstalling is for Windows Settings
                 glyph: "" // Delete

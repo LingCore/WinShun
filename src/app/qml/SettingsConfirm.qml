@@ -379,12 +379,14 @@ Window {
                     spacing: 8
 
                     FlatButton {
+                        dpr: window.dpr
                         id: denyButton
                         role: "dialog"
                         text: qsTr("拒绝")
                         onClicked: window.answer(0)
                     }
                     FlatButton {
+                        dpr: window.dpr
                         role: "dialog"
                         highlighted: true
                         enabled: window.armed

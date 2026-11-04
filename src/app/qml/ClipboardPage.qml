@@ -651,6 +651,7 @@ Item {
             // Pinned: stays up, on top, through pastes and clicks elsewhere
             // (Clipboard.pinned). Not while pasting into a field of Win顺's.
             RowAction {
+                dpr: page.dpr
                 id: pinButton
                 small: page.metrics.dense
                 visible: !page.intoField
@@ -669,6 +670,7 @@ Item {
             // switch as Alt+P and →, so one state and one memory
             // (clipboard.previewOpen); it only makes it visible and clickable.
             RowAction {
+                dpr: page.dpr
                 id: eyeButton
                 small: page.metrics.dense
                 anchors.right: pinButton.visible ? pinButton.left : parent.right
@@ -962,6 +964,7 @@ Item {
                         visible: parent.off
                     }
                     FlatButton {
+                        dpr: page.dpr
                         anchors.horizontalCenter: parent.horizontalCenter
                         visible: parent.off
                         highlighted: true
@@ -1180,6 +1183,7 @@ Item {
                 KeyHint { id: backHint; metrics: page.metrics; keys: "Esc"; label: qsTr("返回"); visible: page.intoField && hints.roomy }
                 KeyHint { id: tabHint; metrics: page.metrics; keys: "Tab"; label: qsTr("分类"); visible: hints.tabFits }
                 KeyHint {
+                    dpr: page.dpr
                     id: previewHint
                     metrics: page.metrics
                     keys: "→"

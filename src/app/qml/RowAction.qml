@@ -20,7 +20,7 @@ Rectangle {
     readonly property color foreground: surface.out("foreground", danger ? Theme.accentText : checked ? Theme.accent
                                                     : area.containsMouse ? Theme.text : Theme.subtext)
     property string role: "rowAction" // Hook.role
-    readonly property real dpr: Screen.devicePixelRatio
+    property real dpr: Screen.devicePixelRatio // the window's, passed by a host that has it (GitHub #111)
 
     // A handle to drag (a clipboard row in its group's order): held, every
     // move of the mouse is told, in this button's coordinates.

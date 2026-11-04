@@ -283,11 +283,13 @@ Item {
                         spacing: 8
 
                         FlatButton {
+                            dpr: dialog.dpr
                             role: "dialog"
                             text: qsTr("取消")
                             onClicked: dialog.reject()
                         }
                         FlatButton {
+                            dpr: dialog.dpr
                             id: primary
                             objectName: "pluginDialogAccept"
                             role: "dialog"

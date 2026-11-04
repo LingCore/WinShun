@@ -176,6 +176,7 @@ Item {
     }
 
     KeyCap {
+        dpr: row.dpr
         id: keycap
         visible: row.hint > 0
         anchors.right: parent.right

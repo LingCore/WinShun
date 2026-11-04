@@ -1473,6 +1473,7 @@ Window {
                             wrapMode: Text.Wrap
                         }
                         FlatButton {
+                            dpr: window.dpr
                             id: clashButton
                             anchors.verticalCenter: parent.verticalCenter
                             text: parent.other === "right" ? qsTr("Win顺 改用右 Ctrl") : qsTr("Win顺 改用左 Ctrl")
@@ -1546,6 +1547,7 @@ Window {
                                 onAccepted: if (window.editor.addDoubleCtrlExcludedApp(text)) clear()
                             }
                             FlatButton {
+                                dpr: window.dpr
                                 text: qsTr("添加")
                                 enabled: doubleCtrlAppInput.text.trim().length > 0
                                 onClicked: if (window.editor.addDoubleCtrlExcludedApp(doubleCtrlAppInput.text))
@@ -1570,6 +1572,7 @@ Window {
                     description: qsTr("另设一个组合键打开搜索框，例如 Alt+Space")
 
                     FlatButton {
+                        dpr: window.dpr
                         visible: window.editor.hotkey.length > 0 && !hotkeyRecorder.recording
                         flat: true
                         text: qsTr("清除")
@@ -1604,6 +1607,7 @@ Window {
                                : qsTr("还没设，在“插件”的截图卡片上录一个，例如 F1；贴图等其他快捷键也在那里")
 
                     FlatButton {
+                        dpr: window.dpr
                         objectName: "captureHotkeyButton"
                         text: window.editor.screenshotInstalled ? qsTr("去设置") : qsTr("去插件库")
                         onClicked: window.showCaptureCard()
@@ -1695,6 +1699,7 @@ Window {
                         onActivated: (index) => taskbarButtonRow.choose(index)
                     }
                     FlatButton {
+                        dpr: window.dpr
                         visible: !taskbarButtonRow.boxes && !taskbarButtonRow.pinned
                         text: qsTr("固定")
                         glyph: "" // Pin
@@ -1743,6 +1748,7 @@ Window {
                                  : qsTr("已隐藏；可在任务栏设置中恢复")
 
                     FlatButton {
+                        dpr: window.dpr
                         text: qsTr("打开任务栏设置")
                         onClicked: window.editor.openUrl("ms-settings:taskbar")
                     }
@@ -1799,12 +1805,14 @@ Window {
                             wrapMode: Text.Wrap
                         }
                         FlatButton {
+                            dpr: window.dpr
                             visible: window.editor.winSState === "blocked"
                                      || (window.editor.winSState === "failed" && !window.editor.taskbarWinS)
                             text: qsTr("还给 Windows")
                             onClicked: window.editor.giveBackToWindows("S")
                         }
                         FlatButton {
+                            dpr: window.dpr
                             visible: parent.restartable
                             text: qsTr("现在重启资源管理器")
                             glyph: "" // Sync
@@ -1885,6 +1893,7 @@ Window {
                                 onEditingFinished: window.editor.fileManagerOpenCommand = text
                             }
                             FlatButton {
+                                dpr: window.dpr
                                 id: browseOpen
                                 text: qsTr("浏览…")
                                 onClicked: {
@@ -1913,6 +1922,7 @@ Window {
                                 onEditingFinished: window.editor.fileManagerRevealCommand = text
                             }
                             FlatButton {
+                                dpr: window.dpr
                                 id: browseReveal
                                 text: qsTr("浏览…")
                                 onClicked: {
@@ -2177,6 +2187,7 @@ Window {
                     bodyShown: byHand
 
                     FlatButton {
+                        dpr: window.dpr
                         visible: opusMenuRow.setup !== "manual"
                         enabled: opusMenuRow.setup !== "busy"
                         flat: opusMenuRow.setup === "on" && !opusMenuRow.confirming
@@ -2234,6 +2245,7 @@ Window {
                                 readOnly: true
                             }
                             FlatButton {
+                                dpr: window.dpr
                                 id: copyOpusCommand
                                 text: opusMenuRow.copied ? qsTr("已复制") : qsTr("复制")
                                 onClicked: {
@@ -2243,6 +2255,7 @@ Window {
                                 }
                             }
                             FlatButton {
+                                dpr: window.dpr
                                 id: openOpusPrefs
                                 visible: opusMenuRow.setup !== "manual" // there it is on the right
                                 text: qsTr("打开 Opus 设置")
@@ -2268,6 +2281,7 @@ Window {
                     tip: qsTr("支持资源管理器、桌面、Directory Opus、Total Commander、XYplorer、OneCommander 及“打开/另存为”对话框（在当前窗口跳转）；在 Pulse 中交给 Pulse 处理；在其他窗口中用默认文件管理器打开。再按一次关闭")
 
                     FlatButton {
+                        dpr: window.dpr
                         visible: window.editor.folderMenuHotkey.length > 0 && !folderMenuHotkeyRecorder.recording
                         flat: true
                         text: qsTr("清除")
@@ -2469,6 +2483,7 @@ Window {
                                 font.pixelSize: Theme.fontCaption
                             }
                             FlatButton {
+                                dpr: window.dpr
                                 anchors.verticalCenter: parent.verticalCenter
                                 visible: (shortcutRow.modelData?.setting ?? null) !== null
                                 text: qsTr("去设置")
@@ -2505,6 +2520,7 @@ Window {
                                  : qsTr("没有记录")
 
                     FlatButton {
+                        dpr: window.dpr
                         id: clearHistoryButton
 
                         property bool confirming: false
@@ -2675,6 +2691,7 @@ Window {
                     tip: qsTr("文件名仍显示不全时，鼠标悬停在该行上会显示完整名称和路径")
 
                     FlatButton {
+                        dpr: window.dpr
                         text: qsTr("恢复默认宽度")
                         enabled: window.editor.launcherWidthSet
                         onClicked: window.editor.resetLauncherWidth()
@@ -2812,6 +2829,7 @@ Window {
                                  : qsTr("普通文件夹已包含在整盘索引中；mklink 创建的链接文件夹可在这里额外添加，管理员和索引服务模式也能用。")
 
                     FlatButton {
+                        dpr: window.dpr
                         text: qsTr("添加文件夹…")
                         glyph: "" // Add
                         onClicked: {
@@ -2845,6 +2863,7 @@ Window {
                                 wrapMode: Text.Wrap
                             }
                             FlatButton {
+                                dpr: window.dpr
                                 id: toShares
                                 visible: foldersRow.networkPath.length > 0
                                 text: qsTr("加到网络共享")
@@ -2945,6 +2964,7 @@ Window {
                     description: qsTr("这些文件夹里的内容都不出现在结果里")
 
                     FlatButton {
+                        dpr: window.dpr
                         text: qsTr("添加文件夹")
                         glyph: "" // Add
                         onClicked: window.editor.addExcludedFolder()
@@ -3021,6 +3041,7 @@ Window {
                                         elide: Text.ElideMiddle
                                     }
                                     FlatButton {
+                                        dpr: window.dpr
                                         id: removePath
                                         anchors.right: parent.right
                                         anchors.rightMargin: 6
@@ -3079,6 +3100,7 @@ Window {
                                 onAccepted: if (window.editor.addExcludedName(text)) clear()
                             }
                             FlatButton {
+                                dpr: window.dpr
                                 text: qsTr("添加")
                                 enabled: nameInput.text.trim().length > 0
                                 onClicked: if (window.editor.addExcludedName(nameInput.text)) nameInput.clear()
@@ -3128,6 +3150,7 @@ Window {
                                 onAccepted: if (window.editor.addExcludedTypes(text)) clear()
                             }
                             FlatButton {
+                                dpr: window.dpr
                                 text: qsTr("添加")
                                 enabled: typeInput.text.trim().length > 0
                                 onClicked: if (window.editor.addExcludedTypes(typeInput.text)) typeInput.clear()
@@ -3170,6 +3193,7 @@ Window {
                                 onAccepted: if (window.editor.addExcludedFileNames(text)) clear()
                             }
                             FlatButton {
+                                dpr: window.dpr
                                 text: qsTr("添加")
                                 enabled: fileNameInput.text.trim().length > 0
                                 onClicked: if (window.editor.addExcludedFileNames(fileNameInput.text)) fileNameInput.clear()
@@ -3241,6 +3265,7 @@ Window {
                             }
                         },
                         FlatButton {
+                            dpr: window.dpr
                             text: qsTr("刷新磁盘列表")
                             onClicked: window.editor.refreshDrives()
                         }
@@ -3314,6 +3339,7 @@ Window {
                     }
 
                     FlatButton {
+                        dpr: window.dpr
                         // 管理员直读 asked for while running with normal rights, or a
                         // portable copy wanting the MFT read this once: UAC asks once.
                         visible: window.editor.isAdministrator && !window.editor.isElevated
@@ -3367,6 +3393,7 @@ Window {
                     bodyShown: window.editor.indexServiceMessage.length > 0
 
                     FlatButton {
+                        dpr: window.dpr
                         // Install, or, when the service is in a place a non-administrator
                         // could change, repair it (reinstall into a protected folder).
                         visible: window.editor.indexServiceInstallable
@@ -3377,6 +3404,7 @@ Window {
                         onClicked: window.editor.installIndexService()
                     }
                     FlatButton {
+                        dpr: window.dpr
                         visible: window.editor.indexServiceInstallable && window.editor.indexServiceInstalled
                                  && !window.editor.indexServiceUnsafeLocation
                         text: qsTr("卸载索引服务")
@@ -3472,17 +3500,20 @@ Window {
                                 onTextChanged: shareProblem.text = ""
                             }
                             FlatButton {
+                                dpr: window.dpr
                                 visible: sharesRow.typedServer.length === 0
                                 text: qsTr("添加")
                                 enabled: shareInput.text.trim().length > 0
                                 onClicked: sharesRow.add(shareInput.text)
                             }
                             FlatButton {
+                                dpr: window.dpr
                                 visible: sharesRow.typedServer.length > 0
                                 text: sharesRow.typedWsl ? qsTr("查看 WSL 发行版") : qsTr("查看共享的文件夹")
                                 onClicked: sharesRow.listShares(sharesRow.typedServer)
                             }
                             FlatButton {
+                                dpr: window.dpr
                                 text: qsTr("选择文件夹…")
                                 onClicked: {
                                     const path = window.editor.pickFolder(qsTr("选择要搜索的网络或 WSL 文件夹"))
@@ -3520,6 +3551,7 @@ Window {
                                 spacing: 6
 
                                 FlatButton {
+                                    dpr: window.dpr
                                     visible: sharesRow.listSignIn
                                     highlighted: true
                                     text: qsTr("登录")
@@ -3688,6 +3720,7 @@ Window {
                     description: qsTr("按“最匹配”排序时，名字差不多的结果里这些类型排在前面，例如搜 curl 时 curl.exe 排在文件夹 curl 和 curl.h 前面。用分号或逗号隔开，留空就不优先")
 
                     FlatButton {
+                        dpr: window.dpr
                         visible: !window.editor.preferredTypesDefault
                         text: qsTr("恢复默认")
                         onClicked: window.editor.resetPreferredTypes()
@@ -3955,6 +3988,7 @@ Window {
                     description: qsTr("仅在搜索结果中生效，再按一次关闭，鼠标中键点一行也行。可直接录制空格：刚输入完时空格照常输入，选过结果或打开预览后才开关预览；Shift+空格始终输入空格。Backspace 清除，Esc 取消。")
 
                     FlatButton {
+                        dpr: window.dpr
                         text: qsTr("恢复默认")
                         enabled: window.editor.previewHotkey !== "Alt+P"
                         onClicked: window.editor.previewHotkey = "Alt+P"
@@ -4131,6 +4165,7 @@ Window {
                                 onAccepted: if (window.editor.addContentExtensions(text)) clear()
                             }
                             FlatButton {
+                                dpr: window.dpr
                                 text: qsTr("添加")
                                 enabled: extensionInput.text.trim().length > 0
                                 onClicked: if (window.editor.addContentExtensions(extensionInput.text)) extensionInput.clear()
@@ -4222,6 +4257,7 @@ Window {
                         description: modelData.files ?? (extensions.length > 0 ? extensions : qsTr("列表里没有这类文件"))
 
                         FlatButton {
+                            dpr: window.dpr
                             glyph: "" // Remove (minus)
                             enabled: !sizeRow.inKB || sizeRow.kb > 1
                             onClicked: window.editor.setContentMaxSizeMB(sizeRow.index, sizeRow.down)
@@ -4239,6 +4275,7 @@ Window {
                             }
                         }
                         FlatButton {
+                            dpr: window.dpr
                             glyph: "" // Add
                             enabled: sizeRow.mb < 4096
                             onClicked: window.editor.setContentMaxSizeMB(sizeRow.index, sizeRow.up)
@@ -4400,6 +4437,7 @@ Window {
                                 onAccepted: if (window.editor.addClipboardExcludedApp(text)) clear()
                             }
                             FlatButton {
+                                dpr: window.dpr
                                 text: qsTr("添加")
                                 enabled: appInput.text.trim().length > 0
                                 onClicked: if (window.editor.addClipboardExcludedApp(appInput.text)) appInput.clear()
@@ -4579,6 +4617,7 @@ Window {
                             spacing: 12
 
                             FlatButton {
+                                dpr: window.dpr
                                 text: qsTr("现在重启资源管理器")
                                 glyph: "" // Sync
                                 onClicked: window.editor.restartExplorer()
@@ -4596,6 +4635,7 @@ Window {
                             spacing: 12
 
                             FlatButton {
+                                dpr: window.dpr
                                 text: qsTr("还给 Windows")
                                 onClicked: window.editor.giveBackToWindows("V")
                             }
@@ -4616,6 +4656,7 @@ Window {
                     description: qsTr("不想换掉 Win+V 时用，例如 Win+Alt+V")
 
                     FlatButton {
+                        dpr: window.dpr
                         visible: window.editor.clipboardHotkey.length > 0 && !clipHotkeyRecorder.recording
                         flat: true
                         text: qsTr("清除")
@@ -4835,6 +4876,7 @@ Window {
                                  : qsTr("从 Ditto、文本文件（.txt）或表格文件（.csv）导入，放进一个新分组里，不会被自动删除")
 
                     FlatButton {
+                        dpr: window.dpr
                         visible: clipImport.ditto.length > 0
                         enabled: !window.editor.clipboardImporting
                         text: qsTr("从 Ditto 导入")
@@ -4845,6 +4887,7 @@ Window {
                         }
                     }
                     FlatButton {
+                        dpr: window.dpr
                         text: window.editor.clipboardImporting ? qsTr("取消") : qsTr("导入…")
                         glyph: window.editor.clipboardImporting ? "\uE711" : "\uE8B5" // Cancel, Import
                         onClicked: window.editor.clipboardImporting ? window.editor.cancelClipboardImport() : clipImport.pick()
@@ -4863,11 +4906,13 @@ Window {
                         onActivated: (index) => clipImport.split = index
                     }
                     FlatButton {
+                        dpr: window.dpr
                         text: qsTr("取消")
                         flat: true
                         onClicked: clipImport.path = ""
                     }
                     FlatButton {
+                        dpr: window.dpr
                         text: qsTr("开始导入")
                         highlighted: true
                         onClicked: clipImport.start()
@@ -4884,6 +4929,7 @@ Window {
                                    : qsTr("没有记录")
 
                     FlatButton {
+                        dpr: window.dpr
                         id: clearClipboardButton
 
                         property bool confirming: false
@@ -4939,6 +4985,7 @@ Window {
                                : ""
 
                     FlatButton {
+                        dpr: window.dpr
                         visible: !window.updater.available
                         enabled: !window.updater.checking
                         text: qsTr("检查更新")
@@ -4946,6 +4993,7 @@ Window {
                         onClicked: window.updater.check(true)
                     }
                     FlatButton {
+                        dpr: window.dpr
                         visible: window.updater.available
                         highlighted: true
                         text: qsTr("查看 %1").arg(window.updater.availableVersion)
@@ -4980,6 +5028,7 @@ Window {
                     bodyShown: window.backup.busy || window.backup.problem.length > 0 || window.backup.message.length > 0
 
                     FlatButton {
+                        dpr: window.dpr
                         objectName: "backupExportButton"
                         enabled: !window.backup.busy
                         text: qsTr("导出备份…")
@@ -5013,12 +5062,14 @@ Window {
                                  + "\n" + window.editor.backupFolder
 
                     FlatButton {
+                        dpr: window.dpr
                         visible: backupRow.on
                         text: qsTr("打开")
                         glyph: "" // FolderOpen
                         onClicked: window.backup.openFolder()
                     }
                     FlatButton {
+                        dpr: window.dpr
                         visible: backupRow.on
                         text: qsTr("更改")
                         onClicked: window.editor.chooseBackupFolder()
@@ -5040,12 +5091,14 @@ Window {
                     description: qsTr("选择 ZIP 备份，校验通过后恢复并重启；当前设置先存到本机数据文件夹的 backups 中。换机导出的备份保留本机的备份和索引位置。")
 
                     FlatButton {
+                        dpr: window.dpr
                         visible: window.editor.backupFolder.length > 0
                         enabled: !window.backup.busy
                         text: qsTr("立即备份")
                         onClicked: window.backup.backUpNow()
                     }
                     FlatButton {
+                        dpr: window.dpr
                         enabled: !window.backup.busy
                         text: qsTr("从备份恢复…")
                         onClicked: window.backup.restore(window)
@@ -5145,18 +5198,21 @@ Window {
                     bodyShown: moving || window.editor.indexFolderProblem.length > 0 || window.editor.indexFolderNote.length > 0
 
                     FlatButton {
+                        dpr: window.dpr
                         text: qsTr("打开")
                         glyph: "" // FolderOpen
                         enabled: !indexFolderRow.moving
                         onClicked: window.editor.openIndexFolder()
                     }
                     FlatButton {
+                        dpr: window.dpr
                         text: qsTr("更改")
                         glyph: "" // MoveToFolder
                         enabled: !indexFolderRow.moving
                         onClicked: window.editor.chooseIndexFolder()
                     }
                     FlatButton {
+                        dpr: window.dpr
                         visible: !window.editor.indexFolderIsDefault
                         text: qsTr("恢复默认")
                         enabled: !indexFolderRow.moving
@@ -5217,6 +5273,7 @@ Window {
                     description: qsTr("搜索记录、剪贴板历史和日志") + "\n" + window.editor.dataFolder
 
                     FlatButton {
+                        dpr: window.dpr
                         text: qsTr("打开")
                         glyph: "" // FolderOpen
                         onClicked: window.editor.openDataFolder()
@@ -5230,6 +5287,7 @@ Window {
                                  + (window.editor.diagnosticsStatus.length > 0 ? "\n" + window.editor.diagnosticsStatus : "")
 
                     FlatButton {
+                        dpr: window.dpr
                         text: window.editor.diagnosticsBusy ? qsTr("正在导出…") : qsTr("导出诊断日志")
                         enabled: !window.editor.diagnosticsBusy
                         glyph: ""
@@ -5243,6 +5301,7 @@ Window {
                     description: qsTr("所有设置回到刚安装时的样子")
 
                     FlatButton {
+                        dpr: window.dpr
                         id: resetButton
 
                         property bool confirming: false

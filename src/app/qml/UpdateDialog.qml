@@ -319,6 +319,7 @@ Item {
                     spacing: 8
 
                     FlatButton {
+                        dpr: dialog.dpr
                         role: "dialog"
                         visible: !dialog.updater.checking && (card.stage === "" || card.cancellable)
                                  && (card.newer || dialog.updater.problem.length > 0)
@@ -335,6 +336,7 @@ Item {
                         }
                     }
                     FlatButton {
+                        dpr: dialog.dpr
                         id: primary
                         role: "dialog"
                         highlighted: true

@@ -415,6 +415,7 @@ Item {
                 onClicked: row.clickToPaste ? row.previewRequested(row.index) : row.pasteRequested(row.index)
             }
             RowAction {
+                dpr: row.dpr
                 id: pinAction
                 small: row.metrics.dense
                 glyph: row.pinned ? "" : "" // Unpin, Pin
@@ -423,6 +424,7 @@ Item {
                 onClicked: row.actionRequested(row.index, Clipboard.Pin)
             }
             RowAction {
+                dpr: row.dpr
                 id: removeAction
                 small: row.metrics.dense
                 glyph: "" // Delete

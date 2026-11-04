@@ -324,6 +324,7 @@ Rectangle {
                         lineHeight: 1.15
                     }
                     FlatButton {
+                        dpr: card.dpr
                         id: confirmButton
                         visible: card.elevation === "unconfirmed" || card.elevation === "changed"
                         anchors.right: parent.right
@@ -777,6 +778,7 @@ Rectangle {
                                         onActivated: (index) => choice.choose(index)
                                     }
                                     FlatButton {
+                                        dpr: card.dpr
                                         id: menuButton
                                         visible: !choice.fits
                                         implicitHeight: 32
@@ -811,6 +813,7 @@ Rectangle {
                                         elide: Text.ElideMiddle
                                     }
                                     FlatButton {
+                                        dpr: card.dpr
                                         implicitHeight: 32
                                         text: qsTr("选择")
                                         onClicked: settingRow.kind === "folder" ? card.plugins.pickFolderSetting(card.pluginId, settingRow.modelData.key)

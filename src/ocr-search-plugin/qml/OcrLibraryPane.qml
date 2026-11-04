@@ -42,6 +42,7 @@ Item {
                 font.pixelSize: Theme.fontCaption
             }
             FlatButton {
+                dpr: pane.dpr
                 objectName: "addOcrFolder"
                 Layout.fillWidth: true
                 text: qsTr("添加文件夹")
@@ -69,6 +70,7 @@ Item {
                 font.pixelSize: Theme.fontCaption
             }
             FlatButton {
+                dpr: pane.dpr
                 Layout.fillWidth: true
                 text: qsTr("排除文件夹…")
                 flat: true
@@ -98,6 +100,7 @@ Item {
                 lineHeight: 1.4
             }
             FlatButton {
+                dpr: pane.dpr
                 id: capacity
                 Layout.fillWidth: true
                 text: qsTr("容量上限：%1 MB").arg(pane.editor.capacityMB)
@@ -112,12 +115,14 @@ Item {
                 onActivated: (index) => pane.editor.capacityMB = [256, 512, 1024, 2048][index]
             }
             FlatButton {
+                dpr: pane.dpr
                 Layout.fillWidth: true
                 visible: pane.editor.setupNeeded
                 text: qsTr("安装增强识别组件…")
                 onClicked: pane.editor.setupRequested()
             }
             FlatButton {
+                dpr: pane.dpr
                 Layout.fillWidth: true
                 text: qsTr("重新检查所有文件")
                 flat: true
@@ -125,6 +130,7 @@ Item {
                 onClicked: pane.editor.start(true)
             }
             FlatButton {
+                dpr: pane.dpr
                 readonly property bool unfinished: pane.editor.errors.length > 0
                 readonly property bool textless: pane.editor.textless.length > 0
                 Layout.fillWidth: true
@@ -142,6 +148,7 @@ Item {
                 font.pixelSize: Theme.fontCaption
             }
             FlatButton {
+                dpr: pane.dpr
                 id: clearButton
                 Layout.fillWidth: true
                 text: qsTr("清空索引…")
@@ -207,6 +214,7 @@ Item {
             elide: Text.ElideMiddle
         }
         FlatButton {
+            dpr: pane.dpr
             objectName: "startOcrIndex"
             Layout.fillWidth: true
             highlighted: true

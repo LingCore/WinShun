@@ -15,7 +15,7 @@ Rectangle {
     property bool keyboardActivation: true
     property real corner: -1 // a radius of the host's (-1: the style's)
     property string role // where it stands (Hook.role: "footer", "toolbar", "dialog" …)
-    readonly property real dpr: Screen.devicePixelRatio
+    property real dpr: Screen.devicePixelRatio // the window's, passed by a host that has it (GitHub #111)
     readonly property color foreground: surface.out("foreground", highlighted ? Theme.accentText : Theme.text)
 
     signal clicked()

@@ -118,6 +118,7 @@ Column {
         signal recorded(string hotkey)
 
         FlatButton {
+            dpr: card.dpr
             visible: row.hotkey.length > 0 && !recorder.recording
             flat: true
             text: qsTr("清除")
@@ -153,6 +154,7 @@ Column {
 
         // A click takes no focus: the box goes on recording until it is done here.
         FlatButton {
+            dpr: card.dpr
             visible: keyRow.info.text.length > 0 && (keyRow.hovered || keyRecorder.recording || activeFocus)
             flat: true
             text: qsTr("清除")
@@ -163,6 +165,7 @@ Column {
             }
         }
         FlatButton {
+            dpr: card.dpr
             visible: keyRow.info.changed
             flat: true
             text: qsTr("恢复默认")
@@ -284,6 +287,7 @@ Column {
                         description: qsTr("按它开始截图，截图时再按一次取消")
 
                         FlatButton {
+                            dpr: card.dpr
                             visible: card.editor.captureHotkey.length > 0 && !hotkeyRecorder.recording
                             flat: true
                             text: qsTr("清除")
@@ -466,11 +470,13 @@ Column {
                         description: card.editor.captureSaveFolder.length > 0 ? card.editor.captureSaveFolder : qsTr("系统的“屏幕截图”文件夹")
 
                         FlatButton {
+                            dpr: card.dpr
                             text: qsTr("使用系统默认")
                             enabled: card.editor.captureSaveFolder.length > 0
                             onClicked: card.editor.captureSaveFolder = ""
                         }
                         FlatButton {
+                            dpr: card.dpr
                             text: qsTr("选择文件夹…")
                             onClicked: {
                                 const chosen = card.editor.pickFolder(qsTr("选择截图保存文件夹"))
@@ -560,6 +566,7 @@ Column {
                             title: modelData.title
 
                             FlatButton {
+                                dpr: card.dpr
                                 id: pick
                                 implicitWidth: card.pickWidth
                                 text: mouseRow.current >= 0 ? mouseRow.choices[mouseRow.current].text : ""

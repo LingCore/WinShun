@@ -82,6 +82,7 @@ Window {
             id: actions
             spacing: 6
             FlatButton {
+                dpr: panel.dpr
                 objectName: "longCapturePreviewToggle"
                 text: qsTr("预览"); glyph: String.fromCharCode(0xE890)
                 flat: !panel.previewVisible; keyboardActivation: false
@@ -89,35 +90,41 @@ Window {
                 onClicked: panel.previewVisible = !panel.previewVisible
             }
             FlatButton {
+                dpr: panel.dpr
                 text: qsTr("诊断"); flat: true; keyboardActivation: false
                 Accessible.role: Accessible.Button; Accessible.name: qsTr("复制诊断信息")
                 onClicked: panel.capture.copyDiagnostics()
             }
             FlatButton {
+                dpr: panel.dpr
                 objectName: "longCapturePin"
                 text: qsTr("贴图"); glyph: String.fromCharCode(0xE718); keyboardActivation: false
                 Accessible.role: Accessible.Button; Accessible.name: text
                 onClicked: panel.capture.exportTo(LongCapture.Pin)
             }
             FlatButton {
+                dpr: panel.dpr
                 objectName: "longCaptureSave"
                 text: qsTr("保存"); glyph: String.fromCharCode(0xE74E); keyboardActivation: false
                 Accessible.role: Accessible.Button; Accessible.name: text
                 onClicked: panel.capture.exportTo(LongCapture.Save)
             }
             FlatButton {
+                dpr: panel.dpr
                 objectName: "longCaptureDone"
                 text: qsTr("完成"); keyboardActivation: false
                 Accessible.role: Accessible.Button; Accessible.name: qsTr("完成并编辑")
                 onClicked: panel.capture.finish()
             }
             FlatButton {
+                dpr: panel.dpr
                 objectName: "longCaptureCancel"
                 text: qsTr("取消"); keyboardActivation: false
                 Accessible.role: Accessible.Button; Accessible.name: text
                 onClicked: panel.capture.cancel()
             }
             FlatButton {
+                dpr: panel.dpr
                 objectName: "longCaptureCopy"
                 text: qsTr("复制"); glyph: String.fromCharCode(0xE73E); highlighted: true; keyboardActivation: false
                 Accessible.role: Accessible.Button; Accessible.name: text

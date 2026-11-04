@@ -71,6 +71,7 @@ SettingsSection {
                 color: Theme.accent
             }
             FlatButton {
+                dpr: clientsSection.dpr
                 text: clientRow.modelData.connected ? qsTr("重新连接") : qsTr("连接")
                 glyph: "" // Link
                 highlighted: !clientRow.modelData.connected
@@ -84,6 +85,7 @@ SettingsSection {
                 onClicked: clientsSection.editor.installMcpSkill(clientRow.modelData.id)
             }
             FlatButton {
+                dpr: clientsSection.dpr
                 text: clientRow.isClaudeCode ? qsTr("复制命令") : qsTr("复制配置")
                 glyph: "" // Copy
                 enabled: clientsSection.relayFound
@@ -99,12 +101,14 @@ SettingsSection {
         shown: clientsSection.editor.mcp
 
         FlatButton {
+            dpr: clientsSection.dpr
             text: qsTr("复制路径")
             glyph: "" // Copy
             enabled: clientsSection.relayFound
             onClicked: clientsSection.editor.copyText(clientsSection.editor.mcpRelayPath)
         }
         FlatButton {
+            dpr: clientsSection.dpr
             text: qsTr("复制 JSON")
             enabled: clientsSection.relayFound
             onClicked: clientsSection.editor.copyMcpSnippet("")
@@ -117,6 +121,7 @@ SettingsSection {
         shown: clientsSection.editor.mcp && clientsSection.editor.mcpMessage.length > 0
 
         FlatButton {
+            dpr: clientsSection.dpr
             text: qsTr("知道了")
             flat: true
             onClicked: clientsSection.editor.clearMcpMessage()

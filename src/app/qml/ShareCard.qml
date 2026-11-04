@@ -133,6 +133,7 @@ Rectangle {
         spacing: 4
 
         FlatButton {
+            dpr: card.dpr
             visible: card.share.startable === true
             implicitHeight: 32
             highlighted: true
@@ -140,6 +141,7 @@ Rectangle {
             onClicked: card.startClicked()
         }
         FlatButton {
+            dpr: card.dpr
             visible: card.kind === "share" && card.share.signIn
             implicitHeight: 32
             highlighted: true
@@ -147,12 +149,14 @@ Rectangle {
             onClicked: card.signInClicked()
         }
         FlatButton {
+            dpr: card.dpr
             visible: card.kind === "share" && card.share.suspect
             implicitHeight: 32
             text: qsTr("按现在的内容更新")
             onClicked: card.acceptClicked()
         }
         FlatButton {
+            dpr: card.dpr
             visible: card.kind === "share" ? !card.share.signIn && card.share.startable !== true : card.share.verifiable === true
             enabled: !card.share.busy
             implicitHeight: 32
@@ -161,6 +165,7 @@ Rectangle {
             onClicked: card.verifyClicked()
         }
         FlatButton {
+            dpr: card.dpr
             implicitHeight: 32
             flat: true
             text: qsTr("移除")

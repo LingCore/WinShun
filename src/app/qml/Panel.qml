@@ -947,6 +947,7 @@ Item {
             elide: Text.ElideRight
         }
         FlatButton {
+            dpr: panel.dpr
             id: contentAction
             objectName: "panelContentSearch"
             anchors.right: parent.right
@@ -965,6 +966,7 @@ Item {
     }
 
     FlatButton {
+        dpr: panel.dpr
         x: 12
         y: topDivider.y + topDivider.height + 6
         width: panel.sidebarWidth - 24

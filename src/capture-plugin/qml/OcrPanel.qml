@@ -63,6 +63,7 @@ Window {
             font.weight: Theme.fontStrong
         }
         FlatButton {
+            dpr: window.dpr
             id: closeButton
             anchors.right: parent.right
             anchors.rightMargin: 8
@@ -168,6 +169,7 @@ Window {
                 font.pixelSize: Theme.uiBody
             }
             FlatButton {
+                dpr: window.dpr
                 objectName: "setupEnhancedOcr"
                 anchors.horizontalCenter: parent.horizontalCenter
                 visible: window.ocr.needsPackage
@@ -189,6 +191,7 @@ Window {
         spacing: 8
 
         FlatButton {
+            dpr: window.dpr
             text: qsTr("用它搜索")
             enabled: !window.ocr.busy && words.text.trim().length > 0
             onClicked: window.ocr.search(words.selectedText.length > 0 ? words.selectedText : words.text)
@@ -200,18 +203,21 @@ Window {
             onClicked: window.ocr.openLink(window.ocr.link)
         }
         FlatButton {
+            dpr: window.dpr
             visible: window.ocr.link.length === 0
             text: qsTr("网页搜索")
             enabled: !window.ocr.busy && words.text.trim().length > 0
             onClicked: window.ocr.webSearch(words.selectedText.length > 0 ? words.selectedText : words.text)
         }
         FlatButton {
+            dpr: window.dpr
             highlighted: window.ocr.link.length === 0
             text: qsTr("复制全部")
             enabled: !window.ocr.busy && words.text.length > 0
             onClicked: window.ocr.copyAll(words.text)
         }
         FlatButton {
+            dpr: window.dpr
             text: qsTr("关闭")
             onClicked: window.ocr.close()
         }

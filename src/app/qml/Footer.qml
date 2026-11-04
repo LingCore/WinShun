@@ -384,6 +384,7 @@ Item {
 
     // Two clicks, as a row's delete button: the first arms it.
     RowAction {
+        dpr: footer.dpr
         id: clearHistory
 
         property bool armed: false

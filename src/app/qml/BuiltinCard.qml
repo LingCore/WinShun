@@ -139,6 +139,7 @@ Rectangle {
                     visible: width > 0
 
                     FlatButton {
+                        dpr: card.dpr
                         id: foldButton
                         anchors.right: parent.right
                         visible: card.checked && card.hasOptions
@@ -154,6 +155,7 @@ Rectangle {
                         }
                     }
                     FlatButton {
+                        dpr: card.dpr
                         id: linkButton
                         anchors.right: parent.right
                         visible: card.checked && card.linkText.length > 0

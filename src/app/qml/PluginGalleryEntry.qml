@@ -205,6 +205,7 @@ Rectangle {
                     font.pixelSize: Theme.fontCaption
                 }
                 FlatButton {
+                    dpr: entry.dpr
                     objectName: "installPlugin-" + entry.pluginId
                     visible: entry.busy || entry.stage !== "bundled" // nothing to do with one that comes with Win顺
                     implicitHeight: 32

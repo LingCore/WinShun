@@ -250,6 +250,7 @@ Item {
             }
 
             FlatButton {
+                dpr: preview.dpr
                 objectName: "clipboardAnimationToggle"
                 visible: preview.kind === 4 && picture.animated
                 enabled: picture.ready
