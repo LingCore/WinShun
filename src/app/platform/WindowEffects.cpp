@@ -61,6 +61,7 @@ constexpr UINT kNcUahDrawFrame = 0x00AF; // WM_NCUAHDRAWFRAME
 constexpr wchar_t kOwnFrameProp[] = L"WinShun.OwnFrame";
 constexpr UINT_PTR kOwnFrameSubclass = 0x4F46;
 constexpr UINT_PTR kShadowTimer = 1;
+constexpr UINT_PTR kPictureTimer = 2; // the shadow's picture let go
 // The most a style's shadow gets (logical px, layers): a typo must not make
 // a picture of hundreds of MB, drawn again at every resize.
 constexpr double kMaxShadowReach = 64;
@@ -73,6 +74,22 @@ struct ShadowLayer {
     double dy = 0; // logical px, down
     double red = 0, green = 0, blue = 0; // 0..1
     bool operator==(const ShadowLayer&) const = default;
+};
+
+// drawShadow's picture in pieces that are the same at any size of the window
+// (one look, one scale): its corners, the one value of each of the top's and
+// the bottom's rows, and the row copied down the sides. Laid out again at
+// each size (composeShadow), with no pixel worked out anew.
+struct ShadowParts {
+    std::vector<ShadowLayer> layers; // as drawn: physical px
+    double radius = -1; // physical px
+    int margin = 0;
+    // drawShadow's bands at any size: x0, width - x1, y0, height - y1.
+    int left = 0, right = 0, top = 0, bottom = 0;
+    std::vector<std::uint32_t> topLeft, topRight, bottomLeft, bottomRight; // rows of left or right px
+    std::vector<std::uint32_t> topEdge, bottomEdge; // a value per row
+    std::vector<std::uint32_t> leftEdge, rightEdge; // the sides' row
+    bool valid() const { return radius >= 0; }
 };
 
 // A window with an own frame (setOwnFrame), and the layered window below it
@@ -93,6 +110,17 @@ struct OwnFrameState {
     double drawnDpr = 0;
     int drawnMargin = 0; // how far it reaches past the window
     bool stale = true;
+    // drawShadow's picture in parts, and the picture they are laid out in:
+    // kept while the window is resized (each step only copies), let go a
+    // while after the last.
+    ShadowParts parts;
+    HDC pictureDc = nullptr;
+    HBITMAP picture = nullptr;
+    HGDIOBJ pictureOld = nullptr;
+    std::uint32_t* pictureBits = nullptr;
+    int pictureStride = 0; // px
+    int pictureRows = 0;
+    int cleanRight = 0, cleanBottom = 0; // composeShadow's: the inside that is 0
     POINT placed {LONG_MIN, LONG_MIN};
     bool shown = false;
     // The window's opacity (QWindow::opacity, the launcher's fade): the
@@ -117,6 +145,8 @@ struct OwnFrameState {
     void hide();
     void place(const RECT& rect);
     bool draw(int width, int height, double dpr, POINT at);
+    bool makePicture(int width, int height);
+    void freePicture();
     void destroyShadow();
     void forgetShadow(); // none now: made again when it is to show
     BYTE windowAlpha() const
@@ -470,28 +500,42 @@ std::uint32_t shadowPixel(const ShadowShape& shape, double x, double y)
     return byte(1 - keep) << 24 | byte(red) << 16 | byte(green) << 8 | byte(blue);
 }
 
-// The whole picture (width × height, every pixel written). Pixel by pixel
-// only where the corners are: in the rows where every layer's sides are
-// straight a pixel depends on its column alone (one row, copied), and in the
-// columns where the top and the bottom are straight on its row alone (one
-// value). The window's inside is 0.
-void drawShadow(std::uint32_t* bits, int width, int height, const ShadowShape& shape)
-{
+// Where a picture's pixels depend on both their row and their column (the
+// corners): every layer's sides are straight in the columns x0..x1 and the
+// rows y0..y1, 2 px further in than the corners for the antialiased edge.
+struct ShadowBands {
+    int x0 = 0, x1 = 0, y0 = 0, y1 = 0;
     double up = 0, down = 0; // the layers' offsets, and the window's own (0)
+};
+
+ShadowBands shadowBands(int width, int height, const ShadowShape& shape)
+{
+    ShadowBands bands;
     for (const ShadowLayer& layer : shape.layers) {
-        up = std::min(up, layer.dy);
-        down = std::max(down, layer.dy);
+        bands.up = std::min(bands.up, layer.dy);
+        bands.down = std::max(bands.down, layer.dy);
     }
-    // 2 px further in than the corners, for the antialiased edge.
     const double straight = shape.radius + 2;
     const double left = shape.cx - shape.halfWidth, right = shape.cx + shape.halfWidth;
     const double top = shape.cy - shape.halfHeight, bottom = shape.cy + shape.halfHeight;
-    const int x0 = std::clamp(int(std::ceil(left + straight - 0.5)), 0, width);
-    const int x1 = std::clamp(int(std::floor(right - straight - 0.5)) + 1, x0, width);
-    const int y0 = std::clamp(int(std::ceil(top + down + straight - 0.5)), 0, height);
-    const int y1 = std::clamp(int(std::floor(bottom + up - straight - 0.5)) + 1, y0, height);
+    bands.x0 = std::clamp(int(std::ceil(left + straight - 0.5)), 0, width);
+    bands.x1 = std::clamp(int(std::floor(right - straight - 0.5)) + 1, bands.x0, width);
+    bands.y0 = std::clamp(int(std::ceil(top + bands.down + straight - 0.5)), 0, height);
+    bands.y1 = std::clamp(int(std::floor(bottom + bands.up - straight - 0.5)) + 1, bands.y0, height);
+    return bands;
+}
+
+// The whole picture (width × height, every pixel written; rows `stride`
+// pixels apart). Pixel by pixel only where the corners are: in the rows where
+// every layer's sides are straight a pixel depends on its column alone (one
+// row, copied), and in the columns where the top and the bottom are straight
+// on its row alone (one value). The window's inside is 0.
+void drawShadow(std::uint32_t* bits, int stride, int width, int height, const ShadowShape& shape)
+{
+    const ShadowBands bands = shadowBands(width, height, shape);
+    const int x0 = bands.x0, x1 = bands.x1, y0 = bands.y0, y1 = bands.y1;
     const auto drawRow = [&](int y, bool sidesOnly) {
-        std::uint32_t* row = bits + std::size_t(y) * width;
+        std::uint32_t* row = bits + std::size_t(y) * stride;
         const double cy = y + 0.5;
         for (int x = 0; x < x0; ++x)
             row[x] = shadowPixel(shape, x + 0.5, cy);
@@ -506,9 +550,79 @@ void drawShadow(std::uint32_t* bits, int width, int height, const ShadowShape& s
         drawRow(y, false);
     if (y0 < y1) {
         drawRow(y0, true); // its middle is inside the window
-        const std::uint32_t* first = bits + std::size_t(y0) * width;
+        const std::uint32_t* first = bits + std::size_t(y0) * stride;
         for (int y = y0 + 1; y < y1; ++y)
-            std::copy(first, first + width, bits + std::size_t(y) * width);
+            std::copy(first, first + width, bits + std::size_t(y) * stride);
+    }
+}
+
+// Whether drawShadow's picture at this size is made of the parts: each band
+// on its own side of every layer's middle (a pixel's distance to the shape
+// then depends only on how far it is from that side), and the corners not
+// cut down to the window's size.
+bool partsFit(const ShadowShape& shape, const ShadowBands& bands, double radius)
+{
+    return bands.x0 < bands.x1 && bands.y0 < bands.y1 && shape.radius == radius
+        && bands.x0 + 0.5 <= shape.cx && bands.x1 + 0.5 >= shape.cx
+        && bands.y0 + 0.5 <= shape.cy + bands.up && bands.y1 + 0.5 >= shape.cy + bands.down;
+}
+
+ShadowParts shadowParts(int width, int height, const ShadowShape& shape, const ShadowBands& bands, int margin)
+{
+    ShadowParts parts;
+    parts.layers = shape.layers;
+    parts.radius = shape.radius;
+    parts.margin = margin;
+    parts.left = bands.x0;
+    parts.right = width - bands.x1;
+    parts.top = bands.y0;
+    parts.bottom = height - bands.y1;
+    const auto pixel = [&shape](int x, int y) { return shadowPixel(shape, x + 0.5, y + 0.5); };
+    const auto corner = [&](std::vector<std::uint32_t>& to, int x, int columns, int y, int rows) {
+        to.resize(std::size_t(columns) * rows);
+        for (int row = 0; row < rows; ++row)
+            for (int column = 0; column < columns; ++column)
+                to[std::size_t(row) * columns + column] = pixel(x + column, y + row);
+    };
+    corner(parts.topLeft, 0, parts.left, 0, parts.top);
+    corner(parts.topRight, bands.x1, parts.right, 0, parts.top);
+    corner(parts.bottomLeft, 0, parts.left, bands.y1, parts.bottom);
+    corner(parts.bottomRight, bands.x1, parts.right, bands.y1, parts.bottom);
+    corner(parts.topEdge, bands.x0, 1, 0, parts.top);
+    corner(parts.bottomEdge, bands.x0, 1, bands.y1, parts.bottom);
+    corner(parts.leftEdge, 0, parts.left, bands.y0, 1);
+    corner(parts.rightEdge, bands.x1, parts.right, bands.y0, 1);
+    return parts;
+}
+
+// drawShadow's picture from its parts (bands as the parts have them). The
+// window's inside is written only where it may not be 0 yet: all of it
+// below row cleanBottom, right of column cleanRight above it (the inside
+// the picture had before, left as it was).
+void composeShadow(std::uint32_t* bits, int stride, int width, int height, const ShadowParts& parts,
+    int cleanRight, int cleanBottom)
+{
+    const int left = parts.left, right = parts.right;
+    const int middleEnd = width - right;
+    const auto band = [&](int y, const std::uint32_t* leftPart, std::uint32_t edge, const std::uint32_t* rightPart) {
+        std::uint32_t* row = bits + std::size_t(y) * stride;
+        std::copy(leftPart, leftPart + left, row);
+        std::fill(row + left, row + middleEnd, edge);
+        std::copy(rightPart, rightPart + right, row + middleEnd);
+    };
+    for (int y = 0; y < parts.top; ++y)
+        band(y, &parts.topLeft[std::size_t(y) * left], parts.topEdge[y], &parts.topRight[std::size_t(y) * right]);
+    const int bottomStart = height - parts.bottom;
+    for (int k = 0; k < parts.bottom; ++k)
+        band(bottomStart + k, &parts.bottomLeft[std::size_t(k) * left], parts.bottomEdge[k],
+            &parts.bottomRight[std::size_t(k) * right]);
+    for (int y = parts.top; y < bottomStart; ++y) {
+        std::uint32_t* row = bits + std::size_t(y) * stride;
+        std::copy(parts.leftEdge.begin(), parts.leftEdge.end(), row);
+        const int from = y < cleanBottom ? std::max(left, cleanRight) : left;
+        if (from < middleEnd)
+            std::fill(row + from, row + middleEnd, 0u);
+        std::copy(parts.rightEdge.begin(), parts.rightEdge.end(), row + middleEnd);
     }
 }
 
@@ -628,6 +742,13 @@ LRESULT CALLBACK shadowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
                 state->release();
                 state->sync();
             }
+            return 0;
+        }
+        if (wParam == kPictureTimer) {
+            if (auto* state = reinterpret_cast<OwnFrameState*>(::GetWindowLongPtrW(hwnd, GWLP_USERDATA)))
+                state->freePicture();
+            else
+                ::KillTimer(hwnd, kPictureTimer);
             return 0;
         }
         break;
@@ -820,6 +941,7 @@ void OwnFrameState::destroyShadow()
 
 void OwnFrameState::forgetShadow()
 {
+    freePicture();
     shadow = nullptr;
     shown = holding = holdForPaint = false;
     placed = {LONG_MIN, LONG_MIN};
@@ -941,45 +1063,92 @@ bool OwnFrameState::draw(int width, int height, double dpr, POINT at)
     const int margin = shadowMargin(physical);
     const int pictureWidth = width + 2 * margin;
     const int pictureHeight = height + 2 * margin;
-    BITMAPINFO info {};
-    info.bmiHeader = {sizeof(BITMAPINFOHEADER), pictureWidth, -pictureHeight, 1, 32, BI_RGB};
-    void* bits = nullptr;
-    const HDC screen = ::GetDC(nullptr);
-    const HDC dc = ::CreateCompatibleDC(screen);
-    const HBITMAP bitmap = dc ? ::CreateDIBSection(dc, &info, DIB_RGB_COLORS, &bits, nullptr, 0) : nullptr;
-    bool done = false;
-    if (bitmap && bits) {
-        const HGDIOBJ old = ::SelectObject(dc, bitmap);
-        ShadowShape shape;
-        shape.cx = margin + width / 2.0;
-        shape.cy = margin + height / 2.0;
-        shape.halfWidth = width / 2.0;
-        shape.halfHeight = height / 2.0;
-        shape.radius = std::clamp(radius * dpr, 0.0, std::min(shape.halfWidth, shape.halfHeight));
-        shape.layers = std::move(physical);
-        drawShadow(static_cast<std::uint32_t*>(bits), pictureWidth, pictureHeight, shape);
-        POINT origin {0, 0};
-        SIZE size {pictureWidth, pictureHeight};
-        const BYTE now = windowAlpha();
-        BLENDFUNCTION blend {AC_SRC_OVER, 0, now, AC_SRC_ALPHA};
-        POINT to = at;
-        done = ::UpdateLayeredWindow(shadow, screen, &to, &size, dc, &origin, 0, &blend, ULW_ALPHA);
-        if (done)
-            alpha = now;
-        ::SelectObject(dc, old);
+    if (!makePicture(pictureWidth, pictureHeight))
+        return false;
+    ShadowShape shape;
+    shape.cx = margin + width / 2.0;
+    shape.cy = margin + height / 2.0;
+    shape.halfWidth = width / 2.0;
+    shape.halfHeight = height / 2.0;
+    const double fullRadius = radius * dpr;
+    shape.radius = std::clamp(fullRadius, 0.0, std::min(shape.halfWidth, shape.halfHeight));
+    shape.layers = std::move(physical);
+    const ShadowBands bands = shadowBands(pictureWidth, pictureHeight, shape);
+    if (parts.valid() && !(parts.layers == shape.layers && parts.radius == fullRadius && parts.margin == margin)) {
+        parts = {}; // another look or scale
+        cleanRight = cleanBottom = 0;
     }
-    if (bitmap)
-        ::DeleteObject(bitmap);
-    if (dc)
-        ::DeleteDC(dc);
-    ::ReleaseDC(nullptr, screen);
+    if (!parts.valid() && partsFit(shape, bands, fullRadius))
+        parts = shadowParts(pictureWidth, pictureHeight, shape, bands, margin);
+    if (parts.valid() && partsFit(shape, bands, fullRadius) && bands.x0 == parts.left && bands.y0 == parts.top
+        && pictureWidth - bands.x1 == parts.right && pictureHeight - bands.y1 == parts.bottom) {
+        composeShadow(pictureBits, pictureStride, pictureWidth, pictureHeight, parts, cleanRight, cleanBottom);
+        cleanRight = bands.x1;
+        cleanBottom = bands.y1;
+    } else {
+        drawShadow(pictureBits, pictureStride, pictureWidth, pictureHeight, shape); // too small for its corners
+        cleanRight = cleanBottom = 0;
+    }
+    // Let go once the window is no longer resized.
+    ::SetTimer(shadow, kPictureTimer, 1500, nullptr);
+    POINT origin {0, 0};
+    SIZE size {pictureWidth, pictureHeight};
+    const BYTE now = windowAlpha();
+    BLENDFUNCTION blend {AC_SRC_OVER, 0, now, AC_SRC_ALPHA};
+    POINT to = at;
+    const bool done = ::UpdateLayeredWindow(shadow, nullptr, &to, &size, pictureDc, &origin, 0, &blend, ULW_ALPHA);
     if (done) {
+        alpha = now;
         drawnWidth = width;
         drawnHeight = height;
         drawnDpr = dpr;
         stale = false;
     }
     return done;
+}
+
+// A picture of at least width × height; larger by some once it has to grow
+// (a window made larger step by step).
+bool OwnFrameState::makePicture(int width, int height)
+{
+    if (pictureBits && width <= pictureStride && height <= pictureRows)
+        return true;
+    const bool growing = pictureBits != nullptr;
+    freePicture();
+    const int slack = growing ? 256 : 0;
+    BITMAPINFO info {};
+    info.bmiHeader = {sizeof(BITMAPINFOHEADER), width + slack, -(height + slack), 1, 32, BI_RGB};
+    void* bits = nullptr;
+    pictureDc = ::CreateCompatibleDC(nullptr);
+    picture = pictureDc ? ::CreateDIBSection(pictureDc, &info, DIB_RGB_COLORS, &bits, nullptr, 0) : nullptr;
+    if (!picture || !bits) {
+        freePicture();
+        return false;
+    }
+    pictureOld = ::SelectObject(pictureDc, picture);
+    pictureBits = static_cast<std::uint32_t*>(bits);
+    pictureStride = width + slack;
+    pictureRows = height + slack;
+    cleanRight = cleanBottom = 0;
+    return true;
+}
+
+void OwnFrameState::freePicture()
+{
+    if (shadow)
+        ::KillTimer(shadow, kPictureTimer);
+    if (pictureDc && pictureOld)
+        ::SelectObject(pictureDc, pictureOld);
+    if (picture)
+        ::DeleteObject(picture);
+    if (pictureDc)
+        ::DeleteDC(pictureDc);
+    pictureDc = nullptr;
+    picture = nullptr;
+    pictureOld = nullptr;
+    pictureBits = nullptr;
+    pictureStride = pictureRows = 0;
+    cleanRight = cleanBottom = 0;
 }
 
 } // namespace
