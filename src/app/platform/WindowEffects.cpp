@@ -95,6 +95,11 @@ struct OwnFrameState {
     bool stale = true;
     POINT placed {LONG_MIN, LONG_MIN};
     bool shown = false;
+    // The window's opacity (QWindow::opacity, the launcher's fade): the
+    // shadow is as see-through, or it would stay whole around a window fading
+    // out. As the shadow has it now (UpdateLayeredWindow's constant alpha).
+    BYTE alpha = 255;
+    QPointer<QWindow> watched; // the window whose opacityChanged syncs this
     // Shown again, the shadow waits for the window's first frame (WM_PAINT,
     // or the timer) or DWM's animation back from the taskbar or from
     // maximised (the timer).
@@ -114,6 +119,10 @@ struct OwnFrameState {
     bool draw(int width, int height, double dpr, POINT at);
     void destroyShadow();
     void forgetShadow(); // none now: made again when it is to show
+    BYTE windowAlpha() const
+    {
+        return qwindow ? BYTE(std::lround(std::clamp(qwindow->opacity(), 0.0, 1.0) * 255)) : BYTE(255);
+    }
 };
 
 OwnFrameState* ownFrameOf(HWND window)
@@ -816,6 +825,7 @@ void OwnFrameState::forgetShadow()
     placed = {LONG_MIN, LONG_MIN};
     drawnWidth = drawnHeight = 0;
     stale = true;
+    alpha = 255;
 }
 
 void OwnFrameState::hold(UINT ms, bool forPaint)
@@ -886,6 +896,11 @@ void OwnFrameState::place(const RECT& rect)
         placed = {rect.left - margin, rect.top - margin}; // UpdateLayeredWindow moved it
     }
     const POINT at {rect.left - drawnMargin, rect.top - drawnMargin};
+    if (const BYTE now = windowAlpha(); now != alpha) {
+        BLENDFUNCTION blend {AC_SRC_OVER, 0, now, AC_SRC_ALPHA};
+        if (::UpdateLayeredWindow(shadow, nullptr, nullptr, nullptr, nullptr, nullptr, 0, &blend, ULW_ALPHA))
+            alpha = now;
+    }
     // Left out of screen pictures as the window is (capture::excludeFromCapture).
     DWORD affinity = WDA_NONE, own = WDA_NONE;
     if (::GetWindowDisplayAffinity(window, &affinity) && ::GetWindowDisplayAffinity(shadow, &own) && affinity != own)
@@ -945,9 +960,12 @@ bool OwnFrameState::draw(int width, int height, double dpr, POINT at)
         drawShadow(static_cast<std::uint32_t*>(bits), pictureWidth, pictureHeight, shape);
         POINT origin {0, 0};
         SIZE size {pictureWidth, pictureHeight};
-        BLENDFUNCTION blend {AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
+        const BYTE now = windowAlpha();
+        BLENDFUNCTION blend {AC_SRC_OVER, 0, now, AC_SRC_ALPHA};
         POINT to = at;
         done = ::UpdateLayeredWindow(shadow, screen, &to, &size, dc, &origin, 0, &blend, ULW_ALPHA);
+        if (done)
+            alpha = now;
         ::SelectObject(dc, old);
     }
     if (bitmap)
@@ -1000,6 +1018,14 @@ bool setOwnFrame(QWindow* window, bool on, qreal radius, const QVariantList& sha
         watchCloaking();
     }
     state->qwindow = window;
+    if (state->watched != window) {
+        // Found again by its property: gone with the window, nothing to sync.
+        state->watched = window;
+        QObject::connect(window, &QWindow::opacityChanged, window, [hwnd] {
+            if (OwnFrameState* own = ownFrameOf(hwnd))
+                own->sync();
+        });
+    }
     if (state->on && state->radius == radius && state->layers == layers)
         return true;
     state->radius = radius;
