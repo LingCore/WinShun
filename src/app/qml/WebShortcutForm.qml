@@ -201,6 +201,7 @@ FocusScope {
                 HoverHandler { id: labelHover }
             }
             InputBox {
+                dpr: form.dpr
                 id: box
                 width: field.width - field.labelWidth - parent.spacing
                 onAccepted: field.accepted()
@@ -418,6 +419,7 @@ FocusScope {
                     // One line, as high as the buttons; the code pasted, or the
                     // saved icon's, is all there to be changed.
                     InputBox {
+                        dpr: form.dpr
                         id: svgInput
                         objectName: "webFormSvgInput"
                         width: iconControls.width - form.labelWidth - iconPreview.width - pickIconButton.width

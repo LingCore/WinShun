@@ -7,7 +7,8 @@ ListView {
     id: view
     required property ContentPane pane
     property bool textView: false
-    readonly property real dpr: Screen.devicePixelRatio
+    property real dpr: 0 // the window's, passed by the host (GitHub #111)
+    readonly property real pixelRatio: dpr > 0 ? dpr : Screen.devicePixelRatio // Screen only without one
     objectName: textView ? "contentTextLines" : "contentHitLines"
     model: textView ? pane.textLines : pane.hits
     clip: true
@@ -63,7 +64,7 @@ ListView {
             hovered: row.hit && !row.current
             current: row.current
             role: "list"
-            dpr: view.dpr
+            dpr: view.pixelRatio
         }
         Text {
             x: 6; y: headingBox.height + 6

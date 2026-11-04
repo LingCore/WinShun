@@ -48,6 +48,7 @@ QtObject {
     // them are translucent then, with the fill colours WinUI uses there; over
     // a plain background they keep their solid colours. A style that rounds
     // its windows itself has none.
+    readonly property bool backdropCapable: pick("backdropCapable") // the style can have Mica at all (透明效果)
     readonly property bool backdrop: pick("backdrop") // For text, glyphs and lines: lightened on dark to read there.
     readonly property color accent: pick("accent") // For fills under white words or marks (accentText): deep enough for
     // white to read, whatever the accent (SystemTheme.accentFill).
@@ -265,6 +266,11 @@ QtObject {
         accentText: theme.accentText,
         textSelection: theme.textSelection,
         caret: theme.tok("caret", Qt.rgba(0, 0, 0, 0)),
+        // The taskbar box as the style's search field (transparent, -1: the
+        // box's own translucent pill, as Windows' search box).
+        searchBoxFill: theme.tok("searchBoxFill", Qt.rgba(0, 0, 0, 0)),
+        searchBoxEdge: theme.tok("searchBoxEdge", Qt.rgba(0, 0, 0, 0)),
+        searchBoxRadius: theme.tok("searchBoxRadius", -1),
         danger: theme.danger,
         dangerFill: theme.dangerFill
     })

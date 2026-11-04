@@ -22,19 +22,20 @@ namespace {
 constexpr qsizetype kTitleChars = 200; // more never fits on a row
 constexpr qsizetype kLeadIn = 16; // characters before a match deep in the text, when the title shows it
 
-// Wraps the given ranges of `text` in accent-coloured bold (Text.StyledText).
-QString highlighted(const QString& text, QList<std::pair<qsizetype, qsizetype>> ranges, const QColor& color)
+// Wraps the given ranges of `text` in the match colour, bold where `bold` (Text.StyledText).
+QString highlighted(const QString& text, QList<std::pair<qsizetype, qsizetype>> ranges, const QColor& color, bool bold)
 {
     std::sort(ranges.begin(), ranges.end());
     QString html;
     html.reserve(text.size() + 64);
-    const QString open = u"<font color=\"%1\"><b>"_s.arg(color.name());
+    const QString open = u"<font color=\"%1\">%2"_s.arg(color.name(), bold ? u"<b>"_s : QString());
+    const QString close = bold ? u"</b></font>"_s : u"</font>"_s;
     qsizetype pos = 0;
     for (const auto& [start, length] : ranges) {
         if (start < pos || length <= 0)
             continue; // overlapping ranges: keep the first
         html += text.mid(pos, start - pos).toHtmlEscaped();
-        html += open + text.mid(start, length).toHtmlEscaped() + u"</b></font>"_s;
+        html += open + text.mid(start, length).toHtmlEscaped() + close;
         pos = start + length;
     }
     html += text.mid(pos).toHtmlEscaped();
@@ -213,7 +214,7 @@ QString ClipModel::title(const Clip& clip) const
             first = std::min(first, span.first);
         const qsizetype from = std::max<qsizetype>(0, first - kLeadIn);
         const QString line = (from > 0 ? u"…"_s : QString()) + oneLine(QStringView(words).mid(from));
-        return tr("图片：") + highlighted(line, matcher.spans(line), m_highlightColor);
+        return tr("图片：") + highlighted(line, matcher.spans(line), m_highlightColor, m_highlightWeight >= 600);
     }
     case ClipKind::Files: {
         const QStringList files = clip.files();
@@ -232,7 +233,7 @@ QString ClipModel::title(const Clip& clip) const
         }
         if (names.size() > 1)
             line = tr("%1 等 %Ln 个文件", nullptr, static_cast<int>(names.size())).arg(line);
-        return highlighted(line, matcher.spans(line), m_highlightColor);
+        return highlighted(line, matcher.spans(line), m_highlightColor, m_highlightWeight >= 600);
     }
     default:
         break;
@@ -256,7 +257,7 @@ QString ClipModel::title(const Clip& clip) const
         const qsizetype from = std::max(firstChar, first - kLeadIn);
         line = (from > firstChar ? u"…"_s : QString()) + oneLine(text.mid(from));
     }
-    return highlighted(line, matcher.spans(line), m_highlightColor);
+    return highlighted(line, matcher.spans(line), m_highlightColor, m_highlightWeight >= 600);
 }
 
 QString ClipModel::detail(const Clip& clip) const
@@ -556,6 +557,16 @@ std::vector<const Clip*> ClipModel::selection() const
             clips.push_back(c);
     }
     return clips;
+}
+
+void ClipModel::setHighlightWeight(int weight)
+{
+    if (weight == m_highlightWeight)
+        return;
+    m_highlightWeight = weight;
+    emit highlightColorChanged();
+    if (count() > 0)
+        emit dataChanged(index(0), index(count() - 1), {TitleRole});
 }
 
 void ClipModel::setHighlightColor(const QColor& color)

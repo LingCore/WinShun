@@ -6,6 +6,8 @@ import WinShun
 
 ScrollView {
     id: root
+    property real dpr: 0 // the window's, passed by the host (GitHub #111)
+    readonly property real pixelRatio: dpr > 0 ? dpr : Screen.devicePixelRatio // Screen only without one
     required property ContentPane pane
     readonly property bool selectedOnly: pane.reportOptions.scope === 1
     readonly property bool allFiles: pane.reportOptions.scope === 2
@@ -32,7 +34,7 @@ ScrollView {
             part: Theme.inputField
             hovered: choice.hovered
             focused: choice.activeFocus
-            dpr: Screen.devicePixelRatio
+            dpr: root.pixelRatio
         }
     }
     component ReportCheck: CheckBox {
@@ -59,6 +61,7 @@ ScrollView {
         ReportCheck { Layout.leftMargin: 8; text: qsTr("每处匹配"); checked: root.includeMatches; onToggled: root.pane.setReportOptions(root.pane.reportOptions.scope, root.includeFiles, checked, root.context); enabled: !root.pane.reporting }
         ReportCheck { Layout.leftMargin: 8; text: qsTr("包含上下文"); checked: root.context; onToggled: root.pane.setReportOptions(root.pane.reportOptions.scope, root.includeFiles, root.includeMatches, checked); enabled: !root.pane.reporting && root.includeMatches }
         FlatButton {
+            dpr: root.pixelRatio
             objectName: "prepareContentReport"
             Layout.leftMargin: 12
             text: root.pane.reporting ? qsTr("取消") : qsTr("生成报告")
@@ -92,9 +95,9 @@ ScrollView {
             Layout.fillWidth: true; Layout.margins: 12
             spacing: 6
             enabled: root.pane.reportReady && !root.pane.reporting
-            FlatButton { text: qsTr("复制"); onClicked: root.pane.copyReport(); Accessible.role: Accessible.Button; Accessible.name: text }
-            FlatButton { text: qsTr("打印…"); onClicked: root.pane.printReport(); Accessible.role: Accessible.Button; Accessible.name: text }
-            FlatButton { text: qsTr("保存…"); onClicked: root.pane.saveReport(root.format); Accessible.role: Accessible.Button; Accessible.name: text }
+            FlatButton { dpr: root.pixelRatio; text: qsTr("复制"); onClicked: root.pane.copyReport(); Accessible.role: Accessible.Button; Accessible.name: text }
+            FlatButton { dpr: root.pixelRatio; text: qsTr("打印…"); onClicked: root.pane.printReport(); Accessible.role: Accessible.Button; Accessible.name: text }
+            FlatButton { dpr: root.pixelRatio; text: qsTr("保存…"); onClicked: root.pane.saveReport(root.format); Accessible.role: Accessible.Button; Accessible.name: text }
         }
     }
 }

@@ -298,6 +298,7 @@ void ClipboardDisplay::dispatch(const QJsonObject& message)
     }
     if (type == u"highlight") {
         m_clipboard->items()->setHighlightColor(QColor(message.value(u"color"_s).toString()));
+        m_clipboard->items()->setHighlightWeight(message.value(u"weight"_s).toInt(700));
         return;
     }
     if (type == u"image") {

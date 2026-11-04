@@ -6,6 +6,8 @@ import WinShun
 
 Rectangle {
     id: root
+    property real dpr: 0 // the window's, passed by the host (GitHub #111)
+    readonly property real pixelRatio: dpr > 0 ? dpr : Screen.devicePixelRatio // Screen only without one
     required property ContentPane pane
     required property Launcher launcher
     property bool compact: false
@@ -34,6 +36,7 @@ Rectangle {
         if (event.key === Qt.Key_Escape) { root.searchFocusRequested(); event.accepted = true }
     }
     Binding { target: root.pane; property: "highlightColor"; value: Theme.matchColor }
+    Binding { target: root.pane; property: "highlightWeight"; value: Theme.matchWeight }
 
     ColumnLayout {
         anchors.fill: parent
@@ -53,6 +56,7 @@ Rectangle {
                 font.weight: Theme.fontStrong
             }
             FlatButton {
+                dpr: root.pixelRatio
                 Layout.preferredHeight: 30
                 flat: true
                 text: qsTr("打开")
@@ -63,6 +67,7 @@ Rectangle {
                 Accessible.name: qsTr("打开当前文件")
             }
             FlatButton {
+                dpr: root.pixelRatio
                 Layout.preferredHeight: 30
                 Layout.preferredWidth: root.compact ? implicitWidth : 30
                 flat: true
@@ -92,7 +97,7 @@ Rectangle {
                 pressedIndex: root.pressedTab
                 segments: [0, 1, 2, 3, 4].map(i => ({ x: i * tabs.width / 5, width: tabs.width / 5 }))
                 role: "tabs"
-                dpr: Screen.devicePixelRatio
+                dpr: root.pixelRatio
             }
             Repeater {
                 model: [qsTr("摘要"), qsTr("匹配"), qsTr("文本"), qsTr("预览"), qsTr("报告")]
@@ -128,9 +133,9 @@ Rectangle {
         }
         Hook { // the style's seam
             Layout.fillWidth: true
-            Layout.preferredHeight: Theme.edge(Screen.devicePixelRatio)
+            Layout.preferredHeight: Theme.edge(root.pixelRatio)
             part: Theme.separator
-            dpr: Screen.devicePixelRatio
+            dpr: root.pixelRatio
         }
         Loader {
             id: page
@@ -141,8 +146,8 @@ Rectangle {
         }
     }
     Component { id: summaryPage; ContentSummaryView { pane: root.pane; launcher: root.launcher } }
-    Component { id: hitsPage; ContentMatchesView { pane: root.pane } }
-    Component { id: textPage; ContentMatchesView { pane: root.pane; textView: true } }
+    Component { id: hitsPage; ContentMatchesView { pane: root.pane; dpr: root.pixelRatio } }
+    Component { id: textPage; ContentMatchesView { pane: root.pane; textView: true; dpr: root.pixelRatio } }
     Component { id: previewPage; ContentPreviewView { pane: root.pane } }
-    Component { id: reportPage; ContentReportView { pane: root.pane } }
+    Component { id: reportPage; ContentReportView { pane: root.pane; dpr: root.pixelRatio } }
 }

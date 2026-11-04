@@ -1023,6 +1023,7 @@ Item {
         visible: active
         onXChanged: panel.launcher.contentPane.movePreview()
         sourceComponent: ContentPaneView {
+            dpr: panel.dpr
             pane: panel.launcher.contentPane
             launcher: panel.launcher
             compact: panel.compactDetails

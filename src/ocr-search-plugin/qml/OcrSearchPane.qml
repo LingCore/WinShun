@@ -56,9 +56,11 @@ ColumnLayout {
             selectByMouse: true
             selectionColor: Theme.textSelection
             selectedTextColor: Theme.text
-            cursorDelegate: Rectangle {
-                width: Theme.edge(box.dpr)
-                color: field.out("caretColor", Theme.text)
+            // The style's caret colour, where it has one (Qt's own caret otherwise).
+            cursorDelegate: field.out("caretColor", "transparent").a > 0 ? caretPart : null
+            Component {
+                id: caretPart
+                Caret { color: field.out("caretColor", Theme.text); dpr: box.dpr }
             }
             onAccepted: box.accepted()
 

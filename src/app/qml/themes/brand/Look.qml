@@ -13,6 +13,7 @@ QtObject {
     readonly property string name: "brand"
     readonly property bool dark: SystemTheme.dark
     readonly property bool backdrop: false // opaque: an 18 px window has no Mica
+    readonly property bool backdropCapable: false // 透明效果 has nothing to do here
     readonly property bool rounded: SystemTheme.roundedCorners
 
     // ---- Pixel helpers (same rules as Theme: docs/pitfalls.md) ----
@@ -77,6 +78,10 @@ QtObject {
     readonly property int windowRadius: r(18) // drawn by us: DWM gives 8 at most
     readonly property int fieldInset: 10 // search field from the window edge (all sides of the row)
     readonly property int fieldRadius: r(Math.max(2, 18 - fieldInset)) // concentric with the window: 8
+    // The taskbar box stands for this field (C++, Theme.nativeLook).
+    readonly property color searchBoxFill: fieldFill
+    readonly property color searchBoxEdge: fieldEdge
+    readonly property real searchBoxRadius: fieldRadius
     readonly property int rowRadius: r(10)
     readonly property int rowInset: 10
     readonly property int menuRadius: r(10)

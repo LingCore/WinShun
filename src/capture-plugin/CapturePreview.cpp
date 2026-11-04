@@ -8,6 +8,7 @@
 #include "Capture.h"
 #include "CaptureSession.h"
 #include "CaptureOcr.h"
+#include "CaptureEditor.h"
 #include "WindowFrame.h"
 #include "platform/OcrFiles.h"
 #include "RawClicks.h"
@@ -1315,8 +1316,61 @@ int runKeyHints(const QStringList& args)
     return finish(window, ok);
 }
 
+// --preview-capture-tools <dir> --edit-window: the editing window (EditWindow,
+// 编辑 on a pin or a picture) over a plain picture, off the screen, in the
+// 界面风格 asked for: its title bar, toolbar and canvas (edit-window.png).
+int runEditWindow(const QStringList& args)
+{
+    using namespace capture;
+    const QDir out(valueAfter(args, kCaptureToolsFlag));
+    QDir().mkpath(out.path());
+    QQmlApplicationEngine engine;
+    CaptureEditor editor;
+    CaptureEditor::Hooks hooks;
+    hooks.window.show = [](QQuickWindow* window) { showOffScreen(window); };
+    hooks.window.nativeRect = [](QQuickWindow* window) {
+        const qreal dpr = window->devicePixelRatio();
+        return QRect(QPoint(qRound(window->x() * dpr), qRound(window->y() * dpr)),
+            QSize(qRound(window->width() * dpr), qRound(window->height() * dpr)));
+    };
+    editor.setHooks(std::move(hooks));
+    WindowFrame frame(true); // its own title bar, as CaptureApp makes it
+    QQmlComponent component(&engine, u"WinShun"_s, u"EditWindow"_s);
+    auto* window = qobject_cast<QQuickWindow*>(component.createWithInitialProperties({
+        {u"editor"_s, QVariant::fromValue(&editor)}, {u"frame"_s, QVariant::fromValue(&frame)}}));
+    if (!window) { say(component.errorString()); return 3; }
+    frame.setWindow(window);
+    editor.attach(window);
+    QImage picture(720, 420, QImage::Format_RGB32);
+    picture.fill(QColor(248, 249, 251));
+    {
+        QPainter painter(&picture);
+        painter.setPen(QColor(35, 40, 45));
+        QFont font = QGuiApplication::font();
+        font.setPixelSize(22);
+        painter.setFont(font);
+        painter.drawText(32, 52, u"贴图编辑 · 界面风格预览"_s);
+        painter.fillRect(QRect(32, 90, 300, 180), QColor(79, 157, 255));
+        painter.fillRect(QRect(360, 90, 300, 180), QColor(63, 191, 127));
+    }
+    bool ok = editor.openImage(picture);
+    if (!ok)
+        say(u"edit window: the picture did not open"_s);
+    if (!window->isVisible())
+        showOffScreen(window);
+    settle(window);
+    pump(400);
+    settle(window, 2);
+    ok = saveGrab(window, out.filePath(u"edit-window.png"_s)) && ok;
+    say(u"edit window: %1"_s.arg(ok ? u"passed"_s : u"failed"_s));
+    editor.close();
+    return finish(window, ok);
+}
+
 int runCaptureTools(const QStringList& args)
 {
+    if (args.contains(u"--edit-window"_s))
+        return runEditWindow(args);
     if (args.contains(u"--key-hints"_s))
         return runKeyHints(args);
     if (args.contains(u"--save-options"_s))
@@ -2079,6 +2133,15 @@ int run(const QStringList& args)
     QGuiApplication::styleHints()->setColorScheme(args.contains(u"--dark"_s) ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
     SystemTheme::setBackdropAvailable(false); // plain colours, as a window without Mica
     SystemTheme::setUiStyle(valueAfter(args, u"--style", u"fluent"_s)); // --style fluent|brand|tactile
+    // A 界面风格 that rounds its windows itself (brand, tactile) draws its
+    // own frame here as in the app, where the renderer can (D3D11): every
+    // window with an alpha channel from its creation (prepareWindowAlpha).
+    if (valueAfter(args, u"--renderer") == u"d3d11") {
+        QSurfaceFormat format = QSurfaceFormat::defaultFormat();
+        format.setAlphaBufferSize(8);
+        QSurfaceFormat::setDefaultFormat(format);
+        SystemTheme::setOwnFrameAvailable(true);
+    }
     if (presenterMode)
         return runPresenter(args);
     if (settingsMode)

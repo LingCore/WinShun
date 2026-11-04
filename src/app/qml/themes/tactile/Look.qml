@@ -29,6 +29,7 @@ QtObject {
     function pill(size: real): real { return SystemTheme.roundedCorners ? size / 2 : 0 }
     // Never translucent: an 18 px window has no Mica under it.
     readonly property bool backdrop: false
+    readonly property bool backdropCapable: false // 透明效果 has nothing to do here
     // The window: our own 18 px frame (WindowBody draws its body and edge,
     // C++ the windowShadow under it); square (直角) is DWM's plain frame.
     readonly property string frame: SystemTheme.roundedCorners ? "own" : "dwm"
@@ -122,6 +123,11 @@ QtObject {
     readonly property color slot: dark ? "#202022" : "#ECE8E1"
     readonly property color slotShade: dark ? black(0.34) : warm(0.115)    // its top inner line
     readonly property color slotFade: dark ? black(0.10) : warm(0.025)     // the few px under it
+    // The taskbar box stands for the search groove (C++, Theme.nativeLook):
+    // the slot, its shade as a line all round (no inner shadow there).
+    readonly property color searchBoxFill: slot
+    readonly property color searchBoxEdge: Qt.tint(slot, slotShade)
+    readonly property real searchBoxRadius: searchRadius
     readonly property color trayColor: dark ? "#252527" : "#EDE9E2"
     readonly property color trayShade: dark ? black(0.09) : warm(0.035)   // CSS inset 0 1 2 -1 .28 / .08, as it lands
 

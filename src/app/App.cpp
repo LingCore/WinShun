@@ -2624,6 +2624,11 @@ void App::updateSearchBoxLook()
     const QColor caret = SystemTheme::nativeColor("caret", Qt::transparent);
     look.caret = caret.rgba();
     look.selection = caret.alpha() ? SystemTheme::nativeColor("textSelection", Qt::transparent).rgba() : 0;
+    // Its fill, edge and corner as the style's search field, where it has its own (brand, tactile).
+    look.fill = SystemTheme::nativeColor("searchBoxFill", Qt::transparent).rgba();
+    look.edge = SystemTheme::nativeColor("searchBoxEdge", Qt::transparent).rgba();
+    look.radius = SystemTheme::nativeReal("searchBoxRadius", -1);
+    look.styleDark = SystemTheme::nativeLook().value(u"dark"_s).toBool();
     look.monoIcon = m_settings.taskbarIcon == u"mono";
     look.roundedCorners = win::roundedCorners();
     using Style = taskbar::SearchBox::Style;

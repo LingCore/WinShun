@@ -85,6 +85,11 @@ Window {
         property: "highlightColor"
         value: Theme.matchColor
     }
+    Binding {
+        target: window.clipboard.items
+        property: "highlightWeight"
+        value: Theme.matchWeight
+    }
     Binding { // with the fewest rows: kept room for below the window
         target: window.placement
         property: "roomNeeded"

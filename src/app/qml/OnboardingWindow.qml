@@ -5,6 +5,8 @@ import WinShun
 
 Window {
     id: window
+    // The window's, read once (GitHub #111): the cards, the footer and every control take it.
+    readonly property real dpr: Screen.devicePixelRatio
 
     required property Onboarding setup
     required property WindowFrame frame
@@ -77,7 +79,7 @@ Window {
         property string switchName
         property bool checked: false
         default property alias body: extras.data
-        readonly property real dpr: Screen.devicePixelRatio
+        readonly property real dpr: window.dpr
         signal toggled(bool on)
 
         implicitHeight: contents.implicitHeight + 32
@@ -129,6 +131,7 @@ Window {
                     wrapMode: Text.Wrap
                 }
                 ToggleSwitch {
+                    dpr: window.dpr
                     objectName: card.switchName
                     Layout.minimumWidth: implicitWidth
                     Layout.preferredWidth: implicitWidth
@@ -274,6 +277,7 @@ Window {
                     Repeater {
                         model: [qsTr("双击 Ctrl"), qsTr("双击 Alt"), qsTr("双击 Shift"), qsTr("自定义快捷键")]
                         FlatButton {
+                            dpr: window.dpr
                             required property string modelData
                             required property int index
                             text: modelData
@@ -285,6 +289,7 @@ Window {
                         }
                     }
                     FlatButton {
+                        dpr: window.dpr
                         objectName: "onboardingTestLaunch"
                         text: qsTr("试试按键")
                         flat: true
@@ -334,6 +339,7 @@ Window {
                         wrapMode: Text.Wrap
                     }
                     ToggleSwitch {
+                        dpr: window.dpr
                         objectName: "onboardingWinVToggle"
                         checked: window.setup.clipboardWinV
                         onToggled: (on) => window.setup.clipboardWinV = on
@@ -365,6 +371,7 @@ Window {
                         onRecordingChanged: window.setup.recording = recording || launchRecorder.recording
                     }
                     FlatButton {
+                        dpr: window.dpr
                         text: qsTr("试试按键")
                         flat: true
                         onClicked: { window.clearRecording(); window.setup.beginTest(true) }
@@ -382,6 +389,7 @@ Window {
     }
 
     ListScrollBar {
+        dpr: window.dpr
         anchors.top: flick.top
         anchors.bottom: flick.bottom
         anchors.right: parent.right
@@ -391,7 +399,7 @@ Window {
 
     Rectangle {
         id: footer
-        readonly property real dpr: Screen.devicePixelRatio
+        readonly property real dpr: window.dpr
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
@@ -442,6 +450,7 @@ Window {
                         : window.setup.committed ? qsTr("搜索已准备好，截图也可稍后安装。") : qsTr("默认：文件名搜索 · 双击 Ctrl")
                 }
                 FlatButton {
+                    dpr: window.dpr
                     objectName: "onboardingPrevious"
                     role: "footer"
                     visible: window.page === 1 && !window.setup.committed
@@ -452,6 +461,7 @@ Window {
                     Accessible.name: text
                 }
                 FlatButton {
+                    dpr: window.dpr
                     objectName: "onboardingRetry"
                     role: "footer"
                     visible: window.setup.canRetry
@@ -461,6 +471,7 @@ Window {
                     Accessible.name: text
                 }
                 FlatButton {
+                    dpr: window.dpr
                     objectName: "onboardingLater"
                     role: "footer"
                     flat: true
@@ -471,6 +482,7 @@ Window {
                     Accessible.name: text
                 }
                 FlatButton {
+                    dpr: window.dpr
                     id: nextButton
                     objectName: "onboardingNext"
                     role: "footer"
@@ -482,6 +494,7 @@ Window {
                     Accessible.name: text
                 }
                 FlatButton {
+                    dpr: window.dpr
                     id: startButton
                     objectName: "onboardingStart"
                     role: "footer"

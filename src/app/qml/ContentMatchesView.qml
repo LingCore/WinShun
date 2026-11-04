@@ -6,6 +6,8 @@ import WinShun
 
 Item {
     id: root
+    property real dpr: 0 // the window's, passed by the host (GitHub #111)
+    readonly property real pixelRatio: dpr > 0 ? dpr : Screen.devicePixelRatio // Screen only without one
     required property ContentPane pane
     property bool textView: false
     readonly property bool matchCase: pane.matchCase
@@ -23,6 +25,7 @@ Item {
             Layout.rightMargin: 10
             spacing: 4
             InputBox {
+                dpr: root.pixelRatio
                 id: filter
                 objectName: "contentHitsFilter"
                 Layout.fillWidth: true
@@ -35,6 +38,7 @@ Item {
                 onAccepted: root.pane.nextMatch(1)
             }
             FlatButton {
+                dpr: root.pixelRatio
                 text: "Aa"; Layout.preferredWidth: 32; Layout.preferredHeight: 32
                 highlighted: root.matchCase; flat: true
                 onClicked: root.pane.setFilter(filter.text, !root.matchCase, root.wholeWord, root.regex)
@@ -43,6 +47,7 @@ Item {
                 Accessible.checked: root.matchCase
             }
             FlatButton {
+                dpr: root.pixelRatio
                 text: qsTr("词"); Layout.preferredWidth: 32; Layout.preferredHeight: 32
                 highlighted: root.wholeWord; flat: true
                 onClicked: root.pane.setFilter(filter.text, root.matchCase, !root.wholeWord, root.regex)
@@ -51,6 +56,7 @@ Item {
                 Accessible.checked: root.wholeWord
             }
             FlatButton {
+                dpr: root.pixelRatio
                 text: ".*"; Layout.preferredWidth: 32; Layout.preferredHeight: 32
                 highlighted: root.regex; flat: true
                 onClicked: root.pane.setFilter(filter.text, root.matchCase, root.wholeWord, !root.regex)
@@ -118,6 +124,7 @@ Item {
                 wrapMode: Text.Wrap
             }
             FlatButton {
+                dpr: root.pixelRatio
                 visible: !root.textView
                 height: 28; flat: true
                 text: qsTr("上下文 %1").arg(root.pane.context)
@@ -126,11 +133,13 @@ Item {
                 Accessible.name: qsTr("调整上下文行数，当前 %1 行").arg(root.pane.context)
             }
             FlatButton {
+                dpr: root.pixelRatio
                 text: "↑"; height: 28; width: 28; flat: true
                 onClicked: root.pane.nextMatch(-1)
                 Accessible.role: Accessible.Button; Accessible.name: qsTr("上一处匹配，Shift+F3")
             }
             FlatButton {
+                dpr: root.pixelRatio
                 text: "↓"; height: 28; width: 28; flat: true
                 onClicked: root.pane.nextMatch(1)
                 Accessible.role: Accessible.Button; Accessible.name: qsTr("下一处匹配，F3")
@@ -146,6 +155,7 @@ Item {
             color: Theme.subtext; font.pixelSize: Theme.uiCaption
         }
         ContentLinesView {
+            dpr: root.pixelRatio
             Layout.fillWidth: true
             Layout.fillHeight: true
             pane: root.pane
@@ -155,6 +165,7 @@ Item {
             Layout.fillWidth: true
             Layout.margins: 10
             FlatButton {
+                dpr: root.pixelRatio
                 text: root.textView ? qsTr("复制文本") : qsTr("复制匹配")
                 Layout.preferredHeight: 30
                 enabled: !root.pane.busy && root.pane.path.length > 0
@@ -163,6 +174,7 @@ Item {
             }
             Item { Layout.fillWidth: true }
             FlatButton {
+                dpr: root.pixelRatio
                 text: qsTr("刷新"); flat: true
                 Layout.preferredHeight: 30
                 onClicked: root.pane.refresh()

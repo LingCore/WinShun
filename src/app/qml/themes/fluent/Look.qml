@@ -19,6 +19,9 @@ QtObject {
     // backdrop is square without DWM's corners): false there, and every
     // surface opaque.
     property bool backdrop: SystemTheme.backdrop
+    // Whether the style can stand on Mica at all (the 透明效果 setting has
+    // nothing to do in a style without it: settings greys it out).
+    readonly property bool backdropCapable: true
 
     // ---- window frame
     // "dwm": Windows rounds, edges and shadows the window (8 on Windows 11).

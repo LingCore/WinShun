@@ -18,7 +18,7 @@ target_link_options(WinShunOcrSearch PRIVATE /ENTRY:wmainCRTStartup)
 set_target_properties(WinShunOcrSearch PROPERTIES AUTOMOC OFF MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 set(ocr_qml)
-foreach(name IN ITEMS Theme Hook UiScale WindowEdge HoverTip DropMenu Glyph TitleBar ToggleSwitch FlatButton InputBox
+foreach(name IN ITEMS Theme Hook UiScale WindowEdge HoverTip DropMenu Glyph TitleBar ToggleSwitch FlatButton InputBox Caret
     ListScrollBar ListWheelScroll ScrollPixelAlignment)
     list(APPEND ocr_qml "${app_dir}/qml/${name}.qml")
 endforeach()

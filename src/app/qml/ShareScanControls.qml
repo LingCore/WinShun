@@ -3,6 +3,8 @@ import WinShun
 
 Column {
     id: controls
+    property real dpr: 0 // the window's, passed by the host (GitHub #111)
+    readonly property real pixelRatio: dpr > 0 ? dpr : Screen.devicePixelRatio // Screen only without one
     objectName: "shareScanControls"
     property var share: ({})
     signal edited(bool scheduled, string from, string until, int depth)
@@ -19,6 +21,7 @@ Column {
         width: parent.width
         spacing: 8
         FlatButton {
+            dpr: controls.pixelRatio
             objectName: "scanExpand"
             text: qsTr("扫描设置")
             flat: true
@@ -57,6 +60,7 @@ Column {
                 wrapMode: Text.Wrap
             }
             ToggleSwitch {
+                dpr: controls.pixelRatio
                 id: scheduleSwitch
                 objectName: "scanSchedule"
                 anchors.right: parent.right
@@ -70,6 +74,7 @@ Column {
             width: parent.width
             spacing: 8
             InputBox {
+                dpr: controls.pixelRatio
                 id: scanStart
                 objectName: "scanFrom"
                 tabFocus: true
@@ -92,6 +97,7 @@ Column {
                 font.pixelSize: Theme.fontBody
             }
             InputBox {
+                dpr: controls.pixelRatio
                 id: scanEnd
                 tabFocus: true
                 width: 82
@@ -127,6 +133,7 @@ Column {
                 font.pixelSize: Theme.fontCaption
             }
             InputBox {
+                dpr: controls.pixelRatio
                 id: depthField
                 tabFocus: true
                 width: 72

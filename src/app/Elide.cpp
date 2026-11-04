@@ -9,33 +9,34 @@ using namespace Qt::StringLiterals;
 
 namespace ws::elide {
 
-QString highlighted(const QString& text, Ranges ranges, const QColor& color)
+QString highlighted(const QString& text, Ranges ranges, const QColor& color, bool bold)
 {
     std::sort(ranges.begin(), ranges.end());
     QString html;
     html.reserve(text.size() + 64);
-    const QString open = u"<font color=\"%1\"><b>"_s.arg(color.name());
+    const QString open = u"<font color=\"%1\">%2"_s.arg(color.name(), bold ? u"<b>"_s : QString());
+    const QString close = bold ? u"</b></font>"_s : u"</font>"_s;
     qsizetype pos = 0;
     for (const auto& [start, length] : ranges) {
         if (start < pos || length <= 0)
             continue; // overlapping ranges: keep the first
         html += text.mid(pos, start - pos).toHtmlEscaped();
-        html += open + text.mid(start, length).toHtmlEscaped() + u"</b></font>"_s;
+        html += open + text.mid(start, length).toHtmlEscaped() + close;
         pos = start + length;
     }
     html += text.mid(pos).toHtmlEscaped();
     return html;
 }
 
-QString shortenedHtml(const QString& text, Ranges ranges, qreal width, const QFont& font, const QColor& color)
+QString shortenedHtml(const QString& text, Ranges ranges, qreal width, const QFont& font, const QColor& color, bool bold)
 {
     std::sort(ranges.begin(), ranges.end());
 
     // Each character's advance, the highlighted ones bold; a surrogate pair's on its first half.
-    QFont bold = font;
-    bold.setBold(true);
+    QFont matched = font;
+    matched.setBold(bold);
     const QFontMetricsF plain(font);
-    const QFontMetricsF strong(bold);
+    const QFontMetricsF strong(matched);
     std::vector<qreal> before(static_cast<std::size_t>(text.size()) + 1); // of the text up to each place
     for (qsizetype i = 0, r = 0; i < text.size(); ++i) {
         while (r < ranges.size() && ranges[r].first + ranges[r].second <= i)
@@ -51,7 +52,7 @@ QString shortenedHtml(const QString& text, Ranges ranges, qreal width, const QFo
     const auto widthOf = [&](qsizetype from, qsizetype to) { return before[to] - before[from]; };
     const qreal room = width - 2; // what the advances leave out (kerning, rounding)
     if (widthOf(0, text.size()) <= room)
-        return highlighted(text, ranges, color);
+        return highlighted(text, ranges, color, bold);
 
     // Shortened in its middle, keeping as much of its end as of its start
     // (the end of a file's name says which one: "…第三版.docx", "…(2).pdf").
@@ -107,7 +108,7 @@ QString shortenedHtml(const QString& text, Ranges ranges, qreal width, const QFo
         coreTo = std::max(coreTo, start + length);
     const qreal spare = room - widthOf(coreFrom, coreTo);
     if (spare <= 0)
-        return highlighted(text, ranges, color); // the Text elides it
+        return highlighted(text, ranges, color, bold); // the Text elides it
     const qreal leftWidth = widthOf(0, coreFrom);
     const qreal rightWidth = widthOf(coreTo, text.size());
     qreal leftRoom = spare / 2;
@@ -123,7 +124,7 @@ QString shortenedHtml(const QString& text, Ranges ranges, qreal width, const QFo
     const QString shown = leftPart + text.mid(coreFrom, coreTo - coreFrom) + shortened(coreTo, text.size(), rightRoom);
     for (auto& range : ranges)
         range.first += leftPart.size() - coreFrom;
-    return highlighted(shown, ranges, color);
+    return highlighted(shown, ranges, color, bold);
 }
 
 } // namespace ws::elide

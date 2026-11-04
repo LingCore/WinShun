@@ -187,6 +187,7 @@ set(qml_files
     qml/ToggleSwitch.qml
     qml/SwitchLevel.qml
     qml/FlatButton.qml
+    qml/Caret.qml
     qml/InputBox.qml
     qml/WebSearchOptions.qml
     qml/WebShortcutForm.qml

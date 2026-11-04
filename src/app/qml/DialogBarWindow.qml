@@ -64,6 +64,11 @@ Window {
         property: "highlightColor"
         value: Theme.matchColor
     }
+    Binding {
+        target: window.bar.results
+        property: "highlightWeight"
+        value: Theme.matchWeight
+    }
 
     function move(delta) {
         if (list.count > 0)

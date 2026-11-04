@@ -121,7 +121,8 @@ QVariant ContentLines::data(const QModelIndex& index, int role) const
         from = std::max(from, start); to = std::min(to, end);
         if (from >= to || from < at) continue;
         html += value.mid(at, from - at).toString().toHtmlEscaped();
-        html += u"<font color=\"%1\"><b>%2</b></font>"_s.arg(m_color.name(), value.mid(from, to - from).toString().toHtmlEscaped());
+        html += u"<font color=\"%1\">%2%3%4</font>"_s.arg(m_color.name(), m_bold ? u"<b>"_s : QString(),
+            value.mid(from, to - from).toString().toHtmlEscaped(), m_bold ? u"</b>"_s : QString());
         at = to;
     }
     html += value.mid(at, end - at).toString().toHtmlEscaped();
@@ -131,7 +132,7 @@ QVariant ContentLines::data(const QModelIndex& index, int role) const
     return html;
 }
 void ContentLines::assign(std::shared_ptr<const contentdetails::Matches> matches, std::vector<int> rows,
-    std::vector<int> visibleMatches, QColor color, std::shared_ptr<const std::vector<contentdetails::Match>> refinements)
+    std::vector<int> visibleMatches, QColor color, bool bold, std::shared_ptr<const std::vector<contentdetails::Match>> refinements)
 {
     beginResetModel();
     m_matches = std::move(matches);
@@ -139,6 +140,7 @@ void ContentLines::assign(std::shared_ptr<const contentdetails::Matches> matches
     m_visibleMatches = std::move(visibleMatches);
     m_refinements = std::move(refinements);
     m_color = color;
+    m_bold = bold;
     endResetModel();
 }
 void ContentLines::setCurrent(int sourceLine)
@@ -392,14 +394,14 @@ void ContentPane::load()
 void ContentPane::showRows()
 {
     const auto refinements = m_filter.enabled ? m_rows.refinements : nullptr;
-    m_hits.assign(m_matches, m_rows.lines, m_rows.matches, m_color, refinements);
+    m_hits.assign(m_matches, m_rows.lines, m_rows.matches, m_color, m_weight >= 600, refinements);
     std::vector<int> text;
     if (m_matches && m_matches->document) {
         const auto& doc = *m_matches->document;
         for (int i = 0; i < std::ssize(doc.lines); ++i)
             if (m_sheet < 0 || doc.lines[i].sheet == m_sheet) text.push_back(i);
     }
-    m_text.assign(m_matches, std::move(text), m_rows.matches, m_color, refinements);
+    m_text.assign(m_matches, std::move(text), m_rows.matches, m_color, m_weight >= 600, refinements);
     if (m_current >= 0 && m_current < std::ssize(m_rows.matches)) {
         const int line = m_matches->items[m_rows.matches[m_current]].line;
         m_hits.setCurrent(line);
@@ -441,6 +443,13 @@ void ContentPane::setHighlightColor(const QColor& value)
 {
     if (m_color == value) return;
     m_color = value;
+    showRows();
+    emit changed();
+}
+void ContentPane::setHighlightWeight(int value)
+{
+    if (m_weight == value) return;
+    m_weight = value;
     showRows();
     emit changed();
 }

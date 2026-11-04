@@ -159,7 +159,10 @@ Item {
 
         visible: !bar.inBox
         anchors.left: parent.left
-        anchors.leftMargin: 14
+        // Its icon where the style puts the field's icon (iconInset, from the
+        // field's left edge); 14 in a style that says nothing (fluent).
+        readonly property real styleInset: fieldPart.out("iconInset", -1)
+        anchors.leftMargin: styleInset >= 0 ? Theme.snap(Theme.fieldInset + styleInset - (width - Theme.searchIconSize) / 2, bar.dpr) : 14
         y: bar.onPixel((bar.height - height) / 2)
         width: Theme.searchIconSize + 12
         height: width
@@ -222,11 +225,15 @@ Item {
     TextInput {
         id: input
         objectName: bar.panelMode ? "panelSearchField" : "searchField" // App answers the input method for it while it is in the box
+        // Where the style's words start in its field (leadingInset, from the
+        // field's left edge), never nearer the logo than 6; 8 after the logo
+        // in a style that says nothing (fluent).
+        readonly property real styleStart: fieldPart.out("leadingInset", 0)
         anchors.left: handle.right
-        anchors.leftMargin: 8
+        anchors.leftMargin: styleStart > 0 ? Theme.snap(Math.max(6, Theme.fieldInset + styleStart - handle.x - handle.width), bar.dpr) : 8
         anchors.right: regexChip.visible ? regexChip.left : tabs.left
         anchors.rightMargin: regexChip.visible ? 8 : 12
-        y: bar.onPixel((bar.height - height) / 2)
+        y: bar.onPixel((bar.height - height) / 2 + fieldPart.out("contentOffsetY", 0))
         focus: true
         clip: true
         color: fieldPart.out("textColor", Theme.text)
@@ -234,6 +241,12 @@ Item {
         selectByMouse: true
         selectionColor: Theme.textSelection
         selectedTextColor: Theme.text
+        // The style's caret colour, where it has one (Qt's own caret otherwise).
+        cursorDelegate: fieldPart.out("caretColor", "transparent").a > 0 ? caretPart : null
+        Component {
+            id: caretPart
+            Caret { color: fieldPart.out("caretColor", Theme.text); dpr: bar.dpr }
+        }
         // Still shown while the clipboard under it has the keyboard: what a
         // paste there goes over.
         persistentSelection: true

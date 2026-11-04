@@ -61,6 +61,7 @@ Window {
                     text: qsTr("自动滚动"); color: Theme.subtext; font.pixelSize: Theme.fontCaption
                 }
                 ToggleSwitch {
+                    dpr: panel.dpr
                     objectName: "longCaptureAutoScroll"
                     word: false
                     enabled: panel.capture.canAutoScroll

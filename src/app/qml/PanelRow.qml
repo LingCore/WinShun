@@ -162,7 +162,7 @@ Item {
         y: row.onPixel((row.height - height) / 2)
         opacity: row.offline || row.missing ? 0.6 : 1
         text: row.results && !row.isApp // the end kept, matches or none (see ResultRow)
-              ? row.results.elidedHtml(row.name, row.nameMatches, width, font, row.results.highlightColor)
+              ? row.results.elidedHtml(row.name, row.nameMatches, width, font, row.results.highlightColor, row.results.highlightWeight)
               : row.nameHtml
         textFormat: Text.StyledText
         elide: Text.ElideRight
@@ -179,7 +179,7 @@ Item {
         width: Math.max(0, row.pathWidth)
         y: row.onPixel((row.height - height) / 2)
         text: row.contentMode ? row.snippetHtml
-            : marked ? row.results.elidedHtml(row.folder, row.folderMatches, width, font, row.results.highlightColor)
+            : marked ? row.results.elidedHtml(row.folder, row.folderMatches, width, font, row.results.highlightColor, row.results.highlightWeight)
             : row.folder
         textFormat: row.contentMode || marked ? Text.StyledText : Text.PlainText
         elide: row.contentMode || marked ? Text.ElideRight : Text.ElideMiddle

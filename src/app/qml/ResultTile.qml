@@ -101,7 +101,7 @@ Item {
         y: picture.y + picture.height + 6
         width: parent.width - 24
         text: tile.results && tile.nameMatches.length > 0
-            ? tile.results.elidedHtml(tile.name, tile.nameMatches, width, font, tile.results.highlightColor) : tile.name
+            ? tile.results.elidedHtml(tile.name, tile.nameMatches, width, font, tile.results.highlightColor, tile.results.highlightWeight) : tile.name
         textFormat: tile.nameMatches.length > 0 ? Text.StyledText : Text.PlainText
         elide: Text.ElideMiddle
         horizontalAlignment: Text.AlignHCenter

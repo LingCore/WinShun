@@ -22,7 +22,10 @@ Rectangle {
     function takeFocus() { input.forceActiveFocus() }
 
     property bool error: false // the value is not taken: the style's error mark
-    readonly property real dpr: Screen.devicePixelRatio
+    property real dpr: 0 // the window's, passed by a host that has it (GitHub #111)
+    // Screen.* only when no host passed it: a default binding to it would make a
+    // Screen object even where the host's value replaces it.
+    readonly property real pixelRatio: dpr > 0 ? dpr : Screen.devicePixelRatio
 
     implicitWidth: 220
     implicitHeight: 36
@@ -36,7 +39,7 @@ Rectangle {
         focused: input.activeFocus
         hovered: area.containsMouse
         error: box.error
-        dpr: box.dpr
+        dpr: box.pixelRatio
     }
 
     MouseArea {
@@ -69,6 +72,12 @@ Rectangle {
         selectByMouse: true
         selectionColor: Theme.textSelection
         selectedTextColor: Theme.text
+        // The style's caret colour, where it has one (Qt's own caret otherwise).
+        cursorDelegate: field.out("caretColor", "transparent").a > 0 ? caretPart : null
+        Component {
+            id: caretPart
+            Caret { color: field.out("caretColor", Theme.text); dpr: box.pixelRatio }
+        }
         onAccepted: box.accepted()
         onEditingFinished: box.editingFinished()
 
