@@ -15,20 +15,25 @@ Row {
 
     function onPixel(v) { return Math.round(v * Screen.devicePixelRatio) / Screen.devicePixelRatio }
 
-    Rectangle {
+    Item {
         id: cap
         anchors.verticalCenter: parent.verticalCenter
         width: keyText.implicitWidth + 10
         height: hint.metrics.keycapHeight
-        radius: Theme.controlRadius
-        color: Theme.keycap
+
+        Hook { // the style's key cap (Theme.keyHint): it only tells, never pressed
+            id: capPart
+            anchors.fill: parent
+            part: Theme.keyHint
+            dpr: Screen.devicePixelRatio
+        }
 
         Text {
             id: keyText
             x: hint.onPixel((cap.width - width) / 2)
-            y: hint.onPixel((cap.height - height) / 2)
+            y: hint.onPixel((cap.height - height) / 2 + capPart.out("contentOffsetY", 0))
             text: hint.keys
-            color: Theme.subtext
+            color: capPart.out("foreground", Theme.subtext)
             font.pixelSize: hint.metrics.uiCaption
         }
     }

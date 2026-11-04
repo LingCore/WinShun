@@ -21,12 +21,23 @@ Rectangle {
     function clear() { input.text = "" }
     function takeFocus() { input.forceActiveFocus() }
 
+    property bool error: false // the value is not taken: the style's error mark
+    readonly property real dpr: Screen.devicePixelRatio
+
     implicitWidth: 220
     implicitHeight: 36
     radius: Theme.controlRadius
-    color: input.activeFocus ? Theme.inputFocused : area.containsMouse ? Theme.controlHover : Theme.control
-    border.width: 1
-    border.color: Theme.controlBorder
+    color: "transparent"
+
+    Hook { // the style's field (Theme.inputField), with its focus mark
+        id: field
+        anchors.fill: parent
+        part: Theme.inputField
+        focused: input.activeFocus
+        hovered: area.containsMouse
+        error: box.error
+        dpr: box.dpr
+    }
 
     MouseArea {
         id: area
@@ -49,7 +60,7 @@ Rectangle {
         anchors.rightMargin: 10
         verticalAlignment: TextInput.AlignVCenter
         clip: true
-        color: Theme.text
+        color: field.out("textColor", Theme.text)
         font.pixelSize: Theme.fontBody
         // A value wider than the box shows its start while nobody is
         // typing in it: set, the text leaves the cursor at the end, and
@@ -66,7 +77,7 @@ Rectangle {
             verticalAlignment: Text.AlignVCenter
             horizontalAlignment: input.horizontalAlignment
             text: box.placeholder
-            color: Theme.faint
+            color: field.out("placeholderColor", Theme.faint)
             font: input.font
             elide: Text.ElideRight
             // Centred, the empty field's cursor stands in the middle of the
@@ -76,13 +87,4 @@ Rectangle {
         }
     }
 
-    Rectangle {
-        visible: input.activeFocus
-        anchors.bottom: parent.bottom
-        x: Theme.edge(Screen.devicePixelRatio) // inside the field's border
-        width: parent.width - 2 * x
-        height: Theme.snap(2, Screen.devicePixelRatio) // 2.5 device pixels at 125 %
-        radius: Theme.lineRadius
-        color: Theme.accent
-    }
 }

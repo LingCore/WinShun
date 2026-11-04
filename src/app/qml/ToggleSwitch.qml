@@ -23,13 +23,9 @@ Item {
     signal toggled(bool on)
 
     // Taken for another switch (a recycled row), it is that switch's from the first frame.
+    // (The part's settle(): its animations to their end.)
     function settle() {
-        if (slide.running)
-            slide.complete()
-        if (tint.running)
-            tint.complete()
-        if (knobTint.running)
-            knobTint.complete()
+        toggleHook.call("settle", [], null)
         dimmed = false
     }
     // Asked for what it already is: the track lights up for 160 ms.
@@ -82,33 +78,24 @@ Item {
             TextMetrics { id: mixedWord; text: qsTr("自定义"); font.pixelSize: Theme.fontBody }
         }
 
-        Rectangle {
+        Item {
             id: track
             readonly property bool lit: toggle.checked && !toggle.mixed && !toggle.unknown
+            readonly property real radius: Theme.pillRadius(height)
             y: Theme.snap((parent.height - height) / 2, toggle.dpr)
             width: 40
             height: 20
-            radius: 10
-            // Fading to or from "transparent" would pass through black: from the fill's own colour instead.
-            color: lit ? Theme.accentFill : area.containsMouse ? Theme.controlHover : Qt.rgba(Theme.controlHover.r, Theme.controlHover.g, Theme.controlHover.b, 0)
-            border.width: lit ? 0 : 1
-            border.color: Theme.subtext
 
-            Behavior on color { enabled: toggle.animated; ColorAnimation { id: tint; duration: 120 } }
-
-            Rectangle {
-                id: knob
-                readonly property real size: area.pressed ? 14 : area.containsMouse ? 14 : 12
-                visible: !toggle.unknown
-                anchors.verticalCenter: parent.verticalCenter
-                x: toggle.mixed ? (parent.width - width) / 2 : toggle.checked ? parent.width - width - 4 : 4
-                width: area.pressed ? 17 : size
-                height: size
-                radius: size / 2
-                color: track.lit ? Theme.accentText : Theme.subtext
-
-                Behavior on x { enabled: toggle.animated; NumberAnimation { id: slide; duration: 120; easing.type: Easing.OutCubic } }
-                Behavior on color { enabled: toggle.animated; ColorAnimation { id: knobTint; duration: 120 } }
+            Hook { // the style's track and knob (Theme.toggle)
+                id: toggleHook
+                anchors.fill: parent
+                part: Theme.toggle
+                checked: toggle.checked
+                mixed: toggle.mixed
+                active: !toggle.unknown
+                hovered: area.containsMouse
+                pressed: area.pressed
+                dpr: toggle.dpr
             }
 
             Rectangle { // asked for what it already is: a light that comes and goes

@@ -13,20 +13,32 @@ Rectangle {
     // false: Tab skips it and Space and Enter do nothing; only a click works
     // (for a button that a key meant for another window must not press).
     property bool keyboardActivation: true
-    readonly property color foreground: highlighted ? Theme.accentText : Theme.text
+    property real corner: -1 // a radius of the host's (-1: the style's)
+    property string role // where it stands (Hook.role: "footer", "toolbar", "dialog" …)
+    readonly property real dpr: Screen.devicePixelRatio
+    readonly property color foreground: surface.out("foreground", highlighted ? Theme.accentText : Theme.text)
 
     signal clicked()
 
     implicitWidth: Math.max(32, content.implicitWidth + (text.length > 0 ? 24 : 16))
     implicitHeight: 36
-    radius: Theme.controlRadius
-    opacity: enabled ? 1 : 0.45
+    radius: corner >= 0 ? corner : Theme.controlRadius
+    opacity: enabled ? 1 : surface.out("disabledOpacity", 0.45)
     activeFocusOnTab: keyboardActivation
-    color: highlighted
-           ? (area.pressed ? Qt.darker(Theme.accentFill, 1.15) : area.containsMouse ? Qt.lighter(Theme.accentFill, 1.08) : Theme.accentFill)
-           : (area.pressed ? Theme.controlPressed : area.containsMouse ? Theme.controlHover : flat ? "transparent" : Theme.control)
-    border.width: highlighted || (flat && !area.containsMouse) ? 0 : 1
-    border.color: Theme.controlBorder
+    color: "transparent"
+
+    Hook { // the style's key (Theme.keySurface)
+        id: surface
+        anchors.fill: parent
+        part: Theme.keySurface
+        hovered: area.containsMouse
+        pressed: area.pressed
+        highlighted: button.highlighted
+        flat: button.flat
+        corner: button.corner
+        role: button.role
+        dpr: button.dpr
+    }
 
     Keys.onSpacePressed: if (keyboardActivation) button.clicked()
     Keys.onReturnPressed: if (keyboardActivation) button.clicked()
@@ -35,6 +47,7 @@ Rectangle {
     Row {
         id: content
         anchors.centerIn: parent
+        anchors.verticalCenterOffset: surface.out("contentOffsetY", 0)
         spacing: 6
 
         Glyph {
@@ -50,6 +63,7 @@ Rectangle {
             text: button.text
             color: button.foreground
             font.pixelSize: Theme.fontBody
+            font.weight: surface.out("fontWeight", Font.Normal)
         }
         Glyph {
             anchors.verticalCenter: parent.verticalCenter
