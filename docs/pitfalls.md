@@ -5000,6 +5000,12 @@
 - **原因**：`extract::loadPdfium()` 用 `LoadLibraryExW(L"pdfium.dll", nullptr, LOAD_LIBRARY_SEARCH_APPLICATION_DIR)`，只找程序自己的文件夹。Win顺 和 WinShunExtract 就在 `pdfium.dll` 旁边；插件程序却装在用户的插件文件夹，小启动器用 `AddDllDirectory` 加了 Win顺 的文件夹，这个标志不搜它。测试和基准都从 build 文件夹运行工作进程，`pdfium.dll` 正好在旁边，测不出来。
 - **做法**：改成 `LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_USER_DIRS`（仍不找 PATH 和当前目录）。插件里加载宿主自带的 DLL，标志里都要有 `USER_DIRS`（或用默认目录）。验证插件要用装好的布局：程序和 DLL 复制到单独的文件夹，宿主的 DLL 只在 app 目录，`tst_ocrsearch` 的 `installedWorkerReadsPdfPages` 就这样测。已经因此失败的文件不会自己重试，升级迁移按两种语言的这条报错把它们留给下次遍历重读。
 
+### 图片文字搜索：旧索引升级报“unable to open database file Unable to fetch row”
+
+- **现象**：用 1.0.0／1.0.1 建过索引（文件多于约 100～300 个）的用户升到 1.0.2 及以后，插件窗口报“unable to open database file Unable to fetch row”，开始更新、重建索引都报这句，索引显示 0 个文件，搜不到结果。新建的索引和单元测试都正常。
+- **原因**：插件是 `sandbox: strict`，以低完整性运行，环境变量却是用户自己的，`%TEMP%`（`AppData\Local\Temp`）没有低标签，写不进去。升级事务里 `recheckOlderPipeline` 的 `UPDATE files … WHERE … NOT(EXISTS …)` 改动整张表，SQLite 的语句日志超过 64 KiB 就落到 `%TEMP%` 的临时文件，建不出来就是 SQLITE_CANTOPEN。升级整体回滚，每个要写库的入口都重跑升级、再失败；只读入口看到旧 schema 抛“must be upgraded”，统计为空。清空大索引、大表排序（`GROUP BY`、`ORDER BY`）也会撞上。
+- **做法**：插件窗口进程拿到数据目录后建 `<数据目录>\tmp`（继承低标签），用 `SetEnvironmentVariableW` 把 `TMP`／`TEMP` 指过去（SQLite 用 `GetTempPathW` 读；路径可能有中文，不用 `qputenv`），之后启动的工作进程继承。卡住的索引下次打开就升级完，结果不丢。strict 插件要写临时文件都得这样；用 SQLite 的插件测试要在低完整性受限令牌下、用够大的旧索引跑一次。
+
 ### 测试：`--profile` 的插件装在 `<profile>\plugins`，不是 `<profile>\WinShun\plugins`
 
 - **现象**：实测插件时把插件和它的旧索引放进 `<profile>\WinShun\plugins\`，测试副本启动后插件根本没运行，插件列表里也没有它。

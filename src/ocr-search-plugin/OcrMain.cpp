@@ -128,6 +128,17 @@ extern "C" __declspec(dllexport) int winshunOcrSearchMain(const wchar_t* host, i
     // A standalone preview must name its own isolated profile explicitly.
     if (dataDir.isEmpty())
         return 3;
+    // SQLite spills statement journals and big sorts to %TEMP%, which the
+    // low integrity sandbox cannot write (the 1.0.0 index upgrade failed
+    // with "unable to open database file"). The data folder's low label is
+    // inherited; the worker started later inherits these variables.
+    const QString temp = QDir(dataDir).filePath(u"tmp"_s);
+    if (QDir().mkpath(temp)) {
+        // Wide: SQLite reads it with GetTempPathW; the path may not fit the code page.
+        const std::wstring native = QDir::toNativeSeparators(temp).toStdWString();
+        ::SetEnvironmentVariableW(L"TMP", native.c_str());
+        ::SetEnvironmentVariableW(L"TEMP", native.c_str());
+    }
     QTranslator translator;
     if (appearance.value(u"locale"_s).toString() == u"en" && translator.load(u":/i18n/ocr-search_en.qm"_s))
         QCoreApplication::installTranslator(&translator);
