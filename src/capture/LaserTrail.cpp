@@ -56,8 +56,11 @@ QPainterPath Trail::outline(qint64 now) const
             const QLineF line(before->at, p.at);
             if (line.length() > 0 && (w > 0.05 || wb > 0.05)) {
                 const QPointF n = QPointF(-line.dy(), line.dx()) / line.length();
+                // Wound the way addEllipse winds its dots: the other way round, a
+                // dot over a single band would cancel out under WindingFill (a hole
+                // at every point).
                 QPolygonF band;
-                band << before->at + n * (wb / 2) << p.at + n * (w / 2) << p.at - n * (w / 2) << before->at - n * (wb / 2);
+                band << before->at - n * (wb / 2) << p.at - n * (w / 2) << p.at + n * (w / 2) << before->at + n * (wb / 2);
                 path.addPolygon(band);
                 path.closeSubpath();
             }
