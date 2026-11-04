@@ -148,6 +148,7 @@ Item {
         width: parent.width - x - row.edge
         height: row.edge
         part: row.y > 0 ? Theme.separator : null
+        extra: ({ card: true })
         orientation: Qt.Horizontal
         dpr: row.dpr
     }

@@ -180,6 +180,7 @@ Rectangle {
                 width: parent.width
                 height: Theme.edge(card.dpr)
                 part: Theme.separator
+                extra: ({ card: true })
                 dpr: card.dpr
             }
 

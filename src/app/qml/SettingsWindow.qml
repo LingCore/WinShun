@@ -1338,6 +1338,7 @@ Window {
                                     width: parent.width - 2 * x
                                     height: Theme.edge(window.dpr)
                                     part: windowsRow.index > 0 ? Theme.separator : null
+                                    extra: ({ card: true })
                                     dpr: window.dpr
                                 }
                                 Item {

@@ -17,7 +17,7 @@ Item {
         anchors.fill: parent
         part: Theme.cardPart
         corner: Theme.controlRadius
-        extra: ({ inset: true })
+        extra: ({ inset: true, tag: true }) // fluent: a control's fill and edge
         dpr: chip.dpr
     }
     Rectangle { // what the settings search found
