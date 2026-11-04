@@ -1,6 +1,6 @@
 # Win顺 0.19.0 发布验证
 
-2026-11-04，在 Windows 11 x64、Qt 6.12.0、MSVC 2022 Release 环境验证。发布程序与插件包来自干净的 `b35ebacc` 提交副本（`git archive`，路径 `F:\wsrel019\src`）。之后的提交只有本记录。
+2026-11-04，在 Windows 11 x64、Qt 6.12.0、MSVC 2022 Release 环境验证。发布程序与插件包来自干净的 `b35ebac3c6c287963dfa92f1ea3cb08bb3e3030a` 提交副本（`git archive`，路径 `F:\wsrel019\src`）。之后的提交只有本记录。
 
 ## 合并
 
