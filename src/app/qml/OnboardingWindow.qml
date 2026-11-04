@@ -61,7 +61,14 @@ Window {
         textFormat: Text.PlainText
     }
 
-    component SetupCard: Rectangle {
+    // The style's line between two parts (Theme.separator), as thick as the style wants it.
+    component Divider: Hook {
+        id: seam
+        height: seam.out("thickness", Theme.edge(seam.dpr))
+        part: Theme.separator
+    }
+
+    component SetupCard: Item {
         id: card
         required property string heading
         required property string glyph
@@ -70,21 +77,25 @@ Window {
         property string switchName
         property bool checked: false
         default property alias body: extras.data
+        readonly property real dpr: Screen.devicePixelRatio
         signal toggled(bool on)
 
         implicitHeight: contents.implicitHeight + 32
-        radius: Theme.largeCardRadius
-        color: Theme.card
-        border.width: Theme.edge(Screen.devicePixelRatio)
-        border.color: card.checked ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45) : Theme.cardBorder
 
-        Rectangle {
-            z: -1
-            y: 2
-            width: parent.width
-            height: parent.height
-            radius: parent.radius
-            color: Theme.dark ? Qt.rgba(0, 0, 0, 0.18) : Qt.rgba(0, 0, 0, 0.04)
+        Hook { // the style's card (Theme.cardPart)
+            anchors.fill: parent
+            part: Theme.cardPart
+            corner: Theme.largeCardRadius
+            dpr: card.dpr
+        }
+        Rectangle { // switched on: the card's edge in the accent
+            visible: card.checked
+            anchors.fill: parent
+            radius: Theme.largeCardRadius
+            color: "transparent"
+            border.width: Theme.edge(card.dpr)
+            border.color: Theme.accent
+            opacity: 0.45
         }
 
         Column {
@@ -380,12 +391,15 @@ Window {
 
     Rectangle {
         id: footer
+        readonly property real dpr: Screen.devicePixelRatio
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         height: footerContents.implicitHeight + 28
         color: Theme.background
-        Rectangle { width: parent.width; height: Theme.edge(Screen.devicePixelRatio); color: Theme.divider }
+        bottomLeftRadius: windowEdge.cornerRadius // the window's corners as drawn
+        bottomRightRadius: windowEdge.cornerRadius
+        Divider { width: parent.width; dpr: footer.dpr }
 
         Column {
             id: footerContents
@@ -429,6 +443,7 @@ Window {
                 }
                 FlatButton {
                     objectName: "onboardingPrevious"
+                    role: "footer"
                     visible: window.page === 1 && !window.setup.committed
                     text: qsTr("上一步")
                     flat: true
@@ -438,6 +453,7 @@ Window {
                 }
                 FlatButton {
                     objectName: "onboardingRetry"
+                    role: "footer"
                     visible: window.setup.canRetry
                     text: qsTr("重试")
                     onClicked: window.setup.retryCapture()
@@ -446,6 +462,7 @@ Window {
                 }
                 FlatButton {
                     objectName: "onboardingLater"
+                    role: "footer"
                     flat: true
                     visible: !window.setup.captureReady
                     text: window.setup.committed ? qsTr("稍后安装") : qsTr("稍后设置")
@@ -456,6 +473,7 @@ Window {
                 FlatButton {
                     id: nextButton
                     objectName: "onboardingNext"
+                    role: "footer"
                     text: qsTr("下一步")
                     highlighted: true
                     visible: window.page === 0 && !window.setup.committed
@@ -466,6 +484,7 @@ Window {
                 FlatButton {
                     id: startButton
                     objectName: "onboardingStart"
+                    role: "footer"
                     text: qsTr("开始使用")
                     highlighted: true
                     visible: window.page === 1 && (!window.setup.committed || window.setup.captureReady)
@@ -487,5 +506,5 @@ Window {
             onOpenChanged: if (!open) window.setup.permissionClosed()
         }
     }
-    WindowEdge {}
+    WindowEdge { id: windowEdge; fill: Theme.page }
 }

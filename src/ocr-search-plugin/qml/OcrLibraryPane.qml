@@ -7,6 +7,13 @@ Item {
     id: pane
     required property Controller editor
     required property WindowFrame frame
+    readonly property real dpr: Screen.devicePixelRatio
+    // The style's line between two parts (Theme.separator), as thick as the style wants it.
+    component Divider: Hook {
+        id: seam
+        height: seam.out("thickness", Theme.edge(seam.dpr))
+        part: Theme.separator
+    }
     readonly property real indexBytes: editor.statistics.bytes ?? 0
     readonly property string indexSize: indexBytes < 1048576 ? qsTr("%1 KB").arg(Math.ceil(indexBytes / 1024)) : qsTr("%1 MB").arg((indexBytes / 1048576).toFixed(1))
     Flickable {
@@ -79,7 +86,7 @@ Item {
                     onRemoved: pane.editor.removeFolder(index, true)
                 }
             }
-            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
+            Divider { Layout.fillWidth: true; Layout.preferredHeight: out("thickness", Theme.edge(pane.dpr)); dpr: pane.dpr }
             Text { text: qsTr("索引"); color: Theme.text; font.pixelSize: Theme.fontBody; font.weight: Theme.fontStrong }
             Text {
                 Layout.fillWidth: true

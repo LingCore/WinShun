@@ -23,6 +23,7 @@ RowLayout {
         id: removeButton
         glyph: "\uE711"
         flat: true
+        role: "toolbar"
         implicitWidth: 32
         Accessible.name: qsTr("移除目录")
         HoverHandler { id: removeHover }

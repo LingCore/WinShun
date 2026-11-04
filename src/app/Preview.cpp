@@ -7015,6 +7015,7 @@ int runRuntime(const QStringList& args)
     Settings settings = Settings::defaults();
     const QString onboardingAction = valueAfter(args, u"--onboarding-probe");
     settings.onboardingComplete = onboardingAction.isEmpty() || onboardingAction == u"legacy";
+    settings.uiStyle = SystemTheme::uiStyle(); // --style, set in run()
     settings.language = args.contains(u"--english"_s) ? u"en"_s : u"zh"_s;
     if (args.contains(u"--dark"_s))
         settings.theme = u"dark"_s;
