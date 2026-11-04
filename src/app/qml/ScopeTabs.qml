@@ -37,8 +37,26 @@ Rectangle {
     signal pluginClicked()
 
     // Read by all the tabs: one Screen attached object, not one per item
-    // (GitHub #111; docs/pitfalls.md).
-    readonly property real dpr: Screen.devicePixelRatio
+    // (GitHub #111; docs/pitfalls.md); a host that has the window's passes it.
+    property real dpr: Screen.devicePixelRatio
+    // Where it stands, for the style's segmented part (Hook.role): "scope" in
+    // the launcher's search field; "" elsewhere (the settings' choices).
+    property string role
+    // One choice: the style's segmented part draws all but the words (the
+    // checkboxes of multiSelect keep their own chips).
+    readonly property bool segmentedPart: !multiSelect
+    property int hoveredIndex: -1
+    property int pressedIndex: -1
+    property var segments: [] // [{x, width}] of each tab in the part, laid out here
+    function placeSegments() {
+        const list = []
+        for (let i = 0; i < tabRepeater.count; ++i) {
+            const tab = tabRepeater.itemAt(i)
+            if (tab)
+                list.push({ x: row.x + tab.x, width: tab.width })
+        }
+        segments = list
+    }
 
     // Labels on whole device pixels (see SearchBar.onPixel): centred, at 150 %
     // they sat on half ones, and came out a pixel taller on some frames while
@@ -50,21 +68,49 @@ Rectangle {
     // settings window, as the rest there.
     property bool scaled: false
     readonly property int tabHeight: scaled ? Theme.tabHeight : 32
+    // The tabs' own height: lower when a host holds it lower than it would be
+    // (the keys in a style's inset search field).
+    readonly property real shownTabHeight: Math.min(tabHeight, height - 6)
     readonly property int bodySize: scaled ? Theme.uiBody : Theme.fontBody
     readonly property int captionSize: scaled ? Theme.uiCaption : Theme.fontCaption
 
     implicitWidth: row.implicitWidth + 6
     implicitHeight: tabHeight + 6
     radius: Theme.largeCardRadius
-    color: Theme.track
+    color: segmentedPart ? "transparent" : Theme.track
+
+    Hook { // over the tabs' row, not the margin around it: a hover fill as tall as a tab
+        id: track
+        y: row.y
+        width: parent.width
+        height: tabs.shownTabHeight
+        visible: tabs.segmentedPart
+        part: tabs.segmentedPart ? Theme.segmented : null
+        count: tabs.labels.length
+        currentIndex: {
+            for (let i = 0; i < tabs.labels.length; ++i) {
+                if (i === tabs.current || (i === tabs.subOf && tabs.subLabel.length > 0 && tabs.current === tabs.subValue))
+                    return i
+            }
+            return -1
+        }
+        hoveredIndex: tabs.hoveredIndex
+        pressedIndex: tabs.pressedIndex
+        segments: tabs.segments
+        role: tabs.role
+        dpr: tabs.dpr
+    }
 
     Row {
         id: row
         x: tabs.onPixel((tabs.width - width) / 2)
         y: tabs.onPixel((tabs.height - height) / 2)
         spacing: 2
+        onPositioningComplete: tabs.placeSegments()
+        onXChanged: tabs.placeSegments()
 
         Repeater {
+            id: tabRepeater
             model: tabs.labels
 
             delegate: Rectangle {
@@ -85,13 +131,16 @@ Rectangle {
                 readonly property real labelWidth: Theme.snapUp(label.implicitWidth + (tabs.multiSelect ? 38 : 24), tabs.dpr)
 
                 width: labelWidth + (open ? sub.fullWidth : 0) + (pluginOpen ? pluginSub.fullWidth : 0)
-                height: tabs.tabHeight
+                height: tabs.shownTabHeight
                 radius: Theme.largeControlRadius
                 clip: true
-                color: active ? Theme.chipActive : area.containsMouse ? Theme.chipHover : "transparent"
-                border.width: active ? 1 : 0
+                // One choice: the segmented part draws the chip under the words.
+                color: tabs.segmentedPart ? "transparent" : active ? Theme.chipActive : area.containsMouse ? Theme.chipHover : "transparent"
+                border.width: active && !tabs.segmentedPart ? Theme.edge(tabs.dpr) : 0
                 border.color: Theme.chipBorder
                 Behavior on width { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+                onWidthChanged: tabs.placeSegments()
+                onXChanged: tabs.placeSegments()
 
                 Glyph {
                     visible: tabs.multiSelect
@@ -104,13 +153,15 @@ Rectangle {
 
                 Text {
                     id: label
-                    x: tabs.multiSelect ? 26 : 12
-                    y: tabs.onPixel((tab.height - height) / 2)
-                    text: tab.modelData
                     // The smaller tab (or the plugin's chip) current: this one is the way back to the whole.
-                    color: tab.off ? Theme.faint : tab.active && !tab.subCurrent && !tab.pluginOpen ? Theme.text : Theme.subtext
+                    readonly property color ownColor: tab.off ? Theme.faint : tab.active && !tab.subCurrent && !tab.pluginOpen ? Theme.text : Theme.subtext
+                    readonly property int ownWeight: tab.active ? Theme.fontStrong : Font.Normal
+                    x: tabs.multiSelect ? 26 : 12
+                    y: tabs.onPixel((tab.height - height) / 2 + (tabs.segmentedPart ? track.call("labelOffsetY", [tab.index], 0) : 0))
+                    text: tab.modelData
+                    color: tab.off || !tabs.segmentedPart || tab.subCurrent || tab.pluginOpen ? ownColor : track.call("labelColor", [tab.index], ownColor)
                     font.pixelSize: tabs.bodySize
-                    font.weight: tab.active ? Theme.fontStrong : Font.Normal
+                    font.weight: tabs.segmentedPart ? track.call("labelWeight", [tab.index], ownWeight) : ownWeight
                 }
 
                 MouseArea {
@@ -121,6 +172,18 @@ Rectangle {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: tabs.multiSelect ? tabs.toggled(tab.index, !tab.isChecked) : tabs.activated(tab.index)
+                    onContainsMouseChanged: {
+                        if (containsMouse)
+                            tabs.hoveredIndex = tab.index
+                        else if (tabs.hoveredIndex === tab.index)
+                            tabs.hoveredIndex = -1
+                    }
+                    onPressedChanged: {
+                        if (pressed)
+                            tabs.pressedIndex = tab.index
+                        else if (tabs.pressedIndex === tab.index)
+                            tabs.pressedIndex = -1
+                    }
                 }
 
                 // 文件 › 文件夹: a chevron, then the smaller tab.

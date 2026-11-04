@@ -90,6 +90,13 @@ Item {
     property real hintOpacity: 1
     // The window's tip for a name or folder cut short (one for all its rows).
     property NameTip nameTip: null
+    // The window's devicePixelRatio, read once by the list's host (GitHub #111);
+    // the list's own Screen where the host gives none.
+    property real dpr: ListView.view ? ListView.view.Screen.devicePixelRatio : 1
+    // The style's file icon (Theme.typeIcon) for a file or folder by its kind;
+    // "": the system's icon (apps, programs, links, a place, a plugin's row).
+    readonly property string typeKind: Theme.typeIcon === null || isApp ? "" : isDir ? "folder" : SearchKeys.fileKind(path)
+    readonly property bool styledIcon: typeKind.length > 0
 
     readonly property bool contentMode: line > 0 // a content match (also mixed into 全部)
     readonly property bool current: ListView.isCurrentItem
@@ -123,8 +130,8 @@ Item {
     // the pixel grid on the GPU, in single precision: on a half pixel (where
     // centring often puts it at 150 %) the rounding goes either way from one
     // scroll position to the next, and the text jumps or stretches by a pixel.
-    function onPixel(y) { return Math.round(y * Screen.devicePixelRatio) / Screen.devicePixelRatio }
-    function upToPixel(y) { return Math.ceil(y * Screen.devicePixelRatio - 1e-6) / Screen.devicePixelRatio }
+    function onPixel(y) { return Math.round(y * dpr) / dpr }
+    function upToPixel(y) { return Math.ceil(y * dpr - 1e-6) / dpr }
 
     onShowActionsChanged: if (!showActions) deleteArmed = false
     // Taken for another switch, the new one is there from the first frame: nothing slides between two.
@@ -185,41 +192,40 @@ Item {
         onTriggered: row.deleteArmed = false
     }
 
-    Rectangle {
+    // The style's highlight (Theme.rowHighlight). The current row's is the
+    // list's own, one for all its rows (Main.qml); here only the hover and,
+    // with several rows picked, the picked ones that are not current. Made
+    // only while wanted: at rest a row holds no part.
+    Loader {
         anchors.fill: parent
-        anchors.leftMargin: 6
-        anchors.rightMargin: 6
-        anchors.topMargin: 1
-        anchors.bottomMargin: 1
-        radius: Theme.largeControlRadius
-        color: row.selected || (row.current && row.selectedCount === 0) ? Theme.selection
-               : area.containsMouse ? Theme.hover : "transparent"
-    }
-
-    Rectangle { // accent pill on the current row, as in Windows 11 lists
-        visible: row.current
-        x: 7
-        anchors.verticalCenter: parent.verticalCenter
-        width: 3
-        height: 18
-        radius: Theme.smallRadius
-        color: Theme.accent
+        anchors.leftMargin: Theme.rowInset
+        anchors.rightMargin: Theme.rowInset
+        anchors.topMargin: Theme.edge(row.dpr)
+        anchors.bottomMargin: Theme.edge(row.dpr)
+        active: !row.current && (row.selected || area.containsMouse)
+        sourceComponent: Hook {
+            part: Theme.rowHighlight
+            selected: row.selected
+            hovered: area.containsMouse
+            role: "list"
+            dpr: row.dpr
+        }
     }
 
     Item {
         id: iconSlot
         objectName: "resultIcon"
         opacity: row.offline || row.missing ? 0.6 : 1
-        x: 16 + (row.reserveHintSpace ? 28 : 0)
+        x: Theme.iconInset + (row.reserveHintSpace ? 28 : 0)
         anchors.verticalCenter: parent.verticalCenter
         width: 32 // 48 device pixels at 150 %, 64 at 200 %: sizes icons are drawn for
         height: 32
 
         Image {
             id: iconImage
-            visible: !thumbnailImage.ready
+            visible: !thumbnailImage.ready && !row.styledIcon
 
-            readonly property real dpr: Screen.devicePixelRatio
+            readonly property real dpr: row.dpr
             readonly property int pixels: Math.round(iconSlot.width * dpr)
 
             // Exactly as many device pixels as the icon has, sampled
@@ -232,7 +238,7 @@ Item {
             y: 1 / 64
             width: pixels / dpr
             height: pixels / dpr
-            source: row.icon
+            source: row.styledIcon ? "" : row.icon // the style draws it: the system's is not asked for
             sourceSize.width: pixels / dpr
             sourceSize.height: pixels / dpr
             smooth: false
@@ -240,8 +246,21 @@ Item {
             fillMode: Image.PreserveAspectFit
         }
 
+        Loader { // the style's own file icon (none in fluent: the system's above)
+            anchors.fill: parent
+            active: row.styledIcon && !thumbnailImage.ready
+            sourceComponent: Hook {
+                part: Theme.typeIcon
+                kind: row.typeKind
+                size: iconSlot.width
+                hueIndex: row.typeKind === "folder" ? -2 : -1
+                dpr: row.dpr
+            }
+        }
+
         FileThumbnail {
             id: thumbnailImage
+            dpr: row.dpr
             source: row.thumbnail
         }
     }
@@ -252,7 +271,7 @@ Item {
         opacity: row.offline || row.missing ? 0.6 : 1
         y: row.onPixel((row.height - height) / 2)
         anchors.left: iconSlot.right
-        anchors.leftMargin: 12
+        anchors.leftMargin: Theme.textStart - Theme.iconInset - iconSlot.width // the name at textStart, past the icon
         anchors.right: parent.right
         anchors.rightMargin: row.trailingSpace + (metadata.visible ? metadata.width + 16 : 0)
         spacing: 4
@@ -478,7 +497,7 @@ Item {
             id: switchControl
             visible: row.switchReady
             anchors.right: parent.right
-            anchors.rightMargin: 14
+            anchors.rightMargin: Theme.actionsInset
             anchors.verticalCenter: parent.verticalCenter
             // The volume is never "自定义": its word ("开", "关") right against
             // the bar's gap, not 自定义's width further.
@@ -501,14 +520,28 @@ Item {
             anchors.bottom: parent.bottom
             value: row.switchLevel
             muted: row.switchOn === 0
+            dpr: row.dpr
             opacity: switchControl.opacity // dimmed with the switch while a write takes long
+        }
+
+        // The style's capsule round the buttons (Theme.actionCapsule; none in fluent).
+        Loader {
+            anchors.fill: actions
+            anchors.margins: -Theme.capsulePadding
+            active: Theme.actionCapsule !== null && row.actionsShown
+            sourceComponent: Hook {
+                part: Theme.actionCapsule
+                count: actions.visibleChildren.length
+                role: "rowAction"
+                dpr: row.dpr
+            }
         }
 
         Row {
             id: actions
             visible: row.showActions
             anchors.right: parent.right
-            anchors.rightMargin: row.switchReady ? switchControl.width + 14 + 4 + row.levelSpace : 14
+            anchors.rightMargin: row.switchReady ? switchControl.width + Theme.actionsInset + 4 + row.levelSpace : Theme.actionsInset
             anchors.verticalCenter: parent.verticalCenter
             spacing: 2
 

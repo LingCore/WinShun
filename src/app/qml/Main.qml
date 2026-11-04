@@ -34,6 +34,9 @@ Window {
     readonly property int viewRowHeight: panel ? panelPage.rowHeight : rowHeight
 
     readonly property int rowHeight: Theme.rowHeight // 界面大小
+    // Read once here for all the window's parts and rows (GitHub #111): every
+    // item that reads Screen has an attached object of its own.
+    readonly property real dpr: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
     readonly property int maxRows: 8
     readonly property int minRows: 3 // the window settles no lower than these fit below
     // Everything but the rows: header, the strip of kinds of file, divider,
@@ -305,10 +308,13 @@ Window {
                 Accessible.role: Accessible.Button
                 Accessible.name: modelData.text + " " + modelData.action
 
-                Rectangle { // raised with the keyboard on it, or hovered, as a row
+                Hook { // with the keyboard on it, or hovered, as a row
                     anchors.fill: parent
-                    radius: Theme.largeControlRadius
-                    color: emptyHint.current ? Theme.selection : emptyHintArea.containsMouse ? Theme.hover : "transparent"
+                    part: Theme.rowHighlight
+                    selected: emptyHint.current
+                    hovered: emptyHintArea.containsMouse
+                    role: "list"
+                    dpr: window.dpr
                 }
                 Row {
                     id: hintLine
@@ -437,7 +443,7 @@ Window {
     Binding {
         target: window.launcher.results
         property: "highlightColor"
-        value: Theme.accent
+        value: Theme.matchColor
     }
     Binding {
         target: window.launcher
@@ -1043,6 +1049,8 @@ Window {
         onRowPreviewRequested: (index) => window.rowPreviewRequested(index)
         onRowHoverMoved: (index, globalPos) => window.rowHoverMoved(index, globalPos)
         nameTip: nameTip
+        dpr: window.dpr
+        cornerRadius: windowEdge.cornerRadius
     }
 
     // A row clicked (the box's or the panel's): Ctrl toggles it in the
@@ -1128,29 +1136,51 @@ Window {
             y: window.placement.contentShift.y
         }
 
-        SearchBar {
-            id: boxBar
+        // The chrome: the search row and the strip under it, a layer over the
+        // window's base (Theme.layer), the rows on the base itself. Its corners
+        // by the window's top are the window's (an own frame rounds it), and
+        // its bottom ones too when nothing follows it (the clipboard below).
+        Item {
+            id: chrome
             width: parent.width
-            launcher: window.launcher
-            placement: window.placement
-            frame: window.frame
-            onKeyPressed: (event) => window.handleKey(event)
+            height: boxBar.height + typeStrip.height
+
+            Rectangle {
+                anchors.fill: parent
+                color: Theme.layer
+                topLeftRadius: windowEdge.cornerRadius
+                topRightRadius: windowEdge.cornerRadius
+                bottomLeftRadius: window.clipboardBelow ? windowEdge.cornerRadius : 0
+                bottomRightRadius: window.clipboardBelow ? windowEdge.cornerRadius : 0
+            }
+
+            SearchBar {
+                id: boxBar
+                width: parent.width
+                launcher: window.launcher
+                placement: window.placement
+                frame: window.frame
+                dpr: window.dpr
+                onKeyPressed: (event) => window.handleKey(event)
+            }
+
+            TypeStrip {
+                id: typeStrip
+                y: boxBar.height
+                width: parent.width
+                launcher: window.launcher
+                frame: window.frame
+                dpr: window.dpr
+                shown: (window.launcher.scope === Launcher.Files || window.launcher.scope === Launcher.Folders
+                        || window.launcher.scope === Launcher.Content)
+                       && !window.clipboardBelow
+            }
         }
 
-        TypeStrip {
-            id: typeStrip
+        Rectangle { // where the chrome meets the rows
             width: parent.width
-            launcher: window.launcher
-            frame: window.frame
-            shown: (window.launcher.scope === Launcher.Files || window.launcher.scope === Launcher.Folders
-                    || window.launcher.scope === Launcher.Content)
-                   && !window.clipboardBelow
-        }
-
-        Rectangle {
-            width: parent.width
-            height: Theme.edge(Screen.devicePixelRatio)
-            color: Theme.divider
+            height: Theme.edge(window.dpr)
+            color: Theme.layerEdge
             visible: !window.clipboardBelow && (window.listRows > 0 || window.showEmptyState)
         }
 
@@ -1209,7 +1239,7 @@ Window {
                             // Vertically on whole device pixels too (see the rows').
                             transform: Translate {
                                 y: {
-                                    const dpr = Screen.devicePixelRatio
+                                    const dpr = window.dpr
                                     const deviceY = (layout.y + listArea.y + home.y + tiles.y) * dpr
                                     return (Math.round(deviceY) - deviceY) / dpr
                                 }
@@ -1229,11 +1259,11 @@ Window {
                                 y: parent.height - 6
                                 width: 18
                                 height: 3
-                                radius: Theme.smallRadius
-                                color: Theme.accent
+                                radius: Theme.pillRadius(height)
+                                color: Theme.accentLine
                             }
                             Image { // as a row's icon (ResultRow.qml): its own pixels, unsmoothed
-                                readonly property real dpr: Screen.devicePixelRatio
+                                readonly property real dpr: window.dpr
                                 readonly property int pixels: Math.round(32 * dpr)
 
                                 x: 44 + 1 / 64
@@ -1297,7 +1327,37 @@ Window {
                 Behavior on opacity { NumberAnimation { duration: 150 } }
                 model: window.launcher.results
                 boundsBehavior: Flickable.StopAtBounds
-                highlightMoveDuration: 0
+                // The current row's highlight, one for the whole list: it jumps,
+                // or slides as the style says (Theme.rowSlide).
+                highlightMoveDuration: Theme.rowSlide
+                highlightMoveVelocity: -1
+                highlightResizeDuration: 0
+                highlightResizeVelocity: -1
+                highlight: Item {
+                    id: currentHighlight
+                    width: boxList.width
+                    visible: boxList.currentItem !== null
+                    transform: ScrollPixelAlignment { // on whole device pixels, as the rows
+                        view: boxList
+                        viewY: layout.y + listArea.y + boxList.y
+                        itemY: currentHighlight.y
+                    }
+
+                    Hook {
+                        anchors.fill: parent
+                        anchors.leftMargin: Theme.rowInset
+                        anchors.rightMargin: Theme.rowInset
+                        anchors.topMargin: Theme.edge(window.dpr) // a device pixel apart: 1.5 at 150 % put its edges on half ones
+                        anchors.bottomMargin: Theme.edge(window.dpr)
+                        part: Theme.rowHighlight
+                        current: true
+                        // With rows picked, the current one is marked as picked only when it is.
+                        selected: window.selectedCount === 0 || (boxList.currentItem !== null && boxList.currentItem.selected === true)
+                        position: boxList.currentItem !== null ? boxList.currentItem.y : 0
+                        role: "list"
+                        dpr: window.dpr
+                    }
+                }
                 reuseItems: true
                 function stopScrolling() {
                     wheelScroll.cancel()
@@ -1320,6 +1380,7 @@ Window {
                     width: boxList.width
                     folder: window.launcher.typingFolder
                     alone: window.elsewhereRow === 0
+                    dpr: window.dpr
                     transform: ScrollPixelAlignment { // on whole device pixels, as the rows
                         view: boxList
                         viewY: layout.y + listArea.y + boxList.y
@@ -1366,26 +1427,20 @@ Window {
                             Accessible.role: Accessible.Button
                             Accessible.name: modelData.text + " " + modelData.action
 
-                            Rectangle { // as a row's: raised with the keyboard on it, or hovered
+                            Hook { // as a row's: with the keyboard on it, or hovered
                                 anchors.fill: parent
-                                anchors.leftMargin: 6
-                                anchors.rightMargin: 6
-                                anchors.topMargin: 1
-                                anchors.bottomMargin: 1
-                                radius: Theme.largeControlRadius
-                                color: hintRow.current ? Theme.selection : hintArea.containsMouse ? Theme.hover : "transparent"
-                            }
-                            Rectangle { // accent pill, as on the current row
-                                visible: hintRow.current
-                                x: 7
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 3
-                                height: 18
-                                radius: Theme.smallRadius
-                                color: Theme.accent
+                                anchors.leftMargin: Theme.rowInset
+                                anchors.rightMargin: Theme.rowInset
+                                anchors.topMargin: Theme.edge(window.dpr)
+                                anchors.bottomMargin: Theme.edge(window.dpr)
+                                part: Theme.rowHighlight
+                                selected: hintRow.current
+                                hovered: hintArea.containsMouse
+                                role: "list"
+                                dpr: window.dpr
                             }
                             Text {
-                                x: 60 // under the rows' text
+                                x: Theme.textStart // under the rows' text
                                 width: hintAction.x - 16 - x // the leftmost link (the first, with two showing)
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: hintRow.modelData.text
@@ -1455,6 +1510,7 @@ Window {
                     hintModifier: window.numberModifier
                     hintTaken: resultRow.hint > 0 && !window.numberUsable(resultRow.hint)
                     nameTip: nameTip
+                    dpr: window.dpr
                     // Drawn on whole device pixels, wherever the list has
                     // scrolled to (ResultRow puts its text on whole device
                     // pixels within). Between them (at 150 % most scroll
@@ -1518,10 +1574,11 @@ Window {
                 visible: height > 0
                 clip: true
 
-                Rectangle {
+                Hook { // the style's line between the rows and the text
                     width: parent.width
-                    height: Theme.edge(Screen.devicePixelRatio)
-                    color: Theme.divider
+                    height: Theme.edge(window.dpr)
+                    part: Theme.separator
+                    dpr: window.dpr
                 }
 
                 Flickable {
@@ -1549,7 +1606,7 @@ Window {
                         textFormat: TextEdit.PlainText
                         color: Theme.text
                         selectionColor: Theme.accentFill
-                        selectedTextColor: "white"
+                        selectedTextColor: Theme.accentText
                         font.pixelSize: Theme.uiTitle
                         onTextChanged: deselect()
                     }
@@ -1613,6 +1670,8 @@ Window {
             visible: !window.clipboardBelow
             launcher: window.launcher
             frame: window.frame
+            dpr: window.dpr
+            cornerRadius: windowEdge.cornerRadius
         }
     }
 
@@ -1645,5 +1704,8 @@ Window {
         }
     }
 
-    WindowEdge {}
+    WindowEdge {
+        id: windowEdge
+        fill: Theme.background
+    }
 }

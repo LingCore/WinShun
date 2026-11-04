@@ -15,15 +15,30 @@ Button {
     TextMetrics { id: measure; text: chip.text; font: chip.font }
     contentItem: Text {
         text: chip.text
-        font: chip.font
-        color: chip.checked ? Theme.accent : Theme.subtext
+        font.pixelSize: chip.font.pixelSize
+        font.weight: surface.out("fontWeight", chip.font.weight)
+        color: surface.out("foreground", chip.checked ? Theme.accentText : chip.hovered ? Theme.text : Theme.subtext)
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight
     }
-    background: Rectangle {
-        radius: Theme.controlRadius
-        color: chip.checked ? Theme.badge : chip.hovered ? Theme.hover : Theme.control
-        border.width: chip.activeFocus ? 2 : 0
-        border.color: Theme.accent
+    background: Hook { // the style's chip (role "filter"): a file's matches, ContentMatchesView
+        id: surface
+        part: Theme.chipSurface
+        checked: chip.checked
+        hovered: chip.hovered
+        pressed: chip.pressed
+        focused: chip.activeFocus
+        corner: Theme.controlRadius
+        role: "filter"
+
+        Rectangle { // the keyboard's ring, the host's own: a part may draw no focus
+            anchors.fill: parent
+            z: 1 // over the part, made after it
+            visible: chip.activeFocus
+            radius: Theme.pillRadius(height)
+            color: "transparent"
+            border.width: 2
+            border.color: Theme.accent
+        }
     }
 }

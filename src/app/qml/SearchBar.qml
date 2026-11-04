@@ -33,7 +33,30 @@ Item {
     // 150 % the field's text sits on a half pixel, and while the window slides
     // in (Placement.contentShift) its glyphs come out a pixel taller on some
     // frames than when it rests.
-    function onPixel(y) { return Math.round(y * Screen.devicePixelRatio) / Screen.devicePixelRatio }
+    function onPixel(y) { return Math.round(y * dpr) / dpr }
+    // The window's, read once by the host (GitHub #111).
+    property real dpr: Screen.devicePixelRatio
+
+    // The style's field (Theme.searchField, flat: the launcher's row): inset
+    // from the row by fieldInset (0 in fluent: the whole row, nothing drawn),
+    // and the keys in it (pin, expand, .*, the scopes) inset from its top,
+    // bottom and right; never taller than they are, nor nearer the right
+    // edge than 10.
+    readonly property real keyInset: Theme.fieldKeyInsetAt(dpr)
+    readonly property real keyHeight: Math.min(tabs.implicitHeight, fieldPart.height - 2 * keyInset)
+    readonly property real keysRight: Math.max(10, Theme.fieldInset + keyInset)
+
+    Hook {
+        id: fieldPart
+        anchors.fill: parent
+        anchors.margins: Theme.fieldInset
+        part: Theme.searchField
+        flat: true
+        focused: input.activeFocus
+        hovered: bar.hovered
+        corner: Theme.fieldRadius
+        dpr: bar.dpr
+    }
 
     function focusAndSelect() {
         input.forceActiveFocus()
@@ -142,7 +165,7 @@ Item {
         height: width
         radius: Theme.controlRadius
         color: checked ? Theme.chipActive : pointed && !bar.placement.moving ? Theme.chipHover : "transparent"
-        border.width: checked || activeFocus ? 1 : 0
+        border.width: checked || activeFocus ? Theme.edge(bar.dpr) : 0
         border.color: activeFocus ? Theme.accent : Theme.chipBorder
         Behavior on color { ColorAnimation { duration: 100 } }
         activeFocusOnTab: true
@@ -206,7 +229,7 @@ Item {
         y: bar.onPixel((bar.height - height) / 2)
         focus: true
         clip: true
-        color: Theme.text
+        color: fieldPart.out("textColor", Theme.text)
         font.pixelSize: Theme.uiSearch
         selectByMouse: true
         selectionColor: Theme.textSelection
@@ -234,7 +257,7 @@ Item {
             anchors.fill: parent
             verticalAlignment: Text.AlignVCenter
             text: bar.launcher.placeholder
-            color: Theme.faint
+            color: fieldPart.out("placeholderColor", Theme.faint)
             font: input.font
             elide: Text.ElideRight
             visible: input.text.length === 0 && input.preeditText.length === 0
@@ -261,7 +284,7 @@ Item {
             anchors.bottom: parent.bottom
             verticalAlignment: Text.AlignVCenter
             text: bar.launcher.pluginHint
-            color: Theme.faint
+            color: fieldPart.out("placeholderColor", Theme.faint)
             font: input.font
             elide: Text.ElideRight
             visible: text.length > 0 && input.preeditText.length === 0 && !bar.inBox
@@ -277,7 +300,15 @@ Item {
     // Regex mode is on (Launcher.regexMode, Ctrl+R): ".*" before the tabs,
     // as the pin shows it is on; a click turns it off. Not in 内容, where
     // it changes nothing.
-    Rectangle {
+    // The keys in the field: the style's (Theme.keySurface, role "fieldKey");
+    // a mode that is on (.*, the pin) is a checked one.
+    component FieldKey: Hook {
+        anchors.fill: parent
+        part: Theme.keySurface
+        role: "fieldKey"
+    }
+
+    Item {
         id: regexChip
 
         visible: bar.launcher.regexMode && bar.launcher.scope !== Launcher.Content && !bar.inBox
@@ -285,20 +316,26 @@ Item {
         anchors.rightMargin: 6
         y: bar.onPixel((bar.height - height) / 2)
         width: Math.max(height, regexText.implicitWidth + 16)
-        height: tabs.height
-        radius: Theme.controlRadius
-        color: regexArea.pressed ? Theme.controlPressed : regexArea.containsMouse ? Theme.chipHover : Theme.chipActive
-        border.width: 1
-        border.color: Theme.chipBorder
+        height: bar.keyHeight
         Accessible.role: Accessible.CheckBox
         Accessible.name: qsTr("正则模式")
         Accessible.checked: true
 
+        FieldKey {
+            id: regexKey
+            dpr: bar.dpr // (an inline component cannot see bar)
+            checked: true
+            flat: false
+            hovered: regexArea.containsMouse
+            pressed: regexArea.pressed
+        }
+
         Text {
             id: regexText
             anchors.centerIn: parent
+            anchors.verticalCenterOffset: regexKey.out("contentOffsetY", 0)
             text: ".*"
-            color: Theme.accent
+            color: regexKey.out("foreground", Theme.accentText)
             font.pixelSize: Theme.uiBody
             font.bold: true
         }
@@ -319,7 +356,7 @@ Item {
     // The logo, and the pin badge on it, are not there over the taskbar box:
     // a pinned window shows this chip left of the expand button, a click
     // unpins. Nothing while it is not pinned.
-    Rectangle {
+    Item {
         id: boxPin
 
         visible: bar.inBox && bar.launcher.pinned
@@ -327,21 +364,27 @@ Item {
         anchors.rightMargin: 6
         y: bar.onPixel((bar.height - height) / 2)
         width: height
-        height: tabs.height
-        radius: Theme.controlRadius
-        color: pinArea.pressed ? Theme.controlPressed : pinArea.containsMouse ? Theme.chipHover : Theme.chipActive
-        border.width: 1
-        border.color: Theme.chipBorder
+        height: bar.keyHeight
         Accessible.role: Accessible.Button
         Accessible.name: qsTr("取消钉住")
         Accessible.description: qsTr("已钉住")
 
+        FieldKey {
+            id: pinKey
+            dpr: bar.dpr // (an inline component cannot see bar)
+            checked: true
+            flat: false
+            hovered: pinArea.containsMouse
+            pressed: pinArea.pressed
+        }
+
         Glyph {
             anchors.centerIn: parent
+            anchors.verticalCenterOffset: pinKey.out("contentOffsetY", 0)
             glyph: "" // PinnedFill
             overlay: ""
             size: 12
-            color: Theme.accent
+            color: pinKey.out("foreground", Theme.accentText)
         }
         MouseArea {
             id: pinArea
@@ -359,27 +402,34 @@ Item {
 
     // Expands the box into the search panel (Launcher.panel), or collapses
     // it: at the right corner (Ctrl+E too).
-    Rectangle {
+    Item {
         id: expand
 
         readonly property bool tipWanted: expandArea.containsMouse
         readonly property string tip: bar.panelMode ? qsTr("收回搜索框") : qsTr("展开为搜索面板")
 
         anchors.right: parent.right
-        anchors.rightMargin: 10
+        anchors.rightMargin: bar.keysRight
         y: bar.onPixel((bar.height - height) / 2)
         width: height
-        height: tabs.height
-        radius: Theme.controlRadius
-        color: expandArea.pressed ? Theme.controlPressed : expandArea.containsMouse ? Theme.chipHover : "transparent"
+        height: bar.keyHeight
         Accessible.role: Accessible.Button
         Accessible.name: tip
 
+        FieldKey {
+            id: expandKey
+            dpr: bar.dpr // (an inline component cannot see bar)
+            flat: true
+            hovered: expandArea.containsMouse
+            pressed: expandArea.pressed
+        }
+
         Glyph {
             anchors.centerIn: parent
+            anchors.verticalCenterOffset: expandKey.out("contentOffsetY", 0)
             glyph: bar.panelMode ? "\uE73F" : "\uE740" // BackToWindow, FullScreen
-            size: 24 / Screen.devicePixelRatio // fixed 24 device pixels
-            color: expandArea.containsMouse ? Theme.text : Theme.subtext
+            size: 24 / bar.dpr // fixed 24 device pixels
+            color: expandKey.out("foreground", expandArea.containsMouse ? Theme.text : Theme.subtext)
         }
         MouseArea {
             id: expandArea
@@ -398,6 +448,9 @@ Item {
     ScopeTabs {
         id: tabs
         scaled: true
+        role: "scope"
+        dpr: bar.dpr
+        height: bar.keyHeight
         anchors.right: expand.left
         anchors.rightMargin: 6
         anchors.leftMargin: 16

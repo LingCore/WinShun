@@ -52,8 +52,15 @@ Item {
 
     readonly property bool contentMode: line > 0
     readonly property bool current: ListView.isCurrentItem
-    readonly property int selectedCount: ListView.view ? ListView.view.model.selectedCount : 0
+    readonly property int selectedCount: ListView.view && ListView.view.model ? ListView.view.model.selectedCount : 0
     readonly property var results: ListView.view ? ListView.view.model : null
+    // The window's device pixel ratio, passed by the panel: one Screen
+    // attached object for all the rows (GitHub #111).
+    property real dpr: 1
+    // The style's own icon for a file's kind (Theme.typeIcon; null: the
+    // system's). Apps, programs and links always keep the system's.
+    readonly property string typeKind: Theme.typeIcon === null || isApp ? "" : isDir ? "folder" : SearchKeys.fileKind(path)
+    readonly property bool styledIcon: typeKind.length > 0
 
     signal clicked(int index, int modifiers)
     signal doubleClicked(int index, int modifiers) // as ResultRow's
@@ -62,7 +69,7 @@ Item {
     signal previewRequested(int index) // as ResultRow's
     signal hoverMoved(int index, point globalPos)
 
-    function onPixel(y) { return Math.round(y * Screen.devicePixelRatio) / Screen.devicePixelRatio }
+    function onPixel(y) { return Math.round(y * row.dpr) / row.dpr }
 
     // As ResultRow's: the whole name and folder (NameTip) when either is cut,
     // or the folder is not shown (a content match shows its line there).
@@ -96,42 +103,56 @@ Item {
     ListView.onPooled: dropTip()
     Component.onDestruction: dropTip()
 
-    Rectangle {
+    // The current row's highlight is the panel's list's own (one for all the
+    // rows, Panel.qml); this one is under the others the mouse is on or that
+    // are chosen, made only while one is.
+    Loader {
         anchors.fill: parent
-        anchors.leftMargin: 6
-        anchors.rightMargin: 6
-        radius: Theme.controlRadius
-        color: row.selected || (row.current && row.selectedCount === 0) ? Theme.selection
-               : area.containsMouse ? Theme.hover : "transparent"
-    }
-
-    Rectangle { // accent pill on the current row, as in Windows 11 lists
-        visible: row.current
-        x: 7
-        anchors.verticalCenter: parent.verticalCenter
-        width: 3
-        height: Math.round(row.height * 0.5)
-        radius: Theme.smallRadius
-        color: Theme.accent
+        anchors.leftMargin: Theme.rowInset
+        anchors.rightMargin: Theme.rowInset
+        active: !row.current && (row.selected || area.containsMouse)
+        sourceComponent: Hook {
+            part: Theme.rowHighlight
+            selected: row.selected
+            hovered: area.containsMouse
+            role: "panel"
+            dpr: row.dpr
+        }
     }
 
     Image { // 20 logical pixels: 30 device pixels at 150 %, its own pixels unsmoothed as the box's icons
         id: iconImage
 
-        readonly property real dpr: Screen.devicePixelRatio
+        readonly property real dpr: row.dpr
         readonly property int pixels: Math.round(20 * dpr)
 
+        visible: !row.styledIcon
         x: row.nameX + 1 / 64
         y: row.onPixel((row.height - height) / 2) + 1 / 64
         width: pixels / dpr
         height: pixels / dpr
         opacity: row.offline || row.missing ? 0.6 : 1
-        source: row.icon
+        source: row.styledIcon ? "" : row.icon
         sourceSize.width: pixels / dpr
         sourceSize.height: pixels / dpr
         smooth: false
         asynchronous: true
         fillMode: Image.PreserveAspectFit
+    }
+    Loader { // the style's own file icon (none in fluent: the system's above)
+        x: iconImage.x
+        y: iconImage.y
+        width: iconImage.width
+        height: iconImage.height
+        opacity: iconImage.opacity
+        active: row.styledIcon
+        sourceComponent: Hook {
+            part: Theme.typeIcon
+            kind: row.typeKind
+            size: iconImage.width
+            hueIndex: row.typeKind === "folder" ? -2 : -1
+            dpr: row.dpr
+        }
     }
 
     Text { // the name, shortened around its matches

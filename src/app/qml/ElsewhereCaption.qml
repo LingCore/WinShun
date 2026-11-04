@@ -27,7 +27,7 @@ Item {
     signal onlyRequested()
 
     readonly property bool shown: section === "true"
-    readonly property real dpr: Screen.devicePixelRatio
+    property real dpr: Screen.devicePixelRatio // the window's, passed by the launcher (GitHub #111)
 
     // Main.qml's captionHeight (the same Theme.labelRowHeight): the window's
     // height and the rows under its number keys are worked out with it.
