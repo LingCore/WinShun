@@ -140,7 +140,11 @@ Window {
         shadow: Theme.tok("menuWindowShadow", Theme.frameShadow)
     }
     Hook {
-        anchors.fill: parent
+        // The window's size, not its content item's: that one follows a
+        // resize event later, and the first frame of a new menu (and a grab
+        // of it) would have no body.
+        width: menu.width
+        height: menu.height
         visible: Theme.ownFrame
         part: Theme.ownFrame ? Theme.menuFrame : null
         extra: ({ shadow: false })
