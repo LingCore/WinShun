@@ -52,7 +52,7 @@ Item {
     }
 
     // Decoded when the page opens, so that the first press plays at once.
-    // Silent as soon as the page is left; closing the window deletes it all.
+    // Silent as soon as the page is left; closing the window leaves it (SettingsWindow.resetForReopen).
     onVisibleChanged: {
         if (visible) {
             swayPhase = 0

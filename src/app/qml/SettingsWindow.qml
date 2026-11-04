@@ -112,7 +112,7 @@ Window {
     }
     function closeWebForm() {
         webEditing = -2
-        const card = pluginsSection.cardOf("winshun.web")
+        const card = pageItem(pluginsPage)?.parts.pluginsSection.cardOf("winshun.web") // the form opens from that page
         const button = webReturnFocus || card?.webOptions?.addButton
         if (button && button.visible)
             button.forceActiveFocus()
@@ -154,21 +154,228 @@ Window {
     }
 
     // The taskbar button is pinned, Windows' search hidden, a file manager
-    // installed, outside Win顺: looked at again when the user comes back.
-    onActiveChanged: {
-        if (active) {
-            editor.refreshTaskbarState()
-            editor.refreshFileManagers()
-            editor.refreshNumberKeys()
-            editor.refreshDoubleCtrlClash()
-            editor.refreshOpusFolderMenu()
-            editor.cli.refresh() // the PATH changed in a terminal or another program
-            editor.refreshSkillState() // the Skill file deleted (not the whole look: it walks the PATH)
+    // installed, outside Win顺: looked at again when the user comes back
+    // (SettingsEditor::windowActivated; on opening, after the first frame).
+    onActiveChanged: if (active) editor.windowActivated()
+
+    // Closed (the title bar, Alt+F4, the taskbar): hidden and kept, not
+    // destroyed; App::showSettings shows the same window again, at once.
+    onClosing: (close) => {
+        close.accepted = false
+        window.hide()
+    }
+
+    // Hidden: back as a window made anew would be, nothing left running or
+    // half done (the hotkey recorders above all: one recording keeps the
+    // global hotkeys suspended).
+    function resetForReopen() {
+        clearFocus()
+        fillTimer.stop()
+        // Each page made so far its own (its recorders stopped, its fields cleared, …).
+        for (let i = 0; i < pageSlots.length; ++i)
+            pageSlots[i].item?.resetForReopen()
+        editor.plugins.recordingHotkey = false
+        updateDialog.close()
+        if (pluginDialog.open)
+            pluginDialog.reject()
+        webEditing = -2
+        webReturnFocus = null
+        // Dropped menus and hover tips live on the content item (DropMenu, HoverTip).
+        for (const child of contentItem.children) {
+            if (child.open === true && child.entries !== undefined && child.anchor !== undefined)
+                child.open = false
+            else if (child.shown === true && child.shownText !== undefined)
+                child.shown = false
         }
+        editor.plugins.gallery.filter = ""
+        editor.plugins.gallery.updatesOnly = false
+        editor.forgetMessages()
+
+        leavingSearch = true
+        searchBox.clear()
+        leavingSearch = false
+        beforeSearch = null
+        settingsSearch.current = null
+        activatePending = false
+        // To the first page as showPage would go, but without making it now:
+        // it is made when the window is shown again (onVisibleChanged), unless
+        // that opening goes elsewhere.
+        currentPage = 0
+        currentTab = 0
+        flick.stopScrolling()
+        flick.contentY = 0
+        lastTabs = []
+        heldTimer.stop()
+        heldItem = null
+        revealAfterFrame = ""
+        fadeOut.stop()
+        snapshot.source = ""
+        navFlick.contentY = 0
+        gleaningView.contentY = 0
+    }
+
+    // App::showSettings, after the first frame of each opening: what may have
+    // changed while the window was hidden, read again.
+    function refreshAfterOpen() {
+        for (let i = 0; i < pageSlots.length; ++i)
+            pageSlots[i].item?.opened()
+        // The pages not made yet, one after another in the background (fillTimer).
+        if (!searchReady)
+            fillTimer.start()
+    }
+
+    // ---- The pages, made when needed (PageSlot) -----------------------------
+    // Opening makes only the page shown (onVisibleChanged); after the first
+    // frame the others are made one at a time between frames (fillTimer), then
+    // 按键一览's sections one by one. Whatever needs a page not made yet makes
+    // it at once: going to it (showPage, part), showSetting (loadAllPages).
+    // The search waits for them all (searchReady), never makes them all at once:
+    // the box having the keyboard makes the filling go as fast as it can
+    // (fillFast), something typed makes the rest one per turn (fillNow).
+    property bool allPagesLoaded: false
+    readonly property list<PageSlot> pageSlots: [slot0, slot1, slot2, slot3, slot4, slot5, slot6, slot7, slot8, slot9]
+    // 按键一览's sections made so far (its Repeater's model, one element each).
+    ListModel { id: shortcutModel }
+    function makeShortcuts(count: int): void {
+        const wanted = Math.min(count, shortcutSections.length)
+        while (shortcutModel.count < wanted)
+            shortcutModel.append({ made: true })
+    }
+    onShortcutSectionsChanged: {
+        if (shortcutModel.count > shortcutSections.length)
+            shortcutModel.remove(shortcutSections.length, shortcutModel.count - shortcutSections.length)
+        else if (shortcutsWanted)
+            makeShortcuts(shortcutSections.length)
+    }
+    // 按键一览 shown: its sections all made at once (else one at a time, filling).
+    property bool shortcutsWanted: false
+    onShortcutsWantedChanged: if (shortcutsWanted) makeShortcuts(shortcutSections.length)
+    onCurrentPageChanged: if (currentPage === 0 && currentTab === 4) shortcutsWanted = true
+    onCurrentTabChanged: if (currentPage === 0 && currentTab === 4) shortcutsWanted = true
+
+    // The page if it has been made; null if not (or no such page).
+    function pageItem(index: int): SettingsPage {
+        return index >= 0 && index < pageSlots.length ? pageSlots[index].item : null
+    }
+    // The page, made now if it is not yet; null for 拾穗计划 (GleaningPage), no slot.
+    function loadPage(index: int): SettingsPage {
+        if (index < 0 || index >= pageSlots.length)
+            return null
+        const made = pageSlots[index].load()
+        if (!allPagesLoaded) {
+            let all = true
+            for (let i = 0; i < pageSlots.length && all; ++i)
+                all = pageSlots[i].item !== null
+            allPagesLoaded = all
+        }
+        return made
+    }
+    // The first page (in the categories' order) neither made nor being made; -1: none.
+    function nextToMake(): int {
+        for (let i = 0; i < pageSlots.length; ++i) { // a list property: no Array.prototype.find
+            if (pageSlots[i].item === null && pageSlots[i].incubator === null)
+                return i
+        }
+        return -1
+    }
+    // Everything made now (showSetting, which looks a row up at once).
+    function loadAllPages() {
+        makeShortcuts(shortcutSections.length) // before allPagesLoaded: the search finds them too
+        for (let i = 0; i < pageSlots.length; ++i)
+            pageSlots[i].load()
+        fillTimer.stop()
+        allPagesLoaded = true
+    }
+    // Every page and 按键一览's sections made: the search may look (its query
+    // is the box's from then on, worked out over all of them at once).
+    readonly property bool searchReady: allPagesLoaded && shortcutModel.count >= shortcutSections.length
+    // The box has the keyboard: the filling as fast as it goes in the background
+    // (the next page as soon as one is made).
+    readonly property bool fillFast: !searchReady && (searchBox.editing || searchBox.query.length > 0)
+    onFillFastChanged: {
+        if (fillFast && visible) {
+            fillTimer.start()
+            Qt.callLater(window.fillStep)
+        }
+    }
+    // Something typed waits for searchReady: the rest made now, a page (or a
+    // few of 按键一览's sections) per turn of the event loop (fillNow), keys
+    // and frames in between; sooner than the background's few ms per frame.
+    readonly property bool fillWaited: !searchReady && searchBox.query.length > 0
+    onFillWaitedChanged: if (fillWaited && visible) Qt.callLater(window.fillNow)
+    function fillNow(): void {
+        if (!fillWaited || !visible)
+            return
+        for (let i = 0; i < pageSlots.length; ++i) {
+            if (pageSlots[i].incubator !== null) { // being made in the background: finished now
+                loadPage(i)
+                Qt.callLater(window.fillNow)
+                return
+            }
+        }
+        const next = nextToMake()
+        if (next >= 0) {
+            loadPage(next)
+            Qt.callLater(window.fillNow)
+            return
+        }
+        allPagesLoaded = true
+        if (shortcutModel.count < shortcutSections.length) {
+            makeShortcuts(shortcutModel.count + 3)
+            Qt.callLater(window.fillNow)
+        }
+    }
+    // Enter pressed before searchReady: done once the results are there.
+    property bool activatePending: false
+    // A row or section of a page by name (SettingsPage.parts), its page made if need be.
+    function part(index, name) {
+        const made = loadPage(index)
+        const found = made ? made.parts[name] : undefined
+        if (!found)
+            console.warn("settings: no part", name, "on page", index)
+        return found ?? null
+    }
+    Timer {
+        id: fillTimer
+        interval: window.fillFast ? 16 : 80
+        repeat: true
+        onTriggered: window.fillStep()
+    }
+    // One page at a time, made in the background a few milliseconds per frame
+    // (PageSlot.prefetch: the engine's incubation), not 20–60 ms at once; none
+    // started while the page is being scrolled. Then 按键一览's sections, one
+    // per step (a few rows each).
+    function fillStep(): void {
+        if (!visible || searchReady) {
+            fillTimer.stop()
+            return
+        }
+        if (fillWaited) // fillNow's
+            return
+        for (let i = 0; i < pageSlots.length; ++i) {
+            if (pageSlots[i].incubator !== null)
+                return
+        }
+        const next = nextToMake()
+        if (next >= 0) {
+            if (!flick.moving && !flick.flicking && !wheelScroll.running)
+                pageSlots[next].prefetch(window.pageMade)
+            return
+        }
+        allPagesLoaded = true // the last one made since
+        if (shortcutModel.count < shortcutSections.length)
+            makeShortcuts(shortcutModel.count + 1)
+        if (searchReady)
+            fillTimer.stop()
+    }
+    // A page made in the background: the next one at once while fillFast.
+    function pageMade(): void {
+        if (fillFast && !fillWaited && fillTimer.running)
+            Qt.callLater(window.fillStep)
     }
 
     // Settings::fileManager's names, as the user knows them.
-    function fileManagerName(name) {
+    function fileManagerName(name: string): string {
         switch (name) {
         case "totalcmd": return "Total Commander"
         case "dopus": return "Directory Opus"
@@ -182,6 +389,8 @@ Window {
 
     // To a page, on `tab` if given; else on the tab it was left on.
     function showPage(index, tab) {
+        if (index !== gleaningPage)
+            loadPage(index) // made now if it is not yet: in this frame, not after it
         if (searching) {
             leavingSearch = true
             searchBox.clear()
@@ -214,7 +423,9 @@ Window {
     // the right narrowed down to those that fit (SettingRow, SettingsSection).
     SettingsSearch {
         id: settingsSearch
-        query: searchBox.query
+        // Only once every page is made (the box makes them: onQueryChanged
+        // there), so that each row is there to be matched and counted.
+        query: window.searchReady ? searchBox.query : ""
         highlightColor: Theme.accent
         onQueryChanged: {
             if (active && !window.beforeSearch)
@@ -223,11 +434,28 @@ Window {
         onQueryApplied: (wasActive) => window.searchChanged(wasActive)
     }
 
+    // What the pages read from the window (SettingsPage), and ask of it.
+    SettingsContext {
+        id: settingsContext
+        search: settingsSearch
+        dpr: window.dpr
+        currentPage: window.currentPage
+        currentTab: window.currentTab
+        pages: window.pages
+        pageKeywords: window.pageKeywords
+        onOpenRequested: (index, tab) => window.showPage(index, tab)
+        onHoldRequested: (item, change) => window.holdInView(item, change)
+    }
+
     function searchChanged(wasActive) {
         if (searching) {
             flick.stopScrolling()
             flick.contentY = 0
             pickBest()
+            if (activatePending) {
+                activatePending = false
+                Qt.callLater(window.goToCurrent) // not inside the search's own signal
+            }
             return
         }
         settingsSearch.current = null
@@ -247,7 +475,7 @@ Window {
     function results() {
         const list = []
         for (const result of settingsSearch.results())
-            list.push({ row: result.row, score: result.score, key: result.row.orderKey() })
+            list.push({ row: result.row, score: result.score, key: (result.row.section?.page ?? 0) * 1000000 + result.row.orderKey() }) // orderKey: within its page
         list.sort((a, b) => a.key - b.key)
         return list
     }
@@ -266,7 +494,7 @@ Window {
     // ↓ goes to the categories.
     function moveCurrent(delta) {
         if (!searching) {
-            if (delta > 0)
+            if (delta > 0 && searchBox.query.length === 0) // typed, not searched yet (searchReady): nothing
                 navItemAt(currentPage).forceActiveFocus()
             return
         }
@@ -407,13 +635,13 @@ Window {
     function showClipboardPage() { showPage(clipboardPage) } // App::showClipboardSettings
     function showWebPage() { showPluginPage("winshun.web") } // App::showWebSettings
     function showShortcutsPage() { showPage(0, 4) } // App::showShortcutSettings: the shortcut panels' last row
-    function showFileTypesPage() { goTo(fileTypesRow) } // App::showFileTypeSettings: the launcher strip's +
+    function showFileTypesPage() { goTo(part(3, "fileTypesSection").typesRow) } // App::showFileTypeSettings: the launcher strip's +
     // Win顺 restarted from here (App::restart, --settings-at): back where it
     // was, "page,tab"; after 索引方式 changed the rights it runs with, that row.
     function place() { return currentPage + "," + currentTab }
     function showPlace(where) {
         if (where === "indexAccess") {
-            goTo(indexAccessRow)
+            goTo(part(2, "indexAccessRow"))
             return
         }
         const at = String(where).split(",").map(Number)
@@ -427,6 +655,7 @@ Window {
         showPage(page, tab >= 0 ? tab : undefined)
         if (!title)
             return
+        loadAllPages() // searchReady now: the row is looked up right after
         searchBox.setText(title)
         Qt.callLater(() => {
             if (settingsSearch.current)
@@ -437,21 +666,22 @@ Window {
     }
     function showFavoritesPage(path) { // App::showFavoriteSettings: that favorite's form open
         showPage(favoritesPage)
-        favoritesSection.edit(path)
+        part(favoritesPage, "favoritesSection").edit(path)
     }
     // The 插件 page, scrolled to the plugin's card, which is marked for a
     // moment (a plugin's row opening "winshun:settings": Launcher.pluginSettingsRequested).
     function showPluginPage(pluginId) {
         showPage(pluginsPage, 0) // the cards' tab, whichever was left on
-        const card = pluginsSection.cardOf(pluginId)
+        const plugins = part(pluginsPage, "pluginsSection")
+        const card = plugins.cardOf(pluginId)
         if (!card) {
             showPluginLibrary(pluginId)
             return
         }
-        pluginsSection.expand(pluginId) // its settings are what was asked for
+        plugins.expand(pluginId) // its settings are what was asked for
         layoutNow()
         revealRow(card)
-        pluginsSection.reveal(pluginId)
+        plugins.reveal(pluginId)
         // A window opened just now has not laid out the cards' column yet (layoutNow
         // places only the sections): every card is still at y 0. Once more after a frame.
         revealAfterFrame = pluginId
@@ -475,7 +705,7 @@ Window {
         target: window
         enabled: window.revealAfterFrame.length > 0
         function onFrameSwapped() {
-            const card = pluginsSection.cardOf(window.revealAfterFrame)
+            const card = window.part(window.pluginsPage, "pluginsSection").cardOf(window.revealAfterFrame)
             if (card) {
                 window.revealRow(card)
                 if (card.detailsSettled)
@@ -494,12 +724,15 @@ Window {
         onDropped: (urls) => {
             if (window.searching)
                 return
+            // The page on show: made already.
             if (window.currentPage === window.favoritesPage) {
-                favoritesSection.favorites.addPaths(urls)
+                window.part(window.favoritesPage, "favoritesSection").favorites.addPaths(urls)
             } else if (window.currentPage === window.pluginsPage) {
+                const pluginsSection = window.part(window.pluginsPage, "pluginsSection")
                 for (const url of urls)
                     pluginsSection.plugins.install(String(url))
             } else if (window.currentPage === 2 && window.currentTab === 0) {
+                const foldersRow = window.part(2, "foldersRow")
                 let problem = ""
                 let networkPath = ""
                 for (const url of urls) {
@@ -522,7 +755,7 @@ Window {
         running: window.visible
         onTriggered: window.now = new Date()
     }
-    function sinceText(date) {
+    function sinceText(date: date): string {
         const minutes = Math.floor((window.now - date) / 60000)
         if (minutes < 1)
             return qsTr("刚刚")
@@ -551,20 +784,32 @@ Window {
         })
     }
 
-    onVisibleChanged: if (visible && warm) AuthorClock.play()
+    onVisibleChanged: {
+        if (visible) {
+            // Emitted before the native window shows (QWindow::setVisible): the
+            // page on show is there for the first frame, laid out at the final size.
+            if (currentPage !== gleaningPage)
+                loadPage(currentPage)
+            now = new Date()
+            if (warm)
+                AuthorClock.play()
+        } else {
+            resetForReopen()
+        }
+    }
 
     GleaningBackdrop { // under the title bar too: the sky reaches the top of the window
         anchors.fill: parent
         visible: window.warm
         // Painted on the CPU: only while someone is looking at it.
-        running: window.active && window.visibility !== Window.Minimized && SystemTheme.animations
+        running: window.visible && window.active && window.visibility !== Window.Minimized && SystemTheme.animations
         leadingInset: nav.width
     }
 
     Binding { // suspends the global hotkey and hands the recorder the keyboard (see ShortcutCapture)
         target: window.editor
         property: "recordingHotkey"
-        value: hotkeyRecorder.recording || clipHotkeyRecorder.recording || folderMenuHotkeyRecorder.recording || previewHotkeyRecorder.recording
+        value: (slot0.item?.recordingHotkey ?? false) || (slot3.item?.recordingHotkey ?? false) || (slot6.item?.recordingHotkey ?? false)
                || window.editor.plugins.recordingHotkey
     }
     Binding { // the plugin cards read their processes' memory only while on show
@@ -754,8 +999,16 @@ Window {
             width: parent.width - 24
             warm: window.warm
             onMoved: (delta) => window.moveCurrent(delta)
-            onActivated: window.goToCurrent()
+            onActivated: {
+                if (!window.searchReady && query.length > 0)
+                    window.activatePending = true // gone to once searched
+                else
+                    window.goToCurrent()
+            }
             onEscaped: window.clearFocus()
+            // Typed before searchReady: nothing made at once, the page stays as
+            // it is (no 没有找到 meanwhile) until the search can look (fillFast).
+            onQueryChanged: if (query.length === 0) window.activatePending = false
         }
 
         Flickable { // scrolls when the window is too low for all the categories
@@ -874,6 +1127,7 @@ Window {
     }
 
     GleaningPage {
+        id: gleaningView
         visible: window.warm
         anchors.left: nav.right
         anchors.right: parent.right
@@ -968,15 +1222,8 @@ Window {
         Column { // the current category's options; the other sections are hidden
             id: page
 
-            // What the sections and their rows read (SettingsSection.qml).
-            readonly property SettingsSearch search: settingsSearch
-            readonly property real dpr: window.dpr
-            readonly property int currentPage: window.currentPage
-            readonly property int currentTab: window.currentTab
-            readonly property var pages: window.pages
-            readonly property var pageKeywords: window.pageKeywords
-            function openPage(index, tab) { window.showPage(index, tab) }
-            function holdInView(item, change) { window.holdInView(item, change) }
+            // Each category a PageSlot below: its SettingsPage, the column its
+            // sections read (search, currentPage, … from settingsContext).
             x: 8
             y: 12
             width: flick.width - 36
@@ -1116,6 +1363,23 @@ Window {
                 }
             }
 
+            PageSlot {
+                id: slot0
+                index: 0
+                content: Component { SettingsPage {
+                    host: settingsContext
+                    parts: ({ explorerTypingRow: explorerTypingRow, folderMenuRow: folderMenuRow, dialogBarRow: dialogBarRow })
+                    recordingHotkey: hotkeyRecorder.recording || folderMenuHotkeyRecorder.recording
+                    onResetForReopen: {
+                        hotkeyRecorder.stop()
+                        folderMenuHotkeyRecorder.stop()
+                        doubleCtrlAppInput.clear()
+                        taskbarButtonRow.chosen = -1
+                        opusMenuRow.confirming = false
+                        opusMenuRow.copied = false
+                        clearHistoryButton.confirming = false
+                    }
+            // <page 0>
             SettingsSection {
                 page: 0
                 tab: 0
@@ -1593,8 +1857,8 @@ Window {
                                 onClicked: {
                                     const command = window.editor.pickFileManagerProgram()
                                     if (command.length > 0) {
-                                        openCommandBox.text = command
                                         window.editor.fileManagerOpenCommand = command
+                                        openCommandBox.text = Qt.binding(() => window.editor.fileManagerOpenCommand) // the setting's again, not a copy
                                     }
                                 }
                             }
@@ -1621,8 +1885,8 @@ Window {
                                 onClicked: {
                                     const command = window.editor.pickFileManagerProgram()
                                     if (command.length > 0) {
-                                        revealCommandBox.text = command
                                         window.editor.fileManagerRevealCommand = command
+                                        revealCommandBox.text = Qt.binding(() => window.editor.fileManagerRevealCommand)
                                     }
                                 }
                             }
@@ -2063,22 +2327,24 @@ Window {
             }
 
             Repeater { // 按键一览: the shortcuts, a section for each group of them
-                model: window.shortcutSections
+                // Not made with the page: some 70 rows, a section at a time after the
+                // pages (fillStep), or all at once when that tab is shown (shortcutsWanted).
+                model: shortcutModel
 
                 delegate: SettingsSection {
                     id: shortcutSection
 
-                    required property var modelData
                     required property int index
+                    readonly property var group: window.shortcutSections[index] ?? null
 
                     page: 0
                     tab: 4
                     width: parent.width
-                    title: modelData?.title ?? ""
+                    title: group?.title ?? ""
                     note: index === 0 ? qsTr("所有快捷键都在这里；带“去设置”的可以自己改。") : ""
 
                     Repeater {
-                        model: shortcutSection.modelData.rows
+                        model: shortcutSection.group?.rows ?? []
 
                         delegate: SettingRow {
                             id: shortcutRow
@@ -2174,7 +2440,16 @@ Window {
                     }
                 }
             }
+            // </page 0>
+                } }
+            }
 
+            PageSlot {
+                id: slot1
+                index: 1
+                content: Component { SettingsPage {
+                    host: settingsContext
+            // <page 1>
             SettingsSection {
                 page: 1
                 width: parent.width
@@ -2316,7 +2591,29 @@ Window {
                     }
                 }
             }
+            // </page 1>
+                } }
+            }
 
+            PageSlot {
+                id: slot2
+                index: 2
+                content: Component { SettingsPage {
+                    host: settingsContext
+                    parts: ({ foldersRow: foldersRow, sharesRow: sharesRow, indexAccessRow: indexAccessRow, nameInput: nameInput })
+                    onResetForReopen: {
+                        for (const field of [nameInput, typeInput, fileNameInput, shareInput])
+                            field.clear()
+                        foldersRow.problem = ""
+                        foldersRow.networkPath = ""
+                        sharesRow.listedServer = ""
+                        sharesRow.listedShares = []
+                        sharesRow.listProblem = ""
+                        sharesRow.listSignIn = false
+                        sharesRow.listing = false
+                        shareProblem.text = ""
+                    }
+            // <page 2>
             SettingsSection {
                 page: 2
                 tab: 0
@@ -3200,7 +3497,22 @@ Window {
                     ]
                 }
             }
+            // </page 2>
+                } }
+            }
 
+            PageSlot {
+                id: slot3
+                index: 3
+                content: Component { SettingsPage {
+                    host: settingsContext
+                    parts: ({ fileTypesSection: fileTypesSection })
+                    recordingHotkey: previewHotkeyRecorder.recording
+                    onResetForReopen: {
+                        previewHotkeyRecorder.stop()
+                        fileTypesSection.resetForReopen()
+                    }
+            // <page 3>
             SettingsSection {
                 page: 3
                 tab: 0
@@ -3601,12 +3913,23 @@ Window {
             }
 
             FileTypesSection {
+                id: fileTypesSection
                 page: 3
                 tab: 3
                 width: parent.width
                 editor: window.editor
             }
+            // </page 3>
+                } }
+            }
 
+            PageSlot {
+                id: slot4
+                index: 4
+                content: Component { SettingsPage {
+                    host: settingsContext
+                    onResetForReopen: extensionInput.clear()
+            // <page 4>
             SettingsSection {
                 page: 4
                 tab: 0
@@ -3809,7 +4132,17 @@ Window {
                     }
                 }
             }
+            // </page 4>
+                } }
+            }
 
+            PageSlot {
+                id: slot5
+                index: 5
+                content: Component { SettingsPage {
+                    host: settingsContext
+                    parts: ({ favoritesSection: favoritesSection })
+            // <page 5>
             FavoritesSection {
                 id: favoritesSection
                 page: window.favoritesPage
@@ -3817,7 +4150,28 @@ Window {
                 favorites: window.editor.favorites
                 editor: window.editor
             }
+            // </page 5>
+                } }
+            }
 
+            PageSlot {
+                id: slot6
+                index: 6
+                content: Component { SettingsPage {
+                    host: settingsContext
+                    parts: ({ captureKeywordError: captureKeywordError }) // the probe's (--settings-reopen-check)
+                    recordingHotkey: clipHotkeyRecorder.recording
+                    onResetForReopen: {
+                        clipHotkeyRecorder.stop()
+                        appInput.clear()
+                        captureKeywordBox.text = Qt.binding(() => window.editor.captureKeyword)
+                        captureKeywordError.text = ""
+                        clipImport.path = ""
+                        clipImport.split = 1
+                        clearClipboardButton.confirming = false
+                    }
+                    onOpened: clipImport.ditto = window.editor.dittoDatabase()
+            // <page 6>
             SettingsSection {
                 page: window.clipboardPage
                 tab: 0
@@ -3866,6 +4220,7 @@ Window {
                     bodyShown: captureKeywordError.text.length > 0
 
                     InputBox {
+                        id: captureKeywordBox
                         width: 96
                         text: window.editor.captureKeyword
                         maximumLength: 16
@@ -4430,7 +4785,18 @@ Window {
                     }
                 }
             }
+            // </page 6>
+                } }
+            }
 
+            PageSlot {
+                id: slot7
+                index: 7
+                content: Component { SettingsPage {
+                    host: settingsContext
+                    parts: ({ proxyRow: proxyRow })
+                    onResetForReopen: resetButton.confirming = false
+            // <page 7>
             SettingsSection {
                 page: window.advancedPage
                 width: parent.width
@@ -4777,7 +5143,16 @@ Window {
                     }
                 }
             }
+            // </page 7>
+                } }
+            }
 
+            PageSlot {
+                id: slot8
+                index: 8
+                content: Component { SettingsPage {
+                    host: settingsContext
+            // <page 8>
             AiAccessSection {
                 page: window.aiPage
                 width: parent.width
@@ -4805,7 +5180,21 @@ Window {
                 width: parent.width
                 editor: window.editor
             }
+            // </page 8>
+                } }
+            }
 
+            PageSlot {
+                id: slot9
+                index: 9
+                content: Component { SettingsPage {
+                    host: settingsContext
+                    parts: ({ pluginsSection: pluginsSection, pluginDevSection: pluginDevSection })
+                    onResetForReopen: {
+                        pluginsSection.resetForReopen()
+                        pluginDevSection.resetForReopen()
+                    }
+            // <page 9>
             PluginsSection {
                 id: pluginsSection
                 onEditWebShortcut: (index, button) => window.editWebShortcut(index, button)
@@ -4814,8 +5203,8 @@ Window {
                 plugins: window.editor.plugins
                 editor: window.editor
                 lockedElsewhere: pluginDevSection.lockedRows
-                onSettingRequested: (which) => window.goTo(which === "folderMenu" ? folderMenuRow
-                                                           : which === "dialogBar" ? dialogBarRow : explorerTypingRow)
+                onSettingRequested: (which) => window.goTo(window.part(0, which === "folderMenu" ? "folderMenuRow"
+                                                                          : which === "dialogBar" ? "dialogBarRow" : "explorerTypingRow"))
             }
 
             PluginGallerySection {
@@ -4824,7 +5213,7 @@ Window {
                 width: parent.width
                 plugins: window.editor.plugins
                 onShowInstalled: (pluginId) => window.showPluginPage(pluginId)
-                onShowProxySettings: window.goTo(proxyRow)
+                onShowProxySettings: window.goTo(window.part(window.advancedPage, "proxyRow"))
                 onShowDeveloper: {
                     window.editor.plugins.developerMode = true
                     window.showTab(2)
@@ -4837,6 +5226,9 @@ Window {
                 tab: 2
                 width: parent.width
                 plugins: window.editor.plugins
+            }
+            // </page 9>
+                } }
             }
         }
     }

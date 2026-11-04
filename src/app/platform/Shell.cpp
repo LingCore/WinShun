@@ -1220,6 +1220,12 @@ bool isEnabled()
     return known >= 0 ? known != 0 : queryEnabled();
 }
 
+std::optional<bool> lastRead()
+{
+    const int known = g_enabled;
+    return known >= 0 ? std::optional(known != 0) : std::nullopt;
+}
+
 void refresh(std::function<void()> done)
 {
     std::thread([done = std::move(done)] {

@@ -148,6 +148,7 @@ SettingsEditor::SettingsEditor(const Settings& settings, const QString& runningR
     , m_favorites(new FavoritesSettings(this, this))
     , m_cli(new CliSetup(this, this))
 {
+    m_autostart = autostart::lastRead().value_or(false); // App::readAutostart reads the task as the window opens
     ocr::setComponentsRoot(Settings::dataDir() + u"/components"_s);
     useOcrPackage(new OcrPackage(this));
     connect(this, &SettingsEditor::changed, this, &SettingsEditor::drivesChanged);
@@ -159,15 +160,21 @@ SettingsEditor::SettingsEditor(const Settings& settings, const QString& runningR
     const QString pinned = qEnvironmentVariable("APPDATA") + u"/Microsoft/Internet Explorer/Quick Launch/User Pinned/TaskBar"_s;
     if (QFileInfo(pinned).isDir())
         watch.pinned.addPath(pinned);
-    connect(&watch.pinned, &QFileSystemWatcher::directoryChanged, this, &SettingsEditor::refreshTaskbarState);
+    // Not while the window is hidden (kept for the next opening, which reads it again).
+    const auto shown = [this] { return !m_window || m_window->isVisible(); };
+    connect(&watch.pinned, &QFileSystemWatcher::directoryChanged, this, [this, shown] {
+        if (shown())
+            refreshTaskbarState();
+    });
     ::RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Search", 0, KEY_NOTIFY,
         watch.searchKey.out());
     watch.searchChanged = win32::UniqueHandle(::CreateEventW(nullptr, FALSE, FALSE, nullptr));
     if (watch.arm()) {
         watch.notifier = std::make_unique<QWinEventNotifier>(watch.searchChanged.get());
-        connect(watch.notifier.get(), &QWinEventNotifier::activated, this, [this] {
+        connect(watch.notifier.get(), &QWinEventNotifier::activated, this, [this, shown] {
             m_taskbarWatch->arm();
-            refreshTaskbarState();
+            if (shown())
+                refreshTaskbarState();
         });
     }
 }
@@ -652,11 +659,6 @@ void SettingsEditor::setRecordingHotkey(bool recording)
     emit recordingHotkeyChanged();
 }
 
-bool SettingsEditor::autostart() const
-{
-    return autostart::isEnabled();
-}
-
 void SettingsEditor::setAutostart(bool on)
 {
     emit autostartRequested(on); // App writes it: removing it may take UAC (GitHub #67)
@@ -664,6 +666,10 @@ void SettingsEditor::setAutostart(bool on)
 
 void SettingsEditor::refreshAutostart()
 {
+    // Called once the task was read (App::readAutostart) or written: isEnabled()
+    // answers from what that read. Told even when unchanged: the switch, moved
+    // by a click Windows refused, goes back.
+    m_autostart = autostart::isEnabled();
     emit autostartChanged();
 }
 
@@ -3328,9 +3334,71 @@ void SettingsEditor::setCliTally(const QString& tally)
 
 void SettingsEditor::refreshMcpClients()
 {
-    m_mcpClients = mcpclients::toVariant(mcpclients::detect());
-    m_mcpRelayPath = mcpclients::relayPath();
+    QVariantList clients = mcpclients::toVariant(mcpclients::detect());
+    QString relayPath = mcpclients::relayPath();
+    if (clients == m_mcpClients && relayPath == m_mcpRelayPath)
+        return; // as they were: the cards are not made again
+    m_mcpClients = std::move(clients);
+    m_mcpRelayPath = std::move(relayPath);
     emit mcpClientsChanged();
+}
+
+void SettingsEditor::refreshOnReturn()
+{
+    refreshTaskbarState();
+    refreshFileManagers();
+    refreshNumberKeys();
+    refreshDoubleCtrlClash();
+    refreshOpusFolderMenu();
+    m_cli->refresh(); // the PATH changed in a terminal or another program
+}
+
+void SettingsEditor::windowActivated()
+{
+    if (m_opening)
+        return; // finishOpening() reads it all, after the first frame
+    refreshOnReturn();
+    refreshSkillState(); // the Skill file deleted (not the whole look: it walks the PATH)
+}
+
+void SettingsEditor::finishOpening()
+{
+    m_opening = false;
+    refreshOnReturn();
+    refreshMcpClients(); // the Skill's state with them
+    if (!std::exchange(m_knownPlacesFresh, false))
+        refreshKnownPlaces(); // not right after the constructor read them
+}
+
+void SettingsEditor::refreshKnownPlaces()
+{
+    const QVariantList shares = knownShares();
+    const QVariantList distros = wslFolders();
+    const QVariantList common = commonFolders();
+    m_knownShares = unc::knownShares();
+    m_knownWsl = wsl::distributions();
+    m_knownFolders = Settings::knownFolders();
+    if (knownShares() != shares || wslFolders() != distros)
+        emit sharesChanged();
+    if (commonFolders() != common)
+        emit foldersChanged();
+}
+
+void SettingsEditor::forgetMessages()
+{
+    if (!m_diagnosticsBusy && !m_diagnosticsStatus.isEmpty()) {
+        m_diagnosticsStatus.clear();
+        emit diagnosticsChanged();
+    }
+    if (!m_clipboardImporting && !m_clipboardImportMessage.isEmpty()) {
+        m_clipboardImportMessage.clear();
+        emit clipboardImportChanged();
+    }
+    if (!m_mcpSkillBusy)
+        setMcpMessage({});
+    m_plugins->clearMessage();
+    m_favorites->clearMessage();
+    m_cli->clearMessage();
 }
 
 void SettingsEditor::refreshSkillState()

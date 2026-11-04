@@ -150,6 +150,8 @@ namespace ws::autostart {
 
 // From what was last read: at once, without asking Task Scheduler again.
 bool isEnabled();
+// The same, but nothing (rather than asking) before anything was read.
+std::optional<bool> lastRead();
 // Reads the task again, in the background (changed outside WinShun?); `done`
 // runs there afterwards.
 void refresh(std::function<void()> done = {});

@@ -334,7 +334,7 @@ public:
     void setHotkeyError(const QString& error);
     bool recordingHotkey() const { return m_recordingHotkey; }
     void setRecordingHotkey(bool recording);
-    bool autostart() const;
+    bool autostart() const { return m_autostart; } // as last read (autostart::isEnabled), never asked of Task Scheduler here
     void setAutostart(bool on);
     void refreshAutostart(); // changed or read again elsewhere (the tray menu, the task itself)
     bool recordHistory() const { return m_settings.recordHistory; }
@@ -857,6 +857,22 @@ public:
     // Only whether Claude Code's Skill file is there (one path): for the window coming to the front
     // and the page showing, where refreshMcpClients() would stall the GUI thread on that PATH.
     Q_INVOKABLE void refreshSkillState();
+
+    // The window is kept while hidden (App::showSettings): what may change
+    // outside Win顺 meanwhile is read again as it comes back.
+    // The window activated (SettingsWindow.onActiveChanged): the taskbar,
+    // file managers, number keys, double Ctrl clash, Opus, ws on the PATH.
+    // Skipped while it opens: finishOpening() reads them after the first frame.
+    Q_INVOKABLE void windowActivated();
+    void beginOpening() { m_opening = true; }
+    // After the first frame of an opening: all of windowActivated()'s, and
+    // the AI clients and the shares, WSL and known folders offered.
+    void finishOpening();
+    bool opening() const { return m_opening; }
+    // Hidden: the lines about how the last action went (诊断包, 导入, AI
+    // client, plugin, favorite, ws), gone as with a window made anew; not
+    // while that action still runs.
+    Q_INVOKABLE void forgetMessages();
     Q_INVOKABLE void connectMcpClient(const QString& id); // writes Win顺 into its configuration; mcpMessage says how it went
     Q_INVOKABLE void copyMcpSnippet(const QString& id); // its configuration (or command) to the clipboard; "": the generic JSON
     Q_INVOKABLE void installMcpSkill(const QString& id); // Claude Code's Skill for ws; mcpMessage says how it went
@@ -930,6 +946,8 @@ private:
     friend class PluginSettings; // edits m_settings' plugin sections and commits
     friend class FavoritesSettings; // reads the web shortcuts' keywords and the window
     void commit();
+    void refreshKnownPlaces(); // m_knownShares, m_knownWsl, m_knownFolders read again; told when they changed
+    void refreshOnReturn(); // windowActivated()'s
     void noteFoldersEdited(); // foldersChanged() when the chosen folders (or the shares) are others now
     // m_settings.indexFolders as IndexService has them (Settings::indexFolderPath),
     // worked out when they change, not each time the cards are: no disk is read for those.
@@ -979,12 +997,12 @@ private:
     bool m_diagnosticsBusy = false;
     std::vector<ShareIndexer::Status> m_shareStatuses;
     std::vector<remotecontent::Indexer::Status> m_shareContentStatuses;
-    std::vector<unc::Known> m_knownShares; // read once, with the window
+    std::vector<unc::Known> m_knownShares; // read with the window, again as it opens (refreshKnownPlaces)
     std::vector<wsl::Distribution> m_knownWsl;
     QStringList m_wslStarting;
     QHash<QString, QString> m_wslStartProblems;
     std::vector<IndexService::FolderStatus> m_folderStatuses;
-    std::vector<Settings::KnownFolder> m_knownFolders; // read once, with the window
+    std::vector<Settings::KnownFolder> m_knownFolders; // read with the window, again as it opens (refreshKnownPlaces)
     QStringList m_foldersAnnounced; // as foldersChanged() last had them
     QList<NetworkShare> m_sharesAnnounced;
     mutable QStringList m_folderKeysOf; // folderKeys(): of these
@@ -999,6 +1017,9 @@ private:
     QString m_mcpRelayPath;
     QString m_mcpMessage;
     bool m_mcpSkillBusy = false; // installMcpSkill is waiting for ws
+    bool m_autostart = false;
+    bool m_opening = false; // shown, its first frame not drawn yet (beginOpening)
+    bool m_knownPlacesFresh = true; // read by the constructor, for the first opening
     PluginSettings* m_plugins = nullptr; // a child
     OcrPackage* m_ocrPackage = nullptr;
     FavoritesSettings* m_favorites = nullptr; // a child

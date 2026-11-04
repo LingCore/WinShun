@@ -23,8 +23,8 @@ Item {
     // away, or on a Windows without it. Not `visible`, which the row decides
     // while searching.
     property bool shown: true
-    property var keywords: [] // other words people look for it by
-    property var values: [] // what the user filled in, so that it can be found by that too
+    property list<string> keywords // other words people look for it by
+    property list<string> values // what the user filled in, so that it can be found by that too
     // Rows that show only while this one is on: found while it is off, they
     // bring this one up instead.
     property list<Item> unlocks
@@ -35,8 +35,11 @@ Item {
     readonly property SettingsSearch search: section ? section.search : null
     readonly property bool searching: search !== null && search.active
     // The labels on the controls: the choices of a ScopeTabs, the words on
-    // buttons.
+    // buttons. Read only while searching ([] otherwise: not worked out for
+    // every row as it is made).
     readonly property var options: {
+        if (!searching)
+            return []
         const labels = []
         for (let i = 0; i < trailingRow.children.length; ++i) {
             const control = trailingRow.children[i]
@@ -47,9 +50,9 @@ Item {
         }
         return labels
     }
-    // Its page's title and other words for the page, its section's title.
+    // Its page's title and other words for the page, its section's title (only while searching).
     readonly property var context: {
-        if (!section)
+        if (!section || !searching)
             return []
         const page = section.pageInfo
         const words = page ? [page.title].concat(section.pageKeywords) : []
@@ -85,10 +88,10 @@ Item {
     readonly property int score: !searching || !shown ? -1 : found ? hit.score : unlocked.length > 0 ? 1 : -1
 
     // Whether `value` (one of `values`) has a word typed in it.
-    function valueFound(value) { return found && hit.values.indexOf(value) >= 0 }
+    function valueFound(value: string): bool { return found && hit.values.indexOf(value) >= 0 }
 
     // Where it stands among the rows: by section, then within its section.
-    function orderKey() {
+    function orderKey(): int {
         // A list property is no array: Array.prototype.indexOf finds nothing in it.
         const indexIn = (list, item) => {
             for (let i = 0; i < list.length; ++i) {
@@ -246,32 +249,35 @@ Item {
                         wrapMode: Text.Wrap
                     }
 
-                    Item {
+                    Loader { // made on the few rows with a tip only, not on every row
                         id: tipBadge
+                        active: row.tip.length > 0
                         visible: row.tip.length > 0 && !row.searching
                         width: 20
                         height: 20
                         anchors.verticalCenter: titleText.lineCount <= 1 ? titleText.verticalCenter : undefined
                         y: titleText.lineCount > 1 ? 2 : 0
 
-                        Glyph {
-                            anchors.centerIn: parent
-                            glyph: "\uE946"
-                            size: 13
-                            color: tipArea.containsMouse ? Theme.accent : Theme.subtext
-                        }
+                        sourceComponent: Item {
+                            Glyph {
+                                anchors.centerIn: parent
+                                glyph: "\uE946"
+                                size: 13
+                                color: tipArea.containsMouse ? Theme.accent : Theme.subtext
+                            }
 
-                        MouseArea {
-                            id: tipArea
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                        }
+                            MouseArea {
+                                id: tipArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                            }
 
-                        HoverTip {
-                            target: tipArea.containsMouse ? tipBadge : null
-                            text: row.tip
-                            delay: 150
+                            HoverTip {
+                                target: tipArea.containsMouse ? tipBadge : null
+                                text: row.tip
+                                delay: 150
+                            }
                         }
                     }
                 }

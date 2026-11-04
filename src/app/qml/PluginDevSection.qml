@@ -17,6 +17,13 @@ SettingsSection {
     // Shown only in developer mode: for the switch's search hint.
     readonly property var lockedRows: [newRow, logRow]
 
+    // The settings window hidden (SettingsWindow.resetForReopen): as a window made anew.
+    function resetForReopen() {
+        newRow.problem = ""
+        nameBox.clear()
+        kindTabs.current = 0
+    }
+
     note: qsTr("每一条发给插件和插件回来的消息都记在这里；改了脚本，常驻插件会自动重新加载。")
 
     SettingRow {

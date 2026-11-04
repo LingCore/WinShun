@@ -135,7 +135,19 @@ public:
         bool settings = false; // open the settings window
         QString settingsAt; // there (SettingsWindow.showPlace), after a restart from the settings
         bool clipboardDisplayProbe = false; // isolated runtime QA only; never claims UIAccess
+        // Isolated runtime QA only: the settings window shown without being
+        // activated or brought to the front (no input of any kind is sent).
+        bool settingsProbe = false;
     };
+    // How the settings window last opened (written to the diagnostics journal
+    // as "settings-open", read by the runtime probe): made or shown again,
+    // and the milliseconds from showSettings() to its first frame.
+    struct SettingsOpening {
+        int count = 0;
+        bool reused = false;
+        qint64 firstFrameMs = -1; // -1 until drawn
+    };
+    const SettingsOpening& settingsOpening() const { return m_settingsOpening; }
 
     App();
     ~App() override;
@@ -173,7 +185,9 @@ public:
     // --dump <file> from another copy (tests): the launcher's state and rows as JSON.
     void dumpLauncher(const QString& file) const;
     void showClipboard();
-    void showSettings();
+    // `at`: where it opens (its showPage, showPlace …), called before it is shown:
+    // the page wanted is the one made for the first frame, not the first page too.
+    void showSettings(const std::function<void(QQuickWindow*)>& at = {});
     void showUpdate(); // the settings window with the update dialog
     // Set by "重新启动" in the tray menu or the settings window: the command
     // line for the new copy, which main() starts once this one has let go,
@@ -199,6 +213,8 @@ protected:
 
 private:
     bool startRuntime(const StartOptions& options, bool firstRun, bool clipboardIsNew, bool fromOnboarding = false);
+    bool settingsShown() const; // the settings window on show (it is kept, hidden, once made)
+    void settingsFirstFrame(int opening); // after the first frame of an opening: what waited for it
     bool showOnboarding(const StartOptions& options);
     void finishOnboarding(const StartOptions& options);
     bool createWindow();
@@ -779,9 +795,15 @@ private:
     HWND m_launcherTarget = nullptr;
     QPointer<QQuickWindow> m_window;
     QPointer<QQuickWindow> m_clipWindow; // the clipboard's; created a moment after the start
-    QPointer<QQuickWindow> m_settingsWindow; // created on demand, deleted when closed
+    // Created on its first opening, then hidden when closed and shown again
+    // (SettingsWindow.onClosing): reopening takes some 30 ms, not 500. Shown
+    // or hidden: settingsShown().
+    QPointer<QQuickWindow> m_settingsWindow;
     QPointer<QQuickWindow> m_barWindow; // the dialog bar's; created with the first file dialog
-    QPointer<SettingsEditor> m_settingsEditor; // owned by m_settingsWindow
+    QPointer<SettingsEditor> m_settingsEditor; // owned by m_settingsWindow; there while it is hidden too
+    SettingsOpening m_settingsOpening;
+    QElapsedTimer m_settingsOpenClock; // since the latest showSettings() that showed it
+    bool m_settingsProbe = false; // StartOptions::settingsProbe
     QString m_pluginRecoveryMessage;
     bool m_pluginRecoveryBusy = false;
     QString m_renderer; // the one in use; changing it takes a restart

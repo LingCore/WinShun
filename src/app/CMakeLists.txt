@@ -174,6 +174,9 @@ set(qml_files
     qml/SettingsSearchBox.qml
     qml/TitleBar.qml
     qml/SettingsSection.qml
+    qml/SettingsContext.qml
+    qml/SettingsPage.qml
+    qml/PageSlot.qml
     qml/FileTypesSection.qml
     qml/SettingRow.qml
     qml/PageTabs.qml

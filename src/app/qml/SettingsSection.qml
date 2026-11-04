@@ -23,8 +23,8 @@ Column {
     readonly property SettingsSearch search: column && column.search !== undefined ? column.search : null
     readonly property bool searching: search !== null && search.active
     readonly property var pageInfo: column && column.pages !== undefined ? column.pages[page] ?? null : null
-    // Other words people look for the page by.
-    readonly property var pageKeywords: column && column.pageKeywords !== undefined
+    // Other words people look for the page by (only while searching, the one time they are read).
+    readonly property var pageKeywords: searching && column && column.pageKeywords !== undefined
                                         ? (column.pageKeywords[page] ?? "").split(";").filter(word => word.length > 0)
                                         : []
     // The window's device pixel ratio, for this section and its rows: one

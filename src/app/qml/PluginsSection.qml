@@ -20,8 +20,8 @@ SettingsSection {
     property SettingsEditor editor: null
 
     // The cards unfolded, by plugin id: here, not in the cards, for the list
-    // is reset (the cards made again) when a plugin comes or goes. For as
-    // long as the window lives; not saved. Assigned whole, for the bindings.
+    // is reset (the cards made again) when a plugin comes or goes. Until the
+    // window is closed (resetForReopen); not saved. Assigned whole, for the bindings.
     property var expandedIds: []
     function setExpanded(pluginId, on) {
         const ids = expandedIds.filter(id => id !== pluginId)
@@ -59,6 +59,18 @@ SettingsSection {
         id: revealTimer
         interval: 3000
         onTriggered: pluginsSection.revealed = ""
+    }
+
+    // The settings window hidden (SettingsWindow.resetForReopen): every card
+    // folded, as in a window made anew; the menus are closed by the window.
+    function resetForReopen() {
+        expandedIds = []
+        revealTimer.stop()
+        revealed = ""
+        for (const loader of pasteCard.parent.children) {
+            if (loader.item && loader.item.expanded === true)
+                loader.item.expanded = false
+        }
     }
 
     // Counts the cards' changes (a keyword changed, a plugin added), for

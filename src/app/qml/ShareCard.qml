@@ -89,7 +89,7 @@ Rectangle {
                 color: card.toneColor
 
                 SequentialAnimation on opacity { // read just now
-                    running: card.share.busy && SystemTheme.animations
+                    running: card.share.busy && SystemTheme.animations && (card.Window.window?.visible ?? false) // not in the hidden settings window
                     loops: Animation.Infinite
                     alwaysRunToEnd: true
                     NumberAnimation { to: 0.3; duration: 600; easing.type: Easing.InOutSine }

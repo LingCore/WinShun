@@ -10,8 +10,18 @@ SettingsSection {
     readonly property int keywordWidth: 115
     readonly property int actionsWidth: 108
     readonly property real extensionsWidth: Math.max(100, width - 36 - nameWidth - keywordWidth - actionsWidth - 18)
+    // The 文件类型 row, gone to from the launcher strip's + (SettingsWindow.showFileTypesPage).
+    readonly property SettingRow typesRow: fileTypesRow
+
+    // The settings window hidden (SettingsWindow.resetForReopen): nothing half typed kept.
+    function resetForReopen() {
+        problem = ""
+        newName.clear()
+        newExtensions.clear()
+    }
 
     SettingRow {
+        id: fileTypesRow
         title: qsTr("文件类型")
         keywords: qsTr("类型;扩展名;后缀;筛选;前缀;快捷键;folder;filter;type;extension").split(";")
         values: section.editor.fileTypes.map(t => t.name + " :" + t.keyword)

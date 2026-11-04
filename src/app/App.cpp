@@ -413,6 +413,10 @@ App::App()
 
 App::~App()
 {
+    // Hidden first, while everything it reaches is still there: its reset
+    // (SettingsWindow.resetForReopen) then, never from inside its destructor.
+    if (m_settingsWindow)
+        m_settingsWindow->hide();
     m_clipDisplay.reset();
     delete m_onboardingWindow.data();
     m_onboardingQml.reset();
@@ -472,6 +476,7 @@ App::~App()
 bool App::start(const StartOptions& options)
 {
     m_clipDisplayProbe = options.clipboardDisplayProbe;
+    m_settingsProbe = options.settingsProbe;
     ocr::setComponentsRoot(Settings::dataDir() + u"/components"_s);
     const bool firstRun = !Settings::exists();
     // Updated from a version without the clipboard history: tell about it once.
@@ -581,9 +586,10 @@ void App::finishOnboarding(const StartOptions& options)
         m_onboardingEditor.reset();
         m_onboardingFrame.reset();
         if (options.settings) {
-            showSettings();
-            if (!options.settingsAt.isEmpty() && m_settingsWindow)
-                QMetaObject::invokeMethod(m_settingsWindow, "showPlace", Q_ARG(QVariant, QVariant(options.settingsAt)));
+            showSettings([&options](QQuickWindow* window) {
+                if (!options.settingsAt.isEmpty())
+                    QMetaObject::invokeMethod(window, "showPlace", Q_ARG(QVariant, QVariant(options.settingsAt)));
+            });
         } else {
             // Finishing a visible welcome screen is an explicit interaction,
             // including an installer or login start that originally used --background.
@@ -721,10 +727,10 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     connect(m_launcher.get(), &Launcher::folderSettingsRequested, this, [this] { showSettingsFor(u"Index/Folders"_s); });
     // Not a setting the AI settings know of: the section, by its row's title (SettingsWindow.qml).
     connect(m_launcher.get(), &Launcher::shareSettingsRequested, this, [this] {
-        showSettings();
-        if (m_settingsWindow)
-            QMetaObject::invokeMethod(m_settingsWindow, "showSetting", Q_ARG(QVariant, 2), Q_ARG(QVariant, 3),
+        showSettings([](QQuickWindow* window) {
+            QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, 2), Q_ARG(QVariant, 3),
                 Q_ARG(QVariant, QCoreApplication::translate("SettingsWindow", "网络与 WSL 文件夹")));
+        });
     });
     connect(m_launcher.get(), &Launcher::folderAddRequested, this, &App::addFolderFromLauncher);
     connect(m_launcher.get(), &Launcher::folderNoteDismissed, this, [this] {
@@ -846,9 +852,9 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     connect(m_clipboard.get(), &Clipboard::lanSendSetupRequested, this, [this](bool update) {
         hideClipboard(false);
         if (update) {
-            showSettings();
-            if (m_settingsWindow)
-                QMetaObject::invokeMethod(m_settingsWindow, "showPluginLibrary", Q_ARG(QVariant, QVariant(u"winshun.localsend"_s)));
+            showSettings([](QQuickWindow* window) {
+                QMetaObject::invokeMethod(window, "showPluginLibrary", Q_ARG(QVariant, QVariant(u"winshun.localsend"_s)));
+            });
         } else {
             showPluginSettings(u"winshun.localsend"_s);
         }
@@ -1140,9 +1146,10 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
         m_messages->showNotification(tr("索引位置"), m_indexFolderProblem);
     }
     if (options.settings) {
-        showSettings();
-        if (m_settingsWindow && !options.settingsAt.isEmpty())
-            QMetaObject::invokeMethod(m_settingsWindow, "showPlace", Q_ARG(QVariant, QVariant(options.settingsAt)));
+        showSettings([&options](QQuickWindow* window) {
+            if (!options.settingsAt.isEmpty())
+                QMetaObject::invokeMethod(window, "showPlace", Q_ARG(QVariant, QVariant(options.settingsAt)));
+        });
     } else if (!options.background || !options.query.isEmpty())
         showLauncher(options.query);
     QTimer::singleShot(1s, this, &App::prewarmLauncher);
@@ -1778,7 +1785,7 @@ void App::applyHotkey()
     noteApplyProblem(u"Launcher/Hotkey"_s, hotkeyError);
     if (m_settingsEditor)
         m_settingsEditor->setHotkeyError(hotkeyError); // shown next to the shortcut
-    else if (!hotkeyError.isEmpty() && !m_aiApplying)
+    if (!settingsShown() && !hotkeyError.isEmpty() && !m_aiApplying)
         m_messages->showNotification(tr("快捷键不可用"), hotkeyError);
 }
 
@@ -1827,7 +1834,7 @@ void App::applyFolderMenuHotkey()
     noteApplyProblem(u"Launcher/FolderMenuHotkey"_s, hotkeyError);
     if (m_settingsEditor)
         m_settingsEditor->setFolderMenuHotkeyError(hotkeyError); // shown next to the shortcut
-    else if (!hotkeyError.isEmpty() && !m_aiApplying)
+    if (!settingsShown() && !hotkeyError.isEmpty() && !m_aiApplying)
         m_messages->showNotification(tr("快捷键不可用"), hotkeyError);
 }
 
@@ -2173,11 +2180,11 @@ void App::setUpAppTools()
         }});
     tools.push_back({u"show_ocr_setup"_s, plugin::Permission::Ui,
         [this](const QString&, const QString&, const QJsonObject&, std::function<void(mcp::ToolResult)> done) {
-            showSettings();
-            if (m_settingsWindow)
-                QMetaObject::invokeMethod(m_settingsWindow, "showSetting",
-                    Q_ARG(QVariant, m_settingsWindow->property("clipboardPage")), Q_ARG(QVariant, QVariant(0)),
+            showSettings([](QQuickWindow* window) {
+                QMetaObject::invokeMethod(window, "showSetting",
+                    Q_ARG(QVariant, window->property("clipboardPage")), Q_ARG(QVariant, QVariant(0)),
                     Q_ARG(QVariant, QVariant(QCoreApplication::translate("OcrPackageRow", "增强文字识别"))));
+            });
             done({});
         }});
     m_pluginHost->setAppTools(std::move(tools));
@@ -2305,7 +2312,8 @@ void App::applyClipboardHotkeys()
     if (m_settingsEditor) {
         m_settingsEditor->setWinVState(state, winv::canRestartExplorer());
         m_settingsEditor->setClipboardHotkeyError(hotkeyError);
-    } else if (!hotkeyError.isEmpty() && !m_aiApplying) {
+    }
+    if (!settingsShown() && !hotkeyError.isEmpty() && !m_aiApplying) {
         m_messages->showNotification(tr("快捷键不可用"), hotkeyError);
     }
     applyQuickPasteHotkeys();
@@ -3050,8 +3058,36 @@ void App::settingsEdited(const Settings& settings)
         applyIndexAccess();
 }
 
-void App::showSettings()
+bool App::settingsShown() const
 {
+    return m_settingsWindow && m_settingsWindow->isVisible();
+}
+
+// Made the first time, then kept: closed, it is hidden (SettingsWindow.onClosing)
+// and puts itself back as a window made anew would be (resetForReopen). What
+// changes meanwhile is either told to its editor as it happens (the hotkeys'
+// state, the taskbar's search box, …) or read again after the first frame of
+// each opening (settingsFirstFrame), not before it: opening again takes some
+// 30 ms instead of 500.
+void App::showSettings(const std::function<void(QQuickWindow*)>& at)
+{
+    const bool created = !m_settingsWindow;
+    const bool opening = created || !m_settingsWindow->isVisible();
+    if (opening) {
+        m_settingsOpenClock.start();
+        ++m_settingsOpening.count;
+        m_settingsOpening.reused = !created;
+        m_settingsOpening.firstFrameMs = -1;
+    }
+    // Centred on the screen under the mouse, as tall as it fits.
+    const auto place = [](QQuickWindow* window) {
+        QScreen* screen = QGuiApplication::screenAt(QCursor::pos());
+        if (!screen)
+            screen = QGuiApplication::primaryScreen();
+        const QRect area = screen->availableGeometry();
+        window->resize(window->width(), std::min(window->height(), area.height() - 40));
+        window->setPosition(area.center() - QPoint(window->width() / 2, window->height() / 2));
+    };
     if (!m_settingsWindow) {
         auto* editor = new SettingsEditor(m_settings, m_renderer);
         editor->useOcrPackage(m_ocrPackage.get());
@@ -3247,104 +3283,150 @@ void App::showSettings()
         editor->favorites()->setStore(m_favorites.get());
         m_settingsWindow = window;
         m_settingsEditor = editor;
+        // What the app tells the editor as it changes, from now on (hidden or not):
+        // where it stands now.
         updateScreenshotPlugin();
         applyHotkey(); // shows whether the current hotkey works
         applyClipboardHotkeys(); // ... and where Win+V stands
         applyTaskbarHotkeys(); // ... and Win+S
         applyFolderMenuHotkey(); // ... and the folder menu's
-        editor->refreshTaskbarState();
         editor->setSearchBoxShown(searchBoxHiddenName(m_searchBoxHidden));
         editor->setClassicTaskbar(m_classicTaskbar);
-        editor->refreshFileManagers();
-        editor->refreshMcpClients();
-        editor->cli()->refresh();
-        refreshMcpStatus();
-        refreshIndexAccess();
-        if (m_serviceWanted && m_index->volumeAccessKind() == ntfs::VolumeAccess::Kind::None)
-            probeService(); // installed meanwhile? Looked for now, not in five minutes
 
-        prepareBackdrop(window);
+        prepareBackdrop(window); // once: the format is the window's for good
         window->create();
         window->installEventFilter(this); // pasting into its fields
         frame->setWindow(window);
-        styleWindow(window, SystemTheme::backdropAvailable());
-        win::setDarkFrame(window, isDarkMode());
-        QScreen* screen = QGuiApplication::screenAt(QCursor::pos());
-        if (!screen)
-            screen = QGuiApplication::primaryScreen();
-        const QRect area = screen->availableGeometry();
-        window->resize(window->width(), std::min(window->height(), area.height() - 40));
-        window->setPosition(area.center() - QPoint(window->width() / 2, window->height() / 2));
-        connect(window, &QWindow::visibleChanged, window, [this, window](bool visible) {
+        styleWindow(window, SystemTheme::backdropAvailable()); // applyTheme styles it again, hidden or not
+        win::setDarkFrame(window, isDarkMode()); // likewise guardDarkFrames, every window of ours
+        place(window);
+        connect(window, &QWindow::visibleChanged, this, [this, window](bool visible) {
             if (!visible) {
+                // Hidden under the pointer (its ✕ clicked): nothing left hovered for the next opening.
+                QEvent leave(QEvent::Leave);
+                QCoreApplication::sendEvent(window, &leave);
                 m_contentStatusTimer.stop();
-                window->deleteLater(); // free the window's memory until it is needed again
                 m_idleTrim->poke(); // Qt may stay "active" after this close; do not wait for a focus event
             }
         });
+    } else if (opening) {
+        // Shown again. A hotkey another program held may be free now: tried
+        // again where one did not work (working ones are left registered).
+        if (!m_settingsEditor->hotkeyError().isEmpty())
+            applyHotkey();
+        if (!m_settingsEditor->folderMenuHotkeyError().isEmpty())
+            applyFolderMenuHotkey();
+        if (!m_settingsEditor->clipboardHotkeyError().isEmpty())
+            applyClipboardHotkeys();
+        // The size the user gave it this session stays, within the screen it
+        // opens on; maximized it stays maximized, where it was (as Windows'
+        // own windows reopen), never minimized.
+        QQuickWindow* window = m_settingsWindow;
+        if (window->windowStates() & Qt::WindowMinimized)
+            window->setWindowStates(window->windowStates() & ~Qt::WindowMinimized);
+        if (!(window->windowStates() & (Qt::WindowMaximized | Qt::WindowFullScreen)))
+            place(window);
     }
-    refreshContentIndexStatus();
-    refreshShareStatuses();
-    refreshFolderStatuses();
-    refreshIndexFolder(true);
-    readAutostart(); // changed outside WinShun since it was last read?
+    // Cheap, and on the first page or the next: before the first frame.
     m_settingsEditor->setHistoryCount(static_cast<int>(m_history->items().size()));
     m_settingsEditor->setClipboardCount(m_clipStore->isOpen() ? static_cast<int>(m_clipStore->clips().size()) : -1);
     m_contentStatusTimer.start();
     hideLauncher();
+    if (opening) {
+        // The rest waits for the first frame (or a second, should none come:
+        // shown minimized). Activation waits for it too (windowActivated).
+        m_settingsEditor->beginOpening();
+        const int serial = m_settingsOpening.count;
+        connect(m_settingsWindow, &QQuickWindow::frameSwapped, this, [this, serial] { settingsFirstFrame(serial); },
+            Qt::ConnectionType(Qt::QueuedConnection | Qt::SingleShotConnection)); // emitted on the render thread
+        QTimer::singleShot(1s, this, [this, serial] { settingsFirstFrame(-serial); });
+    } else {
+        // Already on show: read again now, as each showSettings() always did.
+        refreshContentIndexStatus();
+        refreshShareStatuses();
+        refreshFolderStatuses();
+        readAutostart();
+    }
+    // Where it opens, before it is shown: its pages are made when first needed
+    // (SettingsWindow.loadPage), and showing makes the one current then.
+    if (at)
+        at(m_settingsWindow);
+    if (m_settingsProbe) {
+        // Isolated runtime QA: on screen, never activated or brought to the
+        // front (bringToFront may send an empty mouse event).
+        m_settingsWindow->setProperty("_q_showWithoutActivating", true);
+        m_settingsWindow->show();
+        return;
+    }
     m_settingsWindow->show();
     m_settingsWindow->raise();
     win::bringToFront(m_settingsWindow);
     m_settingsWindow->requestActivate();
 }
 
+// `opening`: the serial of the opening whose first frame was drawn; negated
+// when none came within a second (it is done all the same then).
+void App::settingsFirstFrame(int opening)
+{
+    const bool drawn = opening > 0;
+    if (std::abs(opening) != m_settingsOpening.count || !m_settingsEditor || !m_settingsEditor->opening())
+        return; // done already, or a later opening's
+    const qint64 ms = m_settingsOpenClock.elapsed();
+    if (drawn)
+        m_settingsOpening.firstFrameMs = ms;
+    // One line per opening, in the diagnostics journal: made or shown again, how long to its first frame.
+    diagnostics::record(u"settings-open"_s, {{u"reused"_s, m_settingsOpening.reused}, {u"firstFrameMs"_s, drawn ? ms : -1}});
+    m_settingsEditor->finishOpening(); // the taskbar, file managers, AI clients, places offered …
+    if (m_settingsWindow)
+        QMetaObject::invokeMethod(m_settingsWindow, "refreshAfterOpen");
+    refreshContentIndexStatus();
+    refreshShareStatuses();
+    refreshFolderStatuses();
+    refreshIndexFolder(true); // measures the index folder
+    refreshIndexAccess(); // asks the service manager
+    refreshMcpStatus();
+    readAutostart(); // changed outside WinShun since it was last read? (in the background)
+    if (m_serviceWanted && m_index->volumeAccessKind() == ntfs::VolumeAccess::Kind::None)
+        probeService(); // installed meanwhile? Looked for now, not in five minutes
+}
+
 void App::showClipboardSettings()
 {
-    showSettings();
-    if (m_settingsWindow)
-        QMetaObject::invokeMethod(m_settingsWindow, "showClipboardPage");
+    showSettings([](QQuickWindow* window) { QMetaObject::invokeMethod(window, "showClipboardPage"); });
 }
 
 void App::showShortcutSettings()
 {
-    showSettings();
-    if (m_settingsWindow)
-        QMetaObject::invokeMethod(m_settingsWindow, "showShortcutsPage");
+    showSettings([](QQuickWindow* window) { QMetaObject::invokeMethod(window, "showShortcutsPage"); });
 }
 
 void App::showWebSettings()
 {
-    showSettings();
-    if (m_settingsWindow)
-        QMetaObject::invokeMethod(m_settingsWindow, "showWebPage");
+    showSettings([](QQuickWindow* window) { QMetaObject::invokeMethod(window, "showWebPage"); });
 }
 
 void App::showFileTypeSettings()
 {
-    showSettings();
-    if (m_settingsWindow)
-        QMetaObject::invokeMethod(m_settingsWindow, "showFileTypesPage");
+    showSettings([](QQuickWindow* window) { QMetaObject::invokeMethod(window, "showFileTypesPage"); });
 }
 
 void App::showFavoriteSettings(const QString& path)
 {
-    showSettings();
-    if (m_settingsWindow)
-        QMetaObject::invokeMethod(m_settingsWindow, "showFavoritesPage", Q_ARG(QVariant, QVariant(path)));
+    showSettings([&path](QQuickWindow* window) {
+        QMetaObject::invokeMethod(window, "showFavoritesPage", Q_ARG(QVariant, QVariant(path)));
+    });
 }
 
 void App::showPluginSettings(const QString& pluginId)
 {
-    showSettings();
-    if (m_settingsWindow)
-        QMetaObject::invokeMethod(m_settingsWindow, "showPluginPage", Q_ARG(QVariant, QVariant(pluginId)));
+    showSettings([&pluginId](QQuickWindow* window) {
+        QMetaObject::invokeMethod(window, "showPluginPage", Q_ARG(QVariant, QVariant(pluginId)));
+    });
 }
 
 void App::showPluginUpdates()
 {
-    showSettings();
-    if (m_settingsWindow)
-        QMetaObject::invokeMethod(m_settingsWindow, "showPluginUpdates");
+    showSettings([](QQuickWindow* window) { QMetaObject::invokeMethod(window, "showPluginUpdates"); });
 }
 
 void App::showUpdate()
@@ -3652,9 +3734,10 @@ void App::handleCommand(const QString& command)
         // App's destructor saves the index and disposes of those windows.
         QCoreApplication::exit(0);
     else if (QString place; settingscommand::parse(command, &place)) {
-        showSettings();
-        if (m_settingsWindow && !place.isEmpty())
-            QMetaObject::invokeMethod(m_settingsWindow, "showPlace", Q_ARG(QVariant, QVariant(place)));
+        showSettings([&place](QQuickWindow* window) {
+            if (!place.isEmpty())
+                QMetaObject::invokeMethod(window, "showPlace", Q_ARG(QVariant, QVariant(place)));
+        });
     } else if (command.startsWith(u"query:"))
         showLauncher(command.mid(6));
     else if (command.startsWith(u"dump:"))
@@ -6315,7 +6398,7 @@ void App::applyMcp()
         // ws calls: not one status line per call (an agent runs several a second),
         // and none at all while no settings window is there to show it.
         connect(m_mcpServer.get(), &mcp::McpServer::cliCalled, this, [this] {
-            if (m_settingsEditor && !m_cliTallyTimer.isActive())
+            if (settingsShown() && !m_cliTallyTimer.isActive()) // hidden: read as it opens (refreshMcpStatus)
                 m_cliTallyTimer.start();
         });
         connect(m_mcpHost.get(), &mcp::ToolHost::toolsChanged, this, &App::writeMcpToolsCache);
@@ -6599,10 +6682,10 @@ void App::installMovedPlugins()
             self->m_messages->showNotification(tr("部分功能尚未恢复"), self->m_pluginRecoveryMessage, [self] {
                 if (!self)
                     return;
-                self->showSettings();
-                if (self->m_settingsWindow)
-                    QMetaObject::invokeMethod(self->m_settingsWindow, "showPage",
-                        Q_ARG(QVariant, self->m_settingsWindow->property("pluginsPage")), Q_ARG(QVariant, QVariant(0)));
+                self->showSettings([](QQuickWindow* window) {
+                    QMetaObject::invokeMethod(window, "showPage",
+                        Q_ARG(QVariant, window->property("pluginsPage")), Q_ARG(QVariant, QVariant(0)));
+                });
             });
     });
 }
@@ -7115,10 +7198,11 @@ mcp::ToolResult App::openAiSettings(const QString& key, const QString& section)
         page = of->page;
         where = of->titleText();
     }
-    showSettings();
+    showSettings([&](QQuickWindow* window) {
+        QMetaObject::invokeMethod(window, "showSetting", Q_ARG(QVariant, page), Q_ARG(QVariant, tab), Q_ARG(QVariant, rowTitle));
+    });
     if (!m_settingsWindow)
         return {{}, true, u"The settings window could not be opened."_s};
-    QMetaObject::invokeMethod(m_settingsWindow, "showSetting", Q_ARG(QVariant, page), Q_ARG(QVariant, tab), Q_ARG(QVariant, rowTitle));
     return {{{u"opened"_s, true}, {u"where"_s, where}}};
 }
 

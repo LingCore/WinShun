@@ -75,6 +75,31 @@ add_test(NAME tst_settingscapturehotkey COMMAND $<TARGET_FILE:WinShun>
 set_tests_properties(tst_settingscapturehotkey PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# The settings window is kept once made: closed, it hides and comes back as new
+# (first page, no search, no dialogs, no recording, nothing running while
+# hidden), and the ways in from elsewhere still land; the real App, isolated
+# (--probe-runtime), shown without activation.
+add_test(NAME tst_settingsreopen COMMAND $<TARGET_FILE:WinShun>
+    --probe-runtime "${CMAKE_CURRENT_BINARY_DIR}/settings-reopen" --settings-reopen-check --settle-ms 1500
+    --renderer d3d11)
+set_tests_properties(tst_settingsreopen PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
+# The settings pages are made when needed: opening makes the page on show only,
+# each way in from elsewhere its own, a word typed all of them (results in page
+# order, as many as before), and after the first frame the rest, one per tick.
+add_test(NAME tst_settingslazy COMMAND $<TARGET_FILE:WinShun>
+    --preview-settings "${CMAKE_CURRENT_BINARY_DIR}/settings-lazy" --lazy-pages)
+set_tests_properties(tst_settingslazy PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+# The same probe as tst_settingsreopen, first opened on the 剪贴板 page (as
+# App::showClipboardSettings opens it): that page alone made for the first frame.
+add_test(NAME tst_settingsopenlink COMMAND $<TARGET_FILE:WinShun>
+    --probe-runtime "${CMAKE_CURRENT_BINARY_DIR}/settings-open-link" --settings-reopen-check --settle-ms 1500
+    --renderer d3d11 --settings-first-open clipboard --settings-opens 1)
+set_tests_properties(tst_settingsopenlink PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # Clipboard sizing uses the production QML/native frame with temporary history.
 add_test(NAME tst_clipboardsizing COMMAND $<TARGET_FILE:WinShun>
     --preview-results "${CMAKE_CURRENT_BINARY_DIR}/clipboard-sizing" --clipboard-sizing --renderer d3d11)
