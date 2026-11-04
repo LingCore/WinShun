@@ -93,7 +93,9 @@ private:
     // screenshot when it is one; with its annotations to edit again.
     void copyImage(const QImage& image, const QByteArray& project, bool copy, bool screenshot, const QString& imageOrigin = {});
     void copyText(const QString& text);
-    void notify(const QString& title, const QString& text, const QString& folder = {});
+    // A click: `file` selected in its folder (reveal), else `folder` opened;
+    // an older host, without reveal, opens `folder` (#194).
+    void notify(const QString& title, const QString& text, const QString& folder = {}, const QString& file = {});
     void searchText(const QString& text, bool web);
 
     // ---- hotkeys, on a window of its own ----

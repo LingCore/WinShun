@@ -219,8 +219,11 @@ public:
     }
     const CaptureKeys& keys() const { return m_keys; }
     Q_INVOKABLE void spaceHeld(bool held);
-    // The toolbar's buttons: a CaptureSession::Action; Save asks for a path,
-    // SavePrevious uses the configured folder without a picker.
+    // A save folder was chosen ([Capture] SaveFolder): Save goes straight into it (#194).
+    void setSaveDirect(bool on) { m_model.setSaveDirect(on); }
+    // The toolbar's buttons: a CaptureSession::Action; Save asks for a path
+    // unless a save folder was chosen, SavePrevious uses the configured
+    // folder without a picker, SaveAs always asks.
     Q_INVOKABLE void act(int action);
 
     // ---- the zoom ----

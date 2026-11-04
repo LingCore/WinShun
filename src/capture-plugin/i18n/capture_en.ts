@@ -432,6 +432,10 @@
         <translation>Finish the text (Enter breaks the line; for the words by a number, Enter finishes them)</translation>
     </message>
     <message>
+        <source>保存到设置的保存位置</source>
+        <translation>Save to the chosen save folder</translation>
+    </message>
+    <message>
         <source>隐藏 / 显示工具条</source>
         <translation>Hide / show the toolbar</translation>
     </message>
@@ -684,6 +688,10 @@
     <message>
         <source>另存为</source>
         <translation>Save as</translation>
+    </message>
+    <message>
+        <source>保存</source>
+        <translation>Save</translation>
     </message>
     <message>
         <source>贴到屏幕上</source>
@@ -1215,6 +1223,14 @@
 </context>
 <context>
     <name>CaptureSaveButton</name>
+    <message>
+        <source>保存（%1）</source>
+        <translation>Save (%1)</translation>
+    </message>
+    <message>
+        <source>保存</source>
+        <translation>Save</translation>
+    </message>
     <message>
         <source>另存为…（%1）</source>
         <translation>Save as… (%1)</translation>

@@ -1735,6 +1735,25 @@ private slots:
         QCOMPARE(rig.session.selectionHistoryCount(), 1);
     }
 
+    // #194: with a save folder chosen, Ctrl+S saves straight into it; 另存为… still asks.
+    void aChosenSaveFolderSkipsThePicker()
+    {
+        Rig rig;
+        rig.session.setSaveDirect(true);
+        rig.begin();
+        rig.drag({100, 100}, {299, 199});
+        QSignalSpy finished(&rig.session, &CaptureSession::finished);
+        QVERIFY(rig.session.key(Qt::Key_S, Qt::ControlModifier));
+        QCOMPARE(finished.count(), 1);
+        QCOMPARE(finished[0][0].value<CaptureSession::Action>(), CaptureSession::Action::SavePrevious);
+        QCOMPARE(rig.session.selectionHistoryCount(), 1); // no picker to wait for
+        rig.begin();
+        rig.drag({100, 100}, {299, 199});
+        rig.session.act(static_cast<int>(CaptureSession::Action::SaveAs));
+        QCOMPARE(finished.count(), 2);
+        QCOMPARE(finished[1][0].value<CaptureSession::Action>(), CaptureSession::Action::Save);
+    }
+
     void wasdMovesThePointerInPhysicalPixels_data()
     {
         QTest::addColumn<qreal>("dpr");

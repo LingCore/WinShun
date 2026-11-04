@@ -509,12 +509,16 @@ void CaptureApp::apply()
     m_capture->setColorFormat(capture::colorFormatFromName(o.colorFormat));
     // The pin and save keys and the pin window's (#187): open pins and an open editor too.
     m_capture->setKeys(o.keys);
+    // A save folder chosen: Save goes straight into it, as in 0.16 (#194).
+    m_capture->setSaveDirect(!o.saveFolder.isEmpty());
     if (m_pins) {
         m_pins->setDoubleClick(capture::pinDoubleClickFromName(o.pinDoubleClick));
         m_pins->setKeys(o.keys);
     }
-    if (m_editor)
+    if (m_editor) {
         m_editor->setKeys(o.keys);
+        m_editor->setSaveDirect(!o.saveFolder.isEmpty());
+    }
 
     // PrtScn: taken from the Snipping Tool while it is wanted, the value
     // found then kept in PrintScreenBefore and put back after.
@@ -875,7 +879,9 @@ void CaptureApp::notifySaved(const QString& path, const QString& error)
     // Not the file's name: a toast stays in the Action Center.
     const saved::Target target = saved::target(path);
     const QString folder = target.show == saved::Show::File ? QFileInfo(target.path).absolutePath() : target.path;
-    notify(tr("截图已保存"), tr("点击打开所在文件夹"), QDir::toNativeSeparators(folder));
+    // A click selects the file in its folder, as in 0.16 (#194).
+    notify(tr("截图已保存"), tr("点击打开所在文件夹"), QDir::toNativeSeparators(folder),
+        target.show == saved::Show::File ? QDir::toNativeSeparators(target.path) : QString());
 }
 
 capture::PinManager& CaptureApp::pins()
@@ -1002,6 +1008,7 @@ capture::CaptureEditor* CaptureApp::editor()
     editor->attach(window);
     m_editWindow = window;
     editor->setKeys(m_settings.options().keys);
+    editor->setSaveDirect(!m_settings.options().saveFolder.isEmpty());
     m_editor = std::move(editor);
     return m_editor.get();
 }
@@ -1280,11 +1287,17 @@ void CaptureApp::copyText(const QString& text)
     });
 }
 
-void CaptureApp::notify(const QString& title, const QString& text, const QString& folder)
+void CaptureApp::notify(const QString& title, const QString& text, const QString& folder, const QString& file)
 {
     QJsonObject params {{u"toast"_s, true}, {u"title"_s, title}, {u"text"_s, text}};
+    // A click goes to one place, the first the host knows: reveal, else open.
+    QJsonArray click;
+    if (!file.isEmpty())
+        click.append(QJsonObject {{u"type"_s, u"reveal"_s}, {u"path"_s, file}});
     if (!folder.isEmpty())
-        params.insert(u"click"_s, QJsonArray {QJsonObject {{u"type"_s, u"open"_s}, {u"path"_s, folder}}});
+        click.append(QJsonObject {{u"type"_s, u"open"_s}, {u"path"_s, folder}});
+    if (!click.isEmpty())
+        params.insert(u"click"_s, click);
     m_protocol.notify(u"winshun/notify"_s, params);
 }
 

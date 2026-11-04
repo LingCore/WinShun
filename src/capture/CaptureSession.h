@@ -200,7 +200,9 @@ public:
     // Long: the selection scrolls into a long screenshot (Ctrl+L; LongCapture),
     // one at least kLongMinimum px each way. Qr: the QR codes in it are read
     // (Q); Delay: this capture ends and the next begins after the countdown (Ctrl+Shift+D).
-    enum class Action { Copy, Save, Cancel, Pin, Ocr, OcrCopy, OcrSearch, OcrWeb, Long, Qr, Delay, CopyPin, Record, SavePrevious };
+    // Save: into the chosen save folder, or Save As when none was chosen (#194);
+    // SavePrevious: into the folder without a picker; SaveAs: always the picker.
+    enum class Action { Copy, Save, Cancel, Pin, Ocr, OcrCopy, OcrSearch, OcrWeb, Long, Qr, Delay, CopyPin, Record, SavePrevious, SaveAs };
     Q_ENUM(Action)
     static constexpr int kLongMinimum = 48;
     static constexpr int kSelectionHistoryLimit = 10;
@@ -323,6 +325,9 @@ public:
     // The pin and save keys the user chose (#187), for the text box too.
     void setKeys(const CaptureKeys& keys);
     const CaptureKeys& keys() const { return m_annot.keys(); }
+    // A save folder was chosen ([Capture] SaveFolder): Save needs no picker (#194).
+    void setSaveDirect(bool on) { m_annot.setSaveDirect(on); }
+    bool saveDirect() const { return m_annot.saveDirect(); }
     // This capture was begun by the delay's countdown: no hints by themselves (after begin()).
     void quietKeyHints();
     // , and . have captures to bring back (Capture's history, at the start).
