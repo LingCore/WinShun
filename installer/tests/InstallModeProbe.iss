@@ -30,17 +30,40 @@ RedirectionGuard=no
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 DefaultDirName={autopf}\WinShunInstallModeProbe
+#ifdef ProbeInstall
+; /DProbeInstall: a real install of one file (and its uninstaller), with two
+; [Run] entries that log who they run as: the relaunch for all users keeps
+; runasoriginaluser the user's (Medium), the plain one is elevated (High).
+CreateAppDir=yes
+Uninstallable=yes
+DisableDirPage=yes
+DisableReadyPage=yes
+#else
 CreateAppDir=no
 Uninstallable=no
+#endif
 ShowLanguageDialog=no
 LanguageDetectionMethod=uilanguage
 WizardStyle=modern dynamic windows11
 OutputDir={#OutputDir}
+#ifdef ProbeInstall
+OutputBaseFilename=InstallModeProbeInstall
+#else
 OutputBaseFilename=InstallModeProbe
+#endif
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "chinesesimplified"; MessagesFile: "..\ChineseSimplified.isl"
+
+#ifdef ProbeInstall
+[Files]
+Source: "{#SourcePath}\InstallModeProbe.iss"; DestDir: "{app}"
+
+[Run]
+Filename: "{cmd}"; Parameters: "/c (echo runasoriginaluser: & whoami & whoami /groups | find ""Mandatory Label"") >> ""{param:PROBELOG}"""; Flags: runhidden runasoriginaluser
+Filename: "{cmd}"; Parameters: "/c (echo plain: & whoami & whoami /groups | find ""Mandatory Label"") >> ""{param:PROBELOG}"""; Flags: runhidden
+#endif
 
 [Code]
 function GetCurrentProcessId(): DWORD;
@@ -92,5 +115,7 @@ begin
   ProbeWrite(Format('  [%d] result = %d, admin install mode = %d, language = %s', [GetCurrentProcessId(), Ord(Result), Ord(IsAdminInstallMode), ActiveLanguage]));
   if ExpandConstant('{param:PROBEEXIT|}') <> '' then
     InstallModeExitProcess(StrToIntDef(ExpandConstant('{param:PROBEEXIT|}'), 0));
+#ifndef ProbeInstall
   Result := False; // never installs
+#endif
 end;
