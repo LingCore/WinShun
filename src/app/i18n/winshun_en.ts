@@ -3636,7 +3636,7 @@
     </message>
     <message>
         <source>插件给搜索框加关键字命令，结果混进列表。它们用你的普通权限（要跟随 Win顺 管理员权限的，权限里会写明）；启用前会先列出权限，由你决定是否开启。</source>
-        <translation>Plugins add keyword commands to the search box and mix their results into the list. They run with your normal rights (one that follows Win顺's administrator rights says so in its permissions); review the permissions and choose which ones to enable.</translation>
+        <translation>Plugins add keyword commands to the search box and mix their results into the list. They run with your normal rights (one that follows Win顺&apos;s administrator rights says so in its permissions); review the permissions and choose which ones to enable.</translation>
     </message>
 </context>
 <context>
@@ -7779,6 +7779,34 @@ Right: center window · Drag: move window</translation>
         <translation>Folder menu</translation>
     </message>
     <message>
+        <source>它在最前面时，Win顺 收不到%1，可以改按 %2。点这里去装上索引服务，%1 就也能用了。</source>
+        <translation>While it is in front, %1 does not reach Win顺; press %2 instead. Click to install the index service, and %1 works there too.</translation>
+    </message>
+    <message>
+        <source>它在最前面时，Win顺 收不到%1，可以改按 %2。点这里去更新索引服务，%1 就也能用了。</source>
+        <translation>While it is in front, %1 does not reach Win顺; press %2 instead. Click to update the index service, and %1 works there too.</translation>
+    </message>
+    <message>
+        <source>它在最前面时，Win顺 收不到%1，请改按 %2。</source>
+        <translation>While it is in front, %1 does not reach Win顺; press %2 instead.</translation>
+    </message>
+    <message>
+        <source>它在最前面时，Win顺 收不到%1。点这里去装上索引服务就好；也可以在设置里加一个快捷键。</source>
+        <translation>While it is in front, %1 does not reach Win顺. Click to install the index service, which fixes it; or add a shortcut in the settings.</translation>
+    </message>
+    <message>
+        <source>它在最前面时，Win顺 收不到%1。点这里去更新索引服务就好；也可以在设置里加一个快捷键。</source>
+        <translation>While it is in front, %1 does not reach Win顺. Click to update the index service, which fixes it; or add a shortcut in the settings.</translation>
+    </message>
+    <message>
+        <source>它在最前面时，Win顺 收不到%1。点这里设一个快捷键（比如 Alt+Space），在它前面也能用。</source>
+        <translation>While it is in front, %1 does not reach Win顺. Click to set a shortcut (Alt+Space, say); that works in front of it too.</translation>
+    </message>
+    <message>
+        <source>“%1”以管理员身份运行</source>
+        <translation>“%1” runs as administrator</translation>
+    </message>
+    <message>
         <source>开机自启没有关闭</source>
         <translation>Start with Windows is still on</translation>
     </message>
@@ -11456,7 +11484,7 @@ Content index: %5</translation>
     </message>
     <message>
         <source>跟随 Win顺 的管理员权限</source>
-        <translation>Follow Win顺's administrator rights</translation>
+        <translation>Follow Win顺&apos;s administrator rights</translation>
     </message>
     <message>
         <source>以管理员身份运行</source>
@@ -11480,11 +11508,11 @@ Content index: %5</translation>
     </message>
     <message>
         <source>插件的文件被改过，和你确认时不一样，现在用普通权限运行。不确定是谁改的就别确认</source>
-        <translation>The plugin's files were changed since you confirmed them, so it runs with normal rights. If you don't know who changed them, don't confirm</translation>
+        <translation>The plugin&apos;s files were changed since you confirmed them, so it runs with normal rights. If you don&apos;t know who changed them, don&apos;t confirm</translation>
     </message>
     <message>
         <source>正在确认，复制插件的文件……</source>
-        <translation>Confirming: copying the plugin's files…</translation>
+        <translation>Confirming: copying the plugin&apos;s files…</translation>
     </message>
     <message>
         <source>插件库里现在是 %1 版，先把它更新到这一版，再确认</source>
@@ -12877,7 +12905,7 @@ Content index: %5</translation>
     </message>
     <message>
         <source>还有这些程序在 Win顺 的文件夹里运行，Scoop 没法更新（比如 AI 工具启动的 WinShunMcp.exe），请先关掉它们：</source>
-        <translation>These programs still run from WinShun's folder, so Scoop cannot update (WinShunMcp.exe started by an AI tool, for example). Close them first:</translation>
+        <translation>These programs still run from WinShun&apos;s folder, so Scoop cannot update (WinShunMcp.exe started by an AI tool, for example). Close them first:</translation>
     </message>
     <message>
         <source>正在用 Scoop 更新 Win顺…</source>
@@ -12889,7 +12917,7 @@ Content index: %5</translation>
     </message>
     <message>
         <source>没有更新成功：看上面 Scoop 的提示，或者软件源里还没有新版本。稍后可以在 PowerShell 里运行：%1。原来的 Win顺 会重新打开。</source>
-        <translation>The update did not go through: see Scoop's messages above, or the bucket does not have the new version yet. You can run this in PowerShell later: %1. The previous WinShun starts again.</translation>
+        <translation>The update did not go through: see Scoop&apos;s messages above, or the bucket does not have the new version yet. You can run this in PowerShell later: %1. The previous WinShun starts again.</translation>
     </message>
     <message>
         <source>按 Enter 关闭这个窗口</source>
