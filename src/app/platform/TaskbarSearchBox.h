@@ -106,6 +106,15 @@ public:
         // caret colour, else the text's.
         std::uint32_t selection = 0;
         std::uint32_t caret = 0;
+        // The style's search field, which the box stands for (Look
+        // searchBoxFill/Edge/Radius): its fill and edge, 0xAARRGGBB (alpha 0:
+        // the taskbar's translucent fills, as Windows' own box), drawn only
+        // where the taskbar is as light or dark as Win顺 (styleDark); its
+        // corner in DIPs (< 0: a pill).
+        std::uint32_t fill = 0;
+        std::uint32_t edge = 0;
+        double radius = -1;
+        bool styleDark = false;
         bool monoIcon = false; // Win顺's icon in the taskbar's text colour (monologo), not its own colours
         bool roundedCorners = true;
         Style style = Style::Box;

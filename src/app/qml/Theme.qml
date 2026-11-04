@@ -266,6 +266,11 @@ QtObject {
         accentText: theme.accentText,
         textSelection: theme.textSelection,
         caret: theme.tok("caret", Qt.rgba(0, 0, 0, 0)),
+        // The taskbar box as the style's search field (transparent, -1: the
+        // box's own translucent pill, as Windows' search box).
+        searchBoxFill: theme.tok("searchBoxFill", Qt.rgba(0, 0, 0, 0)),
+        searchBoxEdge: theme.tok("searchBoxEdge", Qt.rgba(0, 0, 0, 0)),
+        searchBoxRadius: theme.tok("searchBoxRadius", -1),
         danger: theme.danger,
         dangerFill: theme.dangerFill
     })

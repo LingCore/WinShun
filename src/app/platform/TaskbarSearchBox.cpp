@@ -1616,6 +1616,17 @@ struct SearchBox::Impl {
                   gray(0, 0.9f), gray(0, 0.6f), selection, gray(0, 0.9f), gray(0, 0.037f), gray(0, 0.024f), gray(0, 0)};
         if (const std::optional<D2D1_COLOR_F> caret = argbOf(drawnLook.caret))
             p.caret = *caret;
+        // The style's field (brand's white box, tactile's slot), on a taskbar
+        // of the same light or dark: hover and press a step towards the ink;
+        // the line while typing stays our windows' grey (p.edge).
+        if (const std::optional<D2D1_COLOR_F> fill = argbOf(drawnLook.fill); fill && drawnLook.styleDark == dark) {
+            p.fill = *fill;
+            p.hoverFill = mix(*fill, p.text, 0.04f);
+            p.pressedFill = mix(*fill, p.text, 0.08f);
+            p.activeFill = *fill;
+            if (const std::optional<D2D1_COLOR_F> edge = argbOf(drawnLook.edge))
+                p.border = *edge;
+        }
         return p;
     }
 
@@ -1813,7 +1824,9 @@ struct SearchBox::Impl {
         ComPtr<ID2D1SolidColorBrush> brush;
         renderTarget->CreateSolidColorBrush(p.fill, &brush);
         const bool round = drawnLook.roundedCorners;
-        const float radius = round ? (button ? std::round(static_cast<float>(kButtonRadius) * s) : h / 2) : 0;
+        // The box: a pill as Windows' own, or the style's field corner (never past a pill).
+        const float boxRadius = drawnLook.radius >= 0 ? std::min(h / 2, std::round(static_cast<float>(drawnLook.radius) * s)) : h / 2;
+        const float radius = round ? (button ? std::round(static_cast<float>(kButtonRadius) * s) : boxRadius) : 0;
         const float inset = button ? std::round(static_cast<float>(kButtonSide) * s) : 0; // the plate in the slot
         const auto rounded = [&](float out) {
             return D2D1_ROUNDED_RECT {D2D1::RectF(inset - out, -out, w - inset + out, h + out),
