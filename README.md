@@ -38,6 +38,8 @@
 ## 截图 · Screenshots
 
 <p align="center">
+  <img src="https://raw.githubusercontent.com/LingCore/WinShun/cdef41ca02bf5fdce073519c13aac517c1e34648/docs/images/presenter.jpg" width="49%" alt="演示和白板：在桌面或白板上画，激光笔指，W 白板、K 黑板 / presenter and whiteboard: draw on the desktop or a board, laser pointer, W white board, K black board">
+  <img src="https://raw.githubusercontent.com/LingCore/WinShun/cdef41ca02bf5fdce073519c13aac517c1e34648/docs/images/capture-keys.jpg" width="49%" alt="截图按键自己定：按下新键就换，冲突当场说明，一键恢复默认 / choose the screenshot keys: press a new key, conflicts explained, restore the default">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/35ae6cefde1e671ec726788b5fdb698dbd48549f/docs/images/onboarding.jpg" width="49%" alt="两页首次设置，按需安装可选插件 / two-page first-run setup with optional plugins">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/0f574d2485c1c99c583daaa9f9b5084f9bebd868/docs/images/content-details.jpg" width="49%" alt="文件内容详情：摘要、匹配、文本、预览和报告 / five-tab content details: summary, matches, text, preview and report">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/0f574d2485c1c99c583daaa9f9b5084f9bebd868/docs/images/ocr-search.jpg" width="49%" alt="图片文字搜索：离线索引图片及文档图片，高亮命中 / offline image text search with highlighted matches">
@@ -65,7 +67,7 @@
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/0f574d2485c1c99c583daaa9f9b5084f9bebd868/docs/images/clipboard-resize.jpg" width="49%" alt="剪贴板面板：四边与角落可调，记住宽高，图片文件有缩略图 / clipboard panel: resize edges and corners, retain width and height, and preview copied images">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/clipocr.jpg" width="49%" alt="剪贴板 OCR：搜图片里的文字 / clipboard OCR: search words in copied pictures">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/edit.jpg" width="49%" alt="截图标完还能再改：方框、箭头、文字，从剪贴板历史打开接着编辑 / edit a screenshot again: boxes, arrows and text, reopened from the clipboard history">
-  <img src="https://raw.githubusercontent.com/LingCore/WinShun/0f574d2485c1c99c583daaa9f9b5084f9bebd868/docs/images/capture.jpg" width="49%" alt="截图工具条：拖动左侧握柄，选区不动，样式面板跟着走 / screenshot toolbar: drag the grip to move the toolbar and style panel without moving the selection">
+  <img src="https://raw.githubusercontent.com/LingCore/WinShun/cdef41ca02bf5fdce073519c13aac517c1e34648/docs/images/capture.jpg" width="49%" alt="截图工具条分两行：常用按钮贴着选区，拖动左侧握柄移动 / two-row screenshot toolbar: common buttons next to the selection, drag the grip to move it">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/b0ca4f96a630da76c9d4c244678056e539567b02/docs/images/redact.jpg" width="49%" alt="截图里的隐私一键打码：手机号、身份证、银行卡、邮箱 / smart redaction: phone numbers, ID, bank card and email covered in one click">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/0f574d2485c1c99c583daaa9f9b5084f9bebd868/docs/images/recording.jpg" width="49%" alt="区域录屏：MP4、暂停与继续，系统声音和麦克风可选，角落显示按下的键 / region recording: MP4, pause and resume, optional system audio and microphone, keys shown in a corner">
   <img src="https://raw.githubusercontent.com/LingCore/WinShun/0f574d2485c1c99c583daaa9f9b5084f9bebd868/docs/images/recording-gif.jpg" width="49%" alt="GIF 录制：画质、鼠标指针、点击高亮和导出进度 / GIF recording: quality, cursor, click highlights and export progress">
