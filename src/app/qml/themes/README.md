@@ -88,6 +88,10 @@ Hook {
 
 - `Hook` 用 `createObject` 造出部件、`anchors.fill` 自己，再对**部件确实声明了的**状态名逐个用 `Qt.binding` 赋值；
   部件没声明的状态不传（不报警告）。风格切换（`Theme.look` 变了）时自动重建。
+- **造一个部件比画它贵得多**（Hook 里 `createObject` 加绑定，约是直接写一个同样部件的 5–10 倍）。列表行里的 Hook
+  （行的按钮、悬停底、提示框、只有一行有的分隔线）写 `lazy: true`：第一次显示时才造，之后只隐藏不销毁，造出来之前
+  `out()`/`call()` 给宿主自己的值。要随状态出现/消失的部件用 Hook 的 `visible`，**不要**放进 `Loader { active: … }`：
+  滚动时鼠标不动，行从它下面经过，每过一行就造一次、毁一次（剪贴板 brand 滚动 12 s 造了 142 次，最长一次 4.6 ms，240 Hz 下一帧只有 4.2 ms；见 docs/pitfalls.md）。
 - 部件的状态用**带默认值的普通属性**，不要用 `required`（Loader / createObject 后赋值会报 “Required property … was not initialized”）。
 - **尺寸由宿主决定**：部件填满 Hook。部件可以在自己范围外画（阴影、外侧高光），但不能改变占位；
   需要按下位移、内边距之类时用 token（见下表“宿主读的 token”）。

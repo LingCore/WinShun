@@ -16,6 +16,7 @@ Item {
     property string shortcut
     property int delay: 250
     property int linger: 150 // after the mouse leaves: time to reach a neighbour
+    property real dpr: 0 // the window's, passed by a host that has it (GitHub #111)
 
     property bool shown: false
 
@@ -122,8 +123,10 @@ Item {
 
         Hook { // the style's box (Theme.menuFrame): body, edge and shadow
             anchors.fill: parent
+            lazy: true // a tip per list row, most never shown
             part: Theme.menuFrame
-            dpr: Screen.devicePixelRatio
+            // Screen.* only when no host passed it: each item that reads it has an object of its own.
+            dpr: tip.dpr > 0 ? tip.dpr : Screen.devicePixelRatio
         }
 
         Behavior on width {

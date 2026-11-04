@@ -69,26 +69,29 @@ Item {
 
     // The style's highlight (Theme.rowHighlight). The current row's is the
     // list's own, one for all its rows (ClipboardPage); here only the hover
-    // and the picked rows it does not cover. Made only while wanted.
+    // and the picked rows it does not cover. Made the first time it shows,
+    // then only hidden: rows pass under a still mouse while the list
+    // scrolls, and making the part on each was most of the styles' cost
+    // there (a dropped frame at 240 Hz).
     readonly property bool sharedSelected: current && (selectedCount === 0 || order > 0)
-    Loader {
+    Hook {
         anchors.fill: parent
         anchors.leftMargin: Theme.rowInset
         anchors.rightMargin: Theme.rowInset
         anchors.topMargin: Theme.edge(row.dpr)
         anchors.bottomMargin: Theme.edge(row.dpr)
-        active: !row.sharedSelected && (row.order > 0 || area.containsMouse)
-        sourceComponent: Hook {
-            part: Theme.rowHighlight
-            selected: row.order > 0
-            hovered: area.containsMouse
-            role: "list"
-            dpr: row.dpr
-        }
+        visible: !row.sharedSelected && (row.order > 0 || area.containsMouse)
+        lazy: true
+        part: Theme.rowHighlight
+        selected: row.order > 0
+        hovered: area.containsMouse
+        role: "list"
+        dpr: row.dpr
     }
 
     Hook { // "固定" listed first: a line where the rest begin (the style's seam)
         visible: row.afterPinned
+        lazy: true // one row has it
         x: 16
         // On the edge toward those: the bottom one in a list laid out bottom
         // to top (the clipboard turned over, GitHub #38).
@@ -438,6 +441,7 @@ Item {
     }
 
     HoverTip {
+        dpr: row.dpr
         readonly property RowAction hovered: moveAction.tipWanted ? moveAction
                                            : pasteAction.tipWanted ? pasteAction
                                            : pinAction.tipWanted ? pinAction

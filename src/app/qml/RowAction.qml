@@ -43,6 +43,7 @@ Rectangle {
     Hook { // the style's key (Theme.keySurface): flat until hovered
         id: surface
         anchors.fill: parent
+        lazy: true // a list row's buttons show on its hover only
         part: Theme.keySurface
         hovered: area.containsMouse
         pressed: area.pressed

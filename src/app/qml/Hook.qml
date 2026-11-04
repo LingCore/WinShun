@@ -14,6 +14,12 @@ Item {
 
     property Component part
     readonly property Item item: built
+    // Made the first time it is shown, then kept (hidden with the host):
+    // for a host that is mostly hidden, in every row of a list (a row's
+    // buttons, its hover, its tip). Making a part costs far more than
+    // drawing one, and a list makes and reuses rows while it scrolls.
+    // Until then out() and call() give the host's own values.
+    property bool lazy: false
 
     // The state, named as in the CONTRACT (design/themes/CONTRACT.md §3).
     property bool hovered: false
@@ -102,7 +108,7 @@ Item {
             built.destroy()
             built = null
         }
-        if (!part)
+        if (!part || (lazy && !visible))
             return
         const made = part.createObject(hook)
         if (!made) {
@@ -119,6 +125,7 @@ Item {
     }
 
     onPartChanged: rebuild()
+    onVisibleChanged: if (visible && !built && part) rebuild() // `visible` is the effective one: a hidden ancestor hides it too
     onExtraChanged: applyExtra()
     Component.onCompleted: if (!built) rebuild()
 }
