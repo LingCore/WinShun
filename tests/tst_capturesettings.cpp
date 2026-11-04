@@ -271,6 +271,56 @@ private slots:
         QCOMPARE(text("PinFlipVertical"), u"Shift+1"_s);
     }
 
+    // 识别屏幕文字's hotkey (#198), Capture/OcrHotkey: none by default, kept
+    // trimmed across a save; the same key as another of the plugin's hotkeys
+    // is said (that one keeps it), and a capture or pin key on it is refused
+    // or shown as a conflict, as for the others.
+    void ocrHotkey()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString file = dir.filePath(u"capture.ini"_s);
+        QVERIFY(CaptureOptions::load(file).ocrHotkey.isEmpty());
+        QVERIFY(QSettings(file, QSettings::IniFormat).contains(u"Capture/OcrHotkey"_s)); // written, so the file shows it
+
+        ws::captureplugin::CaptureSettings settings(file);
+        QSignalSpy changed(&settings, &ws::captureplugin::CaptureSettings::changed);
+        QVERIFY(settings.ocrHotkeyClash().isEmpty()); // none set
+        settings.setCaptureOcrHotkey(u" Ctrl+Alt+T "_s);
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(settings.captureOcrHotkey(), u"Ctrl+Alt+T"_s);
+        QCOMPARE(CaptureOptions::load(file).ocrHotkey, u"Ctrl+Alt+T"_s);
+        settings.setCaptureOcrHotkey(u"Ctrl+Alt+T"_s);
+        QCOMPARE(changed.count(), 1); // the same again: nothing
+        QVERIFY(settings.ocrHotkeyClash().isEmpty());
+
+        // The same key as the screenshot's (written another way), as PrtScn once it is taken.
+        settings.setCaptureHotkey(u"Alt+Ctrl+T"_s);
+        QVERIFY(settings.ocrHotkeyClash().contains(u"开始截图"_s));
+        settings.setCaptureHotkey(u"F1"_s);
+        QVERIFY(settings.ocrHotkeyClash().isEmpty());
+        settings.setCaptureOcrHotkey(u"PrintScreen"_s);
+        QVERIFY(settings.ocrHotkeyClash().isEmpty());
+        settings.setCapturePrintScreen(true);
+        QVERIFY(settings.ocrHotkeyClash().contains(u"PrtScn"_s));
+        settings.setCapturePrintScreen(false);
+        settings.setCapturePresentHotkey(u"F7"_s);
+        settings.setCaptureOcrHotkey(u"F7"_s);
+        QVERIFY(settings.ocrHotkeyClash().contains(u"演示"_s));
+        settings.setCaptureOcrHotkey(u"F8"_s);
+
+        // The capture's and the pins' keys: refused on it, a conflict once it is set later.
+        QVERIFY(settings.setCaptureKey(u"Pin"_s, Qt::Key_F8, 0).contains(u"识别屏幕文字"_s));
+        QVERIFY(settings.setCaptureKey(u"Pin"_s, Qt::Key_F9, 0).isEmpty());
+        const auto conflict = [&] { return settings.captureKeys().value(u"Pin"_s).toMap().value(u"conflict"_s).toString(); };
+        QVERIFY(conflict().isEmpty());
+        settings.setCaptureOcrHotkey(u"F9"_s);
+        QVERIFY(conflict().contains(u"识别屏幕文字"_s));
+        settings.setCaptureOcrHotkey({});
+        QVERIFY(conflict().isEmpty());
+        QVERIFY(CaptureOptions::load(file).ocrHotkey.isEmpty());
+    }
+
     // The mouse buttons (#46): the old behaviour by default, kept across a
     // save, and a name not known (or "back" on a button that cannot step
     // back) falls to the default.

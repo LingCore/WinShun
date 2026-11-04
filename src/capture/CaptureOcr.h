@@ -76,6 +76,8 @@ public:
     // codes found in a selection; none found: `none` says so. A link is offered
     // as 打开链接 and never opened by itself.
     void showTexts(const QStringList& texts, const QString& title, const QString& none);
+    // The window shows words read before (识别屏幕文字's 编辑, #198): as a reading's, no link offered.
+    void showText(const QString& text);
 
     bool busy() const { return m_busy; }
     QString text() const { return m_text; }

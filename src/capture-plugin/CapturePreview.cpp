@@ -431,6 +431,28 @@ int runOcr(const QStringList& args)
     WindowFrame frame(false);
     QQmlApplicationEngine engine;
     engine.addImportPath(QDir(valueAfter(args, u"--app-dir")).filePath(u"qml"_s));
+    // --bubble: 识别屏幕文字's card (#198) in its three states, ocr-bubble-<state>.png.
+    if (args.contains(u"--bubble"_s)) {
+        QQmlComponent card(&engine, u"WinShun"_s, u"OcrBubble"_s);
+        auto* window = qobject_cast<QQuickWindow*>(card.createWithInitialProperties({
+            {u"frame"_s, QVariant::fromValue(&frame)}, {u"host"_s, QVariant::fromValue<QObject*>(&reader)}}));
+        if (!window) { say(card.errorString()); return 3; }
+        frame.setWindow(window);
+        showOffScreen(window);
+        bool all = true;
+        const std::tuple<QString, QString, QString> states[] {
+            {u"reading"_s, QString(), QString()},
+            {u"copied"_s, u"识别屏幕文字（#198）：按下快捷键直接框选，松开鼠标就识别并复制。\n第二行：Win顺 WinShun 0.20.0\n第三行，比较长的一行文字，用来看看三行之后是否会被省略号截断。\n第四行不该显示"_s, QString()},
+            {u"none"_s, QString(), QString()},
+        };
+        for (const auto& [state, words, detail] : states) {
+            QMetaObject::invokeMethod(window, "present", Q_ARG(QVariant, state), Q_ARG(QVariant, words), Q_ARG(QVariant, detail));
+            settle(window);
+            say(u"bubble %1: %2 x %3"_s.arg(state).arg(window->width()).arg(window->height()));
+            all = saveGrab(window, out.filePath(u"ocr-bubble-%1.png"_s.arg(state))) && all;
+        }
+        return finish(window, all);
+    }
     QQmlComponent component(&engine, u"WinShun"_s, u"OcrPanel"_s);
     auto* window = qobject_cast<QQuickWindow*>(component.createWithInitialProperties({
         {u"ocr"_s, QVariant::fromValue(&reader)}, {u"frame"_s, QVariant::fromValue(&frame)}}));
