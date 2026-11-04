@@ -20,7 +20,8 @@ Rectangle {
     width: 32
     height: 32
     radius: Theme.controlRadius
-    color: infoArea.containsMouse || info.open ? Theme.controlHover : "transparent"
+    color: "transparent"
+    readonly property real dpr: Screen.devicePixelRatio
     Accessible.role: Accessible.Button
     Accessible.name: qsTr("快捷键")
     Component.onCompleted: info.frame.addControl(info) // a button, not part of the drag area
@@ -32,11 +33,24 @@ Rectangle {
 
     onVisibleChanged: if (!visible) close()
 
+    Hook { // the style's key (Theme.keySurface): flat until hovered, held while the tip is open
+        id: surface
+        anchors.fill: parent
+        part: Theme.keySurface
+        hovered: infoArea.containsMouse
+        pressed: infoArea.pressed
+        current: info.open
+        flat: true
+        role: "footer"
+        dpr: info.dpr
+    }
+
     Glyph {
         anchors.centerIn: parent
+        anchors.verticalCenterOffset: surface.out("contentOffsetY", 0)
         glyph: "" // Info
         size: 16
-        color: infoArea.containsMouse || info.open ? Theme.text : Theme.subtext
+        color: surface.out("foreground", infoArea.containsMouse || info.open ? Theme.text : Theme.subtext)
     }
 
     MouseArea {

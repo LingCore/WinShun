@@ -143,23 +143,29 @@ Item {
     implicitHeight: Theme.snap(content.implicitHeight + (row.sub ? 22 : 28), row.dpr)
     visible: shown && (!searching || score >= 0)
 
-    Rectangle { // separates rows inside a card
-        visible: row.y > 0
+    Hook { // separates rows inside a card (Theme.separator); the first row has none above it
         x: row.sub ? row.leftInset : row.edge
         width: parent.width - x - row.edge
         height: row.edge
-        color: Theme.cardBorder
+        part: row.y > 0 ? Theme.separator : null
+        orientation: Qt.Horizontal
+        dpr: row.dpr
     }
 
     HoverHandler { id: rowHover }
     readonly property bool hovered: rowHover.hovered // for controls shown only then
 
-    Rectangle {
-        visible: rowHover.hovered && !(row.searching && row.search.current === row)
+    // Under the pointer, or the option Enter goes to while searching: the
+    // style's highlight (Theme.rowHighlight), made on the first need only.
+    readonly property bool current: searching && search.current === row
+    Hook {
         anchors.fill: parent
         anchors.margins: row.edge
-        radius: Theme.insetCardRadius
-        color: Theme.hover
+        part: rowHover.hovered || row.current ? Theme.rowHighlight : null
+        hovered: rowHover.hovered
+        selected: row.current
+        role: "panel"
+        dpr: row.dpr
     }
 
     Rectangle {
@@ -169,24 +175,7 @@ Item {
         width: 2
         height: Theme.snap(Math.max(0, parent.height - 2 * y), row.dpr)
         radius: Theme.lineRadius
-        color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, Theme.dark ? 0.40 : 0.32)
-    }
-
-    Rectangle { // the option Enter goes to, while searching
-        visible: row.searching && row.search.current === row
-        anchors.fill: parent
-        anchors.margins: row.edge
-        radius: Theme.insetCardRadius
-        color: Theme.selection
-
-        Rectangle {
-            x: 3
-            y: content.y + texts.y + (titleText.height - height) / 2 // by the title
-            width: 3
-            height: 16
-            radius: Theme.smallRadius
-            color: Theme.accent
-        }
+        color: Qt.alpha(Theme.accent, Theme.dark ? 0.40 : 0.32)
     }
 
     Rectangle { // see flash()

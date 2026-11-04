@@ -31,10 +31,24 @@ Rectangle {
     signal linkActivated()
 
     implicitHeight: body.implicitHeight + 24
+    readonly property real dpr: Screen.devicePixelRatio // one Screen attached object for all its items (GitHub #111)
     radius: Theme.controlRadius
-    color: marked ? Theme.selection : "transparent"
-    border.width: 1
-    border.color: Theme.cardBorder
+    color: "transparent"
+
+    Hook { // the style's card (Theme.cardPart), a plate inside the section's
+        anchors.fill: parent
+        part: Theme.cardPart
+        corner: Theme.controlRadius
+        extra: ({ inset: true })
+        dpr: card.dpr
+    }
+    Rectangle { // found by the settings search: the card's face, marked
+        visible: card.marked
+        anchors.fill: parent
+        anchors.margins: Theme.edge(card.dpr)
+        radius: Math.max(0, Theme.controlRadius - Theme.edge(card.dpr))
+        color: Theme.selection
+    }
 
     Column {
         id: body
@@ -160,10 +174,11 @@ Rectangle {
             width: parent.width
             spacing: 12
 
-            Rectangle { // between the header and the options
+            Hook { // between the header and the options (Theme.separator)
                 width: parent.width
-                height: Theme.edge(Screen.devicePixelRatio)
-                color: Theme.cardBorder
+                height: Theme.edge(card.dpr)
+                part: Theme.separator
+                dpr: card.dpr
             }
 
             Column {

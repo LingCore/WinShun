@@ -307,13 +307,16 @@ Item {
                 width: parent.width
                 spacing: 12
 
-                Rectangle {
+                Item {
                     width: 44
                     height: 44
-                    radius: Theme.controlRadius
-                    color: Theme.card
-                    border.width: 1
-                    border.color: Theme.cardBorder
+
+                    Hook { // the style's card (Theme.cardPart), small: the icon's frame
+                        anchors.fill: parent
+                        part: Theme.cardPart
+                        corner: Theme.controlRadius
+                        dpr: Screen.devicePixelRatio
+                    }
 
                     Image {
                         id: iconPreview

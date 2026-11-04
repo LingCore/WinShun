@@ -45,8 +45,14 @@ Rectangle {
     implicitHeight: Theme.snapUp(body.implicitHeight + 2 * body.y, dpr)
     radius: Theme.controlRadius
     color: "transparent"
-    border.width: 1
-    border.color: Theme.cardBorder
+
+    Hook { // the style's card (Theme.cardPart), a plate inside the section's
+        anchors.fill: parent
+        part: Theme.cardPart
+        corner: Theme.controlRadius
+        extra: ({ inset: true })
+        dpr: entry.dpr
+    }
 
     // Offsets, gaps and the heights of the lines of text on whole device
     // pixels, so that the keycaps, the button and the progress line below
@@ -143,22 +149,27 @@ Rectangle {
                     Repeater {
                         model: entry.keywords
 
-                        delegate: Rectangle { // as keys to press (PluginCard's)
+                        delegate: Item { // as keys to press (PluginCard's)
                             id: keycap
 
                             required property string modelData
 
                             width: Theme.snapUp(Math.max(28, keycapText.implicitWidth + 14), entry.dpr)
                             height: 24
-                            radius: Theme.controlRadius
-                            color: Theme.keycap
 
+                            Hook { // the style's key cap (Theme.keyHint): it only tells
+                                id: keycapPart
+                                anchors.fill: parent
+                                part: Theme.keyHint
+                                dpr: entry.dpr
+                            }
                             Text {
                                 id: keycapText
                                 anchors.centerIn: parent
+                                anchors.verticalCenterOffset: keycapPart.out("contentOffsetY", 0)
                                 text: keycap.modelData
                                 textFormat: Text.PlainText
-                                color: Theme.text
+                                color: keycapPart.out("foreground", Theme.text)
                                 font.pixelSize: Theme.fontCaption
                             }
                         }

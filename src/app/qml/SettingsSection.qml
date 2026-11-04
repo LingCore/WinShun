@@ -138,13 +138,15 @@ Column {
         wrapMode: Text.Wrap
     }
 
-    Rectangle {
+    Item {
         width: parent.width
         height: Theme.snap(card.implicitHeight, section.dpr) // whole device pixels: the bottom edge as crisp as the top
-        radius: Theme.cardRadius
-        color: Theme.card
-        border.width: 1
-        border.color: Theme.cardBorder
+
+        Hook { // the style's card (Theme.cardPart): fill and 1 px edge
+            anchors.fill: parent
+            part: Theme.cardPart
+            dpr: section.dpr
+        }
 
         Column {
             id: card

@@ -278,7 +278,7 @@ SettingsSection {
                                 source: favRow.modelData.icon
                             }
                         }
-                        Rectangle { // the keyword, as keys to press; on the right, so the names line up
+                        Item { // the keyword, as keys to press; on the right, so the names line up
                             id: keycap
                             visible: !favRow.editing && favRow.modelData.keyword.length > 0
                             anchors.right: favButtons.left
@@ -286,15 +286,20 @@ SettingsSection {
                             anchors.verticalCenter: parent.verticalCenter
                             width: visible ? Math.max(36, keywordText.implicitWidth + 16) : 0
                             height: 26
-                            radius: Theme.controlRadius
-                            color: Theme.keycap
 
+                            Hook { // the style's key cap (Theme.keyHint): it only tells
+                                id: keycapPart
+                                anchors.fill: parent
+                                part: keycap.visible ? Theme.keyHint : null
+                                dpr: Screen.devicePixelRatio
+                            }
                             Text {
                                 id: keywordText
                                 anchors.centerIn: parent
+                                anchors.verticalCenterOffset: keycapPart.out("contentOffsetY", 0)
                                 text: favRow.modelData.keyword
                                 textFormat: Text.PlainText
-                                color: Theme.text
+                                color: keycapPart.out("foreground", Theme.text)
                                 font.pixelSize: Theme.fontCaption
                             }
                         }

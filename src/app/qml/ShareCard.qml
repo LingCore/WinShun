@@ -37,8 +37,22 @@ Rectangle {
     implicitHeight: Theme.snap(headHeight + 24 + (card.kind === "share" ? contents.height + scanSettings.height + 18 : 0), card.dpr)
     radius: Theme.controlRadius
     color: "transparent"
-    border.width: 1
-    border.color: marked ? Theme.accent : Theme.cardBorder
+
+    Hook { // the style's card (Theme.cardPart), a plate inside the section's
+        anchors.fill: parent
+        part: Theme.cardPart
+        corner: Theme.controlRadius
+        extra: ({ inset: true })
+        dpr: card.dpr
+    }
+    Rectangle { // found by the settings search: the edge in the accent
+        visible: card.marked
+        anchors.fill: parent
+        radius: Theme.controlRadius
+        color: "transparent"
+        border.width: Theme.edge(card.dpr)
+        border.color: Theme.accent
+    }
 
     Glyph {
         id: icon
@@ -85,7 +99,7 @@ Rectangle {
                 y: Math.round(status.fontInfo.pixelSize * 0.62 - height / 2)
                 width: 8
                 height: 8
-                radius: 4
+                radius: Theme.pillRadius(width)
                 color: card.toneColor
 
                 SequentialAnimation on opacity { // read just now

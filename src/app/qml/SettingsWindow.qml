@@ -825,6 +825,7 @@ Window {
     GleaningBackdrop { // under the title bar too: the sky reaches the top of the window
         anchors.fill: parent
         visible: window.warm
+        cornerRadius: windowEdge.cornerRadius // cut to a style's own window corners
         // Painted on the CPU: only while someone is looking at it.
         running: window.visible && window.active && window.visibility !== Window.Minimized && SystemTheme.animations
         leadingInset: nav.width
@@ -879,7 +880,7 @@ Window {
             readonly property bool gleaning: modelData.gleaning === true
             // 插件: how many plugins have a newer version waiting (not while searching, which shows the counts)
             readonly property int updates: index === window.pluginsPage && !window.searching ? window.editor.plugins.gallery.updateCount : 0
-            readonly property color foreground: window.warm ? (selected ? "white" : WarmPalette.ink)
+            readonly property color foreground: window.warm ? (selected ? Theme.accentText : WarmPalette.ink)
                                               : navArea.pressed ? Theme.subtext : Theme.text
 
             function select(to) {
@@ -891,8 +892,8 @@ Window {
             height: navList.itemHeight
             radius: Theme.controlRadius
             opacity: found === 0 ? 0.45 : 1
-            color: window.warm ? (navArea.containsMouse && !selected ? WarmPalette.chip : "transparent")
-                 : selected ? Theme.navSelected : navArea.containsMouse ? Theme.navHover : "transparent"
+            // On the warm scene the item itself is drawn; else the style's row highlight (below).
+            color: window.warm && navArea.containsMouse && !selected ? WarmPalette.chip : "transparent"
             activeFocusOnTab: true
 
             Keys.onSpacePressed: window.showPage(navItem.index)
@@ -906,6 +907,16 @@ Window {
             }
             Keys.onDownPressed: select(Math.min(window.pages.length - 1, navItem.index + 1))
             onActiveFocusChanged: if (activeFocus) window.revealNavItem(navItem)
+
+            Hook { // the style's highlight (Theme.rowHighlight): the chosen category, or the one under the mouse
+                anchors.fill: parent
+                visible: !window.warm
+                part: window.warm ? null : Theme.rowHighlight
+                selected: navItem.selected
+                hovered: navArea.containsMouse
+                role: "panel"
+                dpr: window.dpr
+            }
 
             Rectangle { // the selected item on the warm scene
                 visible: window.warm && navItem.selected
@@ -1079,20 +1090,6 @@ Window {
                         modelData: window.pages[window.gleaningPage]
                     }
                 }
-
-                Rectangle { // marks the current category, sliding between items as in Windows 11
-                    visible: !window.warm && !window.searching // on the warm scene the item itself is filled
-                    x: navList.x
-                    y: navList.y + (window.currentPage === window.gleaningPage ? gleaningNav.y
-                                    : window.currentPage * (navList.itemHeight + navList.spacing))
-                       + (navList.itemHeight - height) / 2
-                    width: 3
-                    height: 16
-                    radius: Theme.smallRadius
-                    color: Theme.accent
-
-                    Behavior on y { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-                }
             }
         }
 
@@ -1104,7 +1101,15 @@ Window {
             width: versionRow.implicitWidth + 16
             height: versionRow.implicitHeight + 8
             radius: Theme.controlRadius
-            color: versionArea.containsMouse ? (window.warm ? WarmPalette.chip : Theme.navHover) : "transparent"
+            color: window.warm && versionArea.containsMouse ? WarmPalette.chip : "transparent"
+
+            Hook { // the style's hover (Theme.rowHighlight)
+                anchors.fill: parent
+                part: window.warm || !versionArea.containsMouse ? null : Theme.rowHighlight
+                hovered: true
+                role: "panel"
+                dpr: window.dpr
+            }
 
             Row {
                 id: versionRow
@@ -1293,14 +1298,16 @@ Window {
                     font.pixelSize: Theme.fontCaption
                     wrapMode: Text.Wrap
                 }
-                Rectangle {
+                Item {
                     visible: noResults.windowsSettings.length > 0
                     width: parent.width
                     height: windowsList.implicitHeight
-                    radius: Theme.cardRadius
-                    color: Theme.card
-                    border.width: 1
-                    border.color: Theme.cardBorder
+
+                    Hook { // the style's card (Theme.cardPart)
+                        anchors.fill: parent
+                        part: Theme.cardPart
+                        dpr: window.dpr
+                    }
 
                     Column {
                         id: windowsList
@@ -1318,18 +1325,20 @@ Window {
                                 width: windowsList.width
                                 height: 52
 
-                                Rectangle {
+                                Hook { // under the mouse: the style's highlight (Theme.rowHighlight)
                                     anchors.fill: parent
-                                    anchors.margins: 1
-                                    radius: Theme.insetCardRadius
-                                    color: windowsArea.pressed ? Theme.selection : windowsArea.containsMouse ? Theme.navHover : "transparent"
+                                    anchors.margins: Theme.edge(window.dpr) // inside the card's border
+                                    part: windowsArea.containsMouse ? Theme.rowHighlight : null
+                                    hovered: true
+                                    role: "panel"
+                                    dpr: window.dpr
                                 }
-                                Rectangle {
-                                    visible: windowsRow.index > 0
+                                Hook { // between the rows (Theme.separator)
                                     x: Theme.edge(window.dpr) // inside the card's border
                                     width: parent.width - 2 * x
                                     height: Theme.edge(window.dpr)
-                                    color: Theme.cardBorder
+                                    part: windowsRow.index > 0 ? Theme.separator : null
+                                    dpr: window.dpr
                                 }
                                 Item {
                                     id: windowsIcon
@@ -2431,19 +2440,24 @@ Window {
                             keywords: [modelData?.keys ?? ""]
                             values: [modelData?.keys ?? ""]
 
-                            Rectangle { // the keys, as a key cap
+                            Item { // the keys, as a key cap
                                 anchors.verticalCenter: parent.verticalCenter
                                 visible: (shortcutRow.modelData?.keys.length ?? 0) > 0
                                 implicitWidth: capText.implicitWidth + 14
                                 implicitHeight: Theme.keycapHeight + 4
-                                radius: Theme.controlRadius
-                                color: Theme.keycap
 
+                                Hook { // the style's key cap (Theme.keyHint): it only tells
+                                    id: capPart
+                                    anchors.fill: parent
+                                    part: Theme.keyHint
+                                    dpr: window.dpr
+                                }
                                 Text {
                                     id: capText
                                     anchors.centerIn: parent
+                                    anchors.verticalCenterOffset: capPart.out("contentOffsetY", 0)
                                     text: shortcutRow.modelData?.keys ?? ""
-                                    color: Theme.subtext
+                                    color: capPart.out("foreground", Theme.subtext)
                                     font.pixelSize: Theme.fontCaption
                                 }
                             }
@@ -5416,5 +5430,8 @@ Window {
         }
     }
 
-    WindowEdge {}
+    WindowEdge {
+        id: windowEdge
+        fill: Theme.page
+    }
 }

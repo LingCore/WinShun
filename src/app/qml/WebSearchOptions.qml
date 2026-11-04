@@ -142,22 +142,27 @@ Column {
                                         ? webSection.editor.webIconUrl(webRow.modelData.iconRef, Theme.dark) : ""
                             }
                         }
-                        Rectangle { // the keyword, as keys to press
+                        Item { // the keyword, as keys to press
                             id: keycap
                             anchors.left: siteIcon.right
                             anchors.leftMargin: 10
                             anchors.verticalCenter: parent.verticalCenter
                             width: Math.max(44, keywordText.implicitWidth + 16)
                             height: 26
-                            radius: Theme.controlRadius
-                            color: Theme.keycap
 
+                            Hook { // the style's key cap (Theme.keyHint): it only tells
+                                id: keycapPart
+                                anchors.fill: parent
+                                part: Theme.keyHint
+                                dpr: Screen.devicePixelRatio
+                            }
                             Text {
                                 id: keywordText
                                 anchors.centerIn: parent
+                                anchors.verticalCenterOffset: keycapPart.out("contentOffsetY", 0)
                                 text: webRow.modelData.keyword
                                 textFormat: Text.PlainText
-                                color: Theme.text
+                                color: keycapPart.out("foreground", Theme.text)
                                 font.pixelSize: Theme.fontCaption
                             }
                         }

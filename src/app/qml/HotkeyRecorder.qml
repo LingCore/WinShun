@@ -78,9 +78,16 @@ Rectangle {
     Accessible.role: Accessible.Button
     Accessible.name: recording ? qsTr("正在录制快捷键") : hotkey.length > 0 ? hotkey : qsTr("录制快捷键")
     Accessible.onPressAction: recording ? stop() : forceActiveFocus()
-    color: recording ? Theme.inputFocused : area.containsMouse ? Theme.controlHover : Theme.control
-    border.width: 1
-    border.color: recording ? Theme.accent : area.containsMouse ? Theme.subtext : Theme.controlBorder
+    color: "transparent"
+
+    Hook { // the style's field (Theme.inputField): recording is its focus
+        id: field
+        anchors.fill: parent
+        part: Theme.inputField
+        focused: recorder.recording
+        hovered: area.containsMouse
+        dpr: recorder.dpr
+    }
 
     onRecordingChanged: if (!recording) { partial = ""; partialIsHint = false }
     // Keeping the focus on another page, or in a window closed or left, it
@@ -215,19 +222,23 @@ Rectangle {
                     font.pixelSize: Theme.fontCaption
                 }
 
-                Rectangle {
+                Item {
                     anchors.verticalCenter: parent.verticalCenter
                     width: Math.max(24, Theme.snapUp(keyPartText.implicitWidth + 12, recorder.dpr))
                     height: 24
-                    radius: Theme.smallControlRadius
-                    color: Theme.keycap
 
+                    Hook { // the style's key cap (Theme.keyHint): the chord's keys only tell
+                        id: keyPartCap
+                        anchors.fill: parent
+                        part: Theme.keyHint
+                        dpr: recorder.dpr
+                    }
                     Text {
                         id: keyPartText
                         x: Theme.snap((parent.width - width) / 2, recorder.dpr)
-                        y: Theme.snap((parent.height - height) / 2, recorder.dpr)
+                        y: Theme.snap((parent.height - height) / 2 + keyPartCap.out("contentOffsetY", 0), recorder.dpr)
                         text: modelData
-                        color: Theme.text
+                        color: keyPartCap.out("foreground", Theme.text)
                         font.pixelSize: Theme.fontCaption
                         font.weight: Theme.fontStrong
                     }
@@ -244,13 +255,4 @@ Rectangle {
         onClicked: recorder.recording ? recorder.stop() : recorder.forceActiveFocus()
     }
 
-    Rectangle {
-        visible: recorder.recording
-        anchors.bottom: parent.bottom
-        x: Theme.edge(recorder.dpr) // inside the field's border
-        width: parent.width - 2 * x
-        height: Theme.snap(2, recorder.dpr) // 2.5 device pixels at 125 %
-        radius: Theme.lineRadius
-        color: Theme.accent
-    }
 }
