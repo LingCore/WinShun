@@ -76,24 +76,23 @@ Item {
     function onPixel(y) { return Math.round(y * Screen.devicePixelRatio) / Screen.devicePixelRatio }
     function upToPixel(y) { return Math.ceil(y * Screen.devicePixelRatio - 1e-6) / Screen.devicePixelRatio }
 
-    Rectangle {
+    // The style's highlight (Theme.rowHighlight). The current row's is the
+    // list's own, one for all its rows (DialogBarWindow); here only the hover.
+    // Made only while wanted.
+    readonly property real dpr: Screen.devicePixelRatio
+    Loader {
         anchors.fill: parent
-        anchors.leftMargin: 6
-        anchors.rightMargin: 6
-        anchors.topMargin: 1
-        anchors.bottomMargin: 1
-        radius: Theme.largeControlRadius
-        color: row.current ? Theme.selection : area.containsMouse ? Theme.hover : "transparent"
-    }
-
-    Rectangle { // accent pill on the current row, as in Windows 11 lists
-        visible: row.current
-        x: 7
-        anchors.verticalCenter: parent.verticalCenter
-        width: 3
-        height: 16
-        radius: Theme.smallRadius
-        color: Theme.accent
+        anchors.leftMargin: Theme.rowInset
+        anchors.rightMargin: Theme.rowInset
+        anchors.topMargin: Theme.edge(row.dpr)
+        anchors.bottomMargin: Theme.edge(row.dpr)
+        active: !row.current && area.containsMouse
+        sourceComponent: Hook {
+            part: Theme.rowHighlight
+            hovered: true
+            role: "list"
+            dpr: row.dpr
+        }
     }
 
     Item {

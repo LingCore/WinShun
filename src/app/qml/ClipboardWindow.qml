@@ -83,7 +83,7 @@ Window {
     Binding {
         target: window.clipboard.items
         property: "highlightColor"
-        value: Theme.accent
+        value: Theme.matchColor
     }
     Binding { // with the fewest rows: kept room for below the window
         target: window.placement
@@ -162,5 +162,8 @@ Window {
         }
     }
 
-    WindowEdge {}
+    WindowEdge {
+        id: windowEdge
+        fill: Theme.background
+    }
 }

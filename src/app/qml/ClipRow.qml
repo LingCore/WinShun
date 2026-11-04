@@ -62,40 +62,41 @@ Item {
     signal actionRequested(int index, int action)
     signal hoverMoved(int index, point globalPos) // the mouse moved over it (not pressed)
 
-    // Text on whole device pixels (see ResultRow).
-    function onPixel(y) { return Math.round(y * Screen.devicePixelRatio) / Screen.devicePixelRatio }
-    function upToPixel(y) { return Math.ceil(y * Screen.devicePixelRatio - 1e-6) / Screen.devicePixelRatio }
+    // The window's, read once here (GitHub #111); text on whole device pixels (see ResultRow).
+    readonly property real dpr: Screen.devicePixelRatio
+    function onPixel(y) { return Math.round(y * dpr) / dpr }
+    function upToPixel(y) { return Math.ceil(y * dpr - 1e-6) / dpr }
 
-    Rectangle {
+    // The style's highlight (Theme.rowHighlight). The current row's is the
+    // list's own, one for all its rows (ClipboardPage); here only the hover
+    // and the picked rows it does not cover. Made only while wanted.
+    readonly property bool sharedSelected: current && (selectedCount === 0 || order > 0)
+    Loader {
         anchors.fill: parent
-        anchors.leftMargin: 6
-        anchors.rightMargin: 6
-        anchors.topMargin: 1
-        anchors.bottomMargin: 1
-        radius: Theme.largeControlRadius
-        color: row.order > 0 || (row.current && row.selectedCount === 0) ? Theme.selection
-               : area.containsMouse ? Theme.hover : "transparent"
+        anchors.leftMargin: Theme.rowInset
+        anchors.rightMargin: Theme.rowInset
+        anchors.topMargin: Theme.edge(row.dpr)
+        anchors.bottomMargin: Theme.edge(row.dpr)
+        active: !row.sharedSelected && (row.order > 0 || area.containsMouse)
+        sourceComponent: Hook {
+            part: Theme.rowHighlight
+            selected: row.order > 0
+            hovered: area.containsMouse
+            role: "list"
+            dpr: row.dpr
+        }
     }
 
-    Rectangle { // "固定" listed first: a line where the rest begin
+    Hook { // "固定" listed first: a line where the rest begin (the style's seam)
         visible: row.afterPinned
         x: 16
         // On the edge toward those: the bottom one in a list laid out bottom
         // to top (the clipboard turned over, GitHub #38).
         y: row.ListView.view?.verticalLayoutDirection === ListView.BottomToTop ? parent.height - height : 0
         width: parent.width - 32
-        height: Theme.edge(Screen.devicePixelRatio)
-        color: Theme.divider
-    }
-
-    Rectangle { // accent pill on the current row
-        visible: row.current
-        x: 7
-        anchors.verticalCenter: parent.verticalCenter
-        width: 3
-        height: 18
-        radius: Theme.smallRadius
-        color: Theme.accent
+        height: Theme.edge(row.dpr)
+        part: Theme.separator
+        dpr: row.dpr
     }
 
     Item {
@@ -112,7 +113,7 @@ Item {
         Rectangle { // text and links: a sign on a soft tile
             anchors.fill: parent
             visible: row.kind <= 1 && row.swatch.length === 0
-            radius: 6
+            radius: Theme.largeControlRadius
             color: Theme.badge
 
             Glyph {
@@ -181,7 +182,9 @@ Item {
                 width: ready ? implicitWidth : parent.width
                 height: ready ? implicitHeight : parent.height
                 visible: ready
-                source: row.image
+                // Not while it is pooled (the roles are undefined then, which a
+                // source takes for the file "undefined"): a source has a scheme.
+                source: row.image.indexOf(":") > 0 ? row.image : ""
                 // An image provider: sourceSize in logical pixels (Qt asks
                 // for it times the device pixel ratio); the implicit size is
                 // its pixels over the ratio.

@@ -7,6 +7,7 @@ ListView {
     id: view
     required property ContentPane pane
     property bool textView: false
+    readonly property real dpr: Screen.devicePixelRatio
     objectName: textView ? "contentTextLines" : "contentHitLines"
     model: textView ? pane.textLines : pane.hits
     clip: true
@@ -54,17 +55,15 @@ ListView {
                 font.pixelSize: Theme.uiCaption
             }
         }
-        Rectangle {
+        Hook { // the style's highlight: the current line chosen, the others that matched lightly
             anchors.top: headingBox.bottom
             anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
-            radius: Theme.controlRadius
-            color: row.current ? Theme.badge : row.hit ? Theme.hover : "transparent"
-            Rectangle {
-                width: 3; radius: Theme.smallRadius
-                anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom
-                visible: row.current
-                color: Theme.accent
-            }
+            part: Theme.rowHighlight
+            selected: row.current
+            hovered: row.hit && !row.current
+            current: row.current
+            role: "list"
+            dpr: view.dpr
         }
         Text {
             x: 6; y: headingBox.height + 6

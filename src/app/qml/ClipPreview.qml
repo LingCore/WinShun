@@ -10,6 +10,7 @@ Item {
     id: preview
 
     property UiScale metrics: Theme.metrics
+    readonly property real dpr: Screen.devicePixelRatio
     property var info: ({}) // Clipboard.preview(row)
     readonly property string entryId: info.id ?? ""
     property bool completed: false
@@ -95,15 +96,21 @@ Item {
                 Repeater {
                     model: preview.info.colors ?? []
 
-                    delegate: Rectangle {
+                    delegate: Item {
                         id: notation
 
                         required property var modelData
 
                         width: parent.width
                         height: 32
-                        radius: Theme.largeControlRadius
-                        color: notationArea.containsMouse ? Theme.hover : "transparent"
+
+                        Hook { // the style's hover under an entry a click copies
+                            anchors.fill: parent
+                            part: Theme.rowHighlight
+                            hovered: notationArea.containsMouse
+                            role: "list"
+                            dpr: preview.dpr
+                        }
 
                         Text {
                             id: notationLabel
@@ -272,13 +279,22 @@ Item {
                         color: Theme.faint
                         font.pixelSize: preview.metrics.uiCaption
                     }
-                    Rectangle { // copies the words selected, or all of them
+                    Item { // copies the words selected, or all of them
                         id: copyWordsButton
                         anchors.right: parent.right
                         width: copyWordsRow.implicitWidth + 16
                         height: 26
-                        radius: Theme.largeControlRadius
-                        color: copyWordsArea.containsMouse ? Theme.hover : "transparent"
+
+                        Hook { // the style's key, flat until hovered
+                            id: copyWordsKey
+                            anchors.fill: parent
+                            part: Theme.keySurface
+                            hovered: copyWordsArea.containsMouse
+                            pressed: copyWordsArea.pressed
+                            flat: true
+                            role: "toolbar"
+                            dpr: preview.dpr
+                        }
 
                         Row {
                             id: copyWordsRow
@@ -449,10 +465,11 @@ Item {
         spacing: 6
         visible: preview.kind >= 0
 
-        Rectangle {
+        Hook { // the style's seam
             width: parent.width
-            height: Theme.edge(Screen.devicePixelRatio)
-            color: Theme.divider
+            height: Theme.edge(preview.dpr)
+            part: Theme.separator
+            dpr: preview.dpr
         }
 
         Row {

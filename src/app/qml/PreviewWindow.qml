@@ -21,6 +21,7 @@ Window {
 
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus
     // See-through to Mica, as the launcher; drawn as active though it never is (WindowFrame::setNoActivate).
+    // (An own frame has no Mica: Theme.backdrop is false there.)
     color: Theme.backdrop && SystemTheme.materials ? "transparent" : Theme.background
     title: qsTr("预览") // Qt adds " - Win顺"
 
@@ -99,11 +100,12 @@ Window {
                 Component.onCompleted: window.frame.addControl(closeButton)
             }
         }
-        Rectangle {
+        Hook { // the style's seam
             anchors.bottom: parent.bottom
             width: parent.width
-            height: Theme.edge(Screen.devicePixelRatio)
-            color: Theme.divider
+            height: Theme.edge(window.dpr)
+            part: Theme.separator
+            dpr: window.dpr
         }
     }
 
@@ -441,5 +443,8 @@ Window {
         }
     }
 
-    WindowEdge {}
+    WindowEdge {
+        id: windowEdge
+        fill: Theme.background
+    }
 }

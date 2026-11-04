@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Controls.Basic
 import WinShun
 
 // One non-activating window preserves the source folder's focus across pages.
@@ -16,8 +15,9 @@ Window {
     property point popupAnchor
     property rect availableArea
     readonly property var entries: page === null ? folderMenu.entries : page.children
-    readonly property int padding: 4
+    readonly property real padding: Theme.menuPadding
     readonly property int itemHeight: Theme.menuItemHeight
+    readonly property real dpr: Screen.devicePixelRatio
     readonly property real listHeight: entries.reduce((height, entry) => height + (entry.separator === true ? 9 : itemHeight), 0)
     readonly property int headingHeight: page === null ? 0 : itemHeight + 5
     readonly property real maxHeight: Math.min(600, availableArea.height > 0 ? availableArea.height - 16 : 600)
@@ -28,11 +28,35 @@ Window {
     width: availableArea.width > 0 ? Math.min(360, availableArea.width - 16) : 360
     height: Math.min(listHeight + 2 * padding + headingHeight, maxHeight)
     onHeightChanged: if (visible) place()
-    onHighlightedChanged: Qt.callLater(ensureVisible)
+    onHighlightedChanged: {
+        flick.currentIndex = highlighted // the list's highlight follows it
+        Qt.callLater(ensureVisible)
+    }
     onEntriesChanged: {
         hoveredEntry = null
         highlighted = -1
+        flick.currentIndex = -1
         flick.contentY = 0
+    }
+
+    // The highlight under an item chosen or pointed at (the style's
+    // rowHighlight, role "menu"). A part that knows the menu (declares
+    // `role`, or `inMenu` as brand's does) draws the item's fill; one that
+    // does not (a list's highlight) leaves it to the menu's own.
+    component MenuHighlight: Hook {
+        id: highlightPart
+        readonly property bool inMenu: item !== null && ("role" in item || "inMenu" in item)
+        part: Theme.rowHighlight
+        hovered: inMenu
+        role: "menu"
+        dpr: Screen.devicePixelRatio
+
+        Rectangle {
+            anchors.fill: parent
+            visible: !highlightPart.inMenu
+            radius: Theme.menuItemRadius
+            color: Theme.menuHover
+        }
     }
 
     function place() {
@@ -154,11 +178,10 @@ Window {
         Accessible.role: Accessible.MenuItem
         Accessible.name: qsTr("返回")
         Accessible.onPressAction: menu.back()
-        Rectangle {
+        MenuHighlight {
+            visible: backMouse.containsMouse
             width: heading.width
             height: menu.itemHeight
-            radius: Theme.controlRadius
-            color: backMouse.containsMouse ? Theme.menuHover : "transparent"
         }
         Glyph {
             x: 12
@@ -184,12 +207,13 @@ Window {
             hoverEnabled: true
             onClicked: menu.back()
         }
-        Rectangle {
+        Hook { // the style's seam, edge to edge
             anchors.bottom: parent.bottom
             x: -menu.padding
             width: menu.width
-            height: Theme.edge(Screen.devicePixelRatio)
-            color: Theme.divider
+            height: Theme.edge(menu.dpr)
+            part: Theme.separator
+            dpr: menu.dpr
         }
     }
     ListView {
@@ -203,7 +227,19 @@ Window {
         clip: true
         reuseItems: true
         model: menu.entries
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        // One highlight for the list, under the item chosen or pointed at:
+        // it jumps, or slides as the style says (Theme.rowSlide). Not
+        // managed by the view's own current item: menu.highlighted is.
+        currentIndex: -1
+        highlightMoveDuration: Theme.rowSlide
+        highlightMoveVelocity: -1
+        highlightResizeDuration: 0
+        highlightResizeVelocity: -1
+        highlight: Item {
+            width: flick.width
+            visible: flick.currentItem !== null && menu.highlighted >= 0
+            MenuHighlight { anchors.fill: parent }
+        }
         delegate: Item {
             id: entry
             required property var modelData
@@ -226,19 +262,14 @@ Window {
             Accessible.description: tooltip
             Accessible.ignored: separator
             Accessible.onPressAction: menu.activate(entry.index)
-            Rectangle {
+            Hook { // the style's seam, edge to edge
                 visible: entry.separator
                 anchors.verticalCenter: parent.verticalCenter
                 x: -menu.padding
                 width: menu.width
-                height: Theme.edge(Screen.devicePixelRatio)
-                color: Theme.divider
-            }
-            Rectangle {
-                visible: !entry.separator && menu.highlighted === entry.index
-                anchors.fill: parent
-                radius: Theme.controlRadius
-                color: Theme.menuHover
+                height: Theme.edge(menu.dpr)
+                part: Theme.separator
+                dpr: menu.dpr
             }
             Image {
                 id: icon
@@ -310,5 +341,40 @@ Window {
         target: menu.hoveredText.length > 0 ? menu.hoveredEntry : null
         text: menu.hoveredText
     }
-    WindowEdge {}
+    ListScrollBar {
+        visible: flick.contentHeight > flick.height
+        flickable: flick
+        x: menu.width - width
+        y: flick.y
+        height: flick.height
+    }
+
+    // The box: DWM's frame under fluent (the window's colour is the menu's);
+    // an own frame has the menu's radius, the style's menuFrame draws the
+    // body and the edge, and the window's shadow is OwnFrame's.
+    Binding {
+        target: menu
+        property: "color"
+        value: "transparent"
+        when: Theme.ownFrame
+    }
+    OwnFrame {
+        active: Theme.ownFrame
+        radius: Theme.menuRadius
+        shadow: Theme.tok("menuWindowShadow", Theme.frameShadow)
+    }
+    Hook {
+        anchors.fill: parent
+        z: -1
+        visible: Theme.ownFrame
+        part: Theme.ownFrame ? Theme.menuFrame : null
+        extra: ({ shadow: false })
+        dpr: menu.dpr
+    }
+    Loader { // Windows 10 has no edge of DWM's
+        anchors.fill: parent
+        z: 1000
+        active: !Theme.ownFrame
+        sourceComponent: WindowEdge { fill: Theme.menuBackground }
+    }
 }

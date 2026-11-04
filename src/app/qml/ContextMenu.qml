@@ -17,8 +17,9 @@ Window {
     property var entries: []
     property int highlighted: -1
 
-    readonly property int padding: 4
+    readonly property real padding: Theme.menuPadding
     readonly property int itemHeight: Theme.menuItemHeight
+    readonly property real dpr: Screen.devicePixelRatio
 
     signal triggered(int row, int action)
 
@@ -123,6 +124,82 @@ Window {
         }
     }
 
+    // The box. Under DWM's frame (fluent) Windows rounds, edges and shadows
+    // the window, whose colour is the menu's; an own frame (Theme.ownFrame)
+    // has the menu's radius, and the style's menuFrame draws the body and the
+    // edge (the shadow is the window's, drawn by OwnFrame).
+    Binding {
+        target: menu
+        property: "color"
+        value: "transparent"
+        when: Theme.ownFrame
+    }
+    OwnFrame {
+        active: Theme.ownFrame
+        radius: Theme.menuRadius
+        shadow: Theme.tok("menuWindowShadow", Theme.frameShadow)
+    }
+    Hook {
+        anchors.fill: parent
+        visible: Theme.ownFrame
+        part: Theme.ownFrame ? Theme.menuFrame : null
+        extra: ({ shadow: false })
+        dpr: menu.dpr
+    }
+
+    // The highlight under the item chosen or pointed at: one for the whole
+    // menu (the style's rowHighlight, role "menu"), jumping from item to item
+    // or sliding as the style says (Theme.rowSlide).
+    readonly property Item current: highlighted >= 0 && highlighted < repeater.count ? repeater.itemAt(highlighted) : null
+    Hook {
+        id: highlight
+
+        readonly property real wantedY: menu.current ? content.y + menu.current.y : 0
+        property bool placed: false // it stood under an item before: slides from there
+        property real shownY: 0
+
+        visible: menu.current !== null
+        x: content.x
+        y: shownY
+        width: menu.width - 2 * menu.padding
+        height: menu.itemHeight
+        // A part that knows the menu (declares `role`, or `inMenu` as brand's
+        // does) draws the item's fill; one that does not (a list's highlight)
+        // leaves it to the menu's own.
+        readonly property bool inMenu: item !== null && ("role" in item || "inMenu" in item)
+        part: Theme.rowHighlight
+        hovered: inMenu
+        position: shownY
+        role: "menu"
+        dpr: menu.dpr
+
+        Rectangle {
+            anchors.fill: parent
+            visible: !highlight.inMenu
+            radius: Theme.menuItemRadius
+            color: Theme.menuHover
+        }
+
+        onWantedYChanged: {
+            const had = placed
+            placed = menu.current !== null
+            if (had && placed && Theme.rowSlide > 0 && SystemTheme.animations) {
+                slide.restart()
+            } else {
+                slide.stop()
+                shownY = wantedY
+            }
+        }
+        NumberAnimation {
+            id: slide
+            target: highlight
+            property: "shownY"
+            to: highlight.wantedY
+            duration: Theme.rowSlide
+            easing.type: Easing.OutCubic
+        }
+    }
+
     Column {
         id: content
         x: menu.padding
@@ -144,20 +221,14 @@ Window {
                 height: separator ? 9 : menu.itemHeight
                 implicitWidth: separator ? 0 : 44 + label.implicitWidth + 40 + shortcut.implicitWidth + 14
 
-                Rectangle {
+                Hook { // the style's seam, edge to edge
                     visible: entry.separator
                     anchors.verticalCenter: parent.verticalCenter
                     x: -menu.padding
                     width: menu.width
-                    height: Theme.edge(Screen.devicePixelRatio)
-                    color: Theme.divider
-                }
-
-                Rectangle {
-                    visible: !entry.separator && !entry.disabled && menu.highlighted === entry.index
-                    anchors.fill: parent
-                    radius: Theme.controlRadius
-                    color: Theme.menuHover
+                    height: Theme.edge(menu.dpr)
+                    part: Theme.separator
+                    dpr: menu.dpr
                 }
 
                 Glyph {
@@ -204,5 +275,10 @@ Window {
         }
     }
 
-    WindowEdge {}
+    Loader { // Windows 10 has no edge of DWM's: the window draws it (an own frame has its own, above)
+        anchors.fill: parent
+        z: 1000
+        active: !Theme.ownFrame
+        sourceComponent: WindowEdge { fill: Theme.menuBackground }
+    }
 }

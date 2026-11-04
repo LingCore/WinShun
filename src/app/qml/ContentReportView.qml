@@ -28,11 +28,11 @@ ScrollView {
     component ReportChoice: ComboBox {
         id: choice
         implicitHeight: 34
-        background: Rectangle {
-            radius: Theme.controlRadius
-            color: choice.hovered ? Theme.controlHover : Theme.control
-            border.color: choice.activeFocus ? Theme.accent : Theme.controlBorder
-            border.width: 1
+        background: Hook { // the style's field box (Theme.inputField)
+            part: Theme.inputField
+            hovered: choice.hovered
+            focused: choice.activeFocus
+            dpr: Screen.devicePixelRatio
         }
     }
     component ReportCheck: CheckBox {

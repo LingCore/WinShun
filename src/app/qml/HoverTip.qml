@@ -115,15 +115,16 @@ Item {
         font.pixelSize: Theme.fontCaption
     }
 
-    Rectangle {
+    Item {
         id: bubble
         width: tip.fullWidth
         height: tip.height
-        radius: Theme.cardRadius
-        clip: true
-        color: Theme.menuBackground
-        border.width: 1
-        border.color: Theme.controlBorder
+
+        Hook { // the style's box (Theme.menuFrame): body, edge and shadow
+            anchors.fill: parent
+            part: Theme.menuFrame
+            dpr: Screen.devicePixelRatio
+        }
 
         Behavior on width {
             enabled: tip.shown

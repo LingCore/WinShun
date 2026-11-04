@@ -214,5 +214,32 @@ Window {
         }
     }
 
-    WindowEdge {}
+    // The box: DWM's frame under fluent (the window's colour is the menu's);
+    // an own frame has the menu's radius, the style's menuFrame draws the
+    // body and the edge, and the window's shadow is OwnFrame's.
+    Binding {
+        target: tip
+        property: "color"
+        value: "transparent"
+        when: Theme.ownFrame
+    }
+    OwnFrame {
+        active: Theme.ownFrame
+        radius: Theme.menuRadius
+        shadow: Theme.tok("menuWindowShadow", Theme.frameShadow)
+    }
+    Hook {
+        anchors.fill: parent
+        z: -1
+        visible: Theme.ownFrame
+        part: Theme.ownFrame ? Theme.menuFrame : null
+        extra: ({ shadow: false })
+        dpr: Screen.devicePixelRatio
+    }
+    Loader { // Windows 10 has no edge of DWM's
+        anchors.fill: parent
+        z: 1000
+        active: !Theme.ownFrame
+        sourceComponent: WindowEdge { fill: Theme.menuBackground }
+    }
 }

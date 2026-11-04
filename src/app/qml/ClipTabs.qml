@@ -30,6 +30,7 @@ Item {
     function stopNaming() { naming = false }
 
     property UiScale metrics: Theme.metrics
+    readonly property real dpr: Screen.devicePixelRatio
 
     implicitHeight: tabs.metrics.tabsHeight
 
@@ -62,24 +63,37 @@ Item {
             Repeater {
                 model: tabs.clipboard.categories
 
-                delegate: Rectangle {
+                // A chip on the style's chipSurface (role "group"): 全部, the
+                // resting choice, is the neutral one (isAll).
+                delegate: Item {
                     id: chip
 
                     required property int index
                     required property var modelData
                     readonly property bool active: index === tabs.clipboard.category
+                    // Where the words start: after the lamp's room where the part has one (tactile's 全部), else 12.
+                    readonly property real lead: surface.out("leadingInset", 0) > 0 ? surface.out("leadingInset", 0) : 12
 
-                    width: content.implicitWidth + 24
+                    width: Math.ceil(lead + content.implicitWidth) + 12
                     height: tabs.metrics.chipHeight + 2
-                    radius: Theme.pillRadius(height)
-                    color: active ? Theme.chipActive : area.containsMouse ? Theme.chipHover : Theme.track
-                    border.width: active ? 1 : 0
-                    border.color: Theme.chipBorder
                     onActiveChanged: if (active) Qt.callLater(() => tabs.ensureVisible(chip))
+
+                    Hook {
+                        id: surface
+                        anchors.fill: parent
+                        part: Theme.chipSurface
+                        checked: chip.active
+                        hovered: area.containsMouse
+                        pressed: area.pressed
+                        isAll: chip.index === 0
+                        role: "group"
+                        dpr: tabs.dpr
+                    }
 
                     Row {
                         id: content
-                        anchors.centerIn: parent
+                        x: chip.lead
+                        y: Theme.snap((chip.height - height) / 2 + surface.out("contentOffsetY", 0), tabs.dpr)
                         spacing: 5
 
                         Glyph {
@@ -87,15 +101,16 @@ Item {
                             visible: chip.modelData.pinned
                             glyph: "" // Pin
                             size: 12
-                            color: chip.active ? Theme.accent : Theme.subtext
+                            color: surface.out("iconColor", chip.active && chip.index !== 0 ? Theme.accentText : Theme.subtext)
                         }
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             text: chip.modelData.title
                             textFormat: Text.PlainText
-                            color: chip.active ? Theme.text : Theme.subtext
+                            color: surface.out("foreground", chip.active && chip.index !== 0 ? Theme.accentText
+                                                            : chip.active || area.containsMouse ? Theme.text : Theme.subtext)
                             font.pixelSize: tabs.metrics.uiTab
-                            font.weight: chip.active ? Theme.fontStrong : Font.Normal
+                            font.weight: surface.out("fontWeight", chip.active ? Theme.fontStrong : Font.Normal)
                         }
                     }
 
@@ -115,14 +130,18 @@ Item {
                 }
             }
 
-            Rectangle { // naming a group
+            Item { // naming a group
                 visible: tabs.naming
                 width: Math.max(120, field.contentWidth + 28)
                 height: tabs.metrics.chipHeight + 2
-                radius: Theme.pillRadius(height)
-                color: Theme.inputFocused
-                border.width: 1
-                border.color: Theme.accent
+
+                Hook { // the style's field, always focused here
+                    id: namePart
+                    anchors.fill: parent
+                    part: Theme.inputField
+                    focused: true
+                    dpr: tabs.dpr
+                }
 
                 TextInput {
                     id: field
@@ -131,7 +150,7 @@ Item {
                     anchors.rightMargin: 12
                     verticalAlignment: TextInput.AlignVCenter
                     clip: true
-                    color: Theme.text
+                    color: namePart.out("textColor", Theme.text)
                     font.pixelSize: tabs.metrics.uiTab
                     selectByMouse: true
                     selectionColor: Theme.textSelection
@@ -157,26 +176,36 @@ Item {
                         verticalAlignment: Text.AlignVCenter
                         visible: field.text.length === 0 && field.preeditText.length === 0
                         text: qsTr("分组名称")
-                        color: Theme.faint
+                        color: namePart.out("placeholderColor", Theme.faint)
                         font: field.font
                     }
                 }
             }
 
-            Rectangle { // + : a new group
+            Item { // + : a new group
                 id: addChip
                 visible: !tabs.naming
                 width: height
                 height: tabs.metrics.chipHeight + 2
-                radius: Theme.pillRadius(height)
-                color: addArea.containsMouse ? Theme.chipHover : "transparent"
+
+                Hook { // the style's key, flat until hovered, round as the chips
+                    id: addKey
+                    anchors.fill: parent
+                    part: Theme.keySurface
+                    hovered: addArea.containsMouse
+                    pressed: addArea.pressed
+                    flat: true
+                    corner: Theme.pillRadius(addChip.height)
+                    role: "toolbar"
+                    dpr: tabs.dpr
+                }
 
                 Glyph {
                     x: Theme.snap((parent.width - width) / 2, Screen.devicePixelRatio) // on whole device pixels
                     y: Theme.snap((parent.height - height) / 2, Screen.devicePixelRatio)
                     glyph: "" // Add
                     size: tabs.metrics.dense ? 16 : 64 / 3 // as the header's pin button (RowAction): 32 device pixels at 150%
-                    color: addArea.containsMouse ? Theme.text : Theme.subtext
+                    color: addKey.out("foreground", addArea.containsMouse ? Theme.text : Theme.subtext)
                 }
 
                 MouseArea {
@@ -192,24 +221,33 @@ Item {
 
     // How the list is ordered: "固定" first (in its own order), or all newest
     // first (Clipboard.pinnedFirst). A group's tab has its own order either way.
-    Rectangle {
+    Item {
         id: orderChip
         anchors.right: parent.right
         anchors.rightMargin: 14
         anchors.verticalCenter: parent.verticalCenter
         width: height
         height: tabs.metrics.chipHeight + 2
-        radius: Theme.pillRadius(height)
-        color: tabs.clipboard.pinnedFirst ? Theme.chipActive : orderArea.containsMouse ? Theme.chipHover : "transparent"
-        border.width: tabs.clipboard.pinnedFirst ? 1 : 0
-        border.color: Theme.chipBorder
+
+        Hook { // the style's key: "固定的排在最前" on is its checked state
+            id: orderKey
+            anchors.fill: parent
+            part: Theme.keySurface
+            hovered: orderArea.containsMouse
+            pressed: orderArea.pressed
+            checked: tabs.clipboard.pinnedFirst
+            flat: true
+            corner: Theme.pillRadius(orderChip.height)
+            role: "toolbar"
+            dpr: tabs.dpr
+        }
 
         Glyph {
             x: Theme.snap((parent.width - width) / 2, Screen.devicePixelRatio) // on whole device pixels
             y: Theme.snap((parent.height - height) / 2, Screen.devicePixelRatio)
             glyph: "" // Sort
             size: tabs.metrics.dense ? 16 : 64 / 3 // as the header's pin button (RowAction): 32 device pixels at 150%
-            color: tabs.clipboard.pinnedFirst ? Theme.accent : orderArea.containsMouse ? Theme.text : Theme.subtext
+            color: orderKey.out("foreground", tabs.clipboard.pinnedFirst ? Theme.accentText : orderArea.containsMouse ? Theme.text : Theme.subtext)
         }
 
         MouseArea {

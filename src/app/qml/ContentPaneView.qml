@@ -9,6 +9,8 @@ Rectangle {
     required property ContentPane pane
     required property Launcher launcher
     property bool compact: false
+    property int hoveredTab: -1
+    property int pressedTab: -1
     signal searchFocusRequested()
     color: Theme.background
     objectName: "contentPaneView"
@@ -31,7 +33,7 @@ Rectangle {
         if (root.handleKey(event)) return
         if (event.key === Qt.Key_Escape) { root.searchFocusRequested(); event.accepted = true }
     }
-    Binding { target: root.pane; property: "highlightColor"; value: Theme.accent }
+    Binding { target: root.pane; property: "highlightColor"; value: Theme.matchColor }
 
     ColumnLayout {
         anchors.fill: parent
@@ -80,7 +82,18 @@ Rectangle {
             Layout.preferredHeight: 36
             spacing: 0
             currentIndex: root.pane.tab
-            background: Rectangle { color: "transparent" }
+            // The style's tabs (Theme.segmented, role "tabs"): the hover, and the chosen one's mark.
+            background: Hook {
+                id: tabsPart
+                part: Theme.segmented
+                count: 5
+                currentIndex: tabs.currentIndex
+                hoveredIndex: root.hoveredTab
+                pressedIndex: root.pressedTab
+                segments: [0, 1, 2, 3, 4].map(i => ({ x: i * tabs.width / 5, width: tabs.width / 5 }))
+                role: "tabs"
+                dpr: Screen.devicePixelRatio
+            }
             Repeater {
                 model: [qsTr("摘要"), qsTr("匹配"), qsTr("文本"), qsTr("预览"), qsTr("报告")]
                 delegate: TabButton {
@@ -94,31 +107,31 @@ Rectangle {
                     rightPadding: 4
                     text: modelData
                     onClicked: root.pane.tab = index
+                    onHoveredChanged: root.hoveredTab = hovered ? index : root.hoveredTab === index ? -1 : root.hoveredTab
+                    onPressedChanged: root.pressedTab = pressed ? index : root.pressedTab === index ? -1 : root.pressedTab
                     Accessible.name: modelData
                     contentItem: Text {
                         text: tab.text
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
+                        readonly property real shift: tabsPart.call("labelOffsetY", [tab.index], 0) // the style's nudge of its labels
+                        topPadding: shift > 0 ? 2 * shift : 0
+                        bottomPadding: shift < 0 ? -2 * shift : 0
                         elide: Text.ElideRight
-                        color: tab.checked ? Theme.text : Theme.subtext
+                        color: tabsPart.call("labelColor", [tab.index], tab.checked ? Theme.text : Theme.subtext)
                         font.pixelSize: Theme.uiBody
-                        font.weight: tab.checked ? Theme.fontStrong : Font.Normal
+                        font.weight: tabsPart.call("labelWeight", [tab.index], tab.checked ? Theme.fontStrong : Font.Normal)
                     }
-                    background: Rectangle {
-                        color: tab.hovered ? Theme.hover : "transparent"
-                        border.width: 0
-                        Rectangle {
-                            anchors.bottom: parent.bottom
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            width: 20; height: 3; radius: Theme.smallRadius
-                            color: Theme.accent
-                            visible: tab.checked
-                        }
-                    }
+                    background: Item {} // the style's, under all of them (above)
                 }
             }
         }
-        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: Theme.edge(Screen.devicePixelRatio); color: Theme.divider }
+        Hook { // the style's seam
+            Layout.fillWidth: true
+            Layout.preferredHeight: Theme.edge(Screen.devicePixelRatio)
+            part: Theme.separator
+            dpr: Screen.devicePixelRatio
+        }
         Loader {
             id: page
             Layout.fillWidth: true
