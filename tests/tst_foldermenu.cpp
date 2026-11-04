@@ -8,7 +8,6 @@
 #include "SystemTheme.h"
 #include "platform/WindowEffects.h"
 
-#include <QClipboard>
 #include <QDir>
 #include <memory>
 #include <QGuiApplication>
@@ -270,8 +269,6 @@ private slots:
             if (::IsWindow(previous))
                 ::SetForegroundWindow(previous);
         });
-        const QString saved = QGuiApplication::clipboard()->text();
-        const auto restoreClipboard = qScopeGuard([&] { QGuiApplication::clipboard()->setText(saved); });
         DesktopFixture desktop(L"WorkerW");
         QVERIFY(desktop.root && desktop.view && desktop.list);
         desktop.show(true);
@@ -287,6 +284,8 @@ private slots:
         FolderMenu menu(nullptr, nullptr);
         menu.setWindow(&menuWindow);
         menu.setRecordHistory(false);
+        QString copied; // never the real clipboard: it feeds Win+V and Win顺 history
+        menu.setClipboardWriter([&](const QString& text) { copied = text; });
         menu.setOptions(false, false, true);
         menu.setGroups(false, true, false);
         QSignalSpy changed(&menu, &FolderMenu::entriesChanged);
@@ -300,9 +299,8 @@ private slots:
         const int copy = entry(menu, u"复制路径"_s);
         QVERIFY(copy >= 0);
         QVERIFY(entry(menu, u"Win顺 设置…"_s) > copy); // between search and the shells, above Settings
-        QGuiApplication::clipboard()->setText(u"before"_s);
         menu.trigger(copy);
-        QCOMPARE(QGuiApplication::clipboard()->text(),
+        QCOMPARE(copied,
             QDir::toNativeSeparators(QStandardPaths::writableLocation(QStandardPaths::DesktopLocation)));
 
         menu.setItems(true, false, true, true, true, true);

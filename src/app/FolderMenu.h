@@ -87,6 +87,8 @@ public:
     void setItems(bool search, bool copyPath, bool cmd, bool powerShell, bool favorite, bool settings);
     // Whether something else has the keys now (the clipboard over File
     // Explorer): the menu does not come, the double click only closes that.
+    // Where Copy path writes the text: the system clipboard unless a test says otherwise.
+    void setClipboardWriter(std::function<void(const QString&)> writer) { m_clipboardWriter = std::move(writer); }
     void setBlocked(std::function<bool()> blocked) { m_blocked = std::move(blocked); }
     // Takes an Open or Save dialog to a folder, in order with the app's
     // other moves of it (DialogJump::go); false: not able to, the menu
@@ -153,6 +155,7 @@ private:
     SystemCatalog* m_places = nullptr;
     QPointer<QWindow> m_window;
     std::function<bool()> m_blocked;
+    std::function<void(const QString&)> m_clipboardWriter;
     std::function<bool(HWND, const QString&)> m_dialogGo;
     std::function<HWND(HWND)> m_dialogOf;
     menuhotkey::Toggle m_toggle; // GUI thread: what a hotkey press means now

@@ -793,7 +793,10 @@ void FolderMenu::trigger(int index)
         break;
     }
     case Kind::CopyPath:
-        QGuiApplication::clipboard()->setText(QDir::toNativeSeparators(entry.path));
+        if (const QString text = QDir::toNativeSeparators(entry.path); m_clipboardWriter)
+            m_clipboardWriter(text);
+        else
+            QGuiApplication::clipboard()->setText(text);
         break;
     case Kind::Settings:
         emit settingsRequested();
