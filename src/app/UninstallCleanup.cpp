@@ -201,8 +201,8 @@ int cleanup()
     if (autostart::removeIfThisCopy())
         say(u"已取消开机自动启动。"_s, u"Autostart removed."_s);
 
-    shellmenu::apply(false, {});
-    shellmenu::applyPasteFile(false, {}, false);
+    shellmenu::apply(false);
+    shellmenu::applyPasteFile(false);
     say(u"已清除资源管理器右键菜单里属于这份的项。"_s, u"Explorer menu entries of this copy removed."_s);
 
     const DWORD pathError = cli::removeFromUserPath(cli::binFolder());
