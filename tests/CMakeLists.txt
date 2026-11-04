@@ -35,7 +35,7 @@ add_custom_target(tst_ocrsearch_app DEPENDS "${ocr_app_stamp}")
 qt_add_executable(tst_ocrsearch tst_ocrsearch.cpp)
 target_link_libraries(tst_ocrsearch PRIVATE wsocrsearch wsplugin miniz Qt6::Test)
 target_compile_definitions(tst_ocrsearch PRIVATE WINSHUN_OCR_MANIFEST="${OCR_PLUGIN_MANIFEST}"
-    WINSHUN_OCR_APP_DIR="${ocr_app_dir}")
+    WINSHUN_OCR_APP_DIR="${ocr_app_dir}" WINSHUN_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
 add_dependencies(tst_ocrsearch WinShunOcrSearch WinShunOcrSearchApp WinShunPluginHost tst_ocrsearch_app)
 set_target_properties(tst_ocrsearch PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
 add_test(NAME tst_ocrsearch COMMAND tst_ocrsearch -o -,txt)

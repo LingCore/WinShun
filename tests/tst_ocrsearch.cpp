@@ -5,8 +5,10 @@
 #include "Host.h"
 #include "Install.h"
 #include "ContentIndex.h"
+#include "platform/OcrFiles.h"
 
 #include <QBuffer>
+#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
 #include <QElapsedTimer>
@@ -14,7 +16,9 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPdfWriter>
 #include <QProcess>
 #include <QScopeGuard>
@@ -198,9 +202,60 @@ class TestOcrSearch : public QObject {
 private slots:
     void normalizationAndPathBoundaries()
     {
-        QCOMPARE(normalized(u"报 销 规定 ＡＢＣ １２３.４５"_s), u"报销规定 abc 123.45"_s);
+        // Spaces next to Chinese or Japanese characters go, put there by OCR or
+        // typed; spaces between other words stay, and Korean keeps its own.
+        QCOMPARE(normalized(u"报 销 规定 ＡＢＣ １２３.４５"_s), u"报销规定abc 123.45"_s);
+        QCOMPARE(normalized(u"第 3 頁 A4 紙"_s), u"第3页a4纸"_s);
+        QCOMPARE(normalized(u"Win顺  插件\n说明"_s), u"win顺插件说明"_s);
+        QCOMPARE(normalized(u"カタカナ テスト"_s), u"カタカナテスト"_s);
+        QCOMPARE(normalized(u"Invoice  No. 12"_s), u"invoice no. 12"_s);
+        QCOMPARE(normalized(u"한국어 문서 abc"_s), u"한국어문서 abc"_s);
+        QCOMPARE(normalized(u"𠀀 abc"_s), u"𠀀abc"_s); // beyond the BMP
+        // Traditional characters fold to simplified ones, through a chain too.
+        QCOMPARE(normalized(u"報銷發票"_s), u"报销发票"_s);
+        QCOMPARE(normalized(u"薴"_s), u"苎"_s);
+        QCOMPARE(normalized(u"苧"_s), u"苎"_s);
+        // One or two letters or digits are whole words; longer terms match anywhere.
+        QVERIFY(containsTerm(u"a4纸第3页"_s, u"a4"_s));
+        QVERIFY(containsTerm(u"a4纸第3页"_s, u"3"_s));
+        QVERIFY(containsTerm(u"单价12.5元"_s, u"12"_s));
+        QVERIFY(!containsTerm(u"ba4 123"_s, u"a4"_s));
+        QVERIFY(!containsTerm(u"ba4 123"_s, u"12"_s));
+        QVERIFY(containsTerm(u"ba4 123"_s, u"a4 1"_s));
+        QVERIFY(containsTerm(u"invoice"_s, u"voi"_s));
         QVERIFY(inside(u"C:/Work/a.pdf"_s, u"c:/work"_s));
         QVERIFY(!inside(u"C:/Work-other/a.pdf"_s, u"C:/Work"_s));
+    }
+    void shortWordsAndTraditionalCharacters()
+    {
+        QTemporaryDir temp;
+        const QString a = temp.filePath(u"a.png"_s), b = temp.filePath(u"b.png"_s);
+        write(a, "a");
+        write(b, "b");
+        Store store(temp.filePath(u"index"_s));
+        add(store, a, u"A4 紙 第 3 頁 Q3 報銷"_s);
+        add(store, b, u"BA4 123 Q35 报销"_s);
+        const auto found = [&](const QString& words) {
+            QStringList names;
+            for (const Hit& hit : store.search(words, 20))
+                names.append(QFileInfo(hit.path).fileName());
+            names.sort();
+            return names.join(u',');
+        };
+        QCOMPARE(found(u"A4"_s), u"a.png"_s);
+        QCOMPARE(found(u"a4纸"_s), u"a.png"_s);
+        QCOMPARE(found(u"3"_s), u"a.png"_s);
+        QCOMPARE(found(u"q3"_s), u"a.png"_s);
+        QCOMPARE(found(u"12"_s), QString());
+        QCOMPARE(found(u"123"_s), u"b.png"_s);
+        QCOMPARE(found(u"报销"_s), u"a.png,b.png"_s);
+        QCOMPARE(found(u"報銷"_s), u"a.png,b.png"_s);
+        QCOMPARE(found(u"第3頁"_s), u"a.png"_s);
+        QCOMPARE(found(u"\"第 3 页\""_s), u"a.png"_s);
+        QCOMPARE(found(u"q3 报销"_s), u"a.png"_s);
+        QCOMPARE(store.search(u"q3"_s, 20).first().snippet, u"A4 紙 第 3 頁 Q3 報銷"_s);
+        Store reader(temp.filePath(u"index"_s), 0);
+        QCOMPARE(reader.search(u"A4"_s, 20).size(), 1);
     }
     void shortChineseAndExactVerification()
     {
@@ -475,33 +530,58 @@ private slots:
         QSqlDatabase::removeDatabase(u"future-fixture"_s);
     }
 
-    void changedGramRulesRebuildFromStoredText()
+    void changedRulesRebuildFromStoredLines()
     {
         QTemporaryDir temp;
         const QString index = temp.filePath(u"index"_s), path = temp.filePath(u"scan.png"_s);
+        const QString line = u"報銷規定 INVOICE 731905 A4 紙"_s;
         write(path, "fixture");
+        qint64 asset = 0;
         {
             Store store(index);
-            add(store, path, u"报销规定 INVOICE 731905"_s);
+            asset = add(store, path, line);
         }
-        // An index written under other gram rules: its postings are useless.
+        // An index written under other rules: its postings are useless, and its
+        // text normalized the old way (traditional characters, spaces kept).
+        const auto storedText = [&](const QString& connection) {
+            auto db = QSqlDatabase::addDatabase(u"QSQLITE"_s, connection);
+            db.setDatabaseName(QDir(index).filePath(u"ocr-index.sqlite"_s));
+            if (!db.open())
+                return QString();
+            QSqlQuery q(db);
+            q.prepare(u"SELECT text FROM assets WHERE id=?"_s);
+            q.addBindValue(asset);
+            return q.exec() && q.next() ? QString::fromUtf8(qUncompress(q.value(0).toByteArray())) : QString();
+        };
         {
             auto db = QSqlDatabase::addDatabase(u"QSQLITE"_s, u"rules-fixture"_s);
             db.setDatabaseName(QDir(index).filePath(u"ocr-index.sqlite"_s));
             QVERIFY(db.open());
             QSqlQuery q(db);
             QVERIFY(q.exec(u"INSERT INTO asset_terms(asset_terms) VALUES('delete-all')"_s));
-            QVERIFY(q.exec(u"UPDATE meta SET value='0:old' WHERE key='terms'"_s));
+            QVERIFY(q.exec(u"UPDATE meta SET value='1:old' WHERE key='terms'"_s));
             QCOMPARE(q.numRowsAffected(), 1);
+            q.prepare(u"UPDATE assets SET text=? WHERE id=?"_s);
+            q.addBindValue(qCompress(u"報銷規定 invoice 731905 a4 紙"_s.toUtf8(), 6));
+            q.addBindValue(asset);
+            QVERIFY(q.exec());
         }
         QSqlDatabase::removeDatabase(u"rules-fixture"_s);
         QVERIFY_THROWS_EXCEPTION(std::runtime_error, (Store {index, 0}));
+        const QString away = temp.filePath(u"offline.png"_s);
+        QVERIFY(QFile::rename(path, away));
         {
             Store store(index); // rebuilds without the original file or OCR
-            QCOMPARE(store.search(u"报销 invoice"_s, 10).size(), 1);
+            QCOMPARE(store.pieces(asset).first().text, line);
         }
+        QCOMPARE(storedText(u"rules-text"_s), normalized(line));
+        QSqlDatabase::removeDatabase(u"rules-text"_s);
+        QVERIFY(QFile::rename(away, path)); // a hit is shown only for the file still there
         Store reader(index, 0);
+        QCOMPARE(reader.search(u"报销 invoice"_s, 10).size(), 1);
         QCOMPARE(reader.search(u"731905"_s, 10).size(), 1);
+        QCOMPARE(reader.search(u"A4"_s, 10).size(), 1);
+        QCOMPARE(reader.search(u"规定invoice"_s, 10).size(), 1);
     }
 
     void migrationFailureRollsBackLegacySchema()
@@ -540,6 +620,174 @@ private slots:
             QCOMPARE(q.value(0).toInt(), 0);
         }
         QSqlDatabase::removeDatabase(u"check-legacy"_s);
+    }
+
+    // Opening an index of the pipeline before (ocr-search-2) marks to be read
+    // again only the files where what it left out can matter; the rest keeps
+    // its rows and is not read again. Nothing is decoded or read here.
+    void upgradeMarksOnlyWhatTheOldPipelineLeftOut()
+    {
+        QTemporaryDir temp;
+        const QString index = temp.filePath(u"index"_s);
+        const QString older = QString(ws::ocr::kVersion) + u"/ocr-search-2"_s;
+        struct Row {
+            QString name, status, error, kind;
+            QSize size;
+            QList<float> scores;
+            bool again;
+        };
+        const QList<Row> rows {
+            // Made smaller to be read: a photo stays as read; a long picture
+            // and a page rendered at the old size are read again.
+            {u"photo.jpg"_s, u"ready"_s, {}, u"image"_s, {4096, 3072}, {0.98f, 0.97f}, false},
+            {u"chat.png"_s, u"ready"_s, {}, u"image"_s, {1100, 4096}, {0.96f, 0.95f}, true},
+            {u"slides.pptx"_s, u"ready"_s, {}, u"office"_s, {4096, 1200}, {0.97f, 0.98f}, true},
+            {u"poster.pdf"_s, u"ready"_s, {}, u"pdf"_s, {1839, 2600}, {0.99f, 0.98f}, true},
+            {u"letter.pdf"_s, u"ready"_s, {}, u"pdf"_s, {1240, 1754}, {0.99f, 0.99f}, false},
+            {u"plain.png"_s, u"ready"_s, {}, u"image"_s, {1200, 800}, {0.99f, 0.99f}, false},
+            // A PDF without pictures may draw its words; an Office file
+            // without pictures has nothing to read.
+            {u"drawn.pdf"_s, u"empty"_s, {}, {}, {}, {}, true},
+            {u"memo.docx"_s, u"empty"_s, {}, {}, {}, {}, false},
+            // Given up for want of progress, in either language; a damaged file is not tried again.
+            {u"dense.png"_s, u"failed"_s, u"文件处理 60 秒没有进展，已跳过；可用“重新检查所有文件”重试"_s, {}, {}, {},
+                true},
+            {u"dense-en.png"_s, u"failed"_s,
+                u"No progress on the file for 60 seconds; skipped. Use “Recheck all files” to try again"_s, {}, {}, {},
+                true},
+            {u"damaged.png"_s, u"failed"_s, u"文件读取不完整"_s, {}, {}, {}, false},
+            // 1.0.0, installed, found no PDF reader: those PDFs are read now;
+            // one that failed for itself is not.
+            {u"scan.pdf"_s, u"failed"_s, u"缺少 PDF 读取组件，请更新 Win顺"_s, {}, {}, {}, true},
+            {u"scan-en.pdf"_s, u"failed"_s, u"PDF component is missing; update WinShun"_s, {}, {}, {}, true},
+            {u"locked.pdf"_s, u"failed"_s, u"PDF 已加密，解密后再试"_s, {}, {}, {}, false},
+            // Read poorly, maybe upside down; one poor line is not enough to tell.
+            {u"turned.png"_s, u"ready"_s, {}, u"image"_s, {1000, 700}, {0.52f, 0.61f, 0.58f}, true},
+            {u"one-line.png"_s, u"ready"_s, {}, u"image"_s, {1000, 700}, {0.41f}, false},
+        };
+        const auto hashOf
+            = [](const QString& text) { return QCryptographicHash::hash(text.toUtf8(), QCryptographicHash::Sha256); };
+        // Real files: a search only answers for a file as it was read.
+        const auto sizeOf = [&](const QString& name) { return QFileInfo(temp.filePath(name)).size(); };
+        const auto modifiedOf
+            = [&](const QString& name) { return QFileInfo(temp.filePath(name)).lastModified().toMSecsSinceEpoch(); };
+        int again = 0;
+        {
+            Store store(index);
+            QCOMPARE(store.recheckRemaining(), 0);
+            for (const Row& row : rows) {
+                const QString path = temp.filePath(row.name);
+                write(path, row.name.toUtf8());
+                again += row.again;
+                if (row.status == u"failed") {
+                    store.status(path, sizeOf(row.name), modifiedOf(row.name), older, 1, row.status, row.error);
+                    continue;
+                }
+                store.beginFile(path, sizeOf(row.name), modifiedOf(row.name), hashOf(path), older, 1);
+                if (!row.kind.isEmpty()) {
+                    QList<ws::OcrPiece> pieces;
+                    for (const float score : row.scores) {
+                        ws::OcrPiece piece;
+                        piece.text = QFileInfo(row.name).completeBaseName() + u" 731905"_s;
+                        piece.score = score;
+                        piece.quad = QPolygonF(QRectF(10, 20 + 40 * pieces.size(), 300, 30));
+                        pieces.append(piece);
+                    }
+                    store.addPage(
+                        store.putAsset(hashOf(row.name), row.size, pieces), u"page"_s, {{u"kind"_s, row.kind}});
+                }
+                store.finishFile(row.status);
+            }
+        }
+        {
+            auto db = QSqlDatabase::addDatabase(u"QSQLITE"_s, u"pipeline-2"_s);
+            db.setDatabaseName(QDir(index).filePath(u"ocr-index.sqlite"_s));
+            QVERIFY(db.open());
+            QSqlQuery q(db);
+            QVERIFY(q.exec(u"PRAGMA user_version=2"_s));
+        }
+        QSqlDatabase::removeDatabase(u"pipeline-2"_s);
+        QVERIFY_THROWS_EXCEPTION(std::runtime_error, (Store {index, 0})); // searching waits for the upgrade
+        {
+            Store upgraded(index);
+            for (const Row& row : rows) {
+                const QString state
+                    = upgraded.state(temp.filePath(row.name), sizeOf(row.name), modifiedOf(row.name), pipelineEngine());
+                QVERIFY2(state == (row.again ? QString() : row.status), qPrintable(row.name + u": "_s + state));
+                if (!row.kind.isEmpty())
+                    QVERIFY2(
+                        (upgraded.asset(hashOf(row.name)) == 0) == (row.name == u"turned.png"), qPrintable(row.name));
+            }
+            QCOMPARE(upgraded.recheckRemaining(), again);
+            QCOMPARE(upgraded.statistics().value(u"recheck"_s).toInt(), again);
+            // Until it is read again, the poorly read picture still answers searches.
+            QCOMPARE(upgraded.search(u"turned"_s, 10).size(), 1);
+            // Nor is a file to be read again called one without words: the
+            // drawn PDF may well have them then; the memo stays listed.
+            const QString textless = upgraded.textlessText();
+            QVERIFY2(!textless.contains(u"drawn.pdf"_s), qPrintable(textless));
+            QVERIFY2(textless.contains(u"memo.docx"_s), qPrintable(textless));
+            QCOMPARE(upgraded.statistics().value(u"textless"_s).toInt(), 1);
+            // Nor listed as unfinished for its old reason ("update Win顺" right
+            // after an update); one that failed for itself still is.
+            const QString unfinished = upgraded.errorText();
+            QVERIFY2(!unfinished.contains(u"scan.pdf"_s), qPrintable(unfinished));
+            QVERIFY2(!unfinished.contains(u"dense.png"_s), qPrintable(unfinished));
+            QVERIFY2(unfinished.contains(u"locked.pdf"_s), qPrintable(unfinished));
+            QVERIFY2(unfinished.contains(u"damaged.png"_s), qPrintable(unfinished));
+            QCOMPARE(upgraded.statistics().value(u"unfinished"_s).toInt(), 2);
+        }
+        {
+            Store reopened(index); // upgraded once: nothing more is marked
+            QCOMPARE(reopened.recheckRemaining(), again);
+            QVERIFY(reopened.asset(hashOf(u"one-line.png"_s)));
+            reopened.recheckDone();
+            QCOMPARE(reopened.statistics().value(u"recheck"_s).toInt(), 0);
+        }
+        Store reader(index, 0);
+        QCOMPARE(reader.search(u"731905"_s, 20).size(), 8);
+    }
+
+    // The files where nothing was found to read, each with why: documents by
+    // name, pictures without words only counted.
+    void filesWithoutWordsAreListedWithWhy()
+    {
+        QTemporaryDir temp;
+        Store store(temp.filePath(u"index"_s));
+        const auto file = [&](const QString& name, const QString& status, const QString& kind, const QString& text) {
+            const QString path = temp.filePath(name);
+            store.beginFile(
+                path, 100, 1, QCryptographicHash::hash(path.toUtf8(), QCryptographicHash::Sha256), pipelineEngine(), 1);
+            if (!kind.isEmpty()) {
+                QList<ws::OcrPiece> pieces;
+                if (!text.isEmpty()) {
+                    ws::OcrPiece piece;
+                    piece.text = text;
+                    piece.score = 0.98f;
+                    piece.quad = QPolygonF(QRectF(10, 20, 300, 40));
+                    pieces.append(piece);
+                }
+                const QByteArray hash = QCryptographicHash::hash(name.toUtf8(), QCryptographicHash::Sha256);
+                store.addPage(store.putAsset(hash, QSize(800, 600), pieces), u"page"_s, {{u"kind"_s, kind}});
+            }
+            store.finishFile(status);
+        };
+        file(u"drawn.pdf"_s, u"empty"_s, {}, {});
+        file(u"memo.docx"_s, u"empty"_s, {}, {});
+        file(u"blank-scan.pdf"_s, u"ready"_s, u"pdf"_s, {});
+        file(u"holiday.jpg"_s, u"ready"_s, u"image"_s, {});
+        file(u"invoice.png"_s, u"ready"_s, u"image"_s, u"INVOICE 731905"_s);
+        store.status(temp.filePath(u"broken.png"_s), 10, 1, pipelineEngine(), 1, u"failed"_s, u"文件读取不完整"_s);
+        const QJsonObject statistics = store.statistics();
+        QCOMPARE(statistics.value(u"textless"_s).toInt(), 4);
+        QCOMPARE(statistics.value(u"unfinished"_s).toInt(), 1);
+        const QString text = store.textlessText();
+        QVERIFY2(text.contains(u"drawn.pdf\n没有要识别的页面：字都在 PDF 的文字层里"_s), qPrintable(text));
+        QVERIFY2(text.contains(u"memo.docx\n文档里没有图片"_s), qPrintable(text));
+        QVERIFY2(text.contains(u"blank-scan.pdf\n识别过了，没有认出文字"_s), qPrintable(text));
+        QVERIFY2(text.endsWith(u"另有 1 张图片识别过了，没有认出文字"_s), qPrintable(text));
+        for (const QString& name : {u"holiday.jpg"_s, u"invoice.png"_s, u"broken.png"_s})
+            QVERIFY2(!text.contains(name), qPrintable(name));
     }
 
     void filtersAndCancellation()
@@ -612,6 +860,135 @@ private slots:
         });
         QCOMPARE(result.images, 2); // page 3 has no picture: not rendered
         QCOMPARE(pages, QList<int>({1, 2}));
+    }
+    // Without pictures, a page is read only when it shows words its text layer
+    // does not hold; an ordinary text page is left to the content index.
+    void pagesWithWordsBeyondTheirTextLayer()
+    {
+        QTemporaryDir temp;
+        const QString path = temp.filePath(u"rule.pdf"_s);
+        {
+            QPdfWriter writer(path);
+            writer.setResolution(100);
+            QPainter painter(&writer);
+            const QFont font(u"Arial"_s, 24);
+            painter.setFont(font);
+            // 1: an ordinary text page, a rule under its heading.
+            painter.drawText(40, 80, u"An ordinary page keeps its words as text"_s);
+            painter.drawLine(40, 100, 700, 100);
+            writer.newPage();
+            // 2: lettering turned into outlines, as design and CAD exports do.
+            QPainterPath outlined;
+            outlined.addText(40, 80, font, u"OUTLINED 731905"_s);
+            painter.fillPath(outlined, Qt::black);
+            writer.newPage();
+            // 3: a drawing with a short caption as real text.
+            painter.drawText(40, 80, u"Fig 3"_s);
+            painter.drawRect(40, 120, 400, 200);
+            writer.newPage();
+            // 4: a short line of text and nothing else.
+            painter.drawText(40, 80, u"Notes"_s);
+            writer.newPage();
+            // 5: blank.
+            painter.end();
+        }
+        QList<int> pages;
+        const auto result = extractImages(path, [&](const QImage& image, const QString&, const QJsonObject& source) {
+            QVERIFY(std::max(image.width(), image.height()) <= 2600);
+            pages.append(source.value(u"page"_s).toInt());
+        });
+        QCOMPARE(pages, QList<int>({2, 3}));
+        QCOMPARE(result.images, 2);
+        QVERIFY(!result.partial);
+    }
+    // A long picture keeps its width, up to the pixels the reader takes; a
+    // photo is read at 4096 on its longer side as before. The size as stored
+    // goes with it, to tell later which pictures were made smaller.
+    void longPicturesKeepTheirWidth()
+    {
+        QTemporaryDir temp;
+        const auto read = [&](const QString& name, QSize size, QSize* stored) {
+            QImage picture(size, QImage::Format_RGB32);
+            picture.fill(Qt::white);
+            QPainter painter(&picture);
+            painter.drawText(20, 40, u"LONG 731905"_s);
+            painter.end();
+            const QString path = temp.filePath(name);
+            if (!picture.save(path))
+                return QSize();
+            QSize read;
+            extractImages(path, [&](const QImage& image, const QString&, const QJsonObject& source) {
+                read = image.size();
+                const QJsonArray size = source.value(u"size"_s).toArray();
+                *stored = QSize(size.at(0).toInt(), size.at(1).toInt());
+            });
+            return read;
+        };
+        QSize stored;
+        QCOMPARE(read(u"chat.png"_s, QSize(800, 12000), &stored), QSize(800, 12000));
+        QCOMPARE(stored, QSize(800, 12000));
+        QCOMPARE(read(u"photo.png"_s, QSize(6000, 4000), &stored), QSize(4096, 2731));
+        QCOMPARE(stored, QSize(6000, 4000));
+        const QSize huge = read(u"scroll.png"_s, QSize(3000, 15000), &stored); // 45 million pixels
+        QCOMPARE(stored, QSize(3000, 15000));
+        const qint64 pixels = qint64(huge.width()) * huge.height();
+        QVERIFY2(pixels <= ws::PaddleOcr::kMaxPixels && pixels > ws::PaddleOcr::kMaxPixels * 99 / 100,
+            qPrintable(u"%1x%2"_s.arg(huge.width()).arg(huge.height())));
+        QVERIFY(std::abs(huge.height() - 5 * huge.width()) <= 5);
+    }
+    // A big page renders as finely as the picture placed on it, up to 200 dpi
+    // and the pixels the reader takes; other pages render as before.
+    void bigPdfPagesKeepTheirPicturesDetail()
+    {
+        QTemporaryDir temp;
+        const QString path = temp.filePath(u"big.pdf"_s);
+        const auto scan = [](QSize size) {
+            QImage picture(size, QImage::Format_RGB32);
+            picture.fill(Qt::white);
+            QPainter painter(&picture);
+            painter.drawRect(10, 10, size.width() / 2, size.height() / 2);
+            return picture;
+        };
+        {
+            QPdfWriter writer(path);
+            writer.setResolution(72); // in points
+            writer.setPageMargins({});
+            writer.setPageSize(QPageSize(QPageSize::A3));
+            QPainter painter(&writer);
+            painter.drawImage(QRectF(0, 0, 842, 1191), scan({2339, 3308})); // 1: scanned at 200 dpi
+            writer.newPage();
+            painter.drawImage(QRectF(0, 0, 842, 1191), scan({600, 848})); // 2: at 51 dpi
+            writer.setPageSize(QPageSize(QPageSize::A0));
+            writer.newPage();
+            painter.drawImage(QRectF(100, 100, 100, 100), scan({278, 278})); // 3: a fine picture on A0
+            writer.setPageSize(QPageSize(QPageSize::A4));
+            writer.newPage();
+            painter.drawImage(QRectF(0, 0, 595, 842), scan({2480, 3508})); // 4: A4 scanned at 300 dpi
+            painter.end();
+        }
+        QList<QSize> sizes;
+        QList<QJsonObject> sources;
+        const auto result = extractImages(path, [&](const QImage& image, const QString&, const QJsonObject& source) {
+            sizes.append(image.size());
+            sources.append(source);
+        });
+        QCOMPARE(result.images, 4);
+        // A page's size in points need not be whole: a pixel either way.
+        const auto roughly = [](QSize size, QSize expected) {
+            return std::abs(size.width() - expected.width()) <= 1 && std::abs(size.height() - expected.height()) <= 1;
+        };
+        const auto text = [](QSize size) { return u"%1x%2"_s.arg(size.width()).arg(size.height()).toUtf8(); };
+        QVERIFY2(roughly(sizes[0], {2339, 3308}), text(sizes[0]).constData());
+        QVERIFY2(roughly(sizes[1], {1839, 2600}), text(sizes[1]).constData()); // as before
+        const qint64 pixels = qint64(sizes[2].width()) * sizes[2].height();
+        QVERIFY2(pixels <= ws::PaddleOcr::kMaxPixels && pixels > ws::PaddleOcr::kMaxPixels * 99 / 100,
+            text(sizes[2]).constData());
+        QVERIFY2(roughly(sizes[3], {1653, 2339}), text(sizes[3]).constData()); // 200 dpi, as before
+        const QJsonArray points = sources[0].value(u"points"_s).toArray();
+        QCOMPARE(QSize(points.at(0).toInt(), points.at(1).toInt()), QSize(842, 1191));
+        QCOMPARE(sources[0].value(u"pictureDpi"_s).toInt(), 200);
+        const QImage preview = previewImage(path, sources[0]);
+        QVERIFY2(roughly(preview.size(), sizes[1]), text(preview.size()).constData()); // the preview as before
     }
     void externalImageIsNotRead()
     {
@@ -735,6 +1112,38 @@ private slots:
         QCOMPARE(store.statistics().value(u"files"_s).toInt(), 0);
     }
 
+    // Installed, the plugin lives in the user's plugins folder, not beside
+    // pdfium.dll in Win顺's: its worker must still read PDFs (the other tests
+    // run it from the build folder, where pdfium.dll is next to it).
+    void installedWorkerReadsPdfPages()
+    {
+        const QString appDir = workerAppDir();
+        if (!ws::PaddleOcr::installed(appDir))
+            QSKIP("Enhanced OCR component is not installed in this test runtime");
+        QVERIFY2(QFileInfo::exists(QDir(appDir).filePath(u"pdfium.dll"_s)), qPrintable(appDir));
+        QTemporaryDir temp;
+        const QDir installed(temp.filePath(u"plugins/winshun.ocr-search"_s));
+        QVERIFY(installed.mkpath(u"."_s));
+        const QDir build(QCoreApplication::applicationDirPath());
+        for (const QString& name : {u"WinShunOcrSearch.exe"_s, u"WinShunOcrSearchApp.dll"_s})
+            QVERIFY(QFile::copy(build.filePath(name), installed.filePath(name)));
+        QVERIFY(!installed.exists(u"pdfium.dll"_s));
+        const QString path = temp.filePath(u"mixed.pdf"_s), data = temp.filePath(u"data"_s);
+        pdf(path, imageBytes());
+        {
+            Store store(data);
+        }
+        Worker worker(installed.filePath(u"WinShunOcrSearch.exe"_s), appDir, data, u"test"_s);
+        QJsonObject result;
+        try {
+            result = worker.read(path, [] { return false; });
+        } catch (const std::exception& e) {
+            QFAIL(e.what());
+        }
+        QCOMPARE(result.value(u"images"_s).toInt(), 2); // the third page is text only
+        QVERIFY(!result.value(u"pages"_s).toArray().first().toObject().value(u"pieces"_s).toArray().isEmpty());
+    }
+
     void fullIndexCanStillBeEmptied()
     {
         QTemporaryDir temp;
@@ -798,7 +1207,9 @@ private slots:
         QVERIFY(found);
     }
 
-    void wordsWithoutGramsDoNotScanEverything()
+    // One or two letters or digits are looked up as whole words; a word with
+    // nothing to look up (Cyrillic, ...) must not read every file.
+    void shortWordsAndWordsWithoutGrams()
     {
         QTemporaryDir temp;
         Store store(temp.filePath(u"index"_s));
@@ -809,12 +1220,15 @@ private slots:
         }
         QElapsedTimer timer;
         timer.start();
-        for (const QString& word : {u"ab"_s, u"a"_s, u"12"_s, u"док"_s, u"документ"_s})
+        QCOMPARE(store.search(u"ab"_s, 100).size(), 100);
+        QCOMPARE(store.search(u"12"_s, 100).size(), 1); // not 120 or 1200
+        for (const QString& word : {u"a"_s, u"b"_s, u"док"_s, u"документ"_s})
             QVERIFY2(store.search(word, 100).isEmpty(), qPrintable(word));
-        QVERIFY2(timer.elapsed() < 200, "A word without grams must not read every file");
-        // Words without grams still narrow a word that has some.
+        QVERIFY2(timer.elapsed() < 200, "A short word must be looked up, not read from every file");
+        // Short words narrow a word that has grams, as whole words too.
         QCOMPARE(store.search(u"报销 ab"_s, 100).size(), 100);
         QVERIFY(store.search(u"报销 xy"_s, 100).isEmpty());
+        QCOMPARE(store.search(u"报销 7"_s, 100).size(), 1);
     }
 
     void pictureBombIsRefusedFromItsHeader()
@@ -844,6 +1258,44 @@ private slots:
             error = QString::fromUtf8(e.what());
         }
         QVERIFY2(error.contains(u"1 亿像素"), qPrintable(error));
+    }
+
+    // JFIF/JPE, GIF, HEIC/HEIF and AVIF are read too; an animation by its
+    // first frame. A picture neither Windows nor Qt can read says which
+    // Store extension it may need: a damaged file looks the same to both.
+    void morePictureTypesAndWhatTheyMayNeed()
+    {
+        for (const QString& name : {u"a.jpe"_s, u"a.JFIF"_s, u"a.gif"_s, u"a.heic"_s, u"a.heif"_s, u"a.avif"_s})
+            QVERIFY2(supported(name), qPrintable(name));
+        QVERIFY(!supported(u"a.svg"_s));
+        QTemporaryDir temp;
+        const QString gif = temp.filePath(u"moving.gif"_s);
+        QVERIFY(QFile::copy(QStringLiteral(WINSHUN_TEST_DATA "/clipboard-animated.gif"), gif));
+        QList<QJsonObject> sources;
+        const auto result = extractImages(gif, [&](const QImage& image, const QString&, const QJsonObject& source) {
+            QVERIFY(!image.isNull());
+            sources.append(source);
+        });
+        QCOMPARE(result.images, 1);
+        QCOMPARE(sources.size(), 1);
+        QCOMPARE(sources.first().value(u"frames"_s).toInt(), 1);
+        const auto errorOf = [&](const QString& name) {
+            const QString path = temp.filePath(name);
+            write(path, QByteArray(4096, 'x'));
+            try {
+                extractImages(path, [](const QImage&, const QString&, const QJsonObject&) { });
+            } catch (const std::exception& e) {
+                return QString::fromUtf8(e.what());
+            }
+            return QString();
+        };
+        const QString heic = errorOf(u"photo.heic"_s);
+        QVERIFY2(heic.contains(u"“HEIF 图像扩展”和“HEVC 视频扩展”"_s), qPrintable(heic));
+        QVERIFY(errorOf(u"photo.heif"_s).contains(u"HEIF 图像扩展"_s));
+        QVERIFY(errorOf(u"photo.avif"_s).contains(u"“AV1 视频扩展”"_s));
+        QVERIFY(errorOf(u"photo.webp"_s).contains(u"“WebP 图像扩展”"_s));
+        const QString png = errorOf(u"photo.png"_s);
+        QVERIFY2(!png.isEmpty() && !png.contains(u"Microsoft Store"_s), qPrintable(png));
     }
 
     void realOcrIndexSearchUpdateAndResume()
@@ -897,6 +1349,93 @@ private slots:
             Store store(index, 0);
             QVERIFY(store.search(u"864201"_s, 20).isEmpty());
         }
+    }
+
+    // An index of the pipeline before reads again what that one left out
+    // (drawn words in a PDF, a picture read upside down; a text-only PDF is
+    // looked at once more) and nothing else: the other pictures keep their
+    // stored recognition and are not read with OCR again.
+    void upgradeReadsAgainOnlyWhatWasLeftOut()
+    {
+        const QString appDir = QCoreApplication::applicationDirPath();
+        if (!ws::PaddleOcr::installed(appDir))
+            QSKIP("Enhanced OCR component is not installed in this test runtime");
+        QTemporaryDir temp;
+        const QString source = temp.filePath(u"sources"_s), index = temp.filePath(u"index"_s);
+        QDir().mkpath(source);
+        write(QDir(source).filePath(u"upright.png"_s), imageBytes());
+        QVERIFY(QImage::fromData(imageBytes(u"TURNED 864201"_s))
+                .transformed(QTransform().rotate(180))
+                .save(QDir(source).filePath(u"turned.png"_s)));
+        {
+            QPdfWriter writer(QDir(source).filePath(u"drawn.pdf"_s));
+            writer.setResolution(100);
+            QPainter painter(&writer);
+            QPainterPath outlined;
+            outlined.addText(40, 80, QFont(u"Arial"_s, 24), u"OUTLINED 552210"_s);
+            painter.fillPath(outlined, Qt::black);
+        }
+        {
+            QPdfWriter writer(QDir(source).filePath(u"text.pdf"_s));
+            writer.setResolution(100);
+            QPainter painter(&writer);
+            painter.setFont(QFont(u"Arial"_s, 24));
+            painter.drawText(40, 80, u"Words in the text layer"_s);
+        }
+        ScanOptions options;
+        options.folders = {source};
+        int recognized = 0;
+        scan(appDir, index, options, [] { return false; }, [&](const ScanProgress& p) { recognized = p.recognized; });
+        QCOMPARE(recognized, 3);
+        // What ocr-search-2 stored: no page of the drawn PDF, the turned
+        // picture read as it came (poorly), every row by that pipeline.
+        {
+            auto db = QSqlDatabase::addDatabase(u"QSQLITE"_s, u"left-out"_s);
+            db.setDatabaseName(QDir(index).filePath(u"ocr-index.sqlite"_s));
+            QVERIFY(db.open());
+            QSqlQuery q(db);
+            QVERIFY(q.exec(u"UPDATE files SET engine='%1'"_s.arg(QString(ws::ocr::kVersion) + u"/ocr-search-2"_s)));
+            QVERIFY(q.exec(u"UPDATE assets SET hash=hash||x'00' WHERE id IN "
+                           u"(SELECT asset FROM pages WHERE file LIKE '%drawn.pdf')"_s));
+            QVERIFY(q.exec(u"DELETE FROM pages WHERE file LIKE '%drawn.pdf'"_s));
+            QVERIFY(q.exec(u"UPDATE files SET status='empty' WHERE path LIKE '%drawn.pdf'"_s));
+            QList<ws::OcrPiece> poor;
+            for (int i = 0; i < 3; ++i) {
+                ws::OcrPiece piece;
+                piece.text = u"10Z98t"_s;
+                piece.score = 0.55f;
+                piece.quad = QPolygonF(QRectF(10, 20 + 40 * i, 300, 30));
+                poor.append(piece);
+            }
+            q.prepare(u"UPDATE assets SET pieces=? WHERE id=(SELECT asset FROM pages WHERE file LIKE '%turned.png')"_s);
+            q.addBindValue(qCompress(QJsonDocument(piecesToJson(poor)).toJson(QJsonDocument::Compact), 6));
+            QVERIFY(q.exec());
+            QCOMPARE(q.numRowsAffected(), 1);
+            QVERIFY(q.exec(u"PRAGMA user_version=2"_s));
+        }
+        QSqlDatabase::removeDatabase(u"left-out"_s);
+        recognized = -1;
+        int recheck = 0;
+        scan(
+            appDir, index, options, [] { return false; },
+            [&](const ScanProgress& p) {
+                recognized = p.recognized;
+                recheck = std::max(recheck, p.recheck);
+            });
+        QCOMPARE(recheck, 3); // the drawn and the text-only PDF, the turned picture
+        QCOMPARE(recognized, 2); // the drawn page and the turned picture, not the upright one
+        Store store(index, 0);
+        const QJsonObject statistics = store.statistics();
+        QCOMPARE(statistics.value(u"recheck"_s).toInt(), 0);
+        QCOMPARE(statistics.value(u"empty"_s).toInt(), 1); // the text-only PDF
+        QCOMPARE(store.search(u"552210"_s, 10).size(), 1);
+        const auto turned = store.search(u"864201"_s, 10);
+        QCOMPARE(turned.size(), 1);
+        double scores = 0;
+        const auto pieces = store.pieces(turned.first().asset);
+        for (const auto& piece : pieces)
+            scores += piece.score;
+        QVERIFY2(!pieces.isEmpty() && scores / pieces.size() > 0.75, qPrintable(QString::number(scores)));
     }
 
     void workerDeadlineCancellationAndRecovery()
@@ -953,6 +1492,44 @@ private slots:
             error = QString::fromUtf8(e.what());
         }
         QVERIFY2(error.contains(u"没有进展"), qPrintable(error));
+    }
+
+    // Pictures Windows reads with the Microsoft Store's extensions, read by
+    // the worker as indexing runs it (background mode: those decoders fail
+    // under its working-set cap). Skipped where this PC has no extension.
+    void workerReadsPicturesOfStoreExtensions()
+    {
+        const QString appDir = workerAppDir();
+        if (!ws::PaddleOcr::installed(appDir))
+            QSKIP("Enhanced OCR component is not installed in this test runtime");
+        QTemporaryDir temp;
+        const QString data = temp.filePath(u"data"_s);
+        {
+            Store store(data);
+        }
+        const QString program = QDir(QCoreApplication::applicationDirPath()).filePath(u"WinShunOcrSearch.exe"_s);
+        Worker worker(program, appDir, data, u"test"_s);
+        int read = 0;
+        for (const QString& name : {u"ocr-sample.heic"_s, u"ocr-sample.avif"_s}) {
+            const QString path = QStringLiteral(WINSHUN_TEST_DATA "/") + name;
+            QFile file(path);
+            QVERIFY2(file.open(QIODevice::ReadOnly), qPrintable(path));
+            if (ws::decodePictureData(file.readAll(), 0).isNull()) {
+                qInfo() << "Windows cannot decode" << name << "on this PC";
+                continue;
+            }
+            QJsonObject result;
+            try {
+                result = worker.read(path, [] { return false; });
+            } catch (const std::exception& e) {
+                QFAIL(qPrintable(name + u": "_s + QString::fromUtf8(e.what())));
+            }
+            QCOMPARE(result.value(u"images"_s).toInt(), 1);
+            QVERIFY(!result.value(u"pages"_s).toArray().first().toObject().value(u"pieces"_s).toArray().isEmpty());
+            ++read;
+        }
+        if (!read)
+            QSKIP("Windows has neither the HEIF nor the AV1 extension on this PC");
     }
 
     void installedPluginRunsInRealHostAndOpensItsWindow()

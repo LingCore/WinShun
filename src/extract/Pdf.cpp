@@ -1,4 +1,4 @@
-// PDF, through PDFium (pdfium.dll next to the program, loaded on first use).
+// PDF, through PDFium (pdfium.dll in Win顺's folder, loaded on first use).
 // Each page becomes one line: PDF text comes as laid-out lines, and a
 // sentence broken across two of them must still be found. Lines are joined
 // with a space, or without one between Chinese, Japanese or Korean
@@ -17,8 +17,12 @@ namespace ws::extract {
 bool loadPdfium()
 {
     static const bool loaded = [] {
-        // Delay-loaded: present only if pdfium.dll is next to the program.
-        if (!::LoadLibraryExW(L"pdfium.dll", nullptr, LOAD_LIBRARY_SEARCH_APPLICATION_DIR))
+        // Delay-loaded, so a program starts without it. Looked for beside the
+        // program (Win顺, WinShunExtract) and in the folders the process added
+        // with AddDllDirectory: a library plugin lives in the user's plugins
+        // folder, and its stub adds Win顺's. Never PATH or the current folder.
+        if (!::LoadLibraryExW(
+                L"pdfium.dll", nullptr, LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_USER_DIRS))
             return false;
         FPDF_InitLibrary();
         return true;

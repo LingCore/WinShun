@@ -23,7 +23,9 @@ struct Extraction {
 bool supported(const QString& path);
 bool legacyDocument(const QString& path);
 bool onlineOnly(const QString& path);
-using ImageSink = std::function<void(const QImage&, const QString&, const QJsonObject&)>;
+// The sink owns the picture it is given: it may convert it or let it go, so
+// that a big page is held once, not twice, while it is read.
+using ImageSink = std::function<void(QImage, const QString&, const QJsonObject&)>;
 // `advanced`: after each page, picture or embedded image is done with (also
 // the ones skipped), for a deadline that measures progress.
 Extraction extractImages(const QString& path, const ImageSink& sink, const Cancel& cancel = {},
@@ -42,6 +44,8 @@ struct ScanOptions {
 struct ScanProgress {
     int checked = 0;
     int recognized = 0;
+    // Files an upgrade marked to be read again and not yet visited.
+    int recheck = 0;
     QString current;
     QString message;
 };

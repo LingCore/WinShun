@@ -33,7 +33,6 @@ namespace {
 // strips rather than shrunk, and lines are cut from the picture as it is.
 constexpr int kMaxWidth = 2000; // wider: made smaller to find the text in it
 constexpr int kMinSide = 30; // narrower: made larger
-constexpr qint64 kMaxPixels = 40'000'000; // larger: made smaller all over
 constexpr int kStrip = 2000; // the height looked at in one go…
 constexpr int kOverlap = 160; // … overlapping, so a line is whole in one of them
 constexpr float kPixelThreshold = 0.3f; // a pixel is text
@@ -44,6 +43,12 @@ constexpr int kLineHeight = 48; // what the reading model takes
 constexpr double kMinRatio = 320.0 / 48.0;
 constexpr int kBatch = 6;
 constexpr float kTextThreshold = 0.5f; // a line read with less confidence is dropped
+// A reading that may be upside down (OcrOptions::retryUpsideDown): fewer than
+// this share of its lines kept, or their mean score below this. Measured on
+// stored readings: upright pages 0.89 and up, pages turned half round 0.57.
+constexpr double kPoorlyKept = 0.6;
+constexpr double kPoorScore = 0.75;
+constexpr double kClearlyMore = 1.3; // what the turned reading must say, times the first
 
 using Quad = std::array<QPointF, 4>; // top left, top right, bottom right, bottom left
 
@@ -432,6 +437,31 @@ QStringList linesOf(std::vector<Piece> pieces)
     return out;
 }
 
+using Reading = std::vector<std::pair<QString, float>>;
+
+// Most lines dropped, or those read unsurely: perhaps upside down.
+bool readsPoorly(const Reading& read)
+{
+    int kept = 0;
+    double sum = 0;
+    for (const auto& [text, score] : read) {
+        kept += score >= kTextThreshold && !text.trimmed().isEmpty() ? 1 : 0;
+        sum += score;
+    }
+    return kept < kPoorlyKept * static_cast<double>(read.size())
+        || sum < kPoorScore * static_cast<double>(read.size());
+}
+
+// What a reading says: the characters of the lines kept, by how sure each is.
+double saidBy(const Reading& read)
+{
+    double said = 0;
+    for (const auto& [text, score] : read)
+        if (score >= kTextThreshold)
+            said += static_cast<double>(text.trimmed().size()) * score;
+    return said;
+}
+
 } // namespace
 
 struct PaddleOcr::Impl {
@@ -445,8 +475,9 @@ struct PaddleOcr::Impl {
     std::vector<Quad> detect(const QImage& strip);
     // `places`, when given, gets for each line the (index in the text, middle
     // along the line as a fraction of its width) of every character.
+    // `progress`, when set, is called after each batch of lines.
     void recognize(const std::vector<QImage>& lines, std::vector<std::pair<QString, float>>* read,
-        std::vector<QList<QPair<int, float>>>* places = nullptr);
+        std::vector<QList<QPair<int, float>>>* places, const std::function<void()>& progress);
 };
 
 PaddleOcr::PaddleOcr()
@@ -485,7 +516,11 @@ std::unique_ptr<PaddleOcr> PaddleOcr::load(const QString& programFolder, int thr
         Ort::SessionOptions options;
         options.DisablePerSessionThreads()
             .SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL)
-            .DisableCpuMemArena(); // memory back after each picture
+            .DisableCpuMemArena() // memory back after each picture
+            // A planned block per input size is ~135 MB more than the
+            // detection's own peak when a tall picture's strips repeat a size
+            // (measured on 2000x4000..3200x12500), and no faster.
+            .DisableMemPattern();
         const auto open = [&](const wchar_t* name) {
             const QString file = filePath(resolvedFolder, name, true);
             return Ort::Session(impl->env, reinterpret_cast<const wchar_t*>(file.utf16()), options);
@@ -532,7 +567,7 @@ std::vector<Quad> PaddleOcr::Impl::detect(const QImage& strip)
 }
 
 void PaddleOcr::Impl::recognize(const std::vector<QImage>& lines, std::vector<std::pair<QString, float>>* read,
-    std::vector<QList<QPair<int, float>>>* places)
+    std::vector<QList<QPair<int, float>>>* places, const std::function<void()>& progress)
 {
     read->assign(lines.size(), {});
     if (places)
@@ -609,6 +644,8 @@ void PaddleOcr::Impl::recognize(const std::vector<QImage>& lines, std::vector<st
             if (places)
                 (*places)[order[first + i]] = where;
         }
+        if (progress)
+            progress();
     }
 }
 
@@ -616,7 +653,7 @@ bool PaddleOcr::read(const QImage& image, QStringList* lines, QString* error)
 {
     lines->clear();
     QList<OcrPiece> found;
-    if (!find(image, &found, false, error))
+    if (!find(image, &found, false, error, {}))
         return false;
     std::vector<Piece> pieces;
     for (const OcrPiece& p : std::as_const(found)) {
@@ -627,20 +664,24 @@ bool PaddleOcr::read(const QImage& image, QStringList* lines, QString* error)
     return true;
 }
 
-bool PaddleOcr::readPieces(const QImage& image, QList<OcrPiece>* pieces, QString* error)
+bool PaddleOcr::readPieces(const QImage& image, QList<OcrPiece>* pieces, QString* error, const OcrOptions& options)
 {
     pieces->clear();
-    return find(image, pieces, true, error);
+    return find(image, pieces, true, error, options);
 }
 
-bool PaddleOcr::find(const QImage& image, QList<OcrPiece>* found, bool chars, QString* error)
+bool PaddleOcr::find(
+    const QImage& image, QList<OcrPiece>* found, bool chars, QString* error, const OcrOptions& options)
 {
     if (image.isNull())
         return true;
     // See-through parts white: black text there would be read as black on black.
-    QImage picture(image.size(), QImage::Format_RGB888);
-    picture.fill(Qt::white);
-    {
+    // A 24-bit picture has none and is read as it is, not copied: OCR search
+    // hands over its long pictures and big pages that way to save memory.
+    QImage picture = image;
+    if (image.format() != QImage::Format_RGB888) {
+        picture = QImage(image.size(), QImage::Format_RGB888);
+        picture.fill(Qt::white);
         QPainter painter(&picture);
         painter.drawImage(0, 0, image);
     }
@@ -688,6 +729,8 @@ bool PaddleOcr::find(const QImage& image, QList<OcrPiece>* found, bool chars, QS
                         std::clamp((p.y() + top - padding) / scale, 0.0, static_cast<double>(picture.height())));
                 boxes.push_back(quad);
             }
+            if (options.progress)
+                options.progress();
             if (last)
                 break;
             top += strip - kOverlap;
@@ -705,9 +748,25 @@ bool PaddleOcr::find(const QImage& image, QList<OcrPiece>* found, bool chars, QS
             cuts.push_back(std::move(line));
             quads.push_back(quad);
         }
-        std::vector<std::pair<QString, float>> read;
+        Reading read;
         std::vector<QList<QPair<int, float>>> places;
-        d->recognize(cuts, &read, chars ? &places : nullptr);
+        d->recognize(cuts, &read, chars ? &places : nullptr, options.progress);
+        if (options.retryUpsideDown && cuts.size() >= 2 && readsPoorly(read)) {
+            std::vector<QImage> turned;
+            turned.reserve(cuts.size());
+            for (const QImage& line : cuts)
+                turned.push_back(line.flipped(Qt::Horizontal | Qt::Vertical));
+            Reading other;
+            std::vector<QList<QPair<int, float>>> otherPlaces;
+            d->recognize(turned, &other, chars ? &otherPlaces : nullptr, options.progress);
+            if (saidBy(other) > kClearlyMore * saidBy(read)) {
+                read = std::move(other);
+                places = std::move(otherPlaces);
+                for (auto& line : places) // along the line the other way round
+                    for (auto& place : line)
+                        place.second = 1.f - place.second;
+            }
+        }
         // Back to the picture that came in, if it was made smaller.
         const double back = static_cast<double>(image.width()) / picture.width();
         for (std::size_t i = 0; i < quads.size(); ++i) {

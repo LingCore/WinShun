@@ -57,6 +57,25 @@ QByteArray encoded(const QImage& image, const char* format, int quality)
     buffer.open(QIODevice::WriteOnly);
     return image.save(&buffer, format, quality) ? bytes : QByteArray();
 }
+// Background mode lowers CPU, I/O and memory priority, and Windows also caps
+// the working set at a hard 32 MB with it. Under that cap the reader's
+// hundreds of MB page against each other, and the Store HEIF/AV1 decoders
+// fail (E_OUTOFMEMORY) once the process holds some 16 MB more. The limits
+// from before are put back; the low memory priority still gives these pages
+// up first when other programs need memory.
+bool enterBackground()
+{
+    const HANDLE process = ::GetCurrentProcess();
+    SIZE_T minimum = 0;
+    SIZE_T maximum = 0;
+    DWORD flags = 0;
+    const bool known = ::GetProcessWorkingSetSizeEx(process, &minimum, &maximum, &flags);
+    if (!::SetPriorityClass(process, PROCESS_MODE_BACKGROUND_BEGIN))
+        return false;
+    if (!known || !::SetProcessWorkingSetSizeEx(process, minimum, maximum, flags))
+        qWarning("Cannot lift the background working-set cap: %lu", ::GetLastError());
+    return true;
+}
 } // namespace
 
 Worker::Worker(QString program, QString appDir, QString dataDir, QString engine, int timeoutMs)
@@ -110,7 +129,8 @@ QJsonObject Worker::request(const QJsonObject& parameters, const Cancel& cancel)
         stop(QObject::tr("无法提交识别任务"));
     }
     // The deadline is for silence: the worker reports each page or picture it
-    // is done with, so a long document that keeps going is never cut short.
+    // is done with and each part of a page it has read, so a long document or
+    // a dense page that keeps going is never cut short.
     QElapsedTimer silence;
     silence.start();
     QByteArray buffer, diagnostics;
@@ -197,16 +217,28 @@ int workerMain(const QString& appDir)
                 // Indexing comes after the user's work: background CPU, I/O
                 // and memory priority (a preview worker is its own process).
                 if (!background)
-                    background = ::SetPriorityClass(::GetCurrentProcess(), PROCESS_MODE_BACKGROUND_BEGIN);
+                    background = enterBackground();
                 Store store(request.value(u"dataDir"_s).toString(), 0);
                 QJsonArray pages;
                 QHash<QByteArray, QJsonObject> recognized;
                 const QString engine = request.value(u"engine"_s).toString();
                 qsizetype bytes = 0;
                 int done = 0;
+                const auto beat = [&] {
+                    if (!writeLine(output, "{\"progress\":" + QByteArray::number(done) + "}\n"))
+                        fail(u"The plugin stopped listening"_s);
+                };
+                // A dense page can take minutes at background priority: the
+                // reader reports each part it finished, so the plugin's
+                // deadline only ends a read that really stopped moving.
+                OcrOptions options;
+                options.progress = beat;
+                options.retryUpsideDown = true; // scans and photos come any way round
                 const auto result = extractImages(
                     request.value(u"path"_s).toString(),
-                    [&](const QImage& image, const QString& label, const QJsonObject& source) {
+                    [&](QImage image, const QString& label, const QJsonObject& source) {
+                        // Rendering a big scanned page is a long step of its own.
+                        beat();
                         const QByteArray hash = imageHash(image, engine);
                         QJsonObject data = recognized.value(hash);
                         if (data.isEmpty()) {
@@ -220,7 +252,12 @@ int workerMain(const QString& appDir)
                                 if (!reader)
                                     throw ScanStopped(error.toStdString());
                                 QList<OcrPiece> pieces;
-                                if (!reader->readPieces(image, &pieces, &error))
+                                // Read as 24-bit and without the 32-bit copy
+                                // (hashed above): a long picture or a big page
+                                // is held once while it is read, which keeps
+                                // the worker in its memory limit.
+                                image.convertTo(QImage::Format_RGB888);
+                                if (!reader->readPieces(image, &pieces, &error, options))
                                     fail(error);
                                 data.insert(u"pieces"_s, piecesToJson(pieces));
                             }
@@ -235,8 +272,8 @@ int workerMain(const QString& appDir)
                     },
                     {},
                     [&] {
-                        if (!writeLine(output, "{\"progress\":" + QByteArray::number(++done) + "}\n"))
-                            fail(u"The plugin stopped listening"_s);
+                        ++done;
+                        beat();
                     });
                 response = {{u"pages"_s, pages}, {u"partial"_s, result.partial}, {u"message"_s, result.message},
                     {u"images"_s, result.images}};

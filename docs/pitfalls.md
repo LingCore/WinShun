@@ -805,6 +805,7 @@
 - **现象**：2026-10-09 关掉 Defender 实时保护量第一次建立：文本 22 秒读完，文档却拖到 81 秒，平均每个 93 ms，还有一个超过 20 秒被当成超时结束（日志 `the document reader took too long`）。单独读同样的 5815 个文档（`wsbench --extract --sandbox --threads 8`）只要 17–19 秒，每个约 25 ms。
 - **原因**：提取进程带 `--background` 启动，自己设了 `PROCESS_MODE_BACKGROUND_BEGIN`，磁盘请求和内存页都降到最低。单独读时看不出差别（`--background` 17.1 秒、不带 19.3 秒）；建索引时十几个线程同时在读文件，提取进程读文档、把被挤出内存的页读回来，都排在最后。和上一条读线程的坑是同一回事，只是换了个进程。
 - **做法**：提取进程只降 CPU 优先级（建索引时 `IDLE_PRIORITY_CLASS`），不用后台模式；文档的句柄本来就设了 `IoPriorityHintLow`（低，不是极低）。改后每个文档约 25 ms，内容索引第一次建立 75 秒 → 34.5 秒。这类问题要在“同时还在干别的”的场景里量（`wsbench --service --content`），单独量看不出来。
+- **补充（2026-11-03）**：进程级后台模式还会给整个进程加 32 MB 的工作集硬上限（见“图片文字搜索插件”一节第一条）。这里“把被挤出内存的页读回来”很可能也有它的份。
 
 ### 合并时停住读线程，十几秒在干等
 
@@ -4923,3 +4924,65 @@
 ### shell 线程的消息会重入
 - **现象**：处理一个消息时做跨进程 COM 调用（读 ShellWindows、`Navigate2`），STA 的消息循环会在里面又分发别的消息（新窗口登记、计时器），状态在半路被改，拿着的指针失效。
 - **做法**：`handle()` 记深度：深度大于 0 时计时器丢掉（下次还会来），登记、撤销、显示、重连这些先存起来，最外层处理完再依次处理；处理中只拿 HWND 和下标，COM 调用之后重新查，不拿容器元素的指针或迭代器。
+
+## 图片文字搜索插件（winshun.ocr-search，2026-11-03）
+
+### 后台模式顺带把进程工作集卡在 32 MB：识别慢 2.5 倍，HEIC／AVIF 读不出
+
+- **现象**：工作进程用 `PROCESS_MODE_BACKGROUND_BEGIN` 进后台模式后，HEIC、AVIF 图片一张也读不出（WIC 的 `CopyPixels` 返回 `E_OUTOFMEMORY`），同一张图在普通进程里能读。字多的 4000 万像素页面一页要 70–120 秒，三个文件缺页 2.6 亿次。任务管理器里工作集一直很小，看着像省内存。
+- **原因**：后台模式不只降 CPU、磁盘和内存优先级，还给整个进程加了 32 MB 的工作集硬上限（文档里没写）。`GetProcessWorkingSetSizeEx` 进入前是 0.2–1.3 MB、标志 `0xa`（上下限都不强制），进入后是 0.2–32 MB、标志 `0x6`（强制上限）。ONNX Runtime 推理要几百 MB，只能在 32 MB 里来回换页；Store 版 HEIF／AV1 解码器（`msheif_store.dll`、`HEVCDECODER_STORE.dll`）在进程多占约 16 MB 以后就分配失败（只分配不碰也算），多占 12 MB 时还行。
+- **做法**：进后台模式前用 `GetProcessWorkingSetSizeEx` 记下上下限和标志，进入后立刻用 `SetProcessWorkingSetSizeEx` 原样设回去（`OcrWorker.cpp` 的 `enterBackground()`），优先级照旧是低的。三个密集文件 68.8／121.5／97.7 秒 → 27.3／45.5／38.7 秒，认出的行数一样，缺页 2.62 亿 → 8700 万，提交内存峰值不变（587 MB）。`tst_ocrsearch` 的 `workerReadsPicturesOfStoreExtensions` 经真实工作进程读 HEIC 和 AVIF，带着上限就失败。整个项目只有这个工作进程用进程级后台模式；线程级后台模式（`THREAD_MODE_BACKGROUND_BEGIN`，内容索引、遍历线程等）有没有类似的上限，没查。
+
+### `QFile::read(上限)` 按上限分配，读 10 KB 的文件也占 128 MB
+
+- **现象**：读一张 10 KB 的图片，得到的 `QByteArray` 容量是 134,217,710 字节。插件进程和工作进程读每个文件时都多占约 128 MB，算在 768 MB 的沙盒内存上限里。
+- **原因**：`readFile()` 为了发现超过 100 MB 的文件，调用 `file.read(kMaxFile + 1)`。`QIODevice::read(maxSize)` 先按 `maxSize` 分配（再向上取整到 128 MB），读完只缩短长度，容量不收回。
+- **做法**：先看 `file.size()`，超过上限直接失败；没超过就 `read(size)` 正好读这么多，读完核对长度和 `file.size()`，中途变了就算读取不完整。
+
+### 一页字很密，识别超过 60 秒，被当成卡住跳过
+
+- **现象**：A0 扫描页、上万像素高的长截图，在后台优先级下一页要识别十几到六十多秒。插件 60 秒收不到进度，就把文件记成“60 秒没有进展”跳过。
+- **原因**：工作进程只在一页／一张图处理完时报告进度，一页里面再久也没有消息。
+- **做法**：`PaddleOcr::find()` 接受可选的进度回调（`OcrOptions`），每检测完一段条带、每认完一批文字行调用一次；工作进程把它转成进度行，插件照旧收到进度就重置 60 秒计时。不用定时线程代报心跳，否则真卡住也会被当成有进展。剪贴板和截图不传回调，行为不变。实测密集 A4 页报 14 次，最长沉默 2–5 秒；A1 扫描页报 64 次，最长 5.5 秒。
+
+### 长截图按 4096 缩小，字小得认不出
+
+- **现象**：1080×15000 的聊天长截图被缩成 295 像素宽，一个字也认不出。
+- **原因**：所有图片都按长边 4096 解码，长图的短边跟着缩得太小。
+- **做法**：长宽比超过 3 的图保留原宽度，总像素不超过识别上限 4000 万；照片照旧 4096。PDF 大页面按页上最大图片的分辨率渲染（最高 200 dpi）。要在 768 MB 里读 4000 万像素：算完指纹就把图转成 24 位交给识别，识别直接用 24 位图，大页面只存一份；关掉 ONNX Runtime 的内存模式（`DisableMemPattern`），长图的条带尺寸重复时，它预先规划的块比检测本身的峰值多约 135 MB，速度也没变快。改前三张密集大图都报 bad allocation，改后都能读完。
+
+### PDF 里转成曲线的字没有文字层，只看图片对象就整页漏掉
+
+- **现象**：设计图、CAD 导出的 PDF、盖章的页面，AnyTXT 能搜到上面的字，本插件搜不到。
+- **原因**：旧规则只渲染含图片对象的页。这些页的字是路径（转曲）、批注外观或没有 Unicode 的字形，页上没有图片，文字层里也没有这些字。
+- **做法**：没有图片的页也看文字层：可读的字少于 16 个或一半以上读不出 Unicode，并且页面画了路径／渐变或有批注时，才渲染识别。普通带文字层的页不受影响：80 个真实 PDF 里 428 页无图页，只多读了 4 页转曲的图纸。
+
+### 中文和数字之间时有时无的空格、繁体字、两个字符的词，都搜不到
+
+- **现象**：识别结果和用户输入在中文与数字／英文之间有时有空格、有时没有（“第 3 页”和“第3页”，“Win顺 插件”），对不上就搜不到；繁体扫描件用简体搜不到；搜 A4、Q3、12 永远没有结果。
+- **原因**：归一化只做了大小写、全角和中文字之间的空格；片段规则里 ASCII 至少三个字符才有片段，一两个字符的词没有任何索引。
+- **做法**：存入和查询两边都去掉中日文字旁边的空格、把繁体折成简体（OpenCC `TSCharacters`）；一两个字符的字母数字词另存整词词元，按整词匹配。规则摘要（`termsRules()`）包含 `normalized()` 的样本输出和繁简表，规则一变就从已存识别行重建，不重新识别。
+
+### 测试：`tst_ocr` 不能用 `QT_QPA_PLATFORM=offscreen` 跑
+
+- **现象**：设了 `QT_QPA_PLATFORM=offscreen` 跑 `tst_ocr`，27 项里 22 项失败，画出来的字一个也认不出；不设就全过。
+- **原因**：没细查，很可能是 offscreen 平台没带字体目录（`tst_clipimage` 用 offscreen 时另设了 `QT_QPA_FONTDIR`），画字的测试画出了空图。
+- **做法**：照 ctest 的注册直接跑，不设 offscreen。
+
+### 装好的插件读不了任何 PDF：“缺少 PDF 读取组件，请更新 Win顺”
+
+- **现象**：从插件库或压缩包装好图片文字搜索后，所有 PDF 都进未完成项，原因“缺少 PDF 读取组件，请更新 Win顺”；图片照常识别。单元测试、wsbench 和整套识别对比都正常，直到 2026-11-04 用装好的插件实测才发现，已发布的 1.0.0 也是这样。
+- **原因**：`extract::loadPdfium()` 用 `LoadLibraryExW(L"pdfium.dll", nullptr, LOAD_LIBRARY_SEARCH_APPLICATION_DIR)`，只找程序自己的文件夹。Win顺 和 WinShunExtract 就在 `pdfium.dll` 旁边；插件程序却装在用户的插件文件夹，小启动器用 `AddDllDirectory` 加了 Win顺 的文件夹，这个标志不搜它。测试和基准都从 build 文件夹运行工作进程，`pdfium.dll` 正好在旁边，测不出来。
+- **做法**：改成 `LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_USER_DIRS`（仍不找 PATH 和当前目录）。插件里加载宿主自带的 DLL，标志里都要有 `USER_DIRS`（或用默认目录）。验证插件要用装好的布局：程序和 DLL 复制到单独的文件夹，宿主的 DLL 只在 app 目录，`tst_ocrsearch` 的 `installedWorkerReadsPdfPages` 就这样测。已经因此失败的文件不会自己重试，升级迁移按两种语言的这条报错把它们留给下次遍历重读。
+
+### 测试：`--profile` 的插件装在 `<profile>\plugins`，不是 `<profile>\WinShun\plugins`
+
+- **现象**：实测插件时把插件和它的旧索引放进 `<profile>\WinShun\plugins\`，测试副本启动后插件根本没运行，插件列表里也没有它。
+- **原因**：`--profile` 下数据目录（`Settings::dataDir()`）就是 profile 文件夹本身，插件、索引、日志都在那里；只有设置文件多一层：`<profile>\WinShun\WinShun.ini`（`QSettings::setPath` 的 UserScope 会再加组织名）。
+- **做法**：用户插件放 `<profile>\plugins\<id>`，插件数据放 `<profile>\plugins\<id>.data`，设置写 `<profile>\WinShun\WinShun.ini` 的 `[Plugin.<id>]`（`Enabled=true` 和 `Confirmed=` 插件的权限）。启动后看 `<profile>\plugins.log` 有没有“<id>: 启动”。
+
+### 识别进度里的长路径在“C:”后断开，看不到文件名
+
+- **现象**：插件窗口识别时，进度下面的当前文件只显示“C:”和下一行半截路径，没有省略号，文件名看不到。
+- **原因**：计数和路径放在同一个 `Text` 里，`wrapMode: Text.Wrap` 加 `maximumLineCount: 3` 和 `elide: Text.ElideMiddle`。Qt 只有 `ElideRight` 能和换行一起用，`ElideMiddle`／`ElideLeft` 只对单行有效（“多行文字粘贴进搜索框，灰色的字铺满整个窗口”一条也提到过），多出的行直接截掉。
+- **做法**：会很长的路径单独放一行不换行的 `Text`，用 `ElideMiddle`；要换行的说明另放一个 `Text`（`Controller::progressFile`）。

@@ -31,8 +31,10 @@ class Controller : public QObject {
     Q_PROPERTY(bool setupNeeded READ setupNeeded NOTIFY changed FINAL)
     Q_PROPERTY(QString statusText READ statusText NOTIFY changed FINAL)
     Q_PROPERTY(QString progressText READ progressText NOTIFY changed FINAL)
+    Q_PROPERTY(QString progressFile READ progressFile NOTIFY changed FINAL)
     Q_PROPERTY(QVariantMap statistics READ statistics NOTIFY changed FINAL)
     Q_PROPERTY(QString errors READ errors NOTIFY changed FINAL)
+    Q_PROPERTY(QString textless READ textless NOTIFY changed FINAL)
     Q_PROPERTY(QVariantList results READ results NOTIFY resultsChanged FINAL)
     Q_PROPERTY(QVariantMap preview READ preview NOTIFY previewChanged FINAL)
     Q_PROPERTY(bool searching READ searching NOTIFY resultsChanged FINAL)
@@ -47,8 +49,13 @@ public:
     bool setupNeeded() const;
     QString statusText() const { return m_status; }
     QString progressText() const { return m_progress; }
+    // The file being read now, apart from the counts: a line of its own,
+    // shortened in the middle (Qt elides wrapped text only at its end).
+    QString progressFile() const { return m_progressFile; }
     QVariantMap statistics() const { return m_statistics; }
     QString errors() const { return m_errors; }
+    // The files where nothing was found to read, each with why (Store::textlessText()).
+    QString textless() const { return m_textless; }
     QVariantList results() const { return m_results; }
     QVariantMap preview() const { return m_preview; }
     bool searching() const { return m_searching; }
@@ -117,7 +124,9 @@ private:
     bool m_enabled = false;
     QString m_status;
     QString m_progress;
+    QString m_progressFile;
     QString m_errors;
+    QString m_textless;
     QString m_words;
     QVariantMap m_statistics;
     QVariantList m_results;

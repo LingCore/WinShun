@@ -14,6 +14,7 @@
 #include <QThread>
 
 #include <cmath>
+#include <stdexcept>
 
 using namespace Qt::StringLiterals;
 
@@ -115,6 +116,110 @@ private slots:
         const QString words = read(drawn(lines, 14, Qt::black, Qt::white));
         for (int i : {0, 59, 60, 61, 119})
             QVERIFY2(words.count(u"第%1行"_s.arg(i)) == 1, qPrintable(u"line %1"_s.arg(i)));
+    }
+
+    // OCR search's watchdog hears from a long read after each strip looked
+    // at and each batch of lines read; the reading itself is the same, and a
+    // progress callback that throws abandons the read with its message.
+    void progressDuringOneRead()
+    {
+        QStringList lines;
+        for (int i = 0; i < 120; ++i)
+            lines.append(u"第%1行 文字识别"_s.arg(i));
+        const QImage tall = drawn(lines, 14, Qt::black, Qt::white);
+        QCOMPARE(tall.width(), 336); // not made smaller: strips of 2000 rows overlapping by 160
+        QVERIFY(tall.height() > 2000 && tall.height() <= 2000 + 1840);
+        QString error;
+        const std::unique_ptr<ws::PaddleOcr> ocr = ws::PaddleOcr::load(QCoreApplication::applicationDirPath(), 2, &error);
+        QVERIFY2(ocr, qPrintable(error));
+        QList<ws::OcrPiece> plain, watched;
+        QVERIFY2(ocr->readPieces(tall, &plain, &error), qPrintable(error));
+        int calls = 0;
+        ws::OcrOptions options;
+        options.progress = [&] { ++calls; };
+        QVERIFY2(ocr->readPieces(tall, &watched, &error, options), qPrintable(error));
+        QCOMPARE(watched.size(), plain.size());
+        for (qsizetype i = 0; i < plain.size(); ++i)
+            QCOMPARE(watched[i].text, plain[i].text);
+        // Two strips, then at least one call per 6 lines read (some boxes
+        // read too poorly are dropped after reading, so not fewer calls).
+        QVERIFY2(calls >= 2 + (plain.size() + 5) / 6, qPrintable(u"%1 calls"_s.arg(calls)));
+        int left = 3;
+        options.progress = [&] {
+            if (--left == 0)
+                throw std::runtime_error("stopped by the watchdog");
+        };
+        QList<ws::OcrPiece> abandoned;
+        QVERIFY(!ocr->readPieces(tall, &abandoned, &error, options));
+        QCOMPARE(error, u"stopped by the watchdog"_s);
+    }
+
+    // A 24-bit picture (how OCR search hands over its pictures, to hold a big
+    // one once) reads exactly as the same picture in 32 bits, made smaller
+    // to look for lines (wider than 2000) or not.
+    void twentyFourBitPictureReadsTheSame()
+    {
+        QString error;
+        const std::unique_ptr<ws::PaddleOcr> ocr
+            = ws::PaddleOcr::load(QCoreApplication::applicationDirPath(), 2, &error);
+        QVERIFY2(ocr, qPrintable(error));
+        QStringList lines;
+        for (int i = 0; i < 12; ++i)
+            lines.append(u"第%1行 文字识别 invoice 731905"_s.arg(i));
+        for (const int px : {14, 120}) {
+            const QImage image = drawn(lines, px, Qt::black, Qt::white);
+            QList<ws::OcrPiece> rgb32, rgb888;
+            QVERIFY2(ocr->readPieces(image, &rgb32, &error), qPrintable(error));
+            QVERIFY2(ocr->readPieces(image.convertToFormat(QImage::Format_RGB888), &rgb888, &error), qPrintable(error));
+            QVERIFY(rgb32.size() >= 12);
+            QCOMPARE(rgb888.size(), rgb32.size());
+            for (qsizetype i = 0; i < rgb32.size(); ++i) {
+                QCOMPARE(rgb888[i].text, rgb32[i].text);
+                QCOMPARE(rgb888[i].score, rgb32[i].score);
+                QCOMPARE(rgb888[i].quad, rgb32[i].quad);
+            }
+        }
+    }
+
+    // OCR search reads a page that came in upside down (a scan fed the wrong
+    // way round); an upright page reads the same with or without the retry.
+    void upsideDownPageIsReadAgainTurned()
+    {
+        QStringList lines;
+        for (int i = 0; i < 12; ++i)
+            lines.append(u"报销单第%1行 金额 %2 元"_s.arg(i).arg(1200 + i * 37));
+        const QImage upright = drawn(lines, 22, Qt::black, Qt::white);
+        const QImage turned = upright.flipped(Qt::Horizontal | Qt::Vertical);
+        QString error;
+        const std::unique_ptr<ws::PaddleOcr> ocr
+            = ws::PaddleOcr::load(QCoreApplication::applicationDirPath(), 2, &error);
+        QVERIFY2(ocr, qPrintable(error));
+        const auto words = [&](const QImage& image, bool retry) {
+            ws::OcrOptions options;
+            options.retryUpsideDown = retry;
+            QList<ws::OcrPiece> pieces;
+            if (!ocr->readPieces(image, &pieces, &error, options))
+                return QString();
+            QStringList texts;
+            for (const ws::OcrPiece& piece : std::as_const(pieces))
+                texts.append(piece.text);
+            texts.sort();
+            return texts.join(u'\n');
+        };
+        const QString plain = words(upright, false);
+        int found = 0;
+        for (int i = 0; i < 12; ++i)
+            found += plain.contains(u"第%1行"_s.arg(i)) ? 1 : 0;
+        QCOMPARE(found, 12);
+        QCOMPARE(words(upright, true), plain);
+        const QString without = words(turned, false), with = words(turned, true);
+        int before = 0, after = 0;
+        for (int i = 0; i < 12; ++i) {
+            before += without.contains(u"第%1行"_s.arg(i)) ? 1 : 0;
+            after += with.contains(u"第%1行"_s.arg(i)) ? 1 : 0;
+        }
+        QVERIFY2(before <= 2, qPrintable(without));
+        QVERIFY2(after >= 11, qPrintable(with));
     }
 
     // ---- smart redaction: where the characters are (docs/design-capture-roadmap.md, 2.3, item 2) ----

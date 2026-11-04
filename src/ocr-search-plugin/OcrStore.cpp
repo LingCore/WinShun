@@ -2,10 +2,12 @@
 
 #include "ContentIndex.h"
 #include "Query.h"
+#include "platform/OcrFiles.h"
 
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -19,11 +21,30 @@
 #include <algorithm>
 #include <limits>
 #include <stdexcept>
+#include <vector>
 
 using namespace Qt::StringLiterals;
 
 namespace ws::ocrsearch {
 namespace {
+// 3: the pipeline below reads files with what 2 left out (recheckOlderPipeline()).
+constexpr int kSchema = 3;
+constexpr auto kPipeline = u"/ocr-search-3";
+constexpr auto kOlderPipeline = u"/ocr-search-2";
+// Unchanged while one picture is read the same: the recognition stored for
+// it before is found again by the same imageHash().
+constexpr auto kRecognizer = u"/ocr-search-2";
+// A picture whose lines read at less than this on average was maybe upside
+// down (measured: 11 to 18 lines kept at 0.57; upright text reads above 0.9).
+constexpr double kPoorScore = 0.75;
+// The files (as f) where nothing was found to read: no pictures in them, or
+// none with words. An empty text is stored as qCompress's 4-byte header.
+// Only files this pipeline settled (bind pipelineEngine()): one an upgrade
+// marked waits to be read again, and may well have words then.
+constexpr auto kTextless = "(f.engine=? AND (f.status='empty' OR (f.status='ready' AND NOT EXISTS(SELECT 1 FROM "
+                           "pages JOIN assets ON assets.id=pages.asset WHERE pages.file=f.path "
+                           "AND length(assets.text)>4))))";
+
 void checked(QSqlQuery& query)
 {
     if (!query.exec())
@@ -34,11 +55,84 @@ QByteArray packed(const QList<OcrPiece>& pieces)
     return qCompress(QJsonDocument(piecesToJson(pieces)).toJson(QJsonDocument::Compact), 6);
 }
 
+// Traditional Chinese characters and the simplified form OpenCC lists first
+// for each (third_party/opencc/TSCharacters.txt). What is stored and what is
+// searched for are both folded, so either way of writing finds the other.
+const QHash<char32_t, char32_t>& simplifiedForms()
+{
+    static const QHash<char32_t, char32_t> forms = [] {
+        QFile file(u":/ocr-search/TSCharacters.txt"_s);
+        if (!file.open(QIODevice::ReadOnly))
+            throw std::logic_error("The traditional Chinese table is not built in");
+        QHash<char32_t, char32_t> table;
+        for (const QByteArray& line : file.readAll().split('\n')) {
+            const qsizetype tab = line.indexOf('\t');
+            if (line.startsWith('#') || tab < 0)
+                continue;
+            const QList<uint> key = QString::fromUtf8(line.first(tab)).toUcs4();
+            const QList<uint> form = QString::fromUtf8(line.sliced(tab + 1).split(' ').constFirst()).toUcs4();
+            if (key.size() == 1 && form.size() == 1 && key[0] != form[0])
+                table.insert(key[0], form[0]);
+        }
+        // A form that is listed itself (薴 → 苧 → 苎) is followed to the end,
+        // so that all of them fold to one character.
+        for (auto it = table.begin(); it != table.end(); ++it) {
+            for (int hops = 0; hops < 8; ++hops) {
+                const auto next = table.constFind(it.value());
+                if (next == table.cend())
+                    break;
+                it.value() = next.value();
+            }
+        }
+        return table;
+    }();
+    return forms;
+}
+
+// The code point that ends just before `i`, and the one that starts at `i`.
+char32_t pointBefore(QStringView text, qsizetype i)
+{
+    if (i >= 2 && text[i - 1].isLowSurrogate() && text[i - 2].isHighSurrogate())
+        return QChar::surrogateToUcs4(text[i - 2], text[i - 1]);
+    return text[i - 1].unicode();
+}
+char32_t pointAt(QStringView text, qsizetype i)
+{
+    if (i + 1 < text.size() && text[i].isHighSurrogate() && text[i + 1].isLowSurrogate())
+        return QChar::surrogateToUcs4(text[i], text[i + 1]);
+    return text[i].unicode();
+}
+
+// Chinese and Japanese are written without spaces between words: next to one
+// of their characters a space is OCR's guess, or the typist's habit around
+// Latin words and numbers ("第 3 页", "Win顺 插件"), not a break a search
+// should depend on. Korean (spaced like English) is not among them.
+bool spaceless(char32_t c)
+{
+    return grams::isIndexed(c) && !(c >= 0xAC00 && c <= 0xD7AF) && !(c >= 0x3130 && c <= 0x318F);
+}
+
+bool wordCharacter(QChar c)
+{
+    return c.unicode() < 128 && c.isLetterOrNumber();
+}
+// One or two Latin letters or digits ("a4", "q3", "12"): too short for an
+// ASCII triple, so they are indexed and matched as whole words instead.
+bool shortWord(QStringView word)
+{
+    return (word.size() == 1 || word.size() == 2) && std::ranges::all_of(word, wordCharacter);
+}
+
 // Keep the existing CJK/ASCII candidate semantics. Hex tokens let FTS5
 // compress the postings without storing word positions or a second text copy.
 QString gramToken(grams::Key key)
 {
     return u"g"_s + QString::number(key, 16);
+}
+// Never like a gram's token: 'w' is no hex digit.
+QString wordToken(QStringView word)
+{
+    return u"w"_s + word.toString();
 }
 
 QString indexTokens(const QString& text)
@@ -52,20 +146,53 @@ QString indexTokens(const QString& text)
     QStringList tokens;
     for (auto key : keys)
         tokens.append(gramToken(key));
-    return tokens.join(u' ');
+    QStringList words;
+    for (qsizetype from = 0, end = 0; from < text.size(); from = end + 1) {
+        for (end = from; end < text.size() && wordCharacter(text[end]);)
+            ++end;
+        if (const QStringView word = QStringView(text).sliced(from, end - from); shortWord(word))
+            words.append(wordToken(word));
+    }
+    words.sort();
+    words.removeDuplicates();
+    return (tokens + words).join(u' ');
 }
 
-// Contentless FTS5 deletes must name exactly the tokens once inserted, so the
-// index records which gram rules (src/core grams) made its tokens. Any change
-// to their output for this probe -- CJK pairs and singles, ASCII triples,
-// digits, punctuation, scripts that are not indexed -- rebuilds the tokens.
+// What an asset is searched by: the lines it was read as, normalized.
+QString assetText(const QList<OcrPiece>& pieces)
+{
+    QStringList lines;
+    for (const OcrPiece& piece : pieces)
+        lines.append(piece.text);
+    return normalized(lines.join(u'\n'));
+}
+
+// Contentless FTS5 deletes must name exactly the tokens once inserted, and the
+// stored text must be the one searches compare with: the index records which
+// rules made both (normalized(), the gram rules of src/core grams, the short
+// words). Any change to their output for this probe -- CJK pairs and singles,
+// ASCII triples and short words, digits, punctuation, spaces OCR puts among
+// Chinese characters, traditional characters, scripts that are not indexed --
+// or to the table of traditional characters rebuilds the text and the tokens
+// from the stored lines.
 QString termsRules()
 {
     static const QString rules = [] {
-        const QString probe = u"报销规定 去年的 申 invoice 731905 abc-12.5 ab x документ λόγος カタカナ 한국어 ①② 𠀀𠀁"_s;
-        return u"1:"_s
-            + QString::fromLatin1(
-                QCryptographicHash::hash(indexTokens(probe).toUtf8(), QCryptographicHash::Sha256).toHex().left(16));
+        const QString probe = normalized(u"报销规定 去年的 申 invoice 731905 abc-12.5 ab x A4 紙 第 3 頁 Q3 報銷 薴 "
+                                         u"документ λόγος カタカナ テスト 한국어 문서 ①② 𠀀 𠀁 ＡＢＣ"_s);
+        QCryptographicHash hash(QCryptographicHash::Sha256);
+        hash.addData((probe + u'\n' + indexTokens(probe)).toUtf8());
+        const auto& forms = simplifiedForms();
+        std::vector<std::pair<char32_t, char32_t>> folds;
+        folds.reserve(forms.size());
+        for (auto it = forms.cbegin(); it != forms.cend(); ++it)
+            folds.emplace_back(it.key(), it.value());
+        std::ranges::sort(folds); // QHash's order differs from run to run
+        for (const auto& [from, to] : folds) {
+            const char32_t fold[] {from, to};
+            hash.addData(QByteArrayView(reinterpret_cast<const char*>(fold), sizeof fold));
+        }
+        return u"2:"_s + QString::fromLatin1(hash.result().toHex().left(16));
     }();
     return rules;
 }
@@ -96,17 +223,51 @@ QJsonArray piecesToJson(const QList<OcrPiece>& pieces)
 
 QString normalized(QString text)
 {
-    text = text.normalized(QString::NormalizationForm_KC).toCaseFolded().simplified();
-    // OCR may put spaces between Chinese characters that are adjacent on paper.
-    QString out;
-    out.reserve(text.size());
+    text = text.normalized(QString::NormalizationForm_KC).toCaseFolded();
+    const auto& forms = simplifiedForms();
+    QString folded;
+    folded.reserve(text.size());
     for (qsizetype i = 0; i < text.size(); ++i) {
-        if (text[i] == u' ' && i > 0 && i + 1 < text.size() && grams::isIndexed(text[i - 1].unicode())
-            && grams::isIndexed(text[i + 1].unicode()))
-            continue;
-        out += text[i];
+        const char32_t c = pointAt(text, i);
+        if (QChar::requiresSurrogates(c))
+            ++i;
+        folded += QChar::fromUcs4(forms.value(c, c));
+    }
+    folded = folded.simplified();
+    // Spaces next to Chinese or Japanese characters go (spaceless()), and
+    // between two Korean ones as before; spaces between other words stay.
+    QString out;
+    out.reserve(folded.size());
+    for (qsizetype i = 0; i < folded.size(); ++i) {
+        if (folded[i] == u' ' && i > 0 && i + 1 < folded.size()) {
+            const char32_t before = pointBefore(folded, i), after = pointAt(folded, i + 1);
+            if (spaceless(before) || spaceless(after) || (grams::isIndexed(before) && grams::isIndexed(after)))
+                continue;
+        }
+        out += folded[i];
     }
     return out;
+}
+
+QStringList searchTerms(const QString& words)
+{
+    QStringList terms = contentTerms(words);
+    for (QString& term : terms)
+        term = normalized(term);
+    terms.removeAll(QString());
+    return terms;
+}
+
+bool containsTerm(QStringView text, QStringView term)
+{
+    if (!shortWord(term))
+        return text.contains(term);
+    for (qsizetype at = text.indexOf(term); at >= 0; at = text.indexOf(term, at + 1)) {
+        const qsizetype end = at + term.size();
+        if ((at == 0 || !wordCharacter(text[at - 1])) && (end == text.size() || !wordCharacter(text[end])))
+            return true;
+    }
+    return false;
 }
 
 QString locationText(const QJsonObject& source, const QString& fallback)
@@ -162,10 +323,10 @@ Store::Store(const QString& folder, int capacityMB)
             throw std::runtime_error("Cannot read the OCR index version");
         const int schemaVersion = version.value(0).toInt();
         version.finish();
-        if (schemaVersion > 2)
+        if (schemaVersion > kSchema)
             throw std::runtime_error("This OCR index needs a newer plugin");
         if (capacityMB == 0) {
-            if (schemaVersion != 2 || storedTermsRules(m_db) != termsRules())
+            if (schemaVersion != kSchema || storedTermsRules(m_db) != termsRules())
                 throw std::runtime_error("The OCR index must be upgraded before searching");
             return;
         }
@@ -195,16 +356,22 @@ Store::Store(const QString& folder, int capacityMB)
         exec(u"CREATE INDEX IF NOT EXISTS page_asset ON pages(asset)"_s);
         exec(u"CREATE VIRTUAL TABLE IF NOT EXISTS asset_terms USING fts5(tokens,content='',detail=none,columnsize=0)"_s);
         exec(u"CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY,value TEXT)"_s);
-        if (schemaVersion < 2 || storedTermsRules(m_db) != termsRules()) {
+        const bool rules = schemaVersion < 2 || storedTermsRules(m_db) != termsRules();
+        if (rules || schemaVersion < kSchema) {
             // Reuse stored recognition: rebuilding never decodes source images
             // or calls OCR, and asset IDs and highlight boxes stay the same.
             if (!m_transaction)
                 begin();
-            rebuildTerms();
-            exec(u"DROP TABLE IF EXISTS grams"_s);
-            exec(u"PRAGMA user_version=2"_s);
+            if (rules) {
+                rebuildTerms();
+                exec(u"DROP TABLE IF EXISTS grams"_s);
+            }
+            if (schemaVersion < kSchema)
+                recheckOlderPipeline();
+            exec(u"PRAGMA user_version=%1"_s.arg(kSchema));
             commit();
-            reclaim();
+            if (rules)
+                reclaim();
         }
     } catch (...) {
         rollback();
@@ -250,19 +417,116 @@ void Store::commit()
     m_transaction = false;
 }
 
+// The pipeline before (ocr-search-2) left out PDF pages whose words are drawn
+// rather than in the text layer, made long pictures and big pages smaller,
+// read upside-down pages as they came, and gave up on dense pages it heard
+// nothing from for a minute; installed, it found no pdfium.dll, so every PDF
+// failed (extract::loadPdfium). Only the files where that can matter are walked
+// again: their rows keep the older engine, so that the next scan visits them;
+// every other row is marked as made by this pipeline. Nothing is decoded or
+// read here, and a picture whose pixels come out the same finds its
+// recognition again (imageHash()).
+void Store::recheckOlderPipeline()
+{
+    const QString older = QString(ocr::kVersion) + QStringView(kOlderPipeline);
+    {
+        // Read poorly, maybe upside down: one more byte on the key makes the
+        // next look-up miss, so the picture is read again (turned round, if
+        // that reads clearly better). Until then the row serves searches.
+        QSqlQuery poor(m_db), mark(m_db);
+        poor.setForwardOnly(true);
+        if (!poor.exec(u"SELECT id,hash,pieces FROM assets WHERE length(hash)=32"_s))
+            throw std::runtime_error(poor.lastError().text().toStdString());
+        mark.prepare(u"UPDATE assets SET hash=? WHERE id=?"_s);
+        while (poor.next()) {
+            const QJsonArray pieces = QJsonDocument::fromJson(qUncompress(poor.value(2).toByteArray())).array();
+            double scores = 0;
+            for (const auto& piece : pieces)
+                scores += piece.toObject().value(u"score"_s).toDouble();
+            if (pieces.size() < 2 || scores >= kPoorScore * pieces.size())
+                continue;
+            mark.bindValue(0, poor.value(1).toByteArray() + '\0');
+            mark.bindValue(1, poor.value(0));
+            checked(mark);
+        }
+    }
+    QSqlQuery q(m_db);
+    q.prepare(uR"(UPDATE files SET engine=? WHERE engine=? AND NOT (
+            (status='empty' AND lower(path) LIKE '%.pdf')
+            OR (status='failed' AND (error LIKE ? OR error LIKE ? OR error LIKE ? OR error LIKE ?))
+            OR EXISTS(SELECT 1 FROM pages JOIN assets ON assets.id=pages.asset WHERE pages.file=files.path AND (
+                length(assets.hash)<>32
+                OR (json_extract(pages.source,'$.kind')='pdf' AND max(assets.width,assets.height)>=2600)
+                OR (json_extract(pages.source,'$.kind') IN ('image','office') AND max(assets.width,assets.height)=4096
+                    AND max(assets.width,assets.height)>3*min(assets.width,assets.height))))))"_s);
+    q.addBindValue(pipelineEngine());
+    q.addBindValue(older);
+    // The worker's deadline and the missing PDF reader, as worded in either
+    // language when they were stored.
+    q.addBindValue(u"%秒没有进展%"_s);
+    q.addBindValue(u"No progress on the file for %"_s);
+    q.addBindValue(u"缺少 PDF 读取组件%"_s);
+    q.addBindValue(u"PDF component is missing%"_s);
+    checked(q);
+    QSqlQuery note(m_db);
+    note.prepare(u"INSERT OR REPLACE INTO meta VALUES('recheck',?)"_s);
+    note.addBindValue(older);
+    checked(note);
+}
+
+int Store::recheckRemaining() const
+{
+    QSqlQuery q(m_db);
+    if (!q.exec(u"SELECT count(*) FROM files WHERE engine=(SELECT value FROM meta WHERE key='recheck')"_s) || !q.next())
+        return 0;
+    return q.value(0).toInt();
+}
+
+void Store::recheckDone()
+{
+    exec(u"DELETE FROM meta WHERE key='recheck'"_s);
+}
+
 void Store::rebuildTerms()
 {
     exec(u"INSERT INTO asset_terms(asset_terms) VALUES('delete-all')"_s);
-    QSqlQuery assets(m_db), insert(m_db);
-    if (!assets.exec(u"SELECT id,text FROM assets ORDER BY id"_s))
-        throw std::runtime_error(assets.lastError().text().toStdString());
+    // The text too is made again from the stored lines, by today's rules:
+    // nothing is decoded or read with OCR again. In batches by ID, so that no
+    // row changes under an open read of its table.
+    QSqlQuery assets(m_db), update(m_db), insert(m_db);
+    assets.prepare(u"SELECT id,text,pieces FROM assets WHERE id>? ORDER BY id LIMIT 256"_s);
+    update.prepare(u"UPDATE assets SET text=? WHERE id=?"_s);
     insert.prepare(u"INSERT INTO asset_terms(rowid,tokens) VALUES(?,?)"_s);
-    while (assets.next()) {
-        insert.bindValue(0, assets.value(0));
-        insert.bindValue(1, indexTokens(QString::fromUtf8(qUncompress(assets.value(1).toByteArray()))));
-        checked(insert);
+    for (qint64 last = 0;;) {
+        assets.bindValue(0, last);
+        checked(assets);
+        struct Row {
+            qint64 id;
+            QString text;
+            bool changed;
+        };
+        QList<Row> rows;
+        while (assets.next()) {
+            const QString text = assetText(
+                piecesFromJson(QJsonDocument::fromJson(qUncompress(assets.value(2).toByteArray())).array()));
+            rows.append({assets.value(0).toLongLong(), text,
+                text != QString::fromUtf8(qUncompress(assets.value(1).toByteArray()))});
+        }
+        assets.finish();
+        if (rows.isEmpty())
+            break;
+        for (const Row& row : std::as_const(rows)) {
+            if (row.changed) {
+                update.bindValue(0, qCompress(row.text.toUtf8(), 6));
+                update.bindValue(1, row.id);
+                checked(update);
+            }
+            insert.bindValue(0, row.id);
+            insert.bindValue(1, indexTokens(row.text));
+            checked(insert);
+        }
+        last = rows.constLast().id;
     }
-    assets.finish();
     insert.prepare(u"INSERT OR REPLACE INTO meta VALUES('terms',?)"_s);
     insert.addBindValue(termsRules());
     checked(insert);
@@ -299,6 +563,16 @@ QString Store::state(const QString& path, qint64 size, qint64 modified, const QS
     q.addBindValue(engine);
     checked(q);
     return q.next() ? q.value(0).toString() : QString();
+}
+
+QString pipelineEngine()
+{
+    return QString(ocr::kVersion) + QStringView(kPipeline);
+}
+
+QString recognizerEngine()
+{
+    return QString(ocr::kVersion) + QStringView(kRecognizer);
 }
 
 bool settled(const QString& status)
@@ -372,10 +646,7 @@ qint64 Store::putAsset(const QByteArray& hash, const QSize& size, const QList<Oc
 {
     if (const qint64 found = asset(hash))
         return found;
-    QStringList lines;
-    for (const OcrPiece& piece : pieces)
-        lines.append(piece.text);
-    const QString text = normalized(lines.join(u'\n'));
+    const QString text = assetText(pieces);
     QSqlQuery q(m_db);
     q.prepare(u"INSERT INTO assets(hash,width,height,text,pieces) VALUES(?,?,?,?,?)"_s);
     q.addBindValue(hash);
@@ -579,6 +850,15 @@ QJsonObject Store::statistics() const
     q.exec(u"SELECT count(*) FROM assets"_s);
     if (q.next())
         out.insert(u"assets"_s, q.value(0).toInt());
+    q.prepare(u"SELECT count(*) FROM files WHERE status NOT IN ('ready','empty') AND engine=?"_s); // as errorText()
+    q.addBindValue(pipelineEngine());
+    if (q.exec() && q.next())
+        out.insert(u"unfinished"_s, q.value(0).toInt());
+    q.prepare(u"SELECT count(*) FROM files f WHERE "_s + QLatin1StringView(kTextless));
+    q.addBindValue(pipelineEngine());
+    if (q.exec() && q.next())
+        out.insert(u"textless"_s, q.value(0).toInt());
+    out.insert(u"recheck"_s, recheckRemaining());
     out.insert(u"bytes"_s, QFileInfo(m_path).size() + QFileInfo(m_path + u"-wal"_s).size()
         + QFileInfo(m_path + u"-shm"_s).size());
     return out;
@@ -586,11 +866,55 @@ QJsonObject Store::statistics() const
 
 QString Store::errorText() const
 {
+    // Only files this pipeline settled: one an upgrade marked to read again
+    // keeps its old reason until then (1.0.0's missing PDF reader, a timeout),
+    // and listing it would say the update had not helped.
     QSqlQuery q(m_db);
-    q.exec(u"SELECT display,error FROM files WHERE status NOT IN ('ready','empty') ORDER BY display LIMIT 200"_s);
+    q.prepare(u"SELECT display,error FROM files WHERE status NOT IN ('ready','empty') AND engine=? "
+              u"ORDER BY display LIMIT 200"_s);
+    q.addBindValue(pipelineEngine());
+    q.exec();
     QStringList lines;
     while (q.next())
         lines.append(q.value(0).toString() + u"\n"_s + q.value(1).toString());
+    return lines.join(u"\n\n"_s);
+}
+
+QString Store::textlessText() const
+{
+    // Documents by name; pictures without words (photos, mostly) only
+    // counted after them, or they would bury the documents.
+    QSqlQuery q(m_db);
+    q.setForwardOnly(true);
+    q.prepare(u"SELECT display,status,lower(path) LIKE '%.pdf',"
+              u"(SELECT json_extract(source,'$.kind') FROM pages WHERE pages.file=f.path LIMIT 1) "
+              u"FROM files f WHERE "_s
+        + QLatin1StringView(kTextless) + u" ORDER BY display"_s);
+    q.addBindValue(pipelineEngine());
+    q.exec();
+    QStringList lines;
+    int more = 0;
+    int pictures = 0;
+    while (q.next()) {
+        QString why;
+        if (q.value(1).toString() == u"empty")
+            why = q.value(2).toBool() ? QObject::tr("没有要识别的页面：字都在 PDF 的文字层里")
+                                      : QObject::tr("文档里没有图片");
+        else if (q.value(3).toString() == u"image")
+            ++pictures;
+        else
+            why = QObject::tr("识别过了，没有认出文字");
+        if (why.isEmpty())
+            continue;
+        if (lines.size() < 200)
+            lines.append(q.value(0).toString() + u"\n"_s + why);
+        else
+            ++more;
+    }
+    if (more)
+        lines.append(QObject::tr("另有 %n 个文件", nullptr, more));
+    if (pictures)
+        lines.append(QObject::tr("另有 %n 张图片识别过了，没有认出文字", nullptr, pictures));
     return lines.join(u"\n\n"_s);
 }
 
@@ -628,10 +952,7 @@ QList<OcrPiece> Store::pieces(qint64 id, QSize* size) const
 QList<Hit> Store::search(const QString& words, int limit, const QJsonObject& filters, const Cancel& cancel) const
 {
     const ContentQuery scope = splitContentQuery(words.left(512));
-    QStringList terms = contentTerms(scope.words);
-    for (QString& term : terms)
-        term = normalized(term);
-    terms.removeAll(QString());
+    const QStringList terms = searchTerms(scope.words);
     if (terms.isEmpty() || limit <= 0)
         return {};
     QStringList candidates;
@@ -639,11 +960,13 @@ QList<Hit> Store::search(const QString& words, int limit, const QJsonObject& fil
         QStringList tokens;
         for (auto key : grams::ofPhrase(term))
             tokens.append(gramToken(key));
+        if (shortWord(term))
+            tokens.append(wordToken(term));
         if (!tokens.isEmpty())
             candidates.append(tokens.join(u" AND "_s));
     }
-    // Words without an indexed gram (one or two Latin letters or digits,
-    // Cyrillic, Greek, ...) cannot be looked up: no scan of every file.
+    // Words with neither (Cyrillic, Greek, two signs, ...) cannot be looked
+    // up: no scan of every file.
     if (candidates.isEmpty())
         return {};
     const QDateTime from = QDateTime::fromString(filters.value(u"modifiedFrom"_s).toString(), Qt::ISODate);
@@ -747,7 +1070,7 @@ QList<Hit> Store::search(const QString& words, int limit, const QJsonObject& fil
             }
             int count = 0;
             for (qsizetype term = 0; term < terms.size(); ++term) {
-                if (!text.contains(terms[term]))
+                if (!containsTerm(text, terms[term]))
                     continue;
                 ++count;
                 if (!found[term]) {
@@ -776,7 +1099,8 @@ QList<Hit> Store::search(const QString& words, int limit, const QJsonObject& fil
         best.source.insert(u"fileModifiedMs"_s, info.lastModified().toMSecsSinceEpoch());
         for (const auto& piece : pieces(best.asset)) {
             const QString text = normalized(piece.text);
-            if (std::any_of(terms.begin(), terms.end(), [&](const QString& term) { return text.contains(term); })) {
+            if (std::any_of(
+                    terms.begin(), terms.end(), [&](const QString& term) { return containsTerm(text, term); })) {
                 best.snippet = piece.text.left(140);
                 break;
             }

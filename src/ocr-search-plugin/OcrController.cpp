@@ -157,6 +157,7 @@ void Controller::refresh()
         Store store(m_dataDir, 0);
         m_statistics = store.statistics().toVariantMap();
         m_errors = store.errorText();
+        m_textless = store.textlessText();
     } catch (const std::exception& e) {
         m_errors = QString::fromUtf8(e.what());
     }
@@ -305,6 +306,7 @@ void Controller::start(bool retry)
     m_enabled = true;
     m_status = tr("正在更新索引");
     m_progress.clear();
+    m_progressFile.clear();
     save();
     if (m_scan.joinable())
         m_scan.join();
@@ -327,8 +329,10 @@ void Controller::start(bool retry)
                         this,
                         [this, state] {
                             m_progress
-                                = tr("已检查 %1 个文件 · 新识别 %2 页／张").arg(state.checked).arg(state.recognized)
-                                + u"\n"_s + state.current;
+                                = tr("已检查 %1 个文件 · 新识别 %2 页／张").arg(state.checked).arg(state.recognized);
+                            m_progressFile = state.current;
+                            // The upgrade notice counts down while the files are read again.
+                            m_statistics.insert(u"recheck"_s, state.recheck);
                             if (!state.message.isEmpty())
                                 m_status = state.message;
                             emit changed();
@@ -345,9 +349,8 @@ void Controller::start(bool retry)
                 finished(token.stop_requested() ? tr("已暂停，下次从未完成的文件继续")
                         : message.isEmpty()     ? tr("索引已更新，每 5 分钟检查文件变化")
                                                 : message);
-                const int unfinished = m_statistics.value(u"failed"_s).toInt()
-                    + m_statistics.value(u"partial"_s).toInt() + m_statistics.value(u"unsupported"_s).toInt()
-                    + m_statistics.value(u"offline"_s).toInt();
+                // As many as the unfinished list holds (Store::errorText()).
+                const int unfinished = m_statistics.value(u"unfinished"_s).toInt();
                 if (!token.stop_requested() && message.isEmpty() && unfinished) {
                     m_status = tr("索引已更新，%1 个文件未完成，可查看原因").arg(unfinished);
                     emit changed();
@@ -477,15 +480,13 @@ void Controller::showHit(const Hit& hit, const QString& words)
             // Boxes are in the recognised image's pixels; the preview may be smaller.
             if (recognised.isEmpty())
                 recognised = image.size();
-            QStringList terms = contentTerms(splitContentQuery(words).words);
-            for (auto& term : terms)
-                term = normalized(term);
+            const QStringList terms = searchTerms(splitContentQuery(words).words);
             QStringList lines;
             for (const auto& piece : pieces) {
                 lines.append(piece.text);
                 const QString normalizedText = normalized(piece.text);
                 if (std::any_of(terms.begin(), terms.end(),
-                        [&](const QString& term) { return normalizedText.contains(term); })) {
+                        [&](const QString& term) { return containsTerm(normalizedText, term); })) {
                     const QRectF rect = piece.quad.boundingRect();
                     boxes.append(QVariantMap {{u"x"_s, rect.x() / recognised.width()},
                         {u"y"_s, rect.y() / recognised.height()}, {u"width"_s, rect.width() / recognised.width()},

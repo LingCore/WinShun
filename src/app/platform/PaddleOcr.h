@@ -7,6 +7,7 @@
 #include <QString>
 #include <QStringList>
 
+#include <functional>
 #include <memory>
 
 namespace ws {
@@ -34,8 +35,27 @@ struct OcrPiece {
     QList<QPair<int, float>> chars;
 };
 
+// What a read can be asked for beyond the plain reading. The clipboard and
+// screenshots read with the defaults; OCR search indexes whole folders.
+struct OcrOptions {
+    // Called on the reading thread after each strip of the picture searched
+    // for lines and after each batch of lines read: proof that a long read is
+    // still moving, for a watchdog that gives up on reads that stopped. It
+    // may throw to abandon the read; the read then fails with its message.
+    std::function<void()> progress;
+    // Lines that read poorly are read once more turned half round, and that
+    // reading is kept when it says clearly more: pages scanned or photographed
+    // upside down, and those turned a quarter the other way than lines that
+    // stand up are turned to be read. Costs a second reading of poor pages.
+    bool retryUpsideDown = false;
+};
+
 class PaddleOcr {
 public:
+    // A larger picture is made smaller all over before it is read; OCR search
+    // decodes long pictures and renders PDF pages up to this, not beyond.
+    static constexpr qint64 kMaxPixels = 40'000'000;
+
     // The files are there (cheap: what to use, decided before loading).
     static bool installed(const QString& programFolder);
     // Null when something is missing or will not load; why in `error`.
@@ -49,11 +69,12 @@ public:
     bool read(const QImage& image, QStringList* lines, QString* error = nullptr);
     // The lines as found, each with its corners and its characters' places,
     // in the picture's own pixels; the same reading as read(), in no order.
-    bool readPieces(const QImage& image, QList<OcrPiece>* pieces, QString* error = nullptr);
+    bool readPieces(
+        const QImage& image, QList<OcrPiece>* pieces, QString* error = nullptr, const OcrOptions& options = {});
 
 private:
     PaddleOcr();
-    bool find(const QImage& image, QList<OcrPiece>* found, bool chars, QString* error);
+    bool find(const QImage& image, QList<OcrPiece>* found, bool chars, QString* error, const OcrOptions& options);
     struct Impl;
     std::unique_ptr<Impl> d;
 };
