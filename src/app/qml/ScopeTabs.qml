@@ -128,7 +128,9 @@ Rectangle {
                 readonly property bool pluginOpen: hasPlugin && tabs.current === 0
                 readonly property bool off: tabs.disabled.length > 0 && tabs.disabled.indexOf(index) >= 0
                 // Whole device pixels (at 150 % a whole logical one can still be half): a half one would leave the labels to its right blurred.
-                readonly property real labelWidth: Theme.snapUp(label.implicitWidth + (tabs.multiSelect ? 38 : 24), tabs.dpr)
+                // Where the words start: after the lamp's room where the part has one (tactile's scope keys), else 12.
+                readonly property real lead: tabs.segmentedPart && track.out("leadingInset", 0) > 0 ? track.out("leadingInset", 0) : 12
+                readonly property real labelWidth: Theme.snapUp(label.implicitWidth + (tabs.multiSelect ? 38 : lead + 12), tabs.dpr)
 
                 width: labelWidth + (open ? sub.fullWidth : 0) + (pluginOpen ? pluginSub.fullWidth : 0)
                 height: tabs.shownTabHeight
@@ -156,7 +158,7 @@ Rectangle {
                     // The smaller tab (or the plugin's chip) current: this one is the way back to the whole.
                     readonly property color ownColor: tab.off ? Theme.faint : tab.active && !tab.subCurrent && !tab.pluginOpen ? Theme.text : Theme.subtext
                     readonly property int ownWeight: tab.active ? Theme.fontStrong : Font.Normal
-                    x: tabs.multiSelect ? 26 : 12
+                    x: tabs.multiSelect ? 26 : tab.lead
                     y: tabs.onPixel((tab.height - height) / 2 + (tabs.segmentedPart ? track.call("labelOffsetY", [tab.index], 0) : 0))
                     text: tab.modelData
                     color: tab.off || !tabs.segmentedPart || tab.subCurrent || tab.pluginOpen ? ownColor : track.call("labelColor", [tab.index], ownColor)

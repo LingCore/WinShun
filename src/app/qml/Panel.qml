@@ -252,7 +252,9 @@ Item {
 
         signal clicked()
 
-        width: Math.ceil(chipLabel.implicitWidth) + 20 // whole pixels: the labels after it stay sharp
+        // Where the words start: after the lamp's room where the part has one (tactile's 不限), else 10.
+        readonly property real lead: chipSurface.out("leadingInset", 0) > 0 ? chipSurface.out("leadingInset", 0) : 10
+        width: Math.ceil(chipLabel.implicitWidth) + lead + 10 // whole pixels: the labels after it stay sharp
         height: Theme.chipHeight + 4
         Accessible.role: multi ? Accessible.CheckBox : Accessible.RadioButton
         Accessible.name: text
@@ -276,7 +278,7 @@ Item {
         }
         Text {
             id: chipLabel
-            x: 10
+            x: chip.lead
             y: panel.onPixel((chip.height - height) / 2 + chipSurface.out("contentOffsetY", 0))
             text: chip.text
             color: chipSurface.out("foreground", chip.active && !chip.isAll ? Theme.accentText : chip.active || chipArea.containsMouse ? Theme.text : Theme.subtext)
