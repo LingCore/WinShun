@@ -3778,6 +3778,9 @@ void checkLauncherFilters(QQuickWindow* window, QQmlEngine* qmlEngine, const QDi
             required property WindowFrame frame
             required property Placement placement
             width: 1200; height: 650; color: Theme.background
+            // The style's match colour and weight, as Main.qml gives the real one.
+            Binding { target: panelFixture.controller.results; property: "highlightColor"; value: Theme.matchColor }
+            Binding { target: panelFixture.controller.results; property: "highlightWeight"; value: Theme.matchWeight }
             Panel { anchors.fill: parent; launcher: panelFixture.controller; frame: panelFixture.frame; placement: panelFixture.placement }
         }
     )", QUrl(u"qrc:/qt/qml/WinShun/PanelRegression.qml"_s));
@@ -4802,6 +4805,7 @@ int runResults(const QStringList& args)
             property bool showFileSize: false
             property bool showDate: true
             Binding { target: previewResults; property: "highlightColor"; value: Theme.matchColor }
+            Binding { target: previewResults; property: "highlightWeight"; value: Theme.matchWeight }
             NumberHints { id: hints; key: Qt.Key_Control; listening: true }
             TextInput {
                 id: field

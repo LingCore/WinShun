@@ -288,7 +288,7 @@ Item {
                 // without any. An app's (and a web search's) is short, its
                 // highlights its own.
                 text: row.results && !row.isApp
-                      ? row.results.elidedHtml(row.name, row.nameMatches, parent.width, font, row.results.highlightColor)
+                      ? row.results.elidedHtml(row.name, row.nameMatches, parent.width, font, row.results.highlightColor, row.results.highlightWeight)
                       : row.nameHtml
                 textFormat: Text.StyledText
                 elide: Text.ElideRight
@@ -323,7 +323,7 @@ Item {
             width: parent.width
             text: row.contentMode ? row.snippetHtml
                 : away ? row.folderAway
-                : marked ? row.results.elidedHtml(row.folder, row.folderMatches, width, font, row.results.highlightColor)
+                : marked ? row.results.elidedHtml(row.folder, row.folderMatches, width, font, row.results.highlightColor, row.results.highlightWeight)
                 : row.folder
             textFormat: row.contentMode || marked ? Text.StyledText : Text.PlainText
             elide: row.contentMode || marked || away ? Text.ElideRight : Text.ElideMiddle

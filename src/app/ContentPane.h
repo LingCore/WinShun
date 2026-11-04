@@ -29,7 +29,7 @@ public:
     QVariant data(const QModelIndex& index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
     void assign(std::shared_ptr<const contentdetails::Matches> matches, std::vector<int> rows,
-        std::vector<int> visibleMatches, QColor color,
+        std::vector<int> visibleMatches, QColor color, bool bold,
         std::shared_ptr<const std::vector<contentdetails::Match>> refinements = {});
     void setCurrent(int sourceLine);
     int indexOf(int sourceLine) const;
@@ -42,6 +42,7 @@ private:
     std::vector<int> m_visibleMatches;
     std::shared_ptr<const std::vector<contentdetails::Match>> m_refinements;
     QColor m_color;
+    bool m_bold = true;
     int m_current = -1;
 };
 
@@ -74,6 +75,8 @@ class ContentPane final : public QObject {
     Q_PROPERTY(QVariantMap reportOptions READ reportOptions NOTIFY reportChanged FINAL)
     Q_PROPERTY(QString previewMessage READ previewMessage NOTIFY previewChanged FINAL)
     Q_PROPERTY(QColor highlightColor READ highlightColor WRITE setHighlightColor NOTIFY changed FINAL)
+    // The style's match weight (Theme.matchWeight): bold from DemiBold up.
+    Q_PROPERTY(int highlightWeight READ highlightWeight WRITE setHighlightWeight NOTIFY changed FINAL)
     Q_PROPERTY(QString filterText READ filterText NOTIFY changed FINAL)
     Q_PROPERTY(bool matchCase READ matchCase NOTIFY changed FINAL)
     Q_PROPERTY(bool wholeWord READ wholeWord NOTIFY changed FINAL)
@@ -120,6 +123,8 @@ public:
     bool wholeWord() const { return m_filter.wholeWord; }
     bool regex() const { return m_filter.regex; }
     void setHighlightColor(const QColor& color);
+    int highlightWeight() const { return m_weight; }
+    void setHighlightWeight(int weight);
     Q_INVOKABLE void setFilter(const QString& text, bool matchCase, bool wholeWord, bool regex);
     Q_INVOKABLE void toggleTerm(int index);
     Q_INVOKABLE void nextMatch(int delta);
@@ -178,6 +183,7 @@ private:
     contentdetails::Rows m_rows;
     int m_current = -1;
     QColor m_color;
+    int m_weight = 700; // QFont::Bold
     QTimer m_debounce;
     SearchEngine::Request m_request;
     SearchResults m_files, m_selected;

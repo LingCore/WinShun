@@ -446,6 +446,11 @@ Window {
         value: Theme.matchColor
     }
     Binding {
+        target: window.launcher.results
+        property: "highlightWeight"
+        value: Theme.matchWeight
+    }
+    Binding {
         target: window.launcher
         property: "currentRow"
         // On a hint after the last row, that row: what the search brings

@@ -36,6 +36,7 @@ Rectangle {
         if (event.key === Qt.Key_Escape) { root.searchFocusRequested(); event.accepted = true }
     }
     Binding { target: root.pane; property: "highlightColor"; value: Theme.matchColor }
+    Binding { target: root.pane; property: "highlightWeight"; value: Theme.matchWeight }
 
     ColumnLayout {
         anchors.fill: parent

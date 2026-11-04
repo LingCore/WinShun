@@ -143,7 +143,7 @@ Item {
                 readonly property real room: parent.width - (date.visible ? date.width + 10 : 0)
                 width: Math.min(implicitWidth, room)
                 // Shortened around its matches, its end kept (see ResultRow).
-                text: row.results ? row.results.elidedHtml(row.name, row.nameMatches, room, font, row.results.highlightColor)
+                text: row.results ? row.results.elidedHtml(row.name, row.nameMatches, room, font, row.results.highlightColor, row.results.highlightWeight)
                                   : row.nameHtml
                 textFormat: Text.StyledText
                 elide: Text.ElideRight
