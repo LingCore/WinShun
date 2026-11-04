@@ -427,7 +427,7 @@ Window {
         // Only once every page is made (the box makes them: onQueryChanged
         // there), so that each row is there to be matched and counted.
         query: window.searchReady ? searchBox.query : ""
-        highlightColor: Theme.accent
+        highlightColor: Theme.matchColor
         onQueryChanged: {
             if (active && !window.beforeSearch)
                 window.beforeSearch = { page: window.currentPage, tab: window.currentTab, y: flick.contentY }

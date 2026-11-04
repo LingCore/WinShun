@@ -4801,7 +4801,7 @@ int runResults(const QStringList& args)
             property bool sizeOrder: false
             property bool showFileSize: false
             property bool showDate: true
-            Binding { target: previewResults; property: "highlightColor"; value: Theme.accent }
+            Binding { target: previewResults; property: "highlightColor"; value: Theme.matchColor }
             NumberHints { id: hints; key: Qt.Key_Control; listening: true }
             TextInput {
                 id: field
