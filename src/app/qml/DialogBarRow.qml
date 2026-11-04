@@ -78,21 +78,20 @@ Item {
 
     // The style's highlight (Theme.rowHighlight). The current row's is the
     // list's own, one for all its rows (DialogBarWindow); here only the hover.
-    // Made only while wanted.
+    // Made the first time it shows, then only hidden (docs/pitfalls.md, ClipRow).
     readonly property real dpr: Screen.devicePixelRatio
-    Loader {
+    Hook {
         anchors.fill: parent
         anchors.leftMargin: Theme.rowInset
         anchors.rightMargin: Theme.rowInset
         anchors.topMargin: Theme.edge(row.dpr)
         anchors.bottomMargin: Theme.edge(row.dpr)
-        active: !row.current && area.containsMouse
-        sourceComponent: Hook {
-            part: Theme.rowHighlight
-            hovered: true
-            role: "list"
-            dpr: row.dpr
-        }
+        visible: !row.current && area.containsMouse
+        lazy: true
+        part: Theme.rowHighlight
+        hovered: true
+        role: "list"
+        dpr: row.dpr
     }
 
     Item {

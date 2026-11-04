@@ -105,19 +105,19 @@ Item {
 
     // The current row's highlight is the panel's list's own (one for all the
     // rows, Panel.qml); this one is under the others the mouse is on or that
-    // are chosen, made only while one is.
-    Loader {
+    // are chosen: made the first time it shows, then only hidden (rows pass
+    // under a still mouse while the list scrolls, docs/pitfalls.md).
+    Hook {
         anchors.fill: parent
         anchors.leftMargin: Theme.rowInset
         anchors.rightMargin: Theme.rowInset
-        active: !row.current && (row.selected || area.containsMouse)
-        sourceComponent: Hook {
-            part: Theme.rowHighlight
-            selected: row.selected
-            hovered: area.containsMouse
-            role: "panel"
-            dpr: row.dpr
-        }
+        visible: !row.current && (row.selected || area.containsMouse)
+        lazy: true
+        part: Theme.rowHighlight
+        selected: row.selected
+        hovered: area.containsMouse
+        role: "panel"
+        dpr: row.dpr
     }
 
     Image { // 20 logical pixels: 30 device pixels at 150 %, its own pixels unsmoothed as the box's icons

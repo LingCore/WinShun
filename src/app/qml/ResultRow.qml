@@ -195,21 +195,21 @@ Item {
     // The style's highlight (Theme.rowHighlight). The current row's is the
     // list's own, one for all its rows (Main.qml); here only the hover and,
     // with several rows picked, the picked ones that are not current. Made
-    // only while wanted: at rest a row holds no part.
-    Loader {
+    // the first time it shows, then only hidden: rows pass under a still
+    // mouse while the list scrolls (docs/pitfalls.md, ClipRow).
+    Hook {
         anchors.fill: parent
         anchors.leftMargin: Theme.rowInset
         anchors.rightMargin: Theme.rowInset
         anchors.topMargin: Theme.edge(row.dpr)
         anchors.bottomMargin: Theme.edge(row.dpr)
-        active: !row.current && (row.selected || area.containsMouse)
-        sourceComponent: Hook {
-            part: Theme.rowHighlight
-            selected: row.selected
-            hovered: area.containsMouse
-            role: "list"
-            dpr: row.dpr
-        }
+        visible: !row.current && (row.selected || area.containsMouse)
+        lazy: true
+        part: Theme.rowHighlight
+        selected: row.selected
+        hovered: area.containsMouse
+        role: "list"
+        dpr: row.dpr
     }
 
     Item {
