@@ -96,4 +96,20 @@ std::optional<DWORD> levelOf(HWND window)
     return levelOf(token);
 }
 
+bool elevated(HWND window)
+{
+    DWORD pid = 0;
+    if (!window || !::GetWindowThreadProcessId(window, &pid) || pid == 0)
+        return false;
+    const win32::UniqueHandle process(::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid));
+    HANDLE token = nullptr;
+    if (!process.valid() || !::OpenProcessToken(process.get(), TOKEN_QUERY, &token))
+        return false;
+    const win32::UniqueHandle owned(token);
+    TOKEN_ELEVATION elevation {};
+    DWORD size = 0;
+    return ::GetTokenInformation(token, TokenElevation, &elevation, sizeof elevation, &size)
+        && elevation.TokenIsElevated != 0;
+}
+
 } // namespace ws::integrity

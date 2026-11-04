@@ -30,4 +30,9 @@ bool lowerThanOurs(HWND window);
 // administrator, 0x4000 system); none when it cannot be asked.
 std::optional<DWORD> levelOf(HWND window);
 
+// Whether `window`'s process runs elevated (TokenElevation): run as
+// administrator. Not a UIAccess program at high integrity (Magnifier), nor
+// one that cannot be asked.
+bool elevated(HWND window);
+
 } // namespace ws::integrity

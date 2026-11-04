@@ -5459,6 +5459,7 @@ void App::adminTapCheck()
     f.level = integrity::levelOf(front);
     if (f.level != kAdministratorLevel)
         return; // the usual case: not even logged
+    f.elevated = integrity::elevated(front);
     f.doubleTap = m_settings.doubleCtrl && m_keyListener->isActive();
     // Who hears the tap there: the service's UIAccess listener for this key;
     // an old one (from before double Alt or Shift); a service that runs and
@@ -5534,7 +5535,7 @@ void App::adminTapCheck()
     QString who = programTitle(front);
     if (who.isEmpty())
         who = f.program;
-    m_messages->showNotification(tr("“%1”以管理员身份运行").arg(who), text, std::move(onClick));
+    m_messages->showNotification(tr("“%1”以管理员身份运行").arg(shortTitle(who)), text, std::move(onClick));
 }
 
 void App::logLauncherLostFront(HWND front)

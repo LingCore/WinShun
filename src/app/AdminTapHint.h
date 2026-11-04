@@ -23,6 +23,20 @@ namespace ws::admintap {
 inline constexpr std::uint32_t kAdministratorLevel = 0x3000;
 // Programs told of, at most: after these the user has heard it.
 inline constexpr int kMostPrograms = 3;
+// The program's name in the title, at most (szInfoTitle holds 63, cut at
+// the end): the part that says why stays.
+inline constexpr int kMostTitleChars = 24;
+
+// `title` short enough for the notification's title, with "…".
+inline QString shortTitle(const QString& title)
+{
+    if (title.size() <= kMostTitleChars)
+        return title;
+    qsizetype n = kMostTitleChars - 1;
+    if (title.at(n - 1).isHighSurrogate())
+        --n; // never half a pair
+    return title.left(n) + u'\u2026';
+}
 
 // Who hears the double tap over an administrator's window.
 enum class Listener : std::uint8_t {
@@ -39,6 +53,7 @@ struct Facts {
     bool settled = false; // the key listener has had time for the service listener's word
     bool trayShown = false; // a notification has somewhere to show
     std::optional<std::uint32_t> level; // of the window in front (SECURITY_MANDATORY_*_RID)
+    bool elevated = false; // its process runs elevated (not a UIAccess program at that level: Magnifier)
     QString program; // its program file, "regedit.exe"; empty when it cannot be told
     bool ignoredThere = false; // a double tap does nothing there anyway (GameGuard: listed, full screen, a game)
     bool shownThisRun = false; // one told of already since Win顺 started
@@ -70,7 +85,7 @@ inline Verdict decide(const Facts& f)
         return Verdict::Off;
     if (f.listener == Listener::Hears)
         return Verdict::Heard;
-    if (f.level != kAdministratorLevel)
+    if (f.level != kAdministratorLevel || !f.elevated)
         return Verdict::NotAdministrator;
     if (f.program.isEmpty())
         return Verdict::Unknown;

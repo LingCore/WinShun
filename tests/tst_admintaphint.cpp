@@ -21,6 +21,7 @@ class AdminTapHintTest : public QObject {
         f.settled = true;
         f.trayShown = true;
         f.level = kAdministratorLevel;
+        f.elevated = true;
         f.program = u"regedit.exe"_s;
         return f;
     }
@@ -56,6 +57,7 @@ private slots:
         QTest::newRow("one this run") << 10 << int(Verdict::ThisRun);
         QTest::newRow("service still connecting") << 11 << int(Verdict::Wait);
         QTest::newRow("no tray icon") << 12 << int(Verdict::NoTray);
+        QTest::newRow("high but not elevated (UIAccess: Magnifier)") << 13 << int(Verdict::NotAdministrator);
     }
     void eachConditionAlone()
     {
@@ -76,6 +78,7 @@ private slots:
         case 10: f.shownThisRun = true; break;
         case 11: f.listener = Listener::Connecting; f.settled = false; break;
         case 12: f.trayShown = false; break;
+        case 13: f.elevated = false; break;
         }
         QCOMPARE(int(decide(f)), verdict);
     }
@@ -109,6 +112,20 @@ private slots:
         f.shown = remember(f.shown, f.program);
         f.program = u"wechat.exe"_s;
         QCOMPARE(decide(f), Verdict::Enough);
+    }
+
+    void titleKeepsWhy()
+    {
+        QCOMPARE(shortTitle(u"注册表编辑器"_s), u"注册表编辑器"_s);
+        const QString longName(40, u'x');
+        const QString cut = shortTitle(longName);
+        QCOMPARE(cut.size(), kMostTitleChars);
+        QVERIFY(cut.endsWith(u'\u2026'));
+        // Never half a surrogate pair at the cut.
+        QString pairs;
+        for (int i = 0; i < 20; ++i)
+            pairs += QString::fromUcs4(U"\U0001F600", 1);
+        QVERIFY(!shortTitle(pairs).chopped(1).back().isHighSurrogate());
     }
 
     void fixOnlyWhereItHelps()
