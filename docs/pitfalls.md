@@ -1540,6 +1540,13 @@
 - **原因**：6.7 的 `TaskDialogMsgBox` 是 VCL 窗口 `TTaskDialogForm`，按钮是 `TNewButton`；命令链接按钮的标题末尾带一个回车（“现在安装(&I)\r”，说明文字另放），英文的“重试”按钮写的是“&Try again”。正文按宽度自动折行，会在“Win”和“顺”之间断开。
 - **做法**：测试脚本按标题找按钮，给它的父窗口发 `WM_COMMAND`（`BN_CLICKED`）。文案里提到按钮时照按钮上的字写（英文写 Try again）。中文在该断的地方自己写 `%n`，在 150% 下截图看一遍。
 
+### Inno 自带的安装模式对话框不看账户是不是管理员
+
+- **现象**：普通（非管理员）账户运行安装程序，“为所有用户安装”排在第一个、默认选中；点下去要输入管理员密码，没有就装不了。
+- **原因**：`PrivilegesRequiredOverridesAllowed=dialog` 的对话框只按脚本的 `PrivilegesRequired` 排顺序（`admin` 就是所有用户在前，`lowest` 就是只为我在前），不看当前账户；它在任何 `[Code]` 之前弹出，脚本改不了（issrc `Setup.MainFunc.pas` 的 `HandlePrivilegesRequiredOverrides`）。只装过一种时它按卸载项（HKLM 或 HKCU）直接选那种（`UsePreviousPrivileges`），这段也在对话框的路径里。另外 `[Code]` 的 `Exec` 在开始安装之前不让运行安装程序自己（`IsProtectedSrcExe`，返回错误 5）；`InitializeSetup` 返回 False 时退出码总是 1，`GetCustomSetupExitCode` 不会被调用。
+- **做法**（`installer/InstallMode.iss`）：`PrivilegesRequired=lowest`、`PrivilegesRequiredOverridesAllowed=commandline`，在 `InitializeSetup` 里自己决定：命令行有 `/ALLUSERS`、`/CURRENTUSER`（应用内更新总带一个）就照它；只有一种卸载项就照那种；否则自己弹两个按钮的对话框，按令牌（`TokenElevationType`：管理员的拆分令牌或已提权 → 所有用户在前；普通账户 → 只为我在前，盾牌标在“所有用户”上）；静默安装不问，取排在前面的那个。选了所有用户，就用 `Exec('>', 完整命令行)` 以普通权限再运行一次自己，加上原参数、`/LANG`、`/ALLUSERS` 和一个标记文件参数，让 Inno 自己提权（不能用 runas，否则 `runasoriginaluser` 没有原用户可用，GitHub #21）；等它结束后用 `ExitProcess` 带着它的退出码退出（`/LOG` 文件这个进程还开着，新的那次写到 `名字.allusers.log`）。标记文件没被建出来、退出码又不是 0，就是没拿到管理员权限（UAC 取消时 Inno 以 2 退出），这时问要不要改为只为我安装（已经为所有用户装过的不问）。
+- **实测**（2026-11-04）：探针脚本 `installer/tests/InstallModeProbe.iss`（自己的 AppId，什么都不装，把每一步写进日志）。管理员账户：无旧版、只有 HKCU、只有 HKLM、两个都有、静默、`/ALLUSERS`、`/CURRENTUSER`、应用内更新的两条命令行、“所有用户”被拒（交互选“是”/静默/已有 HKLM）、带空格的 `/DIR=`、`/LOG`、`/LANG=english`，共 16 种，顺序、模式、退出码（提权那次的 7、5、3 原样传出来）都对。临时建的普通账户：只为我在前（截图看过），静默取只为我，真去提权时凭据框被取消，退出码 2，标记文件没有，问改为只为我安装。测完账户和它的配置文件都删了。探针加 `/DProbeInstall` 真装一个文件：静默、不带开关，重跑提权后装进 Program Files、写 HKLM 卸载项，`[Run]` 里 `runasoriginaluser` 的那条是 Medium（原用户），普通的那条是 High；以普通权限运行它的卸载程序，自己提权，卸载项和文件夹都删干净。
+
 ### `[Code]` 里以 `[` 开头的行会被当成段名
 
 - **现象**：ISCC 报“Invalid section tag”。

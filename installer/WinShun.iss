@@ -41,12 +41,13 @@ VersionInfoCompany=LingCore
 ; Installed for all users under Program Files: the index service (which
 ; reads the NTFS master file tables for WinShun, GitHub #21) is registered
 ; once, by this installer; WinShun itself runs with the user's normal rights.
-; The dialog also offers "for me only" (GitHub #52, a company computer
-; without administrator rights): under the user's own folders, with no
-; service and nothing written for all users; /CURRENTUSER and /ALLUSERS
-; choose without the dialog.
-PrivilegesRequired=admin
-PrivilegesRequiredOverridesAllowed=dialog
+; Or "for me only" (GitHub #52, a company computer without administrator
+; rights): under the user's own folders, with no service and nothing written
+; for all users. Setup starts in that mode and asks which one, the one that
+; suits the account first (InstallMode.iss: Inno's own dialog recommends the
+; same one to everybody); /CURRENTUSER and /ALLUSERS choose without asking.
+PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=commandline
 ; Off (Inno Setup 6.7 turns it on by default, GitHub #50): the WinShun Setup
 ; starts in [Run] inherits it, and so does Explorer when WinShun restarts it;
 ; every program started from the desktop then fails on junctions (Scoop,
@@ -92,23 +93,6 @@ SolidCompression=yes
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
-
-; The install mode dialog (originals: ChineseSimplified.isl / Default.isl): what
-; each choice means, in the words of the buttons and above them. The
-; "recommended" forms are the same: which one is right depends on the computer.
-[Messages]
-english.PrivilegesRequiredOverrideText1=%1 can be installed for all users or for you only.%n%nAll users (needs an administrator): with the index service, which indexes whole disks and is the fastest.%nOnly me (no administrator needed): without the service, only the folders you choose are indexed. Choose this on a work computer.
-english.PrivilegesRequiredOverrideText2=%1 can be installed for you only or for all users.%n%nAll users (needs an administrator): with the index service, which indexes whole disks and is the fastest.%nOnly me (no administrator needed): without the service, only the folders you choose are indexed. Choose this on a work computer.
-english.PrivilegesRequiredOverrideAllUsers=Install for &all users (needs an administrator)
-english.PrivilegesRequiredOverrideAllUsersRecommended=Install for &all users (needs an administrator)
-english.PrivilegesRequiredOverrideCurrentUser=Install for &me only (no administrator needed)
-english.PrivilegesRequiredOverrideCurrentUserRecommended=Install for &me only (no administrator needed)
-chinesesimplified.PrivilegesRequiredOverrideText1=%1 可以为所有用户安装，也可以只为您安装。%n%n为所有用户安装（需要管理员）：带索引服务，索引整个磁盘，最快。%n只为我安装（不需要管理员）：不装服务，只索引你选的文件夹。公司电脑选这个。
-chinesesimplified.PrivilegesRequiredOverrideText2=%1 可以只为您安装，也可以为所有用户安装。%n%n为所有用户安装（需要管理员）：带索引服务，索引整个磁盘，最快。%n只为我安装（不需要管理员）：不装服务，只索引你选的文件夹。公司电脑选这个。
-chinesesimplified.PrivilegesRequiredOverrideAllUsers=为所有用户安装(&A)（需要管理员）
-chinesesimplified.PrivilegesRequiredOverrideAllUsersRecommended=为所有用户安装(&A)（需要管理员）
-chinesesimplified.PrivilegesRequiredOverrideCurrentUser=只为我安装(&M)（不需要管理员）
-chinesesimplified.PrivilegesRequiredOverrideCurrentUserRecommended=只为我安装(&M)（不需要管理员）
 
 [CustomMessages]
 english.PersonalInstalled=WinShun is already installed for you only (without administrator rights).%n%nUninstall that copy first (Settings > Apps), then run this Setup again to install for all users.
@@ -250,6 +234,10 @@ Type: files; Name: "{app}\WinShunMcp.exe.old"
 ; plugin runs from there any more. Every user's, a portable copy's too: those
 ; plugins then run with normal rights until confirmed again.
 Type: filesandordirs; Name: "{commonpf}\WinShun Elevated Plugins"; Check: IsAdminInstallMode
+
+; For all users or for me only, when the command line does not say (its own
+; [CustomMessages] and [Code]; InstallModeChosen in InitializeSetup).
+#include "InstallMode.iss"
 
 [Code]
 const
@@ -1027,7 +1015,11 @@ const
 // computer has the all-users one.
 function InitializeSetup(): Boolean;
 begin
-  Result := True;
+  // The install mode first (InstallMode.iss): asked, or Setup run again for
+  // all users, which ends this process (that run checks the rest).
+  Result := InstallModeChosen(UninstallKey);
+  if not Result then
+    exit;
   if IsAdminInstallMode then
   begin
     if RegKeyExists(HKCU, UninstallKey) then
