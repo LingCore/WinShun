@@ -112,7 +112,7 @@
 - **网络与 WSL 扫描控制**：每个文件夹的“扫描设置”可单独限制每日时段（支持跨午夜）和最大层数；0 表示不限，1 层只读取当前文件夹。时段外暂停后台文件名和内容读取，已有结果照常可搜；“立即核对”可临时扫描一次文件名，仍遵守层数限制。默认不限制。
 
 - **双击 Ctrl** 打开（也可以改成双击 Alt 或 Shift），再按一次或 `Esc` 关闭；三百多万个文件里搜一次只要几毫秒。
-- **拼音和首字母**：`ndbg` → 年度报告，`baog` → 报告；多音字按常用读音。打错了同音字（年度报高）找不到时，自动按读音再找一遍。
+- **拼音和首字母**：`ndbg` → 年度报告，`baog` → 报告；多音字按常用读音。打错了同音字（年度报高）找不到时，自动按读音再找一遍。设置里可以让搜索框每次打开时先切到英文输入，直接打字母。
 - **搜整台电脑**：所有本地磁盘，U 盘可选（没收录的 U 盘插着时，列表末尾会提示你顺手搜一下它）；**NAS、内网共享文件夹（SMB）和 WebDAV 文件夹**（NAS 的 WebDAV、坚果云这类网盘）也能加进来一起搜，服务器关机时收录过的照样能搜到，服务器重启后自己连回来；想搜它们里面文件的内容，在那个位置的卡片上打开“搜索文件内容”。没有管理员权限的电脑也能用：只索引你选的文件夹（见下面“管理员权限”）。
 - **排序懂你**：自己的文件在前，系统目录、`node_modules` 在后，名字完全一样的最前。每行显示修改日期，也可在设置中开启文件大小，无需展开窗口；两项可分别开关。`Ctrl+S` 在最匹配、最新、最早之间切换；底栏的“更多”里还能按名称、所在文件夹、类型、大小排。不输入时列出最近打开或最近修改的文件，也可以不列；还可以设成每次打开时清空搜索。结果怕点错的话，设置里可以改成双击才打开。
 - **程序优先**：搜 `curl`，`curl.exe` 排在文件夹 `curl` 和 `curl.h` 前面；优先哪些类型可以自己改（默认 exe、bat、cmd、ps1、msi，像 Listary 的“优先显示的文件类型”）。
@@ -394,7 +394,7 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
 
 - 🔍 **File search**
   - **Speed**: press Ctrl twice (or Alt or Shift twice, if you prefer); a search over three million files takes milliseconds.
-  - **Pinyin**: `ndbg` finds 年度报告; a mistyped homophone (年度报高) is retried by sound.
+  - **Pinyin**: `ndbg` finds 年度报告; a mistyped homophone (年度报高) is retried by sound. A setting can switch the input method to English each time the search box opens, so letters go straight in.
   - **Where**: all local drives, USB drives if you like (an unindexed one that is plugged in is offered at the end of the list), and **NAS / SMB network shares and WebDAV folders** (a NAS's WebDAV, cloud drives such as Jianguoyun), still searchable while their server is off and reconnected by themselves after it restarts; turn on “Search file contents” on a location's card to search inside its files. On a PC without administrator rights it indexes only the folders you choose (see Administrator rights below).
   - **Order**: your own files first, the date modified on each row, `Ctrl+S` for best match / newest / oldest, and More in the footer sorts by name, folder, type or size. Click a result once to select and twice to open, if you would rather not open one by mistake (a setting). Recent files are listed when the box is empty, or nothing if you like; the search can also start empty each time it opens.
   - **Programs first**: `curl` lists `curl.exe` before the folder `curl` and `curl.h`; which file types go first is yours to change (exe, bat, cmd, ps1 and msi to begin with, like Listary's preferred file types).

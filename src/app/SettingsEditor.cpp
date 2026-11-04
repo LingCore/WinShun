@@ -366,6 +366,14 @@ void SettingsEditor::setClearOnOpen(bool on)
     commit();
 }
 
+void SettingsEditor::setEnglishOnOpen(bool on)
+{
+    if (m_settings.englishOnOpen == on)
+        return;
+    m_settings.englishOnOpen = on;
+    commit();
+}
+
 void SettingsEditor::setNumberKeys(const QString& keys)
 {
     if (m_settings.numberKeys == keys || (keys != u"ctrl" && keys != u"alt" && keys != u"off"))

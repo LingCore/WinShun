@@ -290,6 +290,28 @@ private slots:
         }
     }
 
+    void englishOnOpen()
+    {
+        // Off unless set: the input method as the user left it (GitHub #201).
+        QTemporaryDir profile;
+        QVERIFY(profile.isValid());
+        ws::Settings::useProfile(profile.path());
+        ws::Settings settings;
+        settings.load();
+        QVERIFY(!settings.englishOnOpen);
+        settings.englishOnOpen = true;
+        settings.save();
+        QSettings ini(ws::Settings::filePath(), QSettings::IniFormat);
+        QCOMPARE(ini.value(u"Launcher/EnglishOnOpen"_s).toBool(), true);
+        ws::Settings restored;
+        restored.load();
+        QVERIFY(restored.englishOnOpen);
+        ini.setValue(u"Launcher/EnglishOnOpen"_s, false);
+        ini.sync();
+        restored.load();
+        QVERIFY(!restored.englishOnOpen);
+    }
+
     void startListOptions()
     {
         QTemporaryDir profile;

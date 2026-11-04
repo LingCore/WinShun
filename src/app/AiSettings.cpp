@@ -558,6 +558,9 @@ std::vector<Entry> buildCatalog()
     add(boolean({"Launcher/ClearOnOpen", QT_TRANSLATE_NOOP("AiSettings", "每次打开时清空搜索"), "results", 2,
                     "Each time the search box opens nothing is typed and the scope is 全部, instead of keeping the last words selected."},
         &Settings::clearOnOpen));
+    add(boolean({"Launcher/EnglishOnOpen", QT_TRANSLATE_NOOP("AiSettings", "打开时切换为英文输入"), "results", 2,
+                    "Each time the search box opens, a Chinese input method there goes into its English mode, so letters and pinyin initials go straight into the search. Switching back in the box is kept for that opening; on closing it is put back as it was."},
+        &Settings::englishOnOpen));
     add(choice({"Results/NumberKeys", QT_TRANSLATE_NOOP("AiSettings", "用数字键直接打开"), "results", 2,
                    "Which modifier with 1…9 opens the nth result."},
         &Settings::numberKeys,

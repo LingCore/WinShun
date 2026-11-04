@@ -87,6 +87,7 @@ qt_add_executable(WinShun WIN32
     platform/HoldWatch.cpp platform/HoldWatch.h
     platform/Http.cpp platform/Http.h
     platform/IdleTrim.cpp platform/IdleTrim.h
+    platform/InputMode.cpp platform/InputMode.h
     platform/Integrity.cpp platform/Integrity.h
     platform/KeyListener.cpp platform/KeyListener.h
     platform/PieDrop.cpp platform/PieDrop.h

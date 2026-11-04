@@ -3950,6 +3950,17 @@ Window {
                 }
 
                 SettingRow {
+                    title: qsTr("打开时切换为英文输入")
+                    keywords: qsTr("输入法;英文;字母;中文;拼音首字母;IME;English").split(";")
+                    description: qsTr("中文输入法在搜索框里先用英文，直接打字母和拼音首字母；在框里切回中文照常可用，关掉后恢复原样")
+
+                    ToggleSwitch {
+                        checked: window.editor.englishOnOpen
+                        onToggled: (on) => window.editor.englishOnOpen = on
+                    }
+                }
+
+                SettingRow {
                     title: qsTr("用数字键直接打开")
                     unlocks: [resultNumberHintsRow]
                     keywords: qsTr("快捷键;数字键;序号;Ctrl+1;Alt+1;冲突;hotkey").split(";")

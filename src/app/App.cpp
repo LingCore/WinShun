@@ -1234,6 +1234,7 @@ bool App::createWindow()
         } else if (m_window && m_window->isActive()) {
             m_launcher->systemCommandDone();
             m_boxPressGrace.stop();
+            lettersOnOpen();
             deliverTyping(); // asked for by typing elsewhere: the keys, if it is ready for them now
         }
         updateNumberKeys();
@@ -1257,7 +1258,10 @@ bool App::createWindow()
     }, Qt::DirectConnection);
     // Keys typed elsewhere wait for it (deliverTyping): its field becoming
     // the focus object (Qt has given the window its input method context by
-    // then), and the cap. Then a moment's watch of what came of them.
+    // then), and the cap. Then a moment's watch of what came of them. The
+    // input method into English first, should that be set (the keys go
+    // through it).
+    connect(qGuiApp, &QGuiApplication::focusObjectChanged, this, &App::lettersOnOpen);
     connect(qGuiApp, &QGuiApplication::focusObjectChanged, this, &App::deliverTyping);
     m_typingCap.setSingleShot(true);
     m_typingCap.setTimerType(Qt::PreciseTimer);
@@ -2777,6 +2781,7 @@ void App::deliverTyping()
     m_handoff.missing = missing.join(u',');
     m_handoff.inFront = ::GetForegroundWindow() == window;
     m_handoff.layout = static_cast<quint32>(reinterpret_cast<quintptr>(::GetKeyboardLayout(0)));
+    lettersOnOpen(); // ahead of the keys, which go through the input method (at the cap, maybe not focused yet)
     m_typing->deliver();
     m_keysWatch->start(window);
     m_handoffWatch.start();
@@ -2826,6 +2831,41 @@ void App::endHandoff()
     };
     m_handoff = {};
     diagnostics::record(u"typing-handoff"_s, details);
+}
+
+// Once an opening, when its field (the box's or the panel's) has the focus:
+// Qt has given the window its input method context by then. The user
+// switching back to Chinese in the box is not undone; nor is it switched
+// when it typed letters already. Only Win顺's own context (this thread's):
+// the program it came from keeps its input method as it was.
+void App::lettersOnOpen()
+{
+    if (!m_lettersPending || !m_window || !m_window->isActive())
+        return;
+    const QObject* focus = QGuiApplication::focusObject();
+    if (!focus || (focus != m_searchField && focus->objectName() != u"panelSearchField"))
+        return;
+    const win::LettersSwitch done = win::switchToLetters(reinterpret_cast<HWND>(m_window->winId()));
+    if (!done.context)
+        return; // none yet: when it has one
+    m_lettersPending = false;
+    if (!done.changed)
+        return;
+    // Asked for again while up (pinned): put back, on hiding, as it was first.
+    const win::InputMode before = m_lettersSwitch.changed ? m_lettersSwitch.before : done.before;
+    m_lettersSwitch = done;
+    m_lettersSwitch.before = before;
+    qInfo().noquote() << u"Input method to English on opening: open %1 -> %2, conversion 0x%3 -> 0x%4"_s
+                             .arg(done.before.open)
+                             .arg(done.after.open)
+                             .arg(done.before.conversion, 0, 16)
+                             .arg(done.after.conversion, 0, 16);
+}
+
+void App::restoreLauncherInputMode()
+{
+    m_lettersPending = false;
+    win::restoreInputMode(std::exchange(m_lettersSwitch, {}));
 }
 
 void App::folderTyped(HWND root, HWND tab, bool opus, std::uint64_t request)
@@ -4587,6 +4627,9 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
         }).detach();
     }
     hideClipboard(false); // from under its search box: searching again
+    // Each time it is asked for, pinned and up already too: English once its
+    // field has the focus (lettersOnOpen). A click into it is not asked for.
+    m_lettersPending = m_settings.englishOnOpen;
     m_boxPressGrace.stop();
     m_launcherShown.start();
     m_idleTrim->used();
@@ -4608,6 +4651,7 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
         m_launcher->handleShown(); // refreshed (something was opened meanwhile), all typed selected
         if (!query.isEmpty())
             emit m_launcher->caretRequested(static_cast<int>(query.size()), false);
+        lettersOnOpen(); // active and focused already, nothing else to come
         return;
     }
     const bool wasClosing = std::exchange(m_launcherClosing, false); // back from on its way out
@@ -4667,6 +4711,7 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
         emit m_launcher->caretRequested(static_cast<int>(query.size()), false);
     if (m_launcherReveal.pending() && !m_launcher->waitingForNames())
         armReveal(); // nothing to wait for (内容 refreshes in the background)
+    lettersOnOpen(); // back from on its way out: it may have kept its focus
 }
 
 void App::showClipboard()
@@ -5655,6 +5700,7 @@ void App::hideLauncher()
         ::EndMenu(); // the shell's menu over it (Shift+right-click) goes with it: double Ctrl, say
     m_launcherHidden.start();
     m_boxPressGrace.stop();
+    restoreLauncherInputMode(); // while it may still have the focus (an input method shared by all programs follows)
     if (std::exchange(m_deliverTyping, false)) {
         // Going before the keys typed for it went (they wait for it to be
         // ready, deliverTyping): once it was active, the hook has them as it

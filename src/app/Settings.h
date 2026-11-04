@@ -214,6 +214,10 @@ struct Settings {
     // Each time the launcher opens, nothing is typed and the scope is 全部, as
     // at its first opening (GitHub #24); else it keeps the words, selected.
     bool clearOnOpen = false;
+    // Each time the launcher opens, its input method goes into English mode:
+    // letters and pinyin initials find most names (GitHub #201). Switched
+    // back in the box, it stays so for that opening; put back on closing.
+    bool englishOnOpen = false;
     // ctrl | alt | off: Ctrl+1…9 opens the nth row shown, in the launcher and
     // the bar by file dialogs (other programs' hotkeys stay theirs, see numberkeys).
     QString numberKeys = QStringLiteral("ctrl");

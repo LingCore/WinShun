@@ -7,6 +7,7 @@
 #include "Win32Util.h"
 #include "platform/ClipboardWatcher.h"
 #include "platform/HoldWatch.h"
+#include "platform/InputMode.h"
 #include "platform/KeyListener.h"
 #include "platform/KeyRouter.h"
 #include "platform/NumberKeys.h"
@@ -376,6 +377,11 @@ private:
     // GitHub #103). Looked at again as each part of that comes (activeChanged,
     // the focus object, revealLauncher) and at the cap.
     void deliverTyping();
+    // The launcher just opened, its field focused: the input method into its
+    // English mode (Settings::englishOnOpen), once an opening; put back as it
+    // was on hiding unless the user changed it meanwhile (GitHub #201).
+    void lettersOnOpen();
+    void restoreLauncherInputMode();
     void beginHandoff(const QString& surface); // typed in "start", "explorer" or "opus": the launcher comes for the keys
     void endHandoff(); // its diagnostics recorded (one entry each, times alone), its watch over
     void explorerRestarted(bool back); // `back`: the taskbar is
@@ -668,6 +674,8 @@ private:
     std::unique_ptr<PointerWatch> m_pointerWatch;
     bool m_launcherClosing = false; // sliding out (hideLauncher)
     bool m_launcherOpening = false; // query/focus/caret still being prepared; no typing replay yet (#140)
+    bool m_lettersPending = false; // opened with englishOnOpen, its field not yet switched (lettersOnOpen)
+    win::LettersSwitch m_lettersSwitch; // what that did, to put back on hiding
     std::unique_ptr<ComWorker> m_typingWorker; // queries a file display's folder (folderTyped); before m_typing
     std::unique_ptr<TypeToSearch> m_typing; // while StartMenuTyping, ExplorerTyping, OpusTyping or PasteFile is on
     // The launcher is up from typing in this Explorer or Opus window and tab:
