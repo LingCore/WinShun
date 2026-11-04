@@ -1991,12 +1991,12 @@ Window {
                     title: qsTr("在文件夹里打字时")
                     keywords: qsTr("打字;当前文件夹;优先;只搜;其他位置;子文件夹;Listary;Ctrl+Shift+D;current folder;type to search").split(";")
                     description: qsTr("搜索时可按 Ctrl+Shift+D 临时切换范围")
-                    tip: qsTr("当前文件夹优先：先列出当前文件夹及子文件夹的结果，再列出其他位置的结果，与 Listary 一致")
+                    tip: qsTr("当前文件夹优先：先列出当前文件夹及子文件夹的结果，再列出其他位置的结果，与 Listary 一致。只搜这一层：只列当前文件夹里直接放着的，不含子文件夹")
 
                     ScopeTabs {
-                        labels: [qsTr("当前文件夹优先"), qsTr("只搜当前文件夹")]
-                        current: window.editor.folderTyping === "only" ? 1 : 0
-                        onActivated: (index) => window.editor.folderTyping = index === 1 ? "only" : "first"
+                        labels: [qsTr("当前文件夹优先"), qsTr("只搜当前文件夹"), qsTr("只搜这一层")]
+                        current: window.editor.folderTyping === "level" ? 2 : window.editor.folderTyping === "only" ? 1 : 0
+                        onActivated: (index) => window.editor.folderTyping = index === 2 ? "level" : index === 1 ? "only" : "first"
                     }
                 }
             }

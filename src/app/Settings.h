@@ -135,10 +135,12 @@ struct Settings {
     // folder | all: typed in Opus, the launcher opens on that tab's folder, or
     // with nothing before the words, to search the whole PC.
     QString opusTypingScope = QStringLiteral("folder");
-    // first | only: typed in such a window, what is found in its folder
-    // first, then the rest of the index under a caption, as Listary lists it
-    // (GitHub #110); or that folder alone, as it searched before. Ctrl+Shift+D
-    // switches it for the time. An ini without the key (from before): first.
+    // first | only | level: typed in such a window, what is found in its
+    // folder first, then the rest of the index under a caption, as Listary
+    // lists it (GitHub #110); or that folder alone (with its subfolders), as
+    // it searched before; or only what lies directly in it (#182).
+    // Ctrl+Shift+D goes through the three for the time. An ini without the
+    // key (from before): first.
     QString folderTyping = QStringLiteral("first");
     // auto | on | off: a double click on the blank space of a File Explorer
     // folder or of the desktop brings up a menu of favorite and recent

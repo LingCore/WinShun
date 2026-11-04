@@ -1415,6 +1415,42 @@ private slots:
         QVERIFY(!pathtext::sameFolder({}, {}));
     }
 
+    // GitHub #182: "this level only" asks whether a path lies directly in a folder.
+    void directChild()
+    {
+        using pathtext::isDirectChild;
+        QVERIFY(isDirectChild(u"C:\\abc"_s, u"C:\\abc\\x.txt"_s));
+        QVERIFY(isDirectChild(u"c:\\ABC\\"_s, u"C:\\abc\\sub"_s)); // case, a trailing backslash
+        QVERIFY(isDirectChild(u"C:/abc"_s, u"C:\\abc\\x"_s));
+        QVERIFY(!isDirectChild(u"C:\\abc"_s, u"C:\\abc\\sub\\x.txt"_s)); // deeper
+        QVERIFY(!isDirectChild(u"C:\\abc"_s, u"C:\\abc"_s)); // itself
+        QVERIFY(!isDirectChild(u"C:\\abc"_s, u"C:\\abc\\"_s));
+        QVERIFY(!isDirectChild(u"C:\\abc"_s, u"C:\\abcd\\x.txt"_s)); // a sibling with the same start
+        QVERIFY(!isDirectChild(u"C:\\abc"_s, u"C:\\abcd"_s));
+        QVERIFY(!isDirectChild(u"C:\\abc\\sub"_s, u"C:\\abc\\x.txt"_s)); // the parent's file
+        QVERIFY(!isDirectChild(u"C:\\abcd"_s, u"C:\\abc\\x.txt"_s));
+        QVERIFY(!isDirectChild(u"D:\\abc"_s, u"C:\\abc\\x.txt"_s));
+        // A drive's root holds its first level.
+        QVERIFY(isDirectChild(u"C:\\"_s, u"C:\\x.txt"_s));
+        QVERIFY(isDirectChild(u"C:"_s, u"C:\\x.txt"_s));
+        QVERIFY(!isDirectChild(u"C:\\"_s, u"C:\\abc\\x.txt"_s));
+        QVERIFY(!isDirectChild(u"C:\\"_s, u"C:\\"_s));
+        QVERIFY(!isDirectChild(u"C:\\"_s, u"D:\\x.txt"_s));
+        // Shares.
+        QVERIFY(isDirectChild(u"\\\\nas\\photos"_s, u"\\\\nas\\photos\\a.jpg"_s));
+        QVERIFY(isDirectChild(u"\\\\NAS\\Photos\\"_s, u"\\\\nas\\photos\\2024"_s));
+        QVERIFY(!isDirectChild(u"\\\\nas\\photos"_s, u"\\\\nas\\photos\\2024\\a.jpg"_s));
+        QVERIFY(!isDirectChild(u"\\\\nas\\photos"_s, u"\\\\nas\\photos2\\a.jpg"_s));
+        QVERIFY(!isDirectChild(u"\\\\nas\\photos"_s, u"\\\\nas2\\photos\\a.jpg"_s));
+        // A long-path prefix.
+        QVERIFY(isDirectChild(u"C:\\abc"_s, u"\\\\?\\C:\\abc\\x.txt"_s));
+        QVERIFY(isDirectChild(u"\\\\?\\UNC\\nas\\photos"_s, u"\\\\nas\\photos\\a.jpg"_s));
+        // Nothing, or no absolute path: not in anything.
+        QVERIFY(!isDirectChild({}, u"C:\\x"_s));
+        QVERIFY(!isDirectChild(u"C:\\abc"_s, {}));
+        QVERIFY(!isDirectChild(u"abc"_s, u"abc\\x"_s));
+    }
+
     // What Total Commander and Directory Opus say they show (filemanager::).
     void fileManagerText()
     {
@@ -8203,6 +8239,78 @@ private slots:
         const Found drive = search(u"report"_s, u"F:\\"_s);
         QCOMPARE(drive.rows.size(), qsizetype {8});
         QVERIFY(std::ranges::none_of(drive.rows, &SearchResult::elsewhere));
+    }
+
+    // GitHub #182: typed in a folder's window with only its own level asked
+    // for: what lies directly in it, no subfolder's rows and nothing elsewhere,
+    // from the index, in a count, and among the recent items.
+    void folderTypedInThisLevelOnly()
+    {
+        QTemporaryDir dir;
+        IndexService::Options options;
+        options.content.enabled = false;
+        IndexService service(dir.path() + u"/index"_s, options);
+        {
+            const auto index = service.index();
+            const auto lock = index->writeLock();
+            const EntryId top = index->add(index->addRoot("F:"), "ws182", EntryFlag::Directory);
+            const EntryId work = index->add(top, "work", EntryFlag::Directory);
+            index->add(work, "report-a.txt", 0);
+            index->add(work, "report-plan", EntryFlag::Directory);
+            index->add(work, "notes.md", 0);
+            index->add(index->add(work, "sub", EntryFlag::Directory), "report-deep.txt", 0);
+            index->add(index->add(top, "workshop", EntryFlag::Directory), "report-shop.txt", 0); // "work" at its start: not in it
+            index->add(top, "report-top.txt", 0);
+            index->add(index->add(top, "other", EntryFlag::Directory), "report-b.txt", 0);
+            index->add(index->addRoot("G:"), "report-g.txt", 0); // a drive's root level
+        }
+        SearchEngine engine(&service);
+        QSignalSpy spy(&engine, &SearchEngine::resultsReady);
+        struct Found {
+            QStringList names;
+            qint64 total = -1;
+        };
+        const auto search = [&](const QString& text, const QString& folder, bool level, const QStringList& history = {}) {
+            spy.clear();
+            SearchEngine::Request request;
+            request.text = text;
+            request.currentFolder = folder;
+            request.currentFolderOnly = level;
+            request.currentFolderLevel = level;
+            request.history = history;
+            request.limit = 100;
+            engine.submit(std::move(request));
+            Found found;
+            if (!spy.wait(5000)) {
+                found.names = {u"(no results)"_s};
+                return found;
+            }
+            for (const SearchResult& r : spy.at(0).at(1).value<SearchResults>())
+                found.names.append(r.elsewhere ? u'~' + r.name : r.name);
+            found.names.sort();
+            found.total = spy.at(0).at(2).toLongLong();
+            return found;
+        };
+        using L = QStringList;
+        const QString work = u"F:\\ws182\\work"_s;
+        const Found level = search(u"report"_s, work, true);
+        QCOMPARE(level.names, (L {u"report-a.txt"_s, u"report-plan"_s}));
+        QCOMPARE(level.total, qint64 {2});
+        // As the folder is written: a trailing backslash, case.
+        QCOMPARE(search(u"report"_s, work + u"\\"_s, true).names, level.names);
+        QCOMPARE(search(u"report"_s, u"f:\\WS182\\Work"_s, true).names, level.names);
+        // Not asked for: the folder and below, then the rest, as before.
+        QCOMPARE(search(u"report"_s, work, false).names, (L {u"report-a.txt"_s, u"report-deep.txt"_s, u"report-plan"_s,
+                                                                  u"~report-b.txt"_s, u"~report-g.txt"_s, u"~report-shop.txt"_s,
+                                                                  u"~report-top.txt"_s}));
+        // Recent items: the one in a subfolder stays out, the one at this level is in.
+        const L recent {u"F:\\ws182\\work\\sub\\report-deep.txt"_s, u"F:\\ws182\\work\\report-a.txt"_s,
+            u"F:\\ws182\\other\\report-b.txt"_s};
+        QCOMPARE(search(u"report"_s, work, true, recent).names, level.names);
+        // A folder one level above, a drive's root, a folder not in the index.
+        QCOMPARE(search(u"report"_s, u"F:\\ws182"_s, true).names, (L {u"report-top.txt"_s}));
+        QCOMPARE(search(u"report"_s, u"G:\\"_s, true).names, (L {u"report-g.txt"_s}));
+        QCOMPARE(search(u"report"_s, u"F:\\ws182\\gone"_s, true).names, L {});
     }
 
     void newestFiles()

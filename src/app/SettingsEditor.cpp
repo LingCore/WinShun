@@ -1164,7 +1164,7 @@ void SettingsEditor::setOpusTypingScope(const QString& scope)
 
 void SettingsEditor::setFolderTyping(const QString& how)
 {
-    if (m_settings.folderTyping == how || (how != u"first" && how != u"only"))
+    if (m_settings.folderTyping == how || (how != u"first" && how != u"only" && how != u"level"))
         return;
     m_settings.folderTyping = how;
     commit();

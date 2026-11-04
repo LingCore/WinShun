@@ -1738,7 +1738,7 @@ void App::applySettings(bool initial)
     m_launcher->setTabEntersFavoriteFolder(m_settings.tabEntersFavoriteFolder);
     m_launcher->setSearchKinds(m_settings.searchApps, m_settings.searchSystem);
     m_launcher->setRegexMode(m_settings.regexMode);
-    m_launcher->setFolderTypingOnly(m_settings.folderTyping == u"only");
+    m_launcher->setFolderTyping(m_settings.folderTyping);
     m_launcher->results()->setShowModifiedTime(m_settings.showModifiedTime);
     m_launcher->setPreferredTypes(m_settings.preferredTypes);
     m_launcher->setFolderKeyword(m_settings.folderKeyword);
@@ -3886,6 +3886,7 @@ void App::dumpLauncher(const QString& file) const
     // is searched, where 其他位置 begins, and the hint rows under the list.
     state[u"typingFolder"_s] = m_launcher->typingFolder();
     state[u"typingFolderOnly"_s] = m_launcher->typingFolderOnly();
+    state[u"typingFolderLevel"_s] = m_launcher->typingFolderLevel();
     state[u"elsewhereRow"_s] = m_launcher->results()->elsewhereRow();
     state[u"leftOutHints"_s] = QJsonArray::fromVariantList(m_launcher->leftOutHints());
     state[u"elapsedUs"_s] = static_cast<double>(m_launcher->elapsedUs());

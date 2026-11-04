@@ -90,6 +90,13 @@ QString folderFromAddress(const QString& caption);
 // Whether two paths name the same folder: case and a trailing backslash aside.
 bool sameFolder(const QString& a, const QString& b);
 
+// Whether `path` lies directly in `folder`, one level down and no deeper
+// (the "this level only" search of a folder's window): case, a trailing
+// backslash, slashes and a \\?\ long-path prefix aside. `C:\abc` does not hold
+// `C:\abcd\x`; a drive's or share's root holds its first level; the folder
+// itself is not in it. Empty when either is no absolute path.
+bool isDirectChild(const QString& folder, const QString& path);
+
 // The folder a panel of Total Commander shows, from the text over its file
 // list: "c:\Windows\*.*" -> "C:\Windows" (the filter after the last
 // backslash goes). Empty for what is no folder on a drive or share: an FTP

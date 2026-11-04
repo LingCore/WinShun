@@ -843,7 +843,7 @@ void Settings::load()
     if (opusTypingScope != u"all")
         opusTypingScope = d.opusTypingScope;
     folderTyping = readOrDefault(s, u"Launcher/FolderTyping"_s, d.folderTyping).trimmed().toLower();
-    if (folderTyping != u"only")
+    if (folderTyping != u"only" && folderTyping != u"level")
         folderTyping = d.folderTyping; // the folder first (GitHub #110), for those who had nothing to set before too
     // Off for new installs, auto before (as dialogBar).
     const QString folderMenuBefore = firstRun ? d.folderMenu : u"auto"_s;

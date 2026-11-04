@@ -122,10 +122,14 @@ struct EntryFilter {
     FileSize minSize = 0; // packed: at least this
     FileSize maxSize = kUnknownSize; // ... and at most this (kUnknownSize: none)
     std::vector<EntryId> folders;
+    // Only what lies directly in this folder, not deeper ("this level only"
+    // of a folder's window); kNoEntry: no such bound. A folder that is not in
+    // the index is kNoEntry - 1, which no entry has as its parent.
+    EntryId directIn = kNoEntry;
 
     bool byTime() const noexcept { return after != 0 || before != 0; }
     bool bySize() const noexcept { return minSize != 0 || maxSize != kUnknownSize; }
-    bool any() const noexcept { return byTime() || bySize() || !folders.empty(); }
+    bool any() const noexcept { return byTime() || bySize() || !folders.empty() || directIn != kNoEntry; }
     // Both filters at once: the narrower bounds.
     void merge(const EntryFilter& other)
     {
@@ -135,6 +139,8 @@ struct EntryFilter {
         maxSize = std::min(maxSize, other.maxSize);
         for (const EntryId f : other.folders)
             folders.push_back(f);
+        if (other.directIn != kNoEntry)
+            directIn = other.directIn;
     }
     // Whether an entry with these fits (folders aside); for a folder entry
     // the size is kUnknownSize.

@@ -504,6 +504,14 @@ private slots:
         ini.sync();
         read.load();
         QCOMPARE(read.folderTyping, u"only"_s);
+        settings.folderTyping = u"level"_s; // this level only (GitHub #182)
+        settings.save();
+        read.load();
+        QCOMPARE(read.folderTyping, u"level"_s);
+        ini.setValue(u"Launcher/FolderTyping"_s, u" LEVEL "_s);
+        ini.sync();
+        read.load();
+        QCOMPARE(read.folderTyping, u"level"_s);
         for (const QString& value : {u"everywhere"_s, QString()}) {
             ini.setValue(u"Launcher/FolderTyping"_s, value);
             ini.sync();

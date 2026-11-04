@@ -277,10 +277,11 @@ std::vector<Entry> buildCatalog()
         e.rowTitle = QT_TRANSLATE_NOOP("AiSettings", "在 Directory Opus 里搜索的范围");
     }
     add(choice({"Launcher/FolderTyping", QT_TRANSLATE_NOOP("AiSettings", "在文件夹里打字时"), "files_and_dialogs", 2,
-                   "What typing in a File Explorer or Directory Opus folder window lists. The folder and its subfolders come first and the rest of the PC under them (like Listary), or only that folder. Ctrl+Shift+D switches between the two for one search."},
+                   "What typing in a File Explorer or Directory Opus folder window lists. The folder and its subfolders come first and the rest of the PC under them (like Listary), only that folder with its subfolders, or only what lies directly in that folder (no subfolders). Ctrl+Shift+D goes through the three for one search."},
         &Settings::folderTyping,
         {{u"first"_s, u"that folder's results first, then everywhere else"_s, QT_TRANSLATE_NOOP("AiSettings", "当前文件夹优先")},
-            {u"only"_s, u"only that folder and its subfolders"_s, QT_TRANSLATE_NOOP("AiSettings", "只搜当前文件夹")}}));
+            {u"only"_s, u"only that folder and its subfolders"_s, QT_TRANSLATE_NOOP("AiSettings", "只搜当前文件夹")},
+            {u"level"_s, u"only what lies directly in that folder, not its subfolders"_s, QT_TRANSLATE_NOOP("AiSettings", "只搜这一层")}}));
     add(choice({"Launcher/FolderMenu", QT_TRANSLATE_NOOP("AiSettings", "双击空白处弹出文件夹菜单"), "files_and_dialogs", 2,
                    "A double click on blank space in a File Explorer folder or on the desktop brings up a menu of favorite and recent folders (like Listary's). 'auto' leaves it to Listary while Listary runs."},
         &Settings::folderMenu,
