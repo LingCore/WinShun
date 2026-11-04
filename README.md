@@ -102,6 +102,8 @@
 
 ### 功能
 
+**0.21.0 更新**　插件的结果也能在内容详情和预览里看：会打开文件的结果按那个文件显示，不是文件的结果（如邮件）由插件提供文字或文件（插件协议新增 `details`，Python / PowerShell SDK 已支持）。截图插件 1.1.3：“识别屏幕文字”有了自己的快捷键（默认不设，框选即识别并复制，不出工具条、不进截图历史）；贴图滚轮缩放更平滑并显示百分比，标注的粗细、字号、马赛克格子用滚轮或 `[` `]` 细调。在文件夹里打字可以用 `Ctrl+Shift+D` 只搜这一层；新增“打开时切换为英文输入”开关（默认关）；Directory Opus 里的搜索框放在正在打字的那一栏里。详见[发布说明](docs/release-notes/v0.21.0.md)。
+
 **0.20.0 更新**　以修复和体验为主。截图在设置里选了保存目录后，保存按钮和 `Ctrl+S` 直接存进去，不再弹窗，点一下“已保存”的通知就在文件夹里选中这张图（截图插件 1.1.1）。文件夹快捷菜单的设置重新整理：触发方式（双击鼠标左键、鼠标中键）和触发位置（资源管理器、桌面）分开选，菜单末尾的“在此搜索”“命令提示符”等也可以分别关掉。修复：“文件”“文件夹”范围里多出的插件提示行、搜索栏 Logo 下半部分点不到、剪贴板数字键直接粘贴漏给前台程序，以及“按住连按，松开粘贴”要整个组合一直按着的问题。详见[发布说明](docs/release-notes/v0.20.0.md)。
 
 **0.19.0 更新**　截图插件新增演示和白板，可以直接在桌面上画、用激光笔指；截图的按键可以自己改，`WASD` 能挪指针，设置页和工具条重新整理。新增资源管理器标签页插件，插件可以跟随 Win顺 的管理员权限（点一次确认），也可以用 Scoop 安装。图片文字搜索在“全部”里不用打 `ocr` 就出结果，认得出画出来的 PDF 文字、颠倒的页面和长图，也读 JFIF、GIF、HEIC、AVIF，跨空格、繁简和短词也能搜到。设置窗口打开更快。详见[发布说明](docs/release-notes/v0.19.0.md)。
@@ -385,6 +387,8 @@ It also brings a clipboard history, screenshots with pins, a search bar for file
 It reads the NTFS master file table (MFT) directly, indexing three million files in a few seconds and following every change live: **no Everything install needed**. It needs no account and uploads nothing. The interface comes in English and Simplified Chinese. Screenshots: [above](#screenshots). A step-by-step guide to every feature (in Chinese): [docs/使用说明.md](docs/使用说明.md).
 
 ### Features
+
+**New in 0.21.0**　Plugin results can now be viewed in the content details and the preview: a result that opens a file is shown as that file, and for results that are not files (such as emails) the plugin supplies text or a file (new `details` in the plugin protocol, supported by the Python and PowerShell SDKs). Capture plugin 1.1.3: Read text on screen has a hotkey of its own (none by default; drag to read and copy, no toolbar, nothing added to the history); pin zoom with the wheel is smoother and shows the percentage, and annotation width, text size and mosaic cell are set finely with the wheel or `[` `]`. Typing in a folder can search that level only with `Ctrl+Shift+D`; a new switch types in English each time the search box opens (off by default); and the Directory Opus search box sits inside the pane you are typing in. See the [release notes](docs/release-notes/v0.21.0.md).
 
 **New in 0.20.0**　Mostly fixes and polish. With a save folder chosen in the capture settings, Save and `Ctrl+S` write straight into it without a dialog, and clicking the “saved” notice selects the picture in the folder (capture plugin 1.1.1). The folder menu settings are tidier: how it opens (double left click, middle click) and where (File Explorer, desktop) are chosen separately, and the actions at the end of the menu, such as Search here and Command Prompt, can each be turned off. Fixed: stray plugin hint rows in Files and Folders, the lower half of the search logo not being clickable, direct clipboard paste taking keys meant for the program in front, and “hold and press again, release to paste” needing the whole combination held. See the [release notes](docs/release-notes/v0.20.0.md).
 
