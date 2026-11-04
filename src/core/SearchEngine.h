@@ -146,6 +146,9 @@ public:
         // Names only: 内容 is given the folder in its text, as typed.
         QString currentFolder;
         bool currentFolderOnly = false;
+        // With currentFolderOnly: not its subfolders either, only what lies
+        // directly in it (GitHub #182). Set alone, it means both.
+        bool currentFolderLevel = false;
         // The panel's column order; Rank: rankBy.
         SortOrder order;
         // The panel: with nothing typed, every file and folder the filters

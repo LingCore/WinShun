@@ -756,7 +756,8 @@ qsizetype promoteHistory(SearchResults& results, const SearchEngine::Request& re
         case RecentPart::Typed:
             return in;
         case RecentPart::Inside:
-            return in && !pathtext::sameFolder(path, folder);
+            // This level only: a recent file of a subfolder stays out.
+            return request.currentFolderLevel ? pathtext::isDirectChild(folder, path) : in && !pathtext::sameFolder(path, folder);
         case RecentPart::Outside:
             return !in || pathtext::sameFolder(path, folder);
         case RecentPart::Anywhere:
@@ -889,7 +890,7 @@ void arrangePart(SearchResults& results, const SearchEngine::Request& request, c
 void arrange(SearchResults& results, const SearchEngine::Request& request, const NameMatcher& matcher, RankBy rankBy,
     RecentOnDisk& onDisk, const QString& typedFolder)
 {
-    if (request.currentFolder.isEmpty() || request.currentFolderOnly) {
+    if (request.currentFolder.isEmpty() || request.currentFolderOnly || request.currentFolderLevel) {
         const RecentPart part = !request.currentFolder.isEmpty() ? RecentPart::Inside
             : typedFolder.isEmpty()                              ? RecentPart::Anywhere
                                                                  : RecentPart::Typed;
@@ -1452,7 +1453,8 @@ void SearchEngine::runNameSearch(const Job& job)
         // same for its words, then what is so named elsewhere (insideFirst),
         // unless only that folder is asked for.
         const bool typedIn = !request.currentFolder.isEmpty();
-        const bool insideFirst = typedIn && !request.currentFolderOnly;
+        const bool levelOnly = typedIn && request.currentFolderLevel;
+        const bool insideFirst = typedIn && !request.currentFolderOnly && !levelOnly;
         const pathtext::TypedPath typedPath = typedIn
             ? pathtext::TypedPath {pathtext::pathFromText(request.currentFolder), request.text}
             : request.regex ? pathtext::TypedPath() : pathtext::splitTyped(request.text);
@@ -1478,7 +1480,11 @@ void SearchEngine::runNameSearch(const Job& job)
             // A typed path, or typing set to search only this folder: constrain
             // before choosing the top hits, including a share indexed at this
             // subfolder. A similarly named folder is a different place (#49).
-            if (!typedPath.folder.isEmpty() && (!typedIn || request.currentFolderOnly))
+            // This level only: the entry's parent is the folder itself, which
+            // is also the whole of "under" for those names, so no ancestor walk.
+            if (levelOnly)
+                filter.directIn = folder == kNoEntry ? kNoEntry - 1 : folder;
+            else if (!typedPath.folder.isEmpty() && (!typedIn || request.currentFolderOnly))
                 filter.folders.push_back(folder == kNoEntry ? kNoEntry - 1 : folder);
             std::ranges::sort(filter.folders);
             const NameSearchOptions options {.limit = static_cast<std::size_t>(request.limit),
