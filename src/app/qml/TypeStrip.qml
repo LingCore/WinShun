@@ -417,6 +417,7 @@ Item {
         }
 
         ToggleSwitch {
+            dpr: strip.dpr
             id: indexToggle
             x: Math.ceil(indexLabel.implicitWidth) + 8
             height: indexSwitch.height // the track (20) centred on the chips' row

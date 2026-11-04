@@ -19,7 +19,11 @@ Item {
     property int wordAlign: Text.AlignRight
     property bool animated: true // false: the colours and the knob jump (a row taken for another switch)
     readonly property bool hovered: area.containsMouse
-    readonly property real dpr: Screen.devicePixelRatio // one Screen attached object for all its items (GitHub #111)
+    property real dpr: 0 // the window's, passed by a host that has it (GitHub #111)
+    // Screen.* only when no host passed it (one attached object for all its
+    // items then): a default binding to it would make one even where the
+    // host's value replaces it.
+    readonly property real pixelRatio: dpr > 0 ? dpr : Screen.devicePixelRatio
     signal toggled(bool on)
 
     // Taken for another switch (a recycled row), it is that switch's from the first frame.
@@ -61,7 +65,7 @@ Item {
 
     Row {
         id: row
-        y: Theme.snap((parent.height - height) / 2, toggle.dpr) // whole device pixels, so that the track's edges are crisp
+        y: Theme.snap((parent.height - height) / 2, toggle.pixelRatio) // whole device pixels, so that the track's edges are crisp
         spacing: 10
 
         Text { // as wide as the longest word, so the switch stays put ("On" / "Off")
@@ -82,7 +86,7 @@ Item {
             id: track
             readonly property bool lit: toggle.checked && !toggle.mixed && !toggle.unknown
             readonly property real radius: Theme.pillRadius(height)
-            y: Theme.snap((parent.height - height) / 2, toggle.dpr)
+            y: Theme.snap((parent.height - height) / 2, toggle.pixelRatio)
             width: 40
             height: 20
 
@@ -96,7 +100,7 @@ Item {
                 active: !toggle.unknown
                 hovered: area.containsMouse
                 pressed: area.pressed
-                dpr: toggle.dpr
+                dpr: toggle.pixelRatio
             }
 
             Rectangle { // asked for what it already is: a light that comes and goes

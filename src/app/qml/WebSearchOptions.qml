@@ -239,6 +239,7 @@ Column {
         description: qsTranslate("SettingsWindow", "在网站关键词后输入文字时，列出这个网站的搜索建议。只有这时才会把输入的文字发给那个网站")
 
         ToggleSwitch {
+            dpr: webSection.dpr
             checked: webSection.editor.webSuggestions
             onToggled: (on) => webSection.editor.webSuggestions = on
         }

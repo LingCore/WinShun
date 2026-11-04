@@ -5,6 +5,8 @@ import WinShun
 
 RowLayout {
     id: row
+    property real dpr: 0 // the window's, passed by the host (GitHub #111)
+    readonly property real pixelRatio: dpr > 0 ? dpr : Screen.devicePixelRatio // Screen only without one
     required property string path
     signal removed()
     spacing: 4
@@ -20,6 +22,7 @@ RowLayout {
         HoverTip { target: pathHover.hovered ? pathLabel : null; text: row.path }
     }
     FlatButton {
+        dpr: row.pixelRatio
         id: removeButton
         glyph: "\uE711"
         flat: true

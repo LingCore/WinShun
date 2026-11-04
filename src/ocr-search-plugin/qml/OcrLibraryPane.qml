@@ -53,6 +53,7 @@ Item {
             Repeater {
                 model: pane.editor.folders
                 delegate: OcrFolderRow {
+                    dpr: pane.dpr
                     required property int index
                     required property string modelData
                     Layout.fillWidth: true
@@ -80,6 +81,7 @@ Item {
             Repeater {
                 model: pane.editor.excluded
                 delegate: OcrFolderRow {
+                    dpr: pane.dpr
                     required property int index
                     required property string modelData
                     Layout.fillWidth: true
@@ -176,6 +178,7 @@ Item {
             Layout.fillWidth: true
             Text { Layout.fillWidth: true; text: qsTr("自动更新"); color: Theme.subtext; font.pixelSize: Theme.fontCaption }
             ToggleSwitch {
+                dpr: pane.dpr
                 checked: pane.editor.autoUpdate
                 word: false
                 enabled: pane.editor.folders.length > 0 && !pane.editor.setupNeeded

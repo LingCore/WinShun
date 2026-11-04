@@ -120,6 +120,7 @@ Item {
             font.pixelSize: Theme.fontCaption
         }
         InputBox {
+            dpr: form.dpr
             id: box
             width: field.width
             onAccepted: field.accepted()
@@ -147,6 +148,7 @@ Item {
         spacing: 12
 
         ToggleSwitch {
+            dpr: form.dpr
             id: toggle
             word: false
             anchors.verticalCenter: parent.verticalCenter

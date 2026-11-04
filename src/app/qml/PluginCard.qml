@@ -351,6 +351,7 @@ Rectangle {
                     onClicked: card.plugins.showSettings(card.pluginId)
                 }
                 ToggleSwitch {
+                    dpr: card.dpr
                     anchors.verticalCenter: parent.verticalCenter
                     enabled: card.usable
                     checked: card.pluginEnabled
@@ -498,6 +499,7 @@ Rectangle {
                                     elide: Text.ElideRight
                                 }
                                 InputBox {
+                                    dpr: card.dpr
                                     id: keywordBox
                                     anchors.left: keywordLabel.right
                                     anchors.leftMargin: 8
@@ -569,6 +571,7 @@ Rectangle {
                     }
                 }
                 ToggleSwitch {
+                    dpr: card.dpr
                     id: aiSwitch
                     anchors.right: parent.right
                     y: Math.round((aiColumn.implicitHeight - height) / 2)
@@ -723,6 +726,7 @@ Rectangle {
                             Component {
                                 id: boolControl
                                 ToggleSwitch {
+                                    dpr: card.dpr
                                     checked: settingRow.modelData.value === true
                                     onToggled: (on) => card.plugins.setSettingValue(card.pluginId, settingRow.modelData.key, on)
                                 }

@@ -494,6 +494,7 @@ Item {
         // Inside the MouseArea so that hovering a button still hovers the row.
         // A system switch, always there, at the same width in every state.
         ToggleSwitch {
+            dpr: row.dpr
             id: switchControl
             visible: row.switchReady
             anchors.right: parent.right

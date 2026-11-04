@@ -210,6 +210,7 @@ Rectangle {
             }
         }
         ToggleSwitch {
+            dpr: card.dpr
             id: contentSwitch
             anchors.right: parent.right
             y: Theme.snap((parent.height - height) / 2, card.dpr) // not verticalCenter: the track's edges on whole pixels
@@ -220,6 +221,7 @@ Rectangle {
     }
 
     ShareScanControls {
+        dpr: card.dpr
         id: scanSettings
         visible: card.kind === "share"
         anchors.left: contents.left

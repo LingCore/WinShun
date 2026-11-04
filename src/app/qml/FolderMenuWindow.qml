@@ -49,7 +49,7 @@ Window {
         part: Theme.rowHighlight
         hovered: inMenu
         role: "menu"
-        dpr: Screen.devicePixelRatio
+        dpr: menu.dpr
 
         Rectangle {
             anchors.fill: parent

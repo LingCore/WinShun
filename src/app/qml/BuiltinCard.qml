@@ -121,6 +121,7 @@ Rectangle {
                 spacing: 12
 
                 ToggleSwitch {
+                    dpr: card.dpr
                     anchors.verticalCenter: parent.verticalCenter
                     enabled: card.available
                     opacity: enabled ? 1 : 0.5

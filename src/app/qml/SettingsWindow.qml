@@ -1493,6 +1493,7 @@ Window {
                                                          : qsTr("游戏全屏或藏起鼠标时不打开，免得蹲下时误触")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.doubleCtrlPauseInGames
                         onToggled: (on) => window.editor.doubleCtrlPauseInGames = on
                     }
@@ -1507,6 +1508,7 @@ Window {
                     description: qsTr("看视频、放幻灯片时也不打开")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.doubleCtrlPauseInFullScreen
                         onToggled: (on) => window.editor.doubleCtrlPauseInFullScreen = on
                     }
@@ -1542,6 +1544,7 @@ Window {
                             spacing: 8
 
                             InputBox {
+                                dpr: window.dpr
                                 id: doubleCtrlAppInput
                                 width: 300
                                 placeholder: qsTr("输入程序文件名，例如 TheFinals.exe")
@@ -1769,6 +1772,7 @@ Window {
                     description: qsTr("切换时资源管理器会重启，打开的文件夹窗口会关闭")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.taskbarWinS
                         onToggled: (on) => {
                             // Explorer takes the change when it starts again: at once.
@@ -1828,6 +1832,7 @@ Window {
                     description: qsTr("想用 Windows 自带的搜索时，先按一下左 Alt 再打字")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.taskbarStartTyping
                         onToggled: (on) => window.editor.taskbarStartTyping = on
                     }
@@ -1886,6 +1891,7 @@ Window {
                             spacing: 8
 
                             InputBox {
+                                dpr: window.dpr
                                 id: openCommandBox
                                 width: parent.width - browseOpen.width - parent.spacing
                                 text: window.editor.fileManagerOpenCommand
@@ -1916,6 +1922,7 @@ Window {
                             spacing: 8
 
                             InputBox {
+                                dpr: window.dpr
                                 id: revealCommandBox
                                 width: parent.width - browseReveal.width - parent.spacing
                                 text: window.editor.fileManagerRevealCommand
@@ -1953,6 +1960,7 @@ Window {
                     description: qsTr("右键文件夹、文件夹空白处或磁盘，只在那里面搜；Windows 11 在“显示更多选项”里")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.explorerMenu
                         onToggled: (on) => window.editor.explorerMenu = on
                     }
@@ -1967,6 +1975,7 @@ Window {
                     unlocks: [folderTypingRow]
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.explorerTyping
                         onToggled: (on) => window.editor.explorerTyping = on
                     }
@@ -1981,6 +1990,7 @@ Window {
                     unlocks: [opusScopeRow, folderTypingRow]
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         objectName: "opusTypingToggle"
                         checked: window.editor.opusTyping
                         Accessible.name: qsTr("在 Directory Opus 里直接打字搜索")
@@ -2037,6 +2047,7 @@ Window {
                     tip: qsTr("Listary 正在运行时会自动交给 Listary 处理，避免弹出两个菜单")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.folderMenu
                         onToggled: (on) => window.editor.folderMenu = on
                     }
@@ -2240,6 +2251,7 @@ Window {
                             spacing: 8
 
                             InputBox {
+                                dpr: window.dpr
                                 id: opusCommand
                                 width: parent.width - copyOpusCommand.width - parent.spacing
                                     - (openOpusPrefs.visible ? openOpusPrefs.width + parent.spacing : 0)
@@ -2319,6 +2331,7 @@ Window {
                     description: qsTr("在“打开”“另存为”里按 Ctrl+G，转到文件管理器当前的文件夹")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.dialogJump
                         onToggled: (on) => window.editor.dialogJump = on
                     }
@@ -2332,6 +2345,7 @@ Window {
                     description: qsTr("在“打开”“另存为”旁搜文件夹和文件，选中后直接转过去")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.dialogBar
                         onToggled: (on) => window.editor.dialogBar = on
                     }
@@ -2359,6 +2373,7 @@ Window {
                     description: qsTr("不用按 Ctrl+G，对话框自己转到文件管理器当前的文件夹")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.dialogAutoJump
                         onToggled: (on) => window.editor.dialogAutoJump = on
                     }
@@ -2421,6 +2436,7 @@ Window {
                     description: qsTr("登录 Windows 后在后台运行")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.autostart
                         onToggled: (on) => window.editor.autostart = on
                     }
@@ -2509,6 +2525,7 @@ Window {
                     description: qsTr("没输入时列出最近打开的项目；搜索时，你输入同样的字常打开的排在前面")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.recordHistory
                         onToggled: (on) => window.editor.recordHistory = on
                     }
@@ -3099,6 +3116,7 @@ Window {
                             spacing: 8
 
                             InputBox {
+                                dpr: window.dpr
                                 id: nameInput
                                 width: 240
                                 placeholder: qsTr("输入文件夹名称，例如 build")
@@ -3149,6 +3167,7 @@ Window {
                             spacing: 8
 
                             InputBox {
+                                dpr: window.dpr
                                 id: typeInput
                                 width: 240
                                 placeholder: qsTr("例如 wbk, bak")
@@ -3192,6 +3211,7 @@ Window {
                             spacing: 8
 
                             InputBox {
+                                dpr: window.dpr
                                 id: fileNameInput
                                 width: 240
                                 placeholder: qsTr("例如 ~$*, Thumbs.db")
@@ -3243,6 +3263,7 @@ Window {
                                     width: parent.width
                                     spacing: 12
                                     ToggleSwitch {
+                                        dpr: window.dpr
                                         id: driveToggle
                                         word: false
                                         checked: driveRow.modelData.selected
@@ -3283,6 +3304,7 @@ Window {
                     description: qsTr("默认只搜索电脑自带的硬盘")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.includeRemovableDrives
                         onToggled: (on) => window.editor.includeRemovableDrives = on
                     }
@@ -3294,6 +3316,7 @@ Window {
                     description: qsTr("补上 U 盘等非 NTFS 磁盘在 Win顺 关闭期间的改动")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.rescanOnStartup
                         onToggled: (on) => window.editor.rescanOnStartup = on
                     }
@@ -3493,6 +3516,7 @@ Window {
                             spacing: 8
 
                             InputBox {
+                                dpr: window.dpr
                                 id: shareInput
                                 width: Math.min(360, parent.width) // room for the placeholder
                                 placeholder: qsTr("粘贴网络路径、WebDAV 网址或 WSL 文件夹")
@@ -3736,6 +3760,7 @@ Window {
 
                     body: [
                         InputBox {
+                            dpr: window.dpr
                             width: Math.min(parent.width, 360)
                             text: window.editor.preferredTypes
                             placeholder: qsTr("例如 exe; bat; cmd")
@@ -3761,6 +3786,7 @@ Window {
                     description: qsTr("在“全部”里列出开始菜单里的程序和应用；关掉后只找文件和内容（收藏的应用仍会列出，在开始菜单里打字也一样）")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.searchApps
                         Accessible.name: qsTr("搜索应用")
                         onToggled: (on) => window.editor.searchApps = on
@@ -3773,6 +3799,7 @@ Window {
                     description: qsTr("在“全部”里列出 Windows 设置页、控制面板和系统开关（如“关蓝牙”“音量 30”）；关掉后只找文件和内容")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.searchSystem
                         Accessible.name: qsTr("搜索系统设置")
                         onToggled: (on) => window.editor.searchSystem = on
@@ -3786,6 +3813,7 @@ Window {
                     tip: qsTr("如 ^IMG_\\d{4}；ext:、!排除、“ | ”照常可用。在搜索框里按 Ctrl+R 开关，开着时搜索框旁显示 .*。不开时也可在单个词前加 regex:")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.regexMode
                         Accessible.name: qsTr("正则模式")
                         onToggled: (on) => window.editor.regexMode = on
@@ -3823,6 +3851,7 @@ Window {
                     description: qsTr("可填 1–200 项，按最近打开的顺序显示；仅在上面选择“最近打开”时生效")
 
                     InputBox {
+                        dpr: window.dpr
                         anchors.verticalCenter: parent.verticalCenter
                         width: 80
                         enabled: window.editor.startList === "opened"
@@ -3845,6 +3874,7 @@ Window {
                     description: qsTr("关闭后，收藏和自定义命令仍可通过名称或关键词找到")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.favoritesOnStart
                         onToggled: (on) => window.editor.favoritesOnStart = on
                     }
@@ -3863,6 +3893,7 @@ Window {
                     keywords: qsTr("快捷键;帮助;提示;隐藏;极简").split(";")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         objectName: "shortcutHelpToggle"
                         checked: window.editor.shortcutHelp
                         Accessible.name: qsTr("显示快捷键帮助按钮")
@@ -3876,6 +3907,7 @@ Window {
                     keywords: qsTr("快捷键;底栏;提示;隐藏;Tab;极简").split(";")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         objectName: "footerHintsToggle"
                         checked: window.editor.footerHints
                         Accessible.name: qsTr("显示底栏按键提示")
@@ -3898,6 +3930,7 @@ Window {
                     unlocks: [showModifiedTimeRow]
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.showModified
                         onToggled: (on) => window.editor.showModified = on
                     }
@@ -3911,6 +3944,7 @@ Window {
                     keywords: qsTr("修改时间;修改日期;具体时间;时分;time").split(";")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.showModifiedTime
                         Accessible.name: qsTr("较早的日期也显示时间")
                         onToggled: (on) => window.editor.showModifiedTime = on
@@ -3923,6 +3957,7 @@ Window {
                     description: qsTr("无需展开窗口，在搜索结果右侧显示文件大小；按大小排序时始终显示。文件夹不统计大小。")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         objectName: "showFileSizeToggle"
                         checked: window.editor.showFileSize
                         Accessible.name: qsTr("显示文件大小")
@@ -3936,6 +3971,7 @@ Window {
                     description: qsTr("图片、视频、PDF 等显示缩略图，代替类型图标")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.thumbnails
                         onToggled: (on) => window.editor.thumbnails = on
                     }
@@ -4034,6 +4070,7 @@ Window {
                     description: qsTr("打开时搜索框是空的，回到“全部”；关掉时保留上次的文字并选中，直接输入就会替换")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.clearOnOpen
                         onToggled: (on) => window.editor.clearOnOpen = on
                     }
@@ -4111,6 +4148,7 @@ Window {
                     description: qsTr("关掉后搜索框里不再有“内容”，“全部”只按名字找；Win顺 不读取文件里的文字，内容索引也会清空")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.contentSearch
                         onToggled: (on) => window.editor.contentSearch = on
                     }
@@ -4126,6 +4164,7 @@ Window {
                     description: qsTr("Word、Excel、PowerPoint、PDF 和 WPS 文件，图片里的文字除外")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.contentDocuments
                         onToggled: (on) => window.editor.contentDocuments = on
                     }
@@ -4167,6 +4206,7 @@ Window {
                             spacing: 8
 
                             InputBox {
+                                dpr: window.dpr
                                 id: extensionInput
                                 width: 240
                                 placeholder: qsTr("例如 md, log")
@@ -4191,6 +4231,7 @@ Window {
                     description: qsTr("Windows、Program Files、AppData 等；文件很多，搜索会变慢")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.contentInLowPriority
                         onToggled: (on) => window.editor.contentInLowPriority = on
                     }
@@ -4206,6 +4247,7 @@ Window {
                                  + (window.editor.contentIndexStatus.length > 0 ? "\n" + window.editor.contentIndexStatus : "")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.contentIndex
                         onToggled: (on) => window.editor.contentIndex = on
                     }
@@ -4271,6 +4313,7 @@ Window {
                             onClicked: window.editor.setContentMaxSizeMB(sizeRow.index, sizeRow.down)
                         }
                         InputBox {
+                            dpr: window.dpr
                             width: 80
                             horizontalAlignment: TextInput.AlignHCenter
                             text: sizeRow.shownText
@@ -4355,6 +4398,7 @@ Window {
                     description: qsTr("关闭后停止监听并释放历史缓存，已有记录保留在本机。密码管理器复制的密码不会被记录")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.clipboard
                         onToggled: (on) => window.editor.clipboard = on
                     }
@@ -4367,6 +4411,7 @@ Window {
                     description: qsTr("截图和复制的图片也记下来")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.clipboardImages
                         onToggled: (on) => window.editor.clipboardImages = on
                     }
@@ -4389,6 +4434,7 @@ Window {
                     bodyShown: captureKeywordError.text.length > 0
 
                     InputBox {
+                        dpr: window.dpr
                         id: captureKeywordBox
                         width: 96
                         text: window.editor.captureKeyword
@@ -4439,6 +4485,7 @@ Window {
                             spacing: 8
 
                             InputBox {
+                                dpr: window.dpr
                                 id: appInput
                                 width: 240
                                 placeholder: qsTr("输入程序文件名，例如 KeePass.exe")
@@ -4468,6 +4515,7 @@ Window {
                     description: qsTr("点一下就粘贴，和 Windows 自带的剪贴板一样，手机远程操作时也方便。按住 Ctrl 或 Shift 点击仍是多选；关掉时单击选中、双击粘贴")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.clipboardClickToPaste
                         onToggled: (on) => window.editor.clipboardClickToPaste = on
                     }
@@ -4480,6 +4528,7 @@ Window {
                     tip: qsTr("重新复制同样的内容仍会排到最前。粘贴过的条目右下角带蓝色对勾，也不会因“保留天数”到期而被删")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.clipboardKeepPlace
                         onToggled: (on) => window.editor.clipboardKeepPlace = on
                     }
@@ -4504,6 +4553,7 @@ Window {
                     description: qsTr("图片的那一行更高，缩略图大到能看清细节，不用打开预览")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.clipboardLargePictures
                         onToggled: (on) => window.editor.clipboardLargePictures = on
                     }
@@ -4540,6 +4590,7 @@ Window {
                                  : qsTr("搜索框和最新的条目都挨着光标，越往上越早")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.clipboardFlipAbove
                         onToggled: (on) => window.editor.clipboardFlipAbove = on
                     }
@@ -4568,6 +4619,7 @@ Window {
                     description: qsTr("其他程序全屏时，快捷键不弹出剪贴板；仍然记录复制内容，也能从菜单手动打开")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.clipboardPauseInFullScreen
                         onToggled: (on) => window.editor.clipboardPauseInFullScreen = on
                     }
@@ -4587,6 +4639,7 @@ Window {
                     description: qsTr("Windows 的表情面板改用 Win+. 打开")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.clipboardWinV
                         onToggled: (on) => window.editor.clipboardWinV = on
                     }
@@ -4693,6 +4746,7 @@ Window {
                     tip: qsTr("按住快捷键里的 Ctrl、Alt、Shift 或 Win，每再按一下就往下选一条，松开就粘贴；按住约一秒再松开，粘贴第一条；按住时按 Esc 不粘贴。开启后按住再按快捷键不再关闭窗口")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.clipboardHoldToStep
                         onToggled: (on) => window.editor.clipboardHoldToStep = on
                     }
@@ -4793,6 +4847,7 @@ Window {
                         onActivated: (index) => window.editor.clipboardMaxItems = clipMaxRow.presets[index]
                     }
                     InputBox {
+                        dpr: window.dpr
                         anchors.verticalCenter: parent.verticalCenter
                         width: 80
                         horizontalAlignment: TextInput.AlignHCenter
@@ -5015,6 +5070,7 @@ Window {
                     description: qsTr("启动后和每隔 12 小时检查 Win顺 新版本，在托盘提示；插件每天检查一次，不要新权限的更新自动安装")
 
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: window.editor.autoUpdate
                         onToggled: (on) => window.editor.autoUpdate = on
                     }
@@ -5083,6 +5139,7 @@ Window {
                         onClicked: window.editor.chooseBackupFolder()
                     }
                     ToggleSwitch {
+                        dpr: window.dpr
                         checked: backupRow.on
                         onToggled: (on) => {
                             if (on)
@@ -5143,6 +5200,7 @@ Window {
 
                     body: [
                         InputBox {
+                            dpr: window.dpr
                             id: proxyBox
                             width: Math.min(parent.width, 320)
                             text: window.editor.proxyAddress
