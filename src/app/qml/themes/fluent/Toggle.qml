@@ -23,6 +23,7 @@ Item {
     // (complete() on a Behavior's animation does not end it: the Behaviors
     // are switched off while each property is set to where it is going.)
     property bool still: false
+    property bool animated: true // false: no motion at all (a row taken for another switch)
     function settle() {
         still = true
         track.color = Qt.binding(() => track.goal)
@@ -43,7 +44,7 @@ Item {
         border.width: part.lit ? 0 : part.edge
         border.color: part.look ? part.look.subtext : "transparent"
 
-        Behavior on color { enabled: !part.still; ColorAnimation { duration: 120 } }
+        Behavior on color { enabled: part.animated && !part.still; ColorAnimation { duration: 120 } }
     }
 
     Rectangle {
@@ -59,8 +60,8 @@ Item {
         radius: size / 2
         color: goal
 
-        Behavior on x { enabled: !part.still; NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-        Behavior on color { enabled: !part.still; ColorAnimation { duration: 120 } }
+        Behavior on x { enabled: part.animated && !part.still; NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+        Behavior on color { enabled: part.animated && !part.still; ColorAnimation { duration: 120 } }
     }
 
     Text { // a check box's mark

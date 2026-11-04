@@ -90,6 +90,7 @@ Item {
                 id: toggleHook
                 anchors.fill: parent
                 part: Theme.toggle
+                extra: ({ animated: toggle.animated })
                 checked: toggle.checked
                 mixed: toggle.mixed
                 active: !toggle.unknown

@@ -35,6 +35,7 @@ Item {
     // (not a root node): write the end values with the Behaviors off, which
     // ends the running ones there.
     property bool still: false
+    property bool animated: true // false: no motion at all (a row taken for another switch)
     function settle() {
         still = true
         track.color = Qt.binding(() => track.goal)
@@ -55,7 +56,7 @@ Item {
         color: goal
         border.width: sw.look ? (sw.lit ? 0 : sw.look.edge(sw.dpr)) : 0
         border.color: sw.look ? sw.look.ink3 : "transparent"
-        Behavior on color { enabled: !sw.still; ColorAnimation { duration: sw.look ? sw.look.animFast : 0 } }
+        Behavior on color { enabled: sw.animated && !sw.still; ColorAnimation { duration: sw.look ? sw.look.animFast : 0 } }
     }
 
     // ---- switch knob ----
@@ -73,9 +74,9 @@ Item {
         y: sw.look ? sw.look.snap((sw.height - height) / 2, sw.dpr) : 0
         x: goalX
         color: goal
-        Behavior on x { enabled: !sw.still; NumberAnimation { duration: sw.look ? sw.look.animFast : 0; easing.type: Easing.OutCubic } }
-        Behavior on width { enabled: !sw.still; NumberAnimation { duration: sw.look ? sw.look.animFast : 0; easing.type: Easing.OutCubic } }
-        Behavior on color { enabled: !sw.still; ColorAnimation { duration: sw.look ? sw.look.animFast : 0 } }
+        Behavior on x { enabled: sw.animated && !sw.still; NumberAnimation { duration: sw.look ? sw.look.animFast : 0; easing.type: Easing.OutCubic } }
+        Behavior on width { enabled: sw.animated && !sw.still; NumberAnimation { duration: sw.look ? sw.look.animFast : 0; easing.type: Easing.OutCubic } }
+        Behavior on color { enabled: sw.animated && !sw.still; ColorAnimation { duration: sw.look ? sw.look.animFast : 0 } }
     }
 
     // ---- check mark / dash ----

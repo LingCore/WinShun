@@ -35,9 +35,15 @@ Item {
     function snap(v: real): real { return look ? look.snap(v, dpr) : v }
     function pill(size: real): real { return look ? look.pill(size) : 0 }
 
+    // false: no motion at all (a row taken for another switch); see settle().
+    property bool animated: true
+    // (complete() on a Behavior's animation does not end it: the Behavior is
+    // switched off while the knob is set to where it is going.)
+    property bool still: false
     function settle() {
-        if (slide.running)
-            slide.complete()
+        still = true
+        knob.x = Qt.binding(() => knob.goalX)
+        still = false
     }
 
     // ---- switch ----
@@ -51,8 +57,9 @@ Item {
     KeySurface {
         id: knob
         visible: !toggle.isCheck && toggle.active
-        x: toggle.mixed ? toggle.snap((toggle.width - width) / 2)
-           : toggle.checked ? toggle.width - toggle.pad - width : toggle.pad
+        readonly property real goalX: toggle.mixed ? toggle.snap((toggle.width - width) / 2)
+                                      : toggle.checked ? toggle.width - toggle.pad - width : toggle.pad
+        x: goalX
         y: toggle.pad
         width: toggle.knobSize
         height: toggle.knobSize
@@ -62,7 +69,7 @@ Item {
         enabled: toggle.enabled
         dpr: toggle.dpr
         look: toggle.look
-        Behavior on x { NumberAnimation { id: slide; duration: toggle.look ? (toggle.look?.animSlide ?? 0) : 0; easing.type: Easing.OutCubic } }
+        Behavior on x { enabled: toggle.animated && !toggle.still; NumberAnimation { duration: toggle.look ? (toggle.look?.animSlide ?? 0) : 0; easing.type: Easing.OutCubic } }
 
         Lamp {
             visible: knob.enabled && toggle.lit // off: a plain knob; on: the lamp lights on it
