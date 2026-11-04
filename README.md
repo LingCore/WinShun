@@ -292,7 +292,7 @@
 
 ### 下载安装
 
-1. 到 [Releases 页面](https://github.com/LingCore/WinShun/releases/latest) 下载 `WinShun-版本号-x64-setup.exe`，双击安装。Windows 提示“已保护你的电脑”时，点 **更多信息 → 仍要运行**（还没有代码签名证书）。安装时可以选“为所有用户安装”（要管理员同意，带索引服务，最快）或“只为我安装”（不要管理员权限，不装索引服务，只索引你选的文件夹）。
+1. 到 [Releases 页面](https://github.com/LingCore/WinShun/releases/latest) 下载 `WinShun-版本号-x64-setup.exe`，双击安装。Windows 提示“已保护你的电脑”时，点 **更多信息 → 仍要运行**（还没有代码签名证书）。安装时可以选“为所有用户安装”（要管理员同意，带索引服务，最快）或“只为我安装”（不要管理员权限，不装索引服务，只索引你选的文件夹）；当前账户不是管理员时，默认推荐“只为我安装”。
 2. 装完托盘里出现 Win顺 的图标，索引几秒就建好。连按两下 Ctrl 开始搜索。
 3. 有新版本时，在更新提醒里点“下载并安装”（便携版是“下载并更新”），Win顺 自己下载、核对后装好并重新打开；也可以手动运行新的安装程序。设置和索引都保留。AI 工具（Claude Code、Cursor 等）正连着 Win顺 时，安装程序会先问一声：现在装，它会断开，装好后在它里面重新连接 Win顺 或重启它；也可以等它用完再装。卸载在 Windows 的“设置 → 应用”里。
 
@@ -520,7 +520,7 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
 
 ### Download and install
 
-1. Download `WinShun-<version>-x64-setup.exe` from the [Releases page](https://github.com/LingCore/WinShun/releases/latest) and run it. If Windows says “Windows protected your PC”, click **More info → Run anyway**: the app is not code-signed yet. Setup offers “for all users” (an administrator approves it; comes with the index service, the fastest) or “for me only” (no administrator needed, no index service; only the folders you choose are indexed).
+1. Download `WinShun-<version>-x64-setup.exe` from the [Releases page](https://github.com/LingCore/WinShun/releases/latest) and run it. If Windows says “Windows protected your PC”, click **More info → Run anyway**: the app is not code-signed yet. Setup offers “for all users” (an administrator approves it; comes with the index service, the fastest) or “for me only” (no administrator needed, no index service; only the folders you choose are indexed), and recommends “for me only” when your account is not an administrator.
 2. When the WinShun icon appears in the notification area, it is running; the first index takes a few seconds. Press Ctrl twice and type.
 3. To upgrade, click “Download and install” (“Download and update” for the portable copy) when WinShun tells you about a new version: it downloads, checks and installs it, then starts again. Running a newer installer yourself works too. Your settings and index are kept. If an AI tool (Claude Code, Cursor …) is connected to WinShun, Setup asks first: install now and reconnect WinShun in that tool (or restart it) afterwards, or install later. Uninstall from Windows Settings → Apps.
 
