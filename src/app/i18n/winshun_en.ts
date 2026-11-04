@@ -7317,12 +7317,24 @@ Right: center window · Drag: move window</translation>
         <translation>Checking the package…</translation>
     </message>
     <message>
+        <source>Win顺 马上关闭，Scoop 在新打开的窗口里更新，完成后自动重新打开。</source>
+        <translation>WinShun closes now; Scoop updates it in the window that just opened, and it starts again when done.</translation>
+    </message>
+    <message>
         <source>Win顺 马上关闭并替换程序文件，完成后自动重新打开。</source>
         <translation>WinShun will close now, replace its program files and open again when done.</translation>
     </message>
     <message>
         <source>正在安装：Win顺 会先关闭，装好后自动重新打开。为所有用户安装的，系统会先确认管理员权限。</source>
         <translation>Installing: WinShun closes first and opens again when done. Installed for all users, Windows asks for administrator permission first.</translation>
+    </message>
+    <message>
+        <source>你现在用的是 %1，是用 Scoop 装的。会打开一个窗口运行 scoop update，完成后自动重新打开，设置和索引原样保留。</source>
+        <translation>You are on %1, installed with Scoop. A window opens to run scoop update, then WinShun starts again; your settings and index are kept as they are.</translation>
+    </message>
+    <message>
+        <source>你现在用的是 %1，是用 Scoop 装的。请在 PowerShell 里运行下面的命令（全局安装要用管理员身份）：</source>
+        <translation>You are on %1, installed with Scoop. Run this command in PowerShell (a global install needs an administrator one):</translation>
     </message>
     <message>
         <source>你现在用的是 %1。下载并校验后自动替换程序文件并重新打开，data 文件夹里的设置和索引原样保留。</source>
@@ -7343,6 +7355,18 @@ Right: center window · Drag: move window</translation>
     <message>
         <source>打开下载页</source>
         <translation>Open the download page</translation>
+    </message>
+    <message>
+        <source>用 Scoop 更新</source>
+        <translation>Update with Scoop</translation>
+    </message>
+    <message>
+        <source>已复制</source>
+        <translation>Copied</translation>
+    </message>
+    <message>
+        <source>复制命令</source>
+        <translation>Copy command</translation>
     </message>
     <message>
         <source>下载并更新</source>
@@ -12842,6 +12866,38 @@ Content index: %5</translation>
     <message>
         <source>更新助手没有响应，旧版本照常可用。请重试。</source>
         <translation>The update helper didn’t respond. This version still works; try again.</translation>
+    </message>
+    <message>
+        <source>这份 Win顺 要用 Scoop 更新，请在 PowerShell 里运行下面的命令。</source>
+        <translation>This WinShun is updated with Scoop; run the command below in PowerShell.</translation>
+    </message>
+    <message>
+        <source>正在等 Win顺 退出…</source>
+        <translation>Waiting for WinShun to exit...</translation>
+    </message>
+    <message>
+        <source>还有这些程序在 Win顺 的文件夹里运行，Scoop 没法更新（比如 AI 工具启动的 WinShunMcp.exe），请先关掉它们：</source>
+        <translation>These programs still run from WinShun's folder, so Scoop cannot update (WinShunMcp.exe started by an AI tool, for example). Close them first:</translation>
+    </message>
+    <message>
+        <source>正在用 Scoop 更新 Win顺…</source>
+        <translation>Updating WinShun with Scoop...</translation>
+    </message>
+    <message>
+        <source>更新完成，正在重新打开 Win顺。</source>
+        <translation>Updated; starting WinShun again.</translation>
+    </message>
+    <message>
+        <source>没有更新成功：看上面 Scoop 的提示，或者软件源里还没有新版本。稍后可以在 PowerShell 里运行：%1。原来的 Win顺 会重新打开。</source>
+        <translation>The update did not go through: see Scoop's messages above, or the bucket does not have the new version yet. You can run this in PowerShell later: %1. The previous WinShun starts again.</translation>
+    </message>
+    <message>
+        <source>按 Enter 关闭这个窗口</source>
+        <translation>Press Enter to close this window</translation>
+    </message>
+    <message>
+        <source>没能打开 PowerShell。请自己运行：%1</source>
+        <translation>Could not open PowerShell. Run this yourself: %1</translation>
     </message>
     <message>
         <source>Win顺 已更新到 %1</source>

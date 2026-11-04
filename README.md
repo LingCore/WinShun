@@ -267,7 +267,7 @@
 - **文件管理器**：打开文件夹、打开所在位置时用资源管理器、Total Commander、Directory Opus、XYplorer 或 Pulse（装了的才列出）；别的文件管理器也行，在设置 › 打开 Win顺 › 对话框里填它的命令。
 - **备份**：设置 → 高级里选一个文件夹（放在同步盘里就是云备份），设置、收藏、对话框的固定项、自己加的网页图标和插件会自动备份，保留最近 10 份，随时恢复。
 - **换电脑迁移设置**：设置 → 高级 → 备份，点“导出备份…”保存 ZIP；新电脑安装后点“从备份恢复…”，校验通过后自动重启。不用开启自动备份，当前配置会先备份到本机；插件密码需重新填写，收藏和自定义路径请检查是否还有效。
-- **更新**：有新版本时在托盘提醒；点“下载并安装”，Win顺 下载后先核对 SHA-256 再安装（便携版只换程序文件，不动 `data`），也可以照旧自己下载安装。
+- **更新**：有新版本时在托盘提醒；点“下载并安装”，Win顺 下载后先核对 SHA-256 再安装（便携版只换程序文件，不动 `data`；用 Scoop 装的改为“用 Scoop 更新”，由 `scoop update` 完成），也可以照旧自己下载安装。
 
 | 按键 | 作用 |
 |---|---|
@@ -294,6 +294,15 @@
 3. 有新版本时，在更新提醒里点“下载并安装”（便携版是“下载并更新”），Win顺 自己下载、核对后装好并重新打开；也可以手动运行新的安装程序。设置和索引都保留。AI 工具（Claude Code、Cursor 等）正连着 Win顺 时，安装程序会先问一声：现在装，它会断开，装好后在它里面重新连接 Win顺 或重启它；也可以等它用完再装。卸载在 Windows 的“设置 → 应用”里。
 
 不想安装的话，下载 `WinShun-版本号-x64-portable.zip`，解压到任意文件夹，运行里面的 `WinShun.exe` 就行。设置、记录、剪贴板历史和索引都存在它旁边的 `data` 文件夹里，整个文件夹可以拷到 U 盘或别的电脑；第一次启动时，这台电脑上原来的设置和数据（`%APPDATA%\WinShun`、`%LOCALAPPDATA%\WinShun`）会复制过来，原处的不动。升级时把新版解压到同一个位置覆盖，`data` 留着。删掉 `data` 文件夹（先退出 Win顺），就和安装版一样存在原来的地方。
+
+用 [Scoop](https://scoop.sh) 管理软件的话，两行命令装好：
+
+```powershell
+scoop bucket add winshun https://github.com/LingCore/WinShun
+scoop install winshun
+```
+
+装的就是上面的便携版（设置和索引存在 Scoop 的 `persist\winshun\data` 里），开始菜单里有 “WinShun”，终端里直接能用 `ws`。更新：Win顺 弹出更新提醒时点“用 Scoop 更新”（会打开一个窗口运行 `scoop update`，完成后自动重新打开），或自己运行 `scoop update winshun`。卸载用 `scoop uninstall winshun`，会先取消开机自启、右键菜单等 Win顺 登记的项目，设置和索引保留；加 `-p` 才连同数据一起删除。Scoop 不会装索引服务，需要索引整个磁盘时到 **设置 › 搜索范围 › 磁盘 › 索引方式** 里开启。
 
 标准安装版和便携版按需安装增强文字识别：到 **设置 › 剪贴板 › 记录 › 增强文字识别** 下载约 12 MB 的组件，也可以选择本地组件包。安装后剪贴板和截图共用，离线识别，不需要重启。旧版已有的识别文件继续使用。无网络的电脑可选 `WinShun-版本号-x64-offline-setup.exe`，自带完整识别组件；或把 Release 中的 `WinShun-ocr-*.zip` 拷过去从本地安装。截图识别尚未安装时会保留原图，安装后继续识别。 程序更新、插件库和增强识别的 GitHub 文件默认优先通过两个加速镜像下载，连接失败或文件校验不符会自动换源，最后尝试官方原站。
 
@@ -485,7 +494,7 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
   - **File manager**: folders and file locations open in File Explorer, Total Commander, Directory Opus, XYplorer or Pulse (those installed are listed), or in any other file manager whose commands you enter under Settings › Open WinShun › Dialogs.
   - **Backup**: choose a folder under Settings → Advanced (a synced folder makes it a cloud backup); settings, favorites, dialog pins, your own web icons and plugins are backed up as they change, the last 10 kept, ready to restore.
   - **Move to another PC**: under Settings → Advanced → Backup, choose “Export backup…” to save a ZIP, then “Restore from backup…” on the new PC. Automatic backups need not be enabled. The current configuration is saved locally first; enter plugin passwords again and check custom paths on the new PC.
-  - **Updates**: announced in the tray; “Download and install” fetches the package, checks its SHA-256 and installs it (the portable copy swaps only its program files, never `data`). Downloading the installer yourself still works.
+  - **Updates**: announced in the tray; “Download and install” fetches the package, checks its SHA-256 and installs it (the portable copy swaps only its program files, never `data`; a copy installed with Scoop offers “Update with Scoop” instead and lets `scoop update` do it). Downloading the installer yourself still works.
 
 | Key | Action |
 |---|---|
@@ -512,6 +521,15 @@ It reads the NTFS master file table (MFT) directly, indexing three million files
 3. To upgrade, click “Download and install” (“Download and update” for the portable copy) when WinShun tells you about a new version: it downloads, checks and installs it, then starts again. Running a newer installer yourself works too. Your settings and index are kept. If an AI tool (Claude Code, Cursor …) is connected to WinShun, Setup asks first: install now and reconnect WinShun in that tool (or restart it) afterwards, or install later. Uninstall from Windows Settings → Apps.
 
 To skip the installer, download `WinShun-<version>-x64-portable.zip`, unzip it anywhere and run `WinShun.exe` in it. Settings, history, clipboard and index are kept in the `data` folder beside it, so the whole folder can go on a USB stick or another PC; on the first start, what this PC already has (`%APPDATA%\WinShun`, `%LOCALAPPDATA%\WinShun`) is copied in, the originals left in place. To upgrade, unzip the newer one over it and keep `data`. Without the `data` folder (quit WinShun first), it keeps them where the installed copy does.
+
+With [Scoop](https://scoop.sh), two commands do it:
+
+```powershell
+scoop bucket add winshun https://github.com/LingCore/WinShun
+scoop install winshun
+```
+
+This installs the portable package (settings and index live in Scoop's `persist\winshun\data`), adds “WinShun” to the Start menu and puts `ws` on the PATH. To update, click “Update with Scoop” in WinShun's update reminder (it opens a window that runs `scoop update`, then starts WinShun again) or run `scoop update winshun` yourself. `scoop uninstall winshun` first takes back what WinShun registered (autostart, Explorer menus ...) and keeps your settings and index; add `-p` to delete the data too. Scoop does not install the index service; to index whole disks turn it on in **Settings › Search scope › Disks › Index method**.
 
 Standard and portable packages install enhanced text recognition on demand. Open **Settings › Clipboard › Recording › Enhanced text recognition** to download about 12 MB, or install a local component archive. Clipboard and screenshots share it and work offline after installation, with no restart. Existing recognition files remain usable. For a PC without internet, choose `WinShun-<version>-x64-offline-setup.exe`, or copy the Release’s `WinShun-ocr-*.zip` and install it locally. Screenshot recognition keeps the original image and continues once the component is installed. App updates, the plugin library and enhanced recognition prefer two download mirrors for public GitHub files, then the original source; failed connections and rejected files automatically try the next source.
 

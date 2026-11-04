@@ -59,6 +59,10 @@ public:
     // not installed or its configuration cannot be read (QueryServiceConfig is
     // open to any user).
     static std::wstring imagePath();
+    // The WinShun.exe of the copy that installed the service (its
+    // --installed-from, set when that copy had to place the service in the
+    // protected folder); empty when there is none or no service.
+    static std::wstring installedFrom();
     // True when the service is installed and its registered executable sits
     // where a non-administrator could replace it (an older portable copy that
     // registered the service from a user-writable folder): a local

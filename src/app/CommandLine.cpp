@@ -1,5 +1,6 @@
 #include "CommandLine.h"
 
+#include "ScoopInstall.h"
 #include "Win32Util.h"
 
 #include <QCoreApplication>
@@ -63,7 +64,7 @@ void dropNote(const Locations& where)
 
 QString binFolder()
 {
-    return QDir::toNativeSeparators(QCoreApplication::applicationDirPath()) + u"\\bin"_s;
+    return scoop::stablePath(QCoreApplication::applicationDirPath()) + u"\\bin"_s; // a Scoop copy: through "current"
 }
 
 QString wsExe(const QString& bin)
@@ -289,6 +290,16 @@ Status analyse(const QString& bin, const Sources& sources, const std::function<b
                 status.shadow = candidate;
                 break;
             }
+        }
+    }
+    // Scoop shims ws.exe into its own folder on the PATH: that is this copy's
+    // ws working, not another program in the way.
+    if (!status.shadow.isEmpty()) {
+        const QString shims = scoop::shimsFolder(bin);
+        if (!shims.isEmpty() && sameFolder(QFileInfo(status.shadow).absolutePath(), shims)) {
+            status.shadow.clear();
+            if (status.where == Status::Where::None)
+                status.where = Status::Where::User;
         }
     }
     return status;

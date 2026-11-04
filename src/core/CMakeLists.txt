@@ -50,6 +50,7 @@ qt_add_library(wscore STATIC
     ResultColumns.h
     SearchEngine.cpp SearchEngine.h
     SearchTypes.h
+    ScoopInstall.cpp ScoopInstall.h
     ServiceLocation.cpp ServiceLocation.h
     ServiceVolumeAccess.cpp ServiceVolumeAccess.h
     SettingsMatch.cpp SettingsMatch.h

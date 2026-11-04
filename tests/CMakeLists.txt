@@ -1158,6 +1158,17 @@ add_test(NAME tst_updater COMMAND tst_updater)
 set_tests_properties(tst_updater PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+# A Scoop install (core/ScoopInstall): detection, the stable "current" path
+# (real directory junctions), and bucket/winshun.json.
+qt_add_executable(tst_scoopinstall tst_scoopinstall.cpp)
+target_include_directories(tst_scoopinstall PRIVATE ${PROJECT_SOURCE_DIR}/src/core)
+target_link_libraries(tst_scoopinstall PRIVATE wscore Qt6::Test)
+target_compile_definitions(tst_scoopinstall PRIVATE WINSHUN_BUCKET_MANIFEST="${PROJECT_SOURCE_DIR}/bucket/winshun.json")
+set_target_properties(tst_scoopinstall PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_scoopinstall COMMAND tst_scoopinstall)
+set_tests_properties(tst_scoopinstall PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 # Clipboard pinning: real native formats on a private window station, WIC
 # file decoding, asynchronous provenance and physical multi-monitor placement.
 qt_add_executable(tst_pinclipboard tst_pinclipboard.cpp

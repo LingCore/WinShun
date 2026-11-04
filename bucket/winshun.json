@@ -1,0 +1,44 @@
+{
+    "version": "0.18.0",
+    "description": "Win顺 (WinShun): instant file, folder and content search | 文件、文件夹与内容搜索",
+    "homepage": "https://github.com/LingCore/WinShun",
+    "license": "MIT",
+    "notes": [
+        "The index service is not installed by Scoop: without it Win顺 indexes the folders you pick.",
+        "For whole-disk search, turn it on in Settings > Search scope > Disks > Index method (Windows asks for administrator rights).",
+        "索引服务不随 Scoop 安装；要索引整个磁盘，到 设置 > 搜索范围 > 磁盘 > 索引方式 里开启。"
+    ],
+    "url": "https://github.com/LingCore/WinShun/releases/download/v0.18.0/WinShun-0.18.0-x64-portable.zip",
+    "hash": "0d78597abc35a2da0a28003b2493421220200cb300e62f3f5474b179d47a5768",
+    "extract_dir": "WinShun",
+    "bin": "bin\\ws.exe",
+    "shortcuts": [
+        [
+            "WinShun.exe",
+            "WinShun"
+        ]
+    ],
+    "persist": "data",
+    "pre_uninstall": [
+        "# Scoop also runs this on `scoop update`; only an uninstall takes the registrations back.",
+        "if ($cmd -eq 'uninstall') {",
+        "    $exe = \"$dir\\WinShun.exe\"",
+        "    if ([version](Get-Item $exe).VersionInfo.FileVersion -gt [version]'0.18.0.0') {",
+        "        $report = Join-Path $env:TEMP 'winshun-cleanup.txt'",
+        "        Start-Process $exe -ArgumentList '--uninstall-cleanup' -Wait -WindowStyle Hidden -RedirectStandardOutput $report",
+        "        if (Test-Path $report) {",
+        "            Get-Content $report -Encoding UTF8 | ForEach-Object { Write-Host $_ }",
+        "            Remove-Item $report -Force",
+        "        }",
+        "    }",
+        "}"
+    ],
+    "checkver": "github",
+    "autoupdate": {
+        "url": "https://github.com/LingCore/WinShun/releases/download/v$version/WinShun-$version-x64-portable.zip",
+        "hash": {
+            "url": "$baseurl/SHA256SUMS.txt",
+            "regex": "$sha256\\s+$basename"
+        }
+    }
+}

@@ -7,6 +7,7 @@
 #include "FileManagers.h"
 #include "Favorites.h"
 #include "Integrity.h"
+#include "ScoopInstall.h"
 #include "SystemCatalog.h"
 #include "Win32Util.h"
 
@@ -1084,11 +1085,14 @@ struct ComScope {
     }
 };
 
-std::wstring exePath() // also before QCoreApplication exists (migrateFromQuickFind)
+// What is registered to start this copy; also before QCoreApplication exists
+// (migrateFromQuickFind). A Scoop install is registered through its "current"
+// junction, which survives `scoop update` and `scoop cleanup`.
+std::wstring exePath()
 {
     wchar_t path[MAX_PATH * 2] {};
     ::GetModuleFileNameW(nullptr, path, static_cast<DWORD>(std::size(path)));
-    return path;
+    return scoop::stablePath(QString::fromWCharArray(path)).toStdWString();
 }
 
 std::wstring currentUser() // DOMAIN\user
@@ -1185,7 +1189,9 @@ std::optional<std::wstring> startupPath()
 
 bool startsThisCopy(const std::optional<std::wstring>& path)
 {
-    return path && ::_wcsicmp(path->c_str(), exePath().c_str()) == 0; // a copy elsewhere (another build) does not count
+    // A copy elsewhere (another build) does not count; a Scoop install's
+    // version folder and its "current" are one copy.
+    return path && scoop::sameCopy(QString::fromStdWString(*path), QString::fromStdWString(exePath()));
 }
 
 // What writeTask() puts for the run level (setElevated); the user's normal
@@ -1359,6 +1365,32 @@ void setEnabled(bool enabled)
         writeRunValue(true);
     }
     queryEnabled(); // what the task says now, written or not
+}
+
+bool removeIfThisCopy()
+{
+    ++g_changes;
+    bool removed = false;
+    if (startsThisCopy(taskPath())) {
+        removed = writeTask(false);
+        if (removed)
+            writeRunValue(false);
+    }
+    if (startsThisCopy(runValuePath())) {
+        writeRunValue(false);
+        removed = true;
+    }
+    queryEnabled();
+    return removed;
+}
+
+bool otherCopyStarts()
+{
+    for (const std::optional<std::wstring>& path : {taskPath(), runValuePath()}) {
+        if (path && !startsThisCopy(path) && ::GetFileAttributesW(path->c_str()) != INVALID_FILE_ATTRIBUTES)
+            return true;
+    }
+    return false;
 }
 
 void removeAsAdministrator(std::function<void(bool)> done)

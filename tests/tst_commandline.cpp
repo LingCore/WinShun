@@ -149,6 +149,23 @@ private slots:
         QCOMPARE(s.where, cli::Status::Where::User);
     }
 
+    void scoopShimIsNotInTheWay()
+    {
+        // Scoop shims ws.exe into <root>\shims, which it puts on the user's PATH: that is ws working.
+        const QString bin = u"C:\\wstest\\scoop\\apps\\winshun\\current\\bin"_s;
+        const QString shim = u"C:\\wstest\\scoop\\shims\\ws.exe"_s;
+        const cli::Status s = cli::analyse(bin, sources({}, u"C:\\wstest\\scoop\\shims"_s), disk({bin + u"\\ws.exe"_s, shim}));
+        QVERIFY(s.shadow.isEmpty());
+        QVERIFY(s.onPath());
+        QVERIFY(!s.removable); // not WinShun's own PATH entry
+        // Another ws in front is still reported.
+        const cli::Status other = cli::analyse(bin, sources({}, u"C:\\wstest\\u1"_s), disk({bin + u"\\ws.exe"_s, u"C:\\wstest\\u1\\ws.exe"_s}));
+        QVERIFY(!other.shadow.isEmpty());
+        // A path that is not in a Scoop install: the shim rule does not apply.
+        const cli::Status plain = cli::analyse(kBin, sources({}, u"C:\\wstest\\scoop\\shims"_s), disk({kBin + u"\\ws.exe"_s, shim}));
+        QVERIFY(!plain.shadow.isEmpty());
+    }
+
     void analysing()
     {
         const QString exe = kBin + u"\\ws.exe"_s;

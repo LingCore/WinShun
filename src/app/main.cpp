@@ -11,6 +11,7 @@
 #include "Preview.h"
 #include "RepeatFilter.h"
 #include "Settings.h"
+#include "UninstallCleanup.h"
 #include "WindowFrame.h"
 #include "SettingsCommand.h"
 #include "SystemCatalog.h"
@@ -367,6 +368,9 @@ int main(int argc, char* argv[])
     const QCommandLineOption settings(u"settings"_s, u"Open the settings window."_s);
     const QCommandLineOption takeAutostart(u"take-autostart"_s,
         u"If WinShun starts at login, start this copy instead, then exit (run by the installer)."_s);
+    const QCommandLineOption uninstallCleanup(u"uninstall-cleanup"_s,
+        u"Remove what this copy registered with Windows (autostart, Explorer menus, PATH, Opus, Win+V/S, index service), "
+        u"then exit; run by Scoop before it deletes the files. Settings and data stay."_s);
     // With --take-autostart: the installer removed this copy's task (it may
     // have been another user's: the administrator who answered UAC for a
     // standard user's install), so one is written whether or not one is left.
@@ -380,8 +384,13 @@ int main(int argc, char* argv[])
     // For tests: the running copy writes what its launcher shows into this file (App::dumpLauncher).
     QCommandLineOption dump(u"dump"_s, u"Write the launcher's rows and state to this file."_s, u"file"_s);
     dump.setFlags(QCommandLineOption::HiddenFromHelp);
-    parser.addOptions({background, toggle, query, quit, settings, settingsAt, takeAutostart, hadAutostart, profile, dump});
+    parser.addOptions({background, toggle, query, quit, settings, settingsAt, takeAutostart, hadAutostart, uninstallCleanup, profile, dump});
     parser.process(app);
+
+    // Before the instance check: it ends this copy itself and must not hand
+    // anything to another copy that runs (the mutex is the same for all).
+    if (parser.isSet(uninstallCleanup))
+        return ws::uninstall::cleanup();
 
     // The installer, once it has installed this copy: an autostart set up by
     // a portable copy (or the version before) now starts it. Through the

@@ -1,5 +1,6 @@
 #include "ShellMenu.h"
 
+#include "ScoopInstall.h"
 #include "AutostartRun.h" // runCommandProgram, runCommandStarts: the program a command line starts
 #include "ExplorerLanguage.h"
 
@@ -60,9 +61,10 @@ bool deleteValue(const std::wstring& key, const wchar_t* name)
     return ::RegDeleteKeyValueW(HKEY_CURRENT_USER, key.c_str(), name) == ERROR_SUCCESS;
 }
 
-// The WinShunSearch.exe beside this program, and the folder it is in.
+// The WinShunSearch.exe beside this program, and the folder it is in (a
+// Scoop install's "current", not the version folder `scoop cleanup` deletes).
 struct Stub {
-    std::wstring folder = QDir::toNativeSeparators(QCoreApplication::applicationDirPath()).toStdWString();
+    std::wstring folder = scoop::stablePath(QCoreApplication::applicationDirPath()).toStdWString();
     std::wstring path = folder + L"\\WinShunSearch.exe";
 };
 
@@ -84,7 +86,7 @@ void setVerbs(std::span<const wchar_t* const> keys, bool on, std::wstring_view t
             const std::wstring current = readString(HKEY_CURRENT_USER, commandKey, nullptr);
             const std::wstring program = autostart::runCommandProgram(current);
             if (!program.empty()
-                && (autostart::runCommandStarts(current, stub.path)
+                && (scoop::sameCopy(QString::fromStdWString(program), QString::fromStdWString(stub.path))
                     || ::GetFileAttributesW(program.c_str()) == INVALID_FILE_ATTRIBUTES))
                 changed |= ::RegDeleteTreeW(HKEY_CURRENT_USER, key) == ERROR_SUCCESS;
             continue;

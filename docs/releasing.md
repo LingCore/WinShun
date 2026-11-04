@@ -58,4 +58,6 @@ curl.exe -s 'https://lcstp.com/updates/winshun/stable.json?platform=windows&arch
 curl.exe -s 'https://lcstp.com/updates/winshun/stable.json?platform=windows&arch=x64&osVersion=10.0.22631&package=portable'
 ```
 
+Scoop：`scripts/release.ps1 -Publish` 在 Release 创建成功之后，把 `bucket/winshun.json` 的 `version`、`url`、`hash` 改成这次的便携包（只改这三处，保持 4 空格缩进和无 BOM 的 UTF-8），只提交这一个文件（`git commit --only`，工作区里可能有别人的修改）为 “Scoop: winshun <版本>” 并推送。用户用 `scoop bucket add winshun https://github.com/LingCore/WinShun` 加入的就是主仓库，所以推送要在 Release 之后，清单不能比 zip 先到。`checkver` / `autoupdate` 写好了（`$sha256\s+$basename` 只匹配便携包那一行），发布后可以用 Scoop 自带的 `bin\checkver.ps1 -App winshun -Dir bucket -Update`（先复制一份目录）核对：它会用公开的 SHA256SUMS.txt 算出同样的值。`tests/tst_scoopinstall.cpp` 检查清单是合法 JSON、正则能在样例校验文件里只匹配便携包。
+
 已发布成功的单次任务不得重复执行；若由一次性自动化触发，成功后关闭它。论坛文案可另行提供，但发布到论坛或向他人发消息需要用户明确要求。

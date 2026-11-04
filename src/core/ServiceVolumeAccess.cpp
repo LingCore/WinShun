@@ -635,7 +635,11 @@ ServiceState ServiceVolumeAccess::state()
     return classify(0, startType, haveStatus ? status.dwCurrentState : 0);
 }
 
-std::wstring ServiceVolumeAccess::imagePath()
+namespace {
+
+// The service's whole command line as registered; empty when it is not
+// installed or cannot be read.
+std::wstring registeredCommandLine()
 {
     const SC_HANDLE manager = ::OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CONNECT);
     if (!manager)
@@ -651,17 +655,39 @@ std::wstring ServiceVolumeAccess::imagePath()
     if (needed > 0 && ::GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
         std::vector<std::byte> buffer(needed);
         auto* config = reinterpret_cast<QUERY_SERVICE_CONFIGW*>(buffer.data());
-        if (::QueryServiceConfigW(service, config, needed, &needed) && config->lpBinaryPathName) {
+        if (::QueryServiceConfigW(service, config, needed, &needed) && config->lpBinaryPathName)
             path = config->lpBinaryPathName;
-            if (path.size() >= 2 && path.front() == L'"') { // "C:\...\WinShunService.exe"
-                const std::size_t close = path.find(L'"', 1);
-                path = close != std::wstring::npos ? path.substr(1, close - 1) : path.substr(1);
-            }
-        }
     }
     ::CloseServiceHandle(service);
     ::CloseServiceHandle(manager);
     return path;
+}
+
+} // namespace
+
+std::wstring ServiceVolumeAccess::imagePath()
+{
+    std::wstring path = registeredCommandLine();
+    if (path.size() >= 2 && path.front() == L'"') { // "C:\...\WinShunService.exe"
+        const std::size_t close = path.find(L'"', 1);
+        path = close != std::wstring::npos ? path.substr(1, close - 1) : path.substr(1);
+    }
+    return path;
+}
+
+std::wstring ServiceVolumeAccess::installedFrom()
+{
+    const std::wstring line = registeredCommandLine();
+    const std::wstring flag = L" --installed-from ";
+    const std::size_t at = line.find(flag);
+    if (at == std::wstring::npos)
+        return {};
+    std::wstring rest = line.substr(at + flag.size());
+    if (!rest.empty() && rest.front() == L'"') {
+        const std::size_t close = rest.find(L'"', 1);
+        return close != std::wstring::npos ? rest.substr(1, close - 1) : rest.substr(1);
+    }
+    return rest.substr(0, rest.find(L' '));
 }
 
 bool ServiceVolumeAccess::registeredInUnsafeLocation()

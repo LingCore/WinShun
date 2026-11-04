@@ -13,11 +13,16 @@ namespace ws::update {
 
 // How this copy was installed, which decides how an update is put in place
 // (Updater): Setup again in the same mode (the Inno Setup uninstall key's
-// hive, for this very folder), or the portable zip unpacked over it. None:
-// neither (a build run from its folder, a copy installed elsewhere), which
-// is sent to the download page instead.
-enum class Kind { None, AllUsers, CurrentUser, Portable };
+// hive, for this very folder), or the portable zip unpacked over it. Scoop:
+// installed by Scoop (core/ScoopInstall.h), which owns the files and the
+// versions: updated by `scoop update`, never by swapping files in place.
+// None: none of these (a build run from its folder, a copy installed
+// elsewhere), which is sent to the download page instead.
+enum class Kind { None, AllUsers, CurrentUser, Portable, Scoop };
 Kind installKind(const QString& appDir, bool portable);
+
+// A copy made by Setup (for all users or this one) is installed.
+bool setupInstalled();
 
 // Something can be created in `folder` (a portable copy in Program Files,
 // on a read-only share: not). Tried with a file that is gone at once.

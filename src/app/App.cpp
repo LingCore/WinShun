@@ -8,6 +8,7 @@
 #include "Backup.h"
 #include "Grabber.h" // take_screenshot (MCP)
 #include "CliSetup.h"
+#include "ScoopInstall.h"
 #include "ClipImportJob.h"
 #include "ClipStore.h"
 #include "Clipboard.h"
@@ -6069,7 +6070,8 @@ void App::installIndexService(bool install)
 {
     if (m_serviceBusy)
         return;
-    const QString exe = QDir::toNativeSeparators(QCoreApplication::applicationDirPath() + u"/WinShunService.exe"_s);
+    // A Scoop copy is registered through its "current" (the service records where it was installed from).
+    const QString exe = scoop::stablePath(QCoreApplication::applicationDirPath() + u"/WinShunService.exe"_s);
     if (!QFile::exists(exe)) {
         m_serviceMessage = tr("Win顺 旁边没有 WinShunService.exe");
         refreshIndexAccess();

@@ -309,7 +309,7 @@ qt_add_qml_module(WinShun
         SystemTheme.cpp SystemTheme.h
         PhosphorGlyph.cpp PhosphorGlyph.h
         UiSize.h
-        Updater.cpp Updater.h UpdatePackage.cpp UpdatePackage.h
+        Updater.cpp Updater.h UpdatePackage.cpp UpdatePackage.h UninstallCleanup.cpp UninstallCleanup.h
         Backup.cpp Backup.h BackupFiles.cpp BackupFiles.h
         WindowFrame.cpp WindowFrame.h
 )
