@@ -20,10 +20,15 @@ Item {
 
     // The host's switch was taken for another (a recycled row) or shown
     // again: no animation is left half way.
+    // (complete() on a Behavior's animation does not end it: the Behaviors
+    // are switched off while each property is set to where it is going.)
+    property bool still: false
     function settle() {
-        for (const a of [tint, slide, knobTint])
-            if (a.running)
-                a.complete()
+        still = true
+        track.color = Qt.binding(() => track.goal)
+        knob.x = Qt.binding(() => knob.goalX)
+        knob.color = Qt.binding(() => knob.goal)
+        still = false
     }
 
     Rectangle {
@@ -31,13 +36,14 @@ Item {
         anchors.fill: parent
         radius: part.kind === "check" ? (part.look ? part.look.controlRadius : 0) : (part.look ? part.look.pill(height) : 0)
         // Fading to or from "transparent" would pass through black: from the fill's own colour instead.
-        color: !part.look ? "transparent" : part.lit ? part.look.accentFill
+        readonly property color goal: !part.look ? "transparent" : part.lit ? part.look.accentFill
                : part.hovered ? part.look.controlHover
                : Qt.rgba(part.look.controlHover.r, part.look.controlHover.g, part.look.controlHover.b, 0)
+        color: goal
         border.width: part.lit ? 0 : part.edge
         border.color: part.look ? part.look.subtext : "transparent"
 
-        Behavior on color { ColorAnimation { id: tint; duration: 120 } }
+        Behavior on color { enabled: !part.still; ColorAnimation { duration: 120 } }
     }
 
     Rectangle {
@@ -45,14 +51,16 @@ Item {
         readonly property real size: part.pressed || part.hovered ? 14 : 12
         visible: part.kind !== "check" && part.active
         anchors.verticalCenter: parent.verticalCenter
-        x: part.mixed ? (parent.width - width) / 2 : part.checked ? parent.width - width - 4 : 4
+        readonly property real goalX: part.mixed ? (parent.width - width) / 2 : part.checked ? parent.width - width - 4 : 4
+        readonly property color goal: !part.look ? "transparent" : part.lit ? part.look.accentText : part.look.subtext
+        x: goalX
         width: part.pressed ? 17 : size
         height: size
         radius: size / 2
-        color: !part.look ? "transparent" : part.lit ? part.look.accentText : part.look.subtext
+        color: goal
 
-        Behavior on x { NumberAnimation { id: slide; duration: 120; easing.type: Easing.OutCubic } }
-        Behavior on color { ColorAnimation { id: knobTint; duration: 120 } }
+        Behavior on x { enabled: !part.still; NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+        Behavior on color { enabled: !part.still; ColorAnimation { duration: 120 } }
     }
 
     Text { // a check box's mark
