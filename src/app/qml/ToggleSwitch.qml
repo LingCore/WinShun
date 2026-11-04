@@ -116,7 +116,7 @@ Item {
                 visible: toggle.activeFocus
                 anchors.fill: parent
                 anchors.margins: -3
-                radius: 13
+                radius: track.radius > 0 ? track.radius + 3 : 0 // concentric with the track
                 color: "transparent"
                 border.width: 2
                 border.color: Theme.text
