@@ -3435,6 +3435,14 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
             context[u"display"_s] = diagnostics::display(m_renderer, SystemTheme::backdropAvailable()); // fonts: this thread's
             if (m_clipWatcher)
                 context[u"clipboard"_s] = m_clipWatcher->diagnosticStatus();
+            // Installed plugins: id, version, switched on (nothing else: no settings, no paths).
+            if (m_pluginHost) {
+                QJsonArray plugins;
+                for (const plugin::Entry& e : m_pluginHost->catalog().entries())
+                    plugins.append(QJsonObject {{u"id"_s, e.id}, {u"version"_s, e.manifest ? e.manifest->version : QString()},
+                        {u"enabled"_s, m_pluginHost->catalog().enabled(e.id)}, {u"usable"_s, e.usable()}});
+                context[u"plugins"_s] = plugins;
+            }
             const QString dataFolder = Settings::dataDir();
             const QString serviceFolder = QDir(QString::fromStdWString(win32::expandEnvironment(L"%ProgramData%")))
                                               .filePath(u"WinShun"_s);
