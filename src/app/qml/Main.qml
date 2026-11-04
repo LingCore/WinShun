@@ -1191,6 +1191,12 @@ Window {
                                           + (window.fullHeight ? -typeStrip.height : window.headingHeight + window.detailSpace) : 0
             visible: window.listRows > 0 && !window.clipboardBelow
 
+            Hook { // the style's tray under the rows (Theme.tray; none in fluent and brand)
+                anchors.fill: parent
+                part: Theme.tray
+                dpr: window.dpr
+            }
+
             Text { // nothing is named as typed: these rows sound like it (window.headingHeight)
                 id: readingHeading
                 x: 20
