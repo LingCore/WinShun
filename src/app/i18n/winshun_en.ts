@@ -4579,6 +4579,10 @@ Right: center window · Drag: move window</translation>
         <translation>Needs the “GPU” drawing method under Advanced</translation>
     </message>
     <message>
+        <source>当前界面风格的窗口不透明；“精修原生”风格才有透明效果</source>
+        <translation>Windows are opaque in this interface style; only the “精修原生” (Refined native) style has transparency</translation>
+    </message>
+    <message>
         <source>窗口背景透出桌面壁纸的颜色（云母效果）</source>
         <translation>Window backgrounds take on the colours of your wallpaper (Mica)</translation>
     </message>
