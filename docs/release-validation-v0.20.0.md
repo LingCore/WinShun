@@ -1,6 +1,6 @@
 # Win顺 0.20.0 发布验证
 
-2026-11-04，在 Windows 11 x64、Qt 6.12.0、MSVC 2022 Release 环境验证。发布程序与插件包来自干净的提交副本（`git archive`）：`<待填：发布源码提交 SHA>`，路径 `<待填>`。之后的提交只有本记录。
+2026-11-04，在 Windows 11 x64、Qt 6.12.0、MSVC 2022 Release 环境验证。发布程序与插件包来自干净的提交副本（`git archive`）：`f196b011218bb7be4df9a089abffbc45607443c8`，路径 `F:\wsrel020\src`（构建 `F:\wsrel020uild`，输出 `F:\wsrel020\out`）。之后的提交只有本记录。
 
 ## 内容
 
@@ -14,7 +14,7 @@
 
 - 集成分支重新配置后增量构建通过。配置后检查 `CMakeFiles/rules.ninja` 的 `msvc_deps_prefix` 为“注意: 包含文件:”，不是问号。构建在 PowerShell 工具里运行。
 - 按项目规定只跑本次涉及的 12 项测试，全部通过：`tst_plugin`、`tst_capture`、`tst_editor`、`tst_searchlogo`、`tst_settings`、`tst_settingsscreen`、`tst_aisettings`、`tst_core`、`tst_keyrouter`、`tst_clipselect`、`tst_clipboardsizing`、`tst_scoopinstall`。
-- 部署程序的 FileVersion / ProductVersion 为 `0.20.0`。`WinShun.exe` 的 SHA256：`<待填：发布构建后>`。
+- 部署程序的 FileVersion / ProductVersion 为 `0.20.0`。`WinShun.exe` 的 SHA256：`E63D41914B6C77FD0F8CB46E55E9114EAD24AC12B0D5F810B1E9D7E7E5F10F3D`。发布构建（`scripts/release.ps1`，不带 `-Publish`）另外按项目规定只跑了 `tst_plugin`、`tst_capture`、`tst_settings`、`tst_aisettings`、`tst_scoopinstall` 五项，全部通过；配置后 `msvc_deps_prefix` 同样是“注意: 包含文件:”。
 
 ## 实机验证
 
@@ -41,12 +41,20 @@
 
 | 包 | SHA256 |
 | --- | --- |
-| winshun.capture-1.1.1.wsplugin | `<待填：发布构建后>` |
-| winshun.ocr-search-1.0.4.wsplugin | `<待填：发布构建后>` |
+| winshun.capture-1.1.1.wsplugin | `8d42c22913f77450f9f331f4025de33e9c418c6a013705e1233f5b18ff5a74fe` |
+| winshun.ocr-search-1.0.4.wsplugin | `8c15f62cf54f38b9714a879f73ce7e502cc80f419bddb91f7b37beb3e9f7d31f` |
 
 ## 包及截图
 
-标准安装包、便携 ZIP、完整离线安装包和增强 OCR ZIP 的 SHA256 见同版 `SHA256SUMS.txt`（`<待填>`）。
+标准安装包、便携 ZIP、完整离线安装包和增强 OCR ZIP 的 SHA256 见同版 `SHA256SUMS.txt`，内容如下：
+
+```
+dc049b3ebef54505a571b5837a401194315fb7792c597bd74c85352b54a211a7  WinShun-0.20.0-x64-setup.exe
+53e05e9e0bb1bb888a8b04ff9138c9ae922a1ee0a6a7e8c163e4ed991fcdb985  WinShun-0.20.0-x64-portable.zip
+2f11e96aa76440e4d25f0ba582d48d9af0177aaa04a54cf8b3dcd2dfaec39963  WinShun-0.20.0-x64-offline-setup.exe
+ccb82d77a545f183504edc51e6353370742d0423b71fa1cf7800db919494277e  WinShun-ocr-ppocr-v6-ort1.30.0-x64.zip
+```
+
 
 本版没有补拍海报：已有海报显示的界面在默认状态下没有变化。`capture.jpg` 的保存按钮没选目录时仍是原样，下拉里的“另存为…”是菜单项；`foldermenu.jpg` 显示的是“收藏夹”页，`settings.jpg` 显示的是快捷键搜索结果里的“用快捷键弹出文件夹菜单”行，都不在改动之内。
 
@@ -54,4 +62,4 @@
 
 - **#195**：原问题在 0.19.0 上未能复现，只验证新版行为。
 - **#194**：点击“已保存”通知选中文件没有实测。
-- **安装包与插件包**：`<待填：发布构建后的归档检查结果>`。
+- **安装包与插件包**：便携 ZIP 只含发布文件和 `data/README.txt`（没有索引、设置、剪贴板数据）；两个插件包用 `check.py` 的插件文件夹检查，只剩“本仓库不收 exe / dll”这类原生包本来就不适用的提示，没有别的错误。`plugin.json` 里 `winshun.capture` 为 1.1.1、最低宿主 0.18.0，`winshun.ocr-search` 为 1.0.4、最低宿主 0.20.0；入口、许可证（MIT）、README 齐全，权限与已发布的 1.1.0 / 1.0.3 相同，更新不需要重新确认。
