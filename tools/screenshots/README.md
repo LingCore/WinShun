@@ -135,3 +135,12 @@ tools\screenshots\run.ps1 -Exe <要拍的 WinShun.exe，发布版，带拖放圆
 ## 0.18.0 补拍
 
 `release018.py` 沿用 `release017.py` 的隔离预览与方形品牌模板，更新搜索面板、剪贴板、设置、截图及录屏，并接入真实网页插件和图片文字搜索窗口。先运行 `--capture-only`。网页图由 `tools/verify_web_plugin.py` 生成到同一工作目录的 `web/`，插件库图取新版设置预览的 `settings/p09-t1.png`，收藏夹为 `p05-t0.png`，备份位于高级页 `p07-t0.png`。图片文字搜索用插件的 `--preview-ocr-search` 和独立 `--data-dir` 导出到 `ocr/`，先在该目录的 `ocr-search.ini` 写入样例文件夹配置，再传 `--index --query 西南`。快捷键使用 `--preview-results <work>/shortcuts --shortcut-panel`，来源文件为 `shortcut-panel-launcher.png`。检查原图后再运行 `--export-only`。源码与产物校验见本版发布验证记录。
+
+## 0.19.0 补拍
+
+`release019.py` 沿用 `release017.py` 的导出和方形品牌模板，只换下面三张，其余海报保留 0.18 的文件。`--capture-only` 用独立预览按 200% 渲染到新的 `--work`：截图插件 `--preview-capture-tools --toolbar-drag`（两行工具条，`toolbar/toolbar-with-style.png` → `capture.jpg`，标题改为两行排开）、`--preview-capture-settings --groups`（新增 `capture-keys.jpg`，取按键页经预览自身按键检查后的 `capture-keys-states.png`：改过的保存键带“恢复默认”、被拒的键有说明，裁到“收起/展开”一行），以及新增的 `--preview-presenter`（`presenter.jpg`：生产 `Presenter`、`PresenterOverlay`、`PresenterToolbar` 离屏，假的单显示器钩子，不碰前台和磁盘；白板上的笔迹经墨迹窗口自己的鼠标路由画出，工具条按 `PresenterHost` 的初始位置叠上去）。演示预览日志里的 8 条 `requestActivate() … WindowDoesNotAcceptFocus` 是文字框和序号框请求键盘焦点、离屏窗口不接受焦点所致，入口只接受这一种警告。激光笔轨迹（`--laser`）没有进海报。设置预览也一并渲染：插件库页的演示数据与 0.18 相同，`plugin-library.jpg` 不换；资源管理器标签页不在这份演示数据里，不另加。检查原图后再运行 `--export-only`。
+
+```powershell
+python tools/screenshots/release019.py --exe <独立部署目录>/WinShun.exe --capture <构建目录>/library-plugins/winshun.capture/WinShunCapture.exe --work <新的原图目录> --capture-only
+python tools/screenshots/release019.py --exe <独立部署目录>/WinShun.exe --work <原图目录> --export-only
+```
