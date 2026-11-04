@@ -83,16 +83,29 @@ void sendMask()
     ::SendInput(static_cast<UINT>(std::size(keys)), keys, sizeof(INPUT));
 }
 
-// The strokes of a Step, typed as Win顺's own: how many went in.
-std::size_t sendStrokes(const std::vector<searchtyping::Stroke>& strokes)
+// The strokes of a Step, typed as Win顺's own: how many went in. Not all:
+// where they were going and what was in front (GitHub #203: 0 of them, every
+// time, with Explorer in front on one Windows 10). The error is cleared
+// first: SendInput sets none for a UIPI drop, and an older one showed.
+std::size_t sendStrokes(const std::vector<searchtyping::Stroke>& strokes, bool intoLauncher)
 {
     std::vector<INPUT> inputs;
     inputs.reserve(strokes.size());
     for (const searchtyping::Stroke& stroke : strokes)
         inputs.push_back(inputOf(stroke));
+    ::SetLastError(0);
     const UINT inserted = ::SendInput(static_cast<UINT>(inputs.size()), inputs.data(), sizeof(INPUT));
-    if (inserted < inputs.size())
-        qWarning("TypeToSearch: %u of %zu keys typed again went in (error %lu)", inserted, inputs.size(), ::GetLastError());
+    if (inserted < inputs.size()) {
+        const DWORD error = ::GetLastError();
+        const HWND front = ::GetForegroundWindow();
+        wchar_t className[128] {};
+        if (front)
+            ::GetClassNameW(front, className, static_cast<int>(std::size(className)));
+        const QString program = front ? foreground::programOf(front) : QString();
+        qWarning("TypeToSearch: %u of %zu keys typed again went in (error %lu), %s, %ls (%s) in front", inserted,
+            inputs.size(), error, intoLauncher ? "into the launcher" : "not into the launcher", className,
+            qUtf8Printable(program));
+    }
     return inserted;
 }
 
@@ -213,7 +226,7 @@ TypeToSearch::TypeToSearch(Surfaces surfaces, Callbacks callbacks)
         const searchtyping::Hold::Step last = m_hold.stop();
         setHooked(false);
         if (!last.send.empty())
-            sendStrokes(last.send);
+            sendStrokes(last.send, false);
         m_rawInputAside.reset();
         if (foreground)
             ::UnhookWinEvent(foreground);
@@ -638,7 +651,7 @@ void TypeToSearch::apply(searchtyping::Hold::Step step)
         // Not all went in (blocked: the secure desktop, a window of higher
         // integrity in front): what went down among those is let go, and
         // Shift set right, tried once (searchtyping::Hold::sent).
-        if (const std::size_t inserted = sendStrokes(step.send); inserted < step.send.size())
+        if (const std::size_t inserted = sendStrokes(step.send, step.intoLauncher); inserted < step.send.size())
             apply(m_hold.sent(inserted));
     }
     if (step.ended)

@@ -4545,9 +4545,70 @@ win::Front App::toFront(QWindow* window)
         window == m_clipWindow ? win::ShellFlyout::Preserve : win::ShellFlyout::Dismiss);
     if (m_triggers && m_triggers->open())
         m_triggers->front(front, static_cast<double>(timer.nsecsElapsed()) / 1e6);
+    if (front == win::Front::Refused)
+        recordFrontRefused(window);
     if (window == m_window && front == win::Front::Refused)
         watchStrandedLauncher();
     return front;
+}
+
+// GitHub #203 (Windows 10, Explorer in front): the hotkey's grant, the empty
+// input and the keys typed again were all refused there, and the log said
+// only that. The rights of the program in front and Win顺's own (UIPI: a
+// higher one there drops what Win顺 sends, SendInput telling nothing), a
+// menu or move of its on (GUITHREADINFO's flags), its window hung, the
+// foreground lock and how long since the last input; whether Win顺 may set
+// the foreground now; and one more input that does nothing, sent now, with
+// SendInput's word on it (the error cleared first) and whether it gave that
+// right. No keys, titles, folders or file names.
+void App::recordFrontRefused(QWindow* window)
+{
+    if (!m_frontRefusals.take(true, ::GetTickCount64()))
+        return;
+    const HWND front = ::GetForegroundWindow();
+    DWORD pid = 0;
+    const DWORD thread = front ? ::GetWindowThreadProcessId(front, &pid) : 0;
+    wchar_t className[256] {};
+    if (front)
+        ::GetClassNameW(front, className, static_cast<int>(std::size(className)));
+    GUITHREADINFO info {sizeof info};
+    const bool infoRead = thread && ::GetGUIThreadInfo(thread, &info);
+    DWORD lockTimeout = 0;
+    const bool lockRead = ::SystemParametersInfoW(SPI_GETFOREGROUNDLOCKTIMEOUT, 0, &lockTimeout, 0);
+    LASTINPUTINFO last {sizeof last};
+    const bool lastRead = ::GetLastInputInfo(&last);
+    const DWORD now = ::GetTickCount();
+    const HWND hwnd = window ? reinterpret_cast<HWND>(window->winId()) : nullptr;
+    ::SetLastError(0);
+    const bool may = ::AllowSetForegroundWindow(::GetCurrentProcessId());
+    const DWORD mayError = may ? 0 : ::GetLastError();
+    INPUT nothing {};
+    nothing.type = INPUT_MOUSE;
+    nothing.mi.dwExtraInfo = kOwnInput;
+    ::SetLastError(0);
+    const UINT inserted = ::SendInput(1, &nothing, sizeof nothing);
+    const DWORD insertError = ::GetLastError();
+    const bool mayAfter = ::AllowSetForegroundWindow(::GetCurrentProcessId());
+    QJsonObject details {
+        {u"window"_s, window == m_window ? u"launcher"_s : window == m_clipWindow ? u"clipboard"_s : u"other"_s},
+        {u"front_class"_s, QString::fromWCharArray(className)},
+        {u"front_program"_s, front ? foreground::programOf(front) : QString()},
+        {u"front_rights"_s, pid ? diagnostics::rightsOf(pid) : QJsonObject()},
+        {u"own_rights"_s, diagnostics::rightsOf(0)},
+        {u"front_hung"_s, front && ::IsHungAppWindow(front)},
+        {u"front_flags"_s, infoRead ? u"0x%1"_s.arg(info.flags, 0, 16) : u"unknown"_s},
+        {u"active_here"_s, hwnd && ::GetActiveWindow() == hwnd}, // refused, but the active window of its thread
+        {u"lock_timeout_ms"_s, lockRead ? static_cast<qint64>(lockTimeout) : -1},
+        {u"idle_ms"_s, lastRead ? static_cast<qint64>(now - last.dwTime) : -1},
+        {u"may_set_front"_s, may},
+        {u"may_set_front_error"_s, static_cast<qint64>(mayError)},
+        {u"nothing_inserted"_s, static_cast<qint64>(inserted)},
+        {u"nothing_error"_s, static_cast<qint64>(insertError)},
+        {u"may_set_front_after"_s, mayAfter},
+    };
+    if (m_frontRefusals.skipped() > 0)
+        details.insert(u"skipped"_s, m_frontRefusals.skipped());
+    diagnostics::record(u"front-refused"_s, details);
 }
 
 void App::watchStrandedLauncher()

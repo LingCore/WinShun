@@ -17,6 +17,7 @@
 #include <thread>
 
 #include <miniz.h>
+#include <windows.h>
 
 using namespace Qt::StringLiterals;
 using namespace ws;
@@ -193,6 +194,20 @@ private slots:
         files = unpack(second.path);
         QCOMPARE(QJsonDocument::fromJson(files[u"summary.json"_s]).object().value(u"run"_s).toInt(), 2);
         QCOMPARE(QDir(log.folder()).entryList({u"*.zip"_s}, QDir::Files).size(), 1);
+    }
+    // GitHub #203: what this copy runs with, as UIPI weighs it, for the
+    // summary and the journal's "front-refused".
+    void rightsSayWhatACopyRunsWith()
+    {
+        const QJsonObject own = diagnostics::rightsOf(0);
+        static const QStringList levels {u"low"_s, u"medium"_s, u"medium-plus"_s, u"high"_s, u"system"_s};
+        QVERIFY2(levels.contains(own.value(u"integrity"_s).toString()), qPrintable(own.value(u"integrity"_s).toString()));
+        QVERIFY(own.value(u"elevated"_s).isBool());
+        QVERIFY(own.value(u"ui_access"_s).isBool());
+        QCOMPARE(diagnostics::rightsOf(::GetCurrentProcessId()), own);
+        QCOMPARE(diagnostics::environment().value(u"rights"_s).toObject(), own);
+        // A process that cannot be asked (gone): just that, nothing made up.
+        QCOMPARE(diagnostics::rightsOf(0xFFFFFFF0), (QJsonObject {{u"integrity"_s, u"unknown"_s}}));
     }
     void serviceLogRotationAndLockedFileStayBounded()
     {

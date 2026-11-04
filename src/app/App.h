@@ -262,6 +262,11 @@ private:
     void journalTapNote(const KeyListener::Note& note);
     // win::bringToFront for a window a press asked for: how, and how long, to the journal.
     win::Front toFront(QWindow* window);
+    // Refused: what Windows weighed, as the journal's "front-refused"
+    // (GitHub #203). Its own empty input, sent once more, says whether
+    // SendInput is what fails.
+    void recordFrontRefused(QWindow* window);
+    diagnostics::JournalBudget m_frontRefusals;
     const char* rawInputState() const; // the keyboard's Raw Input registration, for the journal
     // `launcherToo`: and the launcher, when the clipboard was under its
     // search box and the keyboard went elsewhere.
