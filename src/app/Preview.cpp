@@ -31,6 +31,8 @@
 #include "Updater.h"
 #include "WindowFrame.h"
 #include "DropPieHelper.h"
+#include "DropPie.h"
+#include "FolderMenu.h"
 #include "Query.h"
 #include "Host.h"
 #include "platform/Integrity.h"
@@ -84,6 +86,8 @@
 #include <QStyleHints>
 #include <QStorageInfo>
 #include <QTemporaryDir>
+#include <QtMath>
+#include <QSurfaceFormat>
 #include <QTimer>
 #include <QTime>
 #include <QTranslator>
@@ -4743,6 +4747,189 @@ bool checkSearchWorkload(QQmlEngine* qml, const QDir& output)
     return passed;
 }
 
+// --style-windows: the small windows of every 界面风格 (themes/README.md),
+// each as the app makes it, off the screen: a menu dropped from a button and
+// a field with its caret (style-controls), the screenshot question
+// (style-confirm), the first-run setup (style-onboarding), a row's name tip
+// (style-nametip), the folder menu (style-foldermenu) and the drop pie
+// (style-droppie), the pointer on an entry or sector in each.
+bool checkStyleWindows(QQmlEngine* engine, const QDir& output)
+{
+    bool passed = true;
+    const auto check = [&](bool condition, const QString& what) {
+        if (!condition)
+            say(u"style windows: %1 FAILED"_s.arg(what));
+        passed = passed && condition;
+    };
+    const auto shoot = [&](QQuickWindow* window, const QString& name) {
+        settle(window);
+        pump(300);
+        settle(window, 2);
+        check(saveGrab(window, output.filePath(name + u".png"_s)), name);
+    };
+    const auto evaluate = [](QObject* object, const QString& expression) {
+        QQmlExpression run(qmlContext(object), object, expression);
+        const QVariant value = run.evaluate();
+        if (run.hasError())
+            say(u"style windows: %1"_s.arg(run.error().toString()));
+        return value;
+    };
+    QTemporaryDir temporary;
+
+    { // DropMenu and InputBox's caret
+        QQmlComponent component(engine);
+        component.setData(R"(
+            import QtQuick
+            import WinShun
+            Window {
+                id: fixture
+                property alias box: box
+                width: 420; height: 260; color: Theme.page
+                WindowEdge { fill: Theme.page }
+                FlatButton { id: add; x: 220; y: 20; width: 180; text: "添加插件" }
+                DropMenu {
+                    id: menu
+                    anchor: add
+                    menuWidth: 180
+                    entries: [{ text: "从文件安装…", glyph: "\uE8E5" }, { text: "打开插件文件夹", glyph: "\uE838" },
+                              { text: "删除", glyph: "\uE74D", danger: true }]
+                }
+                InputBox { id: box; x: 20; y: 200; width: 240; text: "可以编辑的文字" }
+            }
+        )", QUrl(u"qrc:/qt/qml/WinShun/StyleControls.qml"_s));
+        std::unique_ptr<QObject> object(component.create());
+        auto* window = qobject_cast<QQuickWindow*>(object.get());
+        check(window, u"controls: "_s + component.errorString());
+        if (window) {
+            showOffScreen(window);
+            auto* box = window->property("box").value<QObject*>();
+            pump(100); // its content item sized: DropMenu.place() reads it
+            // Dropped once the window has its size (DropMenu.place()), the pointer on its second entry.
+            evaluate(window, u"menu.open = true; menu.hovered = 1"_s);
+            // The caret shown without making the window active (the user's focus stays where it is).
+            evaluate(box, u"takeFocus(); for (const c of children) if (c.cursorVisible !== undefined) { c.cursorPosition = 4; c.cursorVisible = true }"_s);
+            shoot(window, u"style-controls"_s);
+            window->hide();
+        }
+    }
+
+    { // ScreenshotConfirm
+        WindowFrame frame(false);
+        QQmlComponent component(engine, u"WinShun"_s, u"ScreenshotConfirm"_s);
+        std::unique_ptr<QObject> object(component.createWithInitialProperties({{u"frame"_s, QVariant::fromValue(&frame)},
+            {u"client"_s, u"Claude Code"_s}, {u"monitor"_s, u"显示器 1（2560 × 1600，主显示器）"_s}}));
+        auto* window = qobject_cast<QQuickWindow*>(object.get());
+        check(window, u"confirm: "_s + component.errorString());
+        if (window) {
+            frame.setWindow(window);
+            showOffScreen(window);
+            shoot(window, u"style-confirm"_s);
+            window->hide();
+        }
+    }
+
+    { // OnboardingWindow
+        Onboarding setup(Settings::defaults());
+        WindowFrame frame(false);
+        QQmlComponent component(engine, u"WinShun"_s, u"OnboardingWindow"_s);
+        std::unique_ptr<QObject> object(component.createWithInitialProperties(
+            {{u"setup"_s, QVariant::fromValue(&setup)}, {u"frame"_s, QVariant::fromValue(&frame)}}));
+        auto* window = qobject_cast<QQuickWindow*>(object.get());
+        check(window, u"onboarding: "_s + component.errorString());
+        if (window) {
+            frame.setWindow(window);
+            showOffScreen(window);
+            shoot(window, u"style-onboarding"_s);
+            window->hide();
+        }
+    }
+
+    { // NameTip
+        QObject host;
+        QQmlComponent component(engine, u"WinShun"_s, u"NameTip"_s);
+        std::unique_ptr<QObject> object(component.createWithInitialProperties({{u"host"_s, QVariant::fromValue(&host)},
+            {u"name"_s, u"2026 年度工程设计与交付文档（最终确认版本）.docx"_s},
+            {u"folder"_s, u"F:\\项目资料\\2026\\客户项目\\工程设计与交付文档"_s},
+            {u"size"_s, u"1.2 MB"_s}, {u"modified"_s, u"2026-10-15 14:32"_s}}));
+        auto* window = qobject_cast<QQuickWindow*>(object.get());
+        check(window, u"name tip: "_s + component.errorString());
+        if (window) {
+            showOffScreen(window);
+            pump(100);
+            window->resize(qCeil(evaluate(window, u"lines.width + 2 * padX"_s).toReal()),
+                qCeil(evaluate(window, u"lines.height + 2 * padY"_s).toReal()));
+            shoot(window, u"style-nametip"_s);
+            window->hide();
+        }
+    }
+
+    { // FolderMenuWindow
+        Favorites favorites(temporary.filePath(u"favorites.json"_s));
+        FolderMenu menu(nullptr, &favorites);
+        menu.setRecordHistory(false);
+        QQmlComponent component(engine, u"WinShun"_s, u"FolderMenuWindow"_s);
+        std::unique_ptr<QObject> object(component.createWithInitialProperties({{u"folderMenu"_s, QVariant::fromValue(&menu)}}));
+        auto* window = qobject_cast<QQuickWindow*>(object.get());
+        check(window, u"folder menu: "_s + component.errorString());
+        if (window) {
+            menu.setWindow(window);
+            const auto entry = [](const QString& text, const QString& glyph, const QString& detail = {}) {
+                return QVariantMap {{u"text"_s, text}, {u"detail"_s, detail}, {u"glyph"_s, glyph}, {u"action"_s, 0}};
+            };
+            const QVariantList folders {entry(u"项目资料"_s, u"\uE8B7"_s), entry(u"年度报告"_s, u"\uE8B7"_s)};
+            menu.previewEntries({
+                QVariantMap {{u"text"_s, u"收藏夹"_s}, {u"glyph"_s, u"\uE734"_s}, {u"children"_s, folders}, {u"detail"_s, u"2"_s}},
+                QVariantMap {{u"text"_s, u"最近的文件夹"_s}, {u"glyph"_s, u"\uE81C"_s}, {u"children"_s, QVariantList()},
+                    {u"detail"_s, u"0"_s}, {u"disabled"_s, true}},
+                QVariantMap {{u"separator"_s, true}},
+                entry(u"在“项目资料”里搜索"_s, u"\uE721"_s), entry(u"在此打开命令提示符"_s, u"\uE756"_s),
+                entry(u"收藏这个文件夹"_s, u"\uE734"_s),
+                QVariantMap {{u"separator"_s, true}},
+                entry(u"Win顺 设置…"_s, u"\uE713"_s)});
+            showOffScreen(window);
+            pump(100);
+            window->setProperty("highlighted", 3);
+            shoot(window, u"style-foldermenu"_s);
+            window->hide();
+        }
+    }
+
+    { // DropPieWindow
+        Favorites favorites(temporary.filePath(u"pie-favorites.json"_s));
+        for (const QString& name : {u"项目资料"_s, u"年度报告"_s, u"设计素材"_s, u"客户合同"_s, u"归档备份"_s}) {
+            const QString folder = temporary.filePath(name);
+            QDir().mkpath(folder);
+            favorites.add({Favorite::Kind::Folder, QDir::toNativeSeparators(folder), name});
+        }
+        piedrop::FileOperations operations;
+        DropPie pie(&favorites, nullptr, &operations, {});
+        QQmlComponent component(engine, u"WinShun"_s, u"DropPieWindow"_s);
+        std::unique_ptr<QObject> object(component.createWithInitialProperties({{u"dropPie"_s, QVariant::fromValue(&pie)}}));
+        auto* window = qobject_cast<QQuickWindow*>(object.get());
+        check(window, u"drop pie: "_s + component.errorString());
+        if (window) {
+            pie.setWindow(window);
+            QElapsedTimer waiting;
+            waiting.start();
+            while (pie.sectors().size() < 5 && waiting.elapsed() < 5000)
+                pump(20);
+            check(pie.sectors().size() >= 5, u"drop pie: its folders"_s);
+            QScreen* primary = QGuiApplication::primaryScreen();
+            const QPoint centre = primary->geometry().center();
+            const qreal scale = primary->devicePixelRatio();
+            pie.preview(POINT {LONG(std::lround(centre.x() * scale)), LONG(std::lround(centre.y() * scale))}, 1);
+            const QSize size = window->size();
+            showOffScreen(window);
+            window->resize(size);
+            pump(400); // its reveal
+            shoot(window, u"style-droppie"_s);
+            window->hide();
+        }
+    }
+    say(u"style windows: %1"_s.arg(passed ? u"passed"_s : u"FAILED"_s));
+    return passed;
+}
+
 int runResults(const QStringList& args)
 {
     QTranslator translator;
@@ -4903,6 +5090,8 @@ int runResults(const QStringList& args)
     if (args.contains(u"--search-logo"_s)) {
         return finish(window, checkSearchLogo(&engine, out) && saved);
     }
+    if (args.contains(u"--style-windows"_s))
+        return finish(window, checkStyleWindows(&engine, out) && saved);
     if (args.contains(u"--preview-hotkeys"_s) || args.contains(u"--search-navigation"_s)) {
         checkLauncherFilters(window, &engine, out, true, true);
         return finish(window, saved);
@@ -7448,7 +7637,8 @@ void prepare(const QStringList& args)
     qputenv("QT_SCALE_FACTOR", valueAfter(args, u"--scale", u"1"_s).toLatin1());
     const bool webForm = args.contains(u"--web-form"_s);
     // --renderer d3d11: the window as the desktop shows it (for counting edge pixels), not the software renderer's.
-    const bool nativeWeb = (webForm || args.contains(QString(kSettingsFlag)) || args.contains(kRuntimeFlag)) && valueAfter(args, u"--renderer") == u"d3d11";
+    const bool nativeWeb = (webForm || args.contains(QString(kSettingsFlag)) || args.contains(kAiCardsFlag) || args.contains(kRuntimeFlag))
+        && valueAfter(args, u"--renderer") == u"d3d11";
     if (nativeWeb)
         qputenv("QSG_RHI_BACKEND", "d3d11");
     if (resultsMode || nativeWeb)
@@ -7469,6 +7659,15 @@ int run(const QStringList& args)
     const bool runtimeMode = args.contains(kRuntimeFlag);
     // --style fluent|brand|tactile: every preview in that 界面风格.
     SystemTheme::setUiStyle(valueAfter(args, u"--style", u"fluent"_s));
+    // A 界面风格 that rounds its windows itself (brand, tactile) draws its
+    // own frame here as in the app, where the renderer can (D3D11): every
+    // window with an alpha channel from its creation (prepareWindowAlpha).
+    if (!runtimeMode && (resultsMode || ((settingsMode || cardsMode) && valueAfter(args, u"--renderer") == u"d3d11"))) {
+        QSurfaceFormat format = QSurfaceFormat::defaultFormat();
+        format.setAlphaBufferSize(8);
+        QSurfaceFormat::setDefaultFormat(format);
+        SystemTheme::setOwnFrameAvailable(true);
+    }
     // QML singletons may still watch components/ after the window and its
     // controller are gone. Clean up only after the preview's engine unwinds.
     const QString profile = Settings::profile();

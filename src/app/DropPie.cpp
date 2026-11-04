@@ -378,6 +378,36 @@ void DropPie::open(POINT pt)
 // the middle's size from the pointer, the pointer is to go to the middle
 // (m_warp). Returns the window's rectangle; the middle and the line are set
 // in it.
+void DropPie::preview(POINT pt, int hovered)
+{
+    QScreen* screen = screenAt(pt);
+    if (!screen || !m_window)
+        return;
+    updateSectors();
+    const QRect rect = place(screen, pt);
+    m_open = true;
+    m_entered = true;
+    m_confirming = false;
+    m_allowed = DROPEFFECT_MOVE | DROPEFFECT_COPY;
+    m_items.clear();
+    m_count = 1;
+    m_plain = false;
+    m_dpr = screen->devicePixelRatio();
+    m_blocks.assign(m_folders.size(), Block::None);
+    for (std::size_t i = 0; i < m_folders.size(); ++i)
+        m_blocks[i] = blockOf(m_folders[i]);
+    m_sameDrive.assign(m_folders.size(), false);
+    m_hit = {};
+    m_keys = {};
+    m_hovered = m_picked = hovered;
+    updateSectors();
+    updateTexts();
+    emit layoutChanged();
+    emit stateChanged();
+    m_window->setGeometry(rect);
+    setRevealed(true);
+}
+
 QRect DropPie::place(QScreen* screen, POINT pt)
 {
     const QPointF cursor = logicalOf(pt, screen);
