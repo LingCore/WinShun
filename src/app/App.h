@@ -631,6 +631,18 @@ private:
     // launcher Windows refused to bring to the front, see the constructor.
     static void CALLBACK foregroundChanged(HWINEVENTHOOK, DWORD, HWND, LONG, LONG, DWORD, DWORD);
     HWINEVENTHOOK m_launcherFrontHook = nullptr;
+    // A program run as administrator came to the front, Win顺 not: Windows
+    // gives a double tap there to no Raw Input of ours. Told once per
+    // program, in a notification (AdminTapHint), after it has stayed in
+    // front a moment (kAdminTapDwell), so that Alt+Tab past it says nothing.
+    void adminTapFront(HWND window);
+    void adminTapCheck();
+    QTimer m_adminTapDwell;
+    HWND m_adminTapWindow = nullptr; // what came to the front last
+    bool m_adminTapShownThisRun = false;
+    QStringList m_adminTapLogged; // "program verdict": each in the log and the journal once a run
+    QElapsedTimer m_keyListenerMade; // the service's listener answers within this of the key listener's start
+    bool m_hotkeyOverAdmin = false; // the hotkey is registered and has a modifier: it comes over administrator windows too
     // Refused the front (whether Qt became active or not): a press elsewhere
     // on the window already in front raises no event. Watch while that lasts
     // so an unactivated launcher can still be dismissed (#140).

@@ -186,6 +186,14 @@ add_test(NAME tst_notificationturns COMMAND tst_notificationturns)
 set_tests_properties(tst_notificationturns PROPERTIES
     ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
 
+qt_add_executable(tst_admintaphint tst_admintaphint.cpp)
+target_include_directories(tst_admintaphint PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+target_link_libraries(tst_admintaphint PRIVATE winshun_options Qt6::Test)
+set_target_properties(tst_admintaphint PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME tst_admintaphint COMMAND tst_admintaphint)
+set_tests_properties(tst_admintaphint PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 qt_add_executable(tst_wsl tst_wsl.cpp)
 target_link_libraries(tst_wsl PRIVATE wscore Qt6::Test)
 set_target_properties(tst_wsl PROPERTIES WIN32_EXECUTABLE FALSE)

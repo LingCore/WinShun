@@ -1,4 +1,5 @@
 #include "App.h"
+#include "AdminTapHint.h"
 #include "WebSearchProvider.h"
 #include "platform/OcrFiles.h"
 #include "platform/OcrPackage.h"
@@ -234,6 +235,12 @@ IndexService::Options indexOptions(const Settings& settings, bool folders)
 constexpr auto kServiceWait = 30s;
 constexpr auto kServiceRetry = 2s;
 constexpr auto kServiceRecheck = 5min;
+// A program run as administrator stays in front this long before it is told
+// of (AdminTapHint): Alt+Tab past Task Manager says nothing.
+constexpr auto kAdminTapDwell = 1500ms;
+// The service's UIAccess listener answers within this of the key listener's
+// start; until then a service that runs is waited for, not told of as missing.
+constexpr qint64 kAdminTapSettleMs = 30000;
 
 // Where the index reads NTFS volumes from (Settings::indexAccess, GitHub
 // #21): the volumes themselves when running as administrator (unless told
@@ -778,6 +785,9 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
             hideLauncher();
     });
     m_strandedWatch.setInterval(30ms); // a click is held longer than that
+    m_adminTapDwell.setSingleShot(true);
+    m_adminTapDwell.setInterval(kAdminTapDwell);
+    connect(&m_adminTapDwell, &QTimer::timeout, this, &App::adminTapCheck);
     connect(&m_strandedWatch, &QTimer::timeout, this, &App::checkStrandedLauncher);
     // The footer's switches (the order, the start list): remembered.
     const auto remember = [this](QString Settings::* field, QString value) {
@@ -1657,6 +1667,7 @@ void App::applyKeyListener(bool force)
             }
             callbacks.log = [](const std::string& line) { qWarning().noquote() << QString::fromStdString(line); };
             m_keyListener = std::make_unique<KeyListener>(std::move(callbacks));
+            m_keyListenerMade.start();
             if (m_settings.doubleCtrl && m_keyListener->isActive())
                 m_serviceKeyListener = std::make_unique<ServiceKeyListener>(m_keyListener->window(),
                     [listener = m_keyListener.get()](DWORD pid) { listener->setServiceProcess(pid); });
@@ -1784,6 +1795,13 @@ void App::applyHotkey()
             : tr("无法识别“%1”，请重新设置。").arg(hotkey);
     }
     noteApplyProblem(u"Launcher/Hotkey"_s, hotkeyError);
+    // Over a program run as administrator only a hotkey with a modifier
+    // comes (docs/pitfalls.md): the one AdminTapHint names.
+    UINT hotkeyModifiers = 0;
+    UINT hotkeyKey = 0;
+    m_hotkeyOverAdmin = !hotkey.isEmpty() && hotkeyError.isEmpty()
+        && MessageWindow::parseHotkey(hotkey, &hotkeyModifiers, &hotkeyKey)
+        && (hotkeyModifiers & (MOD_ALT | MOD_CONTROL | MOD_SHIFT | MOD_WIN)) != 0;
     if (m_settingsEditor)
         m_settingsEditor->setHotkeyError(hotkeyError); // shown next to the shortcut
     if (!settingsShown() && !hotkeyError.isEmpty() && !m_aiApplying)
@@ -5350,14 +5368,16 @@ void App::launcherLostFront()
     }
 }
 
-void CALLBACK App::foregroundChanged(HWINEVENTHOOK, DWORD, HWND, LONG, LONG, DWORD, DWORD)
+void CALLBACK App::foregroundChanged(HWINEVENTHOOK, DWORD, HWND window, LONG, LONG, DWORD, DWORD)
 {
     // After what this thread is told of the change (WM_ACTIVATE, Qt's
     // activeChanged): a launcher that heard of it is no longer active here.
     if (!g_launcherApp)
         return;
-    QMetaObject::invokeMethod(g_launcherApp, [] {
+    QMetaObject::invokeMethod(g_launcherApp, [window] {
         App* app = g_launcherApp;
+        if (app)
+            app->adminTapFront(window);
         if (!app || !app->m_window || !app->m_window->isVisible() || !app->m_window->isActive())
             return;
         DWORD pid = 0;
@@ -5369,6 +5389,152 @@ void CALLBACK App::foregroundChanged(HWINEVENTHOOK, DWORD, HWND, LONG, LONG, DWO
         app->launcherLostFront();
         app->updateNumberKeys();
     }, Qt::QueuedConnection);
+}
+
+// ---- double tap over a program run as administrator (AdminTapHint) ------------
+
+namespace {
+
+// The program's own name for itself ("注册表编辑器", "微信"): its file
+// description, else its file name without ".exe".
+QString programTitle(HWND window)
+{
+    DWORD pid = 0;
+    ::GetWindowThreadProcessId(window, &pid);
+    const win32::UniqueHandle process(::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid));
+    if (!process.valid())
+        return {};
+    wchar_t path[MAX_PATH] {};
+    DWORD size = MAX_PATH;
+    if (!::QueryFullProcessImageNameW(process.get(), 0, path, &size))
+        return {};
+    QString title;
+    DWORD ignored = 0;
+    if (const DWORD bytes = ::GetFileVersionInfoSizeW(path, &ignored); bytes > 0) {
+        std::vector<char> info(bytes);
+        struct Translation {
+            WORD language;
+            WORD codePage;
+        };
+        Translation* translations = nullptr;
+        UINT length = 0;
+        if (::GetFileVersionInfoW(path, 0, bytes, info.data())
+            && ::VerQueryValueW(info.data(), L"\\VarFileInfo\\Translation", reinterpret_cast<void**>(&translations), &length)
+            && length >= sizeof(Translation)) {
+            wchar_t key[64];
+            ::swprintf_s(key, L"\\StringFileInfo\\%04x%04x\\FileDescription", translations[0].language,
+                translations[0].codePage);
+            wchar_t* description = nullptr;
+            if (::VerQueryValueW(info.data(), key, reinterpret_cast<void**>(&description), &length) && length > 1)
+                title = QString::fromWCharArray(description).trimmed();
+        }
+    }
+    return title.isEmpty() ? QFileInfo(QString::fromWCharArray(path, static_cast<int>(size))).completeBaseName() : title;
+}
+
+} // namespace
+
+// Any window came to the front: one of a program run as administrator is
+// looked at once it has stayed there a moment (adminTapCheck). Nothing to
+// look at when there is nothing to say: no double tap, Win顺 elevated (it
+// hears every key), or said already.
+void App::adminTapFront(HWND window)
+{
+    if (!m_settings.doubleCtrl || m_adminTapShownThisRun || integrity::processElevated()
+        || m_settings.adminTapHinted.size() >= admintap::kMostPrograms) {
+        m_adminTapDwell.stop();
+        return;
+    }
+    m_adminTapWindow = window;
+    m_adminTapDwell.start();
+}
+
+void App::adminTapCheck()
+{
+    using namespace admintap;
+    const HWND front = ::GetForegroundWindow();
+    if (!front || front != m_adminTapWindow || !m_keyListener)
+        return;
+    Facts f;
+    f.level = integrity::levelOf(front);
+    if (f.level != kAdministratorLevel)
+        return; // the usual case: not even logged
+    f.doubleTap = m_settings.doubleCtrl && m_keyListener->isActive();
+    // Who hears the tap there: the service's UIAccess listener for this key;
+    // an old one (from before double Alt or Shift); a service that runs and
+    // has not answered yet; one stopped or disabled; none.
+    if (integrity::processElevated() || m_keyListener->serviceTells()) {
+        f.listener = Listener::Hears;
+    } else if (m_keyListener->serviceActive()) {
+        f.listener = Listener::Old;
+    } else {
+        const ntfs::ServiceState state = ntfs::ServiceVolumeAccess::state();
+        f.listener = state == ntfs::ServiceState::NotInstalled ? Listener::None
+            : state == ntfs::ServiceState::Disabled || state == ntfs::ServiceState::Stopped ? Listener::Off
+                                                                                               : Listener::Connecting;
+    }
+    f.settled = m_keyListenerMade.isValid() && m_keyListenerMade.elapsed() >= kAdminTapSettleMs;
+    f.trayShown = m_messages && m_messages->trayVisible();
+    f.program = foreground::programOf(front);
+    f.ignoredThere = doubleCtrlIgnoreReason(foreground::facts(),
+                         {m_settings.doubleCtrlPauseInGames, m_settings.doubleCtrlPauseInFullScreen,
+                             m_settings.doubleCtrlExcludedApps})
+        != IgnoreReason::None;
+    f.shownThisRun = m_adminTapShownThisRun;
+    f.shown = m_settings.adminTapHinted;
+    const Verdict verdict = decide(f);
+    const bool canInstall = userIsAdministrator()
+        && QFile::exists(QCoreApplication::applicationDirPath() + u"/WinShunService.exe"_s);
+    const Advice advice = advise(m_hotkeyOverAdmin, fixFor(f.listener, canInstall));
+    // Each program and verdict once a run, in the log and the journal.
+    if (const QString seen = f.program.toLower() + u' ' + QLatin1StringView(name(verdict)); !m_adminTapLogged.contains(seen)) {
+        m_adminTapLogged.push_back(seen);
+        diagnostics::record(u"admin-tap-hint"_s,
+            {{u"program"_s, f.program}, {u"verdict"_s, QLatin1StringView(name(verdict))},
+                {u"listener"_s, QLatin1StringView(name(f.listener))}, {u"fix"_s, QLatin1StringView(name(advice.fix))},
+                {u"hotkey"_s, advice.hotkey}});
+        const QString line = u"Double tap over %1 (run as administrator): %2; service listener %3, fix %4, hotkey %5"_s.arg(
+            f.program, QLatin1StringView(name(verdict)), QLatin1StringView(name(f.listener)),
+            QLatin1StringView(name(advice.fix)), advice.hotkey ? m_settings.hotkey.trimmed() : u"none"_s);
+        if (verdict == Verdict::Show)
+            qWarning().noquote() << line;
+        else
+            qInfo().noquote() << line;
+    }
+    if (verdict != Verdict::Show)
+        return;
+    m_adminTapShownThisRun = true;
+    m_settings.adminTapHinted = remember(m_settings.adminTapHinted, f.program);
+    m_settings.save();
+    if (m_settingsEditor)
+        m_settingsEditor->setSettings(m_settings); // its copy must not forget it with its next change
+    m_backup->soon();
+
+    const QString tap = doubleCtrlName();
+    const QString hotkey = m_settings.hotkey.trimmed();
+    QString text;
+    if (advice.hotkey) {
+        text = advice.fix == Fix::Install
+            ? tr("它在最前面时，Win顺 收不到%1，可以改按 %2。点这里去装上索引服务，%1 就也能用了。").arg(tap, hotkey)
+            : advice.fix == Fix::Update
+            ? tr("它在最前面时，Win顺 收不到%1，可以改按 %2。点这里去更新索引服务，%1 就也能用了。").arg(tap, hotkey)
+            : tr("它在最前面时，Win顺 收不到%1，请改按 %2。").arg(tap, hotkey);
+    } else {
+        text = advice.fix == Fix::Install
+            ? tr("它在最前面时，Win顺 收不到%1。点这里去装上索引服务就好；也可以在设置里加一个快捷键。").arg(tap)
+            : advice.fix == Fix::Update
+            ? tr("它在最前面时，Win顺 收不到%1。点这里去更新索引服务就好；也可以在设置里加一个快捷键。").arg(tap)
+            : tr("它在最前面时，Win顺 收不到%1。点这里设一个快捷键（比如 Alt+Space），在它前面也能用。").arg(tap);
+    }
+    std::function<void()> onClick;
+    if (advice.click == Click::Service)
+        onClick = [this] { showSettingsFor(u"Index/Access"_s); };
+    else if (advice.click == Click::Hotkey)
+        onClick = [this] { showSettingsFor(u"Launcher/Hotkey"_s); };
+    QString who = programTitle(front);
+    if (who.isEmpty())
+        who = f.program;
+    m_messages->showNotification(tr("“%1”以管理员身份运行").arg(who), text, std::move(onClick));
 }
 
 void App::logLauncherLostFront(HWND front)

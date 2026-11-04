@@ -73,6 +73,8 @@ public:
     // The one on the screen, if any; a plugin's waiting is dropped too (it
     // goes before a screenshot or a recording).
     void hideNotification();
+    // Whether the tray icon is there: without it no notification shows.
+    bool trayVisible() const noexcept { return m_trayVisible; }
     // A plugin's held back longer than this is out of date and dropped.
     static constexpr std::uint64_t kHeldMostMs = 60000;
 

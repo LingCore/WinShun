@@ -83,4 +83,17 @@ bool lowerThanOurs(HWND window)
     return level && *level < ownLevel();
 }
 
+std::optional<DWORD> levelOf(HWND window)
+{
+    DWORD pid = 0;
+    if (!window || !::GetWindowThreadProcessId(window, &pid) || pid == 0)
+        return std::nullopt;
+    const win32::UniqueHandle process(::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid));
+    HANDLE token = nullptr;
+    if (!process.valid() || !::OpenProcessToken(process.get(), TOKEN_QUERY, &token))
+        return std::nullopt;
+    const win32::UniqueHandle owned(token);
+    return levelOf(token);
+}
+
 } // namespace ws::integrity

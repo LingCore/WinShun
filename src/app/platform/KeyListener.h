@@ -120,6 +120,9 @@ public:
     HWND window() const noexcept { return m_window.load(); }
     void setServiceProcess(DWORD pid) noexcept { m_servicePid = pid; }
     bool serviceActive() const noexcept;
+    // The service's UIAccess listener tells of the double taps of the key
+    // set, so they are heard over administrator windows too; from any thread.
+    bool serviceTells() const noexcept;
 
     // Whether the folder menu is up (from any thread): a double click whose
     // first press closed it is not reported (DoubleClickDetector).
@@ -177,7 +180,6 @@ private:
     void removeKeyboard(HWND window);
     bool mouseWanted() const noexcept { return m_callbacks.doubleClick || m_callbacks.middleClick || m_callbacks.dragMenu || m_callbacks.mousePress; }
     bool keyboardWanted() const noexcept { return m_callbacks.doubleCtrl || m_callbacks.dragMenu; }
-    bool serviceTells() const noexcept;
     void followService();
     bool keyHeld() const;
     bool wanted(std::uint32_t key) const noexcept;

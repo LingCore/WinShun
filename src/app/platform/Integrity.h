@@ -2,6 +2,8 @@
 
 #include <windows.h>
 
+#include <optional>
+
 namespace ws::integrity {
 
 // Whether Win顺 itself runs elevated (asked once). Elevated, it starts what
@@ -22,5 +24,10 @@ bool higherThanOurs(HWND window);
 // built-in Administrator), where Explorer is elevated too. False when it
 // cannot be told.
 bool lowerThanOurs(HWND window);
+
+// The mandatory integrity level of `window`'s process
+// (SECURITY_MANDATORY_*_RID: 0x2000 normal rights, 0x3000 run as
+// administrator, 0x4000 system); none when it cannot be asked.
+std::optional<DWORD> levelOf(HWND window);
 
 } // namespace ws::integrity
