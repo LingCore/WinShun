@@ -62,6 +62,7 @@ QtObject {
     readonly property int menuPadding: 6
     readonly property int menuItemRadius: r(4)      // concentric: 10 - 6
     readonly property int menuItemHeight: 34
+    readonly property real pageTabsInset: 0 // the page tabs have a track: it starts at the cards' edge
     readonly property int capRadius: r(5)           // key hints
     readonly property int seamThickness: 2
     readonly property int trayPadding: 10
@@ -256,10 +257,11 @@ QtObject {
     readonly property color accentFill: accentFillColor
     readonly property color accentLine: led                 // markers and the caret: the lamp orange
     readonly property color accentTint: selection           // a selected row is lifted, not tinted
-    // The chrome over the window's body: the same panel (opaque, as there is
-    // no Mica); the results are the tray (hook `tray`) cut into it.
-    readonly property color layer: panelBottom
-    readonly property color layerEdge: seamDark
+    // The chrome (search row, type strip, footer) is the window's own panel:
+    // no layer over it, so its top light and grain show. The results are the
+    // tray (hook `tray`) cut into it, which draws its own top line.
+    readonly property color layer: "transparent"
+    readonly property color layerEdge: "transparent"
     readonly property color pressed: dark ? white(0.05) : warm(0.06)
     readonly property color tagFill: dark ? white(0.07) : warm(0.06)
     readonly property color chipRest: keyDownTop

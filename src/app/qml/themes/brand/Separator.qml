@@ -9,14 +9,14 @@ Item {
     property int orientation: Qt.Horizontal
     property real dpr: 1
 
-    readonly property real thickness: look.edge(dpr)
+    readonly property real thickness: look ? look.edge(dpr) : 0
     readonly property bool vertical: orientation === Qt.Vertical
 
     Rectangle {
-        x: sep.vertical ? sep.look.snap((sep.width - width) / 2, sep.dpr) : 0
-        y: sep.vertical ? 0 : sep.look.snap((sep.height - height) / 2, sep.dpr)
+        x: sep.look ? (sep.vertical ? sep.look.snap((sep.width - width) / 2, sep.dpr) : 0) : 0
+        y: sep.look ? (sep.vertical ? 0 : sep.look.snap((sep.height - height) / 2, sep.dpr)) : 0
         width: sep.vertical ? sep.thickness : sep.width
         height: sep.vertical ? sep.height : sep.thickness
-        color: sep.look.line
+        color: sep.look ? sep.look.line : "transparent"
     }
 }

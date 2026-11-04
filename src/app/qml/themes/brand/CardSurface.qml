@@ -12,14 +12,14 @@ Item {
     property real corner: -1 // the host's radius, -1: the style's
     property real dpr: 1
 
-    readonly property real radius: corner >= 0 ? corner : look.cardRadius
+    readonly property real radius: look ? (corner >= 0 ? corner : look.cardRadius) : 0
 
     Rectangle {
         anchors.fill: parent
         radius: card.radius
-        color: card.hovered ? card.look.cardHover : card.look.cardFill
-        border.width: card.look.edge(card.dpr)
-        border.color: card.hovered ? card.look.cardBorderHover : card.look.cardBorder
-        Behavior on color { ColorAnimation { duration: card.look.animFast } }
+        color: card.look ? (card.hovered ? card.look.cardHover : card.look.cardFill) : "transparent"
+        border.width: card.look ? card.look.edge(card.dpr) : 0
+        border.color: card.look ? (card.hovered ? card.look.cardBorderHover : card.look.cardBorder) : "transparent"
+        Behavior on color { ColorAnimation { duration: card.look ? card.look.animFast : 0 } }
     }
 }

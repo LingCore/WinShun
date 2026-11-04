@@ -13,14 +13,14 @@ Item {
     property bool error: false
     property real dpr: 1
 
-    readonly property real radius: look.controlRadius
-    readonly property color caretColor: look.caret
-    readonly property color ink: enabled ? look.ink : look.ink3
-    readonly property color placeholderInk: look.ink3
+    readonly property real radius: look ? look.controlRadius : 0
+    readonly property color caretColor: look ? look.caret : "transparent"
+    readonly property color ink: look ? (enabled ? look.ink : look.ink3) : "transparent"
+    readonly property color placeholderInk: look ? look.ink3 : "transparent"
     // Hook.out names.
     readonly property color textColor: ink
     readonly property color placeholderColor: placeholderInk
-    readonly property color iconColor: look.ink2
+    readonly property color iconColor: look ? look.ink2 : "transparent"
     readonly property real disabledOpacity: 1 // the box dims itself (below)
 
     opacity: enabled ? 1 : 0.55
@@ -28,13 +28,14 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: box.radius
-        color: box.focused ? box.look.inputFocused : box.hovered && box.enabled ? box.look.controlHover : box.look.control
-        border.width: box.look.edge(box.dpr)
-        border.color: box.error ? box.look.danger
+        color: box.look ? (box.focused ? box.look.inputFocused : box.hovered && box.enabled ? box.look.controlHover : box.look.control) : "transparent"
+        border.width: box.look ? box.look.edge(box.dpr) : 0
+        border.color: !box.look ? "transparent"
+                    : box.error ? box.look.danger
                     : box.focused ? (box.look.dark ? Qt.rgba(1, 1, 1, 0.28) : Qt.rgba(0, 0, 0, 0.32))
                     : box.hovered && box.enabled ? (box.look.dark ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(0, 0, 0, 0.20))
                     : box.look.controlBorder
-        Behavior on color { ColorAnimation { duration: box.look.animFast } }
-        Behavior on border.color { ColorAnimation { duration: box.look.animFast } }
+        Behavior on color { ColorAnimation { duration: box.look ? box.look.animFast : 0 } }
+        Behavior on border.color { ColorAnimation { duration: box.look ? box.look.animFast : 0 } }
     }
 }

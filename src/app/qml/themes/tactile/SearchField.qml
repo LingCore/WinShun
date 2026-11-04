@@ -13,13 +13,13 @@ Groove {
     property real corner: -1
 
     // for the host
-    readonly property color textColor: look.ink
-    readonly property color placeholderColor: look.ink3
-    readonly property color iconColor: look.ink2
-    readonly property color caretColor: look.caret
-    readonly property real leftInset: look.grooveTextInset
-    readonly property real keyInset: look.grooveKeyInsetAt(dpr)
-    readonly property real keyRadius: look.grooveKeyRadius
+    readonly property color textColor: look ? look.ink : "transparent"
+    readonly property color placeholderColor: look ? look.ink3 : "transparent"
+    readonly property color iconColor: look ? look.ink2 : "transparent"
+    readonly property color caretColor: look ? look.caret : "transparent"
+    readonly property real leftInset: look ? look.grooveTextInset : 0
+    readonly property real keyInset: look ? look.grooveKeyInsetAt(dpr) : 0
+    readonly property real keyRadius: look ? look.grooveKeyRadius : 0
 
-    radius: corner >= 0 ? corner : look.searchRadius
+    radius: corner >= 0 ? corner : look ? look.searchRadius : 0
 }

@@ -24,8 +24,8 @@ Item {
     readonly property bool isCheck: kind === "check"
     readonly property bool lit: (checked || (isCheck && mixed)) && active
 
-    implicitWidth: isCheck ? look.toggleHeight : look.toggleWidth
-    implicitHeight: look.toggleHeight
+    implicitWidth: look ? (isCheck ? look.toggleHeight : look.toggleWidth) : 0
+    implicitHeight: look ? look.toggleHeight : 0
     opacity: enabled ? 1 : 0.45
     readonly property real disabledOpacity: 1 // it dims itself (above)
 
@@ -47,14 +47,15 @@ Item {
     Rectangle {
         id: track
         anchors.fill: parent
-        radius: sw.isCheck ? sw.look.smallControlRadius : sw.look.pillRadius(height)
-        readonly property color goal: sw.lit ? sw.look.neutralFill
+        radius: sw.look ? (sw.isCheck ? sw.look.smallControlRadius : sw.look.pillRadius(height)) : 0
+        readonly property color goal: !sw.look ? "transparent"
+             : sw.lit ? sw.look.neutralFill
              : sw.hovered && sw.enabled ? sw.look.hoverFill
              : Qt.rgba(sw.look.hoverFill.r, sw.look.hoverFill.g, sw.look.hoverFill.b, 0)
         color: goal
-        border.width: sw.lit ? 0 : sw.look.edge(sw.dpr)
-        border.color: sw.look.ink3
-        Behavior on color { enabled: !sw.still; ColorAnimation { duration: sw.look.animFast } }
+        border.width: sw.look ? (sw.lit ? 0 : sw.look.edge(sw.dpr)) : 0
+        border.color: sw.look ? sw.look.ink3 : "transparent"
+        Behavior on color { enabled: !sw.still; ColorAnimation { duration: sw.look ? sw.look.animFast : 0 } }
     }
 
     // ---- switch knob ----
@@ -64,17 +65,17 @@ Item {
         readonly property real size: sw.enabled && (sw.hovered || sw.pressed) ? 14 : 12
         readonly property real gap: (sw.height - size) / 2 // the same room beside the knob as above and below
         readonly property real goalWidth: sw.enabled && sw.pressed ? 17 : size
-        readonly property real goalX: sw.look.snap(sw.mixed ? (sw.width - goalWidth) / 2 : sw.checked ? sw.width - goalWidth - gap : gap, sw.dpr)
-        readonly property color goal: sw.lit ? sw.look.neutralFillInk : sw.look.ink2
+        readonly property real goalX: sw.look ? (sw.look.snap(sw.mixed ? (sw.width - goalWidth) / 2 : sw.checked ? sw.width - goalWidth - gap : gap, sw.dpr)) : 0
+        readonly property color goal: sw.look ? (sw.lit ? sw.look.neutralFillInk : sw.look.ink2) : "transparent"
         width: goalWidth
         height: size
-        radius: sw.look.pillRadius(size)
-        y: sw.look.snap((sw.height - height) / 2, sw.dpr)
+        radius: sw.look ? sw.look.pillRadius(size) : 0
+        y: sw.look ? sw.look.snap((sw.height - height) / 2, sw.dpr) : 0
         x: goalX
         color: goal
-        Behavior on x { enabled: !sw.still; NumberAnimation { duration: sw.look.animFast; easing.type: Easing.OutCubic } }
-        Behavior on width { enabled: !sw.still; NumberAnimation { duration: sw.look.animFast; easing.type: Easing.OutCubic } }
-        Behavior on color { enabled: !sw.still; ColorAnimation { duration: sw.look.animFast } }
+        Behavior on x { enabled: !sw.still; NumberAnimation { duration: sw.look ? sw.look.animFast : 0; easing.type: Easing.OutCubic } }
+        Behavior on width { enabled: !sw.still; NumberAnimation { duration: sw.look ? sw.look.animFast : 0; easing.type: Easing.OutCubic } }
+        Behavior on color { enabled: !sw.still; ColorAnimation { duration: sw.look ? sw.look.animFast : 0 } }
     }
 
     // ---- check mark / dash ----
@@ -84,7 +85,7 @@ Item {
         preferredRendererType: Shape.CurveRenderer
         ShapePath {
             fillColor: "transparent"
-            strokeColor: sw.look.neutralFillInk
+            strokeColor: sw.look ? sw.look.neutralFillInk : "transparent"
             strokeWidth: 1.6
             capStyle: ShapePath.RoundCap
             joinStyle: ShapePath.RoundJoin

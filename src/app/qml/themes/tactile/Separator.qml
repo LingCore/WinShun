@@ -8,13 +8,14 @@ Rectangle {
     property int orientation: Qt.Horizontal
     property real dpr: 1
     property QtObject look // injected by Look.qml
-    readonly property real thickness: look.seamThickness
+    readonly property real thickness: look ? look.seamThickness : 2
+    readonly property real hair: look ? look.hair(dpr) : 1
 
-    color: look.seamLight
+    color: look ? look.seamLight : "transparent"
 
     Rectangle {
-        width: seam.orientation === Qt.Horizontal ? seam.width : seam.look.hair(seam.dpr)
-        height: seam.orientation === Qt.Horizontal ? seam.look.hair(seam.dpr) : seam.height
-        color: seam.look.seamDark
+        width: seam.orientation === Qt.Horizontal ? seam.width : seam.hair
+        height: seam.orientation === Qt.Horizontal ? seam.hair : seam.height
+        color: seam.look ? (seam.look?.seamDark ?? Qt.rgba(0, 0, 0, 0)) : "transparent"
     }
 }

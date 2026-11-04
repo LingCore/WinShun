@@ -11,13 +11,13 @@ Item {
     property int count: 0
     property real dpr: 1
 
-    readonly property real radius: look.capsuleRadius
-    readonly property real padding: look.capsulePadding
-    readonly property real keyRadius: look.capsuleKeyRadius
+    readonly property real radius: look ? look.capsuleRadius : 0
+    readonly property real padding: look ? look.capsulePadding : 0
+    readonly property real keyRadius: look ? look.capsuleKeyRadius : 0
 
     Rectangle {
         anchors.fill: parent
         radius: capsule.radius
-        color: capsule.look.capsuleFill
+        color: capsule.look ? capsule.look.capsuleFill : "transparent"
     }
 }

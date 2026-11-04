@@ -22,40 +22,41 @@ Item {
     property real corner: -1
     property real dpr: 1
 
-    readonly property real radius: corner >= 0 ? corner : inMenu ? look.menuItemRadius : look.rowRadius
-    readonly property real edgeWidth: look.edge(dpr)
+    readonly property real radius: look ? (corner >= 0 ? corner : inMenu ? look.menuItemRadius : look.rowRadius) : 0
+    readonly property real edgeWidth: look ? look.edge(dpr) : 0
     readonly property bool raisedFace: selected && !inMenu
     // Hook.out names: the words stay ink on every state.
-    readonly property color foreground: look.ink
+    readonly property color foreground: look ? look.ink : "transparent"
 
     RectangularShadow {
-        visible: row.raisedFace && !row.look.dark
+        visible: row.look ? row.raisedFace && !row.look.dark : false
         anchors.fill: parent
         radius: row.radius
         offset.y: 1
         blur: 2.4
-        color: row.look.rowSelectedShadow
+        color: row.look ? row.look.rowSelectedShadow : "transparent"
     }
     Rectangle {
         anchors.fill: parent
         radius: row.radius
-        color: row.raisedFace ? row.look.rowSelected
+        color: !row.look ? "transparent"
+             : row.raisedFace ? row.look.rowSelected
              : row.inMenu && (row.selected || row.hovered) ? row.look.menuHover
              : row.hovered ? row.look.rowHover
              : Qt.rgba(row.look.rowHover.r, row.look.rowHover.g, row.look.rowHover.b, 0)
         border.width: row.raisedFace || (row.current && !row.inMenu) ? row.edgeWidth : 0
-        border.color: row.selected ? row.look.rowSelectedEdge : row.look.capEdge
-        Behavior on color { ColorAnimation { duration: row.look.animFast } }
+        border.color: row.look ? (row.selected ? row.look.rowSelectedEdge : row.look.capEdge) : "transparent"
+        Behavior on color { ColorAnimation { duration: row.look ? row.look.animFast : 0 } }
     }
     Rectangle { // the ink bar, 4 px inside the face's edge
         visible: row.bar && !row.inMenu
         x: row.edgeWidth + 4
-        width: row.look.snap(3, row.dpr)
+        width: row.look ? row.look.snap(3, row.dpr) : 0
         height: 16
-        y: row.look.snap((row.height - height) / 2, row.dpr)
-        radius: row.look.rounded ? width / 2 : 0
-        color: row.look.indicator
+        y: row.look ? row.look.snap((row.height - height) / 2, row.dpr) : 0
+        radius: row.look ? (row.look.rounded ? width / 2 : 0) : 0
+        color: row.look ? row.look.indicator : "transparent"
         scale: row.selected ? 1 : 0
-        Behavior on scale { NumberAnimation { duration: row.look.animMove; easing.type: Easing.Bezier; easing.bezierCurve: row.look.easeOut } }
+        Behavior on scale { NumberAnimation { duration: row.look ? row.look.animMove : 0; easing.type: Easing.Bezier; easing.bezierCurve: row.look ? row.look.easeOut : [0, 0, 0, 1, 1, 1] } }
     }
 }

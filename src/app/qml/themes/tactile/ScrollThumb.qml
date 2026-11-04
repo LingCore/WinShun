@@ -16,28 +16,31 @@ Item {
 
     property QtObject look // injected by Look.qml
     readonly property bool lifted: hovered || pressed
+    function pill(size: real): real { return look ? look.pill(size) : 0 }
+    readonly property color slot: look ? look.slot : "transparent"
+    readonly property color ink3: look ? look.ink3 : "transparent"
 
     // track: a faint groove while near
     Rectangle {
         visible: bar.active
         anchors.fill: parent
-        radius: bar.look.pill(width)
-        color: Qt.rgba(bar.look.slot.r, bar.look.slot.g, bar.look.slot.b, 0.7)
+        radius: bar.pill(width)
+        color: Qt.rgba(bar.slot.r, bar.slot.g, bar.slot.b, 0.7)
     }
     Rectangle {
         visible: !bar.lifted
         y: bar.position
         width: bar.width
         height: bar.extent
-        radius: bar.look.pill(width)
-        color: Qt.rgba(bar.look.ink3.r, bar.look.ink3.g, bar.look.ink3.b, bar.active ? 0.6 : 0.45)
+        radius: bar.pill(width)
+        color: Qt.rgba(bar.ink3.r, bar.ink3.g, bar.ink3.b, bar.active ? 0.6 : 0.45)
     }
     KeySurface {
         visible: bar.lifted
         y: bar.position
         width: bar.width
         height: bar.extent
-        corner: bar.look.pill(width)
+        corner: bar.pill(width)
         pressed: bar.pressed
         hovered: bar.hovered
         drop: false

@@ -15,9 +15,9 @@ Item {
     property real size: 32
     property real dpr: 1
 
-    readonly property string family: look.kindOf(kind)
-    readonly property color ink: look.kindInk(kind)
-    readonly property color tint: look.kindTint(kind)
+    readonly property string family: look ? look.kindOf(kind) : ""
+    readonly property color ink: look ? look.kindInk(kind) : "transparent"
+    readonly property color tint: look ? look.kindTint(kind) : "transparent"
     readonly property real stroke: size >= 24 ? 1.6 : 1.25
 
     implicitWidth: size
@@ -82,7 +82,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        radius: icon.look.rounded ? icon.size * 9 / 32 : 0
+        radius: icon.look ? (icon.look.rounded ? icon.size * 9 / 32 : 0) : 0
         color: icon.tint
     }
     Shape {

@@ -26,9 +26,9 @@ Item {
 
     property QtObject look // injected by Look.qml
     readonly property bool keyedMode: role === "scope"
-    readonly property real keyRadius: corner >= 0 ? corner : keyedMode ? look.grooveKeyRadius : look.knobRadius
-    readonly property real pad: keyedMode ? 0 : look.switchPadding
-    readonly property real gap: keyedMode ? look.keyGap : 0
+    readonly property real keyRadius: corner >= 0 ? corner : !look ? 0 : keyedMode ? look.grooveKeyRadius : look.knobRadius
+    readonly property real pad: keyedMode || !look ? 0 : look.switchPadding
+    readonly property real gap: keyedMode && look ? look.keyGap : 0
     readonly property int n: Math.max(count, segments ? segments.length : 0)
 
     function given(i: int): var { return segments && segments.length > i ? segments[i] : undefined }
@@ -47,7 +47,7 @@ Item {
             x += segmentWidth(k) + gap
         return x
     }
-    readonly property real leadingInset: keyedMode ? look.ledInset + look.ledSize + look.ledGap : 0
+    readonly property real leadingInset: keyedMode && look ? look.ledInset + look.ledSize + look.ledGap : 0
     function labelOffsetY(i: int): real {
         if (!keyedMode)
             return -look.keyTravel / 2 // labels sit on the knob's face, above its side
@@ -76,7 +76,7 @@ Item {
     Groove {
         visible: !seg.keyedMode
         anchors.fill: parent
-        radius: seg.look.switchRadius
+        radius: seg.look ? (seg.look?.switchRadius ?? 0) : 0
         dpr: seg.dpr
         look: seg.look
     }
@@ -91,13 +91,13 @@ Item {
         enabled: seg.enabled
         dpr: seg.dpr
         look: seg.look
-        Behavior on x { NumberAnimation { duration: seg.look.animSlide; easing.type: Easing.OutCubic } }
-        Behavior on width { NumberAnimation { duration: seg.look.animSlide; easing.type: Easing.OutCubic } }
+        Behavior on x { NumberAnimation { duration: seg.look ? (seg.look?.animSlide ?? 0) : 0; easing.type: Easing.OutCubic } }
+        Behavior on width { NumberAnimation { duration: seg.look ? (seg.look?.animSlide ?? 0) : 0; easing.type: Easing.OutCubic } }
     }
 
     // ---- keyed: separate keys with lamps ----
     Repeater {
-        model: seg.keyedMode ? seg.n : 0
+        model: seg.keyedMode && seg.look ? seg.n : 0
         KeySurface {
             required property int index
             x: seg.segmentX(index)

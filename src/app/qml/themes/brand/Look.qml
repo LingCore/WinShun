@@ -285,6 +285,7 @@ QtObject {
     readonly property color menuBackground: menuFill
     readonly property color menuHover: hoverFill
     readonly property int menuItemHeight: 34
+    readonly property real pageTabsInset: 0 // the page tabs have a track: it starts at the cards' edge
     readonly property color danger: dark ? "#FF7A80" : "#D2363E"
     readonly property color dangerFill: "#C42F38" // white 5.5:1
     readonly property color success: dark ? "#6CCB5F" : "#0F7B0F"

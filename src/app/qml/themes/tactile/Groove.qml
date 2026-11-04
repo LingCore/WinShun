@@ -6,14 +6,14 @@ import QtQuick
 Item {
     id: groove
 
-    property real radius: look.searchRadius
+    property real radius: look ? look.searchRadius : 0
     property real dpr: 1
-    property color tone: look.slot // not "fill": Hook passes a window body colour by that name
-    property color shade: look.slotShade
-    property color fade: look.slotFade
+    property color tone: look ? look.slot : "transparent" // not "fill": Hook passes a window body colour by that name
+    property color shade: look ? look.slotShade : "transparent"
+    property color fade: look ? look.slotFade : "transparent"
 
     property QtObject look // injected by Look.qml
-    readonly property real hair: look.hair(dpr)
+    readonly property real hair: look ? look.hair(dpr) : 1
 
     Rectangle {
         anchors.fill: parent

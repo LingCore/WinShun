@@ -17,18 +17,18 @@ Item {
     property string role           // "" | type | group | filter: all keys; only type keys carry hues
     property real corner: -1
     property real dpr: 1
-    readonly property real radius: corner >= 0 ? corner : look.keyRadius
+    readonly property real radius: corner >= 0 ? corner : look ? look.keyRadius : 0
 
     property QtObject look // injected by Look.qml
-    readonly property string hueKey: look.hueKey(hueIndex)
+    readonly property string hueKey: look ? look.hueKey(hueIndex) : ""
     readonly property bool coloured: !isAll && hueKey.length > 0
-    readonly property color hueColor: coloured ? look.typeHue(hueKey) : look.ink2
+    readonly property color hueColor: !look ? "transparent" : coloured ? look.typeHue(hueKey) : look.ink2
 
     // for the host
     readonly property real contentOffsetY: key.contentOffsetY
     readonly property real leadingInset: key.leadingInset
     readonly property color foreground: key.foreground
-    readonly property color iconColor: !enabled ? look.ink3 : checked && coloured ? "#FFFFFF" : hueColor
+    readonly property color iconColor: !look ? "transparent" : !enabled ? look.ink3 : checked && coloured ? "#FFFFFF" : hueColor
     readonly property int fontWeight: key.fontWeight
     readonly property real disabledOpacity: 1
 
@@ -43,6 +43,6 @@ Item {
         look: chip.look
         corner: chip.radius
         indicator: chip.isAll
-        downFill: chip.coloured && chip.checked ? chip.look.typeDeep(chip.hueKey) : "transparent"
+        downFill: chip.coloured && chip.checked ? (chip.look?.typeDeep(chip.hueKey) ?? Qt.rgba(0, 0, 0, 0)) : "transparent"
     }
 }

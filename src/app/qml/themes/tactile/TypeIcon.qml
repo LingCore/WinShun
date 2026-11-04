@@ -124,8 +124,8 @@ Item {
                 fillGradient: RadialGradient {
                     centerX: drop.r; centerY: drop.r; centerRadius: drop.r
                     focalX: drop.r; focalY: drop.r
-                    GradientStop { position: 0; color: icon.look.iconDrop }
-                    GradientStop { position: 0.55; color: icon.alpha(icon.look.iconDrop.toString(), icon.look.iconDrop.a * 0.7) }
+                    GradientStop { position: 0; color: (icon.look?.iconDrop ?? Qt.rgba(0, 0, 0, 0)) }
+                    GradientStop { position: 0.55; color: icon.alpha((icon.look?.iconDrop ?? Qt.rgba(0, 0, 0, 0)).toString(), (icon.look?.iconDrop ?? Qt.rgba(0, 0, 0, 0)).a * 0.7) }
                     GradientStop { position: 1; color: "transparent" }
                 }
                 PathSvg { path: icon.circle(drop.r, drop.r, drop.r) }
@@ -137,15 +137,15 @@ Item {
         id: grid
         width: 34
         height: 34
-        x: icon.look.snap((icon.width - icon.side) / 2, icon.dpr)
-        y: icon.look.snap((icon.height - icon.side) / 2, icon.dpr)
+        x: icon.look ? (icon.look?.snap((icon.width - icon.side) / 2, icon.dpr) ?? 0) : 0
+        y: icon.look ? (icon.look?.snap((icon.height - icon.side) / 2, icon.dpr) ?? 0) : 0
         scale: icon.side / 34
         transformOrigin: Item.TopLeft
 
         // ---- folder (loaded only for folders) ----
         Loader {
             anchors.fill: parent
-            active: icon.isFolder
+            active: icon.isFolder && icon.look !== null
             sourceComponent: Item {
                 Drop { cx: 17; cy: 29.6; rx: 12.5; ry: 1.8 }
                 Shape {
@@ -175,25 +175,25 @@ Item {
         // ---- paper + its print ----
         Loader {
             anchors.fill: parent
-            active: !icon.isFolder
+            active: !icon.isFolder && icon.look !== null
             sourceComponent: Item {
                 Drop { cx: 17.8; cy: 31.2; rx: 11; ry: 1.7 }
                 Shape {
                     anchors.fill: parent
                     preferredRendererType: Shape.CurveRenderer
-                    ShapePath { strokeColor: "transparent"; fillColor: icon.look.paperSide
+                    ShapePath { strokeColor: "transparent"; fillColor: (icon.look?.paperSide ?? Qt.rgba(0, 0, 0, 0))
                         PathSvg { path: "M8.6 5.4h12.4l6.2 6.2v18.2a1.5 1.5 0 0 1-1.5 1.5H8.6a1.5 1.5 0 0 1-1.5-1.5V6.9a1.5 1.5 0 0 1 1.5-1.5z" } }
                     ShapePath {
-                        strokeColor: icon.look.paperRim
+                        strokeColor: (icon.look?.paperRim ?? Qt.rgba(0, 0, 0, 0))
                         strokeWidth: 0.8
                         fillGradient: LinearGradient {
                             x1: 0; y1: 2.8; x2: 0; y2: 29.1
-                            GradientStop { position: 0; color: icon.look.paperTop }
-                            GradientStop { position: 1; color: icon.look.paperBottom }
+                            GradientStop { position: 0; color: (icon.look?.paperTop ?? Qt.rgba(0, 0, 0, 0)) }
+                            GradientStop { position: 1; color: (icon.look?.paperBottom ?? Qt.rgba(0, 0, 0, 0)) }
                         }
                         PathSvg { path: "M7.6 2.8h12.6l6.2 6.2v18.6a1.5 1.5 0 0 1-1.5 1.5H7.6a1.5 1.5 0 0 1-1.5-1.5V4.3a1.5 1.5 0 0 1 1.5-1.5z" }
                     }
-                    ShapePath { strokeColor: icon.look.paperRim; strokeWidth: 0.8; fillColor: icon.look.paperFold; joinStyle: ShapePath.RoundJoin
+                    ShapePath { strokeColor: (icon.look?.paperRim ?? Qt.rgba(0, 0, 0, 0)); strokeWidth: 0.8; fillColor: (icon.look?.paperFold ?? Qt.rgba(0, 0, 0, 0)); joinStyle: ShapePath.RoundJoin
                         PathSvg { path: "M20.2 3v4.6a1.4 1.4 0 0 0 1.4 1.4h4.6" } }
                 }
                 // the print: translate(16.2 17.6) scale(1.14) translate(-16.5 -18)

@@ -37,9 +37,9 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: width / 2
-        color: !lamp.ready ? "transparent" : lamp.lit ? lamp.look.led : lamp.look.keySideColor
-        border.width: lamp.lit || !lamp.ready ? 0 : lamp.look.hair(lamp.dpr)
-        border.color: lamp.ready ? lamp.look.keyRim : "transparent"
+        color: !lamp.ready ? "transparent" : lamp.lit ? (lamp.look?.led ?? Qt.rgba(0, 0, 0, 0)) : (lamp.look?.keySideColor ?? Qt.rgba(0, 0, 0, 0))
+        border.width: lamp.lit || !lamp.ready ? 0 : (lamp.look?.hair(lamp.dpr) ?? 1)
+        border.color: lamp.ready ? (lamp.look?.keyRim ?? Qt.rgba(0, 0, 0, 0)) : "transparent"
         Behavior on color { ColorAnimation { duration: 120 } }
     }
 }

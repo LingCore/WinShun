@@ -23,15 +23,18 @@ Item {
     property QtObject look // injected by Look.qml
     readonly property bool isCheck: kind === "check"
     readonly property bool lit: checked && !mixed && active
-    readonly property real pad: look.switchPadding
+    readonly property real pad: look ? look.switchPadding : 2
     readonly property real knobSize: height - 2 * pad
     readonly property real disabledOpacity: 1
 
-    implicitWidth: isCheck ? look.checkSize : look.toggleWidth
-    implicitHeight: isCheck ? look.checkSize : look.toggleHeight
+    implicitWidth: !look ? 0 : isCheck ? look.checkSize : look.toggleWidth
+    implicitHeight: !look ? 0 : isCheck ? look.checkSize : look.toggleHeight
 
     // The host's switch was taken for another (a recycled row) or shown
     // again: no slide is left half way.
+    function snap(v: real): real { return look ? look.snap(v, dpr) : v }
+    function pill(size: real): real { return look ? look.pill(size) : 0 }
+
     function settle() {
         if (slide.running)
             slide.complete()
@@ -41,30 +44,30 @@ Item {
     Groove {
         visible: !toggle.isCheck
         anchors.fill: parent
-        radius: toggle.look.pill(height)
+        radius: toggle.pill(height)
         dpr: toggle.dpr
         look: toggle.look
     }
     KeySurface {
         id: knob
         visible: !toggle.isCheck && toggle.active
-        x: toggle.mixed ? toggle.look.snap((toggle.width - width) / 2, toggle.dpr)
+        x: toggle.mixed ? toggle.snap((toggle.width - width) / 2)
            : toggle.checked ? toggle.width - toggle.pad - width : toggle.pad
         y: toggle.pad
         width: toggle.knobSize
         height: toggle.knobSize
-        corner: toggle.look.pill(width)
+        corner: toggle.pill(width)
         hovered: toggle.hovered
         pressed: toggle.pressed
         enabled: toggle.enabled
         dpr: toggle.dpr
         look: toggle.look
-        Behavior on x { NumberAnimation { id: slide; duration: toggle.look.animSlide; easing.type: Easing.OutCubic } }
+        Behavior on x { NumberAnimation { id: slide; duration: toggle.look ? (toggle.look?.animSlide ?? 0) : 0; easing.type: Easing.OutCubic } }
 
         Lamp {
             visible: knob.enabled && toggle.lit // off: a plain knob; on: the lamp lights on it
-            x: toggle.look.snap((knob.width - width) / 2, toggle.dpr)
-            y: toggle.look.snap((knob.height - height) / 2 + knob.contentOffsetY, toggle.dpr)
+            x: toggle.snap((knob.width - width) / 2)
+            y: toggle.snap((knob.height - height) / 2 + knob.contentOffsetY)
             lit: toggle.lit
             dpr: toggle.dpr
             look: toggle.look
@@ -76,7 +79,7 @@ Item {
         id: box
         visible: toggle.isCheck
         anchors.fill: parent
-        corner: toggle.look.smallControlRadius
+        corner: toggle.look ? (toggle.look?.smallControlRadius ?? 0) : 0
         hovered: toggle.hovered
         pressed: toggle.pressed
         checked: toggle.active && (toggle.checked || toggle.mixed)
@@ -85,14 +88,14 @@ Item {
         look: toggle.look
 
         Shape {
-            visible: box.checked
+            visible: box.checked && toggle.look !== null
             anchors.centerIn: parent
             anchors.verticalCenterOffset: box.contentOffsetY
             width: 12
             height: 12
             preferredRendererType: Shape.CurveRenderer
             ShapePath {
-                strokeColor: box.enabled ? toggle.look.ink : toggle.look.ink3
+                strokeColor: !toggle.look ? "transparent" : box.enabled ? (toggle.look?.ink ?? Qt.rgba(0, 0, 0, 0)) : (toggle.look?.ink3 ?? Qt.rgba(0, 0, 0, 0))
                 strokeWidth: 1.75
                 fillColor: "transparent"
                 capStyle: ShapePath.RoundCap

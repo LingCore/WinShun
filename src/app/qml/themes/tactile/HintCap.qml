@@ -7,14 +7,14 @@ Rectangle {
 
     property real dpr: 1
     property QtObject look // injected by Look.qml
-    readonly property color foreground: look.ink3
+    readonly property color foreground: look ? look.ink3 : "transparent"
     // label insets inside the outline (CSS padding 0 4 1 3; text 12 px)
     readonly property real leftPadding: 3
     readonly property real rightPadding: 4
     readonly property real contentOffsetY: -0.5
 
-    radius: look.capRadius
+    radius: look ? look.capRadius : 0
     color: "transparent"
-    border.width: look.hair(dpr)
-    border.color: look.capLine
+    border.width: look ? look.hair(dpr) : 0
+    border.color: look ? look.capLine : "transparent"
 }

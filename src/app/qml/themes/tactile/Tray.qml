@@ -7,22 +7,24 @@ Rectangle {
 
     property real dpr: 1
     property QtObject look // injected by Look.qml
-    readonly property real padding: look.trayPadding
+    readonly property real padding: look ? look.trayPadding : 10
+    readonly property real hair: look ? look.hair(dpr) : 1
+    readonly property color shade: look ? look.trayShade : "transparent"
 
-    color: look.trayColor
+    color: look ? look.trayColor : "transparent"
 
     Rectangle { // the fade under the line
-        y: tray.look.hair(tray.dpr)
+        y: tray.hair
         width: tray.width
         height: 3
         gradient: Gradient {
-            GradientStop { position: 0; color: Qt.rgba(tray.look.trayShade.r, tray.look.trayShade.g, tray.look.trayShade.b, tray.look.trayShade.a * 0.35) }
+            GradientStop { position: 0; color: Qt.rgba(tray.shade.r, tray.shade.g, tray.shade.b, tray.shade.a * 0.35) }
             GradientStop { position: 1; color: "transparent" }
         }
     }
     Rectangle {
         width: tray.width
-        height: tray.look.hair(tray.dpr)
-        color: tray.look.trayShade
+        height: tray.hair
+        color: tray.shade
     }
 }

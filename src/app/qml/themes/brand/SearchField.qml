@@ -20,12 +20,12 @@ Item {
     property real dpr: 1
 
     // For the host: where the field is in the Hook, its corner, and its colours.
-    readonly property real inset: flat ? look.fieldInset : 0
-    readonly property real radius: look.fieldRadius
-    readonly property color caretColor: look.caret
-    readonly property color ink: look.ink
-    readonly property color placeholderInk: look.ink3
-    readonly property color iconInk: look.ink2
+    readonly property real inset: look ? (flat ? look.fieldInset : 0) : 0
+    readonly property real radius: look ? look.fieldRadius : 0
+    readonly property color caretColor: look ? look.caret : "transparent"
+    readonly property color ink: look ? look.ink : "transparent"
+    readonly property color placeholderInk: look ? look.ink3 : "transparent"
+    readonly property color iconInk: look ? look.ink2 : "transparent"
     // Hook.out names. leadingInset: where the words start, from the field's
     // left edge (the 22 px magnifier at 13, then 25 to the words).
     readonly property color textColor: ink
@@ -35,7 +35,7 @@ Item {
     readonly property real contentOffsetY: -2 // the 24 px query's optical centre
 
     property real lit: focused ? 1 : 0
-    Behavior on lit { NumberAnimation { duration: 200; easing.type: Easing.Bezier; easing.bezierCurve: field.look.easeOut } }
+    Behavior on lit { NumberAnimation { duration: 200; easing.type: Easing.Bezier; easing.bezierCurve: field.look ? field.look.easeOut : [0, 0, 0, 1, 1, 1] } }
 
     Item {
         id: box
@@ -54,7 +54,7 @@ Item {
             ShapePath {
                 strokeWidth: -1
                 fillGradient: RingGradient { look: field.look; boxWidth: glowShape.width; boxHeight: glowShape.height; count: 36 }
-                PathRectangle { x: 0; y: 0; width: glowShape.width; height: glowShape.height; radius: field.look.r(6) }
+                PathRectangle { x: 0; y: 0; width: glowShape.width; height: glowShape.height; radius: field.look ? field.look.r(6) : 0 }
             }
         }
         MultiEffect {
@@ -66,7 +66,7 @@ Item {
             blurEnabled: true
             blurMax: 24
             blur: 1
-            opacity: field.look.glowOpacity * field.lit
+            opacity: field.look ? field.look.glowOpacity * field.lit : 0
             visible: field.flat && field.lit > 0 // no offscreen layer while unfocused
         }
 
@@ -74,14 +74,14 @@ Item {
         Rectangle {
             anchors.fill: parent
             radius: field.radius
-            color: field.look.fieldFill
+            color: field.look ? field.look.fieldFill : "transparent"
         }
         Rectangle { // 1 px neutral edge (fades as the ring comes)
             anchors.fill: parent
             radius: field.radius
             color: "transparent"
-            border.width: field.look.edge(field.dpr)
-            border.color: field.hovered && !field.focused ? field.look.controlBorder : field.look.fieldEdge
+            border.width: field.look ? field.look.edge(field.dpr) : 0
+            border.color: field.look ? (field.hovered && !field.focused ? field.look.controlBorder : field.look.fieldEdge) : "transparent"
             opacity: 1 - field.lit
             visible: opacity > 0
         }
@@ -93,7 +93,7 @@ Item {
             opacity: field.lit
             visible: field.lit > 0
             preferredRendererType: Shape.CurveRenderer
-            readonly property real w: field.look.snap(field.look.ringWidth, field.dpr)
+            readonly property real w: field.look ? field.look.snap(field.look.ringWidth, field.dpr) : 0
             ShapePath {
                 strokeWidth: -1
                 fillRule: ShapePath.OddEvenFill

@@ -18,16 +18,16 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        radius: bar.look.pillRadius(width)
-        color: bar.active ? bar.look.segTrack : "transparent"
+        radius: bar.look ? bar.look.pillRadius(width) : 0
+        color: bar.look ? (bar.active ? bar.look.segTrack : "transparent") : "transparent"
     }
     Rectangle {
         width: parent.width
-        y: bar.look.snap(bar.position, bar.dpr)
-        height: bar.look.snap(Math.max(bar.width, bar.extent), bar.dpr)
-        radius: bar.look.pillRadius(width)
-        color: bar.pressed ? bar.look.ink : bar.hovered ? bar.look.ink2 : bar.look.ink3
+        y: bar.look ? bar.look.snap(bar.position, bar.dpr) : 0
+        height: bar.look ? bar.look.snap(Math.max(bar.width, bar.extent), bar.dpr) : 0
+        radius: bar.look ? bar.look.pillRadius(width) : 0
+        color: bar.look ? (bar.pressed ? bar.look.ink : bar.hovered ? bar.look.ink2 : bar.look.ink3) : "transparent"
         opacity: bar.active || bar.pressed ? 1 : 0.6
-        Behavior on opacity { NumberAnimation { duration: bar.look.animFast } }
+        Behavior on opacity { NumberAnimation { duration: bar.look ? bar.look.animFast : 0 } }
     }
 }

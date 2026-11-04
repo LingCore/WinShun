@@ -21,9 +21,9 @@ Item {
     property bool inField: false
     property real dpr: 1
 
-    readonly property real padding: look.segPad
-    readonly property real radius: inField ? look.segInFieldRadius : look.segRadius
-    readonly property real pillRadius: Math.max(look.rounded ? 2 : 0, radius - padding)
+    readonly property real padding: look ? look.segPad : 0
+    readonly property real radius: look ? (inField ? look.segInFieldRadius : look.segRadius) : 0
+    readonly property real pillRadius: look ? (Math.max(look.rounded ? 2 : 0, radius - padding)) : 0
     readonly property int shown: Math.max(count, segments && segments.length ? segments.length : 0)
 
     // Hook.call("segmentX", [i]): segment i's left edge in the Hook (the
@@ -48,7 +48,7 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: seg.radius
-        color: seg.look.segTrack
+        color: seg.look ? seg.look.segTrack : "transparent"
     }
     Rectangle { // the segment under the pointer, when it is not the current one
         readonly property var box: seg.boxOf(Math.max(0, seg.hoveredIndex))
@@ -56,7 +56,7 @@ Item {
         x: box.x; y: seg.padding
         width: box.width; height: seg.height - 2 * seg.padding
         radius: seg.pillRadius
-        color: seg.pressedIndex === seg.hoveredIndex ? seg.look.pressedFill : seg.look.hoverFill
+        color: seg.look ? (seg.pressedIndex === seg.hoveredIndex ? seg.look.pressedFill : seg.look.hoverFill) : "transparent"
     }
 
     Item {
@@ -67,22 +67,22 @@ Item {
         width: box.width
         height: seg.height - 2 * seg.padding
         visible: seg.currentIndex >= 0 && seg.currentIndex < seg.shown
-        Behavior on x { NumberAnimation { duration: seg.look.animMove; easing.type: Easing.Bezier; easing.bezierCurve: seg.look.easeOut } }
-        Behavior on width { NumberAnimation { duration: seg.look.animMove; easing.type: Easing.Bezier; easing.bezierCurve: seg.look.easeOut } }
+        Behavior on x { NumberAnimation { duration: seg.look ? seg.look.animMove : 0; easing.type: Easing.Bezier; easing.bezierCurve: seg.look ? seg.look.easeOut : [0, 0, 0, 1, 1, 1] } }
+        Behavior on width { NumberAnimation { duration: seg.look ? seg.look.animMove : 0; easing.type: Easing.Bezier; easing.bezierCurve: seg.look ? seg.look.easeOut : [0, 0, 0, 1, 1, 1] } }
 
         RectangularShadow {
             anchors.fill: parent
             radius: seg.pillRadius
             offset.y: 1
             blur: 2.4
-            color: seg.look.segShadow
+            color: seg.look ? seg.look.segShadow : "transparent"
         }
         Rectangle { // the 1 px ring sits inside the pill, so its gap to the track is a true 2
             anchors.fill: parent
             radius: seg.pillRadius
-            color: seg.look.segPill
-            border.width: seg.look.dark ? 0 : seg.look.edge(seg.dpr)
-            border.color: seg.look.segRing
+            color: seg.look ? seg.look.segPill : "transparent"
+            border.width: seg.look ? (seg.look.dark ? 0 : seg.look.edge(seg.dpr)) : 0
+            border.color: seg.look ? seg.look.segRing : "transparent"
         }
     }
 }

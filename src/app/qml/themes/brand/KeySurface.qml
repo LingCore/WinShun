@@ -25,13 +25,13 @@ Item {
     property real dpr: 1
     // enabled: Item's own (inherited from the host)
 
-    readonly property real radius: corner >= 0 ? corner : look.keyRadius
+    readonly property real radius: look ? (corner >= 0 ? corner : look.keyRadius) : 0
     readonly property bool filled: highlighted || danger
     readonly property bool pill: raised && enabled && (hovered || checked || pressed) && !filled
     // Nothing at rest: flat keys, the row actions (on their capsule), the field's keys.
     readonly property bool bare: flat || raised || role === "fieldKey"
     // For the host's glyph and words (Hook.out): bare keys rest in ink2, firm under the pointer.
-    readonly property color ink: filled ? look.accentText : !enabled ? look.ink3
+    readonly property color ink: !look ? "transparent" : filled ? look.accentText : !enabled ? look.ink3
                                : !bare || hovered || checked || pressed ? look.ink : look.ink2
     readonly property int weight: checked && !raised ? Font.Bold : Font.Normal
     readonly property color foreground: ink
@@ -48,21 +48,22 @@ Item {
         radius: key.radius
         offset.y: 1
         blur: 2.4
-        color: key.look.segShadow
+        color: key.look ? key.look.segShadow : "transparent"
     }
     Rectangle {
-        readonly property color baseFill: key.danger ? key.look.dangerFill : key.look.accentFill
+        readonly property color baseFill: key.look ? (key.danger ? key.look.dangerFill : key.look.accentFill) : "transparent"
         anchors.fill: parent
         radius: key.radius
         color: key.filled ? (key.pressed ? Qt.darker(baseFill, 1.12) : key.hovered ? Qt.darker(baseFill, 1.06) : baseFill)
+             : !key.look ? "transparent"
              : key.pill ? (key.pressed ? key.look.controlPressed : key.look.segPill)
              : !key.enabled ? (key.bare ? "transparent" : key.look.control)
              : key.pressed ? (key.bare ? key.look.pressedFill : key.look.controlPressed)
              : key.hovered ? (key.bare ? key.look.hoverFill : key.look.controlHover)
              : key.checked ? key.look.segTrack
              : key.bare ? Qt.rgba(key.look.hoverFill.r, key.look.hoverFill.g, key.look.hoverFill.b, 0) : key.look.control
-        border.width: (key.pill && !key.look.dark) || (!key.bare && !key.filled && !key.pill) ? key.look.edge(key.dpr) : 0
-        border.color: key.pill ? key.look.segRing : key.look.controlBorder
-        Behavior on color { ColorAnimation { duration: key.look.animFast } }
+        border.width: key.look ? ((key.pill && !key.look.dark) || (!key.bare && !key.filled && !key.pill) ? key.look.edge(key.dpr) : 0) : 0
+        border.color: key.look ? (key.pill ? key.look.segRing : key.look.controlBorder) : "transparent"
+        Behavior on color { ColorAnimation { duration: key.look ? key.look.animFast : 0 } }
     }
 }

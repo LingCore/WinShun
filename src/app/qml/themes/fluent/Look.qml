@@ -178,6 +178,16 @@ QtObject {
     // Menus: the item height, the padding round the items.
     property int menuItemHeight: 36
     property real menuPadding: 4
+    // Settings' page tabs: the first label's x from the tabs' left (fluent's
+    // have no track, so the words line up with the title; a style that draws
+    // a track gives 0).
+    property real pageTabsInset: -12
+    // A check box's side; the dimming under a dialog over a window.
+    property real checkSize: 18
+    property color scrim: Qt.rgba(0, 0, 0, dark ? 0.5 : 0.3)
+    // An edge round a menu item under the mouse where its fill alone hardly
+    // shows (C++ tray menu); none in fluent.
+    property color menuHoverEdge: "transparent"
     // Motion: colours and presses; things that move.
     property int animFast: 100
     property int animMove: 200

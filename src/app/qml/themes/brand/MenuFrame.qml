@@ -11,13 +11,13 @@ Item {
     property QtObject look
     property real dpr: 1
 
-    readonly property real radius: look.menuRadius
-    readonly property real padding: look.menuPadding
-    readonly property real itemRadius: look.menuItemRadius
-    readonly property real itemHeight: look.menuItemHeight
-    readonly property color ink: look.ink
-    readonly property color iconInk: look.ink2
-    readonly property color dangerInk: look.danger
+    readonly property real radius: look ? look.menuRadius : 0
+    readonly property real padding: look ? look.menuPadding : 0
+    readonly property real itemRadius: look ? look.menuItemRadius : 0
+    readonly property real itemHeight: look ? look.menuItemHeight : 0
+    readonly property color ink: look ? look.ink : "transparent"
+    readonly property color iconInk: look ? look.ink2 : "transparent"
+    readonly property color dangerInk: look ? look.danger : "transparent"
     // Hook.out names.
     readonly property color foreground: ink
     readonly property color iconColor: iconInk
@@ -28,20 +28,20 @@ Item {
         offset.y: 4
         blur: 14
         spread: -1
-        color: menu.look.menuShadowFar
+        color: menu.look ? menu.look.menuShadowFar : "transparent"
     }
     RectangularShadow {
         anchors.fill: parent
         radius: menu.radius
         offset.y: 1
         blur: 2.4
-        color: menu.look.menuShadowNear
+        color: menu.look ? menu.look.menuShadowNear : "transparent"
     }
     Rectangle {
         anchors.fill: parent
         radius: menu.radius
-        color: menu.look.menuFill
-        border.width: menu.look.edge(menu.dpr)
-        border.color: menu.look.menuEdge
+        color: menu.look ? menu.look.menuFill : "transparent"
+        border.width: menu.look ? menu.look.edge(menu.dpr) : 0
+        border.color: menu.look ? menu.look.menuEdge : "transparent"
     }
 }

@@ -20,25 +20,25 @@ Item {
     property real corner: -1
     property real dpr: 1
     readonly property bool menuMode: role === "menu"
-    readonly property real radius: corner >= 0 ? corner : menuMode ? look.menuItemRadius : look.liftRadius
+    readonly property real radius: corner >= 0 ? corner : !look ? 0 : menuMode ? look.menuItemRadius : look.liftRadius
 
     property QtObject look // injected by Look.qml
-    readonly property real hair: look.hair(dpr)
+    readonly property real hair: look ? look.hair(dpr) : 1
     readonly property bool lifted: !menuMode && (selected || current)
     readonly property bool risen: menuMode && (selected || current || hovered)
 
     // hover tint
     Rectangle {
-        visible: !row.lifted && !row.menuMode && row.hovered
+        visible: !row.lifted && !row.menuMode && row.hovered && row.look !== null
         anchors.fill: parent
         radius: row.radius
-        color: row.look.rowHover
+        color: row.look ? (row.look?.rowHover ?? Qt.rgba(0, 0, 0, 0)) : "transparent"
     }
 
     // ---- the lifted card ----
     Loader {
         anchors.fill: parent
-        active: row.lifted
+        active: row.lifted && row.look !== null
         sourceComponent: Item {
             RectangularShadow {
                 visible: !row.pressed
@@ -47,7 +47,7 @@ Item {
                 offset.y: 3
                 spread: -2
                 blur: 9.6 // CSS 8 x 1.2
-                color: row.look.cardShadow
+                color: (row.look?.cardShadow ?? Qt.rgba(0, 0, 0, 0))
             }
             Rectangle { // the close one: a device pixel under the edge
                 visible: !row.pressed
@@ -55,12 +55,12 @@ Item {
                 width: parent.width
                 height: parent.height
                 radius: row.radius
-                color: row.look.cardShadowNear
+                color: (row.look?.cardShadowNear ?? Qt.rgba(0, 0, 0, 0))
             }
             Rectangle {
                 anchors.fill: parent
                 radius: row.radius
-                color: Qt.tint(row.look.cardColor, row.look.cardLine) // CSS borders lie over the element's own face
+                color: Qt.tint((row.look?.cardColor ?? Qt.rgba(0, 0, 0, 0)), (row.look?.cardLine ?? Qt.rgba(0, 0, 0, 0))) // CSS borders lie over the element's own face
             }
             Rectangle { // top light: the face below leaves a one-pixel crescent
                 x: row.hair
@@ -68,7 +68,7 @@ Item {
                 width: parent.width - 2 * row.hair
                 height: parent.height - 2 * row.hair
                 radius: Math.max(0, row.radius - row.hair)
-                color: Qt.tint(row.look.cardColor, row.look.cardHighlight)
+                color: Qt.tint((row.look?.cardColor ?? Qt.rgba(0, 0, 0, 0)), (row.look?.cardHighlight ?? Qt.rgba(0, 0, 0, 0)))
             }
             Rectangle {
                 x: row.hair
@@ -76,7 +76,7 @@ Item {
                 width: parent.width - 2 * row.hair
                 height: parent.height - 3 * row.hair
                 radius: Math.max(0, row.radius - row.hair)
-                color: row.look.cardColor
+                color: (row.look?.cardColor ?? Qt.rgba(0, 0, 0, 0))
             }
         }
     }
@@ -84,7 +84,7 @@ Item {
     // ---- a menu item under the pointer: a key face, no contact shadow ----
     Loader {
         anchors.fill: parent
-        active: row.risen
+        active: row.risen && row.look !== null
         sourceComponent: KeySurface {
             corner: row.radius
             drop: false

@@ -17,11 +17,11 @@ Item {
     property int hueIndex: -1
     property real dpr: 1
 
-    readonly property var tone: look.chipHue(hueIndex)
-    readonly property real radius: look.chipRadius
+    readonly property var tone: look ? look.chipHue(hueIndex) : ({ ink: "transparent", deep: "transparent" })
+    readonly property real radius: look ? look.chipRadius : 0
     // For the host's words and icon.
-    readonly property color ink: checked ? (isAll || hueIndex === -1 ? look.neutralFillInk : look.accentText) : hovered ? look.ink : look.ink2
-    readonly property color iconInk: checked ? (isAll || hueIndex === -1 ? look.neutralFillInk : look.accentText) : tone.ink
+    readonly property color ink: look ? (checked ? (isAll || hueIndex === -1 ? look.neutralFillInk : look.accentText) : hovered ? look.ink : look.ink2) : "transparent"
+    readonly property color iconInk: look ? (checked ? (isAll || hueIndex === -1 ? look.neutralFillInk : look.accentText) : tone.ink) : "transparent"
     readonly property int weight: Font.Normal
     // Hook.out names.
     readonly property color foreground: ink
@@ -31,10 +31,11 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: chip.radius
-        color: chip.checked ? (chip.isAll || chip.hueIndex === -1 ? chip.look.neutralFill : chip.tone.deep)
+        color: !chip.look ? "transparent"
+             : chip.checked ? (chip.isAll || chip.hueIndex === -1 ? chip.look.neutralFill : chip.tone.deep)
              : chip.pressed ? chip.look.pressedFill
              : chip.hovered ? chip.look.hoverFill
              : Qt.rgba(chip.look.hoverFill.r, chip.look.hoverFill.g, chip.look.hoverFill.b, 0)
-        Behavior on color { ColorAnimation { duration: chip.look.animFast } }
+        Behavior on color { ColorAnimation { duration: chip.look ? chip.look.animFast : 0 } }
     }
 }

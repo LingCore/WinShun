@@ -97,21 +97,46 @@ Hook {
 | `windowFrame` | `WindowBody.qml` | WindowEdge：所有我们画的窗口。宿主放两份：`paint: "back"`（最底层，own 时画窗口底的圆角形状；`fill` 是该窗口自己的底色，如设置窗口的 page、启动器的 background）和 `paint: "edge"`（最上层，画 1 px 边）；`"all"` 两者都画 | paint, fill, active, maximized, dpr |
 | `searchField` | `SearchField.qml` | 启动器搜索行（`flat: true`）、设置搜索框、剪贴板搜索、插件搜索框（`flat: false`） | flat, focused, hovered, dpr |
 | `inputField` | `InputField.qml` | InputBox、表单输入框 | focused, hovered, enabled, error, dpr |
-| `keySurface` | `KeySurface.qml` | FlatButton、RowAction、钉住/展开、底栏按钮…… | hovered, pressed, checked, enabled（Item 自带，部件不要重新声明）, highlighted（主按钮）, danger（确认删除）, flat（工具栏图标按钮，静止时无底）, corner（宿主要求的圆角，-1 用自己的）, dpr |
-| `segmented` | `Segmented.qml` | 范围（全部/文件/内容）、底栏排序、FileViewSwitch、PageTabs、设置里的分段选择 | count, currentIndex, hoveredIndex, pressedIndex, segments（`[{x, width}]`，各段在 Hook 内的位置）, dpr。文字由宿主画 |
-| `chipSurface` | `ChipSurface.qml` | 类型条、剪贴板分组、筛选胶囊 | checked, hovered, pressed, hueIndex（-2 文件夹、-1 不限、0..n 按 TypeStrip 的类型顺序，超出调色板取模）, isAll, dpr |
-| `rowHighlight` | `RowHighlight.qml` | 结果行、剪贴板行、面板行、菜单项的选中/悬停底 | selected, hovered, current, position（宿主高亮的 y，变化时可做落位动画）, dpr |
+| `keySurface` | `KeySurface.qml` | FlatButton、RowAction、钉住/展开、底栏按钮、工具条按钮…… | hovered, pressed, checked, current（打开着的东西：行的预览键）, enabled（Item 自带，部件不要重新声明）, highlighted（主按钮）, danger（确认删除）, flat（静止时无底）, corner（宿主要求的圆角，-1 用自己的）, role, dpr |
+| `segmented` | `Segmented.qml` | 范围（role "scope"）、底栏排序（"sort"）、FileViewSwitch（"switch"）、PageTabs 和设置里的分段（"tabs"） | count, currentIndex, hoveredIndex, pressedIndex, segments（`[{x, width}]`，各段在 Hook 内的位置）, role, dpr。文字由宿主画；部件可给 segmentX(i) 等自己排 |
+| `chipSurface` | `ChipSurface.qml` | 类型条（role "type"）、剪贴板分组（"group"）、筛选胶囊（"filter"） | checked, hovered, pressed, hueIndex（-2 文件夹、-1 不限、0..n 按 TypeStrip 的类型顺序，超出调色板取模）, isAll, role, dpr |
+| `rowHighlight` | `RowHighlight.qml` | 结果行、剪贴板行、面板行（role "list"/"panel"）、菜单项（"menu"）的选中/悬停底；一个列表共用一个跟着当前行走的高亮 | selected, hovered, current（键盘所在行，未选中）, pressed, role, position（宿主高亮的 y，变化时可做落位动画）, dpr |
 | `matchStyle` | —（token） | StyledText 里的匹配字 | `matchColor`、`matchWeight` |
 | `typeIcon` | `TypeIcon.qml` | 文件类型图标；fluent 为 `null`（用系统图标）。应用和 exe 一直用系统图标 | kind（folder doc xls ppt pdf image md zip code audio video ebook text other）, size, hueIndex, dpr |
-| `menuFrame` | `MenuFrame.qml` | ContextMenu、DropMenu、HoverTip | dpr |
+| `menuFrame` | `MenuFrame.qml` | ContextMenu、DropMenu、HoverTip、工具条/浮层面板、对话框卡 | shadow（false：窗口已有自绘框阴影）, dpr |
 | `toggle` | `Toggle.qml` | ToggleSwitch 的轨道和滑块（宿主 40×20）；`kind: "check"` 是复选框 | checked, hovered, pressed, enabled, mixed, active（false：还没读到状态，只画轨道）, kind, dpr |
 | `keyHint` | `HintCap.qml` | KeyHint、底栏键位提示（**不可点**，保持扁平） | dpr。字由宿主画（`subtext`） |
 | `separator` | `Separator.qml` | 分隔线、接缝；在宿主框里横向/纵向居中 | orientation, dpr |
 | `scrollBar` | `ScrollThumb.qml` | ListScrollBar 的轨道和滑块，宿主决定宽度（靠近时变宽） | active（变宽）, hovered（在滑块上）, pressed, position, extent（滑块 y/高）, dpr |
-| `card` | `CardSurface.qml` | 设置卡片、插件卡片、ShareCard | hovered, corner, dpr |
+| `card`（宿主读 `Theme.cardPart`） | `CardSurface.qml` | 设置卡片、插件卡片、ShareCard | hovered, corner, inset（卡片里的卡片：只画边，经 extra 传）, dpr |
+| `tray` | `Tray.qml` | 结果列表下面的托盘；fluent、brand 为 `null` | dpr |
+| `actionCapsule` | `ActionCapsule.qml` | 结果行按钮组后面的胶囊；fluent、tactile 为 `null` | count, hovered, dpr |
 
 宿主读的 token（部件之外的字和间距，也按风格变）：`chipText` 规则是“选中且不是不限 → `accentText`（白），否则 `text`/`subtext`”，所以选中填充必须够深；
 `segment` 的选中字用 `text` + `fontStrong`，其余 `subtext`。
+
+### 3.1 role 和 extra
+- `role`（字符串）告诉部件它在哪：keySurface `"rowAction"|"fieldKey"|"toolbar"|"footer"|"dialog"`；segmented `"scope"|"sort"|"tabs"|"switch"`；
+  rowHighlight `"list"|"menu"|"panel"`；chipSurface `"type"|"group"|"filter"`。Hook 还派生旧名：raised（rowAction）、inField（scope/fieldKey）、
+  bar（不是 menu）、inMenu、keyed（scope）、checkbox（kind "check"）。部件不要把这些名字声明成 readonly（Hook 要赋值）。
+- 只有某个风格懂的输入：宿主写 `extra: ({ name: value })`，部件声明了同名属性才赋值（例：`inset`、`shadow`、`corner`、`indicator`）。
+- Hook 的 `fill` 会传给所有声明了 `fill` 的部件，部件内部别的用途请换名。
+
+### 3.2 部件给宿主的值（out / call）
+宿主用 `hook.out("名字", 宿主默认值)`、`hook.call("函数", [参数], 默认值)` 读，部件声明同名属性/函数即可：
+- keySurface / chipSurface：`foreground` `contentOffsetY` `fontWeight` `leadingInset` `iconColor` `disabledOpacity`
+  （部件禁用时自己变淡就声明 `readonly property real disabledOpacity: 1`，宿主 `opacity: enabled ? 1 : out("disabledOpacity", 0.45)`）
+- segmented：`segmentX(i)` `segmentWidth(i)` `labelOffsetY(i)` `labelColor(i)` `labelWeight(i)` `leadingInset`
+- searchField / inputField：`textColor` `placeholderColor` `caretColor` `iconColor`（searchField 另有 `leadingInset` `contentOffsetY`）
+- keyHint：`foreground` `contentOffsetY`；toggle：`settle()`（宿主行被复用/窗口重新显示时调用；Behavior 里的动画 complete() 停不住，
+  做法见 fluent/Toggle.qml：暂时关掉 Behavior 再把属性绑回终值）
+- 部件创建时 `look` 可能还没赋上、退出时可能先被置空：读 look 的绑定都要判空。
+
+### 3.3 宿主读的几何 token（Theme.xxx；Look 缺的退回 fluent）
+`fieldInset` `fieldRadius` `fieldKeyInsetAt(dpr)` `rowInset` `rowRadius` `rowSlide`（ms，0 不滑） `iconInset` `textStart` `actionsInset`
+`capsuleRadius` `capsulePadding` `capsuleKeyRadius` `capsuleFill` `typeChipHeight`（0：UiScale） `menuItemHeight` `menuPadding`
+`pageTabsInset` `checkSize` `scrim` `menuHoverEdge` `animFast` `animMove`，函数 `edge(dpr)`（窗口边、窗口级分隔线）、`hair(dpr)`（部件内部的 1 设备像素线）。
+只有部分风格有的值：`Theme.tok("名字", 默认)`。
 
 需要新钩子或新 token：写进交付说明，由 A 统一加到 fluent/Look.qml 和 Hook.qml，不要自己改共用文件。
 
@@ -120,6 +145,10 @@ Hook {
 - `frame: "own"` 且 `windowRadius > 0`（且没选直角）时，WinShun 关掉该窗口的 DWM 圆角、DWM 边和 DWM 阴影，并去掉 Mica；
   窗口变成透明，`windowFrame` 部件画 18 圆角的底（`paint: "back"`，颜色是宿主给的 `fill`）和 1 px 中性灰边（`paint: "edge"`）。
 - 阴影由 C++ 画在一个点击穿透的伴随窗口里（紧贴主窗口下方，跟随移动、显示隐藏、最大化、DPI），参数就是 `windowShadow`（每层可选 `color`，缺省黑色），部件不画窗口阴影。
+- 只有 `SystemTheme.ownFrameAvailable`（D3D11 渲染，窗口有 alpha）时才是真的自绘框（`Theme.ownFrame`）；软件渲染或直角时退回 DWM 的框，
+  边用 fluent 的 WindowBody，style 的 WindowBody 只在 `Theme.ownFrame` 时被用。
+- 每个窗口：`color: <底色>` 不变，加 `WindowEdge { id: windowEdge; fill: <同一个底色> }`；自绘框时 WindowEdge 把窗口设成透明，
+  在最底层用 `paint: "back"` 画底、最上层画边，并放 `OwnFrame` 让 C++ 画阴影。贴角的满宽表面用 `windowEdge.cornerRadius`（最大化时 0）。
 - 最大化时 `maximized: true`：不画圆角和边。
 - 窗口里贴边的大块表面（底栏、标题栏、侧栏底色）在 own 时要自己按 `Theme.windowRadius` 处理靠近窗口角的两个角，否则会盖住圆角。
 
