@@ -84,7 +84,7 @@ Item {
     readonly property bool sizeShown: showSize && size.length > 0
     readonly property bool modifiedShown: showModified && modified.length > 0
     property int hint: 0 // its number for the number keys (Ctrl+1…); 0 for none
-    property bool reserveHintSpace: false // all rows align, including unnumbered and temporarily hidden hints
+    property bool reserveHintSpace: false // a numbered row keeps the number's room, also while the hint is faded out; a row without a number sits flush left
     property string hintModifier: "Ctrl" // ... with this held
     property bool hintTaken: false // one of Win顺's own shortcuts has that chord: shown struck through
     property real hintOpacity: 1
@@ -216,7 +216,7 @@ Item {
         id: iconSlot
         objectName: "resultIcon"
         opacity: row.offline || row.missing ? 0.6 : 1
-        x: Theme.iconInset + (row.reserveHintSpace ? 28 : 0)
+        x: Theme.iconInset + (row.reserveHintSpace && row.hint > 0 ? 28 : 0)
         anchors.verticalCenter: parent.verticalCenter
         width: 32 // 48 device pixels at 150 %, 64 at 200 %: sizes icons are drawn for
         height: 32

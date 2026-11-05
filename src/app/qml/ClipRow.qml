@@ -29,7 +29,7 @@ Item {
     required property bool screenshot // a picture Win顺's capture took: tagged 截图 (when in no group)
     required property bool pasted // pasted from the list before, with 粘贴后保持位置 on (else the last pasted is on top): a check mark
     property int hint: 0 // the number that pastes this row (Alt+1...); 0 for none
-    property bool reserveHintSpace: false // keep icons aligned when hints fade or a row has no number
+    property bool reserveHintSpace: false // a numbered row keeps the number's room while hints fade; one without a number sits flush left
     property string hintModifier: "Alt" // ... with this held
     property bool hintTaken: false // one of Win顺's own shortcuts has that chord: shown struck through
     property real hintOpacity: 1
@@ -105,7 +105,7 @@ Item {
     Item {
         id: iconSlot
         objectName: "clipboardIconSlot"
-        x: 16 + (row.reserveHintSpace ? 28 : 0)
+        x: 16 + (row.reserveHintSpace && row.hint > 0 ? 28 : 0)
         anchors.verticalCenter: parent.verticalCenter
         // Pictures larger, on a taller row (ClipboardPage.pictureRowHeight):
         // what is in them shows (GitHub #9); 108 x 68 holds a 16:10 screen whole,
