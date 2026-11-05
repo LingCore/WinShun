@@ -169,7 +169,15 @@ Item {
     onSlidePositionChanged: {
         if (slide.running) {
             writingScroll = true
-            view.contentX = slidePosition
+            view.contentX = onPixel(slidePosition) // whole device pixels: the words and icons stay sharp while it moves
+            writingScroll = false
+        }
+    }
+    property real wheelPosition: 0
+    onWheelPositionChanged: {
+        if (wheelAnim.running) {
+            writingScroll = true
+            view.contentX = onPixel(wheelPosition)
             writingScroll = false
         }
     }
@@ -203,7 +211,7 @@ Item {
         const from = wheelAnim.running ? wheelAnim.to : view.contentX
         wheelAnim.stop()
         wheelAnim.from = view.contentX
-        wheelAnim.to = Math.max(0, Math.min(view.contentWidth - view.width, from - delta * 0.75))
+        wheelAnim.to = onPixel(Math.max(0, Math.min(view.contentWidth - view.width, from - delta * 0.75)))
         wheelAnim.start()
         return true
     }
@@ -256,7 +264,7 @@ Item {
             blocking: false // observe, then let Flickable handle the event
             onWheel: strip.cancelReveal()
         }
-        NumberAnimation { id: wheelAnim; target: view; property: "contentX"; duration: 140; easing.type: Easing.OutCubic }
+        NumberAnimation { id: wheelAnim; target: strip; property: "wheelPosition"; duration: 140; easing.type: Easing.OutCubic }
 
         // Where more chips are hidden, the chips fade out at that end instead
         // of being cut off (the mask below is a ramp of 52 px at each end).
@@ -386,8 +394,8 @@ Item {
         visible: false
     }
     MultiEffect {
-        x: view.x
-        y: view.y
+        x: onPixel(view.x)
+        y: onPixel(view.y)
         width: view.width
         height: view.height
         visible: view.interactive
