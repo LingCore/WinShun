@@ -37,6 +37,17 @@
 //                      0, 1000 and 50000 changes made up in memory; time and
 //                      private working set brought back after emptying it,
 //                      both ways in turn, and whether both found the same
+//   wsbench [snapshot] --document-memory [--from MB] [--below N]
+//                      the documents a content search reads, by size; then
+//                      one of each size from MB (8) up and N (60) smaller
+//                      ones, each read in a WinShunExtract.exe of its own:
+//                      time, the most private memory it took, what it kept
+//   wsbench [snapshot] --document-pass
+//                      the content indexer's first pass, documents only, into
+//                      a content index of its own: how long it took, and the
+//                      extractors' private memory (summed, and the most one
+//                      took). WINSHUN_LARGE_DOCUMENT_MB=0: large documents
+//                      read with the others, to compare (WINSHUN_USER fixed)
 //   wsbench [snapshot] --content-index [--all] [--threads N] [--sample N] [--seed N] [--background]
 //                      [--read-only] [--no-add] [--merge-threads N] [--merge-times] [--dir D] [--keep] [--verify]
 //                      builds the content index of those files (without system
@@ -318,6 +329,7 @@
 #include <aclapi.h>
 #include <objbase.h>
 #include <psapi.h>
+#include <tlhelp32.h>
 #include <winioctl.h>
 
 #include <algorithm>
@@ -2717,6 +2729,224 @@ int runContentGather(std::shared_ptr<ws::FileIndex> index, const std::vector<cha
         passDone(all);
     }
     return failures;
+}
+
+// ---- documents' memory by size (--document-memory) -----------------------------
+
+// The extractor processes this one started (WinShunExtract.exe): private
+// bytes now, summed, and the highest any of them reached.
+struct ExtractorMemory {
+    double nowMB = 0; // summed
+    double peakMB = 0; // the largest peak of one
+    int processes = 0;
+};
+ExtractorMemory extractorMemory()
+{
+    ExtractorMemory out;
+    const ws::win32::UniqueHandle snapshot(::CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0));
+    if (!snapshot.valid())
+        return out;
+    PROCESSENTRY32W entry {};
+    entry.dwSize = sizeof entry;
+    for (BOOL more = ::Process32FirstW(snapshot.get(), &entry); more; more = ::Process32NextW(snapshot.get(), &entry)) {
+        if (entry.th32ParentProcessID != ::GetCurrentProcessId() || ::_wcsicmp(entry.szExeFile, L"WinShunExtract.exe") != 0)
+            continue;
+        const ws::win32::UniqueHandle process(::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, entry.th32ProcessID));
+        PROCESS_MEMORY_COUNTERS_EX counters {};
+        counters.cb = sizeof counters;
+        if (!process.valid()
+            || !::GetProcessMemoryInfo(process.get(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters), sizeof counters))
+            continue;
+        out.nowMB += static_cast<double>(counters.PrivateUsage) / (1024.0 * 1024.0);
+        out.peakMB = std::max(out.peakMB, static_cast<double>(counters.PeakPagefileUsage) / (1024.0 * 1024.0));
+        ++out.processes;
+    }
+    return out;
+}
+
+// The documents a content search reads (within the default size limit), by
+// size: how many, how many MB, of how many sizes (copies, which have the
+// same, are read once). Then those of at least --from MB (8) and --below N
+// (60) smaller ones, one size each, read one at a time, each in a
+// WinShunExtract.exe of its own: how long, the most private memory the
+// process took, and what it kept once done (an idle process is used again).
+int runDocumentMemory(const ws::FileIndex& index, const QStringList& args)
+{
+    constexpr double kMiB = 1024.0 * 1024.0;
+    double fromMB = 8;
+    int below = 60;
+    if (const qsizetype at = args.indexOf(u"--from"_s); at >= 0 && at + 1 < args.size())
+        fromMB = args[at + 1].toDouble();
+    if (const qsizetype at = args.indexOf(u"--below"_s); at >= 0 && at + 1 < args.size())
+        below = args[at + 1].toInt();
+    const ws::Settings defaults = ws::Settings::defaults();
+    const ws::ContentFilter filter {ws::ExtensionFilter(defaults.contentExtensions + ws::documentExtensions()), false};
+    const ws::ExtensionFilter documents(ws::documentExtensions());
+    const std::int64_t limit = defaults.contentSizeLimits().bytes[ws::ContentSizeLimits::Document];
+    struct Doc {
+        ws::EntryId id;
+        std::uint64_t bytes;
+    };
+    std::vector<Doc> docs;
+    for (std::size_t i = 0; i < index.slotCount(); ++i) {
+        const auto id = static_cast<ws::EntryId>(i);
+        const ws::Entry& e = index.entry(id);
+        if (!filter.accepts(index, e) || !documents.matches(index.name(e), index.extLength(e)))
+            continue;
+        const std::uint64_t bytes = ws::unpackSize(index.size(id));
+        if (bytes > 0 && static_cast<std::int64_t>(bytes) <= limit)
+            docs.push_back({id, bytes});
+    }
+    const std::vector<double> edges {0, 1, 4, 8, 12, 16, 24, 32, 50.01};
+    const auto bucketOf = [&](std::uint64_t bytes) {
+        const double mb = static_cast<double>(bytes) / kMiB;
+        std::size_t b = 0;
+        while (b + 2 < edges.size() && mb >= edges[b + 1])
+            ++b;
+        return b;
+    };
+    std::printf("%zu documents within %.0f MB\n%10s %8s %10s %8s\n", docs.size(), static_cast<double>(limit) / kMiB,
+        "MB", "files", "MB", "sizes");
+    std::vector<std::set<std::uint64_t>> sizes(edges.size() - 1);
+    std::vector<std::size_t> counts(edges.size() - 1);
+    std::vector<double> mbs(edges.size() - 1);
+    for (const Doc& d : docs) {
+        const std::size_t b = bucketOf(d.bytes);
+        ++counts[b];
+        mbs[b] += static_cast<double>(d.bytes) / kMiB;
+        sizes[b].insert(d.bytes);
+    }
+    for (std::size_t b = 0; b + 1 < edges.size(); ++b)
+        std::printf("%4.0f-%-5.0f %8zu %10.0f %8zu\n", edges[b], edges[b + 1], counts[b], mbs[b], sizes[b].size());
+
+    // One file of each size: those from fromMB up, and `below` smaller ones at random.
+    std::vector<Doc> sample;
+    std::set<std::uint64_t> taken;
+    std::vector<Doc> smaller;
+    for (const Doc& d : docs) {
+        if (!taken.insert(d.bytes).second)
+            continue;
+        (static_cast<double>(d.bytes) / kMiB >= fromMB ? sample : smaller).push_back(d);
+    }
+    std::shuffle(smaller.begin(), smaller.end(), std::mt19937_64(20261105));
+    smaller.resize(std::min(smaller.size(), static_cast<std::size_t>(std::max(0, below))));
+    sample.insert(sample.end(), smaller.begin(), smaller.end());
+    std::sort(sample.begin(), sample.end(), [](const Doc& a, const Doc& b) { return a.bytes < b.bytes; });
+
+    struct Read {
+        std::uint64_t bytes;
+        double ms;
+        double peakMB;
+        double keptMB;
+        bool ok;
+        ws::EntryId id;
+    };
+    std::vector<Read> reads;
+    ws::DocExtractor extractor(1, ws::DocExtractor::Priority::Normal);
+    for (const Doc& d : sample) {
+        const std::wstring path = index.wpath(d.id);
+        QElapsedTimer t;
+        t.start();
+        const ws::DocExtractor::Result result = extractor.extractFile(path, limit, {});
+        const double ms = msSince(t);
+        const ExtractorMemory memory = extractorMemory(); // the process is idle now, not ended
+        extractor.closeIdle(); // the next in a fresh one
+        if (result.retry || memory.processes == 0)
+            continue; // not read (gone, a cloud file, no process)
+        reads.push_back({d.bytes, ms, memory.peakMB, memory.nowMB, result.status == ws::extractproto::Status::Ok, d.id});
+    }
+    std::printf("\nread one at a time, each in a process of its own: %zu files\n", reads.size());
+    std::printf("%10s %6s %5s %10s %9s %9s %9s %9s %9s\n", "MB", "files", "ok", "time s", "ms med", "peak med",
+        "peak max", "kept med", "kept max");
+    for (std::size_t b = 0; b + 1 < edges.size(); ++b) {
+        std::vector<double> ms, peak, kept;
+        int ok = 0;
+        for (const Read& r : reads) {
+            if (bucketOf(r.bytes) != b)
+                continue;
+            ms.push_back(r.ms);
+            peak.push_back(r.peakMB);
+            kept.push_back(r.keptMB);
+            ok += r.ok;
+        }
+        if (ms.empty())
+            continue;
+        const auto med = [](std::vector<double> v) {
+            std::sort(v.begin(), v.end());
+            return v[v.size() / 2];
+        };
+        std::printf("%4.0f-%-5.0f %6zu %5d %10.1f %9.0f %9.0f %9.0f %9.0f %9.0f\n", edges[b], edges[b + 1], ms.size(), ok,
+            std::accumulate(ms.begin(), ms.end(), 0.0) / 1000, med(ms), med(peak),
+            *std::max_element(peak.begin(), peak.end()), med(kept), *std::max_element(kept.begin(), kept.end()));
+    }
+    std::sort(reads.begin(), reads.end(), [](const Read& a, const Read& b) { return a.peakMB > b.peakMB; });
+    std::printf("\nthe most memory:\n");
+    for (std::size_t i = 0; i < std::min<std::size_t>(12, reads.size()); ++i) {
+        std::printf("  %7.0f MB peak, %6.0f MB kept, %7.1f MB file, %7.0f ms  %s\n", reads[i].peakMB, reads[i].keptMB,
+            static_cast<double>(reads[i].bytes) / kMiB, reads[i].ms,
+            QFileInfo(index.path(reads[i].id)).suffix().toUtf8().constData());
+    }
+    return 0;
+}
+
+// As a first run of the content index, documents only (the snapshot's
+// volumes followed; a content index of its own, in a temporary folder next to
+// the snapshot): how long the pass took, and the extractor processes' private
+// memory, summed (every 100 ms) and the most one of them took.
+// WINSHUN_LARGE_DOCUMENT_MB=0 reads large documents with the others, to
+// compare; WINSHUN_USER=away|present fixes how many are read at once.
+int runDocumentPass(std::shared_ptr<ws::FileIndex> index, const std::vector<ws::VolumeInfo>& volumeInfos,
+    const std::vector<ws::JournalPosition>& journals, const QString& folder)
+{
+    using namespace std::chrono_literals;
+    QTemporaryDir dir(folder + u"/document-pass-XXXXXX"_s);
+    if (!dir.isValid())
+        return 1;
+    std::vector<ws::ContentIndexer::Volume> volumes;
+    for (std::size_t i = 0; i < volumeInfos.size() && i < journals.size(); ++i) {
+        if (journals[i].journalId != 0)
+            volumes.push_back({QString::fromStdWString(volumeInfos[i].root).toStdString(), false, volumeInfos[i].serial});
+    }
+    ws::ContentIndexer::Source source;
+    source.index = [&] { return index; };
+    source.volumes = [&] { return volumes; };
+    source.ready = [] { return true; };
+    ws::ContentIndexer::Options options;
+    options.extensions = {}; // documents only
+    options.documents = true;
+    options.sizeLimits = ws::Settings::defaults().contentSizeLimits();
+    auto content = std::make_shared<ws::ContentIndex>(dir.filePath(u"content"_s));
+    QElapsedTimer t;
+    t.start();
+    double sumMB = 0;
+    double oneMB = 0;
+    int most = 0;
+    std::size_t total = 0;
+    std::size_t copies = 0;
+    {
+        ws::ContentIndexer indexer(content, source, options, {0ms, 0ms, 1h, 0ms, 30s});
+        bool begun = false;
+        while (t.elapsed() < 3'600'000) {
+            std::this_thread::sleep_for(100ms);
+            const ExtractorMemory m = extractorMemory();
+            sumMB = std::max(sumMB, m.nowMB);
+            oneMB = std::max(oneMB, m.peakMB);
+            most = std::max(most, m.processes);
+            if (indexer.reading()) {
+                begun = true;
+                total = std::max(total, indexer.progress().total);
+            } else if (begun) {
+                break;
+            }
+        }
+        copies = indexer.copies();
+    }
+    const QString large = qEnvironmentVariable("WINSHUN_LARGE_DOCUMENT_MB", u"16"_s);
+    const QString user = qEnvironmentVariable("WINSHUN_USER", u"-"_s);
+    std::printf("documents %zu (%zu copies), large from %s MB, user %s: %.1f s; extractors at most %d at once, "
+                "%.0f MB together at most, %.0f MB the most one took\n",
+        total, copies, qPrintable(large), qPrintable(user), static_cast<double>(t.elapsed()) / 1000, most, sumMB, oneMB);
+    return 0;
 }
 
 // ---- the cost of opening a file (--open-probe) ----------------------------------
@@ -6642,6 +6872,12 @@ int main(int argc, char* argv[])
 
     if (args.contains(u"--content-plan"_s))
         return runContentPlan(*index);
+    if (args.contains(u"--document-memory"_s))
+        return runDocumentMemory(*index, args);
+    if (args.contains(u"--document-pass"_s)) {
+        return runDocumentPass(std::shared_ptr<ws::FileIndex>(std::move(contents->index)), contents->volumes,
+            contents->journals, QFileInfo(path).absolutePath());
+    }
     if (args.contains(u"--content-gather"_s)) {
         return runContentGather(std::shared_ptr<ws::FileIndex>(std::move(contents->index)), contents->attachment,
             QFileInfo(path).absolutePath() + u"/content"_s, contents->volumes, contents->journals, args);
