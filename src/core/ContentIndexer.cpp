@@ -1073,7 +1073,8 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
     struct BulkVolume {
         std::size_t volume;
         std::vector<const Work*> files;
-        std::unordered_map<EntryId, std::uint32_t> folderRecord; // the index keeps the folders' MFT record numbers
+        // The folders' MFT record numbers (the index keeps them), until the wants are made.
+        std::unordered_map<EntryId, std::uint32_t> folderRecord;
         std::shared_ptr<std::mutex> scanning; // the hard disk's, shared by its volumes; none on other disks
     };
     std::vector<BulkVolume> bulkVolumes;
@@ -1557,6 +1558,9 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
                 ticketWork.push_back(w);
             }
         }
+        // The folders' record numbers were for the wants only: not kept while
+        // the files are read (about 70 bytes a folder).
+        decltype(bv.folderRecord)().swap(bv.folderRecord);
         giveBack(back);
         back.clear();
         std::vector<ntfs::BulkFile> files;
@@ -1566,7 +1570,11 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
             scanTurn = std::unique_lock(*bv.scanning);
         }
         activity.stage("bulk-scan-mft");
-        const bool scanned = !cancelled() && session->want(wants) && session->scan(files);
+        bool scanned = !cancelled() && session->want(wants);
+        // Sent: the session has the names now. Kept, they would stay through
+        // all the reads, about 150 bytes a file; a ticket needs only ticketWork.
+        std::vector<ntfs::BulkWant>().swap(wants);
+        scanned = scanned && session->scan(files);
         if (scanTurn)
             scanTurn.unlock();
         if (!scanned) {

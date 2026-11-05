@@ -912,7 +912,9 @@ public:
     bool scan(std::vector<BulkFile>& files) override
     {
         files.clear();
-        if (!m_reader.scan(m_wants, m_found))
+        const bool scanned = m_reader.scan(m_wants, m_found);
+        std::vector<BulkWant>().swap(m_wants); // found[i] answers wants[i]: the names are not needed any more
+        if (!scanned)
             return false;
         m_fetched.assign(m_found.size(), false);
         files.reserve(m_found.size());
