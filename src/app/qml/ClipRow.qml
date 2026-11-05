@@ -117,13 +117,13 @@ Item {
             anchors.fill: parent
             visible: row.kind <= 1 && row.swatch.length === 0
             radius: Theme.largeControlRadius
-            color: Theme.badge
+            color: row.kind === 1 ? Theme.tok("clipLinkTint", Theme.badge) : Theme.tok("clipTextTint", Theme.badge) // a style may tint it as its file icons
 
             Glyph {
                 anchors.centerIn: parent
                 glyph: row.kind === 1 ? "" : "" // Link, Font
                 size: 16
-                color: Theme.accent
+                color: row.kind === 1 ? Theme.tok("clipLinkInk", Theme.accent) : Theme.tok("clipTextInk", Theme.accent)
             }
         }
 

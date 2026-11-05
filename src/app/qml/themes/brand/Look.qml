@@ -175,6 +175,11 @@ QtObject {
     }
     function kindInk(kind: string): color { return kinds[kindOf(kind)].ink[dark ? 1 : 0] }
     function kindTint(kind: string): color { return kinds[kindOf(kind)].tint[dark ? 1 : 0] }
+    // The clipboard's text and link tiles (ClipRow), in the same 淡彩 as the file icons: text as documents, a link as e-books' teal.
+    readonly property color clipTextTint: kindTint("doc")
+    readonly property color clipTextInk: kindInk("doc")
+    readonly property color clipLinkTint: kindTint("ebook")
+    readonly property color clipLinkInk: kindInk("ebook")
 
     // The type strip by place (TypeStrip: -2 文件夹, -1 不限, 0.. the kinds in
     // the order of its dotColors, which is the prototype's order).
