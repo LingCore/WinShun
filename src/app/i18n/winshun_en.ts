@@ -12,8 +12,8 @@
         <translation>On battery, so it is paused</translation>
     </message>
     <message>
-        <source>你在用电脑，放慢了</source>
-        <translation>You are using the computer, so it slowed down</translation>
+        <source>硬盘上慢慢读，不卡你</source>
+        <translation>Reading the hard disk gently, so it does not slow you down</translation>
     </message>
     <message>
         <source>约 %1 小时</source>

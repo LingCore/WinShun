@@ -60,9 +60,50 @@ private slots:
         QCOMPARE(remainingText(p), QStringLiteral("在用电池，先暂停"));
         // Slowed: the time to go with the reason, or the reason alone before the speed is known.
         p.pause = Pause::UserPresent;
-        QCOMPARE(remainingText(p), QStringLiteral("约 4–6 分钟（你在用电脑，放慢了）"));
+        QCOMPARE(remainingText(p), QStringLiteral("约 4–6 分钟（硬盘上慢慢读，不卡你）"));
         p.sampleMs = 1000;
-        QCOMPARE(remainingText(p), QStringLiteral("你在用电脑，放慢了"));
+        QCOMPARE(remainingText(p), QStringLiteral("硬盘上慢慢读，不卡你"));
+    }
+
+    void presenceAloneIsNotAReason()
+    {
+        // Someone at the computer on a fast disk is not a pause at all: nothing about it is said.
+        Progress p {1000, 10000, 30.0, 120'000, Pause::None, false};
+        QCOMPARE(remainingText(p), QStringLiteral("约 4–6 分钟"));
+        QVERIFY(!remainingText(p).contains(QStringLiteral("你在用电脑")));
+        QVERIFY(pauseText(Pause::None).isEmpty());
+    }
+
+    void fileIndexNoticeNeedsTwoMinutes()
+    {
+        std::int64_t started = 1000;
+        QVERIFY(!takeNotice(started, 1000 + kNoticeAfterMs - 1)); // a minute and 59 s: not told
+        QCOMPARE(started, qint64(0));
+        started = 1000;
+        QVERIFY(takeNotice(started, 1000 + kNoticeAfterMs)); // first build or a rebuild over two minutes: told
+        QCOMPARE(started, qint64(0));
+        QVERIFY(!takeNotice(started, 1000 + 10 * kNoticeAfterMs)); // the same job is not told twice
+        started = 0; // never began
+        QVERIFY(!takeNotice(started, 99 * kNoticeAfterMs));
+    }
+
+    void contentNoticeOnlyForBigFinishedRounds()
+    {
+        const std::int64_t late = 1000 + 3 * kNoticeAfterMs;
+        std::int64_t started = 1000;
+        QVERIFY(takeContentNotice(started, late, 5000, 5000)); // a big round, long, finished
+        QVERIFY(!takeContentNotice(started, late, 5000, 5000)); // once
+        started = 1000;
+        QVERIFY(!takeContentNotice(started, late, 40, 40)); // a daily small round, however long
+        QCOMPARE(started, qint64(0));
+        started = 1000;
+        QVERIFY(takeContentNotice(started, late, kBigRound, kBigRound)); // exactly 1000 files counts as big
+        started = 1000;
+        QVERIFY(!takeContentNotice(started, 1000 + kNoticeAfterMs - 1, 5000, 5000)); // big but quick
+        started = 1000;
+        QVERIFY(!takeContentNotice(started, late, 2000, 5000)); // cut short: not over, not told ...
+        QCOMPARE(started, qint64(1000)); // ... and the job is remembered for the next pass
+        QVERIFY(takeContentNotice(started, late + 1, 5000, 5000)); // told when it finally ends
     }
 
     void tookIsWholeMinutes()

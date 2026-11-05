@@ -53,7 +53,7 @@ public:
     // "现在没有在忙，闲着时会把内存还给系统": said when nothing runs.
     static QString idleText();
 
-    static constexpr std::int64_t kNoticeAfterMs = 2 * 60 * 1000;
+    static constexpr std::int64_t kNoticeAfterMs = activity::kNoticeAfterMs;
 
 private:
     void update(); // a signal or the sampler: sample, and tell what ended

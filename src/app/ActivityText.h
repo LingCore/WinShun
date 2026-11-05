@@ -13,7 +13,7 @@ enum class Pause : std::uint8_t {
     SearchBox, // the search box is open (or just closed): the disks are left to a search
     ContentSearch, // a content search reads the files itself
     Battery, // battery saver: waits
-    UserPresent, // someone uses the computer: fewer readers, quieter disk reads
+    UserPresent, // someone uses the computer and the round reads from a mechanical disk: one file at a time, very low priority
 };
 
 // A smoothed speed (items a second) from what was done over time. Needs a
@@ -63,5 +63,18 @@ QString rangeText(double seconds);
 
 // "6 分钟" for how long something took (completion notices).
 QString tookText(std::int64_t ms);
+
+// Completion notices: a job that ran this long is told of when it ends.
+constexpr std::int64_t kNoticeAfterMs = 2 * 60 * 1000;
+// A content round of fewer files than this is a small daily round: never told of.
+constexpr std::size_t kBigRound = 1000;
+
+// A big job ended: was it under way (`startedMs` != 0) for kNoticeAfterMs or
+// more? Clears `startedMs` either way, so one job is told of once at most.
+bool takeNotice(std::int64_t& startedMs, std::int64_t nowMs) noexcept;
+// The same for a content round that stopped with `done` of `total` files:
+// a round cut short (done < total) is not over, nothing is taken or cleared; a
+// finished one is told of only when it was a big one (>= kBigRound files).
+bool takeContentNotice(std::int64_t& startedMs, std::int64_t nowMs, std::size_t done, std::size_t total) noexcept;
 
 } // namespace ws::activity

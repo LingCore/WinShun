@@ -17,7 +17,6 @@ namespace ws {
 namespace {
 
 constexpr int kSampleMs = 5000;
-constexpr std::size_t kBigPass = 1000; // files: fewer is a small round, not told of
 constexpr std::int64_t kStaleMs = 10 * 60 * 1000; // a pass cut short, not taken up again within this: a new job
 
 QString number(std::size_t n)
@@ -98,12 +97,12 @@ std::vector<BackgroundStatus::Task> BackgroundStatus::tasks()
         p.pause = static_cast<activity::Pause>(content.pause);
         p.finishing = content.finishing;
         Task t;
-        t.name = content.total >= kBigPass ? tr("正在建立内容索引") : tr("正在更新内容索引");
+        t.name = content.total >= activity::kBigRound ? tr("正在建立内容索引") : tr("正在更新内容索引");
         if (!content.finishing)
             t.count = number(content.done) + u" / " + number(content.total);
         t.remaining = activity::remainingText(p);
         t.fraction = content.total > 0 ? std::min(1.0, static_cast<double>(content.done) / static_cast<double>(content.total)) : -1;
-        t.longRunning = content.total >= kBigPass;
+        t.longRunning = content.total >= activity::kBigRound;
         out.push_back(std::move(t));
     }
     if (m_index->moving())
@@ -150,9 +149,9 @@ void BackgroundStatus::update()
     if (fileBusy && m_fileStarted == 0)
         m_fileStarted = now;
     if (!fileBusy && state == State::Ready && !m_index->isRefreshing()) {
-        if (m_fileStarted != 0 && now - m_fileStarted >= kNoticeAfterMs && onFinished)
-            onFinished(tr("文件索引建好了"), tr("用了 %1。").arg(activity::tookText(now - m_fileStarted)));
-        m_fileStarted = 0;
+        const std::int64_t started = m_fileStarted;
+        if (activity::takeNotice(m_fileStarted, now) && onFinished)
+            onFinished(tr("文件索引建好了"), tr("用了 %1。").arg(activity::tookText(now - started)));
         m_rebuilding = false;
     }
 
@@ -166,12 +165,10 @@ void BackgroundStatus::update()
         }
     } else if (!content.reading && m_contentWasReading) {
         m_contentLastEnded = now;
-        if (content.done >= content.total) {
-            if (content.total >= kBigPass && now - m_contentStarted >= kNoticeAfterMs && onFinished) {
-                onFinished(tr("内容索引建好了"),
-                    tr("用了 %1。现在可以搜文件里的字了。").arg(activity::tookText(now - m_contentStarted)));
-            }
-            m_contentStarted = 0;
+        const std::int64_t started = m_contentStarted;
+        if (activity::takeContentNotice(m_contentStarted, now, content.done, content.total) && onFinished) {
+            onFinished(tr("内容索引建好了"),
+                tr("用了 %1。现在可以搜文件里的字了。").arg(activity::tookText(now - started)));
         }
     }
     m_contentWasReading = content.reading;

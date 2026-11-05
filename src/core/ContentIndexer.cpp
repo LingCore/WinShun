@@ -518,7 +518,7 @@ ContentIndexer::Status ContentIndexer::status() const noexcept
         return s;
     s.finishing = m_merging.load() && s.done >= s.total;
     s.pause = batterySaverOn() ? 3 : m_searchBoxOpen.load() || searchBoxHolds() ? 1 : m_content->searching() ? 2
-        : m_userHere.load() ? 4 : 0;
+        : m_userHere.load() && m_hardDiskPass.load() ? 4 : 0; // only a mechanical disk is slowed by someone being there
     return s;
 }
 
@@ -1047,6 +1047,7 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
     bool away = win32::userAway(); // nobody at the computer (the coordinator's, from here on)
     std::atomic<bool> awayNow {away}; // the same, for the readers
     m_userHere = !away;
+    m_hardDiskPass = std::any_of(hardDiskQueue.begin(), hardDiskQueue.end(), [](const Queue* q) { return q != nullptr; });
     // A hard disk is all the user's while they are at the computer: one file
     // at a time, at very low I/O priority (readFile, HardDisk::quiet), so
     // Windows serves every other program's reads first. Nobody there: two.

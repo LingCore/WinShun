@@ -42,7 +42,7 @@ QString pauseText(Pause pause)
     case Pause::Battery:
         return QCoreApplication::translate("Activity", "在用电池，先暂停");
     case Pause::UserPresent:
-        return QCoreApplication::translate("Activity", "你在用电脑，放慢了");
+        return QCoreApplication::translate("Activity", "硬盘上慢慢读，不卡你");
     case Pause::None:
         break;
     }
@@ -85,6 +85,20 @@ QString tookText(std::int64_t ms)
     if (minutes >= 90)
         return QCoreApplication::translate("Activity", "%1 小时").arg(QString::number(static_cast<double>(minutes) / 60.0, 'f', 1));
     return QCoreApplication::translate("Activity", "%1 分钟").arg(minutes);
+}
+
+bool takeNotice(std::int64_t& startedMs, std::int64_t nowMs) noexcept
+{
+    const bool due = startedMs != 0 && nowMs - startedMs >= kNoticeAfterMs;
+    startedMs = 0;
+    return due;
+}
+
+bool takeContentNotice(std::int64_t& startedMs, std::int64_t nowMs, std::size_t done, std::size_t total) noexcept
+{
+    if (done < total)
+        return false;
+    return takeNotice(startedMs, nowMs) && total >= kBigRound;
 }
 
 } // namespace ws::activity

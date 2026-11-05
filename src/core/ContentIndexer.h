@@ -376,6 +376,7 @@ private:
     std::atomic<bool> m_interrupt {false}; // checked before each file
     std::atomic<bool> m_reading {false};
     std::atomic<bool> m_userHere {false}; // the pass under way found someone at the computer
+    std::atomic<bool> m_hardDiskPass {false}; // ... and reads from a mechanical disk (one file at a time then)
     std::function<void()> m_onActivity;
     bool searchBoxHolds() const noexcept;
     std::atomic<bool> m_searchBoxOpen {false};
