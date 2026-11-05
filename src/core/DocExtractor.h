@@ -35,7 +35,11 @@ namespace ws {
 class DocExtractor {
 public:
     enum class Priority { Background, Normal };
-    DocExtractor(int maxProcesses, Priority priority);
+    // `alone`: documents of at least this many bytes are read one at a time
+    // (0: no such limit), and the process that read one ends after it: a
+    // large PDF can take hundreds of megabytes while it is read, and its
+    // process keeps much of that afterwards (wsbench --document-memory).
+    DocExtractor(int maxProcesses, Priority priority, std::uint64_t alone = 0);
     ~DocExtractor();
     DocExtractor(const DocExtractor&) = delete;
     DocExtractor& operator=(const DocExtractor&) = delete;
@@ -67,10 +71,14 @@ private:
     std::unique_ptr<Process> acquire(const std::function<bool()>& cancelled);
     void release(std::unique_ptr<Process> process); // null: it was ended
     void reap(std::stop_token stop);
+    bool takeAlone(const std::function<bool()>& cancelled); // false: cancelled first
+    void releaseAlone();
 
     const int m_max;
     const Priority m_priority;
     const unsigned m_codePage;
+    const std::uint64_t m_alone;
+    bool m_aloneBusy = false; // a document of m_alone bytes or more is being read
     std::mutex m_mutex;
     std::condition_variable_any m_cv;
     std::vector<std::unique_ptr<Process>> m_idle;

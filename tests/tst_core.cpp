@@ -74,6 +74,7 @@
 #include <windows.h>
 #include <psapi.h>
 #include <sddl.h>
+#include <tlhelp32.h>
 #include <winioctl.h>
 
 #include <algorithm>
@@ -11914,6 +11915,73 @@ private slots:
         QCOMPARE(ContentIndexer::readFile(pdf, 0, {}, nullptr).outcome, ContentIndexer::Outcome::Skipped);
         QCOMPARE(ContentIndexer::readFile(bad, 0, {}, &extractor).outcome, ContentIndexer::Outcome::Empty);
         extractor.closeIdle();
+    }
+
+    // Large documents are read one at a time, each by a process that ends
+    // after it (a large PDF's process keeps much of what it took); the
+    // others' processes wait for the next.
+    void docExtractorReadsLargeAlone()
+    {
+        if (!QFile::exists(QString::fromStdWString(DocExtractor::programPath())))
+            QSKIP("WinShunExtract.exe is not built with this preset");
+        QTemporaryDir dir;
+        const auto write = [&](const QString& name, const QByteArray& data) {
+            QFile f(dir.filePath(name));
+            if (!f.open(QIODevice::WriteOnly))
+                return std::wstring();
+            f.write(data);
+            return QDir::toNativeSeparators(f.fileName()).toStdWString();
+        };
+        const QByteArray smallPdf = makePdf({{"Contract", "number"}});
+        const QByteArray largePdf = makePdf({{"Contract", "number"}, {"Second", "page"}});
+        QVERIFY(largePdf.size() > smallPdf.size());
+        const std::wstring small = write(u"small.pdf"_s, smallPdf);
+        const std::wstring large = write(u"large.pdf"_s, largePdf);
+        // The extractor processes this one started that have not ended.
+        const auto running = [] {
+            int n = 0;
+            const win32::UniqueHandle snapshot(::CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0));
+            PROCESSENTRY32W entry {sizeof entry};
+            for (BOOL more = ::Process32FirstW(snapshot.get(), &entry); more; more = ::Process32NextW(snapshot.get(), &entry)) {
+                if (entry.th32ParentProcessID != ::GetCurrentProcessId() || ::_wcsicmp(entry.szExeFile, L"WinShunExtract.exe") != 0)
+                    continue;
+                const win32::UniqueHandle process(::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, entry.th32ProcessID));
+                DWORD code = 0;
+                n += process.valid() && ::GetExitCodeProcess(process.get(), &code) && code == STILL_ACTIVE;
+            }
+            return n;
+        };
+        QTRY_COMPARE(running(), 0);
+        DocExtractor extractor(2, DocExtractor::Priority::Normal, static_cast<std::uint64_t>(largePdf.size()));
+        QCOMPARE(extractor.extractFile(small, 1 << 20, {}).status, extractproto::Status::Ok);
+        QCOMPARE(running(), 1); // waits for the next
+        const DocExtractor::Result read = extractor.extractFile(large, 1 << 20, {});
+        QCOMPARE(read.status, extractproto::Status::Ok);
+        QVERIFY(read.text.text.find("Second page") != std::string::npos);
+        QCOMPARE(running(), 0); // ended after it
+
+        // Two threads reading large ones: never two processes at once.
+        std::atomic<bool> done {false};
+        std::atomic<int> most {0};
+        std::atomic<int> ok {0};
+        std::thread watch([&] {
+            while (!done.load())
+                most = std::max(most.load(), running());
+        });
+        {
+            std::vector<std::jthread> readers;
+            for (int r = 0; r < 2; ++r) {
+                readers.emplace_back([&] {
+                    for (int i = 0; i < 10; ++i)
+                        ok += extractor.extractFile(large, 1 << 20, {}).status == extractproto::Status::Ok;
+                });
+            }
+        }
+        done = true;
+        watch.join();
+        QCOMPARE(ok.load(), 20);
+        QCOMPARE(most.load(), 1);
+        QCOMPARE(running(), 0);
     }
 
     // Copies of a document (the same bytes) are not read again: they get
