@@ -339,6 +339,7 @@ private:
         const std::vector<EntryId>* only);
     bool interrupted(std::stop_token stop);
     static int documentProcesses() noexcept; // documents read at once, at most
+    static std::uint64_t largeDocumentBytes() noexcept; // documents this large are read one at a time
     void tidy(std::size_t added); // merges after `added` files were read (by passes or searches)
 
     std::shared_ptr<ContentIndex> m_content;
@@ -380,7 +381,7 @@ private:
     std::unordered_map<EntryId, std::chrono::steady_clock::time_point> m_recentReads;
     std::uint64_t m_generation = 0; // of the FileIndex the ids above are from
     Lookout m_lookout; // the files a pass looks at
-    DocExtractor m_documents {documentProcesses(), DocExtractor::Priority::Background};
+    DocExtractor m_documents {documentProcesses(), DocExtractor::Priority::Background, largeDocumentBytes()};
     std::jthread m_thread; // last: started once the members above exist
 };
 

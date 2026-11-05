@@ -918,6 +918,26 @@ int ContentIndexer::documentProcesses() noexcept
     return std::clamp(static_cast<int>(std::thread::hardware_concurrency()) / 4, 2, 8);
 }
 
+std::uint64_t ContentIndexer::largeDocumentBytes() noexcept
+{
+    // What a document takes to read is up to its pages (a page of drawings
+    // took 1.2 GB), but only its size is known before: 16 MB and up, read one
+    // at a time beside the others, in a lane of its own (pass). Measured
+    // 2026-11-05 (wsbench --document-memory, one file of each size in a
+    // process of its own): of 6080 documents within 50 MB here, 78 have 16 MB
+    // or more (53 sizes; copies are read once), 9 s to read one by one; the
+    // four processes that took the most read PDFs of 18-46 MB (101-217 MB),
+    // and kept up to 179 MB once done; below 16 MB, 70 MB at most.
+    // WINSHUN_LARGE_DOCUMENT_MB: another size (0: none, to compare).
+    static const std::uint64_t bytes = [] {
+        wchar_t value[16] {};
+        const DWORD n = ::GetEnvironmentVariableW(L"WINSHUN_LARGE_DOCUMENT_MB", value, 16);
+        const std::uint64_t mb = n > 0 && n < 16 ? std::wcstoull(value, nullptr, 10) : 16;
+        return std::min<std::uint64_t>(mb, 1u << 20) << 20;
+    }();
+    return bytes;
+}
+
 void ContentIndexer::setSearchBoxOpen(bool open) noexcept
 {
     if (!open)
@@ -970,16 +990,18 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
     }
 
     // The files go into queues, each with how many of its files may be read
-    // at once: one queue per hard disk, the documents on the other disks, and
-    // all the rest. A thread takes the next file of the first queue with
-    // room, so none waits for an extractor or a hard disk while there are
-    // other files to read.
+    // at once: one queue per hard disk, the documents on the other disks (the
+    // large ones apart: one at a time, in the room of the others), and all
+    // the rest. A thread takes the next file of the first queue with room, so
+    // none waits for an extractor or a hard disk while there are other files
+    // to read.
     struct Queue {
         std::vector<const Work*> files;
         std::atomic<int> room = std::numeric_limits<int>::max();
         std::atomic<std::size_t> next {0};
         std::atomic<int> reading {0};
         bool hardDisk = false;
+        Queue* also = nullptr; // a file of this one takes room in that one too
     };
     std::deque<Queue> queues; // keeps their places as more are added
     std::vector<Queue*> hardDiskQueue(volumes.size(), nullptr);
@@ -1017,6 +1039,12 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
         q.room = hardDiskRoom(away);
     Queue& documents = queues.emplace_back();
     documents.room = away ? documentProcesses() : std::max(1, documentProcesses() / 2);
+    // Large documents (largeDocumentBytes) one at a time, from the start:
+    // they take longest, and the others go on beside them. On a hard disk
+    // they stay in its queue (the extractor reads them one at a time too).
+    Queue& largeDocuments = queues.emplace_back();
+    largeDocuments.room = 1;
+    largeDocuments.also = &documents;
     Queue& others = queues.emplace_back();
 
     // The bulk way (ContentIndexer.h): the text files to read for the first
@@ -1088,11 +1116,21 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
         for (const Work* w : bv.files)
             inBulk[static_cast<std::size_t>(w - work.data())] = true;
     }
-    for (const Work& w : work) {
-        if (inBulk[static_cast<std::size_t>(&w - work.data())])
-            continue;
-        Queue* q = hardDiskQueue[w.volume];
-        (q ? *q : w.document ? documents : others).files.push_back(&w);
+    {
+        const std::uint64_t large = largeDocumentBytes();
+        const auto lock = index->readLock(); // the sizes
+        for (const Work& w : work) {
+            if (inBulk[static_cast<std::size_t>(&w - work.data())])
+                continue;
+            if (Queue* q = hardDiskQueue[w.volume])
+                q->files.push_back(&w);
+            else if (!w.document)
+                others.files.push_back(&w);
+            else if (large > 0 && unpackSize(index->size(w.entry)) >= large)
+                largeDocuments.files.push_back(&w);
+            else
+                documents.files.push_back(&w);
+        }
     }
     // Two kinds of threads: readers (as many at a time as `allowed`) take
     // the files of the hard disks and the rest; a few more the documents,
@@ -1100,13 +1138,14 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
     // processor of its own at idle priority.
     std::vector<Queue*> readerQueues;
     for (Queue& q : queues) {
-        if (&q != &documents)
+        if (&q != &documents && &q != &largeDocuments)
             readerQueues.push_back(&q);
     }
-    const std::vector<Queue*> documentQueues {&documents};
-    const int documentThreads = documents.files.empty() ? 0 : documentProcesses();
-    const int readerThreads = static_cast<int>(std::min(work.size() - documents.files.size(),
-        static_cast<std::size_t>(readers(true))));
+    const std::vector<Queue*> documentQueues {&largeDocuments, &documents};
+    const std::size_t documentFiles = documents.files.size() + largeDocuments.files.size();
+    const int documentThreads = documentFiles == 0 ? 0 : documentProcesses();
+    const int readerThreads
+        = static_cast<int>(std::min(work.size() - documentFiles, static_cast<std::size_t>(readers(true))));
 
     m_passDone = 0;
     m_passTotal = work.size();
@@ -1152,7 +1191,8 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
     for (const auto bytes : options.sizeLimits.bytes)
         sizeLimits.append(static_cast<qint64>(bytes));
     diagnostics::record(u"content-start"_s, {{u"total"_s, static_cast<qint64>(work.size())},
-        {u"documents"_s, static_cast<qint64>(docCount)}, {u"disks"_s, diskInfo},
+        {u"documents"_s, static_cast<qint64>(docCount)},
+        {u"large_documents"_s, static_cast<qint64>(largeDocuments.files.size())}, {u"disks"_s, diskInfo},
         {u"user_away"_s, away}, {u"reader_threads"_s, readers(away)},
         {u"document_processes"_s, documentProcesses()}, {u"include_system_folders"_s, options.includeLowPriority},
         {u"size_limits_bytes"_s, sizeLimits},
@@ -1204,10 +1244,17 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
                 q.reading.fetch_sub(1);
                 continue;
             }
+            if (q.also && q.also->reading.fetch_add(1) >= q.also->room) {
+                q.also->reading.fetch_sub(1);
+                q.reading.fetch_sub(1);
+                continue;
+            }
             if (const std::size_t i = q.next.fetch_add(1); i < q.files.size()) {
                 from = &q;
                 return q.files[i];
             }
+            if (q.also)
+                q.also->reading.fetch_sub(1);
             q.reading.fetch_sub(1);
         }
         return nullptr;
@@ -1402,6 +1449,8 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
             if (!read(*w, path, from->hardDisk, t))
                 full = true;
             doneWith(*w);
+            if (from->also)
+                from->also->reading.fetch_sub(1);
             from->reading.fetch_sub(1);
             busy.fetch_sub(1);
             if (from->room.load() != std::numeric_limits<int>::max())
