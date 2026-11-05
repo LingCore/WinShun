@@ -1804,6 +1804,17 @@ int runSettings(const QStringList& args)
             if (tree)
                 writeTree(window, file + u".tree.txt"_s);
             saved = saveGrab(window, file) && saved;
+            // --hover x,y (logical): the pointer resting there, as a second picture.
+            if (const QStringList at = valueAfter(args, u"--hover").split(u','); at.size() == 2) {
+                const QPointF point(at[0].toDouble(), at[1].toDouble());
+                QMouseEvent move(QEvent::MouseMove, point, window->mapToGlobal(point), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+                QCoreApplication::sendEvent(window, &move);
+                pump(400); // past the hover fade
+                saved = saveGrab(window, out.filePath(u"p%1-t%2-hover.png"_s.arg(page, 2, 10, u'0').arg(tab))) && saved;
+                QMouseEvent away(QEvent::MouseMove, QPointF(-50, -50), window->mapToGlobal(QPointF(-50, -50)), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+                QCoreApplication::sendEvent(window, &away);
+                pump(400);
+            }
             if (page == 0 && tab == 2) {
                 QObject* toggle = visualNamed(window->contentItem(), u"opusTypingToggle"_s);
                 const bool explorerBefore = editor->explorerTyping();
