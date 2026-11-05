@@ -774,6 +774,37 @@ std::vector<std::size_t> frequentApps(
     return picked;
 }
 
+bool appTargetGone(const QString& target)
+{
+    // "C:\..." only: a share, "\\?\", a relative name or a shell object is not asked.
+    if (target.size() < 4 || !target[0].isLetter() || target[0].unicode() >= 128 || target[1] != u':'
+        || target[2] != u'\\')
+        return false;
+    // A drive not there now (PATH_NOT_FOUND too), a USB stick or a mapped
+    // share: the program may well come back with it.
+    const wchar_t root[] {static_cast<wchar_t>(target[0].unicode()), L':', L'\\', 0};
+    if (::GetDriveTypeW(root) != DRIVE_FIXED)
+        return false;
+    std::wstring path = target.toStdWString();
+    if (path.size() >= MAX_PATH - 12)
+        path.insert(0, L"\\\\?\\");
+    if (::GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES)
+        return false;
+    const DWORD error = ::GetLastError();
+    return error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND;
+}
+
+AppList presentApps(const AppList& apps, const std::function<bool(const QString&)>& gone)
+{
+    AppList present;
+    present.reserve(apps.size());
+    for (const AppInfo& app : apps) {
+        if (app.kind != AppKind::Desktop || app.target.isEmpty() || !gone(app.target))
+            present.push_back(app);
+    }
+    return present;
+}
+
 AppCatalog::AppCatalog(QObject* parent)
     : QObject(parent)
 {
@@ -805,25 +836,56 @@ void AppCatalog::setApps(std::shared_ptr<const AppList> apps)
     m_apps = std::move(apps);
 }
 
+bool programsCheckDue(std::optional<std::chrono::steady_clock::duration> sinceLast, bool reloaded, bool asked)
+{
+    return reloaded || asked || !sinceLast || *sinceLast >= kProgramsCheckEvery;
+}
+
 void AppCatalog::refresh(bool force)
+{
+    start(force, false);
+}
+
+void AppCatalog::checkPrograms()
+{
+    start(false, true);
+}
+
+void AppCatalog::start(bool force, bool check)
 {
     if (m_busy) {
         m_again = m_again || force;
+        m_checkAgain = m_checkAgain || check;
         return;
     }
     m_busy = true;
-    force = force || !isLoaded() || std::chrono::steady_clock::now() - m_loadedAt > kMaxAge;
+    const auto now = std::chrono::steady_clock::now();
+    force = force || !isLoaded() || now - m_loadedAt > kMaxAge;
+    const auto sinceCheck = m_checkedAt ? std::optional(now - *m_checkedAt) : std::nullopt;
     if (m_worker.joinable())
         m_worker.join(); // the previous read; it has posted its outcome, so it is done
-    m_worker = std::jthread([this, force, known = m_fingerprint](std::stop_token stop) {
+    m_worker = std::jthread([this, force, check, sinceCheck, known = m_fingerprint, all = m_all](std::stop_token stop) {
         ::SetThreadPriority(::GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
         Outcome outcome;
         outcome.fingerprint = installedAppsFingerprint();
-        if (force || outcome.fingerprint != known) {
+        std::shared_ptr<const AppList> shell = all; // a failed read keeps the last one
+        if (force || outcome.fingerprint != known || !shell) {
             outcome.reloaded = true;
             AppList apps = loadInstalledApps(stop);
             if (!apps.empty())
-                outcome.apps = std::make_shared<const AppList>(std::move(apps));
+                shell = outcome.all = std::make_shared<const AppList>(std::move(apps));
+        }
+        // The shell keeps listing a shortcut whose program was deleted, and
+        // nothing in the Start menu changes then: asked of the disk, one look
+        // per desktop app (#207). Not each time the search box opens, as that
+        // would keep waking a hard disk that went to sleep: after a read (so
+        // a new list is never shown before it is looked at), when an app did
+        // not open, and otherwise every few minutes. Until then the list as
+        // last looked at stays.
+        if (shell && !stop.stop_requested() && programsCheckDue(sinceCheck, outcome.reloaded, check)) {
+            outcome.checked = true;
+            AppList present = presentApps(*shell);
+            outcome.apps = present.size() == shell->size() ? shell : std::make_shared<const AppList>(std::move(present));
         }
         if (!stop.stop_requested())
             QMetaObject::invokeMethod(this, [this, outcome] { publish(outcome); }, Qt::QueuedConnection);
@@ -833,21 +895,29 @@ void AppCatalog::refresh(bool force)
 void AppCatalog::publish(const Outcome& outcome)
 {
     m_busy = false;
-    if (outcome.apps) {
+    if (outcome.all) { // read anew: not when only the programs were looked at, or kMaxAge would never come
+        m_all = outcome.all;
         m_fingerprint = outcome.fingerprint;
         m_loadedAt = std::chrono::steady_clock::now();
+    }
+    if (outcome.checked)
+        m_checkedAt = std::chrono::steady_clock::now();
+    if (outcome.apps) {
         bool same = false;
         {
             std::lock_guard lock(m_mutex);
-            same = m_apps && sameApps(*m_apps, *outcome.apps);
-            m_apps = outcome.apps;
+            same = m_apps && (m_apps == outcome.apps || sameApps(*m_apps, *outcome.apps));
+            if (!same)
+                m_apps = outcome.apps;
         }
         if (!same)
             emit changed();
     }
     // A failed read keeps the old fingerprint, so the next refresh tries again.
-    if (std::exchange(m_again, false))
-        refresh(true);
+    const bool again = std::exchange(m_again, false);
+    const bool checkAgain = std::exchange(m_checkAgain, false);
+    if (again || checkAgain)
+        start(again, checkAgain);
 }
 
 AppList loadInstalledApps(const std::stop_token& stop)

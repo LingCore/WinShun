@@ -6314,6 +6314,7 @@ void App::showTrayMenu()
         break;
     case RebuildCommand:
         m_index->rebuild();
+        m_apps->refresh(true); // the apps too: what people mean by it (#207)
         m_messages->showNotification(tr("正在重建索引"), tr("可以照常搜索，完成后结果会自动更新。"));
         break;
     case AutostartCommand:
