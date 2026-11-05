@@ -30,7 +30,7 @@ Item {
 
     // for the host
     readonly property bool down: pressed || checked
-    readonly property bool bare: flat && enabled && !hovered && !down
+    readonly property bool bare: flat && !hovered && !down // a disabled one too: faint words on nothing, as the other styles' flat keys
     readonly property real contentOffsetY: bare || !look ? 0 : down ? look.keyTravel / 2 : -look.keyTravel / 2
     // A solid colour key: primary, armed delete, or a coloured key held down.
     readonly property color solid: !look ? "transparent" : danger ? look.dangerFillColor : highlighted ? look.accentFillColor
