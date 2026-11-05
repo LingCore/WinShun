@@ -70,8 +70,9 @@ Rectangle {
     property bool scaled: false
     readonly property int tabHeight: scaled ? Theme.tabHeight : 32
     // The tabs' own height: lower when a host holds it lower than it would be
-    // (the keys in a style's inset search field).
-    readonly property real shownTabHeight: Math.min(tabHeight, height - 6)
+    // (the keys in a style's inset search field). A segmented track fills the
+    // height it is given; the margin only belongs to the plain track.
+    readonly property real shownTabHeight: Math.min(tabHeight, segmentedPart ? height : height - 6)
     readonly property int bodySize: scaled ? Theme.uiBody : Theme.fontBody
     readonly property int captionSize: scaled ? Theme.uiCaption : Theme.fontCaption
 

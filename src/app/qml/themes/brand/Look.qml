@@ -115,6 +115,8 @@ QtObject {
     // The field's keys (pin, expand; 28 high in the 44 px field) sit 8 from its
     // top, bottom and right; the scope keys (32 high) centre in the same row.
     function fieldKeyInsetAt(dpr: real): real { return snap(8, dpr) }
+    // The scope tabs are taller than the keys: 4 from the field's top and bottom.
+    readonly property real scopeKeyInset: 4
     // Result rows, from the list's own edges (as fluent's): the highlight 10 in,
     // the 32 px icon 14 inside it, the name 60 inside it, the action capsule
     // 13 from the highlight's right (13 above and below it in a 60 px row too).

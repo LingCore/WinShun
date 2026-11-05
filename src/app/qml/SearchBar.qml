@@ -245,7 +245,7 @@ Item {
         cursorDelegate: fieldPart.out("caretColor", "transparent").a > 0 ? caretPart : null
         Component {
             id: caretPart
-            Caret { color: fieldPart.out("caretColor", Theme.text); dpr: bar.dpr }
+            Caret { color: fieldPart.out("caretColor", Theme.text); dpr: bar.dpr; yShift: -fieldPart.out("contentOffsetY", 0) }
         }
         // Still shown while the clipboard under it has the keyboard: what a
         // paste there goes over.
@@ -463,7 +463,7 @@ Item {
         scaled: true
         role: "scope"
         dpr: bar.dpr
-        height: bar.keyHeight
+        height: Math.min(tabs.implicitHeight, fieldPart.height - 2 * Math.min(bar.keyInset, Theme.tok("scopeKeyInset", bar.keyInset)))
         anchors.right: expand.left
         anchors.rightMargin: 6
         anchors.leftMargin: 16
