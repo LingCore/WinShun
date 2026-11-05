@@ -10919,16 +10919,18 @@ private slots:
             && write(u"d.bin"_s, u"合同"_s));
         const std::string rootName = wtf8::fromUtf16(wtf8::view(QDir::toNativeSeparators(tmp.path())));
         auto index = std::make_shared<FileIndex>();
+        EntryId root = kNoEntry;
         EntryId a = kNoEntry;
         EntryId b = kNoEntry;
         EntryId c = kNoEntry;
+        EntryId bin = kNoEntry;
         {
             auto lock = index->writeLock();
-            const EntryId root = index->addRoot(rootName);
+            root = index->addRoot(rootName);
             a = index->add(root, "a.txt", 0);
             b = index->add(root, "b.md", 0);
             c = index->add(root, "c.log", 0);
-            index->add(root, "d.bin", 0);
+            bin = index->add(root, "d.bin", 0);
         }
         auto content = std::make_shared<ContentIndex>(tmp.filePath(u"content"_s));
         ContentIndexer::Source source;
@@ -10960,6 +10962,28 @@ private slots:
         indexer.setOptions(options);
         QVERIFY(waitFor([&] { return content->stats().documents == 2; }));
         QCOMPARE(knownOf(*content, u"报告"_s), (std::vector<EntryId> {a, c}));
+
+        // The passes after the first look at what changed (Lookout): a file
+        // added is read; one removed, and one a search handed over that is
+        // no candidate, lose their documents.
+        QVERIFY(write(u"e.txt"_s, u"新的文件"_s));
+        EntryId e = kNoEntry;
+        {
+            auto lock = index->writeLock();
+            e = index->add(root, "e.txt", 0);
+        }
+        indexer.wake();
+        QVERIFY(waitFor([&] { return matchesOf(*content, u"文件"_s) == std::vector<EntryId> {e}; }));
+        {
+            auto lock = index->writeLock();
+            index->remove(c);
+        }
+        {
+            ContentIndexer::Intake intake(&indexer); // wakes the indexer as it goes
+            QVERIFY(intake.take(bin, {ContentIndexer::Outcome::Indexed, grams::ofPhrase(u"合同"_s), 1}, intake.since()));
+        }
+        QVERIFY(waitFor([&] { return !content->knows(c) && !content->knows(bin); }));
+        QCOMPARE(knownOf(*content, u"报告"_s), (std::vector<EntryId> {a, e}));
         options.enabled = false;
         indexer.setOptions(options);
         QCOMPARE(content->stats().documents, std::size_t {0});

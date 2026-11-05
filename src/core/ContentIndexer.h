@@ -333,7 +333,10 @@ public:
 private:
     void run(std::stop_token stop);
     bool pass(const Options& options, std::stop_token stop); // false: cut short
-    std::vector<Work> findWork(const FileIndex& index, const Options& options, const std::vector<Volume>& volumes);
+    // plan(), with the files read lately and retiring what it says; `only`:
+    // these files (Lookout), or every one.
+    std::vector<Work> findWork(const FileIndex& index, const Options& options, const std::vector<Volume>& volumes,
+        const std::vector<EntryId>* only);
     bool interrupted(std::stop_token stop);
     static int documentProcesses() noexcept; // documents read at once, at most
     void tidy(std::size_t added); // merges after `added` files were read (by passes or searches)
@@ -376,6 +379,7 @@ private:
     // read it themselves.
     std::unordered_map<EntryId, std::chrono::steady_clock::time_point> m_recentReads;
     std::uint64_t m_generation = 0; // of the FileIndex the ids above are from
+    Lookout m_lookout; // the files a pass looks at
     DocExtractor m_documents {documentProcesses(), DocExtractor::Priority::Background};
     std::jthread m_thread; // last: started once the members above exist
 };

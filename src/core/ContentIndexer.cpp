@@ -645,11 +645,11 @@ void ContentIndexer::run(std::stop_token stop)
 }
 
 std::vector<ContentIndexer::Work> ContentIndexer::findWork(
-    const FileIndex& index, const Options& options, const std::vector<Volume>& volumes)
+    const FileIndex& index, const Options& options, const std::vector<Volume>& volumes, const std::vector<EntryId>* only)
 {
     const auto now = std::chrono::steady_clock::now();
     std::erase_if(m_recentReads, [&](const auto& r) { return now - r.second >= m_timing.cooldown; });
-    Plan p = plan(index, *m_content, options, volumes, [&](EntryId id) { return m_recentReads.contains(id); });
+    Plan p = plan(index, *m_content, options, volumes, [&](EntryId id) { return m_recentReads.contains(id); }, only);
     m_content->retire(p.retired);
     return std::move(p.work);
 }
@@ -944,17 +944,24 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
     diagnostics::record(u"content-gather-start"_s, {{u"volumes"_s, static_cast<qint64>(volumes.size())}});
     std::vector<Work> work;
     FileIndex::IdPin pin; // the ids in `work` stay valid: no compaction until the pass is over
+    QJsonObject gathered;
     {
-        const auto lock = index->longReadLock(); // findWork goes through all of it
+        // Writers wait meanwhile: the changes taken are all there are till the lock goes.
+        const auto lock = index->longReadLock();
         pin = index->pinIds();
         if (index->generation() != m_generation) {
             m_recentReads.clear(); // ids from before a compaction
             m_generation = index->generation();
         }
-        work = findWork(*index, options, volumes);
+        const Lookout::Look look = m_lookout.next(index, *m_content, options, volumes, std::chrono::steady_clock::now());
+        work = findWork(*index, options, volumes, look.everyFile ? nullptr : &look.files);
+        m_lookout.planned(work);
+        gathered = {{u"every_file"_s, look.everyFile}, {u"why"_s, look.why},
+            {u"looked_at"_s, static_cast<qint64>(look.everyFile ? index->liveCount() : look.files.size())}};
     }
-    diagnostics::record(u"content-gather-finished"_s,
-        {{u"files"_s, static_cast<qint64>(work.size())}, {u"elapsed_ms"_s, steadyMs() - gatherStarted}});
+    gathered.insert(u"files"_s, static_cast<qint64>(work.size()));
+    gathered.insert(u"elapsed_ms"_s, steadyMs() - gatherStarted);
+    diagnostics::record(u"content-gather-finished"_s, gathered);
     if (work.empty()) {
         m_merging = true; // the shares' threads wait meanwhile (mayReadRemote)
         tidy(m_taken.exchange(0)); // what searches and shares' threads handed over
@@ -2065,6 +2072,7 @@ bool ContentIndexer::Intake::take(EntryId entry, const FileText& text, std::uint
     if (!m_indexer->m_content->add(
             entry, text.keys, text.outcome == Outcome::Empty, text.stamp, since, text.text, text.large))
         return false;
+    m_indexer->m_lookout.taken(entry); // the next pass looks at it: a file it would not read may have come
     ++m_taken;
     return true;
 }
