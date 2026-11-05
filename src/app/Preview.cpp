@@ -7238,6 +7238,12 @@ int runLive(App& app, const QDir& out)
                 app.hideLauncher();
             else if (verb == u"clip")
                 app.showClipboard();
+            else if (verb == u"dismiss") { // the clipboard's Esc: it never takes the focus, so no key can be sent to it
+                for (QWindow* window : QGuiApplication::allWindows()) {
+                    if (auto* clipboard = window->property("clipboard").value<QObject*>())
+                        QMetaObject::invokeMethod(clipboard, "dismiss");
+                }
+            }
             else if (verb == u"settings")
                 app.handleCommand(settingscommand::make(rest));
             else if (verb == u"style" || verb == u"theme") {
