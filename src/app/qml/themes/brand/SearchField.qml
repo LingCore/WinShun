@@ -30,13 +30,13 @@ Item {
     readonly property color textColor: ink
     readonly property color placeholderColor: placeholderInk
     readonly property color iconColor: iconInk
-    readonly property real leadingInset: 54
+    readonly property real leadingInset: 60
     readonly property real iconInset: 13 // the icon's left edge, from the field's
     readonly property real contentOffsetY: -1 // the 24 px query's optical centre (the caret ignores it: it stays on the field's middle)
 
-    // The launcher's row (flat): no ring and no glow, one 2 px line along the
-    // row's bottom in the Logo's colours red, green, blue, yellow once it has
-    // the focus (the host's grey line shows until then).
+    // The launcher's row (flat): no ring and no glow, one line under the words,
+    // 2 px in the Logo's colours red, green, blue, yellow (a 1 px neutral one
+    // until it has the focus).
     readonly property bool underlined: flat
     property real lit: focused ? 1 : 0
     Behavior on lit { NumberAnimation { duration: 200; easing.type: Easing.Bezier; easing.bezierCurve: field.look ? field.look.easeOut : [0, 0, 0, 1, 1, 1] } }
@@ -77,7 +77,7 @@ Item {
         Rectangle {
             anchors.fill: parent
             radius: field.radius
-            color: field.look && !field.underlined ? field.look.fieldFill : "transparent" // the row's own colour shows
+            color: field.look ? field.look.fieldFill : "transparent"
         }
         Rectangle { // 1 px neutral edge (fades as the ring comes)
             anchors.fill: parent
@@ -88,15 +88,18 @@ Item {
             opacity: 1 - field.lit
             visible: !field.underlined && opacity > 0
         }
+        Rectangle { // the neutral line under the words, until the focus brings the colours
+            readonly property real h: field.look ? field.look.snap(1, field.dpr) : 1
+            x: field.radius / 2; width: parent.width - field.radius; y: parent.height - h; height: h
+            color: field.look ? (field.hovered && !field.focused ? field.look.controlBorder : field.look.fieldEdge) : "transparent"
+            opacity: 1 - field.lit
+            visible: field.underlined && opacity > 0
+        }
         Rectangle { // the Logo's colours, left to right
             id: colourLine
             readonly property real h: field.look ? field.look.snap(field.look.ringWidth, field.dpr) : 2
-            // Across the whole row, on its bottom edge, over the grey line the
-            // host draws there (the chrome sits above it): that line is this one.
-            x: field.look ? -field.look.fieldInset : 0
-            width: parent.width + (field.look ? 2 * field.look.fieldInset : 0)
-            y: parent.height + (field.look ? field.look.fieldInset + field.look.edge(field.dpr) : 0) - h
-            height: h
+            x: field.radius / 2; width: parent.width - field.radius; y: parent.height - h; height: h
+            radius: h / 2
             opacity: field.lit
             visible: field.underlined && field.lit > 0
             gradient: Gradient {

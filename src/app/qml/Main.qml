@@ -1150,7 +1150,6 @@ Window {
         // window's base (Theme.layer), the rows on the base itself.
         Item {
             id: chrome
-            z: 1 // over the line below it: a style's colour line along the search row's bottom covers it
             width: parent.width
             height: boxBar.height + typeStrip.height
 
