@@ -1127,6 +1127,22 @@ int runSettings(const QStringList& args)
     indexState.size = u"112 MB"_s;
     editor->setIndexFolderState(indexState);
     editor->setContentIndexStatus(u"已收录 337,215 个文件，其中 5,815 个文档"_s);
+    // The 运行状况 card (settings page 7): busy reading the content index, or (--health-idle) at rest.
+    {
+        const bool idle = args.contains(u"--health-idle"_s);
+        QVariantList tasks;
+        if (!idle) {
+            tasks.push_back(QVariantMap {{u"name"_s, u"正在建立内容索引"_s}, {u"count"_s, u"182,340 / 337,215"_s},
+                {u"remaining"_s, u"约 3–5 分钟"_s}, {u"fraction"_s, 0.54}});
+            tasks.push_back(QVariantMap {{u"name"_s, u"正在保存索引"_s}, {u"count"_s, QString()}, {u"remaining"_s, QString()},
+                {u"fraction"_s, -1}});
+        }
+        editor->setHealth({{u"total"_s, idle ? 14 : 412}, {u"fileIndex"_s, idle ? 8 : 96}, {u"other"_s, idle ? 6 : 143},
+            {u"plugins"_s, idle ? 0 : 118}, {u"pluginProcesses"_s, idle ? 0 : 3}, {u"documents"_s, idle ? 0 : 55},
+            {u"documentProcesses"_s, idle ? 0 : 4}, {u"tasks"_s, tasks}, {u"busy"_s, !idle},
+            {u"idleText"_s, QCoreApplication::translate("ws::BackgroundStatus", "现在没有在忙，闲着时会把内存还给系统")},
+            {u"lastTrim"_s, u"上次归还：14:32，还了 187 MB"_s}});
+    }
     editor->setHistoryCount(128);
     editor->setClipboardCount(args.contains(u"--clipboard-disabled"_s) ? -1 : 57);
     editor->setHotkeyError({});

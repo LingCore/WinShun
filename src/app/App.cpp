@@ -68,6 +68,9 @@
 #include "platform/Foreground.h"
 #include "platform/Http.h"
 #include "platform/IdleTrim.h"
+#include "platform/MemoryReport.h"
+#include "BackgroundStatus.h"
+#include "ActivityText.h"
 #include "platform/Integrity.h"
 #include "platform/KeyListener.h"
 #include "platform/MessageWindow.h"
@@ -642,6 +645,8 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     m_index = std::make_unique<IndexService>(startIndexFolder(), std::move(indexStart));
     connect(m_index.get(), &IndexService::moveProgress, this, [this](int percent) {
         m_indexMoveProgress = percent;
+        if (m_background)
+            m_background->setMovePercent(percent);
         refreshIndexFolder();
     });
     connect(m_index.get(), &IndexService::moveFinished, this, &App::indexMoved);
@@ -920,6 +925,12 @@ bool App::startRuntime(const StartOptions& options, bool firstRun, bool clipboar
     });
 
     m_updater = std::make_unique<Updater>();
+    m_background = std::make_unique<BackgroundStatus>(m_index.get(), m_updater.get());
+    // A big job (more than two minutes) is over: told once, as a tray notice.
+    m_background->onFinished = [this](const QString& title, const QString& text) {
+        if (m_messages)
+            m_messages->showNotification(title, text);
+    };
     m_backup = std::make_unique<Backup>();
     connect(m_backup.get(), &Backup::restartRequested, this, [this] { restart({u"--settings"_s}); });
     m_updater->setChinese(m_language == u"zh");
@@ -3304,6 +3315,8 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
         editor->setWindow(window);
         editor->setPlaces(m_places.get()); // Windows' settings, when its search finds none of its own
         connect(editor, &SettingsEditor::edited, this, &App::settingsEdited);
+        connect(editor, &SettingsEditor::healthRequested, this, &App::refreshHealth);
+        connect(editor, &SettingsEditor::giveBackMemoryRequested, this, &App::giveMemoryBack);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyHotkey);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyClipboardHotkeys);
         connect(editor, &SettingsEditor::recordingHotkeyChanged, this, &App::applyTaskbarHotkeys);
@@ -3667,6 +3680,59 @@ void App::refreshContentIndexStatus()
             status += tr("；%Ln 个文件有改动，稍后更新", nullptr, static_cast<int>(stats.pending));
     }
     m_settingsEditor->setContentIndexStatus(status);
+}
+
+// The settings' 运行状况 card, while it is on screen: its own timer asks every
+// two seconds. Reads each process's private working set (what Task Manager's
+// Memory column counts) and what the background is doing.
+void App::refreshHealth()
+{
+    if (!m_settingsEditor)
+        return;
+    const auto megabytes = [](std::uint64_t bytes) { return static_cast<qint64>(bytes / (1024 * 1024)); };
+    const memory::Use use = memory::measure();
+    // The file index's own bytes, the part of the main process searches live on.
+    std::uint64_t fileIndex = 0;
+    if (const auto index = m_index->index()) {
+        const auto lock = index->readLock();
+        const FileIndex::MemoryUse m = index->memoryUse();
+        fileIndex = m.entries + m.times + m.sizes + m.names + m.folderRecords + m.childTables + m.intern;
+    }
+    fileIndex = std::min(fileIndex, use.main);
+    QVariantMap health;
+    health[u"total"_s] = megabytes(use.total());
+    health[u"fileIndex"_s] = megabytes(fileIndex);
+    health[u"other"_s] = megabytes(use.main - fileIndex); // the interface and all that is not told apart
+    health[u"plugins"_s] = megabytes(use.plugins);
+    health[u"pluginProcesses"_s] = use.pluginProcesses;
+    health[u"documents"_s] = megabytes(use.documents);
+    health[u"documentProcesses"_s] = use.documentProcesses;
+    const QVariantList tasks = m_background->toVariant();
+    health[u"tasks"_s] = tasks;
+    health[u"busy"_s] = !tasks.isEmpty();
+    health[u"idleText"_s] = BackgroundStatus::idleText();
+    const IdleTrim::LastTrim last = m_idleTrim->lastTrim();
+    health[u"lastTrim"_s] = last.atMs == 0
+        ? tr("还没有归还过")
+        : tr("上次归还：%1，还了 %2 MB")
+              .arg(QDateTime::fromMSecsSinceEpoch(last.atMs).toString(u"HH:mm"_s)).arg(last.megabytes);
+    m_settingsEditor->setHealth(health);
+}
+
+// 〔现在就归还〕: this process and Win顺's own under it, busy or not (what the
+// background reads next comes back by itself). Off the GUI thread: ~10 ms per
+// 100 MB, a little more with several processes.
+void App::giveMemoryBack()
+{
+    std::thread([self = QPointer<App>(this)] {
+        const qint64 megabytes = memory::trimAll();
+        QMetaObject::invokeMethod(qApp, [self, megabytes] {
+            if (!self)
+                return;
+            self->m_idleTrim->noteTrim(megabytes);
+            self->refreshHealth();
+        }, Qt::QueuedConnection);
+    }).detach();
 }
 
 void App::refreshShareStatuses()
@@ -6166,8 +6232,12 @@ void App::showTrayMenu()
     ::GetLastInputInfo(&input);
     const DWORD asked = ::GetTickCount();
     const bool ready = m_index->state() == IndexService::State::Ready;
-    const QString info = ready ? tr("已索引 %Ln 项", nullptr, static_cast<int>(m_index->itemCount()))
-                               : tr("正在建立索引…");
+    // What is going on, in the words the settings' 运行状况 card uses (loading
+    // is not building: the snapshot is read, nothing is built).
+    const QStringList doing = m_background->lines(2);
+    const QString info = !doing.isEmpty() ? doing.first()
+        : ready ? tr("已索引 %Ln 项", nullptr, static_cast<int>(m_index->itemCount()))
+                : tr("正在加载索引…");
     const QString show = tr("打开 Win顺");
     std::vector<shell::MenuItem> items {
         {ShowCommand, m_settings.doubleCtrl ? show + u'\t' + doubleCtrlName() : show, false, true, true},
@@ -6184,16 +6254,10 @@ void App::showTrayMenu()
         {RestartCommand, tr("重新启动")},
         {QuitCommand, tr("退出")},
     };
-    // Files being read for the content index: how far (the disk is busy meanwhile).
-    if (ready && m_index->readingContent()) {
-        const ContentIndexer::Progress progress = m_index->contentIndexer()->progress();
+    // A second job (content being read while the snapshot is saved, say).
+    if (doing.size() > 1) {
         const auto at = std::ranges::find_if(items, [](const shell::MenuItem& i) { return i.id == IndexInfo; });
-        items.insert(at + 1,
-            {ContentInfo,
-                tr("正在建立内容索引 %1 / %2")
-                    .arg(QLocale().toString(static_cast<qulonglong>(progress.done)),
-                        QLocale().toString(static_cast<qulonglong>(progress.total))),
-                false, false});
+        items.insert(at + 1, {ContentInfo, doing.at(1), false, false});
     }
     // The index service not reached (GitHub #21): said here, the reason in the settings.
     if (m_serviceWanted && m_index->volumeAccessKind() == ntfs::VolumeAccess::Kind::None) {
@@ -6314,6 +6378,7 @@ void App::showTrayMenu()
         break;
     case RebuildCommand:
         m_index->rebuild();
+        m_background->rebuildRequested();
         m_apps->refresh(true); // the apps too: what people mean by it (#207)
         m_messages->showNotification(tr("正在重建索引"), tr("可以照常搜索，完成后结果会自动更新。"));
         break;

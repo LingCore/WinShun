@@ -5018,6 +5018,57 @@ Window {
             }
 
             SettingsSection {
+                id: healthSection
+
+                // Task Manager's Memory column, told apart; read every two
+                // seconds while this page is on screen, never otherwise.
+                readonly property var h: window.editor.health
+                readonly property bool known: h.total !== undefined
+                readonly property bool busy: known && h.busy
+                readonly property var tasks: known ? h.tasks : []
+
+                page: window.advancedPage
+                width: parent.width
+                title: qsTr("运行状况")
+                glyph: ""
+
+                Timer {
+                    interval: 2000
+                    repeat: true
+                    triggeredOnStart: true
+                    running: healthSection.visible && window.visible
+                    onTriggered: window.editor.refreshHealth()
+                }
+
+                SettingRow {
+                    title: healthSection.known ? qsTr("Win顺 现在用了 %1 MB").arg(healthSection.h.total) : qsTr("正在读取内存占用…")
+                    keywords: qsTr("内存;占用;任务管理器;归还;释放;卡;运行状况;memory;ram;task manager").split(";")
+                    description: !healthSection.known ? "" : qsTr("文件索引 %1 MB（搜索靠它）").arg(healthSection.h.fileIndex)
+                                 + " · " + qsTr("界面和其他 %1 MB").arg(healthSection.h.other)
+                                 + (healthSection.h.plugins > 0 ? "\n" + qsTr("插件 %1 MB").arg(healthSection.h.plugins) : "")
+                                 + (healthSection.h.documents > 0
+                                    ? (healthSection.h.plugins > 0 ? " · " : "\n") + qsTr("读文档的进程 %1 MB（读完 30 秒后退出）").arg(healthSection.h.documents) : "")
+                                 + (healthSection.known ? "\n" + healthSection.h.lastTrim : "")
+                                 + (healthSection.busy ? "\n" + qsTr("后台还在忙，归还后它会再用回一些") : "")
+
+                    FlatButton {
+                        text: qsTr("现在就归还")
+                        glyph: ""
+                        onClicked: window.editor.giveMemoryBack()
+                    }
+                }
+
+                SettingRow {
+                    title: qsTr("现在在做什么")
+                    keywords: qsTr("后台;进度;剩余时间;建立索引;何时结束;progress;busy").split(";")
+                    description: !healthSection.known ? "" : healthSection.busy
+                        ? healthSection.tasks.map((task) => task.name + (task.count.length > 0 ? " " + task.count : "")
+                                                   + (task.remaining.length > 0 ? "，" + task.remaining : "")).join("\n")
+                        : healthSection.h.idleText
+                }
+            }
+
+            SettingsSection {
                 page: window.advancedPage
                 width: parent.width
                 title: qsTr("网络、存储与诊断")
