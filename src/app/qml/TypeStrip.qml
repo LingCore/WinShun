@@ -155,6 +155,7 @@ Item {
             to = Math.max(0, left)
         else if (right > view.contentX + view.width)
             to = Math.min(view.contentWidth - view.width, right - view.width)
+        to = scrollStop(to)
         if (to !== view.contentX) {
             view.cancelFlick()
             if (!SystemTheme.animations) {
@@ -169,7 +170,7 @@ Item {
     onSlidePositionChanged: {
         if (slide.running) {
             writingScroll = true
-            view.contentX = onPixel(slidePosition) // whole device pixels: the words and icons stay sharp while it moves
+            view.contentX = scrollStop(slidePosition)
             writingScroll = false
         }
     }
@@ -177,9 +178,19 @@ Item {
     onWheelPositionChanged: {
         if (wheelAnim.running) {
             writingScroll = true
-            view.contentX = onPixel(wheelPosition)
+            view.contentX = scrollStop(wheelPosition)
             writingScroll = false
         }
+    }
+    // Where the chips may stop, also while they move: whole logical pixels
+    // that are whole device pixels too (150%: even ones), the last one inside
+    // the end. The chips are drawn through a texture (the fade), where the
+    // words snap to whole logical pixels: anywhere between, they shake against
+    // their keys and icons while the chips move; half a device pixel blurs them all.
+    readonly property int scrollStep: { let n = 1; while (n < 4 && Math.abs(n * dpr - Math.round(n * dpr)) > 0.001) ++n; return n }
+    function scrollStop(v: real): real {
+        const last = Math.floor((view.contentWidth - view.width) / scrollStep) * scrollStep
+        return Math.max(0, Math.min(last, Math.round(v / scrollStep) * scrollStep))
     }
     NumberAnimation { id: slide; target: strip; property: "slidePosition"; duration: 150; easing.type: Easing.OutCubic }
     onCurrentChanged: scheduleReveal()
@@ -211,7 +222,7 @@ Item {
         const from = wheelAnim.running ? wheelAnim.to : view.contentX
         wheelAnim.stop()
         wheelAnim.from = view.contentX
-        wheelAnim.to = onPixel(Math.max(0, Math.min(view.contentWidth - view.width, from - delta * 0.75)))
+        wheelAnim.to = scrollStop(from - delta * 0.75)
         wheelAnim.start()
         return true
     }
@@ -219,8 +230,8 @@ Item {
         id: fadeMask
         x: view.x
         y: view.y
-        width: view.width
-        height: view.height
+        width: strip.textureWidth
+        height: strip.textureHeight
         visible: false
         layer.enabled: true
         readonly property real ramp: Math.min(52, width / 3) / Math.max(1, width)
@@ -252,6 +263,7 @@ Item {
         onContentXChanged: if (!strip.writingScroll) strip.cancelReveal()
         onDraggingChanged: if (dragging) strip.cancelReveal()
         onMovementStarted: strip.cancelReveal()
+        onMovementEnded: contentX = strip.scrollStop(contentX) // dragged or swiped: rests where the words are sharp
         opacity: strip.shown ? 1 : 0
         Behavior on opacity {
             enabled: strip.animated && SystemTheme.animations
@@ -269,7 +281,7 @@ Item {
         // Where more chips are hidden, the chips fade out at that end instead
         // of being cut off (the mask below is a ramp of 52 px at each end).
         readonly property bool moreLeft: interactive && contentX > 1
-        readonly property bool moreRight: interactive && contentX < contentWidth - width - 1
+        readonly property bool moreRight: interactive && contentX < contentWidth - width - strip.scrollStep
         property real leftOpacity: moreLeft ? 0 : 1
         property real rightOpacity: moreRight ? 0 : 1
         Behavior on leftOpacity { NumberAnimation { duration: 150 } }
@@ -384,11 +396,25 @@ Item {
         }
     }
 
+    // The texture's size: whole logical pixels that are also whole device
+    // pixels (150%: even ones), so it is a 1:1 copy. A size the texture rounds
+    // scales the chips by a hair, and their words, drawn at whole texture
+    // pixels, then shake against the icons while they scroll.
+    function textureSide(v: real): int {
+        let side = Math.ceil(v)
+        while (Math.abs(side * dpr - Math.round(side * dpr)) > 0.001 && side < Math.ceil(v) + 8)
+            ++side
+        return side
+    }
+    readonly property int textureWidth: textureSide(view.width)
+    readonly property int textureHeight: textureSide(view.height)
+
     // The chips drawn through the mask (so they fade where more are hidden)
     // while there is more than fits; the Flickable under it keeps the input.
     ShaderEffectSource {
         id: viewSource
         sourceItem: view
+        sourceRect: Qt.rect(0, 0, strip.textureWidth, strip.textureHeight)
         hideSource: view.interactive
         live: true
         visible: false
@@ -396,8 +422,8 @@ Item {
     MultiEffect {
         x: onPixel(view.x)
         y: onPixel(view.y)
-        width: view.width
-        height: view.height
+        width: strip.textureWidth
+        height: strip.textureHeight
         visible: view.interactive
         source: viewSource
         maskEnabled: true
