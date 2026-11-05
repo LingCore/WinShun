@@ -30,6 +30,13 @@
 //                      kind, tier, age and folder, within and over the size
 //                      limits (2/1/2/50 MB, and version 3's 16/2/4/100), and
 //                      what rules that defer some of them would take off
+//   wsbench [snapshot] --content-gather [--changes N,N...] [--runs N]
+//                      with a copy of the app's content index next to the
+//                      snapshot: what a content pass goes through to find its
+//                      work, every file or only what changed (Lookout), after
+//                      0, 1000 and 50000 changes made up in memory; time and
+//                      private working set brought back after emptying it,
+//                      both ways in turn, and whether both found the same
 //   wsbench [snapshot] --content-index [--all] [--threads N] [--sample N] [--seed N] [--background]
 //                      [--read-only] [--no-add] [--merge-threads N] [--merge-times] [--dir D] [--keep] [--verify]
 //                      builds the content index of those files (without system
@@ -2533,6 +2540,183 @@ int runContentIndexBench(const ws::FileIndex& index, QStringList args)
     if (!args.contains(u"--keep"_s))
         QDir(directory).removeRecursively();
     return 0;
+}
+
+// ---- what a content pass looks at (--content-gather) -------------------------
+
+std::size_t privateWorkingSetBytes()
+{
+    PROCESS_MEMORY_COUNTERS_EX2 counters {};
+    counters.cb = sizeof(counters);
+    ::GetProcessMemoryInfo(::GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters), sizeof(counters));
+    return counters.PrivateWorkingSetSize;
+}
+
+// From the snapshot and a copy of the app's content index next to it: what a
+// content pass goes through to find its work, every file (as passes did) or
+// what ContentIndexer::Lookout lists, after 0, 1000 and 50000 changes made up
+// on the index in memory (files added, renamed, removed, written to). For
+// each: the time and how much private working set the look brings back
+// after the process was emptied (IdleTrim), both ways in turn, and whether
+// both found the same. Default extensions and documents.
+int runContentGather(std::shared_ptr<ws::FileIndex> index, const std::vector<char>& attachment,
+    const QString& contentDir, const std::vector<ws::VolumeInfo>& volumeInfos,
+    const std::vector<ws::JournalPosition>& journals, const QStringList& args)
+{
+    using Indexer = ws::ContentIndexer;
+    constexpr double kMiB = 1024.0 * 1024.0;
+    int runs = 5;
+    if (const qsizetype at = args.indexOf(u"--runs"_s); at >= 0 && at + 1 < args.size())
+        runs = std::max(1, args[at + 1].toInt());
+    std::vector<std::size_t> scenarios {0, 1000, 50000};
+    if (const qsizetype at = args.indexOf(u"--changes"_s); at >= 0 && at + 1 < args.size()) {
+        scenarios.clear();
+        for (const QString& n : args[at + 1].split(u','))
+            scenarios.push_back(n.toULongLong());
+    }
+    ws::ContentIndex content(contentDir);
+    if (!content.restore(attachment, index->slotCount())) {
+        std::printf("no content index to restore from %s\n", qPrintable(contentDir));
+        return 1;
+    }
+    std::vector<Indexer::Volume> volumes;
+    for (std::size_t i = 0; i < volumeInfos.size() && i < journals.size(); ++i) {
+        if (journals[i].journalId != 0)
+            volumes.push_back({QString::fromStdWString(volumeInfos[i].root).toStdString(), false, volumeInfos[i].serial});
+    }
+    const ws::Settings defaults = ws::Settings::defaults();
+    Indexer::Options options;
+    options.extensions = defaults.contentExtensions;
+    options.documents = defaults.contentDocuments;
+    options.includeLowPriority = defaults.contentInLowPriority;
+    options.sizeLimits = defaults.contentSizeLimits();
+    const ws::ContentFilter filter {
+        ws::ExtensionFilter(options.documents ? options.extensions + ws::documentExtensions() : options.extensions),
+        options.includeLowPriority};
+    std::printf("content gather: %zu entries, %zu documents (%zu due), %zu volumes followed\n", index->liveCount(),
+        content.stats().documents, content.stats().pending, volumes.size());
+
+    Indexer::Lookout lookout;
+    const auto readLately = [](ws::EntryId) { return false; };
+    const auto planOf = [&](const std::vector<ws::EntryId>* only) {
+        const auto lock = index->longReadLock();
+        return Indexer::plan(*index, content, options, volumes, readLately, only);
+    };
+    // As a pass goes on: its documents retired, and its files read (empty
+    // documents: no file is opened, nothing written).
+    const auto passDone = [&](const Indexer::Plan& p) {
+        lookout.planned(p.work);
+        content.retire(p.retired);
+        for (const Indexer::Work& w : p.work)
+            content.add(w.entry, {}, true, 1, content.changeSequence());
+    };
+    {
+        QElapsedTimer t;
+        t.start();
+        const auto lock = index->longReadLock();
+        const Indexer::Lookout::Look look = lookout.next(index, content, options, volumes, std::chrono::steady_clock::now());
+        const Indexer::Plan first = Indexer::plan(*index, content, options, volumes, readLately);
+        std::printf("first pass (%s): %zu files to read or check, %zu documents retired, %.0f ms\n",
+            qPrintable(look.why), first.work.size(), first.retired.size(), msSince(t));
+        passDone(first);
+    }
+
+    struct Measured {
+        double ms;
+        double workingSetMB; // private, brought back
+        Indexer::Plan plan;
+    };
+    const auto measure = [&](const std::vector<ws::EntryId>* only) {
+        ::SetProcessWorkingSetSizeEx(::GetCurrentProcess(), static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1), 0);
+        const std::size_t before = privateWorkingSetBytes();
+        QElapsedTimer t;
+        t.start();
+        Measured m {0, 0, planOf(only)};
+        m.ms = msSince(t);
+        m.workingSetMB = static_cast<double>(privateWorkingSetBytes()) / kMiB - static_cast<double>(before) / kMiB;
+        return m;
+    };
+    const auto median = [](std::vector<double> v) {
+        std::sort(v.begin(), v.end());
+        return v[v.size() / 2];
+    };
+
+    std::mt19937_64 random(20261105);
+    std::size_t named = 0;
+    const auto anyFile = [&](bool candidate) -> ws::EntryId {
+        for (int tries = 0; tries < 100000; ++tries) {
+            const auto id = static_cast<ws::EntryId>(random() % index->slotCount());
+            const ws::Entry& e = index->entry(id);
+            if (e.isDeleted() || e.isDir() || (e.flags & ws::EntryFlag::Remote))
+                continue;
+            if (!candidate || filter.accepts(*index, e))
+                return id;
+        }
+        return ws::kNoEntry;
+    };
+    int failures = 0;
+    std::printf("\n%8s %9s %9s | %-24s | %-24s | %s\n", "changes", "looked at", "list ms", "every file: ms, +MB",
+        "what changed: ms, +MB", "same");
+    for (const std::size_t changes : scenarios) {
+        std::vector<ws::EntryId> written;
+        {
+            auto lock = index->writeLock();
+            for (std::size_t c = 0; c < changes; ++c) {
+                const std::uint64_t what = random() % 100;
+                if (what < 50) { // saved, downloaded, unpacked: next to files a search looks in
+                    const ws::EntryId beside = anyFile(what < 40);
+                    static const char* const kinds[] = {"txt", "md", "docx", "pdf", "json", "png", "tmp"};
+                    if (beside != ws::kNoEntry) {
+                        const ws::EntryId folder = index->entry(beside).parent;
+                        index->add(folder,
+                            "wsbench-gather-" + std::to_string(++named) + "." + kinds[random() % std::size(kinds)],
+                            static_cast<std::uint8_t>(index->entry(folder).flags & ws::EntryFlag::Inherited));
+                    }
+                } else if (what < 65) { // renamed
+                    if (const ws::EntryId f = anyFile(false); f != ws::kNoEntry)
+                        index->move(f, index->entry(f).parent, "renamed-" + std::to_string(++named) + "-" + std::string(index->name(f)));
+                } else if (what < 80) { // removed
+                    if (const ws::EntryId f = anyFile(false); f != ws::kNoEntry)
+                        index->remove(f);
+                } else { // written to: its document is due
+                    if (const ws::EntryId f = anyFile(true); f != ws::kNoEntry)
+                        written.push_back(f);
+                }
+            }
+        }
+        content.markChanged(written);
+        QElapsedTimer t;
+        t.start();
+        Indexer::Lookout::Look look;
+        {
+            const auto lock = index->longReadLock();
+            look = lookout.next(index, content, options, volumes, std::chrono::steady_clock::now());
+        }
+        const double listMs = msSince(t);
+        std::vector<double> allMs, allMB, onlyMs, onlyMB;
+        Indexer::Plan all;
+        Indexer::Plan only;
+        for (int run = 0; run < runs; ++run) {
+            for (int way = 0; way < 2; ++way) {
+                const bool everyFile = (way == 0) == (run % 2 == 0); // in turn: which goes first
+                if (look.everyFile && !everyFile)
+                    continue;
+                Measured m = measure(everyFile ? nullptr : &look.files);
+                (everyFile ? allMs : onlyMs).push_back(m.ms);
+                (everyFile ? allMB : onlyMB).push_back(m.workingSetMB);
+                (everyFile ? all : only) = std::move(m.plan);
+            }
+        }
+        const bool same = look.everyFile || (only.work == all.work && only.retired == all.retired);
+        failures += same ? 0 : 1;
+        std::printf("%8zu %9zu %9.1f | %8.1f ms %+8.1f MB    | %8.1f ms %+8.1f MB    | %s (%zu files, %zu retired)%s\n",
+            changes, look.everyFile ? index->liveCount() : look.files.size(), listMs, median(allMs), median(allMB),
+            onlyMs.empty() ? 0.0 : median(onlyMs), onlyMB.empty() ? 0.0 : median(onlyMB),
+            look.everyFile ? "every file" : same ? "yes" : "NO", all.work.size(), all.retired.size(),
+            look.everyFile ? qPrintable(u" why: "_s + look.why) : "");
+        passDone(all);
+    }
+    return failures;
 }
 
 // ---- the cost of opening a file (--open-probe) ----------------------------------
@@ -6458,6 +6642,10 @@ int main(int argc, char* argv[])
 
     if (args.contains(u"--content-plan"_s))
         return runContentPlan(*index);
+    if (args.contains(u"--content-gather"_s)) {
+        return runContentGather(std::shared_ptr<ws::FileIndex>(std::move(contents->index)), contents->attachment,
+            QFileInfo(path).absolutePath() + u"/content"_s, contents->volumes, contents->journals, args);
+    }
     if (args.contains(u"--content"_s))
         return runContentBench(*index, args);
     if (args.contains(u"--content-index"_s))
