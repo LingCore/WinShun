@@ -28,8 +28,10 @@ constexpr int kAfterUseMs = 20'000;
 constexpr int kSettleMs = 5'000; // after busy work ended (poke)
 constexpr int kBusyRecheckMs = 15'000; // while the index loads, catches up or reads content
 // While unused: background work brings pages back. The content indexer's
-// passes (30 s after start, then every 15 minutes and after changes) go
-// through the whole file index, ~90 MB; copies, journal changes and saves.
+// passes (30 s after start, then every 15 minutes and after changes) look
+// only at the files that changed; just a full one (the first pass, other
+// options, lost track, every 24 hours) goes through the whole file index,
+// ~90 MB; copies, journal changes and saves.
 // A check reads one number; only a working set above kTrimAbove is emptied.
 constexpr int kRecheckMs = 30'000;
 constexpr SIZE_T kTrimAbove = 32 * 1024 * 1024; // private working set; ~5 MB is what idling itself touches
