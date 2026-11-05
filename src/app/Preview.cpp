@@ -7389,6 +7389,8 @@ int runRuntime(const QStringList& args)
                 QSettings capture(Settings::profile() + u"/plugins/winshun.capture.data/capture.ini"_s, QSettings::IniFormat);
                 capture.setValue(u"Capture/Hotkey"_s, probeHotkey);
                 capture.setValue(u"Capture/PrintScreen"_s, false);
+                if (args.contains(u"--live"_s)) // the presenter too, for a look at it; a key nobody has
+                    capture.setValue(u"Capture/PresentHotkey"_s, u"Ctrl+Alt+Shift+F23"_s);
             }
         }
     }
