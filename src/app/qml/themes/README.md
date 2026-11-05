@@ -38,9 +38,7 @@ themes/
       id: root
       readonly property string name: "brand"
       readonly property bool dark: SystemTheme.dark
-      readonly property string frame: "own"
-      readonly property real windowRadius: r(18)
-      readonly property bool backdrop: false
+      readonly property bool backdrop: SystemTheme.backdrop
       readonly property color accent: dark ? "#EDA591" : "#A8402C"
       // ……只写和 fluent 不同的 token
       readonly property Component keySurface: Component { KeySurface { look: root } }   // 本目录的部件
@@ -49,12 +47,12 @@ themes/
 
   没写的 token 和钩子由 `Theme.pick()` 退回 fluent 的（`Theme.base`），所以只写不同的就行；
   只有某些风格才有的 token（fluent 里也没有）用 `Theme.tok("名字", 默认值)` 读。
-- **圆角**：用户“圆角/直角”设置选直角时所有圆角必须是 0（窗口的 18 也是）。所有圆角 token 写成 `r(v)`（继承时直接用 `r(...)`），胶囊用 `pill(h)`。
+- **圆角**：用户“圆角/直角”设置选直角时所有圆角必须是 0。窗口本身的圆角是 DWM 的，风格改不了（见第 4 节）。所有圆角 token 写成 `r(v)`（继承时直接用 `r(...)`），胶囊用 `pill(h)`。
   部件里不要硬编码圆角，从 `look` 取。
-- **透明**：`backdrop` 为 true 时窗口下面是 Mica，层是半透明的（fluent 的那套 rgba）。`frame: "own"` 的风格没有 Mica（DWM 的背景跟着 DWM 的形状走，自画圆角后是方的），
-  必须 `backdrop: false`，窗口底和大块表面全用不透明色。
+- **透明**：`backdrop` 为 true 时窗口下面是 Mica，层是半透明的（fluent 的那套 rgba，brand 用原型的窗口底色 86 % / 88 %）。
+  按设计不透明的风格（tactile）写 `backdrop: false`、`backdropCapable: false`，窗口底和大块表面全用不透明色。
 - 主要 token（完整列表和含义看 `fluent/Look.qml` 的注释）：
-  - 窗口：`frame`（`"dwm"` | `"own"`）、`windowRadius`、`windowShadow`（own 时的阴影层，`[{alpha, blur, dy}]`，逻辑 px，近的在前，浅深各给一套）、`dwmEdge`、`backdrop`
+  - 窗口：`windowRadius`（DWM 的，只读来对齐）、`dwmEdge`、`backdrop`、`backdropCapable`
   - 圆角：`cardRadius` `largeCardRadius` `insetCardRadius` `controlRadius` `largeControlRadius` `smallControlRadius` `smallRadius` `lineRadius`
     `progressRadius` `cardFocusRadius` `menuRadius` `menuItemRadius` `rowRadius`
   - 强调：`accent`（字、图标、线）、`accentFill`（白字底，必须够深）、`accentLine`（指示条、光标）、`accentTint`（选中行底）、`accentText`（彩色底上的字，白）
@@ -102,7 +100,7 @@ Hook {
 
 | 钩子 | 文件名 | 用在哪里 | 部件可声明的状态 |
 |---|---|---|---|
-| `windowFrame` | `WindowBody.qml` | WindowEdge：所有我们画的窗口。宿主放两份：`paint: "back"`（最底层，own 时画窗口底的圆角形状；`fill` 是该窗口自己的底色，如设置窗口的 page、启动器的 background）和 `paint: "edge"`（最上层，画 1 px 边）；`"all"` 两者都画 | paint, fill, active, maximized, dpr |
+| `windowFrame` | `WindowBody.qml` | WindowEdge：所有我们画的窗口。`paint: "back"`（最底层，风格的窗口底，方的，`fill` 是该窗口自己的底色，如设置窗口的 page、启动器的 background；fluent、brand 没有）；`paint: "edge"` 只用 fluent 的（Windows 10 的 1 px 边）。不画圆角、不画阴影 | paint, fill, active, maximized, dpr |
 | `searchField` | `SearchField.qml` | 启动器搜索行（`flat: true`）、设置搜索框、剪贴板搜索、插件搜索框（`flat: false`） | flat, focused, hovered, dpr |
 | `inputField` | `InputField.qml` | InputBox、表单输入框 | focused, hovered, enabled, error, dpr |
 | `keySurface` | `KeySurface.qml` | FlatButton、RowAction、钉住/展开、底栏按钮、工具条按钮…… | hovered, pressed, checked, current（打开着的东西：行的预览键）, enabled（Item 自带，部件不要重新声明）, highlighted（主按钮）, danger（确认删除）, flat（静止时无底）, corner（宿主要求的圆角，-1 用自己的）, role, dpr |
@@ -111,7 +109,7 @@ Hook {
 | `rowHighlight` | `RowHighlight.qml` | 结果行、剪贴板行、面板行（role "list"/"panel"）、菜单项（"menu"）的选中/悬停底；一个列表共用一个跟着当前行走的高亮 | selected, hovered, current（键盘所在行，未选中）, pressed, role, position（宿主高亮的 y，变化时可做落位动画）, dpr |
 | `matchStyle` | —（token） | StyledText 里的匹配字 | `matchColor`、`matchWeight` |
 | `typeIcon` | `TypeIcon.qml` | 文件类型图标；fluent 为 `null`（用系统图标）。应用和 exe 一直用系统图标 | kind（folder doc xls ppt pdf image md zip code audio video ebook text other）, size, hueIndex, dpr |
-| `menuFrame` | `MenuFrame.qml` | ContextMenu、DropMenu、HoverTip、工具条/浮层面板、对话框卡 | shadow（false：窗口已有自绘框阴影）, dpr |
+| `menuFrame` | `MenuFrame.qml` | DropMenu、HoverTip、工具条/浮层面板、对话框卡（窗口里画的；ContextMenu 等菜单窗口是 DWM 的框，只用 `menuBackground`） | dpr |
 | `toggle` | `Toggle.qml` | ToggleSwitch 的轨道和滑块（宿主 40×20）；`kind: "check"` 是复选框 | checked, hovered, pressed, enabled, mixed, active（false：还没读到状态，只画轨道）, kind, dpr |
 | `keyHint` | `HintCap.qml` | KeyHint、底栏键位提示（**不可点**，保持扁平） | dpr。字由宿主画（`subtext`） |
 | `separator` | `Separator.qml` | 分隔线、接缝；在宿主框里横向/纵向居中 | orientation, dpr |
@@ -148,19 +146,23 @@ Hook {
 
 需要新钩子或新 token：写进交付说明，由 A 统一加到 fluent/Look.qml 和 Hook.qml，不要自己改共用文件。
 
-## 4. 窗口外框（frame: "own"）
+## 4. 窗口外框：永远是 Windows 自己的（DWM）
 
-- `frame: "own"` 且 `windowRadius > 0`（且没选直角）时，WinShun 关掉该窗口的 DWM 圆角、DWM 边和 DWM 阴影，并去掉 Mica；
-  窗口变成透明，`windowFrame` 部件画 18 圆角的底（`paint: "back"`，颜色是宿主给的 `fill`）和 1 px 中性灰边（`paint: "edge"`）。
-- 阴影由 C++ 画在一个点击穿透的伴随窗口里（紧贴主窗口下方，跟随移动、显示隐藏、最大化、DPI），参数就是 `windowShadow`（每层可选 `color`，缺省黑色），部件不画窗口阴影。
-- 只有 `SystemTheme.ownFrameAvailable`（D3D11 渲染，窗口有 alpha）时才是真的自绘框（`Theme.ownFrame`）；软件渲染或直角时退回 DWM 的框，
-  边用 fluent 的 WindowBody，style 的 WindowBody 只在 `Theme.ownFrame` 时被用。
-- 每个窗口：`color: <底色>` 不变，加 `WindowEdge { id: windowEdge; fill: <同一个底色> }`；自绘框时 WindowEdge 把窗口设成透明，
-  在最底层用 `paint: "back"` 画底、最上层画边，并放 `OwnFrame` 让 C++ 画阴影。贴角的满宽表面用 `windowEdge.cornerRadius`（最大化时 0）。
-- 最大化时 `maximized: true`：不画圆角和边。
-- 窗口里贴边的大块表面（底栏、标题栏、侧栏底色）要自己按 `windowEdge.cornerRadius` 处理靠近窗口角的两个角（不要直接读 `Theme.windowRadius`：不是自绘框或最大化时它不是 0），否则会盖住圆角。
+- **禁止自绘窗口圆角**（用户 2026-11-05 定）。所有风格、所有窗口（菜单、提示、插件窗口也是）的圆角、1 px 边、阴影和 Mica
+  都由 DWM 画：Windows 11 上 8（菜单也是 8），直角设置或 Windows 10 上是直角。不要关 DWM 圆角（`DWMWCP_DONOTROUND`）、
+  不要把边设成无、不要用分层窗口画阴影，也不要为了“更大的圆角”把窗口做透明再自己画。
+- 风格只能改窗口**里面**：`windowRadius` 一律写成 fluent 的表达式
+  （`SystemTheme.roundedCorners && SystemTheme.nativeWindowBorder ? 8 : 0`），只给托盘图、设置卡片之类当作“窗口的圆角”来读。
+- 靠近窗口角的东西和窗口同心：**内圆角 = max(8 − 间距, 4)**（直角时 0）。例：搜索框离窗口边 10 → 圆角 4；
+  菜单项离菜单边 4 → 4。框里再套的键、分段最少 2。
+- 每个窗口：`color: <底色>`，加 `WindowEdge { fill: <同一个底色> }`。WindowEdge 只在 Windows 10 上画 1 px 边（fluent 的，所有风格一样），
+  另在最底层放风格的窗口底（`windowFrame` 的 `paint: "back"`，方的，例如 tactile 的面板高光和颗粒；fluent、brand 没有）；
+  菜单和提示写 `WindowEdge { body: false }`，它们只有自己的底色。
+- 贴边的大块表面（底栏、标题栏、侧栏底色）直接画成方的：窗口的圆角由 DWM 裁出来，不用自己处理。
+- 透明：风格的 Look 用 `backdrop`（跟随“透明效果”设置，`SystemTheme.backdrop`）和 `backdropCapable`（这个风格能不能透明；
+  false 时设置里那一行变灰并说明原因）。tactile 按原型就是不透明的（两个都是 false），brand 和 fluent 一样跟随设置。
 
 ## 5. 预览
 
 `WinShun.exe --preview-results <dir> --search-logo --style brand [--dark] [--scale 1.5]`、
-`--preview-settings <dir> --style tactile` 等离屏出图（不碰正在运行的 WinShun）。离屏图里没有 C++ 画的窗口阴影。
+`--preview-settings <dir> --style tactile` 等离屏出图（不碰正在运行的 WinShun）。离屏图里没有 DWM 的圆角、边和阴影。
