@@ -32,7 +32,7 @@ Item {
     readonly property color iconColor: iconInk
     readonly property real leadingInset: 60
     readonly property real iconInset: 13 // the icon's left edge, from the field's
-    readonly property real contentOffsetY: -2 // the 24 px query's optical centre
+    readonly property real contentOffsetY: -1 // the 24 px query's optical centre (the caret ignores it: it stays on the field's middle)
 
     property real lit: focused ? 1 : 0
     Behavior on lit { NumberAnimation { duration: 200; easing.type: Easing.Bezier; easing.bezierCurve: field.look ? field.look.easeOut : [0, 0, 0, 1, 1, 1] } }

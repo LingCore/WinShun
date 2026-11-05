@@ -16,8 +16,12 @@ Rectangle {
     readonly property bool wanted: textInput !== null && textInput.cursorVisible
     readonly property int flash: Qt.styleHints.cursorFlashTime
 
+    // Where the host moves it from the line it sits on (its words' optical offset, taken back).
+    property real yShift: 0
     // TextInput places only x (one pixel before the character); the rest as its own caret.
     y: textInput ? textInput.cursorRectangle.y : 0
+    // A transform, not y: the TextInput sets the delegate's position itself whenever the caret moves.
+    transform: Translate { y: Math.round(caret.yShift * caret.dpr) / caret.dpr }
     width: Math.max(1, Math.round(dpr)) / dpr
     height: textInput ? textInput.cursorRectangle.height : 0
     visible: wanted && lit
