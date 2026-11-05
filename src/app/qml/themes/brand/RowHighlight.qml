@@ -29,6 +29,8 @@ Item {
     readonly property color hoverFill: look ? (role === "panel" ? look.panelHover : look.rowHover) : "transparent"
     // Hook.out names: the words stay ink on every state.
     readonly property color foreground: look ? look.ink : "transparent"
+    // Hook.out: how far the row's content starts from the face's left edge — the result row's icon sits 14 past it, 6 clear of the 3 px bar.
+    readonly property real contentInset: 14
 
     RectangularShadow {
         visible: row.look ? row.raisedFace && !row.look.dark : false

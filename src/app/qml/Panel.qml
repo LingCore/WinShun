@@ -195,6 +195,7 @@ Item {
         Accessible.checked: active
 
         Hook { // chosen as the current row is: the style's row highlight
+            id: choiceHighlight
             anchors.fill: parent
             anchors.leftMargin: 8
             anchors.rightMargin: 8
@@ -205,8 +206,9 @@ Item {
             dpr: panel.dpr
         }
         Text {
-            x: 20
-            width: parent.width - 32
+            // The words start where the style says a row's content does, from the highlight's edge (brand: as a result row's, 14 past its bar).
+            x: 8 + choiceHighlight.out("contentInset", 12)
+            width: parent.width - x - 12
             y: panel.onPixel((choice.height - height) / 2)
             text: choice.text
             textFormat: Text.PlainText
