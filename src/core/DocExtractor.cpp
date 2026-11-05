@@ -164,10 +164,11 @@ struct DocExtractor::Process {
     }
 };
 
-DocExtractor::DocExtractor(int maxProcesses, Priority priority)
+DocExtractor::DocExtractor(int maxProcesses, Priority priority, std::uint64_t alone)
     : m_max(std::max(1, maxProcesses))
     , m_priority(priority)
     , m_codePage(ContentScanner::legacyCodePage())
+    , m_alone(alone)
 {
     m_reaper = std::jthread([this](std::stop_token stop) { reap(stop); });
 }
@@ -322,6 +323,27 @@ void DocExtractor::release(std::unique_ptr<Process> process)
     m_cv.notify_all();
 }
 
+bool DocExtractor::takeAlone(const std::function<bool()>& cancelled)
+{
+    std::unique_lock lock(m_mutex);
+    while (m_aloneBusy) {
+        if (cancelled && cancelled())
+            return false;
+        m_cv.wait_for(lock, 50ms);
+    }
+    m_aloneBusy = true;
+    return true;
+}
+
+void DocExtractor::releaseAlone()
+{
+    {
+        std::lock_guard lock(m_mutex);
+        m_aloneBusy = false;
+    }
+    m_cv.notify_all();
+}
+
 void DocExtractor::closeIdle()
 {
     std::vector<std::unique_ptr<Process>> closing;
@@ -386,6 +408,21 @@ DocExtractor::Result DocExtractor::extractFile(
 DocExtractor::Result DocExtractor::extract(HANDLE file, std::uint64_t size, const std::function<bool()>& cancelled)
 {
     Result result;
+    // A large one waits for the one being read, before it takes a process.
+    const bool alone = m_alone > 0 && size >= m_alone;
+    if (alone && !takeAlone(cancelled)) {
+        result.retry = true;
+        return result;
+    }
+    const struct Alone {
+        DocExtractor* extractor;
+        bool on;
+        ~Alone()
+        {
+            if (on)
+                extractor->releaseAlone();
+        }
+    } aloneTaken {this, alone};
     auto p = acquire(cancelled);
     if (!p) {
         result.retry = true;
@@ -434,7 +471,15 @@ DocExtractor::Result DocExtractor::extract(HANDLE file, std::uint64_t size, cons
         result.retry = io == Io::Cancelled;
         return result;
     }
-    release(std::move(p));
+    if (alone) {
+        // Ended: it would keep much of what it took (179 MB after a 46 MB
+        // PDF) while it reads the next ones. A fresh one is quick: a small
+        // document read in a process of its own took 29 ms at the median.
+        p.reset();
+        release(nullptr);
+    } else {
+        release(std::move(p));
+    }
     result.status = header.status;
     if (header.status == extractproto::Status::Ok) {
         auto text = doctext::deserialize(payload, kMaxText);
