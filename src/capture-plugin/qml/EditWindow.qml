@@ -347,6 +347,7 @@ Window {
             spacing: 12
 
             Text {
+                anchors.verticalCenter: parent.verticalCenter // on the zoom key's line, not at its top
                 text: window.editor.sizeText
                 color: Theme.subtext
                 font.pixelSize: Theme.fontCaption
