@@ -252,6 +252,7 @@ QtObject {
     readonly property color closePressed: Qt.rgba(0.769, 0.169, 0.110, 0.9)
     readonly property color accent: accentInk
     readonly property color accentFill: accentFillColor
+    readonly property color previewAccent: accentFillColor // the theme pictures of the settings (ThemeCard): this style's colour, not the Windows one
     readonly property color accentLine: led                 // markers and the caret: the lamp orange
     readonly property color accentTint: selection           // a selected row is lifted, not tinted
     // The chrome (search row, type strip, footer) is the window's own panel:

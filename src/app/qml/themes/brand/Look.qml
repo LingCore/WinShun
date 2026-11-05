@@ -263,6 +263,7 @@ QtObject {
     // ---- Theme's existing tokens, in brand values (same names) ----
     readonly property color accent: brandInk // text, glyphs, lines
     readonly property color accentFill: "#A8402C" // under white words: 6.1:1, both themes
+    readonly property color previewAccent: accentFill // the theme pictures of the settings (ThemeCard): this style's colour, not the Windows one
     readonly property color accentText: "#FFFFFF"
     readonly property int fontStrong: Font.Bold
     readonly property color background: listFill // the window's base (results, page body); chrome lies on it as `layer`
