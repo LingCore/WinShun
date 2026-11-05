@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Effects
 import WinShun
 
 // Under the search box in 文件: the kinds of file it narrows to, as chips
@@ -176,6 +177,57 @@ Item {
     onCurrentChanged: scheduleReveal()
     onChipsChanged: scheduleReveal()
 
+    // A mouse's wheel turns the chips sideways (a touchpad has its own
+    // sideways swipe): a step moves 90 px, eased, and the steps add up. Over
+    // the Flickable, taking only the wheel (no buttons, no hover).
+    MouseArea {
+        z: 5 // above the Flickable, which would take the wheel itself
+        x: view.x
+        y: view.y
+        width: view.width
+        height: view.height
+        acceptedButtons: Qt.NoButton
+        onWheel: (event) => {
+            if (strip.wheelBy(event.angleDelta.y))
+                event.accepted = true
+            else
+                event.accepted = false
+        }
+    }
+    // A step of the wheel (a notch is 120): the chips move 90 px per notch,
+    // the steps add up. False when there is nothing to scroll.
+    function wheelBy(delta: real): bool {
+        if (!view.interactive || delta === 0)
+            return false
+        cancelReveal()
+        const from = wheelAnim.running ? wheelAnim.to : view.contentX
+        wheelAnim.stop()
+        wheelAnim.from = view.contentX
+        wheelAnim.to = Math.max(0, Math.min(view.contentWidth - view.width, from - delta * 0.75))
+        wheelAnim.start()
+        return true
+    }
+    Item { // the Flickable's mask: opaque, faded at the ends that have more behind them
+        id: fadeMask
+        x: view.x
+        y: view.y
+        width: view.width
+        height: view.height
+        visible: false
+        layer.enabled: true
+        readonly property real ramp: Math.min(52, width / 3) / Math.max(1, width)
+        Rectangle {
+            anchors.fill: parent
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0; color: Qt.rgba(0, 0, 0, view.leftOpacity) }
+                GradientStop { position: fadeMask.ramp; color: "black" }
+                GradientStop { position: 1 - fadeMask.ramp; color: "black" }
+                GradientStop { position: 1; color: Qt.rgba(0, 0, 0, view.rightOpacity) }
+            }
+        }
+    }
+
     Flickable {
         id: view
         x: 12
@@ -204,6 +256,16 @@ Item {
             blocking: false // observe, then let Flickable handle the event
             onWheel: strip.cancelReveal()
         }
+        NumberAnimation { id: wheelAnim; target: view; property: "contentX"; duration: 140; easing.type: Easing.OutCubic }
+
+        // Where more chips are hidden, the chips fade out at that end instead
+        // of being cut off (the mask below is a ramp of 52 px at each end).
+        readonly property bool moreLeft: interactive && contentX > 1
+        readonly property bool moreRight: interactive && contentX < contentWidth - width - 1
+        property real leftOpacity: moreLeft ? 0 : 1
+        property real rightOpacity: moreRight ? 0 : 1
+        Behavior on leftOpacity { NumberAnimation { duration: 150 } }
+        Behavior on rightOpacity { NumberAnimation { duration: 150 } }
 
         Row {
             id: row
@@ -312,6 +374,28 @@ Item {
                 }
             }
         }
+    }
+
+    // The chips drawn through the mask (so they fade where more are hidden)
+    // while there is more than fits; the Flickable under it keeps the input.
+    ShaderEffectSource {
+        id: viewSource
+        sourceItem: view
+        hideSource: view.interactive
+        live: true
+        visible: false
+    }
+    MultiEffect {
+        x: view.x
+        y: view.y
+        width: view.width
+        height: view.height
+        visible: view.interactive
+        source: viewSource
+        maskEnabled: true
+        maskSource: fadeMask
+        maskThresholdMin: 0.5
+        maskSpreadAtMin: 0.5
     }
 
     Item { // the kinds and their extensions, in the settings
