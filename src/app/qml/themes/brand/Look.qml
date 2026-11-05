@@ -117,6 +117,7 @@ QtObject {
     function fieldKeyInsetAt(dpr: real): real { return snap(8, dpr) }
     // The scope tabs are taller than the keys: 4 from the field's top and bottom.
     readonly property real scopeKeyInset: 4
+    readonly property int searchFontDelta: -4 // the query is 4 smaller than the interface size says: a 44 px field holds a 20 px line with room
     // A row's number sits mid-way between the ink bar (right edge 18) and the icon (52 / the clipboard's 44).
     readonly property real hintX: 23
     readonly property real clipHintX: 19

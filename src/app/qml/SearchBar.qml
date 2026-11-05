@@ -237,7 +237,7 @@ Item {
         focus: true
         clip: true
         color: fieldPart.out("textColor", Theme.text)
-        font.pixelSize: Theme.uiSearch
+        font.pixelSize: Theme.uiSearch + Theme.tok("searchFontDelta", 0)
         selectByMouse: true
         selectionColor: Theme.textSelection
         selectedTextColor: Theme.text
