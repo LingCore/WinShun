@@ -208,7 +208,7 @@ Item {
         Row {
             id: row
             y: strip.onPixel((view.height - height) / 2)
-            spacing: 4
+            spacing: Theme.tok("typeChipSpacing", 4)
 
             Repeater {
                 id: chipRepeater

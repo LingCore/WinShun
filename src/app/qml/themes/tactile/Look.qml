@@ -92,7 +92,8 @@ QtObject {
     readonly property real capsulePadding: 0
     readonly property real capsuleKeyRadius: keyRadius
     readonly property color capsuleFill: "transparent"
-    readonly property real typeChipHeight: 30
+    readonly property real typeChipHeight: 26 // + the 2 px side + the contact line: 3 clear above and below in the strip
+    readonly property real typeChipSpacing: 7 // between keys: each has its own side and shadow
 
     // ---- accent: one warm signal orange, fixed (not the Windows accent) -------
     // Only as a lamp, the caret, match ink, and one fill under white text.
