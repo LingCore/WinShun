@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
-import QtQuick.Effects
 import WinShun
 
 // Under the search box in 文件: the kinds of file it narrows to, as chips
@@ -127,10 +126,43 @@ Item {
         frame.addControl(indexSwitch) // in 内容 only: WindowFrame skips hidden items
     }
 
-    // Keeps the current chip in view (Tab past the right edge).
+    // Too many for the width, the chips scroll by whole chips: the first one
+    // shown starts at the left edge and only whole chips show, none cut off.
+    // Kept so that the current chip is in view (Ctrl+Tab past the end).
+    property int firstChip: 0
     property bool revealRequested: false
-    property bool writingScroll: false
     property real slidePosition: 0
+    readonly property bool scrolls: view.contentWidth > view.width
+    // Whole logical pixels that are whole device pixels too (150%: even
+    // ones): the words, icons and keys stay sharp and together as they move.
+    readonly property int scrollStep: { let n = 1; while (n < 4 && Math.abs(n * dpr - Math.round(n * dpr)) > 0.001) ++n; return n }
+    // Where the chips rest with chip `index` first.
+    function stopAt(index: int): real {
+        const chip = chipRepeater.itemAt(index)
+        return chip ? Math.floor(chip.x / scrollStep + 0.001) * scrollStep : 0
+    }
+    readonly property real restX: scrolls ? stopAt(firstChip) : 0
+    // The first chip shown with the last one in full at the end.
+    function lastFirst(): int {
+        for (let i = 0; i < chipRepeater.count; ++i)
+            if (view.contentWidth - stopAt(i) <= view.width + 0.5)
+                return i
+        return Math.max(0, chipRepeater.count - 1)
+    }
+    function scrollTo(first: int, animated: bool) {
+        firstChip = scrolls ? Math.max(0, Math.min(lastFirst(), first)) : 0
+        const to = restX
+        slide.stop()
+        if (to === view.contentX)
+            return
+        if (!animated || !SystemTheme.animations) {
+            view.contentX = to
+            return
+        }
+        slide.from = view.contentX
+        slide.to = to
+        slide.start()
+    }
     function scheduleReveal() {
         revealRequested = true
         Qt.callLater(runReveal)
@@ -141,108 +173,52 @@ Item {
     }
     function cancelReveal() {
         revealRequested = false
-        slide.stop()
     }
     function reveal() {
         cancelReveal()
-        const chip = chipRepeater.itemAt(chips.findIndex(c => c.type === current))
-        if (!chip || view.contentWidth <= view.width)
-            return
-        const left = chip.x - 8
-        const right = chip.x + chip.width + 8
-        let to = view.contentX
-        if (left < view.contentX)
-            to = Math.max(0, left)
-        else if (right > view.contentX + view.width)
-            to = Math.min(view.contentWidth - view.width, right - view.width)
-        to = scrollStop(to)
-        if (to !== view.contentX) {
-            view.cancelFlick()
-            if (!SystemTheme.animations) {
-                view.contentX = to
-                return
+        const index = chips.findIndex(c => c.type === current)
+        const chip = chipRepeater.itemAt(index)
+        let first = firstChip
+        if (chip) {
+            if (index < first) {
+                first = index
+            } else {
+                const right = chip.x + chip.keyWidth
+                while (first < index && right - stopAt(first) > view.width + 0.5)
+                    ++first
             }
-            slide.from = view.contentX
-            slide.to = to
-            slide.restart()
         }
+        scrollTo(first, true)
     }
     onSlidePositionChanged: {
-        if (slide.running) {
-            writingScroll = true
-            view.contentX = scrollStop(slidePosition)
-            writingScroll = false
-        }
-    }
-    property real wheelPosition: 0
-    onWheelPositionChanged: {
-        if (wheelAnim.running) {
-            writingScroll = true
-            view.contentX = scrollStop(wheelPosition)
-            writingScroll = false
-        }
-    }
-    // Where the chips may stop, also while they move: whole logical pixels
-    // that are whole device pixels too (150%: even ones), the last one inside
-    // the end. The chips are drawn through a texture (the fade), where the
-    // words snap to whole logical pixels: anywhere between, they shake against
-    // their keys and icons while the chips move; half a device pixel blurs them all.
-    readonly property int scrollStep: { let n = 1; while (n < 4 && Math.abs(n * dpr - Math.round(n * dpr)) > 0.001) ++n; return n }
-    function scrollStop(v: real): real {
-        const last = Math.floor((view.contentWidth - view.width) / scrollStep) * scrollStep
-        return Math.max(0, Math.min(last, Math.round(v / scrollStep) * scrollStep))
+        if (slide.running)
+            view.contentX = Math.round(slidePosition / scrollStep) * scrollStep
     }
     NumberAnimation { id: slide; target: strip; property: "slidePosition"; duration: 150; easing.type: Easing.OutCubic }
     onCurrentChanged: scheduleReveal()
     onChipsChanged: scheduleReveal()
 
-    // A mouse's wheel turns the chips sideways (a touchpad has its own
-    // sideways swipe): a step moves 90 px, eased, and the steps add up. Over
-    // the Flickable, taking only the wheel (no buttons, no hover).
+    // A mouse's wheel (or a touchpad's swipe) turns the chips a chip per
+    // notch. Over the chips, taking only the wheel (no buttons, no hover).
+    property real wheelRest: 0
     MouseArea {
-        z: 5 // above the Flickable, which would take the wheel itself
+        z: 5
         x: view.x
         y: view.y
         width: view.width
         height: view.height
         acceptedButtons: Qt.NoButton
         onWheel: (event) => {
-            if (strip.wheelBy(event.angleDelta.y))
-                event.accepted = true
-            else
+            if (!strip.scrolls) {
                 event.accepted = false
-        }
-    }
-    // A step of the wheel (a notch is 120): the chips move 90 px per notch,
-    // the steps add up. False when there is nothing to scroll.
-    function wheelBy(delta: real): bool {
-        if (!view.interactive || delta === 0)
-            return false
-        cancelReveal()
-        const from = wheelAnim.running ? wheelAnim.to : view.contentX
-        wheelAnim.stop()
-        wheelAnim.from = view.contentX
-        wheelAnim.to = scrollStop(from - delta * 0.75)
-        wheelAnim.start()
-        return true
-    }
-    Item { // the Flickable's mask: opaque, faded at the ends that have more behind them
-        id: fadeMask
-        x: view.x
-        y: view.y
-        width: strip.textureWidth
-        height: strip.textureHeight
-        visible: false
-        layer.enabled: true
-        readonly property real ramp: Math.min(52, width / 3) / Math.max(1, width)
-        Rectangle {
-            anchors.fill: parent
-            gradient: Gradient {
-                orientation: Gradient.Horizontal
-                GradientStop { position: 0; color: Qt.rgba(0, 0, 0, view.leftOpacity) }
-                GradientStop { position: fadeMask.ramp; color: "black" }
-                GradientStop { position: 1 - fadeMask.ramp; color: "black" }
-                GradientStop { position: 1; color: Qt.rgba(0, 0, 0, view.rightOpacity) }
+                return
+            }
+            strip.wheelRest += event.angleDelta.y !== 0 ? event.angleDelta.y : event.angleDelta.x
+            const steps = strip.wheelRest > 0 ? Math.floor(strip.wheelRest / 120) : Math.ceil(strip.wheelRest / 120)
+            if (steps !== 0) {
+                strip.wheelRest -= steps * 120
+                strip.cancelReveal()
+                strip.scrollTo(strip.firstChip - steps, true)
             }
         }
     }
@@ -256,37 +232,14 @@ Item {
         height: strip.fullHeight - 6
         contentWidth: row.width
         contentHeight: height
-        interactive: contentWidth > width
-        flickableDirection: Flickable.HorizontalFlick
-        boundsBehavior: Flickable.StopAtBounds
+        interactive: false // the wheel and Ctrl+Tab move it, by whole chips
         clip: true
-        onContentXChanged: if (!strip.writingScroll) strip.cancelReveal()
-        onDraggingChanged: if (dragging) strip.cancelReveal()
-        onMovementStarted: strip.cancelReveal()
-        onMovementEnded: contentX = strip.scrollStop(contentX) // dragged or swiped: rests where the words are sharp
+        onWidthChanged: Qt.callLater(() => strip.scrollTo(strip.firstChip, false))
         opacity: strip.shown ? 1 : 0
         Behavior on opacity {
             enabled: strip.animated && SystemTheme.animations
             NumberAnimation { duration: 150 }
         }
-        WheelHandler {
-            target: null
-            orientation: Qt.Horizontal
-            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-            blocking: false // observe, then let Flickable handle the event
-            onWheel: strip.cancelReveal()
-        }
-        NumberAnimation { id: wheelAnim; target: strip; property: "wheelPosition"; duration: 140; easing.type: Easing.OutCubic }
-
-        // Where more chips are hidden, the chips fade out at that end instead
-        // of being cut off (the mask below is a ramp of 52 px at each end).
-        readonly property bool moreLeft: interactive && contentX > 1
-        readonly property bool moreRight: interactive && contentX < contentWidth - width - strip.scrollStep
-        property real leftOpacity: moreLeft ? 0 : 1
-        property real rightOpacity: moreRight ? 0 : 1
-        Behavior on leftOpacity { NumberAnimation { duration: 150 } }
-        Behavior on rightOpacity { NumberAnimation { duration: 150 } }
-
         Row {
             id: row
             y: strip.onPixel((view.height - height) / 2)
@@ -323,6 +276,16 @@ Item {
 
                     // Whole pixels: a half one would leave the labels after it blurred.
                     width: body.width + (parted ? row.spacing + 9 : 0)
+                    readonly property real keyWidth: body.width
+                    // Whole or not at all where the chips scroll (strip.firstChip).
+                    readonly property bool whole: !strip.scrolls
+                        || (x >= strip.restX - 0.5 && x + body.width <= strip.restX + view.width + 0.5)
+                    opacity: whole ? 1 : 0
+                    enabled: whole
+                    Behavior on opacity {
+                        enabled: SystemTheme.animations
+                        NumberAnimation { duration: 120 }
+                    }
                     height: Theme.typeChipHeight
                     Accessible.role: !strip.folders && modelData.type >= 0 ? Accessible.CheckBox : Accessible.RadioButton
                     Accessible.name: modelData.name
@@ -394,42 +357,6 @@ Item {
                 }
             }
         }
-    }
-
-    // The texture's size: whole logical pixels that are also whole device
-    // pixels (150%: even ones), so it is a 1:1 copy. A size the texture rounds
-    // scales the chips by a hair, and their words, drawn at whole texture
-    // pixels, then shake against the icons while they scroll.
-    function textureSide(v: real): int {
-        let side = Math.ceil(v)
-        while (Math.abs(side * dpr - Math.round(side * dpr)) > 0.001 && side < Math.ceil(v) + 8)
-            ++side
-        return side
-    }
-    readonly property int textureWidth: textureSide(view.width)
-    readonly property int textureHeight: textureSide(view.height)
-
-    // The chips drawn through the mask (so they fade where more are hidden)
-    // while there is more than fits; the Flickable under it keeps the input.
-    ShaderEffectSource {
-        id: viewSource
-        sourceItem: view
-        sourceRect: Qt.rect(0, 0, strip.textureWidth, strip.textureHeight)
-        hideSource: view.interactive
-        live: true
-        visible: false
-    }
-    MultiEffect {
-        x: onPixel(view.x)
-        y: onPixel(view.y)
-        width: strip.textureWidth
-        height: strip.textureHeight
-        visible: view.interactive
-        source: viewSource
-        maskEnabled: true
-        maskSource: fadeMask
-        maskThresholdMin: 0.5
-        maskSpreadAtMin: 0.5
     }
 
     Item { // the kinds and their extensions, in the settings
