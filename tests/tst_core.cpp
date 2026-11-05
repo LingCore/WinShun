@@ -180,6 +180,102 @@ std::vector<EntryId> knownOf(const ContentIndex& content, const QString& phrase)
     return out;
 }
 
+// A bulk session whose files' bytes are made up, by their names: larger
+// files than a test should write, delivered as fast as memory can, so that
+// the bulk way's queue fills. With a Meeting, each session's first batch
+// waits (a while at most) until every session has one under way, as on
+// disks slow to start: batches let through at once then land at once.
+class MadeUpBulk final : public ntfs::BulkSource {
+public:
+    struct Made {
+        std::uint64_t size;
+        std::string text; // repeated to the size
+    };
+    using Maker = std::function<Made(std::u16string_view name)>;
+    struct Meeting {
+        explicit Meeting(int sessions) : sessions(sessions) { }
+        const int sessions;
+        std::mutex mutex;
+        std::condition_variable met;
+        int arrived = 0;
+    };
+    explicit MadeUpBulk(Maker maker, std::shared_ptr<Meeting> meeting = nullptr)
+        : m_maker(std::move(maker))
+        , m_meeting(std::move(meeting))
+    {
+    }
+    bool valid() const noexcept override { return true; }
+    const std::wstring& error() const noexcept override { return m_error; }
+    bool want(std::span<const ntfs::BulkWant> wants) override
+    {
+        m_wants.insert(m_wants.end(), wants.begin(), wants.end());
+        return true;
+    }
+    bool scan(std::vector<ntfs::BulkFile>& out) override
+    {
+        for (std::uint32_t t = 0; t < m_wants.size(); ++t) {
+            const std::uint64_t size = m_maker(m_wants[t].name).size;
+            out.push_back({t, size > m_wants[t].maxBytes ? ntfs::BulkStatus::TooLarge : ntfs::BulkStatus::Data,
+                ntfs::BulkSkip::None, size, 0});
+        }
+        return true;
+    }
+    bool fetch(std::span<const std::uint32_t> tickets,
+        const std::function<void(std::uint32_t, std::vector<std::byte>&&)>& sink) override
+    {
+        if (const auto meeting = std::exchange(m_meeting, nullptr)) {
+            std::unique_lock lock(meeting->mutex);
+            ++meeting->arrived;
+            meeting->met.notify_all();
+            meeting->met.wait_for(lock, std::chrono::milliseconds(300), [&] { return meeting->arrived >= meeting->sessions; });
+        }
+        for (const std::uint32_t t : tickets) {
+            const Made made = m_maker(m_wants[t].name);
+            std::vector<std::byte> bytes(static_cast<std::size_t>(made.size));
+            std::size_t filled = std::min(made.text.size(), bytes.size());
+            std::memcpy(bytes.data(), made.text.data(), filled);
+            while (filled < bytes.size()) { // doubled: a few copies, as fast as memory
+                const std::size_t n = std::min(filled, bytes.size() - filled);
+                std::memcpy(bytes.data() + filled, bytes.data(), n);
+                filled += n;
+            }
+            sink(t, std::move(bytes));
+        }
+        return true;
+    }
+
+private:
+    Maker m_maker;
+    std::shared_ptr<Meeting> m_meeting;
+    std::vector<ntfs::BulkWant> m_wants;
+    std::wstring m_error;
+};
+
+class MadeUpAccess final : public ntfs::VolumeAccess {
+public:
+    explicit MadeUpAccess(MadeUpBulk::Maker maker, std::shared_ptr<MadeUpBulk::Meeting> meeting = nullptr)
+        : m_maker(std::move(maker))
+        , m_meeting(std::move(meeting))
+    {
+    }
+    Kind kind() const noexcept override { return Kind::Service; }
+    std::unique_ptr<ntfs::RecordSource> openMft(std::wstring_view, std::uint32_t, bool) override { return nullptr; }
+    std::optional<ntfs::JournalInfo> queryJournal(std::wstring_view, std::uint32_t) override { return std::nullopt; }
+    std::unique_ptr<ntfs::JournalSource> openJournal(std::wstring_view, std::uint32_t, std::uint64_t) override
+    {
+        return nullptr;
+    }
+    void closeVolume(std::wstring_view) override { }
+    std::unique_ptr<ntfs::BulkSource> openBulkRead(std::wstring_view, std::uint32_t, bool) override
+    {
+        return std::make_unique<MadeUpBulk>(m_maker, m_meeting);
+    }
+
+private:
+    MadeUpBulk::Maker m_maker;
+    std::shared_ptr<MadeUpBulk::Meeting> m_meeting;
+};
+
 // ---- documents ------------------------------------------------------------------
 
 // A zip archive (stored, or deflated) of these entries.
@@ -11140,6 +11236,121 @@ private slots:
         QCOMPARE(bulk.notFound, std::size_t {1}); // the gone one: by path, still to check
         QCOMPARE(matchesOf(*content, u"changed"_s), std::vector<EntryId> {files[1]});
         QVERIFY(content->knows(files[3]) && content->knows(pdf) && !content->knows(files[2]));
+    }
+
+    // One file larger than the bulk way's queue (ContentIndexer::kBulkQueueBytes)
+    // is read too, alone once nothing else waits: it used to wait for room
+    // for good, and its volume's files after it with it (2026-11-05: a text
+    // limit raised over the queue, a 300 MB .txt).
+    void contentBulkFileOverQueue()
+    {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        const std::string rootName = wtf8::fromUtf16(wtf8::view(QDir::toNativeSeparators(tmp.path())));
+        constexpr int kFiles = 2100; // above the bulk way's threshold
+        constexpr std::uint64_t kLarge = ContentIndexer::kBulkQueueBytes + (1u << 20);
+        auto index = std::make_shared<FileIndex>();
+        EntryId large = kNoEntry;
+        {
+            auto lock = index->writeLock();
+            const EntryId r = index->addRoot(rootName);
+            index->setFolderRecord(r, 5, r);
+            for (int i = 0; i < kFiles; ++i) {
+                index->add(r, "f" + std::to_string(i) + ".txt", 0);
+                if (i == kFiles / 2) // files to read after it, too
+                    large = index->add(r, "large.txt", 0);
+            }
+        }
+        const auto access = std::make_shared<MadeUpAccess>([](std::u16string_view name) {
+            return name == u"large.txt" ? MadeUpBulk::Made {kLarge, "large words "} : MadeUpBulk::Made {64, "tiny words "};
+        });
+        auto content = std::make_shared<ContentIndex>(tmp.filePath(u"content"_s));
+        ContentIndexer::Source source;
+        source.index = [&] { return index; };
+        source.volumes = [&] { return std::vector<ContentIndexer::Volume> {{rootName, false}}; };
+        source.ready = [] { return true; };
+        source.access = [&] { return access; };
+        ContentIndexer::Options options;
+        options.extensions = {u"txt"_s};
+        options.sizeLimits.bytes[ContentSizeLimits::Text] = 2 * static_cast<std::int64_t>(kLarge);
+        using namespace std::chrono_literals;
+        ContentIndexer indexer(content, source, options, {0ms, 0ms, 1h, 0ms});
+        const auto waitFor = [](const auto& done) {
+            for (int i = 0; i < 3000 && !done(); ++i)
+                std::this_thread::sleep_for(10ms);
+            return done();
+        };
+        QVERIFY(waitFor([&] { return content->stats().documents == kFiles + 1 && !indexer.reading(); }));
+        const ContentIndexer::BulkStats bulk = indexer.bulkStats();
+        QCOMPARE(bulk.files, std::size_t {kFiles + 1});
+        QVERIFY(bulk.mostQueued >= kLarge); // it waited alone
+        QCOMPARE(matchesOf(*content, u"large words"_s), std::vector<EntryId> {large});
+        QCOMPARE(matchesOf(*content, u"tiny words"_s).size(), std::size_t {kFiles});
+    }
+
+    // What waits for a reader, and what is on its way, stays within the bulk
+    // way's queue (ContentIndexer::kBulkQueueBytes) for all volumes together.
+    // Each session used to check for room and count its batch only once it
+    // came: batches let through at once landed together on top of the queue
+    // (2026-11-05: 310-385 MB waited, the limit being 256 MB). Here every
+    // session's first batch waits for the others' (MadeUpBulk::Meeting):
+    // counted only once they came, all eight would land at once.
+    void contentBulkQueueBound()
+    {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        constexpr int kVolumes = 8;
+        constexpr int kFiles = 300; // a volume's, a batch and a bit; 2400 in all, above the bulk way's threshold
+        constexpr std::uint64_t kSize = 64u << 10; // 150 MB in all, 18.75 MB a volume
+        static_assert(kVolumes * ContentIndexer::kBulkBatchBytes > ContentIndexer::kBulkQueueBytes);
+        static_assert(kFiles * kSize > ContentIndexer::kBulkBatchBytes);
+        auto index = std::make_shared<FileIndex>();
+        std::vector<ContentIndexer::Volume> volumes;
+        {
+            auto lock = index->writeLock();
+            for (int v = 0; v < kVolumes; ++v) {
+                const QString root = QDir::toNativeSeparators(tmp.filePath(u"v%1"_s.arg(v)));
+                volumes.push_back({wtf8::fromUtf16(wtf8::view(root)), false});
+                const EntryId r = index->addRoot(volumes.back().root);
+                index->setFolderRecord(r, 5, r);
+                for (int i = 0; i < kFiles; ++i)
+                    index->add(r, "f" + std::to_string(i) + ".txt", 0);
+            }
+        }
+        // Words enough that taking the grams costs more than making the bytes.
+        std::string words;
+        for (std::uint32_t seed = 1; words.size() < 2000;) {
+            for (int letters = 3 + static_cast<int>(seed % 5); letters > 0; --letters) {
+                seed = seed * 1103515245u + 12345u;
+                words += static_cast<char>('a' + (seed >> 16) % 26);
+            }
+            words += ' ';
+        }
+        const auto access = std::make_shared<MadeUpAccess>(
+            [words](std::u16string_view) { return MadeUpBulk::Made {kSize, words}; },
+            std::make_shared<MadeUpBulk::Meeting>(kVolumes));
+        auto content = std::make_shared<ContentIndex>(tmp.filePath(u"content"_s));
+        ContentIndexer::Source source;
+        source.index = [&] { return index; };
+        source.volumes = [&] { return volumes; };
+        source.ready = [] { return true; };
+        source.access = [&] { return access; };
+        ContentIndexer::Options options;
+        options.extensions = {u"txt"_s};
+        using namespace std::chrono_literals;
+        ContentIndexer indexer(content, source, options, {0ms, 0ms, 1h, 0ms});
+        const auto waitFor = [](const auto& done) {
+            for (int i = 0; i < 3000 && !done(); ++i)
+                std::this_thread::sleep_for(10ms);
+            return done();
+        };
+        QVERIFY(waitFor([&] { return content->stats().documents == kVolumes * kFiles && !indexer.reading(); }));
+        const ContentIndexer::BulkStats bulk = indexer.bulkStats();
+        QCOMPARE(bulk.sessions, std::size_t {kVolumes});
+        QCOMPARE(bulk.files, std::size_t {kVolumes * kFiles});
+        const QString most = u"%1 MB waited at most"_s.arg(static_cast<double>(bulk.mostQueued) / 1048576.0);
+        QVERIFY2(bulk.mostQueued <= ContentIndexer::kBulkQueueBytes, qPrintable(most));
+        QVERIFY2(bulk.mostQueued > ContentIndexer::kBulkBatchBytes, qPrintable(most)); // batches waited together
     }
 
     // Folders that directly hold many candidates, nearly all of one

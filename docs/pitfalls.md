@@ -2849,6 +2849,12 @@
 - **现象**：`wsbench --dirty-window`：新建的文件写完立刻直读，记录“不在用”或还是别的文件的；`FlushFileBuffers` 之后记录也要约 200 ms 才在磁盘上出现（数据倒是先到）。原地覆盖一个常驻文件（数据在记录里），先前打开的卷句柄读到的是旧内容，新开一个卷句柄读到新的——“打开卷句柄会让 NTFS 刷一次”只是观察，没有单独证明，**不要依赖它**。`FSCTL_GET_NTFS_FILE_RECORD` 对这次常驻覆盖也答了旧记录（LSN 没变），所以它也不是“缓存里的最新”。
 - **做法**：三道保险都在界面侧：变更日志给的修改时间 5 分钟内的文件不直读（`kBulkRecent`）；会话前取 `ContentIndex::changeSequence()` 作 `since`，会话期间被写的文件入库时直接标脏（`m_changedWhileReading`）；之后任何写事件照常让它重读。服务每个会话新开卷句柄（便宜）。`FSCTL_GET_NTFS_FILE_RECORD` 返回的记录**不带** USA（fixup 已应用）：`parseFileRecord` 对它会失败，`BulkReader::readRecordCached` 两种都接。
 
+### 直读队列先检查后入队会超额；比上限大的单个文件永远进不了队列（2026-11-05）
+
+- **现象**：第一次建内容索引时主进程私有工作集到 660–810 MB（实机 795–818），其中 310–385 MB 是等切片段的文件字节，而队列上限是 256 MB。另一个现象：把“文本和日志的大小上限”调到 256 MB 以上、盘上又有比它大的文本或日志时，那个卷的直读停在入队等待，再也不动（实测一个 300 MB 的 .txt：120 s 里 0 个文件/秒，14.8 万个只读了 3.1 万，不会自己结束）。
+- **原因**：每个卷的 feeder 先看“排队的 + 这一批 ≤ 上限”，放行后才去取，字节送到才计入。几个卷同时放行，各自的一批（当时 64 MB）就叠在快满的队列上，理论最多 256 + (卷数 − 1) × 64。一个文件单独成一批，比上限还大时“0 + 这一批 > 上限”永远成立。单个卷时读线程追得上，队列满不了（只读 E: 时最多 60 MB），所以只在多卷同时读、读得比切片段快时才显出来。
+- **做法**：放行时就把这一批计入在途（`comingBytes`，送到一个文件扣一个，没送来的批末扣掉），排队的加在途的不超过上限；两者都为 0 时，不论多大都放行这一批。上限 64 MB、每批 16 MB（`ContentIndexer::kBulkQueueBytes` / `kBulkBatchBytes`）。同机 4 个卷 49.5 万个文件，峰值 433–441 MB，耗时不变。测：`tst_core` 的 `contentBulkFileOverQueue` / `contentBulkQueueBound`；`wsbench --service --content` 末行 `bulk …` 的“at most … MB waiting for a reader”；诊断事件里的 `bulk_most_queued_bytes`。
+
 ### `$DATA` 的 VDL 之后、末簇的尾巴，盘上是垃圾
 
 - **现象**：原型只按 VDL 决定读多少簇，最后一簇里 VDL 到 want 之间的字节直接交出去；`--raw-read --verify` 之前没撞上，是审查发现的。

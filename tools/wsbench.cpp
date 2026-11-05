@@ -1238,11 +1238,13 @@ int runServiceContent(const QStringList& args)
     // The bulk way (ContentIndexer.h): how many files came off the volumes by
     // their records, and how many went the usual way and why.
     const ws::ContentIndexer::BulkStats bulk = service.contentIndexer()->bulkStats();
-    std::printf("bulk %zu sessions (%zu failed): %zu files, %.1f MB read by their records; %zu too large from the record; "
+    std::printf("bulk %zu sessions (%zu failed): %zu files, %.1f MB read by their records (at most %.1f MB waiting for a "
+                "reader); %zu too large from the record; "
                 "the usual way: %zu written lately, %zu without a folder record, %zu not found, %zu denied, %zu fallback "
                 "(compressed, encrypted, reparse points...)%s\n",
-        bulk.sessions, bulk.sessionsFailed, bulk.files, static_cast<double>(bulk.bytes) / 1048576.0, bulk.tooLarge, bulk.recent,
-        bulk.noRecord, bulk.notFound, bulk.denied, bulk.fallback,
+        bulk.sessions, bulk.sessionsFailed, bulk.files, static_cast<double>(bulk.bytes) / 1048576.0,
+        static_cast<double>(bulk.mostQueued) / 1048576.0, bulk.tooLarge, bulk.recent, bulk.noRecord, bulk.notFound, bulk.denied,
+        bulk.fallback,
         bulk.verified > 0 ? qPrintable(u"; WINSHUN_BULK_VERIFY: %1 read both ways, %2 DIFFER"_s.arg(bulk.verified).arg(bulk.verifyMismatches))
                           : "");
     std::printf("checks: %zu files unchanged by their MFT records\n", bulk.confirmed);

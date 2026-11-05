@@ -105,8 +105,19 @@ public:
         std::size_t confirmed = 0; // files to check that their records showed unchanged (not opened)
         std::size_t verified = 0; // WINSHUN_BULK_VERIFY: read the usual way too and compared
         std::size_t verifyMismatches = 0;
+        std::uint64_t mostQueued = 0; // the most bytes delivered and waiting for a reader at once
     };
     BulkStats bulkStats() const noexcept;
+    // A session's files are fetched in batches of up to kBulkBatchBytes; what
+    // waits in memory for a reader and what is on its way stays within
+    // kBulkQueueBytes, for all sessions together. A batch larger than that
+    // (one large file) goes alone once nothing waits: it would wait for good
+    // otherwise. Measured 2026-11-05 (wsbench --service --content, 4 volumes,
+    // 495k files): with 256 MB and 64 MB batches, counted only once delivered,
+    // 310-385 MB waited, the main part of a 660-810 MB high; 64 and 16 MB,
+    // batches counted from the moment they are asked for, are as fast.
+    static constexpr std::uint64_t kBulkBatchBytes = 16ull << 20;
+    static constexpr std::uint64_t kBulkQueueBytes = 64ull << 20;
     struct Timing {
         // From starting to the first pass, to let logging on settle; when
         // nothing has been read yet (the first run), no wait. Either way the
@@ -392,7 +403,7 @@ private:
     struct BulkCounters {
         std::atomic<std::size_t> sessions {0}, sessionsFailed {0}, files {0}, tooLarge {0}, recent {0}, noRecord {0},
             notFound {0}, denied {0}, fallback {0}, confirmed {0}, verified {0}, verifyMismatches {0};
-        std::atomic<std::uint64_t> bytes {0};
+        std::atomic<std::uint64_t> bytes {0}, mostQueued {0};
     } m_bulk;
     // Files read lately, and when: one that keeps changing (a log being
     // written) is read at most every Timing::cooldown; meanwhile searches

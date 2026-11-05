@@ -40,9 +40,8 @@ constexpr std::size_t kChunkBytes = ContentScanner::kChunkBytes;
 // The bulk way (ContentIndexer.h): from this many text files to read for the
 // first time on; files written within kBulkRecent are left to the usual way
 // (what was just written may not be on the disk yet: the volume is read
-// unbuffered); a session's files are fetched in batches of up to
-// kBulkBatchBytes, and no more than kBulkPendingBytes wait in memory for a
-// thread to take their grams.
+// unbuffered); a session's files are fetched in batches, as memory allows
+// (ContentIndexer::kBulkBatchBytes, kBulkQueueBytes).
 constexpr std::size_t kBulkThreshold = 2000;
 // Files to check (ContentIndex::Need::Check, after a journal was lost) go
 // the bulk way from this many on one volume: one scan of its MFT gives every
@@ -53,8 +52,6 @@ constexpr std::size_t kBulkThreshold = 2000;
 // this way too; those that changed are read the usual way.
 constexpr std::size_t kBulkCheckThreshold = 2000;
 constexpr FileTime kBulkRecent = 5 * 60; // seconds
-constexpr std::uint64_t kBulkBatchBytes = 64ull << 20;
-constexpr std::size_t kBulkPendingBytes = 256u << 20;
 
 std::int64_t steadyMs()
 {
@@ -486,7 +483,8 @@ ContentIndexer::BulkStats ContentIndexer::bulkStats() const noexcept
 {
     return {m_bulk.sessions.load(), m_bulk.sessionsFailed.load(), m_bulk.files.load(), m_bulk.bytes.load(),
         m_bulk.tooLarge.load(), m_bulk.recent.load(), m_bulk.noRecord.load(), m_bulk.notFound.load(), m_bulk.denied.load(),
-        m_bulk.fallback.load(), m_bulk.confirmed.load(), m_bulk.verified.load(), m_bulk.verifyMismatches.load()};
+        m_bulk.fallback.load(), m_bulk.confirmed.load(), m_bulk.verified.load(), m_bulk.verifyMismatches.load(),
+        m_bulk.mostQueued.load()};
 }
 
 void ContentIndexer::wake()
@@ -546,7 +544,8 @@ QJsonObject ContentIndexer::diagnosticStatus() const
         {u"fallback_not_found"_s, static_cast<qint64>(bulk.notFound)},
         {u"fallback_denied"_s, static_cast<qint64>(bulk.denied)},
         {u"fallback_special_files"_s, static_cast<qint64>(bulk.fallback)},
-        {u"bulk_confirmed"_s, static_cast<qint64>(bulk.confirmed)}};
+        {u"bulk_confirmed"_s, static_cast<qint64>(bulk.confirmed)},
+        {u"bulk_most_queued_bytes"_s, static_cast<qint64>(bulk.mostQueued)}};
 }
 
 void ContentIndexer::interrupt()
@@ -1232,9 +1231,10 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
     };
 
     // The bulk way's hand-overs: files whose bytes a session delivered, for a
-    // reader thread to take the grams out of (`ready`: kBulkPendingBytes of
-    // them at most), and files a session will not give, for the usual way
-    // (`late`). `feeders`: sessions still at work.
+    // reader thread to take the grams out of (`ready`: kBulkQueueBytes of
+    // them at most, with those of the batches on their way, `coming`), and
+    // files a session will not give, for the usual way (`late`). `feeders`:
+    // sessions still at work.
     struct Ready {
         const Work* work;
         std::uint64_t since;
@@ -1246,6 +1246,7 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
     std::deque<Ready> ready;
     std::deque<const Work*> late;
     std::size_t pendingBytes = 0; // under bulkMutex
+    std::uint64_t comingBytes = 0; // under bulkMutex: of batches asked for, not delivered yet
     std::atomic<int> feeders {static_cast<int>(bulkVolumes.size())};
     const auto bulkLeft = [&] {
         if (feeders.load() > 0)
@@ -1651,27 +1652,52 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
                 batchBytes += data[at]->size;
                 ++at;
             }
+            bool go = false;
             {
-                // Room in memory, and nobody searching (the readers wait then too).
+                // Room in memory, and nobody searching (the readers wait then
+                // too). The room is counted with the batches on their way:
+                // checked, then counted once delivered, every session's batch
+                // could come on top of a full queue (Docs: pitfalls). A batch
+                // larger than all the room goes once nothing waits or comes.
                 std::unique_lock lock(bulkMutex);
+                const auto roomFor = [&] {
+                    const std::uint64_t taken = pendingBytes + comingBytes;
+                    return taken == 0 || taken + batchBytes <= kBulkQueueBytes;
+                };
                 while (!cancelled() && !full.load()
-                    && (pendingBytes + batchBytes > kBulkPendingBytes || hold.load() || m_content->searching() || searchBoxHolds()))
+                    && (!roomFor() || hold.load() || m_content->searching() || searchBoxHolds()))
                     bulkRoom.wait_for(lock, 100ms);
+                go = !cancelled() && !full.load();
+                if (go)
+                    comingBytes += batchBytes;
             }
-            if (cancelled() || full.load())
+            if (!go)
                 break;
             activity.stage("bulk-read");
+            std::uint64_t batchLeft = batchBytes; // of comingBytes, this batch's not delivered yet
             const bool fetched = session->fetch(tickets, [&](std::uint32_t ticket, std::vector<std::byte>&& bytes) {
                 if (ticket >= ticketWork.size() || !byTicket[ticket] || got[ticket])
                     return;
                 got[ticket] = true;
                 const ntfs::BulkFile& f = *byTicket[ticket];
                 std::lock_guard lock(bulkMutex);
+                const std::uint64_t counted = std::min<std::uint64_t>(bytes.size(), batchLeft);
+                batchLeft -= counted;
+                comingBytes -= counted;
                 pendingBytes += bytes.size();
+                if (pendingBytes > m_bulk.mostQueued.load(std::memory_order_relaxed))
+                    m_bulk.mostQueued.store(pendingBytes, std::memory_order_relaxed);
                 ready.push_back({ticketWork[ticket], since,
                     ContentIndex::stampOf(static_cast<std::int64_t>(f.size), f.modified), std::move(bytes)});
                 room.notify_one();
             });
+            {
+                // What the batch did not bring (a file not given, or shorter
+                // than its record said) is not on its way any more.
+                std::lock_guard lock(bulkMutex);
+                comingBytes -= batchLeft;
+            }
+            bulkRoom.notify_all();
             if (!fetched) {
                 if (!cancelled()) {
                     qWarning("WinShun: the bulk read of %ls broke: %ls", root.c_str(), session->error().c_str());
