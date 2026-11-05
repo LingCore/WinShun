@@ -836,17 +836,35 @@ void AppCatalog::setApps(std::shared_ptr<const AppList> apps)
     m_apps = std::move(apps);
 }
 
+bool programsCheckDue(std::optional<std::chrono::steady_clock::duration> sinceLast, bool reloaded, bool asked)
+{
+    return reloaded || asked || !sinceLast || *sinceLast >= kProgramsCheckEvery;
+}
+
 void AppCatalog::refresh(bool force)
+{
+    start(force, false);
+}
+
+void AppCatalog::checkPrograms()
+{
+    start(false, true);
+}
+
+void AppCatalog::start(bool force, bool check)
 {
     if (m_busy) {
         m_again = m_again || force;
+        m_checkAgain = m_checkAgain || check;
         return;
     }
     m_busy = true;
-    force = force || !isLoaded() || std::chrono::steady_clock::now() - m_loadedAt > kMaxAge;
+    const auto now = std::chrono::steady_clock::now();
+    force = force || !isLoaded() || now - m_loadedAt > kMaxAge;
+    const auto sinceCheck = m_checkedAt ? std::optional(now - *m_checkedAt) : std::nullopt;
     if (m_worker.joinable())
         m_worker.join(); // the previous read; it has posted its outcome, so it is done
-    m_worker = std::jthread([this, force, known = m_fingerprint, all = m_all](std::stop_token stop) {
+    m_worker = std::jthread([this, force, check, sinceCheck, known = m_fingerprint, all = m_all](std::stop_token stop) {
         ::SetThreadPriority(::GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
         Outcome outcome;
         outcome.fingerprint = installedAppsFingerprint();
@@ -858,9 +876,14 @@ void AppCatalog::refresh(bool force)
                 shell = outcome.all = std::make_shared<const AppList>(std::move(apps));
         }
         // The shell keeps listing a shortcut whose program was deleted, and
-        // nothing in the Start menu changes then: asked of the disk each
-        // time, one look per desktop app (#207).
-        if (shell && !stop.stop_requested()) {
+        // nothing in the Start menu changes then: asked of the disk, one look
+        // per desktop app (#207). Not each time the search box opens, as that
+        // would keep waking a hard disk that went to sleep: after a read (so
+        // a new list is never shown before it is looked at), when an app did
+        // not open, and otherwise every few minutes. Until then the list as
+        // last looked at stays.
+        if (shell && !stop.stop_requested() && programsCheckDue(sinceCheck, outcome.reloaded, check)) {
+            outcome.checked = true;
             AppList present = presentApps(*shell);
             outcome.apps = present.size() == shell->size() ? shell : std::make_shared<const AppList>(std::move(present));
         }
@@ -877,6 +900,8 @@ void AppCatalog::publish(const Outcome& outcome)
         m_fingerprint = outcome.fingerprint;
         m_loadedAt = std::chrono::steady_clock::now();
     }
+    if (outcome.checked)
+        m_checkedAt = std::chrono::steady_clock::now();
     if (outcome.apps) {
         bool same = false;
         {
@@ -889,8 +914,10 @@ void AppCatalog::publish(const Outcome& outcome)
             emit changed();
     }
     // A failed read keeps the old fingerprint, so the next refresh tries again.
-    if (std::exchange(m_again, false))
-        refresh(true);
+    const bool again = std::exchange(m_again, false);
+    const bool checkAgain = std::exchange(m_checkAgain, false);
+    if (again || checkAgain)
+        start(again, checkAgain);
 }
 
 AppList loadInstalledApps(const std::stop_token& stop)

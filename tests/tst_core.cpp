@@ -9105,6 +9105,16 @@ private slots:
         for (const AppInfo& a : presentApps(apps))
             names.append(a.name);
         QCOMPARE(names, (QStringList {u"There"_s, u"Control Panel"_s, u"Store app"_s}));
+
+        // Asked of the disk at most every few minutes; at once after a read
+        // or a failed open, and the first time.
+        using namespace std::chrono_literals;
+        QVERIFY(programsCheckDue(std::nullopt, false, false));
+        QVERIFY(!programsCheckDue(10s, false, false));
+        QVERIFY(!programsCheckDue(kProgramsCheckEvery - 1s, false, false));
+        QVERIFY(programsCheckDue(kProgramsCheckEvery, false, false));
+        QVERIFY(programsCheckDue(10s, true, false));
+        QVERIFY(programsCheckDue(10s, false, true));
     }
 
     void settingsIndexParsing()

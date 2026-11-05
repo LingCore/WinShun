@@ -4813,7 +4813,7 @@ std::function<void(bool)> Launcher::reportFailure(const QString& name)
         QMetaObject::invokeMethod(qApp, [self, name] {
             if (!self)
                 return;
-            self->m_apps->refresh(); // an app whose program is gone goes from the list (#207)
+            self->m_apps->checkPrograms(); // an app whose program is gone goes from the list (#207)
             emit self->openFailed(name);
         }, Qt::QueuedConnection);
     };
