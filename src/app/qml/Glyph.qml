@@ -44,7 +44,12 @@ Item {
     // native text puts the baseline on a whole pixel, 15/16 em below the
     // em's top, so an x or a chevron sat a fraction of a pixel lower than
     // across, its axis between pixels.
+    // Where a Phosphor icon's ink starts, left of the box when the icon fills the em (0 for the others):
+    // what to shift a row of icon and words by to put the ink on the edge the words below start at.
+    readonly property real inkLeft: phosphorItem.used ? phosphorItem.inkLeft : 0
+
     PhosphorGlyph {
+        id: phosphorItem
         readonly property bool used: !icon.drawn && !!icon.phosphor
         visible: used
         text: used ? icon.phosphor.text : ""
