@@ -3691,18 +3691,26 @@ void App::refreshHealth()
         return;
     const auto megabytes = [](std::uint64_t bytes) { return static_cast<qint64>(bytes / (1024 * 1024)); };
     const memory::Use use = memory::measure();
-    // The file index's own bytes, the part of the main process searches live on.
+    // The file index's big blocks (entries, times, names: what searches live
+    // on), as much of them as is in the working set now, the same measure as
+    // the total. Right after a give-back most of them are parked on the
+    // standby list, and the card says so: what is held is not what is resident.
     std::uint64_t fileIndex = 0;
+    std::uint64_t fileIndexHeld = 0;
     if (const auto index = m_index->index()) {
         const auto lock = index->readLock();
-        const FileIndex::MemoryUse m = index->memoryUse();
-        fileIndex = m.entries + m.times + m.sizes + m.names + m.folderRecords + m.childTables + m.intern;
+        const auto blocks = index->memoryBlocks();
+        for (const auto& block : blocks)
+            fileIndexHeld += block.second;
+        fileIndex = memory::residentBytes(blocks);
     }
     fileIndex = std::min(fileIndex, use.main);
+    fileIndexHeld = std::max(fileIndexHeld, fileIndex);
     QVariantMap health;
     health[u"total"_s] = megabytes(use.total());
     health[u"fileIndex"_s] = megabytes(fileIndex);
-    health[u"other"_s] = megabytes(use.main - fileIndex); // the interface and all that is not told apart
+    health[u"fileIndexParked"_s] = megabytes(fileIndexHeld - fileIndex); // held, but out of the working set
+    health[u"other"_s] = megabytes(use.main) - megabytes(fileIndex); // the interface and all that is not told apart; never above the total
     health[u"plugins"_s] = megabytes(use.plugins);
     health[u"pluginProcesses"_s] = use.pluginProcesses;
     health[u"documents"_s] = megabytes(use.documents);

@@ -137,6 +137,21 @@ FileIndex::MemoryUse FileIndex::memoryUse() const noexcept
     return use;
 }
 
+std::vector<std::pair<const void*, std::size_t>> FileIndex::memoryBlocks() const
+{
+    std::vector<std::pair<const void*, std::size_t>> blocks;
+    blocks.reserve(m_chunks.size() * 3 + m_names.size());
+    for (const auto& c : m_chunks)
+        blocks.emplace_back(c.get(), kChunkSize * sizeof(Entry));
+    for (const auto& t : m_times)
+        blocks.emplace_back(t.get(), kChunkSize * sizeof(FileTime));
+    for (const auto& t : m_created)
+        blocks.emplace_back(t.get(), kChunkSize * sizeof(FileTime));
+    for (const auto& n : m_names)
+        blocks.emplace_back(n.get(), kNameChunkSize + text::kReadPastEnd);
+    return blocks;
+}
+
 void FileIndex::warm() const noexcept
 {
     std::vector<WIN32_MEMORY_RANGE_ENTRY> ranges;

@@ -2,7 +2,10 @@
 
 #include <QtGlobal>
 
+#include <cstddef>
 #include <cstdint>
+#include <utility>
+#include <vector>
 
 namespace ws::memory {
 
@@ -19,6 +22,12 @@ struct Use {
     std::uint64_t total() const noexcept { return main + plugins + documents; }
 };
 Use measure();
+
+// How many bytes of these blocks (address, size) are in this process's
+// private working set right now: Windows is asked page by page
+// (QueryWorkingSetEx), so a part that was trimmed away counts as what it is,
+// little. One call per block; cheap enough for a card refreshed every 2 s.
+std::uint64_t residentBytes(const std::vector<std::pair<const void*, std::size_t>>& blocks);
 
 // Empties the working set of this process and, where Windows allows, of those
 // under it (the pages go to the standby list and come back when used).

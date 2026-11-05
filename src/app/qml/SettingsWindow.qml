@@ -5026,6 +5026,12 @@ Window {
                 readonly property bool known: h.total !== undefined
                 readonly property bool busy: known && h.busy
                 readonly property var tasks: known ? h.tasks : []
+                // Each part in the total's own measure (what is in memory now); a part
+                // smaller than 1 MB is said in words, never as "0 MB".
+                readonly property string fileIndexText: !known ? "" : h.fileIndex >= 1
+                    ? qsTr("文件索引 %1 MB（搜索靠它）").arg(h.fileIndex) + (h.fileIndexParked >= 4 ? "，" + qsTr("另有 %1 MB 已暂存，用到时再读回").arg(h.fileIndexParked) : "")
+                    : (h.fileIndexParked >= 1 ? qsTr("文件索引已暂存，用到时再读回") : qsTr("文件索引不到 1 MB"))
+                readonly property string otherText: !known ? "" : h.other >= 1 ? qsTr("界面和其他 %1 MB").arg(h.other) : qsTr("界面和其他不到 1 MB")
 
                 page: window.advancedPage
                 width: parent.width
@@ -5043,8 +5049,8 @@ Window {
                 SettingRow {
                     title: healthSection.known ? qsTr("Win顺 现在用了 %1 MB").arg(healthSection.h.total) : qsTr("正在读取内存占用…")
                     keywords: qsTr("内存;占用;任务管理器;归还;释放;卡;运行状况;memory;ram;task manager").split(";")
-                    description: !healthSection.known ? "" : qsTr("文件索引 %1 MB（搜索靠它）").arg(healthSection.h.fileIndex)
-                                 + " · " + qsTr("界面和其他 %1 MB").arg(healthSection.h.other)
+                    description: !healthSection.known ? "" : healthSection.fileIndexText
+                                 + " · " + healthSection.otherText
                                  + (healthSection.h.plugins > 0 ? "\n" + qsTr("插件 %1 MB").arg(healthSection.h.plugins) : "")
                                  + (healthSection.h.documents > 0
                                     ? (healthSection.h.plugins > 0 ? " · " : "\n") + qsTr("读文档的进程 %1 MB（读完 30 秒后退出）").arg(healthSection.h.documents) : "")

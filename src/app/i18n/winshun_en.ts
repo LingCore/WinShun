@@ -6920,6 +6920,22 @@ Right: center window · Drag: move window</translation>
         <translation>Interface and the rest %1 MB</translation>
     </message>
     <message>
+        <source>另有 %1 MB 已暂存，用到时再读回</source>
+        <translation>another %1 MB is parked, read back when needed</translation>
+    </message>
+    <message>
+        <source>文件索引已暂存，用到时再读回</source>
+        <translation>File index is parked; read back when needed</translation>
+    </message>
+    <message>
+        <source>文件索引不到 1 MB</source>
+        <translation>File index under 1 MB</translation>
+    </message>
+    <message>
+        <source>界面和其他不到 1 MB</source>
+        <translation>Interface and the rest under 1 MB</translation>
+    </message>
+    <message>
         <source>插件 %1 MB</source>
         <translation>Plugins %1 MB</translation>
     </message>

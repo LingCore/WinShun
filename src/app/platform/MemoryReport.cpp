@@ -104,6 +104,28 @@ Use measure()
     return use;
 }
 
+std::uint64_t residentBytes(const std::vector<std::pair<const void*, std::size_t>>& blocks)
+{
+    constexpr std::size_t kPage = 4096;
+    std::uint64_t pages = 0;
+    std::vector<PSAPI_WORKING_SET_EX_INFORMATION> info;
+    for (const auto& [address, size] : blocks) {
+        const auto first = reinterpret_cast<std::uintptr_t>(address) & ~(kPage - 1);
+        const auto last = (reinterpret_cast<std::uintptr_t>(address) + size + kPage - 1) & ~(kPage - 1);
+        info.resize((last - first) / kPage);
+        for (std::size_t i = 0; i < info.size(); ++i)
+            info[i].VirtualAddress = reinterpret_cast<void*>(first + i * kPage);
+        if (!::QueryWorkingSetEx(::GetCurrentProcess(), info.data(), static_cast<DWORD>(info.size() * sizeof(info[0]))))
+            continue; // not told: left out, not guessed
+        for (const auto& page : info) {
+            const auto& a = page.VirtualAttributes;
+            if (a.Valid && !a.Shared) // in the working set and private (what Task Manager counts)
+                ++pages;
+        }
+    }
+    return pages * kPage;
+}
+
 qint64 trimAll()
 {
     std::uint64_t given = 0;

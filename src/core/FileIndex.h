@@ -290,6 +290,11 @@ public:
         std::size_t intern = 0;
     };
     MemoryUse memoryUse() const noexcept;
+    // The big blocks the memoryUse() numbers are made of (entries, times,
+    // names): address and size, so how much of them is in the working set
+    // right now can be asked of Windows (memory::residentBytes). The rest
+    // (tables on the general heap) is not in the list. Caller holds a read lock.
+    std::vector<std::pair<const void*, std::size_t>> memoryBlocks() const;
 
     // Brings the pages a name search reads (entries, times, names) back into
     // the working set after it was emptied (IdleTrim), so the search that
