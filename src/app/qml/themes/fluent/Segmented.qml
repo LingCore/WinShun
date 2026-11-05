@@ -13,7 +13,7 @@ Item {
     property int currentIndex: -1
     property int hoveredIndex: -1
     property int pressedIndex: -1
-    property var segments: [] // [{x, width}]
+    property var segments: [] // [{x, width, label}]: label = the words' part of the width (a chip may follow them)
     property real dpr: 1
 
     function snap(v) { return Math.round(v * dpr) / dpr }
@@ -43,7 +43,7 @@ Item {
         width: 16
         height: part.snap(3)
         radius: part.look ? part.look.pill(height) : 0
-        x: at ? part.snap(at.x + (at.width - width) / 2) : 0
+        x: at ? part.snap(at.x + ((at.label !== undefined ? at.label : at.width) - width) / 2) : 0
         y: part.height - height - part.snap(1)
         color: part.look ? part.look.accentLine : "transparent"
         transform: Scale { id: stretch; origin.x: pill.width / 2 }

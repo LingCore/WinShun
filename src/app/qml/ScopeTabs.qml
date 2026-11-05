@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Effects
 import WinShun
 
 // Segmented control: 全部 / 文件 / 内容. Tab and Shift+Tab switch too.
@@ -47,13 +48,13 @@ Rectangle {
     readonly property bool segmentedPart: !multiSelect
     property int hoveredIndex: -1
     property int pressedIndex: -1
-    property var segments: [] // [{x, width}] of each tab in the part, laid out here
+    property var segments: [] // [{x, width, label}] of each tab in the part, laid out here; label = the words' part of it, before a chip
     function placeSegments() {
         const list = []
         for (let i = 0; i < tabRepeater.count; ++i) {
             const tab = tabRepeater.itemAt(i)
             if (tab)
-                list.push({ x: row.x + tab.x, width: tab.width })
+                list.push({ x: row.x + tab.x, width: tab.width, label: tab.labelWidth })
         }
         segments = list
     }
@@ -132,7 +133,8 @@ Rectangle {
                 readonly property real lead: tabs.segmentedPart && track.out("leadingInset", 0) > 0 ? track.out("leadingInset", 0) : 12
                 readonly property real labelWidth: Theme.snapUp(label.implicitWidth + (tabs.multiSelect ? 38 : lead + 12), tabs.dpr)
 
-                width: labelWidth + (open ? sub.fullWidth : 0) + (pluginOpen ? pluginSub.fullWidth : 0)
+                // A chip after the words sits as far from the tab's end as from its top and bottom (4): the sub's width is 8 more than that.
+                width: labelWidth + (open ? sub.fullWidth - 8 : 0) + (pluginOpen ? pluginSub.fullWidth - 8 : 0)
                 height: tabs.shownTabHeight
                 radius: Theme.largeControlRadius
                 clip: true
@@ -282,6 +284,9 @@ Rectangle {
                             height: 16
 
                             Image { // as a row's icon (ResultRow.qml): its own device pixels, unsmoothed
+                                id: pluginImage
+                                // A glyph is drawn grey for a row: on the accent fill it is white as the words are (a logo keeps its own).
+                                readonly property bool mono: tabs.pluginIcon.startsWith("image://fileicon/glyph/")
                                 readonly property real dpr: tabs.dpr
                                 readonly property int pixels: Math.round(pluginIconSlot.width * dpr)
 
@@ -290,11 +295,21 @@ Rectangle {
                                 width: pixels / dpr
                                 height: pixels / dpr
                                 source: tabs.pluginIcon
+                                visible: !mono
                                 sourceSize.width: pixels / dpr
                                 sourceSize.height: pixels / dpr
                                 smooth: false
                                 asynchronous: true
                                 fillMode: Image.PreserveAspectFit
+                            }
+                            MultiEffect {
+                                visible: pluginImage.mono
+                                x: pluginImage.x
+                                y: pluginImage.y
+                                width: pluginImage.width
+                                height: pluginImage.height
+                                source: pluginImage
+                                brightness: 1 // all the way to white; the shape is the glyph's alpha
                             }
                         }
 
