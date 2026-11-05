@@ -48,6 +48,7 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: seg.radius
+        visible: !seg.inField // in the search row there is no track: the words alone
         color: seg.look ? seg.look.segTrack : "transparent"
     }
     Rectangle { // the segment under the pointer, when it is not the current one
@@ -66,7 +67,7 @@ Item {
         y: seg.padding
         width: box.width
         height: seg.height - 2 * seg.padding
-        visible: seg.currentIndex >= 0 && seg.currentIndex < seg.shown
+        visible: !seg.inField && seg.currentIndex >= 0 && seg.currentIndex < seg.shown
         Behavior on x { NumberAnimation { duration: seg.look ? seg.look.animMove : 0; easing.type: Easing.Bezier; easing.bezierCurve: seg.look ? seg.look.easeOut : [0, 0, 0, 1, 1, 1] } }
         Behavior on width { NumberAnimation { duration: seg.look ? seg.look.animMove : 0; easing.type: Easing.Bezier; easing.bezierCurve: seg.look ? seg.look.easeOut : [0, 0, 0, 1, 1, 1] } }
 
@@ -84,5 +85,20 @@ Item {
             border.width: seg.look ? (seg.look.dark ? 0 : seg.look.edge(seg.dpr)) : 0
             border.color: seg.look ? seg.look.segRing : "transparent"
         }
+    }
+
+    // In the search row: a short line under the chosen word, in the brand's ink.
+    Rectangle {
+        id: mark
+        readonly property var at: seg.currentIndex >= 0 && seg.currentIndex < seg.segments.length ? seg.segments[seg.currentIndex] : null
+        readonly property real labelWidth: at && at.label !== undefined ? at.label : at ? at.width : 0
+        visible: seg.inField && at !== null
+        width: seg.look ? seg.look.snap(18, seg.dpr) : 18
+        height: seg.look ? seg.look.snap(2, seg.dpr) : 2
+        radius: height / 2
+        x: at && seg.look ? seg.look.snap(at.x + (labelWidth - width) / 2, seg.dpr) : 0
+        y: seg.height - height - (seg.look ? seg.look.snap(2, seg.dpr) : 2)
+        color: seg.look ? seg.look.accentFill : "transparent"
+        Behavior on x { NumberAnimation { duration: seg.look ? seg.look.animMove : 0; easing.type: Easing.Bezier; easing.bezierCurve: seg.look ? seg.look.easeOut : [0, 0, 0, 1, 1, 1] } }
     }
 }
