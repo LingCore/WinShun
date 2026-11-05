@@ -2653,7 +2653,7 @@ Window {
                     title: qsTr("透明效果")
                     keywords: qsTr("云母;Mica;毛玻璃;亚克力;半透明;壁纸;transparency").split(";")
                     description: !Theme.backdropCapable
-                                 ? qsTr("当前界面风格的窗口不透明；“精修原生”风格才有透明效果")
+                                 ? qsTr("当前界面风格的窗口不透明；“精修原生”和“品牌色彩”风格才有透明效果")
                                  : !SystemTheme.backdropAvailable
                                  ? qsTr("需要把“高级”里的界面绘制方式设为“显卡加速”")
                                  : !SystemTheme.materials

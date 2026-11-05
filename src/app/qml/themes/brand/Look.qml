@@ -12,8 +12,11 @@ QtObject {
 
     readonly property string name: "brand"
     readonly property bool dark: SystemTheme.dark
-    readonly property bool backdrop: false // opaque: an 18 px window has no Mica
-    readonly property bool backdropCapable: false // 透明效果 has nothing to do here
+    // Mica behind the window (the 透明效果 setting), as fluent: the window is
+    // see-through to it while active, the chrome's layer translucent over it
+    // (the prototype's window, backdrop-filter standing in for Mica).
+    readonly property bool backdrop: SystemTheme.backdrop
+    readonly property bool backdropCapable: true
     readonly property bool rounded: SystemTheme.roundedCorners
 
     // ---- Pixel helpers (same rules as Theme: docs/pitfalls.md) ----
@@ -33,8 +36,7 @@ QtObject {
     readonly property color ink: dark ? "#F2F2F5" : "#1B1B20"
     readonly property color ink2: dark ? "#B6B6BF" : "#5C5C66"
     readonly property color ink3: dark ? "#8C8C96" : "#8A8A93"
-    // The window: always opaque (an 18 px corner rules out Mica, which DWM
-    // shapes square); the prototype's Mica tone, settled.
+    // The window without Mica (透明效果 off, or inactive): the prototype's Mica tone, settled.
     readonly property color windowFill: dark ? "#202024" : "#FAF9FA"
     // The results area: one step lighter (light) / darker (dark) than the window.
     readonly property color listFill: dark ? "#1D1D20" : "#FDFCFD" // the prototype's white 55 % / black 10 % over the window, opaque
@@ -322,7 +324,9 @@ QtObject {
     readonly property color accentTint: rowSelected // the selected row stays neutral in this style
     // The chrome (search row, type strip, footer) is the window's tone; the
     // results show the base, one step lighter (light) / darker (dark).
-    readonly property color layer: windowFill
+    // Over Mica: 03-brand.html's --win-bg (86 % / 88 %); else the window's tone.
+    readonly property color layer: backdrop ? (dark ? Qt.rgba(32 / 255, 32 / 255, 36 / 255, 0.88) : Qt.rgba(250 / 255, 249 / 255, 250 / 255, 0.86))
+                                            : windowFill
     readonly property color layerEdge: line
     readonly property color pressed: pressedFill
     readonly property color tagFill: capsuleFill
