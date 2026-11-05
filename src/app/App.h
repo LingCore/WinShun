@@ -93,6 +93,7 @@ class SwitchPlugin;
 class TypeToSearch;
 class LauncherKeysWatch;
 class Updater;
+class BackgroundStatus;
 class PluginUpdates;
 class Backup;
 class VolumeNotifier;
@@ -489,6 +490,8 @@ private:
     void prewarmLauncher();
     void finishPrewarm();
     void refreshContentIndexStatus(); // shown in the settings window
+    void refreshHealth(); // the 运行状况 card: memory by part, what runs, the last give-back
+    void giveMemoryBack(); // its button
     void refreshShareStatuses(); // network shares: in the settings window, and told once read
     void signInToServer(const QString& path, unsigned long error = 0, const QString& user = {});
     // 索引位置: the index files go where [Index] Folder says, moved in the
@@ -764,6 +767,7 @@ private:
     std::unique_ptr<VolumeNotifier> m_volumeNotifier; // after m_messages, whose window it uses
     std::unique_ptr<NetworkNotifier> m_network; // after m_index, whose shares it tells
     std::unique_ptr<IdleTrim> m_idleTrim; // gives the memory back while nothing is in use
+    std::unique_ptr<BackgroundStatus> m_background; // what runs in the background, in words (after m_index, m_updater)
     std::vector<std::wstring> m_sharesBuilding; // being read for the first time: told when done
     std::unique_ptr<KeyListener> m_keyListener; // double Ctrl, double clicks for the folder menu
     std::unique_ptr<ServiceKeyListener> m_serviceKeyListener; // destroyed before its target KeyListener

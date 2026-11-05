@@ -168,6 +168,8 @@ class SettingsEditor : public QObject {
     Q_PROPERTY(bool contentInLowPriority READ contentInLowPriority WRITE setContentInLowPriority NOTIFY changed FINAL)
     Q_PROPERTY(bool contentDocuments READ contentDocuments WRITE setContentDocuments NOTIFY changed FINAL)
     Q_PROPERTY(QString contentIndexStatus READ contentIndexStatus NOTIFY contentIndexStatusChanged FINAL)
+    // The 运行状况 card: memory by part, what runs, the last give-back (App::refreshHealth).
+    Q_PROPERTY(QVariantMap health READ health NOTIFY healthChanged FINAL)
     // 结果列表
     Q_PROPERTY(bool foldersFirst READ foldersFirst WRITE setFoldersFirst NOTIFY changed FINAL)
     // 优先显示的文件类型 as shown and typed: "exe; bat; cmd"; written, read as
@@ -539,6 +541,12 @@ public:
     void setContentInLowPriority(bool on);
     bool contentDocuments() const { return m_settings.contentDocuments; }
     void setContentDocuments(bool on);
+    QVariantMap health() const { return m_health; }
+    void setHealth(const QVariantMap& health);
+    // The card is on screen: asked every two seconds by its timer, and once at
+    // its first showing. Nothing runs while it is not.
+    Q_INVOKABLE void refreshHealth() { emit healthRequested(); }
+    Q_INVOKABLE void giveMemoryBack() { emit giveBackMemoryRequested(); }
     QString contentIndexStatus() const { return m_contentIndexStatus; }
     void setContentIndexStatus(const QString& status); // "已收录 … 个文件"; set by the app
     QString renderer() const { return m_settings.renderer; }
@@ -926,6 +934,9 @@ signals:
     void changed();
     void hotkeyErrorChanged();
     void contentIndexStatusChanged();
+    void healthChanged();
+    void healthRequested();
+    void giveBackMemoryRequested();
     void indexFolderChanged();
     void recordingHotkeyChanged(); // the app suspends its hotkeys meanwhile
     void autostartChanged();
@@ -1001,6 +1012,7 @@ private:
     bool m_launcherWidthSet = false;
     int m_siteIconsArrived = 0;
     QString m_contentIndexStatus;
+    QVariantMap m_health;
     IndexFolderState m_indexFolderState;
     IndexAccessState m_indexAccessState;
     QStringList m_fileManagers {QStringLiteral("explorer")};

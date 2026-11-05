@@ -659,6 +659,8 @@ IndexService::IndexService(QString folder, Options options, QObject* parent)
     // for 15 minutes (after an upgrade that rebuilds the content index).
     source.ready = [this] { return state() == State::Ready && !m_refreshing.load() && m_volumesKnown.load(); };
     m_contentIndexer = std::make_unique<ContentIndexer>(m_content, std::move(source), m_options.content);
+    m_contentIndexer->setActivityCallback(
+        [this] { QMetaObject::invokeMethod(this, [this] { emit activityChanged(); }, Qt::QueuedConnection); });
 
     // Shares go in once the local index is there: loaded, or read the first time.
     ShareIndexer::Source shareSource;
@@ -2395,6 +2397,16 @@ void IndexService::saveSnapshot(bool wait)
         return;
     }
     std::vector<std::uint64_t> segments;
+    m_saving = true;
+    const struct Saving {
+        IndexService* self;
+        ~Saving()
+        {
+            self->m_saving = false;
+            QMetaObject::invokeMethod(self, [self = self] { emit self->activityChanged(); }, Qt::QueuedConnection);
+        }
+    } saving {this};
+    QMetaObject::invokeMethod(this, [this] { emit activityChanged(); }, Qt::QueuedConnection);
     if (writeSnapshot(indexfolder::snapshotPath(m_folder), segments) == Save::Written) {
         m_lastSave = std::chrono::steady_clock::now();
         m_content->saved(segments);

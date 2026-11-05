@@ -785,6 +785,14 @@ void SettingsEditor::setContentDocuments(bool on)
     commit();
 }
 
+void SettingsEditor::setHealth(const QVariantMap& health)
+{
+    if (m_health == health)
+        return;
+    m_health = health;
+    emit healthChanged();
+}
+
 void SettingsEditor::setContentIndexStatus(const QString& status)
 {
     if (m_contentIndexStatus == status)

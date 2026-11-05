@@ -507,6 +507,21 @@ void ContentIndexer::volumesChanged()
     m_cv.notify_all();
 }
 
+ContentIndexer::Status ContentIndexer::status() const noexcept
+{
+    Status s;
+    s.reading = m_reading.load();
+    s.done = m_passDone.load(); // of the last pass once it is over
+    s.total = m_passTotal.load();
+    s.startedMs = m_passStartedMs.load();
+    if (!s.reading)
+        return s;
+    s.finishing = m_merging.load() && s.done >= s.total;
+    s.pause = batterySaverOn() ? 3 : m_searchBoxOpen.load() || searchBoxHolds() ? 1 : m_content->searching() ? 2
+        : m_userHere.load() ? 4 : 0;
+    return s;
+}
+
 QJsonObject ContentIndexer::diagnosticStatus() const
 {
     const auto stats = m_content->stats();
@@ -1031,6 +1046,7 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
     // files leave none to read at the end (wsbench --service --content).
     bool away = win32::userAway(); // nobody at the computer (the coordinator's, from here on)
     std::atomic<bool> awayNow {away}; // the same, for the readers
+    m_userHere = !away;
     // A hard disk is all the user's while they are at the computer: one file
     // at a time, at very low I/O priority (readFile, HardDisk::quiet), so
     // Windows serves every other program's reads first. Nobody there: two.
@@ -1164,8 +1180,17 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
     const struct Done {
         std::atomic<bool>& flag;
         std::atomic<bool>& merging;
-        ~Done() { flag = false; merging = false; }
-    } done {m_reading, m_merging};
+        const std::function<void()>& activity;
+        ~Done()
+        {
+            flag = false;
+            merging = false;
+            if (activity)
+                activity();
+        }
+    } done {m_reading, m_merging, m_onActivity};
+    if (m_onActivity)
+        m_onActivity();
     std::atomic<bool> halt {false}; // the pass is cut short
     std::atomic<bool> hold {false}; // no file is started: the index is being merged
     std::atomic<int> busy {0}; // threads between taking a file and handing it to the index
@@ -1728,6 +1753,7 @@ bool ContentIndexer::pass(const Options& options, std::stop_token stop)
                 if (++ticks % 8 == 0) { // whether someone is at the computer, every 2 s
                     away = win32::userAway();
                     awayNow = away;
+                    m_userHere = !away;
                     const int now = readers(away);
                     letGo = now > allowed.exchange(now);
                     for (Queue& q : queues) {
