@@ -34,6 +34,10 @@ Item {
     readonly property real iconInset: 13 // the icon's left edge, from the field's
     readonly property real contentOffsetY: -1 // the 24 px query's optical centre (the caret ignores it: it stays on the field's middle)
 
+    // The launcher's row (flat): no ring and no glow, one line under the words,
+    // 2 px in the Logo's colours red, green, blue, yellow (a 1 px neutral one
+    // until it has the focus).
+    readonly property bool underlined: flat
     property real lit: focused ? 1 : 0
     Behavior on lit { NumberAnimation { duration: 200; easing.type: Easing.Bezier; easing.bezierCurve: field.look ? field.look.easeOut : [0, 0, 0, 1, 1, 1] } }
 
@@ -66,7 +70,7 @@ Item {
             blurMax: 24
             blur: 1
             opacity: field.look ? field.look.glowOpacity * field.lit : 0
-            visible: field.flat && field.lit > 0 // no offscreen layer while unfocused
+            visible: !field.underlined && field.flat && field.lit > 0 // no offscreen layer while unfocused
         }
 
         // ---- the field ----
@@ -82,7 +86,33 @@ Item {
             border.width: field.look ? field.look.edge(field.dpr) : 0
             border.color: field.look ? (field.hovered && !field.focused ? field.look.controlBorder : field.look.fieldEdge) : "transparent"
             opacity: 1 - field.lit
-            visible: opacity > 0
+            visible: !field.underlined && opacity > 0
+        }
+        Rectangle { // the neutral line under the words, until the focus brings the colours
+            readonly property real h: field.look ? field.look.snap(1, field.dpr) : 1
+            x: field.radius / 2; width: parent.width - field.radius; y: parent.height - h; height: h
+            color: field.look ? (field.hovered && !field.focused ? field.look.controlBorder : field.look.fieldEdge) : "transparent"
+            opacity: 1 - field.lit
+            visible: field.underlined && opacity > 0
+        }
+        Rectangle { // the Logo's colours, left to right
+            id: colourLine
+            readonly property real h: field.look ? field.look.snap(field.look.ringWidth, field.dpr) : 2
+            x: field.radius / 2; width: parent.width - field.radius; y: parent.height - h; height: h
+            radius: h / 2
+            opacity: field.lit
+            visible: field.underlined && field.lit > 0
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0;    color: field.look ? field.look.logoRed : "red" }
+                GradientStop { position: 0.18; color: field.look ? field.look.logoRed : "red" }
+                GradientStop { position: 0.32; color: field.look ? field.look.logoGreen : "green" }
+                GradientStop { position: 0.43; color: field.look ? field.look.logoGreen : "green" }
+                GradientStop { position: 0.57; color: field.look ? field.look.logoBlue : "blue" }
+                GradientStop { position: 0.68; color: field.look ? field.look.logoBlue : "blue" }
+                GradientStop { position: 0.82; color: field.look ? field.look.logoAmber : "yellow" }
+                GradientStop { position: 1;    color: field.look ? field.look.logoAmber : "yellow" }
+            }
         }
 
         // ---- the ring: 2 px band, outer radius the field's (4), inner 2 (concentric) ----
@@ -90,7 +120,7 @@ Item {
             id: ring
             anchors.fill: parent
             opacity: field.lit
-            visible: field.lit > 0
+            visible: !field.underlined && field.lit > 0
             preferredRendererType: Shape.CurveRenderer
             readonly property real w: field.look ? field.look.snap(field.look.ringWidth, field.dpr) : 0
             ShapePath {
