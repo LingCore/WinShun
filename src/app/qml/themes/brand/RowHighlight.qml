@@ -19,12 +19,14 @@ Item {
     property real position: 0
     property bool bar: true
     property bool inMenu: false
+    property string role: ""
     property real corner: -1
     property real dpr: 1
 
     readonly property real radius: look ? (corner >= 0 ? corner : inMenu ? look.menuItemRadius : look.rowRadius) : 0
     readonly property real edgeWidth: look ? look.edge(dpr) : 0
     readonly property bool raisedFace: selected && !inMenu
+    readonly property color hoverFill: look ? (role === "panel" ? look.panelHover : look.rowHover) : "transparent"
     // Hook.out names: the words stay ink on every state.
     readonly property color foreground: look ? look.ink : "transparent"
 
@@ -42,8 +44,8 @@ Item {
         color: !row.look ? "transparent"
              : row.raisedFace ? row.look.rowSelected
              : row.inMenu && (row.selected || row.hovered) ? row.look.menuHover
-             : row.hovered ? row.look.rowHover
-             : Qt.rgba(row.look.rowHover.r, row.look.rowHover.g, row.look.rowHover.b, 0)
+             : row.hovered ? row.hoverFill
+             : Qt.rgba(row.hoverFill.r, row.hoverFill.g, row.hoverFill.b, 0)
         border.width: row.raisedFace || (row.current && !row.inMenu) ? row.edgeWidth : 0
         border.color: row.look ? (row.selected ? row.look.rowSelectedEdge : row.look.capEdge) : "transparent"
         Behavior on color { ColorAnimation { duration: row.look ? row.look.animFast : 0 } }

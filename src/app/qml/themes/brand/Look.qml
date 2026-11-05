@@ -57,6 +57,9 @@ QtObject {
     readonly property color rowSelectedEdge: dark ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(0, 0, 0, 0.08)
     readonly property color rowSelectedShadow: dark ? "transparent" : Qt.rgba(0, 0, 0, 0.04)
     readonly property color rowHover: dark ? Qt.rgba(1, 1, 1, 0.035) : Qt.rgba(0, 0, 0, 0.025)
+    // Under the pointer on a settings card (rows, the panel's choices): the same lightness step in dark as in light (CIE L* 2.2) —
+    // white 3.5 % over the card's #28282D steps 3.5, the launcher list's darker floor takes it better.
+    readonly property color panelHover: dark ? Qt.rgba(1, 1, 1, 0.022) : Qt.rgba(0, 0, 0, 0.025)
     readonly property color indicator: dark ? "#D4D4DA" : "#3A3A42"
     // The thin bar down the left of a settings sub-row: the selected row's ink, quieter (neutral, never the brand colour).
     readonly property color subRowBar: Qt.alpha(indicator, dark ? 0.38 : 0.32)
