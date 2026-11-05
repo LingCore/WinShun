@@ -4356,6 +4356,60 @@ private slots:
         QVERIFY(t.index.entry(t.notes).isDeleted());
     }
 
+    // The files a content pass looks at besides its due documents: those
+    // added, removed, renamed, moved or flagged anew; never folders. When it
+    // cannot be told, not complete: every file is looked at then.
+    void indexChangesForContent()
+    {
+        SampleTree t;
+        using Files = std::vector<EntryId>;
+        QVERIFY(!t.index.takeChanges().complete); // not recorded before
+        auto none = t.index.takeChanges();
+        QVERIFY(none.complete && none.files.empty());
+
+        const EntryId added = t.index.add(t.docs, "plan.md", 0);
+        t.index.add(t.docs, "new folder", EntryFlag::Directory);
+        QVERIFY(t.index.move(t.notes, t.me, "notes.md"));
+        QVERIFY(t.index.move(t.notes, t.me, "notes.md")); // twice: once in the list
+        t.index.setFlags(t.report, EntryFlag::Hidden);
+        t.index.setFlags(added, 0); // the same flags: no change
+        t.index.setFlags(t.windows, EntryFlag::Hidden); // a folder
+        auto changes = t.index.takeChanges();
+        QVERIFY(changes.complete);
+        QCOMPARE(changes.files, (Files {t.report, t.notes, added}));
+
+        // A folder moved on its volume: its files' decisions are their own
+        // (flags set anew are in the list); removed: each of its files.
+        QVERIFY(t.index.move(t.docs, t.users, "Documents"));
+        QCOMPARE(t.index.takeChanges().files, Files {});
+        t.index.remove(t.users);
+        changes = t.index.takeChanges();
+        QVERIFY(changes.complete);
+        QCOMPARE(changes.files, (Files {t.report, t.notes, added}));
+
+        // Onto another root: not complete.
+        const EntryId d = t.index.addRoot("D:");
+        const EntryId moved = t.index.add(t.root, "moved", EntryFlag::Directory);
+        t.index.add(moved, "a.txt", 0);
+        t.index.takeChanges();
+        QVERIFY(t.index.move(moved, d, "moved"));
+        QVERIFY(!t.index.takeChanges().complete);
+        QVERIFY(t.index.takeChanges().complete);
+
+        // Renumbered: not complete, and the list starts again.
+        t.index.add(t.root, "b.txt", 0);
+        t.index.compact();
+        QVERIFY(!t.index.takeChanges().complete);
+        const EntryId c = t.index.add(t.root, "c.txt", 0);
+        QCOMPARE(t.index.takeChanges().files, Files {c});
+
+        // Too many: not complete.
+        for (std::size_t i = 1; i <= FileIndex::kMaxChanges + 1; ++i)
+            t.index.setFlags(c, (i & 1) ? EntryFlag::Hidden : 0); // a change each time
+        QVERIFY(!t.index.takeChanges().complete);
+        QVERIFY(t.index.takeChanges().complete);
+    }
+
     void indexPaths()
     {
         SampleTree t;
