@@ -140,6 +140,22 @@ public:
     {
         return {m_passDone.load(), m_passTotal.load(), m_passCrowdedDone.load(), m_passCrowded.load()};
     }
+    // For the "what is it doing" summary (read only, any thread). `pause`
+    // says why a pass under way is not at full speed: 0 none, 1 the search box
+    // is open or just closed, 2 a content search reads, 3 battery saver, 4
+    // someone uses the computer (fewer readers, quieter reads).
+    struct Status {
+        bool reading = false; // a pass is under way (its tidy-up too); done and total are the last pass's once it is over
+        bool finishing = false; // ... and is in the last merge: done == total
+        int pause = 0;
+        std::size_t done = 0;
+        std::size_t total = 0;
+        std::int64_t startedMs = 0; // steady clock (steadyMs), of the pass
+    };
+    Status status() const noexcept;
+    // Called (from the reading thread) when a pass starts or ends; set before
+    // the first pass. Must not block.
+    void setActivityCallback(std::function<void()> callback) { m_onActivity = std::move(callback); }
     // Crowded folders: those that directly hold at least kCrowdedFiles of
     // `candidates` (files a content search looks in), kCrowdedShare of them
     // of one extension. Generated files, mostly (documentation, translation
@@ -299,6 +315,8 @@ private:
     std::atomic<bool> m_stopping {false}; // stop() has begun: nothing more is taken
     std::atomic<bool> m_interrupt {false}; // checked before each file
     std::atomic<bool> m_reading {false};
+    std::atomic<bool> m_userHere {false}; // the pass under way found someone at the computer
+    std::function<void()> m_onActivity;
     bool searchBoxHolds() const noexcept;
     std::atomic<bool> m_searchBoxOpen {false};
     std::atomic<std::int64_t> m_searchBoxClosed {0}; // steady clock, ms

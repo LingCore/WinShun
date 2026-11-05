@@ -2,6 +2,7 @@
 
 #include "DiagnosticLog.h"
 
+#include <QDateTime>
 #include <QDebug>
 #include <QGuiApplication>
 #include <QJsonObject>
@@ -147,6 +148,13 @@ bool IdleTrim::takeSlept()
     return passed - awakeFor > kSleptMs;
 }
 
+void IdleTrim::noteTrim(qint64 megabytes) noexcept
+{
+    m_lastTrimMb = megabytes;
+    m_trimmed = true; // the next opening brings the pages a search reads back (App)
+    m_lastTrimAtMs = QDateTime::currentMSecsSinceEpoch();
+}
+
 void IdleTrim::check()
 {
     if (takeSlept())
@@ -180,8 +188,10 @@ void IdleTrim::check()
         // ~10 ms per 100 MB (wsbench --trim): not on the GUI thread, so a
         // hotkey pressed meanwhile is not held up.
         m_trimmed = true;
-        std::thread([] {
+        std::thread([this, bytes] {
             ::SetProcessWorkingSetSizeEx(::GetCurrentProcess(), static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1), 0);
+            const SIZE_T after = privateWorkingSet();
+            noteTrim(static_cast<qint64>((bytes > after ? bytes - after : 0) / (1024 * 1024)));
         }).detach();
     }
     m_timer.start(kRecheckMs);
