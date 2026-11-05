@@ -27,10 +27,8 @@ Item {
     // The rows are the last query's while a slow search has found nothing yet (Main.qml's dimRows).
     property bool dimmed: false
     // The window's device pixel ratio, read once there and passed down to
-    // every row (GitHub #111), and the window's corner (WindowEdge) for the
-    // search row's and the footer's layer.
+    // every row (GitHub #111).
     property real dpr: Screen.devicePixelRatio
-    property real cornerRadius: 0
 
     signal keyPressed(var event)
     signal editingRequested()
@@ -152,8 +150,6 @@ Item {
         width: parent.width
         height: bar.height
         color: Theme.layer
-        topLeftRadius: panel.cornerRadius
-        topRightRadius: panel.cornerRadius
     }
 
     SearchBar {
@@ -1039,7 +1035,6 @@ Item {
         launcher: panel.launcher
         frame: panel.frame
         dpr: panel.dpr
-        cornerRadius: panel.cornerRadius
         // The other view, on the same file where there is one.
         onGalleryRequested: gallery => {
             const path = panel.launcher.results.pathAt(panel.view.currentIndex)

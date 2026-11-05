@@ -52,8 +52,6 @@ Window {
         anchors.bottom: parent.bottom
         height: 38
         color: Theme.background
-        bottomLeftRadius: windowEdge.cornerRadius // the window's corners as drawn
-        bottomRightRadius: windowEdge.cornerRadius
         Hook {
             id: footerSeam
             width: parent.width

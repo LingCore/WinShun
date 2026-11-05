@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Effects
 import WinShun
 
 // The scene behind the whole settings window (sidebar included) while the
@@ -9,28 +8,6 @@ Item {
 
     property bool running: true // false while the window cannot be seen
     property real leadingInset: 0 // the sidebar's width
-    // The window's corners as drawn (WindowEdge.cornerRadius): under a style's
-    // own frame the scene is cut to them (the one place that fills the whole
-    // window with something that is not a plain rectangle).
-    property real cornerRadius: 0
-
-    layer.enabled: cornerRadius > 0 && visible
-    layer.effect: MultiEffect {
-        maskEnabled: true
-        maskSource: corners
-    }
-
-    Item { // the shape the scene is cut to
-        id: corners
-        anchors.fill: parent
-        visible: false
-        layer.enabled: backdrop.cornerRadius > 0 && backdrop.visible
-
-        Rectangle {
-            anchors.fill: parent
-            radius: backdrop.cornerRadius
-        }
-    }
 
     Rectangle {
         anchors.fill: parent

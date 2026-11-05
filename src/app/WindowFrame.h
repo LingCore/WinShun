@@ -1,15 +1,10 @@
 #pragma once
 
-#include "SystemTheme.h"
-
 #include <QList>
 #include <QObject>
 #include <QPointF>
 #include <QPointer>
 #include <QQuickItem>
-#include <QQuickWindow>
-#include <QSurfaceFormat>
-#include <QVariant>
 #include <QtGui/qwindowdefs.h>
 #include <QtQml/qqmlregistration.h>
 
@@ -18,86 +13,6 @@
 class QWindow;
 
 namespace ws {
-
-// Before the window is made (create(), show(), winId()): an alpha channel
-// for good, for a 界面风格 that rounds the window itself (OwnFrame, while
-// SystemTheme::ownFrameAvailable()) and, with `backdrop`, for the Mica behind
-// it (SystemTheme::backdropAvailable()). Kept through colour changes: an
-// opaque QQuickWindow::color takes the alpha out of the requested format,
-// though the swap chain made with it keeps its alpha (Qt's D3D11 backend then
-// logged a warning on every resize). Nothing once the window is made. Inline:
-// the menus' hosts are built into tests without this file's .cpp.
-inline void prepareWindowAlpha(QWindow* window, bool backdrop = false)
-{
-    if (!window || window->handle())
-        return;
-    // Available, not on: the 透明效果 setting and the style can change later.
-    if (!SystemTheme::ownFrameAvailable() && !(backdrop && SystemTheme::backdropAvailable()))
-        return;
-    const auto keepAlpha = [window] {
-        QSurfaceFormat format = window->requestedFormat();
-        if (format.alphaBufferSize() < 8) {
-            format.setAlphaBufferSize(8);
-            window->setFormat(format);
-        }
-    };
-    keepAlpha();
-    auto* quick = qobject_cast<QQuickWindow*>(window);
-    if (quick && !quick->property("_ws_alphaKept").toBool()) { // menus are prepared before every show
-        quick->setProperty("_ws_alphaKept", true);
-        QObject::connect(quick, &QQuickWindow::colorChanged, quick, keepAlpha);
-    }
-}
-
-// The frame of a 界面风格 that rounds the windows itself (Theme.ownFrame, see
-// win::setOwnFrame), set from inside the window's scene (WindowEdge.qml):
-// while `active` with a `radius`, the window has it from when it is made,
-// with that radius and `shadow` (the layers, see win::setOwnFrame); inactive,
-// gone or moved to another window, the window has DWM's frame again.
-// `applied`: the window has it (an alpha channel from its creation, see
-// prepareWindowAlpha; never with the software renderer). Draws nothing.
-class OwnFrame : public QQuickItem {
-    Q_OBJECT
-    QML_ELEMENT
-    Q_PROPERTY(bool active READ active WRITE setActive NOTIFY activeChanged FINAL)
-    Q_PROPERTY(qreal radius READ radius WRITE setRadius NOTIFY radiusChanged FINAL)
-    Q_PROPERTY(QVariant shadow READ shadow WRITE setShadow NOTIFY shadowChanged FINAL)
-    Q_PROPERTY(bool applied READ applied NOTIFY appliedChanged FINAL)
-
-public:
-    explicit OwnFrame(QQuickItem* parent = nullptr);
-    ~OwnFrame() override;
-
-    bool active() const { return m_active; }
-    void setActive(bool on);
-    qreal radius() const { return m_radius; }
-    void setRadius(qreal radius);
-    QVariant shadow() const { return m_shadow; }
-    void setShadow(const QVariant& shadow);
-    bool applied() const { return m_applied; }
-
-signals:
-    void activeChanged();
-    void radiusChanged();
-    void shadowChanged();
-    void appliedChanged();
-
-protected:
-    void componentComplete() override;
-    void itemChange(ItemChange change, const ItemChangeData& value) override;
-    bool eventFilter(QObject* watched, QEvent* event) override;
-
-private:
-    void follow(QQuickWindow* window);
-    void apply();
-    void setApplied(bool on);
-
-    bool m_active = false;
-    qreal m_radius = 0;
-    QVariantList m_shadow; // plain lists and maps, whatever QML gave
-    QPointer<QQuickWindow> m_window;
-    bool m_applied = false;
-};
 
 // Lets Windows treat parts of a frameless window as its title bar, the way
 // Windows' own custom title bars work (WinUI's caption regions, Electron's
@@ -176,7 +91,7 @@ public:
     // sideDoubleClicked. No sizing frame (WS_THICKFRAME): with one, Windows
     // would snap the window when it is dragged by its header to a screen's
     // edge. Not while it is resizable (the panel's edges are the system's).
-    void setSideSizing(bool on);
+    void setSideSizing(bool on) { m_sideSizing = on; }
 
     QPointF pointer() const { return m_pointer; }
     bool maximizeHovered() const { return m_maximizeHovered; }
@@ -204,7 +119,6 @@ private:
     int hitTest(int screenX, int screenY) const; // HT* code
     bool sidesOnly() const { return m_sideSizing && !m_resizable && !m_ownFrame; } // see setSideSizing
     bool onHandle(int screenX, int screenY) const; // a handle under that point (see addHandle)
-    void updateCorners(); // win::setCornersClickThrough as it resizes now
     QPointF toWindow(int screenX, int screenY) const; // logical pixels
     void setPointer(QPointF pointer);
     void setMaximizeState(bool hovered, bool pressed);

@@ -1061,7 +1061,6 @@ Window {
         onRowHoverMoved: (index, globalPos) => window.rowHoverMoved(index, globalPos)
         nameTip: nameTip
         dpr: window.dpr
-        cornerRadius: windowEdge.cornerRadius
     }
 
     // A row clicked (the box's or the panel's): Ctrl toggles it in the
@@ -1148,9 +1147,7 @@ Window {
         }
 
         // The chrome: the search row and the strip under it, a layer over the
-        // window's base (Theme.layer), the rows on the base itself. Its corners
-        // by the window's top are the window's (an own frame rounds it), and
-        // its bottom ones too when nothing follows it (the clipboard below).
+        // window's base (Theme.layer), the rows on the base itself.
         Item {
             id: chrome
             width: parent.width
@@ -1159,10 +1156,6 @@ Window {
             Rectangle {
                 anchors.fill: parent
                 color: Theme.layer
-                topLeftRadius: windowEdge.cornerRadius
-                topRightRadius: windowEdge.cornerRadius
-                bottomLeftRadius: window.clipboardBelow ? windowEdge.cornerRadius : 0
-                bottomRightRadius: window.clipboardBelow ? windowEdge.cornerRadius : 0
             }
 
             SearchBar {
@@ -1690,7 +1683,6 @@ Window {
             launcher: window.launcher
             frame: window.frame
             dpr: window.dpr
-            cornerRadius: windowEdge.cornerRadius
         }
     }
 

@@ -5,8 +5,6 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QGuiApplication>
-#include <QJSValue>
-#include <QPlatformSurfaceEvent>
 #include <QQuickWindow>
 #include <QStyleHints>
 #include <QWindow>
@@ -110,13 +108,8 @@ struct WindowFrame::Hook {
             // message from it for a frameless window. -1: nothing to repaint.
             // The frame's dark mode too, in case Qt has set it back (see
             // win::setDarkFrame). Not activated, it looks active all the same.
-            // A frame of a 界面风格's own has neither Mica nor DWM's frame:
-            // there the default handling would draw Windows' themed frame
-            // into the see-through corners (win::hasOwnFrame).
             ::DefSubclassProc(hwnd, message, wParam, lParam);
             win::setDarkFrame(self->m_window, QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark);
-            if (win::hasOwnFrame(hwnd))
-                return TRUE;
             return ::DefWindowProcW(hwnd, message, self->m_noActivate ? TRUE : wParam, -1);
         case WM_MOUSEACTIVATE:
         case WM_POINTERACTIVATE: // touch and pen
@@ -305,7 +298,6 @@ void WindowFrame::setWindow(QWindow* window)
             QMetaObject::invokeMethod(this, &WindowFrame::frameShown, Qt::QueuedConnection);
         }, Qt::DirectConnection);
     }
-    updateCorners();
     if (!m_ownFrame)
         return;
     // For Windows a normal window (snapping, the animations, the window menu);
@@ -334,8 +326,7 @@ void WindowFrame::setNoActivate(bool on)
     const LONG_PTR exStyle = ::GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
     ::SetWindowLongPtrW(hwnd, GWL_EXSTYLE, on ? exStyle | WS_EX_NOACTIVATE : exStyle & ~WS_EX_NOACTIVATE);
     // The frame drawn as active (see WM_NCACTIVATE above), or as it is again.
-    if (!win::hasOwnFrame(hwnd))
-        ::DefWindowProcW(hwnd, WM_NCACTIVATE, on || ::GetForegroundWindow() == hwnd, -1);
+    ::DefWindowProcW(hwnd, WM_NCACTIVATE, on || ::GetForegroundWindow() == hwnd, -1);
 }
 
 void WindowFrame::addDragArea(QQuickItem* item)
@@ -425,13 +416,8 @@ int WindowFrame::hitTest(int screenX, int screenY) const
         return HTMAXBUTTON;
     if (onControl)
         return HTCLIENT;
-    if (anyCovers(m_dragAreas, pos)) {
-        // Not from outside its rounded shape (the antialiased edge the
-        // corners' region keeps, win::setCornersClickThrough).
-        POINT point {screenX, screenY};
-        ::ScreenToClient(hwnd, &point);
-        return win::outsideOwnFrame(hwnd, point.x, point.y) ? HTCLIENT : HTCAPTION;
-    }
+    if (anyCovers(m_dragAreas, pos))
+        return HTCAPTION;
     return HTCLIENT;
 }
 
@@ -455,21 +441,6 @@ void WindowFrame::setResizable(bool on)
     ::SetWindowLongPtrW(hwnd, GWL_STYLE, on ? style | WS_THICKFRAME : style & ~WS_THICKFRAME);
     ::SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
         SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
-    updateCorners();
-}
-
-void WindowFrame::setSideSizing(bool on)
-{
-    m_sideSizing = on;
-    updateCorners();
-}
-
-void WindowFrame::updateCorners()
-{
-    // Resized at its corners (hitTest): the presses there are its own. Else
-    // they go through, but for the sides it is widened at.
-    if (m_hwnd)
-        win::setCornersClickThrough(reinterpret_cast<HWND>(m_hwnd), !m_ownFrame && !m_resizable, sidesOnly() ? kSideEdge : 0);
 }
 
 void WindowFrame::setPointer(QPointF pointer)
@@ -496,128 +467,6 @@ void WindowFrame::trackLeave()
         return;
     TRACKMOUSEEVENT track {sizeof track, TME_LEAVE | TME_NONCLIENT, reinterpret_cast<HWND>(m_hwnd), 0};
     m_trackingLeave = ::TrackMouseEvent(&track) != FALSE;
-}
-
-namespace {
-
-// A var property's array or object can come as a QJSValue.
-QVariant plainValue(const QVariant& value)
-{
-    return value.metaType() == QMetaType::fromType<QJSValue>() ? value.value<QJSValue>().toVariant() : value;
-}
-
-} // namespace
-
-OwnFrame::OwnFrame(QQuickItem* parent)
-    : QQuickItem(parent)
-{
-}
-
-OwnFrame::~OwnFrame()
-{
-    // No signals from here (QML may read this item no more).
-    if (m_window) {
-        m_window->removeEventFilter(this);
-        // Gone with its window: its scene goes first (contentItem() is null
-        // then), and the native window after it.
-        if (m_applied && m_window->contentItem() && m_window->handle())
-            win::setOwnFrame(m_window, false, 0, {});
-    }
-}
-
-void OwnFrame::setActive(bool on)
-{
-    if (m_active == on)
-        return;
-    m_active = on;
-    emit activeChanged();
-    apply();
-}
-
-void OwnFrame::setRadius(qreal radius)
-{
-    if (m_radius == radius)
-        return;
-    m_radius = radius;
-    emit radiusChanged();
-    apply();
-}
-
-void OwnFrame::setShadow(const QVariant& shadow)
-{
-    // A list of layers, or one layer alone.
-    const QVariant value = plainValue(shadow);
-    const QVariantList list = value.metaType() == QMetaType::fromType<QVariantMap>() ? QVariantList {value} : value.toList();
-    QVariantList layers;
-    for (const QVariant& layer : list)
-        layers.append(plainValue(layer).toMap());
-    if (layers == m_shadow)
-        return; // the same again (Theme's binding re-evaluated)
-    m_shadow = std::move(layers);
-    emit shadowChanged();
-    apply();
-}
-
-void OwnFrame::componentComplete()
-{
-    QQuickItem::componentComplete();
-    follow(window());
-}
-
-void OwnFrame::itemChange(ItemChange change, const ItemChangeData& value)
-{
-    QQuickItem::itemChange(change, value);
-    if (change == ItemSceneChange && isComponentComplete())
-        follow(value.window);
-}
-
-bool OwnFrame::eventFilter(QObject* watched, QEvent* event)
-{
-    if (watched == m_window && event->type() == QEvent::PlatformSurface) {
-        switch (static_cast<QPlatformSurfaceEvent*>(event)->surfaceEventType()) {
-        case QPlatformSurfaceEvent::SurfaceCreated:
-            apply(); // inside create(): before it is styled or shows anything
-            break;
-        case QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed:
-            setApplied(false); // the frame goes with the native window
-            break;
-        }
-    }
-    return QQuickItem::eventFilter(watched, event);
-}
-
-void OwnFrame::follow(QQuickWindow* window)
-{
-    if (window != m_window) {
-        if (m_window) {
-            m_window->removeEventFilter(this);
-            if (m_applied && m_window->contentItem() && m_window->handle())
-                win::setOwnFrame(m_window, false, 0, {});
-        }
-        setApplied(false);
-        m_window = window;
-        if (window)
-            window->installEventFilter(this);
-    }
-    apply();
-}
-
-void OwnFrame::apply()
-{
-    if (!isComponentComplete() || !m_window || !m_window->handle())
-        return; // once it is made (SurfaceCreated)
-    const bool on = m_active && m_radius > 0;
-    if (!on && !m_applied)
-        return; // never had it
-    setApplied(win::setOwnFrame(m_window, on, m_radius, m_shadow));
-}
-
-void OwnFrame::setApplied(bool on)
-{
-    if (m_applied == on)
-        return;
-    m_applied = on;
-    emit appliedChanged();
 }
 
 } // namespace ws

@@ -115,15 +115,6 @@ void SystemTheme::setBackdropOn(bool on)
         emit s_instance->changed();
 }
 
-void SystemTheme::setOwnFrameAvailable(bool on)
-{
-    if (s_ownFrameAvailable == on)
-        return;
-    s_ownFrameAvailable = on;
-    if (s_instance)
-        emit s_instance->changed();
-}
-
 int SystemTheme::headerHeight()
 {
     return uisize::metrics(s_uiSize).header;

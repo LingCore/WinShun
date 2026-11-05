@@ -124,33 +124,6 @@ Window {
         }
     }
 
-    // The box. Under DWM's frame (fluent) Windows rounds, edges and shadows
-    // the window, whose colour is the menu's; an own frame (Theme.ownFrame)
-    // has the menu's radius, and the style's menuFrame draws the body and the
-    // edge (the shadow is the window's, drawn by OwnFrame).
-    Binding {
-        target: menu
-        property: "color"
-        value: "transparent"
-        when: Theme.ownFrame
-    }
-    OwnFrame {
-        active: Theme.ownFrame
-        radius: Theme.menuRadius
-        shadow: Theme.tok("menuWindowShadow", Theme.frameShadow)
-    }
-    Hook {
-        // The window's size, not its content item's: that one follows a
-        // resize event later, and the first frame of a new menu (and a grab
-        // of it) would have no body.
-        width: menu.width
-        height: menu.height
-        visible: Theme.ownFrame
-        part: Theme.ownFrame ? Theme.menuFrame : null
-        extra: ({ shadow: false })
-        dpr: menu.dpr
-    }
-
     // The highlight under the item chosen or pointed at: one for the whole
     // menu (the style's rowHighlight, role "menu"), jumping from item to item
     // or sliding as the style says (Theme.rowSlide).
@@ -279,10 +252,5 @@ Window {
         }
     }
 
-    Loader { // Windows 10 has no edge of DWM's: the window draws it (an own frame has its own, above)
-        anchors.fill: parent
-        z: 1000
-        active: !Theme.ownFrame
-        sourceComponent: WindowEdge { fill: Theme.menuBackground }
-    }
+    WindowEdge { body: false } // the menu's colour is the window's
 }

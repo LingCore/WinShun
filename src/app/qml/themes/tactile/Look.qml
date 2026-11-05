@@ -30,11 +30,6 @@ QtObject {
     // Never translucent: an 18 px window has no Mica under it.
     readonly property bool backdrop: false
     readonly property bool backdropCapable: false // 透明效果 has nothing to do here
-    // The window: our own 18 px frame (WindowBody draws its body and edge,
-    // C++ the windowShadow under it); square (直角) is DWM's plain frame.
-    readonly property string frame: SystemTheme.roundedCorners ? "own" : "dwm"
-    readonly property bool dwmEdge: SystemTheme.nativeWindowBorder
-    readonly property bool drawsWindowEdge: windowRadius > 0 || !SystemTheme.nativeWindowBorder
 
     // ---- geometry (logical px; even, so 150 % lands on whole pixels) ----------
     readonly property int windowRadius: r(18)
@@ -112,14 +107,6 @@ QtObject {
     readonly property color seamDark: dark ? black(0.26) : Qt.rgba(60 / 255, 40 / 255, 20 / 255, 0.085)
     readonly property color seamLight: dark ? white(0.045) : white(0.75)
     readonly property color edgeColor: dark ? "#6A6A6A" : "#B4B4B4"   // 1 px neutral grey, as Theme.windowEdge
-
-    // window shadow, drawn by C++ from this token: near and light, two layers
-    // (CSS 0 10 28 / 0 1 3). `color` is the shadow ink (warm brown on light).
-    // Dark: black, and over a light background no darker than light's (a
-    // dark window often stands on a light page; over a dark one either is faint).
-    readonly property var windowShadow: dark
-        ? [{ alpha: 0.075, blur: 28, dy: 10, color: "#000000" }, { alpha: 0.04, blur: 3, dy: 1, color: "#000000" }]
-        : [{ alpha: 0.11, blur: 28, dy: 10, color: "#46301A" }, { alpha: 0.06, blur: 3, dy: 1, color: "#46301A" }]
 
     // recessed things: the search groove, switch grooves, the results tray
     readonly property color slot: dark ? "#202022" : "#ECE8E1"

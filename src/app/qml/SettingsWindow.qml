@@ -825,7 +825,6 @@ Window {
     GleaningBackdrop { // under the title bar too: the sky reaches the top of the window
         anchors.fill: parent
         visible: window.warm
-        cornerRadius: windowEdge.cornerRadius // cut to a style's own window corners
         // Painted on the CPU: only while someone is looking at it.
         running: window.visible && window.active && window.visibility !== Window.Minimized && SystemTheme.animations
         leadingInset: nav.width

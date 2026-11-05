@@ -2133,15 +2133,6 @@ int run(const QStringList& args)
     QGuiApplication::styleHints()->setColorScheme(args.contains(u"--dark"_s) ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light);
     SystemTheme::setBackdropAvailable(false); // plain colours, as a window without Mica
     SystemTheme::setUiStyle(valueAfter(args, u"--style", u"fluent"_s)); // --style fluent|brand|tactile
-    // A 界面风格 that rounds its windows itself (brand, tactile) draws its
-    // own frame here as in the app, where the renderer can (D3D11): every
-    // window with an alpha channel from its creation (prepareWindowAlpha).
-    if (valueAfter(args, u"--renderer") == u"d3d11") {
-        QSurfaceFormat format = QSurfaceFormat::defaultFormat();
-        format.setAlphaBufferSize(8);
-        QSurfaceFormat::setDefaultFormat(format);
-        SystemTheme::setOwnFrameAvailable(true);
-    }
     if (presenterMode)
         return runPresenter(args);
     if (settingsMode)

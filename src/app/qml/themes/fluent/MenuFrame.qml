@@ -8,13 +8,11 @@ Item {
 
     property QtObject look: null
     property real dpr: 1
-    // false: the window under it has the style's shadow already (an own frame).
-    property bool shadow: true
 
     readonly property real radius: look ? look.menuRadius : 0
 
     Repeater { // the shadow: faint rings, each a pixel further out (no effects deployed)
-        model: part.look && part.shadow ? part.look.menuShadowSpread : 0
+        model: part.look ? part.look.menuShadowSpread : 0
 
         Rectangle {
             required property int index

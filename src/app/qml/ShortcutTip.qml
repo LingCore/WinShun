@@ -64,32 +64,6 @@ Window {
     onWidthChanged: if (visible) place()
     onHeightChanged: if (visible) place()
 
-    // The box: DWM's frame under fluent (the window's colour is the menu's);
-    // an own frame has the menu's radius, the style's menuFrame draws the
-    // body and the edge, and the window's shadow is OwnFrame's (as NameTip).
-    Binding {
-        target: tip
-        property: "color"
-        value: "transparent"
-        when: Theme.ownFrame
-    }
-    OwnFrame {
-        active: Theme.ownFrame
-        radius: Theme.menuRadius
-        shadow: Theme.tok("menuWindowShadow", Theme.frameShadow)
-    }
-    Hook {
-        // The window's size, not its content item's (sized by a later resize
-        // event): a body from the first frame (as ContextMenu).
-        width: tip.width
-        height: tip.height
-        z: -1
-        visible: Theme.ownFrame
-        part: Theme.ownFrame ? Theme.menuFrame : null
-        extra: ({ shadow: false })
-        dpr: Screen.devicePixelRatio
-    }
-
     Column {
         id: content
         x: tip.padding

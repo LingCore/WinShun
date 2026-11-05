@@ -405,8 +405,6 @@ Window {
         anchors.bottom: parent.bottom
         height: footerContents.implicitHeight + 28
         color: Theme.background
-        bottomLeftRadius: windowEdge.cornerRadius // the window's corners as drawn
-        bottomRightRadius: windowEdge.cornerRadius
         Divider { width: parent.width; dpr: footer.dpr }
 
         Column {

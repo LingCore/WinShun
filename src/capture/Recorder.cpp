@@ -7,7 +7,6 @@
 #include "KeyStream.h"
 #include "RecordingPointer.h"
 #include "RecordingWorker.h"
-#include "WindowFrame.h"
 #include "platform/Shell.h"
 #include "platform/WindowEffects.h"
 
@@ -244,7 +243,6 @@ void Recorder::createPanel()
         return;
     }
     releaseIdleGraphics(m_panel);
-    prepareWindowAlpha(m_panel); // a 界面风格's own frame
     m_panel->create();
     win::styleFramelessWindow(m_panel, false);
     // Out of the frames only while it is in them: recording, over the region.
@@ -263,9 +261,7 @@ void Recorder::updatePanelExclusion()
     // it): after 完成 it takes frames until it reads the stop, the panel
     // saying 保存中 meanwhile.
     const bool taking = m_control && !m_exporting;
-    const HWND panel = reinterpret_cast<HWND>(m_panel->winId());
-    excludeFromCapture(panel, m_region, taking);
-    win::updateOwnFrame(panel); // its shadow likewise
+    excludeFromCapture(reinterpret_cast<HWND>(m_panel->winId()), m_region, taking);
 }
 
 void Recorder::keepPanelVisible()

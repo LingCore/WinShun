@@ -46,8 +46,8 @@ QtObject {
 
     // Our windows can stand on Mica (see SystemTheme.backdrop): the layers on
     // them are translucent then, with the fill colours WinUI uses there; over
-    // a plain background they keep their solid colours. A style that rounds
-    // its windows itself has none.
+    // a plain background they keep their solid colours. A style drawn opaque
+    // by design (tactile) has none.
     readonly property bool backdropCapable: pick("backdropCapable") // the style can have Mica at all (透明效果)
     readonly property bool backdrop: pick("backdrop") // For text, glyphs and lines: lightened on dark to read there.
     readonly property color accent: pick("accent") // For fills under white words or marks (accentText): deep enough for
@@ -63,9 +63,8 @@ QtObject {
     readonly property color background: pick("background")
     readonly property color layer: pick("layer")
     readonly property color layerEdge: pick("layerEdge") // The window itself: DWM rounds it on Windows 11 (win::styleFramelessWindow),
-    // or the style does (look.frame "own", see WindowEdge).
+    // in every style; never drawn by us (docs/pitfalls.md).
     readonly property real windowRadius: pick("windowRadius")
-    readonly property bool ownFrame: SystemTheme.ownFrameAvailable && pick("frame") === "own" && pick("windowRadius") > 0
     readonly property real cardRadius: pick("cardRadius")
     readonly property real largeCardRadius: pick("largeCardRadius")
     readonly property real insetCardRadius: pick("insetCardRadius")
@@ -180,11 +179,6 @@ QtObject {
 
     readonly property string iconFont: SystemTheme.iconFont
 
-    // The window frame for C++ (OwnFrame in WindowEdge): radius and shadow of
-    // an "own" frame; 0 is DWM's.
-    readonly property real frameRadius: ownFrame ? pick("windowRadius") : 0
-    readonly property var frameShadow: pick("windowShadow")
-
     // Geometry the hosts lay out by (themes/README.md, "宿主读的几何").
     readonly property real fieldInset: pick("fieldInset")
     readonly property real fieldRadius: pick("fieldRadius")
@@ -234,7 +228,6 @@ QtObject {
         style: theme.style,
         dark: theme.dark,
         rounded: SystemTheme.roundedCorners,
-        windowRadius: theme.frameRadius,
         cardRadius: theme.cardRadius,
         controlRadius: theme.controlRadius,
         largeControlRadius: theme.largeControlRadius,

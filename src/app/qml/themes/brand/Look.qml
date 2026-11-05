@@ -121,13 +121,6 @@ QtObject {
     readonly property int typeChipHeight: 0 // UiScale's chipHeight (28 at the default size)
 
     // ---- Shadows ----
-    // Window (drawn by C++): CSS 0 1px 2px + 0 6px 16px; thin, light, close.
-    // blur as in CSS box-shadow (px); the far one in light is a warm grey.
-    // Dark: black, and over a light background no darker than light's (a
-    // dark window often stands on a light page; over a dark one either is faint).
-    readonly property var windowShadow: dark ? [{ alpha: 0.06, blur: 2, dy: 1 }, { alpha: 0.08, blur: 16, dy: 6 }]
-                                             : [{ alpha: 0.06, blur: 2, dy: 1 }, { alpha: 0.10, blur: 16, dy: 6, color: "#281414" }]
-    readonly property int windowShadowMargin: 24 // room the shadow needs round the window (blur + dy)
     // Menus (RectangularShadow; blur = 1.2 × the CSS blur).
     readonly property color menuShadowNear: dark ? Qt.rgba(0, 0, 0, 0.30) : Qt.rgba(0, 0, 0, 0.06)
     readonly property color menuShadowFar: dark ? Qt.rgba(0, 0, 0, 0.30) : Qt.rgba(0, 0, 0, 0.10)
@@ -322,7 +315,6 @@ QtObject {
     readonly property int cardFocusRadius: r(15) // largeCardRadius + the 3 px focus gap
 
     // ---- The rest of fluent/Look.qml's token set (A's skeleton reads these) ----
-    readonly property string frame: rounded ? "own" : "dwm" // own: we draw the 18 px body and edge, C++ the windowShadow
     function pill(size: real): real { return pillRadius(size) }
     readonly property color accentLine: dark ? brandInk : accentFill // lines and markers (caret has its own)
     readonly property color accentTint: rowSelected // the selected row stays neutral in this style
@@ -342,7 +334,6 @@ QtObject {
     readonly property string iconFont: SystemTheme.iconFont
 
     // ---- Parts (hooks): Hook { part: Theme.look.keySurface; ... } ----
-    readonly property Component windowFrame: Component { WindowBody { look: brandLook } }
     readonly property Component searchField: Component { SearchField { look: brandLook } }
     readonly property Component inputField: Component { InputField { look: brandLook } }
     readonly property Component keySurface: Component { KeySurface { look: brandLook } }

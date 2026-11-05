@@ -25,9 +25,6 @@ Item {
 
     // The window's, read once by the host (GitHub #111).
     property real dpr: Screen.devicePixelRatio
-    // The window's corners as drawn (WindowEdge.cornerRadius): the footer's
-    // own bottom ones by them follow (an own frame rounds the window).
-    property real cornerRadius: 0
 
     readonly property real hintsRight: info.visible ? info.x - 8
         : clearHistory.visible ? clearHistory.x - 8 : viewSwitch.visible ? viewSwitch.x - 10 : width - 18
@@ -38,8 +35,6 @@ Item {
     Rectangle {
         anchors.fill: parent
         color: Theme.layer
-        bottomLeftRadius: footer.cornerRadius
-        bottomRightRadius: footer.cornerRadius
     }
 
     // The divider shows work only once it has lasted a moment, so brief

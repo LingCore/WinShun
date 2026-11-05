@@ -88,7 +88,6 @@
 #include <QStorageInfo>
 #include <QTemporaryDir>
 #include <QtMath>
-#include <QSurfaceFormat>
 #include <QTimer>
 #include <QTime>
 #include <QTranslator>
@@ -7845,15 +7844,6 @@ int run(const QStringList& args)
     const bool runtimeMode = args.contains(kRuntimeFlag);
     // --style fluent|brand|tactile: every preview in that 界面风格.
     SystemTheme::setUiStyle(valueAfter(args, u"--style", u"fluent"_s));
-    // A 界面风格 that rounds its windows itself (brand, tactile) draws its
-    // own frame here as in the app, where the renderer can (D3D11): every
-    // window with an alpha channel from its creation (prepareWindowAlpha).
-    if (!runtimeMode && (resultsMode || ((settingsMode || cardsMode) && valueAfter(args, u"--renderer") == u"d3d11"))) {
-        QSurfaceFormat format = QSurfaceFormat::defaultFormat();
-        format.setAlphaBufferSize(8);
-        QSurfaceFormat::setDefaultFormat(format);
-        SystemTheme::setOwnFrameAvailable(true);
-    }
     // QML singletons may still watch components/ after the window and its
     // controller are gone. Clean up only after the preview's engine unwinds.
     const QString profile = Settings::profile();

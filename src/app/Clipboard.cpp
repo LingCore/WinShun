@@ -5,7 +5,6 @@
 #include "FileIconProvider.h"
 #include "HotkeySteps.h"
 #include "TextField.h"
-#include "WindowFrame.h"
 #include "platform/ComWorker.h"
 #include "platform/DragOut.h"
 #include "platform/FileDialog.h"
@@ -1802,7 +1801,6 @@ void Clipboard::prepareMenuWindow(QWindow* menu) const
 {
     if (!menu)
         return;
-    prepareWindowAlpha(menu); // before its first show makes it
     // Showing it must not take the focus from the clipboard window (see Launcher::prepareMenuWindow).
     menu->setProperty("_q_showWithoutActivating", true);
     const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;

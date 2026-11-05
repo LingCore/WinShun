@@ -21,9 +21,6 @@ Item {
     signal closeRequested()
 
     readonly property bool maximized: Window.visibility === Window.Maximized
-    // The window's corners as drawn now (WindowEdge.cornerRadius): the button
-    // in the top right corner follows them under a style's own frame.
-    readonly property real cornerRadius: Theme.ownFrame && !maximized && Window.visibility !== Window.FullScreen ? Theme.frameRadius : 0
     // Dimmed while the window is inactive, as Windows does.
     readonly property color ink: Window.active ? foreground : Qt.alpha(foreground, 0.4)
 
@@ -79,7 +76,6 @@ Item {
 
         width: 46
         height: bar.height
-        topRightRadius: closes ? bar.cornerRadius : 0
         color: red ? (pressed ? Theme.closePressed : Theme.closeHover)
              : pressed ? Qt.alpha(bar.foreground, 0.04)
              : hovered ? Qt.alpha(bar.foreground, 0.06)

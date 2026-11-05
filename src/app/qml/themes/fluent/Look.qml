@@ -15,27 +15,18 @@ QtObject {
     function r(v: real): real { return SystemTheme.roundedCorners ? v : 0 }
     function pill(size: real): real { return SystemTheme.roundedCorners ? size / 2 : 0 }
     // Mica behind the window (the 透明效果 setting): the layers are translucent
-    // then. A style that rounds its windows itself cannot have Mica (DWM's
-    // backdrop is square without DWM's corners): false there, and every
-    // surface opaque.
+    // then. A style opaque by design (tactile) has none: false there, and
+    // every surface opaque.
     property bool backdrop: SystemTheme.backdrop
     // Whether the style can stand on Mica at all (the 透明效果 setting has
     // nothing to do in a style without it: settings greys it out).
     readonly property bool backdropCapable: true
 
-    // ---- window frame
-    // "dwm": Windows rounds, edges and shadows the window (8 on Windows 11).
-    // "own": the window is see-through, windowFrame draws its body and edge
-    // with windowRadius, and WinShun puts windowShadow under it.
-    property string frame: "dwm"
-    // Windows draws the edge of a "dwm" frame (Windows 11); on Windows 10 the
-    // window draws it (windowFrame, "edge").
+    // ---- window frame: always Windows' own (DWM rounds, edges and shadows
+    // the window, 8 on Windows 11), in every style. On Windows 10 the window
+    // draws the edge (windowFrame, "edge").
     readonly property bool dwmEdge: SystemTheme.nativeWindowBorder
     property real windowRadius: SystemTheme.roundedCorners && SystemTheme.nativeWindowBorder ? 8 : 0
-    // Layers of the shadow under an "own" frame, nearest first, in logical
-    // px: {alpha, blur, dy}. Unused with "dwm".
-    property var windowShadow: dark ? [{ alpha: 0.40, blur: 1, dy: 0 }, { alpha: 0.30, blur: 8, dy: 2 }]
-                                    : [{ alpha: 0.10, blur: 1, dy: 0 }, { alpha: 0.10, blur: 8, dy: 2 }]
 
     // ---- radii
     property real cardRadius: r(6)

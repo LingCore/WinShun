@@ -64,6 +64,23 @@ bool isDarkMode()
     return QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
 }
 
+// Before create(): see-through where the window's background is, for the
+// Mica behind it (App's prepareBackdrop: the alpha stays in the format).
+void prepareBackdrop(QQuickWindow* window)
+{
+    if (!SystemTheme::backdropAvailable())
+        return;
+    const auto keepAlpha = [window] {
+        QSurfaceFormat format = window->requestedFormat();
+        if (format.alphaBufferSize() < 8) {
+            format.setAlphaBufferSize(8);
+            window->setFormat(format);
+        }
+    };
+    keepAlpha();
+    QObject::connect(window, &QQuickWindow::colorChanged, window, keepAlpha);
+}
+
 // The window's client area on the screen, physical: where the editing
 // window's canvas is measured from (its title bar is its own).
 QRect clientRectOf(QQuickWindow* window)
@@ -752,9 +769,8 @@ capture::SmartHooks CaptureApp::smartHooks()
 void CaptureApp::prepareWindow(QQuickWindow* window, bool backdrop)
 {
     capture::releaseIdleGraphics(window);
-    // Before create(): see-through for the Mica behind it, or for a 界面风格
-    // that rounds it itself (the alpha stays in the format).
-    prepareWindowAlpha(window, backdrop);
+    if (backdrop)
+        prepareBackdrop(window);
     window->create();
     win::styleFramelessWindow(window, backdrop && SystemTheme::backdropAvailable());
     win::setDarkFrame(window, isDarkMode());

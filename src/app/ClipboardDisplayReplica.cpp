@@ -230,7 +230,6 @@ QVariant DisplayReplica::invoke(const QString& name, const QVariantList& argumen
     if (name == u"prepareMenuWindow") {
         auto* menu = arguments.value(0).value<QWindow*>();
         if (menu) {
-            prepareWindowAlpha(menu); // before its first show makes it
             menu->setProperty("_q_showWithoutActivating", true);
             win::styleFramelessWindow(menu);
             win::setDarkFrame(menu, QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark);
@@ -442,7 +441,6 @@ int runClipboardDisplay(const QStringList& args)
     QGuiApplication::setQuitOnLastWindowClosed(false);
     QGuiApplication::clipboard()->blockSignals(true);
     SystemTheme::setBackdropAvailable(win::backdropSupported());
-    SystemTheme::setOwnFrameAvailable(QQuickWindow::graphicsApi() == QSGRendererInterface::Direct3D11);
     QQmlApplicationEngine engine;
     DisplayReplica replica(&engine);
     if (!replica.connectTo(pipe, parent)) return ERROR_ACCESS_DENIED;
@@ -456,7 +454,6 @@ int runClipboardDisplay(const QStringList& args)
         {u"placement"_s, QVariant::fromValue(&placement)}, {u"frame"_s, QVariant::fromValue(&frame)}});
     std::unique_ptr<QQuickWindow> window(qobject_cast<QQuickWindow*>(root));
     if (!window) { delete root; qWarning().noquote() << component.errorString(); return 4; }
-    prepareWindowAlpha(window.get(), true); // as App's clipboard window
     window->create();
     placement.setWindow(window.get());
     placement.enableWindowSizing();

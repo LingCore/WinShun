@@ -7,7 +7,6 @@
 #include "History.h"
 #include "RecentFolders.h"
 #include "SystemCatalog.h"
-#include "WindowFrame.h"
 #include "platform/FileDialog.h"
 #include "platform/FileManagers.h"
 #include "platform/Integrity.h"
@@ -844,7 +843,6 @@ void FolderMenu::prepareMenuWindow(QWindow* menu) const
 {
     if (!menu)
         return;
-    prepareWindowAlpha(menu); // before its first show makes it
     // Shown without taking the focus from the window it is for (see the class).
     menu->setProperty("_q_showWithoutActivating", true);
     const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
