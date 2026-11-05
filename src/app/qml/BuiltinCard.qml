@@ -19,7 +19,7 @@ Rectangle {
     property string linkText // shown while on; empty: no link
     property bool expanded: false
     property bool marked: false // what the settings search found
-    // The width kept right of the switch for 设置 or the link, the same on
+    // The width kept left of the switch for 设置 or the link, the same on
     // every card of 内置功能: the switches stay in one column, and still
     // when a card's button comes, goes or changes its words.
     property real buttonSlot: 0
@@ -120,18 +120,6 @@ Rectangle {
                 anchors.right: parent.right
                 spacing: 12
 
-                ToggleSwitch {
-                    dpr: card.dpr
-                    anchors.verticalCenter: parent.verticalCenter
-                    enabled: card.available
-                    opacity: enabled ? 1 : 0.5
-                    checked: card.checked
-                    Accessible.name: card.title
-                    onToggled: (on) => {
-                        card.toggled(on)
-                        card.expanded = on && card.hasOptions // its ways in, in sight as it comes on
-                    }
-                }
                 Item { // the button, right-aligned in buttonSlot
                     anchors.verticalCenter: parent.verticalCenter
                     width: Math.max(card.buttonSlot, foldButton.visible ? foldButton.implicitWidth : 0,
@@ -167,6 +155,18 @@ Rectangle {
                         Accessible.name: text
                         Accessible.onPressAction: clicked()
                         onClicked: card.linkActivated()
+                    }
+                }
+                ToggleSwitch {
+                    dpr: card.dpr
+                    anchors.verticalCenter: parent.verticalCenter
+                    enabled: card.available
+                    opacity: enabled ? 1 : 0.5
+                    checked: card.checked
+                    Accessible.name: card.title
+                    onToggled: (on) => {
+                        card.toggled(on)
+                        card.expanded = on && card.hasOptions // its ways in, in sight as it comes on
                     }
                 }
             }
