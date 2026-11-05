@@ -5054,6 +5054,7 @@ Window {
                     FlatButton {
                         text: qsTr("现在就归还")
                         glyph: ""
+                        contentSpacing: 8
                         onClicked: window.editor.giveMemoryBack()
                     }
                 }

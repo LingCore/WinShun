@@ -8,6 +8,7 @@ Rectangle {
     property string text
     property string glyph
     property string trailingGlyph // after the text (a drop-down's chevron)
+    property real contentSpacing: 6 // icon to text; a round icon (arrow-clockwise) fills its box and wants a bit more
     property bool highlighted: false
     property bool flat: false // no background until hovered
     // false: Tab skips it and Space and Enter do nothing; only a click works
@@ -35,7 +36,7 @@ Rectangle {
     Row {
         id: content
         anchors.centerIn: parent
-        spacing: 6
+        spacing: button.contentSpacing
 
         Glyph {
             anchors.verticalCenter: parent.verticalCenter
