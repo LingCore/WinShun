@@ -58,6 +58,8 @@ QtObject {
     readonly property color rowSelectedShadow: dark ? "transparent" : Qt.rgba(0, 0, 0, 0.04)
     readonly property color rowHover: dark ? Qt.rgba(1, 1, 1, 0.035) : Qt.rgba(0, 0, 0, 0.025)
     readonly property color indicator: dark ? "#D4D4DA" : "#3A3A42"
+    // The thin bar down the left of a settings sub-row: the selected row's ink, quieter (neutral, never the brand colour).
+    readonly property color subRowBar: Qt.alpha(indicator, dark ? 0.38 : 0.32)
 
     // ---- Brand marks ----
     readonly property color brandInk: dark ? "#EDA591" : "#A8402C" // matched words, bold: 6.1:1 / 8.0:1

@@ -176,7 +176,7 @@ Item {
         width: 2
         height: Theme.snap(Math.max(0, parent.height - 2 * y), row.dpr)
         radius: Theme.lineRadius
-        color: Qt.alpha(Theme.accent, Theme.dark ? 0.40 : 0.32)
+        color: Theme.tok("subRowBar", Qt.alpha(Theme.accent, Theme.dark ? 0.40 : 0.32)) // a style may keep it neutral
     }
 
     Rectangle { // see flash()
