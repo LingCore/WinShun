@@ -248,8 +248,8 @@ Item {
 
                     Item {
                         id: body
-                        readonly property real lead: surface.out("leadingInset", chip.glyph.length > 0 ? 8 : 12)
-                        width: Math.ceil(lead + (chip.glyph.length > 0 ? icon.width + 4 : 0) + label.implicitWidth) + (chip.glyph.length > 0 ? 9 : 12)
+                        readonly property real lead: surface.out("leadingInset", 0) > 0 ? surface.out("leadingInset", 0) : (chip.glyph.length > 0 ? 10 : 12) // 0 (a key without a lamp) is no say; 10 with an icon: it then sits as far from the key's edge as the last word does
+                        width: Math.ceil(lead + (chip.glyph.length > 0 ? icon.width + 4 : 0) + label.implicitWidth) + (chip.glyph.length > 0 ? 6 : 12)
                         height: parent.height
 
                         Hook {
