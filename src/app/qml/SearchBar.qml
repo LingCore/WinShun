@@ -239,13 +239,31 @@ Item {
         color: fieldPart.out("textColor", Theme.text)
         font.pixelSize: Theme.uiSearch + Theme.tok("searchFontDelta", 0)
         selectByMouse: true
-        selectionColor: Theme.textSelection
+        // The selection is drawn below (selectionMark), as tall as the caret:
+        // Qt's own is a different height from its caret in a style's field.
+        readonly property bool ownMarks: fieldPart.out("caretColor", "transparent").a > 0
+        selectionColor: ownMarks ? "transparent" : Theme.textSelection
         selectedTextColor: Theme.text
+        FontMetrics { id: markMetrics; font: input.font }
+        // Caret and selection: one line of the font tall, centred on the field's middle (not on the words' optical offset).
+        readonly property real markHeight: Math.round(markMetrics.height * bar.dpr) / bar.dpr
+        readonly property real markY: bar.onPixel((height - markHeight) / 2 - fieldPart.out("contentOffsetY", 0))
+        Rectangle {
+            id: selectionMark
+            z: -1 // under the words
+            readonly property string watched: input.text + input.preeditText // the rectangles move with the words
+            visible: input.ownMarks && input.selectionStart !== input.selectionEnd
+            x: { watched; return input.positionToRectangle(input.selectionStart).x }
+            width: { watched; return input.positionToRectangle(input.selectionEnd).x - x }
+            y: input.markY
+            height: input.markHeight
+            color: Theme.textSelection
+        }
         // The style's caret colour, where it has one (Qt's own caret otherwise).
-        cursorDelegate: fieldPart.out("caretColor", "transparent").a > 0 ? caretPart : null
+        cursorDelegate: ownMarks ? caretPart : null
         Component {
             id: caretPart
-            Caret { color: fieldPart.out("caretColor", Theme.text); dpr: bar.dpr; yShift: -fieldPart.out("contentOffsetY", 0) }
+            Caret { color: fieldPart.out("caretColor", Theme.text); dpr: bar.dpr; markHeight: input.markHeight; markY: input.markY }
         }
         // Still shown while the clipboard under it has the keyboard: what a
         // paste there goes over.
