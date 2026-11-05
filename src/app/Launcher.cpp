@@ -602,6 +602,7 @@ Launcher::Launcher(IndexService* index, AppCatalog* apps, SystemCatalog* places,
         // Apps installed or removed (or the first list arrived): 全部 shows them.
         if (m_window && m_window->isVisible() && m_scope == All)
             search();
+        refreshFrequentApps(); // one whose program was deleted goes from the row too (#207)
         refreshStatus();
     });
     connect(m_places, &SystemCatalog::changed, this, [this] {
@@ -4810,8 +4811,10 @@ std::function<void(bool)> Launcher::reportFailure(const QString& name)
         if (ok)
             return;
         QMetaObject::invokeMethod(qApp, [self, name] {
-            if (self)
-                emit self->openFailed(name);
+            if (!self)
+                return;
+            self->m_apps->refresh(); // an app whose program is gone goes from the list (#207)
+            emit self->openFailed(name);
         }, Qt::QueuedConnection);
     };
 }

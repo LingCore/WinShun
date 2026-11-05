@@ -9058,6 +9058,55 @@ private slots:
         QCOMPARE(names(windows, 1), QStringList {u"Code"_s});
     }
 
+    void goneAppsLeftOut() // #207
+    {
+        // On the disk: there, deleted, its folder deleted. Elsewhere: a drive
+        // letter not in use, a share, a shell object. Only the first two
+        // deleted ones are gone.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString there = QDir::toNativeSeparators(dir.filePath(u"there.exe"_s));
+        const QString deleted = QDir::toNativeSeparators(dir.filePath(u"deleted.exe"_s));
+        const QString noFolder = QDir::toNativeSeparators(dir.filePath(u"gone\\bin\\app.exe"_s));
+        for (const QString& path : {there, deleted}) {
+            QFile f(path);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+        }
+        QVERIFY(QFile::remove(deleted));
+        if (::GetDriveTypeW(reinterpret_cast<LPCWSTR>(there.left(3).utf16())) != DRIVE_FIXED)
+            QSKIP("the temporary folder is not on a fixed disk");
+        QVERIFY(!appTargetGone(there));
+        QVERIFY(appTargetGone(deleted));
+        QVERIFY(appTargetGone(noFolder));
+        QString freeLetter;
+        const DWORD drives = ::GetLogicalDrives();
+        for (int i = 25; i >= 3 && freeLetter.isEmpty(); --i) {
+            if (!(drives & (1u << i)))
+                freeLetter = QChar(u'A' + i) + u":\\app\\app.exe"_s;
+        }
+        if (!freeLetter.isEmpty())
+            QVERIFY(!appTargetGone(freeLetter));
+        QVERIFY(!appTargetGone(uR"(\\server\share\app.exe)"_s));
+        QVERIFY(!appTargetGone(u"shell:::{26EE0668-A00A-44D7-9371-BEB064C98683}"_s));
+        QVERIFY(!appTargetGone(QString()));
+
+        // Only desktop apps are asked; a packaged one's install folder never.
+        const auto app = [](const QString& name, const QString& target, AppKind kind = AppKind::Desktop) {
+            AppInfo a;
+            a.name = name;
+            a.id = target.isEmpty() ? name : target;
+            a.target = target;
+            a.kind = kind;
+            return a;
+        };
+        const AppList apps {app(u"There"_s, there), app(u"Deleted"_s, deleted), app(u"Control Panel"_s, QString()),
+            app(u"Store app"_s, noFolder, AppKind::Store), app(u"No folder"_s, noFolder)};
+        QStringList names;
+        for (const AppInfo& a : presentApps(apps))
+            names.append(a.name);
+        QCOMPARE(names, (QStringList {u"There"_s, u"Control Panel"_s, u"Store app"_s}));
+    }
+
     void settingsIndexParsing()
     {
         // As Windows ships them: a newer file (pages as <Node>), a Control

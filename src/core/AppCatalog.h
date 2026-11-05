@@ -9,6 +9,7 @@
 #include <QStringList>
 
 #include <chrono>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <stop_token>
@@ -141,8 +142,20 @@ std::vector<AppUse> windowsAppUses();
 std::vector<std::size_t> frequentApps(const AppList& apps, const History& history, const std::vector<AppUse>& windows,
     qint64 now, std::size_t limit);
 
+// Whether a desktop app's program (or document) is known to be gone: its
+// path is on a local fixed disk, and Windows says there is no such file or
+// folder. A drive that is not there, a network or removable one, a path of
+// another form or any other answer (no access): not gone (#207).
+bool appTargetGone(const QString& target);
+// `apps` without the desktop apps whose target `gone` says is gone: the
+// shell lists a Start-menu shortcut whose program was deleted (by hand, or
+// an uninstaller that left the shortcut) as long as the shortcut is there.
+AppList presentApps(const AppList& apps, const std::function<bool(const QString&)>& gone = appTargetGone);
+
 // The list of installed apps, read from the shell in the background and
-// re-read when the Start menu or the installed packages change.
+// re-read when the Start menu or the installed packages change; those
+// whose program is gone left out (presentApps), looked at again on every
+// refresh().
 class AppCatalog : public QObject {
     Q_OBJECT
 
@@ -158,7 +171,9 @@ public:
 
     // Re-reads the list in the background if the Start-menu folders or the
     // installed packages changed since the last read (a check of a few
-    // milliseconds), or regardless with `force`. Call from the owner thread.
+    // milliseconds), or regardless with `force`; either way asks the disk
+    // again whether the programs are there (a few ms more). Call from the
+    // owner thread.
     void refresh(bool force = false);
 
 signals:
@@ -168,7 +183,8 @@ private:
     struct Outcome {
         quint64 fingerprint = 0;
         bool reloaded = false; // the list was read again
-        std::shared_ptr<const AppList> apps; // null: not read, or the read failed
+        std::shared_ptr<const AppList> all; // as the shell read it; null: not read, or the read failed
+        std::shared_ptr<const AppList> apps; // presentApps of the newest list; null: none
     };
 
     void publish(const Outcome& outcome);
@@ -177,6 +193,7 @@ private:
     std::shared_ptr<const AppList> m_apps; // guarded by m_mutex
 
     // Owner thread only.
+    std::shared_ptr<const AppList> m_all; // the last list the shell read, gone programs and all
     quint64 m_fingerprint = 0;
     std::chrono::steady_clock::time_point m_loadedAt;
     bool m_busy = false;
