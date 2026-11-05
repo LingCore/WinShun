@@ -645,6 +645,7 @@ Window {
     onVisibleChanged: {
         if (!visible) {
             closeContextMenu()
+            footer.sortMenuOpen = false // not still open when the launcher comes back
             menuLoader.active = false
             nameTip.dismiss()
         }
@@ -700,6 +701,11 @@ Window {
             return
         }
         if (panelPage.columnMenuOpen && panelPage.columnMenu.handleKey(event)) {
+            event.accepted = true
+            return
+        }
+        if (footer.sortMenuOpen && event.key === Qt.Key_Escape) { // the footer's 更多 menu: Esc closes it, not the launcher
+            footer.sortMenuOpen = false
             event.accepted = true
             return
         }
@@ -1678,6 +1684,7 @@ Window {
 
         Footer {
             id: footer
+            objectName: "launcherFooter" // the previews read sortMenuOpen
             width: parent.width
             visible: !window.clipboardBelow
             launcher: window.launcher

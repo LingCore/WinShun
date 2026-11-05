@@ -20,6 +20,9 @@ Item {
 
     signal galleryRequested(bool gallery) // the panel's view switch
 
+    // The 更多 sort menu is open: Esc closes just it, and it never outlives the launcher (Main.qml).
+    property alias sortMenuOpen: sortMenu.open
+
     // The window's, read once by the host (GitHub #111).
     property real dpr: Screen.devicePixelRatio
     // The window's corners as drawn (WindowEdge.cornerRadius): the footer's
@@ -270,6 +273,7 @@ Item {
 
     Choices {
         id: order
+        objectName: "footerOrder" // the previews click its last chip
         // Not at the start with no start list (set so in the settings, GitHub #24).
         visible: footer.launcher.pluginKeyword.length === 0 && !footer.launcher.panel // the panel's columns order it
                  && !(footer.atStart && footer.launcher.startList === Launcher.NoStartList)

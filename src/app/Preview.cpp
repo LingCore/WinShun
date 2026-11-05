@@ -2570,6 +2570,45 @@ bool checkShortcutPanels(QQmlEngine* engine, const QDir& output)
         QQuickItem* field = visualNamed(window->contentItem(), u"searchField"_s);
         saveGrab(window, output.filePath(u"launcher.png"_s));
         check(field != nullptr, u"launcher: the search field shows"_s);
+        { // the footer's 更多 sort menu: Esc closes just it, and it is shut when the launcher hides
+            QQuickItem* footer = visualNamed(window->contentItem(), u"launcherFooter"_s);
+            QQuickItem* order = visualNamed(window->contentItem(), u"footerOrder"_s);
+            check(footer && order, u"sort menu: the footer and its chips exist"_s);
+            if (footer && order && field) {
+                const auto isOpen = [&] { return footer->property("sortMenuOpen").toBool(); };
+                const auto escape = [&] {
+                    QKeyEvent press(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+                    QCoreApplication::sendEvent(window, &press);
+                    QKeyEvent release(QEvent::KeyRelease, Qt::Key_Escape, Qt::NoModifier);
+                    QCoreApplication::sendEvent(window, &release);
+                    pump(120);
+                };
+                field->forceActiveFocus();
+                const QPointF at = order->mapToScene({order->width() - 18, order->height() / 2});
+                QMouseEvent press(QEvent::MouseButtonPress, at, window->mapToGlobal(at), Qt::LeftButton, Qt::LeftButton, {});
+                QCoreApplication::sendEvent(window, &press);
+                QMouseEvent release(QEvent::MouseButtonRelease, at, window->mapToGlobal(at), Qt::LeftButton, {}, {});
+                QCoreApplication::sendEvent(window, &release);
+                pump(150);
+                check(isOpen(), u"sort menu: a click on 更多 opens it"_s);
+                say(u"sort menu: open %1, field focus %2, window focus item %3"_s.arg(isOpen())
+                        .arg(field->hasActiveFocus()).arg(window->activeFocusItem() ? window->activeFocusItem()->objectName() : u"none"_s));
+                settle(window);
+                saveGrab(window, output.filePath(u"launcher-sortmenu-open.png"_s));
+                escape();
+                check(!isOpen(), u"sort menu: Esc closes it"_s);
+                check(window->isVisible(), u"sort menu: Esc left the launcher showing"_s);
+                footer->setProperty("sortMenuOpen", true);
+                pump(60);
+                window->hide();
+                pump(100);
+                check(!isOpen(), u"sort menu: hiding the launcher closes it"_s);
+                showOffScreen(window);
+                pump(100);
+                check(!isOpen(), u"sort menu: still shut when the launcher shows again"_s);
+                settle(window);
+            }
+        }
         if (field)
             panel(window, launcherAsked, u"launcher"_s,
                   {u"Shift+Tab"_s, u"Ctrl+Tab"_s, u"Ctrl+S"_s, u"Ctrl+T"_s}, {u"Ctrl+C"_s, u"Ctrl+Shift+Enter"_s, u"Ctrl+J / N · Ctrl+K / P"_s}, field);
