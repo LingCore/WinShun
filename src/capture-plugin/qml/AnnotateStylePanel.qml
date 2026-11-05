@@ -107,6 +107,7 @@ Item {
     Hook { // the style's floating panel (Theme.menuFrame)
         anchors.fill: parent
         part: Theme.menuFrame
+        extra: ({ floating: true })
         dpr: panel.dpr
     }
 

@@ -10,6 +10,8 @@ Item {
 
     property QtObject look
     property real dpr: 1
+    // extra from a window's own floating bar (the capture toolbar, the presenter's bar): edged as the style's windows are, not as a menu.
+    property bool floating: false
 
     readonly property real radius: look ? look.menuRadius : 0
     readonly property real padding: look ? look.menuPadding : 0
@@ -42,6 +44,6 @@ Item {
         radius: menu.radius
         color: menu.look ? menu.look.menuFill : "transparent"
         border.width: menu.look ? menu.look.edge(menu.dpr) : 0
-        border.color: menu.look ? menu.look.menuEdge : "transparent"
+        border.color: menu.look ? (menu.floating ? menu.look.windowEdge : menu.look.menuEdge) : "transparent"
     }
 }

@@ -475,6 +475,7 @@ Item {
         Hook { // the style's floating panel (Theme.menuFrame)
             anchors.fill: parent
             part: Theme.menuFrame
+            extra: ({ floating: true })
             dpr: bar.dpr
         }
 
@@ -556,6 +557,7 @@ Item {
         Hook { // the style's floating panel (Theme.menuFrame)
             anchors.fill: parent
             part: Theme.menuFrame
+            extra: ({ floating: true })
             dpr: bar.dpr
         }
 
