@@ -234,6 +234,16 @@ void Controller::finished(const QString& status)
     }
 }
 
+const char* Controller::working() const
+{
+    if (m_busy)
+        return "opening, tidying or indexing";
+    if (m_searching || m_searches.activeThreadCount() > 0 || m_previews.activeThreadCount() > 0
+        || m_queries.activeThreadCount() > 0)
+        return "searching or previewing";
+    return nullptr;
+}
+
 // The user is here (searching, or the window opened): the first walk need
 // not wait any longer.
 void Controller::wake()

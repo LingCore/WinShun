@@ -36,7 +36,8 @@ qt_add_library(WinShunOcrSearchApp SHARED OcrMain.cpp OcrController.cpp OcrContr
     ${app_dir}/PhosphorGlyph.cpp ${app_dir}/PhosphorGlyph.h
     ${app_dir}/WindowFrame.cpp ${app_dir}/WindowFrame.h
     ${app_dir}/Phosphor.cpp ${app_dir}/platform/WindowEffects.cpp ${app_dir}/platform/ShellDialogs.cpp
-    ${app_dir}/platform/Foreground.cpp ${app_dir}/platform/DragOut.cpp)
+    ${app_dir}/platform/Foreground.cpp ${app_dir}/platform/DragOut.cpp
+    ${app_dir}/platform/IdleTrim.cpp ${app_dir}/platform/IdleTrim.h)
 qt_add_qml_module(WinShunOcrSearchApp URI WinShun VERSION 1.0 NO_PLUGIN NO_IMPORT_SCAN
     OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/WinShun" QML_FILES ${ocr_qml})
 set_target_properties(WinShunOcrSearchApp PROPERTIES QT_QMLCACHEGEN_ARGUMENTS "--only-bytecode")
