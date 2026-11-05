@@ -418,7 +418,7 @@ Item {
         objectName: "resultNumberSlot"
         visible: row.reserveHintSpace && row.hint > 0
         opacity: row.hintOpacity
-        x: row.onPixel(14)
+        x: row.onPixel(Theme.tok("hintX", 14)) // centred between the style's mark (or card edge) and the icon
         width: 24
         height: row.height
 

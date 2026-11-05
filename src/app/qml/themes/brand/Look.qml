@@ -117,6 +117,9 @@ QtObject {
     function fieldKeyInsetAt(dpr: real): real { return snap(8, dpr) }
     // The scope tabs are taller than the keys: 4 from the field's top and bottom.
     readonly property real scopeKeyInset: 4
+    // A row's number sits mid-way between the ink bar (right edge 18) and the icon (52 / the clipboard's 44).
+    readonly property real hintX: 23
+    readonly property real clipHintX: 19
     // Result rows, from the list's own edges (as fluent's): the highlight 10 in,
     // the 32 px icon 14 inside it, the name 60 inside it, the action capsule
     // 13 from the highlight's right (13 above and below it in a 60 px row too).

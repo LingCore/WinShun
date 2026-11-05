@@ -82,6 +82,7 @@ QtObject {
     // Result rows (from the list's sides): the card 10 in, the 34 px icon 10
     // further, the name 12 after it, the row keys 14 from the card's right.
     readonly property real rowInset: cardInset
+    readonly property real hintX: 17 // the number mid-way between the card's edge (10) and the icon (48)
     readonly property real iconInset: cardInset + 10
     readonly property real textStart: cardInset + 10 + 34 + 12
     readonly property real actionsInset: cardInset + 14

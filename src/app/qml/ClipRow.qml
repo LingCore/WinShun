@@ -317,7 +317,7 @@ Item {
         objectName: "clipboardNumberSlot"
         visible: row.reserveHintSpace && row.hint > 0
         opacity: row.hintOpacity
-        x: row.onPixel(14)
+        x: row.onPixel(Theme.tok("clipHintX", 14))
         width: 24
         height: row.height
 
