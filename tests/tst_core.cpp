@@ -11163,6 +11163,261 @@ private slots:
         QVERIFY(O::kKnown < O::kProfile && O::kProfile < O::kOther && O::kOther < O::kHidden && O::kHidden < O::kCrowded);
     }
 
+    // A pass that looks only at the files the Lookout lists (changed since
+    // the last pass, documents due, the last pass's first reads, what
+    // searches handed over) decides what a look at every file decides
+    // (ContentIndexer::plan): random changes to files, folders and documents,
+    // pass after pass, some files left unread each time.
+    void contentPlanLooksAtChangesOnly()
+    {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        // The user's own folder, for the order of first reads.
+        wchar_t oldProfile[MAX_PATH] {};
+        const bool hadProfile = ::GetEnvironmentVariableW(L"USERPROFILE", oldProfile, MAX_PATH) > 0;
+        ::SetEnvironmentVariableW(L"USERPROFILE", L"C:\\home");
+        const auto restoreProfile
+            = qScopeGuard([&] { ::SetEnvironmentVariableW(L"USERPROFILE", hadProfile ? oldProfile : nullptr); });
+
+        using Work = ContentIndexer::Work;
+        const std::string share = "\\\\nas\\docs";
+        // D: is being ejected (suspended), E: is not followed.
+        const std::vector<ContentIndexer::Volume> volumes {{"C:", false}, {"D:", true}, {share, false, 0, true}};
+        ContentIndexer::Options options;
+        options.extensions = {u"txt"_s, u"md"_s, u"log"_s};
+        auto index = std::make_shared<FileIndex>();
+        ContentIndex content(tmp.filePath(u"content"_s));
+        ContentIndexer::Lookout lookout;
+        const std::vector<grams::Key> keys = grams::ofPhrase(u"word"_s);
+        std::mt19937 random(20261105);
+        const auto chance = [&](unsigned perMille) { return random() % 1000 < perMille; };
+
+        std::array<EntryId, 4> roots {}; // C:, D:, E:, the share
+        std::vector<EntryId> dirs; // folders, roots too
+        std::vector<EntryId> files;
+        EntryId home = kNoEntry;
+        EntryId gen = kNoEntry; // grows crowded, then not
+        std::vector<EntryId> genFiles;
+        int named = 0;
+        const auto rootOf = [&](EntryId id) {
+            while (index->entry(id).parent != kNoEntry)
+                id = index->entry(id).parent;
+            return id;
+        };
+        const auto inherited = [&](EntryId folder) { // what a file or folder in it has from it
+            return static_cast<std::uint8_t>((index->entry(folder).flags & EntryFlag::Inherited)
+                | (rootOf(folder) == roots[3] ? EntryFlag::Remote : 0));
+        };
+        const auto newName = [&] {
+            static const char* const kinds[] = {"txt", "md", "log", "docx", "pdf", "exe", "png", "TXT"};
+            const std::string n = "f" + std::to_string(++named);
+            if (chance(40))
+                return "~$" + n + ".docx"; // an Office lock file
+            if (chance(40))
+                return n; // no extension
+            return n + "." + kinds[random() % std::size(kinds)];
+        };
+        const auto addFile = [&](EntryId folder) {
+            std::uint8_t flags = inherited(folder);
+            if (chance(80))
+                flags |= EntryFlag::Hidden;
+            if (chance(80))
+                flags |= EntryFlag::LowPriority;
+            if (chance(40))
+                flags |= EntryFlag::Offline;
+            files.push_back(index->add(folder, newName(), flags));
+        };
+        const auto addDir = [&](EntryId parent) {
+            std::uint8_t flags = EntryFlag::Directory | inherited(parent);
+            if (chance(100))
+                flags |= EntryFlag::LowPriority;
+            if (chance(100))
+                flags |= EntryFlag::Hidden;
+            dirs.push_back(index->add(parent, "d" + std::to_string(++named), flags));
+        };
+        // A random one that is still there; kNoEntry when none was found.
+        const auto pick = [&](std::vector<EntryId>& ids) -> EntryId {
+            for (int tries = 0; tries < 8 && !ids.empty(); ++tries) {
+                const std::size_t at = random() % ids.size();
+                if (!index->entry(ids[at]).isDeleted())
+                    return ids[at];
+                ids[at] = ids.back();
+                ids.pop_back();
+            }
+            return kNoEntry;
+        };
+        {
+            auto lock = index->writeLock();
+            roots = {index->addRoot("C:"), index->addRoot("D:"), index->addRoot("E:"), index->addRoot(share)};
+            dirs.assign(roots.begin(), roots.end());
+            home = index->add(roots[0], "home", EntryFlag::Directory);
+            dirs.push_back(home);
+            for (int i = 0; i < 30; ++i)
+                addDir(dirs[random() % dirs.size()]);
+            for (int i = 0; i < 400; ++i)
+                addFile(dirs[random() % dirs.size()]);
+            gen = index->add(home, "gen", EntryFlag::Directory);
+            for (int i = 0; i < 499; ++i) // one short of crowded
+                genFiles.push_back(index->add(gen, "g" + std::to_string(i) + ".log", 0));
+        }
+
+        std::set<EntryId> recent; // read again lately (Timing::cooldown)
+        int compared = 0;
+        int everyFile = 0;
+        std::size_t firstReads = 0, again = 0, checks = 0, crowded = 0, own = 0, retired = 0, looked = 0;
+        for (int round = 0; round < 40; ++round) {
+            std::vector<EntryId> written; // reported after the lock is let go, as the journal's are
+            std::vector<EntryId> handedOver; // read by searches
+            bool unsure = false;
+            {
+                auto lock = index->writeLock();
+                if (round == 6) {
+                    for (int i = 0; i < 3; ++i) // crowded now: its files left to read go last
+                        genFiles.push_back(index->add(gen, "h" + std::to_string(i) + ".log", 0));
+                } else if (round == 12) {
+                    for (int i = 0; i < 60; ++i) // under 90% of one extension: no longer
+                        QVERIFY(index->move(genFiles[i], gen, "g" + std::to_string(i) + ".txt"));
+                }
+                const unsigned changes = round == 0 ? 0 : random() % 40;
+                for (unsigned c = 0; c < changes; ++c) {
+                    const unsigned what = random() % 1000;
+                    const EntryId file = pick(files);
+                    const EntryId dir = pick(dirs);
+                    const bool isRoot = dir != kNoEntry && (index->entry(dir).flags & EntryFlag::Root);
+                    if (what < 250) {
+                        if (dir != kNoEntry)
+                            addFile(dir);
+                    } else if (what < 300) {
+                        if (dir != kNoEntry)
+                            addDir(dir);
+                    } else if (what < 400) {
+                        if (file != kNoEntry)
+                            index->remove(file);
+                    } else if (what < 420) {
+                        if (dir != kNoEntry && !isRoot && dir != home && dir != gen)
+                            index->remove(dir);
+                    } else if (what < 520) {
+                        if (file != kNoEntry)
+                            QVERIFY(index->move(file, index->entry(file).parent, newName()));
+                    } else if (what < 600) {
+                        // Elsewhere on its volume; now and then onto another
+                        // (a share's files stay on it), its flags as there.
+                        if (file != kNoEntry && dir != kNoEntry
+                            && (rootOf(dir) == rootOf(file) || (rootOf(dir) != roots[3] && rootOf(file) != roots[3]))) {
+                            const std::uint8_t itsOwn = index->entry(file).flags & ~EntryFlag::Inherited;
+                            QVERIFY(index->move(file, dir, index->name(file)));
+                            index->setFlags(file, itsOwn | inherited(dir));
+                        }
+                    } else if (what < 630) {
+                        if (dir != kNoEntry && !isRoot && dir != home && dir != gen) {
+                            const EntryId to = pick(dirs);
+                            if (to != kNoEntry && rootOf(to) == rootOf(dir))
+                                index->move(dir, to, index->name(dir)); // false into its own subtree
+                        }
+                    } else if (what < 633) {
+                        // Onto another volume: not told file by file (every file is looked at).
+                        if (dir != kNoEntry && !isRoot && dir != home && dir != gen && rootOf(dir) != roots[3])
+                            index->move(dir, rootOf(dir) == roots[2] ? roots[0] : roots[2], index->name(dir));
+                    } else if (what < 730) {
+                        if (file != kNoEntry) {
+                            static constexpr std::uint8_t kFlags[] = {EntryFlag::Hidden, EntryFlag::LowPriority, EntryFlag::Offline};
+                            index->setFlags(file, index->entry(file).flags ^ kFlags[random() % 3]);
+                        }
+                    } else if (what < 760) {
+                        if (dir != kNoEntry && !isRoot)
+                            index->setFlags(dir, index->entry(dir).flags ^ EntryFlag::LowPriority); // not its files'
+                    } else if (what < 880) {
+                        if (file != kNoEntry)
+                            written.push_back(file);
+                    } else if (what < 890) {
+                        unsure = true;
+                    } else if (file != kNoEntry) {
+                        handedOver.push_back(file);
+                    }
+                }
+            }
+            content.markChanged(written);
+            if (unsure)
+                content.markUnsure([&](EntryId e) { return e % 5 == static_cast<EntryId>(round) % 5; });
+            for (const EntryId e : handedOver) {
+                QVERIFY(content.add(e, keys, false, 1, content.changeSequence()));
+                lookout.taken(e);
+            }
+            if (round == 20) { // ids renumbered: every file is looked at
+                auto lock = index->writeLock();
+                index->compact(true, [&](const FileIndex::Renumber& renumber) {
+                    content.remap(renumber);
+                    for (std::vector<EntryId>* ids : {&files, &dirs, &genFiles}) {
+                        std::vector<EntryId> kept;
+                        for (const EntryId id : *ids) {
+                            if (const EntryId to = renumber(id); to != kNoEntry)
+                                kept.push_back(to);
+                        }
+                        ids->swap(kept);
+                    }
+                    for (EntryId& r : roots)
+                        r = renumber(r);
+                    home = renumber(home);
+                    gen = renumber(gen);
+                });
+                recent.clear(); // as the indexer's (by the old ids)
+            }
+            if (round == 30)
+                options.documents = false; // every file again
+
+            const auto lock = index->longReadLock();
+            const ContentIndexer::Lookout::Look look
+                = lookout.next(index, content, options, volumes, std::chrono::steady_clock::now());
+            const auto readLately = [&](EntryId e) { return recent.contains(e); };
+            const ContentIndexer::Plan all = ContentIndexer::plan(*index, content, options, volumes, readLately);
+            if (look.everyFile) {
+                ++everyFile;
+            } else {
+                const ContentIndexer::Plan only
+                    = ContentIndexer::plan(*index, content, options, volumes, readLately, &look.files);
+                QCOMPARE(only.work.size(), all.work.size());
+                for (std::size_t i = 0; i < all.work.size(); ++i) {
+                    QVERIFY2(only.work[i] == all.work[i],
+                        qPrintable(u"pass %1: file %2 against %3"_s.arg(round).arg(only.work[i].entry).arg(all.work[i].entry)));
+                }
+                QCOMPARE(only.retired, all.retired);
+                ++compared;
+                looked += look.files.size();
+                retired += all.retired.size();
+                for (const Work& w : all.work) {
+                    firstReads += !w.checkOnly && !w.again;
+                    again += w.again;
+                    checks += w.checkOnly;
+                    crowded += w.crowded;
+                    own += w.order == ContentIndexer::kProfile;
+                }
+            }
+            lookout.planned(all.work);
+            content.retire(all.retired);
+            // The pass: most files read, some not (in use, cut short).
+            for (const Work& w : all.work) {
+                if (chance(200))
+                    continue;
+                if (w.checkOnly && chance(500)) {
+                    content.confirm(w.entry);
+                    continue;
+                }
+                QVERIFY(content.add(w.entry, keys, chance(100), static_cast<std::uint32_t>(round), content.changeSequence()));
+                if (w.again)
+                    recent.insert(w.entry);
+            }
+            if (round % 5 == 4)
+                recent.clear(); // the cooldown is over
+        }
+        // Every kind of decision was made, by looking at a fraction of the files.
+        qInfo("%d passes compared (%d looked at every file): %zu files looked at, %zu first reads, %zu again, "
+              "%zu checks, %zu crowded, %zu the user's, %zu retired",
+            compared, everyFile, looked, firstReads, again, checks, crowded, own, retired);
+        QVERIFY(compared >= 30);
+        QVERIFY(everyFile >= 3); // the first pass, renumbered, other options
+        QVERIFY(firstReads > 0 && again > 0 && checks > 0 && crowded > 0 && own > 0 && retired > 0);
+    }
+
     // ---- documents -------------------------------------------------------------
 
     void extractWriter()

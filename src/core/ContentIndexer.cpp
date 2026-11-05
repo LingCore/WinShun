@@ -644,16 +644,25 @@ void ContentIndexer::run(std::stop_token stop)
     }
 }
 
-// The files to read or check: candidates of a content search on a followed
-// volume whose document is missing, dirty or unsure. Documents of files that
-// are no longer candidates are retired on the way; those on a suspended
-// volume are left as they are. In the order they are best read: files read
-// before (someone is working on them), then the user's own files, the others,
-// hidden ones, and those in crowded folders (crowdedFolders: generated files,
-// mostly, that few look for); each kind as the index has them (by folder,
-// mostly).
 std::vector<ContentIndexer::Work> ContentIndexer::findWork(
     const FileIndex& index, const Options& options, const std::vector<Volume>& volumes)
+{
+    const auto now = std::chrono::steady_clock::now();
+    std::erase_if(m_recentReads, [&](const auto& r) { return now - r.second >= m_timing.cooldown; });
+    Plan p = plan(index, *m_content, options, volumes, [&](EntryId id) { return m_recentReads.contains(id); });
+    m_content->retire(p.retired);
+    return std::move(p.work);
+}
+
+// The files to read or check: candidates of a content search on a followed
+// volume whose document is missing, dirty or unsure. Documents of files that
+// are no longer candidates are retired; those on a suspended volume are left
+// as they are. In the order they are best read: files read before (someone
+// is working on them), then the user's own files, the others, hidden ones,
+// and those in crowded folders (crowdedFolders: generated files, mostly, that
+// few look for); each kind as the index has them (by folder, mostly).
+ContentIndexer::Plan ContentIndexer::plan(const FileIndex& index, const ContentIndex& content, const Options& options,
+    const std::vector<Volume>& volumes, const std::function<bool(EntryId)>& readLately, const std::vector<EntryId>* only)
 {
     const ContentFilter filter {
         ExtensionFilter(options.documents ? options.extensions + documentExtensions() : options.extensions),
@@ -683,64 +692,89 @@ std::vector<ContentIndexer::Work> ContentIndexer::findWork(
             roots.push_back({r, static_cast<std::size_t>(it - volumes.begin()), it->suspended, it->remote});
     }
     const bool anyRemote = std::ranges::any_of(roots, &Root::remote);
-    const std::vector<ContentIndex::DocInfo> docs = m_content->documents();
-    const auto now = std::chrono::steady_clock::now();
-    std::erase_if(m_recentReads, [&](const auto& r) { return now - r.second >= m_timing.cooldown; });
+    const std::vector<ContentIndex::DocInfo> docs = only ? content.documentsOf(*only) : content.documents();
 
-    std::vector<Work> work;
-    std::vector<EntryId> retired;
+    Plan out;
+    std::vector<Work>& work = out.work;
+    std::vector<EntryId>& retired = out.retired;
     std::vector<EntryId> candidates; // on the volumes followed, read before or not: what makes a folder crowded
     RootFinder finder(index, index.findPath(win32::expandEnvironment(L"%USERPROFILE%")));
     std::size_t k = 0;
-    for (std::size_t c = 0; c < index.chunkCount(); ++c) {
-        const auto entries = index.chunk(c);
-        for (std::size_t i = 0; i < entries.size(); ++i) {
-            const Entry& e = entries[i];
-            // A remote file a search looks in (ContentVerdict::Remote): kept
-            // when its share's contents are indexed, read by its own thread.
-            const bool remote = (e.flags & EntryFlag::Remote) != 0;
-            if (remote ? !anyRemote || !filter.acceptsRemote(index, e) : !filter.accepts(index, e))
-                continue;
-            const auto id = static_cast<EntryId>((c << FileIndex::kChunkBits) + i);
-            const RootFinder::Place place = finder.placeOf(id);
-            const auto volume
-                = std::find_if(roots.begin(), roots.end(), [&](const Root& r) { return r.entry == place.root; });
-            if (volume == roots.end())
-                continue;
-            if (!remote)
-                candidates.push_back(id);
-            for (; k < docs.size() && docs[k].entry < id; ++k)
-                retired.push_back(docs[k].entry);
-            const bool known = k < docs.size() && docs[k].entry == id;
-            if (volume->suspended || volume->remote) {
-                k += known ? 1 : 0;
-                continue;
-            }
-            Work w {id, false, false, 0};
-            if (known) {
-                const ContentIndex::DocInfo& d = docs[k++];
-                if (d.need == ContentIndex::Need::Check)
-                    w = {id, true, false, d.stamp};
-                else if (d.need == ContentIndex::Need::Read && !m_recentReads.contains(id))
-                    w = {id, false, true, 0};
-                else
-                    continue;
-            } else {
-                w.order = orderOf(place.inProfile, (e.flags & EntryFlag::Hidden) != 0, false); // crowded: below
-            }
-            w.document = documents.matches(index.name(e), index.extLength(e));
-            w.volume = volume->volume;
-            work.push_back(w);
+    // A file a search looks in, on a volume followed: what to do with it.
+    // Documents of the files passed over on the way are retired.
+    const auto look = [&](EntryId id, const Entry& e) {
+        // A remote file a search looks in (ContentVerdict::Remote): kept
+        // when its share's contents are indexed, read by its own thread.
+        const bool remote = (e.flags & EntryFlag::Remote) != 0;
+        if (remote ? !anyRemote || !filter.acceptsRemote(index, e) : !filter.accepts(index, e))
+            return;
+        const RootFinder::Place place = finder.placeOf(id);
+        const auto volume = std::find_if(roots.begin(), roots.end(), [&](const Root& r) { return r.entry == place.root; });
+        if (volume == roots.end())
+            return;
+        if (!remote && !only)
+            candidates.push_back(id);
+        for (; k < docs.size() && docs[k].entry < id; ++k)
+            retired.push_back(docs[k].entry);
+        const bool known = k < docs.size() && docs[k].entry == id;
+        if (volume->suspended || volume->remote) {
+            k += known ? 1 : 0;
+            return;
+        }
+        Work w {id, false, false, 0};
+        if (known) {
+            const ContentIndex::DocInfo& d = docs[k++];
+            if (d.need == ContentIndex::Need::Check)
+                w = {id, true, false, d.stamp};
+            else if (d.need == ContentIndex::Need::Read && !readLately(id))
+                w = {id, false, true, 0};
+            else
+                return;
+        } else {
+            w.order = orderOf(place.inProfile, (e.flags & EntryFlag::Hidden) != 0, false); // crowded: below
+        }
+        w.document = documents.matches(index.name(e), index.extLength(e));
+        w.volume = volume->volume;
+        work.push_back(w);
+    };
+    if (only) {
+        for (const EntryId id : *only) {
+            if (id < index.slotCount())
+                look(id, index.entry(id));
+        }
+    } else {
+        for (std::size_t c = 0; c < index.chunkCount(); ++c) {
+            const auto entries = index.chunk(c);
+            for (std::size_t i = 0; i < entries.size(); ++i)
+                look(static_cast<EntryId>((c << FileIndex::kChunkBits) + i), entries[i]);
         }
     }
     for (; k < docs.size(); ++k)
         retired.push_back(docs[k].entry);
-    m_content->retire(retired);
     // Only files read for the first time are put last (12 ms for 359248
     // candidates here): most passes have none.
     if (std::none_of(work.begin(), work.end(), [](const Work& w) { return w.order != kKnown; }))
-        return work; // in order already
+        return out; // in order already
     const auto crowdedStarted = std::chrono::steady_clock::now();
+    if (only) {
+        // What makes their folders crowded: the candidates in them, as a
+        // look at every file finds them (the folder's root is followed:
+        // these files' own).
+        std::vector<EntryId> folders;
+        for (const Work& w : work) {
+            if (w.order != kKnown)
+                folders.push_back(index.entry(w.entry).parent);
+        }
+        std::sort(folders.begin(), folders.end());
+        folders.erase(std::unique(folders.begin(), folders.end()), folders.end());
+        for (const EntryId folder : folders) {
+            for (EntryId c = index.entry(folder).firstChild(); c != kNoEntry; c = index.entry(c).nextSibling) {
+                const Entry& e = index.entry(c);
+                if (!(e.flags & EntryFlag::Remote) && filter.accepts(index, e))
+                    candidates.push_back(c);
+            }
+        }
+    }
     const std::vector<EntryId> crowded = crowdedFolders(index, candidates);
     qint64 crowdedFiles = 0;
     for (Work& w : work) {
@@ -753,11 +787,87 @@ std::vector<ContentIndexer::Work> ContentIndexer::findWork(
     }
     diagnostics::record(u"content-crowded"_s, {{u"candidates"_s, static_cast<qint64>(candidates.size())},
         {u"folders"_s, static_cast<qint64>(crowded.size())}, {u"files"_s, crowdedFiles},
-        {u"last"_s, crowdedLast()},
+        {u"last"_s, crowdedLast()}, {u"every_file"_s, only == nullptr},
         {u"elapsed_us"_s, static_cast<qint64>(std::chrono::duration_cast<std::chrono::microseconds>(
                               std::chrono::steady_clock::now() - crowdedStarted).count())}});
     std::stable_sort(work.begin(), work.end(), [](const Work& a, const Work& b) { return a.order < b.order; });
-    return work;
+    return out;
+}
+
+ContentIndexer::Lookout::Look ContentIndexer::Lookout::next(const std::shared_ptr<FileIndex>& index,
+    const ContentIndex& content, const Options& options, const std::vector<Volume>& volumes,
+    std::chrono::steady_clock::time_point now)
+{
+    // What searches handed over first: each document is in the index before
+    // its entry is listed, so one handed over after this is listed for the
+    // next pass.
+    std::vector<EntryId> taken;
+    bool takenLost = false;
+    {
+        std::lock_guard lock(m_takenMutex);
+        taken.swap(m_taken);
+        takenLost = std::exchange(m_takenLost, false);
+    }
+    const FileIndex::Changes changes = index->takeChanges();
+    const bool sameIndex = m_known && !m_index.owner_before(index) && !index.owner_before(m_index);
+    QString why = !m_known ? u"first-pass"_s
+        : !sameIndex ? u"other-file-index"_s
+        : index->generation() != m_generation ? u"file-index-renumbered"_s
+        : content.epoch() != m_epoch ? u"content-index-reset"_s
+        : !(options == m_options) ? u"options"_s
+        : volumes != m_volumes ? u"volumes"_s
+        : !changes.complete ? u"too-many-changes"_s
+        : takenLost ? u"too-many-taken"_s
+        : now - m_everyFile >= kEveryFile ? u"daily"_s
+        : QString();
+    m_known = true;
+    m_index = index;
+    m_generation = index->generation();
+    m_epoch = content.epoch();
+    m_options = options;
+    m_volumes = volumes;
+    Look look;
+    if (!why.isEmpty()) {
+        m_everyFile = now;
+        look.why = std::move(why);
+        return look;
+    }
+    look.everyFile = false;
+    const std::vector<EntryId> due = content.dueEntries();
+    std::vector<EntryId>& files = look.files;
+    files.reserve(changes.files.size() + due.size() + m_firstReads.size() + taken.size());
+    files = changes.files;
+    files.insert(files.end(), due.begin(), due.end());
+    files.insert(files.end(), m_firstReads.begin(), m_firstReads.end());
+    files.insert(files.end(), taken.begin(), taken.end());
+    std::sort(files.begin(), files.end());
+    files.erase(std::unique(files.begin(), files.end()), files.end());
+    return look;
+}
+
+void ContentIndexer::Lookout::planned(const std::vector<Work>& work)
+{
+    m_firstReads.clear();
+    for (const Work& w : work) {
+        if (!w.checkOnly && !w.again)
+            m_firstReads.push_back(w.entry);
+    }
+    std::sort(m_firstReads.begin(), m_firstReads.end());
+    if (m_firstReads.capacity() > 2 * m_firstReads.size() + 1024)
+        m_firstReads.shrink_to_fit(); // a first build's hundreds of thousands, read
+}
+
+void ContentIndexer::Lookout::taken(EntryId entry)
+{
+    std::lock_guard lock(m_takenMutex);
+    if (m_takenLost)
+        return;
+    if (m_taken.size() >= FileIndex::kMaxChanges) {
+        m_takenLost = true;
+        std::vector<EntryId>().swap(m_taken);
+        return;
+    }
+    m_taken.push_back(entry);
 }
 
 std::vector<EntryId> ContentIndexer::crowdedFolders(const FileIndex& index, std::span<const EntryId> candidates)

@@ -81,6 +81,8 @@ public:
         // indexed: its documents are kept, and its own thread reads its
         // files (RemoteContent), not a pass. Suspended while offline.
         bool remote = false;
+
+        bool operator==(const Volume&) const = default;
     };
     struct Source {
         std::function<std::shared_ptr<FileIndex>()> index;
@@ -263,7 +265,7 @@ public:
         std::atomic<std::size_t> m_taken {0};
     };
 
-private:
+    // A file a pass reads or checks.
     struct Work {
         EntryId entry;
         bool checkOnly; // compare the size and time; read only if they changed
@@ -272,9 +274,63 @@ private:
         bool document = false; // read by the DocExtractor
         std::uint8_t order = kKnown; // Order: files read before, then the user's own, others, hidden, crowded ones
         bool crowded = false; // in a crowded folder (read last but with WINSHUN_CROWDED=0)
-        std::size_t volume = 0; // in the volumes findWork() was given
+        std::size_t volume = 0; // in the volumes plan() was given
+        bool operator==(const Work&) const = default;
+    };
+    // What a pass does: the files to read or check, in the order they are
+    // best read, and the documents to let go of, ascending.
+    struct Plan {
+        std::vector<Work> work;
+        std::vector<EntryId> retired;
+    };
+    // Decided file by file, the same whether it looks at every file of the
+    // index (`only` null) or at `only` (ascending, each once): the files
+    // changed since the last pass and those whose document is due tell a
+    // pass all it would find (findWork). `readLately`: read within
+    // Timing::cooldown, not read again yet. The caller holds a read lock.
+    static Plan plan(const FileIndex& index, const ContentIndex& content, const Options& options,
+        const std::vector<Volume>& volumes, const std::function<bool(EntryId)>& readLately,
+        const std::vector<EntryId>* only = nullptr);
+
+    // The files a pass has to look at (plan()'s `only`), from one pass to the
+    // next: those changed since the last (FileIndex::takeChanges), those
+    // whose document is due (ContentIndex::dueEntries), those the last pass
+    // was to read for the first time (not all got a document: skipped, cut
+    // short) and those searches handed over (taken(): Intake). Every file
+    // when that cannot be told: the first pass, another file index or its
+    // ids renumbered, the content index cleared or restored, other options
+    // or volumes, too many changes; and once a day, should anything have
+    // been missed all the same.
+    class Lookout {
+    public:
+        static constexpr std::chrono::hours kEveryFile {24};
+        struct Look {
+            bool everyFile = true;
+            QString why; // ... and why (diagnostics)
+            std::vector<EntryId> files; // or these, ascending, each once
+        };
+        // The caller holds a read lock of the file index, and plans the pass
+        // under it; planned() is told what it found.
+        Look next(const std::shared_ptr<FileIndex>& index, const ContentIndex& content, const Options& options,
+            const std::vector<Volume>& volumes, std::chrono::steady_clock::time_point now);
+        void planned(const std::vector<Work>& work);
+        void taken(EntryId entry); // a search's read went into the index; any thread
+
+    private:
+        bool m_known = false; // the fields below are from the last pass
+        std::weak_ptr<FileIndex> m_index;
+        std::uint64_t m_generation = 0;
+        std::uint64_t m_epoch = 0;
+        Options m_options;
+        std::vector<Volume> m_volumes;
+        std::chrono::steady_clock::time_point m_everyFile; // last looked at
+        std::vector<EntryId> m_firstReads; // of the last pass, ascending
+        std::mutex m_takenMutex;
+        std::vector<EntryId> m_taken;
+        bool m_takenLost = false; // more than FileIndex::kMaxChanges
     };
 
+private:
     void run(std::stop_token stop);
     bool pass(const Options& options, std::stop_token stop); // false: cut short
     std::vector<Work> findWork(const FileIndex& index, const Options& options, const std::vector<Volume>& volumes);
