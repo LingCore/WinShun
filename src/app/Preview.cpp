@@ -7186,7 +7186,8 @@ bool probeSettingsReopen(App& app, const QStringList& args, const QDir& out, QJs
 // instance mutex), until <folder>\stop appears. Lines in <folder>\cmd.txt
 // (taken and deleted as they come) open its windows for a look at them:
 //   show [text] | hide | clip | settings [place] | style <fluent|brand|tactile>
-//   | theme <light|dark|system> | windows (their places into windows.json)
+//   | theme <light|dark|system> | set <SettingsEditor property> <value>
+//   | windows (their places into windows.json)
 // Each batch done is counted in <folder>\ack.txt.
 int runLive(App& app, const QDir& out)
 {
@@ -7211,9 +7212,16 @@ int runLive(App& app, const QDir& out)
         }
         return nullptr;
     };
+    // pump() runs outside exec(): destroy()/deleteLater() would never happen
+    // there, and a style switch would leave every part of the style before
+    // under the new one. The app's own loop deletes them; so does this.
+    const auto settle = [](int ms) {
+        pump(ms);
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    };
     int batches = 0;
     while (!QFile::exists(out.filePath(u"stop"_s))) {
-        pump(100);
+        settle(100);
         QFile commands(out.filePath(u"cmd.txt"_s));
         if (!commands.exists() || !commands.open(QIODevice::ReadOnly))
             continue;
@@ -7235,6 +7243,9 @@ int runLive(App& app, const QDir& out)
             else if (verb == u"style" || verb == u"theme") {
                 if (SettingsEditor* found = editor())
                     found->setProperty(verb == u"style" ? "uiStyle" : "theme", rest);
+            } else if (verb == u"set") { // set <SettingsEditor property> <value>
+                if (SettingsEditor* found = editor())
+                    found->setProperty(rest.section(u' ', 0, 0).toLatin1().constData(), rest.section(u' ', 1));
             } else if (verb == u"windows") {
                 QJsonArray list;
                 for (QWindow* window : QGuiApplication::topLevelWindows()) {
@@ -7249,8 +7260,36 @@ int runLive(App& app, const QDir& out)
                 QFile json(out.filePath(u"windows.json"_s));
                 if (json.open(QIODevice::WriteOnly))
                     json.write(QJsonDocument(list).toJson());
+            } else if (verb == u"parts") { // parts.txt: every style part alive in the visible windows
+                QStringList found;
+                const std::function<void(QQuickItem*, int)> walk = [&](QQuickItem* item, int depth) {
+                    const QQmlContext* context = qmlContext(item);
+                    const QString url = context ? context->baseUrl().toString() : QString();
+                    const qsizetype at = url.indexOf(u"/themes/"_s);
+                    if (at >= 0 && depth < 400) {
+                        const QQuickItem* host = item->parentItem();
+                        const QQmlContext* hostContext = host ? qmlContext(host) : nullptr;
+                        found << u"%1 visible=%2 %3x%4 in %5 %6"_s.arg(url.mid(at + 8)).arg(item->isVisible())
+                                     .arg(item->width()).arg(item->height())
+                                     .arg(host ? QString::fromLatin1(host->metaObject()->className()) : QString())
+                                     .arg(hostContext ? hostContext->baseUrl().fileName() : QString());
+                        return; // the part's own insides are its business
+                    }
+                    for (QQuickItem* child : item->childItems())
+                        walk(child, depth + 1);
+                };
+                for (QWindow* window : QGuiApplication::topLevelWindows()) {
+                    auto* quick = qobject_cast<QQuickWindow*>(window);
+                    if (!quick || !window->isVisible())
+                        continue;
+                    found << u"== %1"_s.arg(window->title());
+                    walk(quick->contentItem(), 0);
+                }
+                QFile text(out.filePath(u"parts.txt"_s));
+                if (text.open(QIODevice::WriteOnly))
+                    text.write(found.join(u'\n').toUtf8());
             }
-            pump(50);
+            settle(50);
         }
         QFile ack(out.filePath(u"ack.txt"_s));
         if (ack.open(QIODevice::WriteOnly))
