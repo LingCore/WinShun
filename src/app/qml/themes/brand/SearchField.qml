@@ -7,9 +7,9 @@ import QtQuick.Effects
 // or faded along the way (stops placed by perimeter length, Look.ringStops).
 // flat: the launcher's search row — the host already sets the Hook `fieldInset`
 // (10) inside the row on every side (themes/README.md 3.3), so the field fills
-// it, radius 8, concentric with the window's 18; a faint glow of the ring's
-// colours shows below it while focused. Not flat (settings, clipboard, plugins): the field
-// fills the Hook, ring without glow. Radius: Look.fieldRadius (8).
+// it, radius 4, concentric with the window's 8 (DWM's); a faint glow of the
+// ring's colours shows below it while focused. Not flat (settings, clipboard,
+// plugins): the field fills the Hook, ring without glow. Radius: Look.fieldRadius (4).
 Item {
     id: field
 
@@ -53,7 +53,7 @@ Item {
             ShapePath {
                 strokeWidth: -1
                 fillGradient: RingGradient { look: field.look; boxWidth: glowShape.width; boxHeight: glowShape.height; count: 36 }
-                PathRectangle { x: 0; y: 0; width: glowShape.width; height: glowShape.height; radius: field.look ? field.look.r(6) : 0 }
+                PathRectangle { x: 0; y: 0; width: glowShape.width; height: glowShape.height; radius: field.radius }
             }
         }
         MultiEffect {
@@ -85,7 +85,7 @@ Item {
             visible: opacity > 0
         }
 
-        // ---- the ring: 2 px band, outer radius 8, inner 6 (concentric) ----
+        // ---- the ring: 2 px band, outer radius the field's (4), inner 2 (concentric) ----
         Shape {
             id: ring
             anchors.fill: parent

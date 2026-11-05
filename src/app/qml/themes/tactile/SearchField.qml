@@ -1,7 +1,7 @@
 import QtQuick
 
 // The launcher's search row (and every other search box): one groove cut
-// into the panel, radius 8 (concentric with the 18 px window, 10 px away).
+// into the panel, radius 4 (concentric with the window's 8, DWM's, 10 px away).
 // Focus shows only as the orange caret; the keys inside sit 7 px from its
 // top, bottom and right (grooveKeyInset), radius 2.
 Groove {

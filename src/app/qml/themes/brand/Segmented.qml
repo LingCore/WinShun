@@ -6,7 +6,7 @@ import QtQuick.Effects
 // (current: text + bold, the others the third grey). Fills its host; the
 // pill keeps 2 from the track on every side and its radius is the track's
 // minus 2 (concentric; 2 at the least). inField (brand only): inside the
-// search field, where the track's radius is held to 2 (field 8 − its 6 inset).
+// search field, where the track's radius is held to 2 (field 4 − its 6 inset).
 // segments: [{x, width}] in the host (README); a number (one width for all)
 // or a list of widths also works; empty: equal shares.
 Item {

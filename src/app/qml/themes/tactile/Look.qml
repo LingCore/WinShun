@@ -27,16 +27,18 @@ QtObject {
     // The user's 圆角/直角 setting: every corner goes square (0), the window too.
     function r(v: real): real { return SystemTheme.roundedCorners ? v : 0 }
     function pill(size: real): real { return SystemTheme.roundedCorners ? size / 2 : 0 }
-    // Never translucent: an 18 px window has no Mica under it.
+    // Never translucent: an opaque panel of material by design (04-tactile.html).
     readonly property bool backdrop: false
     readonly property bool backdropCapable: false // 透明效果 has nothing to do here
 
     // ---- geometry (logical px; even, so 150 % lands on whole pixels) ----------
-    readonly property int windowRadius: r(18)
+    // The window is Windows' own (DWM: 8 on Windows 11), as fluent's. What
+    // sits by its corners is concentric with it: inner = max(8 − inset, 4).
+    readonly property real windowRadius: SystemTheme.roundedCorners && SystemTheme.nativeWindowBorder ? 8 : 0
     readonly property int searchInset: 10        // groove to the window edge (top, left, right)
-    readonly property int searchRadius: r(8)        // concentric: 18 - 10
+    readonly property int searchRadius: r(Math.max(4, 8 - searchInset)) // by the window's corners: 4
     readonly property int grooveKeyInset: 7      // keys in the groove: 7 from its top, bottom, right
-    readonly property int grooveKeyRadius: r(2)     // 8 - 7 = 1, so the minimum 2
+    readonly property int grooveKeyRadius: r(2)     // 4 - 7 < 0, so the minimum 2
     // 7 is odd: at 150 % it is 10.5 device px. Hosts place the keys this far
     // in (whole device pixels, the same on top, bottom and right) and make
     // them groove height - 2 x this tall, so all three insets stay equal.
@@ -54,9 +56,9 @@ QtObject {
     readonly property int knobRadius: r(6)
     readonly property int liftRadius: r(10)         // the lifted row card
     readonly property int cardInset: 10          // card to the tray (top, left, right)
-    readonly property int menuRadius: r(10)
+    readonly property int menuRadius: r(8)       // a menu window's corner is DWM's: 8
     readonly property int menuPadding: 6
-    readonly property int menuItemRadius: r(4)      // concentric: 10 - 6
+    readonly property int menuItemRadius: r(Math.max(4, 8 - menuPadding)) // concentric: 4
     readonly property int menuItemHeight: 34
     readonly property real pageTabsInset: 0 // the page tabs have a track: it starts at the cards' edge
     readonly property int capRadius: r(5)           // key hints

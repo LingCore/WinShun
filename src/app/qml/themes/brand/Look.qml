@@ -80,18 +80,20 @@ QtObject {
     }
 
     // ---- Geometry ----
-    readonly property int windowRadius: r(18) // drawn by us: DWM gives 8 at most
+    // The window is Windows' own (DWM: 8 on Windows 11), as fluent's. What
+    // sits by its corners is concentric with it: inner = max(8 − inset, 4).
+    readonly property real windowRadius: SystemTheme.roundedCorners && SystemTheme.nativeWindowBorder ? 8 : 0
     readonly property int fieldInset: 10 // search field from the window edge (all sides of the row)
-    readonly property int fieldRadius: r(Math.max(2, 18 - fieldInset)) // concentric with the window: 8
+    readonly property int fieldRadius: r(Math.max(4, 8 - fieldInset)) // by the window's corners: 4
     // The taskbar box stands for this field (C++, Theme.nativeLook).
     readonly property color searchBoxFill: fieldFill
     readonly property color searchBoxEdge: fieldEdge
     readonly property real searchBoxRadius: fieldRadius
     readonly property int rowRadius: r(10)
     readonly property int rowInset: 10
-    readonly property int menuRadius: r(10)
+    readonly property int menuRadius: r(8) // a menu window's corner is DWM's: 8
     readonly property int menuPadding: 4
-    readonly property int menuItemRadius: Math.max(rounded ? 2 : 0, menuRadius - menuPadding) // concentric: 6
+    readonly property int menuItemRadius: r(Math.max(4, 8 - menuPadding)) // concentric: 4
     readonly property int capsuleRadius: r(9) // the row-action capsule (capsuleFill), 2 round its 30 px keys of corner 7
     readonly property int capsulePadding: 2
     readonly property int capsuleKeyRadius: Math.max(rounded ? 2 : 0, capsuleRadius - capsulePadding)
@@ -99,7 +101,7 @@ QtObject {
     readonly property int keyRadius: r(7)
     readonly property int keyHintRadius: r(5)
     readonly property int segRadius: r(8)
-    readonly property int segInFieldRadius: r(2) // field 8 − inset 6, held at the minimum 2
+    readonly property int segInFieldRadius: r(2) // field 4 − inset 6, held at the minimum 2
     readonly property int segPad: 2
     readonly property int toggleWidth: 40
     readonly property int toggleHeight: 20

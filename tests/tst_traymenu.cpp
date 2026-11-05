@@ -410,7 +410,7 @@ private slots:
         QCOMPARE(look.value(u"style"_s).toString(), style);
         QCOMPARE(look.value(u"dark"_s).toBool(), dark);
         QCOMPARE(look.value(u"rounded"_s).toBool(), round);
-        for (const char* radius : {"windowRadius", "cardRadius", "controlRadius", "menuRadius", "menuItemRadius"}) {
+        for (const char* radius : {"cardRadius", "controlRadius", "menuRadius", "menuItemRadius"}) {
             const qreal value = SystemTheme::nativeReal(radius, -1);
             QVERIFY2(value >= 0, radius);
             if (!round)
@@ -431,7 +431,9 @@ private slots:
             QCOMPARE(SystemTheme::nativeReal("menuPadding", -1), 4.0);
             QCOMPARE(SystemTheme::nativeColor("caret", Qt::red).alpha(), 0); // none of its own
         } else {
-            QCOMPARE(SystemTheme::nativeReal("menuRadius", -1), round ? 10.0 : 0.0);
+            // A menu window's corner is DWM's in every style.
+            QCOMPARE(SystemTheme::nativeReal("menuRadius", -1), round ? 8.0 : 0.0);
+            QCOMPARE(SystemTheme::nativeReal("menuItemRadius", -1), round ? 4.0 : 0.0);
             QVERIFY(SystemTheme::nativeColor("caret", QColor()).alpha() > 0);
         }
         const QJsonObject json = SystemTheme::nativeLookJson();

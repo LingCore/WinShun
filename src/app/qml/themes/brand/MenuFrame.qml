@@ -2,9 +2,9 @@ import QtQuick
 import QtQuick.Effects
 
 // menuFrame: ContextMenu, DropMenu, HoverTip. A plain white (dark: #2F2F35)
-// card, radius 10, a faint 1 px neutral edge and two thin, close shadows
-// (1 px + 4 px). Items sit `padding` (4) inside it with `itemRadius` 6:
-// concentric (the prototype's 7 corrected to 10 − 4).
+// card, radius 8 (a menu window's, DWM's), a faint 1 px neutral edge and two
+// thin, close shadows (1 px + 4 px). Items sit `padding` (4) inside it with
+// `itemRadius` 4: concentric (8 − 4).
 Item {
     id: menu
 

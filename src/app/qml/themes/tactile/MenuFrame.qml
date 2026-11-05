@@ -4,7 +4,7 @@ import QtQuick.Effects
 
 // A menu or a tip: the card material (brighter face, 1 px line, 1 px top
 // light) and one thin, close shadow. The host keeps menuPadding (6) inside;
-// items are radius 4 (concentric with the 10 px frame).
+// items are radius 4 (concentric with the 8 px frame, a menu window's).
 Item {
     id: menu
 
