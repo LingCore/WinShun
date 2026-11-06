@@ -143,7 +143,7 @@ WinShun's own search box on the Windows 11 taskbar, or a pinned WinShun icon ins
 ## Looks and settings
 
 - **Interface styles**: Settings › Appearance › Interface style offers three looks for every window: Refined native (精修原生, the default: Windows 11's own, following the accent colour), Brand colours (品牌色彩) and Soft tactile (轻拟物质感: raised keys, light depth), each in light and dark.
-- **Looks**: light and dark themes following Windows, Windows 11 Mica, rounded or square corners, including application-drawn rounded corners on Windows 10, sharp icons at any scaling; compact, standard or roomy sizes, and a monochrome tray and taskbar icon if you like; the app logo stays inside the search bar as its persistent action control.
+- **Looks**: light and dark themes following Windows, see-through Mica on Windows 11 (in the Refined native and Brand colours styles), Windows' own rounded corners or square ones, sharp icons at any scaling; compact, standard or roomy sizes, and a monochrome tray and taskbar icon if you like; the app logo stays inside the search bar as its persistent action control.
 - **Settings**: searchable (`Ctrl+F`); changes apply at once.
 - **File manager**: folders and file locations open in File Explorer, Total Commander, Directory Opus, XYplorer or Pulse (those installed are listed), or in any other file manager whose commands you enter under Settings › Open WinShun › Dialogs.
 - **Backup**: choose a folder under Settings → Advanced (a synced folder makes it a cloud backup); settings, favorites, dialog pins, your own web icons and plugins are backed up as they change, the last 10 kept, ready to restore.
