@@ -41,7 +41,9 @@ constexpr wchar_t kPillClass[] = L"WinShunBreakNotice";
 constexpr wchar_t kDimClass[] = L"WinShunBreakDim";
 constexpr wchar_t kContentClass[] = L"WinShunBreakScreen";
 
-enum Choice { kNone = 0, kPostpone, kSkip };
+enum Choice { kNone = 0, kPostpone, kSkip, kPause };
+
+constexpr std::int64_t kPauseMs = 3'600'000; // the notice's and the break screen's 暂停 1 小时 (#12)
 
 template <class T>
 void release(T*& p)
@@ -433,13 +435,21 @@ private:
     void choose(int choice)
     {
         const std::int64_t now = Core::now();
+        bool paused = false;
         {
             const std::lock_guard lock(m_core.mutex);
             if (choice == kPostpone)
                 m_core.schedule.postpone(now);
             else if (choice == kSkip)
                 m_core.schedule.skip(now);
+            else if (choice == kPause && !m_core.schedule.state(now, Core::wall()).strict) {
+                // Like skipping: not offered, and not taken, in strict mode.
+                m_core.schedule.pause(Core::wall() + kPauseMs);
+                paused = true;
+            }
         }
+        if (paused && m_core.pauseChanged)
+            m_core.pauseChanged();
         tick();
     }
 
@@ -478,8 +488,10 @@ private:
         std::vector<std::pair<int, std::wstring>> buttons;
         if (st.canPostpone)
             buttons.emplace_back(kPostpone, (zh ? L"推迟 " : L"Postpone ") + duration(m_config.snoozeMs, zh));
-        if (!st.strict)
+        if (!st.strict) {
             buttons.emplace_back(kSkip, zh ? L"跳过" : L"Skip");
+            buttons.emplace_back(kPause, zh ? L"暂停 1 小时" : L"Pause 1 hour");
+        }
 
         if (!m_pill) {
             const HMONITOR monitor = ::MonitorFromWindow(::GetForegroundWindow(), MONITOR_DEFAULTTOPRIMARY);
@@ -728,6 +740,7 @@ private:
             if (st.canPostpone)
                 buttons.emplace_back(kPostpone, (zh ? L"推迟 " : L"Postpone ") + duration(m_config.snoozeMs, zh));
             buttons.emplace_back(kSkip, zh ? L"跳过" : L"Skip");
+            buttons.emplace_back(kPause, zh ? L"暂停 1 小时" : L"Pause 1 hour");
         }
 
         // Drawn again only when something on it changed (the second, a

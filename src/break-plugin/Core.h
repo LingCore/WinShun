@@ -78,6 +78,7 @@ struct Core {
     Look look; // under `mutex`, with `light`
     std::atomic<bool> quietRule {true}; // hold breaks back during full-screen programs and Do not disturb
     std::function<void(const std::string&)> log; // to plugins.log; any thread
+    std::function<void()> pauseChanged; // keeps a pause made on the notice or the break screen (main.cpp); not under `mutex`
 
     static std::int64_t now() { return static_cast<std::int64_t>(::GetTickCount64()); }
     static std::int64_t wall()

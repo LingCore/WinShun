@@ -119,6 +119,7 @@ protected:
         m_core.light = theme() != "dark";
         m_core.look = brk::lookOf(appearance(), m_core.light);
         m_core.log = [this](const std::string& text) { log("info", text); };
+        m_core.pauseChanged = [this] { savePause(); };
         apply(settings());
         loadPause();
         m_ui.start();
