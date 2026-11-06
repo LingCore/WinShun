@@ -5680,12 +5680,10 @@ Window {
     Loader { // outside the page's Flickable: always in the visible window
         id: webDialog
         z: 1
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.top: titleBar.bottom
-        anchors.bottom: parent.bottom
+        anchors.fill: parent
         active: window.webEditing >= -1
         visible: active
+        Component.onCompleted: window.frame.addPopup(webDialog)
         sourceComponent: WebShortcutForm {
             editor: window.editor
             index: window.webEditing
@@ -5701,12 +5699,10 @@ Window {
     UpdateDialog {
         id: updateDialog
         z: 1
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.top: titleBar.bottom // the title bar keeps working
-        anchors.bottom: parent.bottom
+        anchors.fill: parent
         updater: window.updater
         icon: window.frame.icon
+        Component.onCompleted: window.frame.addPopup(updateDialog)
     }
 
     PluginReadmeDialog {
@@ -5720,11 +5716,9 @@ Window {
     PluginDialog { // the 插件 page's questions: permissions, versions, removal
         id: pluginDialog
         z: 1
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.top: titleBar.bottom
-        anchors.bottom: parent.bottom
+        anchors.fill: parent
         plugins: window.editor.plugins
+        Component.onCompleted: window.frame.addPopup(pluginDialog)
     }
 
     Image { // the window as it looked before a theme or language change, fading out (see changeAppearance)
