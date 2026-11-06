@@ -1098,6 +1098,7 @@ qt_add_executable(tst_translate tst_translate.cpp ${PROJECT_SOURCE_DIR}/src/tran
 add_dependencies(tst_translate WinShunTranslate)
 target_include_directories(tst_translate PRIVATE ${PROJECT_SOURCE_DIR}/src/translate-plugin ${PROJECT_SOURCE_DIR}/src/plugins-sdk)
 target_link_libraries(tst_translate PRIVATE winshun_options Qt6::Test Qt6::Network winhttp)
+target_compile_definitions(tst_translate PRIVATE WINSHUN_TRANSLATE_MANIFEST="${PROJECT_SOURCE_DIR}/src/translate-plugin/package/plugin.json")
 set_target_properties(tst_translate PROPERTIES WIN32_EXECUTABLE FALSE)
 add_test(NAME tst_translate COMMAND tst_translate)
 set_tests_properties(tst_translate PROPERTIES

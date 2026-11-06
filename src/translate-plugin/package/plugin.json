@@ -2,7 +2,7 @@
   "manifest": 1,
   "id": "winshun.translate",
   "name": {"zh": "翻译", "en": "Translate"},
-  "version": "2.1.1",
+  "version": "2.2.0",
   "description": {"zh": "tr 翻译、dict AI 词典，支持 DeepL、微软翻译及 OpenAI 兼容模型服务；使用自己的密钥", "en": "tr translation and dict AI dictionary with your own DeepL, Microsoft Translator or OpenAI-compatible service key"},
   "author": "LingCore",
   "homepage": "https://github.com/LingCore/WinShun",
@@ -36,7 +36,12 @@
       {"value": "hunyuan", "title": {"zh": "腾讯混元", "en": "Tencent Hunyuan"}},
       {"value": "microsoft", "title": {"zh": "微软翻译", "en": "Microsoft Translator"}}
     ], "default": "none"},
-    {"key": "apiKey", "type": "password", "title": {"zh": "API 密钥", "en": "API key"}, "hint": {"zh": "存在 Windows 凭据管理器里，不进设置文件", "en": "Kept in Windows Credential Manager, not in the settings file"}},
+    {"key": "deeplKey", "type": "password", "title": {"zh": "DeepL 密钥", "en": "DeepL key"}, "hint": {"zh": "存在 Windows 凭据管理器里，不进设置文件", "en": "Kept in Windows Credential Manager, not in the settings file"}},
+    {"key": "microsoftKey", "type": "password", "title": {"zh": "微软翻译密钥", "en": "Microsoft Translator key"}, "hint": {"zh": "存在 Windows 凭据管理器里，不进设置文件", "en": "Kept in Windows Credential Manager, not in the settings file"}},
+    {"key": "openaiKey", "type": "password", "title": {"zh": "OpenAI 兼容服务密钥", "en": "OpenAI-compatible key"}, "hint": {"zh": "存在 Windows 凭据管理器里，不进设置文件", "en": "Kept in Windows Credential Manager, not in the settings file"}},
+    {"key": "deepseekKey", "type": "password", "title": {"zh": "DeepSeek 密钥", "en": "DeepSeek key"}, "hint": {"zh": "存在 Windows 凭据管理器里，不进设置文件", "en": "Kept in Windows Credential Manager, not in the settings file"}},
+    {"key": "doubaoKey", "type": "password", "title": {"zh": "豆包 / 方舟密钥", "en": "Doubao / Ark key"}, "hint": {"zh": "存在 Windows 凭据管理器里，不进设置文件", "en": "Kept in Windows Credential Manager, not in the settings file"}},
+    {"key": "hunyuanKey", "type": "password", "title": {"zh": "混元密钥", "en": "Hunyuan key"}, "hint": {"zh": "存在 Windows 凭据管理器里，不进设置文件", "en": "Kept in Windows Credential Manager, not in the settings file"}},
     {"key": "endpoint", "type": "text", "title": {"zh": "接口地址", "en": "Endpoint"}, "hint": {"zh": "留空使用所选服务默认地址；自定义 OpenAI 兼容地址需含 /v1 等路径", "en": "Leave empty for the selected service's default; a custom OpenAI-compatible base includes /v1 if required"}, "default": ""},
     {"key": "model", "type": "text", "title": {"zh": "模型", "en": "Model"}, "hint": {"zh": "留空使用服务默认模型；方舟须填已开通的模型或推理接入点 ID；切换服务时检查此项", "en": "Empty uses the service default; Ark needs an enabled model or endpoint ID. Check this when changing service"}, "default": ""},
     {"key": "region", "type": "text", "title": {"zh": "微软资源区域", "en": "Microsoft resource region"}, "hint": {"zh": "微软翻译资源需要时填写，如 eastasia；其他服务留空", "en": "For Microsoft resources that require a region, e.g. eastasia; otherwise leave empty"}, "default": ""},
@@ -45,7 +50,8 @@
       {"value": "zh", "title": {"zh": "中文", "en": "Chinese"}},
       {"value": "en", "title": {"zh": "英文", "en": "English"}},
       {"value": "ja", "title": {"zh": "日文", "en": "Japanese"}}
-    ], "default": "auto"}
+    ], "default": "auto"},
+    {"key": "apiKey", "type": "password", "title": {"zh": "旧版共用密钥", "en": "Shared key (older versions)"}, "hint": {"zh": "所选服务没填自己的密钥时用它；各服务的密钥填好后可以清空", "en": "Used by a service without its own key; clear it once each service has its own"}}
   ],
   "ai": {"expose": true}
 }

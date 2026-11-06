@@ -7,6 +7,10 @@
 #include "Http.h"
 
 #include <QElapsedTimer>
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QProcess>
 #include <QTemporaryDir>
 #include <QTcpServer>
@@ -306,6 +310,37 @@ private slots:
         QCOMPARE(QString::fromStdString(none.provider), QString::fromUtf8("none"));
         QCOMPARE(QString::fromStdString(none.target), QString::fromUtf8("auto"));
         QVERIFY(none.key.empty());
+    }
+
+    // #10: each service its own key; switching back and forth keeps them apart,
+    // and the shared apiKey of 2.1.1 stays in use where a service has none.
+    void eachServiceHasItsOwnKey()
+    {
+        const QByteArray keys = "\"deeplKey\":\"d:fx\",\"openaiKey\":\" o \",\"apiKey\":\"shared\"";
+        const auto keyFor = [&](const char* provider) {
+            return QString::fromStdString(
+                tr::settingsFrom(parse("{\"provider\":\"" + QByteArray(provider) + "\"," + keys + "}")).key);
+        };
+        QCOMPARE(keyFor("deepl"), QString::fromUtf8("d:fx"));
+        QCOMPARE(keyFor("openai"), QString::fromUtf8("o"));
+        QCOMPARE(keyFor("deepl"), QString::fromUtf8("d:fx"));
+        QCOMPARE(keyFor("deepseek"), QString::fromUtf8("shared")); // none of its own yet
+        QCOMPARE(keyFor("something-else"), QString::fromUtf8("o")); // spoken to as OpenAI
+
+        for (const char* p : {"deepl", "microsoft", "openai", "deepseek", "doubao", "hunyuan"})
+            QCOMPARE(QString::fromStdString(tr::keyField(p)),
+                QString::fromUtf8(std::string(p) == "openai" ? "openaiKey" : (std::string(p) + "Key").c_str()));
+
+        // The manifest declares every one of them, or the host never hands it over.
+        QFile file(QStringLiteral(WINSHUN_TRANSLATE_MANIFEST));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QStringList declared;
+        for (const QJsonValue& v : QJsonDocument::fromJson(file.readAll()).object().value(u"settings").toArray())
+            if (v.toObject().value(u"type").toString() == u"password")
+                declared << v.toObject().value(u"key").toString();
+        for (const char* p : {"deepl", "microsoft", "openai", "deepseek", "doubao", "hunyuan"})
+            QVERIFY2(declared.contains(QString::fromStdString(tr::keyField(p))), p);
+        QVERIFY(declared.contains(QStringLiteral("apiKey")));
     }
 
     void deeplHostFollowsTheKey()

@@ -80,13 +80,26 @@ unsigned nextCodePoint(const std::string& s, std::size_t i, std::size_t& length)
 
 } // namespace
 
+std::string keyField(const std::string& provider)
+{
+    for (const char* known : {"deepl", "microsoft", "deepseek", "doubao", "hunyuan"})
+        if (provider == known)
+            return provider + "Key";
+    return "openaiKey"; // openai, and anything else spoken to the same way
+}
+
 Settings settingsFrom(const Json& json)
 {
     Settings s;
     const std::string provider = lower(winshun::trim(json["provider"].toString()));
     if (!provider.empty())
         s.provider = provider;
-    s.key = winshun::trim(json["apiKey"].toString());
+    // Each service keeps its own key (#10), so switching services and back
+    // does not send one service's key to another. apiKey is the one shared
+    // key of 2.1.1 and earlier: still used by a service with none of its own.
+    s.key = winshun::trim(json[keyField(s.provider)].toString());
+    if (s.key.empty())
+        s.key = winshun::trim(json["apiKey"].toString());
     s.endpoint = winshun::trim(json["endpoint"].toString());
     s.model = winshun::trim(json["model"].toString());
     s.region = winshun::trim(json["region"].toString());
@@ -269,8 +282,8 @@ winshun::Item setupRow(bool chinese)
     // Enter opens Win顺's settings at this plugin's card ("winshun:settings"
     // is Win顺's own, never handed to the browser).
     return Item("setup", chinese ? "还没有设置翻译服务" : "No translation service set up",
-        chinese ? "Enter 打开设置 → 插件 → 翻译：选 DeepL 或 OpenAI 兼容，填 API 密钥；没填之前不联网"
-                : "Enter opens Settings → Plugins → Translate: pick DeepL or OpenAI-compatible and enter the API key; nothing is sent until then")
+        chinese ? "Enter 打开设置 → 插件 → 翻译：选服务，填这个服务的密钥；没填之前不联网"
+                : "Enter opens Settings → Plugins → Translate: pick a service and enter its key; nothing is sent until then")
         .withIcon(kIcon)
         .withUrl("winshun:settings");
 }

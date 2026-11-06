@@ -20,8 +20,13 @@ struct Settings {
     std::string target = "auto"; // auto | zh | en | ja (or any code the service knows)
 };
 
-// From the settings Win顺 hands over at initialize (the key comes from the
-// Credential Manager). Missing or blank values get their defaults.
+// The setting that holds this service's own key: deeplKey, microsoftKey,
+// deepseekKey, doubaoKey, hunyuanKey, or openaiKey for any other.
+std::string keyField(const std::string& provider);
+
+// From the settings Win顺 hands over at initialize (the keys come from the
+// Credential Manager). Missing or blank values get their defaults; a service
+// without a key of its own uses the shared apiKey of 2.1.1 and earlier.
 Settings settingsFrom(const winshun::Json& json);
 
 // Whether the text has a Chinese, Japanese or Korean character (kana and
