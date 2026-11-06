@@ -59,6 +59,7 @@
 #include "miniz.h"
 
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -4533,6 +4534,129 @@ private slots:
         const std::size_t bytes = memory.entries + memory.times + memory.sizes;
         QVERIFY2(bytes <= index.slotCount() * 25,
             qPrintable(u"entry metadata uses %1 bytes per slot"_s.arg(static_cast<double>(bytes) / index.slotCount())));
+    }
+
+    void mappedIndexStorageSurvivesCompactionAndSnapshot()
+    {
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+        FileIndex index(0); // exercise disk-backed production storage even with a small fixture
+        const EntryId root = index.addRoot("C:");
+        const EntryId gone = index.add(root, "gone", EntryFlag::Directory);
+        const EntryId keep = index.add(root, "keep", EntryFlag::Directory);
+        const auto name = index.storeName("same.txt");
+        for (std::size_t i = 0; i < FileIndex::kChunkSize * 24; ++i)
+            index.addStored(gone, name, 0); // several mapped segments, all later released
+        const EntryId file = index.add(keep, "survives.txt", 0);
+        index.setModified(file, 1'700'000'001);
+        index.setCreated(file, 1'600'000'002);
+        index.setSize(file, packSize(12345));
+        const auto before = index.memoryUse();
+        QCOMPARE(before.privateChunks, std::size_t(0));
+        QCOMPARE(before.mappingFailures, std::size_t(0));
+        QVERIFY(before.mappedFiles >= (32u << 20));
+        for (const auto& [address, size] : index.memoryBlocks()) {
+            MEMORY_BASIC_INFORMATION info {};
+            QVERIFY(::VirtualQuery(address, &info, sizeof info));
+            QCOMPARE(info.Type, DWORD(MEM_MAPPED));
+        }
+        index.remove(gone);
+        index.compact();
+        QCOMPARE(index.slotCount(), std::size_t(3));
+        QVERIFY(index.memoryUse().mappedFiles < before.mappedFiles);
+        const QString snapshotFile = temp.filePath(u"mapped.bin"_s);
+        QVERIFY(snapshot::save(index, {}, {}, {}, snapshotFile));
+        auto loaded = snapshot::load(snapshotFile);
+        QVERIFY(loaded);
+        for (const auto* tree : {&index, loaded->index.get()}) {
+            const auto id = tree->findPath(L"C:\\keep\\survives.txt");
+            QVERIFY(id != kNoEntry);
+            QCOMPARE(tree->modified(id), FileTime(1'700'000'001));
+            QCOMPARE(tree->created(id), FileTime(1'600'000'002));
+            QCOMPARE(tree->size(id), packSize(12345));
+        }
+    }
+
+    void indexPrivateStorageStaysWithinBudget()
+    {
+        constexpr std::size_t budget = 2u << 20;
+        FileIndex index(budget);
+        const auto root = index.addRoot("C:");
+        const auto name = index.storeName("shared.txt");
+        for (std::size_t i = 0; i < FileIndex::kChunkSize * 5; ++i)
+            index.addStored(root, name, 0);
+        const auto memory = index.memoryUse();
+        QVERIFY(memory.privateChunks <= budget);
+        QVERIFY(memory.mappedFiles > 0);
+        QCOMPARE(memory.mappingFailures, std::size_t(0));
+        QCOMPARE(index.name(static_cast<EntryId>(index.slotCount() - 1)), std::string_view("shared.txt"));
+        index.setInterning(true);
+        QVERIFY(index.memoryUse().intern <= (1u << 20)); // many entries with two distinct names
+        QCOMPARE(index.storeName("shared.txt"), name);
+        index.setInterning(false);
+    }
+
+    void indexStoragePrivateCommitComparison()
+    {
+        const auto committed = [] {
+            PROCESS_MEMORY_COUNTERS_EX memory {};
+            memory.cb = sizeof memory;
+            return ::GetProcessMemoryInfo(::GetCurrentProcess(),
+                reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&memory), sizeof memory) ? memory.PrivateUsage : SIZE_T(0);
+        };
+        const auto measure = [&](std::size_t budget) {
+            const auto before = committed();
+            FileIndex index(budget);
+            const auto root = index.addRoot("C:");
+            const auto name = index.storeName("representative.txt");
+            QElapsedTimer clock;
+            clock.start();
+            constexpr std::size_t count = 3'000'000;
+            for (std::size_t i = 0; i < count; ++i)
+                index.addStored(root, name, 0);
+            const auto after = committed();
+            const auto buildMs = clock.elapsed();
+            clock.restart();
+            std::size_t found = 0;
+            for (std::size_t i = 0; i < index.chunkCount(); ++i) {
+                for (const auto& entry : index.chunk(i))
+                    found += index.name(entry) == "representative.txt";
+            }
+            qInfo("storage budget=%zu: private delta=%zu KiB, build=%lld ms, full name scan=%lld ms",
+                budget, (after - before) / 1024, buildMs, clock.elapsed());
+            return std::pair {after > before ? after - before : SIZE_T(0), found};
+        };
+        const auto heap = measure(256u << 20);
+        const auto mapped = measure(0);
+        QCOMPARE(heap.second, std::size_t(3'000'000));
+        QCOMPARE(mapped.second, heap.second);
+        QVERIFY(heap.first > (60u << 20));
+        QVERIFY2(mapped.first < heap.first / 4, "mapped index chunks must reduce actual process private commit, not just working set");
+    }
+
+    void sparseMftDoesNotReserveForEverySlot()
+    {
+        class EmptyMft final : public ntfs::RecordSource {
+        public:
+            std::wstring problem;
+            bool valid() const noexcept override { return true; }
+            const std::wstring& error() const noexcept override { return problem; }
+            std::uint64_t recordCount() const noexcept override { return 200'000'000; }
+            std::uint64_t bytes() const noexcept override { return recordCount() * 1024; }
+            std::uint64_t bytesDone() const noexcept override { return bytes(); }
+            bool next() override { return false; } // no live records in the supplied view
+            std::uint32_t firstRecord() const noexcept override { return 0; }
+            std::size_t blockRecords() const noexcept override { return 0; }
+            bool parse(std::size_t, ntfs::FileRecord&) override { return false; }
+        } source;
+        PROCESS_MEMORY_COUNTERS_EX before {}, after {};
+        QVERIFY(::GetProcessMemoryInfo(::GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&before), sizeof before));
+        FileIndex index;
+        MftTree tree;
+        QVERIFY(tree.read(source, index, {}));
+        QVERIFY(::GetProcessMemoryInfo(::GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&after), sizeof after));
+        QVERIFY(after.PrivateUsage < before.PrivateUsage + (64u << 20));
+        QCOMPARE(index.slotCount(), std::size_t(0));
     }
 
     void indexSizesSurviveTreeChanges()

@@ -77,6 +77,7 @@ private:
     // One reading: memory as Task Manager counts it, bytes.
     struct Reading {
         std::uint64_t main = 0, plugins = 0, documents = 0, service = 0;
+        std::uint64_t workingSet = 0, privateCommit = 0;
         std::uint32_t biggestDocumentKb = 0; // the largest WinShunExtract, the service's too
         double cpu = 0, serviceCpu = 0; // percent of the whole machine, over the last second
         double read = 0, serviceRead = 0; // MB/s

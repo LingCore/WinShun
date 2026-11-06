@@ -20,6 +20,8 @@ struct Process {
     std::uint64_t cpu = 0; // user + kernel time, 100 ns
     std::uint64_t readBytes = 0; // all reads since it started (files, the volume, pipes)
     wchar_t exe[40] {}; // "WinShunExtract.exe"; cut if longer
+    std::uint64_t workingSetBytes = 0; // all resident pages, including mapped files
+    std::uint64_t privateCommitBytes = 0; // committed private memory, resident or not
 };
 
 struct Look {
@@ -63,6 +65,7 @@ std::uint64_t residentBytes(const std::vector<std::pair<const void*, std::size_t
 struct Map {
     std::uint64_t total = 0;
     std::uint64_t fileIndex = 0;
+    std::uint64_t fileIndexShared = 0; // resident file-backed pages; outside private total
     std::uint64_t ownProgram = 0; // WinShun*.exe/.dll
     std::uint64_t qt = 0; // Qt6*.dll and Qt's plugins
     std::uint64_t graphics = 0; // the graphics driver's and Direct3D's dlls

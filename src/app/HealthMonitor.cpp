@@ -249,6 +249,8 @@ void HealthMonitor::apply(const memory::Look& look, bool fine, std::optional<Map
     for (const memory::Process* p : mine) {
         if (p->pid == look.self) {
             r.main = p->privateBytes;
+            r.workingSet = p->workingSetBytes;
+            r.privateCommit = p->privateCommitBytes;
         } else if (document(*p)) {
             r.documents += p->privateBytes;
             r.biggestDocumentKb = std::max(r.biggestDocumentKb, static_cast<std::uint32_t>(p->privateBytes / 1024));
@@ -345,6 +347,8 @@ void HealthMonitor::publish()
     QVariantMap now;
     now[u"total"_s] = (r.main + r.plugins + r.documents) / kMb;
     now[u"mainMb"_s] = r.main / kMb;
+    now[u"workingSet"_s] = r.workingSet / kMb;
+    now[u"privateCommit"_s] = r.privateCommit / kMb;
 
     // The main process told apart (memory::map, at most two seconds old,
     // scaled to the newest reading: what changed since is in the windows'
@@ -365,9 +369,15 @@ void HealthMonitor::publish()
         const double program = static_cast<double>(m.ownProgram + m.qt + m.graphics + m.system + m.stacks);
         const double fileIndex = static_cast<double>(m.fileIndex) + tables;
         const double windows = std::max(0.0, main - fileIndex - pictures - program);
-        const double parked = std::max(0.0, static_cast<double>(m_fileIndexHeld) - static_cast<double>(m.fileIndex)) / kMb;
+        const double parked = std::max(0.0, static_cast<double>(m_fileIndexHeld)
+            - static_cast<double>(m.fileIndex + m.fileIndexShared)) / kMb;
+        QString indexNote = tr("搜文件名用的");
+        if (m.fileIndexShared >= 1024 * 1024)
+            indexNote += tr("；映射文件另有 %1 MB 驻留，由系统按需缓存").arg(qRound(m.fileIndexShared / kMb));
+        if (parked >= 4)
+            indexNote += tr("；约 %1 MB 当前未驻留，不代表实际磁盘占用").arg(qRound(parked));
         part(u"fileIndex"_s, tr("文件索引"), fileIndex,
-            parked >= 4 ? tr("搜文件名用的；另有 %1 MB 已暂存到磁盘，用到时读回").arg(qRound(parked)) : tr("搜文件名用的"));
+            indexNote);
         part(u"windows"_s, tr("窗口和数据"), windows, tr("搜索框、设置、剪贴板历史等正在用的"));
         part(u"pictures"_s, tr("缩略图"), pictures, tr("列表和剪贴板里的小图，再看时不用重读"));
         part(u"program"_s, tr("程序本身"), program, tr("Win顺、Qt 和系统的代码，各个线程"));
@@ -453,6 +463,8 @@ HealthMonitor* HealthMonitor::demo(QObject* parent, bool idle)
 
     Reading r;
     r.main = (idle ? 21 : 352) * mb;
+    r.workingSet = r.main + 18 * mb;
+    r.privateCommit = (idle ? 148 : 410) * mb;
     r.plugins = 13 * mb;
     r.documents = idle ? 0 : 118 * mb;
     r.service = (idle ? 9 : 104) * mb;

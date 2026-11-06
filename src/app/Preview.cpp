@@ -5863,8 +5863,26 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
     RECT searchRect {}, sourceRect {};
     ::GetWindowRect(reinterpret_cast<HWND>(window->winId()), &searchRect);
     ::GetWindowRect(root, &sourceRect);
-    RECT overlap {};
-    check(!::IntersectRect(&overlap, &searchRect, &sourceRect), "search keeps clear of the Explorer fixture");
+    const RECT fileList = folderview::explorerFileList(root, tab);
+    check(searchRect.right <= sourceRect.right && searchRect.left >= sourceRect.left
+            && searchRect.top >= fileList.top && searchRect.bottom <= fileList.bottom,
+        "compact search stays inside the originating Explorer file area");
+    check(window->width() <= 460, "folder search uses a compact width");
+    check(field && field->property("text").toString() == u"follow_"_s,
+        "folder input shows only the query, keeping its path out of editable text");
+    if (field) {
+        field->setProperty("text", u"follow_2"_s);
+        waiting.restart();
+        while ((launcher->searching() || launcher->results()->count() != 1) && waiting.elapsed() < 5000)
+            pump(20);
+        check(launcher->query() == prefix + u"follow_2"_s && launcher->results()->count() == 1,
+            "editing the visible query preserves the folder context and searches it");
+        field->setProperty("text", QString());
+        check(launcher->query() == prefix && !launcher->typingFolder().isEmpty(),
+            "clearing the query keeps the folder context");
+        check(search(u"follow_"_s, 3), "query restored after input editing");
+        settle(window, 3);
+    }
     const auto bounds = [](const RECT& rect) { return QJsonArray {int(rect.left), int(rect.top),
         int(rect.right - rect.left), int(rect.bottom - rect.top)}; };
     report.insert(u"source_bounds"_s, bounds(sourceRect));
@@ -5997,7 +6015,7 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
     check(launcher->currentRow() == 1 && follows(), "Down follows in the second tab");
     key(Qt::Key_Down);
     check(launcher->currentRow() == 2 && follows(), "Down follows to the last child in the second tab");
-    check(launcher->keyHints().value(u"second"_s).toString() == u"打开位置"_s,
+    check(launcher->keyHints().value(u"second"_s).toString() == QCoreApplication::translate("ws::Launcher", "打开位置"),
         "a child of the folder keeps the plain 打开位置 hint");
     const QString nestedFile = QDir::toNativeSeparators(folder + u"\\child\\nested-only.txt"_s);
     launcher->setQuery(prefix + u"nested-only"_s);
@@ -6005,7 +6023,7 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
     while ((launcher->searching() || launcher->results()->count() < 1) && waiting.elapsed() < 5000)
         pump(20);
     pump(300);
-    check(launcher->keyHints().value(u"second"_s).toString() == u"在原窗口定位"_s,
+    check(launcher->keyHints().value(u"second"_s).toString() == QCoreApplication::translate("ws::Launcher", "在原窗口定位"),
         "a result in a subfolder says Ctrl+Enter locates it in the original window");
     check(selected() != nestedFile && QString::fromStdWString(filemanager::explorerFolder(secondTab)) == folder,
         "moving onto the subfolder result left the second tab where it was");
@@ -6102,10 +6120,13 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
                      : launcher->query() == prefix && !launcher->typingFolder().isEmpty(),
         everywhere ? "the whole PC: no folder before the words" : "the tab's folder before the words");
 
-    // One side of a dual display at 150 % is narrower than the launcher
-    // (the screenshot in GitHub #82): as narrow as it gets (640), its right
-    // edge and its rows' end 12 px inside the list, reaching left over the
-    // rest of the lister; the next opening elsewhere has the user's width.
+    // The compact width is temporary; measure the user's regular launcher
+    // before testing another folder opening (GitHub #234).
+    app.hideLauncher();
+    pump(300);
+    app.showLauncher();
+    pump(300);
+    settle(window, 3);
     const int userWidth = window->width();
     app.hideLauncher();
     pump(300);
@@ -6117,10 +6138,10 @@ bool probeFolderTyping(App& app, const QDir& out, const QString& folder, QJsonOb
     ::GetWindowRect(reinterpret_cast<HWND>(window->winId()), &boxRect);
     RECT clientOnScreen = client;
     ::MapWindowPoints(lister, nullptr, reinterpret_cast<POINT*>(&clientOnScreen), 2);
-    check(std::abs(int(boxRect.right - boxRect.left) - qRound(640 * scale)) <= 2, "over a narrow list the Opus box is 640 px wide");
+    check(std::abs(int(boxRect.right - boxRect.left) - qRound(460 * scale)) <= 2, "folder typing is 460 logical px wide");
     check(std::abs(listRect.right - boxRect.right - gap) <= 2 && boxRect.bottom <= listRect.bottom - gap + 2
-            && boxRect.left < listRect.left && boxRect.left >= clientOnScreen.left,
-        "over a narrow list: 12 px in from its right, rows ending above its bottom, over the lister to its left");
+            && boxRect.left >= listRect.left && boxRect.left >= clientOnScreen.left,
+        "over a narrow list: compact search fits inside, 12 px from its right and above its bottom");
     report.insert(u"opus_narrow_list"_s, QJsonArray {int(listRect.left), int(listRect.top), int(listRect.right - listRect.left),
         int(listRect.bottom - listRect.top)});
     report.insert(u"opus_narrow_box"_s, QJsonArray {int(boxRect.left), int(boxRect.top), int(boxRect.right - boxRect.left),

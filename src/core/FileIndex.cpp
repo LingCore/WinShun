@@ -4,6 +4,11 @@
 #include "Pinyin.h"
 #include "TextUtil.h"
 #include "Wtf8.h"
+#include "Win32Util.h"
+
+#include <QDebug>
+#include <QDir>
+#include <QUuid>
 
 #include <algorithm>
 #include <bit>
@@ -11,6 +16,7 @@
 #include <cstring>
 #include <cwctype>
 #include <tuple>
+#include <type_traits>
 
 #include <windows.h>
 
@@ -112,7 +118,104 @@ void RecordTable::erase(std::uint32_t record) noexcept
     --m_count;
 }
 
-FileIndex::FileIndex() = default;
+// A bounded heap tier for ordinary indexes, then file-backed segments. A
+// segment lives as long as any of its chunks: compaction can release old
+// names and tail entries without invalidating the chunks that remain.
+struct FileIndex::Storage {
+    struct Usage {
+        std::size_t privateBytes = 0;
+        std::size_t mappedBytes = 0;
+        std::size_t failures = 0;
+    };
+    struct Segment {
+        win32::UniqueHandle file;
+        win32::UniqueHandle mapping;
+        void* data = nullptr;
+        std::size_t used = 0;
+        std::size_t size = 0;
+        std::shared_ptr<Usage> usage;
+
+        ~Segment()
+        {
+            if (data) {
+                ::UnmapViewOfFile(data);
+                usage->mappedBytes -= size;
+            }
+        }
+    };
+    static constexpr std::size_t kSegmentBytes = 16u << 20;
+    std::shared_ptr<Usage> usage = std::make_shared<Usage>();
+    std::weak_ptr<Segment> current;
+    const std::size_t budget;
+
+    explicit Storage(std::size_t privateBudget) : budget(privateBudget) {}
+
+    std::shared_ptr<Segment> segment()
+    {
+        auto block = std::make_shared<Segment>();
+        const QString path = QDir::temp().filePath(QStringLiteral("WinShun-index-%1.tmp")
+            .arg(QUuid::createUuid().toString(QUuid::WithoutBraces)));
+        block->file = win32::UniqueHandle(::CreateFileW(reinterpret_cast<LPCWSTR>(path.utf16()),
+            GENERIC_READ | GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+            FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, nullptr));
+        if (!block->file.valid())
+            return {};
+        block->mapping = win32::UniqueHandle(::CreateFileMappingW(block->file.get(), nullptr,
+            PAGE_READWRITE, 0, static_cast<DWORD>(kSegmentBytes), nullptr));
+        if (!block->mapping.valid())
+            return {};
+        block->data = ::MapViewOfFile(block->mapping.get(), FILE_MAP_WRITE, 0, 0, kSegmentBytes);
+        if (!block->data)
+            return {};
+        block->size = kSegmentBytes;
+        block->usage = usage;
+        usage->mappedBytes += block->size;
+        return block;
+    }
+
+    template <typename T> std::shared_ptr<T[]> allocate(std::size_t count)
+    {
+        static_assert(std::is_trivially_destructible_v<T>);
+        const std::size_t bytes = count * sizeof(T);
+        assert(bytes <= kSegmentBytes);
+        if (bytes > budget || usage->privateBytes > budget - bytes) {
+            auto block = current.lock();
+            std::size_t offset = block ? (block->used + alignof(T) - 1) & ~(alignof(T) - 1) : 0;
+            if (!block || offset + bytes > block->size) {
+                block = segment();
+                current = block;
+                offset = 0;
+            }
+            if (block) {
+                auto* data = reinterpret_cast<T*>(static_cast<char*>(block->data) + offset);
+                std::uninitialized_value_construct_n(data, count);
+                block->used = offset + bytes;
+                return std::shared_ptr<T[]>(std::move(block), data);
+            }
+            // Disk full/unavailable: preserve the index instead of losing it.
+            // Count it in diagnostics; never silently call this file-backed.
+            if (usage->failures++ == 0)
+                qWarning("File index could not allocate mapped storage (error %lu); using private memory", ::GetLastError());
+        }
+        T* data = new T[count]();
+        usage->privateBytes += bytes;
+        return std::shared_ptr<T[]>(data, [usage = usage, bytes](T* p) {
+            delete[] p;
+            usage->privateBytes -= bytes;
+        });
+    }
+};
+
+std::size_t FileIndex::defaultPrivateBudget() noexcept
+{
+    MEMORYSTATUSEX memory {sizeof memory};
+    constexpr std::size_t mb = 1u << 20;
+    return ::GlobalMemoryStatusEx(&memory)
+        ? static_cast<std::size_t>(std::clamp<std::uint64_t>(memory.ullAvailPhys / 32, 16 * mb, 128 * mb))
+        : 64 * mb;
+}
+
+FileIndex::FileIndex(std::size_t privateBudget) : m_storage(std::make_unique<Storage>(privateBudget)) {}
 FileIndex::~FileIndex() = default;
 
 std::span<const Entry> FileIndex::chunk(std::size_t index) const noexcept
@@ -134,6 +237,9 @@ FileIndex::MemoryUse FileIndex::memoryUse() const noexcept
     for (const auto& [folder, table] : m_childTables)
         use.childTables += (table.buckets.capacity() + table.previous.capacity()) * sizeof(EntryId);
     use.intern = m_intern.capacity() * sizeof(std::uint64_t);
+    use.privateChunks = m_storage->usage->privateBytes;
+    use.mappedFiles = m_storage->usage->mappedBytes;
+    use.mappingFailures = m_storage->usage->failures;
     return use;
 }
 
@@ -154,14 +260,15 @@ std::vector<std::pair<const void*, std::size_t>> FileIndex::memoryBlocks() const
 
 void FileIndex::warm() const noexcept
 {
+    // A large index must not fault several GiB back in just because the
+    // launcher opened. Demand paging serves searches; dates are only read
+    // for matches. Keep the fast warm-up for small, privately held indexes.
+    if (m_storage->usage->mappedBytes != 0 || m_storage->usage->privateBytes > defaultPrivateBudget())
+        return;
     std::vector<WIN32_MEMORY_RANGE_ENTRY> ranges;
     ranges.reserve(m_chunks.size() * 3 + m_names.size());
     for (const auto& chunk : m_chunks)
         ranges.push_back({chunk.get(), kChunkSize * sizeof(Entry)});
-    for (const auto& chunk : m_times)
-        ranges.push_back({chunk.get(), kChunkSize * sizeof(FileTime)});
-    for (const auto& chunk : m_created)
-        ranges.push_back({chunk.get(), kChunkSize * sizeof(FileTime)});
     for (const auto& chunk : m_names)
         ranges.push_back({chunk.get(), kNameChunkSize});
     // Pages written out to the pagefile: read in large requests, not one by
@@ -179,9 +286,9 @@ void FileIndex::warm() const noexcept
 EntryId FileIndex::allocate()
 {
     if ((m_count >> kChunkBits) == m_chunks.size()) {
-        m_chunks.push_back(std::make_unique<Entry[]>(kChunkSize));
-        m_times.push_back(std::make_unique<FileTime[]>(kChunkSize));
-        m_created.push_back(std::make_unique<FileTime[]>(kChunkSize));
+        m_chunks.push_back(m_storage->allocate<Entry>(kChunkSize));
+        m_times.push_back(m_storage->allocate<FileTime>(kChunkSize));
+        m_created.push_back(m_storage->allocate<FileTime>(kChunkSize));
     }
     assert(m_count < kNoEntry);
     return static_cast<EntryId>(m_count++);
@@ -226,10 +333,9 @@ void FileIndex::setInterning(bool enabled)
     }
     if (!m_intern.empty())
         return;
-    // Sized for roughly half the names being unique, at most 75% full.
+    // Grow with distinct names, not file count: a huge tree can repeat a
+    // small vocabulary millions of times (GitHub #227).
     std::size_t capacity = 1u << 16;
-    while (capacity * 3 / 4 < liveCount() / 2)
-        capacity <<= 1;
     m_intern.assign(capacity, 0);
     m_internCount = 0;
     // Seed with existing names so new entries can share them.
@@ -287,11 +393,11 @@ std::size_t FileIndex::compact(bool always, const std::function<void(const Renum
 
     // Each name still in use moves to a fresh pool once, so entries that
     // shared a name keep sharing it. Open addressing: (old + 1) << 32 | new.
-    std::vector<std::unique_ptr<char[]>> oldNames;
+    std::vector<std::shared_ptr<char[]>> oldNames;
     oldNames.swap(m_names);
 
     m_nameUsed = kNameChunkSize; // the next name starts a new chunk
-    std::vector<std::uint64_t> moved(std::bit_ceil(std::max<std::size_t>(live / 2, 1024)), 0);
+    std::vector<std::uint64_t> moved(1024, 0); // grows with names actually moved, not repeated entries
     std::size_t movedCount = 0;
     const auto slotFor = [](const std::vector<std::uint64_t>& table, std::uint64_t key) {
         const std::size_t mask = table.size() - 1;
@@ -406,7 +512,7 @@ std::uint32_t FileIndex::appendName(std::string_view name)
     if (m_nameUsed + head + name.size() > kNameChunkSize) {
         // Zeroed: the rest of a chunk reads as its end. Padding lets SIMD
         // name matching read a little past the last name.
-        m_names.push_back(std::make_unique<char[]>(kNameChunkSize + text::kReadPastEnd));
+        m_names.push_back(m_storage->allocate<char>(kNameChunkSize + text::kReadPastEnd));
         m_nameUsed = 0;
     }
     const auto offset = static_cast<std::uint32_t>(((m_names.size() - 1) << kNameChunkBits) + m_nameUsed);

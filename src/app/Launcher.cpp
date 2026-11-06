@@ -848,6 +848,14 @@ void Launcher::setTypingFolder(const QString& prefix)
         search();
 }
 
+void Launcher::setFolderSearch(bool enabled)
+{
+    if (m_folderSearch == enabled)
+        return;
+    m_folderSearch = enabled;
+    emit folderSearchChanged();
+}
+
 void Launcher::setFolderTyping(const QString& how)
 {
     m_typingLevelDefault = how == u"level";

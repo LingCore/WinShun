@@ -1,5 +1,13 @@
 find_package(Qt6 6.8 REQUIRED COMPONENTS Test QuickTest)
 
+qt_add_executable(tst_paster tst_paster.cpp ${PROJECT_SOURCE_DIR}/src/app/platform/Paster.cpp)
+target_include_directories(tst_paster PRIVATE ${PROJECT_SOURCE_DIR}/src/app ${PROJECT_SOURCE_DIR}/src/core)
+target_link_libraries(tst_paster PRIVATE winshun_options Qt6::Test user32 comctl32)
+set_target_properties(tst_paster PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+add_test(NAME tst_paster COMMAND tst_paster -o -,txt)
+set_tests_properties(tst_paster PROPERTIES RUN_SERIAL TRUE
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+
 qt_add_executable(tst_pluginhotkeys tst_pluginhotkeys.cpp
     ${PROJECT_SOURCE_DIR}/src/app/platform/PluginHotkeys.cpp)
 target_include_directories(tst_pluginhotkeys PRIVATE ${PROJECT_SOURCE_DIR}/src/app)

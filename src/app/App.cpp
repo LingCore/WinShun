@@ -3057,9 +3057,8 @@ void App::showFolderSearch(HWND root, HWND tab, bool opus, const QString& folder
     const bool everywhere = opus && m_settings.opusTypingScope == u"all";
     const QString prefix = everywhere ? QString() : folder.endsWith(u'\\') ? folder + u' ' : folder + u"\\ "_s;
     // On the monitor of the list typed in (a lister over two may have the other on the other).
-    // Typed in Explorer, beside its window, as long as all of the box keeps
-    // clear of it there (GitHub #141); else, as in Opus, in the bottom right
-    // corner of its file list, never in a corner of the screen (GitHub #203).
+    // Folder typing uses a compact panel in the file list's bottom-right
+    // corner, even when there is space beside the window (GitHub #234).
     const RECT list = opus ? RECT {} : folderview::explorerFileList(root, tab);
     // Pinned and up, or the panel: where it is (showLauncher).
     const QString kept = m_launcher->pinned() && launcherShown() ? u"pinned"_s : m_launcher->panel() ? u"panel"_s : QString();
@@ -3567,6 +3566,17 @@ void App::showSettings(const std::function<void(QQuickWindow*)>& at)
             m_diagnosticsExport = std::jthread([this, log, context = std::move(context), index, dataFolder, serviceFolder]() mutable {
                 context[u"file_index_ready"_s] = index->state() == IndexService::State::Ready;
                 context[u"file_index_entries"_s] = static_cast<qint64>(index->itemCount());
+                if (const auto files = index->index()) {
+                    const auto lock = files->readLock();
+                    const auto use = files->memoryUse();
+                    context[u"file_index_storage"_s] = QJsonObject {
+                        {u"slots"_s, qint64(files->slotCount())}, {u"live"_s, qint64(files->liveCount())},
+                        {u"entries_bytes"_s, qint64(use.entries)}, {u"times_bytes"_s, qint64(use.times)},
+                        {u"names_bytes"_s, qint64(use.names)}, {u"private_chunks_bytes"_s, qint64(use.privateChunks)},
+                        {u"mapped_file_bytes"_s, qint64(use.mappedFiles)}, {u"mapping_failures"_s, qint64(use.mappingFailures)},
+                        {u"folder_tables_bytes"_s, qint64(use.folderRecords)},
+                        {u"child_tables_bytes"_s, qint64(use.childTables)}, {u"intern_bytes"_s, qint64(use.intern)}};
+                }
                 context[u"file_index_refreshing"_s] = index->isRefreshing();
                 context[u"content"_s] = index->contentIndexer()->diagnosticStatus();
                 QJsonArray disks;
@@ -4926,6 +4936,7 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
     // or caretRequested places the caret; replay then loses the first key.
     // The typing callers deliver again after this preparation has finished.
     QScopedValueRollback opening(m_launcherOpening, true);
+    m_launcher->setFolderSearch(avoid && (inside || !::IsRectEmpty(&orInto)));
     cancelTypingSelection();
     m_typingOrigin = {}; // opened anew: set again by typingFolderKnown when that is why
     if (!query.isEmpty())
@@ -5001,14 +5012,14 @@ void App::showLauncher(const QString& query, const std::optional<taskbar::Spot>&
             // Over an Opus file list: its lister's other lists and client
             // area are where it may reach when the list is too small for it.
             // Into Explorer's (orInto): within its window's client area.
-            const bool orIntoList = !inside && !::IsRectEmpty(&orInto);
+            const bool orIntoList = !::IsRectEmpty(&orInto);
             const HWND root = inside || orIntoList ? ::GetAncestor(avoid, GA_ROOT) : nullptr;
             RECT client {};
             const bool framed = root && ::GetClientRect(root, &client)
                 && ::ClientToScreen(root, reinterpret_cast<POINT*>(&client.left))
                 && ::ClientToScreen(root, reinterpret_cast<POINT*>(&client.right));
-            m_placement->avoidNative(native(bounds), screen, inside, inside ? native(folderview::opusFileLists(root)) : QRect(),
-                framed ? native(client) : QRect(), orIntoList ? native(orInto) : QRect());
+            m_placement->avoidNative(orIntoList ? native(orInto) : native(bounds), screen, inside || orIntoList,
+                inside && !orIntoList ? native(folderview::opusFileLists(root)) : QRect(), framed ? native(client) : QRect());
         } else
             m_placement->placeOn(screen);
     }

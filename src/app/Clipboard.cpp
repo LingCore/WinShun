@@ -2,6 +2,7 @@
 
 #include "ClipFiles.h"
 #include "ColorText.h"
+#include "Diagnostics.h"
 #include "FileIconProvider.h"
 #include "HotkeySteps.h"
 #include "TextField.h"
@@ -191,10 +192,16 @@ Clipboard::Clipboard(ClipStore* store, ClipboardWatcher* watcher, QObject* paren
         }
         m_pasting = false;
         if (front) {
-            if (!paste::sendPasteKeys(m_pasteWindow, guard.get()) && m_into == Into::CurrentProgram)
+            const auto result = paste::sendPasteKeys(m_pasteWindow, guard.get());
+            diagnostics::record(u"clipboard-paste"_s,
+                {{u"sent"_s, int(result.sent)}, {u"requested"_s, int(result.requested)},
+                 {u"error"_s, qint64(result.error)},
+                 {u"method"_s, result.method == paste::Result::Method::EditMessage ? u"edit-message"_s
+                     : result.method == paste::Result::Method::Keys ? u"keys"_s : u"failed"_s}});
+            if (!result)
                 failPaste(tr("内容已复制，自动粘贴失败，请按 Ctrl+V 粘贴"));
-        } else if (m_window && m_window->isVisible())
-            flash(tr("已复制。那个窗口没有回到前面，请自己按 Ctrl+V 粘贴"));
+        } else
+            failPaste(tr("已复制。那个窗口没有回到前面，请自己按 Ctrl+V 粘贴"));
     });
     m_returnTimer.setInterval(10ms);
     connect(&m_returnTimer, &QTimer::timeout, this, [this] {
@@ -631,7 +638,7 @@ void Clipboard::failPaste(const QString& message)
     m_pasteGuard.reset();
     m_pasting = false;
     flash(message);
-    if (m_into == Into::CurrentProgram)
+    if (m_into == Into::CurrentProgram || !m_active)
         emit quickPasteFailed(message);
 }
 

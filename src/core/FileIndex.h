@@ -222,7 +222,10 @@ public:
     static constexpr std::size_t kNameChunkBits = 18;
     static constexpr std::size_t kNameChunkSize = std::size_t {1} << kNameChunkBits;
 
-    FileIndex();
+    // Large indexes spill new chunks into temporary mapped files. The budget
+    // limits private chunk allocations, not the OS-managed file cache.
+    static std::size_t defaultPrivateBudget() noexcept;
+    explicit FileIndex(std::size_t privateBudget = defaultPrivateBudget());
     ~FileIndex();
     FileIndex(const FileIndex&) = delete;
     FileIndex& operator=(const FileIndex&) = delete;
@@ -290,6 +293,9 @@ public:
         std::size_t folderRecords = 0;
         std::size_t childTables = 0;
         std::size_t intern = 0;
+        std::size_t privateChunks = 0;
+        std::size_t mappedFiles = 0;
+        std::size_t mappingFailures = 0;
     };
     MemoryUse memoryUse() const noexcept;
     // The big blocks the memoryUse() numbers are made of (entries, times,
@@ -298,9 +304,8 @@ public:
     // (tables on the general heap) is not in the list. Caller holds a read lock.
     std::vector<std::pair<const void*, std::size_t>> memoryBlocks() const;
 
-    // Brings the pages a name search reads (entries, times, names) back into
-    // the working set after it was emptied (IdleTrim), so the search that
-    // follows does not take them one fault at a time. Caller holds a read lock.
+    // Warms entries and names only for small, privately held indexes after
+    // IdleTrim. Large mapped indexes stay demand-paged. Caller holds a read lock.
     void warm() const noexcept;
 
     std::size_t chunkCount() const noexcept { return m_chunks.size(); }
@@ -459,7 +464,7 @@ private:
         const char* p = nameRecord(m_names, offset);
         return static_cast<unsigned char>(p[static_cast<unsigned char>(p[0]) < 0x80 ? 1 : 2]);
     }
-    static const char* nameRecord(const std::vector<std::unique_ptr<char[]>>& names, std::uint32_t offset) noexcept
+    static const char* nameRecord(const std::vector<std::shared_ptr<char[]>>& names, std::uint32_t offset) noexcept
     {
         return names[offset >> kNameChunkBits].get() + (offset & (kNameChunkSize - 1));
     }
@@ -512,10 +517,12 @@ private:
 
     mutable std::shared_mutex m_mutex;
     mutable std::shared_mutex m_writerGate; // see longReadLock()
-    std::vector<std::unique_ptr<Entry[]>> m_chunks;
-    std::vector<std::unique_ptr<FileTime[]>> m_times; // parallel to m_chunks
-    std::vector<std::unique_ptr<FileTime[]>> m_created;
-    std::vector<std::unique_ptr<char[]>> m_names;
+    struct Storage;
+    std::unique_ptr<Storage> m_storage;
+    std::vector<std::shared_ptr<Entry[]>> m_chunks;
+    std::vector<std::shared_ptr<FileTime[]>> m_times; // parallel to m_chunks
+    std::vector<std::shared_ptr<FileTime[]>> m_created;
+    std::vector<std::shared_ptr<char[]>> m_names;
     std::size_t m_count = 0;
     std::size_t m_nameUsed = kNameChunkSize; // forces allocation on first use
     std::atomic<std::size_t> m_live {0};

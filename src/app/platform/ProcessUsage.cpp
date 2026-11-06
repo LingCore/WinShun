@@ -104,6 +104,8 @@ bool readAgain(HANDLE h, Process& p)
     p.cpu = fileTime(kernel) + fileTime(user);
     p.readBytes = io.ReadTransferCount;
     p.privateBytes = memory.privateWorkingSetSize;
+    p.workingSetBytes = memory.base.WorkingSetSize;
+    p.privateCommitBytes = memory.base.PrivateUsage;
     return true;
 }
 
@@ -171,6 +173,8 @@ Look look(std::size_t& sizeHint)
                     one.parent = static_cast<std::uint32_t>(reinterpret_cast<ULONG_PTR>(p->InheritedFromUniqueProcessId));
                     one.created = p->CreateTime.QuadPart;
                     one.privateBytes = static_cast<std::uint64_t>(p->WorkingSetPrivateSize.QuadPart);
+                    one.workingSetBytes = p->WorkingSetSize;
+                    one.privateCommitBytes = p->PrivatePageCount;
                     if (pid == out.self) { // not the list itself, in this process's pages only while looking
                         const std::uint64_t list = (static_cast<std::uint64_t>(needed) + 4095) & ~std::uint64_t(4095);
                         one.privateBytes -= std::min(one.privateBytes, list);
@@ -272,9 +276,8 @@ Map map(std::vector<std::pair<const void*, std::size_t>> fileIndex)
             if (::QueryWorkingSetEx(self, info, static_cast<DWORD>(n * sizeof(info[0])))) {
                 for (std::size_t i = 0; i < n; ++i) {
                     const auto& a = info[i].VirtualAttributes;
-                    if (!a.Valid || a.Shared)
+                    if (!a.Valid)
                         continue;
-                    out.total += kPage;
                     if (index) {
                         const auto page = reinterpret_cast<const char*>(at + i * kPage);
                         auto it = std::upper_bound(fileIndex.begin(), fileIndex.end(), std::pair<const void*, std::size_t>(page, SIZE_MAX));
@@ -282,12 +285,20 @@ Map map(std::vector<std::pair<const void*, std::size_t>> fileIndex)
                             --it;
                             const auto* start = static_cast<const char*>(it->first);
                             if (page + kPage > start && page < start + it->second) {
-                                out.fileIndex += kPage;
+                                if (a.Shared)
+                                    out.fileIndexShared += kPage;
+                                else {
+                                    out.fileIndex += kPage;
+                                    out.total += kPage;
+                                }
                                 continue;
                             }
                         }
                     }
-                    into += kPage;
+                    if (!a.Shared) {
+                        out.total += kPage;
+                        into += kPage;
+                    }
                 }
             }
             at += n * kPage;
@@ -312,7 +323,7 @@ Map map(std::vector<std::pair<const void*, std::size_t>> fileIndex)
         }
         for (const Region& r : allocation) {
             if (r.state == MEM_COMMIT && !(r.protect & PAGE_GUARD))
-                count(r.base, r.base + r.size, *into, type == MEM_PRIVATE && into == &out.other);
+                count(r.base, r.base + r.size, *into, (type == MEM_PRIVATE || type == MEM_MAPPED) && into == &out.other);
         }
         allocation.clear();
     };

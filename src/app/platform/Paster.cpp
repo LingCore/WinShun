@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <cwchar>
+#include <string_view>
 #include <vector>
 
 namespace ws::paste {
@@ -69,8 +70,10 @@ bool isForeground(HWND target)
     return foreground && ::GetAncestor(foreground, GA_ROOT) == target;
 }
 
-bool sendPasteKeys(HWND target, Guard* guard)
+Result sendPasteKeys(HWND target, Guard* guard, InputSender send)
 {
+    if (!target || !isForeground(target))
+        return {.error = ERROR_INVALID_WINDOW_HANDLE};
     wchar_t className[64] {};
     ::GetClassNameW(target, className, static_cast<int>(std::size(className)));
     const pastekeys::Keys keys = std::wcscmp(className, L"mintty") == 0 || std::wcscmp(className, L"PuTTY") == 0
@@ -94,10 +97,35 @@ bool sendPasteKeys(HWND target, Guard* guard)
     for (const pastekeys::Key& k : sequence)
         inputs.push_back(key(k));
     const auto count = static_cast<UINT>(inputs.size());
-    const UINT sent = ::SendInput(count, inputs.data(), sizeof(INPUT));
+    ::SetLastError(ERROR_SUCCESS);
+    const UINT sent = send(count, inputs.data(), sizeof(INPUT));
+    const DWORD error = sent == count ? ERROR_SUCCESS : ::GetLastError();
     if (watched && sent < count)
         guard->went(sent);
-    return sent == count;
+    Result result {.method = sent == count ? Result::Method::Keys : Result::Method::None,
+        .sent = sent, .requested = count, .error = error};
+    // A partial send may already have pasted: never replay it. If Windows
+    // refused every key, standard Edit/RichEdit controls support a targeted
+    // paste without changing the clipboard formats, caret or selection.
+    // Other applications keep their own Ctrl+V semantics (no fake key messages).
+    if (sent != 0 || !isForeground(target))
+        return result;
+    GUITHREADINFO info {sizeof info};
+    if (!::GetGUIThreadInfo(::GetWindowThreadProcessId(target, nullptr), &info)
+        || !info.hwndFocus || ::GetAncestor(info.hwndFocus, GA_ROOT) != target
+        || !::IsWindowEnabled(info.hwndFocus))
+        return result;
+    ::GetClassNameW(info.hwndFocus, className, static_cast<int>(std::size(className)));
+    const std::wstring_view control(className);
+    if (control != L"Edit" && control != L"RichEdit20W" && control != L"RichEdit20A" && control != L"RICHEDIT50W")
+        return result;
+    if (::GetWindowLongPtrW(info.hwndFocus, GWL_STYLE) & ES_READONLY)
+        return result;
+    DWORD_PTR ignored = 0;
+    if (isForeground(target) && ::SendMessageTimeoutW(info.hwndFocus, WM_PASTE, 0, 0,
+            SMTO_ABORTIFHUNG | SMTO_BLOCK, 200, &ignored))
+        result.method = Result::Method::EditMessage;
+    return result;
 }
 
 } // namespace ws::paste

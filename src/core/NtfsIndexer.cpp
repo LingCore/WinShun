@@ -53,9 +53,10 @@ bool MftTree::read(
     };
     if (!reader.valid())
         return failed();
-    // Mostly one name per record; hard links add a few more. Pages of the
-    // reservation that stay unused are never touched, so they cost no memory.
-    const std::uint64_t records = reader.recordCount();
+    // MFT slots include unused records. vector::reserve commits private
+    // memory even if the pages are never touched; seed a bounded capacity
+    // and grow with the live records actually read (GitHub #227).
+    const std::uint64_t records = std::min<std::uint64_t>(reader.recordCount(), 1u << 20);
     m_files.reserve(static_cast<std::size_t>(records + records / 8));
     m_folders.reserve(static_cast<std::size_t>(records / 5));
 

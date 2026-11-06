@@ -39,6 +39,15 @@ public:
 // Presses the paste keys of `target`: Ctrl+V, or Shift+Insert in the
 // terminals that do not take Ctrl+V (Git Bash's mintty, PuTTY); past `guard`,
 // if there is one (pastekeys::sequence).
-bool sendPasteKeys(HWND target, Guard* guard = nullptr);
+struct Result {
+    enum class Method { None, Keys, EditMessage };
+    Method method = Method::None;
+    UINT sent = 0;
+    UINT requested = 0;
+    DWORD error = ERROR_SUCCESS;
+    explicit operator bool() const noexcept { return method != Method::None; }
+};
+using InputSender = decltype(&::SendInput);
+Result sendPasteKeys(HWND target, Guard* guard = nullptr, InputSender send = &::SendInput);
 
 } // namespace ws::paste

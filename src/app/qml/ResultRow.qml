@@ -80,6 +80,7 @@ Item {
     required property string switchError // why the last try failed; the second line in red
     required property bool switchReady // draws its switch (else an ordinary place, with its tag)
     property bool showModified: true
+    property bool compact: false
     property bool showSize: false
     readonly property bool sizeShown: showSize && size.length > 0
     readonly property bool modifiedShown: showModified && modified.length > 0
@@ -103,7 +104,9 @@ Item {
     // With rows selected, the background marks them; the current row keeps only its accent pill.
     readonly property int selectedCount: ListView.view ? ListView.view.model.selectedCount : 0
     readonly property var results: ListView.view ? ListView.view.model : null // the ResultModel
-    readonly property bool showActions: current || area.containsMouse
+    // The narrow folder panel keeps filenames stable. Its actions remain
+    // available from the context menu and keyboard shortcuts.
+    readonly property bool showActions: !compact && (current || area.containsMouse)
     // ... and it has some: a plugin's row may have none, its badge then stays (GitHub #113).
     readonly property bool actionsShown: showActions && actions.visibleChildren.length > 0
     // The volume's number and bar, left of its switch (their room kept before the level is read).
@@ -218,8 +221,8 @@ Item {
         opacity: row.offline || row.missing ? 0.6 : 1
         x: Theme.iconInset + (row.reserveHintSpace && row.hint > 0 ? 28 : 0)
         anchors.verticalCenter: parent.verticalCenter
-        width: 32 // 48 device pixels at 150 %, 64 at 200 %: sizes icons are drawn for
-        height: 32
+        width: row.compact ? 24 : 32 // 48 device pixels at 150 %, 64 at 200 %: sizes icons are drawn for
+        height: width
 
         Image {
             id: iconImage
@@ -271,7 +274,7 @@ Item {
         opacity: row.offline || row.missing ? 0.6 : 1
         y: row.onPixel((row.height - height) / 2)
         anchors.left: iconSlot.right
-        anchors.leftMargin: Theme.textStart - Theme.iconInset - iconSlot.width // the name at textStart, past the icon
+        anchors.leftMargin: row.compact ? 8 : Theme.textStart - Theme.iconInset - iconSlot.width
         anchors.right: parent.right
         anchors.rightMargin: row.trailingSpace + (metadata.visible ? metadata.width + 16 : 0)
         spacing: 4
@@ -293,7 +296,7 @@ Item {
                 textFormat: Text.StyledText
                 elide: Text.ElideRight
                 color: Theme.text
-                font.pixelSize: Theme.uiTitle
+                font.pixelSize: row.compact ? 14 : Theme.uiTitle
             }
 
             Text { // content search: where the file lives, next to its name
@@ -307,7 +310,7 @@ Item {
                 textFormat: Text.PlainText
                 elide: Text.ElideMiddle
                 color: Theme.faint
-                font.pixelSize: Theme.uiCaption
+                font.pixelSize: row.compact ? 12 : Theme.uiCaption
             }
         }
 
@@ -329,7 +332,7 @@ Item {
             elide: row.contentMode || marked || away ? Text.ElideRight : Text.ElideMiddle
             maximumLineCount: 1
             color: row.switchError.length > 0 ? Theme.danger : Theme.subtext
-            font.pixelSize: Theme.uiCaption
+            font.pixelSize: row.compact ? 12 : Theme.uiCaption
         }
     }
 
@@ -355,7 +358,7 @@ Item {
             text: row.size
             textFormat: Text.PlainText
             color: Theme.faint
-            font.pixelSize: Theme.uiCaption
+            font.pixelSize: row.compact ? 12 : Theme.uiCaption
         }
 
         Text {
@@ -368,7 +371,7 @@ Item {
             text: row.modified
             textFormat: Text.PlainText
             color: Theme.faint
-            font.pixelSize: Theme.uiCaption
+            font.pixelSize: row.compact ? 12 : Theme.uiCaption
         }
     }
 
@@ -386,7 +389,7 @@ Item {
             : row.favorite ? (row.favoriteKeyword.length > 0 ? qsTr("收藏 · %1").arg(row.favoriteKeyword) : qsTr("收藏"))
             : row.recent ? qsTr("最近") : ""
         color: Theme.faint
-        font.pixelSize: Theme.uiCaption
+        font.pixelSize: row.compact ? 12 : Theme.uiCaption
     }
 
     Rectangle {
@@ -409,7 +412,7 @@ Item {
                 : row.recent ? qsTr("最近") : row.suggestion ? qsTr("建议") : row.web ? qsTr("网页")
                 : row.place ? qsTr("系统") : qsTr("应用")
             color: Theme.accent
-            font.pixelSize: Theme.uiCaption
+            font.pixelSize: row.compact ? 12 : Theme.uiCaption
         }
     }
 
@@ -425,7 +428,7 @@ Item {
         CenteredNumber {
             objectName: "resultNumber"
             text: row.hint > 0 ? String(row.hint) : ""
-            font.pixelSize: Theme.uiTitle
+            font.pixelSize: row.compact ? 14 : Theme.uiTitle
             font.weight: Font.Medium
             font.strikeout: row.hintTaken
             color: row.hintTaken ? Theme.faint : row.current ? Theme.accent : Theme.subtext

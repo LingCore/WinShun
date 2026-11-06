@@ -232,6 +232,8 @@ class Launcher : public QObject {
     // (FolderTyping, or switchTypingFolder); else what is in it comes first,
     // then the rest, under a caption (ResultModel::elsewhereRow).
     Q_PROPERTY(QString typingFolder READ typingFolder NOTIFY typingFolderChanged FINAL)
+    Q_PROPERTY(QString typingPrefix READ typingPrefix NOTIFY typingFolderChanged FINAL)
+    Q_PROPERTY(bool folderSearch READ folderSearch NOTIFY folderSearchChanged FINAL)
     Q_PROPERTY(bool typingFolderOnly READ typingFolderOnly NOTIFY typingFolderChanged FINAL)
     // With typingFolderOnly: not its subfolders either (GitHub #182).
     Q_PROPERTY(bool typingFolderLevel READ typingFolderLevel NOTIFY typingFolderChanged FINAL)
@@ -383,6 +385,9 @@ public:
     // lies directly in it), else its rows first and then the rest.
     void setFolderTyping(const QString& how);
     QString typingFolder() const;
+    QString typingPrefix() const { return m_typingPrefix; }
+    bool folderSearch() const { return m_folderSearch; }
+    void setFolderSearch(bool enabled);
     bool typingFolderOnly() const { return !m_typingPrefix.isEmpty() && m_typingOnly; }
     bool typingFolderLevel() const { return typingFolderOnly() && m_typingLevel; }
     // Ctrl+Shift+D: this time the next of: its rows first and then the rest,
@@ -748,6 +753,7 @@ signals:
     void pinRequested(const QString& path, bool screenshot);
     void folderChipsChanged();
     void typingFolderChanged();
+    void folderSearchChanged();
     void panelChanged();
     void panelToggleRequested();
     void pinnedChanged();
@@ -1068,6 +1074,7 @@ private:
     // setting, m_typingOnlyDefault, each time; switchTypingFolder).
     QString m_typingPrefix;
     QString m_typingFolder;
+    bool m_folderSearch = false; // temporary compact presentation, independent of query scope
     bool m_typingOnly = false;
     bool m_typingLevel = false; // with m_typingOnly: not the subfolders either
     bool m_typingOnlyDefault = false;

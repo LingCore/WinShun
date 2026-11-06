@@ -33,17 +33,18 @@ Window {
     readonly property SearchBar searchBar: panel ? panelPage.searchBar : boxBar
     readonly property int viewRowHeight: panel ? panelPage.rowHeight : rowHeight
 
-    readonly property int rowHeight: Theme.rowHeight // 界面大小
+    readonly property bool folderMode: !panel && launcher.folderSearch
+    readonly property int rowHeight: folderMode ? 40 : Theme.rowHeight
     // Read once here for all the window's parts and rows (GitHub #111): every
     // item that reads Screen has an attached object of its own.
     readonly property real dpr: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
-    readonly property int maxRows: 8
+    readonly property int maxRows: folderMode ? 6 : 8
     readonly property int minRows: 3 // the window settles no lower than these fit below
     // Everything but the rows: header, the strip of kinds of file, divider,
     // the list's margins, footer. Budget the full strip in every scope so
     // opening it does not change the row count. At the taskbar the list
     // gives the strip its room instead.
-    readonly property int chromeHeight: searchBar.implicitHeight + (fullHeight ? 0 : typeStrip.fullHeight) + 1 + 8
+    readonly property int chromeHeight: searchBar.implicitHeight + (fullHeight || folderMode ? 0 : typeStrip.fullHeight) + 1 + 8
                                         + footer.implicitHeight
     // TypeStrip's animated height sizes this window through the column, so
     // its outer edge, rows and footer follow the same animation. At the
@@ -990,10 +991,8 @@ Window {
         function onQueryChanged() {
             window.galleryNavigation = false
             nameTip.dismiss() // typed: the keys go to the field, not handleKey
-            if (boxBar.text !== window.launcher.query)
-                boxBar.text = window.launcher.query
-            if (panelPage.searchBar.text !== window.launcher.query)
-                panelPage.searchBar.text = window.launcher.query
+            boxBar.syncQuery()
+            panelPage.searchBar.syncQuery()
         }
         function onPanelChanged() { // the other bar has the keyboard now, the words as they were
             window.galleryNavigation = false
@@ -1185,7 +1184,7 @@ Window {
                 dpr: window.dpr
                 shown: (window.launcher.scope === Launcher.Files || window.launcher.scope === Launcher.Folders
                         || window.launcher.scope === Launcher.Content)
-                       && !window.clipboardBelow
+                       && !window.clipboardBelow && !window.folderMode
             }
         }
 
@@ -1458,12 +1457,12 @@ Window {
                                 dpr: window.dpr
                             }
                             Text {
-                                x: Theme.textStart // under the rows' text
+                                x: window.folderMode ? 16 : Theme.textStart // under the rows' text
                                 width: hintAction.x - 16 - x // the leftmost link (the first, with two showing)
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: hintRow.modelData.text
                                 color: Theme.subtext
-                                font.pixelSize: Theme.uiBody
+                                font.pixelSize: window.folderMode ? 12 : Theme.uiBody
                                 elide: Text.ElideRight
                             }
                             Text { // the action: accent words on the plain background, as a link; right, as the rows' labels
@@ -1473,7 +1472,7 @@ Window {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: hintRow.modelData.action
                                 color: Theme.accent
-                                font.pixelSize: Theme.uiBody
+                                font.pixelSize: window.folderMode ? 12 : Theme.uiBody
                             }
                             Text { // a second link on the row (a hint's kind2), the mouse's
                                 id: hintAction2
@@ -1484,7 +1483,7 @@ Window {
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: hintRow.modelData.action2
                                 color: Theme.accent
-                                font.pixelSize: Theme.uiBody
+                                font.pixelSize: window.folderMode ? 12 : Theme.uiBody
                                 MouseArea {
                                     anchors.fill: parent
                                     cursorShape: Qt.PointingHandCursor
@@ -1518,6 +1517,7 @@ Window {
 
                 delegate: ResultRow {
                     id: resultRow
+                    compact: window.folderMode
                     width: boxList.width
                     height: window.rowHeight
                     showModified: window.launcher.showModified
@@ -1685,6 +1685,7 @@ Window {
 
         Footer {
             id: footer
+            compact: window.folderMode
             objectName: "launcherFooter" // the previews read sortMenuOpen
             width: parent.width
             visible: !window.clipboardBelow

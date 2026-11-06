@@ -20,6 +20,20 @@ Item {
     // The search panel's own bar (Panel.qml): the button at the right
     // corner collapses the panel instead of expanding the box into it.
     property bool panelMode: false
+    readonly property bool folderMode: !panelMode && launcher.folderSearch
+    readonly property string hiddenPrefix: folderMode ? launcher.typingPrefix : ""
+    property bool syncingQuery: false
+    function syncQuery() {
+        const query = launcher.query
+        const shown = hiddenPrefix.length > 0 && query.toLowerCase().startsWith(hiddenPrefix.toLowerCase())
+                      ? query.slice(hiddenPrefix.length) : query
+        if (input.text === shown)
+            return
+        syncingQuery = true
+        input.text = shown
+        syncingQuery = false
+    }
+    onHiddenPrefixChanged: syncQuery()
     // The pointer over the header: Windows takes its drag area as a title bar,
     // so QML hears of the pointer there only from the frame.
     readonly property bool hovered: hover.hovered || contains(mapFromItem(null, frame.pointer))
@@ -79,19 +93,22 @@ Item {
     Connections {
         target: bar.launcher
         function onCaretRequested(position, word) {
-            input.cursorPosition = position
+            input.cursorPosition = Math.max(0, position - bar.hiddenPrefix.length)
             if (word)
                 input.selectWord()
         }
-        function onSelectionRequested(anchor, position) { input.select(anchor, position) }
+        function onSelectionRequested(anchor, position) {
+            input.select(Math.max(0, anchor - bar.hiddenPrefix.length), Math.max(0, position - bar.hiddenPrefix.length))
+        }
     }
 
-    implicitHeight: Theme.headerHeight // 界面大小
+    implicitHeight: folderMode ? 44 : Theme.headerHeight
 
     Component.onCompleted: {
         frame.addDragArea(bar)
         frame.addControl(input)
         frame.addControl(tabs)
+        frame.addControl(compactScope)
         frame.addControl(expand)
         frame.addControl(regexChip)
         frame.addControl(boxPin)
@@ -231,7 +248,7 @@ Item {
         readonly property real styleStart: fieldPart.out("leadingInset", 0)
         anchors.left: handle.right
         anchors.leftMargin: styleStart > 0 ? Theme.snap(Math.max(6, Theme.fieldInset + styleStart - handle.x - handle.width), bar.dpr) : 8
-        anchors.right: regexChip.visible ? regexChip.left : tabs.left
+        anchors.right: regexChip.visible ? regexChip.left : bar.folderMode ? compactScope.left : tabs.left
         anchors.rightMargin: regexChip.visible ? 8 : 12
         y: bar.onPixel((bar.height - height) / 2 + fieldPart.out("contentOffsetY", 0))
         focus: true
@@ -240,7 +257,7 @@ Item {
         cursorVisible: activeFocus || bar.launcher.keysRouted
         clip: true
         color: fieldPart.out("textColor", Theme.text)
-        font.pixelSize: Theme.uiSearch + Theme.tok("searchFontDelta", 0)
+        font.pixelSize: bar.folderMode ? 16 : Theme.uiSearch + Theme.tok("searchFontDelta", 0)
         selectByMouse: true
         // The selection is drawn below (selectionMark), as tall as the caret:
         // Qt's own is a different height from its caret in a style's field.
@@ -276,7 +293,8 @@ Item {
             onPressedChanged: if (pressed) bar.editingRequested()
         }
         onTextChanged: {
-            bar.launcher.query = text
+            if (!bar.syncingQuery)
+                bar.launcher.query = bar.hiddenPrefix + text
             bar.reportField()
         }
         onTextEdited: bar.typed()
@@ -290,7 +308,8 @@ Item {
         Text {
             anchors.fill: parent
             verticalAlignment: Text.AlignVCenter
-            text: bar.launcher.placeholder
+            text: bar.folderMode && bar.launcher.typingFolder.length > 0
+                  ? qsTr("搜索 %1").arg(bar.launcher.typingFolder) : bar.launcher.placeholder
             color: fieldPart.out("placeholderColor", Theme.faint)
             font: input.font
             elide: Text.ElideRight
@@ -346,7 +365,7 @@ Item {
         id: regexChip
 
         visible: bar.launcher.regexMode && bar.launcher.scope !== Launcher.Content && !bar.inBox
-        anchors.right: tabs.left
+        anchors.right: bar.folderMode ? compactScope.left : tabs.left
         anchors.rightMargin: 6
         y: bar.onPixel((bar.height - height) / 2)
         width: Math.max(height, regexText.implicitWidth + 16)
@@ -462,7 +481,7 @@ Item {
             anchors.centerIn: parent
             anchors.verticalCenterOffset: expandKey.out("contentOffsetY", 0)
             glyph: bar.panelMode ? "\uE73F" : "\uE740" // BackToWindow, FullScreen
-            size: 24 / bar.dpr // fixed 24 device pixels
+            size: (bar.folderMode ? 18 : 24) / bar.dpr
             color: expandKey.out("foreground", expandArea.containsMouse ? Theme.text : Theme.subtext)
         }
         MouseArea {
@@ -479,8 +498,49 @@ Item {
         }
     }
 
+    Item {
+        id: compactScope
+        visible: bar.folderMode
+        anchors.right: expand.left
+        anchors.rightMargin: 6
+        y: bar.onPixel((bar.height - height) / 2)
+        width: compactScopeLabel.implicitWidth + 20
+        height: bar.keyHeight
+        Accessible.role: Accessible.Button
+        Accessible.name: compactScopeLabel.text
+        Accessible.onPressAction: bar.launcher.cycleScope(1)
+
+        FieldKey {
+            id: compactScopeKey
+            dpr: bar.dpr
+            flat: true
+            hovered: compactScopeArea.containsMouse
+            pressed: compactScopeArea.pressed
+        }
+        Text {
+            id: compactScopeLabel
+            anchors.centerIn: parent
+            text: tabs.labels[tabs.current] ?? ""
+            color: compactScopeKey.out("foreground", Theme.subtext)
+            font.pixelSize: 12
+        }
+        MouseArea {
+            id: compactScopeArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: bar.launcher.cycleScope(1)
+        }
+        HoverTip {
+            target: compactScopeArea.containsMouse ? compactScope : null
+            text: compactScopeLabel.text
+            shortcut: "Tab"
+        }
+    }
+
     ScopeTabs {
         id: tabs
+        visible: !bar.folderMode
         scaled: true
         role: "scope"
         dpr: bar.dpr

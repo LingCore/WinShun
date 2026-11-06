@@ -711,15 +711,19 @@ QPoint Placement::settleAvoiding(QScreen* screen, bool fitList)
         // (the user's width the most, the least width the launcher has the
         // least: Main.qml sizes the window by boxWidth); later, as it is then.
         const bool narrow = fitList && m_defaultWidth > 0 && !m_panel;
-        const int width = narrow ? widthOn(screen) : widthNow();
+        const int width = narrow ? std::min(460, widthOn(screen)) : widthNow();
         const QRect spot = windowavoidance::inList(area, obstacle, logical(m_avoidLists), logical(m_avoidFrame),
-            {width, height}, {narrow ? std::min(m_minWidth, width) : width, m_roomNeeded});
+            {width, height}, {narrow ? std::min(320, width) : width, m_roomNeeded});
         if (narrow && spot.width() != m_boxWidth) {
             m_boxWidth = spot.width();
             emit boxWidthChanged();
         }
         at = spot.topLeft();
         height = spot.height();
+        // Keep the panel's bottom at the file list's bottom as the result
+        // count changes; room still describes the full result budget.
+        if (!fitList)
+            at.ry() += std::max(0, spot.height() - m_window->height());
     } else {
         at = windowavoidance::place(area, obstacle, {widthNow(), height}, home);
     }

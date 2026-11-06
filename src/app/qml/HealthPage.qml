@@ -55,6 +55,8 @@ SettingsPage {
             title: healthPage.known ? qsTr("Win顺 现在用了 %1").arg(healthPage.mb(healthPage.h.total)) : qsTr("正在读取内存占用…")
             keywords: qsTr("内存;占用;任务管理器;归还;释放;卡;运行状况;CPU;磁盘;memory;ram;task manager").split(";")
             description: !healthPage.known ? "" : qsTr("CPU %1 · 读取 %2").arg(healthPage.percent(healthPage.h.cpu)).arg(healthPage.rate(healthPage.h.read))
+                         + "\n" + qsTr("主进程：工作集 %1 · 私有提交 %2")
+                             .arg(healthPage.mb(healthPage.h.workingSet)).arg(healthPage.mb(healthPage.h.privateCommit))
                          + "\n" + healthPage.h.lastTrim
                          + (healthPage.busy ? "\n" + qsTr("后台还在忙，归还后它会再用回一些") : "")
 

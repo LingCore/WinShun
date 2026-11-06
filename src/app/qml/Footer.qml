@@ -17,6 +17,7 @@ Item {
 
     required property Launcher launcher
     required property WindowFrame frame
+    property bool compact: false
 
     signal galleryRequested(bool gallery) // the panel's view switch
 
@@ -29,7 +30,7 @@ Item {
     readonly property real hintsRight: info.visible ? info.x - 8
         : clearHistory.visible ? clearHistory.x - 8 : viewSwitch.visible ? viewSwitch.x - 10 : width - 18
 
-    implicitHeight: Theme.footerHeight // 界面大小
+    implicitHeight: compact ? 32 : Theme.footerHeight
 
     // The chrome's layer (as the search row's), on the window's base.
     Rectangle {
@@ -144,7 +145,7 @@ Item {
         text: footer.launcher.statusText
         textFormat: Text.PlainText // may name a file
         color: Theme.subtext
-        font.pixelSize: Theme.uiBody
+        font.pixelSize: footer.compact ? 12 : Theme.uiBody
         elide: Text.ElideRight
     }
 
@@ -277,14 +278,17 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         glyph: footer.atStart ? "\uE81C" : "\uE8CB" // History, Sort
         // Last chip: "更多", or the name of the sort chosen from its menu (#44).
-        labels: footer.atStart ? [qsTr("最近打开"), qsTr("最近修改")]
+        labels: footer.compact ? [footer.compactSortLabels[footer.atStart ? footer.launcher.startList : footer.launcher.sort] ?? qsTr("更多")]
+                              : footer.atStart ? [qsTr("最近打开"), qsTr("最近修改")]
                                  : [qsTr("最匹配"), qsTr("最新"), qsTr("最早"),
                                     footer.moreSorts ? footer.sortChipLabels[footer.launcher.sort - 3] : qsTr("更多")]
-        current: footer.atStart ? footer.launcher.startList : footer.moreSorts ? 3 : footer.launcher.sort
+        current: footer.compact ? 0 : footer.atStart ? footer.launcher.startList : footer.moreSorts ? 3 : footer.launcher.sort
         tip: footer.atStart ? qsTr("不输入时列出最近打开的，或最近修改的文件")
                               : qsTr("最匹配的在前，或按修改时间：最新的在前、最早的在前；“更多”里还能按名称、所在文件夹、类型、大小排")
         onActivated: (index) => {
-            if (footer.atStart)
+            if (footer.compact)
+                sortMenu.open = !sortMenu.open
+            else if (footer.atStart)
                 footer.launcher.startList = index
             else if (index === 3)
                 sortMenu.open = !sortMenu.open // opened by it, closed by it again
@@ -296,6 +300,8 @@ Item {
 
     // The sorts the chips have no room for (Launcher.Sort from ByName on).
     readonly property var sortLabels: [qsTr("名称"), qsTr("所在文件夹"), qsTr("类型"), qsTr("大的在前"), qsTr("小的在前")]
+    readonly property var compactSortLabels: atStart ? [qsTr("最近打开"), qsTr("最近修改")]
+        : [qsTr("最匹配"), qsTr("最新"), qsTr("最早")].concat(sortLabels)
     // On the chip the short word, so a long name does not push the key hints
     // out of the bar (#44); the menu has the full ones.
     readonly property var sortChipLabels: [qsTr("名称"), qsTr("文件夹"), qsTr("类型"), qsTr("大在前"), qsTr("小在前")]
@@ -305,11 +311,17 @@ Item {
         id: sortMenu
         anchor: order
         menuWidth: 150
-        entries: footer.sortLabels.map((label, i) => ({
+        entries: (footer.compact ? footer.compactSortLabels : footer.sortLabels).map((label, i) => ({
             text: label,
-            glyph: footer.launcher.sort === i + Launcher.ByName ? "" : "" // CheckMark: the one in force
+            glyph: (footer.compact ? (footer.atStart ? footer.launcher.startList : footer.launcher.sort) === i
+                                  : footer.launcher.sort === i + Launcher.ByName) ? "" : ""
         }))
-        onActivated: (index) => footer.launcher.sort = Launcher.ByName + index
+        onActivated: (index) => {
+            if (footer.compact && footer.atStart)
+                footer.launcher.startList = index
+            else
+                footer.launcher.sort = (footer.compact ? 0 : Launcher.ByName) + index
+        }
     }
 
     Connections {
@@ -349,7 +361,7 @@ Item {
 
         TextMetrics {
             id: statusMetrics
-            font.pixelSize: Theme.uiBody
+            font.pixelSize: footer.compact ? 12 : Theme.uiBody
             text: footer.launcher.statusText
         }
 

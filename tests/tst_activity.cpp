@@ -11,6 +11,7 @@
 #include <algorithm>
 
 #include <QtTest>
+#include <QTemporaryFile>
 
 using namespace ws::activity;
 
@@ -185,6 +186,38 @@ private slots:
         QVERIFY(m.total > 0);
         const std::uint64_t back = ws::memory::residentBytes(ranges);
         QVERIFY2(back < before / 20, qPrintable(QStringLiteral("%1 of %2 KB back").arg(back / 1024).arg(before / 1024)));
+    }
+
+    void mappedIndexPagesAreSeparateFromPrivateMemory()
+    {
+        QTemporaryFile file;
+        QVERIFY(file.open());
+        constexpr qint64 bytes = 2 << 20;
+        QVERIFY(file.resize(bytes));
+        auto* view = file.map(0, bytes);
+        QVERIFY(view);
+        std::memset(view, 1, bytes);
+        const auto map = ws::memory::map({{view, bytes}});
+        QVERIFY(map.fileIndexShared >= std::uint64_t(bytes));
+        QCOMPARE(map.fileIndex, std::uint64_t(0));
+        QCOMPARE(map.total, map.ownProgram + map.qt + map.graphics + map.system + map.stacks + map.other);
+        QVERIFY(file.unmap(view));
+    }
+
+    void processMemoryCountersHaveDistinctMeanings()
+    {
+        std::size_t hint = 0;
+        const auto first = ws::memory::look(hint);
+        QVERIFY(first.ok);
+        const auto self = std::ranges::find_if(first.processes, [&](const auto& p) { return p.pid == first.self; });
+        QVERIFY(self != first.processes.end());
+        QVERIFY(self->workingSetBytes >= self->privateBytes);
+        QVERIFY(self->privateCommitBytes > 0);
+        const auto again = ws::memory::again({*self});
+        if (again.ok) {
+            QVERIFY(again.processes.front().workingSetBytes >= again.processes.front().privateBytes);
+            QVERIFY(again.processes.front().privateCommitBytes > 0);
+        }
     }
 
     void eventsFromFacts()
