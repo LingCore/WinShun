@@ -1219,6 +1219,16 @@ Runner::Spec Host::specFor(Plugin& p, const Entry& e, RunKind kind, const Pendin
     } else if (elevation.state.verdict != elevation::Verdict::NotAsked && elevation.state.verdict != elevation::Verdict::HostNotElevated)
         log(u"%1: 以普通权限运行（%2）%3"_s.arg(e.id, elevation::verdictName(elevation.state.verdict), elevation.state.detail));
     const Runtime& runtime = *manifest->runtime;
+    const QString appDir = QDir::toNativeSeparators(m_options.appDir.isEmpty() ? QFileInfo(m_options.runnerExe).absolutePath() : m_options.appDir);
+    if (!runtime.hostQtVersion.isEmpty()) {
+        const QString problem = programs::hostQtProblem(runtime, appDir);
+        if (!problem.isEmpty() || spec.elevated) {
+            if (error)
+                *error = problem.isEmpty() ? u"共享宿主 Qt 只支持普通权限插件"_s : problem;
+            return {};
+        }
+        spec.qtDir = appDir;
+    }
     const std::optional<programs::Launch> launch = programs::launchFor(runtime, dir, error);
     if (!launch)
         return spec;
@@ -1260,7 +1270,7 @@ Runner::Spec Host::specFor(Plugin& p, const Entry& e, RunKind kind, const Pendin
         // shared components the user may change: not for a process running as administrator
         spec.env.push_back({u"WS_COMPONENTS_DIR"_s, QDir::toNativeSeparators(QDir(m_options.dataRoot).absoluteFilePath(u"../components"_s))});
     }
-    spec.env.push_back({u"WS_APP_DIR"_s, QDir::toNativeSeparators(m_options.appDir.isEmpty() ? QFileInfo(m_options.runnerExe).absolutePath() : m_options.appDir)});
+    spec.env.push_back({u"WS_APP_DIR"_s, appDir});
     spec.env.push_back({u"WS_LOCALE"_s, m_options.locale});
     spec.env.push_back({u"WS_THEME"_s, m_options.theme});
     spec.env.push_back({u"WS_VERSION"_s, m_options.version});

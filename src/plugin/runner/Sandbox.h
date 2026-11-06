@@ -41,6 +41,8 @@ lite::Handle makeJob(bool limited, const JobLimits& limits, DWORD* error);
 // never this process's variables), with `extra` added (replacing any of the
 // same name), as the block CreateProcess wants.
 std::vector<wchar_t> environmentFor(HANDLE token, const std::vector<std::pair<std::wstring, std::wstring>>& extra);
+// Applied to the child's final block only; preserves its PATH and overrides Qt discovery.
+std::vector<wchar_t> withHostQt(const std::vector<wchar_t>& environment, const std::wstring& folder);
 
 // For a process running as administrator (an `elevated` plugin, started by
 // the elevated runner): never the user's variables (HKCU\Environment and

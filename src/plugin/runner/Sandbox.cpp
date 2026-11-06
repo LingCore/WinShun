@@ -271,6 +271,23 @@ std::vector<wchar_t> environmentFor(HANDLE token, const std::vector<std::pair<st
     return withExtra(std::move(entries), extra);
 }
 
+std::vector<wchar_t> withHostQt(const std::vector<wchar_t>& environment, const std::wstring& folder)
+{
+    std::vector<std::wstring> entries;
+    std::wstring path = folder;
+    for (const wchar_t* p = environment.data(); *p; p += std::wcslen(p) + 1) {
+        if (_wcsnicmp(p, L"PATH=", 5) == 0) {
+            if (p[5])
+                path += L';' + std::wstring(p + 5);
+        } else
+            entries.emplace_back(p);
+    }
+    return withExtra(std::move(entries), {{L"PATH", path}, {L"WS_QT_DIR", folder}, {L"WS_QT_QML_DIR", folder + L"\\qml"},
+        {L"QT_PLUGIN_PATH", folder}, {L"QT_QPA_PLATFORM_PLUGIN_PATH", folder + L"\\platforms"},
+        {L"QML_IMPORT_PATH", folder + L"\\qml"}, {L"QML2_IMPORT_PATH", folder + L"\\qml"},
+        {L"QT_QUICK_CONTROLS_STYLE", L"Basic"}});
+}
+
 bool loadsCode(std::wstring_view name)
 {
     // Whole names, then prefixes: the CLR's and .NET's hooks and profilers,

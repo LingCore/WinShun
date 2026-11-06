@@ -33,6 +33,8 @@ struct Launch {
 // How to start `runtime` in `pluginDir`; nothing with `error` when the
 // program is missing.
 std::optional<Launch> launchFor(const Runtime& runtime, const QString& pluginDir, QString* error);
+// Shared Qt is a versioned, non-elevated opt-in. Empty means ready.
+QString hostQtProblem(const Runtime& runtime, const QString& appDir);
 
 // ---- finding Python (the parts the tests check) -----------------------------
 

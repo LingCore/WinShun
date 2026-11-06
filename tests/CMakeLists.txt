@@ -1147,6 +1147,20 @@ add_executable(plugin_fake plugin_fake.cpp)
 target_link_libraries(plugin_fake PRIVATE wsplugin_lite)
 set_target_properties(plugin_fake PROPERTIES AUTOMOC OFF MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 qt_add_executable(tst_plugin tst_plugin.cpp)
+qt_add_executable(plugin_qt plugin_qt.cpp)
+target_link_libraries(plugin_qt PRIVATE winshun_options Qt6::Quick)
+set_target_properties(plugin_qt PROPERTIES WIN32_EXECUTABLE FALSE QT_QML_MODULE_NO_IMPORT_SCAN TRUE)
+set(shared_qt_dir "${CMAKE_CURRENT_BINARY_DIR}/shared-qt-runtime")
+add_custom_command(OUTPUT "${shared_qt_dir}/deployed.stamp"
+    COMMAND Qt6::windeployqt --dir "${shared_qt_dir}" --qmldir "${PROJECT_SOURCE_DIR}/src/app/qml"
+        --no-translations --no-compiler-runtime --no-system-d3d-compiler --no-system-dxc-compiler --no-opengl-sw
+        --include-plugins qoffscreen $<IF:$<CONFIG:Debug>,--debug,--release> "$<TARGET_FILE:plugin_qt>"
+    COMMAND ${CMAKE_COMMAND} -E touch "${shared_qt_dir}/deployed.stamp"
+    DEPENDS plugin_qt
+    VERBATIM)
+add_custom_target(tst_plugin_qt_runtime DEPENDS "${shared_qt_dir}/deployed.stamp")
+target_compile_definitions(tst_plugin PRIVATE WINSHUN_PLUGIN_QT="$<TARGET_FILE:plugin_qt>" WINSHUN_SHARED_QT_DIR="${shared_qt_dir}")
+add_dependencies(tst_plugin tst_plugin_qt_runtime)
 target_include_directories(tst_plugin PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_link_libraries(tst_plugin PRIVATE wsplugin miniz Qt6::Test) # miniz: the test writes zips to install
 target_compile_definitions(tst_plugin PRIVATE

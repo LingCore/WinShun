@@ -167,6 +167,16 @@ std::optional<Runtime> readRuntime(const QJsonValue& value, Check& check)
         r.programPath = program;
         relativeInside(program, u"runtime.program"_s, check);
     }
+    const QString qt = stringField(o, u"qt"_s, where, check);
+    r.hostQtVersion = stringField(o, u"qtVersion"_s, where, check);
+    if (o.contains(u"qt"_s) || o.contains(u"qtVersion"_s)) {
+        if (qt != u"host")
+            check.fail(u"runtime.qt 只支持 host；自带 Qt 时请省略 qt 和 qtVersion"_s);
+        else if (r.program != Program::Exe || !r.programPath.endsWith(u".exe"_s, Qt::CaseInsensitive))
+            check.fail(u"runtime.qt: host 只支持原生 exe 插件"_s);
+        else if (!QRegularExpression(u"^[1-9][0-9]*\\.[0-9]+(?:\\.[0-9]+)?$"_s).match(r.hostQtVersion).hasMatch())
+            check.fail(u"runtime.qtVersion 要是主次版本或完整版本，例如 6.12 或 6.12.0"_s);
+    }
     r.args = stringList(o.contains(u"args"_s) ? o.value(u"args"_s) : QJsonValue(QJsonArray()), u"runtime.args"_s, check);
     r.script = stringField(o, u"script"_s, where, check);
     if (r.script.isEmpty()) {
@@ -602,6 +612,8 @@ std::optional<Manifest> Manifest::parse(const QByteArray& json, QString* error)
             check.fail(u"elevated 权限只给自带程序的插件（runtime.program 为 exe）"_s);
         else if (m.runtime->sandbox == SandboxLevel::Strict)
             check.fail(u"elevated 权限不能和 runtime.sandbox strict 一起用"_s);
+        else if (!m.runtime->hostQtVersion.isEmpty())
+            check.fail(u"共享宿主 Qt 只支持普通权限插件；请移除 elevated 权限或自带 Qt"_s);
     }
 
     if (o.contains(u"webSearch"_s) && !o.value(u"webSearch"_s).isBool())

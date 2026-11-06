@@ -185,6 +185,31 @@ effects 的辅助：Python `winshun.hide() / keep() / notify(text) / copy(text) 
 
 插件 ID 的 `.data` 结尾留给数据文件夹，不用于新插件；更新使用独立临时备份，保留其他插件和已有数据目录。旧版本留下的数据目录若含另一个插件的 `plugin.json`，删除数据会停止并说明冲突。
 
+## 原生插件的共享 Qt 契约（待发布，最低 0.22.0）
+
+原生插件可显式复用 Win顺 的 Qt，省去包内重复分发的运行时。缺省行为不变，未声明的插件仍自行部署依赖。
+
+```json
+{
+  "minWinShun": "0.22.0",
+  "runtime": {
+    "mode": "resident",
+    "program": "my-tool.exe",
+    "qt": "host",
+    "qtVersion": "6.12.0"
+  }
+}
+```
+
+- 只支持 Windows x64、MSVC、Release 动态链接 Qt；主次版本必须与宿主一致。可只写 `6.12`，写 `6.12.1` 则要求宿主补丁版本至少为 1。同一主次版本的后续补丁可用；宿主升级主次版本后，插件需更新契约并重新验证。
+- 保证 Qt Core、Gui、Qml、Quick，以及 QML `QtQuick`、`QtQuick.Controls.Basic`、`QtQuick.Layouts`；其他模块不在此契约内。插件仍独立进程、独立 QML 引擎，主要减少下载和磁盘成本，不承诺同比减少内存。
+- runner 在 `CreateProcess` 前为这个子进程配置 `PATH`、Qt 插件路径和 QML 导入路径，提供 `WS_QT_DIR`、`WS_QT_QML_DIR`，默认 Controls 样式为 Basic。普通静态导入 Qt 的 exe 也可直接启动，无需 `/DELAYLOAD`。不会修改系统、用户或 Win顺 主进程的环境变量。
+- 不要在包内混入另一版 Qt DLL、平台插件、QML 模块或覆盖共享路径的 `qt.conf`；Windows 优先搜索 exe 自身目录。自有的非 Qt 依赖照常放入插件目录。
+- 启动前检查版本及宿主部署是否完整；不兼容时显示具体原因和更新/重装建议，不尝试启动后再等待崩溃。
+- 首版不支持 `elevated` 与共享 Qt 同时使用，清单会明确报错。需要管理员权限的插件继续自带运行时；这里不静默降权，也不从可写便携目录加载管理员代码。
+
+契约参考：[Qt Windows 部署](https://doc.qt.io/qt-6/windows-deployment.html)、[Qt 插件版本检查](https://doc.qt.io/qt-6/deployment-plugins.html)、[Windows DLL 搜索顺序](https://learn.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-search-order)。
+
 ## 协议
 
 ### 一次性（once）

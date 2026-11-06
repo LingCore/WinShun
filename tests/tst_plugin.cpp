@@ -891,6 +891,78 @@ private slots:
         QCOMPARE(once->runtime->script, u"main.py"_s);
     }
 
+    void sharedQtManifest()
+    {
+        Spec spec;
+        spec.runtimeExtra = {{u"qt"_s, u"host"_s}, {u"qtVersion"_s, u"6.12"_s}};
+        QString error;
+        const auto valid = Manifest::parse(manifestFor(spec), &error);
+        QVERIFY2(valid, qPrintable(error));
+        QCOMPARE(valid->runtime->hostQtVersion, u"6.12"_s);
+        for (const QString& version : {u""_s, u"6"_s, u"6.12-beta"_s, u"6.12.0.1"_s, u"-6.12"_s}) {
+            spec.runtimeExtra.insert(u"qtVersion"_s, version);
+            QVERIFY(!Manifest::parse(manifestFor(spec), &error));
+        }
+        spec.runtimeExtra.insert(u"qtVersion"_s, u"6.12.0"_s);
+        spec.permissions = {u"elevated"_s};
+        QVERIFY(!Manifest::parse(manifestFor(spec), &error));
+        QVERIFY(error.contains(u"普通权限"_s));
+        spec.permissions.clear();
+        spec.runtimeExtra.insert(u"program"_s, u"python"_s);
+        QVERIFY(!Manifest::parse(manifestFor(spec), &error));
+        spec.runtimeExtra = {{u"qtVersion"_s, u"6.12"_s}};
+        QVERIFY(!Manifest::parse(manifestFor(spec), &error));
+    }
+
+    void sharedQtStartsWithoutBundledRuntime()
+    {
+        const QString runtimeDir = QDir::toNativeSeparators(QString::fromUtf8(WINSHUN_SHARED_QT_DIR));
+        Fixture f([&](Host::Options& o) { o.appDir = runtimeDir; });
+        Spec spec;
+        spec.mode = u"once"_s;
+        spec.role.clear();
+        spec.permissions = {u"ui"_s};
+        spec.runtimeExtra = {{u"qt"_s, u"host"_s}, {u"qtVersion"_s, QString::fromLatin1(qVersion())},
+            {u"timeoutMs"_s, 10000}, {u"env"_s, QJsonObject {{u"PATH"_s, u"C:\\missing-qt"_s},
+                {u"QML_IMPORT_PATH"_s, u"C:\\missing-qml"_s}, {u"QT_PLUGIN_PATH"_s, u"C:\\missing-plugins"_s}}}};
+        const QString folder = f.install(spec);
+        QVERIFY(!folder.isEmpty());
+        QVERIFY(QFile::remove(folder + u"/fake.exe"_s));
+        QVERIFY(QFile::copy(QString::fromUtf8(WINSHUN_PLUGIN_QT), folder + u"/fake.exe"_s));
+        QVERIFY(!QFileInfo::exists(folder + u"/Qt6Core.dll"_s));
+        QVERIFY(f.host->query(u"fk runtime"_s, Scope::All, 1));
+        QVERIFY2(f.waitFinal(1, 15000), qPrintable(f.logs.join(u'\n')));
+        const auto& items = f.finalFor(1)->items;
+        QCOMPARE(items.size(), 1);
+        QCOMPARE(items[0].title, u"shared Qt ready"_s);
+        const auto data = items[0].data.toObject();
+        QCOMPARE(data.value(u"qt"_s).toString(), QString::fromLatin1(qVersion()));
+        QCOMPARE(data.value(u"dir"_s).toString(), runtimeDir);
+        QCOMPARE(data.value(u"qml"_s).toString(), runtimeDir + u"\\qml"_s);
+        QCOMPARE(data.value(u"path"_s).toString(), runtimeDir + u";C:\\missing-qt"_s);
+        for (const QString& module : {u"coreFile"_s, u"platformFile"_s, u"basicFile"_s, u"layoutsFile"_s})
+            QVERIFY2(data.value(module).toString().startsWith(runtimeDir + u'\\', Qt::CaseInsensitive), qPrintable(module + u": "_s + data.value(module).toString()));
+    }
+
+    void sharedQtRejectsBeforeStarting()
+    {
+        Fixture f;
+        Spec spec;
+        spec.mode = u"once"_s;
+        spec.runtimeExtra = {{u"qt"_s, u"host"_s}, {u"qtVersion"_s, u"99.1"_s}};
+        QVERIFY(!f.install(spec).isEmpty());
+        QVERIFY(f.host->query(u"fk version"_s, Scope::All, 1));
+        QVERIFY(f.waitFailure(1));
+        QVERIFY(f.failureOf(1).contains(u"Qt 99.1"_s));
+        QVERIFY(f.startedPids.empty());
+        spec.runtimeExtra.insert(u"qtVersion"_s, QString::fromLatin1(qVersion()));
+        QVERIFY(!f.install(spec).isEmpty());
+        QVERIFY(f.host->query(u"fk missing"_s, Scope::All, 2));
+        QVERIFY(f.waitFailure(2));
+        QVERIFY(f.failureOf(2).contains(u"运行时不完整"_s));
+        QVERIFY(f.startedPids.empty());
+    }
+
     void manifestMissingRequired_data()
     {
         QTest::addColumn<QString>("field");

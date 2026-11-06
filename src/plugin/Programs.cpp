@@ -299,6 +299,26 @@ void setOverride(Program program, const QString& path)
     g_found.erase(program);
 }
 
+QString hostQtProblem(const Runtime& runtime, const QString& appDir)
+{
+    if (runtime.hostQtVersion.isEmpty())
+        return {};
+    const auto required = QVersionNumber::fromString(runtime.hostQtVersion);
+    const auto available = QVersionNumber::fromString(QString::fromLatin1(qVersion()));
+    if (required.majorVersion() != available.majorVersion() || required.minorVersion() != available.minorVersion()
+        || required.microVersion() > available.microVersion())
+        return u"此插件要求 Qt %1，Win顺 提供 Qt %2；请更新插件或安装兼容的 Win顺"_s.arg(runtime.hostQtVersion, available.toString());
+    if (!QDir::isAbsolutePath(appDir) || appDir.contains(u';'))
+        return u"Win顺 的安装路径不能用于共享 Qt，请换到不含分号的绝对路径"_s;
+    const QDir folder(appDir);
+    for (const auto file : {u"Qt6Core.dll", u"Qt6Gui.dll", u"Qt6Qml.dll", u"Qt6Quick.dll", u"platforms/qwindows.dll",
+             u"qml/QtQuick/qmldir", u"qml/QtQuick/Controls/Basic/qmldir", u"qml/QtQuick/Layouts/qmldir"}) {
+        if (!QFileInfo(folder.filePath(QString(file))).isFile())
+            return u"Win顺 的 Qt 运行时不完整（缺少 %1），请重新安装 Win顺"_s.arg(QString(file));
+    }
+    return {};
+}
+
 std::optional<Launch> launchFor(const Runtime& runtime, const QString& pluginDir, QString* error)
 {
     Launch launch;

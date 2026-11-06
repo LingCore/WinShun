@@ -529,6 +529,13 @@ void start(const json::Value& m)
     // clean block, nothing of the user's that could make it load code.
     std::vector<wchar_t> environment = sandbox::tokenElevated(ownToken.get()) ? sandbox::elevatedEnvironment(extra)
                                                                              : sandbox::environmentFor(ownToken.get(), extra);
+    if (const std::wstring qtDir = lite::wide(m["qtDir"].toString()); !qtDir.empty()) {
+        if (sandbox::tokenElevated(ownToken.get())) {
+            fail("SharedQtRequiresNormalRights", ERROR_ACCESS_DENIED);
+            return;
+        }
+        environment = sandbox::withHostQt(environment, qtDir);
+    }
 
     // Only the three standard handles are inherited; mitigations without
     // PROHIBIT_DYNAMIC_CODE (interpreters generate code).

@@ -74,6 +74,7 @@ struct Runtime {
     RunMode mode = RunMode::Once;
     Program program = Program::Python;
     QString programPath; // Program::Exe: relative to the plugin folder
+    QString hostQtVersion; // nonempty: opt in to the host's Qt, major.minor[.minimumPatch]
     QStringList args;
     QString script; // relative to the plugin folder; empty for Exe
     QString cwd; // relative to the plugin folder; empty: the folder

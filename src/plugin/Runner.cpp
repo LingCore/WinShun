@@ -311,7 +311,7 @@ std::uint64_t Runner::launch(const Spec& spec)
         env.push_back(QJsonArray {name, value});
     QJsonObject message {{u"op"_s, u"start"_s}, {u"id"_s, static_cast<double>(instance)},
         {u"exe"_s, QDir::toNativeSeparators(spec.exe)}, {u"args"_s, args}, {u"cwd"_s, QDir::toNativeSeparators(spec.cwd)},
-        {u"env"_s, env}, {u"memoryMB"_s, spec.memoryMB}, {u"processes"_s, spec.processes}, {u"clipboardRead"_s, spec.clipboardRead},
+        {u"env"_s, env}, {u"qtDir"_s, spec.qtDir}, {u"memoryMB"_s, spec.memoryMB}, {u"processes"_s, spec.processes}, {u"clipboardRead"_s, spec.clipboardRead},
         {u"clipboardWrite"_s, spec.clipboardWrite}, {u"ui"_s, spec.ui}, {u"strict"_s, spec.strict},
         {u"encoding"_s, spec.oem ? u"oem"_s : u"utf-8"_s}, {u"stdin"_s, spec.stdinOpen}};
     if (!spec.inProcess.isEmpty())
